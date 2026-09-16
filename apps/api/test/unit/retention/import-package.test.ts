@@ -3,6 +3,10 @@
  * the uuid remap, the imported header, the ordered checks on a real key-signed package (an Ed25519 pair generated here, the chain
  * computed by the product's own functions) with one thing wrong at a time, and the plan's map. No database, no disk: what the
  * harness proves end to end on a fresh database, this holds at the function boundary.
+ *
+ * CP-6 B17 (D9, D12): the revocation check's SIGNED wording — a station notice signed by the partner (verified), by another key (does
+ * not verify), unsigned (the digest match alone) — on the same fixture; and the WITHDRAWN VERSION's header (importWithdrawalHeaderOf)
+ * pinned field by field against a row as the database answers it (instants as Date, the reference fields as arrays).
  */
 import { describe, expect, it } from 'vitest';
 import { createHash, generateKeyPairSync, sign } from 'node:crypto';
@@ -11,7 +15,8 @@ import { canonicalHeaderDigest, contentDigest, validateHeader, type CanonicalHea
 import { buildUstar, scanUstarStream, ExportArchiveError, type ScannedEntry } from '../../../src/retention/export-archive.js';
 import { objectsDigestOf, packageDigestOf } from '../../../src/retention/export-package.js';
 import { keyIdOf } from '../../../src/retention/export-signing.js';
-import { CHECK_NAMES, IMPORT_CHECKS, IMPORT_FORMS, importedHeaderOf, importedPayloadOf, importedFromOf, manifestChecks, planOf, remapUuids, verifyStaged,
+import { NOTICE_SIGNATURE_SCHEME, noticeDigestOf } from '../../../src/retention/revocation-notice.js';
+import { CHECK_NAMES, IMPORT_CHECKS, IMPORT_FORMS, IMPORT_REVOKE_METHOD_REF, importWithdrawalHeaderOf, importedHeaderOf, importedPayloadOf, importedFromOf, manifestChecks, planOf, remapUuids, verifyStaged,
          type StagedEntry, type StagedPackage, type VerificationContext } from '../../../src/retention/import-package.js';
 
 type Row = Record<string, unknown>;
@@ -88,7 +93,14 @@ function fixture(opts: { scheme?: 'chain' | 'key'; edgeVersion?: number; originT
   const tar = buildUstar([{ name: 'manifest.json', bytes: manifestBytes }, { name: `${manifestId}.bin`, bytes }, { name: 'links.json', bytes: linksBytes }], Math.floor(Date.parse(body.package.built_at) / 1000));
   const partner: Row = { partner_id: uid(), partner_key: 'nordwerk-origin', party: 'NORDWERK', key_id: keyId, public_key_pem: publicKeyPem, intake_source_id: uid(), intake_contract_version: 1, declared_at: '2026-03-01T00:00:00.000Z', retired_at: null };
   const contract: Row = { source_id: partner['intake_source_id'], contract_version: 1, source_key: 'nordwerk-exchange-intake', lifecycle_state: 'active', connector_kind: 'upload', rights_state: 'confirmed', classification_ceiling: 'internal', residency: 'EU', acquisition_mode: 'live' };
-  return { tar, manifestBytes, linksBytes, bytes, bytesDigest, packageDigest, keyId, publicKeyPem, partner, contract, ids: { evdId, manifestId, claimId, entA, entB, edgeId }, links, objects, evdHeader, evdPayload, c1, c2 };
+  return { tar, manifestBytes, linksBytes, bytes, bytesDigest, packageDigest, keyId, publicKeyPem, privateKey, partner, contract, ids: { evdId, manifestId, claimId, entA, entB, edgeId }, links, objects, evdHeader, evdPayload, c1, c2 };
+}
+
+/** B17 (D8): a revocation notice in the origin's shape, signed as the product signs it — Ed25519 over the ASCII hex of sha256(JCS(notice without signature/unsigned)). */
+function signedNoticeOf(notice: Row, pair: { publicKey: import('node:crypto').KeyObject; privateKey: import('node:crypto').KeyObject }): Row {
+  const { signature: _s, unsigned: _u, ...body } = notice;
+  const signature = sign(null, Buffer.from(noticeDigestOf(body), 'utf8'), pair.privateKey).toString('base64');
+  return { ...body, signature: { scheme: NOTICE_SIGNATURE_SCHEME, key_id: keyIdOf(pair.publicKey.export({ type: 'spki', format: 'der' })), algorithm: 'Ed25519', signature } };
 }
 
 /** The staging as the service performs it, from the tar: every entry scanned, the manifest and the closure kept, a locator per stored entry. */
@@ -350,6 +362,31 @@ describe('verifyStaged — the ordered checks on a key-signed package', () => {
     expect(byName(station.checks, CHECK_NAMES.revocation).ok).toBe(false);
     expect(byName(station.checks, CHECK_NAMES.revocation).detail).toMatch(/revoked this package at 2026-03-02T13:00:00.000Z \(revocation.json at the station: rights withdrawn/);
   });
+  it('check 14 (B17, D9): a station notice naming the package fails as before — the detail says signed by the partner (verified), unsigned (the digest match alone), or not verifying against the partner\'s key', async () => {
+    const fx = fixture();
+    const notice: Row = { notice: 'revocation', notice_id: uid(), attempt: 1, action_id: ACTION, tenant_id: T1, domain_id: D1, package_digest: fx.packageDigest, archive_digest: sha256(fx.tar), revoked_at: '2026-03-02T13:00:00.000Z', reason: 'rights withdrawn by the source', notified_at: '2026-03-02T13:00:01.000Z' };
+    const { publicKey, privateKey } = generateKeyPairSync('ed25519');
+    const partnerPair = { publicKey: (await import('node:crypto')).createPublicKey({ key: fx.publicKeyPem, format: 'pem' }), privateKey: fx.privateKey };
+    const byPartner = verifyStaged(await stageOf(fx.tar, { revocation: signedNoticeOf(notice, partnerPair) }), contextOf(fx, { origin: { known: false } }));
+    expect(byName(byPartner.checks, CHECK_NAMES.revocation).ok).toBe(false);
+    expect(byName(byPartner.checks, CHECK_NAMES.revocation).detail).toMatch(new RegExp(`revocation\\.json at the station: rights withdrawn by the source\\); signed by the partner ${fx.keyId} \\(verified\\)$`));
+    const unsigned = verifyStaged(await stageOf(fx.tar, { revocation: notice }), contextOf(fx, { origin: { known: false } }));
+    expect(byName(unsigned.checks, CHECK_NAMES.revocation).ok).toBe(false);
+    expect(byName(unsigned.checks, CHECK_NAMES.revocation).detail).toMatch(/revocation\.json at the station.*; unsigned — the digest match alone$/);
+    const otherKey = verifyStaged(await stageOf(fx.tar, { revocation: signedNoticeOf(notice, { publicKey, privateKey }) }), contextOf(fx, { origin: { known: false } }));
+    expect(byName(otherKey.checks, CHECK_NAMES.revocation).ok).toBe(false);
+    expect(byName(otherKey.checks, CHECK_NAMES.revocation).detail).toMatch(new RegExp(`; the signature does not verify against the partner's key \\(the notice is signed by key ${keyIdOf(publicKey.export({ type: 'spki', format: 'der' }))}, not the partner's ${fx.keyId}\\)$`));
+    // A tampered signed notice: the key is the partner's, the bytes are not the signed ones.
+    const tampered = { ...signedNoticeOf(notice, partnerPair), reason: 'a reason the origin never signed' };
+    expect(byName(verifyStaged(await stageOf(fx.tar, { revocation: tampered }), contextOf(fx, { origin: { known: false } })).checks, CHECK_NAMES.revocation).detail).toMatch(/does not verify against the partner's key \(the signature does not verify against the partner's key/);
+    // No partner holds the key: nothing to verify against — the digest match alone still fails the check.
+    const noPartner = verifyStaged(await stageOf(fx.tar, { revocation: signedNoticeOf(notice, partnerPair) }), contextOf(fx, { partner: null, contract: null, origin: { known: false } }));
+    expect(byName(noPartner.checks, CHECK_NAMES.revocation).ok).toBe(false);
+    expect(byName(noPartner.checks, CHECK_NAMES.revocation).detail).toMatch(/; unsigned or no partner to verify against$/);
+    // A notice naming another package is not this package's revocation: the check is the origin's record or the note, as before.
+    const other = verifyStaged(await stageOf(fx.tar, { revocation: signedNoticeOf({ ...notice, package_digest: 'e'.repeat(64) }, partnerPair) }), contextOf(fx, { origin: { known: false } }));
+    expect(byName(other.checks, CHECK_NAMES.revocation).ok).toBeNull();
+  });
   it('a package whose first entry is not manifest.json fails the archive check with the C5 detail; a malformed archive fails it with the scanner\'s words', async () => {
     const fx = fixture();
     const staged = await stageOf(fx.tar);
@@ -370,6 +407,53 @@ describe('verifyStaged — the ordered checks on a key-signed package', () => {
     const record = plan.items.find((i) => i.kind === 'record');
     expect((record?.planned['refusal'] as Row)['gate']).toBe('oversize');
     expect(record?.staged).toBeNull();
+  });
+});
+
+describe('importWithdrawalHeaderOf (B17, D12) — the version that withdraws an imported object under the origin\'s revocation', () => {
+  /** The object's latest row as objects.canonical_objects answers it: the header's columns, instants as Date, the reference fields as arrays, the payload. */
+  const rowOf = (h: CanonicalHeader, payload: Row, over: Row = {}): Row => ({
+    ...h, tenant_id: T2, domain_id: D2, object_version: 2, event_time: h.event_time === null ? null : new Date(h.event_time), observation_time: h.observation_time === null ? null : new Date(h.observation_time),
+    valid_from: null, valid_to: null, recorded_at: new Date(h.recorded_at), payload, content_digest: 'a'.repeat(64), ...over,
+  });
+  const revocation = { action_id: ACTION, package_digest: 'b'.repeat(64), revoked_at: '2026-03-05T10:00:00.000Z', reason: 'rights withdrawn by the source', notice_id: uid() };
+  it('the prior row\'s fields kept where the corrections path keeps them; version +1; lifecycle and truth state withdrawn; correction_of = supersedes = the version withdrawn; the reason names the origin\'s revocation; the method, the actor, the notice; the result validates and digests', () => {
+    const fx = fixture();
+    const priorHeader = { ...fx.c1.header, evidence_refs: [`EVD:${uid()}`], human_refs: ['principal:origin-steward'], confidence: { value: 0.8 }, quality_state: { q: 1 }, access_policy_ref: 'policy:x', ontology_ref: 'onto:x', valid_from: '2026-01-01T00:00:00.000Z', valid_to: '2026-06-01T00:00:00.000Z', content_ref: null } as CanonicalHeader;
+    const payload = { ...fx.c1.payload, imported_from: { format: 'eye-import-provenance/1', import_id: uid() } };
+    const prior = rowOf(priorHeader, payload, { valid_from: new Date('2026-01-01T00:00:00.000Z'), valid_to: new Date('2026-06-01T00:00:00.000Z'), synthetic_state: false, source_clock_quality: 'degraded' });
+    const importId = uid(); const corr = uid();
+    const h = importWithdrawalHeaderOf(prior, { actor: 'authority-1', correlationId: corr, purposeId: 'retention', recordedAt: '2026-03-05T10:00:05.000Z', revocation, importId });
+    expect(h.object_id).toBe(fx.ids.claimId); expect(h.object_type).toBe('REL'); expect(h.tenant_id).toBe(T2); expect(h.domain_id).toBe(D2); expect(h.scope).toBe('DOMAIN');
+    expect(h.object_version).toBe('3');
+    expect(h.lifecycle_state).toBe('withdrawn'); expect(h.truth_state).toBe('withdrawn');
+    expect(h.correction_of).toBe(`${fx.ids.claimId}@2`); expect(h.supersedes).toBe(`${fx.ids.claimId}@2`);
+    expect(h.withdrawal_reason).toBe(`the origin revoked the package this version was imported from (import ${importId}; action ${ACTION}; package ${'b'.repeat(64)}; revoked at 2026-03-05T10:00:00.000Z): rights withdrawn by the source`);
+    expect(h.method_ref).toBe(IMPORT_REVOKE_METHOD_REF); expect(h.method_ref).toBe('retention.import.revoke@1.0.0');
+    expect(h.accountable_owner).toBe('principal:authority-1'); expect(h.human_refs).toEqual(['authority-1']);
+    expect(h.recorded_at).toBe('2026-03-05T10:00:05.000Z'); expect(h.audit_correlation_id).toBe(corr); expect(h.purpose_scope).toBe('retention');
+    expect(h.evidence_refs).toEqual([...priorHeader.evidence_refs, `revocation-notice:${revocation.notice_id}`]);
+    // Kept from the prior row: the temporal block (instants re-serialised), the policy labels, the schema, the provenance reference, the owning component, the synthetic flag, the clock quality.
+    expect(h.event_time).toBe(priorHeader.event_time); expect(h.observation_time).toBe(priorHeader.observation_time); expect(h.valid_from).toBe('2026-01-01T00:00:00.000Z'); expect(h.valid_to).toBe('2026-06-01T00:00:00.000Z');
+    for (const k of ['time_precision', 'classification', 'rights_profile', 'residency_profile', 'retention_profile', 'schema_ref', 'provenance_ref', 'owning_component', 'synthetic_state', 'source_object_ids'] as const) expect(h[k]).toEqual(priorHeader[k]);
+    expect(h.source_clock_quality).toBe('degraded');
+    // Cleared, as the corrections path clears them.
+    expect(h.confidence).toBeNull(); expect(h.uncertainty).toBeNull(); expect(h.quality_profile).toBeNull(); expect(h.quality_state).toBeNull(); expect(h.freshness_state).toBeNull();
+    expect(h.access_policy_ref).toBeNull(); expect(h.ontology_ref).toBeNull(); expect(h.contradiction_refs).toEqual([]); expect(h.corroboration_refs).toEqual([]);
+    expect(h.content_ref).toBeNull();
+    expect(Object.keys(h).length).toBe(43);
+    expect(validateHeader(h).ok).toBe(true);
+    expect(canonicalHeaderDigest(h, payload)).toMatch(/^[0-9a-f]{64}$/);
+  });
+  it('without a notice the evidence reference names the origin action; an unstated instant and reason are said so; an EVD keeps its content_ref; a row without a version is refused', () => {
+    const fx = fixture();
+    const prior = rowOf(fx.evdHeader, fx.evdPayload, { object_version: 1, source_clock_quality: 'trusted' });
+    const h = importWithdrawalHeaderOf(prior, { actor: 'a', correlationId: uid(), purposeId: 'retention', recordedAt: '2026-03-05T10:00:05.000Z', revocation: { ...revocation, notice_id: null, revoked_at: null, reason: null }, importId: uid() });
+    expect(h.object_version).toBe('2'); expect(h.evidence_refs.at(-1)).toBe(`revocation-notice:${ACTION}`);
+    expect(h.withdrawal_reason).toMatch(/revoked at an unstated instant\): no reason stated$/);
+    expect(h.content_ref).toBe(fx.evdHeader.content_ref); expect(h.schema_ref).toBe('EVD@v1'); expect(h.source_clock_quality).toBe('trusted');
+    expect(validateHeader(h).ok).toBe(true);
+    expect(() => importWithdrawalHeaderOf({ ...prior, object_version: 'x' }, { actor: 'a', correlationId: uid(), purposeId: 'retention', recordedAt: '2026-03-05T10:00:05.000Z', revocation, importId: uid() })).toThrow(/carries no version/);
   });
 });
 

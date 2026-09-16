@@ -10,7 +10,11 @@
  *
  * Under GraphChanged the basis moves by a split or a resolution accepted elsewhere; under MemoryCorrected it moves for
  * the resolutions of a corrected claim, the edges a corrected claim asserted (or that rest on corrected evidence) and
- * the identifiers sourced from either — all three mappings, on both branches (AU-MEM-0114).
+ * the identifiers sourced from either — all three mappings, on both branches (AU-MEM-0114). 0077 (B17): under an
+ * import's REVOCATION (GraphChanged/import.revoked) the identifiers bound to the entities it retired (facts of a retired
+ * entity — decide whether each names another entity) and the domain's own still-ASSERTED edges with a retired end are
+ * proposed; the imported edges the revocation retracted are not (nothing to reconcile on a retracted edge). That branch
+ * is a new method, so a new consumer identity: the live subscriptions are re-registered (graph-change.ts METHOD_REF).
  *
  * PROVENANCE PATH INCOMPLETE (AU-MEM-0039, 0065). A proposal about an edge says what moved under it; that requires the
  * path corrected evidence → claim lineage → the claim the edge names to be ESTABLISHED. An edge that names the corrected
@@ -79,6 +83,26 @@ export class MemoryMappingsConsumer implements SubscriptionConsumer<GraphSubscri
             if (String(id['entity_id']) === r.entity_id) continue;
             add({ subjectKind: 'identifier', subjectId: String(id['identifier_id']), fromEntityId: String(id['entity_id']), toEntityId: r.entity_id,
                   basis: `identifier ${String(id['system_key'])}=${String(id['identifier_value'])} was sourced from claim ${r.claim_object_id}, which now resolves to another entity` });
+          }
+        }
+      } else if (p.change.kind === 'import.revoked') {
+        // 0077 (D10): the entities the revocation RETIRED. Their identifiers stay facts of a retired entity — a person decides whether each
+        // names another entity; the domain's own edges still asserted on a retired end may no longer hold. The retracted imported edges
+        // are no longer asserted and are not proposed.
+        const retired = p.identities.filter((i) => i.role === 'retired').map((i) => i.entity_id);
+        const importId = String(p.import?.import_id ?? p.cause.target_id ?? '?');
+        if (retired.length > 0) {
+          const ids = (await cap.readEntityIdentifiers().selectAll().where('entity_id' as never, 'in', retired as never).execute()) as Row[];
+          for (const r of ids) {
+            add({ subjectKind: 'identifier', subjectId: String(r['identifier_id']), fromEntityId: String(r['entity_id']), toEntityId: null,
+                  basis: `identifier ${String(r['system_key'])}=${String(r['identifier_value'])} is bound to an entity retired under the origin's revocation of import ${importId}; the identifier stays a fact of a retired entity — decide whether it names another entity` });
+          }
+          const edges = (await cap.readEdges().selectAll().where('state' as never, '=', 'asserted' as never).execute()) as Row[];
+          for (const e of edges) {
+            const subj = String(e['subject_entity_id']); const obj = String(e['object_entity_id']);
+            if (!retired.includes(subj) && !retired.includes(obj)) continue;
+            add({ subjectKind: 'edge', subjectId: String(e['edge_id']), fromEntityId: subj, toEntityId: obj,
+                  basis: `edge ${String(e['predicate'])} has a retired entity as its ${retired.includes(subj) ? 'subject' : 'object'} (retired under the origin's revocation of import ${importId}); the relationship may no longer hold as asserted` });
           }
         }
       }

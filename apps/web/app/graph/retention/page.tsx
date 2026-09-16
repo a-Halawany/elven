@@ -31,6 +31,13 @@
  * this installation mints — the origin's identity carried as digest-bound provenance — or WITHDRAWN. A revocation notice now says what
  * the destination is known to HOLD: `confirmed` (it answered a receipt), `possible` (the body left before the fault) — a destination
  * that provably received nothing is not notified.
+ * Since B17 (0077) the revocation REACHES the copies: every notice is SIGNED with the package's key (eye-revocation-notice/1); an
+ * IMPORTING DOMAIN of the tenant is a recipient on the origin's ledger (the export's IMPORTERS and their notices are shown on the
+ * action's record) and its copies are DESTROYED by the same act — or, when the acting principal holds no authority there, by the
+ * importing domain's own REVOKE act on the import (from the origin's record on this installation, or from the origin's signed notice
+ * at a transfer station, verified against the partner's key): the imported edges retracted, the entities retired, every imported
+ * version withdrawn, the bytes tombstoned; a legal hold holds it (`revoking`, the refused items named) until lifted and retried.
+ * The import's record shows the revocation as recorded, the items' outcomes and the `import.revocation_*` events.
  *
  * Nothing here predicts a state: every row, count, digest and check is rendered as the server returned it, and every
  * refusal — the opener's own approval, a wrong digest, an unresolved scope, a review's failed check, a budget exhausted, an
@@ -44,6 +51,7 @@ import {
   type RetentionActionDetail, type RetentionClassification, type RetentionDestinationIntake, type RetentionDestinationKind, type RetentionEvaluation, type RetentionExecutionResult, type RetentionExportDetail, type RetentionExportDownload, type RetentionKeyPurpose, type RetentionKind, type RetentionOpenIntake,
   type RetentionRow, type RetentionScheduleIntake, type RetentionScopeSummary, type RetentionSigningKeyIntake, type RetentionTargetKind, type RetentionTierPolicyIntake, type RetentionTierState, type RetentionVaultInventory, type RetentionVerdict,
   type RetentionImportCheck, type RetentionImportDetail, type RetentionImportOpened, type RetentionImportSource, type RetentionPartnerIntake,
+  type RetentionNoticeRecipient, type RetentionRevocationSource,
 } from '../../../lib/graph';
 import { Empty, LiveStatus, Mono, ScrollBox, cardStyle, DefinitionRow, UnknownNote, GovernedButton, fmtInstant } from '../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui';
@@ -202,6 +210,19 @@ const base64OfBytes = (bytes: Uint8Array): string => {
 const checkVerdict = (c: RetentionImportCheck): string => (c.ok === true ? 'passed' : c.ok === false ? 'FAILED' : 'note');
 /** B14/B16: what a revocation notice says the destination HOLDS — confirmed (it answered a receipt), possible (the body left before the fault) — read from the notice as sent (`notice.delivery.held`). */
 const heldOf = (x: Row): string => str(rec(rec(x['notice'])['delivery'])['held'] ?? rec(x['delivery'])['held']);
+/** B17: who a notice went to — a destination by its key, or (`kind: 'importer'`) an importing domain of the tenant by the notice's own recipient (`import:<tenant>/<domain>/<import_id>`). */
+const noticeRecipientOf = (x: Row): string => (x['kind'] === 'importer' || (x['destination_key'] === null && rec(x['importer'])['import_id'] !== undefined)
+  ? str(x['recipient'] ?? rec(x['notice'])['recipient'] ?? `import:${str(rec(x['importer'])['domain_id'])}/${str(rec(x['importer'])['import_id'])}`)
+  : str(x['destination_key']));
+/** B17: the signature a notice carries, as recorded — the scheme and key id, or the server's own statement of why it is unsigned. */
+const noticeSignatureOf = (x: Row): string => {
+  const n = rec(x['notice']);
+  const s = n['signature'];
+  if (s !== null && typeof s === 'object' && !Array.isArray(s)) return `${str((s as Row)['scheme'])} · key ${str((s as Row)['key_id'])}`;
+  return n['unsigned'] === undefined ? '—' : `unsigned — ${str(n['unsigned'])}`;
+};
+/** B17: the events of an import's revocation among its events (`import.revocation_notified` … `import.copies_refused`). */
+const isRevocationEvent = (e: Row): boolean => /^import\.(revocation_|revoked|batch_revoked|copies_)/.test(String(e['event'] ?? ''));
 
 /** B14: a destination's trust anchor as the server shows it — the certificates by subject and fingerprint, or "the deployment's trust store". */
 function trustAnchorText(d: Record<string, unknown>): string {
@@ -471,11 +492,15 @@ export default function RetentionPage() {
   const [withdrawn, setWithdrawn] = useState<Outcome<{ actionId: string; state: string }>>(none);
   const [exported, setExported] = useState<{ detail: RetentionExportDetail | null; problem: string | null }>({ detail: null, problem: null });
   const [rvReason, setRvReason] = useState('');
-  const [revoked, setRevoked] = useState<Outcome<{ revocation: Record<string, unknown>; notices: RetentionRow[]; bytes: { removed: boolean; error?: string }; stations: RetentionRow[] }>>(none);
+  const [revoked, setRevoked] = useState<Outcome<{ revocation: Record<string, unknown>; notices: RetentionRow[]; importers: RetentionRow[]; bytes: { removed: boolean; error?: string }; stations: RetentionRow[] }>>(none);
   // B14 (0074 §3): the selected export's revocation notices, a further notice, the notice's receipt collected or presented.
   const [notices, setNotices] = useState<{ rows: RetentionRow[] | null; problem: string | null }>({ rows: null, problem: null });
   const [noticeKey, setNoticeKey] = useState('');
-  const [notified, setNotified] = useState<Outcome<RetentionRow>>(none);
+  // B17: a further notice to an IMPORTING DOMAIN of the tenant (its domain and import id) instead of a destination.
+  const [noticeTo, setNoticeTo] = useState<'destination' | 'importer'>('destination');
+  const [noticeImporterDomain, setNoticeImporterDomain] = useState('');
+  const [noticeImporterImport, setNoticeImporterImport] = useState('');
+  const [notified, setNotified] = useState<Outcome<RetentionRow & { importer?: RetentionRow }>>(none);
   const [noticeCollected, setNoticeCollected] = useState<Outcome<RetentionRow>>(none);
   const [ackNoticeId, setAckNoticeId] = useState('');
   const [ackNoticeReceipt, setAckNoticeReceipt] = useState('');
@@ -519,6 +544,10 @@ export default function RetentionPage() {
   const [importAdmitted, setImportAdmitted] = useState<Outcome<{ import: RetentionRow; batches: Row[] }>>(none);
   const [importWdReason, setImportWdReason] = useState('');
   const [importWithdrawn, setImportWithdrawn] = useState<Outcome<{ import: RetentionRow; quarantine: Row }>>(none);
+  // B17 (0077 §7): the selected import's revocation — the source (the origin's record here, or the origin's signed notice at a station) and the act's answer.
+  const [importRevokeKind, setImportRevokeKind] = useState<RetentionRevocationSource['kind']>('origin');
+  const [importRevokeStation, setImportRevokeStation] = useState('');
+  const [importRevoked, setImportRevoked] = useState<Outcome<{ import: RetentionRow; revocation: Row; batches: Row[] }>>(none);
 
   const loadSchedules = async () => {
     const r = await retention.listSchedules(scope);
@@ -565,6 +594,7 @@ export default function RetentionPage() {
   const selectImport = (importId: string) => {
     setSelectedImport(importId); setImportDetail(null); setImportProblem(null);
     setImportRationale(''); setImportApproved(none()); setImportAdmitted(none()); setImportWdReason(''); setImportWithdrawn(none());
+    setImportRevokeKind('origin'); setImportRevokeStation(''); setImportRevoked(none());
     void loadImportDetail(importId);
   };
   /** The object URL of a downloaded archive is the browser's to hold until the click; it is released when the download is replaced or the selection changes. */
@@ -601,7 +631,7 @@ export default function RetentionPage() {
     setSelected(actionId); setDetail(null); setDetailProblem(null); setExported({ detail: null, problem: null }); setDeliveries({ rows: null, problem: null });
     setResolved(none()); setRationale(''); setApproved(none()); setExecuted(none()); setVerified(none()); setWdReason(''); setWithdrawn(none()); setRvReason(''); setRevoked(none());
     releaseDownload(); setDestinationKey(''); setDelivered(none()); setCollected(none()); setAckDeliveryId(''); setAckReceipt(''); setAcknowledged(none());
-    setNotices({ rows: null, problem: null }); setNoticeKey(''); setNotified(none()); setNoticeCollected(none()); setAckNoticeId(''); setAckNoticeReceipt(''); setNoticeAcknowledged(none());
+    setNotices({ rows: null, problem: null }); setNoticeKey(''); setNoticeTo('destination'); setNoticeImporterDomain(''); setNoticeImporterImport(''); setNotified(none()); setNoticeCollected(none()); setAckNoticeId(''); setAckNoticeReceipt(''); setNoticeAcknowledged(none());
     void loadDetail(actionId);
   };
   useEffect(() => { void loadSchedules(); void loadActions(); void loadTier(); void loadKeys(); void loadDestinations(); void loadPartners(); void loadImports(); }, [scope]);
@@ -1207,6 +1237,16 @@ export default function RetentionPage() {
                   <DefinitionRow term="Timeline">opened by <Mono>{short(importDetail.import['opened_by'])}</Mono> at {fmtInstant(importDetail.import['opened_at'])} · approved {fmtInstant(importDetail.import['approved_at'])}{importDetail.import['approval_rationale'] !== null && importDetail.import['approval_rationale'] !== undefined ? ` — ${String(importDetail.import['approval_rationale'])}` : ''} · admitted {fmtInstant(importDetail.import['admitted_at'])} ({str(importDetail.import['attempts'])} attempt(s)) · withdrawn {fmtInstant(importDetail.import['withdrawn_at'])}{importDetail.import['withdraw_reason'] !== null && importDetail.import['withdraw_reason'] !== undefined ? ` — ${String(importDetail.import['withdraw_reason'])}` : ''}</DefinitionRow>
                   <DefinitionRow term="Counts"><Mono>{json(importDetail.import['counts'])}</Mono></DefinitionRow>
                   <DefinitionRow term="Import receipt"><Mono>{json(importDetail.importReceipt)}</Mono></DefinitionRow>
+                  <DefinitionRow term="Revocation">
+                    {importDetail.import['revocation_attempts'] === undefined ? 'not known to this server (before 0077)'
+                      : Number(importDetail.import['revocation_attempts'] ?? 0) === 0 && importDetail.import['state'] !== 'revoked' ? 'none — the copies stand'
+                        : <>
+                          state <strong>{str(importDetail.import['state'])}</strong> · {str(importDetail.import['revocation_attempts'])} attempt(s)
+                          {' · '}revoked {fmtInstant(importDetail.import['revoked_at'])}{importDetail.import['revoked_by'] === null || importDetail.import['revoked_by'] === undefined ? '' : <> by <Mono>{short(importDetail.import['revoked_by'])}</Mono></>}
+                          {importDetail.import['revocation'] !== null && importDetail.import['revocation'] !== undefined ? <> · as recorded <Mono>{json(importDetail.import['revocation'])}</Mono></> : <> · in progress: a legal hold refused a record, or an attempt did not finish — the revoke act below retries it</>}
+                          {' · '}{importDetail.events.filter(isRevocationEvent).length} revocation event(s): {importDetail.events.filter(isRevocationEvent).map((e) => str(e['event'])).join(', ') || '—'} (the events table below)
+                        </>}
+                  </DefinitionRow>
                 </dl>
 
                 <h3 style={h3}>Checks ({importDetail.checks.length})</h3>
@@ -1225,12 +1265,13 @@ export default function RetentionPage() {
                 {importDetail.items.length === 0 ? <Empty>No item: the package listed nothing this domain could plan.</Empty> : (
                   <ScrollBox label="import items">
                     <table className="eye-table" style={tableStyle}>
-                      <thead><tr><Th>Order</Th><Th>Kind</Th><Th>Origin</Th><Th>Planned here</Th><Th>Disposition</Th><Th>Gate</Th><Th>Reason</Th><Th>Admitted</Th></tr></thead>
+                      <thead><tr><Th>Order</Th><Th>Kind</Th><Th>Origin</Th><Th>Planned here</Th><Th>Disposition</Th><Th>Gate</Th><Th>Reason</Th><Th>Admitted</Th><Th>Revocation</Th></tr></thead>
                       <tbody>{importDetail.items.map((i) => (
                         <tr key={String(i['item_id'])}>
                           <Td mono>{str(i['dependency_order'])}</Td><Td>{str(i['kind'])}</Td><Td mono>{str(i['origin_ref'])}</Td><Td mono>{json(i['planned'])}</Td>
                           <Td><strong>{str(i['disposition'])}</strong></Td><Td>{str(i['gate'])}</Td><Td>{str(i['reason'])}</Td>
                           <Td mono>{i['admitted'] === null || i['admitted'] === undefined ? '—' : json(i['admitted'])}</Td>
+                          <Td>{i['revocation'] === null || i['revocation'] === undefined ? '—' : <><strong>{str(rec(i['revocation'])['outcome'])}</strong> at {fmtInstant(i['revoked_at'])}{rec(i['revocation'])['reason'] === undefined ? '' : ` — ${str(rec(i['revocation'])['reason'])}`}</>}</Td>
                         </tr>
                       ))}</tbody>
                     </table>
@@ -1290,6 +1331,57 @@ export default function RetentionPage() {
                 <Problem verb="not withdrawn" problem={importWithdrawn.problem} />
                 {importWithdrawn.result !== null && <p>import <Mono>{short(importWithdrawn.result.import['import_id'])}</Mono> is now <strong>{str(importWithdrawn.result.import['state'])}</strong> · quarantine copies: <Mono>{json(importWithdrawn.result.quarantine)}</Mono></p>}
                 <Receipt receipt={importWithdrawn.receipt} />
+
+                <h3 style={h3}>Revoke</h3>
+                <p style={muted}>
+                  B17: the origin's revocation executed here, human-gated (<Mono>retention.import.revoke</Mono>: the tenant's retention authority or administrator, this domain's steward or
+                  administrator) on an ADMITTED import — from the <strong>origin's record</strong> on this installation (a domain of this tenant whose package is revoked), or from the
+                  origin's <strong>signed notice</strong> (<Mono>revocation.json</Mono>) at a transfer station declared here, verified against the import's partner key before anything is
+                  destroyed (an unsigned notice, another party's key or another package: refused, nothing destroyed, the refusal recorded). The imported edges are retracted, the entities
+                  retired (their identifiers kept: a person decides), every imported version withdrawn by a new version naming the revocation, the bytes tombstoned and removed after
+                  the commit; the receipt answers the origin. A record under a <strong>legal hold</strong> is refused and the import stays <Mono>revoking</Mono> until the hold is lifted
+                  and this act is retried; a copy another admitted import still holds is left and said so. A revoked import answers <Mono>retried</Mono>.
+                </p>
+                <div style={rowStyle}>
+                  <Field id="im-rv-kind" label="Source">{(id) => <Sel id={id} value={importRevokeKind} options={['origin', 'station'] as const} onChange={setImportRevokeKind} />}</Field>
+                  {importRevokeKind === 'station' && (
+                    <Field id="im-rv-station" label="Transfer station (a destination of this domain, kind transfer_station)">{(id) => (
+                      <select id={id} style={wide} value={importRevokeStation} onChange={(e) => setImportRevokeStation(e.target.value)}>
+                        <option value="">— choose a station —</option>
+                        {(destinations ?? []).filter((d) => d['kind'] === 'transfer_station' && !isRetired(d)).map((d) => <option key={String(d['destination_id'])} value={String(d['destination_key'])}>{str(d['destination_key'])} · {str(d['endpoint'])}</option>)}
+                      </select>
+                    )}</Field>
+                  )}
+                </div>
+                <div style={controlRow}>
+                  <GovernedButton label="Revoke the import" pendingLabel="revoking (batch by batch)" variant="critical" disabled={importRevokeKind === 'station' && importRevokeStation === ''}
+                    onRun={async () => {
+                      const source: RetentionRevocationSource = importRevokeKind === 'origin' ? { kind: 'origin' } : { kind: 'station', destinationKey: importRevokeStation };
+                      await importAct(setImportRevoked, 'revocation', () => retention.revokeImport(scope, selectedImport, source), (d) => ({ import: rec(d['import']), revocation: rec(d['revocation']), batches: arr(d['batches']) }));
+                    }} />
+                </div>
+                <Problem verb="not revoked" problem={importRevoked.problem} />
+                {importRevoked.result !== null && (
+                  <>
+                    <p>
+                      import <Mono>{short(importRevoked.result.import['import_id'])}</Mono> is now <strong>{str(importRevoked.result.import['state'])}</strong> · the attempt answered <strong>{str(importRevoked.result.revocation['state'])}</strong>
+                      {' '}(attempt {str(importRevoked.result.revocation['attempt'])}; source {str(rec(importRevoked.result.revocation['source'])['kind'])})
+                      {importRevoked.result.revocation['destroyed'] !== undefined ? <> · destroyed <Mono>{json(importRevoked.result.revocation['destroyed'])}</Mono> · left {str(importRevoked.result.revocation['left'])} · refused {arr(importRevoked.result.revocation['refused']).length}</> : null}
+                      {importRevoked.result.revocation['reason'] !== undefined ? <> · {str(importRevoked.result.revocation['reason'])}</> : null}
+                    </p>
+                    {arr(importRevoked.result.revocation['refused']).length > 0 && (
+                      <p><span style={critical}>held:</span> {arr(importRevoked.result.revocation['refused']).map((x) => `${str(x['kind'])} ${str(x['origin_ref'])} — ${str(x['reason'])}${x['hold_id'] === null || x['hold_id'] === undefined ? '' : ` (hold ${short(x['hold_id'])})`}`).join('; ')} — lift the hold and revoke again</p>
+                    )}
+                    {importRevoked.result.revocation['receipt'] !== null && importRevoked.result.revocation['receipt'] !== undefined && (
+                      <p>receipt: copies destroyed <strong>{yes(rec(importRevoked.result.revocation['receipt'])['copies_destroyed'])}</strong>
+                        {' · '}the origin answered: {importRevoked.result.revocation['answered'] === null || importRevoked.result.revocation['answered'] === undefined ? '—' : rec(importRevoked.result.revocation['answered'])['answered'] === true ? <><strong>{str(rec(importRevoked.result.revocation['answered'])['state'])}</strong> (notice attempt {str(rec(importRevoked.result.revocation['answered'])['attempt'])})</> : <>not answered here — {str(rec(importRevoked.result.revocation['answered'])['reason'])}</>}
+                        {importRevoked.result.revocation['station_receipt'] !== null && importRevoked.result.revocation['station_receipt'] !== undefined ? <> · the station receipt: <Mono>{json(importRevoked.result.revocation['station_receipt'])}</Mono></> : null}
+                      </p>
+                    )}
+                    {importRevoked.result.batches.length > 0 && <p>{importRevoked.result.batches.length} write(s): {importRevoked.result.batches.map((b) => `${str(b['kind'])} ×${str(b['count'])}`).join(', ')}</p>}
+                  </>
+                )}
+                <Receipt receipt={importRevoked.receipt} />
               </>
             )}
           </>
@@ -1367,12 +1459,34 @@ export default function RetentionPage() {
                     <DefinitionRow term="Revoked">{exported.detail.package['revoked_at'] === null || exported.detail.package['revoked_at'] === undefined ? 'no' : `${fmtInstant(exported.detail.package['revoked_at'])} — ${str(exported.detail.package['revoke_reason'])}`}</DefinitionRow>
                     <DefinitionRow term="Files">{exported.detail.files.length === 0 ? 'none on disk' : exported.detail.files.map((f) => <Mono key={f}>{f} </Mono>)}</DefinitionRow>
                     <DefinitionRow term="Deliveries">{exported.detail.deliveries === undefined ? '—' : `${exported.detail.deliveries.length} recorded (below)`}</DefinitionRow>
+                    <DefinitionRow term="Importers">{exported.detail.importers === undefined ? 'not known to this server (before 0077)' : exported.detail.importers.length === 0 ? 'none — no domain of this tenant has admitted this package' : `${exported.detail.importers.length} admitted import(s) in the tenant's domains (below)`}</DefinitionRow>
                   </dl>
                 )}
                 {exported.detail !== null && exported.detail.signing_key !== null && exported.detail.signing_key !== undefined && (
                   <>
                     <p style={muted}>The public key of <Mono>{str(exported.detail.signing_key.key_id)}</Mono>, as recorded at its declaration — what a customer passes to <Mono>scripts/retention/verify-export.mjs --public-key</Mono> to verify the signature:</p>
                     <Block label="the signing key's public key" text={exported.detail.signing_key.public_key_pem} />
+                  </>
+                )}
+                {exported.detail !== null && exported.detail.importers !== undefined && exported.detail.importers.length > 0 && (
+                  <>
+                    <h3 style={h3}>Importers ({exported.detail.importers.length})</h3>
+                    <p style={muted}>
+                      B17: the domains of this tenant that ADMITTED this package (the mirror of an exchange within one installation) — the recipients the revocation reaches on the
+                      origin's own ledger: revoking the package notifies each and destroys its copies through <Mono>retention.import.revoke</Mono>; a domain of another tenant, or
+                      another installation, is a foreign recipient told through its transfer station.
+                    </p>
+                    <ScrollBox label="importers of the package">
+                      <table className="eye-table" style={tableStyle}>
+                        <thead><tr><Th>Import</Th><Th>Domain</Th><Th>State</Th><Th>Partner</Th><Th>Admitted</Th><Th>Revoked</Th><Th>Attempts</Th><Th>Counts</Th></tr></thead>
+                        <tbody>{exported.detail.importers.map((im) => (
+                          <tr key={String(im['import_id'])}>
+                            <Td mono>{short(im['import_id'])}</Td><Td mono>{short(im['domain_id'])}</Td><Td><strong>{str(im['state'])}</strong></Td><Td mono>{str(im['partner_key'])}</Td>
+                            <Td>{fmtInstant(im['admitted_at'])}</Td><Td>{fmtInstant(im['revoked_at'])}</Td><Td mono>{str(im['revocation_attempts'])}</Td><Td mono>{json(im['counts'])}</Td>
+                          </tr>
+                        ))}</tbody>
+                      </table>
+                    </ScrollBox>
                   </>
                 )}
               </>
@@ -1651,16 +1765,20 @@ export default function RetentionPage() {
                 transfer station by <Mono>revocation.json</Mono> beside the package (the product's own copies there removed after the commit), an https endpoint by a JSON POST
                 under the delivery's egress and credential rules. Every outcome is recorded: <Mono>notified</Mono>, <Mono>acknowledged</Mono> (the receipt names the package
                 digest with <Mono>copies_destroyed</Mono> true), <Mono>mismatched</Mono> (the obligation refused), <Mono>failed</Mono> with its class — a failed notice is a fact,
-                the revocation stands, and a further notice is sent below.
+                the revocation stands, and a further notice is sent below. B17: every notice is <strong>signed</strong> with the package's key (the tenant's active key, said so
+                inside the signed bytes, when the package's is not bound here; unsigned and said so when neither can sign); each <strong>importing domain</strong> of the tenant is
+                notified on this ledger and its copies destroyed by the same act — <Mono>revoked</Mono>, <Mono>held</Mono> by a legal hold there, or <Mono>pending</Mono> for its
+                own steward when the acting principal holds no authority in that domain.
               </p>
               <Field id="rv-reason" label="Reason (at least 8 characters, required)">{(id) => <Txt id={id} value={rvReason} onChange={setRvReason} />}</Field>
               <div style={controlRow}>
                 <GovernedButton label="Revoke the package" pendingLabel="revoking" variant="critical" disabled={rvReason.trim().length < 8}
                   onRun={async () => {
                     try {
-                      await act(setRevoked, 'revocation', () => retention.revokeExport(scope, selected, rvReason.trim()), (d) => ({ revocation: rec(d['revocation']), notices: (d['notices'] as RetentionRow[] | undefined) ?? [], bytes: rec(d['bytes']) as unknown as { removed: boolean; error?: string }, stations: (d['stations'] as RetentionRow[] | undefined) ?? [] }));
+                      await act(setRevoked, 'revocation', () => retention.revokeExport(scope, selected, rvReason.trim()), (d) => ({ revocation: rec(d['revocation']), notices: (d['notices'] as RetentionRow[] | undefined) ?? [], importers: (d['importers'] as RetentionRow[] | undefined) ?? [], bytes: rec(d['bytes']) as unknown as { removed: boolean; error?: string }, stations: (d['stations'] as RetentionRow[] | undefined) ?? [] }));
                     } finally {
                       await loadDeliveries(selected);
+                      await loadImports();
                     }
                   }} />
               </div>
@@ -1670,6 +1788,10 @@ export default function RetentionPage() {
                   <p>package <Mono>{str(revoked.result.revocation['package_digest'])}</Mono> revoked at {fmtInstant(revoked.result.revocation['revoked_at'])}; bytes removed: {yes(revoked.result.bytes.removed)}{revoked.result.bytes.error !== undefined ? ` — ${revoked.result.bytes.error}` : ''}</p>
                   <p>notices sent: {revoked.result.notices.length === 0 ? 'none — no destination received, or is known to hold, this package' : revoked.result.notices.map((n) => `${str((n['destination'] as Record<string, unknown> | undefined)?.['destination_key'])} (holds: ${heldOf(n)}) → ${str(n['state'])}${n['failure_class'] === null || n['failure_class'] === undefined ? '' : ` (${str(n['failure_class'])})`}`).join('; ')}
                     {revoked.result.stations.length > 0 ? <> · the product's copies at the stations: {revoked.result.stations.map((st) => `${str(st['destination_key'])}: removed ${json(st['removed'])}${json(st['failed']) === '[]' ? '' : `, failed ${json(st['failed'])}`}`).join('; ')}</> : null}</p>
+                  <p>importing domains: {revoked.result.importers.length === 0 ? 'none — no domain of this tenant holds an admitted import of this package' : revoked.result.importers.map((im) => {
+                    const rv = rec(im['revocation']); const notice = rec(im['notice']);
+                    return `import ${short(im['import_id'])} in domain ${short(im['domain_id'])}: notice ${str(notice['state'])} (attempt ${str(notice['attempt'])}) → revocation ${str(rv['state'])}${rv['destroyed'] !== undefined ? ` — destroyed ${json(rv['destroyed'])}, left ${str(rv['left'])}, refused ${arr(rv['refused']).length}` : ''}${rv['reason'] !== undefined ? ` — ${str(rv['reason'])}` : ''}${rec(rv['answered'])['state'] !== undefined ? `; the origin's ledger answered ${str(rec(rv['answered'])['state'])}` : ''}`;
+                  }).join('; ')}</p>
                 </>
               )}
               <Receipt receipt={revoked.receipt} />
@@ -1679,14 +1801,15 @@ export default function RetentionPage() {
               {notices.rows === null ? (notices.problem === null ? <Empty>reading the notices…</Empty> : null) : notices.rows.length === 0 ? <Empty>No revocation notice is recorded for this export.</Empty> : (
                 <ScrollBox label="revocation notices">
                   <table className="eye-table" style={tableStyle}>
-                    <thead><tr><Th>Notice</Th><Th>Attempt</Th><Th>Destination</Th><Th>Delivery held</Th><Th>Held</Th><Th>State</Th><Th>Notified</Th><Th>Acknowledged</Th><Th>Failure</Th><Th>Receipt</Th><Th>Collect</Th></tr></thead>
+                    <thead><tr><Th>Notice</Th><Th>Attempt</Th><Th>Recipient</Th><Th>Delivery held</Th><Th>Held</Th><Th>State</Th><Th>Signature</Th><Th>Notified</Th><Th>Acknowledged</Th><Th>Failure</Th><Th>Receipt</Th><Th>Collect</Th></tr></thead>
                     <tbody>{notices.rows.map((x) => {
                       const id = String(x['notice_id']);
+                      const importer = x['kind'] === 'importer' || (x['destination_key'] === null && rec(x['importer'])['import_id'] !== undefined);
                       return (
                         <tr key={id}>
                           <Td mono>{short(id)}</Td><Td mono>{str(x['attempt'])}</Td>
-                          <Td><Mono>{str(x['destination_key'])}</Mono> ({str(x['kind'])})</Td><Td mono>{short(x['delivery_id'])}</Td><Td><strong>{heldOf(x)}</strong></Td>
-                          <Td><strong>{str(x['state'])}</strong></Td><Td>{fmtInstant(x['notified_at'])}</Td><Td>{fmtInstant(x['acknowledged_at'])}</Td><Td>{str(x['failure_class'])}</Td>
+                          <Td><Mono>{noticeRecipientOf(x)}</Mono> ({importer ? 'importer' : str(x['kind'])})</Td><Td mono>{importer ? `import ${short(rec(x['importer'])['import_id'])}` : short(x['delivery_id'])}</Td><Td><strong>{heldOf(x)}</strong></Td>
+                          <Td><strong>{str(x['state'])}</strong></Td><Td>{noticeSignatureOf(x)}</Td><Td>{fmtInstant(x['notified_at'])}</Td><Td>{fmtInstant(x['acknowledged_at'])}</Td><Td>{str(x['failure_class'])}</Td>
                           <Td mono>{x['receipt'] === null || x['receipt'] === undefined ? 'none yet' : json(x['receipt'])}</Td>
                           <Td>{x['state'] === 'notified' && x['kind'] === 'transfer_station' ? (
                             <GovernedButton label="Collect receipt" pendingLabel="collecting"
@@ -1703,21 +1826,43 @@ export default function RetentionPage() {
               <Receipt receipt={noticeCollected.receipt} />
 
               <h3 style={h3}>Send a further notice</h3>
-              <p style={muted}>The retention authority's act, human-gated (<Mono>retention.export.notify</Mono>): a further notice to one destination that received the revoked package — the retry of a failed notice, or a second attempt after a mismatched answer. The server refuses it while the package is not revoked or the destination never received it.</p>
+              <p style={muted}>
+                The retention authority's act, human-gated (<Mono>retention.export.notify</Mono>): a further notice to one destination that received the revoked package — the retry of a
+                failed notice, or a second attempt after a mismatched answer. The server refuses it while the package is not revoked or the destination never received it. B17: or to an
+                importing domain of the tenant by its domain and import id — the notice recorded here and that domain's revocation executed after the commit; refused when the import
+                holds no admitted copy of this package.
+              </p>
               <div style={rowStyle}>
-                <Field id="nt-destination" label="Destination">{(id) => (
-                  <select id={id} style={wide} value={noticeKey} onChange={(e) => setNoticeKey(e.target.value)}>
-                    <option value="">— choose a destination —</option>
-                    {(destinations ?? []).map((d) => <option key={String(d['destination_id'])} value={String(d['destination_key'])}>{str(d['destination_key'])} · {str(d['kind'])}{isRetired(d) ? ' · retired' : ''}</option>)}
-                  </select>
-                )}</Field>
+                <Field id="nt-to" label="Recipient">{(id) => <Sel id={id} value={noticeTo} options={['destination', 'importer'] as const} onChange={setNoticeTo} />}</Field>
+                {noticeTo === 'destination' ? (
+                  <Field id="nt-destination" label="Destination">{(id) => (
+                    <select id={id} style={wide} value={noticeKey} onChange={(e) => setNoticeKey(e.target.value)}>
+                      <option value="">— choose a destination —</option>
+                      {(destinations ?? []).map((d) => <option key={String(d['destination_id'])} value={String(d['destination_key'])}>{str(d['destination_key'])} · {str(d['kind'])}{isRetired(d) ? ' · retired' : ''}</option>)}
+                    </select>
+                  )}</Field>
+                ) : (
+                  <>
+                    <Field id="nt-importer-domain" label="Importing domain (a domain id of this tenant)">{(id) => <Txt id={id} value={noticeImporterDomain} onChange={setNoticeImporterDomain} />}</Field>
+                    <Field id="nt-importer-import" label="Import id (its admitted import of this package)">{(id) => <Txt id={id} value={noticeImporterImport} onChange={setNoticeImporterImport} />}</Field>
+                  </>
+                )}
               </div>
               <div style={controlRow}>
-                <GovernedButton label="Send the notice" pendingLabel="notifying" disabled={noticeKey === ''}
-                  onRun={async () => { try { await act(setNotified, 'notice', () => retention.notifyRevocation(scope, selected, noticeKey), (d) => rec(d['notice'])); } finally { await loadDeliveries(selected); } }} />
+                <GovernedButton label="Send the notice" pendingLabel="notifying" disabled={noticeTo === 'destination' ? noticeKey === '' : noticeImporterDomain.trim() === '' || noticeImporterImport.trim() === ''}
+                  onRun={async () => {
+                    const to: RetentionNoticeRecipient = noticeTo === 'destination' ? { destinationKey: noticeKey } : { importer: { domainId: noticeImporterDomain.trim(), importId: noticeImporterImport.trim() } };
+                    try { await act(setNotified, 'notice', () => retention.notifyRevocation(scope, selected, to), (d) => ({ ...rec(d['notice']), ...(d['importer'] === undefined ? {} : { importer: rec(d['importer']) }) })); }
+                    finally { await loadDeliveries(selected); await loadImports(); }
+                  }} />
               </div>
               <Problem verb="not notified" problem={notified.problem} />
-              {notified.result !== null && <p>notice <Mono>{str(notified.result['notice_id'])}</Mono> attempt {str(notified.result['attempt'])} to <Mono>{str((notified.result['destination'] as Record<string, unknown> | undefined)?.['destination_key'])}</Mono> — <strong>{str(notified.result['state'])}</strong>{notified.result['failure_class'] === null || notified.result['failure_class'] === undefined ? '' : ` (${str(notified.result['failure_class'])})`} · the destination holds the package: <strong>{heldOf(notified.result)}</strong></p>}
+              {notified.result !== null && (
+                <p>
+                  notice <Mono>{str(notified.result['notice_id'])}</Mono> attempt {str(notified.result['attempt'])} to <Mono>{notified.result.importer === undefined ? str((notified.result['destination'] as Record<string, unknown> | undefined)?.['destination_key']) : noticeRecipientOf(notified.result)}</Mono> — <strong>{str(notified.result['state'])}</strong>{notified.result['failure_class'] === null || notified.result['failure_class'] === undefined ? '' : ` (${str(notified.result['failure_class'])})`} · the recipient holds the package: <strong>{heldOf(notified.result)}</strong> · signature: {noticeSignatureOf(notified.result)}
+                  {notified.result.importer !== undefined && <> · the importing domain's revocation: <strong>{str(rec(notified.result.importer['revocation'])['state'])}</strong>{rec(notified.result.importer['revocation'])['reason'] !== undefined ? ` — ${str(rec(notified.result.importer['revocation'])['reason'])}` : ''}</>}
+                </p>
+              )}
               <Receipt receipt={notified.receipt} />
 
               <h3 style={h3}>Acknowledge a notice</h3>

@@ -1,0 +1,14 @@
+=== the eight retention harnesses (B11, B11-closure, B12, B13, B14, B15, B16, B17) and the four subscription harnesses (B6, B7, B8, B9 — the memory-mappings consumer's method changed in B17, so every live subscription is registered anew; they register fresh) at the B17 tree on a fresh database eye_verify_b17_n1 (0001–0077), 2026-09-16 ===
+
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.int.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/apps/api
+
+
+ Test Files  12 passed (12)
+      Tests  163 passed (163)
+   Start at  17:54:43
+   Duration  170.31s (transform 1.05s, setup 76ms, import 7.45s, tests 161.84s, environment 1ms)
+

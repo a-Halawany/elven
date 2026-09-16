@@ -3125,7 +3125,7 @@ possibly holding a package; the build refusing a key binding that does not deriv
 tenant; a foreign installation is the activation step: the other side's public key declared as the partner, the station or an https
 destination between them; the revocation check on a foreign origin is a note on the unsigned statement); imported knowledge is not
 published to the domain's subscribers (no ObservationRecorded / GraphChanged for imported objects) and the origin's revocation of an
-admitted package is not propagated into the importing domain; the inline intake over the real listener bounded by the JSON body limit
+admitted package is not propagated into the importing domain; (both lifted in §31 — B17); the inline intake over the real listener bounded by the JSON body limit
 (the station path carries larger packages); the https path's production activation and the production signing key (§28.6); the
 "enforceable" half of the recipient's obligations; the UN Comtrade live contract; the pages' browser walks; the archive tier's
 structural residuals.
@@ -3139,3 +3139,90 @@ and its archive chain on `main`; the owner's decision on a public host for the r
 and the owner's walks of the pages; the next batch from the register (the publication of imported knowledge to subscribers, then the
 24 partial contracts, the source-derived memory, index-tier degradation); comprehensive hardening after the feature scope, with the
 residuals and the six register rows left for it.
+
+## 31. The checkpoint after B16's records head `1d6eea3` (2026-09-16): B17 implemented — imported knowledge published to the importing domain's subscribers, the origin's revocation propagated into the importing domain with the signed notice, imported claims not reviewable; the demonstration's mirror told of what it admitted and its copies destroyed under the origin's revocation
+
+B16's hosted run at `f4b2345` completed green (§30.4) and was bound in the records commit `1d6eea3` on PR #53 (`phase6-b16` → `main`; the
+merge awaits the owner's word). B17 is cut from that head on `phase6-b17` (PR base `phase6-b16`; retargeted to `main` when #53 merges).
+§30 stands as written; its two stated omissions (§30.5 partial: "imported knowledge is not published to the domain's subscribers" and
+"the origin's revocation of an admitted package is not propagated into the importing domain") are lifted here.
+
+### 31.1 What B17 implements (migration 0077) — `audit/CP6_BATCHES.md` §B17 for the mechanism
+
+- **Imported knowledge published (D1).** Each record batch of an admission publishes `ObservationRecorded` per admitted record
+  (`acquisition_mode: import`, `run_id: null`, the intake contract's source and authority class, `imported {…}`); the graph write —
+  the transaction that admits the import — publishes ONE `GraphChanged/import.admitted` (the created identities, the imported edges,
+  the admitted claims and records, the `import` block; no walk; lists cut at 200 with `truncated` said). The seven consumers take it:
+  retrieval verifies the projections on the imported rows; the four selectors find nothing at admission; memory-mappings and
+  relationships ignore the kind. The retention capability carries the graph's own walk and builder (structural picks — never a second
+  walker).
+- **The revocation propagated (D2).** The importing domain is a recipient: the origin's revoke act finds the admitted imports of the
+  package across the tenant's domains, records a signed importer notice on its ledger, and — after its commit, as the same principal
+  with a DOMAIN envelope of the importing domain — executes `retention.import.revoke` there: the imported edges retracted, the created
+  entities retired (identifiers kept), one withdrawn version per imported object with the lineage carried, the records' bytes
+  tombstoned with `custody.tombstoned`; a legal hold refuses the record step and holds the import `revoking` (answered `mismatched`
+  until lifted); a copy another live import holds is left (`held_by`); a destroyed copy is never reused; ONE `GraphChanged/import.revoked`
+  from the finish write, built from the item map, with the walk — twins unverified, forecasts and scenarios marked, decisions told,
+  identifiers of retired entities proposed, retrieval verified; the receipt answers the origin's notice (acknowledged / mismatched).
+  The importing domain's steward runs the same act by the route (`source: origin`, or `source: station` for a foreign origin's signed
+  notice).
+- **The signed notice (D3).** `eye-revocation-notice/1` — Ed25519 by the PACKAGE's key when its reference is bound and derives it,
+  else the active key with the statement inside the signed bytes, else unsigned and said so; the importer verifies against the
+  import's partner (or the same party's rotated key); the demonstration recipient verifies before it obeys.
+- **The review gate (D4).** An imported claim version is not reviewed here (409): corrected at its origin and re-imported.
+
+### 31.2 The local results
+
+The harness `phase6-retention-b17.test.ts` **5/5** on a fresh database with the scheduler on (S1 the one event and its deliveries, the
+ObservationRecorded rows, the review gate, the truncation; S2 the full propagation with the walk's reach; S3 the hold, the pending path,
+the fault and the resumed attempt, the reuse rules; S4 the foreign origin's signed notice; S5 the recipient and the origin's acts); the
+eight retention and four subscription harnesses **163/163**; the full integration suite **1035/1035 in 67 files** on a fresh database;
+the upgrade proof with 0022–0077 (56 migrations; 35 registry rows); the unit suite **2210/2210** (three new files: 54) and the meta suite
+9/9; the web typecheck, build and tests.
+
+### 31.3 The NORDWERK demonstration — `evidence/cp6/act-b17.txt`
+
+Rehearsed first on a restored copy (`eye_demo_b17`; `evidence/cp6/b17-rehearsal.txt`), then on `eye_demo` (backup; 0077 applied; the API
+restarted on the B17 build): the mirror's seven subscribers registered (the origin's memory-mappings re-registered for its changed
+method); S. Roth's assumption and K. Vogel's twin built on B16's admitted import; H. Bergmann's revocation of B16's E1 reaching the
+station with a SIGNED notice (by the demonstration key) that the recipient verifies before it obeys, and the mirror — its copies
+destroyed by the same act (4 records, 14 claims, 7 entities, 1 edge; the bytes gone; the lineage carried), the origin's notice
+acknowledged with the mirror's receipt, the `import.revoked` event delivered: the twin UNVERIFIED, the projections verified; then a new
+export E4 imported afresh under new ids with ONE `import.admitted`, its six deliveries and the four `ObservationRecorded` rows before it
+in the partition. ALL SCENES HELD (52 checks).
+
+### 31.4 Heads, hosted results, statuses
+
+| Head | What | Hosted `ci` | Hosted C19 |
+|---|---|---|---|
+| `1d6eea3` | B16's records head on PR #53 (`phase6-b16` → `main`; the merge awaits the owner's word) | its own run follows the push | — |
+| the B17 head | **B17** (0077; the publication, the propagation, the signed notice, the review gate; the harness; the act) — PR `phase6-b17` → `phase6-b16`, retargeted to `main` when #53 merges | bound in the records commit once its run completes | — |
+
+Statuses: ES-08-004 and ES-29-005 stay `partial` with the B17 clause (the cross-domain REFERENCE and obligations on derived use remain);
+DP-47-005 stays `implemented` with the clause; AU-COM-0060, AU-COM-0062 and AU-DP-0097 carry it; L1-I03 and L3-I04's bindings extended
+in 0077; the register at 26/24/0. The split stays **3,555 = 3,182 open + 339 local + 34 CI** (no unit promoted by a local run). No
+completion percentage; no deployment leg accepted.
+
+### 31.5 Functioning, partial, missing — and the acceptance work remaining
+
+**Functioning** — everything §30.5 listed, and now: the importing domain's subscribers learn of imported knowledge (one announced
+event per admission; one ObservationRecorded per record); the origin's revocation reaching an importing domain of the tenant and executed
+there — the copies destroyed, the ledger and the lineage kept, the subscribers told through the walk, the origin answered; a foreign
+origin's revocation by its signed station notice; the revocation notice signed and verified at every recipient; a legal hold holding a
+revocation; imported claims not reviewable here.
+
+**Partial** — the exchange across INSTALLATIONS (the same-installation propagation is automatic; a foreign installation's revocation is
+the signed station notice the importing steward presents — no inbound endpoint); the memory-mappings proposals after a revocation cover
+the identifiers of retired entities and the domain's asserted edges with a retired end (a person decides them); the walk in the finish
+write is bounded at 32 seeds; the https path's production activation and the production signing key (§28.6); the "enforceable" half of
+the recipient's obligations where the product does NOT hold the copies; the UN Comtrade live contract; the pages' browser walks; the
+archive tier's structural residuals.
+
+**Missing** — a governed cross-domain REFERENCE (sharing without a copy); replication and portability packages; encryption of the
+package beyond TLS; the remaining capabilities of the interface register's 24 partial contracts; the source-derived memory records;
+index-tier degradation behaviours; every deployment leg (S7).
+
+**Acceptance work remaining** — #53's merge on the owner's word and its archive chain on `main`; B17's PR retargeted after it, its
+hosted run bound once, its merge on the owner's word; the owner's decision on a public host for the recipient; the owner's key for
+Comtrade and the owner's walks of the pages; the next batch from the register (the 24 partial interface contracts, the source-derived
+memory, index-tier degradation); comprehensive hardening after the feature scope, with the residuals and the register rows left for it.

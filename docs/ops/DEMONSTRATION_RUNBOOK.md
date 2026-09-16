@@ -202,3 +202,29 @@ declared as the partner; the station or an https destination in between); the po
 **The signing-key binding:** the build refuses (`signing_key_mismatch`, paused for retry, nothing built) when the reference bound in the
 process derives a key other than the tenant's declared active key — a rehearsal on a restored copy that binds its own key must therefore
 retire the copy's key row and declare its own (by SQL on the copy, as the rehearsal script does), never by touching the demonstration's.
+
+**Imported knowledge announced; the origin's revocation propagated (B17, 2026-09-16).** The mirror domain now holds the SEVEN
+SUBSCRIBERS (registered by the administrator with M. Keller as the owner; `relationships` with the demonstration's selection) and two
+more personas — `k.vogel` (twin_owner of the mirror) and `s.roth` (strategy_owner of the mirror). An admission now announces itself:
+one `GraphChanged/import.admitted` from the admission's own transaction (the created identities, the imported edges, the admitted
+claims and records; no walk) and one `ObservationRecorded` per admitted record — the mirror's subscribers take them (retrieval verifies
+the projections; the rest find nothing to do until the mirror builds on the knowledge). THE REVOCATION REACHES THE MIRROR: when
+H. Bergmann revokes an origin export a domain of the tenant has admitted, the revoke act notifies the importer on the origin's ledger
+(the same SIGNED notice, `recipient import:<tenant>/<domain>/<import_id>`) and executes `retention.import.revoke` in the mirror as the
+same principal — the imported edges retracted, the created entities retired (identifiers kept), one withdrawn version per imported
+object (the lineage carried), the records' bytes tombstoned with `custody.tombstoned`; the import `revoked`; the origin's notice
+acknowledged with the mirror's receipt; ONE `GraphChanged/import.revoked` with the walk, so a twin bounded by a retired entity or citing a
+withdrawn record goes unverified. The mirror's steward runs the same act by `POST …/retention/imports/<id>/revoke { source: { kind:
+'origin' } }` (the pending path — an origin principal without authority in the mirror — or a retry after a legal hold is lifted), or
+`{ source: { kind: 'station', destinationKey } }` for a FOREIGN origin's signed `revocation.json` at the import's origin path (verified
+against the partner's key; unsigned or unverifiable → refused, nothing destroyed). A LEGAL HOLD on an imported record refuses its step:
+the import stays `revoking`, the origin's notice is answered `mismatched` until the hold is lifted and the steward retries. THE SIGNED
+NOTICE: every `revocation.json` and https notice now carries `signature` (`eye-revocation-notice/1`, by the package's key when its
+reference is bound and derives it, else the active key with `signed_with: 'active_key'` inside the signed bytes); the demonstration
+recipient run with `--revocation --public-key .eye-local/export-signing-demo.pub.pem` VERIFIES it before obeying and keeps its copies
+otherwise. A destroyed copy is never reused: a later package of the same records admits them afresh under new ids. **What the act
+leaves:** each run revokes the import the previous run (or B16) left admitted and leaves its own (E4's); the mirror never holds two live
+copies of the NORDWERK knowledge; the two personas; the mirror's subscriptions; the origin's memory-mappings subscription registered anew
+(its consumer method changed in B17 — the B8 rule: a changed method is a new consumer). **The rehearsal copy** needs, beyond the
+key-row swap, the demonstration key row's reference renamed (the rehearsal binds its own key under that name; the product refuses to
+sign with a reference that derives another key and falls back to the active key, stating it inside the signed bytes).

@@ -33,6 +33,16 @@
  * collect act) or an https endpoint (the archive POSTed once by the delivery egress) — every outcome recorded (D5, D6, D8); the
  * DOWNLOAD is a governed, audited read of the tar (D7). The schedule's RETIREMENT is its own governed act, its history kept (D1).
  *
+ * CP-6 B17 (0077): the revocation's REACH. Every revocation notice is SIGNED before it leaves (D8, C7; revocation-notice.ts): with the
+ * PACKAGE's key — the key the recipient holds — through the same store as the package's signature; with the tenant's active key, and
+ * the statement inside the signed bytes, when the package's reference is not bound here; unsigned, and said so, when neither can
+ * sign. The station file and the https body are the signed JSON; `notice_digest` is over the signed notice. An IMPORTING DOMAIN of the
+ * tenant is a recipient of the origin's own ledger (D6, D14): the revoke act finds the imports of its package across the tenant's
+ * domains (`exportPackage().importers`), notifies each on the ledger — `notifyImporter`: the same signed notice, `recipient`
+ * `import:<tenant>/<domain>/<import_id>`, the import as the delivery held `confirmed` — and the importing domain's revocation
+ * (import.service.ts, `retention.import.revoke`) answers it through `retention.answer_import_notice`; the notices read back name the
+ * importer rows `kind: 'importer'`.
+ *
  * Events: RetentionActionDue (L3-I04) when an action opens — by a person or by the schedule evaluation;
  * DeletionVerified (L3-I05) when a deletion or a log-floor move verifies, carrying the scope digest, the approvals, what
  * executed, what was held, and the residual inventory.
@@ -50,6 +60,7 @@ import { EXPORT_ARCHIVE_MAX_BYTES, EXPORT_STREAM_MAX_BYTES, LINKS_FILE, ExportAr
 import { Readable } from 'node:stream';
 import { DestinationCredentialStore, ExportSigningKeyStore, KEY_SIGNATURE_SCHEME, SIGNING_ALGORITHM } from './export-signing.js';
 import { ExportDeliveryService, TransferStationRefused, type DeliveryPackage, type RevocationNotice } from './export-delivery.service.js';
+import { signNotice, type NoticeSigningKey } from './revocation-notice.js';
 import { X509Certificate } from 'node:crypto';
 
 /**
@@ -779,18 +790,22 @@ export class RetentionService {
   /**
    * B11 (0070 §3): the export package's record with its manifest as written and the files the package directory holds (the read route).
    * B13 (D3, D4, D6): the signing key the package names — its public PEM, purpose and state NOW, so a customer can fetch the key and
-   * verify offline — the expiry and whether it has passed, the archive digest, and the deliveries recorded on the action.
+   * verify offline — the expiry and whether it has passed, the archive digest, and the deliveries recorded on the action. B17 (D14):
+   * the IMPORTERS — the imports of this package across the tenant's domains (admitted, revoking, revoked), the definer's answer; a
+   * package without a digest has none.
    */
-  async exportPackage(cap: RetentionReads, scope: { tenantId: string; domainId: string }, actionId: string): Promise<{ package: Row; manifest: Row | null; files: string[]; signing_key: Row | null; expires_at: string | null; expired: boolean; archive_digest: string | null; deliveries: Row[]; revocation_notices: Row[] } | null> {
+  async exportPackage(cap: RetentionReads, scope: { tenantId: string; domainId: string }, actionId: string): Promise<{ package: Row; manifest: Row | null; files: string[]; signing_key: Row | null; expires_at: string | null; expired: boolean; archive_digest: string | null; deliveries: Row[]; revocation_notices: Row[]; importers: Row[] } | null> {
     const row = ((await cap.readExportPackages().selectAll().where('action_id' as never, '=', actionId as never).executeTakeFirst()) as Row | undefined);
     if (row === undefined) return null;
     const bytes = await this.vault.readPackageFile(scope, actionId, 'manifest.json').then((b) => b, () => null);
     let manifest: Row | null = null;
     try { manifest = bytes === null ? null : (JSON.parse(bytes.toString('utf8')) as Row); } catch { manifest = null; }
     const expiresAt = instantOf(row['expires_at']);
+    const packageDigest = typeof row['package_digest'] === 'string' ? (row['package_digest'] as string) : null;
     return { package: row, manifest, files: await this.vault.listPackage(scope, actionId),
              signing_key: await this.signingKeyOf(cap, scope.tenantId, row), expires_at: expiresAt, expired: expiresAt !== null && Date.parse(expiresAt) <= Date.now(),
-             archive_digest: (row['archive_digest'] as string | null) ?? null, deliveries: await this.deliveries(cap, actionId), revocation_notices: await this.revocationNotices(cap, actionId) };
+             archive_digest: (row['archive_digest'] as string | null) ?? null, deliveries: await this.deliveries(cap, actionId), revocation_notices: await this.revocationNotices(cap, actionId),
+             importers: packageDigest === null ? [] : await cap.importsOfPackage({ tenantId: scope.tenantId, domainId: scope.domainId, actionId, packageDigest }) };
   }
   /** B11: the package directory removed after the revocation committed (or retried when a removal failed); idempotent. */
   async removePackage(scope: { tenantId: string; domainId: string }, actionId: string): Promise<void> {
@@ -1226,7 +1241,8 @@ export class RetentionService {
    * the outcome recorded whatever it is. A retired destination is still notified: it holds the package. B16 (Codex B14-F1): the port's
    * gate is `retention.export_delivery_held` — the destination holds the package (`confirmed`) or may hold it (`possible`: a failure after
    * the body left, a receipt that did not parse); the notice and its record carry that word; a destination that provably received
-   * nothing is the port's refusal.
+   * nothing is the port's refusal. B17 (D8): the notice is SIGNED before the executor runs — the station file and the https body are the
+   * signed JSON, and `notice_digest` is over it.
    */
   async notifyRevocation(cap: RetentionWrites, scope: { tenantId: string; domainId: string }, actionId: string, destinationId: string, a: { actor: string; correlationId: string }, created: string[]): Promise<Row> {
     const begun = await cap.beginRevocationNotice({ actionId, tenantId: scope.tenantId, domainId: scope.domainId, destinationId, actor: a.actor, correlationId: a.correlationId });
@@ -1240,12 +1256,12 @@ export class RetentionService {
       packageDigest: String(pkg['package_digest'] ?? ''), archiveDigest: String(pkg['archive_digest'] ?? ''), signingKeyId: typeof pkg['signing_key_id'] === 'string' ? (pkg['signing_key_id'] as string) : null,
       revokedAt: instantOf(pkg['revoked_at']), reason: typeof pkg['revoke_reason'] === 'string' ? (pkg['revoke_reason'] as string) : null, notifiedAt: new Date().toISOString(),
     };
+    const sent = await this.signedNoticeOf(cap, scope.tenantId, notice);
     const kind = String(destination['kind'] ?? ''); const endpoint = String(destination['endpoint'] ?? '');
     let outcome: Awaited<ReturnType<ExportDeliveryService['notifyTransferStation']>> | Awaited<ReturnType<ExportDeliveryService['notifyHttps']>>;
-    if (kind === 'transfer_station') outcome = await this.delivery.notifyTransferStation({ endpoint, notice, created });
-    else if (kind === 'https') outcome = await this.delivery.notifyHttps({ endpoint, credentialRef: typeof destination['credential_ref'] === 'string' ? (destination['credential_ref'] as string) : null, trustAnchorPem: typeof destination['trust_anchor_pem'] === 'string' ? (destination['trust_anchor_pem'] as string) : null, notice });
+    if (kind === 'transfer_station') outcome = await this.delivery.notifyTransferStation({ endpoint, notice, body: sent, created });
+    else if (kind === 'https') outcome = await this.delivery.notifyHttps({ endpoint, credentialRef: typeof destination['credential_ref'] === 'string' ? (destination['credential_ref'] as string) : null, trustAnchorPem: typeof destination['trust_anchor_pem'] === 'string' ? (destination['trust_anchor_pem'] as string) : null, notice, body: sent });
     else throw new HttpException(errorBody('EYE_STA_002', a.correlationId, `retention notice rejected: the destination's kind ${kind} has no executor`), 409);
-    const sent = this.delivery.noticeOf(notice);
     const receiptDigest = outcome.receipt === null ? null : contentDigest(outcome.receipt);
     const recorded = await cap.recordRevocationNotice({ noticeId, actionId, tenantId: scope.tenantId, domainId: scope.domainId, destinationId, deliveryId: notice.deliveryId, attempt, state: outcome.state,
                                                          notice: sent, noticeDigest: contentDigest(sent), receipt: outcome.receipt, receiptDigest, failureClass: outcome.failureClass, actor: a.actor, correlationId: a.correlationId });
@@ -1255,6 +1271,46 @@ export class RetentionService {
              destination: { destination_id: destinationId, destination_key: notice.destinationKey, kind, endpoint, recipient: notice.recipient, retired_at: instantOf(destination['retired_at']) }, delivery, station, egress };
   }
 
+  /**
+   * B17 (D8, C7): the notice SIGNED — with the PACKAGE's key (`signing_key_id`, retired since or not: the key the recipient holds) when
+   * its reference is bound here; else with the tenant's ACTIVE key and the statement inside the signed bytes; else unsigned with the
+   * reason (revocation-notice.ts). The key rows carry the reference's NAME; the value is the store's at this instant.
+   */
+  private async signedNoticeOf(cap: RetentionReads, tenantId: string, n: RevocationNotice): Promise<Row> {
+    const asSigning = (row: Row | null): NoticeSigningKey | null => (row === null ? null : { keyId: String(row['key_id']), ref: String(row['credential_ref'] ?? '') });
+    const packageKey = n.signingKeyId === null ? null
+      : ((await cap.readExportSigningKeys().selectAll().where('tenant_id' as never, '=', tenantId as never).where('key_id' as never, '=', n.signingKeyId as never).executeTakeFirst()) as Row | undefined) ?? null;
+    const active = await this.activeSigningKey(cap, tenantId);
+    return signNotice(this.delivery.noticeOf(n), asSigning(packageKey), this.signing, asSigning(active));
+  }
+
+  /**
+   * B17 (0077 §6; D6, D14): THE NOTICE TO AN IMPORTING DOMAIN of the tenant, inside a governed write (the revoke act's own, or the notify
+   * act's importer form): the port's gates (begin_import_revocation_notice — the package revoked, the import an admitted copy of it in a
+   * domain of this tenant, the attempt under the action's delivery lock), the same signed notice with the import as the delivery it holds
+   * (`recipient` import:<tenant>/<domain>/<import_id>; held `confirmed`: an admitted copy is proven), recorded `notified` on the origin's
+   * ledger with the importing ledger's own import.revocation_notified. Nothing leaves the process: the EXECUTION in the importing domain
+   * — the destruction and the receipt that answers this notice — is the import service's, after this write committed (D7, D19).
+   */
+  async notifyImporter(cap: RetentionWrites, scope: { tenantId: string; domainId: string }, actionId: string, importId: string, a: { actor: string; correlationId: string }): Promise<Row> {
+    const begun = await cap.beginImportRevocationNotice({ actionId, tenantId: scope.tenantId, domainId: scope.domainId, importId, actor: a.actor, correlationId: a.correlationId });
+    const noticeId = String(begun['notice_id']); const attempt = Number(begun['attempt']);
+    const pkg = (begun['package'] ?? {}) as Row; const importer = (begun['importer'] ?? {}) as Row;
+    const held = { tenant_id: String(importer['tenant_id'] ?? scope.tenantId), domain_id: String(importer['domain_id'] ?? ''), import_id: String(importer['import_id'] ?? importId), state: String(importer['state'] ?? 'admitted'), admitted_at: instantOf(importer['admitted_at']) };
+    const notice: RevocationNotice = {
+      tenantId: scope.tenantId, domainId: scope.domainId, actionId, noticeId, attempt,
+      destinationKey: '', recipient: `import:${held.tenant_id}/${held.domain_id}/${held.import_id}`,
+      deliveryId: '', deliveryAttempt: 0, deliveryState: held.state, held: 'confirmed',
+      packageDigest: String(pkg['package_digest'] ?? ''), archiveDigest: String(pkg['archive_digest'] ?? ''), signingKeyId: typeof pkg['signing_key_id'] === 'string' ? (pkg['signing_key_id'] as string) : null,
+      revokedAt: instantOf(pkg['revoked_at']), reason: typeof pkg['revoke_reason'] === 'string' ? (pkg['revoke_reason'] as string) : null, notifiedAt: new Date().toISOString(),
+      importer: held,
+    };
+    const sent = await this.signedNoticeOf(cap, scope.tenantId, notice);
+    const recorded = await cap.recordImportRevocationNotice({ noticeId, actionId, tenantId: scope.tenantId, domainId: scope.domainId, importId: held.import_id, attempt, notice: sent, noticeDigest: contentDigest(sent), actor: a.actor, correlationId: a.correlationId });
+    return { ...recorded, notice_id: noticeId, attempt, state: 'notified', kind: 'importer', failure_class: null, receipt: null, receipt_digest: null, notice: sent, recipient: notice.recipient,
+             importer: begun['importer'] ?? held, destination: null, delivery: null, station: null, egress: null };
+  }
+
   /** After the revocation committed: the product's package.tar and package.sig removed from every transfer station that received the package (what was removed, absent, failed — per destination). */
   async removeStationPackages(scope: { tenantId: string; domainId: string }, actionId: string, stations: Array<{ destination_key: string; endpoint: string }>): Promise<Row[]> {
     const out: Row[] = [];
@@ -1262,20 +1318,34 @@ export class RetentionService {
     return out;
   }
 
-  /** D3: the notices of an action, each with its destination's key and kind, oldest first. */
+  /**
+   * D3: the notices of an action, each with its destination's key and kind, oldest first. B17 (D6): an IMPORTER notice has no
+   * destination — it names the importing domain's import (`importer`), `kind: 'importer'`, its recipient the notice's own
+   * (`import:<tenant>/<domain>/<import_id>`).
+   */
   async revocationNotices(cap: RetentionReads, actionId: string): Promise<Row[]> {
     const rows = (await cap.readExportRevocationNotices().selectAll().where('action_id' as never, '=', actionId as never).orderBy('notified_at' as never).execute()) as Row[];
     if (rows.length === 0) return [];
     const destinations = (await cap.readExportDestinations().select(['destination_id' as never, 'destination_key' as never, 'kind' as never, 'recipient' as never]).execute()) as Row[];
     const byId = new Map(destinations.map((d) => [String(d['destination_id']), d]));
-    return rows.map((r) => { const d = byId.get(String(r['destination_id'])); return { ...r, destination_key: d?.['destination_key'] ?? null, kind: d?.['kind'] ?? null, recipient: d?.['recipient'] ?? null }; });
+    return rows.map((r) => {
+      const importer = (r['importer'] ?? null) as Row | null;
+      if (importer !== null && typeof importer === 'object') {
+        const notice = (r['notice'] ?? {}) as Row;
+        const recipient = typeof notice['recipient'] === 'string' ? (notice['recipient'] as string) : `import:${String(importer['tenant_id'])}/${String(importer['domain_id'])}/${String(importer['import_id'])}`;
+        return { ...r, destination_key: null, kind: 'importer', recipient, importer };
+      }
+      const d = byId.get(String(r['destination_id']));
+      return { ...r, destination_key: d?.['destination_key'] ?? null, kind: d?.['kind'] ?? null, recipient: d?.['recipient'] ?? null };
+    });
   }
 
-  /** A notice row of this action, as the collect and acknowledge acts find it, with its destination — or null. */
+  /** A notice row of this action, as the collect and acknowledge acts find it, with its destination — or null. B17 (D6): an importer notice has none (`destination: null`). */
   async noticeOf(cap: RetentionReads, actionId: string, noticeId: string): Promise<{ notice: Row; destination: Row | null } | null> {
     const notice = ((await cap.readExportRevocationNotices().selectAll().where('action_id' as never, '=', actionId as never).where('notice_id' as never, '=', noticeId as never).executeTakeFirst()) as Row | undefined);
     if (notice === undefined) return null;
-    const destination = ((await cap.readExportDestinations().selectAll().where('destination_id' as never, '=', String(notice['destination_id']) as never).executeTakeFirst()) as Row | undefined) ?? null;
+    const destination = typeof notice['destination_id'] !== 'string' ? null
+      : ((await cap.readExportDestinations().selectAll().where('destination_id' as never, '=', notice['destination_id'] as never).executeTakeFirst()) as Row | undefined) ?? null;
     return { notice, destination };
   }
 

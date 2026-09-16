@@ -16,12 +16,19 @@
  *
  * The walk is bounded (MAX_HOPS in the walker) and says so: `objects.truncated` is carried into the event exactly
  * as the walker reports it, so a consumer that selects from `objects` knows when the selection is incomplete.
- * `objects.walked` is false only for the one path that legitimately skips the walk — the resolver's automatic
- * acceptance inside a run over many mentions when no subscription is live at the write — and every consumer
- * that reads `objects` treats an unwalked event as "select by identities and relationships, then by my own reads".
+ * `objects.walked` is false only for the paths that legitimately skip the walk — the resolver's automatic
+ * acceptance inside a run over many mentions when no subscription is live at the write, and an import's admission
+ * (0077: nothing of the domain rests on ids minted a moment ago) — and every consumer that reads `objects` treats an
+ * unwalked event as "select by identities and relationships, then by my own reads".
+ *
+ * 0077 (B17): the two events of the governed import. `import.admitted` is built PURE (the facts and the matching
+ * subscriptions handed in; no read) inside the graph write that moves the import to admitted; `import.revoked` runs
+ * the walk from every withdrawn record and claim on the IMPORTING domain's own capability — retention's, which carries
+ * the reads the walker and this builder call (ChangeReads, a structural pick of GraphReads) — so the propagation is
+ * the same method, never a second walker, and no graph capability is minted in a retention write.
  */
 import type { GraphReads } from '../graph.capabilities.js';
-import type { ImpactService } from '../strategy/impact.service.js';
+import type { ImpactService, WalkReads } from '../strategy/impact.service.js';
 import {
   EMPTY_REACH, type AffectedDependency, type AffectedEdge, type AffectedIdentity, type AffectedResolution, type ChangeCause,
   type CorrectedObject, type GraphChangeKind, type GraphChangedPayload, type MemoryChangeKind, type MemoryCorrectedPayload,
@@ -33,6 +40,12 @@ export type ReachSeed = { kind: 'entity' | 'edge' | 'claim' | 'evidence'; id: st
 const TRIGGER_OF: Readonly<Record<ReachSeed['kind'], string>> = Object.freeze({
   entity: 'entity_split', edge: 'edge_retraction', claim: 'claim_correction', evidence: 'evidence_correction',
 });
+
+/**
+ * The reads the walker and the GraphChanged builder call — a structural pick, so a capability of another module
+ * (retention, 0077) can carry the same walk without a second walker. Every GraphReads satisfies it.
+ */
+export type ChangeReads = WalkReads & Pick<GraphReads, 'readEntities' | 'readEdges' | 'readDependencies' | 'subscriptionsMatching'>;
 
 type Walked = Awaited<ReturnType<ImpactService['walk']>>;
 type Row = Record<string, unknown>;
@@ -64,7 +77,7 @@ export interface GraphChangedArgs {
 export interface OutboxRow { eventType: string; payload: Record<string, unknown> }
 const asRow = (eventType: string, payload: GraphChangedPayload | MemoryCorrectedPayload): OutboxRow => ({ eventType, payload: payload as unknown as Record<string, unknown> });
 
-export async function graphChangedEvent(cap: GraphReads, impact: ImpactService, a: GraphChangedArgs): Promise<OutboxRow> {
+export async function graphChangedEvent(cap: ChangeReads, impact: ImpactService, a: GraphChangedArgs): Promise<OutboxRow> {
   const now = a.occurredAt ?? new Date().toISOString();
   let objects: ReachedObjects = { ...EMPTY_REACH, walked: false };
   let walked: Walked | null = null;
@@ -207,13 +220,139 @@ export function memoryCorrectedEvent(a: {
   return asRow('MemoryCorrected', payload);
 }
 
+// ───────────────────────── 0077 (B17): the governed import's two events ─────────────────────────
+
+/**
+ * The ceiling of every id list an import event carries (identities, edges, claims, evidence): the import ledger
+ * (retention.import_items) is the full record — the event announces the change and says when it was cut.
+ */
+export const IMPORT_EVENT_LIST_MAX = 200;
+/**
+ * The walks one revocation event merges: the first IMPORT_WALK_SEEDS_MAX seeds (the tombstoned records, then the
+ * withdrawn claims no seeded record's lineage reaches) are walked, the rest are listed unwalked and `truncated` says
+ * so. Bounded cost: up to 32 walks, each reading the nine reach tables once (a `walkMany` is a later note).
+ */
+export const IMPORT_WALK_SEEDS_MAX = 32;
+
+/** The facts an import's write hands the builders — collected from the item map and the ledger row, never read here. */
+export interface ImportChangeFacts {
+  tenantId: string; domainId: string; importId: string; partnerKey: string;
+  origin: { tenant_id: string; domain_id: string; action_id: string; package_digest: string };
+  /** The ledger's counts (countsOf): on an admission `reused` is explicit — a reused row is announced as an identity `reached`, never in objects. */
+  counts: Record<string, unknown>;
+  /** `created` (an admission minted it), `reached` (reused as it stands — retired or not), `retired` (a revocation retired it: a CHANGED identity, D2). */
+  identities: Array<{ entity_id: string; role: 'created' | 'reached' | 'retired'; canonical_name?: string | null; lifecycle_state?: string | null }>;
+  edges: Array<{ edge_id: string; state: string; predicate?: string; subject_entity_id?: string; object_entity_id?: string; valid_from?: string | null; valid_to?: string | null; asserted_at?: string | null; retracted_at?: string | null; claim_object_id?: string | null }>;
+  /** Distinct claim object ids (admitted, or withdrawn) and record object ids (admitted, or tombstoned). */
+  claims: string[]; evidence: string[];
+  actor: string; occurredAt?: string;
+}
+/** The walk seed of a revocation: a tombstoned record (through its lineage to the claims), or a withdrawn claim no seeded record reaches. */
+export type ImportWalkSeed = { kind: 'evidence' | 'claim'; id: string };
+/** The walker's trigger per revocation seed — a record as a corrected one, a claim as a withdrawn one (a trigger the walker and 0025's CHECK know). */
+const IMPORT_TRIGGER_OF: Readonly<Record<ImportWalkSeed['kind'], string>> = Object.freeze({ evidence: 'evidence_correction', claim: 'claim_withdrawal' });
+
+const cut = <T>(xs: T[]): T[] => xs.slice(0, IMPORT_EVENT_LIST_MAX);
+const union = (...lists: string[][]): string[] => [...new Set(lists.flat())];
+
+/**
+ * D1: the ONE event of an ADMISSION — pure over its arguments (no read: the write that calls it holds the item map and
+ * the matching subscriptions), built inside the graph write that moves the import to admitted. The identities are the
+ * entities the import CREATED (`created`) and the ones it REUSED (`reached`: nothing changed for them), the edges as
+ * the import recorded them, the claims and records it admitted — reused claims and records are NOT announced in
+ * `objects` (nothing changed for them; `import.counts.reused` says how many). Every list is cut at
+ * IMPORT_EVENT_LIST_MAX and `objects.truncated` says so; `objects.walked` is false: nothing of the domain rests on
+ * ids minted in this write. The cause is the admit act on the import (RIM).
+ */
+export function importAdmittedEvent(f: ImportChangeFacts & { subscriptions: SubscriptionRef[] }): OutboxRow {
+  const now = f.occurredAt ?? new Date().toISOString();
+  const truncated = f.identities.length > IMPORT_EVENT_LIST_MAX || f.edges.length > IMPORT_EVENT_LIST_MAX || f.claims.length > IMPORT_EVENT_LIST_MAX || f.evidence.length > IMPORT_EVENT_LIST_MAX;
+  const identities: AffectedIdentity[] = cut(f.identities).map((i) => ({ entity_id: i.entity_id, role: i.role, canonical_name: i.canonical_name ?? null, lifecycle_state: i.lifecycle_state ?? null, split_from: null }));
+  const edges: AffectedEdge[] = cut(f.edges).map((e) => ({ ...e }));
+  const payload: GraphChangedPayload = {
+    schema: 'GraphChanged', schema_version: 'v1',
+    change: { kind: 'import.admitted', occurred_at: now, graph_event_id: null, invalidation_id: null, correction_case_id: null },
+    identities,
+    relationships: { edges, resolutions: [], dependencies: [] },
+    objects: { ...EMPTY_REACH, claims: cut(f.claims), evidence: cut(f.evidence), truncated, walked: false },
+    temporal: { known_at: now },
+    subscriptions: f.subscriptions,
+    cause: { action: 'retention.import.admit', actor: f.actor, target_type: 'RIM', target_id: f.importId },
+    import: { import_id: f.importId, partner_key: f.partnerKey, origin: f.origin, counts: f.counts },
+  };
+  return asRow('GraphChanged', payload);
+}
+
+/**
+ * D3: the ONE event of a REVOCATION attempt, built in the finish write after the destruction's batches committed (the
+ * retired and retracted rows read back as they are). The walk runs from each seed — the tombstoned records as
+ * evidence corrections (through the lineage to the claims), the withdrawn claims no seeded record reaches as claim
+ * withdrawals — the first IMPORT_WALK_SEEDS_MAX of them; the merged walk (one entry per reached object, the routes it
+ * was reached by merged; the reached entities, edges and claims united; `truncated` when any walk stopped at its bound
+ * or a seed was left unwalked) is handed to graphChangedEvent as a walk already made, which enriches the given
+ * identities and edges from their current rows (a retired entity reads back `retired`), adds the walk's entities and
+ * edges as `reached`, the one-hop dependencies and the subscriptions matching `import.revoked`. The withdrawn claims and
+ * tombstoned records are then united into `objects` (cut, `truncated` said) and the import block carries the notice.
+ * A seed whose lineage names no claim reaches nothing — legitimate: the record alone was withdrawn.
+ */
+export async function importRevokedEvent(cap: ChangeReads, impact: ImpactService, f: ImportChangeFacts & {
+  walkSeeds: ImportWalkSeed[]; notice: { notice_id: string | null; source: 'origin' | 'station'; revoked_at: string | null; reason: string | null };
+}): Promise<OutboxRow> {
+  const seeds = f.walkSeeds.slice(0, IMPORT_WALK_SEEDS_MAX);
+  const walks: Walked[] = [];
+  for (const s of seeds) walks.push(await impact.walk(cap, { triggerKind: IMPORT_TRIGGER_OF[s.kind], triggerObjectId: s.id }));
+  const merged = mergeWalks(f.importId, walks, f.walkSeeds.length > IMPORT_WALK_SEEDS_MAX);
+  const row = await graphChangedEvent(cap, impact, {
+    tenantId: f.tenantId, domainId: f.domainId, kind: 'import.revoked', ...(f.occurredAt === undefined ? {} : { occurredAt: f.occurredAt }),
+    identities: cut(f.identities).map((i) => ({ entity_id: i.entity_id, role: i.role, ...(i.canonical_name === undefined ? {} : { canonical_name: i.canonical_name }), ...(i.lifecycle_state === undefined ? {} : { lifecycle_state: i.lifecycle_state }) })),
+    edges: cut(f.edges).map((e) => ({ ...e })),
+    reach: { walked: merged },
+    cause: { action: 'retention.import.revoke', actor: f.actor, target_type: 'RIM', target_id: f.importId },
+  });
+  const p = row.payload as unknown as GraphChangedPayload;
+  const claims = union(f.claims, p.objects.claims); const evidence = union(f.evidence, p.objects.evidence);
+  p.objects.claims = cut(claims); p.objects.evidence = cut(evidence);
+  p.objects.truncated = p.objects.truncated || f.identities.length > IMPORT_EVENT_LIST_MAX || f.edges.length > IMPORT_EVENT_LIST_MAX || claims.length > IMPORT_EVENT_LIST_MAX || evidence.length > IMPORT_EVENT_LIST_MAX;
+  p.import = { import_id: f.importId, partner_key: f.partnerKey, origin: f.origin, counts: f.counts, notice: f.notice };
+  return row;
+}
+
+/** The union of several walks as one: per list one entry per reached object (the first route kept, the others merged into via_ids); the reach sets united; the frontiers concatenated. */
+function mergeWalks(importId: string, walks: Walked[], seedsLeftUnwalked: boolean): Walked {
+  type Affected = Walked['assumptions'][number];
+  const mergeList = (key: keyof Pick<Walked, 'assumptions' | 'objectives' | 'decisions' | 'commitments' | 'forecasts' | 'scenarios' | 'warnings' | 'twins' | 'simulations' | 'briefings' | 'memoryItems'>): Affected[] => {
+    const byId = new Map<string, Affected>();
+    for (const w of walks) {
+      for (const x of w[key]) {
+        const already = byId.get(x.strategy_object_id);
+        if (already === undefined) { byId.set(x.strategy_object_id, { ...x, ...(x.via_ids === undefined ? {} : { via_ids: [...x.via_ids] }) }); continue; }
+        for (const v of x.via_ids ?? (x.via_id === undefined ? [] : [x.via_id])) {
+          if (already.via_ids === undefined) already.via_ids = already.via_id === undefined ? [] : [already.via_id];
+          if (!already.via_ids.includes(v)) already.via_ids.push(v);
+        }
+      }
+    }
+    return [...byId.values()].sort((x, y) => x.hop - y.hop);
+  };
+  return {
+    triggerKind: 'import_revocation', triggerObjectId: importId,
+    assumptions: mergeList('assumptions'), objectives: mergeList('objectives'), decisions: mergeList('decisions'), commitments: mergeList('commitments'),
+    forecasts: mergeList('forecasts'), scenarios: mergeList('scenarios'), warnings: mergeList('warnings'), twins: mergeList('twins'), simulations: mergeList('simulations'),
+    briefings: mergeList('briefings'), memoryItems: mergeList('memoryItems'),
+    reachedEntities: union(...walks.map((w) => w.reachedEntities)), reachedEdges: union(...walks.map((w) => w.reachedEdges)), reachedClaims: union(...walks.map((w) => w.reachedClaims)),
+    truncated: seedsLeftUnwalked || walks.some((w) => w.truncated),
+    unexplored: walks.flatMap((w) => w.unexplored),
+  };
+}
+
 /**
  * The identity roles that mean the ENTITY ITSELF (or a relationship it is an end of) changed — as opposed to
  * `rests_on` (a declared object now depends on it) and `reached` (the walk passed through it): a twin bounded by the
  * entity or a forecast about it is re-verified for the former, never for the latter (a declaration about an entity
- * changes nothing the twin or the forecast rests on).
+ * changes nothing the twin or the forecast rests on). 0077 (D2): an entity RETIRED under an import's revocation is a
+ * changed identity — a twin bounded by it re-verifies; `created` would state a creation, origin/successor are the split's.
  */
-const CHANGED_ROLES = new Set(['created', 'origin', 'successor', 'resolved_to', 'subject', 'object']);
+const CHANGED_ROLES = new Set(['created', 'origin', 'successor', 'resolved_to', 'subject', 'object', 'retired']);
 
 /** Every stable id an event touches, by kind — the selection key set every consumer starts from. */
 export function touchedIds(event: { event_type: 'GraphChanged'; payload: GraphChangedPayload } | { event_type: 'MemoryCorrected'; payload: MemoryCorrectedPayload }): {

@@ -713,11 +713,14 @@ export type RetentionImportSource =
 export interface RetentionImportCheck { name: string; ok: boolean | null; detail: string | null }
 
 /**
- * The import's record (…/imports/:id/get, B16): the row (its state — quarantined, verified, approved, admitting, admitted, withdrawn —
- * the origin as the manifest states it, the intake, the exchange statement, the digests, the counts), the partner whose key signed it
- * (null when none held the key), the ITEMS — the map from each origin reference (`<object_id>@<version>`, `entity:<id>`, `edge:<id>`,
- * `system:<key>`, `identifier:<key>:<value>`, `excluded:…`) to the id minted here, each with its disposition (staged, admitted, reused,
- * excluded, refused) and its gate — the events, the ordered checks and the IMPORT RECEIPT (the importer's own record of the exchange).
+ * The import's record (…/imports/:id/get, B16): the row (its state — quarantined, verified, approved, admitting, admitted, withdrawn;
+ * since B17 revoking and revoked, with `revocation_attempts`, `revoked_by`, `revoked_at` and the `revocation` as recorded — the origin as
+ * the manifest states it, the intake, the exchange statement, the digests, the counts), the partner whose key signed it (null when none
+ * held the key), the ITEMS — the map from each origin reference (`<object_id>@<version>`, `entity:<id>`, `edge:<id>`, `system:<key>`,
+ * `identifier:<key>:<value>`, `excluded:…`) to the id minted here, each with its disposition (staged, admitted, reused, excluded, refused)
+ * and its gate, and since B17 its REVOCATION outcome (`revocation.outcome`: retracted, retired, withdrawn, tombstoned, left, refused,
+ * with `revoked_at`) — the events (the `import.revocation_*` events among them), the ordered checks and the IMPORT RECEIPT (the
+ * importer's own record of the exchange).
  */
 export interface RetentionImportDetail {
   import: RetentionRow;
@@ -793,8 +796,32 @@ export interface RetentionExportDetail {
   expired?: boolean;
   archive_digest?: string | null;
   deliveries?: RetentionRow[];
+  /**
+   * B17 (0077 §5): the IMPORTERS of this package — the admitted imports of it in the tenant's own domains (import_id, domain, state
+   * admitted / revoking / revoked, the partner key the importing domain resolved, admitted_at, revoked_at, the counts) — the recipients
+   * the revoke act reaches on the origin's ledger; absent from a server before 0077, empty for a package no domain imported.
+   */
+  importers?: RetentionRow[];
+  /** B14/B17: the action's revocation notices as the read answers them (a destination's, or since 0077 an importer's: `kind: 'importer'`, `recipient: import:<tenant>/<domain>/<import_id>`). */
+  revocation_notices?: RetentionRow[];
   receipt: Receipt;
 }
+
+/**
+ * What a REVOCATION of an admitted import is executed on (B17, 0077 §7; D4, D7, D8): `origin` — the origin package's own record on this
+ * installation (a domain of this tenant), revoked; or `station` — the origin's SIGNED revocation notice (`revocation.json` beside the
+ * package's place at a transfer station declared in this domain), verified against the import's partner key (the same party's rotated
+ * key admitted) before anything is destroyed. An unsigned notice, one signed by another party's key or one naming another package is
+ * refused (409) with nothing destroyed and the refusal recorded on the import.
+ */
+export type RetentionRevocationSource =
+  | { kind: 'origin' }
+  | { kind: 'station'; destinationKey: string };
+
+/** Who a further revocation notice goes to (B14: a destination by its key; B17: an importing domain of the tenant by its domain and import id). */
+export type RetentionNoticeRecipient =
+  | { destinationKey: string }
+  | { importer: { domainId: string; importId: string } };
 
 /** verify_action's verdict: each check with its outcome; on a pass, the scope the DeletionVerified event carries (a review's verification publishes none). */
 export interface RetentionVerdict {
@@ -897,13 +924,27 @@ export const retention = {
   getExport: (s: Scope, actionId: string) =>
     r<RetentionExportDetail>(s, `/actions/${actionId}/export/get`, 'retention.read', 'RTA', {}, actionId),
 
-  /** B11: the retention authority's act, human-gated — the package revoked once with a reason; its bytes removed after the commit. B14 (0074 §3): the first REVOCATION NOTICE to every destination that received the package is sent in the same act (`notices`, every outcome recorded); the product's copies at each transfer station removed after the commit (`stations`). */
+  /**
+   * B11: the retention authority's act, human-gated — the package revoked once with a reason; its bytes removed after the commit. B14
+   * (0074 §3): the first REVOCATION NOTICE to every destination that received the package is sent in the same act (`notices`, every
+   * outcome recorded); the product's copies at each transfer station removed after the commit (`stations`). B17 (0077): every notice is
+   * SIGNED (eye-revocation-notice/1); each IMPORTING DOMAIN of the tenant is notified on the origin's ledger and, after the commit, its
+   * copies are DESTROYED by the same acting principal through `retention.import.revoke` (`importers[]`: the import, its notice and the
+   * revocation's outcome — `revoked`, `held` by a legal hold, or `pending` with the reason when the principal holds no authority there:
+   * the importing domain's steward completes it by the import's own revoke act).
+   */
   revokeExport: (s: Scope, actionId: string, reason: string) =>
-    r<{ revocation: Record<string, unknown>; notices: RetentionRow[]; bytes: { removed: boolean; error?: string }; stations: RetentionRow[]; receipt: Receipt }>(s, `/actions/${actionId}/export/revoke`, 'retention.export.revoke', 'RTA', { reason }, actionId),
+    r<{ revocation: Record<string, unknown>; notices: RetentionRow[]; importers: RetentionRow[]; bytes: { removed: boolean; error?: string }; stations: RetentionRow[]; receipt: Receipt }>(s, `/actions/${actionId}/export/revoke`, 'retention.export.revoke', 'RTA', { reason }, actionId),
 
-  /** B14 (0074 §3): a FURTHER revocation notice to one destination that received the (revoked) package — the retry of a failed notice, human-gated (`retention.export.notify`); 409 while the package is not revoked or the destination never received it. */
-  notifyRevocation: (s: Scope, actionId: string, destinationKey: string) =>
-    r<{ notice: RetentionRow; receipt: Receipt }>(s, `/actions/${actionId}/export/revocation-notices`, 'retention.export.notify', 'RTA', { destinationKey }, actionId),
+  /**
+   * B14 (0074 §3): a FURTHER revocation notice to one destination that received the (revoked) package — the retry of a failed notice,
+   * human-gated (`retention.export.notify`); 409 while the package is not revoked or the destination never received it. B17: or to an
+   * IMPORTING DOMAIN of the tenant by its domain and import id (`importer`): the notice recorded on the origin's ledger and the
+   * importing domain's revocation executed after the commit (its outcome under `importer.revocation`); 409 when that import holds no
+   * admitted copy of the package.
+   */
+  notifyRevocation: (s: Scope, actionId: string, to: RetentionNoticeRecipient) =>
+    r<{ notice: RetentionRow; importer?: RetentionRow; receipt: Receipt }>(s, `/actions/${actionId}/export/revocation-notices`, 'retention.export.notify', 'RTA', to, actionId),
 
   /** B14: the action's revocation notices as recorded — attempt, destination, state (notified / acknowledged / mismatched / failed with its class), the notice sent, the receipt as received (an audited read). */
   listRevocationNotices: (s: Scope, actionId: string) =>
@@ -993,4 +1034,18 @@ export const retention = {
   /** B16 (C5): the steward's act (`retention.import.withdraw`) — a quarantined, verified, approved or admitting import withdrawn once with a reason; its ledger stays, its quarantine copies are tombstoned after the commit (the answer says how many); an admitted import is never withdrawn. */
   withdrawImport: (s: Scope, importId: string, reason: string) =>
     r<{ import: RetentionRow; quarantine: Record<string, unknown>; receipt: Receipt }>(s, `/imports/${encodeURIComponent(importId)}/withdraw`, 'retention.import.withdraw', 'RIM', { reason }, importId),
+
+  /**
+   * B17 (0077 §7; D4, D12, D19): the REVOCATION of an admitted import, human-gated (`retention.import.revoke`: the tenant's retention
+   * authority or administrator, the domain's steward or administrator) — the origin's revocation executed where the copies are: the
+   * imported edges retracted, the entities retired (their identifiers kept, proposed to a person), every imported claim version and
+   * record WITHDRAWN by a new version naming the revocation, the record bytes tombstoned and removed after the commit, the receipt
+   * answered to the origin (on this installation through its ledger; at a station as `revocation-receipt.json`). The state moves
+   * admitted → revoking → revoked (every copy destroyed or accounted for by another live import); a record under a LEGAL HOLD is
+   * refused and the import stays `revoking` (`state: 'held'`, the refused items named) until the hold is lifted and the act is
+   * retried; a revoked import answers `retried` (the bytes retry alone). The answer: the import, the revocation (`state`, `attempt`,
+   * the source as recorded, the notice, what was destroyed, left and refused, the bytes, the receipt and the origin's answer) and the batches.
+   */
+  revokeImport: (s: Scope, importId: string, source: RetentionRevocationSource) =>
+    r<{ import: RetentionRow; revocation: Record<string, unknown>; batches: Array<Record<string, unknown>>; receipt: Receipt }>(s, `/imports/${encodeURIComponent(importId)}/revoke`, 'retention.import.revoke', 'RIM', { source }, importId),
 };
