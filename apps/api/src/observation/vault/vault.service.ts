@@ -72,6 +72,8 @@ export class VaultIntegrityError extends Error {
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+/** B18: the file at a blob root's top level that names its tier (ensureRoots / rootReachable). Not a scope directory: never listed by a scope walk. */
+const ROOT_MARKER = '.eye-vault-root';
 /** A package file: the manifest, or one object's bytes named by its manifest id. Nothing else is ever written or read under a package. */
 const PACKAGE_FILE_RE = /^(manifest\.json|links\.json|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.bin)$/;
 /**
@@ -125,6 +127,31 @@ export class VaultService {
     await mkdir(this.roots.evidence, { recursive: true, mode: 0o700 });
     await mkdir(this.roots.archive, { recursive: true, mode: 0o700 });
     await mkdir(this.roots.export, { recursive: true, mode: 0o700 });
+    // B18: each blob root carries a MARKER naming its tier, written once on the mounted volume — a root whose marker cannot be read is
+    // not the root the product mounted (an unmounted cold tier leaves an empty mount point), and a cleanup that verifies "gone" against
+    // it would verify nothing. Read by rootReachable(); the sweeper lists per scope and never sees it.
+    for (const vault of ['evidence', 'archive'] as const) {
+      const marker = join(this.roots[vault], ROOT_MARKER);
+      try { await stat(marker); }
+      catch { await writeFile(marker, `${vault}\n`, { mode: 0o600, flag: 'wx' }).catch((e: unknown) => { if ((e as { code?: unknown })?.code !== 'EEXIST') throw e; }); }
+    }
+  }
+
+  /** B18: whether a blob root is the one the product mounted — its marker (ensureRoots) readable now. False on any error: an unverifiable root proves nothing. */
+  async rootReachable(vault: 'evidence' | 'archive'): Promise<boolean> {
+    try { return (await readFile(join(this.roots[vault], ROOT_MARKER), 'utf8')).trim() === vault; }
+    catch { return false; }
+  }
+
+  /**
+   * B18: whether ANY bytes of a locator sit in a root — the published copy, or a staged copy beside it (`<id>.staging-<attempt>`; B11/B12:
+   * bytes in that root too, the deletion verifier's own rule). A directory that cannot be listed counts as bytes PRESENT: nothing can be
+   * said gone that was not seen gone.
+   */
+  async anyBytesIn(vault: VaultName, scope: VaultScope, locator: string): Promise<boolean> {
+    if (await this.exists(vault, scope, locator)) return true;
+    try { return (await this.stagedCopiesIn(vault, scope, locator)).length > 0; }
+    catch { return true; }
   }
 
   newLocator(scope: VaultScope): string {

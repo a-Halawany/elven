@@ -1366,9 +1366,17 @@ export default function RetentionPage() {
                     <p>
                       import <Mono>{short(importRevoked.result.import['import_id'])}</Mono> is now <strong>{str(importRevoked.result.import['state'])}</strong> · the attempt answered <strong>{str(importRevoked.result.revocation['state'])}</strong>
                       {' '}(attempt {str(importRevoked.result.revocation['attempt'])}; source {str(rec(importRevoked.result.revocation['source'])['kind'])})
-                      {importRevoked.result.revocation['destroyed'] !== undefined ? <> · destroyed <Mono>{json(importRevoked.result.revocation['destroyed'])}</Mono> · left {str(importRevoked.result.revocation['left'])} · refused {arr(importRevoked.result.revocation['refused']).length}</> : null}
+                      {importRevoked.result.revocation['destroyed'] !== undefined ? <> · destroyed <Mono>{json(importRevoked.result.revocation['destroyed'])}</Mono>{importRevoked.result.revocation['cumulative'] !== undefined ? <> (every attempt: <Mono>{json(importRevoked.result.revocation['cumulative'])}</Mono>)</> : null} · left {str(importRevoked.result.revocation['left'])} · refused {arr(importRevoked.result.revocation['refused']).length}</> : null}
                       {importRevoked.result.revocation['reason'] !== undefined ? <> · {str(importRevoked.result.revocation['reason'])}</> : null}
                     </p>
+                    {/* B18 (Codex B17-F1): the bytes as the cleanup found and verified them — a resumed attempt removes an earlier attempt's residual; a locator still present after the removal is said, never reported destroyed. */}
+                    {importRevoked.result.revocation['bytes'] !== null && importRevoked.result.revocation['bytes'] !== undefined && (
+                      <p>bytes: removed {arr(rec(importRevoked.result.revocation['bytes'])['removed']).length}
+                        {arr(rec(importRevoked.result.revocation['bytes'])['residual']).length > 0 ? <> (of which the residual of an earlier attempt: {arr(rec(importRevoked.result.revocation['bytes'])['residual']).map((l) => <Mono key={str(l)}>{str(l)} </Mono>)})</> : null}
+                        {' · '}failed {arr(rec(importRevoked.result.revocation['bytes'])['failed']).length}
+                        {arr(rec(importRevoked.result.revocation['bytes'])['remaining']).length > 0 ? <> · <span style={critical}>still present after the removal:</span> {arr(rec(importRevoked.result.revocation['bytes'])['remaining']).map((l) => <Mono key={str(l)}>{str(l)} </Mono>)} — the ledger's revocation stands; revoke again to remove them</> : null}
+                      </p>
+                    )}
                     {arr(importRevoked.result.revocation['refused']).length > 0 && (
                       <p><span style={critical}>held:</span> {arr(importRevoked.result.revocation['refused']).map((x) => `${str(x['kind'])} ${str(x['origin_ref'])} — ${str(x['reason'])}${x['hold_id'] === null || x['hold_id'] === undefined ? '' : ` (hold ${short(x['hold_id'])})`}`).join('; ')} — lift the hold and revoke again</p>
                     )}
