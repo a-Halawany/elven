@@ -22,6 +22,15 @@
  * receipt from: the disconnected-transfer path) or an https endpoint (POSTed, its bearer credential by reference) — and the
  * exchange closes on the RECIPIENT'S ACKNOWLEDGEMENT (a receipt naming the same digests, verified), or is recorded MISMATCHED.
  * The signing keys and the destinations have a section here; the download, the delivery and the deliveries sit on the action's record.
+ * Since B16 (0076) the exchange has its other half: an EXCHANGE PARTNER is the party whose key-signed packages this domain admits —
+ * its Ed25519 public key and the INTAKE SOURCE CONTRACT the imported records are held under — and a governed IMPORT takes a partner's
+ * package (inline, or read from a transfer station) into QUARANTINE, runs the ordered checks (the archive, the manifest, every file's
+ * digest, the re-import compatibility of every object, the chain, the signature against the partner's key, the closure by exact
+ * version, the intake's policy, a live duplicate, the origin's revocation and expiry as far as they are provable here), is APPROVED by
+ * the retention authority on the package digest (never by the opener) and ADMITTED by the steward (never by the approver) under ids
+ * this installation mints — the origin's identity carried as digest-bound provenance — or WITHDRAWN. A revocation notice now says what
+ * the destination is known to HOLD: `confirmed` (it answered a receipt), `possible` (the body left before the fault) — a destination
+ * that provably received nothing is not notified.
  *
  * Nothing here predicts a state: every row, count, digest and check is rendered as the server returned it, and every
  * refusal — the opener's own approval, a wrong digest, an unresolved scope, a review's failed check, a budget exhausted, an
@@ -34,6 +43,7 @@ import {
   retention, RETENTION_CLASSIFICATIONS, RETENTION_DESTINATION_KINDS, RETENTION_KEY_PURPOSES, RETENTION_KINDS, RETENTION_TARGET_KINDS,
   type RetentionActionDetail, type RetentionClassification, type RetentionDestinationIntake, type RetentionDestinationKind, type RetentionEvaluation, type RetentionExecutionResult, type RetentionExportDetail, type RetentionExportDownload, type RetentionKeyPurpose, type RetentionKind, type RetentionOpenIntake,
   type RetentionRow, type RetentionScheduleIntake, type RetentionScopeSummary, type RetentionSigningKeyIntake, type RetentionTargetKind, type RetentionTierPolicyIntake, type RetentionTierState, type RetentionVaultInventory, type RetentionVerdict,
+  type RetentionImportCheck, type RetentionImportDetail, type RetentionImportOpened, type RetentionImportSource, type RetentionPartnerIntake,
 } from '../../../lib/graph';
 import { Empty, LiveStatus, Mono, ScrollBox, cardStyle, DefinitionRow, UnknownNote, GovernedButton, fmtInstant } from '../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui';
@@ -161,6 +171,38 @@ function toDestinationIntake(d: DestinationDraft): RetentionDestinationIntake {
     ...(d.trustAnchorPem.trim() === '' ? {} : { trustAnchorPem: d.trustAnchorPem.trim() }),
   };
 }
+/** B16: an exchange partner as a person declares it — the party's PUBLIC key PEM (never a private value) and the intake contract of this domain. */
+interface PartnerDraft { partnerKey: string; party: string; purpose: string; publicKeyPem: string; intakeSourceId: string; intakeContractVersion: string }
+const EMPTY_PARTNER: PartnerDraft = { partnerKey: '', party: '', purpose: '', publicKeyPem: '', intakeSourceId: '', intakeContractVersion: '1' };
+const partnerOk = (d: PartnerDraft) => d.partnerKey.trim() !== '' && d.party.trim() !== '' && d.purpose.trim() !== '' && d.publicKeyPem.includes('-----BEGIN PUBLIC KEY-----') && d.intakeSourceId.trim() !== '' && isInt(d.intakeContractVersion) && Number(d.intakeContractVersion) >= 1;
+const toPartnerIntake = (d: PartnerDraft): RetentionPartnerIntake => ({ partnerKey: d.partnerKey.trim(), party: d.party.trim(), purpose: d.purpose.trim(), publicKeyPem: d.publicKeyPem.trim(), intakeSourceId: d.intakeSourceId.trim(), intakeContractVersion: Number(d.intakeContractVersion) });
+/**
+ * B16: an import as a person opens it — INLINE (a package file read in the browser as base64; the exchange statement pasted as JSON when
+ * the sender gave one) or from a transfer STATION declared in this domain at the origin's tenant, domain and action. The inline ceiling is
+ * the server's (64 MiB decoded, and the listener's body limit before it): a larger package goes to a station.
+ */
+interface ImportDraft { kind: 'inline' | 'station'; fileName: string; base64: string; byteLength: number; exchange: string; destinationKey: string; originTenantId: string; originDomainId: string; originActionId: string }
+const EMPTY_IMPORT: ImportDraft = { kind: 'inline', fileName: '', base64: '', byteLength: 0, exchange: '', destinationKey: '', originTenantId: '', originDomainId: '', originActionId: '' };
+const importOk = (d: ImportDraft) =>
+  d.kind === 'inline'
+    ? d.base64 !== '' && (d.exchange.trim() === '' || receiptObjectOf(d.exchange) !== null)
+    : d.destinationKey.trim() !== '' && d.originTenantId.trim() !== '' && d.originDomainId.trim() !== '' && d.originActionId.trim() !== '';
+function toImportSource(d: ImportDraft): RetentionImportSource {
+  if (d.kind === 'station') return { kind: 'station', destinationKey: d.destinationKey.trim(), origin: { tenantId: d.originTenantId.trim(), domainId: d.originDomainId.trim(), actionId: d.originActionId.trim() } };
+  const exchange = d.exchange.trim() === '' ? null : receiptObjectOf(d.exchange);
+  return { kind: 'inline', base64: d.base64, ...(exchange === null ? {} : { exchange }) };
+}
+/** A file's bytes as standard base64 (built in chunks: a package of some MiB is not a single string concatenation). */
+const base64OfBytes = (bytes: Uint8Array): string => {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(binary);
+};
+/** B16: a check of an import as the open act recorded it — passed / FAILED / a note (a fact the product cannot establish here, stated as such). */
+const checkVerdict = (c: RetentionImportCheck): string => (c.ok === true ? 'passed' : c.ok === false ? 'FAILED' : 'note');
+/** B14/B16: what a revocation notice says the destination HOLDS — confirmed (it answered a receipt), possible (the body left before the fault) — read from the notice as sent (`notice.delivery.held`). */
+const heldOf = (x: Row): string => str(rec(rec(x['notice'])['delivery'])['held'] ?? rec(x['delivery'])['held']);
+
 /** B14: a destination's trust anchor as the server shows it — the certificates by subject and fingerprint, or "the deployment's trust store". */
 function trustAnchorText(d: Record<string, unknown>): string {
   const a = d['trust_anchor'] as { declared?: boolean; certificates?: Array<Record<string, unknown>> } | null | undefined;
@@ -459,6 +501,24 @@ export default function RetentionPage() {
   const [ackDeliveryId, setAckDeliveryId] = useState('');
   const [ackReceipt, setAckReceipt] = useState('');
   const [acknowledged, setAcknowledged] = useState<Outcome<RetentionRow>>(none);
+  // B16 (0076 §3/§4): the exchange partners and the imports of this domain; the selected import's record and its acts.
+  const [partners, setPartners] = useState<RetentionRow[] | null>(null);
+  const [partnersProblem, setPartnersProblem] = useState<string | null>(null);
+  const [partnerDraft, setPartnerDraft] = useState<PartnerDraft>(EMPTY_PARTNER);
+  const [partnerDeclared, setPartnerDeclared] = useState<Outcome<RetentionRow>>(none);
+  const [partnerRetired, setPartnerRetired] = useState<Outcome<RetentionRow>>(none);
+  const [imports, setImports] = useState<RetentionRow[] | null>(null);
+  const [importsProblem, setImportsProblem] = useState<string | null>(null);
+  const [importDraft, setImportDraft] = useState<ImportDraft>(EMPTY_IMPORT);
+  const [importOpened, setImportOpened] = useState<Outcome<RetentionImportOpened>>(none);
+  const [selectedImport, setSelectedImport] = useState<string | null>(null);
+  const [importDetail, setImportDetail] = useState<RetentionImportDetail | null>(null);
+  const [importProblem, setImportProblem] = useState<string | null>(null);
+  const [importRationale, setImportRationale] = useState('');
+  const [importApproved, setImportApproved] = useState<Outcome<RetentionRow>>(none);
+  const [importAdmitted, setImportAdmitted] = useState<Outcome<{ import: RetentionRow; batches: Row[] }>>(none);
+  const [importWdReason, setImportWdReason] = useState('');
+  const [importWithdrawn, setImportWithdrawn] = useState<Outcome<{ import: RetentionRow; quarantine: Row }>>(none);
 
   const loadSchedules = async () => {
     const r = await retention.listSchedules(scope);
@@ -484,6 +544,28 @@ export default function RetentionPage() {
     const n = await retention.listRevocationNotices(scope, actionId);
     if (!n.ok || n.data === undefined) { setNotices({ rows: null, problem: refusal(n, 'the revocation notices could not be listed') }); return; }
     setNotices({ rows: n.data.notices, problem: null });
+  };
+  /** B16: the exchange partners and the imports — read with the lists and again after their acts; the selected import's record re-read after each of its acts. */
+  const loadPartners = async () => {
+    const r = await retention.listPartners(scope);
+    if (!r.ok || r.data === undefined) { setPartnersProblem(refusal(r, 'the exchange partners could not be listed')); return; }
+    setPartnersProblem(null); setPartners(r.data.partners);
+  };
+  const loadImports = async () => {
+    const r = await retention.listImports(scope);
+    if (!r.ok || r.data === undefined) { setImportsProblem(refusal(r, 'the imports could not be listed')); return; }
+    setImportsProblem(null); setImports(r.data.imports);
+  };
+  const loadImportDetail = async (importId: string) => {
+    const r = await retention.getImport(scope, importId);
+    if (!r.ok || r.data === undefined) { setImportDetail(null); setImportProblem(refusal(r, 'the import could not be read')); return; }
+    setImportProblem(null); setImportDetail(r.data);
+  };
+  /** Selecting an import resets what its acts answered: nothing shown belongs to another import. */
+  const selectImport = (importId: string) => {
+    setSelectedImport(importId); setImportDetail(null); setImportProblem(null);
+    setImportRationale(''); setImportApproved(none()); setImportAdmitted(none()); setImportWdReason(''); setImportWithdrawn(none());
+    void loadImportDetail(importId);
   };
   /** The object URL of a downloaded archive is the browser's to hold until the click; it is released when the download is replaced or the selection changes. */
   const releaseDownload = () => {
@@ -522,7 +604,7 @@ export default function RetentionPage() {
     setNotices({ rows: null, problem: null }); setNoticeKey(''); setNotified(none()); setNoticeCollected(none()); setAckNoticeId(''); setAckNoticeReceipt(''); setNoticeAcknowledged(none());
     void loadDetail(actionId);
   };
-  useEffect(() => { void loadSchedules(); void loadActions(); void loadTier(); void loadKeys(); void loadDestinations(); }, [scope]);
+  useEffect(() => { void loadSchedules(); void loadActions(); void loadTier(); void loadKeys(); void loadDestinations(); void loadPartners(); void loadImports(); }, [scope]);
 
   if (problem !== null) return <LiveStatus assertive>{problem}</LiveStatus>;
   if (actions === null) return <Empty>reading the retention actions…</Empty>;
@@ -530,6 +612,21 @@ export default function RetentionPage() {
   const current = selected === null ? null : actions.find((a) => String(a['action_id']) === selected) ?? null;
   const servedDigest = detail !== null && typeof detail.action['scope_digest'] === 'string' ? detail.action['scope_digest'] : null;
 
+  /** B16: one governed act on an import: the refusal is kept verbatim; the imports list and, when one is selected, its record are re-read from the server after. */
+  const importAct = async <T,>(set: (o: Outcome<T>) => void, verb: string, run: () => Promise<{ ok: boolean; status: number; data?: { receipt: ReceiptT } & Record<string, unknown>; error?: { code: string; message: string } }>, pick: (d: Record<string, unknown>) => T) => {
+    set(none());
+    const r = await run();
+    if (!r.ok || r.data === undefined) {
+      const m = refusal(r, `the ${verb} was not answered`);
+      set({ result: null, receipt: null, problem: m });
+      await loadImports();
+      if (selectedImport !== null) await loadImportDetail(selectedImport);
+      throw new Error(m);
+    }
+    set({ result: pick(r.data), receipt: r.data.receipt, problem: null });
+    await loadImports();
+    if (selectedImport !== null) await loadImportDetail(selectedImport);
+  };
   /** One governed act on the selected action: the refusal is kept verbatim; the list, the record and the cold tier's state are re-read from the server after. */
   const act = async <T,>(set: (o: Outcome<T>) => void, verb: string, run: () => Promise<{ ok: boolean; status: number; data?: { receipt: ReceiptT } & Record<string, unknown>; error?: { code: string; message: string } }>, pick: (d: Record<string, unknown>) => T) => {
     set(none());
@@ -928,6 +1025,277 @@ export default function RetentionPage() {
         <Receipt receipt={destinationDeclared.receipt} />
       </section>
 
+      <section aria-labelledby="xp-h" style={cardStyle}>
+        <h2 id="xp-h" style={{ fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 }}>Exchange partners ({partners === null ? '…' : partners.length})</h2>
+        <p style={muted}>
+          B16 (0076 §3): the other half of the exchange. A <strong>partner</strong> is the party whose key-signed packages (<Mono>eye-customer-export/2</Mono>) this
+          domain admits: its Ed25519 <strong>public key</strong> (a SubjectPublicKeyInfo PEM the party handed over; the server derives the key id exactly as the
+          export's own signing key is named), the party, the purpose, and the <strong>intake source contract</strong> of this domain the imported records are held
+          under — an active upload contract with confirmed rights, whose classification ceiling is the import's policy gate. A package signed by a key no active
+          partner holds is quarantined, never admitted. Retiring a partner keeps its row and its imports; its key resolves nothing until a partner holds it again.
+        </p>
+        {partnersProblem !== null && <LiveStatus assertive><span style={critical}>not listed — {partnersProblem}</span></LiveStatus>}
+        {partners === null ? (partnersProblem === null ? <Empty>reading the exchange partners…</Empty> : null) : partners.length === 0 ? <Empty>No exchange partner is declared in this domain: no inbound package can be admitted until one is.</Empty> : (
+          <ScrollBox label="exchange partners">
+            <table className="eye-table" style={tableStyle}>
+              <thead><tr><Th>Partner</Th><Th>Party</Th><Th>Purpose</Th><Th>Key</Th><Th>Intake contract</Th><Th>State</Th><Th>Declared</Th><Th>Retired</Th><Th>Retire</Th></tr></thead>
+              <tbody>{partners.map((p) => {
+                const id = String(p['partner_id']); const intake = rec(p['intake']);
+                return (
+                  <tr key={id}>
+                    <Td mono>{str(p['partner_key'])}</Td><Td>{str(p['party'])}</Td><Td>{str(p['purpose'])}</Td><Td mono>{str(p['key_id'])}</Td>
+                    <Td>{Object.keys(intake).length === 0 ? <Mono>{short(p['intake_source_id'])}@{str(p['intake_contract_version'])}</Mono> : <><Mono>{str(intake['source_key'])}@{str(intake['contract_version'])}</Mono> · {str(intake['connector_kind'])}, {str(intake['lifecycle_state'])}, rights {str(intake['rights_state'])}, ceiling {str(intake['classification_ceiling'])}</>}</Td>
+                    <Td><strong>{str(p['state'])}</strong></Td>
+                    <Td>by <Mono>{short(p['declared_by'])}</Mono> at {fmtInstant(p['declared_at'])}</Td><Td>{retiredText(p)}</Td>
+                    <Td>{isRetired(p) ? '—' : (
+                      <Retire id={`partner ${str(p['partner_key'])}`} reason={retireReasons[id] ?? ''} onReason={(v) => setRetireReasons({ ...retireReasons, [id]: v })}
+                        onRun={async () => {
+                          try {
+                            await importAct(setPartnerRetired, 'retirement', () => retention.retirePartner(scope, id, (retireReasons[id] ?? '').trim()), (d) => rec(d['partner']));
+                            setRetireReasons({ ...retireReasons, [id]: '' });
+                          } finally {
+                            await loadPartners();
+                          }
+                        }} />
+                    )}</Td>
+                  </tr>
+                );
+              })}</tbody>
+            </table>
+          </ScrollBox>
+        )}
+        <Problem verb="not retired" problem={partnerRetired.problem} />
+        {partnerRetired.result !== null && <p>partner <Mono>{str(partnerRetired.result['partner_key'])}</Mono> retired {retiredText(partnerRetired.result)} — its imports stay recorded; a package signed by its key is quarantined until a partner holds the key again</p>}
+        <Receipt receipt={partnerRetired.receipt} />
+
+        <h3 style={h3}>Declare a partner</h3>
+        <p style={muted}>
+          An administrator's act, human-gated. The partner key is unique among the domain's active partners (<Mono>a-z 0-9 -</Mono>, 2 to 64 characters). The
+          public key is the party's Ed25519 key as a PEM (<Mono>-----BEGIN PUBLIC KEY-----</Mono>); the intake source is one of this domain's upload contracts —
+          active, its rights confirmed — by its source id and contract version (the sources page lists them). The server states what it refuses: a key or a
+          partner key already declared, a contract that is not an active upload contract with confirmed rights, a PEM that is not an Ed25519 public key.
+        </p>
+        <div style={rowStyle}>
+          <Field id="xp-key" label="Partner key (required)">{(id) => <Txt id={id} value={partnerDraft.partnerKey} onChange={(v) => setPartnerDraft({ ...partnerDraft, partnerKey: v })} />}</Field>
+          <Field id="xp-party" label="Party (required; who signs)">{(id) => <Txt id={id} value={partnerDraft.party} onChange={(v) => setPartnerDraft({ ...partnerDraft, party: v })} />}</Field>
+          <Field id="xp-purpose" label="Purpose (required; why this domain accepts the party's packages)">{(id) => <Txt id={id} value={partnerDraft.purpose} onChange={(v) => setPartnerDraft({ ...partnerDraft, purpose: v })} />}</Field>
+          <Field id="xp-source" label="Intake source id (required; an active upload contract of this domain with confirmed rights)">{(id) => <Txt id={id} value={partnerDraft.intakeSourceId} onChange={(v) => setPartnerDraft({ ...partnerDraft, intakeSourceId: v })} />}</Field>
+          <Field id="xp-version" label="Intake contract version (1 or more)">{(id) => <Txt id={id} type="number" value={partnerDraft.intakeContractVersion} onChange={(v) => setPartnerDraft({ ...partnerDraft, intakeContractVersion: v })} />}</Field>
+          <Field id="xp-pem" label="Public key (required; the party's Ed25519 public key as a SubjectPublicKeyInfo PEM)">{(id) => <textarea id={id} style={{ ...wide, minBlockSize: '6rem', fontFamily: 'var(--eye-font-mono)' }} value={partnerDraft.publicKeyPem} onChange={(e) => setPartnerDraft({ ...partnerDraft, publicKeyPem: e.target.value })} />}</Field>
+        </div>
+        <div style={controlRow}>
+          <GovernedButton label="Declare partner" pendingLabel="declaring" disabled={!partnerOk(partnerDraft)}
+            onRun={async () => {
+              try {
+                await importAct(setPartnerDeclared, 'declaration', () => retention.declarePartner(scope, toPartnerIntake(partnerDraft)), (d) => rec(d['partner']));
+                setPartnerDraft(EMPTY_PARTNER);
+              } finally {
+                await loadPartners();
+              }
+            }} />
+        </div>
+        <Problem verb="not declared" problem={partnerDeclared.problem} />
+        {partnerDeclared.result !== null && (
+          <>
+            <p>declared partner <Mono>{str(partnerDeclared.result['partner_key'])}</Mono> <Mono>{short(partnerDeclared.result['partner_id'])}</Mono> · {str(partnerDeclared.result['party'])} · key <Mono>{str(partnerDeclared.result['key_id'])}</Mono> ({str(partnerDeclared.result['algorithm'])}) · intake <Mono>{short(partnerDeclared.result['intake_source_id'])}@{str(partnerDeclared.result['intake_contract_version'])}</Mono> · declared at {fmtInstant(partnerDeclared.result['declared_at'])}</p>
+            {pemOf(partnerDeclared.result) !== null && <Block label="the partner's public key as recorded" text={pemOf(partnerDeclared.result) ?? ''} />}
+          </>
+        )}
+        <Receipt receipt={partnerDeclared.receipt} />
+      </section>
+
+      <section aria-labelledby="im-h" style={cardStyle}>
+        <h2 id="im-h" style={{ fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 }}>Imports ({imports === null ? '…' : imports.length})</h2>
+        <p style={muted}>
+          B16 (0076 §4): a partner's package taken into this domain by four governed acts and three people. <strong>Open</strong> (the steward): the package —
+          inline, or read from a transfer station — is QUARANTINED as vault blobs and checked: the archive, the manifest, every file's digest and size, the
+          re-import compatibility of every object, the digest chain, the signature against the partner's key, the closure by exact claim version (an edge
+          asserted on C@1 is never satisfied by C@2), the intake contract's policy, a live duplicate, the origin's revocation and expiry as far as they are
+          provable here (a note when they are not). The row is <Mono>verified</Mono> with the plan of ids this installation will mint, or <Mono>quarantined</Mono>
+          with the failed checks named — its evidence kept. <strong>Approve</strong> (the retention authority, human-gated, never the opener) on the package
+          digest they read. <strong>Admit</strong> (the steward, human-gated, never the approver): the records, the claim versions, the entities, the identifiers
+          and the edges admitted under NEW ids in batches — the origin's identity carried inside each object as <Mono>imported_from</Mono> — each item settled on
+          its own (excluded by the intake's ceiling, refused by the port, an edge whose claim version is not admitted); the quarantine copies of the admitted
+          records removed after the commit. <strong>Withdraw</strong>: a quarantined, verified, approved or admitting import; its ledger stays, its copies go.
+        </p>
+        {importsProblem !== null && <LiveStatus assertive><span style={critical}>not listed — {importsProblem}</span></LiveStatus>}
+        {imports === null ? (importsProblem === null ? <Empty>reading the imports…</Empty> : null) : imports.length === 0 ? <Empty>No import has been opened in this domain.</Empty> : (
+          <ScrollBox label="imports">
+            <table className="eye-table" style={tableStyle}>
+              <thead><tr><Th>Import</Th><Th>State</Th><Th>Origin</Th><Th>Intake</Th><Th>Package digest</Th><Th>Archive</Th><Th>Opened</Th><Th>Counts</Th></tr></thead>
+              <tbody>{imports.map((i) => {
+                const id = String(i['import_id']); const origin = rec(i['origin']); const intake = rec(i['intake']);
+                return (
+                  <tr key={id} aria-selected={selectedImport === id} style={selectedImport === id ? { outline: '2px solid var(--eye-color-accent-strong)' } : undefined}>
+                    <Td mono><button type="button" onClick={() => selectImport(id)} style={{ font: 'inherit', background: 'none', border: 'none', color: 'var(--eye-color-accent-strong)', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}>{short(id)}</button></Td>
+                    <Td><strong>{str(i['state'])}</strong></Td>
+                    <Td mono>{short(origin['domain_id'])} · action {short(origin['action_id'])}</Td>
+                    <Td>{str(intake['kind'])}{intake['destination_key'] !== undefined ? <> · <Mono>{str(intake['destination_key'])}</Mono></> : null}</Td>
+                    <Td mono>{short(i['package_digest'])}</Td><Td mono>{short(i['archive_digest'])} · {str(i['archive_size'])} bytes</Td>
+                    <Td>by <Mono>{short(i['opened_by'])}</Mono> at {fmtInstant(i['opened_at'])}</Td><Td mono>{json(i['counts'])}</Td>
+                  </tr>
+                );
+              })}</tbody>
+            </table>
+          </ScrollBox>
+        )}
+
+        <h3 style={h3}>Open an import</h3>
+        <div style={rowStyle}>
+          <Field id="im-kind" label="Source">{(id) => <Sel id={id} value={importDraft.kind} options={['inline', 'station'] as const} onChange={(v) => setImportDraft({ ...importDraft, kind: v })} />}</Field>
+          {importDraft.kind === 'inline' ? (
+            <>
+              <Field id="im-file" label="Package (a .tar the origin's product built; read here as base64 — at most 64 MiB decoded, and the listener's body limit before it; a larger package goes to a transfer station)">{(id) => (
+                <input id={id} type="file" style={wide} onChange={async (e) => {
+                  const f = e.target.files?.[0];
+                  if (f === undefined) { setImportDraft({ ...importDraft, fileName: '', base64: '', byteLength: 0 }); return; }
+                  const bytes = new Uint8Array(await f.arrayBuffer());
+                  setImportDraft({ ...importDraft, fileName: f.name, base64: base64OfBytes(bytes), byteLength: bytes.byteLength });
+                }} />
+              )}</Field>
+              <Field id="im-exchange" label="Exchange statement (optional; the sender's delivery.json, or the stream's headers, as a JSON object)">{(id) => <textarea id={id} style={{ ...wide, minBlockSize: '6rem', fontFamily: 'var(--eye-font-mono)' }} value={importDraft.exchange} onChange={(e) => setImportDraft({ ...importDraft, exchange: e.target.value })} />}</Field>
+            </>
+          ) : (
+            <>
+              <Field id="im-station" label="Transfer station (a destination of this domain, by key)">{(id) => (
+                <select id={id} style={wide} value={importDraft.destinationKey} onChange={(e) => setImportDraft({ ...importDraft, destinationKey: e.target.value })}>
+                  <option value="">— choose a station —</option>
+                  {(destinations ?? []).filter((d) => d['kind'] === 'transfer_station' && !isRetired(d)).map((d) => <option key={String(d['destination_id'])} value={String(d['destination_key'])}>{str(d['destination_key'])} · {str(d['endpoint'])}</option>)}
+                </select>
+              )}</Field>
+              <Field id="im-o-tenant" label="Origin tenant id (the package's path at the station: <tenant>/<domain>/<action>/package.tar)">{(id) => <Txt id={id} value={importDraft.originTenantId} onChange={(v) => setImportDraft({ ...importDraft, originTenantId: v })} />}</Field>
+              <Field id="im-o-domain" label="Origin domain id">{(id) => <Txt id={id} value={importDraft.originDomainId} onChange={(v) => setImportDraft({ ...importDraft, originDomainId: v })} />}</Field>
+              <Field id="im-o-action" label="Origin action id">{(id) => <Txt id={id} value={importDraft.originActionId} onChange={(v) => setImportDraft({ ...importDraft, originActionId: v })} />}</Field>
+            </>
+          )}
+        </div>
+        {importDraft.kind === 'inline' && importDraft.fileName !== '' && <p style={muted}>{importDraft.fileName}: {importDraft.byteLength} bytes read; the package is sent as base64 inside the governed payload</p>}
+        <div style={controlRow}>
+          <GovernedButton label="Open import" pendingLabel="opening (the package is quarantined and checked)" disabled={!importOk(importDraft)}
+            onRun={async () => {
+              try {
+                await importAct(setImportOpened, 'opening', () => retention.openImport(scope, toImportSource(importDraft)), (d) => d as unknown as RetentionImportOpened);
+              } finally {
+                await loadImports();
+              }
+            }} />
+        </div>
+        <Problem verb="not opened" problem={importOpened.problem} />
+        {importOpened.result !== null && (
+          <p>
+            import <Mono>{str(importOpened.result.import['import_id'])}</Mono> — <strong>{str(importOpened.result.import['state'])}</strong>
+            {' · '}{importOpened.result.checks.filter((c) => c.ok === false).length} check(s) failed, {importOpened.result.checks.filter((c) => c.ok === null).length} note(s) · package digest <Mono>{str(importOpened.result.import['package_digest'])}</Mono>
+            {' '}<button type="button" onClick={() => { if (importOpened.result !== null) selectImport(String(importOpened.result.import['import_id'])); }}
+              style={{ font: 'inherit', background: 'none', border: 'none', color: 'var(--eye-color-accent-strong)', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}>select it</button>
+          </p>
+        )}
+        <Receipt receipt={importOpened.receipt} />
+
+        {selectedImport !== null && (
+          <>
+            <h3 style={h3}>The import's record — {short(selectedImport)}</h3>
+            {importProblem !== null && <LiveStatus assertive><span style={critical}>{importProblem}</span></LiveStatus>}
+            {importDetail === null ? (importProblem === null ? <Empty>reading the import…</Empty> : null) : (
+              <>
+                <dl>
+                  <DefinitionRow term="Import"><Mono>{str(importDetail.import['import_id'])}</Mono> · state <strong>{str(importDetail.import['state'])}</strong> · {importDetail.import['verified'] === true ? 'verified at the open' : 'quarantined at the open'}</DefinitionRow>
+                  <DefinitionRow term="Origin">tenant <Mono>{str(rec(importDetail.import['origin'])['tenant_id'])}</Mono> · domain <Mono>{str(rec(importDetail.import['origin'])['domain_id'])}</Mono> · action <Mono>{str(rec(importDetail.import['origin'])['action_id'])}</Mono> · format {str(rec(importDetail.import['origin'])['format'])} · scheme {str(rec(importDetail.import['origin'])['scheme'])} · key <Mono>{str(rec(importDetail.import['origin'])['key_id'])}</Mono></DefinitionRow>
+                  <DefinitionRow term="Partner">{importDetail.partner === null ? 'none — no active partner held the package\'s key' : <><Mono>{str(importDetail.partner['partner_key'])}</Mono> · {str(importDetail.partner['party'])}</>}</DefinitionRow>
+                  <DefinitionRow term="Intake"><Mono>{json(importDetail.import['intake'])}</Mono></DefinitionRow>
+                  <DefinitionRow term="Exchange statement">{importDetail.import['exchange'] === null || importDetail.import['exchange'] === undefined ? 'none presented' : <Mono>{json(importDetail.import['exchange'])}</Mono>}</DefinitionRow>
+                  <DefinitionRow term="Digests">package <Mono>{str(importDetail.import['package_digest'])}</Mono> · archive <Mono>{str(importDetail.import['archive_digest'])}</Mono> ({str(importDetail.import['archive_size'])} bytes)</DefinitionRow>
+                  <DefinitionRow term="Timeline">opened by <Mono>{short(importDetail.import['opened_by'])}</Mono> at {fmtInstant(importDetail.import['opened_at'])} · approved {fmtInstant(importDetail.import['approved_at'])}{importDetail.import['approval_rationale'] !== null && importDetail.import['approval_rationale'] !== undefined ? ` — ${String(importDetail.import['approval_rationale'])}` : ''} · admitted {fmtInstant(importDetail.import['admitted_at'])} ({str(importDetail.import['attempts'])} attempt(s)) · withdrawn {fmtInstant(importDetail.import['withdrawn_at'])}{importDetail.import['withdraw_reason'] !== null && importDetail.import['withdraw_reason'] !== undefined ? ` — ${String(importDetail.import['withdraw_reason'])}` : ''}</DefinitionRow>
+                  <DefinitionRow term="Counts"><Mono>{json(importDetail.import['counts'])}</Mono></DefinitionRow>
+                  <DefinitionRow term="Import receipt"><Mono>{json(importDetail.importReceipt)}</Mono></DefinitionRow>
+                </dl>
+
+                <h3 style={h3}>Checks ({importDetail.checks.length})</h3>
+                {importDetail.checks.length === 0 ? <Empty>No check is recorded.</Empty> : (
+                  <ScrollBox label="import checks">
+                    <table className="eye-table" style={tableStyle}>
+                      <thead><tr><Th>Check</Th><Th>Outcome</Th><Th>Detail</Th></tr></thead>
+                      <tbody>{importDetail.checks.map((c, i) => (
+                        <tr key={i}><Td>{c.name}</Td><Td><strong>{checkVerdict(c)}</strong></Td><Td>{str(c.detail)}</Td></tr>
+                      ))}</tbody>
+                    </table>
+                  </ScrollBox>
+                )}
+
+                <h3 style={h3}>Items ({importDetail.items.length})</h3>
+                {importDetail.items.length === 0 ? <Empty>No item: the package listed nothing this domain could plan.</Empty> : (
+                  <ScrollBox label="import items">
+                    <table className="eye-table" style={tableStyle}>
+                      <thead><tr><Th>Order</Th><Th>Kind</Th><Th>Origin</Th><Th>Planned here</Th><Th>Disposition</Th><Th>Gate</Th><Th>Reason</Th><Th>Admitted</Th></tr></thead>
+                      <tbody>{importDetail.items.map((i) => (
+                        <tr key={String(i['item_id'])}>
+                          <Td mono>{str(i['dependency_order'])}</Td><Td>{str(i['kind'])}</Td><Td mono>{str(i['origin_ref'])}</Td><Td mono>{json(i['planned'])}</Td>
+                          <Td><strong>{str(i['disposition'])}</strong></Td><Td>{str(i['gate'])}</Td><Td>{str(i['reason'])}</Td>
+                          <Td mono>{i['admitted'] === null || i['admitted'] === undefined ? '—' : json(i['admitted'])}</Td>
+                        </tr>
+                      ))}</tbody>
+                    </table>
+                  </ScrollBox>
+                )}
+
+                <h3 style={h3}>Events ({importDetail.events.length})</h3>
+                {importDetail.events.length === 0 ? <Empty>No event.</Empty> : (
+                  <ScrollBox label="import events">
+                    <table className="eye-table" style={tableStyle}>
+                      <thead><tr><Th>Event</Th><Th>Actor</Th><Th>Occurred</Th><Th>Details</Th></tr></thead>
+                      <tbody>{importDetail.events.map((e) => (
+                        <tr key={String(e['event_id'])}>
+                          <Td>{str(e['event'])}</Td><Td mono>{short(e['actor_principal_id'])}</Td><Td>{fmtInstant(e['occurred_at'])}</Td><Td mono>{json(e['details'])}</Td>
+                        </tr>
+                      ))}</tbody>
+                    </table>
+                  </ScrollBox>
+                )}
+
+                <h3 style={h3}>Approve</h3>
+                <p style={muted}>
+                  The retention authority's act, human-gated: on the <strong>package digest</strong> restated here from the verified import — <Mono>{str(importDetail.import['package_digest'])}</Mono> — with a
+                  rationale (8+ characters). The opener never approves; only a verified import is approved. The server's words otherwise.
+                </p>
+                <Field id="im-rationale" label="Rationale (at least 8 characters, required)">{(id) => <Txt id={id} value={importRationale} onChange={setImportRationale} />}</Field>
+                <div style={controlRow}>
+                  <GovernedButton label="Approve the import" pendingLabel="approving" disabled={importRationale.trim().length < 8 || typeof importDetail.import['package_digest'] !== 'string'}
+                    onRun={async () => { await importAct(setImportApproved, 'approval', () => retention.approveImport(scope, selectedImport, String(importDetail.import['package_digest']), importRationale.trim()), (d) => rec(d['import'])); }} />
+                </div>
+                <Problem verb="not approved" problem={importApproved.problem} />
+                {importApproved.result !== null && <p>import <Mono>{short(importApproved.result['import_id'])}</Mono> is now <strong>{str(importApproved.result['state'])}</strong> · approved by <Mono>{short(importApproved.result['approved_by'])}</Mono> at {fmtInstant(importApproved.result['approved_at'])}</p>}
+                <Receipt receipt={importApproved.receipt} />
+
+                <h3 style={h3}>Admit</h3>
+                <p style={muted}>The steward's act, human-gated (never the approver): the approved import admitted in batches under ids this installation mints; each item settled on its own; an admission interrupted resumes with the same act.</p>
+                <div style={controlRow}>
+                  <GovernedButton label="Admit the import" pendingLabel="admitting (batch by batch)"
+                    onRun={async () => { await importAct(setImportAdmitted, 'admission', () => retention.admitImport(scope, selectedImport), (d) => ({ import: rec(d['import']), batches: arr(d['batches']) })); }} />
+                </div>
+                <Problem verb="not admitted" problem={importAdmitted.problem} />
+                {importAdmitted.result !== null && (
+                  <p>
+                    import <Mono>{short(importAdmitted.result.import['import_id'])}</Mono> is now <strong>{str(importAdmitted.result.import['state'])}</strong>
+                    {' · '}{importAdmitted.result.batches.length} batch(es): {importAdmitted.result.batches.map((b) => `${str(b['kind'])} ×${str(b['count'])}`).join(', ')} · counts <Mono>{json(importAdmitted.result.import['counts'])}</Mono>
+                  </p>
+                )}
+                <Receipt receipt={importAdmitted.receipt} />
+
+                <h3 style={h3}>Withdraw</h3>
+                <p style={muted}>The steward's act: a quarantined, verified, approved or admitting import withdrawn once with a reason; its ledger stays, its quarantine copies are removed after the commit. An admitted import stands.</p>
+                <Field id="im-wd-reason" label="Reason (at least 8 characters, required)">{(id) => <Txt id={id} value={importWdReason} onChange={setImportWdReason} />}</Field>
+                <div style={controlRow}>
+                  <GovernedButton label="Withdraw the import" pendingLabel="withdrawing" variant="critical" disabled={importWdReason.trim().length < 8}
+                    onRun={async () => { await importAct(setImportWithdrawn, 'withdrawal', () => retention.withdrawImport(scope, selectedImport, importWdReason.trim()), (d) => ({ import: rec(d['import']), quarantine: rec(d['quarantine']) })); }} />
+                </div>
+                <Problem verb="not withdrawn" problem={importWithdrawn.problem} />
+                {importWithdrawn.result !== null && <p>import <Mono>{short(importWithdrawn.result.import['import_id'])}</Mono> is now <strong>{str(importWithdrawn.result.import['state'])}</strong> · quarantine copies: <Mono>{json(importWithdrawn.result.quarantine)}</Mono></p>}
+                <Receipt receipt={importWithdrawn.receipt} />
+              </>
+            )}
+          </>
+        )}
+      </section>
+
       <section aria-labelledby="acts-h" style={cardStyle}>
         <h2 id="acts-h" style={{ fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 }}>Actions ({actions.length})</h2>
         {partitions.map((p) => (
@@ -1300,7 +1668,7 @@ export default function RetentionPage() {
               {revoked.result !== null && (
                 <>
                   <p>package <Mono>{str(revoked.result.revocation['package_digest'])}</Mono> revoked at {fmtInstant(revoked.result.revocation['revoked_at'])}; bytes removed: {yes(revoked.result.bytes.removed)}{revoked.result.bytes.error !== undefined ? ` — ${revoked.result.bytes.error}` : ''}</p>
-                  <p>notices sent: {revoked.result.notices.length === 0 ? 'none — no destination received this package' : revoked.result.notices.map((n) => `${str((n['destination'] as Record<string, unknown> | undefined)?.['destination_key'])} → ${str(n['state'])}${n['failure_class'] === null || n['failure_class'] === undefined ? '' : ` (${str(n['failure_class'])})`}`).join('; ')}
+                  <p>notices sent: {revoked.result.notices.length === 0 ? 'none — no destination received, or is known to hold, this package' : revoked.result.notices.map((n) => `${str((n['destination'] as Record<string, unknown> | undefined)?.['destination_key'])} (holds: ${heldOf(n)}) → ${str(n['state'])}${n['failure_class'] === null || n['failure_class'] === undefined ? '' : ` (${str(n['failure_class'])})`}`).join('; ')}
                     {revoked.result.stations.length > 0 ? <> · the product's copies at the stations: {revoked.result.stations.map((st) => `${str(st['destination_key'])}: removed ${json(st['removed'])}${json(st['failed']) === '[]' ? '' : `, failed ${json(st['failed'])}`}`).join('; ')}</> : null}</p>
                 </>
               )}
@@ -1311,13 +1679,13 @@ export default function RetentionPage() {
               {notices.rows === null ? (notices.problem === null ? <Empty>reading the notices…</Empty> : null) : notices.rows.length === 0 ? <Empty>No revocation notice is recorded for this export.</Empty> : (
                 <ScrollBox label="revocation notices">
                   <table className="eye-table" style={tableStyle}>
-                    <thead><tr><Th>Notice</Th><Th>Attempt</Th><Th>Destination</Th><Th>Delivery held</Th><Th>State</Th><Th>Notified</Th><Th>Acknowledged</Th><Th>Failure</Th><Th>Receipt</Th><Th>Collect</Th></tr></thead>
+                    <thead><tr><Th>Notice</Th><Th>Attempt</Th><Th>Destination</Th><Th>Delivery held</Th><Th>Held</Th><Th>State</Th><Th>Notified</Th><Th>Acknowledged</Th><Th>Failure</Th><Th>Receipt</Th><Th>Collect</Th></tr></thead>
                     <tbody>{notices.rows.map((x) => {
                       const id = String(x['notice_id']);
                       return (
                         <tr key={id}>
                           <Td mono>{short(id)}</Td><Td mono>{str(x['attempt'])}</Td>
-                          <Td><Mono>{str(x['destination_key'])}</Mono> ({str(x['kind'])})</Td><Td mono>{short(x['delivery_id'])}</Td>
+                          <Td><Mono>{str(x['destination_key'])}</Mono> ({str(x['kind'])})</Td><Td mono>{short(x['delivery_id'])}</Td><Td><strong>{heldOf(x)}</strong></Td>
                           <Td><strong>{str(x['state'])}</strong></Td><Td>{fmtInstant(x['notified_at'])}</Td><Td>{fmtInstant(x['acknowledged_at'])}</Td><Td>{str(x['failure_class'])}</Td>
                           <Td mono>{x['receipt'] === null || x['receipt'] === undefined ? 'none yet' : json(x['receipt'])}</Td>
                           <Td>{x['state'] === 'notified' && x['kind'] === 'transfer_station' ? (
@@ -1349,7 +1717,7 @@ export default function RetentionPage() {
                   onRun={async () => { try { await act(setNotified, 'notice', () => retention.notifyRevocation(scope, selected, noticeKey), (d) => rec(d['notice'])); } finally { await loadDeliveries(selected); } }} />
               </div>
               <Problem verb="not notified" problem={notified.problem} />
-              {notified.result !== null && <p>notice <Mono>{str(notified.result['notice_id'])}</Mono> attempt {str(notified.result['attempt'])} to <Mono>{str((notified.result['destination'] as Record<string, unknown> | undefined)?.['destination_key'])}</Mono> — <strong>{str(notified.result['state'])}</strong>{notified.result['failure_class'] === null || notified.result['failure_class'] === undefined ? '' : ` (${str(notified.result['failure_class'])})`}</p>}
+              {notified.result !== null && <p>notice <Mono>{str(notified.result['notice_id'])}</Mono> attempt {str(notified.result['attempt'])} to <Mono>{str((notified.result['destination'] as Record<string, unknown> | undefined)?.['destination_key'])}</Mono> — <strong>{str(notified.result['state'])}</strong>{notified.result['failure_class'] === null || notified.result['failure_class'] === undefined ? '' : ` (${str(notified.result['failure_class'])})`} · the destination holds the package: <strong>{heldOf(notified.result)}</strong></p>}
               <Receipt receipt={notified.receipt} />
 
               <h3 style={h3}>Acknowledge a notice</h3>

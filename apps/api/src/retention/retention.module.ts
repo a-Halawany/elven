@@ -7,6 +7,11 @@
  * the destination's `EYE_DST_*`; values read from the process environment at use, never recorded) and the delivery executors
  * (the transfer station's files, the https egress) are this module's own providers; the observation module exports the vault
  * they and the service read through.
+ *
+ * CP-6 B16 (0076): the governed IMPORT — the ImportService (the package quarantined as vault blobs, its checks, the plan of
+ * minted ids, the admission in batches through the pipeline under retention.import.admit, the quarantine copies' lifecycle)
+ * is this module's provider beside the export's; it reads the vault, the delivery service (the transfer station's package)
+ * and the pipeline (the admission orchestrates its own writes).
  */
 import { Module } from '@nestjs/common';
 import { PipelineModule } from '../pipeline/pipeline.module.js';
@@ -15,11 +20,12 @@ import { RetentionController } from './retention.controller.js';
 import { RetentionService } from './retention.service.js';
 import { DestinationCredentialStore, ExportSigningKeyStore } from './export-signing.js';
 import { DeliveryEgress, ExportDeliveryService } from './export-delivery.service.js';
+import { ImportService } from './import.service.js';
 
 @Module({
   imports: [PipelineModule, ObservationModule],
   controllers: [RetentionController],
-  providers: [RetentionService, ExportSigningKeyStore, DestinationCredentialStore, DeliveryEgress, ExportDeliveryService],
+  providers: [RetentionService, ExportSigningKeyStore, DestinationCredentialStore, DeliveryEgress, ExportDeliveryService, ImportService],
   exports: [RetentionService],
 })
 export class RetentionModule {}

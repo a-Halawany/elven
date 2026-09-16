@@ -107,3 +107,44 @@ export function as(session, scope, over) {
     principalId: `principal:${session.principalId}`, ...over,
   };
 }
+
+/** B16: a domain of the tenant by its name (through the governed domain list), or null. */
+export async function domainByName(admin, tenantId, name) {
+  const domains = await call(`/v1/tenants/${tenantId}/domains/list`, {
+    scope: 'TENANT', tenantId, action: 'tenancy.domain.list', objectType: 'CID',
+    principalId: `principal:${admin.principalId}`, purposeId: 'platform.administration',
+  }, {}, admin.token);
+  if (!domains.ok) throw new Error(`the domain list of tenant ${tenantId} was refused: ${domains.status} ${domains.body?.message ?? ''}`);
+  return (domains.body.domains ?? []).find((d) => d.name === name) ?? null;
+}
+
+/**
+ * B16: a domain of the tenant, created through the governed route when no domain of that name exists — IDEMPOTENT BY NAME (a second
+ * run reuses the domain it finds; the act is not a seed). Returns { domain, created }.
+ */
+export async function createDomain(admin, tenantId, name) {
+  const existing = await domainByName(admin, tenantId, name);
+  if (existing !== null) return { domain: existing, created: false };
+  const r = await call(`/v1/tenants/${tenantId}/domains`, {
+    scope: 'TENANT', tenantId, action: 'tenancy.domain.create', objectType: 'CID',
+    principalId: `principal:${admin.principalId}`, purposeId: 'platform.administration',
+  }, { name }, admin.token);
+  if (!r.ok) throw new Error(`the domain ${JSON.stringify(name)} could not be created: ${r.status} ${r.body?.message ?? ''}`);
+  return { domain: r.body.domain, created: true };
+}
+
+/**
+ * B16: a human persona of the tenant (one role, at the domain when `domainId` is given, else at the tenant), created through the
+ * governed principal route; a 409 (the login name is taken) LOGS THE PERSONA IN instead — a persona is reused only when its own
+ * credential opens its session, never by name alone. Returns { session, created } — session null when neither happened (the
+ * caller decides what that means). NOTHING HERE PRINTS THE PASSWORD.
+ */
+export async function createPersona(admin, tenantId, { displayName, loginName, password, roleCode, domainId = null }) {
+  const r = await call(`/v1/tenants/${tenantId}/principals`, {
+    scope: 'TENANT', tenantId, action: 'identity.principal.create', objectType: 'PRN',
+    principalId: `principal:${admin.principalId}`, purposeId: 'platform.administration',
+  }, { kind: 'human', displayName, loginName, password, roleCode, ...(domainId === null ? {} : { domainId }) }, admin.token);
+  if (r.ok) return { session: await login(loginName, password), created: true, status: r.status };
+  if (r.status !== 409) return { session: null, created: false, status: r.status, message: r.body?.message ?? '' };
+  return { session: await login(loginName, password), created: false, status: r.status };
+}

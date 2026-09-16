@@ -26,8 +26,14 @@
  *   (the build's digest by streaming, no in-memory file set); the JSON download refused (409, the ceiling named); the stream route serves
  *   the 270 MiB tar (written to disk here, hashed as it arrives: the archive digest); the customer's verifier scans it in constant
  *   memory (PACKAGE OK, the links check on the empty closure); the transfer-station delivery streams it (package.tar = the digest); the
- *   https delivery streams it to the recipient → ACKNOWLEDGED (its store holds the tar with the digest); the process's heap stays
- *   under 256 MiB throughout (measured before and after).
+ *   https delivery streams it to the recipient → ACKNOWLEDGED (its store holds the tar with the digest); the process's memory,
+ *   SAMPLED on the event loop every 50 ms across all of it (phase6-memory-sampler.ts — heapUsed + external (which counts the ArrayBuffer backing stores) above the
+ *   baseline, not RSS; a synchronous peak between two samples is not observed), stays under 256 MiB above the baseline — a sampled
+ *   high-water mark, reported as such (B16 corrected the B15 wording, which had called a before/after heap delta a peak).
+ *
+ *   B16 (Codex B15-F1): the closure is `eye-customer-export-links/2` — every EXACT claim version an edge or a lineage row names, by the
+ *   (object_id, object_version) pair, the evidence pair rule (a record by its id AND the digest of the BYTES the package carries) — so the
+ *   fixtures here seed lineage and edges on the BYTES digest (`bytesDigest` of the upload), as the extraction does; the pins name /2.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sql } from 'kysely';
@@ -50,6 +56,7 @@ import { GraphCapability } from '../../src/graph/graph.capabilities.js';
 import { Phase4Harness } from './phase4-helpers.js';
 import { TERMS_CSV } from './phase5-fixtures.js';
 import { superDb, type AnyDb } from './helpers.js';
+import { describeSampledPeak, sampledPeak } from './phase6-memory-sampler.js';
 
 const VAULT_DIR = realpathSync(mkdtempSync(join(tmpdir(), 'eye-b15-vault-')));
 const STATION_DIR = realpathSync(mkdtempSync(join(tmpdir(), 'eye-b15-station-')));
@@ -133,7 +140,7 @@ const streamExport = async (p: AuthenticatedPrincipal, id: string, toFile: strin
   return { status, headers, digest: hash.digest('hex'), size, destroyed };
 };
 const upload = async (files: Array<{ name: string; text: string }>, label = '') =>
-  h.upload(files.map((f) => ({ filename: `${f.name}.csv`, text: f.text, documentTime: '2024-01-14T00:00:00Z' })), 'internal', label) as Promise<Array<{ id: string; version: number; digest: string }>>;
+  h.upload(files.map((f) => ({ filename: `${f.name}.csv`, text: f.text, documentTime: '2024-01-14T00:00:00Z' })), 'internal', label) as Promise<Array<{ id: string; version: number; digest: string; bytesDigest: string }>>;
 const exported = async (manifestIds: string[]): Promise<{ id: string; packageDigest: string; archiveDigest: string; byteTotal: number }> => {
   const o = await open(steward, { kind: 'customer_export', targetKind: 'evidence', selector: { manifestIds, classificationCeiling: 'internal' } });
   const id = o.action.actionId;
@@ -168,7 +175,7 @@ const recipientCall = (method: 'GET' | 'POST', path: string, body?: unknown): Pr
 });
 const receivedAtRecipient = async () => (await recipientCall('GET', '/_received')).body as { received: Row[] };
 
-/** A claim as the extraction would have admitted it, its lineage naming the given evidence bytes; the header classification as given. */
+/** A claim as the extraction would have admitted it, its lineage naming the given evidence BYTES (`digest` = the bytes' sha256, as evidence_digest is recorded); the header classification as given. */
 async function seedClaim(a: { type: 'REL' | 'ENT' | 'CLM'; evidence: { id: string; version: number }; digest: string; classification: 'internal' | 'restricted'; payload: Row }): Promise<{ claimId: string; runId: string; methodId: string }> {
   const claimId = uuidv7(); const runId = uuidv7(); const methodId = uuidv7();
   const lineage = { method_key: 'fixture', method_id: methodId, model_id: 'fixture-model', model_weights_digest: sha256('w'), runtime_version: '1.0.0', prompt_version: '1', decoding_digest: sha256('d'), mode: 'replay', call_id: null, run_id: runId,
@@ -249,8 +256,10 @@ afterAll(async () => {
 describe('L · THE RELATIONSHIP CLOSURE (D1; DP-47-002/-003)', () => {
   it('L1 · two uploads; on A a REL claim, an ENT claim, a RESTRICTED claim and an edge on the REL claim between two entities (one with an identifier); the export of A and B → links.json named by package.links inside the digest chain, the retention.export_links row; the closure: the two claims with their lineage, the restricted one EXCLUDED (redaction), the edge with its provenance, both entities with the identifier; the product\'s verification counts it; the verifier on the directory and the tar passes the links checks; links.json tampered → the product fails links_digest_ok and the verifier fails the digest; restored → verified; an export of B alone → an empty closure, listed and verified', async () => {
     const up = await upload([{ name: 'b15-a', text: TERMS_CSV }, { name: 'b15-b', text: TERMS_CSV.replace('assumption', 'assumption (b)') }]);
-    evdA = { id: up[0]!.id, version: up[0]!.version, digest: up[0]!.digest }; evdB = { id: up[1]!.id, version: up[1]!.version, digest: up[1]!.digest };
+    // B16: the closure resolves a lineage row or an edge by the (object_id, BYTES digest) pair — the fixtures name the bytes, as the extraction does.
+    evdA = { id: up[0]!.id, version: up[0]!.version, digest: up[0]!.bytesDigest }; evdB = { id: up[1]!.id, version: up[1]!.version, digest: up[1]!.bytesDigest };
     mA = await manifestRow((await manifestOf(evdA.id, 1)).manifest_id); mB = await manifestRow((await manifestOf(evdB.id, 1)).manifest_id);
+    expect(evdA.digest).toBe(mA.content_digest); expect(evdB.digest).toBe(mB.content_digest);
     relClaim = (await seedClaim({ type: 'REL', evidence: evdA, digest: evdA.digest, classification: 'internal', payload: { claim_kind: 'relationship', subject: 'NORDWERK Magnet GmbH', predicate: 'ships_through', object_value: 'Bab el-Mandeb Strait' } })).claimId;
     entClaim = (await seedClaim({ type: 'ENT', evidence: evdA, digest: evdA.digest, classification: 'internal', payload: { claim_kind: 'entity', name: 'NORDWERK Magnet GmbH', entity_type: 'organization' } })).claimId;
     restrictedClaim = (await seedClaim({ type: 'CLM', evidence: evdA, digest: evdA.digest, classification: 'restricted', payload: { claim_kind: 'assertion', statement: 'a restricted finding' } })).claimId;
@@ -265,10 +274,10 @@ describe('L · THE RELATIONSHIP CLOSURE (D1; DP-47-002/-003)', () => {
     const manifest = readJson(join(dir, 'manifest.json'));
     const linksBlock = (manifest['package'] as Row)['links'] as Row;
     const linksBytes = readFileSync(join(dir, LINKS_FILE));
-    expect(linksBlock).toMatchObject({ file: LINKS_FILE, links_digest: sha256(linksBytes), byte_length: linksBytes.byteLength, format: 'eye-customer-export-links/1', claims: 2, edges: 1, entities: 2, excluded: 1 });
+    expect(linksBlock).toMatchObject({ file: LINKS_FILE, links_digest: sha256(linksBytes), byte_length: linksBytes.byteLength, format: 'eye-customer-export-links/2', claims: 2, edges: 1, entities: 2, excluded: 1 });
     // The closure is INSIDE the chain: the manifest's package block is covered by the package digest (the verifier recomputes it below).
     const links = JSON.parse(linksBytes.toString('utf8')) as Row;
-    expect(links).toMatchObject({ format: 'eye-customer-export-links/1', package: { action_id: EXP1.id }, evidence: expect.arrayContaining([evdA.id, evdB.id]), counts: { claims: 2, edges: 1, entities: 2, excluded: 1 } });
+    expect(links).toMatchObject({ format: 'eye-customer-export-links/2', package: { action_id: EXP1.id }, evidence: expect.arrayContaining([evdA.id, evdB.id]), counts: { claims: 2, edges: 1, entities: 2, excluded: 1 } });
     const claims = links['claims'] as Row[];
     expect(claims.map((c) => [c['object_id'], c['object_type']]).sort()).toEqual([[relClaim, 'REL'], [entClaim, 'ENT']].sort());
     for (const c of claims) {
@@ -276,7 +285,7 @@ describe('L · THE RELATIONSHIP CLOSURE (D1; DP-47-002/-003)', () => {
       expect((c['lineage'] as Row[])).toEqual([expect.objectContaining({ claim_version: 1, evidence_object_id: evdA.id, evidence_digest: evdA.digest, byte_start: 0, byte_end: 4, mode: 'replay' })]);
       expect(((c['header'] as Row)['classification'])).toBe('internal');
     }
-    expect(links['excluded']).toEqual([expect.objectContaining({ kind: 'claim', object_id: restrictedClaim, gate: 'redaction' })]);
+    expect(links['excluded']).toEqual([expect.objectContaining({ kind: 'claim', object_id: restrictedClaim, object_version: 1, gate: 'redaction' })]);
     const edges = links['edges'] as Row[];
     expect(edges).toEqual([expect.objectContaining({ edge_id: edgeId, predicate: 'ships_through', subject_entity_id: E2, object_entity_id: E1, state: 'asserted', claim: { object_id: relClaim, object_version: 1 }, evidence: { object_id: evdA.id, digest: evdA.digest }, confidence: 0.7 })]);
     const entities = links['entities'] as Row[];
@@ -367,46 +376,51 @@ describe('S · THE STREAMED ARCHIVE (D2; DP-47-006)', () => {
     expect(held).toMatchObject({ archive_digest: EXP1.archiveDigest, byte_length: inMemory.byteLength, verified: true });
   }, 240_000);
 
-  it('S2 · a package ABOVE the in-memory ceiling (seventeen uploads of 16,000,000 bytes): built by streaming; the JSON download refused with the ceiling named; the stream route serves the 270 MiB tar (hashed as it arrives = the archive digest); the verifier scans it in constant memory; the station delivery streams it; the https delivery streams it to the recipient → ACKNOWLEDGED; the heap stays under 256 MiB', async () => {
-    const heapBefore = process.memoryUsage().heapUsed;
+  it('S2 · a package ABOVE the in-memory ceiling (seventeen uploads of 16,000,000 bytes): built by streaming; the JSON download refused with the ceiling named; the stream route serves the 270 MiB tar (hashed as it arrives = the archive digest); the verifier scans it in constant memory; the station delivery streams it; the https delivery streams it to the recipient → ACKNOWLEDGED; the memory SAMPLED every 50 ms across all of it (heapUsed + external (which counts the ArrayBuffer backing stores) above the baseline, not RSS; synchronous peaks between samples unobserved) stays under 256 MiB above the baseline', async () => {
     const ids: string[] = [];
     const PER_FILE = 16_000_000; const FILES = 17;
-    for (let i = 0; i < FILES; i += 1) {
-      const up = await upload([{ name: `b15-big-${i}`, text: bigText(`b15-big-${i}`, PER_FILE) }], 'b15-big');
-      ids.push((await manifestOf(up[0]!.id, 1)).manifest_id);
-    }
-    const big = await exported(ids);
-    expect(big.byteTotal).toBeGreaterThan(EXPORT_ARCHIVE_MAX_BYTES);
-    // The JSON download (the in-memory archive) refuses above its ceiling, naming it; the stream route serves it.
-    await expect(downloadExport(steward, big.id)).rejects.toMatchObject({ status: 409, message: expect.stringMatching(/above the archive ceiling/) });
-    const tarFile = join(SCRATCH_DIR, `${big.id}.tar`);
-    const st = await streamExport(steward, big.id, tarFile);
-    expect(st).toMatchObject({ status: 200, digest: big.archiveDigest, destroyed: false });
-    expect(Number(st.headers['content-length'])).toBe(st.size);
-    expect(statSync(tarFile).size).toBe(st.size);
-    expect(st.size).toBeGreaterThan(big.byteTotal);
-    // The customer's verifier scans the tar (constant memory: the manifest and the links file kept, every entry hashed as it passes).
-    const vt = await verifyTar(tarFile, '--public-key', KEY1_PEM_FILE);
-    expect(failedChecks(vt)).toEqual([]); expect(vt.ok).toBe(true);
-    expect(vt.checks.find((c) => c.name.startsWith('archive readable'))!.detail).toMatch(new RegExp(`${st.size} bytes, ${FILES + 2} entries, archive digest ${big.archiveDigest}`));
-    // The station delivery streams the tar to the station (its temp file, fsync, rename); the recipient verifies it and answers.
-    const ds = (await deliverTo(authority, big.id, STATION_KEY)).delivery;
-    expect(ds.state).toBe('delivered');
-    const stationTar = join(stationDir(big.id), 'package.tar');
-    expect(statSync(stationTar).size).toBe(st.size);
-    const stationHash = createHash('sha256'); for await (const c of (await import('node:fs')).createReadStream(stationTar)) stationHash.update(c as Buffer);
-    expect(stationHash.digest('hex')).toBe(big.archiveDigest);
-    expect((await run([STATION_RECIPIENT, STATION_DIR, T(), D(), big.id, '--public-key', KEY1_PEM_FILE])).code).toBe(0);
-    expect((await collect(authority, big.id, ds.delivery_id)).delivery.state).toBe('acknowledged');
-    // The https delivery streams the tar to the recipient, which streams it to its store, verifies and answers.
-    const dh = (await deliverTo(authority, big.id, HTTPS_KEY)).delivery;
-    expect(dh).toMatchObject({ state: 'acknowledged', attempt: 1 });
-    expect(dh.receipt).toMatchObject({ delivery_id: dh.delivery_id, archive_digest: big.archiveDigest, verified: true });
-    const held = (await receivedAtRecipient()).received.find((r) => r['delivery_id'] === dh.delivery_id)!;
-    expect(held).toMatchObject({ archive_digest: big.archiveDigest, byte_length: st.size, verified: true });
-    // The process never held the archive: the heap's high-water mark after all of this stays under the in-memory ceiling.
-    if (typeof global.gc === 'function') global.gc();
-    const heapAfter = process.memoryUsage().heapUsed;
-    expect(heapAfter - heapBefore).toBeLessThan(EXPORT_ARCHIVE_MAX_BYTES);
+    // The sampler runs from before the first upload to after the last delivery: what the process HELD across event-loop turns while the
+    // records were uploaded (one 16 MB body per run), the package built by streaming, served, verified and delivered twice.
+    const { measured } = await sampledPeak(async () => {
+      for (let i = 0; i < FILES; i += 1) {
+        const up = await upload([{ name: `b15-big-${i}`, text: bigText(`b15-big-${i}`, PER_FILE) }], 'b15-big');
+        ids.push((await manifestOf(up[0]!.id, 1)).manifest_id);
+      }
+      const big = await exported(ids);
+      expect(big.byteTotal).toBeGreaterThan(EXPORT_ARCHIVE_MAX_BYTES);
+      // The JSON download (the in-memory archive) refuses above its ceiling, naming it; the stream route serves it.
+      await expect(downloadExport(steward, big.id)).rejects.toMatchObject({ status: 409, message: expect.stringMatching(/above the archive ceiling/) });
+      const tarFile = join(SCRATCH_DIR, `${big.id}.tar`);
+      const st = await streamExport(steward, big.id, tarFile);
+      expect(st).toMatchObject({ status: 200, digest: big.archiveDigest, destroyed: false });
+      expect(Number(st.headers['content-length'])).toBe(st.size);
+      expect(statSync(tarFile).size).toBe(st.size);
+      expect(st.size).toBeGreaterThan(big.byteTotal);
+      // The customer's verifier scans the tar (constant memory: the manifest and the links file kept, every entry hashed as it passes).
+      const vt = await verifyTar(tarFile, '--public-key', KEY1_PEM_FILE);
+      expect(failedChecks(vt)).toEqual([]); expect(vt.ok).toBe(true);
+      expect(vt.checks.find((c) => c.name.startsWith('archive readable'))!.detail).toMatch(new RegExp(`${st.size} bytes, ${FILES + 2} entries, archive digest ${big.archiveDigest}`));
+      // The station delivery streams the tar to the station (its temp file, fsync, rename); the recipient verifies it and answers.
+      const ds = (await deliverTo(authority, big.id, STATION_KEY)).delivery;
+      expect(ds.state).toBe('delivered');
+      const stationTar = join(stationDir(big.id), 'package.tar');
+      expect(statSync(stationTar).size).toBe(st.size);
+      const stationHash = createHash('sha256'); for await (const c of (await import('node:fs')).createReadStream(stationTar)) stationHash.update(c as Buffer);
+      expect(stationHash.digest('hex')).toBe(big.archiveDigest);
+      expect((await run([STATION_RECIPIENT, STATION_DIR, T(), D(), big.id, '--public-key', KEY1_PEM_FILE])).code).toBe(0);
+      expect((await collect(authority, big.id, ds.delivery_id)).delivery.state).toBe('acknowledged');
+      // The https delivery streams the tar to the recipient, which streams it to its store, verifies and answers.
+      const dh = (await deliverTo(authority, big.id, HTTPS_KEY)).delivery;
+      expect(dh).toMatchObject({ state: 'acknowledged', attempt: 1 });
+      expect(dh.receipt).toMatchObject({ delivery_id: dh.delivery_id, archive_digest: big.archiveDigest, verified: true });
+      const held = (await receivedAtRecipient()).received.find((r) => r['delivery_id'] === dh.delivery_id)!;
+      expect(held).toMatchObject({ archive_digest: big.archiveDigest, byte_length: st.size, verified: true });
+    });
+    // The process never held the archive whole: the SAMPLED high-water mark of heapUsed + external (which counts the ArrayBuffer backing stores) above the baseline —
+    // read on the event loop every 50 ms; a synchronous peak between two samples is not observed; not RSS — stays under the in-memory
+    // ceiling the JSON download refuses above. A sampled bound, stated as one; the measurement is printed beside the verdict.
+    console.log(describeSampledPeak(measured, 'S2 (upload, build, stream, verify, station, https)'));
+    expect(measured.samples).toBeGreaterThan(20);
+    expect(measured.above, describeSampledPeak(measured)).toBeLessThan(EXPORT_ARCHIVE_MAX_BYTES);
   }, 600_000);
 });

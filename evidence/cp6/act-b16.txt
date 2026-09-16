@@ -1,0 +1,187 @@
+=== CP-6 B16 on the demonstration (NORDWERK, eye_demo) — 2026-09-16T12:18:31Z, tree over 88057d2 (the B16 candidate, uncommitted at run time; committed as the next head); rehearsed first on a restored copy (eye_demo_b16) with its own vault copy, key, station and Redis ===
+
+0b. the running target before anything (the runbook §2):
+     the API on :3401 is pid 50863; its demonstration settings:
+       EYE_CONNECTOR_PER_SOURCE_CONCURRENCY=1
+       EYE_DB_NAME=eye_demo
+       EYE_DEGRADED_DIR=/Users/halawany/work/personal/mohammed/new_project/apps/api/.eye-local/degraded-demo
+       EYE_RUNTIME_PORT=3401
+       EYE_SCHEDULER_ENABLED=true
+       (no EYE_VAULT_*_ROOT set: the roots are the workspace's .eye-local/vault/{quarantine,evidence,archive,export})
+       /readyz: {"status":"ok","db":true,"audit":"ok","auditIncidents":0,"degradedSince":null,"classification":"telemetry-only"}
+     VERIFIED: the demonstration API serves eye_demo and is ready
+
+1. the demonstration database migrated with 0076 (backup first; the migration adds the exchange partners, the import ledger with its ports, the held classification of a delivery, custody.imported and the registry rows — existing rows untouched)
+     backup 49289454 bytes  /private/tmp/claude-501/-Users-halawany-work-personal-mohammed-new-project/b11a7142-b60e-4b51-8618-a8185f1b1f24/scratchpad/b16/demo/eye_demo-pre-0076-20260916T121831Z.dump
+   the demonstration API stopped for the migration (pid 50863)
+     applying 0076_b16_governed_import_versioned_closure_and_held_recipients.sql ... ok
+     migrations up to date
+     role passwords synchronized from environment
+     [{"filename":"0075_b15_relationship_closure_and_streamed_archive.sql","digest":"b6e0b64a13848a24","applied_at":"2026-09-16T08:31:17.730Z"},{"filename":"0076_b16_governed_import_versioned_closure_and_held_recipients.sql","digest":"a830305dd910600c","applied_at":"2026-09-16T12:18:37.522Z"}]
+
+2. the demonstration API restarted on the B16 build by the runbook's script:
+     $ tsc -p tsconfig.build.json && node scripts/copy-assets.mjs
+     copied src/observation/connectors/xml-worker.js -> dist/observation/connectors/xml-worker.js
+     the API on :3401 is pid 97690; its demonstration settings:
+       EYE_CONNECTOR_PER_SOURCE_CONCURRENCY=1
+       EYE_DB_NAME=eye_demo
+       EYE_DEGRADED_DIR=/Users/halawany/work/personal/mohammed/new_project/apps/api/.eye-local/degraded-demo
+       EYE_RUNTIME_PORT=3401
+       EYE_SCHEDULER_ENABLED=true
+       (no EYE_VAULT_*_ROOT set: the roots are the workspace's .eye-local/vault/{quarantine,evidence,archive,export})
+       /readyz: {"status":"ok","db":true,"audit":"ok","auditIncidents":0,"degradedSince":null,"classification":"telemetry-only"}
+     VERIFIED: the demonstration API serves eye_demo and is ready
+
+THE EYE — CP-6 B16 on the demonstration: the governed import, the NORDWERK export → import → re-export round trip, the versioned closure and held recipients (migration 0076)
+target http://localhost:3401 · database eye_demo · tenant 01a084f5… · origin domain 01a084f5… · 2026-09-16T12:18:50.162Z
+prepared by the runner: the demonstration signing key .eye-local/export-signing-demo.pub.pem (present); the transfer station .eye-local/transfer-station-demo
+
+1. THE VERSIONED RELATIONSHIP — a REL claim C with an asserted edge is challenged and corrected: C@v+1 with its own lineage, the edge still resting on C@v
+  · claim C 01a084f5… (REL "NORDWERK ANTRIEBSTECHNIK GmbH" procures "SYN-PART-BRG"): the edge 01a099d4… rests on C@3; the claim's latest version is 3 (confidence 0.85); its lineage names record 01a084f5…@1 (338 bytes) by the bytes digest
+  ✓ the administrator challenged C@3: review case 01a0aa27… queued (challenged)
+  ✓ the administrator corrected C@3 → C@4 (confidence 0.9; state corrected); the lineage rows of C: v1 → 01a084f5…, v2 → 01a084f5…, v3 → 01a084f5…, v4 → 01a084f5… — every version has its own row
+  · MemoryCorrected/claim.corrected 01a0aa27… pending; deliveries: decisions applied, forecasts applied, memory-mappings applied (reconciliation.proposed), relationships applied (edge.re_derived), retrieval applied (projections.verified), scenarios applied, twins applied
+  ✓ what the ledger holds: the edge 01a099d4… STILL NAMES C@3 — state superseded, superseded by 01a0aa27…; a successor edge 01a0aa27… asserted on C@4 by the subscription's principal (01a097c8…) — an edge is never reinterpreted as resting on another version; the closure will carry BOTH versions
+
+2. THE EXPORT E1 WITH ITS VERSIONED CLOSURE — P. Novák exports the records that carry the knowledge; approved; executed; verified — links.json /2 lists C@v and C@v+1 as exact versions; the pair check; the counterexample; then delivered to the station and acknowledged
+  · the targets: evidence 01a084f5…@1 (338 bytes, tier hot), evidence 01a084f5…@1 (456 bytes, tier hot), evidence 01a084f8…@1 (240 bytes, tier archive), evidence 01a084f5…@1 (1045 bytes, tier archive)
+  ✓ export E1 01a0aa27…: 4 record(s), 2079 bytes — opened by P. Novák, approved by H. Bergmann, executed and verified; package digest add983a3d310dc37…, signed by ed25519:fcd9d6bf234efb3f
+  ✓ the closure: links.json format eye-customer-export-links/2 — 17 claim version(s), 8 edge(s), 7 entities, 0 excluded — named by package.links inside the signed chain
+  ✓ C 01a084f5… is listed as EXACT versions C@1 and C@2 and C@3 and C@4 (each with the lineage row of its own version); the edge(s) on C: 01a084f5… → C@1 (superseded), 01a097c8… → C@2 (superseded), 01a099d4… → C@3 (superseded), 01a0aa27… → C@4 (asserted) — the edge asserted on C@3 names C@3, never C@4
+  · the closure in all: 17 claim version(s) of 14 claim(s); 8 edge(s); 7 entit(ies) with 0 identifier(s) under 0 system(s); excluded nothing else
+  ✓ the verifier on E1 (with the public key): PACKAGE OK — the pair check "links: every claim version's lineage names an exported recor…": the closure is consistent by (object_id, object_version) and (object_id, bytes digest): 17 claim version(s), 8 edge(s), 7 entities
+  ✓ the counterexample (a scratch copy carrying C@4 alone while the edge names C@3 — the /1 shape; the manifest's package.links re-pointed at it): PACKAGE FAILED — the pair check: "1 edge(s) naming what the closure does not carry: edge 01a099d4-5ccc-77c1-af59-8badc393ef65 names 01a084f5-acf2-7b56-ae82-9e4b21aa6bdd@3, which the closure does not carry (it carries versions 1, 2, 4 of that claim — an edge is never rebased onto another version)"; the chain fails too, and the signature (the closure is named inside the signed chain)
+  ✓ the rebase (a scratch copy whose edge is moved onto C@4, both versions carried, the manifest re-pointed): PACKAGE FAILED — the pair check passes by membership (the closure is self-consistent), the chain fails and the signature does not verify: a rebase cannot pass the signature
+  ✓ H. Bergmann delivered E1 to the station: delivery 51e05ad7… attempt 1 — .eye-local/transfer-station-demo/01a084f5-757f-7f03-9cf5-315d74426481/01a084f5-759a-751f-a1dd-38fbd7933057/01a0aa27-d794-7478-81fc-b407ba85f1b4/package.tar (115200 bytes, sha256 the archive digest), package.sig, delivery.json
+      [demonstration recipient] THIS IS THE DEMONSTRATION RECIPIENT: it stands in for the customer's own system on the demonstration's isolated transfer station
+      [demonstration recipient] station directory /Users/halawany/work/personal/mohammed/new_project/.eye-local/transfer-station-demo/01a084f5-757f-7f03-9cf5-315d74426481/01a084f5-759a-751f-a1dd-38fbd7933057/01a0aa27-d794-7478-81fc-b407ba85f1b4
+      [demonstration recipient] delivery 51e05ad7-c04d-4782-9e39-66db7d4da199 attempt 1 of action 01a0aa27-d794-7478-81fc-b407ba85f1b4 to nordwerk-transfer-station for "NORDWERK GmbH — demonstration transfer station", delivered at 2026-09-16T12:18:56.209Z, the package expires at 2026-09-23T12:18:55.988Z
+      [demonstration recipient] the note says: package digest add983a3d310dc3758470dec0d4dd3ba661cafc1a25e4b7a9ee79f25872872d8, archive digest 8a5fd47cbbcc70a006e2549382bd168b2aac84e115bedc34d64cd0f603e04d76, signature eye-customer-export/2 by ed25519:fcd9d6bf234efb3f
+      [demonstration recipient] package.tar: 115200 bytes, sha256 8a5fd47cbbcc70a006e2549382bd168b2aac84e115bedc34d64cd0f603e04d76 — the archive digest the note names
+      [demonstration recipient] verifier: node scripts/retention/verify-export.mjs --tar /Users/halawany/work/personal/mohammed/new_project/.eye-local/transfer-station-demo/01a084f5-757f-7f03-9cf5-315d74426481/01a084f5-759a-751f-a1dd-38fbd7933057/01a0aa27-d794-7478-81fc-b407ba85f1b4/package.tar --json --public-key /Users/halawany/work/personal/mohammed/new_project/.eye-local/export-signing-demo.pub.pem --expect-package-digest add983a3d310dc3758470dec0d4dd3ba661cafc1a25e4b7a9ee79f25872872d8
+      [demonstration recipient] verifier verdict: PACKAGE OK (exit 0; 0 failed; complete true); signature eye-customer-export/2 ed25519:fcd9d6bf234efb3f: VERIFIED against the public key
+      [demonstration recipient] receipt.json written: receipt cb91c6fa-ff4a-4c10-bc0e-fe03fc106322 for delivery 51e05ad7-c04d-4782-9e39-66db7d4da199 attempt 1 — verified true
+      [demonstration recipient] the product collects it with the collect-receipt act (the exchange closes ACKNOWLEDGED when the digests agree and verified is true; MISMATCHED otherwise)
+  ✓ the demonstration recipient verified E1 (the links checks among the passes); H. Bergmann collected the receipt: ACKNOWLEDGED — the station holds the package the mirror domain will import
+
+3. THE DESTINATION DOMAIN — the mirror domain, its personas, the intake source contract, the station declared there; the import opened BEFORE any partner → QUARANTINED; the exchange partner declared
+  ✓ the mirror domain "NORDWERK Exchange Mirror (SYNTHETIC)": 01a0aa27… CREATED by the administrator (tenancy.domain.create)
+  ✓ the personas: M. Keller (retention_steward, mirror) created; U. Fischer (collection_manager, mirror) created — each opens a session with its own credential
+  ✓ the intake source contract nordwerk-exchange-intake@1 (01a0aa27…): upload kind, ACTIVE, rights CONFIRMED, ceiling internal, residency EU — the contract the imported manifests are recorded under; its ceiling is the import's policy gate
+  ✓ the transfer station declared in the mirror domain: nordwerk-transfer-station → .eye-local/transfer-station-demo (the same directory the origin domain delivers to)
+  ✓ the import 01a0aa27… opened from the station BEFORE any partner: QUARANTINED — "no exchange partner of this domain holds key ed25519:fcd9d6bf234efb3f; declare the partner (retention.partner.declare) and open the import again"; 1 check(s) failed (partner); the request and its evidence kept (archive 8a5fd47cbbcc…, 115200 bytes; manifest in quarantine yes); the station package stays where it is
+      FAIL  partner: an active exchange partner of this domain holds the package's signing key — no exchange partner of this domain holds key ed25519:fcd9d6bf234efb3f; declare the partner (retention.partner.declare) and open the import again
+  ✓ the exchange partner nordwerk-origin declared by the administrator: key ed25519:fcd9d6bf234efb3f (Ed25519), intake nordwerk-exchange-intake@1, party "NORDWERK ANTRIEBSTECHNIK GmbH — the orig…" — a partner IS a key; the public material only
+
+4. THE EXCHANGE — M. Keller opens the import from the station: VERIFIED (the fifteen checks); the opener's approval refused; H. Bergmann approves on the digest; the approver's admission refused; M. Keller admits: ADMITTED — the map, the host, the receipt
+      PASS  archive: the package parses as a ustar archive — 115200 bytes, 6 entries, archive digest 8a5fd47cbbcc70a006e2549382bd168b2aac84e115bedc34d64cd0f603e04d76
+      PASS  manifest: manifest.json is present, parses as a JSON object, names a format (eye-customer-export/1 or /2), a signature scheme (eye-digest-chain/1 or eye-customer-export/2) and a list of objects — format eye-customer-export/1, scheme eye-customer-export/2, 4 objects, 0 exclusions, built 2026-09-16T12:18:55.975Z by principal:01a097c8-0859-7cea-95a6-1361584ec01b under action 01a0aa27-d794-7478-81fc-b407ba85f1b4; file digest 36407d8edd4b630265efc01d61503d9818b14e0616037f382ec36f7c5ece22e5
+      PASS  origin: the package's origin domain is not this domain — origin 01a084f5-757f-7f03-9cf5-315d74426481/01a084f5-759a-751f-a1dd-38fbd7933057, action 01a0aa27-d794-7478-81fc-b407ba85f1b4
+      PASS  integrity: every listed file is present with the sha256 and size the manifest names — 4 files, 2079 bytes, every digest and size as listed
+      PASS  re-import: every object's payload binds its bytes and its 43-field header and payload recompute to its canonical digest — 4 records: every payload binds its bytes and every 43-field header recomputes to its canonical digest
+      PASS  completeness: every listed file is present and every entry is listed — 6 entries: manifest.json + 5 listed files
+      PASS  chain: sha256(JCS(objects)) = objects_digest; the package digest recomputes; bound_to restates the authorization — package digest add983a3d310dc3758470dec0d4dd3ba661cafc1a25e4b7a9ee79f25872872d8; bound to action 01a0aa27-d794-7478-81fc-b407ba85f1b4, scope digest 9d1addc72f683b353b277e20f359961fa5540575cb583832d5e03cb03e5c367d, approval 01a0aa27-d8e3-7888-a67e-e239075a09d9
+      PASS  signature: the scheme is eye-customer-export/2 with a key id, Ed25519 and a 64-byte signature — scheme eye-customer-export/2, key ed25519:fcd9d6bf234efb3f, Ed25519, a 64-byte signature
+      PASS  partner: an active exchange partner of this domain holds the package's signing key — partner nordwerk-origin (NORDWERK ANTRIEBSTECHNIK GmbH — the origin domain "Supply Corridor Intelligence" (SYNTHETIC)) holds key ed25519:fcd9d6bf234efb3f, declared 2026-09-16T12:18:56.000Z
+      PASS  signature: the Ed25519 signature over the recomputed package digest verifies against the partner's key — verified over add983a3d310dc3758470dec0d4dd3ba661cafc1a25e4b7a9ee79f25872872d8 with the partner's key ed25519:fcd9d6bf234efb3f
+      PASS  links: links.json is present with the digest and size the manifest names and is the closure the manifest counts — eye-customer-export-links/2: 17 claim versions, 8 edges, 7 entities, 0 excluded; 90434 bytes, 64438b55f22c5c91f99c6b953533cccd18576d2c26a7150f31440773e41c6ff3
+      PASS  links: every claim version's lineage names an exported record by (object_id, bytes digest); every edge names an included claim by (object_id, object_version), included entities and an exported record by (object_id, digest) — the closure is consistent by pair: 17 claim versions, 8 edges, 7 entities (eye-customer-export-links/2)
+      PASS  policy: the intake source is an active upload contract with confirmed rights and its ceiling admits the records — the intake source nordwerk-exchange-intake@1 is active with confirmed rights; ceiling internal: 4 records and 17 claim versions within it, 0 above it
+      PASS  duplicate: no live import of this package in this domain — no live import of package add983a3d310dc3758470dec0d4dd3ba661cafc1a25e4b7a9ee79f25872872d8 in this domain
+      PASS  revocation: the origin has not revoked the package and it has not expired — the origin's record of package add983a3d310dc3758470dec0d4dd3ba661cafc1a25e4b7a9ee79f25872872d8: unrevoked, expires 2026-09-23T12:18:55.988Z
+      note  origin exclusions: the items the origin excluded are recorded, not admitted — 0 items the origin excluded are recorded, not admitted (0 of the manifest, 0 of the closure)
+  ✓ the import 01a0aa27… opened from the station (delivery.json the exchange): VERIFIED — 16 checks (15 passed, 1 note); the package digest recomputed add983a3d310dc37… = E1's; the partner nordwerk-origin holds the key; 36 item(s) planned (record/staged, claim/staged, entity/staged, edge/staged)
+  ✓ the opener's own approval refused: 403 — "no qualifying role binding for action in resolved scope"
+  ✓ H. Bergmann approved on the package digest add983a3d310dc37…: state approved at 2026-09-16T12:18:56.698Z
+  ✓ the approver's own admission refused: 403 — "no qualifying role binding for action in resolved scope"
+  ✓ M. Keller admitted: ADMITTED at 2026-09-16T12:18:56.922Z after 1 attempt(s) — batches record ×4, claim ×17, graph ×15, finalize ×4; counts {"items":36,"reused":0,"staged":0,"by_kind":{"edge":{"admitted":8},"claim":{"admitted":17},"entity":{"admitted":7},"record":{"admitted":4}},"refused":0,"admitted":36,"excluded":0}
+  · the items: records 4 admitted; claim versions 17 admitted; entities 7 admitted; edges 8 admitted; identifiers ; origin exclusions 0
+      record 01a084f5-8b0f-7ca7-a269-c13a5c8cb411@1 → 01a0aa27-e627-78c8-ad6a-67fda1d11e81@1  admitted
+      record 01a084f5-8b4b-7c3c-8d99-a1231925340e@1 → 01a0aa27-e627-78c8-ad6a-68005b04d8a9@1  admitted
+      record 01a084f5-8bbe-7aa8-aa12-cf639434a479@1 → 01a0aa27-e627-78c8-ad6a-68036a9675e3@1  admitted
+      record 01a084f8-a311-709d-8167-16d16f076c30@1 → 01a0aa27-e627-78c8-ad6a-68062437cc97@1  admitted
+      claim  01a084f5-acd4-778d-bbed-ace735040041@1 → 01a0aa27-e627-78c8-ad6a-6809bb2fa2a1@1  admitted
+      claim  01a084f5-acd4-778d-bbed-ace89ea36b68@1 → 01a0aa27-e627-78c8-ad6a-680b18dd6069@1  admitted
+      claim  01a084f5-acd4-778d-bbed-ace9c45b5436@1 → 01a0aa27-e627-78c8-ad6a-680d0142a398@1  admitted
+      claim  01a084f5-acd4-778d-bbed-acea76fa62a8@1 → 01a0aa27-e627-78c8-ad6a-680ffe234da9@1  admitted
+      claim  01a084f5-acd4-778d-bbed-acebb24286f3@1 → 01a0aa27-e627-78c8-ad6a-68114e9f2e32@1  admitted
+      claim  01a084f5-acd4-778d-bbed-acec40888fc3@1 → 01a0aa27-e627-78c8-ad6a-6813d5f303e9@1  admitted
+      claim  01a084f5-acd4-778d-bbed-aced3d630808@1 → 01a0aa27-e627-78c8-ad6a-6815579cf667@1  admitted
+      claim  01a084f5-acd4-778d-bbed-acee9fc1e721@1 → 01a0aa27-e627-78c8-ad6a-68172cefcc31@1  admitted
+      claim  01a084f5-acf2-7b56-ae82-9e46511075bd@1 → 01a0aa27-e627-78c8-ad6a-68196dba580c@1  admitted
+      claim  01a084f5-acf2-7b56-ae82-9e475d0a9216@1 → 01a0aa27-e627-78c8-ad6a-681bfe144731@1  admitted
+      claim  01a084f5-acf2-7b56-ae82-9e48326e6ccb@1 → 01a0aa27-e627-78c8-ad6a-681dc4bfc80d@1  admitted
+      claim  01a084f5-acf2-7b56-ae82-9e497da01038@1 → 01a0aa27-e627-78c8-ad6a-681f7cfb5ce1@1  admitted
+      claim  01a084f5-acf2-7b56-ae82-9e4ac0252502@1 → 01a0aa27-e627-78c8-ad6a-6821b842a0b7@1  admitted
+      claim  01a084f5-acf2-7b56-ae82-9e4b21aa6bdd@1 → 01a0aa27-e627-78c8-ad6a-68234a2cc231@1  admitted
+      claim  01a084f5-acf2-7b56-ae82-9e4b21aa6bdd@2 → 01a0aa27-e627-78c8-ad6a-68234a2cc231@2  admitted
+      claim  01a084f5-acf2-7b56-ae82-9e4b21aa6bdd@3 → 01a0aa27-e627-78c8-ad6a-68234a2cc231@3  admitted
+      claim  01a084f5-acf2-7b56-ae82-9e4b21aa6bdd@4 → 01a0aa27-e627-78c8-ad6a-68234a2cc231@4  admitted
+  ✓ the map keeps the versions: C@1 → C'@1, C@2 → C'@2, C@3 → C'@3, C@4 → C'@4 under ONE new id 01a0aa27… — a new id per origin id, version numbers preserved (DP-47-003: identity recoverable through imported_from and this map)
+  · the import's events: opened → verified → approved → admission_started → batch_admitted → batch_admitted → batch_admitted → admitted → finalized (the admitted records' quarantine copies tombstoned: {"failed":[],"resumed":false,"locators":4,"tombstoned":4})
+  ✓ the import's receipt: receipt 01a0aa27… — verified true, package digest E1's, recipient "import:01a084f5-757f-7f03-9cf5-315d74426481/01a0aa27-e4d3-75d0-9802-9f0f19824587", verifier "the product (retention.import; the eye-customer-export/2 checks in process)" (the importer's record of the exchange; ES-08-004)
+  ✓ the host: custody.imported 4 row(s) for this import (one per admitted record); 4 manifest(s) in the mirror under the intake contract nordwerk-exchange-intake@1
+  ✓ U. Fischer downloaded the imported record 01a0aa27… through the mirror's evidence route: 338 bytes, integrity verified, sha256 = the origin record's bytes digest b705ff8799300387…; custody.retrieved names the intake contract nordwerk-exchange-intake@1
+  ✓ the mirror's graph: 1 edge(s) visible now; the edge(s) on C' 01a0aa27… in the ledger: 01a0aa27… → C'@1 (superseded), 01a0aa27… → C'@2 (superseded), 01a0aa27… → C'@3 (superseded), 01a0aa27… → C'@4 (asserted) — graph/edges/list shows 01a0aa27… claim_version 4
+  ✓ the mirror's entities: MV Hanse Trader (vessel); NORDWERK ANTRIEBSTECHNIK GmbH (organization); SYN-PART-BRG (product); SYN-PART-MAG (product); SYN-PART-PWR (product); SYN-SHIP-4468 (asset); Suez (place)
+
+5. THE RE-EXPORT E2 FROM THE MIRROR — M. Keller exports the imported manifests; H. Bergmann approves; executed; verified; the customer's round-trip tool on E1, E2 and the import's record
+  ✓ export E2 01a0aa27… from the mirror: 4 record(s), 2079 bytes — opened by M. Keller, approved by H. Bergmann, executed and verified; signed by ed25519:fcd9d6bf234efb3f (the tenant's key signs both domains' packages)
+      round trip: origin /Users/halawany/work/personal/mohammed/new_project/.eye-local/vault/export/01a084f5-757f-7f03-9cf5-315d74426481/01a084f5-759a-751f-a1dd-38fbd7933057/01a0aa27-d794-7478-81fc-b407ba85f1b4 → re-export /Users/halawany/work/personal/mohammed/new_project/.eye-local/vault/export/01a084f5-757f-7f03-9cf5-315d74426481/01a0aa27-e4d3-75d0-9802-9f0f19824587/01a0aa27-e77d-73b4-8699-d53787e854fd (map /var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-act-b16-cxEGGl/import-01a0aa27-e5df-731f-a330-2ab285314bcf.json)
+        PASS  origin: the customer's verifier passes on the origin package — package digest add983a3d310dc3758470dec0d4dd3ba661cafc1a25e4b7a9ee79f25872872d8; closure eye-customer-export-links/2; signature verified (ed25519:fcd9d6bf234efb3f)
+        PASS  re-export: the customer's verifier passes on the re-exported package — package digest dfcff4ef9f4da5bf23b358cd1017e1af60dbc823ef8e5fa1b5d05fe8c67ec844; closure eye-customer-export-links/2; signature verified (ed25519:fcd9d6bf234efb3f)
+        PASS  map: --map is an import record with its items — 36 item(s); import 01a0aa27-e5df-731f-a330-2ab285314bcf; state admitted
+        PASS  map: the import's recorded package digest is the origin package's (the map is THIS package's import) — add983a3d310dc3758470dec0d4dd3ba661cafc1a25e4b7a9ee79f25872872d8
+        PASS  records: every origin record is carried under its mapped id with the same version and bytes, or accounted for by the import — 4 carried
+        PASS  provenance and headers: imported_from recovers each origin identity; the header preserved field by field, the rule-set fields by their rules; the payload the origin's remapped — every carried record
+        PASS  claim versions: every origin claim version is carried under its mapped id with the SAME version (never renumbered), its header, payload and lineage row preserved, or accounted for — 17 carried (eye-customer-export-links/2 in the re-export)
+        PASS  edges: every origin edge is carried under its mapped id with the same predicate, validity, state, instants, confidence, mode, run and method, its ends and its claim PAIR mapped (the version equal), or accounted for — 8 carried
+        PASS  entities: every origin entity is carried under its mapped id with the same type, name, lifecycle and identifiers (a reused one with at least the origin's identifiers), or accounted for — 7 carried
+      ROUND TRIP OK: 4 records, 17 claim versions, 8 edges, 7 entities; identities recoverable
+  ✓ the customer's round-trip tool (scripts/retention/compare-round-trip.mjs): ROUND TRIP OK: 4 records, 17 claim versions, 8 edges, 7 entities; identities recoverable — the bytes unchanged, the headers preserved, the provenance recovering every origin identity, the claim versions never renumbered, the edges on their exact versions (DP-47-006 "round-trip fixtures" as a tool the customer runs)
+  ✓ E2's closure (eye-customer-export-links/2): C' 01a0aa27… listed as C'@1 and C'@2 and C'@3 and C'@4; the edge(s) on C': 01a0aa27… → C'@4 (asserted), 01a0aa27… → C'@3 (superseded), 01a0aa27… → C'@2 (superseded), 01a0aa27… → C'@1 (superseded) — the edge rests on version 3 in the mirror as it did in the origin
+  ✓ payload.imported_from on E2's first record: format eye-import-provenance/1, import 01a0aa27…, partner nordwerk-origin, the origin package 01a0aa27… (digest add983a3d310…, signed ed25519:fcd9d6bf234efb3f), the origin object 01a084f5…@1 (EVD@v1, canonical digest 0778691c6ef3…), the original 43-field header and payload verbatim — the identity recovered from the record itself
+
+6. HELD RECIPIENTS — a one-record export E3 delivered to the station; the recipient answers with a WRONG DIGEST: MISMATCHED; a delivery to the production destination: credential_unbound; the revocation notifies the station (held: confirmed), not the production destination
+  ✓ export E3 01a0aa27…: 1 record — opened, approved, executed and verified; archive digest 5af7cd9cbd4b85d9…
+  ✓ H. Bergmann delivered E3 to the station: delivery 46c39bf1… attempt 1 — delivered
+      [demonstration recipient] THIS IS THE DEMONSTRATION RECIPIENT: it stands in for the customer's own system on the demonstration's isolated transfer station
+      [demonstration recipient] station directory /Users/halawany/work/personal/mohammed/new_project/.eye-local/transfer-station-demo/01a084f5-757f-7f03-9cf5-315d74426481/01a084f5-759a-751f-a1dd-38fbd7933057/01a0aa27-e932-7125-96ec-48b59fe050a9
+      [demonstration recipient] delivery 46c39bf1-a177-429d-ac3a-9f33d019b39b attempt 1 of action 01a0aa27-e932-7125-96ec-48b59fe050a9 to nordwerk-transfer-station for "NORDWERK GmbH — demonstration transfer station", delivered at 2026-09-16T12:18:58.413Z, the package expires at 2026-09-23T12:18:58.378Z
+      [demonstration recipient] the note says: package digest fd30e1f1e9d4228fdeae3d11673a1bda5d632f32278d2f523cbefe8340bf0a2e, archive digest 5af7cd9cbd4b85d9c13c6ae3f6c291e3fca8182343b4ee7c8505970ad953295a, signature eye-customer-export/2 by ed25519:fcd9d6bf234efb3f
+      [demonstration recipient] package.tar: 53248 bytes, sha256 5af7cd9cbd4b85d9c13c6ae3f6c291e3fca8182343b4ee7c8505970ad953295a — the archive digest the note names
+      [demonstration recipient] verifier: node scripts/retention/verify-export.mjs --tar /Users/halawany/work/personal/mohammed/new_project/.eye-local/transfer-station-demo/01a084f5-757f-7f03-9cf5-315d74426481/01a084f5-759a-751f-a1dd-38fbd7933057/01a0aa27-e932-7125-96ec-48b59fe050a9/package.tar --json --public-key /Users/halawany/work/personal/mohammed/new_project/.eye-local/export-signing-demo.pub.pem --expect-package-digest fd30e1f1e9d4228fdeae3d11673a1bda5d632f32278d2f523cbefe8340bf0a2e
+      [demonstration recipient] verifier verdict: PACKAGE OK (exit 0; 0 failed; complete true); signature eye-customer-export/2 ed25519:fcd9d6bf234efb3f: VERIFIED against the public key
+      [demonstration recipient] --wrong-digest: the receipt names the archive digest with its first byte flipped (a5f7cd9cbd4b85d9… for 5af7cd9cbd4b85d9…) — the product records the exchange as MISMATCHED; the station still HOLDS the package
+      [demonstration recipient] receipt.json written: receipt c1a982bc-e4d3-4248-97e2-209a3a08e145 for delivery 46c39bf1-a177-429d-ac3a-9f33d019b39b attempt 1 — verified true (control mode wrong-digest)
+      [demonstration recipient] the product collects it with the collect-receipt act (the exchange closes ACKNOWLEDGED when the digests agree and verified is true; MISMATCHED otherwise)
+  ✓ the demonstration recipient answered with the archive digest's first byte flipped (control mode wrong-digest; verifier verdict OK beside it); H. Bergmann collected: MISMATCHED — export.mismatched carries both sides; the receipt kept on the delivery row (the package REACHED the station: a mismatched receipt proves it — Codex B14-F1)
+  ✓ a delivery to the production destination nordwerk-exports: FAILED credential_unbound before any egress (the reference EYE_DST_NORDWERK is unbound on this host) — nothing is known to have reached it
+  ✓ H. Bergmann revoked E3: the destinations that HOLD the package: nordwerk-transfer-station (delivery 46c39bf1… attempt 1, mismatched; held: confirmed) — the station notified (notice c3696a1d… attempt 1, notified); nordwerk-exports absent: nothing reached it
+  ✓ a notice to nordwerk-exports: 409 — "retention notice rejected: destination nordwerk-exports never received the package of 01a0aa27-e932-7125-96ec-48b59fe050a9 — nothing is known to have reached it (credential unbound, the egress refused before connecting, the name unresolved or the TLS handshake failed); nothing to notify" (the refusal says what is proven, not what is assumed)
+      [demonstration recipient] THIS IS THE DEMONSTRATION RECIPIENT answering a REVOCATION NOTICE: it stands in for the customer's own system on the demonstration's isolated transfer station
+      [demonstration recipient] station directory /Users/halawany/work/personal/mohammed/new_project/.eye-local/transfer-station-demo/01a084f5-757f-7f03-9cf5-315d74426481/01a084f5-759a-751f-a1dd-38fbd7933057/01a0aa27-e932-7125-96ec-48b59fe050a9
+      [demonstration recipient] notice c3696a1d-e732-4ed2-802d-767fe5269301 attempt 1: the package fd30e1f1e9d4228fdeae3d11673a1bda5d632f32278d2f523cbefe8340bf0a2e of action 01a0aa27-e932-7125-96ec-48b59fe050a9 was REVOKED at 2026-09-16T12:18:58.654Z — "the customer withdrew its request; every copy is to be destroyed (the B16 demonstration of held recipients)"; it concerns delivery 46c39bf1-a177-429d-ac3a-9f33d019b39b (the delivery this station holds)
+      [demonstration recipient] the obligation: the package is revoked: destroy every copy of package.tar and of its contents held from this delivery, and confirm
+      [demonstration recipient] copies destroyed: none here (package.tar, package.sig already gone — the product removed what it placed here)
+      [demonstration recipient] revocation-receipt.json written: receipt 602dfe27-959d-4c10-8b2b-b8c460c84e97 for notice c3696a1d-e732-4ed2-802d-767fe5269301 — copies_destroyed true
+      [demonstration recipient] the product collects it with the collect-receipt act of the notice (ACKNOWLEDGED when it names the package digest and copies_destroyed is true; MISMATCHED otherwise)
+  ✓ the demonstration recipient answered the notice (the product had removed its copies); H. Bergmann collected: ACKNOWLEDGED at 2026-09-16T12:18:58.781Z
+  ✓ the delivery ledger after the revocation: nordwerk-transfer-station attempt 1 mismatched; nordwerk-exports attempt 1 failed (credential_unbound) — the mismatched receipt still on the station's delivery row (archive digest a5f7cd9cbd4b… ≠ 5af7cd9cbd4b…; control mode wrong-digest recorded in it): the evidence preserved (DP-47-005)
+
+7. THE STATE — and the two stated limits
+  · import 01a0aa27… — admitted; origin action 01a0aa27…; partner 01a0aa27…; opened 2026-09-16T12:18:56.681Z, admitted 2026-09-16T12:18:56.922Z; counts {"items":36,"reused":0,"staged":0,"by_kind":{"edge":{"admitted":8},"claim":{"admitted":17},"entity":{"admitted":7},"record":{"admitted":4}},"refused":0,"admitted":36,"excluded":0}
+  · import 01a0aa27… — quarantined; origin action 01a0aa27…; partner none; opened 2026-09-16T12:18:56.589Z; counts {"edges":0,"claims":0,"stored":1,"drained":5,"entries":6,"records":4,"entities":0,"oversize":0,"exclusions":0,"identifiers":0,"identifier_systems":0}
+  · partner nordwerk-origin — key ed25519:fcd9d6bf234efb3f; intake 01a0aa27…@1; active
+  · export E1 01a0aa27…: package.links {"file":"links.json","links_digest":"64438b55f22c5c91f99c6b953533cccd18576d2c26a7150f31440773e41c6ff3","byte_length":90434,"format":"eye-customer-export-links/2","claims":17,"edges":8,"entities":7,"excluded":0}; deliveries nordwerk-transfer-station attempt 1 acknowledged
+  · export E2 01a0aa27… from the mirror: 4 record(s), package digest dfcff4ef9f4da5bf…
+  · STATED LIMIT 1: the INLINE intake (the archive as base64 inside the governed payload) is bounded over the real listener by its JSON body limit — Nest's express default of 100 KiB, not changed by B16 — so the act imported from the TRANSFER STATION, which the product reads entry by entry; the customer's tool (scripts/retention/import-package.mjs open --file) measures the governed body and refuses one above the limit before sending it, naming the station path to use instead; the inline path is the harness's (phase6-retention-b16 I1, the controller driven in process)
+  · STATED (the revocation check): check 14 is decided on the origin's own export ledger only when the origin is THIS installation — as here, the mirror being a second domain of the tenant; for a foreign origin the check is a NOTE on the sender's unsigned exchange statement (delivery.json), never a pass on unsigned data, and the origin's revocation reaches this domain only through its partner's notice; the origin's revocation of a package already ADMITTED is not propagated into the importing domain (remaining work, stated in the records)
+  · STATED LIMIT 2: the positive https exchange — a delivery acknowledged over TLS, the held classification of a mismatched https receipt, a notice retried — remains the harness's (phase6-retention-b14 H1–H3, phase6-retention-b16 R1): the demonstration's egress refuses every loopback and private address by design, so its https destinations record FAILED transport/credential_unbound with nothing sent; a delivery through the production egress needs a recipient on a public address — the activation step
+
+WHAT THE DEMONSTRATION SHOWED: a relationship corrected into a second version and exported as EXACT versions with the edge on the version it rests on; the closure's counterexample caught by the customer's pair check and the rebase by the signature; a second domain of the tenant admitting the origin's signed package through the two-person gate — quarantined while no partner held the key, verified once the partner was declared, approved on the digest, admitted under new ids with the origin identity recoverable from every record and from the import's map; the same records re-exported from the mirror and the customer's round-trip tool proving the trip; a mismatched station receipt counted as a HELD copy at the revocation and the production destination that nothing reached left out, with the refusal saying so.
+WHAT THE HARNESS ALONE PROVES (phase6-retention-b16 on a fresh database): the inline intake through the controller; the refusals with the evidence preserved (a key no partner holds, a flipped record, a tampered closure, a chain-only package, a record above the intake ceiling, an edge naming a version not carried, a duplicate, a revoked origin, a withdrawn import); a 272 MB package imported from the station in constant memory (a sampled measurement); the https recipient's held classifications (mismatched, receipt_invalid, a 500 answer, a redirect after the body) and the pre-egress refusals that are not recipients; the entity reuse by authoritative identifier; the projection rebuild without drift. STATED, NOT DONE: a foreign installation as the partner (the activation step); subscribers do not learn of imported knowledge (the next batch).
+
+ALL SCENES HELD
+
+=== exit 0 — 2026-09-16T12:18:58Z ===

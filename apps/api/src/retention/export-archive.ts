@@ -24,6 +24,11 @@ export const EXPORT_ARCHIVE_MAX_BYTES = 256 * 1024 * 1024;
  * (the ustar size field admits 8 GiB per ENTRY — an object above it is refused by name, as the octal field is).
  */
 export const EXPORT_STREAM_MAX_BYTES = 64 * 1024 * 1024 * 1024;
+/**
+ * B16 (D4): the ceiling of an INLINE import intake — the tar carried base64 inside the governed payload, decoded before the write
+ * (the controller refuses a larger one as 422); a larger package comes in from a transfer station, read entry by entry.
+ */
+export const IMPORT_INLINE_MAX_BYTES = 64 * 1024 * 1024;
 
 const BLOCK = 512;
 const MAGIC = 'ustar\0';
@@ -229,4 +234,145 @@ export function ustarStream(entries: StreamEntry[], mtimeSeconds: number): { str
 
 export function archiveDigestOf(tar: Buffer): string {
   return createHash('sha256').update(tar).digest('hex');
+}
+
+/**
+ * B16 (D4, §3.1): an entry of a SCANNED archive — its name, its declared size and typeflag, and its bytes as an async iterable that
+ * yields exactly `size` bytes in order. The body is consumed BEFORE the next entry is yielded: the scan is one pass over the source
+ * in constant memory, so a consumer that asks for the next entry without reading a body finds that body drained (read and hashed,
+ * never held). `regular` is what the typeflag says ('0' or NUL): only a regular file is a package file.
+ */
+export interface ScannedEntry { name: string; size: number; typeflag: string; regular: boolean; body: AsyncIterable<Buffer> }
+
+/**
+ * B16 (D4): the customer verifier's `scanUstarFile` (scripts/retention/verify-export.mjs) as a STREAM SCANNER, re-implemented without
+ * a dependency and by the same rules, so the product reads an inbound package exactly as the customer's tool does: 512-byte headers,
+ * the magic `ustar` at 257, the checksum recomputed and accepted unsigned or signed, the size in octal, the prefix joined when the
+ * version is `00`, the typeflag at 156 (regular is '0' or NUL — another kind is yielded and left to the caller), an entry that runs past
+ * the end of the source, a name that appears twice, a lone zero block, non-zero bytes after the two-block trailer and a source that
+ * ends without the trailer, each a MALFORMED archive: one `ExportArchiveError('malformed', …)` thrown from the entries generator (and
+ * from `digest()`/`size()`), the scan stopped where it was, nothing invented. The sha256 and the byte count accumulate over EVERY byte
+ * read — the headers, the bodies, the padding and the trailer — so an archive of any size digests in constant memory and the digest is
+ * known when the entries are exhausted: `digest()` and `size()` resolve after the trailer has been read and the remainder verified.
+ */
+export function scanUstarStream(source: Readable): { entries: AsyncGenerator<ScannedEntry>; digest: () => Promise<string>; size: () => Promise<number> } {
+  const hash = createHash('sha256');
+  let total = 0;
+  let done: { digest: string; size: number } | null = null; let failure: Error | null = null;
+  const waiters: Array<{ resolve: (d: { digest: string; size: number }) => void; reject: (e: Error) => void }> = [];
+  const settled = (): Promise<{ digest: string; size: number }> => new Promise((resolve, reject) => {
+    if (done !== null) resolve(done); else if (failure !== null) reject(failure); else waiters.push({ resolve, reject });
+  });
+  const malformed = (message: string): ExportArchiveError => new ExportArchiveError('malformed', message);
+
+  // THE READER: the source's chunks, pulled as needed and never ahead of need; every byte handed out is hashed and counted here, once.
+  const iterator = source[Symbol.asyncIterator]();
+  let pending: Buffer = Buffer.alloc(0);
+  let ended = false;
+  const pull = async (): Promise<boolean> => {
+    if (ended) return false;
+    const next = await iterator.next();
+    if (next.done === true) { ended = true; return false; }
+    const chunk = Buffer.isBuffer(next.value) ? next.value : Buffer.from(next.value as Uint8Array);
+    if (chunk.byteLength === 0) return pull();
+    pending = pending.byteLength === 0 ? chunk : Buffer.concat([pending, chunk]);
+    return true;
+  };
+  /** Up to `n` bytes (fewer at the end of the source), hashed and counted; an empty buffer at the end. */
+  const take = async (n: number): Promise<Buffer> => {
+    while (pending.byteLength < n && (await pull())) { /* filled */ }
+    const out = pending.subarray(0, Math.min(n, pending.byteLength));
+    pending = pending.subarray(out.byteLength);
+    hash.update(out); total += out.byteLength;
+    return out;
+  };
+  /** Exactly `n` bytes, or the truncation error the verifier raises. */
+  const exact = async (n: number, what: () => string): Promise<Buffer> => {
+    const parts: Buffer[] = []; let got = 0;
+    while (got < n) {
+      const piece = await take(n - got);
+      if (piece.byteLength === 0) throw malformed(what());
+      parts.push(Buffer.from(piece)); got += piece.byteLength;
+    }
+    return parts.length === 1 ? (parts[0] as Buffer) : Buffer.concat(parts);
+  };
+  const isZero = (b: Buffer): boolean => { for (let i = 0; i < b.byteLength; i += 1) if (b[i] !== 0) return false; return true; };
+  const field = (b: Buffer, o: number, n: number): string => { const end = b.indexOf(0, o); const stop = end < 0 || end > o + n ? o + n : end; return b.toString('utf8', o, stop); };
+  const octal = (b: Buffer, o: number, n: number, what: string, at: number): number => {
+    const t = field(b, o, n).replace(/[\s\0]+$/, '').trimStart();
+    if (!/^[0-7]+$/.test(t)) throw malformed(`${what} at offset ${at + o} is not octal (${JSON.stringify(t)})`);
+    return parseInt(t, 8);
+  };
+
+  let bodyRemaining = 0; let bodyPad = 0; let bodyName = '';
+  /** The rest of the current entry's body and its padding, read and hashed; a body the consumer did not finish is drained here. */
+  const finishBody = async (): Promise<void> => {
+    while (bodyRemaining > 0) {
+      const piece = await take(Math.min(bodyRemaining, 4 * 1024 * 1024));
+      if (piece.byteLength === 0) throw malformed(`the entry ${JSON.stringify(bodyName)} needs ${bodyRemaining} more byte(s); the archive is truncated`);
+      bodyRemaining -= piece.byteLength;
+    }
+    if (bodyPad > 0) { await exact(bodyPad, () => `the padding of ${JSON.stringify(bodyName)} runs past the end of the archive; the archive is truncated`); bodyPad = 0; }
+  };
+  async function* body(name: string, size: number): AsyncGenerator<Buffer> {
+    while (bodyRemaining > 0) {
+      const piece = await take(Math.min(bodyRemaining, 4 * 1024 * 1024));
+      if (piece.byteLength === 0) throw malformed(`the entry ${JSON.stringify(name)} needs ${bodyRemaining} more byte(s) of its ${size}; the archive is truncated`);
+      bodyRemaining -= piece.byteLength;
+      yield Buffer.from(piece);
+    }
+  }
+
+  async function* entries(): AsyncGenerator<ScannedEntry> {
+    const names = new Set<string>();
+    let off = 0;
+    try {
+      for (;;) {
+        await finishBody();
+        const h = await take(BLOCK);
+        if (h.byteLength === 0) {
+          if (off === 0) throw malformed('the archive is empty');
+          throw malformed(`the archive ends at ${off} byte(s) without the two-block end-of-archive trailer`);
+        }
+        if (h.byteLength < BLOCK) throw malformed(`the archive is truncated at offset ${off} (${h.byteLength} of ${BLOCK} byte(s) read)`);
+        if (isZero(h)) {
+          const h2 = await take(BLOCK);
+          if (h2.byteLength < BLOCK || !isZero(h2)) throw malformed(`a single zero block at offset ${off} is not the two-block end-of-archive trailer`);
+          // Whatever follows the trailer must be zero padding (the verifier's rule); it is read and hashed, never kept.
+          for (;;) {
+            const rest = await take(4 * 1024 * 1024);
+            if (rest.byteLength === 0) break;
+            if (!isZero(rest)) throw malformed(`byte(s) after the end-of-archive trailer at offset ${off} are not zero padding`);
+          }
+          done = { digest: hash.digest('hex'), size: total };
+          for (const w of waiters) w.resolve(done);
+          waiters.length = 0;
+          return;
+        }
+        const header = Buffer.from(h);
+        if (header.toString('latin1', 257, 262) !== 'ustar') throw malformed(`no ustar magic in the header at offset ${off}`);
+        const recorded = octal(header, 148, 8, 'the header checksum', off);
+        let unsigned = 0; let signed = 0;
+        for (let i = 0; i < BLOCK; i += 1) { const b = i >= 148 && i < 156 ? 0x20 : (header[i] as number); unsigned += b; signed += b > 127 ? b - 256 : b; }
+        if (recorded !== unsigned && recorded !== signed) throw malformed(`the header checksum at offset ${off} does not add up (recorded ${recorded}, computed ${unsigned})`);
+        const version = header.toString('latin1', 263, 265);
+        const prefix = version === '00' ? field(header, 345, 155) : '';
+        const name = prefix.length > 0 ? `${prefix}/${field(header, 0, 100)}` : field(header, 0, 100);
+        const size = octal(header, 124, 12, `the size of ${JSON.stringify(name)}`, off);
+        const typeflag = header[156] as number;
+        if (names.has(name)) throw malformed(`the entry ${JSON.stringify(name)} appears twice`);
+        names.add(name);
+        bodyName = name; bodyRemaining = size; bodyPad = (BLOCK - (size % BLOCK)) % BLOCK;
+        const entry: ScannedEntry = { name, size, typeflag: typeflag === 0 ? '\\0' : String.fromCharCode(typeflag), regular: typeflag === 0x30 || typeflag === 0, body: body(name, size) };
+        off += BLOCK + size + bodyPad;
+        yield entry;
+      }
+    } catch (e) {
+      failure = e instanceof Error ? e : new Error(String(e));
+      for (const w of waiters) w.reject(failure);
+      waiters.length = 0;
+      throw failure;
+    }
+  }
+  return { entries: entries(), digest: () => settled().then((d) => d.digest), size: () => settled().then((d) => d.size) };
 }

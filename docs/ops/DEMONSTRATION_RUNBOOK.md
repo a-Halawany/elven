@@ -173,3 +173,32 @@ demonstration recipient answers with `node scripts/retention/transfer-station-re
 `POST …/actions/<id>/export/revocation-notices/<notice id>/collect-receipt`; a further notice by
 `POST …/actions/<id>/export/revocation-notices { destinationKey }`.
 
+
+**The governed import and the exchange mirror (B16, 2026-09-16).** The demonstration now holds a SECOND DOMAIN of the tenant,
+`NORDWERK Exchange Mirror (SYNTHETIC)` (created by the act through `POST /v1/tenants/<T>/domains`; idempotent by name), with its own
+personas — `m.keller` (retention_steward of the mirror) and `u.fischer` (collection_manager of the mirror), each with a session credential
+of its own — the intake source contract `nordwerk-exchange-intake@1` (an upload contract, active, rights confirmed, ceiling `internal`,
+residency EU: the contract every imported manifest is recorded under; its ceiling is the import's policy gate), the transfer station
+declared in the mirror as `nordwerk-transfer-station` (the SAME directory the origin domain delivers to — the disconnected path, read
+entry by entry), and the EXCHANGE PARTNER `nordwerk-origin`: the origin's public key (`.eye-local/export-signing-demo.pub.pem`; a partner
+IS a key — the public material only — with an intake contract) declared by the administrator through
+`POST …/retention/partners/declare { partnerKey, party, purpose, publicKeyPem, intakeSourceId, intakeContractVersion }`
+(`…/partners/list`, `…/partners/<id>/retire { reason }`). An import is opened by the mirror's steward from the station —
+`POST …/retention/imports/open { source: { kind: 'station', destinationKey, origin: { tenantId, domainId, actionId } } }` — or inline
+(`{ kind: 'inline', base64, exchange? }`; over the real listener the inline body is bounded by the JSON body limit, 100 KiB — the
+customer's tool `node scripts/retention/import-package.mjs` states it), verified by sixteen ordered checks (printed by the act), approved
+by a SECOND principal on the package digest (`…/imports/<id>/approve { packageDigest, rationale }` — H. Bergmann, the tenant's
+retention authority; never the opener), admitted by the steward (`…/imports/<id>/admit`; never the approver) — every record, claim
+version, entity and edge under a NEW id with the origin identity in `payload.imported_from`, the import's item map recording
+`origin id@version → new id@version` — or withdrawn (`…/imports/<id>/withdraw { reason }`; its quarantine copies tombstoned; `…/imports/<id>/get`, `…/imports/list`). The
+customer's round-trip tool compares the origin package, the re-export and the import's record:
+`node scripts/retention/compare-round-trip.mjs --origin <E1 dir> --reexport <E2 dir> --map <the import's GET as JSON>`. A quarantined
+import's kept entries live under the quarantine vault root and are swept by the sweeper after the quarantine TTL. **What the act leaves:**
+the mirror domain with its personas, contract, station and partner; the corrected claim version (C@4) in the origin; the admitted import
+with its receipt and the four imported manifests in the mirror (`custody.imported`); the re-export E2 from the mirror; the quarantined
+pre-partner import; E3 revoked with the station's mismatched receipt kept on its delivery row. **Two stated limits:** the round trip is
+within one installation (a second domain of the tenant) — a foreign installation is the activation step (the other side's public key
+declared as the partner; the station or an https destination in between); the positive https exchange remains the harness's (§B14).
+**The signing-key binding:** the build refuses (`signing_key_mismatch`, paused for retry, nothing built) when the reference bound in the
+process derives a key other than the tenant's declared active key — a rehearsal on a restored copy that binds its own key must therefore
+retire the copy's key row and declare its own (by SQL on the copy, as the rehearsal script does), never by touching the demonstration's.

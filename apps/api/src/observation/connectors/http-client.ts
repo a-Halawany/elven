@@ -25,6 +25,13 @@
  * 3xx answer to a delivery is a refusal, never a second POST elsewhere). It reuses
  * the URL check, the resolve-then-connect pinning, the TLS agent and the response
  * reader of `egress()`, whose own behaviour is unchanged.
+ *
+ * CP-6 B16 (C1, Codex B14-F1): a refusal says WHAT IS PROVEN about the wire. `once()` records whether the request — headers
+ * and body — was fully flushed (the request's 'finish' event) and every `EgressRefused` it raises after the request exists
+ * carries that fact as `requestSent`; a delivery answered with a 3xx carries the answer's `status` too. A timeout, a transport
+ * failure or an oversize answer AFTER the body left the process is a window in which the destination may hold the bytes; a
+ * refusal before the connection (the address, the name, the handshake) with the body unsent proves nothing reached. The
+ * ledger classifies a held recipient from these facts, never from the failure class alone.
  */
 import { Agent, request as httpsRequest } from 'node:https';
 import { lookup as dnsLookup } from 'node:dns/promises';
@@ -67,8 +74,19 @@ export type EgressRefusalClass =
   | 'transport_failure';
 
 export class EgressRefused extends Error {
-  constructor(readonly refusalClass: EgressRefusalClass, message: string) {
+  /**
+   * B16 (C1): whether the request had been fully flushed (the 'finish' event) when the refusal was raised — true: the bytes
+   * left the process and the destination MAY hold them; false: they did not; absent: raised before a request existed (the
+   * URL, the name, the address), so nothing left.
+   */
+  declare readonly requestSent?: boolean;
+  /** B16 (C1): the status the destination answered, when the refusal is an answer (`redirect_not_followed`: the 3xx). */
+  declare readonly status?: number;
+  // `declare`: the two facts exist on the instance only when they were established (no define of an undefined field).
+  constructor(readonly refusalClass: EgressRefusalClass, message: string, facts?: { requestSent?: boolean; status?: number }) {
     super(message);
+    if (facts?.requestSent !== undefined) this.requestSent = facts.requestSent;
+    if (facts?.status !== undefined) this.status = facts.status;
   }
 }
 
@@ -83,6 +101,8 @@ export interface EgressResult {
   originAllowlisted: boolean;
   pinnedAddress: string;
   retryAfterSeconds: number | null;
+  /** B16 (C1): an answer was read in full, so the request had left the process — the fact the delivery ledger records beside the status. */
+  requestSent: true;
 }
 
 /** Response headers worth preserving as transport evidence. Nothing else is kept. */
@@ -305,6 +325,7 @@ export async function egress(req: EgressRequest): Promise<EgressResult> {
       originAllowlisted: true,
       pinnedAddress: pinned,
       retryAfterSeconds: parseRetryAfter(res.headers['retry-after']),
+      requestSent: true,
     };
   }
   throw new EgressRefused('too_many_redirects', 'redirect chain exhausted');
@@ -362,7 +383,9 @@ export async function deliverPinned(req: DeliveryRequest, pinnedAddress: string)
   const res = await once(target, pinnedAddress, headers, policy, { method: 'POST', body: req.body });
   const hops: EgressResult['hops'] = [{ urlRedacted: redactUrl(target.toString()), status: res.status, credentialsCarried: req.credentials?.authorization !== undefined }];
   if (res.status >= 300 && res.status < 400) {
-    throw new EgressRefused('redirect_not_followed', `a delivery is not redirected (the destination answered ${res.status})`);
+    // B16 (C1): the destination ANSWERED — with the body flushed or not (a 3xx sent before it was read) — and the answer's status is
+    // recorded with what was sent: a redirect after the body is a window the ledger classifies as a possible holder.
+    throw new EgressRefused('redirect_not_followed', `a delivery is not redirected (the destination answered ${res.status})`, { requestSent: res.requestSent, status: res.status });
   }
   return {
     status: res.status,
@@ -374,6 +397,7 @@ export async function deliverPinned(req: DeliveryRequest, pinnedAddress: string)
     originAllowlisted: true,
     pinnedAddress,
     retryAfterSeconds: parseRetryAfter(res.headers['retry-after']),
+    requestSent: true,
   };
 }
 
@@ -389,11 +413,20 @@ interface RawResponse {
   status: number;
   headers: Record<string, string>;
   body: Buffer;
+  /** B16 (C1): whether the request had been fully flushed when the answer was read (a server may answer before it reads the body). */
+  requestSent: boolean;
 }
 
-/** One hop. B13 (C17): a method and a body for the delivery form; the GET form passes neither and behaves as it always has. */
+/**
+ * One hop. B13 (C17): a method and a body for the delivery form; the GET form passes neither and behaves as it always has.
+ * B16 (C1): `requestSent` — false until the request's 'finish' event (headers and body flushed to the socket), then true — is
+ * carried on every refusal raised once the request exists (the timeout, a transport or TLS failure, an oversize or undecodable
+ * answer) and on the answer, so a failure's record says whether the bytes had left the process.
+ */
 function once(url: URL, pinnedAddress: string, headers: Record<string, string>, policy: EgressPolicy, opts?: { method?: 'GET' | 'POST'; body?: Buffer | { stream: Readable; length: number } }): Promise<RawResponse> {
   return new Promise<RawResponse>((resolvePromise, reject) => {
+    let requestSent = false;
+    const refused = (cls: EgressRefusalClass, message: string): EgressRefused => new EgressRefused(cls, message, { requestSent });
     // The AGENT connects to the PINNED address; `servername` keeps SNI and
     // certificate verification bound to the real hostname, so pinning the address
     // does not weaken TLS identity in the slightest.
@@ -433,7 +466,7 @@ function once(url: URL, pinnedAddress: string, headers: Record<string, string>, 
         const declared = Number(res.headers['content-length'] ?? NaN);
         if (Number.isFinite(declared) && declared > policy.maxResponseBytes) {
           res.destroy();
-          reject(new EgressRefused('response_too_large', 'declared response length exceeds the contract budget'));
+          reject(refused('response_too_large', 'declared response length exceeds the contract budget'));
           return;
         }
 
@@ -453,7 +486,7 @@ function once(url: URL, pinnedAddress: string, headers: Record<string, string>, 
           raw += c.length;
           // The WIRE budget is enforced whether or not a length was declared.
           if (raw > policy.maxResponseBytes) {
-            fail(new EgressRefused('response_too_large', 'response exceeded the contract byte budget'));
+            fail(refused('response_too_large', 'response exceeded the contract byte budget'));
             return;
           }
           if (decoder === null) { chunks.push(c); decoded = raw; }
@@ -466,28 +499,31 @@ function once(url: URL, pinnedAddress: string, headers: Record<string, string>, 
             // expands past the ceiling is a compression bomb, not a large download.
             if (decoded > policy.maxDecompressedBytes) {
               decoder.destroy();
-              fail(new EgressRefused('decompressed_too_large', 'decompressed response exceeded the contract budget'));
+              fail(refused('decompressed_too_large', 'decompressed response exceeded the contract budget'));
               return;
             }
             chunks.push(c);
           });
-          decoder.on('error', () => fail(new EgressRefused('transport_failure', 'response could not be decoded')));
-          decoder.on('end', () => resolvePromise({ status: res.statusCode ?? 0, headers: kept, body: Buffer.concat(chunks) }));
+          decoder.on('error', () => fail(refused('transport_failure', 'response could not be decoded')));
+          decoder.on('end', () => resolvePromise({ status: res.statusCode ?? 0, headers: kept, body: Buffer.concat(chunks), requestSent }));
         } else {
-          res.on('end', () => resolvePromise({ status: res.statusCode ?? 0, headers: kept, body: Buffer.concat(chunks) }));
+          res.on('end', () => resolvePromise({ status: res.statusCode ?? 0, headers: kept, body: Buffer.concat(chunks), requestSent }));
         }
-        res.on('error', () => fail(new EgressRefused('transport_failure', 'response stream failed')));
+        res.on('error', () => fail(refused('transport_failure', 'response stream failed')));
       },
     );
-    r.on('timeout', () => { r.destroy(); reject(new EgressRefused('timeout', 'request exceeded the contract timeout')); });
+    // B16 (C1): 'finish' — the headers and the whole body handed to the socket. Everything refused after this point is refused with
+    // the bytes possibly held by the destination; everything before it, with the bytes still here.
+    r.on('finish', () => { requestSent = true; });
+    r.on('timeout', () => { r.destroy(); reject(refused('timeout', 'request exceeded the contract timeout')); });
     r.on('error', (e: NodeJS.ErrnoException) => {
       const tls = typeof e.code === 'string' && (e.code.startsWith('ERR_TLS') || e.code.startsWith('CERT_') || e.code === 'UNABLE_TO_VERIFY_LEAF_SIGNATURE' || e.code === 'DEPTH_ZERO_SELF_SIGNED_CERT');
-      reject(new EgressRefused(tls ? 'tls_failure' : 'transport_failure', tls ? 'TLS certificate verification failed' : 'transport failure'));
+      reject(refused(tls ? 'tls_failure' : 'transport_failure', tls ? 'TLS certificate verification failed' : 'transport failure'));
     });
     // B15 (D2): a streamed body is piped as it is produced (the length announced in the headers); a source that fails ends the request.
     if (opts?.body !== undefined && !Buffer.isBuffer(opts.body)) {
       const src = opts.body.stream;
-      src.on('error', (e) => { r.destroy(e); reject(new EgressRefused('transport_failure', `the request body could not be read: ${String((e as Error).message).slice(0, 200)}`)); });
+      src.on('error', (e) => { r.destroy(e); reject(refused('transport_failure', `the request body could not be read: ${String((e as Error).message).slice(0, 200)}`)); });
       src.pipe(r);
     } else r.end(opts?.body);
   });

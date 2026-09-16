@@ -194,9 +194,10 @@ const INTENDED_ADDITIONS = Object.freeze({
   'identity.roles': 31,
   // 0022: SRC, OBS, EVD · 0023: CLM@v2, ENT, EVT, REL, ASM
   // 0024: OBJ, ASU, DEC, CMT, OUT · 0028: SRC@v2 · 0029: FCT, SCN, WRN · 0032: TWN · 0033: SIM · 0041: DPK · 0042: APR · 0043: RPL · 0044: BRF · 0058: SCN@v2 · 0061: SCN@v3, WRN@v2 · 0066: MEM@v1
-  'objects.schema_registry': 29, // + SCN v2 (0058), SCN v3 and WRN v2 (0061), MEM v1 (0066), SRC v3 (0070)
-  // one ledger line per migration applied above the ceiling (0022–0075)
-  'public.schema_migrations': 54, // + 0075 (B15: the relationship closure in the export, the streamed archive — the verification's package line)
+  // 0076: the import forms EVD@v2, ENT@v2, EVT@v2, REL@v2, ASM@v2, CLM@v3 (the base schema + imported_from)
+  'objects.schema_registry': 35, // + SCN v2 (0058), SCN v3 and WRN v2 (0061), MEM v1 (0066), SRC v3 (0070), the six import forms (0076)
+  // one ledger line per migration applied above the ceiling (0022–0076)
+  'public.schema_migrations': 55, // + 0076 (B16: the governed import — the exchange partner, the import ledger and its admission ports, the import forms; held recipients)
 });
 
 /** Structure only: columns, constraints, indexes, routines, policies, grants. */

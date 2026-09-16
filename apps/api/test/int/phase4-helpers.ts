@@ -86,6 +86,8 @@ export function fakeEgress(bodyFor: (url: string) => string, status = 200) {
       status, headers: { 'content-type': 'application/json' }, body: Buffer.from(bodyFor(url), 'utf8'),
       finalUrlRedacted: url.split('?')[0] as string, hops: [], tlsVerified: true, originAllowlisted: true,
       pinnedAddress: '203.0.113.9', retryAfterSeconds: null,
+      // B16 (C1): the transport records whether the request's body was flushed before the answer; a double's answer follows a sent request.
+      requestSent: true,
     };
   };
   return { egress, seen };
@@ -337,33 +339,40 @@ export class Phase4Harness {
    * Upload text records through the upload route (the same §5 path as a polled response)
    * and return the EVIDENCE objects the run admitted for them, found by the item key the
    * connector derives from the filename and the bytes — never by a name someone typed.
+   * Two digests travel back: `digest` is the CANONICAL digest of the evidence row (its 43-field
+   * header and payload); `bytesDigest` (B16) is the sha256 of the BYTES the row's payload names
+   * (`payload ->> 'content_digest'`) — what an extraction's lineage and the graph's edges record
+   * as evidence_digest, and what the export's closure resolves by (the evidence pair rule).
    */
   async upload(files: Array<{ filename: string; text: string; documentTime?: string | null }>, ceiling: 'internal' | 'confidential' | 'restricted' = 'internal', label = ''):
-    Promise<Array<{ filename: string; id: string; version: number; digest: string; recordedAt: string }>> {
+    Promise<Array<{ filename: string; id: string; version: number; digest: string; bytesDigest: string; recordedAt: string }>> {
     const sourceId = await this.uploadSource(ceiling, label);
     const { UploadController } = await import('../../src/observation/sources/upload.controller.js');
     const controller = this.app.get(UploadController);
     await controller.upload(this.req(this.registrar, 'observation.run.trigger', 'RUN', null, 'observation'), this.fx.tenantId, this.fx.domainId,
       { payload: { sourceId, contractVersion: 1, files: files.map((f) => ({ filename: f.filename, mediaType: 'text/csv', base64: Buffer.from(f.text, 'utf8').toString('base64'), documentTime: f.documentTime ?? null })) } });
-    const out: Array<{ filename: string; id: string; version: number; digest: string; recordedAt: string }> = [];
+    const out: Array<{ filename: string; id: string; version: number; digest: string; bytesDigest: string; recordedAt: string }> = [];
     for (const f of files) {
       const itemKey = `upload:${f.filename}@${createHash('sha256').update(Buffer.from(f.text, 'utf8')).digest('hex').slice(0, 16)}`;
-      const row = (await sql<{ id: string; version: number; digest: string; recorded_at: string }>`
-        select e.object_id::text id, e.object_version::int version, e.content_digest digest, e.recorded_at::text recorded_at
+      const row = (await sql<{ id: string; version: number; digest: string; bytes_digest: string; recorded_at: string }>`
+        select e.object_id::text id, e.object_version::int version, e.content_digest digest, (e.payload ->> 'content_digest') bytes_digest, e.recorded_at::text recorded_at
           from objects.canonical_objects e
           join objects.canonical_objects o on o.object_type = 'OBS' and e.source_object_ids @> to_jsonb(array['OBS:' || o.object_id::text])
          where e.object_type = 'EVD' and e.tenant_id = ${this.fx.tenantId}::uuid and e.domain_id = ${this.fx.domainId}::uuid
            and o.tenant_id = ${this.fx.tenantId}::uuid and o.payload ->> 'item_key' = ${itemKey}
          order by e.recorded_at desc, e.object_version desc limit 1`.execute(this.su)).rows[0];
       if (row === undefined) throw new Error(`upload of ${f.filename} admitted no evidence object`);
-      out.push({ filename: f.filename, id: row.id, version: row.version, digest: row.digest, recordedAt: row.recorded_at });
+      out.push({ filename: f.filename, id: row.id, version: row.version, digest: row.digest, bytesDigest: row.bytes_digest, recordedAt: row.recorded_at });
     }
     return out;
   }
 }
 
-/** The demonstration's NORDWERK-shaped upload contract, under a fixture key. */
-function uploadContract(sourceKey: string, ceiling: string = 'internal'): Record<string, unknown> {
+/**
+ * The demonstration's NORDWERK-shaped upload contract, under a fixture key. Exported since B16: a second domain of the tenant
+ * registers the same shape as its exchange INTAKE source (the contract an import's records are held under).
+ */
+export function uploadContract(sourceKey: string, ceiling: string = 'internal'): Record<string, unknown> {
   return {
     source_key: sourceKey,
     name: 'Fixture uploaded records (SYNTHETIC)',

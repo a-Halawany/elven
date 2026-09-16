@@ -1002,6 +1002,20 @@ const BUNDLE_V1: Rule[] = [
   // B14 (0074 §3): a further REVOCATION NOTICE to a destination that received the package — the deliver rule's holders, human-gated (the first notices are the revoke act's own).
   { actionPrefix: 'retention.export.notify', exact: true, requiredAnyRole: [{ role: 'retention_authority', atScope: 'TENANT' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   { actionPrefix: 'retention.export.download', exact: true, requiredAnyRole: [{ role: 'retention_steward', atScope: 'DOMAIN' }, { role: 'retention_authority', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' }], obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /*
+   * B16 (0076 §3, §4): the governed IMPORT. An EXCHANGE PARTNER — the key whose packages this domain admits, bound to the intake
+   * source contract the imported records are held under — is declared and retired by the administrators (the schedule declare's
+   * holders), human-gated: a partner is a standing decision about whose knowledge enters the domain. The import itself is the
+   * retention action's gate reproduced (D1): the steward OPENS (the package quarantined, checked, verified) and WITHDRAWS; the
+   * retention authority APPROVES on the package digest, human-gated, never the opener (the port refuses); the steward ADMITS,
+   * human-gated, never the approver (the port refuses) — two people before a partner's records become this domain's.
+   */
+  { actionPrefix: 'retention.partner.declare', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'retention.partner.retire', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'retention.import.open', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'retention_steward', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'retention.import.withdraw', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'retention_steward', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'retention.import.approve', exact: true, requiredAnyRole: [{ role: 'retention_authority', atScope: 'TENANT' }, { role: 'tenant_admin', atScope: 'TENANT' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'retention.import.admit', exact: true, requiredAnyRole: [{ role: 'retention_steward', atScope: 'DOMAIN' }, { role: 'domain_admin', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   { actionPrefix: 'memory.item.retrieve', exact: true, requiredAnyRole: [
       { role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' },
       { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'knowledge_owner', atScope: 'DOMAIN' }, { role: 'record_authority', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' },

@@ -1,0 +1,14 @@
+=== the seven retention harnesses at the B16 tree on a fresh database eye_verify_b16_n2 (0001–0076): phase6-retention-b11, -b11-closure, -b12, -b13, -b14, -b15 and -b16 (the B15 L1 pins moved to the /2 closure with object_version; the B15 S2 measurement replaced by the sampled high-water mark), 2026-09-16 ===
+
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.int.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/apps/api
+
+
+ Test Files  7 passed (7)
+      Tests  80 passed (80)
+   Start at  15:17:53
+   Duration  67.03s (transform 760ms, setup 43ms, import 4.12s, tests 62.38s, environment 0ms)
+
