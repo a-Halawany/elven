@@ -594,7 +594,7 @@ describe('B · CUSTOMER EXPORT executor (0070 §3; V03-T-047, DPD-19, LR-23)', (
     expect(ex.execution.package).toMatchObject({ locator_prefix: `${T()}/${D()}/${exportId}/`, package_digest: expect.stringMatching(/^[0-9a-f]{64}$/), manifest_digest: expect.stringMatching(/^[0-9a-f]{64}$/), objects: 2, excluded: 2 });
     packageDigest = String(ex.execution.package!['package_digest']);
     dir = exportDir(exportId);
-    expect(readdirSync(dir).sort()).toEqual(['manifest.json', `${mA.manifest_id}.bin`, `${mB.manifest_id}.bin`].sort());
+    expect(readdirSync(dir).sort()).toEqual(['manifest.json', 'links.json', `${mA.manifest_id}.bin`, `${mB.manifest_id}.bin`].sort()); // B15: links.json, the relationship closure, beside the manifest and the object files
     expect(sha256(readFileSync(join(dir, `${mA.manifest_id}.bin`)))).toBe(mA.content_digest);
     const fileBytes = readFileSync(join(dir, 'manifest.json'));
     const manifest = JSON.parse(fileBytes.toString('utf8')) as Record<string, unknown> & { package: Record<string, unknown>; authorization: Record<string, unknown>; gates: Record<string, unknown>; objects: Array<Record<string, unknown>>; excluded: Array<Record<string, unknown>>; signature: Record<string, unknown> };
@@ -616,7 +616,7 @@ describe('B · CUSTOMER EXPORT executor (0070 §3; V03-T-047, DPD-19, LR-23)', (
     const row = (await sql<Record<string, unknown>>`select object_count, excluded_count, byte_total::int, classification_ceiling, revoked_at, manifest_digest, package_digest from retention.export_packages where action_id = ${exportId}::uuid`.execute(su)).rows[0]!;
     expect(row).toMatchObject({ object_count: 2, excluded_count: 2, byte_total: mA.byte_length + mB.byte_length, classification_ceiling: 'internal', revoked_at: null, manifest_digest: sha256(fileBytes), package_digest: manifest.signature['package_digest'] });
     const execs = await executions(exportId);
-    expect(execs.map((e) => [e.port, e.outcome])).toEqual([['vault.export', 'done'], ['vault.export', 'done'], ['retention.record_export_package', 'done']]);
+    expect(execs.map((e) => [e.port, e.outcome])).toEqual([['vault.export', 'done'], ['vault.export', 'done'], ['retention.export_links', 'done'], ['retention.record_export_package', 'done']]); // B15: the closure's row before the record's
     expect(await events(exportId)).toContain('export.built');
     for (const m of [mA, mB]) {
       const c = await custody(m.manifest_id, 'custody.exported');
@@ -637,7 +637,7 @@ describe('B · CUSTOMER EXPORT executor (0070 §3; V03-T-047, DPD-19, LR-23)', (
     expect(checks.every((c) => c.passed)).toBe(true);
     expect(checks.filter((c) => /exported — listed in the package/.test(c.check_name))).toHaveLength(2);
     const pkg = checks.find((c) => /the export package: manifest\.json present/.test(c.check_name))!;
-    expect(pkg.expected).toMatchObject({ files_present: 3 });
+    expect(pkg.expected).toMatchObject({ files_present: 4, links_present: true, links_digest_ok: true }); // B15: manifest.json + links.json + one file per object
     const ok = await runVerifier(dir, '--expect-package-digest', packageDigest);
     expect(ok.code).toBe(0);
     expect(ok.stdout).toMatch(/PACKAGE OK: 2 objects/);
@@ -678,7 +678,7 @@ describe('B · CUSTOMER EXPORT executor (0070 §3; V03-T-047, DPD-19, LR-23)', (
     expect((await execute(steward, b.id)).execution).toMatchObject({ executed: 1 });
     writeFileSync(join(exportDir(b.id), '.DS_Store'), 'finder');
     expect((await verify(steward, b.id)).verification).toMatchObject({ verified: false });
-    expect((await verifications(b.id)).find((c) => /the export package/.test(c.check_name))!.observed).toMatchObject({ files_present: 3, objects_listed: 1 });
+    expect((await verifications(b.id)).find((c) => /the export package/.test(c.check_name))!.observed).toMatchObject({ files_present: 4, objects_listed: 1, links_present: true }); // B15: manifest.json + links.json + one object file + the dot-file (the check expects 3)
     rmSync(join(exportDir(b.id), '.DS_Store')); rmSync(dotPath);
     expect((await verify(steward, b.id)).verification).toMatchObject({ verified: true });
     await settle();
@@ -688,7 +688,7 @@ describe('B · CUSTOMER EXPORT executor (0070 §3; V03-T-047, DPD-19, LR-23)', (
     const rd = await getExport(steward, exportId);
     expect(rd.package).toMatchObject({ revoked_at: null });
     expect(rd.manifest).toMatchObject({ format: 'eye-customer-export/1' });
-    expect(rd.files).toHaveLength(3);
+    expect(rd.files).toHaveLength(4); // B15: manifest.json, links.json and the two object files
     await expect(revokeExport(steward, exportId, 'the customer asked for the package to be withdrawn')).rejects.toMatchObject({ status: 403 });
     const rv = await revokeExport(authority, exportId, 'the customer asked for the package to be withdrawn');
     expect(rv.revocation).toMatchObject({ package_digest: packageDigest });

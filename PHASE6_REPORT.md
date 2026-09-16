@@ -2971,3 +2971,68 @@ index-tier degradation behaviours; every deployment leg (S7).
 `main`; the owner's decision on a public host for the recipient (the real-network delivery); the owner's key for Comtrade and the
 owner's walks of the pages; the next batch from the register (larger packages, the import direction and the relationship closure);
 comprehensive hardening after the feature scope, with the residuals.
+
+## 29. The checkpoint after B14's records head `20d0b0f` (2026-09-16): B15 implemented — the relationship closure in the customer export (graph links) and the streamed archive for larger packages; the demonstration's export carrying its derived knowledge, streamed through the real HTTP path
+
+B14's hosted run at `3b7c44c` completed green (§28.5) and was bound in the records commit `20d0b0f` on PR #51 (`phase6-b14` → `main`;
+its own hosted run at the records head follows the push; the merge awaits the owner's word — Codex's bounded review if wanted — under
+the existing authorization). B15 is cut from that head on `phase6-b15` (PR base `phase6-b14`; retargeted to `main` when #51 merges).
+
+### 29.1 What B15 implements (migration 0075) — `audit/CP6_BATCHES.md` §B15 for the mechanism
+
+- **The relationship closure (D1).** `links.json` in the package: the claims whose lineage names the exported records (the latest
+  canonical version of each with its lineage rows), the graph's edges asserted on them (every state as recorded), the entities those
+  edges connect with their identifiers, and the exclusions under the export's ceiling with their gate; named by the manifest's
+  `package.links` (the file's sha256 and size, the format, the counts) inside the package digest chain; recorded in the execution
+  ledger (`retention.export_links`); counted by the product's verification (0075: `verify_action`'s package line); checked by the
+  customer's verifier (three links checks); shown on the page.
+- **The streamed archive (D2).** The archive digest taken by streaming at the build; `ustarStream` byte-equal to `buildUstar`; the
+  stream route `POST …/export/stream` (a disk pass before the write commits, then the raw tar with its length and digests in headers;
+  64 GiB); the station write and the https delivery streamed; the verifier scanning a tar in constant memory; the customer's
+  `fetch-export.mjs`; the in-memory JSON download unchanged at 256 MiB.
+
+### 29.2 The local results
+
+The harness `phase6-retention-b15.test.ts` **3/3** on a fresh database (L1 the closure; S1 the streamed archive; S2 a 272 MB package
+above the in-memory ceiling — refused by the JSON download, served by the stream route, verified in constant memory, delivered by
+stream to the station and to the synthetic https recipient); the six retention harnesses **74/74** (the B11/B13 pins of the package's
+shape updated to the closure's file and row); the full integration suite **1024/1024 in 65 files** on a fresh database; the upgrade proof with 0022–0075 (54 migrations); the
+unit suite; the web typecheck, build and tests.
+
+### 29.3 The NORDWERK demonstration — `evidence/cp6/act-b15.txt`
+
+Rehearsed first on a restored copy (`eye_demo_b15`; `evidence/cp6/b15-rehearsal.txt`), then on `eye_demo` (backup; 0075 applied; the
+API restarted on the B15 build): P. Novák's export of the NORDWERK internal records that carry derived knowledge — the closure on the
+host, named inside the chain, read and consistent, in the ledger, counted by the verification; the customer's verifier passing the links
+checks; the customer's fetch tool streaming the archive from the stream route through the real HTTP path and verifying it; the JSON
+download still serving the small package; the streamed delivery to the station acknowledged through the recipient's receipt. A package
+above the in-memory ceiling is the harness's proof — no synthetic bulk is added to NORDWERK.
+
+### 29.4 Heads, hosted results, statuses
+
+| Head | What | Hosted `ci` | Hosted C19 |
+|---|---|---|---|
+| `20d0b0f` | B14's records head on PR #51 (`phase6-b14` → `main`) | (the run at the records head; #51's merge awaits the owner's word) | |
+| B15 | 0075; the closure, the streamed archive; the verifier and the fetch tool; the harness; the act — PR `phase6-b15` → `phase6-b14` | (bound in the records refresh after the push) | |
+
+Statuses: AU-COM-0058 `open` → `verified:local` (its one open clause — graph links — delivered); AU-DP-0097 carries the clause; the
+requirement rows DP-47-003 `partial` → `implemented` (passed:harness, branch-only), DP-47-002 and DP-47-006 carry the clauses. The
+split reads **3,555 = 3,182 open + 339 local + 34 CI**. The interface register unchanged at 26/24/0. No completion percentage; no
+deployment leg accepted.
+
+### 29.5 Functioning, partial, missing — and the acceptance work remaining
+
+**Functioning** — everything §28.6 listed, and now: the export carrying the knowledge derived from its records (the relationship
+closure, under the ceiling, inside the signed chain, verified offline and by the product); packages of any size under 64 GiB streamed
+at the build, the stream route, the station write and the https delivery, verified in constant memory; the customer's fetch tool.
+
+**Partial** — the import direction of the exchange (an inbound package quarantined, verified against a declared partner key, admitted;
+the round-trip fixture) — B16; the https path's production activation and the production signing key (§28.6); the "enforceable" half of
+the recipient's obligations; the UN Comtrade live contract; the pages' browser walks; the archive tier's structural residuals.
+
+**Missing** — the remaining capabilities of the interface register's 24 partial contracts; the source-derived memory records;
+index-tier degradation behaviours; every deployment leg (S7).
+
+**Acceptance work remaining** — #51's merge under the existing authorization and its archive chain on `main`; B15's PR retargeted
+and merged after it; the owner's decision on a public host for the recipient; the owner's key for Comtrade and the owner's walks of the
+pages; B16 (the import direction); comprehensive hardening after the feature scope, with the residuals.

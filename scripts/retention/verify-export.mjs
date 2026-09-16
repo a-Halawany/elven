@@ -7,11 +7,13 @@
  *   node scripts/retention/verify-export.mjs --tar <package.tar>  [--expect-package-digest <hex>] [--public-key <pem-file>] [--json]
  *
  * Node 18 or later; no dependency, no network, no database — it reads the package alone. The package is what the product handed
- * over: `manifest.json` and one `<manifest_id>.bin` per exported object, nothing else — as a DIRECTORY (the product's export
- * namespace, or a directory the customer unpacked), or as the ONE FILE the product serves and delivers: a POSIX ustar tar
- * (`--tar`), parsed here in memory (512-byte headers, the name NUL-terminated in bytes 0..100, the size in octal at 124..136, the
- * typeflag at 156, the magic 'ustar' at 257) — a malformed archive is a FAILED "archive readable" check, never a crash, and the
- * archive's entry set is held to the same completeness rule as a directory's entries. The checks, in order, each printed as PASS
+ * over: `manifest.json`, one `<manifest_id>.bin` per exported object and (B15) `links.json` — the relationship closure the manifest
+ * names — nothing else — as a DIRECTORY (the product's export namespace, or a directory the customer unpacked), or as the ONE FILE
+ * the product serves and delivers: a POSIX ustar tar (`--tar`), SCANNED here block by block from its file (512-byte headers, the
+ * name NUL-terminated in bytes 0..100, the size in octal at 124..136, the typeflag at 156, the magic 'ustar' at 257; every entry
+ * hashed as it passes, only the manifest and the links file kept in memory — a package of any size the disk holds verifies in
+ * constant memory, B15) — a malformed archive is a FAILED "archive readable" check, never a crash, and the archive's entry set is
+ * held to the same completeness rule as a directory's entries. The checks, in order, each printed as PASS
  * or FAIL with its reason; the exit code is 0 only when every check passes:
  *
  *   0. (--tar) ARCHIVE READABLE: the file parses as a ustar archive — every header's magic and checksum, every entry's size
@@ -70,7 +72,7 @@
  * agree with this file on the package it built.
  */
 import { createHash, createPublicKey, verify as cryptoVerify } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { closeSync, existsSync, fstatSync, openSync, readdirSync, readFileSync, readSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 const FORMATS = ['eye-customer-export/1', 'eye-customer-export/2'];
@@ -131,45 +133,70 @@ const digestOf = (value) => createHash('sha256').update(jcs(value), 'utf8').dige
 // fixed subset of this (mode 0600, uid/gid 0, the manifest's built_at as every mtime, no prefix); the parser reads any valid
 // ustar, so an archive re-packed by the customer's own tar verifies the same way.
 const BLOCK = 512;
-function parseUstar(buf) {
-  const isZeroBlock = (o) => { for (let i = o; i < o + BLOCK; i += 1) if (buf[i] !== 0) return false; return true; };
-  const field = (o, n) => { const end = buf.indexOf(0, o); const stop = end < 0 || end > o + n ? o + n : end; return buf.toString('utf8', o, stop); };
-  const octal = (o, n, what) => {
-    const s = field(o, n).replace(/[\s\0]+$/, '').trimStart();
-    if (!/^[0-7]+$/.test(s)) throw new Error(`${what} at offset ${o} is not octal (${JSON.stringify(s)})`);
-    return parseInt(s, 8);
-  };
-  if (buf.byteLength === 0) throw new Error('the archive is empty');
-  const entries = []; const names = new Set();
-  let off = 0;
-  while (off + BLOCK <= buf.byteLength) {
-    if (isZeroBlock(off)) {
-      if (off + 2 * BLOCK > buf.byteLength || !isZeroBlock(off + BLOCK)) throw new Error(`a single zero block at offset ${off} is not the two-block end-of-archive trailer`);
-      for (let i = off + 2 * BLOCK; i < buf.byteLength; i += 1) if (buf[i] !== 0) throw new Error(`${buf.byteLength - off - 2 * BLOCK} byte(s) after the end-of-archive trailer at offset ${off} are not zero padding`);
-      return entries;
+/** B15: an archive entry the verifier keeps in memory (the manifest, the links file); every other entry is hashed as it is read and never held whole. */
+const KEEP_RE = /^(manifest\.json|links\.json)$/;
+const KEEP_MAX = 64 * 1024 * 1024;
+/** B15: a file's sha256 and size, streamed (a package of any size verifies in constant memory). */
+function measureFile(path) {
+  const fd = openSync(path, 'r');
+  try {
+    const size = fstatSync(fd).size; const hash = createHash('sha256'); const buf = Buffer.alloc(4 * 1024 * 1024); let pos = 0;
+    while (pos < size) { const n = readSync(fd, buf, 0, Math.min(buf.byteLength, size - pos), pos); if (n <= 0) throw new Error(`the file is truncated at offset ${pos}`); hash.update(buf.subarray(0, n)); pos += n; }
+    return { digest: hash.digest('hex'), size };
+  } finally { closeSync(fd); }
+}
+
+function scanUstarFile(path) {
+  const fd = openSync(path, 'r');
+  try {
+    const total = fstatSync(fd).size;
+    if (total === 0) throw new Error('the archive is empty');
+    const whole = createHash('sha256');
+    const CHUNK = 4 * 1024 * 1024;
+    const buf = Buffer.alloc(CHUNK);
+    let off = 0;
+    const readAt = (position, length, into) => { const n = readSync(fd, into, 0, length, position); if (n !== length) throw new Error(`the archive is truncated at offset ${position} (${n} of ${length} byte(s) read)`); whole.update(into.subarray(0, n)); return into.subarray(0, n); };
+    const header = Buffer.alloc(BLOCK);
+    const isZero = (b) => { for (let i = 0; i < b.byteLength; i += 1) if (b[i] !== 0) return false; return true; };
+    const field = (b, o, n) => { const end = b.indexOf(0, o); const stop = end < 0 || end > o + n ? o + n : end; return b.toString('utf8', o, stop); };
+    const octal = (b, o, n, what) => { const t = field(b, o, n).replace(/[\s\0]+$/, '').trimStart(); if (!/^[0-7]+$/.test(t)) throw new Error(`${what} at offset ${off + o} is not octal (${JSON.stringify(t)})`); return parseInt(t, 8); };
+    const entries = []; const names = new Set();
+    while (off + BLOCK <= total) {
+      const h = Buffer.from(readAt(off, BLOCK, header));
+      if (isZero(h)) {
+        if (off + 2 * BLOCK > total) throw new Error(`a single zero block at offset ${off} is not the two-block end-of-archive trailer`);
+        const h2 = readAt(off + BLOCK, BLOCK, header);
+        if (!isZero(h2)) throw new Error(`a single zero block at offset ${off} is not the two-block end-of-archive trailer`);
+        let pos = off + 2 * BLOCK;
+        while (pos < total) { const n = Math.min(CHUNK, total - pos); const rest = readAt(pos, n, buf); if (!isZero(rest)) throw new Error(`${total - off - 2 * BLOCK} byte(s) after the end-of-archive trailer at offset ${off} are not zero padding`); pos += n; }
+        return { entries, archiveDigest: whole.digest('hex'), byteLength: total };
+      }
+      if (h.toString('latin1', 257, 262) !== 'ustar') throw new Error(`no ustar magic in the header at offset ${off}`);
+      const recorded = octal(h, 148, 8, 'the header checksum');
+      let unsigned = 0; let signed = 0;
+      for (let i = 0; i < BLOCK; i += 1) { const b = i >= 148 && i < 156 ? 0x20 : h[i]; unsigned += b; signed += b > 127 ? b - 256 : b; }
+      if (recorded !== unsigned && recorded !== signed) throw new Error(`the header checksum at offset ${off} does not add up (recorded ${recorded}, computed ${unsigned})`);
+      const version = h.toString('latin1', 263, 265);
+      const prefix = version === '00' ? field(h, 345, 155) : '';
+      const name = prefix.length > 0 ? `${prefix}/${field(h, 0, 100)}` : field(h, 0, 100);
+      const size = octal(h, 124, 12, `the size of ${JSON.stringify(name)}`);
+      const typeflag = h[156];
+      const start = off + BLOCK; const end = start + size;
+      if (end > total) throw new Error(`the entry ${JSON.stringify(name)} at offset ${off} needs ${size} byte(s); ${total - start} remain — the archive is truncated`);
+      if (names.has(name)) throw new Error(`the entry ${JSON.stringify(name)} appears twice`);
+      names.add(name);
+      const regular = typeflag === 0x30 || typeflag === 0;
+      const keep = regular && KEEP_RE.test(name) && size <= KEEP_MAX;
+      const entryHash = createHash('sha256'); const kept = keep ? [] : null;
+      let pos = start;
+      while (pos < end) { const n = Math.min(CHUNK, end - pos); const chunk = readAt(pos, n, buf); entryHash.update(chunk); if (kept !== null) kept.push(Buffer.from(chunk)); pos += n; }
+      const padded = start + Math.ceil(size / BLOCK) * BLOCK;
+      if (padded > end) readAt(end, padded - end, buf);
+      entries.push({ name, size, typeflag: typeflag === 0 ? '\\0' : String.fromCharCode(typeflag), regular, digest: entryHash.digest('hex'), bytes: kept === null ? null : Buffer.concat(kept) });
+      off = padded;
     }
-    if (buf.toString('latin1', off + 257, off + 262) !== 'ustar') throw new Error(`no ustar magic in the header at offset ${off}`);
-    const recorded = octal(off + 148, 8, 'the header checksum');
-    let unsigned = 0; let signed = 0;
-    for (let i = 0; i < BLOCK; i += 1) {
-      const b = i >= 148 && i < 156 ? 0x20 : buf[off + i];
-      unsigned += b; signed += b > 127 ? b - 256 : b;
-    }
-    if (recorded !== unsigned && recorded !== signed) throw new Error(`the header checksum at offset ${off} does not add up (recorded ${recorded}, computed ${unsigned})`);
-    const version = buf.toString('latin1', off + 263, off + 265);
-    const prefix = version === '00' ? field(off + 345, 155) : '';
-    const name = prefix.length > 0 ? `${prefix}/${field(off, 100)}` : field(off, 100);
-    const size = octal(off + 124, 12, `the size of ${JSON.stringify(name)}`);
-    const typeflag = buf[off + 156];
-    const start = off + BLOCK; const end = start + size;
-    if (end > buf.byteLength) throw new Error(`the entry ${JSON.stringify(name)} at offset ${off} needs ${size} byte(s); ${buf.byteLength - start} remain — the archive is truncated`);
-    if (names.has(name)) throw new Error(`the entry ${JSON.stringify(name)} appears twice`);
-    names.add(name);
-    const regular = typeflag === 0x30 || typeflag === 0;
-    entries.push({ name, size, typeflag: typeflag === 0 ? '\\0' : String.fromCharCode(typeflag), bytes: regular ? buf.subarray(start, end) : null });
-    off = start + Math.ceil(size / BLOCK) * BLOCK;
-  }
-  throw new Error(`the archive ends at ${buf.byteLength} byte(s) without the two-block end-of-archive trailer`);
+    throw new Error(`the archive ends at ${total} byte(s) without the two-block end-of-archive trailer`);
+  } finally { closeSync(fd); }
 }
 
 /* ── arguments ─────────────────────────────────────────────────────────────── */
@@ -219,22 +246,24 @@ if (publicKeyPath !== null) {
 let source = null; let archiveDigest = null;
 if (tarPath !== null) {
   try {
-    const raw = readFileSync(tarPath);
-    const entries = parseUstar(raw);
-    archiveDigest = sha256(raw);
+    const scanned = scanUstarFile(tarPath);
+    const entries = scanned.entries;
+    archiveDigest = scanned.archiveDigest;
     const byName = new Map(entries.map((e) => [e.name, e]));
     source = {
       kind: 'archive',
       exists: (name) => byName.has(name),
-      read: (name) => { const e = byName.get(name); if (e === undefined) throw new Error('no such entry'); if (e.bytes === null) throw new Error(`the entry is not a regular file (typeflag '${e.typeflag}')`); return e.bytes; },
+      read: (name) => { const e = byName.get(name); if (e === undefined) throw new Error('no such entry'); if (!e.regular) throw new Error(`the entry is not a regular file (typeflag '${e.typeflag}')`); if (e.bytes === null) throw new Error('the entry is not held in memory (only the manifest and the links file are)'); return e.bytes; },
+      // B15: an entry's digest and size as scanned — the archive is never held whole.
+      measure: (name) => { const e = byName.get(name); if (e === undefined) throw new Error('no such entry'); if (!e.regular) throw new Error(`the entry is not a regular file (typeflag '${e.typeflag}')`); return { digest: e.digest, size: e.size }; },
       list: () => entries.map((e) => e.name),
     };
-    check('archive readable: the file parses as a ustar archive', true, `${raw.byteLength} bytes, ${entries.length} entr${entries.length === 1 ? 'y' : 'ies'}, archive digest ${archiveDigest}`);
+    check('archive readable: the file parses as a ustar archive', true, `${scanned.byteLength} bytes, ${entries.length} entr${entries.length === 1 ? 'y' : 'ies'}, archive digest ${archiveDigest}`);
   } catch (e) {
     check('archive readable: the file parses as a ustar archive', false, `${tarPath}: ${e.message}`);
   }
 } else {
-  source = { kind: 'directory', exists: (name) => existsSync(join(dir, name)), read: (name) => readFileSync(join(dir, name)), list: () => readdirSync(dir) };
+  source = { kind: 'directory', exists: (name) => existsSync(join(dir, name)), read: (name) => readFileSync(join(dir, name)), measure: (name) => measureFile(join(dir, name)), list: () => readdirSync(dir) };
 }
 
 let manifest = null; let parsed = false; let sig = null; let signatureVerified = null;
@@ -273,12 +302,12 @@ if (isObject) {
       if (typeof file !== 'string' || !BIN_RE.test(file)) { check(`integrity ${label}: bytes.file`, false, `bytes.file ${JSON.stringify(file)} is not <manifest id>.bin`); continue; }
       listed.add(file);
       if (!source.exists(file)) { check(`integrity ${label}: ${file} present`, false, 'the listed file is absent'); continue; }
-      let bytes;
-      try { bytes = source.read(file); } catch (e) { check(`integrity ${label}: ${file} readable`, false, `the listed file cannot be read as a file: ${e.message}`); continue; }
-      const d = sha256(bytes);
+      let measured;
+      try { measured = source.measure(file); } catch (e) { check(`integrity ${label}: ${file} readable`, false, `the listed file cannot be read as a file: ${e.message}`); continue; }
+      const d = measured.digest;
       const okDigest = d === o.bytes.content_digest;
-      const okSize = bytes.byteLength === o.bytes.byte_length;
-      if (check(`integrity ${label}: ${file} sha256 and size`, okDigest && okSize, okDigest ? (okSize ? `${bytes.byteLength} bytes, ${d}` : `size ${bytes.byteLength} is not ${o.bytes.byte_length}`) : `digest mismatch: file ${d}, listed ${o.bytes.content_digest}`)) { integrityOk += 1; bytesTotal += bytes.byteLength; }
+      const okSize = measured.size === o.bytes.byte_length;
+      if (check(`integrity ${label}: ${file} sha256 and size`, okDigest && okSize, okDigest ? (okSize ? `${measured.size} bytes, ${d}` : `size ${measured.size} is not ${o.bytes.byte_length}`) : `digest mismatch: file ${d}, listed ${o.bytes.content_digest}`)) { integrityOk += 1; bytesTotal += measured.size; }
       // 3. re-import: the record binds the bytes; the header and payload recompute to the canonical digest
       const payloadBinds = o?.payload?.content_digest === o.bytes.content_digest;
       const headerKeys = o?.header !== null && typeof o?.header === 'object' ? Object.keys(o.header).length : -1;
@@ -295,13 +324,44 @@ if (isObject) {
   // 4. completeness: the directory (the archive) holds the manifest and the listed files, nothing else — every entry counts, a dot-file
   //    included (the product's verification counts the directory the same way; the product never writes a dot-file into a package,
   //    and its archive carries exactly manifest.json and the listed files, in that order)
+  // B15: THE RELATIONSHIP CLOSURE — a manifest whose package.links names links.json must have it, with the digest and size it names; its
+  // format and counts are read; a /1 package without a links block is verified as before (no links check).
+  const linksBlock = isObject && manifest.package !== null && typeof manifest.package === 'object' && manifest.package.links !== undefined && manifest.package.links !== null ? manifest.package.links : null;
+  if (linksBlock !== null) {
+    const lfile = linksBlock.file;
+    if (lfile !== 'links.json') check('links: package.links.file names links.json', false, `package.links.file is ${JSON.stringify(lfile)}`);
+    else {
+      listed.add('links.json');
+      if (!source.exists('links.json')) check('links: links.json present', false, 'the manifest names a links file that is absent');
+      else {
+        let lm = null; let lraw = null;
+        try { lm = source.measure('links.json'); lraw = source.read('links.json'); } catch (e) { check('links: links.json readable', false, e.message); }
+        if (lm !== null) {
+          const okD = lm.digest === linksBlock.links_digest; const okS = lm.size === linksBlock.byte_length;
+          check('links: links.json sha256 and size are the ones the manifest names', okD && okS, okD ? (okS ? `${lm.size} bytes, ${lm.digest}` : `size ${lm.size} is not ${linksBlock.byte_length}`) : `digest mismatch: file ${lm.digest}, listed ${linksBlock.links_digest}`);
+          let lj = null; try { lj = JSON.parse(lraw.toString('utf8')); } catch (e) { lj = null; }
+          const lok = lj !== null && typeof lj === 'object' && !Array.isArray(lj) && lj.format === linksBlock.format && Array.isArray(lj.claims) && Array.isArray(lj.edges) && Array.isArray(lj.entities) && Array.isArray(lj.excluded)
+            && lj.claims.length === linksBlock.claims && lj.edges.length === linksBlock.edges && lj.entities.length === linksBlock.entities && lj.excluded.length === linksBlock.excluded && lj.package?.action_id === manifest.package?.action_id;
+          check('links: links.json is the closure the manifest counts (format, claims, edges, entities, excluded; the same action)', lok, lok ? `${lj.claims.length} claim(s), ${lj.edges.length} edge(s), ${lj.entities.length} entit${lj.entities.length === 1 ? 'y' : 'ies'}, ${lj.excluded.length} excluded` : lj === null ? 'links.json does not parse as a JSON object' : `counts or format differ from the manifest's package.links (${JSON.stringify({ format: lj.format, claims: lj.claims?.length, edges: lj.edges?.length, entities: lj.entities?.length, excluded: lj.excluded?.length })})`);
+          if (lok) {
+            // Every claim's lineage names an exported record; every edge's claim is an included claim and its ends are included entities.
+            const exported = new Set((manifest.objects ?? []).map((o) => o?.object_id));
+            const claimIds = new Set(lj.claims.map((c) => c?.object_id)); const entityIds = new Set(lj.entities.map((e) => e?.entity_id));
+            const badClaims = lj.claims.filter((c) => !Array.isArray(c?.lineage) || c.lineage.length === 0 || !c.lineage.every((l) => exported.has(l?.evidence_object_id)));
+            const badEdges = lj.edges.filter((e) => !claimIds.has(e?.claim?.object_id) || !entityIds.has(e?.subject_entity_id) || !entityIds.has(e?.object_entity_id) || !exported.has(e?.evidence?.object_id));
+            check('links: every claim\'s lineage names exported records; every edge names an included claim, included entities and an exported record', badClaims.length === 0 && badEdges.length === 0, badClaims.length > 0 ? `${badClaims.length} claim(s) with lineage outside the export` : badEdges.length > 0 ? `${badEdges.length} edge(s) naming an excluded claim, an absent entity or an unexported record` : 'the closure is consistent');
+          }
+        }
+      }
+    }
+  }
   let present = null;
   try { present = source.list(); } catch (e) { check('completeness: the package directory can be listed', false, `the directory cannot be listed: ${e.message}`); }
   if (present !== null) {
     const unlisted = present.filter((n) => n !== 'manifest.json' && !listed.has(n));
     const missing = [...listed].filter((n) => !present.includes(n));
     check('completeness: every listed file present and every file listed', unlisted.length === 0 && missing.length === 0,
-      unlisted.length > 0 ? `unlisted file(s) in the package: ${unlisted.join(', ')}` : missing.length > 0 ? `listed file(s) absent: ${missing.join(', ')}` : `${present.length} entr${present.length === 1 ? 'y' : 'ies'} in the ${source.kind}: manifest.json + ${listed.size} object file(s)`);
+      unlisted.length > 0 ? `unlisted file(s) in the package: ${unlisted.join(', ')}` : missing.length > 0 ? `listed file(s) absent: ${missing.join(', ')}` : `${present.length} entr${present.length === 1 ? 'y' : 'ies'} in the ${source.kind}: manifest.json + ${listed.size} listed file(s)`);
   }
   // `excluded` enters the chain AS LISTED (the product digests the value it wrote; a substitute would let an edited member verify):
   // a member that is not a list is a failed check and stops the chain.

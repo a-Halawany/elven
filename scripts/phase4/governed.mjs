@@ -52,6 +52,19 @@ export async function call(path, over, payload = {}, token = null) {
   return { ok: res.ok, status: res.status, body, correlationId: envelope.correlation_id };
 }
 
+/** B15: the same governed envelope, the answer returned RAW for a route that streams bytes (the export's stream route). */
+export async function callRaw(path, over, payload = {}, token = null) {
+  const envelope = {
+    message_id: randomUUID(), scope: over.scope, tenant_id: over.tenantId ?? null, domain_id: over.domainId ?? null,
+    principal_id: over.principalId ?? 'anonymous', purpose_id: over.purposeId ?? 'observation', action: over.action,
+    side_effect_class: over.sideEffect ?? 'reversible', consequence_class: over.consequence ?? 'C1', object_type: over.objectType, object_id: over.objectId ?? null,
+    schema_version: 'v1', issued_at: new Date().toISOString(), clock_quality: 'trusted', correlation_id: randomUUID(), trace_id: over.trace ?? 'phase4', payload_digest: digest(payload),
+  };
+  const headers = { 'content-type': 'application/json' };
+  if (token !== null) headers.authorization = `Bearer ${token}`;
+  return fetch(API + path, { method: 'POST', headers, body: JSON.stringify({ envelope, payload }) });
+}
+
 export async function login(username, password) {
   const r = await call('/v1/auth/login', {
     scope: 'PLATFORM', action: 'identity.session.create', objectType: 'SES',

@@ -1,0 +1,85 @@
+=== CP-6 B15 on the demonstration (NORDWERK, eye_demo) — 2026-09-16T08:31:11Z, tree over 20d0b0f (the B15 candidate, uncommitted at run time; committed as the next head); rehearsed first on a restored copy (eye_demo_b15) with its own vault copy, key, station and Redis ===
+
+0b. the running target before anything (the runbook §2):
+     the API on :3401 is pid 25137; its demonstration settings:
+       EYE_CONNECTOR_PER_SOURCE_CONCURRENCY=1
+       EYE_DB_NAME=eye_demo
+       EYE_DEGRADED_DIR=/Users/halawany/work/personal/mohammed/new_project/apps/api/.eye-local/degraded-demo
+       EYE_RUNTIME_PORT=3401
+       EYE_SCHEDULER_ENABLED=true
+       (no EYE_VAULT_*_ROOT set: the roots are the workspace's .eye-local/vault/{quarantine,evidence,archive,export})
+       /readyz: {"status":"ok","db":true,"audit":"ok","auditIncidents":0,"degradedSince":null,"classification":"telemetry-only"}
+     VERIFIED: the demonstration API serves eye_demo and is ready
+
+1. the demonstration database migrated with 0075 (backup first; the migration re-declares the verification's package check to count the closure's file — no data changes)
+     backup 49229332 bytes  /private/tmp/claude-501/-Users-halawany-work-personal-mohammed-new-project/b11a7142-b60e-4b51-8618-a8185f1b1f24/scratchpad/b15/demo/eye_demo-pre-0075-20260916T083111Z.dump
+   the demonstration API stopped for the migration (pid 25137)
+     applying 0075_b15_relationship_closure_and_streamed_archive.sql ... ok
+     migrations up to date
+     role passwords synchronized from environment
+     [{"filename":"0074_b14_https_exchange_receipt_binding_revocation_notice.sql","digest":"d52c8761c78de990","applied_at":"2026-09-16T07:36:44.063Z"},{"filename":"0075_b15_relationship_closure_and_streamed_archive.sql","digest":"b6e0b64a13848a24","applied_at":"2026-09-16T08:31:17.730Z"}]
+
+2. the demonstration API restarted on the B15 build by the runbook's script:
+     $ tsc -p tsconfig.build.json && node scripts/copy-assets.mjs
+     copied src/observation/connectors/xml-worker.js -> dist/observation/connectors/xml-worker.js
+     the API on :3401 is pid 50863; its demonstration settings:
+       EYE_CONNECTOR_PER_SOURCE_CONCURRENCY=1
+       EYE_DB_NAME=eye_demo
+       EYE_DEGRADED_DIR=/Users/halawany/work/personal/mohammed/new_project/apps/api/.eye-local/degraded-demo
+       EYE_RUNTIME_PORT=3401
+       EYE_SCHEDULER_ENABLED=true
+       (no EYE_VAULT_*_ROOT set: the roots are the workspace's .eye-local/vault/{quarantine,evidence,archive,export})
+       /readyz: {"status":"ok","db":true,"audit":"ok","auditIncidents":0,"degradedSince":null,"classification":"telemetry-only"}
+     VERIFIED: the demonstration API serves eye_demo and is ready
+
+THE EYE — CP-6 B15 on the demonstration: the relationship closure in the customer export and the streamed archive (migration 0075)
+target http://localhost:3401 · database eye_demo · tenant 01a084f5… domain 01a084f5… · 2026-09-16T08:31:29.687Z
+
+1. THE EXPORT WITH ITS CLOSURE — P. Novák exports the NORDWERK internal records that carry derived knowledge; approved; executed; verified — links.json beside the manifest, named inside the digest chain
+  · the targets: evidence 01a084f5…@1 (456 bytes, tier hot; 8 claim(s) by lineage, 4 edge(s)), evidence 01a084f5…@1 (338 bytes, tier hot; 6 claim(s) by lineage, 3 edge(s)), evidence 01a084f8…@1 (240 bytes, tier archive; 0 claim(s) by lineage, 0 edge(s)), evidence 01a084f5…@1 (1045 bytes, tier archive; 0 claim(s) by lineage, 0 edge(s))
+  ✓ export 01a0a957…: 4 record(s), 2079 bytes — opened, approved, executed and verified; archive digest 9a2b739afbb46e59…, signed by ed25519:fcd9d6bf234efb3f
+  ✓ the host: .eye-local/vault/export/01a084f5-757f-7f03-9cf5-315d74426481/01a084f5-759a-751f-a1dd-38fbd7933057/01a0a957-aa09-71df-9f9a-6687b6e5e415/links.json (70200 bytes, sha256 0b9c9038cea464d9b0d390244c05490a9609ca06bb93b19471948498d519f43a) — named by the manifest's package.links: format eye-customer-export-links/1, 14 claim(s), 7 edge(s), 7 entities, 0 excluded; the package block is inside the package digest chain, so the closure is covered by the signature
+  · links.json: claims by type {"ENT":9,"REL":5} (16 lineage row(s) naming the exported records' bytes); edges by predicate {"stocks":2,"transits":1,"depends_on":1,"carries":2,"procures":1} (each with its claim, evidence digest, validity, state); entities SYN-PART-BRG (product); SYN-PART-PWR (product); SYN-PART-MAG (product); NORDWERK ANTRIEBSTECHNIK GmbH (organization); Suez (place); MV Hanse Trader (vessel); SYN-SHIP-4468 (asset) — 0 with identifiers; excluded nothing
+  ✓ the closure is consistent: every claim's lineage names an exported record; every edge names an included claim and included entities (DP-47-002 "object and relationship closure"; DP-47-003 "graph links")
+  ✓ the execution ledger: retention.export_links done — {"file":"links.json","edges":7,"claims":14,"entities":7,"excluded":0,"byte_length":70200,"links_digest":"0b9c9038cea464d9b0d390244c05490a9609ca06bb93b19471948498d519f43a"}; the rows in order: vault.export → vault.export → vault.export → vault.export → retention.export_links → retention.record_export_package
+  ✓ the product's verification: "the export package: manifest.json present with the recorded digests, every listed object present and nothing unlisted, the relationship closure it names present with its digest, not revoked" PASSED — files_present 6 (manifest.json + links.json + 4 object file(s)), links_named, links_present, links_digest_ok
+  ✓ the read route lists the package's files ["01a084f5-8b0f-7ca7-a269-c13ba7d53b74.bin","01a084f5-8b4b-7c3c-8d99-a1246677e2fb.bin","01a084f5-8bbe-7aa8-aa12-cf64ce855db5.bin","01a084f8-a311-709d-8167-16d267a7914e.bin","links.json","manifest.json"] and the manifest's package.links
+
+2. THE CUSTOMER'S CHECKS — the verifier on the directory (the links checks); the fetch tool streams the archive from the stream route through the real HTTP path and verifies the tar; the JSON download still serves this small package
+  ✓ the verifier on the directory: PACKAGE OK (exit 0) — the links checks: "links: links.json sha256 and size are the ones the manifest names" 70200 bytes, 0b9c9038cea464d9b0d390244c05490a9609ca06bb93b19471948498d519f43a | "links: links.json is the closure the manifest counts (format, claims, edges, entities, excluded; the same action)" 14 claim(s), 7 edge(s), 7 entities, 0 excluded | "links: every claim's lineage names exported records; every edge names an included claim, included entities and an exported record" the closure is consistent
+      [fetch-export] POST http://localhost:3401/v1/tenants/01a084f5-757f-7f03-9cf5-315d74426481/domains/01a084f5-759a-751f-a1dd-38fbd7933057/retention/actions/01a0a957-aa09-71df-9f9a-6687b6e5e415/export/stream (correlation 3363247d-6e86-4a53-91eb-0769d5dc9009)
+      [fetch-export] answered 200 application/x-tar: 95232 bytes announced; archive digest 9a2b739afbb46e5912aa46ea33a9fb71bf9b6a6803a95a7ac1c5379c5d2ef5f7; package digest a8bb7f2af05b5a7b51b272fef1da8cf3078a5d81dd2cc392a5e73bae776dd4c8; signature eye-customer-export/2 by ed25519:fcd9d6bf234efb3f; expires 2026-09-23T08:31:32.555Z; policy decision 01a0a957-b58e-76ae-a9a4-52c6f2f1ee1b, audit seq 95105
+      [fetch-export] streamed 95232 bytes to /var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-act-b15-PNcYRC/01a0a957-aa09-71df-9f9a-6687b6e5e415.tar; sha256 9a2b739afbb46e5912aa46ea33a9fb71bf9b6a6803a95a7ac1c5379c5d2ef5f7 — the archive digest the product announced
+        export package: /var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-act-b15-PNcYRC/01a0a957-aa09-71df-9f9a-6687b6e5e415.tar (ustar archive)
+          integrity 4/4; re-import 4/4
+          excluded 0: nothing was withheld
+        PACKAGE OK: 4 objects, 2079 bytes, package digest a8bb7f2af05b5a7b51b272fef1da8cf3078a5d81dd2cc392a5e73bae776dd4c8; signature verified (ed25519:fcd9d6bf234efb3f)
+      [fetch-export] verifier exit 0: PACKAGE OK
+  ✓ the customer's fetch tool (scripts/retention/fetch-export.mjs): the STREAM route answered the raw tar through the real HTTP path — 95232 bytes streamed to /var/folders/qc/t7d4nknd6v132886wf8dq0bw0000gn/T/eye-act-b15-PNcYRC/01a0a957-aa09-71df-9f9a-6687b6e5e415.tar, sha256 the recorded archive digest 9a2b739afbb46e5912aa46ea33a9fb71bf9b6a6803a95a7ac1c5379c5d2ef5f7; the verifier on the tar: PACKAGE OK
+  ✓ export.downloaded on the action at 2026-09-16T08:31:32.754Z — the stream is the same governed, audited act as the JSON download
+  ✓ the JSON download (the in-memory answer, its ceiling 256 MiB) still serves this 95232-byte package with the same digest
+  · STATED: a package ABOVE the in-memory ceiling — 272 MB, seventeen records — is the harness's proof (phase6-retention-b15 S2: the JSON download refused with the ceiling named, the stream route serving it hashed as it arrives, the verifier scanning it in constant memory, the station and https deliveries streaming it, the heap under 256 MiB); the demonstration's records are small and no synthetic bulk is added to NORDWERK
+
+3. THE STREAMED DELIVERY — H. Bergmann delivers to the transfer station: package.tar streamed to the station; the demonstration recipient verifies (the links checks) and answers; collected: ACKNOWLEDGED
+  ✓ H. Bergmann delivered: delivery c19c4fd0… attempt 1 — package.tar streamed to .eye-local/transfer-station-demo/01a084f5-757f-7f03-9cf5-315d74426481/01a084f5-759a-751f-a1dd-38fbd7933057/01a0a957-aa09-71df-9f9a-6687b6e5e415/ (95232 bytes, sha256 the archive digest; assembled from the files as it was written, never held whole)
+      [demonstration recipient] THIS IS THE DEMONSTRATION RECIPIENT: it stands in for the customer's own system on the demonstration's isolated transfer station
+      [demonstration recipient] station directory /Users/halawany/work/personal/mohammed/new_project/.eye-local/transfer-station-demo/01a084f5-757f-7f03-9cf5-315d74426481/01a084f5-759a-751f-a1dd-38fbd7933057/01a0a957-aa09-71df-9f9a-6687b6e5e415
+      [demonstration recipient] delivery c19c4fd0-e997-479f-9244-868eb7259374 attempt 1 of action 01a0a957-aa09-71df-9f9a-6687b6e5e415 to nordwerk-transfer-station for "NORDWERK GmbH — demonstration transfer station", delivered at 2026-09-16T08:31:32.829Z, the package expires at 2026-09-23T08:31:32.555Z
+      [demonstration recipient] the note says: package digest a8bb7f2af05b5a7b51b272fef1da8cf3078a5d81dd2cc392a5e73bae776dd4c8, archive digest 9a2b739afbb46e5912aa46ea33a9fb71bf9b6a6803a95a7ac1c5379c5d2ef5f7, signature eye-customer-export/2 by ed25519:fcd9d6bf234efb3f
+      [demonstration recipient] package.tar: 95232 bytes, sha256 9a2b739afbb46e5912aa46ea33a9fb71bf9b6a6803a95a7ac1c5379c5d2ef5f7 — the archive digest the note names
+      [demonstration recipient] verifier: node scripts/retention/verify-export.mjs --tar /Users/halawany/work/personal/mohammed/new_project/.eye-local/transfer-station-demo/01a084f5-757f-7f03-9cf5-315d74426481/01a084f5-759a-751f-a1dd-38fbd7933057/01a0a957-aa09-71df-9f9a-6687b6e5e415/package.tar --json --public-key /Users/halawany/work/personal/mohammed/new_project/.eye-local/export-signing-demo.pub.pem --expect-package-digest a8bb7f2af05b5a7b51b272fef1da8cf3078a5d81dd2cc392a5e73bae776dd4c8
+      [demonstration recipient] verifier verdict: PACKAGE OK (exit 0; 0 failed; complete true); signature eye-customer-export/2 ed25519:fcd9d6bf234efb3f: VERIFIED against the public key
+      [demonstration recipient] receipt.json written: receipt 382f6cbd-0c67-4f2a-80f5-aa6446aef0b2 for delivery c19c4fd0-e997-479f-9244-868eb7259374 attempt 1 — verified true
+      [demonstration recipient] the product collects it with the collect-receipt act (the exchange closes ACKNOWLEDGED when the digests agree and verified is true; MISMATCHED otherwise)
+  ✓ the demonstration recipient: exit 0 (verified true); the verifier on the station's tar passes the links checks — the recipient holds the closure with the records
+  ✓ H. Bergmann collected the receipt: ACKNOWLEDGED (receipt digest 8871a2c840ea2bf4c3db6764e898933da34238bea3e149243952cc0a8c96f726)
+
+4. THE STATE
+  · export 01a0a957…: 6 file(s); package.links {"file":"links.json","links_digest":"0b9c9038cea464d9b0d390244c05490a9609ca06bb93b19471948498d519f43a","byte_length":70200,"format":"eye-customer-export-links/1","claims":14,"edges":7,"entities":7,"excluded":0}; deliveries nordwerk-transfer-station attempt 1 acknowledged
+
+WHAT THE DEMONSTRATION SHOWED: the customer export carries the knowledge derived from its records — the claims by lineage, the graph's edges and the entities they connect, under the ceiling, in links.json named inside the signed digest chain — verified by the product and by the customer's verifier; the archive streamed from the stream route through the real HTTP path by the customer's fetch tool and to the transfer station, verified at both ends.
+WHAT THE HARNESS ALONE PROVES (phase6-retention-b15 on a fresh database): a package above the in-memory ceiling (272 MB) built by streaming, refused by the JSON download, served by the stream route, verified in constant memory, delivered by stream to a station and to the synthetic https recipient; ustarStream byte-equal to the in-memory build; a tampered object file refused before any byte; a tampered links.json failing the product's check and the verifier.
+
+ALL SCENES HELD
+
+=== exit 0 — 2026-09-16T08:31:33Z ===

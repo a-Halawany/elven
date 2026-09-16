@@ -1,0 +1,7 @@
+=== the B15 harness at the B15 tree (apps/api: npx vitest run --config vitest.int.config.ts test/int/phase6-retention-b15.test.ts) on a fresh database eye_verify_b15_h6 (0001–0075; an isolated vault and station, the synthetic https recipient spawned with the B14 substitution stated), 2026-09-16 — L1 the closure, S1 the streamed archive, S2 a 272 MB package above the in-memory ceiling (the earlier runs on harness fixtures: a canonical column's name; the upload contract's 16 MiB per object; a verified action is not verified again; the response double counting the stream's own auto-destroy; the recipient's shadowed name on a streamed body — each stated in the batch record) ===
+
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/apps/api
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+   Start at  11:12:24
+   Duration  8.43s (transform 524ms, setup 14ms, import 978ms, tests 7.38s, environment 0ms)

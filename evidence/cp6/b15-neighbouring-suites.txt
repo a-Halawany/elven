@@ -1,0 +1,7 @@
+=== the six retention harnesses at the B15 tree on a fresh database eye_verify_b15_n6 (0001–0075): phase6-retention-b11, -b11-closure, -b12, -b13, -b14 and -b15 (the B11 B4/B5/B6 and B13 E1/A1/T1/P1 pins of the package's shape updated to the closure's file and row), 2026-09-16 ===
+
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/apps/api
+ Test Files  6 passed (6)
+      Tests  74 passed (74)
+   Start at  11:12:43
+   Duration  46.63s (transform 606ms, setup 34ms, import 2.79s, tests 43.42s, environment 0ms)

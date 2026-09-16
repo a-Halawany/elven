@@ -1512,6 +1512,89 @@ and a further delivery refused; (6) the state. ALL SCENES HELD. Left on the demo
 on :3443 (its certificate and store under `.eye-local/https-recipient-demo`), the destination `nordwerk-exports-demo`, the station's
 record files for the revoked action (its package files gone), the notice ledger rows.
 
+## B15 — the relationship closure in the customer export (graph links) and the streamed archive for larger packages (implemented)
+
+**Migration 0075** (`apps/api/migrations/0075_b15_relationship_closure_and_streamed_archive.sql`, sha256 `b6e0b64a…`, 154
+lines — the one rule the database asserts: `verify_action`'s package check re-declared to count the closure's file), on `phase6-b15` (cut
+from `phase6-b14` at the B14 records head; PR base `phase6-b14`, retargeted to `main` when #51 merges). The owner's 2026-09-16 directive
+named the register's next items — import/graph-link coverage and larger-package support; the import direction (DP-47-001/-005's
+re-import, DZ-17's import half, ES-53-004's import packages, DP-47-006's round-trip fixture) is B16, since it reads back what B15
+writes. The specification rows: DP-47-003 ("exports preserve identity, temporal truth, provenance, corrections, policy labels, GRAPH
+LINKS, and manifest integrity"), DP-47-002 ("object and RELATIONSHIP CLOSURE"), DP-47-006 ("LARGE-SCALE export, relationship closure,
+checksum and signature verification"); the units AU-COM-0058 (graph links — its one open clause), AU-DP-0097 (knowledge structures in
+bulk). Implemented in one pass on the B11–B14 mechanism; the B11/B13 harness pins of the package's shape updated to the closure's file
+and row (stated in each); run on a fresh database, rehearsed on a restored copy and exercised on the demonstration (§B15.7).
+
+**D1 — the relationship closure (graph links).** At the build, after the records' files and before the manifest, the product writes
+`links.json` — the knowledge derived from the exported records: THE CLAIMS whose `intelligence.claim_lineage` names an exported EVD
+object (the latest canonical version of each — header, payload, content digest — with its lineage rows: the evidence object and digest,
+the byte range, the run, the method, the mode), THE EDGES of `graph.edges_current` asserted on those records (every state as recorded —
+asserted, superseded, retracted: temporal truth — with the predicate, the validity, the assertion and retraction instants, the claim and
+evidence they name, the confidence), THE ENTITIES those edges connect (`graph.entities_current` with their `graph.entity_identifiers`),
+and what was EXCLUDED with its gate: a claim whose header classification lies above the export's ceiling (the same redaction gate as the
+records), the edges that name it, an entity or a claim version not recorded. The manifest's `package.links` names the file (`file`,
+`links_digest` = the file's sha256, `byte_length`, `format eye-customer-export-links/1`, the counts) — INSIDE the package digest chain,
+since `package` is covered by `packageDigestOf` (no change to the chain's formula; a /1 package without a links block verifies as
+before). The execution ledger records the closure (`retention.export_links`, before the record's row). The archive lists `links.json`
+among the manifest's listed files (sorted). The read route lists it; the page shows the counts. THE VERIFIER (`verify-export.mjs`)
+gains three checks — the file's sha256 and size are the manifest's, the file is the closure the manifest counts (format, counts, the
+same action), and the closure is consistent (every claim's lineage names an exported record; every edge names an included claim,
+included entities and an exported record) — and the completeness rule admits the file. The product's verification (`verify_action`,
+re-declared in 0075) counts the file: `files_present` = the objects + 1 + 1 when the manifest names a closure, which must be present and
+digest to what the manifest names (the observer reports `links_named`, `links_present`, `links_digest_ok`).
+
+**D2 — the streamed archive (larger packages).** `export-archive.ts` gains `ustarStream(entries, mtime)` — the same bytes `buildUstar`
+produces (held equal by the harness), assembled one entry at a time from sources opened as the stream reaches them, the sha256
+accumulated as the blocks pass, the size known ahead (`archiveSizeOf`), the digest when the stream ends — and `EXPORT_STREAM_MAX_BYTES`
+(64 GiB; the in-memory JSON download keeps its 256 MiB). THE BUILD takes the archive digest by streaming over the files as written (no
+in-memory file set: the build's memory high-water mark is one object). THE STREAM ROUTE `POST …/actions/:id/export/stream`
+(`retention.export.download`, the same event `export.downloaded`): the archive verified by a DISK PASS before the write commits (a digest
+other than the recorded one is the integrity refusal before any byte), then served raw as `application/x-tar` with its length, the
+digests, the signature and the receipt in headers; a source that changes under the stream ends it with the socket destroyed. THE STATION
+WRITE streams `package.tar` to its temp name (content-addressed by streamed digest: an existing file hashed by streaming). THE HTTPS
+DELIVERY streams the body with its length (`deliverPinned` takes a stream of known length; `once` pipes it). The vault gains
+`openPackageFile` (a size and a reader). THE CUSTOMER'S TOOLS: `verify-export.mjs --tar` SCANS a tar block by block from its file (every
+entry hashed as it passes; only the manifest and the links file kept — constant memory); `fetch-export.mjs` (new) streams the archive
+from the stream route to a file, compares the streamed sha256 with the announced digest and runs the verifier. The demonstration https
+recipient streams a delivery to its store (its ceiling lifted). The JSON download route is unchanged (the browser's Blob is memory-bound;
+the page says which route serves a larger package).
+
+**B15.6 the harness and the units.** `phase6-retention-b15.test.ts` (3 cases on a fresh database with the synthetic https recipient
+spawned; the B14 substitution stated): L1 THE CLOSURE — on A a REL claim, an ENT claim, a RESTRICTED claim and an edge on the REL claim
+between two entities (one with an identifier); the export of A and B → `links.json` named by `package.links` (the digest, the size, the
+counts 2/1/2/1), the `retention.export_links` row, the closure's content (the two claims with their lineage rows, the restricted one
+excluded with the redaction gate, the edge with its provenance, both entities with the identifier), the product's verification
+(`files_present` 4, `links_present`, `links_digest_ok`), the verifier on the directory and on the tar passing the three links checks,
+`links.json` tampered on disk → the stream route's integrity refusal and the verifier's digest failure, restored → served and verified;
+an export of B alone → an empty closure, listed and verified; S1 THE STREAMED ARCHIVE — the stream route's raw tar with its headers
+byte-equal to the in-memory build, `ustarStream` byte-equal to `buildUstar`, `export.downloaded`, a tampered object file → 409 before any
+byte, the station delivery's `package.tar` streamed = the digest, the https delivery streamed → acknowledged; S2 A PACKAGE ABOVE THE
+IN-MEMORY CEILING — seventeen uploads of 16,000,000 bytes (272 MB) exported by streaming, the JSON download refused with the ceiling
+named, the stream route serving the 272 MB tar (hashed as it arrives = the archive digest; the announced length), the verifier scanning
+it in constant memory (19 entries), the station delivery streaming it (the file's sha256 the digest; the recipient's receipt collected →
+acknowledged), the https delivery streaming it to the recipient (its store holding the tar; acknowledged), the heap's growth under 256
+MiB. The first runs on harness fixtures (a column name; the upload contract's 16 MiB per object; a verified action is not verified again;
+the response double's auto-destroy), then **3/3**. The six retention harnesses (B11, B11-closure, B12, B13, B14, B15) **74/74** on a fresh
+database; the full integration suite **1024/1024 in 65 files** on a fresh database; the upgrade proof with 0022–0075 (54 migrations); the unit suite; the web typecheck,
+build and tests. Units: AU-COM-0058 `open` → `verified:local` (its one open clause — graph links — delivered: the closure packaged, inside
+the chain, verified offline); AU-DP-0097 carries the clause (knowledge structures — the derived claims, edges and entities — retrieved
+with the records; decisions, audit material and configuration remain); the requirement rows DP-47-003 `partial` → `implemented`
+(graph links and manifest integrity with the closure inside the chain; passed:harness, branch-only), DP-47-002 and DP-47-006 carry the
+clauses (the relationship closure and large-scale export delivered; encryption, the round-trip fixture — the import — and customer
+acceptance remain).
+
+**B15.7 the demonstration** — `scripts/phase6/act-b15.mjs` → `evidence/cp6/act-b15.txt` (rehearsed first on a restored copy with its
+own vault copy, key and station, `evidence/cp6/b15-rehearsal.txt`): `eye_demo` backed up and migrated with 0075, the API restarted by
+the runbook's script; then (1) P. Novák's export of the NORDWERK internal records that carry derived knowledge, approved by H. Bergmann,
+executed and verified — `links.json` on the host named by the manifest's `package.links` inside the chain, the closure read (the claims
+by type with their lineage rows, the edges by predicate, the entities with their identifiers, the exclusions), its consistency, the
+`retention.export_links` row, the product's verification counting it, the read route listing it; (2) the customer's verifier on the
+directory passing the links checks, the customer's fetch tool streaming the archive from the STREAM route through the real HTTP path
+(the announced length and digest, the streamed sha256 the recorded one, the verifier on the tar), `export.downloaded`, the JSON download
+still serving the small package; (3) the streamed delivery to the transfer station, the demonstration recipient's receipt collected →
+ACKNOWLEDGED; (4) the state. STATED: a package above the in-memory ceiling is the harness's proof — no synthetic bulk is added to
+NORDWERK.
+
 ## Order and the next implementation batch
 
 B3, B1 and B2 are done in code, B4/B5 applied to the audit (the 2026-09-11 checkpoints), B6 done in

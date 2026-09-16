@@ -23,7 +23,7 @@
  * demonstration recipient behind a platform's edge) — never for a destination the product reaches directly.
  *
  * What it does on a DELIVERY (`POST <any path>` with a tar body):
- *   1. checks the bearer (401 without it, when one is configured); reads the body (at most 256 MiB);
+ *   1. checks the bearer (401 without it, when one is configured); streams the body to its store, hashing it as it arrives (B15: a package of any size the store holds);
  *   2. computes sha256(body) — the archive digest of what it actually received — and compares it with x-eye-archive-digest;
  *   3. runs the customer's verifier on the archive (`verify-export.mjs --tar <received> --json`, with `--public-key` when a key was given
  *      and `--expect-package-digest` with the header's digest) — the checks, the verdict, the signature's state;
@@ -48,7 +48,7 @@ import { createServer as createHttpsServer } from 'node:https';
 import { createServer as createHttpServer } from 'node:http';
 import { spawnSync } from 'node:child_process';
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createWriteStream, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -56,7 +56,9 @@ import { fileURLToPath } from 'node:url';
 const VERIFIER = join(dirname(fileURLToPath(import.meta.url)), 'verify-export.mjs');
 const VERIFIER_NAME = 'scripts/retention/verify-export.mjs (demonstration https recipient)';
 const MODES = ['normal', 'stale', 'wrong-digest', 'deny', 'unverified', 'refuse', 'not-json', 'error', 'redirect', 'unauthorized'];
-const MAX_BODY = 256 * 1024 * 1024;
+/** B15: a package of any size the store holds — the body is streamed to a file and hashed as it arrives, never held whole; a notice (JSON) is small and kept. */
+const MAX_BODY = 64 * 1024 * 1024 * 1024;
+const MAX_JSON_BODY = 16 * 1024 * 1024;
 const USAGE = 'usage: node scripts/retention/https-recipient.mjs (--self-signed <hostname> | --cert <pem> --key <pem> | --plain) [--listen <host>:<port>] [--bearer-env <NAME>] [--public-key <pem-file>] [--recipient <name>] [--store <dir>]';
 const say = (line) => console.log(`[demonstration https recipient] ${line}`);
 const fail = (line) => { console.error(`[demonstration https recipient] ${line}`); process.exit(2); };
@@ -122,11 +124,22 @@ const answer = (res, status, body, type = 'application/json') => {
   res.writeHead(status, { 'content-type': type, 'content-length': String(bytes.byteLength) });
   res.end(bytes);
 };
-const readBody = (req) => new Promise((resolvePromise, reject) => {
+const readBody = (req, limit = MAX_JSON_BODY) => new Promise((resolvePromise, reject) => {
   const chunks = []; let total = 0;
-  req.on('data', (c) => { total += c.length; if (total > MAX_BODY) { reject(new Error('body above 256 MiB')); req.destroy(); return; } chunks.push(c); });
+  req.on('data', (c) => { total += c.length; if (total > limit) { reject(new Error(`body above ${limit} bytes`)); req.destroy(); return; } chunks.push(c); });
   req.on('end', () => resolvePromise(Buffer.concat(chunks)));
   req.on('error', reject);
+});
+/** B15: the body streamed to a file (temp + rename), its sha256 and size accumulated as it arrives. */
+const streamBodyToFile = (req, path) => new Promise((resolvePromise, reject) => {
+  const hash = createHash('sha256'); let total = 0;
+  const tmp = `${path}.tmp-${randomUUID().slice(0, 8)}`;
+  const out = createWriteStream(tmp, { mode: 0o600 });
+  req.on('data', (c) => { total += c.length; if (total > MAX_BODY) { reject(new Error('body above the recipient\'s ceiling')); req.destroy(); return; } hash.update(c); });
+  req.on('error', (e) => { out.destroy(); reject(e); });
+  out.on('error', reject);
+  out.on('finish', () => { try { renameSync(tmp, path); resolvePromise({ digest: hash.digest('hex'), size: total }); } catch (e) { reject(e); } });
+  req.pipe(out);
 });
 const flip = (hex) => `${(parseInt(hex.slice(0, 2), 16) ^ 0xff).toString(16).padStart(2, '0')}${hex.slice(2)}`;
 const hdr = (req, name) => { const v = req.headers[name]; return typeof v === 'string' ? v : null; };
@@ -181,14 +194,15 @@ const onNotice = async (req, res, body) => {
   answer(res, 200, receipt);
 };
 
-const onDelivery = async (req, res, body) => {
+const onDelivery = async (req, res) => {
   const deliveryId = hdr(req, 'x-eye-delivery-id'); const attempt = hdr(req, 'x-eye-attempt'); const actionId = hdr(req, 'x-eye-action-id');
   const notedArchive = hdr(req, 'x-eye-archive-digest'); const notedPackage = hdr(req, 'x-eye-package-digest');
   const scheme = hdr(req, 'x-eye-signature-scheme'); const keyId = hdr(req, 'x-eye-key-id');
-  const archiveDigest = createHash('sha256').update(body).digest('hex');
-  say(`DELIVERY ${deliveryId ?? '?'} attempt ${attempt ?? '?'} of action ${actionId ?? '?'}: ${body.byteLength} bytes ${req.headers['content-type'] ?? ''}, sha256 ${archiveDigest} — ${notedArchive === null ? 'no archive digest in the headers' : notedArchive === archiveDigest ? 'the archive digest the headers name' : `NOT the archive digest the headers name (${notedArchive})`}; signature ${scheme ?? '?'}${keyId ? ` by ${keyId}` : ''}; authorization ${req.headers['authorization'] === undefined ? 'none' : 'bearer (value not logged)'}`);
   const path = join(storeDir, `${deliveryId ?? randomUUID()}-${attempt ?? '0'}.tar`);
-  writeFileSync(path, body, { mode: 0o600 });
+  const stored = await streamBodyToFile(req, path);
+  const archiveDigest = stored.digest;
+  const body = { byteLength: stored.size };
+  say(`DELIVERY ${deliveryId ?? '?'} attempt ${attempt ?? '?'} of action ${actionId ?? '?'}: ${body.byteLength} bytes ${req.headers['content-type'] ?? ''} (streamed to the store), sha256 ${archiveDigest} — ${notedArchive === null ? 'no archive digest in the headers' : notedArchive === archiveDigest ? 'the archive digest the headers name' : `NOT the archive digest the headers name (${notedArchive})`}; signature ${scheme ?? '?'}${keyId ? ` by ${keyId}` : ''}; authorization ${req.headers['authorization'] === undefined ? 'none' : 'bearer (value not logged)'}`);
   const verifierArgs = [VERIFIER, '--tar', path, '--json', ...(publicKeyPath !== null ? ['--public-key', publicKeyPath] : []), ...(notedPackage !== null && /^[0-9a-f]{64}$/.test(notedPackage) ? ['--expect-package-digest', notedPackage] : [])];
   const run = spawnSync(process.execPath, verifierArgs, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
   let verdict = null;
@@ -224,13 +238,12 @@ const handle = async (req, res) => {
     if (req.method === 'POST' && req.url === '/_control') { if (!authorized(req)) { answer(res, 401, { error: 'unauthorized' }); return; } await onControl(req, res); return; }
     if (req.method === 'GET' && req.url === '/_received') { if (!authorized(req)) { answer(res, 401, { error: 'unauthorized' }); return; } answer(res, 200, { mode, received: received.map(({ path, ...r }) => r), notices }); return; }
     if (req.method !== 'POST') { answer(res, 405, { error: 'POST a package or a notice' }); return; }
-    if (mode === 'unauthorized' || !authorized(req)) { say(`${req.url}: 401 (${mode === 'unauthorized' ? 'mode unauthorized' : 'the bearer is missing or wrong'})`); answer(res, 401, { error: 'unauthorized' }); return; }
-    const body = await readBody(req);
-    if (mode === 'error') { say(`${req.url}: mode error → 500`); answer(res, 500, { error: 'the recipient failed (mode error)' }); return; }
-    if (mode === 'redirect') { say(`${req.url}: mode redirect → 302`); res.writeHead(302, { location: 'https://elsewhere.invalid/receive' }); res.end(); return; }
-    if (mode === 'not-json') { say(`${req.url}: mode not-json → a text body`); answer(res, 200, 'received, thanks', 'text/plain'); return; }
-    if (hdr(req, 'x-eye-notice') === 'revocation') await onNotice(req, res, body);
-    else await onDelivery(req, res, body);
+    if (mode === 'unauthorized' || !authorized(req)) { say(`${req.url}: 401 (${mode === 'unauthorized' ? 'mode unauthorized' : 'the bearer is missing or wrong'})`); req.resume(); answer(res, 401, { error: 'unauthorized' }); return; }
+    if (mode === 'error') { say(`${req.url}: mode error → 500`); await readBody(req, MAX_BODY).catch(() => null); answer(res, 500, { error: 'the recipient failed (mode error)' }); return; }
+    if (mode === 'redirect') { say(`${req.url}: mode redirect → 302`); await readBody(req, MAX_BODY).catch(() => null); res.writeHead(302, { location: 'https://elsewhere.invalid/receive' }); res.end(); return; }
+    if (mode === 'not-json') { say(`${req.url}: mode not-json → a text body`); await readBody(req, MAX_BODY).catch(() => null); answer(res, 200, 'received, thanks', 'text/plain'); return; }
+    if (hdr(req, 'x-eye-notice') === 'revocation') await onNotice(req, res, await readBody(req));
+    else await onDelivery(req, res);
   } catch (e) {
     say(`${req.url}: failed — ${e.message}`);
     try { answer(res, 500, { error: e.message }); } catch { /* the socket is gone */ }

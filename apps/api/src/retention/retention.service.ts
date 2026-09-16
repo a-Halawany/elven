@@ -46,7 +46,8 @@ import { VaultService, VaultIntegrityError, sha256, type VaultName } from '../ob
 import * as fault from '../observation/fault-injection.js';
 import type { RetentionReads, RetentionWrites } from './retention.capabilities.js';
 import { EXPORT_FORMAT, SIGNATURE_SCHEME, objectsDigestOf, packageDigestOf, type ExportManifestShape } from './export-package.js';
-import { EXPORT_ARCHIVE_MAX_BYTES, ExportArchiveError, archiveDigestOf, archiveOfPackage, listedFilesOf, type ArchiveEntry } from './export-archive.js';
+import { EXPORT_ARCHIVE_MAX_BYTES, EXPORT_STREAM_MAX_BYTES, LINKS_FILE, ExportArchiveError, archiveDigestOf, archiveOfPackage, listedFilesOf, ustarStream, type ArchiveEntry, type StreamEntry } from './export-archive.js';
+import { Readable } from 'node:stream';
 import { DestinationCredentialStore, ExportSigningKeyStore, KEY_SIGNATURE_SCHEME, SIGNING_ALGORITHM } from './export-signing.js';
 import { ExportDeliveryService, TransferStationRefused, type DeliveryPackage, type RevocationNotice } from './export-delivery.service.js';
 import { X509Certificate } from 'node:crypto';
@@ -101,6 +102,13 @@ export function expiresAfterSeconds(value: string): number | null {
 }
 /** The canonical row's `payload ->> 'manifest_id'` as a where-clause expression (the manifest an evidence version names). */
 const sqlPayloadManifestId = sql`(payload ->> 'manifest_id')`;
+/** B15 (D1): the relationship closure's own format, named inside links.json and in the manifest's package.links. */
+const LINKS_FORMAT = 'eye-customer-export-links/1';
+/** B15 (D2): a stream consumed for its digest alone (the build's archive digest; the stream route's pre-pass). */
+async function drainForDigest(built: { stream: Readable; digest: () => Promise<string> }): Promise<string> {
+  for await (const _chunk of built.stream) { /* the hash accumulates inside the stream */ }
+  return built.digest();
+}
 const bad = (correlationId: string, message: string): never => { throw new HttpException(errorBody('EYE_REQ_001', correlationId, message), 422); };
 
 export interface OpenActionIntake { kind: (typeof RETENTION_KINDS)[number]; targetKind: (typeof RETENTION_TARGETS)[number]; selector: Row; retentionProfile: string | null }
@@ -464,8 +472,8 @@ export class RetentionService {
     await this.vault.removePackage(scope, a.actionId);
     let executed = 0; let refused = 0; let redactionRefused = 0; const refusals: string[] = []; let byteTotal = 0;
     const objects: Row[] = [];
-    // The in-memory file set the archive is built from (C4): each object's bytes as written, under its package name.
-    const files: ArchiveEntry[] = [];
+    // B15 (D2): the archive's digest is taken by STREAMING over the files as written (never an in-memory file set): the build's memory
+    // high-water mark is one object, not the package.
     for (const item of items) {
       if (String(item['item_kind']) !== 'manifest' || String(item['disposition']) !== 'execute') continue;
       const ref = String(item['ref']); const itemId = String(item['item_id']); const details = (item['details'] ?? {}) as Row;
@@ -496,7 +504,6 @@ export class RetentionService {
       }
       const file = `${ref}.bin`;
       const written = await this.vault.writePackageFile(scope, a.actionId, file, bytes);
-      files.push({ name: file, bytes });
       const manifest = ((await cap.readManifests().selectAll().where('manifest_id' as never, '=', ref as never).executeTakeFirst()) as Row | undefined) ?? {};
       const contract = ((await cap.readSourceContracts().select(['source_key' as never, 'rights_state' as never]).where('source_id' as never, '=', String(manifest['source_id']) as never).where('contract_version' as never, '=', Number(manifest['contract_version']) as never).executeTakeFirst()) as Row | undefined) ?? {};
       objects.push({
@@ -515,9 +522,18 @@ export class RetentionService {
       return { manifest_id: String(i['ref']), object_id: (d['evd_object_id'] as string | null) ?? null, object_version: d['evd_version'] == null ? null : Number(d['evd_version']), gate: (d['gate'] as string | null) ?? null, reason: (i['reason'] as string | null) ?? null };
     });
     const locatorPrefix = `${a.tenantId}/${a.domainId}/${a.actionId}/`;
+    // B15 (D1): THE RELATIONSHIP CLOSURE — the knowledge derived from the exported records (the claims whose lineage names them, the graph's
+    // edges asserted on them and the entities those edges connect), under the same ceiling, written as links.json and named by the manifest's
+    // package.links (inside the digest chain: `package` is covered by the package digest).
+    const links = await this.linksOf(cap, a, objects.map((o) => String(o['object_id'])), ceiling);
+    const linksBytes = Buffer.from(`${JSON.stringify(links.body, null, 2)}\n`, 'utf8');
+    const linksFile = await this.vault.writePackageFile(scope, a.actionId, LINKS_FILE, linksBytes);
+    await cap.recordExecution({ executionId: newId(), actionId: a.actionId, tenantId: a.tenantId, domainId: a.domainId, itemId: null, port: 'retention.export_links', outcome: 'done',
+                                evidence: { file: LINKS_FILE, links_digest: linksFile.contentDigest, byte_length: linksFile.byteLength, ...links.counts }, actor: a.actor, correlationId: a.correlationId });
     const body: ExportManifestShape = {
       format: EXPORT_FORMAT,
-      package: { action_id: a.actionId, tenant_id: a.tenantId, domain_id: a.domainId, destination: 'export', locator_prefix: locatorPrefix, built_at: new Date().toISOString(), built_by: `principal:${a.actor}` },
+      package: { action_id: a.actionId, tenant_id: a.tenantId, domain_id: a.domainId, destination: 'export', locator_prefix: locatorPrefix, built_at: new Date().toISOString(), built_by: `principal:${a.actor}`,
+                 links: { file: LINKS_FILE, links_digest: linksFile.contentDigest, byte_length: linksFile.byteLength, format: LINKS_FORMAT, ...links.counts } },
       authorization: { scope_digest: scopeDigest, approval_id: approvalId, approver: `principal:${String(approval['approver_principal_id'])}`, approved_at: new Date(approval['recorded_at'] as string | Date).toISOString(), rationale: String(approval['rationale'] ?? ''), opened_by: `principal:${String(action['opened_by'])}` },
       gates: {
         approval: 'live approval on the resolved scope digest', redaction: { classification_ceiling: ceiling }, format: 'json-manifest+raw-bytes', destination: 'export',
@@ -547,10 +563,13 @@ export class RetentionService {
     }
     const fileBytes = Buffer.from(`${JSON.stringify({ ...body, signature }, null, 2)}\n`, 'utf8');
     const manifestFile = await this.vault.writePackageFile(scope, a.actionId, 'manifest.json', fileBytes);
-    // THE ARCHIVE (D2, C4): built in memory from the manifest's bytes and the files it lists, at the manifest's own built_at; its digest recorded with the package.
+    // THE ARCHIVE (D2, C4; B15): its digest taken by streaming over the manifest's bytes and the files it lists AS WRITTEN, at the manifest's own
+    // built_at (the same bytes the in-memory builder produces — the harness holds the two equal); recorded with the package.
     let archiveDigest: string;
-    try { archiveDigest = archiveDigestOf(archiveOfPackage(fileBytes, files)); }
-    catch (e) { throw new RetentionExecutionRolledBack(a.actionId, 'infrastructure', `the package's archive did not build: ${String((e as { message?: unknown })?.message ?? 'unknown').slice(0, 300)}`); }
+    try {
+      const built = await this.archiveStreamOf(scope, a.actionId, fileBytes, { ...body, signature });
+      archiveDigest = await drainForDigest(built);
+    } catch (e) { throw new RetentionExecutionRolledBack(a.actionId, 'infrastructure', `the package's archive did not build: ${String((e as { message?: unknown })?.message ?? 'unknown').slice(0, 300)}`); }
     const pkg = await cap.recordExportPackage({ actionId: a.actionId, tenantId: a.tenantId, domainId: a.domainId, approvalId, manifestDigest: manifestFile.contentDigest, packageDigest, signature, objectCount: executed, excludedCount: excluded.length, byteTotal, archiveDigest, signingKeyId, actor: a.actor, correlationId: a.correlationId });
     await cap.recordExecution({ executionId: newId(), actionId: a.actionId, tenantId: a.tenantId, domainId: a.domainId, itemId: null, port: 'retention.record_export_package', outcome: 'done', evidence: pkg, actor: a.actor, correlationId: a.correlationId });
     return { executed, refused, redactionRefused, refusals, package: pkg };
@@ -691,8 +710,13 @@ export class RetentionService {
       try { parsed = manifestBytes === null ? null : (JSON.parse(manifestBytes.toString('utf8')) as ExportManifestShape); } catch { parsed = null; }
       let recomputed: string | null = null;
       try { recomputed = parsed === null ? null : packageDigestOf(parsed); } catch { recomputed = null; }
+      // B15 (D1): the relationship closure the manifest names — present, and digesting to what the manifest names (the file's sha256 and size).
+      const linksBlock = parsed === null ? null : (((parsed.package as Row | undefined)?.['links'] ?? null) as Row | null);
+      const linksNamed = linksBlock !== null && typeof linksBlock === 'object';
+      const linksBytes = linksNamed ? await this.vault.readPackageFile(scope, actionId, LINKS_FILE).then((b) => b, () => null) : null;
       observed['__package__'] = { manifest_present: manifestBytes !== null, manifest_digest: manifestBytes === null ? null : sha256(manifestBytes), package_digest: recomputed,
-                                  objects_listed: parsed === null || !Array.isArray(parsed.objects) ? null : parsed.objects.length, files_present: files.length };
+                                  objects_listed: parsed === null || !Array.isArray(parsed.objects) ? null : parsed.objects.length, files_present: files.length,
+                                  links_named: linksNamed, links_present: linksBytes !== null, links_digest_ok: linksBytes !== null && linksNamed && sha256(linksBytes) === String(linksBlock['links_digest']) && linksBytes.byteLength === Number(linksBlock['byte_length']) };
     }
     return observed;
   }
@@ -862,7 +886,7 @@ export class RetentionService {
     const files: ArchiveEntry[] = [];
     let tar: Buffer;
     try {
-      for (const name of listedFilesOf(manifest.objects)) {
+      for (const name of listedFilesOf(manifest.objects, manifest as { package?: { links?: unknown } })) {
         let bytes: Buffer;
         try { bytes = await this.vault.readPackageFile(scope, actionId, name); } catch { return conflict(`the package's archive does not rebuild to its recorded digest: the manifest lists ${name}, which is not present`); }
         files.push({ name, bytes });
@@ -875,6 +899,109 @@ export class RetentionService {
     const digest = archiveDigestOf(tar);
     if (digest !== recorded) conflict(`the package's archive does not rebuild to its recorded digest (rebuilt ${digest}, recorded ${String(recorded)}); nothing is served`);
     return { tar, manifest, manifestBytes, archiveDigest: digest };
+  }
+
+  /**
+   * B15 (D1): THE RELATIONSHIP CLOSURE of the exported records — for the exported EVD object ids: the CLAIMS whose lineage names them
+   * (intelligence.claim_lineage → the latest canonical version of each claim, with its lineage rows), the graph's EDGES asserted on
+   * them (graph.edges_current, every state as recorded — temporal truth), and the ENTITIES those edges connect with their identifiers.
+   * The same ceiling as the records: a claim whose header classification lies above it is EXCLUDED (listed with the gate), and so are
+   * the edges that name it; the edges and entities carry no classification of their own. Nothing here is a write.
+   */
+  private async linksOf(cap: RetentionReads, a: { tenantId: string; domainId: string; actionId: string }, evdObjectIds: string[], ceiling: string): Promise<{ body: Row; counts: { claims: number; edges: number; entities: number; excluded: number } }> {
+    const claims: Row[] = []; const edges: Row[] = []; const entities: Row[] = []; const excluded: Row[] = [];
+    if (evdObjectIds.length > 0) {
+      const lineage = (await cap.readClaimLineage().selectAll().where('evidence_object_id' as never, 'in', evdObjectIds as never).orderBy('claim_object_id' as never).orderBy('claim_version' as never).execute()) as Row[];
+      const byClaim = new Map<string, Row[]>();
+      for (const l of lineage) { const k = String(l['claim_object_id']); byClaim.set(k, [...(byClaim.get(k) ?? []), l]); }
+      const excludedClaims = new Set<string>();
+      for (const [claimId, rows] of [...byClaim.entries()].sort(([x], [y]) => (x < y ? -1 : 1))) {
+        const row = (await cap.readCanonicalObjects().selectAll().where('tenant_id' as never, '=', a.tenantId as never).where('domain_id' as never, '=', a.domainId as never)
+          .where('object_id' as never, '=', claimId as never).orderBy('object_version' as never, 'desc').limit(1).executeTakeFirst()) as (ObjectRow & { payload: Row }) | undefined;
+        if (row === undefined) { excluded.push({ kind: 'claim', object_id: claimId, gate: 'record', reason: 'no canonical version of the claim is recorded' }); excludedClaims.add(claimId); continue; }
+        const header = rebuildHeaderFromRow(row) as unknown as Row;
+        if (classificationRank(header['classification']) > classificationRank(ceiling)) { excluded.push({ kind: 'claim', object_id: claimId, object_version: Number(row.object_version), gate: 'redaction', reason: `classification ${String(header['classification'])} above the ceiling ${ceiling}` }); excludedClaims.add(claimId); continue; }
+        claims.push({
+          object_id: claimId, object_version: Number(row.object_version), object_type: String(row.object_type), content_digest: row.content_digest, header, payload: row.payload,
+          lineage: rows.map((l) => ({ claim_version: Number(l['claim_version']), evidence_object_id: String(l['evidence_object_id']), evidence_digest: String(l['evidence_digest']), byte_start: Number(l['byte_start']), byte_end: Number(l['byte_end']), run_id: String(l['run_id']), method_id: String(l['method_id']), mode: String(l['mode']), confidence: l['confidence'] === null || l['confidence'] === undefined ? null : Number(l['confidence']) })),
+        });
+      }
+      const edgeRows = (await cap.readEdges().selectAll().where('evidence_object_id' as never, 'in', evdObjectIds as never).orderBy('edge_id' as never).execute()) as Row[];
+      const entityIds = new Set<string>();
+      for (const e of edgeRows) {
+        const claimId = String(e['claim_object_id']);
+        if (excludedClaims.has(claimId)) { excluded.push({ kind: 'edge', edge_id: String(e['edge_id']), gate: 'redaction', reason: `its claim ${claimId} is excluded` }); continue; }
+        entityIds.add(String(e['subject_entity_id'])); entityIds.add(String(e['object_entity_id']));
+        edges.push({
+          edge_id: String(e['edge_id']), predicate: String(e['predicate']), subject_entity_id: String(e['subject_entity_id']), object_entity_id: String(e['object_entity_id']),
+          valid_from: instantOf(e['valid_from']), valid_to: instantOf(e['valid_to']), asserted_at: instantOf(e['asserted_at']), retracted_at: instantOf(e['retracted_at']), state: String(e['state']),
+          claim: { object_id: claimId, object_version: Number(e['claim_version']) }, evidence: { object_id: String(e['evidence_object_id']), digest: String(e['evidence_digest']) },
+          confidence: Number(e['confidence']), mode: String(e['mode']), superseded_by: (e['superseded_by'] as string | null) ?? null, retraction_reason: (e['retraction_reason'] as string | null) ?? null,
+        });
+      }
+      if (entityIds.size > 0) {
+        const ids = [...entityIds].sort();
+        const entityRows = (await cap.readEntities().selectAll().where('entity_id' as never, 'in', ids as never).orderBy('entity_id' as never).execute()) as Row[];
+        const identifiers = (await cap.readEntityIdentifiers().selectAll().where('entity_id' as never, 'in', ids as never).orderBy('entity_id' as never).orderBy('system_key' as never).orderBy('identifier_value' as never).execute()) as Row[];
+        for (const en of entityRows) {
+          const id = String(en['entity_id']);
+          entities.push({
+            entity_id: id, entity_type: String(en['entity_type']), canonical_name: String(en['canonical_name']), lifecycle_state: String(en['lifecycle_state']), split_from: (en['split_from'] as string | null) ?? null, superseded_by: (en['superseded_by'] as string | null) ?? null,
+            identifiers: identifiers.filter((i) => String(i['entity_id']) === id).map((i) => ({ system_key: String(i['system_key']), value: String(i['identifier_value']), source_claim_object_id: String(i['source_claim_object_id']), source_evidence_object_id: String(i['source_evidence_object_id']) })),
+          });
+        }
+        for (const id of ids) if (!entityRows.some((en) => String(en['entity_id']) === id)) excluded.push({ kind: 'entity', entity_id: id, gate: 'record', reason: 'the entity an edge names is not recorded in this domain' });
+      }
+    }
+    const counts = { claims: claims.length, edges: edges.length, entities: entities.length, excluded: excluded.length };
+    return { body: { format: LINKS_FORMAT, package: { action_id: a.actionId, tenant_id: a.tenantId, domain_id: a.domainId }, evidence: evdObjectIds, claims, edges, entities, excluded, counts }, counts };
+  }
+
+  /**
+   * B15 (D2): the package's archive as a STREAM from the files on disk — the manifest's bytes first, then the files the manifest lists
+   * (sorted; each opened as the stream reaches it), at the manifest's own built_at; the size known ahead; the digest when the stream ends.
+   * A listed file absent, a name outside the package's rule or a size above the stream ceiling is refused before the first byte.
+   */
+  private async archiveStreamOf(scope: { tenantId: string; domainId: string }, actionId: string, manifestBytes: Buffer, manifest: ExportManifestShape): Promise<{ stream: Readable; size: number; digest: () => Promise<string> }> {
+    const builtAt = Date.parse(String((manifest.package as Row)['built_at'] ?? ''));
+    if (Number.isNaN(builtAt)) throw new ExportArchiveError('manifest', 'the manifest names no package.built_at');
+    const entries: StreamEntry[] = [{ name: 'manifest.json', size: manifestBytes.byteLength, open: () => Readable.from([manifestBytes]) }];
+    let total = manifestBytes.byteLength;
+    for (const name of listedFilesOf(manifest.objects, manifest as { package?: { links?: unknown } })) {
+      let source: { size: number; open: () => Readable };
+      try { source = await this.vault.openPackageFile(scope, actionId, name); } catch { throw new ExportArchiveError('file_missing', `the manifest lists ${name}, which is not present`); }
+      total += source.size;
+      if (total > EXPORT_STREAM_MAX_BYTES) throw new ExportArchiveError('size', `the package is above the streamed archive ceiling of ${EXPORT_STREAM_MAX_BYTES} bytes`);
+      entries.push({ name, size: source.size, open: source.open });
+    }
+    return ustarStream(entries, Math.floor(builtAt / 1000));
+  }
+
+  /**
+   * B15 (D2): THE STREAMED REBUILD for the stream route, the station write and the https delivery — the manifest read, the archive
+   * assembled from the files on disk and, FIRST, consumed once for its digest alone (a disk pass, no memory): a digest other than the
+   * recorded one is the integrity refusal (409) before any byte leaves; then a second, identical stream is returned for the consumer,
+   * with the size the headers announce. The in-memory rebuild (`rebuildArchive`) stays for the JSON download under its own ceiling.
+   */
+  async rebuildArchiveStream(scope: { tenantId: string; domainId: string }, actionId: string, pkg: Row, correlationId: string): Promise<{ open: () => Promise<{ stream: Readable; digest: () => Promise<string> }>; size: number; manifest: ExportManifestShape; manifestBytes: Buffer; archiveDigest: string }> {
+    const conflict = (message: string): never => { throw new HttpException(errorBody('EYE_STA_002', correlationId, message), 409); };
+    const recorded = pkg['archive_digest'];
+    if (typeof recorded !== 'string') conflict(`the export package of ${actionId} was built before its archive digest was recorded (B13); build the export again to download or deliver it`);
+    let manifestBytes: Buffer;
+    try { manifestBytes = await this.vault.readPackageFile(scope, actionId, 'manifest.json'); }
+    catch { return conflict(`the package's archive does not rebuild to its recorded digest: manifest.json is not readable`); }
+    let manifest: ExportManifestShape;
+    try { manifest = JSON.parse(manifestBytes.toString('utf8')) as ExportManifestShape; } catch { return conflict(`the package's archive does not rebuild to its recorded digest: manifest.json does not parse`); }
+    const build = async () => {
+      try { return await this.archiveStreamOf(scope, actionId, manifestBytes, manifest); }
+      catch (e) { return conflict(`the package's archive does not rebuild to its recorded digest: ${e instanceof ExportArchiveError ? e.message : String((e as { message?: unknown })?.message ?? 'unknown').slice(0, 200)}`); }
+    };
+    const first = await build();
+    let digest: string;
+    try { digest = await drainForDigest(first); }
+    catch (e) { return conflict(`the package's archive does not rebuild to its recorded digest: ${String((e as { message?: unknown })?.message ?? 'unknown').slice(0, 200)}`); }
+    if (digest !== recorded) conflict(`the package's archive does not rebuild to its recorded digest (rebuilt ${digest}, recorded ${String(recorded)}); nothing is served`);
+    return { open: build, size: first.size, manifest, manifestBytes, archiveDigest: digest };
   }
 
   /** The package row of an action for a download or a delivery: present (404 otherwise), not revoked, not expired (409, the messages the mapper routes). */
@@ -903,6 +1030,20 @@ export class RetentionService {
   }
 
   /**
+   * B15 (D2): THE STREAMED DOWNLOAD — the same gates and the same event as the JSON download (export.downloaded, with served_as stream),
+   * the archive verified by a disk pass before the write commits; what is returned opens the stream the route pipes to the answer after
+   * the commit, with the size the headers announce. No memory ceiling: the streamed archive's own (64 GiB).
+   */
+  async downloadExportStream(cap: RetentionWrites, scope: { tenantId: string; domainId: string }, actionId: string, a: { actor: string; correlationId: string }): Promise<{ filename: string; open: () => Promise<{ stream: Readable; digest: () => Promise<string> }>; size: number; archiveDigest: string; packageDigest: string; manifestDigest: string; signature: Row; expiresAt: string | null }> {
+    const pkg = await this.servablePackage(cap, actionId, a.correlationId);
+    const rebuilt = await this.rebuildArchiveStream(scope, actionId, pkg, a.correlationId);
+    const key = await this.signingKeyOf(cap, scope.tenantId, pkg);
+    await cap.recordExportDownload({ actionId, tenantId: scope.tenantId, domainId: scope.domainId, archiveDigest: rebuilt.archiveDigest, actor: a.actor, correlationId: a.correlationId });
+    return { filename: `${actionId}.tar`, open: rebuilt.open, size: rebuilt.size, archiveDigest: rebuilt.archiveDigest, packageDigest: String(pkg['package_digest']), manifestDigest: String(pkg['manifest_digest']),
+             signature: { ...((rebuilt.manifest.signature ?? {}) as Row), ...(key === null ? {} : { key }) }, expiresAt: instantOf(pkg['expires_at']) };
+  }
+
+  /**
    * THE DELIVERY (D6, C6, C8): inside the governed write — the port's gates (begin_export_delivery: the action a verified customer export, the
    * package present, unrevoked, unexpired, the destination active, the rights still confirmed, the signing-key gate; the delivery id and the
    * attempt under the action's lock), the archive rebuilt and compared with the record (a mismatch: 409, nothing recorded), the executor by
@@ -916,7 +1057,7 @@ export class RetentionService {
     // reads every column by name — the archive digest, the byte total, the endpoint — whatever the port chose to return).
     const pkg: Row = { ...((begun['package'] ?? {}) as Row), ...(((await cap.readExportPackages().selectAll().where('action_id' as never, '=', actionId as never).executeTakeFirst()) as Row | undefined) ?? {}) };
     const destination: Row = { ...((begun['destination'] ?? {}) as Row), ...(((await cap.readExportDestinations().selectAll().where('destination_id' as never, '=', destinationId as never).executeTakeFirst()) as Row | undefined) ?? {}) };
-    const rebuilt = await this.rebuildArchive(scope, actionId, pkg, a.correlationId);
+    const rebuilt = await this.rebuildArchiveStream(scope, actionId, pkg, a.correlationId);
     const key = await this.signingKeyOf(cap, scope.tenantId, pkg);
     const signingKey: DeliveryPackage['signingKey'] = key === null ? null
       : { key_id: String(key['key_id']), algorithm: String(key['algorithm'] ?? SIGNING_ALGORITHM), purpose: String(key['purpose'] ?? ''), public_key_pem: String(key['public_key_pem'] ?? ''), state: key['state'] === 'retired' ? 'retired' : 'active', retired_at: (key['retired_at'] as string | null) ?? null };
@@ -924,7 +1065,7 @@ export class RetentionService {
     const deliveryPackage: DeliveryPackage = {
       tenantId: scope.tenantId, domainId: scope.domainId, actionId, deliveryId, attempt,
       destinationKey: String(destination['destination_key'] ?? ''), recipient: String(destination['recipient'] ?? ''), purpose: String(destination['purpose'] ?? ''),
-      tar: rebuilt.tar, archiveDigest: rebuilt.archiveDigest, packageDigest: String(pkg['package_digest']), manifestDigest: String(pkg['manifest_digest']),
+      archive: { open: rebuilt.open, size: rebuilt.size }, archiveDigest: rebuilt.archiveDigest, packageDigest: String(pkg['package_digest']), manifestDigest: String(pkg['manifest_digest']),
       signature: (rebuilt.manifest.signature ?? {}) as Row, signingKey, expiresAt: instantOf(pkg['expires_at']), deliveredAt,
     };
     const kind = String(destination['kind'] ?? '');

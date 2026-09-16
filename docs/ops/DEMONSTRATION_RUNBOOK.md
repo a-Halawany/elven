@@ -156,6 +156,16 @@ credential and certificate chain, or — for a hosted demonstration the owner au
 (`--plain`, the platform's `$PORT`), declared by its public hostname with the edge's certificate chain as the anchor (or none, the
 deployment's trust store).
 
+**The relationship closure and the streamed archive (B15, 2026-09-16).** A customer export now carries the knowledge derived from its
+records in `links.json` (the claims by lineage, the graph's edges, the entities with their identifiers, the exclusions under the
+ceiling), named by the manifest's `package.links` inside the signed chain; the customer's verifier checks it (`verify-export.mjs`, three
+`links:` checks) and scans a tar block by block in constant memory. A package of any size under 64 GiB is fetched by the customer's tool
+from the stream route — `node scripts/retention/fetch-export.mjs --api http://localhost:3401 --token <the session token> --tenant <T>
+--domain <D> --action <the export's action id> --out <file>.tar --public-key .eye-local/export-signing-demo.pub.pem` (the token is the
+caller's session's; never written down) — which streams the tar to the file, compares the streamed sha256 with the announced digest and
+runs the verifier; the page's JSON download keeps its 256 MiB ceiling (the browser holds the Blob whole). The station write and the https
+delivery stream the archive likewise.
+
 **The revocation notice.** A revocation now tells every destination that received the package: the station receives
 `revocation.json` beside `delivery.json` and the product removes its own `package.tar`/`package.sig` there after the commit; the
 demonstration recipient answers with `node scripts/retention/transfer-station-recipient.mjs <station> <tenant> <domain> <action>

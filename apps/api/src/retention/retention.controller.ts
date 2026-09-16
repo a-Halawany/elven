@@ -26,7 +26,8 @@
  *   POST …/retention/actions/:id/export/deliveries/:deliveryId/acknowledge      retention.export.acknowledge (B13) — the recipient's receipt presented out of band
  *   POST …/retention/actions/:id/get, /actions/list, /schedules/list   retention.read
  */
-import { Body, Controller, HttpException, Param, Post, Req } from '@nestjs/common';
+import { Body, Controller, HttpException, Param, Post, Req, Res } from '@nestjs/common';
+import type { Response } from 'express';
 import { resolve as resolvePath } from 'node:path';
 import { errorBody } from '@eye/contracts';
 import { newId } from '../shared/ids.js';
@@ -542,6 +543,38 @@ export class RetentionController {
     const d = out.result;
     return { download: { filename: d.filename, contentType: 'application/x-tar', contentDisposition: 'attachment', byteLength: d.bytes.byteLength, archiveDigest: d.archiveDigest, packageDigest: d.packageDigest, manifestDigest: d.manifestDigest, signature: d.signature, expiresAt: d.expiresAt, base64: d.bytes.toString('base64') },
              receipt: receipt(out) };
+  }
+
+  /**
+   * B15 (D2): THE STREAMED DOWNLOAD — the same governed, audited act as the JSON download (`retention.export.download`; export.downloaded
+   * on the action), the archive verified by a disk pass BEFORE the write commits, then served RAW as `application/x-tar` with its length,
+   * the digests and the signature in headers (`x-eye-archive-digest`, `x-eye-package-digest`, `x-eye-manifest-digest`,
+   * `x-eye-signature-scheme`, `x-eye-key-id`, `x-eye-signature`, `x-eye-policy-decision-id`, `x-eye-audit-seq`) — for packages of any
+   * size under the streamed ceiling (64 GiB): the customer's tool saves it to disk and verifies it offline. A source that changes under
+   * the stream ends it with the socket destroyed (the client sees a truncated tar; the verifier fails it).
+   */
+  @Post('/actions/:actionId/export/stream')
+  async streamExport(@Req() req: EyeRequest, @Res() res: Response, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('actionId') actionId: string) {
+    const { envelope, principal } = ctx(req);
+    // A refusal before the first byte is answered as every route's is (the exception filters; nothing has been written to the answer yet).
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'retention.export.download', 'RTA', actionId), RetentionCapability.write,
+      async (cap) => ({ result: await this.retention.downloadExportStream(cap, { tenantId, domainId }, actionId, { actor: principal.principalId, correlationId: envelope.correlation_id }), targetType: 'RTA', targetId: actionId, targetVersion: null, outboxEvent: null }));
+    const d = out.result;
+    const sig = d.signature;
+    const headers: Record<string, string> = {
+      'content-type': 'application/x-tar', 'content-length': String(d.size), 'content-disposition': `attachment; filename="${d.filename}"`,
+      'x-eye-archive-digest': d.archiveDigest, 'x-eye-package-digest': d.packageDigest, 'x-eye-manifest-digest': d.manifestDigest,
+      'x-eye-signature-scheme': String(sig['scheme'] ?? ''), 'x-eye-policy-decision-id': out.policyDecisionId, 'x-eye-audit-seq': String(out.auditSeq),
+      ...(typeof sig['key_id'] === 'string' ? { 'x-eye-key-id': String(sig['key_id']) } : {}), ...(typeof sig['signature'] === 'string' ? { 'x-eye-signature': String(sig['signature']) } : {}),
+      ...(d.expiresAt === null ? {} : { 'x-eye-expires-at': d.expiresAt }),
+    };
+    res.writeHead(200, headers);
+    const built = await d.open();
+    built.stream.on('error', () => res.destroy());
+    built.stream.pipe(res);
+    await new Promise<void>((resolve) => { res.on('finish', () => resolve()); res.on('close', () => resolve()); });
+    // The digest the stream produced is compared with the record once more: a source that changed under the stream is not an archive the record vouches for.
+    try { if ((await built.digest()) !== d.archiveDigest) res.destroy(); } catch { res.destroy(); }
   }
 
   /**
