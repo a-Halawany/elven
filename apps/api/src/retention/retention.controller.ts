@@ -9,7 +9,9 @@
  *   POST …/retention/actions/:id/verify     retention.action.verify      (steward) — DeletionVerified (a deletion or a log-floor move; never an archive, an export or a review)
  *   POST …/retention/actions/:id/withdraw   retention.action.withdraw
  *   POST …/retention/actions/:id/export/get     retention.read           (B11, 0070 §3) — the export package's record, its manifest.json and the files it holds; 409 once revoked
- *   POST …/retention/actions/:id/export/revoke  retention.export.revoke  (B11; the retention authority, human-gated) — the package revoked once, its bytes removed after the commit
+ *   POST …/retention/actions/:id/export/revoke  retention.export.revoke  (B11; the retention authority, human-gated) — the package revoked once, its bytes removed after the commit;
+ *                                               B17 (0077): the admitted IMPORTS of the package in the tenant's domains notified (a signed importer notice each, answered under importers[].notice — never in notices[], which stays the destinations') and,
+ *                                               after the commit, the revocation EXECUTED in each importing domain by the same principal (retention.import.revoke; a failure leaves the notice notified and the importer `pending`)
  *   POST …/retention/tier/declare           retention.tier.declare       (domain admin; B12, 0072 §1) — the cold-tier manager's policy, declared as the domain's next version
  *   POST …/retention/tier/state             retention.read               (B12) — the cold tier's observable state with the vault's inventory of both blob roots
  *   POST …/retention/schedules/:id/retire   retention.schedule.retire    (B13, 0073 §1; the schedule declare's holders: platform admin, tenant admin, domain admin) — active → retired once, its history kept
@@ -24,7 +26,8 @@
  *   POST …/retention/actions/:id/export/deliveries/list  retention.read  (B13)
  *   POST …/retention/actions/:id/export/deliveries/:deliveryId/collect-receipt  retention.export.acknowledge (B13; the deliver's holders; human-gated) — the transfer station's receipt.json → acknowledged | mismatched
  *   POST …/retention/actions/:id/export/deliveries/:deliveryId/acknowledge      retention.export.acknowledge (B13) — the recipient's receipt presented out of band
- *   POST …/retention/actions/:id/export/revocation-notices          retention.export.notify   (B14, 0074 §3; the deliver's holders; human-gated) — a further revocation notice to one destination that received the package
+ *   POST …/retention/actions/:id/export/revocation-notices          retention.export.notify   (B14, 0074 §3; the deliver's holders; human-gated) — a further revocation notice to one destination that received the package;
+ *                                                                   B17: or to one IMPORTER ({ importer: { domainId, importId } }) — the signed notice recorded, then the revocation executed in that domain (answered under `importer`)
  *   POST …/retention/actions/:id/export/revocation-notices/list     retention.read            (B14)
  *   POST …/retention/actions/:id/export/revocation-notices/:noticeId/collect-receipt  retention.export.acknowledge (B14) — the station's revocation-receipt.json → acknowledged | mismatched
  *   POST …/retention/actions/:id/export/revocation-notices/:noticeId/acknowledge      retention.export.acknowledge (B14) — the recipient's receipt presented out of band
@@ -36,6 +39,9 @@
  *   POST …/retention/imports/:id/approve    retention.import.approve    (B16; retention authority, human-gated, on the package digest; never the opener)
  *   POST …/retention/imports/:id/admit      retention.import.admit      (B16; steward, human-gated; never the approver) — the records, claims, entities, identifiers and edges admitted under NEW ids in batches; the quarantine copies of admitted records tombstoned after the commit
  *   POST …/retention/imports/:id/withdraw   retention.import.withdraw   (B16; steward) — quarantined | verified | approved | admitting → withdrawn; the quarantine copies tombstoned after the commit (C5)
+ *   POST …/retention/imports/:id/revoke     retention.import.revoke     (B17, 0077 §7; the tenant's authority and admin, the domain's steward and admin; human-gated) — the ORIGIN'S REVOCATION executed here:
+ *                                           source origin (the origin package's record on this installation) or station (the origin's SIGNED revocation.json, verified against the partner's key);
+ *                                           edges retracted, entities retired, versions withdrawn, bytes tombstoned in batches; GraphChanged/import.revoked; the receipt recorded and the origin's notice answered
  *   POST …/retention/imports/:id/get, /imports/list   retention.read     (B16) — the import with its partner, items, events, checks and the import receipt
  *   POST …/retention/actions/:id/get, /actions/list, /schedules/list   retention.read
  */
@@ -43,9 +49,10 @@ import { Body, Controller, HttpException, Param, Post, Req, Res } from '@nestjs/
 import type { Response } from 'express';
 import { createPublicKey } from 'node:crypto';
 import { resolve as resolvePath } from 'node:path';
-import { errorBody } from '@eye/contracts';
+import { errorBody, type Envelope } from '@eye/contracts';
 import { newId } from '../shared/ids.js';
 import { requireCorrelation } from '../shared/correlation.js';
+import type { AuthenticatedPrincipal } from '../shared/auth-types.js';
 import { PipelineService } from '../pipeline/pipeline.service.js';
 import type { EyeRequest } from '../pipeline/http.js';
 import { RetentionCapability, type RetentionReads } from './retention.capabilities.js';
@@ -53,7 +60,7 @@ import { RetentionExecutionRolledBack, RetentionService, failureClassOf, validat
 import { DESTINATION_CREDENTIAL_REF, SIGNING_ALGORITHM, SIGNING_KEY_REF, keyIdOf } from './export-signing.js';
 import { RECEIPT_MAX_BYTES } from './export-delivery.service.js';
 import { IMPORT_INLINE_MAX_BYTES } from './export-archive.js';
-import { ImportService, type ImportIntake } from './import.service.js';
+import { ImportService, type ImportIntake, type RevocationSource } from './import.service.js';
 
 function ctx(req: EyeRequest) {
   const envelope = req.eyeEnvelope; const principal = req.eyePrincipal;
@@ -338,6 +345,13 @@ export class RetentionController {
    * B11 (0070 §3; V03-T-047 "revocation where supported"): the retention authority revokes the package once, with a reason; the
    * bytes are removed after the commit. A package already revoked whose directory is still there (a removal that failed) only has
    * its removal retried — the port is not called again; one revoked and absent is refused by the port's own rule.
+   *
+   * B17 (0077 §5–§6; D6, D7, D14; C15): the importing domains of the tenant are RECIPIENTS. Inside the same write, after the destination
+   * notices, ONE signed importer notice per admitted import of the package (retention.imports_of_package finds them across the tenant's
+   * domains; the notice recorded on the origin's ledger with `importer` set, and import.revocation_notified on the importer's); AFTER the
+   * commit and the bytes, the SAME acting principal executes the revocation in each importing domain (executeImporterRevocation). The
+   * answer keeps `notices[]` for the DESTINATION notices (the B14/B16 readers key it by destination_key); the importer notices are
+   * answered under `importers[].notice`, each with the execution's outcome (`revocation.state`: revoked | held | retried | pending).
    */
   @Post('/actions/:actionId/export/revoke')
   async revokeExport(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('actionId') actionId: string, @Body() body: { payload?: { reason?: string } }) {
@@ -353,21 +367,26 @@ export class RetentionController {
     // created removed when the commit fails after them (C6); the product's package.tar and package.sig at each station removed after
     // the commit, as the vault's bytes are.
     const created: string[] = [];
-    type RevokeAnswer = { revocation: Row; notices: Row[]; retried: boolean };
+    type RevokeAnswer = { revocation: Row; notices: Row[]; importerNotices: Row[]; retried: boolean };
     let out: Awaited<ReturnType<PipelineService['write']>> & { result: RevokeAnswer };
     try {
       out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'retention.export.revoke', 'RTA', actionId), RetentionCapability.write,
         async (cap): Promise<{ result: RevokeAnswer; targetType: string; targetId: string; targetVersion: null; outboxEvent: null }> => {
           const existing = await this.retention.exportPackage(cap, scope, actionId);
           if (existing !== null && existing.package['revoked_at'] !== null && existing.package['revoked_at'] !== undefined && existing.files.length > 0) {
-            return { result: { revocation: { action_id: actionId, package_digest: existing.package['package_digest'], locator_prefix: existing.package['locator_prefix'], revoked_at: existing.package['revoked_at'], retried: true }, notices: [], retried: true }, targetType: 'RTA', targetId: actionId, targetVersion: null, outboxEvent: null };
+            return { result: { revocation: { action_id: actionId, package_digest: existing.package['package_digest'], locator_prefix: existing.package['locator_prefix'], revoked_at: existing.package['revoked_at'], retried: true }, notices: [], importerNotices: [], retried: true }, targetType: 'RTA', targetId: actionId, targetVersion: null, outboxEvent: null };
           }
           const revocation = await cap.revokeExport({ actionId, tenantId, domainId, reason, actor: principal.principalId, correlationId: envelope.correlation_id });
           const notices: Row[] = [];
           for (const r of ((revocation['recipients'] ?? []) as Row[])) {
             notices.push(await this.retention.notifyRevocation(cap, scope, actionId, String(r['destination_id']), { actor: principal.principalId, correlationId: envelope.correlation_id }, created));
           }
-          return { result: { revocation, notices, retried: false }, targetType: 'RTA', targetId: actionId, targetVersion: null, outboxEvent: null };
+          // B17: the importer notices — the admitted imports of this package in the tenant's domains, each notified on the origin's ledger (signed, D8).
+          const importerNotices: Row[] = [];
+          for (const im of ((revocation['importers'] ?? []) as Row[])) {
+            importerNotices.push(await this.retention.notifyImporter(cap, scope, actionId, String(im['import_id']), { actor: principal.principalId, correlationId: envelope.correlation_id }));
+          }
+          return { result: { revocation, notices, importerNotices, retried: false }, targetType: 'RTA', targetId: actionId, targetVersion: null, outboxEvent: null };
         });
     } catch (e) {
       if (created.length > 0) await this.retention.removeCreatedStationFiles(created).catch(() => undefined);
@@ -379,7 +398,43 @@ export class RetentionController {
       out.result.notices.filter((n) => String((n['destination'] as Row | undefined)?.['kind']) === 'transfer_station' && (n['station'] as Row | null) !== null && typeof (n['station'] as Row)['directory'] === 'string')
         .map((n) => ({ destination_key: String((n['destination'] as Row)['destination_key']), endpoint: String((n['destination'] as Row)['endpoint'] ?? '') }))
         .filter((st) => st.endpoint !== ''));
-    return { revocation: out.result.revocation, notices: out.result.notices, bytes, stations, receipt: receipt(out) };
+    // B17 (D7): the revocation executed in each importing domain, after the origin's commit, one governed act per importer — never inside
+    // the origin's write, never failing it. The retried branch notified nobody and executes nothing (`importers: []`).
+    const importers: Row[] = [];
+    for (const im of out.result.importerNotices) importers.push(await this.executeImporterRevocation(envelope, principal, im));
+    return { revocation: out.result.revocation, notices: out.result.notices, importers, bytes, stations, receipt: receipt(out) };
+  }
+
+  /**
+   * B17 (D7; C15): the origin's revocation EXECUTED in one importing domain of the tenant, after the origin's commit — the SAME acting
+   * principal under a DOMAIN envelope of that domain (a tenant-wide binding permits any domain route of the tenant; the human gate is met
+   * by the same human at session assurance), through the governed act retention.import.revoke with `source: { kind: 'origin' }`. The
+   * envelope is rebuilt per importing domain (scope DOMAIN, the importing tenant and domain, a fresh message id, the SAME correlation);
+   * the service builds its own writes from it. A failure here NEVER fails the revocation: the origin's notice stays `notified` and the
+   * importer is answered `pending` with the reason — a principal without authority in the importing domain (a domain administrator of
+   * the origin: the error body's EYE_TEN_001 / EYE_AUT_001) is told the importing domain's steward completes it by the route; any other
+   * failure carries its message. The notice is carried under `importers[].notice` (never in `notices[]`).
+   */
+  private async executeImporterRevocation(envelope: Envelope, principal: AuthenticatedPrincipal, im: Row): Promise<Row> {
+    const importer = ((im['importer'] ?? {}) as Row);
+    const importing = { tenantId: String(importer['tenant_id'] ?? ''), domainId: String(importer['domain_id'] ?? '') };
+    const importId = String(importer['import_id'] ?? '');
+    try {
+      const r = await this.imports.revokeImport({
+        envelope: { ...envelope, scope: 'DOMAIN', tenant_id: importing.tenantId, domain_id: importing.domainId, message_id: newId(), purpose_id: envelope.purpose_id ?? 'retention' },
+        principal, scope: importing, importId, source: { kind: 'origin' },
+        route: (action: string, objectType: string, objectId: string, writableTargets?: string[]) => ({ ...this.route(importing.tenantId, importing.domainId, action, objectType, objectId), ...(writableTargets === undefined ? {} : { writableTargets }) }),
+      });
+      return { ...importer, notice: im, revocation: { state: r.kind, ...r.revocation } };
+    } catch (e) {
+      const response = e instanceof HttpException ? e.getResponse() : null;
+      // The body's `code` is the catalogue's dashed spelling (EYE-TEN-001: the principal holds no binding for the importing domain; EYE-AUT-001: the policy denies it there).
+      const code = response !== null && typeof response === 'object' ? String((response as Row)['code'] ?? '').replace(/-/g, '_') : '';
+      const reason = code === 'EYE_TEN_001' || code === 'EYE_AUT_001'
+        ? 'the acting principal holds no authority in the importing domain; its steward completes the revocation by the route'
+        : String((e as { message?: unknown })?.message ?? e).slice(0, 300);
+      return { ...importer, notice: im, revocation: { state: 'pending', reason } };
+    }
   }
 
   @Post('/actions/:actionId/get')
@@ -693,12 +748,33 @@ export class RetentionController {
    * is the retry of a failed one, or a second attempt after a mismatched answer) — human-gated; the package must be revoked, the
    * destination one that received it (a retired destination is still notified — it holds the package). The station path this attempt
    * created is removed when the commit fails after it; the product's copies at the station were removed by the revoke act.
+   *
+   * B17 (0077 §6; D6, D7; C15): the IMPORTER form — `{ importer: { domainId, importId } }` names an admitted import of this package in a
+   * domain of the tenant: a further importer notice recorded on the origin's ledger (signed; the port refuses an import that holds no
+   * admitted copy), then the revocation executed in that domain after the commit exactly as the revoke act does it, answered under
+   * `importer` (its `revocation.state`: revoked | held | retried | pending). An import held by another domain than the one named is
+   * refused inside the write (409), so nothing is recorded under a wrong name.
    */
   @Post('/actions/:actionId/export/revocation-notices')
-  async notifyRevocation(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('actionId') actionId: string, @Body() body: { payload?: { destinationKey?: string } }) {
+  async notifyRevocation(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('actionId') actionId: string, @Body() body: { payload?: { destinationKey?: string; importer?: { domainId?: string; importId?: string } | null } }) {
     const { envelope, principal } = ctx(req);
+    const importerArg = body.payload?.importer;
+    if (importerArg !== undefined && importerArg !== null) {
+      if (typeof importerArg !== 'object' || Array.isArray(importerArg)) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'importer names an admitted import of this package by its domainId and importId'), 422);
+      const importingDomainId = String(importerArg.domainId ?? '').toLowerCase(); const importId = String(importerArg.importId ?? '').toLowerCase();
+      if (!UUID.test(importingDomainId) || !UUID.test(importId)) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'importer names an admitted import of this package in a domain of this tenant by its domainId and importId'), 422);
+      const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'retention.export.notify', 'RTA', actionId), RetentionCapability.write,
+        async (cap) => {
+          const result = await this.retention.notifyImporter(cap, { tenantId, domainId }, actionId, importId, { actor: principal.principalId, correlationId: envelope.correlation_id });
+          const held = String(((result['importer'] ?? {}) as Row)['domain_id'] ?? '');
+          if (held !== importingDomainId) throw new HttpException(errorBody('EYE_STA_002', envelope.correlation_id, `retention notice rejected: import ${importId} is held by domain ${held}, not ${importingDomainId}`), 409);
+          return { result, targetType: 'RXN', targetId: String(result['notice_id']), targetVersion: null, outboxEvent: null };
+        });
+      const importer = await this.executeImporterRevocation(envelope, principal, out.result);
+      return { notice: out.result, importer, receipt: receipt(out) };
+    }
     const destinationKey = String(body.payload?.destinationKey ?? '');
-    if (!DESTINATION_KEY.test(destinationKey)) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'destinationKey names a declared destination of this domain (2 to 64 characters of a–z, 0–9 and -)'), 422);
+    if (!DESTINATION_KEY.test(destinationKey)) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'destinationKey names a declared destination of this domain (2 to 64 characters of a–z, 0–9 and -), or importer names an admitted import of this package ({ domainId, importId })'), 422);
     const created: string[] = [];
     let out: Awaited<ReturnType<PipelineService['write']>> & { result: Row };
     try {
@@ -930,6 +1006,51 @@ export class RetentionController {
       } catch (e) { error = `evidence tombstoned but not recorded: ${String((e as { message?: unknown })?.message ?? 'unknown')}`.slice(0, 200); }
     }
     return { import: out.result, quarantine: { tombstoned, error }, receipt: receipt(out) };
+  }
+
+  /**
+   * B17 (0077 §7; D4, D7, D8, D12, D13, D19): the REVOCATION of an admitted import — the origin's revocation executed where the copies
+   * are, by this domain's steward or administrators (the tenant's authority reaches it through the origin's revoke act). The SOURCE:
+   * `origin` — the origin package's own record on this installation, revoked (the port reads it across the tenant's domains under the
+   * import's digest; no signature needed; another tenant's origin is refused: present its notice from a station) — or `station` — the
+   * origin's SIGNED revocation.json at a transfer station declared here, at the import's origin path, verified against the import's
+   * partner key (a retired partner's key still verifies a notice dated before its retirement; a rotated key of the same party too). The
+   * service orchestrates its own writes under retention.import.revoke (the admission's idiom): begun under the import's lock (state
+   * revoking, the attempt counted; a revoked import answers `retried` — the bytes retried, nothing else), ONE graph write (the created
+   * edges retracted, the created entities retired, reused rows and identifiers left), the claim versions withdrawn in batches of at most
+   * 32 with their lineage carried, the records withdrawn, tombstoned and their custody recorded in batches (a LEGAL HOLD refuses the whole
+   * record step — the hold keeps the record whole — and is answered `refused` with the hold named), then the finish: `revoked` when every
+   * copy is destroyed or accounted for, `held` (state revoking, import.revocation_held) when a hold refused one — the same route
+   * retries when it is lifted — with the ONE GraphChanged/import.revoked from the finish write; after the commit the bytes go and, for a
+   * station source, revocation-receipt.json is written beside the notice; the receipt recorded (import.copies_destroyed |
+   * import.copies_refused) and the origin's notice answered when the origin is here. A notice that does NOT verify (unsigned, another
+   * key, invalid, dated after the partner's retirement) is REFUSED with nothing destroyed: the refusal IS the record — the write that
+   * recorded import.revocation_refused committed (its audit row a success of recording it) before this route answers 409.
+   */
+  @Post('/imports/:importId/revoke')
+  async revokeImport(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('importId') importId: string, @Body() body: { payload?: Row }) {
+    const { envelope, principal } = ctx(req);
+    const p = body.payload ?? {};
+    const bad = (message: string): never => { throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, message), 422); };
+    const s = (p['source'] !== null && typeof p['source'] === 'object' && !Array.isArray(p['source']) ? p['source'] : {}) as Row;
+    const kind = String(s['kind'] ?? '');
+    let source: RevocationSource;
+    if (kind === 'origin') {
+      source = { kind: 'origin' };
+    } else if (kind === 'station') {
+      const destinationKey = String(s['destinationKey'] ?? '');
+      if (!DESTINATION_KEY.test(destinationKey)) bad('source.destinationKey names a transfer station declared in this domain (2 to 64 characters of a–z, 0–9 and -)');
+      source = { kind: 'station', destinationKey };
+    } else {
+      return bad('source.kind is origin (the origin package\'s record on this installation) or station (the origin\'s signed revocation notice at a transfer station declared in this domain: source.destinationKey)');
+    }
+    const r = await this.imports.revokeImport({
+      envelope, principal, scope: { tenantId, domainId }, importId, source,
+      route: (action: string, objectType: string, objectId: string, writableTargets?: string[]) => ({ ...this.route(tenantId, domainId, action, objectType, objectId), ...(writableTargets === undefined ? {} : { writableTargets }) }),
+    });
+    // The refusal of a notice that does not verify was RECORDED by a committed write (import.revocation_refused); the answer says so as a conflict of the record.
+    if (r.kind === 'refused') throw new HttpException(errorBody('EYE_STA_002', envelope.correlation_id, `retention import rejected (notice): ${String(r.revocation.reason ?? 'the notice is not verified against the import\'s partner')}`), 409);
+    return { import: r.import, revocation: { state: r.kind, ...r.revocation }, batches: r.batches, receipt: r.receipt };
   }
 
   /**

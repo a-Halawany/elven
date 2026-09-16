@@ -29,12 +29,23 @@
  * quality and correction fields — is carried VERBATIM: temporal truth, provenance, corrections and policy labels survive the crossing
  * (DP-47-003). The payload is the origin's, remapped, plus `imported_from`: the origin package, the origin (object_id, version,
  * digest) and the ORIGINAL header and payload verbatim — identity is recoverable, never reused.
+ *
+ * CP-6 B17 (0077; D9, D12): the revocation check READS the station notice's signature — a `revocation.json` naming the package fails
+ * the check as before (the digest match is the fact), and the detail now says whether the partner signed it (verified), whether its
+ * signature does not verify against the partner's key, or whether it is unsigned (the digest match alone); nothing about the verdict
+ * moved. THE WITHDRAWN VERSION (`importWithdrawalHeaderOf`): when the origin revokes a package this domain admitted, every imported
+ * object is withdrawn by a NEW version of its latest row — lifecycle and truth state `withdrawn`, `correction_of` and `supersedes` the
+ * version withdrawn, the reason naming the origin's revocation, the method `retention.import.revoke@1.0.0` — under the corrections
+ * path's own field rules (corrections.service.ts: the prior row's temporal, policy and schema fields kept; confidence, uncertainty,
+ * the quality fields and the access policy cleared; the actor the accountable owner and the one human reference); the payload the
+ * prior payload verbatim, `imported_from` included, so the withdrawn version says what it withdraws.
  */
 import { createHash } from 'node:crypto';
 import { CANONICAL_HEADER_FIELD_COUNT, canonicalHeaderDigest, type CanonicalHeader } from '@eye/contracts';
 import { objectsDigestOf, packageDigestOf, type ExportManifestShape } from './export-package.js';
 import { KEY_SIGNATURE_RE, KEY_SIGNATURE_SCHEME, SIGNING_ALGORITHM, verifySignature } from './export-signing.js';
 import { ExportArchiveError, LINKS_FILE, listedFilesOf } from './export-archive.js';
+import { verifyNotice } from './revocation-notice.js';
 
 type Row = Record<string, unknown>;
 
@@ -386,14 +397,21 @@ function duplicateCheck(f: ManifestFacts, c: VerificationContext): ImportCheck {
 /**
  * C2: what THIS installation knows — the origin's own record when the origin domain is here (known only when the recorded digest is the
  * presented one, N13) and the origin's revocation notice beside the package at the station — can PASS or FAIL the check; the sender's
- * exchange statement (delivery.json, the presented block) is unsigned and is a NOTE, never a verdict.
+ * exchange statement (delivery.json, the presented block) is unsigned and is a NOTE, never a verdict. B17 (D9): a station notice naming
+ * the package fails the check as before — the detail says whether the partner signed it (verified against its key), whether its signature
+ * does not verify, or whether it is unsigned (the digest match alone); an unsigned notice remains a digest-match failure, unchanged.
  */
 function revocationCheck(s: StagedPackage, f: ManifestFacts, c: VerificationContext): ImportCheck {
   if (f.recomputedPackageDigest === null) return check(CHECK_NAMES.revocation, null, 'not checked: no package digest');
   const digest = f.recomputedPackageDigest;
   const r = s.revocation;
   if (r !== null && (r['package_digest'] === digest || r['package_digest'] === f.sig?.['package_digest'])) {
-    return check(CHECK_NAMES.revocation, false, `the origin revoked this package at ${instantOf(r['revoked_at']) ?? 'an unstated instant'} (revocation.json at the station${typeof r['reason'] === 'string' ? `: ${String(r['reason']).slice(0, 120)}` : ''})`);
+    const v = c.partner === null ? null : verifyNotice(r, String(c.partner['public_key_pem'] ?? ''));
+    const signed = v === null ? '; unsigned or no partner to verify against'
+      : v.ok ? `; signed by the partner ${v.keyId} (verified)`
+        : v.reason === 'unsigned' ? '; unsigned — the digest match alone'
+          : `; the signature does not verify against the partner's key (${v.detail})`;
+    return check(CHECK_NAMES.revocation, false, `the origin revoked this package at ${instantOf(r['revoked_at']) ?? 'an unstated instant'} (revocation.json at the station${typeof r['reason'] === 'string' ? `: ${String(r['reason']).slice(0, 120)}` : ''})${signed}`);
   }
   if (c.origin['known'] === true) {
     const revokedAt = instantOf(c.origin['revoked_at']); const expiresAt = instantOf(c.origin['expires_at']);
@@ -776,6 +794,80 @@ export function importedFromOf(a: { importId: string; partnerKey: string; import
 /** D3: the origin's payload remapped through the map, the caller's overrides (an EVD's manifest_id and locator) on top, `imported_from` last — verbatim, never remapped. */
 export function importedPayloadOf(originPayload: Row, a: { map: ReadonlyMap<string, string>; provenance: ImportedFrom; overrides: Row }): Row {
   return { ...remapUuids(originPayload, a.map), ...a.overrides, imported_from: a.provenance as unknown as Row };
+}
+
+// ───────────────────────── the withdrawn version (B17; D12) ─────────────────────────
+
+/** The method every withdrawn version of a revoked import names (the corrections path names its own, `correction-intake@1.0.0`). */
+export const IMPORT_REVOKE_METHOD_REF = 'retention.import.revoke@1.0.0';
+
+/** The revocation a withdrawn version names — the block every port of the revocation takes, reduced to what the header says. */
+export interface ImportRevocationRef { action_id: string; package_digest: string; revoked_at: string | null; reason: string | null; notice_id: string | null }
+
+/**
+ * D12: the 43-field header of the version that WITHDRAWS an imported object under the origin's revocation, from the object's LATEST
+ * row (`prior`: an objects.canonical_objects row as read — instants as Date or string, the reference fields as arrays). The corrections
+ * path's rules (corrections.service.ts:163-209): the identity, scope, schema, temporal, policy and provenance fields the prior's; the
+ * version the prior's + 1; lifecycle and truth state `withdrawn`; the actor the accountable owner and the one human reference; the
+ * record time the write's clock; confidence, uncertainty, the quality fields, the access policy and the ontology reference cleared;
+ * `correction_of` = `supersedes` = the version withdrawn; the evidence references gain the notice (or, without one recorded, the origin
+ * action); the method `retention.import.revoke@1.0.0`; the purpose the write's; the correlation the write's. The payload the caller
+ * hands `objects.admit_version` is the prior payload verbatim (`imported_from` included) — this function builds the header alone.
+ */
+export function importWithdrawalHeaderOf(prior: Row, a: { actor: string; correlationId: string; purposeId: string; recordedAt: string; revocation: ImportRevocationRef; importId: string }): CanonicalHeader {
+  const priorVersion = Number(prior['object_version']);
+  if (!Number.isInteger(priorVersion) || priorVersion < 1) throw new Error(`the prior row of ${String(prior['object_id'])} carries no version (${String(prior['object_version'])})`);
+  const withdrawn = `${String(prior['object_id'])}@${priorVersion}`;
+  const iso = (v: unknown): string | null => (v === null || v === undefined ? null : v instanceof Date ? v.toISOString() : instantOf(v));
+  const str = (v: unknown): string | null => (typeof v === 'string' ? v : null);
+  const arr = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : typeof v === 'string' ? (JSON.parse(v) as unknown[]).map(String) : []);
+  const clock = String(prior['source_clock_quality'] ?? 'unknown');
+  return {
+    object_id: String(prior['object_id']),
+    object_type: String(prior['object_type']),
+    tenant_id: str(prior['tenant_id']),
+    domain_id: str(prior['domain_id']),
+    scope: 'DOMAIN',
+    object_version: String(priorVersion + 1),
+    lifecycle_state: 'withdrawn',
+    owning_component: String(prior['owning_component'] ?? 'CP-OBS-01'),
+    accountable_owner: `principal:${a.actor}`,
+    source_object_ids: arr(prior['source_object_ids']),
+    event_time: iso(prior['event_time']),
+    observation_time: iso(prior['observation_time']),
+    valid_from: iso(prior['valid_from']),
+    valid_to: iso(prior['valid_to']),
+    recorded_at: a.recordedAt,
+    time_precision: String(prior['time_precision'] ?? 'exact'),
+    source_clock_quality: (clock === 'trusted' || clock === 'degraded' ? clock : 'unknown') as CanonicalHeader['source_clock_quality'],
+    // A withdrawn object's truth state SAYS SO (the corrections path's rule): a reader never takes the withdrawn version at face value.
+    truth_state: 'withdrawn',
+    synthetic_state: Boolean(prior['synthetic_state']),
+    confidence: null,
+    uncertainty: null,
+    evidence_refs: [...arr(prior['evidence_refs']), `revocation-notice:${a.revocation.notice_id ?? a.revocation.action_id}`],
+    provenance_ref: str(prior['provenance_ref']),
+    method_ref: IMPORT_REVOKE_METHOD_REF,
+    contradiction_refs: [],
+    corroboration_refs: [],
+    human_refs: [a.actor],
+    classification: String(prior['classification']),
+    purpose_scope: a.purposeId,
+    rights_profile: str(prior['rights_profile']),
+    residency_profile: str(prior['residency_profile']),
+    retention_profile: str(prior['retention_profile']),
+    access_policy_ref: null,
+    quality_profile: null,
+    quality_state: null,
+    freshness_state: null,
+    schema_ref: String(prior['schema_ref']),
+    ontology_ref: null,
+    correction_of: withdrawn,
+    supersedes: withdrawn,
+    withdrawal_reason: `the origin revoked the package this version was imported from (import ${a.importId}; action ${a.revocation.action_id}; package ${a.revocation.package_digest}; revoked at ${a.revocation.revoked_at ?? 'an unstated instant'}): ${a.revocation.reason ?? 'no reason stated'}`,
+    audit_correlation_id: a.correlationId,
+    content_ref: str(prior['content_ref']),
+  };
 }
 
 /** A local sha256 rather than the vault's, so this module stays free of every service import (unit-testable on fixtures). */

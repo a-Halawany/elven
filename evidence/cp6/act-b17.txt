@@ -1,0 +1,148 @@
+=== CP-6 B17 on the demonstration (NORDWERK, eye_demo) — 2026-09-16T15:19:18Z, tree over 1d6eea3 (the B17 candidate, uncommitted at run time; committed as the next head); rehearsed first on a restored copy (eye_demo_b17) with its own vault copy, key, station and Redis ===
+
+0b. the running target before anything (the runbook §2):
+     the API on :3401 is pid 97690; its demonstration settings:
+       EYE_CONNECTOR_PER_SOURCE_CONCURRENCY=1
+       EYE_DB_NAME=eye_demo
+       EYE_DEGRADED_DIR=/Users/halawany/work/personal/mohammed/new_project/apps/api/.eye-local/degraded-demo
+       EYE_RUNTIME_PORT=3401
+       EYE_SCHEDULER_ENABLED=true
+       (no EYE_VAULT_*_ROOT set: the roots are the workspace's .eye-local/vault/{quarantine,evidence,archive,export})
+       /readyz: {"status":"ok","db":true,"audit":"ok","auditIncidents":0,"degradedSince":null,"classification":"telemetry-only"}
+     VERIFIED: the demonstration API serves eye_demo and is ready
+
+1. the demonstration database migrated with 0077 (backup first; the migration adds the importer as a recipient on the revocation-notice ledger, the import states revoking/revoked with the revocation ports, the items' revocation outcome, the review gate on imported claims and the registry rows — existing rows untouched)
+     backup 49539523 bytes  /private/tmp/claude-501/-Users-halawany-work-personal-mohammed-new-project/b11a7142-b60e-4b51-8618-a8185f1b1f24/scratchpad/b17/demo/eye_demo-pre-0077-20260916T151918Z.dump
+   the demonstration API stopped for the migration (pid 97690)
+     applying 0077_b17_import_publication_and_revocation_propagation.sql ... ok
+     migrations up to date
+     role passwords synchronized from environment
+     [{"filename":"0076_b16_governed_import_versioned_closure_and_held_recipients.sql","digest":"a830305dd910600c","applied_at":"2026-09-16T12:18:37.522Z"},{"filename":"0077_b17_import_publication_and_revocation_propagation.sql","digest":"0e8dd7f5ec78d65f","applied_at":"2026-09-16T15:19:24.496Z"}]
+
+2. the demonstration API restarted on the B17 build by the runbook's script:
+     $ tsc -p tsconfig.build.json && node scripts/copy-assets.mjs
+     copied src/observation/connectors/xml-worker.js -> dist/observation/connectors/xml-worker.js
+     the API on :3401 is pid 2832; its demonstration settings:
+       EYE_CONNECTOR_PER_SOURCE_CONCURRENCY=1
+       EYE_DB_NAME=eye_demo
+       EYE_DEGRADED_DIR=/Users/halawany/work/personal/mohammed/new_project/apps/api/.eye-local/degraded-demo
+       EYE_RUNTIME_PORT=3401
+       EYE_SCHEDULER_ENABLED=true
+       (no EYE_VAULT_*_ROOT set: the roots are the workspace's .eye-local/vault/{quarantine,evidence,archive,export})
+       /readyz: {"status":"ok","db":true,"audit":"ok","auditIncidents":0,"degradedSince":null,"classification":"telemetry-only"}
+     VERIFIED: the demonstration API serves eye_demo and is ready
+
+THE EYE — CP-6 B17 on the demonstration: imported knowledge published to the importing domain's subscribers; the origin's revocation propagated into the importing domain; the signed notice (migration 0077)
+target http://localhost:3401 · database eye_demo · tenant 01a084f5… · origin domain 01a084f5… · 2026-09-16T15:19:37.092Z
+prepared by the runner: the demonstration signing key .eye-local/export-signing-demo.pub.pem (present); the transfer station .eye-local/transfer-station-demo
+each run revokes the import the previous run (or B16) left admitted and leaves its own; the mirror never holds two live copies of the NORDWERK knowledge
+
+0. THE MIRROR — the domain, its personas (two new: K. Vogel the twin owner, S. Roth the strategy owner), its intake source, its station and its exchange partner from B16, reused
+  ✓ the mirror domain "NORDWERK Exchange Mirror (SYNTHETIC)": 01a0aa27… present — reused by name
+  ✓ the personas: M. Keller (retention_steward) present; K. Vogel (twin_owner) CREATED by the administrator; S. Roth (strategy_owner) CREATED by the administrator — each opens a session with its own credential
+  ✓ the intake source contract nordwerk-exchange-intake@1 (01a0aa27…): ACTIVE, rights CONFIRMED, authority class authoritative, ceiling internal — the contract the imported manifests are recorded under
+  ✓ the transfer station nordwerk-transfer-station: declared in the origin domain (→ .eye-local/transfer-station-demo) and in the mirror (→ .eye-local/transfer-station-demo)
+  ✓ the exchange partner nordwerk-origin: active, key ed25519:fcd9d6bf234efb3f — the tenant's active export signing key; reused as it is (not retired this time: B16's re-run rule served its pre-partner quarantine scene)
+
+1. THE SUBSCRIBERS — the origin domain's subscriptions checked against this process's consumers (memory-mappings changed in B17: revoked, registered anew, replayed); the mirror's seven subscribers registered; the status route
+  ✓ the origin: twins: subscription 01a09302… already active (consumer 1.0.0 197ffa8c5454…)
+  ✓ the origin: forecasts: subscription 01a09302… already active (consumer 1.0.0 cbcde85317c8…)
+  ✓ the origin: scenarios: subscription 01a09302… already active (consumer 1.0.0 d2be51c5792f…)
+  ✓ the origin: decisions: subscription 01a0968b… already active (consumer 1.0.0 e4d40ace4789…)
+  ✓ the origin: retrieval: subscription 01a09302… already active (consumer 1.0.0 a95b9b4246f0…)
+  · the origin: memory-mappings: subscription 01a0968b… was registered for consumer 1.0.0 058f1cedb39e…; this process's memory-mappings consumer is 1.0.0 2e0ad122d8d0… — REVOKED, registered anew (a changed method is a new consumer)
+  ✓ the origin: memory-mappings: registered subscription 01a0aacd…, principal 01a0aacd… (role mapping_subscriber), consumer 1.0.0 2e0ad122d8d0…; worker running true
+  · the origin: memory-mappings: replayed 0 event(s) to the replacement from sequence 14255
+  ✓ the origin: relationships: subscription 01a097c8… already active (consumer 1.0.0 fe16ee219856…)
+  ✓ the mirror: twins: registered subscription 01a0aacd…, principal 01a0aacd… (role twin_subscriber), consumer 1.0.0 197ffa8c5454…; worker running true
+  ✓ the mirror: forecasts: registered subscription 01a0aacd…, principal 01a0aacd… (role forecast_subscriber), consumer 1.0.0 cbcde85317c8…; worker running true
+  ✓ the mirror: scenarios: registered subscription 01a0aacd…, principal 01a0aacd… (role scenario_subscriber), consumer 1.0.0 d2be51c5792f…; worker running true
+  ✓ the mirror: decisions: registered subscription 01a0aacd…, principal 01a0aacd… (role decision_subscriber), consumer 1.0.0 e4d40ace4789…; worker running true
+  ✓ the mirror: retrieval: registered subscription 01a0aacd…, principal 01a0aacd… (role retrieval_subscriber), consumer 1.0.0 a95b9b4246f0…; worker running true
+  ✓ the mirror: memory-mappings: registered subscription 01a0aacd…, principal 01a0aacd… (role mapping_subscriber), consumer 1.0.0 2e0ad122d8d0…; worker running true
+  ✓ the mirror: relationships: registered subscription 01a0aacd…, principal 01a0aacd… (role relationship_subscriber), consumer 1.0.0 fe16ee219856…, selection {"eventTypes":["MemoryCorrected"],"filter":{"change_kinds":["claim.corrected"]}}; worker running true
+  ✓ the mirror's status route: 7 active subscription(s) — twins, forecasts, scenarios, decisions, retrieval, memory-mappings, relationships — owned by M. Keller; 0 recent deliveries; 0 retrieval check(s)
+  ✓ all 7 consumers are registered into the dispatcher by their own modules; the mirror's queue graph.01a084f5-757f-7f03-9cf5-315d74426481.01a0aa27-e4d3-75d0-9802-9f0f19824587.subscriptions is served by this process (holder Ahmeds-MacBook-Pro.local/2832/1b5044d3)
+
+2. THE STANDING IMPORT — the mirror's latest admitted import of the NORDWERK knowledge; S. Roth's assumption rests on an imported claim; K. Vogel's twin is bounded by an imported entity and cites an imported record: VERIFIED
+  ✓ the standing import 01a0aa27…: origin action 01a0aa27… (4 record(s), signed by ed25519:fcd9d6bf234efb3f, NOT revoked), admitted 2026-09-16T12:18:56.922Z — 4 record(s), 17 claim version(s) of 14 claim(s), 7 entities, 8 edge(s), 0 identifier(s); every item admitted (none reused)
+  · the imported knowledge chosen: the entity "NORDWERK ANTRIEBSTECHNIK GmbH" (organization, 01a0aa27…, active); the REL claim C' 01a0aa27…@1 (truth state extracted, 1 version) (no asserted edge on it); the record R' 01a0aa27…@1 (the record C' rests on — its lineage row names it)
+  ✓ S. Roth declared the assumption 01a0aacd… resting on the imported claim C' 01a0aa27… (rests_on: claim; 1 link(s))
+  · GraphChanged/strategy.declared 01a0aacd…: 6 deliveries — decisions applied (no items); forecasts applied (no items); memory-mappings applied (no items); retrieval applied (1 item(s): projections.verified); scenarios applied (no items); twins applied (no items) (twins: no items — no twin cites the claim yet; the twin is declared next)
+  ✓ K. Vogel declared the twin 01a0aacd… bounded by "NORDWERK ANTRIEBSTECHNIK GmbH", opened version 1 (known now; no world cut-off), grounded ONE estimated element (route.reroute_delay_days = 11 days — the demonstration's estimate) citing the imported record R' 01a0aa27…@1, admitted as incomplete (13 required input(s) not grounded; no run may use it): verification_state VERIFIED
+  · STATED: no forecast is issued through the route in the mirror — a forecast needs a registered series with observations, and the demonstration's series are the origin domain's; the forecast, scenario and decision reach of the walk is the harness's (phase6-retention-b17 S2)
+
+3. THE ORIGIN REVOKES — H. Bergmann revokes the standing import's package: the station notified with the SIGNED notice (the recipient verifies it, answers, collected: ACKNOWLEDGED); the mirror's import notified and its copies DESTROYED by the same act; the receipt on the origin's ledger; import.revoked delivered to the mirror's subscribers
+  ✓ the export read of 01a0aa27… BEFORE the revocation names its importers: the mirror's import 01a0aa27… (admitted, partner nordwerk-origin, admitted 2026-09-16T12:18:56.922Z) — the origin knows who holds a copy
+  ✓ the recipients: nordwerk-transfer-station (delivery 51e05ad7… attempt 1, acknowledged; held: confirmed) — the station notified (notice 20ad17d5… attempt 1, notified), the notice SIGNED: eye-revocation-notice/1 by ed25519:fcd9d6bf234efb3f (the package's key)
+  ✓ .eye-local/transfer-station-demo/01a084f5-757f-7f03-9cf5-315d74426481/01a084f5-759a-751f-a1dd-38fbd7933057/01a0aa27-d794-7478-81fc-b407ba85f1b4/revocation.json: notice 20ad17d5… for delivery 51e05ad7…, package add983a3d310dc37…, revoked at 2026-09-16T15:19:40.530Z, obligation "the package is revoked: destroy every copy of package.tar and of its contents held from this delivery, and confirm"; signature { scheme eye-revocation-notice/1, key_id ed25519:fcd9d6bf234efb3f, algorithm Ed25519, signature UCmG0Df2ESiy… } — the key the package was signed with
+      [demonstration recipient] THIS IS THE DEMONSTRATION RECIPIENT answering a REVOCATION NOTICE: it stands in for the customer's own system on the demonstration's isolated transfer station
+      [demonstration recipient] station directory /Users/halawany/work/personal/mohammed/new_project/.eye-local/transfer-station-demo/01a084f5-757f-7f03-9cf5-315d74426481/01a084f5-759a-751f-a1dd-38fbd7933057/01a0aa27-d794-7478-81fc-b407ba85f1b4
+      [demonstration recipient] notice 20ad17d5-ce2a-4422-ab49-b83c09518df2 attempt 1: the package add983a3d310dc3758470dec0d4dd3ba661cafc1a25e4b7a9ee79f25872872d8 of action 01a0aa27-d794-7478-81fc-b407ba85f1b4 was REVOKED at 2026-09-16T15:19:40.530Z — "the customer withdraws the records exchanged with the mirror domain; every copy — the station's and the mirror's admitted import — is to be destroyed and confirmed (the B17 demonstration of the propagated revocation)"; it concerns delivery 51e05ad7-c04d-4782-9e39-66db7d4da199 (the delivery this station holds)
+      [demonstration recipient] the obligation: the package is revoked: destroy every copy of package.tar and of its contents held from this delivery, and confirm
+      [demonstration recipient] notice signature: VERIFIED by key ed25519:fcd9d6bf234efb3f
+      [demonstration recipient]   Ed25519 over the ASCII hex of sha256(JCS(notice without signature/unsigned)) = d5e9806acc44855d9e320a8653f2b65e7f240f281e82cdc54b2a5efa0338654c
+      [demonstration recipient] copies destroyed: none here (package.tar, package.sig already gone — the product removed what it placed here)
+      [demonstration recipient] revocation-receipt.json written: receipt cd96ad40-1b35-4d09-ac87-0ea83aea2c6f for notice 20ad17d5-ce2a-4422-ab49-b83c09518df2 — copies_destroyed true; signature verified true (key ed25519:fcd9d6bf234efb3f)
+      [demonstration recipient] the product collects it with the collect-receipt act of the notice (ACKNOWLEDGED when it names the package digest and copies_destroyed is true; MISMATCHED otherwise)
+  ✓ the demonstration recipient VERIFIED the notice's signature with the public key (ed25519:fcd9d6bf234efb3f) before obeying it; the product had removed its copies; revocation-receipt.json says copies_destroyed true, signature verified true
+  ✓ H. Bergmann collected the station's receipt: ACKNOWLEDGED at 2026-09-16T15:19:40.995Z — the signed notice on the demonstration, D8
+  ✓ the importer notified: notice 6c3b398a… attempt 1 (notified) to import:01a084f5-757f-7f03-9cf5-315d74426481/01a0aa27-e4d3-75d0-9802-9f0f19824587/01a0aa27-e5df-731f-a330-2ab285314bcf — delivery { import 01a0aa27…, admitted, held confirmed }; the same signed notice (key ed25519:fcd9d6bf234efb3f); recorded on the ORIGIN's ledger with importer set and no destination
+  ✓ the revocation EXECUTED in the mirror by H. Bergmann (the same principal, a DOMAIN envelope of the mirror): state revoked, attempt 1, source origin; destroyed { records 4, claims 14, entities 7, edges 1 }, left 7, refused []; bytes removed 4, failed 0; the receipt copies_destroyed true (recipient import:01a084f5-757f-7f03-9cf5-315d74426481/01a0aa27-e4d3-75d0-9802-9f0f19824587/01a0aa27-e5df-731f-a330-2ab285314bcf); the origin's notice answered: acknowledged (attempt 1)
+  ✓ the mirror's edges: 1 imported edge(s) RETRACTED — reason "the origin revoked the package this edge was imported from (import 01a0aa27-e5df-731f-a330-2ab285314bcf; action 01a0aa27-d794-7478-81fc-b407…" (edge.retracted with details.imported and details.revoked: the vocabulary the rebuild derives from); 3 left as the origin recorded them (superseded); none asserted
+  ✓ the mirror's entities: 7/7 created entities RETIRED (MV Hanse Trader; NORDWERK ANTRIEBSTECHNIK GmbH; SYN-PART-BRG; SYN-PART-MAG; SYN-PART-PWR; SYN-SHIP-4468; Suez) — 0 identifier(s) kept as facts of retired entities
+  ✓ the mirror's claims: 14/14 imported claim(s) WITHDRAWN by a new version each — C' 01a0aa27…@2 withdrawn (correction_of C'@1, method retention.import.revoke@1.0.0, the payload's imported_from kept): "the origin revoked the package this version was imported from (import 01a0aa27-e5df-731f-a330-2ab285314bcf; action 01a0a…"
+  · the lineage of C': rows for versions 1, 2 — the withdrawn version carries the row of the version it withdraws (the pair rule holds for it)
+  ✓ the mirror's records: 4 imported record(s) WITHDRAWN (a version each), 4 custody.tombstoned row(s) naming the import, the bytes GONE from the evidence and archive roots (4 locator(s) checked under .eye-local/vault/evidence)
+  ✓ the import 01a0aa27…: state revoked after 1 attempt(s), revoked by 01a097c8… at 2026-09-16T15:19:40.824Z; counts {"left":7,"retired":7,"retracted":1,"withdrawn":17,"tombstoned":4,"held_by_other":0}; events opened → verified → approved → admission_started → batch_admitted → batch_admitted → batch_admitted → admitted → finalized → revocation_notified → revocation_started → batch_revoked → batch_revoked → batch_revoked → revoked → copies_destroyed
+  ✓ the ORIGIN's ledger: the importer notice 6c3b398a… (attempt 1) — importer { domain 01a0aa27…, import 01a0aa27… }, no destination, acknowledged at 2026-09-16T15:19:40.933Z with the mirror's receipt (copies_destroyed true, verifier "the product (retention.import.revoke)")
+  · the export read AFTER the revocation: 409 — "the export package of 01a0aa27-d794-7478-81fc-b407ba85f1b4 was revoked at 2026-09-16T15:19:40.530Z; its bytes are gone" (the B11 rule: a revoked package is not read; its importers stand on the ledger above)
+  ✓ GraphChanged/import.revoked 01a0aacd… (partition tenant:01a084f5-757f-7f03-9cf5-315d74426481 seq 14267): identities 7 retired; edges 5 retracted; objects { walked true, claims 14, evidence 4, assumptions 1 (S. Roth's 01a0aacd… reached by the walk), decisions 0, forecasts 0, twins 1, truncated false }; dependencies 1; import.notice { source origin, notice 6c3b398a… }; cause retention.import.revoke by 01a097c8…; subscriptions decisions, forecasts, memory-mappings, retrieval, scenarios, twins
+  ✓ import.revoked 01a0aacd…; deliveries: decisions applied (no items); forecasts applied (no items); memory-mappings applied (no items); retrieval applied (1 item(s): projections.verified); scenarios applied (no items); twins applied (1 item(s): version.unverified) — 3.0s after the revocation
+  ✓ the twin 01a0aacd…@1: UNVERIFIED by the twins subscriber (version.unverified) — its boundary entity was retired and the record it cites withdrawn; twin.twin_versions.verification_state = unverified
+  · memory-mappings applied (reconciliation.proposed ×0): no proposal — the imported entities carry no identifiers in this closure and no native edge of the mirror rests on a retired end (the consumer proposes on exactly those)
+  ✓ retrieval applied (projections.verified): the projections rebuilt after the retire/retract with 0 mismatched row(s) — touched change_kind import.revoked
+  · decisions applied with no items — the mirror holds no decision package resting on the imported knowledge (the assumption is not a decision; the walk names it under objects.assumptions)
+  · forecasts applied with no items — the mirror holds no forecast resting on the imported knowledge (the assumption is not a decision; the walk names it under objects.assumptions)
+  · scenarios applied with no items — the mirror holds no scenario resting on the imported knowledge (the assumption is not a decision; the walk names it under objects.assumptions)
+  · the mirror's graph now (S. Roth): graph/edges/list 0 edge(s) visible (0 of the 8 imported: retracted edges are not in the visible-now view); graph/entities/list shows 7 of the 7 imported entities (retired)
+
+4. E4 → THE MIRROR — a new export of the same records with their knowledge, delivered and acknowledged; imported into the mirror: admitted AFRESH under new ids; the import.admitted event, its six deliveries, the ObservationRecorded rows
+  · the targets: the standing import's 4 origin record(s) — evidence 01a084f8…@1 (240 bytes, tier archive), evidence 01a084f5…@1 (1045 bytes, tier archive), evidence 01a084f5…@1 (456 bytes, tier hot), evidence 01a084f5…@1 (338 bytes, tier hot)
+  ✓ export E4 01a0aacd…: 4 record(s), 2079 bytes — opened by P. Novák, approved by H. Bergmann, executed and verified; package digest 5601748dc65cf04c…, signed by ed25519:fcd9d6bf234efb3f
+  ✓ H. Bergmann delivered E4 to the station: delivery a1fee1f5… attempt 1 — .eye-local/transfer-station-demo/01a084f5-757f-7f03-9cf5-315d74426481/01a084f5-759a-751f-a1dd-38fbd7933057/01a0aacd-68f7-7f29-abd2-335c18b8c84c/package.tar (115200 bytes, sha256 the archive digest), package.sig, delivery.json
+      [demonstration recipient] THIS IS THE DEMONSTRATION RECIPIENT: it stands in for the customer's own system on the demonstration's isolated transfer station
+      [demonstration recipient] station directory /Users/halawany/work/personal/mohammed/new_project/.eye-local/transfer-station-demo/01a084f5-757f-7f03-9cf5-315d74426481/01a084f5-759a-751f-a1dd-38fbd7933057/01a0aacd-68f7-7f29-abd2-335c18b8c84c
+      [demonstration recipient] delivery a1fee1f5-a185-420c-8990-c8ea7e1ed056 attempt 1 of action 01a0aacd-68f7-7f29-abd2-335c18b8c84c to nordwerk-transfer-station for "NORDWERK GmbH — demonstration transfer station", delivered at 2026-09-16T15:19:46.654Z, the package expires at 2026-09-23T15:19:46.548Z
+      [demonstration recipient] the note says: package digest 5601748dc65cf04ceeb9918884a043d4dea2e72ca6e9feee4f0361cafc05c66e, archive digest 7aae71f6ad89b9cc31d98408d3963abc3301e55b490457c1027f704eb785a9b0, signature eye-customer-export/2 by ed25519:fcd9d6bf234efb3f
+      [demonstration recipient] package.tar: 115200 bytes, sha256 7aae71f6ad89b9cc31d98408d3963abc3301e55b490457c1027f704eb785a9b0 — the archive digest the note names
+      [demonstration recipient] verifier: node scripts/retention/verify-export.mjs --tar /Users/halawany/work/personal/mohammed/new_project/.eye-local/transfer-station-demo/01a084f5-757f-7f03-9cf5-315d74426481/01a084f5-759a-751f-a1dd-38fbd7933057/01a0aacd-68f7-7f29-abd2-335c18b8c84c/package.tar --json --public-key /Users/halawany/work/personal/mohammed/new_project/.eye-local/export-signing-demo.pub.pem --expect-package-digest 5601748dc65cf04ceeb9918884a043d4dea2e72ca6e9feee4f0361cafc05c66e
+      [demonstration recipient] verifier verdict: PACKAGE OK (exit 0; 0 failed; complete true); signature eye-customer-export/2 ed25519:fcd9d6bf234efb3f: VERIFIED against the public key
+      [demonstration recipient] receipt.json written: receipt 7fd33684-9b33-4893-a80f-6e9a8e73cf45 for delivery a1fee1f5-a185-420c-8990-c8ea7e1ed056 attempt 1 — verified true
+      [demonstration recipient] the product collects it with the collect-receipt act (the exchange closes ACKNOWLEDGED when the digests agree and verified is true; MISMATCHED otherwise)
+  ✓ the demonstration recipient verified E4; H. Bergmann collected the receipt: ACKNOWLEDGED — the station holds the package the mirror imports
+  ✓ the import 01a0aacd… opened from the station: VERIFIED — 16 checks, none failed; the package digest E4's; the partner nordwerk-origin holds the key
+  ✓ H. Bergmann approved on the package digest 5601748dc65cf04c…
+  ✓ M. Keller admitted: ADMITTED at 2026-09-16T15:19:47.101Z — batches record ×4, claim ×17, graph ×15, finalize ×4; counts {"items":36,"reused":0,"staged":0,"by_kind":{"edge":{"admitted":8},"claim":{"admitted":17},"entity":{"admitted":7},"record":{"admitted":4}},"refused":0,"admitted":36,"excluded":0}
+  ✓ the map of E4's import: 4 record(s), 17 claim version(s) of 14 claim(s), 7 entities, 8 edge(s), 0 identifier(s) — every item ADMITTED under a NEW id, none reused (the revoked import's copies are never a reuse source: 0 id(s) in common with the revoked import 01a0aa27…)
+  ✓ GraphChanged/import.admitted 01a0aacd… — exactly ONE for this import, in the admission's own transaction (correlation 3fe9bb31… = import.admitted's): identities 7 created; edges 8; objects { walked false, claims 14, evidence 4, truncated false }; import { partner nordwerk-origin, origin action 01a0aacd…, counts {"items":36,"reused":0,"staged":0,"by_kind":{"edge":{"admitted":8},"claim":{"admitted":17},"entity":{"admitted":7},"record":{"admitted":4}},"refused":0,"admitted":36,"excluded":0} }; cause retention.import.admit by 01a0aa27…; subscriptions decisions, forecasts, memory-mappings, retrieval, scenarios, twins (the relationships subscriber selects claim.corrected alone)
+  ✓ import.admitted 01a0aacd…; deliveries: decisions applied, forecasts applied, memory-mappings applied, retrieval applied (projections.verified), scenarios applied, twins applied — the four selectors empty (nothing of the mirror rests on ids minted a moment ago), retrieval's projection rebuild on the imported rows with 0 mismatched, memory-mappings nothing to propose
+  ✓ ObservationRecorded: 4 row(s) — one per admitted record, acquisition_mode import, run_id null, authority class authoritative (the intake contract's), imported { import, partner nordwerk-origin, origin }, every one published and BEFORE the GraphChanged in the tenant partition (seq 14269, 14270, 14271, 14272 < 14273) — L1-I03's announcement of an immutable evidence reference; no consumer subscribes to it (published, not consumed)
+
+5. THE STATE — and the stated limits
+  · import 01a0aacd… — admitted; origin action 01a0aacd…; opened 2026-09-16T15:19:46.849Z, admitted 2026-09-16T15:19:47.101Z; counts {"items":36,"reused":0,"staged":0,"by_kind":{"edge":{"admitted":8},"claim":{"admitted":17},"entity":{"admitted":7},"record":{"admitted":4}},"refused":0,"admitted":36,"excluded":0}
+  · import 01a0aa27… — revoked; origin action 01a0aa27…; opened 2026-09-16T12:18:56.681Z, admitted 2026-09-16T12:18:56.922Z, REVOKED 2026-09-16T15:19:40.824Z (1 attempt(s)); counts {"items":36,"reused":0,"staged":0,"by_kind":{"edge":{"admitted":8},"claim":{"admitted":17},"entity":{"admitted":7},"record":{"admitted":4}},"refused":0,"admitted":36,"excluded":0}
+  · import 01a0aa27… — quarantined; origin action 01a0aa27…; opened 2026-09-16T12:18:56.589Z; counts {"edges":0,"claims":0,"stored":1,"drained":5,"entries":6,"records":4,"entities":0,"oversize":0,"exclusions":0,"identifiers":0,"identifier_systems":0}
+  ✓ the mirror holds ONE live copy of the NORDWERK knowledge: E4's import 01a0aacd… (admitted, left for the next run's scene 2); the standing import 01a0aa27… revoked
+  · STATED: the propagation reaches the tenant's OWN domains on this installation (the origin's act finds the admitted imports of its package across them and executes the revocation there as the same principal); a foreign installation is the STATION path — the origin's signed revocation.json read at the import's origin path, verified against the partner's key, the receipt written beside it (the harness's phase6-retention-b17 S4)
+  · STATED: a LEGAL HOLD holds the revocation — the held record's tombstone is refused, the import stays revoking with the refused item named, the receipt says copies_destroyed false and the origin's notice is answered MISMATCHED until the hold is lifted and the steward retries (the harness's S3); no record of the mirror was under a hold here
+  · STATED: the memory-mappings method changed in B17 — the origin's live subscription was revoked and registered anew in scene 1, the replacement replaying from the revoked cursor; on this closure the imported entities carry no identifiers, so the revocation raised no identifier proposal (the harness's S2 proves the proposal on an identifier of a retired entity)
+  · STATED: no forecast, scenario or decision was issued through the routes in the mirror (a forecast needs a registered series with observations — the demonstration's series are the origin domain's); the twin and the assumption are the mirror's reach here; the full reach is the harness's S2
+  · STATED: a twin element cites a `claim` as a CLM object (twin.service.ts OBJECT_TYPE_OF) — the imported knowledge on this demonstration is REL and ENT claims, so K. Vogel's twin cites the imported RECORD and the imported REL claim is reached through S. Roth's assumption and the walk
+
+WHAT THE DEMONSTRATION SHOWED: the mirror's subscribers registered and served; a twin and an assumption built on the knowledge a second domain of the tenant admitted from the origin; the origin's revocation of that package reaching every recipient — the station with a SIGNED notice the customer-side recipient verifies before it obeys, the mirror's import destroyed where the product holds the copies (edges retracted, entities retired, versions withdrawn with their lineage, bytes tombstoned and gone) by the same governed act, the receipt acknowledged on the origin's ledger — and the mirror's subscribers told: the twin unverified, the assumption in the walk's reach, the projections verified; then a fresh package admitted AFRESH under new ids, announced to the subscribers as ONE import.admitted event with one ObservationRecorded per record.
+WHAT THE HARNESS ALONE PROVES (phase6-retention-b17 on a fresh database): the forecast, scenario and decision reach of import.revoked; the identifier proposal on a retired entity; the legal hold refusing the record step and the steward completing after the lift; the pending path of a domain administrator without authority in the importing domain; the foreign origin's signed notice from the station (unsigned, another key, another digest refused with nothing destroyed; the partner's rotated key admitted); the truncation of the event's lists; the imported claim refused at the review gate.
+
+ALL SCENES HELD
+
+=== exit 0 — 2026-09-16T15:19:49Z ===

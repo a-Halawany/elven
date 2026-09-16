@@ -6,7 +6,8 @@
  * transaction as the change it announces (ES-19-001), carrying stable references and the minimum transition data
  * a consumer needs (ES-19-002) — never an object body:
  *
- *   identities     the entity identities the change touched (id + role: origin/successor/resolved_to/subject/object …)
+ *   identities     the entity identities the change touched (id + role: origin/successor/resolved_to/subject/object,
+ *                  created/retired for an import's admission and revocation, reached for the walk's …)
  *   relationships  the edges (with their world and record intervals), resolutions and dependencies changed or reached
  *   objects        what the dependency walk reached from the change (assumptions, forecasts, twins, runs, decisions …),
  *                  so a consumer selects rather than re-walks
@@ -27,6 +28,12 @@ export const GRAPH_CHANGE_KINDS = [
   'edge.reassessment_opened',
   // 0066 §3: a memory item recorded / superseded (the item is in objects.memoryItems; what it cites are its dependencies).
   'memory_item.recorded', 'memory_item.superseded',
+  // 0077 (B17): a partner's package ADMITTED into this domain — the created identities, the imported edges as recorded, the admitted
+  // claims and records; no walk (nothing of the domain rests on the new ids yet) — one event per admission, from the graph write.
+  'import.admitted',
+  // 0077 (B17): the origin's revocation EXECUTED here — the entities retired, the edges retracted, the versions withdrawn; the walk
+  // from every withdrawn record (and every withdrawn claim no record's lineage reaches) to what the domain built on the copies.
+  'import.revoked',
 ] as const;
 export type GraphChangeKind = (typeof GRAPH_CHANGE_KINDS)[number];
 export const MEMORY_CHANGE_KINDS = ['evidence.corrected', 'claim.corrected'] as const;
@@ -60,6 +67,14 @@ export interface GraphChangedPayload {
   temporal: { known_at: string; valid_from?: string | null; valid_to?: string | null };
   subscriptions: SubscriptionRef[];
   cause: ChangeCause;
+  /**
+   * 0077 (B17): the import an `import.admitted` / `import.revoked` event is about — the ledger row's identity, the partner whose key
+   * signed the package, the origin (the tenant, domain and action the package came from, and its digest) and the import's counts as
+   * the ledger holds them; on a revocation the NOTICE the destruction answered (its id when the origin recorded one, the source it was
+   * presented from, the origin's revocation instant and reason). Absent on every other kind.
+   */
+  import?: { import_id: string; partner_key: string; origin: { tenant_id: string; domain_id: string; action_id: string; package_digest: string }; counts: Record<string, unknown>;
+             notice?: { notice_id: string | null; source: 'origin' | 'station'; revoked_at: string | null; reason: string | null } };
 }
 
 export interface CorrectedObject { object_id: string; object_type: string; from_version: number; to_version: number; lifecycle_state: string; recorded_at?: string | null; event_time?: string | null; observation_time?: string | null; valid_from?: string | null; valid_to?: string | null }
@@ -101,7 +116,8 @@ const METHOD_REF: Readonly<Record<ConsumerKind, string>> = Object.freeze({
   scenarios: 'subject or forecast affected → prediction.mark_scenario_attention (once)',
   decisions: 'DEC or cited input affected → decision.note_input_invalidated (once per cause); forecast.superseded judged for materiality against the declared rule → material_change exposed',
   retrieval: 'graph.rebuild_projections verified → graph.record_retrieval_check',
-  'memory-mappings': 'identifier/edge/resolution basis moved → graph.propose_mapping_reconciliation (a person decides); an edge whose provenance path cannot be established stays unresolved (provenance_incomplete)',
+  // 0077 (B17): the import.revoked branch is a new method, so a new identity — every live memory-mappings subscription registered before it is re-registered (the B8 precedent).
+  'memory-mappings': 'identifier/edge/resolution basis moved → graph.propose_mapping_reconciliation (a person decides); an edge whose provenance path cannot be established stays unresolved (provenance_incomplete); an import revoked (0077) → the identifiers of the entities it retired and the asserted edges with a retired end proposed',
   relationships: 'claim.corrected → the pending edge reassessed (graph.open_edge_reassessment), the relationship re-derived for the corrected version under the builder\'s rules and asserted (graph.assert_edge supersedes the pending edge; GraphChanged/edge.asserted published); a claim the builder cannot re-derive stays unresolved (unresolved_dependency) with the builder\'s reason',
 });
 export const consumerCodeDigest = (kind: ConsumerKind): string =>

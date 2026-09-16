@@ -40,6 +40,14 @@
  * the collect acts' receipts — is opened as a REGULAR FILE and nothing else: `lstat` first (a symlink, a directory, a device is
  * refused before any byte), its `realpath` contained in the station's own realpath and outside every vault root (a symlinked
  * action directory cannot alias a tier), then `O_NOFOLLOW` on the open (a swap between the check and the open fails the open).
+ *
+ * CP-6 B17 (0077; D8, D13): the notice the executors deliver is SIGNED before they run (revocation-notice.ts; the service signs, the
+ * executors take the signed `body` and write or POST it as it is — the station file and the https body are the signed JSON), and the
+ * station is READ for a notice as it is read for a package (`openStationNotice`: `revocation.json` alone, the package need not still be
+ * there — the origin removed its own copies after its commit) and WRITTEN for the importing domain's answer (`writeStationRevocationReceipt`:
+ * `revocation-receipt.json` beside the notice, the file the demonstration recipient writes, in the same shape plus `import_id`, `refused`
+ * and `verifier` — the origin's collect act reads it back unchanged). An importing domain of the same tenant is notified on the origin's
+ * own ledger instead (`RevocationNotice.importer`; no file, no POST): the notice names the import as its delivery.
  */
 import { Injectable } from '@nestjs/common';
 import { createHash, randomUUID } from 'node:crypto';
@@ -441,9 +449,14 @@ export class ExportDeliveryService {
    * acknowledges — every copy destroyed and confirmed by a receipt naming this notice, the package digest and copies_destroyed: true.
    */
   noticeOf(n: RevocationNotice): Row {
+    // B17 (D6): an IMPORTING DOMAIN is a recipient without a destination — the import is the delivery it holds (an admitted copy is `confirmed`).
+    const importer = n.importer ?? null;
     return {
       notice: 'revocation', notice_id: n.noticeId, attempt: n.attempt, action_id: n.actionId, tenant_id: n.tenantId, domain_id: n.domainId,
-      destination_key: n.destinationKey, recipient: n.recipient, delivery: { delivery_id: n.deliveryId, attempt: n.deliveryAttempt, state: n.deliveryState, held: n.held },
+      destination_key: importer === null ? n.destinationKey : null, recipient: n.recipient,
+      delivery: importer === null
+        ? { delivery_id: n.deliveryId, attempt: n.deliveryAttempt, state: n.deliveryState, held: n.held }
+        : { import_id: importer.import_id, state: importer.state === 'revoked' ? 'revoked' : 'admitted', held: 'confirmed' },
       package_digest: n.packageDigest, archive_digest: n.archiveDigest, signing_key_id: n.signingKeyId,
       revoked_at: n.revokedAt, reason: n.reason, notified_at: n.notifiedAt,
       obligation: 'the package is revoked: destroy every copy of package.tar and of its contents held from this delivery, and confirm',
@@ -454,9 +467,9 @@ export class ExportDeliveryService {
   /**
    * A transfer station is told by `revocation.json` in the action's directory (replaced per attempt, as delivery.json is); the product's
    * own package.tar and package.sig there are removed AFTER the commit by `removeStationPackage`. `created` receives the path when this
-   * attempt newly wrote it (C6).
+   * attempt newly wrote it (C6). B17 (D8): `body` is the SIGNED notice the service built (signNotice over `noticeOf`); it is written as it is.
    */
-  async notifyTransferStation(a: { endpoint: string; notice: RevocationNotice; created: string[] }): Promise<NoticeOutcome & { directory: string | null; file: string | null }> {
+  async notifyTransferStation(a: { endpoint: string; notice: RevocationNotice; body: Row; created: string[] }): Promise<NoticeOutcome & { directory: string | null; file: string | null }> {
     const scope = { tenantId: a.notice.tenantId, domainId: a.notice.domainId };
     const failed = (message: string, filesLeft: string[] = []): NoticeOutcome & { directory: string | null; file: null } =>
       ({ state: 'failed', failureClass: 'write_failed', receipt: { failure: { class: 'write_failed', message: message.slice(0, 600), files_left: filesLeft } }, directory: null, file: null });
@@ -467,7 +480,7 @@ export class ExportDeliveryService {
     const mine: string[] = [];
     try {
       await mkdir(dir, { recursive: true, mode: 0o700 });
-      await this.writeReplacing(file, Buffer.from(`${JSON.stringify(this.noticeOf(a.notice), null, 2)}\n`, 'utf8'), mine);
+      await this.writeReplacing(file, Buffer.from(`${JSON.stringify(a.body, null, 2)}\n`, 'utf8'), mine);
     } catch (e) {
       const left = await this.removeCreated(mine);
       let message = `the station write failed: ${String((e as { message?: unknown })?.message ?? 'unknown')}`;
@@ -476,6 +489,39 @@ export class ExportDeliveryService {
     }
     a.created.push(...mine);
     return { state: 'notified', receipt: null, failureClass: null, directory: dir, file: 'revocation.json' };
+  }
+
+  /**
+   * B17 (D8, D19): THE STATION AS THE REVOCATION'S INTAKE — the origin's `revocation.json` under `<endpoint>/<originTenant>/<originDomain>/
+   * <originAction>/`, vetted and bounded as every station file the product reads (C4), a JSON object; null when absent. `package.tar` is
+   * NOT required: the origin removed its own copies after its revocation committed, and the notice is the fact the importer acts on
+   * (verified against the import's partner by the service before the port sees it).
+   */
+  async openStationNotice(endpoint: string, origin: { tenantId: string; domainId: string; actionId: string }): Promise<{ directory: string; path: string; notice: Row } | null> {
+    const station = await this.stationDir(endpoint, { tenantId: origin.tenantId, domainId: origin.domainId }, origin.actionId);
+    const file = await this.stationFile(station, 'revocation.json');
+    if (file === null) return null;
+    const read = await this.readStationObject(file, 'revocation.json', 'revocation notice');
+    return { directory: station.dir, path: file.full, notice: read.value };
+  }
+
+  /**
+   * B17 (D13): THE IMPORTING DOMAIN'S ANSWER at the station — `revocation-receipt.json` beside the origin's notice, the file the
+   * demonstration recipient writes (transfer-station-recipient.mjs) in the same shape plus `import_id`, `refused` and `verifier`, so
+   * the origin's collect act reads it back as any recipient's. Temp + fsync + rename over the previous attempt's file (the receipt of
+   * THIS attempt is the one that stands). The action's directory must exist — the origin's notice lies in it; nothing is created for
+   * an origin that never wrote there (`no_receipt`). Returns the path written.
+   */
+  async writeStationRevocationReceipt(endpoint: string, origin: { tenantId: string; domainId: string; actionId: string }, receipt: Row): Promise<string> {
+    const station = await this.stationDir(endpoint, { tenantId: origin.tenantId, domainId: origin.domainId }, origin.actionId);
+    let real: string | null = null;
+    try { real = (await stat(station.dir)).isDirectory() ? await realpath(station.dir) : null; } catch { real = null; }
+    if (real === null) throw new TransferStationRefused('no_receipt', `no station directory for the origin action ${origin.actionId} at ${station.dir}; the receipt has nowhere to stand`);
+    // The C4 discipline on the write as on the reads: a symlinked tenant, domain or action directory under the station cannot lead the receipt outside it, or into a vault root.
+    if (!contains(station.root, real) || real === station.root || !this.vault.isOutsideRoots(real)) throw new TransferStationRefused('containment', `the station directory of the origin action ${origin.actionId} resolves outside the transfer station; nothing is written`);
+    const full = resolve(station.dir, 'revocation-receipt.json');
+    await this.writeReplacing(full, Buffer.from(`${JSON.stringify(receipt, null, 2)}\n`, 'utf8'), []);
+    return full;
   }
 
   /**
@@ -503,8 +549,9 @@ export class ExportDeliveryService {
   /**
    * An https destination is told by ONE JSON POST to its endpoint — the same egress, credential and anchor rules as the delivery, the
    * header x-eye-notice naming the kind — and its answer is the receipt. The failures are the delivery's, recorded the same way.
+   * B17 (D8): `body` is the SIGNED notice the service built; it is POSTed as it is.
    */
-  async notifyHttps(a: { endpoint: string; credentialRef: string | null; trustAnchorPem: string | null; notice: RevocationNotice }): Promise<NoticeOutcome & { egress: Row | null }> {
+  async notifyHttps(a: { endpoint: string; credentialRef: string | null; trustAnchorPem: string | null; notice: RevocationNotice; body: Row }): Promise<NoticeOutcome & { egress: Row | null }> {
     const n = a.notice;
     const failure = (cls: DeliveryFailureClass, detail: Row): NoticeOutcome & { egress: Row | null } =>
       ({ state: 'failed', failureClass: cls, receipt: { failure: { class: cls, ...detail } }, egress: null });
@@ -513,7 +560,7 @@ export class ExportDeliveryService {
     }
     let url: URL;
     try { url = new URL(a.endpoint); } catch { return failure('egress_refused', { egress: 'scheme_not_allowed', message: 'the endpoint is not a URL' }); }
-    const body = Buffer.from(JSON.stringify(this.noticeOf(n)), 'utf8');
+    const body = Buffer.from(JSON.stringify(a.body), 'utf8');
     const headers: Record<string, string> = {
       'x-eye-notice': 'revocation', 'x-eye-notice-id': n.noticeId, 'x-eye-attempt': String(n.attempt), 'x-eye-delivery-id': n.deliveryId, 'x-eye-action-id': n.actionId,
       'x-eye-package-digest': n.packageDigest, 'x-eye-archive-digest': n.archiveDigest,
@@ -571,7 +618,9 @@ function egressFailureOf(e: unknown): { cls: DeliveryFailureClass; detail: Row }
 /**
  * B14 (D3): what the notice executors deliver and record. B16 (Codex B14-F1): `held` — what the delivery PROVES about the recipient's
  * copy: `confirmed` (delivered, acknowledged, or mismatched: it answered about the package) or `possible` (a failure after the body
- * left, or a receipt that did not parse); a destination that provably received nothing is never notified.
+ * left, or a receipt that did not parse); a destination that provably received nothing is never notified. B17 (D6): `importer` — an
+ * importing domain of the tenant as the recipient: no destination, no delivery; the import (admitted, revoking or revoked) is what it
+ * holds, and the notice's `delivery` block names it (`recipient` is `import:<tenant>/<domain>/<import_id>`).
  */
 export interface RevocationNotice {
   tenantId: string; domainId: string; actionId: string;
@@ -580,6 +629,7 @@ export interface RevocationNotice {
   deliveryId: string; deliveryAttempt: number; deliveryState: string; held: 'confirmed' | 'possible';
   packageDigest: string; archiveDigest: string; signingKeyId: string | null;
   revokedAt: string | null; reason: string | null; notifiedAt: string;
+  importer?: { tenant_id: string; domain_id: string; import_id: string; state: string; admitted_at: string | null } | null;
 }
 export interface NoticeOutcome {
   state: NoticeState;

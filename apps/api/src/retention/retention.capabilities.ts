@@ -25,6 +25,18 @@
  * (the call as shared/capabilities.ts makes it: the header's object_id bound to the write's target set); the origin's state of a
  * package this domain presents by digest (`import_origin_state`: facts about THAT package only); the relationship closure's identifier
  * systems (links/2, D8).
+ *
+ * CP-6 B17 (0077): the ORIGIN'S REVOCATION PROPAGATED, and imported knowledge PUBLISHED. The origin finds the imports of its package
+ * across the tenant's domains (`importsOfPackage`, D14) and notifies each as a recipient of its own ledger (§6: the importer notice —
+ * begun under the action's delivery lock, recorded with the importing ledger's own `import.revocation_notified`); the importing domain
+ * executes the revocation through the §7 ports under `retention.import.revoke` (begun with its source verified, an edge retracted, an
+ * entity retired, every other item's outcome marked, the lineage carried onto a withdrawn claim version, the tombstoned record's custody
+ * row, the finish that moves the state or holds it, the receipt that answers the origin's notice). THE PICKS (D3): the walker and the
+ * GraphChanged builder take structural picks of the graph reads (`WalkReads`, `ChangeReads` — impact.service.ts, change-events.ts), so
+ * this capability carries the same walk without a second walker: it gains exactly those reads — the dependencies, the strategy, the
+ * resolutions, the forecasts, scenarios and warnings, the twins and runs, the briefings, the memory items (each a plain SELECT on a table
+ * eye_commit already reads in a commit transaction) — and `subscriptionsMatching`, the graph capability's own call, for the event's
+ * evidence of who is subscribed at publication time.
  */
 import { sql } from 'kysely';
 import type { Tx } from '../shared/db.js';
@@ -77,7 +89,34 @@ export interface RetentionReads {
   readImports(): any;
   readImportItems(): any;
   readImportEvents(): any;
+  /**
+   * B17 (D3): the reads the impact walk and the GraphChanged builder call (`WalkReads`, `ChangeReads` — structural picks of the graph
+   * reads), so the revocation's ONE event carries the same walk the invalidation uses, never a second walker: the dependency ledger, the
+   * strategy objects, the resolutions, the Phase 4 dependents (forecasts, scenarios, warnings), the Phase 5 dependents (twins, runs), the
+   * briefings and the memory items — each the current-row relation the graph capability reads.
+   */
+  readDependencies(): any;
+  readStrategy(): any;
+  readResolutions(): any;
+  readForecasts(): any;
+  readScenarios(): any;
+  readWarnings(): any;
+  readTwins(): any;
+  readRuns(): any;
+  readBriefings(): any;
+  readMemoryItems(): any;
   /* eslint-enable @typescript-eslint/no-explicit-any */
+  /**
+   * B17 (D3): what is subscribed to a change at PUBLICATION time — evidence the event carries, never authority (the dispatcher re-resolves
+   * at delivery); the graph capability's own call. Total: an empty list outside a DOMAIN context.
+   */
+  subscriptionsMatching(a: { tenantId: string; domainId: string; eventType: 'GraphChanged' | 'MemoryCorrected'; changeKind: string }): Promise<Array<{ subscription_id: string; consumer_kind: string }>>;
+  /**
+   * B17 (0077 §5; D14): the IMPORTS of this domain's package across the TENANT's domains — admitted, revoking or revoked — each with its
+   * partner key and counts (the definer reads retention.imports across domains under the origin's own authority; another tenant's import
+   * is a foreign recipient, the station path). Empty when the action has no package digest.
+   */
+  importsOfPackage(a: { tenantId: string; domainId: string; actionId: string; packageDigest: string }): Promise<Row[]>;
   /**
    * B16 (0076 §4; C2, N13): the ORIGIN'S state of a package this domain presents — the definer reads retention.export_packages across
    * domains and answers `{known: true, revoked_at, expires_at}` only when the recorded package digest is the one presented, else
@@ -203,12 +242,56 @@ export interface RetentionWrites extends RetentionReads {
   recordImportedEdge(a: { edgeId: string; tenantId: string; domainId: string; importId: string; itemId: string; subject: string; predicate: string; object: string; validFrom: string; validTo: string | null; assertedAt: string; retractedAt: string | null; supersededAt: string | null; state: string; claimObjectId: string; claimVersion: number; evidenceObjectId: string; evidenceDigest: string; methodId: string | null; runId: string | null; mode: string; confidence: number; supersededBy: string | null; retractionReason: string | null; origin: Row; actor: string; correlationId: string }): Promise<void>;
   /** B16 (0076 §4): a staged item settled once — admitted | reused | excluded | refused, with its gate, reason and what was admitted. */
   markImportItem(a: { itemId: string; importId: string; tenantId: string; domainId: string; disposition: 'admitted' | 'reused' | 'excluded' | 'refused'; gate: string | null; reason: string | null; admitted: Row | null; actor: string; correlationId: string }): Promise<void>;
-  /** B16 (0076 §4; C5): the admission's own events — a batch admitted, the finalisation, a failure, the quarantine copies tombstoned after the commit. */
-  recordImportEvent(a: { importId: string; tenantId: string; domainId: string; event: 'import.batch_admitted' | 'import.finalized' | 'import.failed' | 'import.evidence_tombstoned'; details: Row; actor: string; correlationId: string }): Promise<void>;
+  /**
+   * B16 (0076 §4; C5): the admission's own events — a batch admitted, the finalisation, a failure, the quarantine copies tombstoned after
+   * the commit. B17 (0077 §4): the revocation's — a batch revoked, an attempt that failed, a notice refused (the state gates are the port's).
+   */
+  recordImportEvent(a: { importId: string; tenantId: string; domainId: string; event: 'import.batch_admitted' | 'import.finalized' | 'import.failed' | 'import.evidence_tombstoned' | 'import.batch_revoked' | 'import.revocation_failed' | 'import.revocation_refused'; details: Row; actor: string; correlationId: string }): Promise<void>;
   /** B16 (0076 §4): the admission FINISHED — no item still staged; state admitted with the counts; the row as recorded. */
   finishImportAdmission(a: { importId: string; tenantId: string; domainId: string; counts: Row; actor: string; correlationId: string }): Promise<Row>;
   /** B16 (0076 §4; C3): the import withdrawn with a reason (quarantined, verified, approved — or admitting, whose already-admitted rows stand); the row as recorded. */
   withdrawImport(a: { importId: string; tenantId: string; domainId: string; reason: string; actor: string; correlationId: string }): Promise<Row>;
+  // ───────────────────────── B17 (0077 §6): the importer as a recipient of the origin's ledger ─────────────────────────
+  /**
+   * B17 (0077 §6; D6): the gates of an IMPORTER notice — the package revoked, the import an admitted (revoking, revoked) copy of it in a
+   * domain of this tenant — under the action's delivery lock; the notice id and the attempt allocated; returns {notice_id, attempt, package, importer}.
+   */
+  beginImportRevocationNotice(a: { actionId: string; tenantId: string; domainId: string; importId: string; actor: string; correlationId: string }): Promise<Row>;
+  /**
+   * B17 (0077 §6; D6): the importer notice RECORDED — state notified, the row with `importer` and no destination, the origin's event and
+   * custody rows, and the importing ledger's own import.revocation_notified (the one cross-domain write: the notice IS the importer's fact);
+   * the row as recorded.
+   */
+  recordImportRevocationNotice(a: { noticeId: string; actionId: string; tenantId: string; domainId: string; importId: string; attempt: number; notice: Row; noticeDigest: string; actor: string; correlationId: string }): Promise<Row>;
+  // ───────────────────────── B17 (0077 §7): the revocation in the importing domain ─────────────────────────
+  /**
+   * B17 (0077 §7; D4, D7, D19): the revocation BEGUN — the import admitted (or revoking: an attempt resumed); the SOURCE established
+   * (`origin`: this installation's own record of the package, revoked under the import's digest; `station`: the origin's signed notice the
+   * service verified against the import's partner, re-checked by the port); state revoking, the attempt counted; a revoked import answers
+   * {kind: 'retried'} and moves nothing. Returns {kind, import, source, pending}.
+   */
+  beginImportRevocation(a: { importId: string; tenantId: string; domainId: string; source: Row; actor: string; correlationId: string }): Promise<Row>;
+  /** B17 (0077 §7; D5): an imported EDGE this import created retracted (asserted → retracted, edge.retracted with the revocation) — or left as the origin recorded it; the item's outcome recorded; the edge's facts returned for the event. */
+  retractImportedEdge(a: { itemId: string; importId: string; tenantId: string; domainId: string; revocation: Row; actor: string; correlationId: string }): Promise<Row>;
+  /** B17 (0077 §7; D2, D5): an imported ENTITY this import created retired (active → retired, entity.retired, its identifiers kept) — or left; the item's outcome recorded; the entity's facts returned. */
+  retireImportedEntity(a: { itemId: string; importId: string; tenantId: string; domainId: string; revocation: Row; actor: string; correlationId: string }): Promise<Row>;
+  /** B17 (0077 §7; D5): the outcome of every other item — withdrawn (a claim version), tombstoned (a record), left (a reused row, an identifier or system), refused (a legal hold; retried when lifted) — with the caller's details. */
+  markImportItemRevoked(a: { itemId: string; importId: string; tenantId: string; domainId: string; outcome: 'withdrawn' | 'tombstoned' | 'left' | 'refused'; details: Row | null; actor: string; correlationId: string }): Promise<void>;
+  /** B17 (0077 §7; D12): every lineage row of the version withdrawn copied onto the version that withdraws it, under this operation's admission decision; the rows copied. */
+  recordImportWithdrawalLineage(a: { claimObjectId: string; fromVersion: number; toVersion: number; tenantId: string; domainId: string; importId: string; correlationId: string }): Promise<number>;
+  /** B17 (0077 §7): the custody.tombstoned row of a tombstoned imported record, written by the retention port as record_imported_manifest writes custody.imported. */
+  recordImportRevocationCustody(a: { manifestId: string; tenantId: string; domainId: string; importId: string; itemId: string; evdObjectId: string; details: Row; actor: string; correlationId: string }): Promise<void>;
+  /**
+   * B17 (0077 §7; D4): the attempt FINISHED — every admitted or reused item settled; no item refused → state revoked with the revocation and
+   * the counts (import.revoked); a refused item (a legal hold) → the state stays revoking and import.revocation_held names them. Returns
+   * {import, complete, counts, refused}.
+   */
+  finishImportRevocation(a: { importId: string; tenantId: string; domainId: string; revocation: Row; counts: Row; refused: Row[]; actor: string; correlationId: string }): Promise<Row>;
+  /**
+   * B17 (0077 §7; D13): the RECEIPT of an attempt recorded after the bytes went — import.copies_destroyed or import.copies_refused — and the
+   * origin's notice answered when the origin is a domain of this tenant (answer_import_notice inside the port). Returns {event, answered}.
+   */
+  recordImportRevocationReceipt(a: { importId: string; tenantId: string; domainId: string; receipt: Row; receiptDigest: string; bytes: Row; station: Row | null; actor: string; correlationId: string }): Promise<Row>;
   /** The outbox port: the floor moved by this executing action only. */
   declareFloor(a: { partitionKey: string; toSeq: number; actionId: string }): Promise<Row>;
   /** A refused port call must not abort the recording transaction: the call runs under a savepoint. */
@@ -257,7 +340,26 @@ class RetentionCapabilityImpl implements RetentionWrites {
   readImports(): any { return this.from('retention.imports'); }
   readImportItems(): any { return this.from('retention.import_items'); }
   readImportEvents(): any { return this.from('retention.import_events'); }
+  // B17 (D3): the walk's and the builder's reads — the relations the graph capability names for the same reads (graph.capabilities.ts).
+  readDependencies(): any { return this.from('graph.dependencies'); }
+  readStrategy(): any { return this.from('graph.strategy_current'); }
+  readResolutions(): any { return this.from('graph.resolutions_current'); }
+  readForecasts(): any { return this.from('prediction.forecasts_current'); }
+  readScenarios(): any { return this.from('prediction.scenarios_current'); }
+  readWarnings(): any { return this.from('prediction.warnings_current'); }
+  readTwins(): any { return this.from('twin.twins_current'); }
+  readRuns(): any { return this.from('simulation.runs_current'); }
+  readBriefings(): any { return this.from('executive.briefings'); }
+  readMemoryItems(): any { return this.from('memory.items_current'); }
   /* eslint-enable @typescript-eslint/no-explicit-any */
+  async subscriptionsMatching(a: Parameters<RetentionReads['subscriptionsMatching']>[0]): Promise<Array<{ subscription_id: string; consumer_kind: string }>> {
+    const rows = await this.call<{ s: Array<{ subscription_id: string; consumer_kind: string }> }>(sql`select graph.subscriptions_matching(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.eventType}, ${a.changeKind}) as s`);
+    return rows[0]?.s ?? [];
+  }
+  async importsOfPackage(a: Parameters<RetentionReads['importsOfPackage']>[0]): Promise<Row[]> {
+    const rows = await this.call<{ r: Row[] }>(sql`select retention.imports_of_package(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.actionId}::uuid, ${a.packageDigest}::text) as r`);
+    return rows[0]?.r ?? [];
+  }
   async importOriginState(a: Parameters<RetentionReads['importOriginState']>[0]): Promise<Row> {
     const rows = await this.call<{ r: Row }>(sql`select retention.import_origin_state(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.originTenantId}::uuid, ${a.originDomainId}::uuid, ${a.actionId}::uuid, ${a.packageDigest}::text) as r`);
     return rows[0]?.r ?? { known: false };
@@ -453,6 +555,45 @@ class RetentionCapabilityImpl implements RetentionWrites {
   }
   async withdrawImport(a: Parameters<RetentionWrites['withdrawImport']>[0]): Promise<Row> {
     const rows = await this.call<{ r: Row }>(sql`select retention.withdraw_import(${a.importId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}::text, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  // ───────────────────────── B17 (0077 §6, §7) ─────────────────────────
+  async beginImportRevocationNotice(a: Parameters<RetentionWrites['beginImportRevocationNotice']>[0]): Promise<Row> {
+    const rows = await this.call<{ r: Row }>(sql`select retention.begin_import_revocation_notice(${a.actionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.importId}::uuid, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  async recordImportRevocationNotice(a: Parameters<RetentionWrites['recordImportRevocationNotice']>[0]): Promise<Row> {
+    const rows = await this.call<{ r: Row }>(sql`select retention.record_import_revocation_notice(${a.noticeId}::uuid, ${a.actionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.importId}::uuid, ${a.attempt}::int, ${JSON.stringify(a.notice)}::jsonb, ${a.noticeDigest}::text, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  async beginImportRevocation(a: Parameters<RetentionWrites['beginImportRevocation']>[0]): Promise<Row> {
+    const rows = await this.call<{ r: Row }>(sql`select retention.begin_import_revocation(${a.importId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${JSON.stringify(a.source)}::jsonb, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  async retractImportedEdge(a: Parameters<RetentionWrites['retractImportedEdge']>[0]): Promise<Row> {
+    const rows = await this.call<{ r: Row }>(sql`select retention.retract_imported_edge(${a.itemId}::uuid, ${a.importId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${JSON.stringify(a.revocation)}::jsonb, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  async retireImportedEntity(a: Parameters<RetentionWrites['retireImportedEntity']>[0]): Promise<Row> {
+    const rows = await this.call<{ r: Row }>(sql`select retention.retire_imported_entity(${a.itemId}::uuid, ${a.importId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${JSON.stringify(a.revocation)}::jsonb, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  async markImportItemRevoked(a: Parameters<RetentionWrites['markImportItemRevoked']>[0]): Promise<void> {
+    await this.call(sql`select retention.mark_import_item_revoked(${a.itemId}::uuid, ${a.importId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.outcome}::text, ${a.details === null ? null : JSON.stringify(a.details)}::jsonb, ${a.actor}::uuid, ${a.correlationId}::uuid)`);
+  }
+  async recordImportWithdrawalLineage(a: Parameters<RetentionWrites['recordImportWithdrawalLineage']>[0]): Promise<number> {
+    const rows = await this.call<{ n: number }>(sql`select retention.record_import_withdrawal_lineage(${a.claimObjectId}::uuid, ${a.fromVersion}::bigint, ${a.toVersion}::bigint, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.importId}::uuid, ${a.correlationId}::uuid) as n`);
+    return Number(rows[0]?.n ?? 0);
+  }
+  async recordImportRevocationCustody(a: Parameters<RetentionWrites['recordImportRevocationCustody']>[0]): Promise<void> {
+    await this.call(sql`select retention.record_import_revocation_custody(${a.manifestId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.importId}::uuid, ${a.itemId}::uuid, ${a.evdObjectId}::uuid, ${JSON.stringify(a.details)}::jsonb, ${a.actor}::uuid, ${a.correlationId}::uuid)`);
+  }
+  async finishImportRevocation(a: Parameters<RetentionWrites['finishImportRevocation']>[0]): Promise<Row> {
+    const rows = await this.call<{ r: Row }>(sql`select retention.finish_import_revocation(${a.importId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${JSON.stringify(a.revocation)}::jsonb, ${JSON.stringify(a.counts)}::jsonb, ${JSON.stringify(a.refused)}::jsonb, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  async recordImportRevocationReceipt(a: Parameters<RetentionWrites['recordImportRevocationReceipt']>[0]): Promise<Row> {
+    const rows = await this.call<{ r: Row }>(sql`select retention.record_import_revocation_receipt(${a.importId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${JSON.stringify(a.receipt)}::jsonb, ${a.receiptDigest}::text, ${JSON.stringify(a.bytes)}::jsonb, ${a.station === null ? null : JSON.stringify(a.station)}::jsonb, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
     return rows[0]?.r ?? {};
   }
   async savepoint(name: string): Promise<void> { await this.call(sql.raw(`savepoint ${name.replace(/[^a-z0-9_]/gi, '')}`)); }

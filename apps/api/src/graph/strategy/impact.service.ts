@@ -28,6 +28,14 @@ import type { GraphReads, ImpactWrites, OutstandingCursor } from '../graph.capab
 const MAX_HOPS = 8;
 
 /**
+ * The reads the walk calls — exactly these, as a structural pick of GraphReads (0077, B17). A capability of another
+ * module that carries the same reads (retention's, for the walk an import revocation seeds from the withdrawn records)
+ * can run THIS walk without a second walker and without holding a graph capability; every GraphReads satisfies it, so
+ * no existing caller changes.
+ */
+export type WalkReads = Pick<GraphReads, 'readDependencies' | 'readStrategy' | 'readForecasts' | 'readScenarios' | 'readWarnings' | 'readTwins' | 'readRuns' | 'readBriefings' | 'readMemoryItems' | 'readClaimLineage' | 'readResolutions' | 'readEdges'>;
+
+/**
  * The AUTOMATIC walker's identity (CP-6 B1, migration 0060), on the connector precedent:
  * the propagation agent registered in a domain is bound to this version and code digest,
  * and its session port refuses a walker whose identity has drifted from the registration.
@@ -118,10 +126,12 @@ export class ImpactService {
    *
    * Kept separate from `propagate` so the Impact screen can answer "what would
    * this affect?" before a person commits to marking anything — and so the walk
-   * is testable on its own.
+   * is testable on its own. The capability is the pick of reads the walk makes
+   * (WalkReads), never the whole graph capability: the import revocation (0077)
+   * runs it on retention's.
    */
   async walk(
-    cap: GraphReads,
+    cap: WalkReads,
     a: { triggerKind: string; triggerObjectId: string },
   ): Promise<Omit<ImpactResult, 'invalidationId' | 'correctionCaseId' | 'statement'>> {
     const deps = (await cap.readDependencies().selectAll()

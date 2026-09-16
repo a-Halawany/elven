@@ -4,7 +4,7 @@
  * DP-47-005 "require recipient acknowledgement before closure", ES-53-004, NZ-20, CMP-102).
  *
  *   node scripts/retention/transfer-station-recipient.mjs <station-root> <tenant> <domain> <action_id> [--public-key <pem-file>] [--recipient <name>] [--wrong-digest | --deny]
- *   node scripts/retention/transfer-station-recipient.mjs <station-root> <tenant> <domain> <action_id> --revocation [--refuse] [--recipient <name>]
+ *   node scripts/retention/transfer-station-recipient.mjs <station-root> <tenant> <domain> <action_id> --revocation [--public-key <pem-file>] [--refuse] [--recipient <name>]
  *
  * THIS IS A DEMONSTRATION RECIPIENT, NOT A PRODUCT COMPONENT. A transfer station is a directory the product WRITES a delivery
  * into (`<station-root>/<tenant>/<domain>/<action_id>/` — package.tar, package.sig, delivery.json) and READS a receipt from
@@ -41,6 +41,22 @@
  * recipient, received_at }. With --refuse it writes copies_destroyed: false (the honest answer of a recipient that keeps its copies —
  * the product records the exchange as MISMATCHED). Exits 0 when the receipt was written; 2 when there is no notice to answer.
  *
+ * THE SIGNED NOTICE (CP-6 B17; migration 0077; D8 and C7 of the batch record): from B17 on the product SIGNS every revocation notice the
+ * way it signs its packages — `signature: { scheme: 'eye-revocation-notice/1', key_id, algorithm: 'Ed25519', signature }`, Ed25519 over
+ * the ASCII hex of sha256(JCS(the notice WITHOUT its `signature` and `unsigned` members)), `key_id` = ed25519:<the first 16 hex of
+ * sha256(SPKI DER)> — by the PACKAGE's key, or (when that key is not bound where the origin runs) by the tenant's active key with
+ * `signed_with: 'active_key'` and `package_key_id` stated INSIDE the signed bytes; a notice the origin could not sign carries
+ * `signature: null` and `unsigned: <why>`. With --public-key <pem-file> (the origin's export signing PUBLIC key — the same file the
+ * delivery receipt's verification takes) the recipient VERIFIES the notice before it obeys it: the block's shape, the key id against the
+ * key given, the signature over the digest recomputed here — printed as `notice signature: VERIFIED by key <id>`, `NOT VERIFIED: <reason>`
+ * (unsigned, malformed, another key, a signature that does not verify). A notice that does not verify is NOT OBEYED: the copies are KEPT
+ * and the receipt says `copies_destroyed: false` with `signature: { verified: false, key_id, reason }` and `notes` — the honest answer
+ * (the product records the exchange as MISMATCHED and the origin sees what its notice lacked). Without --public-key the behaviour is
+ * B14's — the notice is obeyed on its digest match with the held delivery — and the receipt gains `signature: { verified: null, key_id }`
+ * so that the record says the check did not run here. --refuse is unchanged (the copies kept whatever the signature says; the
+ * signature still verified and reported). The JCS subset and the digest are COPIED VERBATIM from scripts/retention/verify-export.mjs
+ * (jcs, digestOf): that file is a CLI module that runs on import, so it cannot be imported from here; the two copies are held to agree.
+ *
  * THE CONTROL MODES of the delivery receipt (CP-6 B16; the answers a real recipient could give, wrong or right — the product must classify
  * each; the https recipient has carried the same modes since B14): --wrong-digest writes the receipt with the archive digest's FIRST BYTE
  * FLIPPED (a recipient that received other bytes, or mis-hashed them: the product records the exchange MISMATCHED and, at a revocation,
@@ -52,7 +68,7 @@
  * Node 18 or later; no dependency.
  */
 import { spawnSync } from 'node:child_process';
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, createPublicKey, randomUUID, verify as cryptoVerify } from 'node:crypto';
 import { closeSync, existsSync, fsyncSync, openSync, readFileSync, renameSync, rmSync, statSync, writeSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -61,7 +77,81 @@ const VERIFIER = join(dirname(fileURLToPath(import.meta.url)), 'verify-export.mj
 const VERIFIER_NAME = 'scripts/retention/verify-export.mjs (demonstration recipient)';
 const SEGMENT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i; // the tenant, the domain and the action are uuids: one path segment each, never a walk
 const HEX64 = /^[0-9a-f]{64}$/;
-const USAGE = 'usage: node scripts/retention/transfer-station-recipient.mjs <station-root> <tenant> <domain> <action_id> [--public-key <pem-file>] [--recipient <name>] [--wrong-digest | --deny] | … --revocation [--refuse]';
+/** B17: the notice's signature scheme and the shape of its signature (the base64 of exactly 64 bytes — the product's own rule). */
+const NOTICE_SCHEME = 'eye-revocation-notice/1';
+const SIGNATURE_B64 = /^[A-Za-z0-9+/]{86}==$/;
+const USAGE = 'usage: node scripts/retention/transfer-station-recipient.mjs <station-root> <tenant> <domain> <action_id> [--public-key <pem-file>] [--recipient <name>] [--wrong-digest | --deny] | … --revocation [--public-key <pem-file>] [--refuse]';
+
+/* ── JCS, the subset the notice needs (RFC 8785) — COPIED VERBATIM from scripts/retention/verify-export.mjs (a CLI module that runs on import; not importable) ── */
+function jcs(value) {
+  if (value === null) return 'null';
+  const t = typeof value;
+  if (t === 'boolean') return value ? 'true' : 'false';
+  if (t === 'number') {
+    if (!Number.isFinite(value)) throw new Error('non-finite number cannot be canonicalized');
+    return JSON.stringify(value);
+  }
+  if (t === 'string') return JSON.stringify(value);
+  if (t === 'undefined' || t === 'function' || t === 'symbol' || t === 'bigint') throw new Error(`${t} cannot be canonicalized`);
+  if (Array.isArray(value)) {
+    const parts = [];
+    for (let i = 0; i < value.length; i += 1) {
+      if (!Object.prototype.hasOwnProperty.call(value, i) || value[i] === undefined) throw new Error(`array element ${i} is absent or undefined`);
+      parts.push(jcs(value[i]));
+    }
+    return `[${parts.join(',')}]`;
+  }
+  if (t === 'object') {
+    const proto = Object.getPrototypeOf(value);
+    if (proto !== Object.prototype && proto !== null) throw new Error('non-plain object cannot be canonicalized');
+    const keys = Object.keys(value).sort();
+    const members = [];
+    for (const k of keys) {
+      if (value[k] === undefined) throw new Error(`undefined member value at key "${k}"`);
+      members.push(`${JSON.stringify(k)}:${jcs(value[k])}`);
+    }
+    return `{${members.join(',')}}`;
+  }
+  throw new Error(`unsupported type: ${t}`);
+}
+const digestOf = (value) => createHash('sha256').update(jcs(value), 'utf8').digest('hex');
+
+/**
+ * B17: the notice's signature checked against the public key file given — the same reading the verifier gives a key (a PUBLIC key
+ * only; a private key file is refused before it is parsed) and the same arithmetic the product signs with: the digest over the notice
+ * WITHOUT `signature` and `unsigned`, the key id derived from the SPKI DER, Ed25519 over the ASCII hex of the digest. Answers
+ * { verified: true, key_id, digest } or { verified: false, key_id, reason, detail, digest } — a malformed input is a typed refusal,
+ * never a crash: the recipient's answer is a receipt, whatever the notice was.
+ */
+function verifyNoticeSignature(notice, pemPath) {
+  const { signature: _signature, unsigned: _unsigned, ...body } = notice;
+  let digest = null;
+  try { digest = digestOf(body); } catch (e) { return { verified: false, key_id: null, reason: 'malformed', detail: `the notice cannot be canonicalized: ${e.message}`, digest: null }; }
+  let publicKey; let publicKeyId;
+  try {
+    const pem = readFileSync(pemPath, 'utf8');
+    if (/PRIVATE KEY/.test(pem)) throw new Error('the file holds a PRIVATE key; the recipient takes the PUBLIC key only');
+    if (!/-----BEGIN PUBLIC KEY-----/.test(pem)) throw new Error('the file is not a PEM public key (no "-----BEGIN PUBLIC KEY-----")');
+    publicKey = createPublicKey({ key: pem, format: 'pem' });
+    if (publicKey.asymmetricKeyType !== 'ed25519') throw new Error(`the key is ${publicKey.asymmetricKeyType ?? 'unknown'}, not ed25519`);
+    publicKeyId = `ed25519:${createHash('sha256').update(publicKey.export({ type: 'spki', format: 'der' })).digest('hex').slice(0, 16)}`;
+  } catch (e) {
+    return { verified: false, key_id: null, reason: 'key_unreadable', detail: `the public key ${pemPath} could not be used: ${e.message}`, digest };
+  }
+  const sig = notice.signature;
+  if (sig === null || sig === undefined) return { verified: false, key_id: null, reason: 'unsigned', detail: `the notice carries no signature${typeof notice.unsigned === 'string' ? ` (the origin says: ${notice.unsigned})` : ''}`, digest };
+  if (typeof sig !== 'object' || Array.isArray(sig)) return { verified: false, key_id: null, reason: 'malformed', detail: 'the signature is not an object', digest };
+  const keyId = typeof sig.key_id === 'string' ? sig.key_id : null;
+  if (sig.scheme !== NOTICE_SCHEME) return { verified: false, key_id: keyId, reason: 'malformed', detail: `the signature scheme is ${JSON.stringify(sig.scheme ?? null)}, not ${NOTICE_SCHEME}`, digest };
+  if (sig.algorithm !== 'Ed25519') return { verified: false, key_id: keyId, reason: 'malformed', detail: `the signature algorithm is ${JSON.stringify(sig.algorithm ?? null)}, not Ed25519`, digest };
+  if (keyId === null) return { verified: false, key_id: null, reason: 'malformed', detail: 'the signature names no key_id', digest };
+  if (typeof sig.signature !== 'string' || !SIGNATURE_B64.test(sig.signature)) return { verified: false, key_id: keyId, reason: 'malformed', detail: 'the signature is not the base64 of 64 bytes', digest };
+  if (keyId !== publicKeyId) return { verified: false, key_id: keyId, reason: 'key_mismatch', detail: `the notice is signed by key ${keyId}, not the key given (${publicKeyId})${notice.signed_with === 'active_key' ? `; the origin says it signed with its ACTIVE key, the package's key being ${notice.package_key_id ?? '?'}` : ''}`, digest };
+  let ok = false;
+  try { ok = cryptoVerify(null, Buffer.from(digest, 'utf8'), publicKey, Buffer.from(sig.signature, 'base64')); } catch (e) { return { verified: false, key_id: keyId, reason: 'invalid', detail: `the signature could not be checked: ${e.message}`, digest }; }
+  if (!ok) return { verified: false, key_id: keyId, reason: 'invalid', detail: `the signature does not verify over ${digest} with key ${publicKeyId}`, digest };
+  return { verified: true, key_id: keyId, digest };
+}
 const say = (line) => console.log(`[demonstration recipient] ${line}`);
 const fail = (line) => { console.error(`[demonstration recipient] ${line}`); process.exit(2); };
 
@@ -104,7 +194,7 @@ const writeJson = (path, value) => {
   }
 };
 
-/* ── the REVOCATION (B14): the notice read, the copies destroyed, the receipt written ── */
+/* ── the REVOCATION (B14; B17: the signed notice verified before it is obeyed): the notice read, the copies destroyed, the receipt written ── */
 if (revocationMode) {
   const revocationPath = join(dir, 'revocation.json'); const revocationReceiptPath = join(dir, 'revocation-receipt.json');
   say('THIS IS THE DEMONSTRATION RECIPIENT answering a REVOCATION NOTICE: it stands in for the customer\'s own system on the demonstration\'s isolated transfer station');
@@ -118,29 +208,57 @@ if (revocationMode) {
   const concerns = notice.delivery && typeof notice.delivery === 'object' ? notice.delivery.delivery_id ?? null : null;
   say(`notice ${notice.notice_id} attempt ${notice.attempt ?? '?'}: the package ${notice.package_digest ?? '?'} of action ${notice.action_id ?? '?'} was REVOKED at ${notice.revoked_at ?? '?'}${notice.reason ? ` — ${JSON.stringify(notice.reason)}` : ''}; it concerns delivery ${concerns ?? '?'}${heldDeliveryId !== null ? (heldDeliveryId === concerns ? ' (the delivery this station holds)' : ` (this station holds delivery ${heldDeliveryId})`) : ' (no delivery.json here)'}`);
   say(`the obligation: ${notice.obligation ?? '(none stated)'}`);
+  // B17: THE SIGNATURE — verified against the public key given, and obeyed only when it verifies; reported (not verified here) when no key was given.
+  const sigBlock = notice.signature !== null && typeof notice.signature === 'object' && !Array.isArray(notice.signature) ? notice.signature : null;
+  const notedKeyId = sigBlock !== null && typeof sigBlock.key_id === 'string' ? sigBlock.key_id : null;
+  let signature;
+  if (publicKeyPath === null) {
+    signature = { verified: null, key_id: notedKeyId };
+    if (sigBlock === null) say(`notice signature: unsigned${typeof notice.unsigned === 'string' ? ` — the origin says: ${notice.unsigned}` : ''}`);
+    else say(`notice signature: ${sigBlock.scheme ?? '?'} by ${notedKeyId ?? '?'} — not verified here (no --public-key given); the notice is obeyed on its digest match with the delivery this station holds, as B14's recipient did`);
+  } else {
+    const v = verifyNoticeSignature(notice, publicKeyPath);
+    if (v.verified) {
+      signature = { verified: true, key_id: v.key_id };
+      say(`notice signature: VERIFIED by key ${v.key_id}`);
+      say(`  Ed25519 over the ASCII hex of sha256(JCS(notice without signature/unsigned)) = ${v.digest}${notice.signed_with === 'active_key' ? `; the origin signed with its ACTIVE key (the package's key was ${notice.package_key_id ?? '?'}) — the statement is inside the signed bytes` : ''}`);
+    } else {
+      signature = { verified: false, key_id: v.key_id, reason: v.reason };
+      say(`notice signature: NOT VERIFIED: ${v.detail}`);
+      say('the notice is NOT OBEYED: the copies are KEPT; the receipt says copies_destroyed: false with the reason (the product records the exchange as MISMATCHED and the origin sees what its notice lacked)');
+    }
+  }
+  const obeyed = !refuse && signature.verified !== false;
   const destroyed = []; const alreadyGone = [];
   if (refuse) say('--refuse: the copies are KEPT; the receipt says copies_destroyed: false (the product records the exchange as MISMATCHED)');
-  else {
+  else if (obeyed) {
     for (const name of ['package.tar', 'package.sig']) {
       const full = join(dir, name);
       if (existsSync(full)) { rmSync(full, { force: true }); destroyed.push(name); } else alreadyGone.push(name);
     }
     say(`copies destroyed: ${destroyed.length > 0 ? destroyed.join(', ') : 'none here'}${alreadyGone.length > 0 ? ` (${alreadyGone.join(', ')} already gone — the product removed what it placed here)` : ''}`);
+  } else {
+    const kept = ['package.tar', 'package.sig'].filter((name) => existsSync(join(dir, name)));
+    say(`copies kept: ${kept.length > 0 ? kept.join(', ') : 'none here (the product removed what it placed here; nothing of ours to keep)'}`);
   }
+  const notes = [];
+  if (signature.verified === false) notes.push(`the notice's signature did not verify against the public key given to the recipient (${signature.reason}); the notice was not obeyed`);
   const receipt = {
     receipt_id: randomUUID(),
     notice_id: notice.notice_id,
     delivery_id: concerns,
     action_id: typeof notice.action_id === 'string' ? notice.action_id : actionId,
     package_digest: typeof notice.package_digest === 'string' ? notice.package_digest : null,
-    copies_destroyed: !refuse,
+    copies_destroyed: obeyed,
     destroyed,
     recipient: recipientName ?? (typeof notice.recipient === 'string' && notice.recipient.length > 0 ? notice.recipient : 'demonstration recipient'),
     received_at: new Date().toISOString(),
+    signature,
+    ...(notes.length > 0 ? { notes: notes.join('; ') } : {}),
   };
   const replaced = existsSync(revocationReceiptPath);
   writeJson(revocationReceiptPath, receipt);
-  say(`revocation-receipt.json written${replaced ? ' (an earlier notice\'s receipt replaced)' : ''}: receipt ${receipt.receipt_id} for notice ${receipt.notice_id} — copies_destroyed ${receipt.copies_destroyed}`);
+  say(`revocation-receipt.json written${replaced ? ' (an earlier notice\'s receipt replaced)' : ''}: receipt ${receipt.receipt_id} for notice ${receipt.notice_id} — copies_destroyed ${receipt.copies_destroyed}; signature verified ${signature.verified === null ? 'null (not checked here)' : signature.verified}${signature.key_id !== null ? ` (key ${signature.key_id})` : ''}${notes.length > 0 ? `; notes: ${receipt.notes}` : ''}`);
   say('the product collects it with the collect-receipt act of the notice (ACKNOWLEDGED when it names the package digest and copies_destroyed is true; MISMATCHED otherwise)');
   process.exit(0);
 }

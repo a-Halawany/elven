@@ -1785,13 +1785,189 @@ stated limits: the inline intake over the real listener is bounded by the JSON b
 positive https exchange remains the harness's; the round trip is within one installation — a foreign installation is the activation
 step. ALL SCENES HELD (40 checks).
 
+## B17 — imported knowledge published to the importing domain's subscribers; the origin's revocation propagated into the importing domain; imported claims not reviewable (implemented)
+
+**Migration 0077** (`apps/api/migrations/0077_b17_import_publication_and_revocation_propagation.sql`, sha256 `0e8dd7f5…`, 893 lines),
+on `phase6-b17` (cut from the B16 records head `1d6eea3`; PR base `phase6-b16`, retargeted to `main` when #53 merges). The register's
+next item after B16 — the two omissions B16 stated (`import.service.ts` header: "no ObservationRecorded / GraphChanged is published for
+imported knowledge (subscribers do not learn of it)"; "the origin's later revocation of an admitted package is the partner's notice,
+not a propagation") — and one gate the readers found (an imported claim version could be challenged through the review path, which
+would have let the relationships consumer re-derive a native edge over the origin's temporal truth). The specification rows: ES-08-004
+(cross-domain sharing revocable with recipient obligations), ES-29-005 (enforceable recipient obligations), DP-47-005 (revocation on
+the inbound side), ES-53-004 (signed packages — and now notices), AU-MEM-0030 (graph changes publish), ES-19-001 (the event in the
+change's transaction), AU-MEM-0060 (a hold takes precedence), L1-I03 (ObservationRecorded), L3-I04 (the retention contract). Designed
+by five readers, one designer and two checkers (fifteen corrections folded before a line was written — among them: the reuse lookup
+blind to revocations, the act's scenes unreachable on a demonstration whose mirror already held the knowledge, the event built from an
+attempt's memory rather than the ledger, the notice signed by a rotated key the importer would not hold, the twin citing a REL claim,
+the upgrade proof's count); implemented by six implementers on disjoint files and one compile pass (which changed nothing); integrated,
+run on a fresh database, rehearsed on a restored copy and exercised on the demonstration (§B17.7).
+
+**D1 — imported knowledge published.** The import's every governed write (`write()` → `writerOf`) now returns the handler's
+`outboxEvents` through the pipeline (the outbox stays pipeline-private). Each RECORD batch publishes one `ObservationRecorded` per
+admitted record — the lifecycle's shape with `obs_object_id: null`, `run_id: null`, `acquisition_mode: 'import'`, the intake contract's
+`source_id`/`contract_version`/`authority_class` (`begin_import_admission` re-declared to return it), the bytes digest and
+`imported: { import_id, partner_key, origin }` — L1-I03's announcement of an immutable evidence reference (published, not consumed;
+L1-I03 stays partial). The GRAPH write — the transaction that moves the import to `admitted` — publishes ONE `GraphChanged` of the new
+kind `import.admitted` (`importAdmittedEvent`, a pure builder): the entities the import CREATED (`role: created`) and REUSED (`role:
+reached`, their current lifecycle state — a retired holder of an authoritative identifier is reused as it is), the imported edges as
+recorded, the admitted claim ids and record ids, `objects.walked = false` (nothing of the domain rests on ids minted a moment ago),
+`cause.action = 'retention.import.admit'`, and an `import` block (`import_id`, `partner_key`, `origin`, `counts` with `reused`); every
+list cut at `IMPORT_EVENT_LIST_MAX` (200) with `objects.truncated` said (the item map is the full record; reused ids are counted, not
+announced). `GRAPH_CHANGE_KINDS` gains `import.admitted` and `import.revoked`; `GraphChangedPayload.import?`; `RetentionReads` gains
+`subscriptionsMatching` and the walker's reads (`WalkReads`/`ChangeReads` are structural picks of `GraphReads`, so the retention
+capability carries the SAME walk and builder — never a second walker). What the seven consumers do with `import.admitted`: twins,
+forecasts, scenarios and decisions select by id — empty at admission (applied, no items); retrieval runs ONE projection rebuild check
+on the imported rows; memory-mappings and relationships ignore the kind. `CHANGED_ROLES` gains `retired` (D2 below).
+
+**D2 — the origin's revocation propagated into the importing domain (0077 §1, §5–§7).** THE IMPORTING DOMAIN IS A RECIPIENT. When
+the origin revokes a package that a domain of the SAME TENANT on this installation has ADMITTED, the revoke act (a) finds the admitted
+imports of the package across the tenant's domains (`retention.imports_of_package`, a definer read under `retention.export.revoke`;
+`revoke_export` answers `importers`), (b) records ONE importer notice per import on the origin's ledger — `retention.export_revocation_notices`
+gains `importer jsonb {tenant_id, domain_id, import_id}` with `destination_id` and `delivery_id` nullable under `rxn_recipient`
+(exactly one of destination / importer); the notice JSON is the same SIGNED notice with `recipient: import:<tenant>/<domain>/<import_id>`
+and `delivery: { import_id, state, held: 'confirmed' }` (an admitted copy is proven); the origin's `export.revocation_notified` and
+`custody.revocation_notified` rows as for a destination, and — the one cross-domain write of the batch — the importing ledger's own
+`import.revocation_notified` (the notice IS the importer's fact) — and (c) AFTER the origin's commit, the SAME acting principal executes
+`retention.import.revoke` in each importing domain with a DOMAIN envelope of that domain (a TENANT binding of the tenant permits any
+DOMAIN route of the tenant — the B16 approve-in-D2 idiom; a `domain_admin` of the origin domain alone is refused there: the answer says
+`pending` with the reason and the importing domain's steward completes it by the route). THE REVOCATION (`ImportService.revokeImport`,
+`retention.import.revoke` — the tenant's retention authority and administrator, the importing domain's steward and administrator, the
+platform administrator; human-gated, C2; a canonical write action for the withdrawn versions): W0 begins (`begin_import_revocation`:
+the source verified and recorded — `origin` (this installation's own record of the origin package, revoked under the import's digest) or
+`station` (the origin's SIGNED notice, verified before the call); the state `admitted → revoking` with the attempt counted; a `revoked`
+import answers `retried`), W1 ONE graph write in reversed dependency order — the edges this import CREATED retracted (`graph.edges_current`
+→ `retracted`, `edge_events` `edge.retracted` with `details.imported` and `details.revoked`: the vocabulary the rebuild derives from), the
+entities it CREATED retired (`entity.retired`; their identifiers STAY as facts of a retired entity), a reused edge/entity/identifier/system
+`left` — W2… claim batches of ≤ 32 object ids: ONE withdrawn version per imported object id (the corrections path's field rules:
+`lifecycle_state`/`truth_state` `withdrawn`, `correction_of`/`supersedes` the prior, `withdrawal_reason` naming the origin's revocation,
+`method_ref retention.import.revoke@1.0.0`, `evidence_refs` += `revocation-notice:<id>`, the payload — `imported_from` included — verbatim)
+through `objects.admit_version`, with the lineage rows COPIED onto the withdrawn version (`record_import_withdrawal_lineage`: the pair rule
+holds for it) — W3… record batches: the withdrawn version, `observation.tombstone_blob` (its authority list gains `retention.import.revoke`)
+and `custody.tombstoned`; a LEGAL HOLD (`P0R01`) refuses the WHOLE record step (rolled back to the item's savepoint — the hold keeps the
+record whole), outcome `refused` with the hold named — Wf the finish (`finish_import_revocation`: every item settled; no refusal → `revoked`
+with the counts; a refusal → the state stays `revoking` and `import.revocation_held` names the held items — the steward retries when the
+hold is lifted) and, in the same transaction, ONE `GraphChanged/import.revoked` built from the ITEM MAP (every item destroyed since the last
+finish event — a resumed attempt announces what a crashed one destroyed): the retired entities (`role: retired` — a CHANGED identity, so a
+twin bounded by one re-verifies), the retracted edges, the withdrawn claims and records, and THE WALK (the same `ImpactService.walk`,
+seeded per tombstoned record by `evidence_correction` and per withdrawn claim not reached that way by `claim_withdrawal`, the first 32 seeds
+walked, the rest listed unwalked with `truncated`) — so the twins citing them go unverified, forecasts and scenarios are marked, decisions
+note the invalidated input, memory-mappings (a new branch for the kind: the identifiers of the retired entities and the domain's own
+asserted edges with a retired end are proposed to a person; its `METHOD_REF` changed → a new consumer digest → the live subscription is
+revoked and registered anew by the register idiom) and retrieval verifies the projections — then after the commit the bytes
+(`removeBytes`, both roots, the staged copies) and, for a station source, `revocation-receipt.json` beside the notice — and Wr the RECEIPT
+write (`import.copies_destroyed` / `import.copies_refused`; `answer_import_notice` acknowledges the origin's notice, or records it
+`mismatched` with `copies_destroyed: false` and the refused manifests or the `held_by` imports named; a notice already answered is answered
+by a NEW attempt row). A COPY ANOTHER LIVE IMPORT HOLDS (a reused item of an admitted import) is `left` with `held_by` — the honest receipt
+says `copies_destroyed: false`; it falls with that import's revocation. A DESTROYED COPY IS NEVER REUSED: the reuse lookup excludes revoked
+items (two additive live indexes); a later package carrying the same objects admits them afresh under new ids; the same package (its
+digest) stays refused as a duplicate. Every revocation port takes a per-import advisory lock (concurrent attempts serialise; an item
+another attempt settled is `skipped`). The RETRY of a `revoked` import removes any bytes still present and answers an outstanding notice.
+The routes `POST …/retention/imports/:id/revoke { source }`, `…/export/revoke` answering `importers[]` (the destination notices stay under
+`notices[]`), `…/export/revocation-notices { importer }`, the export read's `importers`; the mapper's families extended; the page's
+"Importers" table, the import detail's "Revocation" block and "Revoke" action.
+
+**D3 — the signed notice (`eye-revocation-notice/1`).** From B17 on every revocation notice carries `signature: { scheme, key_id,
+algorithm: 'Ed25519', signature }` — Ed25519 over the ASCII hex of `sha256(JCS(notice without signature/unsigned))` — by the PACKAGE's
+signing key (retired since or not: the key the recipient holds) when its reference is bound here AND derives that key (a binding that holds
+another private key counts as unbound — the build's `signing_key_mismatch` rule); else by the tenant's ACTIVE key with `signed_with:
+'active_key'` and `package_key_id` INSIDE the signed bytes; else `signature: null` with `unsigned: <why>`. The importer verifies a station
+notice against the import's PARTNER first and, on a key mismatch, against another partner of the domain with the SAME `party` (the same
+origin organisation under a rotated key, declared by the importing domain's administrators; recorded as `rotated_from`); a notice signed
+by another party's key, unsigned, malformed or naming another package is REFUSED with nothing destroyed (`import.revocation_refused`
+recorded; 409). The demonstration recipient (`transfer-station-recipient.mjs --revocation --public-key`) VERIFIES the signature before
+it obeys (an unverifiable notice: the copies kept, `copies_destroyed: false`, the reason in the receipt). Check 14 at the open says
+whether a station `revocation.json` was signed by the partner (verified), unsigned (the digest match alone) or not verifiable.
+
+**D4 — the review gate (feature 3).** `intelligence.request_review` refuses a claim whose latest version's payload carries
+`imported_from` — "an imported claim version is corrected at its origin and re-imported; it is not reviewed here" (409). The statement B16
+made is now a gate (a correction here would have let the relationships consumer supersede the imported edge with a native derivation
+carrying the origin's run and method).
+
+**B17.6 the harness, the tools and the units.** `phase6-retention-b17.test.ts` (5 cases on a fresh database with `EYE_SCHEDULER_ENABLED`
+so the outbox publisher and the mirror's subscription worker run in process; a mirror domain D2 with its principals, intake contract,
+station and THREE partners — the origin's key and a foreign party's key with its rotated successor; the seven subscriptions registered in
+D2; no https egress, no substitution): S1 IMPORT.ADMITTED — E1 (A, B; the REL claim C@1 with its edge; the entities and the identifier)
+imported inline → exactly ONE `import.admitted` from the graph write's transaction (the same correlation as `import.admitted`), the payload
+pinned key by key (created identities, the edge, the claims and records, the `import` block, `walked: false`, the six live subscriptions),
+the two `ObservationRecorded` rows (`acquisition_mode: import`, `run_id: null`, the intake contract's class) published BEFORE it in the
+tenant partition, the six deliveries applied (the four selectors empty with 0 attempts, retrieval `projections.verified` on the imported
+rows, memory-mappings empty), the review request on the imported claim refused (a native claim still challengeable), and 300 entities /
+150 edges → `identities` 200, `edges` 150, `truncated: true`, six deliveries applied, the rebuild without drift; S2 IMPORT.REVOKED — the
+mirror builds on the import (a twin bounded by the imported entity citing the imported record; an assumption, a decision, a forecast, a
+scenario and a package resting on it), the origin's authority REVOKES E1 → the answer names the importer (held confirmed) with its SIGNED
+notice (verified against KEY1's PEM), the destruction executed by the same act: the edge retracted, both entities retired (the identifier
+kept), the claim and both records withdrawn (version 2 each, the lineage rows equal for versions 1 and 2, `imported_from` kept), the
+tombstones and `custody.tombstoned`, the bytes gone, the import `revoked` with the counts, the receipt `acknowledged` on the origin's
+ledger (`kind: importer`), ONE `import.revoked` with the walk (assumptions, decisions, forecasts, scenarios reached; the dependencies) and
+the six deliveries: the twin `version.unverified`, the forecast `assumption_unverified`, the scenario `input_unverified`, the package
+`input.invalidated`, the identifier PROPOSED (from the retired entity to null), retrieval verified; the six subscription actions in the
+audit; the retry a no-op (no new batch, the notice count unchanged); the origin's second revoke refused; S3 THE HOLD AND THE REST — a hold
+on the mirror's copy of C → the origin's revoke answers `held` (D destroyed, C refused with the hold id, the receipt `copies_destroyed:
+false`, the origin's notice `mismatched`, the import `revoking`, one `import.revoked` for D), the steward's retry held again (a second
+notice attempt, no second event), the hold lifted → `revoked` at attempt 3, acknowledged, a second event for C alone; the PENDING path (the
+origin's domain administrator revokes → `pending`, the notice `notified`, the mirror untouched; the steward completes it by the route),
+the FAULT after the graph write (the import `revoking` with `import.revocation_failed`; the second attempt finishes with ONE event naming
+both attempts' items); a revoked copy never reused (A admitted afresh under a new id; E2 reused retired, `reached`); a copy another import
+holds (`left` with `held_by`, the receipt false, the notice mismatched) destroyed by that import's revocation; S4 THE FOREIGN ORIGIN — a
+package of a foreign tenant and domain signed by the foreign partner, imported from its station path; `source: origin` refused ("not a
+domain of this tenant"); an unsigned notice, another party's key, another package → refused, nothing destroyed, `import.revocation_refused`;
+the partner's signed notice → `revoked` from the station, `revocation-receipt.json` written beside it, the origin not answered here
+(`answered: false`), `import.revoked` with `notice.source: station`; check 14's three wordings; the same party's rotated key verified with
+`rotated_from`; S5 THE RECIPIENT AND THE ORIGIN'S ACTS — the demonstration recipient verifies a signed station notice and answers
+(collected → acknowledged), keeps its copies on an unsigned one (collected → mismatched); the acknowledge route on an answered importer
+notice refused; the notify route for an import that holds no copy refused. The first runs on harness pins (a twin's claim citation resolves
+CLM objects; a SQL quote; a record's lifecycle is `admitted`; the error body's dashed code), then **5/5**. The eight retention harnesses and
+the four subscription harnesses **163/163** on a fresh database (the memory-mappings digest changed: they register fresh); the full
+integration suite **1035/1035 in 67 files** on a fresh database; the upgrade proof with 0022–0077 (56 migrations; 35 registry rows); the
+unit suite **2210/2210** (with `import-package` 31, `revocation-notice` 13, `change-events-import` 10 — the sign/verify round trip, the
+withdrawal header, the truncation arithmetic, the walk seeds) and the meta suite 9/9; the web typecheck, build and tests. The hosted run
+at `2d92385` — ci 35115226285 (1035/1035 in 67 files on a fresh database with `phase6-retention-b17` 5/5; the upgrade proof +56 rows,
+77 files; C18 612/612 + 44), C19 35115226352 — bound in the records commit, no unit promoted by it (the merge of PR #54 awaits #53's and
+the owner's word). STATED: the
+propagation reaches the tenant's OWN domains on this installation — another tenant's domain and a foreign installation are the STATION
+path; a legal hold holds the revocation (answered `mismatched` until lifted); a copy another live import holds is left (`held_by`); a
+notice signed by a later key is verifiable only where the importer declared that key as a partner of the same party; the memory-mappings
+method changed (the origin's live subscription re-registered by the act); up to 32 walks in the finish write, each reading the nine reach
+tables (bounded; a `walkMany` is a later note); reused ids are counted, not announced; the finish's ledger counts are the item map's
+(`retracted`, `retired`, `withdrawn`, `tombstoned`, `left`, `held_by_other`), the attempt's in the answer and the events; a pre-B17
+station recipient ignores the signature. Units and rows: ES-08-004 and ES-29-005 stay `partial` with the B17 clause (the cross-domain
+REFERENCE and obligations on derived use remain); DP-47-005 stays `implemented` with the clause; AU-COM-0060, AU-COM-0062 and AU-DP-0097
+carry it; the register rows L1-I03 and L3-I04 gain the B17 text; the (26, 24, 0) assertion re-run after 0077; the split stays **3,555 =
+3,182 open + 339 local + 34 CI** (no unit promoted by a local run).
+
+**B17.7 the demonstration** — `scripts/phase6/act-b17.mjs` → `evidence/cp6/act-b17.txt` (rehearsed first on a restored copy with its
+own vault copy, key, station and Redis, `evidence/cp6/b17-rehearsal.txt` — the first rehearsal stopped on a persona name the demonstration
+already held; the second held whole): `eye_demo` backed up and migrated with 0077, the API restarted by the runbook's script; then (1) THE
+SUBSCRIBERS — the origin's memory-mappings subscription revoked and registered anew (its method changed; the replacement replayed from the
+revoked cursor), the mirror's seven registered by the administrator (M. Keller the owner; `relationships` with the demonstration's
+selection), the status route and the mirror's worker; (2) THE STANDING IMPORT — B16's admitted import of the NORDWERK knowledge (4
+records, 17 claim versions of 14 claims, 7 entities, 8 edges); S. Roth's assumption resting on an imported REL claim (its
+`strategy.declared` deliveries — the twins consumer selects nothing: `rests_on` is not a change); K. Vogel's twin bounded by the imported
+"NORDWERK ANTRIEBSTECHNIK GmbH" with one estimated element citing the imported record, admitted → verified; (3) THE ORIGIN REVOKES —
+H. Bergmann revokes B16's E1: the export read before it names the importer; the station notified with the SIGNED notice (by the package's
+key `ed25519:fcd9d6bf…` — the demonstration key), the demonstration recipient VERIFIES the signature before obeying, answers, collected →
+ACKNOWLEDGED; the mirror's import notified and its copies DESTROYED by the same act (records 4, claims 14, entities 7, edges 1; 7 left as
+the origin recorded; bytes removed 4): the edge retracted with the reason, the seven entities retired, the fourteen claims withdrawn by a
+version each (`correction_of`, `method retention.import.revoke@1.0.0`, `imported_from` kept; the lineage carried), the four records
+withdrawn with `custody.tombstoned` and the bytes gone from both roots, the import `revoked` with the counts, the origin's importer notice
+`acknowledged` with the mirror's receipt; the export read after it a 409 (the B11 rule); the `import.revoked` event (7 retired, the walk
+reaching S. Roth's assumption and the twin) and its six deliveries — the twin UNVERIFIED (`version.unverified`), retrieval
+`projections.verified` with 0 mismatched rows; (4) E4 → THE MIRROR — a new export of the same records delivered, verified and acknowledged
+at the station, imported into the mirror: VERIFIED (16 checks), approved by H. Bergmann, admitted by M. Keller AFRESH under new ids (0 in
+common with the revoked import), exactly ONE `import.admitted` in the admission's own transaction (7 created identities, 8 edges, 14
+claims, 4 records; `walked: false`), its six deliveries (the four selectors empty; retrieval verified), the four `ObservationRecorded`
+rows before it in the tenant partition; (5) THE STATE — one live copy of the NORDWERK knowledge in the mirror (E4's, left for the next
+run); the stated limits (the tenant's own domains vs the station path; the hold; the method change; no forecast through the route in the
+mirror; a twin's claim citation is a CLM). Each run revokes the import the previous run (or B16) left admitted and leaves its own. ALL
+SCENES HELD (52 checks).
+
 ## Order and the next implementation batch
 
 B3, B1 and B2 are done in code, B4/B5 applied to the audit (the 2026-09-11 checkpoints), B6 done in
 code (2026-09-12, on the recovery machinery corrected by 0062 after Codex's finding) and B7 done in code
 (2026-09-12, after Codex's third finding), B8 (2026-09-12, after Codex's B7 findings), B9 (2026-09-13, after
 Codex's B8 findings; the accepted stack merged on `main` in the recorded order meanwhile) and B10 (2026-09-13, after
-Codex's B9 review: F1 closed on the fixed candidate, F2/F3 and G2 carried into this batch), B11 (2026-09-13; its closure of Codex's B11-F1/F2 on 2026-09-14, merged with #48 on 2026-09-15), B12 (2026-09-15, the register's next missing archive-lifecycle capability; merged with #49 on 2026-09-16 on Codex's bounded functional review) and B13 (2026-09-16, the schedule retirement and the customer export's delivery, on `main` after #49; merged with #50 on 2026-09-16 on Codex's bounded review) and B14 (2026-09-16, the https exchange proven, B13-F1 corrected, the trust anchor, the revocation notice, on `main` after #50; merged with #51 on 2026-09-16), B15 (2026-09-16, the relationship closure and the streamed archive; merged with #52 on 2026-09-16 after retargeting) and B16 (2026-09-16, the governed import and the NORDWERK round trip, B14-F1 and B15-F1 corrected, on `main` after #52). The
+Codex's B9 review: F1 closed on the fixed candidate, F2/F3 and G2 carried into this batch), B11 (2026-09-13; its closure of Codex's B11-F1/F2 on 2026-09-14, merged with #48 on 2026-09-15), B12 (2026-09-15, the register's next missing archive-lifecycle capability; merged with #49 on 2026-09-16 on Codex's bounded functional review) and B13 (2026-09-16, the schedule retirement and the customer export's delivery, on `main` after #49; merged with #50 on 2026-09-16 on Codex's bounded review) and B14 (2026-09-16, the https exchange proven, B13-F1 corrected, the trust anchor, the revocation notice, on `main` after #50; merged with #51 on 2026-09-16), B15 (2026-09-16, the relationship closure and the streamed archive; merged with #52 on 2026-09-16 after retargeting) and B16 (2026-09-16, the governed import and the NORDWERK round trip, B14-F1 and B15-F1 corrected, on `main` after #52; PR #53) and B17 (2026-09-16, imported knowledge published to subscribers, the origin's revocation propagated into the importing domain, the signed notice, the review gate; stacked on #53). The
 hosted run at `5118376` (836/836 on a fresh database) verified the B1/B2 units on the hosted chain —
 one artefact, no deployment leg. Every leg of every unit stays unaccepted until a deployment profile
 carries its own signed evidence (P7-D). The synthetic-company demonstration (`eye_demo`, NORDWERK) remains the deliverable

@@ -44,36 +44,83 @@
  *   stand: append-only); after the commit the import's quarantine copies go (`tombstoneQuarantine`) and the tombstoning is
  *   recorded by a write after (`recordEvidenceTombstoned`; C5). The sweeper's TTL pass is the other way quarantined bytes go.
  *
- * What is NOT done here, and said so: no ObservationRecorded / GraphChanged is published for imported knowledge (subscribers do
- * not learn of it — the next batch, N5); imported claims carry the origin's run/method/call ids and no runs_current/methods_current
- * rows exist for them in this domain (they are not reviewable through the review path; imported evidence is not re-extracted);
- * `obs_object_id` stays the origin's (the OBS record is not carried by a package); no entity resolution beyond the authoritative
- * identifier; the origin's later revocation of an admitted package is the partner's notice, not a propagation.
+ *   REVOKE (retention.import.revoke; CP-6 B17, 0077 §7 — the tenant's retention authority acting across the tenant from the
+ *   origin's revoke act (D7), or the importing domain's steward for the manual and the foreign path; human-gated) — the origin's
+ *   revocation EXECUTED where the copies are: the recipient obligation the product holds itself to. Write #0 begins it: the SOURCE
+ *   established — `origin` (this installation's own record of the package, read by the port across the tenant's domains) or
+ *   `station` (the origin's SIGNED revocation.json at a transfer station declared here, verified against the import's PARTNER key
+ *   before the port and, on a key mismatch, against every other partner of the SAME PARTY — the rotated key, C7; a retired partner's
+ *   key still verifies a notice dated before its retirement; an unsigned or unverifiable notice is REFUSED with the refusal recorded,
+ *   import.revocation_refused, nothing destroyed) — the state moved to revoking, the attempt counted. Then, in dependency order
+ *   REVERSED and every item under its own savepoint (C3): ONE graph write — the edges this import created retracted, the entities it
+ *   created retired (their identifiers stay: facts of a retired entity, D10), the identifiers, the identifier systems and every
+ *   REUSED row left (the item map is the reference count, D5); the CLAIMS in batches of at most 32 object ids — the object's latest
+ *   version withdrawn by a new version (lifecycle and truth state withdrawn: import-package.ts importWithdrawalHeaderOf; its lineage
+ *   rows carried onto the withdrawn version, D12) under retention.import.revoke; the RECORDS in batches — the withdrawn version,
+ *   observation.tombstone_blob and custody.tombstoned in the write, the bytes (both roots, the staged copies too) after the commit;
+ *   a LEGAL HOLD refuses the WHOLE record step (rolled back to the item's savepoint — the hold keeps the record whole), outcome
+ *   refused with the hold named; then the FINISH — state revoked when nothing is refused, else revoking with import.revocation_held
+ *   (the steward retries the route when the hold is lifted) — and the ONE GraphChanged/import.revoked of the attempt (C4: built from
+ *   the ITEM MAP, every item settled since the attempt before, so an attempt resumed after a fault announces what the earlier one
+ *   destroyed too; the walk from every tombstoned record and from every withdrawn claim no seeded record reaches, the first 32
+ *   seeds, C6); then the RECEIPT write — import.copies_destroyed or import.copies_refused, the origin's notice answered when the
+ *   origin is a domain of this tenant (answer_import_notice inside the port), revocation-receipt.json written beside a station
+ *   notice first. A COPY ANOTHER LIVE IMPORT HOLDS is left and the receipt says so (C9: copies_destroyed false with the holders
+ *   named — the honest answer, mismatched at the origin; the copy falls with that import's revocation, which finds its source no
+ *   longer live). A REVOKED import revoked again is a RETRY (C5): the bytes still present removed, and a fresh receipt recorded when
+ *   anything moved, no receipt event stands for the latest attempt, or a notice is pending on the origin ledger; else nothing beyond
+ *   write #0. Two attempts serialise on the import's advisory lock (C14): an item another attempt settled is skipped, never refused;
+ *   an infrastructure fault propagates and the import stays REVOKING for the same route to resume (import.revocation_failed).
+ *
+ * THE SUBSCRIBERS (CP-6 B17; D1, D20): the admission publishes through the pipeline's `outboxEvents` — ONE ObservationRecorded per
+ * admitted record from each record batch's write (acquisition_mode import, run_id null, the intake contract's source and authority
+ * class, the bytes digest, the origin named under `imported`) and ONE GraphChanged/import.admitted from the graph write that moves
+ * the import to admitted (the created entities `created`, the reused ones `reached` AS THEY STAND — a retired one included, C2 —
+ * the edges this import recorded, the admitted claims and records; reused claims, records and edges are not announced, nothing
+ * changed for them, C13; no walk: nothing of the domain rests on the new ids yet). The revocation's event is the one above.
+ *
+ * What is NOT done here, and said so: imported claims carry the origin's run/method/call ids and no runs_current/methods_current
+ * rows exist for them in this domain (they are not reviewable — intelligence.request_review refuses an imported claim, 0077 §8;
+ * imported evidence is not re-extracted); `obs_object_id` stays the origin's (the OBS record is not carried by a package); no
+ * entity resolution beyond the authoritative identifier; a DESTROYED copy is never reused (C2: the reuse lookup skips revoked
+ * items — a later package carrying the same objects admits them afresh under new ids; the same package digest stays refused as a
+ * duplicate), while the identifier path may find a RETIRED entity holding the authoritative identifier and reuses it as it is,
+ * retired (the memory-mappings proposal the revocation raised is where a person decides); the propagation reaches the tenant's
+ * own domains — a foreign installation is the station path.
  */
 import { HttpException, Inject, Injectable } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { Readable } from 'node:stream';
-import { canonicalHeaderDigest, errorBody, validateHeader, type CanonicalHeader, type Envelope } from '@eye/contracts';
+import { sql } from 'kysely';
+import { canonicalHeaderDigest, contentDigest, errorBody, validateHeader, type CanonicalHeader, type Envelope } from '@eye/contracts';
 import { newId } from '../shared/ids.js';
 import type { AuthenticatedPrincipal } from '../shared/auth-types.js';
 import { EYE_CONFIG } from '../config/config.module.js';
 import type { EyeConfig } from '../config/config.js';
 import { PipelineService, type RouteInfo } from '../pipeline/pipeline.service.js';
-import { VaultService, VaultIntegrityError, type StoredBlob } from '../observation/vault/vault.service.js';
+import { VaultService, VaultIntegrityError, type StoredBlob, type VaultName } from '../observation/vault/vault.service.js';
 import { inspectContent } from '../observation/connectors/content-controls.js';
 import { isInfrastructureFault } from '../observation/acquisition/lifecycle.service.js';
 import { normalizeName } from '../graph/entities/resolver.service.js';
+import { ImpactService } from '../graph/strategy/impact.service.js';
+import { importAdmittedEvent, importRevokedEvent, type ImportChangeFacts, type ImportWalkSeed } from '../graph/subscriptions/change-events.js';
 import { RetentionCapability, type RetentionReads, type RetentionWrites } from './retention.capabilities.js';
+import { RetentionService } from './retention.service.js';
 import { ExportDeliveryService, TransferStationRefused } from './export-delivery.service.js';
+import { verifyNotice } from './revocation-notice.js';
 import { EXPORT_STREAM_MAX_BYTES, ExportArchiveError, IMPORT_INLINE_MAX_BYTES, LINKS_FILE, listedFilesOf, scanUstarStream } from './export-archive.js';
-import { IMPORT_KEPT_MAX_BYTES, classificationRank, importFormOf, importedFromOf, importedHeaderOf, importedPayloadOf, manifestChecks, originOf, planOf, verifyStaged,
-         type ImportCheck, type ImportItemKind, type PlanLookup, type StagedEntry, type StagedPackage, type VerificationContext } from './import-package.js';
+import { IMPORT_KEPT_MAX_BYTES, classificationRank, importFormOf, importWithdrawalHeaderOf, importedFromOf, importedHeaderOf, importedPayloadOf, manifestChecks, originOf, planOf, verifyStaged,
+         type ImportCheck, type ImportItemKind, type ImportRevocationRef, type PlanLookup, type StagedEntry, type StagedPackage, type VerificationContext } from './import-package.js';
 
 export type { ImportCheck } from './import-package.js';
 
 type Row = Record<string, unknown>;
 type Scope = { tenantId: string; domainId: string };
 type Actor = { actor: string; correlationId: string };
+/** What the governed loops need of the request: the envelope and principal every write is made under, and the controller's route builder. */
+type WriteArgs = { envelope: Envelope; principal: AuthenticatedPrincipal; route: (action: string, objectType: string, objectId: string, writableTargets?: string[]) => RouteInfo };
+/** D1: what a write's handler answers — its result and the events the committed transition announces (the pipeline enqueues them in the same transaction). */
+type Written<T> = { result: T; outboxEvents?: Array<{ eventType: string; payload: Record<string, unknown> }> };
 
 /** D4: the two intake forms — the tar inline (base64, with the sender's exchange statement when there is one) or at a declared transfer station. */
 export type ImportIntake =
@@ -84,6 +131,8 @@ export type ImportIntake =
 const BATCH = 32;
 /** The action every admission write runs under (0076 §5: the canonical-write action of the import). */
 const ADMIT_ACTION = 'retention.import.admit';
+/** B17 (0077 §8): the action every revocation write runs under — the canonical-write action of the withdrawn versions. */
+const REVOKE_ACTION = 'retention.import.revoke';
 /**
  * C3: a PORT'S REFUSAL of one item — objects.admit_version (admission rejected), the header trigger (header semantics), the target
  * binding (target binding denied / header binding) and the retention ports' own class-suffixed refusals — as opposed to an
@@ -91,10 +140,15 @@ const ADMIT_ACTION = 'retention.import.admit';
  */
 const PORT_REFUSAL = /^(admission rejected:|header semantics:|target binding denied:|header binding|retention import rejected)/;
 const REFUSAL_CODES = /^(22|23|42)/;
+/** B17 (C14): an item ANOTHER attempt settled while this one waited on the import's lock — skipped, never refused (import_item_revocable's words). */
+const SETTLED_BY_ANOTHER_ATTEMPT = /^retention import rejected: item .* was revoked at/;
+/** B17 (D12): the legal hold's refusal of a tombstone (observation.tombstone_blob, P0R01) — the hold id in its words; the one refusal that is not a port's class. */
+const HOLD_REFUSAL = /^tombstone refused: manifest .* is under a legal hold \(hold ([0-9a-f-]{36})\)/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const HEX64 = /^[0-9a-f]{64}$/;
 const isObject = (v: unknown): v is Row => v !== null && typeof v === 'object' && !Array.isArray(v);
 const instantOf = (v: unknown): string | null => { if (v === null || v === undefined) return null; if (v instanceof Date) return v.toISOString(); const t = Date.parse(String(v)); return Number.isNaN(t) ? null : new Date(t).toISOString(); };
+const str = (v: unknown): string | null => (typeof v === 'string' && v.length > 0 ? v : null);
 const sha256 = (bytes: Uint8Array): string => createHash('sha256').update(bytes).digest('hex');
 
 /** What the scan reads: a source opened as a stream (once for the scan, once more for the whole digest when the scan refused it). */
@@ -107,17 +161,62 @@ interface Outcome { disposition: 'admitted' | 'reused' | 'excluded' | 'refused';
 /** A record decided before its batch's write: what the write does with it (the candidate created for an admission). */
 interface DecidedRecord { item: Row; object: Row | null; verdict: ReturnType<typeof inspectContent> | null; candidate: StoredBlob | null; outcome: Outcome | null }
 
+/** B17 (D19): where a revocation's authority comes from — this installation's own record of the origin package, or the origin's signed notice at a station declared here. */
+export type RevocationSource = { kind: 'origin' } | { kind: 'station'; destinationKey: string };
+/** B17 (D12): a refused item of a revocation — a legal hold's, or a port's refusal — as the finish, the receipt (`ref`) and the answer name it. */
+export interface RefusedRevocationItem { item_id: string; kind: string; origin_ref: string; ref: string; reason: string; hold_id: string | null; manifest_id: string | null }
+/**
+ * B17 (D19): what the revoke act answers — `revoked` (every copy destroyed or accounted for), `held` (a legal hold refused some; the
+ * import stays revoking), `retried` (a revoked import: the bytes and the receipt retried, nothing else moved), `refused` (a station
+ * notice that did not verify: the refusal recorded, nothing destroyed — the controller answers 409 with `reason`).
+ */
+export interface RevokeImportAnswer {
+  import: Row; kind: 'revoked' | 'held' | 'retried' | 'refused';
+  revocation: {
+    attempt: number; source: Row | null; notice: Row | null;
+    destroyed: { records: number; claims: number; entities: number; edges: number }; left: number;
+    refused: RefusedRevocationItem[];
+    bytes: { removed: string[]; failed: string[] } | null; receipt: Row | null; answered: Row | null; station_receipt: { path: string } | { error: string } | null;
+    reason?: string;
+  };
+  batches: Row[]; receipt: { policyDecisionId: string; auditSeq: number };
+}
+/** B17 (C4): the test-only fault a harness arms on the revocation loop — an infrastructure fault thrown after the graph write committed. */
+export type RevocationFault = 'after_graph_write';
+
 @Injectable()
 export class ImportService {
   /** The locators a withdrawal read inside its write, for the tombstoning after the commit (this process; the sweeper's TTL pass covers a process lost between). */
   readonly #pendingTombstones = new Map<string, string[]>();
+  /** C4: the armed fault of the revocation loop (test runtime only; fires once). */
+  #revocationFault: RevocationFault | null = null;
 
   constructor(
     private readonly vault: VaultService,
     private readonly delivery: ExportDeliveryService,
     private readonly pipeline: PipelineService,
     @Inject(EYE_CONFIG) private readonly cfg: EyeConfig,
+    private readonly impact: ImpactService,
+    private readonly retention: RetentionService,
   ) {}
+
+  /** Test runtime only (C4): the next revocation throws an infrastructure fault at the armed point — the import stays revoking, the same route resumes it. */
+  armRevocationFaultForTests(kind: RevocationFault | null): void {
+    if (this.cfg['eye.runtime.env'] !== 'test') throw new Error('armRevocationFaultForTests is available only in the test runtime');
+    this.#revocationFault = kind;
+  }
+
+  /**
+   * D1: every governed write of an import loop — the envelope re-stamped with a fresh message id and the action, the route bound to
+   * the import (and to the batch's canonical ids when a write admits versions), the retention capability; the handler answers its
+   * result and the events the committed transition announces, enqueued by the pipeline in the same transaction (never here).
+   */
+  private writerOf(a: WriteArgs, importId: string) {
+    return <T>(action: string, objectType: string, objectId: string, writableTargets: string[] | undefined, handler: (cap: RetentionWrites) => Promise<Written<T>>) =>
+      this.pipeline.write<T, RetentionWrites>({ ...a.envelope, message_id: newId(), action, object_type: objectType, object_id: objectId }, a.principal,
+        a.route(action, objectType, objectId, writableTargets), RetentionCapability.write,
+        async (cap) => { const w = await handler(cap); return { result: w.result, targetType: 'RIM', targetId: importId, targetVersion: null, outboxEvent: null, outboxEvents: w.outboxEvents ?? [] }; });
+  }
 
   // ───────────────────────── OPEN (D4, D5; C5) ─────────────────────────
 
@@ -149,11 +248,7 @@ export class ImportService {
       if (bytes.byteLength > IMPORT_INLINE_MAX_BYTES) throw new HttpException(errorBody('EYE_REQ_001', correlationId, `an inline package is at most ${IMPORT_INLINE_MAX_BYTES} bytes decoded (this one is ${bytes.byteLength}); deliver a larger package to a transfer station declared in this domain and open the import from it`), 422);
       return { open: () => Readable.from([bytes]), size: bytes.byteLength, intake: { kind: 'inline', byte_length: bytes.byteLength, exchange_presented: intake.exchange !== null }, exchange: intake.exchange, revocation: null };
     }
-    const destination = (await cap.readExportDestinations().selectAll().where('tenant_id' as never, '=', scope.tenantId as never).where('domain_id' as never, '=', scope.domainId as never)
-      .where('destination_key' as never, '=', intake.destinationKey as never).where('retired_at' as never, 'is', null as never).executeTakeFirst()) as Row | undefined;
-    if (destination === undefined) throw new HttpException(errorBody('EYE_STA_001', correlationId, `retention import rejected: no such transfer station ${intake.destinationKey} in this domain`), 404);
-    if (String(destination['kind']) !== 'transfer_station') throw new HttpException(errorBody('EYE_STA_002', correlationId, `retention import rejected: destination ${intake.destinationKey} is ${String(destination['kind'])}, not a transfer station; an import reads a station's directory`), 409);
-    const endpoint = String(destination['endpoint'] ?? '');
+    const { destination, endpoint } = await this.stationOf(cap, scope, intake.destinationKey, correlationId);
     let opened: OpenedStationPackage;
     try { opened = await this.delivery.openStationPackage(endpoint, intake.origin); }
     catch (e) {
@@ -166,6 +261,15 @@ export class ImportService {
       intake: { kind: 'station', destination_id: String(destination['destination_id']), destination_key: intake.destinationKey, endpoint, path: opened.directory, origin: { tenant_id: intake.origin.tenantId, domain_id: intake.origin.domainId, action_id: intake.origin.actionId }, files: { package: 'package.tar', delivery: opened.deliveryJson !== null, signature: opened.signature !== null, revocation: (opened.revocation ?? null) !== null } },
       exchange: opened.deliveryJson, revocation: opened.revocation ?? null,
     };
+  }
+
+  /** A transfer station declared in this domain, by key — active, of the kind (404 / 409 in the import's words); the open and the revocation read the same directory. */
+  private async stationOf(cap: RetentionReads, scope: Scope, destinationKey: string, correlationId: string): Promise<{ destination: Row; endpoint: string }> {
+    const destination = (await cap.readExportDestinations().selectAll().where('tenant_id' as never, '=', scope.tenantId as never).where('domain_id' as never, '=', scope.domainId as never)
+      .where('destination_key' as never, '=', destinationKey as never).where('retired_at' as never, 'is', null as never).executeTakeFirst()) as Row | undefined;
+    if (destination === undefined) throw new HttpException(errorBody('EYE_STA_001', correlationId, `retention import rejected: no such transfer station ${destinationKey} in this domain`), 404);
+    if (String(destination['kind']) !== 'transfer_station') throw new HttpException(errorBody('EYE_STA_002', correlationId, `retention import rejected: destination ${destinationKey} is ${String(destination['kind'])}, not a transfer station; an import reads a station's directory`), 409);
+    return { destination, endpoint: String(destination['endpoint'] ?? '') };
   }
 
   /**
@@ -295,7 +399,12 @@ export class ImportService {
     return { partner, contract, origin: isObject(originState) ? originState : { known: false }, liveImport, importingDomain: scope, now: new Date(), vaultMaxBytes: this.cfg['eye.vault.max_blob_bytes'] };
   }
 
-  /** N3, N4: what the plan looks up — the domain's earlier import items for the package's origin ids and refs, and the authoritative identifiers of its entities. */
+  /**
+   * N3, N4: what the plan looks up — the domain's earlier import items for the package's origin ids and refs, and the authoritative
+   * identifiers of its entities. B17 (C2): a DESTROYED copy is never reused — only an item not revoked is a prior (0077 §3's live
+   * indexes); a later package carrying the objects of a revoked import admits them afresh under new ids. The identifier path is not
+   * filtered: a RETIRED entity still holding the authoritative identifier is reused as it is (the event says `reached`, retired).
+   */
   private async planLookup(cap: RetentionWrites, scope: Scope, s: StagedPackage): Promise<PlanLookup> {
     const m = isObject(s.manifest) ? s.manifest : null; const l = isObject(s.links) ? s.links : null;
     const objectIds = new Set<string>(); const refs = new Set<string>(); const pairs: Array<{ system_key: string; value: string }> = [];
@@ -311,7 +420,7 @@ export class ImportService {
     if (objectIds.size > 0) {
       const rows = (await cap.readImportItems().selectAll().where('tenant_id' as never, '=', scope.tenantId as never).where('domain_id' as never, '=', scope.domainId as never)
         .where('kind' as never, 'in', ['record', 'claim'] as never).where('origin_object_id' as never, 'in', [...objectIds] as never).where('disposition' as never, 'in', ['admitted', 'reused'] as never)
-        .orderBy('admitted_at' as never, 'desc').execute()) as Row[];
+        .where('revoked_at' as never, 'is', null as never).orderBy('admitted_at' as never, 'desc').execute()) as Row[];
       for (const r of rows) {
         const k = `${String(r['kind'])}:${String(r['origin_object_id'])}`; if (!byObject.has(k)) byObject.set(k, r);
         const rk = `${String(r['kind'])}:${String(r['origin_ref'])}`; if (!byRef.has(rk)) byRef.set(rk, r);
@@ -320,7 +429,7 @@ export class ImportService {
     if (refs.size > 0) {
       const rows = (await cap.readImportItems().selectAll().where('tenant_id' as never, '=', scope.tenantId as never).where('domain_id' as never, '=', scope.domainId as never)
         .where('kind' as never, 'in', ['entity', 'edge'] as never).where('origin_ref' as never, 'in', [...refs] as never).where('disposition' as never, 'in', ['admitted', 'reused'] as never)
-        .orderBy('admitted_at' as never, 'desc').execute()) as Row[];
+        .where('revoked_at' as never, 'is', null as never).orderBy('admitted_at' as never, 'desc').execute()) as Row[];
       for (const r of rows) { const rk = `${String(r['kind'])}:${String(r['origin_ref'])}`; if (!byRef.has(rk)) byRef.set(rk, r); }
     }
     const identified = new Map<string, string>();
@@ -348,36 +457,33 @@ export class ImportService {
     return cap.approveImport({ importId, tenantId: scope.tenantId, domainId: scope.domainId, packageDigest, rationale, actor: a.actor, correlationId: a.correlationId });
   }
 
-  // ───────────────────────── ADMIT (D2, D3; C3, N5, N8) ─────────────────────────
+  // ───────────────────────── ADMIT (D2, D3; C3, N5, N8; B17 D1, D20) ─────────────────────────
 
-  async admitImport(a: { envelope: Envelope; principal: AuthenticatedPrincipal; scope: Scope; importId: string; route: (action: string, objectType: string, objectId: string, writableTargets?: string[]) => RouteInfo }): Promise<{ import: Row; batches: Row[]; receipt: { policyDecisionId: string; auditSeq: number } }> {
+  async admitImport(a: WriteArgs & { scope: Scope; importId: string }): Promise<{ import: Row; batches: Row[]; receipt: { policyDecisionId: string; auditSeq: number } }> {
     const { scope, importId } = a;
     const actor = a.principal.principalId; const correlationId = a.envelope.correlation_id;
     const batches: Row[] = [];
-    const write = async <T>(objectType: string, objectId: string, writableTargets: string[] | undefined, handler: (cap: RetentionWrites) => Promise<T>) =>
-      this.pipeline.write<T, RetentionWrites>({ ...a.envelope, message_id: newId(), action: ADMIT_ACTION, object_type: objectType, object_id: objectId }, a.principal,
-        a.route(ADMIT_ACTION, objectType, objectId, writableTargets), RetentionCapability.write,
-        async (cap) => ({ result: await handler(cap), targetType: 'RIM', targetId: importId, targetVersion: null, outboxEvent: null }));
+    const write = this.writerOf(a, importId);
 
     // Write #0: the admission begun (or an admitted import found: the finalisation alone, N7), the items and the facts the loop needs.
-    const begun = await write('RIM', importId, undefined, async (cap) => {
+    const begun = await write<AdmissionBegun>(ADMIT_ACTION, 'RIM', importId, undefined, async (cap) => {
       const row = (await cap.readImports().selectAll().where('import_id' as never, '=', importId as never).executeTakeFirst()) as Row | undefined;
       if (row === undefined) throw new HttpException(errorBody('EYE_STA_001', correlationId, `retention import rejected: no such import ${importId} in this domain`), 404);
       const items = (await cap.readImportItems().selectAll().where('import_id' as never, '=', importId as never).orderBy('dependency_order' as never).execute()) as Row[];
-      if (String(row['state']) === 'admitted') return { kind: 'finalize' as const, import: row, items, partner: null as Row | null, contract: null as Row | null };
+      if (String(row['state']) === 'admitted') return { result: { kind: 'finalize', import: row, items, partner: null, contract: null } };
       const b = await cap.beginImportAdmission({ importId, tenantId: scope.tenantId, domainId: scope.domainId, actor, correlationId });
       const partner = isObject(b['partner']) ? (b['partner'] as Row) : null;
       const contractFacts = isObject(b['contract']) ? (b['contract'] as Row) : {};
       const contractRow = partner === null ? undefined : ((await cap.readSourceContracts().selectAll().where('source_id' as never, '=', String(partner['intake_source_id']) as never).where('contract_version' as never, '=', Number(partner['intake_contract_version']) as never).executeTakeFirst()) as Row | undefined);
       const importRow = isObject(b['import']) ? (b['import'] as Row) : row;
-      return { kind: 'admit' as const, import: importRow, items, partner, contract: { ...(contractRow ?? {}), ...contractFacts } as Row };
+      return { result: { kind: 'admit', import: importRow, items, partner, contract: { ...(contractRow ?? {}), ...contractFacts } as Row } };
     });
     let receipt = { policyDecisionId: begun.policyDecisionId, auditSeq: begun.auditSeq };
     let importRow = begun.result.import;
     const allItems = begun.result.items;
 
     if (begun.result.kind === 'admit') {
-      const partner = begun.result.partner; const contract = begun.result.contract;
+      const partner = begun.result.partner; const contract = begun.result.contract ?? {};
       if (partner === null) throw new HttpException(errorBody('EYE_STA_002', correlationId, `retention import rejected: import ${importId} names no partner; only a verified import is admitted`), 409);
       try {
         const origin = isObject(importRow['origin']) ? (importRow['origin'] as Row) : {};
@@ -393,10 +499,12 @@ export class ImportService {
         }
         const facts: AdmissionFacts = {
           importId, scope, actor, correlationId, map, outcomes, itemsByRef, recordsByObject, origin, partner, contract,
-          partnerKey: String(partner['partner_key'] ?? ''), archiveDigest: String(importRow['archive_digest'] ?? ''),
+          partnerKey: String(partner['partner_key'] ?? ''), archiveDigest: String(importRow['archive_digest'] ?? ''), packageDigest: String(importRow['package_digest'] ?? origin['package_digest'] ?? ''),
           ceiling: String(contract['classification_ceiling'] ?? ''), sourceId: String(contract['source_id'] ?? partner['intake_source_id']), contractVersion: Number(contract['contract_version'] ?? partner['intake_contract_version']),
           provenanceRef: `SRC:${String(contract['source_id'] ?? partner['intake_source_id'])}@${String(contract['contract_version'] ?? partner['intake_contract_version'])}`,
           residency: String(contract['residency'] ?? ''), retentionProfile: String(contract['retention_profile'] ?? contract['retention'] ?? 'default'), acquisitionMode: contract['acquisition_mode'] === 'replay' ? 'replay' : 'live',
+          // D20 / C10: the intake contract's authority class (begin_import_admission names it beside the contract's other facts).
+          authorityClass: String(contract['authority_class'] ?? 'observational'),
         };
         const manifestObjects = new Map<string, Row>();
         for (const o of Array.isArray(manifest['objects']) ? (manifest['objects'] as Row[]) : []) if (isObject(o)) manifestObjects.set(`${String(o['object_id'])}@${String(o['object_version'])}`, o);
@@ -410,7 +518,7 @@ export class ImportService {
           const decided: DecidedRecord[] = [];
           for (const item of batch) decided.push(await this.decideRecord(item, manifestObjects.get(String(item['origin_ref'])) ?? null, facts));
           try {
-            const out = await write('RIM', importId, decided.filter((d) => d.outcome === null).map((d) => String((d.item['planned'] as Row)['object_id'])), async (cap) => {
+            const out = await write(ADMIT_ACTION, 'RIM', importId, decided.filter((d) => d.outcome === null).map((d) => String((d.item['planned'] as Row)['object_id'])), async (cap) => {
               let n = 0; const tally = { admitted: 0, reused: 0, excluded: 0, refused: 0 };
               for (const d of decided) {
                 const outcome = d.outcome ?? await this.admitRecord(cap, d, facts, n);
@@ -418,8 +526,10 @@ export class ImportService {
                 await this.mark(cap, d.item, outcome, facts);
                 tally[outcome.disposition] += 1;
               }
-              await cap.recordImportEvent({ importId, tenantId: scope.tenantId, domainId: scope.domainId, event: 'import.batch_admitted', details: { kind: 'record', batch: Math.floor(i / BATCH) + 1, count: decided.length, ...tally }, actor, correlationId });
-              return tally;
+              // D20: ONE ObservationRecorded per record this batch ADMITTED — the lifecycle's announcement of an immutable evidence reference, in the batch's own transaction.
+              const events = decided.filter((d) => facts.outcomes.get(String(d.item['item_id']))?.disposition === 'admitted').map((d) => observationRecordedOf(d, facts));
+              await cap.recordImportEvent({ importId, tenantId: scope.tenantId, domainId: scope.domainId, event: 'import.batch_admitted', details: { kind: 'record', batch: Math.floor(i / BATCH) + 1, count: decided.length, ...tally, published: events.length }, actor, correlationId });
+              return { result: tally, outboxEvents: events };
             });
             receipt = { policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq };
             batches.push({ kind: 'record', count: decided.length, ...out.result, policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq });
@@ -436,7 +546,7 @@ export class ImportService {
         for (let i = 0; i < claims.length; i += BATCH) {
           const batch = claims.slice(i, i + BATCH);
           const targets = [...new Set(batch.map((it) => String((it['planned'] as Row)['object_id'])))];
-          const out = await write('RIM', importId, targets, async (cap) => {
+          const out = await write(ADMIT_ACTION, 'RIM', importId, targets, async (cap) => {
             let n = 0; const tally = { admitted: 0, reused: 0, excluded: 0, refused: 0 };
             for (const item of batch) {
               const outcome = await this.admitClaim(cap, item, closureClaims.get(String(item['origin_ref'])) ?? null, facts, n);
@@ -445,15 +555,15 @@ export class ImportService {
               tally[outcome.disposition] += 1;
             }
             await cap.recordImportEvent({ importId, tenantId: scope.tenantId, domainId: scope.domainId, event: 'import.batch_admitted', details: { kind: 'claim', batch: Math.floor(i / BATCH) + 1, count: batch.length, ...tally }, actor, correlationId });
-            return tally;
+            return { result: tally };
           });
           receipt = { policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq };
           batches.push({ kind: 'claim', count: batch.length, ...out.result, policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq });
         }
 
-        // (4) ONE graph write — identifier systems, entities, identifiers, edges — and (5) the finish.
+        // (4) ONE graph write — identifier systems, entities, identifiers, edges — and (5) the finish, with the ONE GraphChanged/import.admitted (D1).
         const graph = staged.filter((it) => ['identifier_system', 'entity', 'identifier', 'edge'].includes(String(it['kind'])));
-        const out = await write('RIM', importId, undefined, async (cap) => {
+        const out = await write(ADMIT_ACTION, 'RIM', importId, undefined, async (cap) => {
           let n = 0; const tally = { admitted: 0, reused: 0, excluded: 0, refused: 0 };
           for (const item of graph) {
             const kind = String(item['kind']) as ImportItemKind;
@@ -468,7 +578,10 @@ export class ImportService {
           if (graph.length > 0) await cap.recordImportEvent({ importId, tenantId: scope.tenantId, domainId: scope.domainId, event: 'import.batch_admitted', details: { kind: 'graph', count: graph.length, ...tally }, actor, correlationId });
           // Every item is settled now, the origin's exclusions among them (C9); the finish refuses otherwise.
           const finished = await cap.finishImportAdmission({ importId, tenantId: scope.tenantId, domainId: scope.domainId, counts: countsOf(allItems, facts.outcomes), actor, correlationId });
-          return { tally, finished };
+          // D1: the ONE event of the admission — from the item map and this attempt's outcomes, in the transaction that moved the import to admitted
+          // (an import whose graph write has nothing to do still announces it: the claims and records are the change).
+          const changed = importAdmittedEvent({ ...(await this.admittedFactsOf(cap, allItems, facts)), subscriptions: await cap.subscriptionsMatching({ tenantId: scope.tenantId, domainId: scope.domainId, eventType: 'GraphChanged', changeKind: 'import.admitted' }) });
+          return { result: { tally, finished }, outboxEvents: [changed] };
         });
         receipt = { policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq };
         if (graph.length > 0) batches.push({ kind: 'graph', count: graph.length, ...out.result.tally, policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq });
@@ -478,7 +591,7 @@ export class ImportService {
         // The fault recorded on the import — best effort: the same fault may refuse this write too, and then the audit's own
         // handler-failure row is the record — and propagated: the import stays ADMITTING with its staged items; the same act resumes it.
         if (!(e instanceof HttpException)) {
-          await write('RIM', importId, undefined, async (cap) => cap.recordImportEvent({ importId, tenantId: scope.tenantId, domainId: scope.domainId, event: 'import.failed', details: { attempt: Number(importRow['attempts'] ?? 0), reason: String((e as { message?: unknown })?.message ?? 'unknown').slice(0, 300), infrastructure: isInfrastructureFault(e) }, actor, correlationId })).catch(() => undefined);
+          await write(ADMIT_ACTION, 'RIM', importId, undefined, async (cap) => ({ result: await cap.recordImportEvent({ importId, tenantId: scope.tenantId, domainId: scope.domainId, event: 'import.failed', details: { attempt: Number(importRow['attempts'] ?? 0), reason: String((e as { message?: unknown })?.message ?? 'unknown').slice(0, 300), infrastructure: isInfrastructureFault(e) }, actor, correlationId }) })).catch(() => undefined);
         }
         throw e;
       }
@@ -487,9 +600,9 @@ export class ImportService {
     // (6) After the commit: the ADMITTED records' quarantine copies go (manifest.json, links.json and the refused or excluded copies stay: the evidence); recorded.
     const locators = allItems.filter((it) => String(it['kind']) === 'record' && String(it['disposition']) === 'admitted').map((it) => (isObject(it['staged']) ? (it['staged'] as Row)['quarantine_locator'] : null)).filter((l): l is string => typeof l === 'string');
     const tomb = await this.tombstoneLocators(scope, locators);
-    const fin = await write('RIM', importId, undefined, async (cap) => {
+    const fin = await write(ADMIT_ACTION, 'RIM', importId, undefined, async (cap) => {
       await cap.recordImportEvent({ importId, tenantId: scope.tenantId, domainId: scope.domainId, event: 'import.finalized', details: { tombstoned: tomb.tombstoned, locators: tomb.locators, failed: tomb.failed, resumed: begun.result.kind === 'finalize' }, actor, correlationId });
-      return { ok: true };
+      return { result: { ok: true } };
     });
     receipt = { policyDecisionId: fin.policyDecisionId, auditSeq: fin.auditSeq };
     batches.push({ kind: 'finalize', count: tomb.locators, tombstoned: tomb.tombstoned, failed: tomb.failed, policyDecisionId: fin.policyDecisionId, auditSeq: fin.auditSeq });
@@ -797,6 +910,45 @@ export class ImportService {
     f.outcomes.set(String(item['item_id']), outcome);
   }
 
+  /**
+   * D1, D2, C2, C13: the facts of the ONE import.admitted event, from the item map with this attempt's outcomes applied — the entities
+   * this import CREATED (`created`, as the origin recorded them: the row is the origin's state) and the ones it REUSED (`reached`, as
+   * they stand in this domain — read back, so a retired entity found by its authoritative identifier is announced retired, C2); the
+   * edges this import recorded (a reused edge is not announced: nothing changed for it); the distinct claim ids and the record ids it
+   * admitted (reused ones not announced, C13 — `counts.reused` says how many); the ledger's counts.
+   */
+  private async admittedFactsOf(cap: RetentionReads, items: Row[], f: AdmissionFacts): Promise<ImportChangeFacts> {
+    const outcomeOf = (it: Row): Outcome | undefined => f.outcomes.get(String(it['item_id']));
+    const identities: ImportChangeFacts['identities'] = []; const edges: ImportChangeFacts['edges'] = []; const claims = new Set<string>(); const evidence: string[] = [];
+    const reused: Array<{ entity_id: string }> = [];
+    for (const it of items) {
+      const o = outcomeOf(it); if (o === undefined || o.admitted === null) continue;
+      const kind = String(it['kind']); const origin = isObject(it['origin']) ? (it['origin'] as Row) : {}; const admitted = o.admitted;
+      if (kind === 'entity') {
+        const entityId = str(admitted['entity_id']); if (entityId === null) continue;
+        if (o.disposition === 'admitted') identities.push({ entity_id: entityId, role: 'created', canonical_name: str(origin['canonical_name']), lifecycle_state: str(origin['lifecycle_state']) ?? 'active' });
+        else if (o.disposition === 'reused') reused.push({ entity_id: entityId });
+      } else if (kind === 'edge' && o.disposition === 'admitted') {
+        const edgeId = str(admitted['edge_id']); if (edgeId === null) continue;
+        const claim = isObject(admitted['claim']) ? (admitted['claim'] as Row) : {};
+        edges.push({ edge_id: edgeId, state: str(origin['state']) ?? 'asserted', predicate: String(origin['predicate'] ?? ''), subject_entity_id: mapped(f.map, origin['subject_entity_id']), object_entity_id: mapped(f.map, origin['object_entity_id']),
+                     valid_from: instantOf(origin['valid_from']), valid_to: instantOf(origin['valid_to']), asserted_at: instantOf(origin['asserted_at']), retracted_at: instantOf(origin['retracted_at']), claim_object_id: str(claim['object_id']) });
+      } else if (kind === 'claim' && o.disposition === 'admitted') { const id = str(admitted['object_id']); if (id !== null) claims.add(id); }
+      else if (kind === 'record' && o.disposition === 'admitted') { const id = str(admitted['object_id']); if (id !== null && !evidence.includes(id)) evidence.push(id); }
+    }
+    if (reused.length > 0) {
+      const ids = [...new Set(reused.map((r) => r.entity_id))].filter((id) => !identities.some((i) => i.entity_id === id));
+      const rows = ids.length === 0 ? [] : ((await cap.readEntities().selectAll().where('entity_id' as never, 'in', ids as never).execute()) as Row[]);
+      const byId = new Map(rows.map((r) => [String(r['entity_id']), r]));
+      for (const id of ids) { const r = byId.get(id); identities.push({ entity_id: id, role: 'reached', canonical_name: r === undefined ? null : str(r['canonical_name']), lifecycle_state: r === undefined ? null : str(r['lifecycle_state']) }); }
+    }
+    return {
+      tenantId: f.scope.tenantId, domainId: f.scope.domainId, importId: f.importId, partnerKey: f.partnerKey,
+      origin: { tenant_id: String(f.origin['tenant_id'] ?? ''), domain_id: String(f.origin['domain_id'] ?? ''), action_id: String(f.origin['action_id'] ?? ''), package_digest: f.packageDigest },
+      counts: countsOf(items, f.outcomes), identities, edges, claims: [...claims], evidence, actor: f.actor,
+    };
+  }
+
   // ───────────────────────── WITHDRAW (C5) ─────────────────────────
 
   /** The import withdrawn; the quarantine locators of its items, its manifest and its closure read in the same write and returned (`quarantine_locators`) for the tombstoning after the commit. */
@@ -831,6 +983,532 @@ export class ImportService {
       catch { failed.push(l); }
     }
     return { locators: locators.length, tombstoned, failed };
+  }
+
+  // ───────────────────────── REVOKE (B17; D4, D5, D7, D12, D13, D19; C2, C4, C5, C6, C7, C9, C14) ─────────────────────────
+
+  /**
+   * The origin's revocation executed in THIS domain (the module comment's REVOKE): W0 the beginning (the source verified and recorded,
+   * the state revoking) → W1 the graph write → W2… the claim batches → W3… the record batches → Wf the finish with the ONE event →
+   * after the commit the bytes and, for a station source, revocation-receipt.json → Wr the receipt write (the origin's notice answered
+   * inside it). A revoked import takes the RETRY branch (C5); a station notice that does not verify is REFUSED after W0 committed the
+   * refusal (`kind: 'refused'` — the controller answers 409 with the reason; the write that recorded it is a success of recording).
+   */
+  async revokeImport(a: WriteArgs & { scope: Scope; importId: string; source: RevocationSource }): Promise<RevokeImportAnswer> {
+    const { scope, importId, source } = a;
+    const actor = a.principal.principalId; const correlationId = a.envelope.correlation_id; const purposeId = String(a.envelope.purpose_id ?? 'retention');
+    const batches: Row[] = [];
+    const write = this.writerOf(a, importId);
+    const zero = { records: 0, claims: 0, entities: 0, edges: 0 };
+
+    // W0: the import, its items and its partner; the source verified (a station notice against the partner's key, C7) and the revocation begun.
+    const begun = await write<RevocationBegun>(REVOKE_ACTION, 'RIM', importId, undefined, async (cap) => {
+      const row = (await cap.readImports().selectAll().where('import_id' as never, '=', importId as never).executeTakeFirst()) as Row | undefined;
+      if (row === undefined) throw new HttpException(errorBody('EYE_STA_001', correlationId, `retention import rejected: no such import ${importId} in this domain`), 404);
+      const items = (await cap.readImportItems().selectAll().where('import_id' as never, '=', importId as never).orderBy('dependency_order' as never).execute()) as Row[];
+      const partner = typeof row['partner_id'] === 'string' ? (((await cap.readExchangePartners().selectAll().where('partner_id' as never, '=', row['partner_id'] as never).executeTakeFirst()) as Row | undefined) ?? null) : null;
+      const station = source.kind === 'station' ? await this.stationOf(cap, scope, source.destinationKey, correlationId) : null;
+      const originRow = isObject(row['origin']) ? (row['origin'] as Row) : {};
+      const origin = { tenantId: String(originRow['tenant_id'] ?? ''), domainId: String(originRow['domain_id'] ?? ''), actionId: String(originRow['action_id'] ?? '') };
+      const base = { row, items, partner, station, origin, holders: [] as Array<{ import_id: string; origin_action_id: string | null }>, opened: null as { directory: string; path: string; notice: Row } | null };
+      if (String(row['state']) === 'revoked') {
+        // C5: the port answers `retried` before any source check — with the facts the retry decides on (the pending notice, the latest receipt event);
+        // C9 at the retry: a copy left under another import is still held only while that import is admitted — read here, in the same write.
+        const b = await cap.beginImportRevocation({ importId, tenantId: scope.tenantId, domainId: scope.domainId, source: source.kind === 'station' ? { kind: 'station', destination_key: source.destinationKey } : { kind: 'origin' }, actor, correlationId });
+        const heldIds = new Set<string>();
+        for (const it of items) { const r = isObject(it['revocation']) ? (it['revocation'] as Row) : {}; if (r['outcome'] === 'left' && Array.isArray(r['held_by'])) for (const h of r['held_by'] as unknown[]) if (typeof h === 'string') heldIds.add(h); }
+        return { result: { ...base, kind: 'retried', holders: await this.liveHoldersOf(cap, scope, [...heldIds]), begun: b } };
+      }
+      let pSource: Row = { kind: 'origin' };
+      let opened: { directory: string; path: string; notice: Row } | null = null;
+      if (source.kind === 'station' && station !== null) {
+        // The origin's signed notice at the station — revocation.json alone (the package need not still be there: the origin removed its copies after its commit).
+        try { opened = await this.delivery.openStationNotice(station.endpoint, origin); }
+        catch (e) {
+          if (e instanceof TransferStationRefused) throw new HttpException(errorBody('EYE_STA_002', correlationId, `retention import rejected (${e.reason}): ${e.message}`), 409);
+          throw e;
+        }
+        const refuse = async (reason: string, keyId: string | null, file: string | null): Promise<Written<RevocationBegun>> => {
+          await cap.recordImportEvent({ importId, tenantId: scope.tenantId, domainId: scope.domainId, event: 'import.revocation_refused', details: { source: { kind: 'station', destination_key: source.destinationKey, file }, reason, key_id: keyId, partner_key: partner === null ? null : str(partner['partner_key']) }, actor, correlationId });
+          return { result: { ...base, kind: 'refused', opened, reason } };
+        };
+        if (opened === null) return refuse(`no revocation.json at the station ${source.destinationKey} (${station.endpoint}) for the origin action ${origin.actionId}`, null, null);
+        if (partner === null) return refuse('the import names no exchange partner; there is no key to verify the notice against', null, opened.path);
+        const v = await this.verifyStationNotice(cap, scope, opened.notice, partner);
+        if (!v.verified) return refuse(v.reason, v.keyId, opened.path);
+        pSource = { kind: 'station', destination_key: source.destinationKey, path: opened.path, notice: opened.notice,
+                    verification: { verified: true, key_id: v.keyId, digest: v.digest, partner_id: v.partnerId, partner_key: v.partnerKey, rotated_from: v.rotatedFrom } };
+      }
+      const b = await cap.beginImportRevocation({ importId, tenantId: scope.tenantId, domainId: scope.domainId, source: pSource, actor, correlationId });
+      if (String(b['kind']) === 'retried') return { result: { ...base, kind: 'retried', begun: b, opened } };
+      const src = isObject(b['source']) ? (b['source'] as Row) : {};
+      const { notice, ...revocation } = src;
+      return { result: { ...base, kind: 'begin', row: isObject(b['import']) ? (b['import'] as Row) : row, begun: b, opened, revocation, notice: isObject(notice) ? notice : null } };
+    });
+    let receipt = { policyDecisionId: begun.policyDecisionId, auditSeq: begun.auditSeq };
+    const r0 = begun.result;
+    if (r0.kind === 'refused') {
+      return { import: r0.row, kind: 'refused', revocation: { attempt: Number(r0.row['revocation_attempts'] ?? 0), source: { kind: 'station', destination_key: source.kind === 'station' ? source.destinationKey : null, path: r0.opened?.path ?? null }, notice: r0.opened?.notice ?? null, destroyed: zero, left: 0, refused: [], bytes: null, receipt: null, answered: null, station_receipt: null, reason: r0.reason }, batches, receipt };
+    }
+    if (r0.kind === 'retried') return this.retryRevocation({ scope, importId, actor, correlationId, write, row: isObject(r0.begun['import']) ? (r0.begun['import'] as Row) : r0.row, items: r0.items, begun: r0.begun, station: r0.station, origin: r0.origin, holders: r0.holders, receipt });
+
+    const partnerKey = r0.partner === null ? '' : String(r0.partner['partner_key'] ?? '');
+    const attempt = Number(r0.row['revocation_attempts'] ?? 0);
+    const f: RevocationFacts = {
+      importId, scope, actor, correlationId, purposeId, revocation: r0.revocation, ref: revocationRefOf(r0.revocation), partnerKey,
+      imports: new Map(), tally: { retracted: [], retired: [], withdrawn: [], tombstoned: [], left: 0, skipped: 0, refused: [], held: new Map(), locators: [] },
+    };
+    let fin: Row = {};
+    try {
+      // THE PLAN (in memory): every admitted or reused item not yet settled by a revocation — or refused by one (a hold since lifted) — by kind.
+      const pending = r0.items.filter(isPendingRevocation);
+      const graphItems = pending.filter((it) => ['edge', 'entity', 'identifier', 'identifier_system'].includes(String(it['kind'])));
+      const claimItems = pending.filter((it) => String(it['kind']) === 'claim');
+      const recordItems = pending.filter((it) => String(it['kind']) === 'record');
+
+      // W1: ONE graph write — edges, entities, identifiers, identifier systems, in reversed dependency order (not target-bound: the ports write the graph tables).
+      if (graphItems.length > 0) {
+        const out = await write(REVOKE_ACTION, 'RIM', importId, undefined, async (cap) => ({ result: await this.revokeGraphItems(cap, graphItems, f) }));
+        receipt = { policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq };
+        batches.push({ ...out.result, policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq });
+      }
+      if (this.#revocationFault === 'after_graph_write') { this.#revocationFault = null; throw Object.assign(new Error('injected infrastructure fault after the graph write (test)'), { code: '57P01' }); }
+
+      // W2…: the CLAIMS by object id, in batches of at most 32 objects (the bound set: the batch's object ids — objects.admit_version binds the withdrawn version to it).
+      const groups = new Map<string, Row[]>();
+      for (const it of claimItems) { const id = String((isObject(it['planned']) ? (it['planned'] as Row) : {})['object_id'] ?? (isObject(it['admitted']) ? (it['admitted'] as Row)['object_id'] : '')); groups.set(id, [...(groups.get(id) ?? []), it]); }
+      const groupList = [...groups.entries()];
+      for (let i = 0; i < groupList.length; i += BATCH) {
+        const batch = groupList.slice(i, i + BATCH);
+        const out = await write(REVOKE_ACTION, 'RIM', importId, batch.map(([id]) => id).filter((id) => UUID.test(id)), async (cap) => {
+          const tally = { withdrawn: 0, left: 0, refused: 0, skipped: 0 }; let n = 0;
+          for (const [objectId, group] of batch) { tally[await this.withdrawClaimGroup(cap, objectId, group, f, n)] += 1; n += 1; }
+          await cap.recordImportEvent({ importId, tenantId: scope.tenantId, domainId: scope.domainId, event: 'import.batch_revoked', details: { kind: 'claim', batch: Math.floor(i / BATCH) + 1, count: batch.length, items: batch.reduce((s, [, g]) => s + g.length, 0), ...tally }, actor, correlationId });
+          return { result: { kind: 'claim', count: batch.length, ...tally } };
+        });
+        receipt = { policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq };
+        batches.push({ ...out.result, policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq });
+      }
+
+      // W3…: the RECORDS in batches of at most 32 (the bound set: their object ids) — the withdrawn version, the tombstone and the custody row per record.
+      const withdrawnObjects = new Set<string>();
+      for (let i = 0; i < recordItems.length; i += BATCH) {
+        const batch = recordItems.slice(i, i + BATCH);
+        const targets = [...new Set(batch.map((it) => String((isObject(it['admitted']) ? (it['admitted'] as Row) : {})['object_id'] ?? '')).filter((id) => UUID.test(id)))];
+        const out = await write(REVOKE_ACTION, 'RIM', importId, targets, async (cap) => {
+          const tally = { tombstoned: 0, left: 0, refused: 0, skipped: 0 }; let n = 0;
+          for (const item of batch) { tally[await this.tombstoneRecord(cap, item, f, n, withdrawnObjects)] += 1; n += 1; }
+          await cap.recordImportEvent({ importId, tenantId: scope.tenantId, domainId: scope.domainId, event: 'import.batch_revoked', details: { kind: 'record', batch: Math.floor(i / BATCH) + 1, count: batch.length, ...tally }, actor, correlationId });
+          return { result: { kind: 'record', count: batch.length, ...tally } };
+        });
+        receipt = { policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq };
+        batches.push({ ...out.result, policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq });
+      }
+
+      // Wf: the FINISH — the state moved (or held) — and the ONE GraphChanged/import.revoked of the attempt, built from the ITEM MAP (C4) before the
+      // finish records its own event, so "settled since the attempt before" is read against the previous finish, never this one.
+      const out = await write(REVOKE_ACTION, 'RIM', importId, undefined, async (cap) => {
+        const changed = await this.revokedFactsOf(cap, scope, importId);
+        // The ledger's own counts by outcome are the port's (the item map); the service adds only what the map cannot say (C14's skipped items).
+        const finished = await cap.finishImportRevocation({ importId, tenantId: scope.tenantId, domainId: scope.domainId, revocation: f.revocation, counts: f.tally.skipped > 0 ? { skipped: f.tally.skipped } : {}, refused: f.tally.refused.map((x) => ({ ...x })), actor, correlationId });
+        const events: Array<{ eventType: string; payload: Record<string, unknown> }> = [];
+        if (changed.count > 0) {
+          const originRow = r0.origin;
+          events.push(await importRevokedEvent(cap, this.impact, {
+            tenantId: scope.tenantId, domainId: scope.domainId, importId, partnerKey,
+            origin: { tenant_id: originRow.tenantId, domain_id: originRow.domainId, action_id: originRow.actionId, package_digest: f.ref.package_digest },
+            counts: isObject(finished['counts']) ? (finished['counts'] as Row) : {}, identities: changed.identities, edges: changed.edges, claims: changed.claims, evidence: changed.evidence, walkSeeds: changed.walkSeeds, actor,
+            notice: { notice_id: f.ref.notice_id, source: source.kind, revoked_at: f.ref.revoked_at, reason: f.ref.reason },
+          }));
+        }
+        return { result: finished, outboxEvents: events };
+      });
+      receipt = { policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq };
+      fin = out.result;
+      batches.push({ kind: 'finish', complete: fin['complete'] === true, counts: fin['counts'] ?? {}, policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq });
+    } catch (e) {
+      // The fault recorded on the import — best effort, as the admission's — and propagated: the import stays REVOKING; the same route resumes it (begin counts the attempt).
+      if (!(e instanceof HttpException)) {
+        await write(REVOKE_ACTION, 'RIM', importId, undefined, async (cap) => ({ result: await cap.recordImportEvent({ importId, tenantId: scope.tenantId, domainId: scope.domainId, event: 'import.revocation_failed', details: { attempt, reason: String((e as { message?: unknown })?.message ?? 'unknown').slice(0, 300), infrastructure: isInfrastructureFault(e) }, actor, correlationId }) })).catch(() => undefined);
+      }
+      throw e;
+    }
+
+    // After the commit: the tombstoned records' bytes go from both roots (the staged copies too); the receipt written beside a station notice.
+    const bytes = f.tally.locators.length === 0 ? { removed: [] as string[], failed: [] as string[] } : await this.retention.removeBytes(scope, f.tally.locators);
+    const complete = fin['complete'] === true;
+    const held = this.heldByOf(f);
+    const receiptBody = this.receiptBodyOf({
+      importId, scope, ref: f.ref, notice: r0.notice, destroyed: { ...this.destroyedOf(f.tally), bytes: bytes.removed.length }, refused: f.tally.refused, bytes, held,
+      copiesDestroyed: complete && bytes.failed.length === 0 && held.length === 0, retried: false,
+    });
+    const stationReceipt = r0.station === null ? null : await this.delivery.writeStationRevocationReceipt(r0.station.endpoint, r0.origin, receiptBody).then((p) => ({ path: p }), (e: unknown) => ({ error: String((e as { message?: unknown })?.message ?? 'unknown').slice(0, 200) }));
+
+    // Wr: the receipt recorded — import.copies_destroyed | import.copies_refused — and the origin's notice answered when the origin is here.
+    const wr = await write(REVOKE_ACTION, 'RIM', importId, undefined, async (cap) => ({ result: await cap.recordImportRevocationReceipt({ importId, tenantId: scope.tenantId, domainId: scope.domainId, receipt: receiptBody, receiptDigest: contentDigest(receiptBody), bytes, station: stationReceipt, actor, correlationId }) }));
+    receipt = { policyDecisionId: wr.policyDecisionId, auditSeq: wr.auditSeq };
+    return {
+      import: isObject(fin['import']) ? (fin['import'] as Row) : r0.row, kind: complete ? 'revoked' : 'held',
+      revocation: { attempt, source: f.revocation, notice: r0.notice, destroyed: this.destroyedOf(f.tally), left: f.tally.left, refused: f.tally.refused, bytes, receipt: receiptBody, answered: isObject(wr.result['answered']) ? (wr.result['answered'] as Row) : null, station_receipt: stationReceipt },
+      batches, receipt,
+    };
+  }
+
+  /**
+   * THE RETRY (C5): a revoked import revoked again — nothing of the ledger moves; the tombstoned records' bytes still present in either
+   * root go, and a fresh receipt is recorded (a new notice attempt on the origin ledger, D6) when any byte was removed or failed, when no
+   * receipt event stands for the latest attempt, or when a notice is pending on the origin ledger; else nothing beyond write #0.
+   */
+  private async retryRevocation(a: { scope: Scope; importId: string; actor: string; correlationId: string; write: ReturnType<ImportService['writerOf']>; row: Row; items: Row[]; begun: Row; station: { destination: Row; endpoint: string } | null; origin: { tenantId: string; domainId: string; actionId: string }; holders: Array<{ import_id: string; origin_action_id: string | null }>; receipt: { policyDecisionId: string; auditSeq: number } }): Promise<RevokeImportAnswer> {
+    const { scope, importId, actor, correlationId, row, items, holders: held } = a;
+    const recorded = isObject(row['revocation']) ? (row['revocation'] as Row) : {};
+    const ref = revocationRefOf(recorded);
+    const attempt = Number(row['revocation_attempts'] ?? 0);
+    const revocationOf = (it: Row): Row => (isObject(it['revocation']) ? (it['revocation'] as Row) : {});
+    const settled = items.filter((it) => ['admitted', 'reused'].includes(String(it['disposition'])) && it['revoked_at'] !== null && it['revoked_at'] !== undefined);
+    const entries: Array<{ locator: string; vault: VaultName; stagedToo?: boolean }> = [];
+    for (const it of settled) {
+      const r = revocationOf(it);
+      if (String(it['kind']) !== 'record' || r['outcome'] !== 'tombstoned') continue;
+      const locator = str(r['locator']); if (locator === null) continue;
+      for (const vault of ['evidence', 'archive'] as const) if (await this.vault.exists(vault, scope, locator)) entries.push({ locator, vault, stagedToo: true });
+    }
+    const bytes = entries.length === 0 ? { removed: [] as string[], failed: [] as string[] } : await this.retention.removeBytes(scope, entries);
+    const pendingNoticeId = str(a.begun['pending_notice_id']);
+    const destroyed = {
+      records: settled.filter((it) => String(it['kind']) === 'record' && revocationOf(it)['outcome'] === 'tombstoned').length,
+      claims: new Set(settled.filter((it) => String(it['kind']) === 'claim' && revocationOf(it)['outcome'] === 'withdrawn').map((it) => String(revocationOf(it)['object_id'] ?? (isObject(it['admitted']) ? (it['admitted'] as Row)['object_id'] : '')))).size,
+      entities: settled.filter((it) => revocationOf(it)['outcome'] === 'retired').length,
+      edges: settled.filter((it) => revocationOf(it)['outcome'] === 'retracted').length,
+    };
+    const refused: RefusedRevocationItem[] = settled.filter((it) => revocationOf(it)['outcome'] === 'refused').map((it) => { const r = revocationOf(it); return { item_id: String(it['item_id']), kind: String(it['kind']), origin_ref: String(it['origin_ref']), ref: String(it['origin_ref']), reason: String(r['reason'] ?? ''), hold_id: str(r['hold_id']), manifest_id: str(r['manifest_id']) }; });
+    const left = settled.filter((it) => revocationOf(it)['outcome'] === 'left').length;
+    const answerOf = (rest: Partial<RevokeImportAnswer['revocation']>, receipt: RevokeImportAnswer['receipt']): RevokeImportAnswer =>
+      ({ import: row, kind: 'retried', revocation: { attempt, source: recorded, notice: null, destroyed, left, refused, bytes, receipt: null, answered: null, station_receipt: null, ...rest }, batches: [], receipt });
+    const needReceipt = bytes.removed.length > 0 || bytes.failed.length > 0 || a.begun['last_receipt_event'] === false || pendingNoticeId !== null;
+    if (!needReceipt) return answerOf({}, a.receipt);
+    const receiptBody = this.receiptBodyOf({
+      importId, scope, ref: { ...ref, notice_id: pendingNoticeId ?? ref.notice_id }, notice: null, destroyed: { ...destroyed, bytes: bytes.removed.length }, refused, bytes, held,
+      copiesDestroyed: bytes.failed.length === 0 && refused.length === 0 && held.length === 0, retried: true,
+    });
+    const stationReceipt = a.station === null ? null : await this.delivery.writeStationRevocationReceipt(a.station.endpoint, a.origin, receiptBody).then((p) => ({ path: p }), (e: unknown) => ({ error: String((e as { message?: unknown })?.message ?? 'unknown').slice(0, 200) }));
+    const wr = await a.write(REVOKE_ACTION, 'RIM', importId, undefined, async (cap) => ({ result: await cap.recordImportRevocationReceipt({ importId, tenantId: scope.tenantId, domainId: scope.domainId, receipt: receiptBody, receiptDigest: contentDigest(receiptBody), bytes, station: stationReceipt, actor, correlationId }) }));
+    return answerOf({ receipt: receiptBody, answered: isObject(wr.result['answered']) ? (wr.result['answered'] as Row) : null, station_receipt: stationReceipt }, { policyDecisionId: wr.policyDecisionId, auditSeq: wr.auditSeq });
+  }
+
+  /**
+   * C7: the station notice against the import's PARTNER key first; on a key mismatch, against every other partner of this domain
+   * declared for the SAME PARTY that holds the notice's key (the origin's rotated key, declared by this domain's administrators) —
+   * which partner verified is recorded (`partnerId`, `rotatedFrom`). A retired partner's key still verifies a notice dated at or before
+   * its retirement (D8); a notice signed by a partner of another party stays refused with the primary check's words.
+   */
+  private async verifyStationNotice(cap: RetentionReads, scope: Scope, notice: Row, partner: Row): Promise<{ verified: true; keyId: string; digest: string; partnerId: string; partnerKey: string; rotatedFrom: string | null } | { verified: false; reason: string; keyId: string | null; digest: string }> {
+    const notifiedAt = instantOf(notice['notified_at']);
+    const within = (p: Row): boolean => { const retiredAt = instantOf(p['retired_at']); return retiredAt === null || (notifiedAt !== null && Date.parse(notifiedAt) <= Date.parse(retiredAt)); };
+    const v = verifyNotice(notice, String(partner['public_key_pem'] ?? ''));
+    if (v.ok) {
+      if (within(partner)) return { verified: true, keyId: v.keyId, digest: v.digest, partnerId: String(partner['partner_id']), partnerKey: String(partner['partner_key'] ?? ''), rotatedFrom: null };
+      return { verified: false, reason: `the notice is dated ${notifiedAt ?? 'without an instant'}, after the partner ${String(partner['partner_key'] ?? '')}'s retirement at ${instantOf(partner['retired_at']) ?? '?'}`, keyId: v.keyId, digest: v.digest };
+    }
+    if (v.reason === 'key_mismatch' && v.keyId !== null) {
+      const others = (await cap.readExchangePartners().selectAll().where('tenant_id' as never, '=', scope.tenantId as never).where('domain_id' as never, '=', scope.domainId as never)
+        .where('party' as never, '=', String(partner['party'] ?? '') as never).where('key_id' as never, '=', v.keyId as never).where('partner_id' as never, '!=', String(partner['partner_id']) as never)
+        .orderBy('declared_at' as never, 'desc').execute()) as Row[];
+      for (const o of others) {
+        const w = verifyNotice(notice, String(o['public_key_pem'] ?? ''));
+        if (w.ok && within(o)) return { verified: true, keyId: w.keyId, digest: w.digest, partnerId: String(o['partner_id']), partnerKey: String(o['partner_key'] ?? ''), rotatedFrom: String(partner['partner_id']) };
+      }
+    }
+    return { verified: false, reason: v.detail, keyId: v.keyId, digest: v.digest };
+  }
+
+  /**
+   * W1 (D19, D5): the graph items in REVERSED dependency order — edges, entities, identifiers, identifier systems — each under its own
+   * savepoint: an edge this import created retracted, an entity it created retired (the ports leave one the origin recorded retracted,
+   * superseded or retired, and one another live import holds, C9 — `held_by` collected); a reused edge or entity, an identifier and an
+   * identifier system left (facts of the domain). A port's refusal marks the item refused; an item another attempt settled is skipped (C14).
+   */
+  private async revokeGraphItems(cap: RetentionWrites, items: Row[], f: RevocationFacts): Promise<Row> {
+    const order: Record<string, number> = { edge: 0, entity: 1, identifier: 2, identifier_system: 3 };
+    const graph = [...items].sort((x, y) => ((order[String(x['kind'])] ?? 9) - (order[String(y['kind'])] ?? 9)) || (Number(y['dependency_order']) - Number(x['dependency_order'])));
+    const tally = { retracted: 0, retired: 0, left: 0, refused: 0, skipped: 0 };
+    let n = 0;
+    for (const item of graph) {
+      const kind = String(item['kind']); const disposition = String(item['disposition']); const itemId = String(item['item_id']);
+      const sp = `imr_${n}`; n += 1;
+      await cap.savepoint(sp);
+      try {
+        if (disposition === 'admitted' && (kind === 'edge' || kind === 'entity')) {
+          const args = { itemId, importId: f.importId, tenantId: f.scope.tenantId, domainId: f.scope.domainId, revocation: f.revocation, actor: f.actor, correlationId: f.correlationId };
+          const r = kind === 'edge' ? await cap.retractImportedEdge(args) : await cap.retireImportedEntity(args);
+          const outcome = String(r['outcome']);
+          if (outcome === 'retracted') { f.tally.retracted.push(r); tally.retracted += 1; }
+          else if (outcome === 'retired') { f.tally.retired.push(r); tally.retired += 1; }
+          else { await this.noteHeld(cap, f, r['held_by'], itemId); tally.left += 1; f.tally.left += 1; }
+        } else {
+          await cap.markImportItemRevoked({ itemId, importId: f.importId, tenantId: f.scope.tenantId, domainId: f.scope.domainId, outcome: 'left', details: { kind, reason: leftReasonOf(item) }, actor: f.actor, correlationId: f.correlationId });
+          tally.left += 1; f.tally.left += 1;
+        }
+        await cap.releaseSavepoint(sp);
+      } catch (e) {
+        const c = revocationRefusalOf(e);
+        if (c === null) throw e;
+        await cap.rollbackToSavepoint(sp);
+        if (c.kind === 'skipped') { tally.skipped += 1; f.tally.skipped += 1; continue; }
+        if (await this.markRefused(cap, item, f, { reason: c.reason, gate: c.gate, hold_id: null, manifest_id: null, locator: null })) tally.refused += 1; else { tally.skipped += 1; f.tally.skipped += 1; }
+      }
+    }
+    await cap.recordImportEvent({ importId: f.importId, tenantId: f.scope.tenantId, domainId: f.scope.domainId, event: 'import.batch_revoked', details: { kind: 'graph', count: graph.length, ...tally }, actor: f.actor, correlationId: f.correlationId });
+    return { kind: 'graph', count: graph.length, ...tally };
+  }
+
+  /**
+   * W2 (D12): ONE claim OBJECT of the import — its items at every version — withdrawn by a new version of the object's LATEST row (read
+   * from objects.canonical_objects, never from an item), its lineage carried onto the withdrawn version, every item of the group marked
+   * withdrawn. The group is LEFT when a live import holds the object (C9: a reused item whose source import is admitted or revoking, an
+   * admitted item another admitted import reuses, or a latest version another live import admitted) — held_by recorded; an object already
+   * withdrawn takes no further version (the items marked withdrawn as already so).
+   */
+  private async withdrawClaimGroup(cap: RetentionWrites, objectId: string, group: Row[], f: RevocationFacts, n: number): Promise<'withdrawn' | 'left' | 'refused' | 'skipped'> {
+    const held = await this.holdersOfGroup(cap, f, group);
+    const sp = `imr_${n}`;
+    await cap.savepoint(sp);
+    try {
+      if (held.length > 0) { for (const item of group) await this.markLeft(cap, item, f, held); await cap.releaseSavepoint(sp); return 'left'; }
+      const prior = UUID.test(objectId) ? await this.latestRowOf(cap, f.scope, objectId) : null;
+      if (prior === null) { await cap.releaseSavepoint(sp); for (const item of group) await this.markRefused(cap, item, f, { reason: `no canonical row of ${objectId} in this domain to withdraw`, gate: 'record', hold_id: null, manifest_id: null, locator: null }); return 'refused'; }
+      const owner = await this.liveOwnerOf(cap, f, prior);
+      if (owner.length > 0) { for (const item of group) await this.markLeft(cap, item, f, owner); await cap.releaseSavepoint(sp); return 'left'; }
+      const from = Number(prior['object_version']); let to: number | null = null; let lineageRows = 0;
+      if (String(prior['lifecycle_state']) !== 'withdrawn') {
+        const header = importWithdrawalHeaderOf(prior, { actor: f.actor, correlationId: f.correlationId, purposeId: f.purposeId, recordedAt: new Date().toISOString(), revocation: f.ref, importId: f.importId });
+        const payload = isObject(prior['payload']) ? (prior['payload'] as Row) : {};
+        await cap.admitObject(header, payload, canonicalHeaderDigest(header, payload));
+        to = from + 1;
+        lineageRows = await cap.recordImportWithdrawalLineage({ claimObjectId: objectId, fromVersion: from, toVersion: to, tenantId: f.scope.tenantId, domainId: f.scope.domainId, importId: f.importId, correlationId: f.correlationId });
+      }
+      for (const item of group) {
+        await cap.markImportItemRevoked({ itemId: String(item['item_id']), importId: f.importId, tenantId: f.scope.tenantId, domainId: f.scope.domainId, outcome: 'withdrawn', details: { object_id: objectId, from_version: from, to_version: to, lineage_rows: lineageRows, already_withdrawn: to === null, notice_id: f.ref.notice_id }, actor: f.actor, correlationId: f.correlationId });
+      }
+      await cap.releaseSavepoint(sp);
+      f.tally.withdrawn.push(objectId);
+      return 'withdrawn';
+    } catch (e) {
+      const c = revocationRefusalOf(e);
+      if (c === null) throw e;
+      await cap.rollbackToSavepoint(sp);
+      if (c.kind === 'skipped') { f.tally.skipped += 1; return 'skipped'; }
+      let marked = false;
+      for (const item of group) marked = (await this.markRefused(cap, item, f, { reason: c.reason, gate: c.gate, hold_id: null, manifest_id: null, locator: null })) || marked;
+      if (!marked) f.tally.skipped += 1;
+      return marked ? 'refused' : 'skipped';
+    }
+  }
+
+  /**
+   * W3 (D12): one imported RECORD — (i) the latest row, (ii) its withdrawn version (once per object when a record has several items),
+   * (iii) observation.tombstone_blob under retention.import.revoke — a LEGAL HOLD (P0R01) rolls the WHOLE step back to the item's
+   * savepoint (the withdrawn version with it: the hold keeps the record whole) and marks the item refused with the hold —, (iv) the
+   * custody.tombstoned row, (v) the item marked tombstoned and its locator queued for the bytes after the commit. Left when a live import
+   * holds it (C9).
+   */
+  private async tombstoneRecord(cap: RetentionWrites, item: Row, f: RevocationFacts, n: number, withdrawnObjects: Set<string>): Promise<'tombstoned' | 'left' | 'refused' | 'skipped'> {
+    const admitted = isObject(item['admitted']) ? (item['admitted'] as Row) : {};
+    const objectId = str(admitted['object_id']); const manifestId = str(admitted['manifest_id']); const locator = str(admitted['locator']);
+    const held = await this.holdersOfGroup(cap, f, [item]);
+    const sp = `imr_${n}`;
+    await cap.savepoint(sp);
+    try {
+      if (held.length > 0) { await this.markLeft(cap, item, f, held); await cap.releaseSavepoint(sp); return 'left'; }
+      if (objectId === null || manifestId === null || !UUID.test(objectId) || !UUID.test(manifestId)) { await cap.releaseSavepoint(sp); return (await this.markRefused(cap, item, f, { reason: 'the item records no admitted object and manifest to withdraw', gate: 'record', hold_id: null, manifest_id: manifestId, locator })) ? 'refused' : 'skipped'; }
+      const prior = await this.latestRowOf(cap, f.scope, objectId);
+      if (prior === null) { await cap.releaseSavepoint(sp); return (await this.markRefused(cap, item, f, { reason: `no canonical row of ${objectId} in this domain to withdraw`, gate: 'record', hold_id: null, manifest_id: manifestId, locator })) ? 'refused' : 'skipped'; }
+      const owner = await this.liveOwnerOf(cap, f, prior);
+      if (owner.length > 0) { await this.markLeft(cap, item, f, owner); await cap.releaseSavepoint(sp); return 'left'; }
+      const from = Number(prior['object_version']); let to: number | null = null;
+      if (String(prior['lifecycle_state']) !== 'withdrawn' && !withdrawnObjects.has(objectId)) {
+        const header = importWithdrawalHeaderOf(prior, { actor: f.actor, correlationId: f.correlationId, purposeId: f.purposeId, recordedAt: new Date().toISOString(), revocation: f.ref, importId: f.importId });
+        const payload = isObject(prior['payload']) ? (prior['payload'] as Row) : {};
+        await cap.admitObject(header, payload, canonicalHeaderDigest(header, payload));
+        to = from + 1;
+      }
+      const tombstoneId = newId();
+      const inserted = await cap.tombstoneManifest({ tombstoneId, tenantId: f.scope.tenantId, domainId: f.scope.domainId, manifestId, correlationId: f.correlationId,
+        reason: `the origin revoked the package this record was imported from (import ${f.importId}; action ${f.ref.action_id}; notice ${f.ref.notice_id ?? 'none recorded'}): ${f.ref.reason ?? 'no reason stated'}` });
+      const details = { action_id: f.ref.action_id, notice_id: f.ref.notice_id, package_digest: f.ref.package_digest, revoked_at: f.ref.revoked_at, reason: f.ref.reason, from_version: from, to_version: to, tombstone_id: inserted ? tombstoneId : null, already_tombstoned: !inserted };
+      await cap.recordImportRevocationCustody({ manifestId, tenantId: f.scope.tenantId, domainId: f.scope.domainId, importId: f.importId, itemId: String(item['item_id']), evdObjectId: objectId, details, actor: f.actor, correlationId: f.correlationId });
+      await cap.markImportItemRevoked({ itemId: String(item['item_id']), importId: f.importId, tenantId: f.scope.tenantId, domainId: f.scope.domainId, outcome: 'tombstoned', details: { object_id: objectId, from_version: from, to_version: to, manifest_id: manifestId, locator, tombstone_id: inserted ? tombstoneId : null, already_tombstoned: !inserted, notice_id: f.ref.notice_id }, actor: f.actor, correlationId: f.correlationId });
+      await cap.releaseSavepoint(sp);
+      withdrawnObjects.add(objectId);
+      f.tally.tombstoned.push(objectId);
+      if (locator !== null) f.tally.locators.push({ locator, vault: 'evidence', stagedToo: true }, { locator, vault: 'archive', stagedToo: true });
+      return 'tombstoned';
+    } catch (e) {
+      const message = String((e as { message?: unknown })?.message ?? '');
+      const hold = HOLD_REFUSAL.exec(message);
+      if (hold !== null) {
+        // D12: the hold takes precedence — the record stays whole (the version rolled back with the tombstone); refused with the hold named, retried when lifted.
+        await cap.rollbackToSavepoint(sp);
+        return (await this.markRefused(cap, item, f, { reason: message.slice(0, 600), gate: 'legal_hold', hold_id: hold[1] ?? null, manifest_id: manifestId, locator })) ? 'refused' : 'skipped';
+      }
+      const c = revocationRefusalOf(e);
+      if (c === null) throw e;
+      await cap.rollbackToSavepoint(sp);
+      if (c.kind === 'skipped') { f.tally.skipped += 1; return 'skipped'; }
+      return (await this.markRefused(cap, item, f, { reason: c.reason, gate: c.gate, hold_id: null, manifest_id: manifestId, locator })) ? 'refused' : 'skipped';
+    }
+  }
+
+  /**
+   * C4, C6: the facts of the ONE import.revoked event from the ITEM MAP — every item retracted, retired, withdrawn or tombstoned SINCE
+   * the latest finish of an earlier attempt (none → all of them): the retired entities read back (name, state), the retracted edges read
+   * back, the distinct withdrawn claim ids, the tombstoned record ids; the walk seeds — every tombstoned record, then every withdrawn
+   * claim no seeded record's lineage reaches (`claim_withdrawal`). Read BEFORE the finish records its own event.
+   */
+  private async revokedFactsOf(cap: RetentionReads, scope: Scope, importId: string): Promise<{ count: number; identities: ImportChangeFacts['identities']; edges: ImportChangeFacts['edges']; claims: string[]; evidence: string[]; walkSeeds: ImportWalkSeed[] }> {
+    const items = (await cap.readImportItems().selectAll().where('import_id' as never, '=', importId as never).where('disposition' as never, 'in', ['admitted', 'reused'] as never).where('revoked_at' as never, 'is not', null as never).orderBy('dependency_order' as never).execute()) as Row[];
+    const lastFinish = (await cap.readImportEvents().select(['occurred_at' as never]).where('import_id' as never, '=', importId as never).where('event' as never, 'in', ['import.revoked', 'import.revocation_held'] as never).orderBy('occurred_at' as never, 'desc').limit(1).executeTakeFirst()) as Row | undefined;
+    const since = lastFinish === undefined ? null : Date.parse(instantOf(lastFinish['occurred_at']) ?? '');
+    const fresh = items.filter((it) => {
+      const outcome = String((isObject(it['revocation']) ? (it['revocation'] as Row) : {})['outcome'] ?? '');
+      if (!['retracted', 'retired', 'withdrawn', 'tombstoned'].includes(outcome)) return false;
+      const at = Date.parse(instantOf(it['revoked_at']) ?? '');
+      return since === null || Number.isNaN(since) || (Number.isFinite(at) && at > since);
+    });
+    const revocationOf = (it: Row): Row => (isObject(it['revocation']) ? (it['revocation'] as Row) : {});
+    const retiredIds = [...new Set(fresh.filter((it) => revocationOf(it)['outcome'] === 'retired').map((it) => str(revocationOf(it)['entity_id'])).filter((x): x is string => x !== null))];
+    const retractedIds = [...new Set(fresh.filter((it) => revocationOf(it)['outcome'] === 'retracted').map((it) => str(revocationOf(it)['edge_id'])).filter((x): x is string => x !== null))];
+    const claims = [...new Set(fresh.filter((it) => revocationOf(it)['outcome'] === 'withdrawn').map((it) => str(revocationOf(it)['object_id']) ?? str((isObject(it['admitted']) ? (it['admitted'] as Row) : {})['object_id'])).filter((x): x is string => x !== null))];
+    const evidence = [...new Set(fresh.filter((it) => revocationOf(it)['outcome'] === 'tombstoned').map((it) => str(revocationOf(it)['object_id']) ?? str((isObject(it['admitted']) ? (it['admitted'] as Row) : {})['object_id'])).filter((x): x is string => x !== null))];
+    const entityRows = retiredIds.length === 0 ? [] : ((await cap.readEntities().selectAll().where('entity_id' as never, 'in', retiredIds as never).execute()) as Row[]);
+    const entityById = new Map(entityRows.map((r) => [String(r['entity_id']), r]));
+    const identities: ImportChangeFacts['identities'] = retiredIds.map((id) => { const r = entityById.get(id); return { entity_id: id, role: 'retired', canonical_name: r === undefined ? null : str(r['canonical_name']), lifecycle_state: r === undefined ? 'retired' : (str(r['lifecycle_state']) ?? 'retired') }; });
+    const edgeRows = retractedIds.length === 0 ? [] : ((await cap.readEdges().selectAll().where('edge_id' as never, 'in', retractedIds as never).execute()) as Row[]);
+    const edgeById = new Map(edgeRows.map((r) => [String(r['edge_id']), r]));
+    const edges: ImportChangeFacts['edges'] = retractedIds.map((id) => {
+      const r = edgeById.get(id) ?? {};
+      const e: ImportChangeFacts['edges'][number] = { edge_id: id, state: str(r['state']) ?? 'retracted', valid_from: instantOf(r['valid_from']), valid_to: instantOf(r['valid_to']), asserted_at: instantOf(r['asserted_at']), retracted_at: instantOf(r['retracted_at']), claim_object_id: str(r['claim_object_id']) };
+      const predicate = str(r['predicate']); const subject = str(r['subject_entity_id']); const object = str(r['object_entity_id']);
+      if (predicate !== null) e.predicate = predicate;
+      if (subject !== null) e.subject_entity_id = subject;
+      if (object !== null) e.object_entity_id = object;
+      return e;
+    });
+    // C6: the seeds — the tombstoned records first; a withdrawn claim no seeded record's lineage reaches is seeded on its own.
+    const reached = new Set<string>();
+    if (evidence.length > 0 && claims.length > 0) {
+      const lineage = (await cap.readClaimLineage().select(['claim_object_id' as never]).where('evidence_object_id' as never, 'in', evidence as never).execute()) as Row[];
+      for (const l of lineage) reached.add(String(l['claim_object_id']));
+    }
+    const walkSeeds: ImportWalkSeed[] = [...evidence.map((id) => ({ kind: 'evidence' as const, id })), ...claims.filter((id) => !reached.has(id)).map((id) => ({ kind: 'claim' as const, id }))];
+    return { count: fresh.length, identities, edges, claims, evidence, walkSeeds };
+  }
+
+  /** The latest version of a canonical object of this domain, or null when the domain holds none. */
+  private async latestRowOf(cap: RetentionReads, scope: Scope, objectId: string): Promise<Row | null> {
+    return ((await cap.readCanonicalObjects().selectAll().where('object_id' as never, '=', objectId as never).where('tenant_id' as never, '=', scope.tenantId as never).where('domain_id' as never, '=', scope.domainId as never)
+      .orderBy('object_version' as never, 'desc').limit(1).executeTakeFirst()) as Row | undefined) ?? null;
+  }
+
+  /** The state of an import of this domain (and the origin action its copies came from), cached per revocation ('' when unknown). */
+  private async importStateOf(cap: RetentionReads, f: RevocationFacts, importId: string): Promise<string> {
+    const cached = f.imports.get(importId);
+    if (cached !== undefined) return cached.state;
+    const r = UUID.test(importId) ? ((await cap.readImports().select(['state' as never, 'origin' as never]).where('import_id' as never, '=', importId as never).executeTakeFirst()) as Row | undefined) : undefined;
+    const known = { state: r === undefined ? '' : String(r['state'] ?? ''), originActionId: r === undefined ? null : str((isObject(r['origin']) ? (r['origin'] as Row) : {})['action_id']) };
+    f.imports.set(importId, known);
+    return known.state;
+  }
+
+  /**
+   * C9: the LIVE imports holding a group's copy — for an ADMITTED item, every admitted import whose reused item points at it; for a
+   * REUSED item, its source import while that import is admitted or revoking (the copy is the source's to destroy), else the other
+   * admitted imports reusing the same source item. Empty when nothing live holds it: this revocation destroys the copy.
+   */
+  private async holdersOfGroup(cap: RetentionReads, f: RevocationFacts, group: Row[]): Promise<string[]> {
+    const holders = new Set<string>();
+    for (const item of group) {
+      const planned = isObject(item['planned']) ? (item['planned'] as Row) : {}; const reuse = isObject(planned['reuse']) ? (planned['reuse'] as Row) : null;
+      if (String(item['disposition']) === 'reused') {
+        const sourceImport = reuse === null ? null : str(reuse['import_id']); const sourceItem = reuse === null ? null : str(reuse['item_id']);
+        if (sourceImport === null || sourceItem === null) { holders.add(sourceImport ?? 'unknown'); continue; }
+        if (['admitted', 'revoking'].includes(await this.importStateOf(cap, f, sourceImport))) { holders.add(sourceImport); continue; }
+        for (const h of await this.reusersOf(cap, f, sourceItem)) holders.add(h);
+      } else {
+        for (const h of await this.reusersOf(cap, f, String(item['item_id']))) holders.add(h);
+      }
+    }
+    return [...holders];
+  }
+  /** The ADMITTED imports of this domain — other than this one — holding a reused item that points at the item given. */
+  private async reusersOf(cap: RetentionReads, f: RevocationFacts, itemId: string): Promise<string[]> {
+    const rows = (await cap.readImportItems().select(['import_id' as never]).where('disposition' as never, '=', 'reused' as never).where('import_id' as never, '!=', f.importId as never)
+      .where(sql`(planned -> 'reuse' ->> 'item_id')` as never, '=', itemId as never).execute()) as Row[];
+    const out: string[] = [];
+    for (const id of new Set(rows.map((r) => String(r['import_id'])))) if ((await this.importStateOf(cap, f, id)) === 'admitted') out.push(id);
+    return out;
+  }
+  /** A latest version another LIVE import admitted (its payload's `imported_from.import_id`): the object is that import's to withdraw. */
+  private async liveOwnerOf(cap: RetentionReads, f: RevocationFacts, prior: Row): Promise<string[]> {
+    const payload = isObject(prior['payload']) ? (prior['payload'] as Row) : {}; const from = isObject(payload['imported_from']) ? (payload['imported_from'] as Row) : null;
+    const owner = from === null ? null : str(from['import_id']);
+    if (owner === null || owner === f.importId) return [];
+    return ['admitted', 'revoking'].includes(await this.importStateOf(cap, f, owner)) ? [owner] : [];
+  }
+  /** The holders a port or the service answered for an item, noted for the receipt (each holder's origin action cached on first sight). */
+  private async noteHeld(cap: RetentionReads, f: RevocationFacts, heldBy: unknown, itemId: string): Promise<void> {
+    for (const h of Array.isArray(heldBy) ? heldBy : []) {
+      if (typeof h !== 'string') continue;
+      f.tally.held.set(h, [...(f.tally.held.get(h) ?? []), itemId]);
+      await this.importStateOf(cap, f, h);
+    }
+  }
+  private async markLeft(cap: RetentionWrites, item: Row, f: RevocationFacts, heldBy: string[]): Promise<void> {
+    await cap.markImportItemRevoked({ itemId: String(item['item_id']), importId: f.importId, tenantId: f.scope.tenantId, domainId: f.scope.domainId, outcome: 'left', details: { kind: String(item['kind']), reason: `held under import ${heldBy.join(', ')} (admitted, not revoked)`, held_by: heldBy }, actor: f.actor, correlationId: f.correlationId });
+    await this.noteHeld(cap, f, heldBy, String(item['item_id']));
+    f.tally.left += 1;
+  }
+  /** The item marked refused with the reason (a hold's, a port's) — false when another attempt settled it meanwhile (C14: skipped). */
+  private async markRefused(cap: RetentionWrites, item: Row, f: RevocationFacts, r: { reason: string; gate: string; hold_id: string | null; manifest_id: string | null; locator: string | null }): Promise<boolean> {
+    try {
+      await cap.markImportItemRevoked({ itemId: String(item['item_id']), importId: f.importId, tenantId: f.scope.tenantId, domainId: f.scope.domainId, outcome: 'refused', details: { reason: r.reason, gate: r.gate, hold_id: r.hold_id, manifest_id: r.manifest_id, locator: r.locator, notice_id: f.ref.notice_id }, actor: f.actor, correlationId: f.correlationId });
+    } catch (e) {
+      if (SETTLED_BY_ANOTHER_ATTEMPT.test(String((e as { message?: unknown })?.message ?? ''))) return false;
+      throw e;
+    }
+    f.tally.refused.push({ item_id: String(item['item_id']), kind: String(item['kind']), origin_ref: String(item['origin_ref']), ref: String(item['origin_ref']), reason: r.reason, hold_id: r.hold_id, manifest_id: r.manifest_id });
+    return true;
+  }
+  private destroyedOf(t: RevocationTally): { records: number; claims: number; entities: number; edges: number } {
+    return { records: t.tombstoned.length, claims: t.withdrawn.length, entities: t.retired.length, edges: t.retracted.length };
+  }
+  /** C9: the holders named in the receipt — each with the origin action its copy came from (the origin's other package), as cached during the writes. */
+  private heldByOf(f: RevocationFacts): Array<{ import_id: string; origin_action_id: string | null }> {
+    return [...f.tally.held.keys()].map((id) => ({ import_id: id, origin_action_id: f.imports.get(id)?.originActionId ?? null }));
+  }
+  /** C9 at the retry: which of the recorded holders still stand (admitted), with their origin actions — read inside write #0. */
+  private async liveHoldersOf(cap: RetentionReads, scope: Scope, ids: string[]): Promise<Array<{ import_id: string; origin_action_id: string | null }>> {
+    const wanted = ids.filter((x) => UUID.test(x));
+    if (wanted.length === 0) return [];
+    const rows = (await cap.readImports().select(['import_id' as never, 'state' as never, 'origin' as never]).where('tenant_id' as never, '=', scope.tenantId as never).where('domain_id' as never, '=', scope.domainId as never).where('import_id' as never, 'in', wanted as never).execute()) as Row[];
+    return rows.filter((r) => String(r['state']) === 'admitted').map((r) => ({ import_id: String(r['import_id']), origin_action_id: str((isObject(r['origin']) ? (r['origin'] as Row) : {})['action_id']) }));
+  }
+  /**
+   * D13: the receipt — the recipient's answer in the station script's shape (transfer-station-recipient.mjs) plus `import_id`, `refused`,
+   * `verifier`; `copies_destroyed` true only when every copy of this delivery went (nothing refused, no byte failed, nothing held by another
+   * import — C9's `held_by` and statement otherwise: the honest answer, mismatched at the origin).
+   */
+  private receiptBodyOf(a: { importId: string; scope: Scope; ref: ImportRevocationRef; notice: Row | null; destroyed: Row; refused: RefusedRevocationItem[]; bytes: { removed: string[]; failed: string[] }; held: Array<{ import_id: string; origin_action_id: string | null }>; copiesDestroyed: boolean; retried: boolean }): Row {
+    const delivery = a.notice !== null && isObject(a.notice['delivery']) ? (a.notice['delivery'] as Row) : {};
+    return {
+      receipt_id: newId(), notice_id: a.ref.notice_id, delivery_id: str(delivery['delivery_id']), action_id: a.ref.action_id, package_digest: a.ref.package_digest,
+      copies_destroyed: a.copiesDestroyed, destroyed: a.destroyed,
+      refused: a.refused.map((x) => ({ manifest_id: x.manifest_id, ref: x.ref, reason: x.reason, hold_id: x.hold_id })),
+      bytes_failed: a.bytes.failed,
+      ...(a.held.length === 0 ? {} : { held_by: a.held, statement: `the copies remain under import(s) ${a.held.map((h) => h.import_id).join(', ')} of this domain, admitted from the origin's other package(s); revoking those packages destroys them` }),
+      ...(a.retried ? { retried: true } : {}),
+      recipient: `import:${a.scope.tenantId}/${a.scope.domainId}/${a.importId}`, import_id: a.importId, received_at: new Date().toISOString(), verifier: 'the product (retention.import.revoke)',
+    };
   }
 
   // ───────────────────────── the reads ─────────────────────────
@@ -871,8 +1549,81 @@ interface AdmissionFacts {
   importId: string; scope: Scope; actor: string; correlationId: string;
   map: Map<string, string>; outcomes: Map<string, Outcome>;
   itemsByRef: Map<string, Row>; recordsByObject: Map<string, Row[]>;
-  origin: Row; partner: Row; contract: Row; partnerKey: string; archiveDigest: string;
+  origin: Row; partner: Row; contract: Row; partnerKey: string; archiveDigest: string; packageDigest: string;
   ceiling: string; sourceId: string; contractVersion: number; provenanceRef: string; residency: string; retentionProfile: string; acquisitionMode: string;
+  /** D20: the intake contract's authority class — what the ObservationRecorded rows announce. */
+  authorityClass: string;
+}
+/**
+ * D20: ONE ObservationRecorded for a record the batch ADMITTED — the lifecycle's shape (lifecycle.service.ts) with `obs_object_id` null
+ * (no OBS of this domain: the origin's is inside `imported_from`), `run_id` null, acquisition_mode `import`, the intake contract's source
+ * and authority class, the BYTES digest (the candidate's, as the lifecycle names it), and the origin under `imported`. Published, not
+ * consumed (L1-I03 stays partial).
+ */
+function observationRecordedOf(d: DecidedRecord, f: AdmissionFacts): { eventType: string; payload: Record<string, unknown> } {
+  const admitted = f.outcomes.get(String(d.item['item_id']))?.admitted ?? {};
+  const staged = isObject(d.item['staged']) ? (d.item['staged'] as Row) : {};
+  return {
+    eventType: 'ObservationRecorded',
+    payload: {
+      schema_version: 'v1', obs_object_id: null, evd_object_id: String(admitted['object_id'] ?? ''), evd_version: Number(admitted['object_version'] ?? 1), revision: false,
+      source_id: f.sourceId, contract_version: f.contractVersion, run_id: null, acquisition_mode: 'import', authority_class: f.authorityClass,
+      content_digest: d.candidate?.contentDigest ?? String(staged['digest'] ?? ''),
+      imported: { import_id: f.importId, partner_key: f.partnerKey, origin: { tenant_id: f.origin['tenant_id'] ?? null, domain_id: f.origin['domain_id'] ?? null, action_id: f.origin['action_id'] ?? null, package_digest: f.packageDigest } },
+    },
+  };
+}
+
+/** What the admission's write #0 answers: an admitted import found (the finalisation alone, N7) or the admission begun with its facts. */
+type AdmissionBegun = { kind: 'finalize' | 'admit'; import: Row; items: Row[]; partner: Row | null; contract: Row | null };
+/** What the revocation's write #0 answers: the revocation begun (its source recorded), a revoked import to retry (C5), or a station notice refused. */
+type RevocationBegun = {
+  row: Row; items: Row[]; partner: Row | null; station: { destination: Row; endpoint: string } | null; origin: { tenantId: string; domainId: string; actionId: string };
+  holders: Array<{ import_id: string; origin_action_id: string | null }>; opened: { directory: string; path: string; notice: Row } | null;
+} & ({ kind: 'begin'; begun: Row; revocation: Row; notice: Row | null } | { kind: 'retried'; begun: Row } | { kind: 'refused'; reason: string });
+/** B17: the facts a revocation carries from write #0 into every batch — and its running tally. */
+interface RevocationFacts {
+  importId: string; scope: Scope; actor: string; correlationId: string; purposeId: string;
+  /** The block every port takes as p_revocation: the source as begin_import_revocation recorded it, minus the notice itself. */
+  revocation: Row; ref: ImportRevocationRef; partnerKey: string;
+  /** C9: the imports this revocation asked about (state, the origin action of their copies), read once each. */
+  imports: Map<string, { state: string; originActionId: string | null }>;
+  tally: RevocationTally;
+}
+interface RevocationTally {
+  /** The ports' answers for the edges retracted and the entities retired by THIS attempt; the object ids withdrawn and tombstoned by it. */
+  retracted: Row[]; retired: Row[]; withdrawn: string[]; tombstoned: string[];
+  left: number; skipped: number; refused: RefusedRevocationItem[];
+  /** C9: holder import id → the items it holds. */
+  held: Map<string, string[]>;
+  /** The tombstoned records' locators, for the bytes after the commit (both roots, the staged copies too). */
+  locators: Array<{ locator: string; vault: VaultName; stagedToo?: boolean }>;
+}
+/** An item a revocation still has to settle: admitted or reused, not yet revoked — or revoked with the outcome refused (a hold since lifted). */
+function isPendingRevocation(it: Row): boolean {
+  const d = String(it['disposition']);
+  if (d !== 'admitted' && d !== 'reused') return false;
+  if (it['revoked_at'] === null || it['revoked_at'] === undefined) return true;
+  return (isObject(it['revocation']) ? (it['revocation'] as Row) : {})['outcome'] === 'refused';
+}
+/** The revocation block reduced to what a header, a reason and a receipt name. */
+function revocationRefOf(block: Row): ImportRevocationRef {
+  return { action_id: str(block['action_id']) ?? '', package_digest: str(block['package_digest']) ?? '', revoked_at: instantOf(block['revoked_at']), reason: str(block['reason']), notice_id: str(block['notice_id']) };
+}
+/** Why a graph item is LEFT by a revocation (D5): a reused row is another import's; an identifier and an identifier system are facts of the domain. */
+function leftReasonOf(item: Row): string {
+  const kind = String(item['kind']); const planned = isObject(item['planned']) ? (item['planned'] as Row) : {}; const reuse = isObject(planned['reuse']) ? (planned['reuse'] as Row) : null;
+  if (reuse !== null) return reuse['by'] === 'identifier' ? `identified by the authoritative identifier ${String(reuse['system_key'])} ${String(reuse['value'])} as an entity of this domain; it is the domain's, not this import's` : `admitted earlier into this domain by import ${String(reuse['import_id'] ?? '?')}; the copy is that import's`;
+  if (kind === 'identifier') return 'an identifier is a fact of the domain and stays — of a retired entity when this import created the entity (the memory-mappings subscriber proposes what to do with it)';
+  if (kind === 'identifier_system') return 'an identifier system is a declaration of the domain and stays';
+  return 'left as it stands';
+}
+/** C3 / C14: a port's refusal of a revocation item — `skipped` when another attempt settled it meanwhile, `refused` with its gate otherwise; null propagates. */
+function revocationRefusalOf(e: unknown): { kind: 'skipped'; reason: string } | { kind: 'refused'; gate: string; reason: string } | null {
+  const message = String((e as { message?: unknown })?.message ?? '');
+  if (!isInfrastructureFault(e) && !(e instanceof HttpException) && SETTLED_BY_ANOTHER_ATTEMPT.test(message)) return { kind: 'skipped', reason: message.slice(0, 600) };
+  const r = refusalOf(e);
+  return r === null ? null : { kind: 'refused', gate: r.gate, reason: r.reason };
 }
 /** A hint for the schema refusal's reason: the forms an import admits. */
 const IMPORT_FORMS_HINT: Readonly<Record<string, string>> = { EVD: 'EVD@v1|v2', ENT: 'ENT@v1|v2', EVT: 'EVT@v1|v2', REL: 'REL@v1|v2', ASM: 'ASM@v1|v2', CLM: 'CLM@v2|v3' };
@@ -900,7 +1651,7 @@ function refusalOf(e: unknown): { gate: string; reason: string } | null {
   const code = String((e as { code?: unknown })?.code ?? ''); const message = String((e as { message?: unknown })?.message ?? '');
   if (!PORT_REFUSAL.test(message) && !REFUSAL_CODES.test(code)) return null;
   const reason = message.slice(0, 600);
-  const m = /^retention import rejected \((dependency|ontology|identifier|contract_changed|duplicate)\)/.exec(message);
+  const m = /^retention import rejected \((dependency|ontology|identifier|contract_changed|duplicate|notice)\)/.exec(message);
   if (m !== null) return { gate: m[1] === 'contract_changed' || m[1] === 'duplicate' ? 'record' : (m[1] as string), reason };
   if (message.startsWith('retention import rejected')) return { gate: 'record', reason };
   if (/schema_ref|unregistered field|missing required field/.test(message)) return { gate: 'schema', reason };

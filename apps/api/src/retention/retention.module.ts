@@ -12,10 +12,15 @@
  * minted ids, the admission in batches through the pipeline under retention.import.admit, the quarantine copies' lifecycle)
  * is this module's provider beside the export's; it reads the vault, the delivery service (the transfer station's package)
  * and the pipeline (the admission orchestrates its own writes).
+ *
+ * CP-6 B17 (0077; D3): the module imports the GRAPH module for the ImpactService — the revocation's one GraphChanged carries the
+ * SAME walk the invalidation uses (the walker takes a structural pick of the reads; the retention capability supplies them), never
+ * a second walker. No cycle: the graph module imports nothing from retention, exactly as the prediction and twin modules import it.
  */
 import { Module } from '@nestjs/common';
 import { PipelineModule } from '../pipeline/pipeline.module.js';
 import { ObservationModule } from '../observation/observation.module.js';
+import { GraphModule } from '../graph/graph.module.js';
 import { RetentionController } from './retention.controller.js';
 import { RetentionService } from './retention.service.js';
 import { DestinationCredentialStore, ExportSigningKeyStore } from './export-signing.js';
@@ -23,7 +28,7 @@ import { DeliveryEgress, ExportDeliveryService } from './export-delivery.service
 import { ImportService } from './import.service.js';
 
 @Module({
-  imports: [PipelineModule, ObservationModule],
+  imports: [PipelineModule, ObservationModule, GraphModule],
   controllers: [RetentionController],
   providers: [RetentionService, ExportSigningKeyStore, DestinationCredentialStore, DeliveryEgress, ExportDeliveryService, ImportService],
   exports: [RetentionService],
