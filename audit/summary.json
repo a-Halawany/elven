@@ -15,24 +15,24 @@
   },
   "impl": {
     "implemented": 956,
-    "missing": 2544,
+    "missing": 2543,
     "not-applicable": 26,
-    "partial": 2738
+    "partial": 2739
   },
   "verif": {
     "not-applicable": 422,
     "passed:browser": 360,
     "passed:ci": 196,
     "passed:ci+browser": 3,
-    "passed:harness": 1913,
+    "passed:harness": 1914,
     "passed:harness+browser": 22,
     "passed:harness+ci": 5,
-    "unverified": 3343
+    "unverified": 3342
   },
   "release": {
-    "branch-only": 1788,
+    "branch-only": 1789,
     "merged": 1881,
-    "none": 2595
+    "none": 2594
   },
   "phase": {
     "not-applicable": 358,

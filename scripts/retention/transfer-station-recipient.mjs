@@ -4,6 +4,7 @@
  * DP-47-005 "require recipient acknowledgement before closure", ES-53-004, NZ-20, CMP-102).
  *
  *   node scripts/retention/transfer-station-recipient.mjs <station-root> <tenant> <domain> <action_id> [--public-key <pem-file>] [--recipient <name>]
+ *   node scripts/retention/transfer-station-recipient.mjs <station-root> <tenant> <domain> <action_id> --revocation [--refuse] [--recipient <name>]
  *
  * THIS IS A DEMONSTRATION RECIPIENT, NOT A PRODUCT COMPONENT. A transfer station is a directory the product WRITES a delivery
  * into (`<station-root>/<tenant>/<domain>/<action_id>/` — package.tar, package.sig, delivery.json) and READS a receipt from
@@ -30,6 +31,15 @@
  *      product records the exchange as MISMATCHED and keeps the request and the evidence); a station without a delivery to
  *      answer (no delivery.json, no package.tar, a note that is not a JSON object) exits 2 and writes nothing.
  *
+ * THE REVOCATION (CP-6 B14; migration 0074 §3; ES-29-005 "revocation context", DP-47-005): with --revocation the script does what a
+ * recipient does when the product tells it the package is revoked — it reads revocation.json (the notice the product wrote beside
+ * delivery.json: notice_id, the delivery it concerns, the package digest, the instant and the reason, the OBLIGATION), checks that the
+ * notice concerns the delivery it holds, DESTROYS its copies (package.tar and package.sig in the station directory — the product removes
+ * the ones it placed there after its own commit; whichever is still here is removed by the recipient) and writes revocation-receipt.json
+ * by temp + fsync + rename: { receipt_id, notice_id, delivery_id, action_id, package_digest, copies_destroyed: true, destroyed: [...],
+ * recipient, received_at }. With --refuse it writes copies_destroyed: false (the honest answer of a recipient that keeps its copies —
+ * the product records the exchange as MISMATCHED). Exits 0 when the receipt was written; 2 when there is no notice to answer.
+ *
  * Node 18 or later; no dependency.
  */
 import { spawnSync } from 'node:child_process';
@@ -48,11 +58,13 @@ const fail = (line) => { console.error(`[demonstration recipient] ${line}`); pro
 
 /* ── arguments ─────────────────────────────────────────────────────────────── */
 const args = process.argv.slice(2);
-const positional = []; let publicKeyPath = null; let recipientName = null;
+const positional = []; let publicKeyPath = null; let recipientName = null; let revocationMode = false; let refuse = false;
 for (let i = 0; i < args.length; i += 1) {
   const a = args[i];
   if (a === '--public-key') { publicKeyPath = String(args[i + 1] ?? ''); i += 1; }
   else if (a === '--recipient') { recipientName = String(args[i + 1] ?? ''); i += 1; }
+  else if (a === '--revocation') revocationMode = true;
+  else if (a === '--refuse') refuse = true;
   else if (a === '--help' || a === '-h') { console.log(USAGE); process.exit(0); }
   else positional.push(a);
 }
@@ -64,6 +76,60 @@ if (!existsSync(root) || !statSync(root).isDirectory()) fail(`the station root $
 if (publicKeyPath !== null) { publicKeyPath = resolve(publicKeyPath); if (!existsSync(publicKeyPath)) fail(`the public key file ${publicKeyPath} does not exist`); }
 const dir = join(root, tenant, domain, actionId);
 const tarPath = join(dir, 'package.tar'); const notePath = join(dir, 'delivery.json'); const receiptPath = join(dir, 'receipt.json');
+
+/** A JSON object written by temp + fsync + rename; the failure exits 2 (the temp name is ours; nothing else is touched). */
+const writeJson = (path, value) => {
+  const tmp = `${path}.tmp-${process.pid}-${randomUUID().slice(0, 8)}`;
+  try {
+    const fd = openSync(tmp, 'wx', 0o644);
+    try { writeSync(fd, `${JSON.stringify(value, null, 2)}\n`); fsyncSync(fd); } finally { closeSync(fd); }
+    renameSync(tmp, path);
+  } catch (e) {
+    try { rmSync(tmp, { force: true }); } catch { /* ours */ }
+    fail(`${path} could not be written: ${e.message}`);
+  }
+};
+
+/* ── the REVOCATION (B14): the notice read, the copies destroyed, the receipt written ── */
+if (revocationMode) {
+  const revocationPath = join(dir, 'revocation.json'); const revocationReceiptPath = join(dir, 'revocation-receipt.json');
+  say('THIS IS THE DEMONSTRATION RECIPIENT answering a REVOCATION NOTICE: it stands in for the customer\'s own system on the demonstration\'s isolated transfer station');
+  say(`station directory ${dir}`);
+  if (!existsSync(revocationPath)) fail(`no revocation.json in ${dir}: nothing was revoked here, nothing to answer`);
+  let notice;
+  try { notice = JSON.parse(readFileSync(revocationPath, 'utf8')); } catch (e) { fail(`revocation.json does not parse: ${e.message}`); }
+  if (notice === null || typeof notice !== 'object' || Array.isArray(notice)) fail('revocation.json is not a JSON object');
+  if (typeof notice.notice_id !== 'string') fail('revocation.json names no notice_id; the receipt must name its notice');
+  const heldDeliveryId = existsSync(notePath) ? (() => { try { return JSON.parse(readFileSync(notePath, 'utf8')).delivery_id ?? null; } catch { return null; } })() : null;
+  const concerns = notice.delivery && typeof notice.delivery === 'object' ? notice.delivery.delivery_id ?? null : null;
+  say(`notice ${notice.notice_id} attempt ${notice.attempt ?? '?'}: the package ${notice.package_digest ?? '?'} of action ${notice.action_id ?? '?'} was REVOKED at ${notice.revoked_at ?? '?'}${notice.reason ? ` — ${JSON.stringify(notice.reason)}` : ''}; it concerns delivery ${concerns ?? '?'}${heldDeliveryId !== null ? (heldDeliveryId === concerns ? ' (the delivery this station holds)' : ` (this station holds delivery ${heldDeliveryId})`) : ' (no delivery.json here)'}`);
+  say(`the obligation: ${notice.obligation ?? '(none stated)'}`);
+  const destroyed = []; const alreadyGone = [];
+  if (refuse) say('--refuse: the copies are KEPT; the receipt says copies_destroyed: false (the product records the exchange as MISMATCHED)');
+  else {
+    for (const name of ['package.tar', 'package.sig']) {
+      const full = join(dir, name);
+      if (existsSync(full)) { rmSync(full, { force: true }); destroyed.push(name); } else alreadyGone.push(name);
+    }
+    say(`copies destroyed: ${destroyed.length > 0 ? destroyed.join(', ') : 'none here'}${alreadyGone.length > 0 ? ` (${alreadyGone.join(', ')} already gone — the product removed what it placed here)` : ''}`);
+  }
+  const receipt = {
+    receipt_id: randomUUID(),
+    notice_id: notice.notice_id,
+    delivery_id: concerns,
+    action_id: typeof notice.action_id === 'string' ? notice.action_id : actionId,
+    package_digest: typeof notice.package_digest === 'string' ? notice.package_digest : null,
+    copies_destroyed: !refuse,
+    destroyed,
+    recipient: recipientName ?? (typeof notice.recipient === 'string' && notice.recipient.length > 0 ? notice.recipient : 'demonstration recipient'),
+    received_at: new Date().toISOString(),
+  };
+  const replaced = existsSync(revocationReceiptPath);
+  writeJson(revocationReceiptPath, receipt);
+  say(`revocation-receipt.json written${replaced ? ' (an earlier notice\'s receipt replaced)' : ''}: receipt ${receipt.receipt_id} for notice ${receipt.notice_id} — copies_destroyed ${receipt.copies_destroyed}`);
+  say('the product collects it with the collect-receipt act of the notice (ACKNOWLEDGED when it names the package digest and copies_destroyed is true; MISMATCHED otherwise)');
+  process.exit(0);
+}
 
 /* ── 1. the delivery note ──────────────────────────────────────────────────── */
 say('THIS IS THE DEMONSTRATION RECIPIENT: it stands in for the customer\'s own system on the demonstration\'s isolated transfer station');

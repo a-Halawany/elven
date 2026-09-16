@@ -14,12 +14,12 @@ import { ObservationModule } from '../observation/observation.module.js';
 import { RetentionController } from './retention.controller.js';
 import { RetentionService } from './retention.service.js';
 import { DestinationCredentialStore, ExportSigningKeyStore } from './export-signing.js';
-import { ExportDeliveryService } from './export-delivery.service.js';
+import { DeliveryEgress, ExportDeliveryService } from './export-delivery.service.js';
 
 @Module({
   imports: [PipelineModule, ObservationModule],
   controllers: [RetentionController],
-  providers: [RetentionService, ExportSigningKeyStore, DestinationCredentialStore, ExportDeliveryService],
+  providers: [RetentionService, ExportSigningKeyStore, DestinationCredentialStore, DeliveryEgress, ExportDeliveryService],
   exports: [RetentionService],
 })
 export class RetentionModule {}

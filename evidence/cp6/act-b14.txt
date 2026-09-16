@@ -1,0 +1,114 @@
+=== CP-6 B14 on the demonstration (NORDWERK, eye_demo) — 2026-09-16T07:36:36Z, tree over be72aa8 (the B14 candidate, uncommitted at run time; committed as the next head); rehearsed first on a restored copy (eye_demo_b14) with its own vault copy, its own key, station, recipient and Redis ===
+
+0. the preparation (the operator's, before the act — docs/ops/DEMONSTRATION_RUNBOOK.md §8):
+     the demonstration recipient's bearer generated and bound by reference EYE_DST_NORDWERK_DEMO in .eye-local/env (mode 0600; the value never printed) — the API process carries it to the recipient on the one hop; the recipient requires it
+     the DEMONSTRATION HTTPS RECIPIENT (scripts/retention/https-recipient.mjs — NOT the product) started: https://127.0.0.1:3443 on this host's loopback interface, certificate .eye-local/https-recipient-demo/recipient-cert.pem (16:46:A3:1C:5F:4C:EE:3C:57:04:10:9B:1E:71:35:91:6A:53:58:BC:D0:D9:65:3E:48:E6:58:3C:98:02:44:65), store .eye-local/https-recipient-demo, log .eye-local/https-recipient-demo/recipient.log
+     the transfer station directory: /Users/halawany/work/personal/mohammed/new_project/.eye-local/transfer-station-demo (B13's; outside the four vault roots)
+
+0b. the running target before anything (the runbook §2):
+     the API on :3401 is pid 73627; its demonstration settings:
+       EYE_CONNECTOR_PER_SOURCE_CONCURRENCY=1
+       EYE_DB_NAME=eye_demo
+       EYE_DEGRADED_DIR=/Users/halawany/work/personal/mohammed/new_project/apps/api/.eye-local/degraded-demo
+       EYE_RUNTIME_PORT=3401
+       EYE_SCHEDULER_ENABLED=true
+       (no EYE_VAULT_*_ROOT set: the roots are the workspace's .eye-local/vault/{quarantine,evidence,archive,export})
+       /readyz: {"status":"ok","db":true,"audit":"ok","auditIncidents":0,"degradedSince":null,"classification":"telemetry-only"}
+     VERIFIED: the demonstration API serves eye_demo and is ready
+
+1. the demonstration database migrated with 0074 (backup first; the migration re-declares the delivery's record port with the receipt binding, adds the destination's trust anchor and the revocation-notice ledger — no data changes)
+     backup 49161641 bytes  /private/tmp/claude-501/-Users-halawany-work-personal-mohammed-new-project/b11a7142-b60e-4b51-8618-a8185f1b1f24/scratchpad/b14/demo/eye_demo-pre-0074-20260916T073636Z.dump
+   the demonstration API stopped for the migration (pid 73627)
+     applying 0074_b14_https_exchange_receipt_binding_revocation_notice.sql ... ok
+     migrations up to date
+     role passwords synchronized from environment
+     [{"filename":"0073_b13_schedule_retirement_and_export_delivery.sql","digest":"35826c5336939226","applied_at":"2026-09-15T22:36:35.458Z"},{"filename":"0074_b14_https_exchange_receipt_binding_revocation_notice.sql","digest":"d52c8761c78de990","applied_at":"2026-09-16T07:36:44.063Z"}]
+
+2. the demonstration API restarted on the B14 build by the runbook's script (the target verified before success is reported; the key and the recipient's bearer bound from the local env):
+     $ tsc -p tsconfig.build.json && node scripts/copy-assets.mjs
+     copied src/observation/connectors/xml-worker.js -> dist/observation/connectors/xml-worker.js
+     the API on :3401 is pid 25137; its demonstration settings:
+       EYE_CONNECTOR_PER_SOURCE_CONCURRENCY=1
+       EYE_DB_NAME=eye_demo
+       EYE_DEGRADED_DIR=/Users/halawany/work/personal/mohammed/new_project/apps/api/.eye-local/degraded-demo
+       EYE_RUNTIME_PORT=3401
+       EYE_SCHEDULER_ENABLED=true
+       (no EYE_VAULT_*_ROOT set: the roots are the workspace's .eye-local/vault/{quarantine,evidence,archive,export})
+       /readyz: {"status":"ok","db":true,"audit":"ok","auditIncidents":0,"degradedSince":null,"classification":"telemetry-only"}
+     VERIFIED: the demonstration API serves eye_demo and is ready
+
+THE EYE — CP-6 B14 on the demonstration: the trust anchor, the https path through the production egress, the station exchange and the revocation notice (migration 0074)
+target http://localhost:3401 · database eye_demo · tenant 01a084f5… domain 01a084f5… · 2026-09-16T07:36:56.287Z
+prepared by the runner: the demonstration https recipient https://127.0.0.1:3443 (certificate .eye-local/https-recipient-demo/recipient-cert.pem; the bearer bound by reference EYE_DST_NORDWERK_DEMO in the API process — its value never printed); the transfer station .eye-local/transfer-station-demo; the demonstration public key .eye-local/export-signing-demo.pub.pem
+
+1. THE DESTINATION WITH ITS TRUST ANCHOR — the platform administrator declares the demonstration https destination with the recipient's certificate as its trust anchor; the production destination stays blocked-credential
+  ✓ the transfer station of B13: nordwerk-transfer-station (transfer_station; /Users/halawany/work/personal/mohammed/new_project/.eye-local/transfer-station-demo; recipient "NORDWERK GmbH — demonstration transfer station"; credential none; readiness active; anchor none (the deployment's trust store))
+  ✓ the PRODUCTION destination of B13: nordwerk-exports (https; https://exports.nordwerk.example/receive; recipient "NORDWERK GmbH — export endpoint (production; not bound on this host)"; credential EYE_DST_NORDWERK; readiness blocked-credential; anchor none (the deployment's trust store)) — its reference stays unbound on this host (production activation: the customer's endpoint, its credential, its anchor)
+  ✓ the platform administrator declared: HTTP 201 — nordwerk-exports-demo (https; https://nordwerk-exports.demo.invalid:3443/receive; recipient "NORDWERK GmbH — demonstration https recipient (this host)"; credential EYE_DST_NORDWERK_DEMO; readiness active; anchor CN=nordwerk-exports.demo.invalid · 16:46:A3:1C:5F:4C:EE:3C…)
+  ✓ the anchor as recorded is the recipient's certificate: subject CN=nordwerk-exports.demo.invalid, sha-256 fingerprint 16:46:A3:1C:5F:4C:EE:3C:57:04:10:9B:1E:71:35:91:6A:53:58:BC:D0:D9:65:3E:48:E6:58:3C:98:02:44:65 (the file's own), valid until Sep 18 07:36:37 2026 GMT; readiness active (the reference EYE_DST_NORDWERK_DEMO is bound in the API process)
+  · no credential VALUE in the destination row or the answer (the reference name and its readiness only); the anchor is PUBLIC material
+  · DEMONSTRATION vs PRODUCTION: TLS verification is never disabled — the anchor NARROWS trust to the declared party (a customer endpoint on its own PKI: the on-premise and disconnected modes of ES-53-004); a production destination declares the customer's real certificate chain, or none and trusts the deployment's store
+
+2. THE SIGNED EXPORT — P. Novák opens a customer export of the two hot NORDWERK internal records; H. Bergmann approves; executed with the demonstration key; verified
+  ✓ export 01a0a925…: 2 record(s) — P. Novák opened, H. Bergmann approved, P. Novák executed and verified; package digest 8605275684ec8374…, archive digest cdbba6a9a135f9d7…, signed by ed25519:fcd9d6bf234efb3f
+
+3. THE HTTPS PATH THROUGH THE PRODUCTION EGRESS — H. Bergmann delivers to the demonstration https destination: the credential bound, the anchor declared, the egress reached — and refused by the production vetting on this host
+  ✓ the delivery answered HTTP 201: delivery c5245277… state failed, class transport, the egress's refusal dns_failure — "host could not be resolved"; attempt 1; a FAILED delivery is a recorded fact
+  · what happened, exactly: the credential gate PASSED (EYE_DST_NORDWERK_DEMO is bound — the B13 refusal credential_unbound did not fire), the production egress RESOLVED nordwerk-exports.demo.invalid and found no address (an .invalid name resolves nowhere, on this host or any other); nothing left the process — the recipient's inspection route counts 0 delivery(ies), as before (0)
+  · STATED: the demonstration recipient listens on a loopback address of this host, which the production address vetting refuses BY DESIGN (every private, loopback, link-local and reserved address; B13 H1, B14 H3) — the positive exchange over TLS with this same recipient (the delivery acknowledged; a stale receipt held as evidence, not acknowledged — Codex B13-F1; the wrong answers classified; the anchor the only trust) is the harness's proof, phase6-retention-b14 H1–H3, where the product's own pinned transport runs on a real socket and the address vetting is the ONE substituted step; a delivery through the production egress needs a recipient on a public address — the activation step, with the customer's endpoint, credential and certificate chain
+
+4. THE STATION EXCHANGE — H. Bergmann delivers to the transfer station; the demonstration recipient verifies and answers; collected: ACKNOWLEDGED
+  ✓ H. Bergmann delivered: delivery abe2cf63… attempt 1 — the host holds .eye-local/transfer-station-demo/01a084f5-757f-7f03-9cf5-315d74426481/01a084f5-759a-751f-a1dd-38fbd7933057/01a0a925-b759-73f1-8218-19d0b14642ba/package.tar (13312 bytes, sha256 the archive digest), package.sig, delivery.json
+      [demonstration recipient] THIS IS THE DEMONSTRATION RECIPIENT: it stands in for the customer's own system on the demonstration's isolated transfer station
+      [demonstration recipient] station directory /Users/halawany/work/personal/mohammed/new_project/.eye-local/transfer-station-demo/01a084f5-757f-7f03-9cf5-315d74426481/01a084f5-759a-751f-a1dd-38fbd7933057/01a0a925-b759-73f1-8218-19d0b14642ba
+      [demonstration recipient] delivery abe2cf63-4d53-4c71-b5dd-7539719309f3 attempt 1 of action 01a0a925-b759-73f1-8218-19d0b14642ba to nordwerk-transfer-station for "NORDWERK GmbH — demonstration transfer station", delivered at 2026-09-16T07:36:58.107Z, the package expires at 2026-09-23T07:36:57.959Z
+      [demonstration recipient] the note says: package digest 8605275684ec83745e2ebabbdaffc352100d73c28e51ccf6e70edcab45112d60, archive digest cdbba6a9a135f9d77786c08e86f03750fb5fa6e877d0d256a001e6bcaa45f839, signature eye-customer-export/2 by ed25519:fcd9d6bf234efb3f
+      [demonstration recipient] package.tar: 13312 bytes, sha256 cdbba6a9a135f9d77786c08e86f03750fb5fa6e877d0d256a001e6bcaa45f839 — the archive digest the note names
+      [demonstration recipient] verifier: node scripts/retention/verify-export.mjs --tar /Users/halawany/work/personal/mohammed/new_project/.eye-local/transfer-station-demo/01a084f5-757f-7f03-9cf5-315d74426481/01a084f5-759a-751f-a1dd-38fbd7933057/01a0a925-b759-73f1-8218-19d0b14642ba/package.tar --json --public-key /Users/halawany/work/personal/mohammed/new_project/.eye-local/export-signing-demo.pub.pem --expect-package-digest 8605275684ec83745e2ebabbdaffc352100d73c28e51ccf6e70edcab45112d60
+      [demonstration recipient] verifier verdict: PACKAGE OK (exit 0; 0 failed; complete true); signature eye-customer-export/2 ed25519:fcd9d6bf234efb3f: VERIFIED against the public key
+      [demonstration recipient] receipt.json written: receipt 3c7cea4b-b1fd-4fd0-8d48-e535515f2830 for delivery abe2cf63-4d53-4c71-b5dd-7539719309f3 attempt 1 — verified true
+      [demonstration recipient] the product collects it with the collect-receipt act (the exchange closes ACKNOWLEDGED when the digests agree and verified is true; MISMATCHED otherwise)
+  ✓ H. Bergmann collected the receipt: ACKNOWLEDGED (receipt 3c7cea4b…, verified true, digest db1d79182fa8e3c956f65b54075487080492f303932c5b004d1309c028d29441)
+
+5. THE REVOCATION NOTICE — H. Bergmann revokes: the station notified in the same act; the product's copies removed from the station after the commit; the recipient answers; collected: ACKNOWLEDGED; a further notice refused by the recipient: MISMATCHED
+  ✓ H. Bergmann revoked: HTTP 201 — revoked at 2026-09-16T07:36:58.232Z, bytes removed true; the destinations that RECEIVED the package: nordwerk-transfer-station (delivery abe2cf63… attempt 1, acknowledged) — nordwerk-exports-demo never received it and is not notified; the notice to nordwerk-transfer-station: ccff3410… attempt 1, state notified (a station's recipient answers later)
+  ✓ after the commit the product removed what it placed at the station: package.tar, package.sig (absent [], failed []); the host: package.tar and package.sig gone, delivery.json, receipt.json, revocation.json kept as the record
+  ✓ revocation.json — the notice as written: notice ccff3410… attempt 1, action 01a0a925…, the delivery it concerns abe2cf63… (attempt 1, acknowledged), package 8605275684ec…, archive cdbba6a9a135…, revoked 2026-09-16T07:36:58.232Z, reason "the customer withdrew its request; every copy of the package is to be destroyed (the B14 demonstration)"; the obligation: "the package is revoked: destroy every copy of package.tar and of its contents held from this delivery, and confirm"
+  ✓ the ledgers: export.revoked at 2026-09-16T07:36:58.232Z; export.revocation_notified at 2026-09-16T07:36:58.245Z ({"kind":"transfer_station","state":"notified","attempt":1,"notice_id":"ccff3410-6cbc-4cb1-8941-d075b3222375","recipient":"NORDWERK GmbH — demonstration transfer…); custody.revocation_notified per exported record: 2 row(s)
+      [demonstration recipient] THIS IS THE DEMONSTRATION RECIPIENT answering a REVOCATION NOTICE: it stands in for the customer's own system on the demonstration's isolated transfer station
+      [demonstration recipient] station directory /Users/halawany/work/personal/mohammed/new_project/.eye-local/transfer-station-demo/01a084f5-757f-7f03-9cf5-315d74426481/01a084f5-759a-751f-a1dd-38fbd7933057/01a0a925-b759-73f1-8218-19d0b14642ba
+      [demonstration recipient] notice ccff3410-6cbc-4cb1-8941-d075b3222375 attempt 1: the package 8605275684ec83745e2ebabbdaffc352100d73c28e51ccf6e70edcab45112d60 of action 01a0a925-b759-73f1-8218-19d0b14642ba was REVOKED at 2026-09-16T07:36:58.232Z — "the customer withdrew its request; every copy of the package is to be destroyed (the B14 demonstration)"; it concerns delivery abe2cf63-4d53-4c71-b5dd-7539719309f3 (the delivery this station holds)
+      [demonstration recipient] the obligation: the package is revoked: destroy every copy of package.tar and of its contents held from this delivery, and confirm
+      [demonstration recipient] copies destroyed: none here (package.tar, package.sig already gone — the product removed what it placed here)
+      [demonstration recipient] revocation-receipt.json written: receipt bb354a6c-c0f5-45aa-912a-e9c536415435 for notice ccff3410-6cbc-4cb1-8941-d075b3222375 — copies_destroyed true
+      [demonstration recipient] the product collects it with the collect-receipt act of the notice (ACKNOWLEDGED when it names the package digest and copies_destroyed is true; MISMATCHED otherwise)
+  ✓ the demonstration recipient (NOT the product): exit 0; revocation-receipt.json — receipt bb354a6c… for notice ccff3410…, copies_destroyed true (destroyed here: [] — the product had removed them), recipient "NORDWERK GmbH — demonstration transfer station"
+  ✓ H. Bergmann collected the notice's receipt: ACKNOWLEDGED at 2026-09-16T07:36:58.324Z (receipt digest 05500149250891248beea8418db917ba082ea3e391c0c0ede790f0110ff113cb); export.revocation_acknowledged at 2026-09-16T07:36:58.325Z — the recipient's obligation confirmed (ES-29-005: the revocation context carried to the recipient; DP-47-005: the request and evidence preserved)
+  ✓ a further notice by the notify act (retention.export.notify, human-gated): 85f175cc… attempt 2, notified — revocation.json replaced
+      [demonstration recipient] THIS IS THE DEMONSTRATION RECIPIENT answering a REVOCATION NOTICE: it stands in for the customer's own system on the demonstration's isolated transfer station
+      [demonstration recipient] station directory /Users/halawany/work/personal/mohammed/new_project/.eye-local/transfer-station-demo/01a084f5-757f-7f03-9cf5-315d74426481/01a084f5-759a-751f-a1dd-38fbd7933057/01a0a925-b759-73f1-8218-19d0b14642ba
+      [demonstration recipient] notice 85f175cc-aa64-4450-adc6-86be612fe261 attempt 2: the package 8605275684ec83745e2ebabbdaffc352100d73c28e51ccf6e70edcab45112d60 of action 01a0a925-b759-73f1-8218-19d0b14642ba was REVOKED at 2026-09-16T07:36:58.232Z — "the customer withdrew its request; every copy of the package is to be destroyed (the B14 demonstration)"; it concerns delivery abe2cf63-4d53-4c71-b5dd-7539719309f3 (the delivery this station holds)
+      [demonstration recipient] the obligation: the package is revoked: destroy every copy of package.tar and of its contents held from this delivery, and confirm
+      [demonstration recipient] --refuse: the copies are KEPT; the receipt says copies_destroyed: false (the product records the exchange as MISMATCHED)
+      [demonstration recipient] revocation-receipt.json written (an earlier notice's receipt replaced): receipt b93f5478-4cf1-43ac-b9a5-7563f88f352f for notice 85f175cc-aa64-4450-adc6-86be612fe261 — copies_destroyed false
+      [demonstration recipient] the product collects it with the collect-receipt act of the notice (ACKNOWLEDGED when it names the package digest and copies_destroyed is true; MISMATCHED otherwise)
+  ✓ the recipient refused the obligation (--refuse: copies_destroyed false) → collected → MISMATCHED; the event export.revocation_mismatched carries both sides: expected {"package_digest":"8605275684ec83745e2ebabbdaffc352100d73c28e51ccf6e70edcab45112d60","copies_destroyed":true}, received {"package_digest":"8605275684ec83745e2ebabbdaffc352100d73c28e51ccf6e70edcab45112d60","copies_destroyed":false} — the exchange denied, the request and the evidence preserved
+  ✓ a notice to nordwerk-exports-demo, which never received the package: 409 — "retention notice rejected: destination nordwerk-exports-demo never received the package of 01a0a925-b759-73f1-8218-19d0b14642ba — nothing to notify"
+  ✓ the revoked package: the download refused (409 — "retention delivery rejected: the export package of 01a0a925-b759-73f1-8218-19d0b14642ba was revoked at 2026-09-16T07:36:58.232Z; its bytes are gone"), a further delivery refused (409 — "retention delivery rejected: the package of 01a0a925-b759-73f1-8218-19d0b14642ba was revoked at 2026-09-16 07:36:58.232419+00")
+
+6. THE STATE — the destinations with their anchors, the deliveries and the notices of the action
+  · nordwerk-transfer-station (transfer_station; /Users/halawany/work/personal/mohammed/new_project/.eye-local/transfer-station-demo; recipient "NORDWERK GmbH — demonstration transfer station"; credential none; readiness active; anchor none (the deployment's trust store))
+  · nordwerk-exports (https; https://exports.nordwerk.example/receive; recipient "NORDWERK GmbH — export endpoint (production; not bound on this host)"; credential EYE_DST_NORDWERK; readiness blocked-credential; anchor none (the deployment's trust store))
+  · nordwerk-exports-demo (https; https://nordwerk-exports.demo.invalid:3443/receive; recipient "NORDWERK GmbH — demonstration https recipient (this host)"; credential EYE_DST_NORDWERK_DEMO; readiness active; anchor CN=nordwerk-exports.demo.invalid · 16:46:A3:1C:5F:4C:EE:3C…)
+  · delivery c5245277… attempt 1 to nordwerk-exports-demo (https) — failed (transport)
+  · delivery abe2cf63… attempt 1 to nordwerk-transfer-station (transfer_station) — acknowledged
+  · notice ccff3410… attempt 1 to nordwerk-transfer-station (transfer_station) — acknowledged, notified 2026-09-16T07:36:58.244Z, acknowledged 2026-09-16T07:36:58.324Z
+  · notice 85f175cc… attempt 2 to nordwerk-transfer-station (transfer_station) — mismatched, notified 2026-09-16T07:36:58.345Z, acknowledged 2026-09-16T07:36:58.395Z
+  ✓ the notice ledger (retention.export_revocation_notices): notice ccff3410… attempt 1 to nordwerk-transfer-station (transfer_station) — acknowledged, notified 2026-09-16T07:36:58.244Z, acknowledged 2026-09-16T07:36:58.324Z; notice 85f175cc… attempt 2 to nordwerk-transfer-station (transfer_station) — mismatched, notified 2026-09-16T07:36:58.345Z, acknowledged 2026-09-16T07:36:58.395Z
+
+WHAT THE DEMONSTRATION SHOWED: the trust anchor declared and recorded (the recipient's certificate, by fingerprint); the https path through the PRODUCTION egress — the credential bound, the anchor declared, the egress reached and refused by the vetting on this host (nothing left the process); the station exchange acknowledged; the revocation NOTICE — the station told in the revoke act, the product's copies removed after the commit, the recipient's confirmation collected and the exchange closed acknowledged, a refusal recorded mismatched with both sides.
+WHAT THE HARNESS ALONE PROVES (phase6-retention-b14 on a fresh database): the positive https exchange over TLS with the synthetic recipient — acknowledged in one act; a stale receipt (Codex B13-F1) held as evidence and NOT acknowledged; wrong-digest, denied, unverified, not-JSON, 500, redirect and 401 answers classified; the anchor the only trust (the same endpoint without it refused: TLS); the https revocation notice acknowledged in the revoke act and its failure retried — with the address vetting the ONE substituted step. PRODUCTION ACTIVATION (not done): a recipient on a public address with the customer's endpoint, credential and certificate chain; the production signing key.
+
+ALL SCENES HELD
+
+=== exit 0 — 2026-09-16T07:36:58Z ===

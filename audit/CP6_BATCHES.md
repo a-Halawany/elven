@@ -1356,13 +1356,169 @@ egress; (8) the REVOCATION — the download, a further delivery and the read ref
 destination; (9) the state. Left on the demonstration: the demonstration key (active, purpose demonstration), the two destinations,
 the station's files and receipt, the retired schedule.
 
+## B14 — the HTTPS exchange proven, the receipt bound to its delivery (Codex B13-F1), the destination's trust anchor, the revocation notice (implemented)
+
+**Migration 0074** (`apps/api/migrations/0074_b14_https_exchange_receipt_binding_revocation_notice.sql`, sha256 `d52c8761…`, 434
+lines), one file, on `phase6-b14` (PR base `main` at `be72aa8`, #50 merged). The owner's 2026-09-16 directive and Codex's B13 review
+named the batch: prove a successful HTTPS delivery and recipient acknowledgement; correct B13-F1 (an initial https receipt naming
+another delivery acknowledged the new one when its digests matched — enforce the existing receipt-id binding consistently, preserve the
+received evidence, add normal/stale controls through the delivery and recording path); implement the revocation notice to a
+destination; use an authorized isolated synthetic recipient and the demonstration key with TLS and the egress policy retained;
+distinguish demonstration from production activation. The specification rows: ES-29-005 ("exports SHALL carry enforceable recipient
+obligations, provenance, classification, expiry, and revocation context"), ES-29-002 (recipient revocation), ES-08-004 (a revocable
+export with explicit recipient obligations), DP-47-005 (recipient acknowledgement before closure; the request and evidence preserved),
+DP-47-002 (the controlled state's receipt), ES-53-004 (network trust for the on-premise and disconnected modes — the declared anchor),
+V03-T-047 ("revocation where supported"); the units AU-COM-0060, AU-IDP-0180 (their evidence extended), AU-INF-0356 and AU-DP-0097
+(clauses carried). Designed and implemented in one pass on the B13 mechanism (no new agents, no design-check round: the batch extends
+B13's ports and executors by their own rules), run on a fresh database, rehearsed on a restored copy and exercised on the demonstration
+(§B14.7).
+
+**D1 — the receipt is bound to its delivery at the initial record, as it already was at the acknowledgement.** Codex reproduced
+B13-F1 against the candidate: `receiptState` looked at the two digests and `verified` alone, so an endpoint that answered attempt 2
+with attempt 1's receipt acknowledged attempt 2, and `record_export_delivery` did not refuse the contradiction. Now a receipt that
+names a `delivery_id` other than the delivery it answers is NOT that delivery's receipt: it neither acknowledges nor denies the
+exchange. The classifier answers `delivered` for it; the record port (re-declared, every other line as 0073 left it) refuses the
+states `acknowledged` and `mismatched` for such a receipt with the acknowledge port's own message ("the receipt names delivery %, not
+%"), admits `delivered` WITH the receipt kept on the row (rxd_receipt allows a delivered row to carry one) and writes the answer into
+the event `export.delivered` under `received` with `receipt_binding: names_other_delivery` and `receipt_names_delivery` — the
+evidence preserved in the ledger even after a later acknowledgement replaces the row's receipt. The exchange stays open for the
+recipient's proper receipt through the existing acknowledge route. A delivered row that carries an answer without a delivery id keeps
+it likewise (`receipt_binding: unverified`). A receipt without a `delivery_id` is classified by its digests and `verified` as before
+(the out-of-band case); no new identity or authentication contract is invented.
+
+**D2 — the destination's TRUST ANCHOR.** `retention.export_destinations.trust_anchor_pem` (nullable; https only — the port and the
+table's check refuse one on a station; at most 64 KiB; every block parsed by node's `X509Certificate` at the declaration, stored
+normalised, shown in every answer by subject, sha-256 fingerprint and validity — never the PEM twice). `declare_export_destination`
+dropped in its 11-argument form and declared with `p_trust_anchor_pem`; the retire-only trigger re-declared with the column among
+those that never change. The egress policy gains `trustAnchorPem`; the client passes it as `ca` to the one https request —
+`rejectUnauthorized` never disabled, the hostname checked through SNI as before: the anchor NARROWS trust to the declared party (a
+customer endpoint on its own PKI — the on-premise and disconnected modes of ES-53-004) and never widens it; a destination without an
+anchor is verified against the deployment's store as before. The page's declare form and the destinations table carry it.
+
+**D3 — the egress split, and the one substitution a harness may make.** `deliver(req)` = the scheme and host allowlist, then
+`resolveAndVet` (every private, loopback, link-local and reserved address refused, as always), then `deliverPinned(req, address)` —
+the transport once the address is settled (the TLS handshake against the store or the anchor with the hostname's identity, the POST,
+the headers, the credential on the one hop, the redirect refused, the answer's limits), now exported. `ExportDeliveryService` takes the
+transport from a provider `DeliveryEgress` (production: `deliver`). A recipient on this host is unreachable through `deliver` by
+design; the harness substitutes the provider's transport with the client's OWN `deliverPinned` on `127.0.0.1` — nothing else — so the
+exchange runs on a real socket with the product's code and the address vetting is the one step not exercised on the positive path
+(exercised on its own: the same recipient by its `.invalid` name → `dns_failure`, by its loopback literal → `address_not_public`,
+nothing reaching it). The delivery request gains `contentType` (`application/x-tar` for a package, `application/json` for a notice).
+
+**D4 — the SYNTHETIC HTTPS RECIPIENT** (`scripts/retention/https-recipient.mjs`; a demonstration stand-in like the station's, not the
+product, not a production recipient): a real TLS server (`--self-signed <host>` generates an EC P-256 key and a 2-day certificate
+with openssl and prints its path — the anchor the administrator declares; `--cert/--key` for a held certificate; `--plain` behind a
+TLS-terminating edge only), bound to `127.0.0.1` unless told otherwise, requiring the bearer named by `--bearer-env` (compared in
+constant time, never logged), keeping what it received in memory and under a private store. On a delivery it computes the sha256 of
+the body, runs the customer's verifier (`verify-export.mjs --tar` with `--public-key` and `--expect-package-digest`) and answers the
+receipt naming THIS delivery, both digests and `verified`; on a notice (`x-eye-notice: revocation`) it destroys the copies of the named
+package and answers the receipt with `copies_destroyed`. `POST /_control { mode }` (the same bearer) makes it answer as a wrong
+endpoint would — `stale` (the previous delivery's or notice's receipt: B13-F1's control), `wrong-digest`, `deny`, `unverified`,
+`refuse`, `not-json`, `error` (500), `redirect` (302), `unauthorized` (401); `GET /_received` lists what it holds and what it destroyed.
+
+**D5 — the REVOCATION NOTICE.** A new append-only ledger `retention.export_revocation_notices` (one row per attempt to tell a
+destination that RECEIVED the package — a delivery in state delivered or acknowledged — that it is revoked; the delivery the recipient
+holds; the notice as sent and its digest; the receipt and its digest; the state `notified` | `acknowledged` | `mismatched` | `failed`
+with the delivery's failure classes; the attempt unique per action and destination; acknowledged once by trigger; RLS as the
+deliveries). The ports mirror the delivery's: `begin_revocation_notice` (authority `retention.export.revoke` or the new
+`retention.export.notify`; the package REVOKED — an unrevoked one refused "is not revoked"; the destination one that received it — else
+"never received the package — nothing to notify"; a retired destination still notified, it holds the package; the action row locked
+and the action's delivery lock taken before the attempt is computed), `record_revocation_notice` (under the lock; the binding of D1
+on `notice_id`; the events `export.revocation_notified` | `export.revocation_notice_failed` | `export.revocation_acknowledged` |
+`export.revocation_mismatched`; `custody.revocation_notified` per exported manifest when the notice reached the destination),
+`acknowledge_revocation_notice` (a notified row moves once: acknowledged when the receipt names the package digest with
+`copies_destroyed: true`, mismatched otherwise — both sides on the event; a receipt naming another notice refused, the row untouched).
+`retention.export_recipients(action)` answers the distinct destinations that received a package with the latest delivery each holds;
+`revoke_export` re-declared to return them (the row and the event unchanged). THE NOTICE ITSELF (`ExportDeliveryService.noticeOf`):
+the exchange identity of the notice and the delivery it concerns, the package's digests and key, the revocation's instant and reason,
+the OBLIGATION ("destroy every copy … and confirm") and the statement of how to answer. THE EXECUTORS: a transfer station receives
+`revocation.json` in the action's directory (replaced per attempt, as `delivery.json`; counted as created for the C6 cleanup) and is
+read for `revocation-receipt.json`; the product's OWN `package.tar` and `package.sig` there are removed AFTER the commit
+(`removeStationPackage`: what was removed, absent, failed — the recipient's copies are the recipient's obligation; `delivery.json`,
+`revocation.json` and the receipts stay as the record); an https destination receives ONE JSON POST under the delivery's egress,
+credential and anchor rules (the headers `x-eye-notice: revocation`, the notice and delivery ids, the digests), its answer the receipt.
+THE ACTS: the revoke act sends the first notice to every recipient destination INSIDE its governed write after the revocation is
+recorded (every outcome a row; a failed notice is a fact, the revocation stands; the station paths this write created removed when
+the commit fails after them), then removes the vault's bytes and the stations' package files — its answer lists `notices` and
+`stations`; `POST …/actions/:id/export/revocation-notices { destinationKey }` (`retention.export.notify` — the deliver rule's
+holders, human-gated) sends a further notice (the retry of a failed one, a second attempt after a refusal); `…/revocation-notices/list`;
+`…/revocation-notices/:noticeId/collect-receipt` (the station's `revocation-receipt.json`, naming its notice) and `…/acknowledge`
+(out of band) under `retention.export.acknowledge`; the export read gains `revocation_notices`. The demonstration station recipient
+gains `--revocation [--refuse]`: it reads `revocation.json`, destroys its copies (or keeps them with `--refuse`) and writes
+`revocation-receipt.json`. The mapper: `retention notice rejected: …` (403 / 404 / 409 / 422 as the delivery's family). The page:
+the notices table with the collect control, a further notice, the out-of-band acknowledgement; the revoke act's answer names the
+notices and the stations' removals. Object code `RXN`. The interface register stays 26/24/0 (asserted); L3-I04's binding text gains
+the clause.
+
+**B14.6 the harness and the units.** `phase6-retention-b14.test.ts` (5 cases on a fresh database, an isolated vault and station, the
+synthetic https recipient spawned with a self-signed certificate for `recipient.b14.invalid` and the bearer bound as `EYE_DST_B14`;
+the DeliveryEgress transport substituted as D3 states): S0 the setup (the https destination declared with the recipient's certificate
+as its anchor — shown by fingerprint, the credential's value nowhere; a garbage anchor and an anchor on a station refused; a second
+destination on the same endpoint without an anchor); H1 THE POSITIVE EXCHANGE — delivered over TLS → ACKNOWLEDGED in one act (the
+recipient received the tar with the recorded archive digest, verified it with the public key, answered a receipt naming THIS delivery
+and both digests with verified true; the row, `export.acknowledged`, `custody.delivered` per manifest; the egress recorded: 200, TLS
+verified, the pinned address, the credential carried on the one hop); H2 THE BINDING AND THE CONTROLS through the route and the record
+port — `stale` → DELIVERED not acknowledged, the answer kept on the row and in the event with `receipt_binding
+names_other_delivery`, then the proper receipt out of band → acknowledged; `wrong-digest` → mismatched with both sides; `deny` →
+mismatched; `unverified` → delivered (`receipt_binding unverified`); `not-json` → failed receipt_invalid; `error` → failed transport
+(500); `redirect` → failed egress_refused (redirect_not_followed); `unauthorized` → failed transport (401); the attempts 1..10, every
+outcome a row, the credential's value nowhere; H3 THE TRUST AND THE VETTING — the destination without the anchor on the same endpoint
+→ failed transport, `tls_failure` named (the self-signed certificate is trusted only where declared); the PRODUCTION egress restored:
+by the `.invalid` name → failed transport `dns_failure`, by the loopback literal → failed egress_refused `address_not_public`, nothing
+reaching the recipient either way; R1 THE REVOCATION NOTICE — a second export delivered to the station (acknowledged through the
+station recipient) and to the https recipient (acknowledged), revoked → the https notice ACKNOWLEDGED in the revoke act (the recipient
+destroyed its copy), the station NOTIFIED (`revocation.json` beside `delivery.json`), the product's `package.tar`/`package.sig`
+removed from the station after the commit with the record kept, the events and `custody.revocation_notified`; the station recipient
+`--revocation` → collected → ACKNOWLEDGED; a further notice attempt 2 → a stale receipt refused by the collect act (it names another
+notice) → `--refuse` → MISMATCHED with both sides on the event; the https recipient in mode `error` → failed transport, `stale` →
+notified with `receipt_binding names_other_notice` then acknowledged out of band, `normal` → acknowledged; a receipt naming another
+notice refused; an unrevoked package refused; a revoked package nobody received → no notices and the notify act refused; the steward
+refused by the PDP; an unknown destination 404; the list and the read (a revoked package's read still refused as B11 left it). The
+first run 3/5 and the second 4/5 on harness expectations (an `.invalid` name yields `dns_failure`, not the address refusal — both now
+asserted; port refusals seen raw in process; the read of a revoked package), the third **5/5**. The suites the changes touch
+**71/71 in five files** (B11, B11-closure, B12, B13, B14) on a fresh database; the full integration suite **1021/1021 in 64 files** on a fresh database; the upgrade
+proof with 0022–0074 (53 migrations); the unit suite 2156/2156 and the meta suite 9/9; the web typecheck, build and tests. Units: none
+moves — B14 completes no whole unit; AU-COM-0060 and AU-IDP-0180 (verified:ci at `3a5a181`) carry the B14 evidence in their prose;
+the requirement rows ES-29-005 `missing` → `partial` (the revocation context and the recipient's obligation carried to the recipient
+and acknowledged; the hosted run at `3b7c44c` — ci 35070312503, 1021/1021 in 64 files on a fresh database with `phase6-retention-b14`
+5/5, C19 35070312431 — bound in the records commit; "enforceable" beyond the notice and the acknowledgement remains — the recipient's copies are outside the product's
+custody), ES-29-002 (recipient revocation delivered; the other dimensions stay), ES-53-004 (the declared anchor; the receipt binding),
+DP-47-005 and DP-47-002 (the binding; the notice), V03-T-047 (revocation reaching the destination), ES-08-004 (the export half's
+recipient obligations; the cross-domain reference stays missing) carry the clauses. The split stays **3,555 = 3,183 open + 338
+local + 34 CI**.
+
+**B14.7 the demonstration** — `scripts/phase6/act-b14.mjs` → `evidence/cp6/act-b14.txt` (rehearsed first on a restored copy with its
+own vault copy, key, station, recipient and Redis, `evidence/cp6/b14-rehearsal.txt`): the preparation by the operator (the
+recipient's bearer generated and bound by reference `EYE_DST_NORDWERK_DEMO` in the local secret handoff — never printed; the
+DEMONSTRATION HTTPS RECIPIENT started on this host's loopback interface at `https://127.0.0.1:3443` with a certificate kept under
+`.eye-local/https-recipient-demo` and the demonstration public key), `eye_demo` backed up and migrated with 0074, the API restarted by
+the runbook's script; then (1) the platform administrator declares `nordwerk-exports-demo` (https; the recipient's hostname and port;
+the credential reference bound; the recipient's certificate as the anchor) → readiness `active`, the anchor as recorded the
+certificate file's own fingerprint; the B13 production destination stays `blocked-credential`; (2) P. Novák's customer export of the
+two hot NORDWERK internal records, approved by H. Bergmann, executed with the demonstration key and verified; (3) THE HTTPS PATH
+THROUGH THE PRODUCTION EGRESS — H. Bergmann delivers to `nordwerk-exports-demo` → recorded FAILED transport `dns_failure`: the
+credential gate PASSED (B13's `credential_unbound` did not fire), the egress resolved the `.invalid` name and found no address; nothing
+left the process (the recipient's inspection route counts nothing) — STATED: the recipient listens on a loopback address, which the
+production vetting refuses by design, so the positive exchange with this same recipient is the harness's proof (H1–H3) and a delivery
+through the production egress needs a recipient on a public address, the activation step; (4) THE STATION EXCHANGE — delivered,
+the demonstration recipient's receipt collected → ACKNOWLEDGED; (5) THE REVOCATION NOTICE — H. Bergmann revokes → the station NOTIFIED
+in the same act (`revocation.json`: the notice, the delivery it concerns, the reason, the instant, the obligation), the https-demo
+destination never received the package and is not notified, the product's `package.tar` and `package.sig` removed from the station
+after the commit with `delivery.json`, `receipt.json` and `revocation.json` kept, `export.revoked`, `export.revocation_notified`,
+`custody.revocation_notified` per record; the demonstration recipient in `--revocation` mode answers (the copies already gone) →
+collected → ACKNOWLEDGED (`export.revocation_acknowledged`); a further notice by the notify act → attempt 2 → the recipient with
+`--refuse` → MISMATCHED with both sides on the event; a notice to the destination that never received the package 409; the download
+and a further delivery refused; (6) the state. ALL SCENES HELD. Left on the demonstration: the demonstration https recipient running
+on :3443 (its certificate and store under `.eye-local/https-recipient-demo`), the destination `nordwerk-exports-demo`, the station's
+record files for the revoked action (its package files gone), the notice ledger rows.
+
 ## Order and the next implementation batch
 
 B3, B1 and B2 are done in code, B4/B5 applied to the audit (the 2026-09-11 checkpoints), B6 done in
 code (2026-09-12, on the recovery machinery corrected by 0062 after Codex's finding) and B7 done in code
 (2026-09-12, after Codex's third finding), B8 (2026-09-12, after Codex's B7 findings), B9 (2026-09-13, after
 Codex's B8 findings; the accepted stack merged on `main` in the recorded order meanwhile) and B10 (2026-09-13, after
-Codex's B9 review: F1 closed on the fixed candidate, F2/F3 and G2 carried into this batch), B11 (2026-09-13; its closure of Codex's B11-F1/F2 on 2026-09-14, merged with #48 on 2026-09-15), B12 (2026-09-15, the register's next missing archive-lifecycle capability; merged with #49 on 2026-09-16 on Codex's bounded functional review) and B13 (2026-09-16, the schedule retirement and the customer export's delivery, on `main` after #49). The
+Codex's B9 review: F1 closed on the fixed candidate, F2/F3 and G2 carried into this batch), B11 (2026-09-13; its closure of Codex's B11-F1/F2 on 2026-09-14, merged with #48 on 2026-09-15), B12 (2026-09-15, the register's next missing archive-lifecycle capability; merged with #49 on 2026-09-16 on Codex's bounded functional review) and B13 (2026-09-16, the schedule retirement and the customer export's delivery, on `main` after #49; merged with #50 on 2026-09-16 on Codex's bounded review) and B14 (2026-09-16, the https exchange proven, B13-F1 corrected, the trust anchor, the revocation notice, on `main` after #50). The
 hosted run at `5118376` (836/836 on a fresh database) verified the B1/B2 units on the hosted chain —
 one artefact, no deployment leg. Every leg of every unit stays unaccepted until a deployment profile
 carries its own signed evidence (P7-D). The synthetic-company demonstration (`eye_demo`, NORDWERK) remains the deliverable

@@ -1,0 +1,7 @@
+=== the suites the B14 changes touch at the B14 tree on a fresh database eye_verify_b14_n1 (0001–0074): phase6-retention-b11, -b11-closure, -b12, -b13 (the ports 0074 re-declares — record_export_delivery, declare_export_destination, revoke_export — and the retire-only trigger) and -b14, 2026-09-16 ===
+
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/apps/api
+ Test Files  5 passed (5)
+      Tests  71 passed (71)
+   Start at  10:25:45
+   Duration  39.74s (transform 639ms, setup 35ms, import 2.55s, tests 36.81s, environment 0ms)

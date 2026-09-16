@@ -53,6 +53,8 @@ export interface RetentionReads {
   readExportDestinations(): any;
   /** B13 (0073 §4): the deliveries of the domain's export packages, every outcome a row. */
   readExportDeliveries(): any;
+  /** B14 (0074 §3): the revocation notices sent to the destinations that received a package, every outcome a row. */
+  readExportRevocationNotices(): any;
   /* eslint-enable @typescript-eslint/no-explicit-any */
   outboxPartitionTelemetry(): Promise<Row[]>;
   /** B11: a manifest's tier as the ledger says — 'hot' when it never moved. */
@@ -109,7 +111,7 @@ export interface RetentionWrites extends RetentionReads {
   /** B13 (0073 §2): the key retired with a reason; the row kept (a package signed by it still verifies against the recorded public key). */
   retireExportSigningKey(a: { keyId: string; tenantId: string; domainId: string; reason: string; actor: string; correlationId: string }): Promise<Row>;
   /** B13 (0073 §3; D5): a destination declared — the key, the kind, the endpoint (a directory for a transfer station, an https URL), the credential reference's NAME (https only), the recipient, the purpose. */
-  declareExportDestination(a: { destinationId: string; tenantId: string; domainId: string; destinationKey: string; kind: string; endpoint: string; credentialRef: string | null; recipient: string; purpose: string; actor: string; correlationId: string }): Promise<Row>;
+  declareExportDestination(a: { destinationId: string; tenantId: string; domainId: string; destinationKey: string; kind: string; endpoint: string; credentialRef: string | null; recipient: string; purpose: string; trustAnchorPem: string | null; actor: string; correlationId: string }): Promise<Row>;
   /** B13 (0073 §3): the destination retired with a reason; its deliveries stay recorded. */
   retireExportDestination(a: { destinationId: string; tenantId: string; domainId: string; reason: string; actor: string; correlationId: string }): Promise<Row>;
   /**
@@ -124,8 +126,14 @@ export interface RetentionWrites extends RetentionReads {
   acknowledgeExportDelivery(a: { deliveryId: string; tenantId: string; domainId: string; receipt: Row; receiptDigest: string; actor: string; correlationId: string }): Promise<Row>;
   /** B13 (0073 §2; D7, C18): the event export.downloaded on the action with the reader and the archive digest — a port with its own authority check (retention.export.download). */
   recordExportDownload(a: { actionId: string; tenantId: string; domainId: string; archiveDigest: string; actor: string; correlationId: string }): Promise<void>;
-  /** B11 (0070 §3): the package revoked once by the retention authority (retention.export.revoke); the bytes go after the commit. */
+  /** B11 (0070 §3): the package revoked once by the retention authority (retention.export.revoke); the bytes go after the commit. B14 (0074 §4): the answer names the destinations that received the package (`recipients`). */
   revokeExport(a: { actionId: string; tenantId: string; domainId: string; reason: string; actor: string; correlationId: string }): Promise<Row>;
+  /** B14 (0074 §3; D3): the gates of a revocation notice — the package revoked, the destination one that received it — under the action's delivery lock; the notice id and the attempt allocated; returns {notice_id, attempt, package, destination, delivery}. */
+  beginRevocationNotice(a: { actionId: string; tenantId: string; domainId: string; destinationId: string; actor: string; correlationId: string }): Promise<Row>;
+  /** B14 (0074 §3): the notice's outcome recorded — the row, the action event, custody.revocation_notified for a notice that reached the destination. */
+  recordRevocationNotice(a: { noticeId: string; actionId: string; tenantId: string; domainId: string; destinationId: string; deliveryId: string; attempt: number; state: string; notice: Row; noticeDigest: string; receipt: Row | null; receiptDigest: string | null; failureClass: string | null; actor: string; correlationId: string }): Promise<Row>;
+  /** B14 (0074 §3): a notified row moves to acknowledged (the receipt names the package digest and copies_destroyed: true) or mismatched; a receipt naming another notice is refused. */
+  acknowledgeRevocationNotice(a: { noticeId: string; tenantId: string; domainId: string; receipt: Row; receiptDigest: string; actor: string; correlationId: string }): Promise<Row>;
   /** The outbox port: the floor moved by this executing action only. */
   declareFloor(a: { partitionKey: string; toSeq: number; actionId: string }): Promise<Row>;
   /** A refused port call must not abort the recording transaction: the call runs under a savepoint. */
@@ -164,6 +172,7 @@ class RetentionCapabilityImpl implements RetentionWrites {
   readExportSigningKeys(): any { return this.from('retention.export_signing_keys'); }
   readExportDestinations(): any { return this.from('retention.export_destinations'); }
   readExportDeliveries(): any { return this.from('retention.export_deliveries'); }
+  readExportRevocationNotices(): any { return this.from('retention.export_revocation_notices'); }
   /* eslint-enable @typescript-eslint/no-explicit-any */
   async outboxPartitionTelemetry(): Promise<Row[]> { return this.call<Row>(sql`select * from objects.outbox_partition_telemetry()`); }
   async tierOf(manifestId: string): Promise<{ tier: 'hot' | 'archive'; archivedAt: string | null }> { return tierOf(this, manifestId); }
@@ -258,7 +267,7 @@ class RetentionCapabilityImpl implements RetentionWrites {
     return rows[0]?.r ?? {};
   }
   async declareExportDestination(a: Parameters<RetentionWrites['declareExportDestination']>[0]): Promise<Row> {
-    const rows = await this.call<{ r: Row }>(sql`select retention.declare_export_destination(${a.destinationId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.destinationKey}::text, ${a.kind}::text, ${a.endpoint}::text, ${a.credentialRef}::text, ${a.recipient}::text, ${a.purpose}::text, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    const rows = await this.call<{ r: Row }>(sql`select retention.declare_export_destination(${a.destinationId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.destinationKey}::text, ${a.kind}::text, ${a.endpoint}::text, ${a.credentialRef}::text, ${a.recipient}::text, ${a.purpose}::text, ${a.trustAnchorPem}::text, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
     return rows[0]?.r ?? {};
   }
   async retireExportDestination(a: Parameters<RetentionWrites['retireExportDestination']>[0]): Promise<Row> {
@@ -282,6 +291,18 @@ class RetentionCapabilityImpl implements RetentionWrites {
   }
   async revokeExport(a: Parameters<RetentionWrites['revokeExport']>[0]): Promise<Row> {
     const rows = await this.call<{ r: Row }>(sql`select retention.revoke_export(${a.actionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  async beginRevocationNotice(a: Parameters<RetentionWrites['beginRevocationNotice']>[0]): Promise<Row> {
+    const rows = await this.call<{ r: Row }>(sql`select retention.begin_revocation_notice(${a.actionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.destinationId}::uuid, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  async recordRevocationNotice(a: Parameters<RetentionWrites['recordRevocationNotice']>[0]): Promise<Row> {
+    const rows = await this.call<{ r: Row }>(sql`select retention.record_revocation_notice(${a.noticeId}::uuid, ${a.actionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.destinationId}::uuid, ${a.deliveryId}::uuid, ${a.attempt}::int, ${a.state}::text, ${JSON.stringify(a.notice)}::jsonb, ${a.noticeDigest}::text, ${a.receipt === null ? null : JSON.stringify(a.receipt)}::jsonb, ${a.receiptDigest}::text, ${a.failureClass}::text, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  async acknowledgeRevocationNotice(a: Parameters<RetentionWrites['acknowledgeRevocationNotice']>[0]): Promise<Row> {
+    const rows = await this.call<{ r: Row }>(sql`select retention.acknowledge_revocation_notice(${a.noticeId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${JSON.stringify(a.receipt)}::jsonb, ${a.receiptDigest}::text, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
     return rows[0]?.r ?? {};
   }
   async savepoint(name: string): Promise<void> { await this.call(sql.raw(`savepoint ${name.replace(/[^a-z0-9_]/gi, '')}`)); }

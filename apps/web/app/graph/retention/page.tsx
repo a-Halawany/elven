@@ -150,15 +150,22 @@ const EMPTY_KEY: KeyDraft = { credentialRef: '', purpose: 'demonstration' };
 const keyOk = (d: KeyDraft) => d.credentialRef.trim() !== '';
 const toKeyIntake = (d: KeyDraft): RetentionSigningKeyIntake => ({ credentialRef: d.credentialRef.trim(), purpose: d.purpose });
 
-/** A destination as a person declares it (B13): the credential reference is an https destination's and is sent only when given. */
-interface DestinationDraft { destinationKey: string; kind: RetentionDestinationKind; endpoint: string; credentialRef: string; recipient: string; purpose: string }
-const EMPTY_DESTINATION: DestinationDraft = { destinationKey: '', kind: 'transfer_station', endpoint: '', credentialRef: '', recipient: '', purpose: '' };
+/** A destination as a person declares it (B13; B14 the trust anchor): the credential reference and the trust anchor are an https destination's and are sent only when given. */
+interface DestinationDraft { destinationKey: string; kind: RetentionDestinationKind; endpoint: string; credentialRef: string; trustAnchorPem: string; recipient: string; purpose: string }
+const EMPTY_DESTINATION: DestinationDraft = { destinationKey: '', kind: 'transfer_station', endpoint: '', credentialRef: '', trustAnchorPem: '', recipient: '', purpose: '' };
 const destinationOk = (d: DestinationDraft) => d.destinationKey.trim() !== '' && d.endpoint.trim() !== '' && d.recipient.trim() !== '' && d.purpose.trim() !== '';
 function toDestinationIntake(d: DestinationDraft): RetentionDestinationIntake {
   return {
     destinationKey: d.destinationKey.trim(), kind: d.kind, endpoint: d.endpoint.trim(), recipient: d.recipient.trim(), purpose: d.purpose.trim(),
     ...(d.credentialRef.trim() === '' ? {} : { credentialRef: d.credentialRef.trim() }),
+    ...(d.trustAnchorPem.trim() === '' ? {} : { trustAnchorPem: d.trustAnchorPem.trim() }),
   };
+}
+/** B14: a destination's trust anchor as the server shows it — the certificates by subject and fingerprint, or "the deployment's trust store". */
+function trustAnchorText(d: Record<string, unknown>): string {
+  const a = d['trust_anchor'] as { declared?: boolean; certificates?: Array<Record<string, unknown>> } | null | undefined;
+  if (a === null || a === undefined || a.declared !== true) return d['kind'] === 'https' ? 'the deployment\'s trust store' : '—';
+  return (a.certificates ?? []).map((c) => `${String(c['subject'] ?? '?')} · ${String(c['fingerprint256'] ?? '?').slice(0, 23)}… · until ${String(c['valid_to'] ?? '?')}`).join('; ');
 }
 
 /** The archive as downloaded (B13 D7): the answer's record and the object URL of the Blob the person's browser saves — revoked after the click (the url then '' and the link gone), or when another download or selection replaces it. */
@@ -422,7 +429,15 @@ export default function RetentionPage() {
   const [withdrawn, setWithdrawn] = useState<Outcome<{ actionId: string; state: string }>>(none);
   const [exported, setExported] = useState<{ detail: RetentionExportDetail | null; problem: string | null }>({ detail: null, problem: null });
   const [rvReason, setRvReason] = useState('');
-  const [revoked, setRevoked] = useState<Outcome<{ revocation: Record<string, unknown>; bytes: { removed: boolean; error?: string } }>>(none);
+  const [revoked, setRevoked] = useState<Outcome<{ revocation: Record<string, unknown>; notices: RetentionRow[]; bytes: { removed: boolean; error?: string }; stations: RetentionRow[] }>>(none);
+  // B14 (0074 §3): the selected export's revocation notices, a further notice, the notice's receipt collected or presented.
+  const [notices, setNotices] = useState<{ rows: RetentionRow[] | null; problem: string | null }>({ rows: null, problem: null });
+  const [noticeKey, setNoticeKey] = useState('');
+  const [notified, setNotified] = useState<Outcome<RetentionRow>>(none);
+  const [noticeCollected, setNoticeCollected] = useState<Outcome<RetentionRow>>(none);
+  const [ackNoticeId, setAckNoticeId] = useState('');
+  const [ackNoticeReceipt, setAckNoticeReceipt] = useState('');
+  const [noticeAcknowledged, setNoticeAcknowledged] = useState<Outcome<RetentionRow>>(none);
   // B13: the schedules' retirement, the signing keys, the destinations, and the selected export's download, delivery and deliveries.
   const [retireReasons, setRetireReasons] = useState<Record<string, string>>({});
   const [scheduleRetired, setScheduleRetired] = useState<Outcome<RetentionRow>>(none);
@@ -461,11 +476,14 @@ export default function RetentionPage() {
     if (!r.ok || r.data === undefined) { setDestinationsProblem(refusal(r, 'the destinations could not be listed')); return; }
     setDestinationsProblem(null); setDestinations(r.data.destinations);
   };
-  /** B13: the action's deliveries as recorded — read beside the package, and still read when the package is revoked (its deliveries stay recorded). */
+  /** B13: the action's deliveries as recorded — read beside the package, and still read when the package is revoked (its deliveries stay recorded). B14: its revocation notices likewise. */
   const loadDeliveries = async (actionId: string) => {
     const r = await retention.listDeliveries(scope, actionId);
     if (!r.ok || r.data === undefined) { setDeliveries({ rows: null, problem: refusal(r, 'the deliveries could not be listed') }); return; }
     setDeliveries({ rows: r.data.deliveries, problem: null });
+    const n = await retention.listRevocationNotices(scope, actionId);
+    if (!n.ok || n.data === undefined) { setNotices({ rows: null, problem: refusal(n, 'the revocation notices could not be listed') }); return; }
+    setNotices({ rows: n.data.notices, problem: null });
   };
   /** The object URL of a downloaded archive is the browser's to hold until the click; it is released when the download is replaced or the selection changes. */
   const releaseDownload = () => {
@@ -501,6 +519,7 @@ export default function RetentionPage() {
     setSelected(actionId); setDetail(null); setDetailProblem(null); setExported({ detail: null, problem: null }); setDeliveries({ rows: null, problem: null });
     setResolved(none()); setRationale(''); setApproved(none()); setExecuted(none()); setVerified(none()); setWdReason(''); setWithdrawn(none()); setRvReason(''); setRevoked(none());
     releaseDownload(); setDestinationKey(''); setDelivered(none()); setCollected(none()); setAckDeliveryId(''); setAckReceipt(''); setAcknowledged(none());
+    setNotices({ rows: null, problem: null }); setNoticeKey(''); setNotified(none()); setNoticeCollected(none()); setAckNoticeId(''); setAckNoticeReceipt(''); setNoticeAcknowledged(none());
     void loadDetail(actionId);
   };
   useEffect(() => { void loadSchedules(); void loadActions(); void loadTier(); void loadKeys(); void loadDestinations(); }, [scope]);
@@ -836,13 +855,13 @@ export default function RetentionPage() {
         {destinations === null ? (destinationsProblem === null ? <Empty>reading the destinations…</Empty> : null) : destinations.length === 0 ? <Empty>No destination is declared in this domain: a package can be downloaded but delivered nowhere.</Empty> : (
           <ScrollBox label="export destinations">
             <table className="eye-table" style={tableStyle}>
-              <thead><tr><Th>Key</Th><Th>Kind</Th><Th>Endpoint</Th><Th>Recipient</Th><Th>Purpose</Th><Th>Credential reference</Th><Th>Readiness</Th><Th>Declared</Th><Th>Retired</Th><Th>Retire</Th></tr></thead>
+              <thead><tr><Th>Key</Th><Th>Kind</Th><Th>Endpoint</Th><Th>Recipient</Th><Th>Purpose</Th><Th>Credential reference</Th><Th>Trust anchor</Th><Th>Readiness</Th><Th>Declared</Th><Th>Retired</Th><Th>Retire</Th></tr></thead>
               <tbody>{destinations.map((d) => {
                 const id = String(d['destination_id']);
                 return (
                   <tr key={id}>
                     <Td mono>{str(d['destination_key'])}</Td><Td>{str(d['kind'])}</Td><Td mono>{str(d['endpoint'])}</Td><Td>{str(d['recipient'])}</Td><Td>{str(d['purpose'])}</Td>
-                    <Td mono>{str(d['credential_ref'])}</Td><Td><strong>{str(d['readiness'])}</strong></Td>
+                    <Td mono>{str(d['credential_ref'])}</Td><Td>{trustAnchorText(d)}</Td><Td><strong>{str(d['readiness'])}</strong></Td>
                     <Td>by <Mono>{short(d['declared_by'])}</Mono> at {fmtInstant(d['declared_at'])}</Td><Td>{retiredText(d)}</Td>
                     <Td>{isRetired(d) ? '—' : (
                       <Retire id={`destination ${str(d['destination_key'])}`} reason={retireReasons[id] ?? ''} onReason={(v) => setRetireReasons({ ...retireReasons, [id]: v })}
@@ -870,7 +889,9 @@ export default function RetentionPage() {
           A domain admin's act, human-gated. The key is unique among the domain's active destinations (<Mono>a-z 0-9 -</Mono>, 2 to 64 characters). A transfer
           station's endpoint is an absolute directory that exists where the server runs and lies outside the vault's roots; an https destination's endpoint is an
           <Mono>https://</Mono> URL and may name a credential reference <Mono>EYE_DST_&lt;NAME&gt;</Mono> (carried as a bearer at egress, resolved where the server
-          runs, never recorded). The recipient is the exchange identity — who receives; the purpose is the exchange's. The server states what it refuses.
+          runs, never recorded) and a trust anchor (B14: the PEM certificates its server certificate must chain to — a customer endpoint on its own PKI; TLS
+          verification is never disabled either way, the anchor narrows trust to the declared party). The recipient is the exchange identity — who receives; the
+          purpose is the exchange's. The server states what it refuses.
         </p>
         <div style={rowStyle}>
           <Field id="ds-key" label="Destination key (required)">{(id) => <Txt id={id} value={destinationDraft.destinationKey} onChange={(v) => setDestinationDraft({ ...destinationDraft, destinationKey: v })} />}</Field>
@@ -878,6 +899,9 @@ export default function RetentionPage() {
           <Field id="ds-endpoint" label={destinationDraft.kind === 'https' ? 'Endpoint (required; an https:// URL)' : 'Endpoint (required; an absolute directory outside the vault\'s roots)'}>{(id) => <Txt id={id} value={destinationDraft.endpoint} onChange={(v) => setDestinationDraft({ ...destinationDraft, endpoint: v })} />}</Field>
           {destinationDraft.kind === 'https' && (
             <Field id="ds-ref" label="Credential reference (optional; EYE_DST_<NAME>)">{(id) => <Txt id={id} value={destinationDraft.credentialRef} onChange={(v) => setDestinationDraft({ ...destinationDraft, credentialRef: v })} />}</Field>
+          )}
+          {destinationDraft.kind === 'https' && (
+            <Field id="ds-anchor" label="Trust anchor (optional; one or more PEM certificates the endpoint's certificate must chain to — the deployment's trust store otherwise)">{(id) => <textarea id={id} style={{ ...wide, minBlockSize: '6rem', fontFamily: 'var(--eye-font-mono)' }} value={destinationDraft.trustAnchorPem} onChange={(e) => setDestinationDraft({ ...destinationDraft, trustAnchorPem: e.target.value })} />}</Field>
           )}
           <Field id="ds-recipient" label="Recipient (required; who receives)">{(id) => <Txt id={id} value={destinationDraft.recipient} onChange={(v) => setDestinationDraft({ ...destinationDraft, recipient: v })} />}</Field>
           <Field id="ds-purpose" label="Purpose (required)">{(id) => <Txt id={id} value={destinationDraft.purpose} onChange={(v) => setDestinationDraft({ ...destinationDraft, purpose: v })} />}</Field>
@@ -887,7 +911,7 @@ export default function RetentionPage() {
             onRun={async () => {
               try {
                 // A credential reference belongs to an https destination only: one typed under a transfer station is not sent.
-                await act(setDestinationDeclared, 'declaration', () => retention.declareDestination(scope, toDestinationIntake(destinationDraft.kind === 'https' ? destinationDraft : { ...destinationDraft, credentialRef: '' })), (d) => rec(d['destination']));
+                await act(setDestinationDeclared, 'declaration', () => retention.declareDestination(scope, toDestinationIntake(destinationDraft.kind === 'https' ? destinationDraft : { ...destinationDraft, credentialRef: '', trustAnchorPem: '' })), (d) => rec(d['destination']));
                 setDestinationDraft(EMPTY_DESTINATION);
               } finally {
                 await loadDestinations();
@@ -1165,7 +1189,8 @@ export default function RetentionPage() {
                 and its digest. A transfer-station delivery in state <Mono>delivered</Mono> waits for the recipient's <Mono>receipt.json</Mono> beside the package: collect it here;
                 a receipt carried out-of-band is presented to the acknowledge act below. The exchange closes <strong>acknowledged</strong> on a receipt naming the same archive and
                 package digests with <Mono>verified</Mono> true; other digests or <Mono>verified</Mono> false record it <strong>mismatched</strong> — the exchange denied, the
-                request and evidence preserved. A revoked package's deliveries stay recorded; no notice reaches the destination (a named remaining step).
+                request and evidence preserved. A receipt naming another delivery neither acknowledges nor denies (B14): it is kept as evidence and the exchange stays
+                open for the proper receipt. A revoked package's deliveries stay recorded, and every destination that received it is told (the revocation notices below).
               </p>
               {deliveries.problem !== null && <p><span style={critical}>not listed — {deliveries.problem}</span></p>}
               {deliveries.rows === null ? (deliveries.problem === null ? <Empty>reading the deliveries…</Empty> : null) : deliveries.rows.length === 0 ? <Empty>No delivery is recorded for this export.</Empty> : (
@@ -1242,15 +1267,103 @@ export default function RetentionPage() {
           {current['kind'] === 'customer_export' && (
             <section aria-labelledby="rv-h" style={cardStyle}>
               <h2 id="rv-h" style={{ fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 }}>Revoke the export package</h2>
-              <p style={muted}>The retention authority's act, human-gated: the package is revoked once with a reason and its bytes are removed after the commit; the read route, the download and a further delivery refuse it from then on. Its recorded deliveries stay; a recipient's copy is outside the product's custody and no notice reaches the destination (a named remaining step).</p>
+              <p style={muted}>
+                The retention authority's act, human-gated: the package is revoked once with a reason and its bytes are removed after the commit; the read route, the download and
+                a further delivery refuse it from then on. Its recorded deliveries stay. B14: in the same act every destination that received the package is sent a
+                <strong>revocation notice</strong> — the package's digests, the delivery it holds, the reason, the instant and the obligation (destroy every copy, confirm) — a
+                transfer station by <Mono>revocation.json</Mono> beside the package (the product's own copies there removed after the commit), an https endpoint by a JSON POST
+                under the delivery's egress and credential rules. Every outcome is recorded: <Mono>notified</Mono>, <Mono>acknowledged</Mono> (the receipt names the package
+                digest with <Mono>copies_destroyed</Mono> true), <Mono>mismatched</Mono> (the obligation refused), <Mono>failed</Mono> with its class — a failed notice is a fact,
+                the revocation stands, and a further notice is sent below.
+              </p>
               <Field id="rv-reason" label="Reason (at least 8 characters, required)">{(id) => <Txt id={id} value={rvReason} onChange={setRvReason} />}</Field>
               <div style={controlRow}>
                 <GovernedButton label="Revoke the package" pendingLabel="revoking" variant="critical" disabled={rvReason.trim().length < 8}
-                  onRun={() => act(setRevoked, 'revocation', () => retention.revokeExport(scope, selected, rvReason.trim()), (d) => ({ revocation: rec(d['revocation']), bytes: rec(d['bytes']) as unknown as { removed: boolean; error?: string } }))} />
+                  onRun={async () => {
+                    try {
+                      await act(setRevoked, 'revocation', () => retention.revokeExport(scope, selected, rvReason.trim()), (d) => ({ revocation: rec(d['revocation']), notices: (d['notices'] as RetentionRow[] | undefined) ?? [], bytes: rec(d['bytes']) as unknown as { removed: boolean; error?: string }, stations: (d['stations'] as RetentionRow[] | undefined) ?? [] }));
+                    } finally {
+                      await loadDeliveries(selected);
+                    }
+                  }} />
               </div>
               <Problem verb="not revoked" problem={revoked.problem} />
-              {revoked.result !== null && <p>package <Mono>{str(revoked.result.revocation['package_digest'])}</Mono> revoked at {fmtInstant(revoked.result.revocation['revoked_at'])}; bytes removed: {yes(revoked.result.bytes.removed)}{revoked.result.bytes.error !== undefined ? ` — ${revoked.result.bytes.error}` : ''}</p>}
+              {revoked.result !== null && (
+                <>
+                  <p>package <Mono>{str(revoked.result.revocation['package_digest'])}</Mono> revoked at {fmtInstant(revoked.result.revocation['revoked_at'])}; bytes removed: {yes(revoked.result.bytes.removed)}{revoked.result.bytes.error !== undefined ? ` — ${revoked.result.bytes.error}` : ''}</p>
+                  <p>notices sent: {revoked.result.notices.length === 0 ? 'none — no destination received this package' : revoked.result.notices.map((n) => `${str((n['destination'] as Record<string, unknown> | undefined)?.['destination_key'])} → ${str(n['state'])}${n['failure_class'] === null || n['failure_class'] === undefined ? '' : ` (${str(n['failure_class'])})`}`).join('; ')}
+                    {revoked.result.stations.length > 0 ? <> · the product's copies at the stations: {revoked.result.stations.map((st) => `${str(st['destination_key'])}: removed ${json(st['removed'])}${json(st['failed']) === '[]' ? '' : `, failed ${json(st['failed'])}`}`).join('; ')}</> : null}</p>
+                </>
+              )}
               <Receipt receipt={revoked.receipt} />
+
+              <h3 style={h3}>Revocation notices ({notices.rows === null ? '…' : notices.rows.length})</h3>
+              {notices.problem !== null && <p><span style={critical}>not listed — {notices.problem}</span></p>}
+              {notices.rows === null ? (notices.problem === null ? <Empty>reading the notices…</Empty> : null) : notices.rows.length === 0 ? <Empty>No revocation notice is recorded for this export.</Empty> : (
+                <ScrollBox label="revocation notices">
+                  <table className="eye-table" style={tableStyle}>
+                    <thead><tr><Th>Notice</Th><Th>Attempt</Th><Th>Destination</Th><Th>Delivery held</Th><Th>State</Th><Th>Notified</Th><Th>Acknowledged</Th><Th>Failure</Th><Th>Receipt</Th><Th>Collect</Th></tr></thead>
+                    <tbody>{notices.rows.map((x) => {
+                      const id = String(x['notice_id']);
+                      return (
+                        <tr key={id}>
+                          <Td mono>{short(id)}</Td><Td mono>{str(x['attempt'])}</Td>
+                          <Td><Mono>{str(x['destination_key'])}</Mono> ({str(x['kind'])})</Td><Td mono>{short(x['delivery_id'])}</Td>
+                          <Td><strong>{str(x['state'])}</strong></Td><Td>{fmtInstant(x['notified_at'])}</Td><Td>{fmtInstant(x['acknowledged_at'])}</Td><Td>{str(x['failure_class'])}</Td>
+                          <Td mono>{x['receipt'] === null || x['receipt'] === undefined ? 'none yet' : json(x['receipt'])}</Td>
+                          <Td>{x['state'] === 'notified' && x['kind'] === 'transfer_station' ? (
+                            <GovernedButton label="Collect receipt" pendingLabel="collecting"
+                              onRun={async () => { try { await act(setNoticeCollected, 'collection', () => retention.collectRevocationReceipt(scope, selected, id), (d) => rec(d['notice'])); } finally { await loadDeliveries(selected); } }} />
+                          ) : '—'}</Td>
+                        </tr>
+                      );
+                    })}</tbody>
+                  </table>
+                </ScrollBox>
+              )}
+              <Problem verb="receipt not collected" problem={noticeCollected.problem} />
+              {noticeCollected.result !== null && <p>notice <Mono>{str(noticeCollected.result['notice_id'])}</Mono> is now <strong>{str(noticeCollected.result['state'])}</strong> · receipt digest <Mono>{str(noticeCollected.result['receipt_digest'])}</Mono></p>}
+              <Receipt receipt={noticeCollected.receipt} />
+
+              <h3 style={h3}>Send a further notice</h3>
+              <p style={muted}>The retention authority's act, human-gated (<Mono>retention.export.notify</Mono>): a further notice to one destination that received the revoked package — the retry of a failed notice, or a second attempt after a mismatched answer. The server refuses it while the package is not revoked or the destination never received it.</p>
+              <div style={rowStyle}>
+                <Field id="nt-destination" label="Destination">{(id) => (
+                  <select id={id} style={wide} value={noticeKey} onChange={(e) => setNoticeKey(e.target.value)}>
+                    <option value="">— choose a destination —</option>
+                    {(destinations ?? []).map((d) => <option key={String(d['destination_id'])} value={String(d['destination_key'])}>{str(d['destination_key'])} · {str(d['kind'])}{isRetired(d) ? ' · retired' : ''}</option>)}
+                  </select>
+                )}</Field>
+              </div>
+              <div style={controlRow}>
+                <GovernedButton label="Send the notice" pendingLabel="notifying" disabled={noticeKey === ''}
+                  onRun={async () => { try { await act(setNotified, 'notice', () => retention.notifyRevocation(scope, selected, noticeKey), (d) => rec(d['notice'])); } finally { await loadDeliveries(selected); } }} />
+              </div>
+              <Problem verb="not notified" problem={notified.problem} />
+              {notified.result !== null && <p>notice <Mono>{str(notified.result['notice_id'])}</Mono> attempt {str(notified.result['attempt'])} to <Mono>{str((notified.result['destination'] as Record<string, unknown> | undefined)?.['destination_key'])}</Mono> — <strong>{str(notified.result['state'])}</strong>{notified.result['failure_class'] === null || notified.result['failure_class'] === undefined ? '' : ` (${str(notified.result['failure_class'])})`}</p>}
+              <Receipt receipt={notified.receipt} />
+
+              <h3 style={h3}>Acknowledge a notice</h3>
+              <p style={muted}>A notice's receipt presented out of band, on a notice in state notified: a JSON object naming <Mono>package_digest</Mono> and <Mono>copies_destroyed</Mono> (and the <Mono>notice_id</Mono> it answers — a receipt naming another notice is refused).</p>
+              <div style={rowStyle}>
+                <Field id="nt-ack" label="Notice (in state notified)">{(id) => (
+                  <select id={id} style={wide} value={ackNoticeId} onChange={(e) => setAckNoticeId(e.target.value)}>
+                    <option value="">— choose a notice —</option>
+                    {(notices.rows ?? []).filter((x) => x['state'] === 'notified').map((x) => <option key={String(x['notice_id'])} value={String(x['notice_id'])}>{short(x['notice_id'])} · attempt {str(x['attempt'])} · {str(x['destination_key'])}</option>)}
+                  </select>
+                )}</Field>
+                <Field id="nt-receipt" label="Receipt (JSON object)">{(id) => <textarea id={id} style={{ ...wide, minBlockSize: '6rem', fontFamily: 'var(--eye-font-mono)' }} value={ackNoticeReceipt} onChange={(e) => setAckNoticeReceipt(e.target.value)} />}</Field>
+              </div>
+              <div style={controlRow}>
+                <GovernedButton label="Acknowledge the notice" pendingLabel="acknowledging" disabled={ackNoticeId === '' || receiptObjectOf(ackNoticeReceipt) === null}
+                  onRun={async () => {
+                    try { await act(setNoticeAcknowledged, 'acknowledgement', () => retention.acknowledgeRevocationNotice(scope, selected, ackNoticeId, receiptObjectOf(ackNoticeReceipt) ?? {}), (d) => rec(d['notice'])); setAckNoticeId(''); setAckNoticeReceipt(''); }
+                    finally { await loadDeliveries(selected); }
+                  }} />
+              </div>
+              <Problem verb="not acknowledged" problem={noticeAcknowledged.problem} />
+              {noticeAcknowledged.result !== null && <p>notice <Mono>{str(noticeAcknowledged.result['notice_id'])}</Mono> is now <strong>{str(noticeAcknowledged.result['state'])}</strong></p>}
+              <Receipt receipt={noticeAcknowledged.receipt} />
             </section>
           )}
         </>
