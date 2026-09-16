@@ -55,3 +55,76 @@ describe('P6-M2 · decision.commit is one exact C3 rule', () => {
     }
   });
 });
+
+/*
+ * CP-6 B18 (0078; design §3.2, D5): the three lifecycle acts — the withdrawal of an issued forecast, the invalidation of a
+ * completed run, the reopening of a committed decision — are EXACT, human-gated C2 rules, each placed before the prefix
+ * rule that would otherwise catch it (first match wins): `decision.package.` would admit platform_admin to the reopen and
+ * `simulation.run` would admit the invalidation without the gate and without the domain administrator.
+ */
+describe('B18 · the three lifecycle acts are exact, human-gated rules with named holders', () => {
+  const pdp = new PdpService();
+  const platform = { roleCode: 'platform_admin', scope: 'PLATFORM' as const, tenantId: null, domainId: null };
+  const at = (action: string, roles: string[], consequenceClass: 'C1' | 'C2' | 'C3' = 'C2', objectType = 'FCT') => input({ action, roles, consequenceClass, objectType });
+  const asPlatform = (action: string, consequenceClass: 'C2' | 'C3' = 'C2') =>
+    input({ action, consequenceClass, principal: { principalId: '0193a3d0-0000-7000-8000-0000000000aa', kind: 'human', assurance: 'password', bindings: [platform] } });
+
+  it('the holders: forecast_owner / domain_admin / platform_admin withdraw a forecast; twin_owner / simulation_operator / domain_admin / platform_admin invalidate a run; the decision_owner alone reopens — each allowed with the human gate at C2, none at C3', () => {
+    const holders: Array<[string, string[]]> = [
+      ['prediction.forecast.withdraw', ['forecast_owner', 'domain_admin']],
+      ['simulation.run.invalidate', ['twin_owner', 'simulation_operator', 'domain_admin']],
+      ['decision.package.reopen', ['decision_owner']],
+    ];
+    for (const [action, roles] of holders) {
+      for (const role of roles) {
+        const r = pdp.evaluate(at(action, [role]));
+        expect(r.decision, `${action} by ${role}`).toBe('allow_with_obligations');
+        expect(r.obligations, `${action} by ${role}`).toEqual([{ type: 'human_gate' }]);
+        expect(pdp.evaluate(at(action, [role], 'C3')).decision, `${action} by ${role} at C3`).toBe('deny');
+      }
+      // The platform administrator holds the two module acts at the platform scope; the reopen is the owner's alone (D5).
+      expect(pdp.evaluate(asPlatform(action)).decision, `${action} by platform_admin`).toBe(action === 'decision.package.reopen' ? 'deny' : 'allow_with_obligations');
+      // A purpose is required, as for every governed act.
+      expect(pdp.evaluate({ ...at(action, roles), purposeId: null }).decision, `${action} without a purpose`).toBe('deny');
+    }
+  });
+
+  it('who does not hold them: a forecast_agent never withdraws (it may issue), an approver, an authority, an executive, a strategy_owner, a decision_agent, a domain_analyst; a twin_owner does not withdraw a forecast and a forecast_owner does not invalidate a run', () => {
+    expect(pdp.evaluate(at('prediction.forecast.issue', ['forecast_agent'])).decision).toBe('allow');
+    for (const role of ['forecast_agent', 'twin_owner', 'simulation_operator', 'decision_owner', 'decision_approver', 'decision_authority', 'executive', 'strategy_owner', 'domain_analyst', 'tenant_admin']) {
+      expect(pdp.evaluate(at('prediction.forecast.withdraw', [role])).decision, `withdraw by ${role}`).toBe('deny');
+    }
+    for (const role of ['forecast_owner', 'forecast_agent', 'decision_owner', 'decision_approver', 'decision_authority', 'executive', 'strategy_owner', 'domain_analyst', 'tenant_admin']) {
+      expect(pdp.evaluate(at('simulation.run.invalidate', [role])).decision, `invalidate by ${role}`).toBe('deny');
+    }
+    for (const role of ['decision_approver', 'decision_authority', 'decision_agent', 'executive', 'strategy_owner', 'domain_admin', 'domain_analyst', 'forecast_owner', 'twin_owner', 'tenant_admin']) {
+      expect(pdp.evaluate(at('decision.package.reopen', [role])).decision, `reopen by ${role}`).toBe('deny');
+    }
+    // The rules match EXACTLY: a neighbouring action inherits nothing from them.
+    for (const action of ['prediction.forecast.withdrawn', 'prediction.forecast.withdraw.now', 'simulation.run.invalidated', 'decision.package.reopened']) {
+      const r = pdp.evaluate(at(action, ['forecast_owner', 'domain_admin', 'twin_owner', 'simulation_operator', 'decision_owner']));
+      // `decision.package.reopened` and `simulation.run.invalidated` still fall to their prefix rules; the forecast neighbours to no rule at all.
+      expect(r.decision, action).not.toBe('allow_with_obligations');
+    }
+    expect(pdp.evaluate(at('prediction.forecast.withdrawn', ['forecast_owner'])).decision).toBe('indeterminate');
+  });
+
+  it('the placement: decision.package.reopen is matched by its own rule, not by `decision.package.` (which admits platform_admin without a gate); simulation.run.invalidate by its own, not by `simulation.run` (which admits no domain_admin and carries no gate)', () => {
+    // `decision.package.` admits platform_admin at the platform scope and gates nothing — the reopen does neither.
+    expect(pdp.evaluate(asPlatform('decision.package.declare')).decision).toBe('allow');
+    expect(pdp.evaluate(asPlatform('decision.package.reopen')).decision).toBe('deny');
+    expect(pdp.evaluate(at('decision.package.declare', ['decision_owner'])).obligations).toEqual([]);
+    expect(pdp.evaluate(at('decision.package.reopen', ['decision_owner'])).obligations).toEqual([{ type: 'human_gate' }]);
+    // `simulation.run` admits twin_owner / simulation_operator / platform_admin without a gate and no domain_admin — the invalidation gates and adds the administrator.
+    expect(pdp.evaluate(at('simulation.run', ['domain_admin'])).decision).toBe('deny');
+    expect(pdp.evaluate(at('simulation.run.invalidate', ['domain_admin'])).decision).toBe('allow_with_obligations');
+    expect(pdp.evaluate(at('simulation.run', ['twin_owner'])).obligations).toEqual([]);
+    expect(pdp.evaluate(at('simulation.run.invalidate', ['twin_owner'])).obligations).toEqual([{ type: 'human_gate' }]);
+    // The reproduce route invalidates under its own action (D6): its holders are unchanged and ungated at the PDP.
+    expect(pdp.evaluate(at('simulation.reproduce', ['simulation_operator'])).decision).toBe('allow');
+    expect(pdp.evaluate(at('simulation.reproduce', ['domain_admin'])).decision).toBe('deny');
+    // `prediction.forecast.issue` stays a prefix rule for the agent and the owner; the withdrawal is exact and excludes the agent.
+    expect(pdp.evaluate(at('prediction.forecast.issue', ['domain_admin'])).decision).toBe('deny');
+    expect(pdp.evaluate(at('prediction.forecast.withdraw', ['domain_admin'])).decision).toBe('allow_with_obligations');
+  });
+});

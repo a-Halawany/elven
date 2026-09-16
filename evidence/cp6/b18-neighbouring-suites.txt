@@ -1,0 +1,14 @@
+=== the neighbouring set at the B18 tree (apps/api: npx vitest run --config vitest.int.config.ts <22 files>) on a fresh database eye_verify_b18_nb (0001–0078), 2026-09-16 — the eight retention harnesses B11–B18, the four subscription harnesses B6–B9 (the twins and decisions consumer digests changed: they register fresh; B6's admitTwin waits for the admission's twin.state_changed deliveries), phase6-interfaces-b18, phase5-simulations, phase5-corrections, phase6-replay (their reproductions now invalidate under simulation.reproduce where a cited document was withdrawn — a lifecycle cause), phase6-decisions, phase6-approvals, phase5-twins, phase6-residual-corrections ===
+
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.int.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/apps/api
+
+
+ Test Files  22 passed (22)
+      Tests  283 passed (283)
+   Start at  02:22:04
+   Duration  232.97s (transform 1.03s, setup 109ms, import 10.80s, tests 220.44s, environment 1ms)
+

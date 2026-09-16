@@ -2,10 +2,20 @@
  * SIMULATION CAPABILITIES — Phase 5 (L8), stage P5-M3. Narrow interfaces over
  * SECURITY DEFINER ports; the experiment contract is bound at opening, the
  * outputs at completion, and a reproduction is recorded with its verdict.
+ *
+ * CP-6 B18 (0078): the completion carries its RESOURCE EVIDENCE to the port (`p_resource` — a signature change; a
+ * stale caller fails loudly at the port); a completed run's result is INVALIDATED (simulation.invalidate_run) by a
+ * person under `simulation.run.invalidate` or by the reproduce write itself under `simulation.reproduce` on an
+ * unreproducible verdict caused by a withdrawn or retired input — the withdrawn SIM version admitted first in the same
+ * write (`admitObject` on the invalidating capability, the FULL canonical row read by `runObject` for its header), and
+ * the subscriptions matching the GraphChanged the service writes beside the event (`changeSubscriptions`).
  */
 import { sql } from 'kysely';
 import type { Tx } from '../shared/db.js';
 import type { CitedObjectRow } from './twin.capabilities.js';
+
+/** B18 (D15, AU-TWN-0033): the resource evidence of an execution — what it took, on which process — measured by the service around the run; on the row (`p_resource`) and in SimulationCompleted. */
+export interface Resource { elapsed_ms: number; samples_run: number; process: { node: string; platform: string; arch: string }; memory_rss_bytes: number }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export interface SimulationReads {
@@ -35,6 +45,8 @@ export interface SimulationReads {
   /** The citations the SELECTED component's required inputs rest on — the selection rule lives in the port. */
   requiredCitations(a: { twinId: string; version: number; component: string }): Promise<Array<{ key: string; kind: string; id: string; version: number; digest: string }>>;
   rebuildProjections(): Promise<Array<{ projection: string; live_rows: string; rebuilt_rows: string; mismatched: string }>>;
+  /** B18 (0078): what is subscribed to a GraphChanged of this kind at publication — evidence for the event, never authority (the 0065 shape). */
+  changeSubscriptions(a: { tenantId: string; domainId: string; changeKind: string }): Promise<Array<{ subscription_id: string; consumer_kind: string }>>;
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
@@ -62,18 +74,35 @@ export interface RunWrites extends SimulationReads {
 }
 export interface CompleteWrites extends SimulationReads {
   admitObject(header: unknown, payload: unknown, digest: string): Promise<{ contentDigest: string }>;
+  /** B18 (0078): `resource` — the evidence measured around the execution — lands on the row and in run.completed (`p_resource`). */
   completeRun(a: { runId: string; tenantId: string; domainId: string; outputs: unknown; outputsDigest: string; sensitivity: unknown; outsideEnvelope: boolean;
-                   headerDigest: string; actor: string; eventId: string; correlationId: string }): Promise<void>;
+                   headerDigest: string; resource: Resource; actor: string; eventId: string; correlationId: string }): Promise<void>;
   failRun(a: { runId: string; tenantId: string; domainId: string; failure: string; actor: string; eventId: string; correlationId: string }): Promise<void>;
 }
-export interface ReproduceWrites extends SimulationReads {
+/**
+ * B18 (0078, L8-I05): the INVALIDATION of a completed run's result — the withdrawn SIM version admitted, then the port
+ * (simulation.invalidate_run: validity, the reason, the trigger and its reference, the dependants named, run.invalidated).
+ * Held by the invalidate route (`simulation.run.invalidate`) and by the reproduce write (`simulation.reproduce`).
+ */
+export interface InvalidateWrites extends SimulationReads {
+  admitObject(header: unknown, payload: unknown, digest: string): Promise<{ contentDigest: string }>;
+  invalidateRun(a: { runId: string; tenantId: string; domainId: string; reason: string; trigger: 'operator' | 'reproduction'; triggerRef: string | null;
+                     actor: string; eventId: string; correlationId: string }): Promise<Record<string, unknown>>;
+  /**
+   * C14: the FULL objects.canonical_objects row of a run's SIM object — the latest version, or the exact one named — under RLS
+   * (the B17 latestRowOf idiom): the withdrawn header is built from every header field, never from citedObject's subset.
+   */
+  runObject(a: { runId: string; tenantId: string; domainId: string; version: number | null }): Promise<Record<string, unknown> | undefined>;
+}
+/** A reproduction records its verdict and, on an unreproducible one caused by a withdrawn or retired input, invalidates in the same write. */
+export interface ReproduceWrites extends InvalidateWrites {
   recordReproduction(a: { reproductionId: string; tenantId: string; domainId: string; runId: string; verdict: 'reproduced' | 'mismatch' | 'unreproducible';
                           expected: string; actual: string | null; reason: string; environmentDigest: string; environmentMatches: boolean; cold: boolean;
                           actor: string; eventId: string; correlationId: string }): Promise<void>;
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-class SimulationCapabilityImpl implements RunWrites, CompleteWrites, ReproduceWrites {
+class SimulationCapabilityImpl implements RunWrites, CompleteWrites, InvalidateWrites, ReproduceWrites {
   readonly #tx: Tx; readonly #action: string;
   constructor(tx: Tx, action: string) { this.#tx = tx; this.#action = action; }
   get action(): string { return this.#action; }
@@ -134,6 +163,17 @@ class SimulationCapabilityImpl implements RunWrites, CompleteWrites, ReproduceWr
     return this.call<{ projection: string; live_rows: string; rebuilt_rows: string; mismatched: string }>(
       sql`select projection, live_rows::text, rebuilt_rows::text, mismatched::text from simulation.rebuild_projections()`);
   }
+  async changeSubscriptions(a: { tenantId: string; domainId: string; changeKind: string }): Promise<Array<{ subscription_id: string; consumer_kind: string }>> {
+    const rows = await this.call<{ s: Array<{ subscription_id: string; consumer_kind: string }> }>(sql`select graph.subscriptions_matching(${a.tenantId}::uuid, ${a.domainId}::uuid, 'GraphChanged', ${a.changeKind}) as s`);
+    return rows[0]?.s ?? [];
+  }
+  async runObject(a: { runId: string; tenantId: string; domainId: string; version: number | null }): Promise<Record<string, unknown> | undefined> {
+    let q = this.from('objects.canonical_objects').selectAll()
+      .where('object_type' as never, '=', 'SIM' as never).where('object_id' as never, '=', a.runId as never)
+      .where('tenant_id' as never, '=', a.tenantId as never).where('domain_id' as never, '=', a.domainId as never);
+    if (a.version !== null) q = q.where('object_version' as never, '=', a.version as never);
+    return (await q.orderBy('object_version' as never, 'desc').limit(1).executeTakeFirst()) as Record<string, unknown> | undefined;
+  }
 
   async openRun(a: OpenRunArgs): Promise<OpenedRun> {
     const rows = await this.call<{ r: OpenedRun }>(sql`select simulation.open_run(
@@ -158,7 +198,12 @@ class SimulationCapabilityImpl implements RunWrites, CompleteWrites, ReproduceWr
 
   async completeRun(a: Parameters<CompleteWrites['completeRun']>[0]): Promise<void> {
     await this.call(sql`select simulation.complete_run(${a.runId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${JSON.stringify(a.outputs)}::jsonb, ${a.outputsDigest},
-      ${JSON.stringify(a.sensitivity)}::jsonb, ${a.outsideEnvelope}, ${a.headerDigest}, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
+      ${JSON.stringify(a.sensitivity)}::jsonb, ${a.outsideEnvelope}, ${a.headerDigest}, ${JSON.stringify(a.resource)}::jsonb, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
+  }
+  async invalidateRun(a: Parameters<InvalidateWrites['invalidateRun']>[0]): Promise<Record<string, unknown>> {
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select simulation.invalidate_run(${a.runId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}, ${a.trigger},
+      ${a.triggerRef}::uuid, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
   }
   async failRun(a: Parameters<CompleteWrites['failRun']>[0]): Promise<void> {
     await this.call(sql`select simulation.fail_run(${a.runId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.failure}, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
@@ -175,4 +220,6 @@ export const SimulationCapability = {
   run(tx: Tx, action: string): RunWrites { return new SimulationCapabilityImpl(tx, action); },
   complete(tx: Tx, action: string): CompleteWrites { return new SimulationCapabilityImpl(tx, action); },
   reproduce(tx: Tx, action: string): ReproduceWrites { return new SimulationCapabilityImpl(tx, action); },
+  /** B18 (0078): the invalidate route's capability — a person's act on a completed run's result. */
+  invalidate(tx: Tx, action: string): InvalidateWrites { return new SimulationCapabilityImpl(tx, action); },
 };

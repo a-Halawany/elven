@@ -1,0 +1,14 @@
+=== the full integration suite at the B18 tree (apps/api: pnpm test:int:all) on a fresh database eye_verify_b18_all1 (0001–0078), 2026-09-16 — the B18 harnesses' 6 + 14 cases included; the B6 harness's admits settled (0078 announces a twin admission) ===
+
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.int.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/apps/api
+
+
+ Test Files  69 passed (69)
+      Tests  1055 passed (1055)
+   Start at  02:07:30
+   Duration  565.94s (transform 1.54s, setup 312ms, import 24.82s, tests 535.06s, environment 3ms)
+

@@ -395,6 +395,8 @@ const BUNDLE_V1: Rule[] = [
     ],
     requiresPurpose: true,
   },
+  // B18 (0078): the WITHDRAWAL of an issued forecast — its owner or the domain's administrator marks a version unfit; human-gated. Exact: forecast_agent never withdraws.
+  { actionPrefix: 'prediction.forecast.withdraw', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   {
     actionPrefix: 'prediction.backtest.record',
     requiredAnyRole: [
@@ -702,6 +704,9 @@ const BUNDLE_V1: Rule[] = [
     requiresPurpose: true,
     maxConsequence: 'C2',
   },
+  // B18 (0078): the REOPENING of a committed decision — its owner re-enters the lifecycle on a recorded cause; human-gated; the port refuses a non-owner.
+  // Placed BEFORE the `decision.package.` prefix rule, which would otherwise match first (first match wins).
+  { actionPrefix: 'decision.package.reopen', exact: true, requiredAnyRole: [{ role: 'decision_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   {
     actionPrefix: 'decision.package.option',
     requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_agent', atScope: 'DOMAIN' }],
@@ -746,6 +751,9 @@ const BUNDLE_V1: Rule[] = [
     obligations: [{ type: 'audit_access' }],
     requiresPurpose: true,
   },
+  // B18 (0078): the INVALIDATION of a completed run — the twin owner, the operator or the administrator marks its result unfit; human-gated.
+  // The reproduce route invalidates under its own action (simulation.reproduce). Placed BEFORE the `simulation.run` prefix rule, which would otherwise match first.
+  { actionPrefix: 'simulation.run.invalidate', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   {
     actionPrefix: 'simulation.run.complete',
     requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }],

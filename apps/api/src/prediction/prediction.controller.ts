@@ -11,6 +11,12 @@
  * Every forecast answer carries its `validation_state`, its `label` and its
  * validation note verbatim from the record, and a replay demonstration or an
  * unvalidated forecast is never presented as anything else.
+ *
+ * CP-6 B18 (0078): the issue route publishes ForecastIssued@v2 (L6-I02 — the v1
+ * keys kept, the interface's fields added; not a rename) and the new route
+ * POST …/forecasts/:forecastId/withdraw (L6-I05) lets the owner mark an issued
+ * forecast unfit — the withdrawn FCT version admitted, the dependants named, the
+ * consumers marked through GraphChanged/forecast.withdrawn.
  */
 import { Body, Controller, HttpException, Param, Post, Req } from '@nestjs/common';
 import { errorBody, type Envelope } from '@eye/contracts';
@@ -22,6 +28,7 @@ import { forecastSupersededEvent } from '../graph/subscriptions/change-events.js
 import { PredictionCapability } from './prediction.capabilities.js';
 import { SeriesService, type Reader } from './series/series.service.js';
 import { ForecastingService, HORIZONS } from './forecasting/forecasting.service.js';
+import { forecastIssuedEvent } from './forecasting/forecast-events.js';
 import { ScenariosService, validateScenario } from './scenarios/scenarios.service.js';
 import { PARSERS } from './series/parsers.js';
 
@@ -167,6 +174,8 @@ export class PredictionController {
     }
     const label = p.label === 'live' ? 'live' : 'replay demonstration';
     const reader = this.reader(req, tenantId, domainId);
+    // ONE record cut-off for the issue and its event (the fallback clock is read once).
+    const knownAt = instant(p.knownAt, new Date().toISOString());
     // The object id is minted HERE so the capability is bound to exactly the
     // forecast that will be admitted, before the transaction opens.
     const forecastId = newId();
@@ -176,7 +185,7 @@ export class PredictionController {
       async (cap, scope) => {
         const r = await this.forecasting.issue(cap, scope, reader, {
           seriesKey: p.seriesKey as string, horizonCode: p.horizon as string,
-          knownAt: instant(p.knownAt, new Date().toISOString()), observedThrough: day(p.observedThrough),
+          knownAt, observedThrough: day(p.observedThrough),
           assumptions: Array.isArray(p.assumptions) ? p.assumptions.filter((x): x is string => typeof x === 'string') : [],
           refreshCadence: p.refreshCadence ?? 'daily', label, ...(typeof p.method === 'string' ? { method: p.method } : {}),
         }, principal.principalId, envelope.correlation_id, envelope.purpose_id ?? 'prediction', forecastId);
@@ -185,12 +194,48 @@ export class PredictionController {
         const superseded = await cap.supersededBy({ forecastId: r.forecastId });
         const events = superseded === null ? [] : [forecastSupersededEvent({ supersededForecastId: superseded.forecast_id, newForecastId: r.forecastId, subjectEntityId: superseded.subject_entity_id,
           subscriptions: await cap.changeSubscriptions({ tenantId, domainId, changeKind: 'forecast.superseded' }), actor: principal.principalId })];
+        // B18 (0078, L6-I02): ForecastIssued@v2 — the v1 six kept, the interface's fields from the service's own answer (nothing re-read).
         return { result: { ...r, supersededForecastId: superseded?.forecast_id ?? null }, targetType: 'FCT', targetId: r.forecastId, targetVersion: '1',
-                 outboxEvent: { eventType: 'ForecastIssued', payload: { schema_version: 'v1', forecast_id: r.forecastId, series_key: p.seriesKey,
-                                horizon: p.horizon, method: r.method, validation_state: r.validationState, label, superseded_forecast_id: superseded?.forecast_id ?? null } },
+                 outboxEvent: forecastIssuedEvent({
+                   forecastId: r.forecastId, seriesKey: p.seriesKey as string, subjectEntityId: r.subjectEntityId, horizon: p.horizon as string, horizonDays: r.horizonDays,
+                   method: r.method, methodVersion: r.methodVersion, baselineMethod: r.baselineMethod, validationState: r.validationState, validationNote: r.validationNote,
+                   backtestId: r.backtestId, skill: r.skill, label, supersededForecastId: superseded?.forecast_id ?? null,
+                   originAt: r.originAt, knownAt, targetAt: r.targetAt, observedThrough: r.observedThrough, issuedAt: r.issuedAt,
+                   refreshCadence: p.refreshCadence ?? 'daily', quantiles: r.quantiles, unit: r.unit, drivers: r.drivers, assumptions: r.assumptions, evidenceRefs: r.evidenceRefs,
+                   controls: { synthetic_state: r.controls.synthetic_state, classification: r.controls.classification }, actor: principal.principalId,
+                 }),
                  outboxEvents: events };
       });
     return { forecast: out.result, receipt: receipt(out) };
+  }
+
+  /**
+   * B18 (0078, L6-I05): the WITHDRAWAL — the owner (or the domain's administrator; human-gated) marks an issued forecast
+   * unfit with a reason and a class. The service admits the withdrawn FCT version, the port marks the row and names the
+   * dependants (the warnings marked by the port itself), and the write publishes ForecastWithdrawn beside
+   * GraphChanged/forecast.withdrawn — the scenario, decision and twin consumers do the rest.
+   */
+  @Post('/forecasts/:forecastId/withdraw')
+  async withdrawForecast(
+    @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string,
+    @Param('forecastId') forecastId: string,
+    @Body() body: { payload?: { reason?: string; unfitClass?: string } },
+  ) {
+    const { envelope, principal } = ctx(req);
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(forecastId)) {
+      throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'forecastId must be a forecast id'), 422);
+    }
+    const p = body.payload ?? {};
+    const out = await this.pipeline.write(
+      envelope, principal, this.route(tenantId, domainId, 'prediction.forecast.withdraw', 'FCT', forecastId),
+      PredictionCapability.withdraw,
+      async (cap, scope) => {
+        const r = await this.forecasting.withdraw(cap, scope, forecastId, { reason: String(p.reason ?? ''), unfitClass: String(p.unfitClass ?? '') },
+          principal.principalId, envelope.correlation_id, envelope.purpose_id ?? 'prediction');
+        return { result: { forecastId, withdrawn: r.withdrawn, withdrawnVersion: r.withdrawnVersion }, targetType: 'FCT', targetId: forecastId,
+                 targetVersion: String(r.withdrawnVersion), outboxEvent: r.event, outboxEvents: [r.changed] };
+      });
+    return { withdrawal: out.result, receipt: receipt(out) };
   }
 
   @Post('/forecasts/list')

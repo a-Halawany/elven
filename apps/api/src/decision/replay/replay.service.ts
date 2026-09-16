@@ -13,6 +13,11 @@
  * classification, and membership of the package's room where one exists. Item 3: the
  * RPL inherits the version's controls (rights, residency, retention, access policy) and
  * those of the evidence it replays.
+ *
+ * B18 (0078, D13): a package reopened and re-committed has one commitment per COMMITTED
+ * VERSION — a replay reconstructs the version by ITS OWN commitment row (its instant is
+ * the "decided" layer's close), so an earlier decision replays as it was taken, never
+ * closed at a later decision's instant.
  */
 import { HttpException, Injectable } from '@nestjs/common';
 import { canonicalHeaderDigest, errorBody, validateHeader, type CanonicalHeader } from '@eye/contracts';
@@ -31,7 +36,8 @@ export class ReplayService {
     const p = (await cap.readPackages().selectAll().where('package_id' as never, '=', packageId as never).executeTakeFirst()) as Record<string, unknown> | undefined;
     const v = (await cap.readVersions().selectAll().where('package_id' as never, '=', packageId as never).where('version' as never, '=', version as never).executeTakeFirst()) as Record<string, unknown> | undefined;
     if (p === undefined || v === undefined) throw new HttpException(errorBody('EYE_STA_001', correlationId, 'no authorized package version matches'), 404);
-    if (p['decided_at'] === null || p['decided_at'] === undefined || Number(p['committed_version']) !== version) {
+    const c = (await cap.readCommitments().selectAll().where('package_id' as never, '=', packageId as never).where('version' as never, '=', version as never).executeTakeFirst()) as Record<string, unknown> | undefined;
+    if (p['decided_at'] === null || p['decided_at'] === undefined || c === undefined || v['state'] !== 'committed') {
       throw new HttpException(errorBody('EYE_STA_001', correlationId, `version ${version} is ${String(v['state'])}, not committed; a replay reconstructs what a decision was taken with`), 409);
     }
     // the reader's authority now — against the version first, against the complete reconstruction below

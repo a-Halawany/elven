@@ -1,0 +1,11 @@
+=== the unit suite at the B18 tree (apps/api: pnpm test — vitest, then the meta suite), 2026-09-16 — with the B18 unit files (withdrawn-version, forecast-events, simulation-events, twin-events, decision-events, review-events, change-events-lifecycle, phase6-refusals-b18, the three PDP cases): 2272 = 2210 + 62 ===
+
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/apps/api
+ Test Files  51 passed (51)
+      Tests  2272 passed (2272)
+   Duration  230.89s (transform 3.13s, setup 0ms, import 6.88s, tests 1099.49s, environment 2ms)
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/apps/api
+ Test Files  1 passed (1)
+      Tests  9 passed (9)
+   Duration  214.60s (transform 11ms, setup 0ms, import 17ms, tests 214.51s, environment 0ms)
+exit 0

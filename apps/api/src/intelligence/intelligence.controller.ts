@@ -24,6 +24,7 @@ import { memoryCorrectedEvent } from '../graph/subscriptions/change-events.js';
 import { MethodsService, validateMethod } from './methods/methods.service.js';
 import { ExtractionOrchestrator } from './extraction/orchestrator.service.js';
 import { ReviewService, type ReviewDecision } from './review/review.service.js';
+import { reviewRequestedEvent } from './review/review-events.js';
 
 function ctx(req: EyeRequest) {
   const envelope = req.eyeEnvelope;
@@ -523,7 +524,11 @@ export class IntelligenceController {
 
   // ───────────────────────── contradictions and challenges (0066 §5, L2-I03) ─────────────────────────
 
-  /** A CHALLENGE: a person opens a review case on an admitted claim version (V00-T-037); a correction there re-derives what rests on it. */
+  /**
+   * A CHALLENGE: a person opens a review case on an admitted claim version (V00-T-037); a correction there re-derives what rests on it.
+   * B18 (0078, L2-I04): the case is ANNOUNCED as ReviewRequested from the queueing transaction — the run, method and confidence read
+   * back from the case row the port wrote, the claim's type from its lineage; no producing agent is excluded (the run's agent is enforced at decision).
+   */
   @Post('/review/request')
   async requestReview(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: { claimObjectId?: string; claimVersion?: number; reason?: string } }) {
     const { envelope, principal } = ctx(req);
@@ -537,7 +542,15 @@ export class IntelligenceController {
       IntelligenceCapability.review,
       async (cap) => {
         await cap.requestReview({ caseId, tenantId, domainId, claimId, version, reason, actor: principal.principalId, correlationId: envelope.correlation_id });
-        return { result: { caseId, claimObjectId: claimId, claimVersion: version, state: 'queued', reason: 'challenged' }, targetType: 'REV', targetId: caseId, targetVersion: '1', outboxEvent: null };
+        const row = (await cap.readReviewCases().selectAll().where('case_id' as never, '=', caseId as never).executeTakeFirst()) as Record<string, unknown> | undefined;
+        if (row === undefined) throw new Error('the review case was not readable after the port queued it');
+        const lineage = (await cap.readLineage().select(['claim_type'] as never).where('claim_object_id' as never, '=', claimId as never).where('claim_version' as never, '=', version as never).executeTakeFirst()) as { claim_type: string } | undefined;
+        return { result: { caseId, claimObjectId: claimId, claimVersion: version, state: 'queued', reason: 'challenged' }, targetType: 'REV', targetId: caseId, targetVersion: '1',
+                 outboxEvent: reviewRequestedEvent({
+                   caseId, claimObjectId: claimId, claimVersion: version, claimType: lineage?.claim_type ?? null, runId: String(row['run_id']), methodId: String(row['method_id']),
+                   queuedReason: 'challenged', confidence: row['confidence'] === null || row['confidence'] === undefined ? null : Number(row['confidence']), challenge: reason, contradictionIds: [],
+                   excludedPrincipal: null, evidenceObjectId: null, action: 'intelligence.review.request', actor: principal.principalId, occurredAt: new Date().toISOString(),
+                 }) };
       });
     return { review: out.result, receipt: receipt(out) };
   }

@@ -9,10 +9,13 @@ import { requireCorrelation } from '../shared/correlation.js';
 import { PipelineService } from '../pipeline/pipeline.service.js';
 import type { EyeRequest } from '../pipeline/http.js';
 import type { Reader } from '../prediction/series/series.service.js';
+import { twinStateChangedGraphEvent } from '../graph/subscriptions/change-events.js';
 import { TwinCapability } from './twin.capabilities.js';
 import { TwinService, validateElementIntake, validateTwinIntake } from './twins/twin.service.js';
+import { twinStateChangedEvent } from './twins/twin-events.js';
 import { SimulationCapability } from './simulation.capabilities.js';
-import { SimulationService, validateRunIntake } from './simulations/simulation.service.js';
+import { SimulationService, environmentOf, validateRunIntake } from './simulations/simulation.service.js';
+import { simulationCompletedEvent, simulationStartedEvent } from './simulations/simulation-events.js';
 
 function ctx(req: EyeRequest) {
   const envelope = req.eyeEnvelope;
@@ -120,6 +123,12 @@ export class TwinController {
     return { grounded: out.result, receipt: receipt(out) };
   }
 
+  /**
+   * ADMIT — and ANNOUNCE (B18, 0078, L5-I04): the admitting transaction publishes TwinStateChanged/version.admitted
+   * (the version, the variables that changed, the freshness, the runs resting on the superseded version) and a
+   * GraphChanged/twin.state_changed that names the twin and the superseded version's runs for the consumers — the
+   * decisions consumer notes the packages citing them; the twins consumer leaves a twin's own admission alone.
+   */
   @Post('/:twinId/versions/:version/admit')
   async admit(
     @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('twinId') twinId: string,
@@ -131,9 +140,23 @@ export class TwinController {
     const out = await this.pipeline.write(
       envelope, principal, this.route(tenantId, domainId, 'twin.version.admit', 'TWN', twinId), TwinCapability.admit,
       async (cap, scope) => {
-        const r = await this.twins.admit(cap, scope, twinId, version, body.payload?.allowIncomplete === true, envelope.purpose_id ?? 'twin',
+        const { runs, ...r } = await this.twins.admit(cap, scope, twinId, version, body.payload?.allowIncomplete === true, envelope.purpose_id ?? 'twin',
           principal.principalId, envelope.correlation_id);
-        return { result: r, targetType: 'TWN', targetId: twinId, targetVersion: String(version), outboxEvent: null };
+        const now = new Date().toISOString();
+        return {
+          result: r, targetType: 'TWN', targetId: twinId, targetVersion: String(version),
+          outboxEvent: twinStateChangedEvent({
+            twinId, version, branchId: r.branchId, supersedes: r.supersedes, forkedFromVersion: r.forkedFrom, change: 'version.admitted',
+            stateSetDigest: r.stateSetDigest, headerDigest: r.headerDigest, completeness: r.completeness, missingKeys: r.missingKeys, syntheticState: r.syntheticState,
+            knownAt: r.knownAt, observedThrough: r.observedThrough, verificationState: 'verified', changedVariables: r.changedVariables, dependencyImpacts: r.dependencyImpacts,
+            reason: null, causedBy: null, action: 'twin.version.admit', actor: principal.principalId, occurredAt: now,
+          }),
+          outboxEvents: [twinStateChangedGraphEvent({
+            twinId, version, supersedes: r.supersedes, branchId: r.branchId, changedVariables: r.changedVariables.length, runs,
+            subscriptions: await cap.changeSubscriptions({ tenantId: scope.tenantId as string, domainId: scope.domainId as string, changeKind: 'twin.state_changed' }),
+            actor: principal.principalId, occurredAt: now,
+          })],
+        };
       });
     return { admitted: out.result, receipt: receipt(out) };
   }
@@ -200,7 +223,10 @@ export class TwinController {
    * RUN: two governed writes. `simulation.run` binds the contract and snapshots the
    * initial state; `simulation.run.complete` executes from that snapshot, admits the
    * SIM object (synthetic) and binds the outputs. A completion that fails leaves the
-   * run visibly `failed`, never silently absent.
+   * run visibly `failed`, never silently absent. B18 (0078): the opening write
+   * publishes SimulationStarted (L8-I02), the completing write SimulationCompleted
+   * `completed` with the resource evidence, the failing write SimulationCompleted
+   * `failed` with the outputs declared missing (L8-I03) — each in its own transaction.
    */
   @Post('/simulations/run')
   async run(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: Record<string, unknown> }) {
@@ -213,15 +239,22 @@ export class TwinController {
       async (cap, scope) => {
         const r = await this.simulations.open(cap, scope, reader, intake, principal.principalId, envelope.correlation_id, runId);
         return { result: { runId: r.runId, initialStateDigest: r.opened.initial_state_digest, knownAt: r.opened.known_at, observedThrough: r.opened.observed_through },
-                 targetType: 'SIM', targetId: runId, targetVersion: '0', outboxEvent: null };
+                 targetType: 'SIM', targetId: runId, targetVersion: '0',
+                 outboxEvent: simulationStartedEvent({
+                   runId, opened: r.opened, intake, scenario: r.scenario, shockBasis: r.shockBasis, modelRef: r.modelRef, implementationDigest: r.implementationDigest,
+                   environmentDigest: r.environmentDigest, environment: r.environment, inputsDigest: r.inputsDigest, rng: r.rng,
+                   operator: principal.principalId, occurredAt: new Date().toISOString(),
+                 }) };
       });
+    // The elapsed time until a FAILURE is measured here (the service measures a completion around its own execution).
+    const t0 = Date.now();
     try {
       const done = await this.pipeline.write(
         { ...envelope, action: 'simulation.run.complete', message_id: newId() }, principal,
         this.route(tenantId, domainId, 'simulation.run.complete', 'SIM', runId), SimulationCapability.complete,
         async (cap, scope) => {
-          const r = await this.simulations.complete(cap, scope, runId, envelope.purpose_id ?? 'simulation', principal.principalId, envelope.correlation_id);
-          return { result: r, targetType: 'SIM', targetId: runId, targetVersion: '1', outboxEvent: null };
+          const { event, ...r } = await this.simulations.complete(cap, scope, runId, envelope.purpose_id ?? 'simulation', principal.principalId, envelope.correlation_id);
+          return { result: r, targetType: 'SIM', targetId: runId, targetVersion: '1', outboxEvent: event };
         });
       return { run: { ...opened.result, ...done.result, state: 'completed' }, receipt: receipt(done) };
     } catch (e) {
@@ -231,7 +264,16 @@ export class TwinController {
         this.route(tenantId, domainId, 'simulation.run.complete', 'SIM', runId), SimulationCapability.complete,
         async (cap, scope) => {
           await cap.failRun({ runId, tenantId: scope.tenantId as string, domainId: scope.domainId as string, failure: failure.slice(0, 500), actor: principal.principalId, eventId: newId(), correlationId: envelope.correlation_id });
-          return { result: {}, targetType: 'SIM', targetId: runId, targetVersion: '0', outboxEvent: null };
+          // The failed state, announced: no outputs, all of them declared missing; the resource evidence is what the failure took.
+          const row = ((await cap.readRuns().selectAll().where('run_id' as never, '=', runId as never).executeTakeFirst()) as Record<string, unknown> | undefined) ?? { twin_id: intake.twinId, twin_version: intake.twinVersion, run_kind: intake.runKind, control_run_id: intake.controlRunId, component: intake.component };
+          const env = environmentOf();
+          return { result: {}, targetType: 'SIM', targetId: runId, targetVersion: '0',
+                   outboxEvent: simulationCompletedEvent({
+                     runId, state: 'failed', run: row, outputsDigest: null, totals: null, impacts: { control_run_id: intake.controlRunId, deltas: null }, sensitivity: null,
+                     validation: { validation_status: row['validation_status'] === null || row['validation_status'] === undefined ? null : String(row['validation_status']), inherited_validation: [], outside_envelope: false },
+                     resource: { elapsed_ms: Date.now() - t0, samples_run: 0, process: { node: env.node, platform: env.platform, arch: env.arch }, memory_rss_bytes: process.memoryUsage().rss },
+                     simObject: null, failure: failure.slice(0, 500), actor: principal.principalId, occurredAt: new Date().toISOString(),
+                   }) };
         }).catch(() => undefined);
       throw e;
     }
@@ -240,7 +282,10 @@ export class TwinController {
   /**
    * REPRODUCE. The request carries no attestation: the product establishes availability
    * to this reader and executes the stored contract in a separate process itself; a
-   * `cold` flag in the payload is ignored, never recorded.
+   * `cold` flag in the payload is ignored, never recorded. B18 (0078, L8-I05): an
+   * unreproducible verdict caused by a withdrawn or retired input invalidates the run
+   * in this same write (SimulationInvalidated beside GraphChanged/simulation.invalidated);
+   * the answer names the invalidation, or which cause withheld it.
    */
   @Post('/simulations/:runId/reproduce')
   async reproduce(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('runId') runId: string,
@@ -250,10 +295,32 @@ export class TwinController {
     const out = await this.pipeline.write(
       envelope, principal, this.route(tenantId, domainId, 'simulation.reproduce', 'SIM', runId), SimulationCapability.reproduce,
       async (cap, scope) => {
-        const r = await this.simulations.reproduce(cap, scope, reader, runId, principal.principalId, envelope.correlation_id);
-        return { result: r, targetType: 'SIM', targetId: runId, targetVersion: '1', outboxEvent: null };
+        const { events, ...r } = await this.simulations.reproduce(cap, scope, reader, runId, principal.principalId, envelope.correlation_id, envelope.purpose_id ?? 'simulation');
+        return { result: r, targetType: 'SIM', targetId: runId, targetVersion: '1', outboxEvent: events.outboxEvent, outboxEvents: events.outboxEvents };
       });
     return { reproduction: out.result, receipt: receipt(out) };
+  }
+
+  /**
+   * B18 (0078, L8-I05): a PERSON invalidates a completed run's result (the twin owner, the operator or the administrator;
+   * human-gated) — the withdrawn SIM version admitted, the dependants named, the citing packages noted through
+   * GraphChanged/simulation.invalidated; decision.derive_option refuses the run from now on. The reproduce route does the
+   * same itself on an unreproducible verdict caused by a withdrawn or retired input.
+   */
+  @Post('/simulations/:runId/invalidate')
+  async invalidateRun(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('runId') runId: string,
+                      @Body() body: { payload?: { reason?: string } }) {
+    const { envelope, principal } = ctx(req);
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(runId)) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'runId must be a run id'), 422);
+    const out = await this.pipeline.write(
+      envelope, principal, this.route(tenantId, domainId, 'simulation.run.invalidate', 'SIM', runId), SimulationCapability.invalidate,
+      async (cap, scope) => {
+        const r = await this.simulations.invalidate(cap, scope, runId, { reason: String(body.payload?.reason ?? ''), trigger: 'operator', triggerRef: null },
+          principal.principalId, envelope.correlation_id, envelope.purpose_id ?? 'simulation');
+        return { result: { runId, invalidated: r.invalidated, withdrawnVersion: r.withdrawnVersion }, targetType: 'SIM', targetId: runId, targetVersion: String(r.withdrawnVersion),
+                 outboxEvent: r.event, outboxEvents: [r.changed] };
+      });
+    return { invalidation: out.result, receipt: receipt(out) };
   }
 
   @Post('/simulations/compare')

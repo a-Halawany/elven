@@ -228,3 +228,36 @@ copies of the NORDWERK knowledge; the two personas; the mirror's subscriptions; 
 (its consumer method changed in B17 — the B8 rule: a changed method is a new consumer). **The rehearsal copy** needs, beyond the
 key-row swap, the demonstration key row's reference renamed (the rehearsal binds its own key under that name; the product refuses to
 sign with a reference that derives another key and falls back to the active key, stating it inside the signed bytes).
+
+**The lifecycle announced and the chain (B18, 2026-09-17).** `eye_demo` is migrated through 0078; the API serves the B18 build. The act
+(`scripts/phase6/act-b18.mjs`, runner `$S/b18/act-b18.sh`) re-registers the TWINS and DECISIONS subscriptions of BOTH domains when their
+consumer digest differs from the process's (the B8 rule; the replacements replay from the revoked cursors), then: revokes the mirror's
+standing REVOKED import again (`retried`, nothing to remove — B18.1 on the demonstration; the mirror's ONE live import, E4's, is read and
+never touched); versions the mirror twin (K. Vogel) and the origin twin (T. Nakamura — the new version keeps the CURRENT version's world
+cut-off so the corridor branch's flip of act IV lies within it; the cited records that B12 re-archived are RESTORED first through the
+governed restore, P. Novák executing and H. Bergmann approving); issues the 90-day `ecb-eurusd` forecast (N. Eriksen) and a scenario on
+it; runs a shocked control and a reroute on the flipped branch; declares a package on the demo DEC with its room, proposes (L. Brandt),
+approves (S. Okafor), commits at C3; then the chain — the forecast WITHDRAWN as unfit (`POST …/prediction/forecasts/:id/withdraw
+{reason, unfitClass}`, the forecast owner), the reroute REPRODUCED and thereby INVALIDATED (`POST …/twins/simulations/:runId/reproduce`;
+the operator's own `POST …/twins/simulations/:runId/invalidate {reason}` is the harness's), the package REOPENED on the first note after
+the commitment (`POST …/decisions/packages/:id/reopen {cause: {kind: 'input_invalidated', ref: <the note's event id>}}`, the decision
+owner) and re-decided to a SECOND commitment, version 1 replayed at its own instant; L. Ferreira decides the standing challenge case and
+A. Hoffmann challenges the claim again; the register read by J. Weber (36/14/0). **What the act leaves:** each run re-issues the 90-day
+forecast (the previous run's is withdrawn — no supersession), versions both twins once more, declares a new package with its room,
+decides the previous run's challenge and challenges again; the January package and acts I–V are never reopened, withdrawn or
+invalidated; nothing is cleaned. **The rehearsal copy** needs nothing beyond B17's edits (the key-row swap, the station repoint, the
+demo row's reference renamed); the first rehearsal stopped on the act's hard-coded twin cut-off — the product's refusal was right.
+
+**The working domain (B18).** A TENANT-homed persona (`h.bergmann`, `retention_authority`; a tenant administrator likewise) who opens
+`/graph/retention` — or any of the six domain workspaces — is asked for the domain to work in: a tenant administrator picks from the
+list, another tenant role pastes the domain id; the header then shows `working domain` with `change`; the choice is the tab's and the
+persona's (`sessionStorage['eye.working_domain']`), cleared by Sign out. The approvals the acts perform by API (`retention.action.approve`,
+`retention.import.approve`, the key declaration, the package revoke) are now the persona's in the browser too — the owner's walk. The
+web is rebuilt with it (`pnpm --filter @eye/web build`; the `eye-web` launch configuration on :3000). A pasted domain id of another tenant
+is not refused at scope resolution: the reads answer empty, the writes are refused by the domain keys.
+
+**The browser gate and the demonstration API (B18).** `pnpm test:e2e` starts its OWN API on :3401 (`playwright.config.ts`,
+`reuseExistingServer: false`) — the demonstration API must be stopped for a local run of the gate (`lsof -iTCP:3401 -sTCP:LISTEN -t | xargs
+kill`) against a fresh database named by `EYE_DB_NAME` with the four `EYE_VAULT_*_ROOT` under a scratch directory (never `.eye-local/vault`),
+and restarted afterwards by `scripts/ops/demo-restart.sh` (the B18 act did both: its first line records the verify failing while the API
+was down, its step 2 the restart). The hosted job needs nothing of this.

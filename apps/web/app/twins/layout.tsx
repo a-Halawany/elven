@@ -11,13 +11,21 @@
  * The rail collapses to icons below 1024px and the layout is built from logical
  * properties throughout, so it mirrors under `dir="rtl"` without a second
  * stylesheet.
+ *
+ * B18: a principal bound at TENANT scope has no home domain; the shell offers it
+ * a choice of domain to WORK IN (`lib/working-domain.ts` — the tab's, the
+ * principal's, shown in the header, changeable). The choice names the domain
+ * the envelopes carry; the server resolves the route's scope and the policy
+ * decides what the principal may do there. A home domain always wins over it.
  */
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { getSession, health, setSession } from '../../lib/api';
 import { whoAmI, type Me, type Scope } from '../../lib/observation';
+import { clearWorkingDomain, readWorkingDomain, workingDomainFor, type WorkingDomain } from '../../lib/working-domain';
 import { DegradedBanner } from '../../components/ui';
+import { WorkingDomainChooser, WorkingDomainMark } from '../../components/working-domain';
 
 interface ShellContext {
   scope: Scope;
@@ -61,6 +69,7 @@ export default function TwinsLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [me, setMe] = useState<Me | null>(null);
+  const [working, setWorking] = useState<WorkingDomain | null>(null);
   const [degraded, setDegraded] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
 
@@ -75,6 +84,8 @@ export default function TwinsLayout({ children }: { children: ReactNode }) {
         setProblem(r.error?.message ?? 'the server did not confirm this session’s scope');
         return;
       }
+      // The stored choice is read once the server has said who this is (never in a state initialiser: the shell pre-renders on the server).
+      setWorking(readWorkingDomain());
       setMe(r.data.me);
     })();
     const check = async () => {
@@ -97,7 +108,7 @@ export default function TwinsLayout({ children }: { children: ReactNode }) {
   // FAIL CLOSED: nothing renders until the server has said which scope this is.
   if (me === null) return null;
 
-  if (me.homeTenantId === null || me.homeDomainId === null) {
+  if (me.homeTenantId === null) {
     return (
       <main style={{ padding: 'var(--eye-space-32)' }}>
         <h1 style={{ fontSize: 'var(--eye-type-heading-1)' }}>Twins</h1>
@@ -108,8 +119,11 @@ export default function TwinsLayout({ children }: { children: ReactNode }) {
       </main>
     );
   }
+  // B18: a TENANT-homed principal chooses the domain to work in (the choice is the tab's and the principal's; the server decides what it may do there).
+  const domainId = workingDomainFor(me, working);
+  if (domainId === null) return <WorkingDomainChooser workspace="Twins" me={me} onChosen={setWorking} />;
 
-  const scope: Scope = { tenantId: me.homeTenantId, domainId: me.homeDomainId };
+  const scope: Scope = { tenantId: me.homeTenantId, domainId };
   const holds = (role: string) => me.bindings.some((b) => b.roleCode === role && (b.scope === 'PLATFORM' || (b.scope === 'DOMAIN' && b.domainId === scope.domainId)));
   const isResolutionManager = holds('resolution_manager');
   const isStrategyOwner = holds('strategy_owner') || holds('platform_admin');
@@ -132,6 +146,7 @@ export default function TwinsLayout({ children }: { children: ReactNode }) {
           <span style={{ color: 'var(--eye-color-ink-muted)', fontSize: 'var(--eye-type-label-sm)' }}>
             tenant <bdi style={{ fontFamily: 'var(--eye-font-mono)' }}>{scope.tenantId.slice(0, 8)}…</bdi>
             {' · '}domain <bdi style={{ fontFamily: 'var(--eye-font-mono)' }}>{scope.domainId.slice(0, 8)}…</bdi>
+            {me.homeDomainId === null && <WorkingDomainMark onChange={() => { clearWorkingDomain(); setWorking(null); }} />}
           </span>
           <span style={{ color: 'var(--eye-color-ink-muted)', fontSize: 'var(--eye-type-label-sm)' }}>
             {me.bindings.map((b) => b.roleCode).join(' · ') || 'no role binding'}
@@ -140,7 +155,7 @@ export default function TwinsLayout({ children }: { children: ReactNode }) {
             <button
               type="button"
               style={{ background: 'none', border: 'none', color: 'var(--eye-color-accent-default)', cursor: 'pointer' }}
-              onClick={() => { setSession(null); router.replace('/login'); }}
+              onClick={() => { clearWorkingDomain(); setSession(null); router.replace('/login'); }}
             >
               Sign out
             </button>

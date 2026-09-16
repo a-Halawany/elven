@@ -299,8 +299,8 @@ export class ExtractionOrchestrator {
                        payload: { schema_version: 'v1', run_id: runId, method_id: a.methodId, mode,
                                   claims: r.admitted.map((x) => x.objectId) },
                      },
-                     // 0066 §5: the contradictions this admission detected, published from the same committed transition.
-                     ...(r.contradictions.length > 0 ? { outboxEvents: r.contradictions } : {}) };
+                     // 0066 §5: the contradictions this admission detected, and (0078, B18) the review cases it queued, published from the same committed transition.
+                     ...(r.contradictions.length + r.reviews.length > 0 ? { outboxEvents: [...r.contradictions, ...r.reviews] } : {}) };
           });
         claimsAdmitted += out.result.admitted.length;
         // Each admitted claim carries the decision that ADMITTED it, which is this

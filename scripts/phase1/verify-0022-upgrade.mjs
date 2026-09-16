@@ -196,8 +196,8 @@ const INTENDED_ADDITIONS = Object.freeze({
   // 0024: OBJ, ASU, DEC, CMT, OUT · 0028: SRC@v2 · 0029: FCT, SCN, WRN · 0032: TWN · 0033: SIM · 0041: DPK · 0042: APR · 0043: RPL · 0044: BRF · 0058: SCN@v2 · 0061: SCN@v3, WRN@v2 · 0066: MEM@v1
   // 0076: the import forms EVD@v2, ENT@v2, EVT@v2, REL@v2, ASM@v2, CLM@v3 (the base schema + imported_from)
   'objects.schema_registry': 35, // + SCN v2 (0058), SCN v3 and WRN v2 (0061), MEM v1 (0066), SRC v3 (0070), the six import forms (0076)
-  // one ledger line per migration applied above the ceiling (0022–0077)
-  'public.schema_migrations': 56, // + 0077 (B17: imported knowledge published to the importing domain's subscribers; the origin's revocation propagated into the importing domains; the signed notice; the review gate on imported claims)
+  // one ledger line per migration applied above the ceiling (0022–0078)
+  'public.schema_migrations': 57, // + 0078 (B18: the lifecycle announced — ten interface bindings; the withdrawal → invalidation → reopen chain)
 });
 
 /** Structure only: columns, constraints, indexes, routines, policies, grants. */
