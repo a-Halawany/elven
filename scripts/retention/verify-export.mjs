@@ -1,22 +1,32 @@
 #!/usr/bin/env node
 /**
- * The CUSTOMER'S VERIFIER of an export package (CP-6 B11; migration 0070 §3; V03-T-047, DPD-19).
+ * The CUSTOMER'S VERIFIER of an export package (CP-6 B11; migration 0070 §3; V03-T-047, DPD-19 — and, since B13 (migration 0073),
+ * the package's ARCHIVE and its KEY-BASED signature: DP-47-006, LR-23, SC-24).
  *
- *   node scripts/retention/verify-export.mjs <package-dir> [--expect-package-digest <hex>] [--json]
+ *   node scripts/retention/verify-export.mjs <package-dir>        [--expect-package-digest <hex>] [--public-key <pem-file>] [--json]
+ *   node scripts/retention/verify-export.mjs --tar <package.tar>  [--expect-package-digest <hex>] [--public-key <pem-file>] [--json]
  *
- * Node 18 or later; no dependency, no network, no database — it reads the package directory alone. The package is what the
- * product handed over: `manifest.json` and one `<manifest_id>.bin` per exported object, nothing else. The checks, in order,
- * each printed as PASS or FAIL with its reason; the exit code is 0 only when every check passes:
+ * Node 18 or later; no dependency, no network, no database — it reads the package alone. The package is what the product handed
+ * over: `manifest.json` and one `<manifest_id>.bin` per exported object, nothing else — as a DIRECTORY (the product's export
+ * namespace, or a directory the customer unpacked), or as the ONE FILE the product serves and delivers: a POSIX ustar tar
+ * (`--tar`), parsed here in memory (512-byte headers, the name NUL-terminated in bytes 0..100, the size in octal at 124..136, the
+ * typeflag at 156, the magic 'ustar' at 257) — a malformed archive is a FAILED "archive readable" check, never a crash, and the
+ * archive's entry set is held to the same completeness rule as a directory's entries. The checks, in order, each printed as PASS
+ * or FAIL with its reason; the exit code is 0 only when every check passes:
  *
- *   1. the manifest: present, parses, format eye-customer-export/1, signature scheme eye-digest-chain/1;
+ *   0. (--tar) ARCHIVE READABLE: the file parses as a ustar archive — every header's magic and checksum, every entry's size
+ *      within the file, the two-block end-of-archive trailer, no duplicate entry; sha256(the file) is the archive digest the
+ *      product recorded at the build and names in a delivery's delivery.json;
+ *   1. the manifest: present, parses, format eye-customer-export/1 or /2, signature scheme eye-digest-chain/1 (the digest chain
+ *      alone) or eye-customer-export/2 (the digest chain SIGNED by the tenant's export signing key);
  *   2. INTEGRITY of the bytes: every listed file present, sha256(file) = bytes.content_digest, size = bytes.byte_length;
  *   3. RE-IMPORT: for every object payload.content_digest = bytes.content_digest (the record binds the bytes) and
  *      sha256(JCS({header, payload})) = content_digest (the canonical header and payload recompute to the recorded canonical
  *      digest — what an import checks before admitting the record); the header carries exactly 43 fields;
- *   4. COMPLETENESS: every listed file present and every file in the directory listed — EVERY entry, a dot-file included (an
- *      unlisted file fails; the product's own verification counts the directory the same way); what was excluded and why
- *      is printed — an exclusion is not a failure, but `excluded` must be a list, since it enters the chain as listed;
- *      a listed file that cannot be read is a failed integrity check, never a crash;
+ *   4. COMPLETENESS: every listed file present and every file in the directory (every entry of the archive) listed — EVERY
+ *      entry, a dot-file included (an unlisted file fails; the product's own verification counts the directory the same way);
+ *      what was excluded and why is printed — an exclusion is not a failure, but `excluded` must be a list, since it enters
+ *      the chain as listed; a listed file that cannot be read is a failed integrity check, never a crash;
  *   5. REDACTION: every exported header's classification is within gates.redaction.classification_ceiling (a package never
  *      states a ceiling one of its records exceeds);
  *   6. THE CHAIN: sha256(JCS(objects)) = signature.objects_digest; sha256(JCS({format, package, authorization, gates,
@@ -27,32 +37,53 @@
  *      reports (the authenticity step: the same digest is recorded in the append-only retention ledger, bound to the
  *      approval on the resolved scope).
  *
+ *   6b. THE SIGNATURE (scheme eye-customer-export/2): the block carries key_id, algorithm 'Ed25519' and `signature`, the base64
+ *      of 64 bytes — Ed25519 over the ASCII hex of the package digest, which already covers everything above. With
+ *      --public-key <pem-file> (the tenant's export signing PUBLIC key as SPKI PEM — the export read route serves it, with the
+ *      key's id, purpose and state) the signature is verified here: a signature that does not verify is a FAILED check. Without
+ *      the key, a /2 package's signature is reported "not verified here: pass --public-key" as a note, never a failure — the
+ *      chain, integrity and completeness are still proven. A public key given for a package that carries no key-based
+ *      signature, or that could not be checked through to its signature, is a FAILED check of its own (the verification the
+ *      caller asked for did not run — the rule of 7). The verifier accepts only a PUBLIC key file; a private key handed to it
+ *      by mistake is refused, never used.
+ *
  *   7. THE VERDICT (B11-F2, the closure of Codex's finding on the B11 candidate): PACKAGE OK only when every check passed
  *      AND the validation ran through to the chain — a manifest that is not a JSON object (null, a list, a scalar), a
  *      manifest without its object list or signature block, or a package whose chain could not be computed is a FAILURE,
  *      never a success by absence; an expected digest that could not be compared is a failure of its own; the text
  *      verdict, the JSON `ok` and the exit status always agree.
  *
- * The package is "signed" by that digest chain, not by a key (D4 of the batch record): integrity and completeness are
- * proven offline here; authenticity is proven by presenting the package digest to the product (the export read route, or
- * the retention record) and comparing.
+ * A /1 package is "signed" by its digest chain, not by a key (D4 of the B11 record): integrity and completeness are proven
+ * offline here; authenticity is proven by presenting the package digest to the product (the export read route, or the
+ * retention record) and comparing. A /2 package is signed by the tenant's Ed25519 key over that same digest (D3 of the B13
+ * record): its authenticity is proven offline by the public key. Which key signed, and whether it was a DEMONSTRATION or a
+ * production key, is the product's statement (the read route, package.sig beside a delivered package) — the key id printed
+ * here for the given public key (ed25519:<the first 16 hex of sha256(SPKI DER)>) is for the customer to compare with it.
+ *
+ * The JSON output (--json) carries `checks`, `summary`, `complete`, `failed`, `ok` as before, and `signature: { scheme, key_id,
+ * verified }` — `verified` true when the /2 signature verified against --public-key, false when a signature check failed, null
+ * when no key-based verification ran (a /1 package, or a /2 package without --public-key) — and `archive_digest` (--tar only).
  *
  * JCS (RFC 8785) is re-implemented here in the subset the manifest needs — members sorted by UTF-16 code units, strings
  * and numbers as JSON.stringify writes them, no whitespace; a non-finite number, an undefined value or a non-plain object
  * is refused rather than coerced — the same rules as packages/contracts/src/jcs.ts, which the product's harness holds to
  * agree with this file on the package it built.
  */
-import { createHash } from 'node:crypto';
+import { createHash, createPublicKey, verify as cryptoVerify } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
-const FORMAT = 'eye-customer-export/1';
-const SCHEME = 'eye-digest-chain/1';
+const FORMATS = ['eye-customer-export/1', 'eye-customer-export/2'];
+const SCHEME_CHAIN = 'eye-digest-chain/1';
+const SCHEME_KEY = 'eye-customer-export/2';
+const SCHEMES = [SCHEME_CHAIN, SCHEME_KEY];
 const HEADER_FIELDS = 43;
 const HEX64 = /^[0-9a-f]{64}$/;
 const BIN_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.bin$/;
+const SIGNATURE_B64 = /^[A-Za-z0-9+/]{86}==$/; // the base64 of exactly 64 bytes (the SQL port holds the block to the same shape)
 const CLASSIFICATIONS = ['public', 'internal', 'confidential', 'restricted'];
 const rank = (c) => { const i = CLASSIFICATIONS.indexOf(String(c ?? '')); return i < 0 ? 3 : i; };
+const USAGE = 'usage: node scripts/retention/verify-export.mjs <package-dir> | --tar <package.tar> [--expect-package-digest <hex>] [--public-key <pem-file>] [--json]';
 
 /* ── JCS, the subset the manifest needs (RFC 8785) ─────────────────────────── */
 function jcs(value) {
@@ -89,19 +120,76 @@ function jcs(value) {
 const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const digestOf = (value) => createHash('sha256').update(jcs(value), 'utf8').digest('hex');
 
+/* ── ustar, parsed in memory (C4 of the B13 record) ────────────────────────── */
+// A POSIX ustar archive: 512-byte headers, each followed by the entry's bytes padded to 512, two zero blocks at the end. Read
+// here: the name (bytes 0..100, NUL-terminated; joined to the prefix at 345..500 when the version is '00' and a prefix is set),
+// the size (octal at 124..136), the checksum (octal at 148..156, the field itself counted as spaces — the unsigned and the
+// signed sum both accepted, as every tar does), the typeflag (156: '0' or NUL is a regular file) and the magic ('ustar' at 257).
+// Anything the format does not allow — a block with no magic, a checksum that does not add up, a size that is not octal, an
+// entry running past the end of the file, a lone zero block, bytes after the trailer, a name twice — is a malformed archive:
+// one Error, reported by the "archive readable" check. The product's writer (apps/api/src/retention/export-archive.ts) emits a
+// fixed subset of this (mode 0600, uid/gid 0, the manifest's built_at as every mtime, no prefix); the parser reads any valid
+// ustar, so an archive re-packed by the customer's own tar verifies the same way.
+const BLOCK = 512;
+function parseUstar(buf) {
+  const isZeroBlock = (o) => { for (let i = o; i < o + BLOCK; i += 1) if (buf[i] !== 0) return false; return true; };
+  const field = (o, n) => { const end = buf.indexOf(0, o); const stop = end < 0 || end > o + n ? o + n : end; return buf.toString('utf8', o, stop); };
+  const octal = (o, n, what) => {
+    const s = field(o, n).replace(/[\s\0]+$/, '').trimStart();
+    if (!/^[0-7]+$/.test(s)) throw new Error(`${what} at offset ${o} is not octal (${JSON.stringify(s)})`);
+    return parseInt(s, 8);
+  };
+  if (buf.byteLength === 0) throw new Error('the archive is empty');
+  const entries = []; const names = new Set();
+  let off = 0;
+  while (off + BLOCK <= buf.byteLength) {
+    if (isZeroBlock(off)) {
+      if (off + 2 * BLOCK > buf.byteLength || !isZeroBlock(off + BLOCK)) throw new Error(`a single zero block at offset ${off} is not the two-block end-of-archive trailer`);
+      for (let i = off + 2 * BLOCK; i < buf.byteLength; i += 1) if (buf[i] !== 0) throw new Error(`${buf.byteLength - off - 2 * BLOCK} byte(s) after the end-of-archive trailer at offset ${off} are not zero padding`);
+      return entries;
+    }
+    if (buf.toString('latin1', off + 257, off + 262) !== 'ustar') throw new Error(`no ustar magic in the header at offset ${off}`);
+    const recorded = octal(off + 148, 8, 'the header checksum');
+    let unsigned = 0; let signed = 0;
+    for (let i = 0; i < BLOCK; i += 1) {
+      const b = i >= 148 && i < 156 ? 0x20 : buf[off + i];
+      unsigned += b; signed += b > 127 ? b - 256 : b;
+    }
+    if (recorded !== unsigned && recorded !== signed) throw new Error(`the header checksum at offset ${off} does not add up (recorded ${recorded}, computed ${unsigned})`);
+    const version = buf.toString('latin1', off + 263, off + 265);
+    const prefix = version === '00' ? field(off + 345, 155) : '';
+    const name = prefix.length > 0 ? `${prefix}/${field(off, 100)}` : field(off, 100);
+    const size = octal(off + 124, 12, `the size of ${JSON.stringify(name)}`);
+    const typeflag = buf[off + 156];
+    const start = off + BLOCK; const end = start + size;
+    if (end > buf.byteLength) throw new Error(`the entry ${JSON.stringify(name)} at offset ${off} needs ${size} byte(s); ${buf.byteLength - start} remain — the archive is truncated`);
+    if (names.has(name)) throw new Error(`the entry ${JSON.stringify(name)} appears twice`);
+    names.add(name);
+    const regular = typeflag === 0x30 || typeflag === 0;
+    entries.push({ name, size, typeflag: typeflag === 0 ? '\\0' : String.fromCharCode(typeflag), bytes: regular ? buf.subarray(start, end) : null });
+    off = start + Math.ceil(size / BLOCK) * BLOCK;
+  }
+  throw new Error(`the archive ends at ${buf.byteLength} byte(s) without the two-block end-of-archive trailer`);
+}
+
 /* ── arguments ─────────────────────────────────────────────────────────────── */
 const args = process.argv.slice(2);
-let dir = null; let expected = null; let asJson = false;
+let dir = null; let tarPath = null; let expected = null; let publicKeyPath = null; let asJson = false;
 for (let i = 0; i < args.length; i += 1) {
   const a = args[i];
   if (a === '--expect-package-digest') { expected = String(args[i + 1] ?? '').toLowerCase(); i += 1; }
+  else if (a === '--tar') { tarPath = String(args[i + 1] ?? ''); i += 1; }
+  else if (a === '--public-key') { publicKeyPath = String(args[i + 1] ?? ''); i += 1; }
   else if (a === '--json') asJson = true;
-  else if (a === '--help' || a === '-h') { console.log('usage: node scripts/retention/verify-export.mjs <package-dir> [--expect-package-digest <hex>] [--json]'); process.exit(0); }
+  else if (a === '--help' || a === '-h') { console.log(USAGE); process.exit(0); }
   else if (dir === null) dir = a;
   else { console.error(`unexpected argument: ${a}`); process.exit(2); }
 }
-if (dir === null) { console.error('usage: node scripts/retention/verify-export.mjs <package-dir> [--expect-package-digest <hex>] [--json]'); process.exit(2); }
-dir = resolve(dir);
+if ((dir === null) === (tarPath === null) || tarPath === '' || publicKeyPath === '') { console.error(USAGE); process.exit(2); }
+if (dir !== null) dir = resolve(dir);
+if (tarPath !== null) tarPath = resolve(tarPath);
+if (publicKeyPath !== null) publicKeyPath = resolve(publicKeyPath);
+const target = dir ?? tarPath;
 
 /* ── the checks ────────────────────────────────────────────────────────────── */
 const results = [];
@@ -109,17 +197,59 @@ let summary = null;
 const check = (name, ok, detail) => { results.push({ name, ok: ok === true, detail: detail ?? null }); return ok === true; };
 const note = (text) => results.push({ name: text, ok: null, detail: null });
 
-let manifest = null; let parsed = false;
-const manifestPath = join(dir, 'manifest.json');
-if (!existsSync(manifestPath)) {
-  check('manifest.json present', false, `no manifest.json under ${dir}`);
-} else {
+// The public key, when given: a readable SPKI PEM of an Ed25519 PUBLIC key — a private key file is refused before it is parsed (the
+// verifier must never hold private material; the operator's own key is never handed to a customer-side tool).
+let publicKey = null; let publicKeyId = null;
+if (publicKeyPath !== null) {
   try {
-    const raw = readFileSync(manifestPath);
-    manifest = JSON.parse(raw.toString('utf8')); parsed = true;
-    check('manifest.json present and parses', true, `${raw.byteLength} bytes, file digest ${sha256(raw)}`);
+    const pem = readFileSync(publicKeyPath, 'utf8');
+    if (/PRIVATE KEY/.test(pem)) throw new Error('the file holds a PRIVATE key; the verifier takes the PUBLIC key only');
+    if (!/-----BEGIN PUBLIC KEY-----/.test(pem)) throw new Error('the file is not a PEM public key (no "-----BEGIN PUBLIC KEY-----")');
+    const key = createPublicKey({ key: pem, format: 'pem' });
+    if (key.asymmetricKeyType !== 'ed25519') throw new Error(`the key is ${key.asymmetricKeyType ?? 'unknown'}, not ed25519`);
+    publicKey = key; publicKeyId = `ed25519:${sha256(key.export({ type: 'spki', format: 'der' })).slice(0, 16)}`;
+    check('public key: --public-key is a readable Ed25519 public key (SPKI PEM)', true, `${publicKeyPath}; key id ${publicKeyId}`);
   } catch (e) {
-    check('manifest.json present and parses', false, `manifest.json does not parse or cannot be read: ${e.message}`);
+    check('public key: --public-key is a readable Ed25519 public key (SPKI PEM)', false, `${publicKeyPath}: ${e.message}`);
+  }
+}
+
+// THE SOURCE of the package's files: the directory on disk, or the archive's entries parsed in memory. Both answer the same three
+// questions — is a name present, what are its bytes, what names are there — so every check below reads a package the same way.
+let source = null; let archiveDigest = null;
+if (tarPath !== null) {
+  try {
+    const raw = readFileSync(tarPath);
+    const entries = parseUstar(raw);
+    archiveDigest = sha256(raw);
+    const byName = new Map(entries.map((e) => [e.name, e]));
+    source = {
+      kind: 'archive',
+      exists: (name) => byName.has(name),
+      read: (name) => { const e = byName.get(name); if (e === undefined) throw new Error('no such entry'); if (e.bytes === null) throw new Error(`the entry is not a regular file (typeflag '${e.typeflag}')`); return e.bytes; },
+      list: () => entries.map((e) => e.name),
+    };
+    check('archive readable: the file parses as a ustar archive', true, `${raw.byteLength} bytes, ${entries.length} entr${entries.length === 1 ? 'y' : 'ies'}, archive digest ${archiveDigest}`);
+  } catch (e) {
+    check('archive readable: the file parses as a ustar archive', false, `${tarPath}: ${e.message}`);
+  }
+} else {
+  source = { kind: 'directory', exists: (name) => existsSync(join(dir, name)), read: (name) => readFileSync(join(dir, name)), list: () => readdirSync(dir) };
+}
+
+let manifest = null; let parsed = false; let sig = null; let signatureVerified = null;
+if (source !== null) {
+  if (!source.exists('manifest.json')) {
+    const seen = source.kind === 'archive' ? source.list() : [];
+    check('manifest.json present', false, `no manifest.json ${source.kind === 'archive' ? 'in' : 'under'} ${target}${seen.length > 0 ? ` (the archive's entries: ${seen.slice(0, 6).join(', ')}${seen.length > 6 ? `, … ${seen.length} in all` : ''} — a package archive names its files plainly, without a directory prefix)` : ''}`);
+  } else {
+    try {
+      const raw = source.read('manifest.json');
+      manifest = JSON.parse(raw.toString('utf8')); parsed = true;
+      check('manifest.json present and parses', true, `${raw.byteLength} bytes, file digest ${sha256(raw)}`);
+    } catch (e) {
+      check('manifest.json present and parses', false, `manifest.json does not parse or cannot be read: ${e.message}`);
+    }
   }
 }
 // The manifest is a JSON OBJECT (B11-F2): `null`, a list or a scalar parses, and is not a package — a failed check, so that
@@ -127,9 +257,9 @@ if (!existsSync(manifestPath)) {
 const isObject = manifest !== null && typeof manifest === 'object' && !Array.isArray(manifest);
 if (parsed) check('manifest.json is a JSON object', isObject, isObject ? 'an object' : `manifest.json is ${manifest === null ? 'null' : Array.isArray(manifest) ? 'an array' : `a ${typeof manifest}`}, not a package manifest`);
 if (isObject) {
-  check(`format is ${FORMAT}`, manifest.format === FORMAT, `format ${JSON.stringify(manifest.format)}`);
-  const sig = manifest.signature;
-  check(`signature scheme is ${SCHEME}`, sig !== null && typeof sig === 'object' && sig.scheme === SCHEME, `scheme ${JSON.stringify(sig?.scheme)}`);
+  check(`format is ${FORMATS.join(' or ')}`, FORMATS.includes(manifest.format), `format ${JSON.stringify(manifest.format)}`);
+  sig = manifest.signature !== null && typeof manifest.signature === 'object' && !Array.isArray(manifest.signature) ? manifest.signature : null;
+  check(`signature scheme is ${SCHEMES.join(' or ')}`, sig !== null && SCHEMES.includes(sig.scheme), `scheme ${JSON.stringify(sig?.scheme)}`);
   const objects = Array.isArray(manifest.objects) ? manifest.objects : null;
   check('objects is a list', objects !== null, objects === null ? 'objects is not an array' : `${objects.length} object(s)`);
   const listed = new Set();
@@ -142,10 +272,9 @@ if (isObject) {
       // 2. integrity of the bytes
       if (typeof file !== 'string' || !BIN_RE.test(file)) { check(`integrity ${label}: bytes.file`, false, `bytes.file ${JSON.stringify(file)} is not <manifest id>.bin`); continue; }
       listed.add(file);
-      const path = join(dir, file);
-      if (!existsSync(path)) { check(`integrity ${label}: ${file} present`, false, 'the listed file is absent'); continue; }
+      if (!source.exists(file)) { check(`integrity ${label}: ${file} present`, false, 'the listed file is absent'); continue; }
       let bytes;
-      try { bytes = readFileSync(path); } catch (e) { check(`integrity ${label}: ${file} readable`, false, `the listed file cannot be read as a file: ${e.message}`); continue; }
+      try { bytes = source.read(file); } catch (e) { check(`integrity ${label}: ${file} readable`, false, `the listed file cannot be read as a file: ${e.message}`); continue; }
       const d = sha256(bytes);
       const okDigest = d === o.bytes.content_digest;
       const okSize = bytes.byteLength === o.bytes.byte_length;
@@ -163,15 +292,16 @@ if (isObject) {
     }
     note(`integrity ${integrityOk}/${objects.length}; re-import ${reimportOk}/${objects.length}`);
   }
-  // 4. completeness: the directory holds the manifest and the listed files, nothing else — every entry counts, a dot-file included
-  //    (the product's verification counts the directory the same way; the product never writes a dot-file into a package)
+  // 4. completeness: the directory (the archive) holds the manifest and the listed files, nothing else — every entry counts, a dot-file
+  //    included (the product's verification counts the directory the same way; the product never writes a dot-file into a package,
+  //    and its archive carries exactly manifest.json and the listed files, in that order)
   let present = null;
-  try { present = readdirSync(dir); } catch (e) { check('completeness: the package directory can be listed', false, `the directory cannot be listed: ${e.message}`); }
+  try { present = source.list(); } catch (e) { check('completeness: the package directory can be listed', false, `the directory cannot be listed: ${e.message}`); }
   if (present !== null) {
     const unlisted = present.filter((n) => n !== 'manifest.json' && !listed.has(n));
     const missing = [...listed].filter((n) => !present.includes(n));
     check('completeness: every listed file present and every file listed', unlisted.length === 0 && missing.length === 0,
-      unlisted.length > 0 ? `unlisted file(s) in the package: ${unlisted.join(', ')}` : missing.length > 0 ? `listed file(s) absent: ${missing.join(', ')}` : `${present.length} entr${present.length === 1 ? 'y' : 'ies'} in the directory: manifest.json + ${listed.size} object file(s)`);
+      unlisted.length > 0 ? `unlisted file(s) in the package: ${unlisted.join(', ')}` : missing.length > 0 ? `listed file(s) absent: ${missing.join(', ')}` : `${present.length} entr${present.length === 1 ? 'y' : 'ies'} in the ${source.kind}: manifest.json + ${listed.size} object file(s)`);
   }
   // `excluded` enters the chain AS LISTED (the product digests the value it wrote; a substitute would let an edited member verify):
   // a member that is not a list is a failed check and stops the chain.
@@ -186,7 +316,7 @@ if (isObject) {
       !CLASSIFICATIONS.includes(ceiling) ? `gates.redaction.classification_ceiling ${JSON.stringify(ceiling)} is not a classification` : above.length > 0 ? `record(s) above the ceiling: ${above.join(', ')}` : `${objects.length} record(s) at or below ${ceiling}`);
   }
   // 6. the chain
-  if (objects !== null && excluded !== null && sig !== null && typeof sig === 'object') {
+  if (objects !== null && excluded !== null && sig !== null) {
     let objectsDigest = null; let packageDigest = null; let chainError = null;
     try {
       objectsDigest = digestOf(objects);
@@ -200,6 +330,34 @@ if (isObject) {
     check('chain: signature.bound_to restates the covered authorization (action_id = package.action_id, scope_digest = authorization.scope_digest, approval_id = authorization.approval_id)', boundOk,
       boundOk ? `bound to action ${manifest.package?.action_id}, scope digest ${auth.scope_digest}, approval ${auth.approval_id}`
         : `bound_to {action ${sig.bound_to?.action_id}, scope digest ${sig.bound_to?.scope_digest}, approval ${sig.bound_to?.approval_id}} does not restate {action ${manifest.package?.action_id}, scope digest ${auth.scope_digest}, approval ${auth.approval_id}}`);
+    // 6b. the key-based signature (scheme eye-customer-export/2): the block's shape, then — with --public-key — Ed25519 over the ASCII
+    //     hex of the package digest RECOMPUTED here (the content the customer holds). A signature that verifies over the STATED
+    //     package_digest but not over the recomputed one is a package altered after signing; the detail says which.
+    if (sig.scheme === SCHEME_KEY) {
+      const sigBytes = typeof sig.signature === 'string' && SIGNATURE_B64.test(sig.signature) ? Buffer.from(sig.signature, 'base64') : null;
+      const keyIdOk = typeof sig.key_id === 'string' && sig.key_id.length > 0;
+      const shapeOk = keyIdOk && sig.algorithm === 'Ed25519' && sigBytes !== null && sigBytes.byteLength === 64;
+      check(`signature: key_id, algorithm Ed25519 and a 64-byte base64 signature are present (scheme ${SCHEME_KEY})`, shapeOk,
+        !keyIdOk ? `key_id ${JSON.stringify(sig.key_id)} is not a key id` : sig.algorithm !== 'Ed25519' ? `algorithm ${JSON.stringify(sig.algorithm)} is not Ed25519` : sigBytes === null || sigBytes.byteLength !== 64 ? 'signature is not the base64 of 64 bytes' : `key id ${sig.key_id}, Ed25519, 64-byte signature`);
+      if (publicKeyPath === null) {
+        note(`signature: not verified here: pass --public-key <pem-file> with the public key of ${keyIdOk ? sig.key_id : 'the signing key'} (the export read route serves it, with the key's purpose and state)`);
+      } else if (publicKey === null) {
+        signatureVerified = check('signature: the Ed25519 signature over the package digest verifies against --public-key', false, 'the public key could not be loaded (see the public key check)');
+      } else if (!shapeOk || packageDigest === null) {
+        signatureVerified = check('signature: the Ed25519 signature over the package digest verifies against --public-key', false, !shapeOk ? 'no well-formed signature to verify' : `no package digest to verify against (${chainError})`);
+      } else {
+        let verified = false; let verifyError = null; let overStated = false;
+        try {
+          verified = cryptoVerify(null, Buffer.from(packageDigest, 'utf8'), publicKey, sigBytes);
+          if (!verified && typeof sig.package_digest === 'string' && HEX64.test(sig.package_digest) && sig.package_digest !== packageDigest) overStated = cryptoVerify(null, Buffer.from(sig.package_digest, 'utf8'), publicKey, sigBytes);
+        } catch (e) { verifyError = e.message; }
+        signatureVerified = check('signature: the Ed25519 signature over the package digest verifies against --public-key', verified,
+          verified ? `verified over ${packageDigest} with ${publicKeyId}${publicKeyId === sig.key_id ? ' (the manifest names this key)' : ` (the manifest names ${sig.key_id})`}`
+            : verifyError !== null ? `the signature could not be checked: ${verifyError}`
+              : overStated ? `the signature verifies over the stated package_digest ${sig.package_digest}, not over the package's recomputed digest ${packageDigest}: the content was altered after signing`
+                : `the signature does not verify over ${packageDigest} with ${publicKeyId}${publicKeyId === sig.key_id ? '' : ` (the manifest names ${sig.key_id}; is this its public key?)`}`);
+      }
+    }
     if (expected !== null) {
       check('authenticity: the package digest equals the digest the product recorded (--expect-package-digest)', HEX64.test(expected) && packageDigest === expected,
         !HEX64.test(expected) ? `the expected package digest is not sha-256 hex: ${expected}` : packageDigest === expected ? `recorded ${expected}` : `expected package digest ${expected}, the package computes ${packageDigest}`);
@@ -220,13 +378,21 @@ if (!complete) check('validation complete: the package was checked through to it
 if (expected !== null && !results.some((r) => r.ok !== null && r.name.startsWith('authenticity:'))) {
   check('authenticity: the package digest equals the digest the product recorded (--expect-package-digest)', false, `no package digest was computed, so the expected digest ${expected} could not be compared`);
 }
+// A public key is never skipped silently either: when no signature verification ran — a package with the digest chain alone, or one
+// that never reached its signature block — the verification the caller asked for failed.
+if (publicKeyPath !== null && signatureVerified === null) {
+  signatureVerified = check('signature: the Ed25519 signature over the package digest verifies against --public-key', false,
+    sig !== null && sig.scheme === SCHEME_CHAIN ? `the package carries the digest chain alone (scheme ${SCHEME_CHAIN}), no key-based signature to verify` : 'the validation did not reach a key-based signature block; nothing was verified against the public key');
+}
 const failed = results.filter((r) => r.ok === false).length;
 const ok = failed === 0 && complete;
+const signature = { scheme: sig?.scheme ?? null, key_id: sig?.scheme === SCHEME_KEY && typeof sig?.key_id === 'string' ? sig.key_id : null, verified: signatureVerified };
 if (asJson) {
-  console.log(JSON.stringify({ package: dir, checks: results, summary, complete, failed, ok }, null, 2));
+  console.log(JSON.stringify({ package: target, mode: source?.kind ?? 'archive', archive_digest: archiveDigest, checks: results, summary, signature, complete, failed, ok }, null, 2));
 } else {
-  console.log(`export package: ${dir}`);
+  console.log(`export package: ${target}${tarPath !== null ? ' (ustar archive)' : ''}`);
   for (const r of results) console.log(r.ok === null ? `  ${r.name}` : `  ${r.ok ? 'PASS' : 'FAIL'}  ${r.name}${r.detail !== null ? ` — ${r.detail}` : ''}`);
-  console.log(ok ? `PACKAGE OK: ${summary.objects} objects, ${summary.bytes} bytes, package digest ${summary.package_digest}` : `PACKAGE FAILED: ${failed} check(s) failed${complete ? '' : '; the validation did not complete'}`);
+  const signed = signature.scheme === SCHEME_KEY ? `; signature ${signatureVerified === true ? `verified (${signature.key_id})` : `not verified here (${signature.key_id}; pass --public-key)`}` : '';
+  console.log(ok ? `PACKAGE OK: ${summary.objects} objects, ${summary.bytes} bytes, package digest ${summary.package_digest}${signed}` : `PACKAGE FAILED: ${failed} check(s) failed${complete ? '' : '; the validation did not complete'}`);
 }
 process.exit(ok ? 0 : 1);
