@@ -1,0 +1,7 @@
+=== the B14 harness at the B14 tree (apps/api: npx vitest run --config vitest.int.config.ts test/int/phase6-retention-b14.test.ts) on a fresh database eye_verify_b14_h3 (0001–0074; an isolated vault, an isolated transfer station and the SYNTHETIC HTTPS RECIPIENT spawned on a loopback port with a self-signed certificate, the bearer bound by reference EYE_DST_B14 before boot; the DeliveryEgress provider's transport replaced by the client's own deliverPinned on 127.0.0.1 — the address vetting the ONE substituted step, its refusal proven in H3), 2026-09-16 — S0, H1, H2, H3, R1 (the first run on eye_verify_b14_h1 was 3/5: H3 expected address_not_public from the production egress on an .invalid hostname — dns_failure is what a name that resolves nowhere yields, the loopback literal the vetting's case, both now asserted; R1 asserted a port refusal through the route's HTTP status, which the in-process harness sees raw — asserted on the port's message, as the B13 harness does; the second run on eye_verify_b14_h2 was 4/5: R1 read the export of a revoked package, which B11's read route refuses by design — the notices are the list route's and the row's) ===
+
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/apps/api
+ Test Files  1 passed (1)
+      Tests  5 passed (5)
+   Start at  10:25:29
+   Duration  2.75s (transform 556ms, setup 15ms, import 944ms, tests 1.73s, environment 0ms)

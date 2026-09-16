@@ -302,18 +302,38 @@ export class RetentionController {
     const remove = async (): Promise<{ removed: boolean; error?: string }> => {
       try { await this.retention.removePackage(scope, actionId); return { removed: true }; } catch (e) { return { removed: false, error: (e as Error).message.slice(0, 200) }; }
     };
-    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'retention.export.revoke', 'RTA', actionId), RetentionCapability.write,
-      async (cap) => {
-        const existing = await this.retention.exportPackage(cap, scope, actionId);
-        if (existing !== null && existing.package['revoked_at'] !== null && existing.package['revoked_at'] !== undefined && existing.files.length > 0) {
-          return { result: { revocation: { action_id: actionId, package_digest: existing.package['package_digest'], locator_prefix: existing.package['locator_prefix'], revoked_at: existing.package['revoked_at'], retried: true } }, targetType: 'RTA', targetId: actionId, targetVersion: null, outboxEvent: null };
-        }
-        const revocation = await cap.revokeExport({ actionId, tenantId, domainId, reason, actor: principal.principalId, correlationId: envelope.correlation_id });
-        return { result: { revocation }, targetType: 'RTA', targetId: actionId, targetVersion: null, outboxEvent: null };
-      });
-    // The bytes go after the record committed.
+    // B14 (0074 §3–§4; D3): the first REVOCATION NOTICE to every destination that received the package, inside the same write, after the
+    // revocation is recorded — every outcome recorded (a failed notice is a fact; the revocation stands); the station paths this write
+    // created removed when the commit fails after them (C6); the product's package.tar and package.sig at each station removed after
+    // the commit, as the vault's bytes are.
+    const created: string[] = [];
+    type RevokeAnswer = { revocation: Row; notices: Row[]; retried: boolean };
+    let out: Awaited<ReturnType<PipelineService['write']>> & { result: RevokeAnswer };
+    try {
+      out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'retention.export.revoke', 'RTA', actionId), RetentionCapability.write,
+        async (cap): Promise<{ result: RevokeAnswer; targetType: string; targetId: string; targetVersion: null; outboxEvent: null }> => {
+          const existing = await this.retention.exportPackage(cap, scope, actionId);
+          if (existing !== null && existing.package['revoked_at'] !== null && existing.package['revoked_at'] !== undefined && existing.files.length > 0) {
+            return { result: { revocation: { action_id: actionId, package_digest: existing.package['package_digest'], locator_prefix: existing.package['locator_prefix'], revoked_at: existing.package['revoked_at'], retried: true }, notices: [], retried: true }, targetType: 'RTA', targetId: actionId, targetVersion: null, outboxEvent: null };
+          }
+          const revocation = await cap.revokeExport({ actionId, tenantId, domainId, reason, actor: principal.principalId, correlationId: envelope.correlation_id });
+          const notices: Row[] = [];
+          for (const r of ((revocation['recipients'] ?? []) as Row[])) {
+            notices.push(await this.retention.notifyRevocation(cap, scope, actionId, String(r['destination_id']), { actor: principal.principalId, correlationId: envelope.correlation_id }, created));
+          }
+          return { result: { revocation, notices, retried: false }, targetType: 'RTA', targetId: actionId, targetVersion: null, outboxEvent: null };
+        });
+    } catch (e) {
+      if (created.length > 0) await this.retention.removeCreatedStationFiles(created).catch(() => undefined);
+      throw e;
+    }
+    // The bytes go after the record committed: the vault's package directory, and the product's copies at every transfer station notified.
     const bytes = await remove();
-    return { revocation: out.result.revocation, bytes, receipt: receipt(out) };
+    const stations = out.result.retried ? [] : await this.retention.removeStationPackages(scope, actionId,
+      out.result.notices.filter((n) => String((n['destination'] as Row | undefined)?.['kind']) === 'transfer_station' && (n['station'] as Row | null) !== null && typeof (n['station'] as Row)['directory'] === 'string')
+        .map((n) => ({ destination_key: String((n['destination'] as Row)['destination_key']), endpoint: String((n['destination'] as Row)['endpoint'] ?? '') }))
+        .filter((st) => st.endpoint !== ''));
+    return { revocation: out.result.revocation, notices: out.result.notices, bytes, stations, receipt: receipt(out) };
   }
 
   @Post('/actions/:actionId/get')
@@ -459,6 +479,7 @@ export class RetentionController {
     if (!(DESTINATION_KINDS as readonly string[]).includes(kind)) bad(`kind is one of ${DESTINATION_KINDS.join(', ')}`);
     let endpoint = String(p['endpoint'] ?? '').trim();
     const credentialRef = p['credentialRef'] === undefined || p['credentialRef'] === null || p['credentialRef'] === '' ? null : String(p['credentialRef']);
+    let trustAnchorPem = p['trustAnchorPem'] === undefined || p['trustAnchorPem'] === null || String(p['trustAnchorPem']).trim() === '' ? null : String(p['trustAnchorPem']);
     const recipient = String(p['recipient'] ?? '').trim(); const purpose = String(p['purpose'] ?? '').trim();
     if (recipient.length < 1 || recipient.length > 200) bad('recipient names who receives (1 to 200 characters)');
     if (purpose.length < 1 || purpose.length > 500) bad('purpose says what the destination receives the export for (1 to 500 characters)');
@@ -467,8 +488,15 @@ export class RetentionController {
       try { u = new URL(endpoint); } catch { u = null; }
       if (u === null || u.protocol !== 'https:' || u.username !== '' || u.password !== '' || u.hostname === '') bad('an https destination\'s endpoint is an https:// URL without userinfo');
       if (credentialRef !== null && !DESTINATION_CREDENTIAL_REF.test(credentialRef)) bad('credentialRef is the deployment variable EYE_DST_<NAME> (A–Z, 0–9 and _, 1 to 64 characters after the prefix)');
+      // B14 (D2): the trust anchor — one or more PEM certificates node parses; stored normalised; shown by fingerprint.
+      if (trustAnchorPem !== null) {
+        const anchor = this.retention.checkTrustAnchor(trustAnchorPem);
+        if (!anchor.ok) bad(anchor.message);
+        else trustAnchorPem = anchor.pem;
+      }
     } else {
       if (credentialRef !== null) bad('a transfer station names no credential reference (a credential is the https kind\'s)');
+      if (trustAnchorPem !== null) bad('a transfer station names no trust anchor (an anchor is the https kind\'s)');
       const check = await this.retention.checkTransferStation(endpoint);
       if (!check.ok) bad(check.message);
       // Stored as declared (normalised), not as its realpath: the endpoint is realpath'd again before every write and every read (C13).
@@ -476,7 +504,7 @@ export class RetentionController {
     }
     const destinationId = newId();
     const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'retention.destination.declare', 'RDS', destinationId), RetentionCapability.write,
-      async (cap) => ({ result: this.retention.destinationAnswer(await cap.declareExportDestination({ destinationId, tenantId, domainId, destinationKey, kind, endpoint, credentialRef, recipient, purpose, actor: principal.principalId, correlationId: envelope.correlation_id })),
+      async (cap) => ({ result: this.retention.destinationAnswer(await cap.declareExportDestination({ destinationId, tenantId, domainId, destinationKey, kind, endpoint, credentialRef, recipient, purpose, trustAnchorPem, actor: principal.principalId, correlationId: envelope.correlation_id })),
                         targetType: 'RDS', targetId: destinationId, targetVersion: null, outboxEvent: null }));
     return { destination: out.result, receipt: receipt(out) };
   }
@@ -580,5 +608,62 @@ export class RetentionController {
     const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'retention.export.acknowledge', 'RDL', deliveryId), RetentionCapability.write,
       async (cap) => ({ result: await this.retention.acknowledgeDelivery(cap, { tenantId, domainId }, actionId, deliveryId, r as Row, { actor: principal.principalId, correlationId: envelope.correlation_id }), targetType: 'RDL', targetId: deliveryId, targetVersion: null, outboxEvent: null }));
     return { delivery: out.result, receipt: receipt(out) };
+  }
+
+  /**
+   * B14 (0074 §3; D3): a FURTHER revocation notice to one destination that received the package (the revoke act sent the first; this act
+   * is the retry of a failed one, or a second attempt after a mismatched answer) — human-gated; the package must be revoked, the
+   * destination one that received it (a retired destination is still notified — it holds the package). The station path this attempt
+   * created is removed when the commit fails after it; the product's copies at the station were removed by the revoke act.
+   */
+  @Post('/actions/:actionId/export/revocation-notices')
+  async notifyRevocation(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('actionId') actionId: string, @Body() body: { payload?: { destinationKey?: string } }) {
+    const { envelope, principal } = ctx(req);
+    const destinationKey = String(body.payload?.destinationKey ?? '');
+    if (!DESTINATION_KEY.test(destinationKey)) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'destinationKey names a declared destination of this domain (2 to 64 characters of a–z, 0–9 and -)'), 422);
+    const created: string[] = [];
+    let out: Awaited<ReturnType<PipelineService['write']>> & { result: Row };
+    try {
+      out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'retention.export.notify', 'RTA', actionId), RetentionCapability.write,
+        async (cap) => {
+          const destination = await this.retention.destinationByKey(cap, destinationKey);
+          if (destination === null) throw new HttpException(errorBody('EYE_STA_001', envelope.correlation_id, `retention notice rejected: no such destination ${destinationKey} in this domain`), 404);
+          const result = await this.retention.notifyRevocation(cap, { tenantId, domainId }, actionId, String(destination['destination_id']), { actor: principal.principalId, correlationId: envelope.correlation_id }, created);
+          return { result, targetType: 'RXN', targetId: String(result['notice_id']), targetVersion: null, outboxEvent: null };
+        });
+    } catch (e) {
+      if (created.length > 0) await this.retention.removeCreatedStationFiles(created).catch(() => undefined);
+      throw e;
+    }
+    return { notice: out.result, receipt: receipt(out) };
+  }
+
+  /** B14 (D3): the revocation notices of an action, each with its destination, oldest first. */
+  @Post('/actions/:actionId/export/revocation-notices/list')
+  async listRevocationNotices(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('actionId') actionId: string) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'retention.read', 'RTA', actionId), RetentionCapability.read, async (cap) => this.retention.revocationNotices(cap, actionId));
+    return { notices: out.result, receipt: receipt(out) };
+  }
+
+  /** B14 (D3): the COLLECT act of a notice — the transfer station's revocation-receipt.json read from the action's directory (bounded, a JSON object naming its notice_id) and presented to the acknowledgement port. */
+  @Post('/actions/:actionId/export/revocation-notices/:noticeId/collect-receipt')
+  async collectRevocationReceipt(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('actionId') actionId: string, @Param('noticeId') noticeId: string) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'retention.export.acknowledge', 'RXN', noticeId), RetentionCapability.write,
+      async (cap) => ({ result: await this.retention.collectRevocationReceipt(cap, { tenantId, domainId }, actionId, noticeId, { actor: principal.principalId, correlationId: envelope.correlation_id }), targetType: 'RXN', targetId: noticeId, targetVersion: null, outboxEvent: null }));
+    return { notice: out.result, receipt: receipt(out) };
+  }
+
+  /** B14 (D3): the ACKNOWLEDGE act of a notice — the recipient's receipt presented out of band (a JSON object under the receipt ceiling) to the same port. */
+  @Post('/actions/:actionId/export/revocation-notices/:noticeId/acknowledge')
+  async acknowledgeRevocationNotice(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('actionId') actionId: string, @Param('noticeId') noticeId: string, @Body() body: { payload?: { receipt?: unknown } }) {
+    const { envelope, principal } = ctx(req);
+    const r = body.payload?.receipt;
+    if (r === null || r === undefined || typeof r !== 'object' || Array.isArray(r)) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'receipt is the recipient\'s receipt, a JSON object'), 422);
+    if (Buffer.byteLength(JSON.stringify(r), 'utf8') > RECEIPT_MAX_BYTES) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, `receipt is at most ${RECEIPT_MAX_BYTES} bytes`), 422);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'retention.export.acknowledge', 'RXN', noticeId), RetentionCapability.write,
+      async (cap) => ({ result: await this.retention.acknowledgeRevocationNotice(cap, { tenantId, domainId }, actionId, noticeId, r as Row, { actor: principal.principalId, correlationId: envelope.correlation_id }), targetType: 'RXN', targetId: noticeId, targetVersion: null, outboxEvent: null }));
+    return { notice: out.result, receipt: receipt(out) };
   }
 }

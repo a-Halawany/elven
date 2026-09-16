@@ -1,0 +1,7 @@
+=== the full integration suite at the B14 tree (apps/api: pnpm test:int:all) on a fresh database eye_verify_b14_all1 (0001–0074), 2026-09-16 — the B14 harness's 5 cases included ===
+
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/apps/api
+ Test Files  64 passed (64)
+      Tests  1021 passed (1021)
+   Start at  10:37:09
+   Duration  488.64s (transform 1.27s, setup 295ms, import 21.01s, tests 462.50s, environment 3ms)

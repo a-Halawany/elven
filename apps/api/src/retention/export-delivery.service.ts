@@ -36,11 +36,24 @@ import { constants as fsc } from 'node:fs';
 import { access, mkdir, open, readFile, realpath, rename, rm, stat } from 'node:fs/promises';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { VaultService, sha256 } from '../observation/vault/vault.service.js';
-import { deliver, EgressRefused, type EgressPolicy } from '../observation/connectors/http-client.js';
+import { deliver, EgressRefused, type DeliveryRequest, type EgressPolicy, type EgressResult } from '../observation/connectors/http-client.js';
 import { DestinationCredentialStore, KEY_SIGNATURE_SCHEME } from './export-signing.js';
 
 type Row = Record<string, unknown>;
+
+/**
+ * B14: the delivery egress as a provider — the production transport is http-client.ts `deliver` (the scheme and host allowlist, the
+ * address resolved and vetted, then the pinned POST). A harness that drives a synthetic recipient on a loopback address — one the vetting
+ * refuses, and is proven to refuse — substitutes this provider with the client's own `deliverPinned` and nothing else: the transport,
+ * the TLS verification against the declared anchor, the headers, the credential and the answer's handling are the product's.
+ */
+@Injectable()
+export class DeliveryEgress {
+  deliver(req: DeliveryRequest): Promise<EgressResult> { return deliver(req); }
+}
 export type DeliveryState = 'delivered' | 'acknowledged' | 'failed' | 'mismatched';
+/** B14 (D3): what came of a revocation notice — the delivery's states with `notified` in place of `delivered`. */
+export type NoticeState = 'notified' | 'acknowledged' | 'failed' | 'mismatched';
 export type DeliveryFailureClass = 'destination_retired' | 'credential_unbound' | 'egress_refused' | 'transport' | 'receipt_invalid' | 'write_failed';
 
 /** D6: a receipt collected from a station or presented out of band is at most this (Nest's own body limit, 100 kB, lies above it). */
@@ -82,7 +95,7 @@ class StationWriteFailed extends Error {}
 
 @Injectable()
 export class ExportDeliveryService {
-  constructor(private readonly vault: VaultService, private readonly credentials: DestinationCredentialStore) {}
+  constructor(private readonly vault: VaultService, private readonly credentials: DestinationCredentialStore, private readonly egress: DeliveryEgress) {}
 
   /**
    * The station's directory for an action: the endpoint `realpath`'d NOW (C13 — a symlink turned into a vault root since the
@@ -236,17 +249,7 @@ export class ExportDeliveryService {
    * the path contained, the file at most 64 KiB and a JSON object. No file yet → `no_receipt`.
    */
   async collectReceipt(endpoint: string, scope: { tenantId: string; domainId: string }, actionId: string): Promise<{ receipt: Row; path: string; byteLength: number }> {
-    const dir = await this.stationDir(endpoint, scope, actionId);
-    const full = resolve(dir, 'receipt.json');
-    if (!contains(dir, full) || full === dir) throw new TransferStationRefused('containment', 'the resolved receipt path escapes the station directory');
-    let size: number;
-    try { size = (await stat(full)).size; } catch { throw new TransferStationRefused('no_receipt', `no receipt yet at ${full}`); }
-    if (size > RECEIPT_MAX_BYTES) throw new TransferStationRefused('receipt_invalid', `the receipt at ${full} is ${size} bytes, above the ceiling of ${RECEIPT_MAX_BYTES}`);
-    const bytes = await readFile(full);
-    let parsed: unknown;
-    try { parsed = JSON.parse(bytes.toString('utf8')); } catch { throw new TransferStationRefused('receipt_invalid', `the receipt at ${full} is not JSON`); }
-    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) throw new TransferStationRefused('receipt_invalid', `the receipt at ${full} is not a JSON object`);
-    return { receipt: parsed as Row, path: full, byteLength: bytes.byteLength };
+    return this.readStationJson(endpoint, scope, actionId, 'receipt.json');
   }
 
   /**
@@ -254,7 +257,7 @@ export class ExportDeliveryService {
    * then the egress's own refusals (the address not public, a redirect, the host unresolved, TLS, the timeout) each become a
    * recorded failure with the egress class named; a 2xx answer's body is the receipt (a JSON object) and decides the state.
    */
-  async deliverToHttps(a: { endpoint: string; credentialRef: string | null; pkg: DeliveryPackage }): Promise<DeliveryOutcome & { egress: Row | null }> {
+  async deliverToHttps(a: { endpoint: string; credentialRef: string | null; trustAnchorPem: string | null; pkg: DeliveryPackage }): Promise<DeliveryOutcome & { egress: Row | null }> {
     const { pkg } = a;
     const failure = (cls: DeliveryFailureClass, detail: Row): DeliveryOutcome & { egress: Row | null } =>
       ({ state: 'failed', failureClass: cls, receipt: { failure: { class: cls, ...detail } }, egress: null });
@@ -270,9 +273,9 @@ export class ExportDeliveryService {
     };
     if (scheme === KEY_SIGNATURE_SCHEME) { headers['x-eye-key-id'] = String(pkg.signature['key_id'] ?? ''); headers['x-eye-signature'] = String(pkg.signature['signature'] ?? ''); }
     const credential = a.credentialRef === null ? null : this.credentials.resolve(a.credentialRef);
-    let res: Awaited<ReturnType<typeof deliver>>;
+    let res: EgressResult;
     try {
-      res = await deliver({ url: url.toString(), body: pkg.tar, headers, ...(credential === null ? {} : { credentials: { authorization: `Bearer ${credential}` } }), policy: { ...DELIVERY_POLICY, hostAllowlist: [url.hostname.toLowerCase()] } });
+      res = await this.egress.deliver({ url: url.toString(), body: pkg.tar, headers, ...(credential === null ? {} : { credentials: { authorization: `Bearer ${credential}` } }), policy: this.policyFor(url, a.trustAnchorPem) });
     } catch (e) {
       if (e instanceof EgressRefused) {
         const cls: DeliveryFailureClass = ['address_not_public', 'host_not_allowed', 'scheme_not_allowed', 'redirect_not_followed', 'too_many_redirects', 'redirect_target_refused'].includes(e.refusalClass) ? 'egress_refused' : 'transport';
@@ -290,16 +293,181 @@ export class ExportDeliveryService {
       return { ...failure('receipt_invalid', { egress: null, message: 'the destination answered with a body that is not a JSON object', status: res.status, body_digest: sha256(res.body), body_length: res.body.byteLength }), egress };
     }
     const receipt = parsed as Row;
-    return { state: receiptState(receipt, pkg.archiveDigest, pkg.packageDigest), receipt, failureClass: null, egress };
+    return { state: receiptState(receipt, pkg.archiveDigest, pkg.packageDigest, pkg.deliveryId), receipt, failureClass: null, egress };
   }
+
+  /** D8, B14 (D2): the delivery egress's policy for one destination — the fixed limits, the host its own, the declared anchor when there is one. */
+  private policyFor(url: URL, trustAnchorPem: string | null): EgressPolicy {
+    return { ...DELIVERY_POLICY, hostAllowlist: [url.hostname.toLowerCase()], ...(trustAnchorPem === null ? {} : { trustAnchorPem }) };
+  }
+
+  // ───────────────────────── B14 (D3): the revocation notice ─────────────────────────
+
+  /**
+   * The notice as sent to a destination: the exchange identity of THIS notice and the delivery the recipient holds, the package's
+   * digests, the revocation (its instant and reason) and the OBLIGATION the recipient acknowledges — every copy destroyed and confirmed
+   * by a receipt naming this notice, the package digest and copies_destroyed: true.
+   */
+  noticeOf(n: RevocationNotice): Row {
+    return {
+      notice: 'revocation', notice_id: n.noticeId, attempt: n.attempt, action_id: n.actionId, tenant_id: n.tenantId, domain_id: n.domainId,
+      destination_key: n.destinationKey, recipient: n.recipient, delivery: { delivery_id: n.deliveryId, attempt: n.deliveryAttempt, state: n.deliveryState },
+      package_digest: n.packageDigest, archive_digest: n.archiveDigest, signing_key_id: n.signingKeyId,
+      revoked_at: n.revokedAt, reason: n.reason, notified_at: n.notifiedAt,
+      obligation: 'the package is revoked: destroy every copy of package.tar and of its contents held from this delivery, and confirm',
+      statement: NOTICE_STATEMENT,
+    };
+  }
+
+  /**
+   * A transfer station is told by `revocation.json` in the action's directory (replaced per attempt, as delivery.json is); the product's
+   * own package.tar and package.sig there are removed AFTER the commit by `removeStationPackage`. `created` receives the path when this
+   * attempt newly wrote it (C6).
+   */
+  async notifyTransferStation(a: { endpoint: string; notice: RevocationNotice; created: string[] }): Promise<NoticeOutcome & { directory: string | null; file: string | null }> {
+    const scope = { tenantId: a.notice.tenantId, domainId: a.notice.domainId };
+    const failed = (message: string): NoticeOutcome & { directory: string | null; file: null } =>
+      ({ state: 'failed', failureClass: 'write_failed', receipt: { failure: { class: 'write_failed', message: message.slice(0, 600) } }, directory: null, file: null });
+    let dir: string;
+    try { dir = await this.stationDir(a.endpoint, scope, a.notice.actionId); }
+    catch (e) { return failed((e as Error).message); }
+    const file = resolve(dir, 'revocation.json');
+    const mine: string[] = [];
+    try {
+      await mkdir(dir, { recursive: true, mode: 0o700 });
+      await this.writeReplacing(file, Buffer.from(`${JSON.stringify(this.noticeOf(a.notice), null, 2)}\n`, 'utf8'), mine);
+    } catch (e) {
+      const left = await this.removeCreated(mine);
+      let message = `the station write failed: ${String((e as { message?: unknown })?.message ?? 'unknown')}`;
+      if (left.length > 0) message = `${message}; ${left.length} file(s) this attempt wrote could not be removed: ${left.join(', ')}`;
+      return { ...failed(message), directory: dir };
+    }
+    a.created.push(...mine);
+    return { state: 'notified', receipt: null, failureClass: null, directory: dir, file: 'revocation.json' };
+  }
+
+  /**
+   * After the revocation committed: the bytes the PRODUCT placed at the station — package.tar and package.sig of the action's directory —
+   * removed by name (the recipient's copies are the recipient's obligation; delivery.json, revocation.json and the receipts stay as the
+   * record). Idempotent; what was removed and what was not there is named.
+   */
+  async removeStationPackage(endpoint: string, scope: { tenantId: string; domainId: string }, actionId: string): Promise<{ removed: string[]; absent: string[]; failed: string[] }> {
+    const out = { removed: [] as string[], absent: [] as string[], failed: [] as string[] };
+    let dir: string;
+    try { dir = await this.stationDir(endpoint, scope, actionId); } catch { return { ...out, failed: ['package.tar', 'package.sig'] }; }
+    for (const name of ['package.tar', 'package.sig']) {
+      const full = resolve(dir, name);
+      try { await access(full, fsc.F_OK); } catch { out.absent.push(name); continue; }
+      try { await rm(full, { force: true }); await syncDir(dir).catch(() => undefined); out.removed.push(name); } catch { out.failed.push(name); }
+    }
+    return out;
+  }
+
+  /** The recipient's `revocation-receipt.json` from the station's directory of the action (the receipt discipline of D6). */
+  async collectRevocationReceipt(endpoint: string, scope: { tenantId: string; domainId: string }, actionId: string): Promise<{ receipt: Row; path: string; byteLength: number }> {
+    return this.readStationJson(endpoint, scope, actionId, 'revocation-receipt.json');
+  }
+
+  /**
+   * An https destination is told by ONE JSON POST to its endpoint — the same egress, credential and anchor rules as the delivery, the
+   * header x-eye-notice naming the kind — and its answer is the receipt. The failures are the delivery's, recorded the same way.
+   */
+  async notifyHttps(a: { endpoint: string; credentialRef: string | null; trustAnchorPem: string | null; notice: RevocationNotice }): Promise<NoticeOutcome & { egress: Row | null }> {
+    const n = a.notice;
+    const failure = (cls: DeliveryFailureClass, detail: Row): NoticeOutcome & { egress: Row | null } =>
+      ({ state: 'failed', failureClass: cls, receipt: { failure: { class: cls, ...detail } }, egress: null });
+    if (a.credentialRef !== null && !this.credentials.has(a.credentialRef)) {
+      return failure('credential_unbound', { credential: a.credentialRef, message: `the destination names credential ${a.credentialRef}, and this deployment binds no destination credential under that name; nothing left the process` });
+    }
+    let url: URL;
+    try { url = new URL(a.endpoint); } catch { return failure('egress_refused', { egress: 'scheme_not_allowed', message: 'the endpoint is not a URL' }); }
+    const body = Buffer.from(JSON.stringify(this.noticeOf(n)), 'utf8');
+    const headers: Record<string, string> = {
+      'x-eye-notice': 'revocation', 'x-eye-notice-id': n.noticeId, 'x-eye-attempt': String(n.attempt), 'x-eye-delivery-id': n.deliveryId, 'x-eye-action-id': n.actionId,
+      'x-eye-package-digest': n.packageDigest, 'x-eye-archive-digest': n.archiveDigest,
+    };
+    const credential = a.credentialRef === null ? null : this.credentials.resolve(a.credentialRef);
+    let res: EgressResult;
+    try {
+      res = await this.egress.deliver({ url: url.toString(), body, headers, contentType: 'application/json', ...(credential === null ? {} : { credentials: { authorization: `Bearer ${credential}` } }), policy: this.policyFor(url, a.trustAnchorPem) });
+    } catch (e) {
+      if (e instanceof EgressRefused) {
+        const cls: DeliveryFailureClass = ['address_not_public', 'host_not_allowed', 'scheme_not_allowed', 'redirect_not_followed', 'too_many_redirects', 'redirect_target_refused'].includes(e.refusalClass) ? 'egress_refused' : 'transport';
+        return failure(cls, { egress: e.refusalClass, message: e.message.slice(0, 300), status: null, body_digest: null });
+      }
+      return failure('transport', { egress: null, message: String((e as { message?: unknown })?.message ?? 'unknown').slice(0, 300), status: null, body_digest: null });
+    }
+    const egress: Row = { status: res.status, pinned_address: res.pinnedAddress, tls_verified: res.tlsVerified, hops: res.hops, headers: res.headers, body_digest: sha256(res.body), body_length: res.body.byteLength };
+    if (res.status < 200 || res.status >= 300) {
+      return { ...failure('transport', { egress: null, message: `the destination answered ${res.status}`, status: res.status, body_digest: sha256(res.body), body_length: res.body.byteLength }), egress };
+    }
+    let parsed: unknown;
+    try { parsed = JSON.parse(res.body.toString('utf8')); } catch { parsed = undefined; }
+    if (parsed === undefined || parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return { ...failure('receipt_invalid', { egress: null, message: 'the destination answered with a body that is not a JSON object', status: res.status, body_digest: sha256(res.body), body_length: res.body.byteLength }), egress };
+    }
+    const receipt = parsed as Row;
+    return { state: noticeReceiptState(receipt, n.packageDigest, n.noticeId), receipt, failureClass: null, egress };
+  }
+
+  /** A bounded JSON object read from the station's directory of the action (receipt.json, revocation-receipt.json): the D6 discipline. */
+  private async readStationJson(endpoint: string, scope: { tenantId: string; domainId: string }, actionId: string, name: string): Promise<{ receipt: Row; path: string; byteLength: number }> {
+    const dir = await this.stationDir(endpoint, scope, actionId);
+    const full = resolve(dir, name);
+    if (!contains(dir, full) || full === dir) throw new TransferStationRefused('containment', 'the resolved receipt path escapes the station directory');
+    let size: number;
+    try { size = (await stat(full)).size; } catch { throw new TransferStationRefused('no_receipt', `no receipt yet at ${full}`); }
+    if (size > RECEIPT_MAX_BYTES) throw new TransferStationRefused('receipt_invalid', `the receipt at ${full} is ${size} bytes, above the ceiling of ${RECEIPT_MAX_BYTES}`);
+    const bytes = await readFile(full);
+    let parsed: unknown;
+    try { parsed = JSON.parse(bytes.toString('utf8')); } catch { throw new TransferStationRefused('receipt_invalid', `the receipt at ${full} is not JSON`); }
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) throw new TransferStationRefused('receipt_invalid', `the receipt at ${full} is not a JSON object`);
+    return { receipt: parsed as Row, path: full, byteLength: bytes.byteLength };
+  }
+}
+
+/** B14 (D3): what the notice executors deliver and record. */
+export interface RevocationNotice {
+  tenantId: string; domainId: string; actionId: string;
+  noticeId: string; attempt: number;
+  destinationKey: string; recipient: string;
+  deliveryId: string; deliveryAttempt: number; deliveryState: string;
+  packageDigest: string; archiveDigest: string; signingKeyId: string | null;
+  revokedAt: string | null; reason: string | null; notifiedAt: string;
+}
+export interface NoticeOutcome {
+  state: NoticeState;
+  receipt: Row | null;
+  failureClass: DeliveryFailureClass | null;
+}
+/** The recipient's obligation, in the notice's own words. */
+const NOTICE_STATEMENT = 'destroy every copy; write revocation-receipt.json beside delivery.json (a transfer station) or answer this POST (https) with { notice_id, delivery_id, package_digest, copies_destroyed: true, recipient, receipt_id }';
+
+/**
+ * B14 (D3): what a recipient's receipt makes of a notice — `acknowledged` when it names the package digest and copies_destroyed: true;
+ * `mismatched` when it names another package or copies_destroyed: false (the obligation refused); a receipt naming ANOTHER notice is not
+ * this notice's (the binding of D1) — `notified`, the evidence kept; otherwise `notified` (the recipient answered without confirming).
+ */
+export function noticeReceiptState(receipt: Row, packageDigest: string, noticeId: string): NoticeState {
+  const named = receipt['notice_id'];
+  if (named !== undefined && named !== noticeId) return 'notified';
+  const p = receipt['package_digest']; const c = receipt['copies_destroyed'];
+  if (c === true && p === packageDigest) return 'acknowledged';
+  if ((p !== undefined && p !== packageDigest) || c === false) return 'mismatched';
+  return 'notified';
 }
 
 /**
  * D6: what a recipient's receipt makes of a delivery — `acknowledged` when it names both digests and verified: true;
  * `mismatched` when it names another digest or verified: false (the exchange denied); otherwise `delivered` (the recipient
- * answered without verifying; the acknowledgement is presented later).
+ * answered without verifying; the acknowledgement is presented later). B14 (D1; Codex B13-F1): a receipt that names a `delivery_id`
+ * other than this delivery's is NOT this delivery's receipt — whatever its digests say, it neither acknowledges nor denies this
+ * exchange: `delivered`, the answer kept as evidence, the acknowledgement presented later (the acknowledge port's binding, applied
+ * here as well). A receipt without a delivery_id is classified by its digests and `verified`, as before.
  */
-export function receiptState(receipt: Row, archiveDigest: string, packageDigest: string): DeliveryState {
+export function receiptState(receipt: Row, archiveDigest: string, packageDigest: string, deliveryId: string): DeliveryState {
+  const named = receipt['delivery_id'];
+  if (named !== undefined && named !== deliveryId) return 'delivered';
   const a = receipt['archive_digest']; const p = receipt['package_digest']; const v = receipt['verified'];
   if (v === true && a === archiveDigest && p === packageDigest) return 'acknowledged';
   if ((a !== undefined && a !== archiveDigest) || (p !== undefined && p !== packageDigest) || v === false) return 'mismatched';

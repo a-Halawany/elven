@@ -43,6 +43,11 @@ export interface EgressPolicy {
   timeoutMs: number;
   maxResponseBytes: number;
   maxDecompressedBytes: number;
+  /**
+   * B14 (D2): the destination's declared TRUST ANCHOR — one or more PEM certificates the server's certificate must chain to. Absent, the
+   * deployment's trust store decides. Verification is never disabled either way; the anchor narrows trust to the declared party.
+   */
+  trustAnchorPem?: string;
 }
 
 export type EgressRefusalClass =
@@ -316,9 +321,25 @@ export interface DeliveryRequest {
   headers?: Record<string, string>;
   credentials?: { authorization?: string };
   policy: EgressPolicy;
+  /** B14 (D3): the body's media type — `application/x-tar` for a package (the default), `application/json` for a revocation notice. */
+  contentType?: string;
 }
 
 export async function deliver(req: DeliveryRequest): Promise<EgressResult> {
+  const target = new URL(req.url);
+  assertUrlPermitted(target, req.policy);
+  const pinned = await resolveAndVet(target.hostname);
+  return deliverPinned(req, pinned);
+}
+
+/**
+ * The delivery's transport once the address is settled: the POST to the PINNED address with the hostname's identity (SNI, certificate
+ * verification against the deployment's store or the destination's declared anchor), the caller's headers, the credential on this one
+ * hop, a redirect refused. `deliver` is the production entry (the scheme and host allowlist, then the address resolved and vetted —
+ * every private, loopback, link-local and reserved address refused — then this); the split lets a harness drive THIS transport against a
+ * synthetic recipient on a loopback address that the vetting would, and does, refuse (the vetting's own refusal has its own cases).
+ */
+export async function deliverPinned(req: DeliveryRequest, pinnedAddress: string): Promise<EgressResult> {
   const policy = req.policy;
   const target = new URL(req.url);
   assertUrlPermitted(target, policy);
@@ -327,17 +348,16 @@ export async function deliver(req: DeliveryRequest): Promise<EgressResult> {
     target.username = '';
     target.password = '';
   }
-  const pinned = await resolveAndVet(target.hostname);
   const headers: Record<string, string> = {
     accept: 'application/json',
     'user-agent': 'the-eye-retention/1.0 (+governed export delivery)',
     ...(req.headers ?? {}),
-    'content-type': 'application/x-tar',
+    'content-type': req.contentType ?? 'application/x-tar',
     'content-length': String(req.body.byteLength),
     host: target.host,
   };
   if (req.credentials?.authorization !== undefined) headers['authorization'] = req.credentials.authorization;
-  const res = await once(target, pinned, headers, policy, { method: 'POST', body: req.body });
+  const res = await once(target, pinnedAddress, headers, policy, { method: 'POST', body: req.body });
   const hops: EgressResult['hops'] = [{ urlRedacted: redactUrl(target.toString()), status: res.status, credentialsCarried: req.credentials?.authorization !== undefined }];
   if (res.status >= 300 && res.status < 400) {
     throw new EgressRefused('redirect_not_followed', `a delivery is not redirected (the destination answered ${res.status})`);
@@ -350,7 +370,7 @@ export async function deliver(req: DeliveryRequest): Promise<EgressResult> {
     hops,
     tlsVerified: true, // rejectUnauthorized is never disabled; a TLS failure throws
     originAllowlisted: true,
-    pinnedAddress: pinned,
+    pinnedAddress,
     retryAfterSeconds: parseRetryAfter(res.headers['retry-after']),
   };
 }
@@ -398,6 +418,8 @@ function once(url: URL, pinnedAddress: string, headers: Record<string, string>, 
         headers,
         agent,
         rejectUnauthorized: true, // never disabled
+        // B14 (D2): a declared trust anchor replaces the store with the declared party's chain — narrower, never wider.
+        ...(policy.trustAnchorPem === undefined ? {} : { ca: policy.trustAnchorPem }),
         timeout: policy.timeoutMs,
       },
       (res: IncomingMessage) => {

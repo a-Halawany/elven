@@ -1,0 +1,16 @@
+=== the unit suite at the B14 tree (apps/api: pnpm test — vitest, then the meta suite), 2026-09-16 ===
+
+ Test Files  40 passed (40)
+      Tests  2156 passed (2156)
+   Duration  250.61s (transform 2.83s, setup 0ms, import 6.09s, tests 1235.88s, environment 2ms)
+ Test Files  1 passed (1)
+      Tests  9 passed (9)
+   Duration  210.92s (transform 11ms, setup 0ms, import 16ms, tests 210.84s, environment 0ms)
+unit rc=0
+
+=== the web (apps/web: pnpm build; pnpm test), 2026-09-16 ===
+web-test.log: Test Files  2 passed (2)
+web-test.log:      Tests  6 passed (6)
+web-test.log:rc=0
+web-build.log:✓ Compiled successfully in 629ms
+web-build.log:rc=0

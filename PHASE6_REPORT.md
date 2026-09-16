@@ -2863,3 +2863,111 @@ index-tier degradation behaviours; every deployment leg (S7).
 
 **Acceptance work remaining** — #50's merge under the existing authorization and its archive chain on `main`; the owner's key for Comtrade and the owner's walks of the pages; the next batch from
 the register (the delivery sequence continues); comprehensive hardening after the feature scope, with the residuals.
+
+## 28. The consolidated checkpoint after `be72aa8` (2026-09-16): #50 merged with its archive chain complete; B14 implemented — the HTTPS exchange proven against a synthetic recipient over TLS, the receipt bound to its delivery (Codex B13-F1), the destination's trust anchor, the revocation notice to every destination that received a package; the demonstration's station told and its confirmation collected
+
+Codex's bounded review of B13 at `3a5a181` / `37e0339` is filed at
+`audit/reviews/The_Eye_3a5a181_B13_Review_and_Next_Delivery.md`: the schedule retirement, the signing and download, and the
+transfer-station exchange executed on the candidate's TypeScript with doubles and a real isolated filesystem; no correction-only hold
+on #50; ONE bounded defect in the still-partial https path — **B13-F1**, an initial https receipt naming an earlier delivery
+acknowledged the new one when its digests matched (reproduced with an explicit response double: attempt 4 acknowledged on attempt 3's
+receipt) — to fix in the next export-delivery batch with normal- and stale-response controls through the delivery and recording
+path; the positive https exchange to prove; a revocation notice to implement; no new broad audit.
+
+### 28.1 #50 merged; the archive chain on `main`
+
+The records-head C19 run at `37e0339` (35034334861) failed on attempt 1 in `delivery-chain-dry` after its inner evidence checks had
+passed: GitHub's artifacts endpoint answered **HTTP 504** for `/repos/a-Halawany/elven/actions/runs/35025939601/artifacts` — an
+artifact-service failure, not a code defect (the macOS and Ubuntu lifecycle jobs and the foreign-checkout-pinning job green). The
+failed jobs were re-run on the same commit through the established workflow (`gh run rerun --failed`, under the repository owner's
+account; the failed attempt retained as attempt 1): **attempt 2 green** (all four jobs). The records-head `ci` 35034334913 completed
+green meanwhile (build-test, supply-chain, browser-regression). With every required check green, #50 merged under the existing
+authorization as **`be72aa8`** (a merge commit; its second parent the records head `37e0339`, the tested code `3a5a181`). Its push
+chain on `main` completed green on the first attempt: **`ci` 35066467509**, **C19 lifecycle 35066467514**, **C17 finalize
+35067820527**, **C19 anchor 35067913755**. No records-refresh chain, no additional review hold; `main` is `be72aa8` and B14's branch
+`phase6-b14` is cut from it.
+
+### 28.2 What B14 implements (migration 0074) — `audit/CP6_BATCHES.md` §B14 for the mechanism
+
+- **The receipt's binding (B13-F1, D1).** A receipt naming a `delivery_id` other than the delivery it answers is not that delivery's
+  receipt: the classifier answers `delivered`, the record port refuses `acknowledged` and `mismatched` for it (the acknowledge port's
+  own rule and message) and keeps the answer on the row and in the event `export.delivered` (`received`, `receipt_binding:
+  names_other_delivery`); the exchange stays open for the proper receipt through the acknowledge route. The out-of-band case (no
+  delivery id) is classified as before; no new identity contract.
+- **The trust anchor (D2).** `export_destinations.trust_anchor_pem` — the PEM certificates an https destination's server certificate
+  must chain to, parsed at the declaration, shown by fingerprint; passed to the one request as `ca`; verification never disabled: the
+  anchor narrows trust to the declared party.
+- **The egress split and the synthetic recipient (D3, D4).** `deliver` = the allowlists, the address vetting, then `deliverPinned` (the
+  transport, exported); the service takes its transport from a `DeliveryEgress` provider. `scripts/retention/https-recipient.mjs` —
+  the demonstration stand-in for a customer's endpoint: a real TLS server on a loopback port with a self-signed certificate, the bearer
+  required, the customer's verifier on every package, receipts for deliveries and notices, control modes for the wrong answers an
+  endpoint could give.
+- **The revocation notice (D5).** `retention.export_revocation_notices` with begin/record/acknowledge ports mirroring the delivery's;
+  the revoke act sends the first notice to every destination that received the package inside its own write (`revocation.json` at a
+  station, a JSON POST to an https endpoint under the delivery's rules) and removes the product's package files from each station after
+  the commit; `retention.export.notify` sends a further one; the station's `revocation-receipt.json` collected, an out-of-band receipt
+  acknowledged; the events, `custody.revocation_notified`; the page's notices, further notice and acknowledgement; the station
+  recipient's `--revocation [--refuse]`.
+
+### 28.3 The local results
+
+The harness `phase6-retention-b14.test.ts` **5/5** on a fresh database (the third run; the first two on harness expectations —
+§B14.6); the suites the changes touch **71/71 in five files**; the full integration suite **1021/1021 in 64 files** on a fresh database; the upgrade proof with 0022–0074
+(53 migrations); the unit suite 2156/2156 and the meta suite 9/9; the web typecheck, build and tests. THE ONE SUBSTITUTION, stated in
+the harness and here: the product's address vetting refuses every loopback and private address, so a recipient on this host is
+unreachable through `deliver` by design; the harness replaces the `DeliveryEgress` provider's transport with the client's own
+`deliverPinned` on `127.0.0.1` and nothing else — the TLS handshake against the declared anchor with the hostname's identity, the
+POST, the headers, the credential on the one hop, the redirect refused and the answer's limits are the product's code on a real
+socket. What this proves: the exchange over TLS with a real recipient, the binding, the classification of every wrong answer, the
+anchor as the only trust. What it does not: the vetting's admission of a public address — that needs a recipient on a public address,
+the activation step (no authorized public host exists on this side; the recipient script serves plain HTTP behind a TLS-terminating
+edge for a hosted demonstration when one is authorized).
+
+### 28.4 The NORDWERK demonstration — `evidence/cp6/act-b14.txt` (2026-09-16T07:36Z)
+
+Rehearsed first on a restored copy (`eye_demo_b14` on :3411 with its own vault copy, key, station, recipient and Redis;
+`evidence/cp6/b14-rehearsal.txt`; ALL SCENES HELD), then on `eye_demo` (backup
+`eye_demo-pre-0074-20260916T073636Z.dump`; 0074 applied; the API restarted on the B14 build by the runbook's script with the
+recipient's bearer bound from the local handoff): (1) `nordwerk-exports-demo` declared with the demonstration recipient's certificate
+as its anchor — recorded by the certificate file's own fingerprint, readiness `active`, the credential's value nowhere; (2) P. Novák's
+signed export of the two hot NORDWERK internal records; (3) the https path THROUGH THE PRODUCTION EGRESS — the credential gate passed,
+the egress resolved the `.invalid` name and found no address: recorded FAILED transport `dns_failure`, nothing left the process (the
+recipient counts nothing); (4) the station exchange acknowledged; (5) the REVOCATION — the station notified in the revoke act, the
+product's package files removed from it after the commit with the record kept, the ledgers and custody rows, the demonstration
+recipient's confirmation collected → ACKNOWLEDGED, a further notice refused by the recipient → MISMATCHED with both sides on the
+event; (6) the state. ALL SCENES HELD (19 checks).
+
+### 28.5 Heads, hosted results, statuses
+
+| Head | What | Hosted `ci` | Hosted C19 |
+|---|---|---|---|
+| `be72aa8` | **`main`: #50 merged** (B13; second parent `37e0339`) | 35066467509 green; C17 finalize 35067820527 green; C19 anchor 35067913755 green | 35066467514 green |
+| B14 | 0074; the receipt binding, the trust anchor, the egress split, the synthetic recipient, the revocation notice; the web; the harness; the act — PR `phase6-b14` → `main` | (bound in the records refresh after the push) | |
+
+Statuses: no unit moves (B14 completes no whole unit); AU-COM-0060 and AU-IDP-0180 carry the B14 evidence; the requirement rows
+ES-29-005 `missing` → `partial`; ES-29-002, ES-53-004, DP-47-002, DP-47-005, V03-T-047 and ES-08-004 carry the clauses. The split
+stays **3,555 = 3,183 open + 338 local + 34 CI**. The interface register unchanged at 26/24/0. No completion percentage; no deployment
+leg accepted.
+
+### 28.6 Functioning, partial, missing — and the acceptance work remaining
+
+**Functioning** (harness on a fresh database; the demonstration through the HTTP path) — everything §27.6 listed, and now: the https
+exchange over TLS with a recipient that verifies and answers (acknowledged in one act; the stale receipt held as evidence, not
+acknowledged; every wrong answer classified and recorded); the destination's trust anchor; the revocation notice to every destination
+that received a package (a station told and its confirmation collected; an https endpoint told and answering in the same act; a
+failed notice retried; a refusal recorded mismatched with both sides).
+
+**Partial** — the https path's production activation (a recipient on a public address, the customer's endpoint, credential and
+certificate chain — the vetting's admission not exercised on this side); a production signing key under the owner's custody; the
+"enforceable" half of the recipient's obligations (the recipient's copies are outside the product's custody — the notice and the
+acknowledgement are what the product can do); packages above the 256 MiB archive ceiling (a streaming writer); the import direction
+of the exchange; graph links in an export; the UN Comtrade live contract; the pages' browser walks (the owner's); the archive tier's
+structural residuals for the hardening campaign.
+
+**Missing** — the remaining capabilities of the interface register's 24 partial contracts; the source-derived memory records;
+index-tier degradation behaviours; every deployment leg (S7).
+
+**Acceptance work remaining** — B14's PR under the existing authorization once its hosted run is green, and its archive chain on
+`main`; the owner's decision on a public host for the recipient (the real-network delivery); the owner's key for Comtrade and the
+owner's walks of the pages; the next batch from the register (larger packages, the import direction and the relationship closure);
+comprehensive hardening after the feature scope, with the residuals.

@@ -195,8 +195,8 @@ const INTENDED_ADDITIONS = Object.freeze({
   // 0022: SRC, OBS, EVD · 0023: CLM@v2, ENT, EVT, REL, ASM
   // 0024: OBJ, ASU, DEC, CMT, OUT · 0028: SRC@v2 · 0029: FCT, SCN, WRN · 0032: TWN · 0033: SIM · 0041: DPK · 0042: APR · 0043: RPL · 0044: BRF · 0058: SCN@v2 · 0061: SCN@v3, WRN@v2 · 0066: MEM@v1
   'objects.schema_registry': 29, // + SCN v2 (0058), SCN v3 and WRN v2 (0061), MEM v1 (0066), SRC v3 (0070)
-  // one ledger line per migration applied above the ceiling (0022–0073)
-  'public.schema_migrations': 52, // + 0073 (B13: the schedule retirement; the export's delivery — the archive digest, the signing keys, the destinations, the delivery ledger)
+  // one ledger line per migration applied above the ceiling (0022–0074)
+  'public.schema_migrations': 53, // + 0074 (B14: the receipt's binding, the destination's trust anchor, the revocation-notice ledger)
 });
 
 /** Structure only: columns, constraints, indexes, routines, policies, grants. */

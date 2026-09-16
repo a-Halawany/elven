@@ -523,7 +523,7 @@ export const graph = {
  * retire; the reads apart (`retention.read`, an audited access). RTS is a schedule, RTA an action, RTP the cold tier's
  * policy (B12: declared per domain, its state read beside the lists); since B13 (0073) RSK is an export signing key (the
  * tenant's, declared by a credential REFERENCE — the private key never leaves the process environment and no answer
- * carries it), RDS an export destination (a transfer station or an https endpoint, declared per domain) and RDL a delivery
+ * carries it), RDS an export destination (a transfer station or an https endpoint, declared per domain), RDL a delivery and RXN (B14) a revocation notice
  * of a package to one. The download of a package is a governed WRITE (`retention.export.download` records the event on the
  * action; the bytes ride the same answer), so its envelope carries `reversible` as every act does. The server's refusal is
  * returned verbatim: the opener's own approval, a wrong digest, an unresolved scope, a review's failed check, a budget
@@ -533,7 +533,7 @@ export const graph = {
  * and the key travels in the path — percent-encoded, the colon included (design C16).
  */
 async function r<T>(
-  scope: Scope, path: string, action: string, objectType: 'RTS' | 'RTA' | 'RTP' | 'RSK' | 'RDS' | 'RDL',
+  scope: Scope, path: string, action: string, objectType: 'RTS' | 'RTA' | 'RTP' | 'RSK' | 'RDS' | 'RDL' | 'RXN',
   payload: unknown = {}, objectId: string | null = null,
 ): Promise<ApiResult<T>> {
   return call<T>(
@@ -671,6 +671,8 @@ export interface RetentionDestinationIntake {
   kind: RetentionDestinationKind;
   endpoint: string;
   credentialRef?: string;
+  /** B14 (0074 §2): an https destination's TRUST ANCHOR — one or more PEM certificates its server certificate must chain to (the deployment's trust store otherwise); never for a transfer station. */
+  trustAnchorPem?: string;
   recipient: string;
   purpose: string;
 }
@@ -833,9 +835,25 @@ export const retention = {
   getExport: (s: Scope, actionId: string) =>
     r<RetentionExportDetail>(s, `/actions/${actionId}/export/get`, 'retention.read', 'RTA', {}, actionId),
 
-  /** B11: the retention authority's act, human-gated — the package revoked once with a reason; its bytes removed after the commit. */
+  /** B11: the retention authority's act, human-gated — the package revoked once with a reason; its bytes removed after the commit. B14 (0074 §3): the first REVOCATION NOTICE to every destination that received the package is sent in the same act (`notices`, every outcome recorded); the product's copies at each transfer station removed after the commit (`stations`). */
   revokeExport: (s: Scope, actionId: string, reason: string) =>
-    r<{ revocation: Record<string, unknown>; bytes: { removed: boolean; error?: string }; receipt: Receipt }>(s, `/actions/${actionId}/export/revoke`, 'retention.export.revoke', 'RTA', { reason }, actionId),
+    r<{ revocation: Record<string, unknown>; notices: RetentionRow[]; bytes: { removed: boolean; error?: string }; stations: RetentionRow[]; receipt: Receipt }>(s, `/actions/${actionId}/export/revoke`, 'retention.export.revoke', 'RTA', { reason }, actionId),
+
+  /** B14 (0074 §3): a FURTHER revocation notice to one destination that received the (revoked) package — the retry of a failed notice, human-gated (`retention.export.notify`); 409 while the package is not revoked or the destination never received it. */
+  notifyRevocation: (s: Scope, actionId: string, destinationKey: string) =>
+    r<{ notice: RetentionRow; receipt: Receipt }>(s, `/actions/${actionId}/export/revocation-notices`, 'retention.export.notify', 'RTA', { destinationKey }, actionId),
+
+  /** B14: the action's revocation notices as recorded — attempt, destination, state (notified / acknowledged / mismatched / failed with its class), the notice sent, the receipt as received (an audited read). */
+  listRevocationNotices: (s: Scope, actionId: string) =>
+    r<{ notices: RetentionRow[]; receipt: Receipt }>(s, `/actions/${actionId}/export/revocation-notices/list`, 'retention.read', 'RTA', {}, actionId),
+
+  /** B14: for a transfer-station notice in state notified — the recipient's revocation-receipt.json read from the station's directory and applied (`retention.export.acknowledge`, human-gated); 409 while no receipt is there. */
+  collectRevocationReceipt: (s: Scope, actionId: string, noticeId: string) =>
+    r<{ notice: RetentionRow; receipt: Receipt }>(s, `/actions/${actionId}/export/revocation-notices/${encodeURIComponent(noticeId)}/collect-receipt`, 'retention.export.acknowledge', 'RXN', {}, noticeId),
+
+  /** B14: a notice's receipt presented out of band ({ notice_id?, package_digest, copies_destroyed, … }) applied to a notified notice — acknowledged on the package digest with copies_destroyed true, mismatched otherwise; a receipt naming another notice refused. */
+  acknowledgeRevocationNotice: (s: Scope, actionId: string, noticeId: string, receipt: RetentionDeliveryReceipt) =>
+    r<{ notice: RetentionRow; receipt: Receipt }>(s, `/actions/${actionId}/export/revocation-notices/${encodeURIComponent(noticeId)}/acknowledge`, 'retention.export.acknowledge', 'RXN', { receipt }, noticeId),
 
   /**
    * B13 (D7): the package's archive downloaded — a governed, audited act (`retention.export.download`: the event export.downloaded is
