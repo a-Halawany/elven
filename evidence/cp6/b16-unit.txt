@@ -1,0 +1,65 @@
+=== the unit suite at the B16 tree (apps/api: pnpm test — vitest, then the meta suite), 2026-09-16 — the third run of the batch (the first 2184/2184 + 9/9 before the D5 corrections; the second failed only the C15 working-tree control because the runbook was being edited during the run — a spurious diff of git status, re-run with the tree untouched) ===
+
+$ vitest run --exclude test/gate/hermetic-suite-meta.test.ts && vitest run test/gate/hermetic-suite-meta.test.ts --no-file-parallelism
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/apps/api
+
+
+ Test Files  41 passed (41)
+      Tests  2184 passed (2184)
+   Start at  15:29:41
+   Duration  230.38s (transform 3.31s, setup 0ms, import 6.44s, tests 1122.28s, environment 2ms)
+
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/apps/api
+
+
+ Test Files  1 passed (1)
+      Tests  9 passed (9)
+   Start at  15:33:32
+   Duration  199.21s (transform 10ms, setup 0ms, import 16ms, tests 199.12s, environment 0ms)
+
+unit rc=0
+
+=== the web (apps/web: tsc, next build, vitest), 2026-09-16 ===
+
+├ ○ /intelligence/gateway
+├ ○ /intelligence/methods
+├ ○ /intelligence/review
+├ ○ /login
+├ ○ /observation
+├ ○ /observation/corrections
+├ ○ /observation/evidence
+├ ƒ /observation/evidence/[evdId]
+├ ○ /observation/quarantine
+├ ○ /observation/sources
+├ ƒ /observation/sources/[sourceId]
+├ ○ /observation/sources/new
+├ ○ /prediction
+├ ○ /prediction/calibration
+├ ○ /prediction/forecasts
+├ ○ /prediction/scenarios
+├ ○ /prediction/warnings
+├ ○ /twins
+└ ○ /twins/simulations
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+rc=0
+
+
+
+ Test Files  2 passed (2)
+      Tests  6 passed (6)
+   Start at  15:04:33
+   Duration  89ms (transform 24ms, setup 0ms, import 35ms, tests 3ms, environment 0ms)
+
+rc=0

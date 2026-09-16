@@ -16,6 +16,15 @@
  * download event's port (C18: a SECURITY DEFINER port with its own authority check that calls retention.event — never a direct
  * call from here), the destinations (§3) and the deliveries (§4: the gates before anything leaves, the record of every outcome,
  * the acknowledgement).
+ *
+ * CP-6 B16 (0076): the GOVERNED IMPORT — the exchange partners (§3: a declared party IS a key; its packages are admitted under an
+ * intake source contract of the importing domain), the import ledger (§4: the row, its items and its events; quarantine → verified →
+ * approved → admitting → admitted, or withdrawn), the admission ports (a manifest with its custody row, a lineage row, an entity, an
+ * identifier system, an identifier, an edge — each recorded under `retention.import.admit`, never through the acquisition lifecycle
+ * or the graph's own ports, which would rewrite what the origin recorded) and `objects.admit_version` for the imported canonical rows
+ * (the call as shared/capabilities.ts makes it: the header's object_id bound to the write's target set); the origin's state of a
+ * package this domain presents by digest (`import_origin_state`: facts about THAT package only); the relationship closure's identifier
+ * systems (links/2, D8).
  */
 import { sql } from 'kysely';
 import type { Tx } from '../shared/db.js';
@@ -60,7 +69,21 @@ export interface RetentionReads {
   readEdges(): any;
   readEntities(): any;
   readEntityIdentifiers(): any;
+  /** B16 (D8, links/2 §6): the domain's identifier systems — the closure names the systems its identifiers are under (graph.identifier_systems). */
+  readIdentifierSystems(): any;
+  /** B16 (0076 §3): the domain's exchange partners — each a key this domain admits packages from, under an intake contract (RLS by tenant and domain). */
+  readExchangePartners(): any;
+  /** B16 (0076 §4): the import ledger — one row per inbound package (quarantined, verified, approved, admitting, admitted, withdrawn), its items (one per record, claim version, entity, identifier system, identifier, edge or exclusion) and its events. */
+  readImports(): any;
+  readImportItems(): any;
+  readImportEvents(): any;
   /* eslint-enable @typescript-eslint/no-explicit-any */
+  /**
+   * B16 (0076 §4; C2, N13): the ORIGIN'S state of a package this domain presents — the definer reads retention.export_packages across
+   * domains and answers `{known: true, revoked_at, expires_at}` only when the recorded package digest is the one presented, else
+   * `{known: false}`: facts about that package alone, never a listing.
+   */
+  importOriginState(a: { tenantId: string; domainId: string; originTenantId: string; originDomainId: string; actionId: string; packageDigest: string }): Promise<Row>;
   outboxPartitionTelemetry(): Promise<Row[]>;
   /** B11: a manifest's tier as the ledger says — 'hot' when it never moved. */
   tierOf(manifestId: string): Promise<{ tier: 'hot' | 'archive'; archivedAt: string | null }>;
@@ -139,6 +162,53 @@ export interface RetentionWrites extends RetentionReads {
   recordRevocationNotice(a: { noticeId: string; actionId: string; tenantId: string; domainId: string; destinationId: string; deliveryId: string; attempt: number; state: string; notice: Row; noticeDigest: string; receipt: Row | null; receiptDigest: string | null; failureClass: string | null; actor: string; correlationId: string }): Promise<Row>;
   /** B14 (0074 §3): a notified row moves to acknowledged (the receipt names the package digest and copies_destroyed: true) or mismatched; a receipt naming another notice is refused. */
   acknowledgeRevocationNotice(a: { noticeId: string; tenantId: string; domainId: string; receipt: Row; receiptDigest: string; actor: string; correlationId: string }): Promise<Row>;
+  // ───────────────────────── B16 (0076 §3): the exchange partner ─────────────────────────
+  /**
+   * B16 (0076 §3; D6, D7): a partner declared — the party and the purpose, its Ed25519 public key (the id the route derived from the SPKI DER,
+   * the port re-derives it), and the INTAKE SOURCE CONTRACT of this domain (active, upload, rights confirmed) its packages are admitted under.
+   */
+  declareExchangePartner(a: { partnerId: string; tenantId: string; domainId: string; partnerKey: string; party: string; purpose: string; keyId: string; algorithm: string; publicKeyPem: string; intakeSourceId: string; intakeContractVersion: number; actor: string; correlationId: string }): Promise<Row>;
+  /** B16 (0076 §3): the partner retired with a reason; its imports stay recorded, a package signed by its key is no longer admitted. */
+  retireExchangePartner(a: { partnerId: string; tenantId: string; domainId: string; reason: string; actor: string; correlationId: string }): Promise<Row>;
+  // ───────────────────────── B16 (0076 §4): the import ledger and the admission ports ─────────────────────────
+  /**
+   * B16 (0076 §4; D1, D5): the import OPENED — the row (`verified` or `quarantined` by the checks), its items with the ids minted at the open
+   * (the origin's exclusions settled at once, C9), the events import.opened then import.verified | import.quarantined; a live import of the
+   * same package digest in this domain is the port's own refusal (duplicate). The row as recorded.
+   */
+  recordImport(a: { importId: string; tenantId: string; domainId: string; partnerId: string | null; intake: Row; origin: Row; exchange: Row | null; archiveDigest: string; archiveSize: number; packageDigest: string | null; manifestLocator: string | null; linksLocator: string | null; verified: boolean; checks: Row[]; counts: Row; items: Row[]; actor: string; correlationId: string }): Promise<Row>;
+  /** B16 (0076 §4; D1): the retention authority's approval ON THE PACKAGE DIGEST — never the opener; a verified import only; the row as recorded. */
+  approveImport(a: { importId: string; tenantId: string; domainId: string; packageDigest: string; rationale: string; actor: string; correlationId: string }): Promise<Row>;
+  /**
+   * B16 (0076 §4; D1): the admission BEGUN — never the approver; the partner and its intake contract re-checked NOW (contract_changed when either
+   * moved since the approval); state admitting, the attempt counted; returns {import, partner, contract, staged} for the admitting loop.
+   */
+  beginImportAdmission(a: { importId: string; tenantId: string; domainId: string; actor: string; correlationId: string }): Promise<Row>;
+  /** B16 (0076 §4; D2, D7): an imported record's manifest under the intake contract (vault evidence, no run) with its custody.imported row naming the origin. */
+  recordImportedManifest(a: { manifestId: string; tenantId: string; domainId: string; importId: string; itemId: string; locator: string; contentDigest: string; byteLength: number; mediaTypeDeclared: string | null; mediaTypeSniffed: string | null; activeContentRisk: boolean; classification: string; residency: string; retentionProfile: string; sourceId: string; contractVersion: number; acquisitionMode: string; origin: Row; actor: string; correlationId: string }): Promise<void>;
+  /** B16 (D2, D3): the imported canonical row — objects.admit_version, the call as the objects capability makes it; the header's object_id must lie in the write's target set. */
+  admitObject(header: unknown, payload: unknown, digest: string): Promise<{ contentDigest: string }>;
+  /** B16 (0076 §4; D2, N5): an imported claim version's lineage row — the origin's run, method and call ids kept, the evidence remapped to the record's new id under its bytes digest; the admission decision is the context's. */
+  recordImportedLineage(a: { claimObjectId: string; claimVersion: number; tenantId: string; domainId: string; claimType: string; runId: string; methodId: string; callId: string | null; mode: string; evidenceObjectId: string; evidenceDigest: string; byteStart: number; byteEnd: number; confidence: number; retrievalDecisionId: string | null; retrievalAuditSeq: number | null; importId: string; correlationId: string }): Promise<void>;
+  /** B16 (0076 §4): an identifier system the closure names — 'registered' when inserted, 'existed' when the domain's own declaration stands. */
+  recordImportedIdentifierSystem(a: { tenantId: string; domainId: string; importId: string; systemKey: string; authority: string; description: string | null; isAuthoritative: boolean; actor: string; correlationId: string }): Promise<'registered' | 'existed'>;
+  /** B16 (0076 §4; D2): an imported entity with its entity.created event (then superseded/retired when its state says so — the existing vocabulary, never a new event kind). */
+  recordImportedEntity(a: { entityId: string; tenantId: string; domainId: string; importId: string; itemId: string; entityType: string; canonicalName: string; normalizedName: string; lifecycleState: string; splitFrom: string | null; supersededBy: string | null; origin: Row; actor: string; correlationId: string }): Promise<void>;
+  /** B16 (0076 §4): an imported identifier — 'identified' (inserted, entity.identified), 'already' (the same entity holds it); another entity holding it is the port's refusal (identifier). */
+  recordImportedIdentifier(a: { identifierId: string; tenantId: string; domainId: string; importId: string; itemId: string; entityId: string; systemKey: string; value: string; claimObjectId: string; evidenceObjectId: string; origin: Row; actor: string; correlationId: string }): Promise<'identified' | 'already'>;
+  /**
+   * B16 (0076 §4; D2, D8): an imported edge AS RECORDED at the origin — its instants and state, its claim PAIR (never rebased onto another
+   * version: the pair must be admitted here), both ends admitted entities, the predicate in the domain's active ontology; the events derive its state.
+   */
+  recordImportedEdge(a: { edgeId: string; tenantId: string; domainId: string; importId: string; itemId: string; subject: string; predicate: string; object: string; validFrom: string; validTo: string | null; assertedAt: string; retractedAt: string | null; supersededAt: string | null; state: string; claimObjectId: string; claimVersion: number; evidenceObjectId: string; evidenceDigest: string; methodId: string | null; runId: string | null; mode: string; confidence: number; supersededBy: string | null; retractionReason: string | null; origin: Row; actor: string; correlationId: string }): Promise<void>;
+  /** B16 (0076 §4): a staged item settled once — admitted | reused | excluded | refused, with its gate, reason and what was admitted. */
+  markImportItem(a: { itemId: string; importId: string; tenantId: string; domainId: string; disposition: 'admitted' | 'reused' | 'excluded' | 'refused'; gate: string | null; reason: string | null; admitted: Row | null; actor: string; correlationId: string }): Promise<void>;
+  /** B16 (0076 §4; C5): the admission's own events — a batch admitted, the finalisation, a failure, the quarantine copies tombstoned after the commit. */
+  recordImportEvent(a: { importId: string; tenantId: string; domainId: string; event: 'import.batch_admitted' | 'import.finalized' | 'import.failed' | 'import.evidence_tombstoned'; details: Row; actor: string; correlationId: string }): Promise<void>;
+  /** B16 (0076 §4): the admission FINISHED — no item still staged; state admitted with the counts; the row as recorded. */
+  finishImportAdmission(a: { importId: string; tenantId: string; domainId: string; counts: Row; actor: string; correlationId: string }): Promise<Row>;
+  /** B16 (0076 §4; C3): the import withdrawn with a reason (quarantined, verified, approved — or admitting, whose already-admitted rows stand); the row as recorded. */
+  withdrawImport(a: { importId: string; tenantId: string; domainId: string; reason: string; actor: string; correlationId: string }): Promise<Row>;
   /** The outbox port: the floor moved by this executing action only. */
   declareFloor(a: { partitionKey: string; toSeq: number; actionId: string }): Promise<Row>;
   /** A refused port call must not abort the recording transaction: the call runs under a savepoint. */
@@ -182,7 +252,16 @@ class RetentionCapabilityImpl implements RetentionWrites {
   readEdges(): any { return this.from('graph.edges_current'); }
   readEntities(): any { return this.from('graph.entities_current'); }
   readEntityIdentifiers(): any { return this.from('graph.entity_identifiers'); }
+  readIdentifierSystems(): any { return this.from('graph.identifier_systems'); }
+  readExchangePartners(): any { return this.from('retention.exchange_partners'); }
+  readImports(): any { return this.from('retention.imports'); }
+  readImportItems(): any { return this.from('retention.import_items'); }
+  readImportEvents(): any { return this.from('retention.import_events'); }
   /* eslint-enable @typescript-eslint/no-explicit-any */
+  async importOriginState(a: Parameters<RetentionReads['importOriginState']>[0]): Promise<Row> {
+    const rows = await this.call<{ r: Row }>(sql`select retention.import_origin_state(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.originTenantId}::uuid, ${a.originDomainId}::uuid, ${a.actionId}::uuid, ${a.packageDigest}::text) as r`);
+    return rows[0]?.r ?? { known: false };
+  }
   async outboxPartitionTelemetry(): Promise<Row[]> { return this.call<Row>(sql`select * from objects.outbox_partition_telemetry()`); }
   async tierOf(manifestId: string): Promise<{ tier: 'hot' | 'archive'; archivedAt: string | null }> { return tierOf(this, manifestId); }
   async tierState(a: Parameters<RetentionReads['tierState']>[0]): Promise<Row> {
@@ -312,6 +391,68 @@ class RetentionCapabilityImpl implements RetentionWrites {
   }
   async acknowledgeRevocationNotice(a: Parameters<RetentionWrites['acknowledgeRevocationNotice']>[0]): Promise<Row> {
     const rows = await this.call<{ r: Row }>(sql`select retention.acknowledge_revocation_notice(${a.noticeId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${JSON.stringify(a.receipt)}::jsonb, ${a.receiptDigest}::text, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  // ───────────────────────── B16 (0076 §3, §4) ─────────────────────────
+  async declareExchangePartner(a: Parameters<RetentionWrites['declareExchangePartner']>[0]): Promise<Row> {
+    const rows = await this.call<{ r: Row }>(sql`select retention.declare_exchange_partner(${a.partnerId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.partnerKey}::text, ${a.party}::text, ${a.purpose}::text, ${a.keyId}::text, ${a.algorithm}::text, ${a.publicKeyPem}::text, ${a.intakeSourceId}::uuid, ${a.intakeContractVersion}::int, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  async retireExchangePartner(a: Parameters<RetentionWrites['retireExchangePartner']>[0]): Promise<Row> {
+    const rows = await this.call<{ r: Row }>(sql`select retention.retire_exchange_partner(${a.partnerId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}::text, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  async recordImport(a: Parameters<RetentionWrites['recordImport']>[0]): Promise<Row> {
+    const rows = await this.call<{ r: Row }>(sql`select retention.record_import(${a.importId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.partnerId}::uuid, ${JSON.stringify(a.intake)}::jsonb, ${JSON.stringify(a.origin)}::jsonb, ${a.exchange === null ? null : JSON.stringify(a.exchange)}::jsonb, ${a.archiveDigest}::text, ${a.archiveSize}::bigint, ${a.packageDigest}::text, ${a.manifestLocator}::text, ${a.linksLocator}::text, ${a.verified}::boolean, ${JSON.stringify(a.checks)}::jsonb, ${JSON.stringify(a.counts)}::jsonb, ${JSON.stringify(a.items)}::jsonb, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  async approveImport(a: Parameters<RetentionWrites['approveImport']>[0]): Promise<Row> {
+    const rows = await this.call<{ r: Row }>(sql`select retention.approve_import(${a.importId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.packageDigest}::text, ${a.rationale}::text, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  async beginImportAdmission(a: Parameters<RetentionWrites['beginImportAdmission']>[0]): Promise<Row> {
+    const rows = await this.call<{ r: Row }>(sql`select retention.begin_import_admission(${a.importId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  async recordImportedManifest(a: Parameters<RetentionWrites['recordImportedManifest']>[0]): Promise<void> {
+    await this.call(sql`select retention.record_imported_manifest(${a.manifestId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.importId}::uuid, ${a.itemId}::uuid, ${a.locator}::text, ${a.contentDigest}::text, ${a.byteLength}::bigint, ${a.mediaTypeDeclared}::text, ${a.mediaTypeSniffed}::text, ${a.activeContentRisk}::boolean, ${a.classification}::text, ${a.residency}::text, ${a.retentionProfile}::text, ${a.sourceId}::uuid, ${a.contractVersion}::int, ${a.acquisitionMode}::text, ${JSON.stringify(a.origin)}::jsonb, ${a.actor}::uuid, ${a.correlationId}::uuid)`);
+  }
+  async admitObject(header: unknown, payload: unknown, digest: string): Promise<{ contentDigest: string }> {
+    // The objects capability's own call (shared/capabilities.ts): the port binds header.object_id to the write's target set and re-digests the pair.
+    const rows = await this.call<{ content_digest: string }>(sql`select content_digest from objects.admit_version(${JSON.stringify(header)}::jsonb, ${JSON.stringify(payload)}::jsonb, ${digest})`);
+    const r = rows[0];
+    if (r === undefined) throw new Error('admission returned no row');
+    return { contentDigest: r.content_digest };
+  }
+  async recordImportedLineage(a: Parameters<RetentionWrites['recordImportedLineage']>[0]): Promise<void> {
+    await this.call(sql`select retention.record_imported_lineage(${a.claimObjectId}::uuid, ${a.claimVersion}::bigint, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.claimType}::text, ${a.runId}::uuid, ${a.methodId}::uuid, ${a.callId}::uuid, ${a.mode}::text, ${a.evidenceObjectId}::uuid, ${a.evidenceDigest}::text, ${a.byteStart}::int, ${a.byteEnd}::int, ${a.confidence}::numeric, ${a.retrievalDecisionId}::uuid, ${a.retrievalAuditSeq}::bigint, ${a.importId}::uuid, ${a.correlationId}::uuid)`);
+  }
+  async recordImportedIdentifierSystem(a: Parameters<RetentionWrites['recordImportedIdentifierSystem']>[0]): Promise<'registered' | 'existed'> {
+    const rows = await this.call<{ r: string }>(sql`select retention.record_imported_identifier_system(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.importId}::uuid, ${a.systemKey}::text, ${a.authority}::text, ${a.description}::text, ${a.isAuthoritative}::boolean, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r === 'registered' ? 'registered' : 'existed';
+  }
+  async recordImportedEntity(a: Parameters<RetentionWrites['recordImportedEntity']>[0]): Promise<void> {
+    await this.call(sql`select retention.record_imported_entity(${a.entityId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.importId}::uuid, ${a.itemId}::uuid, ${a.entityType}::text, ${a.canonicalName}::text, ${a.normalizedName}::text, ${a.lifecycleState}::text, ${a.splitFrom}::uuid, ${a.supersededBy}::uuid, ${JSON.stringify(a.origin)}::jsonb, ${a.actor}::uuid, ${a.correlationId}::uuid)`);
+  }
+  async recordImportedIdentifier(a: Parameters<RetentionWrites['recordImportedIdentifier']>[0]): Promise<'identified' | 'already'> {
+    const rows = await this.call<{ r: string }>(sql`select retention.record_imported_identifier(${a.identifierId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.importId}::uuid, ${a.itemId}::uuid, ${a.entityId}::uuid, ${a.systemKey}::text, ${a.value}::text, ${a.claimObjectId}::uuid, ${a.evidenceObjectId}::uuid, ${JSON.stringify(a.origin)}::jsonb, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r === 'identified' ? 'identified' : 'already';
+  }
+  async recordImportedEdge(a: Parameters<RetentionWrites['recordImportedEdge']>[0]): Promise<void> {
+    await this.call(sql`select retention.record_imported_edge(${a.edgeId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.importId}::uuid, ${a.itemId}::uuid, ${a.subject}::uuid, ${a.predicate}::text, ${a.object}::uuid, ${a.validFrom}::timestamptz, ${a.validTo}::timestamptz, ${a.assertedAt}::timestamptz, ${a.retractedAt}::timestamptz, ${a.supersededAt}::timestamptz, ${a.state}::text, ${a.claimObjectId}::uuid, ${a.claimVersion}::bigint, ${a.evidenceObjectId}::uuid, ${a.evidenceDigest}::text, ${a.methodId}::uuid, ${a.runId}::uuid, ${a.mode}::text, ${a.confidence}::numeric, ${a.supersededBy}::uuid, ${a.retractionReason}::text, ${JSON.stringify(a.origin)}::jsonb, ${a.actor}::uuid, ${a.correlationId}::uuid)`);
+  }
+  async markImportItem(a: Parameters<RetentionWrites['markImportItem']>[0]): Promise<void> {
+    await this.call(sql`select retention.mark_import_item(${a.itemId}::uuid, ${a.importId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.disposition}::text, ${a.gate}::text, ${a.reason}::text, ${a.admitted === null ? null : JSON.stringify(a.admitted)}::jsonb, ${a.actor}::uuid, ${a.correlationId}::uuid)`);
+  }
+  async recordImportEvent(a: Parameters<RetentionWrites['recordImportEvent']>[0]): Promise<void> {
+    await this.call(sql`select retention.record_import_event(${a.importId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.event}::text, ${JSON.stringify(a.details)}::jsonb, ${a.actor}::uuid, ${a.correlationId}::uuid)`);
+  }
+  async finishImportAdmission(a: Parameters<RetentionWrites['finishImportAdmission']>[0]): Promise<Row> {
+    const rows = await this.call<{ r: Row }>(sql`select retention.finish_import_admission(${a.importId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${JSON.stringify(a.counts)}::jsonb, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  async withdrawImport(a: Parameters<RetentionWrites['withdrawImport']>[0]): Promise<Row> {
+    const rows = await this.call<{ r: Row }>(sql`select retention.withdraw_import(${a.importId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}::text, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
     return rows[0]?.r ?? {};
   }
   async savepoint(name: string): Promise<void> { await this.call(sql.raw(`savepoint ${name.replace(/[^a-z0-9_]/gi, '')}`)); }

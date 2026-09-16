@@ -55,6 +55,17 @@
  *      never a success by absence; an expected digest that could not be compared is a failure of its own; the text
  *      verdict, the JSON `ok` and the exit status always agree.
  *
+ * THE CLOSURE (B15; B16 — Codex B15-F1): a manifest whose package.links names links.json is held to three checks — the file's sha256
+ * and size are the ones the manifest names (the block is inside the signed chain); the file is the closure the manifest counts
+ * (format, claims, edges, entities, excluded; the same action; the detail names the closure's format); and the closure is CONSISTENT
+ * with the package. Format eye-customer-export-links/2 carries every EXACT claim version an edge or a lineage row names, so the
+ * consistency is checked by PAIR: every claim version's lineage row is the row of its own version (claim_version = object_version) and
+ * names an exported record by (object_id, bytes digest); every edge names an included claim by (object_id, object_version) — an edge
+ * asserted on C@1 is never satisfied by C@2 under the same id — included entities, and an exported record by (object_id, digest); a
+ * pair listed twice fails. Format eye-customer-export-links/1 carries ONE version per claim, so the verifier checks it by id alone and
+ * SAYS SO in the check's own name: which exact version an edge rests on is not validated for that format. The JSON output carries the
+ * closure's format as `closure_format` (null when the package names no closure).
+ *
  * A /1 package is "signed" by its digest chain, not by a key (D4 of the B11 record): integrity and completeness are proven
  * offline here; authenticity is proven by presenting the package digest to the product (the export read route, or the
  * retention record) and comparing. A /2 package is signed by the tenant's Ed25519 key over that same digest (D3 of the B13
@@ -79,6 +90,9 @@ const FORMATS = ['eye-customer-export/1', 'eye-customer-export/2'];
 const SCHEME_CHAIN = 'eye-digest-chain/1';
 const SCHEME_KEY = 'eye-customer-export/2';
 const SCHEMES = [SCHEME_CHAIN, SCHEME_KEY];
+/** B16 (Codex B15-F1): the closure's formats — /1 keyed by claim id (one version per claim), /2 keyed by the (object_id, object_version) PAIR. */
+const LINKS_FORMAT_1 = 'eye-customer-export-links/1';
+const LINKS_FORMAT_2 = 'eye-customer-export-links/2';
 const HEADER_FIELDS = 43;
 const HEX64 = /^[0-9a-f]{64}$/;
 const BIN_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.bin$/;
@@ -266,7 +280,7 @@ if (tarPath !== null) {
   source = { kind: 'directory', exists: (name) => existsSync(join(dir, name)), read: (name) => readFileSync(join(dir, name)), measure: (name) => measureFile(join(dir, name)), list: () => readdirSync(dir) };
 }
 
-let manifest = null; let parsed = false; let sig = null; let signatureVerified = null;
+let manifest = null; let parsed = false; let sig = null; let signatureVerified = null; let closureFormat = null;
 if (source !== null) {
   if (!source.exists('manifest.json')) {
     const seen = source.kind === 'archive' ? source.list() : [];
@@ -342,14 +356,54 @@ if (isObject) {
           let lj = null; try { lj = JSON.parse(lraw.toString('utf8')); } catch (e) { lj = null; }
           const lok = lj !== null && typeof lj === 'object' && !Array.isArray(lj) && lj.format === linksBlock.format && Array.isArray(lj.claims) && Array.isArray(lj.edges) && Array.isArray(lj.entities) && Array.isArray(lj.excluded)
             && lj.claims.length === linksBlock.claims && lj.edges.length === linksBlock.edges && lj.entities.length === linksBlock.entities && lj.excluded.length === linksBlock.excluded && lj.package?.action_id === manifest.package?.action_id;
-          check('links: links.json is the closure the manifest counts (format, claims, edges, entities, excluded; the same action)', lok, lok ? `${lj.claims.length} claim(s), ${lj.edges.length} edge(s), ${lj.entities.length} entit${lj.entities.length === 1 ? 'y' : 'ies'}, ${lj.excluded.length} excluded` : lj === null ? 'links.json does not parse as a JSON object' : `counts or format differ from the manifest's package.links (${JSON.stringify({ format: lj.format, claims: lj.claims?.length, edges: lj.edges?.length, entities: lj.entities?.length, excluded: lj.excluded?.length })})`);
-          if (lok) {
-            // Every claim's lineage names an exported record; every edge's claim is an included claim and its ends are included entities.
+          if (lj !== null && typeof lj === 'object' && !Array.isArray(lj) && typeof lj.format === 'string') closureFormat = lj.format;
+          check('links: links.json is the closure the manifest counts (format, claims, edges, entities, excluded; the same action)', lok, lok ? `${lj.claims.length} claim(s), ${lj.edges.length} edge(s), ${lj.entities.length} entit${lj.entities.length === 1 ? 'y' : 'ies'}, ${lj.excluded.length} excluded; closure format ${lj.format}` : lj === null ? 'links.json does not parse as a JSON object' : `counts or format differ from the manifest's package.links (${JSON.stringify({ format: lj.format, claims: lj.claims?.length, edges: lj.edges?.length, entities: lj.entities?.length, excluded: lj.excluded?.length })})`);
+          if (lok && lj.format === LINKS_FORMAT_2) {
+            // B16 (Codex B15-F1): THE PAIR RULE. A /2 closure carries every EXACT claim version an edge or a lineage row names, so membership is
+            // checked by the (object_id, object_version) pair — an edge asserted on C@1 is satisfied by C@1 alone, never by C@2 under the same
+            // id — and a record by the (object_id, bytes digest) pair its lineage row and its edges name. A pair listed twice is a malformed
+            // closure (the product writes each version once); a lineage row is the one of ITS version (claim_version = object_version).
+            const exportedDigests = new Map((manifest.objects ?? []).map((o) => [o?.object_id, o?.bytes?.content_digest]));
+            const recordPair = (id, digest) => exportedDigests.has(id) && exportedDigests.get(id) === digest;
+            const pairKey = (c) => `${c?.object_id}@${c?.object_version}`;
+            const pairs = new Set(); const duplicates = [];
+            for (const c of lj.claims) { const k = pairKey(c); if (pairs.has(k)) duplicates.push(k); else pairs.add(k); }
+            const entityIds = new Set(lj.entities.map((e) => e?.entity_id));
+            const claimFault = (c) => {
+              if (!Number.isInteger(c?.object_version)) return `${pairKey(c)}: object_version is not an integer`;
+              if (!Array.isArray(c?.lineage) || c.lineage.length === 0) return `${pairKey(c)}: no lineage row`;
+              const wrongVersion = c.lineage.find((l) => l?.claim_version !== c.object_version);
+              if (wrongVersion !== undefined) return `${pairKey(c)}: a lineage row of version ${wrongVersion?.claim_version}, not its own`;
+              const unresolved = c.lineage.find((l) => !recordPair(l?.evidence_object_id, l?.evidence_digest));
+              if (unresolved !== undefined) return `${pairKey(c)}: its lineage names ${unresolved?.evidence_object_id ?? '?'} with digest ${String(unresolved?.evidence_digest ?? '?').slice(0, 12)}…, ${exportedDigests.has(unresolved?.evidence_object_id) ? 'not the bytes the package carries' : 'a record the package does not carry'}`;
+              return null;
+            };
+            const edgeFault = (e) => {
+              const named = `${e?.claim?.object_id}@${e?.claim?.object_version}`;
+              if (!pairs.has(named)) { const carried = lj.claims.filter((c) => c?.object_id === e?.claim?.object_id).map((c) => c.object_version); return `edge ${e?.edge_id ?? '?'} names ${named}, ${carried.length > 0 ? `which the closure does not carry (it carries version${carried.length === 1 ? '' : 's'} ${carried.join(', ')} of that claim — an edge is never rebased onto another version)` : 'a claim the closure does not carry'}`; }
+              if (!entityIds.has(e?.subject_entity_id) || !entityIds.has(e?.object_entity_id)) return `edge ${e?.edge_id ?? '?'} names an entity the closure does not carry`;
+              if (!recordPair(e?.evidence?.object_id, e?.evidence?.digest)) return `edge ${e?.edge_id ?? '?'} names record ${e?.evidence?.object_id ?? '?'} with a digest the package does not carry`;
+              return null;
+            };
+            const claimFaults = lj.claims.map(claimFault).filter((f) => f !== null);
+            const edgeFaults = lj.edges.map(edgeFault).filter((f) => f !== null);
+            const three = (xs) => `${xs.slice(0, 3).join('; ')}${xs.length > 3 ? `; … ${xs.length} in all` : ''}`;
+            check('links: every claim version\'s lineage names an exported record by (object_id, bytes digest); every edge names an included claim by (object_id, object_version), included entities and an exported record by (object_id, digest)',
+              duplicates.length === 0 && claimFaults.length === 0 && edgeFaults.length === 0,
+              duplicates.length > 0 ? `${duplicates.length} claim version(s) listed twice: ${three(duplicates)}`
+                : claimFaults.length > 0 ? `${claimFaults.length} claim version(s) whose lineage does not resolve by pair: ${three(claimFaults)}`
+                  : edgeFaults.length > 0 ? `${edgeFaults.length} edge(s) naming what the closure does not carry: ${three(edgeFaults)}`
+                    : `the closure is consistent by (object_id, object_version) and (object_id, bytes digest): ${pairs.size} claim version(s), ${lj.edges.length} edge(s), ${entityIds.size} entit${entityIds.size === 1 ? 'y' : 'ies'}`);
+          } else if (lok && lj.format === LINKS_FORMAT_1) {
+            // A /1 closure (B15) carries ONE version per claim — the latest — so an edge's claim is matched by object_id alone here, and the
+            // verifier SAYS so: which exact version an edge rests on is not validated by this format (Codex B15-F1; the /2 closure carries the pair).
             const exported = new Set((manifest.objects ?? []).map((o) => o?.object_id));
             const claimIds = new Set(lj.claims.map((c) => c?.object_id)); const entityIds = new Set(lj.entities.map((e) => e?.entity_id));
             const badClaims = lj.claims.filter((c) => !Array.isArray(c?.lineage) || c.lineage.length === 0 || !c.lineage.every((l) => exported.has(l?.evidence_object_id)));
             const badEdges = lj.edges.filter((e) => !claimIds.has(e?.claim?.object_id) || !entityIds.has(e?.subject_entity_id) || !entityIds.has(e?.object_entity_id) || !exported.has(e?.evidence?.object_id));
-            check('links: every claim\'s lineage names exported records; every edge names an included claim, included entities and an exported record', badClaims.length === 0 && badEdges.length === 0, badClaims.length > 0 ? `${badClaims.length} claim(s) with lineage outside the export` : badEdges.length > 0 ? `${badEdges.length} edge(s) naming an excluded claim, an absent entity or an unexported record` : 'the closure is consistent');
+            check('links: (closure format 1) every claim\'s lineage names exported records; every edge names an included claim by object_id alone — a /1 closure carries one version per claim, so version references are not validated here (B15-F1)', badClaims.length === 0 && badEdges.length === 0, badClaims.length > 0 ? `${badClaims.length} claim(s) with lineage outside the export` : badEdges.length > 0 ? `${badEdges.length} edge(s) naming an excluded claim, an absent entity or an unexported record` : 'the closure is consistent by id; versions unvalidated');
+          } else if (lok) {
+            check(`links: the closure format is ${LINKS_FORMAT_1} or ${LINKS_FORMAT_2}`, false, `format ${JSON.stringify(lj.format)} is not a closure format this verifier reads; its references were not validated`);
           }
         }
       }
@@ -448,7 +502,7 @@ const failed = results.filter((r) => r.ok === false).length;
 const ok = failed === 0 && complete;
 const signature = { scheme: sig?.scheme ?? null, key_id: sig?.scheme === SCHEME_KEY && typeof sig?.key_id === 'string' ? sig.key_id : null, verified: signatureVerified };
 if (asJson) {
-  console.log(JSON.stringify({ package: target, mode: source?.kind ?? 'archive', archive_digest: archiveDigest, checks: results, summary, signature, complete, failed, ok }, null, 2));
+  console.log(JSON.stringify({ package: target, mode: source?.kind ?? 'archive', archive_digest: archiveDigest, checks: results, summary, signature, closure_format: closureFormat, complete, failed, ok }, null, 2));
 } else {
   console.log(`export package: ${target}${tarPath !== null ? ' (ustar archive)' : ''}`);
   for (const r of results) console.log(r.ok === null ? `  ${r.name}` : `  ${r.ok ? 'PASS' : 'FAIL'}  ${r.name}${r.detail !== null ? ` — ${r.detail}` : ''}`);

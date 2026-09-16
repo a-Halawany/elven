@@ -514,7 +514,7 @@ export const graph = {
       s, `/ontology/${versionId}/decide`, 'graph.ontology.decide', 'ONT', { decision, reason, reviews }, versionId),
 };
 
-/* ───────────────────────── governed retention (0066 §4 / 0067 / 0068 / 0070 / 0072 / 0073) ───────────────────────── */
+/* ───────────────────────── governed retention (0066 §4 / 0067 / 0068 / 0070 / 0072 / 0073 / 0076) ───────────────────────── */
 
 /**
  * The retention routes live under `…/retention`, not `…/graph`, and every call is made under the purpose `retention`.
@@ -525,15 +525,18 @@ export const graph = {
  * tenant's, declared by a credential REFERENCE — the private key never leaves the process environment and no answer
  * carries it), RDS an export destination (a transfer station or an https endpoint, declared per domain), RDL a delivery and RXN (B14) a revocation notice
  * of a package to one. The download of a package is a governed WRITE (`retention.export.download` records the event on the
- * action; the bytes ride the same answer), so its envelope carries `reversible` as every act does. The server's refusal is
- * returned verbatim: the opener's own approval, a wrong digest, an unresolved scope, a review's failed check, a budget
- * exhausted, an expired or revoked package, an unbound credential reference are all its words.
+ * action; the bytes ride the same answer), so its envelope carries `reversible` as every act does. Since B16 (0076) RXP is an
+ * EXCHANGE PARTNER (the party whose key-signed packages this domain admits, bound to an intake source contract of the domain)
+ * and RIM a governed IMPORT (a package quarantined, verified, approved on its digest — never by the opener — and admitted under
+ * ids this installation mints — never by the approver; or withdrawn). The server's refusal is returned verbatim: the opener's
+ * own approval, a wrong digest, an unresolved scope, a review's failed check, a budget exhausted, an expired or revoked package,
+ * an unbound credential reference, a key no partner holds are all its words.
  *
  * The envelope's object id is a uuid or null: a signing key's id (`ed25519:<hex>`) is not one, so those calls carry null
  * and the key travels in the path — percent-encoded, the colon included (design C16).
  */
 async function r<T>(
-  scope: Scope, path: string, action: string, objectType: 'RTS' | 'RTA' | 'RTP' | 'RSK' | 'RDS' | 'RDL' | 'RXN',
+  scope: Scope, path: string, action: string, objectType: 'RTS' | 'RTA' | 'RTP' | 'RSK' | 'RDS' | 'RDL' | 'RXN' | 'RXP' | 'RIM',
   payload: unknown = {}, objectId: string | null = null,
 ): Promise<ApiResult<T>> {
   return call<T>(
@@ -676,6 +679,65 @@ export interface RetentionDestinationIntake {
   recipient: string;
   purpose: string;
 }
+
+/**
+ * What declares an EXCHANGE PARTNER (B16, 0076 §3 `retention.exchange_partners`, the domain's): a key unique among the domain's
+ * active partners (`^[a-z0-9][a-z0-9-]{1,63}$`), the party (who signs the packages this domain admits) and the purpose, the
+ * party's Ed25519 PUBLIC key as a SubjectPublicKeyInfo PEM (the server derives the key id `ed25519:<first 16 hex of sha256(SPKI DER)>`
+ * exactly as the export's own signing key is named), and the INTAKE SOURCE CONTRACT of this domain the imported records are held
+ * under — an active upload contract with confirmed rights, whose classification ceiling is the import's policy gate. The server
+ * refuses a key or a partner key already declared among the active partners, and an intake contract that is not active, not an
+ * upload contract or whose rights are not confirmed.
+ */
+export interface RetentionPartnerIntake {
+  partnerKey: string;
+  party: string;
+  purpose: string;
+  publicKeyPem: string;
+  intakeSourceId: string;
+  intakeContractVersion: number;
+}
+
+/**
+ * What an IMPORT is opened on (B16, 0076 §4; D4): the package INLINE — the tar as base64 in the governed payload, at most 64 MiB
+ * decoded, with the sender's exchange statement (delivery.json, or the stream's headers as an object) when there is one — or from a
+ * transfer STATION declared in this domain, at the origin's `<tenantId>/<domainId>/<actionId>` (package.tar with delivery.json,
+ * package.sig and, when the origin revoked it there, revocation.json beside it). The station is the disconnected path and the
+ * only one for a package above the listener's body limit.
+ */
+export type RetentionImportSource =
+  | { kind: 'inline'; base64: string; exchange?: Record<string, unknown> }
+  | { kind: 'station'; destinationKey: string; origin: { tenantId: string; domainId: string; actionId: string } };
+
+/** One of the import's ordered checks as the open act recorded it: `ok` true (passed), false (failed: the import is quarantined) or null (a note — a fact the product cannot establish here, stated). */
+export interface RetentionImportCheck { name: string; ok: boolean | null; detail: string | null }
+
+/**
+ * The import's record (…/imports/:id/get, B16): the row (its state — quarantined, verified, approved, admitting, admitted, withdrawn —
+ * the origin as the manifest states it, the intake, the exchange statement, the digests, the counts), the partner whose key signed it
+ * (null when none held the key), the ITEMS — the map from each origin reference (`<object_id>@<version>`, `entity:<id>`, `edge:<id>`,
+ * `system:<key>`, `identifier:<key>:<value>`, `excluded:…`) to the id minted here, each with its disposition (staged, admitted, reused,
+ * excluded, refused) and its gate — the events, the ordered checks and the IMPORT RECEIPT (the importer's own record of the exchange).
+ */
+export interface RetentionImportDetail {
+  import: RetentionRow;
+  partner: RetentionRow | null;
+  items: RetentionRow[];
+  events: RetentionRow[];
+  checks: RetentionImportCheck[];
+  importReceipt: Record<string, unknown>;
+  receipt: Receipt;
+}
+
+/** The open act's answer (B16): the row as recorded (verified or quarantined), the ordered checks, the planned items, and the import receipt. */
+export type RetentionImportOpened = {
+  import: RetentionRow;
+  checks: RetentionImportCheck[];
+  items: RetentionRow[];
+  verified: boolean;
+  importReceipt: Record<string, unknown>;
+  receipt: Receipt;
+};
 
 /**
  * The download's answer (…/actions/:id/export/download, B13 D7): the package's ARCHIVE — one deterministic ustar tar of
@@ -883,4 +945,52 @@ export const retention = {
   /** B13: a receipt presented out-of-band (carried by hand from a station, or an https recipient's later answer) applied to a delivered delivery — the same act; the server's words on a mismatch. */
   acknowledgeDelivery: (s: Scope, actionId: string, deliveryId: string, receipt: RetentionDeliveryReceipt) =>
     r<{ delivery: RetentionRow; receipt: Receipt }>(s, `/actions/${actionId}/export/deliveries/${encodeURIComponent(deliveryId)}/acknowledge`, 'retention.export.acknowledge', 'RDL', { receipt }, deliveryId),
+
+  /** B16 (0076 §3): the domain's exchange partners, oldest first, each with its state (active / retired) and its intake contract as it stands now (an audited read). */
+  listPartners: (s: Scope) =>
+    r<{ partners: RetentionRow[]; receipt: Receipt }>(s, '/partners/list', 'retention.read', 'RXP'),
+
+  /** B16: an administrator's act, human-gated (`retention.partner.declare`) — the partner declared from its public key PEM and the intake contract; the server states what it refuses. */
+  declarePartner: (s: Scope, intake: RetentionPartnerIntake) =>
+    r<{ partner: RetentionRow; receipt: Receipt }>(s, '/partners/declare', 'retention.partner.declare', 'RXP', intake),
+
+  /** B16: a partner retired once with a reason (8+ characters); its row and its imports stay; its key no longer resolves a package (one it signed is quarantined until a partner holds the key again). */
+  retirePartner: (s: Scope, partnerId: string, reason: string) =>
+    r<{ partner: RetentionRow; receipt: Receipt }>(s, `/partners/${encodeURIComponent(partnerId)}/retire`, 'retention.partner.retire', 'RXP', { reason }, partnerId),
+
+  /**
+   * B16 (0076 §4): the steward's act (`retention.import.open`) — the package QUARANTINED as vault blobs and checked in one governed write:
+   * the archive, the manifest, the integrity of every file, the re-import compatibility of every object, the chain, the key-based
+   * signature against a declared partner's key, the closure by exact version, the intake contract's policy, a live duplicate, the
+   * origin's revocation and expiry as far as they are provable here. The answer says VERIFIED (the plan of ids this installation mints)
+   * or QUARANTINED with the failed checks named — a quarantined import keeps its evidence. An inline package above 64 MiB decoded is
+   * refused (422): deliver it to a transfer station and open the import from there.
+   */
+  openImport: (s: Scope, source: RetentionImportSource) =>
+    r<RetentionImportOpened>(s, '/imports/open', 'retention.import.open', 'RIM', { source }),
+
+  /** B16: the domain's imports, newest first, each with its state, its origin, its counts and its partner (an audited read). */
+  listImports: (s: Scope) =>
+    r<{ imports: RetentionRow[]; receipt: Receipt }>(s, '/imports/list', 'retention.read', 'RIM'),
+
+  getImport: (s: Scope, importId: string) =>
+    r<RetentionImportDetail>(s, `/imports/${encodeURIComponent(importId)}/get`, 'retention.read', 'RIM', {}, importId),
+
+  /** B16: the retention authority's act, human-gated (`retention.import.approve`) — on the PACKAGE DIGEST the approver read on the verified import, with a rationale (8+ characters); the opener never approves; a verified import only. */
+  approveImport: (s: Scope, importId: string, packageDigest: string, rationale: string) =>
+    r<{ import: RetentionRow; receipt: Receipt }>(s, `/imports/${encodeURIComponent(importId)}/approve`, 'retention.import.approve', 'RIM', { packageDigest, rationale }, importId),
+
+  /**
+   * B16: the steward's act, human-gated (`retention.import.admit`; never the approver) — the records, the claim versions, the entities,
+   * the identifiers and the edges admitted under NEW ids in batches (each batch its own governed write, the batches answered with
+   * their receipts); an item the intake's ceiling excludes, a header the port refuses, an edge whose claim version is not admitted
+   * (never rebased) are settled as such, never the whole import; the quarantine copies of the admitted records are tombstoned after
+   * the commit. An admission interrupted resumes with the same act.
+   */
+  admitImport: (s: Scope, importId: string) =>
+    r<{ import: RetentionRow; batches: Array<Record<string, unknown>>; receipt: Receipt }>(s, `/imports/${encodeURIComponent(importId)}/admit`, 'retention.import.admit', 'RIM', {}, importId),
+
+  /** B16 (C5): the steward's act (`retention.import.withdraw`) — a quarantined, verified, approved or admitting import withdrawn once with a reason; its ledger stays, its quarantine copies are tombstoned after the commit (the answer says how many); an admitted import is never withdrawn. */
+  withdrawImport: (s: Scope, importId: string, reason: string) =>
+    r<{ import: RetentionRow; quarantine: Record<string, unknown>; receipt: Receipt }>(s, `/imports/${encodeURIComponent(importId)}/withdraw`, 'retention.import.withdraw', 'RIM', { reason }, importId),
 };

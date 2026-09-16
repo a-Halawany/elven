@@ -75,7 +75,7 @@ export function failureClassOf(e: unknown): ExecutionFailureClass {
   if (message.startsWith('retention execution rejected (scope_changed)') || message.startsWith('retention execution rejected (references_changed)')) return 'unresolved_dependency';
   if (message.startsWith('retention execution rejected (budget_exhausted)')) return 'infrastructure';
   // B13 (C14): the tenant's active signing key is not bound in this deployment — a retry once it is (the key declared on another host).
-  if (message.startsWith('retention execution rejected (signing_key_unbound)')) return 'infrastructure';
+  if (message.startsWith('retention execution rejected (signing_key_unbound)') || message.startsWith('retention execution rejected (signing_key_mismatch)')) return 'infrastructure';
   return 'infrastructure';
 }
 
@@ -102,8 +102,13 @@ export function expiresAfterSeconds(value: string): number | null {
 }
 /** The canonical row's `payload ->> 'manifest_id'` as a where-clause expression (the manifest an evidence version names). */
 const sqlPayloadManifestId = sql`(payload ->> 'manifest_id')`;
-/** B15 (D1): the relationship closure's own format, named inside links.json and in the manifest's package.links. */
-const LINKS_FORMAT = 'eye-customer-export-links/1';
+/**
+ * B15 (D1): the relationship closure's own format, named inside links.json and in the manifest's package.links. B16 (D8; Codex B15-F1):
+ * `/2` — the closure BY EXACT VERSION: a claim entry per (object_id, object_version) a resolving lineage row or an included edge
+ * names (an id may repeat with different versions), the evidence pair rule (a record by its id AND the digest of the bytes the
+ * package carries), the identifier systems, and an excluded required version recorded with its dependent edges.
+ */
+const LINKS_FORMAT = 'eye-customer-export-links/2';
 /** B15 (D2): a stream consumed for its digest alone (the build's archive digest; the stream route's pre-pass). */
 async function drainForDigest(built: { stream: Readable; digest: () => Promise<string> }): Promise<string> {
   for await (const _chunk of built.stream) { /* the hash accumulates inside the stream */ }
@@ -197,6 +202,15 @@ export class RetentionService {
       const active = await this.activeSigningKey(cap, a.tenantId);
       if (active !== null && !this.signing.has(String(active['credential_ref'] ?? ''))) {
         throw new Error(`retention execution rejected (signing_key_unbound): the tenant's active export signing key ${String(active['key_id'])} is not bound in this deployment (${String(active['credential_ref'])}); the package was not built`);
+      }
+      // B16: the reference must derive the DECLARED key — a binding that holds another private key would sign a package the recorded public
+      // key (and an importing partner's declaration of it) cannot verify. Refused before the state moves, like an unbound reference.
+      if (active !== null) {
+        const derived = this.signing.derivePublic(String(active['credential_ref'] ?? ''));
+        const declared = String(active['key_id']);
+        if (!derived.ok || derived.keyId !== declared) {
+          throw new Error(`retention execution rejected (signing_key_mismatch): the reference ${String(active['credential_ref'])} bound in this deployment ${derived.ok ? `derives ${derived.keyId}, not` : 'does not derive an Ed25519 key for'} the tenant's active export signing key ${declared}; the package was not built`);
+        }
       }
     }
     // begin_execution (0070 §5; 0071 §1) re-checks what the approval assumed and LOCKS, for this transaction, every manifest the action will
@@ -525,11 +539,11 @@ export class RetentionService {
     // B15 (D1): THE RELATIONSHIP CLOSURE — the knowledge derived from the exported records (the claims whose lineage names them, the graph's
     // edges asserted on them and the entities those edges connect), under the same ceiling, written as links.json and named by the manifest's
     // package.links (inside the digest chain: `package` is covered by the package digest).
-    const links = await this.linksOf(cap, a, objects.map((o) => String(o['object_id'])), ceiling);
+    const links = await this.linksOf(cap, a, objects, ceiling);
     const linksBytes = Buffer.from(`${JSON.stringify(links.body, null, 2)}\n`, 'utf8');
     const linksFile = await this.vault.writePackageFile(scope, a.actionId, LINKS_FILE, linksBytes);
     await cap.recordExecution({ executionId: newId(), actionId: a.actionId, tenantId: a.tenantId, domainId: a.domainId, itemId: null, port: 'retention.export_links', outcome: 'done',
-                                evidence: { file: LINKS_FILE, links_digest: linksFile.contentDigest, byte_length: linksFile.byteLength, ...links.counts }, actor: a.actor, correlationId: a.correlationId });
+                                evidence: { file: LINKS_FILE, links_digest: linksFile.contentDigest, byte_length: linksFile.byteLength, format: LINKS_FORMAT, ...links.counts }, actor: a.actor, correlationId: a.correlationId });
     const body: ExportManifestShape = {
       format: EXPORT_FORMAT,
       package: { action_id: a.actionId, tenant_id: a.tenantId, domain_id: a.domainId, destination: 'export', locator_prefix: locatorPrefix, built_at: new Date().toISOString(), built_by: `principal:${a.actor}`,
@@ -902,59 +916,148 @@ export class RetentionService {
   }
 
   /**
-   * B15 (D1): THE RELATIONSHIP CLOSURE of the exported records — for the exported EVD object ids: the CLAIMS whose lineage names them
-   * (intelligence.claim_lineage → the latest canonical version of each claim, with its lineage rows), the graph's EDGES asserted on
-   * them (graph.edges_current, every state as recorded — temporal truth), and the ENTITIES those edges connect with their identifiers.
-   * The same ceiling as the records: a claim whose header classification lies above it is EXCLUDED (listed with the gate), and so are
-   * the edges that name it; the edges and entities carry no classification of their own. Nothing here is a write.
+   * B15 (D1), B16 (D8; Codex B15-F1): THE RELATIONSHIP CLOSURE of the exported records, BY EXACT VERSION — the knowledge derived from
+   * the records the package carries, each piece at the version that was actually derived, never rebased:
+   *
+   *   THE EVIDENCE PAIR RULE. A lineage row (intelligence.claim_lineage) or an edge (graph.edges_current) RESOLVES to an exported record
+   *   iff it names the record's id AND the digest of the BYTES the package carries for it (`objects[].bytes.content_digest` — the
+   *   extraction recorded the bytes' sha256 as evidence_digest); a row under another digest of the same record is excluded (gate
+   *   `evidence`): it was derived from bytes this package does not carry.
+   *
+   *   THE REQUIRED PAIRS. Every resolving lineage row requires its exact (claim_object_id, claim_version); every resolving edge requires
+   *   the pair it was asserted on. A required pair is carried as its own claim entry — an id may repeat with different versions (C@1 and
+   *   C@2 both present when an edge rests on the first and the lineage names the second) — with the ONE lineage row that resolves it and
+   *   what references it. A pair is excluded when its exact canonical row is not recorded (`record`), when it is required by an edge
+   *   alone and its own lineage row is absent (`record`) or names other bytes (`evidence`), or when its header classification lies above
+   *   the export ceiling (`redaction`) — the same ceiling as the records; the edges and entities carry no classification of their own.
+   *
+   *   THE EDGES AND THEIR ENDS. An edge is included iff its pair is included and both ends are recorded entities, every state as
+   *   recorded (temporal truth: asserted, retracted, superseded — with the instants and the principals); otherwise it is excluded with
+   *   the gate `dependency` and the reason (its excluded claim version, its unrecorded end — the end listed as an excluded entity too).
+   *   The entities are the included edges' ends with their identifiers; the identifier SYSTEMS those identifiers are under travel with
+   *   them (the importing domain registers what it lacks). Nothing here is a write.
    */
-  private async linksOf(cap: RetentionReads, a: { tenantId: string; domainId: string; actionId: string }, evdObjectIds: string[], ceiling: string): Promise<{ body: Row; counts: { claims: number; edges: number; entities: number; excluded: number } }> {
-    const claims: Row[] = []; const edges: Row[] = []; const entities: Row[] = []; const excluded: Row[] = [];
+  private async linksOf(cap: RetentionReads, a: { tenantId: string; domainId: string; actionId: string }, objects: Row[], ceiling: string): Promise<{ body: Row; counts: { claims: number; edges: number; entities: number; excluded: number } }> {
+    const claims: Row[] = []; const edges: Row[] = []; const entities: Row[] = []; const identifierSystems: Row[] = []; const excluded: Row[] = [];
+    // 1. The exported records, id → the digest of the bytes the package carries (the manifest's objects[].bytes).
+    const exported = new Map<string, string>();
+    for (const o of objects) exported.set(String(o['object_id']), String(((o['bytes'] ?? {}) as Row)['content_digest'] ?? ''));
+    const evdObjectIds = [...exported.keys()];
+    const pairKey = (objectId: string, version: number): string => `${objectId}@${version}`;
+    const resolves = (evidenceId: unknown, digest: unknown): boolean => exported.get(String(evidenceId)) === String(digest);
+    const evidenceOf = (r: Row): Row => ({ object_id: String(r['evidence_object_id']), digest: String(r['evidence_digest']) });
     if (evdObjectIds.length > 0) {
+      type Required = { objectId: string; version: number; lineage: Row | null };
+      const required = new Map<string, Required>();
+      const exclusionOf = new Map<string, string>();
+      const require = (objectId: string, version: number): Required => {
+        const k = pairKey(objectId, version);
+        let r = required.get(k);
+        if (r === undefined) { r = { objectId, version, lineage: null }; required.set(k, r); }
+        return r;
+      };
+      const excludeClaim = (objectId: string, version: number, gate: string, reason: string, extra: Row = {}): void => {
+        excluded.push({ kind: 'claim', object_id: objectId, object_version: version, gate, reason, ...extra });
+        exclusionOf.set(pairKey(objectId, version), gate);
+      };
+      // 2. The lineage rows naming exported records: a resolving row requires its exact version; one under other bytes is excluded (evidence).
       const lineage = (await cap.readClaimLineage().selectAll().where('evidence_object_id' as never, 'in', evdObjectIds as never).orderBy('claim_object_id' as never).orderBy('claim_version' as never).execute()) as Row[];
-      const byClaim = new Map<string, Row[]>();
-      for (const l of lineage) { const k = String(l['claim_object_id']); byClaim.set(k, [...(byClaim.get(k) ?? []), l]); }
-      const excludedClaims = new Set<string>();
-      for (const [claimId, rows] of [...byClaim.entries()].sort(([x], [y]) => (x < y ? -1 : 1))) {
-        const row = (await cap.readCanonicalObjects().selectAll().where('tenant_id' as never, '=', a.tenantId as never).where('domain_id' as never, '=', a.domainId as never)
-          .where('object_id' as never, '=', claimId as never).orderBy('object_version' as never, 'desc').limit(1).executeTakeFirst()) as (ObjectRow & { payload: Row }) | undefined;
-        if (row === undefined) { excluded.push({ kind: 'claim', object_id: claimId, gate: 'record', reason: 'no canonical version of the claim is recorded' }); excludedClaims.add(claimId); continue; }
-        const header = rebuildHeaderFromRow(row) as unknown as Row;
-        if (classificationRank(header['classification']) > classificationRank(ceiling)) { excluded.push({ kind: 'claim', object_id: claimId, object_version: Number(row.object_version), gate: 'redaction', reason: `classification ${String(header['classification'])} above the ceiling ${ceiling}` }); excludedClaims.add(claimId); continue; }
-        claims.push({
-          object_id: claimId, object_version: Number(row.object_version), object_type: String(row.object_type), content_digest: row.content_digest, header, payload: row.payload,
-          lineage: rows.map((l) => ({ claim_version: Number(l['claim_version']), evidence_object_id: String(l['evidence_object_id']), evidence_digest: String(l['evidence_digest']), byte_start: Number(l['byte_start']), byte_end: Number(l['byte_end']), run_id: String(l['run_id']), method_id: String(l['method_id']), mode: String(l['mode']), confidence: l['confidence'] === null || l['confidence'] === undefined ? null : Number(l['confidence']) })),
-        });
+      for (const l of lineage) {
+        const objectId = String(l['claim_object_id']); const version = Number(l['claim_version']);
+        if (!resolves(l['evidence_object_id'], l['evidence_digest'])) {
+          excludeClaim(objectId, version, 'evidence', `its lineage names record ${String(l['evidence_object_id'])} under digest ${String(l['evidence_digest'])}, not the bytes this package carries (${String(exported.get(String(l['evidence_object_id'])))})`, { evidence: evidenceOf(l) });
+          continue;
+        }
+        require(objectId, version).lineage = l;
       }
+      // 3. The edges asserted on exported records: a resolving edge requires the pair it rests on; one under other bytes is excluded (evidence).
       const edgeRows = (await cap.readEdges().selectAll().where('evidence_object_id' as never, 'in', evdObjectIds as never).orderBy('edge_id' as never).execute()) as Row[];
-      const entityIds = new Set<string>();
+      const claimOf = (e: Row): Row => ({ object_id: String(e['claim_object_id']), object_version: Number(e['claim_version']) });
+      const candidates: Row[] = [];
       for (const e of edgeRows) {
-        const claimId = String(e['claim_object_id']);
-        if (excludedClaims.has(claimId)) { excluded.push({ kind: 'edge', edge_id: String(e['edge_id']), gate: 'redaction', reason: `its claim ${claimId} is excluded` }); continue; }
-        entityIds.add(String(e['subject_entity_id'])); entityIds.add(String(e['object_entity_id']));
+        if (!resolves(e['evidence_object_id'], e['evidence_digest'])) {
+          excluded.push({ kind: 'edge', edge_id: String(e['edge_id']), claim: claimOf(e), evidence: evidenceOf(e), gate: 'evidence', reason: `it names record ${String(e['evidence_object_id'])} under digest ${String(e['evidence_digest'])}, not the bytes this package carries (${String(exported.get(String(e['evidence_object_id'])))})` });
+          continue;
+        }
+        require(String(e['claim_object_id']), Number(e['claim_version']));
+        candidates.push(e);
+      }
+      // 4. Every required pair, in order: the EXACT canonical row; a version required by an edge alone must have its own resolving lineage row.
+      // The included pairs, each with its `referenced_by` (the edges counted below are the ones the closure CARRIES, so a reader can check the count).
+      const included = new Map<string, Row>();
+      const sorted = [...required.values()].sort((x, y) => (x.objectId < y.objectId ? -1 : x.objectId > y.objectId ? 1 : x.version - y.version));
+      for (const r of sorted) {
+        const key = pairKey(r.objectId, r.version);
+        if (exclusionOf.has(key)) continue;
+        const row = (await cap.readCanonicalObjects().selectAll().where('tenant_id' as never, '=', a.tenantId as never).where('domain_id' as never, '=', a.domainId as never)
+          .where('object_id' as never, '=', r.objectId as never).where('object_version' as never, '=', r.version as never).executeTakeFirst()) as (ObjectRow & { payload: Row }) | undefined;
+        if (row === undefined) { excludeClaim(r.objectId, r.version, 'record', `no canonical version ${r.version} of the claim is recorded`); continue; }
+        const header = rebuildHeaderFromRow(row) as unknown as Row;
+        if (classificationRank(header['classification']) > classificationRank(ceiling)) { excludeClaim(r.objectId, r.version, 'redaction', `classification ${String(header['classification'])} above the ceiling ${ceiling}`); continue; }
+        if (r.lineage === null) {
+          const own = (await cap.readClaimLineage().selectAll().where('claim_object_id' as never, '=', r.objectId as never).where('claim_version' as never, '=', r.version as never).executeTakeFirst()) as Row | undefined;
+          if (own === undefined) { excludeClaim(r.objectId, r.version, 'record', `an edge rests on version ${r.version}, whose lineage is not recorded`); continue; }
+          excludeClaim(r.objectId, r.version, 'evidence', `an edge rests on version ${r.version}, whose lineage names record ${String(own['evidence_object_id'])} under digest ${String(own['evidence_digest'])}, which this package does not carry`, { evidence: evidenceOf(own) });
+          continue;
+        }
+        const l = r.lineage;
+        const referencedBy: Row = { lineage: true, edges: 0 };
+        claims.push({
+          object_id: r.objectId, object_version: r.version, object_type: String(row.object_type), schema_ref: String(row['schema_ref']), content_digest: row.content_digest, header, payload: row.payload,
+          lineage: [{ claim_version: Number(l['claim_version']), evidence_object_id: String(l['evidence_object_id']), evidence_digest: String(l['evidence_digest']), byte_start: Number(l['byte_start']), byte_end: Number(l['byte_end']),
+                      run_id: String(l['run_id']), method_id: String(l['method_id']), call_id: (l['call_id'] as string | null) ?? null, mode: String(l['mode']), confidence: Number(l['confidence']),
+                      retrieval_decision_id: String(l['retrieval_decision_id']), retrieval_audit_seq: Number(l['retrieval_audit_seq']) }],
+          referenced_by: referencedBy,
+        });
+        included.set(key, referencedBy);
+      }
+      // 5. The candidate edges' ends first; an edge is included iff its pair is included and both ends are recorded — else excluded (dependency).
+      const endIds = new Set<string>();
+      for (const e of candidates) { endIds.add(String(e['subject_entity_id'])); endIds.add(String(e['object_entity_id'])); }
+      const endRows = endIds.size > 0 ? ((await cap.readEntities().selectAll().where('entity_id' as never, 'in', [...endIds].sort() as never).orderBy('entity_id' as never).execute()) as Row[]) : [];
+      const recorded = new Map(endRows.map((en) => [String(en['entity_id']), en]));
+      const includedEntityIds = new Set<string>(); const unrecorded = new Set<string>();
+      for (const e of candidates) {
+        const claim = claimOf(e); const key = pairKey(String(claim['object_id']), Number(claim['object_version']));
+        const subject = String(e['subject_entity_id']); const object = String(e['object_entity_id']);
+        if (!included.has(key)) { excluded.push({ kind: 'edge', edge_id: String(e['edge_id']), claim, gate: 'dependency', reason: `its claim ${String(claim['object_id'])}@${String(claim['object_version'])} is excluded (${exclusionOf.get(key) ?? 'record'})` }); continue; }
+        const missing = (['subject', 'object'] as const).filter((end) => !recorded.has(end === 'subject' ? subject : object));
+        if (missing.length > 0) {
+          for (const end of missing) unrecorded.add(end === 'subject' ? subject : object);
+          excluded.push({ kind: 'edge', edge_id: String(e['edge_id']), claim, gate: 'dependency', reason: missing.map((end) => `its ${end} entity ${end === 'subject' ? subject : object} is not recorded`).join('; ') });
+          continue;
+        }
+        includedEntityIds.add(subject); includedEntityIds.add(object);
+        const referencedBy = included.get(key) as Row; referencedBy['edges'] = Number(referencedBy['edges']) + 1;
         edges.push({
-          edge_id: String(e['edge_id']), predicate: String(e['predicate']), subject_entity_id: String(e['subject_entity_id']), object_entity_id: String(e['object_entity_id']),
-          valid_from: instantOf(e['valid_from']), valid_to: instantOf(e['valid_to']), asserted_at: instantOf(e['asserted_at']), retracted_at: instantOf(e['retracted_at']), state: String(e['state']),
-          claim: { object_id: claimId, object_version: Number(e['claim_version']) }, evidence: { object_id: String(e['evidence_object_id']), digest: String(e['evidence_digest']) },
-          confidence: Number(e['confidence']), mode: String(e['mode']), superseded_by: (e['superseded_by'] as string | null) ?? null, retraction_reason: (e['retraction_reason'] as string | null) ?? null,
+          edge_id: String(e['edge_id']), predicate: String(e['predicate']), subject_entity_id: subject, object_entity_id: object,
+          valid_from: instantOf(e['valid_from']), valid_to: instantOf(e['valid_to']), asserted_at: instantOf(e['asserted_at']), retracted_at: instantOf(e['retracted_at']), superseded_at: instantOf(e['superseded_at']), state: String(e['state']),
+          claim, evidence: evidenceOf(e), run_id: (e['run_id'] as string | null) ?? null, method_id: (e['method_id'] as string | null) ?? null,
+          confidence: Number(e['confidence']), mode: String(e['mode']), asserted_by: String(e['asserted_by']), retracted_by: (e['retracted_by'] as string | null) ?? null,
+          superseded_by: (e['superseded_by'] as string | null) ?? null, retraction_reason: (e['retraction_reason'] as string | null) ?? null,
         });
       }
-      if (entityIds.size > 0) {
-        const ids = [...entityIds].sort();
-        const entityRows = (await cap.readEntities().selectAll().where('entity_id' as never, 'in', ids as never).orderBy('entity_id' as never).execute()) as Row[];
+      for (const id of [...unrecorded].sort()) excluded.push({ kind: 'entity', entity_id: id, gate: 'record', reason: 'the entity an edge names is not recorded in this domain' });
+      // 6. The included edges' ends with their identifiers, and the identifier systems those identifiers are under.
+      if (includedEntityIds.size > 0) {
+        const ids = [...includedEntityIds].sort();
         const identifiers = (await cap.readEntityIdentifiers().selectAll().where('entity_id' as never, 'in', ids as never).orderBy('entity_id' as never).orderBy('system_key' as never).orderBy('identifier_value' as never).execute()) as Row[];
-        for (const en of entityRows) {
-          const id = String(en['entity_id']);
+        for (const id of ids) {
+          const en = recorded.get(id) as Row;
           entities.push({
             entity_id: id, entity_type: String(en['entity_type']), canonical_name: String(en['canonical_name']), lifecycle_state: String(en['lifecycle_state']), split_from: (en['split_from'] as string | null) ?? null, superseded_by: (en['superseded_by'] as string | null) ?? null,
             identifiers: identifiers.filter((i) => String(i['entity_id']) === id).map((i) => ({ system_key: String(i['system_key']), value: String(i['identifier_value']), source_claim_object_id: String(i['source_claim_object_id']), source_evidence_object_id: String(i['source_evidence_object_id']) })),
           });
         }
-        for (const id of ids) if (!entityRows.some((en) => String(en['entity_id']) === id)) excluded.push({ kind: 'entity', entity_id: id, gate: 'record', reason: 'the entity an edge names is not recorded in this domain' });
+        const systemKeys = [...new Set(identifiers.map((i) => String(i['system_key'])))].sort();
+        if (systemKeys.length > 0) {
+          const systems = (await cap.readIdentifierSystems().selectAll().where('tenant_id' as never, '=', a.tenantId as never).where('domain_id' as never, '=', a.domainId as never).where('system_key' as never, 'in', systemKeys as never).orderBy('system_key' as never).execute()) as Row[];
+          for (const sys of systems) identifierSystems.push({ system_key: String(sys['system_key']), authority: String(sys['authority']), description: String(sys['description']), is_authoritative: Boolean(sys['is_authoritative']) });
+        }
       }
     }
     const counts = { claims: claims.length, edges: edges.length, entities: entities.length, excluded: excluded.length };
-    return { body: { format: LINKS_FORMAT, package: { action_id: a.actionId, tenant_id: a.tenantId, domain_id: a.domainId }, evidence: evdObjectIds, claims, edges, entities, excluded, counts }, counts };
+    return { body: { format: LINKS_FORMAT, package: { action_id: a.actionId, tenant_id: a.tenantId, domain_id: a.domainId }, evidence: evdObjectIds, claims, edges, entities, identifier_systems: identifierSystems, excluded, counts }, counts };
   }
 
   /**
@@ -1120,16 +1223,20 @@ export class RetentionService {
    * (begin_revocation_notice — the package revoked, the destination one that received it, the attempt under the action's delivery lock),
    * the notice built from the package row, the executor by the destination's kind (revocation.json at a transfer station — `created`
    * receives the path when newly written, for the controller's cleanup after a commit that failed; a JSON POST to an https endpoint),
-   * the outcome recorded whatever it is. A retired destination is still notified: it holds the package.
+   * the outcome recorded whatever it is. A retired destination is still notified: it holds the package. B16 (Codex B14-F1): the port's
+   * gate is `retention.export_delivery_held` — the destination holds the package (`confirmed`) or may hold it (`possible`: a failure after
+   * the body left, a receipt that did not parse); the notice and its record carry that word; a destination that provably received
+   * nothing is the port's refusal.
    */
   async notifyRevocation(cap: RetentionWrites, scope: { tenantId: string; domainId: string }, actionId: string, destinationId: string, a: { actor: string; correlationId: string }, created: string[]): Promise<Row> {
     const begun = await cap.beginRevocationNotice({ actionId, tenantId: scope.tenantId, domainId: scope.domainId, destinationId, actor: a.actor, correlationId: a.correlationId });
     const noticeId = String(begun['notice_id']); const attempt = Number(begun['attempt']);
-    const pkg = (begun['package'] ?? {}) as Row; const destination = (begun['destination'] ?? {}) as Row; const held = (begun['delivery'] ?? {}) as Row;
+    const pkg = (begun['package'] ?? {}) as Row; const destination = (begun['destination'] ?? {}) as Row; const delivery = (begun['delivery'] ?? {}) as Row;
     const notice: RevocationNotice = {
       tenantId: scope.tenantId, domainId: scope.domainId, actionId, noticeId, attempt,
       destinationKey: String(destination['destination_key'] ?? ''), recipient: String(destination['recipient'] ?? ''),
-      deliveryId: String(held['delivery_id'] ?? ''), deliveryAttempt: Number(held['attempt'] ?? 0), deliveryState: String(held['state'] ?? ''),
+      deliveryId: String(delivery['delivery_id'] ?? ''), deliveryAttempt: Number(delivery['attempt'] ?? 0), deliveryState: String(delivery['state'] ?? ''),
+      held: delivery['held'] === 'possible' ? 'possible' : 'confirmed',
       packageDigest: String(pkg['package_digest'] ?? ''), archiveDigest: String(pkg['archive_digest'] ?? ''), signingKeyId: typeof pkg['signing_key_id'] === 'string' ? (pkg['signing_key_id'] as string) : null,
       revokedAt: instantOf(pkg['revoked_at']), reason: typeof pkg['revoke_reason'] === 'string' ? (pkg['revoke_reason'] as string) : null, notifiedAt: new Date().toISOString(),
     };
@@ -1145,7 +1252,7 @@ export class RetentionService {
     const station = 'directory' in outcome ? { directory: outcome.directory, file: outcome.file } : null;
     const egress = 'egress' in outcome ? outcome.egress : null;
     return { ...recorded, notice_id: noticeId, attempt, state: outcome.state, failure_class: outcome.failureClass, receipt: outcome.receipt, receipt_digest: receiptDigest, notice: sent,
-             destination: { destination_id: destinationId, destination_key: notice.destinationKey, kind, endpoint, recipient: notice.recipient, retired_at: instantOf(destination['retired_at']) }, delivery: held, station, egress };
+             destination: { destination_id: destinationId, destination_key: notice.destinationKey, kind, endpoint, recipient: notice.recipient, retired_at: instantOf(destination['retired_at']) }, delivery, station, egress };
   }
 
   /** After the revocation committed: the product's package.tar and package.sig removed from every transfer station that received the package (what was removed, absent, failed — per destination). */

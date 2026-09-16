@@ -1572,8 +1572,11 @@ byte, the station delivery's `package.tar` streamed = the digest, the https deli
 IN-MEMORY CEILING — seventeen uploads of 16,000,000 bytes (272 MB) exported by streaming, the JSON download refused with the ceiling
 named, the stream route serving the 272 MB tar (hashed as it arrives = the archive digest; the announced length), the verifier scanning
 it in constant memory (19 entries), the station delivery streaming it (the file's sha256 the digest; the recipient's receipt collected →
-acknowledged), the https delivery streaming it to the recipient (its store holding the tar; acknowledged), the heap's growth under 256
-MiB. The first runs on harness fixtures (a column name; the upload contract's 16 MiB per object; a verified action is not verified again;
+acknowledged), the https delivery streaming it to the recipient (its store holding the tar; acknowledged), the heapUsed delta
+between a reading before S2 and one after (an optional GC) under 256 MiB — a DELTA, not a peak (the B15 wording called it the heap's
+growth; corrected in B16, which replaces the measurement by a sampled (50 ms) high-water mark of heapUsed + external above the
+baseline — external counts the ArrayBuffer backing stores, arrayBuffers reported beside it — asserted under 256 MiB: still a sampled
+measurement on the event loop, not peak RSS, synchronous peaks between samples unobserved; the B15 run's result stands as recorded). The first runs on harness fixtures (a column name; the upload contract's 16 MiB per object; a verified action is not verified again;
 the response double's auto-destroy), then **3/3**. The six retention harnesses (B11, B11-closure, B12, B13, B14, B15) **74/74** on a fresh
 database; the full integration suite **1024/1024 in 65 files** on a fresh database; the upgrade proof with 0022–0075 (54 migrations); the unit suite; the web typecheck,
 build and tests. The hosted run at `33882a3` — ci 35074350184 (1024/1024 in 65 files on a fresh
@@ -1598,13 +1601,195 @@ still serving the small package; (3) the streamed delivery to the transfer stati
 ACKNOWLEDGED; (4) the state. STATED: a package above the in-memory ceiling is the harness's proof — no synthetic bulk is added to
 NORDWERK.
 
+## B16 — the governed import and the NORDWERK export → import → re-export round trip; the versioned closure (Codex B15-F1); held recipients (Codex B14-F1) (implemented)
+
+**Migration 0076** (`apps/api/migrations/0076_b16_governed_import_versioned_closure_and_held_recipients.sql`, sha256 `a830305d…`,
+1,236 lines), on `phase6-b16` (cut from `main` at `88057d2`, after #51 and #52 merged; PR base `main`). The owner's 2026-09-16 directive:
+"implement governed import and demonstrate actual NORDWERK export → import → re-export effects under the existing specifications",
+with two fixes in the same batch — B14-F1 (a revocation must reach recipients known to hold the package even when their receipt is
+mismatched) and B15-F1 (export and validate the exact claim versions referenced by graph edges, preserving those references through
+import) — the affected register claims and the memory-measurement wording corrected here, prior evidence preserved. The specification
+rows: DP-47-001 (import and exchange paths), DP-47-002 (the closure reconciled on both sides), DP-47-003 (the boundary, versioned),
+DP-47-005 (deny or quarantine with the request and evidence preserved), DP-47-006 (round-trip fixtures), DZ-17 (the exchange staging
+tier's import half), DPD-19 (re-import), ES-53-004 (signed import packages with policy, provenance, malware, integrity and receipt
+checks), ES-08-004 (cross-domain sharing with recipient obligations); the units AU-COM-0056/-0058/-0060/-0062/-0007, AU-DP-0097,
+AU-IDP-0227. Designed by seven readers, one designer and two checkers (ten blocking findings folded into the design before a line was
+written: the write action's rationale, `authority_and_rights` inside the contract, the settle-once constraints, station symlinks, a
+stuck `admitting`, the unsigned expiry, the quarantine residue's lifecycle, the demonstration's scene order); implemented by six
+implementers on disjoint files and one compile pass; integrated, run on a fresh database, rehearsed on a restored copy and exercised on
+the demonstration (§B16.7).
+
+**D1 — the exchange partner (0076 §3).** `retention.exchange_partners`: a partner IS a public key — `partner_key` (the destination
+key's spelling), `party`, `purpose`, the Ed25519 SPKI PEM and the `key_id` the product derives from it (`ed25519:` + the first 16 hex
+of sha256(SPKI DER) — the same derivation as the signing key's declaration), and the INTAKE SOURCE CONTRACT the imported manifests are
+recorded under (an upload contract of the importing domain, active, rights confirmed; its ceiling is the import's policy gate).
+Declared and retired through the ports `declare_exchange_partner` / `retire_exchange_partner` (the administrators; one active row per
+key and per partner key in a domain; append-only, retirement the one change), the routes `POST …/retention/partners/declare`, `…/list`,
+`…/:id/retire` under `retention.partner.declare` / `.retire`. A package whose signing key no active partner of the domain holds is
+QUARANTINED with the words to act on ("declare the partner and open the import again").
+
+**D2 — the import ledger and the intake (0076 §4; `import.service.ts`, `import-package.ts`).** `retention.imports` (the states
+`quarantined → verified → approved → admitting → admitted | withdrawn`, transitions-only; one LIVE import per package digest and domain),
+`retention.import_items` (one row per record, claim version, entity, identifier system, identifier, edge and origin exclusion — the origin
+reference, what was staged, what is planned, the disposition `admitted | reused | refused | excluded` with its gate, settled once) and
+`retention.import_events` (append-only: opened, quarantined, verified, approved, admission_started, batch_admitted, admitted, finalized,
+withdrawn, evidence_tombstoned, quarantine_swept). THE INTAKE reads the archive exactly as the customer's verifier reads a tar —
+`scanUstarStream` in `export-archive.ts`, the stream scanner by the verifier's rules (512-byte headers, the magic, the checksum
+unsigned or signed, the size in octal, the prefix, the typeflag; a malformed archive is one refusal at the block where the rule broke,
+the whole source digested in a second pass so the row names the bytes that arrived) — from an INLINE archive (base64 inside the
+governed payload; bounded over the real listener by the JSON body limit, stated) or from a TRANSFER STATION the importing domain has
+declared (the file opened with `lstat`/`realpath`/`O_NOFOLLOW` — a symlink or a non-regular file refused; `delivery.json` beside it is
+the sender's UNSIGNED exchange statement, `revocation.json` the origin's notice, both recorded, never trusted). `manifest.json` must
+come first and is ALWAYS stored (it is the request); the manifest's own checks decide whether anything further is stored (C5: nothing
+of a package no partner signed — the rest DRAINED, every entry's digest and size recorded); each record read whole under the vault's
+blob ceiling, stored in the QUARANTINE tier (content-addressed), released before the next; the closure kept under 64 MiB; a record above
+the ceiling hashed and not stored (refused at admission, gate `oversize`). THE SIXTEEN ORDERED CHECKS (`verifyStaged`; a name is stable;
+`ok: null` is a note): archive; manifest; origin (not this domain); integrity (every listed file present with the sha256 and size the
+manifest names); re-import (every payload binds its bytes and its 43-field header and payload recompute to its canonical digest);
+completeness; chain (sha256(JCS(objects)) = objects_digest, the package digest recomputes, bound_to restates the authorization);
+signature scheme (key-signed packages only — a /1 chain-only package is refused); PARTNER; signature (Ed25519 over the recomputed digest
+against the partner's key); links file (present, the digest and size, the closure the manifest counts); links PAIRS (below, D3); policy
+(the intake contract active with confirmed rights; its ceiling admits the records and the claim versions — one above it is excluded at
+admission, gate `ceiling`, with the edges that name it refused `dependency`); duplicate (no live import of the package in the domain);
+revocation (decided on the origin's own export ledger when the origin is THIS installation — `import_origin_state`, known only when the
+presented digest is the recorded one; for a foreign origin a NOTE on the unsigned statement, never a pass on unsigned data); origin
+exclusions (recorded, not admitted). Every imported record passes `inspectContent` (the malware and content controls of the intake path)
+before admission. THE APPROVAL (`approve_import`): on the package digest restated, with a rationale, by a principal OTHER than the
+opener (the port refuses the opener; the PDP refuses the plain steward) — `retention.import.approve`. THE ADMISSION (`admitImport`;
+`retention.import.admit`, a canonical write action of the pipeline): `begin_import_admission` fences the import (`admitting`; a
+failed batch leaves it `admitting` with its staged items and a later admit call resumes it from them, the batch's candidates removed by name first), then in dependency order — records (`record_imported_manifest`: a manifest of the
+importing domain under the intake contract, the bytes moved from quarantine to the evidence tier, `custody.imported`), claim versions
+(`objects.admit_version` under the write action with the SAME version numbers, never renumbered, `record_imported_lineage` for each
+version's rows), entities and identifier systems and identifiers (`record_imported_entity/_identifier_system/_identifier`; an entity
+already known in the domain by an authoritative identifier REUSED, its identifiers extended), edges (`record_imported_edge` on the
+mapped claim PAIR — the version equal — and the mapped ends; a superseded edge whose successor is not carried refused `dependency`) —
+each item marked (`mark_import_item`), each batch an event, `finish_import_admission` with the counts, the admitted records' quarantine
+copies tombstoned. EVERY imported object gets a NEW id (`remapUuids`: one new UUIDv7 per origin id, the map recorded on the items) with
+the origin identity in `payload.imported_from` (`eye-import-provenance/1`: the import, the partner, the origin package — action, digest,
+key — the origin object id and version, its canonical digest, the original 43-field header and payload): identity is RECOVERABLE
+through `imported_from` and the item map (DP-47-003), and the importing domain never shares mutable state with the origin. THE
+WITHDRAWAL (`withdraw_import`; `retention.import.withdraw`): a quarantined or verified import withdrawn with a reason, the ledger kept,
+the quarantine copies tombstoned (`import.evidence_tombstoned`); a quarantined import not withdrawn is swept by the sweeper after the
+quarantine TTL (`import_quarantine_expired` / `mark_import_quarantine_swept`). THE RECEIPT: the import's own receipt (`receiptOf`) — the
+importer's record of the exchange (verified, the package digest, the recipient `import:<tenant>/<domain>`, the verifier "the product
+(retention.import; the eye-customer-export/2 checks in process)"). The routes `POST …/retention/imports/open`, `…/:id/approve`,
+`…/:id/admit`, `…/:id/withdraw`, `…/:id/get`, `…/list`; the mapper's families `retention import rejected` and `exchange partner rejected`;
+the page's "Exchange partners" and "Imports" cards (open from a file or the station; the checks, items and events; approve with the
+digest restated; admit; withdraw). STATED: imported knowledge is not published to the domain's subscribers (no ObservationRecorded /
+GraphChanged for imported objects — the next batch); imported claims are not reviewable through the review path and imported evidence
+is not re-extracted (the lineage keeps the origin's run and method ids); the origin's revocation of an ADMITTED package is not
+propagated into the importing domain.
+
+**D3 — the versioned closure (Codex B15-F1; `linksOf` → `eye-customer-export-links/2`).** The closure now lists each EXACT claim
+version an edge or a lineage row names — a claim keyed by `(object_id, object_version)` with the header, payload and lineage rows OF
+THAT VERSION — so an edge asserted on C@3 travels with C@3 even after C@4 exists, and C@4 travels beside it when its lineage names an
+exported record; a required version above the ceiling is EXCLUDED with its gate and the edges that name it are excluded `dependency`
+(never rebased onto another version). The manifest's `package.links` names the format `/2` with the counts; the chain's formula is
+unchanged. THE PAIR CHECK — the same rule in the customer's verifier (`verify-export.mjs`, format-aware: a `/1` closure passes by id and
+says its versions are unvalidated) and in the product's import (check 12): every claim version's lineage names an exported record by
+(object_id, bytes digest); every edge names an included claim by (object_id, object_version), included entities and an exported record —
+an edge naming a version the closure does not carry FAILS, "never rebased"; a closure rebased by hand fails the chain and the signature.
+Through import the pair is preserved: the edge lands on `(C', 3)` under the new id with version 3.
+
+**D4 — held recipients (Codex B14-F1; 0076 §1).** `retention.export_delivery_held(state, failure_class, receipt)` classifies each
+delivery: `confirmed` (acknowledged, or MISMATCHED — a receipt naming the delivery proves the package reached the recipient whatever
+it says), `possible` (delivered without a receipt; a transport failure AFTER the body was sent — `request_sent` recorded by the egress,
+including a redirect refused after the body), NULL (nothing is known to have reached it: a credential unbound, the egress refused before
+connecting, the name unresolved, the TLS handshake failed). `export_recipients` re-declared on it, so `revoke_export` NOTIFIES every
+destination whose delivery is `confirmed` or `possible` — a mismatched station or https recipient included — and the notify route
+refuses a destination nothing reached ("nothing is known to have reached it"). The page's notices table shows `held`.
+
+**D5 — the signing-key binding.** The build refuses `signing_key_mismatch` (before the state moves; paused for retry, no attempt
+counted, nothing built) when the reference bound in the process derives a key other than the tenant's declared active key — a package
+signed by a key the declaration does not record would verify against neither the recorded public key nor a partner's declaration of it
+(found by the rehearsal, which binds its own key on a copy whose row is the demonstration's; the rehearsal now swaps the copy's row by
+SQL). A closure DRAINED after the manifest checks failed is reported "not checked … drained", not "does not parse" (the same rehearsal).
+
+**B16.6 the harness, the tools and the units.** `phase6-retention-b16.test.ts` (6 cases on a fresh database — a mirror domain D2 created
+through the tenancy route with its own steward, administrator, registrar and manager, the intake source contract, the station and the
+synthetic https recipient; KEY1 the tenant's key bound by reference, KEY2 a key no partner holds; the B14 substitution stated): V1 THE
+VERSIONED CLOSURE (C@1 with an edge, then C@2 → `links.json` /2 carries both, the edge on {C,1}; the verifier's pair check passes; the
+B15-F1 counterexample — C@1 removed, the edge still on version 1, re-signed — FAILS "never rebased"; the file altered in place → the
+stream route's links-digest refusal; a restricted CR@1 with its edge and an internal CR@2 → CR@1 excluded with the edge excluded
+`dependency`, CR@2 included; a hand-built /1 closure passes by id and says versions are unvalidated); P1 THE PARTNER (declared with the
+harness key's PEM → the key id the signing derives; the same key again, the same partner key under another key, an inactive / not-upload
+/ rights-withdrawn / absent intake contract, a malformed PEM — each refused with the port's words; retired → listed retired, its key no
+longer resolves a package; declared again → it does; the steward may not declare; THE BINDING re-bound to KEY2's private half → the build
+refused `signing_key_mismatch` naming both key ids, paused infrastructure/retry with 0 attempts and nothing built, bound back → the same
+action re-resolves and builds); I1 THE ROUND TRIP (E1 of A and B — the versioned closure, an ENT claim with an authoritative identifier,
+the edge — streamed through the real route, opened inline in D2 with the exchange → VERIFIED; the opener's approval refused by the port
+and the plain steward's by the PDP; a wrong digest refused; approved; the approver's admission refused; admitted → NEW ids with the
+versions preserved, `imported_from` complete, the manifests under the intake contract, `custody.imported`, the bytes downloadable in D2
+with `custody.retrieved` naming the intake, the lineage rows, the edge on (C',1), the entities, the identifier system and the identifier,
+no projection drift, the quarantine copies tombstoned, the receipt; D2's re-export E2 → `compare-round-trip.mjs` ROUND TRIP OK); I2 THE
+REFUSALS WITH THE EVIDENCE PRESERVED (a key no partner holds → quarantined, the manifest kept, the records drained, the closure reported
+drained, then the partner declared → verified; a flipped .bin; `links.json` tampered; a /1 package; a confidential record under the
+internal intake → excluded `ceiling` at admission; NEVER REBASED at verification and at admission; the same package again → duplicate;
+the origin package revoked, and an origin unknown here → a note; the station intake with `delivery.json`, a `revocation.json` at the
+station, a symlinked `package.tar`, a header the port refuses; the withdrawal — the ledger kept, the copies tombstoned — and admit/approve
+refused on withdrawn and quarantined imports); I3 A LARGE PACKAGE BY THE STATION (seventeen uploads of 16,000,000 bytes exported above
+the in-memory ceiling, delivered to the station, imported from the station entry by entry, approved and admitted; the memory SAMPLED
+every 50 ms across the open and the admission: 182.1 MiB above an 89.8 MiB baseline at the peak — heapUsed 86.7, external 185.2 with
+arrayBuffers 69.5 beside it, 49 samples over 2.4 s; an earlier run 172.5 MiB — GC-timing-dependent, under 256 MiB in each, a sampled high-water mark of heapUsed + external, not RSS); R1 HELD
+RECIPIENTS (one package to five https destinations on the recipient: wrong-digest → MISMATCHED held confirmed; an unbound credential →
+nothing left; a 500 after the body → held possible; a redirect refused after the body → `request_sent`, held possible; the production
+egress → dns_failure, nothing sent; the revoke act notifies the three held, acknowledged, the mismatched delivery's copy destroyed and its
+receipt kept, the unbound and the unresolved absent and the notify route refusing them; a second package mismatched and revoked while the
+recipient answers 500 → the notice failed transport, then the notify route → acknowledged). The unit suite gains
+`test/unit/retention/import-package.test.ts` (28: the checks, the plan, the remap, the imported header and payload). The first runs on
+harness fixtures (the refusal text after rights withdrawn, the origin block's shape, the foreign fixture's closure naming its action, the
+sampler's sum — arrayBuffers had been added twice — the actions view's name), then **6/6**. The seven retention harnesses (B11,
+B11-closure, B12, B13, B14, B15, B16) **80/80** on a fresh database (the B15 L1 pins moved to the /2 closure with `object_version`; the
+B15 S2 measurement replaced by the sampled high-water mark); the full integration suite **1030/1030 in 66 files** on a fresh database
+(twice: before and after the D5 corrections); the upgrade proof with 0022–0076 (55 migrations; 35 registry rows); the unit suite
+**2184/2184** and the meta suite 9/9; the web typecheck, build and tests. THE CUSTOMER'S TOOLS: `scripts/retention/import-package.mjs`
+(the customer's import tool over the real route: inline under the body limit, or by the station); `compare-round-trip.mjs` (the origin
+package, the re-export and the import's record: every record carried under its mapped id with the same version and bytes, the header
+preserved field by field, `imported_from` recovering each origin identity, every claim version with the SAME version and its lineage,
+every edge on its mapped pair, every entity with its identifiers — or accounted for by the import — ROUND TRIP OK). Units and rows:
+AU-COM-0058 stays `verified:local` with the B15-F1 qualification LIFTED (re-bound to V1 and I1); DP-47-003 stays `implemented`, the same
+clause; DP-47-005, DP-47-006 and DZ-17 `partial` → `implemented` (passed:harness, branch-only); ES-08-004 `missing` → `partial` (the
+export half with held recipients and the governed import between two domains; the cross-domain reference and the propagation of a
+revocation into the importing domain remain); DP-47-001, DP-47-002, ES-53-004, DPD-19, AU-COM-0056, AU-COM-0060 (stays `verified:ci`),
+AU-COM-0007, AU-COM-0062, AU-DP-0097, AU-IDP-0227 carry the B16 clause; DP-20-006, DQM-039, DAT-SV-08, AU-COM-0005, AU-COM-0182 and
+AU-INF-0213 are left as they stand (their remaining_work predates the exchange; the hardening pass refreshes them — no broad refresh
+here). The unit split stays **3,555 = 3,182 open + 339 local + 34 CI** (no unit promoted by a local run). The interface register's
+L3-I04 binding gains the B16 clause; the (26, 24, 0) assertion re-run after 0076.
+
+**B16.7 the demonstration** — `scripts/phase6/act-b16.mjs` → `evidence/cp6/act-b16.txt` (rehearsed first on a restored copy with its
+own vault copy, key, station and Redis, `evidence/cp6/b16-rehearsal.txt`): `eye_demo` backed up and migrated with 0076, the API
+restarted by the runbook's script; then (1) THE VERSIONED RELATIONSHIP — the REL claim "NORDWERK ANTRIEBSTECHNIK GmbH procures
+SYN-PART-BRG" with an asserted edge on C@3 challenged and corrected to C@4 by the administrator (its own lineage row; on the
+demonstration the B6 relationships consumer asserted a successor edge on C@4 and superseded the edge on C@3 — an edge is never
+reinterpreted); (2) THE EXPORT E1 by P. Novák of the four NORDWERK internal records that carry the knowledge, approved by H. Bergmann,
+executed and verified — `links.json` /2 with 17 claim versions of 14 claims, 8 edges and 7 entities, C listed as the EXACT versions
+C@1..C@4 with the edges on the versions they rest on; the verifier's pair check PASSES; the counterexample (C@4 alone while the edge
+names C@3) FAILS the pair check; the rebase FAILS the chain and the signature; delivered to the station and acknowledged through the
+demonstration recipient's receipt; (3) THE DESTINATION DOMAIN — the mirror domain created, M. Keller (retention_steward) and U. Fischer
+(collection_manager) with sessions of their own, the intake source contract `nordwerk-exchange-intake@1`, the station declared in the
+mirror, the import opened BEFORE any partner → QUARANTINED with the request kept and the words to act on, the partner `nordwerk-origin`
+declared with the origin's public key; (4) THE EXCHANGE — M. Keller opens the import from the station (`delivery.json` the exchange) →
+VERIFIED, the sixteen checks printed; the opener's approval refused; H. Bergmann approves on the digest; the approver's admission
+refused; M. Keller admits → ADMITTED: 4 records, 17 claim versions, 7 entities and 8 edges under NEW ids with C@1..C@4 → C'@1..C'@4 under
+ONE new id, the events, the receipt, `custody.imported`, the imported record downloaded through the mirror's evidence route with the
+origin's bytes digest, the mirror's graph showing the edges on C' at their versions, the seven entities; (5) THE RE-EXPORT E2 from the
+mirror by M. Keller, approved by H. Bergmann — the customer's round-trip tool: ROUND TRIP OK, 4 records, 17 claim versions, 8 edges, 7
+entities, identities recoverable; E2's closure carrying C'@1..C'@4 with the edges on the same versions; `payload.imported_from` on E2's
+records recovering the origin identities; (6) HELD RECIPIENTS — E3 delivered to the station, the recipient answering with a WRONG
+DIGEST → MISMATCHED (the receipt kept), a delivery to the production destination `nordwerk-exports` → `credential_unbound` before any
+egress, the revocation notifying the station (held: confirmed) and not the production destination (absent: nothing reached it; the notify
+route → 409), the station's answer collected → ACKNOWLEDGED, the mismatched receipt still on its delivery row; (7) the state and the
+stated limits: the inline intake over the real listener is bounded by the JSON body limit (the act imported from the station); the
+positive https exchange remains the harness's; the round trip is within one installation — a foreign installation is the activation
+step. ALL SCENES HELD (40 checks).
+
 ## Order and the next implementation batch
 
 B3, B1 and B2 are done in code, B4/B5 applied to the audit (the 2026-09-11 checkpoints), B6 done in
 code (2026-09-12, on the recovery machinery corrected by 0062 after Codex's finding) and B7 done in code
 (2026-09-12, after Codex's third finding), B8 (2026-09-12, after Codex's B7 findings), B9 (2026-09-13, after
 Codex's B8 findings; the accepted stack merged on `main` in the recorded order meanwhile) and B10 (2026-09-13, after
-Codex's B9 review: F1 closed on the fixed candidate, F2/F3 and G2 carried into this batch), B11 (2026-09-13; its closure of Codex's B11-F1/F2 on 2026-09-14, merged with #48 on 2026-09-15), B12 (2026-09-15, the register's next missing archive-lifecycle capability; merged with #49 on 2026-09-16 on Codex's bounded functional review) and B13 (2026-09-16, the schedule retirement and the customer export's delivery, on `main` after #49; merged with #50 on 2026-09-16 on Codex's bounded review) and B14 (2026-09-16, the https exchange proven, B13-F1 corrected, the trust anchor, the revocation notice, on `main` after #50). The
+Codex's B9 review: F1 closed on the fixed candidate, F2/F3 and G2 carried into this batch), B11 (2026-09-13; its closure of Codex's B11-F1/F2 on 2026-09-14, merged with #48 on 2026-09-15), B12 (2026-09-15, the register's next missing archive-lifecycle capability; merged with #49 on 2026-09-16 on Codex's bounded functional review) and B13 (2026-09-16, the schedule retirement and the customer export's delivery, on `main` after #49; merged with #50 on 2026-09-16 on Codex's bounded review) and B14 (2026-09-16, the https exchange proven, B13-F1 corrected, the trust anchor, the revocation notice, on `main` after #50; merged with #51 on 2026-09-16), B15 (2026-09-16, the relationship closure and the streamed archive; merged with #52 on 2026-09-16 after retargeting) and B16 (2026-09-16, the governed import and the NORDWERK round trip, B14-F1 and B15-F1 corrected, on `main` after #52). The
 hosted run at `5118376` (836/836 on a fresh database) verified the B1/B2 units on the hosted chain —
 one artefact, no deployment leg. Every leg of every unit stays unaccepted until a deployment profile
 carries its own signed evidence (P7-D). The synthetic-company demonstration (`eye_demo`, NORDWERK) remains the deliverable

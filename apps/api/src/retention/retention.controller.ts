@@ -24,20 +24,36 @@
  *   POST …/retention/actions/:id/export/deliveries/list  retention.read  (B13)
  *   POST …/retention/actions/:id/export/deliveries/:deliveryId/collect-receipt  retention.export.acknowledge (B13; the deliver's holders; human-gated) — the transfer station's receipt.json → acknowledged | mismatched
  *   POST …/retention/actions/:id/export/deliveries/:deliveryId/acknowledge      retention.export.acknowledge (B13) — the recipient's receipt presented out of band
+ *   POST …/retention/actions/:id/export/revocation-notices          retention.export.notify   (B14, 0074 §3; the deliver's holders; human-gated) — a further revocation notice to one destination that received the package
+ *   POST …/retention/actions/:id/export/revocation-notices/list     retention.read            (B14)
+ *   POST …/retention/actions/:id/export/revocation-notices/:noticeId/collect-receipt  retention.export.acknowledge (B14) — the station's revocation-receipt.json → acknowledged | mismatched
+ *   POST …/retention/actions/:id/export/revocation-notices/:noticeId/acknowledge      retention.export.acknowledge (B14) — the recipient's receipt presented out of band
+ *   POST …/retention/actions/:id/export/stream       retention.export.download (B15, D2; the download's holders; audited) — the archive served RAW as application/x-tar with the digests and the signature in headers
+ *   POST …/retention/partners/declare       retention.partner.declare   (B16, 0076 §3; the schedule declare's holders; human-gated) — an EXCHANGE PARTNER: the Ed25519 key whose packages this domain admits, bound to an intake source contract
+ *   POST …/retention/partners/:id/retire    retention.partner.retire    (B16; the same holders; human-gated) — retired with a reason; its imports stay recorded; its key no longer resolves a package
+ *   POST …/retention/partners/list          retention.read              (B16) — the partners with their intake contract's key, lifecycle and rights, and their state
+ *   POST …/retention/imports/open           retention.import.open       (B16, 0076 §4; steward) — the package (inline base64, or read from a transfer station) QUARANTINED as vault blobs, checked, recorded verified | quarantined with its ordered checks and its plan of minted ids
+ *   POST …/retention/imports/:id/approve    retention.import.approve    (B16; retention authority, human-gated, on the package digest; never the opener)
+ *   POST …/retention/imports/:id/admit      retention.import.admit      (B16; steward, human-gated; never the approver) — the records, claims, entities, identifiers and edges admitted under NEW ids in batches; the quarantine copies of admitted records tombstoned after the commit
+ *   POST …/retention/imports/:id/withdraw   retention.import.withdraw   (B16; steward) — quarantined | verified | approved | admitting → withdrawn; the quarantine copies tombstoned after the commit (C5)
+ *   POST …/retention/imports/:id/get, /imports/list   retention.read     (B16) — the import with its partner, items, events, checks and the import receipt
  *   POST …/retention/actions/:id/get, /actions/list, /schedules/list   retention.read
  */
 import { Body, Controller, HttpException, Param, Post, Req, Res } from '@nestjs/common';
 import type { Response } from 'express';
+import { createPublicKey } from 'node:crypto';
 import { resolve as resolvePath } from 'node:path';
 import { errorBody } from '@eye/contracts';
 import { newId } from '../shared/ids.js';
 import { requireCorrelation } from '../shared/correlation.js';
 import { PipelineService } from '../pipeline/pipeline.service.js';
 import type { EyeRequest } from '../pipeline/http.js';
-import { RetentionCapability } from './retention.capabilities.js';
+import { RetentionCapability, type RetentionReads } from './retention.capabilities.js';
 import { RetentionExecutionRolledBack, RetentionService, failureClassOf, validateOpenAction, type ExecutionFailureClass } from './retention.service.js';
-import { DESTINATION_CREDENTIAL_REF, SIGNING_ALGORITHM, SIGNING_KEY_REF } from './export-signing.js';
+import { DESTINATION_CREDENTIAL_REF, SIGNING_ALGORITHM, SIGNING_KEY_REF, keyIdOf } from './export-signing.js';
 import { RECEIPT_MAX_BYTES } from './export-delivery.service.js';
+import { IMPORT_INLINE_MAX_BYTES } from './export-archive.js';
+import { ImportService, type ImportIntake } from './import.service.js';
 
 function ctx(req: EyeRequest) {
   const envelope = req.eyeEnvelope; const principal = req.eyePrincipal;
@@ -53,15 +69,44 @@ const INTERVAL = /^\d+ (seconds?|minutes?|hours?|days?|months?|years?)$/;
  * B13 (C14): the service's own refusal before begin_execution — the tenant's active signing key not bound in this deployment — joins them (a
  * pause for retry, infrastructure, no attempt counted).
  */
-const ADMISSION_REFUSAL = /^retention execution rejected \((rights_changed|scope_changed|references_changed|budget_exhausted|attempts_exhausted|signing_key_unbound)\)/;
-/** D5: a destination's key — unique per domain among the active destinations. */
+const ADMISSION_REFUSAL = /^retention execution rejected \((rights_changed|scope_changed|references_changed|budget_exhausted|attempts_exhausted|signing_key_unbound|signing_key_mismatch)\)/;
+/** D5: a destination's key — unique per domain among the active destinations. B16: an exchange partner's key is spelled the same way. */
 const DESTINATION_KEY = /^[a-z0-9][a-z0-9-]{1,63}$/;
 const SIGNING_KEY_PURPOSES = ['demonstration', 'production'] as const;
 const DESTINATION_KINDS = ['transfer_station', 'https'] as const;
+/** B16: the ids an intake names (an intake source, an origin tenant/domain/action) are opaque identifiers, checked for shape before any read. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** B16 (D4): an inline package travels as standard base64 (whitespace tolerated as node tolerates it); its DECODED size is checked against the inline ceiling before anything is decoded. */
+const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
+function base64DecodedLength(clean: string): number | null {
+  if (!BASE64.test(clean) || clean.length % 4 !== 0) return null;
+  const padding = clean.endsWith('==') ? 2 : clean.endsWith('=') ? 1 : 0;
+  return (clean.length / 4) * 3 - padding;
+}
+/**
+ * B16 (0076 §3; D6): an exchange partner's public key as the declaration presents it — parsed by node from whatever PEM the party
+ * handed over, refused unless it is Ed25519, and NORMALISED to node's own SubjectPublicKeyInfo PEM (the port's regex is that
+ * form) with the key id derived from the SPKI DER exactly as the export's own signing key derives it (export-signing.ts).
+ */
+type PartnerKey = { keyId: string; publicKeyPem: string };
+function partnerKeyOf(pem: string): PartnerKey | null {
+  try {
+    const pub = createPublicKey({ key: pem, format: 'pem' });
+    if (pub.asymmetricKeyType !== 'ed25519') return null;
+    const spkiDer = pub.export({ format: 'der', type: 'spki' });
+    return { keyId: keyIdOf(spkiDer), publicKeyPem: pub.export({ format: 'pem', type: 'spki' }).toString() };
+  } catch {
+    return null;
+  }
+}
+/** The partner as an act's answer (the declaration's, the retirement's, the list's rows): the row with its state. */
+function partnerAnswer(row: Row): Row {
+  return { ...row, state: row['retired_at'] == null ? 'active' : 'retired' };
+}
 
 @Controller('/v1/tenants/:tenantId/domains/:domainId/retention')
 export class RetentionController {
-  constructor(private readonly pipeline: PipelineService, private readonly retention: RetentionService) {}
+  constructor(private readonly pipeline: PipelineService, private readonly retention: RetentionService, private readonly imports: ImportService) {}
   private route(tenantId: string, domainId: string, action: string, objectType: string | null, objectId: string | null) {
     return { scope: 'DOMAIN' as const, tenantId, domainId, action, objectType, objectId };
   }
@@ -698,5 +743,214 @@ export class RetentionController {
     const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'retention.export.acknowledge', 'RXN', noticeId), RetentionCapability.write,
       async (cap) => ({ result: await this.retention.acknowledgeRevocationNotice(cap, { tenantId, domainId }, actionId, noticeId, r as Row, { actor: principal.principalId, correlationId: envelope.correlation_id }), targetType: 'RXN', targetId: noticeId, targetVersion: null, outboxEvent: null }));
     return { notice: out.result, receipt: receipt(out) };
+  }
+
+  // ───────────────────────── B16 (0076): the exchange partner; the governed import ─────────────────────────
+
+  /**
+   * B16 (0076 §3; D6, D7): an EXCHANGE PARTNER declared — the party whose key-signed packages (`eye-customer-export/2`) this domain
+   * admits: its Ed25519 PUBLIC key (a SubjectPublicKeyInfo PEM, parsed and normalised here; the key id `ed25519:<first 16 hex of
+   * sha256(SPKI DER)>` computed here and re-derived by the port), the party and the purpose, and the INTAKE SOURCE CONTRACT of this
+   * domain the imported records are held under — an active upload contract with confirmed rights, whose ceiling is the import's policy
+   * gate. The port validates the same shapes and the key's and the partner key's uniqueness among the domain's active partners.
+   */
+  @Post('/partners/declare')
+  async declarePartner(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: Row }) {
+    const { envelope, principal } = ctx(req);
+    const p = body.payload ?? {};
+    const bad = (message: string): never => { throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, message), 422); };
+    const partnerKey = String(p['partnerKey'] ?? '');
+    if (!DESTINATION_KEY.test(partnerKey)) bad('partnerKey is 2 to 64 characters of a–z, 0–9 and -, starting with a letter or a digit');
+    const party = String(p['party'] ?? '').trim(); const purpose = String(p['purpose'] ?? '').trim();
+    if (party.length < 1 || party.length > 200) bad('party names who signs the packages this domain admits (1 to 200 characters)');
+    if (purpose.length < 1 || purpose.length > 500) bad('purpose says why this domain accepts the party\'s packages (1 to 500 characters)');
+    const pem = String(p['publicKeyPem'] ?? '');
+    if (!pem.includes('-----BEGIN PUBLIC KEY-----')) bad('publicKeyPem is the partner\'s Ed25519 public key as a SubjectPublicKeyInfo PEM (-----BEGIN PUBLIC KEY-----)');
+    const key = partnerKeyOf(pem);
+    if (key === null) bad('publicKeyPem is an Ed25519 public key node parses (a SubjectPublicKeyInfo PEM; the 44-byte SPKI whose algorithm is Ed25519)');
+    const intakeSourceId = String(p['intakeSourceId'] ?? '');
+    if (!UUID.test(intakeSourceId)) bad('intakeSourceId is the id of an active upload source contract of this domain with confirmed rights');
+    const intakeContractVersion = Number(p['intakeContractVersion']);
+    if (!Number.isInteger(intakeContractVersion) || intakeContractVersion < 1) bad('intakeContractVersion is a whole number, 1 or more');
+    const partnerId = newId();
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'retention.partner.declare', 'RXP', partnerId), RetentionCapability.write,
+      async (cap) => ({ result: partnerAnswer(await cap.declareExchangePartner({ partnerId, tenantId, domainId, partnerKey, party, purpose, keyId: (key as PartnerKey).keyId, algorithm: SIGNING_ALGORITHM, publicKeyPem: (key as PartnerKey).publicKeyPem, intakeSourceId, intakeContractVersion, actor: principal.principalId, correlationId: envelope.correlation_id })),
+                        targetType: 'RXP', targetId: partnerId, targetVersion: null, outboxEvent: null }));
+    return { partner: out.result, receipt: receipt(out) };
+  }
+
+  /** B16 (0076 §3): the partner retired with a reason; the row kept — its imports stay recorded, its key no longer resolves a package (a package it signed is quarantined until a partner holds the key again). */
+  @Post('/partners/:partnerId/retire')
+  async retirePartner(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('partnerId') partnerId: string, @Body() body: { payload?: { reason?: string } }) {
+    const { envelope, principal } = ctx(req);
+    const reason = String(body.payload?.reason ?? '').trim();
+    if (reason.length < 8) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'reason is at least 8 characters'), 422);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'retention.partner.retire', 'RXP', partnerId), RetentionCapability.write,
+      async (cap) => ({ result: partnerAnswer(await cap.retireExchangePartner({ partnerId, tenantId, domainId, reason, actor: principal.principalId, correlationId: envelope.correlation_id })), targetType: 'RXP', targetId: partnerId, targetVersion: null, outboxEvent: null }));
+    return { partner: out.result, receipt: receipt(out) };
+  }
+
+  /** B16: the domain's exchange partners, oldest first, each with its state (active / retired) and its intake contract as it stands now — the source key, the lifecycle, the rights, the ceiling (a contract no longer active with confirmed rights is what the admission refuses as contract_changed). */
+  @Post('/partners/list')
+  async listPartners(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'retention.read', 'RXP', null), RetentionCapability.read, async (cap) => this.partners(cap));
+    return { partners: out.result, receipt: receipt(out) };
+  }
+  private async partners(cap: RetentionReads): Promise<Row[]> {
+    const rows = (await cap.readExchangePartners().selectAll().orderBy('declared_at' as never).execute()) as Row[];
+    if (rows.length === 0) return [];
+    const sourceIds = Array.from(new Set(rows.map((r) => String(r['intake_source_id']))));
+    const contracts = (await cap.readSourceContracts().select(['source_id' as never, 'contract_version' as never, 'source_key' as never, 'connector_kind' as never, 'lifecycle_state' as never, 'rights_state' as never, 'classification_ceiling' as never, 'residency' as never]).where('source_id' as never, 'in', sourceIds as never).execute()) as Row[];
+    const byRef = new Map(contracts.map((c) => [`${String(c['source_id'])}@${Number(c['contract_version'])}`, c]));
+    return rows.map((r) => {
+      const c = byRef.get(`${String(r['intake_source_id'])}@${Number(r['intake_contract_version'])}`) ?? null;
+      return { ...partnerAnswer(r), intake: c === null ? null : { source_id: c['source_id'], contract_version: c['contract_version'], source_key: c['source_key'], connector_kind: c['connector_kind'], lifecycle_state: c['lifecycle_state'], rights_state: c['rights_state'], classification_ceiling: c['classification_ceiling'], residency: c['residency'] } };
+    });
+  }
+
+  /**
+   * B16 (0076 §4; D1, D4, D5): the OPEN act — one governed write in which the package is QUARANTINED as vault blobs (every tar entry
+   * stored under the quarantine root: manifest.json and links.json too; an entry above the vault's ceiling drained and named), the
+   * checks run on what was stored (the archive, the manifest, the integrity of every file, the re-import compatibility of every object,
+   * the chain, the key-based signature against a declared partner's key, the closure by pair, the intake contract's policy, a live
+   * duplicate, the origin's revocation and expiry as far as they are provable here) and the row recorded VERIFIED — with its plan of
+   * ids this installation mints (D3: never the origin's) — or QUARANTINED with the failed checks named; a quarantined import keeps
+   * every blob (DP-47-005: the request and the evidence preserved). Two intakes: `inline` (the tar as base64 in the payload, at most
+   * 64 MiB decoded — the JSON body limit of the listener bounds it first) and `station` (the package read entry by entry from a
+   * transfer station declared in this domain, at the origin's `<tenant>/<domain>/<action>` — with delivery.json and package.sig as the
+   * exchange). A throw after blobs were stored — the port's refusal, the commit itself — removes the blobs THIS call stored (never a
+   * pre-existing locator): nothing is left on disk that no row inventories.
+   */
+  @Post('/imports/open')
+  async openImport(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: Row }) {
+    const { envelope, principal } = ctx(req);
+    const p = body.payload ?? {};
+    const bad = (message: string): never => { throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, message), 422); };
+    const source = (p['source'] !== null && typeof p['source'] === 'object' && !Array.isArray(p['source']) ? p['source'] : {}) as Row;
+    const kind = String(source['kind'] ?? '');
+    let intake: ImportIntake;
+    if (kind === 'inline') {
+      const raw = source['base64'];
+      if (typeof raw !== 'string' || raw.trim() === '') bad('an inline source carries the package tar as base64 (source.base64)');
+      const base64 = String(raw).replace(/\s+/g, '');
+      const decoded = base64DecodedLength(base64);
+      if (decoded === null) bad('source.base64 is standard base64 (A–Z, a–z, 0–9, + and /, with = padding)');
+      if ((decoded as number) > IMPORT_INLINE_MAX_BYTES) bad(`an inline package is at most ${IMPORT_INLINE_MAX_BYTES} bytes decoded (this one is ${decoded}); deliver a larger package to a transfer station declared in this domain and open the import from it (source.kind station)`);
+      const x = source['exchange'];
+      let exchange: Row | null = null;
+      if (x !== undefined && x !== null) {
+        if (typeof x !== 'object' || Array.isArray(x)) bad('source.exchange is the sender\'s exchange statement (delivery.json, or the stream\'s headers), a JSON object');
+        if (Buffer.byteLength(JSON.stringify(x), 'utf8') > RECEIPT_MAX_BYTES) bad(`source.exchange is at most ${RECEIPT_MAX_BYTES} bytes`);
+        exchange = x as Row;
+      }
+      intake = { kind: 'inline', base64, exchange };
+    } else if (kind === 'station') {
+      const destinationKey = String(source['destinationKey'] ?? '');
+      if (!DESTINATION_KEY.test(destinationKey)) bad('source.destinationKey names a transfer station declared in this domain (2 to 64 characters of a–z, 0–9 and -)');
+      const origin = (source['origin'] !== null && typeof source['origin'] === 'object' && !Array.isArray(source['origin']) ? source['origin'] : {}) as Row;
+      const originTenantId = String(origin['tenantId'] ?? ''); const originDomainId = String(origin['domainId'] ?? ''); const originActionId = String(origin['actionId'] ?? '');
+      if (!UUID.test(originTenantId) || !UUID.test(originDomainId) || !UUID.test(originActionId)) bad('source.origin names the package at the station by the origin\'s tenantId, domainId and actionId (the station path <endpoint>/<tenant>/<domain>/<action>/package.tar)');
+      intake = { kind: 'station', destinationKey, origin: { tenantId: originTenantId.toLowerCase(), domainId: originDomainId.toLowerCase(), actionId: originActionId.toLowerCase() } };
+    } else {
+      return bad('source.kind is inline (the package tar as base64) or station (a transfer station declared in this domain and the origin\'s tenantId, domainId and actionId)');
+    }
+    const importId = newId();
+    const scope = { tenantId, domainId };
+    // The quarantine locators this call stores (the service pushes each as it is written): removed when the write does not commit.
+    const created: string[] = [];
+    let out: Awaited<ReturnType<PipelineService['write']>> & { result: Awaited<ReturnType<ImportService['openImport']>> };
+    try {
+      out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'retention.import.open', 'RIM', importId), RetentionCapability.write,
+        async (cap) => ({ result: await this.imports.openImport(cap, scope, importId, intake, { actor: principal.principalId, correlationId: envelope.correlation_id }, created), targetType: 'RIM', targetId: importId, targetVersion: null, outboxEvent: null }));
+    } catch (e) {
+      if (created.length > 0) await this.retention.removeBytes(scope, created.map((locator) => ({ locator, vault: 'quarantine' as const }))).catch(() => undefined);
+      throw e;
+    }
+    const r = out.result;
+    return { import: r.import, checks: r.checks, items: r.items, verified: r.verified, importReceipt: r.receipt, receipt: receipt(out) };
+  }
+
+  /** B16 (D1): the APPROVAL — the retention authority, on the PACKAGE DIGEST it read (never the opener; the port refuses), with a rationale; a verified import only. */
+  @Post('/imports/:importId/approve')
+  async approveImport(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('importId') importId: string, @Body() body: { payload?: { packageDigest?: string; rationale?: string } }) {
+    const { envelope, principal } = ctx(req);
+    const packageDigest = String(body.payload?.packageDigest ?? '').toLowerCase(); const rationale = String(body.payload?.rationale ?? '').trim();
+    if (!/^[0-9a-f]{64}$/.test(packageDigest)) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'packageDigest is the package digest the approver read on the verified import'), 422);
+    if (rationale.length < 8) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'rationale is at least 8 characters'), 422);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'retention.import.approve', 'RIM', importId), RetentionCapability.write,
+      async (cap) => ({ result: await this.imports.approveImport(cap, { tenantId, domainId }, importId, packageDigest, rationale, { actor: principal.principalId, correlationId: envelope.correlation_id }), targetType: 'RIM', targetId: importId, targetVersion: null, outboxEvent: null }));
+    return { import: out.result, receipt: receipt(out) };
+  }
+
+  /**
+   * B16 (D2, D3; C3): the ADMISSION — the steward's human-gated act (never the approver; the port refuses). The service orchestrates its
+   * own writes under retention.import.admit (the extraction's idiom): the admission begun under the import's lock (the partner and the
+   * intake contract re-checked: contract_changed pauses nothing — it refuses), then the records in batches of at most 32 — each batch's
+   * planned canonical ids its write's bound target set — then the claim versions, then one graph write (identifier systems, entities,
+   * identifiers, edges — each under a savepoint, a port's refusal marking the item, never the batch), then the finish; after the commit
+   * the quarantine copies of the ADMITTED records are tombstoned (manifest.json, links.json and the refused or excluded copies stay:
+   * the evidence) and the finalisation recorded. A throw leaves the import ADMITTING with its staged items; the same act resumes it.
+   */
+  @Post('/imports/:importId/admit')
+  async admitImport(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('importId') importId: string) {
+    const { envelope, principal } = ctx(req);
+    const r = await this.imports.admitImport({
+      envelope, principal, scope: { tenantId, domainId }, importId,
+      route: (action: string, objectType: string, objectId: string, writableTargets?: string[]) => ({ ...this.route(tenantId, domainId, action, objectType, objectId), ...(writableTargets === undefined ? {} : { writableTargets }) }),
+    });
+    return { import: r.import, batches: r.batches, receipt: r.receipt };
+  }
+
+  /**
+   * B16 (C5): the WITHDRAWAL — quarantined | verified | approved | admitting → withdrawn once, with a reason (already-admitted canonical
+   * rows stand: append-only); after the commit the import's quarantine copies are tombstoned and the tombstoning recorded (the
+   * service's step: the blobs are inventoried by the import ledger, not by the manifests, so the sweeper's TTL pass is the only other
+   * way they go). A removal that fails after the commit is answered as it is — the withdrawal stands; the sweeper retries by age.
+   */
+  @Post('/imports/:importId/withdraw')
+  async withdrawImport(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('importId') importId: string, @Body() body: { payload?: { reason?: string } }) {
+    const { envelope, principal } = ctx(req);
+    const reason = String(body.payload?.reason ?? '').trim();
+    if (reason.length < 8) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'reason is at least 8 characters'), 422);
+    const scope = { tenantId, domainId };
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'retention.import.withdraw', 'RIM', importId), RetentionCapability.write,
+      async (cap) => ({ result: await this.imports.withdrawImport(cap, scope, importId, reason, { actor: principal.principalId, correlationId: envelope.correlation_id }), targetType: 'RIM', targetId: importId, targetVersion: null, outboxEvent: null }));
+    // The bytes go after the record committed (the export revocation's discipline): the quarantine copies of the import's items and its manifest and links.
+    let tombstoned: { locators: number; tombstoned: number; failed: string[] } | null = null; let error: string | null = null;
+    try { tombstoned = await this.imports.tombstoneQuarantine(scope, importId); }
+    catch (e) { error = String((e as { message?: unknown })?.message ?? 'unknown').slice(0, 200); }
+    // C5: the tombstoning RECORDED — import.evidence_tombstoned {locators, tombstoned, failed} — a write after the withdrawal's own, under the
+    // same authority (the port admits the event on a withdrawn import). A tombstoning that threw is not recorded: the sweeper's TTL pass retries.
+    if (tombstoned !== null) {
+      const outcome = tombstoned;
+      try {
+        await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'retention.import.withdraw', 'RIM', importId), RetentionCapability.write,
+          async (cap) => { await this.imports.recordEvidenceTombstoned(cap, scope, importId, outcome, { actor: principal.principalId, correlationId: envelope.correlation_id }); return { result: { ok: true }, targetType: 'RIM', targetId: importId, targetVersion: null, outboxEvent: null }; });
+      } catch (e) { error = `evidence tombstoned but not recorded: ${String((e as { message?: unknown })?.message ?? 'unknown')}`.slice(0, 200); }
+    }
+    return { import: out.result, quarantine: { tombstoned, error }, receipt: receipt(out) };
+  }
+
+  /**
+   * B16: the import with its partner, its items (the map: origin ref → the id minted here, each with its disposition and gate), its
+   * events, its ordered checks and the IMPORT RECEIPT (the importer's own record of the exchange, ES-08-004). The receipt answered
+   * here IS the import's (`importReceipt` carries it again, as the open act answers it), with this read's own policy decision and
+   * audit sequence beside its fields.
+   */
+  @Post('/imports/:importId/get')
+  async getImport(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('importId') importId: string) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'retention.read', 'RIM', importId), RetentionCapability.read, async (cap) => this.imports.importOf(cap, importId));
+    if (out.result === null) throw new HttpException(errorBody('EYE_STA_001', envelope.correlation_id, 'no authorized import matches'), 404);
+    const r = out.result;
+    return { import: r.import, partner: r.partner, items: r.items, events: r.events, checks: (r.import['checks'] as Row[] | undefined) ?? [], importReceipt: r.receipt, receipt: { ...r.receipt, ...receipt(out) } };
+  }
+  /** B16: the domain's imports, each with its state, its origin, its counts and its partner id. */
+  @Post('/imports/list')
+  async listImports(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'retention.read', 'RIM', null), RetentionCapability.read, async (cap) => this.imports.imports(cap));
+    return { imports: out.result, receipt: receipt(out) };
   }
 }

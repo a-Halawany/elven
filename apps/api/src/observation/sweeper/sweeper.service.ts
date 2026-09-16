@@ -32,8 +32,24 @@
  * whose manifest the ledger says is HOT is a stale archive copy (a restore whose
  * archive removal failed — the execute route's pending residual), recorded and
  * kept. Nothing with bytes the product may still need is removed.
+ *
+ * CP-6 B16 (C5): the QUARANTINE COPIES OF AN IMPORT have a lifecycle. A governed
+ * import (0076 §4) stores every entry of an inbound package in the quarantine
+ * root — inventoried by the IMPORT LEDGER (import_items.staged, the import's
+ * manifest and links locators), never by blob_manifests, so neither step 3 (no
+ * quarantine case) nor the walk of step 4 (the quarantine root is not walked)
+ * sees them. An import that was QUARANTINED (its checks failed) or WITHDRAWN keeps
+ * them as the evidence of what arrived until the withdraw act tombstones them or,
+ * here, until they are older than the quarantine TTL — the same TTL that expires
+ * a quarantine case (step 1). The read and the mark go through two definer ports
+ * of 0076 (`retention.import_quarantine_expired`, `retention.mark_import_quarantine_swept`:
+ * the sweeper's own, no authority assertion, granted to eye_app), because the
+ * ledger is RLS-governed and the sweeping principal holds no retention authority;
+ * the removal is the vault's idempotent tombstone; an import whose copies could
+ * not all be removed is not marked and is found again next round.
  */
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { sql } from 'kysely';
 import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Envelope } from '@eye/contracts';
@@ -74,6 +90,10 @@ export interface SweepReport {
   stagedCopiesKept: number;
   /** B12 (D6): `.tmp-` files of interrupted writes, older than a minute, removed from either root. */
   tempFilesRemoved: number;
+  /** B16 (C5): quarantine copies of quarantined or withdrawn imports older than the quarantine TTL, removed (one per locator). */
+  importQuarantineTombstoned: number;
+  /** B16 (C5): the imports whose copies were all removed this round and whose sweep was recorded (import.evidence_tombstoned). */
+  importQuarantineSwept: number;
 }
 
 /** A manifest of the domain as the walk needs it: the id the tier ledger is keyed by and the digest a copy must verify against. */
@@ -142,6 +162,7 @@ export class SweeperService {
       expiredCases: 0, failedRuns: 0, orphanCandidates: 0,
       pendingTombstones: 0, poisonItems: [],
       archiveOrphanCandidates: 0, stagedCopiesRemoved: 0, stagedCopiesKept: 0, tempFilesRemoved: 0,
+      importQuarantineTombstoned: 0, importQuarantineSwept: 0,
     };
 
     // ── 1. Quarantine cases past their TTL without a terminal state ──────────
@@ -241,6 +262,13 @@ export class SweeperService {
         report.poisonItems.push({ kind: 'tombstone', ref: c.case_id, reason: describe(e) });
       }
     }
+
+    // ── 3b. B16 (C5): the quarantine copies of QUARANTINED or WITHDRAWN imports
+    //       older than the quarantine TTL — inventoried by the import ledger,
+    //       not by the manifests; removed through the vault, the sweep recorded
+    //       on the import. Nothing of a verified, approved, admitting or
+    //       admitted import is touched: its copies go with its own admission. ──
+    await this.reconcileImportQuarantine(tenantId, domainId, report);
 
     // ── 4. The blob roots: admitted-candidate blobs with NO manifest row, and
     //       (B12, D6) the names a tier move leaves behind ─────────────────────
@@ -456,6 +484,48 @@ export class SweeperService {
       ref,
       reason: `left by a move that never committed, older than the run timeout, and the ${tierRoot} copy under the locator — the tier the ledger records — does not verify against the manifest's digest: this may be the only verified copy. Retained for a person; recovery from a verified copy is a governed act.`,
     });
+  }
+
+  /**
+   * B16 (C5): the imports of THIS domain in state quarantined or withdrawn whose opened_at / withdrawn_at is older than the
+   * quarantine TTL, with their quarantine locators — the definer's read across the ledger (the function answers every domain;
+   * the sweep is per domain, so it filters to its own). Each locator tombstoned through the vault, idempotently; the import marked
+   * swept (import.evidence_tombstoned) only once every copy is gone — a removal that failed is a poison item and the import is
+   * found again next round. A ledger that cannot be read removes nothing (fail closed, recorded once).
+   */
+  private async reconcileImportQuarantine(tenantId: string, domainId: string, report: SweepReport): Promise<void> {
+    const scope = { tenantId, domainId };
+    const olderThan = `${this.cfg['eye.quarantine.ttl_seconds']} seconds`;
+    let expired: Array<{ import_id: string; locators: unknown }>;
+    try {
+      expired = (await sql<{ import_id: string; locators: unknown }>`
+        select import_id, locators from retention.import_quarantine_expired(${olderThan}::interval)
+         where tenant_id = ${tenantId}::uuid and domain_id = ${domainId}::uuid
+         limit 200`.execute(this.db)).rows;
+    } catch (e) {
+      report.poisonItems.push({ kind: 'import_quarantine', ref: `${tenantId}/${domainId}`, reason: `the import ledger's expired quarantines could not be read; nothing of them was removed this round: ${describe(e)}` });
+      return;
+    }
+    for (const row of expired) {
+      const locators = Array.isArray(row.locators) ? (row.locators as unknown[]).filter((l): l is string => typeof l === 'string') : [];
+      let failed = 0;
+      for (const locator of locators) {
+        try {
+          await this.vault.tombstone('quarantine', scope, locator);
+          report.importQuarantineTombstoned += 1;
+        } catch (e) {
+          failed += 1;
+          report.poisonItems.push({ kind: 'import_quarantine', ref: `${row.import_id}:${locator}`, reason: `the quarantine copy of an expired import could not be removed: ${describe(e)}` });
+        }
+      }
+      if (failed > 0) continue; // not marked: the next sweep finds the import again
+      try {
+        await sql`select retention.mark_import_quarantine_swept(${row.import_id}::uuid)`.execute(this.db);
+        report.importQuarantineSwept += 1;
+      } catch (e) {
+        report.poisonItems.push({ kind: 'import_quarantine', ref: row.import_id, reason: `the copies were removed but the sweep could not be recorded on the import: ${describe(e)}` });
+      }
+    }
   }
 
   private async governed(

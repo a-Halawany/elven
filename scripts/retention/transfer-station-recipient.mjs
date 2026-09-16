@@ -3,7 +3,7 @@
  * THE DEMONSTRATION RECIPIENT of a transfer-station delivery (CP-6 B13; migration 0073 §3–§4; D5–D7 and C7 of the batch record;
  * DP-47-005 "require recipient acknowledgement before closure", ES-53-004, NZ-20, CMP-102).
  *
- *   node scripts/retention/transfer-station-recipient.mjs <station-root> <tenant> <domain> <action_id> [--public-key <pem-file>] [--recipient <name>]
+ *   node scripts/retention/transfer-station-recipient.mjs <station-root> <tenant> <domain> <action_id> [--public-key <pem-file>] [--recipient <name>] [--wrong-digest | --deny]
  *   node scripts/retention/transfer-station-recipient.mjs <station-root> <tenant> <domain> <action_id> --revocation [--refuse] [--recipient <name>]
  *
  * THIS IS A DEMONSTRATION RECIPIENT, NOT A PRODUCT COMPONENT. A transfer station is a directory the product WRITES a delivery
@@ -26,7 +26,8 @@
  *          another delivery; a note without delivery_id is not answered, a note without attempt is answered with attempt null),
  *          recipient, received_at, archive_digest (computed here), package_digest (from delivery.json),
  *          verified: <the verifier's ok AND, when a public key was given, its signature verified>,
- *          verifier: 'scripts/retention/verify-export.mjs (demonstration recipient)', notes? (when the digests disagree) }
+ *          verifier: 'scripts/retention/verify-export.mjs (demonstration recipient)', notes? (when the digests disagree),
+ *          control_mode? (B16: 'wrong-digest' | 'deny' when a control mode wrote the receipt) }
  *      and exits 0 when the receipt was written — a receipt saying `verified: false` is written and is the honest answer (the
  *      product records the exchange as MISMATCHED and keeps the request and the evidence); a station without a delivery to
  *      answer (no delivery.json, no package.tar, a note that is not a JSON object) exits 2 and writes nothing.
@@ -40,6 +41,14 @@
  * recipient, received_at }. With --refuse it writes copies_destroyed: false (the honest answer of a recipient that keeps its copies —
  * the product records the exchange as MISMATCHED). Exits 0 when the receipt was written; 2 when there is no notice to answer.
  *
+ * THE CONTROL MODES of the delivery receipt (CP-6 B16; the answers a real recipient could give, wrong or right — the product must classify
+ * each; the https recipient has carried the same modes since B14): --wrong-digest writes the receipt with the archive digest's FIRST BYTE
+ * FLIPPED (a recipient that received other bytes, or mis-hashed them: the product records the exchange MISMATCHED and, at a revocation,
+ * still counts the station among the destinations that HOLD the package — Codex B14-F1: a mismatched receipt proves the package reached
+ * it); --deny writes `verified: false` whatever the verifier said (a recipient that refuses the exchange: MISMATCHED likewise). The
+ * verifier still runs and its verdict is printed; the receipt says which control mode wrote it (`control_mode`) so that the record is
+ * never mistaken for a real disagreement. The two modes exclude each other and neither applies to --revocation.
+ *
  * Node 18 or later; no dependency.
  */
 import { spawnSync } from 'node:child_process';
@@ -52,23 +61,28 @@ const VERIFIER = join(dirname(fileURLToPath(import.meta.url)), 'verify-export.mj
 const VERIFIER_NAME = 'scripts/retention/verify-export.mjs (demonstration recipient)';
 const SEGMENT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i; // the tenant, the domain and the action are uuids: one path segment each, never a walk
 const HEX64 = /^[0-9a-f]{64}$/;
-const USAGE = 'usage: node scripts/retention/transfer-station-recipient.mjs <station-root> <tenant> <domain> <action_id> [--public-key <pem-file>] [--recipient <name>]';
+const USAGE = 'usage: node scripts/retention/transfer-station-recipient.mjs <station-root> <tenant> <domain> <action_id> [--public-key <pem-file>] [--recipient <name>] [--wrong-digest | --deny] | … --revocation [--refuse]';
 const say = (line) => console.log(`[demonstration recipient] ${line}`);
 const fail = (line) => { console.error(`[demonstration recipient] ${line}`); process.exit(2); };
 
 /* ── arguments ─────────────────────────────────────────────────────────────── */
 const args = process.argv.slice(2);
-const positional = []; let publicKeyPath = null; let recipientName = null; let revocationMode = false; let refuse = false;
+const positional = []; let publicKeyPath = null; let recipientName = null; let revocationMode = false; let refuse = false; let wrongDigest = false; let deny = false;
 for (let i = 0; i < args.length; i += 1) {
   const a = args[i];
   if (a === '--public-key') { publicKeyPath = String(args[i + 1] ?? ''); i += 1; }
   else if (a === '--recipient') { recipientName = String(args[i + 1] ?? ''); i += 1; }
   else if (a === '--revocation') revocationMode = true;
   else if (a === '--refuse') refuse = true;
+  else if (a === '--wrong-digest') wrongDigest = true;
+  else if (a === '--deny') deny = true;
   else if (a === '--help' || a === '-h') { console.log(USAGE); process.exit(0); }
   else positional.push(a);
 }
 if (positional.length !== 4 || publicKeyPath === '' || recipientName === '') fail(USAGE);
+if (wrongDigest && deny) fail('--wrong-digest and --deny exclude each other: one wrong answer per receipt');
+if ((wrongDigest || deny) && revocationMode) fail('--wrong-digest and --deny are the delivery receipt\'s control modes; the revocation receipt has --refuse');
+if (refuse && !revocationMode) fail('--refuse is the revocation receipt\'s control mode (--revocation)');
 const [rootArg, tenant, domain, actionId] = positional;
 for (const [what, v] of [['tenant', tenant], ['domain', domain], ['action_id', actionId]]) if (!SEGMENT.test(v)) fail(`${what} ${JSON.stringify(v)} is not a uuid`);
 const root = resolve(rootArg);
@@ -169,6 +183,11 @@ const signatureVerified = verdict.signature?.verified === true;
 say(`verifier verdict: ${verifierOk ? 'PACKAGE OK' : 'PACKAGE FAILED'} (exit ${run.status}; ${Number(verdict.failed ?? 0)} failed; complete ${verdict.complete === true}); signature ${verdict.signature?.scheme ?? '?'}${verdict.signature?.key_id ? ` ${verdict.signature.key_id}` : ''}: ${verdict.signature?.verified === true ? 'VERIFIED against the public key' : verdict.signature?.verified === false ? 'FAILED' : publicKeyPath === null ? 'not verified here (no --public-key given)' : 'not verified'}`);
 const packageDigest = notedPackage ?? (typeof verdict.summary?.package_digest === 'string' ? verdict.summary.package_digest : null);
 const verified = verifierOk && (publicKeyPath === null || signatureVerified);
+/** B16: the first byte of a hex digest flipped — the https recipient's `wrong-digest` control, the same arithmetic. */
+const flip = (hex) => `${(parseInt(hex.slice(0, 2), 16) ^ 0xff).toString(16).padStart(2, '0')}${hex.slice(2)}`;
+const controlMode = wrongDigest ? 'wrong-digest' : deny ? 'deny' : null;
+if (wrongDigest) say(`--wrong-digest: the receipt names the archive digest with its first byte flipped (${flip(archiveDigest).slice(0, 16)}… for ${archiveDigest.slice(0, 16)}…) — the product records the exchange as MISMATCHED; the station still HOLDS the package`);
+if (deny) say(`--deny: the receipt says verified: false whatever the verifier found (it found ${verified ? 'PACKAGE OK' : 'PACKAGE FAILED'}) — the product records the exchange as MISMATCHED; the station still HOLDS the package`);
 
 /* ── 4. the receipt, by temp + fsync + rename ──────────────────────────────── */
 const notes = [];
@@ -181,10 +200,11 @@ const receipt = {
   attempt: noted('attempt'),
   recipient: recipientName ?? (typeof note.recipient === 'string' && note.recipient.length > 0 ? note.recipient : 'demonstration recipient'),
   received_at: new Date().toISOString(),
-  archive_digest: archiveDigest,
+  archive_digest: wrongDigest ? flip(archiveDigest) : archiveDigest,
   package_digest: packageDigest,
-  verified,
+  verified: deny ? false : verified,
   verifier: VERIFIER_NAME,
+  ...(controlMode !== null ? { control_mode: controlMode } : {}),
   ...(notes.length > 0 ? { notes: notes.join('; ') } : {}),
 };
 const replaced = existsSync(receiptPath);
@@ -197,6 +217,6 @@ try {
   try { rmSync(tmp, { force: true }); } catch { /* the temp name is ours; nothing else is touched */ }
   fail(`receipt.json could not be written: ${e.message}`);
 }
-say(`receipt.json written${replaced ? ' (an earlier attempt\'s receipt replaced)' : ''}: receipt ${receipt.receipt_id} for delivery ${receipt.delivery_id} attempt ${receipt.attempt} — verified ${verified}${notes.length > 0 ? `; notes: ${receipt.notes}` : ''}`);
+say(`receipt.json written${replaced ? ' (an earlier attempt\'s receipt replaced)' : ''}: receipt ${receipt.receipt_id} for delivery ${receipt.delivery_id} attempt ${receipt.attempt} — verified ${receipt.verified}${controlMode !== null ? ` (control mode ${controlMode})` : ''}${notes.length > 0 ? `; notes: ${receipt.notes}` : ''}`);
 say('the product collects it with the collect-receipt act (the exchange closes ACKNOWLEDGED when the digests agree and verified is true; MISMATCHED otherwise)');
 process.exit(0);

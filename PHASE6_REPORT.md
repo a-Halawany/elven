@@ -3021,7 +3021,7 @@ split reads **3,555 = 3,182 open + 339 local + 34 CI**. The hosted run at `33882
 `verified:ci` by it: Codex's bounded review (filed under `audit/reviews`) found B15-F1 — the closure carries a claim's LATEST version
 only, while an edge may reference an earlier one — so AU-COM-0058's local verification and DP-47-003's `implemented` are qualified
 by that clause until B16 corrects it on a versioned fixture and the records are adjusted in that batch (Codex: "make the record
-adjustment in the implementation batch, not as a separate gate cycle"). The interface register unchanged at 26/24/0. No completion percentage; no
+adjustment in the implementation batch, not as a separate gate cycle"). (Lifted in §30.4: B16 delivered the versioned closure and re-bound the claims.) The interface register unchanged at 26/24/0. No completion percentage; no
 deployment leg accepted.
 
 ### 29.5 Functioning, partial, missing — and the acceptance work remaining
@@ -3040,3 +3040,102 @@ index-tier degradation behaviours; every deployment leg (S7).
 **Acceptance work remaining** — #51's merge under the existing authorization and its archive chain on `main`; B15's PR retargeted
 and merged after it; the owner's decision on a public host for the recipient; the owner's key for Comtrade and the owner's walks of the
 pages; B16 (the import direction); comprehensive hardening after the feature scope, with the residuals.
+
+## 30. The checkpoint after `88057d2` (2026-09-16): #51 and #52 merged with their archive chains complete; B16 implemented — the governed import and the NORDWERK export → import → re-export round trip, the versioned closure (Codex B15-F1) and held recipients (Codex B14-F1); the demonstration's mirror domain admitting the origin's signed package and re-exporting it
+
+Under the owner's authorization on Codex's bounded B14/B15 review (filed under `audit/reviews`; B13-F1 closed): #51 merged as
+`47cca31` (its `ci` 35080668461 and C19 35080668362 green; the C17 finalize 35082250495 and the C19 anchor 35082320539 green), #52
+retargeted to `main` and merged as `88057d2` (`ci` 35085514555, C19 35085514462, the C17 finalize 35087366921, the C19 anchor
+35087461561 — all green). B15's hosted evidence was bound once in `fa5bbd0` (§29.4); no records-refresh chain, no review hold. B16 is
+cut from `88057d2` on `phase6-b16` (PR base `main`). §29 stands as written; its B15-F1 qualification is lifted here (§30.4).
+
+### 30.1 What B16 implements (migration 0076) — `audit/CP6_BATCHES.md` §B16 for the mechanism
+
+- **The exchange partner (D1).** A partner is a public key with an intake source contract: declared by the administrators
+  (`retention.partner.declare` / `.retire`), the key id derived as the product derives its own; a package no active partner of the
+  domain signed is quarantined with the words to act on.
+- **The governed import (D2).** An inbound package — inline, or read entry by entry from a declared transfer station as the customer's
+  verifier reads a tar — staged in the quarantine tier with every entry's digest and size recorded; SIXTEEN ordered checks (archive,
+  manifest, origin, integrity, re-import, completeness, chain, scheme, partner, signature, links file, links PAIRS, policy, duplicate,
+  revocation, origin exclusions); `inspectContent` on every record; approval on the package digest by a principal other than the
+  opener; admission through the canonical write path (`retention.import.admit`) under NEW ids with the origin identity in
+  `payload.imported_from` — records under the intake contract with `custody.imported`, claim versions with the SAME version numbers and
+  their lineage rows, entities (reused by an authoritative identifier when known) with their identifiers, edges on their exact claim
+  pair; withdrawal with the copies tombstoned; the quarantine swept after its TTL; the import's receipt as the importer's record; the
+  routes, the PDP actions, the mapper families, the page's cards, the customer's tools (`import-package.mjs`, `compare-round-trip.mjs`).
+- **The versioned closure (D3; Codex B15-F1).** `links.json` /2 lists each EXACT claim version an edge or a lineage row names, keyed
+  by (object_id, object_version); an edge is never rebased; a required version above the ceiling is excluded with its dependent edges;
+  the pair check in the verifier and in the import; the pair preserved through import.
+- **Held recipients (D4; Codex B14-F1).** `retention.export_delivery_held` — confirmed / possible / nothing known — and the
+  revocation notifying every destination confirmed or possibly holding the package, a mismatched receipt counted as proof of reach;
+  the notify route refusing a destination nothing reached.
+- **The signing-key binding (D5).** The build refuses `signing_key_mismatch` when the bound reference derives a key other than the
+  declared active one; a closure drained after the manifest checks failed is reported as not checked, not as unparsable.
+
+### 30.2 The local results
+
+The harness `phase6-retention-b16.test.ts` **6/6** on a fresh database (V1 the versioned closure; P1 the partner and the key binding;
+I1 the round trip with the compare tool's ROUND TRIP OK; I2 the refusals with the evidence preserved; I3 a 272 MB package imported
+from the station with the memory sampled every 50 ms — 182.1 MiB above the baseline at the peak (172.5 in an earlier run — GC-timing-dependent), heapUsed + external, under 256 MiB;
+R1 held recipients); the seven retention harnesses **80/80**; the full integration suite **1030/1030 in 66 files** on a fresh database
+(run before and after the D5 corrections); the upgrade proof with 0022–0076 (55 migrations; 35 registry rows); the unit suite
+**2184/2184** (with `import-package.test.ts` 28) and the meta suite 9/9; the web typecheck, build and tests.
+
+### 30.3 The NORDWERK demonstration — `evidence/cp6/act-b16.txt`
+
+Rehearsed first on a restored copy (`eye_demo_b16`; `evidence/cp6/b16-rehearsal.txt` — the first rehearsal stopped on the copy's key
+row, which surfaced D5; the second held whole), then on `eye_demo` (backup; 0076 applied; the API restarted on the B16 build): the REL
+claim "NORDWERK ANTRIEBSTECHNIK GmbH procures SYN-PART-BRG" corrected C@3 → C@4 with the edge kept on the version it rests on; P.
+Novák's export E1 of the four internal records that carry the knowledge — the /2 closure listing C@1..C@4 as exact versions (17 claim
+versions, 8 edges, 7 entities), the pair check passing, the counterexample and the rebase failing — delivered to the station and
+acknowledged; the MIRROR DOMAIN "NORDWERK Exchange Mirror (SYNTHETIC)" created with M. Keller and U. Fischer, its intake contract, its
+station and — after a pre-partner import was quarantined — the partner `nordwerk-origin` declared with the origin's public key; the
+import opened from the station → VERIFIED (sixteen checks), approved by H. Bergmann, admitted by M. Keller → 4 records, 17 claim
+versions, 7 entities, 8 edges under new ids with C@1..C@4 → C'@1..C'@4, `custody.imported`, the bytes downloadable in the mirror, the
+mirror's graph; the RE-EXPORT E2 from the mirror — the customer's round-trip tool: ROUND TRIP OK, identities recoverable through
+`payload.imported_from`; E3 with a mismatched station receipt revoked → the station notified as HOLDING (confirmed), the production
+destination (nothing reached it) not, the mismatched receipt kept. ALL SCENES HELD (40 checks).
+
+### 30.4 Heads, hosted results, statuses
+
+| Head | What | Hosted `ci` | Hosted C19 |
+|---|---|---|---|
+| `47cca31` | **#51 merged** (B14) under the owner's authorization | 35080668461 green (C17 finalize 35082250495, C19 anchor 35082320539 green) | 35080668362 green |
+| `88057d2` | **#52 merged** (B15) after retargeting to `main` | 35085514555 green (C17 finalize 35087366921, C19 anchor 35087461561 green) | 35085514462 green |
+| the B16 head | **B16** (0076; the partner, the import, the versioned closure, held recipients, the key binding; the harness; the act) — PR `phase6-b16` → `main` | bound in the records commit once its run completes | — |
+
+Statuses: AU-COM-0058 stays `verified:local` with the B15-F1 qualification LIFTED (re-bound to `phase6-retention-b16` V1 and I1);
+DP-47-003 stays `implemented` with the same clause; DP-47-005, DP-47-006 and DZ-17 `partial` → `implemented` (passed:harness,
+branch-only); ES-08-004 `missing` → `partial`; DP-47-001, DP-47-002, ES-53-004, DPD-19, AU-COM-0056, AU-COM-0060 (stays
+`verified:ci`), AU-COM-0007, AU-COM-0062, AU-DP-0097 and AU-IDP-0227 carry the B16 clause; six rows whose remaining_work predates the
+exchange are left for the hardening pass (named in §B16). The split stays **3,555 = 3,182 open + 339 local + 34 CI** (no unit promoted
+by a local run). The interface register at 26/24/0 with L3-I04's binding extended. The B15.6 memory sentence corrected (a delta, not a
+peak; the B16 sampler stated as a sampled high-water mark, not RSS). No completion percentage; no deployment leg accepted.
+
+### 30.5 Functioning, partial, missing — and the acceptance work remaining
+
+**Functioning** — everything §29.5 listed, and now: the import direction of the exchange — an inbound signed package quarantined with
+its request and evidence preserved, verified by sixteen checks against a declared partner and intake contract, approved by a second
+principal, admitted under new ids with the origin identity recoverable, withdrawn or swept otherwise; the round trip export → import →
+re-export with the bytes, headers, claim versions, lineage, edges and entities preserved, proven by the customer's tool on the harness
+and on the demonstration; the relationship closure by exact versions on both sides; the revocation reaching every recipient known or
+possibly holding a package; the build refusing a key binding that does not derive the declared key.
+
+**Partial** — the exchange across INSTALLATIONS (the round trip is proven within one installation, between two domains of the
+tenant; a foreign installation is the activation step: the other side's public key declared as the partner, the station or an https
+destination between them; the revocation check on a foreign origin is a note on the unsigned statement); imported knowledge is not
+published to the domain's subscribers (no ObservationRecorded / GraphChanged for imported objects) and the origin's revocation of an
+admitted package is not propagated into the importing domain; the inline intake over the real listener bounded by the JSON body limit
+(the station path carries larger packages); the https path's production activation and the production signing key (§28.6); the
+"enforceable" half of the recipient's obligations; the UN Comtrade live contract; the pages' browser walks; the archive tier's
+structural residuals.
+
+**Missing** — replication and portability packages; a governed cross-domain REFERENCE (sharing without a copy); encryption of the
+package at rest in transit beyond TLS; the remaining capabilities of the interface register's 24 partial contracts; the source-derived
+memory records; index-tier degradation behaviours; every deployment leg (S7).
+
+**Acceptance work remaining** — B16's PR: its hosted run bound once in a records commit, the merge on the owner's word (not
+pre-authorized) and its archive chain on `main`; the owner's decision on a public host for the recipient; the owner's key for Comtrade
+and the owner's walks of the pages; the next batch from the register (the publication of imported knowledge to subscribers, then the
+24 partial contracts, the source-derived memory, index-tier degradation); comprehensive hardening after the feature scope, with the
+residuals and the six register rows left for it.
