@@ -1,0 +1,11 @@
+=== the unit suite at the B19 tree (apps/api: pnpm test — vitest, then the meta suite), 2026-09-17 — with the B19 unit files (memory-derive 19: the statement template, the digest, the clearance fold, every gate; the PDP describe 4): 2295 = 2272 + 23 ===
+
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/apps/api
+ Test Files  52 passed (52)
+      Tests  2295 passed (2295)
+   Duration  238.19s (transform 3.10s, setup 0ms, import 7.00s, tests 1145.80s, environment 2ms)
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/apps/api
+ Test Files  1 passed (1)
+      Tests  9 passed (9)
+   Duration  214.57s (transform 11ms, setup 0ms, import 16ms, tests 214.48s, environment 0ms)
+exit 0

@@ -128,3 +128,47 @@ describe('B18 · the three lifecycle acts are exact, human-gated rules with name
     expect(pdp.evaluate(at('prediction.forecast.withdraw', ['domain_admin'])).decision).toBe('allow_with_obligations');
   });
 });
+
+/*
+ * CP-6 B19 (0079; design §2.6, D1): the DERIVATION of a memory record from a claim version or a warning is one EXACT rule —
+ * the recording roles (platform_admin at the platform; domain_admin, knowledge_owner, strategy_owner at the domain), HUMAN-GATED
+ * where the record rule is not (the server computes the content; a named person admits it), a purpose required, C2 at most.
+ */
+describe('B19 · memory.item.derive is the record rule\'s holders under the human gate', () => {
+  const pdp = new PdpService();
+  const at = (action: string, roles: string[], consequenceClass: 'C1' | 'C2' | 'C3' = 'C2') => input({ action, roles, consequenceClass, objectType: 'MEM', purposeId: 'memory' });
+  const platform = { roleCode: 'platform_admin', scope: 'PLATFORM' as const, tenantId: null, domainId: null };
+
+  it('knowledge_owner / strategy_owner / domain_admin derive with the human gate at C2, none at C3; platform_admin at the platform scope too', () => {
+    for (const role of ['knowledge_owner', 'strategy_owner', 'domain_admin']) {
+      const r = pdp.evaluate(at('memory.item.derive', [role]));
+      expect(r.decision, role).toBe('allow_with_obligations');
+      expect(r.obligations, role).toEqual([{ type: 'human_gate' }]);
+      expect(pdp.evaluate(at('memory.item.derive', [role], 'C3')).decision, `${role} at C3`).toBe('deny');
+    }
+    const p = pdp.evaluate(input({ action: 'memory.item.derive', objectType: 'MEM', purposeId: 'memory', consequenceClass: 'C2', principal: { principalId: '0193a3d0-0000-7000-8000-0000000000aa', kind: 'human', assurance: 'password', bindings: [platform] } }));
+    expect(p.decision).toBe('allow_with_obligations');
+    expect(p.obligations).toEqual([{ type: 'human_gate' }]);
+  });
+  it('who does not derive: the record authority (it re-derives under memory.item.supersede), the analyst, the executive, the decision owner, a tenant administrator; nothing without a purpose', () => {
+    for (const role of ['record_authority', 'domain_analyst', 'executive', 'decision_owner', 'tenant_admin', 'retention_steward', 'briefing_agent']) {
+      expect(pdp.evaluate(at('memory.item.derive', [role])).decision, role).toBe('deny');
+    }
+    expect(pdp.evaluate({ ...at('memory.item.derive', ['knowledge_owner']), purposeId: null }).decision).toBe('deny');
+  });
+  it('memory.item.record is unchanged (the same holders, no obligation); the derive rule matches EXACTLY; the supersede and withdraw rules keep the record authority', () => {
+    const rec = pdp.evaluate(at('memory.item.record', ['knowledge_owner']));
+    expect(rec.decision).toBe('allow');
+    expect(rec.obligations).toEqual([]);
+    for (const action of ['memory.item.derived', 'memory.item.derive.now', 'memory.item.deriv', 'memory.item']) {
+      expect(pdp.evaluate(at(action, ['knowledge_owner', 'domain_admin'])).decision, action).toBe('indeterminate');
+    }
+    expect(pdp.evaluate(at('memory.item.supersede', ['record_authority'])).obligations).toEqual([{ type: 'human_gate' }]);
+    expect(pdp.evaluate(at('memory.item.supersede', ['knowledge_owner'])).decision).toBe('deny');
+  });
+  it('the PDP alone does not distinguish a human from an agent — the gate the PEP discharges refuses the agent', () => {
+    const r = pdp.evaluate({ ...at('memory.item.derive', ['knowledge_owner']), principal: { principalId: '0193a3d0-0000-7000-8000-0000000000aa', kind: 'agent', assurance: 'password', bindings: [{ roleCode: 'knowledge_owner', scope: 'DOMAIN' as const, tenantId: T, domainId: D }] } });
+    expect(r.decision).toBe('allow_with_obligations');
+    expect(r.obligations).toEqual([{ type: 'human_gate' }]);
+  });
+});

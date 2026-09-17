@@ -23,7 +23,7 @@ import { EntitiesService } from './entities/entities.service.js';
 import { ResolutionService } from './entities/resolution.service.js';
 import { EdgesService, MAX_EDGES, nowAsOf, type AsOf } from './edges/edges.service.js';
 import { StrategyService, validateStrategy } from './strategy/strategy.service.js';
-import { MemoryService, validateMemoryItem } from './memory/memory.service.js';
+import { MemoryService, validateDeriveIntake, validateMemoryItem, type DeriveAnswer } from './memory/memory.service.js';
 import { ImpactService } from './strategy/impact.service.js';
 import { SearchService } from './search/search.service.js';
 import { PropagationAgentsService } from './propagation/propagation-agents.service.js';
@@ -657,9 +657,9 @@ export class GraphController {
     return { ...out.result, receipt: receipt(out) };
   }
 
-  // ───────────────────────── Enterprise Memory workspace (0066 §3, AU-MEM-0065) ─────────────────────────
+  // ───────────────────────── Enterprise Memory workspace (0066 §3, AU-MEM-0065; B19: /memory/derive and the re-derivation) ─────────────────────────
 
-  /** OBJ-14 RECORD: the knowledge owner records a memory item — its first canonical version, its projection, its cites as dependencies. */
+  /** OBJ-14 RECORD: the knowledge owner records a memory item — a person's own record (source kind human): its first canonical version, its projection, its cites as dependencies. */
   @Post('/memory/record')
   async recordMemoryItem(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: Record<string, unknown> }) {
     const { envelope, principal } = ctx(req);
@@ -684,11 +684,66 @@ export class GraphController {
     return { memory: out.result, receipt: receipt(out) };
   }
 
-  /** OBJ-16 SUPERSEDE: the record authority records the next version with its reason; the prior version stays replayable. */
+  /**
+   * B19 (0079) DERIVE — the knowledge owner names a claim version or a warning; the SERVER computes the statement and the
+   * provenance, inherits the controls, gates on the review state (and on the deriver's own clearance over the applied
+   * classification) and records the first canonical MEM@v2 version with its derivation; human-gated (the PEP discharges the gate
+   * before the capability is minted).
+   */
+  @Post('/memory/derive')
+  async deriveMemoryItem(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: Record<string, unknown> }) {
+    const { envelope, principal } = ctx(req);
+    const intake = validateDeriveIntake((body.payload ?? {}) as never, envelope.correlation_id, false);
+    const itemId = newId();
+    const out = await this.pipeline.write(
+      envelope, principal,
+      { ...this.route(tenantId, domainId, 'memory.item.derive', 'MEM', itemId), writableTargets: [itemId] },
+      GraphCapability.memory,
+      async (cap, scope) => {
+        const r = await this.memory.derive(cap, principal, scope, { itemId, version: 1, intake, owner: principal.principalId, actor: principal.principalId, correlationId: envelope.correlation_id, purposeId: envelope.purpose_id ?? 'memory', action: 'memory.item.derive' });
+        // GraphChanged/memory_item.recorded (the kind unchanged; the cause says derive): the item is its own reach; the basis and its evidence are what it rests on.
+        const changed = await graphChangedEvent(cap, this.impact, {
+          tenantId, domainId, kind: 'memory_item.recorded',
+          identities: intake.cites.filter((c) => c.kind === 'entity').map((c) => ({ entity_id: c.id, role: 'rests_on' })),
+          dependencies: this.derivedDependencies(itemId, intake.cites, r),
+          reach: { reach: this.derivedReach(itemId, r) },
+          cause: { action: 'memory.item.derive', actor: principal.principalId, target_type: 'MEM', target_id: itemId },
+        });
+        return { result: r, targetType: 'MEM', targetId: itemId, targetVersion: '1', outboxEvent: changed };
+      });
+    return { memory: out.result, receipt: receipt(out) };
+  }
+
+  /** B19: what a derived record rests on, for the GraphChanged row — the basis, its evidence versions and the extra cites (deduplicated). */
+  private derivedDependencies(itemId: string, cites: Array<{ kind: string; id: string }>, r: DeriveAnswer): Array<{ dependent_object_id: string; dependent_type: string; depends_on_kind: string; depends_on_id: string }> {
+    const seen = new Set<string>();
+    const out: Array<{ dependent_object_id: string; dependent_type: string; depends_on_kind: string; depends_on_id: string }> = [];
+    for (const d of [{ kind: r.basis.kind, id: r.basis.id }, ...r.evidence.map((e) => ({ kind: 'evidence', id: e.object_id })), ...cites]) {
+      const key = `${d.kind}:${d.id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ dependent_object_id: itemId, dependent_type: 'MEM', depends_on_kind: d.kind, depends_on_id: d.id });
+    }
+    return out;
+  }
+  private derivedReach(itemId: string, r: DeriveAnswer): ReachedObjects {
+    return { ...EMPTY_REACH, memoryItems: [itemId], claims: r.basis.kind === 'claim' ? [r.basis.id] : [], warnings: r.basis.kind === 'warning' ? [r.basis.id] : [], evidence: [...new Set(r.evidence.map((e) => e.object_id))] };
+  }
+
+  /**
+   * OBJ-16 SUPERSEDE: the record authority records the next version with its reason; the prior version stays replayable.
+   * B19: a DERIVED record is RE-DERIVED — `payload.basis` names the basis version (empty = the latest) and the same service runs
+   * the same gates under memory.item.supersede; a person's record is re-stated. The kind class of an item never changes: the
+   * route refuses the crossing in plain words before the port's own rule does.
+   */
   @Post('/memory/:itemId/supersede')
   async supersedeMemoryItem(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('itemId') itemId: string, @Body() body: { payload?: Record<string, unknown> }) {
     const { envelope, principal } = ctx(req);
-    const intake = validateMemoryItem((body.payload ?? {}) as never, envelope.correlation_id, true);
+    const payload = (body.payload ?? {}) as Record<string, unknown>;
+    const derived = payload['basis'] !== undefined;
+    const deriveIntake = derived ? validateDeriveIntake(payload as never, envelope.correlation_id, true) : null;
+    const intake = derived ? null : validateMemoryItem(payload as never, envelope.correlation_id, true);
+    const cites = (deriveIntake ?? intake)!.cites;
     const out = await this.pipeline.write(
       envelope, principal,
       { ...this.route(tenantId, domainId, 'memory.item.supersede', 'MEM', itemId), writableTargets: [itemId] },
@@ -696,13 +751,22 @@ export class GraphController {
       async (cap, scope) => {
         const current = await this.memory.current(cap, itemId);
         if (current === null) throw new HttpException(errorBody('EYE_STA_001', envelope.correlation_id, 'no authorized memory item matches'), 404);
+        const isDerived = current['derivation'] !== null && current['derivation'] !== undefined;
+        if (derived !== isDerived) {
+          throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, derived
+            ? 'a person\'s record is superseded by a person\'s statement; a re-derivation (payload.basis) is for a derived record'
+            : 'a derived record is superseded by a re-derivation (payload.basis); its statement is computed, not typed'), 422);
+        }
         const version = Number(current['object_version']) + 1;
-        const r = await this.memory.write(cap, scope, { itemId, version, intake, owner: String(current['owner_principal_id']), actor: principal.principalId, correlationId: envelope.correlation_id, purposeId: envelope.purpose_id ?? 'memory' });
+        const owner = String(current['owner_principal_id']);
+        const common = { itemId, version, owner, actor: principal.principalId, correlationId: envelope.correlation_id, purposeId: envelope.purpose_id ?? 'memory' };
+        const rederived: DeriveAnswer | null = deriveIntake === null ? null : await this.memory.derive(cap, principal, scope, { ...common, intake: deriveIntake, action: 'memory.item.supersede' });
+        const r = rederived ?? await this.memory.write(cap, scope, { ...common, intake: intake! });
         const changed = await graphChangedEvent(cap, this.impact, {
           tenantId, domainId, kind: 'memory_item.superseded',
-          identities: intake.cites.filter((c) => c.kind === 'entity').map((c) => ({ entity_id: c.id, role: 'rests_on' })),
-          dependencies: intake.cites.map((c) => ({ dependent_object_id: itemId, dependent_type: 'MEM', depends_on_kind: c.kind, depends_on_id: c.id })),
-          reach: { reach: { ...EMPTY_REACH, memoryItems: [itemId] } },
+          identities: cites.filter((c) => c.kind === 'entity').map((c) => ({ entity_id: c.id, role: 'rests_on' })),
+          dependencies: rederived !== null ? this.derivedDependencies(itemId, cites, rederived) : cites.map((c) => ({ dependent_object_id: itemId, dependent_type: 'MEM', depends_on_kind: c.kind, depends_on_id: c.id })),
+          reach: { reach: rederived !== null ? this.derivedReach(itemId, rederived) : { ...EMPTY_REACH, memoryItems: [itemId] } },
           cause: { action: 'memory.item.supersede', actor: principal.principalId, target_type: 'MEM', target_id: itemId },
         });
         return { result: { ...r, priorVersion: version - 1 }, targetType: 'MEM', targetId: itemId, targetVersion: String(version), outboxEvent: changed };

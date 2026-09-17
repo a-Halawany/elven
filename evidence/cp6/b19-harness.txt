@@ -1,0 +1,37 @@
+=== the B19 harness at the B19 tree (apps/api: npx vitest run --config vitest.int.config.ts test/int/phase6-memory-derived.test.ts --reporter=verbose) on fresh databases (0001–0079), 2026-09-17 — phase6-memory-derived (6 cases: M1 derived (document) with the lift said and enforced on the deriver, M2 the review and lifecycle gates, M3 telemetry on the REST fixture with a registered series and a warning basis, M4 the record follows the basis (corrected; withdrawn by the three paths; the re-derivation), M5 the deletion pause on derived records and the human control, M6 the briefing) — the first run (eye_verify_b19_m1) and the re-run after the re-derivation's validity default (eye_verify_b19_m2) ===
+
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.int.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/apps/api
+
+stdout | test/int/phase6-memory-derived.test.ts
+[32m✔[0m [33mConsole Ninja[0m extension is connected to [33mNest.js[0m, see [36mhttps://tinyurl.com/2vt8jxzw[0m
+
+ ✓ test/int/phase6-memory-derived.test.ts > B19 · source-derived memory records (0079; AU-MEM-0065, V02-T-118, DP-37-001/002/005, ES-29-002, V03-T-100) > M1 · DERIVED (document) from a REL claim on confidential evidence: the knowledge owner refused by the clearance line (nothing written), the domain administrator derives — the statement and its digest, the provenance, the lift SAID, synthetic and retention inherited, MEM@v2 validating against the registry, the events, the dependency rows, GraphChanged caused by the derive act, the retrieval serving the block; the controls; the port's own units 195ms
+ ✓ test/int/phase6-memory-derived.test.ts > B19 · source-derived memory records (0079; AU-MEM-0065, V02-T-118, DP-37-001/002/005, ES-29-002, V03-T-100) > M2 · THE REVIEW GATE and the LIFECYCLE GATE: queued (the payload's reason), rejected, case-corrected to a later version (the corrected version derivable as asserted / corrected), a withdrawn object at any version, an imported claim, an unknown warning, a bad basis kind 63ms
+ ✓ test/int/phase6-memory-derived.test.ts > B19 · source-derived memory records (0079; AU-MEM-0065, V02-T-118, DP-37-001/002/005, ES-29-002, V03-T-100) > M3 · TELEMETRY on the REST fixture: the series rule (422 before the series is registered on the source, admitted with series_keys after; the document kind admitted regardless), truth_state extracted never observed; a WARNING basis — inferred, review_state raised, the breaching evidence version, the indicator and its rule, telemetry only 1186ms
+ ✓ test/int/phase6-memory-derived.test.ts > B19 · source-derived memory records (0079; AU-MEM-0065, V02-T-118, DP-37-001/002/005, ES-29-002, V03-T-100) > M4 · THE RECORD FOLLOWS THE BASIS: (a) the evidence corrected and walked → basis_corrected; (b) RE-DERIVED on the corrected claim version (the knowledge owner and the record authority refused, the kind-class crossings refused both ways, v1 replayable, the evidence row kept); (c) WITHDRAWN — the corrections path, the evidence gate at derive and re-derive, a claim_withdrawal walk (the negative first), the revocation's port; (d) the record authority withdraws 343ms
+ ✓ test/int/phase6-memory-derived.test.ts > B19 · source-derived memory records (0079; AU-MEM-0065, V02-T-118, DP-37-001/002/005, ES-29-002, V03-T-100) > M5 · THE DELETION PAUSE (branch (f)): the manifest of the corrected evidence A paused naming the three derived records with their bases, versions, attention states and the route, released by their withdrawal; the manifest of the withdrawn evidence B a second paused case (the queued case, the standing record); the HUMAN CONTROL on its own evidence H a residual; the version rule probed on the function 386ms
+ ✓ test/int/phase6-memory-derived.test.ts > B19 · source-derived memory records (0079; AU-MEM-0065, V02-T-118, DP-37-001/002/005, ES-29-002, V03-T-100) > M6 · THE BRIEFING carries the derived record with the basis's truth state, synthetic true and basis_state current (the human item unchanged; the composer's access recorded); the evidence withdrawn by a correction case → a second composition carries basis_state withdrawn on both derived records with the statements still carried 253ms
+
+ Test Files  1 passed (1)
+      Tests  6 passed (6)
+   Start at  05:00:53
+   Duration  4.19s (transform 687ms, setup 15ms, import 1.21s, tests 2.90s, environment 0ms)
+
+
+=== re-run ===
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.int.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/apps/api
+
+
+ Test Files  1 passed (1)
+      Tests  6 passed (6)
+   Start at  05:21:11
+   Duration  4.27s (transform 693ms, setup 14ms, import 1.17s, tests 3.03s, environment 0ms)
+

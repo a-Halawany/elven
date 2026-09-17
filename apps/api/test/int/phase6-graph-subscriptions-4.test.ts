@@ -445,12 +445,14 @@ describe('B9-F1 closure · a historical retrieval serves the AUTHORISED version\
     expect(text).not.toContain('SYNTHETIC_V2_SOURCE'); expect(text).not.toContain('SYNTHETIC_V3_SOURCE');
     expect(text).not.toContain('"restricted"'); expect(text).not.toContain('knowledge_owner'); // v2's classification and v3's audience are theirs, not v1's
     expect(text).not.toMatch(/the premium ceiling|the revised ceiling/); // the supersession reasons of v2 and v3
-    expect(memory['availability']).toEqual({ item_id: itemId, state: 'active', current_version: 3, versions: 3, superseded_versions: 2, last_superseded_at: expect.any(String), attention_state: 'none', served_is_current: false });
+    // B19 (0079): the availability names the item's source kind (the kind class never changes across versions) and, for a DERIVED record, the state of its basis — null for a person's record; the served version carries its own header fields (synthetic state, event time, method, provenance, rights, residency) — nothing of any other version.
+    expect(memory['availability']).toEqual({ item_id: itemId, state: 'active', current_version: 3, versions: 3, superseded_versions: 2, last_superseded_at: expect.any(String), attention_state: 'none', served_is_current: false, basis_state: null, source_kind: 'human' });
     expect(memory['item']).toEqual(memory['availability']);
     const version = memory['version'] as Record<string, unknown>;
     expect(version).toMatchObject({ object_version: '1', classification: 'internal', supersedes: null });
     expect((version['payload'] as Record<string, unknown>)['statement']).toBe(V1);
-    expect(Object.keys(version).sort()).toEqual(['accountable_owner', 'classification', 'content_digest', 'item_id', 'lifecycle_state', 'object_version', 'payload', 'purpose_scope', 'recorded_at', 'retention_profile', 'schema_ref', 'supersedes', 'truth_state', 'valid_from', 'valid_to']);
+    expect(Object.keys(version).sort()).toEqual(['accountable_owner', 'classification', 'content_digest', 'event_time', 'item_id', 'lifecycle_state', 'method_ref', 'object_version', 'payload', 'provenance_ref', 'purpose_scope', 'recorded_at', 'residency_profile', 'retention_profile', 'rights_profile', 'schema_ref', 'supersedes', 'synthetic_state', 'truth_state', 'valid_from', 'valid_to']);
+    expect(version).toMatchObject({ synthetic_state: false, event_time: null, method_ref: 'human-record@1.0.0', provenance_ref: `principal:${knowledgeOwner.principalId}`, rights_profile: null, residency_profile: null });
     // the access evidence: one row, version 1, the analyst, the purpose stated; the refused reads left none
     const after = await accessRows();
     expect(after.length).toBe(before.length + 1);

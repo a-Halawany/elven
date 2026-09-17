@@ -1,0 +1,14 @@
+=== B19's neighbouring set at the B19 tree (20 files) on a fresh database eye_verify_b19_nb (0001–0079), 2026-09-17 — phase6-memory-derived, the four subscription harnesses (the B9-F1 closure pins widened to the retrieval's B19 shape), phase6-briefing-memory, the eight retention harnesses B11–B18 (the import revocation's claim batch now marks derived records), phase4-corrections and phase5-corrections (the corrections path's withdrawal marks them), phase6-executive-requests, phase6-interfaces-b18 ===
+
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.int.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/apps/api
+
+
+ Test Files  20 passed (20)
+      Tests  245 passed (245)
+   Start at  05:11:15
+   Duration  234.71s (transform 1.03s, setup 96ms, import 9.73s, tests 223.46s, environment 1ms)
+

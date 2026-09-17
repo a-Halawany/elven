@@ -1,0 +1,28 @@
+=== the full integration suite at the B19 tree (apps/api: pnpm test:int:all) on fresh databases (0001–0079), 2026-09-17 — the B19 harness's 6 cases included; run twice: eye_verify_b19_all1 before the re-derivation's validity default and eye_verify_b19_all2 on the final tree ===
+
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.int.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/apps/api
+
+
+ Test Files  70 passed (70)
+      Tests  1061 passed (1061)
+   Start at  05:01:18
+   Duration  578.40s (transform 1.55s, setup 321ms, import 25.81s, tests 546.32s, environment 3ms)
+
+
+=== the final tree ===
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.int.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/apps/api
+
+
+ Test Files  70 passed (70)
+      Tests  1061 passed (1061)
+   Start at  05:24:35
+   Duration  565.81s (transform 1.53s, setup 318ms, import 23.76s, tests 536.63s, environment 3ms)
+

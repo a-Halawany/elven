@@ -279,6 +279,12 @@ export interface RetentionWrites extends RetentionReads {
   markImportItemRevoked(a: { itemId: string; importId: string; tenantId: string; domainId: string; outcome: 'withdrawn' | 'tombstoned' | 'left' | 'refused'; details: Row | null; actor: string; correlationId: string }): Promise<void>;
   /** B17 (0077 §7; D12): every lineage row of the version withdrawn copied onto the version that withdraws it, under this operation's admission decision; the rows copied. */
   recordImportWithdrawalLineage(a: { claimObjectId: string; fromVersion: number; toVersion: number; tenantId: string; domainId: string; importId: string; correlationId: string }): Promise<number>;
+  /**
+   * B19 (0079 §1.5): every ACTIVE derived memory record resting on the withdrawn basis (a claim by its basis id; evidence by its
+   * derivation's evidence list) marked basis_withdrawn once, with memory.basis_withdrawn on its ledger — under retention.import.revoke
+   * (the claim batch) or observation.correction.apply; the record itself is never rewritten. Returns {basis_kind, basis_id, marked, count, truncated, via}.
+   */
+  markBasisWithdrawn(a: { tenantId: string; domainId: string; basisKind: 'claim' | 'warning' | 'evidence'; basisId: string; reason: string; actor: string; correlationId: string }): Promise<Row>;
   /** B17 (0077 §7): the custody.tombstoned row of a tombstoned imported record, written by the retention port as record_imported_manifest writes custody.imported. */
   recordImportRevocationCustody(a: { manifestId: string; tenantId: string; domainId: string; importId: string; itemId: string; evdObjectId: string; details: Row; actor: string; correlationId: string }): Promise<void>;
   /**
@@ -590,6 +596,10 @@ class RetentionCapabilityImpl implements RetentionWrites {
   async recordImportWithdrawalLineage(a: Parameters<RetentionWrites['recordImportWithdrawalLineage']>[0]): Promise<number> {
     const rows = await this.call<{ n: number }>(sql`select retention.record_import_withdrawal_lineage(${a.claimObjectId}::uuid, ${a.fromVersion}::bigint, ${a.toVersion}::bigint, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.importId}::uuid, ${a.correlationId}::uuid) as n`);
     return Number(rows[0]?.n ?? 0);
+  }
+  async markBasisWithdrawn(a: Parameters<RetentionWrites['markBasisWithdrawn']>[0]): Promise<Row> {
+    const rows = await this.call<{ r: Row }>(sql`select memory.mark_basis_withdrawn(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.basisKind}, ${a.basisId}::uuid, ${a.reason}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
   }
   async recordImportRevocationCustody(a: Parameters<RetentionWrites['recordImportRevocationCustody']>[0]): Promise<void> {
     await this.call(sql`select retention.record_import_revocation_custody(${a.manifestId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.importId}::uuid, ${a.itemId}::uuid, ${a.evdObjectId}::uuid, ${JSON.stringify(a.details)}::jsonb, ${a.actor}::uuid, ${a.correlationId}::uuid)`);
