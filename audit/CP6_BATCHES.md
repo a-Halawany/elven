@@ -2375,7 +2375,8 @@ integration suite **1061/1061 in 70 files** on a fresh database (twice: before a
 0022–0079 (58 migrations above the ceiling; 79 files; the registry's 36 rows with MEM@v2; the digests equal; 275/275 on the upgraded data);
 the unit suite **2295/2295** (= 2272 + 23: `memory-derive` 19 — the template, the digest, the fold, every gate — and the PDP describe 4) and
 the meta suite 9/9; the web typecheck, build and 11 tests; the browser gate **48/48** (the B19 two on the hosted gate's own extraction).
-Units and rows: AU-MEM-0065 keeps `verified:ci` with its last clause closed on the harness and the walk (the hosted run binds); V02-T-118,
+The hosted run at `087736e` — ci 35174994149 (build-test job 105054615717: unit 2295/2295 and the meta suite 9/9, acceptance 58/58, the integration suite 1061/1061 in 70 files on a fresh database with `phase6-memory-derived` 6/6, the upgrade proof +58 rows / 79 files, C18 612/612 + 44; supply-chain green; browser-regression 48 passed — the B18 twenty and the B19 two on the hosted gate), C19 35174994150 — bound in the records commit (`evidence/cp6/hosted-087736e-build-test-summary.txt`).
+Units and rows: AU-MEM-0065 keeps `verified:ci` with its last clause closed on the harness and the walk and bound to that hosted run (no promotion); V02-T-118,
 V00-T-039, DP-37-001, DP-37-002, DP-37-005, CAP-UM-07 stay `partial` with the B19 clause (the ingestion connectors, the analyses object, the
 index state and semantic retrieval remain; the observed series-window basis; the 'connect'/'retire' verbs); ES-29-002 carries the inheritance
 clause; L3-I01 `bound_to` gains the derivation clause (the register 36/14/0 re-asserted; L3-I02 stays partial — the purpose-bound context

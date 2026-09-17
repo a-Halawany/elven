@@ -3415,9 +3415,9 @@ manifest PAUSES naming the record with its route, then withdrawn. ALL SCENES HEL
 | Head | What | Hosted `ci` | Hosted C19 |
 |---|---|---|---|
 | `4a7f43a` | B18's records head on PR #55 (`phase6-b18` → `main`; the merge awaits the owner's word) | 35164946733 green | 35164946641 green |
-| **the B19 head** | **B19** (0079; the derivation, the kind rule and the inheritance, the gates, the marks and the deletion pause, the page, the walk; the harness; the act) — PR #56 `phase6-b19` → `phase6-b18`, retargeted to `main` when #55 merges | the hosted run is bound in the records commit that follows | — |
+| **`087736e`** | **B19** (0079; the derivation, the kind rule and the inheritance, the gates, the marks and the deletion pause, the page, the walk; the harness; the act) — PR #56 `phase6-b19` → `phase6-b18`, retargeted to `main` when #55 merges (the merges await the owner's word) | **35174994149 green** — build-test: unit 2295/2295 and the meta suite 9/9, acceptance 58/58, the integration suite **1061/1061 in 70 files** on a fresh database (`phase6-memory-derived` 6/6 beside `phase6-retention-b18` 6/6 and `phase6-interfaces-b18` 14/14), the upgrade proof +58 rows / 79 files, C18 612/612 + 44; supply-chain green; browser-regression **48 passed** (the B19 two on the hosted gate) — `evidence/cp6/hosted-087736e-build-test-summary.txt` | 35174994150 green |
 
-Statuses: AU-MEM-0065 keeps `verified:ci` with its last clause closed on the harness and the walk (the hosted run binds); V02-T-118,
+Statuses: AU-MEM-0065 keeps `verified:ci` with its last clause closed on the harness and the walk and BOUND to the hosted run at `087736e` (ci 35174994149 (build-test job 105054615717: unit 2295/2295 and the meta suite 9/9, acceptance 58/58, the integration suite 1061/1061 in 70 files on a fresh database with `phase6-memory-derived` 6/6, the upgrade proof +58 rows / 79 files, C18 612/612 + 44; supply-chain green; browser-regression 48 passed — the B18 twenty and the B19 two on the hosted gate), C19 35174994150; the row's evidence names it — no promotion: the unit was `verified:ci` since B9); V02-T-118,
 V00-T-039, DP-37-001, DP-37-002, DP-37-005, CAP-UM-07 stay `partial` with the B19 clause; ES-29-002 carries the inheritance clause; L3-I01's
 `bound_to` gains the derivation clause (the register 36/14/0). The split stays **3,555 = 3,181 open + 339 local + 35 CI** (no unit promoted by
 a local run). No completion percentage; no deployment leg accepted.
@@ -3440,7 +3440,7 @@ with a derived watermark, the check strengthened to poisoned and missing rows, w
 tier's fallback); the communications/telemetry INGESTION connectors and the analyses object; the remaining fourteen interface contracts;
 every deployment leg (S7).
 
-**Acceptance work remaining** — B19's hosted run at its head, bound here once in a records commit; the merge of #55 on the owner's word with
+**Acceptance work remaining** — B19's hosted run at `087736e` is bound here once (no records-refresh chain); the merge of #55 on the owner's word with
 its chain green, then #56 retargeted and merged after it; Codex's bounded review of B18/B19 if the owner wants one; the owner's decision on a
 public host for the recipient; the owner's key for Comtrade; the owner's walk of the demonstration; B20 (index-tier degradation) next from the
 register; comprehensive hardening after the feature scope, with the residuals and the register rows left for it.
