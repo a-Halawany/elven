@@ -13,12 +13,27 @@
  * forecast says so. A forecast is `validated` only by a backtest with real
  * held-out history; a series too short to backtest is `validation_impossible`
  * and the forecast says that too.
+ *
+ * THE WITHDRAWAL (CP-6 B18, 0078; L6-I05). An issued forecast its owner judges
+ * unfit is WITHDRAWN, never edited: the withdrawn FCT version is admitted first
+ * (the shared rule, withdrawn-version.ts — lifecycle and truth state withdrawn,
+ * the reason and the unfit class), then the port marks the row, names the
+ * dependants (scenarios, warnings — marked by the port itself —, twin versions,
+ * runs, packages) and writes forecast.withdrawn; a refusal by the port rolls the
+ * admission back with it. The write publishes ForecastWithdrawn beside
+ * GraphChanged/forecast.withdrawn, and the consumers do the rest: the scenario
+ * marked, the package noted, the twin version unverified; a run citing it is
+ * NAMED here and invalidated by its reproduction or by the operator (a run is
+ * immutable). The issue's answer carries what ForecastIssued@v2 needs.
  */
 import { HttpException, Injectable } from '@nestjs/common';
 import { canonicalHeaderDigest, errorBody, validateHeader, type CanonicalHeader } from '@eye/contracts';
 import { newId } from '../../shared/ids.js';
 import type { ScopeContext } from '../../shared/scope.js';
+import { withdrawnVersionHeaderOf } from '../../shared/withdrawn-version.js';
+import { forecastWithdrawnGraphEvent, type OutboxRow } from '../../graph/subscriptions/change-events.js';
 import type { PredictionReads, ForecastWrites, BacktestWrites, OutcomeWrites } from '../prediction.capabilities.js';
+import { FORECAST_UNFIT_CLASSES, FORECAST_WITHDRAW_METHOD_REF, forecastWithdrawnEvent } from './forecast-events.js';
 import { SeriesService, cadenceOf, stepsFor, dayOf, type AssembledSeries, type Reader } from '../series/series.service.js';
 import { forecastWith, seasonalNaive, holtWinters, pinballMean, covered, SEASONAL_NAIVE, HOLT_WINTERS,
   MODEL_VERSION, T1_LOW, T1_HIGH, T2_SKILL, type ForecastOutput } from '../models/models.js';
@@ -106,7 +121,10 @@ export class ForecastingService {
     cap: ForecastWrites, ctx: ScopeContext, reader: Reader, a: IssueArgs, actor: string, correlationId: string, purposeId: string,
     /** Minted by the caller: the capability is bound to exactly this object before the transaction opens. */
     forecastId: string = newId(),
-  ): Promise<{ forecastId: string; method: string; validationState: string; validationNote: string; backtestId: string | null; controls: Controls; quantiles: Record<string, number>; statement: string; targetAt: string }> {
+  ): Promise<{ forecastId: string; method: string; validationState: string; validationNote: string; backtestId: string | null; controls: Controls; quantiles: Record<string, number>; statement: string; targetAt: string;
+               /** B18: what ForecastIssued@v2 carries beyond the v1 six — computed here, never re-read by the route. */
+               subjectEntityId: string | null; originAt: string; observedThrough: string | null; issuedAt: string; unit: string | null; drivers: unknown[]; assumptions: string[];
+               evidenceRefs: unknown[]; horizonDays: number; methodVersion: string; baselineMethod: string; skill: unknown | null }> {
     const horizonDays = HORIZONS[a.horizonCode];
     if (horizonDays === undefined) {
       throw new HttpException(errorBody('EYE_REQ_001', correlationId,
@@ -262,7 +280,51 @@ export class ForecastingService {
       actor, eventId: newId(), correlationId,
     });
     return { forecastId, method, validationState, validationNote, backtestId: validationState.startsWith('validated') ? String(bt?.['backtest_id']) : null,
-             controls, quantiles: { q10: round(out.quantiles.q10), q50: round(out.quantiles.q50), q90: round(out.quantiles.q90) }, statement, targetAt };
+             controls, quantiles: { q10: round(out.quantiles.q10), q50: round(out.quantiles.q50), q90: round(out.quantiles.q90) }, statement, targetAt,
+             subjectEntityId: assembled.series.subject_entity_id, originAt, observedThrough: assembled.observedThrough, issuedAt: now, unit: assembled.series.unit,
+             drivers, assumptions: a.assumptions, evidenceRefs: payload.evidence, horizonDays, methodVersion: MODEL_VERSION, baselineMethod: SEASONAL_NAIVE, skill };
+  }
+
+  /**
+   * WITHDRAW an issued forecast as unfit (governed write: `prediction.forecast.withdraw`; the owner's or the administrator's
+   * act, human-gated). The withdrawn FCT version is admitted BEFORE the port so a refusal (withdrawn already, superseded,
+   * resolved, unknown) rolls it back; the answer carries the port's dependants, the version admitted, and the two events
+   * the route publishes — ForecastWithdrawn and GraphChanged/forecast.withdrawn (the matching subscriptions read here).
+   */
+  async withdraw(
+    cap: ForecastWrites, ctx: ScopeContext, forecastId: string, a: { reason: string; unfitClass: string }, actor: string, correlationId: string, purposeId: string,
+  ): Promise<{ withdrawn: Record<string, unknown>; withdrawnVersion: number; event: OutboxRow; changed: OutboxRow }> {
+    const reason = a.reason.trim();
+    if (reason.length < 8) throw new HttpException(errorBody('EYE_REQ_001', correlationId, 'a withdrawal states its reason (payload.reason, at least 8 characters)'), 422);
+    if (!(FORECAST_UNFIT_CLASSES as readonly string[]).includes(a.unfitClass)) {
+      throw new HttpException(errorBody('EYE_REQ_001', correlationId, `payload.unfitClass is one of ${FORECAST_UNFIT_CLASSES.join(', ')}`), 422);
+    }
+    const tenantId = ctx.tenantId as string; const domainId = ctx.domainId as string;
+    const f = (await cap.readForecasts().selectAll().where('forecast_id' as never, '=', forecastId as never).executeTakeFirst()) as Record<string, unknown> | undefined;
+    if (f === undefined) throw new HttpException(errorBody('EYE_STA_001', correlationId, 'no authorized forecast matches'), 404);
+    // The object's LATEST version is what the withdrawal supersedes (a forecast has one version until it is withdrawn).
+    const prior = await cap.forecastObject({ forecastId, tenantId, domainId, version: null });
+    if (prior === undefined) throw new HttpException(errorBody('EYE_STA_001', correlationId, 'no authorized forecast matches'), 404);
+    const now = new Date().toISOString();
+    const header = withdrawnVersionHeaderOf(prior, {
+      actor, correlationId, purposeId, recordedAt: now, methodRef: FORECAST_WITHDRAW_METHOD_REF,
+      withdrawalReason: `withdrawn as unfit (${a.unfitClass}): ${reason}`, evidenceRef: null,
+    });
+    const v = validateHeader(header);
+    if (!v.ok) throw new HttpException(errorBody('EYE_REQ_001', correlationId, `withdrawn forecast header invalid: ${(v.errors ?? []).join('; ')}`), 422);
+    const payload = (prior['payload'] !== null && typeof prior['payload'] === 'object' ? prior['payload'] : {}) as Record<string, unknown>;
+    await cap.admitObject(header, payload, canonicalHeaderDigest(header, payload));
+    const withdrawnVersion = Number(header.object_version);
+    const withdrawn = await cap.withdrawForecast({ forecastId, tenantId, domainId, reason, unfitClass: a.unfitClass, actor, eventId: newId(), correlationId });
+    const dependants = (withdrawn['dependants'] !== null && typeof withdrawn['dependants'] === 'object' ? withdrawn['dependants'] : {}) as Record<string, unknown>;
+    const event = forecastWithdrawnEvent({ withdrawn, reason, unfitClass: a.unfitClass, withdrawnVersion, actor, occurredAt: now });
+    const changed = forecastWithdrawnGraphEvent({
+      forecastId, seriesKey: String(withdrawn['series_key'] ?? f['series_key']), horizon: String(withdrawn['horizon'] ?? f['horizon_code']),
+      subjectEntityId: typeof withdrawn['subject_entity_id'] === 'string' ? withdrawn['subject_entity_id'] : null,
+      reason, unfitClass: a.unfitClass, withdrawnAt: String(withdrawn['withdrawn_at'] ?? now), dependants,
+      subscriptions: await cap.changeSubscriptions({ tenantId, domainId, changeKind: 'forecast.withdrawn' }), actor, occurredAt: now,
+    });
+    return { withdrawn, withdrawnVersion, event, changed };
   }
 
   /**

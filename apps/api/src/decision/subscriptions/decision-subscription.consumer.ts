@@ -15,6 +15,17 @@
  * state. The choice, the options and the package state are never rewritten (V3 §32: no automatic rewrite of a human
  * decision).
  *
+ * THE LIFECYCLE KINDS (0078, B18; D16, C7, C13). A forecast an option cites WITHDRAWN as unfit
+ * (GraphChanged/forecast.withdrawn) or a run it cites INVALIDATED (GraphChanged/simulation.invalidated) is a CATEGORICAL
+ * loss of the input — nothing is measured because nothing replaced it — and is exposed as `material_change` (human review
+ * for an open package, compensation for one whose decision was executed) with a note built from the event's typed block
+ * (never a second read of the forecast or the run); the ledger event stays `input.invalidated`. The exposure is ONE chain:
+ * a lifecycle loss, else a material recomputation, else an executed package's changed input. A twin's OWN admission
+ * (GraphChanged/twin.state_changed, whose objects.simulations are the SUPERSEDED version's runs) is noted on the packages
+ * citing those runs WITHOUT exposure: the runs stand — a newer twin version exists and the owner judges whether to
+ * re-simulate. A REOPENED package (0078, D11; C8) is open — its new draft hears of its inputs — and its standing commitment
+ * is executed until it is re-committed.
+ *
  * Items are package ids.
  */
 import { Injectable, type OnModuleInit } from '@nestjs/common';
@@ -24,9 +35,10 @@ import type { ChangeEvent, SubscriptionConsumer } from '../../graph/subscription
 import { DecisionCapability, type DecisionSubscriberWrites } from '../decision.capabilities.js';
 
 type Row = Record<string, unknown>;
-const OPEN_STATES = ['draft', 'proposed', 'under_review', 'approved', 'committed', 'monitoring'];
-/** States in which the decision has been executed on the world (committed, being monitored): AU-MEM-0039's "committed action already executed". */
-const EXECUTED_STATES = ['committed', 'monitoring'];
+// 0078 (C8): a reopened package is open — the draft the reopen carried hears of the inputs it cites.
+const OPEN_STATES = ['draft', 'proposed', 'under_review', 'approved', 'committed', 'monitoring', 'reopened'];
+/** States in which the decision has been executed on the world (committed, being monitored; reopened — the standing commitment is executed until re-committed, 0078): AU-MEM-0039's "committed action already executed". */
+const EXECUTED_STATES = ['committed', 'monitoring', 'reopened'];
 /** The default materiality rule: a relative shift of the central estimate at or above this is material; so is leaving the old band. */
 const DEFAULT_RELATIVE_Q50 = 0.10;
 interface Materiality { rule: { relative_q50: number; band: boolean }; old_q50: number | null; new_q50: number | null; relative: number | null; outside_band: boolean | null; material: boolean; superseded: string; superseding: string }
@@ -114,8 +126,31 @@ export class DecisionSubscriptionConsumer implements SubscriptionConsumer<Decisi
   async applyItem(cap: DecisionSubscriberWrites, scope: { tenantId: string; domainId: string }, event: ChangeEvent, item: string, actor: string, correlationId: string, subscriptionId: string, policy?: Record<string, unknown>) {
     const a = (await this.affected(cap, event)).get(item) ?? { via: [], state: 'unknown', executed: false, citedForecast: null };
     const measure = await this.materiality(cap, event, policy, a.citedForecast);
+    // 0078 (B18): the lifecycle kinds are read from the event's typed block — the withdrawal, the invalidation, the admission.
+    const p = event.event_type === 'GraphChanged' ? event.payload : null;
+    const lifecycle = p !== null && (p.change.kind === 'forecast.withdrawn' || p.change.kind === 'simulation.invalidated') ? p : null;
+    // The admission is keyed on the KIND (C13): its typed block is read for the note; the objects.twins entry names the twin either way.
+    const admission = p !== null && p.change.kind === 'twin.state_changed'
+      ? { twin_id: p.twin?.twin_id ?? p.objects.twins[0] ?? null, version: p.twin?.version ?? null, supersedes: p.twin?.supersedes ?? null, branch_id: p.twin?.branch_id ?? null }
+      : null;
+    const lifecycleDetails = lifecycle === null
+      ? admission === null ? null : { kind: 'twin.state_changed', twin_id: admission.twin_id, version: admission.version, supersedes: admission.supersedes }
+      : lifecycle.change.kind === 'forecast.withdrawn'
+        ? { kind: 'forecast.withdrawn', ref: lifecycle.forecast?.forecast_id ?? null, reason: lifecycle.forecast?.reason ?? null, unfit_class: lifecycle.forecast?.unfit_class ?? null }
+        : { kind: 'simulation.invalidated', ref: lifecycle.simulation?.run_id ?? null, reason: lifecycle.simulation?.reason ?? null, trigger: lifecycle.simulation?.trigger ?? null };
     let exposure: { failureClass: 'executed_action' | 'material_change'; disposition: 'compensation' | 'human_review'; note: string } | undefined;
-    if (measure !== null && measure.material) {
+    if (lifecycle !== null) {
+      // A CATEGORICAL loss of a cited input (0078, D16): the forecast withdrawn as unfit, the run's result invalidated — routed as
+      // material because nothing replaced it and the change cannot be shown immaterial. The note is the block's, never a re-read.
+      const what = lifecycle.change.kind === 'forecast.withdrawn'
+        ? `forecast ${lifecycle.forecast?.forecast_id} (the one the option cites) was WITHDRAWN as unfit (${lifecycle.forecast?.unfit_class}): ${lifecycle.forecast?.reason}`
+        : `run ${lifecycle.simulation?.run_id} (the one the option cites) was INVALIDATED (${lifecycle.simulation?.trigger}): ${lifecycle.simulation?.reason}`;
+      exposure = { failureClass: 'material_change', disposition: a.executed ? 'compensation' : 'human_review',
+                   note: `${what} — a categorical loss of a cited input, routed as material because it cannot be shown immaterial; ${a.executed ? 'the decision was executed: compensation, challenge or a reopen (decision.package.reopen) is the owner\'s' : 'the owner reviews the package'}` };
+    } else if (admission !== null) {
+      // A twin's OWN admission (0078, C13): the cited runs rest on the superseded version and STAND — noted, no exposure; the
+      // owner judges whether to re-simulate. Not an executed package's changed input: nothing the package rests on changed.
+    } else if (measure !== null && measure.material) {
       // A recomputation changed the recommendation's basis MATERIALLY: exposed with its measure; the route depends on whether the
       // decision was executed. Nothing is rewritten — the owner re-opens a version or compensates.
       exposure = { failureClass: 'material_change', disposition: a.executed ? 'compensation' : 'human_review',
@@ -127,12 +162,15 @@ export class DecisionSubscriptionConsumer implements SubscriptionConsumer<Decisi
     }
     const details = { event_type: event.event_type, change_kind: event.payload.change.kind, via: a.via, package_state: a.state, executed: a.executed,
                       ...(measure === null ? {} : { recomputation: measure }),
+                      ...(lifecycleDetails === null ? {} : { lifecycle: lifecycleDetails }),
                       ...(exposure === undefined ? {} : { failure_class: exposure.failureClass, disposition: exposure.disposition }),
-                      note: exposure?.note ?? (measure === null ? 'an input this package cites changed; the package, its approvals and its commitment are unchanged — the owner decides'
-                                                                  : `a recomputation superseded forecast ${measure.superseded} (the one the option cites) with ${measure.superseding}; the change (${measure.relative === null ? 'unmeasurable' : `${(measure.relative * 100).toFixed(1)} %`}) is within the declared rule — noted, no review routed`) };
+                      note: exposure?.note ?? (admission !== null
+                                                 ? `twin ${admission.twin_id} has a newer admitted version ${admission.version} (branch ${admission.branch_id}); the cited runs rest on version ${admission.supersedes} and stand; the owner judges whether to re-simulate`
+                                                 : measure === null ? 'an input this package cites changed; the package, its approvals and its commitment are unchanged — the owner decides'
+                                                                    : `a recomputation superseded forecast ${measure.superseded} (the one the option cites) with ${measure.superseding}; the change (${measure.relative === null ? 'unmeasurable' : `${(measure.relative * 100).toFixed(1)} %`}) is within the declared rule — noted, no review routed`) };
     const noted = await cap.noteInputInvalidated({ packageId: item, tenantId: scope.tenantId, domainId: scope.domainId, details, outboxEventId: event.event_id, subscriptionId, actor, correlationId });
     const effect = measure === null ? 'input.invalidated' : measure.material ? 'input.recomputed_materially' : 'input.recomputed';
-    const base = noted ? { effect, effectRef: item, details: { via: a.via, package_state: a.state, executed: a.executed, ...(measure === null ? {} : { recomputation: measure }) } }
+    const base = noted ? { effect, effectRef: item, details: { via: a.via, package_state: a.state, executed: a.executed, ...(measure === null ? {} : { recomputation: measure }), ...(lifecycleDetails === null ? {} : { lifecycle: lifecycleDetails }) } }
                        : { effect: 'input.already_noted', effectRef: item, details: { package_state: a.state, executed: a.executed } };
     return exposure === undefined ? base : { ...base, exposure };
   }

@@ -11,9 +11,9 @@ import type { ScopeContext } from '../../shared/scope.js';
 import type { ExecutiveReads, RoomWrites } from '../executive.capabilities.js';
 
 const iso = (v: unknown): string | null => (v === null || v === undefined ? null : (v instanceof Date ? v.toISOString() : new Date(String(v)).toISOString()));
-/** open · deciding · monitoring · closed — from the package's state. */
+/** open · deciding · monitoring · closed — from the package's state (B18, 0078: a REOPENED package has a draft open again; its standing commitment is monitored by the decision module, not the room). */
 export function roomStateOf(packageState: string): 'open' | 'deciding' | 'monitoring' | 'closed' {
-  if (['draft', 'proposed'].includes(packageState)) return 'open';
+  if (['draft', 'proposed', 'reopened'].includes(packageState)) return 'open';
   if (['under_review', 'approved'].includes(packageState)) return 'deciding';
   if (['committed', 'monitoring'].includes(packageState)) return 'monitoring';
   return 'closed';

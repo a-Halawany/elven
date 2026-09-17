@@ -264,9 +264,10 @@ jobs:
         run: pnpm db:migrate
       - name: Install Chrome (stable channel)
         run: pnpm exec playwright install chrome
-      # Both browser suites run in one invocation: the Phase 0 ten stay a standing
-      # regression gate, and the Phase 1 sixteen are the A12 acceptance journey.
-      - name: Browser regression gate (Phase 0 ten + Phase 1 A12 sixteen, blocking)
+      # Every browser suite runs in one invocation: the Phase 0 ten stay a standing
+      # regression gate, the Phase 1 sixteen are the A12 acceptance journey, and the B18 twenty walk the
+      # retention and memory workspaces (e2e/phase6-*.spec.ts; the tenant acts through the working-domain chooser).
+      - name: Browser regression gate (Phase 0 ten + Phase 1 A12 sixteen + B18 twenty — the retention and memory walks, blocking)
         env:
           EYE_DB_HOST: localhost
           EYE_DB_MIGRATE_PASSWORD: ${{ env.EYE_DB_PASSWORD }}

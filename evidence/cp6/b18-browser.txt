@@ -1,0 +1,62 @@
+=== the browser gate at the B18 tree (pnpm exec playwright test — playwright.config.ts starts apps/api/dist/main.js on :3401 with the run's generated Ed25519 signing key and apps/web on :3000; the demonstration API stopped for the run) on a fresh database eye_browser_20260917 (0001–0078) with isolated vault roots, 2026-09-16 — the Phase 0 ten, the Phase 1 sixteen, the B18 twenty (e2e/phase6-memory.spec.ts 7, e2e/phase6-retention.spec.ts 13: the TENANT acts through the working-domain chooser) ===
+
+[WebServer] $ next start -p 3000
+[WebServer] ⚠ Warning: Next.js ignored pnpm-workspace.yaml in /Users/halawany/work/personal/mohammed because it is outside the current Git repository (/Users/halawany/work/personal/mohammed/new_project).
+[WebServer]  To use this directory, set `outputFileTracingRoot` in your Next.js config.
+[WebServer] 
+[WebServer] ⚠ "next start" does not work with "output: standalone" configuration. Use "node .next/standalone/server.js" instead.
+
+Running 46 tests using 1 worker
+
+
+  ✓   1 e2e/phase0.spec.ts:157:7 › Phase 0 browser regression › 1. platform administrator login (UI) (532ms)
+  ✓   2 e2e/phase0.spec.ts:164:7 › Phase 0 browser regression › 2. governed tenant and domain creation with review step (UI) (456ms)
+  ✓   3 e2e/phase0.spec.ts:177:7 › Phase 0 browser regression › 3. ambiguous scope fails closed (EYE-TEN-001) (9ms)
+  ✓   4 e2e/phase0.spec.ts:187:7 › Phase 0 browser regression › 4. cross-tenant access denied without metadata leakage (6ms)
+  ✓   5 e2e/phase0.spec.ts:200:7 › Phase 0 browser regression › 5. canonical object v1 → v2 correction visible in UI history (460ms)
+  ✓   6 e2e/phase0.spec.ts:214:7 › Phase 0 browser regression › 6. known-at query returns the pre-correction state (UI) (504ms)
+  ✓   7 e2e/phase0.spec.ts:235:7 › Phase 0 browser regression › 7. policy denial in UI + obligation evidence on audit view (578ms)
+  ✓   8 e2e/phase0.spec.ts:250:7 › Phase 0 browser regression › 8. audit viewer shows events and chain-integrity status (UI) (478ms)
+  ✓   9 e2e/phase0.spec.ts:259:7 › Phase 0 browser regression › 9. keyboard navigation and basic accessibility (288ms)
+  ✓  10 e2e/phase0.spec.ts:277:7 › Phase 0 browser regression › 10. light/dark presentation and RTL-layout smoke (286ms)
+  ✓  11 e2e/phase1-observation.spec.ts:235:7 › Phase 1 — Observation Operations (A12) › 1. the registrar registers a source through the four-step form (494ms)
+  ✓  12 e2e/phase1-observation.spec.ts:283:7 › Phase 1 — Observation Operations (A12) › 2. the registrar cannot approve their own registration (465ms)
+  ✓  13 e2e/phase1-observation.spec.ts:293:7 › Phase 1 — Observation Operations (A12) › 3. a second operator approves and activates it (490ms)
+  ✓  14 e2e/phase1-observation.spec.ts:307:7 › Phase 1 — Observation Operations (A12) › 4. collection admits evidence and quarantines the drifted row (1.7s)
+  ✓  15 e2e/phase1-observation.spec.ts:332:7 › Phase 1 — Observation Operations (A12) › 5. coverage reports the planted gap rather than rounding it away (470ms)
+  ✓  16 e2e/phase1-observation.spec.ts:348:7 › Phase 1 — Observation Operations (A12) › 6. the health timeline replays deterministically from stored events (446ms)
+  ✓  17 e2e/phase1-observation.spec.ts:355:7 › Phase 1 — Observation Operations (A12) › 7. evidence custody, the four times, and a safe attachment-only download (539ms)
+  ✓  18 e2e/phase1-observation.spec.ts:382:7 › Phase 1 — Observation Operations (A12) › 8. quarantine shows the refusal and requires a reason and a second operator (575ms)
+  ✓  19 e2e/phase1-observation.spec.ts:403:7 › Phase 1 — Observation Operations (A12) › 9. a correction supersedes without overwriting, and states what it did not resolve (509ms)
+  ✓  20 e2e/phase1-observation.spec.ts:423:7 › Phase 1 — Observation Operations (A12) › 10. a known-at query reproduces the pre-correction state (396ms)
+  ✓  21 e2e/phase1-observation.spec.ts:433:7 › Phase 1 — Observation Operations (A12) › 11. keyboard operation, landmarks and labels (363ms)
+  ✓  22 e2e/phase1-observation.spec.ts:473:7 › Phase 1 — Observation Operations (A12) › 12. state is never carried by colour alone (381ms)
+  ✓  23 e2e/phase1-observation.spec.ts:490:7 › Phase 1 — Observation Operations (A12) › 13. a denied view discloses nothing about another domain (346ms)
+  ✓  24 e2e/phase1-observation.spec.ts:504:7 › Phase 1 — Observation Operations (A12) › 14. the shell mirrors under RTL and never scrolls the page sideways (399ms)
+  ✓  25 e2e/phase1-observation.spec.ts:521:7 › Phase 1 — Observation Operations (A12) › 15. projections rebuild from the event log with no drift (A11) (29ms)
+  ✓  26 e2e/phase1-observation.spec.ts:535:5 › replay fixtures are present and self-consistent (7ms)
+  ✓  27 e2e/phase6-memory.spec.ts:235:7 › CP-6 B18 — Enterprise Memory (AU-MEM-0065 through the workspace) › 1. the knowledge owner records a memory item through the form (469ms)
+  ✓  28 e2e/phase6-memory.spec.ts:269:7 › CP-6 B18 — Enterprise Memory (AU-MEM-0065 through the workspace) › 2. the owner retrieves under the admitted purpose (the access recorded), and is refused under a purpose outside the audience (771ms)
+  ✓  29 e2e/phase6-memory.spec.ts:297:7 › CP-6 B18 — Enterprise Memory (AU-MEM-0065 through the workspace) › 3. the record authority supersedes from the served version (1.7s)
+  ✓  30 e2e/phase6-memory.spec.ts:318:7 › CP-6 B18 — Enterprise Memory (AU-MEM-0065 through the workspace) › 4. an as-of retrieval serves version 1, replayed (576ms)
+  ✓  31 e2e/phase6-memory.spec.ts:342:7 › CP-6 B18 — Enterprise Memory (AU-MEM-0065 through the workspace) › 5. the knowledge owner's withdrawal is refused (436ms)
+  ✓  32 e2e/phase6-memory.spec.ts:352:7 › CP-6 B18 — Enterprise Memory (AU-MEM-0065 through the workspace) › 6. the record authority withdraws; a current retrieval is refused in the page's words; the versions stay replayable (584ms)
+  ✓  33 e2e/phase6-memory.spec.ts:374:7 › CP-6 B18 — Enterprise Memory (AU-MEM-0065 through the workspace) › 7. keyboard operation, landmarks and names (378ms)
+  ✓  34 e2e/phase6-retention.spec.ts:393:7 › CP-6 B18 — Retention (the TENANT acts through the working-domain chooser) › 1. the steward opens a customer export on the two records and resolves its scope (646ms)
+  ✓  35 e2e/phase6-retention.spec.ts:424:7 › CP-6 B18 — Retention (the TENANT acts through the working-domain chooser) › 2. the tenant administrator chooses the origin domain from the list and approves on the digest (the chooser, listed) (730ms)
+  ✓  36 e2e/phase6-retention.spec.ts:451:7 › CP-6 B18 — Retention (the TENANT acts through the working-domain chooser) › 3. the steward executes and verifies; the record shows the signed package (784ms)
+  ✓  37 e2e/phase6-retention.spec.ts:481:7 › CP-6 B18 — Retention (the TENANT acts through the working-domain chooser) › 4. the origin's administrator declares a transfer station and delivers the package (665ms)
+  ✓  38 e2e/phase6-retention.spec.ts:505:7 › CP-6 B18 — Retention (the TENANT acts through the working-domain chooser) › 5. the mirror's administrator declares the partner on the tenant's public key, and a station of its own at the same directory (574ms)
+  ✓  39 e2e/phase6-retention.spec.ts:529:7 › CP-6 B18 — Retention (the TENANT acts through the working-domain chooser) › 6. the mirror's steward opens the import from the station: verified, with the checks table (642ms)
+  ✓  40 e2e/phase6-retention.spec.ts:562:7 › CP-6 B18 — Retention (the TENANT acts through the working-domain chooser) › 7. the retention authority pastes the mirror as its working domain and approves the import on its digest (the chooser, pasted) (548ms)
+  ✓  41 e2e/phase6-retention.spec.ts:581:7 › CP-6 B18 — Retention (the TENANT acts through the working-domain chooser) › 8. the mirror's steward admits the import; the origin's record lists the importer (852ms)
+  ✓  42 e2e/phase6-retention.spec.ts:603:7 › CP-6 B18 — Retention (the TENANT acts through the working-domain chooser) › 9. the origin's administrator revokes the package: the importing domain is notified and its revocation is pending for its own steward (606ms)
+  ✓  43 e2e/phase6-retention.spec.ts:623:7 › CP-6 B18 — Retention (the TENANT acts through the working-domain chooser) › 10. the mirror's steward executes the revocation from the origin's record: the copies destroyed, the bytes removed, the origin answered (the B18 bytes line) (570ms)
+  ✓  44 e2e/phase6-retention.spec.ts:643:7 › CP-6 B18 — Retention (the TENANT acts through the working-domain chooser) › 11. a second revoke answers retried with nothing to remove; the origin's notice is acknowledged (794ms)
+  ✓  45 e2e/phase6-retention.spec.ts:663:7 › CP-6 B18 — Retention (the TENANT acts through the working-domain chooser) › 12. refusals in the page's own words (641ms)
+  ✓  46 e2e/phase6-retention.spec.ts:679:7 › CP-6 B18 — Retention (the TENANT acts through the working-domain chooser) › 13. fail closed: a platform principal still has no domain to open; a tenant principal without a choice sees the chooser, and the choice is the principal's (648ms)
+
+  46 passed (33.4s)
+playwright exit 0
+
+(the first run of the gate at this tree: 40 passed, 2 failed — the memory walk's as-of instant landed after a supersession 2 s later, and the retention walk counted Next.js's route announcer as an alert; both spec-side, corrected: the supersession held 2.5 s after the recording and the as-of instant the first whole second after it; the alert count scoped to <main>)

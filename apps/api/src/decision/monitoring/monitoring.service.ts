@@ -41,7 +41,8 @@ export class MonitoringService {
     if (!['committed', 'monitoring'].includes(String(p['state']))) throw new HttpException(errorBody('EYE_STA_001', correlationId, `package is ${String(p['state'])}; outcomes are recorded on a committed decision`), 409);
     const version = Number(p['committed_version']);
     const v = (await cap.readVersions().selectAll().where('package_id' as never, '=', packageId as never).where('version' as never, '=', version as never).executeTakeFirst()) as Record<string, unknown>;
-    const commitment = (await cap.readCommitments().selectAll().where('package_id' as never, '=', packageId as never).executeTakeFirst()) as Record<string, unknown> | undefined;
+    // B18 (0078): one commitment per COMMITTED VERSION — the outcome closes the loop on the STANDING one (the package row's committed_version).
+    const commitment = (await cap.readCommitments().selectAll().where('package_id' as never, '=', packageId as never).where('version' as never, '=', version as never).executeTakeFirst()) as Record<string, unknown> | undefined;
     if (commitment === undefined) throw new HttpException(errorBody('EYE_STA_001', correlationId, 'the package has no commitment'), 409);
     const choice = v['choice'] as Record<string, unknown>;
     const criterion = (choice['outcome_criteria'] as Array<Record<string, unknown>>).find((k) => k['key'] === intake.criterionKey);

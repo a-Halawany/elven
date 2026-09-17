@@ -63,6 +63,10 @@ export interface TwinReads {
   readClaimLineage(): any;
   readResolutions(): any;
   readEdges(): any;
+  /** B18 (0078): the runs that rest on a twin version (simulation.runs_current), named by an admission's announcement as its dependency impacts. */
+  readRuns(): any;
+  /** B18 (0078): what is subscribed to a GraphChanged of this kind at PUBLICATION — evidence the event carries, never authority (the dispatcher re-resolves at delivery). */
+  changeSubscriptions(a: { tenantId: string; domainId: string; changeKind: string }): Promise<Array<{ subscription_id: string; consumer_kind: string }>>;
   /** The exact object version a citation names (latest when version is null), under RLS. */
   citedObject(a: { objectType: string; id: string; version: number | null }): Promise<CitedObjectRow | undefined>;
   entity(id: string): Promise<EntityRow | undefined>;
@@ -138,6 +142,11 @@ class TwinCapabilityImpl extends TwinCore implements DeclareWrites, VersionWrite
   readClaimLineage(): any { return this.from('intelligence.claim_lineage'); }
   readResolutions(): any { return this.from('graph.resolutions_current'); }
   readEdges(): any { return this.from('graph.edges_current'); }
+  readRuns(): any { return this.from('simulation.runs_current'); }
+  async changeSubscriptions(a: { tenantId: string; domainId: string; changeKind: string }): Promise<Array<{ subscription_id: string; consumer_kind: string }>> {
+    const rows = await this.call<{ s: Array<{ subscription_id: string; consumer_kind: string }> }>(sql`select graph.subscriptions_matching(${a.tenantId}::uuid, ${a.domainId}::uuid, 'GraphChanged', ${a.changeKind}) as s`);
+    return rows[0]?.s ?? [];
+  }
 
   async citedObject(a: { objectType: string; id: string; version: number | null }): Promise<CitedObjectRow | undefined> {
     const rows = await this.call<CitedObjectRow>(sql`

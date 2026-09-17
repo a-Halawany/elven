@@ -9,6 +9,11 @@
  * admits it under decision.commit, and the port verifies the C3 class and bound
  * action in the authority context, recounts the live quorum under a package lock,
  * and writes the CMT row and its dependencies.
+ *
+ * B18 (0078): a committed decision is REOPENED, never re-committed over — the guard
+ * here and the port's say the same sentence; a reopened, re-proposed and re-approved
+ * package commits ANEW (a second commitment row, `reopened_from` said). The answer
+ * carries what the route's DecisionCommitted names.
  */
 import { HttpException, Injectable } from '@nestjs/common';
 import { canonicalHeaderDigest, errorBody, validateHeader, type CanonicalHeader } from '@eye/contracts';
@@ -80,7 +85,10 @@ export class ApprovalService {
     const v = (await cap.readVersions().selectAll().where('package_id' as never, '=', packageId as never).where('version' as never, '=', version as never).executeTakeFirst()) as Record<string, unknown> | undefined;
     if (p === undefined || v === undefined) state(correlationId, 'no authorized package version matches', 404);
     const pkg = p as Record<string, unknown>; const pv = v as Record<string, unknown>;
-    if (pkg['committed_version'] !== null && pkg['committed_version'] !== undefined) state(correlationId, `package is already committed at version ${String(pkg['committed_version'])}`);
+    // B18: the port's own sentence (decision.commit_package, 0078) — a reopened package commits anew; a standing commitment is never committed over.
+    if (pkg['committed_version'] !== null && pkg['committed_version'] !== undefined && ['committed', 'monitoring', 'closed'].includes(String(pkg['state']))) {
+      state(correlationId, `commitment rejected: package is already committed at version ${String(pkg['committed_version'])} and the commitment stands; a committed decision is reopened (decision.package.reopen), never re-committed over`);
+    }
     if (pv['state'] !== 'approved') state(correlationId, `version ${version} is ${String(pv['state'])}, not approved`);
     if (typeof versionDigest !== 'string' || pv['version_digest'] !== versionDigest) state(correlationId, `the digest committed is not the digest of version ${version}`);
     const live = await cap.liveApprovals({ packageId, version });
@@ -124,6 +132,12 @@ export class ApprovalService {
     const headerDigest = canonicalHeaderDigest(header, payload);
     await cap.admitObject(header, payload, headerDigest);
     const r = await cap.commitPackage({ commitmentId, tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, packageId, version, committer, versionDigest, headerDigest, title, statement, eventId: newId(), correlationId });
-    return { commitmentId: r.commitment_id, packageId, version, approvals: r.approvals, opClass: r.op_class, decidedAt: r.decided_at, title };
+    return {
+      commitmentId: r.commitment_id, packageId, version, approvals: r.approvals, opClass: r.op_class, decidedAt: r.decided_at, title,
+      // B18: what DecisionCommitted names (the route builds it in this transaction).
+      versionDigest, boundAction: 'decision.commit', policyDecisionId: r.policy_decision_id ?? null, choice, decisionObjectId: String(pkg['decision_object_id']),
+      objectives: (pv['objectives'] as string[]).map(String), runs: runs.map((x) => x.id), baselineRunId: pv['baseline_run_id'] === null || pv['baseline_run_id'] === undefined ? null : String(pv['baseline_run_id']),
+      monitoringConditions: Array.isArray(pv['monitoring_conditions']) ? (pv['monitoring_conditions'] as unknown[]) : [], cmtHeaderDigest: headerDigest, reopenedFrom: (r.reopened_from ?? null) as Record<string, unknown> | null,
+    };
   }
 }

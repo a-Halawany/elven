@@ -6,7 +6,9 @@
  * A decision owner holds `declare`, `version`, `option`, `terms`, `choice`, `propose`
  * and `withdraw` one at a time — each a separate governed write with its own receipt.
  * Dissent is its own capability (a named human, on their own behalf). Approvals,
- * commitment, outcomes and replay arrive with 0042/0043.
+ * commitment, outcomes and replay arrive with 0042/0043; the REOPEN (0078, B18) is
+ * the owner's own — a committed decision re-enters the lifecycle on a recorded
+ * cause, its commitment standing.
  */
 import { sql } from 'kysely';
 import type { Tx } from '../shared/db.js';
@@ -115,9 +117,15 @@ export interface ApproveWrites extends DecisionReads {
 }
 export interface CommitWrites extends DecisionReads {
   admitObject(header: unknown, payload: unknown, digest: string): Promise<{ contentDigest: string }>;
+  /** 0078 (B18): a package reopened, re-proposed and re-approved commits ANEW — a second commitment row; `reopened_from` says so. */
   commitPackage(a: { commitmentId: string; tenantId: string; domainId: string; packageId: string; version: number; committer: string; versionDigest: string; headerDigest: string;
                      title: string; statement: string; eventId: string; correlationId: string }):
-    Promise<{ commitment_id: string; approvals: Array<{ approval_id: string; approver: string }>; op_class: string; decided_at: string }>;
+    Promise<{ commitment_id: string; approvals: Array<{ approval_id: string; approver: string }>; op_class: string; decided_at: string; policy_decision_id: string | null; reopened_from?: Record<string, unknown> | null }>;
+}
+/** B18 (0078, L9-I05): the REOPEN — the package owner re-enters a committed decision's lifecycle on a RECORDED cause (an input.invalidated note after the commitment, or a breach of the committed version), by its id. */
+export interface ReopenWrites extends DecisionReads {
+  reopenPackage(a: { packageId: string; tenantId: string; domainId: string; cause: { kind: 'input_invalidated' | 'condition_breach'; ref: string }; knownAt: string | null; observedThrough: string | null;
+                     actor: string; eventId: string; correlationId: string }): Promise<Record<string, unknown>>;
 }
 export interface ReplayWrites extends DecisionReads {
   admitObject(header: unknown, payload: unknown, digest: string): Promise<{ contentDigest: string }>;
@@ -148,7 +156,7 @@ export interface DecisionSubscriberWrites extends DecisionReads {
   noteInputInvalidated(a: { packageId: string; tenantId: string; domainId: string; details: Record<string, unknown>; outboxEventId: string; subscriptionId: string; actor: string; correlationId: string }): Promise<boolean>;
 }
 
-class DecisionCapabilityImpl extends DecisionCore implements DeclareWrites, VersionWrites, OptionWrites, TermsWrites, ChoiceWrites, DissentWrites, ProposeWrites, WithdrawWrites, ApproveWrites, CommitWrites, ReplayWrites, MonitorWrites, OutcomeWrites, CloseWrites, DecisionSubscriberWrites {
+class DecisionCapabilityImpl extends DecisionCore implements DeclareWrites, VersionWrites, OptionWrites, TermsWrites, ChoiceWrites, DissentWrites, ProposeWrites, WithdrawWrites, ApproveWrites, CommitWrites, ReplayWrites, MonitorWrites, OutcomeWrites, CloseWrites, DecisionSubscriberWrites, ReopenWrites {
   constructor(tx: Tx, action: string) { super(tx, action); }
 
   readPackages(): any { return this.from('decision.packages_current'); }
@@ -294,7 +302,7 @@ class DecisionCapabilityImpl extends DecisionCore implements DeclareWrites, Vers
     return r;
   }
   async commitPackage(a: Parameters<CommitWrites['commitPackage']>[0]) {
-    const rows = await this.call<{ r: { commitment_id: string; approvals: Array<{ approval_id: string; approver: string }>; op_class: string; decided_at: string } }>(sql`select decision.commit_package(
+    const rows = await this.call<{ r: { commitment_id: string; approvals: Array<{ approval_id: string; approver: string }>; op_class: string; decided_at: string; policy_decision_id: string | null; reopened_from?: Record<string, unknown> | null } }>(sql`select decision.commit_package(
       ${a.commitmentId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.packageId}::uuid, ${a.version}::int, ${a.committer}::uuid, ${a.versionDigest}, ${a.headerDigest},
       ${a.title}, ${a.statement}, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`);
     const r = rows[0]?.r;
@@ -303,6 +311,11 @@ class DecisionCapabilityImpl extends DecisionCore implements DeclareWrites, Vers
   }
   async withdrawPackage(a: Parameters<WithdrawWrites['withdrawPackage']>[0]): Promise<void> {
     await this.call(sql`select decision.withdraw_package(${a.packageId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
+  }
+  async reopenPackage(a: Parameters<ReopenWrites['reopenPackage']>[0]): Promise<Record<string, unknown>> {
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select decision.reopen_package(${a.packageId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid,
+      ${JSON.stringify(a.cause)}::jsonb, ${a.knownAt}::timestamptz, ${a.observedThrough}::date, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`);
+    const r = rows[0]?.r; if (r === undefined) throw new Error('reopen returned no row'); return r;
   }
   async noteInputInvalidated(a: Parameters<DecisionSubscriberWrites['noteInputInvalidated']>[0]): Promise<boolean> {
     const rows = await this.call<{ ok: boolean }>(sql`select decision.note_input_invalidated(${a.packageId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${JSON.stringify(a.details)}::jsonb, ${a.outboxEventId}::uuid, ${a.subscriptionId}::uuid, ${a.actor}::uuid, ${a.correlationId}::uuid) as ok`);
@@ -328,4 +341,5 @@ export const DecisionCapability = {
   monitor(tx: Tx, action: string): MonitorWrites { return new DecisionCapabilityImpl(tx, action); },
   outcome(tx: Tx, action: string): OutcomeWrites { return new DecisionCapabilityImpl(tx, action); },
   close(tx: Tx, action: string): CloseWrites { return new DecisionCapabilityImpl(tx, action); },
+  reopen(tx: Tx, action: string): ReopenWrites { return new DecisionCapabilityImpl(tx, action); },
 };

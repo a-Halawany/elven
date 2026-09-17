@@ -13,6 +13,13 @@
  * judged against which measurable outcomes — is set on a draft and proposed with it:
  * a different choice is a different version, and an approval (0042) signs the digest
  * that includes it.
+ *
+ * B18 (0078): the proposal is ANNOUNCED (DecisionPackageReady, built by the route from
+ * what propose() read) and a committed decision is REOPENED on a recorded cause — the
+ * port opens a new draft carried from the committed version, drops and names the
+ * options that no longer stand, and leaves the commitment, its approvals and the
+ * committed version as they are; one commitment per COMMITTED VERSION, the standing
+ * one the package row's `committed_version`.
  */
 import { HttpException, Injectable } from '@nestjs/common';
 import { canonicalHeaderDigest, errorBody, validateHeader, type CanonicalHeader } from '@eye/contracts';
@@ -22,8 +29,9 @@ import { foldControls, type Controls, type ControlInput } from '../../prediction
 import type { AuthenticatedPrincipal } from '../../shared/auth-types.js';
 import { assertClearance, assertPurpose, clearanceOf, covers } from '../clearance.js';
 import type {
-  ChoiceWrites, Citation, CitedObjectRow, ConsequenceKind, DeclareWrites, DecisionReads, DissentWrites, OptionWrites, ProposeWrites, TermsWrites, VersionWrites, WithdrawWrites,
+  ChoiceWrites, Citation, CitedObjectRow, ConsequenceKind, DeclareWrites, DecisionReads, DissentWrites, OptionWrites, ProposeWrites, ReopenWrites, TermsWrites, VersionWrites, WithdrawWrites,
 } from '../decision.capabilities.js';
+import type { ReadyOption } from '../decision-events.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const KINDS: readonly ConsequenceKind[] = ['run', 'forecast', 'claim', 'evidence', 'assumption', 'warning'] as const;
@@ -105,7 +113,9 @@ export function unfoldProfiles(inputs: ControlInput[]): ControlInput[] {
 }
 
 const instantOf = (v: unknown): string => (v instanceof Date ? v.toISOString() : new Date(String(v)).toISOString());
-const dayOf = (v: unknown): string | null => (v === null || v === undefined ? null : (v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 10)));
+/** A DATE column as the day it names — never a local-midnight instant printed in UTC (the P5-M3 rule; the twin and simulation services' idiom). */
+const dayOf = (v: unknown): string | null => (v === null || v === undefined ? null
+  : (v instanceof Date ? `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, '0')}-${String(v.getDate()).padStart(2, '0')}` : String(v).slice(0, 10)));
 
 @Injectable()
 export class PackageService {
@@ -204,9 +214,20 @@ export class PackageService {
 
   /**
    * PROPOSE: the canonical DPK version and the bound state in one transaction. The
-   * digest the header carries is what an approval will sign.
+   * digest the header carries is what an approval will sign. B18: the answer also
+   * carries `ready` — what the route's DecisionPackageReady names (the options with the
+   * uncertainty the port derived, the dissent on the version, the choice, the terms, and
+   * the commitment a reopened draft was carried from); the HTTP answer keeps its keys.
    */
-  async propose(cap: ProposeWrites, ctx: ScopeContext, packageId: string, version: number, purposeId: string, actor: string, correlationId: string): Promise<{ packageId: string; version: number; versionDigest: string; baselineRunId: string | null; syntheticState: boolean }> {
+  async propose(cap: ProposeWrites, ctx: ScopeContext, packageId: string, version: number, purposeId: string, actor: string, correlationId: string): Promise<{
+    packageId: string; version: number; versionDigest: string; baselineRunId: string | null; syntheticState: boolean;
+    ready: {
+      packageId: string; version: number; versionDigest: string; headerDigest: string; supersedes: number | null; decisionObjectId: string; title: string;
+      knownAt: string; observedThrough: string | null; objectives: string[]; options: ReadyOption[]; choice: Record<string, unknown>;
+      dissent: Array<{ dissent_id: string; principal_id: string; position: string }>; approverPolicy: Record<string, unknown>; monitoringConditions: unknown[];
+      baselineRunId: string | null; syntheticState: boolean; reopenedFrom: { version: number; commitment_id: string | null } | null;
+    };
+  }> {
     const p = (await cap.readPackages().selectAll().where('package_id' as never, '=', packageId as never).executeTakeFirst()) as Record<string, unknown> | undefined;
     const v = (await cap.readVersions().selectAll().where('package_id' as never, '=', packageId as never).where('version' as never, '=', version as never).executeTakeFirst()) as Record<string, unknown> | undefined;
     if (p === undefined || v === undefined) throw new HttpException(errorBody('EYE_STA_001', correlationId, 'no authorized package version matches'), 404);
@@ -279,7 +300,49 @@ export class PackageService {
       packageId, tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, version, expectedDigest: expected, headerDigest, baselineRunId,
       syntheticState, controls, dependencies: [...dependencies.values()], actor, eventId: newId(), correlationId,
     });
-    return { packageId, version, versionDigest: r.version_digest, baselineRunId: r.baseline_run_id, syntheticState };
+    // B18: what the announcement names — the dissent recorded on this version, and the commitment a reopened draft was carried from.
+    const dissent = (await cap.readDissent().selectAll().where('package_id' as never, '=', packageId as never).where('version' as never, '=', version as never).orderBy('recorded_at' as never).execute()) as Array<Record<string, unknown>>;
+    const reopenedFromVersion = Number(p['reopens'] ?? 0) > 0 && p['reopened_from_version'] !== null && p['reopened_from_version'] !== undefined ? Number(p['reopened_from_version']) : null;
+    const carriedFrom = reopenedFromVersion === null ? undefined
+      : (await cap.readCommitments().selectAll().where('package_id' as never, '=', packageId as never).where('version' as never, '=', reopenedFromVersion as never).executeTakeFirst()) as Record<string, unknown> | undefined;
+    return {
+      packageId, version, versionDigest: r.version_digest, baselineRunId: r.baseline_run_id, syntheticState,
+      ready: {
+        packageId, version, versionDigest: r.version_digest, headerDigest, supersedes, decisionObjectId: String(p['decision_object_id']), title: String(p['title']),
+        knownAt, observedThrough, objectives: (v['objectives'] as string[]).map(String),
+        options: options.map((o) => ({ key: String(o['key']), kind: String(o['kind']), simulated: o['simulated'] === true, uncertainty: (o['uncertainty'] ?? {}) as Record<string, unknown>,
+                                       consequences: (o['consequences'] as Citation[]).map((c) => ({ kind: c.kind, id: c.id, version: Number(c.version) })) })),
+        choice: v['choice'] as Record<string, unknown>,
+        dissent: dissent.map((d) => ({ dissent_id: String(d['dissent_id']), principal_id: String(d['principal_id']), position: String(d['position']) })),
+        approverPolicy: (v['approver_policy'] ?? {}) as Record<string, unknown>, monitoringConditions: Array.isArray(v['monitoring_conditions']) ? (v['monitoring_conditions'] as unknown[]) : [],
+        baselineRunId: r.baseline_run_id, syntheticState,
+        reopenedFrom: reopenedFromVersion === null ? null : { version: reopenedFromVersion, commitment_id: carriedFrom === undefined ? null : String(carriedFrom['commitment_id']) },
+      },
+    };
+  }
+
+  /**
+   * REOPEN (B18, 0078, L9-I05): the owner re-enters a committed decision's lifecycle on a
+   * RECORDED cause — an input.invalidated note recorded on the package after its commitment,
+   * or a condition breach of the committed version — named by its id. The port does the
+   * rest: state reopened, the cause on the row, a new draft carried from the committed
+   * version with every option re-derived under the new cut-offs (the ones that no longer
+   * stand DROPPED and NAMED), the commitment and its approvals untouched. Its refusals
+   * reach HTTP by family (a non-owner 403, no such note 404, not committed / an open draft /
+   * no recorded cause 409).
+   */
+  async reopen(cap: ReopenWrites, ctx: ScopeContext, packageId: string, a: { cause: { kind: string; ref: string }; knownAt: string | null; observedThrough: string | null }, actor: string, correlationId: string): Promise<{ reopened: Record<string, unknown>; decisionObjectId: string }> {
+    const kind = a.cause.kind;
+    if ((kind !== 'input_invalidated' && kind !== 'condition_breach') || typeof a.cause.ref !== 'string' || !UUID.test(a.cause.ref)) {
+      bad(correlationId, 'a cause names a recorded input_invalidated note or a condition_breach by id');
+    }
+    const p = (await cap.readPackages().selectAll().where('package_id' as never, '=', packageId as never).executeTakeFirst()) as Record<string, unknown> | undefined;
+    if (p === undefined) throw new HttpException(errorBody('EYE_STA_001', correlationId, 'no authorized package matches'), 404);
+    const reopened = await cap.reopenPackage({
+      packageId, tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, cause: { kind: kind as 'input_invalidated' | 'condition_breach', ref: a.cause.ref },
+      knownAt: a.knownAt, observedThrough: a.observedThrough, actor, eventId: newId(), correlationId,
+    });
+    return { reopened, decisionObjectId: String(p['decision_object_id']) };
   }
 
   async withdraw(cap: WithdrawWrites, ctx: ScopeContext, packageId: string, reason: string, actor: string, correlationId: string): Promise<{ packageId: string }> {
@@ -335,7 +398,10 @@ export class PackageService {
     const events = (await cap.readEvents().selectAll().where('package_id' as never, '=', packageId as never).orderBy('occurred_at' as never).execute()) as Array<Record<string, unknown>>;
     const dec = (await cap.readStrategy().selectAll().where('strategy_object_id' as never, '=', String(p['decision_object_id']) as never).executeTakeFirst()) as Record<string, unknown> | undefined;
     const approvals = (await cap.readApprovals().selectAll().where('package_id' as never, '=', packageId as never).orderBy('recorded_at' as never).execute()) as Array<Record<string, unknown>>;
-    const commitment = (await cap.readCommitments().selectAll().where('package_id' as never, '=', packageId as never).executeTakeFirst()) as Record<string, unknown> | undefined;
+    // B18 (0078): one commitment per COMMITTED VERSION — every row in the order made; the STANDING one is the row of the package's committed_version.
+    const commitments = (await cap.readCommitments().selectAll().where('package_id' as never, '=', packageId as never).orderBy('committed_at' as never).execute()) as Array<Record<string, unknown>>;
+    const committedVersion = p['committed_version'] === null || p['committed_version'] === undefined ? null : Number(p['committed_version']);
+    const commitment = committedVersion === null ? undefined : commitments.find((c) => Number(c['version']) === committedVersion);
     const live = new Set<string>();
     for (const v of versions) {
       if (!['proposed', 'under_review', 'approved', 'committed'].includes(String(v['state']))) continue;
@@ -354,6 +420,7 @@ export class PackageService {
         })),
       })),
       commitment: commitment ?? null,
+      commitments,
       events,
     };
   }
