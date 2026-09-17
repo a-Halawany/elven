@@ -2197,11 +2197,16 @@ B11–B18, the four subscription harnesses B6–B9 (the twins and decisions dige
 files** on a fresh database; the upgrade proof with 0022–0078 (57 migrations above the ceiling; 78 files; the schema digests equal; the
 Phase 1/2 suites 275/275 on the upgraded data); the unit suite **2272/2272** (= 2210 + the 62 B18 cases: the withdrawn header, the six
 builders key by key with the 200 ceilings, the three PDP rules' precedence, the mapper order) and the meta suite 9/9; the web typecheck, build
-and tests (11); the browser gate **46/46**. Units and rows: the seven v03 rows L5-I04, L6-I02, L6-I05, L8-I02, L8-I03, L8-I05, L9-I05
+and tests (11); the browser gate **46/46**. The hosted run at `4cea858` — ci 35163213469 (build-test job 105018424523: unit 2272/2272 and the meta suite 9/9,
+acceptance 58/58, the integration suite 1055/1055 in 69 files on a fresh database with `phase6-retention-b18` 6/6 and
+`phase6-interfaces-b18` 14/14, the upgrade proof +57 rows / 78 files, C18 612/612 + 44; supply-chain green; browser-regression 46 passed —
+the B18 twenty on the hosted gate), C19 35163213457 — bound in the records commit (`evidence/cp6/hosted-4cea858-build-test-summary.txt`).
+Units and rows: the seven v03 rows L5-I04, L6-I02, L6-I05, L8-I02, L8-I03, L8-I05, L9-I05
 `partial` → `implemented` (`passed:harness`, `branch-only`) with the case each names; L2-I04, L9-I02, L9-I04 stay `implemented` with the
 B18 note (the published event the register lacked); V04-T-005 stays `partial` (the catalogue obligation: 36 of 50 bound after 0078; 14
 partial, listed); **AU-TWN-0033 `open` → `verified:local`** (every condition exercised by S1(2)(3) — the B15 precedent: a unit whose every
-clause the author's harness exercises) — the split reads **3,555 = 3,181 open + 340 local + 34 CI**; AU-TWN-0012 (the warning candidate on
+clause the author's harness exercises) in the batch commit and **→ `verified:ci`** in the binding commit (the hosted run above) — the
+split reads **3,555 = 3,181 open + 339 local + 35 CI**; AU-TWN-0012 (the warning candidate on
 a twin change remains), AU-TWN-0032 (the diagnostic-only state for a failed validity remains), AU-DEC-0062 (the cited scenario tree's
 re-versioning remains), AU-PRD-0017 (the briefings' consumption remains), AU-DP-0071 stay `open` with the B18 clause; AU-DEC-0020,
 AU-DEC-0034, AU-INT-0033 carry it; AU-COM-0060/-0062 and AU-DP-0097 carry the B18.1 clause; CAP-UM-07 stays `partial` with the walk on the

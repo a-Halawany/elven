@@ -3319,15 +3319,15 @@ ALL SCENES HELD (60 checks).
 | `ace1f9e` | `main` after #53 (B16) | 35141642407 green (the C17 finalize 35143293875 REFUSED — the head had moved; preserved) | 35141642394 green |
 | `28e18b5` | `main` after #54 (B17) — the chain complete: C17 finalize 35143879458, C19 anchor 35143991861 with the publication | 35141711865 green | 35141711866 green |
 | `002f8d4` | B18.1 (the B17-F1 correction; `phase6-b18`) | (in the batch's run) | — |
-| **the B18 head** | **B18** (0078; the ten bindings, the chain, the working domain, the walks; the harnesses; the act) — PR #55 `phase6-b18` → `main` | the hosted run is bound in the records commit that follows | — |
+| **`4cea858`** | **B18** (0078; the ten bindings, the chain, the working domain, the walks; the harnesses; the act) — PR #55 `phase6-b18` → `main` (the merge awaits the owner's word) | **35163213469 green** — build-test: unit 2272/2272 and the meta suite 9/9, acceptance 58/58, the integration suite **1055/1055 in 69 files** on a fresh database (`phase6-retention-b18` 6/6, `phase6-interfaces-b18` 14/14), the upgrade proof through 0078 (+57 rows, 78 files), C18 612/612 + 44; supply-chain green; **browser-regression 46 passed** (the B18 twenty on the hosted gate) (`evidence/cp6/hosted-4cea858-build-test-summary.txt`) | 35163213457 green |
 
 Statuses: the seven v03 rows L5-I04, L6-I02, L6-I05, L8-I02, L8-I03, L8-I05, L9-I05 `partial` → `implemented`; L2-I04, L9-I02, L9-I04
-stay `implemented` with the B18 note; V04-T-005 stays `partial` (36 of 50 bound); **AU-TWN-0033 `open` → `verified:local`** (every
-condition exercised by the harness's S1(2)(3)); AU-TWN-0012, AU-TWN-0032, AU-DEC-0062, AU-PRD-0017, AU-DP-0071 stay `open` with the
+stay `implemented` with the B18 note; V04-T-005 stays `partial` (36 of 50 bound); **AU-TWN-0033 `open` → `verified:local` by the batch commit, → `verified:ci` by this binding** (every
+condition exercised by the harness's S1(2)(3), on the hosted chain at `4cea858`: ci 35163213469, build-test job 105018424523, C19 35163213457); AU-TWN-0012, AU-TWN-0032, AU-DEC-0062, AU-PRD-0017, AU-DP-0071 stay `open` with the
 B18 clause; AU-DEC-0020, AU-DEC-0034, AU-INT-0033 carry it; AU-COM-0060, AU-COM-0062 and AU-DP-0097 carry the B18.1 clause; CAP-UM-07
 stays `partial` with the walk on the gate; CMP-102 `unverified` → `passed:browser`; AU-MEM-0065 keeps `verified:ci` with the walk. The
-split reads **3,555 = 3,181 open + 340 local + 34 CI** (one unit promoted by the author's harness — the B15 precedent; the hosted run
-moves nothing until the binding commit). The register 26/24/0 → **36/14/0**. No completion percentage; no deployment leg accepted.
+split reads **3,555 = 3,181 open + 339 local + 35 CI** (AU-TWN-0033 promoted by the author's harness in the batch commit — the B15
+precedent — and to the hosted chain by this binding; CAP-UM-07's and CMP-102's walks are rows, not units; nothing else moves). The register 26/24/0 → **36/14/0**. No completion percentage; no deployment leg accepted.
 
 ### 32.5 Functioning, partial, missing — and the acceptance work remaining
 
@@ -3354,7 +3354,7 @@ projection state with a derived watermark, the check strengthened to poisoned an
 the memory content tier's fallback); the remaining fourteen interface contracts (B21–B23: fitness/coherence/challenge, the consumers and
 the attention policy, the commands and the query); every deployment leg (S7).
 
-**Acceptance work remaining** — B18's hosted run at its head, bound here once in a records commit; Codex's bounded review of B18 if the
+**Acceptance work remaining** — B18's hosted run at `4cea858` is bound here once (no records-refresh chain); Codex's bounded review of B18 if the
 owner wants one, and the merge of PR #55 on the owner's word with its chain green before the next merge; the owner's decision on a public
 host for the recipient; the owner's key for Comtrade; the owner's walk of the demonstration as a tenant-homed persona; B19 (source-derived
 memory) and B20 (index-tier degradation) next from the register; comprehensive hardening after the feature scope, with the residuals and
