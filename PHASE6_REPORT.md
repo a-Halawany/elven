@@ -3359,3 +3359,88 @@ owner wants one, and the merge of PR #55 on the owner's word with its chain gree
 host for the recipient; the owner's key for Comtrade; the owner's walk of the demonstration as a tenant-homed persona; B19 (source-derived
 memory) and B20 (index-tier degradation) next from the register; comprehensive hardening after the feature scope, with the residuals and
 the register rows left for it.
+
+## 33. The checkpoint after B18's records head `4a7f43a` (2026-09-17): B19 implemented — the source-derived memory records: a memory record derived by a person from a claim version or a warning, with its provenance and inherited controls, gated on the review and lifecycle state, following its basis and pausing the deletion of the evidence it copies from; the demonstration's corridor transit count and its supply relationship as derived records, corrected, re-derived and held against a deletion
+
+B18's hosted run at `4cea858` completed green (§32.4) and was bound in the records commit `4a7f43a` on PR #55 (`phase6-b18` → `main`; the
+merge awaits the owner's word; its records head ran green too: ci 35164946733, C19 35164946641). B19 is cut from that head on `phase6-b19`
+(PR base `phase6-b18`; retargeted to `main` when #55 merges). §32 stands as written; its Missing line "the source-derived memory records
+(B19 …)" is lifted here.
+
+### 33.1 What B19 implements (migration 0079) — `audit/CP6_BATCHES.md` §B19 for the mechanism
+
+- **The derivation act.** `memory.item.derive` — a knowledge owner's human-gated act: the person names a BASIS (a claim version of any
+  type, or a warning) and the kind; the server computes the STATEMENT by a fixed method (`memory-derive@1.0.0`, its digest re-verified by
+  the port), the PROVENANCE (the basis version and digest, the evidence versions with their bytes digests and spans, the source contract,
+  the series keys) and the HEADER the basis decides; the gates — the basis's lifecycle, an imported claim (refused: derived at its origin),
+  the review case, every evidence version's lifecycle, and the deriver's clearance over the record's applied classification (a person
+  derives only what they could read back); a re-derivation on a newer basis version is the record authority's supersede through the same
+  service; `/record` refuses a non-human kind.
+- **The kind rule and the inheritance.** The kind is declared, with one verifiable rule — `telemetry` needs a registered series on the
+  basis's source (a warning basis is telemetry only); a telemetry record is extracted or inferred, never observed (the series-window basis is
+  the stated residual). The record inherits the MOST restrictive classification of the audience, the basis and its evidence — said as
+  `declared / inherited / applied` — the synthetic state (true wins), the rights, the residency, the retention (declared, else the basis's,
+  else the evidence's — said), the truth state, the event time with its clock quality; MEM@v2 for derived records, MEM@v1 kept for human ones.
+- **The basis followed; the deletion pause.** `attention_state` gains `basis_withdrawn`; a derived record whose basis was corrected or
+  withdrawn is SERVED with `availability.basis_state` (the retrieval and the briefing), never refused; the walk marks `basis_withdrawn` only
+  when the trigger's latest version is withdrawn and never downgrades it; `memory.mark_basis_withdrawn` marks directly on the two walk-less
+  paths (the import revocation's claim batch, the corrections path's evidence withdrawal); `retention.load_bearing_references` gains a
+  version-aware branch for DERIVED records only — the deletion of the evidence a derived record copies from PAUSES naming the record with
+  its route (a human record citing the same evidence stays a residual).
+- **The page and the walk.** The memory workspace's "Derive from a source" section with the answer verbatim (the classification lift said,
+  the statement, the source, the evidence, the derivation served on retrieval, the Source column); `e2e/phase6-memory.spec.ts` gains the
+  POSITIVE derivation on the hosted gate (a claim extracted on the gate's own upload by a recorded-fixture method) and the refusals.
+
+### 33.2 The local results
+
+`phase6-memory-derived.test.ts` **6/6** on a fresh database (twice); the neighbouring set **245/245 in 20 files**; the full integration
+suite **1061/1061 in 70 files** on a fresh database (twice — before and after the re-derivation's validity default); the upgrade proof with
+0022–0079 (58 migrations; 79 files; the registry's 36 rows; the digests equal; 275/275); the unit suite **2295/2295** (= 2272 + 23) and the
+meta suite 9/9; the web typecheck, build and 11 tests; the browser gate **48/48** on a fresh database (`evidence/cp6/b19-browser.txt`).
+
+### 33.3 The NORDWERK demonstration — `evidence/cp6/act-b19.txt`
+
+Rehearsed first on a restored copy (`eye_demo_b19`; `evidence/cp6/b19-rehearsal.txt` — the fourth rehearsal held whole; the first three
+stopped on the act's own pins and one service default, all recorded), then on `eye_demo` (backup; 0079 applied; the API restarted on the
+B19 build): every basis looked up at run time; K. Müller's telemetry record from the PortWatch transit count (extracted; the registered
+series; the evidence version and bytes; the derivation block served to L. Brandt; the `memory_item.recorded` row and its deliveries); the
+queued claim refused at the review gate; the corridor warning as an inferred telemetry record; the NORDWERK supply relationship as a document
+record (synthetic inherited; S. Okafor's briefing carries it as such); the communication kind's line (stated; withdrawn again); the basis
+corrected in review by L. Ferreira → DOC marked by J. Weber's walk → R. Adler re-derives to version 2 → L. Brandt replays version 1; the
+mirror's imported claim refused as a basis; M. Dvorak's evidence correction → the agent's walk marks DOC → P. Novák's deletion of that
+manifest PAUSES naming the record with its route, then withdrawn. ALL SCENES HELD (32 checks).
+
+### 33.4 Heads, hosted results, statuses
+
+| Head | What | Hosted `ci` | Hosted C19 |
+|---|---|---|---|
+| `4a7f43a` | B18's records head on PR #55 (`phase6-b18` → `main`; the merge awaits the owner's word) | 35164946733 green | 35164946641 green |
+| **the B19 head** | **B19** (0079; the derivation, the kind rule and the inheritance, the gates, the marks and the deletion pause, the page, the walk; the harness; the act) — PR #56 `phase6-b19` → `phase6-b18`, retargeted to `main` when #55 merges | the hosted run is bound in the records commit that follows | — |
+
+Statuses: AU-MEM-0065 keeps `verified:ci` with its last clause closed on the harness and the walk (the hosted run binds); V02-T-118,
+V00-T-039, DP-37-001, DP-37-002, DP-37-005, CAP-UM-07 stay `partial` with the B19 clause; ES-29-002 carries the inheritance clause; L3-I01's
+`bound_to` gains the derivation clause (the register 36/14/0). The split stays **3,555 = 3,181 open + 339 local + 35 CI** (no unit promoted by
+a local run). No completion percentage; no deployment leg accepted.
+
+### 33.5 Functioning, partial, missing — and the acceptance work remaining
+
+**Functioning** — everything §32.5 listed, and now: a memory record DERIVED from a claim version or a warning with its provenance and
+inherited controls, gated on the review state, the lifecycle of its basis and evidence, and the deriver's clearance; the record following its
+basis (corrected, withdrawn — served with the declaration); the re-derivation with the earlier version replayable; the deletion of the
+evidence a derived record copies from paused; the workspace's derive form walked on the hosted gate.
+
+**Partial** — the source kinds beyond the telemetry rule are the owner's declaration; the observed series-window basis (a telemetry record is
+extracted or inferred); the communication kind exercised on the harness only (the demonstration's communication-class sources carry no
+extracted claim); a warning-based record not marked when its forecast is withdrawn; memory retention declared, not executed; the fourteen
+interface rows of §32.5; the rest of §32.5's Partial.
+
+**Missing** — a governed cross-domain REFERENCE (sharing without a copy — an imported claim is refused as a basis until it exists);
+replication and portability packages; encryption of the package beyond TLS; index-tier degradation behaviours (B20 — the projection state
+with a derived watermark, the check strengthened to poisoned and missing rows, withdrawal and rebuild, labelled reads, the memory content
+tier's fallback); the communications/telemetry INGESTION connectors and the analyses object; the remaining fourteen interface contracts;
+every deployment leg (S7).
+
+**Acceptance work remaining** — B19's hosted run at its head, bound here once in a records commit; the merge of #55 on the owner's word with
+its chain green, then #56 retargeted and merged after it; Codex's bounded review of B18/B19 if the owner wants one; the owner's decision on a
+public host for the recipient; the owner's key for Comtrade; the owner's walk of the demonstration; B20 (index-tier degradation) next from the
+register; comprehensive hardening after the feature scope, with the residuals and the register rows left for it.

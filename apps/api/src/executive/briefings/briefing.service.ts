@@ -36,6 +36,7 @@ import type { AuthenticatedPrincipal } from '../../shared/auth-types.js';
 import { foldControls, type Controls, type ControlInput } from '../../prediction/controls.js';
 import { assertClearance, assertPurpose, bindingReaches, clearanceOf, covers, denyRead } from '../../decision/clearance.js';
 import type { BriefingWrites, ExecutiveReads } from '../executive.capabilities.js';
+import { basisStateOf } from '../../graph/memory/memory.service.js';
 
 const iso = (v: unknown): string => (v instanceof Date ? v.toISOString() : new Date(String(v)).toISOString());
 const isoOrNull = (v: unknown): string | null => (v === null || v === undefined ? null : iso(v));
@@ -293,10 +294,17 @@ export class BriefingService {
       if (roles.length > 0 && !roles.some((r) => composerRoles.includes(r)) && !composerRoles.some((r) => r === 'platform_admin' || r === 'tenant_admin' || r === 'domain_admin')) continue;
       const accessId = await cap.recordMemoryAccess({ itemId, tenantId, domainId, version: Number(v['object_version']), purpose: purposeId, reader: composer, asOf: knownAt, correlationId });
       memoryAccesses.push({ item_id: itemId, version: Number(v['object_version']), access_id: accessId });
-      controlInputs.push({ synthetic_state: false, classification: v['classification'], rights_profile: null, residency_profile: null, retention_profile: v['retention_profile'], access_policy_ref: null });
-      push({ kind: 'memory', id: itemId, version: Number(v['object_version']), title: `memory: ${String(payload['title'] ?? m['title'] ?? '')}`, at: iso(v['recorded_at']), truth_state: String(v['truth_state'] ?? 'asserted'), synthetic_state: false,
+      // B19 (0079): a DERIVED record folds its own synthetic state (inherited from its basis and evidence) and carries its basis (ids,
+      // the source, the method) and the basis's PRESENT state (basisStateOf — current / corrected / withdrawn: served with the
+      // declaration, D5); a person's record reads false / null / null as before. The state is content (the item's details), so two
+      // compositions astride a withdrawal differ by design; the fold and the digest of one composition's inputs are unchanged.
+      const derivation = (payload['derivation'] ?? null) as Record<string, unknown> | null;
+      controlInputs.push({ synthetic_state: v['synthetic_state'] === true, classification: v['classification'], rights_profile: null, residency_profile: null, retention_profile: v['retention_profile'], access_policy_ref: null });
+      push({ kind: 'memory', id: itemId, version: Number(v['object_version']), title: `memory: ${String(payload['title'] ?? m['title'] ?? '')}`, at: iso(v['recorded_at']), truth_state: String(v['truth_state'] ?? 'asserted'), synthetic_state: v['synthetic_state'] === true,
              source_state: 'internal', source: null, owner: String(m['owner_principal_id']),
-             details: { record_class: payload['record_class'] ?? m['record_class'], statement: payload['statement'] ?? null, source: payload['source'] ?? null, classification: v['classification'], validity: payload['validity'] ?? null, retention: payload['retention'] ?? null, audience: { roles, purposes }, read_under: purposeId } });
+             details: { record_class: payload['record_class'] ?? m['record_class'], statement: payload['statement'] ?? null, source: payload['source'] ?? null, classification: v['classification'], validity: payload['validity'] ?? null, retention: payload['retention'] ?? null, audience: { roles, purposes }, read_under: purposeId,
+                        derivation: derivation === null || typeof derivation !== 'object' ? null : { basis: derivation['basis'] ?? null, source: derivation['source'] ?? null, method_ref: derivation['method_ref'] ?? null },
+                        basis_state: basisStateOf(m) } });
     }
     // packages moved (the room's, or every package in the domain) — dissent is a package event too, and is shown; the package's fold is inherited
     reserve('the package events');

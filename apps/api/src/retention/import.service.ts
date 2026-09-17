@@ -76,6 +76,9 @@
  *   against both roots before the receipt says copies_destroyed (a locator still present is `remaining`, the receipt copies_refused
  *   with the locators named, the origin's notice mismatched; the next revoke — the retry branch — owes them), and the receipt's counts,
  *   refused items and holders are what the map records; a redelivery of a completed revocation adds no event (the retry's rule).
+ *   B19 (0079): every ACTIVE derived memory record resting on a withdrawn claim is marked basis_withdrawn in the same batch
+ *   (memory.mark_basis_withdrawn) — on B19 none can exist (an imported claim is refused as a basis of a derived record), so the call
+ *   stands for the day the cross-domain reference is admitted; the harness exercises the port's unit under retention.import.revoke.
  *
  * THE SUBSCRIBERS (CP-6 B17; D1, D20): the admission publishes through the pipeline's `outboxEvents` — ONE ObservationRecorded per
  * admitted record from each record batch's write (acquisition_mode import, run_id null, the intake contract's source and authority
@@ -1349,16 +1352,21 @@ export class ImportService {
       if (prior === null) { await cap.releaseSavepoint(sp); for (const item of group) await this.markRefused(cap, item, f, { reason: `no canonical row of ${objectId} in this domain to withdraw`, gate: 'record', hold_id: null, manifest_id: null, locator: null }); return 'refused'; }
       const owner = await this.liveOwnerOf(cap, f, prior);
       if (owner.length > 0) { for (const item of group) await this.markLeft(cap, item, f, owner); await cap.releaseSavepoint(sp); return 'left'; }
-      const from = Number(prior['object_version']); let to: number | null = null; let lineageRows = 0;
+      const from = Number(prior['object_version']); let to: number | null = null; let lineageRows = 0; let memoryItemsMarked = 0;
       if (String(prior['lifecycle_state']) !== 'withdrawn') {
         const header = importWithdrawalHeaderOf(prior, { actor: f.actor, correlationId: f.correlationId, purposeId: f.purposeId, recordedAt: new Date().toISOString(), revocation: f.ref, importId: f.importId });
         const payload = isObject(prior['payload']) ? (prior['payload'] as Row) : {};
         await cap.admitObject(header, payload, canonicalHeaderDigest(header, payload));
         to = from + 1;
         lineageRows = await cap.recordImportWithdrawalLineage({ claimObjectId: objectId, fromVersion: from, toVersion: to, tenantId: f.scope.tenantId, domainId: f.scope.domainId, importId: f.importId, correlationId: f.correlationId });
+        // B19 (0079): every ACTIVE derived memory record resting on the withdrawn claim is marked basis_withdrawn in this same batch
+        // (memory.mark_basis_withdrawn under retention.import.revoke) — on B19 none can exist (an imported claim is refused as a basis);
+        // the call stands for the day the cross-domain reference is admitted.
+        const marked = await cap.markBasisWithdrawn({ tenantId: f.scope.tenantId, domainId: f.scope.domainId, basisKind: 'claim', basisId: objectId, reason: `the origin revoked the package this claim was imported from (import ${f.importId}; action ${f.ref.action_id})`, actor: f.actor, correlationId: f.correlationId });
+        memoryItemsMarked = Number(marked['count'] ?? 0);
       }
       for (const item of group) {
-        await cap.markImportItemRevoked({ itemId: String(item['item_id']), importId: f.importId, tenantId: f.scope.tenantId, domainId: f.scope.domainId, outcome: 'withdrawn', details: { object_id: objectId, from_version: from, to_version: to, lineage_rows: lineageRows, already_withdrawn: to === null, notice_id: f.ref.notice_id }, actor: f.actor, correlationId: f.correlationId });
+        await cap.markImportItemRevoked({ itemId: String(item['item_id']), importId: f.importId, tenantId: f.scope.tenantId, domainId: f.scope.domainId, outcome: 'withdrawn', details: { object_id: objectId, from_version: from, to_version: to, lineage_rows: lineageRows, memory_items_marked: memoryItemsMarked, already_withdrawn: to === null, notice_id: f.ref.notice_id }, actor: f.actor, correlationId: f.correlationId });
       }
       await cap.releaseSavepoint(sp);
       f.tally.withdrawn.push(objectId);

@@ -151,6 +151,10 @@ export interface GraphReads {
   readMemoryItems(): any;
   readMemoryItemEvents(): any;
   readMemoryItemAccess(): any;
+  /** B19 (0079): what a DERIVATION reads beside the claim, its lineage, its review case and the warning — the evidence's source contract, the series registered on it, the warning's indicator (structural picks; reads only). */
+  readSourceContracts(): any;
+  readSeriesRegistry(): any;
+  readIndicators(): any;
   /**
    * What is subscribed to a change at PUBLICATION time — evidence the event carries, never authority
    * (the dispatcher re-resolves at delivery). Total: an empty list outside a DOMAIN context.
@@ -271,7 +275,8 @@ export interface OntologyWrites extends GraphReads {
 export interface MemoryWrites extends GraphReads {
   /** A memory item's version is a canonical MEM object, admitted through the same path every canonical object takes. */
   admitObject(header: unknown, payload: unknown, digest: string): Promise<{ contentDigest: string }>;
-  recordMemoryItem(a: { itemId: string; tenantId: string; domainId: string; version: number; record: Record<string, unknown>; cites: Array<{ kind: string; id: string; rationale: string }>; actor: string; eventId: string; correlationId: string }): Promise<void>;
+  /** B19 (0079): `derivation` is the block memory.record_item validates for a DERIVED record (memory.item.derive; a re-derivation under memory.item.supersede) — null for a person's own record; passed explicitly either way. */
+  recordMemoryItem(a: { itemId: string; tenantId: string; domainId: string; version: number; record: Record<string, unknown>; cites: Array<{ kind: string; id: string; rationale: string }>; actor: string; eventId: string; correlationId: string; derivation?: Record<string, unknown> | null }): Promise<void>;
   withdrawMemoryItem(a: { itemId: string; tenantId: string; domainId: string; reason: string; actor: string; eventId: string; correlationId: string }): Promise<void>;
   /** OBJ-15: the access ledger row of a retrieval, written inside the read's own transaction. */
   recordMemoryAccess(a: { itemId: string; tenantId: string; domainId: string; version: number; purpose: string; reader: string; asOf: string | null; correlationId: string }): Promise<string>;
@@ -444,6 +449,10 @@ class GraphCapabilityImpl extends GraphCore
   readMemoryItems(): any { return this.from('memory.items_current'); }
   readMemoryItemEvents(): any { return this.from('memory.item_events'); }
   readMemoryItemAccess(): any { return this.from('memory.item_access'); }
+  // B19: the derivation's structural picks — FORCE RLS by tenant/domain on all three; a DOMAIN context reads its own rows.
+  readSourceContracts(): any { return this.from('observation.source_contracts_current'); }
+  readSeriesRegistry(): any { return this.from('prediction.series_registry'); }
+  readIndicators(): any { return this.from('prediction.indicators_current'); }
   /* eslint-enable @typescript-eslint/no-explicit-any */
   async subscriptionsMatching(a: { tenantId: string; domainId: string; eventType: 'GraphChanged' | 'MemoryCorrected'; changeKind: string }): Promise<Array<{ subscription_id: string; consumer_kind: string }>> {
     const rows = await this.call<{ s: Array<{ subscription_id: string; consumer_kind: string }> }>(sql`select graph.subscriptions_matching(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.eventType}, ${a.changeKind}) as s`);
@@ -530,7 +539,8 @@ class GraphCapabilityImpl extends GraphCore
     return rows[0]?.r ?? {};
   }
   async recordMemoryItem(a: Parameters<MemoryWrites['recordMemoryItem']>[0]): Promise<void> {
-    await this.call(sql`select memory.record_item(${a.itemId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.version}, ${JSON.stringify(a.record)}::jsonb, ${JSON.stringify(a.cites)}::jsonb, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
+    // B19 (0079): the tenth argument is the derivation block — null::jsonb for a person's own record, passed explicitly so the call reads as what it is.
+    await this.call(sql`select memory.record_item(${a.itemId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.version}, ${JSON.stringify(a.record)}::jsonb, ${JSON.stringify(a.cites)}::jsonb, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid, ${a.derivation === undefined || a.derivation === null ? null : JSON.stringify(a.derivation)}::jsonb)`);
   }
   async withdrawMemoryItem(a: Parameters<MemoryWrites['withdrawMemoryItem']>[0]): Promise<void> {
     await this.call(sql`select memory.withdraw_item(${a.itemId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);

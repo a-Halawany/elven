@@ -10,10 +10,19 @@
  * a governed, AUDITED read under a DECLARED purpose (the one the item was admitted for or one its audience declares):
  * the access is recorded (who, which version, which purpose, as of when) and the server's refusal is shown verbatim.
  * Nothing here predicts a result: the served version is rendered as the server returned it and nothing else.
+ *
+ * Since B19 (0079) a record is either a PERSON'S OWN (source kind human — typed into the record form) or DERIVED from a
+ * claim version or a warning (source kind document, communication or telemetry — "Derive from a source"): the person
+ * names the basis and declares the class, the title, the audience, the validity and the retention; the SERVER reads the
+ * basis, computes the statement by the method memory-derive@1.0.0, inherits the controls of the basis and its evidence
+ * (the most restrictive classification applies and is said as declared / inherited / applied), cites them and keeps the
+ * derivation on the version. The listing's Source column names the basis; a retrieval serves the derivation block and the
+ * basis's state (current / corrected / withdrawn — a withdrawn basis is served with the declaration, never refused); a
+ * derived record is RE-DERIVED on supersession (the basis named again, the statement recomputed), never re-stated.
  */
 import { useEffect, useState, type ReactNode } from 'react';
 import { useShell } from '../layout';
-import { graph, type MemoryIntake, type MemoryRetrieval, type MemoryRow } from '../../../lib/graph';
+import { graph, type MemoryDeriveIntake, type MemoryDerived, type MemoryIntake, type MemoryRetrieval, type MemoryRow } from '../../../lib/graph';
 import { Empty, LiveStatus, Mono, ScrollBox, cardStyle, DefinitionRow, UnknownNote, GovernedButton,
   fmtInstant, textareaStyle } from '../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui';
@@ -22,9 +31,16 @@ type Row = Record<string, unknown>;
 type ReceiptT = { policyDecisionId: string; auditSeq: number } | null;
 const PURPOSES = ['memory', 'graph', 'decision', 'briefing', 'prediction'] as const;
 const RECORD_CLASSES = ['institutional', 'strategic'] as const;
+/** Every source kind the payload may carry (the parse of a served version); the FORMS offer the two classes apart. */
 const SOURCE_KINDS = ['human', 'document', 'communication', 'telemetry'] as const;
+/** A person's own record: the only kind the record form (and a human record's supersede form) offers. */
+const HUMAN_SOURCE_KINDS = ['human'] as const;
+/** A derived record's kinds — declared by the person on "Derive from a source"; a warning basis is telemetry only (the server refuses the rest). */
+const DERIVED_SOURCE_KINDS = ['document', 'communication', 'telemetry'] as const;
+const BASIS_KINDS = ['claim', 'warning'] as const;
 const CLASSIFICATIONS = ['public', 'internal', 'confidential', 'restricted'] as const;
 const CITE_KINDS = ['evidence', 'claim', 'strategy', 'entity', 'edge', 'forecast', 'warning'] as const;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const str = (v: unknown) => (v === null || v === undefined || v === '' ? '—' : String(v));
 const short = (v: unknown) => (typeof v === 'string' && v.length > 12 ? `${v.slice(0, 8)}…` : str(v));
 const list = (v: unknown) => (Array.isArray(v) ? (v as unknown[]).map(String).join(', ') || '(none)' : '—');
@@ -100,6 +116,69 @@ function fromPayload(p: Row): Draft {
   };
 }
 
+/**
+ * B19: what the person DECLARES for a derived record — the basis and the fields the server does not compute. No statement
+ * (the method computes it), no source reference (the basis's evidence names its contract), no cites (the basis and its
+ * evidence are cited by the server). An empty validity or retention field is sent as null: the server inherits.
+ */
+interface DeriveDraft {
+  basisKind: (typeof BASIS_KINDS)[number]; basisId: string; basisVersion: string;
+  sourceKind: (typeof DERIVED_SOURCE_KINDS)[number];
+  recordClass: MemoryIntake['recordClass']; title: string;
+  classification: MemoryIntake['audience']['classification']; roles: string; purposes: string;
+  validFrom: string; validTo: string; retentionProfile: string; retainUntil: string; retentionBasis: string;
+  decisionId: string; objectiveId: string;
+  /** As on a person's draft: a served instant is submitted verbatim until the person edits that field. */
+  served: Draft['served'];
+}
+const EMPTY_DERIVE: DeriveDraft = {
+  basisKind: 'claim', basisId: '', basisVersion: '', sourceKind: 'document', recordClass: 'institutional', title: '',
+  classification: 'internal', roles: '', purposes: '', validFrom: '', validTo: '', retentionProfile: '', retainUntil: '', retentionBasis: '',
+  decisionId: '', objectiveId: '', served: NO_SERVED,
+};
+/** The client's own gate is the shape only (an object id, a title, a version when given); every other refusal is the server's, shown verbatim. */
+const deriveOk = (d: DeriveDraft) =>
+  UUID.test(d.basisId.trim()) && d.title.trim().length >= 3 && (d.basisVersion.trim() === '' || /^[1-9][0-9]*$/.test(d.basisVersion.trim()));
+function toDeriveIntake(d: DeriveDraft): MemoryDeriveIntake {
+  const blank = (s: string): string | null => (s.trim() === '' ? null : s.trim());
+  return {
+    basis: { kind: d.basisKind, id: d.basisId.trim(), ...(d.basisVersion.trim() === '' ? {} : { version: Number(d.basisVersion.trim()) }) },
+    sourceKind: d.sourceKind, recordClass: d.recordClass, title: d.title.trim(),
+    audience: { classification: d.classification, roles: csv(d.roles), purposes: csv(d.purposes) },
+    validity: { from: d.served.validFrom ?? toIso(d.validFrom), to: d.served.validTo ?? toIso(d.validTo) },
+    retention: { profile: blank(d.retentionProfile), retainUntil: d.served.retainUntil ?? toIso(d.retainUntil), basis: blank(d.retentionBasis) },
+    cites: [], related: { decisionId: blank(d.decisionId), objectiveId: blank(d.objectiveId) },
+  };
+}
+/**
+ * A served DERIVED version's payload → the re-derivation's draft: the basis kind and id from the served derivation (the
+ * version EMPTY = the latest, so a corrected basis is re-derived at its current version), the source kind as served, the
+ * declared fields as served (the classification is the APPLIED one — the server lifts it again if the basis requires).
+ */
+function fromDerivedPayload(p: Row): DeriveDraft {
+  const human = fromPayload(p);
+  const derivation = rec(p['derivation']); const basis = rec(derivation['basis']);
+  const as = <T extends string>(v: unknown, allowed: readonly T[], fallback: T): T =>
+    (allowed as readonly string[]).includes(String(v)) ? (String(v) as T) : fallback;
+  return {
+    basisKind: as(basis['kind'], BASIS_KINDS, 'claim'), basisId: str(basis['id']) === '—' ? '' : String(basis['id']), basisVersion: '',
+    sourceKind: as(human.sourceKind, DERIVED_SOURCE_KINDS, 'document'),
+    recordClass: human.recordClass, title: human.title, classification: human.classification, roles: human.roles, purposes: human.purposes,
+    validFrom: human.validFrom, validTo: human.validTo, retentionProfile: human.retentionProfile, retainUntil: human.retainUntil, retentionBasis: human.retentionBasis,
+    decisionId: human.decisionId, objectiveId: human.objectiveId, served: human.served,
+  };
+}
+/** The listing row's derivation (the basis and the source, no content) → the draft a re-derivation starts from before anything is served. */
+function fromListedDerivation(r: MemoryRow): DeriveDraft {
+  const basis = rec(rec(r['derivation'])['basis']);
+  const as = <T extends string>(v: unknown, allowed: readonly T[], fallback: T): T =>
+    (allowed as readonly string[]).includes(String(v)) ? (String(v) as T) : fallback;
+  return { ...EMPTY_DERIVE, basisKind: as(basis['kind'], BASIS_KINDS, 'claim'), basisId: str(basis['id']) === '—' ? '' : String(basis['id']),
+    sourceKind: as(r['source_kind'], DERIVED_SOURCE_KINDS, 'document'), title: str(r['title']) === '—' ? '' : String(r['title']) };
+}
+/** A listing row or a served payload carries `derivation` as an object for a derived record and nothing (or null) for a person's own. */
+const isDerived = (v: unknown): boolean => v !== null && typeof v === 'object';
+
 const h3 = { fontSize: 'var(--eye-type-heading-3)' } as const;
 const muted = { color: 'var(--eye-color-ink-muted)' } as const;
 const rowStyle = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(14rem, 1fr))', gap: 'var(--eye-space-8)' } as const;
@@ -107,26 +186,30 @@ const rowStyle = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minma
 function Field({ id, label, children }: { id: string; label: string; children: (id: string) => ReactNode }) {
   return <div><label htmlFor={id} style={{ display: 'block' }}>{label}</label>{children(id)}</div>;
 }
+const sel = (id: string, value: string, options: readonly string[], onChange: (v: string) => void) => (
+  <select id={id} style={{ ...inputStyle, inlineSize: '100%' }} value={value} onChange={(e) => onChange(e.target.value)}>
+    {options.map((o) => <option key={o} value={o}>{o}</option>)}
+  </select>
+);
+const txt = (id: string, value: string, onChange: (v: string) => void, type = 'text') => (
+  <input id={id} type={type} style={{ ...inputStyle, inlineSize: '100%' }} value={value} onChange={(e) => onChange(e.target.value)} />
+);
+/** A datetime-local field prefilled from a served instant: the served instant is submitted verbatim until the field is edited. */
+const when = (id: string, value: string, servedIso: string | null, onChange: (v: string) => void) => (
+  <>
+    {txt(id, value, onChange, 'datetime-local')}
+    {servedIso !== null && <span style={muted}>the served instant {fmtInstant(servedIso)} (<Mono>{servedIso}</Mono>) is submitted as served; editing the field replaces it</span>}
+  </>
+);
 
-/** The fields of a memory item — the record form and the supersede form share them; `idp` keeps every label bound to its own input. */
-function ItemFields({ idp, d, set }: { idp: string; d: Draft; set: (next: Draft) => void }) {
+/**
+ * The fields of a PERSON'S memory item — the record form and a human record's supersede form share them; `idp` keeps every
+ * label bound to its own input. `sourceKinds` is what the Source kind select offers: `human` alone since B19 (a document,
+ * communication or telemetry record is derived, never typed).
+ */
+function ItemFields({ idp, d, set, sourceKinds }: { idp: string; d: Draft; set: (next: Draft) => void; sourceKinds: readonly string[] }) {
   const up = (patch: Partial<Draft>) => set({ ...d, ...patch });
   const upCite = (i: number, patch: Partial<Cite>) => up({ cites: d.cites.map((c, j) => (j === i ? { ...c, ...patch } : c)) });
-  const sel = (id: string, value: string, options: readonly string[], onChange: (v: string) => void) => (
-    <select id={id} style={{ ...inputStyle, inlineSize: '100%' }} value={value} onChange={(e) => onChange(e.target.value)}>
-      {options.map((o) => <option key={o} value={o}>{o}</option>)}
-    </select>
-  );
-  const txt = (id: string, value: string, onChange: (v: string) => void, type = 'text') => (
-    <input id={id} type={type} style={{ ...inputStyle, inlineSize: '100%' }} value={value} onChange={(e) => onChange(e.target.value)} />
-  );
-  /** A datetime-local field prefilled from a served instant: the served instant is submitted verbatim until the field is edited. */
-  const when = (id: string, value: string, servedIso: string | null, onChange: (v: string) => void) => (
-    <>
-      {txt(id, value, onChange, 'datetime-local')}
-      {servedIso !== null && <span style={muted}>the served instant {fmtInstant(servedIso)} (<Mono>{servedIso}</Mono>) is submitted as served; editing the field replaces it</span>}
-    </>
-  );
   return (
     <>
       <div style={rowStyle}>
@@ -138,7 +221,7 @@ function ItemFields({ idp, d, set }: { idp: string; d: Draft; set: (next: Draft)
       </Field>
       <h4 style={h3}>Source</h4>
       <div style={rowStyle}>
-        <Field id={`${idp}-skind`} label="Source kind">{(id) => sel(id, d.sourceKind, SOURCE_KINDS, (v) => up({ sourceKind: v as Draft['sourceKind'] }))}</Field>
+        <Field id={`${idp}-skind`} label='Source kind (a document, communication or telemetry record is derived — see "Derive from a source")'>{(id) => sel(id, d.sourceKind, sourceKinds, (v) => up({ sourceKind: v as Draft['sourceKind'] }))}</Field>
         <Field id={`${idp}-sref`} label="Source reference (optional)">{(id) => txt(id, d.sourceRef, (v) => up({ sourceRef: v }))}</Field>
       </div>
       <h4 style={h3}>Audience</h4>
@@ -181,6 +264,106 @@ function ItemFields({ idp, d, set }: { idp: string; d: Draft; set: (next: Draft)
   );
 }
 
+/**
+ * B19: the fields of a DERIVED record — the derive form and a derived record's supersede form (the re-derivation) share
+ * them. The basis is named (a claim version or a warning; the version empty = the latest); the kind, class, title, audience,
+ * validity, retention and related are declared. No statement, no source reference, no cites: the server computes the
+ * statement, names the source from the basis's evidence and cites the basis and its evidence.
+ */
+function DeriveFields({ idp, d, set }: { idp: string; d: DeriveDraft; set: (next: DeriveDraft) => void }) {
+  const up = (patch: Partial<DeriveDraft>) => set({ ...d, ...patch });
+  return (
+    <>
+      <h4 style={h3}>Basis</h4>
+      <div style={rowStyle}>
+        <Field id={`${idp}-bkind`} label="Basis kind">{(id) => sel(id, d.basisKind, BASIS_KINDS, (v) => up({ basisKind: v as DeriveDraft['basisKind'] }))}</Field>
+        <Field id={`${idp}-bid`} label="Basis object id">{(id) => txt(id, d.basisId, (v) => up({ basisId: v }))}</Field>
+        <Field id={`${idp}-bver`} label="Basis version (empty = the latest)">{(id) => txt(id, d.basisVersion, (v) => up({ basisVersion: v }), 'number')}</Field>
+        <Field id={`${idp}-skind`} label="Source kind (a warning is telemetry; telemetry names a source with a registered series)">{(id) => sel(id, d.sourceKind, DERIVED_SOURCE_KINDS, (v) => up({ sourceKind: v as DeriveDraft['sourceKind'] }))}</Field>
+      </div>
+      <h4 style={h3}>Record</h4>
+      <div style={rowStyle}>
+        <Field id={`${idp}-class`} label="Record class">{(id) => sel(id, d.recordClass, RECORD_CLASSES, (v) => up({ recordClass: v as DeriveDraft['recordClass'] }))}</Field>
+        <Field id={`${idp}-title`} label="Title (3–200 characters)">{(id) => txt(id, d.title, (v) => up({ title: v }))}</Field>
+      </div>
+      <h4 style={h3}>Audience</h4>
+      <div style={rowStyle}>
+        <Field id={`${idp}-cls`} label="Declared classification (lifted to the basis's when the basis is more restrictive)">{(id) => sel(id, d.classification, CLASSIFICATIONS, (v) => up({ classification: v as DeriveDraft['classification'] }))}</Field>
+        <Field id={`${idp}-roles`} label="Roles (comma-separated; empty = any role with clearance)">{(id) => txt(id, d.roles, (v) => up({ roles: v }))}</Field>
+        <Field id={`${idp}-purp`} label="Purposes the audience may read under (comma-separated)">{(id) => txt(id, d.purposes, (v) => up({ purposes: v }))}</Field>
+      </div>
+      <h4 style={h3}>Validity (world time)</h4>
+      <div style={rowStyle}>
+        <Field id={`${idp}-vfrom`} label="Holds from (empty = the basis's event time)">{(id) => when(id, d.validFrom, d.served.validFrom, (v) => up({ validFrom: v, served: { ...d.served, validFrom: null } }))}</Field>
+        <Field id={`${idp}-vto`} label="Holds until (optional)">{(id) => when(id, d.validTo, d.served.validTo, (v) => up({ validTo: v, served: { ...d.served, validTo: null } }))}</Field>
+      </div>
+      <h4 style={h3}>Retention (declared at record time)</h4>
+      <div style={rowStyle}>
+        <Field id={`${idp}-rprof`} label="Retention profile (empty = the basis's, else its evidence's)">{(id) => txt(id, d.retentionProfile, (v) => up({ retentionProfile: v }))}</Field>
+        <Field id={`${idp}-runtil`} label="Retain until (optional)">{(id) => when(id, d.retainUntil, d.served.retainUntil, (v) => up({ retainUntil: v, served: { ...d.served, retainUntil: null } }))}</Field>
+        <Field id={`${idp}-rbasis`} label="Retention basis (optional)">{(id) => txt(id, d.retentionBasis, (v) => up({ retentionBasis: v }))}</Field>
+      </div>
+      <h4 style={h3}>Related</h4>
+      <div style={rowStyle}>
+        <Field id={`${idp}-dec`} label="Decision id (optional)">{(id) => txt(id, d.decisionId, (v) => up({ decisionId: v }))}</Field>
+        <Field id={`${idp}-obj`} label="Objective id (optional)">{(id) => txt(id, d.objectiveId, (v) => up({ objectiveId: v }))}</Field>
+      </div>
+    </>
+  );
+}
+
+/** What a derivation answered, VERBATIM: the record, the basis as read, the lift said, the statement and its digest, the source. */
+function DerivedAnswer({ m }: { m: MemoryDerived }) {
+  const b = m.basis; const s = m.source; const inh = m.inherited; const c = m.classification;
+  return (
+    <>
+      <p>
+        derived item <Mono>{m.itemId}</Mono> version <Mono>{String(m.version)}</Mono> from <Mono>{b.object_type}:{b.id}@{String(b.version)}</Mono> ({b.truth_state}, review {b.review_state});
+        {' '}{String(m.cites)} cite(s); classification declared {c.declared}, inherited {c.inherited}, applied <strong>{c.applied}</strong>;
+        {' '}synthetic {String(inh['synthetic_state'])}; retention {str(inh['retention_profile'])} ({str(inh['retention_from'])});
+        {' '}holds from {fmtInstant(inh['valid_from'])} ({str(inh['valid_from_source'])}); digest <Mono>{m.contentDigest}</Mono>
+      </p>
+      <dl>
+        <DefinitionRow term="Derived statement"><span style={{ whiteSpace: 'pre-wrap' }}>{m.statement}</span></DefinitionRow>
+        <DefinitionRow term="Statement digest"><Mono>{m.statementDigest}</Mono></DefinitionRow>
+        <DefinitionRow term="Source">
+          {str(s['source_key'])}@{str(s['contract_version'])} · {str(s['connector_kind'])} · {s['media_type'] === null || s['media_type'] === undefined ? '—' : String(s['media_type'])} · {str(s['authority_class'])} · {str(s['data_origin'])}
+          {m.seriesKeys.length > 0 ? ` · series ${m.seriesKeys.join(', ')}` : ''}
+        </DefinitionRow>
+        <DefinitionRow term="Evidence">
+          {m.evidence.length === 0 ? 'none named' : (
+            <ul style={{ margin: 0, paddingInlineStart: '1rem' }}>
+              {m.evidence.map((e, i) => <li key={i}>EVD <Mono>{str(e['object_id'])}</Mono>@{str(e['version'])} · bytes <Mono>{str(e['digest'])}</Mono>{e['byte_start'] !== null && e['byte_start'] !== undefined ? ` · span ${String(e['byte_start'])}–${String(e['byte_end'])}` : ''}</li>)}
+            </ul>
+          )}
+        </DefinitionRow>
+      </dl>
+    </>
+  );
+}
+
+/** The served DERIVATION block, as recorded on the version: the basis, the method, the source, the evidence versions and the statement digest. */
+function DerivationRow({ d }: { d: Row }) {
+  const basis = rec(d['basis']); const source = rec(d['source']); const indicator = rec(d['indicator']);
+  const evidence = Array.isArray(d['evidence']) ? (d['evidence'] as Row[]) : [];
+  const series = Array.isArray(d['series_keys']) ? (d['series_keys'] as unknown[]).map(String) : [];
+  return (
+    <DefinitionRow term="Derivation">
+      <div>
+        basis <Mono>{str(basis['object_type'])}:{str(basis['id'])}@{str(basis['version'])}</Mono> ({str(d['truth_state_of_basis'])}, review {str(d['review_state_of_basis'])})
+        {' · '}method <Mono>{str(d['method_ref'])}</Mono> · derived {fmtInstant(d['derived_at'])}
+        {' · '}source {str(source['source_key'])}@{str(source['contract_version'])} ({str(source['connector_kind'])}, {str(source['media_type'])}, {str(source['authority_class'])}, {str(source['data_origin'])})
+        {series.length > 0 ? ` · series ${series.join(', ')}` : ''}
+        {isDerived(d['indicator']) ? ` · indicator ${str(indicator['rule'])}` : ''}
+      </div>
+      <ul style={{ margin: 0, paddingInlineStart: '1rem' }}>
+        {evidence.map((e, i) => <li key={i}>EVD <Mono>{str(e['object_id'])}</Mono>@{str(e['version'])} · bytes <Mono>{str(e['digest'])}</Mono>{e['byte_start'] !== null && e['byte_start'] !== undefined ? ` · span ${String(e['byte_start'])}–${String(e['byte_end'])}` : ''}</li>)}
+      </ul>
+      <div>statement digest <Mono>{str(d['statement_digest'])}</Mono></div>
+    </DefinitionRow>
+  );
+}
+
 /** The served version, VERBATIM. */
 function ServedVersion({ r }: { r: MemoryRetrieval }) {
   const p = r.version.payload; const source = rec(p['source']); const audience = rec(p['audience']);
@@ -193,16 +376,18 @@ function ServedVersion({ r }: { r: MemoryRetrieval }) {
         <strong>version {a.current_version} of {a.versions} is current; you were served version {r.versionServed}</strong>
         {a.served_is_current ? ' (the current one)' : ' (a superseded version, replayed)'} · item {a.state}
         {a.attention_state !== null && a.attention_state !== 'none' ? <> · attention: {String(a.attention_state)}</> : null}
+        {a.basis_state !== null && a.basis_state !== undefined ? <> · basis {String(a.basis_state)}</> : null}
         {' · '}superseded {a.superseded_versions} time(s){a.last_superseded_at !== null ? <>, last {fmtInstant(a.last_superseded_at)}</> : null}
         {' · '}as of {r.asOf === null ? 'now' : fmtInstant(r.asOf)} · access recorded as <Mono>{r.accessId}</Mono>
       </p>
       <dl>
-        <DefinitionRow term="Version served"><Mono>{String(r.version.object_version)}</Mono> · recorded {fmtInstant(r.version.recorded_at)} · {str(r.version.lifecycle_state)} · truth {str(r.version.truth_state)}</DefinitionRow>
+        <DefinitionRow term="Version served"><Mono>{String(r.version.object_version)}</Mono> · recorded {fmtInstant(r.version.recorded_at)} · {str(r.version.lifecycle_state)} · truth {str(r.version.truth_state)} · synthetic {String(r.version.synthetic_state)}</DefinitionRow>
         <DefinitionRow term="Admitted for purpose"><Mono>{str(r.version.purpose_scope)}</Mono></DefinitionRow>
         <DefinitionRow term="Classification">{str(r.version.classification)}</DefinitionRow>
         <DefinitionRow term="Class / title"><Mono>{str(p['record_class'])}</Mono> — {str(p['title'])}</DefinitionRow>
         <DefinitionRow term="Statement"><span style={{ whiteSpace: 'pre-wrap' }}>{str(p['statement'])}</span></DefinitionRow>
         <DefinitionRow term="Source">{str(source['kind'])} · {str(source['ref'])}</DefinitionRow>
+        {isDerived(p['derivation']) && <DerivationRow d={rec(p['derivation'])} />}
         <DefinitionRow term="Audience">{str(audience['classification'])} · roles {list(audience['roles'])} · purposes {list(audience['purposes'])}</DefinitionRow>
         <DefinitionRow term="Validity">from {fmtInstant(validity['from'])} to {validity['to'] === null || validity['to'] === undefined ? 'open' : fmtInstant(validity['to'])}</DefinitionRow>
         <DefinitionRow term="Retention">{str(retention['profile'])} · until {retention['retain_until'] === null || retention['retain_until'] === undefined ? 'not set' : fmtInstant(retention['retain_until'])} · basis {str(retention['basis'])}</DefinitionRow>
@@ -240,6 +425,8 @@ export default function MemoryPage() {
   const [recorded, setRecorded] = useState<Row | null>(null);
   const [newProblem, setNewProblem] = useState<string | null>(null);
   const [supDraft, setSupDraft] = useState<Draft>(EMPTY);
+  /** B19: the re-derivation's draft — a derived record is superseded by naming its basis again, never by a typed statement. */
+  const [supDerive, setSupDerive] = useState<DeriveDraft>(EMPTY_DERIVE);
   const [supReason, setSupReason] = useState('');
   const [supEffective, setSupEffective] = useState('');
   const [supReceipt, setSupReceipt] = useState<ReceiptT>(null);
@@ -249,6 +436,10 @@ export default function MemoryPage() {
   const [wdReceipt, setWdReceipt] = useState<ReceiptT>(null);
   const [withdrawn, setWithdrawn] = useState<Row | null>(null);
   const [wdProblem, setWdProblem] = useState<string | null>(null);
+  const [deriveDraft, setDeriveDraft] = useState<DeriveDraft>(EMPTY_DERIVE);
+  const [deriveReceipt, setDeriveReceipt] = useState<ReceiptT>(null);
+  const [derived, setDerived] = useState<MemoryDerived | null>(null);
+  const [deriveProblem, setDeriveProblem] = useState<string | null>(null);
 
   const load = async () => {
     const r = await graph.listMemory(scope);
@@ -262,8 +453,10 @@ export default function MemoryPage() {
     setRecord({ item: r.data.item, events: r.data.events, access: r.data.access, dependencies: r.data.dependencies });
   };
   const select = (itemId: string) => {
+    const row = rows?.find((r) => String(r['item_id']) === itemId);
     setSelected(itemId); setServed(null); setRetrieveProblem(null); setRetrieveReceipt(null);
-    setSupDraft(EMPTY); setSupReason(''); setSupEffective(''); setSupReceipt(null); setSuperseded(null); setSupProblem(null);
+    setSupDraft(EMPTY); setSupDerive(row !== undefined && isDerived(row['derivation']) ? fromListedDerivation(row) : EMPTY_DERIVE);
+    setSupReason(''); setSupEffective(''); setSupReceipt(null); setSuperseded(null); setSupProblem(null);
     setWdReason(''); setWdReceipt(null); setWithdrawn(null); setWdProblem(null);
     void loadRecord(itemId);
   };
@@ -273,6 +466,8 @@ export default function MemoryPage() {
   if (rows === null) return <Empty>reading the memory…</Empty>;
 
   const current = selected === null ? null : rows.find((r) => String(r['item_id']) === selected) ?? null;
+  /** The supersede form's class: the served version decides when one is served, else the listing row's derivation (the server's, not a guess). */
+  const supIsDerived = served !== null ? isDerived(served.version.payload['derivation']) : current !== null && isDerived(current['derivation']);
 
   return (
     <>
@@ -282,7 +477,10 @@ export default function MemoryPage() {
         (classification, roles, purposes), a validity in world time and a retention declared when it is recorded. The listing
         below shows each item's <strong>record without its content</strong>. The statement is served only by a
         <strong> retrieval under a declared purpose</strong> — a governed, audited read: who read which version, under which
-        purpose, as of when, is recorded on the item. A superseded version stays replayable as of an instant.
+        purpose, as of when, is recorded on the item. A superseded version stays replayable as of an instant. A record is a
+        person's own (source kind <strong>human</strong>) or <strong>derived</strong> from a claim version or a warning (document,
+        communication, telemetry): its statement is computed by the server, its controls inherited from the basis and its evidence,
+        and its derivation kept on the version; the listing names the basis and a retrieval says the basis's state.
       </UnknownNote>
 
       <section aria-labelledby="list-h" style={cardStyle}>
@@ -290,10 +488,12 @@ export default function MemoryPage() {
         {rows.length === 0 ? <Empty>No memory item is recorded in this domain.</Empty> : (
           <ScrollBox label="memory items">
             <table className="eye-table" style={tableStyle}>
-              <thead><tr><Th>Select</Th><Th>Title</Th><Th>Class</Th><Th>Current version</Th><Th>Classification</Th><Th>Audience purposes</Th><Th>State</Th><Th>Attention</Th><Th>Retained under</Th><Th>Recorded at</Th></tr></thead>
+              <thead><tr><Th>Select</Th><Th>Title</Th><Th>Class</Th><Th>Source</Th><Th>Current version</Th><Th>Classification</Th><Th>Audience purposes</Th><Th>State</Th><Th>Attention</Th><Th>Retained under</Th><Th>Recorded at</Th></tr></thead>
               <tbody>
                 {rows.map((r) => {
                   const id = String(r['item_id']); const isSel = id === selected;
+                  // B19: a derived record's listing row carries its derivation without content — the basis it was derived from is named beside the kind.
+                  const basis = isDerived(r['derivation']) ? rec(rec(r['derivation'])['basis']) : null;
                   return (
                     <tr key={id} aria-selected={isSel}>
                       <Td>
@@ -304,6 +504,7 @@ export default function MemoryPage() {
                       </Td>
                       <Td>{str(r['title'])}</Td>
                       <Td mono>{str(r['record_class'])}</Td>
+                      <Td mono>{str(r['source_kind'])}{basis !== null ? ` ← ${str(basis['object_type'])}:${short(basis['id'])}@${str(basis['version'])}` : ''}</Td>
                       <Td mono>{str(r['object_version'])}{Number(r['superseded_versions'] ?? 0) > 0 ? ` (${String(r['superseded_versions'])} superseded)` : ''}</Td>
                       <Td>{str(r['classification'])}</Td>
                       <Td mono>{list(r['audience_purposes'])}</Td>
@@ -353,6 +554,7 @@ export default function MemoryPage() {
                   }
                   setServed(r.data.memory); setRetrieveReceipt(r.data.receipt);
                   setSupDraft(fromPayload(r.data.memory.version.payload));
+                  setSupDerive(isDerived(r.data.memory.version.payload['derivation']) ? fromDerivedPayload(r.data.memory.version.payload) : EMPTY_DERIVE);
                   await loadRecord(selected);
                 }} />
             </div>
@@ -417,26 +619,45 @@ export default function MemoryPage() {
             <h2 id="sup-h" style={{ fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 }}>Supersede — {str(current['title'])}</h2>
             <p style={muted}>
               The record authority's act, human-gated: the next version is recorded with its reason and the prior version stays replayable.
-              {served === null ? ' Retrieve the item first to start from the served version; the fields below are otherwise empty.' : ` The fields are prefilled from version ${served.versionServed} as it was served.`}
+              {supIsDerived
+                ? ' A derived record is re-derived: the record authority names the basis version (empty = the latest); the statement is recomputed by the server and the controls inherited again.'
+                : ''}
+              {served === null
+                ? (supIsDerived ? " Retrieve the item first to start from the served version; the basis below is the listing's, the other fields are empty." : ' Retrieve the item first to start from the served version; the fields below are otherwise empty.')
+                : ` The fields are prefilled from version ${served.versionServed} as it was served.`}
             </p>
-            <ItemFields idp="sup" d={supDraft} set={setSupDraft} />
+            {supIsDerived ? <DeriveFields idp="sup" d={supDerive} set={setSupDerive} /> : <ItemFields idp="sup" d={supDraft} set={setSupDraft} sourceKinds={HUMAN_SOURCE_KINDS} />}
             <h4 style={h3}>Supersession</h4>
             <div style={rowStyle}>
               <Field id="sup-reason" label="Reason (at least 8 characters, required)">{(id) => <input id={id} style={{ ...inputStyle, inlineSize: '100%' }} value={supReason} onChange={(e) => setSupReason(e.target.value)} />}</Field>
               <Field id="sup-eff" label="Effective at (optional)">{(id) => <input id={id} type="datetime-local" style={{ ...inputStyle, inlineSize: '100%' }} value={supEffective} onChange={(e) => setSupEffective(e.target.value)} />}</Field>
             </div>
             <div style={{ marginBlockStart: 'var(--eye-space-8)' }}>
-              <GovernedButton label="Supersede" pendingLabel="superseding" disabled={!draftOk(supDraft) || supReason.trim().length < 8}
+              <GovernedButton label="Supersede" pendingLabel="superseding" disabled={(supIsDerived ? !deriveOk(supDerive) : !draftOk(supDraft)) || supReason.trim().length < 8}
                 onRun={async () => {
                   setSupProblem(null);
-                  const r = await graph.supersedeMemory(scope, selected, { ...toIntake(supDraft), supersession: { reason: supReason.trim(), effectiveAt: toIso(supEffective) } });
+                  const supersession = { reason: supReason.trim(), effectiveAt: toIso(supEffective) };
+                  const r = await graph.supersedeMemory(scope, selected, supIsDerived ? { ...toDeriveIntake(supDerive), supersession } : { ...toIntake(supDraft), supersession });
                   if (!r.ok || r.data === undefined) { const m = refusal(r, 'the supersession was not answered'); setSupProblem(m); throw new Error(m); }
                   setSuperseded(r.data.memory as unknown as Row); setSupReceipt(r.data.receipt); setServed(null);
                   await load(); await loadRecord(selected);
                 }} />
             </div>
             {supProblem !== null && <LiveStatus assertive><span style={{ color: 'var(--eye-color-critical)' }}>not recorded — {supProblem}</span></LiveStatus>}
-            {superseded !== null && <p>recorded version <Mono>{str(superseded['version'])}</Mono> of <Mono>{str(superseded['itemId'])}</Mono>, superseding version {str(superseded['priorVersion'])}; {str(superseded['cites'])} cite(s); digest <Mono>{str(superseded['contentDigest'])}</Mono></p>}
+            {superseded !== null && (
+              <>
+                <p>
+                  recorded version <Mono>{str(superseded['version'])}</Mono> of <Mono>{str(superseded['itemId'])}</Mono>, superseding version {str(superseded['priorVersion'])}; {str(superseded['cites'])} cite(s); digest <Mono>{str(superseded['contentDigest'])}</Mono>
+                  {typeof superseded['statement'] === 'string' ? ' — statement recomputed' : ''}
+                </p>
+                {typeof superseded['statement'] === 'string' && (
+                  <dl>
+                    <DefinitionRow term="Derived statement"><span style={{ whiteSpace: 'pre-wrap' }}>{String(superseded['statement'])}</span></DefinitionRow>
+                    <DefinitionRow term="Basis"><Mono>{str(rec(superseded['basis'])['object_type'])}:{str(rec(superseded['basis'])['id'])}@{str(rec(superseded['basis'])['version'])}</Mono> ({str(rec(superseded['basis'])['truth_state'])}, review {str(rec(superseded['basis'])['review_state'])}) · classification declared {str(rec(superseded['classification'])['declared'])}, inherited {str(rec(superseded['classification'])['inherited'])}, applied <strong>{str(rec(superseded['classification'])['applied'])}</strong></DefinitionRow>
+                  </dl>
+                )}
+              </>
+            )}
             <Receipt receipt={supReceipt} />
           </section>
 
@@ -463,10 +684,11 @@ export default function MemoryPage() {
       <section aria-labelledby="new-h" style={cardStyle}>
         <h2 id="new-h" style={{ fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 }}>Record a memory item</h2>
         <p style={muted}>
-          The knowledge owner's act, under the purpose <Mono>memory</Mono>: the first canonical version, its projection and its cites as
-          dependencies. The audience purposes declare who may later retrieve it and under what.
+          The knowledge owner's act, under the purpose <Mono>memory</Mono>: a person's own record (source kind <Mono>human</Mono>) — the first
+          canonical version, its projection and its cites as dependencies. The audience purposes declare who may later retrieve it and under
+          what. A document, communication or telemetry record is not typed here: it is derived from its source below.
         </p>
-        <ItemFields idp="new" d={draft} set={setDraft} />
+        <ItemFields idp="new" d={draft} set={setDraft} sourceKinds={HUMAN_SOURCE_KINDS} />
         <div style={{ marginBlockStart: 'var(--eye-space-8)' }}>
           <GovernedButton label="Record" pendingLabel="recording" disabled={!draftOk(draft)}
             onRun={async () => {
@@ -480,6 +702,32 @@ export default function MemoryPage() {
         {newProblem !== null && <LiveStatus assertive><span style={{ color: 'var(--eye-color-critical)' }}>not recorded — {newProblem}</span></LiveStatus>}
         {recorded !== null && <p>recorded item <Mono>{str(recorded['itemId'])}</Mono> version <Mono>{str(recorded['version'])}</Mono>; {str(recorded['cites'])} cite(s); digest <Mono>{str(recorded['contentDigest'])}</Mono></p>}
         <Receipt receipt={recordReceipt} />
+      </section>
+
+      <section aria-labelledby="derive-h" style={cardStyle}>
+        <h2 id="derive-h" style={{ fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 }}>Derive from a source</h2>
+        <p style={muted}>
+          The knowledge owner's act, human-gated, under the purpose <Mono>memory</Mono>: name a claim version or a warning; the server reads it,
+          computes the statement by the method <Mono>memory-derive@1.0.0</Mono>, inherits the controls of the basis and its evidence (the most
+          restrictive classification applies and is said), refuses a basis still queued for review, rejected, corrected, withdrawn or imported,
+          and records the first version with its derivation. The basis and its evidence are cited by the server; a derivation whose inherited
+          classification your clearance in this domain does not cover is refused (you could not read the record). The kind is your declaration
+          with one verified rule: <Mono>telemetry</Mono> names a source with a registered series, and a warning is telemetry only.
+        </p>
+        <DeriveFields idp="derive" d={deriveDraft} set={setDeriveDraft} />
+        <div style={{ marginBlockStart: 'var(--eye-space-8)' }}>
+          <GovernedButton label="Derive" pendingLabel="deriving" disabled={!deriveOk(deriveDraft)}
+            onRun={async () => {
+              setDeriveProblem(null);
+              const r = await graph.deriveMemory(scope, toDeriveIntake(deriveDraft));
+              if (!r.ok || r.data === undefined) { const m = refusal(r, 'the derivation was not answered'); setDeriveProblem(m); throw new Error(m); }
+              setDerived(r.data.memory); setDeriveReceipt(r.data.receipt); setDeriveDraft(EMPTY_DERIVE);
+              await load();
+            }} />
+        </div>
+        {deriveProblem !== null && <LiveStatus assertive><span style={{ color: 'var(--eye-color-critical)' }}>not derived — {deriveProblem}</span></LiveStatus>}
+        {derived !== null && <DerivedAnswer m={derived} />}
+        <Receipt receipt={deriveReceipt} />
       </section>
     </>
   );

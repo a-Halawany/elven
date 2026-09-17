@@ -225,6 +225,37 @@ export interface MemoryIntake {
   supersession?: { reason: string; effectiveAt: string | null };
 }
 
+/**
+ * B19 (0079): what is sent to DERIVE a memory record — the basis and the declared fields; the statement, the source and
+ * the provenance are the server's (the method memory-derive@1.0.0). `basis.version` absent = the latest version;
+ * `validity.from` null = the basis's event time; `retention.profile` null = the basis's, else its evidence's. On a
+ * re-derivation (`supersedeMemory` of a derived record) `supersession` is required.
+ */
+export interface MemoryDeriveIntake {
+  basis: { kind: 'claim' | 'warning'; id: string; version?: number };
+  sourceKind: 'document' | 'communication' | 'telemetry';
+  recordClass: 'institutional' | 'strategic'; title: string;
+  audience: MemoryIntake['audience'];
+  validity: { from: string | null; to: string | null };
+  retention: { profile: string | null; retainUntil: string | null; basis: string | null };
+  cites: MemoryIntake['cites']; related: MemoryIntake['related'];
+  supersession?: { reason: string; effectiveAt: string | null };
+}
+
+/**
+ * What a derivation answers, VERBATIM: the record's identity and digests, the basis as read (its type, version, digest,
+ * truth and review state), the source contract and the evidence versions the derivation names, the classification as
+ * declared / inherited / applied (the most restrictive wins and is said), and where each inherited field came from.
+ * `priorVersion` only on a re-derivation.
+ */
+export interface MemoryDerived {
+  itemId: string; version: number; cites: number; contentDigest: string; statement: string; statementDigest: string; sourceKind: string;
+  basis: { kind: string; object_type: string; id: string; version: number; content_digest: string; truth_state: string; review_state: string; event_time: string | null };
+  source: Record<string, unknown>; evidence: Array<Record<string, unknown>>; seriesKeys: string[];
+  classification: { declared: string; inherited: string; applied: string };
+  inherited: Record<string, unknown>; priorVersion?: number;
+}
+
 /** The served version of a retrieval — the SERVED version's content and header; the current projection contributes availability only. */
 export interface MemoryRetrieval {
   item: MemoryRow;
@@ -232,6 +263,8 @@ export interface MemoryRetrieval {
     item_id: string; object_version: number; recorded_at: string; lifecycle_state: string; classification: string;
     purpose_scope: string; retention_profile: string; valid_from: string; valid_to: string | null; truth_state: string;
     accountable_owner: string; supersedes: string | null; schema_ref: string; content_digest: string | null;
+    /** B19: the header fields a derived record carries beside a human one (the payload's `derivation` block is served as recorded). */
+    synthetic_state: boolean; event_time: string | null; method_ref: string | null; provenance_ref: string | null;
     payload: Record<string, unknown>;
   };
   versionServed: number;
@@ -240,6 +273,8 @@ export interface MemoryRetrieval {
   availability: {
     item_id: string; state: string; current_version: number; versions: number; superseded_versions: number;
     last_superseded_at: string | null; attention_state: string | null; served_is_current: boolean;
+    /** B19: `current` / `corrected` / `withdrawn` — the basis's state as the projection declares it; null for a person's own record (never a refusal: a withdrawn basis is served with the declaration). */
+    basis_state: string | null; source_kind: string;
   };
   accessId: string;
 }
@@ -486,13 +521,23 @@ export const graph = {
       s, purposeId, `/memory/${itemId}/retrieve`, 'memory.item.retrieve', 'MEM',
       asOf === undefined ? {} : { asOf }, itemId, 'none'),
 
+  /** A person's own record (source kind human); a document, communication or telemetry record is derived (`deriveMemory`). */
   recordMemory: (s: Scope, intake: MemoryIntake, purposeId = 'memory') =>
     gUnder<{ memory: { itemId: string; version: number; cites: number; contentDigest: string }; receipt: Receipt }>(
       s, purposeId, '/memory/record', 'memory.item.record', 'MEM', intake),
 
-  /** Human-gated: the record authority records the next version with its reason; the prior version stays replayable. */
-  supersedeMemory: (s: Scope, itemId: string, intake: MemoryIntake, purposeId = 'memory') =>
-    gUnder<{ memory: { itemId: string; version: number; cites: number; contentDigest: string; priorVersion: number }; receipt: Receipt }>(
+  /** B19: human-gated — the knowledge owner names the basis (a claim version or a warning); the server derives the record. */
+  deriveMemory: (s: Scope, intake: MemoryDeriveIntake, purposeId = 'memory') =>
+    gUnder<{ memory: MemoryDerived; receipt: Receipt }>(
+      s, purposeId, '/memory/derive', 'memory.item.derive', 'MEM', intake),
+
+  /**
+   * Human-gated: the record authority records the next version with its reason; the prior version stays replayable.
+   * A person's record is re-stated (a `MemoryIntake`); a derived record is RE-DERIVED (a `MemoryDeriveIntake` naming the
+   * basis — its version absent = the latest; the statement recomputed) and answers what a derivation answers.
+   */
+  supersedeMemory: (s: Scope, itemId: string, intake: MemoryIntake | MemoryDeriveIntake, purposeId = 'memory') =>
+    gUnder<{ memory: ({ itemId: string; version: number; cites: number; contentDigest: string } | MemoryDerived) & { priorVersion: number }; receipt: Receipt }>(
       s, purposeId, `/memory/${itemId}/supersede`, 'memory.item.supersede', 'MEM', intake, itemId),
 
   /** Human-gated (B10: its own action, memory.item.withdraw): the record authority withdraws the item with a reason; every version stays replayable. */
