@@ -3528,7 +3528,7 @@ SCENES HELD (39 checks, 11.3 s).
 |---|---|---|---|
 | `3ea676d` | B19's records head on PR #56 (`phase6-b19` → `phase6-b18`; NOT merged — its base chain cannot complete while `main`'s ci is red on the C15 recheck; the retarget to `main` and the merge await the C15 return and the owner's word) | 35174994149 green (§33.4) | 35174994150 green |
 | **`e70f90f`** | **`main`: #55 (B18 at `4a7f43a`) merged 2026-09-22T19:07Z under the owner's word on Codex's B18/B19 review; the chain preserved as it ran, not re-run** | **35771687190 FAILED — build-test green, browser-regression green; the supply-chain job red on "C15 patched-image recheck (blocking; fails when a compatible fixed official image exists)" while the C15 gate itself passed (findings 44 across linux/amd64 + linux/arm64, governed 6 records, unmatched 0): BY DESIGN since 2026-09-22 — compatible fixed OFFICIAL images exist (`postgres:18-alpine` `sha256:77f58511…`, `redis:8-alpine` `sha256:ba6e394f…`), and every ci run's supply-chain job is red on that step until the governed return lands; C17 finalize 35773974178 SKIPPED (it requires ci success); C19 anchor 35773990447 green** | 35771687139 green |
-| **the B20 head** | **B20** (0080; the partitions and the derived watermark, the symmetric check that withdraws, the operator's withdrawal and the rebuild writer, the labelled reads and the constrained traversals, the memory content tier, the deletion pause, the briefing's flag; the harness; the act) — the candidate on `phase6-b20` over `3ea676d`, uncommitted while this section was written; its PR opens with base `phase6-b19` (stacked on #56) and is retargeted after #56 | **the hosted run is bound in the records commit that follows; its supply-chain job is expected red on the C15 recheck step, not on the candidate** | bound with it |
+| **`1f6d04c`** | **B20** (0080; the partitions and the derived watermark, the symmetric check that withdraws, the operator's withdrawal and the rebuild writer, the labelled reads and the constrained traversals, the memory content tier, the deletion pause, the briefing's flag; the harness; the act) — PR #58 `phase6-b20` → `phase6-b19` (stacked on #56; retargeted to `main` after #56; the merges await the owner's word) | **35779940271 attempt 2** — build-test job 106930091028 green: unit 2338/2338 and the meta suite 9/9, acceptance 58/58, the integration suite **1070/1070 in 71 files** on a fresh database (`phase6-graph-projections-b20` 9/9), the upgrade proof +59 rows / 80 files, C18 612/612 + 44; browser-regression job 106930093569 **51 passed** (the B20 three); **supply-chain job 106930091021 RED on the C15 patched-image recheck step alone** (the C15 gate itself green — 44 findings governed by 6 records, 0 unmatched; the recheck fails by design while the return to the official images, draft PR #57, awaits the owner); attempt 1 (build-test job 106922581654) failed on ONE unrelated B14 https-recipient case (`phase6-retention-b14` H2: the tenth attempt's receipt carried no HTTP status on the runner; 1069/1070) — preserved, re-run once — `evidence/cp6/hosted-1f6d04c-build-test-summary.txt` | 35779940295 green |
 
 Statuses: AU-MEM-0067, AU-MEM-0068 and AU-MEM-0083 gain their evidence and stay `open` until the hosted run binds (AU-MEM-0067's second
 condition is met partly — the canonical read, not the vault read — and is promoted only with the owner's acceptance of D10 as the content
@@ -3537,7 +3537,7 @@ writer); V03-T-098 partial → implemented, V03-T-108 missing → implemented, V
 implemented, IA-35-005 missing → partial; V03-T-097 stays partial (the evidence bytes' 409); V03-T-101 and V03-T-112 with the evidence
 corrected; IA-34-005, DP-33-005 and DP-37-005 stay partial with the B20 clause — every row carrying "no lexical/vector index exists; the
 index tier is the projection set; the representation version is the derivation rule"; L3-I02's `bound_to` gains the clause and the row
-stays partial (the register 36/14/0). The split stays **3,555 = 3,181 open + 339 local + 35 CI** (no unit promoted by a local run). No
+stays partial (the register 36/14/0). The split stays **3,555 = 3,179 open + 339 local + 37 CI** (no unit promoted by a local run). No
 completion percentage; no deployment leg accepted.
 
 ### 34.5 Functioning, partial, missing — and the acceptance work remaining
@@ -3566,8 +3566,8 @@ replication and portability packages; encryption of the package beyond TLS; the 
 analyses object; the remaining fourteen interface contracts; an in-migration rebuild for a representation bump (deferred to the migration
 that first bumps the constant); every deployment leg (S7).
 
-**Acceptance work remaining** — the hosted binding of B20 (its run bound once in the records commit that follows; its supply-chain job red on
-the C15 recheck step, not on the candidate); the C15 return to the official images (`maintenance/c15-return-to-official-2026-09`, the
+**Acceptance work remaining** — B20's hosted run at `1f6d04c` is bound here once (no records-refresh chain; its supply-chain job red on
+the C15 recheck step alone, not on the candidate; AU-MEM-0068 and AU-MEM-0083 promoted open → verified:ci by it); the C15 return to the official images (`maintenance/c15-return-to-official-2026-09`, the
 draft PR #57 to `main`: the re-pin, the provenance and compatibility evidence, the SCX re-issues whose `approved_on` is the owner's; the
 merge is the owner's word);
 #56's retarget to `main` and its merge after `main`'s chain is green; B20's PR retargeted after #56; Codex's bounded review of B20 if the

@@ -2960,8 +2960,7 @@ walks; the web tests **15/15** (= 11 + 4) and `next build` green with the five B
 `eye_browser_20260922` (58.3 s; = 48 + 3: the Phase 0 ten, the Phase 1 sixteen, the B18 twenty, the B19 two — with the memory walk's new
 line — and the B20 three), the step name in `.github/workflows/ci.yml:272` reading "Browser regression gate (Phase 0 ten + Phase 1 A12
 sixteen + B18 twenty + B19 two + B20 three — the retention, memory and projections walks, blocking)" (a record, not a gate condition — the
-job runs every `e2e/*.spec.ts`). THE HOSTED RUN of the B20 candidate is bound in the records commit that follows (the B18/B19 idiom); its
-supply-chain job is expected RED on the C15 patched-image recheck step — not on the candidate (§B20.7). UNITS AND ROWS: AU-MEM-0067,
+job runs every `e2e/*.spec.ts`). THE HOSTED RUN at `1f6d04c` — ci 35779940271 attempt 2 at 1f6d04c (build-test job 106930091028: unit 2338/2338 and the meta suite 9/9, acceptance 58/58, the integration suite 1070/1070 in 71 files on a fresh database with phase6-graph-projections-b20 9/9, the upgrade proof +59 rows / 80 files, C18 612/612 + 44; browser-regression job 106930093569 51 passed — the B20 three and the memory walk's unverified line on the hosted gate; the supply-chain job 106930091021 red on the C15 patched-image recheck step alone, the C15 gate itself green; attempt 1's build-test failed on one unrelated B14 https-recipient case — preserved; C19 35779940295 green) — bound in this records commit (`evidence/cp6/hosted-1f6d04c-build-test-summary.txt`); the supply-chain job's red is the recheck's, not the candidate's (§B20.7). UNITS AND ROWS: AU-MEM-0067,
 AU-MEM-0068 and AU-MEM-0083 gain their evidence and STAY `open` (the P3 rule: `open → verified:ci` in the binding commit when the hosted run
 exercised every condition — the design's §7.3 maps each condition to its case; AU-MEM-0067's second condition is met PARTLY — the canonical
 read (P6(b)), not the vault read (D10) — and the unit is promoted only with the owner's acceptance of D10 as the content tier's evidence
@@ -2974,7 +2973,7 @@ keep their statuses with the evidence corrected (the writer; the JOIN-only note)
 (the queued-revision mode owed) and DP-37-005 (the pause on projection withdrawal beside the B11/B19 clause; metadata-only serving
 delivered for the canonical read) stay partial — every one of the eleven rows prefixed with the clause "no lexical/vector index exists; the
 index tier is the projection set; the representation version is the derivation rule" and, where its evidence now rests on the candidate,
-`release_status merged → branch-only`; the register 36/14/0 (L3-I02 `bound_to`); the split stays **3,555 = 3,181 open + 339 local + 35 CI**
+`release_status merged → branch-only`; the register 36/14/0 (L3-I02 `bound_to`); the split stays **3,555 = 3,179 open + 339 local + 37 CI (AU-MEM-0068 and AU-MEM-0083 open → verified:ci by the binding commit; AU-MEM-0067 stays open on its second condition (C20); AU-MEM-0070 stays verified:local until the P7-D cases)**
 (no unit promoted by a local run; the summaries regenerated). STATED: the design's §7.2 also names DAT-KN-05, FEX-08, FEX-09,
 PR-19-001/-002, ES-33-009/V04-T-024 and ES-34-009/V04-T-026 for the same clause — not moved in this records pass (the eleven above and the
 four units were; the rest belong to the binding commit or a later records pass).
