@@ -100,7 +100,7 @@ change. C15 stays blocking; no waiver is added.
 |---|---|---|---|---|---|
 | 2026-09-06 | run 34029030389 (dispatch) + local scan | `postgres@sha256:9a8afca5…`, `redis@sha256:978f0e01…` | `d3e1620b…`, `becdda6c…` | util-linux `libuuid` 2.42.1-r0 / `setpriv` 2.41.4-r0 (CVE-2026-53612, -53613, -53614, -76642, -78408, -78409, -78410); OpenSSL 3.5.7-r0 (CVE-2026-14456) | no patched image; no re-pin; no waiver |
 | **2026-09-08 13:21** | run **34231435056** (dispatch, `70c34083`) + local `check-patched-images.mjs` | unchanged | unchanged: `d3e1620b…`, `becdda6c…` | unchanged (7 rows postgres, 6 rows redis; OpenSSL 2 rows each) | **no patched image available as of this check**; no re-pin possible; no waiver; C15 remains red on the pins and blocks every merge in the recorded order |
-| 2026-09-10 | the owner's approval (`docs/images/DERIVED_IMAGES_APPROVAL.md`); PR #46 → `65c0f4d` on `main` | `ghcr.io/a-halawany/elven/postgres@sha256:69a974ae…`, `…/redis@sha256:1ad0ff24…` (derived from `9a8afca5…` / `978f0e01…` with the util-linux, OpenSSL and c-ares fixes) | official tags still affected | none on the derived images beyond the 22 governed `gosu` rows (SCX-0002…0005 re-issued, SCX-0010/0011 new; SCX-0001, -0006…-0009 retired) | TEMPORARY re-pin to the derived images; the recheck repurposed to watch for a compatible fixed OFFICIAL image on both platforms |
+| 2026-09-10 | the owner's approval (`docs/images/DERIVED_IMAGES_APPROVAL.md`); `65c0f4d` on `main` — the C15 change-set of `phase6-decisions@4ad058f` (PR #46's branch) landed first, through PR #39 (merge `d675707`, 2026-09-12) | `ghcr.io/a-halawany/elven/postgres@sha256:69a974ae…`, `…/redis@sha256:1ad0ff24…` (derived from `9a8afca5…` / `978f0e01…` with the util-linux, OpenSSL and c-ares fixes) | official tags still affected | none on the derived images beyond the 22 governed `gosu` rows (SCX-0002…0005 re-issued, SCX-0010/0011 new; SCX-0001, -0006…-0009 retired) | TEMPORARY re-pin to the derived images; the recheck repurposed to watch for a compatible fixed OFFICIAL image on both platforms |
 | **2026-09-22 12:41** | scheduled run **35728647457** on `main` (the pinned trivy 0.73.0) + local `check-patched-images.mjs` (Homebrew trivy 0.73.0, evidence only) | the derived images above | `postgres:18-alpine` → **`77f58511…`** (children `d8703cd7…` amd64, `89f74717…` arm64; 18.6-alpine3.24, Alpine 3.24.2), `redis:8-alpine` → **`ba6e394f…`** (children `2d3814be…` amd64, `41a10b18…` arm64; 8.10.2-alpine, Alpine 3.23.6) | **none of the watched ones**: `libuuid` 2.42.3-r1, `setpriv` 2.41.6-r1, `libcrypto3`/`libssl3` 3.5.8-r0, `c-ares` 1.34.8-r0 on both platforms; the official postgres children carry the same 22 `gosu` stdlib rows as the derived image and nothing else at HIGH/CRITICAL; redis 0 at every severity | **COMPATIBLE FIXED OFFICIAL IMAGE for both services** — the recheck FAILED on purpose; the return begins (§8): re-pinned 2026-09-22, provenance and compatibility verified, SCX re-issues DRAFTED for the owner |
 
 ## 8. The return to the official images (2026-09-22)
@@ -174,11 +174,14 @@ as it goes without the owner — what the gate says in that state, and what awai
 * `C15 patched-image recheck`: **FAILS, by its own design** — a compatible fixed official image
   "now exists", and it is the one pinned. PUBLICATION.md §8.5 leaves what the recheck becomes after the
   return (the trigger for a NEWER official build under ADR-P0-01's cadence, or retired) to the owner.
-* The build-test job's gate unit suites are red for the same reason, and only for it. Measured locally
-  on this tree (`pnpm --filter @eye/api test`, 2026-09-22): 2,139 of 2,272 tests pass; the 133 that fail
-  sit in six files — `source-anchored-reconstruction` (60), `receipt-invariants` (23),
-  `c15-runner-behaviour` (18), `final-receipt-semantics` (17), `receipt-contract` (12),
-  `hermetic-isolation` (1) — and every one of them fails on one of two facts of the pending state: the
+* The build-test job's gate unit suites are red for the same reason, and only for it. The hosted run on
+  the pull request's head `d6e5e47` (ci 35776917560, job 106912353611, `pnpm --filter @eye/api test`):
+  2,141 of 2,272 tests pass and **131** fail, in six of 51 files — `source-anchored-reconstruction`
+  (60 of 75), `receipt-invariants` (23 of 24), `c15-runner-behaviour` (18 of 45),
+  `final-receipt-semantics` (17 of 18), `receipt-contract` (12 of 14), `hermetic-isolation` (1 of 8)
+  (the six per-file counts sum to 131; an earlier local reading of this paragraph said 133 / 2,139,
+  which its own per-file counts did not support — corrected on the refuter's pass against the hosted
+  log) — and every one of them fails on one of two facts of the pending state: the
   six approved records' `evidence_sha256` no longer matches the dispositions document, so the replayed
   gate refuses before the behaviour under test is reached, or the recorded C15 trace and the R34
   fixture name the derived scan references and records, so the reconstruction from tracked source
