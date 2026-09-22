@@ -417,12 +417,12 @@
         "evidence": "docs/SCANNER_DISPOSITIONS.md",
         "approved_on": "PENDING — the owner's approval",
         "expires_on": "2026-11-05",
-        "evidence_sha256": "2bd6c5a24546159d8225050af493b9e4d9e94b537dbe283eada4efbb387ae3a5",
+        "evidence_sha256": "82c3f7b05aef746ca6e414c9eb9cf15590b81373ae9b402e21450815b8ac3270",
         "classification": "RISK_ACCEPTED",
         "evidence_files": [
           {
             "path": "docs/SCANNER_DISPOSITIONS.md",
-            "sha256": "2bd6c5a24546159d8225050af493b9e4d9e94b537dbe283eada4efbb387ae3a5"
+            "sha256": "82c3f7b05aef746ca6e414c9eb9cf15590b81373ae9b402e21450815b8ac3270"
           },
           {
             "path": "infra/images/candidates/evidence/v2/gosu-verification.txt",
@@ -475,12 +475,12 @@
         "evidence": "docs/SCANNER_DISPOSITIONS.md",
         "approved_on": "PENDING — the owner's approval",
         "expires_on": "2026-11-05",
-        "evidence_sha256": "2bd6c5a24546159d8225050af493b9e4d9e94b537dbe283eada4efbb387ae3a5",
+        "evidence_sha256": "82c3f7b05aef746ca6e414c9eb9cf15590b81373ae9b402e21450815b8ac3270",
         "classification": "RISK_ACCEPTED",
         "evidence_files": [
           {
             "path": "docs/SCANNER_DISPOSITIONS.md",
-            "sha256": "2bd6c5a24546159d8225050af493b9e4d9e94b537dbe283eada4efbb387ae3a5"
+            "sha256": "82c3f7b05aef746ca6e414c9eb9cf15590b81373ae9b402e21450815b8ac3270"
           },
           {
             "path": "infra/images/candidates/evidence/v2/gosu-verification.txt",
@@ -530,12 +530,12 @@
         "evidence": "docs/SCANNER_DISPOSITIONS.md",
         "approved_on": "PENDING — the owner's approval",
         "expires_on": "2026-11-05",
-        "evidence_sha256": "2bd6c5a24546159d8225050af493b9e4d9e94b537dbe283eada4efbb387ae3a5",
+        "evidence_sha256": "82c3f7b05aef746ca6e414c9eb9cf15590b81373ae9b402e21450815b8ac3270",
         "classification": "NOT_AFFECTED",
         "evidence_files": [
           {
             "path": "docs/SCANNER_DISPOSITIONS.md",
-            "sha256": "2bd6c5a24546159d8225050af493b9e4d9e94b537dbe283eada4efbb387ae3a5"
+            "sha256": "82c3f7b05aef746ca6e414c9eb9cf15590b81373ae9b402e21450815b8ac3270"
           },
           {
             "path": "docs/evidence/govulncheck-gosu-b6a16ed0.json",
@@ -598,12 +598,12 @@
         "evidence": "docs/SCANNER_DISPOSITIONS.md",
         "approved_on": "PENDING — the owner's approval",
         "expires_on": "2026-11-05",
-        "evidence_sha256": "2bd6c5a24546159d8225050af493b9e4d9e94b537dbe283eada4efbb387ae3a5",
+        "evidence_sha256": "82c3f7b05aef746ca6e414c9eb9cf15590b81373ae9b402e21450815b8ac3270",
         "classification": "NOT_AFFECTED",
         "evidence_files": [
           {
             "path": "docs/SCANNER_DISPOSITIONS.md",
-            "sha256": "2bd6c5a24546159d8225050af493b9e4d9e94b537dbe283eada4efbb387ae3a5"
+            "sha256": "82c3f7b05aef746ca6e414c9eb9cf15590b81373ae9b402e21450815b8ac3270"
           },
           {
             "path": "docs/evidence/govulncheck-gosu-b6a16ed0.json",
@@ -686,12 +686,12 @@
         "evidence": "docs/SCANNER_DISPOSITIONS.md",
         "approved_on": "PENDING — the owner's approval",
         "expires_on": "2026-11-05",
-        "evidence_sha256": "2bd6c5a24546159d8225050af493b9e4d9e94b537dbe283eada4efbb387ae3a5",
+        "evidence_sha256": "82c3f7b05aef746ca6e414c9eb9cf15590b81373ae9b402e21450815b8ac3270",
         "classification": "RISK_ACCEPTED",
         "evidence_files": [
           {
             "path": "docs/SCANNER_DISPOSITIONS.md",
-            "sha256": "2bd6c5a24546159d8225050af493b9e4d9e94b537dbe283eada4efbb387ae3a5"
+            "sha256": "82c3f7b05aef746ca6e414c9eb9cf15590b81373ae9b402e21450815b8ac3270"
           },
           {
             "path": "infra/images/published/20260910/postgres-arm64.trivy.txt",
@@ -758,12 +758,12 @@
         "evidence": "docs/SCANNER_DISPOSITIONS.md",
         "approved_on": "PENDING — the owner's approval",
         "expires_on": "2026-11-05",
-        "evidence_sha256": "2bd6c5a24546159d8225050af493b9e4d9e94b537dbe283eada4efbb387ae3a5",
+        "evidence_sha256": "82c3f7b05aef746ca6e414c9eb9cf15590b81373ae9b402e21450815b8ac3270",
         "classification": "RISK_ACCEPTED",
         "evidence_files": [
           {
             "path": "docs/SCANNER_DISPOSITIONS.md",
-            "sha256": "2bd6c5a24546159d8225050af493b9e4d9e94b537dbe283eada4efbb387ae3a5"
+            "sha256": "82c3f7b05aef746ca6e414c9eb9cf15590b81373ae9b402e21450815b8ac3270"
           },
           {
             "path": "infra/images/published/20260910/postgres-arm64.trivy.txt",

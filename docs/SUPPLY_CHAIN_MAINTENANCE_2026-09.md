@@ -162,10 +162,15 @@ as it goes without the owner — what the gate says in that state, and what awai
 
 * `Pinned-digest consistency (compose == conformance manifest)`: passes (both files name the official
   indexes).
-* `C15 supply-chain gate`: **FAILS, as it must**, on the six approved records (their `evidence_sha256`
-  no longer matches the dispositions document, which changed with §3.9) and on 44 UNGOVERNED findings —
-  the 22 `gosu` rows on each official postgres child, which no live record names. This is the pending
-  state the process defines: a record is re-bound only with the owner's approval.
+* `C15 supply-chain gate`: **FAILS, as it must** — it refuses at the disposition validation ("6 records,
+  12 rejected": every approved record's `evidence_sha256` and `evidence_files` entry for the dispositions
+  document name the digest of 2026-09-10, and the document changed with §3.9) and stops there, before any
+  image is scanned; the hosted run on the pull request (35776435696, job 106910707235) shows exactly
+  those twelve lines and `Process completed with exit code 1`. Re-binding the digest alone would not
+  turn it green: the records would then reach reconciliation naming an image the compose file no longer
+  pins — the 22 `gosu` rows on each official postgres child UNGOVERNED (44), the six records UNUSED —
+  until they name the official image. This is the pending state the process defines: a record is
+  re-bound only with the owner's approval.
 * `C15 patched-image recheck`: **FAILS, by its own design** — a compatible fixed official image
   "now exists", and it is the one pinned. PUBLICATION.md §8.5 leaves what the recheck becomes after the
   return (the trigger for a NEWER official build under ADR-P0-01's cadence, or retired) to the owner.

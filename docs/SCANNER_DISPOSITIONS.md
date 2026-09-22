@@ -758,10 +758,14 @@ exactly as §5 states.
 | `docs/images/ARM64_RISK_DECISION.md` (SCX-0010/0011) | `6b6518d03ddc01c86deb7644fa638a6a2cea149bcba6987f14352e18ae513aca` |
 
 **What the gate says while this is pending, and what the approval consists of.** With the compose file
-on the official indexes and `records` still naming the derived one, the C15 gate fails on the six
-approved records (their `evidence_sha256` no longer matches this document, which changed with this
-section, so they are rejected before reconciliation) and on 44 UNGOVERNED findings (22 per official
-postgres child); the recheck step, by its own design, fails too, because a compatible fixed official
+on the official indexes and `records` still naming the derived one, the C15 gate refuses at the
+disposition validation — "6 records, 12 rejected": each approved record's `evidence_sha256` and its
+`evidence_files` entry for this document name the digest of 2026-09-10, and this document changed with
+this section — and stops there, before any image is scanned (hosted run 35776435696 on PR #57 says
+exactly this). Re-binding the six records to this digest alone would not turn it green: they would then
+reach reconciliation naming an image the compose file no longer pins, and the 22 `gosu` rows on each
+official postgres child would be UNGOVERNED (44) with the six records UNUSED, until the records name the
+official image. The recheck step, by its own design, fails too, because a compatible fixed official
 image "now exists" — it is the one pinned. The owner's approval is: review §3.9; in
 `scripts/gate/scanner-exclusions.json` replace each of the six records in `records` with its draft from
 `pending_reissues`, deleting the `status` key and setting `approved_on` and `reviewed_on` to the day of
