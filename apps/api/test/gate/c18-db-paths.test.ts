@@ -1873,7 +1873,9 @@ describe('C18.1.2 — the frozen 567a70f differential predecessor is byte-verbat
     const tmp = mkdtempSync(join(tmpdir(), 'c18-legacy-view-'));
     try {
       const live = readFileSync(join(REPO, 'docker-compose.yml'), 'utf8');
-      const drifted = live.replace(/(image:\s*[a-z0-9][a-z0-9._/-]*postgres@sha256:)[0-9a-f]{64}/, `$1${'0'.repeat(64)}`);
+      // The registry path before `postgres@` is optional: the live file has carried the pre-registry
+      // spelling `postgres@sha256:…` (official image) as well as `ghcr.io/…/postgres@sha256:…` (derived).
+      const drifted = live.replace(/(image:\s*(?:[a-z0-9][a-z0-9._/-]*\/)?postgres@sha256:)[0-9a-f]{64}/, `$1${'0'.repeat(64)}`);
       expect(drifted).not.toBe(live);
       writeFileSync(join(tmp, 'docker-compose.yml'), drifted);
       const stale = spawnSync('node', [script, '--check', '--live', join(tmp, 'docker-compose.yml')], { cwd: REPO, encoding: 'utf8' });

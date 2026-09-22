@@ -39,6 +39,22 @@ export const sha256 = (b: Buffer | string) => createHash('sha256').update(b).dig
  * Keyed by the image name as it appears in docker-compose.yml, before the `@`.
  */
 const CHILDREN: Record<string, { amd64: string; arm64: string; size: number }> = {
+  // 2026-09-22: the compose file returned to the OFFICIAL images (docs/SUPPLY_CHAIN_MAINTENANCE_2026-09.md
+  // §8). These are the real runnable children of postgres:18-alpine (index 77f58511…) and
+  // redis:8-alpine (index ba6e394f…) as the registry served them that day
+  // (infra/images/official/20260922/*.index.txt); `size` is the amd64 manifest's size from the raw
+  // index (the arm64 manifests are 2680 and 2290 bytes). The derived entries below stay for the
+  // recorded 2026-09-10 trace, which still names them.
+  postgres: {
+    amd64: 'sha256:d8703cd7fba306b9fec9268ecedfa8a966846c053036a60e3635791957eb2f66',
+    arm64: 'sha256:89f747171c4b0af0eacf5984550060be79786dbe286eb60cfa691d79d1e8b23f',
+    size: 2678,
+  },
+  redis: {
+    amd64: 'sha256:2d3814be5e9b06a30a0be54770b7e12052e7e79ec85271aefd34875c1f393b23',
+    arm64: 'sha256:41a10b18bd238fa7837b1615b2b5b113edff1654233238ac82d87e6fb5531f44',
+    size: 2289,
+  },
   'ghcr.io/a-halawany/elven/postgres': {
     amd64: 'sha256:bc90ce6bc094fae53df8d01b23e6c08160c7e7064f4c351fd3cff324aefcda7a',
     arm64: 'sha256:d3dd485bd0507df537c7a8f7fbdf7dcf9ba8fb2007ca75b12af5c362237a92cc',
