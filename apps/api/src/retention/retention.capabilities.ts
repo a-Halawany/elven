@@ -298,6 +298,12 @@ export interface RetentionWrites extends RetentionReads {
   savepoint(name: string): Promise<void>;
   rollbackToSavepoint(name: string): Promise<void>;
   releaseSavepoint(name: string): Promise<void>;
+  /**
+   * B18 (C9 completed): the COPY DECISION of a revocation item — who destroys the one copy of an object several imports point at — is
+   * taken under a transaction-scoped advisory lock keyed by the object, so two revocations deciding the same object serialise and the
+   * second reads the first's committed settlement (never both leaving the copy to each other). Released at the commit.
+   */
+  lockRevocationCopy(objectId: string): Promise<void>;
 }
 
 class RetentionCapabilityImpl implements RetentionWrites {
@@ -596,6 +602,7 @@ class RetentionCapabilityImpl implements RetentionWrites {
     const rows = await this.call<{ r: Row }>(sql`select retention.record_import_revocation_receipt(${a.importId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${JSON.stringify(a.receipt)}::jsonb, ${a.receiptDigest}::text, ${JSON.stringify(a.bytes)}::jsonb, ${a.station === null ? null : JSON.stringify(a.station)}::jsonb, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
     return rows[0]?.r ?? {};
   }
+  async lockRevocationCopy(objectId: string): Promise<void> { await this.call(sql`select pg_advisory_xact_lock(hashtext(${'retention.import.copy:' + objectId}))`); }
   async savepoint(name: string): Promise<void> { await this.call(sql.raw(`savepoint ${name.replace(/[^a-z0-9_]/gi, '')}`)); }
   async rollbackToSavepoint(name: string): Promise<void> { await this.call(sql.raw(`rollback to savepoint ${name.replace(/[^a-z0-9_]/gi, '')}`)); }
   async releaseSavepoint(name: string): Promise<void> { await this.call(sql.raw(`release savepoint ${name.replace(/[^a-z0-9_]/gi, '')}`)); }

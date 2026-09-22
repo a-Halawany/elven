@@ -34,6 +34,15 @@ export const GRAPH_CHANGE_KINDS = [
   // 0077 (B17): the origin's revocation EXECUTED here — the entities retired, the edges retracted, the versions withdrawn; the walk
   // from every withdrawn record (and every withdrawn claim no record's lineage reaches) to what the domain built on the copies.
   'import.revoked',
+  // 0078 (B18): a twin version ADMITTED — objects.twins the twin, objects.simulations the SUPERSEDED version's runs; no walk (the
+  // walker cannot seed a twin); the twins consumer leaves a twin's own admission alone — the new version is verified by admission.
+  'twin.state_changed',
+  // 0078 (B18): an issued forecast WITHDRAWN as unfit — objects.forecasts the forecast; the scenario, decision and twin consumers
+  // select by it as they do for a supersession; the dependants the port enumerated ride the typed `forecast` block.
+  'forecast.withdrawn',
+  // 0078 (B18): a completed run's RESULT INVALIDATED (the operator's act, or a reproduction's unreproducible verdict) —
+  // objects.simulations the run; the decisions consumer notes the packages citing it as a categorical loss of the input.
+  'simulation.invalidated',
 ] as const;
 export type GraphChangeKind = (typeof GRAPH_CHANGE_KINDS)[number];
 export const MEMORY_CHANGE_KINDS = ['evidence.corrected', 'claim.corrected'] as const;
@@ -75,6 +84,19 @@ export interface GraphChangedPayload {
    */
   import?: { import_id: string; partner_key: string; origin: { tenant_id: string; domain_id: string; action_id: string; package_digest: string }; counts: Record<string, unknown>;
              notice?: { notice_id: string | null; source: 'origin' | 'station'; revoked_at: string | null; reason: string | null } };
+  /**
+   * 0078 (B18): the typed block of each lifecycle kind — the minimum transition data a consumer reads WITHOUT re-reading the
+   * object (the decisions consumer's note is built from it). `twin` on `twin.state_changed`: the version admitted, what it
+   * supersedes, the branch, how many variables changed and how many runs of the superseded version were named in
+   * objects.simulations (before the cut). `forecast` on `forecast.withdrawn`: the reason and unfit class, the instant, and the
+   * dependants the port enumerated (scenarios, warnings, twins, simulations, packages; each ≤ 200 with `truncated`).
+   * `simulation` on `simulation.invalidated`: the reason, who triggered it (a person, or a reproduction — `trigger_ref` names
+   * the reproduction), the instant and the port's dependants (packages, commitments, decisions, twins, simulations). Absent on
+   * every other kind; never a second `cause`.
+   */
+  twin?: { twin_id: string; version: number; supersedes: number | null; branch_id: string; change: 'version.admitted'; changed_variables: number; runs_of_superseded: number };
+  forecast?: { forecast_id: string; series_key: string; horizon: string; reason: string; unfit_class: string; withdrawn_at: string; dependants: Record<string, unknown> };
+  simulation?: { run_id: string; reason: string; trigger: 'operator' | 'reproduction'; trigger_ref: string | null; invalidated_at: string; dependants: Record<string, unknown> };
 }
 
 export interface CorrectedObject { object_id: string; object_type: string; from_version: number; to_version: number; lifecycle_state: string; recorded_at?: string | null; event_time?: string | null; observation_time?: string | null; valid_from?: string | null; valid_to?: string | null }
@@ -111,10 +133,12 @@ export const CONSUMER_ROLE: Readonly<Record<ConsumerKind, string>> = Object.free
 /** The consumer's identity, the walker precedent: a changed method is a new consumer, registered anew. */
 export const CONSUMER_VERSION = '1.0.0';
 const METHOD_REF: Readonly<Record<ConsumerKind, string>> = Object.freeze({
-  twins: 'citing or boundary-bound admitted versions → twin.apply_subscription_mark (once per cause)',
+  // 0078 (B18): the mark is announced (TwinStateChanged/version.unverified in the item's transaction) and a twin's own admission marks nothing — a new method, so a new identity (the B8 precedent: the live twins subscriptions are re-registered).
+  twins: 'citing or boundary-bound admitted versions → twin.apply_subscription_mark (once per cause), the mark announced as TwinStateChanged/version.unverified in the item\'s transaction (0078); a twin\'s own admission (twin.state_changed) marks nothing',
   forecasts: 'subject, assumption or evidence affected → prediction.mark_forecast_attention (once)',
   scenarios: 'subject or forecast affected → prediction.mark_scenario_attention (once)',
-  decisions: 'DEC or cited input affected → decision.note_input_invalidated (once per cause); forecast.superseded judged for materiality against the declared rule → material_change exposed',
+  // 0078 (B18): the two chain kinds are exposed as a categorical loss and a twin's admission is noted without exposure — a new method, so a new identity (the live decisions subscriptions are re-registered).
+  decisions: 'DEC or cited input affected → decision.note_input_invalidated (once per cause); forecast.superseded judged for materiality against the declared rule → material_change exposed; forecast.withdrawn / simulation.invalidated (0078) → material_change exposed as a categorical loss of the cited input; twin.state_changed (0078) → noted without exposure (the cited runs of the superseded version stand; the owner judges)',
   retrieval: 'graph.rebuild_projections verified → graph.record_retrieval_check',
   // 0077 (B17): the import.revoked branch is a new method, so a new identity — every live memory-mappings subscription registered before it is re-registered (the B8 precedent).
   'memory-mappings': 'identifier/edge/resolution basis moved → graph.propose_mapping_reconciliation (a person decides); an edge whose provenance path cannot be established stays unresolved (provenance_incomplete); an import revoked (0077) → the identifiers of the entities it retired and the asserted edges with a retired end proposed',

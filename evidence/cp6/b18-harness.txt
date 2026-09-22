@@ -1,0 +1,45 @@
+=== the two B18 harnesses at the B18 tree (apps/api: npx vitest run --config vitest.int.config.ts <file> --reporter=verbose) on fresh databases (0001–0078), 2026-09-16 — phase6-retention-b18 (6 cases: F1 a–d Codex B17-F1, F2 the hand-off, F3 the crash ordering, F4 a staged-only residue, F5 an unreachable root) on eye_verify_b18_f5; phase6-interfaces-b18 (14 cases: S1 the seven announced events, S2 the chain, S3 the refusals, S4 the register) on eye_verify_b18_h3 ===
+
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.int.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/apps/api
+
+
+ Test Files  1 passed (1)
+      Tests  6 passed (6)
+   Start at  23:38:14
+   Duration  16.57s (transform 637ms, setup 15ms, import 1.13s, tests 15.35s, environment 0ms)
+
+
+=== phase6-interfaces-b18 ===
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.int.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/apps/api
+
+stdout | test/int/phase6-interfaces-b18.test.ts
+[32m✔[0m [33mConsole Ninja[0m extension is connected to [33mNest.js[0m, see [36mhttps://tinyurl.com/2vt8jxzw[0m
+
+ ✓ test/int/phase6-interfaces-b18.test.ts > S1 · the seven announced events, each in its transition's own transaction (0078 §4; D2–D4, D14, D15, D20; L2-I04, L5-I04, L6-I02, L8-I02, L8-I03, L9-I02, L9-I04) > S1 (1) · TwinStateChanged/version.admitted from the admit of version 2 — the changed variable, the freshness, the superseded version's runs — beside GraphChanged/twin.state_changed and its six deliveries: the twins consumer marks nothing, the decisions consumer notes the draft citing the superseded runs without exposure (C13), retrieval verified 936ms
+ ✓ test/int/phase6-interfaces-b18.test.ts > S1 · the seven announced events, each in its transition's own transaction (0078 §4; D2–D4, D14, D15, D20; L2-I04, L5-I04, L6-I02, L8-I02, L8-I03, L9-I02, L9-I04) > S1 (2)(3) · SimulationStarted from the opening write and SimulationCompleted from the completing write of a run on version 2: the resolved artefacts, the environment beyond its digest, the stochastic contract, the execution identity; the outputs, the impacts, the reproducibility digests, the SIM object and the resource evidence — on the row too 741ms
+ ✓ test/int/phase6-interfaces-b18.test.ts > S1 · the seven announced events, each in its transition's own transaction (0078 §4; D2–D4, D14, D15, D20; L2-I04, L5-I04, L6-I02, L8-I02, L8-I03, L9-I02, L9-I04) > S1 (4)(5) · DecisionPackageReady from the proposal of a package citing the version-2 runs and the forecast — the options with uncertainty and cited runs, the choice, the dissent, the provenance, the policy, the conditions, the baseline — and DecisionCommitted from its commitment: the approvals, the CMT and what it rests on, the handoff statement, the replay snapshot 2272ms
+ ✓ test/int/phase6-interfaces-b18.test.ts > S1 · the seven announced events, each in its transition's own transaction (0078 §4; D2–D4, D14, D15, D20; L2-I04, L5-I04, L6-I02, L8-I02, L8-I03, L9-I02, L9-I04) > S1 (6) · ReviewRequested from a challenge of a native claim with lineage: the case queued as challenged, routed to the reviewer roles, the run and method of the lineage named 954ms
+ ✓ test/int/phase6-interfaces-b18.test.ts > S1 · the seven announced events, each in its transition's own transaction (0078 §4; D2–D4, D14, D15, D20; L2-I04, L5-I04, L6-I02, L8-I02, L8-I03, L9-I02, L9-I04) > S1 (7) · ForecastIssued@v2 from a second issue at another horizon (no supersession): the v1 keys kept, the expiry from the cadence, the distribution, the validation, the lineage; the outbox row's schema_version column v2 995ms
+ ✓ test/int/phase6-interfaces-b18.test.ts > S2 · the chain end to end (0078 §1–§3; D5–D13, D16, D17; L6-I05, L8-I05, L9-I05) > S2 (a) · THE WITHDRAWAL by the forecast owner: the row and its dependants, the withdrawn FCT version, the ledger; ForecastWithdrawn then GraphChanged/forecast.withdrawn; the six deliveries — the scenario marked, the package noted material_change/compensation, the twin version unverified and its own TwinStateChanged, retrieval verified, the rest empty 1895ms
+ ✓ test/int/phase6-interfaces-b18.test.ts > S2 · the chain end to end (0078 §1–§3; D5–D13, D16, D17; L6-I05, L8-I05, L9-I05) > S2 (b) · THE AUTOMATIC INVALIDATION: the negative first (C2 — the pinned implementation flipped: unreproducible, the invalidation WITHHELD, the run valid, no event); then the reroute run's reproduction unreproducible on the withdrawn forecast → invalidated in the same write (validity, the withdrawn SIM version, the dependants), SimulationInvalidated and GraphChanged/simulation.invalidated, the package noted again; a second reproduction records the verdict only 1074ms
+ ✓ test/int/phase6-interfaces-b18.test.ts > S2 · the chain end to end (0078 §1–§3; D5–D13, D16, D17; L6-I05, L8-I05, L9-I05) > S2 (c) · THE OPERATOR'S INVALIDATION of the second control (cited by nothing): validity invalidated with trigger operator, the withdrawn SIM version, SimulationInvalidated under the invalidate action, the empty reach 934ms
+ ✓ test/int/phase6-interfaces-b18.test.ts > S2 · the chain end to end (0078 §1–§3; D5–D13, D16, D17; L6-I05, L8-I05, L9-I05) > S2 (d) · THE REOPEN on the recorded note: state reopened, the commitment, the approval and the committed version untouched, both options dropped and named (C12), the two ledger rows (C17), DecisionReopened; the second cycle to a SECOND commitment (C1); the replay of version 1 at the first commitment's instant, of version 2 at the second (D13) 3281ms
+ ✓ test/int/phase6-interfaces-b18.test.ts > S3 · the refusals, by family and status (0078 §1–§3, §3.3; D5, D10, D11, D12; C5, C8, C9, C12, N-d) > S3 (a) · the withdrawal: twice, a superseded forecast (the successor is the live one), unknown, a short reason, the wrong principal 724ms
+ ✓ test/int/phase6-interfaces-b18.test.ts > S3 · the refusals, by family and status (0078 §1–§3, §3.3; D5, D10, D11, D12; C5, C8, C9, C12, N-d) > S3 (b) · the invalidation: an opened and a failed run (no result to withdraw), already invalidated, unknown, the wrong principal 33ms
+ ✓ test/int/phase6-interfaces-b18.test.ts > S3 · the refusals, by family and status (0078 §1–§3, §3.3; D5, D10, D11, D12; C5, C8, C9, C12, N-d) > S3 (c) · the citation gate: an invalidated run and a withdrawn forecast refused at set_option by the port (the exact version) and by the service (the version-less citation — C5); a valid run resting on a withdrawn forecast refused (C12); an option row seeded outside the port refused at the proposal 122ms
+ ✓ test/int/phase6-interfaces-b18.test.ts > S3 · the refusals, by family and status (0078 §1–§3, §3.3; D5, D10, D11, D12; C5, C8, C9, C12, N-d) > S3 (d) · the reopen: no cause, another package's note, a note recorded before the commitment, the wrong principals, a second reopen while the draft is open; reopened, the package still hears of its inputs (C8); the withdrawal of a package whose commitment stands — reopened, and proposed after a reopen (C9); the second commit over a standing commitment 2177ms
+ ✓ test/int/phase6-interfaces-b18.test.ts > S4 · the register through the route (0078 §4; AU-DP-0071, V04-T-005) > S4 · 50 rows: 36 bound, 14 partial, 0 unbound — the ten rows bound in 0078 with their event and schema version, the fourteen that stay partial listed exactly; the same counts by SQL 9ms
+
+ Test Files  1 passed (1)
+      Tests  14 passed (14)
+   Start at  02:04:23
+   Duration  18.73s (transform 703ms, setup 16ms, import 1.11s, tests 17.55s, environment 0ms)
+

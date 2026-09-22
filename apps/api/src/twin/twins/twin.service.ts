@@ -26,6 +26,8 @@ import type { ScopeContext } from '../../shared/scope.js';
 import { SeriesService, type Reader } from '../../prediction/series/series.service.js';
 import { foldControls, type Controls, type ControlInput } from '../../prediction/controls.js';
 import type { AdmitWrites, Citation, CitationKind, CitedObjectRow, DeclareWrites, GroundWrites, TwinReads, VersionWrites } from '../twin.capabilities.js';
+import { LIFECYCLE_EVENT_LIST_MAX } from '../../graph/subscriptions/change-events.js';
+import { changedVariablesOf, type ChangedVariable, type ElementRow } from './twin-events.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const KINDS = ['observed', 'estimated', 'assumed', 'predicted', 'simulated'] as const;
@@ -447,10 +449,24 @@ export class TwinService {
    * ADMIT a draft: the canonical TWN version and the bound state set in one
    * transaction. The header inherits the fold of every cited object's controls
    * and the synthetic state of the world the twin describes.
+   *
+   * B18 (0078, L5-I04): the answer also carries what the admission's ANNOUNCEMENT
+   * (TwinStateChanged/version.admitted, built by the route in this transaction)
+   * names — the variables that changed against the superseded version and the
+   * runs that rest on it (read by twin id and version: the dependency rows carry
+   * no version), cut at LIFECYCLE_EVENT_LIST_MAX with `truncated` said. A first
+   * version changes every element and supersedes nothing.
    */
   async admit(
     cap: AdmitWrites, ctx: ScopeContext, twinId: string, version: number, allowIncomplete: boolean, purposeId: string, actor: string, correlationId: string,
-  ): Promise<{ twinId: string; version: number; stateSetDigest: string; completeness: string; missingKeys: string[]; syntheticState: boolean }> {
+  ): Promise<{
+    twinId: string; version: number; stateSetDigest: string; completeness: string; missingKeys: string[]; syntheticState: boolean;
+    branchId: string; supersedes: number | null; forkedFrom: number | null; knownAt: string; observedThrough: string | null; headerDigest: string;
+    changedVariables: ChangedVariable[];
+    dependencyImpacts: { runs: Array<{ run_id: string; state: string; validity: string }>; truncated: boolean };
+    /** Every run of the superseded version, by id (uncut; the GraphChanged builder cuts its own list). */
+    runs: string[];
+  }> {
     const twin = (await cap.readTwins().selectAll().where('twin_id' as never, '=', twinId as never).executeTakeFirst()) as Record<string, unknown> | undefined;
     const v = (await cap.readVersions().selectAll()
       .where('twin_id' as never, '=', twinId as never).where('version' as never, '=', version as never).executeTakeFirst()) as Record<string, unknown> | undefined;
@@ -520,7 +536,19 @@ export class TwinService {
       twinId, tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, version, expectedDigest: expected, headerDigest,
       allowIncomplete, syntheticState, controls, dependencies: [...dependencies.values()], actor, eventId: newId(), correlationId,
     });
-    return { twinId, version, stateSetDigest: r.state_set_digest, completeness: r.completeness, missingKeys: r.missing_keys, syntheticState };
+    // B18: what the announcement carries — the change against the superseded version, and the runs resting on it.
+    const priorElements = supersedes === null ? null : (await cap.readElements().selectAll()
+      .where('twin_id' as never, '=', twinId as never).where('version' as never, '=', supersedes as never).orderBy('key' as never).execute()) as Array<Record<string, unknown>>;
+    const runRows = supersedes === null ? [] : (await cap.readRuns().selectAll()
+      .where('twin_id' as never, '=', twinId as never).where('twin_version' as never, '=', supersedes as never).orderBy('run_id' as never).execute()) as Array<Record<string, unknown>>;
+    const runs = runRows.map((x) => ({ run_id: String(x['run_id']), state: String(x['state']), validity: String(x['validity'] ?? 'valid') }));
+    return {
+      twinId, version, stateSetDigest: r.state_set_digest, completeness: r.completeness, missingKeys: r.missing_keys, syntheticState,
+      branchId: String(v['branch_id']), supersedes, forkedFrom, knownAt, observedThrough, headerDigest,
+      changedVariables: changedVariablesOf(priorElements === null ? null : priorElements.map(elementRowOf), elements.map(elementRowOf)),
+      dependencyImpacts: { runs: runs.slice(0, LIFECYCLE_EVENT_LIST_MAX), truncated: runs.length > LIFECYCLE_EVENT_LIST_MAX },
+      runs: runs.map((x) => x.run_id),
+    };
   }
 
   async list(cap: TwinReads): Promise<Array<Record<string, unknown>>> {
@@ -707,6 +735,15 @@ function microsOf(iso: string): string {
   const m = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d{1,6}))?\d*Z$/.exec(iso);
   if (m === null) return new Date(iso).toISOString().replace('Z', '000Z');
   return `${m[1]}.${(m[2] ?? '').padEnd(6, '0')}Z`;
+}
+
+/** A state element row as the announcement compares it (B18): the day columns rendered as days, the citations counted as a list. */
+function elementRowOf(e: Record<string, unknown>): ElementRow {
+  return {
+    key: String(e['key']), kind: String(e['kind']), value: e['value'], unit: e['unit'] === null || e['unit'] === undefined ? null : String(e['unit']),
+    valid_from: dayOf(e['valid_from']), confidence: e['confidence'] === null || e['confidence'] === undefined ? null : Number(e['confidence']),
+    health: String(e['health']), citations: Array.isArray(e['citations']) ? (e['citations'] as unknown[]) : [],
+  };
 }
 
 /** A timestamptz as the driver returns it (a Date) keeps its milliseconds; a string is parsed. */

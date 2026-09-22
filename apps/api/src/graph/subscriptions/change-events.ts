@@ -26,6 +26,13 @@
  * the walk from every withdrawn record and claim on the IMPORTING domain's own capability — retention's, which carries
  * the reads the walker and this builder call (ChangeReads, a structural pick of GraphReads) — so the propagation is
  * the same method, never a second walker, and no graph capability is minted in a retention write.
+ *
+ * 0078 (B18): the three LIFECYCLE kinds, each built PURE inside the module write that makes the transition (the twin's
+ * admit, the forecast's withdrawal, the run's invalidation) with the facts that write already holds: `twin.state_changed`
+ * names the twin and the SUPERSEDED version's runs with no walk (the walker cannot seed a twin; the consumers select by
+ * their own reads); `forecast.withdrawn` and `simulation.invalidated` name the one object and carry the dependants the
+ * PORT enumerated in a typed block (`walked` true: the reach was made, by the port). Every list that can grow is cut at
+ * LIFECYCLE_EVENT_LIST_MAX and says so.
  */
 import type { GraphReads } from '../graph.capabilities.js';
 import type { ImpactService, WalkReads } from '../strategy/impact.service.js';
@@ -343,6 +350,87 @@ function mergeWalks(importId: string, walks: Walked[], seedsLeftUnwalked: boolea
     truncated: seedsLeftUnwalked || walks.some((w) => w.truncated),
     unexplored: walks.flatMap((w) => w.unexplored),
   };
+}
+
+// ───────────────────────── 0078 (B18): the lifecycle kinds ─────────────────────────
+
+/**
+ * The ceiling of every list a lifecycle event carries (the superseded version's runs here; the changed variables, the
+ * provenance citations and the dependants in the module builders that import it): the ledger of each module is the full
+ * record — the event announces the transition and says when it was cut.
+ */
+export const LIFECYCLE_EVENT_LIST_MAX = 200;
+/** A list cut at the ceiling, with whether it was: the one idiom every B18 builder uses for a sibling `truncated`. */
+export const cutList = <X>(xs: X[]): { list: X[]; truncated: boolean } => ({ list: xs.slice(0, LIFECYCLE_EVENT_LIST_MAX), truncated: xs.length > LIFECYCLE_EVENT_LIST_MAX });
+
+/**
+ * A twin version ADMITTED (0078, D3): no identities (the boundary did not change), objects.twins the twin, objects.simulations
+ * the SUPERSEDED version's runs — read by (twin_id, twin_version) in the admit write; a first version has none — cut at the
+ * ceiling with `truncated` said; `walked` false: the walker cannot seed a twin, so the consumers select by their own reads
+ * (the twins consumer answers nothing for this kind — a twin's own admission never unverifies its versions; the decisions
+ * consumer notes the packages citing the superseded version's runs, without exposure). The typed `twin` block carries the
+ * version, what it supersedes, the branch and the counts; the cause is the admit act on the twin (TWN).
+ */
+export function twinStateChangedGraphEvent(a: { twinId: string; version: number; supersedes: number | null; branchId: string; changedVariables: number; runs: string[]; subscriptions: SubscriptionRef[]; actor: string; occurredAt?: string }): OutboxRow {
+  const now = a.occurredAt ?? new Date().toISOString();
+  const runs = cutList(a.runs);
+  const payload: GraphChangedPayload = {
+    schema: 'GraphChanged', schema_version: 'v1',
+    change: { kind: 'twin.state_changed', occurred_at: now, graph_event_id: null, invalidation_id: null, correction_case_id: null },
+    identities: [],
+    relationships: { edges: [], resolutions: [], dependencies: [] },
+    objects: { ...EMPTY_REACH, twins: [a.twinId], simulations: runs.list, truncated: runs.truncated, walked: false },
+    temporal: { known_at: now },
+    subscriptions: a.subscriptions,
+    cause: { action: 'twin.version.admit', actor: a.actor, target_type: 'TWN', target_id: a.twinId },
+    twin: { twin_id: a.twinId, version: a.version, supersedes: a.supersedes, branch_id: a.branchId, change: 'version.admitted', changed_variables: a.changedVariables, runs_of_superseded: a.runs.length },
+  };
+  return asRow('GraphChanged', payload);
+}
+
+/**
+ * An issued forecast WITHDRAWN as unfit (0078, D8): the forecastSupersededEvent shape — no identities, objects.forecasts the
+ * withdrawn forecast, `walked` true because the PORT enumerated the dependants (scenarios, warnings, twins, simulations,
+ * packages; each ≤ 200 with its own `truncated`) and carries them in the typed `forecast` block with the reason and the unfit
+ * class. The consumers that rest on the forecast select by objects.forecasts as they do for a supersession; the decisions
+ * consumer reads the block for its note and exposes a categorical loss. The cause is the withdraw act on the forecast (FCT).
+ */
+export function forecastWithdrawnGraphEvent(a: { forecastId: string; seriesKey: string; horizon: string; subjectEntityId: string | null; reason: string; unfitClass: string; withdrawnAt: string; dependants: Row; subscriptions: SubscriptionRef[]; actor: string; occurredAt?: string }): OutboxRow {
+  const now = a.occurredAt ?? new Date().toISOString();
+  const payload: GraphChangedPayload = {
+    schema: 'GraphChanged', schema_version: 'v1',
+    change: { kind: 'forecast.withdrawn', occurred_at: now, graph_event_id: null, invalidation_id: null, correction_case_id: null },
+    identities: [],
+    relationships: { edges: [], resolutions: [], dependencies: [] },
+    objects: { ...EMPTY_REACH, forecasts: [a.forecastId], walked: true },
+    temporal: { known_at: now },
+    subscriptions: a.subscriptions,
+    cause: { action: 'prediction.forecast.withdraw', actor: a.actor, target_type: 'FCT', target_id: a.forecastId },
+    forecast: { forecast_id: a.forecastId, series_key: a.seriesKey, horizon: a.horizon, reason: a.reason, unfit_class: a.unfitClass, withdrawn_at: a.withdrawnAt, dependants: a.dependants },
+  };
+  return asRow('GraphChanged', payload);
+}
+
+/**
+ * A completed run's result INVALIDATED (0078, D6/D7): objects.simulations the run, `walked` true (the PORT enumerated the
+ * dependants — packages, commitments, decisions, twins, simulations — carried in the typed `simulation` block with the
+ * reason and the trigger: a person's act, or a reproduction's unreproducible verdict, `trigger_ref` naming the reproduction).
+ * The cause is the act that invalidated — simulation.run.invalidate by hand, simulation.reproduce inside the reproduce write.
+ */
+export function simulationInvalidatedGraphEvent(a: { runId: string; reason: string; trigger: 'operator' | 'reproduction'; triggerRef: string | null; invalidatedAt: string; dependants: Row; subscriptions: SubscriptionRef[]; actor: string; action: 'simulation.run.invalidate' | 'simulation.reproduce'; occurredAt?: string }): OutboxRow {
+  const now = a.occurredAt ?? new Date().toISOString();
+  const payload: GraphChangedPayload = {
+    schema: 'GraphChanged', schema_version: 'v1',
+    change: { kind: 'simulation.invalidated', occurred_at: now, graph_event_id: null, invalidation_id: null, correction_case_id: null },
+    identities: [],
+    relationships: { edges: [], resolutions: [], dependencies: [] },
+    objects: { ...EMPTY_REACH, simulations: [a.runId], walked: true },
+    temporal: { known_at: now },
+    subscriptions: a.subscriptions,
+    cause: { action: a.action, actor: a.actor, target_type: 'SIM', target_id: a.runId },
+    simulation: { run_id: a.runId, reason: a.reason, trigger: a.trigger, trigger_ref: a.triggerRef, invalidated_at: a.invalidatedAt, dependants: a.dependants },
+  };
+  return asRow('GraphChanged', payload);
 }
 
 /**

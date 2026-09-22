@@ -102,6 +102,17 @@ export interface ForecastWrites extends PredictionReads {
   supersededBy(a: { forecastId: string }): Promise<{ forecast_id: string; quantiles: Record<string, number>; subject_entity_id: string | null } | null>;
   /** 0065: what is subscribed to a GraphChanged of this kind at publication — evidence for the event, never authority. */
   changeSubscriptions(a: { tenantId: string; domainId: string; changeKind: string }): Promise<Array<{ subscription_id: string; consumer_kind: string }>>;
+  /**
+   * B18 (0078, L6-I05): the WITHDRAWAL — an issued forecast marked unfit by its owner (prediction.withdraw_forecast: the state, the
+   * reason and class, the dependants named, the warnings marked); the port's answer is the event's material. The withdrawn FCT
+   * version is admitted by the service BEFORE this port in the same write, so a refusal here rolls it back.
+   */
+  withdrawForecast(a: { forecastId: string; tenantId: string; domainId: string; reason: string; unfitClass: string; actor: string; eventId: string; correlationId: string }): Promise<Record<string, unknown>>;
+  /**
+   * B18 (C14): the FULL objects.canonical_objects row of a forecast — the latest version, or the exact one named — under RLS
+   * (the B17 latestRowOf idiom): the withdrawn header is built from every header field, never from citedObject's subset.
+   */
+  forecastObject(a: { forecastId: string; tenantId: string; domainId: string; version: number | null }): Promise<Record<string, unknown> | undefined>;
 }
 
 export interface BacktestWrites extends PredictionReads {
@@ -310,6 +321,19 @@ class PredictionCapabilityImpl extends PredictionCore
     const rows = await this.call<{ s: Array<{ subscription_id: string; consumer_kind: string }> }>(sql`select graph.subscriptions_matching(${a.tenantId}::uuid, ${a.domainId}::uuid, 'GraphChanged', ${a.changeKind}) as s`);
     return rows[0]?.s ?? [];
   }
+  async withdrawForecast(a: Parameters<ForecastWrites['withdrawForecast']>[0]): Promise<Record<string, unknown>> {
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select prediction.withdraw_forecast(
+      ${a.forecastId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}, ${a.unfitClass},
+      ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  async forecastObject(a: { forecastId: string; tenantId: string; domainId: string; version: number | null }): Promise<Record<string, unknown> | undefined> {
+    let q = this.from('objects.canonical_objects').selectAll()
+      .where('object_type' as never, '=', 'FCT' as never).where('object_id' as never, '=', a.forecastId as never)
+      .where('tenant_id' as never, '=', a.tenantId as never).where('domain_id' as never, '=', a.domainId as never);
+    if (a.version !== null) q = q.where('object_version' as never, '=', a.version as never);
+    return (await q.orderBy('object_version' as never, 'desc').limit(1).executeTakeFirst()) as Record<string, unknown> | undefined;
+  }
 
   async recordBacktest(a: Parameters<BacktestWrites['recordBacktest']>[0]): Promise<void> {
     await this.call(sql`select prediction.record_backtest(
@@ -426,6 +450,8 @@ export const PredictionCapability = {
   read(tx: Tx, action: string): PredictionReads { return new PredictionCapabilityImpl(tx, action); },
   series(tx: Tx, action: string): SeriesWrites { return new PredictionCapabilityImpl(tx, action); },
   forecast(tx: Tx, action: string): ForecastWrites { return new PredictionCapabilityImpl(tx, action); },
+  /** B18 (0078): the withdraw route's capability — the same writes as the issue's (the admission, the port, the subscriptions read). */
+  withdraw(tx: Tx, action: string): ForecastWrites { return new PredictionCapabilityImpl(tx, action); },
   backtest(tx: Tx, action: string): BacktestWrites { return new PredictionCapabilityImpl(tx, action); },
   outcome(tx: Tx, action: string): OutcomeWrites { return new PredictionCapabilityImpl(tx, action); },
   scenario(tx: Tx, action: string): ScenarioWrites { return new PredictionCapabilityImpl(tx, action); },

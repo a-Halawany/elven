@@ -1961,13 +1961,313 @@ run); the stated limits (the tenant's own domains vs the station path; the hold;
 mirror; a twin's claim citation is a CLM). Each run revokes the import the previous run (or B16) left admitted and leaves its own. ALL
 SCENES HELD (52 checks).
 
+## B18 — Codex B17-F1 corrected; the lifecycle announced (ten interface rows bound: 36/14/0) and the withdrawal → invalidation → reopen chain; the working domain of a tenant-homed principal and the hosted browser walks of the retention and memory workspaces (implemented)
+
+**Migration 0078** (`apps/api/migrations/0078_b18_lifecycle_announced_and_withdrawal_chain.sql`, sha256 `0433b70a…`, 1,109 lines), on
+`phase6-b18` (cut from `main` at `28e18b5` — #53 and #54 merged under the owner's 2026-09-16 authorization on Codex's bounded B16/B17
+review, filed under `audit/reviews/The_Eye_f4b2345_2d92385_B16_B17_Review_and_Next_Delivery.md`). The batch the owner's directive named:
+"Include B17-F1 as the first correction in the next feature batch … Then continue the register's next functional batch: remaining interface
+semantics … Finish the functional UI flows and available signed-in walks as part of delivery." Three parts: B18.1 the correction (committed
+first as `002f8d4`, no migration); B18.2 the interface register's next capabilities — the ten partial contracts whose transitions the product
+already performed or could perform with three ports, bound to the events it now publishes in the transaction that makes each transition, and
+the chain a withdrawn forecast starts; B18.3 the browser — the six domain shells offering a TENANT-homed principal a working domain (so the
+acts the policy reserves to tenant roles are reachable in the browser, which the reader found provably unreachable before), and two hosted
+Playwright walks. Source-derived memory (AU-MEM-0065's last clause) and index-tier degradation (AU-MEM-0067/-0068/-0070/-0083) were read
+and mapped for this batch and are B19 and B20 — stated, not folded. Designed by six readers, two designers and three checkers (four
+blocking findings folded before a line was written: `decision.commitments` carried `UNIQUE (package_id)` so a re-commit after a reopen was
+impossible; the automatic invalidation would have fired on a changed implementation digest or a restricted reader's reproduction and refused
+every session-less operator; the replay service refused any version but the last committed one; the B8 harness pinned L9-I04 as partial —
+and sixteen should/nit corrections, `corrections.md`); implemented by seven implementers on disjoint files and one compile pass (which changed
+nothing: every boundary agreed); integrated, run on fresh databases, rehearsed on a restored copy and exercised on the demonstration (§B18.7).
+
+**B18.1 Codex B17-F1 corrected — a revocation resumed after a crash between a record batch and the cleanup (no migration; 0076/0077
+untouched; committed as `002f8d4` before the batch's features).** THE DEFECT, independently reproduced by Codex at `2d92385`: a record batch
+of `revokeImport` commits its tombstones, withdrawn versions and item outcomes before the finish write and the filesystem removal; a
+process that stops there leaves the import `revoking` with the record already `tombstoned`; on the resumed request the fresh tally's
+locators were empty, the settled item was skipped, the finish completed from the item map, the removal used the empty tally, and the
+response and the recorded receipt said `copies_destroyed: true` while the earlier record's bytes remained — only a THIRD request (the
+retry branch) would have removed them. THE CORRECTION (`import.service.ts`): `durableRevocationOf(items)` — the revocation as the ITEM MAP
+records it (the counts by outcome, the refused items, the left count, the holders named `held_by`, every tombstoned record's locator) —
+read inside the finish write (`revokedFactsOf` returns the items it read) and reduced the same way at the retry; `removeRevokedBytes(scope,
+owed, own)` removes every owed locator in BOTH roots (the staged copies too) — an earlier attempt's present bytes named `residual` — and
+then VERIFIES: a locator with any bytes left in either root is `remaining` (⊆ `failed`) and is never reported destroyed; the receipt's
+counts, refused items and `held_by` are the item map's, `destroyed.bytes` the tombstoned records verified gone, `bytes_residual` /
+`bytes_remaining` named (each list cut at 200 with `bytes_truncated` said — the station receipt travels under a 64 KiB ceiling; the ledger
+event `import.copies_destroyed` / `copies_refused` keeps the whole lists in `details.bytes`), the statement by count; `copies_destroyed` =
+complete ∧ nothing failed ∧ nothing remaining ∧ nothing held; the route's answer keeps `destroyed` (this attempt's — the B17 pins) and
+adds `cumulative`; `RevocationFault` gains `after_record_batch` (the injected fault right after the first record batch committed — the
+state Codex reproduced). THREE ADVERSARIAL REVIEWS of the correction (the resumed path against the reproduction; the failed-removal path
+and redelivery; the regressions on B17's pins) found four gaps beside the closed reproduction, closed with it: (1) HOLDER LIVENESS — the
+finish had taken the retry's narrower liveness (`admitted` only) and would have dropped a `revoking` holder into a "destroyed": now
+`liveHoldersOf` at the finish AND the retry keeps `admitted` and `revoking` holders (a copy is released only by `revoked`) and carries a
+non-UUID holder id; and the copy decision is COMPLETED (C9): a revoking source import holds the copy only while its own item is still
+pending — a source that settled its item `left` (it found this import admitted at the time) has HANDED the copy off and this import
+destroys it (`importStillOwes`, the same rule in `liveOwnerOf`), the decision taken under a per-object advisory transaction lock
+(`RetentionWrites.lockRevocationCopy`: `pg_advisory_xact_lock(hashtext('retention.import.copy:' || object_id))`) with the batches processed
+in object-id order, so two revocations never both leave the one copy to each other; (2) STAGED-ONLY RESIDUES — presence and the verification
+use `VaultService.anyBytesIn` (the published copy OR a staged `<id>.staging-<attempt>` beside it; a directory that cannot be listed counts
+as bytes PRESENT — the deletion verifier's own rule); (3) AN UNREACHABLE ROOT — `ensureRoots` writes a marker `.eye-vault-root` (the tier
+name) at the top of the evidence and archive roots, `rootReachable` reads it, and a cleanup that cannot read a root's marker (an unmounted
+cold tier is an empty mount point) removes NOTHING in any root that attempt (a half-removal would leave no list exact), names the root in
+`roots_unreachable`, marks every owed locator `remaining` and says so in the statement — the next revoke, every root reachable, removes and
+verifies; (4) THE LEDGER'S LAST WORD — the retry branch reads the latest receipt event's kind and, when it was `copies_refused` and nothing
+is owed any more (nothing failed, remaining, refused or held), records ONE `copies_destroyed` receipt (`retried`) answering the origin's
+mismatched notice by a new acknowledged attempt; the redelivery after it stays silent. THE HARNESS `phase6-retention-b18.test.ts` (6 cases
+on a fresh database; the mirror domain, its steward, the intake contract and the partner on the tenant's key; no station, no
+subscriptions — the outbox rows are the ledger): F1 (a) the crash after the record batch — `revoking`, both records `tombstoned` with their
+locators, the bytes present, no `import.revoked` row, no receipt; (b) the FIRST resumed request removes them (`residual` = both, `removed`
+= both, `remaining` []), the receipt `copies_destroyed: true` with `bytes_residual`, `destroyed.records 2`, the origin's notice
+`acknowledged`, ONE `import.revoked`, `copies_destroyed` ONCE; (c) a redelivery adds no event; (d) the removal FAILING on the resumed
+request (the vault's `f27` hook) — `revoked` by the item map BUT `remaining` = [C], the receipt `copies_refused` with the statement, the
+notice `mismatched`, the bytes present; the third request (the retry) removes them, records `copies_destroyed` (`retried`) and answers the
+origin by a new attempt row ([[1, mismatched], [2, acknowledged]]); a fourth adds nothing; F2 THE HAND-OFF — P3 revoked while P2 is
+`revoking` (a hold on P2's other record) with the shared item settled `left` → P3 destroys the copy (receipt true, acknowledged); the hold
+lifted → P2 `revoked`, no orphan in either root; F3 THE CRASH ORDERING — P5 leaves the copy `held_by` the revoking P4 whose item is still
+pending (receipt false, mismatched); P4 resumed destroys it; P5's retry records ONE `copies_destroyed` by the last-word rule; a further
+revoke silent; F4 a STAGED-ONLY residue found present, removed and verified gone; F5 THE ARCHIVE ROOT's marker aside → nothing removed,
+`roots_unreachable ['archive']`, `remaining` [A7], `copies_refused` with the statement, `mismatched`; the marker restored → the retry
+removes and verifies (`removed` [A7], `residual` [A7]), `copies_destroyed` (`retried`), acknowledged at attempt 2 — **6/6**; B17's
+harness **5/5** on the correction; the unit suite **2210/2210** + 9/9; the page's revoke answer shows the bytes line (removed, the
+residual of an earlier attempt, failed, still present after the removal) and the cumulative counts. STATED: the crash is injected
+in-process (a killed PostgreSQL-backed process is not exercised); the staged copy and the missing marker are placed by the harness, not by
+an interrupted archive or an unmounted volume; the lock's serialisation is proven by ordering, not by two concurrent processes; the
+unlistable-directory rule is not pinned; the finish port's statement "accounted for by another live import" is 0077's wording and is
+kept (a re-declaration for wording alone is not a correction). Codex's B16/B17 review filed under `audit/reviews/`.
+
+**B18.2 — the lifecycle announced (family A, seven rows) and the chain (family B, three rows).** THE EVENTS. Each is a pure builder
+(`forecast-events.ts`, `simulation-events.ts`, `twin-events.ts`, `decision-events.ts`, `review-events.ts`; the 0066 convention: `schema`,
+`schema_version`, stable ids and versions never bodies, `temporal.known_at`, `cause {action, actor, target_type, target_id}`, every list cut
+at `LIFECYCLE_EVENT_LIST_MAX` 200 with `truncated` said) published as the write's `outboxEvent` from the transaction that makes the
+transition — `objects.schema_registry` is the OBJECT-TYPE catalogue (thirty-five three-letter rows; no event was ever registered there) and
+an event type is declared by its payload's `schema`/`schema_version`, the outbox row's `schema_version` column and the register row, stated
+so the reviewer looks for no registry row. (1) L5-I04 `TwinStateChanged@v1` from `twin.version.admit` (`change: version.admitted`; the
+changed variables against the SUPERSEDED version as added/removed/changed, the confidence, the freshness — known-at, observed-through as
+the day it names, completeness, missing keys — and the dependency impacts: the runs of the superseded version by `(twin_id, twin_version)`)
+and from the twins subscriber's own mark (`change: version.unverified`, riding the item's transaction as its `outboxEvents`); beside the
+admit, `GraphChanged/twin.state_changed` (`objects.twins` the twin, `objects.simulations` the superseded version's runs, `walked: false`,
+a typed `twin` block) — the twins consumer returns nothing for it (a twin's own admission never unverifies the version just admitted or its
+predecessor, a valid snapshot as of its own cut-off), the decisions consumer NOTES a package citing those runs WITHOUT exposure ("twin … has
+a newer admitted version …; the cited runs rest on version … and stand; the owner judges whether to re-simulate"), the rest select nothing;
+`version.reverified` is vocabulary no port writes (stated); the walk's own unverification stays announced by `invalidation.assessed`.
+(2) L8-I02 `SimulationStarted@v1` from the run's opening write and (3) L8-I03 `SimulationCompleted@v1` from the completing write — ONE
+name with two states, `completed` and `failed` — with the resolved artefacts, the execution identity (the operator and their verification
+state), the environment beyond the digest (node, platform, arch), the seed, the run state, the outputs digest, the impacts against the
+control, the sensitivity, the validation and the RESOURCE EVIDENCE measured around the execution (`elapsed_ms`, `samples_run`, the process,
+`memory_rss_bytes`) — kept on the row too (`runs_current.resource`; `complete_run` re-declared with `p_resource`; `runs_immutable`
+re-declared to admit it in the completing UPDATE and nothing after). (4) L9-I02 `DecisionPackageReady@v1` from `decision.package.propose`
+(the version's digest and header, the options with their uncertainty and cited runs, the choice, the dissent, the provenance, the approver
+policy, the monitoring conditions, the baseline; `reopened_from` after a reopen) and (5) L9-I04 `DecisionCommitted@v1` from
+`decision.commit_package` (the commitment, the approvals, the CMT and what it rests on, the handoff statement, the replay snapshot's digest;
+`reopened_from` naming the earlier commitment on a re-commit). (6) L2-I04 `ReviewRequested@v1` from the three sites that queue a review case
+— the extraction's abstention, its below-threshold/contradiction case and the challenge route — one row per queued case, `routed_to` the
+roles the policy names for `intelligence.review.decide` with the producing agent excluded, the claim's type read from the case's lineage.
+(7) L6-I02 `ForecastProduced` bound to the EXISTING `ForecastIssued` completed as `@v2` — no rename (the L7-I03 → EarlyWarningRaised
+precedent; the telemetry index reads `forecast_id`, which v2 keeps): the six v1 keys plus `schema`, `cause`, `temporal.known_at`, the
+computed `expiry` (from the issue instant and the cadence), the validation, the distribution, the lineage, the calibration, the drivers,
+the horizon in days. THE CHAIN. (8) L6-I05 `ForecastWithdrawn@v1`: `prediction.withdraw_forecast` under the new human-gated action
+`prediction.forecast.withdraw` (the forecast owner, the domain administrator, the platform administrator; C2; `requiresPurpose`) — the
+row `withdrawn` with `withdrawal {reason, unfit_class, dependants}` (the scenarios, warnings, twin versions, runs and packages resting on it,
+enumerated in the port), the ledger row `forecast.withdrawn`, AND a withdrawn FCT version (object version 2, lifecycle and truth state
+`withdrawn`, `correction_of`/`supersedes` the prior, `withdrawal_reason`; the B17 withdrawal header rules factored into
+`shared/withdrawn-version.ts`) admitted by `objects.admit_version` under the canonical-write action — without the OBJECT's state the
+reproduction's availability check would never yield `unreproducible` and the chain's automatic step would never fire; the warnings resting
+on the forecast are marked by the port itself (no warnings consumer); `prediction.declare_scenario` refuses a withdrawn forecast ("scenario
+rejected: forecast … was withdrawn as unfit"); refusals: already withdrawn, superseded (the successor is the live one), unknown, a short
+reason, the wrong principal. Beside it `GraphChanged/forecast.withdrawn` walked exactly as `forecast.superseded`: the scenarios marked
+`input_unverified`, the packages noted `input.invalidated` with a CATEGORICAL exposure (`material_change`; `compensation` for an executed
+decision, `human_review` otherwise — a lost input cannot be shown immaterial), the twin versions unverified (each announcing its own
+`TwinStateChanged/version.unverified`), retrieval verified. (9) L8-I05 `SimulationInvalidated@v1`: `simulation.invalidate_run` under
+`simulation.run.invalidate` (the twin owner, the simulation operator, the domain and platform administrators; C2) — `runs_current.validity`
+`valid → invalidated` (a COLUMN, not a state: `runs_immutable` admits the four validity columns once on a completed run and nothing else;
+the rebuild derives `state` from `run.opened/completed/failed` as before), the ledger row `run.invalidated`, the dependants (the packages
+citing the run and their commitments), a withdrawn SIM version 2 — AND automatically inside the reproduce write under `simulation.reproduce`
+when a reproduction's verdict is `unreproducible` BECAUSE a cited object was withdrawn or retired (`unavailable()` now returns a structured
+cause — `lifecycle | access | bytes` — and the reproduction invalidates only on `lifecycle`; a changed implementation digest, a reader's
+narrower access, missing bytes or a child-process failure WITHHOLD it and the answer says which: `invalidation_withheld`); the actor check
+binds the person's act only (a reproduction by a session-less operator is not refused); the invalidation is recorded once (a second
+unreproducible verdict records the verdict alone); `decision.derive_option` — the citation gate at `set_option`, at the proposal and at the
+carry — refuses a run whose `validity` is `invalidated`, a forecast citation whose row is `withdrawn`, AND a valid run whose snapshot cites a
+withdrawn forecast ("rests on a forecast withdrawn as unfit; a consequence cannot rest on it until the run is re-issued on a live
+forecast"); a version-less citation of either is refused earlier by the service (the latest version is the withdrawn one). Beside it
+`GraphChanged/simulation.invalidated` (`objects.simulations` the run, a typed block): the decisions consumer notes every citing package with
+the same categorical exposure. (10) L9-I05 `DecisionReopened@v1`: `decision.reopen_package` under `decision.package.reopen` (the decision
+owner alone — the port refuses a non-owner; C2) on a committed or monitoring package with a RECORDED cause — an `input.invalidated` note of
+this package after the commitment, or a condition breach of the committed version — → state `reopened`, the standing commitment, the
+approvals and the committed version UNTOUCHED, a NEW DRAFT version carried from the committed one with a TOLERANT per-option carry (an
+option whose run is invalidated or rests on a withdrawn forecast is DROPPED and named in `options_dropped`; "expose stale or withdrawn
+inputs"), the two ledger rows `version.opened` and `package.reopened`, `reopened_from_version`/`reopen_cause`/`reopens` on the row;
+`dpk_committed_bound` relaxed for it; `decision.commitments` carries `UNIQUE (package_id, version)` from here — ONE COMMITMENT PER
+COMMITTED VERSION — and `commit_package` admits a second commitment only off a reopened package (over a standing one: "package is already
+committed at version N and the commitment stands; a committed decision is reopened, never re-committed over"); `withdraw_package` refuses a
+package whose commitment stands (reopened, or proposed after a reopen); the three one-commitment readers (`decision.record_outcome`,
+the monitoring service, the package `get` — which now answers `commitments[]` ordered by instant beside the STANDING `commitment`) select
+by the committed version; THE REPLAY's "decided" instant is the COMMITMENT's, not the package row's (`replay_layers` and `record_replay`
+re-declared; the replay service admits any version with its own commitment row) — a re-commit would otherwise have rewritten the first
+decision's replay boundary (observed history, V03-T-232); the executive room of a reopened package reads OPEN (a re-decision, not a
+closure); the decisions consumer treats `reopened` as open and executed (the standing commitment is executed until re-committed; the draft
+hears of its inputs); refusals: no cause, another package's note, a note recorded before the commitment, a draft package, a second reopen
+while the draft is open, the wrong principals. The register after 0078: **36 bound / 14 partial / 0 unbound** (the ten promoted; the
+fourteen that stay partial: L1-I02, L1-I03, L1-I04, L2-I02, L3-I02, L4-I02, L5-I05, L6-I03, L7-I02, L7-I04, L8-I04, L10-I02, L10-I03,
+L10-I05); the assertion in 0078; the upgrade proof's migration count 56 → 57 (the roles and registry counts unchanged). Three exact PDP
+rules placed before the prefix rules that would catch them; three refusal families (`forecast withdrawal rejected`, `run invalidation
+rejected`, `reopen rejected`) plus the two 409 rows (`withdrawal rejected: package … was committed at version`, `scenario rejected: forecast
+… was withdrawn`) mapped in the established order — the executive's `withdrawal rejected` family probed unshadowed. The twins and decisions
+consumers' methods changed → their digests changed → every live subscription of the two kinds re-registered (the act does it in both
+domains; the harnesses register fresh); the B6 harness's `admitTwin` now waits for an admission's `twin.state_changed` deliveries to settle
+(an admission announces itself since 0078; a global one-shot fault armed right after an admit was consumed by them). A pre-existing defect
+the harness exposed and this batch closes: `package.service.ts` rendered a DATE column with `toISOString().slice(0, 10)` — a local-midnight
+instant printed in UTC, so on a UTC+ host a version opened with `observedThrough 2024-01-17` read `2024-01-16` in the DPK payload, the
+header, the `get`/`list` answers and now the event — replaced by the local-getter idiom the twin and simulation services use (P5-M3;
+byte-identical on UTC hosts; DPK headers proposed on non-UTC hosts from now on name the right day; nothing recomputes a stored digest from
+the column).
+
+**B18.3 — the working domain of a TENANT-homed principal, and the hosted walks.** The six domain shells (`apps/web/app/{graph, observation,
+intelligence, decisions, prediction, twins}/layout.tsx`) refused every principal without a home domain — and a principal created at TENANT
+scope has exactly one binding, so every act the policy reserves to a tenant role (`retention.action.approve`, `retention.import.approve`,
+`retention.signing_key.declare`, `retention.export.revoke`'s tenant form) was UNREACHABLE from the browser by construction; the
+demonstration's H. Bergmann is such a principal. From B18 a TENANT-homed principal is offered a WORKING DOMAIN: a `tenant_admin` picks from
+the tenant's domains (`tenancy.domain.list` — the administration page's own call), any other tenant-scope role pastes a domain id (no new
+PDP row); the choice is the tab's and the principal's (`sessionStorage['eye.working_domain']` `{principalId, tenantId, domainId, mode,
+chosenAt}`, valid only for the same principal and home tenant, read after `/v1/me` answers, cleared by "change" and by Sign out), injected by
+the layout into the `scope` every page already reads from `useShell()` — so every envelope of every page names it as the DOMAIN scope and
+the SERVER decides what the principal may do there (a TENANT binding on a DOMAIN envelope of its own tenant, the B16 approve-in-D2 idiom);
+the header shows `tenant … · domain … · working domain` with the change control exactly as it shows a home domain; a PLATFORM principal is
+refused as before, byte for byte. STATED: a pasted domain id of another tenant is not refused at scope resolution — the reads answer empty
+under RLS and the writes are refused by the domain keys; a domain-membership check in `resolveScope` is a hardening item. `apps/web/lib/
+working-domain.ts` (pure, five vitest cases), `components/working-domain.tsx` (`WorkingDomainChooser`, `WorkingDomainMark`). THE WALKS
+(`e2e/phase6-retention.spec.ts`, 13; `e2e/phase6-memory.spec.ts`, 7 — picked up by the hosted `browser-regression` job automatically;
+`playwright.config.ts` generates the run's Ed25519 signing key once at config load, hands it to the API through `webServer[0].env` and
+derives the public PEM for the spec; no scheduler: no delivery is asserted; the credential is typed by Playwright from the run's environment,
+never by the author). The retention walk, in the Phase 1 idiom (the rotation-aware admin, its own tenant with two domains and eight
+principals with per-run passwords, the upload contract and two records in D1, the intake contract in D2, the key declared by the tenant
+administrator with `credentialRef EYE_EXPORT_SIGNING_KEY_E2E`, the ids resolved through the list routes before each test): the steward opens
+a customer export and resolves it; the TENANT ADMINISTRATOR chooses the origin domain FROM THE LIST and approves on the digest (the header
+asserted; the choice survives a reload; "change" re-scopes to the empty mirror); the steward executes and verifies (the signed package); the
+origin's administrator declares a transfer station and delivers (`package.tar` on disk); the mirror's administrator declares the partner on
+the run's public key and a station of D2; the mirror's steward opens the import from the station — `verified · 0 check(s) failed` with the
+checks table; the RETENTION AUTHORITY PASTES the mirror as its working domain and approves the import; the steward admits it — the origin's
+record lists the importer; the origin's administrator revokes the package — "revocation pending — the acting principal holds no authority in
+the importing domain"; the mirror's steward executes the revocation from the origin's record — `bytes: removed 2 · failed 0`, `copies
+destroyed yes · the origin answered: acknowledged (notice attempt 1)`; a second revoke `retried`, `bytes: removed 0`, the importer notice
+`acknowledged`; the refusals in the page's own words (a steward approving → the 403 status line with its code; a seven-character reason keeps
+Withdraw closed; no alert inside `<main>` — the shell's route announcer outside it is Next.js's own); fail closed — a platform principal
+still has no domain to open, a tenant principal without a choice sees the chooser, and the choice is the principal's. The memory walk:
+the knowledge owner records, retrieves under `memory` (the access recorded), is refused under `prediction` (403 in the page's words); a
+reader under `graph`; the record authority supersedes from the served version; an as-of retrieval serves version 1 replayed (the
+supersession held 2.5 s after the recording and the instant the first whole second after it — the field carries seconds at best); the
+owner's withdrawal refused 403; the authority withdraws — the current retrieval 409 `EYE-STA-003`; landmarks, focus and names. The gate's
+first run at this tree was 40 passed / 2 failed (the as-of instant landed after a supersession two seconds later; the route announcer
+counted as an alert) — both spec-side, corrected; then **46/46** (the Phase 0 ten, the Phase 1 sixteen, the B18 twenty) on a fresh
+database with the demonstration API stopped for the run (the gate's own API takes :3401; the act restarted it). CAP-UM-07 and CMP-102's
+"browser walk owed" clauses are replaced by the hosted walk; AU-MEM-0065 likewise (its status `verified:ci` unchanged); the owner's own
+walk of the demonstration stays the owner's.
+
+**B18.6 the harnesses, the gates and the units.** `phase6-interfaces-b18.test.ts` (14 cases on a fresh database with the scheduler on;
+`bootDecisionWorld` + `decisionCalls` with session-bound actors — a twin at version 2 carrying a predicted element citing the fixture forecast,
+a scenario on it, two runs on version 2, a package P citing them; the seven consumers registered): S1 the seven announced events, each read
+from the outbox in its transition's own transaction with the pinned payload — the twin admission (the changed variables against version 1,
+the superseded version's runs, the `twin.state_changed` deliveries: the twins consumer empty, the decisions consumer's note WITHOUT exposure on
+a draft declared before the admit, retrieval verified), the two runs (started/completed with the resolved artefacts, execution identity,
+environment, seed, state, outputs, impacts, uncertainty, sensitivity, validation and resource evidence — on the row too), the proposal and the
+commitment (the approvals, the CMT, the handoff, the replay snapshot), the queued review case (`routed_to`), ForecastIssued@v2 (the outbox
+row's `schema_version` column `v2`, the expiry from the event's instant); S2 the chain end to end — (a) the withdrawal: the row, the
+dependants, the withdrawn FCT version, the ledger, ForecastWithdrawn then `forecast.withdrawn`, the six deliveries (the scenario marked, the
+package noted `material_change/compensation`, the twin version unverified with its own TwinStateChanged bound to the delivery by
+`caused_by` and the write's correlation, retrieval verified, the rest empty); (b) the automatic invalidation — the NEGATIVE first (the pinned
+implementation digest flipped: `unreproducible`, `invalidation_withheld: implementation`, the run valid, no event), then the reroute's
+reproduction unreproducible on the withdrawn forecast → invalidated in the same write (`cause: lifecycle`, the structured entry, the
+withdrawn SIM version, `dependants.decisions` the package, SimulationInvalidated and `simulation.invalidated`, the package noted again; a
+second reproduction records the verdict alone); (c) the operator's invalidation of a run nothing cites and its empty reach; (d) the reopen on
+the recorded note — state, the commitment/approval/committed version untouched, BOTH options dropped and named, the two ledger rows as a
+set, DecisionReopened, the second cycle (the status quo on the version-1 control, an unsimulated wait) to a SECOND commitment (two rows; the
+first byte for byte), the replay of version 1 at the first commitment's instant and of version 2 at the second; S3 the refusals by family and
+status — the withdrawal (twice, superseded, unknown, a short reason, the wrong principal, a scenario on a withdrawn forecast), the invalidation
+(opened/failed/twice/unknown/the wrong principal), the citation gate at `set_option` by the port (the exact version) and by the service (the
+version-less citation), the valid run resting on a withdrawn forecast, the committed version's rows seeded outside the port refused at the
+proposal (the port names the first in key order), the reopen (no cause, another package's note, an earlier note, the wrong principals, a
+second reopen), a reopened package still hearing of its inputs, the withdrawal of a package whose commitment stands (reopened; proposed
+after a reopen), the second commit over a standing commitment; S4 the register through the route: 50 rows, 36/14/0, the ten `bound_in
+0078`. The first run 7/14 (seven pins met the implementations — four cascades of ONE real defect, the DATE rendering above, and two harness
+fixtures that stopped at the services' own gates before the ports'); then **14/14** twice. `phase6-retention-b18.test.ts` **6/6** (B18.1).
+The B8 harness's one pin on a promoted row (L9-I04 `partial`) moved to L8-I04. The neighbouring set — the eight retention harnesses
+B11–B18, the four subscription harnesses B6–B9 (the twins and decisions digests changed: they register fresh; B6's admits settled),
+`phase6-interfaces-b18`, `phase5-simulations`, `phase5-corrections`, `phase6-replay` (their reproductions now invalidate under
+`simulation.reproduce` where a cited document was withdrawn — a lifecycle cause, by the C2 rule), `phase6-decisions`, `phase6-approvals`,
+`phase5-twins`, `phase6-residual-corrections` — **283/283 in 22 files** on a fresh database; the full integration suite **1055/1055 in 69
+files** on a fresh database; the upgrade proof with 0022–0078 (57 migrations above the ceiling; 78 files; the schema digests equal; the
+Phase 1/2 suites 275/275 on the upgraded data); the unit suite **2272/2272** (= 2210 + the 62 B18 cases: the withdrawn header, the six
+builders key by key with the 200 ceilings, the three PDP rules' precedence, the mapper order) and the meta suite 9/9; the web typecheck, build
+and tests (11); the browser gate **46/46**. The hosted run at `4cea858` — ci 35163213469 (build-test job 105018424523: unit 2272/2272 and the meta suite 9/9,
+acceptance 58/58, the integration suite 1055/1055 in 69 files on a fresh database with `phase6-retention-b18` 6/6 and
+`phase6-interfaces-b18` 14/14, the upgrade proof +57 rows / 78 files, C18 612/612 + 44; supply-chain green; browser-regression 46 passed —
+the B18 twenty on the hosted gate), C19 35163213457 — bound in the records commit (`evidence/cp6/hosted-4cea858-build-test-summary.txt`).
+Units and rows: the seven v03 rows L5-I04, L6-I02, L6-I05, L8-I02, L8-I03, L8-I05, L9-I05
+`partial` → `implemented` (`passed:harness`, `branch-only`) with the case each names; L2-I04, L9-I02, L9-I04 stay `implemented` with the
+B18 note (the published event the register lacked); V04-T-005 stays `partial` (the catalogue obligation: 36 of 50 bound after 0078; 14
+partial, listed); **AU-TWN-0033 `open` → `verified:local`** (every condition exercised by S1(2)(3) — the B15 precedent: a unit whose every
+clause the author's harness exercises) in the batch commit and **→ `verified:ci`** in the binding commit (the hosted run above) — the
+split reads **3,555 = 3,181 open + 339 local + 35 CI**; AU-TWN-0012 (the warning candidate on
+a twin change remains), AU-TWN-0032 (the diagnostic-only state for a failed validity remains), AU-DEC-0062 (the cited scenario tree's
+re-versioning remains), AU-PRD-0017 (the briefings' consumption remains), AU-DP-0071 stay `open` with the B18 clause; AU-DEC-0020,
+AU-DEC-0034, AU-INT-0033 carry it; AU-COM-0060/-0062 and AU-DP-0097 carry the B18.1 clause; CAP-UM-07 stays `partial` with the walk on the
+gate; CMP-102 `unverified` → `passed:browser`; AU-MEM-0065 keeps `verified:ci` with the walk. STATED: the FAILED state of
+SimulationCompleted is unit-tested only (every run of the harness and the act completes); the operator's invalidation is the harness's
+(nothing of the demonstration is invalidated by hand); no consumer of ReviewRequested, SimulationStarted/Completed, DecisionPackageReady/
+Committed/Reopened (the accountable humans read the ledgers; the register's `bound_to` says so); a policy change has no recorded cause on a
+package (L10-I05, B20); a closed decision is not reopened; the reopen leaves the standing commitment monitored until the re-commit; the
+extraction's ReviewRequested sites are exercised by the unit test and the demonstration's own extraction (none ran after 0078 on the demo —
+the challenge site did); `changedVariablesOf` compares against the superseded version only (a forked branch's first version adds every
+element); the twin's `dependencyImpacts` and every event list are cut at 200; the register's binding is a binding, not semantic acceptance.
+
+**B18.7 the demonstration** — `scripts/phase6/act-b18.mjs` → `evidence/cp6/act-b18.txt` (rehearsed first on a restored copy with its own
+vault copy, key, station and Redis, `evidence/cp6/b18-rehearsal.txt` — the FIRST rehearsal stopped in scene 3: the act had opened the twin
+version with the seed's world cut-off 2024-01-17 and the product refused the shocked run because the corridor branch's flip rests on an
+observation of 2024-01-27 outside it — the act now carries the current version's cut-off; the second rehearsal held whole): `eye_demo` backed
+up and migrated with 0078 (the demonstration API had been stopped for the browser gate — the act's first line says so — and was restarted
+by the runbook's script on the B18 build, verified); then (0) THE SUBSCRIBERS — in BOTH domains the twins and decisions subscriptions revoked
+and registered anew (the methods changed; the replacements replayed from the revoked cursors), the other five left; (1) B18.1 ON THE
+DEMONSTRATION — M. Keller revokes the mirror's standing REVOKED import again → `retried`, every byte list empty, nothing to remove, said so;
+no receipt, no new event; the mirror's ONE live import (E4's, 36 items) read and NOT touched (K. Vogel's twin cites its record); (2) K.
+VOGEL'S TWIN VERSION in the mirror — version 2 on branch actual with one estimated element citing the imported record, admitted →
+`TwinStateChanged/version.admitted` (version 2 supersedes 1; changed variables added/removed; no dependency impacts: the mirror runs
+nothing) beside `GraphChanged/twin.state_changed` and its six deliveries (every selector empty; retrieval verified; the predecessor left as it
+was); (3) THE ORIGIN — N. Eriksen issues `ecb-eurusd` at 90 days (weekly cadence, live) → `ForecastIssued@v2` (the outbox row's
+`schema_version` column `v2`; the expiry from the cadence; the distribution, the validation) and declares a scenario on it (the downside
+flipped by the corridor transit indicator); T. Nakamura versions the demo twin — the PRECONDITION checked: two of the twenty-four cited
+records were in the ARCHIVE tier (B12 re-archived them) and are RESTORED first through the governed restore (P. Novák opened and executed,
+H. Bergmann approved on the scope digest, verified) — version 5 carried from 4 with the current cut-off and a predicted element citing the
+forecast, admitted → `TwinStateChanged` (the changed variables, the superseded version's 0 runs), the `twin.state_changed` deliveries printed
+honestly (the decisions consumer noted NO package: act VI's simulated version carries no run), then a shocked control and a reroute on the
+flipped branch → `SimulationStarted`/`SimulationCompleted` ×2 with the resource evidence on the row; L. Brandt declares a package on the demo
+DEC, opens its room, cards the status quo and the reroute (the intervention + the forecast), sets the terms and the choice, proposes →
+`DecisionPackageReady`; S. Okafor approves; L. Brandt commits at C3 → `DecisionCommitted`; (4) THE CHAIN — N. Eriksen WITHDRAWS the forecast
+as unfit (`data_shift`) → `ForecastWithdrawn` with the dependants named (the scenario, the twin version, the two runs "named, never
+altered", the package) and the `forecast.withdrawn` deliveries: the scenario MARKED, the package NOTED `material_change/compensation`
+(executed), the twin version UNVERIFIED announcing its own `TwinStateChanged/version.unverified`, retrieval verified; T. Nakamura reproduces
+the reroute → `unreproducible` on the withdrawn forecast → INVALIDATED in the same write (`cause lifecycle`, the withdrawn SIM version 2) →
+`SimulationInvalidated` (trigger `reproduction`) and the `simulation.invalidated` deliveries (the package noted again); L. Brandt REOPENS the
+package on the first note after the commitment → `DecisionReopened` (state `reopened`, the commitment stands, a new draft version 2, both
+options dropped and NAMED — the reroute invalidated, the status quo resting on the withdrawn forecast), the room OPEN again; the second cycle
+— the status quo on act V's valid control, an unsimulated wait, the choice, the proposal (`DecisionPackageReady` with `reopened_from`),
+S. Okafor's approval, the SECOND commitment (`DecisionCommitted` naming the first; two commitment rows, the first byte for byte as before);
+S. Okafor replays version 1 → its decided layer closes at the FIRST commitment's instant, version 2 at the second; (5) A. HOFFMANN'S
+CHALLENGE — L. Ferreira decides the standing queued case, A. Hoffmann challenges the claim again → `ReviewRequested` (queued_reason
+`challenged`, routed to the reviewer roles); (6) THE STATE — the sixteen B18 event rows of the run from the outbox with their partition,
+sequence, schema version and status; the register through the route by J. Weber (36/14/0, the ten bound in 0078); what the act leaves (the
+90-day forecast withdrawn; the scenario marked; the origin twin at version 5 unverified; the two runs — the reroute invalidated, the control
+valid; the package committed at version 2 with two commitments and its room; the challenge case queued; the mirror's live import untouched
+and K. Vogel's twin at version 2). Each run re-issues the 90-day forecast (no supersession: the previous run's is withdrawn), versions both
+twins once more, declares a new package with its room, decides the previous run's challenge and challenges again; the January package and
+acts I–V are never rewritten. ALL SCENES HELD (60 checks). The demonstration web is rebuilt with the chooser and the bytes line; the owner's
+walk of it as H. Bergmann (a TENANT-homed persona: the chooser, then the approvals in the browser) is the owner's.
+
 ## Order and the next implementation batch
 
 B3, B1 and B2 are done in code, B4/B5 applied to the audit (the 2026-09-11 checkpoints), B6 done in
 code (2026-09-12, on the recovery machinery corrected by 0062 after Codex's finding) and B7 done in code
 (2026-09-12, after Codex's third finding), B8 (2026-09-12, after Codex's B7 findings), B9 (2026-09-13, after
 Codex's B8 findings; the accepted stack merged on `main` in the recorded order meanwhile) and B10 (2026-09-13, after
-Codex's B9 review: F1 closed on the fixed candidate, F2/F3 and G2 carried into this batch), B11 (2026-09-13; its closure of Codex's B11-F1/F2 on 2026-09-14, merged with #48 on 2026-09-15), B12 (2026-09-15, the register's next missing archive-lifecycle capability; merged with #49 on 2026-09-16 on Codex's bounded functional review) and B13 (2026-09-16, the schedule retirement and the customer export's delivery, on `main` after #49; merged with #50 on 2026-09-16 on Codex's bounded review) and B14 (2026-09-16, the https exchange proven, B13-F1 corrected, the trust anchor, the revocation notice, on `main` after #50; merged with #51 on 2026-09-16), B15 (2026-09-16, the relationship closure and the streamed archive; merged with #52 on 2026-09-16 after retargeting) and B16 (2026-09-16, the governed import and the NORDWERK round trip, B14-F1 and B15-F1 corrected, on `main` after #52; PR #53) and B17 (2026-09-16, imported knowledge published to subscribers, the origin's revocation propagated into the importing domain, the signed notice, the review gate; stacked on #53). The
+Codex's B9 review: F1 closed on the fixed candidate, F2/F3 and G2 carried into this batch), B11 (2026-09-13; its closure of Codex's B11-F1/F2 on 2026-09-14, merged with #48 on 2026-09-15), B12 (2026-09-15, the register's next missing archive-lifecycle capability; merged with #49 on 2026-09-16 on Codex's bounded functional review) and B13 (2026-09-16, the schedule retirement and the customer export's delivery, on `main` after #49; merged with #50 on 2026-09-16 on Codex's bounded review) and B14 (2026-09-16, the https exchange proven, B13-F1 corrected, the trust anchor, the revocation notice, on `main` after #50; merged with #51 on 2026-09-16), B15 (2026-09-16, the relationship closure and the streamed archive; merged with #52 on 2026-09-16 after retargeting) and B16 (2026-09-16, the governed import and the NORDWERK round trip, B14-F1 and B15-F1 corrected, on `main` after #52; PR #53) and B17 (2026-09-16, imported knowledge published to subscribers, the origin's revocation propagated into the importing domain, the signed notice, the review gate; stacked on #53; #53 and #54 merged on 2026-09-16 under the owner's word on Codex's bounded B16/B17 review) and B18 (2026-09-16/17, on `main` after #54: Codex's B17-F1 corrected first, the lifecycle announced — ten interface rows bound, 36/14/0 — with the withdrawal → invalidation → reopen chain, the working domain of a tenant-homed principal and the hosted browser walks; PR #55). The
 hosted run at `5118376` (836/836 on a fresh database) verified the B1/B2 units on the hosted chain —
 one artefact, no deployment leg. Every leg of every unit stays unaccepted until a deployment profile
 carries its own signed evidence (P7-D). The synthetic-company demonstration (`eye_demo`, NORDWERK) remains the deliverable

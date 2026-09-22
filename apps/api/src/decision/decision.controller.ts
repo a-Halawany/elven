@@ -3,6 +3,11 @@
  * same receipts as every other workspace; reading and writing stay separate decisions.
  * Every write below is at most C2; the exact C3 commit arrives with 0042 and is a
  * different route, a different action and a different port.
+ *
+ * B18 (0078): the lifecycle ANNOUNCED — the proposal publishes DecisionPackageReady, the
+ * commit DecisionCommitted, the reopen DecisionReopened, each from the transaction that
+ * made the transition; the reopen route is the owner's re-entry into a committed
+ * decision's lifecycle on a recorded cause.
  */
 import { Body, Controller, HttpException, Param, Post, Req } from '@nestjs/common';
 import { errorBody } from '@eye/contracts';
@@ -11,6 +16,7 @@ import { requireCorrelation } from '../shared/correlation.js';
 import { PipelineService } from '../pipeline/pipeline.service.js';
 import type { EyeRequest } from '../pipeline/http.js';
 import { DecisionCapability } from './decision.capabilities.js';
+import { decisionCommittedEvent, decisionPackageReadyEvent, decisionReopenedEvent } from './decision-events.js';
 import { PackageService, validateOptionIntake, validatePackageIntake, validateTermsIntake } from './packages/package.service.js';
 import { ApprovalService, validateApprovalIntake } from './approvals/approval.service.js';
 import { ReplayService } from './replay/replay.service.js';
@@ -155,10 +161,35 @@ export class DecisionController {
     const out = await this.pipeline.write(
       envelope, principal, this.route(tenantId, domainId, 'decision.package.propose', 'DPK', packageId), DecisionCapability.propose,
       async (cap, scope) => {
-        const r = await this.packages.propose(cap, scope, packageId, v, envelope.purpose_id ?? 'decision', principal.principalId, envelope.correlation_id);
-        return { result: r, targetType: 'DPK', targetId: packageId, targetVersion: String(v), outboxEvent: null };
+        const { ready, ...r } = await this.packages.propose(cap, scope, packageId, v, envelope.purpose_id ?? 'decision', principal.principalId, envelope.correlation_id);
+        // B18 (0078, L9-I02): the proposal ANNOUNCED from its own transaction; the answer keeps its keys.
+        return { result: r, targetType: 'DPK', targetId: packageId, targetVersion: String(v),
+                 outboxEvent: decisionPackageReadyEvent({ ...ready, actor: principal.principalId, occurredAt: new Date().toISOString() }) };
       });
     return { proposal: out.result, receipt: receipt(out) };
+  }
+
+  /** B18 (0078, L9-I05): the owner REOPENS a committed decision on a recorded cause; the commitment stands; a new draft follows the cycle. */
+  @Post('/:packageId/reopen')
+  async reopen(
+    @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('packageId') packageId: string,
+    @Body() body: { payload?: { cause?: { kind?: string; ref?: string }; knownAt?: string; observedThrough?: string | null } },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const p = body.payload ?? {};
+    const cause = typeof p.cause === 'object' && p.cause !== null ? p.cause : {};
+    const now = new Date().toISOString();
+    const out = await this.pipeline.write(
+      envelope, principal, this.route(tenantId, domainId, 'decision.package.reopen', 'DPK', packageId), DecisionCapability.reopen,
+      async (cap, scope) => {
+        const r = await this.packages.reopen(cap, scope, packageId, {
+          cause: { kind: String(cause.kind ?? ''), ref: String(cause.ref ?? '') },
+          knownAt: typeof p.knownAt === 'string' ? instant(p.knownAt, now) : null, observedThrough: day(p.observedThrough),
+        }, principal.principalId, envelope.correlation_id);
+        return { result: r.reopened, targetType: 'DPK', targetId: packageId, targetVersion: String(r.reopened['new_version']),
+                 outboxEvent: decisionReopenedEvent({ reopened: r.reopened, packageId, decisionObjectId: r.decisionObjectId, actor: principal.principalId, occurredAt: now }) };
+      });
+    return { reopened: out.result, receipt: receipt(out) };
   }
 
   @Post('/:packageId/withdraw')
@@ -230,7 +261,14 @@ export class DecisionController {
       DecisionCapability.commit,
       async (cap, scope) => {
         const r = await this.approvals.commit(cap, scope, packageId, v, String(body.payload?.versionDigest ?? ''), principal.principalId, envelope.purpose_id ?? 'decision', envelope.correlation_id, commitmentId);
-        return { result: r, targetType: 'CMT', targetId: commitmentId, targetVersion: '1', outboxEvent: null };
+        // B18 (0078, L9-I04): the commitment ANNOUNCED from the C3 transaction — the CMT, the conditions, the handoff statement, the replay snapshot.
+        return { result: r, targetType: 'CMT', targetId: commitmentId, targetVersion: '1',
+                 outboxEvent: decisionCommittedEvent({
+                   packageId, version: v, versionDigest: r.versionDigest, commitmentId: r.commitmentId, committedBy: principal.principalId, approvals: r.approvals,
+                   opClass: r.opClass, boundAction: r.boundAction, policyDecisionId: r.policyDecisionId, decidedAt: r.decidedAt, choice: r.choice, decisionObjectId: r.decisionObjectId,
+                   objectives: r.objectives, runs: r.runs, baselineRunId: r.baselineRunId, monitoringConditions: r.monitoringConditions, cmtHeaderDigest: r.cmtHeaderDigest,
+                   reopenedFrom: r.reopenedFrom, actor: principal.principalId,
+                 }) };
       });
     return { commitment: out.result, receipt: receipt(out) };
   }

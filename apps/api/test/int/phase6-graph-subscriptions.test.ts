@@ -80,8 +80,20 @@ async function restart(): Promise<void> {
 async function admitTwin(els: unknown[], branch: string): Promise<number> {
   const o = await twins.openVersion(h.req(owner, 'twin.version', 'TWN', twinId), T(), D(), twinId, { payload: { branchId: branch, knownAt: new Date().toISOString(), observedThrough: '2024-01-17' } }) as { version: { version: number } };
   await twins.ground(h.req(owner, 'twin.ground', 'TWN', twinId), T(), D(), twinId, String(o.version.version), { payload: { elements: els } });
+  const since = await mark();
   await twins.admit(h.req(owner, 'twin.version.admit', 'TWN', twinId), T(), D(), twinId, String(o.version.version), { payload: {} });
+  await admissionSettled(since);
   return o.version.version;
+}
+/**
+ * B18 (0078): an admission publishes GraphChanged/twin.state_changed and its own deliveries — one per ACTIVE subscription (a paused one
+ * receives nothing). A case that arms a global one-shot fault, or counts deliveries, right after an admit would otherwise see the
+ * admission's deliveries consume the fault or the count; every admit therefore waits for its announcement's deliveries to settle.
+ */
+async function admissionSettled(since: Date): Promise<void> {
+  const row = await publishedEvent('GraphChanged', 'twin.state_changed', since);
+  const active = Number((await sql<{ n: string }>`select count(*) n from graph.subscriptions where tenant_id = ${T()}::uuid and domain_id = ${D()}::uuid and status = 'active'`.execute(h.su)).rows[0]!.n);
+  await waitFor('the admission\'s deliveries settled', () => deliveriesFor(row.id), (rows) => rows.length === active && rows.every((d) => ['applied', 'unresolved', 'failed', 'refused'].includes(d.state)), 120_000);
 }
 async function applyCorrection(evdIds: string[], reason: string): Promise<string> {
   const opened = await observation.submitCorrection(h.req(manager, 'observation.correction.receive', 'COR', null, 'observation'), T(), D(),

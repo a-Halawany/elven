@@ -71,6 +71,11 @@
  *   anything moved, no receipt event stands for the latest attempt, or a notice is pending on the origin ledger; else nothing beyond
  *   write #0. Two attempts serialise on the import's advisory lock (C14): an item another attempt settled is skipped, never refused;
  *   an infrastructure fault propagates and the import stays REVOKING for the same route to resume (import.revocation_failed).
+ *   B18 (Codex B17-F1): the CLEANUP and the RECEIPT of a finish are built from the ITEM MAP, never from one attempt's tally — a resumed
+ *   attempt removes the bytes of every record any attempt tombstoned (the crashed attempt's as `residual`), the removal is VERIFIED
+ *   against both roots before the receipt says copies_destroyed (a locator still present is `remaining`, the receipt copies_refused
+ *   with the locators named, the origin's notice mismatched; the next revoke — the retry branch — owes them), and the receipt's counts,
+ *   refused items and holders are what the map records; a redelivery of a completed revocation adds no event (the retry's rule).
  *
  * THE SUBSCRIBERS (CP-6 B17; D1, D20): the admission publishes through the pipeline's `outboxEvents` — ONE ObservationRecorded per
  * admitted record from each record batch's write (acquisition_mode import, run_id null, the intake contract's source and authority
@@ -129,6 +134,8 @@ export type ImportIntake =
 
 /** A record batch (D2): at most 32 planned canonical ids per write — ctx.assert_bound_target's ceiling on a declared target set. */
 const BATCH = 32;
+/** B18: the receipt's byte lists are cut here (the station receipt file is read under a 64 KiB ceiling); the ledger event keeps the whole lists. */
+const RECEIPT_LIST_MAX = 200;
 /** The action every admission write runs under (0076 §5: the canonical-write action of the import). */
 const ADMIT_ACTION = 'retention.import.admit';
 /** B17 (0077 §8): the action every revocation write runs under — the canonical-write action of the withdrawn versions. */
@@ -174,15 +181,38 @@ export interface RevokeImportAnswer {
   import: Row; kind: 'revoked' | 'held' | 'retried' | 'refused';
   revocation: {
     attempt: number; source: Row | null; notice: Row | null;
-    destroyed: { records: number; claims: number; entities: number; edges: number }; left: number;
+    /** What THIS attempt settled (a retry: what every attempt settled — nothing moves at a retry). */
+    destroyed: RevocationCounts; left: number;
+    /** B18 (B17-F1): what EVERY attempt of this revocation settled, as the item map records it — the numbers the receipt carries. */
+    cumulative?: RevocationCounts;
     refused: RefusedRevocationItem[];
-    bytes: { removed: string[]; failed: string[] } | null; receipt: Row | null; answered: Row | null; station_receipt: { path: string } | { error: string } | null;
+    bytes: RevocationBytes | null; receipt: Row | null; answered: Row | null; station_receipt: { path: string } | { error: string } | null;
     reason?: string;
   };
   batches: Row[]; receipt: { policyDecisionId: string; auditSeq: number };
 }
-/** B17 (C4): the test-only fault a harness arms on the revocation loop — an infrastructure fault thrown after the graph write committed. */
-export type RevocationFault = 'after_graph_write';
+export interface RevocationCounts { records: number; claims: number; entities: number; edges: number }
+/**
+ * B18 (B17-F1): the bytes of a revocation attempt — `removed` the locators whose copies went in this attempt, `failed` the locators a
+ * removal refused OR that were still present in a root when the cleanup was verified after it, `residual` the locators an EARLIER
+ * attempt tombstoned whose bytes this attempt found still present (owed by the item map, not by this attempt's own tally), `remaining`
+ * the locators verified still present in either root after the removal (a subset of `failed`; the next revoke of the import owes them),
+ * `roots_unreachable` the blob roots whose marker could not be read during the cleanup (every owed locator is then `remaining`).
+ */
+export interface RevocationBytes { removed: string[]; failed: string[]; residual: string[]; remaining: string[]; roots_unreachable: VaultName[] }
+/**
+ * B17 (C4) / B18 (B17-F1): the test-only fault a harness arms on the revocation loop — an infrastructure fault thrown after the graph
+ * write committed, or after the FIRST record batch committed (its records tombstoned on the ledger, their bytes not yet removed).
+ */
+export type RevocationFault = 'after_graph_write' | 'after_record_batch';
+/** B18 (B17-F1): the revocation as the ITEM MAP records it — every attempt's settled items reduced to what the cleanup and the receipt owe. */
+interface DurableRevocation {
+  destroyed: RevocationCounts; refused: RefusedRevocationItem[]; left: number;
+  /** The imports named `held_by` on the items left (C9) — whether each still stands is `liveHoldersOf`'s. */
+  heldIds: string[];
+  /** Every tombstoned record's locator, distinct — the bytes owed in both roots, whichever attempt tombstoned the record. */
+  locators: string[];
+}
 
 @Injectable()
 export class ImportService {
@@ -1017,7 +1047,8 @@ export class ImportService {
         const b = await cap.beginImportRevocation({ importId, tenantId: scope.tenantId, domainId: scope.domainId, source: source.kind === 'station' ? { kind: 'station', destination_key: source.destinationKey } : { kind: 'origin' }, actor, correlationId });
         const heldIds = new Set<string>();
         for (const it of items) { const r = isObject(it['revocation']) ? (it['revocation'] as Row) : {}; if (r['outcome'] === 'left' && Array.isArray(r['held_by'])) for (const h of r['held_by'] as unknown[]) if (typeof h === 'string') heldIds.add(h); }
-        return { result: { ...base, kind: 'retried', holders: await this.liveHoldersOf(cap, scope, [...heldIds]), begun: b } };
+        const lastReceipt = (await cap.readImportEvents().select(['event' as never]).where('import_id' as never, '=', importId as never).where('event' as never, 'in', ['import.copies_destroyed', 'import.copies_refused'] as never).orderBy('occurred_at' as never, 'desc').limit(1).executeTakeFirst()) as Row | undefined;
+        return { result: { ...base, kind: 'retried', holders: await this.liveHoldersOf(cap, scope, [...heldIds]), begun: b, lastReceiptEvent: lastReceipt === undefined ? null : str(lastReceipt['event']) } };
       }
       let pSource: Row = { kind: 'origin' };
       let opened: { directory: string; path: string; notice: Row } | null = null;
@@ -1050,7 +1081,7 @@ export class ImportService {
     if (r0.kind === 'refused') {
       return { import: r0.row, kind: 'refused', revocation: { attempt: Number(r0.row['revocation_attempts'] ?? 0), source: { kind: 'station', destination_key: source.kind === 'station' ? source.destinationKey : null, path: r0.opened?.path ?? null }, notice: r0.opened?.notice ?? null, destroyed: zero, left: 0, refused: [], bytes: null, receipt: null, answered: null, station_receipt: null, reason: r0.reason }, batches, receipt };
     }
-    if (r0.kind === 'retried') return this.retryRevocation({ scope, importId, actor, correlationId, write, row: isObject(r0.begun['import']) ? (r0.begun['import'] as Row) : r0.row, items: r0.items, begun: r0.begun, station: r0.station, origin: r0.origin, holders: r0.holders, receipt });
+    if (r0.kind === 'retried') return this.retryRevocation({ scope, importId, actor, correlationId, write, row: isObject(r0.begun['import']) ? (r0.begun['import'] as Row) : r0.row, items: r0.items, begun: r0.begun, station: r0.station, origin: r0.origin, holders: r0.holders, lastReceiptEvent: r0.lastReceiptEvent ?? null, receipt });
 
     const partnerKey = r0.partner === null ? '' : String(r0.partner['partner_key'] ?? '');
     const attempt = Number(r0.row['revocation_attempts'] ?? 0);
@@ -1059,6 +1090,8 @@ export class ImportService {
       imports: new Map(), tally: { retracted: [], retired: [], withdrawn: [], tombstoned: [], left: 0, skipped: 0, refused: [], held: new Map(), locators: [] },
     };
     let fin: Row = {};
+    let durable: DurableRevocation = { destroyed: zero, refused: [], left: 0, heldIds: [], locators: [] };
+    let holders: Array<{ import_id: string; origin_action_id: string | null }> = [];
     try {
       // THE PLAN (in memory): every admitted or reused item not yet settled by a revocation — or refused by one (a hold since lifted) — by kind.
       const pending = r0.items.filter(isPendingRevocation);
@@ -1077,7 +1110,8 @@ export class ImportService {
       // W2…: the CLAIMS by object id, in batches of at most 32 objects (the bound set: the batch's object ids — objects.admit_version binds the withdrawn version to it).
       const groups = new Map<string, Row[]>();
       for (const it of claimItems) { const id = String((isObject(it['planned']) ? (it['planned'] as Row) : {})['object_id'] ?? (isObject(it['admitted']) ? (it['admitted'] as Row)['object_id'] : '')); groups.set(id, [...(groups.get(id) ?? []), it]); }
-      const groupList = [...groups.entries()];
+      // B18: the objects in ONE order across revocations (the copy lock is taken per object inside the batch; two batches locking in the same order never deadlock).
+      const groupList = [...groups.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
       for (let i = 0; i < groupList.length; i += BATCH) {
         const batch = groupList.slice(i, i + BATCH);
         const out = await write(REVOKE_ACTION, 'RIM', importId, batch.map(([id]) => id).filter((id) => UUID.test(id)), async (cap) => {
@@ -1092,8 +1126,10 @@ export class ImportService {
 
       // W3…: the RECORDS in batches of at most 32 (the bound set: their object ids) — the withdrawn version, the tombstone and the custody row per record.
       const withdrawnObjects = new Set<string>();
-      for (let i = 0; i < recordItems.length; i += BATCH) {
-        const batch = recordItems.slice(i, i + BATCH);
+      const recordObjectOf = (it: Row): string => String((isObject(it['admitted']) ? (it['admitted'] as Row) : {})['object_id'] ?? '');
+      const recordList = [...recordItems].sort((a, b) => { const x = recordObjectOf(a); const y = recordObjectOf(b); return x < y ? -1 : x > y ? 1 : 0; });
+      for (let i = 0; i < recordList.length; i += BATCH) {
+        const batch = recordList.slice(i, i + BATCH);
         const targets = [...new Set(batch.map((it) => String((isObject(it['admitted']) ? (it['admitted'] as Row) : {})['object_id'] ?? '')).filter((id) => UUID.test(id)))];
         const out = await write(REVOKE_ACTION, 'RIM', importId, targets, async (cap) => {
           const tally = { tombstoned: 0, left: 0, refused: 0, skipped: 0 }; let n = 0;
@@ -1103,12 +1139,18 @@ export class ImportService {
         });
         receipt = { policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq };
         batches.push({ ...out.result, policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq });
+        // B18 (B17-F1): the batch's records are tombstoned on the ledger and their bytes still in the vault — the state Codex reproduced.
+        if (this.#revocationFault === 'after_record_batch') { this.#revocationFault = null; throw Object.assign(new Error('injected infrastructure fault after a record batch committed (test)'), { code: '57P01' }); }
       }
 
       // Wf: the FINISH — the state moved (or held) — and the ONE GraphChanged/import.revoked of the attempt, built from the ITEM MAP (C4) before the
       // finish records its own event, so "settled since the attempt before" is read against the previous finish, never this one.
       const out = await write(REVOKE_ACTION, 'RIM', importId, undefined, async (cap) => {
         const changed = await this.revokedFactsOf(cap, scope, importId);
+        // B18 (B17-F1): the cleanup and the receipt owe what the ITEM MAP settled — every attempt's tombstoned records, refused items and
+        // holders — never this attempt's tally alone (a resumed attempt skips the items a crashed one settled; their bytes are still owed).
+        const durable = durableRevocationOf(changed.items);
+        const holders = await this.liveHoldersOf(cap, scope, durable.heldIds);
         // The ledger's own counts by outcome are the port's (the item map); the service adds only what the map cannot say (C14's skipped items).
         const finished = await cap.finishImportRevocation({ importId, tenantId: scope.tenantId, domainId: scope.domainId, revocation: f.revocation, counts: f.tally.skipped > 0 ? { skipped: f.tally.skipped } : {}, refused: f.tally.refused.map((x) => ({ ...x })), actor, correlationId });
         const events: Array<{ eventType: string; payload: Record<string, unknown> }> = [];
@@ -1121,10 +1163,10 @@ export class ImportService {
             notice: { notice_id: f.ref.notice_id, source: source.kind, revoked_at: f.ref.revoked_at, reason: f.ref.reason },
           }));
         }
-        return { result: finished, outboxEvents: events };
+        return { result: { finished, durable, holders }, outboxEvents: events };
       });
       receipt = { policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq };
-      fin = out.result;
+      fin = out.result.finished; durable = out.result.durable; holders = out.result.holders;
       batches.push({ kind: 'finish', complete: fin['complete'] === true, counts: fin['counts'] ?? {}, policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq });
     } catch (e) {
       // The fault recorded on the import — best effort, as the admission's — and propagated: the import stays REVOKING; the same route resumes it (begin counts the attempt).
@@ -1134,65 +1176,92 @@ export class ImportService {
       throw e;
     }
 
-    // After the commit: the tombstoned records' bytes go from both roots (the staged copies too); the receipt written beside a station notice.
-    const bytes = f.tally.locators.length === 0 ? { removed: [] as string[], failed: [] as string[] } : await this.retention.removeBytes(scope, f.tally.locators);
+    // After the commit (B18, B17-F1): the bytes of EVERY tombstoned record of the item map go from both roots (the staged copies too) —
+    // this attempt's, and the residual of an attempt that crashed between its record batch and the cleanup — and the cleanup is VERIFIED
+    // against the vault before the receipt says copies_destroyed; the receipt's counts, refused items and holders are the item map's.
+    const bytes = await this.removeRevokedBytes(scope, durable.locators, f.tally.locators.map((l) => l.locator));
     const complete = fin['complete'] === true;
-    const held = this.heldByOf(f);
+    const held = holders;
     const receiptBody = this.receiptBodyOf({
-      importId, scope, ref: f.ref, notice: r0.notice, destroyed: { ...this.destroyedOf(f.tally), bytes: bytes.removed.length }, refused: f.tally.refused, bytes, held,
-      copiesDestroyed: complete && bytes.failed.length === 0 && held.length === 0, retried: false,
+      importId, scope, ref: f.ref, notice: r0.notice, destroyed: { ...durable.destroyed, bytes: Math.max(0, durable.locators.length - bytes.remaining.length) }, refused: durable.refused, bytes, held,
+      copiesDestroyed: complete && bytes.failed.length === 0 && bytes.remaining.length === 0 && held.length === 0, retried: false,
     });
     const stationReceipt = r0.station === null ? null : await this.delivery.writeStationRevocationReceipt(r0.station.endpoint, r0.origin, receiptBody).then((p) => ({ path: p }), (e: unknown) => ({ error: String((e as { message?: unknown })?.message ?? 'unknown').slice(0, 200) }));
 
     // Wr: the receipt recorded — import.copies_destroyed | import.copies_refused — and the origin's notice answered when the origin is here.
-    const wr = await write(REVOKE_ACTION, 'RIM', importId, undefined, async (cap) => ({ result: await cap.recordImportRevocationReceipt({ importId, tenantId: scope.tenantId, domainId: scope.domainId, receipt: receiptBody, receiptDigest: contentDigest(receiptBody), bytes, station: stationReceipt, actor, correlationId }) }));
+    const wr = await write(REVOKE_ACTION, 'RIM', importId, undefined, async (cap) => ({ result: await cap.recordImportRevocationReceipt({ importId, tenantId: scope.tenantId, domainId: scope.domainId, receipt: receiptBody, receiptDigest: contentDigest(receiptBody), bytes: { ...bytes }, station: stationReceipt, actor, correlationId }) }));
     receipt = { policyDecisionId: wr.policyDecisionId, auditSeq: wr.auditSeq };
     return {
       import: isObject(fin['import']) ? (fin['import'] as Row) : r0.row, kind: complete ? 'revoked' : 'held',
-      revocation: { attempt, source: f.revocation, notice: r0.notice, destroyed: this.destroyedOf(f.tally), left: f.tally.left, refused: f.tally.refused, bytes, receipt: receiptBody, answered: isObject(wr.result['answered']) ? (wr.result['answered'] as Row) : null, station_receipt: stationReceipt },
+      revocation: { attempt, source: f.revocation, notice: r0.notice, destroyed: this.destroyedOf(f.tally), cumulative: durable.destroyed, left: f.tally.left, refused: f.tally.refused, bytes, receipt: receiptBody, answered: isObject(wr.result['answered']) ? (wr.result['answered'] as Row) : null, station_receipt: stationReceipt },
       batches, receipt,
     };
   }
 
   /**
-   * THE RETRY (C5): a revoked import revoked again — nothing of the ledger moves; the tombstoned records' bytes still present in either
-   * root go, and a fresh receipt is recorded (a new notice attempt on the origin ledger, D6) when any byte was removed or failed, when no
-   * receipt event stands for the latest attempt, or when a notice is pending on the origin ledger; else nothing beyond write #0.
+   * B18 (B17-F1): the bytes a revocation OWES — every tombstoned record's locator of the item map (`owed`), in both roots, the staged
+   * copies too — removed and then VERIFIED: a locator with any bytes left in either root after the removal (the published copy or a
+   * staged one; a directory that cannot be listed counts as bytes present) is `remaining` (and `failed`), never reported destroyed. A
+   * root whose marker cannot be read (`rootReachable`: an unmounted cold tier is an empty mount point) proves nothing: it is named in
+   * `roots_unreachable`, NOTHING is removed in any root this attempt (a half-removal would leave no list exact), and every owed locator is
+   * `remaining` until a later revoke — with every root reachable — removes and verifies it (the ledger's tombstone stands meanwhile). This attempt's
+   * own locators (`own`) are removed in a reachable root whether or not it holds them (the removal is idempotent); a locator an earlier
+   * attempt tombstoned is removed where its bytes are found and named `residual`. Nothing of the ledger moves here: the receipt write
+   * that follows records what this found.
    */
-  private async retryRevocation(a: { scope: Scope; importId: string; actor: string; correlationId: string; write: ReturnType<ImportService['writerOf']>; row: Row; items: Row[]; begun: Row; station: { destination: Row; endpoint: string } | null; origin: { tenantId: string; domainId: string; actionId: string }; holders: Array<{ import_id: string; origin_action_id: string | null }>; receipt: { policyDecisionId: string; auditSeq: number } }): Promise<RevokeImportAnswer> {
+  private async removeRevokedBytes(scope: Scope, owed: string[], own: string[]): Promise<RevocationBytes> {
+    const ownSet = new Set(own);
+    const all = [...new Set([...owed, ...own])];
+    const reachable: Array<'evidence' | 'archive'> = []; const unreachable: Array<'evidence' | 'archive'> = [];
+    for (const vault of REVOCATION_ROOTS) (await this.vault.rootReachable(vault) ? reachable : unreachable).push(vault);
+    const entries: Array<{ locator: string; vault: VaultName; stagedToo?: boolean }> = [];
+    const residual: string[] = [];
+    for (const locator of all) {
+      let present = false;
+      for (const vault of reachable) if (await this.vault.anyBytesIn(vault, scope, locator)) present = true;
+      if (unreachable.length === 0 && (present || ownSet.has(locator))) for (const vault of reachable) entries.push({ locator, vault, stagedToo: true });
+      if (present && !ownSet.has(locator)) residual.push(locator);
+    }
+    const removal = entries.length === 0 ? { removed: [] as string[], failed: [] as string[] } : await this.retention.removeBytes(scope, entries);
+    const remaining: string[] = [];
+    for (const locator of all) {
+      if (unreachable.length > 0) { remaining.push(locator); continue; }
+      for (const vault of reachable) if (await this.vault.anyBytesIn(vault, scope, locator)) { remaining.push(locator); break; }
+    }
+    const remainingSet = new Set(remaining);
+    return { removed: removal.removed.filter((l) => !remainingSet.has(l)), failed: [...new Set([...removal.failed, ...remaining])], residual, remaining, roots_unreachable: unreachable };
+  }
+
+  /**
+   * THE RETRY (C5): a revoked import revoked again — nothing of the ledger moves; the tombstoned records' bytes still present in either
+   * root go (B18: found by the item map's locators and verified gone after — `residual`/`remaining`), and a fresh receipt is recorded (a
+   * new notice attempt on the origin ledger, D6) when any byte was removed or failed, when no receipt event stands for the latest attempt,
+   * or when a notice is pending on the origin ledger; else nothing beyond write #0 — a redelivery of a completed revocation adds no event.
+   */
+  private async retryRevocation(a: { scope: Scope; importId: string; actor: string; correlationId: string; write: ReturnType<ImportService['writerOf']>; row: Row; items: Row[]; begun: Row; station: { destination: Row; endpoint: string } | null; origin: { tenantId: string; domainId: string; actionId: string }; holders: Array<{ import_id: string; origin_action_id: string | null }>; lastReceiptEvent: string | null; receipt: { policyDecisionId: string; auditSeq: number } }): Promise<RevokeImportAnswer> {
     const { scope, importId, actor, correlationId, row, items, holders: held } = a;
     const recorded = isObject(row['revocation']) ? (row['revocation'] as Row) : {};
     const ref = revocationRefOf(recorded);
     const attempt = Number(row['revocation_attempts'] ?? 0);
-    const revocationOf = (it: Row): Row => (isObject(it['revocation']) ? (it['revocation'] as Row) : {});
-    const settled = items.filter((it) => ['admitted', 'reused'].includes(String(it['disposition'])) && it['revoked_at'] !== null && it['revoked_at'] !== undefined);
-    const entries: Array<{ locator: string; vault: VaultName; stagedToo?: boolean }> = [];
-    for (const it of settled) {
-      const r = revocationOf(it);
-      if (String(it['kind']) !== 'record' || r['outcome'] !== 'tombstoned') continue;
-      const locator = str(r['locator']); if (locator === null) continue;
-      for (const vault of ['evidence', 'archive'] as const) if (await this.vault.exists(vault, scope, locator)) entries.push({ locator, vault, stagedToo: true });
-    }
-    const bytes = entries.length === 0 ? { removed: [] as string[], failed: [] as string[] } : await this.retention.removeBytes(scope, entries);
+    // B18 (B17-F1): the same reducer as the finish's — the bytes owed by the item map removed where still present and VERIFIED after.
+    const durable = durableRevocationOf(items);
+    const bytes = await this.removeRevokedBytes(scope, durable.locators, []);
     const pendingNoticeId = str(a.begun['pending_notice_id']);
-    const destroyed = {
-      records: settled.filter((it) => String(it['kind']) === 'record' && revocationOf(it)['outcome'] === 'tombstoned').length,
-      claims: new Set(settled.filter((it) => String(it['kind']) === 'claim' && revocationOf(it)['outcome'] === 'withdrawn').map((it) => String(revocationOf(it)['object_id'] ?? (isObject(it['admitted']) ? (it['admitted'] as Row)['object_id'] : '')))).size,
-      entities: settled.filter((it) => revocationOf(it)['outcome'] === 'retired').length,
-      edges: settled.filter((it) => revocationOf(it)['outcome'] === 'retracted').length,
-    };
-    const refused: RefusedRevocationItem[] = settled.filter((it) => revocationOf(it)['outcome'] === 'refused').map((it) => { const r = revocationOf(it); return { item_id: String(it['item_id']), kind: String(it['kind']), origin_ref: String(it['origin_ref']), ref: String(it['origin_ref']), reason: String(r['reason'] ?? ''), hold_id: str(r['hold_id']), manifest_id: str(r['manifest_id']) }; });
-    const left = settled.filter((it) => revocationOf(it)['outcome'] === 'left').length;
+    const { destroyed, refused, left } = durable;
     const answerOf = (rest: Partial<RevokeImportAnswer['revocation']>, receipt: RevokeImportAnswer['receipt']): RevokeImportAnswer =>
-      ({ import: row, kind: 'retried', revocation: { attempt, source: recorded, notice: null, destroyed, left, refused, bytes, receipt: null, answered: null, station_receipt: null, ...rest }, batches: [], receipt });
-    const needReceipt = bytes.removed.length > 0 || bytes.failed.length > 0 || a.begun['last_receipt_event'] === false || pendingNoticeId !== null;
+      ({ import: row, kind: 'retried', revocation: { attempt, source: recorded, notice: null, destroyed, cumulative: destroyed, left, refused, bytes, receipt: null, answered: null, station_receipt: null, ...rest }, batches: [], receipt });
+    // B18: a `copies_refused` last word for BYTES (nothing refused, nothing held) is corrected once the residue is verified gone — one
+    // `copies_destroyed` receipt answering the mismatched notice by a new acknowledged attempt; the redelivery after it stays silent.
+    const nothingOwed = bytes.failed.length === 0 && bytes.remaining.length === 0 && refused.length === 0 && held.length === 0;
+    const lastWordRefusedBytes = a.lastReceiptEvent === 'import.copies_refused' && nothingOwed;
+    const needReceipt = bytes.removed.length > 0 || bytes.failed.length > 0 || a.begun['last_receipt_event'] === false || pendingNoticeId !== null || lastWordRefusedBytes;
     if (!needReceipt) return answerOf({}, a.receipt);
     const receiptBody = this.receiptBodyOf({
-      importId, scope, ref: { ...ref, notice_id: pendingNoticeId ?? ref.notice_id }, notice: null, destroyed: { ...destroyed, bytes: bytes.removed.length }, refused, bytes, held,
-      copiesDestroyed: bytes.failed.length === 0 && refused.length === 0 && held.length === 0, retried: true,
+      importId, scope, ref: { ...ref, notice_id: pendingNoticeId ?? ref.notice_id }, notice: null, destroyed: { ...destroyed, bytes: Math.max(0, durable.locators.length - bytes.remaining.length) }, refused, bytes, held,
+      copiesDestroyed: bytes.failed.length === 0 && bytes.remaining.length === 0 && refused.length === 0 && held.length === 0, retried: true,
     });
     const stationReceipt = a.station === null ? null : await this.delivery.writeStationRevocationReceipt(a.station.endpoint, a.origin, receiptBody).then((p) => ({ path: p }), (e: unknown) => ({ error: String((e as { message?: unknown })?.message ?? 'unknown').slice(0, 200) }));
-    const wr = await a.write(REVOKE_ACTION, 'RIM', importId, undefined, async (cap) => ({ result: await cap.recordImportRevocationReceipt({ importId, tenantId: scope.tenantId, domainId: scope.domainId, receipt: receiptBody, receiptDigest: contentDigest(receiptBody), bytes, station: stationReceipt, actor, correlationId }) }));
+    const wr = await a.write(REVOKE_ACTION, 'RIM', importId, undefined, async (cap) => ({ result: await cap.recordImportRevocationReceipt({ importId, tenantId: scope.tenantId, domainId: scope.domainId, receipt: receiptBody, receiptDigest: contentDigest(receiptBody), bytes: { ...bytes }, station: stationReceipt, actor, correlationId }) }));
     return answerOf({ receipt: receiptBody, answered: isObject(wr.result['answered']) ? (wr.result['answered'] as Row) : null, station_receipt: stationReceipt }, { policyDecisionId: wr.policyDecisionId, auditSeq: wr.auditSeq });
   }
 
@@ -1270,6 +1339,7 @@ export class ImportService {
    * withdrawn takes no further version (the items marked withdrawn as already so).
    */
   private async withdrawClaimGroup(cap: RetentionWrites, objectId: string, group: Row[], f: RevocationFacts, n: number): Promise<'withdrawn' | 'left' | 'refused' | 'skipped'> {
+    if (UUID.test(objectId)) await cap.lockRevocationCopy(objectId);
     const held = await this.holdersOfGroup(cap, f, group);
     const sp = `imr_${n}`;
     await cap.savepoint(sp);
@@ -1315,6 +1385,7 @@ export class ImportService {
   private async tombstoneRecord(cap: RetentionWrites, item: Row, f: RevocationFacts, n: number, withdrawnObjects: Set<string>): Promise<'tombstoned' | 'left' | 'refused' | 'skipped'> {
     const admitted = isObject(item['admitted']) ? (item['admitted'] as Row) : {};
     const objectId = str(admitted['object_id']); const manifestId = str(admitted['manifest_id']); const locator = str(admitted['locator']);
+    if (objectId !== null && UUID.test(objectId)) await cap.lockRevocationCopy(objectId);
     const held = await this.holdersOfGroup(cap, f, [item]);
     const sp = `imr_${n}`;
     await cap.savepoint(sp);
@@ -1365,7 +1436,7 @@ export class ImportService {
    * back, the distinct withdrawn claim ids, the tombstoned record ids; the walk seeds — every tombstoned record, then every withdrawn
    * claim no seeded record's lineage reaches (`claim_withdrawal`). Read BEFORE the finish records its own event.
    */
-  private async revokedFactsOf(cap: RetentionReads, scope: Scope, importId: string): Promise<{ count: number; identities: ImportChangeFacts['identities']; edges: ImportChangeFacts['edges']; claims: string[]; evidence: string[]; walkSeeds: ImportWalkSeed[] }> {
+  private async revokedFactsOf(cap: RetentionReads, scope: Scope, importId: string): Promise<{ count: number; identities: ImportChangeFacts['identities']; edges: ImportChangeFacts['edges']; claims: string[]; evidence: string[]; walkSeeds: ImportWalkSeed[]; items: Row[] }> {
     const items = (await cap.readImportItems().selectAll().where('import_id' as never, '=', importId as never).where('disposition' as never, 'in', ['admitted', 'reused'] as never).where('revoked_at' as never, 'is not', null as never).orderBy('dependency_order' as never).execute()) as Row[];
     const lastFinish = (await cap.readImportEvents().select(['occurred_at' as never]).where('import_id' as never, '=', importId as never).where('event' as never, 'in', ['import.revoked', 'import.revocation_held'] as never).orderBy('occurred_at' as never, 'desc').limit(1).executeTakeFirst()) as Row | undefined;
     const since = lastFinish === undefined ? null : Date.parse(instantOf(lastFinish['occurred_at']) ?? '');
@@ -1401,7 +1472,7 @@ export class ImportService {
       for (const l of lineage) reached.add(String(l['claim_object_id']));
     }
     const walkSeeds: ImportWalkSeed[] = [...evidence.map((id) => ({ kind: 'evidence' as const, id })), ...claims.filter((id) => !reached.has(id)).map((id) => ({ kind: 'claim' as const, id }))];
-    return { count: fresh.length, identities, edges, claims, evidence, walkSeeds };
+    return { count: fresh.length, identities, edges, claims, evidence, walkSeeds, items };
   }
 
   /** The latest version of a canonical object of this domain, or null when the domain holds none. */
@@ -1432,13 +1503,28 @@ export class ImportService {
       if (String(item['disposition']) === 'reused') {
         const sourceImport = reuse === null ? null : str(reuse['import_id']); const sourceItem = reuse === null ? null : str(reuse['item_id']);
         if (sourceImport === null || sourceItem === null) { holders.add(sourceImport ?? 'unknown'); continue; }
-        if (['admitted', 'revoking'].includes(await this.importStateOf(cap, f, sourceImport))) { holders.add(sourceImport); continue; }
+        // B18 (C9 completed): a REVOKING source still holds the copy only while its own item is pending — one it settled `left` (it found
+        // this import admitted then) is a hand-off: the copy is ours to destroy, else both revocations leave it to each other and it stays.
+        if (await this.importStillOwes(cap, f, sourceImport, { itemId: sourceItem })) { holders.add(sourceImport); continue; }
         for (const h of await this.reusersOf(cap, f, sourceItem)) holders.add(h);
       } else {
         for (const h of await this.reusersOf(cap, f, String(item['item_id']))) holders.add(h);
       }
     }
     return [...holders];
+  }
+  /**
+   * B18: whether another import of this domain still OWES the copy — admitted (its revocation not begun), or revoking with the named item
+   * (by item id, or any item of the object) not yet settled by its revocation (`isPendingRevocation`); revoked, withdrawn or unknown → no.
+   */
+  private async importStillOwes(cap: RetentionReads, f: RevocationFacts, importId: string, by: { itemId: string } | { objectId: string }): Promise<boolean> {
+    const state = await this.importStateOf(cap, f, importId);
+    if (state === 'admitted') return true;
+    if (state !== 'revoking') return false;
+    let q = cap.readImportItems().selectAll().where('import_id' as never, '=', importId as never);
+    q = 'itemId' in by ? q.where('item_id' as never, '=', by.itemId as never) : q.where(sql`coalesce(admitted ->> 'object_id', planned ->> 'object_id')` as never, '=', by.objectId as never);
+    const rows = (await q.execute()) as Row[];
+    return rows.some(isPendingRevocation);
   }
   /** The ADMITTED imports of this domain — other than this one — holding a reused item that points at the item given. */
   private async reusersOf(cap: RetentionReads, f: RevocationFacts, itemId: string): Promise<string[]> {
@@ -1453,7 +1539,8 @@ export class ImportService {
     const payload = isObject(prior['payload']) ? (prior['payload'] as Row) : {}; const from = isObject(payload['imported_from']) ? (payload['imported_from'] as Row) : null;
     const owner = from === null ? null : str(from['import_id']);
     if (owner === null || owner === f.importId) return [];
-    return ['admitted', 'revoking'].includes(await this.importStateOf(cap, f, owner)) ? [owner] : [];
+    const objectId = str(prior['object_id']);
+    return (await this.importStillOwes(cap, f, owner, objectId === null ? { itemId: '' } : { objectId })) ? [owner] : [];
   }
   /** The holders a port or the service answered for an item, noted for the receipt (each holder's origin action cached on first sight). */
   private async noteHeld(cap: RetentionReads, f: RevocationFacts, heldBy: unknown, itemId: string): Promise<void> {
@@ -1482,30 +1569,46 @@ export class ImportService {
   private destroyedOf(t: RevocationTally): { records: number; claims: number; entities: number; edges: number } {
     return { records: t.tombstoned.length, claims: t.withdrawn.length, entities: t.retired.length, edges: t.retracted.length };
   }
-  /** C9: the holders named in the receipt — each with the origin action its copy came from (the origin's other package), as cached during the writes. */
-  private heldByOf(f: RevocationFacts): Array<{ import_id: string; origin_action_id: string | null }> {
-    return [...f.tally.held.keys()].map((id) => ({ import_id: id, origin_action_id: f.imports.get(id)?.originActionId ?? null }));
-  }
-  /** C9 at the retry: which of the recorded holders still stand (admitted), with their origin actions — read inside write #0. */
+  /**
+   * C9 at the finish and at the retry (B18): which of the holders the item map names still STAND — admitted, or revoking (a copy is
+   * released only by `revoked`: the liveness `holdersOfGroup` and `liveOwnerOf` left the items under) — with their origin actions; a
+   * holder id that is not an import id of this domain is carried as it stands (never dropped into a "destroyed"). Read inside a write.
+   */
   private async liveHoldersOf(cap: RetentionReads, scope: Scope, ids: string[]): Promise<Array<{ import_id: string; origin_action_id: string | null }>> {
-    const wanted = ids.filter((x) => UUID.test(x));
+    const wanted = [...new Set(ids)];
     if (wanted.length === 0) return [];
-    const rows = (await cap.readImports().select(['import_id' as never, 'state' as never, 'origin' as never]).where('tenant_id' as never, '=', scope.tenantId as never).where('domain_id' as never, '=', scope.domainId as never).where('import_id' as never, 'in', wanted as never).execute()) as Row[];
-    return rows.filter((r) => String(r['state']) === 'admitted').map((r) => ({ import_id: String(r['import_id']), origin_action_id: str((isObject(r['origin']) ? (r['origin'] as Row) : {})['action_id']) }));
+    const uuids = wanted.filter((x) => UUID.test(x));
+    const rows = uuids.length === 0 ? [] : ((await cap.readImports().select(['import_id' as never, 'state' as never, 'origin' as never]).where('tenant_id' as never, '=', scope.tenantId as never).where('domain_id' as never, '=', scope.domainId as never).where('import_id' as never, 'in', uuids as never).execute()) as Row[]);
+    const live = rows.filter((r) => ['admitted', 'revoking'].includes(String(r['state']))).map((r) => ({ import_id: String(r['import_id']), origin_action_id: str((isObject(r['origin']) ? (r['origin'] as Row) : {})['action_id']) }));
+    const foreign = wanted.filter((x) => !UUID.test(x)).map((x) => ({ import_id: x, origin_action_id: null }));
+    return [...live, ...foreign];
   }
   /**
    * D13: the receipt — the recipient's answer in the station script's shape (transfer-station-recipient.mjs) plus `import_id`, `refused`,
-   * `verifier`; `copies_destroyed` true only when every copy of this delivery went (nothing refused, no byte failed, nothing held by another
-   * import — C9's `held_by` and statement otherwise: the honest answer, mismatched at the origin).
+   * `verifier`; `copies_destroyed` true only when every copy of this delivery went (nothing refused, no byte failed or remaining, every
+   * root verified, nothing held by another import — C9's `held_by` and statement otherwise: the honest answer, mismatched at the origin).
+   * B18: `destroyed` counts the WHOLE revocation as the item map records it (`destroyed.bytes` = the tombstoned records whose bytes are
+   * verified gone); `bytes_failed` / `bytes_residual` / `bytes_remaining` name the locators (cut at RECEIPT_LIST_MAX, `bytes_truncated` said).
    */
-  private receiptBodyOf(a: { importId: string; scope: Scope; ref: ImportRevocationRef; notice: Row | null; destroyed: Row; refused: RefusedRevocationItem[]; bytes: { removed: string[]; failed: string[] }; held: Array<{ import_id: string; origin_action_id: string | null }>; copiesDestroyed: boolean; retried: boolean }): Row {
+  private receiptBodyOf(a: { importId: string; scope: Scope; ref: ImportRevocationRef; notice: Row | null; destroyed: Row; refused: RefusedRevocationItem[]; bytes: RevocationBytes; held: Array<{ import_id: string; origin_action_id: string | null }>; copiesDestroyed: boolean; retried: boolean }): Row {
     const delivery = a.notice !== null && isObject(a.notice['delivery']) ? (a.notice['delivery'] as Row) : {};
+    const statements: string[] = [];
+    if (a.held.length > 0) statements.push(`the copies remain under import(s) ${a.held.map((h) => h.import_id).join(', ')} of this domain, admitted from the origin's other package(s); revoking those packages destroys them`);
+    // B18 (B17-F1): bytes verified still present after the removal are said, never reported destroyed; the next revoke of this import owes them.
+    if (a.bytes.roots_unreachable.length > 0) statements.push(`the ${a.bytes.roots_unreachable.join(' and ')} root(s) of the vault could not be reached during the cleanup: nothing was removed and ${a.bytes.remaining.length} tombstoned record(s) could not be verified gone; the ledger's revocation stands and the next revoke of this import removes and verifies them`);
+    else if (a.bytes.remaining.length > 0) statements.push(`the bytes of ${a.bytes.remaining.length} tombstoned record(s) remain in the vault after the removal; the ledger's revocation stands and the next revoke of this import removes them`);
+    // The receipt travels (a station file is read under a 64 KiB ceiling): each list cut at RECEIPT_LIST_MAX with the cut said; the ledger event carries the whole lists.
+    const cut = (l: string[]): string[] => l.slice(0, RECEIPT_LIST_MAX);
+    const truncated = Object.fromEntries((['failed', 'residual', 'remaining'] as const).filter((k) => a.bytes[k].length > RECEIPT_LIST_MAX).map((k) => [k, a.bytes[k].length]));
     return {
       receipt_id: newId(), notice_id: a.ref.notice_id, delivery_id: str(delivery['delivery_id']), action_id: a.ref.action_id, package_digest: a.ref.package_digest,
       copies_destroyed: a.copiesDestroyed, destroyed: a.destroyed,
       refused: a.refused.map((x) => ({ manifest_id: x.manifest_id, ref: x.ref, reason: x.reason, hold_id: x.hold_id })),
-      bytes_failed: a.bytes.failed,
-      ...(a.held.length === 0 ? {} : { held_by: a.held, statement: `the copies remain under import(s) ${a.held.map((h) => h.import_id).join(', ')} of this domain, admitted from the origin's other package(s); revoking those packages destroys them` }),
+      bytes_failed: cut(a.bytes.failed), bytes_residual: cut(a.bytes.residual), bytes_remaining: cut(a.bytes.remaining),
+      ...(Object.keys(truncated).length === 0 ? {} : { bytes_truncated: truncated }),
+      ...(a.bytes.roots_unreachable.length === 0 ? {} : { roots_unreachable: a.bytes.roots_unreachable }),
+      ...(a.held.length === 0 ? {} : { held_by: a.held }),
+      ...(statements.length === 0 ? {} : { statement: statements.join('; ') }),
       ...(a.retried ? { retried: true } : {}),
       recipient: `import:${a.scope.tenantId}/${a.scope.domainId}/${a.importId}`, import_id: a.importId, received_at: new Date().toISOString(), verifier: 'the product (retention.import.revoke)',
     };
@@ -1580,7 +1683,7 @@ type AdmissionBegun = { kind: 'finalize' | 'admit'; import: Row; items: Row[]; p
 type RevocationBegun = {
   row: Row; items: Row[]; partner: Row | null; station: { destination: Row; endpoint: string } | null; origin: { tenantId: string; domainId: string; actionId: string };
   holders: Array<{ import_id: string; origin_action_id: string | null }>; opened: { directory: string; path: string; notice: Row } | null;
-} & ({ kind: 'begin'; begun: Row; revocation: Row; notice: Row | null } | { kind: 'retried'; begun: Row } | { kind: 'refused'; reason: string });
+} & ({ kind: 'begin'; begun: Row; revocation: Row; notice: Row | null } | { kind: 'retried'; begun: Row; lastReceiptEvent?: string | null } | { kind: 'refused'; reason: string });
 /** B17: the facts a revocation carries from write #0 into every batch — and its running tally. */
 interface RevocationFacts {
   importId: string; scope: Scope; actor: string; correlationId: string; purposeId: string;
@@ -1598,6 +1701,32 @@ interface RevocationTally {
   held: Map<string, string[]>;
   /** The tombstoned records' locators, for the bytes after the commit (both roots, the staged copies too). */
   locators: Array<{ locator: string; vault: VaultName; stagedToo?: boolean }>;
+}
+/** The roots a tombstoned record's bytes may sit in — both are owed by a revocation (the staged copies under each too). */
+const REVOCATION_ROOTS: ReadonlyArray<'evidence' | 'archive'> = ['evidence', 'archive'];
+/**
+ * B18 (B17-F1): the revocation as the ITEM MAP records it, reduced from the import's items — every admitted or reused item settled by ANY
+ * attempt: the counts by outcome (a claim once per object), the refused items, the left count, the holders named `held_by` (C9), and every
+ * tombstoned record's locator, distinct. The cleanup and the receipt of a finish — resumed or not — and of a retry are built from this,
+ * never from one attempt's tally: a resumed attempt skips what a crashed one settled, and the crashed one's bytes are still owed.
+ */
+function durableRevocationOf(items: Row[]): DurableRevocation {
+  const revocationOf = (it: Row): Row => (isObject(it['revocation']) ? (it['revocation'] as Row) : {});
+  const settled = items.filter((it) => ['admitted', 'reused'].includes(String(it['disposition'])) && it['revoked_at'] !== null && it['revoked_at'] !== undefined);
+  const objectIdOf = (it: Row): string => String(revocationOf(it)['object_id'] ?? (isObject(it['admitted']) ? (it['admitted'] as Row)['object_id'] : ''));
+  const destroyed: RevocationCounts = {
+    records: settled.filter((it) => String(it['kind']) === 'record' && revocationOf(it)['outcome'] === 'tombstoned').length,
+    claims: new Set(settled.filter((it) => String(it['kind']) === 'claim' && revocationOf(it)['outcome'] === 'withdrawn').map(objectIdOf)).size,
+    entities: settled.filter((it) => revocationOf(it)['outcome'] === 'retired').length,
+    edges: settled.filter((it) => revocationOf(it)['outcome'] === 'retracted').length,
+  };
+  const refused: RefusedRevocationItem[] = settled.filter((it) => revocationOf(it)['outcome'] === 'refused').map((it) => { const r = revocationOf(it); return { item_id: String(it['item_id']), kind: String(it['kind']), origin_ref: String(it['origin_ref']), ref: String(it['origin_ref']), reason: String(r['reason'] ?? ''), hold_id: str(r['hold_id']), manifest_id: str(r['manifest_id']) }; });
+  const left = settled.filter((it) => revocationOf(it)['outcome'] === 'left').length;
+  const heldIds = new Set<string>();
+  for (const it of settled) { const r = revocationOf(it); if (r['outcome'] === 'left' && Array.isArray(r['held_by'])) for (const h of r['held_by'] as unknown[]) if (typeof h === 'string') heldIds.add(h); }
+  const locators = new Set<string>();
+  for (const it of settled) { const r = revocationOf(it); if (String(it['kind']) === 'record' && r['outcome'] === 'tombstoned') { const l = str(r['locator']); if (l !== null) locators.add(l); } }
+  return { destroyed, refused, left, heldIds: [...heldIds], locators: [...locators] };
 }
 /** An item a revocation still has to settle: admitted or reused, not yet revoked — or revoked with the outcome refused (a hold since lifted). */
 function isPendingRevocation(it: Row): boolean {
