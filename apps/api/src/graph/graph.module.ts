@@ -33,6 +33,8 @@ import { RetrievalConsumer } from './subscriptions/consumers/retrieval.consumer.
 import { MemoryMappingsConsumer } from './subscriptions/consumers/memory-mappings.consumer.js';
 import { RelationshipsConsumer } from './subscriptions/consumers/relationships.consumer.js';
 import { MemoryService } from './memory/memory.service.js';
+import { ProjectionsService } from './projections/projections.service.js';
+import { ProjectionsController } from './projections/projections.controller.js';
 import { ObservationExceptionFilter } from '../observation/observation.filter.js';
 
 /*
@@ -43,7 +45,8 @@ import { ObservationExceptionFilter } from '../observation/observation.filter.js
  */
 @Module({
   imports: [PipelineModule, IdentityModule, ObservationModule, IntelligenceModule],
-  controllers: [GraphController],
+  // CP-6 B20 (0080): the projection partitions' two governed acts (withdraw, rebuild) on the same base path as the graph routes.
+  controllers: [GraphController, ProjectionsController],
   providers: [
     GraphOrchestrator,
     ResolverService,
@@ -66,6 +69,7 @@ import { ObservationExceptionFilter } from '../observation/observation.filter.js
     MemoryMappingsConsumer,
     RelationshipsConsumer,
     MemoryService,
+    ProjectionsService,
     // The same filter the observation and intelligence routes use. A deliberate
     // refusal from a graph port is a rule, not a crash, and answers as one.
     { provide: APP_FILTER, useClass: ObservationExceptionFilter },

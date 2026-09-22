@@ -87,7 +87,8 @@ describe('P6-M4 · F4 — briefings: what changed, why it matters, who owns it, 
     const r = (await c.compose({ roomId, knownAt: k1, priorBriefingId: null })).briefing;
     b1 = r.briefingId; d1 = r.contentDigest;
     expect(d1).toMatch(/^[0-9a-f]{64}$/);
-    expect(r.watermark).toEqual({ prior_briefing_id: null, prior_known_at: null, prior_composed_at: null, known_at: k1 });
+    // B20 (0080): the watermark also names the memory partition's STATE at composition (serving | withdrawn) — the state only, never the projection watermark, so the digest stays stable
+    expect(r.watermark).toEqual({ prior_briefing_id: null, prior_known_at: null, prior_composed_at: null, known_at: k1, projection: { memory: 'serving' } });
     const kinds = new Set(r.items.map((i) => String(i['kind'])));
     expect([...kinds]).toEqual(expect.arrayContaining(['evidence', 'run', 'package']));
     expect(r.items.filter((i) => i['kind'] === 'run').length).toBe(4);

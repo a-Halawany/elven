@@ -73,9 +73,13 @@ export async function bootDecisionWorld(h: Phase4Harness): Promise<DecisionWorld
     where object_type = 'EVD' and provenance_ref like ${`SRC:${h.fx.sourceId}@%`} order by recorded_at limit 1`.execute(h.su)).rows[0] as { id: string; version: number };
   const up = await h.upload(RECORD_FILES());
   const records = { inv: up[0] as { id: string; version: number }, ship: up[1] as { id: string; version: number }, terms: up[2] as { id: string; version: number } };
-  const entityId = uuidv7();
+  const entityId = uuidv7(); const entityCorrelation = uuidv7();
+  // B20 (0080): the row's event beside it — the symmetric retrieval check calls a projection row with no log event POISONED (unexpected),
+  // and withdraws the partition; a fixture plants what the port would have written (the honest fixture: the event carries the full row).
   await sql`insert into graph.entities_current (entity_id, scope, tenant_id, domain_id, entity_type, canonical_name, normalized_name, lifecycle_state, created_by, correlation_id)
-    values (${entityId}::uuid, 'DOMAIN', ${T}::uuid, ${D}::uuid, 'place', 'Bab el-Mandeb Strait', 'bab el-mandeb strait', 'active', ${twinOwner.principalId}::uuid, ${uuidv7()}::uuid)`.execute(h.su);
+    values (${entityId}::uuid, 'DOMAIN', ${T}::uuid, ${D}::uuid, 'place', 'Bab el-Mandeb Strait', 'bab el-mandeb strait', 'active', ${twinOwner.principalId}::uuid, ${entityCorrelation}::uuid)`.execute(h.su);
+  await sql`insert into graph.entity_events (event_id, scope, tenant_id, domain_id, entity_id, event, actor_principal_id, details, correlation_id)
+    values (${uuidv7()}::uuid, 'DOMAIN', ${T}::uuid, ${D}::uuid, ${entityId}::uuid, 'entity.created', ${twinOwner.principalId}::uuid, ${JSON.stringify({ entity_type: 'place', canonical_name: 'Bab el-Mandeb Strait', normalized_name: 'bab el-mandeb strait', split_from: null })}::jsonb, ${entityCorrelation}::uuid)`.execute(h.su);
   const d = await twins.declare(h.req(twinOwner, 'twin.declare', 'TWN', null), T, D, { payload: { kind: 'supply-chain', title: 'NORDWERK — Ningbo → Regensburg chain', statement: 'the magnet chain',
     boundary: [entityId], owner: twinOwner.principalId, behaviourModelRef: 'supply-flow@1', validation: { status: 'unvalidated (synthetic grounding)', limitations: ['calendar days'] } } }) as { twin: { twinId: string } };
   const twinId = d.twin.twinId;

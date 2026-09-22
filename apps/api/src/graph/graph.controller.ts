@@ -10,6 +10,18 @@
  * it is an answer for. `knownAt` and `validAt` are on the response, not implied by
  * the request, so a reader can never mistake a hindsight view for a contemporary
  * one.
+ *
+ * A fourth rule is CP-6 B20's (0080; D5, D6): EVERY exploration and memory read — the twelve
+ * routes `/search`, `/entities/list`, `/entities/:id/get`, `/edges/list`, `/neighbourhood`,
+ * `/path`, `/strategy/list`, `/strategy/:id/get`, `/overview`, `/memory/list`, `/memory/:id/get`,
+ * `/memory/:id/retrieve` — reads the PROJECTION STATE of the partitions it depends on FIRST in
+ * its transaction and answers it (`projection`: the domain's revision, the sequence the retrieval
+ * subscriber verified through, the lag, each partition's condition — current / lagging /
+ * unverified / withdrawn — and the label). While a partition is WITHDRAWN the route serves the
+ * LAST VALID STATE from the event log, labelled: drifted rows with `drift`, missing rows
+ * metadata-only, poisoned rows never; a traversal is constrained to depth 2 with
+ * `bound.projection`. A stale projection never appears current (AU-MEM-0068); nothing here
+ * refuses a read for it.
  */
 import { Body, Controller, HttpException, Param, Post, Req } from '@nestjs/common';
 import { errorBody, type Envelope } from '@eye/contracts';
@@ -21,7 +33,7 @@ import { GraphCapability } from './graph.capabilities.js';
 import { GraphOrchestrator } from './graph.orchestrator.js';
 import { EntitiesService } from './entities/entities.service.js';
 import { ResolutionService } from './entities/resolution.service.js';
-import { EdgesService, MAX_EDGES, nowAsOf, type AsOf } from './edges/edges.service.js';
+import { EdgesService, MAX_DEPTH, MAX_EDGES, nowAsOf, type AsOf } from './edges/edges.service.js';
 import { StrategyService, validateStrategy } from './strategy/strategy.service.js';
 import { MemoryService, validateDeriveIntake, validateMemoryItem, type DeriveAnswer } from './memory/memory.service.js';
 import { ImpactService } from './strategy/impact.service.js';
@@ -30,6 +42,9 @@ import { PropagationAgentsService } from './propagation/propagation-agents.servi
 import { graphChangedEvent } from './subscriptions/change-events.js';
 import { SubscriptionsService, flowTelemetry, type RegisterSubscriptionIntake } from './subscriptions/subscriptions.service.js';
 import { EMPTY_REACH, type ReachedObjects } from './subscriptions/graph-change.js';
+import { ROUTE_PARTITIONS, VERIFY_NOTE, projectionStateOf } from './projections/projection-state.js';
+import { entitiesFromLog, entityFromLog, overviewFromLog, resolutionsFromLog, resolutionsKnownAt, strategyFromLog, strategyOneFromLog, type Scope } from './projections/fallback.js';
+import type { ScopeContext } from '../shared/scope.js';
 
 function ctx(req: EyeRequest) {
   const envelope = req.eyeEnvelope;
@@ -43,6 +58,9 @@ function ctx(req: EyeRequest) {
 const receipt = (o: { policyDecisionId: string; auditSeq: number }) => ({
   policyDecisionId: o.policyDecisionId, auditSeq: o.auditSeq,
 });
+
+/** B20: the established DOMAIN context as the fallback readers' scope (every one of the twelve routes is DOMAIN-scoped). */
+const scopeOf = (ctx: ScopeContext): Scope => ({ tenantId: ctx.tenantId as string, domainId: ctx.domainId as string });
 
 /**
  * Both instants, always both, and stated in the answer.
@@ -99,7 +117,11 @@ export class GraphController {
       envelope, principal,
       this.route(tenantId, domainId, 'graph.read', 'SRC', null),
       GraphCapability.read,
-      async (cap) => this.search.search(cap, query, body.payload?.limit ?? 50));
+      async (cap, scope) => {
+        // B20: the projection state FIRST; the block rides inside `search` (search.projection) with the completeness flags.
+        const projection = await projectionStateOf(cap, ROUTE_PARTITIONS.search);
+        return this.search.search(cap, query, body.payload?.limit ?? 50, { projection, scope: scopeOf(scope) });
+      });
     return { search: out.result, receipt: receipt(out) };
   }
 
@@ -117,19 +139,27 @@ export class GraphController {
       envelope, principal,
       this.route(tenantId, domainId, 'graph.read', 'ENT', null),
       GraphCapability.read,
-      async (cap) => {
-        const rows = await this.entities.list(cap, body.payload?.limit ?? 200);
-        const accepted = (await cap.readResolutions().selectAll()
-          .where('state' as never, '=', 'accepted' as never)
-          .execute()) as Array<Record<string, unknown>>;
+      async (cap, scope) => {
+        // B20: the projection state FIRST. While entities_current is withdrawn the rows are the log's last valid state
+        // (drift / projected flagged); while resolutions_current ALONE is withdrawn the entity rows come from the projection
+        // and only the accepted-resolution COUNTS come from the log (the block's label names the partition; the rows carry no `from`).
+        const projection = await projectionStateOf(cap, ROUTE_PARTITIONS.entitiesList);
+        const withdrawn = new Set<string>(projection.withdrawn);
+        const limit = body.payload?.limit ?? 200;
+        const rows = withdrawn.has('entities_current') ? await entitiesFromLog(cap, scopeOf(scope), limit) : await this.entities.list(cap, limit);
+        const accepted = withdrawn.has('resolutions_current')
+          ? (await resolutionsFromLog(cap, scopeOf(scope))).filter((r) => r['state'] === 'accepted')
+          : (await cap.readResolutions().selectAll()
+              .where('state' as never, '=', 'accepted' as never)
+              .execute()) as Array<Record<string, unknown>>;
         const counts = new Map<string, number>();
         for (const r of accepted) {
           const id = String(r['entity_id']);
           counts.set(id, (counts.get(id) ?? 0) + 1);
         }
-        return rows.map((e) => ({ ...e, mention_count: counts.get(String(e['entity_id'])) ?? 0 }));
+        return { entities: rows.map((e) => ({ ...e, mention_count: counts.get(String(e['entity_id'])) ?? 0 })), projection };
       });
-    return { entities: out.result, receipt: receipt(out) };
+    return { entities: out.result.entities, projection: out.result.projection, receipt: receipt(out) };
   }
 
   @Post('/entities/:entityId/get')
@@ -146,18 +176,24 @@ export class GraphController {
       envelope, principal,
       this.route(tenantId, domainId, 'graph.read', 'ENT', entityId),
       GraphCapability.read,
-      async (cap) => {
-        const entity = await this.entities.get(cap, entityId);
+      async (cap, scope) => {
+        // B20: the projection state FIRST. A withdrawn entities_current serves the entity from the log (a poisoned id is
+        // absent there → 404 as an absent entity); a withdrawn resolutions_current serves the resolutions from the log-join —
+        // the known-at predicate then runs over the projection row's accepted_at / superseded_at, so a metadata-only
+        // resolution (no row: neither instant) is excluded from `mentions` rather than dated by inference.
+        const projection = await projectionStateOf(cap, ROUTE_PARTITIONS.entityGet);
+        const withdrawn = new Set<string>(projection.withdrawn);
+        const entity = withdrawn.has('entities_current') ? await entityFromLog(cap, scopeOf(scope), entityId) : await this.entities.get(cap, entityId);
         if (entity === undefined) return null;
-        const resolutions = await this.entities.resolutions(cap, entityId);
+        const resolutions = withdrawn.has('resolutions_current') ? await resolutionsFromLog(cap, scopeOf(scope), entityId) : await this.entities.resolutions(cap, entityId);
         const live = knownAt === undefined
           ? resolutions.filter((r) => r['state'] === 'accepted')
-          : await this.entities.mentionsKnownAt(cap, entityId, knownAt);
+          : withdrawn.has('resolutions_current') ? resolutionsKnownAt(resolutions, knownAt) : await this.entities.mentionsKnownAt(cap, entityId, knownAt);
         // THE CUTOFF TRAVELS. Selecting the mentions current at an instant and then
         // fetching the LATEST version of each claim behind them is hindsight with
         // extra steps — the service takes the cutoff, so the endpoint gives it one.
         const claims = await this.entities.claimsFor(
-          cap, live.map((r) => String(r['claim_object_id'])), knownAt);
+          cap, live.filter((r) => r['claim_object_id'] !== null && r['claim_object_id'] !== undefined).map((r) => String(r['claim_object_id'])), knownAt);
         return {
           entity,
           identifiers: await this.entities.identifiers(cap, entityId),
@@ -166,6 +202,7 @@ export class GraphController {
           mentions: live,
           claims,
           knownAt: knownAt ?? null,
+          projection,
         };
       });
     if (out.result === null) {
@@ -436,8 +473,13 @@ export class GraphController {
       envelope, principal,
       this.route(tenantId, domainId, 'graph.read', 'EDG', null),
       GraphCapability.read,
-      async (cap) => this.edges.list(cap, at, limit));
-    const { edges, total, complete } = out.result;
+      async (cap, scope) => {
+        // B20: the projection state FIRST; a withdrawn edges_current lists the log's last valid state (`from: 'log'`).
+        const projection = await projectionStateOf(cap, ROUTE_PARTITIONS.edgesList);
+        const source = projection.withdrawn.includes('edges_current') ? 'log' as const : 'projection' as const;
+        return { ...(await this.edges.list(cap, at, limit, { source, scope: scopeOf(scope) })), projection, source };
+      });
+    const { edges, total, complete, projection, source } = out.result;
     /*
      * ACCURATE COUNTS, DISCLOSED TRUNCATION.
      *
@@ -450,6 +492,7 @@ export class GraphController {
       note: complete ? null
         : `${edges.length} of ${total} eligible edge(s) are shown; the listing is bounded at `
           + `${limit} and the remaining ${total - edges.length} were not returned`,
+      projection, ...(source === 'log' ? { from: 'log' } : {}),
       receipt: receipt(out),
     };
   }
@@ -512,15 +555,24 @@ export class GraphController {
       envelope, principal,
       this.route(tenantId, domainId, 'graph.read', 'EDG', entityId),
       GraphCapability.read,
-      async (cap) => {
-        const n = await this.edges.neighbourhood(cap, entityId, body.payload?.depth ?? 2, at);
-        const entities = await this.entities.list(cap, 1_000);
+      async (cap, scope) => {
+        // B20: the projection state FIRST. With edges_current OR entities_current withdrawn the walk is CONSTRAINED to depth 2
+        // (bound.projection) over the log-derived edge state (edges_current) and the log's entities (entities_current) — the
+        // walk, not a refusal (IA-34-005).
+        const projection = await projectionStateOf(cap, ROUTE_PARTITIONS.neighbourhood);
+        const withdrawn = new Set<string>(projection.withdrawn);
+        const degraded = withdrawn.has('edges_current') || withdrawn.has('entities_current');
+        const n = await this.edges.neighbourhood(cap, entityId, body.payload?.depth ?? 2, at,
+          { source: withdrawn.has('edges_current') ? 'log' : 'projection', scope: scopeOf(scope), maxDepth: degraded ? 2 : MAX_DEPTH });
+        const entities = withdrawn.has('entities_current') ? await entitiesFromLog(cap, scopeOf(scope), 1_000) : await this.entities.list(cap, 1_000);
         const byId = new Map(entities.map((e) => [String(e['entity_id']), e]));
         return {
           edges: n.edges,
           entities: n.entityIds.map((id) => byId.get(id) ?? null).filter((x) => x !== null),
           complete: n.complete, searchedDepth: n.searchedDepth,
           depthClamped: n.depthClamped, beyondDepth: n.beyondDepth,
+          bound: { projection: n.projectionBound },
+          projection,
         };
       });
     const n = out.result;
@@ -529,23 +581,28 @@ export class GraphController {
      * hops" by definition, so depth is its scope rather than a defect — but the
      * scope is stated, a clamped request is named, and entities lying beyond it
      * are reported rather than left to be assumed absent. Scan incompleteness is
-     * a defect in the answer and is reported as one.
+     * a defect in the answer and is reported as one. B20: a walk constrained by a
+     * withdrawn partition says so first, in the block's own words.
      */
     const notes: string[] = [];
+    if (n.projection.degraded && n.projection.label !== null) notes.push(n.projection.label);
     if (!n.complete) {
       notes.push('this neighbourhood was built from an incomplete scan; edges beyond the bound '
         + 'were not examined and the answer may be missing eligible relationships');
     }
     if (n.depthClamped) {
-      notes.push(`the requested depth was reduced to the bound of ${n.searchedDepth} hop(s)`);
+      notes.push(`the requested depth was reduced to the bound of ${n.searchedDepth} hop(s)`
+        + (n.bound.projection ? ' (the traversal is constrained while a projection is withdrawn)' : ''));
     }
+    const { projection, ...neighbourhood } = n;
     return {
-      neighbourhood: n, asOf: at, complete: n.complete,
-      searchedDepth: n.searchedDepth, beyondDepth: n.beyondDepth,
+      neighbourhood, asOf: at, complete: n.complete,
+      searchedDepth: n.searchedDepth, beyondDepth: n.beyondDepth, depthClamped: n.depthClamped, bound: n.bound,
       scope: `everything within ${n.searchedDepth} hop(s) of the entity`
         + (n.beyondDepth ? '; further entities lie beyond that depth and are not included'
                          : '; nothing visible lies beyond that depth'),
       note: notes.length === 0 ? null : notes.join('. '),
+      projection,
       receipt: receipt(out),
     };
   }
@@ -569,8 +626,16 @@ export class GraphController {
       envelope, principal,
       this.route(tenantId, domainId, 'graph.read', 'EDG', null),
       GraphCapability.read,
-      async (cap) => this.edges.path(cap, from, to, at));
-    const { path, complete, searchedDepth, bound } = out.result;
+      async (cap, scope) => {
+        // B20: the projection state FIRST; the search is constrained to depth 2 (bound.projection) while a partition it rests on is withdrawn.
+        const projection = await projectionStateOf(cap, ROUTE_PARTITIONS.path);
+        const withdrawn = new Set<string>(projection.withdrawn);
+        const degraded = withdrawn.has('edges_current') || withdrawn.has('entities_current');
+        const r = await this.edges.path(cap, from, to, at,
+          { source: withdrawn.has('edges_current') ? 'log' : 'projection', scope: scopeOf(scope), maxDepth: degraded ? 2 : MAX_DEPTH });
+        return { ...r, projection };
+      });
+    const { path, complete, searchedDepth, bound, projection } = out.result;
     /*
      * A BOUNDED SEARCH MAY NOT CLAIM DEFINITIVE ABSENCE — AND AN INCOMPLETE
      * ANSWER ALWAYS SAYS SO, FOUND OR NOT.
@@ -583,6 +648,7 @@ export class GraphController {
      * answer is incomplete, independent of whether a path was found.
      */
     const notes: string[] = [];
+    if (projection.degraded && projection.label !== null) notes.push(projection.label);
     if (path !== null) {
       if (!complete) {
         notes.push('a path was found, but the search did not examine every eligible edge, so '
@@ -603,6 +669,7 @@ export class GraphController {
     return {
       path, asOf: at, complete, searchedDepth, bound,
       note: notes.length === 0 ? null : notes.join(' — '),
+      projection,
       receipt: receipt(out),
     };
   }
@@ -806,13 +873,26 @@ export class GraphController {
       this.route(tenantId, domainId, 'memory.item.retrieve', 'MEM', itemId),
       GraphCapability.memory,
       async (cap, scope) => {
-        const r = await this.memory.retrieve(cap, principal, scope, { itemId, purpose, asOf, correlationId: envelope.correlation_id });
+        // B20: the projection state FIRST (memory_items_current: the served availability's source and the index_state).
+        const projection = await projectionStateOf(cap, ROUTE_PARTITIONS.memoryRetrieve);
+        const r = await this.memory.retrieve(cap, principal, scope, { itemId, purpose, asOf, correlationId: envelope.correlation_id, projection });
         if (r === null) return null;
-        const accessId = await cap.recordMemoryAccess({ itemId, tenantId, domainId, version: r.versionServed, purpose, reader: principal.principalId, asOf, correlationId: envelope.correlation_id });
-        return { ...r, accessId };
+        // B20 (D9): the content tier did not answer — the item's METADATA was served, no version, and NO access row (the
+        // access ledger requires the served version); the service recorded memory.retrieval_degraded instead.
+        if ('content' in r && r.content === 'unavailable') return { ...r, accessId: null, projection };
+        const accessId = await cap.recordMemoryAccess({ itemId, tenantId, domainId, version: Number(r.versionServed), purpose, reader: principal.principalId, asOf, correlationId: envelope.correlation_id });
+        return { ...r, accessId, projection };
       },
-      (r) => ({ outcome: r === null ? 'failure' : 'success', resultCode: r === null ? 'EYE_STA_001' : 'OK',
-                metadata: r === null ? { found: false } : { version_served: r.versionServed, purpose, as_of: asOf, access_id: r.accessId } }));
+      (r) => {
+        if (r === null) return { outcome: 'failure', resultCode: 'EYE_STA_001', metadata: { found: false } };
+        const indexState = (r.availability as Record<string, unknown>)['index_state'] ?? null;
+        // C21: EYE-DEG-001 (dashed) is the audit result code of a metadata-only answer — declared, not a refusal.
+        if ('content' in r && r.content === 'unavailable') {
+          return { outcome: 'success', resultCode: 'EYE-DEG-001',
+                   metadata: { version_served: null, purpose, as_of: asOf, access_id: null, content: 'unavailable', degraded: 'content_unavailable', result_code: 'EYE-DEG-001', index_state: indexState } };
+        }
+        return { outcome: 'success', resultCode: 'OK', metadata: { version_served: r.versionServed, purpose, as_of: asOf, access_id: r.accessId, index_state: indexState } };
+      });
     if (out.result === null) throw new HttpException(errorBody('EYE_STA_001', envelope.correlation_id, 'no authorized memory item matches'), 404);
     return { memory: out.result, receipt: receipt(out) };
   }
@@ -821,8 +901,13 @@ export class GraphController {
   async listMemoryItems(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: { limit?: number } }) {
     const { envelope, principal } = ctx(req);
     const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'graph.read', 'MEM', null), GraphCapability.read,
-      async (cap) => this.memory.list(cap, body.payload?.limit ?? 200));
-    return { memory: out.result, receipt: receipt(out) };
+      async (cap, scope) => {
+        // B20: the projection state FIRST; a withdrawn memory_items_current lists the log's last valid state (index_state 'stale').
+        const projection = await projectionStateOf(cap, ROUTE_PARTITIONS.memoryList);
+        const withdrawn = projection.withdrawn.includes('memory_items_current');
+        return { memory: await this.memory.list(cap, body.payload?.limit ?? 200, { withdrawn, scope: scopeOf(scope) }), projection };
+      });
+    return { memory: out.result.memory, projection: out.result.projection, receipt: receipt(out) };
   }
 
   /** The item's record: events, access history, what it rests on (no content of a version — that is a retrieval). */
@@ -830,10 +915,13 @@ export class GraphController {
   async getMemoryItem(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('itemId') itemId: string) {
     const { envelope, principal } = ctx(req);
     const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'graph.read', 'MEM', itemId), GraphCapability.read,
-      async (cap) => {
-        const item = await this.memory.current(cap, itemId);
+      async (cap, scope) => {
+        // B20: the projection state FIRST; a withdrawn memory_items_current serves the record from the log (a poisoned id is absent there → 404).
+        const projection = await projectionStateOf(cap, ROUTE_PARTITIONS.memoryGet);
+        const withdrawn = projection.withdrawn.includes('memory_items_current');
+        const item = await this.memory.current(cap, itemId, { withdrawn, scope: scopeOf(scope) });
         if (item === null) return null;
-        return { item: MemoryService.record(item), events: await this.memory.events(cap, itemId), access: await this.memory.accessHistory(cap, itemId), dependencies: await this.memory.dependencies(cap, itemId) };
+        return { item: MemoryService.record(item), events: await this.memory.events(cap, itemId), access: await this.memory.accessHistory(cap, itemId), dependencies: await this.memory.dependencies(cap, itemId), projection };
       });
     if (out.result === null) throw new HttpException(errorBody('EYE_STA_001', envelope.correlation_id, 'no authorized memory item matches'), 404);
     return { ...out.result, receipt: receipt(out) };
@@ -896,18 +984,24 @@ export class GraphController {
       envelope, principal,
       this.route(tenantId, domainId, 'graph.read', 'OBJ', null),
       GraphCapability.read,
-      async (cap) => {
-        const rows = await this.strategy.list(cap, body.payload?.limit ?? 200);
+      async (cap, scope) => {
+        // B20: the projection state FIRST; a withdrawn strategy_current lists the log-join (the dependencies are not a partition).
+        const projection = await projectionStateOf(cap, ROUTE_PARTITIONS.strategyList);
+        const limit = body.payload?.limit ?? 200;
+        const rows = projection.withdrawn.includes('strategy_current') ? await strategyFromLog(cap, scopeOf(scope), limit) : await this.strategy.list(cap, limit);
         const deps = (await cap.readDependencies().selectAll()
           .where('state' as never, '=', 'active' as never)
           .execute()) as Array<Record<string, unknown>>;
-        return rows.map((s) => ({
-          ...s,
-          dependencies: deps.filter(
-            (d) => String(d['dependent_object_id']) === String(s['strategy_object_id'])),
-        }));
+        return {
+          strategy: rows.map((s) => ({
+            ...s,
+            dependencies: deps.filter(
+              (d) => String(d['dependent_object_id']) === String(s['strategy_object_id'])),
+          })),
+          projection,
+        };
       });
-    return { strategy: out.result, receipt: receipt(out) };
+    return { strategy: out.result.strategy, projection: out.result.projection, receipt: receipt(out) };
   }
 
   @Post('/strategy/:objectId/get')
@@ -922,13 +1016,16 @@ export class GraphController {
       envelope, principal,
       this.route(tenantId, domainId, 'graph.read', 'OBJ', objectId),
       GraphCapability.read,
-      async (cap) => {
-        const s = await this.strategy.get(cap, objectId);
+      async (cap, scope) => {
+        // B20: the projection state FIRST; a withdrawn strategy_current serves the object from the log-join (a poisoned id is absent there → 404).
+        const projection = await projectionStateOf(cap, ROUTE_PARTITIONS.strategyGet);
+        const s = projection.withdrawn.includes('strategy_current') ? await strategyOneFromLog(cap, scopeOf(scope), objectId) : await this.strategy.get(cap, objectId);
         if (s === undefined) return null;
         return {
           object: s,
           events: await this.strategy.events(cap, objectId),
           dependencies: await this.strategy.dependencies(cap, objectId),
+          projection,
         };
       });
     if (out.result === null) {
@@ -1262,50 +1359,12 @@ export class GraphController {
       envelope, principal,
       this.route(tenantId, domainId, 'graph.read', 'ENT', null),
       GraphCapability.read,
-      async (cap) => {
-        const entities = (await cap.readEntities().selectAll().limit(5_000).execute()) as Array<Record<string, unknown>>;
-        const resolutions = (await cap.readResolutions().selectAll().limit(20_000).execute()) as Array<Record<string, unknown>>;
-        const edges = (await cap.readEdges().selectAll().limit(20_000).execute()) as Array<Record<string, unknown>>;
-        const strategy = (await cap.readStrategy().selectAll().limit(5_000).execute()) as Array<Record<string, unknown>>;
-        const invalidations = (await cap.readInvalidations().selectAll().limit(1_000).execute()) as Array<Record<string, unknown>>;
-        const by = (rows: Array<Record<string, unknown>>, k: string, v: string): number =>
-          rows.filter((r) => String(r[k]) === v).length;
-        return {
-          entities: {
-            total: entities.length,
-            active: by(entities, 'lifecycle_state', 'active'),
-            split: entities.filter((e) => e['split_from'] !== null).length,
-          },
-          resolutions: {
-            total: resolutions.length,
-            accepted: by(resolutions, 'state', 'accepted'),
-            queued: by(resolutions, 'state', 'proposed'),
-            rejected: by(resolutions, 'state', 'rejected'),
-            superseded: by(resolutions, 'state', 'superseded'),
-            automatic: resolutions.filter(
-              (r) => r['state'] === 'accepted' && r['decided_by'] === null).length,
-            modelAssisted: by(resolutions, 'method', 'model_assisted'),
-          },
-          edges: {
-            total: edges.length,
-            asserted: by(edges, 'state', 'asserted'),
-            retracted: by(edges, 'state', 'retracted'),
-          },
-          strategy: {
-            total: strategy.length,
-            objectives: by(strategy, 'object_type', 'OBJ'),
-            assumptions: by(strategy, 'object_type', 'ASU'),
-            decisions: by(strategy, 'object_type', 'DEC'),
-            commitments: by(strategy, 'object_type', 'CMT'),
-            outcomes: by(strategy, 'object_type', 'OUT'),
-            unverified: strategy.filter(
-              (s) => s['object_type'] === 'ASU' && s['verification_state'] === 'unverified').length,
-          },
-          invalidations: {
-            total: invalidations.length,
-            assessed: by(invalidations, 'state', 'assessed'),
-          },
-        };
+      async (cap, scope) => {
+        // B20: the projection state of ALL SIX partitions first; the sections of a withdrawn partition are counted from the
+        // log's last valid state and say so (`from: 'log'`), the others from the projection (`from: 'projection'`).
+        const projection = await projectionStateOf(cap, ROUTE_PARTITIONS.overview);
+        const sections = await overviewFromLog(cap, scopeOf(scope), new Set(projection.withdrawn));
+        return { ...sections, projection };
       });
     return { overview: out.result, receipt: receipt(out) };
   }
@@ -1322,6 +1381,7 @@ export class GraphController {
       this.route(tenantId, domainId, 'graph.read', 'ENT', null),
       GraphCapability.read,
       async (cap) => cap.rebuildProjections());
-    return { projections: out.result, receipt: receipt(out) };
+    // B20 (0080; C10): the symmetric check's seven columns per row; this route REPORTS and withdraws nothing — said on the answer.
+    return { projections: out.result, note: VERIFY_NOTE, receipt: receipt(out) };
   }
 }

@@ -489,11 +489,16 @@ const intakeSourceIn = async (domainId: string): Promise<{ sourceId: string; ver
   await registryWriteIn(domainId, manager2, 'observation.source.transition', sourceId, async (cap) => { await cap.transitionContract({ sourceId, contractVersion: 1, tenantId: T(), domainId, target: 'active', reason: 'the mirror\'s intake: active (harness)', eventId: uuidv7(), correlationId: uuidv7() }); });
   return { sourceId, version: 1, sourceKey };
 };
-/** The mirror's projections rebuilt from their event logs — no drift after the graph changed (the B16 idiom). */
+/** The mirror's projections rebuilt from their event logs — no drift after the graph changed (the B16 idiom; B20: the SYMMETRIC check — nothing missing, nothing unexpected, the representation current — over the six partitions). */
 const noDrift = async (): Promise<void> => {
   const proj = (await h.pipeline.consequentialRead(envIn(domainAdmin2, D2, 'graph.read', 'ENT', null, 'graph'), domainAdmin2, routeIn(D2, 'graph.read', 'ENT', null), GraphCapability.read, async (cap) => cap.rebuildProjections())).result;
-  expect(proj.length).toBeGreaterThan(0);
-  for (const r of proj) expect(Number(r.mismatched), `${r.projection} drifted from its event log`).toBe(0);
+  expect(proj.map((r) => r.projection)).toEqual(['entities_current', 'resolutions_current', 'edges_current', 'strategy_current', 'invalidations_current', 'memory_items_current']);
+  for (const r of proj) {
+    expect(Number(r.mismatched), `${r.projection} drifted from its event log`).toBe(0);
+    expect(Number(r.missing), `${r.projection}: a row its log has is missing from the projection`).toBe(0);
+    expect(Number(r.unexpected), `${r.projection}: a projection row its log does not know (poisoned)`).toBe(0);
+    expect(r.representation_ok, `${r.projection}: the partition was verified under an outdated representation version`).toBe(true);
+  }
 };
 
 /* ───────────── the fixtures the cases share ───────────── */
@@ -676,9 +681,15 @@ describe('S2 · import.revoked (0077 D2–D8, D12, D19; ES-08-004, ES-29-005, DP
     expect(await twinVerification(twinId, v1)).toBe('verified');
     // (b) THE REST OF THE MIRROR'S WORLD by SQL (the B6 idiom): an assumption resting on the imported claim, a decision on it, a forecast for the imported entity on it, a scenario on the forecast, a decision package on the decision.
     const ASU = uuidv7(); const DEC = uuidv7(); const F1 = uuidv7(); const S1 = uuidv7(); const P1 = uuidv7();
+    // B20 (0080): the mirror's seven subscribers run — the symmetric retrieval check calls a planted row with no log event POISONED and
+    // withdraws the partition, so each strategy row carries its strategy.declared event (the ASU its assumption.verified beside it).
     for (const [id, type, title] of [[ASU, 'ASU', 'The imported corridor stays open'], [DEC, 'DEC', 'Keep the imported routing']] as const) {
       await sql`insert into graph.strategy_current (strategy_object_id, scope, tenant_id, domain_id, object_type, object_version, title, statement, status, verification_state, owner_principal_id, correlation_id)
         values (${id}::uuid, 'DOMAIN', ${T()}::uuid, ${D2}::uuid, ${type}, 1, ${title}, 'fixture strategy object of the mirror', 'active', ${type === 'ASU' ? 'verified' : 'not_applicable'}, ${builder2.principalId}::uuid, ${uuidv7()}::uuid)`.execute(su);
+      await sql`insert into graph.strategy_events (event_id, scope, tenant_id, domain_id, strategy_object_id, event, actor_principal_id, details, correlation_id)
+        values (${uuidv7()}::uuid, 'DOMAIN', ${T()}::uuid, ${D2}::uuid, ${id}::uuid, 'strategy.declared', ${builder2.principalId}::uuid, jsonb_build_object('object_type', ${type}::text, 'title', ${title}::text, 'version', 1, 'status', 'active'), ${uuidv7()}::uuid)`.execute(su);
+      if (type === 'ASU') await sql`insert into graph.strategy_events (event_id, scope, tenant_id, domain_id, strategy_object_id, event, actor_principal_id, details, correlation_id)
+        values (${uuidv7()}::uuid, 'DOMAIN', ${T()}::uuid, ${D2}::uuid, ${id}::uuid, 'assumption.verified', ${builder2.principalId}::uuid, jsonb_build_object('state', 'verified', 'reason', 'fixture'), ${uuidv7()}::uuid)`.execute(su);
     }
     await sql`insert into prediction.forecasts_current (forecast_id, scope, tenant_id, domain_id, series_key, subject_entity_id, horizon_code, horizon_days, origin_at, known_at, target_at, method, method_version, baseline_method, quantiles, drivers, assumptions, evidence_refs, refresh_cadence, validation_state, validation_note, label, statement, state, issued_by, correlation_id)
       values (${F1}::uuid, 'DOMAIN', ${T()}::uuid, ${D2}::uuid, 'transit.days', ${mapOf(E1)}::uuid, '90d', 90, '2024-01-17', now(), '2024-04-16', 'seasonal-naive', '1.0.0', 'naive', '{"q10": 30, "q50": 34, "q90": 41}'::jsonb, '["transit days"]'::jsonb, ${sql`ARRAY[${ASU}::uuid]`}, ${JSON.stringify([`EVD:${mapOf(A.id)}@1`])}::jsonb, 'weekly', 'unvalidated', 'fixture forecast of the mirror: not validated', 'replay demonstration', 'fixture forecast statement', 'issued', ${builder2.principalId}::uuid, ${uuidv7()}::uuid)`.execute(su);

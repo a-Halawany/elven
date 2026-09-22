@@ -446,7 +446,10 @@ describe('B9-F1 closure · a historical retrieval serves the AUTHORISED version\
     expect(text).not.toContain('"restricted"'); expect(text).not.toContain('knowledge_owner'); // v2's classification and v3's audience are theirs, not v1's
     expect(text).not.toMatch(/the premium ceiling|the revised ceiling/); // the supersession reasons of v2 and v3
     // B19 (0079): the availability names the item's source kind (the kind class never changes across versions) and, for a DERIVED record, the state of its basis — null for a person's record; the served version carries its own header fields (synthetic state, event time, method, provenance, rights, residency) — nothing of any other version.
-    expect(memory['availability']).toEqual({ item_id: itemId, state: 'active', current_version: 3, versions: 3, superseded_versions: 2, last_superseded_at: expect.any(String), attention_state: 'none', served_is_current: false, basis_state: null, source_kind: 'human' });
+    // B20 (0080): the availability also carries the INDEX TIER's word on the item — index_state (projected while memory_items_current
+    // serves; stale while it is withdrawn), projected (the row is in the projection) and drift (the projection's state/version against
+    // the log's; null when they agree) — partition-level facts, nothing of any version: the closure holds as before.
+    expect(memory['availability']).toEqual({ item_id: itemId, state: 'active', current_version: 3, versions: 3, superseded_versions: 2, last_superseded_at: expect.any(String), attention_state: 'none', served_is_current: false, basis_state: null, source_kind: 'human', index_state: 'projected', projected: true, drift: null });
     expect(memory['item']).toEqual(memory['availability']);
     const version = memory['version'] as Record<string, unknown>;
     expect(version).toMatchObject({ object_version: '1', classification: 'internal', supersedes: null });

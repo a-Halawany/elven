@@ -11,11 +11,23 @@
  *     no "3 results hidden" anywhere, because that line would turn search into an
  *     existence oracle for objects the caller has no right to know about. The
  *     scope note says so in words rather than leaving it to be inferred.
+ *
+ * Two more since CP-6 B20 (0080), rendered FROM THE FLAGS, never from whether a
+ * note arrived:
+ *
+ *   * THE ANSWER SAYS WHICH PROJECTION IT WAS SERVED FROM. The entity leg reads
+ *     the entities projection; while that projection is withdrawn it reads the
+ *     event log instead — the last valid state — and the answer says so
+ *     (`projection.condition`), with the server's label as the wording; a lagging
+ *     or unverified watermark is said the same way.
+ *   * A BOUNDED SCAN SAYS SO. The entity scan stops at 1,000 rows and the object
+ *     scan at the 2,000 newest; when either bound was reached (`complete`) the
+ *     answer says a match beyond it is not returned.
  */
 import { useState } from 'react';
 import Link from 'next/link';
 import { useShell } from '../layout';
-import { graph, type SearchResult, type SearchHit } from '../../../lib/graph';
+import { graph, projectionNote, searchBoundNote, type SearchResult, type SearchHit } from '../../../lib/graph';
 import { Empty, LiveStatus, Mono, ScrollBox, UnknownNote, cardStyle, fmtInstant }
   from '../../../components/observation';
 import { inputStyle, buttonStyle } from '../../../components/ui';
@@ -61,6 +73,9 @@ export default function SearchPage() {
     }
     setResult(r.data.search);
   };
+  // B20: the projection's condition and the scan's completeness, from the flags (the label and the note are the wording).
+  const projection = projectionNote(result?.projection);
+  const bounded = searchBoundNote(result);
 
   return (
     <>
@@ -90,6 +105,15 @@ export default function SearchPage() {
               : <> · normalised to <Mono>{result.normalized}</Mono></>}
           </p>
           <UnknownNote>{result.scope_note}</UnknownNote>
+          {projection === null ? null : (
+            <UnknownNote>
+              <strong>Projection {projection.condition}.</strong> {projection.text}
+              {projection.code !== null ? <> · code <Mono>{projection.code}</Mono></> : null}
+            </UnknownNote>
+          )}
+          {bounded === null ? null : (
+            <UnknownNote><strong>This answer is bounded.</strong> {bounded}</UnknownNote>
+          )}
 
           {result.total === 0 ? (
             <Empty>Nothing you may see matched this query.</Empty>

@@ -43,6 +43,8 @@ export const GRAPH_CHANGE_KINDS = [
   // 0078 (B18): a completed run's RESULT INVALIDATED (the operator's act, or a reproduction's unreproducible verdict) —
   // objects.simulations the run; the decisions consumer notes the packages citing it as a categorical loss of the input.
   'simulation.invalidated',
+  // 0080 (B20): a withdrawn partition rebuilt (or restored unchanged) by the operator — no identities, no relationships, no walk: the typed block names the projection and the rows whose state the rebuild changed; the retrieval consumer re-verifies, the six others find nothing by construction.
+  'projection.rebuilt',
 ] as const;
 export type GraphChangeKind = (typeof GRAPH_CHANGE_KINDS)[number];
 export const MEMORY_CHANGE_KINDS = ['evidence.corrected', 'claim.corrected'] as const;
@@ -97,6 +99,17 @@ export interface GraphChangedPayload {
   twin?: { twin_id: string; version: number; supersedes: number | null; branch_id: string; change: 'version.admitted'; changed_variables: number; runs_of_superseded: number };
   forecast?: { forecast_id: string; series_key: string; horizon: string; reason: string; unfit_class: string; withdrawn_at: string; dependants: Record<string, unknown> };
   simulation?: { run_id: string; reason: string; trigger: 'operator' | 'reproduction'; trigger_ref: string | null; invalidated_at: string; dependants: Record<string, unknown> };
+  /**
+   * 0080 (B20; D8): the typed block of `projection.rebuilt` — a withdrawn partition of the domain's index tier REBUILT (rows
+   * written) or RESTORED (nothing to write) by the operator under graph.projection.rebuild: the projection, the outcome, the
+   * rebuild's id, the counts, the rows whose state the rebuild changed (`restored`, cut at LIFECYCLE_EVENT_LIST_MAX with
+   * `restored_truncated`), the re-check's counts, the representation version recorded, and the withdrawal it closed. The
+   * changed rows ride HERE and never as identities or relationships: a rebuild changes no fact of the world, so a consumer
+   * that selects by identities or dependencies (a twin's boundary, a forecast's subject) is fed nothing. Absent on every other kind.
+   */
+  projection?: { projection: string; outcome: 'rebuilt' | 'restored'; rebuild_id: string; updated: number; inserted: number; removed: number;
+                 restored: Array<{ id: string; change: string; to?: string; from?: string }>; restored_truncated: boolean; check: Record<string, unknown> | null;
+                 representation_version: string; withdrawn_since: string | null; withdrawn_reason: string | null; withdrawn_by_check: string | null };
 }
 
 export interface CorrectedObject { object_id: string; object_type: string; from_version: number; to_version: number; lifecycle_state: string; recorded_at?: string | null; event_time?: string | null; observation_time?: string | null; valid_from?: string | null; valid_to?: string | null }
@@ -139,7 +152,8 @@ const METHOD_REF: Readonly<Record<ConsumerKind, string>> = Object.freeze({
   scenarios: 'subject or forecast affected → prediction.mark_scenario_attention (once)',
   // 0078 (B18): the two chain kinds are exposed as a categorical loss and a twin's admission is noted without exposure — a new method, so a new identity (the live decisions subscriptions are re-registered).
   decisions: 'DEC or cited input affected → decision.note_input_invalidated (once per cause); forecast.superseded judged for materiality against the declared rule → material_change exposed; forecast.withdrawn / simulation.invalidated (0078) → material_change exposed as a categorical loss of the cited input; twin.state_changed (0078) → noted without exposure (the cited runs of the superseded version stand; the owner judges)',
-  retrieval: 'graph.rebuild_projections verified → graph.record_retrieval_check',
+  // 0080 (B20): the check is SYMMETRIC (a poisoned or a missing row fails it), covers the memory projection and the representation version, and WITHDRAWS every partition it fails — a new method, so a new identity (the live retrieval subscriptions are re-registered; the act revokes and registers anew in both domains).
+  retrieval: 'graph.rebuild_projections verified — symmetric (mismatched + missing + unexpected) with the memory projection as the sixth row and the representation version (0080) → graph.record_retrieval_check, which WITHDRAWS every partition that failed; a GraphChanged/projection.rebuilt is re-verified like any change',
   // 0077 (B17): the import.revoked branch is a new method, so a new identity — every live memory-mappings subscription registered before it is re-registered (the B8 precedent).
   'memory-mappings': 'identifier/edge/resolution basis moved → graph.propose_mapping_reconciliation (a person decides); an edge whose provenance path cannot be established stays unresolved (provenance_incomplete); an import revoked (0077) → the identifiers of the entities it retired and the asserted edges with a retired end proposed',
   relationships: 'claim.corrected → the pending edge reassessed (graph.open_edge_reassessment), the relationship re-derived for the corrected version under the builder\'s rules and asserted (graph.assert_edge supersedes the pending edge; GraphChanged/edge.asserted published); a claim the builder cannot re-derive stays unresolved (unresolved_dependency) with the builder\'s reason',

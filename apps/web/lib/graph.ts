@@ -11,6 +11,12 @@
  * and the screens render both wherever they render the graph. A reader must never
  * have to work out whether they are looking at a contemporary view or a
  * hindsight one.
+ *
+ * CP-6 B20 (migration 0080) adds a second: EVERY graph and memory read carries the
+ * STATE OF THE PROJECTION it was served from — the `projection` block (a
+ * watermark, a condition, a label) — and the screens render the condition from
+ * the flag beside the instant. A stale, lagging or withdrawn projection never
+ * appears current; a withdrawn one is served from its event log, labelled.
  */
 import { call, type ApiResult } from './api';
 import type { Receipt, Scope } from './observation';
@@ -31,6 +37,15 @@ export interface EntityRow {
   created_at: string;
   updated_at: string;
   mention_count?: number;
+  /**
+   * B20 (0080): present only while the entities projection is WITHDRAWN and the row is served from its event log — the last
+   * valid state. `projected false` = the log has the row and the projection lacks it (metadata-only); `drift` = the projection
+   * and the log disagree on the state (the log's is served); `from_projection` names the columns the log does not carry.
+   */
+  projected?: boolean;
+  from?: 'log' | 'projection';
+  drift?: { projected: string; log: string };
+  from_projection?: string[];
 }
 
 export interface ResolutionRow {
@@ -85,6 +100,11 @@ export interface EdgeRow {
   retraction_reason: string | null;
   direction?: 'out' | 'in';
   hop?: number;
+  /** B20: as on an entity row — the edge served from its log while the edges projection is withdrawn (the provenance columns come from the projection row or are null). */
+  projected?: boolean;
+  from?: 'log' | 'projection';
+  drift?: { projected: string; log: string };
+  from_projection?: string[];
 }
 
 export interface StrategyRow {
@@ -122,6 +142,122 @@ export interface ImpactResult {
   statement?: string;
 }
 
+/* ───────────────────────── the index tier (CP-6 B20, migration 0080) ───────────────────────── */
+
+/**
+ * THE INDEX TIER IS THE SET OF DERIVED PROJECTIONS a domain's graph and memory reads serve from — there is no lexical or
+ * vector index in this product. Six partitions per domain, each `serving` or `withdrawn`; the retrieval subscriber
+ * re-verifies them against their event logs after every change and WITHDRAWS one that fails (a drifted, missing or poisoned
+ * row; an outdated representation), an administrator withdraws one on suspicion, and the REBUILD — the administrator's
+ * human-gated act — is the only way back to service. While a partition is withdrawn every read is served from the log (the
+ * last valid state), labelled and, for a traversal, constrained to two hops.
+ *
+ * EVERY GRAPH AND MEMORY READ CARRIES THIS BLOCK, and the screens render its CONDITION from the flag — `condition` /
+ * `degraded` — with `label` as the wording and a fallback string, never from whether a label arrived (the explore page's rule).
+ * The watermark is derived, never stored: `revision` is the domain's latest graph/memory sequence, `verified_seq` the last
+ * one the retrieval subscriber verified, `lag_events` the changes since — VERIFICATION lag (the ports write a projection and
+ * its log in one transaction), never data lag. `checkpoint_seq` is the dispatcher's own cursor, answered beside it.
+ */
+export const PROJECTION_NAMES = [
+  'entities_current', 'resolutions_current', 'edges_current', 'strategy_current', 'invalidations_current', 'memory_items_current',
+] as const;
+export type ProjectionName = (typeof PROJECTION_NAMES)[number];
+export type ProjectionCondition = 'current' | 'lagging' | 'unverified' | 'withdrawn';
+
+/** One partition of the block: its state, its condition and, when withdrawn, since when and why; the representation and the last rebuild and check. */
+export interface ProjectionPartition {
+  projection: string;
+  state: 'serving' | 'withdrawn';
+  condition: ProjectionCondition;
+  withdrawn_since: string | null;
+  reason: string | null;
+  withdrawn_by_check: string | null;
+  representation_version: string;
+  representation_current: string;
+  representation_ok: boolean;
+  last_rebuild_id: string | null;
+  rebuilt_at: string | null;
+  last_check: Record<string, unknown> | null;
+}
+
+/** The block every one of the twelve read routes answers: the watermark, the route's partitions, the worst condition, the wording. */
+export interface ProjectionBlock {
+  revision: number | null;
+  verified_seq: number | null;
+  verified_at: string | null;
+  verified_check_id: string | null;
+  checkpoint_seq: number | null;
+  lag_events: number;
+  unresolved_deliveries: number;
+  subscription: { subscription_id: string | null; status: string | null };
+  partitions: ProjectionPartition[];
+  condition: ProjectionCondition;
+  degraded: boolean;
+  /** Declared on a served-but-constrained answer (never a refusal here); the one 503 the retrieval raises carries the same code. */
+  code: 'EYE-DEG-001' | null;
+  label: string | null;
+  /** The ROUTE's withdrawn partitions. */
+  withdrawn: string[];
+  /** Every withdrawn partition of the DOMAIN, whatever the route reads. */
+  domain_withdrawn: string[];
+}
+
+/**
+ * A row of `graph.projection_state()` as `/subscriptions/status` serves it — the six rows with the SQL column names (the
+ * sequences are int8: strings on the wire; rendered, never computed with) AND the block's partition shape folded over
+ * them (`withdrawn_since`, `reason`, …). The read routes answer the same rows folded into a `ProjectionBlock`; the
+ * subscriptions page reads the table row by row and the domain's block beside it.
+ */
+export interface ProjectionStateRow extends ProjectionPartition {
+  projection: string;
+  state: 'serving' | 'withdrawn';
+  condition: ProjectionCondition;
+  revision_seq: string | number | null;
+  verified_seq: string | number | null;
+  verified_at: string | null;
+  verified_check_id: string | null;
+  checkpoint_seq: string | number | null;
+  lag_events: string | number | null;
+  unresolved_deliveries: string | number | null;
+  subscription_id: string | null;
+  subscription_status: string | null;
+  withdrawn_at: string | null;
+  withdrawn_by: string | null;
+  withdrawn_reason: string | null;
+  last_check_id: string | null;
+  last_check_at: string | null;
+  /** The last check's row for THIS projection: { projection, live_rows, rebuilt_rows, mismatched, missing, unexpected, representation_ok, failed }. */
+  last_check: Record<string, unknown> | null;
+}
+
+/** What a screen says about a projection block: nothing when current; otherwise the condition (the flag), the wording and the declared code. */
+export interface ProjectionNote { condition: ProjectionCondition; text: string; code: string | null; degraded: boolean }
+
+/**
+ * THE WORDING IS RENDERED FROM THE FLAG, NEVER FROM WHETHER A LABEL CAME. `condition` decides; `label` is the wording; a
+ * non-current state without a label still says so. A `current` block (or no block at all — a route that has not answered
+ * yet) says nothing.
+ */
+export function projectionNote(p: ProjectionBlock | null | undefined): ProjectionNote | null {
+  if (p === null || p === undefined) return null;
+  if (p.condition === 'current') return null;
+  return {
+    condition: p.condition,
+    text: p.label ?? 'the projection state is not current',
+    code: p.degraded ? (p.code ?? 'EYE-DEG-001') : null,
+    degraded: p.degraded,
+  };
+}
+
+/** The search's completeness, FROM THE FLAGS: a bounded scan says so even when the server sent no note. */
+export function searchBoundNote(r: Pick<SearchResult, 'complete' | 'note' | 'bounds'> | null | undefined): string | null {
+  if (r === null || r === undefined) return null;
+  const c = r.complete;
+  if (c === null || c === undefined || (c.entities && c.objects)) return null;
+  const bounds = r.bounds ?? { entities: 1_000, objects: 2_000 };
+  return r.note ?? `the entity scan is bounded at ${bounds.entities.toLocaleString('en-US')} rows and the object scan at the ${bounds.objects.toLocaleString('en-US')} newest; a match beyond a bound is not returned`;
+}
+
 export interface EntityDetail {
   entity: EntityRow;
   identifiers: Array<Record<string, unknown>>;
@@ -130,12 +266,15 @@ export interface EntityDetail {
   mentions: ResolutionRow[];
   claims: Array<Record<string, unknown>>;
   knownAt: string | null;
+  /** B20: the block of the entities and resolutions partitions. */
+  projection: ProjectionBlock;
   receipt: Receipt;
 }
 
 export interface SearchHit {
   kind: 'entity' | 'claim' | 'evidence';
   id: string; label: string; detail: string; matched_on: string;
+  /** An entity hit's `extra.from` reads `log` while the entities projection is withdrawn (the hit came from the event log). */
   recorded_at: string | null; extra: Record<string, unknown>;
 }
 
@@ -143,20 +282,29 @@ export interface SearchResult {
   query: string; normalized: string;
   entities: SearchHit[]; claims: SearchHit[]; evidence: SearchHit[];
   total: number; scope_note: string;
+  /** B20: the silent bounds said — the entity scan (1,000 rows) and the object scan (the 2,000 newest); `note` is the wording when either is false. */
+  complete: { entities: boolean; objects: boolean };
+  bounds: { entities: number; objects: number };
+  note: string | null;
+  /** B20: the entities partition's block (null on the empty answer of a query under two characters). */
+  projection: ProjectionBlock | null;
 }
 
 export interface GraphOverview {
-  entities: { total: number; active: number; split: number };
+  /** B20: `from: 'log'` on a section counted from the event log because its projection is withdrawn. */
+  entities: { total: number; active: number; split: number; from?: 'log' | 'projection' };
   resolutions: {
     total: number; accepted: number; queued: number; rejected: number;
-    superseded: number; automatic: number; modelAssisted: number;
+    superseded: number; automatic: number; modelAssisted: number; from?: 'log' | 'projection';
   };
-  edges: { total: number; asserted: number; retracted: number };
+  edges: { total: number; asserted: number; retracted: number; from?: 'log' | 'projection' };
   strategy: {
     total: number; objectives: number; assumptions: number; decisions: number;
-    commitments: number; outcomes: number; unverified: number;
+    commitments: number; outcomes: number; unverified: number; from?: 'log' | 'projection';
   };
-  invalidations: { total: number; assessed: number };
+  invalidations: { total: number; assessed: number; from?: 'log' | 'projection' };
+  /** B20: all six partitions. */
+  projection: ProjectionBlock;
 }
 
 async function g<T>(
@@ -256,7 +404,17 @@ export interface MemoryDerived {
   inherited: Record<string, unknown>; priorVersion?: number;
 }
 
-/** The served version of a retrieval — the SERVED version's content and header; the current projection contributes availability only. */
+/**
+ * The served version of a retrieval — the SERVED version's content and header; the current projection contributes
+ * availability only.
+ *
+ * B20 (0080): the CONTENT TIER (the canonical version payloads) and the METADATA TIER (the projection and the canonical
+ * header) are told apart. When the content tier does not answer, the retrieval is a 200 with `content: 'unavailable'`:
+ * `version`, `versionServed` and `versions` are null, NO access is recorded (`accessId` null — the access ledger requires a
+ * served version), and `degraded` says so in the server's words. While the memory projection is WITHDRAWN the availability
+ * comes from the item's log with `index_state 'stale'` (the statement served is the canonical version's as ever); a
+ * withdrawn projection AND a content tier that does not answer is the one retrieval the server REFUSES (503 EYE-DEG-001).
+ */
 export interface MemoryRetrieval {
   item: MemoryRow;
   version: {
@@ -266,17 +424,27 @@ export interface MemoryRetrieval {
     /** B19: the header fields a derived record carries beside a human one (the payload's `derivation` block is served as recorded). */
     synthetic_state: boolean; event_time: string | null; method_ref: string | null; provenance_ref: string | null;
     payload: Record<string, unknown>;
-  };
-  versionServed: number;
-  versions: number;
+  } | null;
+  versionServed: number | null;
+  versions: number | null;
   asOf: string | null;
   availability: {
     item_id: string; state: string; current_version: number; versions: number; superseded_versions: number;
     last_superseded_at: string | null; attention_state: string | null; served_is_current: boolean;
     /** B19: `current` / `corrected` / `withdrawn` — the basis's state as the projection declares it; null for a person's own record (never a refusal: a withdrawn basis is served with the declaration). */
     basis_state: string | null; source_kind: string;
+    /** B20: `stale` while the memory projection is withdrawn (the availability is the log's), `projected` otherwise — computed, never a stored flag. */
+    index_state: 'projected' | 'stale';
+    /** B20: false when the log has the item and the projection lacks it; `drift` when the two disagree on the state or the version (the log's is served). */
+    projected?: boolean;
+    drift?: { projected: string; log: string } | null;
   };
-  accessId: string;
+  accessId: string | null;
+  /** B20: present only on a metadata-only answer. */
+  content?: 'unavailable';
+  degraded?: { kind: 'content_unavailable'; code: 'EYE-DEG-001'; label: string; detail: string };
+  /** B20: the memory partition's block. */
+  projection: ProjectionBlock;
 }
 
 /**
@@ -340,7 +508,7 @@ export const graph = {
     g<{ search: SearchResult; receipt: Receipt }>(s, '/search', 'graph.read', 'SRC', { query }),
 
   listEntities: (s: Scope) =>
-    g<{ entities: EntityRow[]; receipt: Receipt }>(
+    g<{ entities: EntityRow[]; projection: ProjectionBlock; receipt: Receipt }>(
       s, '/entities/list', 'graph.read', 'ENT', { limit: 500 }),
 
   getEntity: (s: Scope, entityId: string, knownAt?: string) =>
@@ -402,29 +570,36 @@ export const graph = {
       edges: Array<{ edgeId: string; subject: string; predicate: string; object: string }>;
     } }>(s, '/edges/build', 'graph.edge.assert', 'EDG', { limit: 300 }),
 
+  /** B20: `from: 'log'` beside the rows while the edges projection is withdrawn (the edges derived from their log, the last valid state). */
   listEdges: (s: Scope, at?: Partial<AsOf>) =>
     g<{ edges: EdgeRow[]; total: number; returned: number; limit: number; complete: boolean;
-        note: string | null; asOf: AsOf; receipt: Receipt }>(
+        note: string | null; asOf: AsOf; from?: 'log' | 'projection'; projection: ProjectionBlock; receipt: Receipt }>(
       s, '/edges/list', 'graph.read', 'EDG', at ?? {}),
 
   retractEdge: (s: Scope, edgeId: string, reason: string) =>
     g<{ edge: { edgeId: string; state: string }; receipt: Receipt }>(
       s, `/edges/${edgeId}/retract`, 'graph.edge.retract', 'EDG', { reason }, edgeId),
 
+  /**
+   * B20: while the edges or the entities projection is withdrawn the walk runs over the log-derived edge state CONSTRAINED to
+   * two hops — `bound.projection` true (beside `depthClamped`), the note names it — a walk, never a refusal.
+   */
   neighbourhood: (s: Scope, entityId: string, depth: number, at?: Partial<AsOf>) =>
     g<{ neighbourhood: { edges: EdgeRow[]; entities: EntityRow[]; complete: boolean;
-                         searchedDepth: number; depthClamped: boolean; beyondDepth: boolean };
+                         searchedDepth: number; depthClamped: boolean; beyondDepth: boolean;
+                         bound?: { projection: boolean }; projectionBound?: boolean };
         asOf: AsOf; complete: boolean; searchedDepth: number; beyondDepth: boolean;
-        scope: string; note: string | null; receipt: Receipt }>(
+        scope: string; note: string | null; bound?: { projection: boolean }; projection: ProjectionBlock; receipt: Receipt }>(
       s, '/neighbourhood', 'graph.read', 'EDG', { entityId, depth, ...(at ?? {}) }),
 
   path: (s: Scope, from: string, to: string, at?: Partial<AsOf>) =>
     g<{ path: EdgeRow[] | null; asOf: AsOf; complete: boolean; searchedDepth: number;
-        bound: { scan: boolean; depth: boolean }; note: string | null; receipt: Receipt }>(
+        bound: { scan: boolean; depth: boolean; projection: boolean }; note: string | null;
+        projection: ProjectionBlock; receipt: Receipt }>(
       s, '/path', 'graph.read', 'EDG', { from, to, ...(at ?? {}) }),
 
   listStrategy: (s: Scope) =>
-    g<{ strategy: StrategyRow[]; receipt: Receipt }>(
+    g<{ strategy: StrategyRow[]; projection: ProjectionBlock; receipt: Receipt }>(
       s, '/strategy/list', 'graph.read', 'OBJ', { limit: 300 }),
 
   declareStrategy: (s: Scope, payload: Record<string, unknown>) =>
@@ -464,7 +639,12 @@ export const graph = {
     g<{ subscriptions: {
           consumers: Array<{ kind: string; version: string; codeDigest: string; registeredInThisProcess: boolean }>;
           subscriptions: Array<Record<string, unknown>>; deliveries: Array<Record<string, unknown>>;
+          /** 0080: each check's `projections` row carries `mismatched`, `missing`, `unexpected`, `representation_ok` and `failed` per projection. */
           retrieval_checks: Array<Record<string, unknown>>; mapping_reconciliations: Array<Record<string, unknown>>;
+          /** B20 (0080): the six partitions of the index tier with their derived watermark (graph.projection_state()), the whole domain's block, and their ledger's last 50 rows. */
+          projections: ProjectionStateRow[];
+          projection: ProjectionBlock;
+          projection_events: Array<Record<string, unknown>>;
           /** 0064 (AU-MEM-0041): execution state per delivery, and the deliveries in a failure state with their class and route. */
           telemetry: { deliveries: Array<Record<string, unknown>>; open_failure_states: Array<Record<string, unknown>>;
                        /** 0065: the tenant's outbox partitions — the head, whether it is held (blocked), dead letters, the retained floor. */
@@ -500,22 +680,51 @@ export const graph = {
     g<{ mapping: { reconciliationId: string; state: string }; receipt: Receipt }>(
       s, `/mappings/${reconciliationId}/decide`, 'graph.resolution.decide', 'MRC', { decision, reason }, reconciliationId),
 
+  /**
+   * B20 (0080): the check is SYMMETRIC — `mismatched` (drifted rows), `missing` (the log has, the projection lacks), `unexpected`
+   * (the projection has, the log lacks: poisoned) and the representation — six rows, the memory projection the sixth. This route
+   * verifies and withdraws nothing (`note` says so): a failed row is withdrawn by the operator or by the retrieval subscriber.
+   */
   verifyProjections: (s: Scope) =>
     g<{ projections: Array<{ projection: string; live_rows: string; rebuilt_rows: string;
-                             mismatched: string }>; receipt: Receipt }>(
+                             mismatched: string; missing: string; unexpected: string; representation_ok: boolean }>;
+        note: string; receipt: Receipt }>(
       s, '/projections/verify', 'graph.read', 'ENT'),
 
-  /** CP-6 B9/B10 (0066 §3): the Enterprise Memory workspace — records without content; the content is a retrieval's. */
+  /**
+   * B20 (0080): the operator takes a partition of the index tier OUT OF SERVICE with a reason — a suspicion, a representation
+   * review, a planned rebuild; human-gated (platform, tenant or domain administrator). Idempotent: a second withdrawal records a
+   * second reason and changes no state (`changed false`, the earlier reason kept). The answer is the port's, verbatim.
+   */
+  withdrawProjection: (s: Scope, projection: string, reason: string) =>
+    g<{ projection: Record<string, unknown>; receipt: Receipt }>(
+      s, `/projections/${projection}/withdraw`, 'graph.projection.withdraw', 'PRJ', { reason }),
+
+  /**
+   * B20: the REBUILD — the only way back to serving; human-gated, the same holders. The answer is the port's report in every
+   * outcome (200): `rebuilt` (rows written: updated / inserted / removed, each named under `restored`), `restored` (nothing to
+   * write) or `refused` (the partition stays withdrawn; `refusal` says why — the unrebuildable rows, the poisoned rows a
+   * derived row still holds, a check that still fails — and `unrebuildable` / `referenced` / `dangling` name them).
+   */
+  rebuildProjection: (s: Scope, projection: string, reason: string) =>
+    g<{ rebuild: Record<string, unknown>; receipt: Receipt }>(
+      s, `/projections/${projection}/rebuild`, 'graph.projection.rebuild', 'PRJ', { reason }),
+
+  /** CP-6 B9/B10 (0066 §3): the Enterprise Memory workspace — records without content; the content is a retrieval's. B20: each row carries `index_state`. */
   listMemory: (s: Scope) =>
-    g<{ memory: MemoryRow[]; receipt: Receipt }>(s, '/memory/list', 'graph.read', 'MEM', { limit: 200 }),
+    g<{ memory: MemoryRow[]; projection: ProjectionBlock; receipt: Receipt }>(s, '/memory/list', 'graph.read', 'MEM', { limit: 200 }),
 
   /** The item's record: its events, its access history (who read which version under which purpose, as of when), what it rests on. */
   getMemory: (s: Scope, itemId: string) =>
     g<{ item: MemoryRow; events: Array<Record<string, unknown>>; access: Array<Record<string, unknown>>;
-        dependencies: Array<Record<string, unknown>>; receipt: Receipt }>(
+        dependencies: Array<Record<string, unknown>>; projection: ProjectionBlock; receipt: Receipt }>(
       s, `/memory/${itemId}/get`, 'graph.read', 'MEM', {}, itemId),
 
-  /** A purpose-authorised, AUDITED read of the version current at `asOf` (the current one when omitted); a 403 names the reason. */
+  /**
+   * A purpose-authorised, AUDITED read of the version current at `asOf` (the current one when omitted); a 403 names the reason.
+   * B20: a 200 with `content: 'unavailable'` is the item's METADATA alone (the content tier did not answer; no access recorded);
+   * a 503 EYE-DEG-001 is the refusal while the memory projection is withdrawn and the content tier does not answer.
+   */
   retrieveMemory: (s: Scope, itemId: string, purposeId: string, asOf?: string) =>
     gUnder<{ memory: MemoryRetrieval; receipt: Receipt }>(
       s, purposeId, `/memory/${itemId}/retrieve`, 'memory.item.retrieve', 'MEM',

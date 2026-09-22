@@ -10,11 +10,19 @@
  * hindsight: it happily includes an edge asserted in March about January. C5 asks
  * for the graph as it stood, so every retrieval here takes both instants and a
  * caller that supplies neither gets `now` for both — never a silent mix.
+ *
+ * CP-6 B20 (0080; D6): while the `edges_current` partition is WITHDRAWN the listing and the traversals read the edge
+ * state the EVENT LOG derives (`source: 'log'` — the ONE derivation, joined to the projection rows for the provenance the
+ * log lacks; the same forced-RLS tables under the same capability), filtered by the same `visibleAt` (the log carries every
+ * instant it reads) and bounded the same way; while `edges_current` OR `entities_current` is withdrawn a traversal is
+ * CONSTRAINED to depth 2 (`maxDepth`) and says so (`projectionBound` / `bound.projection`) — the walk, not a refusal
+ * (IA-34-005 "constrain affected traversals, expose revision"). The route reads the partition state first and decides.
  */
 import { Injectable } from '@nestjs/common';
 import { newId } from '../../shared/ids.js';
 import type { ScopeContext } from '../../shared/scope.js';
 import type { GraphReads, EdgeWrites, EdgeRetractionWrites } from '../graph.capabilities.js';
+import { edgesFromLog, type Scope } from '../projections/fallback.js';
 
 /** Traversal is bounded. An unbounded walk over a graph is a denial of service. */
 export const MAX_DEPTH = 4;
@@ -44,6 +52,14 @@ export interface AsOf {
   knownAt: string;
   /** World time: what HELD at this instant. */
   validAt: string;
+}
+
+/** B20: where a read takes its edges from (the projection, or the log while the partition is withdrawn) and how deep a traversal may go. */
+export interface EdgeReadOptions {
+  source?: 'projection' | 'log';
+  scope?: Scope;
+  /** The traversal's depth bound while a partition the walk rests on is withdrawn (2); MAX_DEPTH otherwise. */
+  maxDepth?: number;
 }
 
 export function nowAsOf(): AsOf {
@@ -133,18 +149,38 @@ export class EdgesService {
    * answer.
    */
   async list(
-    cap: GraphReads, at: AsOf, limit = MAX_EDGES,
+    cap: GraphReads, at: AsOf, limit = MAX_EDGES, opts?: EdgeReadOptions,
   ): Promise<{ edges: EdgeRow[]; total: number; complete: boolean }> {
     const page = Math.max(1, Math.min(limit, MAX_EDGES));
+    if (opts?.source === 'log' && opts.scope !== undefined) {
+      // B20: the last valid state from the log, the same predicate, the same order, the same page; `total` counts what is eligible.
+      const all = await this.fromLog(cap, opts.scope, at);
+      const edges = all.slice(0, page);
+      return { edges, total: all.length, complete: all.length <= edges.length };
+    }
     const got = await cap.edgesVisibleAt({ ...at, limit: page });
     const edges = (got.rows as unknown as EdgeRow[]).filter((e) => visibleAt(e, at));
     return { edges, total: got.total, complete: got.total <= edges.length };
   }
 
+  /** B20: the log-derived edges visible at the instant, newest assertion first then by id (the projection read's order). */
+  private async fromLog(cap: GraphReads, scope: Scope, at: AsOf): Promise<EdgeRow[]> {
+    const got = await edgesFromLog(cap, scope);
+    const ms = (v: unknown): number => (v instanceof Date ? v.getTime() : new Date(String(v)).getTime());
+    return (got.edges as EdgeRow[]).filter((e) => visibleAt(e, at))
+      .sort((a, b) => (ms(b.asserted_at) - ms(a.asserted_at)) || (a.edge_id < b.edge_id ? -1 : a.edge_id > b.edge_id ? 1 : 0));
+  }
+
   /** A visible-at read where the caller cares only whether it saw everything. */
   private async visible(
-    cap: GraphReads, at: AsOf,
+    cap: GraphReads, at: AsOf, opts?: EdgeReadOptions,
   ): Promise<{ edges: EdgeRow[]; scanned: number; complete: boolean }> {
+    if (opts?.source === 'log' && opts.scope !== undefined) {
+      // B20: the log rows examined, bounded at MAX_SCAN exactly as the projection scan is.
+      const all = await this.fromLog(cap, opts.scope, at);
+      const edges = all.slice(0, MAX_SCAN);
+      return { edges, scanned: all.length, complete: all.length <= edges.length };
+    }
     const got = await cap.edgesVisibleAt({ ...at, limit: MAX_SCAN });
     const edges = (got.rows as unknown as EdgeRow[]).filter((e) => visibleAt(e, at));
     return { edges, scanned: got.total, complete: got.total <= edges.length };
@@ -177,13 +213,15 @@ export class EdgesService {
    * within N hops" is never mistaken for "everything connected".
    */
   async neighbourhood(
-    cap: GraphReads, entityId: string, depth: number, at: AsOf,
+    cap: GraphReads, entityId: string, depth: number, at: AsOf, opts?: EdgeReadOptions,
   ): Promise<{ edges: Array<EdgeRow & { direction: 'out' | 'in'; hop: number }>;
                entityIds: string[]; complete: boolean; searchedDepth: number;
-               depthClamped: boolean; beyondDepth: boolean }> {
-    const got = await this.visible(cap, at);
+               depthClamped: boolean; beyondDepth: boolean; projectionBound: boolean }> {
+    const got = await this.visible(cap, at, opts);
     const visible = got.edges;
-    const bounded = Math.max(1, Math.min(depth, MAX_DEPTH));
+    // B20: a walk over a withdrawn partition is bounded at the projection's depth (2), and says so.
+    const ceiling = Math.max(1, Math.min(opts?.maxDepth ?? MAX_DEPTH, MAX_DEPTH));
+    const bounded = Math.max(1, Math.min(depth, ceiling));
     const seen = new Set<string>([entityId]);
     const taken = new Set<string>();
     const out: Array<EdgeRow & { direction: 'out' | 'in'; hop: number }> = [];
@@ -210,6 +248,7 @@ export class EdgesService {
       edges: out, entityIds: [...seen], complete: got.complete,
       searchedDepth: bounded, depthClamped: bounded !== depth,
       beyondDepth: leadsBeyond(visible, frontier, seen),
+      projectionBound: opts?.maxDepth !== undefined && opts.maxDepth < MAX_DEPTH,
     };
   }
 
@@ -229,19 +268,21 @@ export class EdgesService {
    * than out of depth; `bound` says which one bit.
    */
   async path(
-    cap: GraphReads, from: string, to: string, at: AsOf,
+    cap: GraphReads, from: string, to: string, at: AsOf, opts?: EdgeReadOptions,
   ): Promise<{ path: Array<EdgeRow & { direction: 'out' | 'in' }> | null; complete: boolean;
-               searchedDepth: number; bound: { scan: boolean; depth: boolean } }> {
-    const searchedDepth = MAX_DEPTH;
+               searchedDepth: number; bound: { scan: boolean; depth: boolean; projection: boolean } }> {
+    // B20: the depth is the projection's bound (2) while a partition the walk rests on is withdrawn; `bound.projection` says so.
+    const projection = opts?.maxDepth !== undefined && opts.maxDepth < MAX_DEPTH;
+    const searchedDepth = Math.max(1, Math.min(opts?.maxDepth ?? MAX_DEPTH, MAX_DEPTH));
     if (from === to) {
-      return { path: [], complete: true, searchedDepth, bound: { scan: false, depth: false } };
+      return { path: [], complete: true, searchedDepth, bound: { scan: false, depth: false, projection } };
     }
-    const got = await this.visible(cap, at);
+    const got = await this.visible(cap, at, opts);
     const visible = got.edges;
     const prev = new Map<string, { edge: EdgeRow; direction: 'out' | 'in'; from: string }>();
     const seen = new Set<string>([from]);
     let frontier = new Set<string>([from]);
-    for (let hop = 0; hop < MAX_DEPTH && frontier.size > 0; hop += 1) {
+    for (let hop = 0; hop < searchedDepth && frontier.size > 0; hop += 1) {
       const next = new Set<string>();
       for (const e of visible) {
         const ends: Array<[string, string, 'out' | 'in']> = [
@@ -259,7 +300,7 @@ export class EdgesService {
               const step = prev.get(cursor);
               if (step === undefined) {
                 return { path: null, complete: false, searchedDepth,
-                         bound: { scan: !got.complete, depth: false } };
+                         bound: { scan: !got.complete, depth: false, projection } };
               }
               chain.unshift({ ...step.edge, direction: step.direction });
               cursor = step.from;
@@ -267,7 +308,7 @@ export class EdgesService {
             // A path found from an incomplete scan is a path, but not provably
             // the shortest: unexamined edges could hold a shorter one.
             return { path: chain, complete: got.complete, searchedDepth,
-                     bound: { scan: !got.complete, depth: false } };
+                     bound: { scan: !got.complete, depth: false, projection } };
           }
           next.add(b);
         }
@@ -284,7 +325,7 @@ export class EdgesService {
     const depthBound = leadsBeyond(visible, frontier, seen);
     return {
       path: null, complete: got.complete && !depthBound, searchedDepth,
-      bound: { scan: !got.complete, depth: depthBound },
+      bound: { scan: !got.complete, depth: depthBound, projection },
     };
   }
 

@@ -42,6 +42,28 @@
  * truth state is what its owner asserted (human) or its BASIS's (derived: extracted, asserted, inferred), and stays so
  * until superseded. The listing (`record`) exposes a derived record's basis ids and digests (no content) to every lister —
  * the B9 listing rule: the statement is a retrieval's.
+ *
+ * THE TWO TIERS (CP-6 B20, 0080; AU-MEM-0067, D9). The METADATA tier is the six serving projections of the index tier —
+ * here memory.items_current — and the canonical header; the CONTENT tier is the canonical version payloads (the MEM
+ * versions, the claims) and the evidence bytes in the vault. The projection is one PARTITION of the domain's index tier
+ * (graph.projection_partitions): while it is WITHDRAWN (a failed retrieval check — drifted, missing or poisoned rows, an
+ * outdated representation — or the operator's act) `current` and `list` serve the LAST VALID STATE from the memory log
+ * through the shared fallback reader (graph/projections/fallback.ts: the projection row joined to the log's state and
+ * version, `drift` where they differ, a row the log has and the projection lacks built from the canonical version, a row
+ * the log does not know never served), every such row `index_state 'stale'`; a serving projection's rows read
+ * `index_state 'projected'`. The column memory.items_current.index_state is retired in place (D22): the partition row says
+ * what a per-row flag cannot, and the retrieval COMPUTES index_state from the partition state. A retrieval whose CONTENT
+ * tier does not answer — the canonical read fails at the fault point b20.memory_content_unavailable, or by a statement-level
+ * failure that leaves the connection alive — answers 200 METADATA-ONLY (content 'unavailable', EYE-DEG-001 declared, no
+ * version served, NO access row: memory.item_access requires the served version) and records ONE memory.retrieval_degraded
+ * ledger row; the gates it can still apply are applied on the projection's audience LIST (narrower, never wider: the
+ * admitted purpose is the canonical version's and cannot be checked); while the partition is withdrawn AND the content tier
+ * does not answer nothing verified remains to gate a metadata answer on — the one read B20 refuses (503 EYE-DEG-001, C7).
+ * An injected fault or a statement-level failure that leaves the connection alive MAY be answered metadata-only (classes
+ * 53/58 include conditions after which the backend may not survive the statement; then the request fails as before); a
+ * connection-class failure (08xxx, 57P01–57P03) kills the transaction the metadata was read in and the request fails 5xx as
+ * before — the audit row cannot be committed on a dead connection. The evidence bytes' unavailability stays
+ * observation.evidence.retrieve's 409 (D10: a missing and a corrupt read are the same shape to a caller).
  */
 import { HttpException, Injectable } from '@nestjs/common';
 import { errorBody } from '@eye/contracts';
@@ -50,8 +72,11 @@ import type { ScopeContext } from '../../shared/scope.js';
 import type { AuthenticatedPrincipal } from '../../shared/auth-types.js';
 import { newId } from '../../shared/ids.js';
 import { assertClearance, bindingReaches } from '../../shared/clearance.js';
+import { InjectedFault, at } from '../../observation/fault-injection.js';
 import type { GraphReads, MemoryWrites } from '../graph.capabilities.js';
 import { effectiveReviewState, isoOr } from '../edges/derive.js';
+import type { ProjectionBlock } from '../projections/projection-state.js';
+import { memoryItemFromLog, memoryItemsFromLog } from '../projections/fallback.js';
 import {
   CLAIM_OBJECT_TYPES, MEMORY_BASIS_KINDS, MEMORY_DERIVE_METHOD, MEMORY_DERIVED_SOURCE_KINDS, MEMORY_SERIES_KEYS_MAX,
   anySynthetic, basisGate, derivedStatementOf, evidenceGate, evidenceVersionOf, mostRestrictive, sourceRefOf, statementDigestOf,
@@ -243,6 +268,31 @@ export function basisStateOf(item: Row): string | null {
   const s = String(item['attention_state'] ?? 'none');
   return ({ none: 'current', basis_corrected: 'corrected', basis_withdrawn: 'withdrawn' } as Record<string, string>)[s] ?? s;
 }
+
+/* ───────────── B20 (0080; D9): the content tier ───────────── */
+/** The label a metadata-only retrieval carries (a literal the harness and the page pin). */
+export const MEMORY_CONTENT_UNAVAILABLE_LABEL = 'the content tier did not answer; this is the item\'s metadata (its state, versions and audience) — the statement is not served; retry or contact the operator';
+/**
+ * A STATEMENT-level failure of the canonical read that leaves the connection alive, by SQLSTATE: class 53 (insufficient
+ * resources), class 58 (system error), class XX (internal error), 57014 (query_canceled — a statement timeout) and 55P03
+ * (lock_not_available). A connection-class failure (08xxx; 57P01–57P03) is NOT one: it kills the transaction the metadata was
+ * read in, and the request fails as before. An injected fault is told apart by its class (InjectedFault), not here.
+ */
+export function isContentTierFailure(e: unknown): boolean {
+  const code = (e as { code?: unknown } | null | undefined)?.code;
+  if (typeof code !== 'string') return false;
+  return code.startsWith('53') || code.startsWith('58') || code.startsWith('XX') || code === '57014' || code === '55P03';
+}
+/** The source of the memory workspace's reads while its partition is withdrawn (§2.7): the log through the fallback reader, under the same capability and action. */
+export interface MemoryReadOpts { withdrawn: boolean; scope: { tenantId: string; domainId: string } }
+/** A retrieval SERVED: the served version's content, header fields and audience; the availability from the metadata tier. */
+export interface MemoryServed { item: Row; version: Row; versionServed: number; versions: number; asOf: string | null; availability: Row; content?: undefined; degraded?: undefined }
+/** A retrieval answered METADATA-ONLY (D9): no version served, the count is the content tier's, the degradation declared. */
+export interface MemoryMetadataOnly {
+  item: Row; version: null; versionServed: null; versions: null; asOf: string | null; availability: Row; content: 'unavailable';
+  degraded: { kind: 'content_unavailable'; code: 'EYE-DEG-001'; label: string; detail: string };
+}
+export type MemoryRetrieval = MemoryServed | MemoryMetadataOnly;
 
 @Injectable()
 export class MemoryService {
@@ -491,17 +541,33 @@ export class MemoryService {
     };
   }
 
-  async current(cap: GraphReads, itemId: string): Promise<Row | null> {
-    return ((await cap.readMemoryItems().selectAll().where('item_id' as never, '=', itemId as never).execute()) as Row[])[0] ?? null;
+  /**
+   * The item's CURRENT record from the metadata tier: the projection row (`index_state 'projected'` — the column's stored value is
+   * ignored, D22) or, while the memory partition is WITHDRAWN (B20), the last valid state from the log through the shared fallback
+   * reader (`index_state 'stale'`, `projected`, `from`, `drift`); a poisoned row — one the log does not know — is not served (null →
+   * the route's 404 as an absent item). The source is decided by the caller from the projection block it read FIRST in its transaction.
+   */
+  async current(cap: GraphReads, itemId: string, opts?: MemoryReadOpts): Promise<Row | null> {
+    if (opts?.withdrawn === true) return (await memoryItemFromLog(cap, opts.scope, itemId)) ?? null;
+    const row = ((await cap.readMemoryItems().selectAll().where('item_id' as never, '=', itemId as never).execute()) as Row[])[0];
+    return row === undefined ? null : { ...row, index_state: 'projected' };
   }
 
   /**
    * RETRIEVE (OBJ-15): the version current at `asOf` (the record's replay), under the reader's authority now; the access
-   * ledger row is written by the caller inside the same transaction once the read is authorised.
+   * ledger row is written by the caller inside the same transaction once the read is authorised. B20 (D9): the metadata
+   * tier is read first (the projection, or the log while the partition is withdrawn — `a.projection` says which); the
+   * CONTENT tier (the canonical versions) is read under a savepoint at the fault point b20.memory_content_unavailable —
+   * when it does not answer, the answer is METADATA-ONLY (MemoryMetadataOnly: no version, no access row, the ledger row
+   * memory.retrieval_degraded) after the gates the metadata can carry (C7); a refused reader learns nothing from a consumed
+   * fault point: the answer is the same 403 as with the content tier up (the purpose gate on the audience list), and the
+   * point is spent — the next retrieval is served in full (C5).
    */
-  async retrieve(cap: GraphReads, principal: AuthenticatedPrincipal, ctx: ScopeContext, a: { itemId: string; purpose: string; asOf: string | null; correlationId: string }):
-    Promise<{ item: Row; version: Row; versionServed: number; versions: number; asOf: string | null; availability: Row } | null> {
-    const item = await this.current(cap, a.itemId);
+  async retrieve(cap: GraphReads & Pick<MemoryWrites, 'recordRetrievalDegraded'>, principal: AuthenticatedPrincipal, ctx: ScopeContext, a: { itemId: string; purpose: string; asOf: string | null; correlationId: string; projection?: ProjectionBlock }):
+    Promise<MemoryRetrieval | null> {
+    const tenantId = ctx.tenantId as string; const domainId = ctx.domainId as string;
+    const withdrawn = a.projection?.withdrawn.includes('memory_items_current') ?? false;
+    const item = await this.current(cap, a.itemId, { withdrawn, scope: { tenantId, domainId } });
     if (item === null) return null;
     // A WITHDRAWN item has left circulation (B10): its current reading is refused with the withdrawal named; every version it
     // ever had stays replayable AS OF an instant — the record is not rewritten by the withdrawal.
@@ -509,10 +575,54 @@ export class MemoryService {
       throw new HttpException(errorBody('EYE_STA_003', a.correlationId, `memory item ${a.itemId} was withdrawn and is out of circulation; its versions stay replayable as of an instant (payload.asOf)`), 409);
     }
     const target = { tenantId: ctx.tenantId, domainId: ctx.domainId };
+    const indexState = withdrawn ? 'stale' : 'projected';
+    const projected = item['projected'] === false ? false : true;
+    const drift = item['drift'] ?? null;
+    // THE CONTENT TIER (B20, D9): the canonical versions, read under a savepoint so a failure of this ONE statement leaves the
+    // transaction usable for the metadata-only answer and its ledger row. The fault point fires once (the retry serves the content).
+    let versions: Row[] | null = null; let contentFailure: string | null = null;
+    try {
+      versions = await cap.withSavepoint('mem_content', async () => {
+        at('b20.memory_content_unavailable');
+        return (await cap.readCanonicalObjects().selectAll().where('object_id' as never, '=', a.itemId as never).where('object_type' as never, '=', 'MEM' as never)
+          .orderBy('object_version' as never, 'desc').execute()) as Row[];
+      });
+    } catch (e) {
+      if (e instanceof InjectedFault) contentFailure = `injected fault at ${e.point}`;
+      else if (isContentTierFailure(e)) contentFailure = `${String((e as { code?: string }).code)}: ${String((e as Error).message).slice(0, 120)}`;
+      else throw e;
+    }
+    if (contentFailure !== null) {
+      // C7: while memory_items_current is WITHDRAWN nothing verified remains to gate a metadata answer on — refused (the one read B20 refuses).
+      if (withdrawn) {
+        const mem = a.projection?.partitions.find((p) => p.projection === 'memory_items_current');
+        throw new HttpException(errorBody('EYE_DEG_001', a.correlationId, `the memory_items_current projection of this domain is withdrawn (since ${String(mem?.withdrawn_since ?? 'an unknown instant')}: ${String(mem?.reason ?? 'no reason recorded')}) and the content tier did not answer; nothing verified remains to gate a metadata answer on — retry when the content tier answers, or after the rebuild (graph.projection.rebuild)`), 503);
+      }
+      // C7: the purpose gate is the audience LIST alone — narrower, never wider: the admitted purpose (purpose_scope) is the canonical version's and cannot be checked while the content tier does not answer.
+      const listed = (item['audience_purposes'] as string[] | null) ?? [];
+      if (!listed.includes(a.purpose)) throw new HttpException(errorBody('EYE_AUT_001', a.correlationId, `a memory item is read under a purpose its audience declares (${listed.length > 0 ? listed.join(', ') : 'none declared'}); the admitted purpose cannot be checked while the content tier does not answer; this read states ${a.purpose}`), 403);
+      assertClearance(principal, target, String(item['classification'] ?? 'internal'), 'memory item', a.correlationId);
+      // the roles gate on the projection's audience roles, exactly as the served-version gate below
+      const listedRoles = (item['audience_roles'] as string[] | null) ?? [];
+      if (listedRoles.length > 0) {
+        const mine = principal.bindings.filter((b) => bindingReaches(b, target)).map((b) => b.roleCode);
+        const admin = mine.some((r) => r === 'platform_admin' || r === 'tenant_admin' || r === 'domain_admin');
+        if (!admin && !listedRoles.some((r) => mine.includes(r))) throw new HttpException(errorBody('EYE_AUT_001', a.correlationId, `the memory item is for the audience ${listedRoles.join(', ')}; the reader holds none of these roles in this domain`), 403);
+      }
+      // The ledger row (memory.retrieval_degraded) — never an access row: nothing was served (memory.item_access requires the served version).
+      await cap.recordRetrievalDegraded({ itemId: a.itemId, tenantId, domainId, version: Number(item['object_version']), purpose: a.purpose, reader: principal.principalId, cause: 'content_unavailable', detail: contentFailure, correlationId: a.correlationId });
+      const availability: Row = {
+        item_id: a.itemId, state: String(item['state']), current_version: Number(item['object_version']), versions: null,   // the count is the content tier's
+        superseded_versions: Number(item['superseded_versions'] ?? 0), last_superseded_at: item['last_superseded_at'] instanceof Date ? (item['last_superseded_at'] as Date).toISOString() : item['last_superseded_at'] ?? null,
+        attention_state: item['attention_state'] ?? null, served_is_current: null,
+        basis_state: basisStateOf(item), source_kind: item['source_kind'] ?? null,
+        index_state: indexState, projected, drift,
+      };
+      return { item: availability, version: null, versionServed: null, versions: null, asOf: a.asOf, availability, content: 'unavailable',
+               degraded: { kind: 'content_unavailable', code: 'EYE-DEG-001', label: MEMORY_CONTENT_UNAVAILABLE_LABEL, detail: contentFailure } };
+    }
     // Purpose: the one the item was admitted under, or one it declares for its audience.
-    const versions = (await cap.readCanonicalObjects().selectAll().where('object_id' as never, '=', a.itemId as never).where('object_type' as never, '=', 'MEM' as never)
-      .orderBy('object_version' as never, 'desc').execute()) as Row[];
-    if (versions.length === 0) return null;
+    if (versions === null || versions.length === 0) return null;
     // The record instant is a Date under kysely (milliseconds kept); a string rendering would lose them and mis-serve a version.
     const instant = (v: unknown): number => v instanceof Date ? v.getTime() : new Date(String(v)).getTime();
     const served = a.asOf === null ? versions[0]! : versions.find((v) => instant(v['recorded_at']) <= new Date(a.asOf as string).getTime()) ?? null;
@@ -541,12 +651,17 @@ export class MemoryService {
     // audience, which a reader authorised for a historical version is not authorised for. B19 adds to the served version the
     // header fields a derived record's reader is shown — its own synthetic state, event time, method, provenance, rights and
     // residency (a person's record: false / null / human-record@1.0.0 / principal:<owner> / null / null). The access recorded
-    // names the served version.
+    // names the served version. B20: `index_state` is COMPUTED from the partition state (D22: 'stale' while memory_items_current
+    // is withdrawn, 'projected' otherwise); while withdrawn the current version, the superseded count, the last supersession and
+    // the attention state are the LOG's (the fallback row carries them), `projected` says whether the projection holds the row and
+    // `drift` names a state/version the projection and the log disagree on; `served_is_current` compares against the LOG's current
+    // version then. The served version is chosen from the canonical rows as today: the content is the content tier's, never the projection's.
     const availability: Row = {
       item_id: a.itemId, state: String(item['state']), current_version: Number(item['object_version']), versions: versions.length,
       superseded_versions: Number(item['superseded_versions'] ?? 0), last_superseded_at: item['last_superseded_at'] instanceof Date ? (item['last_superseded_at'] as Date).toISOString() : item['last_superseded_at'] ?? null,
       attention_state: item['attention_state'] ?? null, served_is_current: Number(served['object_version']) === Number(item['object_version']),
       basis_state: basisStateOf(item), source_kind: item['source_kind'] ?? null,
+      index_state: indexState, projected, drift,
     };
     const version: Row = {
       item_id: a.itemId, object_version: served['object_version'], recorded_at: served['recorded_at'] instanceof Date ? (served['recorded_at'] as Date).toISOString() : served['recorded_at'],
@@ -573,8 +688,16 @@ export class MemoryService {
     const listed = d === null ? null : { basis: d['basis'] ?? null, source: { source_key: src['source_key'] ?? null, contract_version: src['contract_version'] ?? null, connector_kind: src['connector_kind'] ?? null }, method_ref: d['method_ref'] ?? null, derived_at: d['derived_at'] ?? null, series_keys: d['series_keys'] ?? [] };
     return { ...rest, derivation: listed, content: 'retrieve under a declared purpose (memory.item.retrieve); the statement is not listed' };
   }
-  async list(cap: GraphReads, limit = 200): Promise<Row[]> {
-    return ((await cap.readMemoryItems().selectAll().orderBy('recorded_at' as never, 'desc').limit(limit).execute()) as Row[]).map((r) => MemoryService.record(r));
+  /**
+   * The listing (`record` of each row: no content). B20: from the projection (`index_state 'projected'`), or — while the memory
+   * partition is withdrawn — the last valid state from the log through the fallback reader (each row `index_state 'stale'`, with
+   * `projected`, `from` and `drift` kept on the listed row; a poisoned row absent).
+   */
+  async list(cap: GraphReads, limit = 200, opts?: MemoryReadOpts): Promise<Row[]> {
+    const rows = opts?.withdrawn === true
+      ? await memoryItemsFromLog(cap, opts.scope, { limit })
+      : ((await cap.readMemoryItems().selectAll().orderBy('recorded_at' as never, 'desc').limit(limit).execute()) as Row[]).map((r) => ({ ...r, index_state: 'projected' }));
+    return rows.map((r) => MemoryService.record(r));
   }
   async events(cap: GraphReads, itemId: string): Promise<Row[]> {
     // An event's details may carry the version's content (the record and supersession events do): the record lists the event, not the content.

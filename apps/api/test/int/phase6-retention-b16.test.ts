@@ -757,8 +757,14 @@ describe('I · THE GOVERNED IMPORT (0076 §4; D1–D5; DP-47-001/-002/-003/-006,
     expect(edges).toHaveLength(1);
     expect(edges[0]).toMatchObject({ edge_id: edgeN, subject_entity_id: e2n, object_entity_id: e1n, predicate: 'ships_through', claim_object_id: Cn, claim_version: 1, evidence_object_id: map.get(A.id), evidence_digest: A.bytesDigest, state: 'asserted', mode: 'replay' });
     const proj = (await h.pipeline.consequentialRead(envIn(domainAdmin2, D2, 'graph.read', 'ENT', null, 'graph'), domainAdmin2, routeIn(D2, 'graph.read', 'ENT', null), GraphCapability.read, async (cap) => cap.rebuildProjections())).result;
-    expect(proj.length).toBeGreaterThan(0);
-    for (const r of proj) expect(Number(r.mismatched), `${r.projection} drifted from its event log`).toBe(0);
+    // B20 (0080): the check is SYMMETRIC over the six partitions — nothing mismatched, nothing missing, nothing unexpected, the representation current.
+    expect(proj.map((r) => r.projection)).toEqual(['entities_current', 'resolutions_current', 'edges_current', 'strategy_current', 'invalidations_current', 'memory_items_current']);
+    for (const r of proj) {
+      expect(Number(r.mismatched), `${r.projection} drifted from its event log`).toBe(0);
+      expect(Number(r.missing), `${r.projection}: a row its log has is missing from the projection`).toBe(0);
+      expect(Number(r.unexpected), `${r.projection}: a projection row its log does not know (poisoned)`).toBe(0);
+      expect(r.representation_ok, `${r.projection}: the partition was verified under an outdated representation version`).toBe(true);
+    }
     // The quarantine copies of the ADMITTED records tombstoned after the commit; manifest.json and links.json kept; the events; the receipt.
     for (const i of items.filter((x) => x['kind'] === 'record')) expect(await blobExists('quarantine', D2, String((i['staged'] as Row)['quarantine_locator']))).toBe(false);
     const after = (await importRow(importId))!;
