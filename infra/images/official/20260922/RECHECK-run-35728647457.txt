@@ -1,0 +1,39 @@
+# C15 patched-image recheck, hosted run 35728647457 (schedule, main, 2026-09-22 12:41 UTC) — the decisive lines of the job log (job 106748619116).
+# The pinned trivy 0.73.0 release binary (archive and executable digests verified by scripts/gate/install-scanners.sh). Line numbers are the job log's.
+116: 2026-09-22T12:41:47.1556687Z trivy (linux-x64) <- https://github.com/aquasecurity/trivy/releases/download/v0.73.0/trivy_0.73.0_Linux-64bit.tar.gz
+118: 2026-09-22T12:41:47.4592970Z   archive digest verified:    2edd39da482bb4e9831962487b68f68e3928ec3137794757f54d00383d79547b
+119: 2026-09-22T12:41:48.6518821Z   executable digest verified: 5b3ebab0f98d95196c85efc3a9d31a01520c96fa342e4e611f56db64c516df1d
+124: 2026-09-22T12:41:52.2338209Z postgres: postgres:18-alpine -> sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+125: 2026-09-22T12:42:01.3171143Z   linux/amd64: postgres@sha256:d8703cd7fba306b9fec9268ecedfa8a966846c053036a60e3635791957eb2f66
+126: 2026-09-22T12:42:05.1646926Z   linux/arm64: postgres@sha256:89f747171c4b0af0eacf5984550060be79786dbe286eb60cfa691d79d1e8b23f
+127: 2026-09-22T12:42:05.1662942Z     [openssl] linux/amd64 PATCHED: libcrypto3 3.5.8-r0, libssl3 3.5.8-r0 is outside every affected range for CVE-2026-14456
+128: 2026-09-22T12:42:05.1665134Z     [util-linux/postgres] linux/amd64 PATCHED: libuuid 2.42.3-r1 is outside every affected range for CVE-2026-53612/CVE-2026-53613/CVE-2026-53614/CVE-2026-76642/CVE-2026-78408/CVE-2026-78409/CVE-2026-78410
+129: 2026-09-22T12:42:05.1666895Z     [c-ares] linux/amd64 PATCHED: c-ares 1.34.8-r0 is outside every affected range for CVE-2026-33630
+130: 2026-09-22T12:42:05.1668106Z     [openssl] linux/arm64 PATCHED: libcrypto3 3.5.8-r0, libssl3 3.5.8-r0 is outside every affected range for CVE-2026-14456
+131: 2026-09-22T12:42:05.1669917Z     [util-linux/postgres] linux/arm64 PATCHED: libuuid 2.42.3-r1 is outside every affected range for CVE-2026-53612/CVE-2026-53613/CVE-2026-53614/CVE-2026-76642/CVE-2026-78408/CVE-2026-78409/CVE-2026-78410
+132: 2026-09-22T12:42:05.1671385Z     [c-ares] linux/arm64 PATCHED: c-ares 1.34.8-r0 is outside every affected range for CVE-2026-33630
+133: 2026-09-22T12:42:05.1672049Z   postgres: FIXED
+134: 2026-09-22T12:42:05.8841621Z redis: redis:8-alpine -> sha256:ba6e394f6acc2a695ef1b6944f161b9ca813711739be68319fa0db3470673f1d
+135: 2026-09-22T12:42:07.1393552Z   linux/amd64: redis@sha256:2d3814be5e9b06a30a0be54770b7e12052e7e79ec85271aefd34875c1f393b23
+136: 2026-09-22T12:42:08.3284177Z   linux/arm64: redis@sha256:41a10b18bd238fa7837b1615b2b5b113edff1654233238ac82d87e6fb5531f44
+137: 2026-09-22T12:42:08.3286898Z     [openssl] linux/amd64 PATCHED: libcrypto3 3.5.8-r0, libssl3 3.5.8-r0 is outside every affected range for CVE-2026-14456
+138: 2026-09-22T12:42:08.3288461Z     [util-linux/redis] linux/amd64 PATCHED: setpriv 2.41.6-r1 is outside every affected range for CVE-2026-53612/CVE-2026-53613/CVE-2026-53614/CVE-2026-76642/CVE-2026-78408/CVE-2026-78409/CVE-2026-78410
+139: 2026-09-22T12:42:08.3290008Z     [openssl] linux/arm64 PATCHED: libcrypto3 3.5.8-r0, libssl3 3.5.8-r0 is outside every affected range for CVE-2026-14456
+140: 2026-09-22T12:42:08.3292278Z     [util-linux/redis] linux/arm64 PATCHED: setpriv 2.41.6-r1 is outside every affected range for CVE-2026-53612/CVE-2026-53613/CVE-2026-53614/CVE-2026-76642/CVE-2026-78408/CVE-2026-78409/CVE-2026-78410
+141: 2026-09-22T12:42:08.3293586Z   redis: FIXED
+143: 2026-09-22T12:42:08.3295948Z c15-recheck: a COMPATIBLE FIXED OFFICIAL image now exists for postgres: postgres:18-alpine -> sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+144: 2026-09-22T12:42:08.3298054Z   linux/amd64 child sha256:d8703cd7fba306b9fec9268ecedfa8a966846c053036a60e3635791957eb2f66
+145: 2026-09-22T12:42:08.3299276Z   linux/arm64 child sha256:89f747171c4b0af0eacf5984550060be79786dbe286eb60cfa691d79d1e8b23f
+146: 2026-09-22T12:42:08.3300456Z   every watched fix (openssl, util-linux/postgres, c-ares) is present on both platforms.
+149: 2026-09-22T12:42:08.3305332Z   to postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873, verify its provenance and compatibility, re-issue or retire SCX-0002, SCX-0003, SCX-0004, SCX-0005, SCX-0010, SCX-0011 (they name the derived image), regenerate the
+152: 2026-09-22T12:42:08.3309024Z c15-recheck: a COMPATIBLE FIXED OFFICIAL image now exists for redis: redis:8-alpine -> sha256:ba6e394f6acc2a695ef1b6944f161b9ca813711739be68319fa0db3470673f1d
+153: 2026-09-22T12:42:08.3310333Z   linux/amd64 child sha256:2d3814be5e9b06a30a0be54770b7e12052e7e79ec85271aefd34875c1f393b23
+154: 2026-09-22T12:42:08.3311313Z   linux/arm64 child sha256:41a10b18bd238fa7837b1615b2b5b113edff1654233238ac82d87e6fb5531f44
+155: 2026-09-22T12:42:08.3312190Z   every watched fix (openssl, util-linux/redis) is present on both platforms.
+158: 2026-09-22T12:42:08.3316101Z   to redis@sha256:ba6e394f6acc2a695ef1b6944f161b9ca813711739be68319fa0db3470673f1d, verify its provenance and compatibility, confirm no SCX record names the derived image, regenerate the
+160: 2026-09-22T12:42:08.3347447Z ##[error]Process completed with exit code 1.
+161: 2026-09-22T12:42:08.3475099Z ##[group]Run echo "::notice::Either a COMPATIBLE FIXED OFFICIAL image now exists for a service on both platforms —"
+162: 2026-09-22T12:42:08.3475903Z [36;1mecho "::notice::Either a COMPATIBLE FIXED OFFICIAL image now exists for a service on both platforms —"[0m
+163: 2026-09-22T12:42:08.3476632Z [36;1mecho "::notice::return that service to it through the governed process (re-pin, re-issue or retire the"[0m
+169: 2026-09-22T12:42:08.3586833Z ##[notice]Either a COMPATIBLE FIXED OFFICIAL image now exists for a service on both platforms —
+170: 2026-09-22T12:42:08.3588593Z ##[notice]return that service to it through the governed process (re-pin, re-issue or retire the

@@ -16,6 +16,20 @@ it, and the gate recomputes the digest from these bytes on every run.
 
 ## 1. What was scanned
 
+> **The return to the official images, 2026-09-22 — IN PROGRESS, pending the owner's approval.**
+> Since 2026-09-22 the two configured references are the OFFICIAL indexes
+> `postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873` (`postgres:18-alpine`,
+> 18.6-alpine3.24; children `d8703cd7…` `linux/amd64`, `89f74717…` `linux/arm64`) and
+> `redis@sha256:ba6e394f6acc2a695ef1b6944f161b9ca813711739be68319fa0db3470673f1d` (`redis:8-alpine`,
+> 8.10.2-alpine; children `2d3814be…` `linux/amd64`, `41a10b18…` `linux/arm64`) — the images the
+> recheck (run `35728647457`) found rebuilt with every watched fix on both platforms
+> (`docs/SUPPLY_CHAIN_MAINTENANCE_2026-09.md` §8). §§1–3.8 below describe the DERIVED artefacts that were
+> pinned from 2026-09-10 to 2026-09-22 and the six records approved for them; those records stand in
+> `scripts/gate/scanner-exclusions.json` byte for byte as approved and, because the pinned reference
+> changed, match nothing until the owner re-issues them — the gate is red on exactly that, by design.
+> The re-issues for the official children are DRAFTED in **§3.9**, with their approval dates left
+> pending; nothing here is deleted, and no draft governs a finding.
+
 **Re-pin of 2026-09-10 (TEMPORARY, owner-approved — `docs/images/DERIVED_IMAGES_APPROVAL.md`).**
 The two configured references are the derived maintenance images published by
 `.github/workflows/publish-derived-images.yml` (run `34502081248`, bound to the approved recipes of
@@ -529,6 +543,234 @@ all 22 unreachable); it is bound as additional evidence and does not change the 
 scanned platforms the run reconciles 22 + 22 = **44** findings against **6** records
 (SCX-0002…0005 on `linux/amd64`, SCX-0010…0011 on `linux/arm64`), 0 unmatched, 0 unused, and 0
 records naming a platform the run did not scan.
+
+### 3.9 The return to the official images (2026-09-22) — DRAFT re-issues, pending the owner's approval
+
+**What this section is, and is not.** On 2026-09-22 the recheck found a compatible fixed OFFICIAL image
+for both services on both platforms, and `docker-compose.yml` / `conformance.manifest.json` were
+re-pinned to those official indexes the same day (`pinned_at` 2026-09-22). The documented process
+(`docs/SUPPLY_CHAIN_MAINTENANCE_2026-09.md` §5) makes the next step the owner's: the records the new
+child digests invalidate are re-bound "with the owner's approval, since the records carry `approved_on`".
+This section prepares that approval. It states what was scanned, what the official children carry, why
+each record's basis carries over, and the six re-issued records exactly as they would read — with the
+approval and review dates left **PENDING** and a `Status` row (new in this document: there was no
+precedent for a pending record, so the field is added and named for what it is). **No draft here
+governs anything**: `scripts/gate/scanner-exclusions.json` keeps the six approved records of 2026-09-10
+untouched in `records` (they now name an image the compose file no longer pins and therefore match
+nothing, which the gate reports as such), and carries these drafts beside them under
+`pending_reissues`, where the validator never reads them. The derived images, their receipts and the
+records' text are not deleted.
+
+**What was scanned (2026-09-22).**
+
+| Item | postgres | redis |
+|---|---|---|
+| Configured reference (from 2026-09-22) | `postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873` | `redis@sha256:ba6e394f6acc2a695ef1b6944f161b9ca813711739be68319fa0db3470673f1d` |
+| Human tag (informational) | `postgres:18-alpine` = `18.6-alpine3.24` | `redis:8-alpine` = `8.10.2-alpine` |
+| Reference kind | OCI image **index**, 8 runnable platforms + 8 attestation manifests (`unknown/unknown`, excluded by the resolver) | same |
+| Scanned child manifest, `linux/amd64` | `sha256:d8703cd7fba306b9fec9268ecedfa8a966846c053036a60e3635791957eb2f66` | `sha256:2d3814be5e9b06a30a0be54770b7e12052e7e79ec85271aefd34875c1f393b23` |
+| Scanned child manifest, `linux/arm64` (`linux/arm64/v8` in the index) | `sha256:89f747171c4b0af0eacf5984550060be79786dbe286eb60cfa691d79d1e8b23f` | `sha256:41a10b18bd238fa7837b1615b2b5b113edff1654233238ac82d87e6fb5531f44` |
+| Index integrity check | the raw index (10,293 bytes) hashes to the configured digest — `infra/images/official/20260922/index/postgres.index.raw.json` | the raw index (10,213 bytes) hashes to the configured digest — `…/redis.index.raw.json` |
+| Source (image annotations = the Docker Official Images library entry) | `docker-library/postgres@e00e1bd34ec5c8a8e7ad89b273b3d42efaf6d5bc`, directory `18/alpine3.24`, built 2026-09-17 on `alpine:3.24` (Alpine 3.24.2) | `redis/docker-library-redis@8104e63b5910fda751bf7c038fa297b6fb19ff43`, directory `alpine`, built 2026-09-21 on `alpine:3.23` (Alpine 3.23.6) — `infra/images/official/20260922/source/SOURCE.txt` |
+| Watched packages installed (both children) | `libuuid` 2.42.3-r1, `libcrypto3`/`libssl3` 3.5.8-r0, `c-ares` 1.34.8-r0 (53 packages) — `…/inventory/official-postgres-*.txt` | `setpriv` 2.41.6-r1, `libcrypto3`/`libssl3` 3.5.8-r0 (22 packages) — `…/inventory/official-redis-*.txt` |
+| HIGH/CRITICAL findings, `linux/amd64` child | **22**, all Go-stdlib rows in `usr/local/bin/gosu` (`pkg:golang/stdlib@v1.24.6`); OS packages: **0** | **0** |
+| HIGH/CRITICAL findings, `linux/arm64` child | **22**, the identical rows; OS packages: **0** | **0** |
+| Below the gate's filter (recorded, not governed) | 21 MEDIUM, 2 LOW, 1 UNKNOWN, all in `gosu`; **no** OS-package row at any severity (the 10 UNKNOWN `libcurl` rows §3.7 recorded on the derived arm64 child are gone with Alpine 3.24.2) | none at any severity |
+| Scanner for these figures | trivy 0.73.0 — the **Homebrew** build on the analysis host, `--scanners vuln,secret --ignorefile /dev/null`, DB of 2026-09-22 07:24 UTC; NOT the pinned release binary the gate authenticates, so these are evidence and the gate's own verdict is the hosted run's (`…/scans/`, `scan-summary.txt`) | same |
+
+**The delta against the derived images, same scanner, same database, same day.** The derived children
+(`bc90ce6b…`/`d3dd485b…`, `0c0a48dd…`/`c11d75ca…`) were re-scanned beside the official ones. At
+HIGH/CRITICAL the postgres sets are identical row for row on each platform — 22 remain, 0 gone, 0 new —
+and redis is 0 on both images and both platforms. So there is nothing to retire and nothing new to
+govern: **every finding the six records govern remains, and only those.** Each record's advisory set is
+present in full on the official child of its platform (SCX-0002 14/14, SCX-0003 1/1, SCX-0004 1/1,
+SCX-0005 6/6 on `d8703cd7…`; SCX-0010 21/21, SCX-0011 1/1 on `89f74717…`), and no HIGH/CRITICAL `gosu`
+advisory on either official child falls outside them.
+
+**Why each basis carries over: the binary is the same file.** `/usr/local/bin/gosu` was extracted from
+each official child (`docker create`, `docker cp`, the container removed) and measured
+(`…/inventory/official-postgres-{amd64,arm64}.txt`): `linux/amd64`
+`52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0`, 1,769,900 bytes, `1.19 (go1.24.6 on
+linux/amd64; gc)`; `linux/arm64` `3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44`,
+1,830,424 bytes, `1.19 (go1.24.6 on linux/arm64; gc)`. These are byte for byte the binaries of the
+2026-08-05 base (`b6a16ed0…`) and of the derived children — the same identity on which the 2026-09-10
+re-issue rested (`infra/images/candidates/evidence/v2/gosu-verification.txt`). The govulncheck
+binary-mode analyses therefore still describe the bytes the gate scans: `docs/evidence/govulncheck-gosu-b6a16ed0.*`
+for `52c8749d…` (SCX-0004/0005, NOT_AFFECTED) and
+`infra/images/published/20260910/gosu-arm64-3a8ef022.govulncheck.txt` for `3a8ef022…` (bound as
+additional evidence by SCX-0010/0011, which stay RISK_ACCEPTED as the owner accepted them on
+2026-09-11 — a re-issue changes the image a record is scoped to, not its classification). Neither the
+evidence dates nor the expiry, **2026-11-05**, are extended by this re-issue.
+
+**Compatibility of the official images (`…/compat/`).** Under exactly the compose file's process
+protections (`user: 70:70` / `999:1000`, `cap_drop: [ALL]`, `no-new-privileges:true`), on throwaway
+containers and a throwaway volume: PID 1 runs as uid 70 / uid 999 with CapPrm = CapEff = CapBnd = 0 and
+NoNewPrivs 1; PostgreSQL 18.6 initialised a fresh volume, applied migrations 0001–0078, `gen_random_uuid()`
+works, a stop/start reloads the volume ("Skipping initialization", rows and 78 migrations intact); Redis
+8.10.2 answered the repository's client (ioredis, `--requirepass`); the acceptance suite passed 58/58
+against them and the `audit-chain` integration file 8/8. The host is `darwin/arm64`, so the containers
+ran the `linux/arm64` children — the ones the compose file runs on this host; CI runs the amd64 children.
+
+**The six re-issued records, as drafted.** The fields the gate compares are unchanged from the 2026-09-10
+records except `image` (the official index) — `scan_platform`, `package_name` `stdlib`, `package_purl`
+`pkg:golang/stdlib@v1.24.6`, `installed_version` `v1.24.6`, `severities`, `result_target`
+`usr/local/bin/gosu`, the advisory sets, the classifications, the compensating controls, the prohibited
+uses, the owner, the approver party and the expiry are the same. What changes with the re-issue: the
+image, the evidence bound (this document at its new digest; the 2026-09-22 inventories and scans;
+the byte-identity record; the govulncheck artefacts as before), and the approval, which is pending.
+
+#### SCX-0002 — DRAFT re-issue for the official `linux/amd64` child (HIGH set)
+
+| Field | Value |
+|---|---|
+| Status | **DRAFT — pending the owner's approval; governs nothing** |
+| Advisories | `CVE-2025-61726`, `CVE-2025-61729`, `CVE-2026-25679`, `CVE-2026-27145`, `CVE-2026-32280`, `CVE-2026-32281`, `CVE-2026-32283`, `CVE-2026-33811`, `CVE-2026-33814`, `CVE-2026-39820`, `CVE-2026-39822`, `CVE-2026-39836`, `CVE-2026-42499`, `CVE-2026-42504` (14) |
+| Severity | HIGH |
+| Classification | RISK_ACCEPTED |
+| Package / PURL / version | `stdlib` / `pkg:golang/stdlib@v1.24.6` / `v1.24.6` |
+| Result target | `usr/local/bin/gosu` |
+| Image (index) | `postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873` |
+| Scan platform / scanned child | `linux/amd64` / `sha256:d8703cd7fba306b9fec9268ecedfa8a966846c053036a60e3635791957eb2f66` |
+| Analysed binary | `52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0` (identical in `b6a16ed0…`, `bc90ce6b…` and this child) |
+| Owner | founding-engineer |
+| Approver | gate-2.2-security-review |
+| Originally approved | 2026-08-05, for `postgres@sha256:9a8afca5…`; re-issued 2026-09-10 for the derived image (§3) |
+| Re-issued (approved / reviewed) | **PENDING — the owner's approval** |
+| Expires | 2026-11-05 (unchanged) |
+
+**Reason, compensating controls, prohibited use.** As the 2026-09-10 record (SCX-0002 above), with one
+sentence retired: "no patched official postgres build exists" is no longer why the finding is accepted —
+the official build now carries every OS fix, and `gosu` is the same upstream binary in every current
+official postgres variant; the acceptance rests on the operational argument alone (`gosu` runs once at
+container start and exits; PostgreSQL is loopback-bound; Phase 0 is LOCAL-ONLY under `EXC-P0-004`;
+ADR-P0-01 re-pins and re-scans monthly).
+
+#### SCX-0003 — DRAFT re-issue for the official `linux/amd64` child (the single CRITICAL)
+
+| Field | Value |
+|---|---|
+| Status | **DRAFT — pending the owner's approval; governs nothing** |
+| Advisory | `CVE-2025-68121` |
+| Severity | **CRITICAL** |
+| Classification | RISK_ACCEPTED |
+| Package / PURL / version | `stdlib` / `pkg:golang/stdlib@v1.24.6` / `v1.24.6` |
+| Result target | `usr/local/bin/gosu` |
+| Image (index) | `postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873` |
+| Scan platform / scanned child | `linux/amd64` / `sha256:d8703cd7fba306b9fec9268ecedfa8a966846c053036a60e3635791957eb2f66` |
+| Owner / Approver | founding-engineer / gate-2.2-security-review |
+| Originally approved | 2026-08-05, for `postgres@sha256:9a8afca5…`; re-issued 2026-09-10 for the derived image |
+| Re-issued (approved / reviewed) | **PENDING — the owner's approval** |
+| Expires | 2026-11-05 (unchanged) |
+
+Held separately for the reason SCX-0003 exists: a disposition approved for HIGH must not absorb a
+CRITICAL. Reason and controls as SCX-0003 above, with the same retired sentence as SCX-0002.
+
+#### SCX-0004 — DRAFT re-issue for the official `linux/amd64` child, NOT_AFFECTED by symbol analysis
+
+| Field | Value |
+|---|---|
+| Status | **DRAFT — pending the owner's approval; governs nothing** |
+| Advisories | `CVE-2026-39821` (1) |
+| Severity | HIGH |
+| Classification | **NOT_AFFECTED — vulnerable_code_not_present** |
+| Package / PURL / version | `stdlib` / `pkg:golang/stdlib@v1.24.6` / `v1.24.6` |
+| Result target | `usr/local/bin/gosu` |
+| Image (index) | `postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873` |
+| Scan platform / scanned child | `linux/amd64` / `sha256:d8703cd7fba306b9fec9268ecedfa8a966846c053036a60e3635791957eb2f66` |
+| Analysed on (evidence) | `52c8749d…` — the same bytes in this child (`…/inventory/official-postgres-amd64.txt`); `docs/evidence/govulncheck-gosu-b6a16ed0.{json,txt}`, Go vulnerability database as of 2026-08-14, 0 called vulnerable symbols |
+| Owner / Approver | founding-engineer / gate-2.2-security-review |
+| Originally approved | 2026-08-14, for `postgres@sha256:9a8afca5…`; re-issued 2026-09-10 for the derived image |
+| Re-issued (approved / reviewed) | **PENDING — the owner's approval** |
+| Expires | 2026-11-05 (unchanged; the evidence date does not move) |
+
+#### SCX-0005 — DRAFT re-issue for the official `linux/amd64` child, NOT_AFFECTED by symbol analysis
+
+| Field | Value |
+|---|---|
+| Status | **DRAFT — pending the owner's approval; governs nothing** |
+| Advisories | `CVE-2026-33818`, `CVE-2026-56853`, `CVE-2026-56858`, `CVE-2026-56859`, `CVE-2026-56860`, `CVE-2026-56862` (6) |
+| Severity | HIGH |
+| Classification | **NOT_AFFECTED — vulnerable_code_not_present** |
+| Package / PURL / version | `stdlib` / `pkg:golang/stdlib@v1.24.6` / `v1.24.6` |
+| Result target | `usr/local/bin/gosu` |
+| Image (index) | `postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873` |
+| Scan platform / scanned child | `linux/amd64` / `sha256:d8703cd7fba306b9fec9268ecedfa8a966846c053036a60e3635791957eb2f66` |
+| Analysed on (evidence) | as SCX-0004: `52c8749d…`, the same two govulncheck artefacts, each of the six present and unreachable |
+| Owner / Approver | founding-engineer / gate-2.2-security-review |
+| Originally approved / reviewed | 2026-08-15, for `postgres@sha256:9a8afca5…`; re-issued 2026-09-10 for the derived image |
+| Re-issued (approved / reviewed) | **PENDING — the owner's approval** |
+| Expires | 2026-11-05 (unchanged) |
+
+#### SCX-0010 — DRAFT re-issue for the official `linux/arm64` child (HIGH set)
+
+| Field | Value |
+|---|---|
+| Status | **DRAFT — pending the owner's approval; governs nothing** |
+| Advisories | the 21 HIGH ids of SCX-0010 (§3.7), unchanged |
+| Severity | HIGH |
+| Classification | **RISK_ACCEPTED** (as accepted by the owner on 2026-09-11; the arm64 govulncheck analysis of `3a8ef022…` — 0 called, all 22 unreachable — is bound as additional evidence and does not change the classification) |
+| Package / PURL / version | `stdlib` / `pkg:golang/stdlib@v1.24.6` / `v1.24.6` |
+| Result target | `usr/local/bin/gosu` |
+| Image (index) | `postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873` |
+| Scan platform / scanned child | `linux/arm64` / `sha256:89f747171c4b0af0eacf5984550060be79786dbe286eb60cfa691d79d1e8b23f` |
+| Analysed binary | `3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44` (aarch64, 1,830,424 bytes; identical in `d3dd485b…` and this child — `…/inventory/official-postgres-arm64.txt`) |
+| Owner / Approver | founding-engineer / product-owner (the 2026-09-11 acceptance, `docs/images/ARM64_RISK_DECISION.md` §5); the re-issue's approver is whoever approves it |
+| Originally approved / reviewed | 2026-09-11 (first approval for this platform, on the derived child) |
+| Re-issued (approved / reviewed) | **PENDING — the owner's approval** |
+| Expires | 2026-11-05 (unchanged) |
+
+#### SCX-0011 — DRAFT re-issue for the official `linux/arm64` child (the single CRITICAL)
+
+| Field | Value |
+|---|---|
+| Status | **DRAFT — pending the owner's approval; governs nothing** |
+| Advisory | `CVE-2025-68121` |
+| Severity | **CRITICAL** |
+| Classification | **RISK_ACCEPTED** (as SCX-0010) |
+| Package / PURL / version | `stdlib` / `pkg:golang/stdlib@v1.24.6` / `v1.24.6` |
+| Result target | `usr/local/bin/gosu` |
+| Image (index) | `postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873` |
+| Scan platform / scanned child | `linux/arm64` / `sha256:89f747171c4b0af0eacf5984550060be79786dbe286eb60cfa691d79d1e8b23f` |
+| Analysed binary | `3a8ef022…` (as SCX-0010) |
+| Owner / Approver | founding-engineer / product-owner (as SCX-0010) |
+| Originally approved / reviewed | 2026-09-11 |
+| Re-issued (approved / reviewed) | **PENDING — the owner's approval** |
+| Expires | 2026-11-05 (unchanged) |
+
+**Compensating controls, prohibited use and limits (all six).** Unchanged from the records above (§3
+and §3.7), with the one retired sentence noted under SCX-0002: the operational argument, the loopback
+binding, the LOCAL-ONLY profile under `EXC-P0-004`, ADR-P0-01's monthly cadence; §4's prohibited
+exposure applies in full. The records stay weaker on `linux/arm64` than on `linux/amd64` on purpose,
+exactly as §5 states.
+
+**Evidence bound by the drafts (tracked, digests recomputed by the gate once the records are live).**
+
+| Artifact | sha256 |
+|---|---|
+| `infra/images/official/20260922/inventory/official-postgres-amd64.txt` | `143d02e50a77e35806f4259d8e49b24c655eeb6b7c84ae169c4b61b771d3c942` |
+| `infra/images/official/20260922/inventory/official-postgres-arm64.txt` | `9762a9301c23bfc75894afbe859f5cf5a8f5e782d5638fa3e762e9c510e60733` |
+| `infra/images/official/20260922/scans/official-postgres-amd64.trivy.txt` | `b09157f29476eb775e72c9ef553825ee4262379a22aa5226669056cabe7fb6e7` |
+| `infra/images/official/20260922/scans/official-postgres-arm64.trivy.txt` | `651c5de0c188cbeace49715b5d36c1e14a797526365062f933bd73a079a1316e` |
+| `infra/images/official/20260922/scans/scan-summary.txt` | `939d2f54536fd6fcf328a4f38236c57eae18ac93ee0173b285e313bda7965fb9` |
+| `infra/images/candidates/evidence/v2/gosu-verification.txt` (the byte-identity record) | `e0f901da541867530146e9869337d17b1ac880c0d2f2312240f9d857bc830359` |
+| `docs/evidence/govulncheck-gosu-b6a16ed0.json` / `.txt` (SCX-0004/0005) | `e7d06bcc9da3181c417f1287b1bfc14bc0446a167a82733464e3fa619553be26` / `cdcd7ff7fe62a6b19677b19a23db04c406f473920e2663b13c7a51232743fbab` |
+| `infra/images/published/20260910/gosu-arm64-3a8ef022.govulncheck.txt` (SCX-0010/0011, additional) | `cdcd7ff7fe62a6b19677b19a23db04c406f473920e2663b13c7a51232743fbab` |
+| `docs/images/ARM64_RISK_DECISION.md` (SCX-0010/0011) | `6b6518d03ddc01c86deb7644fa638a6a2cea149bcba6987f14352e18ae513aca` |
+
+**What the gate says while this is pending, and what the approval consists of.** With the compose file
+on the official indexes and `records` still naming the derived one, the C15 gate fails on the six
+approved records (their `evidence_sha256` no longer matches this document, which changed with this
+section, so they are rejected before reconciliation) and on 44 UNGOVERNED findings (22 per official
+postgres child); the recheck step, by its own design, fails too, because a compatible fixed official
+image "now exists" — it is the one pinned. The owner's approval is: review §3.9; in
+`scripts/gate/scanner-exclusions.json` replace each of the six records in `records` with its draft from
+`pending_reissues`, deleting the `status` key and setting `approved_on` and `reviewed_on` to the day of
+the review (never earlier); in this section replace each "PENDING" with that date and the approver; then
+recompute this document's SHA-256 (`shasum -a 256 docs/SCANNER_DISPOSITIONS.md`) into every record's
+`evidence_sha256` and its `docs/SCANNER_DISPOSITIONS.md` entry in `evidence_files`; re-record the C15
+trace fixture and `real-image-results.json` from a real run with the pinned scanners; run the FINAL
+chain. Whether the recheck then stays as the trigger for a NEWER official build under ADR-P0-01's
+cadence, or is retired, is the owner's decision (`infra/images/candidates/v2/PUBLICATION.md` §8.5).
 
 ## 4. Prohibited exposure
 

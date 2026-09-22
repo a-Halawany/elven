@@ -1,0 +1,6 @@
+os: alpine 3.23.5
+os_pkgs: 22
+secrets: 0
+arch: amd64
+image_id: sha256:b9c26d0cdb78c00899393235f72a5db11e582a9ea08097e2a55b888e6ac91376
+repo_digests: ['ghcr.io/a-halawany/elven/redis@sha256:0c0a48ddfcea413916152bc64e91c665d0822053099d9bc385a4747d71609432']

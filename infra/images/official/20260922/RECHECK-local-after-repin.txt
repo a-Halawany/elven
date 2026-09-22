@@ -1,0 +1,39 @@
+# The recheck run locally AFTER the re-pin, 2026-09-22: node scripts/gate/check-patched-images.mjs --trivy /opt/homebrew/bin/trivy
+# (the Homebrew build of trivy 0.73.0, NOT the pinned release binary — evidence only; the same verdict the hosted run gave).
+postgres: postgres:18-alpine -> sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+  linux/amd64: postgres@sha256:d8703cd7fba306b9fec9268ecedfa8a966846c053036a60e3635791957eb2f66
+  linux/arm64: postgres@sha256:89f747171c4b0af0eacf5984550060be79786dbe286eb60cfa691d79d1e8b23f
+    [openssl] linux/amd64 PATCHED: libcrypto3 3.5.8-r0, libssl3 3.5.8-r0 is outside every affected range for CVE-2026-14456
+    [util-linux/postgres] linux/amd64 PATCHED: libuuid 2.42.3-r1 is outside every affected range for CVE-2026-53612/CVE-2026-53613/CVE-2026-53614/CVE-2026-76642/CVE-2026-78408/CVE-2026-78409/CVE-2026-78410
+    [c-ares] linux/amd64 PATCHED: c-ares 1.34.8-r0 is outside every affected range for CVE-2026-33630
+    [openssl] linux/arm64 PATCHED: libcrypto3 3.5.8-r0, libssl3 3.5.8-r0 is outside every affected range for CVE-2026-14456
+    [util-linux/postgres] linux/arm64 PATCHED: libuuid 2.42.3-r1 is outside every affected range for CVE-2026-53612/CVE-2026-53613/CVE-2026-53614/CVE-2026-76642/CVE-2026-78408/CVE-2026-78409/CVE-2026-78410
+    [c-ares] linux/arm64 PATCHED: c-ares 1.34.8-r0 is outside every affected range for CVE-2026-33630
+  postgres: FIXED
+redis: redis:8-alpine -> sha256:ba6e394f6acc2a695ef1b6944f161b9ca813711739be68319fa0db3470673f1d
+  linux/amd64: redis@sha256:2d3814be5e9b06a30a0be54770b7e12052e7e79ec85271aefd34875c1f393b23
+  linux/arm64: redis@sha256:41a10b18bd238fa7837b1615b2b5b113edff1654233238ac82d87e6fb5531f44
+    [openssl] linux/amd64 PATCHED: libcrypto3 3.5.8-r0, libssl3 3.5.8-r0 is outside every affected range for CVE-2026-14456
+    [util-linux/redis] linux/amd64 PATCHED: setpriv 2.41.6-r1 is outside every affected range for CVE-2026-53612/CVE-2026-53613/CVE-2026-53614/CVE-2026-76642/CVE-2026-78408/CVE-2026-78409/CVE-2026-78410
+    [openssl] linux/arm64 PATCHED: libcrypto3 3.5.8-r0, libssl3 3.5.8-r0 is outside every affected range for CVE-2026-14456
+    [util-linux/redis] linux/arm64 PATCHED: setpriv 2.41.6-r1 is outside every affected range for CVE-2026-53612/CVE-2026-53613/CVE-2026-53614/CVE-2026-76642/CVE-2026-78408/CVE-2026-78409/CVE-2026-78410
+  redis: FIXED
+
+c15-recheck: a COMPATIBLE FIXED OFFICIAL image now exists for postgres: postgres:18-alpine -> sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+  linux/amd64 child sha256:d8703cd7fba306b9fec9268ecedfa8a966846c053036a60e3635791957eb2f66
+  linux/arm64 child sha256:89f747171c4b0af0eacf5984550060be79786dbe286eb60cfa691d79d1e8b23f
+  every watched fix (openssl, util-linux/postgres, c-ares) is present on both platforms.
+  This is a REPORT: nothing was re-pinned and no evidence was deleted. Return the service to the
+  official image through the governed process — re-pin docker-compose.yml and conformance.manifest.json
+  to postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873, verify its provenance and compatibility, re-issue or retire SCX-0002, SCX-0003, SCX-0004, SCX-0005, SCX-0010, SCX-0011 (they name the derived image), regenerate the
+  evidence, run the FINAL chain (docs/SCANNER_DISPOSITIONS.md §5).
+
+c15-recheck: a COMPATIBLE FIXED OFFICIAL image now exists for redis: redis:8-alpine -> sha256:ba6e394f6acc2a695ef1b6944f161b9ca813711739be68319fa0db3470673f1d
+  linux/amd64 child sha256:2d3814be5e9b06a30a0be54770b7e12052e7e79ec85271aefd34875c1f393b23
+  linux/arm64 child sha256:41a10b18bd238fa7837b1615b2b5b113edff1654233238ac82d87e6fb5531f44
+  every watched fix (openssl, util-linux/redis) is present on both platforms.
+  This is a REPORT: nothing was re-pinned and no evidence was deleted. Return the service to the
+  official image through the governed process — re-pin docker-compose.yml and conformance.manifest.json
+  to redis@sha256:ba6e394f6acc2a695ef1b6944f161b9ca813711739be68319fa0db3470673f1d, verify its provenance and compatibility, confirm no SCX record names the derived image, regenerate the
+  evidence, run the FINAL chain (docs/SCANNER_DISPOSITIONS.md §5).
+exit 1

@@ -1,0 +1,31 @@
+ref: redis@sha256:41a10b18bd238fa7837b1615b2b5b113edff1654233238ac82d87e6fb5531f44
+platform: linux/arm64
+--- os-release ---
+NAME="Alpine Linux"
+ID=alpine
+VERSION_ID=3.23.6
+--- apk list -I (watched packages) ---
+alpine-baselayout-3.7.2-r0 aarch64 {alpine-baselayout} (GPL-2.0-only) [installed]
+alpine-baselayout-data-3.7.2-r0 aarch64 {alpine-baselayout} (GPL-2.0-only) [installed]
+libcrypto3-3.5.8-r0 aarch64 {openssl} (Apache-2.0) [installed]
+libssl3-3.5.8-r0 aarch64 {openssl} (Apache-2.0) [installed]
+musl-1.2.5-r23 aarch64 {musl} (MIT) [installed]
+musl-utils-1.2.5-r23 aarch64 {musl} (MIT AND BSD-2-Clause AND GPL-2.0-or-later) [installed]
+setpriv-2.41.6-r1 aarch64 {util-linux} (GPL-2.0-or-later) [installed]
+--- apk world ---
+.redis-rundeps=20260921.173704
+alpine-baselayout
+alpine-keys
+alpine-release
+apk-tools
+busybox
+musl-utils
+setpriv
+tzdata
+--- installed package count ---
+22
+--- image config (User, Entrypoint, Cmd, Env subset) ---
+User= Entrypoint=["docker-entrypoint.sh"] Cmd=["redis-server"] Arch=arm64 Os=linux Created=2026-09-21T17:37:05.096186658Z
+REDIS_VERSION=8.10.2
+--- server version ---
+Redis server v=8.10.2 sha=00000000:1 malloc=jemalloc-5.3.0 bits=64 build=733afb4c18605b55

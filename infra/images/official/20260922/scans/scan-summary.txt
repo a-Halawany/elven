@@ -1,0 +1,42 @@
+Evidence scans, 2026-09-22 — trivy 0.73.0 (Homebrew build at /opt/homebrew/bin/trivy; NOT the pinned release binary,
+which the gate authenticates by executable digest — these are evidence, the gate's own verdict is CI's),
+--scanners vuln,secret --ignorefile /dev/null, one scan per platform child, all severities captured;
+the HIGH/CRITICAL subset is what the gate governs.
+
+| Child | OS | OS packages | ALL rows | HIGH/CRITICAL rows | of which OS-package rows | of which usr/local/bin/gosu | secrets |
+|---|---|---|---|---|---|---|---|
+| official-postgres-amd64 | alpine 3.24.2 | 53 | 46 | 22 | 0 | 22 | 0 |
+| official-postgres-arm64 | alpine 3.24.2 | 53 | 46 | 22 | 0 | 22 | 0 |
+| official-redis-amd64 | alpine 3.23.6 | 22 | 0 | 0 | 0 | 0 | 0 |
+| official-redis-arm64 | alpine 3.23.6 | 22 | 0 | 0 | 0 | 0 | 0 |
+| derived-postgres-amd64 | alpine 3.24.1 | 53 | 56 | 22 | 0 | 22 | 0 |
+| derived-postgres-arm64 | alpine 3.24.1 | 53 | 56 | 22 | 0 | 22 | 0 |
+| derived-redis-amd64 | alpine 3.23.5 | 22 | 0 | 0 | 0 | 0 | 0 |
+| derived-redis-arm64 | alpine 3.23.5 | 22 | 0 | 0 | 0 | 0 | 0 |
+
+== postgres amd64: official vs derived (HIGH/CRITICAL, same scanner, same DB, same day)
+   remain (in both): 22; gone (derived only): 0; new (official only): 0
+== postgres arm64: official vs derived (HIGH/CRITICAL, same scanner, same DB, same day)
+   remain (in both): 22; gone (derived only): 0; new (official only): 0
+== postgres: official amd64 vs official arm64 (HIGH/CRITICAL): identical=True (amd64 22, arm64 22)
+== redis amd64: official vs derived (HIGH/CRITICAL, same scanner, same DB, same day)
+   remain (in both): 0; gone (derived only): 0; new (official only): 0
+== redis arm64: official vs derived (HIGH/CRITICAL, same scanner, same DB, same day)
+   remain (in both): 0; gone (derived only): 0; new (official only): 0
+== redis: official amd64 vs official arm64 (HIGH/CRITICAL): identical=True (amd64 0, arm64 0)
+
+== the six records' advisory sets against the OFFICIAL postgres children (stdlib, pkg:golang/stdlib@v1.24.6, usr/local/bin/gosu)
+   SCX-0002 (linux/amd64, HIGH, 14 ids): present 14, missing 0
+   SCX-0003 (linux/amd64, CRITICAL, 1 ids): present 1, missing 0
+   SCX-0004 (linux/amd64, HIGH, 1 ids): present 1, missing 0
+   SCX-0005 (linux/amd64, HIGH, 6 ids): present 6, missing 0
+   linux/amd64: HIGH/CRITICAL gosu advisories on the official child NOT covered by any record: none
+   SCX-0010 (linux/arm64, HIGH, 21 ids): present 21, missing 0
+   SCX-0011 (linux/arm64, CRITICAL, 1 ids): present 1, missing 0
+   linux/arm64: HIGH/CRITICAL gosu advisories on the official child NOT covered by any record: none
+
+== below the gate's filter (recorded, not governed)
+   official-postgres-amd64: {'UNKNOWN': 1, 'MEDIUM': 21, 'LOW': 2}; OS-package rows below HIGH: none
+   official-postgres-arm64: {'UNKNOWN': 1, 'MEDIUM': 21, 'LOW': 2}; OS-package rows below HIGH: none
+   official-redis-amd64: {}; OS-package rows below HIGH: none
+   official-redis-arm64: {}; OS-package rows below HIGH: none

@@ -1,0 +1,6 @@
+os: alpine 3.23.6
+os_pkgs: 22
+secrets: 0
+arch: arm64
+image_id: sha256:675f7644831d85995868250485bf7a71970257f74da31c62969a868d3f3eff2e
+repo_digests: ['redis@sha256:41a10b18bd238fa7837b1615b2b5b113edff1654233238ac82d87e6fb5531f44']

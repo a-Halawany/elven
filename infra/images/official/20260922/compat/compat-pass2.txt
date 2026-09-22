@@ -1,0 +1,13 @@
+# Compatibility pass 2, 2026-09-22 (the session's compat2.sh): the API and its workspace dependencies built (pnpm --filter '@eye/api...' build), then the
+# acceptance suite (58 cases: migrate, one-shot bootstrap, the built API on :3499) against the official postgres (:5439) and redis (:6399). Same flags, fresh credentials.
+started 2026-09-22T19:33:07Z
+postgres health: healthy (18.6)
+--- migrations on the fresh eye database ---
+migrations up to date
+role passwords synchronized from environment
+--- acceptance suite (58 cases): migrate + one-shot bootstrap + the built API (dist/main.js) on :3499 against postgres :5439 and redis :6399 ---
+ Test Files  1 passed (1)
+      Tests  58 passed (58)
+   Duration  6.32s (transform 54ms, setup 17ms, import 148ms, tests 6.09s, environment 0ms)
+--- cleanup ---
+finished 2026-09-22T19:33:22Z

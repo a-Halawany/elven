@@ -1,0 +1,95 @@
+# Compatibility pass 1, 2026-09-22 (the session's compat.sh). Throwaway containers c15-pg-official / c15-redis-official on 127.0.0.1:5439 / :6399,
+# the linux/arm64 children (this host is darwin/arm64 — the children the compose file runs here; CI runs the amd64 children), under EXACTLY the
+# compose file's process protections; credentials generated for the run only, never printed. The acceptance step of THIS pass never reached the API:
+# the harness built @eye/api alone (tsc cannot compile it without @eye/contracts' emitted declarations) — a harness ordering mistake, corrected in pass 2.
+# The uuid_generate_v4() probe error is the harness's too: the migrations install pgcrypto (gen_random_uuid), not uuid-ossp.
+started 2026-09-22T19:30:03Z
+== postgres: postgres@sha256:89f747171c4b0af0eacf5984550060be79786dbe286eb60cfa691d79d1e8b23f (linux/arm64) under user 70:70, cap_drop ALL, no-new-privileges
+== redis: redis@sha256:41a10b18bd238fa7837b1615b2b5b113edff1654233238ac82d87e6fb5531f44 (linux/arm64) under user 999:1000, cap_drop ALL, no-new-privileges, --requirepass
+postgres health: healthy
+--- process identity inside the containers (uid/gid, capability masks, NoNewPrivs) ---
+uid=70(postgres) gid=70(postgres) groups=70(postgres)
+CapPrm:	0000000000000000
+CapEff:	0000000000000000
+CapBnd:	0000000000000000
+NoNewPrivs:	1
+uid=999(redis) gid=1000(redis) groups=1000(redis)
+CapPrm:	0000000000000000
+CapEff:	0000000000000000
+CapBnd:	0000000000000000
+NoNewPrivs:	1
+--- server versions ---
+PostgreSQL 18.6 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit
+redis_version:8.10.2
+os:Linux 6.10.14-linuxkit aarch64
+arch_bits:64
+process_id:1
+--- redis with the repository's client settings (ioredis, requirepass, 127.0.0.1:6399) ---
+PING -> PONG
+SET/GET -> 1
+redis_version:8.10.2 | redis_mode:standalone
+--- migrations 0001..0078 on a fresh database ---
+applying 0075_b15_relationship_closure_and_streamed_archive.sql ... ok
+applying 0076_b16_governed_import_versioned_closure_and_held_recipients.sql ... ok
+applying 0077_b17_import_publication_and_revocation_propagation.sql ... ok
+applying 0078_b18_lifecycle_announced_and_withdrawal_chain.sql ... ok
+migrations up to date
+role passwords synchronized from environment
+78 migrations applied; last 0078_b18_lifecycle_announced_and_withdrawal_chain.sql
+ERROR:  function uuid_generate_v4() does not exist
+gen_random_uuid ok: true
+schemas: audit,canon,config,ctx,decision,executive,graph,identity,intelligence,memory,objects,observation,policy,prediction,public,retention,simulation,tenancy,twin
+--- API build (the acceptance suite spawns dist/main.js) ---
+/Users/halawany/work/personal/mohammed/new_project/.claude/worktrees/wf_568870bf-d26-1/apps/api:
+[ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL] @eye/api@0.0.1 build: `tsc -p tsconfig.build.json && node scripts/copy-assets.mjs`
+Exit status 2
+--- acceptance suite (58 cases) against the official postgres (5439) and redis (6399) ---
+      constructor: 'Function<Error>',
+      name: 'Error',
+      toString: 'Function<toString>'
+    }
+  ],
+  code: 'ECONNREFUSED',
+  constructor: 'Function<AggregateError>',
+  name: 'Caused by: AggregateError',
+  message: '',
+  toString: 'Function<toString>',
+  stacks: []
+}
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { errors: [ { stack: 'Error: connect ECONNREFUSED ::1:3499\n    at createConnectionError (node:net:1678:14)\n    at afterConnectMultiple (node:net:1708:16)', message: 'connect ECONNREFUSED ::1:3499', errno: -61, code: 'ECONNREFUSED', syscall: 'connect', address: '::1', port: 3499, constructor: 'Function<Error>', name: 'Error', toString: 'Function<toString>' }, { stack: 'Error: connect ECONNREFUSED 127.0.0.1:3499\n    at createConnectionError (node:net:1678:14)\n    at afterConnectMultiple (node:net:1708:16)', message: 'connect ECONNREFUSED 127.0.0.1:3499', errno: -61, code: 'ECONNREFUSED', syscall: 'connect', address: '127.0.0.1', port: 3499, constructor: 'Function<Error>', name: 'Error', toString: 'Function<toString>' } ], code: 'ECONNREFUSED' }
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[39/51]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  51 failed | 7 passed (58)
+   Start at  22:30:16
+   Duration  12.08s (transform 46ms, setup 17ms, import 148ms, tests 11.84s, environment 0ms)
+
+/Users/halawany/work/personal/mohammed/new_project/.claude/worktrees/wf_568870bf-d26-1/apps/api:
+[ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL] @eye/api@0.0.1 test:accept: `vitest run --config vitest.accept.config.ts`
+Exit status 1
+--- one integration file: test/int/audit-chain.test.ts ---
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.int.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/.claude/worktrees/wf_568870bf-d26-1/apps/api
+
+
+ Test Files  1 passed (1)
+      Tests  8 passed (8)
+   Start at  22:30:28
+   Duration  606ms (transform 66ms, setup 15ms, import 218ms, tests 300ms, environment 0ms)
+
+--- stop/start reload of the postgres volume (data survives a restart of the official image) ---
+CREATE TABLE
+INSERT 0 1
+1
+postgres health after restart: healthy
+rows after restart: 1
+migrations after restart: 78
+PostgreSQL Database directory appears to contain a database; Skipping initialization
+2026-09-22 19:30:29.662 UTC [1] LOG:  database system is ready to accept connections
+--- cleanup ---
+finished 2026-09-22T19:30:36Z
