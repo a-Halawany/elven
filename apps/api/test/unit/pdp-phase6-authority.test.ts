@@ -172,3 +172,64 @@ describe('B19 · memory.item.derive is the record rule\'s holders under the huma
     expect(r.obligations).toEqual([{ type: 'human_gate' }]);
   });
 });
+
+/*
+ * CP-6 B20 (0080; design §2.8, D4, D7): the two acts on a projection partition — the operator's WITHDRAWAL and the REBUILD
+ * (the only way back to serving) — are EXACT, human-gated C2 rules held by the three administrators (platform_admin at the
+ * platform, tenant_admin at the tenant, domain_admin at the domain): a person answers for a served index. No prefix rule
+ * catches `graph.projection.*` (the `graph.` rules are `graph.read`, `graph.impact.propagate`, `graph.propagation.agent.*`
+ * and the exact subscription rules), so a near-name falls to no rule at all.
+ */
+describe('B20 · the two projection acts are exact, human-gated administrator rules', () => {
+  const pdp = new PdpService();
+  const at = (action: string, roles: string[], consequenceClass: 'C1' | 'C2' | 'C3' = 'C2') => input({ action, roles, consequenceClass, objectType: 'PRJ', purposeId: 'graph' });
+  const platform = { roleCode: 'platform_admin', scope: 'PLATFORM' as const, tenantId: null, domainId: null };
+  const tenant = { roleCode: 'tenant_admin', scope: 'TENANT' as const, tenantId: T, domainId: null };
+  const asBinding = (action: string, binding: typeof platform | typeof tenant, consequenceClass: 'C2' | 'C3' = 'C2') =>
+    input({ action, objectType: 'PRJ', purposeId: 'graph', consequenceClass, principal: { principalId: '0193a3d0-0000-7000-8000-0000000000aa', kind: 'human', assurance: 'password', bindings: [binding] } });
+
+  it('the holders: domain_admin at the domain, tenant_admin at the tenant, platform_admin at the platform — each allowed with the human gate at C2, none at C3', () => {
+    for (const action of ['graph.projection.withdraw', 'graph.projection.rebuild']) {
+      const d = pdp.evaluate(at(action, ['domain_admin']));
+      expect(d.decision, `${action} by domain_admin`).toBe('allow_with_obligations');
+      expect(d.obligations, `${action} by domain_admin`).toEqual([{ type: 'human_gate' }]);
+      expect(pdp.evaluate(at(action, ['domain_admin'], 'C3')).decision, `${action} by domain_admin at C3`).toBe('deny');
+      for (const b of [tenant, platform]) {
+        const r = pdp.evaluate(asBinding(action, b));
+        expect(r.decision, `${action} by ${b.roleCode}`).toBe('allow_with_obligations');
+        expect(r.obligations, `${action} by ${b.roleCode}`).toEqual([{ type: 'human_gate' }]);
+        expect(pdp.evaluate(asBinding(action, b, 'C3')).decision, `${action} by ${b.roleCode} at C3`).toBe('deny');
+      }
+      // A purpose is required, as for every governed act.
+      expect(pdp.evaluate({ ...at(action, ['domain_admin']), purposeId: null }).decision, `${action} without a purpose`).toBe('deny');
+    }
+  });
+
+  it('who does not hold them: the knowledge owner, the analyst, the retrieval subscriber (the check withdraws through its own port, never through this action), the auditor, the strategy owner; a tenant_admin bound at the DOMAIN scope holds neither', () => {
+    for (const action of ['graph.projection.withdraw', 'graph.projection.rebuild']) {
+      for (const role of ['knowledge_owner', 'domain_analyst', 'retrieval_subscriber', 'auditor', 'strategy_owner', 'resolution_manager', 'record_authority', 'retention_steward', 'executive']) {
+        const r = pdp.evaluate(at(action, [role]));
+        expect(r.decision, `${action} by ${role}`).toBe('deny');
+        expect(r.reason, `${action} by ${role}`).toBe('no qualifying role binding for action in resolved scope');
+      }
+      expect(pdp.evaluate(at(action, ['tenant_admin'])).decision, `${action} by tenant_admin bound at the domain`).toBe('deny');
+    }
+  });
+
+  it('the rules match EXACTLY and nothing near them inherits: a near-name is caught by no rule (indeterminate); graph.read stays a prefix rule without the gate', () => {
+    for (const action of ['graph.projection.withdrawal', 'graph.projection.withdraw.now', 'graph.projection.rebuilt', 'graph.projection', 'graph.projections.withdraw']) {
+      const r = pdp.evaluate(at(action, ['domain_admin', 'platform_admin']));
+      expect(r.decision, action).toBe('indeterminate');
+      expect(r.reason, action).toMatch(/no rule covers action/);
+    }
+    const read = pdp.evaluate(at('graph.read', ['domain_analyst'], 'C1'));
+    expect(read.decision).toBe('allow_with_obligations');
+    expect(read.obligations).toEqual([{ type: 'audit_access' }]);
+  });
+
+  it('the PDP alone does not distinguish a human from an agent — the gate the PEP discharges refuses the agent', () => {
+    const r = pdp.evaluate({ ...at('graph.projection.rebuild', ['domain_admin']), principal: { principalId: '0193a3d0-0000-7000-8000-0000000000aa', kind: 'agent', assurance: 'password', bindings: [{ roleCode: 'domain_admin', scope: 'DOMAIN' as const, tenantId: T, domainId: D }] } });
+    expect(r.decision).toBe('allow_with_obligations');
+    expect(r.obligations).toEqual([{ type: 'human_gate' }]);
+  });
+});

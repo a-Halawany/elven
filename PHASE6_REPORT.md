@@ -3444,3 +3444,132 @@ every deployment leg (S7).
 its chain green, then #56 retargeted and merged after it; Codex's bounded review of B18/B19 if the owner wants one; the owner's decision on a
 public host for the recipient; the owner's key for Comtrade; the owner's walk of the demonstration; B20 (index-tier degradation) next from the
 register; comprehensive hardening after the feature scope, with the residuals and the register rows left for it.
+
+## 34. The checkpoint after B19's records head `3ea676d` (2026-09-22): #55 merged under the owner's word with its chain preserved as it ran (the ci red on the C15 recheck step by design; C17 finalize skipped); B20 implemented — the index tier: the six projection partitions with a derived watermark on every graph and memory read, the symmetric check that withdraws, the operator's withdrawal and the rebuild writer, the labelled last-valid reads and the constrained traversals, the memory content tier's metadata-only fallback, the deletion pause and the briefing's flag; the demonstration's edges projection withdrawn on a representation review, its explore walk served from the event log and constrained, its approved deletion paused at execution, its briefing undegraded by the projection, the partition restored and re-verified
+
+B19's hosted run at `087736e` was bound in the records commit `3ea676d` on PR #56 (§33.4). On 2026-09-22 the owner authorised the merges of
+#55 and #56 on Codex's B18/B19 review (B17-F1 closed; no new blocking finding): #55 merged to `main` as `e70f90f`; its chain, the state of
+#56 and the C15 return are §34.4. B20 is cut from `3ea676d` on `phase6-b20` (the PR base `phase6-b19`, stacked on #56; the candidate
+UNCOMMITTED while this section was written — the commit that carries it is the candidate). §33 stands as written; its Missing line
+"index-tier degradation behaviours (B20 …)" is lifted here.
+
+### 34.1 What B20 implements (migration 0080) — `audit/CP6_BATCHES.md` §B20 for the mechanism
+
+- **The state object and the derived watermark.** There is no lexical or vector index: the index tier IS the six derived projections every
+  graph and memory read serves from. `graph.projection_partitions` (one row per domain and projection; `serving | withdrawn`; the
+  withdrawal's instant, actor, reason and check; the representation version — the derivation rule's, declared by a SQL constant) and the
+  append-only `graph.projection_events`; the watermark NEVER stored — `graph.projection_state()` derives per partition the domain's
+  revision, the sequence the retrieval subscriber verified through (the live contiguous applied prefix of its deliveries, the dispatcher's
+  cursor beside it), the lag, and the condition `current | lagging | unverified | withdrawn`. Every one of the twelve exploration and memory
+  reads reads the state FIRST in its transaction and answers a `projection` block; the label is the wording, the flag the fact; lag is
+  VERIFICATION lag (the ports write projection and log in one transaction).
+- **The one derivation and the symmetric check that withdraws.** Six set-returning functions (`graph.expected_*`, `memory.expected_items`
+  with the policy columns) — one rule for the check, the rebuild and the fallback reads; `graph.rebuild_projections()` re-issued SYMMETRIC
+  (mismatched, missing, unexpected, the representation; six rows) where the JOIN-only check passed a poisoned and a missing row;
+  `graph.record_retrieval_check` sums the four into the recorded `mismatched`, holds the six partition locks shared, and WITHDRAWS every
+  failed partition in the same transaction under the subscriber's own authority; every failed re-check appends a `changed false` row (the
+  ledger of a standing failure).
+- **The operator's acts.** `graph.projection.withdraw` (idempotent; a second reason is a second row) and `graph.projection.rebuild` — the
+  ONLY way back to `serving`: exact, human-gated administrator rules; the writer under the partition's exclusive lock UPDATEs the drifted
+  rows, INSERTs the missing ones from the log, the canonical record or the claim's lineage — or names them unrebuildable, never fabricates —
+  DELETEs the poisoned ones, refuses a poisoned row that is held (the holders classified, the dangling references named), re-checks, and
+  records `rebuilt` or `restored` or `rebuild_refused`; ONE `GraphChanged/projection.rebuilt` with no identities, no edges and no walk —
+  the retrieval subscriber re-verifies, the five other graph subscribers apply nothing, the relationships subscriber receives nothing.
+- **The labelled reads and the constrained traversals.** While a partition is withdrawn the listing and get routes serve the LAST VALID
+  STATE from the log joined to the projection row (drifted rows with `drift`; missing rows metadata-only; poisoned rows never); the search's
+  entity leg over the log with `complete`/`bounds`/the note always; `/neighbourhood` and `/path` constrained to depth 2 with
+  `bound.projection` and the revision exposed — the walk, not a refusal; every fallback under the same capability, action and forced RLS.
+- **The memory content tier.** The content tier (the canonical version payloads and the vault bytes) told apart from the metadata tier (the
+  projections and the canonical header): a content-tier failure at the canonical read answers 200 METADATA-ONLY with no access row, one
+  `memory.retrieval_degraded` ledger row and `EYE-DEG-001` as the audit result code; the purpose gate the audience list alone while the tier
+  is down (narrower, never wider); withdrawn AND down → the ONE refusal B20 adds to a read (503 `EYE-DEG-001`); the evidence bytes' case OUT
+  by the A7 doctrine (a missing and a corrupt read are the same shape to a caller — stated).
+- **The deletion pause and the briefing's flag.** `retention.begin_execution` refuses a deletion while `edges_current` or
+  `memory_items_current` is withdrawn (`projection_withdrawn → unresolved_dependency → human_review`; the approvals revoked, no attempt
+  counted); the briefing composer marks `degraded` with the reason while the memory projection is withdrawn, the agent's `on_degraded`
+  stops, and the content's WATERMARK carries the memory projection's state (the state only, so the digest is stable; on the watermark
+  because BRF@v1 forbids an additional top-level key — stated).
+- **The pages and the walks.** The subscriptions page's Projections table with the two governed acts and the answers verbatim; the explore,
+  search, memory and overview pages rendering from the flag; `apps/web/lib/graph.ts` the types and clients; the memory walk asserting
+  `unverified` on the gate (no scheduler, no subscription); a new projections walk (the table; the withdrawal and the label on the search
+  page; the rebuild; the refusals).
+
+### 34.2 The local results
+
+`phase6-graph-projections-b20.test.ts` **9/9** on two fresh databases (29.63 s / 29.76 s; the 17 `B20 EVIDENCE` lines each — the six
+V04-T-024/026 items per case); the neighbouring set **344/344 in 24 files** on a fresh database (298.6 s; the reconcile pass's wider set
+562/562 in 38 files); the full integration suite **1070/1070 in 71 files** on a fresh database (625 s; = 1061 + 9); the upgrade proof with
+0022–0080 (59 migrations; 80 files; the registry's 36 rows — no row in B20; the digests equal; 275/275); the unit suite **2338/2338** in 55
+files (= 2295 + 43) and the meta suite 9/9; `pnpm boundaries` green (535 modules — red on the tree as the implementers left it, two
+type-only cycles, green after the reconcile pass); the web typecheck, build and 15 tests (= 11 + 4); the browser gate **51/51** on a fresh
+database (= 48 + 3; `evidence/cp6/b20-browser.txt`).
+
+### 34.3 The NORDWERK demonstration — `evidence/cp6/act-b20.txt`
+
+Rehearsed first on a restored copy (`eye_demo_b20`; `evidence/cp6/b20-rehearsal.txt` — the third rehearsal held whole, 39 checks; the
+first stopped on the act's own briefing pin — the demonstration's briefing is degraded by its SOURCES (B10), which the pin had attributed to
+the projection; the second on the act's own scene-1 wait and its lookups against the revoked subscription's rows; both act-side), then on
+`eye_demo` (the backup FIRST to `.eye-local/backups/` — durable; 0080 applied, the partitions seeded; the API restarted on the B20 build):
+the register 36/14/0 with L3-I02's clause and the strict check passing on every partition of both domains; the retrieval subscriptions of
+both domains revoked and registered anew (the method changed), each replacement replaying the revoked cursor's own event and verifying;
+A. Hoffmann's search and neighbourhood `current` at revision 14359 = the verified sequence = the checkpoint; the administrator's withdrawal
+of `edges_current` ("representation review before the ontology proposal") — the search still `current`, the neighbourhood served from the
+log, labelled `EYE-DEG-001` and constrained to two hops, `/edges/list`, `/path` and `/overview` from the log, a second withdrawal
+idempotent; P. Novák's approved deletion PAUSED at execution `(projection_withdrawn)` with the approvals revoked and no attempt counted;
+S. Okafor's briefing NOT degraded by the projection (the content's watermark `projection.memory serving`; its `degraded true` the
+sources'); L. Brandt's memory retrieval unaffected; the REBUILD → `restored` (`updated 0, inserted 0, removed 0` — honest), the ledger
+`withdrawn → withdrawn → restored`, the `projection.rebuilt` event at 14497 with six deliveries (retrieval verified; five applied with
+nothing); the paused deletion resolved again and WITHDRAWN (nothing retired); the reads `current` at 14497 with the bound lifted. ALL
+SCENES HELD (39 checks, 11.3 s).
+
+### 34.4 Heads, hosted results, statuses
+
+| Head | What | Hosted `ci` | Hosted C19 |
+|---|---|---|---|
+| `3ea676d` | B19's records head on PR #56 (`phase6-b19` → `phase6-b18`; NOT merged — its base chain cannot complete while `main`'s ci is red on the C15 recheck; the retarget to `main` and the merge await the C15 return and the owner's word) | 35174994149 green (§33.4) | 35174994150 green |
+| **`e70f90f`** | **`main`: #55 (B18 at `4a7f43a`) merged 2026-09-22T19:07Z under the owner's word on Codex's B18/B19 review; the chain preserved as it ran, not re-run** | **35771687190 FAILED — build-test green, browser-regression green; the supply-chain job red on "C15 patched-image recheck (blocking; fails when a compatible fixed official image exists)" while the C15 gate itself passed (findings 44 across linux/amd64 + linux/arm64, governed 6 records, unmatched 0): BY DESIGN since 2026-09-22 — compatible fixed OFFICIAL images exist (`postgres:18-alpine` `sha256:77f58511…`, `redis:8-alpine` `sha256:ba6e394f…`), and every ci run's supply-chain job is red on that step until the governed return lands; C17 finalize 35773974178 SKIPPED (it requires ci success); C19 anchor 35773990447 green** | 35771687139 green |
+| **`1f6d04c`** | **B20** (0080; the partitions and the derived watermark, the symmetric check that withdraws, the operator's withdrawal and the rebuild writer, the labelled reads and the constrained traversals, the memory content tier, the deletion pause, the briefing's flag; the harness; the act) — PR #58 `phase6-b20` → `phase6-b19` (stacked on #56; retargeted to `main` after #56; the merges await the owner's word) | **35779940271 attempt 2** — build-test job 106930091028 green: unit 2338/2338 and the meta suite 9/9, acceptance 58/58, the integration suite **1070/1070 in 71 files** on a fresh database (`phase6-graph-projections-b20` 9/9), the upgrade proof +59 rows / 80 files, C18 612/612 + 44; browser-regression job 106930093569 **51 passed** (the B20 three); **supply-chain job 106930091021 RED on the C15 patched-image recheck step alone** (the C15 gate itself green — 44 findings governed by 6 records, 0 unmatched; the recheck fails by design while the return to the official images, draft PR #57, awaits the owner); attempt 1 (build-test job 106922581654) failed on ONE unrelated B14 https-recipient case (`phase6-retention-b14` H2: the tenth attempt's receipt carried no HTTP status on the runner; 1069/1070) — preserved, re-run once — `evidence/cp6/hosted-1f6d04c-build-test-summary.txt` | 35779940295 green |
+
+Statuses: AU-MEM-0067, AU-MEM-0068 and AU-MEM-0083 gain their evidence and stay `open` until the hosted run binds (AU-MEM-0067's second
+condition is met partly — the canonical read, not the vault read — and is promoted only with the owner's acceptance of D10 as the content
+tier's evidence boundary); AU-MEM-0070 stays `verified:local` with its evidence corrected (the JOIN-only note, the symmetric check, the
+writer); V03-T-098 partial → implemented, V03-T-108 missing → implemented, V03-T-245 unverified → `passed:harness`, DP-38-005 missing →
+implemented, IA-35-005 missing → partial; V03-T-097 stays partial (the evidence bytes' 409); V03-T-101 and V03-T-112 with the evidence
+corrected; IA-34-005, DP-33-005 and DP-37-005 stay partial with the B20 clause — every row carrying "no lexical/vector index exists; the
+index tier is the projection set; the representation version is the derivation rule"; L3-I02's `bound_to` gains the clause and the row
+stays partial (the register 36/14/0). The split stays **3,555 = 3,179 open + 339 local + 37 CI** (no unit promoted by a local run). No
+completion percentage; no deployment leg accepted.
+
+### 34.5 Functioning, partial, missing — and the acceptance work remaining
+
+**Functioning** — everything §33.5 listed, and now index-tier degradation with its boundary lines: no lexical/vector index exists — the index
+tier is the projection set and the representation version is the derivation rule; the six partitions with a derived watermark on every one
+of the twelve exploration and memory reads (the revision, the verified sequence, the dispatcher's cursor, the lag, each partition's
+condition); the symmetric check that withdraws a drifted, poisoned, missing, policy-inconsistent or outdated-representation partition
+where the JOIN-only check passed poisoned and missing rows; the operator's withdrawal and the rebuild writer from the log, the canonical
+record and the claim's lineage with the unrebuildable named and the held poison refused; the last-valid reads from the log, the
+constrained traversals, the search's completeness said; the memory content tier answering metadata-only for the canonical read with no
+access row and its own ledger row — the evidence-bytes case OUT by the A7 doctrine; the deletion paused while a projection the safe scope
+reads is withdrawn; the briefing's flag; the two governed acts on the subscriptions page and the projections walk on the gate; the other
+modules' projections (intelligence, prediction, twin, simulation, decision) OUTSIDE the partition model, with their read-only diagnostics;
+the ○ fixture set (sixteen files planting projection rows without events, under no retrieval subscription) left for the hardening pass.
+
+**Partial** — the twelve exploration and memory routes carry the block while the resolutions, mappings, impact and reassessment routes serve
+a withdrawn partition unlabelled (the next batch); a held poisoned row is a person's decision (no forced-removal act); a missing resolution
+row has no exit in B20; verification is event-driven (a row tampered after the last check reads `current` until the next event); the
+memory check does not see a drifted content column with a correct version; the source kinds beyond the telemetry rule, the observed
+series-window basis, the communication kind on the harness only, a warning-based record not marked when its forecast is withdrawn, memory
+retention declared and not executed (§33.5's Partial); the fourteen interface contracts of §32.5; the rest of §32.5's Partial.
+
+**Missing** — a governed cross-domain REFERENCE (sharing without a copy — an imported claim is refused as a basis until it exists);
+replication and portability packages; encryption of the package beyond TLS; the communications/telemetry INGESTION connectors and the
+analyses object; the remaining fourteen interface contracts; an in-migration rebuild for a representation bump (deferred to the migration
+that first bumps the constant); every deployment leg (S7).
+
+**Acceptance work remaining** — B20's hosted run at `1f6d04c` is bound here once (no records-refresh chain; its supply-chain job red on
+the C15 recheck step alone, not on the candidate; AU-MEM-0068 and AU-MEM-0083 promoted open → verified:ci by it); the C15 return to the official images (`maintenance/c15-return-to-official-2026-09`, the
+draft PR #57 to `main`: the re-pin, the provenance and compatibility evidence, the SCX re-issues whose `approved_on` is the owner's; the
+merge is the owner's word);
+#56's retarget to `main` and its merge after `main`'s chain is green; B20's PR retargeted after #56; Codex's bounded review of B20 if the
+owner wants one; the owner's walk of the demonstration; the owner's key for Comtrade; the owner's decision on a public host for the
+recipient; comprehensive hardening after the feature scope, with the residuals and the register rows left for it.

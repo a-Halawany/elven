@@ -7,6 +7,7 @@
  */
 import { sql } from 'kysely';
 import type { Tx } from '../shared/db.js';
+import type { ProjectionName } from '../graph/projections/projection-state.js';
 
 abstract class ExecutiveCore {
   readonly #tx: Tx;
@@ -68,6 +69,25 @@ export interface ExecutiveReads {
   readMemoryItems(): any;
   /** B10-F3: the items' event ledger (a withdrawal's instant). */
   readMemoryItemEvents(): any;
+  /**
+   * B20 (0080; D12): the six partitions' state with the DERIVED watermark — graph.projection_state() under the established context
+   * (briefing.compose is among the actions it admits). The composer reads it to say whether memory_items_current is withdrawn.
+   */
+  projectionState(): Promise<Array<Record<string, unknown>>>;
+  /**
+   * B20 (0080): the ONE derivation of a projection from its log, read as the CALLER under the event tables' forced RLS — the
+   * graph capability's `expected` copied, so the shared fallback reader (graph/projections/fallback.ts memoryItemsFromLog)
+   * composes the memory items from their log for a briefing while the partition is withdrawn.
+   */
+  expected(projection: ProjectionName, a: { tenantId: string; domainId: string }): Promise<Array<Record<string, unknown>>>;
+  /**
+   * B20: the four graph projections beside readStrategy — the fallback reader's structural pick (ExpectedReads) names them, so
+   * the executive capability satisfies it without a cast; the briefing composer reads the memory items alone, under RLS as ever.
+   */
+  readEntities(): any;
+  readEdges(): any;
+  readResolutions(): any;
+  readInvalidations(): any;
   isMember(a: { roomId: string; principal: string }): Promise<boolean>;
   liveApprovals(a: { packageId: string; version: number }): Promise<Array<{ approval_id: string; approver_principal_id: string; expires_at: string }>>;
   /** The approvals that STOOD at an instant, the approver's eligibility reconstructed then (0049). */
@@ -149,6 +169,27 @@ class ExecutiveCapabilityImpl extends ExecutiveCore implements RoomWrites, Brief
   readWarningSuppressions(): any { return this.from('prediction.warning_suppressions'); }
   readMemoryItems(): any { return this.from('memory.items_current'); }
   readMemoryItemEvents(): any { return this.from('memory.item_events'); }
+  readEntities(): any { return this.from('graph.entities_current'); }
+  readEdges(): any { return this.from('graph.edges_current'); }
+  readResolutions(): any { return this.from('graph.resolutions_current'); }
+  readInvalidations(): any { return this.from('graph.invalidations_current'); }
+  async projectionState(): Promise<Array<Record<string, unknown>>> {
+    return this.call<Record<string, unknown>>(sql`select * from graph.projection_state()`);
+  }
+  async expected(projection: ProjectionName, a: { tenantId: string; domainId: string }): Promise<Array<Record<string, unknown>>> {
+    switch (projection) {
+      case 'entities_current': return this.call<Record<string, unknown>>(sql`select * from graph.expected_entities(${a.tenantId}::uuid, ${a.domainId}::uuid)`);
+      case 'resolutions_current': return this.call<Record<string, unknown>>(sql`select * from graph.expected_resolutions(${a.tenantId}::uuid, ${a.domainId}::uuid)`);
+      case 'edges_current': return this.call<Record<string, unknown>>(sql`select * from graph.expected_edges(${a.tenantId}::uuid, ${a.domainId}::uuid)`);
+      case 'strategy_current': return this.call<Record<string, unknown>>(sql`select * from graph.expected_strategy(${a.tenantId}::uuid, ${a.domainId}::uuid)`);
+      case 'invalidations_current': return this.call<Record<string, unknown>>(sql`select * from graph.expected_invalidations(${a.tenantId}::uuid, ${a.domainId}::uuid)`);
+      case 'memory_items_current': return this.call<Record<string, unknown>>(sql`select * from memory.expected_items(${a.tenantId}::uuid, ${a.domainId}::uuid)`);
+      default: {
+        const never: never = projection;
+        throw new Error(`${String(never)} is not a projection of this domain`);
+      }
+    }
+  }
   async recordMemoryAccess(a: { itemId: string; tenantId: string; domainId: string; version: number; purpose: string; reader: string; asOf: string | null; correlationId: string }): Promise<string> {
     const rows = await this.call<{ id: string }>(sql`select memory.record_access(${a.itemId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.version}::int, ${a.purpose}, ${a.reader}::uuid, ${a.asOf}::timestamptz, ${a.correlationId}::uuid) as id`);
     return String(rows[0]?.id);

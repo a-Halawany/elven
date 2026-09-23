@@ -1,0 +1,10 @@
+=== the unit suite at the B20 tree (apps/api: pnpm test — vitest, then the meta suite), 2026-09-22 — with the B20 unit files (projection-state 19: the eight label forms byte for byte, worstOf, blockOf with checkpoint_seq and domain_withdrawn, ROUTE_PARTITIONS; change-events-projection 8: the kind, the builder with no identities and no edges, restored cut at 200 honouring the port's flag, the seven consumer digests distinct with retrieval's changed; memory-content-tier 7: isContentTierFailure over the classes and the two exact codes; the PDP describe for graph.projection.withdraw / rebuild; the refusals describe for the five B20 texts and the 409-not-422 probe) ===
+
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/apps/api
+ Test Files  55 passed (55)
+      Tests  2338 passed (2338)
+   Duration  256.58s (transform 4.22s, setup 0ms, import 9.53s, tests 1292.88s, environment 3ms)
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/apps/api
+ Test Files  1 passed (1)
+      Tests  9 passed (9)
+   Duration  201.98s (transform 10ms, setup 0ms, import 15ms, tests 201.90s, environment 0ms)

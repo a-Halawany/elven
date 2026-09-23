@@ -1176,9 +1176,16 @@ describe('C7 — Phase 0, 1 and 2 are unchanged underneath', () => {
   it('every graph projection is derivable from its event log', async () => {
     const rows = await readAs(fx, resolutionManager, resolutionManagerId,
       async (cap) => cap.rebuildProjections());
-    expect(rows.length).toBeGreaterThan(0);
+    // B20 (0080): the check is SYMMETRIC over the six partitions of the index tier (the memory projection the sixth): a row whose
+    // state differs from its log (mismatched), a row the log has and the projection lacks (missing), a row the projection has and the
+    // log does not know (unexpected — poisoned) and a partition verified under an outdated representation version each fail it.
+    // Until 0080 the check was JOIN-only (0065:1335-1342) and a poisoned or a missing row passed it.
+    expect(rows.map((r) => r.projection)).toEqual(['entities_current', 'resolutions_current', 'edges_current', 'strategy_current', 'invalidations_current', 'memory_items_current']);
     for (const r of rows) {
       expect(Number(r.mismatched), `${r.projection} drifted from its event log`).toBe(0);
+      expect(Number(r.missing), `${r.projection}: a row its log has is missing from the projection`).toBe(0);
+      expect(Number(r.unexpected), `${r.projection}: a projection row its log does not know (poisoned)`).toBe(0);
+      expect(r.representation_ok, `${r.projection}: the partition was verified under an outdated representation version`).toBe(true);
     }
   });
 

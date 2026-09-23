@@ -265,9 +265,11 @@ jobs:
       - name: Install Chrome (stable channel)
         run: pnpm exec playwright install chrome
       # Every browser suite runs in one invocation: the Phase 0 ten stay a standing
-      # regression gate, the Phase 1 sixteen are the A12 acceptance journey, and the B18 twenty walk the
-      # retention and memory workspaces (e2e/phase6-*.spec.ts; the tenant acts through the working-domain chooser).
-      - name: Browser regression gate (Phase 0 ten + Phase 1 A12 sixteen + B18 twenty — the retention and memory walks, blocking)
+      # regression gate, the Phase 1 sixteen are the A12 acceptance journey, the B18 twenty walk the
+      # retention and memory workspaces (e2e/phase6-*.spec.ts; the tenant acts through the working-domain chooser),
+      # the B19 two derive a memory record from a source, and the B20 three walk the index tier's projections
+      # (withdraw → the labelled read → rebuild → the refusals). The name is a record, not a gate condition.
+      - name: Browser regression gate (Phase 0 ten + Phase 1 A12 sixteen + B18 twenty + B19 two + B20 three — the retention, memory and projections walks, blocking)
         env:
           EYE_DB_HOST: localhost
           EYE_DB_MIGRATE_PASSWORD: ${{ env.EYE_DB_PASSWORD }}

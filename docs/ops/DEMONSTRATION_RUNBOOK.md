@@ -279,3 +279,39 @@ nothing retired; no subscription re-registered (no consumer method changed). **T
 **The page:** `/graph/memory` — "Derive from a source" (the basis kind and id, the source kind, the class, the title, the audience, the
 validity, the retention); the answer says the classification `declared / inherited / applied`; a derivation the person's clearance does not
 cover is refused; the record form records human records only.
+
+**The index tier (B20, 2026-09-22).** `eye_demo` is migrated through 0080; the API serves the B20 build. The act
+(`scripts/phase6/act-b20.mjs`, runner `$S/b20/act-b20.sh`) re-registers the RETRIEVAL subscription of BOTH domains when its consumer
+digest differs from the process's (the B8 rule: the retrieval consumer's method changed in B20 — the symmetric check that withdraws; the
+six other kinds are listed and left) — each replacement replays from the revoked cursor's OWN event (`fromSeq` = the cursor − 1), so its
+first check applies and the domain reads `current`; a caught-up domain would otherwise leave the replacement `unverified` until its next
+change. Then: the register through the route (36/14/0; L3-I02's `bound_to` names `B20 (0080)`) and the strict check through
+`/projections/verify` on every partition of both domains — the act STOPS before any withdrawal if a row fails (a drift found on `eye_demo`
+is a finding to record, never an act); A. Hoffmann's search and neighbourhood printing the projection block; the administrator (the
+platform-admin session acting in the origin — the demonstration has no domain_admin persona) WITHDRAWS `edges_current` (`POST
+…/graph/projections/edges_current/withdraw {reason}` under `graph.projection.withdraw`; human-gated, C2) with the reason "representation
+review before the ontology proposal", the reads labelled and the walk constrained, a second withdrawal idempotent; P. Novák opens a
+deletion on a candidate manifest looked up at run time (the first that resolves executable is taken, the others withdrawn), H. Bergmann
+approves, the execution PAUSES `(projection_withdrawn)`; S. Okafor continues the domain's newest briefing in its room (NOT degraded by the
+projection — its `degraded true` is the sources', B10); L. Brandt retrieves a memory item (unaffected); the administrator REBUILDS
+(`POST …/graph/projections/edges_current/rebuild {reason}` under `graph.projection.rebuild`) → `restored` (`updated 0, inserted 0,
+removed 0` — nothing drifts on the demonstration; the harness carries drift, poison, missing rows and the representation version), the
+`projection.rebuilt` event's six deliveries settled (the dispatcher's reconcile tick applies the replayed delivery — the act waits up to
+150 s), the paused deletion resolved again and WITHDRAWN. **The operator's own acts** run through `/graph/subscriptions` — the
+"Projections (the index tier)" table: one row per partition (condition, state, revision / verified through / lag, withdrawn since and
+the reason, the representation, the last rebuild, the last check's counts), the reason input `#preason` (eight characters at least) and
+the two governed buttons Withdraw and Rebuild per row, the answers verbatim, the projection events beneath; a refused rebuild names the
+unrebuildable rows, the held poisoned rows with their holders, and the dangling references. **A representation bump** (a migration that
+changes `graph.projection_representation_version()`) withdraws every partition of every domain at its next check; each returns to service
+by a human-gated rebuild — six per domain, in the order entities → resolutions → edges → strategy → invalidations → memory — and every
+read is served from the log under the new rule, labelled, meanwhile; B20 bumps nothing. **What the act leaves:** each run revokes and
+re-registers the retrieval subscription of a domain whose subscription is outdated (a run on the same build leaves it), withdraws and
+restores `edges_current` of the origin once (three ledger rows), leaves one deletion action withdrawn and one briefing; nothing retired;
+no persona created; no `.eye-local` edit. **The rehearsal copy** (`eye_demo_b20` on :3411, `$S/b20/rehearsal.sh`) needs nothing beyond
+B17's edits; the first rehearsal stopped on the act's own briefing pin (the sources' degradation attributed to the projection), the second
+on the act's own scene-1 wait (30 s against the 60-second reconcile tick) and its lookups against the revoked subscription's rows — both
+act-side, corrected; the third held. **The browser gate** stops the demonstration API and web as before (§8, B18) and is restarted by
+`scripts/ops/demo-restart.sh`; the B20 run was on `eye_browser_20260922` with isolated vault roots (51 tests). **The backup rule (from
+B20):** the demonstration's pre-migration backups live under `.eye-local/backups/` (`eye_demo-pre-0080-20260922T193304Z.dump`,
+51,890,423 bytes) — a durable directory the host never sweeps; the B18 and B19 dumps were written to the session scratchpad, which the host
+sweeps after three days, and were LOST that way over the five-day gap (stated).

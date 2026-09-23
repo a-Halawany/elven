@@ -14,6 +14,7 @@
  */
 import { sql } from 'kysely';
 import type { Tx } from '../shared/db.js';
+import type { ProjectionName } from './projections/projection-state.js';
 
 abstract class GraphCore {
   readonly #tx: Tx;
@@ -178,9 +179,24 @@ export interface GraphReads {
    */
   correctionsOutstanding(a: { limit: number; cursor: OutstandingCursor | null }):
     Promise<{ rows: Array<Record<string, unknown>>; total: number }>;
+  /**
+   * B20 (0080): the check is SYMMETRIC — the rows in both whose state differs (`mismatched`), the rows the log has and the
+   * projection lacks (`missing`), the rows the projection has and the log does not know (`unexpected`: the poisoned rows) —
+   * six rows (the memory projection is the sixth) with whether the partition was verified under the current derivation rule.
+   * Still a COMPARISON: the writer is `rebuildProjection` on the projections capability.
+   */
   rebuildProjections(): Promise<Array<{
-    projection: string; live_rows: string; rebuilt_rows: string; mismatched: string;
+    projection: string; live_rows: string; rebuilt_rows: string; mismatched: string; missing: string; unexpected: string; representation_ok: boolean;
   }>>;
+  /** B20 (0080): the six partitions' state with the DERIVED watermark — graph.projection_state() under the established context (one call, six rows). */
+  projectionState(): Promise<Array<Record<string, unknown>>>;
+  /** B20: the partition rows and their ledger (the subscriptions page reads the ledger; the state comes from projectionState). */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readProjectionPartitions(): any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readProjectionEvents(): any;
+  /** B20: the ONE derivation, read as the CALLER under the event tables' forced RLS — the fallback readers' source while a partition is withdrawn. */
+  expected(projection: ProjectionName, a: { tenantId: string; domainId: string }): Promise<Array<Record<string, unknown>>>;
 }
 
 // ───────────────────────── resolver ─────────────────────────
@@ -280,6 +296,11 @@ export interface MemoryWrites extends GraphReads {
   withdrawMemoryItem(a: { itemId: string; tenantId: string; domainId: string; reason: string; actor: string; eventId: string; correlationId: string }): Promise<void>;
   /** OBJ-15: the access ledger row of a retrieval, written inside the read's own transaction. */
   recordMemoryAccess(a: { itemId: string; tenantId: string; domainId: string; version: number; purpose: string; reader: string; asOf: string | null; correlationId: string }): Promise<string>;
+  /**
+   * B20 (0080, D9): the content tier did not answer — the retrieval served the item's METADATA only and records THIS ledger row
+   * (memory.retrieval_degraded), never an access row (memory.item_access requires the served version; nothing was served).
+   */
+  recordRetrievalDegraded(a: { itemId: string; tenantId: string; domainId: string; version: number; purpose: string; reader: string; cause: 'content_unavailable'; detail: string; correlationId: string }): Promise<string>;
 }
 
 // ───────────────────────── strategy ─────────────────────────
@@ -359,8 +380,9 @@ export interface SubscriptionWrites extends GraphReads {
 /** What the relationships consumer holds under its one action: the subscriber's ports and the builder's assert (0066 §2). */
 export type RelationshipSubscriberWrites = GraphSubscriberWrites & EdgeWrites;
 export interface GraphSubscriberWrites extends GraphReads {
+  /** 0063; 0080 (B20): the recorded `mismatched` is the SUM mismatched + missing + unexpected + (NOT representation_ok), each `projections[]` row carries the four counts and `failed`, and `withdrawn` names the partitions the check took out of service in its own transaction ([{ projection, changed, withdrawn_since }]). */
   recordRetrievalCheck(a: { checkId: string; eventId: string; subscriptionId: string; tenantId: string; domainId: string; touched: Record<string, unknown>; actor: string; correlationId: string }):
-    Promise<{ check_id: string; projections: unknown[]; mismatched: number }>;
+    Promise<{ check_id: string; projections: unknown[]; mismatched: number; withdrawn: Array<{ projection: string; changed: boolean; withdrawn_since: string | null }> }>;
   proposeMappingReconciliation(a: { reconciliationId: string; tenantId: string; domainId: string; subjectKind: 'identifier' | 'edge' | 'resolution'; subjectId: string; fromEntityId: string | null; toEntityId: string | null;
     basis: string; causeEventId: string; subscriptionId: string; actor: string; correlationId: string }): Promise<string | null>;
   /** 0065 §7 (TT-04): open a reassessment on an edge whose inference record's basis moved (evidence or claim); false when already pending or not asserted. */
@@ -377,11 +399,27 @@ export interface PropagationAgentWrites extends GraphReads {
   revokePropagationAgent(a: { agentId: string; tenantId: string; domainId: string; reason: string; actor: string; eventId: string; correlationId: string }): Promise<void>;
 }
 
+// ───────────────────────── projections (CP-6 B20) ─────────────────────────
+
+/**
+ * The two governed acts on a projection partition (0080 §5, §7): the operator's WITHDRAWAL (idempotent — a second withdrawal
+ * is a second ledger row with `changed: false` and the earlier reason kept; no outbox event, a withdrawal changes no fact of
+ * the graph) and the REBUILD — the only transition from withdrawn to serving, under a per-partition advisory lock, from the
+ * ONE derivation the check uses; its answer is the port's own report (outcome rebuilt | restored | refused), never rethrown
+ * by the capability (a refusal is an outcome on the ledger, not a lost transaction — the B18.1 `copies_refused` idiom).
+ */
+export interface ProjectionWrites extends GraphReads {
+  /** The operator's withdrawal (graph.projection.withdraw): idempotent; the answer says whether the state changed. The operator passes NO check id. */
+  withdrawProjection(a: { eventId: string; tenantId: string; domainId: string; projection: ProjectionName; reason: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+  /** The rebuild (graph.projection.rebuild): outcome rebuilt | restored | refused with the report — the port's own answer, never rethrown by the capability. */
+  rebuildProjection(a: { rebuildId: string; tenantId: string; domainId: string; projection: ProjectionName; reason: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+}
+
 // ───────────────────────── implementation ─────────────────────────
 
 class GraphCapabilityImpl extends GraphCore
   implements ResolverWrites, ResolutionDecisionWrites, SplitWrites, EdgeWrites,
-             EdgeRetractionWrites, StrategyWrites, MemoryWrites, OntologyWrites, ImpactWrites, PropagationAgentWrites, SubscriptionWrites, GraphSubscriberWrites {
+             EdgeRetractionWrites, StrategyWrites, MemoryWrites, OntologyWrites, ImpactWrites, PropagationAgentWrites, SubscriptionWrites, GraphSubscriberWrites, ProjectionWrites {
   constructor(tx: Tx, action: string) { super(tx, action); }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -453,7 +491,27 @@ class GraphCapabilityImpl extends GraphCore
   readSourceContracts(): any { return this.from('observation.source_contracts_current'); }
   readSeriesRegistry(): any { return this.from('prediction.series_registry'); }
   readIndicators(): any { return this.from('prediction.indicators_current'); }
+  // B20 (0080): the partition rows and their append-only ledger (FORCE RLS by tenant/domain; a DOMAIN context reads its own six).
+  readProjectionPartitions(): any { return this.from('graph.projection_partitions'); }
+  readProjectionEvents(): any { return this.from('graph.projection_events'); }
   /* eslint-enable @typescript-eslint/no-explicit-any */
+  async projectionState(): Promise<Array<Record<string, unknown>>> { return this.call<Record<string, unknown>>(sql`select * from graph.projection_state()`); }
+  /**
+   * The ONE derivation (0080 §2) read as the CALLER: `LANGUAGE sql STABLE`, no definer — the event tables' forced RLS applies
+   * to this read exactly as to every other read of the capability (policy equivalence: nothing widens while a partition is
+   * withdrawn). The six names are the six functions; anything else is a programming error, not a request.
+   */
+  async expected(projection: ProjectionName, a: { tenantId: string; domainId: string }): Promise<Array<Record<string, unknown>>> {
+    switch (projection) {
+      case 'entities_current': return this.call<Record<string, unknown>>(sql`select * from graph.expected_entities(${a.tenantId}::uuid, ${a.domainId}::uuid)`);
+      case 'resolutions_current': return this.call<Record<string, unknown>>(sql`select * from graph.expected_resolutions(${a.tenantId}::uuid, ${a.domainId}::uuid)`);
+      case 'edges_current': return this.call<Record<string, unknown>>(sql`select * from graph.expected_edges(${a.tenantId}::uuid, ${a.domainId}::uuid)`);
+      case 'strategy_current': return this.call<Record<string, unknown>>(sql`select * from graph.expected_strategy(${a.tenantId}::uuid, ${a.domainId}::uuid)`);
+      case 'invalidations_current': return this.call<Record<string, unknown>>(sql`select * from graph.expected_invalidations(${a.tenantId}::uuid, ${a.domainId}::uuid)`);
+      case 'memory_items_current': return this.call<Record<string, unknown>>(sql`select * from memory.expected_items(${a.tenantId}::uuid, ${a.domainId}::uuid)`);
+      default: throw new Error(`${String(projection)} is not a projection`);
+    }
+  }
   async subscriptionsMatching(a: { tenantId: string; domainId: string; eventType: 'GraphChanged' | 'MemoryCorrected'; changeKind: string }): Promise<Array<{ subscription_id: string; consumer_kind: string }>> {
     const rows = await this.call<{ s: Array<{ subscription_id: string; consumer_kind: string }> }>(sql`select graph.subscriptions_matching(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.eventType}, ${a.changeKind}) as s`);
     return rows[0]?.s ?? [];
@@ -524,10 +582,11 @@ class GraphCapabilityImpl extends GraphCore
   }
 
   async rebuildProjections(): Promise<Array<{
-    projection: string; live_rows: string; rebuilt_rows: string; mismatched: string;
+    projection: string; live_rows: string; rebuilt_rows: string; mismatched: string; missing: string; unexpected: string; representation_ok: boolean;
   }>> {
-    return this.call(sql`select projection, live_rows::text, rebuilt_rows::text,
-                                mismatched::text from graph.rebuild_projections()`);
+    // B20 (0080): the seven columns of the symmetric check — the counts as text (bigint), the representation as a boolean.
+    return this.call(sql`select projection, live_rows::text, rebuilt_rows::text, mismatched::text,
+                                missing::text, unexpected::text, representation_ok from graph.rebuild_projections()`);
   }
 
   async proposeOntologyVersion(a: Parameters<OntologyWrites['proposeOntologyVersion']>[0]): Promise<Record<string, unknown>> {
@@ -548,6 +607,20 @@ class GraphCapabilityImpl extends GraphCore
   async recordMemoryAccess(a: Parameters<MemoryWrites['recordMemoryAccess']>[0]): Promise<string> {
     const rows = await this.call<{ id: string }>(sql`select memory.record_access(${a.itemId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.version}, ${a.purpose}, ${a.reader}::uuid, ${a.asOf}::timestamptz, ${a.correlationId}::uuid) as id`);
     return rows[0]?.id ?? '';
+  }
+  async recordRetrievalDegraded(a: Parameters<MemoryWrites['recordRetrievalDegraded']>[0]): Promise<string> {
+    const rows = await this.call<{ id: string }>(sql`select memory.record_retrieval_degraded(${a.itemId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.version}::int, ${a.purpose}, ${a.reader}::uuid, ${a.cause}, ${a.detail}, ${a.correlationId}::uuid) as id`);
+    return rows[0]?.id ?? '';
+  }
+  // B20 (0080 §5): the operator's withdrawal passes NO check id (null); the retrieval subscriber's path is the port's own, inside graph.record_retrieval_check.
+  async withdrawProjection(a: Parameters<ProjectionWrites['withdrawProjection']>[0]): Promise<Record<string, unknown>> {
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select graph.withdraw_projection(${a.eventId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.projection}, ${a.reason}, null::uuid, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  // B20 (0080 §7): the report is the port's answer in every outcome (rebuilt | restored | refused); the port's REFUSALS (the standing, the name, the reason, a serving partition) are raised and mapped.
+  async rebuildProjection(a: Parameters<ProjectionWrites['rebuildProjection']>[0]): Promise<Record<string, unknown>> {
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select graph.rebuild_projection(${a.rebuildId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.projection}, ${a.reason}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
   }
   async admitObject(header: unknown, payload: unknown, digest: string): Promise<{ contentDigest: string }> {
     const rows = await this.call<{ content_digest: string }>(
@@ -767,9 +840,10 @@ class GraphCapabilityImpl extends GraphCore
         ${a.subscriptionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.fromSeq}::bigint, ${a.reason}, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
   }
   async recordRetrievalCheck(a: Parameters<GraphSubscriberWrites['recordRetrievalCheck']>[0]) {
-    const rows = await this.call<{ r: { check_id: string; projections: unknown[]; mismatched: number } }>(sql`select graph.record_retrieval_check(
+    type Answer = Awaited<ReturnType<GraphSubscriberWrites['recordRetrievalCheck']>>;
+    const rows = await this.call<{ r: Answer }>(sql`select graph.record_retrieval_check(
       ${a.checkId}::uuid, ${a.eventId}::uuid, ${a.subscriptionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${JSON.stringify(a.touched)}::jsonb, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
-    return rows[0]?.r as { check_id: string; projections: unknown[]; mismatched: number };
+    return rows[0]?.r as Answer;
   }
   async openEdgeReassessment(a: Parameters<GraphSubscriberWrites['openEdgeReassessment']>[0]): Promise<boolean> {
     const rows = await this.call<{ ok: boolean }>(sql`select graph.open_edge_reassessment(${a.edgeId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.trigger}, ${a.reason}, ${a.causeId}::uuid, ${a.actor}::uuid, ${a.correlationId}::uuid) as ok`);
@@ -831,6 +905,10 @@ export const GraphCapability = {
   },
   /** The relationships consumer (0066 §2): a subscriber that also asserts edges through the builder's port. */
   relationshipSubscriber(tx: Tx, action: string): RelationshipSubscriberWrites {
+    return new GraphCapabilityImpl(tx, action);
+  },
+  /** B20 (0080): the operator's two acts on a projection partition — the withdrawal and the rebuild. */
+  projections(tx: Tx, action: string): ProjectionWrites {
     return new GraphCapabilityImpl(tx, action);
   },
 };

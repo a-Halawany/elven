@@ -19,12 +19,26 @@
  * Search reads METADATA. It never reads evidence bytes: that is
  * `observation.evidence.retrieve`, a different action with its own decision and
  * its own custody record, and no amount of searching authorises it.
+ *
+ * CP-6 B20 (0080; D5, D6): every answer declares its PRODUCT STATE — the projection block the route read first in the same
+ * transaction (`projection`) — and its COMPLETENESS: the entity scan is bounded at 1,000 rows and the object scan at the
+ * 2,000 newest (bounds that were silent before B20), so `complete` says whether each leg saw everything and `note` says so
+ * in words. While `entities_current` is WITHDRAWN the entity leg runs over the ONE derivation (`graph.expected_entities`,
+ * joined to the projection rows — the last valid state, labelled by the block): a drifted row matches on the log's state,
+ * a poisoned row is never a hit, and a metadata-only row without a name cannot match and is skipped. Each entity hit says
+ * where it came from (`extra.from`).
  */
 import { Injectable } from '@nestjs/common';
 import type { GraphReads } from '../graph.capabilities.js';
 import { normalizeName } from '../entities/resolver.service.js';
+import { entitiesFromLog, type Scope } from '../projections/fallback.js';
+import type { ProjectionBlock } from '../projections/projection-state.js';
 
 export const MAX_RESULTS = 50;
+/** The bounds of the two scans (B20: declared on every answer, never silent). */
+export const ENTITY_SCAN_BOUND = 1_000;
+export const OBJECT_SCAN_BOUND = 2_000;
+export const BOUNDED_NOTE = 'the entity scan is bounded at 1,000 rows and the object scan at the 2,000 newest; a match beyond a bound is not returned';
 
 export interface SearchHit {
   kind: 'entity' | 'claim' | 'evidence';
@@ -49,6 +63,12 @@ export interface SearchResult {
    * whether an empty answer means "nothing" or "nothing you may see".
    */
   scope_note: string;
+  /** B20: whether each scan saw everything eligible (false when a bound was reached), the bounds, and the words. */
+  complete: { entities: boolean; objects: boolean };
+  bounds: { entities: number; objects: number };
+  note: string | null;
+  /** B20: the product state the route declared first in this transaction — null only when a caller supplied none. */
+  projection: ProjectionBlock | null;
 }
 
 const SCOPE_NOTE =
@@ -60,25 +80,32 @@ const CLAIM_TYPES = ['ENT', 'EVT', 'CLM', 'REL', 'ASM'];
 
 @Injectable()
 export class SearchService {
-  async search(cap: GraphReads, rawQuery: string, limit = MAX_RESULTS): Promise<SearchResult> {
+  async search(cap: GraphReads, rawQuery: string, limit = MAX_RESULTS, opts?: { projection?: ProjectionBlock; scope?: Scope }): Promise<SearchResult> {
     const query = rawQuery.trim();
     const cap_ = Math.max(1, Math.min(limit, MAX_RESULTS));
+    const projection = opts?.projection ?? null;
+    const bounds = { entities: ENTITY_SCAN_BOUND, objects: OBJECT_SCAN_BOUND };
     const empty: SearchResult = {
       query, normalized: normalizeName(query), entities: [], claims: [], evidence: [],
-      total: 0, scope_note: SCOPE_NOTE,
+      total: 0, scope_note: SCOPE_NOTE, complete: { entities: true, objects: true }, bounds, note: null, projection,
     };
     if (query.length < 2) return empty;
 
     const needle = query.toLowerCase();
     const normalized = normalizeName(query);
 
-    // ── entities ──
-    const entityRows = (await cap.readEntities().selectAll()
-      .limit(1_000).execute()) as Array<Record<string, unknown>>;
+    // ── entities — from the projection, or from the log while entities_current is withdrawn (the same bound) ──
+    const scope = opts?.scope;
+    const fromLog = projection !== null && projection.withdrawn.includes('entities_current') && scope !== undefined;
+    const entityRows = fromLog && scope !== undefined
+      ? await entitiesFromLog(cap, scope, ENTITY_SCAN_BOUND)
+      : (await cap.readEntities().selectAll().limit(ENTITY_SCAN_BOUND).execute()) as Array<Record<string, unknown>>;
     const entities: SearchHit[] = entityRows
       .map((e): SearchHit | null => {
+        // A metadata-only row without a name (the log carries none) cannot match and is skipped — nothing is inferred.
+        if (e['canonical_name'] === null || e['canonical_name'] === undefined) return null;
         const canonical = String(e['canonical_name']);
-        const norm = String(e['normalized_name']);
+        const norm = String(e['normalized_name'] ?? normalizeName(canonical));
         const why = norm === normalized ? 'normalised name is an exact match'
           : canonical.toLowerCase().includes(needle) ? 'canonical name contains the query'
           : norm.includes(normalized) && normalized.length > 0 ? 'normalised name contains the query'
@@ -87,9 +114,10 @@ export class SearchService {
         return {
           kind: 'entity' as const, id: String(e['entity_id']), label: canonical,
           detail: `${String(e['entity_type'])} — ${String(e['lifecycle_state'])}`,
-          matched_on: why, recorded_at: String(e['updated_at']),
+          matched_on: why, recorded_at: e['updated_at'] === null || e['updated_at'] === undefined ? null : String(e['updated_at']),
           extra: { entity_type: e['entity_type'], lifecycle_state: e['lifecycle_state'],
-                   normalized_name: norm, split_from: e['split_from'] },
+                   normalized_name: norm, split_from: e['split_from'] ?? null, from: fromLog ? 'log' : 'projection',
+                   ...(e['projected'] === false ? { projected: false } : {}), ...(e['drift'] === undefined ? {} : { drift: e['drift'] }) },
         };
       })
       .filter((x): x is SearchHit => x !== null)
@@ -98,7 +126,7 @@ export class SearchService {
     // ── claims and evidence, current version of each ──
     const objectRows = (await cap.readCanonicalObjects().selectAll()
       .orderBy('recorded_at' as never, 'desc')
-      .limit(2_000).execute()) as Array<Record<string, unknown>>;
+      .limit(OBJECT_SCAN_BOUND).execute()) as Array<Record<string, unknown>>;
     const current = new Map<string, Record<string, unknown>>();
     for (const r of objectRows) {
       const id = String(r['object_id']);
@@ -159,10 +187,13 @@ export class SearchService {
 
     const cappedClaims = claims.slice(0, cap_);
     const cappedEvidence = evidence.slice(0, cap_);
+    // COMPLETENESS, DISCLOSED (B20): a scan that filled its bound may have left a match unexamined; the answer says so.
+    const complete = { entities: entityRows.length < ENTITY_SCAN_BOUND, objects: objectRows.length < OBJECT_SCAN_BOUND };
     return {
       query, normalized, entities, claims: cappedClaims, evidence: cappedEvidence,
       total: entities.length + cappedClaims.length + cappedEvidence.length,
       scope_note: SCOPE_NOTE,
+      complete, bounds, note: complete.entities && complete.objects ? null : BOUNDED_NOTE, projection,
     };
   }
 }

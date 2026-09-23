@@ -104,10 +104,13 @@ const publishedEvent = (eventType: 'GraphChanged' | 'MemoryCorrected', kind: str
 const lineageFor = (claimId: string, evidenceId: string) =>
   sql`insert into intelligence.claim_lineage (claim_object_id, claim_version, scope, tenant_id, domain_id, claim_type, run_id, method_id, call_id, mode, evidence_object_id, evidence_digest, byte_start, byte_end, confidence, retrieval_decision_id, retrieval_audit_seq, admission_decision_id, correlation_id)
       values (${claimId}::uuid, 1, 'DOMAIN', ${T()}::uuid, ${D()}::uuid, 'REL', ${uuidv7()}::uuid, ${uuidv7()}::uuid, null, 'replay', ${evidenceId}::uuid, ${sha256(evidenceId)}, 0, 4, 0.8, ${uuidv7()}::uuid, 1, ${uuidv7()}::uuid, ${uuidv7()}::uuid)`.execute(su);
+/** An asserted edge planted WITH its edge.asserted event (B20, 0080: the symmetric retrieval check calls an event-less projection row poisoned and withdraws the partition). */
 const edgeOn = async (predicate: string, claimId: string, evidenceId: string): Promise<string> => {
   const edgeId = uuidv7();
   await sql`insert into graph.edges_current (edge_id, scope, tenant_id, domain_id, subject_entity_id, predicate, object_entity_id, valid_from, valid_to, state, claim_object_id, claim_version, evidence_object_id, evidence_digest, mode, confidence, asserted_by, correlation_id)
     values (${edgeId}::uuid, 'DOMAIN', ${T()}::uuid, ${D()}::uuid, ${E2}::uuid, ${predicate}, ${E1}::uuid, '2024-01-01T00:00:00Z', null, 'asserted', ${claimId}::uuid, 1, ${evidenceId}::uuid, ${sha256(evidenceId)}, 'replay', 0.8, ${owner.principalId}::uuid, ${uuidv7()}::uuid)`.execute(su);
+  await sql`insert into graph.edge_events (event_id, scope, tenant_id, domain_id, edge_id, event, actor_principal_id, details, correlation_id)
+    values (${uuidv7()}::uuid, 'DOMAIN', ${T()}::uuid, ${D()}::uuid, ${edgeId}::uuid, 'edge.asserted', ${owner.principalId}::uuid, jsonb_build_object('predicate', ${predicate}::text, 'subject', ${E2}::uuid, 'object', ${E1}::uuid, 'valid_from', '2024-01-01T00:00:00Z'::timestamptz, 'valid_to', null, 'mode', 'replay', 'claim_object_id', ${claimId}::uuid, 'claim_version', 1, 'review_state', 'approved'), ${uuidv7()}::uuid)`.execute(su);
   return edgeId;
 };
 /** The first process claims the domain afresh (its renewals then paused): the crossing starts from a claim of full length. */
@@ -151,9 +154,13 @@ beforeAll(async () => {
   owner = await h.principalWith(['twin_owner', 'strategy_owner', 'forecast_owner', 'resolution_manager', 'decision_owner'], 'b9-owner');
   manager = await h.principalWith(['collection_manager'], 'b9-collection-manager');
   tenantAdmin = await h.humanWithSession(['tenant_admin'], 'b9-tenant-admin', 'TENANT');
+  // B20 (0080): the planted entities carry their entity.created events (the honest fixture — an event-less row is poisoned under the symmetric check).
   for (const [id, type, name] of [[E1, 'place', 'Bab el-Mandeb Strait'], [E2, 'organization', 'NORDWERK Magnet GmbH']] as const) {
+    const correlation = uuidv7();
     await sql`insert into graph.entities_current (entity_id, scope, tenant_id, domain_id, entity_type, canonical_name, normalized_name, lifecycle_state, created_by, correlation_id)
-      values (${id}::uuid, 'DOMAIN', ${T()}::uuid, ${D()}::uuid, ${type}, ${name}, ${name.toLowerCase()}, 'active', ${owner.principalId}::uuid, ${uuidv7()}::uuid)`.execute(su);
+      values (${id}::uuid, 'DOMAIN', ${T()}::uuid, ${D()}::uuid, ${type}, ${name}, ${name.toLowerCase()}, 'active', ${owner.principalId}::uuid, ${correlation}::uuid)`.execute(su);
+    await sql`insert into graph.entity_events (event_id, scope, tenant_id, domain_id, entity_id, event, actor_principal_id, details, correlation_id)
+      values (${uuidv7()}::uuid, 'DOMAIN', ${T()}::uuid, ${D()}::uuid, ${id}::uuid, 'entity.created', ${owner.principalId}::uuid, ${JSON.stringify({ entity_type: type, canonical_name: name, normalized_name: name.toLowerCase(), split_from: null })}::jsonb, ${correlation}::uuid)`.execute(su);
   }
   await register('retrieval');
   await register('memory-mappings');

@@ -19,10 +19,19 @@
  * derivation on the version. The listing's Source column names the basis; a retrieval serves the derivation block and the
  * basis's state (current / corrected / withdrawn — a withdrawn basis is served with the declaration, never refused); a
  * derived record is RE-DERIVED on supersession (the basis named again, the statement recomputed), never re-stated.
+ *
+ * Since B20 (0080) the workspace says which TIER answered. The METADATA tier is the memory projection (the listing, the
+ * availability of a retrieval); the CONTENT tier is the canonical versions (the statement a retrieval serves). Every listing
+ * row carries its `index_state` — `projected`, or `stale` while the memory projection is WITHDRAWN and the rows are served
+ * from their event log, labelled — and every retrieval says the projection's condition beside the version served. When the
+ * content tier does not answer, a retrieval is a 200 with `content 'unavailable'`: the item's metadata (its state, versions
+ * and audience) is shown with the server's label, NO version is served and NO access is recorded; the supersede and derive
+ * forms are not prefilled from it. A retrieval refused while the projection is withdrawn AND the content tier does not
+ * answer (503 EYE-DEG-001) is shown as every refusal is — `not served — HTTP 503 EYE-DEG-001 — …`, verbatim.
  */
 import { useEffect, useState, type ReactNode } from 'react';
 import { useShell } from '../layout';
-import { graph, type MemoryDeriveIntake, type MemoryDerived, type MemoryIntake, type MemoryRetrieval, type MemoryRow } from '../../../lib/graph';
+import { graph, projectionNote, type MemoryDeriveIntake, type MemoryDerived, type MemoryIntake, type MemoryRetrieval, type MemoryRow } from '../../../lib/graph';
 import { Empty, LiveStatus, Mono, ScrollBox, cardStyle, DefinitionRow, UnknownNote, GovernedButton,
   fmtInstant, textareaStyle } from '../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui';
@@ -364,22 +373,68 @@ function DerivationRow({ d }: { d: Row }) {
   );
 }
 
-/** The served version, VERBATIM. */
+/**
+ * B20: the projection's condition beside what was served — from the FLAG (`condition`), the server's label as the wording,
+ * a fallback so a non-current state is never silent. The index state (`projected` / `stale`) is the availability's.
+ */
+function ProjectionLine({ r }: { r: MemoryRetrieval }) {
+  const note = projectionNote(r.projection);
+  if (note === null) return null;
+  return (
+    <p style={muted}>
+      <strong>Projection {note.condition}.</strong> {note.text}
+      {note.code !== null ? <> · code <Mono>{note.code}</Mono></> : null}
+    </p>
+  );
+}
+
+/** The served version, VERBATIM — or, when the content tier did not answer (B20), the item's metadata alone with the server's label. */
 function ServedVersion({ r }: { r: MemoryRetrieval }) {
+  const a = r.availability;
+  const availability = (
+    <>
+      {' · '}item {a.state}
+      {a.attention_state !== null && a.attention_state !== 'none' ? <> · attention: {String(a.attention_state)}</> : null}
+      {a.basis_state !== null && a.basis_state !== undefined ? <> · basis {String(a.basis_state)}</> : null}
+      {' · '}superseded {a.superseded_versions} time(s){a.last_superseded_at !== null ? <>, last {fmtInstant(a.last_superseded_at)}</> : null}
+      {' · '}as of {r.asOf === null ? 'now' : fmtInstant(r.asOf)}
+    </>
+  );
+  const index = (
+    <>
+      {' · '}projection {r.projection.condition} · index {a.index_state}
+      {a.projected === false ? ' (the item is in the log, not in the projection)' : ''}
+      {a.drift !== null && a.drift !== undefined ? <> · drifted: the projection says {a.drift.projected}, the log says {a.drift.log} (the log's is served)</> : null}
+    </>
+  );
+  if (r.content === 'unavailable' || r.version === null) {
+    // THE CONTENT TIER DID NOT ANSWER: the metadata tier alone — no version, no statement, no access recorded. The label is the server's.
+    const d = r.degraded;
+    return (
+      <>
+        <p>
+          <strong>version {a.current_version} of the item is current; no version was served; no access was recorded</strong>
+          {availability}{index}
+        </p>
+        <ProjectionLine r={r} />
+        <LiveStatus assertive>
+          <strong>Content unavailable.</strong> {d?.label ?? 'the content tier did not answer; this is the item\'s metadata — the statement is not served'}
+          {' '}(<Mono>{d?.code ?? 'EYE-DEG-001'}</Mono>){d !== undefined && d.detail !== '' ? <> — {d.detail}</> : null}
+        </LiveStatus>
+      </>
+    );
+  }
   const p = r.version.payload; const source = rec(p['source']); const audience = rec(p['audience']);
   const validity = rec(p['validity']); const retention = rec(p['retention']); const sup = p['supersession'] === undefined ? null : rec(p['supersession']);
   const related = rec(p['related']); const cites = Array.isArray(p['cites']) ? (p['cites'] as Row[]) : [];
-  const a = r.availability;
   return (
     <>
       <p>
         <strong>version {a.current_version} of {a.versions} is current; you were served version {r.versionServed}</strong>
-        {a.served_is_current ? ' (the current one)' : ' (a superseded version, replayed)'} · item {a.state}
-        {a.attention_state !== null && a.attention_state !== 'none' ? <> · attention: {String(a.attention_state)}</> : null}
-        {a.basis_state !== null && a.basis_state !== undefined ? <> · basis {String(a.basis_state)}</> : null}
-        {' · '}superseded {a.superseded_versions} time(s){a.last_superseded_at !== null ? <>, last {fmtInstant(a.last_superseded_at)}</> : null}
-        {' · '}as of {r.asOf === null ? 'now' : fmtInstant(r.asOf)} · access recorded as <Mono>{r.accessId}</Mono>
+        {a.served_is_current ? ' (the current one)' : ' (a superseded version, replayed)'}
+        {availability} · access recorded as <Mono>{r.accessId}</Mono>{index}
       </p>
+      <ProjectionLine r={r} />
       <dl>
         <DefinitionRow term="Version served"><Mono>{String(r.version.object_version)}</Mono> · recorded {fmtInstant(r.version.recorded_at)} · {str(r.version.lifecycle_state)} · truth {str(r.version.truth_state)} · synthetic {String(r.version.synthetic_state)}</DefinitionRow>
         <DefinitionRow term="Admitted for purpose"><Mono>{str(r.version.purpose_scope)}</Mono></DefinitionRow>
@@ -466,8 +521,11 @@ export default function MemoryPage() {
   if (rows === null) return <Empty>reading the memory…</Empty>;
 
   const current = selected === null ? null : rows.find((r) => String(r['item_id']) === selected) ?? null;
-  /** The supersede form's class: the served version decides when one is served, else the listing row's derivation (the server's, not a guess). */
-  const supIsDerived = served !== null ? isDerived(served.version.payload['derivation']) : current !== null && isDerived(current['derivation']);
+  /**
+   * The supersede form's class: the served version decides when one is served, else the listing row's derivation (the server's,
+   * not a guess). B20: a metadata-only answer served no version and decides nothing — the listing row's derivation stands.
+   */
+  const supIsDerived = served !== null && served.version !== null ? isDerived(served.version.payload['derivation']) : current !== null && isDerived(current['derivation']);
 
   return (
     <>
@@ -480,7 +538,10 @@ export default function MemoryPage() {
         purpose, as of when, is recorded on the item. A superseded version stays replayable as of an instant. A record is a
         person's own (source kind <strong>human</strong>) or <strong>derived</strong> from a claim version or a warning (document,
         communication, telemetry): its statement is computed by the server, its controls inherited from the basis and its evidence,
-        and its derivation kept on the version; the listing names the basis and a retrieval says the basis's state.
+        and its derivation kept on the version; the listing names the basis and a retrieval says the basis's state. The Index
+        column says which tier serves each row — <strong>projected</strong> by the memory projection, or <strong>stale</strong> from
+        the item's event log while that projection is withdrawn — and a retrieval says the projection's condition beside the
+        version served; when the content tier does not answer, the retrieval shows the item's metadata alone and says so.
       </UnknownNote>
 
       <section aria-labelledby="list-h" style={cardStyle}>
@@ -488,12 +549,14 @@ export default function MemoryPage() {
         {rows.length === 0 ? <Empty>No memory item is recorded in this domain.</Empty> : (
           <ScrollBox label="memory items">
             <table className="eye-table" style={tableStyle}>
-              <thead><tr><Th>Select</Th><Th>Title</Th><Th>Class</Th><Th>Source</Th><Th>Current version</Th><Th>Classification</Th><Th>Audience purposes</Th><Th>State</Th><Th>Attention</Th><Th>Retained under</Th><Th>Recorded at</Th></tr></thead>
+              <thead><tr><Th>Select</Th><Th>Title</Th><Th>Class</Th><Th>Source</Th><Th>Current version</Th><Th>Classification</Th><Th>Audience purposes</Th><Th>State</Th><Th>Attention</Th><Th>Retained under</Th><Th>Recorded at</Th><Th>Index</Th></tr></thead>
               <tbody>
                 {rows.map((r) => {
                   const id = String(r['item_id']); const isSel = id === selected;
                   // B19: a derived record's listing row carries its derivation without content — the basis it was derived from is named beside the kind.
                   const basis = isDerived(r['derivation']) ? rec(rec(r['derivation'])['basis']) : null;
+                  // B20: `stale` while the memory projection is withdrawn (the row is the log's); a row the projection lacks, or one the two disagree on, is marked.
+                  const drift = isDerived(r['drift']) ? rec(r['drift']) : null;
                   return (
                     <tr key={id} aria-selected={isSel}>
                       <Td>
@@ -512,6 +575,11 @@ export default function MemoryPage() {
                       <Td>{str(r['attention_state'])}{r['attention_reason'] !== null && r['attention_reason'] !== undefined ? ` — ${String(r['attention_reason'])}` : ''}</Td>
                       <Td mono>{str(r['retention_profile'])}{r['retain_until'] !== null && r['retain_until'] !== undefined ? ` until ${fmtInstant(r['retain_until'])}` : ''}</Td>
                       <Td>{fmtInstant(r['recorded_at'])}</Td>
+                      <Td>
+                        {str(r['index_state'])}
+                        {r['projected'] === false ? <> — <em>log-only</em> (the projection lacks this item)</> : null}
+                        {drift !== null ? <> — <em>drifted</em>: the projection says {str(drift['projected'])}, the log says {str(drift['log'])}</> : null}
+                      </Td>
                     </tr>
                   );
                 })}
@@ -553,8 +621,12 @@ export default function MemoryPage() {
                     setServed(null); setRetrieveReceipt(null); setRetrieveProblem(m); await loadRecord(selected); throw new Error(m);
                   }
                   setServed(r.data.memory); setRetrieveReceipt(r.data.receipt);
-                  setSupDraft(fromPayload(r.data.memory.version.payload));
-                  setSupDerive(isDerived(r.data.memory.version.payload['derivation']) ? fromDerivedPayload(r.data.memory.version.payload) : EMPTY_DERIVE);
+                  // B20: the supersede and derive forms start from a SERVED version only — a metadata-only answer (the content tier did not answer) prefills nothing.
+                  const version = r.data.memory.content === 'unavailable' ? null : r.data.memory.version;
+                  if (version !== null) {
+                    setSupDraft(fromPayload(version.payload));
+                    setSupDerive(isDerived(version.payload['derivation']) ? fromDerivedPayload(version.payload) : EMPTY_DERIVE);
+                  }
                   await loadRecord(selected);
                 }} />
             </div>

@@ -12,10 +12,18 @@
  * absence of hindsight, and it is the point of the control. Moving "valid at"
  * backwards removes edges whose relationship had not begun. The two are never
  * mixed and the answer always names both.
+ *
+ * A THIRD THING IS ON SCREEN SINCE CP-6 B20 (0080): the state of the PROJECTION
+ * the answer was served from, beside the instant. Every answer carries it; the
+ * screen renders it from the flag (`condition`) with the server's label as the
+ * wording. While the edges or the entities projection is WITHDRAWN the walk runs
+ * over the log-derived edge state constrained to two hops — `bound.projection` —
+ * and says so; an edge served from the log, or one the projection and the log
+ * disagree on, is marked in the table.
  */
 import { useEffect, useState } from 'react';
 import { useShell } from '../layout';
-import { graph, type EdgeRow, type EntityRow, type AsOf } from '../../../lib/graph';
+import { graph, projectionNote, type EdgeRow, type EntityRow, type AsOf, type ProjectionBlock } from '../../../lib/graph';
 import { Empty, LiveStatus, Mono, ModeBadge, cardStyle, UnknownNote, GovernedButton,
   fmtInstant } from '../../../components/observation';
 import { inputStyle, tableStyle, Th, Td } from '../../../components/ui';
@@ -46,8 +54,19 @@ export default function ExplorePage() {
    * the wording, with a fallback so an incomplete answer is never silent.
    */
   const [incomplete, setIncomplete] = useState<string | null>(null);
-  const flag = (complete: boolean, note: string | null): void => {
-    setIncomplete(complete ? null : (note ?? 'the search did not examine everything it could have'));
+  /*
+   * B20: THE PROJECTION STATE AND THE CONSTRAINT ARE RENDERED FROM THEIR FLAGS TOO. `projection` is the block of the last
+   * answer (`condition` decides what is said; the label is the wording); `constrained` is the searched depth when the answer
+   * said `bound.projection` — a walk constrained to two hops while a projection is withdrawn — and it is said whether or not
+   * the answer was also incomplete.
+   */
+  const [projection, setProjection] = useState<ProjectionBlock | null>(null);
+  const [constrained, setConstrained] = useState<number | null>(null);
+  const flag = (complete: boolean, note: string | null, bound?: { projection?: boolean; searchedDepth: number }): void => {
+    const c = bound !== undefined && bound.projection === true ? bound.searchedDepth : null;
+    setConstrained(c);
+    setIncomplete(complete ? null : ((note ?? 'the search did not examine everything it could have')
+      + (c === null ? '' : ` (the traversal was constrained to ${c} hop(s) while a projection is withdrawn)`)));
   };
   const [problem, setProblem] = useState<string | null>(null);
 
@@ -59,6 +78,7 @@ export default function ExplorePage() {
         return;
       }
       setEntities(r.data.entities);
+      setProjection(r.data.projection ?? null);
       setFrom(r.data.entities[0]?.entity_id ?? '');
       setTo(r.data.entities[1]?.entity_id ?? '');
     })();
@@ -69,6 +89,13 @@ export default function ExplorePage() {
 
   const byId = new Map((entities ?? []).map((e) => [e.entity_id, e]));
   const name = (id: string): string => byId.get(id)?.canonical_name ?? `${id.slice(0, 12)}…`;
+  const note = projectionNote(projection);
+  /** B20: an edge served from the log (the projection lacks it) or one the projection and the log disagree on says so in the table. */
+  const mark = (e: EdgeRow): string | null =>
+    e.projected === false ? 'log-only'
+    : e.drift !== undefined ? `drifted: projection says ${e.drift.projected}, log says ${e.drift.log}`
+    : e.from === 'log' ? 'from the log' : null;
+  const marked = (edges ?? []).some((e) => mark(e) !== null);
 
   if (problem !== null) return <LiveStatus assertive>{problem}</LiveStatus>;
   if (entities === null) return <Empty>reading entities…</Empty>;
@@ -116,17 +143,30 @@ export default function ExplorePage() {
               throw new Error(r.error?.message ?? 'the edges could not be read');
             }
             setEdges(r.data.edges); setAsOf(r.data.asOf); setNeighbours([]);
-            setScopeNote(null);
+            setScopeNote(r.data.from === 'log' ? 'served from the event log — the edges projection is withdrawn' : null);
+            setProjection(r.data.projection ?? null);
             flag(r.data.complete, r.data.note);
           }}
         />
         {asOf === null ? null : (
           <p style={{ color: 'var(--eye-color-ink-muted)' }}>
             known at {fmtInstant(asOf.knownAt)} · valid at {fmtInstant(asOf.validAt)}
+            {projection === null ? null : <> · projection {projection.condition}</>}
           </p>
+        )}
+        {note === null ? null : (
+          <UnknownNote>
+            <strong>Projection {note.condition}.</strong> {note.text}
+            {note.code !== null ? <> · code <Mono>{note.code}</Mono></> : null}
+          </UnknownNote>
         )}
         {scopeNote === null ? null : (
           <p style={{ color: 'var(--eye-color-ink-muted)' }}>{scopeNote}</p>
+        )}
+        {constrained === null ? null : (
+          <UnknownNote>
+            <strong>This traversal was constrained.</strong> the traversal was constrained to {constrained} hop(s) while a projection is withdrawn; it ran over the edge state derived from the event log
+          </UnknownNote>
         )}
         {incomplete === null ? null : (
           <UnknownNote>
@@ -160,7 +200,10 @@ export default function ExplorePage() {
               setNeighbours(r.data.neighbourhood.entities);
               setAsOf(r.data.asOf);
               setScopeNote(r.data.scope);
-              flag(r.data.complete, r.data.note);
+              setProjection(r.data.projection ?? null);
+              // the constraint flag rides the answer (beside depthClamped) — read wherever the server put it, never inferred from the depth
+              const bound = r.data.bound?.projection === true || r.data.neighbourhood.bound?.projection === true || r.data.neighbourhood.projectionBound === true;
+              flag(r.data.complete, r.data.note, { projection: bound, searchedDepth: r.data.searchedDepth });
             }}
           />
         </div>
@@ -198,7 +241,8 @@ export default function ExplorePage() {
               setPath({ edges: r.data.path, note: r.data.note, complete: r.data.complete });
               setAsOf(r.data.asOf);
               setScopeNote(`searched to ${r.data.searchedDepth} hop(s)`);
-              flag(r.data.complete, r.data.note);
+              setProjection(r.data.projection ?? null);
+              flag(r.data.complete, r.data.note, { projection: r.data.bound?.projection === true, searchedDepth: r.data.searchedDepth });
             }}
           />
         </div>
@@ -234,6 +278,7 @@ export default function ExplorePage() {
             <tr>
               <Th>Subject</Th><Th>Predicate</Th><Th>Object</Th><Th>Valid from</Th>
               <Th>Valid to</Th><Th>Asserted</Th><Th>Mode</Th><Th>Confidence</Th>
+              {marked ? <Th>Served from</Th> : null}
             </tr>
           </thead>
           <tbody>
@@ -246,7 +291,8 @@ export default function ExplorePage() {
                 <Td>{e.valid_to === null ? 'open' : fmtInstant(e.valid_to)}</Td>
                 <Td>{fmtInstant(e.asserted_at)}</Td>
                 <Td><ModeBadge mode={e.mode} /></Td>
-                <Td mono>{Number(e.confidence).toFixed(2)}</Td>
+                <Td mono>{e.confidence === null || e.confidence === undefined ? '—' : Number(e.confidence).toFixed(2)}</Td>
+                {marked ? <Td><em>{mark(e) ?? ''}</em></Td> : null}
               </tr>
             ))}
           </tbody>

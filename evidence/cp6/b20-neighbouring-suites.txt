@@ -1,0 +1,30 @@
+=== B20's neighbouring set at the B20 tree on a fresh database eye_verify_b20_nb (0001–0080; the scheduler on), 2026-09-22 — the four subscription harnesses, the two repro suites, phase6-interfaces-b18, the retention harnesses B11/B16/B17/B18 (the ✔ fixtures now plant their log events beside the rows; the noDrift pins widened to the symmetric check), phase6-memory-derived, the briefing/agent/corrections/executive/monitoring suites, phase3-acceptance (:1176 widened) and phase3-corrections, phase6-decisions, phase6-propagation-consumer — the per-file counts computed from the run's per-case lines, then the totals ===
+
+  ✓ test/int/phase3-acceptance.test.ts: 43 passed
+  ✓ test/int/phase3-corrections.test.ts: 20 passed
+  ✓ test/int/phase6-agents.test.ts: 9 passed
+  ✓ test/int/phase6-briefing-memory.test.ts: 6 passed
+  ✓ test/int/phase6-briefings.test.ts: 6 passed
+  ✓ test/int/phase6-decisions.test.ts: 15 passed
+  ✓ test/int/phase6-executive-requests.test.ts: 10 passed
+  ✓ test/int/phase6-graph-subscriptions-2.test.ts: 14 passed
+  ✓ test/int/phase6-graph-subscriptions-3.test.ts: 19 passed
+  ✓ test/int/phase6-graph-subscriptions-4.test.ts: 32 passed
+  ✓ test/int/phase6-graph-subscriptions.test.ts: 13 passed
+  ✓ test/int/phase6-interfaces-b18.test.ts: 14 passed
+  ✓ test/int/phase6-memory-derived.test.ts: 6 passed
+  ✓ test/int/phase6-monitoring.test.ts: 7 passed
+  ✓ test/int/phase6-propagation-consumer.test.ts: 18 passed
+  ✓ test/int/phase6-repro-retrieval-retry.test.ts: 1 passed
+  ✓ test/int/phase6-repro-serving-lifecycle.test.ts: 5 passed
+  ✓ test/int/phase6-residual-corrections-2.test.ts: 10 passed
+  ✓ test/int/phase6-residual-corrections.test.ts: 19 passed
+  ✓ test/int/phase6-retention-b11.test.ts: 35 passed
+  ✓ test/int/phase6-retention-b16.test.ts: 6 passed
+  ✓ test/int/phase6-retention-b17.test.ts: 5 passed
+  ✓ test/int/phase6-retention-b18.test.ts: 6 passed
+  ✓ test/int/phase6-review-corrections.test.ts: 25 passed
+
+ Test Files  24 passed (24)
+      Tests  344 passed (344)
+   Duration  298.58s (transform 998ms, setup 110ms, import 10.77s, tests 285.92s, environment 1ms)

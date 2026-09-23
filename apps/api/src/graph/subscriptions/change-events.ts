@@ -33,6 +33,11 @@
  * their own reads); `forecast.withdrawn` and `simulation.invalidated` name the one object and carry the dependants the
  * PORT enumerated in a typed block (`walked` true: the reach was made, by the port). Every list that can grow is cut at
  * LIFECYCLE_EVENT_LIST_MAX and says so.
+ *
+ * 0080 (B20): `projection.rebuilt` — a withdrawn partition of the index tier rebuilt or restored by the operator — is built PURE
+ * from the rebuild port's report with NO identities, NO relationships and an unwalked empty reach: the changed rows ride the
+ * typed `projection` block only, so the consumers that select by identities or dependencies are fed nothing (a rebuild changes
+ * no fact of the world) and the retrieval consumer alone acts (it re-verifies).
  */
 import type { GraphReads } from '../graph.capabilities.js';
 import type { ImpactService, WalkReads } from '../strategy/impact.service.js';
@@ -429,6 +434,42 @@ export function simulationInvalidatedGraphEvent(a: { runId: string; reason: stri
     subscriptions: a.subscriptions,
     cause: { action: a.action, actor: a.actor, target_type: 'SIM', target_id: a.runId },
     simulation: { run_id: a.runId, reason: a.reason, trigger: a.trigger, trigger_ref: a.triggerRef, invalidated_at: a.invalidatedAt, dependants: a.dependants },
+  };
+  return asRow('GraphChanged', payload);
+}
+
+// ───────────────────────── 0080 (B20): the index tier's rebuild ─────────────────────────
+
+/**
+ * A withdrawn partition REBUILT or RESTORED (0080, D8): no identities, no relationships, no walk — a rebuild changes no fact of the
+ * world, so no consumer that selects by identities or dependencies is fed anything; the typed block carries the report (the
+ * restored rows cut at the ceiling). The retrieval consumer re-verifies. Built PURE inside the rebuild write from the port's own
+ * report (graph.rebuild_projection's answer: outcome rebuilt | restored with the counts, the changed rows, the re-check and the
+ * withdrawal it closed); the cause is the rebuild act on the rebuild's own id (PRJ). `objects` is EMPTY_REACH with `walked` false:
+ * the six other consumers resolve nothing by construction (every `resolveItems` selects by identities, relationships or objects).
+ */
+export function projectionRebuiltEvent(a: { tenantId: string; domainId: string; report: Record<string, unknown>; subscriptions: SubscriptionRef[]; actor: string; occurredAt?: string }): OutboxRow {
+  const now = a.occurredAt ?? new Date().toISOString();
+  const r = a.report;
+  const restored = cutList((Array.isArray(r['restored']) ? r['restored'] : []) as Array<{ id: string; change: string; to?: string; from?: string }>);
+  const num = (v: unknown): number => (typeof v === 'number' ? v : Number(v ?? 0));
+  const payload: GraphChangedPayload = {
+    schema: 'GraphChanged', schema_version: 'v1',
+    change: { kind: 'projection.rebuilt', occurred_at: now, graph_event_id: null, invalidation_id: null, correction_case_id: null },
+    identities: [],
+    relationships: { edges: [], resolutions: [], dependencies: [] },
+    objects: { ...EMPTY_REACH, walked: false },
+    temporal: { known_at: now },
+    subscriptions: a.subscriptions,
+    cause: { action: 'graph.projection.rebuild', actor: a.actor, target_type: 'PRJ', target_id: String(r['rebuild_id']) },
+    projection: {
+      projection: String(r['projection']), outcome: r['outcome'] === 'restored' ? 'restored' : 'rebuilt', rebuild_id: String(r['rebuild_id']),
+      updated: num(r['updated']), inserted: num(r['inserted']), removed: num(r['removed']),
+      // the port cuts its own `restored` at 200 too (§1.7 note v): the two ceilings agree; `restored_truncated` is true when either side cut
+      restored: restored.list, restored_truncated: restored.truncated || r['restored_truncated'] === true,
+      check: r['check'] !== null && typeof r['check'] === 'object' ? (r['check'] as Record<string, unknown>) : null,
+      representation_version: String(r['representation_version'] ?? ''), withdrawn_since: str(r['withdrawn_since']), withdrawn_reason: str(r['withdrawn_reason']), withdrawn_by_check: str(r['withdrawn_by_check']),
+    },
   };
   return asRow('GraphChanged', payload);
 }

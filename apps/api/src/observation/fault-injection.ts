@@ -86,7 +86,9 @@ export type InjectionPoint =
   // CP-6 B11 closure (0071; Codex B11-F1) — the rollback cleanup of the copies an execution created, before the first removal (a HOLD point)
   | 'b11.archive_cleanup_before_remove'
   // CP-6 B12 (0072; D2) — the hot publish of a restore after the commit that recorded the move (the rename in the evidence root); fires once, so the retry route's publish succeeds
-  | 'b12.restore_publish_fail';
+  | 'b12.restore_publish_fail'
+  // CP-6 B20 (0080; D9) — the canonical read of a memory retrieval: the content tier did not answer; the metadata tier is served labelled
+  | 'b20.memory_content_unavailable';
 
 /** Raised by an armed injection point. Distinguishable from a real failure. */
 export class InjectedFault extends Error {

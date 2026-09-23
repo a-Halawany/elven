@@ -128,3 +128,68 @@ describe('B18 · the caller\'s own request (422)', () => {
     }
   });
 });
+
+/*
+ * CP-6 B20 (0080; design §2.8, D15): the projection partitions' two ports — `projection withdrawal rejected` and
+ * `projection rebuild rejected` — and the deletion pause `retention execution rejected (projection_withdrawn)` are driven
+ * through the mapper with the SQLSTATE + message pairs the migration raises, and the ORDER is probed: the rebuild of a
+ * SERVING partition is the record's state (409) and must land before the family's 422 fallback; the pause's class suffix
+ * keeps it out of the retention 403/404 rows and lands it in the 409 alternation before the retention 422 family.
+ */
+describe('B20 · the projection ports\' refusals answer as what they are', () => {
+  const SIX = 'entities_current, resolutions_current, edges_current, strategy_current, invalidations_current, memory_items_current';
+  it('the standing (403): recorded by the acting principal, both ports', () => {
+    for (const m of ['projection withdrawal rejected: recorded by the acting principal', 'projection rebuild rejected: recorded by the acting principal']) {
+      const a = answer('42501', m);
+      expect(a?.status, m).toBe(403);
+      expect(a?.body.code, m).toBe('EYE-AUT-001');
+      expect(a?.body.message, m).toBe(m);
+    }
+  });
+  it('the absence (404): a name that is not a projection of this domain, both ports', () => {
+    for (const m of [
+      `projection withdrawal rejected: vector_index is not a projection of this domain (one of ${SIX})`,
+      `projection rebuild rejected: <none> is not a projection of this domain (one of ${SIX})`,
+    ]) {
+      const a = answer('23503', m);
+      expect(a?.status, m).toBe(404);
+      expect(a?.body.code, m).toBe('EYE-STA-001');
+      expect(a?.body.message, m).toBe(m);
+    }
+  });
+  it('the record\'s state (409), placed before the 422 fallback: the rebuild of a serving partition; the deletion paused on a withdrawn projection', () => {
+    for (const m of [
+      'projection rebuild rejected: the strategy_current partition of this domain is serving; withdraw it first (graph.projection.withdraw) or let the retrieval check withdraw it',
+      'retention execution rejected (projection_withdrawn): the safe referential scope reads a projection that is withdrawn — edges_current (since 2026-09-17 09:00:00+00: representation review before the ontology proposal (harness)); the scope cannot be proven until it is rebuilt (graph.projection.rebuild); the action pauses for human review',
+    ]) {
+      const a = answer('22023', m);
+      expect(a?.status, m).toBe(409);
+      expect(a?.body.code, m).toBe('EYE-STA-002');
+      expect(a?.body.message, m).toBe(m);
+    }
+  });
+  it('the caller\'s own request (422): a reason too short, both ports; the subscriber\'s missing check id', () => {
+    for (const m of [
+      'projection withdrawal rejected: a withdrawal states its reason (8+ characters)',
+      'projection rebuild rejected: a rebuild states its reason (8+ characters)',
+      'projection withdrawal rejected: the retrieval subscriber withdraws on a recorded check',
+    ]) {
+      const a = answer('22023', m);
+      expect(a?.status, m).toBe(422);
+      expect(a?.body.code, m).toBe('EYE-REQ-001');
+      expect(a?.body.message, m).toBe(m);
+    }
+  });
+  it('the probe: the serving text under 22023 is 409, never the family\'s 422; the pause is not the retention 403/404 rows\'; the retention 422 family and the executive families are unshadowed; the mapper stays gated on the SQLSTATE', () => {
+    expect(answer('22023', 'projection rebuild rejected: the edges_current partition of this domain is serving; withdraw it first (graph.projection.withdraw) or let the retrieval check withdraw it')?.status).toBe(409);
+    expect(answer('22023', 'retention execution rejected (projection_withdrawn): x')?.status).toBe(409);
+    expect(answer('22023', 'retention execution rejected: no live approval')?.status).toBe(409);
+    expect(answer('22023', 'retention execution rejected (rights_changed): the rights moved')?.status).toBe(409);
+    expect(answer('22023', 'retention execution rejected: something else about the request')?.status).toBe(422);
+    expect(answer('42501', 'retention execution rejected: an approver of the action does not execute it')?.status).toBe(403);
+    expect(answer('42501', 'withdrawal rejected: recorded by the acting principal')?.status).toBe(403);
+    expect(answer('22023', 'withdrawal rejected: a request is withdrawn with a reason')?.status).toBe(422);
+    expect(answer('XX000', 'projection rebuild rejected: recorded by the acting principal')).toBeNull();
+    expect(answer('42P01', 'projection withdrawal rejected: a withdrawal states its reason (8+ characters)')).toBeNull();
+  });
+});

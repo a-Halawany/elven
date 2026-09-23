@@ -78,12 +78,15 @@ export class RetentionExecutionRolledBack extends Error {
 /**
  * The class a port's refusal names in its own message (0070 §5): rights_changed, scope_changed, references_changed; the manager's
  * budget_exhausted (0072 §4: the domain's daily byte budget spent — a retry once the window frees) is infrastructure, as is anything
- * else after the state moved.
+ * else after the state moved. B20 (0080; DP-37-005): projection_withdrawn — a deletion's safe referential scope reads a partition of
+ * the index tier (edges_current, memory_items_current) that is withdrawn, so the scope cannot be proven until it is rebuilt: an
+ * unresolved dependency (→ human review by pause_action's own rule), never an infrastructure retry.
  */
 export function failureClassOf(e: unknown): ExecutionFailureClass {
   const message = String((e as { message?: unknown })?.message ?? '');
   if (message.startsWith('retention execution rejected (rights_changed)')) return 'authority_disputed';
   if (message.startsWith('retention execution rejected (scope_changed)') || message.startsWith('retention execution rejected (references_changed)')) return 'unresolved_dependency';
+  if (message.startsWith('retention execution rejected (projection_withdrawn)')) return 'unresolved_dependency';
   if (message.startsWith('retention execution rejected (budget_exhausted)')) return 'infrastructure';
   // B13 (C14): the tenant's active signing key is not bound in this deployment — a retry once it is (the key declared on another host).
   if (message.startsWith('retention execution rejected (signing_key_unbound)') || message.startsWith('retention execution rejected (signing_key_mismatch)')) return 'infrastructure';

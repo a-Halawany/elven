@@ -2417,16 +2417,591 @@ DOC's events (recorded → retrieved (briefing) → attention → retrieved → 
 leaves (the telemetry and warning records; DOC at version 2 `basis_corrected`; the communication record withdrawn; REL at version 5 and its
 evidence at version 2 — a review correction and an evidence correction per run; the deletion withdrawn). ALL SCENES HELD (32 checks).
 
+## B20 — the index tier: the six projection partitions with a derived watermark on every graph and memory read, the symmetric check that withdraws, the operator's withdrawal and the rebuild writer, the labelled last-valid reads and the constrained traversals, the memory content tier's metadata-only fallback, the deletion pause and the briefing's flag (implemented)
+
+**Migration 0080** (`apps/api/migrations/0080_b20_index_tier_degradation.sql`, sha256 `663def51…`, 1,239 lines), on `phase6-b20`
+(cut from B19's records head `3ea676d`; the PR base `phase6-b19`, stacked on #56 and retargeted to `main` when the stack merges; the
+candidate was UNCOMMITTED while these records were written — the commit that carries them is the candidate). The register items every
+checkpoint since B10 listed as Missing under "index-tier degradation behaviours": AU-MEM-0067 (content, permissions, retention, version
+history or indexes diverge → restricted access, metadata-only or the last valid state with a warning; the content tier unavailable →
+metadata-only, said), AU-MEM-0068 (a stale index or projection never appears current: a revision/projection watermark and a staleness
+marker on reads, exploration degraded to a canonical or last-verified read with a label, affected traversals constrained and the revision
+exposed), AU-MEM-0070 (projections derivable from their logs and rebuildable from the canonical records — `verified:local` since Phase 3 on
+a JOIN-only case) and AU-MEM-0083 (a stale, incomplete, policy-inconsistent, poisoned or unapproved-representation index withdrawn,
+retrieval falling back only to policy-equivalent methods, the rebuild from verified sources, the degradation exposed). Read by one reader in
+B18 (`read-index-tier.md`: the one-paragraph answer, the four units, the specification text, the code map with its findings, what already
+helped, the proposal, the touch points), designed by one designer and two checkers (FIVE blocking findings folded before a line was written
+— C1 a live retrieval subscription that has applied no check reads `unverified`, never `current`; C2 the verified sequence is the live
+contiguous applied prefix of the subscription's deliveries, the stored cursor answered beside it; C3 the retrieval check holds the six
+partition locks shared; C4 a rebuilt event reaches six subscriptions, not seven; C5 the content read precedes the gates and a refused reader
+consumes the armed fault point — and eighteen should-level corrections with the nits, `corrections.md` C1–C23), implemented by five
+implementers on disjoint files and one compile/reconcile pass (six edits E1–E6, every one stated in §B20.3), run on fresh databases,
+rehearsed on a restored copy and exercised on the demonstration (§B20.5).
+
+**B20.1 — the reader's finding.** There is NO lexical or vector index in this repository: the index tier IS the set of derived `*_current`
+projection tables every graph read serves from — `graph.entities_current`, `resolutions_current`, `edges_current`, `strategy_current`,
+`invalidations_current` — and `memory.items_current`; "shard availability", "embedding compatibility", "analyzer version" and "recall
+quality" have no referent here and the records say so; the REPRESENTATION VERSION of this index tier is the derivation rule (the
+expected-state derivations, the state vocabularies, the resolver's normalisation). The check that existed (`graph.rebuild_projections()`,
+0065) was JOIN-ONLY: it compared the state of the rows the projection and the log BOTH held, so a POISONED row (in the projection, absent
+from the log) and a MISSING row (in the log, absent from the projection) passed it as `mismatched 0`; no rebuild writer existed (the
+"repair" in the B7 harness's drift case is a superuser UPDATE); nothing recorded a partition's serving state; no read carried a watermark;
+the memory projection's `index_state` was a per-row column (0066) that a per-row writer could never make say what the partition says. And
+the fixtures were part of the finding: TWENTY-TWO integration files plant projection rows by superuser INSERT without the log events that
+derive them — rows the symmetric check calls poisoned. The ✔ set — the files under which a retrieval subscription runs, so the corrected
+check would have failed them — is corrected in B20 (the honest fixture: the event beside the row under one correlation id, the event's actor
+the row's `created_by`): `phase6-fixtures.ts` (`bootDecisionWorld`'s entity, used by `phase6-interfaces-b18` and twelve other suites),
+`phase6-graph-subscriptions.test.ts`, `phase6-graph-subscriptions-2.test.ts`, `phase6-repro-serving-lifecycle.test.ts` and
+`phase6-retention-b17.test.ts` (the mirror's rows); `phase6-repro-retrieval-retry.test.ts` already carried its event. The ○ set — the files
+that plant rows and register no retrieval subscription, so no check runs there and nothing fails: `phase6-graph-subscriptions-3` (C22: it
+registers scenarios, memory-mappings, decisions and forecasts only), `-4`, `phase6-propagation-consumer`, `phase6-repro-event-delivery`,
+`phase6-retention-b11`, `-b15`, `-b16`, `phase3-acceptance`, `phase3-corrections`, `phase4-acceptance`, `phase4-corrections`,
+`phase4-corrections-calendar`, `phase5-corrections`, `phase5-propagation`, `phase5-simulations`, `phase5-twins` — sixteen files by a grep
+for direct inserts into the six tables at the records head — is NOT corrected in B20 and is recorded here as the remaining honest-fixture
+work: corrected when the hardening pass reaches the fixtures (the integrator's decision).
+
+**B20.2 — the mechanism.** THE PARTITIONS AND THE LEDGER (0080 §1): `graph.projection_partitions` — one row per (tenant, domain,
+projection), the six names, `state serving | withdrawn`, the withdrawal's instant, actor, reason and check (`withdrawn_by_check` names a
+check row without a foreign key: the check is written first in the same transaction and the ledger is append-only), `representation_version`,
+the last rebuild — seeded at 0080 for every row of `tenancy.domains` (six per domain; the demonstration's two domains) and created lazily by
+the two ports for a domain created later; the append-only ledger `graph.projection_events` (`projection.withdrawn | projection.rebuilt |
+projection.restored | projection.rebuild_refused`); both FORCE RLS under `graph_isolation`. THE REPRESENTATION CONSTANT
+`graph.projection_representation_version()` = `'1'` — the version of the derivation rule; a change to the rule bumps it by migration (B20
+bumps nothing). THE ONE DERIVATION (§2): six SET-RETURNING SQL functions, `LANGUAGE sql STABLE`, run as the CALLER under the event tables'
+forced RLS — `graph.expected_entities(p_tenant, p_domain)`, `expected_resolutions`, `expected_edges`, `expected_strategy`,
+`expected_invalidations`, `memory.expected_items` — the expected state of each projection from its log: ONE rule for the check, the rebuild
+and the fallback reads. Functions and not the brief's `security_invoker` views, stated with the reason: a view cannot carry the
+tenant/domain filter inside its `DISTINCT ON`, so a domain read would scan every tenant's log before discarding; the parameterised function
+keeps 0065's plan. `memory.expected_items` carries the POLICY columns of the version the log names — the canonical header's classification,
+the payload's audience roles and purposes in payload order, the accountable owner (C6, AU-MEM-0083's "policy-inconsistent") — and
+`row_derivable` false where the canonical version is absent (the content tier's absence, not a policy drift). THE SYMMETRIC CHECK (§4):
+`graph.rebuild_projections()` re-issued under the SAME name (DROP + CREATE — the signature changed), still a COMPARISON: per projection
+`live_rows`, `rebuilt_rows`, `mismatched` (the joined rows whose state differs — for memory: state, version and the three policy columns),
+`missing` (expected − live), `unexpected` (live − expected: the poisoned rows), `representation_ok` — SIX rows, `memory_items_current` the
+sixth. `graph.record_retrieval_check` (§6) re-issued: it takes the six partition locks SHARED in the fixed order — the same keys
+`graph.rebuild_projection` takes exclusively, `hashtextextended('graph.projection.rebuild:<domain>:<projection>', 0)` — so a check waits for
+a rebuild in flight and its comparison snapshots after that commit, and a rebuild waits for a check's withdrawals (C3: without it a check
+computed before a rebuild would, under READ COMMITTED, re-withdraw the restored partition from a stale comparison and only a second
+human-gated rebuild could bring it back; two checks share, a rebuild takes one key, no cycle); it sums `mismatched + missing + unexpected +
+(NOT representation_ok)` into the recorded `mismatched` (the column kept), stores the extended per-projection JSON with `failed`, and
+WITHDRAWS every failed partition in the same transaction through `graph.withdraw_projection` under the subscriber's own action
+(`graph.retrieval.subscription.apply`, the check id required) — the consumer's effect stays `projections.mismatched` unresolved (the B7 rule;
+the unresolved text C10's: "retrieval check …: N projection row(s) differ from their event logs (or a partition's representation is outdated)
+after …; partition(s) … withdrawn — rebuild them under graph.projection.rebuild; operator repair required"); every failed re-check (the
+dispatcher's ten-minute tick, every later event's check) appends another `projection.withdrawn {changed: false}` row per failed partition
+until the rebuild — the append-only ledger IS the evidence of a standing failure (C11). `METHOD_REF.retrieval` changed → the retrieval
+consumer's digest changed → every live retrieval subscription is re-registered (the harnesses register fresh; the act revokes and registers
+anew in both domains). THE OPERATOR'S WITHDRAWAL (§5): `POST …/graph/projections/:projection/withdraw {reason}` under
+`graph.projection.withdraw` — exact, human-gated, C2, `requiresPurpose`; the platform administrator at PLATFORM, the tenant administrator
+at TENANT, the domain administrator at DOMAIN — through `pipeline.write` with `GraphCapability.projections`, the withdrawal's own event id
+the write's target (`PRJ`); idempotent — a second withdrawal records a second ledger row with `second_reason`, keeps the first reason and
+changes no state; no outbox event (a withdrawal is not a graph change); a reason under eight characters 422, a name outside the six 404 at
+the controller, another domain 403 `EYE-TEN-001` (no binding there — C13). THE REBUILD WRITER (§7) — the ONLY way back to `serving`:
+`POST …/graph/projections/:projection/rebuild {reason}` under `graph.projection.rebuild` (the same holders, human-gated, C2) →
+`graph.rebuild_projection` SECURITY DEFINER under the partition's EXCLUSIVE advisory lock and its row `FOR UPDATE`, the partition
+REQUIRED `withdrawn` ("projection rebuild rejected: the <p> partition of this domain is serving; withdraw it first
+(graph.projection.withdraw) or let the retrieval check withdraw it" → 409 `EYE-STA-002`); FIRST the held-poison pre-check (C8): a poisoned
+ENTITY held by an edge, a resolution or an identifier — each holder CLASSIFIED `derived` (the log derives it; a person decides) or `poisoned`
+(itself an unexpected row of ITS partition — rebuild that partition first, which removes it) — and a poisoned STRATEGY object cited by a
+decision package are REFUSED before anything is written, the holders named in `referenced` with `held_by_derived`/`held_by_poisoned`; the
+references no constraint holds (`graph.dependencies`; the prediction rows' `subject_entity_id`) are NAMED in `dangling` and left in place;
+then, inside ONE plpgsql exception block: UPDATE the drifted rows' state and companion columns from the expected row; INSERT the missing rows
+from what carries them — an entity from `entity.created`, a memory item from the canonical MEM version the log names (the policy columns from
+the §2 derivation), a strategy object from its canonical object, an edge from `edge.asserted` PLUS the claim's `intelligence.claim_lineage`
+row for the five provenance columns the edge log lacks — or NAME the row UNREBUILDABLE ("no claim lineage row for claim …@1: the
+provenance columns …"; a resolution always — its log carries no row; an assessed invalidation; an edge with reassessment events; a memory
+item whose named version has no canonical record — N4), never fabricate; DELETE the unexpected rows; set the representation version to the
+constant; run the check for this projection — any count above zero, any unrebuildable row or a constraint violation ROLLS BACK the block and
+the port records `projection.rebuild_refused` with the report and answers `outcome 'refused'` (200: a refusal is an outcome on the ledger —
+the B18.1 idiom); on success `state 'serving'`, the withdrawal columns cleared (the ledger keeps them), `projection.rebuilt` (rows written)
+or `projection.restored` (updated + inserted + removed = 0 — the demonstration's case) with the report cut at 200 (the ledger event keeps
+the whole `dangling` list). THE DERIVED WATERMARK (§3): `graph.projection_state()` — SECURITY DEFINER, context-scoped; the callers
+`graph.read`, `observation.read`, `memory.item.retrieve`, `briefing.compose` — answers the six rows in a fixed order with the watermark
+NEVER STORED: `revision_seq` (the domain's latest GraphChanged/MemoryCorrected `partition_seq`); `verified_seq` — THE LIVE CONTIGUOUS
+APPLIED PREFIX of the retrieval subscription's deliveries over that sequence (C2: the stored cursor is the dispatcher's, advanced only inside
+the finish of the delivery being applied, so a later event verified while an earlier one stands unresolved is never re-covered when the
+earlier one applies on its re-drive — the prefix is; the cursor is answered beside it as `checkpoint_seq`); `verified_at` and
+`verified_check_id` (the passing check of the event that closes the prefix); `lag_events`; `unresolved_deliveries`; the subscription and its
+status; the withdrawal columns; `representation_version`, `representation_current`, `representation_ok`; the last rebuild; the last check's
+row — and the condition: `withdrawn` (the row says so) > `unverified` (no live retrieval subscription, OR one that has applied no check yet
+— C1: a subscription with no applied delivery has no watermark) > `lagging` (`lag_events > 0`) > `current`. Lag is VERIFICATION lag: the
+ports write a projection and its log in one transaction, so the label never calls the rows stale. THE TWELVE READS AND THE LABELS:
+`projectionStateOf(cap, partitions)` is the FIRST await of every read's transaction — so the rows read after it are never OLDER than the
+stated revision (newer under READ COMMITTED, said) — on `/search`, `/entities/list`, `/entities/:id/get`, `/edges/list`, `/neighbourhood`,
+`/path`, `/strategy/list`, `/strategy/:id/get`, `/overview`, `/memory/list`, `/memory/:id/get` and `/memory/:id/retrieve`; every answer
+carries the block `projection: { revision, verified_seq, verified_at, verified_check_id, checkpoint_seq, lag_events, unresolved_deliveries,
+subscription, partitions[…], condition, degraded, code, label, withdrawn, domain_withdrawn }` — the ROUTE's partitions decide its condition
+(`ROUTE_PARTITIONS`: the search reads `entities_current` alone, so it stays `current` while `edges_current` is withdrawn, the domain's
+withdrawal named in `domain_withdrawn`); `degraded` iff `withdrawn`; `code 'EYE-DEG-001'` iff degraded — the catalogue's
+`capability_degraded`, DECLARED on a served-but-constrained 200 answer and as the evidenced retrieval's audit `result_code`, RAISED as 503 in
+the one case below (a client mapping codes to statuses reads the status, not the code); the label is the wording and the flag the fact — the
+pages render from the flag: `current` → none; `lagging` in two forms — plain ("verified through revision N (at T); K change(s) since are not
+yet verified by the retrieval subscriber — the ports write a projection and its log in one transaction, so this is verification lag, not
+data lag") and HELD ("verified through revision N (at T); the retrieval subscriber's checkpoint is held there by K unresolved delivery(ies)
+(a failed check: partition(s) … withdrawn until rebuilt | a failed check whose partition(s) have since been rebuilt; the delivery clears at
+its re-drive); M change(s) since are checked as they arrive but not checkpointed — …"); `unverified` in two forms told apart by the
+subscription ("no live retrieval subscription verifies this domain's projections; the projection watermark is unknown" | "a retrieval
+subscription is registered and has verified nothing yet (no check applied); the projection watermark is unknown until its first check
+applies"); `withdrawn` per withdrawn partition of the route ("the <p> projection of this domain is withdrawn since <at> (<reason>); this
+answer is derived from the event log — the last valid state — and is labelled; it resumes from the projection when it is rebuilt (POST
+…/graph/projections/<p>/rebuild (graph.projection.rebuild))") with the domain's lagging or unverified sentence appended — the eight forms
+pinned byte for byte by the unit test and the harness. THE WITHDRAWN-MODE READERS (`graph/projections/fallback.ts`): while a partition is
+withdrawn the LISTING and GET routes serve the LAST VALID STATE — the expected function joined to the projection row: the state the log's,
+the attributes the log does not carry from the projection row flagged `from: 'projection'`; a row the log has and the projection lacks
+METADATA-ONLY (`projected: false` — an entity as its id, state, name and type from `entity.created`, an edge with its provenance columns
+null, a memory item built from the canonical version the log names without its statement, `index_state 'stale'`); a row the projection has
+and the log lacks (poisoned) NEVER served (`/entities/:id/get` of one answers 404 as an absent entity; the search's log leg cannot match
+it); every drifted row `drift: {projected, log}`. `/search`'s entity leg runs over `expected_entities` while `entities_current` is withdrawn
+(each hit's `extra.from 'log'`) and the search gains, always, `complete: {entities, objects}`, `bounds: {entities: 1000, objects: 2000}` and
+the note when a bound is hit ("the entity scan is bounded at 1,000 rows and the object scan at the 2,000 newest; a match beyond a bound is
+not returned") — the silent bounds said. The TRAVERSALS (`/neighbourhood`, `/path`) with `edges_current` OR `entities_current` withdrawn
+walk the log-derived edge state CONSTRAINED to depth 2 with `bound.projection true`, `depthClamped` when more was asked and the label first
+in the notes — the walk, not a refusal (IA-34-005 "constrain affected traversals, expose revision"); `/edges/list` from the log (`from
+'log'`, `visibleAt` over the log's own instants); the strategy routes the log-join; `/overview` per section `from: 'log' | 'projection'`
+with `projection.withdrawn`. Every fallback reads the SAME forced-RLS tables under the SAME capability and action: nothing new is granted —
+policy equivalence, the analyst reads what the analyst may read. `/projections/verify` keeps its route and action, answers the seven columns
+and the note that it verifies and withdraws nothing (C10). THE MEMORY CONTENT TIER (D9): the CONTENT tier = the canonical version payloads
+(memory items, claims) and the evidence bytes in the vault; the METADATA tier = the six projections and the canonical header. In
+`MemoryService.retrieve` the canonical read runs under a savepoint at the fault point `b20.memory_content_unavailable` (armable in the test
+profile only); an injected fault or a STATEMENT-level failure that leaves the connection alive (SQLSTATE classes 53, 58, XX; `57014`,
+`55P03` — `isContentTierFailure`) answers 200 METADATA-ONLY: `content 'unavailable'`, `version null`, `versions null`, `accessId null`,
+`degraded {kind 'content_unavailable', code 'EYE-DEG-001', label "the content tier did not answer; this is the item's metadata (its state,
+versions and audience) — the statement is not served; retry or contact the operator", detail}`, NO access row (the access ledger requires a
+served version) and ONE `memory.item_events` row `memory.retrieval_degraded` through the new port `memory.record_retrieval_degraded` (§8),
+the request's audit row `result_code 'EYE-DEG-001'` with `content 'unavailable'`. The content read precedes the gates (the served-version
+gates need the canonical rows — B9-F1), so a refused reader consumes the armed point and learns nothing (C5); while the tier is down the
+PURPOSE gate is the item's audience LIST alone — narrower than the serving gate, never wider — because the admitted purpose is the canonical
+version's and cannot be checked (C7: "a memory item is read under a purpose its audience declares (…); the admitted purpose cannot be
+checked while the content tier does not answer; this read states <purpose>" → 403); the clearance and the roles gates as before. THE ONE
+REFUSAL B20 adds to a read: `memory_items_current` withdrawn AND the content tier down → 503 `EYE-DEG-001` ("the memory_items_current
+projection of this domain is withdrawn (since …: …) and the content tier did not answer; nothing verified remains to gate a metadata answer
+on — retry when the content tier answers, or after the rebuild (graph.projection.rebuild)") — the first 503 a SERVICE raises and the first
+use of `EYE_DEG_001` in `apps/api/src`, beside the pipeline's `EYE_INT_001` audit-unavailable 503s. A connection-class failure (08xxx,
+57P01–57P03) kills the transaction and the request fails as before (the audit row cannot be committed on a dead connection) — a deviation
+from the brief's "57P01/08xxx", stated. The EVIDENCE-bytes case is OUT (D10, the A7 doctrine): `observation.evidence.retrieve` keeps
+`EYE_INT_001` 409 for every vault failure — a metadata-only 200 for a missing read beside a 409 for a corrupt one would let a caller learn
+which manifests still hold bytes, an oracle the vault's contract forbids; the evidence tier's degradation is declared without one (`tier`,
+`availability` — B11 — and the custody row). The retrieval's `index_state` is COMPUTED (`stale` while the partition is withdrawn,
+`projected` otherwise); `memory.items_current.index_state` is retired in place by a comment (D22). THE DELETION PAUSE (§9, D11):
+`retention.begin_execution` re-declared (0072's body copied whole; the block after the approver check and BEFORE the manager's checks and
+the lock — no attempt counted, nothing locked) refuses a DELETION while `edges_current` or `memory_items_current` of the domain is
+withdrawn — "retention execution rejected (projection_withdrawn): the safe referential scope reads a projection that is withdrawn — <p>
+(since <at>: <reason>); the scope cannot be proven until it is rebuilt (graph.projection.rebuild); the action pauses for human review" —
+and the controller's `ADMISSION_REFUSAL` with the service's `failureClassOf` map it `projection_withdrawn → unresolved_dependency →
+human_review` (the approvals revoked, `attempts 0`); the rebuild, a re-resolution and a new approval execute it. The resolve step is not
+gated (the execution re-proves the references over the rebuilt projection); only the two projections `retention.load_bearing_references`
+reads are gated — the review, decision and briefing current tables it also reads are outside the partition model. THE BRIEFING (D12; E4):
+the composer reads `projection_state()` under the memory step's reservation; while `memory_items_current` is withdrawn the memory
+availability comes from `memory.expected_items` (the shared fallback, by the candidates' ids — C15), `degraded` is true, the agent's
+`on_degraded` stop names the reason ("stop condition on_degraded: the memory projection of this domain is withdrawn (the memory items are
+served from their log, labelled)"), the compose answer carries the full `projection` block, and the content's WATERMARK carries `projection:
+{memory: 'serving' | 'withdrawn'}` — the STATE only, never the watermark's numbers, so the same inputs compose to the same digest (B10-F2).
+On the watermark and NOT at the content's top level — a deviation from the design's D12, stated with the reason: BRF@v1's registered schema
+declares `additionalProperties: false` on the payload, and a top-level `projection` made every stored briefing invalid against its own
+schema (the B10-F4 replay pin failed with "payload schema violation: / must NOT have additional properties"); the watermark's sub-schema
+admits the key, the registry stays 36 rows (no BRF@v2 in B20), the harness's P6(a) and the act read `payload -> 'watermark' -> 'projection'`.
+THE REBUILT EVENT AND THE CONSUMERS (D8; C4): the rebuild's handler publishes ONE `GraphChanged/projection.rebuilt` — `identities []`,
+`relationships` empty, `objects {…EMPTY_REACH, walked: false}`, the typed block `projection {projection, outcome, rebuild_id, updated,
+inserted, removed, restored[≤200] with restored_truncated, check, representation_version, withdrawn_since, withdrawn_reason,
+withdrawn_by_check}`, `cause {action 'graph.projection.rebuild', actor, target_type 'PRJ', target_id}` — the changed rows in the typed
+block and NOT as identities or edges (a deviation from the brief, stated: `touchedIds` would have fed the restored ids to the forecast and
+scenario consumers' dependency selection and marked forecasts and scenarios for attention on a rebuild that changed no fact of the world);
+with empty identities, edges and objects the six other consumers resolve NOTHING by construction (`touchedIds` empty, pinned by the unit) —
+the retrieval consumer re-verifies (one item, `projections.verified`) and its earlier unresolved delivery clears at its re-drive. The event
+reaches SIX subscriptions: the relationships subscriber is registered on `MemoryCorrected/claim.corrected` and receives no GraphChanged — a
+fact of the registry, pinned by its absence (C4). A DELIVERED event and NON-EMPTY consumer work are told apart throughout: on the
+demonstration the retrieval delivery carried one item and the five others were applied with nothing. THE PDP, THE MAPPER, THE REGISTER: two
+exact human-gated administrator rules after `graph.subscription.replay` (no prefix rule catches `graph.projection.*`; five near-names pinned
+indeterminate); the refusal families in the mapper's order — standing 403 ("recorded by the acting principal"), absence 404 ("is not a
+projection of this domain"), the record's state 409 (the serving partition; the deletion pause), the caller's request 422 (the reason's
+length; the subscriber's missing check id) — the 409 texts probed unshadowed by the 422 family; L3-I02 RetrieveContext's `bound_to` gains
+the clause (every graph and memory read declares its product state — the projection block — and serves partial or stale only labelled),
+the row STAYS `partial` (the purpose-bound context query is owed), the register re-asserted 36/14/0; no registry row and no role (the
+upgrade proof moves `public.schema_migrations` 58 → 59 only). THE PAGES AND THE WALKS (D16; D19): `/graph/subscriptions` gains
+"Projections (the index tier)" — the six rows (the condition from the FLAG, the state, revision / verified through / lag, withdrawn since
+and the reason, the representation, the last rebuild, the last check's mismatched / missing / unexpected), the domain's watermark line,
+`#preason` and two governed buttons per row (Withdraw — critical; Rebuild), the answers verbatim, a refused rebuild's `unrebuildable` /
+`referenced` / `dangling` lists, the projection events, and Missing · Unexpected · Representation · Withdrawn on the retrieval-checks
+table; `/graph/explore` and `/graph/search` render the label beside the as-of line from the flag with the code, the constrained walk's own
+note, the bounded search's note and the `log-only` / `drifted` marks; `/graph/memory` renders the metadata-only answer ("Content
+unavailable." with the label and the code; no version served, no access recorded) and ` · projection <condition> · index <index_state>`;
+`/graph` (the overview) a Projections row of six conditions and each section's "(from the event log — the projection is withdrawn)";
+`apps/web/lib/graph.ts` the types, the two clients and the two pure helpers `projectionNote`/`searchBoundNote` (four vitest cases). THE
+WALKS: `e2e/phase6-memory.spec.ts` test 2 asserts the retrieval's ` · projection unverified · index projected` line with C1's first form
+byte for byte — the gate has no scheduler and no subscription, so `unverified` is the honest condition there; `e2e/phase6-projections.spec.ts`
+(three tests): the Projections table with six `unverified` rows under representation 1; the domain administrator withdraws `entities_current`
+with a reason → the SEARCH page (a query on the empty domain) renders "Projection withdrawn." with the label and `EYE-DEG-001` → the
+rebuild `restored — updated 0, inserted 0, removed 0` and the label gone; the refusals in the page's words (a rebuild of the serving
+`edges_current` 409 `EYE-STA-002`; the analyst's withdraw 403 `EYE-AUT-001` with the Withdraw button disabled until `#preason` is filled —
+C23) and the landmarks. The explore page is NOT walked on the gate (an empty domain answers "No entities have been resolved yet"; seeding
+entities there needs the extraction fixture and a resolution run — outside the walk's budget): the explore label is pinned by the harness's
+`/neighbourhood` and printed by the act.
+
+**B20.3 — what is stated.** (1) There is no lexical/vector index: shard availability, embedding compatibility, analyzer version and recall
+quality have no referent and are said so; the representation version is the derivation rule (the `expected_*` functions, the state
+vocabularies, `RESOLVER_RULE_VERSION`/`normalizeName` — a change to any bumps the constant by migration). (2) Lag is VERIFICATION lag: the
+ports write projection and log in one transaction; the label says so and never calls the rows stale. (3) The edge log lacks the provenance
+columns: a missing edge is rebuilt from `edge.asserted` + the claim's lineage row or reported unrebuildable naming the claim version — never
+fabricated; a resolution's log carries no row — a missing resolution row keeps its partition withdrawn until a person restores the row
+outside governance from its record or a later act re-creates it; no exit exists in B20 (the state's derivability is the log's, the row is
+the proposer's — C14); an assessed invalidation's lists are counts in its log (unrebuildable; an open one derivable); an edge with
+reassessment events is unrebuildable (the reassessment record is a person's decision path outside the state derivation). (4) A poisoned
+entity held by a derived edge, resolution or identifier is refused by the rebuild and left to a person — the partition stays withdrawn, the
+reads labelled, no forced-removal act (the harness's DX is left so); one held only by poisoned holders names the partition to rebuild first;
+a poisoned strategy object cited by a decision package is refused likewise; the references no constraint holds (`graph.dependencies`, the
+prediction rows' `subject_entity_id`) are NAMED in the report as `dangling` and left in place; a twin's boundary list is not consulted. (5)
+A withdrawal blocks no WRITE ("queue writes when validation is unavailable" stays ES-34-009's remaining work); a write during a withdrawal
+lands in both log and projection and the rebuild re-verifies it. (6) Under READ COMMITTED the rows a read serves can be NEWER than the
+block's revision, never older. (7) The content-tier fault answers metadata-only for an injected fault or a statement-level failure that
+leaves the connection alive (classes 53/58 include conditions after which the backend may not survive the statement — then the request
+fails as before); a connection-class failure (08xxx, 57P01–57P03) kills the transaction and fails 5xx as before. (8) The evidence bytes'
+unavailability stays `EYE_INT_001` 409 (A7; D10). (9) The deletion's resolve step is not gated; the review, decision and briefing current
+tables `retention.load_bearing_references` also reads are outside the partition model. (10) The intelligence/prediction/twin/simulation/
+decision projections keep their read-only diagnostics; `graph.dependencies` and `graph.entity_identifiers` are not partitions; the partition
+model extends to them later. (11) The demonstration cannot exhibit a real drift, a poisoned or a missing row without corrupting the copy —
+the harness carries P2–P5; the demonstration's rebuild is a restoration (`updated 0, inserted 0, removed 0`), said; the fault point is
+armable in the test profile only. (12) The rebuilt event names the changed rows in a typed block, never as identities: a consumer that
+wants to react to a rebuild reads the block — none does in B20. (13) `memory.items_current.index_state` is retired in place; the
+retrieval's `index_state` is computed. (14) The twenty-two fixtures: the ✔ set corrected; the ○ set (sixteen files) recorded as follow-up
+honest-fixture work (§B20.1). (15) The gate's memory walk asserts `unverified`; the explore label is pinned by the harness and printed by
+the act. (16) `withdrawn_by_check` names a check row without a foreign key. (17) A retrieval check waits for a rebuild in flight on any partition of its domain and a rebuild waits for
+a check in flight; a statement timeout on the dispatcher side fails the delivery `infrastructure` and it is re-driven (the shared locks are
+held only for the comparison and the withdrawals); the lock's serialisation is proven by the keys — the migration's probe held fourteen
+advisory locks inside one transaction and none after — not by two concurrent processes. (18) The degraded memory read's purpose gate is the
+audience list (narrower than the serving gate, which also admits the purpose the item was admitted under); a memory retrieval while its
+partition is withdrawn AND the content tier does not answer is refused 503 — nothing verified remains to gate a metadata answer on. (19) A
+migration that bumps `graph.projection_representation_version()` withdraws every partition of every domain at its next check and each
+returns to service only by a human-gated rebuild — six per domain, in the order entities → resolutions → edges → strategy → invalidations →
+memory (the runbook §8 names it); meanwhile every read is served from the log under the NEW rule, labelled; the bump migration decides
+whether it rebuilds in place (a migration-side path the writer's context-scoped port does not offer today — deferred to the migration that
+first bumps the constant) or accepts the operator's rebuilds; B20 bumps nothing. (20) Verification is event-driven: a row tampered after
+the last check is served as `current` until the domain's next GraphChanged/MemoryCorrected event (the check runs in the retrieval consumer
+only); the operator's verify route reports and withdraws nothing. (21) The projection block is attached to the twelve exploration and memory
+routes; `/resolutions/queue`, `/resolutions/:id/get`, `/mappings/list`, `/impact/preview|propagate|awaiting|list` and
+`/edges/:id/reassessment/keep` read the same projections and serve a withdrawn partition UNLABELLED — operator and agent surfaces, not
+exploration; the next batch — so "no read appears current" is scoped: no EXPLORATION or MEMORY read (the twelve) appears current. (22) The
+memory check compares state, version and the three policy columns; a drifted CONTENT column (title, statement, source, validity, retention,
+related) with a correct version is NOT detected — the rebuild's UPDATE re-projects them only for a row the check found drifted; the content
+a retrieval serves is the canonical version's (B9-F1), so a content drift misleads listings only. (23) `EYE-DEG-001` is DECLARED on a
+served-but-constrained 200 answer and the evidenced retrieval's audit `result_code`, and RAISED as 503 in the one case of (18); a client
+mapping codes to statuses reads the status, not the code. (24) THE RECONCILE PASS: the boundaries gate (`pnpm boundaries` — `no-circular`
+with type-only imports counted) was RED on the tree as the five implementers left it — two type-only cycles, `graph.capabilities.ts →
+projections/projection-state.ts → graph.capabilities.ts` and `edges/edges.service.ts → projections/fallback.ts → edges/edges.service.ts` —
+and GREEN after E1 (`projectionStateOf` typed on a structural `ProjectionStateReads`, the `GraphReads` import gone) and E2 (the edge row's
+shape declared locally as `EdgeRowShape`, the `EdgeRow` import gone): the rule — `projection-state.ts` imports nothing from
+`graph.capabilities.ts` (which imports `ProjectionName` from it) and `fallback.ts` imports nothing from `edges/edges.service.ts` (which
+imports `edgesFromLog` from it); E3 widened the B9-F1 closure's whole-object `availability` pin (`phase6-graph-subscriptions-4:449`) by the
+three partition-level fields `index_state/projected/drift` the design's §8.3 sweep had missed; E4 the briefing's watermark (§B20.2); E5
+typed `recordRetrievalCheck`'s `withdrawn` answer on the capability; E6 the consumer's read of it. (25) THE IMPLEMENTERS' OWN DEVIATIONS,
+each stated in its report and carried here: the migration's memory and strategy writers take the policy and owner columns from the §2
+derivation (one derivation for the check and the writer; a malformed `accountable_owner` yields NULL instead of a refusal), the success
+ledger event keeps the whole `dangling` list where the answer keeps the cut one, four indexes (C2's `gsd_subscription_applied_seq` beside
+the three), no `schema_migrations` INSERT in the file (the runner's), the derivation bodies said to be single SELECTs the planner MAY inline
+(the design's "inlined by the planner" not asserted) and a FILTER count parenthesised; the API's `resolutionsKnownAt` (the known-at
+predicate over log-joined rows — a new export), `overviewFromLog` computing all five sections in one path (a metadata-only resolution from
+the log counts toward the state counts alone — `automatic`/`modelAssisted` need the projection row's `decided_by`/`method`),
+`status.projections` rows carrying the port's columns AND the block's partition shape, the label first in the notes only when the walk is
+constrained, the `/neighbourhood` answer carrying `bound.projection` and `depthClamped` at the top level AND inside `neighbourhood` (the
+harness and the pages read them where they ride; `/path`'s `bound` pinned exactly) and the overview's block inside `overview`,
+`/entities/:id/get` handing `claimsFor` only the mentions that carry a `claim_object_id` (a log-only resolution has none; byte-identical for
+projection rows), a memory item the log names at a version the content tier does not hold served from the log as metadata alone with
+`content_tier 'absent'` and `projected false` rather than dropped (the rebuild names it unrebuildable), the log-derived edge rows carrying
+`null` in the provenance columns the projection types as strings (`LogEdgeRow`, a stated cast) with `asserted_by`/`retracted_by`/
+`superseded_by` beside them, a search hit from a log row without `updated_at` answering `recorded_at null`, the retrieval route recording
+the access from `versionServed` on the served branch alone (the metadata-only answer returns before it), the PDP pin holding the tenant
+administrator at a TENANT binding and a `tenant_admin` bound at the DOMAIN scope DENIED (the rule's scope), eight label forms pinned where
+the corrections list eight under "seven", the metadata-only `availability` with `versions null` and `served_is_current null`, the
+retrieval's answer a discriminated union (the served answer byte-identical to before), the rebuilt event's `restored_truncated` the
+builder's cut OR the port's own flag (the port cuts at 200 first), the projection state read under the memory step's existing reservation
+(the agents' read-budget counts unchanged); the executive
+capability gaining four plain reads beside `projectionState`/`expected` (the shared fallback's structural pick); the web's
+`ProjectionStateRow`, `bound.projection` read wherever it rides, the explore page's own "constrained" note (a constrained walk that
+completes within two hops would otherwise have said nothing), ` · code EYE-DEG-001` rendered beside every degraded label on the four pages
+(the design's search snippet applied to all), the retrieval-checks table's fourth column, `apps/web/lib/graph.test.ts` (the web tests read
+15, not eleven), the memory walk's assertion after the served line, the projections walk's disabled-button pin and its "no unnamed
+control" assertion, the `ci.yml` comment above the step extended (the B19 two, the B20 three; a record, not a gate condition), no
+`getStrategy` client to widen (the strategy page reads `listStrategy`, which gained the block); the
+harness's P3 order (c) BEFORE (b) — C8's "held only by rows the log does not know either" text is unreachable while a derived holder stands
+in the domain, so the poisoned-only shape is exercised first and (b)'s withdrawal answers `changed false` — `bootDecisionWorld` before the
+subscriptions (its many writes kept out of the six subscriptions' deliveries), the upload H uploaded and withdrawn inside P7 (a briefing
+composed in P6 cites every corrected evidence version of the domain and blocks its own deletion at resolution — B10's rule), a control
+agent run before P6's drift, P7's last event `execution.finished` (the vocabulary has no `action.executed`), the C11 pin at `-2:283`
+reformulated — this event's three `projection.withdrawn` rows selected by check id and their count 3, the state withdrawn, and `changed`
+pinned over the WHOLE ledger (exactly its first row true, every later one false: the ledger carries more rows of the same shape, because
+that case's B18 `GraphChanged/twin.state_changed` deliveries fail on the same drift and are re-driven beside this event's — six rows on a
+fresh database in the reconcile pass), `triggerChange`'s fresh edges carrying their events but no lineage row (a retracted edge is never
+missing), the act registering the retrieval kind only where a live subscription stood, L. Brandt's item the newest active INTERNAL one whose
+audience admits `memory`, the act's deletion `open` passing the candidate's `retentionProfile` beside the selector and testing a hold by
+`observation.legal_holds … lifted_at is null` (the act-b19 idioms), the `::text` casts inside `jsonb_build_object` (pg cannot infer a
+variadic parameter's type). (26) The web tests
+read 15 = 11 + 4 (a new test file in the web's own scope); no evidence file carries them (the reconcile pass and the integrator's run, as
+B19's "11 tests" before). (27) B20's PR was not yet open when these records were written (the candidate uncommitted); it opens with base
+`phase6-b19` once the candidate is pushed.
+
+**B20.4 — the harness.** `apps/api/test/int/phase6-graph-projections-b20.test.ts` (1,029 lines): nine cases in the order P1, P2, P3, P4,
+P5, P6, P7, P9, P8 on a fresh database with the scheduler on, ALL SEVEN consumers registered in the main domain D (the B18 `register(kind)`
+idiom; every GraphChanged wait counts the SIX graph kinds and pins the relationships subscriber absent), a second domain DX for the
+held-poison refusal so D's `entities_current` is never left withdrawn, the world planted WITH its events (E1 `Bab el-Mandeb Strait`, E2
+`NORDWERK Magnet GmbH`, E3 `E3 Holding AG`; the edge X1 with its `edge.asserted` event and a `claim_lineage` row; the memory item M1 recorded
+through the route), and every case ending in a `B20 EVIDENCE` line naming the SIX items V04-T-024/026 demand — the fault trace, the
+affected-product watermark, the consumer behaviour, the operator action, the recovery, the reconciliation (17 lines; the run's log IS the
+record — `evidence/cp6/b20-harness.txt`):
+**P1 · the watermark on every read** (AU-MEM-0068; V03-T-108; FEX-08; PR-19-001/-002; DP-33-005) — one applied change → all twelve routes
+`current` with `revision === verified_seq === checkpoint_seq` (23 on the first run), `verified_check_id` the check's, `lag_events 0`, the
+route's partitions named, every partition `serving` under representation `1`; the retrieval subscription PAUSED → the next change (24) →
+the five other deliveries terminal, no retrieval delivery → every read `lagging`, `lag_events 1`, the plain label byte for byte; RESUMED →
+the re-drive applies it → `current`; REVOKED → `unverified` in the first form, `verified_seq null`, `subscription_id null`; registered anew
+(`backlog 'leave'`) → BEFORE the next change every read `unverified` in the SECOND form (C1: the new id, `status 'active'`, nothing
+verified), THEN the next change → `current` at 25. SIX: the pause/revoke/register ids; the revision and the verified sequence per state;
+the twelve answers' condition; pause, resume, revoke, register; the applied re-drive and the fresh subscription's first check;
+`verified_seq == revision == 25`.
+**P2 · drift → the automatic withdrawal → the labelled last-valid reads and the constrained walk → the rebuild → the passing check and
+the re-driven delivery** (AU-MEM-0068/-0070/-0083 "stale"; IA-34-005; V03-T-098/-112) — superuser `update graph.entities_current set
+lifecycle_state = 'retired'` on E1; the next change's retrieval delivery `unresolved` (`unresolved_dependency`, `human_review`,
+`projections.mismatched`, `last_error` with C10's text naming `entities_current`); the check `mismatched 1` (the sum) with the row
+`{mismatched 1, missing 0, unexpected 0, representation_ok true, failed true}`; the partition `withdrawn` BY the check (`withdrawn_by` the
+subscription principal, `withdrawn_by_check` the check id, the reason "retrieval check … mismatched 1, missing 0, unexpected 0,
+representation ok (current 1)"), one `projection.withdrawn {by retrieval_check, changed true}` row (no re-drive and no other change before
+the rebuild — the tick's re-check is ten minutes away); THE READS by the analyst — `/entities/:E1/get` `lifecycle_state 'active'` (the
+log's) with `drift {projected 'retired', log 'active'}` and `from 'log'`, `condition withdrawn`, `degraded true`, `code EYE-DEG-001`, the
+label = the withdrawn text + the HELD lagging form ("… held there by 1 unresolved delivery(ies) (a failed check: partition(s)
+entities_current withdrawn until rebuilt); 1 change(s) since are checked as they arrive but not checkpointed …"); `/entities/list` E1
+active with `drift`; `/search Bab` the hit `extra.from 'log'`, `complete {entities true, objects true}`; `/neighbourhood` E2 depth 4 →
+`searchedDepth 2`, `depthClamped true`, `bound.projection true`, the note starting with the label; `/path` E2 → E1 `bound {scan false,
+depth false, projection true}`; `/edges/list` — NOT this route's partition — `partitions [edges_current serving]`, `withdrawn []`,
+`domain_withdrawn ['entities_current']`, `condition lagging` with the held form (the block names ONLY the route's partitions — pinned);
+`/overview` `entities.from 'log'`, `projection.withdrawn ['entities_current']`; a rebuild by the analyst 403; THE REBUILD by the domain
+administrator → `rebuilt`, `updated 1`, `restored [{E1, updated, to active}]`, `check.mismatched 0`, `serving`, the ledger `[withdrawn,
+rebuilt]`, the row active; THE EVENT: one `GraphChanged/projection.rebuilt` with `identities []`, `relationships.edges []`,
+`objects.walked false`, `cause graph.projection.rebuild` on `PRJ` → its SIX deliveries terminal — retrieval `applied` with
+`projections.verified`, twins / forecasts / scenarios / decisions / memory-mappings `applied` with `items []`, the relationships subscriber
+absent; BETWEEN the rebuilt event's application and the re-drive (pinned once): `/edges/list` `lagging`, `lag_events 2`,
+`unresolved_deliveries 1`, the held form "(a failed check whose partition(s) have since been rebuilt; the delivery clears at its
+re-drive)"; THE RECONCILIATION: `dispatcher.reconcile(…)` → the drift event's delivery `applied` (`resolved_after_checks 1`), the checks
+`[1, 0]`, `checkpoint_seq === the drift event's sequence` (the dispatcher's cursor — 26) and `verified_seq === the rebuilt event's ===
+revision` (27), `lag 0`, `unresolved 0`, every read `current` with no `drift` and no `from` — the same end rule in every drift case (C2).
+SIX as the evidence line records.
+**P3 · the poisoned partition** (AU-MEM-0083 "poisoned"; DP-38-005) — (a) in D a superuser INSERT of a row with no event → the check
+`entities_current {mismatched 0, missing 0, unexpected 1, failed true}` and the recorded `mismatched 1` — pinned beside the OLD sum: under
+0065's JOIN-only check the row was invisible (`old_join_only_sum 0`); withdrawn; the row absent from `/entities/list`, from `/search`
+(`complete.entities true`) and from `/entities/:P/get` (404 "no authorized entity matches"); the rebuild `removed 1`, `dangling []`, the
+row gone, the six deliveries, the re-drive → `current` at 29; (c) in DX a poisoned entity held ONLY by a poisoned edge (no event either) →
+the operator's withdrawal (`changed true`) → the rebuild REFUSED "held only by rows the log does not know either" with `held_by_derived 0,
+held_by_poisoned 1` → `edges_current` withdrawn and rebuilt → `removed 1` (the holder gone, `dangling []`); (b) a poisoned entity held by a
+DERIVED edge (its event and lineage present, on the poisoned object) → the withdrawal `changed false` (the partition was withdrawn by (c);
+the second reason recorded) → the rebuild REFUSED "held by rows the log derives (an edge, a resolution or an identifier) and cannot be
+removed — a person decides them; nothing was written" with `referenced [{id, canonical_name, referenced_by [{edge, asserted, derived
+true}], held_by_derived 1, held_by_poisoned 0}]` and no "some holders" suffix — the two poison shapes told apart; the DX listing labelled,
+the poisoned rows never served; the DX ledger `[withdrawn operator true, rebuild_refused, withdrawn operator false, rebuild_refused]` on
+entities and `[withdrawn, rebuilt]` on edges; DX LEFT WITHDRAWN on `entities_current` (stated: a person decides). SIX for (a) and for
+(b)(c).
+**P4 · the missing row** (AU-MEM-0070; V03-T-101/-112) — the entity: superuser DELETE of E3 → `missing 1` → withdrawn → `/entities/list`
+carries E3 METADATA-ONLY (`projected false`; the name and type from `entity.created`), `/entities/:E3/get` `projected false`, `from
+'log'` → the rebuild `inserted 1` with `entity_type/canonical_name/normalized_name/created_by/correlation_id` equal to the seed (C19); the
+edge: X1 deleted → `/edges/list` X1 `projected false` with `evidence_object_id null`, `/neighbourhood` E2 carries it under
+`bound.projection true` → the rebuild `inserted 1` with the provenance columns equal to the lineage row's; the unrebuildable edge: X2
+seeded WITHOUT a lineage row and deleted → the rebuild `refused` naming `unrebuildable [{X2, "no claim lineage row for claim …@1: the
+provenance columns …"}]`, `projection.rebuild_refused` on the ledger → the operator supplies the lineage row (the refusal named exactly
+what) → the rebuild `inserted 1` → serving; the memory item: M1 deleted → `/memory/list` M1 `projected false`, `index_state 'stale'` →
+the rebuild `inserted 1` from the canonical MEM version 1 (the row's title, statement, classification, audience, derivation, `recorded_by`
+and `object_version` equal to it). SIX per variant (four evidence lines).
+**P5 · the unapproved representation version** (AU-MEM-0083 "unapproved representation") — superuser `representation_version = '0'` on
+`edges_current` → `{mismatched 0, missing 0, unexpected 0, representation_ok false, failed true}`, the recorded `mismatched 1`, withdrawn
+with the reason naming "representation outdated (current 1)"; the reads' partition `representation_version '0'`,
+`representation_current '1'`, `representation_ok false`; the unresolved text with "(or a partition's representation is outdated)"; the
+rebuild `restored` (nothing to write), `representation_version '1'`, the ledger's `projection.restored`, the event's `outcome
+'restored'`; the re-drive. The case says in its name that the flip stands in for a derivation-rule change, which arrives with a migration
+that bumps the constant. SIX.
+**P6 · the memory workspace** (AU-MEM-0067; FEX-09; DP-37-005) — (a) superuser `object_version = 7` on M1 → `memory_items_current
+{mismatched 1}` → withdrawn; the reader's retrieval 200 with `availability.index_state 'stale'`, `current_version 1` (the LOG's), `drift
+{projected 'active@7', log 'active@1'}`, `versionServed 1`, the statement served, `condition withdrawn`, the access row on version 1; a
+briefing composed by the executive → `degraded true`, the answer's partition `withdrawn`, the content's WATERMARK `projection {memory
+'withdrawn'}` read back from the stored payload; a briefing agent registered with `on_degraded` (a CONTROL run before the drift finished
+undegraded, so the stop is provably the projection's) → `stopped` with "on_degraded: the memory projection of this domain is withdrawn
+(the memory items are served from their log, labelled)"; the rebuild `updated 1` (`to active@1`) → the agent `finished`, `degraded
+false`; (a2) the POLICY columns (C6): `audience_purposes` widened by `decision` → `mismatched 1` → withdrawn; the retrieval stale with no
+state/version `drift` (the policy drift is the check's, said); the analyst under `decision` STILL refused 403 (the served version's
+audience decides — B9-F1; the widened projection column gates nothing while the content tier answers); the rebuild `updated 1`, the
+purposes back to `[memory, briefing]`; (b) THE CONTENT TIER (C5): the point armed; the analyst (a retrieve holder) under `decision` → 403
+with C7's list-only text, NO `memory.retrieval_degraded` row, NO access row, `isArmed false` (the refused read consumed the point — the
+fault trace); re-armed; the reader under `memory` → 200 METADATA-ONLY — `content 'unavailable'`, `version null`, `versionServed null`,
+`versions null`, `accessId null`, the degraded block with `detail 'injected fault at b20.memory_content_unavailable'`, `item.state
+'active'`, `item.current_version 1` — the access rows UNCHANGED, ONE `memory.retrieval_degraded` row `{purpose memory, cause
+content_unavailable, access_recorded false, code EYE-DEG-001}` at `object_version 1`, the request's audit row `result_code 'EYE-DEG-001'`
+with `content 'unavailable'`; the next retrieval served with an access row — the recovery; (b2) the NARROWER gate (C7): M2 recorded under
+`memory` with `audience.purposes ['briefing']` (the admitted purpose not in the list) — served with the tier up, REFUSED 403 with the tier
+down ("… its audience declares (briefing); … this read states memory"), no ledger row, no access row, the point consumed; (c) the
+operator's withdrawal of `memory_items_current` ("no drift: a planned review") → the retrieval stale without drift; (d) withdrawn AND the
+tier down → 503 `EYE-DEG-001` with C7's text, `isArmed false`, no `retrieval_degraded` row, no access row; disarmed → the labelled
+retrieval → the rebuild `restored`, `index_state 'projected'` after, the ledger `[withdrawn operator, restored]`. SIX for (a), (a2), (b),
+(b2) and (c)(d).
+**P7 · the deletion paused** (DP-37-005; ES-33-009) — the upload H corrected once (the version-1 manifest deletable — the B19 M5 idiom), a
+deletion opened by the steward, resolved `scope_resolved` (1 to execute), approved by the authority on the digest; `edges_current`
+withdrawn by the domain administrator; the execution → 409 `EYE-STA-002` "the execution was rolled back and the action paused: retention
+execution rejected (projection_withdrawn): the safe referential scope reads a projection that is withdrawn — edges_current (since …: …);
+the scope cannot be proven until it is rebuilt (graph.projection.rebuild); the action pauses for human review" — the action `paused`,
+`unresolved_dependency`, `human_review`, `attempts 0`, the approvals revoked, `action.paused` on the ledger; the rebuild `restored`;
+resolved again, approved again, executed → `executed`, the manifest tombstoned; the action's events `[action.opened, scope.resolved,
+approval.recorded, action.paused, scope.resolved, approval.recorded, execution.started, execution.item, execution.finished]`. SIX.
+**P9 · the operator's acts** — `strategy_current` withdrawn (`changed true`) and again (`changed false`, the first reason kept,
+`second_reason`, the same `withdrawn_since`; two ledger rows); `/strategy/list` from the log-join (`from 'projection'` on the content
+columns); the rebuild `restored`; a second rebuild of the serving partition 409 `EYE-STA-002`; the analyst's withdraw 403 `EYE-AUT-001`;
+`vector_index` 404 `EYE-STA-001` ("vector_index is not a projection of this domain (one of entities_current, …)"); a short reason 422
+`EYE-REQ-001`; the domain administrator in DX 403 `EYE-TEN-001` (no binding there — C13; the brief's "404" does not arise);
+`checkpoint_seq`/`verified_seq` unchanged by the acts (55 — no outbox event but the rebuild's); the register through the route 36/14/0 with
+L3-I02's clause. SIX.
+**P8 · the search's completeness** (V03-T-098) — LAST: 1,001 entities WITH their events in one statement → `/search Bulk` →
+`complete.entities false`, `bounds.entities 1000`, the note, 50 hits (`MAX_RESULTS`), `complete.objects true`; the next change → `current`
+at 56 (nothing unexpected: the rows have their events). SIX (the fault trace the bound itself; the recovery none — the bound is declared,
+not lifted).
+The pins widened: `phase3-acceptance.test.ts:1176` — the six rows in the port's order, `missing`/`unexpected` 0, `representation_ok` true,
+with the JOIN-only note; `phase6-retention-b16:759` and `-b17:494` (`noDrift`) the same; `phase6-graph-subscriptions-2:283` — after the B7 drift
+case's three failed re-checks, this event's three `projection.withdrawn` rows by `retrieval_check` (selected by check id; the count 3) and
+the partition STAYING withdrawn (the superuser repair is not a rebuild; no graph route is read later in that file), `changed` pinned over
+the whole ledger — exactly its first row true, every later one false (the ledger carries more rows of the same shape: the case's B18
+`twin.state_changed` deliveries fail on the same drift and are re-driven beside this event's) — and the count and the state again after the
+positive control; `phase6-graph-subscriptions-4:449` (the B9-F1 closure's whole-object `availability` pin) widened by
+`index_state/projected/drift`; `phase6-briefings:90` (the whole-object watermark pin) by `projection {memory serving}`; every harness that
+registers `retrieval` registers fresh (the digest changed); `codex-corrections.test.ts:131`'s stub needed nothing. THE RUNS: the reconcile
+pass (2026-09-17, on the tree as reconciled) — the harness 9/9 four times (h1 and h2 before E3–E6; h3 and h4 on the final tree, 30.0 s /
+29.8 s) and the wider neighbouring set 562/562 in 38 files with the two reconciliations E3 and E4 (one failure each in its group on the first
+run, neither a flake; none on the re-run); the integrator's runs (2026-09-22, the same tree, `evidence/cp6/`) — the harness **9/9 on two
+fresh databases** (`eye_verify_b20_h1` 29.63 s, `h2` 29.76 s; the 17 evidence lines each — `b20-harness.txt`) and the neighbouring set
+**344/344 in 24 files** on a fresh database (298.6 s; the per-file counts in `b20-neighbouring-suites.txt`: the four subscription
+harnesses 13/14/19/32, the two repro suites 1/5, `phase6-interfaces-b18` 14, the retention harnesses B11 35, B16 6, B17 5, B18 6,
+`phase6-memory-derived` 6, the briefing/agent/corrections/executive/monitoring suites 6/6/9/19/10/25/10/7, `phase3-acceptance` 43,
+`phase3-corrections` 20, `phase6-decisions` 15, `phase6-propagation-consumer` 18).
+
+**B20.5 — the demonstration.** `scripts/phase6/act-b20.mjs` (482 lines) → `evidence/cp6/act-b20.txt`; rehearsed on a restored copy
+(`eye_demo_b20` on :3411 with its own vault copy and Redis — B17's rehearsal-only edits; `evidence/cp6/b20-rehearsal.txt`): the THIRD
+rehearsal held whole (39 checks, 129.8 s); the FIRST stopped on the act's own briefing pin — the demonstration's briefing is `degraded`
+because of its SOURCES (B10: five scheduled collections failed by `known_at`), which the pin had attributed to the projection; corrected to
+"not degraded BY THE PROJECTION", the sources' degradation named beside it; the SECOND on the act's own scene-1 wait — the replacement's
+replayed delivery is applied by the dispatcher's 60-second reconcile tick and the act waited 30 s, and its delivery and check lookups by
+event id found the REVOKED subscription's earlier rows; corrected: the lookups filter by the replacement's subscription id, the wait is
+150 s — both act-side; nothing on `eye_demo` touched by the rehearsals. THE ACT on `eye_demo` (2026-09-22T19:33Z; ALL SCENES HELD — 39
+checks in 11.3 s): the backup FIRST to `.eye-local/backups/eye_demo-pre-0080-20260922T193304Z.dump` (51,890,423 bytes — DURABLE: the
+scratchpad backups of B18 and B19 were swept by the host's temporary-directory cleaner over the five-day gap, so from B20 the demonstration
+backups live under `.eye-local/backups/`, the runbook §8), the demonstration API (pid 69749) stopped, `eye_demo` migrated with 0080
+(`applying 0080_b20_index_tier_degradation.sql ... ok`; the partitions seeded — six per domain, both domains, representation `1`), the API
+restarted on the B20 build by the runbook's script (pid 64469; `/readyz` ok); then (0) THE STATE — the register through the route: 50 rows,
+36 bound / 14 partial / 0 unbound, L3-I02 `partial` with its `bound_to` naming `B20 (0080)`; the strict check through `/projections/verify`
+on all six partitions of BOTH domains, seven columns per row — the origin `entities_current 10/10, resolutions_current 30/30, edges_current
+8/8, strategy_current 9/9, invalidations_current 20/20, memory_items_current 17/17`, the mirror `14/14, 0/0, 16/16, 1/1, 0/0, 0/0` — every
+row `mismatched 0 missing 0 unexpected 0 representation ok` (the act stops before any withdrawal otherwise — C6's guard; the design-time
+probe compared state and version only, the rehearsal was the guard); the six partitions of each domain `serving/current` under
+representation 1; (1) THE WATERMARK — the six other kinds LEFT in both domains (no method changed); the RETRIEVAL subscription of the origin
+(`01a09302…`, cursor 14359) and of the mirror (`01a0aacd…`, cursor 14318), both registered for consumer `a95b9b42…`, REVOKED (this
+process's is `cff991a7…` — a changed method is a new consumer) and registered anew by the administrator with the revoked subscription's
+accountable human as the owner; each replacement replayed ONE event from the revoked cursor's OWN event (from sequence 14358 and 14317 —
+C1: a replay re-drives rows strictly after the point, and a caught-up domain would otherwise have left the replacement `unverified`); the
+replayed deliveries `applied` with `projections.verified`, each check `mismatched 0` with every row `m0 mi0 u0 rok`; A. Hoffmann's `/search
+NORDWERK` (1 entity hit, 1 claim; `complete {entities true, objects false}`, `bounds {1000, 2000}`, the note) and `/neighbourhood` of the
+NORDWERK entity ("NORDWERK ANTRIEBSTECHNIK GmbH"; 1 edge, 2 entities at depth 2, `bound.projection false`) print `condition current`,
+`revision 14359 = verified_seq 14359 = checkpoint_seq 14359`, `lag 0`, the check and its instant; the administrator's `/entities/list` in
+the mirror `current` at 14318 (14 entities); the strait entity NOT found by name — the path's far end is the walk's own neighbour
+("SYN-PART-BRG"), said; (2) THE OPERATOR WITHDRAWS — the administrator (the platform-admin session acting in the origin: the demonstration
+has no domain_admin persona and no persona is new) WITHDREW `edges_current` with the reason "representation review before the ontology
+proposal" (`changed true`, event `01a0ca9b-c290…`, `withdrawn_since 2026-09-22T19:33:20.658Z`); the partitions: `edges_current withdrawn`,
+the five others serving; `/search NORDWERK` stays CURRENT — the block names only the route's partitions (`entities_current`), the
+withdrawal named in `domain_withdrawn`; `/neighbourhood` depth 4 → `condition withdrawn`, `degraded`, `code EYE-DEG-001`, the label,
+`bound.projection true`, `searchedDepth 2` (4 asked; `depthClamped true`), 1 edge from the log; `/edges/list` from the LOG — 1 edge of 1
+eligible, every one `from 'log'` and `projected true`, no drift and no metadata-only row (nothing drifted on the demonstration — said);
+`/path` `bound {scan false, depth false, projection true}`, a path of 1 hop with the label; `/overview` edges from the log (8 total, 1
+asserted), `projection.withdrawn ['edges_current']`, the five other sections from the projection; a SECOND withdrawal → `changed false`, the
+earlier reason kept, `second_reason "a second reason on the same partition (idempotent)"` — a second ledger row, no state change. THE
+DELETION: 8 candidate manifests looked up at run time (the object's latest version corrected, withdrawn or superseded; hot; not tombstoned;
+not held); P. Novák opens and resolves each — the first (EVD …@2 corrected) resolved `paused` (blocking 1) and was withdrawn, the second
+(EVD …@5 corrected) `scope_resolved`, 1 to execute — TAKEN; H. Bergmann approved on the scope digest `eb2f1df8…`; P. Novák's execution
+REFUSED 409 `EYE-STA-002` — "the execution was rolled back and the action paused: retention execution rejected (projection_withdrawn): the
+safe referential scope reads a projection that is withdrawn — edges_current (since 2026-09-22 19:33:20.658671+00: representation review
+before the ontology proposal); the scope cannot be proven until it is rebuilt (graph.projection.rebuild); the action pauses for human
+review" — the action `paused`, `unresolved_dependency → human_review`, `attempts 0` (refused before the state moved), the approvals revoked
+(1 revoked, 0 live), nothing retired. THE BRIEFING: S. Okafor continued the domain's newest briefing (`01a0ad2e…`) in its room → the new
+briefing `01a0ca9b…` (145 items, 9 of kind memory): NOT degraded BY THE PROJECTION — `memory_items_current` serving, the answer's partition
+`{memory_items_current, current, serving}`, the content's watermark `projection {memory: 'serving'}` — while `degraded true` is the
+SOURCES' (B10: five source states degraded — "the latest scheduled attempt by known_at failed"), said. L. Brandt's retrieval of "NORDWERK
+supply relationship (B19 act, 2026-09-17; re-derived)" under `memory` → version 2 served, `index_state projected`, `projection current` —
+the memory reads unaffected by an edges withdrawal, said; (3) THE REBUILD — the administrator REBUILT `edges_current` → `outcome
+'restored'`, `updated 0, inserted 0, removed 0` (honest: nothing drifted), the re-check `{live 8, rebuilt 8, mismatched 0, missing 0,
+unexpected 0, representation_ok true}`, `representation_version '1'`, the withdrawal it closed echoed, `dangling []`; the partition
+`serving` with `last_rebuild_id 01a0ca9b-c961…`, `rebuilt_at 2026-09-22T19:33:22.403Z`; the ledger since the withdrawal
+`projection.withdrawn (operator) → projection.withdrawn (operator, changed false) → projection.restored`; `GraphChanged/projection.rebuilt`
+(partition `tenant:01a084f5…`, sequence 14497): `identities []`, `relationships.edges []`, `objects.walked false`, the typed block
+`{edges_current, restored, 0/0/0, representation 1}`, `cause graph.projection.rebuild` on `PRJ`; its deliveries — 6 of 6 live broad
+subscriptions: retrieval `applied` (1 item: `projections.verified`), decisions / forecasts / memory-mappings / scenarios / twins `applied`
+(no items) — a rebuild changes no fact of the world; the relationships subscriber selected on MemoryCorrected/claim.corrected and receiving
+no GraphChanged; the retrieval check `mismatched 0` on all six rows; P. Novák resolved the paused deletion again → `scope_resolved`, 1 to
+execute, 0 blocking (the scope proven over the rebuilt projection; a new approval would be needed to execute — none is given) and WITHDREW
+it: the manifest, its bytes and every record stand as they were; A. Hoffmann's `/neighbourhood` depth 2, `/edges/list` and `/path` →
+`current` at `revision 14497 = verified_seq = checkpoint_seq` (the rebuilt event's sequence; the check at 19:33:23.221Z), `lag 0`, the bound
+lifted (`bound.projection false`, `searchedDepth 2` as asked, `depthClamped false`), the edges from the projection again (no `from`, no
+drift); (4) THE STATE — both domains' six partitions `serving/current` under representation 1 (`edges_current` of the origin with its rebuild
+named); the register 36/14/0 unchanged; WHAT THE ACT LEAVES: the origin's retrieval subscriptions `revoked@14359, active@14497`, the
+mirror's `revoked@14318, active@14318`, three `edges_current` ledger rows of the run, the deletion action withdrawn, the briefing; nothing
+retired; no persona created. STATED by the act: the demonstration cannot exhibit a real drift, a poisoned or a missing row without
+corrupting the copy — the harness carries them (P2–P5) and the demonstration's rebuild is a RESTORATION; a real representation change
+arrives with a migration that bumps the constant; the memory content-tier fault is the harness's (a fault point is armable in the test
+profile only); the search's bound cannot be exceeded on the demonstration's entities (P8); only the RETRIEVAL consumer's method changed —
+its subscriptions re-registered where outdated, the six other kinds listed and left.
+
+**B20.6 — the harness, the gates and the units.** LOCAL (all at the reconciled tree, 2026-09-22; `evidence/cp6/b20-*.txt`): the harness
+**9/9** on two fresh databases (29.63 s / 29.76 s; the 17 evidence lines each; the reconcile pass's four earlier runs 9/9); the neighbouring
+set **344/344 in 24 files** on a fresh database (298.6 s; the reconcile pass's wider set 562/562 in 38 files); the full integration suite
+**1070/1070 in 71 files** on a fresh database (625 s; = 1061 + 9 — the B20 harness beside every earlier file); the upgrade proof with
+0022–0080 (59 migrations above the ceiling; 80 files; the registry's 36 rows — no row in B20; the roles 31; the schema digests equal,
+`599b0236…`; the Phase 0 suite 297/297 before and after; 275/275 on the upgraded data); the unit suite **2338/2338 in 55 files** (= 2295 +
+43: `projection-state` 19 — the eight label forms byte for byte, `worstOf`, `blockOf` with `checkpoint_seq` and `domain_withdrawn`,
+`ROUTE_PARTITIONS`; `change-events-projection` 8 — the kind, the builder with no identities and no edges, the cut at 200 honouring the
+port's flag, the seven consumer digests distinct with retrieval's changed, `touchedIds` empty; `memory-content-tier` 7 —
+`isContentTierFailure` over the classes and the two exact codes, the label; the PDP describe; the refusals describe with the 409-not-422
+probe) and the meta suite 9/9; `pnpm boundaries` green (535 modules; red before E1/E2); `tsc` clean for `apps/api`, `apps/web` and the two
+walks; the web tests **15/15** (= 11 + 4) and `next build` green with the five B20 pages; the browser gate **51/51** on a fresh database
+`eye_browser_20260922` (58.3 s; = 48 + 3: the Phase 0 ten, the Phase 1 sixteen, the B18 twenty, the B19 two — with the memory walk's new
+line — and the B20 three), the step name in `.github/workflows/ci.yml:272` reading "Browser regression gate (Phase 0 ten + Phase 1 A12
+sixteen + B18 twenty + B19 two + B20 three — the retention, memory and projections walks, blocking)" (a record, not a gate condition — the
+job runs every `e2e/*.spec.ts`). THE HOSTED RUN at `1f6d04c` — ci 35779940271 attempt 2 at 1f6d04c (build-test job 106930091028: unit 2338/2338 and the meta suite 9/9, acceptance 58/58, the integration suite 1070/1070 in 71 files on a fresh database with phase6-graph-projections-b20 9/9, the upgrade proof +59 rows / 80 files, C18 612/612 + 44; browser-regression job 106930093569 51 passed — the B20 three and the memory walk's unverified line on the hosted gate; the supply-chain job 106930091021 red on the C15 patched-image recheck step alone, the C15 gate itself green; attempt 1's build-test failed on one unrelated B14 https-recipient case — preserved; C19 35779940295 green) — bound in this records commit (`evidence/cp6/hosted-1f6d04c-build-test-summary.txt`); the supply-chain job's red is the recheck's, not the candidate's (§B20.7). UNITS AND ROWS: AU-MEM-0067,
+AU-MEM-0068 and AU-MEM-0083 gain their evidence and STAY `open` (the P3 rule: `open → verified:ci` in the binding commit when the hosted run
+exercised every condition — the design's §7.3 maps each condition to its case; AU-MEM-0067's second condition is met PARTLY — the canonical
+read (P6(b)), not the vault read (D10) — and the unit is promoted only with the owner's acceptance of D10 as the content tier's evidence
+boundary, C20); AU-MEM-0070 STAYS `verified:local` with its evidence CORRECTED (the JOIN-only note; the symmetric check; the writer;
+`gate22-degraded-recovery` — the AUDIT degraded flag — removed from the row); V03-T-098 partial → implemented, V03-T-108 missing →
+implemented and V03-T-245 unverified → `passed:harness` (the projection block; the search's log leg); DP-38-005 missing → implemented and
+IA-35-005 missing → partial (freshness = verification lag; shard, embedding and recall not applicable — said) — each `passed:harness`;
+V03-T-097 STAYS partial (C20: the memory content tier is the canonical read; the evidence bytes stay 409 by A7); V03-T-101 and V03-T-112
+keep their statuses with the evidence corrected (the writer; the JOIN-only note); IA-34-005 (ontology compatibility checks owed), DP-33-005
+(the queued-revision mode owed) and DP-37-005 (the pause on projection withdrawal beside the B11/B19 clause; metadata-only serving
+delivered for the canonical read) stay partial — every one of the eleven rows prefixed with the clause "no lexical/vector index exists; the
+index tier is the projection set; the representation version is the derivation rule" and, where its evidence now rests on the candidate,
+`release_status merged → branch-only`; the register 36/14/0 (L3-I02 `bound_to`); the split stays **3,555 = 3,179 open + 339 local + 37 CI (AU-MEM-0068 and AU-MEM-0083 open → verified:ci by the binding commit; AU-MEM-0067 stays open on its second condition (C20); AU-MEM-0070 stays verified:local until the P7-D cases)**
+(no unit promoted by a local run; the summaries regenerated). STATED: the design's §7.2 also names DAT-KN-05, FEX-08, FEX-09,
+PR-19-001/-002, ES-33-009/V04-T-024 and ES-34-009/V04-T-026 for the same clause — not moved in this records pass (the eleven above and the
+four units were; the rest belong to the binding commit or a later records pass).
+
+**B20.7 — the merges and the chain state (2026-09-22).** #55 (B18 at `4a7f43a`; `phase6-b18` → `main`) MERGED as `e70f90f` at 19:07Z
+under the owner's word (Codex's B18/B19 review: B17-F1 closed, no new blocking finding). Its chain, PRESERVED as it ran and not re-run: C19
+lifecycle 35771687139 green; ci 35771687190 FAILED — build-test and browser-regression green, the supply-chain job red on its step "C15
+patched-image recheck (blocking; fails when a compatible fixed official image exists)" while the C15 gate itself passed ("findings 44
+across linux/amd64 + linux/arm64, governed 6 record(s), unmatched 0, unused 0"): the recheck fails BY DESIGN since 2026-09-22 because
+compatible fixed OFFICIAL images now exist (`postgres:18-alpine` `sha256:77f58511…`, `redis:8-alpine` `sha256:ba6e394f…` — openssl,
+util-linux and c-ares patched on both architectures), so every ci run's supply-chain job is red on that step until the governed return to
+the official images lands; C17 finalize 35773974178 SKIPPED (it requires ci success); C19 anchor 35773990447 green. #56 (B19 at `3ea676d`;
+its base still `phase6-b18`) NOT merged: its base chain cannot complete while `main`'s ci is red on the recheck; the retarget to `main` and
+the merge await the C15 return and the owner's word. The C15 return is in preparation on `maintenance/c15-return-to-official-2026-09` (the
+re-pin to the official images, the provenance and compatibility evidence, the SCX re-issue DRAFTS whose `approved_on` is the owner's; open
+as the DRAFT PR #57 to `main` since 19:51Z — its merge the owner's word) — the parallel maintenance line, not this batch's. B20's PR opens with base `phase6-b19` (stacked on #56) once the candidate is committed and
+pushed; its hosted run will show the same supply-chain red on the recheck step — expected, and not the candidate's.
+
 ## Order and the next implementation batch
 
 B3, B1 and B2 are done in code, B4/B5 applied to the audit (the 2026-09-11 checkpoints), B6 done in
 code (2026-09-12, on the recovery machinery corrected by 0062 after Codex's finding) and B7 done in code
 (2026-09-12, after Codex's third finding), B8 (2026-09-12, after Codex's B7 findings), B9 (2026-09-13, after
 Codex's B8 findings; the accepted stack merged on `main` in the recorded order meanwhile) and B10 (2026-09-13, after
-Codex's B9 review: F1 closed on the fixed candidate, F2/F3 and G2 carried into this batch), B11 (2026-09-13; its closure of Codex's B11-F1/F2 on 2026-09-14, merged with #48 on 2026-09-15), B12 (2026-09-15, the register's next missing archive-lifecycle capability; merged with #49 on 2026-09-16 on Codex's bounded functional review) and B13 (2026-09-16, the schedule retirement and the customer export's delivery, on `main` after #49; merged with #50 on 2026-09-16 on Codex's bounded review) and B14 (2026-09-16, the https exchange proven, B13-F1 corrected, the trust anchor, the revocation notice, on `main` after #50; merged with #51 on 2026-09-16), B15 (2026-09-16, the relationship closure and the streamed archive; merged with #52 on 2026-09-16 after retargeting) and B16 (2026-09-16, the governed import and the NORDWERK round trip, B14-F1 and B15-F1 corrected, on `main` after #52; PR #53) and B17 (2026-09-16, imported knowledge published to subscribers, the origin's revocation propagated into the importing domain, the signed notice, the review gate; stacked on #53; #53 and #54 merged on 2026-09-16 under the owner's word on Codex's bounded B16/B17 review) and B18 (2026-09-16/17, on `main` after #54: Codex's B17-F1 corrected first, the lifecycle announced — ten interface rows bound, 36/14/0 — with the withdrawal → invalidation → reopen chain, the working domain of a tenant-homed principal and the hosted browser walks; PR #55) and B19 (2026-09-17, the source-derived memory records — a record derived by a person from a claim version or a warning with its provenance, inherited controls, the review and lifecycle gates, the basis followed and the deletion pause; stacked on #55). The
+Codex's B9 review: F1 closed on the fixed candidate, F2/F3 and G2 carried into this batch), B11 (2026-09-13; its closure of Codex's B11-F1/F2 on 2026-09-14, merged with #48 on 2026-09-15), B12 (2026-09-15, the register's next missing archive-lifecycle capability; merged with #49 on 2026-09-16 on Codex's bounded functional review) and B13 (2026-09-16, the schedule retirement and the customer export's delivery, on `main` after #49; merged with #50 on 2026-09-16 on Codex's bounded review) and B14 (2026-09-16, the https exchange proven, B13-F1 corrected, the trust anchor, the revocation notice, on `main` after #50; merged with #51 on 2026-09-16), B15 (2026-09-16, the relationship closure and the streamed archive; merged with #52 on 2026-09-16 after retargeting) and B16 (2026-09-16, the governed import and the NORDWERK round trip, B14-F1 and B15-F1 corrected, on `main` after #52; PR #53) and B17 (2026-09-16, imported knowledge published to subscribers, the origin's revocation propagated into the importing domain, the signed notice, the review gate; stacked on #53; #53 and #54 merged on 2026-09-16 under the owner's word on Codex's bounded B16/B17 review) and B18 (2026-09-16/17, on `main` after #54: Codex's B17-F1 corrected first, the lifecycle announced — ten interface rows bound, 36/14/0 — with the withdrawal → invalidation → reopen chain, the working domain of a tenant-homed principal and the hosted browser walks; PR #55) and B19 (2026-09-17, the source-derived memory records — a record derived by a person from a claim version or a warning with its provenance, inherited controls, the review and lifecycle gates, the basis followed and the deletion pause; stacked on #55; #55 merged to `main` as `e70f90f` on 2026-09-22 under the owner's word on Codex's bounded B18/B19 review, its ci red on the C15 patched-image recheck step by design and its C17 finalize skipped, #56 held for the C15 return) and B20 (2026-09-22, the index tier — the six projection partitions with a derived watermark on every graph and memory read, the symmetric check that withdraws where the JOIN-only check passed poisoned and missing rows, the operator's withdrawal and the rebuild writer, the labelled last-valid reads and the constrained traversals, the memory content tier's metadata-only fallback, the deletion pause and the briefing's flag; cut from B19's records head `3ea676d`, stacked on #56). The
 hosted run at `5118376` (836/836 on a fresh database) verified the B1/B2 units on the hosted chain —
 one artefact, no deployment leg. Every leg of every unit stays unaccepted until a deployment profile
 carries its own signed evidence (P7-D). The synthetic-company demonstration (`eye_demo`, NORDWERK) remains the deliverable
 every batch is exercised on: B3's kinds become visible on the demonstration when a scenario with the
 new kinds is declared there through the governed route (a scripted act, `scripts/phase4/`), which is
-the next demonstration step after the hosted run is green.
+the next demonstration step after the hosted run is green. Next from the register: B21 — fitness, coherence and challenge; the C15 return to the official images (`maintenance/c15-return-to-official-2026-09`, the draft PR #57 to `main`: the re-pin, the provenance and compatibility evidence, the SCX re-issues whose `approved_on` is the owner's) is the parallel maintenance line, not a batch.

@@ -1,6 +1,14 @@
 /**
  * CP-6 B18 browser walk — the Enterprise Memory workspace (AU-MEM-0065's statement, through the page); B19 (0079) adds the
- * SOURCE-DERIVED record (tests 8–9).
+ * SOURCE-DERIVED record (tests 8–9); B20 (0080) adds ONE assertion to test 2 — the retrieval's projection condition.
+ *
+ * B20: every graph and memory read carries the state of the projection it was served from, and the page says it beside the
+ * version served (`projection <condition> · index <projected | stale>`). This gate runs the API WITHOUT the scheduler and the
+ * domain registers no retrieval subscription, so no watermark is verified here: the honest condition is `unverified`, with
+ * the server's label ("no live retrieval subscription verifies this domain's projections; the projection watermark is
+ * unknown"), and that is what test 2 pins. The `current` condition — a live subscription whose check applied — is pinned by
+ * the harness (apps/api/test/int/phase6-graph-projections-b20.test.ts P1) and printed by the demonstration; the withdrawn
+ * state through the page is the projections walk's (e2e/phase6-projections.spec.ts).
  *
  * The journey, end to end, through the real interface:
  *
@@ -369,6 +377,11 @@ test.describe('CP-6 B18 — Enterprise Memory (AU-MEM-0065 through the workspace
     await retrieve(page, 'memory');
     const served = section(page, 'retrieve-h');
     await expect(served).toContainText(/version 1 of 1 is current; you were served version 1 \(the current one\)/);
+    // B20 (0080): the retrieval says the memory projection's condition beside the version served. This gate runs the API without the
+    // scheduler and the domain registers no retrieval subscription, so no watermark is verified: `unverified` is the honest condition
+    // here, with the server's label as the wording (`current` is pinned by the harness and printed by the demonstration).
+    await expect(served).toContainText(/projection unverified · index projected/);
+    await expect(served).toContainText(/no live retrieval subscription verifies this domain's projections; the projection watermark is unknown/);
     await expect(served).toContainText(STATEMENT);
     await expect(served.getByRole('definition').filter({ hasText: /^memory$/ })).toBeVisible();
     await expect(receiptIn(page, 'retrieve-h')).toBeVisible();

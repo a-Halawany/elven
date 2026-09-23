@@ -74,9 +74,11 @@ const INTERVAL = /^\d+ (seconds?|minutes?|hours?|days?|months?|years?)$/;
 /**
  * begin_execution's refusals BEFORE the state moves (0070 §5; 0072 §4): the class in the message names what the controller does with them.
  * B13 (C14): the service's own refusal before begin_execution — the tenant's active signing key not bound in this deployment — joins them (a
- * pause for retry, infrastructure, no attempt counted).
+ * pause for retry, infrastructure, no attempt counted). B20 (0080; DP-37-005): a DELETION whose safe referential scope reads a projection
+ * that is WITHDRAWN (edges_current, memory_items_current) — the scope cannot be proven until the partition is rebuilt: unresolved_dependency
+ * → human review, no attempt counted, the approvals revoked by the pause; the rebuild, a re-resolution and a new approval execute it.
  */
-const ADMISSION_REFUSAL = /^retention execution rejected \((rights_changed|scope_changed|references_changed|budget_exhausted|attempts_exhausted|signing_key_unbound|signing_key_mismatch)\)/;
+const ADMISSION_REFUSAL = /^retention execution rejected \((rights_changed|scope_changed|references_changed|budget_exhausted|attempts_exhausted|signing_key_unbound|signing_key_mismatch|projection_withdrawn)\)/;
 /** D5: a destination's key — unique per domain among the active destinations. B16: an exchange partner's key is spelled the same way. */
 const DESTINATION_KEY = /^[a-z0-9][a-z0-9-]{1,63}$/;
 const SIGNING_KEY_PURPOSES = ['demonstration', 'production'] as const;
@@ -265,9 +267,10 @@ export class RetentionController {
       }
       // begin_execution's re-checks (B11, 0070 §5; B12, 0072 §4) raised BEFORE the state moved, so the action is still approved (no attempt
       // counted) and pauses with the class the refusal names: the export's rights withdrawn (authority_disputed), a tombstone or a live reference
-      // since the approval (unresolved_dependency → human review), the domain's daily byte budget exhausted (infrastructure → a retry once the
-      // window frees, after a re-resolution) — or, the attempts the policy allows spent, is ESCALATED for human review (D4 "retries"): its own
-      // write revokes the approvals and records action.escalated; a person's re-resolution restarts the count.
+      // since the approval (unresolved_dependency → human review), a projection the safe scope reads withdrawn (B20: unresolved_dependency →
+      // human review; the rebuild, a re-resolution and a new approval execute it), the domain's daily byte budget exhausted (infrastructure →
+      // a retry once the window frees, after a re-resolution) — or, the attempts the policy allows spent, is ESCALATED for human review (D4
+      // "retries"): its own write revokes the approvals and records action.escalated; a person's re-resolution restarts the count.
       const message = (e as { message?: unknown })?.message;
       if (typeof message === 'string' && ADMISSION_REFUSAL.test(message)) {
         if (message.startsWith('retention execution rejected (attempts_exhausted)')) {

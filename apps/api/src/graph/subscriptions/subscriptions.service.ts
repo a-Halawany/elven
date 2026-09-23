@@ -16,6 +16,7 @@ import { SchedulerService, redisName, subscriptionQueueNameFor } from '../../obs
 import { GraphCapability, type GraphReads } from '../graph.capabilities.js';
 import { CONSUMER_KINDS, CONSUMER_ROLE, CONSUMER_VERSION, consumerCodeDigest, type ConsumerKind } from './graph-change.js';
 import { SubscriptionDispatcherService, type SubscriptionReconcileReport } from './subscription-dispatcher.service.js';
+import { PROJECTIONS, blockOf } from '../projections/projection-state.js';
 
 export interface SubscriptionBudgets { max_items_per_event: number; max_elapsed_ms: number; backlog_policy: 'replay' | 'leave';
   /** 0065: the decisions consumer's materiality rule for a recomputation (AU-MEM-0039) — relative shift of the central estimate; leaving the old band. */
@@ -134,10 +135,19 @@ export class SubscriptionsService {
     const serving = ((await cap.readSubscriptionServing().selectAll().where('domain_id' as never, '=', domainId as never).execute()) as Array<Record<string, unknown>>)[0] ?? null;
     const servingEvents = (await cap.readSubscriptionServingEvents().selectAll().where('domain_id' as never, '=', domainId as never).orderBy('occurred_at' as never, 'desc').limit(20).execute()) as Array<Record<string, unknown>>;
     const partitions = await cap.outboxPartitionTelemetry();
+    // B20 (0080): the six projection partitions with the DERIVED watermark (graph.projection_state(): the domain's revision,
+    // the sequence the retrieval subscriber verified through, the lag, each partition's condition / withdrawal /
+    // representation / last rebuild / last check) and their append-only ledger (the last fifty rows). Each row carries the
+    // port's columns AND the block's shape (`withdrawn_since`, `reason`, …); `projection` is the whole domain's block.
+    const stateRows = await cap.projectionState();
+    const projectionBlock = blockOf(stateRows, PROJECTIONS);
+    const projections = projectionBlock.partitions.map((p) => ({ ...(stateRows.find((r) => r['projection'] === p.projection) ?? {}), ...p }));
+    const projectionEvents = (await cap.readProjectionEvents().selectAll().orderBy('occurred_at' as never, 'desc').limit(50).execute()) as Array<Record<string, unknown>>;
     const name = redisName(subscriptionQueueNameFor(tenantId, domainId));
     return {
       consumers: CONSUMER_KINDS.map((k) => ({ kind: k, version: CONSUMER_VERSION, codeDigest: consumerCodeDigest(k), registeredInThisProcess: this.dispatcher.registeredKinds().includes(k) })),
       subscriptions, deliveries, retrieval_checks: checks, mapping_reconciliations: proposals,
+      projections, projection: projectionBlock, projection_events: projectionEvents,
       telemetry: { deliveries: telemetry, open_failure_states: open.map((t) => ({ event_id: t['event_id'], consumer_kind: t['consumer_kind'], state: t['state'], failure_class: t['failure_class'], disposition: t['disposition'], unresolved_since: t['unresolved_since'], items_unresolved: t['items_unresolved'], retries: t['retries'] })),
                   partitions },
       runtime: { scheduler_enabled: this.scheduler.enabled, worker_running: this.scheduler.runningWorkers().includes(name), redis_queue: name,

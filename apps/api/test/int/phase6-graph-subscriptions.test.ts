@@ -183,15 +183,27 @@ beforeAll(async () => {
   // THE WORLD: two entities, an edge between them asserted by claim C1 on evidence B, an assumption resting on the edge,
   // a decision resting on the assumption, a forecast for E1 resting on the assumption, a scenario on the forecast, a
   // decision package on the decision, an identifier on E2 sourced from C1/B, and a twin whose boundary is E1.
+  // B20 (0080): every planted projection row carries its log EVENT beside it — the symmetric retrieval check calls a row with no event
+  // POISONED (unexpected) and withdraws the partition; the fixture plants what the port would have written (the honest fixture).
   for (const [id, type, name] of [[E1, 'place', 'Bab el-Mandeb Strait'], [E2, 'organization', 'NORDWERK Magnet GmbH']] as const) {
+    const correlation = uuidv7();
     await sql`insert into graph.entities_current (entity_id, scope, tenant_id, domain_id, entity_type, canonical_name, normalized_name, lifecycle_state, created_by, correlation_id)
-      values (${id}::uuid, 'DOMAIN', ${T()}::uuid, ${D()}::uuid, ${type}, ${name}, ${name.toLowerCase()}, 'active', ${ownerId}::uuid, ${uuidv7()}::uuid)`.execute(h.su);
+      values (${id}::uuid, 'DOMAIN', ${T()}::uuid, ${D()}::uuid, ${type}, ${name}, ${name.toLowerCase()}, 'active', ${ownerId}::uuid, ${correlation}::uuid)`.execute(h.su);
+    await sql`insert into graph.entity_events (event_id, scope, tenant_id, domain_id, entity_id, event, actor_principal_id, details, correlation_id)
+      values (${uuidv7()}::uuid, 'DOMAIN', ${T()}::uuid, ${D()}::uuid, ${id}::uuid, 'entity.created', ${ownerId}::uuid, ${JSON.stringify({ entity_type: type, canonical_name: name, normalized_name: name.toLowerCase(), split_from: null })}::jsonb, ${correlation}::uuid)`.execute(h.su);
   }
   await sql`insert into graph.edges_current (edge_id, scope, tenant_id, domain_id, subject_entity_id, predicate, object_entity_id, valid_from, valid_to, state, claim_object_id, claim_version, evidence_object_id, evidence_digest, mode, confidence, asserted_by, correlation_id)
     values (${X1}::uuid, 'DOMAIN', ${T()}::uuid, ${D()}::uuid, ${E2}::uuid, 'ships_through', ${E1}::uuid, '2024-01-01T00:00:00Z', null, 'asserted', ${C1}::uuid, 1, ${evdB.id}::uuid, ${sha256(evdB.id)}, 'replay', 0.9, ${ownerId}::uuid, ${uuidv7()}::uuid)`.execute(h.su);
+  await sql`insert into graph.edge_events (event_id, scope, tenant_id, domain_id, edge_id, event, actor_principal_id, details, correlation_id)
+    values (${uuidv7()}::uuid, 'DOMAIN', ${T()}::uuid, ${D()}::uuid, ${X1}::uuid, 'edge.asserted', ${ownerId}::uuid, jsonb_build_object('predicate', 'ships_through', 'subject', ${E2}::uuid, 'object', ${E1}::uuid, 'valid_from', '2024-01-01T00:00:00Z'::timestamptz, 'valid_to', null, 'mode', 'replay', 'claim_object_id', ${C1}::uuid, 'claim_version', 1, 'review_state', 'approved'), ${uuidv7()}::uuid)`.execute(h.su);
   for (const [id, type, title] of [[A1, 'ASU', 'Red Sea transit stays open'], [D1, 'DEC', 'Keep the Ningbo → Regensburg routing']] as const) {
     await sql`insert into graph.strategy_current (strategy_object_id, scope, tenant_id, domain_id, object_type, object_version, title, statement, status, verification_state, owner_principal_id, correlation_id)
       values (${id}::uuid, 'DOMAIN', ${T()}::uuid, ${D()}::uuid, ${type}, 1, ${title}, 'fixture strategy object', 'active', ${type === 'ASU' ? 'verified' : 'not_applicable'}, ${ownerId}::uuid, ${uuidv7()}::uuid)`.execute(h.su);
+    await sql`insert into graph.strategy_events (event_id, scope, tenant_id, domain_id, strategy_object_id, event, actor_principal_id, details, correlation_id)
+      values (${uuidv7()}::uuid, 'DOMAIN', ${T()}::uuid, ${D()}::uuid, ${id}::uuid, 'strategy.declared', ${ownerId}::uuid, jsonb_build_object('object_type', ${type}::text, 'title', ${title}::text, 'version', 1, 'status', 'active'), ${uuidv7()}::uuid)`.execute(h.su);
+    // an ASU seeded verified: its verification is a state event of its own (the check compares the ASU's verification state to the log's).
+    if (type === 'ASU') await sql`insert into graph.strategy_events (event_id, scope, tenant_id, domain_id, strategy_object_id, event, actor_principal_id, details, correlation_id)
+      values (${uuidv7()}::uuid, 'DOMAIN', ${T()}::uuid, ${D()}::uuid, ${id}::uuid, 'assumption.verified', ${ownerId}::uuid, jsonb_build_object('state', 'verified', 'reason', 'fixture'), ${uuidv7()}::uuid)`.execute(h.su);
   }
   await sql`insert into prediction.forecasts_current (forecast_id, scope, tenant_id, domain_id, series_key, subject_entity_id, horizon_code, horizon_days, origin_at, known_at, target_at, method, method_version, baseline_method, quantiles, drivers, assumptions, evidence_refs, refresh_cadence, validation_state, validation_note, label, statement, state, issued_by, correlation_id)
     values (${F1}::uuid, 'DOMAIN', ${T()}::uuid, ${D()}::uuid, 'transit.days', ${E1}::uuid, '90d', 90, '2024-01-17', now(), '2024-04-16', 'seasonal-naive', '1.0.0', 'naive', '{"q10": 30, "q50": 34, "q90": 41}'::jsonb, '["transit days"]'::jsonb, ${sql`ARRAY[${A1}::uuid]`}, ${JSON.stringify([`EVD:${evdB.id}@${evdB.version}`])}::jsonb, 'weekly', 'unvalidated', 'fixture forecast: not validated', 'replay demonstration', 'fixture forecast statement', 'issued', ${ownerId}::uuid, ${uuidv7()}::uuid)`.execute(h.su);

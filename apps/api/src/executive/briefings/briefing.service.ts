@@ -27,6 +27,24 @@
  * source (evidence, claims, runs, warnings, branches, packages); retrieval is under the
  * reader's authority NOW — membership, the purpose the snapshot was admitted for, a
  * clearance that covers its classification — with availability now reported apart.
+ *
+ * CP-6 B20 (0080; D12): the memory items a composition reads come from the memory
+ * PROJECTION (memory.items_current) — one of the six partitions of the domain's index
+ * tier. The composer reads the partitions' state (graph.projection_state) inside the
+ * memory step: while memory_items_current is WITHDRAWN the items' availability comes
+ * from the memory log (the shared fallback reader, the same derivation the check and
+ * the rebuild use), the content carries `projection: { memory: 'withdrawn' | 'serving' }`
+ * INSIDE its watermark (the composition's boundary: the prior, the instant read under,
+ * and the memory partition's state) — the STATE only, never the projection watermark
+ * (revision, verified sequence, lag), so the same inputs still compose to the same
+ * digest (B10-F2) — the briefing is `degraded`, and an agent run with an on_degraded
+ * stop stops naming the reason; the compose answer carries the full projection block
+ * beside `degraded`. Placement (a deviation from D12's `content.projection`, stated):
+ * BRF@v1 (0044) declares `additionalProperties: false` on the payload, so a top-level
+ * key would leave every stored briefing invalid against the schema its header names
+ * and turn the generic write route's port-owned refusal into a schema violation
+ * (phase6-briefing-memory B10-F4); the watermark's sub-schema admits the key, and the
+ * registry stays at 36 rows (D20 — a BRF@v2 row belongs to a later migration).
  */
 import { HttpException, Injectable } from '@nestjs/common';
 import { canonicalHeaderDigest, contentDigest, errorBody, validateHeader, type CanonicalHeader } from '@eye/contracts';
@@ -37,6 +55,8 @@ import { foldControls, type Controls, type ControlInput } from '../../prediction
 import { assertClearance, assertPurpose, bindingReaches, clearanceOf, covers, denyRead } from '../../decision/clearance.js';
 import type { BriefingWrites, ExecutiveReads } from '../executive.capabilities.js';
 import { basisStateOf } from '../../graph/memory/memory.service.js';
+import { blockOf, type ProjectionBlock } from '../../graph/projections/projection-state.js';
+import { memoryItemsFromLog } from '../../graph/projections/fallback.js';
 
 const iso = (v: unknown): string => (v instanceof Date ? v.toISOString() : new Date(String(v)).toISOString());
 const isoOrNull = (v: unknown): string | null => (v === null || v === undefined ? null : iso(v));
@@ -266,6 +286,12 @@ export class BriefingService {
     // content, so the same inputs compose to the same content digest (B10-F2). An item outside the audience is neither read nor
     // recorded nor mentioned.
     reserve('the memory items');
+    // B20 (0080; D12): the state of the six partitions of this domain's index tier, read FIRST in the memory step. While the memory
+    // projection is WITHDRAWN (a failed retrieval check, or the operator's act) the items' availability — state, current version,
+    // attention — is composed from the memory LOG through the shared fallback reader (the same derivation the check and the rebuild
+    // use), never from the withdrawn projection; the briefing is degraded and says so. The STATE alone enters the content (D12).
+    const pstate = await cap.projectionState();
+    const memoryWithdrawn = pstate.some((p) => p['projection'] === 'memory_items_current' && p['state'] === 'withdrawn');
     const readerClearance = composerClearance ?? clearanceOf({ bindings: composerRoles.map((roleCode) => ({ roleCode, scope: 'DOMAIN', tenantId, domainId })) } as never, { tenantId, domainId }); // an agent's: its registered role's clearance (internal)
     // The version of each item current at known_at: one row per item (DISTINCT ON the item, its highest version recorded by
     // the cutoff) — no window of versions, so a heavy history cannot push an item's version out of sight; the items withdrawn by
@@ -277,7 +303,11 @@ export class BriefingService {
     const projections = new Map<string, Record<string, unknown>>();
     if (memoryIds.length > 0) {
       for (const e of (await cap.readMemoryItemEvents().select(['item_id'] as never).where('event' as never, '=', 'memory.withdrawn' as never).where('occurred_at' as never, '<=', knownAt as never).where('item_id' as never, 'in', memoryIds as never).execute()) as Array<Record<string, unknown>>) withdrawnByCutoff.add(String(e['item_id']));
-      for (const m of (await cap.readMemoryItems().selectAll().where('item_id' as never, 'in', memoryIds as never).execute()) as Array<Record<string, unknown>>) projections.set(String(m['item_id']), m);
+      // the same fields the loop below reads from each item's record: owner_principal_id, title, record_class, attention_state (basisStateOf), derivation
+      const records = memoryWithdrawn
+        ? await memoryItemsFromLog(cap, { tenantId, domainId }, { ids: memoryIds })   // C15: exactly these items from the log (unbounded), so the two paths compose the same candidates
+        : (await cap.readMemoryItems().selectAll().where('item_id' as never, 'in', memoryIds as never).execute()) as Array<Record<string, unknown>>;
+      for (const m of records) projections.set(String(m['item_id']), m);
     }
     const candidates = memoryVersions.filter((v) => !withdrawnByCutoff.has(String(v['object_id'])) && projections.has(String(v['object_id'])))
       .sort((x, y) => (iso(x['recorded_at']) < iso(y['recorded_at']) ? -1 : iso(x['recorded_at']) > iso(y['recorded_at']) ? 1 : String(x['object_id']) < String(y['object_id']) ? -1 : 1)).slice(0, 200);
@@ -410,8 +440,13 @@ export class BriefingService {
       }
     }
     windows.sort((x, y) => (x.closes_at < y.closes_at ? -1 : x.closes_at > y.closes_at ? 1 : x.id < y.id ? -1 : 1));
-    const degraded = items.some((i) => i.source_state === 'degraded' || i.source_state === 'blocked');
-    const watermark = { prior_briefing_id: prior === null ? null : String(prior['briefing_id']), prior_known_at: since, prior_composed_at: prior === null ? null : iso(prior['composed_at']), known_at: knownAt };
+    // B20: a withdrawn memory projection degrades the briefing (its memory items are served from their log, labelled) beside a degraded or blocked source.
+    const degraded = items.some((i) => i.source_state === 'degraded' || i.source_state === 'blocked') || memoryWithdrawn;
+    // B20 (D12): the memory partition's STATE rides the watermark — serving | withdrawn — never the projection watermark (revision,
+    // verified sequence, lag), which changes with every event and would make the same inputs compose to different digests (B10-F2).
+    // Inside the watermark, not at the payload's top level: BRF@v1's schema (0044) forbids a top-level key it does not name (see the header).
+    const watermark = { prior_briefing_id: prior === null ? null : String(prior['briefing_id']), prior_known_at: since, prior_composed_at: prior === null ? null : iso(prior['composed_at']), known_at: knownAt,
+                        projection: { memory: memoryWithdrawn ? 'withdrawn' : 'serving' } };
     if (room !== null) sources.add(`room:${String(room['room_id'])}`);
     if (pkg !== null) sources.add(`DPK:${String(pkg['package_id'])}@${String(versionAsOf ?? 0)}`);
     for (const s of sourceStates) sources.add(`SRC:${s.source_id}@${s.contract_version}`);
@@ -420,7 +455,7 @@ export class BriefingService {
     if (lim.deadline !== undefined && Date.now() >= lim.deadline) throw new BudgetExceeded('the elapsed budget ran out before admission; the composition is abandoned');
     if (lim.reserve === undefined && lim.maxReads !== null && sourceList.length > lim.maxReads) throw new BudgetExceeded(`the briefing would read ${sourceList.length} source records; the agent's remaining budget is ${lim.maxReads}`);
     if (lim.maxItems !== null && items.length > lim.maxItems) throw new StopCondition(`stop condition max_items: the briefing would carry ${items.length} items, the agent stops at ${lim.maxItems}`);
-    if (lim.stopOnDegraded && degraded) throw new StopCondition('stop condition on_degraded: a source the briefing rests on is degraded or blocked');
+    if (lim.stopOnDegraded && degraded) throw new StopCondition(`stop condition on_degraded: ${memoryWithdrawn ? 'the memory projection of this domain is withdrawn (the memory items are served from their log, labelled)' : 'a source the briefing rests on is degraded or blocked'}`);
     const content = { room_id: a.roomId, package_id: pkg === null ? null : String(pkg['package_id']), watermark, sources: sourceList, items, windows, source_states: sourceStates, degraded };
     const digest = contentDigest(content);
     // the narrative: labelled, cites only included items, outside the content digest
@@ -463,7 +498,9 @@ export class BriefingService {
     await cap.admitObject(header, payload, headerDigest);
     await cap.composeBriefing({ briefingId, tenantId, domainId, roomId: a.roomId, packageId: pkg === null ? null : String(pkg['package_id']), composer, via, agentId, knownAt, prior: watermark.prior_briefing_id,
       watermark, sources: sourceList, items, windows, sourceStates, degraded, narrative, narrativeCites: cites, contentDigest: digest, headerDigest, controls, eventId: newId(), correlationId, memoryAccesses });
-    return { briefingId, roomId: a.roomId, packageId: pkg === null ? null : String(pkg['package_id']), knownAt, watermark, contentDigest: digest, headerDigest, items, windows, sourceStates, sources: sourceList, degraded, narrative, narrativeCites: cites, composedVia: via, agentId, controls, memoryAccesses };
+    // B20: the compose answer carries the full projection block of the memory partition (the watermark included — the answer, not the content) beside `degraded`.
+    const projection: ProjectionBlock = blockOf(pstate, ['memory_items_current']);
+    return { briefingId, roomId: a.roomId, packageId: pkg === null ? null : String(pkg['package_id']), knownAt, watermark, contentDigest: digest, headerDigest, items, windows, sourceStates, sources: sourceList, degraded, narrative, narrativeCites: cites, composedVia: via, agentId, controls, memoryAccesses, projection };
   }
 
   /**
