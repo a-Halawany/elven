@@ -1,40 +1,68 @@
 #!/usr/bin/env node
 /**
- * Detect a COMPATIBLE FIXED OFFICIAL image for each service, and REPORT it.
+ * Resolve each service's OFFICIAL tag, scan both platform children of the index it names, and decide
+ * against the CONFIGURED PIN — and REPORT.
  *
- * Since 2026-09-10 the service images are pinned, TEMPORARILY and by owner approval
+ * From 2026-09-10 to 2026-09-22 the service images were pinned, TEMPORARILY and by owner approval
  * (docs/images/DERIVED_IMAGES_APPROVAL.md), to derived maintenance builds under
  * `ghcr.io/a-halawany/elven/`, because no official `postgres:18-alpine` or `redis:8-alpine` build
- * carried the util-linux, OpenSSL and c-ares fixes. That route is meant to end. This resolves the
- * CURRENT official index for each service's tag, scans its `linux/amd64` AND `linux/arm64` children,
- * and decides — on installed package versions, never on severity — whether every watched fix is
- * present on both platforms.
+ * carried the util-linux, OpenSSL and c-ares fixes. This check is what noticed the official rebuilds
+ * (run 35728647457) and the compose file returned to them on 2026-09-22; the owner approved the six SCX
+ * re-issues on 2026-09-23 (docs/SUPPLY_CHAIN_MAINTENANCE_2026-09.md §8).
  *
- * It re-pins NOTHING and deletes NO evidence. When a service qualifies it FAILS — a deliberate
- * inversion, because the good news is what has to interrupt someone — and names the official index
- * and its children, so the return can be done through the governed process: re-pin
- * docker-compose.yml and conformance.manifest.json, re-issue or retire the SCX records that name the
- * derived image (SCX-0002..0005 on linux/amd64 and SCX-0010..0011 on linux/arm64 today), regenerate
- * evidence, run the FINAL chain. An indeterminate
- * check also fails: "could not check" must not read like "nothing to do".
+ * AFTER THE RETURN (the owner's decision of 2026-09-23 — PUBLICATION.md §8.5, SUPPLY_CHAIN_MAINTENANCE
+ * §8.4) the check keeps running at the existing cadence and decides against the pin each service is
+ * configured to (conformance.manifest.json `pinned_images`, held equal to docker-compose.yml by CI):
  *
- * Usage: check-patched-images.mjs [--trivy <path>] [--cache <dir>]
+ *   * the tag resolves to the CONFIGURED pin and every watched fix is present on `linux/amd64` AND
+ *     `linux/arm64`                                → PASS ("the configured pin is the compatible official image");
+ *   * the tag resolves to a DIFFERENT index that carries every watched fix on both platforms
+ *                                                  → FAIL: a NEWER compatible official build exists — the
+ *     deliberate inversion, because the good news is what has to interrupt someone — and the governed
+ *     re-pin (the existing update process: re-pin, verify provenance and compatibility, re-issue or retire
+ *     the SCX records that name the pin, regenerate evidence, FINAL chain) is what must follow;
+ *   * the tag resolves to a different index that does NOT carry every watched fix → nothing to do, said;
+ *   * the tag resolves to the configured pin but a watched fix is NOT present, or the manifest's recorded
+ *     platform children disagree with the index → FAIL: the return's premise or its record is wrong;
+ *   * an indeterminate check (a platform not resolvable or scannable, a report that contradicts itself)
+ *                                                  → FAIL: "could not check" must not read like "nothing to do".
+ *
+ * It re-pins NOTHING and deletes NO evidence. The decision is `decideService` in
+ * lib/c19-patched-images.mjs, pure and proven by the unit suite without a registry.
+ *
+ * Usage: check-patched-images.mjs [--trivy <path>] [--cache <dir>] [--manifest <path>]
+ *   --manifest defaults to the tracked conformance.manifest.json; the override exists for the controls
+ *   that prove the decision against a crafted pin, and this script produces no evidence to launder.
  */
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { PLATFORMS, SERVICES, assessService } from './lib/c19-patched-images.mjs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { PLATFORMS, SERVICES, assessService, decideService, readConfiguredPins } from './lib/c19-patched-images.mjs';
 
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const argv = process.argv.slice(2);
 const val = (f) => { const i = argv.indexOf(f); return i >= 0 ? argv[i + 1] : undefined; };
 const trivy = val('--trivy') ?? 'trivy';
 const cache = val('--cache') ?? mkdtempSync(join(tmpdir(), 'c15-recheck-'));
+const manifestPath = val('--manifest') ?? join(ROOT, 'conformance.manifest.json');
 // The scans write their reports here. A caller-supplied --cache that does not exist yet would make
 // the scan fail for a reason that has nothing to do with the images.
 mkdirSync(cache, { recursive: true });
 const say = (s) => process.stdout.write(`${s}\n`);
 const warn = (s) => process.stderr.write(`${s}\n`);
+
+// ── the configured pins, read before anything is resolved ────────────────────────
+// A pin that cannot be read is an indeterminate check: there is nothing to decide against.
+let pins;
+try {
+  pins = readConfiguredPins(JSON.parse(readFileSync(manifestPath, 'utf8')));
+} catch (e) {
+  warn(`\nc15-recheck: the configured pins could not be read from ${manifestPath} `
+    + `(${(e instanceof Error ? e.message : String(e)).slice(0, 200)}); nothing can be decided against.`);
+  process.exit(1);
+}
 
 /**
  * The official INDEX a tag currently resolves to, read from the live registry, and its per-platform
@@ -83,16 +111,19 @@ function scanChild(tag, ref, platform) {
   }
 }
 
-const verdicts = [];
+const decisions = [];
 for (const [service, spec] of Object.entries(SERVICES)) {
   const tag = spec.tag;
+  const pin = pins[service];
   const resolved = resolveOfficial(tag);
   if (resolved.error !== undefined) {
-    say(`${service}: ${tag} -> UNRESOLVED (${resolved.error})`);
-    verdicts.push({ ...assessService(service, {}, Object.fromEntries(PLATFORMS.map((p) => [p, resolved.error]))), digest: null, children: {} });
+    say(`${service}: ${tag} -> UNRESOLVED (${resolved.error}); configured pin ${pin.digest}`);
+    const v = assessService(service, {}, Object.fromEntries(PLATFORMS.map((p) => [p, resolved.error])));
+    decisions.push({ ...decideService({ digest: null, children: {} }, v, pin), verdict: v });
     continue;
   }
-  say(`${service}: ${tag} -> ${resolved.digest}${resolved.single ? ' (single-platform manifest)' : ''}`);
+  say(`${service}: ${tag} -> ${resolved.digest}${resolved.single ? ' (single-platform manifest)' : ''}`
+    + ` — configured pin ${pin.digest} (${resolved.digest === pin.digest ? 'THE SAME index' : 'a DIFFERENT index'})`);
   const repo = tag.split(':')[0];
   const reports = {};
   const errors = {};
@@ -121,38 +152,35 @@ for (const [service, spec] of Object.entries(SERVICES)) {
     for (const [id, f] of Object.entries(p.fixes)) say(`    [${id}] ${platform} ${f.state.toUpperCase()}: ${f.why}`);
   }
   say(`  ${service}: ${v.state.toUpperCase()}`);
-  verdicts.push({ ...v, digest: resolved.digest, children: resolved.children });
+  decisions.push({ ...decideService({ digest: resolved.digest, children: resolved.children }, v, pin), verdict: v });
 }
 
-const indeterminate = verdicts.filter((v) => v.state === 'indeterminate');
-const fixed = verdicts.filter((v) => v.state === 'fixed');
-
+// ── the decisions, in the order a reader needs them: indeterminate first, then the failures ──
+const indeterminate = decisions.filter((d) => d.kind === 'indeterminate');
 if (indeterminate.length > 0) {
   // Fail closed. "Could not check" must not read like "nothing to do".
   warn('\nc15-recheck: the official images could not be checked on both platforms:');
-  for (const v of indeterminate) {
+  for (const d of indeterminate) {
     for (const platform of PLATFORMS) {
-      const p = v.platforms[platform];
-      if (p.error !== null) { warn(`  ${v.tag} ${platform}: ${p.error}`); continue; }
-      for (const [id, f] of Object.entries(p.fixes)) if (f.state === 'indeterminate') warn(`  ${v.tag} ${platform} [${id}]: ${f.why}`);
+      const p = d.verdict.platforms[platform];
+      if (p.error !== null) { warn(`  ${d.tag} ${platform}: ${p.error}`); continue; }
+      for (const [id, f] of Object.entries(p.fixes)) if (f.state === 'indeterminate') warn(`  ${d.tag} ${platform} [${id}]: ${f.why}`);
     }
   }
   process.exit(1);
 }
-if (fixed.length > 0) {
-  for (const v of fixed) {
-    warn(`\nc15-recheck: a COMPATIBLE FIXED OFFICIAL image now exists for ${v.service}: ${v.tag} -> ${v.digest}`);
-    for (const platform of PLATFORMS) warn(`  ${platform} child ${v.children[platform] ?? v.digest}`);
-    warn(`  every watched fix (${Object.keys(v.platforms[PLATFORMS[0]].fixes).join(', ')}) is present on both platforms.`);
-    warn('  This is a REPORT: nothing was re-pinned and no evidence was deleted. Return the service to the');
-    warn(`  official image through the governed process — re-pin docker-compose.yml and conformance.manifest.json`);
-    warn(`  to ${v.tag.split(':')[0]}@${v.digest}, verify its provenance and compatibility, ${v.records.length > 0
-      ? `re-issue or retire ${v.records.join(', ')} (they name the derived image)`
-      : 'confirm no SCX record names the derived image'}, regenerate the`);
-    warn('  evidence, run the FINAL chain (docs/SCANNER_DISPOSITIONS.md §5).');
-  }
-  process.exit(1);
+
+const failed = decisions.filter((d) => !d.pass);
+for (const d of failed) {
+  warn('');
+  d.lines.forEach((line, i) => warn(i === 0 ? `c15-recheck: ${line}` : line));
 }
-say('\nc15-recheck: no compatible fixed official image yet for any service; the derived images '
-  + '(ghcr.io/a-halawany/elven/postgres, ghcr.io/a-halawany/elven/redis) remain the pinned route, '
-  + 'and SCX-0002..0005 (linux/amd64) and SCX-0010..0011 (linux/arm64) remain scoped to the derived postgres image.');
+for (const d of decisions.filter((x) => x.pass)) say(`\n${d.lines.join('\n')}`);
+if (failed.length > 0) process.exit(1);
+
+const onPin = decisions.filter((d) => d.kind === 'pinned-fixed').map((d) => d.service);
+const moved = decisions.filter((d) => d.kind === 'moved-affected').map((d) => d.service);
+say(`\nc15-recheck: PASS — ${onPin.length > 0 ? `${onPin.join(' and ')} on the configured official pin${onPin.length > 1 ? 's' : ''} with every watched fix on both platforms` : ''}`
+  + `${onPin.length > 0 && moved.length > 0 ? '; ' : ''}`
+  + `${moved.length > 0 ? `${moved.join(' and ')}: the tag moved to a build that does not qualify, the configured pin stays` : ''}`
+  + '; no NEWER compatible official build; nothing re-pinned, no evidence deleted.');

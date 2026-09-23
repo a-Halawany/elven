@@ -193,7 +193,7 @@ as it goes without the owner — what the gate says in that state, and what awai
   both mechanical.) `pnpm boundaries`, the licence gate, `supply-chain-artifacts.test.ts` and
   `c15-patched-recheck.ctl.ts` pass.
 
-### 8.3 What awaits the owner
+### 8.3 What awaited the owner (done on 2026-09-23 — §8.4)
 
 1. Approve the six re-issues: move each draft from `pending_reissues` into `records`, delete its `status`
    key, set `approved_on` / `reviewed_on` to the day of the review, replace each "PENDING" in §3.9 with
@@ -206,3 +206,48 @@ as it goes without the owner — what the gate says in that state, and what awai
    `docs/ops/BACKUP_RESTORE.md`, not made by this branch; the demonstration stack is untouched.
 4. Merge. Nothing here changes a budget, a cadence, a source, or the C19 anchor, and nothing was purchased.
 
+
+### 8.4 The recheck after the return (the owner's decision of 2026-09-23)
+
+The owner's instruction of 2026-09-23, verbatim in the part that decides this: "Complete #57's
+official-image transition. Update the recheck so the adopted compatible official pin passes, while newer
+compatible official builds trigger the existing update process. Preserve cadence and visible indeterminate
+failures. Regenerate the real scanner/trace evidence and pass the existing gates; do not bypass them." (The
+same instruction approved the six SCX re-issues — `docs/SCANNER_DISPOSITIONS.md` §3.9 quotes it — and
+authorised the integration order of #57, #56 and #58, recorded in the delivery records.)
+
+**What the recheck is now.** `scripts/gate/check-patched-images.mjs` keeps resolving the official tags at the
+existing cadence — daily at 07:20 UTC (`.github/workflows/c15-patched-image-recheck.yml`, read-only,
+`contents: read` asserted) and in the required `supply-chain` job of `ci.yml`, after the C15 gate, even when
+that gate failed on its findings — and scans BOTH platform children of the index each tag currently names,
+exactly as before (no severity filter; installed versions decide; a report that contradicts itself is
+indeterminate). What changed is the decision, `decideService` in `scripts/gate/lib/c19-patched-images.mjs`,
+which is taken against the CONFIGURED PIN read from `conformance.manifest.json` (`pinned_images`, held equal
+to `docker-compose.yml` by CI's "Pinned-digest consistency" step):
+
+| The tag's current index | Every watched fix on both platforms | Decision |
+|---|---|---|
+| **is the configured pin** | yes | **PASS** — "the configured pin is the compatible official image" |
+| is the configured pin | no | **FAIL** — the return's premise no longer holds; re-review the pin and the records scoped to it |
+| is the configured pin, but the manifest's `platform_children` disagree with the index | — | **FAIL** — the record of the return is wrong or the manifest was edited |
+| **is a DIFFERENT index** | yes | **FAIL** — "a COMPATIBLE FIXED OFFICIAL image now exists … NEWER than the configured pin": the existing update process (re-pin `docker-compose.yml` and `conformance.manifest.json`, verify provenance and compatibility, re-issue or retire the SCX records that name the pin — SCX-0002…0005 and SCX-0010/0011 today — regenerate evidence, FINAL chain) |
+| is a different index | no | nothing to do — the pin stays, and the run says which fix the newer build lacks |
+| cannot be resolved, a platform is absent or unscannable, a report contradicts itself, or the pins cannot be read | — | **FAIL**, visibly — "could not check" never reads like "nothing to do" |
+
+Until 2026-09-23 the recheck failed whenever ANY compatible fixed official image existed, which after the
+return meant failing on the very image pinned (hosted runs 35771687190 on `main` and 35778667098 on PR #57
+did exactly that; those runs are preserved as they were). It re-pins nothing and deletes no evidence, as
+before; `--manifest <path>` exists only so the unit controls can prove the decision against a crafted pin
+(the script produces no evidence to launder). The controls are `apps/api/test/gate/c15-patched-recheck.suite.ts`:
+the pure decision for each row above, and the CLI executed as a subprocess against fake `docker` and
+`trivy` for the configured pin (PASS), a newer compatible build (FAIL, the update text), a newer
+incompatible build (exit 0, the pin stays), the configured pin without a watched fix (FAIL), disagreeing
+`platform_children` (FAIL), an unreadable manifest (FAIL) and every indeterminate shape from before.
+
+**On this branch, 2026-09-23.** The six re-issues were applied under the owner's approval (§8.3 item 1 —
+`docs/SCANNER_DISPOSITIONS.md` §3.9; the 2026-09-10 versions listed under `superseded_records` in
+`scripts/gate/scanner-exclusions.json`, nothing deleted), the dispositions document re-bound by digest, the
+C15 trace fixture and `real-image-results.json` re-recorded from a real local run of the gate with the pinned
+release scanners (authenticated by `scripts/gate/install-scanners.sh`) against the official indexes (item 2),
+and the recheck completed as above (item 3). The live containers' recreation onto the official images remains
+the separate recorded operation named in item 3. The FINAL chain is the hosted run on the approving commits.
