@@ -22,7 +22,7 @@
         "CVE-2026-42499",
         "CVE-2026-42504"
       ],
-      "image": "ghcr.io/a-halawany/elven/postgres@sha256:69a974aedbd80ff27ee670a6693445c47925bd69e11818a1cff39319f91ad4a7",
+      "image": "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873",
       "scan_platform": "linux/amd64",
       "package_name": "stdlib",
       "package_purl": "pkg:golang/stdlib@v1.24.6",
@@ -31,12 +31,12 @@
         "HIGH"
       ],
       "result_target": "usr/local/bin/gosu",
-      "reason": "Go standard-library HIGH advisories compiled into the upstream gosu 1.19 binary shipped by every current official postgres image variant. gosu executes once at container start to drop root privileges and then exits; the affected surfaces (net/http, net/mail, crypto DoS classes) are not exercised by that use. No patched official postgres build exists. RE-ISSUED 2026-09-10 for the derived maintenance image ghcr.io/a-halawany/elven/postgres@sha256:69a974aedbd80ff27ee670a6693445c47925bd69e11818a1cff39319f91ad4a7 (linux/amd64 child sha256:bc90ce6bc094fae53df8d01b23e6c08160c7e7064f4c351fd3cff324aefcda7a; owner approval docs/images/DERIVED_IMAGES_APPROVAL.md); originally approved 2026-08-05 for postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15 (linux/amd64 child sha256:b6a16ed0eb96e2c362811f7eeb951eac8b459e7b40be4149ea5444aa7c65569b). The derived image changes only apk packages (libuuid, libcrypto3, libssl3, c-ares) and the config USER; /usr/local/bin/gosu is byte-identical to the base on each platform (linux/amd64 sha256 52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0, linux/arm64 sha256 3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44; infra/images/candidates/evidence/v2/gosu-verification.txt, bound below) and its finding set is identical (22 rows, same advisories, same PURL, same target). The analysis and its dates are unchanged; the expiry 2026-11-05 is not extended.",
+      "reason": "RE-ISSUED 2026-09-23 for the OFFICIAL image postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873 (linux/amd64 child sha256:d8703cd7fba306b9fec9268ecedfa8a966846c053036a60e3635791957eb2f66; postgres:18-alpine = 18.6-alpine3.24, Alpine 3.24.2), drafted 2026-09-22 and APPROVED BY THE OWNER ON 2026-09-23 with the scope, classification, advisory set and the expiry 2026-11-05 unchanged (the owner's instruction of 2026-09-23 is quoted in docs/SCANNER_DISPOSITIONS.md §3.9). The C15 recheck (run 35728647457, 2026-09-22) found postgres:18-alpine rebuilt with every watched fix (libuuid 2.42.3-r1, libcrypto3/libssl3 3.5.8-r0, c-ares 1.34.8-r0) on both platforms and docker-compose.yml returned to it the same day (docs/SUPPLY_CHAIN_MAINTENANCE_2026-09.md §8). /usr/local/bin/gosu in this child is byte-identical to the analysed binary (sha256 52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0; infra/images/official/20260922/inventory/official-postgres-amd64.txt), and the child's 22 HIGH/CRITICAL rows are identical to the derived image's, so this record's advisory set is present in full and nothing new appears (infra/images/official/20260922/scans/scan-summary.txt). The sentence \"No patched official postgres build exists\" in the previous text is retired by this re-issue: the official build carries every OS fix, and gosu is the same upstream binary in every current official postgres variant. PREVIOUS TEXT (2026-09-10): Go standard-library HIGH advisories compiled into the upstream gosu 1.19 binary shipped by every current official postgres image variant. gosu executes once at container start to drop root privileges and then exits; the affected surfaces (net/http, net/mail, crypto DoS classes) are not exercised by that use. No patched official postgres build exists. RE-ISSUED 2026-09-10 for the derived maintenance image ghcr.io/a-halawany/elven/postgres@sha256:69a974aedbd80ff27ee670a6693445c47925bd69e11818a1cff39319f91ad4a7 (linux/amd64 child sha256:bc90ce6bc094fae53df8d01b23e6c08160c7e7064f4c351fd3cff324aefcda7a; owner approval docs/images/DERIVED_IMAGES_APPROVAL.md); originally approved 2026-08-05 for postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15 (linux/amd64 child sha256:b6a16ed0eb96e2c362811f7eeb951eac8b459e7b40be4149ea5444aa7c65569b). The derived image changes only apk packages (libuuid, libcrypto3, libssl3, c-ares) and the config USER; /usr/local/bin/gosu is byte-identical to the base on each platform (linux/amd64 sha256 52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0, linux/arm64 sha256 3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44; infra/images/candidates/evidence/v2/gosu-verification.txt, bound below) and its finding set is identical (22 rows, same advisories, same PURL, same target). The analysis and its dates are unchanged; the expiry 2026-11-05 is not extended.",
       "compensating_controls": [
         "gosu runs once at container start and is neither a long-lived process nor a network listener.",
         "PostgreSQL itself is loopback-bound (127.0.0.1:5432 only).",
         "Phase 0 is a LOCAL-ONLY development profile under EXC-P0-004.",
-        "ADR-P0-01 monthly patch cadence re-pins and re-scans as a blocking release gate; scripts/gate/check-patched-images.mjs reports when a compatible fixed OFFICIAL postgres:18-alpine image exists on both platforms, which is when the service returns to an official image and this record is re-reviewed."
+        "ADR-P0-01 monthly patch cadence re-pins and re-scans as a blocking release gate. The service is on the official postgres:18-alpine image again since 2026-09-22. scripts/gate/check-patched-images.mjs keeps resolving the official tags at the existing cadence (daily 07:20 UTC, and in the required supply-chain job): the configured pin, carrying every watched fix on both platforms, PASSES; a NEWER official build of the tag that also carries every watched fix FAILS to trigger the governed re-pin, on which this record is re-reviewed; a check that cannot be completed on both platforms FAILS visibly (the owner's decision of 2026-09-23, infra/images/candidates/v2/PUBLICATION.md §8.5; docs/SUPPLY_CHAIN_MAINTENANCE_2026-09.md §8.4)."
       ],
       "prohibited_use": [
         "external, shared or internet-reachable deployment",
@@ -46,28 +46,40 @@
       "owner": "founding-engineer",
       "approver": "gate-2.2-security-review",
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
-      "approved_on": "2026-09-10",
+      "approved_on": "2026-09-23",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "41267bf8709f297ba40e8e2474d75585b7f89ad5b06399afb5fadaff824ad10f",
+      "evidence_sha256": "d5a2b5e1f29299a7550dd206acd5fe019e615dee42ddb5383d209f9c17825840",
       "classification": "RISK_ACCEPTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "41267bf8709f297ba40e8e2474d75585b7f89ad5b06399afb5fadaff824ad10f"
+          "sha256": "d5a2b5e1f29299a7550dd206acd5fe019e615dee42ddb5383d209f9c17825840"
         },
         {
           "path": "infra/images/candidates/evidence/v2/gosu-verification.txt",
           "sha256": "e0f901da541867530146e9869337d17b1ac880c0d2f2312240f9d857bc830359"
+        },
+        {
+          "path": "infra/images/official/20260922/inventory/official-postgres-amd64.txt",
+          "sha256": "143d02e50a77e35806f4259d8e49b24c655eeb6b7c84ae169c4b61b771d3c942"
+        },
+        {
+          "path": "infra/images/official/20260922/scans/official-postgres-amd64.trivy.txt",
+          "sha256": "b09157f29476eb775e72c9ef553825ee4262379a22aa5226669056cabe7fb6e7"
+        },
+        {
+          "path": "infra/images/official/20260922/scans/scan-summary.txt",
+          "sha256": "939d2f54536fd6fcf328a4f38236c57eae18ac93ee0173b285e313bda7965fb9"
         }
       ],
-      "reviewed_on": "2026-09-10"
+      "reviewed_on": "2026-09-23"
     },
     {
       "id": "SCX-0003",
       "advisory_ids": [
         "CVE-2025-68121"
       ],
-      "image": "ghcr.io/a-halawany/elven/postgres@sha256:69a974aedbd80ff27ee670a6693445c47925bd69e11818a1cff39319f91ad4a7",
+      "image": "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873",
       "scan_platform": "linux/amd64",
       "package_name": "stdlib",
       "package_purl": "pkg:golang/stdlib@v1.24.6",
@@ -76,12 +88,12 @@
         "CRITICAL"
       ],
       "result_target": "usr/local/bin/gosu",
-      "reason": "The single CRITICAL Go standard-library advisory in the same upstream gosu 1.19 binary. Held as a SEPARATE record from the HIGH set on purpose: a disposition approved for HIGH must not silently absorb a CRITICAL, so the critical finding carries its own explicit approval and its own severity array. RE-ISSUED 2026-09-10 for the derived maintenance image ghcr.io/a-halawany/elven/postgres@sha256:69a974aedbd80ff27ee670a6693445c47925bd69e11818a1cff39319f91ad4a7 (linux/amd64 child sha256:bc90ce6bc094fae53df8d01b23e6c08160c7e7064f4c351fd3cff324aefcda7a; owner approval docs/images/DERIVED_IMAGES_APPROVAL.md); originally approved 2026-08-05 for postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15 (linux/amd64 child sha256:b6a16ed0eb96e2c362811f7eeb951eac8b459e7b40be4149ea5444aa7c65569b). The derived image changes only apk packages (libuuid, libcrypto3, libssl3, c-ares) and the config USER; /usr/local/bin/gosu is byte-identical to the base on each platform (linux/amd64 sha256 52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0, linux/arm64 sha256 3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44; infra/images/candidates/evidence/v2/gosu-verification.txt, bound below) and its finding set is identical (22 rows, same advisories, same PURL, same target). The analysis and its dates are unchanged; the expiry 2026-11-05 is not extended.",
+      "reason": "RE-ISSUED 2026-09-23 for the OFFICIAL image postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873 (linux/amd64 child sha256:d8703cd7fba306b9fec9268ecedfa8a966846c053036a60e3635791957eb2f66; postgres:18-alpine = 18.6-alpine3.24, Alpine 3.24.2), drafted 2026-09-22 and APPROVED BY THE OWNER ON 2026-09-23 with the scope, classification, advisory set and the expiry 2026-11-05 unchanged (the owner's instruction of 2026-09-23 is quoted in docs/SCANNER_DISPOSITIONS.md §3.9). The C15 recheck (run 35728647457, 2026-09-22) found postgres:18-alpine rebuilt with every watched fix (libuuid 2.42.3-r1, libcrypto3/libssl3 3.5.8-r0, c-ares 1.34.8-r0) on both platforms and docker-compose.yml returned to it the same day (docs/SUPPLY_CHAIN_MAINTENANCE_2026-09.md §8). /usr/local/bin/gosu in this child is byte-identical to the analysed binary (sha256 52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0; infra/images/official/20260922/inventory/official-postgres-amd64.txt), and the child's 22 HIGH/CRITICAL rows are identical to the derived image's, so this record's advisory set is present in full and nothing new appears (infra/images/official/20260922/scans/scan-summary.txt). The sentence \"No patched official postgres build exists\" in the previous text is retired by this re-issue: the official build carries every OS fix, and gosu is the same upstream binary in every current official postgres variant. PREVIOUS TEXT (2026-09-10): The single CRITICAL Go standard-library advisory in the same upstream gosu 1.19 binary. Held as a SEPARATE record from the HIGH set on purpose: a disposition approved for HIGH must not silently absorb a CRITICAL, so the critical finding carries its own explicit approval and its own severity array. RE-ISSUED 2026-09-10 for the derived maintenance image ghcr.io/a-halawany/elven/postgres@sha256:69a974aedbd80ff27ee670a6693445c47925bd69e11818a1cff39319f91ad4a7 (linux/amd64 child sha256:bc90ce6bc094fae53df8d01b23e6c08160c7e7064f4c351fd3cff324aefcda7a; owner approval docs/images/DERIVED_IMAGES_APPROVAL.md); originally approved 2026-08-05 for postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15 (linux/amd64 child sha256:b6a16ed0eb96e2c362811f7eeb951eac8b459e7b40be4149ea5444aa7c65569b). The derived image changes only apk packages (libuuid, libcrypto3, libssl3, c-ares) and the config USER; /usr/local/bin/gosu is byte-identical to the base on each platform (linux/amd64 sha256 52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0, linux/arm64 sha256 3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44; infra/images/candidates/evidence/v2/gosu-verification.txt, bound below) and its finding set is identical (22 rows, same advisories, same PURL, same target). The analysis and its dates are unchanged; the expiry 2026-11-05 is not extended.",
       "compensating_controls": [
         "gosu runs once at container start and is neither a long-lived process nor a network listener.",
         "PostgreSQL itself is loopback-bound (127.0.0.1:5432 only).",
         "Phase 0 is a LOCAL-ONLY development profile under EXC-P0-004; this disposition is invalid for any external or customer-data use.",
-        "ADR-P0-01 monthly patch cadence re-pins and re-scans as a blocking release gate; scripts/gate/check-patched-images.mjs reports when a compatible fixed OFFICIAL postgres:18-alpine image exists on both platforms, which is when the service returns to an official image and this record is re-reviewed."
+        "ADR-P0-01 monthly patch cadence re-pins and re-scans as a blocking release gate. The service is on the official postgres:18-alpine image again since 2026-09-22. scripts/gate/check-patched-images.mjs keeps resolving the official tags at the existing cadence (daily 07:20 UTC, and in the required supply-chain job): the configured pin, carrying every watched fix on both platforms, PASSES; a NEWER official build of the tag that also carries every watched fix FAILS to trigger the governed re-pin, on which this record is re-reviewed; a check that cannot be completed on both platforms FAILS visibly (the owner's decision of 2026-09-23, infra/images/candidates/v2/PUBLICATION.md §8.5; docs/SUPPLY_CHAIN_MAINTENANCE_2026-09.md §8.4)."
       ],
       "prohibited_use": [
         "external, shared or internet-reachable deployment",
@@ -91,28 +103,40 @@
       "owner": "founding-engineer",
       "approver": "gate-2.2-security-review",
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
-      "approved_on": "2026-09-10",
+      "approved_on": "2026-09-23",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "41267bf8709f297ba40e8e2474d75585b7f89ad5b06399afb5fadaff824ad10f",
+      "evidence_sha256": "d5a2b5e1f29299a7550dd206acd5fe019e615dee42ddb5383d209f9c17825840",
       "classification": "RISK_ACCEPTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "41267bf8709f297ba40e8e2474d75585b7f89ad5b06399afb5fadaff824ad10f"
+          "sha256": "d5a2b5e1f29299a7550dd206acd5fe019e615dee42ddb5383d209f9c17825840"
         },
         {
           "path": "infra/images/candidates/evidence/v2/gosu-verification.txt",
           "sha256": "e0f901da541867530146e9869337d17b1ac880c0d2f2312240f9d857bc830359"
+        },
+        {
+          "path": "infra/images/official/20260922/inventory/official-postgres-amd64.txt",
+          "sha256": "143d02e50a77e35806f4259d8e49b24c655eeb6b7c84ae169c4b61b771d3c942"
+        },
+        {
+          "path": "infra/images/official/20260922/scans/official-postgres-amd64.trivy.txt",
+          "sha256": "b09157f29476eb775e72c9ef553825ee4262379a22aa5226669056cabe7fb6e7"
+        },
+        {
+          "path": "infra/images/official/20260922/scans/scan-summary.txt",
+          "sha256": "939d2f54536fd6fcf328a4f38236c57eae18ac93ee0173b285e313bda7965fb9"
         }
       ],
-      "reviewed_on": "2026-09-10"
+      "reviewed_on": "2026-09-23"
     },
     {
       "id": "SCX-0004",
       "advisory_ids": [
         "CVE-2026-39821"
       ],
-      "image": "ghcr.io/a-halawany/elven/postgres@sha256:69a974aedbd80ff27ee670a6693445c47925bd69e11818a1cff39319f91ad4a7",
+      "image": "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873",
       "scan_platform": "linux/amd64",
       "package_name": "stdlib",
       "package_purl": "pkg:golang/stdlib@v1.24.6",
@@ -121,26 +145,26 @@
         "HIGH"
       ],
       "result_target": "usr/local/bin/gosu",
-      "reason": "NOT_AFFECTED (vulnerable_code_not_present). A HIGH Go standard-library advisory that trivy matches by toolchain version against the gosu 1.19 binary in the pinned postgres image. govulncheck binary-mode symbol analysis of that exact binary (sha256 52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0) reports 0 called vulnerable symbols, and CVE-2026-39821 (GO-2026-5026) is present in that analysis and unreachable. CVE-2026-46600 was removed on 2026-08-15 because the advisory database no longer reports it for this image; a record covering nothing is stale, not satisfied. The six advisories that appeared on 2026-08-15 are held by SCX-0005 rather than here, because this record was approved before they were known and an approval date cannot precede what it approves. RE-ISSUED 2026-09-10 for the derived maintenance image ghcr.io/a-halawany/elven/postgres@sha256:69a974aedbd80ff27ee670a6693445c47925bd69e11818a1cff39319f91ad4a7 (linux/amd64 child sha256:bc90ce6bc094fae53df8d01b23e6c08160c7e7064f4c351fd3cff324aefcda7a; owner approval docs/images/DERIVED_IMAGES_APPROVAL.md); originally approved 2026-08-14 for postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15 (linux/amd64 child sha256:b6a16ed0eb96e2c362811f7eeb951eac8b459e7b40be4149ea5444aa7c65569b). The derived image changes only apk packages (libuuid, libcrypto3, libssl3, c-ares) and the config USER; /usr/local/bin/gosu is byte-identical to the base on each platform (linux/amd64 sha256 52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0, linux/arm64 sha256 3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44; infra/images/candidates/evidence/v2/gosu-verification.txt, bound below) and its finding set is identical (22 rows, same advisories, same PURL, same target). The analysis and its dates are unchanged; the expiry 2026-11-05 is not extended.",
+      "reason": "RE-ISSUED 2026-09-23 for the OFFICIAL image postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873 (linux/amd64 child sha256:d8703cd7fba306b9fec9268ecedfa8a966846c053036a60e3635791957eb2f66; postgres:18-alpine = 18.6-alpine3.24, Alpine 3.24.2), drafted 2026-09-22 and APPROVED BY THE OWNER ON 2026-09-23 with the scope, classification, advisory set and the expiry 2026-11-05 unchanged (the owner's instruction of 2026-09-23 is quoted in docs/SCANNER_DISPOSITIONS.md §3.9). The C15 recheck (run 35728647457, 2026-09-22) found postgres:18-alpine rebuilt with every watched fix (libuuid 2.42.3-r1, libcrypto3/libssl3 3.5.8-r0, c-ares 1.34.8-r0) on both platforms and docker-compose.yml returned to it the same day (docs/SUPPLY_CHAIN_MAINTENANCE_2026-09.md §8). /usr/local/bin/gosu in this child is byte-identical to the analysed binary (sha256 52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0; infra/images/official/20260922/inventory/official-postgres-amd64.txt), and the child's 22 HIGH/CRITICAL rows are identical to the derived image's, so this record's advisory set is present in full and nothing new appears (infra/images/official/20260922/scans/scan-summary.txt). The sentence \"No patched official postgres build exists\" in the previous text is retired by this re-issue: the official build carries every OS fix, and gosu is the same upstream binary in every current official postgres variant. PREVIOUS TEXT (2026-09-10): NOT_AFFECTED (vulnerable_code_not_present). A HIGH Go standard-library advisory that trivy matches by toolchain version against the gosu 1.19 binary in the pinned postgres image. govulncheck binary-mode symbol analysis of that exact binary (sha256 52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0) reports 0 called vulnerable symbols, and CVE-2026-39821 (GO-2026-5026) is present in that analysis and unreachable. CVE-2026-46600 was removed on 2026-08-15 because the advisory database no longer reports it for this image; a record covering nothing is stale, not satisfied. The six advisories that appeared on 2026-08-15 are held by SCX-0005 rather than here, because this record was approved before they were known and an approval date cannot precede what it approves. RE-ISSUED 2026-09-10 for the derived maintenance image ghcr.io/a-halawany/elven/postgres@sha256:69a974aedbd80ff27ee670a6693445c47925bd69e11818a1cff39319f91ad4a7 (linux/amd64 child sha256:bc90ce6bc094fae53df8d01b23e6c08160c7e7064f4c351fd3cff324aefcda7a; owner approval docs/images/DERIVED_IMAGES_APPROVAL.md); originally approved 2026-08-14 for postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15 (linux/amd64 child sha256:b6a16ed0eb96e2c362811f7eeb951eac8b459e7b40be4149ea5444aa7c65569b). The derived image changes only apk packages (libuuid, libcrypto3, libssl3, c-ares) and the config USER; /usr/local/bin/gosu is byte-identical to the base on each platform (linux/amd64 sha256 52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0, linux/arm64 sha256 3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44; infra/images/candidates/evidence/v2/gosu-verification.txt, bound below) and its finding set is identical (22 rows, same advisories, same PURL, same target). The analysis and its dates are unchanged; the expiry 2026-11-05 is not extended.",
       "compensating_controls": [
         "govulncheck v1.7.0 (Go go1.25.13, vuln.go.dev as of 2026-08-14) reports 0 called vulnerable symbols in the exact scanned binary.",
         "Reachability analysis is a static over-approximation; it does not cover reflection or dynamic dispatch, so the operational controls below still apply.",
         "gosu runs once at container start and is neither a long-lived process nor a network listener.",
         "PostgreSQL itself is loopback-bound (127.0.0.1:5432 only).",
         "Phase 0 is a LOCAL-ONLY development profile under EXC-P0-004.",
-        "ADR-P0-01 monthly patch cadence re-pins and re-scans as a blocking release gate; scripts/gate/check-patched-images.mjs reports when a compatible fixed OFFICIAL postgres:18-alpine image exists on both platforms, which is when the service returns to an official image and this record is re-reviewed."
+        "ADR-P0-01 monthly patch cadence re-pins and re-scans as a blocking release gate. The service is on the official postgres:18-alpine image again since 2026-09-22. scripts/gate/check-patched-images.mjs keeps resolving the official tags at the existing cadence (daily 07:20 UTC, and in the required supply-chain job): the configured pin, carrying every watched fix on both platforms, PASSES; a NEWER official build of the tag that also carries every watched fix FAILS to trigger the governed re-pin, on which this record is re-reviewed; a check that cannot be completed on both platforms FAILS visibly (the owner's decision of 2026-09-23, infra/images/candidates/v2/PUBLICATION.md §8.5; docs/SUPPLY_CHAIN_MAINTENANCE_2026-09.md §8.4)."
       ],
       "owner": "founding-engineer",
       "approver": "gate-2.2-security-review",
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
-      "approved_on": "2026-09-10",
+      "approved_on": "2026-09-23",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "41267bf8709f297ba40e8e2474d75585b7f89ad5b06399afb5fadaff824ad10f",
+      "evidence_sha256": "d5a2b5e1f29299a7550dd206acd5fe019e615dee42ddb5383d209f9c17825840",
       "classification": "NOT_AFFECTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "41267bf8709f297ba40e8e2474d75585b7f89ad5b06399afb5fadaff824ad10f"
+          "sha256": "d5a2b5e1f29299a7550dd206acd5fe019e615dee42ddb5383d209f9c17825840"
         },
         {
           "path": "docs/evidence/govulncheck-gosu-b6a16ed0.json",
@@ -153,9 +177,21 @@
         {
           "path": "infra/images/candidates/evidence/v2/gosu-verification.txt",
           "sha256": "e0f901da541867530146e9869337d17b1ac880c0d2f2312240f9d857bc830359"
+        },
+        {
+          "path": "infra/images/official/20260922/inventory/official-postgres-amd64.txt",
+          "sha256": "143d02e50a77e35806f4259d8e49b24c655eeb6b7c84ae169c4b61b771d3c942"
+        },
+        {
+          "path": "infra/images/official/20260922/scans/official-postgres-amd64.trivy.txt",
+          "sha256": "b09157f29476eb775e72c9ef553825ee4262379a22aa5226669056cabe7fb6e7"
+        },
+        {
+          "path": "infra/images/official/20260922/scans/scan-summary.txt",
+          "sha256": "939d2f54536fd6fcf328a4f38236c57eae18ac93ee0173b285e313bda7965fb9"
         }
       ],
-      "reviewed_on": "2026-09-10"
+      "reviewed_on": "2026-09-23"
     },
     {
       "id": "SCX-0005",
@@ -167,7 +203,7 @@
         "CVE-2026-56860",
         "CVE-2026-56862"
       ],
-      "image": "ghcr.io/a-halawany/elven/postgres@sha256:69a974aedbd80ff27ee670a6693445c47925bd69e11818a1cff39319f91ad4a7",
+      "image": "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873",
       "scan_platform": "linux/amd64",
       "package_name": "stdlib",
       "package_purl": "pkg:golang/stdlib@v1.24.6",
@@ -176,26 +212,26 @@
         "HIGH"
       ],
       "result_target": "usr/local/bin/gosu",
-      "reason": "NOT_AFFECTED (vulnerable_code_not_present). Six HIGH Go standard-library advisories that entered the scanner database on 2026-08-14 and were first observed by this project on 2026-08-15. Held separately from SCX-0004, which was approved on 2026-08-14 for the one advisory then reviewed: an approval date is a claim about when a human looked and cannot be stretched to cover later evidence. govulncheck binary-mode symbol analysis of the exact binary (sha256 52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0, Go vuln DB as of 2026-08-14) reports 0 called vulnerable symbols across 48 findings and 168 advisories, and each of the six is present and unreachable: CVE-2026-33818 (GO-2026-5972), CVE-2026-56853 (GO-2026-6089), CVE-2026-56858 (GO-2026-6091), CVE-2026-56859 (GO-2026-6088), CVE-2026-56860 (GO-2026-6218), CVE-2026-56862 (GO-2026-6090). RE-ISSUED 2026-09-10 for the derived maintenance image ghcr.io/a-halawany/elven/postgres@sha256:69a974aedbd80ff27ee670a6693445c47925bd69e11818a1cff39319f91ad4a7 (linux/amd64 child sha256:bc90ce6bc094fae53df8d01b23e6c08160c7e7064f4c351fd3cff324aefcda7a; owner approval docs/images/DERIVED_IMAGES_APPROVAL.md); originally approved 2026-08-15 for postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15 (linux/amd64 child sha256:b6a16ed0eb96e2c362811f7eeb951eac8b459e7b40be4149ea5444aa7c65569b). The derived image changes only apk packages (libuuid, libcrypto3, libssl3, c-ares) and the config USER; /usr/local/bin/gosu is byte-identical to the base on each platform (linux/amd64 sha256 52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0, linux/arm64 sha256 3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44; infra/images/candidates/evidence/v2/gosu-verification.txt, bound below) and its finding set is identical (22 rows, same advisories, same PURL, same target). The analysis and its dates are unchanged; the expiry 2026-11-05 is not extended.",
+      "reason": "RE-ISSUED 2026-09-23 for the OFFICIAL image postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873 (linux/amd64 child sha256:d8703cd7fba306b9fec9268ecedfa8a966846c053036a60e3635791957eb2f66; postgres:18-alpine = 18.6-alpine3.24, Alpine 3.24.2), drafted 2026-09-22 and APPROVED BY THE OWNER ON 2026-09-23 with the scope, classification, advisory set and the expiry 2026-11-05 unchanged (the owner's instruction of 2026-09-23 is quoted in docs/SCANNER_DISPOSITIONS.md §3.9). The C15 recheck (run 35728647457, 2026-09-22) found postgres:18-alpine rebuilt with every watched fix (libuuid 2.42.3-r1, libcrypto3/libssl3 3.5.8-r0, c-ares 1.34.8-r0) on both platforms and docker-compose.yml returned to it the same day (docs/SUPPLY_CHAIN_MAINTENANCE_2026-09.md §8). /usr/local/bin/gosu in this child is byte-identical to the analysed binary (sha256 52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0; infra/images/official/20260922/inventory/official-postgres-amd64.txt), and the child's 22 HIGH/CRITICAL rows are identical to the derived image's, so this record's advisory set is present in full and nothing new appears (infra/images/official/20260922/scans/scan-summary.txt). The sentence \"No patched official postgres build exists\" in the previous text is retired by this re-issue: the official build carries every OS fix, and gosu is the same upstream binary in every current official postgres variant. PREVIOUS TEXT (2026-09-10): NOT_AFFECTED (vulnerable_code_not_present). Six HIGH Go standard-library advisories that entered the scanner database on 2026-08-14 and were first observed by this project on 2026-08-15. Held separately from SCX-0004, which was approved on 2026-08-14 for the one advisory then reviewed: an approval date is a claim about when a human looked and cannot be stretched to cover later evidence. govulncheck binary-mode symbol analysis of the exact binary (sha256 52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0, Go vuln DB as of 2026-08-14) reports 0 called vulnerable symbols across 48 findings and 168 advisories, and each of the six is present and unreachable: CVE-2026-33818 (GO-2026-5972), CVE-2026-56853 (GO-2026-6089), CVE-2026-56858 (GO-2026-6091), CVE-2026-56859 (GO-2026-6088), CVE-2026-56860 (GO-2026-6218), CVE-2026-56862 (GO-2026-6090). RE-ISSUED 2026-09-10 for the derived maintenance image ghcr.io/a-halawany/elven/postgres@sha256:69a974aedbd80ff27ee670a6693445c47925bd69e11818a1cff39319f91ad4a7 (linux/amd64 child sha256:bc90ce6bc094fae53df8d01b23e6c08160c7e7064f4c351fd3cff324aefcda7a; owner approval docs/images/DERIVED_IMAGES_APPROVAL.md); originally approved 2026-08-15 for postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15 (linux/amd64 child sha256:b6a16ed0eb96e2c362811f7eeb951eac8b459e7b40be4149ea5444aa7c65569b). The derived image changes only apk packages (libuuid, libcrypto3, libssl3, c-ares) and the config USER; /usr/local/bin/gosu is byte-identical to the base on each platform (linux/amd64 sha256 52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0, linux/arm64 sha256 3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44; infra/images/candidates/evidence/v2/gosu-verification.txt, bound below) and its finding set is identical (22 rows, same advisories, same PURL, same target). The analysis and its dates are unchanged; the expiry 2026-11-05 is not extended.",
       "compensating_controls": [
         "govulncheck v1.7.0 (Go go1.25.13, vuln.go.dev as of 2026-08-14) reports 0 called vulnerable symbols in the exact scanned binary.",
         "Reachability analysis is a static over-approximation; it does not cover reflection or dynamic dispatch, so the operational controls below still apply.",
         "gosu runs once at container start and is neither a long-lived process nor a network listener.",
         "PostgreSQL itself is loopback-bound (127.0.0.1:5432 only).",
         "Phase 0 is a LOCAL-ONLY development profile under EXC-P0-004.",
-        "ADR-P0-01 monthly patch cadence re-pins and re-scans as a blocking release gate; scripts/gate/check-patched-images.mjs reports when a compatible fixed OFFICIAL postgres:18-alpine image exists on both platforms, which is when the service returns to an official image and this record is re-reviewed."
+        "ADR-P0-01 monthly patch cadence re-pins and re-scans as a blocking release gate. The service is on the official postgres:18-alpine image again since 2026-09-22. scripts/gate/check-patched-images.mjs keeps resolving the official tags at the existing cadence (daily 07:20 UTC, and in the required supply-chain job): the configured pin, carrying every watched fix on both platforms, PASSES; a NEWER official build of the tag that also carries every watched fix FAILS to trigger the governed re-pin, on which this record is re-reviewed; a check that cannot be completed on both platforms FAILS visibly (the owner's decision of 2026-09-23, infra/images/candidates/v2/PUBLICATION.md §8.5; docs/SUPPLY_CHAIN_MAINTENANCE_2026-09.md §8.4)."
       ],
       "owner": "founding-engineer",
       "approver": "gate-2.2-security-review",
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
-      "approved_on": "2026-09-10",
+      "approved_on": "2026-09-23",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "41267bf8709f297ba40e8e2474d75585b7f89ad5b06399afb5fadaff824ad10f",
+      "evidence_sha256": "d5a2b5e1f29299a7550dd206acd5fe019e615dee42ddb5383d209f9c17825840",
       "classification": "NOT_AFFECTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "41267bf8709f297ba40e8e2474d75585b7f89ad5b06399afb5fadaff824ad10f"
+          "sha256": "d5a2b5e1f29299a7550dd206acd5fe019e615dee42ddb5383d209f9c17825840"
         },
         {
           "path": "docs/evidence/govulncheck-gosu-b6a16ed0.json",
@@ -208,9 +244,21 @@
         {
           "path": "infra/images/candidates/evidence/v2/gosu-verification.txt",
           "sha256": "e0f901da541867530146e9869337d17b1ac880c0d2f2312240f9d857bc830359"
+        },
+        {
+          "path": "infra/images/official/20260922/inventory/official-postgres-amd64.txt",
+          "sha256": "143d02e50a77e35806f4259d8e49b24c655eeb6b7c84ae169c4b61b771d3c942"
+        },
+        {
+          "path": "infra/images/official/20260922/scans/official-postgres-amd64.trivy.txt",
+          "sha256": "b09157f29476eb775e72c9ef553825ee4262379a22aa5226669056cabe7fb6e7"
+        },
+        {
+          "path": "infra/images/official/20260922/scans/scan-summary.txt",
+          "sha256": "939d2f54536fd6fcf328a4f38236c57eae18ac93ee0173b285e313bda7965fb9"
         }
       ],
-      "reviewed_on": "2026-09-10"
+      "reviewed_on": "2026-09-23"
     },
     {
       "id": "SCX-0010",
@@ -237,7 +285,7 @@
         "CVE-2026-56860",
         "CVE-2026-56862"
       ],
-      "image": "ghcr.io/a-halawany/elven/postgres@sha256:69a974aedbd80ff27ee670a6693445c47925bd69e11818a1cff39319f91ad4a7",
+      "image": "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873",
       "scan_platform": "linux/arm64",
       "package_name": "stdlib",
       "package_purl": "pkg:golang/stdlib@v1.24.6",
@@ -246,13 +294,13 @@
         "HIGH"
       ],
       "result_target": "usr/local/bin/gosu",
-      "reason": "FIRST APPROVAL FOR linux/arm64, 2026-09-10. The configured reference is an OCI index whose linux/arm64 child sha256:d3dd485bd0507df537c7a8f7fbdf7dcf9ba8fb2007ca75b12af5c362237a92cc is a DIFFERENT ARTIFACT from the linux/amd64 child governed by SCX-0002..0005: different layers, and a different /usr/local/bin/gosu (sha256 3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44, 1830424 bytes, ELF aarch64, Go toolchain go1.24.6, module github.com/tianon/gosu v1.19.0, GOARCH=arm64, CGO_ENABLED=0, -trimpath=true) against amd64's 52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0 (1769900 bytes). Those records scope themselves to linux/amd64 and cannot govern this platform, which is why this record exists rather than a widening of theirs. WHAT WAS ANALYSED, AND ON WHICH ARTIFACT: the published arm64 child was scanned by digest on 2026-09-10 with the pinned trivy 0.73.0 (--ignorefile /dev/null, --scanners vuln,secret, --platform linux/arm64), reporting 22 HIGH/CRITICAL rows -- 21 HIGH and 1 CRITICAL, every one stdlib v1.24.6 (pkg:golang/stdlib@v1.24.6, no arch qualifier: these are gobinary rows, not apk rows) in usr/local/bin/gosu -- and 0 OS-package findings across 53 alpine packages; an all-severity pass of the same child additionally reports 21 MEDIUM, 2 LOW and 1 UNKNOWN gosu row and 10 UNKNOWN-severity libcurl rows, which are outside the governed HIGH/CRITICAL scope and are recorded in docs/SCANNER_DISPOSITIONS.md SS3.7 rather than governed here. The binary was extracted from that exact published child (docker create --platform linux/arm64, docker cp, container removed) and measured directly; the digest matches what infra/images/candidates/evidence/v2/gosu-verification.txt records for the arm64 candidate and base, and infra/images/published/20260910/postgres-arm64.trivy.txt is the publisher's independent scan of the same child with the same 22 rows. WHY RISK_ACCEPTED AND NOT NOT_AFFECTED: govulncheck and a Go toolchain are unavailable on the analysis host, so NO binary-mode symbol analysis of 3a8ef022... exists. The govulncheck evidence bound by SCX-0004 and SCX-0005 was run against a different compiled binary (52c8749d...) and is not evidence about this one; copying its verdict across would be exactly the substitution this governance model refuses. The acceptance therefore rests only on the operational argument, which is artifact-independent, and is bounded by prohibited_use below. SCOPE OF THIS RECORD: the 21 HIGH rows. They share a platform, package, PURL, installed version, result target, severity, classification and one review on one date, so they are held together; the single CRITICAL is held by SCX-0011 because a disposition approved for HIGH must never absorb a CRITICAL, the same reason SCX-0003 is separate from SCX-0002. Seven of these advisories (CVE-2026-39821 under SCX-0004 and the six under SCX-0005, which include CVE-2026-33818) are NOT_AFFECTED on linux/amd64 on the strength of symbol analysis of the amd64 binary; on this platform they are only RISK_ACCEPTED, because that analysis was not performed on this artifact. OWNER ACCEPTANCE, 2026-09-11: the owner accepted this disposition as it stands (RISK_ACCEPTED, this scope, expiry 2026-11-05 unchanged) in the checkpoint directive following the review at 461a2b56 — Option A of docs/images/ARM64_RISK_DECISION.md. This is the owner's acceptance, not independent Codex verification; the arm64 symbol analysis of 2026-09-11 (govulncheck v1.1.4 on this binary: 0 called, all 22 unreachable; infra/images/published/20260910/gosu-arm64-3a8ef022.govulncheck.{txt,json}) is recorded as additional evidence and is not what this record claims.",
+      "reason": "RE-ISSUED 2026-09-23 for the OFFICIAL image postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873 (linux/arm64 child sha256:89f747171c4b0af0eacf5984550060be79786dbe286eb60cfa691d79d1e8b23f; postgres:18-alpine = 18.6-alpine3.24, Alpine 3.24.2), drafted 2026-09-22 and APPROVED BY THE OWNER ON 2026-09-23 with the scope, classification, advisory set and the expiry 2026-11-05 unchanged (the owner's instruction of 2026-09-23 is quoted in docs/SCANNER_DISPOSITIONS.md §3.9). The C15 recheck (run 35728647457, 2026-09-22) found postgres:18-alpine rebuilt with every watched fix (libuuid 2.42.3-r1, libcrypto3/libssl3 3.5.8-r0, c-ares 1.34.8-r0) on both platforms and docker-compose.yml returned to it the same day (docs/SUPPLY_CHAIN_MAINTENANCE_2026-09.md §8). /usr/local/bin/gosu in this child is byte-identical to the analysed binary (sha256 3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44; infra/images/official/20260922/inventory/official-postgres-arm64.txt), and the child's 22 HIGH/CRITICAL rows are identical to the derived image's, so this record's advisory set is present in full and nothing new appears (infra/images/official/20260922/scans/scan-summary.txt). The sentence \"No patched official postgres build exists\" in the previous text is retired by this re-issue: the official build carries every OS fix, and gosu is the same upstream binary in every current official postgres variant. PREVIOUS TEXT (2026-09-10): FIRST APPROVAL FOR linux/arm64, 2026-09-10. The configured reference is an OCI index whose linux/arm64 child sha256:d3dd485bd0507df537c7a8f7fbdf7dcf9ba8fb2007ca75b12af5c362237a92cc is a DIFFERENT ARTIFACT from the linux/amd64 child governed by SCX-0002..0005: different layers, and a different /usr/local/bin/gosu (sha256 3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44, 1830424 bytes, ELF aarch64, Go toolchain go1.24.6, module github.com/tianon/gosu v1.19.0, GOARCH=arm64, CGO_ENABLED=0, -trimpath=true) against amd64's 52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0 (1769900 bytes). Those records scope themselves to linux/amd64 and cannot govern this platform, which is why this record exists rather than a widening of theirs. WHAT WAS ANALYSED, AND ON WHICH ARTIFACT: the published arm64 child was scanned by digest on 2026-09-10 with the pinned trivy 0.73.0 (--ignorefile /dev/null, --scanners vuln,secret, --platform linux/arm64), reporting 22 HIGH/CRITICAL rows -- 21 HIGH and 1 CRITICAL, every one stdlib v1.24.6 (pkg:golang/stdlib@v1.24.6, no arch qualifier: these are gobinary rows, not apk rows) in usr/local/bin/gosu -- and 0 OS-package findings across 53 alpine packages; an all-severity pass of the same child additionally reports 21 MEDIUM, 2 LOW and 1 UNKNOWN gosu row and 10 UNKNOWN-severity libcurl rows, which are outside the governed HIGH/CRITICAL scope and are recorded in docs/SCANNER_DISPOSITIONS.md SS3.7 rather than governed here. The binary was extracted from that exact published child (docker create --platform linux/arm64, docker cp, container removed) and measured directly; the digest matches what infra/images/candidates/evidence/v2/gosu-verification.txt records for the arm64 candidate and base, and infra/images/published/20260910/postgres-arm64.trivy.txt is the publisher's independent scan of the same child with the same 22 rows. WHY RISK_ACCEPTED AND NOT NOT_AFFECTED: govulncheck and a Go toolchain are unavailable on the analysis host, so NO binary-mode symbol analysis of 3a8ef022... exists. The govulncheck evidence bound by SCX-0004 and SCX-0005 was run against a different compiled binary (52c8749d...) and is not evidence about this one; copying its verdict across would be exactly the substitution this governance model refuses. The acceptance therefore rests only on the operational argument, which is artifact-independent, and is bounded by prohibited_use below. SCOPE OF THIS RECORD: the 21 HIGH rows. They share a platform, package, PURL, installed version, result target, severity, classification and one review on one date, so they are held together; the single CRITICAL is held by SCX-0011 because a disposition approved for HIGH must never absorb a CRITICAL, the same reason SCX-0003 is separate from SCX-0002. Seven of these advisories (CVE-2026-39821 under SCX-0004 and the six under SCX-0005, which include CVE-2026-33818) are NOT_AFFECTED on linux/amd64 on the strength of symbol analysis of the amd64 binary; on this platform they are only RISK_ACCEPTED, because that analysis was not performed on this artifact. OWNER ACCEPTANCE, 2026-09-11: the owner accepted this disposition as it stands (RISK_ACCEPTED, this scope, expiry 2026-11-05 unchanged) in the checkpoint directive following the review at 461a2b56 — Option A of docs/images/ARM64_RISK_DECISION.md. This is the owner's acceptance, not independent Codex verification; the arm64 symbol analysis of 2026-09-11 (govulncheck v1.1.4 on this binary: 0 called, all 22 unreachable; infra/images/published/20260910/gosu-arm64-3a8ef022.govulncheck.{txt,json}) is recorded as additional evidence and is not what this record claims.",
       "compensating_controls": [
         "gosu runs once at container start to drop root privileges and exit; it is neither a long-lived process nor a network listener, so the affected net/http, net/mail, crypto/tls and crypto/x509 surfaces are not exercised by that use.",
         "This is an ACCEPTANCE, not a claim of non-applicability: no reachability analysis of the arm64 binary exists, so the vulnerable code is not asserted to be absent from it.",
         "PostgreSQL itself is loopback-bound (127.0.0.1:5432 only).",
         "Phase 0 is a LOCAL-ONLY development profile under EXC-P0-004; this disposition is invalid for any external or customer-data use.",
-        "ADR-P0-01 monthly patch cadence re-pins and re-scans as a blocking release gate; scripts/gate/check-patched-images.mjs already resolves and checks BOTH platform children of the official indexes and reports when a compatible fixed OFFICIAL postgres:18-alpine image exists on each."
+        "ADR-P0-01 monthly patch cadence re-pins and re-scans as a blocking release gate. The service is on the official postgres:18-alpine image again since 2026-09-22. scripts/gate/check-patched-images.mjs keeps resolving the official tags at the existing cadence (daily 07:20 UTC, and in the required supply-chain job): the configured pin, carrying every watched fix on both platforms, PASSES; a NEWER official build of the tag that also carries every watched fix FAILS to trigger the governed re-pin, on which this record is re-reviewed; a check that cannot be completed on both platforms FAILS visibly (the owner's decision of 2026-09-23, infra/images/candidates/v2/PUBLICATION.md §8.5; docs/SUPPLY_CHAIN_MAINTENANCE_2026-09.md §8.4)."
       ],
       "prohibited_use": [
         "external, shared or internet-reachable deployment",
@@ -261,16 +309,16 @@
         "reclassification to NOT_AFFECTED without a reachability analysis performed on THIS arm64 binary"
       ],
       "owner": "founding-engineer",
-      "approver": "product-owner (owner acceptance recorded 2026-09-11 in the checkpoint directive after the review at 461a2b56; docs/images/ARM64_RISK_DECISION.md §5)",
+      "approver": "product-owner (owner acceptance recorded 2026-09-11 in the checkpoint directive after the review at 461a2b56; docs/images/ARM64_RISK_DECISION.md §5; the 2026-09-23 re-issue for the official linux/arm64 child approved by the owner, docs/SCANNER_DISPOSITIONS.md §3.9)",
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
-      "approved_on": "2026-09-11",
+      "approved_on": "2026-09-23",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "41267bf8709f297ba40e8e2474d75585b7f89ad5b06399afb5fadaff824ad10f",
+      "evidence_sha256": "d5a2b5e1f29299a7550dd206acd5fe019e615dee42ddb5383d209f9c17825840",
       "classification": "RISK_ACCEPTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "41267bf8709f297ba40e8e2474d75585b7f89ad5b06399afb5fadaff824ad10f"
+          "sha256": "d5a2b5e1f29299a7550dd206acd5fe019e615dee42ddb5383d209f9c17825840"
         },
         {
           "path": "infra/images/published/20260910/postgres-arm64.trivy.txt",
@@ -287,16 +335,28 @@
         {
           "path": "docs/images/ARM64_RISK_DECISION.md",
           "sha256": "6b6518d03ddc01c86deb7644fa638a6a2cea149bcba6987f14352e18ae513aca"
+        },
+        {
+          "path": "infra/images/official/20260922/inventory/official-postgres-arm64.txt",
+          "sha256": "9762a9301c23bfc75894afbe859f5cf5a8f5e782d5638fa3e762e9c510e60733"
+        },
+        {
+          "path": "infra/images/official/20260922/scans/official-postgres-arm64.trivy.txt",
+          "sha256": "651c5de0c188cbeace49715b5d36c1e14a797526365062f933bd73a079a1316e"
+        },
+        {
+          "path": "infra/images/official/20260922/scans/scan-summary.txt",
+          "sha256": "939d2f54536fd6fcf328a4f38236c57eae18ac93ee0173b285e313bda7965fb9"
         }
       ],
-      "reviewed_on": "2026-09-11"
+      "reviewed_on": "2026-09-23"
     },
     {
       "id": "SCX-0011",
       "advisory_ids": [
         "CVE-2025-68121"
       ],
-      "image": "ghcr.io/a-halawany/elven/postgres@sha256:69a974aedbd80ff27ee670a6693445c47925bd69e11818a1cff39319f91ad4a7",
+      "image": "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873",
       "scan_platform": "linux/arm64",
       "package_name": "stdlib",
       "package_purl": "pkg:golang/stdlib@v1.24.6",
@@ -305,13 +365,13 @@
         "CRITICAL"
       ],
       "result_target": "usr/local/bin/gosu",
-      "reason": "FIRST APPROVAL FOR linux/arm64, 2026-09-10. The configured reference is an OCI index whose linux/arm64 child sha256:d3dd485bd0507df537c7a8f7fbdf7dcf9ba8fb2007ca75b12af5c362237a92cc is a DIFFERENT ARTIFACT from the linux/amd64 child governed by SCX-0002..0005: different layers, and a different /usr/local/bin/gosu (sha256 3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44, 1830424 bytes, ELF aarch64, Go toolchain go1.24.6, module github.com/tianon/gosu v1.19.0, GOARCH=arm64, CGO_ENABLED=0, -trimpath=true) against amd64's 52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0 (1769900 bytes). Those records scope themselves to linux/amd64 and cannot govern this platform, which is why this record exists rather than a widening of theirs. WHAT WAS ANALYSED, AND ON WHICH ARTIFACT: the published arm64 child was scanned by digest on 2026-09-10 with the pinned trivy 0.73.0 (--ignorefile /dev/null, --scanners vuln,secret, --platform linux/arm64), reporting 22 HIGH/CRITICAL rows -- 21 HIGH and 1 CRITICAL, every one stdlib v1.24.6 (pkg:golang/stdlib@v1.24.6, no arch qualifier: these are gobinary rows, not apk rows) in usr/local/bin/gosu -- and 0 OS-package findings across 53 alpine packages; an all-severity pass of the same child additionally reports 21 MEDIUM, 2 LOW and 1 UNKNOWN gosu row and 10 UNKNOWN-severity libcurl rows, which are outside the governed HIGH/CRITICAL scope and are recorded in docs/SCANNER_DISPOSITIONS.md SS3.7 rather than governed here. The binary was extracted from that exact published child (docker create --platform linux/arm64, docker cp, container removed) and measured directly; the digest matches what infra/images/candidates/evidence/v2/gosu-verification.txt records for the arm64 candidate and base, and infra/images/published/20260910/postgres-arm64.trivy.txt is the publisher's independent scan of the same child with the same 22 rows. WHY RISK_ACCEPTED AND NOT NOT_AFFECTED: govulncheck and a Go toolchain are unavailable on the analysis host, so NO binary-mode symbol analysis of 3a8ef022... exists. The govulncheck evidence bound by SCX-0004 and SCX-0005 was run against a different compiled binary (52c8749d...) and is not evidence about this one; copying its verdict across would be exactly the substitution this governance model refuses. The acceptance therefore rests only on the operational argument, which is artifact-independent, and is bounded by prohibited_use below. SCOPE OF THIS RECORD: the single CRITICAL row, held separately from the HIGH set of SCX-0010 on purpose. CVE-2025-68121 is incorrect certificate validation during TLS session resumption in crypto/tls; gosu opens no TLS connection -- it resolves a user, drops privileges and execs the real entrypoint -- and the acceptance is bounded by prohibited_use below and by docs/SCANNER_DISPOSITIONS.md SS4. OWNER ACCEPTANCE, 2026-09-11: the owner accepted this disposition as it stands (RISK_ACCEPTED, this scope, expiry 2026-11-05 unchanged) in the checkpoint directive following the review at 461a2b56 — Option A of docs/images/ARM64_RISK_DECISION.md. This is the owner's acceptance, not independent Codex verification; the arm64 symbol analysis of 2026-09-11 (govulncheck v1.1.4 on this binary: 0 called, all 22 unreachable; infra/images/published/20260910/gosu-arm64-3a8ef022.govulncheck.{txt,json}) is recorded as additional evidence and is not what this record claims.",
+      "reason": "RE-ISSUED 2026-09-23 for the OFFICIAL image postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873 (linux/arm64 child sha256:89f747171c4b0af0eacf5984550060be79786dbe286eb60cfa691d79d1e8b23f; postgres:18-alpine = 18.6-alpine3.24, Alpine 3.24.2), drafted 2026-09-22 and APPROVED BY THE OWNER ON 2026-09-23 with the scope, classification, advisory set and the expiry 2026-11-05 unchanged (the owner's instruction of 2026-09-23 is quoted in docs/SCANNER_DISPOSITIONS.md §3.9). The C15 recheck (run 35728647457, 2026-09-22) found postgres:18-alpine rebuilt with every watched fix (libuuid 2.42.3-r1, libcrypto3/libssl3 3.5.8-r0, c-ares 1.34.8-r0) on both platforms and docker-compose.yml returned to it the same day (docs/SUPPLY_CHAIN_MAINTENANCE_2026-09.md §8). /usr/local/bin/gosu in this child is byte-identical to the analysed binary (sha256 3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44; infra/images/official/20260922/inventory/official-postgres-arm64.txt), and the child's 22 HIGH/CRITICAL rows are identical to the derived image's, so this record's advisory set is present in full and nothing new appears (infra/images/official/20260922/scans/scan-summary.txt). The sentence \"No patched official postgres build exists\" in the previous text is retired by this re-issue: the official build carries every OS fix, and gosu is the same upstream binary in every current official postgres variant. PREVIOUS TEXT (2026-09-10): FIRST APPROVAL FOR linux/arm64, 2026-09-10. The configured reference is an OCI index whose linux/arm64 child sha256:d3dd485bd0507df537c7a8f7fbdf7dcf9ba8fb2007ca75b12af5c362237a92cc is a DIFFERENT ARTIFACT from the linux/amd64 child governed by SCX-0002..0005: different layers, and a different /usr/local/bin/gosu (sha256 3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44, 1830424 bytes, ELF aarch64, Go toolchain go1.24.6, module github.com/tianon/gosu v1.19.0, GOARCH=arm64, CGO_ENABLED=0, -trimpath=true) against amd64's 52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0 (1769900 bytes). Those records scope themselves to linux/amd64 and cannot govern this platform, which is why this record exists rather than a widening of theirs. WHAT WAS ANALYSED, AND ON WHICH ARTIFACT: the published arm64 child was scanned by digest on 2026-09-10 with the pinned trivy 0.73.0 (--ignorefile /dev/null, --scanners vuln,secret, --platform linux/arm64), reporting 22 HIGH/CRITICAL rows -- 21 HIGH and 1 CRITICAL, every one stdlib v1.24.6 (pkg:golang/stdlib@v1.24.6, no arch qualifier: these are gobinary rows, not apk rows) in usr/local/bin/gosu -- and 0 OS-package findings across 53 alpine packages; an all-severity pass of the same child additionally reports 21 MEDIUM, 2 LOW and 1 UNKNOWN gosu row and 10 UNKNOWN-severity libcurl rows, which are outside the governed HIGH/CRITICAL scope and are recorded in docs/SCANNER_DISPOSITIONS.md SS3.7 rather than governed here. The binary was extracted from that exact published child (docker create --platform linux/arm64, docker cp, container removed) and measured directly; the digest matches what infra/images/candidates/evidence/v2/gosu-verification.txt records for the arm64 candidate and base, and infra/images/published/20260910/postgres-arm64.trivy.txt is the publisher's independent scan of the same child with the same 22 rows. WHY RISK_ACCEPTED AND NOT NOT_AFFECTED: govulncheck and a Go toolchain are unavailable on the analysis host, so NO binary-mode symbol analysis of 3a8ef022... exists. The govulncheck evidence bound by SCX-0004 and SCX-0005 was run against a different compiled binary (52c8749d...) and is not evidence about this one; copying its verdict across would be exactly the substitution this governance model refuses. The acceptance therefore rests only on the operational argument, which is artifact-independent, and is bounded by prohibited_use below. SCOPE OF THIS RECORD: the single CRITICAL row, held separately from the HIGH set of SCX-0010 on purpose. CVE-2025-68121 is incorrect certificate validation during TLS session resumption in crypto/tls; gosu opens no TLS connection -- it resolves a user, drops privileges and execs the real entrypoint -- and the acceptance is bounded by prohibited_use below and by docs/SCANNER_DISPOSITIONS.md SS4. OWNER ACCEPTANCE, 2026-09-11: the owner accepted this disposition as it stands (RISK_ACCEPTED, this scope, expiry 2026-11-05 unchanged) in the checkpoint directive following the review at 461a2b56 — Option A of docs/images/ARM64_RISK_DECISION.md. This is the owner's acceptance, not independent Codex verification; the arm64 symbol analysis of 2026-09-11 (govulncheck v1.1.4 on this binary: 0 called, all 22 unreachable; infra/images/published/20260910/gosu-arm64-3a8ef022.govulncheck.{txt,json}) is recorded as additional evidence and is not what this record claims.",
       "compensating_controls": [
         "gosu runs once at container start to drop root privileges and exit; it is neither a long-lived process nor a network listener, so the affected net/http, net/mail, crypto/tls and crypto/x509 surfaces are not exercised by that use.",
         "This is an ACCEPTANCE, not a claim of non-applicability: no reachability analysis of the arm64 binary exists, so the vulnerable code is not asserted to be absent from it.",
         "PostgreSQL itself is loopback-bound (127.0.0.1:5432 only).",
         "Phase 0 is a LOCAL-ONLY development profile under EXC-P0-004; this disposition is invalid for any external or customer-data use.",
-        "ADR-P0-01 monthly patch cadence re-pins and re-scans as a blocking release gate; scripts/gate/check-patched-images.mjs already resolves and checks BOTH platform children of the official indexes and reports when a compatible fixed OFFICIAL postgres:18-alpine image exists on each."
+        "ADR-P0-01 monthly patch cadence re-pins and re-scans as a blocking release gate. The service is on the official postgres:18-alpine image again since 2026-09-22. scripts/gate/check-patched-images.mjs keeps resolving the official tags at the existing cadence (daily 07:20 UTC, and in the required supply-chain job): the configured pin, carrying every watched fix on both platforms, PASSES; a NEWER official build of the tag that also carries every watched fix FAILS to trigger the governed re-pin, on which this record is re-reviewed; a check that cannot be completed on both platforms FAILS visibly (the owner's decision of 2026-09-23, infra/images/candidates/v2/PUBLICATION.md §8.5; docs/SUPPLY_CHAIN_MAINTENANCE_2026-09.md §8.4)."
       ],
       "prohibited_use": [
         "external, shared or internet-reachable deployment",
@@ -320,16 +380,16 @@
         "reclassification to NOT_AFFECTED without a reachability analysis performed on THIS arm64 binary"
       ],
       "owner": "founding-engineer",
-      "approver": "product-owner (owner acceptance recorded 2026-09-11 in the checkpoint directive after the review at 461a2b56; docs/images/ARM64_RISK_DECISION.md §5)",
+      "approver": "product-owner (owner acceptance recorded 2026-09-11 in the checkpoint directive after the review at 461a2b56; docs/images/ARM64_RISK_DECISION.md §5; the 2026-09-23 re-issue for the official linux/arm64 child approved by the owner, docs/SCANNER_DISPOSITIONS.md §3.9)",
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
-      "approved_on": "2026-09-11",
+      "approved_on": "2026-09-23",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "41267bf8709f297ba40e8e2474d75585b7f89ad5b06399afb5fadaff824ad10f",
+      "evidence_sha256": "d5a2b5e1f29299a7550dd206acd5fe019e615dee42ddb5383d209f9c17825840",
       "classification": "RISK_ACCEPTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "41267bf8709f297ba40e8e2474d75585b7f89ad5b06399afb5fadaff824ad10f"
+          "sha256": "d5a2b5e1f29299a7550dd206acd5fe019e615dee42ddb5383d209f9c17825840"
         },
         {
           "path": "infra/images/published/20260910/postgres-arm64.trivy.txt",
@@ -346,9 +406,21 @@
         {
           "path": "docs/images/ARM64_RISK_DECISION.md",
           "sha256": "6b6518d03ddc01c86deb7644fa638a6a2cea149bcba6987f14352e18ae513aca"
+        },
+        {
+          "path": "infra/images/official/20260922/inventory/official-postgres-arm64.txt",
+          "sha256": "9762a9301c23bfc75894afbe859f5cf5a8f5e782d5638fa3e762e9c510e60733"
+        },
+        {
+          "path": "infra/images/official/20260922/scans/official-postgres-arm64.trivy.txt",
+          "sha256": "651c5de0c188cbeace49715b5d36c1e14a797526365062f933bd73a079a1316e"
+        },
+        {
+          "path": "infra/images/official/20260922/scans/scan-summary.txt",
+          "sha256": "939d2f54536fd6fcf328a4f38236c57eae18ac93ee0173b285e313bda7965fb9"
         }
       ],
-      "reviewed_on": "2026-09-11"
+      "reviewed_on": "2026-09-23"
     }
   ],
   "evidence_binding": "Every record cites docs/SCANNER_DISPOSITIONS.md and binds it by exact SHA-256. The gate recomputes the digest from the tracked bytes on every run, so a one-byte edit invalidates the records until re-approved. The previous references to PHASE0_EVIDENCE.md were a general gate summary that did not identify these findings, digests, platform or scanner identity, and so could not be reviewed as the basis for these decisions.",
@@ -363,438 +435,83 @@
       "SCX-0009"
     ]
   },
-  "pending_reissues": {
-    "$comment": "DRAFTED 2026-09-22, NOT IN FORCE. The six re-issues of SCX-0002..0005 (linux/amd64) and SCX-0010..0011 (linux/arm64) for the OFFICIAL postgres:18-alpine index the compose file returned to on 2026-09-22 (docs/SUPPLY_CHAIN_MAINTENANCE_2026-09.md §8; docs/SCANNER_DISPOSITIONS.md §3.9). They live here, outside `records`, because the validator reads `records` only: a draft must never govern a finding, and these carry no approval date (approved_on / reviewed_on are the literal PENDING string, which the validator would reject as not a date). The approved records of 2026-09-10 stay in `records` byte for byte; they name the derived image the compose file no longer pins and therefore match nothing, which the gate reports. The owner's approval consists of moving each draft into `records` in place of its predecessor, deleting the `status` key, dating it, and rebinding the dispositions document's digest (each draft's `status` says how). Nothing is deleted by this block; the redis derived image is named by no record, so redis returns with nothing to re-issue.",
+  "superseded_records": {
+    "$comment": "APPLIED 2026-09-23 — the owner's approval of the six re-issues drafted on 2026-09-22 (SCX-0002..0005 for the linux/amd64 child, SCX-0010..0011 for the linux/arm64 child of the OFFICIAL postgres:18-alpine index the compose file returned to on 2026-09-22), with their scope, classifications, advisory sets and the expiry 2026-11-05 unchanged (docs/SCANNER_DISPOSITIONS.md §3.9 quotes the instruction). Each draft moved into `records` IN PLACE of its 2026-09-10 version, which named the derived image the compose file no longer pins and therefore matched nothing. The superseded versions are listed here by identity and NOT deleted: their full text is in git history (last present at the commit named below) and in docs/SCANNER_DISPOSITIONS.md §§3–3.8; the derived images stay published with their receipts (infra/images/published/20260910/). This mirrors `retired_records` for a re-issue: a record whose id continues cannot be listed as retired, so its superseded version is listed as superseded. The redis derived image was named by no record, so redis returned with nothing to re-issue. The validator reads `records` only.",
+    "superseded_on": "2026-09-23",
     "drafted_on": "2026-09-22",
     "for_image": "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873",
     "platform_children": {
       "linux/amd64": "sha256:d8703cd7fba306b9fec9268ecedfa8a966846c053036a60e3635791957eb2f66",
       "linux/arm64": "sha256:89f747171c4b0af0eacf5984550060be79786dbe286eb60cfa691d79d1e8b23f"
     },
+    "ids": [
+      "SCX-0002",
+      "SCX-0003",
+      "SCX-0004",
+      "SCX-0005",
+      "SCX-0010",
+      "SCX-0011"
+    ],
     "records": [
       {
-        "status": "DRAFT — pending the owner's approval; governs nothing. The 2026-09-22 re-issue of SCX-0002 for the OFFICIAL image the compose file returned to that day. To approve: move this object into `records`, delete this `status` key, set approved_on and reviewed_on to the day of the review (never earlier), replace the PENDING fields of docs/SCANNER_DISPOSITIONS.md §3.9 with that date, then recompute that document's SHA-256 into evidence_sha256 and its evidence_files entry.",
         "id": "SCX-0002",
-        "advisory_ids": [
-          "CVE-2025-61726",
-          "CVE-2025-61729",
-          "CVE-2026-25679",
-          "CVE-2026-27145",
-          "CVE-2026-32280",
-          "CVE-2026-32281",
-          "CVE-2026-32283",
-          "CVE-2026-33811",
-          "CVE-2026-33814",
-          "CVE-2026-39820",
-          "CVE-2026-39822",
-          "CVE-2026-39836",
-          "CVE-2026-42499",
-          "CVE-2026-42504"
-        ],
-        "image": "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873",
         "scan_platform": "linux/amd64",
-        "package_name": "stdlib",
-        "package_purl": "pkg:golang/stdlib@v1.24.6",
-        "installed_version": "v1.24.6",
-        "severities": [
-          "HIGH"
-        ],
-        "result_target": "usr/local/bin/gosu",
-        "reason": "DRAFT RE-ISSUE 2026-09-22 for the OFFICIAL image postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873 (linux/amd64 child sha256:d8703cd7fba306b9fec9268ecedfa8a966846c053036a60e3635791957eb2f66; postgres:18-alpine = 18.6-alpine3.24, Alpine 3.24.2), PENDING THE OWNER'S APPROVAL. The C15 recheck (run 35728647457, 2026-09-22) found postgres:18-alpine rebuilt with every watched fix (libuuid 2.42.3-r1, libcrypto3/libssl3 3.5.8-r0, c-ares 1.34.8-r0) on both platforms and docker-compose.yml returned to it the same day (docs/SUPPLY_CHAIN_MAINTENANCE_2026-09.md §8). /usr/local/bin/gosu in this child is byte-identical to the analysed binary (sha256 52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0; infra/images/official/20260922/inventory/official-postgres-amd64.txt), and the child's 22 HIGH/CRITICAL rows are identical to the derived image's, so this record's advisory set is present in full and nothing new appears (infra/images/official/20260922/scans/scan-summary.txt). The sentence \"No patched official postgres build exists\" in the previous text is retired by this re-issue: the official build carries every OS fix, and gosu is the same upstream binary in every current official postgres variant. PREVIOUS TEXT (2026-09-10): Go standard-library HIGH advisories compiled into the upstream gosu 1.19 binary shipped by every current official postgres image variant. gosu executes once at container start to drop root privileges and then exits; the affected surfaces (net/http, net/mail, crypto DoS classes) are not exercised by that use. No patched official postgres build exists. RE-ISSUED 2026-09-10 for the derived maintenance image ghcr.io/a-halawany/elven/postgres@sha256:69a974aedbd80ff27ee670a6693445c47925bd69e11818a1cff39319f91ad4a7 (linux/amd64 child sha256:bc90ce6bc094fae53df8d01b23e6c08160c7e7064f4c351fd3cff324aefcda7a; owner approval docs/images/DERIVED_IMAGES_APPROVAL.md); originally approved 2026-08-05 for postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15 (linux/amd64 child sha256:b6a16ed0eb96e2c362811f7eeb951eac8b459e7b40be4149ea5444aa7c65569b). The derived image changes only apk packages (libuuid, libcrypto3, libssl3, c-ares) and the config USER; /usr/local/bin/gosu is byte-identical to the base on each platform (linux/amd64 sha256 52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0, linux/arm64 sha256 3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44; infra/images/candidates/evidence/v2/gosu-verification.txt, bound below) and its finding set is identical (22 rows, same advisories, same PURL, same target). The analysis and its dates are unchanged; the expiry 2026-11-05 is not extended.",
-        "compensating_controls": [
-          "gosu runs once at container start and is neither a long-lived process nor a network listener.",
-          "PostgreSQL itself is loopback-bound (127.0.0.1:5432 only).",
-          "Phase 0 is a LOCAL-ONLY development profile under EXC-P0-004.",
-          "ADR-P0-01 monthly patch cadence re-pins and re-scans as a blocking release gate. The service is on the official postgres:18-alpine image again since 2026-09-22; scripts/gate/check-patched-images.mjs keeps resolving the official tags, and what it becomes after the return (the trigger for a NEWER official build, or retired) is the owner's decision (infra/images/candidates/v2/PUBLICATION.md §8.5)."
-        ],
-        "prohibited_use": [
-          "external, shared or internet-reachable deployment",
-          "production or customer data",
-          "any Phase 1 or later profile without fresh review"
-        ],
-        "owner": "founding-engineer",
-        "approver": "gate-2.2-security-review",
-        "evidence": "docs/SCANNER_DISPOSITIONS.md",
-        "approved_on": "PENDING — the owner's approval",
-        "expires_on": "2026-11-05",
-        "evidence_sha256": "82c3f7b05aef746ca6e414c9eb9cf15590b81373ae9b402e21450815b8ac3270",
-        "classification": "RISK_ACCEPTED",
-        "evidence_files": [
-          {
-            "path": "docs/SCANNER_DISPOSITIONS.md",
-            "sha256": "82c3f7b05aef746ca6e414c9eb9cf15590b81373ae9b402e21450815b8ac3270"
-          },
-          {
-            "path": "infra/images/candidates/evidence/v2/gosu-verification.txt",
-            "sha256": "e0f901da541867530146e9869337d17b1ac880c0d2f2312240f9d857bc830359"
-          },
-          {
-            "path": "infra/images/official/20260922/inventory/official-postgres-amd64.txt",
-            "sha256": "143d02e50a77e35806f4259d8e49b24c655eeb6b7c84ae169c4b61b771d3c942"
-          },
-          {
-            "path": "infra/images/official/20260922/scans/official-postgres-amd64.trivy.txt",
-            "sha256": "b09157f29476eb775e72c9ef553825ee4262379a22aa5226669056cabe7fb6e7"
-          },
-          {
-            "path": "infra/images/official/20260922/scans/scan-summary.txt",
-            "sha256": "939d2f54536fd6fcf328a4f38236c57eae18ac93ee0173b285e313bda7965fb9"
-          }
-        ],
-        "reviewed_on": "PENDING — the owner's approval"
+        "image": "ghcr.io/a-halawany/elven/postgres@sha256:69a974aedbd80ff27ee670a6693445c47925bd69e11818a1cff39319f91ad4a7",
+        "approved_on": "2026-09-10",
+        "reviewed_on": "2026-09-10",
+        "superseded_on": "2026-09-23",
+        "by": "the re-issue of SCX-0002 for postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873 in `records`",
+        "full_text_last_present_at": "920376004526ee2f351a457fd1b29e54de486b17"
       },
       {
-        "status": "DRAFT — pending the owner's approval; governs nothing. The 2026-09-22 re-issue of SCX-0003 for the OFFICIAL image the compose file returned to that day. To approve: move this object into `records`, delete this `status` key, set approved_on and reviewed_on to the day of the review (never earlier), replace the PENDING fields of docs/SCANNER_DISPOSITIONS.md §3.9 with that date, then recompute that document's SHA-256 into evidence_sha256 and its evidence_files entry.",
         "id": "SCX-0003",
-        "advisory_ids": [
-          "CVE-2025-68121"
-        ],
-        "image": "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873",
         "scan_platform": "linux/amd64",
-        "package_name": "stdlib",
-        "package_purl": "pkg:golang/stdlib@v1.24.6",
-        "installed_version": "v1.24.6",
-        "severities": [
-          "CRITICAL"
-        ],
-        "result_target": "usr/local/bin/gosu",
-        "reason": "DRAFT RE-ISSUE 2026-09-22 for the OFFICIAL image postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873 (linux/amd64 child sha256:d8703cd7fba306b9fec9268ecedfa8a966846c053036a60e3635791957eb2f66; postgres:18-alpine = 18.6-alpine3.24, Alpine 3.24.2), PENDING THE OWNER'S APPROVAL. The C15 recheck (run 35728647457, 2026-09-22) found postgres:18-alpine rebuilt with every watched fix (libuuid 2.42.3-r1, libcrypto3/libssl3 3.5.8-r0, c-ares 1.34.8-r0) on both platforms and docker-compose.yml returned to it the same day (docs/SUPPLY_CHAIN_MAINTENANCE_2026-09.md §8). /usr/local/bin/gosu in this child is byte-identical to the analysed binary (sha256 52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0; infra/images/official/20260922/inventory/official-postgres-amd64.txt), and the child's 22 HIGH/CRITICAL rows are identical to the derived image's, so this record's advisory set is present in full and nothing new appears (infra/images/official/20260922/scans/scan-summary.txt). The sentence \"No patched official postgres build exists\" in the previous text is retired by this re-issue: the official build carries every OS fix, and gosu is the same upstream binary in every current official postgres variant. PREVIOUS TEXT (2026-09-10): The single CRITICAL Go standard-library advisory in the same upstream gosu 1.19 binary. Held as a SEPARATE record from the HIGH set on purpose: a disposition approved for HIGH must not silently absorb a CRITICAL, so the critical finding carries its own explicit approval and its own severity array. RE-ISSUED 2026-09-10 for the derived maintenance image ghcr.io/a-halawany/elven/postgres@sha256:69a974aedbd80ff27ee670a6693445c47925bd69e11818a1cff39319f91ad4a7 (linux/amd64 child sha256:bc90ce6bc094fae53df8d01b23e6c08160c7e7064f4c351fd3cff324aefcda7a; owner approval docs/images/DERIVED_IMAGES_APPROVAL.md); originally approved 2026-08-05 for postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15 (linux/amd64 child sha256:b6a16ed0eb96e2c362811f7eeb951eac8b459e7b40be4149ea5444aa7c65569b). The derived image changes only apk packages (libuuid, libcrypto3, libssl3, c-ares) and the config USER; /usr/local/bin/gosu is byte-identical to the base on each platform (linux/amd64 sha256 52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0, linux/arm64 sha256 3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44; infra/images/candidates/evidence/v2/gosu-verification.txt, bound below) and its finding set is identical (22 rows, same advisories, same PURL, same target). The analysis and its dates are unchanged; the expiry 2026-11-05 is not extended.",
-        "compensating_controls": [
-          "gosu runs once at container start and is neither a long-lived process nor a network listener.",
-          "PostgreSQL itself is loopback-bound (127.0.0.1:5432 only).",
-          "Phase 0 is a LOCAL-ONLY development profile under EXC-P0-004; this disposition is invalid for any external or customer-data use.",
-          "ADR-P0-01 monthly patch cadence re-pins and re-scans as a blocking release gate. The service is on the official postgres:18-alpine image again since 2026-09-22; scripts/gate/check-patched-images.mjs keeps resolving the official tags, and what it becomes after the return (the trigger for a NEWER official build, or retired) is the owner's decision (infra/images/candidates/v2/PUBLICATION.md §8.5)."
-        ],
-        "prohibited_use": [
-          "external, shared or internet-reachable deployment",
-          "production or customer data",
-          "any Phase 1 or later profile without fresh review"
-        ],
-        "owner": "founding-engineer",
-        "approver": "gate-2.2-security-review",
-        "evidence": "docs/SCANNER_DISPOSITIONS.md",
-        "approved_on": "PENDING — the owner's approval",
-        "expires_on": "2026-11-05",
-        "evidence_sha256": "82c3f7b05aef746ca6e414c9eb9cf15590b81373ae9b402e21450815b8ac3270",
-        "classification": "RISK_ACCEPTED",
-        "evidence_files": [
-          {
-            "path": "docs/SCANNER_DISPOSITIONS.md",
-            "sha256": "82c3f7b05aef746ca6e414c9eb9cf15590b81373ae9b402e21450815b8ac3270"
-          },
-          {
-            "path": "infra/images/candidates/evidence/v2/gosu-verification.txt",
-            "sha256": "e0f901da541867530146e9869337d17b1ac880c0d2f2312240f9d857bc830359"
-          },
-          {
-            "path": "infra/images/official/20260922/inventory/official-postgres-amd64.txt",
-            "sha256": "143d02e50a77e35806f4259d8e49b24c655eeb6b7c84ae169c4b61b771d3c942"
-          },
-          {
-            "path": "infra/images/official/20260922/scans/official-postgres-amd64.trivy.txt",
-            "sha256": "b09157f29476eb775e72c9ef553825ee4262379a22aa5226669056cabe7fb6e7"
-          },
-          {
-            "path": "infra/images/official/20260922/scans/scan-summary.txt",
-            "sha256": "939d2f54536fd6fcf328a4f38236c57eae18ac93ee0173b285e313bda7965fb9"
-          }
-        ],
-        "reviewed_on": "PENDING — the owner's approval"
+        "image": "ghcr.io/a-halawany/elven/postgres@sha256:69a974aedbd80ff27ee670a6693445c47925bd69e11818a1cff39319f91ad4a7",
+        "approved_on": "2026-09-10",
+        "reviewed_on": "2026-09-10",
+        "superseded_on": "2026-09-23",
+        "by": "the re-issue of SCX-0003 for postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873 in `records`",
+        "full_text_last_present_at": "920376004526ee2f351a457fd1b29e54de486b17"
       },
       {
-        "status": "DRAFT — pending the owner's approval; governs nothing. The 2026-09-22 re-issue of SCX-0004 for the OFFICIAL image the compose file returned to that day. To approve: move this object into `records`, delete this `status` key, set approved_on and reviewed_on to the day of the review (never earlier), replace the PENDING fields of docs/SCANNER_DISPOSITIONS.md §3.9 with that date, then recompute that document's SHA-256 into evidence_sha256 and its evidence_files entry.",
         "id": "SCX-0004",
-        "advisory_ids": [
-          "CVE-2026-39821"
-        ],
-        "image": "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873",
         "scan_platform": "linux/amd64",
-        "package_name": "stdlib",
-        "package_purl": "pkg:golang/stdlib@v1.24.6",
-        "installed_version": "v1.24.6",
-        "severities": [
-          "HIGH"
-        ],
-        "result_target": "usr/local/bin/gosu",
-        "reason": "DRAFT RE-ISSUE 2026-09-22 for the OFFICIAL image postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873 (linux/amd64 child sha256:d8703cd7fba306b9fec9268ecedfa8a966846c053036a60e3635791957eb2f66; postgres:18-alpine = 18.6-alpine3.24, Alpine 3.24.2), PENDING THE OWNER'S APPROVAL. The C15 recheck (run 35728647457, 2026-09-22) found postgres:18-alpine rebuilt with every watched fix (libuuid 2.42.3-r1, libcrypto3/libssl3 3.5.8-r0, c-ares 1.34.8-r0) on both platforms and docker-compose.yml returned to it the same day (docs/SUPPLY_CHAIN_MAINTENANCE_2026-09.md §8). /usr/local/bin/gosu in this child is byte-identical to the analysed binary (sha256 52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0; infra/images/official/20260922/inventory/official-postgres-amd64.txt), and the child's 22 HIGH/CRITICAL rows are identical to the derived image's, so this record's advisory set is present in full and nothing new appears (infra/images/official/20260922/scans/scan-summary.txt). The sentence \"No patched official postgres build exists\" in the previous text is retired by this re-issue: the official build carries every OS fix, and gosu is the same upstream binary in every current official postgres variant. PREVIOUS TEXT (2026-09-10): NOT_AFFECTED (vulnerable_code_not_present). A HIGH Go standard-library advisory that trivy matches by toolchain version against the gosu 1.19 binary in the pinned postgres image. govulncheck binary-mode symbol analysis of that exact binary (sha256 52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0) reports 0 called vulnerable symbols, and CVE-2026-39821 (GO-2026-5026) is present in that analysis and unreachable. CVE-2026-46600 was removed on 2026-08-15 because the advisory database no longer reports it for this image; a record covering nothing is stale, not satisfied. The six advisories that appeared on 2026-08-15 are held by SCX-0005 rather than here, because this record was approved before they were known and an approval date cannot precede what it approves. RE-ISSUED 2026-09-10 for the derived maintenance image ghcr.io/a-halawany/elven/postgres@sha256:69a974aedbd80ff27ee670a6693445c47925bd69e11818a1cff39319f91ad4a7 (linux/amd64 child sha256:bc90ce6bc094fae53df8d01b23e6c08160c7e7064f4c351fd3cff324aefcda7a; owner approval docs/images/DERIVED_IMAGES_APPROVAL.md); originally approved 2026-08-14 for postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15 (linux/amd64 child sha256:b6a16ed0eb96e2c362811f7eeb951eac8b459e7b40be4149ea5444aa7c65569b). The derived image changes only apk packages (libuuid, libcrypto3, libssl3, c-ares) and the config USER; /usr/local/bin/gosu is byte-identical to the base on each platform (linux/amd64 sha256 52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0, linux/arm64 sha256 3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44; infra/images/candidates/evidence/v2/gosu-verification.txt, bound below) and its finding set is identical (22 rows, same advisories, same PURL, same target). The analysis and its dates are unchanged; the expiry 2026-11-05 is not extended.",
-        "compensating_controls": [
-          "govulncheck v1.7.0 (Go go1.25.13, vuln.go.dev as of 2026-08-14) reports 0 called vulnerable symbols in the exact scanned binary.",
-          "Reachability analysis is a static over-approximation; it does not cover reflection or dynamic dispatch, so the operational controls below still apply.",
-          "gosu runs once at container start and is neither a long-lived process nor a network listener.",
-          "PostgreSQL itself is loopback-bound (127.0.0.1:5432 only).",
-          "Phase 0 is a LOCAL-ONLY development profile under EXC-P0-004.",
-          "ADR-P0-01 monthly patch cadence re-pins and re-scans as a blocking release gate. The service is on the official postgres:18-alpine image again since 2026-09-22; scripts/gate/check-patched-images.mjs keeps resolving the official tags, and what it becomes after the return (the trigger for a NEWER official build, or retired) is the owner's decision (infra/images/candidates/v2/PUBLICATION.md §8.5)."
-        ],
-        "owner": "founding-engineer",
-        "approver": "gate-2.2-security-review",
-        "evidence": "docs/SCANNER_DISPOSITIONS.md",
-        "approved_on": "PENDING — the owner's approval",
-        "expires_on": "2026-11-05",
-        "evidence_sha256": "82c3f7b05aef746ca6e414c9eb9cf15590b81373ae9b402e21450815b8ac3270",
-        "classification": "NOT_AFFECTED",
-        "evidence_files": [
-          {
-            "path": "docs/SCANNER_DISPOSITIONS.md",
-            "sha256": "82c3f7b05aef746ca6e414c9eb9cf15590b81373ae9b402e21450815b8ac3270"
-          },
-          {
-            "path": "docs/evidence/govulncheck-gosu-b6a16ed0.json",
-            "sha256": "e7d06bcc9da3181c417f1287b1bfc14bc0446a167a82733464e3fa619553be26"
-          },
-          {
-            "path": "docs/evidence/govulncheck-gosu-b6a16ed0.txt",
-            "sha256": "cdcd7ff7fe62a6b19677b19a23db04c406f473920e2663b13c7a51232743fbab"
-          },
-          {
-            "path": "infra/images/candidates/evidence/v2/gosu-verification.txt",
-            "sha256": "e0f901da541867530146e9869337d17b1ac880c0d2f2312240f9d857bc830359"
-          },
-          {
-            "path": "infra/images/official/20260922/inventory/official-postgres-amd64.txt",
-            "sha256": "143d02e50a77e35806f4259d8e49b24c655eeb6b7c84ae169c4b61b771d3c942"
-          },
-          {
-            "path": "infra/images/official/20260922/scans/official-postgres-amd64.trivy.txt",
-            "sha256": "b09157f29476eb775e72c9ef553825ee4262379a22aa5226669056cabe7fb6e7"
-          },
-          {
-            "path": "infra/images/official/20260922/scans/scan-summary.txt",
-            "sha256": "939d2f54536fd6fcf328a4f38236c57eae18ac93ee0173b285e313bda7965fb9"
-          }
-        ],
-        "reviewed_on": "PENDING — the owner's approval"
+        "image": "ghcr.io/a-halawany/elven/postgres@sha256:69a974aedbd80ff27ee670a6693445c47925bd69e11818a1cff39319f91ad4a7",
+        "approved_on": "2026-09-10",
+        "reviewed_on": "2026-09-10",
+        "superseded_on": "2026-09-23",
+        "by": "the re-issue of SCX-0004 for postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873 in `records`",
+        "full_text_last_present_at": "920376004526ee2f351a457fd1b29e54de486b17"
       },
       {
-        "status": "DRAFT — pending the owner's approval; governs nothing. The 2026-09-22 re-issue of SCX-0005 for the OFFICIAL image the compose file returned to that day. To approve: move this object into `records`, delete this `status` key, set approved_on and reviewed_on to the day of the review (never earlier), replace the PENDING fields of docs/SCANNER_DISPOSITIONS.md §3.9 with that date, then recompute that document's SHA-256 into evidence_sha256 and its evidence_files entry.",
         "id": "SCX-0005",
-        "advisory_ids": [
-          "CVE-2026-33818",
-          "CVE-2026-56853",
-          "CVE-2026-56858",
-          "CVE-2026-56859",
-          "CVE-2026-56860",
-          "CVE-2026-56862"
-        ],
-        "image": "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873",
         "scan_platform": "linux/amd64",
-        "package_name": "stdlib",
-        "package_purl": "pkg:golang/stdlib@v1.24.6",
-        "installed_version": "v1.24.6",
-        "severities": [
-          "HIGH"
-        ],
-        "result_target": "usr/local/bin/gosu",
-        "reason": "DRAFT RE-ISSUE 2026-09-22 for the OFFICIAL image postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873 (linux/amd64 child sha256:d8703cd7fba306b9fec9268ecedfa8a966846c053036a60e3635791957eb2f66; postgres:18-alpine = 18.6-alpine3.24, Alpine 3.24.2), PENDING THE OWNER'S APPROVAL. The C15 recheck (run 35728647457, 2026-09-22) found postgres:18-alpine rebuilt with every watched fix (libuuid 2.42.3-r1, libcrypto3/libssl3 3.5.8-r0, c-ares 1.34.8-r0) on both platforms and docker-compose.yml returned to it the same day (docs/SUPPLY_CHAIN_MAINTENANCE_2026-09.md §8). /usr/local/bin/gosu in this child is byte-identical to the analysed binary (sha256 52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0; infra/images/official/20260922/inventory/official-postgres-amd64.txt), and the child's 22 HIGH/CRITICAL rows are identical to the derived image's, so this record's advisory set is present in full and nothing new appears (infra/images/official/20260922/scans/scan-summary.txt). The sentence \"No patched official postgres build exists\" in the previous text is retired by this re-issue: the official build carries every OS fix, and gosu is the same upstream binary in every current official postgres variant. PREVIOUS TEXT (2026-09-10): NOT_AFFECTED (vulnerable_code_not_present). Six HIGH Go standard-library advisories that entered the scanner database on 2026-08-14 and were first observed by this project on 2026-08-15. Held separately from SCX-0004, which was approved on 2026-08-14 for the one advisory then reviewed: an approval date is a claim about when a human looked and cannot be stretched to cover later evidence. govulncheck binary-mode symbol analysis of the exact binary (sha256 52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0, Go vuln DB as of 2026-08-14) reports 0 called vulnerable symbols across 48 findings and 168 advisories, and each of the six is present and unreachable: CVE-2026-33818 (GO-2026-5972), CVE-2026-56853 (GO-2026-6089), CVE-2026-56858 (GO-2026-6091), CVE-2026-56859 (GO-2026-6088), CVE-2026-56860 (GO-2026-6218), CVE-2026-56862 (GO-2026-6090). RE-ISSUED 2026-09-10 for the derived maintenance image ghcr.io/a-halawany/elven/postgres@sha256:69a974aedbd80ff27ee670a6693445c47925bd69e11818a1cff39319f91ad4a7 (linux/amd64 child sha256:bc90ce6bc094fae53df8d01b23e6c08160c7e7064f4c351fd3cff324aefcda7a; owner approval docs/images/DERIVED_IMAGES_APPROVAL.md); originally approved 2026-08-15 for postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15 (linux/amd64 child sha256:b6a16ed0eb96e2c362811f7eeb951eac8b459e7b40be4149ea5444aa7c65569b). The derived image changes only apk packages (libuuid, libcrypto3, libssl3, c-ares) and the config USER; /usr/local/bin/gosu is byte-identical to the base on each platform (linux/amd64 sha256 52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0, linux/arm64 sha256 3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44; infra/images/candidates/evidence/v2/gosu-verification.txt, bound below) and its finding set is identical (22 rows, same advisories, same PURL, same target). The analysis and its dates are unchanged; the expiry 2026-11-05 is not extended.",
-        "compensating_controls": [
-          "govulncheck v1.7.0 (Go go1.25.13, vuln.go.dev as of 2026-08-14) reports 0 called vulnerable symbols in the exact scanned binary.",
-          "Reachability analysis is a static over-approximation; it does not cover reflection or dynamic dispatch, so the operational controls below still apply.",
-          "gosu runs once at container start and is neither a long-lived process nor a network listener.",
-          "PostgreSQL itself is loopback-bound (127.0.0.1:5432 only).",
-          "Phase 0 is a LOCAL-ONLY development profile under EXC-P0-004.",
-          "ADR-P0-01 monthly patch cadence re-pins and re-scans as a blocking release gate. The service is on the official postgres:18-alpine image again since 2026-09-22; scripts/gate/check-patched-images.mjs keeps resolving the official tags, and what it becomes after the return (the trigger for a NEWER official build, or retired) is the owner's decision (infra/images/candidates/v2/PUBLICATION.md §8.5)."
-        ],
-        "owner": "founding-engineer",
-        "approver": "gate-2.2-security-review",
-        "evidence": "docs/SCANNER_DISPOSITIONS.md",
-        "approved_on": "PENDING — the owner's approval",
-        "expires_on": "2026-11-05",
-        "evidence_sha256": "82c3f7b05aef746ca6e414c9eb9cf15590b81373ae9b402e21450815b8ac3270",
-        "classification": "NOT_AFFECTED",
-        "evidence_files": [
-          {
-            "path": "docs/SCANNER_DISPOSITIONS.md",
-            "sha256": "82c3f7b05aef746ca6e414c9eb9cf15590b81373ae9b402e21450815b8ac3270"
-          },
-          {
-            "path": "docs/evidence/govulncheck-gosu-b6a16ed0.json",
-            "sha256": "e7d06bcc9da3181c417f1287b1bfc14bc0446a167a82733464e3fa619553be26"
-          },
-          {
-            "path": "docs/evidence/govulncheck-gosu-b6a16ed0.txt",
-            "sha256": "cdcd7ff7fe62a6b19677b19a23db04c406f473920e2663b13c7a51232743fbab"
-          },
-          {
-            "path": "infra/images/candidates/evidence/v2/gosu-verification.txt",
-            "sha256": "e0f901da541867530146e9869337d17b1ac880c0d2f2312240f9d857bc830359"
-          },
-          {
-            "path": "infra/images/official/20260922/inventory/official-postgres-amd64.txt",
-            "sha256": "143d02e50a77e35806f4259d8e49b24c655eeb6b7c84ae169c4b61b771d3c942"
-          },
-          {
-            "path": "infra/images/official/20260922/scans/official-postgres-amd64.trivy.txt",
-            "sha256": "b09157f29476eb775e72c9ef553825ee4262379a22aa5226669056cabe7fb6e7"
-          },
-          {
-            "path": "infra/images/official/20260922/scans/scan-summary.txt",
-            "sha256": "939d2f54536fd6fcf328a4f38236c57eae18ac93ee0173b285e313bda7965fb9"
-          }
-        ],
-        "reviewed_on": "PENDING — the owner's approval"
+        "image": "ghcr.io/a-halawany/elven/postgres@sha256:69a974aedbd80ff27ee670a6693445c47925bd69e11818a1cff39319f91ad4a7",
+        "approved_on": "2026-09-10",
+        "reviewed_on": "2026-09-10",
+        "superseded_on": "2026-09-23",
+        "by": "the re-issue of SCX-0005 for postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873 in `records`",
+        "full_text_last_present_at": "920376004526ee2f351a457fd1b29e54de486b17"
       },
       {
-        "status": "DRAFT — pending the owner's approval; governs nothing. The 2026-09-22 re-issue of SCX-0010 for the OFFICIAL image the compose file returned to that day. To approve: move this object into `records`, delete this `status` key, set approved_on and reviewed_on to the day of the review (never earlier), replace the PENDING fields of docs/SCANNER_DISPOSITIONS.md §3.9 with that date, then recompute that document's SHA-256 into evidence_sha256 and its evidence_files entry.",
         "id": "SCX-0010",
-        "advisory_ids": [
-          "CVE-2025-61726",
-          "CVE-2025-61729",
-          "CVE-2026-25679",
-          "CVE-2026-27145",
-          "CVE-2026-32280",
-          "CVE-2026-32281",
-          "CVE-2026-32283",
-          "CVE-2026-33811",
-          "CVE-2026-33814",
-          "CVE-2026-33818",
-          "CVE-2026-39820",
-          "CVE-2026-39821",
-          "CVE-2026-39822",
-          "CVE-2026-39836",
-          "CVE-2026-42499",
-          "CVE-2026-42504",
-          "CVE-2026-56853",
-          "CVE-2026-56858",
-          "CVE-2026-56859",
-          "CVE-2026-56860",
-          "CVE-2026-56862"
-        ],
-        "image": "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873",
         "scan_platform": "linux/arm64",
-        "package_name": "stdlib",
-        "package_purl": "pkg:golang/stdlib@v1.24.6",
-        "installed_version": "v1.24.6",
-        "severities": [
-          "HIGH"
-        ],
-        "result_target": "usr/local/bin/gosu",
-        "reason": "DRAFT RE-ISSUE 2026-09-22 for the OFFICIAL image postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873 (linux/arm64 child sha256:89f747171c4b0af0eacf5984550060be79786dbe286eb60cfa691d79d1e8b23f; postgres:18-alpine = 18.6-alpine3.24, Alpine 3.24.2), PENDING THE OWNER'S APPROVAL. The C15 recheck (run 35728647457, 2026-09-22) found postgres:18-alpine rebuilt with every watched fix (libuuid 2.42.3-r1, libcrypto3/libssl3 3.5.8-r0, c-ares 1.34.8-r0) on both platforms and docker-compose.yml returned to it the same day (docs/SUPPLY_CHAIN_MAINTENANCE_2026-09.md §8). /usr/local/bin/gosu in this child is byte-identical to the analysed binary (sha256 3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44; infra/images/official/20260922/inventory/official-postgres-arm64.txt), and the child's 22 HIGH/CRITICAL rows are identical to the derived image's, so this record's advisory set is present in full and nothing new appears (infra/images/official/20260922/scans/scan-summary.txt). The sentence \"No patched official postgres build exists\" in the previous text is retired by this re-issue: the official build carries every OS fix, and gosu is the same upstream binary in every current official postgres variant. PREVIOUS TEXT (2026-09-10): FIRST APPROVAL FOR linux/arm64, 2026-09-10. The configured reference is an OCI index whose linux/arm64 child sha256:d3dd485bd0507df537c7a8f7fbdf7dcf9ba8fb2007ca75b12af5c362237a92cc is a DIFFERENT ARTIFACT from the linux/amd64 child governed by SCX-0002..0005: different layers, and a different /usr/local/bin/gosu (sha256 3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44, 1830424 bytes, ELF aarch64, Go toolchain go1.24.6, module github.com/tianon/gosu v1.19.0, GOARCH=arm64, CGO_ENABLED=0, -trimpath=true) against amd64's 52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0 (1769900 bytes). Those records scope themselves to linux/amd64 and cannot govern this platform, which is why this record exists rather than a widening of theirs. WHAT WAS ANALYSED, AND ON WHICH ARTIFACT: the published arm64 child was scanned by digest on 2026-09-10 with the pinned trivy 0.73.0 (--ignorefile /dev/null, --scanners vuln,secret, --platform linux/arm64), reporting 22 HIGH/CRITICAL rows -- 21 HIGH and 1 CRITICAL, every one stdlib v1.24.6 (pkg:golang/stdlib@v1.24.6, no arch qualifier: these are gobinary rows, not apk rows) in usr/local/bin/gosu -- and 0 OS-package findings across 53 alpine packages; an all-severity pass of the same child additionally reports 21 MEDIUM, 2 LOW and 1 UNKNOWN gosu row and 10 UNKNOWN-severity libcurl rows, which are outside the governed HIGH/CRITICAL scope and are recorded in docs/SCANNER_DISPOSITIONS.md SS3.7 rather than governed here. The binary was extracted from that exact published child (docker create --platform linux/arm64, docker cp, container removed) and measured directly; the digest matches what infra/images/candidates/evidence/v2/gosu-verification.txt records for the arm64 candidate and base, and infra/images/published/20260910/postgres-arm64.trivy.txt is the publisher's independent scan of the same child with the same 22 rows. WHY RISK_ACCEPTED AND NOT NOT_AFFECTED: govulncheck and a Go toolchain are unavailable on the analysis host, so NO binary-mode symbol analysis of 3a8ef022... exists. The govulncheck evidence bound by SCX-0004 and SCX-0005 was run against a different compiled binary (52c8749d...) and is not evidence about this one; copying its verdict across would be exactly the substitution this governance model refuses. The acceptance therefore rests only on the operational argument, which is artifact-independent, and is bounded by prohibited_use below. SCOPE OF THIS RECORD: the 21 HIGH rows. They share a platform, package, PURL, installed version, result target, severity, classification and one review on one date, so they are held together; the single CRITICAL is held by SCX-0011 because a disposition approved for HIGH must never absorb a CRITICAL, the same reason SCX-0003 is separate from SCX-0002. Seven of these advisories (CVE-2026-39821 under SCX-0004 and the six under SCX-0005, which include CVE-2026-33818) are NOT_AFFECTED on linux/amd64 on the strength of symbol analysis of the amd64 binary; on this platform they are only RISK_ACCEPTED, because that analysis was not performed on this artifact. OWNER ACCEPTANCE, 2026-09-11: the owner accepted this disposition as it stands (RISK_ACCEPTED, this scope, expiry 2026-11-05 unchanged) in the checkpoint directive following the review at 461a2b56 — Option A of docs/images/ARM64_RISK_DECISION.md. This is the owner's acceptance, not independent Codex verification; the arm64 symbol analysis of 2026-09-11 (govulncheck v1.1.4 on this binary: 0 called, all 22 unreachable; infra/images/published/20260910/gosu-arm64-3a8ef022.govulncheck.{txt,json}) is recorded as additional evidence and is not what this record claims.",
-        "compensating_controls": [
-          "gosu runs once at container start to drop root privileges and exit; it is neither a long-lived process nor a network listener, so the affected net/http, net/mail, crypto/tls and crypto/x509 surfaces are not exercised by that use.",
-          "This is an ACCEPTANCE, not a claim of non-applicability: no reachability analysis of the arm64 binary exists, so the vulnerable code is not asserted to be absent from it.",
-          "PostgreSQL itself is loopback-bound (127.0.0.1:5432 only).",
-          "Phase 0 is a LOCAL-ONLY development profile under EXC-P0-004; this disposition is invalid for any external or customer-data use.",
-          "ADR-P0-01 monthly patch cadence re-pins and re-scans as a blocking release gate. The service is on the official postgres:18-alpine image again since 2026-09-22; scripts/gate/check-patched-images.mjs keeps resolving the official tags, and what it becomes after the return (the trigger for a NEWER official build, or retired) is the owner's decision (infra/images/candidates/v2/PUBLICATION.md §8.5)."
-        ],
-        "prohibited_use": [
-          "external, shared or internet-reachable deployment",
-          "production or customer data",
-          "any Phase 1 or later profile without fresh review",
-          "reclassification to NOT_AFFECTED without a reachability analysis performed on THIS arm64 binary"
-        ],
-        "owner": "founding-engineer",
-        "approver": "product-owner (owner acceptance recorded 2026-09-11 in the checkpoint directive after the review at 461a2b56; docs/images/ARM64_RISK_DECISION.md §5)",
-        "evidence": "docs/SCANNER_DISPOSITIONS.md",
-        "approved_on": "PENDING — the owner's approval",
-        "expires_on": "2026-11-05",
-        "evidence_sha256": "82c3f7b05aef746ca6e414c9eb9cf15590b81373ae9b402e21450815b8ac3270",
-        "classification": "RISK_ACCEPTED",
-        "evidence_files": [
-          {
-            "path": "docs/SCANNER_DISPOSITIONS.md",
-            "sha256": "82c3f7b05aef746ca6e414c9eb9cf15590b81373ae9b402e21450815b8ac3270"
-          },
-          {
-            "path": "infra/images/published/20260910/postgres-arm64.trivy.txt",
-            "sha256": "fa9c8ebdca7f62b6831fffb17374518fe664977cc4f45d115e3cd13433e55746"
-          },
-          {
-            "path": "infra/images/candidates/evidence/v2/gosu-verification.txt",
-            "sha256": "e0f901da541867530146e9869337d17b1ac880c0d2f2312240f9d857bc830359"
-          },
-          {
-            "path": "infra/images/published/20260910/gosu-arm64-3a8ef022.govulncheck.txt",
-            "sha256": "cdcd7ff7fe62a6b19677b19a23db04c406f473920e2663b13c7a51232743fbab"
-          },
-          {
-            "path": "docs/images/ARM64_RISK_DECISION.md",
-            "sha256": "6b6518d03ddc01c86deb7644fa638a6a2cea149bcba6987f14352e18ae513aca"
-          },
-          {
-            "path": "infra/images/official/20260922/inventory/official-postgres-arm64.txt",
-            "sha256": "9762a9301c23bfc75894afbe859f5cf5a8f5e782d5638fa3e762e9c510e60733"
-          },
-          {
-            "path": "infra/images/official/20260922/scans/official-postgres-arm64.trivy.txt",
-            "sha256": "651c5de0c188cbeace49715b5d36c1e14a797526365062f933bd73a079a1316e"
-          },
-          {
-            "path": "infra/images/official/20260922/scans/scan-summary.txt",
-            "sha256": "939d2f54536fd6fcf328a4f38236c57eae18ac93ee0173b285e313bda7965fb9"
-          }
-        ],
-        "reviewed_on": "PENDING — the owner's approval"
+        "image": "ghcr.io/a-halawany/elven/postgres@sha256:69a974aedbd80ff27ee670a6693445c47925bd69e11818a1cff39319f91ad4a7",
+        "approved_on": "2026-09-11",
+        "reviewed_on": "2026-09-11",
+        "superseded_on": "2026-09-23",
+        "by": "the re-issue of SCX-0010 for postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873 in `records`",
+        "full_text_last_present_at": "920376004526ee2f351a457fd1b29e54de486b17"
       },
       {
-        "status": "DRAFT — pending the owner's approval; governs nothing. The 2026-09-22 re-issue of SCX-0011 for the OFFICIAL image the compose file returned to that day. To approve: move this object into `records`, delete this `status` key, set approved_on and reviewed_on to the day of the review (never earlier), replace the PENDING fields of docs/SCANNER_DISPOSITIONS.md §3.9 with that date, then recompute that document's SHA-256 into evidence_sha256 and its evidence_files entry.",
         "id": "SCX-0011",
-        "advisory_ids": [
-          "CVE-2025-68121"
-        ],
-        "image": "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873",
         "scan_platform": "linux/arm64",
-        "package_name": "stdlib",
-        "package_purl": "pkg:golang/stdlib@v1.24.6",
-        "installed_version": "v1.24.6",
-        "severities": [
-          "CRITICAL"
-        ],
-        "result_target": "usr/local/bin/gosu",
-        "reason": "DRAFT RE-ISSUE 2026-09-22 for the OFFICIAL image postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873 (linux/arm64 child sha256:89f747171c4b0af0eacf5984550060be79786dbe286eb60cfa691d79d1e8b23f; postgres:18-alpine = 18.6-alpine3.24, Alpine 3.24.2), PENDING THE OWNER'S APPROVAL. The C15 recheck (run 35728647457, 2026-09-22) found postgres:18-alpine rebuilt with every watched fix (libuuid 2.42.3-r1, libcrypto3/libssl3 3.5.8-r0, c-ares 1.34.8-r0) on both platforms and docker-compose.yml returned to it the same day (docs/SUPPLY_CHAIN_MAINTENANCE_2026-09.md §8). /usr/local/bin/gosu in this child is byte-identical to the analysed binary (sha256 3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44; infra/images/official/20260922/inventory/official-postgres-arm64.txt), and the child's 22 HIGH/CRITICAL rows are identical to the derived image's, so this record's advisory set is present in full and nothing new appears (infra/images/official/20260922/scans/scan-summary.txt). The sentence \"No patched official postgres build exists\" in the previous text is retired by this re-issue: the official build carries every OS fix, and gosu is the same upstream binary in every current official postgres variant. PREVIOUS TEXT (2026-09-10): FIRST APPROVAL FOR linux/arm64, 2026-09-10. The configured reference is an OCI index whose linux/arm64 child sha256:d3dd485bd0507df537c7a8f7fbdf7dcf9ba8fb2007ca75b12af5c362237a92cc is a DIFFERENT ARTIFACT from the linux/amd64 child governed by SCX-0002..0005: different layers, and a different /usr/local/bin/gosu (sha256 3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44, 1830424 bytes, ELF aarch64, Go toolchain go1.24.6, module github.com/tianon/gosu v1.19.0, GOARCH=arm64, CGO_ENABLED=0, -trimpath=true) against amd64's 52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0 (1769900 bytes). Those records scope themselves to linux/amd64 and cannot govern this platform, which is why this record exists rather than a widening of theirs. WHAT WAS ANALYSED, AND ON WHICH ARTIFACT: the published arm64 child was scanned by digest on 2026-09-10 with the pinned trivy 0.73.0 (--ignorefile /dev/null, --scanners vuln,secret, --platform linux/arm64), reporting 22 HIGH/CRITICAL rows -- 21 HIGH and 1 CRITICAL, every one stdlib v1.24.6 (pkg:golang/stdlib@v1.24.6, no arch qualifier: these are gobinary rows, not apk rows) in usr/local/bin/gosu -- and 0 OS-package findings across 53 alpine packages; an all-severity pass of the same child additionally reports 21 MEDIUM, 2 LOW and 1 UNKNOWN gosu row and 10 UNKNOWN-severity libcurl rows, which are outside the governed HIGH/CRITICAL scope and are recorded in docs/SCANNER_DISPOSITIONS.md SS3.7 rather than governed here. The binary was extracted from that exact published child (docker create --platform linux/arm64, docker cp, container removed) and measured directly; the digest matches what infra/images/candidates/evidence/v2/gosu-verification.txt records for the arm64 candidate and base, and infra/images/published/20260910/postgres-arm64.trivy.txt is the publisher's independent scan of the same child with the same 22 rows. WHY RISK_ACCEPTED AND NOT NOT_AFFECTED: govulncheck and a Go toolchain are unavailable on the analysis host, so NO binary-mode symbol analysis of 3a8ef022... exists. The govulncheck evidence bound by SCX-0004 and SCX-0005 was run against a different compiled binary (52c8749d...) and is not evidence about this one; copying its verdict across would be exactly the substitution this governance model refuses. The acceptance therefore rests only on the operational argument, which is artifact-independent, and is bounded by prohibited_use below. SCOPE OF THIS RECORD: the single CRITICAL row, held separately from the HIGH set of SCX-0010 on purpose. CVE-2025-68121 is incorrect certificate validation during TLS session resumption in crypto/tls; gosu opens no TLS connection -- it resolves a user, drops privileges and execs the real entrypoint -- and the acceptance is bounded by prohibited_use below and by docs/SCANNER_DISPOSITIONS.md SS4. OWNER ACCEPTANCE, 2026-09-11: the owner accepted this disposition as it stands (RISK_ACCEPTED, this scope, expiry 2026-11-05 unchanged) in the checkpoint directive following the review at 461a2b56 — Option A of docs/images/ARM64_RISK_DECISION.md. This is the owner's acceptance, not independent Codex verification; the arm64 symbol analysis of 2026-09-11 (govulncheck v1.1.4 on this binary: 0 called, all 22 unreachable; infra/images/published/20260910/gosu-arm64-3a8ef022.govulncheck.{txt,json}) is recorded as additional evidence and is not what this record claims.",
-        "compensating_controls": [
-          "gosu runs once at container start to drop root privileges and exit; it is neither a long-lived process nor a network listener, so the affected net/http, net/mail, crypto/tls and crypto/x509 surfaces are not exercised by that use.",
-          "This is an ACCEPTANCE, not a claim of non-applicability: no reachability analysis of the arm64 binary exists, so the vulnerable code is not asserted to be absent from it.",
-          "PostgreSQL itself is loopback-bound (127.0.0.1:5432 only).",
-          "Phase 0 is a LOCAL-ONLY development profile under EXC-P0-004; this disposition is invalid for any external or customer-data use.",
-          "ADR-P0-01 monthly patch cadence re-pins and re-scans as a blocking release gate. The service is on the official postgres:18-alpine image again since 2026-09-22; scripts/gate/check-patched-images.mjs keeps resolving the official tags, and what it becomes after the return (the trigger for a NEWER official build, or retired) is the owner's decision (infra/images/candidates/v2/PUBLICATION.md §8.5)."
-        ],
-        "prohibited_use": [
-          "external, shared or internet-reachable deployment",
-          "production or customer data",
-          "any Phase 1 or later profile without fresh review",
-          "reclassification to NOT_AFFECTED without a reachability analysis performed on THIS arm64 binary"
-        ],
-        "owner": "founding-engineer",
-        "approver": "product-owner (owner acceptance recorded 2026-09-11 in the checkpoint directive after the review at 461a2b56; docs/images/ARM64_RISK_DECISION.md §5)",
-        "evidence": "docs/SCANNER_DISPOSITIONS.md",
-        "approved_on": "PENDING — the owner's approval",
-        "expires_on": "2026-11-05",
-        "evidence_sha256": "82c3f7b05aef746ca6e414c9eb9cf15590b81373ae9b402e21450815b8ac3270",
-        "classification": "RISK_ACCEPTED",
-        "evidence_files": [
-          {
-            "path": "docs/SCANNER_DISPOSITIONS.md",
-            "sha256": "82c3f7b05aef746ca6e414c9eb9cf15590b81373ae9b402e21450815b8ac3270"
-          },
-          {
-            "path": "infra/images/published/20260910/postgres-arm64.trivy.txt",
-            "sha256": "fa9c8ebdca7f62b6831fffb17374518fe664977cc4f45d115e3cd13433e55746"
-          },
-          {
-            "path": "infra/images/candidates/evidence/v2/gosu-verification.txt",
-            "sha256": "e0f901da541867530146e9869337d17b1ac880c0d2f2312240f9d857bc830359"
-          },
-          {
-            "path": "infra/images/published/20260910/gosu-arm64-3a8ef022.govulncheck.txt",
-            "sha256": "cdcd7ff7fe62a6b19677b19a23db04c406f473920e2663b13c7a51232743fbab"
-          },
-          {
-            "path": "docs/images/ARM64_RISK_DECISION.md",
-            "sha256": "6b6518d03ddc01c86deb7644fa638a6a2cea149bcba6987f14352e18ae513aca"
-          },
-          {
-            "path": "infra/images/official/20260922/inventory/official-postgres-arm64.txt",
-            "sha256": "9762a9301c23bfc75894afbe859f5cf5a8f5e782d5638fa3e762e9c510e60733"
-          },
-          {
-            "path": "infra/images/official/20260922/scans/official-postgres-arm64.trivy.txt",
-            "sha256": "651c5de0c188cbeace49715b5d36c1e14a797526365062f933bd73a079a1316e"
-          },
-          {
-            "path": "infra/images/official/20260922/scans/scan-summary.txt",
-            "sha256": "939d2f54536fd6fcf328a4f38236c57eae18ac93ee0173b285e313bda7965fb9"
-          }
-        ],
-        "reviewed_on": "PENDING — the owner's approval"
+        "image": "ghcr.io/a-halawany/elven/postgres@sha256:69a974aedbd80ff27ee670a6693445c47925bd69e11818a1cff39319f91ad4a7",
+        "approved_on": "2026-09-11",
+        "reviewed_on": "2026-09-11",
+        "superseded_on": "2026-09-23",
+        "by": "the re-issue of SCX-0011 for postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873 in `records`",
+        "full_text_last_present_at": "920376004526ee2f351a457fd1b29e54de486b17"
       }
     ]
   }

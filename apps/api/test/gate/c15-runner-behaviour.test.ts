@@ -397,7 +397,7 @@ describe('C15 behavioural control — governed scan dispositions', () => {
       package_purl: 'pkg:apk/alpine/left-pad@1.0.0?arch=x86_64&distro=3.24.1',
       installed_version: '1.0.0',
       severities: ['HIGH'],
-      result_target: 'ghcr.io/a-halawany/elven/postgres@sha256:bc90ce6bc094fae53df8d01b23e6c08160c7e7064f4c351fd3cff324aefcda7a (alpine 3.24.1)',
+      result_target: 'postgres@sha256:d8703cd7fba306b9fec9268ecedfa8a966846c053036a60e3635791957eb2f66 (alpine 3.24.2)',
     });
     const r = withInjectedDocument(governed, `${JSON.stringify(doc, null, 2)}\n`, () => runGate());
     expect(r.status).not.toBe(0);
@@ -758,8 +758,10 @@ describe('C16-R3.1 — scanner dispositions: types, digests and unconditional ma
     // all re-issued for the derived postgres image (the gosu binary is byte-identical); SCX-0001
     // and SCX-0006..0009 governed findings the derived images fix and were retired, because a
     // record that matches nothing fails the gate — plus SCX-0010 and SCX-0011, which govern the
-    // linux/arm64 child the gate began scanning on 2026-09-10. The literal is deliberate: a
-    // record appearing or vanishing must fail here until someone changes this number on purpose.
+    // linux/arm64 child the gate began scanning on 2026-09-10. All six re-issued again on
+    // 2026-09-23, under the owner's approval, for the OFFICIAL postgres:18-alpine index the compose
+    // file returned to on 2026-09-22 (the same 22 gosu rows per child). The literal is deliberate:
+    // a record appearing or vanishing must fail here until someone changes this number on purpose.
     expect(m.scanner_exclusions.declared).toBe(6);
     expect(m.image_finding_reconciliation.unmatched).toEqual([]);
     expect(m.image_finding_reconciliation.unused_records).toEqual([]);

@@ -16,7 +16,7 @@ it, and the gate recomputes the digest from these bytes on every run.
 
 ## 1. What was scanned
 
-> **The return to the official images, 2026-09-22 — IN PROGRESS, pending the owner's approval.**
+> **The return to the official images, 2026-09-22 — COMPLETED 2026-09-23 with the owner's approval of the six re-issues.**
 > Since 2026-09-22 the two configured references are the OFFICIAL indexes
 > `postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873` (`postgres:18-alpine`,
 > 18.6-alpine3.24; children `d8703cd7…` `linux/amd64`, `89f74717…` `linux/arm64`) and
@@ -24,11 +24,12 @@ it, and the gate recomputes the digest from these bytes on every run.
 > 8.10.2-alpine; children `2d3814be…` `linux/amd64`, `41a10b18…` `linux/arm64`) — the images the
 > recheck (run `35728647457`) found rebuilt with every watched fix on both platforms
 > (`docs/SUPPLY_CHAIN_MAINTENANCE_2026-09.md` §8). §§1–3.8 below describe the DERIVED artefacts that were
-> pinned from 2026-09-10 to 2026-09-22 and the six records approved for them; those records stand in
-> `scripts/gate/scanner-exclusions.json` byte for byte as approved and, because the pinned reference
-> changed, match nothing until the owner re-issues them — the gate is red on exactly that, by design.
-> The re-issues for the official children are DRAFTED in **§3.9**, with their approval dates left
-> pending; nothing here is deleted, and no draft governs a finding.
+> pinned from 2026-09-10 to 2026-09-22 and the six records approved for them. On 2026-09-23 those six
+> records were superseded — in place, under the same ids — by their re-issues for the official children
+> (**§3.9**), approved by the owner that day with their scope, classifications and 2026-11-05 expiry
+> unchanged; the 2026-09-10 versions are listed by identity under `superseded_records` in
+> `scripts/gate/scanner-exclusions.json`, their full text kept in git history and in §§3–3.8 here. Nothing
+> is deleted. From 2026-09-23 the records in force are the six of §3.9.
 
 **Re-pin of 2026-09-10 (TEMPORARY, owner-approved — `docs/images/DERIVED_IMAGES_APPROVAL.md`).**
 The two configured references are the derived maintenance images published by
@@ -544,22 +545,22 @@ scanned platforms the run reconciles 22 + 22 = **44** findings against **6** rec
 (SCX-0002…0005 on `linux/amd64`, SCX-0010…0011 on `linux/arm64`), 0 unmatched, 0 unused, and 0
 records naming a platform the run did not scan.
 
-### 3.9 The return to the official images (2026-09-22) — DRAFT re-issues, pending the owner's approval
+### 3.9 The return to the official images (2026-09-22) — the six re-issues, approved by the owner on 2026-09-23
 
-**What this section is, and is not.** On 2026-09-22 the recheck found a compatible fixed OFFICIAL image
-for both services on both platforms, and `docker-compose.yml` / `conformance.manifest.json` were
-re-pinned to those official indexes the same day (`pinned_at` 2026-09-22). The documented process
-(`docs/SUPPLY_CHAIN_MAINTENANCE_2026-09.md` §5) makes the next step the owner's: the records the new
-child digests invalidate are re-bound "with the owner's approval, since the records carry `approved_on`".
-This section prepares that approval. It states what was scanned, what the official children carry, why
-each record's basis carries over, and the six re-issued records exactly as they would read — with the
-approval and review dates left **PENDING** and a `Status` row (new in this document: there was no
-precedent for a pending record, so the field is added and named for what it is). **No draft here
-governs anything**: `scripts/gate/scanner-exclusions.json` keeps the six approved records of 2026-09-10
-untouched in `records` (they now name an image the compose file no longer pins and therefore match
-nothing, which the gate reports as such), and carries these drafts beside them under
-`pending_reissues`, where the validator never reads them. The derived images, their receipts and the
-records' text are not deleted.
+**What this section is.** On 2026-09-22 the recheck found a compatible fixed OFFICIAL image for both
+services on both platforms, and `docker-compose.yml` / `conformance.manifest.json` were re-pinned to those
+official indexes the same day (`pinned_at` 2026-09-22). The documented process
+(`docs/SUPPLY_CHAIN_MAINTENANCE_2026-09.md` §5) made the next step the owner's: the records the new child
+digests invalidate are re-bound "with the owner's approval, since the records carry `approved_on`". This
+section was drafted on 2026-09-22 to prepare that approval — what was scanned, what the official children
+carry, why each record's basis carries over, and the six re-issued records exactly as they would read, with a
+`Status: DRAFT` row (a field added then, there being no precedent for a pending record) and the approval and
+review dates left pending. **The owner approved the six re-issues on 2026-09-23** with their scope,
+classifications and 2026-11-05 expiry unchanged; the instruction is quoted at the end of this section. The
+records below are therefore IN FORCE from 2026-09-23, in `records` of `scripts/gate/scanner-exclusions.json`,
+in place of the 2026-09-10 versions that named the derived image (those are listed by identity under that
+file's `superseded_records`; their full text is in git history and in §§3–3.8). The derived images, their
+receipts and the superseded records' text are not deleted.
 
 **What was scanned (2026-09-22).**
 
@@ -611,19 +612,19 @@ works, a stop/start reloads the volume ("Skipping initialization", rows and 78 m
 against them and the `audit-chain` integration file 8/8. The host is `darwin/arm64`, so the containers
 ran the `linux/arm64` children — the ones the compose file runs on this host; CI runs the amd64 children.
 
-**The six re-issued records, as drafted.** The fields the gate compares are unchanged from the 2026-09-10
+**The six re-issued records, as approved.** The fields the gate compares are unchanged from the 2026-09-10
 records except `image` (the official index) — `scan_platform`, `package_name` `stdlib`, `package_purl`
 `pkg:golang/stdlib@v1.24.6`, `installed_version` `v1.24.6`, `severities`, `result_target`
 `usr/local/bin/gosu`, the advisory sets, the classifications, the compensating controls, the prohibited
 uses, the owner, the approver party and the expiry are the same. What changes with the re-issue: the
 image, the evidence bound (this document at its new digest; the 2026-09-22 inventories and scans;
-the byte-identity record; the govulncheck artefacts as before), and the approval, which is pending.
+the byte-identity record; the govulncheck artefacts as before), and the approval, given by the owner on 2026-09-23.
 
-#### SCX-0002 — DRAFT re-issue for the official `linux/amd64` child (HIGH set)
+#### SCX-0002 — re-issue (approved 2026-09-23) for the official `linux/amd64` child (HIGH set)
 
 | Field | Value |
 |---|---|
-| Status | **DRAFT — pending the owner's approval; governs nothing** |
+| Status | **APPROVED 2026-09-23 — in force** (`records` of `scripts/gate/scanner-exclusions.json`; supersedes the 2026-09-10 record of the same id) |
 | Advisories | `CVE-2025-61726`, `CVE-2025-61729`, `CVE-2026-25679`, `CVE-2026-27145`, `CVE-2026-32280`, `CVE-2026-32281`, `CVE-2026-32283`, `CVE-2026-33811`, `CVE-2026-33814`, `CVE-2026-39820`, `CVE-2026-39822`, `CVE-2026-39836`, `CVE-2026-42499`, `CVE-2026-42504` (14) |
 | Severity | HIGH |
 | Classification | RISK_ACCEPTED |
@@ -635,7 +636,7 @@ the byte-identity record; the govulncheck artefacts as before), and the approval
 | Owner | founding-engineer |
 | Approver | gate-2.2-security-review |
 | Originally approved | 2026-08-05, for `postgres@sha256:9a8afca5…`; re-issued 2026-09-10 for the derived image (§3) |
-| Re-issued (approved / reviewed) | **PENDING — the owner's approval** |
+| Re-issued (approved / reviewed) | **2026-09-23 / 2026-09-23** — the owner's approval of 2026-09-23, quoted at the end of this section |
 | Expires | 2026-11-05 (unchanged) |
 
 **Reason, compensating controls, prohibited use.** As the 2026-09-10 record (SCX-0002 above), with one
@@ -645,11 +646,11 @@ official postgres variant; the acceptance rests on the operational argument alon
 container start and exits; PostgreSQL is loopback-bound; Phase 0 is LOCAL-ONLY under `EXC-P0-004`;
 ADR-P0-01 re-pins and re-scans monthly).
 
-#### SCX-0003 — DRAFT re-issue for the official `linux/amd64` child (the single CRITICAL)
+#### SCX-0003 — re-issue (approved 2026-09-23) for the official `linux/amd64` child (the single CRITICAL)
 
 | Field | Value |
 |---|---|
-| Status | **DRAFT — pending the owner's approval; governs nothing** |
+| Status | **APPROVED 2026-09-23 — in force** (`records` of `scripts/gate/scanner-exclusions.json`; supersedes the 2026-09-10 record of the same id) |
 | Advisory | `CVE-2025-68121` |
 | Severity | **CRITICAL** |
 | Classification | RISK_ACCEPTED |
@@ -659,17 +660,17 @@ ADR-P0-01 re-pins and re-scans monthly).
 | Scan platform / scanned child | `linux/amd64` / `sha256:d8703cd7fba306b9fec9268ecedfa8a966846c053036a60e3635791957eb2f66` |
 | Owner / Approver | founding-engineer / gate-2.2-security-review |
 | Originally approved | 2026-08-05, for `postgres@sha256:9a8afca5…`; re-issued 2026-09-10 for the derived image |
-| Re-issued (approved / reviewed) | **PENDING — the owner's approval** |
+| Re-issued (approved / reviewed) | **2026-09-23 / 2026-09-23** — the owner's approval of 2026-09-23, quoted at the end of this section |
 | Expires | 2026-11-05 (unchanged) |
 
 Held separately for the reason SCX-0003 exists: a disposition approved for HIGH must not absorb a
 CRITICAL. Reason and controls as SCX-0003 above, with the same retired sentence as SCX-0002.
 
-#### SCX-0004 — DRAFT re-issue for the official `linux/amd64` child, NOT_AFFECTED by symbol analysis
+#### SCX-0004 — re-issue (approved 2026-09-23) for the official `linux/amd64` child, NOT_AFFECTED by symbol analysis
 
 | Field | Value |
 |---|---|
-| Status | **DRAFT — pending the owner's approval; governs nothing** |
+| Status | **APPROVED 2026-09-23 — in force** (`records` of `scripts/gate/scanner-exclusions.json`; supersedes the 2026-09-10 record of the same id) |
 | Advisories | `CVE-2026-39821` (1) |
 | Severity | HIGH |
 | Classification | **NOT_AFFECTED — vulnerable_code_not_present** |
@@ -680,14 +681,14 @@ CRITICAL. Reason and controls as SCX-0003 above, with the same retired sentence 
 | Analysed on (evidence) | `52c8749d…` — the same bytes in this child (`…/inventory/official-postgres-amd64.txt`); `docs/evidence/govulncheck-gosu-b6a16ed0.{json,txt}`, Go vulnerability database as of 2026-08-14, 0 called vulnerable symbols |
 | Owner / Approver | founding-engineer / gate-2.2-security-review |
 | Originally approved | 2026-08-14, for `postgres@sha256:9a8afca5…`; re-issued 2026-09-10 for the derived image |
-| Re-issued (approved / reviewed) | **PENDING — the owner's approval** |
+| Re-issued (approved / reviewed) | **2026-09-23 / 2026-09-23** — the owner's approval of 2026-09-23, quoted at the end of this section |
 | Expires | 2026-11-05 (unchanged; the evidence date does not move) |
 
-#### SCX-0005 — DRAFT re-issue for the official `linux/amd64` child, NOT_AFFECTED by symbol analysis
+#### SCX-0005 — re-issue (approved 2026-09-23) for the official `linux/amd64` child, NOT_AFFECTED by symbol analysis
 
 | Field | Value |
 |---|---|
-| Status | **DRAFT — pending the owner's approval; governs nothing** |
+| Status | **APPROVED 2026-09-23 — in force** (`records` of `scripts/gate/scanner-exclusions.json`; supersedes the 2026-09-10 record of the same id) |
 | Advisories | `CVE-2026-33818`, `CVE-2026-56853`, `CVE-2026-56858`, `CVE-2026-56859`, `CVE-2026-56860`, `CVE-2026-56862` (6) |
 | Severity | HIGH |
 | Classification | **NOT_AFFECTED — vulnerable_code_not_present** |
@@ -698,14 +699,14 @@ CRITICAL. Reason and controls as SCX-0003 above, with the same retired sentence 
 | Analysed on (evidence) | as SCX-0004: `52c8749d…`, the same two govulncheck artefacts, each of the six present and unreachable |
 | Owner / Approver | founding-engineer / gate-2.2-security-review |
 | Originally approved / reviewed | 2026-08-15, for `postgres@sha256:9a8afca5…`; re-issued 2026-09-10 for the derived image |
-| Re-issued (approved / reviewed) | **PENDING — the owner's approval** |
+| Re-issued (approved / reviewed) | **2026-09-23 / 2026-09-23** — the owner's approval of 2026-09-23, quoted at the end of this section |
 | Expires | 2026-11-05 (unchanged) |
 
-#### SCX-0010 — DRAFT re-issue for the official `linux/arm64` child (HIGH set)
+#### SCX-0010 — re-issue (approved 2026-09-23) for the official `linux/arm64` child (HIGH set)
 
 | Field | Value |
 |---|---|
-| Status | **DRAFT — pending the owner's approval; governs nothing** |
+| Status | **APPROVED 2026-09-23 — in force** (`records` of `scripts/gate/scanner-exclusions.json`; supersedes the 2026-09-10 record of the same id) |
 | Advisories | the 21 HIGH ids of SCX-0010 (§3.7), unchanged |
 | Severity | HIGH |
 | Classification | **RISK_ACCEPTED** (as accepted by the owner on 2026-09-11; the arm64 govulncheck analysis of `3a8ef022…` — 0 called, all 22 unreachable — is bound as additional evidence and does not change the classification) |
@@ -714,16 +715,16 @@ CRITICAL. Reason and controls as SCX-0003 above, with the same retired sentence 
 | Image (index) | `postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873` |
 | Scan platform / scanned child | `linux/arm64` / `sha256:89f747171c4b0af0eacf5984550060be79786dbe286eb60cfa691d79d1e8b23f` |
 | Analysed binary | `3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44` (aarch64, 1,830,424 bytes; identical in `d3dd485b…` and this child — `…/inventory/official-postgres-arm64.txt`) |
-| Owner / Approver | founding-engineer / product-owner (the 2026-09-11 acceptance, `docs/images/ARM64_RISK_DECISION.md` §5); the re-issue's approver is whoever approves it |
+| Owner / Approver | founding-engineer / product-owner (the 2026-09-11 acceptance, `docs/images/ARM64_RISK_DECISION.md` §5; the 2026-09-23 re-issue approved by the owner) |
 | Originally approved / reviewed | 2026-09-11 (first approval for this platform, on the derived child) |
-| Re-issued (approved / reviewed) | **PENDING — the owner's approval** |
+| Re-issued (approved / reviewed) | **2026-09-23 / 2026-09-23** — the owner's approval of 2026-09-23, quoted at the end of this section |
 | Expires | 2026-11-05 (unchanged) |
 
-#### SCX-0011 — DRAFT re-issue for the official `linux/arm64` child (the single CRITICAL)
+#### SCX-0011 — re-issue (approved 2026-09-23) for the official `linux/arm64` child (the single CRITICAL)
 
 | Field | Value |
 |---|---|
-| Status | **DRAFT — pending the owner's approval; governs nothing** |
+| Status | **APPROVED 2026-09-23 — in force** (`records` of `scripts/gate/scanner-exclusions.json`; supersedes the 2026-09-10 record of the same id) |
 | Advisory | `CVE-2025-68121` |
 | Severity | **CRITICAL** |
 | Classification | **RISK_ACCEPTED** (as SCX-0010) |
@@ -734,7 +735,7 @@ CRITICAL. Reason and controls as SCX-0003 above, with the same retired sentence 
 | Analysed binary | `3a8ef022…` (as SCX-0010) |
 | Owner / Approver | founding-engineer / product-owner (as SCX-0010) |
 | Originally approved / reviewed | 2026-09-11 |
-| Re-issued (approved / reviewed) | **PENDING — the owner's approval** |
+| Re-issued (approved / reviewed) | **2026-09-23 / 2026-09-23** — the owner's approval of 2026-09-23, quoted at the end of this section |
 | Expires | 2026-11-05 (unchanged) |
 
 **Compensating controls, prohibited use and limits (all six).** Unchanged from the records above (§3
@@ -743,7 +744,7 @@ binding, the LOCAL-ONLY profile under `EXC-P0-004`, ADR-P0-01's monthly cadence;
 exposure applies in full. The records stay weaker on `linux/arm64` than on `linux/amd64` on purpose,
 exactly as §5 states.
 
-**Evidence bound by the drafts (tracked, digests recomputed by the gate once the records are live).**
+**Evidence bound by the six records (tracked; the gate recomputes every digest on each run).**
 
 | Artifact | sha256 |
 |---|---|
@@ -757,24 +758,42 @@ exactly as §5 states.
 | `infra/images/published/20260910/gosu-arm64-3a8ef022.govulncheck.txt` (SCX-0010/0011, additional) | `cdcd7ff7fe62a6b19677b19a23db04c406f473920e2663b13c7a51232743fbab` |
 | `docs/images/ARM64_RISK_DECISION.md` (SCX-0010/0011) | `6b6518d03ddc01c86deb7644fa638a6a2cea149bcba6987f14352e18ae513aca` |
 
-**What the gate says while this is pending, and what the approval consists of.** With the compose file
-on the official indexes and `records` still naming the derived one, the C15 gate refuses at the
-disposition validation — "6 records, 12 rejected": each approved record's `evidence_sha256` and its
-`evidence_files` entry for this document name the digest of 2026-09-10, and this document changed with
-this section — and stops there, before any image is scanned (hosted run 35776435696 on PR #57 says
-exactly this). Re-binding the six records to this digest alone would not turn it green: they would then
-reach reconciliation naming an image the compose file no longer pins, and the 22 `gosu` rows on each
-official postgres child would be UNGOVERNED (44) with the six records UNUSED, until the records name the
-official image. The recheck step, by its own design, fails too, because a compatible fixed official
-image "now exists" — it is the one pinned. The owner's approval is: review §3.9; in
-`scripts/gate/scanner-exclusions.json` replace each of the six records in `records` with its draft from
-`pending_reissues`, deleting the `status` key and setting `approved_on` and `reviewed_on` to the day of
-the review (never earlier); in this section replace each "PENDING" with that date and the approver; then
-recompute this document's SHA-256 (`shasum -a 256 docs/SCANNER_DISPOSITIONS.md`) into every record's
-`evidence_sha256` and its `docs/SCANNER_DISPOSITIONS.md` entry in `evidence_files`; re-record the C15
-trace fixture and `real-image-results.json` from a real run with the pinned scanners; run the FINAL
-chain. Whether the recheck then stays as the trigger for a NEWER official build under ADR-P0-01's
-cadence, or is retired, is the owner's decision (`infra/images/candidates/v2/PUBLICATION.md` §8.5).
+**The approval, verbatim (2026-09-23).** The owner's instruction of 2026-09-23, the part that concerns these
+records and the recheck (the remainder orders the integration of #57, #56 and #58 and the B21 batch, and is
+recorded in the delivery records):
+
+> I approve the six prepared #57 reissues—SCX-0002, 0003, 0004, 0005, 0010 and 0011—with their existing
+> scope, classifications and 2026-11-05 expiry unchanged. Record the actual approval date.
+>
+> Complete #57's official-image transition. Update the recheck so the adopted compatible official pin
+> passes, while newer compatible official builds trigger the existing update process. Preserve cadence and
+> visible indeterminate failures. Regenerate the real scanner/trace evidence and pass the existing gates; do
+> not bypass them.
+
+**What the approval consisted of, applied 2026-09-23.** In `scripts/gate/scanner-exclusions.json` each of the
+six drafts moved from `pending_reissues` into `records` in place of its 2026-09-10 version: the `status` key
+deleted, `approved_on` and `reviewed_on` set to 2026-09-23 (the day of the approval, not the day of the
+draft), the draft wording of `reason` made true, and the last compensating control stating what the recheck
+now does (below). The fields the gate compares are unchanged from the drafts and, except `image`, from the
+2026-09-10 records; no scope, classification, advisory set or expiry moved. The six superseded versions are
+listed by identity under that file's `superseded_records` (their full text at `9203760…` in git history, and
+in §§3–3.8 above); nothing is deleted. This document's SHA-256 was then recomputed into every record's
+`evidence_sha256` and its `docs/SCANNER_DISPOSITIONS.md` entry in `evidence_files` — the validator's rule:
+the digest of the bytes as committed, so any later edit of this document invalidates the six until they are
+re-bound. The C15 trace fixture and `real-image-results.json` were re-recorded from a real run of the gate
+with the pinned scanners (the release binaries authenticated by `scripts/gate/install-scanners.sh`) against
+the official indexes, and the FINAL chain runs on the approving commits.
+
+**What the gate says with the six in force.** Six records, 0 rejected; the 22 `gosu` rows on each official
+postgres child governed by the records naming that child's platform — 44 findings, 6 records, 0 unmatched,
+0 unused, 0 out of scope (SCX-0002 14, SCX-0003 1, SCX-0004 1, SCX-0005 6 on `d8703cd7…`; SCX-0010 21,
+SCX-0011 1 on `89f74717…`); redis 0 on both children. **The recheck after the return** — the owner's
+decision of 2026-09-23 (`docs/SUPPLY_CHAIN_MAINTENANCE_2026-09.md` §8.4; `infra/images/candidates/v2/PUBLICATION.md`
+§8.5): `scripts/gate/check-patched-images.mjs` keeps resolving the official tags at the existing cadence
+(daily 07:20 UTC, and in the required supply-chain job); the configured pin, carrying every watched fix on
+both platforms, PASSES; a NEWER official build of the tag that also carries every watched fix FAILS, to
+trigger the governed re-pin under which these six records are re-reviewed; a check that cannot be completed
+on both platforms FAILS visibly. It re-pins nothing and deletes no evidence.
 
 ## 4. Prohibited exposure
 
@@ -793,8 +812,8 @@ blocking release gate.
 
 * Every record expires **2026-11-05** and is rejected by the gate **on** that date — the comparison
   is `expires_on <= runDate`, so the record is not in force during its stated expiry day. The
-  2026-09-10 re-issue did not move that date: a re-issue changes the image a record is scoped to,
-  not how long its analysis is trusted.
+  2026-09-10 re-issue did not move that date, and neither did the 2026-09-23 re-issue for the official
+  children (§3.9): a re-issue changes the image a record is scoped to, not how long its analysis is trusted.
 * ADR-P0-01 requires a monthly re-pin and re-scan; a re-pin that clears a finding must
   delete the corresponding record, because an unused record fails the gate as stale (§3.6 is the
   first instance).

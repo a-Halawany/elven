@@ -43,8 +43,9 @@ const CHILDREN: Record<string, { amd64: string; arm64: string; size: number }> =
   // §8). These are the real runnable children of postgres:18-alpine (index 77f58511…) and
   // redis:8-alpine (index ba6e394f…) as the registry served them that day
   // (infra/images/official/20260922/*.index.txt); `size` is the amd64 manifest's size from the raw
-  // index (the arm64 manifests are 2680 and 2290 bytes). The derived entries below stay for the
-  // recorded 2026-09-10 trace, which still names them.
+  // index (the arm64 manifests are 2680 and 2290 bytes). The recorded C15 trace names these since
+  // its re-record of 2026-09-23; the derived entries below stay as the record of the 2026-09-10
+  // artefacts the previous trace was recorded from.
   postgres: {
     amd64: 'sha256:d8703cd7fba306b9fec9268ecedfa8a966846c053036a60e3635791957eb2f66',
     arm64: 'sha256:89f747171c4b0af0eacf5984550060be79786dbe286eb60cfa691d79d1e8b23f',
@@ -90,10 +91,12 @@ export type BuiltR34 = {
  * R3.4.4: the image reports are the REAL captured scanner output.
  *
  * `fixtures/real-image-results.json` holds the complete, unsampled Results arrays from a real
- * C15 run against the images pinned on 2026-09-10 - 53 alpine packages and NO OS finding for
- * postgres, 4 gobinary packages and 22 findings for its gosu binary, 22 alpine packages and no
- * finding for redis. Synthesising these would defeat the point: a control that mutates invented
- * data proves nothing about what the verifier does to a real receipt.
+ * C15 run with the pinned scanners against the OFFICIAL images pinned on 2026-09-22 (re-recorded
+ * 2026-09-23, after the owner approved the six SCX re-issues) - the alpine package set and NO OS
+ * finding for postgres, the gobinary packages and 22 findings for its gosu binary, the alpine
+ * package set and no finding for redis, on each of the two platform children. Synthesising these
+ * would defeat the point: a control that mutates invented data proves nothing about what the
+ * verifier does to a real receipt.
  *
  * Only the scan reference is substituted, because it is derived per run from the tracked
  * digest pins rather than fixed in the capture.
@@ -238,13 +241,15 @@ export function buildPassingR34Evidence(
    * maintenance change added SCX-0006..0009 approved 2026-09-01; the 2026-09-10 re-pin to the
    * derived images re-issued SCX-0002..0005 (approved 2026-09-10) and retired the rest, so it
    * moved again; the owner's acceptance of the arm64 records SCX-0010/0011 (approved 2026-09-11,
-   * docs/images/ARM64_RISK_DECISION.md §5) moves it to 2026-09-11.
+   * docs/images/ARM64_RISK_DECISION.md §5) moved it to 2026-09-11; the owner's approval of the six
+   * re-issues for the OFFICIAL postgres index the compose file returned to on 2026-09-22 (all six
+   * approved 2026-09-23, docs/SCANNER_DISPOSITIONS.md §3.9) moves it to 2026-09-23.
    *
    * The literal is deliberate. It has to be changed on purpose whenever a disposition is added,
    * which is exactly the coupling that makes a stale fixture fail loudly instead of quietly
    * verifying an evidence package against records it never saw.
    */
-  const runDate = '2026-09-11';
+  const runDate = '2026-09-23';
   const { contract, derived } = derivationFor(repo, runDate);
   const candidateManifest = candidateSourceManifest(repo);
   const expectedSha = derived.meta.sourceSha as string;

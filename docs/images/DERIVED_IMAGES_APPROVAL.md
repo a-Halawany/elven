@@ -42,3 +42,20 @@ records in `scripts/gate/scanner-exclusions.json` are byte-for-byte as approved 
 which the C15 gate reports as such). The temporary route ends when the owner approves the re-issues
 (`docs/SUPPLY_CHAIN_MAINTENANCE_2026-09.md` §8 lists exactly what remains); until then the gate is red on
 the pending records and no merge is possible, which is the process working as written.
+
+---
+
+**Return completed (recorded 2026-09-23; the approval above is untouched).** The owner approved the six
+re-issues on 2026-09-23 — "I approve the six prepared #57 reissues—SCX-0002, 0003, 0004, 0005, 0010 and
+0011—with their existing scope, classifications and 2026-11-05 expiry unchanged. Record the actual approval
+date." — and they are in force from that day in `scripts/gate/scanner-exclusions.json` `records`, each in
+place of its 2026-09-10 version (listed by identity under `superseded_records`; full text in git history and
+in `docs/SCANNER_DISPOSITIONS.md` §§3–3.8), the dispositions document re-bound by digest, the C15 trace
+fixture and `real-image-results.json` re-recorded from a real run with the pinned scanners against the
+official indexes. The temporary derived-image route named by this approval has therefore ended: both
+services are on verified official images, through the digest/disposition/release process, by no automatic
+re-pin and with no retained evidence deleted (the derived images stay published; their receipts remain).
+Upstream monitoring stays at its cadence with its purpose updated once more — the configured official pin
+passes, a NEWER compatible official build fails to trigger the governed re-pin, an indeterminate check fails
+visibly (`docs/SUPPLY_CHAIN_MAINTENANCE_2026-09.md` §8.4). The governed recreation of the live containers onto
+the official images remains a separate recorded operation under `docs/ops/BACKUP_RESTORE.md`.
