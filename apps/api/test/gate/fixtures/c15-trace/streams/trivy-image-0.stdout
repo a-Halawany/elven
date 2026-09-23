@@ -3,169 +3,157 @@
   "Trivy": {
     "Version": "0.73.0"
   },
-  "ReportID": "01a08c53-42a9-72d6-b2ba-e05f72ce8670",
-  "CreatedAt": "2026-09-10T20:17:41.929188+03:00",
-  "ArtifactID": "sha256:502d4724830925f62a28344107beb192eb251106f43764499b67b6ea3e211ae9",
-  "ArtifactName": "ghcr.io/a-halawany/elven/postgres@sha256:bc90ce6bc094fae53df8d01b23e6c08160c7e7064f4c351fd3cff324aefcda7a",
+  "ReportID": "01a0ce5c-804a-74be-8e7b-bd4a56dbca30",
+  "CreatedAt": "2026-09-23T16:02:43.786312+03:00",
+  "ArtifactID": "sha256:eebe4beef1b845fc1ab00960b608a578065cf757a2c93706c2466f80cd5e2133",
+  "ArtifactName": "postgres@sha256:d8703cd7fba306b9fec9268ecedfa8a966846c053036a60e3635791957eb2f66",
   "ArtifactType": "container_image",
   "Metadata": {
-    "Size": 312942592,
+    "Size": 306643456,
     "OS": {
       "Family": "alpine",
-      "Name": "3.24.1"
+      "Name": "3.24.2"
     },
-    "ImageID": "sha256:7151624d5f1c2a18deb402cb78cd361ec5e66cb5c796636e567eeafe8035c2b3",
+    "ImageID": "sha256:c293117fcecda7344b5480222e813b9f673d7abd69b1dd95eff239b768b04f59",
     "DiffIDs": [
-      "sha256:34884abbe92863fce933ed7c39c0e045631af0ed86d5cc0dfbdf9fdca426ce3c",
-      "sha256:b0efa1a0f321b1ea76da290fc0185c6b5d68f6f7f9e6ab7a0a69795714997cf4",
-      "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854",
-      "sha256:ab2f5df74059b3552268af9d38ef21a588e756e376175b63113a9c3b6ed54f56",
-      "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8",
-      "sha256:9642acdcbdf21470a2e37f67e9fdf9de21b8a9c00ea4f90b439697b5a497816f",
-      "sha256:3f9ba2ab413c4086a9efcd0ef8cde0253d34244819ed777553a512fe0574210b",
-      "sha256:1c6f9164d0ab2319422d20fd632cb6d45d207255b40818938fd5c2811cd5f9e5",
-      "sha256:9ab41b380d0135836c2cc5dfec98bc2f191fd207c7e4b828cf27d80e2788c2eb",
-      "sha256:1e46f97e97fde2677ad4974bc19521c01a5e580487f528e3e114722f7c7ef855"
+      "sha256:74d97c428c51a828f9051a7a40a53ff1fc99e54fc30323ce36760701b0b7f711",
+      "sha256:0c215ed2e2d3befa88ee4967365c3a0dafd92551ea50ce2632cd5c3e54de80df",
+      "sha256:afaa93afde1c6674beeb827cf0214759e7d6be6527ea301ac23c45883ccafab8",
+      "sha256:64da5ceddd11db95af72f22788a20d9167a14a49bcd786ea54e33f152824c426",
+      "sha256:c098e77d88f2829ea186b1b2e2f40d5858f19c09e9726fce61c38febe33c65af",
+      "sha256:139076bf0b4422f3219cb0cbae85dde24dd97ae0ef077036324265fa8e5e5a8d",
+      "sha256:68240e981e1a68580381069bf47f0b9b307f0c5449112cccdb24900412ef9cd0",
+      "sha256:0317a57309e527ae290973cc0c0c7977255d84dd00a9f3c8c6c7daf0c396e76c",
+      "sha256:66cdd92492be99d2bead50be69cdfa33cb789a19f69bb3038554b567b3e18636"
     ],
     "RepoDigests": [
-      "ghcr.io/a-halawany/elven/postgres@sha256:bc90ce6bc094fae53df8d01b23e6c08160c7e7064f4c351fd3cff324aefcda7a"
+      "postgres@sha256:d8703cd7fba306b9fec9268ecedfa8a966846c053036a60e3635791957eb2f66"
     ],
-    "Reference": "ghcr.io/a-halawany/elven/postgres@sha256:bc90ce6bc094fae53df8d01b23e6c08160c7e7064f4c351fd3cff324aefcda7a",
+    "Reference": "postgres@sha256:d8703cd7fba306b9fec9268ecedfa8a966846c053036a60e3635791957eb2f66",
     "ImageConfig": {
       "architecture": "amd64",
-      "created": "2026-09-10T16:26:59.796292285Z",
+      "created": "2026-09-17T21:29:50.207676277Z",
       "history": [
         {
-          "created": "2026-06-16T00:01:29Z",
-          "created_by": "ADD alpine-minirootfs-3.24.1-x86_64.tar.gz / # buildkit",
+          "created": "2026-09-17T20:37:20Z",
+          "created_by": "ADD alpine-minirootfs-3.24.2-x86_64.tar.gz / # buildkit",
           "comment": "buildkit.dockerfile.v0"
         },
         {
-          "created": "2026-06-16T00:01:29Z",
+          "created": "2026-09-17T20:37:20Z",
           "created_by": "CMD [\"/bin/sh\"]",
           "comment": "buildkit.dockerfile.v0",
           "empty_layer": true
         },
         {
-          "created": "2026-07-07T17:44:01Z",
+          "created": "2026-09-17T21:27:11Z",
           "created_by": "RUN /bin/sh -c set -eux; \taddgroup -g 70 -S postgres; \tadduser -u 70 -S -D -G postgres -H -h /var/lib/postgresql -s /bin/sh postgres; \tinstall --verbose --directory --owner postgres --group postgres --mode 1777 /var/lib/postgresql # buildkit",
           "comment": "buildkit.dockerfile.v0"
         },
         {
-          "created": "2026-07-07T17:44:04Z",
+          "created": "2026-09-17T21:27:13Z",
           "created_by": "ENV GOSU_VERSION=1.19",
           "comment": "buildkit.dockerfile.v0",
           "empty_layer": true
         },
         {
-          "created": "2026-07-07T17:44:04Z",
+          "created": "2026-09-17T21:27:13Z",
           "created_by": "RUN /bin/sh -c set -eux; \t\tapk add --no-cache --virtual .gosu-deps \t\tca-certificates \t\tdpkg \t\tgnupg \t; \t\tdpkgArch=\"$(dpkg --print-architecture | awk -F- '{ print $NF }')\"; \twget -O /usr/local/bin/gosu \"https://github.com/tianon/gosu/releases/download/$GOSU_VERSION/gosu-$dpkgArch\"; \twget -O /usr/local/bin/gosu.asc \"https://github.com/tianon/gosu/releases/download/$GOSU_VERSION/gosu-$dpkgArch.asc\"; \t\texport GNUPGHOME=\"$(mktemp -d)\"; \tgpg --batch --keyserver hkps://keys.openpgp.org --recv-keys B42F6819007F00F88E364FD4036A9C25BF357DD4; \tgpg --batch --verify /usr/local/bin/gosu.asc /usr/local/bin/gosu; \tgpgconf --kill all; \trm -rf \"$GNUPGHOME\" /usr/local/bin/gosu.asc; \t\tapk del --no-network .gosu-deps; \t\tchmod +x /usr/local/bin/gosu; \tgosu --version; \tgosu nobody true # buildkit",
           "comment": "buildkit.dockerfile.v0"
         },
         {
-          "created": "2026-07-07T17:44:04Z",
+          "created": "2026-09-17T21:27:13Z",
           "created_by": "ENV LANG=en_US.utf8",
           "comment": "buildkit.dockerfile.v0",
           "empty_layer": true
         },
         {
-          "created": "2026-07-07T17:44:04Z",
+          "created": "2026-09-17T21:27:14Z",
           "created_by": "RUN /bin/sh -c mkdir /docker-entrypoint-initdb.d # buildkit",
           "comment": "buildkit.dockerfile.v0"
         },
         {
-          "created": "2026-07-07T17:44:04Z",
+          "created": "2026-09-17T21:27:14Z",
           "created_by": "ENV PG_MAJOR=18",
           "comment": "buildkit.dockerfile.v0",
           "empty_layer": true
         },
         {
-          "created": "2026-07-07T17:44:04Z",
-          "created_by": "ENV PG_VERSION=18.4",
+          "created": "2026-09-17T21:27:14Z",
+          "created_by": "ENV PG_VERSION=18.6",
           "comment": "buildkit.dockerfile.v0",
           "empty_layer": true
         },
         {
-          "created": "2026-07-07T17:44:04Z",
-          "created_by": "ENV PG_SHA256=81a81ec695fb0c7901407defaa1d2f7973617154cf27ba74e3a7ab8e64436094",
+          "created": "2026-09-17T21:27:14Z",
+          "created_by": "ENV PG_SHA256=555610c24d53e4316da5b7d3fc25c279d96856d5e0e23ee308c328c5fa881d9f",
           "comment": "buildkit.dockerfile.v0",
           "empty_layer": true
         },
         {
-          "created": "2026-07-07T17:44:04Z",
+          "created": "2026-09-17T21:27:14Z",
           "created_by": "ENV DOCKER_PG_LLVM_DEPS=llvm21-dev \t\tclang21",
           "comment": "buildkit.dockerfile.v0",
           "empty_layer": true
         },
         {
-          "created": "2026-07-07T17:46:12Z",
+          "created": "2026-09-17T21:29:49Z",
           "created_by": "RUN /bin/sh -c set -eux; \t\twget -O postgresql.tar.bz2 \"https://ftp.postgresql.org/pub/source/v$PG_VERSION/postgresql-$PG_VERSION.tar.bz2\"; \techo \"$PG_SHA256 *postgresql.tar.bz2\" | sha256sum -c -; \tmkdir -p /usr/src/postgresql; \ttar \t\t--extract \t\t--file postgresql.tar.bz2 \t\t--directory /usr/src/postgresql \t\t--strip-components 1 \t; \trm postgresql.tar.bz2; \t\tapk add --no-cache --virtual .build-deps \t\t$DOCKER_PG_LLVM_DEPS \t\tbison \t\tcoreutils \t\tdpkg-dev dpkg \t\tflex \t\tg++ \t\tgcc \t\tkrb5-dev \t\tlibc-dev \t\tlibedit-dev \t\tlibxml2-dev \t\tlibxslt-dev \t\tlinux-headers \t\tmake \t\topenldap-dev \t\topenssl-dev \t\tperl-dev \t\tperl-ipc-run \t\tperl-utils \t\tpython3-dev \t\ttcl-dev \t\tutil-linux-dev \t\tzlib-dev \t\ticu-dev \t\tlz4-dev \t\tzstd-dev \t\tcurl-dev \t\tliburing-dev \t; \t\tcd /usr/src/postgresql; \tawk '$1 == \"#define\" \u0026\u0026 $2 == \"DEFAULT_PGSOCKET_DIR\" \u0026\u0026 $3 == \"\\\"/tmp\\\"\" { $3 = \"\\\"/var/run/postgresql\\\"\"; print; next } { print }' src/include/pg_config_manual.h \u003e src/include/pg_config_manual.h.new; \tgrep '/var/run/postgresql' src/include/pg_config_manual.h.new; \tmv src/include/pg_config_manual.h.new src/include/pg_config_manual.h; \tgnuArch=\"$(dpkg-architecture --query DEB_BUILD_GNU_TYPE)\"; \t\texport LLVM_CONFIG=\"/usr/lib/llvm21/bin/llvm-config\"; \texport CLANG=clang-21; \t\t./configure \t\t--enable-option-checking=fatal \t\t--build=\"$gnuArch\" \t\t--enable-integer-datetimes \t\t--enable-tap-tests \t\t--disable-rpath \t\t--with-uuid=e2fs \t\t--with-pgport=5432 \t\t--with-system-tzdata=/usr/share/zoneinfo \t\t--prefix=/usr/local \t\t--with-includes=/usr/local/include \t\t--with-libraries=/usr/local/lib \t\t--with-gssapi \t\t--with-icu \t\t--with-ldap \t\t--with-libcurl \t\t--with-liburing \t\t--with-libxml \t\t--with-libxslt \t\t--with-llvm \t\t--with-lz4 \t\t--with-openssl \t\t--with-perl \t\t--with-python \t\t--with-tcl \t\t--with-zstd \t; \tmake -j \"$(nproc)\" world-bin; \tmake install-world-bin; \tmake -C contrib install; \t\trunDeps=\"$( \t\tscanelf --needed --nobanner --format '%n#p' --recursive /usr/local \t\t\t| tr ',' '\\n' \t\t\t| sort -u \t\t\t| awk 'system(\"[ -e /usr/local/lib/\" $1 \" ]\") == 0 { next } { print \"so:\" $1 }' \t\t\t| grep -v -e perl -e python -e tcl \t)\"; \tapk add --no-cache --virtual .postgresql-rundeps \t\t$runDeps \t\tbash \t\ttzdata \t\tzstd \t\ticu-data-full \t\t$([ \"$(apk --print-arch)\" != 'ppc64le' ] \u0026\u0026 echo 'nss_wrapper') \t; \tapk del --no-network .build-deps; \tcd /; \trm -rf \t\t/usr/src/postgresql \t\t/usr/local/share/doc \t\t/usr/local/share/man \t; \t\tpostgres --version # buildkit",
           "comment": "buildkit.dockerfile.v0"
         },
         {
-          "created": "2026-07-07T17:46:12Z",
+          "created": "2026-09-17T21:29:49Z",
           "created_by": "RUN /bin/sh -c set -eux; \tcp -v /usr/local/share/postgresql/postgresql.conf.sample /usr/local/share/postgresql/postgresql.conf.sample.orig; \tsed -ri \"s!^#?(listen_addresses)\\s*=\\s*\\S+.*!\\1 = '*'!\" /usr/local/share/postgresql/postgresql.conf.sample; \tgrep -F \"listen_addresses = '*'\" /usr/local/share/postgresql/postgresql.conf.sample # buildkit",
           "comment": "buildkit.dockerfile.v0"
         },
         {
-          "created": "2026-07-07T17:46:12Z",
+          "created": "2026-09-17T21:29:50Z",
           "created_by": "RUN /bin/sh -c install --verbose --directory --owner postgres --group postgres --mode 3777 /var/run/postgresql # buildkit",
           "comment": "buildkit.dockerfile.v0"
         },
         {
-          "created": "2026-07-07T17:46:12Z",
+          "created": "2026-09-17T21:29:50Z",
           "created_by": "ENV PGDATA=/var/lib/postgresql/18/docker",
           "comment": "buildkit.dockerfile.v0",
           "empty_layer": true
         },
         {
-          "created": "2026-07-07T17:46:12Z",
+          "created": "2026-09-17T21:29:50Z",
           "created_by": "VOLUME [/var/lib/postgresql]",
           "comment": "buildkit.dockerfile.v0",
           "empty_layer": true
         },
         {
-          "created": "2026-07-07T17:46:12Z",
+          "created": "2026-09-17T21:29:50Z",
           "created_by": "COPY docker-entrypoint.sh docker-ensure-initdb.sh /usr/local/bin/ # buildkit",
           "comment": "buildkit.dockerfile.v0"
         },
         {
-          "created": "2026-07-07T17:46:12Z",
+          "created": "2026-09-17T21:29:50Z",
           "created_by": "RUN /bin/sh -c ln -sT docker-ensure-initdb.sh /usr/local/bin/docker-enforce-initdb.sh # buildkit",
           "comment": "buildkit.dockerfile.v0"
         },
         {
-          "created": "2026-07-07T17:46:12Z",
+          "created": "2026-09-17T21:29:50Z",
           "created_by": "ENTRYPOINT [\"docker-entrypoint.sh\"]",
           "comment": "buildkit.dockerfile.v0",
           "empty_layer": true
         },
         {
-          "created": "2026-07-07T17:46:12Z",
+          "created": "2026-09-17T21:29:50Z",
           "created_by": "STOPSIGNAL SIGINT",
           "comment": "buildkit.dockerfile.v0",
           "empty_layer": true
         },
         {
-          "created": "2026-07-07T17:46:12Z",
+          "created": "2026-09-17T21:29:50Z",
           "created_by": "EXPOSE map[5432/tcp:{}]",
           "comment": "buildkit.dockerfile.v0",
           "empty_layer": true
         },
         {
-          "created": "2026-07-07T17:46:12Z",
+          "created": "2026-09-17T21:29:50Z",
           "created_by": "CMD [\"postgres\"]",
-          "comment": "buildkit.dockerfile.v0",
-          "empty_layer": true
-        },
-        {
-          "created": "2026-09-10T16:26:59Z",
-          "created_by": "RUN /bin/sh -c apk add --no-cache libuuid=2.42.3-r1 libcrypto3=3.5.8-r0 libssl3=3.5.8-r0 c-ares=1.34.8-r0  \u0026\u0026 apk list -I libuuid    | grep -q '^libuuid-2.42.3-r1 '  \u0026\u0026 apk list -I libcrypto3 | grep -q '^libcrypto3-3.5.8-r0 '  \u0026\u0026 apk list -I libssl3    | grep -q '^libssl3-3.5.8-r0 '  \u0026\u0026 apk list -I c-ares     | grep -q '^c-ares-1.34.8-r0 ' # buildkit",
-          "comment": "buildkit.dockerfile.v0"
-        },
-        {
-          "created": "2026-09-10T16:26:59Z",
-          "created_by": "USER postgres",
           "comment": "buildkit.dockerfile.v0",
           "empty_layer": true
         }
@@ -174,16 +162,15 @@
       "rootfs": {
         "type": "layers",
         "diff_ids": [
-          "sha256:34884abbe92863fce933ed7c39c0e045631af0ed86d5cc0dfbdf9fdca426ce3c",
-          "sha256:b0efa1a0f321b1ea76da290fc0185c6b5d68f6f7f9e6ab7a0a69795714997cf4",
-          "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854",
-          "sha256:ab2f5df74059b3552268af9d38ef21a588e756e376175b63113a9c3b6ed54f56",
-          "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8",
-          "sha256:9642acdcbdf21470a2e37f67e9fdf9de21b8a9c00ea4f90b439697b5a497816f",
-          "sha256:3f9ba2ab413c4086a9efcd0ef8cde0253d34244819ed777553a512fe0574210b",
-          "sha256:1c6f9164d0ab2319422d20fd632cb6d45d207255b40818938fd5c2811cd5f9e5",
-          "sha256:9ab41b380d0135836c2cc5dfec98bc2f191fd207c7e4b828cf27d80e2788c2eb",
-          "sha256:1e46f97e97fde2677ad4974bc19521c01a5e580487f528e3e114722f7c7ef855"
+          "sha256:74d97c428c51a828f9051a7a40a53ff1fc99e54fc30323ce36760701b0b7f711",
+          "sha256:0c215ed2e2d3befa88ee4967365c3a0dafd92551ea50ce2632cd5c3e54de80df",
+          "sha256:afaa93afde1c6674beeb827cf0214759e7d6be6527ea301ac23c45883ccafab8",
+          "sha256:64da5ceddd11db95af72f22788a20d9167a14a49bcd786ea54e33f152824c426",
+          "sha256:c098e77d88f2829ea186b1b2e2f40d5858f19c09e9726fce61c38febe33c65af",
+          "sha256:139076bf0b4422f3219cb0cbae85dde24dd97ae0ef077036324265fa8e5e5a8d",
+          "sha256:68240e981e1a68580381069bf47f0b9b307f0c5449112cccdb24900412ef9cd0",
+          "sha256:0317a57309e527ae290973cc0c0c7977255d84dd00a9f3c8c6c7daf0c396e76c",
+          "sha256:66cdd92492be99d2bead50be69cdfa33cb789a19f69bb3038554b567b3e18636"
         ]
       },
       "config": {
@@ -198,17 +185,11 @@
           "GOSU_VERSION=1.19",
           "LANG=en_US.utf8",
           "PG_MAJOR=18",
-          "PG_VERSION=18.4",
-          "PG_SHA256=81a81ec695fb0c7901407defaa1d2f7973617154cf27ba74e3a7ab8e64436094",
+          "PG_VERSION=18.6",
+          "PG_SHA256=555610c24d53e4316da5b7d3fc25c279d96856d5e0e23ee308c328c5fa881d9f",
           "DOCKER_PG_LLVM_DEPS=llvm21-dev \t\tclang21",
           "PGDATA=/var/lib/postgresql/18/docker"
         ],
-        "Labels": {
-          "org.opencontainers.image.description": "The Eye TEMPORARY derived service image (util-linux/OpenSSL/c-ares maintenance over the pinned upstream digest); recipe infra/images/candidates/v2/postgres-18-alpine.Dockerfile",
-          "org.opencontainers.image.revision": "59a245938f88ad9d3abb1a0518c69645eb9c06c7",
-          "org.opencontainers.image.source": "https://github.com/a-Halawany/elven"
-        },
-        "User": "postgres",
         "Volumes": {
           "/var/lib/postgresql": {}
         },
@@ -221,61 +202,57 @@
     },
     "Layers": [
       {
-        "Size": 8697856,
-        "DiffID": "sha256:34884abbe92863fce933ed7c39c0e045631af0ed86d5cc0dfbdf9fdca426ce3c"
+        "Size": 8704000,
+        "DiffID": "sha256:74d97c428c51a828f9051a7a40a53ff1fc99e54fc30323ce36760701b0b7f711"
       },
       {
         "Size": 11264,
-        "DiffID": "sha256:b0efa1a0f321b1ea76da290fc0185c6b5d68f6f7f9e6ab7a0a69795714997cf4"
+        "DiffID": "sha256:0c215ed2e2d3befa88ee4967365c3a0dafd92551ea50ce2632cd5c3e54de80df"
       },
       {
-        "Size": 1988096,
-        "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
+        "Size": 1990144,
+        "DiffID": "sha256:afaa93afde1c6674beeb827cf0214759e7d6be6527ea301ac23c45883ccafab8"
       },
       {
         "Size": 1536,
-        "DiffID": "sha256:ab2f5df74059b3552268af9d38ef21a588e756e376175b63113a9c3b6ed54f56"
+        "DiffID": "sha256:64da5ceddd11db95af72f22788a20d9167a14a49bcd786ea54e33f152824c426"
       },
       {
-        "Size": 295705600,
-        "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
+        "Size": 295840768,
+        "DiffID": "sha256:c098e77d88f2829ea186b1b2e2f40d5858f19c09e9726fce61c38febe33c65af"
       },
       {
         "Size": 69632,
-        "DiffID": "sha256:9642acdcbdf21470a2e37f67e9fdf9de21b8a9c00ea4f90b439697b5a497816f"
+        "DiffID": "sha256:139076bf0b4422f3219cb0cbae85dde24dd97ae0ef077036324265fa8e5e5a8d"
       },
       {
         "Size": 2048,
-        "DiffID": "sha256:3f9ba2ab413c4086a9efcd0ef8cde0253d34244819ed777553a512fe0574210b"
+        "DiffID": "sha256:68240e981e1a68580381069bf47f0b9b307f0c5449112cccdb24900412ef9cd0"
       },
       {
         "Size": 20992,
-        "DiffID": "sha256:1c6f9164d0ab2319422d20fd632cb6d45d207255b40818938fd5c2811cd5f9e5"
+        "DiffID": "sha256:0317a57309e527ae290973cc0c0c7977255d84dd00a9f3c8c6c7daf0c396e76c"
       },
       {
         "Size": 3072,
-        "DiffID": "sha256:9ab41b380d0135836c2cc5dfec98bc2f191fd207c7e4b828cf27d80e2788c2eb"
-      },
-      {
-        "Size": 6442496,
-        "DiffID": "sha256:1e46f97e97fde2677ad4974bc19521c01a5e580487f528e3e114722f7c7ef855"
+        "DiffID": "sha256:66cdd92492be99d2bead50be69cdfa33cb789a19f69bb3038554b567b3e18636"
       }
     ]
   },
   "Results": [
     {
-      "Target": "ghcr.io/a-halawany/elven/postgres@sha256:bc90ce6bc094fae53df8d01b23e6c08160c7e7064f4c351fd3cff324aefcda7a (alpine 3.24.1)",
+      "Target": "postgres@sha256:d8703cd7fba306b9fec9268ecedfa8a966846c053036a60e3635791957eb2f66 (alpine 3.24.2)",
       "Class": "os-pkgs",
       "Type": "alpine",
       "Packages": [
         {
-          "ID": ".postgresql-rundeps@20260707.174611",
+          "ID": ".postgresql-rundeps@20260917.212948",
           "Name": ".postgresql-rundeps",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/.postgresql-rundeps@20260707.174611?arch=noarch\u0026distro=3.24.1",
-            "UID": "8577a370b07274a0"
+            "PURL": "pkg:apk/alpine/.postgresql-rundeps@20260917.212948?arch=noarch\u0026distro=3.24.2",
+            "UID": "9e308ab2cbc698ae"
           },
-          "Version": "20260707.174611",
+          "Version": "20260917.212948",
           "Arch": "noarch",
           "DependsOn": [
             "bash@5.3.9-r1",
@@ -283,10 +260,10 @@
             "icu-libs@78.1-r0",
             "krb5-libs@1.22.2-r1",
             "libcrypto3@3.5.8-r0",
-            "libcurl@8.21.0-r0",
+            "libcurl@8.22.0-r0",
             "libedit@20260508.3.1-r1",
             "libgcc@15.2.0-r5",
-            "libldap@2.6.13-r0",
+            "libldap@2.6.14-r0",
             "libssl3@3.5.8-r0",
             "libstdc++@15.2.0-r5",
             "liburing@2.14-r0",
@@ -297,22 +274,22 @@
             "lz4-libs@1.10.0-r1",
             "musl@1.2.6-r2",
             "nss_wrapper@1.1.12-r1",
-            "tzdata@2026b-r0",
+            "tzdata@2026d-r0",
             "zlib@1.3.2-r0",
             "zstd-libs@1.5.7-r2",
             "zstd@1.5.7-r2"
           ],
           "Layer": {
-            "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
+            "DiffID": "sha256:c098e77d88f2829ea186b1b2e2f40d5858f19c09e9726fce61c38febe33c65af"
           },
-          "Digest": "sha1:291002379b42ee6ebf3bf78dfd25ccd044a86084",
+          "Digest": "sha1:2902b832672876a41e8b9046f658e9d5809879ff",
           "AnalyzedBy": "apk"
         },
         {
           "ID": "alpine-baselayout@3.7.2-r1",
           "Name": "alpine-baselayout",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/alpine-baselayout@3.7.2-r1?arch=x86_64\u0026distro=3.24.1",
+            "PURL": "pkg:apk/alpine/alpine-baselayout@3.7.2-r1?arch=x86_64\u0026distro=3.24.2",
             "UID": "1b9c543300f8073e"
           },
           "Version": "3.7.2-r1",
@@ -328,7 +305,7 @@
             "busybox-binsh@1.37.0-r31"
           ],
           "Layer": {
-            "DiffID": "sha256:34884abbe92863fce933ed7c39c0e045631af0ed86d5cc0dfbdf9fdca426ce3c"
+            "DiffID": "sha256:74d97c428c51a828f9051a7a40a53ff1fc99e54fc30323ce36760701b0b7f711"
           },
           "Digest": "sha1:f0fcfdc2f4da058af6473bc45c4eab62916225b2",
           "InstalledFiles": [
@@ -352,7 +329,7 @@
           "ID": "alpine-baselayout-data@3.7.2-r1",
           "Name": "alpine-baselayout-data",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/alpine-baselayout-data@3.7.2-r1?arch=x86_64\u0026distro=3.24.1",
+            "PURL": "pkg:apk/alpine/alpine-baselayout-data@3.7.2-r1?arch=x86_64\u0026distro=3.24.2",
             "UID": "fcc3cd90122d8aa7"
           },
           "Version": "3.7.2-r1",
@@ -364,7 +341,7 @@
           ],
           "Maintainer": "Natanael Copa \u003cncopa@alpinelinux.org\u003e",
           "Layer": {
-            "DiffID": "sha256:34884abbe92863fce933ed7c39c0e045631af0ed86d5cc0dfbdf9fdca426ce3c"
+            "DiffID": "sha256:74d97c428c51a828f9051a7a40a53ff1fc99e54fc30323ce36760701b0b7f711"
           },
           "Digest": "sha1:c6f9bded17d844b6f1b0bb5766d2c35c0d5c8508",
           "InstalledFiles": [
@@ -390,7 +367,7 @@
           "ID": "alpine-keys@2.6-r0",
           "Name": "alpine-keys",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/alpine-keys@2.6-r0?arch=x86_64\u0026distro=3.24.1",
+            "PURL": "pkg:apk/alpine/alpine-keys@2.6-r0?arch=x86_64\u0026distro=3.24.2",
             "UID": "cb1f6c8fa74713e0"
           },
           "Version": "2.6-r0",
@@ -402,7 +379,7 @@
           ],
           "Maintainer": "Natanael Copa \u003cncopa@alpinelinux.org\u003e",
           "Layer": {
-            "DiffID": "sha256:34884abbe92863fce933ed7c39c0e045631af0ed86d5cc0dfbdf9fdca426ce3c"
+            "DiffID": "sha256:74d97c428c51a828f9051a7a40a53ff1fc99e54fc30323ce36760701b0b7f711"
           },
           "Digest": "sha1:d8d6b80e53c059a77e4915da78ba964f3ffea240",
           "InstalledFiles": [
@@ -451,16 +428,16 @@
           "AnalyzedBy": "apk"
         },
         {
-          "ID": "alpine-release@3.24.1-r0",
+          "ID": "alpine-release@3.24.2-r0",
           "Name": "alpine-release",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/alpine-release@3.24.1-r0?arch=x86_64\u0026distro=3.24.1",
-            "UID": "6cfad6f36e1f31aa"
+            "PURL": "pkg:apk/alpine/alpine-release@3.24.2-r0?arch=x86_64\u0026distro=3.24.2",
+            "UID": "c8c46806ee8e6495"
           },
-          "Version": "3.24.1-r0",
+          "Version": "3.24.2-r0",
           "Arch": "x86_64",
           "SrcName": "alpine-base",
-          "SrcVersion": "3.24.1-r0",
+          "SrcVersion": "3.24.2-r0",
           "Licenses": [
             "MIT"
           ],
@@ -469,9 +446,9 @@
             "alpine-keys@2.6-r0"
           ],
           "Layer": {
-            "DiffID": "sha256:34884abbe92863fce933ed7c39c0e045631af0ed86d5cc0dfbdf9fdca426ce3c"
+            "DiffID": "sha256:74d97c428c51a828f9051a7a40a53ff1fc99e54fc30323ce36760701b0b7f711"
           },
-          "Digest": "sha1:bc6912a25cdc7733e0035ed509eceaa4026946e3",
+          "Digest": "sha1:6fd1be469ca235e9c62f1b73fa3e5bffafdeb6b5",
           "InstalledFiles": [
             "etc/alpine-release",
             "etc/issue",
@@ -482,31 +459,31 @@
           "AnalyzedBy": "apk"
         },
         {
-          "ID": "apk-tools@3.0.6-r0",
+          "ID": "apk-tools@3.0.8-r0",
           "Name": "apk-tools",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/apk-tools@3.0.6-r0?arch=x86_64\u0026distro=3.24.1",
-            "UID": "cb2633c883b17a04"
+            "PURL": "pkg:apk/alpine/apk-tools@3.0.8-r0?arch=x86_64\u0026distro=3.24.2",
+            "UID": "b263128765588ada"
           },
-          "Version": "3.0.6-r0",
+          "Version": "3.0.8-r0",
           "Arch": "x86_64",
           "SrcName": "apk-tools",
-          "SrcVersion": "3.0.6-r0",
+          "SrcVersion": "3.0.8-r0",
           "Licenses": [
             "GPL-2.0-only"
           ],
           "Maintainer": "Natanael Copa \u003cncopa@alpinelinux.org\u003e",
           "DependsOn": [
-            "ca-certificates-bundle@20260611-r0",
-            "libapk@3.0.6-r0",
+            "ca-certificates-bundle@20260909-r0",
+            "libapk@3.0.8-r0",
             "libcrypto3@3.5.8-r0",
             "musl@1.2.6-r2",
             "zlib@1.3.2-r0"
           ],
           "Layer": {
-            "DiffID": "sha256:34884abbe92863fce933ed7c39c0e045631af0ed86d5cc0dfbdf9fdca426ce3c"
+            "DiffID": "sha256:74d97c428c51a828f9051a7a40a53ff1fc99e54fc30323ce36760701b0b7f711"
           },
-          "Digest": "sha1:043333589798a1f52e09ae63f026c6c8fa676d34",
+          "Digest": "sha1:786130a8f2d3ac69fc316118757b7e8151b8b8c3",
           "InstalledFiles": [
             "sbin/apk"
           ],
@@ -516,7 +493,7 @@
           "ID": "bash@5.3.9-r1",
           "Name": "bash",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/bash@5.3.9-r1?arch=x86_64\u0026distro=3.24.1",
+            "PURL": "pkg:apk/alpine/bash@5.3.9-r1?arch=x86_64\u0026distro=3.24.2",
             "UID": "89d1544dc9bae858"
           },
           "Version": "5.3.9-r1",
@@ -533,7 +510,7 @@
             "readline@8.3.3-r1"
           ],
           "Layer": {
-            "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
+            "DiffID": "sha256:c098e77d88f2829ea186b1b2e2f40d5858f19c09e9726fce61c38febe33c65af"
           },
           "Digest": "sha1:2ce9606f1c31438297b40df5875dbceb66afb675",
           "InstalledFiles": [
@@ -587,7 +564,7 @@
           "ID": "brotli-libs@1.2.0-r1",
           "Name": "brotli-libs",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/brotli-libs@1.2.0-r1?arch=x86_64\u0026distro=3.24.1",
+            "PURL": "pkg:apk/alpine/brotli-libs@1.2.0-r1?arch=x86_64\u0026distro=3.24.2",
             "UID": "34680ab8e4de744b"
           },
           "Version": "1.2.0-r1",
@@ -602,7 +579,7 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
+            "DiffID": "sha256:c098e77d88f2829ea186b1b2e2f40d5858f19c09e9726fce61c38febe33c65af"
           },
           "Digest": "sha1:82f881516c045f06f22d7dc0a83cc64ca554ef10",
           "InstalledFiles": [
@@ -619,7 +596,7 @@
           "ID": "busybox@1.37.0-r31",
           "Name": "busybox",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/busybox@1.37.0-r31?arch=x86_64\u0026distro=3.24.1",
+            "PURL": "pkg:apk/alpine/busybox@1.37.0-r31?arch=x86_64\u0026distro=3.24.2",
             "UID": "771020c43c8440bf"
           },
           "Version": "1.37.0-r31",
@@ -634,7 +611,7 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "DiffID": "sha256:34884abbe92863fce933ed7c39c0e045631af0ed86d5cc0dfbdf9fdca426ce3c"
+            "DiffID": "sha256:74d97c428c51a828f9051a7a40a53ff1fc99e54fc30323ce36760701b0b7f711"
           },
           "Digest": "sha1:b5405ebc02f7dd8be95b6265c54b243d5456ab8f",
           "InstalledFiles": [
@@ -652,7 +629,7 @@
           "ID": "busybox-binsh@1.37.0-r31",
           "Name": "busybox-binsh",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/busybox-binsh@1.37.0-r31?arch=x86_64\u0026distro=3.24.1",
+            "PURL": "pkg:apk/alpine/busybox-binsh@1.37.0-r31?arch=x86_64\u0026distro=3.24.2",
             "UID": "1ec8a3d5d2b63297"
           },
           "Version": "1.37.0-r31",
@@ -667,7 +644,7 @@
             "busybox@1.37.0-r31"
           ],
           "Layer": {
-            "DiffID": "sha256:34884abbe92863fce933ed7c39c0e045631af0ed86d5cc0dfbdf9fdca426ce3c"
+            "DiffID": "sha256:74d97c428c51a828f9051a7a40a53ff1fc99e54fc30323ce36760701b0b7f711"
           },
           "Digest": "sha1:5cbd14acc6f1804c5bac6c77dc2c492f010b0fc7",
           "InstalledFiles": [
@@ -679,7 +656,7 @@
           "ID": "c-ares@1.34.8-r0",
           "Name": "c-ares",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/c-ares@1.34.8-r0?arch=x86_64\u0026distro=3.24.1",
+            "PURL": "pkg:apk/alpine/c-ares@1.34.8-r0?arch=x86_64\u0026distro=3.24.2",
             "UID": "4f18515d5a0852d6"
           },
           "Version": "1.34.8-r0",
@@ -694,7 +671,7 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "DiffID": "sha256:1e46f97e97fde2677ad4974bc19521c01a5e580487f528e3e114722f7c7ef855"
+            "DiffID": "sha256:c098e77d88f2829ea186b1b2e2f40d5858f19c09e9726fce61c38febe33c65af"
           },
           "Digest": "sha1:640a28ff6245f701d464fba53a05b1bc657c37a7",
           "InstalledFiles": [
@@ -704,25 +681,25 @@
           "AnalyzedBy": "apk"
         },
         {
-          "ID": "ca-certificates-bundle@20260611-r0",
+          "ID": "ca-certificates-bundle@20260909-r0",
           "Name": "ca-certificates-bundle",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/ca-certificates-bundle@20260611-r0?arch=x86_64\u0026distro=3.24.1",
-            "UID": "20337c2ea28bef28"
+            "PURL": "pkg:apk/alpine/ca-certificates-bundle@20260909-r0?arch=x86_64\u0026distro=3.24.2",
+            "UID": "4769f08c913e6b6c"
           },
-          "Version": "20260611-r0",
+          "Version": "20260909-r0",
           "Arch": "x86_64",
           "SrcName": "ca-certificates",
-          "SrcVersion": "20260611-r0",
+          "SrcVersion": "20260909-r0",
           "Licenses": [
             "MPL-2.0",
             "MIT"
           ],
           "Maintainer": "Natanael Copa \u003cncopa@alpinelinux.org\u003e",
           "Layer": {
-            "DiffID": "sha256:34884abbe92863fce933ed7c39c0e045631af0ed86d5cc0dfbdf9fdca426ce3c"
+            "DiffID": "sha256:74d97c428c51a828f9051a7a40a53ff1fc99e54fc30323ce36760701b0b7f711"
           },
-          "Digest": "sha1:c9534a03750bdfae341f10969016090fc11febbd",
+          "Digest": "sha1:791237cee877988893a354b5f6c9c44f35d4edb9",
           "InstalledFiles": [
             "etc/ssl/cert.pem",
             "etc/ssl/certs/ca-certificates.crt",
@@ -735,7 +712,7 @@
           "ID": "gdbm@1.26-r0",
           "Name": "gdbm",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/gdbm@1.26-r0?arch=x86_64\u0026distro=3.24.1",
+            "PURL": "pkg:apk/alpine/gdbm@1.26-r0?arch=x86_64\u0026distro=3.24.2",
             "UID": "5eb1a3f86262ca77"
           },
           "Version": "1.26-r0",
@@ -750,7 +727,7 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
+            "DiffID": "sha256:c098e77d88f2829ea186b1b2e2f40d5858f19c09e9726fce61c38febe33c65af"
           },
           "Digest": "sha1:619493d8124fe49a8ee1d8f7a1372cf7e3977337",
           "InstalledFiles": [
@@ -765,7 +742,7 @@
           "ID": "icu-data-full@78.1-r0",
           "Name": "icu-data-full",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/icu-data-full@78.1-r0?arch=x86_64\u0026distro=3.24.1",
+            "PURL": "pkg:apk/alpine/icu-data-full@78.1-r0?arch=x86_64\u0026distro=3.24.2",
             "UID": "4fa30f43b2e5f036"
           },
           "Version": "78.1-r0",
@@ -777,7 +754,7 @@
           ],
           "Maintainer": "Natanael Copa \u003cncopa@alpinelinux.org\u003e",
           "Layer": {
-            "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
+            "DiffID": "sha256:c098e77d88f2829ea186b1b2e2f40d5858f19c09e9726fce61c38febe33c65af"
           },
           "Digest": "sha1:1a2db5e6bc16c62c85c29cfc8897570f9051cf14",
           "InstalledFiles": [
@@ -789,7 +766,7 @@
           "ID": "icu-libs@78.1-r0",
           "Name": "icu-libs",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/icu-libs@78.1-r0?arch=x86_64\u0026distro=3.24.1",
+            "PURL": "pkg:apk/alpine/icu-libs@78.1-r0?arch=x86_64\u0026distro=3.24.2",
             "UID": "66c4aa79b293e4ff"
           },
           "Version": "78.1-r0",
@@ -807,7 +784,7 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
+            "DiffID": "sha256:c098e77d88f2829ea186b1b2e2f40d5858f19c09e9726fce61c38febe33c65af"
           },
           "Digest": "sha1:46bd3617f6d112f035d806d24c5cf8ea6e597f50",
           "InstalledFiles": [
@@ -826,7 +803,7 @@
           "ID": "keyutils-libs@1.6.3-r4",
           "Name": "keyutils-libs",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/keyutils-libs@1.6.3-r4?arch=x86_64\u0026distro=3.24.1",
+            "PURL": "pkg:apk/alpine/keyutils-libs@1.6.3-r4?arch=x86_64\u0026distro=3.24.2",
             "UID": "a1a29120eb342032"
           },
           "Version": "1.6.3-r4",
@@ -842,7 +819,7 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
+            "DiffID": "sha256:c098e77d88f2829ea186b1b2e2f40d5858f19c09e9726fce61c38febe33c65af"
           },
           "Digest": "sha1:b7331c96f077fc3522ee4361a441d1097204cd90",
           "InstalledFiles": [
@@ -855,7 +832,7 @@
           "ID": "krb5-conf@1.0-r2",
           "Name": "krb5-conf",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/krb5-conf@1.0-r2?arch=x86_64\u0026distro=3.24.1",
+            "PURL": "pkg:apk/alpine/krb5-conf@1.0-r2?arch=x86_64\u0026distro=3.24.2",
             "UID": "e7cf94ba8b6dbc33"
           },
           "Version": "1.0-r2",
@@ -867,7 +844,7 @@
           ],
           "Maintainer": "Natanael Copa \u003cncopa@alpinelinux.org\u003e",
           "Layer": {
-            "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
+            "DiffID": "sha256:c098e77d88f2829ea186b1b2e2f40d5858f19c09e9726fce61c38febe33c65af"
           },
           "Digest": "sha1:40a11e0690a59e110367b62a80661024e9942a2d",
           "InstalledFiles": [
@@ -879,7 +856,7 @@
           "ID": "krb5-libs@1.22.2-r1",
           "Name": "krb5-libs",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/krb5-libs@1.22.2-r1?arch=x86_64\u0026distro=3.24.1",
+            "PURL": "pkg:apk/alpine/krb5-libs@1.22.2-r1?arch=x86_64\u0026distro=3.24.2",
             "UID": "958f8b4a4f087dac"
           },
           "Version": "1.22.2-r1",
@@ -900,7 +877,7 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
+            "DiffID": "sha256:c098e77d88f2829ea186b1b2e2f40d5858f19c09e9726fce61c38febe33c65af"
           },
           "Digest": "sha1:ef02346e21b817ff379e4601e5b1fc9760e5e31a",
           "InstalledFiles": [
@@ -931,16 +908,16 @@
           "AnalyzedBy": "apk"
         },
         {
-          "ID": "libapk@3.0.6-r0",
+          "ID": "libapk@3.0.8-r0",
           "Name": "libapk",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/libapk@3.0.6-r0?arch=x86_64\u0026distro=3.24.1",
-            "UID": "a35b8b9b3219513a"
+            "PURL": "pkg:apk/alpine/libapk@3.0.8-r0?arch=x86_64\u0026distro=3.24.2",
+            "UID": "3bc45fb01b4ba719"
           },
-          "Version": "3.0.6-r0",
+          "Version": "3.0.8-r0",
           "Arch": "x86_64",
           "SrcName": "apk-tools",
-          "SrcVersion": "3.0.6-r0",
+          "SrcVersion": "3.0.8-r0",
           "Licenses": [
             "GPL-2.0-only"
           ],
@@ -952,9 +929,9 @@
             "zlib@1.3.2-r0"
           ],
           "Layer": {
-            "DiffID": "sha256:34884abbe92863fce933ed7c39c0e045631af0ed86d5cc0dfbdf9fdca426ce3c"
+            "DiffID": "sha256:74d97c428c51a828f9051a7a40a53ff1fc99e54fc30323ce36760701b0b7f711"
           },
-          "Digest": "sha1:523a8f58104589f74f743d501c81bf6517155378",
+          "Digest": "sha1:b93ce9573c1d0db3eea7ce32841ad0857abc4a54",
           "InstalledFiles": [
             "usr/lib/libapk.so.3.0.0"
           ],
@@ -964,7 +941,7 @@
           "ID": "libcom_err@1.47.4-r0",
           "Name": "libcom_err",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/libcom_err@1.47.4-r0?arch=x86_64\u0026distro=3.24.1",
+            "PURL": "pkg:apk/alpine/libcom_err@1.47.4-r0?arch=x86_64\u0026distro=3.24.2",
             "UID": "3fc35a3f66d192af"
           },
           "Version": "1.47.4-r0",
@@ -982,7 +959,7 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
+            "DiffID": "sha256:c098e77d88f2829ea186b1b2e2f40d5858f19c09e9726fce61c38febe33c65af"
           },
           "Digest": "sha1:4b9fb5899ea0b1c0cfbb2a2c5952704437d4ecef",
           "InstalledFiles": [
@@ -995,7 +972,7 @@
           "ID": "libcrypto3@3.5.8-r0",
           "Name": "libcrypto3",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/libcrypto3@3.5.8-r0?arch=x86_64\u0026distro=3.24.1",
+            "PURL": "pkg:apk/alpine/libcrypto3@3.5.8-r0?arch=x86_64\u0026distro=3.24.2",
             "UID": "4299bba2ba9c96aa"
           },
           "Version": "3.5.8-r0",
@@ -1010,7 +987,7 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "DiffID": "sha256:1e46f97e97fde2677ad4974bc19521c01a5e580487f528e3e114722f7c7ef855"
+            "DiffID": "sha256:74d97c428c51a828f9051a7a40a53ff1fc99e54fc30323ce36760701b0b7f711"
           },
           "Digest": "sha1:1b3b9fc0c136f4936932bcb2ec21499f0ae5dfd3",
           "InstalledFiles": [
@@ -1028,16 +1005,16 @@
           "AnalyzedBy": "apk"
         },
         {
-          "ID": "libcurl@8.21.0-r0",
+          "ID": "libcurl@8.22.0-r0",
           "Name": "libcurl",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/libcurl@8.21.0-r0?arch=x86_64\u0026distro=3.24.1",
-            "UID": "5a575d7b60ce866a"
+            "PURL": "pkg:apk/alpine/libcurl@8.22.0-r0?arch=x86_64\u0026distro=3.24.2",
+            "UID": "d21f8e8a5428fd15"
           },
-          "Version": "8.21.0-r0",
+          "Version": "8.22.0-r0",
           "Arch": "x86_64",
           "SrcName": "curl",
-          "SrcVersion": "8.21.0-r0",
+          "SrcVersion": "8.22.0-r0",
           "Licenses": [
             "curl"
           ],
@@ -1045,7 +1022,7 @@
           "DependsOn": [
             "brotli-libs@1.2.0-r1",
             "c-ares@1.34.8-r0",
-            "ca-certificates-bundle@20260611-r0",
+            "ca-certificates-bundle@20260909-r0",
             "libcrypto3@3.5.8-r0",
             "libidn2@2.3.8-r0",
             "libpsl@0.21.5-r3",
@@ -1056,9 +1033,9 @@
             "zstd-libs@1.5.7-r2"
           ],
           "Layer": {
-            "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
+            "DiffID": "sha256:c098e77d88f2829ea186b1b2e2f40d5858f19c09e9726fce61c38febe33c65af"
           },
-          "Digest": "sha1:c59133673bdba0fcc92c897d9de682c2301b5d7f",
+          "Digest": "sha1:7816006b6af2270ab6e7e85f74adb94c16bdc48b",
           "InstalledFiles": [
             "usr/lib/libcurl.so.4",
             "usr/lib/libcurl.so.4.8.0"
@@ -1069,7 +1046,7 @@
           "ID": "libedit@20260508.3.1-r1",
           "Name": "libedit",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/libedit@20260508.3.1-r1?arch=x86_64\u0026distro=3.24.1",
+            "PURL": "pkg:apk/alpine/libedit@20260508.3.1-r1?arch=x86_64\u0026distro=3.24.2",
             "UID": "98a763e822f29606"
           },
           "Version": "20260508.3.1-r1",
@@ -1085,7 +1062,7 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
+            "DiffID": "sha256:c098e77d88f2829ea186b1b2e2f40d5858f19c09e9726fce61c38febe33c65af"
           },
           "Digest": "sha1:4084f8ff8e83fe17ce0c9ec3f313604d6adc7481",
           "InstalledFiles": [
@@ -1098,7 +1075,7 @@
           "ID": "libffi@3.5.2-r1",
           "Name": "libffi",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/libffi@3.5.2-r1?arch=x86_64\u0026distro=3.24.1",
+            "PURL": "pkg:apk/alpine/libffi@3.5.2-r1?arch=x86_64\u0026distro=3.24.2",
             "UID": "d3eaa921287b1ccd"
           },
           "Version": "3.5.2-r1",
@@ -1113,7 +1090,7 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
+            "DiffID": "sha256:c098e77d88f2829ea186b1b2e2f40d5858f19c09e9726fce61c38febe33c65af"
           },
           "Digest": "sha1:2f7b261f7fcecc4eebd8b330e7f6fb80713bfe3a",
           "InstalledFiles": [
@@ -1126,7 +1103,7 @@
           "ID": "libgcc@15.2.0-r5",
           "Name": "libgcc",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/libgcc@15.2.0-r5?arch=x86_64\u0026distro=3.24.1",
+            "PURL": "pkg:apk/alpine/libgcc@15.2.0-r5?arch=x86_64\u0026distro=3.24.2",
             "UID": "8cf3d813d20beeee"
           },
           "Version": "15.2.0-r5",
@@ -1142,7 +1119,7 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
+            "DiffID": "sha256:c098e77d88f2829ea186b1b2e2f40d5858f19c09e9726fce61c38febe33c65af"
           },
           "Digest": "sha1:379c156c53e0cc140e87c79c0a3dd22b6ee51552",
           "InstalledFiles": [
@@ -1154,7 +1131,7 @@
           "ID": "libidn2@2.3.8-r0",
           "Name": "libidn2",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/libidn2@2.3.8-r0?arch=x86_64\u0026distro=3.24.1",
+            "PURL": "pkg:apk/alpine/libidn2@2.3.8-r0?arch=x86_64\u0026distro=3.24.2",
             "UID": "bff421f953b410b7"
           },
           "Version": "2.3.8-r0",
@@ -1171,7 +1148,7 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
+            "DiffID": "sha256:c098e77d88f2829ea186b1b2e2f40d5858f19c09e9726fce61c38febe33c65af"
           },
           "Digest": "sha1:5800d14ce89e16148f4ccc2df74235ce7aedf800",
           "InstalledFiles": [
@@ -1181,16 +1158,16 @@
           "AnalyzedBy": "apk"
         },
         {
-          "ID": "libldap@2.6.13-r0",
+          "ID": "libldap@2.6.14-r0",
           "Name": "libldap",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/libldap@2.6.13-r0?arch=x86_64\u0026distro=3.24.1",
-            "UID": "6af887cfbc9b3d68"
+            "PURL": "pkg:apk/alpine/libldap@2.6.14-r0?arch=x86_64\u0026distro=3.24.2",
+            "UID": "fce485533c844bce"
           },
-          "Version": "2.6.13-r0",
+          "Version": "2.6.14-r0",
           "Arch": "x86_64",
           "SrcName": "openldap",
-          "SrcVersion": "2.6.13-r0",
+          "SrcVersion": "2.6.14-r0",
           "Licenses": [
             "OLDAP-2.8"
           ],
@@ -1202,9 +1179,9 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
+            "DiffID": "sha256:c098e77d88f2829ea186b1b2e2f40d5858f19c09e9726fce61c38febe33c65af"
           },
-          "Digest": "sha1:ccd1a11305b3f0b138cc42c484ac9cd987acac66",
+          "Digest": "sha1:112ff31072f41119840e739c4195b6f2489fe048",
           "InstalledFiles": [
             "etc/openldap/ldap.conf",
             "usr/lib/liblber.so.2",
@@ -1218,7 +1195,7 @@
           "ID": "libncursesw@6.6_p20260516-r0",
           "Name": "libncursesw",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/libncursesw@6.6_p20260516-r0?arch=x86_64\u0026distro=3.24.1",
+            "PURL": "pkg:apk/alpine/libncursesw@6.6_p20260516-r0?arch=x86_64\u0026distro=3.24.2",
             "UID": "e8939f45e2191bcc"
           },
           "Version": "6.6_p20260516-r0",
@@ -1234,7 +1211,7 @@
             "ncurses-terminfo-base@6.6_p20260516-r0"
           ],
           "Layer": {
-            "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
+            "DiffID": "sha256:c098e77d88f2829ea186b1b2e2f40d5858f19c09e9726fce61c38febe33c65af"
           },
           "Digest": "sha1:9f318e6e324d6827274829194cf6ac6afbaded12",
           "InstalledFiles": [
@@ -1247,7 +1224,7 @@
           "ID": "libpsl@0.21.5-r3",
           "Name": "libpsl",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/libpsl@0.21.5-r3?arch=x86_64\u0026distro=3.24.1",
+            "PURL": "pkg:apk/alpine/libpsl@0.21.5-r3?arch=x86_64\u0026distro=3.24.2",
             "UID": "7879224d01df05c2"
           },
           "Version": "0.21.5-r3",
@@ -1264,7 +1241,7 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
+            "DiffID": "sha256:c098e77d88f2829ea186b1b2e2f40d5858f19c09e9726fce61c38febe33c65af"
           },
           "Digest": "sha1:a551ddd5d6cb3913e1a1f47b02f21ae068b5e90a",
           "InstalledFiles": [
@@ -1277,7 +1254,7 @@
           "ID": "libsasl@2.1.28-r9",
           "Name": "libsasl",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/libsasl@2.1.28-r9?arch=x86_64\u0026distro=3.24.1",
+            "PURL": "pkg:apk/alpine/libsasl@2.1.28-r9?arch=x86_64\u0026distro=3.24.2",
             "UID": "28cd83afcf08300b"
           },
           "Version": "2.1.28-r9",
@@ -1294,7 +1271,7 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
+            "DiffID": "sha256:c098e77d88f2829ea186b1b2e2f40d5858f19c09e9726fce61c38febe33c65af"
           },
           "Digest": "sha1:422ebe8defd4a2d2aaea34662f6ff853cfc2f95f",
           "InstalledFiles": [
@@ -1316,7 +1293,7 @@
           "ID": "libssl3@3.5.8-r0",
           "Name": "libssl3",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/libssl3@3.5.8-r0?arch=x86_64\u0026distro=3.24.1",
+            "PURL": "pkg:apk/alpine/libssl3@3.5.8-r0?arch=x86_64\u0026distro=3.24.2",
             "UID": "f290ab59b88b1c4a"
           },
           "Version": "3.5.8-r0",
@@ -1332,7 +1309,7 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "DiffID": "sha256:1e46f97e97fde2677ad4974bc19521c01a5e580487f528e3e114722f7c7ef855"
+            "DiffID": "sha256:74d97c428c51a828f9051a7a40a53ff1fc99e54fc30323ce36760701b0b7f711"
           },
           "Digest": "sha1:5f9b1e55d821953d2e2b1db322dad70a3b5041ea",
           "InstalledFiles": [
@@ -1344,7 +1321,7 @@
           "ID": "libstdc++@15.2.0-r5",
           "Name": "libstdc++",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/libstdc%2B%2B@15.2.0-r5?arch=x86_64\u0026distro=3.24.1",
+            "PURL": "pkg:apk/alpine/libstdc%2B%2B@15.2.0-r5?arch=x86_64\u0026distro=3.24.2",
             "UID": "2eed307edf277aae"
           },
           "Version": "15.2.0-r5",
@@ -1361,7 +1338,7 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
+            "DiffID": "sha256:c098e77d88f2829ea186b1b2e2f40d5858f19c09e9726fce61c38febe33c65af"
           },
           "Digest": "sha1:5f7a2ad7646128ba02cc0d6fb94672b6845648d5",
           "InstalledFiles": [
@@ -1374,7 +1351,7 @@
           "ID": "libunistring@1.4.2-r0",
           "Name": "libunistring",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/libunistring@1.4.2-r0?arch=x86_64\u0026distro=3.24.1",
+            "PURL": "pkg:apk/alpine/libunistring@1.4.2-r0?arch=x86_64\u0026distro=3.24.2",
             "UID": "b5ad22f7f34d881f"
           },
           "Version": "1.4.2-r0",
@@ -1390,7 +1367,7 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
+            "DiffID": "sha256:c098e77d88f2829ea186b1b2e2f40d5858f19c09e9726fce61c38febe33c65af"
           },
           "Digest": "sha1:f509c801d070f8ea9f7400d5093c888ff1fee02e",
           "InstalledFiles": [
@@ -1403,7 +1380,7 @@
           "ID": "liburing@2.14-r0",
           "Name": "liburing",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/liburing@2.14-r0?arch=x86_64\u0026distro=3.24.1",
+            "PURL": "pkg:apk/alpine/liburing@2.14-r0?arch=x86_64\u0026distro=3.24.2",
             "UID": "d6603e8ed60461c4"
           },
           "Version": "2.14-r0",
@@ -1419,7 +1396,7 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
+            "DiffID": "sha256:c098e77d88f2829ea186b1b2e2f40d5858f19c09e9726fce61c38febe33c65af"
           },
           "Digest": "sha1:04cf16eab3372632a1c7d8395568c141b33c3ab4",
           "InstalledFiles": [
@@ -1432,7 +1409,7 @@
           "ID": "libuuid@2.42.3-r1",
           "Name": "libuuid",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/libuuid@2.42.3-r1?arch=x86_64\u0026distro=3.24.1",
+            "PURL": "pkg:apk/alpine/libuuid@2.42.3-r1?arch=x86_64\u0026distro=3.24.2",
             "UID": "c444e9cdd1bdda40"
           },
           "Version": "2.42.3-r1",
@@ -1447,7 +1424,7 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "DiffID": "sha256:1e46f97e97fde2677ad4974bc19521c01a5e580487f528e3e114722f7c7ef855"
+            "DiffID": "sha256:c098e77d88f2829ea186b1b2e2f40d5858f19c09e9726fce61c38febe33c65af"
           },
           "Digest": "sha1:8f041ef637ad75f381cc0c034f2afbbb0303264e",
           "InstalledFiles": [
@@ -1460,7 +1437,7 @@
           "ID": "libverto@0.3.2-r2",
           "Name": "libverto",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/libverto@0.3.2-r2?arch=x86_64\u0026distro=3.24.1",
+            "PURL": "pkg:apk/alpine/libverto@0.3.2-r2?arch=x86_64\u0026distro=3.24.2",
             "UID": "9df4321a283a6cf6"
           },
           "Version": "0.3.2-r2",
@@ -1475,7 +1452,7 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
+            "DiffID": "sha256:c098e77d88f2829ea186b1b2e2f40d5858f19c09e9726fce61c38febe33c65af"
           },
           "Digest": "sha1:73233059338142e4ac6d8fb8bb0074e93da75dc1",
           "InstalledFiles": [
@@ -1488,8 +1465,8 @@
           "ID": "libxml2@2.13.9-r2",
           "Name": "libxml2",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/libxml2@2.13.9-r2?arch=x86_64\u0026distro=3.24.1",
-            "UID": "661e2a4b0a2b6c43"
+            "PURL": "pkg:apk/alpine/libxml2@2.13.9-r2?arch=x86_64\u0026distro=3.24.2",
+            "UID": "e7d78ec6037db97c"
           },
           "Version": "2.13.9-r2",
           "Arch": "x86_64",
@@ -1501,11 +1478,11 @@
           "Maintainer": "Carlo Landmeter \u003cclandmeter@alpinelinux.org\u003e",
           "DependsOn": [
             "musl@1.2.6-r2",
-            "xz-libs@5.8.3-r0",
+            "xz-libs@5.8.4-r0",
             "zlib@1.3.2-r0"
           ],
           "Layer": {
-            "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
+            "DiffID": "sha256:c098e77d88f2829ea186b1b2e2f40d5858f19c09e9726fce61c38febe33c65af"
           },
           "Digest": "sha1:c2c2cb44647ddc8c82ae78c8aca9bd4ad5a736da",
           "InstalledFiles": [
@@ -1518,7 +1495,7 @@
           "ID": "libxslt@1.1.43-r3",
           "Name": "libxslt",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/libxslt@1.1.43-r3?arch=x86_64\u0026distro=3.24.1",
+            "PURL": "pkg:apk/alpine/libxslt@1.1.43-r3?arch=x86_64\u0026distro=3.24.2",
             "UID": "2810f2fbfcee454a"
           },
           "Version": "1.1.43-r3",
@@ -1534,7 +1511,7 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
+            "DiffID": "sha256:c098e77d88f2829ea186b1b2e2f40d5858f19c09e9726fce61c38febe33c65af"
           },
           "Digest": "sha1:a78a1c96aa4f4a763ab8d2eeb285734c0387eb31",
           "InstalledFiles": [
@@ -1550,7 +1527,7 @@
           "ID": "llvm21-libs@21.1.8-r1",
           "Name": "llvm21-libs",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/llvm21-libs@21.1.8-r1?arch=x86_64\u0026distro=3.24.1",
+            "PURL": "pkg:apk/alpine/llvm21-libs@21.1.8-r1?arch=x86_64\u0026distro=3.24.2",
             "UID": "b4a6fa05ae868a0d"
           },
           "Version": "21.1.8-r1",
@@ -1571,7 +1548,7 @@
             "zstd-libs@1.5.7-r2"
           ],
           "Layer": {
-            "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
+            "DiffID": "sha256:c098e77d88f2829ea186b1b2e2f40d5858f19c09e9726fce61c38febe33c65af"
           },
           "Digest": "sha1:d9f9cafee3a86cc6103c92614ea769b3a169cff3",
           "InstalledFiles": [
@@ -1585,7 +1562,7 @@
           "ID": "lz4-libs@1.10.0-r1",
           "Name": "lz4-libs",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/lz4-libs@1.10.0-r1?arch=x86_64\u0026distro=3.24.1",
+            "PURL": "pkg:apk/alpine/lz4-libs@1.10.0-r1?arch=x86_64\u0026distro=3.24.2",
             "UID": "697c5d416b5775fb"
           },
           "Version": "1.10.0-r1",
@@ -1601,7 +1578,7 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
+            "DiffID": "sha256:c098e77d88f2829ea186b1b2e2f40d5858f19c09e9726fce61c38febe33c65af"
           },
           "Digest": "sha1:d63bb2e1707aa4ca0b75a867706ea03df70bc5bd",
           "InstalledFiles": [
@@ -1614,7 +1591,7 @@
           "ID": "musl@1.2.6-r2",
           "Name": "musl",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/musl@1.2.6-r2?arch=x86_64\u0026distro=3.24.1",
+            "PURL": "pkg:apk/alpine/musl@1.2.6-r2?arch=x86_64\u0026distro=3.24.2",
             "UID": "1f8cb44befe503d4"
           },
           "Version": "1.2.6-r2",
@@ -1626,7 +1603,7 @@
           ],
           "Maintainer": "Natanael Copa \u003cncopa@alpinelinux.org\u003e",
           "Layer": {
-            "DiffID": "sha256:34884abbe92863fce933ed7c39c0e045631af0ed86d5cc0dfbdf9fdca426ce3c"
+            "DiffID": "sha256:74d97c428c51a828f9051a7a40a53ff1fc99e54fc30323ce36760701b0b7f711"
           },
           "Digest": "sha1:0f7e5827e4e1a73631beda27b78431a8ba240e05",
           "InstalledFiles": [
@@ -1639,7 +1616,7 @@
           "ID": "musl-utils@1.2.6-r2",
           "Name": "musl-utils",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/musl-utils@1.2.6-r2?arch=x86_64\u0026distro=3.24.1",
+            "PURL": "pkg:apk/alpine/musl-utils@1.2.6-r2?arch=x86_64\u0026distro=3.24.2",
             "UID": "4497482ec1d943e1"
           },
           "Version": "1.2.6-r2",
@@ -1657,7 +1634,7 @@
             "scanelf@1.3.9-r1"
           ],
           "Layer": {
-            "DiffID": "sha256:34884abbe92863fce933ed7c39c0e045631af0ed86d5cc0dfbdf9fdca426ce3c"
+            "DiffID": "sha256:74d97c428c51a828f9051a7a40a53ff1fc99e54fc30323ce36760701b0b7f711"
           },
           "Digest": "sha1:75ada3c48d63ec5d87c42fdf934a3fdd11298dc5",
           "InstalledFiles": [
@@ -1673,7 +1650,7 @@
           "ID": "ncurses-terminfo-base@6.6_p20260516-r0",
           "Name": "ncurses-terminfo-base",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/ncurses-terminfo-base@6.6_p20260516-r0?arch=x86_64\u0026distro=3.24.1",
+            "PURL": "pkg:apk/alpine/ncurses-terminfo-base@6.6_p20260516-r0?arch=x86_64\u0026distro=3.24.2",
             "UID": "e7fac5c6a6e9ae8"
           },
           "Version": "6.6_p20260516-r0",
@@ -1685,7 +1662,7 @@
           ],
           "Maintainer": "Milan P. Stanić \u003cmps@arvanta.net\u003e",
           "Layer": {
-            "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
+            "DiffID": "sha256:c098e77d88f2829ea186b1b2e2f40d5858f19c09e9726fce61c38febe33c65af"
           },
           "Digest": "sha1:9d551d828e9c8ee52c5801c1d6046828ebf15752",
           "InstalledFiles": [
@@ -1737,7 +1714,7 @@
           "ID": "nghttp2-libs@1.69.0-r0",
           "Name": "nghttp2-libs",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/nghttp2-libs@1.69.0-r0?arch=x86_64\u0026distro=3.24.1",
+            "PURL": "pkg:apk/alpine/nghttp2-libs@1.69.0-r0?arch=x86_64\u0026distro=3.24.2",
             "UID": "cdceee5bd778a45c"
           },
           "Version": "1.69.0-r0",
@@ -1752,7 +1729,7 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
+            "DiffID": "sha256:c098e77d88f2829ea186b1b2e2f40d5858f19c09e9726fce61c38febe33c65af"
           },
           "Digest": "sha1:5331b8c641f7a9091ce2f43dad2a99851c4f4b12",
           "InstalledFiles": [
@@ -1765,7 +1742,7 @@
           "ID": "nss_wrapper@1.1.12-r1",
           "Name": "nss_wrapper",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/nss_wrapper@1.1.12-r1?arch=x86_64\u0026distro=3.24.1",
+            "PURL": "pkg:apk/alpine/nss_wrapper@1.1.12-r1?arch=x86_64\u0026distro=3.24.2",
             "UID": "da8371470b181c32"
           },
           "Version": "1.1.12-r1",
@@ -1780,7 +1757,7 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
+            "DiffID": "sha256:c098e77d88f2829ea186b1b2e2f40d5858f19c09e9726fce61c38febe33c65af"
           },
           "Digest": "sha1:46b34dd323a8388eb2480dc65ee56d9179148ffe",
           "InstalledFiles": [
@@ -1794,7 +1771,7 @@
           "ID": "readline@8.3.3-r1",
           "Name": "readline",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/readline@8.3.3-r1?arch=x86_64\u0026distro=3.24.1",
+            "PURL": "pkg:apk/alpine/readline@8.3.3-r1?arch=x86_64\u0026distro=3.24.2",
             "UID": "f50058781c93e1f2"
           },
           "Version": "8.3.3-r1",
@@ -1810,7 +1787,7 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
+            "DiffID": "sha256:c098e77d88f2829ea186b1b2e2f40d5858f19c09e9726fce61c38febe33c65af"
           },
           "Digest": "sha1:945b16e378bc00e44d89d4de8124bba7647fdf4d",
           "InstalledFiles": [
@@ -1824,7 +1801,7 @@
           "ID": "scanelf@1.3.9-r1",
           "Name": "scanelf",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/scanelf@1.3.9-r1?arch=x86_64\u0026distro=3.24.1",
+            "PURL": "pkg:apk/alpine/scanelf@1.3.9-r1?arch=x86_64\u0026distro=3.24.2",
             "UID": "936394657a1626fb"
           },
           "Version": "1.3.9-r1",
@@ -1839,7 +1816,7 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "DiffID": "sha256:34884abbe92863fce933ed7c39c0e045631af0ed86d5cc0dfbdf9fdca426ce3c"
+            "DiffID": "sha256:74d97c428c51a828f9051a7a40a53ff1fc99e54fc30323ce36760701b0b7f711"
           },
           "Digest": "sha1:013f903d0ba219673aebbdd04f74bb5ed82b01f0",
           "InstalledFiles": [
@@ -1851,7 +1828,7 @@
           "ID": "ssl_client@1.37.0-r31",
           "Name": "ssl_client",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/ssl_client@1.37.0-r31?arch=x86_64\u0026distro=3.24.1",
+            "PURL": "pkg:apk/alpine/ssl_client@1.37.0-r31?arch=x86_64\u0026distro=3.24.2",
             "UID": "d42e31f15a4ce47a"
           },
           "Version": "1.37.0-r31",
@@ -1868,7 +1845,7 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "DiffID": "sha256:34884abbe92863fce933ed7c39c0e045631af0ed86d5cc0dfbdf9fdca426ce3c"
+            "DiffID": "sha256:74d97c428c51a828f9051a7a40a53ff1fc99e54fc30323ce36760701b0b7f711"
           },
           "Digest": "sha1:c220f4a5125a313af733e98def94132bb1e9d40d",
           "InstalledFiles": [
@@ -1877,24 +1854,24 @@
           "AnalyzedBy": "apk"
         },
         {
-          "ID": "tzdata@2026b-r0",
+          "ID": "tzdata@2026d-r0",
           "Name": "tzdata",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/tzdata@2026b-r0?arch=x86_64\u0026distro=3.24.1",
-            "UID": "71d7d50eaadd80dc"
+            "PURL": "pkg:apk/alpine/tzdata@2026d-r0?arch=x86_64\u0026distro=3.24.2",
+            "UID": "76c15d7f08ffd869"
           },
-          "Version": "2026b-r0",
+          "Version": "2026d-r0",
           "Arch": "x86_64",
           "SrcName": "tzdata",
-          "SrcVersion": "2026b-r0",
+          "SrcVersion": "2026d-r0",
           "Licenses": [
             "Public-Domain"
           ],
           "Maintainer": "Natanael Copa \u003cncopa@alpinelinux.org\u003e",
           "Layer": {
-            "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
+            "DiffID": "sha256:c098e77d88f2829ea186b1b2e2f40d5858f19c09e9726fce61c38febe33c65af"
           },
-          "Digest": "sha1:c40d8eda63eeafd4460f25f5da45f824b3df277d",
+          "Digest": "sha1:9011949eb703cac87f31323ab7864862abb8a936",
           "InstalledFiles": [
             "usr/share/zoneinfo/CET",
             "usr/share/zoneinfo/CST6CDT",
@@ -2503,16 +2480,16 @@
           "AnalyzedBy": "apk"
         },
         {
-          "ID": "xz-libs@5.8.3-r0",
+          "ID": "xz-libs@5.8.4-r0",
           "Name": "xz-libs",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/xz-libs@5.8.3-r0?arch=x86_64\u0026distro=3.24.1",
-            "UID": "1ae658a5f132a091"
+            "PURL": "pkg:apk/alpine/xz-libs@5.8.4-r0?arch=x86_64\u0026distro=3.24.2",
+            "UID": "3b273a00dbecf01f"
           },
-          "Version": "5.8.3-r0",
+          "Version": "5.8.4-r0",
           "Arch": "x86_64",
           "SrcName": "xz",
-          "SrcVersion": "5.8.3-r0",
+          "SrcVersion": "5.8.4-r0",
           "Licenses": [
             "GPL-2.0-or-later",
             "0BSD",
@@ -2524,12 +2501,12 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
+            "DiffID": "sha256:c098e77d88f2829ea186b1b2e2f40d5858f19c09e9726fce61c38febe33c65af"
           },
-          "Digest": "sha1:4c92c5be0c5bef404e93c880eba9037a9b147347",
+          "Digest": "sha1:8501065b1862821630174c663b45974462c296e1",
           "InstalledFiles": [
             "usr/lib/liblzma.so.5",
-            "usr/lib/liblzma.so.5.8.3"
+            "usr/lib/liblzma.so.5.8.4"
           ],
           "AnalyzedBy": "apk"
         },
@@ -2537,7 +2514,7 @@
           "ID": "zlib@1.3.2-r0",
           "Name": "zlib",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/zlib@1.3.2-r0?arch=x86_64\u0026distro=3.24.1",
+            "PURL": "pkg:apk/alpine/zlib@1.3.2-r0?arch=x86_64\u0026distro=3.24.2",
             "UID": "e37054a2982d6c16"
           },
           "Version": "1.3.2-r0",
@@ -2552,7 +2529,7 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "DiffID": "sha256:34884abbe92863fce933ed7c39c0e045631af0ed86d5cc0dfbdf9fdca426ce3c"
+            "DiffID": "sha256:74d97c428c51a828f9051a7a40a53ff1fc99e54fc30323ce36760701b0b7f711"
           },
           "Digest": "sha1:dd4c3d102acaef2a71a1495951d55fabc8680613",
           "InstalledFiles": [
@@ -2565,7 +2542,7 @@
           "ID": "zstd@1.5.7-r2",
           "Name": "zstd",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/zstd@1.5.7-r2?arch=x86_64\u0026distro=3.24.1",
+            "PURL": "pkg:apk/alpine/zstd@1.5.7-r2?arch=x86_64\u0026distro=3.24.2",
             "UID": "71f39af918e4d14c"
           },
           "Version": "1.5.7-r2",
@@ -2584,7 +2561,7 @@
             "zstd-libs@1.5.7-r2"
           ],
           "Layer": {
-            "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
+            "DiffID": "sha256:c098e77d88f2829ea186b1b2e2f40d5858f19c09e9726fce61c38febe33c65af"
           },
           "Digest": "sha1:ff3000882c17e89e5e13c020554b5bccc1bfd4df",
           "InstalledFiles": [
@@ -2602,7 +2579,7 @@
           "ID": "zstd-libs@1.5.7-r2",
           "Name": "zstd-libs",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/zstd-libs@1.5.7-r2?arch=x86_64\u0026distro=3.24.1",
+            "PURL": "pkg:apk/alpine/zstd-libs@1.5.7-r2?arch=x86_64\u0026distro=3.24.2",
             "UID": "b33716e8bc222f1f"
           },
           "Version": "1.5.7-r2",
@@ -2618,7 +2595,7 @@
             "musl@1.2.6-r2"
           ],
           "Layer": {
-            "DiffID": "sha256:222f0a33110f9e1ed3b15fe4b89b406218b413d973c371d6261bee5756a7b0a8"
+            "DiffID": "sha256:c098e77d88f2829ea186b1b2e2f40d5858f19c09e9726fce61c38febe33c65af"
           },
           "Digest": "sha1:9569ce3a97c4109e8e53ddde9f3e1bd272613540",
           "InstalledFiles": [
@@ -2649,7 +2626,7 @@
             "stdlib@v1.24.6"
           ],
           "Layer": {
-            "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
+            "DiffID": "sha256:afaa93afde1c6674beeb827cf0214759e7d6be6527ea301ac23c45883ccafab8"
           },
           "AnalyzedBy": "gobinary"
         },
@@ -2663,7 +2640,7 @@
           "Version": "v1.24.6",
           "Relationship": "direct",
           "Layer": {
-            "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
+            "DiffID": "sha256:afaa93afde1c6674beeb827cf0214759e7d6be6527ea301ac23c45883ccafab8"
           },
           "AnalyzedBy": "gobinary"
         },
@@ -2676,7 +2653,7 @@
           },
           "Version": "v0.1.0",
           "Layer": {
-            "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
+            "DiffID": "sha256:afaa93afde1c6674beeb827cf0214759e7d6be6527ea301ac23c45883ccafab8"
           },
           "AnalyzedBy": "gobinary"
         },
@@ -2689,7 +2666,7 @@
           },
           "Version": "v0.1.0",
           "Layer": {
-            "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
+            "DiffID": "sha256:afaa93afde1c6674beeb827cf0214759e7d6be6527ea301ac23c45883ccafab8"
           },
           "AnalyzedBy": "gobinary"
         }
@@ -2710,7 +2687,7 @@
           "FixedVersion": "1.24.13, 1.25.7, 1.26.0-rc.3",
           "Status": "fixed",
           "Layer": {
-            "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
+            "DiffID": "sha256:afaa93afde1c6674beeb827cf0214759e7d6be6527ea301ac23c45883ccafab8"
           },
           "SeveritySource": "nvd",
           "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2025-68121",
@@ -2719,7 +2696,7 @@
             "Name": "The Go Vulnerability Database",
             "URL": "https://pkg.go.dev/vuln/"
           },
-          "Fingerprint": "sha256:001e2fb26f2e100d3a8ceb0287093611e0de804d2471dd2d558e3e8afc34bd51",
+          "Fingerprint": "sha256:2a684601c3dd7604890288d9b4a08436e4159e2bc6cbed3f2eade11ce33350dc",
           "Title": "crypto/tls: crypto/tls: Incorrect certificate validation during TLS session resumption",
           "Description": "During session resumption in crypto/tls, if the underlying Config has its ClientCAs or RootCAs fields mutated between the initial handshake and the resumed handshake, the resumed handshake may succeed when it should have failed. This may happen when a user calls Config.Clone and mutates the returned Config, or uses Config.GetConfigForClient. This can cause a client to resume a session with a server that it would not have resumed with during the initial handshake, or cause a server to resume a session with a client that it would not have resumed with during the initial handshake.",
           "Severity": "CRITICAL",
@@ -2741,8 +2718,8 @@
           },
           "CVSS": {
             "bitnami": {
-              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
-              "V3Score": 10
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N",
+              "V3Score": 9.1
             },
             "nvd": {
               "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
@@ -2754,8 +2731,11 @@
             }
           },
           "References": [
+            "https://access.redhat.com/errata/RHSA-2026:3336",
             "https://access.redhat.com/errata/RHSA-2026:4177",
             "https://access.redhat.com/security/cve/CVE-2025-68121",
+            "https://bugzilla.redhat.com/2418462",
+            "https://bugzilla.redhat.com/2434431",
             "https://bugzilla.redhat.com/2434432",
             "https://bugzilla.redhat.com/2437111",
             "https://bugzilla.redhat.com/show_bug.cgi?id=2434432",
@@ -2763,7 +2743,7 @@
             "https://creativecommons.org/licenses/by/4.0/",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2025-61726",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2025-68121",
-            "https://errata.almalinux.org/9/ALSA-2026-4177.html",
+            "https://errata.almalinux.org/10/ALSA-2026-3336.html",
             "https://errata.rockylinux.org/RLSA-2026:4177",
             "https://github.com/golang/go/issues/77113",
             "https://go.dev/cl/737700",
@@ -2794,7 +2774,7 @@
           "FixedVersion": "1.24.12, 1.25.6",
           "Status": "fixed",
           "Layer": {
-            "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
+            "DiffID": "sha256:afaa93afde1c6674beeb827cf0214759e7d6be6527ea301ac23c45883ccafab8"
           },
           "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2025-61726",
           "DataSource": {
@@ -2802,7 +2782,7 @@
             "Name": "The Go Vulnerability Database",
             "URL": "https://pkg.go.dev/vuln/"
           },
-          "Fingerprint": "sha256:b333505963244a6583a7df83f7d0682b468554daf5ce4a21b901f10f404af40b",
+          "Fingerprint": "sha256:840e0ecf944f853df6408db33b0c6f4e932b2393bcc424d6b0dcd23cf14191f0",
           "Title": "golang: net/url: Memory exhaustion in query parameter parsing in net/url",
           "Description": "The net/url package does not set a limit on the number of query parameters in a query. While the maximum size of query parameters in URLs is generally limited by the maximum request header size, the net/http.Request.ParseForm method can parse large URL-encoded forms. Parsing a large form containing many unique query parameters can cause excessive memory consumption.",
           "Severity": "HIGH",
@@ -3090,6 +3070,7 @@
             "https://access.redhat.com/errata/RHSA-2026:6564",
             "https://access.redhat.com/errata/RHSA-2026:6567",
             "https://access.redhat.com/errata/RHSA-2026:6568",
+            "https://access.redhat.com/errata/RHSA-2026:66401",
             "https://access.redhat.com/errata/RHSA-2026:7052",
             "https://access.redhat.com/errata/RHSA-2026:7249",
             "https://access.redhat.com/errata/RHSA-2026:7291",
@@ -3113,13 +3094,12 @@
             "https://access.redhat.com/errata/RHSA-2026:9848",
             "https://access.redhat.com/security/cve/CVE-2025-61726",
             "https://bugzilla.redhat.com/2434432",
-            "https://bugzilla.redhat.com/2437111",
             "https://bugzilla.redhat.com/show_bug.cgi?id=2434432",
             "https://bugzilla.redhat.com/show_bug.cgi?id=2437111",
             "https://creativecommons.org/licenses/by/4.0/",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2025-61726",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2025-68121",
-            "https://errata.almalinux.org/9/ALSA-2026-4177.html",
+            "https://errata.almalinux.org/10/ALSA-2026-3669.html",
             "https://errata.rockylinux.org/RLSA-2026:4177",
             "https://go.dev/cl/736712",
             "https://go.dev/issue/77101",
@@ -3132,7 +3112,7 @@
             "https://www.cve.org/CVERecord?id=CVE-2025-61726"
           ],
           "PublishedDate": "2026-01-28T20:16:09.713Z",
-          "LastModifiedDate": "2026-09-09T13:17:28.513Z"
+          "LastModifiedDate": "2026-09-17T12:17:11.443Z"
         },
         {
           "VulnerabilityID": "CVE-2025-61729",
@@ -3149,7 +3129,7 @@
           "FixedVersion": "1.24.11, 1.25.5",
           "Status": "fixed",
           "Layer": {
-            "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
+            "DiffID": "sha256:afaa93afde1c6674beeb827cf0214759e7d6be6527ea301ac23c45883ccafab8"
           },
           "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2025-61729",
           "DataSource": {
@@ -3157,7 +3137,7 @@
             "Name": "The Go Vulnerability Database",
             "URL": "https://pkg.go.dev/vuln/"
           },
-          "Fingerprint": "sha256:2eb6170eaad9c10b00e8fad9ad2aae3ad0d25f45f547edfc964271257341af3e",
+          "Fingerprint": "sha256:48628fa10d6517a2608098056d78f8676c599e270520c52cd8182049bdb4fe89",
           "Title": "crypto/x509: golang: Denial of Service due to excessive resource consumption via crafted certificate",
           "Description": "Within HostnameError.Error(), when constructing an error string, there is no limit to the number of hosts that will be printed out. Furthermore, the error string is constructed by repeated string concatenation, leading to quadratic runtime. Therefore, a certificate provided by a malicious actor can result in excessive resource consumption.",
           "Severity": "HIGH",
@@ -3186,9 +3166,11 @@
             }
           },
           "References": [
+            "https://access.redhat.com/errata/RHSA-2026:3336",
             "https://access.redhat.com/errata/RHSA-2026:3928",
             "https://access.redhat.com/security/cve/CVE-2025-61729",
             "https://bugzilla.redhat.com/2418462",
+            "https://bugzilla.redhat.com/2434431",
             "https://bugzilla.redhat.com/2434432",
             "https://bugzilla.redhat.com/2437111",
             "https://bugzilla.redhat.com/show_bug.cgi?id=2418462",
@@ -3198,7 +3180,7 @@
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2025-61726",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2025-61729",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2025-68121",
-            "https://errata.almalinux.org/9/ALSA-2026-3928.html",
+            "https://errata.almalinux.org/10/ALSA-2026-3336.html",
             "https://errata.rockylinux.org/RLSA-2026:3928",
             "https://go.dev/cl/725920",
             "https://go.dev/issue/76445",
@@ -3227,7 +3209,7 @@
           "FixedVersion": "1.25.8, 1.26.1",
           "Status": "fixed",
           "Layer": {
-            "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
+            "DiffID": "sha256:afaa93afde1c6674beeb827cf0214759e7d6be6527ea301ac23c45883ccafab8"
           },
           "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-25679",
           "DataSource": {
@@ -3235,7 +3217,7 @@
             "Name": "The Go Vulnerability Database",
             "URL": "https://pkg.go.dev/vuln/"
           },
-          "Fingerprint": "sha256:c8935d0ffca8d44636d02451b5107a5fa2eebebbf6d05730e814ca98464e9b85",
+          "Fingerprint": "sha256:0625ecf8f031165da36a063599dfe2dbcdfa927035366a15351ef611b50d5c8a",
           "Title": "net/url: Incorrect parsing of IPv6 host literals in net/url",
           "Description": "url.Parse insufficiently validated the host/authority component and accepted some invalid URLs.",
           "Severity": "HIGH",
@@ -3436,6 +3418,8 @@
             "https://access.redhat.com/errata/RHSA-2026:6383",
             "https://access.redhat.com/errata/RHSA-2026:6388",
             "https://access.redhat.com/errata/RHSA-2026:6564",
+            "https://access.redhat.com/errata/RHSA-2026:65838",
+            "https://access.redhat.com/errata/RHSA-2026:66401",
             "https://access.redhat.com/errata/RHSA-2026:6720",
             "https://access.redhat.com/errata/RHSA-2026:6802",
             "https://access.redhat.com/errata/RHSA-2026:6949",
@@ -3521,7 +3505,7 @@
             "https://bugzilla.redhat.com/show_bug.cgi?id=2445356",
             "https://creativecommons.org/licenses/by/4.0/",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-25679",
-            "https://errata.almalinux.org/9/ALSA-2026-9044.html",
+            "https://errata.almalinux.org/10/ALSA-2026-8840.html",
             "https://errata.rockylinux.org/RLSA-2026:9044",
             "https://go.dev/cl/752180",
             "https://go.dev/issue/77578",
@@ -3534,7 +3518,7 @@
             "https://www.cve.org/CVERecord?id=CVE-2026-25679"
           ],
           "PublishedDate": "2026-03-06T22:16:00.72Z",
-          "LastModifiedDate": "2026-09-09T13:18:55.003Z"
+          "LastModifiedDate": "2026-09-18T13:17:30.067Z"
         },
         {
           "VulnerabilityID": "CVE-2026-27145",
@@ -3551,7 +3535,7 @@
           "FixedVersion": "1.25.11, 1.26.4",
           "Status": "fixed",
           "Layer": {
-            "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
+            "DiffID": "sha256:afaa93afde1c6674beeb827cf0214759e7d6be6527ea301ac23c45883ccafab8"
           },
           "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-27145",
           "DataSource": {
@@ -3559,7 +3543,7 @@
             "Name": "The Go Vulnerability Database",
             "URL": "https://pkg.go.dev/vuln/"
           },
-          "Fingerprint": "sha256:ba81118121cd41914c389c6e84d748b316c096396b0b6748d1b9e60097550a53",
+          "Fingerprint": "sha256:c0e46b3b3df6101485b0b1dae1907fe8b859dff1bffad95decbabdefe5544d21",
           "Title": "crypto/x509: golang: golang crypto/x509: Denial of Service via excessive processing of DNS SAN entries",
           "Description": "(*x509.Certificate).VerifyHostname previously called matchHostnames in a loop over all DNS Subject Alternative Name (SAN) entries. This caused strings.Split(host, \".\") to execute repeatedly on the same input hostname. With a large DNS SAN list, verification costs scaled quadratically based on the number of SAN entries multiplied by the hostname's label count. Because x509.Verify validates hostnames before building the certificate chain, this overhead occurred even for untrusted certificates.",
           "Severity": "HIGH",
@@ -3570,7 +3554,7 @@
             "alma": 3,
             "amazon": 2,
             "azure": 2,
-            "bitnami": 2,
+            "bitnami": 3,
             "oracle-oval": 3,
             "photon": 3,
             "redhat": 3,
@@ -3578,8 +3562,8 @@
           },
           "CVSS": {
             "bitnami": {
-              "V3Vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:L/A:H",
-              "V3Score": 6.5
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+              "V3Score": 7.5
             },
             "redhat": {
               "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
@@ -3677,15 +3661,18 @@
             "https://access.redhat.com/errata/RHSA-2026:61253",
             "https://access.redhat.com/errata/RHSA-2026:61314",
             "https://access.redhat.com/errata/RHSA-2026:63016",
+            "https://access.redhat.com/errata/RHSA-2026:66022",
+            "https://access.redhat.com/errata/RHSA-2026:68334",
+            "https://access.redhat.com/errata/RHSA-2026:68335",
             "https://access.redhat.com/security/cve/CVE-2026-27145",
-            "https://bugzilla.redhat.com/2445356",
+            "https://bugzilla.redhat.com/2480756",
             "https://bugzilla.redhat.com/2484207",
             "https://bugzilla.redhat.com/show_bug.cgi?id=2445356",
             "https://bugzilla.redhat.com/show_bug.cgi?id=2484207",
             "https://creativecommons.org/licenses/by/4.0/",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-25679",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-27145",
-            "https://errata.almalinux.org/9/ALSA-2026-36317.html",
+            "https://errata.almalinux.org/10/ALSA-2026-46395.html",
             "https://errata.rockylinux.org/RLSA-2026:36317",
             "https://go.dev/cl/783621",
             "https://go.dev/issue/79694",
@@ -3698,7 +3685,7 @@
             "https://www.cve.org/CVERecord?id=CVE-2026-27145"
           ],
           "PublishedDate": "2026-06-02T23:16:35.57Z",
-          "LastModifiedDate": "2026-09-07T13:18:32.367Z"
+          "LastModifiedDate": "2026-09-18T13:17:43.283Z"
         },
         {
           "VulnerabilityID": "CVE-2026-32280",
@@ -3715,7 +3702,7 @@
           "FixedVersion": "1.25.9, 1.26.2",
           "Status": "fixed",
           "Layer": {
-            "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
+            "DiffID": "sha256:afaa93afde1c6674beeb827cf0214759e7d6be6527ea301ac23c45883ccafab8"
           },
           "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-32280",
           "DataSource": {
@@ -3723,7 +3710,7 @@
             "Name": "The Go Vulnerability Database",
             "URL": "https://pkg.go.dev/vuln/"
           },
-          "Fingerprint": "sha256:1ccb91527f2ac6818d504214df29042f44929bc83f0c76ec3e8db5a1c56904e6",
+          "Fingerprint": "sha256:ac89edb271802465cd463ef6d849398b8853e4d5c682c0dfc87e61a74ad90c2c",
           "Title": "crypto/x509: crypto/tls: golang: Go: Denial of Service vulnerability in certificate chain building",
           "Description": "During chain building, the amount of work that is done is not correctly limited when a large number of intermediate certificates are passed in VerifyOptions.Intermediates, which can lead to a denial of service. This affects both direct users of crypto/x509 and users of crypto/tls.",
           "Severity": "HIGH",
@@ -3936,7 +3923,11 @@
             "https://access.redhat.com/errata/RHSA-2026:61906",
             "https://access.redhat.com/errata/RHSA-2026:61907",
             "https://access.redhat.com/errata/RHSA-2026:65534",
+            "https://access.redhat.com/errata/RHSA-2026:65838",
             "https://access.redhat.com/errata/RHSA-2026:65886",
+            "https://access.redhat.com/errata/RHSA-2026:66401",
+            "https://access.redhat.com/errata/RHSA-2026:67319",
+            "https://access.redhat.com/errata/RHSA-2026:68504",
             "https://access.redhat.com/errata/RHSA-2026:9385",
             "https://access.redhat.com/security/cve/CVE-2026-32280",
             "https://bugzilla.redhat.com/2456333",
@@ -3968,20 +3959,20 @@
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56859",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56860",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56862",
-            "https://errata.almalinux.org/9/ALSA-2026-49838.html",
+            "https://errata.almalinux.org/10/ALSA-2026-49526.html",
             "https://errata.rockylinux.org/RLSA-2026:65886",
             "https://go.dev/cl/758320",
             "https://go.dev/issue/78282",
             "https://groups.google.com/g/golang-announce/c/0uYbvbPZRWU",
             "https://linux.oracle.com/cve/CVE-2026-32280.html",
-            "https://linux.oracle.com/errata/ELSA-2026-49838.html",
+            "https://linux.oracle.com/errata/ELSA-2026-65886-0.html",
             "https://nvd.nist.gov/vuln/detail/CVE-2026-32280",
             "https://pkg.go.dev/vuln/GO-2026-4947",
             "https://security.access.redhat.com/data/csaf/v2/vex/2026/cve-2026-32280.json",
             "https://www.cve.org/CVERecord?id=CVE-2026-32280"
           ],
           "PublishedDate": "2026-04-08T02:16:03.247Z",
-          "LastModifiedDate": "2026-09-09T13:19:13.473Z"
+          "LastModifiedDate": "2026-09-18T13:17:45.92Z"
         },
         {
           "VulnerabilityID": "CVE-2026-32281",
@@ -3998,7 +3989,7 @@
           "FixedVersion": "1.25.9, 1.26.2",
           "Status": "fixed",
           "Layer": {
-            "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
+            "DiffID": "sha256:afaa93afde1c6674beeb827cf0214759e7d6be6527ea301ac23c45883ccafab8"
           },
           "SeveritySource": "nvd",
           "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-32281",
@@ -4007,7 +3998,7 @@
             "Name": "The Go Vulnerability Database",
             "URL": "https://pkg.go.dev/vuln/"
           },
-          "Fingerprint": "sha256:c78a1cda3401eab55ef10a375fa276ad644270b1bb823661cff093bdab2762ad",
+          "Fingerprint": "sha256:92043ab04bc22c71815cac8943d903dbf1bf1350a2d1b2d7d591f600b3b00724",
           "Title": "crypto/x509: golang: Go crypto/x509: Denial of Service via inefficient certificate chain validation",
           "Description": "Validating certificate chains which use policies is unexpectedly inefficient when certificates in the chain contain a very large number of policy mappings, possibly causing denial of service. This only affects validation of otherwise trusted certificate chains, issued by a root CA in the VerifyOptions.Roots CertPool, or in the system certificate pool.",
           "Severity": "HIGH",
@@ -4039,7 +4030,7 @@
             }
           },
           "References": [
-            "https://access.redhat.com/errata/RHSA-2026:49838",
+            "https://access.redhat.com/errata/RHSA-2026:49526",
             "https://access.redhat.com/errata/RHSA-2026:65886",
             "https://access.redhat.com/security/cve/CVE-2026-32281",
             "https://bugzilla.redhat.com/2456333",
@@ -4071,13 +4062,13 @@
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56859",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56860",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56862",
-            "https://errata.almalinux.org/9/ALSA-2026-49838.html",
+            "https://errata.almalinux.org/10/ALSA-2026-49526.html",
             "https://errata.rockylinux.org/RLSA-2026:65886",
             "https://go.dev/cl/758061",
             "https://go.dev/issue/78281",
             "https://groups.google.com/g/golang-announce/c/0uYbvbPZRWU",
             "https://linux.oracle.com/cve/CVE-2026-32281.html",
-            "https://linux.oracle.com/errata/ELSA-2026-49838.html",
+            "https://linux.oracle.com/errata/ELSA-2026-65886-0.html",
             "https://nvd.nist.gov/vuln/detail/CVE-2026-32281",
             "https://pkg.go.dev/vuln/GO-2026-4946",
             "https://www.cve.org/CVERecord?id=CVE-2026-32281"
@@ -4100,7 +4091,7 @@
           "FixedVersion": "1.25.9, 1.26.2",
           "Status": "fixed",
           "Layer": {
-            "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
+            "DiffID": "sha256:afaa93afde1c6674beeb827cf0214759e7d6be6527ea301ac23c45883ccafab8"
           },
           "SeveritySource": "nvd",
           "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-32283",
@@ -4109,7 +4100,7 @@
             "Name": "The Go Vulnerability Database",
             "URL": "https://pkg.go.dev/vuln/"
           },
-          "Fingerprint": "sha256:3f1247ae7fb1e31b29651f5aa2f603d01a795feb7a505bc0a39550ca9416d089",
+          "Fingerprint": "sha256:8cb23f81dc77d0a7182eb81a82662495a893043bbda31b33a79a3c231119a0a1",
           "Title": "crypto/tls: golang: Go crypto/tls: Denial of Service via multiple TLS 1.3 key update messages",
           "Description": "If one side of the TLS connection sends multiple key update messages post-handshake in a single record, the connection can deadlock, causing uncontrolled consumption of resources. This can lead to a denial of service. This only affects TLS 1.3.",
           "Severity": "HIGH",
@@ -4270,6 +4261,12 @@
             "https://access.redhat.com/errata/RHSA-2026:65126",
             "https://access.redhat.com/errata/RHSA-2026:65343",
             "https://access.redhat.com/errata/RHSA-2026:65514",
+            "https://access.redhat.com/errata/RHSA-2026:66022",
+            "https://access.redhat.com/errata/RHSA-2026:66084",
+            "https://access.redhat.com/errata/RHSA-2026:66401",
+            "https://access.redhat.com/errata/RHSA-2026:66523",
+            "https://access.redhat.com/errata/RHSA-2026:67319",
+            "https://access.redhat.com/errata/RHSA-2026:68504",
             "https://access.redhat.com/errata/RHSA-2026:7291",
             "https://access.redhat.com/errata/RHSA-2026:7385",
             "https://access.redhat.com/security/cve/CVE-2026-32283",
@@ -4286,20 +4283,20 @@
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-32280",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-32281",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-32283",
-            "https://errata.almalinux.org/9/ALSA-2026-29703.html",
+            "https://errata.almalinux.org/10/ALSA-2026-29195.html",
             "https://errata.rockylinux.org/RLSA-2026:29703",
             "https://go.dev/cl/763767",
             "https://go.dev/issue/78334",
             "https://groups.google.com/g/golang-announce/c/0uYbvbPZRWU",
             "https://linux.oracle.com/cve/CVE-2026-32283.html",
-            "https://linux.oracle.com/errata/ELSA-2026-33722.html",
+            "https://linux.oracle.com/errata/ELSA-2026-48790.html",
             "https://nvd.nist.gov/vuln/detail/CVE-2026-32283",
             "https://pkg.go.dev/vuln/GO-2026-4870",
             "https://security.access.redhat.com/data/csaf/v2/vex/2026/cve-2026-32283.json",
             "https://www.cve.org/CVERecord?id=CVE-2026-32283"
           ],
           "PublishedDate": "2026-04-08T02:16:03.58Z",
-          "LastModifiedDate": "2026-09-09T13:19:15.553Z"
+          "LastModifiedDate": "2026-09-18T13:17:48.437Z"
         },
         {
           "VulnerabilityID": "CVE-2026-33811",
@@ -4316,7 +4313,7 @@
           "FixedVersion": "1.25.10, 1.26.3",
           "Status": "fixed",
           "Layer": {
-            "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
+            "DiffID": "sha256:afaa93afde1c6674beeb827cf0214759e7d6be6527ea301ac23c45883ccafab8"
           },
           "SeveritySource": "nvd",
           "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-33811",
@@ -4325,7 +4322,7 @@
             "Name": "The Go Vulnerability Database",
             "URL": "https://pkg.go.dev/vuln/"
           },
-          "Fingerprint": "sha256:fbce89a6f58c744d65f6bc572442a415cf75e903c47925b96e7b12f9eedf3404",
+          "Fingerprint": "sha256:592ec6991978e4fc28abd53ad76c84c5f21dbbbd318717aa2a9011e7966d9dab",
           "Title": "net: golang: Go net package: Denial of Service via long CNAME response in LookupCNAME",
           "Description": "When using LookupCNAME with the cgo DNS resolver, a very long CNAME response can trigger a double-free of C memory and a crash.",
           "Severity": "HIGH",
@@ -4480,8 +4477,14 @@
             "https://access.redhat.com/errata/RHSA-2026:65126",
             "https://access.redhat.com/errata/RHSA-2026:65534",
             "https://access.redhat.com/errata/RHSA-2026:65886",
+            "https://access.redhat.com/errata/RHSA-2026:66022",
+            "https://access.redhat.com/errata/RHSA-2026:67149",
+            "https://access.redhat.com/errata/RHSA-2026:67287",
+            "https://access.redhat.com/errata/RHSA-2026:67319",
             "https://access.redhat.com/security/cve/CVE-2026-33811",
             "https://bugzilla.redhat.com/2467822",
+            "https://bugzilla.redhat.com/2480756",
+            "https://bugzilla.redhat.com/2484207",
             "https://bugzilla.redhat.com/show_bug.cgi?id=2456333",
             "https://bugzilla.redhat.com/show_bug.cgi?id=2456339",
             "https://bugzilla.redhat.com/show_bug.cgi?id=2467809",
@@ -4509,20 +4512,20 @@
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56859",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56860",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56862",
-            "https://errata.almalinux.org/9/ALSA-2026-39319.html",
+            "https://errata.almalinux.org/10/ALSA-2026-39573.html",
             "https://errata.rockylinux.org/RLSA-2026:65886",
             "https://go.dev/cl/767860",
             "https://go.dev/issue/78803",
             "https://groups.google.com/g/golang-announce/c/qcCIEXso47M",
             "https://linux.oracle.com/cve/CVE-2026-33811.html",
-            "https://linux.oracle.com/errata/ELSA-2026-39573.html",
+            "https://linux.oracle.com/errata/ELSA-2026-65886-0.html",
             "https://nvd.nist.gov/vuln/detail/CVE-2026-33811",
             "https://pkg.go.dev/vuln/GO-2026-4981",
             "https://security.access.redhat.com/data/csaf/v2/vex/2026/cve-2026-33811.json",
             "https://www.cve.org/CVERecord?id=CVE-2026-33811"
           ],
           "PublishedDate": "2026-05-07T20:16:42.77Z",
-          "LastModifiedDate": "2026-09-09T13:19:26.39Z"
+          "LastModifiedDate": "2026-09-18T13:17:57.51Z"
         },
         {
           "VulnerabilityID": "CVE-2026-33814",
@@ -4539,7 +4542,7 @@
           "FixedVersion": "1.25.10, 1.26.3",
           "Status": "fixed",
           "Layer": {
-            "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
+            "DiffID": "sha256:afaa93afde1c6674beeb827cf0214759e7d6be6527ea301ac23c45883ccafab8"
           },
           "SeveritySource": "nvd",
           "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-33814",
@@ -4548,7 +4551,7 @@
             "Name": "The Go Vulnerability Database",
             "URL": "https://pkg.go.dev/vuln/"
           },
-          "Fingerprint": "sha256:483506d584e60e49f7c755a88afe56d40616651c0f08ffa978640d8868449795",
+          "Fingerprint": "sha256:bf960461897e0e8059ccbe950e65bb82d5cc770129cb5eec57850ba0f75216d8",
           "Title": "net/http/internal/http2: golang: golang.org/x/net: Go HTTP/2: Denial of Service via malformed SETTINGS_MAX_FRAME_SIZE frame",
           "Description": "When processing HTTP/2 SETTINGS frames, transport will enter an infinite loop of writing CONTINUATION frames if it receives a SETTINGS_MAX_FRAME_SIZE with a value of 0.",
           "Severity": "HIGH",
@@ -4627,9 +4630,13 @@
             "https://access.redhat.com/errata/RHSA-2026:60520",
             "https://access.redhat.com/errata/RHSA-2026:60668",
             "https://access.redhat.com/errata/RHSA-2026:61253",
+            "https://access.redhat.com/errata/RHSA-2026:62410",
+            "https://access.redhat.com/errata/RHSA-2026:62550",
+            "https://access.redhat.com/errata/RHSA-2026:62551",
             "https://access.redhat.com/errata/RHSA-2026:63046",
             "https://access.redhat.com/errata/RHSA-2026:63047",
             "https://access.redhat.com/errata/RHSA-2026:63048",
+            "https://access.redhat.com/errata/RHSA-2026:63050",
             "https://access.redhat.com/errata/RHSA-2026:63091",
             "https://access.redhat.com/errata/RHSA-2026:63096",
             "https://access.redhat.com/errata/RHSA-2026:63097",
@@ -4639,6 +4646,7 @@
             "https://access.redhat.com/errata/RHSA-2026:63637",
             "https://access.redhat.com/errata/RHSA-2026:63639",
             "https://access.redhat.com/errata/RHSA-2026:65126",
+            "https://access.redhat.com/errata/RHSA-2026:66350",
             "https://access.redhat.com/security/cve/CVE-2026-33814",
             "https://bugzilla.redhat.com/show_bug.cgi?id=2467809",
             "https://bugzilla.redhat.com/show_bug.cgi?id=2467810",
@@ -4683,7 +4691,7 @@
             "https://www.cve.org/CVERecord?id=CVE-2026-33814"
           ],
           "PublishedDate": "2026-05-07T20:16:42.88Z",
-          "LastModifiedDate": "2026-09-09T13:19:27.987Z"
+          "LastModifiedDate": "2026-09-18T13:17:59.293Z"
         },
         {
           "VulnerabilityID": "CVE-2026-33818",
@@ -4700,7 +4708,7 @@
           "FixedVersion": "1.25.13, 1.26.6, 1.27.0-rc.3",
           "Status": "fixed",
           "Layer": {
-            "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
+            "DiffID": "sha256:afaa93afde1c6674beeb827cf0214759e7d6be6527ea301ac23c45883ccafab8"
           },
           "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-33818",
           "DataSource": {
@@ -4708,7 +4716,7 @@
             "Name": "The Go Vulnerability Database",
             "URL": "https://pkg.go.dev/vuln/"
           },
-          "Fingerprint": "sha256:22cc70c5b40d875f70aa24920af27f4d39a03588144135b84891dd30ec0946f7",
+          "Fingerprint": "sha256:a802835251d77bb8b34640e4088da81267c986d625cf43cb1369633a22c7f207",
           "Title": "encoding/asn1: golang: Go encoding/asn1: Denial of Service via excessive recursion in Unmarshal",
           "Description": "Enforce a recursion limit in Unmarshal to prevent stack exhaustion when parsing deeply-nested, recursive structures.",
           "Severity": "HIGH",
@@ -4720,6 +4728,7 @@
             "amazon": 3,
             "bitnami": 3,
             "oracle-oval": 3,
+            "photon": 3,
             "redhat": 3,
             "rocky": 3
           },
@@ -4734,47 +4743,28 @@
             }
           },
           "References": [
-            "https://access.redhat.com/errata/RHSA-2026:63136",
-            "https://access.redhat.com/errata/RHSA-2026:65886",
+            "https://access.redhat.com/errata/RHSA-2026:66364",
+            "https://access.redhat.com/errata/RHSA-2026:69308",
             "https://access.redhat.com/security/cve/CVE-2026-33818",
+            "https://bugzilla.redhat.com/2484204",
             "https://bugzilla.redhat.com/2515815",
             "https://bugzilla.redhat.com/2515820",
-            "https://bugzilla.redhat.com/2515838",
             "https://bugzilla.redhat.com/2515839",
-            "https://bugzilla.redhat.com/show_bug.cgi?id=2456333",
-            "https://bugzilla.redhat.com/show_bug.cgi?id=2456339",
-            "https://bugzilla.redhat.com/show_bug.cgi?id=2467809",
-            "https://bugzilla.redhat.com/show_bug.cgi?id=2467820",
-            "https://bugzilla.redhat.com/show_bug.cgi?id=2467822",
-            "https://bugzilla.redhat.com/show_bug.cgi?id=2480756",
-            "https://bugzilla.redhat.com/show_bug.cgi?id=2484204",
+            "https://bugzilla.redhat.com/2515840",
             "https://bugzilla.redhat.com/show_bug.cgi?id=2515815",
             "https://bugzilla.redhat.com/show_bug.cgi?id=2515820",
-            "https://bugzilla.redhat.com/show_bug.cgi?id=2515827",
-            "https://bugzilla.redhat.com/show_bug.cgi?id=2515838",
             "https://bugzilla.redhat.com/show_bug.cgi?id=2515839",
-            "https://bugzilla.redhat.com/show_bug.cgi?id=2515840",
             "https://creativecommons.org/licenses/by/4.0/",
-            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-32280",
-            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-32281",
-            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-33811",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-33818",
-            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-39820",
-            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-39821",
-            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-42499",
-            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-42504",
-            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56853",
-            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56858",
-            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56859",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56860",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56862",
-            "https://errata.almalinux.org/9/ALSA-2026-63136.html",
-            "https://errata.rockylinux.org/RLSA-2026:65886",
+            "https://errata.almalinux.org/10/ALSA-2026-69308.html",
+            "https://errata.rockylinux.org/RLSA-2026:66364",
             "https://go.dev/cl/814980",
             "https://go.dev/issue/80405",
             "https://groups.google.com/g/golang-announce/c/94pEornpRlI",
             "https://linux.oracle.com/cve/CVE-2026-33818.html",
-            "https://linux.oracle.com/errata/ELSA-2026-64818-0.html",
+            "https://linux.oracle.com/errata/ELSA-2026-69308.html",
             "https://nvd.nist.gov/vuln/detail/CVE-2026-33818",
             "https://pkg.go.dev/vuln/GO-2026-5972",
             "https://www.cve.org/CVERecord?id=CVE-2026-33818"
@@ -4797,7 +4787,7 @@
           "FixedVersion": "1.25.10, 1.26.3",
           "Status": "fixed",
           "Layer": {
-            "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
+            "DiffID": "sha256:afaa93afde1c6674beeb827cf0214759e7d6be6527ea301ac23c45883ccafab8"
           },
           "SeveritySource": "nvd",
           "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-39820",
@@ -4806,7 +4796,7 @@
             "Name": "The Go Vulnerability Database",
             "URL": "https://pkg.go.dev/vuln/"
           },
-          "Fingerprint": "sha256:9739aade9e2acd08c642c183076594662e052098b037228dc11ea105d8716d47",
+          "Fingerprint": "sha256:c2caa9f6722e52736234284ead6304f9a4783814796d4c272b34af4362026922",
           "Title": "net/mail: golang: Go net/mail: Denial of Service via crafted email inputs",
           "Description": "Well-crafted inputs reaching ParseAddress, ParseAddressList, and ParseDate were able to trigger excessive CPU exhaustion and memory allocations.",
           "Severity": "HIGH",
@@ -4869,8 +4859,11 @@
             "https://access.redhat.com/errata/RHSA-2026:49712",
             "https://access.redhat.com/errata/RHSA-2026:50205",
             "https://access.redhat.com/errata/RHSA-2026:50300",
+            "https://access.redhat.com/errata/RHSA-2026:50319",
+            "https://access.redhat.com/errata/RHSA-2026:50336",
             "https://access.redhat.com/errata/RHSA-2026:50843",
             "https://access.redhat.com/errata/RHSA-2026:51033",
+            "https://access.redhat.com/errata/RHSA-2026:51112",
             "https://access.redhat.com/errata/RHSA-2026:54274",
             "https://access.redhat.com/errata/RHSA-2026:54283",
             "https://access.redhat.com/errata/RHSA-2026:54284",
@@ -4914,10 +4907,23 @@
             "https://access.redhat.com/errata/RHSA-2026:65335",
             "https://access.redhat.com/errata/RHSA-2026:65336",
             "https://access.redhat.com/errata/RHSA-2026:65534",
+            "https://access.redhat.com/errata/RHSA-2026:65838",
             "https://access.redhat.com/errata/RHSA-2026:65886",
+            "https://access.redhat.com/errata/RHSA-2026:65895",
+            "https://access.redhat.com/errata/RHSA-2026:66016",
+            "https://access.redhat.com/errata/RHSA-2026:66022",
+            "https://access.redhat.com/errata/RHSA-2026:66327",
+            "https://access.redhat.com/errata/RHSA-2026:67517",
+            "https://access.redhat.com/errata/RHSA-2026:67974",
+            "https://access.redhat.com/errata/RHSA-2026:67975",
+            "https://access.redhat.com/errata/RHSA-2026:68334",
+            "https://access.redhat.com/errata/RHSA-2026:68504",
+            "https://access.redhat.com/errata/RHSA-2026:68527",
             "https://access.redhat.com/security/cve/CVE-2026-39820",
             "https://bugzilla.redhat.com/2467809",
             "https://bugzilla.redhat.com/2467820",
+            "https://bugzilla.redhat.com/2484204",
+            "https://bugzilla.redhat.com/2484830",
             "https://bugzilla.redhat.com/2515815",
             "https://bugzilla.redhat.com/2515820",
             "https://bugzilla.redhat.com/2515827",
@@ -4951,20 +4957,20 @@
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56859",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56860",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56862",
-            "https://errata.almalinux.org/9/ALSA-2026-62406.html",
+            "https://errata.almalinux.org/10/ALSA-2026-65116.html",
             "https://errata.rockylinux.org/RLSA-2026:65886",
             "https://go.dev/cl/759940",
             "https://go.dev/issue/78566",
             "https://groups.google.com/g/golang-announce/c/qcCIEXso47M",
             "https://linux.oracle.com/cve/CVE-2026-39820.html",
-            "https://linux.oracle.com/errata/ELSA-2026-63022-0.html",
+            "https://linux.oracle.com/errata/ELSA-2026-65895-0.html",
             "https://nvd.nist.gov/vuln/detail/CVE-2026-39820",
             "https://pkg.go.dev/vuln/GO-2026-4986",
             "https://security.access.redhat.com/data/csaf/v2/vex/2026/cve-2026-39820.json",
             "https://www.cve.org/CVERecord?id=CVE-2026-39820"
           ],
           "PublishedDate": "2026-05-07T20:16:43.187Z",
-          "LastModifiedDate": "2026-09-09T13:19:40.757Z"
+          "LastModifiedDate": "2026-09-18T13:18:07.977Z"
         },
         {
           "VulnerabilityID": "CVE-2026-39821",
@@ -4981,7 +4987,7 @@
           "FixedVersion": "1.25.13, 1.26.6, 1.27.0-rc.3",
           "Status": "fixed",
           "Layer": {
-            "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
+            "DiffID": "sha256:afaa93afde1c6674beeb827cf0214759e7d6be6527ea301ac23c45883ccafab8"
           },
           "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-39821",
           "DataSource": {
@@ -4989,7 +4995,7 @@
             "Name": "The Go Vulnerability Database",
             "URL": "https://pkg.go.dev/vuln/"
           },
-          "Fingerprint": "sha256:de3d95e418cd3b1a29efeed58a4412e49e4fe0733c4ee74af20dfbaffac7d483",
+          "Fingerprint": "sha256:170e03a1e42edc18ccfb5d4132df6564b5d8959c11895c97024e4fa98d373ea4",
           "Title": "golang.org/x/net/idna: golang: net/http: golang.org/x/net/idna: Privilege escalation via incorrect Punycode label processing",
           "Description": "The ToASCII and ToUnicode functions incorrectly accept Punycode-encoded labels that decode to an ASCII-only label. For example, ToUnicode(\"xn--example-.com\") incorrectly returns the name \"example.com\" rather than an error. This behavior can lead to privilege escalation in programs using the idna package. For example, a program which performs privilege checks on the ASCII hostname may reject \"example.com\" but permit \"xn--example-.com\". If that program subsequently converts the ASCII hostname to Unicode, it will inadvertently permits access to the Unicode name \"example.com\".",
           "Severity": "HIGH",
@@ -5144,14 +5150,28 @@
             "https://access.redhat.com/errata/RHSA-2026:60520",
             "https://access.redhat.com/errata/RHSA-2026:61245",
             "https://access.redhat.com/errata/RHSA-2026:61253",
+            "https://access.redhat.com/errata/RHSA-2026:62549",
             "https://access.redhat.com/errata/RHSA-2026:63134",
             "https://access.redhat.com/errata/RHSA-2026:65126",
             "https://access.redhat.com/errata/RHSA-2026:65153",
             "https://access.redhat.com/errata/RHSA-2026:65359",
             "https://access.redhat.com/errata/RHSA-2026:65534",
+            "https://access.redhat.com/errata/RHSA-2026:65851",
             "https://access.redhat.com/errata/RHSA-2026:65886",
+            "https://access.redhat.com/errata/RHSA-2026:66016",
+            "https://access.redhat.com/errata/RHSA-2026:66022",
+            "https://access.redhat.com/errata/RHSA-2026:66350",
+            "https://access.redhat.com/errata/RHSA-2026:66432",
+            "https://access.redhat.com/errata/RHSA-2026:67149",
+            "https://access.redhat.com/errata/RHSA-2026:67159",
+            "https://access.redhat.com/errata/RHSA-2026:67160",
+            "https://access.redhat.com/errata/RHSA-2026:67287",
+            "https://access.redhat.com/errata/RHSA-2026:67319",
+            "https://access.redhat.com/errata/RHSA-2026:67517",
+            "https://access.redhat.com/errata/RHSA-2026:68504",
             "https://access.redhat.com/security/cve/CVE-2026-39821",
             "https://bugzilla.redhat.com/2480756",
+            "https://bugzilla.redhat.com/2484207",
             "https://bugzilla.redhat.com/show_bug.cgi?id=2456333",
             "https://bugzilla.redhat.com/show_bug.cgi?id=2456339",
             "https://bugzilla.redhat.com/show_bug.cgi?id=2467809",
@@ -5179,7 +5199,7 @@
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56859",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56860",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56862",
-            "https://errata.almalinux.org/9/ALSA-2026-37435.html",
+            "https://errata.almalinux.org/10/ALSA-2026-46395.html",
             "https://errata.rockylinux.org/RLSA-2026:65886",
             "https://github.com/golang/go/issues/78760",
             "https://go.dev/cl/767220",
@@ -5187,7 +5207,7 @@
             "https://groups.google.com/g/golang-announce/c/94pEornpRlI",
             "https://groups.google.com/g/golang-announce/c/iI-mYSI0lu8",
             "https://linux.oracle.com/cve/CVE-2026-39821.html",
-            "https://linux.oracle.com/errata/ELSA-2026-46395.html",
+            "https://linux.oracle.com/errata/ELSA-2026-66432-0.html",
             "https://nvd.nist.gov/vuln/detail/CVE-2026-39821",
             "https://pkg.go.dev/vuln/GO-2026-5026",
             "https://security.access.redhat.com/data/csaf/v2/vex/2026/cve-2026-39821.json",
@@ -5195,7 +5215,7 @@
             "https://www.cve.org/CVERecord?id=CVE-2026-39821"
           ],
           "PublishedDate": "2026-05-22T16:16:20.41Z",
-          "LastModifiedDate": "2026-09-09T13:19:41.85Z"
+          "LastModifiedDate": "2026-09-17T12:18:05.767Z"
         },
         {
           "VulnerabilityID": "CVE-2026-39822",
@@ -5212,7 +5232,7 @@
           "FixedVersion": "1.25.12, 1.26.5, 1.27.0-rc.2",
           "Status": "fixed",
           "Layer": {
-            "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
+            "DiffID": "sha256:afaa93afde1c6674beeb827cf0214759e7d6be6527ea301ac23c45883ccafab8"
           },
           "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-39822",
           "DataSource": {
@@ -5220,7 +5240,7 @@
             "Name": "The Go Vulnerability Database",
             "URL": "https://pkg.go.dev/vuln/"
           },
-          "Fingerprint": "sha256:f26d4a52ff07947bcc1f7d9e916ff041cb57c7c315df7c6da9bb67a2cfe05e40",
+          "Fingerprint": "sha256:be603a74885b528007fbd7fc69d154b128fc7ae96e6c68685802493e7e34606b",
           "Title": "golang: Go os.Root: Symlink following vulnerability allows directory traversal",
           "Description": "On Unix systems, opening a file in an os.Root improperly follows symlinks to locations outside of the Root when the final path component of the a path is a symbolic link and the path ends in /. For example, 'root.Open(\"symlink/\")' will open \"symlink\" even when \"symlink\" is a symbolic link pointing outside of the root.",
           "Severity": "HIGH",
@@ -5248,13 +5268,14 @@
             }
           },
           "References": [
+            "https://access.redhat.com/errata/RHSA-2026:38495",
             "https://access.redhat.com/errata/RHSA-2026:38878",
             "https://access.redhat.com/security/cve/CVE-2026-39822",
             "https://bugzilla.redhat.com/2498152",
             "https://bugzilla.redhat.com/show_bug.cgi?id=2498152",
             "https://creativecommons.org/licenses/by/4.0/",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-39822",
-            "https://errata.almalinux.org/9/ALSA-2026-38878.html",
+            "https://errata.almalinux.org/10/ALSA-2026-38495.html",
             "https://errata.rockylinux.org/RLSA-2026:38878",
             "https://go.dev/cl/797880",
             "https://go.dev/issue/79005",
@@ -5266,7 +5287,7 @@
             "https://www.cve.org/CVERecord?id=CVE-2026-39822"
           ],
           "PublishedDate": "2026-07-08T17:17:21.31Z",
-          "LastModifiedDate": "2026-07-13T14:54:26.317Z"
+          "LastModifiedDate": "2026-09-17T17:10:20.047Z"
         },
         {
           "VulnerabilityID": "CVE-2026-39836",
@@ -5283,7 +5304,7 @@
           "FixedVersion": "1.25.10, 1.26.3",
           "Status": "fixed",
           "Layer": {
-            "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
+            "DiffID": "sha256:afaa93afde1c6674beeb827cf0214759e7d6be6527ea301ac23c45883ccafab8"
           },
           "SeveritySource": "nvd",
           "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-39836",
@@ -5292,7 +5313,7 @@
             "Name": "The Go Vulnerability Database",
             "URL": "https://pkg.go.dev/vuln/"
           },
-          "Fingerprint": "sha256:de7e3e4ddb65d1871ba9231d2f15eb0b6892b3609557e626368a258dd33a67c6",
+          "Fingerprint": "sha256:11f8af8b7c00bd17424fe2fdce7ce6c40837c56cd9e78d35dd33ea79c29bb3da",
           "Title": "net: golang: Go net package: Denial of Service via NUL byte in Dial and LookupPort on Windows",
           "Description": "The Dial and LookupPort functions panic on Windows when provided with an input containing a NUL (0).",
           "Severity": "HIGH",
@@ -5375,7 +5396,7 @@
           "FixedVersion": "1.25.10, 1.26.3",
           "Status": "fixed",
           "Layer": {
-            "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
+            "DiffID": "sha256:afaa93afde1c6674beeb827cf0214759e7d6be6527ea301ac23c45883ccafab8"
           },
           "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-42499",
           "DataSource": {
@@ -5383,7 +5404,7 @@
             "Name": "The Go Vulnerability Database",
             "URL": "https://pkg.go.dev/vuln/"
           },
-          "Fingerprint": "sha256:8757881df7ca4b541a3466c1db8c3d22e64a4ff19c972706f5e1a3e0638676cf",
+          "Fingerprint": "sha256:b679444295015345172ebf489a41edaa5b59c96a2de755011ae7acaa32a80f30",
           "Title": "net/mail: golang: net/mail: Denial of Service via pathological email address parsing",
           "Description": "Pathological inputs could cause DoS through consumePhrase when parsing an email address according to RFC 5322.",
           "Severity": "HIGH",
@@ -5439,8 +5460,11 @@
             "https://access.redhat.com/errata/RHSA-2026:49702",
             "https://access.redhat.com/errata/RHSA-2026:49712",
             "https://access.redhat.com/errata/RHSA-2026:50300",
+            "https://access.redhat.com/errata/RHSA-2026:50319",
+            "https://access.redhat.com/errata/RHSA-2026:50336",
             "https://access.redhat.com/errata/RHSA-2026:50843",
             "https://access.redhat.com/errata/RHSA-2026:51033",
+            "https://access.redhat.com/errata/RHSA-2026:51112",
             "https://access.redhat.com/errata/RHSA-2026:54274",
             "https://access.redhat.com/errata/RHSA-2026:54283",
             "https://access.redhat.com/errata/RHSA-2026:54284",
@@ -5489,10 +5513,23 @@
             "https://access.redhat.com/errata/RHSA-2026:65335",
             "https://access.redhat.com/errata/RHSA-2026:65336",
             "https://access.redhat.com/errata/RHSA-2026:65534",
+            "https://access.redhat.com/errata/RHSA-2026:65838",
             "https://access.redhat.com/errata/RHSA-2026:65886",
+            "https://access.redhat.com/errata/RHSA-2026:65895",
+            "https://access.redhat.com/errata/RHSA-2026:66022",
+            "https://access.redhat.com/errata/RHSA-2026:66327",
+            "https://access.redhat.com/errata/RHSA-2026:67148",
+            "https://access.redhat.com/errata/RHSA-2026:67517",
+            "https://access.redhat.com/errata/RHSA-2026:67974",
+            "https://access.redhat.com/errata/RHSA-2026:67975",
+            "https://access.redhat.com/errata/RHSA-2026:68334",
+            "https://access.redhat.com/errata/RHSA-2026:68504",
+            "https://access.redhat.com/errata/RHSA-2026:68527",
             "https://access.redhat.com/security/cve/CVE-2026-42499",
             "https://bugzilla.redhat.com/2467809",
             "https://bugzilla.redhat.com/2467820",
+            "https://bugzilla.redhat.com/2484204",
+            "https://bugzilla.redhat.com/2484830",
             "https://bugzilla.redhat.com/2515815",
             "https://bugzilla.redhat.com/2515820",
             "https://bugzilla.redhat.com/2515827",
@@ -5526,20 +5563,20 @@
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56859",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56860",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56862",
-            "https://errata.almalinux.org/9/ALSA-2026-62406.html",
+            "https://errata.almalinux.org/10/ALSA-2026-65116.html",
             "https://errata.rockylinux.org/RLSA-2026:65886",
             "https://go.dev/cl/771520",
             "https://go.dev/issue/78987",
             "https://groups.google.com/g/golang-announce/c/qcCIEXso47M",
             "https://linux.oracle.com/cve/CVE-2026-42499.html",
-            "https://linux.oracle.com/errata/ELSA-2026-64818-0.html",
+            "https://linux.oracle.com/errata/ELSA-2026-65895-0.html",
             "https://nvd.nist.gov/vuln/detail/CVE-2026-42499",
             "https://pkg.go.dev/vuln/GO-2026-4977",
             "https://security.access.redhat.com/data/csaf/v2/vex/2026/cve-2026-42499.json",
             "https://www.cve.org/CVERecord?id=CVE-2026-42499"
           ],
           "PublishedDate": "2026-05-07T20:16:44.54Z",
-          "LastModifiedDate": "2026-09-09T13:20:00.72Z"
+          "LastModifiedDate": "2026-09-18T13:18:17.093Z"
         },
         {
           "VulnerabilityID": "CVE-2026-42504",
@@ -5556,7 +5593,7 @@
           "FixedVersion": "1.25.11, 1.26.4",
           "Status": "fixed",
           "Layer": {
-            "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
+            "DiffID": "sha256:afaa93afde1c6674beeb827cf0214759e7d6be6527ea301ac23c45883ccafab8"
           },
           "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-42504",
           "DataSource": {
@@ -5564,7 +5601,7 @@
             "Name": "The Go Vulnerability Database",
             "URL": "https://pkg.go.dev/vuln/"
           },
-          "Fingerprint": "sha256:91b9dca1b53c236ed301ee206b2fc5eb637e2e3fead0744c77550c3959556989",
+          "Fingerprint": "sha256:3fd32fb9bb7ea72a0502cabac8227223262de4f5bafca5fa1284ceafba4f711c",
           "Title": "mime: golang: Golang MIME: Denial of Service via maliciously-crafted MIME header",
           "Description": "Decoding a maliciously-crafted MIME header containing many invalid encoded-words can consume excessive CPU.",
           "Severity": "HIGH",
@@ -5592,15 +5629,14 @@
             }
           },
           "References": [
-            "https://access.redhat.com/errata/RHSA-2026:63124",
             "https://access.redhat.com/errata/RHSA-2026:65886",
+            "https://access.redhat.com/errata/RHSA-2026:69308",
             "https://access.redhat.com/security/cve/CVE-2026-42504",
             "https://bugzilla.redhat.com/2484204",
             "https://bugzilla.redhat.com/2515815",
             "https://bugzilla.redhat.com/2515820",
-            "https://bugzilla.redhat.com/2515827",
-            "https://bugzilla.redhat.com/2515838",
             "https://bugzilla.redhat.com/2515839",
+            "https://bugzilla.redhat.com/2515840",
             "https://bugzilla.redhat.com/show_bug.cgi?id=2456333",
             "https://bugzilla.redhat.com/show_bug.cgi?id=2456339",
             "https://bugzilla.redhat.com/show_bug.cgi?id=2467809",
@@ -5628,13 +5664,13 @@
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56859",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56860",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56862",
-            "https://errata.almalinux.org/8/ALSA-2026-63124.html",
+            "https://errata.almalinux.org/10/ALSA-2026-69308.html",
             "https://errata.rockylinux.org/RLSA-2026:65886",
             "https://go.dev/cl/774481",
             "https://go.dev/issue/79217",
             "https://groups.google.com/g/golang-announce/c/tKs3rmcBcKw",
             "https://linux.oracle.com/cve/CVE-2026-42504.html",
-            "https://linux.oracle.com/errata/ELSA-2026-63124-0.html",
+            "https://linux.oracle.com/errata/ELSA-2026-69308.html",
             "https://nvd.nist.gov/vuln/detail/CVE-2026-42504",
             "https://pkg.go.dev/vuln/GO-2026-5038",
             "https://www.cve.org/CVERecord?id=CVE-2026-42504"
@@ -5657,7 +5693,7 @@
           "FixedVersion": "1.25.13, 1.26.6, 1.27.0-rc.3",
           "Status": "fixed",
           "Layer": {
-            "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
+            "DiffID": "sha256:afaa93afde1c6674beeb827cf0214759e7d6be6527ea301ac23c45883ccafab8"
           },
           "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-56853",
           "DataSource": {
@@ -5665,7 +5701,7 @@
             "Name": "The Go Vulnerability Database",
             "URL": "https://pkg.go.dev/vuln/"
           },
-          "Fingerprint": "sha256:614b1aba9bbd913f515248918d146e76631fb6d704d973ca72115233b75b7068",
+          "Fingerprint": "sha256:87f258048831ccc7989334c6c44911b66b81b7e0b86c24affd90bf0514426a06",
           "Title": "net/http: golang: Go net/http: Unencrypted HTTP/2 connections vulnerable to Denial of Service",
           "Description": "When a server is configured to support unencrypted HTTP/2, it reads a few bytes from each new connection to see if they contain the HTTP/2 client preface. ReadHeaderTimeout is unexpectedly not being applied when doing this.",
           "Severity": "HIGH",
@@ -5677,6 +5713,7 @@
             "amazon": 3,
             "bitnami": 3,
             "oracle-oval": 3,
+            "photon": 3,
             "redhat": 3,
             "rocky": 3
           },
@@ -5691,11 +5728,13 @@
             }
           },
           "References": [
-            "https://access.redhat.com/errata/RHSA-2026:62406",
+            "https://access.redhat.com/errata/RHSA-2026:65116",
             "https://access.redhat.com/errata/RHSA-2026:65886",
             "https://access.redhat.com/security/cve/CVE-2026-56853",
             "https://bugzilla.redhat.com/2467809",
             "https://bugzilla.redhat.com/2467820",
+            "https://bugzilla.redhat.com/2484204",
+            "https://bugzilla.redhat.com/2484830",
             "https://bugzilla.redhat.com/2515815",
             "https://bugzilla.redhat.com/2515820",
             "https://bugzilla.redhat.com/2515827",
@@ -5729,13 +5768,13 @@
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56859",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56860",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56862",
-            "https://errata.almalinux.org/9/ALSA-2026-62406.html",
+            "https://errata.almalinux.org/10/ALSA-2026-65116.html",
             "https://errata.rockylinux.org/RLSA-2026:65886",
             "https://go.dev/cl/795540",
             "https://go.dev/issue/80205",
             "https://groups.google.com/g/golang-announce/c/94pEornpRlI",
             "https://linux.oracle.com/cve/CVE-2026-56853.html",
-            "https://linux.oracle.com/errata/ELSA-2026-64818-0.html",
+            "https://linux.oracle.com/errata/ELSA-2026-65895-0.html",
             "https://nvd.nist.gov/vuln/detail/CVE-2026-56853",
             "https://pkg.go.dev/vuln/GO-2026-6089",
             "https://www.cve.org/CVERecord?id=CVE-2026-56853"
@@ -5758,7 +5797,7 @@
           "FixedVersion": "1.25.13, 1.26.6, 1.27.0-rc.3",
           "Status": "fixed",
           "Layer": {
-            "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
+            "DiffID": "sha256:afaa93afde1c6674beeb827cf0214759e7d6be6527ea301ac23c45883ccafab8"
           },
           "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-56858",
           "DataSource": {
@@ -5766,7 +5805,7 @@
             "Name": "The Go Vulnerability Database",
             "URL": "https://pkg.go.dev/vuln/"
           },
-          "Fingerprint": "sha256:bb04a8b0a5e955095f9d1daf1b29763fb91dfab76c1322db372bff452f36f1ee",
+          "Fingerprint": "sha256:f1418dced150845e6efb93ad30a54b4fbc513d2581a3ec5db5f6f86234a1b896",
           "Title": "html/template: golang: Go html/template: Cross-Site Scripting via pathological input",
           "Description": "Previously, pathological inputs could close an unescaped '/' early, allowing for attack-controlled data to inject arbitrary content, potentially leading to XSS.",
           "Severity": "HIGH",
@@ -5778,6 +5817,7 @@
             "amazon": 3,
             "bitnami": 2,
             "oracle-oval": 3,
+            "photon": 2,
             "redhat": 3,
             "rocky": 3
           },
@@ -5792,108 +5832,13 @@
             }
           },
           "References": [
-            "https://access.redhat.com/errata/RHSA-2026:63136",
+            "https://access.redhat.com/errata/RHSA-2026:65116",
             "https://access.redhat.com/errata/RHSA-2026:65886",
             "https://access.redhat.com/security/cve/CVE-2026-56858",
-            "https://bugzilla.redhat.com/2515815",
-            "https://bugzilla.redhat.com/2515820",
-            "https://bugzilla.redhat.com/2515838",
-            "https://bugzilla.redhat.com/2515839",
-            "https://bugzilla.redhat.com/show_bug.cgi?id=2456333",
-            "https://bugzilla.redhat.com/show_bug.cgi?id=2456339",
-            "https://bugzilla.redhat.com/show_bug.cgi?id=2467809",
-            "https://bugzilla.redhat.com/show_bug.cgi?id=2467820",
-            "https://bugzilla.redhat.com/show_bug.cgi?id=2467822",
-            "https://bugzilla.redhat.com/show_bug.cgi?id=2480756",
-            "https://bugzilla.redhat.com/show_bug.cgi?id=2484204",
-            "https://bugzilla.redhat.com/show_bug.cgi?id=2515815",
-            "https://bugzilla.redhat.com/show_bug.cgi?id=2515820",
-            "https://bugzilla.redhat.com/show_bug.cgi?id=2515827",
-            "https://bugzilla.redhat.com/show_bug.cgi?id=2515838",
-            "https://bugzilla.redhat.com/show_bug.cgi?id=2515839",
-            "https://bugzilla.redhat.com/show_bug.cgi?id=2515840",
-            "https://creativecommons.org/licenses/by/4.0/",
-            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-32280",
-            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-32281",
-            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-33811",
-            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-33818",
-            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-39820",
-            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-39821",
-            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-42499",
-            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-42504",
-            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56853",
-            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56858",
-            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56859",
-            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56860",
-            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56862",
-            "https://errata.almalinux.org/9/ALSA-2026-63136.html",
-            "https://errata.rockylinux.org/RLSA-2026:65886",
-            "https://go.dev/cl/807100",
-            "https://go.dev/issue/80435",
-            "https://groups.google.com/g/golang-announce/c/94pEornpRlI",
-            "https://linux.oracle.com/cve/CVE-2026-56858.html",
-            "https://linux.oracle.com/errata/ELSA-2026-64818-0.html",
-            "https://nvd.nist.gov/vuln/detail/CVE-2026-56858",
-            "https://pkg.go.dev/vuln/GO-2026-6091",
-            "https://www.cve.org/CVERecord?id=CVE-2026-56858"
-          ],
-          "PublishedDate": "2026-08-13T22:17:22.207Z",
-          "LastModifiedDate": "2026-09-03T16:37:52.17Z"
-        },
-        {
-          "VulnerabilityID": "CVE-2026-56859",
-          "VendorIDs": [
-            "GO-2026-6088"
-          ],
-          "PkgID": "stdlib@v1.24.6",
-          "PkgName": "stdlib",
-          "PkgIdentifier": {
-            "PURL": "pkg:golang/stdlib@v1.24.6",
-            "UID": "5a9b484fa87e1a00"
-          },
-          "InstalledVersion": "v1.24.6",
-          "FixedVersion": "1.25.13, 1.26.6, 1.27.0-rc.3",
-          "Status": "fixed",
-          "Layer": {
-            "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
-          },
-          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-56859",
-          "DataSource": {
-            "ID": "govulndb",
-            "Name": "The Go Vulnerability Database",
-            "URL": "https://pkg.go.dev/vuln/"
-          },
-          "Fingerprint": "sha256:d3266eefd56d4f789f2858546022a48422f313f1c612cd9557728d602822e7c8",
-          "Title": "encoding/xml: golang: Go: Denial of Service via XML decoding recursion depth issue",
-          "Description": "Previously, DecodeElement would reset the depth counter causing it to never fire; this could lead to stack exhaustion.",
-          "Severity": "HIGH",
-          "CweIDs": [
-            "CWE-770"
-          ],
-          "VendorSeverity": {
-            "alma": 3,
-            "amazon": 3,
-            "bitnami": 3,
-            "oracle-oval": 3,
-            "redhat": 3,
-            "rocky": 3
-          },
-          "CVSS": {
-            "bitnami": {
-              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
-              "V3Score": 7.5
-            },
-            "redhat": {
-              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
-              "V3Score": 7.5
-            }
-          },
-          "References": [
-            "https://access.redhat.com/errata/RHSA-2026:62406",
-            "https://access.redhat.com/errata/RHSA-2026:65886",
-            "https://access.redhat.com/security/cve/CVE-2026-56859",
             "https://bugzilla.redhat.com/2467809",
             "https://bugzilla.redhat.com/2467820",
+            "https://bugzilla.redhat.com/2484204",
+            "https://bugzilla.redhat.com/2484830",
             "https://bugzilla.redhat.com/2515815",
             "https://bugzilla.redhat.com/2515820",
             "https://bugzilla.redhat.com/2515827",
@@ -5927,13 +5872,112 @@
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56859",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56860",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56862",
-            "https://errata.almalinux.org/9/ALSA-2026-62406.html",
+            "https://errata.almalinux.org/10/ALSA-2026-65116.html",
+            "https://errata.rockylinux.org/RLSA-2026:65886",
+            "https://go.dev/cl/807100",
+            "https://go.dev/issue/80435",
+            "https://groups.google.com/g/golang-announce/c/94pEornpRlI",
+            "https://linux.oracle.com/cve/CVE-2026-56858.html",
+            "https://linux.oracle.com/errata/ELSA-2026-65895-0.html",
+            "https://nvd.nist.gov/vuln/detail/CVE-2026-56858",
+            "https://pkg.go.dev/vuln/GO-2026-6091",
+            "https://www.cve.org/CVERecord?id=CVE-2026-56858"
+          ],
+          "PublishedDate": "2026-08-13T22:17:22.207Z",
+          "LastModifiedDate": "2026-09-03T16:37:52.17Z"
+        },
+        {
+          "VulnerabilityID": "CVE-2026-56859",
+          "VendorIDs": [
+            "GO-2026-6088"
+          ],
+          "PkgID": "stdlib@v1.24.6",
+          "PkgName": "stdlib",
+          "PkgIdentifier": {
+            "PURL": "pkg:golang/stdlib@v1.24.6",
+            "UID": "5a9b484fa87e1a00"
+          },
+          "InstalledVersion": "v1.24.6",
+          "FixedVersion": "1.25.13, 1.26.6, 1.27.0-rc.3",
+          "Status": "fixed",
+          "Layer": {
+            "DiffID": "sha256:afaa93afde1c6674beeb827cf0214759e7d6be6527ea301ac23c45883ccafab8"
+          },
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-56859",
+          "DataSource": {
+            "ID": "govulndb",
+            "Name": "The Go Vulnerability Database",
+            "URL": "https://pkg.go.dev/vuln/"
+          },
+          "Fingerprint": "sha256:de5f1f58205195ca54b93c1a6b9bad19fa20484e6cd4f337800c64f4099c3cbe",
+          "Title": "encoding/xml: golang: Go: Denial of Service via XML decoding recursion depth issue",
+          "Description": "Previously, DecodeElement would reset the depth counter causing it to never fire; this could lead to stack exhaustion.",
+          "Severity": "HIGH",
+          "CweIDs": [
+            "CWE-770"
+          ],
+          "VendorSeverity": {
+            "alma": 3,
+            "amazon": 3,
+            "bitnami": 3,
+            "oracle-oval": 3,
+            "photon": 3,
+            "redhat": 3,
+            "rocky": 3
+          },
+          "CVSS": {
+            "bitnami": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+              "V3Score": 7.5
+            },
+            "redhat": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+              "V3Score": 7.5
+            }
+          },
+          "References": [
+            "https://access.redhat.com/errata/RHSA-2026:65886",
+            "https://access.redhat.com/errata/RHSA-2026:69308",
+            "https://access.redhat.com/security/cve/CVE-2026-56859",
+            "https://bugzilla.redhat.com/2484204",
+            "https://bugzilla.redhat.com/2515815",
+            "https://bugzilla.redhat.com/2515820",
+            "https://bugzilla.redhat.com/2515839",
+            "https://bugzilla.redhat.com/2515840",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2456333",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2456339",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2467809",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2467820",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2467822",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2480756",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2484204",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2515815",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2515820",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2515827",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2515838",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2515839",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2515840",
+            "https://creativecommons.org/licenses/by/4.0/",
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-32280",
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-32281",
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-33811",
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-33818",
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-39820",
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-39821",
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-42499",
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-42504",
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56853",
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56858",
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56859",
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56860",
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56862",
+            "https://errata.almalinux.org/10/ALSA-2026-69308.html",
             "https://errata.rockylinux.org/RLSA-2026:65886",
             "https://go.dev/cl/803320",
             "https://go.dev/issue/80481",
             "https://groups.google.com/g/golang-announce/c/94pEornpRlI",
             "https://linux.oracle.com/cve/CVE-2026-56859.html",
-            "https://linux.oracle.com/errata/ELSA-2026-63163-0.html",
+            "https://linux.oracle.com/errata/ELSA-2026-69308.html",
             "https://nvd.nist.gov/vuln/detail/CVE-2026-56859",
             "https://pkg.go.dev/vuln/GO-2026-6088",
             "https://www.cve.org/CVERecord?id=CVE-2026-56859"
@@ -5956,7 +6000,7 @@
           "FixedVersion": "1.25.13, 1.26.6, 1.27.0-rc.3",
           "Status": "fixed",
           "Layer": {
-            "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
+            "DiffID": "sha256:afaa93afde1c6674beeb827cf0214759e7d6be6527ea301ac23c45883ccafab8"
           },
           "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-56860",
           "DataSource": {
@@ -5964,7 +6008,7 @@
             "Name": "The Go Vulnerability Database",
             "URL": "https://pkg.go.dev/vuln/"
           },
-          "Fingerprint": "sha256:c1c668ac6596031a6f2d283d32b4241e7080e8b569fe6c17a2ccc17b83f04e5e",
+          "Fingerprint": "sha256:8ad2dc09120361ec34ad37b17448d558dae885811cd2ed0637eabe3eb65ef547",
           "Title": "net/url: golang: golang net/url: Denial of Service from quadratic complexity in path resolution",
           "Description": "Previously, resolving relative paths containing parent directory ('..') segments performed string conversions and buffer rewrites on each step, resulting in quadratic time complexity and high memory allocation overhead. Now, path resolution operates on a byte buffer using index-based backtracking for '..' segments, eliminating the quadratic time complexity and significantly reducing memory allocations.",
           "Severity": "HIGH",
@@ -5976,6 +6020,7 @@
             "amazon": 3,
             "bitnami": 2,
             "oracle-oval": 3,
+            "photon": 2,
             "redhat": 3,
             "rocky": 3
           },
@@ -5990,47 +6035,28 @@
             }
           },
           "References": [
-            "https://access.redhat.com/errata/RHSA-2026:63136",
-            "https://access.redhat.com/errata/RHSA-2026:65886",
+            "https://access.redhat.com/errata/RHSA-2026:66364",
+            "https://access.redhat.com/errata/RHSA-2026:69308",
             "https://access.redhat.com/security/cve/CVE-2026-56860",
+            "https://bugzilla.redhat.com/2484204",
             "https://bugzilla.redhat.com/2515815",
             "https://bugzilla.redhat.com/2515820",
-            "https://bugzilla.redhat.com/2515838",
             "https://bugzilla.redhat.com/2515839",
-            "https://bugzilla.redhat.com/show_bug.cgi?id=2456333",
-            "https://bugzilla.redhat.com/show_bug.cgi?id=2456339",
-            "https://bugzilla.redhat.com/show_bug.cgi?id=2467809",
-            "https://bugzilla.redhat.com/show_bug.cgi?id=2467820",
-            "https://bugzilla.redhat.com/show_bug.cgi?id=2467822",
-            "https://bugzilla.redhat.com/show_bug.cgi?id=2480756",
-            "https://bugzilla.redhat.com/show_bug.cgi?id=2484204",
+            "https://bugzilla.redhat.com/2515840",
             "https://bugzilla.redhat.com/show_bug.cgi?id=2515815",
             "https://bugzilla.redhat.com/show_bug.cgi?id=2515820",
-            "https://bugzilla.redhat.com/show_bug.cgi?id=2515827",
-            "https://bugzilla.redhat.com/show_bug.cgi?id=2515838",
             "https://bugzilla.redhat.com/show_bug.cgi?id=2515839",
-            "https://bugzilla.redhat.com/show_bug.cgi?id=2515840",
             "https://creativecommons.org/licenses/by/4.0/",
-            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-32280",
-            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-32281",
-            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-33811",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-33818",
-            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-39820",
-            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-39821",
-            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-42499",
-            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-42504",
-            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56853",
-            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56858",
-            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56859",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56860",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56862",
-            "https://errata.almalinux.org/9/ALSA-2026-63136.html",
-            "https://errata.rockylinux.org/RLSA-2026:65886",
+            "https://errata.almalinux.org/10/ALSA-2026-69308.html",
+            "https://errata.rockylinux.org/RLSA-2026:66364",
             "https://go.dev/cl/803681",
             "https://go.dev/issue/80494",
             "https://groups.google.com/g/golang-announce/c/94pEornpRlI",
             "https://linux.oracle.com/cve/CVE-2026-56860.html",
-            "https://linux.oracle.com/errata/ELSA-2026-64818-0.html",
+            "https://linux.oracle.com/errata/ELSA-2026-69308.html",
             "https://nvd.nist.gov/vuln/detail/CVE-2026-56860",
             "https://pkg.go.dev/vuln/GO-2026-6218",
             "https://www.cve.org/CVERecord?id=CVE-2026-56860"
@@ -6053,7 +6079,7 @@
           "FixedVersion": "1.25.13, 1.26.6, 1.27.0-rc.3",
           "Status": "fixed",
           "Layer": {
-            "DiffID": "sha256:833feec0ede441f55add4ae344c08ccbfb5248f4b56fb582a3f9e02052ad9854"
+            "DiffID": "sha256:afaa93afde1c6674beeb827cf0214759e7d6be6527ea301ac23c45883ccafab8"
           },
           "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-56862",
           "DataSource": {
@@ -6061,7 +6087,7 @@
             "Name": "The Go Vulnerability Database",
             "URL": "https://pkg.go.dev/vuln/"
           },
-          "Fingerprint": "sha256:8c908993f2af9f5cbe9835e3f3265233377e0bb3553a9610516466256a49cdc8",
+          "Fingerprint": "sha256:2141033997301b51a32d41ff5df7dd4e4648ce6de30011681b1b493517e14ec3",
           "Title": "crypto/tls: golang: Golang crypto/tls: Denial of Service via indefinite KeyUpdate messages",
           "Description": "Handshake messages, such as KeyUpdate, are always considered as state-advancing, regardless of whether a handshake has been completed or not. As a result, a malicious client can keep sending KeyUpdate messages to force the server to keep performing key derivation operations indefinitely.",
           "Severity": "HIGH",
@@ -6073,6 +6099,7 @@
             "amazon": 3,
             "bitnami": 3,
             "oracle-oval": 3,
+            "photon": 3,
             "redhat": 3,
             "rocky": 3
           },
@@ -6087,47 +6114,28 @@
             }
           },
           "References": [
-            "https://access.redhat.com/errata/RHSA-2026:63136",
-            "https://access.redhat.com/errata/RHSA-2026:65886",
+            "https://access.redhat.com/errata/RHSA-2026:66364",
+            "https://access.redhat.com/errata/RHSA-2026:69308",
             "https://access.redhat.com/security/cve/CVE-2026-56862",
+            "https://bugzilla.redhat.com/2484204",
             "https://bugzilla.redhat.com/2515815",
             "https://bugzilla.redhat.com/2515820",
-            "https://bugzilla.redhat.com/2515838",
             "https://bugzilla.redhat.com/2515839",
-            "https://bugzilla.redhat.com/show_bug.cgi?id=2456333",
-            "https://bugzilla.redhat.com/show_bug.cgi?id=2456339",
-            "https://bugzilla.redhat.com/show_bug.cgi?id=2467809",
-            "https://bugzilla.redhat.com/show_bug.cgi?id=2467820",
-            "https://bugzilla.redhat.com/show_bug.cgi?id=2467822",
-            "https://bugzilla.redhat.com/show_bug.cgi?id=2480756",
-            "https://bugzilla.redhat.com/show_bug.cgi?id=2484204",
+            "https://bugzilla.redhat.com/2515840",
             "https://bugzilla.redhat.com/show_bug.cgi?id=2515815",
             "https://bugzilla.redhat.com/show_bug.cgi?id=2515820",
-            "https://bugzilla.redhat.com/show_bug.cgi?id=2515827",
-            "https://bugzilla.redhat.com/show_bug.cgi?id=2515838",
             "https://bugzilla.redhat.com/show_bug.cgi?id=2515839",
-            "https://bugzilla.redhat.com/show_bug.cgi?id=2515840",
             "https://creativecommons.org/licenses/by/4.0/",
-            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-32280",
-            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-32281",
-            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-33811",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-33818",
-            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-39820",
-            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-39821",
-            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-42499",
-            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-42504",
-            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56853",
-            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56858",
-            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56859",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56860",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-56862",
-            "https://errata.almalinux.org/9/ALSA-2026-63136.html",
-            "https://errata.rockylinux.org/RLSA-2026:65886",
+            "https://errata.almalinux.org/10/ALSA-2026-69308.html",
+            "https://errata.rockylinux.org/RLSA-2026:66364",
             "https://go.dev/cl/804261",
             "https://go.dev/issue/80528",
             "https://groups.google.com/g/golang-announce/c/94pEornpRlI",
             "https://linux.oracle.com/cve/CVE-2026-56862.html",
-            "https://linux.oracle.com/errata/ELSA-2026-64818-0.html",
+            "https://linux.oracle.com/errata/ELSA-2026-69308.html",
             "https://nvd.nist.gov/vuln/detail/CVE-2026-56862",
             "https://pkg.go.dev/vuln/GO-2026-6090",
             "https://www.cve.org/CVERecord?id=CVE-2026-56862"

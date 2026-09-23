@@ -3,121 +3,109 @@
   "Trivy": {
     "Version": "0.73.0"
   },
-  "ReportID": "01a08c53-6df4-7ae5-8029-aba87dced8f3",
-  "CreatedAt": "2026-09-10T20:17:53.012715+03:00",
-  "ArtifactID": "sha256:9f89054c65fdbcc83c224eb847349fb3f345886e55002072498f5b07514b0563",
-  "ArtifactName": "ghcr.io/a-halawany/elven/redis@sha256:0c0a48ddfcea413916152bc64e91c665d0822053099d9bc385a4747d71609432",
+  "ReportID": "01a0ce5c-83d9-7858-99dc-7761b31687b5",
+  "CreatedAt": "2026-09-23T16:02:44.697547+03:00",
+  "ArtifactID": "sha256:3339277ae2d1a48d989b0f24eb567b49605600fb84f24dd2a6ba1c2a67ad943c",
+  "ArtifactName": "redis@sha256:2d3814be5e9b06a30a0be54770b7e12052e7e79ec85271aefd34875c1f393b23",
   "ArtifactType": "container_image",
   "Metadata": {
-    "Size": 125597184,
+    "Size": 119644160,
     "OS": {
       "Family": "alpine",
-      "Name": "3.23.5"
+      "Name": "3.23.6"
     },
-    "ImageID": "sha256:b9c26d0cdb78c00899393235f72a5db11e582a9ea08097e2a55b888e6ac91376",
+    "ImageID": "sha256:15f5a4aad4c3ba34b9874ddbc7f755b469dbd7b8a9e88c12690c52ef6c72465c",
     "DiffIDs": [
-      "sha256:31ad4a471c6852bfec14d757cc75a566c82a9769f12c3918cf6bf52cc0eeb3d0",
-      "sha256:8411cd816be1b352e390bc2743cca40311b52de58b15940da9b97d75869536fd",
-      "sha256:9a8e199c22e292da5caf9443ffbbba3d6a27b17cfbc2ba7ecd5a68f59492ae4b",
-      "sha256:4891ecca60b84a7e1031e703363741b67ba3e5bada28842ef07d16679db35e70",
-      "sha256:7d3047aa7cfb96163f062cdc4f75a36f32102aed695090cf6f2672a92e545c24",
+      "sha256:e63b02c2b5c761df2cb95e657d744f27d95da4e051235a13c80b88cd68eab188",
+      "sha256:b31e91548114daad36eb6b75f33a80ad4763a366b8aebf2ee0f07f9bb96fad6a",
+      "sha256:d81ff166b338fb9986fedcfc15abe662bb2c65aadaf9301750c69c8ffb389f6b",
+      "sha256:3e6e8835c7a3f675a101d365cd4081067f637a6fc2de8feb6cb5d2b9fbe06aae",
+      "sha256:f525070cd9b67146353241832d4718f9b6551366b2a5e32f1c1dd3fe82142156",
       "sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
-      "sha256:3dbb8ec6d1b119d0848804fb31e93fe50c67940b305fbe165f47407dc54001d0",
-      "sha256:3f873bc5316c074de9d08fee6caf06ff1f3d3efffe0b4c7326e2c24fce06c9a2"
+      "sha256:f5902b1d47b5117067a430aff0dc6a582401768105e93301453ff701c8409353"
     ],
     "RepoDigests": [
-      "ghcr.io/a-halawany/elven/redis@sha256:0c0a48ddfcea413916152bc64e91c665d0822053099d9bc385a4747d71609432"
+      "redis@sha256:2d3814be5e9b06a30a0be54770b7e12052e7e79ec85271aefd34875c1f393b23"
     ],
-    "Reference": "ghcr.io/a-halawany/elven/redis@sha256:0c0a48ddfcea413916152bc64e91c665d0822053099d9bc385a4747d71609432",
+    "Reference": "redis@sha256:2d3814be5e9b06a30a0be54770b7e12052e7e79ec85271aefd34875c1f393b23",
     "ImageConfig": {
       "architecture": "amd64",
-      "created": "2026-09-10T16:27:05.918540748Z",
+      "created": "2026-09-21T17:37:00.659434515Z",
       "history": [
         {
-          "created": "2026-06-22T19:20:09.106506185Z",
-          "created_by": "ADD alpine-minirootfs-3.23.5-x86_64.tar.gz / # buildkit",
+          "created": "2026-09-17T20:37:33Z",
+          "created_by": "ADD alpine-minirootfs-3.23.6-x86_64.tar.gz / # buildkit",
           "comment": "buildkit.dockerfile.v0"
         },
         {
-          "created": "2026-06-22T19:20:09.106506185Z",
+          "created": "2026-09-17T20:37:33Z",
           "created_by": "CMD [\"/bin/sh\"]",
           "comment": "buildkit.dockerfile.v0",
           "empty_layer": true
         },
         {
-          "created": "2026-07-30T19:33:18.66366418Z",
+          "created": "2026-09-21T17:27:31Z",
           "created_by": "RUN /bin/sh -c set -eux; \taddgroup -S -g 1000 redis; \tadduser -S -G redis -u 999 redis # buildkit",
           "comment": "buildkit.dockerfile.v0"
         },
         {
-          "created": "2026-07-30T19:33:19.115471305Z",
+          "created": "2026-09-21T17:27:31Z",
           "created_by": "RUN /bin/sh -c set -eux; \tapk add --no-cache \t\ttzdata \t\tsetpriv \t; # buildkit",
           "comment": "buildkit.dockerfile.v0"
         },
         {
-          "created": "2026-07-30T19:42:11.43949575Z",
-          "created_by": "ENV REDIS_VERSION=8.10.0",
+          "created": "2026-09-21T17:37:00Z",
+          "created_by": "ENV REDIS_VERSION=8.10.2",
           "comment": "buildkit.dockerfile.v0",
           "empty_layer": true
         },
         {
-          "created": "2026-07-30T19:42:11.43949575Z",
-          "created_by": "ARG REDIS_DOWNLOAD_URL=https://github.com/redis/redis/releases/download/8.10.0/redis-full.tar.gz",
+          "created": "2026-09-21T17:37:00Z",
+          "created_by": "ARG REDIS_DOWNLOAD_URL=https://github.com/redis/redis/releases/download/8.10.2/redis-full.tar.gz",
           "comment": "buildkit.dockerfile.v0",
           "empty_layer": true
         },
         {
-          "created": "2026-07-30T19:42:11.43949575Z",
-          "created_by": "ARG REDIS_DOWNLOAD_SHA=021973d690498682372505c8c0da934e010eb5ae7db9438dcf5a6d78a9e6a5b8",
+          "created": "2026-09-21T17:37:00Z",
+          "created_by": "ARG REDIS_DOWNLOAD_SHA=ae6973de9b6ad8e6cf21b1e764abccab59200689af6aabce10d4cf6bbb2e253f",
           "comment": "buildkit.dockerfile.v0",
           "empty_layer": true
         },
         {
-          "created": "2026-07-30T19:42:11.43949575Z",
-          "created_by": "RUN |2 REDIS_DOWNLOAD_URL=https://github.com/redis/redis/releases/download/8.10.0/redis-full.tar.gz REDIS_DOWNLOAD_SHA=021973d690498682372505c8c0da934e010eb5ae7db9438dcf5a6d78a9e6a5b8 /bin/sh -c set -eux; \t\tapk add --no-cache --virtual .build-deps \t\tcoreutils \t\tdpkg-dev dpkg \t\tgcc \t\tlinux-headers \t\tmake \t\tmusl-dev \t\topenssl-dev \t\tg++; \t\tarch=\"$(dpkg --print-architecture | awk -F- '{ print $NF }')\"; \tcase \"$arch\" in \t\t'amd64' | 'arm64') BUILD_WITH_MODULES=yes ;; \t\t*) echo \u003e\u00262 \"Modules are NOT supported! unsupported architecture: '$arch'\"; BUILD_WITH_MODULES=no ;; \tesac; \tif [ \"$BUILD_WITH_MODULES\" = \"yes\" ]; then \tapk add --no-cache --virtual .module-build-deps \t\tautoconf \t\tautomake \t\tbash \t\tbsd-compat-headers \t\tbuild-base \t\tcargo \t\tclang21 \t\tclang21-static \t\tclang21-libclang \t\tcmake \t\tcurl \t\tg++ \t\tgit \t\tlibffi-dev \t\tlibgcc \t\tlibtool \t\tllvm21-dev \t\tlld21 \t\tncurses-dev \t\topenssh \t\topenssl  \t\tpy-virtualenv \t\tpy3-cryptography \t\tpy3-pip \t\tpy3-virtualenv \t\tpython3 \t\tpython3-dev \t\trsync \t\ttar \t\tunzip \t\twhich \t\txsimd \t\txz; \tfi; \t\tpip install -q --upgrade setuptools \u0026\u0026  pip install -q --upgrade pip \u0026\u0026 PIP_BREAK_SYSTEM_PACKAGES=1 pip install -q addict toml jinja2 ramp-packer ;\twget -O redis.tar.gz \"$REDIS_DOWNLOAD_URL\"; \techo \"$REDIS_DOWNLOAD_SHA *redis.tar.gz\" | sha256sum -c -; \tmkdir -p /usr/src/redis; \ttar -xzf redis.tar.gz -C /usr/src/redis --strip-components=1; \trm redis.tar.gz; \t\tgrep -E '^ *createBoolConfig[(]\"protected-mode\",.*, *1 *,.*[)],$' /usr/src/redis/src/config.c; \tsed -ri 's!^( *createBoolConfig[(]\"protected-mode\",.*, *)1( *,.*[)],)$!\\10\\2!' /usr/src/redis/src/config.c; \tgrep -E '^ *createBoolConfig[(]\"protected-mode\",.*, *0 *,.*[)],$' /usr/src/redis/src/config.c; \t\tgnuArch=\"$(dpkg-architecture --query DEB_BUILD_GNU_TYPE)\"; \textraJemallocConfigureFlags=\"--build=$gnuArch\"; \tdpkgArch=\"$(dpkg --print-architecture)\"; \tcase \"${dpkgArch##*-}\" in \t\tamd64 | i386 | x32) extraJemallocConfigureFlags=\"$extraJemallocConfigureFlags --with-lg-page=12\" ;; \t\t*) extraJemallocConfigureFlags=\"$extraJemallocConfigureFlags --with-lg-page=16\" ;; \tesac; \textraJemallocConfigureFlags=\"$extraJemallocConfigureFlags --with-lg-hugepage=21\"; \tgrep -F 'cd jemalloc \u0026\u0026 ./configure ' /usr/src/redis/deps/Makefile; \tsed -ri 's!cd jemalloc \u0026\u0026 ./configure !\u0026'\"$extraJemallocConfigureFlags\"' !' /usr/src/redis/deps/Makefile; \tgrep -F \"cd jemalloc \u0026\u0026 ./configure $extraJemallocConfigureFlags \" /usr/src/redis/deps/Makefile; \t\texport RUST_DYN_CRT=1; \texport PATH=\"/usr/lib/llvm21/bin:$PATH\"; \texport BUILD_TLS=yes; \tif [ \"$BUILD_WITH_MODULES\" = \"yes\" ]; then \t\texport LTO=1; \t\tmake -C /usr/src/redis/modules install-rust INSTALL_RUST_TOOLCHAIN=yes; \t\tmake -C /usr/src/redis -j \"$(nproc)\" deploy; \t\tmake -C /usr/src/redis/modules uninstall-rust INSTALL_RUST_TOOLCHAIN=yes; \telse \t\tmake -C /usr/src/redis -j \"$(nproc)\" deploy redis; \tfi; \trm -r /usr/src/redis; \t\trunDeps=\"$( \t\tscanelf --needed --nobanner --format '%n#p' --recursive /usr/local \t\t\t| tr ',' '\\n' \t\t\t| sort -u \t\t\t| awk 'system(\"[ -e /usr/local/lib/\" $1 \" ]\") == 0 { next } { print \"so:\" $1 }' \t)\"; \tapk add --no-network --virtual .redis-rundeps $runDeps; \tif [ \"$BUILD_WITH_MODULES\" = \"yes\" ]; then \t\tapk del --no-network .module-build-deps; \tfi; \tapk del --no-network .build-deps; \trm -rf ~/.cache ~/.gitconfig; \t\tredis-cli --version; \tredis-server --version; # buildkit",
+          "created": "2026-09-21T17:37:00Z",
+          "created_by": "RUN |2 REDIS_DOWNLOAD_URL=https://github.com/redis/redis/releases/download/8.10.2/redis-full.tar.gz REDIS_DOWNLOAD_SHA=ae6973de9b6ad8e6cf21b1e764abccab59200689af6aabce10d4cf6bbb2e253f /bin/sh -c set -eux; \t\tapk add --no-cache --virtual .build-deps \t\tcoreutils \t\tdpkg-dev dpkg \t\tgcc \t\tlinux-headers \t\tmake \t\tmusl-dev \t\topenssl-dev \t\tg++; \t\tarch=\"$(dpkg --print-architecture | awk -F- '{ print $NF }')\"; \tcase \"$arch\" in \t\t'amd64' | 'arm64') BUILD_WITH_MODULES=yes ;; \t\t*) echo \u003e\u00262 \"Modules are NOT supported! unsupported architecture: '$arch'\"; BUILD_WITH_MODULES=no ;; \tesac; \tif [ \"$BUILD_WITH_MODULES\" = \"yes\" ]; then \tapk add --no-cache --virtual .module-build-deps \t\tautoconf \t\tautomake \t\tbash \t\tbsd-compat-headers \t\tbuild-base \t\tcargo \t\tclang21 \t\tclang21-static \t\tclang21-libclang \t\tcmake \t\tcurl \t\tg++ \t\tgit \t\tlibffi-dev \t\tlibgcc \t\tlibtool \t\tllvm21-dev \t\tlld21 \t\tncurses-dev \t\topenssh \t\topenssl  \t\tpy-virtualenv \t\tpy3-cryptography \t\tpy3-pip \t\tpy3-virtualenv \t\tpython3 \t\tpython3-dev \t\trsync \t\ttar \t\tunzip \t\twhich \t\txsimd \t\txz; \tfi; \t\tpip install -q --upgrade setuptools \u0026\u0026  pip install -q --upgrade pip \u0026\u0026 PIP_BREAK_SYSTEM_PACKAGES=1 pip install -q addict toml jinja2 ramp-packer ;\twget -O redis.tar.gz \"$REDIS_DOWNLOAD_URL\"; \techo \"$REDIS_DOWNLOAD_SHA *redis.tar.gz\" | sha256sum -c -; \tmkdir -p /usr/src/redis; \ttar -xzf redis.tar.gz -C /usr/src/redis --strip-components=1; \trm redis.tar.gz; \t\tgrep -E '^ *createBoolConfig[(]\"protected-mode\",.*, *1 *,.*[)],$' /usr/src/redis/src/config.c; \tsed -ri 's!^( *createBoolConfig[(]\"protected-mode\",.*, *)1( *,.*[)],)$!\\10\\2!' /usr/src/redis/src/config.c; \tgrep -E '^ *createBoolConfig[(]\"protected-mode\",.*, *0 *,.*[)],$' /usr/src/redis/src/config.c; \t\tgnuArch=\"$(dpkg-architecture --query DEB_BUILD_GNU_TYPE)\"; \textraJemallocConfigureFlags=\"--build=$gnuArch\"; \tdpkgArch=\"$(dpkg --print-architecture)\"; \tcase \"${dpkgArch##*-}\" in \t\tamd64 | i386 | x32) extraJemallocConfigureFlags=\"$extraJemallocConfigureFlags --with-lg-page=12\" ;; \t\t*) extraJemallocConfigureFlags=\"$extraJemallocConfigureFlags --with-lg-page=16\" ;; \tesac; \textraJemallocConfigureFlags=\"$extraJemallocConfigureFlags --with-lg-hugepage=21\"; \tgrep -F 'cd jemalloc \u0026\u0026 ./configure ' /usr/src/redis/deps/Makefile; \tsed -ri 's!cd jemalloc \u0026\u0026 ./configure !\u0026'\"$extraJemallocConfigureFlags\"' !' /usr/src/redis/deps/Makefile; \tgrep -F \"cd jemalloc \u0026\u0026 ./configure $extraJemallocConfigureFlags \" /usr/src/redis/deps/Makefile; \t\texport RUST_DYN_CRT=1; \texport PATH=\"/usr/lib/llvm21/bin:$PATH\"; \texport BUILD_TLS=yes; \tif [ \"$BUILD_WITH_MODULES\" = \"yes\" ]; then \t\texport LTO=1; \t\tmake -C /usr/src/redis/modules install-rust INSTALL_RUST_TOOLCHAIN=yes; \t\tmake -C /usr/src/redis -j \"$(nproc)\" deploy; \t\tmake -C /usr/src/redis/modules uninstall-rust INSTALL_RUST_TOOLCHAIN=yes; \telse \t\tmake -C /usr/src/redis -j \"$(nproc)\" deploy redis; \tfi; \trm -r /usr/src/redis; \t\trunDeps=\"$( \t\tscanelf --needed --nobanner --format '%n#p' --recursive /usr/local \t\t\t| tr ',' '\\n' \t\t\t| sort -u \t\t\t| awk 'system(\"[ -e /usr/local/lib/\" $1 \" ]\") == 0 { next } { print \"so:\" $1 }' \t)\"; \tapk add --no-network --virtual .redis-rundeps $runDeps; \tif [ \"$BUILD_WITH_MODULES\" = \"yes\" ]; then \t\tapk del --no-network .module-build-deps; \tfi; \tapk del --no-network .build-deps; \trm -rf ~/.cache ~/.gitconfig; \t\tredis-cli --version; \tredis-server --version; # buildkit",
           "comment": "buildkit.dockerfile.v0"
         },
         {
-          "created": "2026-07-30T19:42:11.53453925Z",
-          "created_by": "RUN |2 REDIS_DOWNLOAD_URL=https://github.com/redis/redis/releases/download/8.10.0/redis-full.tar.gz REDIS_DOWNLOAD_SHA=021973d690498682372505c8c0da934e010eb5ae7db9438dcf5a6d78a9e6a5b8 /bin/sh -c mkdir /data \u0026\u0026 chown redis:redis /data # buildkit",
+          "created": "2026-09-21T17:37:00Z",
+          "created_by": "RUN |2 REDIS_DOWNLOAD_URL=https://github.com/redis/redis/releases/download/8.10.2/redis-full.tar.gz REDIS_DOWNLOAD_SHA=ae6973de9b6ad8e6cf21b1e764abccab59200689af6aabce10d4cf6bbb2e253f /bin/sh -c mkdir /data \u0026\u0026 chown redis:redis /data # buildkit",
           "comment": "buildkit.dockerfile.v0"
         },
         {
-          "created": "2026-07-30T19:42:11.556971494Z",
+          "created": "2026-09-21T17:37:00Z",
           "created_by": "WORKDIR /data",
           "comment": "buildkit.dockerfile.v0"
         },
         {
-          "created": "2026-07-30T19:42:11.578231622Z",
+          "created": "2026-09-21T17:37:00Z",
           "created_by": "COPY docker-entrypoint.sh /usr/local/bin/ # buildkit",
           "comment": "buildkit.dockerfile.v0"
         },
         {
-          "created": "2026-07-30T19:42:11.578231622Z",
+          "created": "2026-09-21T17:37:00Z",
           "created_by": "ENTRYPOINT [\"docker-entrypoint.sh\"]",
           "comment": "buildkit.dockerfile.v0",
           "empty_layer": true
         },
         {
-          "created": "2026-07-30T19:42:11.578231622Z",
+          "created": "2026-09-21T17:37:00Z",
           "created_by": "EXPOSE map[6379/tcp:{}]",
           "comment": "buildkit.dockerfile.v0",
           "empty_layer": true
         },
         {
-          "created": "2026-07-30T19:42:11.578231622Z",
+          "created": "2026-09-21T17:37:00Z",
           "created_by": "CMD [\"redis-server\"]",
-          "comment": "buildkit.dockerfile.v0",
-          "empty_layer": true
-        },
-        {
-          "created": "2026-09-10T16:27:05.918540748Z",
-          "created_by": "RUN /bin/sh -c apk add --no-cache setpriv=2.41.6-r1 libcrypto3=3.5.8-r0 libssl3=3.5.8-r0  \u0026\u0026 apk list -I setpriv    | grep -q '^setpriv-2.41.6-r1 '  \u0026\u0026 apk list -I libcrypto3 | grep -q '^libcrypto3-3.5.8-r0 '  \u0026\u0026 apk list -I libssl3    | grep -q '^libssl3-3.5.8-r0 ' # buildkit",
-          "comment": "buildkit.dockerfile.v0"
-        },
-        {
-          "created": "2026-09-10T16:27:05.918540748Z",
-          "created_by": "USER redis",
           "comment": "buildkit.dockerfile.v0",
           "empty_layer": true
         }
@@ -126,14 +114,13 @@
       "rootfs": {
         "type": "layers",
         "diff_ids": [
-          "sha256:31ad4a471c6852bfec14d757cc75a566c82a9769f12c3918cf6bf52cc0eeb3d0",
-          "sha256:8411cd816be1b352e390bc2743cca40311b52de58b15940da9b97d75869536fd",
-          "sha256:9a8e199c22e292da5caf9443ffbbba3d6a27b17cfbc2ba7ecd5a68f59492ae4b",
-          "sha256:4891ecca60b84a7e1031e703363741b67ba3e5bada28842ef07d16679db35e70",
-          "sha256:7d3047aa7cfb96163f062cdc4f75a36f32102aed695090cf6f2672a92e545c24",
+          "sha256:e63b02c2b5c761df2cb95e657d744f27d95da4e051235a13c80b88cd68eab188",
+          "sha256:b31e91548114daad36eb6b75f33a80ad4763a366b8aebf2ee0f07f9bb96fad6a",
+          "sha256:d81ff166b338fb9986fedcfc15abe662bb2c65aadaf9301750c69c8ffb389f6b",
+          "sha256:3e6e8835c7a3f675a101d365cd4081067f637a6fc2de8feb6cb5d2b9fbe06aae",
+          "sha256:f525070cd9b67146353241832d4718f9b6551366b2a5e32f1c1dd3fe82142156",
           "sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
-          "sha256:3dbb8ec6d1b119d0848804fb31e93fe50c67940b305fbe165f47407dc54001d0",
-          "sha256:3f873bc5316c074de9d08fee6caf06ff1f3d3efffe0b4c7326e2c24fce06c9a2"
+          "sha256:f5902b1d47b5117067a430aff0dc6a582401768105e93301453ff701c8409353"
         ]
       },
       "config": {
@@ -145,14 +132,8 @@
         ],
         "Env": [
           "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-          "REDIS_VERSION=8.10.0"
+          "REDIS_VERSION=8.10.2"
         ],
-        "Labels": {
-          "org.opencontainers.image.description": "The Eye TEMPORARY derived service image (util-linux/OpenSSL/c-ares maintenance over the pinned upstream digest); recipe infra/images/candidates/v2/redis-8-alpine.Dockerfile",
-          "org.opencontainers.image.revision": "59a245938f88ad9d3abb1a0518c69645eb9c06c7",
-          "org.opencontainers.image.source": "https://github.com/a-Halawany/elven"
-        },
-        "User": "redis",
         "WorkingDir": "/data",
         "ExposedPorts": {
           "6379/tcp": {}
@@ -161,61 +142,49 @@
     },
     "Layers": [
       {
-        "Size": 8693760,
-        "Digest": "sha256:e6f31ffc071e5560b82a8685fba8214954e5721e3e49269d00958316edbe89fe",
-        "DiffID": "sha256:31ad4a471c6852bfec14d757cc75a566c82a9769f12c3918cf6bf52cc0eeb3d0"
+        "Size": 8699904,
+        "DiffID": "sha256:e63b02c2b5c761df2cb95e657d744f27d95da4e051235a13c80b88cd68eab188"
       },
       {
         "Size": 10752,
-        "Digest": "sha256:aae5c34d24584bed007288d67355cd80d67c3209d89df6b8d2d70f2aaa185bb1",
-        "DiffID": "sha256:8411cd816be1b352e390bc2743cca40311b52de58b15940da9b97d75869536fd"
+        "DiffID": "sha256:b31e91548114daad36eb6b75f33a80ad4763a366b8aebf2ee0f07f9bb96fad6a"
       },
       {
-        "Size": 995840,
-        "Digest": "sha256:dcaf2c69e5bf8d69ede36dd1a11c2ba5c78d7b83f124c814df2972af27cbaa09",
-        "DiffID": "sha256:9a8e199c22e292da5caf9443ffbbba3d6a27b17cfbc2ba7ecd5a68f59492ae4b"
+        "Size": 1005568,
+        "DiffID": "sha256:d81ff166b338fb9986fedcfc15abe662bb2c65aadaf9301750c69c8ffb389f6b"
       },
       {
-        "Size": 109711872,
-        "Digest": "sha256:5c39d5b7aae4b7ccf9382d5de78dd7d1f1fa7f581e232daf43fcec7359cd2fb7",
-        "DiffID": "sha256:4891ecca60b84a7e1031e703363741b67ba3e5bada28842ef07d16679db35e70"
+        "Size": 109917184,
+        "DiffID": "sha256:3e6e8835c7a3f675a101d365cd4081067f637a6fc2de8feb6cb5d2b9fbe06aae"
       },
       {
         "Size": 1536,
-        "Digest": "sha256:59b5200b7471be76c1613a4f00c5b0da5652ea186d850b1b18b24a9a61ba36ca",
-        "DiffID": "sha256:7d3047aa7cfb96163f062cdc4f75a36f32102aed695090cf6f2672a92e545c24"
+        "DiffID": "sha256:f525070cd9b67146353241832d4718f9b6551366b2a5e32f1c1dd3fe82142156"
       },
       {
         "Size": 1024,
-        "Digest": "sha256:4f4fb700ef54461cfa02571ae0db9a0dc1e0cdb5577484a6d75e68dc38e8acc1",
         "DiffID": "sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef"
       },
       {
         "Size": 8192,
-        "Digest": "sha256:5107053fcce47b4308cdbe47b1d9610a9a40e938730a79397dc4a1d05b49a3a4",
-        "DiffID": "sha256:3dbb8ec6d1b119d0848804fb31e93fe50c67940b305fbe165f47407dc54001d0"
-      },
-      {
-        "Size": 6174208,
-        "Digest": "sha256:d2282104d114e9e46b6e0089323b338319b594a53974c0e1d433fef6a68f7bb5",
-        "DiffID": "sha256:3f873bc5316c074de9d08fee6caf06ff1f3d3efffe0b4c7326e2c24fce06c9a2"
+        "DiffID": "sha256:f5902b1d47b5117067a430aff0dc6a582401768105e93301453ff701c8409353"
       }
     ]
   },
   "Results": [
     {
-      "Target": "ghcr.io/a-halawany/elven/redis@sha256:0c0a48ddfcea413916152bc64e91c665d0822053099d9bc385a4747d71609432 (alpine 3.23.5)",
+      "Target": "redis@sha256:2d3814be5e9b06a30a0be54770b7e12052e7e79ec85271aefd34875c1f393b23 (alpine 3.23.6)",
       "Class": "os-pkgs",
       "Type": "alpine",
       "Packages": [
         {
-          "ID": ".redis-rundeps@20260730.194210",
+          "ID": ".redis-rundeps@20260921.173659",
           "Name": ".redis-rundeps",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/.redis-rundeps@20260730.194210?arch=noarch\u0026distro=3.23.5",
-            "UID": "bdb264f181bd3fe6"
+            "PURL": "pkg:apk/alpine/.redis-rundeps@20260921.173659?arch=noarch\u0026distro=3.23.6",
+            "UID": "1be186d023cdd955"
           },
-          "Version": "20260730.194210",
+          "Version": "20260921.173659",
           "Arch": "noarch",
           "DependsOn": [
             "libcrypto3@3.5.8-r0",
@@ -225,17 +194,16 @@
             "musl@1.2.5-r23"
           ],
           "Layer": {
-            "Digest": "sha256:5c39d5b7aae4b7ccf9382d5de78dd7d1f1fa7f581e232daf43fcec7359cd2fb7",
-            "DiffID": "sha256:4891ecca60b84a7e1031e703363741b67ba3e5bada28842ef07d16679db35e70"
+            "DiffID": "sha256:3e6e8835c7a3f675a101d365cd4081067f637a6fc2de8feb6cb5d2b9fbe06aae"
           },
-          "Digest": "sha1:2e7124b61c3f36ea924fcd0e94bf59b072e3bce5",
+          "Digest": "sha1:6b35ac568a56dd743d1e933a23c7f1bc352bb04d",
           "AnalyzedBy": "apk"
         },
         {
           "ID": "alpine-baselayout@3.7.2-r0",
           "Name": "alpine-baselayout",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/alpine-baselayout@3.7.2-r0?arch=x86_64\u0026distro=3.23.5",
+            "PURL": "pkg:apk/alpine/alpine-baselayout@3.7.2-r0?arch=x86_64\u0026distro=3.23.6",
             "UID": "ff3090489ca40326"
           },
           "Version": "3.7.2-r0",
@@ -251,8 +219,7 @@
             "busybox-binsh@1.37.0-r30"
           ],
           "Layer": {
-            "Digest": "sha256:e6f31ffc071e5560b82a8685fba8214954e5721e3e49269d00958316edbe89fe",
-            "DiffID": "sha256:31ad4a471c6852bfec14d757cc75a566c82a9769f12c3918cf6bf52cc0eeb3d0"
+            "DiffID": "sha256:e63b02c2b5c761df2cb95e657d744f27d95da4e051235a13c80b88cd68eab188"
           },
           "Digest": "sha1:545aa6f291209af89932b761d9e422c2778596cc",
           "InstalledFiles": [
@@ -276,7 +243,7 @@
           "ID": "alpine-baselayout-data@3.7.2-r0",
           "Name": "alpine-baselayout-data",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/alpine-baselayout-data@3.7.2-r0?arch=x86_64\u0026distro=3.23.5",
+            "PURL": "pkg:apk/alpine/alpine-baselayout-data@3.7.2-r0?arch=x86_64\u0026distro=3.23.6",
             "UID": "78c0ed61d7df9a7e"
           },
           "Version": "3.7.2-r0",
@@ -288,8 +255,7 @@
           ],
           "Maintainer": "Natanael Copa \u003cncopa@alpinelinux.org\u003e",
           "Layer": {
-            "Digest": "sha256:e6f31ffc071e5560b82a8685fba8214954e5721e3e49269d00958316edbe89fe",
-            "DiffID": "sha256:31ad4a471c6852bfec14d757cc75a566c82a9769f12c3918cf6bf52cc0eeb3d0"
+            "DiffID": "sha256:e63b02c2b5c761df2cb95e657d744f27d95da4e051235a13c80b88cd68eab188"
           },
           "Digest": "sha1:85816632dbce07ba7e9e7a629fa59eddbd1687fb",
           "InstalledFiles": [
@@ -315,7 +281,7 @@
           "ID": "alpine-keys@2.6-r0",
           "Name": "alpine-keys",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/alpine-keys@2.6-r0?arch=x86_64\u0026distro=3.23.5",
+            "PURL": "pkg:apk/alpine/alpine-keys@2.6-r0?arch=x86_64\u0026distro=3.23.6",
             "UID": "2c7cb90de388aa7d"
           },
           "Version": "2.6-r0",
@@ -327,8 +293,7 @@
           ],
           "Maintainer": "Natanael Copa \u003cncopa@alpinelinux.org\u003e",
           "Layer": {
-            "Digest": "sha256:e6f31ffc071e5560b82a8685fba8214954e5721e3e49269d00958316edbe89fe",
-            "DiffID": "sha256:31ad4a471c6852bfec14d757cc75a566c82a9769f12c3918cf6bf52cc0eeb3d0"
+            "DiffID": "sha256:e63b02c2b5c761df2cb95e657d744f27d95da4e051235a13c80b88cd68eab188"
           },
           "Digest": "sha1:5c45a821cd6b84d543bbd7ff12a7de1855c5cd13",
           "InstalledFiles": [
@@ -377,16 +342,16 @@
           "AnalyzedBy": "apk"
         },
         {
-          "ID": "alpine-release@3.23.5-r0",
+          "ID": "alpine-release@3.23.6-r0",
           "Name": "alpine-release",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/alpine-release@3.23.5-r0?arch=x86_64\u0026distro=3.23.5",
-            "UID": "58b001445238c53e"
+            "PURL": "pkg:apk/alpine/alpine-release@3.23.6-r0?arch=x86_64\u0026distro=3.23.6",
+            "UID": "91524cfdd8621878"
           },
-          "Version": "3.23.5-r0",
+          "Version": "3.23.6-r0",
           "Arch": "x86_64",
           "SrcName": "alpine-base",
-          "SrcVersion": "3.23.5-r0",
+          "SrcVersion": "3.23.6-r0",
           "Licenses": [
             "MIT"
           ],
@@ -395,10 +360,9 @@
             "alpine-keys@2.6-r0"
           ],
           "Layer": {
-            "Digest": "sha256:e6f31ffc071e5560b82a8685fba8214954e5721e3e49269d00958316edbe89fe",
-            "DiffID": "sha256:31ad4a471c6852bfec14d757cc75a566c82a9769f12c3918cf6bf52cc0eeb3d0"
+            "DiffID": "sha256:e63b02c2b5c761df2cb95e657d744f27d95da4e051235a13c80b88cd68eab188"
           },
-          "Digest": "sha1:37f737cfc477560795ce10cbe468fb86e9e7aabb",
+          "Digest": "sha1:9a222ee46b43276b7e607f66dab5faf915d13984",
           "InstalledFiles": [
             "etc/alpine-release",
             "etc/issue",
@@ -409,32 +373,31 @@
           "AnalyzedBy": "apk"
         },
         {
-          "ID": "apk-tools@3.0.6-r0",
+          "ID": "apk-tools@3.0.8-r0",
           "Name": "apk-tools",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/apk-tools@3.0.6-r0?arch=x86_64\u0026distro=3.23.5",
-            "UID": "82f0867075002fb8"
+            "PURL": "pkg:apk/alpine/apk-tools@3.0.8-r0?arch=x86_64\u0026distro=3.23.6",
+            "UID": "437cfb31b68155db"
           },
-          "Version": "3.0.6-r0",
+          "Version": "3.0.8-r0",
           "Arch": "x86_64",
           "SrcName": "apk-tools",
-          "SrcVersion": "3.0.6-r0",
+          "SrcVersion": "3.0.8-r0",
           "Licenses": [
             "GPL-2.0-only"
           ],
           "Maintainer": "Natanael Copa \u003cncopa@alpinelinux.org\u003e",
           "DependsOn": [
-            "ca-certificates-bundle@20260611-r0",
-            "libapk@3.0.6-r0",
+            "ca-certificates-bundle@20260909-r0",
+            "libapk@3.0.8-r0",
             "libcrypto3@3.5.8-r0",
             "musl@1.2.5-r23",
             "zlib@1.3.2-r0"
           ],
           "Layer": {
-            "Digest": "sha256:e6f31ffc071e5560b82a8685fba8214954e5721e3e49269d00958316edbe89fe",
-            "DiffID": "sha256:31ad4a471c6852bfec14d757cc75a566c82a9769f12c3918cf6bf52cc0eeb3d0"
+            "DiffID": "sha256:e63b02c2b5c761df2cb95e657d744f27d95da4e051235a13c80b88cd68eab188"
           },
-          "Digest": "sha1:86f3b3ef94d1cb213a4ed1187b34a6bb9f593033",
+          "Digest": "sha1:fa7a8422abbbb5e179033cee5455124007817b22",
           "InstalledFiles": [
             "sbin/apk"
           ],
@@ -444,7 +407,7 @@
           "ID": "busybox@1.37.0-r30",
           "Name": "busybox",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/busybox@1.37.0-r30?arch=x86_64\u0026distro=3.23.5",
+            "PURL": "pkg:apk/alpine/busybox@1.37.0-r30?arch=x86_64\u0026distro=3.23.6",
             "UID": "9647681d0b54db77"
           },
           "Version": "1.37.0-r30",
@@ -459,8 +422,7 @@
             "musl@1.2.5-r23"
           ],
           "Layer": {
-            "Digest": "sha256:e6f31ffc071e5560b82a8685fba8214954e5721e3e49269d00958316edbe89fe",
-            "DiffID": "sha256:31ad4a471c6852bfec14d757cc75a566c82a9769f12c3918cf6bf52cc0eeb3d0"
+            "DiffID": "sha256:e63b02c2b5c761df2cb95e657d744f27d95da4e051235a13c80b88cd68eab188"
           },
           "Digest": "sha1:f1347801bb96b1aa40d17f82237c3f4ff02a4725",
           "InstalledFiles": [
@@ -478,7 +440,7 @@
           "ID": "busybox-binsh@1.37.0-r30",
           "Name": "busybox-binsh",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/busybox-binsh@1.37.0-r30?arch=x86_64\u0026distro=3.23.5",
+            "PURL": "pkg:apk/alpine/busybox-binsh@1.37.0-r30?arch=x86_64\u0026distro=3.23.6",
             "UID": "3e18d05d46a6f46f"
           },
           "Version": "1.37.0-r30",
@@ -493,8 +455,7 @@
             "busybox@1.37.0-r30"
           ],
           "Layer": {
-            "Digest": "sha256:e6f31ffc071e5560b82a8685fba8214954e5721e3e49269d00958316edbe89fe",
-            "DiffID": "sha256:31ad4a471c6852bfec14d757cc75a566c82a9769f12c3918cf6bf52cc0eeb3d0"
+            "DiffID": "sha256:e63b02c2b5c761df2cb95e657d744f27d95da4e051235a13c80b88cd68eab188"
           },
           "Digest": "sha1:188d2d0110afa58e8a3e3e5fd424b2d996df7a09",
           "InstalledFiles": [
@@ -503,26 +464,25 @@
           "AnalyzedBy": "apk"
         },
         {
-          "ID": "ca-certificates-bundle@20260611-r0",
+          "ID": "ca-certificates-bundle@20260909-r0",
           "Name": "ca-certificates-bundle",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/ca-certificates-bundle@20260611-r0?arch=x86_64\u0026distro=3.23.5",
-            "UID": "a9a37912fbf01124"
+            "PURL": "pkg:apk/alpine/ca-certificates-bundle@20260909-r0?arch=x86_64\u0026distro=3.23.6",
+            "UID": "56ee61c571f493d"
           },
-          "Version": "20260611-r0",
+          "Version": "20260909-r0",
           "Arch": "x86_64",
           "SrcName": "ca-certificates",
-          "SrcVersion": "20260611-r0",
+          "SrcVersion": "20260909-r0",
           "Licenses": [
             "MPL-2.0",
             "MIT"
           ],
           "Maintainer": "Natanael Copa \u003cncopa@alpinelinux.org\u003e",
           "Layer": {
-            "Digest": "sha256:e6f31ffc071e5560b82a8685fba8214954e5721e3e49269d00958316edbe89fe",
-            "DiffID": "sha256:31ad4a471c6852bfec14d757cc75a566c82a9769f12c3918cf6bf52cc0eeb3d0"
+            "DiffID": "sha256:e63b02c2b5c761df2cb95e657d744f27d95da4e051235a13c80b88cd68eab188"
           },
-          "Digest": "sha1:41204225abcd63eeb1a73766e6a2e8e894b7423b",
+          "Digest": "sha1:0b7f24b8a713bf4bb869de377505a5040239a7bc",
           "InstalledFiles": [
             "etc/ssl/cert.pem",
             "etc/ssl/certs/ca-certificates.crt",
@@ -532,16 +492,16 @@
           "AnalyzedBy": "apk"
         },
         {
-          "ID": "libapk@3.0.6-r0",
+          "ID": "libapk@3.0.8-r0",
           "Name": "libapk",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/libapk@3.0.6-r0?arch=x86_64\u0026distro=3.23.5",
-            "UID": "d251f2b91ded526b"
+            "PURL": "pkg:apk/alpine/libapk@3.0.8-r0?arch=x86_64\u0026distro=3.23.6",
+            "UID": "fb5e89a1747d84c2"
           },
-          "Version": "3.0.6-r0",
+          "Version": "3.0.8-r0",
           "Arch": "x86_64",
           "SrcName": "apk-tools",
-          "SrcVersion": "3.0.6-r0",
+          "SrcVersion": "3.0.8-r0",
           "Licenses": [
             "GPL-2.0-only"
           ],
@@ -553,10 +513,9 @@
             "zlib@1.3.2-r0"
           ],
           "Layer": {
-            "Digest": "sha256:e6f31ffc071e5560b82a8685fba8214954e5721e3e49269d00958316edbe89fe",
-            "DiffID": "sha256:31ad4a471c6852bfec14d757cc75a566c82a9769f12c3918cf6bf52cc0eeb3d0"
+            "DiffID": "sha256:e63b02c2b5c761df2cb95e657d744f27d95da4e051235a13c80b88cd68eab188"
           },
-          "Digest": "sha1:f064c8318c4f7f17da6a490921ce0d5e709fc063",
+          "Digest": "sha1:2913286d1d02641d392289ba525850be6856df11",
           "InstalledFiles": [
             "usr/lib/libapk.so.3.0.0"
           ],
@@ -566,7 +525,7 @@
           "ID": "libcap-ng@0.8.5-r0",
           "Name": "libcap-ng",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/libcap-ng@0.8.5-r0?arch=x86_64\u0026distro=3.23.5",
+            "PURL": "pkg:apk/alpine/libcap-ng@0.8.5-r0?arch=x86_64\u0026distro=3.23.6",
             "UID": "3e91d44a34057ad"
           },
           "Version": "0.8.5-r0",
@@ -582,8 +541,7 @@
             "musl@1.2.5-r23"
           ],
           "Layer": {
-            "Digest": "sha256:dcaf2c69e5bf8d69ede36dd1a11c2ba5c78d7b83f124c814df2972af27cbaa09",
-            "DiffID": "sha256:9a8e199c22e292da5caf9443ffbbba3d6a27b17cfbc2ba7ecd5a68f59492ae4b"
+            "DiffID": "sha256:d81ff166b338fb9986fedcfc15abe662bb2c65aadaf9301750c69c8ffb389f6b"
           },
           "Digest": "sha1:95dfcda98a0acfd14fec1b5ff082b6b4b011c9d4",
           "InstalledFiles": [
@@ -598,7 +556,7 @@
           "ID": "libcrypto3@3.5.8-r0",
           "Name": "libcrypto3",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/libcrypto3@3.5.8-r0?arch=x86_64\u0026distro=3.23.5",
+            "PURL": "pkg:apk/alpine/libcrypto3@3.5.8-r0?arch=x86_64\u0026distro=3.23.6",
             "UID": "6f720d761ae51746"
           },
           "Version": "3.5.8-r0",
@@ -613,8 +571,7 @@
             "musl@1.2.5-r23"
           ],
           "Layer": {
-            "Digest": "sha256:d2282104d114e9e46b6e0089323b338319b594a53974c0e1d433fef6a68f7bb5",
-            "DiffID": "sha256:3f873bc5316c074de9d08fee6caf06ff1f3d3efffe0b4c7326e2c24fce06c9a2"
+            "DiffID": "sha256:e63b02c2b5c761df2cb95e657d744f27d95da4e051235a13c80b88cd68eab188"
           },
           "Digest": "sha1:c5d20a5036bd12c5130652879054be658429c1d5",
           "InstalledFiles": [
@@ -635,7 +592,7 @@
           "ID": "libgcc@15.2.0-r2",
           "Name": "libgcc",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/libgcc@15.2.0-r2?arch=x86_64\u0026distro=3.23.5",
+            "PURL": "pkg:apk/alpine/libgcc@15.2.0-r2?arch=x86_64\u0026distro=3.23.6",
             "UID": "89fff20701e56ab7"
           },
           "Version": "15.2.0-r2",
@@ -651,8 +608,7 @@
             "musl@1.2.5-r23"
           ],
           "Layer": {
-            "Digest": "sha256:5c39d5b7aae4b7ccf9382d5de78dd7d1f1fa7f581e232daf43fcec7359cd2fb7",
-            "DiffID": "sha256:4891ecca60b84a7e1031e703363741b67ba3e5bada28842ef07d16679db35e70"
+            "DiffID": "sha256:3e6e8835c7a3f675a101d365cd4081067f637a6fc2de8feb6cb5d2b9fbe06aae"
           },
           "Digest": "sha1:57fccbe9eebf23f2c4f38ee2a24f8b0bdd508ff7",
           "InstalledFiles": [
@@ -664,7 +620,7 @@
           "ID": "libssl3@3.5.8-r0",
           "Name": "libssl3",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/libssl3@3.5.8-r0?arch=x86_64\u0026distro=3.23.5",
+            "PURL": "pkg:apk/alpine/libssl3@3.5.8-r0?arch=x86_64\u0026distro=3.23.6",
             "UID": "1aafb9a42f29e87a"
           },
           "Version": "3.5.8-r0",
@@ -680,8 +636,7 @@
             "musl@1.2.5-r23"
           ],
           "Layer": {
-            "Digest": "sha256:d2282104d114e9e46b6e0089323b338319b594a53974c0e1d433fef6a68f7bb5",
-            "DiffID": "sha256:3f873bc5316c074de9d08fee6caf06ff1f3d3efffe0b4c7326e2c24fce06c9a2"
+            "DiffID": "sha256:e63b02c2b5c761df2cb95e657d744f27d95da4e051235a13c80b88cd68eab188"
           },
           "Digest": "sha1:07184887491e0feffa57184419b1387450047bb9",
           "InstalledFiles": [
@@ -693,7 +648,7 @@
           "ID": "libstdc++@15.2.0-r2",
           "Name": "libstdc++",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/libstdc%2B%2B@15.2.0-r2?arch=x86_64\u0026distro=3.23.5",
+            "PURL": "pkg:apk/alpine/libstdc%2B%2B@15.2.0-r2?arch=x86_64\u0026distro=3.23.6",
             "UID": "3ff8ae215a6a54a6"
           },
           "Version": "15.2.0-r2",
@@ -710,8 +665,7 @@
             "musl@1.2.5-r23"
           ],
           "Layer": {
-            "Digest": "sha256:5c39d5b7aae4b7ccf9382d5de78dd7d1f1fa7f581e232daf43fcec7359cd2fb7",
-            "DiffID": "sha256:4891ecca60b84a7e1031e703363741b67ba3e5bada28842ef07d16679db35e70"
+            "DiffID": "sha256:3e6e8835c7a3f675a101d365cd4081067f637a6fc2de8feb6cb5d2b9fbe06aae"
           },
           "Digest": "sha1:528d77417a16706468af852f2859ad00f176e266",
           "InstalledFiles": [
@@ -724,7 +678,7 @@
           "ID": "musl@1.2.5-r23",
           "Name": "musl",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/musl@1.2.5-r23?arch=x86_64\u0026distro=3.23.5",
+            "PURL": "pkg:apk/alpine/musl@1.2.5-r23?arch=x86_64\u0026distro=3.23.6",
             "UID": "dca30b3fd6708a32"
           },
           "Version": "1.2.5-r23",
@@ -736,8 +690,7 @@
           ],
           "Maintainer": "Natanael Copa \u003cncopa@alpinelinux.org\u003e",
           "Layer": {
-            "Digest": "sha256:e6f31ffc071e5560b82a8685fba8214954e5721e3e49269d00958316edbe89fe",
-            "DiffID": "sha256:31ad4a471c6852bfec14d757cc75a566c82a9769f12c3918cf6bf52cc0eeb3d0"
+            "DiffID": "sha256:e63b02c2b5c761df2cb95e657d744f27d95da4e051235a13c80b88cd68eab188"
           },
           "Digest": "sha1:1b6c50426d3c0656e9c5a567a5a59601c7f4307a",
           "InstalledFiles": [
@@ -750,7 +703,7 @@
           "ID": "musl-utils@1.2.5-r23",
           "Name": "musl-utils",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/musl-utils@1.2.5-r23?arch=x86_64\u0026distro=3.23.5",
+            "PURL": "pkg:apk/alpine/musl-utils@1.2.5-r23?arch=x86_64\u0026distro=3.23.6",
             "UID": "ffcf7198a9776c5f"
           },
           "Version": "1.2.5-r23",
@@ -768,8 +721,7 @@
             "scanelf@1.3.8-r2"
           ],
           "Layer": {
-            "Digest": "sha256:e6f31ffc071e5560b82a8685fba8214954e5721e3e49269d00958316edbe89fe",
-            "DiffID": "sha256:31ad4a471c6852bfec14d757cc75a566c82a9769f12c3918cf6bf52cc0eeb3d0"
+            "DiffID": "sha256:e63b02c2b5c761df2cb95e657d744f27d95da4e051235a13c80b88cd68eab188"
           },
           "Digest": "sha1:92fdbe96d25f13fe3a3d297ada56e4fb907aacec",
           "InstalledFiles": [
@@ -785,7 +737,7 @@
           "ID": "scanelf@1.3.8-r2",
           "Name": "scanelf",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/scanelf@1.3.8-r2?arch=x86_64\u0026distro=3.23.5",
+            "PURL": "pkg:apk/alpine/scanelf@1.3.8-r2?arch=x86_64\u0026distro=3.23.6",
             "UID": "4efd612ed6f16dca"
           },
           "Version": "1.3.8-r2",
@@ -800,8 +752,7 @@
             "musl@1.2.5-r23"
           ],
           "Layer": {
-            "Digest": "sha256:e6f31ffc071e5560b82a8685fba8214954e5721e3e49269d00958316edbe89fe",
-            "DiffID": "sha256:31ad4a471c6852bfec14d757cc75a566c82a9769f12c3918cf6bf52cc0eeb3d0"
+            "DiffID": "sha256:e63b02c2b5c761df2cb95e657d744f27d95da4e051235a13c80b88cd68eab188"
           },
           "Digest": "sha1:6ea36dd44ef9f6364f0cdfabe09ea15d2fdbe229",
           "InstalledFiles": [
@@ -813,7 +764,7 @@
           "ID": "setpriv@2.41.6-r1",
           "Name": "setpriv",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/setpriv@2.41.6-r1?arch=x86_64\u0026distro=3.23.5",
+            "PURL": "pkg:apk/alpine/setpriv@2.41.6-r1?arch=x86_64\u0026distro=3.23.6",
             "UID": "b4d9b1491ee828e0"
           },
           "Version": "2.41.6-r1",
@@ -829,8 +780,7 @@
             "musl@1.2.5-r23"
           ],
           "Layer": {
-            "Digest": "sha256:d2282104d114e9e46b6e0089323b338319b594a53974c0e1d433fef6a68f7bb5",
-            "DiffID": "sha256:3f873bc5316c074de9d08fee6caf06ff1f3d3efffe0b4c7326e2c24fce06c9a2"
+            "DiffID": "sha256:d81ff166b338fb9986fedcfc15abe662bb2c65aadaf9301750c69c8ffb389f6b"
           },
           "Digest": "sha1:852de8931b59784fe5a3f0caf01365b74cac4495",
           "InstalledFiles": [
@@ -842,7 +792,7 @@
           "ID": "ssl_client@1.37.0-r30",
           "Name": "ssl_client",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/ssl_client@1.37.0-r30?arch=x86_64\u0026distro=3.23.5",
+            "PURL": "pkg:apk/alpine/ssl_client@1.37.0-r30?arch=x86_64\u0026distro=3.23.6",
             "UID": "92299c558ff421b3"
           },
           "Version": "1.37.0-r30",
@@ -859,8 +809,7 @@
             "musl@1.2.5-r23"
           ],
           "Layer": {
-            "Digest": "sha256:e6f31ffc071e5560b82a8685fba8214954e5721e3e49269d00958316edbe89fe",
-            "DiffID": "sha256:31ad4a471c6852bfec14d757cc75a566c82a9769f12c3918cf6bf52cc0eeb3d0"
+            "DiffID": "sha256:e63b02c2b5c761df2cb95e657d744f27d95da4e051235a13c80b88cd68eab188"
           },
           "Digest": "sha1:5b6ec0939cfc9be47d9677a3152c547cc18b5edd",
           "InstalledFiles": [
@@ -869,25 +818,24 @@
           "AnalyzedBy": "apk"
         },
         {
-          "ID": "tzdata@2026c-r0",
+          "ID": "tzdata@2026d-r0",
           "Name": "tzdata",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/tzdata@2026c-r0?arch=x86_64\u0026distro=3.23.5",
-            "UID": "e471ecd044c6763"
+            "PURL": "pkg:apk/alpine/tzdata@2026d-r0?arch=x86_64\u0026distro=3.23.6",
+            "UID": "2273547e990b1e0d"
           },
-          "Version": "2026c-r0",
+          "Version": "2026d-r0",
           "Arch": "x86_64",
           "SrcName": "tzdata",
-          "SrcVersion": "2026c-r0",
+          "SrcVersion": "2026d-r0",
           "Licenses": [
             "Public-Domain"
           ],
           "Maintainer": "Natanael Copa \u003cncopa@alpinelinux.org\u003e",
           "Layer": {
-            "Digest": "sha256:dcaf2c69e5bf8d69ede36dd1a11c2ba5c78d7b83f124c814df2972af27cbaa09",
-            "DiffID": "sha256:9a8e199c22e292da5caf9443ffbbba3d6a27b17cfbc2ba7ecd5a68f59492ae4b"
+            "DiffID": "sha256:d81ff166b338fb9986fedcfc15abe662bb2c65aadaf9301750c69c8ffb389f6b"
           },
-          "Digest": "sha1:5449aeb87c78a380a49320e1f98f67b13b1828a7",
+          "Digest": "sha1:8158b502b500e84d07b45447a7baa121067868ba",
           "InstalledFiles": [
             "usr/share/zoneinfo/CET",
             "usr/share/zoneinfo/CST6CDT",
@@ -1499,7 +1447,7 @@
           "ID": "zlib@1.3.2-r0",
           "Name": "zlib",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/zlib@1.3.2-r0?arch=x86_64\u0026distro=3.23.5",
+            "PURL": "pkg:apk/alpine/zlib@1.3.2-r0?arch=x86_64\u0026distro=3.23.6",
             "UID": "23a5a7d167a86311"
           },
           "Version": "1.3.2-r0",
@@ -1514,8 +1462,7 @@
             "musl@1.2.5-r23"
           ],
           "Layer": {
-            "Digest": "sha256:e6f31ffc071e5560b82a8685fba8214954e5721e3e49269d00958316edbe89fe",
-            "DiffID": "sha256:31ad4a471c6852bfec14d757cc75a566c82a9769f12c3918cf6bf52cc0eeb3d0"
+            "DiffID": "sha256:e63b02c2b5c761df2cb95e657d744f27d95da4e051235a13c80b88cd68eab188"
           },
           "Digest": "sha1:68bb97ea5255e77aa974e65476d64832ad56288a",
           "InstalledFiles": [
