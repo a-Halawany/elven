@@ -215,7 +215,8 @@ official-image transition. Update the recheck so the adopted compatible official
 compatible official builds trigger the existing update process. Preserve cadence and visible indeterminate
 failures. Regenerate the real scanner/trace evidence and pass the existing gates; do not bypass them." (The
 same instruction approved the six SCX re-issues — `docs/SCANNER_DISPOSITIONS.md` §3.9 quotes it — and
-authorised the integration order of #57, #56 and #58, recorded in the delivery records.)
+authorised the integration order of #57, #56 and #58; that order is not recorded by this branch, which
+carries the C15 maintenance alone — it belongs to the delivery records of the CP-6 B21 batch, on its own branch.)
 
 **What the recheck is now.** `scripts/gate/check-patched-images.mjs` keeps resolving the official tags at the
 existing cadence — daily at 07:20 UTC (`.github/workflows/c15-patched-image-recheck.yml`, read-only,
