@@ -261,3 +261,21 @@ is not refused at scope resolution: the reads answer empty, the writes are refus
 kill`) against a fresh database named by `EYE_DB_NAME` with the four `EYE_VAULT_*_ROOT` under a scratch directory (never `.eye-local/vault`),
 and restarted afterwards by `scripts/ops/demo-restart.sh` (the B18 act did both: its first line records the verify failing while the API
 was down, its step 2 the restart). The hosted job needs nothing of this.
+
+**The source-derived memory records (B19, 2026-09-17).** `eye_demo` is migrated through 0079; the API serves the B19 build. The act
+(`scripts/phase6/act-b19.mjs`, runner `$S/b19/act-b19.sh`) looks every basis up at run time (no id hard-coded; a refused candidate is
+skipped with the reason): K. Müller DERIVES (`POST …/graph/memory/derive {basis: {kind: 'claim' | 'warning', id, version?}, sourceKind,
+recordClass, title, audience, validity?, retention?, related}`; the knowledge owner's human-gated act) a telemetry record from the newest
+PortWatch `daily_transit_count` claim and from the corridor warning, and a document record from the NORDWERK supply-relationship claim
+(its validity declared — the basis carries no event time); L. Brandt retrieves; S. Okafor composes a briefing that CONTINUES the domain's
+newest briefing in its own room (a composition over the whole history folds restricted: act IV's corridor scenario rests on no forecast —
+the composer's rule); the same REL is derived once as a communication record and withdrawn by R. Adler; A. Hoffmann challenges and L.
+Ferreira corrects the REL in review, J. Weber propagates `claim_correction`, R. Adler re-derives (`POST …/graph/memory/:id/supersede` with
+`payload.basis`), L. Brandt replays version 1; S. Roth's derivation from the mirror's imported claim is refused; M. Dvorak corrects the
+evidence, the propagation agent's walk marks DOC, P. Novák's deletion of that manifest PAUSES naming `memory_item:<DOC>` and is withdrawn.
+**What the act leaves:** the telemetry and warning records; DOC at version n+1 (`basis_corrected`); the communication record withdrawn; a
+review correction of the REL and an evidence correction per run (the REL's version and the evidence's version advance by one each run);
+nothing retired; no subscription re-registered (no consumer method changed). **The rehearsal copy** needs nothing beyond B17's edits.
+**The page:** `/graph/memory` — "Derive from a source" (the basis kind and id, the source kind, the class, the title, the audience, the
+validity, the retention); the answer says the classification `declared / inherited / applied`; a derivation the person's clearance does not
+cover is refused; the record form records human records only.

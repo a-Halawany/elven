@@ -2261,13 +2261,169 @@ twins once more, declares a new package with its room, decides the previous run'
 acts I–V are never rewritten. ALL SCENES HELD (60 checks). The demonstration web is rebuilt with the chooser and the bytes line; the owner's
 walk of it as H. Bergmann (a TENANT-homed persona: the chooser, then the approvals in the browser) is the owner's.
 
+## B19 — the source-derived memory records: a memory record DERIVED by a person from a claim version or a warning, with its provenance, its inherited controls, the review and lifecycle gates, the basis followed, and the deletion of the evidence it copies from paused (implemented)
+
+**Migration 0079** (`apps/api/migrations/0079_b19_source_derived_memory_records.sql`, sha256 `f8cd2b93…`, 653 lines), on `phase6-b19`
+(cut from B18's records head `4a7f43a`; PR base `phase6-b18`, retargeted to `main` when #55 merges). The register item every checkpoint
+since B10 listed as Missing — "the source-derived memory records": AU-MEM-0065's last clause, "an Enterprise Memory workspace that also
+holds communications and telemetry-derived records" (the memory item's source kinds `document | communication | telemetry` existed as words a
+person chose beside a free-text `source.ref`; every record ever written was `human`). Read by one reader in B18 (the specification's record
+kinds and the lifecycle a derived object owes; the code map; the exact gap: no derivation, the kind unenforced, no provenance block, no
+inheritance, no review gate, the basis followed only as far as attention on some paths, no surface, no case), designed by one designer and
+two checkers (two blocking findings folded before a line was written — the derive act would have been an ORACLE over confidential claims for
+a deriver whose clearance did not cover the record; a withdrawn EVIDENCE version passed the gate — and eight should/nit corrections,
+`corrections.md`), implemented by five implementers on disjoint files and one compile pass (which changed nothing but the two B9-F1
+closure pins the retrieval's widened shape needed), run on fresh databases, rehearsed on a restored copy and exercised on the demonstration
+(§B19.7).
+
+**B19.1 — the derivation act.** `memory.item.derive` — a knowledge owner's (the `memory.item.record` holders: the platform administrator,
+the domain administrator, the knowledge owner, the strategy owner) HUMAN-GATED act (C2; `requiresPurpose`): the person names the BASIS — a
+claim version (ENT/EVT/CLM/REL/ASM, the exact version or the latest) or a warning — and the kind, the title, the record class, the
+audience, the validity, the retention and the related objects; the SERVER computes the content and the provenance. `MemoryService.derive`
+(`graph/memory/derive.ts` pure; `memory.service.ts`): the basis row; the gates in order — the basis's lifecycle (withdrawn → 409
+`EYE-STA-003`), the object's latest version withdrawn, an imported claim (`payload.imported_from` → 409 "an imported claim is derived at
+its origin and re-imported; it is not derived here" — the honest boundary while the cross-domain REFERENCE remains missing; B17's
+"copies destroyed" stays true), the review CASE (the G2 `effectiveReviewState` idiom: a queued or rejected case → 409; a version the case
+corrected → 409 naming the successor), the EVIDENCE gate (every resolved evidence version — the claim's lineage, a warning's breaching
+evidence — whose picked version or whose object's latest version is withdrawn → 409: "rests on withdrawn evidence and grounds no memory
+record"), and the CLEARANCE line — the deriver's clearance in the domain must cover the record's APPLIED classification, refused 403
+`EYE-AUT-001` with the classification and the clearance named (a person derives only what they could read back; no row, no object, no event
+on a refusal); then the lineage → `evidence[]` (object id, the version current at derivation — the highest EVD version carrying the
+lineage's digest — the bytes digest, the byte span), the evidence → its source contract → `source {source_id, source_key,
+contract_version, connector_kind, media_type (the declared type), authority_class, data_origin}`; THE STATEMENT by the method
+`memory-derive@1.0.0` — a fixed template (a claim: subject, predicate, object value, the qualifiers, `as of` the event time when the basis
+carries one; a warning: title, consequence, the observation and the rule) — and `statement_digest` = sha256 of its UTF-8, RE-VERIFIED by the
+port (`memory.assert_derivation`: a derived statement is checkable from the record itself); the write through `memory.record_item`
+(re-declared with `p_derivation`; the port validates the block's shape with every operand coalesced, refuses `derivation NULL ⇎ source_kind =
+'human'`, adds the basis and evidence dependency rows itself so the walk reaches the record through the claim AND the evidence, and never
+lets a supersession cross the kind class); ONE `GraphChanged/memory_item.recorded` with `cause.action memory.item.derive` (retrieval verifies;
+the rest select nothing). A RE-DERIVATION on a newer basis version is `memory.item.supersede` with `payload.basis` (the record authority's,
+human-gated) through the same service and gates — the statement recomputed, the derivation block replaced, the prior version replayable as
+of an instant, the record's PRIOR validity kept when nothing is declared and the basis carries no event time. `/record` refuses a non-human
+kind (422: "a document, communication or telemetry record is derived from its source (memory.item.derive); a person's own record is source
+kind human"). `POST …/graph/memory/derive`; the PDP rule; the 409 family row.
+
+**B19.2 — the kind rule and the inheritance.** The kind is the person's DECLARATION with ONE verifiable rule: `telemetry` ⇒ the basis's
+evidence rests on a source with a REGISTERED SERIES (`prediction.series_registry` by the contract's `source_key`; the keys carried in the
+block; else 422 "telemetry names a source with a registered series; <key> has none"); a WARNING basis is telemetry only (a warning rests on a
+series). A telemetry record is EXTRACTED (a claim) or INFERRED (a warning) — never `observed`: the observed series-window basis is the
+stated residual (graph → prediction would be the module cycle the boundary rule forbids); the enum's word names the SOURCE class, the truth
+state the READ. A contract-level `source_class` is a SRC schema change (stated, not built). INHERITANCE (ES-29-002 is a floor, not a veto):
+`classification` = the MOST restrictive of the declared audience's, the basis row's and every cited evidence version's (the clearance
+order), lifted silently and SAID in the answer as `{declared, inherited, applied}`; `synthetic_state` = the basis's OR any evidence
+version's (true wins); `rights_profile` and `residency_profile` the basis's; `retention_profile` declared, else the basis's, else the
+evidence's (`retention_from` said — an extracted claim carries its evidence's profile, so it reads `basis`); `truth_state` the basis's;
+`event_time` the basis's with its `source_clock_quality`; `valid_from` declared or the basis's event time (`valid_from_source` said);
+`provenance_ref` `CLM:<id>@<v>` / `WRN:<id>@<v>`; `method_ref memory-derive@1.0.0`; `human_refs [principal:<owner>]`; `evidence_refs`
+VERSIONED; `schema_ref MEM@v2` (a backward registry row: every v1 payload validates; human records stay MEM@v1, byte for byte).
+
+**B19.3 — the basis followed; the deletion pause.** `attention_state` gains `basis_withdrawn` beside `basis_corrected`; the retrieval SERVES a
+derived record whose basis was corrected or withdrawn WITH the declaration (`availability.basis_state current | corrected | withdrawn`,
+`null` for a human record), never refused — the record's own withdrawal stays the record authority's act; the briefing composer carries the
+same `basis_state` and the record's `synthetic_state` from its row (no longer a literal false). The marks: `graph.record_impact` re-declared —
+the memory-item loop marks `basis_withdrawn` on a `claim_withdrawal` walk ONLY when the trigger object's latest version IS withdrawn (else
+`basis_corrected`; a live claim propagated as a withdrawal marks nothing false) and NEVER downgrades a withdrawn mark; `memory.mark_basis_
+withdrawn` — a direct mark for the two paths that withdraw a basis without a walk, asserting the caller's bound action is `retention.import.
+revoke` (the B17 revocation's claim batch, one call per withdrawn claim inside the batch's transaction — unreachable while an imported basis is
+refused, exercised as the port's unit) or `observation.correction.apply` (an evidence withdrawal through the corrections path, matching
+`derivation.evidence[]` too); a human record is untouched by the port (the walk marks a human record's attention as before; the page shows
+`basis_state` for derived records only). THE DELETION PAUSE (DP-37-005): `retention.load_bearing_references` gains branch (f), VERSION-AWARE and
+for DERIVED records only — an active item whose `derivation.evidence[]` names the evidence object at a version in the deletion's scope, or
+whose basis claim's lineage names the object's bytes digest — with the route "withdraw the memory record (memory.item.withdraw) or supersede
+it on other evidence (memory.item.supersede); then resolve again"; the B11 deletion PAUSES naming `memory_item:<id>` (a human record citing
+the same evidence stays a `dependency` residual: the person's words, not a copy). STATED: a warning-based record is not marked when its
+warning's forecast is withdrawn as unfit (the warning stands, `input_unverified`; its record reads `basis_state current`); the listing
+exposes a derived record's basis ids and digests (no content) to every lister; no consumer derives (proposals: a later batch); memory
+retention is declared, not executed; `objects.admit_version` does not validate a payload against the registry (the harness's Ajv check does).
+
+**B19.4 — the page and the walk.** `apps/web/app/graph/memory/page.tsx`: a "Derive from a source" section (`#derive-*`: the basis kind and
+id with an optional version, the source kind, the class, the title, the audience, the validity, the retention, the related) with the answer
+VERBATIM — the classification `declared / inherited / applied`, the derived statement and its digest, the source, the evidence versions,
+the receipt — and the sentence "a derivation whose inherited classification your clearance in this domain does not cover is refused (you
+could not read the record)"; the record form and the human supersede form list `human` only; the listing's Source column (`document ←
+EVT:…@1`); the retrieval's ` · basis <state>`, ` · synthetic <bool>` and the served Derivation row; the supersede form re-derives a derived
+record (prefilled from the served derivation). `apps/web/lib/graph.ts` `deriveMemory`. THE WALK: `e2e/phase6-memory.spec.ts` gains tests
+8–9 — a claim IS reachable by API on the gate's own database: an upload contract, an agent and one CSV (the retention walk's idiom), a
+method registered by a reader and a recorded-fixture response approved, activated, recorded and extracted by one `extraction_manager`; the
+knowledge owner derives it through the form — the lift said, `retention … (basis)`, the ISO statement, the listing's `document ← EVT:…@1`,
+the served Derivation block; then the queued claim 409, the telemetry 422 (no registered series on the walk's source), the reader's 403, the
+human-only record form.
+
+**B19.6 the harness, the gates and the units.** `phase6-memory-derived.test.ts` (6 cases on a fresh database, no scheduler — the outbox
+rows asserted by presence and payload, the walks by the manual route; four confidential uploads A, B, X and the internal C and H): M1 DERIVED
+(document) — the lift is REAL and ENFORCED ON THE DERIVER: the knowledge owner (clearance internal) refused 403 for a claim on the
+confidential upload A with the canonical count unchanged, the DOMAIN ADMINISTRATOR admitted (`{declared internal, inherited confidential,
+applied confidential}`), the owner's read-back refused, the versioned evidence refs, the derivation block served, the dependency rows, the
+GraphChanged row with `cause memory.item.derive`, the port's own refusals (the digest mismatch, a human record with a derivation, a
+derivation under `memory.item.record`, telemetry without series keys), `/record` with a non-human kind 422, the analyst's derive 403;
+M2 THE GATES — queued, rejected, corrected (the successor named), withdrawn, imported → 409 each; M3 TELEMETRY on the REST fixture — the
+series rule (422 before the registration, admitted with the keys after), a WARNING basis (inferred; the indicator and the breaching evidence
+version in the block), the states `expired`/`closed` refused; M4 THE RECORD FOLLOWS THE BASIS — the evidence corrected → `basis_corrected`
+with the invalidation named; the administrator re-derives on the new version → v2 with the recomputed statement, v1 replayable as of;
+withdrawn by the THREE paths (a live claim propagated as `claim_withdrawal` → `basis_corrected`, the negative first; the claim withdrawn →
+`basis_withdrawn`; an evidence withdrawal through `observation.correction.apply` → the direct mark; the revocation path as the port's unit)
+→ the retrieval SERVES with `basis_state withdrawn`; a derivation from the withdrawn evidence → 409; the re-derivation of a `basis_withdrawn`
+record on the same ground → 409, the mark intact; the authority withdraws the record; M5 THE DELETION PAUSE — the deletion of A's manifest
+resolves `paused` naming `[M1, M4b, M4c]` at their record versions with the route; the three withdrawn → `scope_resolved`; the HUMAN control on
+its own evidence H → `scope_resolved` with a `dependency` residual; B's deletion a second paused case naming the queued review case and the
+derived records as the code answers; M6 THE BRIEFING carries the derived record with the basis's truth and synthetic state and
+`basis_state current`, then `withdrawn` after C's withdrawal in a second composition — **6/6** on the first run and again after the
+re-derivation's validity default. The neighbouring set — `phase6-memory-derived`, the four subscription harnesses (the two B9-F1 closure
+pins widened to the retrieval's shape), `phase6-briefing-memory`, the eight retention harnesses B11–B18, `phase4-corrections`,
+`phase5-corrections`, `phase6-executive-requests`, `phase6-interfaces-b18` — **245/245 in 20 files** on a fresh database; the full
+integration suite **1061/1061 in 70 files** on a fresh database (twice: before and after the validity default); the upgrade proof with
+0022–0079 (58 migrations above the ceiling; 79 files; the registry's 36 rows with MEM@v2; the digests equal; 275/275 on the upgraded data);
+the unit suite **2295/2295** (= 2272 + 23: `memory-derive` 19 — the template, the digest, the fold, every gate — and the PDP describe 4) and
+the meta suite 9/9; the web typecheck, build and 11 tests; the browser gate **48/48** (the B19 two on the hosted gate's own extraction).
+The hosted run at `087736e` — ci 35174994149 (build-test job 105054615717: unit 2295/2295 and the meta suite 9/9, acceptance 58/58, the integration suite 1061/1061 in 70 files on a fresh database with `phase6-memory-derived` 6/6, the upgrade proof +58 rows / 79 files, C18 612/612 + 44; supply-chain green; browser-regression 48 passed — the B18 twenty and the B19 two on the hosted gate), C19 35174994150 — bound in the records commit (`evidence/cp6/hosted-087736e-build-test-summary.txt`).
+Units and rows: AU-MEM-0065 keeps `verified:ci` with its last clause closed on the harness and the walk and bound to that hosted run (no promotion); V02-T-118,
+V00-T-039, DP-37-001, DP-37-002, DP-37-005, CAP-UM-07 stay `partial` with the B19 clause (the ingestion connectors, the analyses object, the
+index state and semantic retrieval remain; the observed series-window basis; the 'connect'/'retire' verbs); ES-29-002 carries the inheritance
+clause; L3-I01 `bound_to` gains the derivation clause (the register 36/14/0 re-asserted; L3-I02 stays partial — the purpose-bound context
+query is a later batch's); the split stays **3,555 = 3,181 open + 339 local + 35 CI** (no unit promoted by a local run). STATED: the
+communication kind is exercised on the harness (the demonstration's communication-class sources carry no extracted claim); the source kinds
+beyond the telemetry rule are the owner's declaration; a pasted basis id of another domain answers 404 (RLS); a re-derivation of a
+CONFIDENTIAL record is a confidential-clearance supersede holder's (the domain administrator's on the harness).
+
+**B19.7 the demonstration** — `scripts/phase6/act-b19.mjs` → `evidence/cp6/act-b19.txt` (rehearsed on a restored copy, `evidence/cp6/
+b19-rehearsal.txt` — the fourth rehearsal held whole; the first three stopped on the act's own pins (the demonstration's REL basis is
+ASSERTED since B16's review correction; a briefing composed from the whole history folds RESTRICTED because act IV's corridor scenario rests
+on no forecast — the composer's rule, so the act continues the domain's newest briefing in its own room; the walk answers memory items under
+`strategy_object_id`) and on one service default (a re-derivation of a record whose basis carries no event time now keeps the record's prior
+validity)): `eye_demo` backed up and migrated with 0079 (the API, stopped for the browser gate, restarted on the B19 build); every basis LOOKED
+UP AT RUN TIME (no id hard-coded; a refused candidate skipped with the reason); then (0) THE STATE — the register 36/14/0 with L3-I01's clause,
+the memory items by source kind before the run, the seven subscriptions listed and LEFT (no consumer method changed); (1) TELEMETRY — K.
+Müller derives the corridor's transit count from the newest PortWatch EVT claim `daily_transit_count` ("Suez Canal daily_transit_count 51 on
+2024-01-16 — as of 2024-01-16"; extracted, never observed; the source `imf-portwatch-chokepoints@1` with its three registered series; the
+evidence version, bytes digest and span; the classification declared/inherited/applied internal; the retention from the declared, the validity
+from the basis), L. Brandt retrieves it under `memory` (`basis_state current`, the served derivation block), the `memory_item.recorded` row
+with `cause memory.item.derive` and its deliveries (retrieval verified; the rest empty); the queued CLM `transit_change_vs_prior_day` REFUSED
+at the review gate (409, the words printed); the corridor WARNING derived as an inferred telemetry record (the indicator and the breaching
+evidence in the block); (2) DOCUMENT — the NORDWERK REL claim ("NORDWERK ANTRIEBSTECHNIK GmbH procures SYN-PART-BRG", asserted since B16's
+correction, on the synthetic nordwerk-internal upload; validity declared — the basis carries no event time, said) derived by K. Müller →
+DOC with `synthetic true` inherited, the internal ceiling, the retention from the basis; S. Okafor's briefing (continuing the domain's newest
+briefing in its room) carries DOC with the basis's truth state, `synthetic_state true` and the derivation's basis — the six human records in
+it keep `synthetic false` and no derivation; (3) COMMUNICATION — stated (option b) and one line on the kind's rule: the same REL derived as a
+communication record (the source line still says upload), withdrawn by R. Adler in the same act; (4) THE LIFECYCLE — A. Hoffmann challenges
+REL@4, L. Ferreira CORRECTS it in review → REL@5 (the `MemoryCorrected` row and the relationships subscriber's delivery printed, not
+asserted), J. Weber propagates `claim_correction` → DOC marked `basis_corrected` with the invalidation named, L. Brandt's retrieval says so,
+R. Adler RE-DERIVES DOC on REL@5 → version 2 with the restated value (the digest changed), attention none, L. Brandt replays version 1 as of
+the instant before the correction; THE MIRROR — S. Roth (a holder) deriving from the IMPORTED REL → 409 in the words, K. Vogel (not a holder)
+→ 403; (5) THE DELETION PAUSE — M. Dvorak corrects the evidence DOC copies from (EVD 1 → 2, the manifest and its digest kept — deletable),
+the propagation AGENT's walk marks DOC `basis_corrected` (registered since B1; nobody called the route), P. Novák's deletion of the manifest
+resolves PAUSED, 1 blocking, naming `memory_item:DOC` at record version 2 on REL@5 with its route (beside the edge on the same evidence), the
+residual inventory printed, the action WITHDRAWN — nothing retired; (6) THE STATE — the listing's Source column for the run's four records,
+DOC's events (recorded → retrieved (briefing) → attention → retrieved → superseded → retrieved → attention), the register after, what the act
+leaves (the telemetry and warning records; DOC at version 2 `basis_corrected`; the communication record withdrawn; REL at version 5 and its
+evidence at version 2 — a review correction and an evidence correction per run; the deletion withdrawn). ALL SCENES HELD (32 checks).
+
 ## Order and the next implementation batch
 
 B3, B1 and B2 are done in code, B4/B5 applied to the audit (the 2026-09-11 checkpoints), B6 done in
 code (2026-09-12, on the recovery machinery corrected by 0062 after Codex's finding) and B7 done in code
 (2026-09-12, after Codex's third finding), B8 (2026-09-12, after Codex's B7 findings), B9 (2026-09-13, after
 Codex's B8 findings; the accepted stack merged on `main` in the recorded order meanwhile) and B10 (2026-09-13, after
-Codex's B9 review: F1 closed on the fixed candidate, F2/F3 and G2 carried into this batch), B11 (2026-09-13; its closure of Codex's B11-F1/F2 on 2026-09-14, merged with #48 on 2026-09-15), B12 (2026-09-15, the register's next missing archive-lifecycle capability; merged with #49 on 2026-09-16 on Codex's bounded functional review) and B13 (2026-09-16, the schedule retirement and the customer export's delivery, on `main` after #49; merged with #50 on 2026-09-16 on Codex's bounded review) and B14 (2026-09-16, the https exchange proven, B13-F1 corrected, the trust anchor, the revocation notice, on `main` after #50; merged with #51 on 2026-09-16), B15 (2026-09-16, the relationship closure and the streamed archive; merged with #52 on 2026-09-16 after retargeting) and B16 (2026-09-16, the governed import and the NORDWERK round trip, B14-F1 and B15-F1 corrected, on `main` after #52; PR #53) and B17 (2026-09-16, imported knowledge published to subscribers, the origin's revocation propagated into the importing domain, the signed notice, the review gate; stacked on #53; #53 and #54 merged on 2026-09-16 under the owner's word on Codex's bounded B16/B17 review) and B18 (2026-09-16/17, on `main` after #54: Codex's B17-F1 corrected first, the lifecycle announced — ten interface rows bound, 36/14/0 — with the withdrawal → invalidation → reopen chain, the working domain of a tenant-homed principal and the hosted browser walks; PR #55). The
+Codex's B9 review: F1 closed on the fixed candidate, F2/F3 and G2 carried into this batch), B11 (2026-09-13; its closure of Codex's B11-F1/F2 on 2026-09-14, merged with #48 on 2026-09-15), B12 (2026-09-15, the register's next missing archive-lifecycle capability; merged with #49 on 2026-09-16 on Codex's bounded functional review) and B13 (2026-09-16, the schedule retirement and the customer export's delivery, on `main` after #49; merged with #50 on 2026-09-16 on Codex's bounded review) and B14 (2026-09-16, the https exchange proven, B13-F1 corrected, the trust anchor, the revocation notice, on `main` after #50; merged with #51 on 2026-09-16), B15 (2026-09-16, the relationship closure and the streamed archive; merged with #52 on 2026-09-16 after retargeting) and B16 (2026-09-16, the governed import and the NORDWERK round trip, B14-F1 and B15-F1 corrected, on `main` after #52; PR #53) and B17 (2026-09-16, imported knowledge published to subscribers, the origin's revocation propagated into the importing domain, the signed notice, the review gate; stacked on #53; #53 and #54 merged on 2026-09-16 under the owner's word on Codex's bounded B16/B17 review) and B18 (2026-09-16/17, on `main` after #54: Codex's B17-F1 corrected first, the lifecycle announced — ten interface rows bound, 36/14/0 — with the withdrawal → invalidation → reopen chain, the working domain of a tenant-homed principal and the hosted browser walks; PR #55) and B19 (2026-09-17, the source-derived memory records — a record derived by a person from a claim version or a warning with its provenance, inherited controls, the review and lifecycle gates, the basis followed and the deletion pause; stacked on #55). The
 hosted run at `5118376` (836/836 on a fresh database) verified the B1/B2 units on the hosted chain —
 one artefact, no deployment leg. Every leg of every unit stays unaccepted until a deployment profile
 carries its own signed evidence (P7-D). The synthetic-company demonstration (`eye_demo`, NORDWERK) remains the deliverable

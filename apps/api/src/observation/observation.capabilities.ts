@@ -321,6 +321,14 @@ export interface AcquisitionWrites extends ObservationReads {
     caseId: string; tenantId: string; domainId: string; outcome: string;
     affectedResolved: unknown[]; failureReason: string | null; eventId: string; correlationId: string;
   }): Promise<void>;
+  /**
+   * CP-6 B19 (0079 §1.5): an evidence WITHDRAWAL applied — every ACTIVE derived memory record whose derivation names the
+   * evidence is marked basis_withdrawn once (memory.basis_withdrawn on its ledger), in the applying transaction under
+   * observation.correction.apply; a person's own record citing the evidence is untouched (it cites, it does not copy).
+   */
+  markBasisWithdrawn(a: {
+    tenantId: string; domainId: string; basisKind: 'claim' | 'warning' | 'evidence'; basisId: string; reason: string; actor: string; correlationId: string;
+  }): Promise<Record<string, unknown>>;
 }
 
 /** The lease answer, as the port returns it. A refusal names the holder; it is never a bare "no". */
@@ -877,6 +885,14 @@ class ObservationCapabilityImpl extends ObservationCore implements RegistryWrite
       ${a.caseId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.outcome},
       ${JSON.stringify(a.affectedResolved)}::jsonb, ${a.failureReason},
       ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
+  }
+
+  async markBasisWithdrawn(a: {
+    tenantId: string; domainId: string; basisKind: 'claim' | 'warning' | 'evidence'; basisId: string; reason: string; actor: string; correlationId: string;
+  }): Promise<Record<string, unknown>> {
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select memory.mark_basis_withdrawn(
+      ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.basisKind}, ${a.basisId}::uuid, ${a.reason}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
   }
 }
 

@@ -193,11 +193,11 @@ const INTENDED_ADDITIONS = Object.freeze({
   // 0066: relationship_subscriber, knowledge_owner, record_authority, retention_steward, retention_authority, ontology_steward
   'identity.roles': 31,
   // 0022: SRC, OBS, EVD · 0023: CLM@v2, ENT, EVT, REL, ASM
-  // 0024: OBJ, ASU, DEC, CMT, OUT · 0028: SRC@v2 · 0029: FCT, SCN, WRN · 0032: TWN · 0033: SIM · 0041: DPK · 0042: APR · 0043: RPL · 0044: BRF · 0058: SCN@v2 · 0061: SCN@v3, WRN@v2 · 0066: MEM@v1
+  // 0024: OBJ, ASU, DEC, CMT, OUT · 0028: SRC@v2 · 0029: FCT, SCN, WRN · 0032: TWN · 0033: SIM · 0041: DPK · 0042: APR · 0043: RPL · 0044: BRF · 0058: SCN@v2 · 0061: SCN@v3, WRN@v2 · 0066: MEM@v1 · 0079: MEM@v2
   // 0076: the import forms EVD@v2, ENT@v2, EVT@v2, REL@v2, ASM@v2, CLM@v3 (the base schema + imported_from)
-  'objects.schema_registry': 35, // + SCN v2 (0058), SCN v3 and WRN v2 (0061), MEM v1 (0066), SRC v3 (0070), the six import forms (0076)
-  // one ledger line per migration applied above the ceiling (0022–0078)
-  'public.schema_migrations': 57, // + 0078 (B18: the lifecycle announced — ten interface bindings; the withdrawal → invalidation → reopen chain)
+  'objects.schema_registry': 36, // + SCN v2 (0058), SCN v3 and WRN v2 (0061), MEM v1 (0066), SRC v3 (0070), the six import forms (0076), MEM v2 (0079)
+  // one ledger line per migration applied above the ceiling (0022–0079)
+  'public.schema_migrations': 58, // + 0079 (B19: the source-derived memory records — the derivation act, the inherited controls, the review gate, the basis followed, the deletion pause)
 });
 
 /** Structure only: columns, constraints, indexes, routines, policies, grants. */

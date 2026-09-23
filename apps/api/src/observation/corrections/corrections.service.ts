@@ -13,7 +13,10 @@
  * NOTHING IS OVERWRITTEN. A correction admits a NEW canonical version linked by
  * correction_of; the prior version stays retrievable and known-at queries continue
  * to reproduce the pre-correction state. A withdrawal marks the object withdrawn
- * with a reason and likewise leaves the history intact.
+ * with a reason and likewise leaves the history intact. CP-6 B19 (0079): a
+ * withdrawal also marks every ACTIVE derived memory record resting on the evidence
+ * basis_withdrawn, in the applying transaction (memory.mark_basis_withdrawn) —
+ * the record is followed, never rewritten.
  */
 import { HttpException, Injectable } from '@nestjs/common';
 import { canonicalHeaderDigest, errorBody, validateHeader, type CanonicalHeader } from '@eye/contracts';
@@ -216,6 +219,21 @@ export class CorrectionsService {
       }
       const payload = prior['payload'] as Record<string, unknown>;
       await cap.admitObject(header, payload, canonicalHeaderDigest(header, payload));
+
+      /*
+       * CP-6 B19 (0079): THE MEMORY FOLLOWS THE WITHDRAWAL. Every ACTIVE derived memory record whose derivation names this
+       * evidence is marked basis_withdrawn in this same transaction (memory.mark_basis_withdrawn, bound to
+       * observation.correction.apply); the record is never rewritten — its withdrawal or re-derivation stays the record
+       * authority's act, and a re-derivation on the withdrawn bytes is refused by the derive service. The actor arrives as
+       * `principal:<uuid>` (acquisition/orchestrator.service.ts:671-672); the ledger column is a uuid.
+       */
+      if (kind === 'withdrawal') {
+        await cap.markBasisWithdrawn({
+          tenantId: ctx.tenantId as string, domainId: ctx.domainId as string,
+          basisKind: 'evidence', basisId: a.object_id, reason: `evidence withdrawn by correction case ${caseId}: ${reason}`,
+          actor: actor.replace(/^principal:/, ''), correlationId,
+        });
+      }
 
       await cap.appendCustody({
         eventId: newId(),
