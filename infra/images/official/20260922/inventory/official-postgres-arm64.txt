@@ -1,0 +1,37 @@
+ref: postgres@sha256:89f747171c4b0af0eacf5984550060be79786dbe286eb60cfa691d79d1e8b23f
+platform: linux/arm64
+--- os-release ---
+NAME="Alpine Linux"
+ID=alpine
+VERSION_ID=3.24.2
+--- apk list -I (watched packages) ---
+alpine-baselayout-3.7.2-r1 aarch64 {alpine-baselayout} (GPL-2.0-only) [installed]
+alpine-baselayout-data-3.7.2-r1 aarch64 {alpine-baselayout} (GPL-2.0-only) [installed]
+c-ares-1.34.8-r0 aarch64 {c-ares} (MIT) [installed]
+libcrypto3-3.5.8-r0 aarch64 {openssl} (Apache-2.0) [installed]
+libssl3-3.5.8-r0 aarch64 {openssl} (Apache-2.0) [installed]
+libuuid-2.42.3-r1 aarch64 {util-linux} (BSD-3-Clause) [installed]
+musl-1.2.6-r2 aarch64 {musl} (MIT) [installed]
+musl-utils-1.2.6-r2 aarch64 {musl} (MIT AND BSD-2-Clause AND GPL-2.0-or-later) [installed]
+--- apk world ---
+.postgresql-rundeps=20260917.213058
+alpine-baselayout
+alpine-keys
+alpine-release
+apk-tools
+busybox
+musl-utils
+--- installed package count ---
+53
+--- image config (User, Entrypoint, Cmd, Env subset) ---
+User= Entrypoint=["docker-entrypoint.sh"] Cmd=["postgres"] Arch=arm64 Os=linux Created=2026-09-17T21:30:59.665677387Z
+GOSU_VERSION=1.19
+PG_MAJOR=18
+PG_VERSION=18.6
+PGDATA=/var/lib/postgresql/18/docker
+--- server version ---
+postgres (PostgreSQL) 18.6
+--- gosu ---
+1.19 (go1.24.6 on linux/arm64; gc)
+gosu sha256: 3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44  size: 1830424
+official-postgres-arm64.gosu: ELF 64-bit LSB executable, ARM aarch64, version 1 (SYSV), statically linked, BuildID[sha1]=3f4f76cf2b9cade08b2b4b252656fa1a2739eb26, not stripped

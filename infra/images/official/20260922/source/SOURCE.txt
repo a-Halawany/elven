@@ -1,0 +1,72 @@
+# Provenance of the two official indexes, as verifiable on 2026-09-22 (read-only fetches; nothing signed by this repository)
+
+## 1. The registry (docker buildx imagetools inspect, index/*.txt and index/*.raw.json)
+
+postgres:18-alpine -> index sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+  raw index bytes: 10293, sha256 of the bytes == the index digest (verified locally, index/postgres.index.raw.json)
+  16 manifests: 8 runnable platforms + 8 attestation manifests (unknown/unknown, vnd.docker.reference.type=attestation-manifest)
+  linux/amd64    child sha256:d8703cd7fba306b9fec9268ecedfa8a966846c053036a60e3635791957eb2f66 (manifest 2678 bytes)
+  linux/arm64/v8 child sha256:89f747171c4b0af0eacf5984550060be79786dbe286eb60cfa691d79d1e8b23f (manifest 2680 bytes)
+  child annotations (both): org.opencontainers.image.version=18.6-alpine3.24
+    org.opencontainers.image.source=https://github.com/docker-library/postgres.git#e00e1bd34ec5c8a8e7ad89b273b3d42efaf6d5bc:18/alpine3.24
+    org.opencontainers.image.revision=e00e1bd34ec5c8a8e7ad89b273b3d42efaf6d5bc
+    org.opencontainers.image.created=2026-09-17T21:27:08Z (amd64) / 2026-09-17T21:28:27Z (arm64)
+    org.opencontainers.image.base.name=alpine:3.24; base.digest sha256:d56c381f… (amd64) / sha256:260479a1… (arm64)
+
+redis:8-alpine -> index sha256:ba6e394f6acc2a695ef1b6944f161b9ca813711739be68319fa0db3470673f1d
+  raw index bytes: 10213, sha256 of the bytes == the index digest (verified locally, index/redis.index.raw.json)
+  16 manifests: 8 runnable platforms + 8 attestation manifests
+  linux/amd64    child sha256:2d3814be5e9b06a30a0be54770b7e12052e7e79ec85271aefd34875c1f393b23 (manifest 2289 bytes)
+  linux/arm64/v8 child sha256:41a10b18bd238fa7837b1615b2b5b113edff1654233238ac82d87e6fb5531f44 (manifest 2290 bytes)
+  child annotations (both): org.opencontainers.image.version=8.10.2-alpine
+    org.opencontainers.image.source=https://github.com/redis/docker-library-redis.git#8104e63b5910fda751bf7c038fa297b6fb19ff43:alpine
+    org.opencontainers.image.revision=8104e63b5910fda751bf7c038fa297b6fb19ff43
+    org.opencontainers.image.created=2026-09-21T17:27:07Z (amd64) / 2026-09-21T17:26:58Z (arm64)
+    org.opencontainers.image.base.name=alpine:3.23; base.digest sha256:1f3591b8… (amd64) / sha256:ae959799… (arm64)
+
+These are exactly the digests the hosted recheck (run 35728647457) and the local recheck resolved (RECHECK-*.txt), and the
+gate's own resolver rule (os + architecture, attestation manifests excluded, arm64 satisfied by linux/arm64/v8) selects the same children.
+
+## 2. Docker Official Images source (library/*.txt — the library files fetched read-only over https on 2026-09-22 from
+##    https://raw.githubusercontent.com/docker-library/official-images/master/library/{postgres,redis})
+
+postgres: "Tags: 18.6-alpine3.24, 18-alpine3.24, alpine3.24, 18.6-alpine, 18-alpine, alpine"
+          Architectures: amd64, arm32v6, arm32v7, arm64v8, i386, ppc64le, riscv64, s390x
+          GitRepo: https://github.com/docker-library/postgres.git  GitCommit: e00e1bd34ec5c8a8e7ad89b273b3d42efaf6d5bc  Directory: 18/alpine3.24
+          (the library file header: generated via docker-library/postgres generate-stackbrew-library.sh at 304578a4b447792df66768a25a54e2247b117e74)
+redis:    "Tags: 8.10.2-alpine, 8.10-alpine, 8-alpine, 8.10.2-alpine3.23, 8.10-alpine3.23, 8-alpine3.23, alpine, alpine3.23"
+          Architectures: amd64, arm32v6, arm32v7, arm64v8, i386, ppc64le, riscv64, s390x
+          GitRepo: https://github.com/redis/docker-library-redis.git  GitCommit: 8104e63b5910fda751bf7c038fa297b6fb19ff43  GitFetch: refs/tags/v8.10.2  Directory: alpine
+
+The GitCommit and Directory of each library entry EQUAL the org.opencontainers.image.source / .revision annotations on the children (§1).
+
+## 3. The source commits (GitHub REST API, read-only, 2026-09-22)
+
+docker-library/postgres@e00e1bd34ec5c8a8e7ad89b273b3d42efaf6d5bc — "Update 18 to 18.6, trixie 18.6-1.pgdg13+2, bookworm 18.6-1.pgdg12+2",
+  Docker Library Bot, committed 2026-08-13T18:07:51Z, commit signature: NOT signed (verification.reason=unsigned).
+  The image was BUILT on 2026-09-17 from this 2026-08-13 commit: the rebuild is the alpine:3.24 base moving to Alpine 3.24.2 (inventory/*.txt:
+  libuuid 2.42.3-r1, libcrypto3/libssl3 3.5.8-r0, c-ares 1.34.8-r0), not a change of the Dockerfile.
+redis/docker-library-redis@8104e63b5910fda751bf7c038fa297b6fb19ff43 — "Merge 8.10.2 into release/8.10 (bot)", github-actions[bot],
+  committed 2026-09-17T15:53:20Z, commit signature: VALID (verification.verified=true, reason=valid).
+
+## 4. Attestations the registry exposes (docker buildx imagetools inspect --format '{{json .Provenance}}' / '{{json .SBOM}}'; the
+##    full documents are 709 KB / 526 KB (provenance) and 6.1 MB (postgres SPDX) and are NOT copied here — re-fetchable by the command)
+
+Both indexes carry, per runnable platform, an in-toto SLSA provenance and an SPDX SBOM attestation (the unknown/unknown manifests of §1):
+  buildType https://mobyproject.org/buildkit@v1, builder.id https://github.com/docker-library,
+  invocation.configSource.uri = the org.opencontainers.image.source of §1 (entryPoint Dockerfile),
+  metadata.completeness environment/materials/parameters = true, reproducible = false,
+  materials: the source commit (sha1 = the GitCommit of §2), the Docker Official Images staging base
+  (pkg:docker/oisupport/staging-amd64@… / staging-arm64v8@…) and pkg:docker/tianon/buildkit@0.16 (sha256:09d73871…),
+  postgres amd64 built 2026-09-17T21:27:10Z→21:30:03Z, arm64 21:28:28Z→21:31:11Z; redis amd64 2026-09-21T17:27:19Z→17:37:05Z, arm64 17:27:10Z→17:37:10Z.
+  SBOM: SPDX, creators "Organization: Docker, Inc", docker-scout-1.18.1, buildkit-0.16.0-tianon; postgres 78 packages per platform.
+
+## 5. What is verifiable, and what is not
+
+VERIFIABLE (done here): the raw index bytes hash to the pinned digests; the children the gate scans are the ones named; the children's
+source annotations equal the Docker Official Images library entries; the redis source commit's signature is valid on GitHub; the provenance
+attestations name the same source commit and the Docker Official Images builder; the installed packages carry every watched fix (inventory/).
+NOT verifiable here, stated: the postgres source commit is unsigned (the Docker Library Bot's commits are not GPG-signed); the attestations are
+unsigned in-toto statements attached to the index (Docker Official Images do not publish cosign/sigstore signatures for docker.io/library
+manifests; nothing in this repository's C19 anchor covers them); the build is declared non-reproducible by its own provenance; the Alpine
+package bytes are trusted through Alpine's signed APKINDEX at build time, which this repository cannot re-verify after the fact.

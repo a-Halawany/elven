@@ -10,22 +10,27 @@
 #  - images pinned by IMMUTABLE DIGEST (recorded in conformance.manifest.json;
 #    human-readable tags: postgres:18-alpine / redis:8-alpine — alpine variants
 #    chosen for the clean HIGH/CRITICAL OS baseline, see evidence/supply-chain/)
-#  - 2026-09-10 re-pin (TEMPORARY, owner-approved: docs/images/DERIVED_IMAGES_APPROVAL.md):
-#    the two references below are the derived maintenance images published by
-#    .github/workflows/publish-derived-images.yml (run 34502081248) from the recipes in
-#    infra/images/candidates/v2/ — the previously pinned official indexes
-#    (postgres:18-alpine 9a8afca5…, redis:8-alpine 978f0e01…) plus the util-linux, OpenSSL
-#    and c-ares fixes and an explicit non-root USER. Each service returns to a verified
-#    official image through the digest/disposition/release process once one qualifies on
-#    both platforms (scripts/gate/check-patched-images.mjs watches for it); never by an
-#    automatic re-pin.
+#  - 2026-09-10 to 2026-09-22: a TEMPORARY, owner-approved re-pin to the derived maintenance
+#    images ghcr.io/a-halawany/elven/postgres@sha256:69a974ae… and …/redis@sha256:1ad0ff24…
+#    (docs/images/DERIVED_IMAGES_APPROVAL.md; published by run 34502081248 from the recipes
+#    in infra/images/candidates/v2/ — the previously pinned official indexes, postgres:18-alpine
+#    9a8afca5… and redis:8-alpine 978f0e01…, plus the util-linux, OpenSSL and c-ares fixes and
+#    an explicit non-root USER), because no official build carried those fixes.
+#  - 2026-09-22 RETURN to the OFFICIAL images (docs/SUPPLY_CHAIN_MAINTENANCE_2026-09.md §8):
+#    the C15 recheck (run 35728647457) found postgres:18-alpine and redis:8-alpine rebuilt with
+#    every watched fix on both platforms; the two references below are those official indexes,
+#    their provenance and compatibility verified under infra/images/official/20260922/. The
+#    SCX records that named the derived postgres image are re-issued for the official children
+#    as DRAFTS pending the owner's approval (docs/SCANNER_DISPOSITIONS.md §3.9); the C15 gate
+#    stays red until that approval. The recheck keeps watching the official tags; a re-pin is
+#    never automatic.
 #  - PostgreSQL and Redis bind to LOOPBACK ONLY
 #  - Redis requires authentication (EYE_REDIS_PASSWORD)
 #  - no default operational secrets in executable paths: required env vars fail
 #    the profile fast when unset
 services:
   postgres:
-    image: postgres@sha256:69a974aedbd80ff27ee670a6693445c47925bd69e11818a1cff39319f91ad4a7 # ghcr.io/a-halawany/elven/postgres:18-alpine-maint-20260910 (index; derived from postgres:18-alpine 9a8afca5…)
+    image: postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873 # postgres:18-alpine (official index, 18.6-alpine3.24; re-pinned 2026-09-22 — was ghcr.io/a-halawany/elven/postgres@sha256:69a974ae… from 2026-09-10)
     container_name: eye-postgres
     # Process protections (2026-09-10; infra/images/candidates/README.md "v3", process
     # protections; measured in infra/images/candidates/evidence/v3/process-protections.txt).
@@ -38,8 +43,14 @@ services:
     # entrypoint cannot chmod/chown/gosu and exits 1. The root-only repair steps of the
     # entrypoint (chown of PGDATA) no longer run; eye-pgdata was initialised by this base
     # and is owned by uid 70 (verified), which is the layout verified here.
-    # Since the 2026-09-10 re-pin the pinned image IS the v3 candidate (USER postgres), so the
-    # keys below restate what its config already declares and remain required for the base.
+    # From 2026-09-10 to 2026-09-22 the pinned image WAS the v3 candidate (USER postgres), so the
+    # keys below restated what its config declared. Since the 2026-09-22 return the pinned image
+    # is the official base again (no USER in its config: the entrypoint starts as root and drops
+    # through gosu), so the three keys are what make PID 1 run as uid 70 with CapBnd 0 and
+    # NoNewPrivs 1 — re-measured on 2026-09-22 on the official linux/arm64 child under exactly
+    # these flags (uid 70/gid 70, CapPrm/CapEff/CapBnd 0, NoNewPrivs 1; initdb on a fresh volume,
+    # migrations 0001–0078, the acceptance suite, stop/start reload of the volume —
+    # infra/images/official/20260922/compat/).
     # NOT applied to the running eye-postgres: it takes effect at the next governed
     # recreation of the container (a recreate is a separate, recorded operation).
     user: "70:70"
@@ -61,7 +72,7 @@ services:
       retries: 10
 
   redis:
-    image: redis@sha256:1ad0ff24136a22ef4b2457aa3fde26c65c51bebe6c1f719158e21219f6ae3e15 # ghcr.io/a-halawany/elven/redis:8-alpine-maint-20260910 (index; derived from redis:8-alpine 978f0e01…)
+    image: redis@sha256:ba6e394f6acc2a695ef1b6944f161b9ca813711739be68319fa0db3470673f1d # redis:8-alpine (official index, 8.10.2-alpine; re-pinned 2026-09-22 — was ghcr.io/a-halawany/elven/redis@sha256:1ad0ff24… from 2026-09-10)
     container_name: eye-redis
     # Process protections (2026-09-10; same references as above). The pinned base's
     # entrypoint runs setpriv, which leaves redis-server at uid 999 with CapBnd 0 and
@@ -73,8 +84,13 @@ services:
     # required: with cap_drop alone the base's entrypoint fails its has_cap setuid test,
     # skips setpriv and runs redis-server as uid 0 (measured). There is no redis volume,
     # so the entrypoint's root-only fix_data_dir_perms step is not needed.
-    # Since the 2026-09-10 re-pin the pinned image IS the v3 candidate (USER redis), which never
-    # reaches setpriv: the three keys below are what restore CapBnd 0 / NoNewPrivs 1 for it.
+    # From 2026-09-10 to 2026-09-22 the pinned image WAS the v3 candidate (USER redis), which never
+    # reaches setpriv; since the 2026-09-22 return it is the official base again, whose entrypoint
+    # runs setpriv only when started as root — under `user: 999:1000` it execs redis-server
+    # directly, and the three keys below are what give it CapBnd 0 / NoNewPrivs 1 (re-measured on
+    # 2026-09-22 on the official linux/arm64 child under exactly these flags: uid 999/gid 1000,
+    # CapPrm/CapEff/CapBnd 0, NoNewPrivs 1; PING/SET/GET through the repository's client with
+    # --requirepass — infra/images/official/20260922/compat/).
     # NOT applied to the running eye-redis: it takes effect at the next governed
     # recreation of the container.
     user: "999:1000"

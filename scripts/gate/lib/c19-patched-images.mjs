@@ -1,14 +1,38 @@
 /**
- * Decide whether an OFFICIAL image has been REBUILT with the fixed packages this repository needed.
+ * Decide whether an OFFICIAL image has been REBUILT with the fixed packages this repository needed —
+ * and, since the return of 2026-09-22, whether the build the tag now names is the one the repository
+ * is pinned to, or a NEWER one.
  *
- * ── PURPOSE (2026-09-10) ─────────────────────────────────────────────────────────
- * The service images are TEMPORARILY pinned to derived maintenance builds
- * (`ghcr.io/a-halawany/elven/{postgres,redis}`, docs/images/DERIVED_IMAGES_APPROVAL.md) because no
- * official `postgres:18-alpine` / `redis:8-alpine` build carried the util-linux, OpenSSL and c-ares
- * fixes. That route ends the day a COMPATIBLE FIXED OFFICIAL image exists for a service — on BOTH
- * `linux/amd64` and `linux/arm64` — and the recheck is what notices it. It reports; it re-pins
- * nothing and deletes no evidence. The return to an official image is a governed operation
- * (re-pin, re-issue or retire the SCX records that name the image, regenerate evidence, FINAL chain).
+ * ── PURPOSE (2026-09-10, completed 2026-09-23) ───────────────────────────────────
+ * From 2026-09-10 to 2026-09-22 the service images were TEMPORARILY pinned to derived maintenance
+ * builds (`ghcr.io/a-halawany/elven/{postgres,redis}`, docs/images/DERIVED_IMAGES_APPROVAL.md) because
+ * no official `postgres:18-alpine` / `redis:8-alpine` build carried the util-linux, OpenSSL and c-ares
+ * fixes. That route ended the day a COMPATIBLE FIXED OFFICIAL image existed for each service — on BOTH
+ * `linux/amd64` and `linux/arm64` — and the recheck is what noticed it (run 35728647457, 2026-09-22).
+ * The return was made through the governed process (re-pin, re-issue of the SCX records that named the
+ * derived image, regenerated evidence, FINAL chain; docs/SUPPLY_CHAIN_MAINTENANCE_2026-09.md §8) and the
+ * owner approved its six re-issues on 2026-09-23.
+ *
+ * ── AFTER THE RETURN (the owner's decision of 2026-09-23, PUBLICATION.md §8.5) ─────
+ * The recheck keeps resolving the official tags at the existing cadence and decides against the
+ * CONFIGURED PIN of each service (conformance.manifest.json `pinned_images`):
+ *
+ *   * the tag resolves to the configured pin and every watched fix is present on both platforms
+ *     → PASS: the service is on the compatible official image;
+ *   * the tag resolves to a DIFFERENT index that carries every watched fix on both platforms
+ *     → FAIL: a NEWER compatible official build exists, and the governed re-pin (the existing update
+ *       process, under which the records naming the pin are re-reviewed) is what must follow;
+ *   * the tag resolves to a different index that does NOT carry every watched fix
+ *     → nothing to do: the pin stays, and the run says so;
+ *   * the tag resolves to the configured pin but a watched fix is NOT present, or the manifest's
+ *     recorded platform children disagree with the index
+ *     → FAIL: the return's premise no longer holds, or the record of it is wrong;
+ *   * a platform that cannot be resolved or scanned
+ *     → FAIL: "could not check" must never read like "nothing to do".
+ *
+ * The recheck reports; it re-pins nothing and deletes no evidence. The decision is `decideService`
+ * below, a pure function over the per-platform verdict and the pin, so it can be proven without a
+ * registry.
  *
  * ── WHY THE MODEL LOOKS LIKE THIS ────────────────────────────────────────────────
  * Two earlier versions were wrong in instructive ways.
@@ -29,13 +53,13 @@
  * names the revision and the comparison is revision-aware; where it did not, the base decides.
  */
 
-/** The platforms a compatible official image must qualify on. Both — the derived images ship both. */
+/** The platforms a compatible official image must qualify on. Both — the configured pins ship both. */
 export const PLATFORMS = Object.freeze(['linux/amd64', 'linux/arm64']);
 
 /**
  * OpenSSL's published affected ranges for CVE-2026-14456. Upstream ranges: a distribution that
  * backported the fix into an earlier revision — say `3.5.7-r1` — still reads as affected here. That
- * is the conservative direction: it keeps a service on the derived image a little longer rather
+ * is the conservative direction: it keeps a service on its current pin a little longer rather
  * than declaring an official image fixed that is not.
  */
 export const OPENSSL_FIX = Object.freeze({
@@ -101,25 +125,30 @@ export const C_ARES_FIX = Object.freeze({
 export const RECHECK_SPEC = OPENSSL_FIX;
 
 /**
- * The services, the OFFICIAL tag each one returns to, and every fix that tag must carry — on every
- * platform in PLATFORMS — before it is a compatible fixed official image for that service.
+ * The services, the OFFICIAL tag each one is watched on, the repository that tag names, and every
+ * fix a build of that tag must carry — on every platform in PLATFORMS — before it is a compatible
+ * fixed official image for that service.
  */
 export const SERVICES = Object.freeze({
   postgres: Object.freeze({
     tag: 'postgres:18-alpine',
-    pinned: 'ghcr.io/a-halawany/elven/postgres',
+    /** The repository the official tag names; the configured pin has been under it since 2026-09-22. */
+    repository: 'postgres',
     fixes: Object.freeze([OPENSSL_FIX, UTIL_LINUX_POSTGRES_FIX, C_ARES_FIX]),
     /**
-     * The governed records that name the derived image and must be re-reviewed on the return.
+     * The governed records scoped to this service's CONFIGURED image, which a re-pin re-scopes.
      * SCX-0002..0005 govern its linux/amd64 child; SCX-0010 and SCX-0011 govern the linux/arm64
-     * child, which the gate began scanning on 2026-09-10. Returning to the official image
-     * re-scopes ALL of them, on both platforms, or the ones left behind fail as unused.
+     * child, which the gate began scanning on 2026-09-10. Re-issued on 2026-09-10 for the derived
+     * image and on 2026-09-23 for the official index the compose file returned to on 2026-09-22
+     * (docs/SCANNER_DISPOSITIONS.md §3.9). A re-pin to a NEWER build re-scopes ALL of them, on both
+     * platforms, or the ones left behind fail as unused. A control holds this list equal to the
+     * tracked records that name the configured pin.
      */
     records: Object.freeze(['SCX-0002', 'SCX-0003', 'SCX-0004', 'SCX-0005', 'SCX-0010', 'SCX-0011']),
   }),
   redis: Object.freeze({
     tag: 'redis:8-alpine',
-    pinned: 'ghcr.io/a-halawany/elven/redis',
+    repository: 'redis',
     fixes: Object.freeze([OPENSSL_FIX, UTIL_LINUX_REDIS_FIX]),
     records: Object.freeze([]),
   }),
@@ -324,4 +353,168 @@ export function assessService(service, reports, platformErrors = {}, platforms =
   }
   const state = indeterminate > 0 ? 'indeterminate' : affected > 0 ? 'affected' : 'fixed';
   return { service, tag: spec.tag, state, platforms: perPlatform, records: [...spec.records] };
+}
+
+const DIGEST = /^sha256:[0-9a-f]{64}$/;
+const PINNED_REF = /^([^@\s]+)@(sha256:[0-9a-f]{64})$/;
+
+/**
+ * The CONFIGURED PIN of each watched service, read from conformance.manifest.json (`pinned_images`),
+ * the document the compose file is held equal to by CI's "Pinned-digest consistency" step.
+ *
+ * Throws on anything malformed rather than answering with a partial map: the recheck decides
+ * against these values, and a pin it cannot read is an indeterminate check, not a pass.
+ */
+export function readConfiguredPins(manifest, services = SERVICES) {
+  const pinned = manifest?.pinned_images;
+  if (pinned === null || typeof pinned !== 'object' || Array.isArray(pinned)) {
+    throw new Error('conformance.manifest.json has no pinned_images object');
+  }
+  const out = {};
+  for (const [service, spec] of Object.entries(services)) {
+    const entry = pinned[service];
+    if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) {
+      throw new Error(`pinned_images.${service} is missing`);
+    }
+    const m = typeof entry.digest === 'string' ? PINNED_REF.exec(entry.digest) : null;
+    if (m === null) {
+      throw new Error(`pinned_images.${service}.digest ${JSON.stringify(entry.digest)} is not a name@sha256:<64 hex> reference`);
+    }
+    const children = {};
+    const declared = entry.platform_children;
+    if (declared !== undefined) {
+      if (declared === null || typeof declared !== 'object' || Array.isArray(declared)) {
+        throw new Error(`pinned_images.${service}.platform_children is not an object`);
+      }
+      for (const [platform, digest] of Object.entries(declared)) {
+        if (typeof digest !== 'string' || !DIGEST.test(digest)) {
+          throw new Error(`pinned_images.${service}.platform_children[${platform}] ${JSON.stringify(digest)} is not a sha256 digest`);
+        }
+        children[platform] = digest;
+      }
+    }
+    out[service] = {
+      service,
+      tag: spec.tag,
+      reference: entry.digest,
+      repository: m[1],
+      digest: m[2],
+      human_tag: typeof entry.human_tag === 'string' ? entry.human_tag : null,
+      pinned_at: typeof entry.pinned_at === 'string' ? entry.pinned_at : null,
+      children,
+    };
+  }
+  return out;
+}
+
+/**
+ * The DECISION for one service after the return: the verdict of the tag's CURRENT index, judged
+ * against the CONFIGURED pin. Pure, so it can be proven without a registry.
+ *
+ * `resolved` is `{ digest, children }` for the tag's current index (`digest` null when the index
+ * could not be resolved); `verdict` is `assessService(...)` over that index's children; `pin` is
+ * this service's entry from `readConfiguredPins`.
+ *
+ * Returns `{ kind, pass, lines, digest, pinned, moved }`:
+ *   `indeterminate`     FAIL  a platform could not be resolved or scanned (or the verdict says so);
+ *   `pinned-children`   FAIL  the tag is the pin but the manifest's platform_children disagree with
+ *                             the index — the record of the return is wrong, and a scan of the
+ *                             children the manifest names would be a scan of something else;
+ *   `pinned-fixed`      PASS  the tag is the configured pin and every watched fix is present on
+ *                             both platforms: the service is on the compatible official image;
+ *   `pinned-affected`   FAIL  the tag is the configured pin but a watched fix is NOT present: the
+ *                             return's premise no longer holds and someone has to look;
+ *   `newer-fixed`       FAIL  a DIFFERENT index carries every watched fix on both platforms — a
+ *                             NEWER compatible official build; the governed re-pin (the existing
+ *                             update process) is what must follow;
+ *   `moved-affected`    PASS  a different index that does not carry every watched fix: the pin
+ *                             stays; nothing to do, said out loud.
+ */
+export function decideService(resolved, verdict, pin) {
+  const service = verdict.service;
+  const tag = verdict.tag;
+  const fixes = Object.keys(verdict.platforms[PLATFORMS[0]]?.fixes ?? {});
+  const digest = typeof resolved?.digest === 'string' ? resolved.digest : null;
+  const children = resolved?.children ?? {};
+  const pinned = pin?.digest ?? null;
+  const moved = digest !== null && pinned !== null && digest !== pinned;
+  const base = { service, tag, digest, pinned, moved, state: verdict.state, records: verdict.records };
+
+  if (verdict.state === 'indeterminate' || digest === null || pinned === null) {
+    return { ...base, kind: 'indeterminate', pass: false, lines: [] };
+  }
+  if (!moved) {
+    const disagree = PLATFORMS
+      .filter((p) => pin.children[p] !== undefined && children[p] !== undefined && pin.children[p] !== children[p])
+      .map((p) => `${p}: the index lists ${children[p]}, the manifest names ${pin.children[p]}`);
+    if (disagree.length > 0) {
+      return {
+        ...base,
+        kind: 'pinned-children',
+        pass: false,
+        lines: [
+          `${service}: the tag ${tag} resolves to the configured pin ${pinned}, but the manifest's platform_children`
+            + ' disagree with the index it names:',
+          ...disagree.map((d) => `  ${d}`),
+          '  The record of the return is wrong or the manifest was edited; correct conformance.manifest.json'
+            + ' through the governed process. Nothing was re-pinned and no evidence was deleted.',
+        ],
+      };
+    }
+    if (verdict.state === 'fixed') {
+      return {
+        ...base,
+        kind: 'pinned-fixed',
+        pass: true,
+        lines: [
+          `${service}: the configured pin is the compatible official image (${tag} -> ${pinned}; every watched fix`
+            + ` (${fixes.join(', ')}) is present on ${PLATFORMS.join(' and ')})`,
+        ],
+      };
+    }
+    const affected = PLATFORMS.flatMap((p) => Object.entries(verdict.platforms[p].fixes)
+      .filter(([, f]) => f.state === 'affected').map(([id, f]) => `${p} [${id}]: ${f.why}`));
+    return {
+      ...base,
+      kind: 'pinned-affected',
+      pass: false,
+      lines: [
+        `${service}: the CONFIGURED pin ${pinned} (${tag}) does NOT carry every watched fix:`,
+        ...affected.map((a) => `  ${a}`),
+        "  The return's premise no longer holds for this pin. Re-review the pin and the records scoped to it"
+          + ` (${verdict.records.length > 0 ? verdict.records.join(', ') : 'none'}) through the governed process`
+          + ' (docs/SCANNER_DISPOSITIONS.md §5). Nothing was re-pinned and no evidence was deleted.',
+      ],
+    };
+  }
+  if (verdict.state === 'fixed') {
+    return {
+      ...base,
+      kind: 'newer-fixed',
+      pass: false,
+      lines: [
+        `a COMPATIBLE FIXED OFFICIAL image now exists for ${service}: ${tag} -> ${digest}`,
+        `  NEWER than the configured pin ${pinned}: the tag has moved.`,
+        ...PLATFORMS.map((p) => `  ${p} child ${children[p] ?? digest}`),
+        `  every watched fix (${fixes.join(', ')}) is present on both platforms.`,
+        '  This is a REPORT: nothing was re-pinned and no evidence was deleted. Move the service to the newer',
+        '  official image through the governed process — re-pin docker-compose.yml and conformance.manifest.json',
+        `  to ${tag.split(':')[0]}@${digest}, verify its provenance and compatibility, ${verdict.records.length > 0
+          ? `re-issue or retire ${verdict.records.join(', ')} (they name the configured pin)`
+          : 'confirm no SCX record names the configured pin'}, regenerate the`,
+        '  evidence, run the FINAL chain (docs/SCANNER_DISPOSITIONS.md §5; docs/SUPPLY_CHAIN_MAINTENANCE_2026-09.md §8.4).',
+      ],
+    };
+  }
+  const affected = PLATFORMS.flatMap((p) => Object.entries(verdict.platforms[p].fixes)
+    .filter(([, f]) => f.state === 'affected').map(([id]) => `${p} [${id}]`));
+  return {
+    ...base,
+    kind: 'moved-affected',
+    pass: true,
+    lines: [
+      `${service}: the tag ${tag} now resolves to ${digest}, which does not carry every watched fix`
+        + ` (${affected.join(', ')} affected); the configured pin ${pinned} stays — nothing to do`,
+    ],
+  };
 }

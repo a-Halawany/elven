@@ -1,0 +1,6 @@
+os: alpine 3.24.1
+os_pkgs: 53
+secrets: 0
+arch: amd64
+image_id: sha256:7151624d5f1c2a18deb402cb78cd361ec5e66cb5c796636e567eeafe8035c2b3
+repo_digests: ['ghcr.io/a-halawany/elven/postgres@sha256:bc90ce6bc094fae53df8d01b23e6c08160c7e7064f4c351fd3cff324aefcda7a']

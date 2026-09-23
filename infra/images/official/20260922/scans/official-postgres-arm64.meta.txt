@@ -1,0 +1,6 @@
+os: alpine 3.24.2
+os_pkgs: 53
+secrets: 0
+arch: arm64
+image_id: sha256:d7a8005067f55a2f8ea369e767545fd467b1943a4f0f1a48b7dc44f06c366109
+repo_digests: ['postgres@sha256:89f747171c4b0af0eacf5984550060be79786dbe286eb60cfa691d79d1e8b23f']

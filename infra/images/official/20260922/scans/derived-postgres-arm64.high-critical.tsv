@@ -1,0 +1,23 @@
+advisory	severity	package	purl	installed	fixed	target
+CVE-2025-61726	HIGH	stdlib	pkg:golang/stdlib@v1.24.6	v1.24.6	1.24.12, 1.25.6	usr/local/bin/gosu
+CVE-2025-61729	HIGH	stdlib	pkg:golang/stdlib@v1.24.6	v1.24.6	1.24.11, 1.25.5	usr/local/bin/gosu
+CVE-2025-68121	CRITICAL	stdlib	pkg:golang/stdlib@v1.24.6	v1.24.6	1.24.13, 1.25.7, 1.26.0-rc.3	usr/local/bin/gosu
+CVE-2026-25679	HIGH	stdlib	pkg:golang/stdlib@v1.24.6	v1.24.6	1.25.8, 1.26.1	usr/local/bin/gosu
+CVE-2026-27145	HIGH	stdlib	pkg:golang/stdlib@v1.24.6	v1.24.6	1.25.11, 1.26.4	usr/local/bin/gosu
+CVE-2026-32280	HIGH	stdlib	pkg:golang/stdlib@v1.24.6	v1.24.6	1.25.9, 1.26.2	usr/local/bin/gosu
+CVE-2026-32281	HIGH	stdlib	pkg:golang/stdlib@v1.24.6	v1.24.6	1.25.9, 1.26.2	usr/local/bin/gosu
+CVE-2026-32283	HIGH	stdlib	pkg:golang/stdlib@v1.24.6	v1.24.6	1.25.9, 1.26.2	usr/local/bin/gosu
+CVE-2026-33811	HIGH	stdlib	pkg:golang/stdlib@v1.24.6	v1.24.6	1.25.10, 1.26.3	usr/local/bin/gosu
+CVE-2026-33814	HIGH	stdlib	pkg:golang/stdlib@v1.24.6	v1.24.6	1.25.10, 1.26.3	usr/local/bin/gosu
+CVE-2026-33818	HIGH	stdlib	pkg:golang/stdlib@v1.24.6	v1.24.6	1.25.13, 1.26.6, 1.27.0-rc.3	usr/local/bin/gosu
+CVE-2026-39820	HIGH	stdlib	pkg:golang/stdlib@v1.24.6	v1.24.6	1.25.10, 1.26.3	usr/local/bin/gosu
+CVE-2026-39821	HIGH	stdlib	pkg:golang/stdlib@v1.24.6	v1.24.6	1.25.13, 1.26.6, 1.27.0-rc.3	usr/local/bin/gosu
+CVE-2026-39822	HIGH	stdlib	pkg:golang/stdlib@v1.24.6	v1.24.6	1.25.12, 1.26.5, 1.27.0-rc.2	usr/local/bin/gosu
+CVE-2026-39836	HIGH	stdlib	pkg:golang/stdlib@v1.24.6	v1.24.6	1.25.10, 1.26.3	usr/local/bin/gosu
+CVE-2026-42499	HIGH	stdlib	pkg:golang/stdlib@v1.24.6	v1.24.6	1.25.10, 1.26.3	usr/local/bin/gosu
+CVE-2026-42504	HIGH	stdlib	pkg:golang/stdlib@v1.24.6	v1.24.6	1.25.11, 1.26.4	usr/local/bin/gosu
+CVE-2026-56853	HIGH	stdlib	pkg:golang/stdlib@v1.24.6	v1.24.6	1.25.13, 1.26.6, 1.27.0-rc.3	usr/local/bin/gosu
+CVE-2026-56858	HIGH	stdlib	pkg:golang/stdlib@v1.24.6	v1.24.6	1.25.13, 1.26.6, 1.27.0-rc.3	usr/local/bin/gosu
+CVE-2026-56859	HIGH	stdlib	pkg:golang/stdlib@v1.24.6	v1.24.6	1.25.13, 1.26.6, 1.27.0-rc.3	usr/local/bin/gosu
+CVE-2026-56860	HIGH	stdlib	pkg:golang/stdlib@v1.24.6	v1.24.6	1.25.13, 1.26.6, 1.27.0-rc.3	usr/local/bin/gosu
+CVE-2026-56862	HIGH	stdlib	pkg:golang/stdlib@v1.24.6	v1.24.6	1.25.13, 1.26.6, 1.27.0-rc.3	usr/local/bin/gosu

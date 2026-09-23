@@ -1,18 +1,26 @@
-# ── Is there a compatible fixed OFFICIAL image yet? ───────────────────────────
+# ── Is the service still on the compatible official image — or is there a NEWER one? ──
 #
-# Since 2026-09-10 the service images are pinned, TEMPORARILY and by owner approval
+# From 2026-09-10 to 2026-09-22 the service images were pinned, TEMPORARILY and by owner approval
 # (docs/images/DERIVED_IMAGES_APPROVAL.md), to derived maintenance builds under
 # ghcr.io/a-halawany/elven/, because no official postgres:18-alpine or redis:8-alpine build carried
-# the util-linux, OpenSSL and c-ares fixes. That route ends the day a compatible fixed official
-# image exists for a service on BOTH linux/amd64 and linux/arm64.
+# the util-linux, OpenSSL and c-ares fixes. This check is what noticed the official rebuilds (run
+# 35728647457, 2026-09-22); the compose file returned to them the same day, and the owner approved the
+# SCX re-issues on 2026-09-23 (docs/SUPPLY_CHAIN_MAINTENANCE_2026-09.md §8).
 #
-# That can become true on any day, without anything in this repository changing. CI checks on the
-# next push; this checks on a quiet week when there is no push. It resolves the current official
-# index for each service's tag, scans both platform children for the fixed package versions, and
-# REPORTS. It FAILS when a service qualifies — a deliberate inversion, because the good news is what
-# has to interrupt someone — and the return to the official image is then a governed operation
-# (re-pin, re-issue or retire the SCX records that name the derived image, regenerate evidence,
-# FINAL chain). It never re-pins and never deletes evidence.
+# AFTER THE RETURN it keeps running at the same cadence, because the registry can move on any day
+# without anything in this repository changing: CI checks on the next push; this checks on a quiet
+# week when there is no push. It resolves the current official index of each service's tag, scans
+# both platform children for the fixed package versions, and decides against the CONFIGURED PIN
+# (the conformance manifest, which CI holds equal to the compose file):
+#   * the tag is the configured pin and every watched fix is present on both platforms  -> PASS;
+#   * the tag names a NEWER index that also carries every watched fix on both platforms -> FAIL —
+#     a deliberate inversion, because the good news is what has to interrupt someone — and the
+#     move to it is a governed operation (re-pin, verify provenance and compatibility, re-issue or
+#     retire the SCX records that name the pin, regenerate evidence, FINAL chain; §8.4);
+#   * the tag moved to a build that does not carry every watched fix -> nothing to do, said out loud;
+#   * the tag is the configured pin but a watched fix is missing, or the check cannot be completed
+#     on both platforms -> FAIL, visibly.
+# It never re-pins and never deletes evidence.
 #
 # READ-ONLY. No id-token, no contents:write, no packages, no attestations. It resolves public image
 # digests and scans them; it cannot change this repository or sign anything.
@@ -52,14 +60,16 @@ jobs:
       - name: Install the pinned scanners
         run: bash scripts/gate/install-scanners.sh trivy
 
-      - name: Recheck the official images on both platforms
+      - name: Recheck the official images on both platforms against the configured pins
         run: node scripts/gate/check-patched-images.mjs
 
       - name: Explain a failure
         if: failure()
         run: |
-          echo "::notice::Either a COMPATIBLE FIXED OFFICIAL image now exists for a service on both platforms —"
-          echo "::notice::return that service to it through the governed process (re-pin, re-issue or retire the"
-          echo "::notice::SCX records that name the derived image, regenerate evidence, FINAL chain); nothing was"
-          echo "::notice::re-pinned and no evidence was deleted — or the check could not be completed on both"
-          echo "::notice::platforms, which is not evidence that no such image exists."
+          echo "::notice::Either a NEWER compatible official build now exists for a service on both platforms —"
+          echo "::notice::move the service to it through the governed process (re-pin, verify provenance and"
+          echo "::notice::compatibility, re-issue or retire the SCX records that name the current pin, regenerate"
+          echo "::notice::evidence, FINAL chain; docs/SUPPLY_CHAIN_MAINTENANCE_2026-09.md §8.4) — or the configured pin"
+          echo "::notice::no longer carries every watched fix, or the manifest's recorded children disagree with the"
+          echo "::notice::index, or the check could not be completed on both platforms, which is not evidence that"
+          echo "::notice::nothing changed. Nothing was re-pinned and no evidence was deleted."
