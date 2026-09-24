@@ -281,8 +281,13 @@ severity) and compatibility passes apply to them unchanged: they are the same im
    children are unchanged, so no new compatibility question arises.
 3. SCX records: **none names the redis pin** — all six (SCX-0002…0005, SCX-0010/0011) are scoped to the postgres pin
    `77f58511…`, which did not move. Nothing is re-issued or retired; no owner approval of a disposition is needed.
-4. Evidence: the C15 trace fixture and `real-image-results.json` are handled as the gate's unit controls require
-   (stated in the commit); the hosted `supply-chain` job on this branch is the real run with the pinned scanners.
+4. Evidence: a real local run of the gate on the re-pinned head `142d0b0` (a single-branch clone, so the history scan
+   sees only this branch) with the pinned release scanners (trivy 0.73.0, gitleaks 8.30.1 — their executable digests
+   authenticated by the gate against `scripts/gate/scanner-pins.json`) PASSED: 44 findings across both platforms, the 6
+   records governing them, 0 unmatched, 0 unused. The C15 trace fixture (`apps/api/test/gate/fixtures/c15-trace/`: the
+   configured references, the raw OCI index bytes, the four resolutions and the four trivy-image raw streams) and
+   `real-image-results.json` were re-recorded from that run exactly as on the previous re-records; every other stream is
+   unchanged. The hosted `supply-chain` job on this branch is the independent real run.
 5. The FINAL chain runs on the merge like every maintenance change; the live `eye-redis` container (queues only,
    rebuildable — `docs/ops/BACKUP_RESTORE.md` §3) is recreated onto the new index only after the merge, as a recorded
    operation; its running image is byte-identical for this host's platform either way.
