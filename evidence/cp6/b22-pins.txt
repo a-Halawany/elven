@@ -1,0 +1,26 @@
+=== the pins B22 moved in the existing tests (the second implementer; test files and scripts/phase1/verify-0022-upgrade.mjs only) — fresh databases, 2026-09-24 ===
+--- p1-fitness
+ Test Files  1 passed (1)
+      Tests  6 passed (6)
+--- p3-interfaces
+ Test Files  1 passed (1)
+      Tests  14 passed (14)
+--- p4-four
+ Test Files  4 passed (4)
+      Tests  46 passed (46)
+--- p5-acceptance
+ Test Files  2 passed (2)
+      Tests  59 passed (59)
+--- upgrade proof (before the escalation-history rule; re-run in b22-upgrade-proof.txt)
+  ✓ rejected: pending — "downstream consumers not yet present (KG/dependency graph arrives Phase 3)"
+  ✓ rejected: 0 reconciliation record(s), as expected
+
+4. the upgraded schema equals a virgin full-set schema
+  ✓ virgin database migrated from empty (83 files)
+  ✓ schema digests match exactly: 9fb5710161e08d28…
+
+5. the later-phase suites against the UPGRADED database
+  ✓ Phase 1 and Phase 2 suites on upgraded data: 276/276 passed
+
+=== PASS ===
+

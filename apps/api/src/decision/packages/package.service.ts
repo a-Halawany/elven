@@ -333,13 +333,14 @@ export class PackageService {
    */
   async reopen(cap: ReopenWrites, ctx: ScopeContext, packageId: string, a: { cause: { kind: string; ref: string }; knownAt: string | null; observedThrough: string | null }, actor: string, correlationId: string): Promise<{ reopened: Record<string, unknown>; decisionObjectId: string }> {
     const kind = a.cause.kind;
-    if ((kind !== 'input_invalidated' && kind !== 'condition_breach') || typeof a.cause.ref !== 'string' || !UUID.test(a.cause.ref)) {
-      bad(correlationId, 'a cause names a recorded input_invalidated note or a condition_breach by id');
+    // B22 (0083): a third cause — the attention policy changed after the commitment (the policy.changed note the attention subscriber recorded).
+    if ((kind !== 'input_invalidated' && kind !== 'condition_breach' && kind !== 'policy_changed') || typeof a.cause.ref !== 'string' || !UUID.test(a.cause.ref)) {
+      bad(correlationId, 'a cause names a recorded input_invalidated note, a condition_breach or a policy_changed note by id');
     }
     const p = (await cap.readPackages().selectAll().where('package_id' as never, '=', packageId as never).executeTakeFirst()) as Record<string, unknown> | undefined;
     if (p === undefined) throw new HttpException(errorBody('EYE_STA_001', correlationId, 'no authorized package matches'), 404);
     const reopened = await cap.reopenPackage({
-      packageId, tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, cause: { kind: kind as 'input_invalidated' | 'condition_breach', ref: a.cause.ref },
+      packageId, tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, cause: { kind: kind as 'input_invalidated' | 'condition_breach' | 'policy_changed', ref: a.cause.ref },
       knownAt: a.knownAt, observedThrough: a.observedThrough, actor, eventId: newId(), correlationId,
     });
     return { reopened, decisionObjectId: String(p['decision_object_id']) };

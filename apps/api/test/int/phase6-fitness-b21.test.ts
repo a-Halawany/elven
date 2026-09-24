@@ -4,7 +4,7 @@
  * state change announced from its write under the register's own name (the 0066/0078 event shape); an unfit or incoherent object refused
  * where it would become decision-active; a dispute that is a person's typed case decided by someone else (SoD), resolved by a governed
  * re-run, an invalidation or a dismissal — on a real database with real Redis, the real outbox publisher and the real subscription
- * dispatcher (EYE_SCHEDULER_ENABLED at module top, the B6 rule), ALL SEVEN consumers registered in the harness's own domain (the B18 idiom),
+ * dispatcher (EYE_SCHEDULER_ENABLED at module top, the B6 rule), ALL SEVEN consumers (eleven since 0083, B22) registered in the harness's own domain (the B18 idiom),
  * the world of `bootDecisionWorld` (the corridor twin, its four runs, the forecast and the scenario on it) and B21's own humans with
  * sessions of their own (the ports compare the acting principal). The vault roots are this file's own temporary directory (C5 / Nit 8).
  *
@@ -35,8 +35,9 @@
  *   invalidated in the same write with trigger challenge: three outbox rows, the six deliveries, the withdrawn SIM version, the package
  *   noted), upheld on an already-invalidated run (withheld), the PROMOTION (fit for a stated use; once; the operator refused; a disputed
  *   result refused), the get/list answers.
- *   T5 · the register 40/10/0 with the four rows bound in 0081; the seven consumer digests against 13ed40c (C4: forecasts, scenarios and
- *   decisions changed; the four others unchanged); the two rule constants at version 1.
+ *   T5 · the register 40/10/0 with the four rows bound in 0081 (44/6/0 since 0083, B22: L1-I03, L1-I04, L2-I02 and L10-I05 bound, L9-I05's
+ *   package-cause clause delivered); the seven consumer digests against 13ed40c (C4: forecasts, scenarios and decisions changed; the four
+ *   others unchanged) and unchanged by B22 (the three at a2303ff's), the four B22 kinds' identities their own; the two rule constants at version 1.
  *
  * EACH CASE LOGS THE SIX THINGS V04-T-024/026 DEMAND as one `B21.3 EVIDENCE` line (C7). Stated (design-p3-harness.md §6): no forecast
  * scheduler or re-issue; the rules are versioned constants over the ledgers this product holds; the series-length breach is not detected;
@@ -59,7 +60,7 @@ import type { PredictionController } from '../../src/prediction/prediction.contr
 import type { TwinController } from '../../src/twin/twin.controller.js';
 import { SchedulerService } from '../../src/observation/scheduling/scheduler.service.js';
 import { SubscriptionDispatcherService } from '../../src/graph/subscriptions/subscription-dispatcher.service.js';
-import { CONSUMER_KINDS, consumerCodeDigest, type ConsumerKind } from '../../src/graph/subscriptions/graph-change.js';
+import { CONSUMER_EVENT_TYPES, CONSUMER_KINDS, consumerCodeDigest, type ConsumerKind } from '../../src/graph/subscriptions/graph-change.js';
 import { asObservationRefusal } from '../../src/observation/observation-errors.js';
 import { Phase4Harness } from './phase4-helpers.js';
 import { bootDecisionWorld, decisionCalls, type DecisionWorld } from './phase6-fixtures.js';
@@ -81,14 +82,21 @@ type Evd = { id: string; version: number; digest: string; bytesDigest: string };
 type OutboxRow = { id: string; status: string; event_type: string; schema_version: string | null; payload: Row; correlation_id: string; created_at: Date; partition_key: string; partition_seq: number };
 type Delivery = { event_id: string; subscription_id: string; consumer_kind: string; state: string; deliveries: number; attempts: number; items: string[]; items_applied: Array<{ item: string; effect: string; effect_ref: string | null; details?: Row }>; items_unresolved: Row[]; last_error: string | null };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-/** The six consumer kinds a GraphChanged reaches (the seventh selects MemoryCorrected/claim.corrected alone). */
-const GRAPH_KINDS = CONSUMER_KINDS.filter((k) => k !== 'relationships');
+/**
+ * The six consumer kinds a GraphChanged reaches (the seventh selects MemoryCorrected/claim.corrected alone). 0083 (B22): the four kinds B22
+ * adds (observations, source-health, proposals, attention) select their own flat events — never GraphChanged — so they are registered too
+ * and absent from every GraphChanged delivery.
+ */
+const GRAPH_KINDS = CONSUMER_KINDS.filter((k) => k !== 'relationships' && CONSUMER_EVENT_TYPES[k].includes('GraphChanged'));
+/** 0083 (B22): the four consumer kinds B22 adds, each with an identity of its own from the start. */
+const B22_KINDS = ['observations', 'source-health', 'proposals', 'attention'] as const satisfies readonly ConsumerKind[];
+type PriorKind = Exclude<ConsumerKind, (typeof B22_KINDS)[number]>;
 /**
  * THE SEVEN CONSUMER DIGESTS OF 13ed40c (C4), computed ONCE on the untouched tree before any B21 edit landed
  * (`node --import tsx -e "import('./src/graph/subscriptions/graph-change.ts')…"` in apps/api at 13ed40c; recorded in evidence/cp6/b21-3-harness.txt).
  * T5 pins the four unchanged kinds equal and the three changed kinds (forecasts, scenarios, decisions — their METHOD_REF literals re-worded in 0081) different.
  */
-const DIGESTS_13ED40C: Readonly<Record<ConsumerKind, string>> = Object.freeze({
+const DIGESTS_13ED40C: Readonly<Record<PriorKind, string>> = Object.freeze({
   twins: '13996dd05ee7715210160f2d57d396ae45ce80b97878a92fcd5d5ebfb4fd8f7f',
   forecasts: 'cbcde85317c85a836103d2d59c7c496f520b59515d0c43c67c74d4a6eecadeb5',
   scenarios: 'd2be51c5792f35b90a27c11235eeeca3a14c97404d17cbe89f4cce7d8336ee90',
@@ -97,8 +105,20 @@ const DIGESTS_13ED40C: Readonly<Record<ConsumerKind, string>> = Object.freeze({
   'memory-mappings': '2e0ad122d8d03b9cc5cfcc90a71dbb0d1017f7d6eda5c43cba70b077207f67a2',
   relationships: 'fe16ee21985684b1fe4d96f7f228d58e0347939ed7c20f96de45312f53700716',
 });
-/** The ten register rows that stay partial after 0081 (C2's set; compared sorted). */
-const STILL_PARTIAL = ['L1-I02', 'L1-I03', 'L1-I04', 'L2-I02', 'L3-I02', 'L4-I02', 'L7-I02', 'L10-I02', 'L10-I03', 'L10-I05'];
+/**
+ * 0083 (B22): the three digests B21 moved, as a2303ff left them (graph-change.ts untouched between a2303ff and main 5165a97; computed from
+ * `git show a2303ff:apps/api/src/graph/subscriptions/graph-change.ts`) — B22 re-words none of the seven, so no old kind is re-registered for it.
+ */
+const DIGESTS_A2303FF: Readonly<Record<'forecasts' | 'scenarios' | 'decisions', string>> = Object.freeze({
+  forecasts: 'e3932eb0354d8b4943f9c352bc8eccb70ffa595f4797445e6633a9f5f491c2a2',
+  scenarios: '06a9711bc0c00f94d0d433c7a3423f0a26b01fc845bdfa86fc32379bf85a3f74',
+  decisions: '6e283700b3b7d74c0699e6c565a4da6c0558b015d749e6f8a6d56426b07b6e5f',
+});
+/**
+ * The register rows that stay partial (compared sorted): ten after 0081 (C2's set); 0083 (B22) binds L1-I03, L1-I04, L2-I02 and L10-I05,
+ * so six stay partial.
+ */
+const STILL_PARTIAL = ['L1-I02', 'L3-I02', 'L4-I02', 'L7-I02', 'L10-I02', 'L10-I03'];
 const REVIEW_ROLES = ['platform_admin', 'domain_admin', 'strategy_owner', 'forecast_owner'];
 
 let h: Phase4Harness; let su: AnyDb; let w: DecisionWorld; let c: ReturnType<typeof decisionCalls>;
@@ -351,7 +371,7 @@ beforeAll(async () => {
   [B] = (await h.upload([{ filename: 'b21-b.csv', text: 'a,b\n1,2\n', documentTime: '2024-01-14T00:00:00Z' }])).map((u) => ({ id: u.id, version: u.version, digest: u.digest, bytesDigest: u.bytesDigest })) as [Evd];
   await seedEntity(E1, 'organization', 'B21 Holding AG', graphOwner.principalId);
   await seedEntity(E2, 'place', 'B21 Strait Terminal', graphOwner.principalId);
-  // THE SUBSCRIPTIONS: all seven kinds, registered by the tenant administrator with the backlog left (the B18 idiom).
+  // THE SUBSCRIPTIONS: all seven kinds (eleven since 0083, B22 — the four new kinds on their own event types by default), registered by the tenant administrator with the backlog left (the B18 idiom).
   for (const kind of CONSUMER_KINDS) {
     const r = await register(kind);
     subs[kind] = { subscriptionId: r.subscription.subscriptionId, principalId: r.subscription.principalId };
@@ -907,11 +927,11 @@ describe('B21.3 · fitness, coherence and challenge (0081; L5-I05, L6-I03, L7-I0
     sixEvidence('T4', { fault_trace: { challenges: { CH1, CH2, CH3, CH4, CH5, CH6 }, rerun: RR, invalidated: R1, promoted: C0 }, watermark: { R1: 'invalidated (challenge), unfit', C0: 'fit (promoted)', RR: 'valid, disputed' }, consumer_behaviour: 'the package noted material_change on the upheld invalidation; the citation gate refuses the invalidated run; nothing else reached', operator_action: 'open / rerun / withdraw / decide (SoD) / promote (SoD)', recovery: 'the re-run compared on the common control; the dismissal leaves the run valid', reconciliation: { three_rows_one_write: true, withdrawn_sim_version: 2, promotion_outbox_rows: 0 } });
   }, 300_000);
 
-  it('T5 · the register 40/10/0 with the four rows bound in 0081 (and L9-I05\'s clause re-homed to B22); the seven consumer digests against 13ed40c (C4); the two rule constants at version 1; the pre-0081 scenario reads unchecked', async () => {
+  it('T5 · the register 40/10/0 with the four rows bound in 0081 — 44/6/0 since 0083 (B22), the four still bound in 0081 and L9-I05\'s clause delivered by B22; the seven consumer digests against 13ed40c (C4) and unchanged by B22, the four B22 identities their own; the two rule constants at version 1; the pre-0081 scenario reads unchecked', async () => {
     const r = await interfaces();
     expect(r.interfaces).toHaveLength(50);
     const byState = (s: string) => r.interfaces.filter((i) => i['binding_state'] === s).map((i) => String(i['interface_id']));
-    expect(byState('bound')).toHaveLength(40);
+    expect(byState('bound')).toHaveLength(44); // 40 at 0081; + L1-I03, L1-I04, L2-I02, L10-I05 in 0083 (B22)
     expect(byState('partial').sort()).toEqual([...STILL_PARTIAL].sort());
     expect(byState('unbound')).toEqual([]);
     for (const [id, event] of [['L5-I05', 'ValidateTwin'], ['L6-I03', 'ForecastFitnessChanged'], ['L7-I04', 'ScenarioCoherenceFailed'], ['L8-I04', 'ChallengeSimulation']]) {
@@ -920,13 +940,22 @@ describe('B21.3 · fitness, coherence and challenge (0081; L5-I05, L6-I03, L7-I0
       expect(row['bound_at']).not.toBeNull();
       expect(String(row['bound_to'])).toMatch(new RegExp(`${event}@v1`));
     }
-    expect(String(r.interfaces.find((i) => i['interface_id'] === 'L9-I05')!['bound_to'])).toMatch(/\(L10-I05, B22\)/);
-    expect(await registerCounts()).toEqual({ bound: 40, partial: 10, unbound: 0 });
+    // 0083 (B22): the clause 0081 re-homed to B22 ('a policy change has no recorded cause on a package (L10-I05, B22)') is replaced by its delivery.
+    const l9 = String(r.interfaces.find((i) => i['interface_id'] === 'L9-I05')!['bound_to']);
+    expect(l9).toMatch(/B22 \(0083\): a POLICY CHANGE is a recorded cause/);
+    expect(l9).not.toMatch(/a policy change has no recorded cause/);
+    expect(await registerCounts()).toEqual({ bound: 44, partial: 6, unbound: 0 });
     // THE DIGESTS (C4): the three re-worded consumers changed, the four others byte for byte 13ed40c's; every live subscription carries this process's identity.
+    // 0083 (B22): the seven unchanged by B22 (the three B21 moved are a2303ff's); the four B22 kinds carry identities of their own, none an earlier one.
+    const earlier = new Set<string>([...Object.values(DIGESTS_13ED40C), ...Object.values(DIGESTS_A2303FF)]);
     for (const k of CONSUMER_KINDS) {
-      if (['forecasts', 'scenarios', 'decisions'].includes(k)) expect(consumerCodeDigest(k), `${k}: a changed method is a new consumer`).not.toBe(DIGESTS_13ED40C[k]);
-      else expect(consumerCodeDigest(k), `${k}: unchanged since 13ed40c`).toBe(DIGESTS_13ED40C[k]);
+      if ((B22_KINDS as readonly string[]).includes(k)) expect(earlier.has(consumerCodeDigest(k)), `${k}: a new consumer (B22), a new identity`).toBe(false);
+      else if (k === 'forecasts' || k === 'scenarios' || k === 'decisions') {
+        expect(consumerCodeDigest(k), `${k}: a changed method is a new consumer`).not.toBe(DIGESTS_13ED40C[k]);
+        expect(consumerCodeDigest(k), `${k}: unchanged by B22 (a2303ff's)`).toBe(DIGESTS_A2303FF[k]);
+      } else expect(consumerCodeDigest(k), `${k}: unchanged since 13ed40c`).toBe(DIGESTS_13ED40C[k as PriorKind]);
     }
+    expect(new Set(CONSUMER_KINDS.map((k) => consumerCodeDigest(k))).size).toBe(11);
     const st = (await statusOf()).subscriptions;
     for (const k of CONSUMER_KINDS) {
       expect(st.consumers.find((x) => x['kind'] === k), k).toMatchObject({ registeredInThisProcess: true, codeDigest: consumerCodeDigest(k), version: '1.0.0' });
@@ -943,6 +972,6 @@ describe('B21.3 · fitness, coherence and challenge (0081; L5-I05, L6-I03, L7-I0
     expect(await columnDefault('prediction.forecasts_current', 'fitness_state')).toMatch(/^'none'/);
     expect(await columnDefault('twin.twin_versions', 'fitness_state')).toMatch(/^'none'/);
     expect(['passed', 'failed']).toContain((await scenarioRow(w.scenarioId)).coherence_state);
-    sixEvidence('T5', { fault_trace: 'none: the register and the identities read', watermark: { register: '40/10/0', rules: { fitness: '1', coherence: '1' } }, consumer_behaviour: { changed: ['forecasts', 'scenarios', 'decisions'], unchanged: ['twins', 'retrieval', 'memory-mappings', 'relationships'] }, operator_action: 'the act re-registers the three changed kinds on the demonstration', recovery: 'none', reconciliation: { digests_13ed40c: DIGESTS_13ED40C } });
+    sixEvidence('T5', { fault_trace: 'none: the register and the identities read', watermark: { register: '44/6/0 (40/10/0 at 0081; B22 0083)', rules: { fitness: '1', coherence: '1' } }, consumer_behaviour: { changed: ['forecasts', 'scenarios', 'decisions'], unchanged: ['twins', 'retrieval', 'memory-mappings', 'relationships'], b22_new: [...B22_KINDS] }, operator_action: 'the act re-registers the three changed kinds on the demonstration', recovery: 'none', reconciliation: { digests_13ed40c: DIGESTS_13ED40C, digests_a2303ff: DIGESTS_A2303FF } });
   }, 120_000);
 });

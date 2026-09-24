@@ -89,7 +89,7 @@ import { ImportService } from '../../src/retention/import.service.js';
 import { VaultService } from '../../src/observation/vault/vault.service.js';
 import { SchedulerService } from '../../src/observation/scheduling/scheduler.service.js';
 import { SubscriptionDispatcherService } from '../../src/graph/subscriptions/subscription-dispatcher.service.js';
-import { CONSUMER_KINDS, type ConsumerKind } from '../../src/graph/subscriptions/graph-change.js';
+import { CONSUMER_EVENT_TYPES, CONSUMER_KINDS, type ConsumerKind } from '../../src/graph/subscriptions/graph-change.js';
 import { IMPORT_EVENT_LIST_MAX } from '../../src/graph/subscriptions/change-events.js';
 import { LINKS_FILE, buildUstar, listedFilesOf } from '../../src/retention/export-archive.js';
 import { objectsDigestOf, packageDigestOf, type ExportManifestShape } from '../../src/retention/export-package.js';
@@ -180,8 +180,8 @@ const instantOf = (v: unknown): string | null => (v === null || v === undefined 
 const sorted = (xs: unknown[]): string[] => xs.map(String).sort();
 const E1 = uuidv7(); const E2 = uuidv7();
 const LEI = '5299000NORDWERK00001';
-/** The six consumer kinds a GraphChanged reaches; the seventh (`relationships`) selects MemoryCorrected/claim.corrected alone (B9) and is registered too, so its absence from every GraphChanged delivery is a fact of the registry, not of this file. */
-const GRAPH_KINDS = CONSUMER_KINDS.filter((k) => k !== 'relationships');
+/** The six consumer kinds a GraphChanged reaches; the seventh (`relationships`) selects MemoryCorrected/claim.corrected alone (B9) and is registered too, so its absence from every GraphChanged delivery is a fact of the registry, not of this file. 0083 (B22): so are the four kinds B22 adds (observations, source-health, proposals, attention), which select their own flat events and never GraphChanged. */
+const GRAPH_KINDS = CONSUMER_KINDS.filter((k) => k !== 'relationships' && CONSUMER_EVENT_TYPES[k].includes('GraphChanged'));
 
 /* ───────────── the rows ───────────── */
 const manifestOf = async (evdId: string, version: number) => (await sql<{ manifest_id: string }>`select (payload ->> 'manifest_id') as manifest_id from objects.canonical_objects o where o.object_id = ${evdId}::uuid and o.object_version = ${version}`.execute(su)).rows[0]!;
@@ -545,7 +545,7 @@ beforeAll(async () => {
   // The partners of the mirror: the origin (KEY1, the tenant's own key) and a FOREIGN party (KEY2) — two parties, so a notice signed by the one is refused for the other (S4 b).
   originPartnerId = String((await declarePartnerFor(KEY1, ORIGIN_PARTNER, ORIGIN_PARTY)).partner['partner_id']);
   foreignPartnerId = String((await declarePartnerFor(KEY2, FOREIGN_PARTNER, FOREIGN_PARTY)).partner['partner_id']);
-  // THE SUBSCRIPTIONS in the mirror: the seven kinds, registered by the tenant administrator (the B6 idiom), the domain's worker serving from registration.
+  // THE SUBSCRIPTIONS in the mirror: the seven kinds (eleven since 0083, B22 — the four new kinds on their own event types by default), registered by the tenant administrator (the B6 idiom), the domain's worker serving from registration.
   for (const kind of CONSUMER_KINDS) {
     const r = await register(kind);
     subs[kind] = { subscriptionId: r.subscription.subscriptionId, principalId: r.subscription.principalId };

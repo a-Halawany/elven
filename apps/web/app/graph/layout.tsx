@@ -63,6 +63,7 @@ const NAV = [
   { href: '/graph/ontology', label: 'Ontology', glyph: '⊞' },
   { href: '/decisions', label: 'Decisions', glyph: '◆' },
   { href: '/decisions/briefings', label: 'Briefings', glyph: '☰' },
+  { href: '/decisions/attention', label: 'Attention', glyph: '⚑' },
   { href: '/twins', label: 'Twins', glyph: '◫' },
   { href: '/prediction', label: 'Prediction', glyph: '↗' },
   { href: '/intelligence', label: 'Intelligence', glyph: '❝' },

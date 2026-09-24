@@ -8,7 +8,7 @@
  * committed decision REOPENED on a recorded cause (the commitment immutable, a new draft carried with the stale inputs dropped and
  * named, a second commitment, the replay of the first at its own instant) — on a real database with real Redis, the real outbox
  * publisher and the real subscription dispatcher (EYE_SCHEDULER_ENABLED set at module top, the B6 rule), the seven consumers
- * registered in the harness's own domain, the world of `bootDecisionWorld` (the corridor twin, its runs, the forecast and the
+ * (eleven since 0083, B22) registered in the harness's own domain, the world of `bootDecisionWorld` (the corridor twin, its runs, the forecast and the
  * scenario on it, the DEC) and B18's own humans with sessions of their own (the ports compare the acting principal).
  *
  *   S1 · the seven announced events, each in its transition's own transaction (family A): (1) TwinStateChanged/version.admitted
@@ -55,7 +55,9 @@
  *   of a package whose commitment stands (C9), the second commit over a standing commitment.
  *
  *   S4 · the register through the route: 50 rows, 40 bound / 10 partial / 0 unbound (B21, 0081: the four foresight rows bound), the ten
- *   rows bound in 0078 and the four bound in 0081 with their event and schema version, the ten that stay partial listed exactly.
+ *   rows bound in 0078 and the four bound in 0081 with their event and schema version, the ten that stay partial listed exactly — since
+ *   0083 (B22) 44 / 6 / 0: L1-I03, L1-I04, L2-I02 and L10-I05 bound in 0083, the six that stay partial listed exactly, L9-I05's
+ *   package-cause clause delivered.
  *
  * Read against the design's own statements, what this harness does NOT claim: the failed-run state of SimulationCompleted is
  * unit-tested (every run here completes); the port-marked warnings are the port's own loop (the fixture raises none); a closed
@@ -73,7 +75,7 @@ import type { GraphController } from '../../src/graph/graph.controller.js';
 import type { IntelligenceController } from '../../src/intelligence/intelligence.controller.js';
 import { SchedulerService } from '../../src/observation/scheduling/scheduler.service.js';
 import { SubscriptionDispatcherService } from '../../src/graph/subscriptions/subscription-dispatcher.service.js';
-import { CONSUMER_KINDS, type ConsumerKind } from '../../src/graph/subscriptions/graph-change.js';
+import { CONSUMER_EVENT_TYPES, CONSUMER_KINDS, type ConsumerKind } from '../../src/graph/subscriptions/graph-change.js';
 import { asObservationRefusal } from '../../src/observation/observation-errors.js';
 import { SUPPLY_FLOW_IMPLEMENTATION_DIGEST } from '../../src/twin/models/supply-flow.digest.js';
 import { Phase4Harness } from './phase4-helpers.js';
@@ -107,8 +109,8 @@ const HEX64 = /^[0-9a-f]{64}$/; const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{
 const instantOf = (v: unknown): string | null => (v === null || v === undefined ? null : new Date(v as string | Date).toISOString());
 const sorted = (xs: unknown[]): string[] => xs.map(String).sort();
 const obj = (v: unknown): Row => (v ?? {}) as Row;
-/** The six consumer kinds a GraphChanged reaches; the seventh (`relationships`) selects MemoryCorrected/claim.corrected alone (B9) and is registered too, so its absence from every GraphChanged delivery is a fact of the registry, not of this file. */
-const GRAPH_KINDS = CONSUMER_KINDS.filter((k) => k !== 'relationships');
+/** The six consumer kinds a GraphChanged reaches; the seventh (`relationships`) selects MemoryCorrected/claim.corrected alone (B9) and is registered too, so its absence from every GraphChanged delivery is a fact of the registry, not of this file. 0083 (B22): so are the four kinds B22 adds (observations, source-health, proposals, attention), which select their own flat events and never GraphChanged. */
+const GRAPH_KINDS = CONSUMER_KINDS.filter((k) => k !== 'relationships' && CONSUMER_EVENT_TYPES[k].includes('GraphChanged'));
 /** The ten register rows 0078 binds, each to its event and schema version; the fourteen that stay partial (design §0). */
 const BOUND_IN_0078: ReadonlyArray<[string, string, string]> = [
   ['L2-I04', 'ReviewRequested', 'v1'], ['L5-I04', 'TwinStateChanged', 'v1'], ['L6-I02', 'ForecastIssued', 'v2'], ['L6-I05', 'ForecastWithdrawn', 'v1'],
@@ -116,9 +118,12 @@ const BOUND_IN_0078: ReadonlyArray<[string, string, string]> = [
   ['L9-I02', 'DecisionPackageReady', 'v1'], ['L9-I04', 'DecisionCommitted', 'v1'], ['L9-I05', 'DecisionReopened', 'v1'],
 ];
 // B21 (0081; Nit 3): L5-I05, L6-I03, L7-I04 and L8-I04 bound — the ten that stay partial.
-const STILL_PARTIAL = ['L1-I02', 'L1-I03', 'L1-I04', 'L2-I02', 'L3-I02', 'L4-I02', 'L7-I02', 'L10-I02', 'L10-I03', 'L10-I05'];
+// B22 (0083): L1-I03, L1-I04, L2-I02 and L10-I05 bound — the six that stay partial.
+const STILL_PARTIAL = ['L1-I02', 'L3-I02', 'L4-I02', 'L7-I02', 'L10-I02', 'L10-I03'];
 /** The four foresight rows 0081 binds (B21.3), each to its event and schema version. */
 const BOUND_IN_0081: ReadonlyArray<[string, string, string]> = [['L5-I05', 'ValidateTwin', 'v1'], ['L6-I03', 'ForecastFitnessChanged', 'v1'], ['L7-I04', 'ScenarioCoherenceFailed', 'v1'], ['L8-I04', 'ChallengeSimulation', 'v1']];
+/** The four rows 0083 binds (B22), each to what its bound_to names: the attention policy's own event, and the three events whose registered consumer B22 delivers. */
+const BOUND_IN_0083: ReadonlyArray<[string, RegExp]> = [['L10-I05', /AttentionPolicyChanged@v1/], ['L1-I03', /B22 \(0083\): CONSUMED — the observations subscriber/], ['L1-I04', /B22 \(0083\): CONSUMED — the source-health subscriber/], ['L2-I02', /B22 \(0083\): CONSUMED — the proposals subscriber/]];
 
 /* ───────────── the world of this file (set in beforeAll and S1) ───────────── */
 /** The twin's version 2 (the carried set plus the predicted element citing the forecast), admitted after the subscriptions; its mark. */
@@ -305,7 +310,7 @@ beforeAll(async () => {
   runOwner = await h.humanWithSession(['twin_owner', 'simulation_operator'], 'b18-run-owner');
   reviewer = await h.humanWithSession(['domain_analyst'], 'b18-analyst');
   outsider = await h.humanWithSession(['strategy_owner'], 'b18-outsider');
-  // THE SUBSCRIPTIONS: the seven kinds, registered by the tenant administrator (the B6 idiom), the domain's worker serving from registration.
+  // THE SUBSCRIPTIONS: the seven kinds (eleven since 0083, B22 — the four new kinds on their own event types by default), registered by the tenant administrator (the B6 idiom), the domain's worker serving from registration.
   for (const kind of CONSUMER_KINDS) {
     const r = await register(kind);
     subs[kind] = { subscriptionId: r.subscription.subscriptionId, principalId: r.subscription.principalId };
@@ -617,8 +622,14 @@ describe('S2 · the chain end to end (0078 §1–§3; D5–D13, D16, D17; L6-I05
     expect(marks[0]!.details).toMatchObject({ outbox_event_id: gw.id, automatic: true });
     expect(tu.correlation_id).toBe(marks[0]!.correlation_id);
     expect(await outboxCount('TwinStateChanged', t5, (p) => p['change'] === 'version.unverified' && p['twin_id'] === w.twinId)).toBe(1);
+    // B22 (0083): the scenario the withdrawal marked is RE-CHECKED by the scenarios consumer (B21) and fails; its ScenarioCoherenceFailed reaches
+    // the attention subscriber, which routes it (scenario.incoherent) — a seventh apply action, the attention router's own, awaited before the audit is read.
+    const att = await waitFor('the attention delivery of the ScenarioCoherenceFailed applied', async () => (await sql<{ state: string; items: string[]; items_applied: Array<{ effect: string; details?: Row }> }>`select d.state, d.items, d.items_applied from graph.subscription_deliveries d join objects.object_outbox o on o.id = d.event_id
+      where d.consumer_kind = 'attention' and d.event_type = 'ScenarioCoherenceFailed' and o.created_at >= ${t5}`.execute(su)).rows, (rows) => rows.length === 1 && rows[0]!.state === 'applied');
+    expect(att[0]!.items).toEqual([`scenario:${w.scenarioId}`]);
+    expect(att[0]!.items_applied[0]).toMatchObject({ effect: 'attention.routed', details: { signal: 'scenario.incoherent' } });
     const aud = await applyActionsSince(t5);
-    expect(new Set(aud.map((x) => x.action))).toEqual(new Set(['twin.subscription.apply', 'prediction.forecast.subscription.apply', 'prediction.scenario.subscription.apply', 'decision.subscription.apply', 'graph.retrieval.subscription.apply', 'graph.mapping.subscription.apply']));
+    expect(new Set(aud.map((x) => x.action))).toEqual(new Set(['twin.subscription.apply', 'prediction.forecast.subscription.apply', 'prediction.scenario.subscription.apply', 'decision.subscription.apply', 'graph.retrieval.subscription.apply', 'graph.mapping.subscription.apply', 'executive.attention.subscription.apply']));
     await settleIn(D());
   }, 300_000);
 
@@ -869,7 +880,10 @@ describe('S3 · the refusals, by family and status (0078 §1–§3, §3.3; D5, D
     const R = await c.committed();
     const R2 = await c.committed();
     expect(await status(reopen(w.owner, R.pkg, {}))).toBe(422);
-    expect(await status(reopen(w.owner, R.pkg, { cause: { kind: 'policy_changed', ref: NOTE_ID } }))).toBe(422);
+    // B22 (0083): policy_changed is an admitted cause kind (L9-I05's clause delivered) — an input.invalidated note named as a policy cause is no policy note of the package (404);
+    // a kind no migration admits is still a malformed cause (422).
+    await refused(reopen(w.owner, R.pkg, { cause: { kind: 'policy_changed', ref: NOTE_ID } }), /^reopen rejected: no such policy note .* on package/, 404);
+    expect(await status(reopen(w.owner, R.pkg, { cause: { kind: 'attention_changed', ref: NOTE_ID } }))).toBe(422);
     await refused(reopen(w.owner, R.pkg, { cause: { kind: 'input_invalidated', ref: NOTE_ID } }), /^reopen rejected: no such note .* on package/, 404);
     // A note recorded BEFORE the commitment is not a cause: planted a minute before R's commitment (no delivery can record one before the commit by construction).
     const early = uuidv7();
@@ -929,11 +943,11 @@ describe('S3 · the refusals, by family and status (0078 §1–§3, §3.3; D5, D
 });
 
 describe('S4 · the register through the route (0078 §4; AU-DP-0071, V04-T-005)', () => {
-  it('S4 · 50 rows: 40 bound, 10 partial, 0 unbound (B21, 0081) — the ten rows bound in 0078 and the four bound in 0081 with their event and schema version, the ten that stay partial listed exactly; the same counts by SQL', async () => {
+  it('S4 · 50 rows: 44 bound, 6 partial, 0 unbound (B22, 0083; 40/10/0 at 0081) — the ten rows bound in 0078, the four bound in 0081 and the four bound in 0083 with their event and schema version, the six that stay partial listed exactly, L9-I05\'s package-cause clause delivered; the same counts by SQL', async () => {
     const r = await interfaces();
     expect(r.interfaces).toHaveLength(50);
     const byState = (s: string) => r.interfaces.filter((i) => i['binding_state'] === s).map((i) => String(i['interface_id']));
-    expect(byState('bound')).toHaveLength(40);
+    expect(byState('bound')).toHaveLength(44);
     expect(byState('partial').sort()).toEqual([...STILL_PARTIAL].sort());
     expect(byState('unbound')).toEqual([]);
     for (const [id, event, schemaVersion] of BOUND_IN_0078) {
@@ -949,8 +963,17 @@ describe('S4 · the register through the route (0078 §4; AU-DP-0071, V04-T-005)
       expect(row!['bound_at'], `${id} bound_at`).not.toBeNull();
       expect(String(row!['bound_to']), `${id} bound_to`).toMatch(new RegExp(`${event}@${schemaVersion}`));
     }
-    expect(String(r.interfaces.find((i) => i['interface_id'] === 'L9-I05')!['bound_to'])).toMatch(/policy change has no recorded cause/);
-    expect(await registerCounts()).toEqual({ bound: 40, partial: 10, unbound: 0 });
+    for (const [id, names] of BOUND_IN_0083) {
+      const row = r.interfaces.find((i) => i['interface_id'] === id);
+      expect(row, id).toMatchObject({ binding_state: 'bound', bound_in: '0083', schema_version: 'v1' });
+      expect(row!['bound_at'], `${id} bound_at`).not.toBeNull();
+      expect(String(row!['bound_to']), `${id} bound_to`).toMatch(names);
+    }
+    // B22 (0083): the clause 0078 recorded and 0081 re-homed ('a policy change has no recorded cause on a package (L10-I05, B22)') is replaced by its delivery.
+    const l9 = String(r.interfaces.find((i) => i['interface_id'] === 'L9-I05')!['bound_to']);
+    expect(l9).toMatch(/B22 \(0083\): a POLICY CHANGE is a recorded cause/);
+    expect(l9).not.toMatch(/a policy change has no recorded cause/);
+    expect(await registerCounts()).toEqual({ bound: 44, partial: 6, unbound: 0 });
     expect(subs['twins']!.subscriptionId).toMatch(UUID);
   }, 60_000);
 });

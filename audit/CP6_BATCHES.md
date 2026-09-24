@@ -3770,6 +3770,131 @@ timing flakes (`phase1-acceptance:471`'s 3× ratio; `phase6-retention-b14` H2's 
 against partial re-runs (a process rule, in the runbook §8); the recreation of the live demonstration containers onto the official
 images the return pinned (CP-4a, `docs/images/ARM64_RISK_DECISION.md`) — the owner's call.
 
+## B22 — the capability-nonce sweep never waits (0082); the attention policy and the consumers (0083): L10-I05 bound, L1-I03 / L1-I04 / L2-I02 given their registered consumers, L9-I05's policy cause delivered (40/10/0 → 44/6/0); the demonstration's containers returned to the official image pins (implemented)
+
+**Migrations 0082** (`apps/api/migrations/0082_b22_ctx_sweep_skip_locked.sql`, sha256 `1fff2363…`, 73 lines) **and 0083**
+(`apps/api/migrations/0083_b22_attention_policy_and_consumers.sql`, sha256 `7e866529…`, 1,111 lines), on `phase6-b22` cut from `main`
+`5165a97` (#59 merged under the owner's 2026-09-24 word on the bounded B21 review, `audit/reviews/The_Eye_a2303ff_B21_Review_and_B22_Delivery.md`,
+filed with this candidate). The owner's scope: fix the shared nonce-sweep hang by an additive migration (no further owner decision), then the
+planned consumers and the attention policy, L10-I05's package cause and the fitness/coherence-to-attention behaviour; return the demonstration
+containers to the accepted official pins under the backup, restore-check and rollback conditions. Readers: a specification sweep
+(`spec-attention.md` — the V00–V10 obligations of L10-I05, L10-C02, L10-I02, L1-I03/-I04, L2-I02, L9-I05, the NOT catalogue) and a code map
+(`code-map.md` — the nine hard-codes that kept a subscription to GraphChanged/MemoryCorrected, the module direction, every pin); the harness
+was written by one implementer and the moved pins by another on disjoint files, the web page by a third; the integrator wrote the migrations,
+the API, the consumers and the act.
+
+### B22.1 — the sweep never waits (0082)
+
+**The defect** (the B21 rehearsal's wedge, the review's technical decision): `ctx.build` began every capability with an UNCONDITIONAL
+`DELETE FROM ctx.issued WHERE expires_at < clock_timestamp() - interval '1 hour'`; the deleted rows stay row-locked by that transaction, so a
+governed write that awaits another governed operation inside its own transaction made the inner operation's `ctx.build` wait on its own outer
+transaction — a cycle across two connections PostgreSQL cannot see — and every login queued behind. **The remedy, the only change:** the
+victims taken `FOR UPDATE SKIP LOCKED`, oldest first (`issued_expires_at_idx`, 0057), at most 500 per issuance; no function or table added;
+the payload, signature, clock, TTL bounds, mode allowlist, transaction/backend binding, the liveness check and every grant unchanged.
+**The proof** (`apps/api/test/int/phase6-nonce-sweep-b22.test.ts`, 6 cases; `evidence/cp6/b22-1-nonce-sweep.txt`): N1 two connections —
+the pre-0082 statement on a second connection WAITS on an outer transaction's victims (55P03 after the 1.5 s lock_timeout), the 0082 minter
+returns at once (22–100 ms) and sweeps a disjoint batch of 500, a login completes meanwhile, each later issuance takes exactly one batch
+(100,000 nonces planted: the in-process publisher sweeps too); N2 the authority unchanged — an expired context, a context carried into another
+transaction, an expired-but-unswept nonce row and a swept nonce refused exactly as before; N3.a–d the RESIDUAL NESTED PATHS (twin grounding,
+forecast issue, backtest, outcome record) each under 9,000 nonces crossing the sweep line with an idle-in-transaction watchdog: all complete.
+**The control** (a scratch database through 0082 with `ctx.build` put back to its 0038 body, `B22_CONTROL=1`): ALL FOUR residual paths
+WEDGE (the inner `ctx.issue_commit` waiting on the transaction id of its outer write, the holder idle in transaction). T1.8 of
+`phase6-fitness-b21` kept (the run route's pre-flight); the neighbouring set (phase6-fitness-b21 + gate21-adversarial) 58/58.
+
+### B22.2 — the demonstration's containers on the official pins
+
+`docs/ops/evidence/live-recreation-20260924T164303Z.md`. The runbook's `backup.sh` seals under the OPERATOR'S passphrase, which is not on this
+host (not searched for): the backup is the acts' own form — `pg_dump` of `eye_demo`, `eye` and the globals into
+`.eye-local/backups/containers-return-20260924T164303Z/` (unsealed, stated). The isolated restore check ran ON THE TARGET IMAGES
+(`postgres@sha256:77f58511…` PG 18.6, `redis@sha256:ba6e394f…`, the compose protections observed in `/proc/1/status`): counts equal to the
+live source (81 migrations with the same digest, 30,999 objects, 104,291 audit events), a second API over the copy: 21/21 logins, governed reads
+201. Then `docker compose up -d --force-recreate --wait postgres redis` on the reused volume (7 s): the same counts on 18.6, the demonstration
+API restarted and VERIFIED, 21/21 logins, the web shell started. Rollback: the derived images remain local; the volume untouched.
+
+### B22.3 — the attention policy and the consumers (0083)
+
+**§1 subscribable event types.** `graph.subscribable_event_types` (ten) and `graph.subscription_consumer_events` (the types each kind may
+select; the registration refuses any other — 400 from the service, 22023 from the port); the two literal CHECKs re-declared over the ten;
+`subscription_delivery_receive` and `subscription_event_row` read the vocabulary; `objects.outbox_lease` routes any row of a subscribed type
+(its literal dropped — a body change of an existing objects port, no port added: C14); the failure class `invalid_event` — the interface
+contracts' "quarantine invalid event": a payload that is not the contract is left UNRESOLVED (`event.quarantined`, human_review), never applied,
+never dropped. TS: `SubscriptionConsumer<C, E>` gained the event type parameter so the graph `ChangeEvent` union and the seven consumers stay
+untouched (their METHOD_REF literals and digests unchanged — pinned).
+**§2 four consumer kinds** (one action, one role each; roles 31 → 35): `observations` (ObservationRecorded → `intelligence.select_transformation_plan`,
+the active extraction methods that read the evidence's source or `no_plan` with the reason), `source-health` (SourceHealthChanged, both producers'
+shapes → `observation.mark_source_impact` markers set on degraded | failed | suspended | unknown and cleared on healthy | active, and the COVERAGE
+LOSS routed), `proposals` (ClaimsExtracted / IntelligenceObjectAdmitted → each claim held for review routed to the review queue; nothing promoted;
+the hold's confidence 1, the claim's own beside it), `attention` (ForecastFitnessChanged to unfit, ScenarioCoherenceFailed, EarlyWarningRaised →
+routed; AttentionPolicyChanged → every live item re-evaluated and the policy cause noted on every committed or monitored package; the overdue
+escalated at every delivery). A signal that NO LONGER STANDS (a forecast withdrawn or no longer unfit, a scenario retired or passing, a warning
+closed) is recorded, not routed. The consumers live in the executive module (it imports the graph module; observation and intelligence cannot
+host them — no cycles).
+**§3–§5 the policy, the engine, the queue.** `executive.attention_policies` — one row per VERSION, immutable but for its supersession, set by a named
+human holding domain_admin, executive or platform_admin (`executive.attention.policy.publish`, human-gated; PR-44-003), the rules validated whole
+(every key known, every role a human role of the product, every bound in range), the changed sections and classes computed; AttentionPolicyChanged@v1
+from the write. `executive.evaluate_attention` — transparent dimensions (consequence, confidence, hours to the response window) against the class's
+thresholds: material | below_threshold | ABSTAINED (no policy, no rule for the class — never fabricated), the reasons and the version named on
+every item (ES-47-002). `executive.attention_items` + the append-only `attention_item_events`: routed to the subject's owner (an active human, else
+nobody) and the class's roles with a deadline; below threshold or abstained → DEPRIORITIZED, visible; a material item nobody holds → UNROUTED and
+escalated at once (ES-47 failure semantics). Acknowledge (receipt, not agreement — OBJ-20), suppress (reason, expiry within the class's maximum
+under the item's OWN version; visible; lapsing), close, escalate-due (overdue → the escalation roles, bounded by `max_escalations`, the exhausted
+chain recorded once), re-evaluate (a new version; an item already routed KEEPS its escalation count, running deadline and reached roles — a policy
+change never re-pages an exhausted chain; the harness's question, decided by the integrator).
+**§6–§8.** `observation.source_impact_markers` (the issued forecasts of the source's series, the open warnings on them, the packages whose current
+version's options cite them); `intelligence.plan_selections`; `decision.note_policy_changed` (package_events `policy.changed`, the version in force
+at the commitment and the new one, once per cause) and `decision.reopen_package` admitting `policy_changed` (after the commitment),
+DecisionReopened@v1 carrying the policy context. **§9 the register:** L10-I05, L1-I03, L1-I04, L2-I02 bound in 0083; L9-I05's clause rewritten —
+**44 / 6 / 0** (partial: L1-I02, L3-I02, L4-I02, L7-I02, L10-I02, L10-I03).
+**API and pages:** `/executive/attention/policy/publish|get`, `/items/list`, `/items/:id/get|acknowledge|suppress|close`, `/escalate-due`; the PDP
+block "B22 (0083)"; the refusal families `attention policy rejected` / `attention item rejected` / `plan selection rejected` / `source impact
+rejected` (403 → 404 → 409 → 422) and `reopen rejected: no such policy note` (404); the web page `/decisions/attention` (the queue by state with
+the reasons and the version, acknowledge / suppress / close, the policy and its history, publish), the nav in the six sections, the subscriptions
+page's eleven kinds.
+
+**Defects found on the way (all fixed before the records):** the publish port appended untyped literals to a `text[]`
+(`malformed array literal` — every version ≥ 2 failed; typed `::text`, the harness's A1); the reopen's new absence text fell through to 422
+(the 404 row widened, A11); a lifecycle SourceHealthChanged to `approved`/`draft` would have been quarantined (a valid event that is not a health
+signal — applied as `not_a_health_signal`); a claim's own low confidence would have deprioritized its review (the hold is the signal).
+
+**Harness** `apps/api/test/int/phase6-attention-b22.test.ts` (11 cases, fresh databases `eye_verify_b22_a5`, `_a6`, and `_a7` after the
+escalation-history rule; `evidence/cp6/b22-2-harness.txt`): A1 the policy (11 refusals, v2's sections, the event, immutability 55000), A2 the
+eleven kinds and their types, the register 44/6/0, A3 a real data_shift → forecast.unfit (owner, deadline, reasons; analyst 403, suppress 409,
+acknowledge, close), A4 scenario.incoherent (suppression bounds), A5 the warning inside and beyond the window (material / deprioritized), A6 a real
+suspension → 7 markers (2 forecasts, 4 warnings, 1 package) and the coverage loss; reactivation clears them, A7 three real uploads → no_plan
+(no method), no_plan (not active), selected, A8 PLANTED claims and review cases → the held claim unrouted and escalated at once, then routed when a
+knowledge owner exists; no_review_required; nothing promoted, A9 PLANTED invalid payloads → quarantined, A10 escalation (due_at moved into the
+past by the superuser — stated), exhaustion recorded once, the lapsed suppression reopened, A11 v3 → the live items re-evaluated, the policy note
+(from 2 to 3), idempotent, the owner's reopen on the policy cause with DecisionReopened carrying it. **The moved pins** (the other implementer):
+the register 44/6/0 and the six partial ids in phase6-fitness-b21 / -interfaces-b18 / -graph-projections-b20; the L9-I05 phrase; the eleven
+consumer kinds (the seven old digests pinned unchanged); `GRAPH_KINDS` = the kinds that select GraphChanged; two real behaviour changes in
+phase6-interfaces-b18 (S2(a) the attention subscriber now routes the re-checked scenario; S3(d) `policy_changed` a known cause kind → 404);
+the upgrade proof's roles 35 and migrations 62.
+
+**The demonstration** (`scripts/phase6/act-b22.mjs` → `evidence/cp6/act-b22.txt`; five rehearsals on a restored copy with its own Redis and a
+vault clone — the first two stopped on the act's own casting and timing: U. Fischer holds collection_manager in the mirror domain only; a
+re-evaluated item keeps its running deadline, so version 1 carries the two-minute warning deadline; the third and fourth on the reactivation's
+own tick taking the day's rows — the scene now counts from the reactivation and says which run admitted what; the fifth held whole): `eye_demo`
+backed up (`.eye-local/backups/eye_demo-pre-0082-20260924T175523Z.dump`) and migrated with 0082–0083, the API restarted on the B22 build; the
+register 44/6/0; the four consumers registered (attention and proposals REPLAYING the domain's history: 11 fitness/coherence/warning events —
+10 routed, one no longer standing — and 23 extraction events: 20 claims held for review, 53 without review, 3 decided); with no policy the 30
+replayed signals ABSTAINED and visible; A. Hoffmann refused by the PDP; an unknown role refused naming the key; M. Dvořák published version 1 →
+AttentionPolicyChanged@v1 → 30 items re-evaluated and the policy cause noted on both packages (from none — no policy stood at their commitments);
+A. Hoffmann refused on N. Eriksen's forecast item; N. Eriksen acknowledged it (receipt, not agreement); J. Weber suppressed a warning item until
+tomorrow; an over-long suppression refused 422; L. Ferreira acknowledged a review item; M. Dvořák SUSPENDED the PortWatch chokepoints source →
+markers on the unfit forecast and the warning resting on it, the coverage loss routed to the collection managers, acknowledged; REACTIVATED →
+both markers cleared; the collection found nothing new (the reactivation's tick: 0 admitted, 1 unchanged — said, not staged); version 2 (the
+scenario class from C3, the warning escalation widened) → 31 items re-evaluated (one material → below threshold), the policy note on the B18
+package; J. Weber refused; L. Brandt REOPENED the B18 corridor package on the POLICY CAUSE (version 3 a draft), DecisionReopened@v1 with
+recorded_cause policy_changed; the two-minute warning deadline waited out, M. Dvořák escalated 6 overdue items to the executive and domain
+administrator — ALL SCENES HELD (128 s).
+
+**Stated limits.** in_app delivery only (the Execution Gateway is not built); no timer host for escalation (the attention subscriber at every
+delivery and a person's request); the briefing gains no attention section (BRF@v1 is closed — BRF@v2 is B23's, with MaterialChangeRaised); the
+extraction run on a selected plan stays an agent's act; the markers are read beside the products and do not yet CONSTRAIN decision-active use;
+packages are reached only where an option cites the forecast itself (the demonstration's cite runs and assumptions); the overload rule is
+validated, not enforced; the remaining materiality dimensions (probability, reversibility, exposure, strategic relevance, information value) are
+not policy dimensions yet; no approval step for a suppression; no new hosted browser walk (the page is covered by the web unit tests and the build).
+
 ## Order and the next implementation batch
 
 B3, B1 and B2 are done in code, B4/B5 applied to the audit (the 2026-09-11 checkpoints), B6 done in
@@ -3782,4 +3907,4 @@ one artefact, no deployment leg. Every leg of every unit stays unaccepted until 
 carries its own signed evidence (P7-D). The synthetic-company demonstration (`eye_demo`, NORDWERK) remains the deliverable
 every batch is exercised on: B3's kinds become visible on the demonstration when a scenario with the
 new kinds is declared there through the governed route (a scripted act, `scripts/phase4/`), which is
-the next demonstration step after the hosted run is green. Next from the register: B22 — the consumers and the attention policy (L10-I05 AttentionPolicyChanged: the package-cause clause of L9-I05 re-homed to it by 0081 §10; L1-I03/L1-I04/L2-I02's consumers), then B23 (the commands and the query — L1-I02, L3-I02, L4-I02, L7-I02, L10-I02/-I03). The C15 return to the official images merged with #57 (`main` `870b212`) under the owner's 2026-09-23 approval of the six SCX re-issues — the parallel maintenance line closed on the tree; the recreation of the live demonstration containers onto those images is the owner's. PENDING THE OWNER'S DECISIONS before or beside B22: the `ctx.build` remedy — the sweep as `DELETE … WHERE nonce IN (SELECT nonce … FOR UPDATE SKIP LOCKED)` in a later migration (0082), which removes both the nested-write deadlock and the liveness hazard, and touches the ctx boundary under C18's watch — against per-site pre-flight assembly at the residual nested-write sites (`twin.ground`, the forecast issue, backtest and outcome writes; §B21.4); AU-MEM-0067's Class A boundary as the reading of its clause (iii) (§B21.2's table); the live containers' recreation onto the official images.
+the next demonstration step after the hosted run is green. B22 delivered the consumers and the attention policy (0083; the register 44/6/0) and the sweep's remedy (0082). Next from the register: B23 (the commands and the query — L1-I02, L3-I02, L4-I02, L7-I02, L10-I02/-I03). The C15 return to the official images merged with #57 (`main` `870b212`); the live demonstration containers were recreated onto those images on 2026-09-24 under the owner's word (§B22.2). The `ctx.build` remedy was delivered as 0082 (§B22.1) — the owner's 2026-09-24 word made it a technical choice. AU-MEM-0067 stays OPEN without a waiver: the per-object class (a missing or corrupt object under a reachable root) keeps A7's one 409 and the specification obligation stands (§B21.2's table).

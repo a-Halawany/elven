@@ -1,0 +1,40 @@
+=== the full integration suite at the B22 tree (migrations 0001–0083; main 5165a97 + the candidate uncommitted), 2026-09-24 ===
+
+--- run 1: fresh database eye_verify_b22_all1 (default reporter)
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  test/int/phase6-briefing-memory.test.ts > B10-F1 · a stored briefing serves a memory version within the cited version's audience only: a reader refused the item directly receives none of it through the briefing (withheld, with the reason); the composer, an administrator and an unrestricted item read as before > REPRODUCED then CLOSED: the composer (executive + knowledge owner) composes from a knowledge-owner-only item and an unrestricted one; the plain executive is refused the item directly (403) and the complete briefing response holds nothing of it
+AssertionError: expected [ Array(1) ] to deeply equal [ …(2) ]
+ FAIL  test/int/phase6-briefing-memory.test.ts > B10-F1 · a stored briefing serves a memory version within the cited version's audience only: a reader refused the item directly receives none of it through the briefing (withheld, with the reason); the composer, an administrator and an unrestricted item read as before > the CONTROLS: the composer reads the item in the briefing; a domain administrator (admitted to every audience role) reads it; a wrong purpose is refused; an unrestricted item is served to the plain executive
+AssertionError: the given combination of arguments (undefined and string) is invalid for this assertion. You can use an array, a map, an object, a set, a string, or a weakset instead of a string
+ FAIL  test/int/phase6-briefing-memory.test.ts > B10-F2 · the same inputs compose to ONE content digest while every access is recorded: two compositions by the same reader at the same cutoff with a bound prior — equal digests, two access rows; the accesses reported beside the content by the briefing's correlation id; a memory version within the cutoff changes the content > equal digests, distinct accesses; the changed-version control
+AssertionError: expected [] to have a length of 2 but got +0
+ Test Files  1 failed | 75 passed (76)
+      Tests  3 failed | 1100 passed (1103)
+READING: three cases of ONE file failed — phase6-briefing-memory (B10): the composition's memory list held the first of two items recorded ~12 ms apart. The file passes ALONE on a fresh database (eye_verify_b22_bm1, 6/6) and in run 2 below. The file's cutoff helper truncates the database clock to milliseconds (toISOString) while an item's recorded_at carries the API process's clock — a record within the cutoff's millisecond can fall outside it. Not reproduced; recorded as a HARDENING ITEM beside the two B14/phase1 timing controls (no fix in B22; the owner's rule: timing controls unchanged, determinism work in the hardening campaign).
+
+--- run 2: fresh database eye_verify_b22_all2 (verbose reporter)
+ Test Files  76 passed (76)
+      Tests  1103 passed (1103)
+ ✓ test/int/phase6-attention-b22.test.ts > B22 · the attention policy and the consumers (0083; L10-I05, L1-I03, L1-I04, L2-I02, L9-I05) > A1 · POLICY: the e
+ ✓ test/int/phase6-attention-b22.test.ts > B22 · the attention policy and the consumers (0083; L10-I05, L1-I03, L1-I04, L2-I02, L9-I05) > A2 · SUBSCRIPTIONS
+ ✓ test/int/phase6-attention-b22.test.ts > B22 · the attention policy and the consumers (0083; L10-I05, L1-I03, L1-I04, L2-I02, L9-I05) > A3 · FORECAST UNFI
+ ✓ test/int/phase6-attention-b22.test.ts > B22 · the attention policy and the consumers (0083; L10-I05, L1-I03, L1-I04, L2-I02, L9-I05) > A4 · SCENARIO INCO
+ ✓ test/int/phase6-attention-b22.test.ts > B22 · the attention policy and the consumers (0083; L10-I05, L1-I03, L1-I04, L2-I02, L9-I05) > A5 · WARNING: an i
+ ✓ test/int/phase6-attention-b22.test.ts > B22 · the attention policy and the consumers (0083; L10-I05, L1-I03, L1-I04, L2-I02, L9-I05) > A6 · SOURCE HEALTH
+ ✓ test/int/phase6-attention-b22.test.ts > B22 · the attention policy and the consumers (0083; L10-I05, L1-I03, L1-I04, L2-I02, L9-I05) > A7 · OBSERVATIONS:
+ ✓ test/int/phase6-attention-b22.test.ts > B22 · the attention policy and the consumers (0083; L10-I05, L1-I03, L1-I04, L2-I02, L9-I05) > A8 · PROPOSALS: a 
+ ✓ test/int/phase6-attention-b22.test.ts > B22 · the attention policy and the consumers (0083; L10-I05, L1-I03, L1-I04, L2-I02, L9-I05) > A9 · QUARANTINE: P
+ ✓ test/int/phase6-attention-b22.test.ts > B22 · the attention policy and the consumers (0083; L10-I05, L1-I03, L1-I04, L2-I02, L9-I05) > A10 · ESCALATION: 
+ ✓ test/int/phase6-attention-b22.test.ts > B22 · the attention policy and the consumers (0083; L10-I05, L1-I03, L1-I04, L2-I02, L9-I05) > A11 · POLICY CHANG
+ ✓ test/int/phase6-nonce-sweep-b22.test.ts > B22.1 · the capability-nonce sweep never waits (0082) > N1 · two connections: the pre-0082 sweep waits on an ou
+ ✓ test/int/phase6-nonce-sweep-b22.test.ts > B22.1 · the capability-nonce sweep never waits (0082) > N2 · the authority is unchanged: an expired context, a 
+ ✓ test/int/phase6-nonce-sweep-b22.test.ts > B22.1 · the capability-nonce sweep never waits (0082) > N3.a · twin grounding under a crossing stream: an obser
+ ✓ test/int/phase6-nonce-sweep-b22.test.ts > B22.1 · the capability-nonce sweep never waits (0082) > N3.b · forecast issue under a crossing stream: the seri
+ ✓ test/int/phase6-nonce-sweep-b22.test.ts > B22.1 · the capability-nonce sweep never waits (0082) > N3.c · backtest under a crossing stream: the series ass
+ ✓ test/int/phase6-nonce-sweep-b22.test.ts > B22.1 · the capability-nonce sweep never waits (0082) > N3.d · outcome record under a crossing stream: the actu
+ ✓ test/int/phase6-briefing-memory.test.ts > B10-F1 · a stored briefing serves a memory version within the cited version's audience only: a reader refused th
+ ✓ test/int/phase6-briefing-memory.test.ts > B10-F1 · a stored briefing serves a memory version within the cited version's audience only: a reader refused th
+ ✓ test/int/phase6-briefing-memory.test.ts > B10-F1 · a stored briefing serves a memory version within the cited version's audience only: a reader refused th
+ ✓ test/int/phase6-briefing-memory.test.ts > B10-F1 · a stored briefing serves a memory version within the cited version's audience only: a reader refused th
+ ✓ test/int/phase6-briefing-memory.test.ts > B10-F2 · the same inputs compose to ONE content digest while every access is recorded: two compositions by the s
+ ✓ test/int/phase6-briefing-memory.test.ts > B10-F3 · a composition at a cutoff takes its memory from HISTORY: a later supersession leaves the earlier cutoff
