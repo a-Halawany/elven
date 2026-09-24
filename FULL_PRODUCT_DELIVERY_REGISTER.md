@@ -434,3 +434,16 @@ decisions. Its machine-readable companions live under `audit/delivery/`:
 Acceptance verification is reported separately: 3,555 units = 3,179 open + 339 local + 37 CI.
 
 **Expected implementation completion (M1).** With three accounts, about 2027-02-09 (range 2027-01-08 … 2027-04-09). With one account, about 2027-08-20. M2 hardening follows, then M3 final acceptance. M4 deployment readiness is externally gated. No merge, deployment, purchase or budget authorization is implied.
+
+**Corrected 2026-09-25.** The bounded review of `5da4799` (`audit/reviews/The_Eye_5da4799_Delivery_Plan_Review.md`) was applied in one pass (DELIVERY_PLAN.md §10):
+
+- Construction moved out of H1–H3 / R1–R3 into implementation stages B100–B112; H and R keep only comprehensive verification and external proof.
+- The stage is authoritative for milestone, owner and date, and the checker enforces it and the effort arithmetic.
+- B23 has clause-level conditions and scenes.
+- One effort unit (a B21/B22-sized batch) with its B18–B22 calibration: 1.5 U per account working day expected, replacing the baseline's 3.
+- The model simulates the two heavy slots and the owner's approval, pins the first assignments, and states that it does not date M3 or M4.
+- Provisional migrations are numbered by the coordinator in start order, and final names are frozen before candidate verification.
+- A working two-slot limiter (`scripts/dev/heavy-slot.sh`).
+- PortWatch is removed as a blocker.
+
+The dates are provisional and moved later: implementation complete at three accounts is expected about 2027-07 (range 2027-04 … 2027-11), recalibrated after the first stages. The counts are unchanged (1 / 167 / 15 / 18). No merge, deployment, purchase or budget authorization is implied.

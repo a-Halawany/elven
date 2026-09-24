@@ -1,0 +1,5 @@
+sequence,stage,account,branch,parents,state,issued,final_name,frozen_at,note
+—,B22,A1,phase6-b22,,final,2026-09-24,0082_b22_ctx_sweep_skip_locked.sql; 0083_b22_attention_policy_and_consumers.sql,2026-09-24,on PR #60 (open); the last final numbers before B23
+—,B23,A1,phase6-b23,B22,final-at-start,2026-09-25,0084_b23_*.sql,2026-09-25,the coordinator's own stage with no other stream open (DELIVERY_PLAN.md §6.3 rule 6); renumbered at integration only if another stage merges first
+9001,B50,A2,a/b50-knowledge-core,,prepared (not issued),,,,issued by A1 when A2 is allocated and starts (D3); the first provisional sequence number
+9002,B80,A3,e/b80-shell-foundations,,prepared (not issued),,,,issued by A1 when A3 is allocated and starts (D3); B80 may need no migration (web only) — the number is then released unused
