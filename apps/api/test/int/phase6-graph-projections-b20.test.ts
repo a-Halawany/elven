@@ -100,7 +100,7 @@ import type { ObservationController } from '../../src/observation/observation.co
 import type { TenancyController } from '../../src/tenancy/tenancy.controller.js';
 import { SchedulerService } from '../../src/observation/scheduling/scheduler.service.js';
 import { SubscriptionDispatcherService } from '../../src/graph/subscriptions/subscription-dispatcher.service.js';
-import { CONSUMER_KINDS, type ConsumerKind } from '../../src/graph/subscriptions/graph-change.js';
+import { CONSUMER_EVENT_TYPES, CONSUMER_KINDS, type ConsumerKind } from '../../src/graph/subscriptions/graph-change.js';
 import { asObservationRefusal } from '../../src/observation/observation-errors.js';
 import { ROUTE_PARTITIONS, type ProjectionBlock, type ProjectionName } from '../../src/graph/projections/projection-state.js';
 import * as fault from '../../src/observation/fault-injection.js';
@@ -122,8 +122,8 @@ type Delivery = { event_id: string; subscription_id: string; consumer_kind: stri
 type RouteName = keyof typeof ROUTE_PARTITIONS;
 /** The twelve reads, in the design's order (§5 P1). */
 const ROUTES = Object.keys(ROUTE_PARTITIONS) as RouteName[];
-/** The six consumer kinds a GraphChanged reaches; the seventh (`relationships`) selects MemoryCorrected/claim.corrected alone (B9) and is registered too, so its absence from every GraphChanged delivery is a fact of the registry (C4). */
-const GRAPH_KINDS = CONSUMER_KINDS.filter((k) => k !== 'relationships');
+/** The six consumer kinds a GraphChanged reaches; the seventh (`relationships`) selects MemoryCorrected/claim.corrected alone (B9) and is registered too, so its absence from every GraphChanged delivery is a fact of the registry (C4). 0083 (B22): so are the four kinds B22 adds (observations, source-health, proposals, attention), which select their own flat events and never GraphChanged. */
+const GRAPH_KINDS = CONSUMER_KINDS.filter((k) => k !== 'relationships' && CONSUMER_EVENT_TYPES[k].includes('GraphChanged'));
 /** The six partitions in the port's fixed order. */
 const SIX: ProjectionName[] = ['entities_current', 'resolutions_current', 'edges_current', 'strategy_current', 'invalidations_current', 'memory_items_current'];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -466,7 +466,7 @@ beforeAll(async () => {
   await seedEntity(E1, 'place', E1_NAME); await seedEntity(E2, 'organization', E2_NAME); await seedEntity(E3, 'organization', E3_NAME);
   await seedEdge(X1, E2, 'ships_through', E1, C1, B);
   M1 = (await recordAs(reader, memoryItem())).memory.itemId;
-  // THE SUBSCRIPTIONS: all seven kinds in D, registered by the tenant administrator with the backlog left (the B18 idiom).
+  // THE SUBSCRIPTIONS: all seven kinds in D (eleven since 0083, B22 — the four new kinds on their own event types by default), registered by the tenant administrator with the backlog left (the B18 idiom).
   for (const kind of CONSUMER_KINDS) {
     const r = await register(kind);
     subs[kind] = { subscriptionId: r.subscription.subscriptionId, principalId: r.subscription.principalId };
@@ -999,7 +999,8 @@ describe('B20 · the index tier: the watermark, the symmetric check that withdra
     const reg = (await interfaces()).interfaces;
     const count = (s: string) => reg.filter((r) => r['binding_state'] === s).length;
     // B21 (0081 §10): L5-I05, L6-I03, L7-I04 and L8-I04 bound → 40/10/0 (this file runs on the same tree; the B20 state was 36/14/0)
-    expect([reg.length, count('bound'), count('partial'), count('unbound')]).toEqual([50, 40, 10, 0]);
+    // B22 (0083 §9): L1-I03, L1-I04, L2-I02 and L10-I05 bound → 44/6/0 (L3-I02 among the six that stay partial)
+    expect([reg.length, count('bound'), count('partial'), count('unbound')]).toEqual([50, 44, 6, 0]);
     const l3 = reg.find((r) => r['interface_id'] === 'L3-I02')!;
     expect(l3['binding_state']).toBe('partial'); expect(String(l3['bound_to'])).toContain('B20 (0080)');
     const state = (await read(analyst, 'edgesList')).projection;

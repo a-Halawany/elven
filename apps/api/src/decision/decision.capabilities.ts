@@ -124,7 +124,7 @@ export interface CommitWrites extends DecisionReads {
 }
 /** B18 (0078, L9-I05): the REOPEN — the package owner re-enters a committed decision's lifecycle on a RECORDED cause (an input.invalidated note after the commitment, or a breach of the committed version), by its id. */
 export interface ReopenWrites extends DecisionReads {
-  reopenPackage(a: { packageId: string; tenantId: string; domainId: string; cause: { kind: 'input_invalidated' | 'condition_breach'; ref: string }; knownAt: string | null; observedThrough: string | null;
+  reopenPackage(a: { packageId: string; tenantId: string; domainId: string; cause: { kind: 'input_invalidated' | 'condition_breach' | 'policy_changed'; ref: string }; knownAt: string | null; observedThrough: string | null;
                      actor: string; eventId: string; correlationId: string }): Promise<Record<string, unknown>>;
 }
 export interface ReplayWrites extends DecisionReads {

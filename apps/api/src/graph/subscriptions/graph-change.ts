@@ -142,11 +142,26 @@ export interface MemoryCorrectedPayload {
   cause: ChangeCause;
 }
 export type ChangeEvent = { event_id: string; event_type: 'GraphChanged'; payload: GraphChangedPayload } | { event_id: string; event_type: 'MemoryCorrected'; payload: MemoryCorrectedPayload };
+/**
+ * 0083 (B22): the SUBSCRIBABLE event types (graph.subscribable_event_types): the two graph contracts, and the eight flat events a
+ * B22 consumer selects — their payloads are the producers' own (no `change`, no `cause`), each consumer reads and validates its type
+ * and QUARANTINES a payload that is not the contract (failure class invalid_event → human_review).
+ */
+export const FLAT_EVENT_TYPES = ['ObservationRecorded', 'SourceHealthChanged', 'ClaimsExtracted', 'IntelligenceObjectAdmitted', 'ForecastFitnessChanged', 'ScenarioCoherenceFailed',
+  'EarlyWarningRaised', 'AttentionPolicyChanged'] as const;
+export type FlatEventType = (typeof FLAT_EVENT_TYPES)[number];
+export const SUBSCRIBABLE_EVENT_TYPES = ['GraphChanged', 'MemoryCorrected', ...FLAT_EVENT_TYPES] as const;
+export type SubscribableEventType = (typeof SUBSCRIBABLE_EVENT_TYPES)[number];
+export type FlatEvent = { event_id: string; event_type: FlatEventType; payload: Record<string, unknown> };
+/** What the dispatcher hands a consumer: a graph change (the seven graph consumers) or a flat event (the four B22 consumers). */
+export type SubscribedEvent = ChangeEvent | FlatEvent;
 
 export const EMPTY_REACH: ReachedObjects = Object.freeze({ claims: [], assumptions: [], objectives: [], decisions: [], commitments: [], forecasts: [], scenarios: [], warnings: [], twins: [], simulations: [], evidence: [], briefings: [], memoryItems: [], truncated: false, walked: true }) as ReachedObjects;
 
 /** The consumer kinds AU-MEM-0030 names, each with the action it holds (PDP rule + port assertion) and its identity. */
-export const CONSUMER_KINDS = ['twins', 'forecasts', 'scenarios', 'decisions', 'retrieval', 'memory-mappings', 'relationships'] as const;
+export const CONSUMER_KINDS = ['twins', 'forecasts', 'scenarios', 'decisions', 'retrieval', 'memory-mappings', 'relationships',
+  // 0083 (B22): the consumers of L1-I03, L1-I04 and L2-I02, and the attention router (L10-I05 and the foresight signals).
+  'observations', 'source-health', 'proposals', 'attention'] as const;
 export type ConsumerKind = (typeof CONSUMER_KINDS)[number];
 export const CONSUMER_ACTION: Readonly<Record<ConsumerKind, string>> = Object.freeze({
   twins: 'twin.subscription.apply',
@@ -156,10 +171,23 @@ export const CONSUMER_ACTION: Readonly<Record<ConsumerKind, string>> = Object.fr
   retrieval: 'graph.retrieval.subscription.apply',
   'memory-mappings': 'graph.mapping.subscription.apply',
   relationships: 'graph.relationship.subscription.apply',
+  observations: 'intelligence.observation.subscription.apply',
+  'source-health': 'observation.source_health.subscription.apply',
+  proposals: 'intelligence.proposal.subscription.apply',
+  attention: 'executive.attention.subscription.apply',
 });
 export const CONSUMER_ROLE: Readonly<Record<ConsumerKind, string>> = Object.freeze({
   twins: 'twin_subscriber', forecasts: 'forecast_subscriber', scenarios: 'scenario_subscriber', decisions: 'decision_subscriber', retrieval: 'retrieval_subscriber', 'memory-mappings': 'mapping_subscriber',
   relationships: 'relationship_subscriber',
+  observations: 'observation_subscriber', 'source-health': 'source_health_subscriber', proposals: 'proposal_subscriber', attention: 'attention_subscriber',
+});
+/** 0083: the event types each kind may select (graph.subscription_consumer_events) — the default of a registration that names none. */
+export const CONSUMER_EVENT_TYPES: Readonly<Record<ConsumerKind, readonly SubscribableEventType[]>> = Object.freeze({
+  twins: ['GraphChanged', 'MemoryCorrected'], forecasts: ['GraphChanged', 'MemoryCorrected'], scenarios: ['GraphChanged', 'MemoryCorrected'],
+  decisions: ['GraphChanged', 'MemoryCorrected'], retrieval: ['GraphChanged', 'MemoryCorrected'], 'memory-mappings': ['GraphChanged', 'MemoryCorrected'],
+  relationships: ['GraphChanged', 'MemoryCorrected'],
+  observations: ['ObservationRecorded'], 'source-health': ['SourceHealthChanged'], proposals: ['ClaimsExtracted', 'IntelligenceObjectAdmitted'],
+  attention: ['ForecastFitnessChanged', 'ScenarioCoherenceFailed', 'EarlyWarningRaised', 'AttentionPolicyChanged'],
 });
 /** The consumer's identity, the walker precedent: a changed method is a new consumer, registered anew. */
 export const CONSUMER_VERSION = '1.0.0';
@@ -178,6 +206,11 @@ const METHOD_REF: Readonly<Record<ConsumerKind, string>> = Object.freeze({
   // 0077 (B17): the import.revoked branch is a new method, so a new identity — every live memory-mappings subscription registered before it is re-registered (the B8 precedent).
   'memory-mappings': 'identifier/edge/resolution basis moved → graph.propose_mapping_reconciliation (a person decides); an edge whose provenance path cannot be established stays unresolved (provenance_incomplete); an import revoked (0077) → the identifiers of the entities it retired and the asserted edges with a retired end proposed',
   relationships: 'claim.corrected → the pending edge reassessed (graph.open_edge_reassessment), the relationship re-derived for the corrected version under the builder\'s rules and asserted (graph.assert_edge supersedes the pending edge; GraphChanged/edge.asserted published); a claim the builder cannot re-derive stays unresolved (unresolved_dependency) with the builder\'s reason',
+  // 0083 (B22): the four new consumers — each its own identity from the start.
+  observations: 'ObservationRecorded → intelligence.select_transformation_plan (the active extraction methods that read the evidence\'s source, or no_plan with the reason; once per event and evidence); the run stays an extraction agent\'s act; a payload that is not the contract is quarantined (invalid_event)',
+  'source-health': 'SourceHealthChanged (the coverage evaluation\'s new_state or the lifecycle transition\'s state) → observation.mark_source_impact (markers on the issued forecasts of the source\'s series, the open warnings on them, the packages citing them; cleared on healthy | active) and, when degraded, executive.route_attention_item source.coverage_loss under the attention policy; a payload that is not the contract is quarantined',
+  proposals: 'ClaimsExtracted / IntelligenceObjectAdmitted → each proposed claim held for review (a queued review case) routed as proposal.review under the attention policy; a claim with no review recorded no_review_required; nothing promoted; a payload that is not the contract is quarantined',
+  attention: 'ForecastFitnessChanged (to unfit) → forecast.unfit; ScenarioCoherenceFailed → scenario.incoherent; EarlyWarningRaised → warning.raised — each routed under the domain\'s active attention policy (executive.route_attention_item, transparent dimensions); AttentionPolicyChanged → every live item re-evaluated (executive.reevaluate_attention_item) and the policy cause noted on every committed or monitored package (decision.note_policy_changed); overdue items escalated at every delivery (executive.escalate_attention_due); a payload that is not the contract is quarantined'
 });
 export const consumerCodeDigest = (kind: ConsumerKind): string =>
   createHash('sha256').update(`graph.subscription.${kind}@${CONSUMER_VERSION}:${METHOD_REF[kind]}`, 'utf8').digest('hex');
@@ -212,23 +245,25 @@ export class SubscriptionLedger {
 }
 
 /** AU-MEM-0039: the class of a delivery's failure state and the route it is sent down. */
-export type FailureClass = 'authority_disputed' | 'consumer_unavailable' | 'provenance_incomplete' | 'executed_action' | 'legal_hold' | 'material_change' | 'unresolved_dependency' | 'budget' | 'infrastructure';
+export type FailureClass = 'authority_disputed' | 'consumer_unavailable' | 'provenance_incomplete' | 'executed_action' | 'legal_hold' | 'material_change' | 'unresolved_dependency' | 'budget' | 'infrastructure'
+  // 0083 (B22): the interface contracts' "quarantine invalid event" — a payload that is not the contract, never applied
+  | 'invalid_event';
 export type Disposition = 'retry' | 'compensation' | 'challenge' | 'human_review';
 
 /** What a registered consumer supplies to the dispatcher: how to read its world, what an event means for it, and one effect per item. */
-export interface SubscriptionConsumer<C> {
+export interface SubscriptionConsumer<C, E extends SubscribedEvent = ChangeEvent> {
   kind: ConsumerKind;
   /** The AUD target type of the consumer's writes and the purpose its envelope carries. */
   objectType: string;
   purpose: string;
   capability: (tx: Tx, action: string) => C;
   /** The items this event affects for this consumer, resolved under the consumer's own capability (its reads, under RLS). Each item is a stable string key. */
-  resolveItems(cap: C, scope: { tenantId: string; domainId: string }, event: ChangeEvent): Promise<string[]>;
+  resolveItems(cap: C, scope: { tenantId: string; domainId: string }, event: E): Promise<string[]>;
   /**
    * One bounded, idempotent effect for one item; returns what it did and the effect's reference for the ledger. `policy` is
    * the subscription's declared budgets (0065: a consumer's own rule — a materiality threshold — is read from there).
    */
-  applyItem(cap: C, scope: { tenantId: string; domainId: string }, event: ChangeEvent, item: string, actor: string, correlationId: string, subscriptionId: string, policy?: Record<string, unknown>):
+  applyItem(cap: C, scope: { tenantId: string; domainId: string }, event: E, item: string, actor: string, correlationId: string, subscriptionId: string, policy?: Record<string, unknown>):
     Promise<{ effect: string; effectRef: string | null; details?: Record<string, unknown>;
               /**
                * What the effect found is OPERATOR WORK (a projection mismatch, an unestablishable provenance path): the effect's

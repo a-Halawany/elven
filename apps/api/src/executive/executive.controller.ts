@@ -18,6 +18,7 @@ import { bindingReaches, clearanceOf } from '../decision/clearance.js';
 import { AgentWorkerService } from './agents/agent-worker.service.js';
 import { DecisionCapability } from '../decision/decision.capabilities.js';
 import { RequestsService, validateRequest } from './requests/requests.service.js';
+import { AttentionService } from './attention/attention.service.js';
 
 function ctx(req: EyeRequest) {
   const envelope = req.eyeEnvelope;
@@ -34,7 +35,7 @@ function instant(v: unknown, fallback: string): string {
 
 @Controller('/v1/tenants/:tenantId/domains/:domainId')
 export class ExecutiveController {
-  constructor(private readonly pipeline: PipelineService, private readonly rooms: RoomService, private readonly briefings: BriefingService, private readonly agents: AgentsService, private readonly worker: AgentWorkerService, private readonly requests: RequestsService) {}
+  constructor(private readonly pipeline: PipelineService, private readonly rooms: RoomService, private readonly briefings: BriefingService, private readonly agents: AgentsService, private readonly worker: AgentWorkerService, private readonly requests: RequestsService, private readonly attention: AttentionService) {}
   private route(tenantId: string, domainId: string, action: string, objectType: string | null, objectId: string | null) {
     return { scope: 'DOMAIN' as const, tenantId, domainId, action, objectType, objectId };
   }
@@ -326,5 +327,85 @@ export class ExecutiveController {
     const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'executive.follow_up.complete', 'EXR', followUpId), ExecutiveCapability.request,
       async (cap, scope) => ({ result: await cap.completeFollowUp({ followUpId, tenantId: scope.tenantId as string, domainId: scope.domainId as string, note: String(body.payload?.note ?? ''), actor: principal.principalId, correlationId: envelope.correlation_id }), targetType: 'EXR', targetId: followUpId, targetVersion: '1', outboxEvent: null }));
     return { follow_up: out.result, receipt: receipt(out) };
+  }
+
+  // ───────────────────────── the attention policy and the queue (0083, L10-I05 AttentionPolicyChanged) ─────────────────────────
+  /** A new VERSION of the domain's attention policy — a named human's act (human-gated); AttentionPolicyChanged@v1 from the write. */
+  @Post('/executive/attention/policy/publish')
+  async publishAttentionPolicy(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: Record<string, unknown> }) {
+    const { envelope, principal } = ctx(req);
+    const intake = this.attention.validatePublish(body.payload ?? {}, envelope.correlation_id);
+    const policyId = newId();
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'executive.attention.policy.publish', 'ATP', policyId), ExecutiveCapability.attention,
+      async (cap, scope) => {
+        const r = await this.attention.publish(cap, { tenantId: scope.tenantId as string, domainId: scope.domainId as string }, policyId, intake.rules, intake.reason, principal.principalId, envelope.correlation_id);
+        return { result: r.published, targetType: 'ATP', targetId: policyId, targetVersion: String(r.published['version']), outboxEvent: r.event };
+      });
+    return { policy: out.result, receipt: receipt(out) };
+  }
+
+  @Post('/executive/attention/policy/get')
+  async attentionPolicy(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'executive.attention.read', 'ATP', null), ExecutiveCapability.read, async (cap) => this.attention.policy(cap));
+    return { policy: out.result, receipt: receipt(out) };
+  }
+
+  /** The QUEUE: every item by state — the deprioritized and the suppressed listed, never hidden — with the reasons and the version each was judged under. */
+  @Post('/executive/attention/items/list')
+  async listAttentionItems(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: { state?: string; signalClass?: string; limit?: number } }) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'executive.attention.read', 'ATI', null), ExecutiveCapability.read,
+      async (cap) => this.attention.list(cap, body.payload ?? {}, await cap.now()));
+    return { ...out.result, receipt: receipt(out) };
+  }
+
+  @Post('/executive/attention/items/:itemId/get')
+  async getAttentionItem(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('itemId') itemId: string) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'executive.attention.read', 'ATI', itemId), ExecutiveCapability.read,
+      async (cap) => this.attention.get(cap, itemId, await cap.now(), envelope.correlation_id));
+    return { item: out.result, receipt: receipt(out) };
+  }
+
+  /** Receipt, never agreement (OBJ-20): the owner or a holder of a routed role. */
+  @Post('/executive/attention/items/:itemId/acknowledge')
+  async acknowledgeAttentionItem(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('itemId') itemId: string, @Body() body: { payload?: { note?: string } }) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'executive.attention.item.acknowledge', 'ATI', itemId), ExecutiveCapability.attention,
+      async (cap, scope) => ({ result: await cap.acknowledgeItem({ itemId, tenantId: scope.tenantId as string, domainId: scope.domainId as string, note: typeof body.payload?.note === 'string' ? body.payload.note : null, actor: principal.principalId, correlationId: envelope.correlation_id }),
+                               targetType: 'ATI', targetId: itemId, targetVersion: null, outboxEvent: null }));
+    return { item: out.result, receipt: receipt(out) };
+  }
+
+  /** Time-bound, reasoned, visible (OBJ-21, PAT-38): within the class's maximum under the item's own policy version. */
+  @Post('/executive/attention/items/:itemId/suppress')
+  async suppressAttentionItem(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('itemId') itemId: string, @Body() body: { payload?: { until?: string; reason?: string } }) {
+    const { envelope, principal } = ctx(req);
+    const until = typeof body.payload?.until === 'string' && !Number.isNaN(Date.parse(body.payload.until)) ? new Date(body.payload.until).toISOString() : null;
+    if (until === null) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'payload.until is the instant the suppression lapses (ISO 8601)'), 422);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'executive.attention.item.suppress', 'ATI', itemId), ExecutiveCapability.attention,
+      async (cap, scope) => ({ result: await cap.suppressItem({ itemId, tenantId: scope.tenantId as string, domainId: scope.domainId as string, until, reason: String(body.payload?.reason ?? ''), actor: principal.principalId, correlationId: envelope.correlation_id }),
+                               targetType: 'ATI', targetId: itemId, targetVersion: null, outboxEvent: null }));
+    return { item: out.result, receipt: receipt(out) };
+  }
+
+  @Post('/executive/attention/items/:itemId/close')
+  async closeAttentionItem(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('itemId') itemId: string, @Body() body: { payload?: { note?: string } }) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'executive.attention.item.close', 'ATI', itemId), ExecutiveCapability.attention,
+      async (cap, scope) => ({ result: await cap.closeItem({ itemId, tenantId: scope.tenantId as string, domainId: scope.domainId as string, note: String(body.payload?.note ?? ''), actor: principal.principalId, correlationId: envelope.correlation_id }),
+                               targetType: 'ATI', targetId: itemId, targetVersion: null, outboxEvent: null }));
+    return { item: out.result, receipt: receipt(out) };
+  }
+
+  /** The overdue escalated and the lapsed suppressions reopened, on demand (the attention subscriber does it at every delivery; no timer host). */
+  @Post('/executive/attention/escalate-due')
+  async escalateAttentionDue(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'executive.attention.escalate', 'ATI', null), ExecutiveCapability.attention,
+      async (cap, scope) => ({ result: await cap.escalateDue({ tenantId: scope.tenantId as string, domainId: scope.domainId as string, actor: principal.principalId, correlationId: envelope.correlation_id }),
+                               targetType: 'ATI', targetId: null, targetVersion: null, outboxEvent: null }));
+    return { escalation: out.result, receipt: receipt(out) };
   }
 }

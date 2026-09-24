@@ -384,3 +384,19 @@ inconsistent fails against the previous head's evidence and is re-run once its o
 attempt 2 green; #58's own lifecycle on the PR likewise before its merge). An armed merge waits for the required checks to CONCLUDE,
 never for "zero failing checks" (the #58 merge went through on a timed-out wait while attempt 2's build-test was pending — the
 integrator's error, recorded; the post-merge chain on `main` decided it green).
+
+**The attention policy and the consumers; the containers on the official pins (B22, 2026-09-24).** The service containers run the
+OFFICIAL images `main` pins (`postgres@sha256:77f58511…` PostgreSQL 18.6, `redis@sha256:ba6e394f…`) since 16:46Z on the reused
+volume (`docs/ops/evidence/live-recreation-20260924T164303Z.md`: the backup — unsealed, the operator's passphrase is not on this host —
+under `.eye-local/backups/containers-return-20260924T164303Z/`, the isolated restore check on the target images, the recreation, the
+rollback). `eye_demo` is migrated through 0083 (backup `.eye-local/backups/eye_demo-pre-0082-20260924T175523Z.dump`); the API serves
+the B22 build; the web shell was rebuilt (the Attention page `/decisions/attention`). The act (`scripts/phase6/act-b22.mjs`) casts BY
+ROLE — M. Dvořák (`executive`, `collection_manager` — the source scenes: U. Fischer holds `collection_manager` in the mirror domain
+only), N. Eriksen, J. Weber, L. Brandt, L. Ferreira, A. Hoffmann, the administrator; it registers the FOUR new consumers once
+(`attention` and `proposals` replaying the domain's history, `source-health` and `observations` from now), publishes policy versions 1
+and 2, suspends and reactivates the PortWatch chokepoints source (a minute; the reactivation's first scheduled tick runs at once),
+reopens the B18 corridor package on the policy cause (it stays reopened with a draft version 3 — the owner's to propose and commit or
+withdraw) and waits out the two-minute warning deadline before escalating. **Re-running the act** is refused by design where it would
+repeat a fact (the same rules are a 409; the four consumers are left as registered). **The rehearsal copy** (`eye_demo_b22` restored
+from the backup; its API on :3411 against the SEPARATE rehearsal Redis :6392 — the copy shares the demonstration's tenant and domain ids,
+so its queues must never share the demonstration's Redis — and an APFS clone of the vault; runner `$S/b22/rehearse.sh`).

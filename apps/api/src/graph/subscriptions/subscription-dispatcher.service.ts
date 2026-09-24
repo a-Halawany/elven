@@ -41,7 +41,7 @@ import { hostname } from 'node:os';
 import type { AuthenticatedPrincipal } from '../../shared/auth-types.js';
 import { PipelineService, type WriteEffect } from '../../pipeline/pipeline.service.js';
 import { SchedulerService, type SubscriptionJobPayload } from '../../observation/scheduling/scheduler.service.js';
-import { CONSUMER_ACTION, SubscriptionLedger, type ChangeEvent, type ConsumerKind, type Disposition, type FailureClass, type SubscriptionConsumer } from './graph-change.js';
+import { CONSUMER_ACTION, SUBSCRIBABLE_EVENT_TYPES, SubscriptionLedger, type ConsumerKind, type Disposition, type FailureClass, type SubscribedEvent, type SubscriptionConsumer } from './graph-change.js';
 import { SubscriptionGrantRefused, SubscriptionSessionService } from './subscription-session.service.js';
 
 interface DeliveryRow {
@@ -93,7 +93,7 @@ const UNRESOLVED_RECHECK = '10 minutes';
 @Injectable()
 export class SubscriptionDispatcherService implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly log = new Logger('graph.subscriptions');
-  private readonly consumers = new Map<ConsumerKind, SubscriptionConsumer<unknown>>();
+  private readonly consumers = new Map<ConsumerKind, SubscriptionConsumer<unknown, SubscribedEvent>>();
   private lastReconcile: SubscriptionReconcileReport | null = null;
   private lastFailure: { at: string; where: string; message: string } | null = null;
   private fault: DispatcherFault | null = null;
@@ -122,12 +122,12 @@ export class SubscriptionDispatcherService implements OnApplicationBootstrap, On
   ) {}
 
   /** Each consumer module registers its consumer at its own module init, before the dispatcher's bootstrap. */
-  registerConsumer<C>(consumer: SubscriptionConsumer<C>): void {
-    this.consumers.set(consumer.kind, consumer as SubscriptionConsumer<unknown>);
+  registerConsumer<C, E extends SubscribedEvent>(consumer: SubscriptionConsumer<C, E>): void {
+    this.consumers.set(consumer.kind, consumer as unknown as SubscriptionConsumer<unknown, SubscribedEvent>);
   }
   registeredKinds(): ConsumerKind[] { return [...this.consumers.keys()]; }
   /** Test runtime only: the consumer of a kind gone from this process (the AU-MEM-0039 "consumer unavailable" condition); returns it for re-registration. */
-  unregisterConsumerForTests(kind: ConsumerKind): SubscriptionConsumer<unknown> | null {
+  unregisterConsumerForTests(kind: ConsumerKind): SubscriptionConsumer<unknown, SubscribedEvent> | null {
     if (this.cfg['eye.runtime.env'] !== 'test') throw new Error('unregisterConsumerForTests is available only in the test runtime');
     const c = this.consumers.get(kind) ?? null;
     this.consumers.delete(kind);
@@ -362,8 +362,9 @@ export class SubscriptionDispatcherService implements OnApplicationBootstrap, On
   /** One delivery of one event to every subscription it matches (or the one a replay names). */
   async handle(p: SubscriptionJobPayload, jobId: string, attemptsMade: number): Promise<void> {
     const tenantId = p.tenant_id; const domainId = p.domain_id;
-    if ((p.event_type !== 'GraphChanged' && p.event_type !== 'MemoryCorrected') || tenantId === null || domainId === null) {
-      throw new UnrecoverableError(`job ${jobId} is not a scoped GraphChanged or MemoryCorrected event`);
+    // 0083 (B22): any SUBSCRIBABLE type (graph.subscribable_event_types) — the two graph contracts and the eight flat events.
+    if (!(SUBSCRIBABLE_EVENT_TYPES as readonly string[]).includes(p.event_type) || tenantId === null || domainId === null) {
+      throw new UnrecoverableError(`job ${jobId} is not a scoped event of a subscribable type`);
     }
     // THE LOCAL FENCE (0065 §3, settled without a self-wait since 0066 §1): a job is served only while this process still
     // believes its serving claim live. A claim it could not renew (the reconciliation failing, the process stalled) lapses
@@ -381,7 +382,7 @@ export class SubscriptionDispatcherService implements OnApplicationBootstrap, On
       const row = await this.loadEvent(p.event_id, tenantId, domainId, owned);
       if (row === null) throw new UnrecoverableError(`job ${jobId}: outbox row ${p.event_id} is not a published event of this domain`);
       const changeKind = String((row.payload['change'] as Record<string, unknown> | undefined)?.['kind'] ?? '');
-      const event = { event_id: p.event_id, event_type: row.event_type, payload: row.payload } as unknown as ChangeEvent;
+      const event = { event_id: p.event_id, event_type: row.event_type, payload: row.payload } as unknown as SubscribedEvent;
       const deliveries = await this.receive({ eventId: p.event_id, tenantId, domainId, eventType: row.event_type, changeKind, createdAt: row.created_at, only: p.only ?? null }, owned);
       if (this.fault === 'interrupt_after_receipt') { this.fault = null; await INTERRUPTED(); }
       let rethrow: unknown = null;
@@ -412,7 +413,7 @@ export class SubscriptionDispatcherService implements OnApplicationBootstrap, On
     this.scheduler.stopSubscriptionWorkerDetached(tenantId, domainId);
   }
 
-  private async deliverOne(event: ChangeEvent, d: DeliveryRow, tenantId: string, domainId: string, attempt: number, owned: ServingOwnership): Promise<void> {
+  private async deliverOne(event: SubscribedEvent, d: DeliveryRow, tenantId: string, domainId: string, attempt: number, owned: ServingOwnership): Promise<void> {
     const base = { eventId: event.event_id, subscriptionId: d.subscription_id, kind: d.consumer_kind, tenantId, domainId, owned };
     const consumer = this.consumers.get(d.consumer_kind);
     if (consumer === undefined) { await this.finish({ ...base, outcome: 'refused', reason: `no ${d.consumer_kind} consumer is registered in this process`, failureClass: 'consumer_unavailable', disposition: 'retry' }); return; }

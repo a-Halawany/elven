@@ -3749,3 +3749,98 @@ of its clause (iii), and the recreation of the live demonstration containers ont
 bounded review of B21 if the owner wants one; the owner's walk of the demonstration; the owner's key for Comtrade; the owner's
 decision on a public host for the recipient; comprehensive hardening after the feature scope, with the residuals and the register
 rows left for it.
+
+## 36. The checkpoint after B21's records head `9c56bb4` (2026-09-24): #59 merged under the owner's word once every check on its head had concluded green, its push-to-main chain completed (a hosted flake re-run in full, attempt 1 kept); B22 implemented — the capability-nonce sweep that never waits (0082), and the attention policy with the consumers (0083): L10-I05 bound, L1-I03 / L1-I04 / L2-I02 given registered consumers, L9-I05's policy cause delivered (the register 44/6/0); the demonstration's containers returned to the official image pins; the NORDWERK queue built from the domain's own history, routed under a human-set policy, a source's derived products marked and cleared, a committed decision reopened on the policy cause, overdue warnings escalated
+
+The bounded B21 review (`audit/reviews/The_Eye_a2303ff_B21_Review_and_B22_Delivery.md`, filed with this candidate) closed Codex's B20-F1 at
+`a2303ff` and gave the owner's word for #59, the sweep's remedy (a technical choice, no further decision), B22's scope and the containers.
+
+### 36.1 What B22 implements (migrations 0082, 0083) — `audit/CP6_BATCHES.md` §B22 for the mechanism
+
+- **0082, the sweep never waits.** `ctx.build`'s cleanup of nonces expired for over an hour takes its victims `FOR UPDATE SKIP LOCKED`, oldest
+  first, at most 500 per issuance — a row another transaction holds is skipped, never waited on; nothing else of the capability changes.
+  The residual nested-write paths the B21 rehearsal left (twin grounding, forecast issue, backtest, outcome record) WEDGE on the pre-0082 body
+  (the control) and complete on 0082; the authority checks are unchanged (expired, foreign-transaction, expired-unswept and swept nonces refused).
+- **0083, the consumers.** Any of ten subscribable event types; each consumer KIND declares its own; an invalid payload QUARANTINED
+  (`invalid_event`, human review). `observations` selects the transformation plan per recorded evidence; `source-health` marks the derived
+  products of a degraded source and routes the coverage loss, clearing on recovery; `proposals` routes every claim held for review and promotes
+  nothing; `attention` routes unfit forecasts, incoherent scenarios and warnings and re-evaluates the queue when the policy changes.
+- **0083, the attention policy and the queue.** A versioned policy set by a named human (domain_admin, executive, platform_admin; human-gated),
+  validated whole, never rewritten, announced as AttentionPolicyChanged@v1; an engine over transparent dimensions that abstains rather than
+  fabricates; a queue whose every item names the version it was judged under and why — routed, deprioritized (visible), unrouted and escalated
+  at once; acknowledgement is receipt, not agreement; suppression carries a reason and an expiry within the class's maximum and lapses; the
+  overdue escalate to the class's roles, bounded; a re-evaluation never re-pages an exhausted chain.
+- **0083, the policy cause (L9-I05).** Every committed or monitored package is told when the policy changed (the version at its commitment and
+  the new one); its owner may reopen on that cause; DecisionReopened carries it.
+- **The register: 44 bound / 6 partial / 0 unbound** (L10-I05, L1-I03, L1-I04, L2-I02 bound in 0083). The web: the Attention page.
+
+### 36.2 The local results
+
+| What | Result |
+|---|---|
+| B22.1 harness `phase6-nonce-sweep-b22` (6) and its control | 6/6 on two fresh databases; the control (pre-0082 body) wedges all four residual paths — `evidence/cp6/b22-1-nonce-sweep.txt` |
+| B22.3 harness `phase6-attention-b22` (11) | 11/11 twice on fresh databases, and again after the escalation-history rule — `evidence/cp6/b22-2-harness.txt` |
+| The moved pins (fitness-b21, interfaces-b18, graph-projections-b20, retention-b17, graph-subscriptions, graph-subscriptions-3, phase3/phase4 acceptance) | 6/6, 14/14, 46/46, 59/59 on fresh databases — `evidence/cp6/b22-pins.txt` |
+| The full integration suite (76 files) | run 1: 1100/1103 — three cases of ONE file, `phase6-briefing-memory` (a composition held the first of two items recorded ~12 ms apart), passing alone and not reproduced — a timing HARDENING ITEM, preserved; run 2: **1103/1103** — `evidence/cp6/b22-int-all.txt` |
+| The unit suite + meta | **2390/2390 in 59 files + 9/9** on a quiet host (run 1 under load 2389/2390 — the hermetic gate case, passing alone) — `evidence/cp6/b22-unit.txt` |
+| The acceptance suite | 58/58 on a fresh database — `evidence/cp6/b22-acceptance.txt` |
+| The upgrade proof 0022–0083 | PASS: roles +35, schema_registry +36, migrations +62 exactly as declared; the digests equal; 297/297 and 276/276 — `evidence/cp6/b22-upgrade-proof.txt` |
+| Boundaries; API typecheck; web typecheck, 30 tests, build | green |
+| The browser gate | **51/51** on a fresh database with isolated vault roots (the demonstration stopped and restarted) — `evidence/cp6/b22-browser.txt` |
+
+### 36.3 The NORDWERK demonstration — `evidence/cp6/act-b22.txt`
+
+The containers first (`docs/ops/evidence/live-recreation-20260924T164303Z.md`): backed up (unsealed — the operator's passphrase is not on this
+host), restored and verified in isolation on the OFFICIAL images, recreated on the reused volume, the demonstration verified (21/21 logins).
+Then `eye_demo` backed up again and migrated with 0082–0083, the API on the B22 build, the web rebuilt. The act (five rehearsals on a restored
+copy with its own Redis — the stops were the act's own casting and timing) — ALL SCENES HELD: the four consumers registered, the domain's
+history replayed into the queue and ABSTAINED while no policy stood; M. Dvořák's version 1 re-evaluated 30 items and noted the policy cause on
+both packages; N. Eriksen acknowledged her unfit forecast; J. Weber suppressed a warning with a reason and an expiry; the PortWatch chokepoints
+source suspended — its unfit forecast and the warning on it marked, the coverage loss routed and acknowledged — and reactivated, the markers
+cleared; version 2 re-evaluated 31 items; L. Brandt reopened the B18 corridor package on the POLICY CAUSE (DecisionReopened with the cause);
+six overdue warnings escalated after the two-minute deadline was waited out. Said, not staged: the collection found nothing new.
+
+### 36.4 Heads, hosted results, statuses
+
+| Head | What | Hosted `ci` | Hosted C19 |
+|---|---|---|---|
+| `9c56bb4` | B21's records head on #59 — every check concluded green (ci 35984737389, C19 35984737353, CodeRabbit) | green | green |
+| **`5165a97`** | **`main`: #59 merged under the owner's 2026-09-24 word** | 36028182443 — attempt 1 FAILED on `phase6-retention-b14` H2 (the recipient's `unauthorized` receipt without a status, 1085/1086; the third time — the hardening item), PRESERVED; attempt 2 (a FULL re-run — never `--failed` on `main`) green; C17 finalize 36032657248 green; C19 anchor 36032778777 green, publish included | 36028182479 green |
+| `567e669` | **B22** (0082 + 0083, the harnesses, the pins, the page, the act, the records) — PR #60 `phase6-b22` → `main` | 36042985523: build-test FAILED at the audit accounting control (`audit/SUMMARY.md` committed with its acceptance-unit section dropped by the summarisers' order) — preserved; the other jobs green | green |
+| **`9f6a77e`** | the summary regenerated (the only change) | **36043290422 green, one attempt** — unit 2390/2390 + 9/9, contracts 203/203, web 30/30, acceptance 58/58, the integration suite **1103/1103 in 76 files** on a fresh database (`phase6-nonce-sweep-b22` 6/6, `phase6-attention-b22` 11/11), the upgrade proof through 0022–0083 PASS, C18 623/623 + 44; browser-regression 51; supply-chain green on the official pins, the recheck green — `evidence/cp6/hosted-9f6a77e-build-test-summary.txt` | 36043290505 green |
+
+Statuses: fourteen units gain B22's evidence and their actual remaining clauses and stay `open` — AU-EXO-0025/-0027/-0057/-0062,
+AU-PRD-0017/-0037/-0038, AU-DEC-0062, AU-OBS-0116/-0117/-0118/-0126, AU-INT-0002/-0016 (no unit promoted by a local run); the requirement
+rows L1-I03, L1-I04, L2-I02 partial → `implemented` and L10-I05 missing → `implemented` (`passed:harness`, `branch-only`), L9-I05's remaining
+work rewritten. AU-MEM-0067 stays OPEN without a waiver (the per-object class under a reachable root keeps A7's one 409; the obligation stands).
+The split stays **3,555 = 3,179 open + 339 local + 37 CI**. No completion percentage; no deployment leg accepted.
+
+### 36.5 Functioning, partial, missing — and the acceptance work remaining
+
+**Functioning** — everything §35.5 listed, and now: the capability sweep that never waits on another transaction (the nested-write wedge and
+the liveness hazard gone at their shared cause); the demonstration on the official image pins; the attention policy as a versioned object set by
+a named human and announced; the transparent engine that abstains; the queue — routed, deprioritized, unrouted and escalated, acknowledged as
+receipt, suppressed with a reason and an expiry, closed, re-evaluated on a policy change without re-paging an exhausted chain; the fitness,
+coherence, warning, coverage-loss and review signals reaching accountable people; the registered consumers of ObservationRecorded,
+SourceHealthChanged and the proposed claims, with the invalid-event quarantine; the source-health markers set and cleared; the transformation
+plan selected; a policy change as a recorded cause to reopen a committed decision; the Attention page.
+
+**Partial** — the six interface rows that stay partial (L1-I02 the stream form, L3-I02 the purpose-bound context query, L4-I02 the change-set
+command, L7-I02 the add-branch command, L10-I02 MaterialChangeRaised as an event, L10-I03 ReviewConvened); the attention section of the briefing
+(BRF@v2 — B23, with MaterialChangeRaised); in_app delivery only; no timer host for escalation; the overload rule validated, not enforced; the
+remaining materiality dimensions (probability, reversibility, exposure, strategic relevance, information value); no approval step on a
+suppression; markers read beside the products, not yet constraining decision-active use, and packages reached only through a directly cited
+forecast; the extraction run on a selected plan (an agent's act); a remediation workflow beyond the routed item; the items of §35.5's Partial
+that B22 did not address (the forecast scheduler, the fitness and coherence rules' depth, branch suspension, the mapping object, the decision
+gate on unpromoted runs, the `challenge` disposition on deliveries, the B20/B19 partial items); the three hosted and local timing flakes
+(phase1-acceptance:471, retention-b14 H2, briefing-memory's millisecond cutoff) as hardening items.
+
+**Missing** — a governed cross-domain REFERENCE; replication and portability packages; encryption of the package beyond TLS; the
+communications/telemetry INGESTION connectors and the analyses object; the six interface contracts above (B23); an in-migration rebuild for a
+representation bump; external notification channels (the Execution Gateway); every deployment leg (S7).
+
+**Acceptance work remaining** — B22's hosted run bound here once (ci 36043290422 at `9f6a77e`, one attempt; no records-refresh chain; no unit
+promoted by it — the fourteen units stay open with their remaining clauses); the merge of B22's PR on the owner's word with its chain green; AU-MEM-0067's per-object obligation (open, no waiver); the owner's walk of
+the demonstration (the Attention page and the reopened B18 package — its draft version 3 is the owner's to propose, commit or withdraw); the
+owner's key for Comtrade; the owner's decision on a public host for the recipient; the owner's backup passphrase for a sealed bundle of today's
+state (the container return's backup is unsealed); comprehensive hardening after the feature scope.

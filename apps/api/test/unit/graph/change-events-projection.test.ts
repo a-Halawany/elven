@@ -36,14 +36,14 @@ describe('B20 · the kind and the consumer identities', () => {
     expect(GRAPH_CHANGE_KINDS).toContain('projection.rebuilt');
     for (const k of ['entity.created', 'edge.asserted', 'forecast.superseded', 'import.admitted', 'import.revoked', 'twin.state_changed', 'forecast.withdrawn', 'simulation.invalidated']) expect(GRAPH_CHANGE_KINDS).toContain(k);
   });
-  it('the retrieval consumer\'s method CHANGED (the symmetric check that withdraws, 0080): its digest is not the 0063 one; the seven digests are distinct 64-hex strings', () => {
+  it('the retrieval consumer\'s method CHANGED (the symmetric check that withdraws, 0080): its digest is not the 0063 one; the digests (seven until 0083, eleven since B22) are distinct 64-hex strings', () => {
     // The identity a live retrieval subscription registered before 0080 carries — the B8 rule: a changed method is a new consumer,
     // and every live retrieval subscription is re-registered (the harness registers fresh; the act revokes and registers anew).
     const before0080 = createHash('sha256').update(`graph.subscription.retrieval@${CONSUMER_VERSION}:graph.rebuild_projections verified → graph.record_retrieval_check`, 'utf8').digest('hex');
     expect(consumerCodeDigest('retrieval')).not.toBe(before0080);
     for (const kind of CONSUMER_KINDS) expect(consumerCodeDigest(kind)).toMatch(/^[0-9a-f]{64}$/);
     expect(new Set(CONSUMER_KINDS.map((k) => consumerCodeDigest(k))).size).toBe(CONSUMER_KINDS.length);
-    expect(CONSUMER_KINDS.length).toBe(7);
+    expect(CONSUMER_KINDS.length).toBe(11); // 0083 (B22): + observations, source-health, proposals, attention
   });
 });
 
