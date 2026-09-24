@@ -403,3 +403,34 @@ without the owner's instruction; PortWatch proceeds within its granted permissio
 UN Comtrade deferred with its key untouched; evidence classes kept apart in every report.
 
 No email is sent, no source activated and nothing purchased by this register.
+
+## 10. The finite delivery plan (baseline 2026-09-24; supersedes §9's S5–S7 for scheduling only)
+
+§9 stays as written, as the historical ordering and the binding rules; S7's acceptance rule is unchanged. On 2026-09-24,
+before B23 and with main at `5165a97` and #60 at `7125550` (every check green, the merge awaiting the owner), one bounded
+reconciliation and planning pass decomposed S5–S7 into a finite plan: **`audit/DELIVERY_PLAN.md`**, the master schedule, the
+dependency and critical-path map, milestones M1–M4, the account comparison, the isolation and migration rules, and the
+decisions. Its machine-readable companions live under `audit/delivery/`:
+
+| File | Content |
+|---|---|
+| `FEATURE_TRACKER.csv` | The single progress tracker |
+| `feature-rowmap.csv` | All 6,264 rows mapped to exactly one feature |
+| `STAGES.csv` | 65 fixed stages (B23–B94, H1–H3, R1–R3) |
+| `feature-tracker.mjs` | The check; it recomputes every count from the requirement rows |
+| `DEMONSTRATION_PLAN.md` | The NORDWERK story |
+| `ACCOUNT_PROMPTS.md` | Account prompts, proposed only |
+| `STALE_STATUS_CANDIDATES.csv` | Stale-row candidates, reconciled once in B23 |
+
+**Counts at the baseline.** These are feature statuses computed from the rows, and they are not a completion measure. Of 201 open-register features:
+
+| Status | Features |
+|---|---|
+| functioning | 1 |
+| partial | 167 |
+| missing | 15 |
+| externally blocked | 18 |
+
+Acceptance verification is reported separately: 3,555 units = 3,179 open + 339 local + 37 CI.
+
+**Expected implementation completion (M1).** With three accounts, about 2027-02-09 (range 2027-01-08 … 2027-04-09). With one account, about 2027-08-20. M2 hardening follows, then M3 final acceptance. M4 deployment readiness is externally gated. No merge, deployment, purchase or budget authorization is implied.

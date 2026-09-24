@@ -1,0 +1,50 @@
+feature_id,row_id,observation,disposition
+F-R0-02,V03-T-061,rem says no consumers; 0060/0063 (and 0083 on PR #60),candidate — verify against the code and move in the B23 records step (register reconciliation); never moved blindly
+F-R0-02,V03-T-025,rem says events consumed by nobody; 0060/0063/0083,candidate — verify against the code and move in the B23 records step (register reconciliation); never moved blindly
+F-R0-04,JRN-24,says FINAL C16/C17 blocked by C15; C15 green on official pins since B21,candidate — verify against the code and move in the B23 records step (register reconciliation); never moved blindly
+F-R0-05,IA-69-005,says no patched official image/unpinned; official pins restored (B22) and C15 green,candidate — verify against the code and move in the B23 records step (register reconciliation); never moved blindly
+F-R0-06,R-02,says the end-to-end journey is on an unmerged branch; merged (main 5165a97),candidate — verify against the code and move in the B23 records step (register reconciliation); never moved blindly
+F-P1-01,L1-C01,rem says credential binding not implemented; 0070 §1 credential path exists,candidate — verify against the code and move in the B23 records step (register reconciliation); never moved blindly
+F-P1-01,ES-31-001,rem says credential binding not implemented; 0070 §1,candidate — verify against the code and move in the B23 records step (register reconciliation); never moved blindly
+F-P1-02,L1-C05,"rem says legal_hold never read / no purge job; stale since 0066 §4, 0070",candidate — verify against the code and move in the B23 records step (register reconciliation); never moved blindly
+F-P1-02,V02-T-039,"MISSING legal hold, but 0066 §4 reads and enforces holds (ES-29-004 IMPL)",candidate — verify against the code and move in the B23 records step (register reconciliation); never moved blindly
+F-P1-14,L1-C08,"SourceHealthChanged event + consumer exist (0083, branch-only)",candidate — verify against the code and move in the B23 records step (register reconciliation); never moved blindly
+F-P1-14,V03-T-077,"MISSING impact markers; 0083 §6 source_impact_markers (PR #60, branch-only)",candidate — verify against the code and move in the B23 records step (register reconciliation); never moved blindly
+F-P1-14,V03-T-271,"ObservationRecorded consumer in 0083 (PR #60, branch-only)",candidate — verify against the code and move in the B23 records step (register reconciliation); never moved blindly
+F-P1-14,PR-10-001,says scheduled collection branch-only; merged via #44,candidate — verify against the code and move in the B23 records step (register reconciliation); never moved blindly
+F-P1-15,IR-21-003,"rem says no export; customer export package B11/B13 (0070, 0073)",candidate — verify against the code and move in the B23 records step (register reconciliation); never moved blindly
+F-P2-10,V00-T-037,rem says contradiction_refs always empty; 0066 §5,candidate — verify against the code and move in the B23 records step (register reconciliation); never moved blindly
+F-P2-10,V03-T-282,MISSING contradiction detection; 0066 §5 + /intelligence/contradictions,candidate — verify against the code and move in the B23 records step (register reconciliation); never moved blindly
+F-P2-10,FEX-10,MISSING contradiction handling; 0066 §5,candidate — verify against the code and move in the B23 records step (register reconciliation); never moved blindly
+F-P2-10,PR-21-001,rem says no contradiction workbench; /intelligence/contradictions exists,candidate — verify against the code and move in the B23 records step (register reconciliation); never moved blindly
+F-P2-10,CAP-UM-09,rem says no contradiction workbench; /intelligence/contradictions exists,candidate — verify against the code and move in the B23 records step (register reconciliation); never moved blindly
+F-P3-05,DP-24-001,rem says CorrectionApplied consumer deferred; 0060 propagation consumer exists,candidate — verify against the code and move in the B23 records step (register reconciliation); never moved blindly
+F-P3-05,DAT-SM-08,CorrectionApplied consumer exists since 0060,candidate — verify against the code and move in the B23 records step (register reconciliation); never moved blindly
+F-P3-05,DAT-OP-10,CorrectionApplied consumer exists since 0060,candidate — verify against the code and move in the B23 records step (register reconciliation); never moved blindly
+F-P3-05,DCN-09,automatic consumer exists since 0060,candidate — verify against the code and move in the B23 records step (register reconciliation); never moved blindly
+F-P3-05,PR-24-001,CorrectionApplied consumer exists since 0060,candidate — verify against the code and move in the B23 records step (register reconciliation); never moved blindly
+F-P3-05,CAP-UM-12,CorrectionApplied consumer exists since 0060,candidate — verify against the code and move in the B23 records step (register reconciliation); never moved blindly
+F-P3-05,V03-T-028,subscriptions exist since 0060/0063,candidate — verify against the code and move in the B23 records step (register reconciliation); never moved blindly
+F-P3-05,V02-T-129,says propagation operator-initiated; automatic since 0060,candidate — verify against the code and move in the B23 records step (register reconciliation); never moved blindly
+F-P3-06,DP-54-002,rem says archive tier open; 0070 archive executor + 0072 cold tier,candidate — verify against the code and move in the B23 records step (register reconciliation); never moved blindly
+F-P3-06,DAT-TR-08,"MISSING retention service, but 0066 §4 schedules + 0070 executors exist",candidate — verify against the code and move in the B23 records step (register reconciliation); never moved blindly
+F-P3-06,DAT-TR-09,"MISSING legal-hold service, but 0066 §4 enforces hold precedence",candidate — verify against the code and move in the B23 records step (register reconciliation); never moved blindly
+F-P3-06,DCN-23,"MISSING timer/hold precedence, but 0066 §4 schedules and holds exist",candidate — verify against the code and move in the B23 records step (register reconciliation); never moved blindly
+F-P3-06,DF-27,says no deletion scope resolution; 0066 resolve_scope and 0070 load-bearing-reference pause exist,candidate — verify against the code and move in the B23 records step (register reconciliation); never moved blindly
+F-P3-06,V03-T-095,rem says legal_hold never read; stale since 0066 §4,candidate — verify against the code and move in the B23 records step (register reconciliation); never moved blindly
+F-P3-07,V00-T-046,MISSING ontology; 0066 §7 graph.ontology_versions + /graph/ontology exist,candidate — verify against the code and move in the B23 records step (register reconciliation); never moved blindly
+F-P3-07,V02-T-044,MISSING ontology; 0066 §7,candidate — verify against the code and move in the B23 records step (register reconciliation); never moved blindly
+F-P3-07,L4-C01,MISSING ontology registry; 0066 §7,candidate — verify against the code and move in the B23 records step (register reconciliation); never moved blindly
+F-P3-07,DP-34-001,MISSING ontology registry; 0066 §7 (vocabulary level),candidate — verify against the code and move in the B23 records step (register reconciliation); never moved blindly
+F-P3-07,DAT-KN-01,MISSING ontology registry; 0066 §7,candidate — verify against the code and move in the B23 records step (register reconciliation); never moved blindly
+F-P3-07,CAP-UM-06,MISSING ontology manager; /graph/ontology page exists,candidate — verify against the code and move in the B23 records step (register reconciliation); never moved blindly
+F-P3-08,L4-C08,rem says no subscription registry/GraphChanged consumers; 0063-0065 deliver them,candidate — verify against the code and move in the B23 records step (register reconciliation); never moved blindly
+F-P3-08,L4-I03,GraphChanged subscriptions exist since 0063,candidate — verify against the code and move in the B23 records step (register reconciliation); never moved blindly
+F-P3-08,SC-03,rem says no deterministic projection rebuild; 0080 B20 rebuild,candidate — verify against the code and move in the B23 records step (register reconciliation); never moved blindly
+F-P3-13,C-017,says propagation operator-initiated; automatic since 0060,candidate — verify against the code and move in the B23 records step (register reconciliation); never moved blindly
+F-P3-14,PR-20-001,rem says no memory workspace; /graph/memory exists,candidate — verify against the code and move in the B23 records step (register reconciliation); never moved blindly
+F-P3-14,WS-07@V8,"MISSING memory workspace; /graph/memory exists (0066 §3, B10)",candidate — verify against the code and move in the B23 records step (register reconciliation); never moved blindly
+F-P3-14,WS-07@V9,MISSING memory workspace; /graph/memory exists,candidate — verify against the code and move in the B23 records step (register reconciliation); never moved blindly
+F-P3-14,ADR-009,MISSING Enterprise Memory; 0066 §3 memory items + 0079,candidate — verify against the code and move in the B23 records step (register reconciliation); never moved blindly
+F-P3-14,V04-T-024,MISSING degraded tests; B20 phase6-graph-projections P1-P9,candidate — verify against the code and move in the B23 records step (register reconciliation); never moved blindly
+F-P3-15,DF-20,MISSING index withdraw/rebuild; 0080 withdraw_projection/rebuild,candidate — verify against the code and move in the B23 records step (register reconciliation); never moved blindly
