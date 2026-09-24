@@ -103,6 +103,7 @@ change. C15 stays blocking; no waiver is added.
 | 2026-09-10 | the owner's approval (`docs/images/DERIVED_IMAGES_APPROVAL.md`); `65c0f4d` on `main` — the C15 change-set of `phase6-decisions@4ad058f` (PR #46's branch) landed first, through PR #39 (merge `d675707`, 2026-09-12) | `ghcr.io/a-halawany/elven/postgres@sha256:69a974ae…`, `…/redis@sha256:1ad0ff24…` (derived from `9a8afca5…` / `978f0e01…` with the util-linux, OpenSSL and c-ares fixes) | official tags still affected | none on the derived images beyond the 22 governed `gosu` rows (SCX-0002…0005 re-issued, SCX-0010/0011 new; SCX-0001, -0006…-0009 retired) | TEMPORARY re-pin to the derived images; the recheck repurposed to watch for a compatible fixed OFFICIAL image on both platforms |
 | **2026-09-22 12:41** | scheduled run **35728647457** on `main` (the pinned trivy 0.73.0) + local `check-patched-images.mjs` (Homebrew trivy 0.73.0, evidence only) | the derived images above | `postgres:18-alpine` → **`77f58511…`** (children `d8703cd7…` amd64, `89f74717…` arm64; 18.6-alpine3.24, Alpine 3.24.2), `redis:8-alpine` → **`ba6e394f…`** (children `2d3814be…` amd64, `41a10b18…` arm64; 8.10.2-alpine, Alpine 3.23.6) | **none of the watched ones**: `libuuid` 2.42.3-r1, `setpriv` 2.41.6-r1, `libcrypto3`/`libssl3` 3.5.8-r0, `c-ares` 1.34.8-r0 on both platforms; the official postgres children carry the same 22 `gosu` stdlib rows as the derived image and nothing else at HIGH/CRITICAL; redis 0 at every severity | **COMPATIBLE FIXED OFFICIAL IMAGE for both services** — the recheck FAILED on purpose; the return begins (§8): re-pinned 2026-09-22, provenance and compatibility verified, SCX re-issues DRAFTED for the owner |
 | **2026-09-23** | the owner’s approval applied (the six re-issues in force, §3.9 of the dispositions document); local `check-patched-images.mjs` under its completed return transition (§8.4; the pinned trivy 0.73.0 authenticated by `install-scanners.sh`, live registry, both platforms) | `postgres@sha256:77f58511…`, `redis@sha256:ba6e394f…` (the official indexes, since 2026-09-22) | unchanged: `postgres:18-alpine` → `77f58511…`, `redis:8-alpine` → `ba6e394f…` — THE SAME indexes as the pins | none of the watched ones on any child (`libuuid` 2.42.3-r1 / `setpriv` 2.41.6-r1, `libcrypto3`/`libssl3` 3.5.8-r0, `c-ares` 1.34.8-r0) | **PASS** — "the configured pin is the compatible official image" for both services; no NEWER compatible official build; the C15 gate on the same pins with the six records: 44 findings, 6 records, 0 unmatched, 0 unused |
+| **2026-09-24 21:42** | required `supply-chain` job of ci run **36063029682** (PR #61, the pinned trivy 0.73.0) + local `docker buildx imagetools inspect` of both indexes (`infra/images/official/20260925/`) | `postgres@sha256:77f58511…`, `redis@sha256:ba6e394f…` | `postgres:18-alpine` → `77f58511…` (THE SAME index); `redis:8-alpine` → **`38117873…`** — a DIFFERENT index whose **linux/amd64 and linux/arm64 children are the pinned ones** (`2d3814be…`, `41a10b18…`); only its `linux/riscv64` child (and that child's attestation) was rebuilt | none of the watched ones on any scanned child | **FAIL on purpose** for redis ("a COMPATIBLE FIXED OFFICIAL image now exists … NEWER than the configured pin"): the update process ran (§8.5) — re-pinned to `38117873…` on 2026-09-25; no SCX record names the redis pin; nothing we run changed |
 
 ## 8. The return to the official images (2026-09-22)
 
@@ -253,3 +254,38 @@ C15 trace fixture and `real-image-results.json` re-recorded from a real local ru
 release scanners (authenticated by `scripts/gate/install-scanners.sh`) against the official indexes (item 2),
 and the recheck completed as above (item 3). The live containers' recreation onto the official images remains
 the separate recorded operation named in item 3. The FINAL chain is the hosted run on the approving commits.
+
+
+### 8.5 The first update after the return: redis:8-alpine's tag moved (2026-09-25)
+
+**What fired.** The required `supply-chain` job of ci run 36063029682 (PR #61, 2026-09-24 21:42 UTC) resolved
+`redis:8-alpine` to the index `sha256:38117873…`, not the configured pin `ba6e394f…`, with every watched fix on both
+platforms, and failed as §8.4's table requires ("a COMPATIBLE FIXED OFFICIAL image now exists … NEWER than the
+configured pin"). Postgres passed ("the configured pin is the compatible official image"). The run's recheck output is
+kept as `infra/images/official/20260925/RECHECK-run-36063029682.txt`.
+
+**What actually changed upstream.** Both indexes were fetched read-only (`docker buildx imagetools inspect --raw`;
+`infra/images/official/20260925/index/redis.index.raw.json`, 10,213 bytes, sha256 of the bytes == `38117873…`) and compared
+manifest by manifest with the 2026-09-22 capture (`index/redis.index.diff.txt`): **14 of the 16 manifests are identical;
+only the `linux/riscv64` child (`e4e3d2f0…` → `718505e2…`) and its attestation manifest changed.** The two runnable
+children this product pins, runs and scans — `linux/amd64` `2d3814be…` and `linux/arm64` `41a10b18…` — are byte-identical
+(same digests), so the 2026-09-22 provenance (`20260922/source/SOURCE.txt`), inventories, scans (0 findings at every
+severity) and compatibility passes apply to them unchanged: they are the same images.
+
+**The update process (§8.4), each step.**
+1. Re-pinned `docker-compose.yml`, `apps/api/test/gate/docker-compose.yml` and `conformance.manifest.json`
+   (`pinned_images.redis.digest` → `redis@sha256:38117873…`; `platform_children` unchanged; `previous` names `ba6e394f…`;
+   `pinned_at` 2026-09-25).
+2. Provenance and compatibility: the index is the Docker Official Image `docker.io/library/redis:8-alpine` (the same
+   `org.opencontainers.image.revision`/`source` annotations on the unchanged children as recorded 2026-09-22); the runnable
+   children are unchanged, so no new compatibility question arises.
+3. SCX records: **none names the redis pin** — all six (SCX-0002…0005, SCX-0010/0011) are scoped to the postgres pin
+   `77f58511…`, which did not move. Nothing is re-issued or retired; no owner approval of a disposition is needed.
+4. Evidence: the C15 trace fixture and `real-image-results.json` are handled as the gate's unit controls require
+   (stated in the commit); the hosted `supply-chain` job on this branch is the real run with the pinned scanners.
+5. The FINAL chain runs on the merge like every maintenance change; the live `eye-redis` container (queues only,
+   rebuildable — `docs/ops/BACKUP_RESTORE.md` §3) is recreated onto the new index only after the merge, as a recorded
+   operation; its running image is byte-identical for this host's platform either way.
+
+Nothing here changes a budget, a cadence, a source, a disposition record or the C19 anchor, and nothing was purchased.
+
