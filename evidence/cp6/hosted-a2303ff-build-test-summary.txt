@@ -1,0 +1,15 @@
+=== the totals of the hosted `ci` run 35982420268 at a2303ff (PR #59 phase6-b21 → main; the synthetic merge a6c8ca5 of a2303ff into e180b18), 2026-09-24 — the lines of the job logs that carry a total, as printed; ONE attempt, every job green; C19 lifecycle 35982420259 green (foreign-checkout-pinning, lifecycle ubuntu-latest and macos-14, delivery-chain-dry) ===
+
+build-test job 107577216792 SUCCESS · supply-chain job 107577216542 SUCCESS · browser-regression job 107577216741 SUCCESS.
+
+packages/tokens test:  Test Files  1 passed (1) · Tests  3 passed (3)
+packages/contracts test:  Test Files  6 passed (6) · Tests  203 passed (203)
+apps/web test:  Test Files  5 passed (5) · Tests  23 passed (23)
+apps/api test (the unit suite):  Test Files  59 passed (59) · Tests  2389 passed (2389)
+apps/api test (the meta suite):  Test Files  1 passed (1) · Tests  9 passed (9)
+the acceptance suite:  Test Files  1 passed (1) · Tests  58 passed (58)
+the integration suite on a fresh database (test:int:all):  ✓ test/int/phase6-fitness-b21.test.ts (6 tests) 36585ms · ✓ test/int/phase6-evidence-degradation-b21.test.ts (6 tests) 1973ms · ✓ test/int/phase6-graph-projections-b21.test.ts (1 test) 3056ms · Test Files  74 passed (74) · Tests  1086 passed (1086)
+the post-C18 upgrade proof:  ✓ Phase 0 suite seeds and passes at 0021: 297/297 passed · ✓ public.schema_migrations: +60 row(s), exactly what these migrations declare they add · ✓ Phase 0 authority behaviour after the upgrade: 297/297 passed · ✓ virgin database migrated from empty (81 files) · ✓ Phase 1 and Phase 2 suites on upgraded data: 276/276 passed
+C18:  C18 dual-path proof: PASS · C18 evidence verification: PASS · Test Files  7 passed (7) · Tests  623 passed (623) · Test Files  2 passed (2) · Tests  44 passed (44)
+supply-chain: success — the C15 gate on the returned official pins: "governed scan dispositions: 6 records, 0 rejected" · "findings 44 across linux/amd64 + linux/arm64, governed 6 record(s), unmatched 0, unused 0"; the recheck's return transition: "postgres: the configured pin is the compatible official image (postgres:18-alpine -> sha256:77f58511…; every watched fix (openssl, util-linux/postgres, c-ares) is present on linux/amd64 and linux/arm64)" · "redis: the configured pin is the compatible official image (redis:8-alpine -> sha256:ba6e394f…; every watched fix (openssl, util-linux/redis) is present on linux/amd64 and linux/arm64)" · c15-recheck: PASS
+browser-regression: success — 51 passed (1.2m): the Phase 0 ten, the Phase 1 sixteen, the B18 twenty, the B19 two, the B20 three (B21 adds no hosted walk; its fitness walk is a demo spec)
