@@ -314,7 +314,7 @@ export class AgentsService {
           null, p.bindings.filter((b) => b.tenantId === T && (b.scope !== 'DOMAIN' || b.domainId === D)).map((b) => b.roleCode));
         return { result: r, targetType: 'BRF', targetId: briefingId, targetVersion: '1', outboxEvent: null };
       });
-    return { room_id: roomId, package_id: packageId, briefing_id: briefingId, content_digest: out.result.contentDigest, items: out.result.items.length, degraded: out.result.degraded, monitoring, marked: 'agent-produced', agent: identity,
+    return { room_id: roomId, package_id: packageId, briefing_id: briefingId, content_digest: out.result.contentDigest, items: out.result.items.length, degraded: out.result.degraded, memory_source: out.result.memorySource.state, monitoring, marked: 'agent-produced', agent: identity,
              provenance: { purpose: 'briefing', package_id: packageId, room_id: roomId, classification: String(out.result.controls.classification), contributors: out.result.sources } };
   }
 

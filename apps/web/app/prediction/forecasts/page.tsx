@@ -11,10 +11,33 @@
  */
 import { useEffect, useState } from 'react';
 import { useShell } from '../layout';
-import { prediction, type ForecastRow, type SeriesRow } from '../../../lib/prediction';
+import { prediction, type ForecastRow, type SeriesRow, type FitnessAssessment, type FitnessMeasures } from '../../../lib/prediction';
 import { graph, type StrategyRow } from '../../../lib/graph';
+import { fitnessLabel } from '../../../lib/fitness';
 import { Empty, LiveStatus, Mono, cardStyle, DefinitionRow, UnknownNote, GovernedButton, fmtInstant } from '../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui';
+
+/** B21: a forecast's fitness flag — the server's state and, for UNFIT, its class; glyph + label + token, never colour alone. */
+export function FitnessFlag({ row }: { row: { fitness_state?: unknown; fitness_class?: unknown } }) {
+  const f = fitnessLabel(row, 'forecast');
+  return <span style={{ color: `var(${f.token})`, fontWeight: 650, fontSize: 'var(--eye-type-label-sm)' }}><span aria-hidden="true">{f.glyph}</span> {f.text}</span>;
+}
+const numOrDash = (v: unknown): string => { const n = Number(v); return v === null || v === undefined || !Number.isFinite(n) ? '—' : n.toFixed(3).replace(/\.?0+$/, ''); };
+/** The measures an assessment recorded, in words: the window, the coverage against its floor, the pinball against the backtest, the expiry, the note. */
+function MeasuresText({ m }: { m: FitnessMeasures | null | undefined }) {
+  if (m === null || m === undefined) return <span style={{ color: 'var(--eye-color-ink-muted)' }}>measures not recorded</span>;
+  return (
+    <span style={{ fontSize: 'var(--eye-type-label-sm)' }}>
+      window {m.window ? <>{m.window.outcomes} of {m.window.required} outcome(s) in <Mono>{m.window.series_key} · {m.window.horizon} · {m.window.method}</Mono></> : '—'}
+      {' · '}coverage {m.coverage ? <>{numOrDash(m.coverage.observed)} against a floor of {numOrDash(m.coverage.floor)} ({m.coverage.checked ? 'checked' : 'not checked — the window is thin'})</> : '—'}
+      {' · '}pinball {m.pinball ? <>{numOrDash(m.pinball.observed)} against the backtest’s {numOrDash(m.pinball.backtest)} × {numOrDash(m.pinball.factor)} ({m.pinball.checked ? 'checked' : 'not checked'})</> : '—'}
+      {' · '}attention <Mono>{m.attention_state ?? '—'}</Mono>
+      {' · '}expiry {m.expiry ? <>{m.expiry.expires_at === null ? 'none' : fmtInstant(m.expiry.expires_at)} (cadence {m.expiry.cadence ?? '—'}; {m.expiry.checked ? 'checked' : 'not checked'})</> : '—'}
+      {Array.isArray(m.classes) && m.classes.length > 0 ? <> · classes <Mono>{m.classes.join(', ')}</Mono></> : null}
+      {typeof m.note === 'string' && m.note !== '' ? <div style={{ color: 'var(--eye-color-ink-muted)' }}>{m.note}</div> : null}
+    </span>
+  );
+}
 
 export function ValidationBadge({ state, label }: { state: ForecastRow['validation_state']; label: ForecastRow['label'] }) {
   const map: Record<string, { glyph: string; token: string; text: string }> = {
@@ -65,6 +88,9 @@ export default function ForecastsPage() {
   const [horizon, setHorizon] = useState('30d');
   const [assumptionId, setAssumptionId] = useState('');
   const [label, setLabel] = useState<'replay demonstration' | 'live'>('replay demonstration');
+  /* B21: the assessment as the port recorded it, or the server's refusal — never a verdict derived here. */
+  const [assessed, setAssessed] = useState<FitnessAssessment | null>(null);
+  const [assessRefused, setAssessRefused] = useState<string | null>(null);
 
   const load = async (asOf?: string) => {
     const [f, s, g] = await Promise.all([prediction.listForecasts(scope, asOf), prediction.listSeries(scope), graph.listStrategy(scope)]);
@@ -115,7 +141,7 @@ export default function ForecastsPage() {
                 <Td mono>{num(r.quantiles.q10)} / {num(r.quantiles.q50)} / {num(r.quantiles.q90)}</Td>
                 <Td mono>{r.method}</Td>
                 <Td><ValidationBadge state={r.validation_state} label={r.label} /></Td>
-                <Td>{r.state}{r.attention_state === 'none' ? '' : ' · NEEDS ATTENTION'}</Td>
+                <Td>{r.state}{r.attention_state === 'none' ? '' : ' · NEEDS ATTENTION'} · <FitnessFlag row={r} /></Td>
               </tr>
             ))}
           </tbody>
@@ -168,7 +194,37 @@ export default function ForecastsPage() {
                 ))}
               </DefinitionRow>
             )}
+            {/* B21 (0081, L6-I03): the latest assessment under the versioned rule — the state, the class an UNFIT names, the measures; a row from before 0081 reads "not assessed". */}
+            <DefinitionRow term="Fitness">
+              <FitnessFlag row={open} />
+              {open.fitness === null || open.fitness === undefined || open.fitness.state === 'none' ? (
+                <div style={{ fontSize: 'var(--eye-type-label-sm)', color: 'var(--eye-color-ink-muted)' }}>no assessment recorded — the rule’s verdict is recorded by an outcome, the forecast consumer, or a forecast owner’s assessment below</div>
+              ) : (
+                <>
+                  <div style={{ fontSize: 'var(--eye-type-label-sm)' }}>
+                    class <Mono>{open.fitness.class ?? 'none'}</Mono> · rule v{open.fitness.rule_version ?? '?'} · trigger <Mono>{open.fitness.trigger ?? '—'}</Mono> · assessed {open.fitness.assessed_at ? fmtInstant(open.fitness.assessed_at) : '—'} · assessment <Mono>{String(open.fitness.assessment_id ?? '').slice(0, 8)}…</Mono>
+                  </div>
+                  <div><MeasuresText m={open.fitness.measures} /></div>
+                  {open.fitness.state === 'unfit' ? <div style={{ fontSize: 'var(--eye-type-label-sm)', color: 'var(--eye-color-ink-muted)' }}>an unfit forecast is not withdrawn by the assessment: the withdrawal (L6-I05) stays the owner’s act, made through the API; a scenario is not declared on it</div> : null}
+                </>
+              )}
+            </DefinitionRow>
           </dl>
+          {isForecastOwner && open.state !== 'withdrawn' ? (
+            <GovernedButton label="Assess fitness under the rule" pendingLabel="assessing" variant="quiet"
+              onRun={async () => {
+                setAssessRefused(null);
+                const r = await prediction.assessForecast(scope, open.forecast_id);
+                if (!r.ok || r.data === undefined) { const m = `HTTP ${r.status}${r.error?.code ? ` ${r.error.code}` : ''} — ${r.error?.message ?? 'the assessment was not answered'}`; setAssessed(null); setAssessRefused(m); throw new Error(m); }
+                setAssessed(r.data.assessment); setReceipt(r.data.receipt); await openOne(open.forecast_id); await load();
+              }} />
+          ) : null}
+          {assessRefused !== null ? <LiveStatus assertive><span style={{ color: 'var(--eye-color-critical)' }}>not assessed — {assessRefused}</span></LiveStatus> : null}
+          {assessed === null || assessed.forecast_id !== open.forecast_id ? null : (
+            <LiveStatus>
+              assessed <strong>{assessed.verdict}</strong>{assessed.class ? <> ({assessed.class})</> : null} — {assessed.changed ? `changed from ${assessed.prior_state}${assessed.prior_class ? ` (${assessed.prior_class})` : ''}` : 'unchanged'} · rule v{assessed.measures.rule_version ?? '?'} · <MeasuresText m={assessed.measures} />
+            </LiveStatus>
+          )}
           {isForecastOwner && open.state === 'issued' ? (
             <GovernedButton label="Score against the outcome" pendingLabel="scoring" variant="quiet"
               onRun={async () => {

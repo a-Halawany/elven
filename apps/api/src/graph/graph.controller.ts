@@ -903,9 +903,10 @@ export class GraphController {
     const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'graph.read', 'MEM', null), GraphCapability.read,
       async (cap, scope) => {
         // B20: the projection state FIRST; a withdrawn memory_items_current lists the log's last valid state (index_state 'stale').
+        // B21: the reader's canonical statements failing while withdrawn → 503 EYE-DEG-001 (the pipeline's failure row carries the code).
         const projection = await projectionStateOf(cap, ROUTE_PARTITIONS.memoryList);
         const withdrawn = projection.withdrawn.includes('memory_items_current');
-        return { memory: await this.memory.list(cap, body.payload?.limit ?? 200, { withdrawn, scope: scopeOf(scope) }), projection };
+        return { memory: await this.memory.list(cap, body.payload?.limit ?? 200, { withdrawn, scope: scopeOf(scope), refusal: { projection, correlationId: envelope.correlation_id } }), projection };
       });
     return { memory: out.result.memory, projection: out.result.projection, receipt: receipt(out) };
   }
@@ -917,9 +918,10 @@ export class GraphController {
     const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'graph.read', 'MEM', itemId), GraphCapability.read,
       async (cap, scope) => {
         // B20: the projection state FIRST; a withdrawn memory_items_current serves the record from the log (a poisoned id is absent there → 404).
+        // B21: the reader's canonical statements failing while withdrawn → 503 EYE-DEG-001 (the pipeline's failure row carries the code).
         const projection = await projectionStateOf(cap, ROUTE_PARTITIONS.memoryGet);
         const withdrawn = projection.withdrawn.includes('memory_items_current');
-        const item = await this.memory.current(cap, itemId, { withdrawn, scope: scopeOf(scope) });
+        const item = await this.memory.current(cap, itemId, { withdrawn, scope: scopeOf(scope), refusal: { projection, correlationId: envelope.correlation_id } });
         if (item === null) return null;
         return { item: MemoryService.record(item), events: await this.memory.events(cap, itemId), access: await this.memory.accessHistory(cap, itemId), dependencies: await this.memory.dependencies(cap, itemId), projection };
       });

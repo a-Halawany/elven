@@ -6,9 +6,22 @@
  * bound action. A forecasting job holds `forecast` and can issue a forecast; it
  * cannot declare a scenario or acknowledge a warning, because those are a
  * person's acts and the interfaces do not offer them.
+ *
+ * CP-6 B21 (0081, L6-I03, L7-I04): the FITNESS ASSESSMENT of a forecast (`prediction.assess_forecast_fitness` under the
+ * versioned rule `prediction.forecast_fitness_rule()`) — run by the outcome write, by the forecast subscriber beside its
+ * mark and by a person (AssessWrites) — and the COHERENCE CHECK of a scenario (`prediction.check_scenario_coherence`
+ * under `prediction.scenario_coherence_rule()`) — run at the end of the declaring write, in review, by the scenario
+ * subscriber beside its mark and by a person (ScenarioWrites); their ledgers are read back on the reads.
  */
 import { sql } from 'kysely';
 import type { Tx } from '../shared/db.js';
+
+/** B21 (0081): who assesses — the outcome write (`prediction.outcome.record`), the forecast subscriber (`…subscription.apply`) or a person (`prediction.forecast.assess`). */
+export type FitnessTrigger = 'outcome' | 'subscription' | 'operator';
+/** B21 (0081): who checks — the declaring write, the review, the scenario subscriber or a person (`prediction.scenario.check`). */
+export type CoherenceTrigger = 'declare' | 'review' | 'subscription' | 'operator';
+export interface AssessForecastFitnessArgs { assessmentId: string; forecastId: string; tenantId: string; domainId: string; trigger: FitnessTrigger; actor: string; eventId: string; correlationId: string }
+export interface CheckScenarioCoherenceArgs { checkId: string; scenarioId: string; tenantId: string; domainId: string; trigger: CoherenceTrigger; actor: string; eventId: string; correlationId: string }
 
 abstract class PredictionCore {
   readonly #tx: Tx;
@@ -54,6 +67,9 @@ export interface PredictionReads {
   readStrategy(): any;
   /** CP-6 B6 (0063): the dependency rows a forecast or scenario rests on, so the subscriber selects by them. */
   readDependencies(): any;
+  /** B21 (0081): the fitness assessment ledger (prediction.forecast_fitness_assessments) and the coherence check ledger (prediction.scenario_coherence_checks). */
+  readFitnessAssessments(): any;
+  readCoherenceChecks(): any;
   /**
    * The evidence VERSIONS a series can read at an instant: for every evidence
    * object of the source, the highest version recorded at or before `knownAt`.
@@ -134,6 +150,15 @@ export interface OutcomeWrites extends PredictionReads {
     observedOn: string; substitution: string;
     actor: string; eventId: string; correlationId: string;
   }): Promise<void>;
+  /** B21 (0081, D6 a): the outcome write ASSESSES the scored forecast (when resolved) and the issued forecasts of its family, trigger `outcome`, under its own bound action. */
+  assessForecastFitness(a: AssessForecastFitnessArgs): Promise<Record<string, unknown>>;
+  changeSubscriptions(a: { tenantId: string; domainId: string; changeKind: string }): Promise<Array<{ subscription_id: string; consumer_kind: string }>>;
+}
+
+/** B21 (0081, D6 c): a person's assessment (POST …/forecasts/:id/assess, `prediction.forecast.assess`) — a ledger read that records its answer; trigger `operator`. */
+export interface AssessWrites extends PredictionReads {
+  assessForecastFitness(a: AssessForecastFitnessArgs): Promise<Record<string, unknown>>;
+  changeSubscriptions(a: { tenantId: string; domainId: string; changeKind: string }): Promise<Array<{ subscription_id: string; consumer_kind: string }>>;
 }
 
 export interface ScenarioWrites extends PredictionReads {
@@ -161,6 +186,8 @@ export interface ScenarioWrites extends PredictionReads {
     scenarioId: string; tenantId: string; domainId: string; branchId: string | null; outcome: string; note: string;
     dissent: Record<string, unknown> | null; nextReviewBy: string | null; actor: string; eventId: string; correlationId: string;
   }): Promise<Record<string, unknown>>;
+  /** B21 (0081, D9): the COHERENCE CHECK — at the end of the declaring write (trigger `declare`, after the branches are added) and by a person (`prediction.scenario.check`, trigger `operator`); the review's own check runs inside prediction.review_scenario. */
+  checkScenarioCoherence(a: CheckScenarioCoherenceArgs): Promise<Record<string, unknown>>;
 }
 
 export interface IndicatorWrites extends PredictionReads {
@@ -213,10 +240,14 @@ export interface AcknowledgeWrites extends PredictionReads {
 export interface PredictionSubscriberWrites extends PredictionReads {
   markForecastAttention(a: { forecastId: string; tenantId: string; domainId: string; reason: string; outboxEventId: string; subscriptionId: string; actor: string; correlationId: string }): Promise<boolean>;
   markScenarioAttention(a: { scenarioId: string; tenantId: string; domainId: string; reason: string; outboxEventId: string; subscriptionId: string; actor: string; correlationId: string }): Promise<boolean>;
+  /** B21 (0081, D6 b / D9 c): the subscribers ASSESS the forecast they marked and RE-CHECK the scenario they marked (trigger `subscription`), publishing what changed from the item's own transaction. */
+  assessForecastFitness(a: AssessForecastFitnessArgs): Promise<Record<string, unknown>>;
+  checkScenarioCoherence(a: CheckScenarioCoherenceArgs): Promise<Record<string, unknown>>;
+  changeSubscriptions(a: { tenantId: string; domainId: string; changeKind: string }): Promise<Array<{ subscription_id: string; consumer_kind: string }>>;
 }
 
 class PredictionCapabilityImpl extends PredictionCore
-  implements SeriesWrites, ForecastWrites, BacktestWrites, OutcomeWrites, ScenarioWrites,
+  implements SeriesWrites, ForecastWrites, BacktestWrites, OutcomeWrites, AssessWrites, ScenarioWrites,
              IndicatorWrites, EvaluationWrites, WarningWrites, AcknowledgeWrites, PredictionSubscriberWrites {
   constructor(tx: Tx, action: string) { super(tx, action); }
 
@@ -235,6 +266,23 @@ class PredictionCapabilityImpl extends PredictionCore
   readWarningEvents(): any { return this.from('prediction.warning_events'); }
   readStrategy(): any { return this.from('graph.strategy_current'); }
   readDependencies(): any { return this.from('graph.dependencies'); }
+  readFitnessAssessments(): any { return this.from('prediction.forecast_fitness_assessments'); }
+  readCoherenceChecks(): any { return this.from('prediction.scenario_coherence_checks'); }
+
+  /** B21 (0081): prediction.assess_forecast_fitness(uuid,uuid,uuid,uuid,text,uuid,uuid,uuid) — the port's jsonb answer, whole (the ForecastFitnessChanged@v1 material). */
+  async assessForecastFitness(a: AssessForecastFitnessArgs): Promise<Record<string, unknown>> {
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select prediction.assess_forecast_fitness(
+      ${a.assessmentId}::uuid, ${a.forecastId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.trigger},
+      ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  /** B21 (0081): prediction.check_scenario_coherence(uuid,uuid,uuid,uuid,text,uuid,uuid,uuid) — the port's jsonb answer, whole (the ScenarioCoherenceFailed@v1 material). */
+  async checkScenarioCoherence(a: CheckScenarioCoherenceArgs): Promise<Record<string, unknown>> {
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select prediction.check_scenario_coherence(
+      ${a.checkId}::uuid, ${a.scenarioId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.trigger},
+      ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
 
   async evidenceVersionsKnownAt(a: { sourceKey: string; knownAt: string }): Promise<EvidenceVersionRow[]> {
     return this.call<EvidenceVersionRow>(sql`
@@ -454,7 +502,11 @@ export const PredictionCapability = {
   withdraw(tx: Tx, action: string): ForecastWrites { return new PredictionCapabilityImpl(tx, action); },
   backtest(tx: Tx, action: string): BacktestWrites { return new PredictionCapabilityImpl(tx, action); },
   outcome(tx: Tx, action: string): OutcomeWrites { return new PredictionCapabilityImpl(tx, action); },
+  /** B21 (0081): the assess route's capability (prediction.forecast.assess) — the assessment port and the subscriptions read; no admission. */
+  assess(tx: Tx, action: string): AssessWrites { return new PredictionCapabilityImpl(tx, action); },
   scenario(tx: Tx, action: string): ScenarioWrites { return new PredictionCapabilityImpl(tx, action); },
+  /** B21 (0081): the check-coherence route's capability (prediction.scenario.check) — the check port and the reads (the ScenarioWrites shape reused). */
+  check(tx: Tx, action: string): ScenarioWrites { return new PredictionCapabilityImpl(tx, action); },
   indicator(tx: Tx, action: string): IndicatorWrites { return new PredictionCapabilityImpl(tx, action); },
   evaluation(tx: Tx, action: string): EvaluationWrites { return new PredictionCapabilityImpl(tx, action); },
   warning(tx: Tx, action: string): WarningWrites { return new PredictionCapabilityImpl(tx, action); },

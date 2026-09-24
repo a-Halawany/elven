@@ -1,0 +1,17 @@
+=== the unit suite at the B21 tree (apps/api: pnpm test — vitest, then the meta suite), 2026-09-23T22:5xZ (the reconcile agent's run on the reconciled tree) — 2338 (B20) + 51 = 2389 in 59 files: memory-fallback-content-tier (the query double, the ordinal — 9 + 4), evidence-retrieval-labels (3), phase6-refusals-b21 (the five families, the five run classes, the order probes), phase6-fitness-events-b21 (the five builders key by key, the GRAPH_CHANGE_KINDS pin), twin/simulation-events widened by the B21 keys; memory-content-tier's seven unchanged (the re-export); the C15 gate files green on a quiet tree ===
+
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/apps/api
+ Test Files  59 passed (59)
+      Tests  2389 passed (2389)
+   Duration  263.45s (transform 2.91s, setup 0ms, import 7.97s, tests 1317.34s, environment 3ms)
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/apps/api
+ Test Files  1 passed (1)
+      Tests  9 passed (9)
+   Duration  216.71s (transform 10ms, setup 0ms, import 15ms, tests 216.63s, environment 0ms)
+unit rc=0
+
+--- re-run after the rehearsal wedge's fix (2026-09-24, apps/api: pnpm test): the whole unit suite and the meta suite
+ Test Files  59 passed (59)
+      Tests  2389 passed (2389)
+ Test Files  1 passed (1)
+      Tests  9 passed (9)

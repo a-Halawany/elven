@@ -73,7 +73,7 @@
  *
  *   P9 · THE OPERATOR'S ACTS: the withdrawal idempotent (a second reason recorded, no state change), the strategy reads from the log-join,
  *   the rebuild restoring, a rebuild of a serving partition refused 409, the analyst's withdrawal 403, an unknown projection 404, a short
- *   reason 422, a foreign domain 403 EYE-TEN-001 (C13: the domain exists; the principal has no standing there), the register 36/14/0 with
+ *   reason 422, a foreign domain 403 EYE-TEN-001 (C13: the domain exists; the principal has no standing there), the register (36/14/0 at B20; 40/10/0 since 0081 — the one pin B21 moved in this file) with
  *   L3-I02's B20 clause.
  *
  *   P8 · THE SEARCH'S COMPLETENESS (V03-T-098), LAST: 1,001 entities with their events → complete.entities false, the bound named, 50 hits,
@@ -966,7 +966,7 @@ describe('B20 · the index tier: the watermark, the symmetric check that withdra
     sixEvidence('P7', { fault_trace: { withdrawal: wd['event_id'], execution_refusal: paused.message.slice(0, 160) }, watermark: { edges_current: 'withdrawn' }, consumer_behaviour: { action: 'paused', failure_class: 'unresolved_dependency', disposition: 'human_review', approvals_revoked: true, attempts: 0 }, operator_action: { rebuild_id: report['rebuild_id'], re_resolution: 'scope_resolved', new_approval: true }, recovery: { executed: 1, tombstoned: true }, reconciliation: { events } });
   }, 300_000);
 
-  it('P9 · THE OPERATOR\'S ACTS: the withdrawal idempotent and audited, the strategy reads from the log-join, the restore, a rebuild of a serving partition refused 409, the analyst 403, an unknown projection 404, a short reason 422, a foreign domain 403 EYE-TEN-001 (C13); the register 36/14/0 with L3-I02\'s clause', async () => {
+  it('P9 · THE OPERATOR\'S ACTS: the withdrawal idempotent and audited, the strategy reads from the log-join, the restore, a rebuild of a serving partition refused 409, the analyst 403, an unknown projection 404, a short reason 422, a foreign domain 403 EYE-TEN-001 (C13); the register (40/10/0 since B21; 36/14/0 at B20) with L3-I02\'s clause', async () => {
     const first = (await withdraw(domainAdmin, 'strategy_current', 'first reason (harness)')).projection;
     expect(first).toMatchObject({ projection: 'strategy_current', state: 'withdrawn', changed: true, reason: 'first reason (harness)', second_reason: null });
     const second = (await withdraw(domainAdmin, 'strategy_current', 'second reason (harness)')).projection;
@@ -998,11 +998,12 @@ describe('B20 · the index tier: the watermark, the symmetric check that withdra
     expect((await partition('edges_current'))!.state).toBe('serving');
     const reg = (await interfaces()).interfaces;
     const count = (s: string) => reg.filter((r) => r['binding_state'] === s).length;
-    expect([reg.length, count('bound'), count('partial'), count('unbound')]).toEqual([50, 36, 14, 0]);
+    // B21 (0081 §10): L5-I05, L6-I03, L7-I04 and L8-I04 bound → 40/10/0 (this file runs on the same tree; the B20 state was 36/14/0)
+    expect([reg.length, count('bound'), count('partial'), count('unbound')]).toEqual([50, 40, 10, 0]);
     const l3 = reg.find((r) => r['interface_id'] === 'L3-I02')!;
     expect(l3['binding_state']).toBe('partial'); expect(String(l3['bound_to'])).toContain('B20 (0080)');
     const state = (await read(analyst, 'edgesList')).projection;
-    sixEvidence('P9', { fault_trace: { withdrawals: [first['event_id'], second['event_id']], refusals: { serving: 409, analyst: 403, unknown: 404, short: 422, foreign: 'EYE-TEN-001' } }, watermark: { checkpoint_seq: state.checkpoint_seq, verified_seq: state.verified_seq, note: 'unchanged by the operator\'s acts (no outbox event but the rebuild\'s)' }, consumer_behaviour: '/strategy/list from the log-join (from projection on the content columns)', operator_action: { rebuild_id: report['rebuild_id'] }, recovery: { outcome: 'restored' }, reconciliation: { ledger: ['withdrawn true', 'withdrawn false', 'restored'], register: '36/14/0' } });
+    sixEvidence('P9', { fault_trace: { withdrawals: [first['event_id'], second['event_id']], refusals: { serving: 409, analyst: 403, unknown: 404, short: 422, foreign: 'EYE-TEN-001' } }, watermark: { checkpoint_seq: state.checkpoint_seq, verified_seq: state.verified_seq, note: 'unchanged by the operator\'s acts (no outbox event but the rebuild\'s)' }, consumer_behaviour: '/strategy/list from the log-join (from projection on the content columns)', operator_action: { rebuild_id: report['rebuild_id'] }, recovery: { outcome: 'restored' }, reconciliation: { ledger: ['withdrawn true', 'withdrawn false', 'restored'], register: '40/10/0 (36/14/0 at B20; B21 bound four rows)' } });
   }, 300_000);
 
   it('P8 · THE SEARCH\'S COMPLETENESS (V03-T-098), LAST: 1,001 entities with their events → complete.entities false, the bound named, 50 hits, the projection current after the next check (nothing unexpected)', async () => {

@@ -17,6 +17,14 @@
  * POST …/forecasts/:forecastId/withdraw (L6-I05) lets the owner mark an issued
  * forecast unfit — the withdrawn FCT version admitted, the dependants named, the
  * consumers marked through GraphChanged/forecast.withdrawn.
+ *
+ * CP-6 B21 (0081): POST …/forecasts/:forecastId/assess (L6-I03, `prediction.forecast.assess`)
+ * records the rule's verdict on a forecast's fitness and publishes what changed;
+ * the outcome route assesses the scored forecast and its family in the same write;
+ * POST …/scenarios/:scenarioId/check-coherence (L7-I04, `prediction.scenario.check`)
+ * records a coherence check; the declare route checks at the end of its write and
+ * the review route publishes the check its port ran — each publishing
+ * ScenarioCoherenceFailed@v1 on a failed and changed check.
  */
 import { Body, Controller, HttpException, Param, Post, Req } from '@nestjs/common';
 import { errorBody, type Envelope } from '@eye/contracts';
@@ -238,6 +246,30 @@ export class PredictionController {
     return { withdrawal: out.result, receipt: receipt(out) };
   }
 
+  /**
+   * B21 (0081, L6-I03): a PERSON's assessment of a forecast's fitness — the port judges under the versioned rule and records
+   * the ledger row and the state; the write publishes ForecastFitnessChanged@v1 when the verdict or the class moved and
+   * GraphChanged/forecast.fitness_changed beside it on a transition to unfit. Nothing is withdrawn: that stays the owner's act.
+   */
+  @Post('/forecasts/:forecastId/assess')
+  async assessForecast(
+    @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string,
+    @Param('forecastId') forecastId: string, @Body() _body: { payload?: Record<string, unknown> },
+  ) {
+    const { envelope, principal } = ctx(req);
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(forecastId)) {
+      throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'forecastId must be a forecast id'), 422);
+    }
+    const out = await this.pipeline.write(
+      envelope, principal, this.route(tenantId, domainId, 'prediction.forecast.assess', 'FCT', forecastId),
+      PredictionCapability.assess,
+      async (cap, scope) => {
+        const r = await this.forecasting.assess(cap, scope, forecastId, 'operator', principal.principalId, envelope.correlation_id);
+        return { result: r.assessment, targetType: 'FCT', targetId: forecastId, targetVersion: '1', outboxEvent: null, outboxEvents: r.events };
+      });
+    return { assessment: out.result, receipt: receipt(out) };
+  }
+
   @Post('/forecasts/list')
   async listForecasts(
     @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string,
@@ -327,9 +359,10 @@ export class PredictionController {
       envelope, principal, this.route(tenantId, domainId, 'prediction.outcome.record', 'OUT', forecastId),
       PredictionCapability.outcome,
       async (cap, scope) => {
-        const r = await this.forecasting.recordOutcome(cap, scope, reader, forecastId,
+        // B21 (0081, C19): the outcome write assesses the scored forecast (when resolved) and its family's issued forecasts; the events ride this transaction.
+        const { outcome, events } = await this.forecasting.recordOutcome(cap, scope, reader, forecastId,
           instant(body.payload?.knownAt, new Date().toISOString()), principal.principalId, envelope.correlation_id);
-        return { result: r, targetType: 'OUT', targetId: String(r['outcomeId']), targetVersion: '1', outboxEvent: null };
+        return { result: outcome, targetType: 'OUT', targetId: String(outcome['outcomeId']), targetVersion: '1', outboxEvent: null, outboxEvents: events };
       });
     return { outcome: out.result, receipt: receipt(out) };
   }
@@ -472,9 +505,10 @@ export class PredictionController {
       envelope, principal, this.route(tenantId, domainId, 'prediction.scenario.declare', 'SCN', scenarioId),
       PredictionCapability.scenario,
       async (cap, scope) => {
-        const r = await this.scenarios.declare(cap, scope, intake, principal.principalId, envelope.correlation_id, envelope.purpose_id ?? 'prediction', scenarioId);
+        // B21 (0081, D9 a): the declaring write ends with the coherence check (the scenario admitted whatever the outcome); a failed and changed check is published.
+        const { event, ...r } = await this.scenarios.declare(cap, scope, intake, principal.principalId, envelope.correlation_id, envelope.purpose_id ?? 'prediction', scenarioId);
         const fulfilled = requestId === null ? null : await cap.fulfilExecutiveRequest({ requestId, tenantId: scope.tenantId as string, domainId: scope.domainId as string, routedRef: scenarioId, note: 'scenario declared', actor: principal.principalId, correlationId: envelope.correlation_id });
-        return { result: { ...r, fulfilled_request: fulfilled }, targetType: 'SCN', targetId: r.scenarioId, targetVersion: '1', outboxEvent: null };
+        return { result: { ...r, fulfilled_request: fulfilled }, targetType: 'SCN', targetId: r.scenarioId, targetVersion: '1', outboxEvent: event };
       });
     return { scenario: out.result, receipt: receipt(out) };
   }
@@ -505,9 +539,31 @@ export class PredictionController {
       PredictionCapability.scenario,
       async (cap, scope) => {
         const r = await this.scenarios.review(cap, scope, { scenarioId, branchId, outcome, note, dissent, nextReviewBy }, principal.principalId, envelope.correlation_id);
-        return { result: r.review, targetType: 'SCN', targetId: scenarioId, targetVersion: String(r.review['review_ordinal'] ?? '1'), outboxEvent: r.event };
+        // B21 (0081, D9 b): the check the review port ran first (continue, promote) is published beside the review when it failed and changed.
+        return { result: r.review, targetType: 'SCN', targetId: scenarioId, targetVersion: String(r.review['review_ordinal'] ?? '1'), outboxEvent: r.event,
+                 outboxEvents: r.coherenceEvent === null ? [] : [r.coherenceEvent] };
       });
     return { review: out.result, receipt: receipt(out) };
+  }
+
+  /** B21 (0081, L7-I04): a PERSON's coherence check of a scenario (`prediction.scenario.check`; the review roles) — recorded whatever the outcome; published when failed and changed. */
+  @Post('/scenarios/:scenarioId/check-coherence')
+  async checkCoherence(
+    @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string,
+    @Param('scenarioId') scenarioId: string, @Body() _body: { payload?: Record<string, unknown> },
+  ) {
+    const { envelope, principal } = ctx(req);
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(scenarioId)) {
+      throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'scenarioId must be a scenario id'), 422);
+    }
+    const out = await this.pipeline.write(
+      envelope, principal, this.route(tenantId, domainId, 'prediction.scenario.check', 'SCN', scenarioId),
+      PredictionCapability.check,
+      async (cap, scope) => {
+        const r = await this.scenarios.checkCoherence(cap, scope, scenarioId, principal.principalId, envelope.correlation_id);
+        return { result: r.coherence, targetType: 'SCN', targetId: scenarioId, targetVersion: '1', outboxEvent: r.event };
+      });
+    return { coherence: out.result, receipt: receipt(out) };
   }
 
   @Post('/scenarios/list')

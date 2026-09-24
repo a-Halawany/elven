@@ -72,6 +72,15 @@ export interface WriteEffect<T> {
    * MemoryCorrected. Each is its own outbox row, enqueued by the pipeline in the same transaction.
    */
   outboxEvents?: Array<{ eventType: string; payload: Record<string, unknown> }>;
+  /**
+   * B21.2 (D2.6): the audit evidence of a write whose HANDLER completed but whose result is a declared refusal or a degraded answer —
+   * a machine reader's evidence retrieval that found the bytes damaged (EYE-INT-001) or the tier unreachable (EYE-DEG-001), both on a
+   * SUCCESS outcome: the handler's ledger row (custody) is a stamped business effect, and 0013's operation closure admits one only
+   * beside exactly one success audit row under the real decision — `failure` is admitted by the type but would fail the commit of any
+   * write that recorded an effect. Omitted, the row reads success/OK as it always has. The transaction commits, so the custody row is
+   * durable beside the audit row — a thrown refusal would roll it back.
+   */
+  evidence?: { outcome?: 'success' | 'failure'; resultCode: string; metadata?: Record<string, unknown> };
 }
 
 function deny(code: 'EYE_AUT_001' | 'EYE_AUT_002' | 'EYE_TEN_001', correlationId: string, message?: string): HttpException {
@@ -175,12 +184,12 @@ export class PipelineService {
         const effect = await handler(capability(tx, route.action), ctx);
         await this.commitPolicy(tx, envelope, route, policyInput, policyResult, polId);
         const aud = await this.commitAudit(tx, envelope, route, {
-          outcome: 'success',
-          resultCode: 'OK',
+          outcome: effect.evidence?.outcome ?? 'success',
+          resultCode: effect.evidence?.resultCode ?? 'OK',
           policyDecisionId: polId,
           policyVersion: policyResult.bundleVersion,
           target: { type: effect.targetType, id: effect.targetId, version: effect.targetVersion },
-          metadata: { assurance: principal.assurance },
+          metadata: { assurance: principal.assurance, ...(effect.evidence?.metadata ?? {}) },
         });
         // Gate-2.2 C8: outbox creation is PIPELINE-PRIVATE. The handler only
         // DESCRIBED the event(s); no business capability can reach this port.

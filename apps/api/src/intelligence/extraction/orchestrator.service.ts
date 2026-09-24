@@ -193,7 +193,7 @@ export class ExtractionOrchestrator {
       let retrievalAuditSeq: number;
       try {
         const got = await this.pipeline.write<
-          { base64: string; contentDigest: string }, AcquisitionWrites>(
+          { integrity: 'verified' | 'unavailable' | 'failed'; base64: string | null; contentDigest: string | null }, AcquisitionWrites>(
           this.envelope({ ...read, principal: a.principal },
             'observation.evidence.retrieve', 'EVD', evdObjectId),
           a.principal,
@@ -211,10 +211,21 @@ export class ExtractionOrchestrator {
                 run_id: runId,
                 mode,
               });
-            return { result: { base64: r.base64, contentDigest: r.contentDigest },
+            // B21.2 (D2.6/D2.7): a refused or degraded read is RETURNED so its custody row commits; the audit row says what the read found —
+            // on a SUCCESS outcome either way (the custody row is a business effect; 0013's closure needs one success audit row beside it).
+            const evidence = r.integrity === 'verified' ? undefined
+              : r.integrity === 'unavailable'
+                ? { outcome: 'success' as const, resultCode: 'EYE-DEG-001', metadata: { integrity: 'unavailable', tier: r.tier, root_unreachable: r.degraded.root } }
+                : { outcome: 'success' as const, resultCode: 'EYE-INT-001', metadata: { integrity: 'failed' } };
+            return { result: { integrity: r.integrity, base64: r.integrity === 'verified' ? r.base64 : null, contentDigest: r.integrity === 'failed' ? null : r.contentDigest },
                      targetType: 'EVD', targetId: evdObjectId, targetVersion: '1',
-                     outboxEvent: null };
+                     outboxEvent: null, ...(evidence === undefined ? {} : { evidence }) };
           });
+        if (got.result.base64 === null) {
+          // An unreachable tier (EYE-DEG-001) or a damaged object (EYE-INT-001) is not this run's to repair: recorded by the custody row
+          // and the audit row the write committed; the evidence is skipped without a receipt, exactly as a thrown refusal was.
+          continue;
+        }
         bytes = Buffer.from(got.result.base64, 'base64');
         retrievalDecisionId = got.policyDecisionId;
         retrievalAuditSeq = got.auditSeq;
@@ -224,9 +235,7 @@ export class ExtractionOrchestrator {
           auditSeq: got.auditSeq,
         });
       } catch {
-        // A refused, withdrawn, tombstoned or damaged object is not this run's to
-        // repair. It is already recorded — by the refusal, or by the integrity
-        // failure Phase 1 writes into custody before it answers.
+        // A refused (403), withdrawn or tombstoned object is not this run's to repair. It is already recorded by the refusal.
         continue;
       }
       evidenceRead += 1;

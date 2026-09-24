@@ -15,15 +15,36 @@
  * the forecast it rests on; a warning folds the scenario's with those of the
  * evidence that breached. A flip's warning is an OBLIGATION recorded with the
  * flip (`warning_state = 'owed'`) and discharged exactly once per flip.
+ *
+ * COHERENCE (CP-6 B21, 0081; L7-I04). A scenario's coherence (unchecked | passed
+ * | failed) is set only by a recorded check whose findings the PORT computes
+ * under the versioned rule (prediction.scenario_coherence_rule: duplicate_branch,
+ * assumption_invalid, forecast_relationship, temporal_order, dependency_retired
+ * fail; coverage and an unchecked free-text basis are notes). The check runs at
+ * the END of the declaring write — after the branches are added, so it sees
+ * them; a failed scenario is ADMITTED failed, never refused —, inside the
+ * review port on a continuation or a promotion (a failed scenario is not
+ * promoted: the port refuses), by the scenario subscriber beside its mark, and
+ * by a person (POST …/scenarios/:id/check-coherence). ScenarioCoherenceFailed@v1
+ * is published on a FAILED and CHANGED check; the gates are the opening port's
+ * (a branch of a failed scenario is not simulated) and the raise's (a warning on
+ * one is raised and marked input_unverified).
  */
 import { HttpException, Injectable } from '@nestjs/common';
 import { canonicalHeaderDigest, errorBody, validateHeader, type CanonicalHeader } from '@eye/contracts';
 import { newId } from '../../shared/ids.js';
 import type { ScopeContext } from '../../shared/scope.js';
+import type { OutboxRow } from '../../graph/subscriptions/change-events.js';
 import type { PredictionReads, ScenarioWrites, IndicatorWrites, EvaluationWrites, WarningWrites,
   AcknowledgeWrites } from '../prediction.capabilities.js';
 import { SeriesService, dayOf, type AssembledSeries, type Reader } from '../series/series.service.js';
 import { foldControls, controlsOf, type Controls } from '../controls.js';
+import { scenarioCoherenceFailedEvent, type ScenarioCoherenceTrigger } from './scenario-events.js';
+
+/** B21 (0081, D9): the event of a check — ScenarioCoherenceFailed@v1 on a FAILED and CHANGED check, else nothing (a pass rides the check row). */
+function coherenceEventOf(check: Record<string, unknown>, trigger: ScenarioCoherenceTrigger, actor: string, occurredAt: string): OutboxRow | null {
+  return check['outcome'] === 'failed' && check['changed'] === true ? scenarioCoherenceFailedEvent({ check, trigger, actor, occurredAt }) : null;
+}
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -148,7 +169,9 @@ export class ScenariosService {
   async declare(
     cap: ScenarioWrites, ctx: ScopeContext, intake: ScenarioIntake, actor: string, correlationId: string, purposeId: string,
     scenarioId: string = newId(),
-  ): Promise<{ scenarioId: string; branches: Array<{ branchId: string; name: string; kind: string }> }> {
+  ): Promise<{ scenarioId: string; branches: Array<{ branchId: string; name: string; kind: string }>;
+               /** B21 (0081): the coherence check run at the end of this write (the port's answer) and its event, when the check failed (the route publishes it). */
+               coherence: Record<string, unknown>; event: OutboxRow | null }> {
     const branches = intake.branches.map((b) => ({ ...b, branchId: newId() }));
     const now = new Date().toISOString();
     // INHERITED: the scenario carries the forecast's controls. A tree declared
@@ -207,7 +230,16 @@ export class ScenariosService {
         actor, eventId: newId(), correlationId,
       });
     }
-    return { scenarioId, branches: branches.map((b) => ({ branchId: b.branchId, name: b.name, kind: b.kind })) };
+    // B21 (0081, D9 a): the check runs HERE, after the branches are added (prediction.add_branch per branch — a check inside
+    // declare_scenario would see none), in the same transaction, trigger `declare`: a failed scenario is ADMITTED failed.
+    const coherence = await cap.checkScenarioCoherence({ checkId: newId(), scenarioId, tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, trigger: 'declare', actor, eventId: newId(), correlationId });
+    return { scenarioId, branches: branches.map((b) => ({ branchId: b.branchId, name: b.name, kind: b.kind })), coherence, event: coherenceEventOf(coherence, 'declare', actor, new Date().toISOString()) };
+  }
+
+  /** B21 (0081, D9 d): a person's check (governed write: `prediction.scenario.check`); the port records it whatever the outcome. */
+  async checkCoherence(cap: ScenarioWrites, ctx: ScopeContext, scenarioId: string, actor: string, correlationId: string): Promise<{ coherence: Record<string, unknown>; event: OutboxRow | null }> {
+    const coherence = await cap.checkScenarioCoherence({ checkId: newId(), scenarioId, tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, trigger: 'operator', actor, eventId: newId(), correlationId });
+    return { coherence, event: coherenceEventOf(coherence, 'operator', actor, new Date().toISOString()) };
   }
 
   async defineIndicator(
@@ -464,20 +496,24 @@ export class ScenariosService {
     cap: ScenarioWrites, ctx: ScopeContext,
     a: { scenarioId: string; branchId: string | null; outcome: string; note: string; dissent: Record<string, unknown> | null; nextReviewBy: string | null },
     actor: string, correlationId: string,
-  ): Promise<{ review: Record<string, unknown>; event: { eventType: string; payload: Record<string, unknown> } }> {
+  ): Promise<{ review: Record<string, unknown>; event: { eventType: string; payload: Record<string, unknown> };
+               /** B21 (0081, D9 b): the coherence check the review port ran first (continue, promote_to_simulation) — its event when it failed and changed. */
+               coherenceEvent: OutboxRow | null }> {
     const eventId = newId();
     const review = await cap.reviewScenario({
       scenarioId: a.scenarioId, tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, branchId: a.branchId,
       outcome: a.outcome, note: a.note, dissent: a.dissent, nextReviewBy: a.nextReviewBy, actor, eventId, correlationId,
     });
+    const now = new Date().toISOString();
+    const coherence = review['coherence'] !== null && typeof review['coherence'] === 'object' ? (review['coherence'] as Record<string, unknown>) : null;
     const event = { eventType: 'ScenarioReviewed', payload: {
       schema: 'ScenarioReviewed', schema_version: 'v1', scenario_id: a.scenarioId, review_event_id: eventId, outcome: a.outcome,
       review_ordinal: review['review_ordinal'] ?? null, state_after: review['state_after'] ?? null, branch: review['branch'] ?? null,
       note: a.note, dissent: a.dissent, next_review_due_at: review['next_review_due_at'] ?? null, branches_closed: review['branches_closed'] ?? 0,
-      links: review['links'] ?? {}, temporal: { known_at: new Date().toISOString() },
+      links: review['links'] ?? {}, coherence, temporal: { known_at: now },
       cause: { action: 'prediction.scenario.review', actor: `principal:${actor}`, target_type: 'SCN', target_id: a.scenarioId },
     } };
-    return { review, event };
+    return { review, event, coherenceEvent: coherence === null ? null : coherenceEventOf(coherence, 'review', actor, now) };
   }
 
   async listScenarios(cap: PredictionReads): Promise<Array<Record<string, unknown>>> {
@@ -492,7 +528,15 @@ export class ScenariosService {
     const branches = (await cap.readBranches().selectAll().where('scenario_id' as never, '=', scenarioId as never).execute()) as Array<Record<string, unknown>>;
     const events = (await cap.readScenarioEvents().selectAll().where('scenario_id' as never, '=', scenarioId as never).orderBy('occurred_at' as never).execute()) as Array<Record<string, unknown>>;
     const indicators = ((await cap.readIndicators().selectAll().execute()) as Array<Record<string, unknown>>).map(withIndicatorDays);
-    return { ...s, branches: branches.map((b) => ({ ...b, indicator: indicators.find((i) => String(i['indicator_id']) === String(b['indicator_id'])) ?? null })), events };
+    // B21 (0081): the coherence as recorded — the state on the row and the check row its coherence_check_id names (never re-checked on read).
+    const checkId = s['coherence_check_id'];
+    const check = checkId === null || checkId === undefined ? undefined
+      : (await cap.readCoherenceChecks().selectAll().where('check_id' as never, '=', checkId as never).executeTakeFirst()) as Record<string, unknown> | undefined;
+    const coherence = check === undefined
+      ? { state: String(s['coherence_state'] ?? 'unchecked') }
+      : { state: String(s['coherence_state'] ?? check['outcome']), check_id: check['check_id'], findings: Array.isArray(check['findings']) ? check['findings'] : [],
+          rule_version: check['rule_version'] ?? null, checked_at: check['checked_at'] ?? null, trigger: check['trigger'] ?? null };
+    return { ...s, branches: branches.map((b) => ({ ...b, indicator: indicators.find((i) => String(i['indicator_id']) === String(b['indicator_id'])) ?? null })), events, coherence };
   }
 
   async listIndicators(cap: PredictionReads): Promise<Array<Record<string, unknown>>> {

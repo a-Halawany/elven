@@ -11,12 +11,15 @@
 import { useEffect, useState } from 'react';
 import { useShell } from '../layout';
 import { prediction, type Calibration } from '../../../lib/prediction';
+import { fitnessLabel } from '../../../lib/fitness';
 import { Empty, LiveStatus, Mono, cardStyle, UnknownNote, fmtInstant } from '../../../components/observation';
 import { tableStyle, Th, Td } from '../../../components/ui';
 
 const pct = (v: unknown): string => { const n = Number(v); return Number.isFinite(n) ? `${(n * 100).toFixed(1)}%` : '—'; };
 const num = (v: unknown): string => { const n = Number(v); return Number.isFinite(n) ? n.toFixed(3).replace(/\.?0+$/, '') : '—'; };
 const met = (v: boolean | null): string => (v === null ? 'not scored' : v ? 'MET' : 'NOT MET');
+/** B21: a measure the assessment recorded — a number, or the structure verbatim; never a value invented here. */
+const measure = (v: unknown): string => (v === null || v === undefined ? '—' : typeof v === 'number' || (typeof v === 'string' && Number.isFinite(Number(v))) ? num(v) : typeof v === 'object' ? JSON.stringify(v) : String(v));
 
 export default function CalibrationPage() {
   const { scope } = useShell();
@@ -73,6 +76,29 @@ export default function CalibrationPage() {
           </table>
         )}
         {c.backtests.map((b) => <p key={`v-${b.backtest_id}`} style={{ fontSize: 'var(--eye-type-label-sm)' }}><Mono>{b.series_key} · {b.horizon_code}</Mono> — {b.verdict} <span style={{ color: 'var(--eye-color-ink-muted)' }}>({fmtInstant(b.computed_at)})</span></p>)}
+      </section>
+
+      {/* B21 (0081, L6-I03): the latest assessment PER FAMILY under the versioned rule — the verdict on LIVE outcomes over the family's last K; indeterminate says the ledger is thin. */}
+      <section aria-labelledby="fit-h" style={{ ...cardStyle, marginBlockStart: 'var(--eye-space-16)' }}>
+        <h2 id="fit-h" style={{ fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 }}>Live fitness by family — the rule’s verdict on live outcomes over the family’s last K</h2>
+        {c.fitness === undefined ? <Empty>This server records no fitness assessment (before 0081).</Empty> : c.fitness.length === 0 ? <Empty>No family has been assessed yet: an outcome, the forecast consumer or a forecast owner’s assessment records the first verdict.</Empty> : (
+          <table className="eye-table" style={tableStyle}>
+            <thead><tr><Th>Series</Th><Th>Horizon</Th><Th>Method</Th><Th>Forecast</Th><Th>Fitness</Th><Th>Outcomes</Th><Th>Coverage</Th><Th>Pinball vs backtest</Th><Th>Rule</Th><Th>Assessed</Th><Th>Trigger</Th></tr></thead>
+            <tbody>
+              {c.fitness.map((f) => {
+                const flag = fitnessLabel({ fitness_state: f.state, fitness_class: f.class }, 'forecast');
+                return (
+                  <tr key={`${f.series_key}|${f.horizon_code}|${f.method}`}>
+                    <Td>{f.series_key}</Td><Td mono>{f.horizon_code}</Td><Td mono>{f.method}</Td><Td mono>{f.forecast_id.slice(0, 8)}…</Td>
+                    <Td><span style={{ color: `var(${flag.token})`, fontWeight: 650 }}><span aria-hidden="true">{flag.glyph}</span> {flag.text}</span></Td>
+                    <Td mono>{f.outcomes}</Td><Td mono>{measure(f.coverage)}</Td><Td mono>{measure(f.pinball_vs_backtest)}</Td>
+                    <Td mono>v{f.rule_version}</Td><Td mono>{fmtInstant(f.assessed_at)}</Td><Td mono>{f.trigger}</Td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
       </section>
 
       <section aria-labelledby="t-h" style={{ ...cardStyle, marginBlockStart: 'var(--eye-space-16)' }}>

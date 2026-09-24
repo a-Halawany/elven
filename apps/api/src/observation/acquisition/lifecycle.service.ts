@@ -125,7 +125,7 @@ interface PriorEvidence {
   tier: 'hot' | 'archive';
 }
 /** Availability of held evidence, established before reuse: verified, or the reason it cannot be reused. */
-type Availability = 'verified' | 'withdrawn' | 'governed-deleted' | 'no-manifest' | 'integrity';
+type Availability = 'verified' | 'unverifiable' | 'withdrawn' | 'governed-deleted' | 'no-manifest' | 'integrity';
 
 interface ContractRow {
   source_id: string;
@@ -705,13 +705,18 @@ export class AcquisitionLifecycle {
      * says what it could not reuse, and the deletion or withdrawal stands untouched.
      */
     let heldUnavailable: { evdObjectId: string; objectVersion: number; reason: Availability } | null = null;
+    // B21.2 (D2.9): 'unverifiable' — the held bytes' tier root could not be reached — is "not readable now", never "gone": the held record
+    // stays the comparison (nothing is admitted twice), the confirmation says the bytes were not re-verified, the quarantine copy is kept.
+    let heldUnverifiable = false;
     if (prior !== null) {
       const a = await this.availabilityOf(scope, prior);
-      if (a !== 'verified') { heldUnavailable = { evdObjectId: prior.evdObjectId, objectVersion: prior.objectVersion, reason: a }; prior = null; }
+      if (a === 'unverifiable') heldUnverifiable = true;
+      else if (a !== 'verified') { heldUnavailable = { evdObjectId: prior.evdObjectId, objectVersion: prior.objectVersion, reason: a }; prior = null; }
     }
     if (heldForPoll !== null) {
       const a = await this.availabilityOf(scope, heldForPoll);
-      if (a !== 'verified') { heldUnavailable = heldUnavailable ?? { evdObjectId: heldForPoll.evdObjectId, objectVersion: heldForPoll.objectVersion, reason: a }; heldForPoll = null; }
+      if (a === 'unverifiable') heldUnverifiable = true;
+      else if (a !== 'verified') { heldUnavailable = heldUnavailable ?? { evdObjectId: heldForPoll.evdObjectId, objectVersion: heldForPoll.objectVersion, reason: a }; heldForPoll = null; }
     }
 
     /*
@@ -726,10 +731,11 @@ export class AcquisitionLifecycle {
     if (prior !== null && prior.contentDigest === stored.contentDigest) {
       await this.appendEvent(req, tenantId, domainId, runId, contract, 'observation.run.checkpoint', 'item.noop', {
         item_key: item.itemKey, evd_object_id: prior.evdObjectId, evd_version: prior.objectVersion,
-        digest: stored.contentDigest, availability: 'verified',
-        reason: 'identical bytes for a window already held; a backfill re-run admits nothing twice',
+        digest: stored.contentDigest, availability: heldUnverifiable ? 'unverifiable' : 'verified', quarantine_copy_kept: heldUnverifiable,
+        reason: `identical bytes for a window already held; a backfill re-run admits nothing twice${heldUnverifiable ? '; the held bytes\' tier root could not be reached: the record\'s digest matched, the bytes were not re-verified' : ''}`,
       });
-      await this.vault.tombstone('quarantine', scope, stored.locator).catch(() => undefined);
+      // B21.2 (D2.9): the quarantine copy is KEPT while the held tier is unreachable (the sweeper's orphan) — the incoming bytes survive if the held ones prove damaged once the tier returns.
+      if (!heldUnverifiable) await this.vault.tombstone('quarantine', scope, stored.locator).catch(() => undefined);
       return { kind: 'noop', evdObjectId: prior.evdObjectId };
     }
 
@@ -745,10 +751,11 @@ export class AcquisitionLifecycle {
       await this.appendEvent(req, tenantId, domainId, runId, contract, 'observation.run.checkpoint', 'item.noop', {
         item_key: item.itemKey, poll_key: item.pollKey ?? null, unchanged: true,
         evd_object_id: heldForPoll.evdObjectId, evd_version: heldForPoll.objectVersion,
-        digest: stored.contentDigest, bytes: item.bytes.byteLength, availability: 'verified',
-        reason: 'identical bytes to the evidence already held for this poll; confirmed, not stored again',
+        digest: stored.contentDigest, bytes: item.bytes.byteLength, availability: heldUnverifiable ? 'unverifiable' : 'verified', quarantine_copy_kept: heldUnverifiable,
+        reason: `identical bytes to the evidence already held for this poll; confirmed, not stored again${heldUnverifiable ? '; the held bytes\' tier root could not be reached: the record\'s digest matched, the bytes were not re-verified' : ''}`,
       });
-      await this.vault.tombstone('quarantine', scope, stored.locator).catch(() => undefined);
+      // B21.2 (D2.9): the quarantine copy is KEPT while the held tier is unreachable (the sweeper's orphan) — the incoming bytes survive if the held ones prove damaged once the tier returns.
+      if (!heldUnverifiable) await this.vault.tombstone('quarantine', scope, stored.locator).catch(() => undefined);
       return { kind: 'noop', evdObjectId: heldForPoll.evdObjectId };
     }
     const changedFrom = heldForPoll !== null && heldForPoll.contentDigest !== stored.contentDigest ? heldForPoll : null;
@@ -1428,6 +1435,10 @@ export class AcquisitionLifecycle {
     if (held.lifecycleState === 'withdrawn') return 'withdrawn';
     if (held.tombstoned) return 'governed-deleted';
     if (!held.manifestPresent || held.manifestId === null || held.locator === null || held.vault === null) return 'no-manifest';
+    // B21.2 (D2.9): the root the held tier names is checked BEFORE the read — an unreachable root proves nothing about the held bytes
+    // (neither verified nor refuted); the caller treats 'unverifiable' as "not readable now", never as "gone" (which would admit a duplicate).
+    const root: 'evidence' | 'archive' | null = held.tier === 'archive' ? 'archive' : held.vault === 'evidence' ? 'evidence' : null;
+    if (root !== null && !(await this.vault.rootReachable(root))) return 'unverifiable';
     try {
       if (held.tier === 'archive') await this.vault.readArchived(scope, held.locator, held.contentDigest);
       // B12 (C12): a restored manifest whose hot publish is pending is still available — its copy staged or kept in the archive root — and must not read as unavailable (it would admit a duplicate).

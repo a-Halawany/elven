@@ -9,10 +9,17 @@
  * unreproducible verdict caused by a withdrawn or retired input — the withdrawn SIM version admitted first in the same
  * write (`admitObject` on the invalidating capability, the FULL canonical row read by `runObject` for its header), and
  * the subscriptions matching the GraphChanged the service writes beside the event (`changeSubscriptions`).
+ *
+ * CP-6 B21 (0081, L8-I04, OBJ-29): `simulation.open_run` gains two arguments — the ACKNOWLEDGEMENT of a run whose own
+ * contract lies outside the operating envelope (`p_envelope_ack`, a twin owner's or the domain administrator's) and the
+ * CHALLENGE a re-run answers (`p_challenge_id`) — and answers the run's `twin_fitness`, `envelope`, `envelope_ack` and
+ * `challenge_id`; the CHALLENGE ports (open, request a re-run, withdraw, decide — the upheld path invalidating under the
+ * decide route's own action, trigger `challenge`) and the PROMOTION (`simulation.promote_result`) are the writes of
+ * ChallengeWrites and PromoteWrites; the challenge, challenge-event and promotion tables are read back on the reads.
  */
 import { sql } from 'kysely';
 import type { Tx } from '../shared/db.js';
-import type { CitedObjectRow } from './twin.capabilities.js';
+import type { CitedObjectRow, EnvelopeCheck } from './twin.capabilities.js';
 
 /** B18 (D15, AU-TWN-0033): the resource evidence of an execution — what it took, on which process — measured by the service around the run; on the row (`p_resource`) and in SimulationCompleted. */
 export interface Resource { elapsed_ms: number; samples_run: number; process: { node: string; platform: string; arch: string }; memory_rss_bytes: number }
@@ -23,6 +30,10 @@ export interface SimulationReads {
   readRuns(): any;
   readRunEvents(): any;
   readReproductions(): any;
+  /** B21 (0081): the challenges (simulation.challenges), their event ledger (simulation.challenge_events) and the promotions (simulation.promotions); the run's fitness and envelope columns ride readRuns(). */
+  readChallenges(): any;
+  readChallengeEvents(): any;
+  readPromotions(): any;
   readTwins(): any;
   readVersions(): any;
   readElements(): any;
@@ -62,11 +73,17 @@ export interface OpenRunArgs {
   interventions: unknown[]; constraints: Record<string, unknown>; assumptions: Record<string, unknown>; inputsDigest: string; validationStatus: string;
   /** Folded by the service from the twin version and the scenario; the port refuses anything less restricted than the twin's. */
   controls: unknown;
+  /** B21 (0081, D3 b): the acknowledgement of a run whose own contract lies OUTSIDE the envelope — `{ acknowledge: true, reason }` by a twin owner or the domain administrator (the port checks the holder); null otherwise. */
+  envelopeAck: { acknowledge: boolean; reason: string } | null;
+  /** B21 (0081, D11): the challenge this run is the RE-RUN of (`rerun_requested`, on the run `correctsRunId` names); null for an ordinary run. */
+  challengeId: string | null;
   actor: string; eventId: string; correlationId: string;
 }
 export interface OpenedRun {
   initial_state: unknown[]; initial_state_digest: string; known_at: string; observed_through: string | null; branch_id: string;
   synthetic_state: boolean; controls: unknown; verification_state: string; scenario_flip_event: string | null;
+  /** B21 (0081): the twin version's fitness_state copied at opening; the run's OWN envelope check (horizon_days from the constraints); the acknowledgement recorded, if any; the challenge answered, if any. */
+  twin_fitness: string; envelope: EnvelopeCheck; envelope_ack: Record<string, unknown> | null; challenge_id: string | null;
 }
 
 export interface RunWrites extends SimulationReads {
@@ -86,7 +103,8 @@ export interface CompleteWrites extends SimulationReads {
  */
 export interface InvalidateWrites extends SimulationReads {
   admitObject(header: unknown, payload: unknown, digest: string): Promise<{ contentDigest: string }>;
-  invalidateRun(a: { runId: string; tenantId: string; domainId: string; reason: string; trigger: 'operator' | 'reproduction'; triggerRef: string | null;
+  /** B21 (0081): the trigger vocabulary gains `challenge` — an upheld challenge invalidates under simulation.challenge.decide with the challenge as the reference. */
+  invalidateRun(a: { runId: string; tenantId: string; domainId: string; reason: string; trigger: 'operator' | 'reproduction' | 'challenge'; triggerRef: string | null;
                      actor: string; eventId: string; correlationId: string }): Promise<Record<string, unknown>>;
   /**
    * C14: the FULL objects.canonical_objects row of a run's SIM object — the latest version, or the exact one named — under RLS
@@ -100,9 +118,28 @@ export interface ReproduceWrites extends InvalidateWrites {
                           expected: string; actual: string | null; reason: string; environmentDigest: string; environmentMatches: boolean; cold: boolean;
                           actor: string; eventId: string; correlationId: string }): Promise<void>;
 }
+/**
+ * B21 (0081, L8-I04): the CHALLENGE of a completed run's result — a typed dispute opened by a person (one live challenge
+ * per run per opener), sent to a governed re-run, withdrawn by its opener, or DECIDED by someone who is neither the opener
+ * nor the run's operator; an UPHELD decision invalidates the run in the same write (the InvalidateWrites it extends:
+ * `admitObject`, `runObject`, `invalidateRun` with trigger `challenge`, `changeSubscriptions`). Every port takes the run
+ * beside the challenge (C6: the route is bound to the run; a challenge that is not the run's is refused by the port).
+ */
+export interface ChallengeWrites extends InvalidateWrites {
+  openChallenge(a: { challengeId: string; runId: string; tenantId: string; domainId: string; kind: string; statement: string; disputed: unknown;
+                     actor: string; eventId: string; correlationId: string }): Promise<Record<string, unknown>>;
+  requestRerun(a: { challengeId: string; runId: string; tenantId: string; domainId: string; note: string | null; actor: string; eventId: string; correlationId: string }): Promise<Record<string, unknown>>;
+  withdrawChallenge(a: { challengeId: string; runId: string; tenantId: string; domainId: string; reason: string; actor: string; eventId: string; correlationId: string }): Promise<Record<string, unknown>>;
+  decideChallenge(a: { challengeId: string; runId: string; tenantId: string; domainId: string; decision: string; note: string; actor: string; eventId: string; correlationId: string }): Promise<Record<string, unknown>>;
+}
+/** B21 (0081, OBJ-29): a reviewer other than the operator promotes a completed, valid, undisputed result as fit for a stated use (simulation.promote_result); no outbox event — the state rides the reads. */
+export interface PromoteWrites extends SimulationReads {
+  promoteResult(a: { promotionId: string; runId: string; tenantId: string; domainId: string; promotedFor: string; limitations: string[]; note: string;
+                     actor: string; eventId: string; correlationId: string }): Promise<Record<string, unknown>>;
+}
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-class SimulationCapabilityImpl implements RunWrites, CompleteWrites, InvalidateWrites, ReproduceWrites {
+class SimulationCapabilityImpl implements RunWrites, CompleteWrites, InvalidateWrites, ReproduceWrites, ChallengeWrites, PromoteWrites {
   readonly #tx: Tx; readonly #action: string;
   constructor(tx: Tx, action: string) { this.#tx = tx; this.#action = action; }
   get action(): string { return this.#action; }
@@ -112,6 +149,9 @@ class SimulationCapabilityImpl implements RunWrites, CompleteWrites, InvalidateW
   readRuns(): any { return this.from('simulation.runs_current'); }
   readRunEvents(): any { return this.from('simulation.run_events'); }
   readReproductions(): any { return this.from('simulation.reproductions'); }
+  readChallenges(): any { return this.from('simulation.challenges'); }
+  readChallengeEvents(): any { return this.from('simulation.challenge_events'); }
+  readPromotions(): any { return this.from('simulation.promotions'); }
   readTwins(): any { return this.from('twin.twins_current'); }
   readVersions(): any { return this.from('twin.twin_versions'); }
   readElements(): any { return this.from('twin.state_elements'); }
@@ -182,10 +222,49 @@ class SimulationCapabilityImpl implements RunWrites, CompleteWrites, InvalidateW
       ${a.modelRef}, ${a.implementationDigest}, ${a.environmentDigest}, ${JSON.stringify(a.environment)}::jsonb,
       ${a.stochasticMode}, ${a.rng}, ${a.seed}::bigint, ${a.samples}::int, ${a.jitter === null ? null : JSON.stringify(a.jitter)}::jsonb,
       ${JSON.stringify(a.interventions)}::jsonb, ${JSON.stringify(a.constraints)}::jsonb, ${JSON.stringify(a.assumptions)}::jsonb, ${a.inputsDigest}, ${a.validationStatus},
-      ${JSON.stringify(a.controls ?? {})}::jsonb, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`);
+      ${JSON.stringify(a.controls ?? {})}::jsonb, ${a.envelopeAck === null ? null : JSON.stringify(a.envelopeAck)}::jsonb, ${a.challengeId}::uuid,
+      ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`);
     const r = rows[0]?.r;
     if (r === undefined) throw new Error('open_run returned no row');
     return r;
+  }
+
+  // ───────────────────────── B21 (0081): the challenge ports and the promotion ─────────────────────────
+  /** simulation.open_challenge(uuid,uuid,uuid,uuid,text,text,jsonb,uuid,uuid,uuid) — the port's jsonb answer, whole. */
+  async openChallenge(a: Parameters<ChallengeWrites['openChallenge']>[0]): Promise<Record<string, unknown>> {
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select simulation.open_challenge(
+      ${a.challengeId}::uuid, ${a.runId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.kind}, ${a.statement},
+      ${a.disputed === null || a.disputed === undefined ? null : JSON.stringify(a.disputed)}::jsonb,
+      ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  /** simulation.request_rerun(uuid,uuid,uuid,uuid,text,uuid,uuid,uuid): (p_challenge_id, p_run_id, …) — C6. */
+  async requestRerun(a: Parameters<ChallengeWrites['requestRerun']>[0]): Promise<Record<string, unknown>> {
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select simulation.request_rerun(
+      ${a.challengeId}::uuid, ${a.runId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.note},
+      ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  /** simulation.withdraw_challenge(uuid,uuid,uuid,uuid,text,uuid,uuid,uuid): (p_challenge_id, p_run_id, …) — C6. */
+  async withdrawChallenge(a: Parameters<ChallengeWrites['withdrawChallenge']>[0]): Promise<Record<string, unknown>> {
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select simulation.withdraw_challenge(
+      ${a.challengeId}::uuid, ${a.runId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason},
+      ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  /** simulation.decide_challenge(uuid,uuid,uuid,uuid,text,text,uuid,uuid,uuid): (p_challenge_id, p_run_id, …, p_decision, p_note, …) — C6. */
+  async decideChallenge(a: Parameters<ChallengeWrites['decideChallenge']>[0]): Promise<Record<string, unknown>> {
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select simulation.decide_challenge(
+      ${a.challengeId}::uuid, ${a.runId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.decision}, ${a.note},
+      ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  /** simulation.promote_result(uuid,uuid,uuid,uuid,text,text[],text,uuid,uuid,uuid) — the port's jsonb answer, whole. */
+  async promoteResult(a: Parameters<PromoteWrites['promoteResult']>[0]): Promise<Record<string, unknown>> {
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select simulation.promote_result(
+      ${a.promotionId}::uuid, ${a.runId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.promotedFor}, ${a.limitations}::text[], ${a.note},
+      ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
   }
 
   async admitObject(header: unknown, payload: unknown, digest: string): Promise<{ contentDigest: string }> {
@@ -222,4 +301,8 @@ export const SimulationCapability = {
   reproduce(tx: Tx, action: string): ReproduceWrites { return new SimulationCapabilityImpl(tx, action); },
   /** B18 (0078): the invalidate route's capability — a person's act on a completed run's result. */
   invalidate(tx: Tx, action: string): InvalidateWrites { return new SimulationCapabilityImpl(tx, action); },
+  /** B21 (0081): the four challenge routes' capability (open, rerun, withdraw, decide — the upheld path invalidates on it). */
+  challenge(tx: Tx, action: string): ChallengeWrites { return new SimulationCapabilityImpl(tx, action); },
+  /** B21 (0081, OBJ-29): the promote route's capability (simulation.result.promote, human-gated). */
+  promote(tx: Tx, action: string): PromoteWrites { return new SimulationCapabilityImpl(tx, action); },
 };

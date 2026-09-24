@@ -397,6 +397,8 @@ const BUNDLE_V1: Rule[] = [
   },
   // B18 (0078): the WITHDRAWAL of an issued forecast — its owner or the domain's administrator marks a version unfit; human-gated. Exact: forecast_agent never withdraws.
   { actionPrefix: 'prediction.forecast.withdraw', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  // B21 (0081, L6-I03): a PERSON's fitness ASSESSMENT — the owner or the domain's administrator; a ledger read that records its answer under the versioned rule, no gate. Exact: a forecast_agent never assesses by hand (the outcome write assesses under its own action).
+  { actionPrefix: 'prediction.forecast.assess', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
   {
     actionPrefix: 'prediction.backtest.record',
     requiredAnyRole: [
@@ -495,6 +497,9 @@ const BUNDLE_V1: Rule[] = [
     requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }],
     requiresPurpose: true,
   },
+  // B21 (0081, L5-I05): the VALIDATION of an admitted version — a twin owner (the twin's OWN owner is refused by the port: separation of duties;
+  // a peer twin owner validates) or the domain administrator; human-gated. Placed BEFORE the `twin.version` prefix rule, which would otherwise match first.
+  { actionPrefix: 'twin.version.validate', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   {
     actionPrefix: 'twin.version',
     requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }],
@@ -754,6 +759,15 @@ const BUNDLE_V1: Rule[] = [
   // B18 (0078): the INVALIDATION of a completed run — the twin owner, the operator or the administrator marks its result unfit; human-gated.
   // The reproduce route invalidates under its own action (simulation.reproduce). Placed BEFORE the `simulation.run` prefix rule, which would otherwise match first.
   { actionPrefix: 'simulation.run.invalidate', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  // B21 (0081, L8-I04): the CHALLENGE of a completed run's result — OPENED, sent to a RE-RUN and WITHDRAWN by the people who decide on what a run
+  // represents (the simulation.read holders minus the auditors and analysts; decision_owner because a package cites runs, 0041); DECIDED by a twin
+  // owner, a strategy owner or the administrator, human-gated (the port refuses the opener and the run's operator: separation of duties); and the
+  // PROMOTION (OBJ-29, `simulation.result.promote`) by the same four, human-gated (the port refuses the operator and a disputed result). Exact rules.
+  { actionPrefix: 'simulation.challenge.open', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'simulation.challenge.rerun', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'simulation.challenge.withdraw', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'simulation.challenge.decide', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'simulation.result.promote', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   {
     actionPrefix: 'simulation.run.complete',
     requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }],
@@ -974,6 +988,8 @@ const BUNDLE_V1: Rule[] = [
   { actionPrefix: 'executive.request.read', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'briefing_agent', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
   // B9 (0066 §8): a scenario's review is a person's (human-gated); the strategy and forecast owners and the domain administrator.
   { actionPrefix: 'prediction.scenario.review', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  // B21 (0081, L7-I04): a PERSON's coherence CHECK — the review roles; a check records what the versioned rule finds (the review decides), no gate.
+  { actionPrefix: 'prediction.scenario.check', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
   // B9 (0066 §7): ontology change proposals (the people who shape the graph) and the steward's decision (human-gated; the port refuses the proposer).
   { actionPrefix: 'graph.ontology.propose', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'resolution_manager', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'ontology_steward', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
   { actionPrefix: 'graph.ontology.decide', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'ontology_steward', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },

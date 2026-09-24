@@ -10,7 +10,9 @@
  * A retrieval RE-VERIFIES THE DIGEST. A missing blob and a corrupt blob both fail
  * closed with an audited integrity error, and both answer in the same shape a
  * denied read does — so a caller cannot distinguish "not yours", "not there" and
- * "damaged" from the outside.
+ * "damaged" from the outside. B21.2: an UNREACHABLE root (its B18 marker unreadable) is a
+ * condition of the tier, not of the object — declared metadata-only before any read is attempted; a failure of an attempted read keeps the
+ * one shape, and its custody row now commits with the refusal (D2.6).
  */
 import { HttpException, Injectable } from '@nestjs/common';
 import { errorBody } from '@eye/contracts';
@@ -34,16 +36,30 @@ export interface EvidenceSummary {
   [k: string]: unknown;
 }
 
-export interface RetrievalResult {
-  filename: string;
-  contentDigest: string;
-  byteLength: number;
-  base64: string;
-  integrity: 'verified' | 'unavailable';
-  /** CP-6 B11: the tier the bytes were read from, and what that means for the reader — served either way, cold when archived. */
-  tier: 'hot' | 'archive';
-  availability: 'verified' | 'archived';
+interface RetrievalBase { filename: string; contentDigest: string; byteLength: number; tier: 'hot' | 'archive'; }
+/** The bytes, verified on this read (phase 1; B11's tier and availability). */
+export interface RetrievalServed extends RetrievalBase {
+  integrity: 'verified'; base64: string; availability: 'verified' | 'archived';
 }
+/**
+ * B21.2 (AU-MEM-0067, the vault clause — Class B): the PRIMARY blob root the tier ledger names could not be reached, so no read was
+ * attempted; the manifest's digest and byte length, the tier and the custody chain are the answer; the bytes are not, and nothing about
+ * them was verified or refuted. One condition for every manifest of the tier — never an integrity incident.
+ */
+export interface RetrievalDegraded extends RetrievalBase {
+  integrity: 'unavailable'; base64: null; availability: 'unreachable';
+  degraded: { kind: 'tier_unreachable'; code: 'EYE-DEG-001'; root: 'evidence' | 'archive'; label: string };
+}
+/**
+ * B21.2 (D2.6): a failure of an ATTEMPTED read under a reachable root (A7's one shape — missing, corrupt, scope, oversize alike). Carries
+ * nothing about the object: the route answers the 409 from `refusal.message` AFTER the custody row and the audit row committed.
+ */
+export interface RetrievalRefused { integrity: 'failed'; refusal: { message: string } }
+export type RetrievalResult = RetrievalServed | RetrievalDegraded | RetrievalRefused;
+
+export const INTEGRITY_REFUSED_MESSAGE = 'evidence bytes failed integrity verification and were not served';
+export const TIER_UNREACHABLE_LABEL = (root: 'evidence' | 'archive'): string =>
+  `the ${root} root of the vault could not be reached; this evidence's record — its manifest, digest, tier and custody — is served; its bytes are not, and nothing about them was verified or refuted; retry when the tier is mounted (retention/tier/state names the roots)`;
 
 @Injectable()
 export class EvidenceService {
@@ -273,7 +289,7 @@ export class EvidenceService {
       .readManifests()
       .selectAll()
       .where('manifest_id' as never, '=', payload.manifest_id as never)
-      .executeTakeFirst()) as { locator: string; content_digest: string; vault: string } | undefined;
+      .executeTakeFirst()) as { locator: string; content_digest: string; vault: string; byte_length: number | string } | undefined;
     if (manifest === undefined) {
       // Retrieval resolves through the MANIFEST ONLY. No manifest, no bytes — this
       // is what makes an aborted admission's orphan unreachable.
@@ -286,7 +302,29 @@ export class EvidenceService {
     const tier = await tierOf(cap, payload.manifest_id);
     const readFrom = tier.tier === 'archive' ? 'archive' : (manifest.vault as 'evidence' | 'quarantine');
 
-    let integrity: RetrievalResult['integrity'] = 'verified';
+    // B21.2 (AU-MEM-0067, the vault clause): the PRIMARY root's marker is read BEFORE any per-object read. An unreachable root is one
+    // condition for every manifest of the tier — declared metadata-only, never an integrity incident, never re-classified after a failed
+    // attempt (a fallback root's state must not distinguish a missing primary copy from a corrupt one). The quarantine vault has no marker.
+    if (readFrom !== 'quarantine' && !(await this.vault.rootReachable(readFrom))) {
+      await cap.appendCustody({
+        eventId: newId(),
+        tenantId: ctx.tenantId as string, domainId: ctx.domainId as string,
+        manifestId: payload.manifest_id, obsObjectId: payload.obs_object_id, evdObjectId: evdId,
+        sourceId: sourceIdOf(evd), contractVersion: contractVersionOf(evd), runId: null,
+        event: 'custody.retrieval_degraded', actor,
+        agentPrincipalId: null, agentVersion: null, codeDigest: null,
+        connector: null, connectorVersion: null, methodRef: null,
+        contentDigest: manifest.content_digest, digestVerified: null,
+        details: { failure: 'root_unreachable', root: readFrom, tier: tier.tier, disclosure: 'none', ...context },
+        correlationId,
+      });
+      return {
+        filename: `${evdId}.bin`, contentDigest: manifest.content_digest, byteLength: Number(manifest.byte_length),
+        base64: null, integrity: 'unavailable', tier: tier.tier, availability: 'unreachable',
+        degraded: { kind: 'tier_unreachable', code: 'EYE-DEG-001', root: readFrom, label: TIER_UNREACHABLE_LABEL(readFrom) },
+      };
+    }
+
     let bytes: Buffer;
     let servedFrom: string = readFrom;
     try {
@@ -300,7 +338,6 @@ export class EvidenceService {
         : { ...(await this.vault.read(readFrom, scopeOf, manifest.locator, manifest.content_digest)), source: readFrom };
       bytes = read.bytes; servedFrom = read.source;
     } catch (e) {
-      integrity = 'unavailable';
       // The FAILURE is recorded in custody before the request answers, so an
       // integrity error is evidence rather than only an error message.
       await cap.appendCustody({
@@ -321,8 +358,10 @@ export class EvidenceService {
         },
         correlationId,
       });
-      throw new HttpException(
-        errorBody('EYE_INT_001', correlationId, 'evidence bytes failed integrity verification and were not served'), 409);
+      // D2.6: the refusal is RETURNED, not thrown, so the custody row above commits with the route's audit row (success/EYE-INT-001 — the
+      // custody row is a business effect and 0013's closure admits it only beside a success audit row); the route answers
+      // the same 409 after the commit. Nothing about the object rides on this value.
+      return { integrity: 'failed', refusal: { message: INTEGRITY_REFUSED_MESSAGE } };
     }
 
     await cap.appendCustody({
@@ -343,7 +382,7 @@ export class EvidenceService {
       contentDigest: manifest.content_digest,
       byteLength: bytes.byteLength,
       base64: bytes.toString('base64'),
-      integrity,
+      integrity: 'verified',
       tier: tier.tier,
       availability: tier.tier === 'archive' ? 'archived' : 'verified',
     };

@@ -6,12 +6,32 @@
  * bound action. A twin owner holds `declare`, `version`, `ground` and `admit`
  * one at a time — each a separate governed write with its own receipt — and a
  * simulation operator holds none of them.
+ *
+ * CP-6 B21 (0081, L5-I05): the VALIDATION of an admitted version (`twin.validate_version`) — a person other than the
+ * twin's owner records a verdict (fit | unfit | indeterminate) over the ENVELOPE CHECK and the CALIBRATION HISTORY the
+ * port computes; the recorded validations are read back (`readValidations`) and never re-computed on a read (C14:
+ * `twin.envelope_check` is called from the two SECURITY DEFINER ports only).
  */
 import { sql } from 'kysely';
 import type { Tx } from '../shared/db.js';
 
 export type CitationKind = 'evidence' | 'claim' | 'entity' | 'forecast' | 'assumption' | 'run';
 export interface Citation { kind: CitationKind; id: string; version: number; digest: string }
+
+/**
+ * B21 (0081, D4): the ENVELOPE CHECK as `twin.envelope_check` computes it — every key of the behaviour model's
+ * operating_envelope whose value is a two-element range, matched to the run's own parameter of that name (at open_run)
+ * or else the version's first numeric element named K, K:<suffix>, shock.K or shock.K:<suffix>; a key with no numeric
+ * value is `unchecked`. `state`: any key outside → outside; else any inside → inside; else unchecked. Recorded on the
+ * validation and on the run; imported by simulation.capabilities.ts (the existing direction — Nit 5).
+ */
+export interface EnvelopeCheck {
+  state: 'inside' | 'outside' | 'unchecked';
+  model: string | null;
+  keys: Record<string, { range: [number, number]; value: number | null; source: string | null; verdict: 'inside' | 'outside' | 'unchecked' }>;
+  rule?: string;
+  note?: string;
+}
 
 /** One exact canonical object version with the controls it carries. */
 export interface CitedObjectRow {
@@ -65,6 +85,8 @@ export interface TwinReads {
   readEdges(): any;
   /** B18 (0078): the runs that rest on a twin version (simulation.runs_current), named by an admission's announcement as its dependency impacts. */
   readRuns(): any;
+  /** B21 (0081): the validation ledger (twin.validations) — the recorded verdict, envelope check and calibration summary a version's `fitness_validation_id` names. */
+  readValidations(): any;
   /** B18 (0078): what is subscribed to a GraphChanged of this kind at PUBLICATION — evidence the event carries, never authority (the dispatcher re-resolves at delivery). */
   changeSubscriptions(a: { tenantId: string; domainId: string; changeKind: string }): Promise<Array<{ subscription_id: string; consumer_kind: string }>>;
   /** The exact object version a citation names (latest when version is null), under RLS. */
@@ -125,8 +147,18 @@ export interface TwinSubscriberWrites extends TwinReads {
   applySubscriptionMark(a: { twinId: string; tenantId: string; domainId: string; version: number; reason: string; outboxEventId: string; subscriptionId: string; actor: string; correlationId: string }): Promise<boolean>;
 }
 
+/**
+ * CP-6 B21 (0081, L5-I05): the VALIDATION of an admitted version — the person's verdict recorded with the envelope check
+ * and the calibration history the port computes (twin.validate_version); the port refuses the twin's owner (separation
+ * of duties), a draft, and `fit` outside the envelope. The answer is the port's, whole (the ValidateTwin@v1 material).
+ */
+export interface ValidateWrites extends TwinReads {
+  validateVersion(a: { validationId: string; twinId: string; tenantId: string; domainId: string; version: number; verdict: 'fit' | 'unfit' | 'indeterminate';
+                       reason: string; limitations: string[]; actor: string; eventId: string; correlationId: string }): Promise<Record<string, unknown>>;
+}
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
-class TwinCapabilityImpl extends TwinCore implements DeclareWrites, VersionWrites, GroundWrites, AdmitWrites, TwinSubscriberWrites {
+class TwinCapabilityImpl extends TwinCore implements DeclareWrites, VersionWrites, GroundWrites, AdmitWrites, TwinSubscriberWrites, ValidateWrites {
   constructor(tx: Tx, action: string) { super(tx, action); }
 
   readTwins(): any { return this.from('twin.twins_current'); }
@@ -143,6 +175,7 @@ class TwinCapabilityImpl extends TwinCore implements DeclareWrites, VersionWrite
   readResolutions(): any { return this.from('graph.resolutions_current'); }
   readEdges(): any { return this.from('graph.edges_current'); }
   readRuns(): any { return this.from('simulation.runs_current'); }
+  readValidations(): any { return this.from('twin.validations'); }
   async changeSubscriptions(a: { tenantId: string; domainId: string; changeKind: string }): Promise<Array<{ subscription_id: string; consumer_kind: string }>> {
     const rows = await this.call<{ s: Array<{ subscription_id: string; consumer_kind: string }> }>(sql`select graph.subscriptions_matching(${a.tenantId}::uuid, ${a.domainId}::uuid, 'GraphChanged', ${a.changeKind}) as s`);
     return rows[0]?.s ?? [];
@@ -247,6 +280,14 @@ class TwinCapabilityImpl extends TwinCore implements DeclareWrites, VersionWrite
       ${a.reason}, ${a.outboxEventId}::uuid, ${a.subscriptionId}::uuid, ${a.actor}::uuid, ${a.correlationId}::uuid) as ok`);
     return rows[0]?.ok === true;
   }
+  /** B21 (0081): twin.validate_version(uuid,uuid,uuid,uuid,int,text,text,text[],uuid,uuid,uuid) — the port's jsonb answer, whole. */
+  async validateVersion(a: Parameters<ValidateWrites['validateVersion']>[0]): Promise<Record<string, unknown>> {
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select twin.validate_version(
+      ${a.validationId}::uuid, ${a.twinId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.version}::int,
+      ${a.verdict}, ${a.reason}, ${a.limitations}::text[],
+      ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
@@ -257,4 +298,6 @@ export const TwinCapability = {
   ground(tx: Tx, action: string): GroundWrites { return new TwinCapabilityImpl(tx, action); },
   admit(tx: Tx, action: string): AdmitWrites { return new TwinCapabilityImpl(tx, action); },
   subscriber(tx: Tx, action: string): TwinSubscriberWrites { return new TwinCapabilityImpl(tx, action); },
+  /** B21 (0081): the validate route's capability (twin.version.validate, human-gated) — the port's own SoD refuses the twin's owner. */
+  validate(tx: Tx, action: string): ValidateWrites { return new TwinCapabilityImpl(tx, action); },
 };

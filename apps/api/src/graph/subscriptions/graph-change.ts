@@ -45,6 +45,12 @@ export const GRAPH_CHANGE_KINDS = [
   'simulation.invalidated',
   // 0080 (B20): a withdrawn partition rebuilt (or restored unchanged) by the operator — no identities, no relationships, no walk: the typed block names the projection and the rows whose state the rebuild changed; the retrieval consumer re-verifies, the six others find nothing by construction.
   'projection.rebuilt',
+  // 0081 (B21): a forecast ASSESSED UNFIT by prediction.assess_forecast_fitness (a transition to unfit, or a class change while unfit) —
+  // objects.forecasts the forecast, no identities; the scenario, decision and twin consumers select by it (the scenario marked and
+  // re-checked, the package noted with material_change — assessed unfit, NOT withdrawn: the owner decides —, the citing version
+  // unverified); the FORECAST consumer leaves its own kind alone (a fitness change is not a basis change). A fit or indeterminate
+  // verdict marks nothing and rides ForecastFitnessChanged only; the measures ride the typed `forecast_fitness` block.
+  'forecast.fitness_changed',
 ] as const;
 export type GraphChangeKind = (typeof GRAPH_CHANGE_KINDS)[number];
 export const MEMORY_CHANGE_KINDS = ['evidence.corrected', 'claim.corrected'] as const;
@@ -98,7 +104,19 @@ export interface GraphChangedPayload {
    */
   twin?: { twin_id: string; version: number; supersedes: number | null; branch_id: string; change: 'version.admitted'; changed_variables: number; runs_of_superseded: number };
   forecast?: { forecast_id: string; series_key: string; horizon: string; reason: string; unfit_class: string; withdrawn_at: string; dependants: Record<string, unknown> };
-  simulation?: { run_id: string; reason: string; trigger: 'operator' | 'reproduction'; trigger_ref: string | null; invalidated_at: string; dependants: Record<string, unknown> };
+  /** 0081 (B21): `trigger` gains `challenge` — an upheld challenge invalidated the run (`trigger_ref` names the challenge; the cause is simulation.challenge.decide). */
+  simulation?: { run_id: string; reason: string; trigger: 'operator' | 'reproduction' | 'challenge'; trigger_ref: string | null; invalidated_at: string; dependants: Record<string, unknown> };
+  /**
+   * 0081 (B21; D7): the typed block of `forecast.fitness_changed` — the forecast assessed UNFIT under the versioned rule
+   * (prediction.forecast_fitness_rule): its family, the class the state carries (the first of `classes` in the rule's order),
+   * what stood before, the assessment row, the rule version, who triggered it (the outcome write, the forecast subscriber or a
+   * person) and the MEASURES the verdict rests on (the family's window, the coverage against the floor, the pinball against the
+   * applicable backtest, the refresh expiry) — so the decisions consumer's note and the scenario consumer's reason are built
+   * WITHOUT re-reading the forecast. Absent on every other kind; never a second `cause`.
+   */
+  forecast_fitness?: { forecast_id: string; series_key: string; horizon: string; method: string; state: 'unfit'; class: string | null; prior_state: string; prior_class: string | null;
+                       assessment_id: string; rule_version: string; trigger: 'outcome' | 'subscription' | 'operator';
+                       measures: { outcomes: number; required: number; coverage: Record<string, unknown> | null; pinball: Record<string, unknown> | null; expiry: Record<string, unknown> | null } };
   /**
    * 0080 (B20; D8): the typed block of `projection.rebuilt` — a withdrawn partition of the domain's index tier REBUILT (rows
    * written) or RESTORED (nothing to write) by the operator under graph.projection.rebuild: the projection, the outcome, the
@@ -148,10 +166,13 @@ export const CONSUMER_VERSION = '1.0.0';
 const METHOD_REF: Readonly<Record<ConsumerKind, string>> = Object.freeze({
   // 0078 (B18): the mark is announced (TwinStateChanged/version.unverified in the item's transaction) and a twin's own admission marks nothing — a new method, so a new identity (the B8 precedent: the live twins subscriptions are re-registered).
   twins: 'citing or boundary-bound admitted versions → twin.apply_subscription_mark (once per cause), the mark announced as TwinStateChanged/version.unverified in the item\'s transaction (0078); a twin\'s own admission (twin.state_changed) marks nothing',
-  forecasts: 'subject, assumption or evidence affected → prediction.mark_forecast_attention (once)',
-  scenarios: 'subject or forecast affected → prediction.mark_scenario_attention (once)',
+  // 0081 (B21): the marked forecast is ASSESSED in the item's transaction and the kind forecast.fitness_changed selects nothing here — a new method, so a new identity (the live forecasts subscriptions are re-registered; the act revokes and registers anew).
+  forecasts: 'subject, assumption or evidence affected → prediction.mark_forecast_attention (once); the marked forecast then ASSESSED (0081, B21: prediction.assess_forecast_fitness, trigger subscription — ForecastFitnessChanged on a changed verdict, GraphChanged/forecast.fitness_changed on a transition to unfit); forecast.fitness_changed is its own kind and selects nothing',
+  // 0081 (B21): forecast.fitness_changed marks with the assessment's reason and every marked scenario is RE-CHECKED in the item's transaction — a new method, so a new identity (the live scenarios subscriptions are re-registered).
+  scenarios: 'subject or forecast affected → prediction.mark_scenario_attention (once); forecast.fitness_changed (0081, B21) marks with the assessment\'s reason; the marked scenario then RE-CHECKED (prediction.check_scenario_coherence, trigger subscription — ScenarioCoherenceFailed on a failed and changed check)',
   // 0078 (B18): the two chain kinds are exposed as a categorical loss and a twin's admission is noted without exposure — a new method, so a new identity (the live decisions subscriptions are re-registered).
-  decisions: 'DEC or cited input affected → decision.note_input_invalidated (once per cause); forecast.superseded judged for materiality against the declared rule → material_change exposed; forecast.withdrawn / simulation.invalidated (0078) → material_change exposed as a categorical loss of the cited input; twin.state_changed (0078) → noted without exposure (the cited runs of the superseded version stand; the owner judges)',
+  // 0081 (B21): forecast.fitness_changed is exposed as material_change (assessed unfit, not withdrawn) — a new method again, so a new identity (the live decisions subscriptions are re-registered).
+  decisions: 'DEC or cited input affected → decision.note_input_invalidated (once per cause); forecast.superseded judged for materiality against the declared rule → material_change exposed; forecast.withdrawn / simulation.invalidated (0078) → material_change exposed as a categorical loss of the cited input; forecast.fitness_changed (0081, B21) → material_change exposed (assessed unfit, not withdrawn — the owner decides); twin.state_changed (0078) → noted without exposure (the cited runs of the superseded version stand; the owner judges)',
   // 0080 (B20): the check is SYMMETRIC (a poisoned or a missing row fails it), covers the memory projection and the representation version, and WITHDRAWS every partition it fails — a new method, so a new identity (the live retrieval subscriptions are re-registered; the act revokes and registers anew in both domains).
   retrieval: 'graph.rebuild_projections verified — symmetric (mismatched + missing + unexpected) with the memory projection as the sixth row and the representation version (0080) → graph.record_retrieval_check, which WITHDRAWS every partition that failed; a GraphChanged/projection.rebuilt is re-verified like any change',
   // 0077 (B17): the import.revoked branch is a new method, so a new identity — every live memory-mappings subscription registered before it is re-registered (the B8 precedent).

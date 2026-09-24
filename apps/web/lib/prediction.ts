@@ -35,6 +35,41 @@ export interface ForecastRow {
   state: 'issued' | 'superseded' | 'resolved' | 'withdrawn'; attention_state: 'none' | 'assumption_unverified';
   attention_reason: string | null; issued_by: string;
   events?: Array<Record<string, unknown>>; outcomes?: Array<Record<string, unknown>>; attribution?: string | null; unit?: string | null;
+  /**
+   * CP-6 B21 (0081, L6-I03 ForecastFitnessChanged): the latest prediction.assess_forecast_fitness under the versioned rule — the state,
+   * the class an `unfit` names, the assessment id; `fitness` (the get) joins the assessment's measures. Absent from a server before 0081.
+   */
+  fitness_state?: 'none' | 'fit' | 'unfit' | 'indeterminate'; fitness_class?: string | null; fitness_assessment_id?: string | null;
+  fitness?: ForecastFitness | null;
+}
+
+/** B21: the measures a fitness assessment recorded — the rule's, never the caller's (the window, the coverage, the pinball vs the backtest, the attention mark, the expiry). */
+export interface FitnessMeasures {
+  rule_version?: string;
+  window?: { series_key: string; horizon: string; method: string; outcomes: number; required: number };
+  coverage?: { observed: number | string | null; floor: number | string; checked: boolean };
+  pinball?: { observed: number | string | null; backtest: number | string | null; backtest_id: string | null; factor: number | string; checked: boolean };
+  attention_state?: string; expiry?: { expires_at: string | null; cadence: string | null; checked: boolean }; classes?: string[]; note?: string | null;
+}
+export interface ForecastFitness {
+  state: string; class: string | null; assessment_id: string | null; measures: FitnessMeasures | null; rule_version: string | null; assessed_at: string | null; trigger: string | null;
+}
+/** The assessment as the port recorded it (POST …/forecasts/:id/assess, trigger `operator`) — VERBATIM. */
+export interface FitnessAssessment {
+  assessment_id: string; forecast_id: string; series_key: string; horizon: string; method: string; subject_entity_id: string | null; state: string;
+  verdict: 'fit' | 'unfit' | 'indeterminate'; class: string | null; classes: string[]; prior_state: string; prior_class: string | null; changed: boolean;
+  measures: FitnessMeasures; assessed_at: string;
+}
+/** B21 (L7-I04): one finding of a coherence check — a FAIL rule (duplicate_branch, assumption_invalid, forecast_relationship, temporal_order, dependency_retired) or a NOTE (coverage, basis_unchecked). */
+export interface CoherenceFinding { rule: string; severity: 'fail' | 'note'; branch_id?: string; other_branch_id?: string; detail: string }
+/** The check as the port recorded it (the declaring write, a review, the consumer, or POST …/scenarios/:id/check-coherence) — VERBATIM. */
+export interface CoherenceCheck {
+  check_id: string; scenario_id: string; scenario_version: number | null; title: string; owner: string; forecast_id: string | null;
+  outcome: 'passed' | 'failed'; prior_state: string; changed: boolean; findings: CoherenceFinding[]; rule_version: string; checked_at: string;
+}
+/** The scenario's coherence as the get serves it — the recorded check joined, or `unchecked` (declared before 0081, or never checked). */
+export interface ScenarioCoherence {
+  state: string; check_id?: string | null; findings?: CoherenceFinding[]; rule_version?: string | null; checked_at?: string | null; trigger?: string | null;
 }
 
 /** Controls inherited from the evidence a derived object rests on (fail-closed fold). */
@@ -75,6 +110,12 @@ export interface ScenarioRow {
    */
   reviews?: number; last_reviewed_at?: string | null; next_review_due_at?: string | null;
   retired_at?: string | null; retirement_reason?: string | null;
+  /**
+   * B21 (0081, L7-I04 ScenarioCoherenceFailed): the state of the latest check (`unchecked | passed | failed`) and its id on the list row;
+   * the get joins the check (`coherence`). A FAILED scenario is admitted, never refused; no branch of it is simulated and no review
+   * promotes it until the findings are resolved (the correction path: retire, declare a successor).
+   */
+  coherence_state?: 'unchecked' | 'passed' | 'failed'; coherence_check_id?: string | null; coherence?: ScenarioCoherence;
 }
 
 /** A review's outcome (0066 §8): the four the server accepts, spelled as it spells them. */
@@ -99,6 +140,8 @@ export interface ScenarioReview {
   branch: { branch_id: string; kind: string; state_after: string } | null;
   next_review_due_at: string | null; branches_closed: number; cadence: string | null;
   links: { forecast_id: string | null; decision_objects: string[]; dependents: Array<{ type: string; id: string }>; simulation_runs: string[] };
+  /** B21: a continuation or a promotion RE-CHECKS the scenario first (trigger `review`); a dissent or a retirement checks nothing (null). */
+  coherence?: CoherenceCheck | null;
 }
 
 export interface IndicatorRow {
@@ -137,6 +180,11 @@ export interface Calibration {
                     pinball_mean: number; labels: string[]; t1_met: boolean | null }>;
   backtests: BacktestRow[];
   targets: Record<string, string>;
+  /** B21: the latest fitness assessment PER FAMILY (series, horizon, method) — the rule's verdict on LIVE outcomes over the family's last K; absent before 0081. */
+  fitness?: Array<{
+    series_key: string; horizon_code: string; method: string; forecast_id: string; state: string; class: string | null; outcomes: number;
+    coverage: number | string | null; pinball_vs_backtest: unknown; rule_version: string; assessed_at: string; trigger: string;
+  }>;
 }
 
 export interface Overview {
@@ -183,6 +231,19 @@ export const prediction = {
   recordOutcome: (s: Scope, forecastId: string) =>
     p<{ outcome: Record<string, unknown>; receipt: Receipt }>(s, '/outcomes/record', 'prediction.outcome.record', 'OUT', { forecastId }, forecastId),
   calibration: (s: Scope) => p<{ calibration: Calibration; receipt: Receipt }>(s, '/calibration/summary', 'prediction.read', 'OUT'),
+  /**
+   * B21 (0081, L6-I03): a forecast owner's assessment of a forecast's fitness under the versioned rule (trigger `operator`; no human
+   * gate — a ledger read that records its answer). The verdict is the rule's: `indeterminate` says the family's outcome ledger is thin.
+   * The server refuses a withdrawn or superseded forecast; ForecastFitnessChanged@v1 is published only when the state or the class moved.
+   */
+  assessForecast: (s: Scope, forecastId: string) =>
+    p<{ assessment: FitnessAssessment; receipt: Receipt }>(s, `/forecasts/${forecastId}/assess`, 'prediction.forecast.assess', 'FCT', {}, forecastId),
+  /**
+   * B21 (0081, L7-I04): a reviewer's coherence check of a scenario (trigger `operator`) — deterministic over what the product holds; a
+   * FAILED outcome is recorded, never a refusal; the server refuses a retired scenario. Published on a failed and changed check.
+   */
+  checkCoherence: (s: Scope, scenarioId: string) =>
+    p<{ coherence: CoherenceCheck; receipt: Receipt }>(s, `/scenarios/${scenarioId}/check-coherence`, 'prediction.scenario.check', 'SCN', {}, scenarioId),
   listScenarios: (s: Scope) => p<{ scenarios: ScenarioRow[]; receipt: Receipt }>(s, '/scenarios/list', 'prediction.read', 'SCN'),
   getScenario: (s: Scope, id: string) => p<{ scenario: ScenarioRow; receipt: Receipt }>(s, `/scenarios/${id}/get`, 'prediction.read', 'SCN', {}, id),
   /**

@@ -107,9 +107,9 @@ const lastEvaluationText = (v: unknown): string => {
   if (Object.keys(e).length === 0) return 'none recorded';
   return `opened ${str(e['opened'])}, deferred ${str(e['deferred'])} at ${fmtInstant(e['at'])}`;
 };
-/** A blob root's inventory as the controller listed it: the counts, or the error the listing raised (nulls then). */
+/** A blob root's inventory as the controller listed it: the counts, or the error the listing raised (nulls then); B21.2: prefixed UNREACHABLE when the root's marker could not be read (the directory may still list — the marker is the rule). */
 const inventoryText = (i: RetentionVaultInventory | undefined): string =>
-  i === undefined ? '—' : i.error !== undefined ? `not listed — ${i.error}` : `${str(i.blobs)} blob(s), ${str(i.staged)} staged, ${str(i.temp)} temp`;
+  i === undefined ? '—' : `${i.reachable === false ? 'UNREACHABLE · ' : ''}${i.error !== undefined ? `not listed — ${i.error}` : `${str(i.blobs)} blob(s), ${str(i.staged)} staged, ${str(i.temp)} temp`}`;
 /** A retirement as the row records it (B13: a schedule's, a key's, a destination's): the instant and the reason, or "no" while the row is not retired. */
 const isRetired = (row: Row) => row['retired_at'] !== null && row['retired_at'] !== undefined;
 const retiredText = (row: Row): string => (isRetired(row) ? `${fmtInstant(row['retired_at'])} — ${str(row['retire_reason'])}` : 'no');

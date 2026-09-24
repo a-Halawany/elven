@@ -21,9 +21,17 @@
  * The 0066+ convention (read-events.md §5(1)b): `schema`, `schema_version`, stable ids and versions (never bodies), the
  * minimum transition data, `temporal.known_at`, `cause: {action, actor (the bare principal), target_type, target_id}`.
  * No read, no service import: the write hands the builder what it holds.
+ *
+ * CP-6 B21 (0081): SimulationStarted carries the run's `twin_fitness` (the version's state copied at opening), its OWN
+ * `envelope` check, the `envelope_ack` recorded (a twin owner's or the domain administrator's) and the `challenge_id` a
+ * re-run answers; SimulationInvalidated's trigger vocabulary gains `challenge` (an upheld challenge, under
+ * simulation.challenge.decide, `trigger_ref` the challenge); and ChallengeSimulation@v1 (L8-I04) — ONE name, five states
+ * (opened | rerun_requested | upheld | dismissed | withdrawn) — is built PURE from the challenge row as read back in the
+ * write that changed it, with the run's identity beside it and, on an upheld decision, the invalidation it caused.
  */
-import type { OutboxRow } from '../../graph/subscriptions/change-events.js';
+import { LIFECYCLE_EVENT_LIST_MAX, type OutboxRow } from '../../graph/subscriptions/change-events.js';
 import type { OpenedRun, Resource, ShockBasis } from '../simulation.capabilities.js';
+import type { EnvelopeCheck } from '../twin.capabilities.js';
 
 type Row = Record<string, unknown>;
 
@@ -48,6 +56,8 @@ export function simulationStartedEvent(a: {
   scenario: { scenario_id: string; version: number; branch_id: string; branch_state: string; flip_event_id: string | null } | null;
   shockBasis: ShockBasis; modelRef: string; implementationDigest: string; environmentDigest: string;
   environment: { node: string; platform: string; arch: string }; inputsDigest: string; rng: string | null;
+  /** B21 (0081): the twin version's fitness at opening, the run's OWN envelope check, the acknowledgement recorded (or null), the challenge answered (or null). */
+  twinFitness: string; envelope: EnvelopeCheck; envelopeAck: Record<string, unknown> | null; challengeId: string | null;
   operator: string; occurredAt: string;
 }): OutboxRow {
   const st = a.intake.stochastic;
@@ -64,6 +74,10 @@ export function simulationStartedEvent(a: {
     initial_state_digest: a.opened.initial_state_digest, inputs_digest: a.inputsDigest,
     cutoffs: { known_at: a.opened.known_at, observed_through: a.opened.observed_through },
     execution_identity: { operator: a.operator, synthetic_state: a.opened.synthetic_state, verification_state: a.opened.verification_state },
+    // 0081 (B21): the fitness and envelope contract bound at opening
+    twin_fitness: a.twinFitness,
+    envelope: { state: a.envelope.state, model: a.envelope.model, keys: a.envelope.keys },
+    envelope_ack: a.envelopeAck, challenge_id: a.challengeId,
     state: 'opened',
     temporal: { known_at: a.occurredAt },
     cause: { action: 'simulation.run', actor: a.operator, target_type: 'SIM', target_id: a.runId },
@@ -118,11 +132,12 @@ export function simulationCompletedEvent(a: {
  * SimulationInvalidated@v1 — built in the invalidating write from the port's answer (`simulation.invalidate_run`: the
  * instant, the trigger and its reference, the run's identity as read, the dependants enumerated and cut) and the
  * write's own facts (the reason, the SIM version admitted as withdrawn, the actor, the bound action — a person's
- * `simulation.run.invalidate`, or the reproduction's `simulation.reproduce`).
+ * `simulation.run.invalidate`, the reproduction's `simulation.reproduce`, or — 0081 — the upheld challenge's
+ * `simulation.challenge.decide`, trigger `challenge`).
  */
 export function simulationInvalidatedEvent(a: {
-  invalidated: Row; withdrawnVersion: number; trigger: 'operator' | 'reproduction'; reason: string; actor: string; occurredAt: string;
-  action: 'simulation.run.invalidate' | 'simulation.reproduce';
+  invalidated: Row; withdrawnVersion: number; trigger: 'operator' | 'reproduction' | 'challenge'; reason: string; actor: string; occurredAt: string;
+  action: 'simulation.run.invalidate' | 'simulation.reproduce' | 'simulation.challenge.decide';
 }): OutboxRow {
   const v = a.invalidated;
   const run = obj(v['run']);
@@ -138,6 +153,49 @@ export function simulationInvalidatedEvent(a: {
            completed_at: nullable(run['completed_at']), operator_principal_id: nullable(run['operator_principal_id']), validation_status: nullable(run['validation_status']) },
     dependants: { packages: dependants['packages'] ?? [], commitments: dependants['commitments'] ?? [], decisions: dependants['decisions'] ?? [],
                   twins: dependants['twins'] ?? [], simulations: dependants['simulations'] ?? [] },
+    temporal: { known_at: a.occurredAt },
+    cause: { action: a.action, actor: a.actor, target_type: 'SIM', target_id: runId },
+  } };
+}
+
+// ───────────────────────── 0081 (B21): the challenge ─────────────────────────
+
+/** The five states ChallengeSimulation@v1 announces — one name, the write says which. */
+export type ChallengeState = 'opened' | 'rerun_requested' | 'upheld' | 'dismissed' | 'withdrawn';
+/** The bound action of the write that changed the challenge. */
+export type ChallengeAction = 'simulation.challenge.open' | 'simulation.challenge.rerun' | 'simulation.challenge.decide' | 'simulation.challenge.withdraw';
+
+/** A timestamptz as the driver returns it (a Date) keeps its instant; anything else passes as it is (null for absent). */
+const inst = (v: unknown): unknown => (v instanceof Date ? v.toISOString() : nullable(v));
+
+/**
+ * ChallengeSimulation@v1 — built in the write that changed the challenge from the challenge ROW as read back (the id, the
+ * run, the kind, the statement, the disputed keys cut at the ceiling, who opened it and when, the re-run link, the
+ * decision, the withdrawal) with the run's identity beside it (`run`: as the row stands after the write — an upheld
+ * decision reads `validity invalidated`, `fitness_state unfit`) and, on an upheld decision, the invalidation it caused or
+ * why it was withheld (`already_invalidated`). The cause is the act on the RUN (SIM) — the route is bound to the run (C6).
+ */
+export function challengeSimulationEvent(a: {
+  challenge: Row; state: ChallengeState; action: ChallengeAction;
+  invalidation: { invalidated_at: unknown; withdrawn_version: number } | null; invalidationWithheld: 'already_invalidated' | null;
+  actor: string; occurredAt: string;
+}): OutboxRow {
+  const c = a.challenge;
+  const run = obj(c['run']);
+  const runId = String(c['run_id']);
+  const disputed = Array.isArray(c['disputed']) ? (c['disputed'] as unknown[]) : [];
+  return { eventType: 'ChallengeSimulation', payload: {
+    schema: 'ChallengeSimulation', schema_version: 'v1',
+    challenge_id: String(c['challenge_id']), run_id: runId, state: a.state,
+    kind: nullable(c['kind']), statement: nullable(c['statement']),
+    disputed: disputed.slice(0, LIFECYCLE_EVENT_LIST_MAX), truncated: disputed.length > LIFECYCLE_EVENT_LIST_MAX,
+    opened_by: nullable(c['opened_by']), opened_at: inst(c['opened_at']),
+    rerun_run_id: nullable(c['rerun_run_id']), rerun_requested_at: inst(c['rerun_requested_at']),
+    decided_by: nullable(c['decided_by']), decided_at: inst(c['decided_at']), decision_note: nullable(c['decision_note']),
+    withdrawal_reason: nullable(c['withdrawal_reason']),
+    run: { twin_id: nullable(run['twin_id']), twin_version: nullable(run['twin_version']), run_kind: nullable(run['run_kind']), control_run_id: nullable(run['control_run_id']),
+           operator_principal_id: nullable(run['operator_principal_id']), validity: nullable(run['validity']), fitness_state: nullable(run['fitness_state']), promoted_for: nullable(run['promoted_for']) },
+    invalidation: a.invalidation, invalidation_withheld: a.invalidationWithheld,
     temporal: { known_at: a.occurredAt },
     cause: { action: a.action, actor: a.actor, target_type: 'SIM', target_id: runId },
   } };

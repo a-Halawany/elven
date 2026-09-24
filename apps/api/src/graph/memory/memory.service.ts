@@ -59,6 +59,10 @@
  * ledger row; the gates it can still apply are applied on the projection's audience LIST (narrower, never wider: the
  * admitted purpose is the canonical version's and cannot be checked); while the partition is withdrawn AND the content tier
  * does not answer nothing verified remains to gate a metadata answer on — the one read B20 refuses (503 EYE-DEG-001, C7).
+ * B21 (Codex B20-F1): the reader's own canonical statements (the derivation's policy columns; the absent rows' versions) stand
+ * under the same boundary inside fallback.ts, and their failure while the partition is withdrawn is the same 503 for a present
+ * row as for a missing one — a missing row has no audience to gate a metadata answer on; /memory/list and /memory/:id/get answer
+ * the same 503; the briefing composes without its memory items and says so.
  * An injected fault or a statement-level failure that leaves the connection alive MAY be answered metadata-only (classes
  * 53/58 include conditions after which the backend may not survive the statement; then the request fails as before); a
  * connection-class failure (08xxx, 57P01–57P03) kills the transaction the metadata was read in and the request fails 5xx as
@@ -72,11 +76,13 @@ import type { ScopeContext } from '../../shared/scope.js';
 import type { AuthenticatedPrincipal } from '../../shared/auth-types.js';
 import { newId } from '../../shared/ids.js';
 import { assertClearance, bindingReaches } from '../../shared/clearance.js';
-import { InjectedFault, at } from '../../observation/fault-injection.js';
+import { at } from '../../observation/fault-injection.js';
 import type { GraphReads, MemoryWrites } from '../graph.capabilities.js';
 import { effectiveReviewState, isoOr } from '../edges/derive.js';
 import type { ProjectionBlock } from '../projections/projection-state.js';
 import { memoryItemFromLog, memoryItemsFromLog } from '../projections/fallback.js';
+import { ContentTierUnavailable, contentFailureDetail } from '../projections/content-tier.js';
+export { isContentTierFailure } from '../projections/content-tier.js';   // B21: moved to content-tier.ts; the unit test's import path stands
 import {
   CLAIM_OBJECT_TYPES, MEMORY_BASIS_KINDS, MEMORY_DERIVE_METHOD, MEMORY_DERIVED_SOURCE_KINDS, MEMORY_SERIES_KEYS_MAX,
   anySynthetic, basisGate, derivedStatementOf, evidenceGate, evidenceVersionOf, mostRestrictive, sourceRefOf, statementDigestOf,
@@ -272,19 +278,20 @@ export function basisStateOf(item: Row): string | null {
 /* ───────────── B20 (0080; D9): the content tier ───────────── */
 /** The label a metadata-only retrieval carries (a literal the harness and the page pin). */
 export const MEMORY_CONTENT_UNAVAILABLE_LABEL = 'the content tier did not answer; this is the item\'s metadata (its state, versions and audience) — the statement is not served; retry or contact the operator';
+/** B21: `isContentTierFailure` lives in ../projections/content-tier.ts (shared with the fallback reader); re-exported above. */
+/** The source of the memory workspace's reads while its partition is withdrawn (§2.7): the log through the fallback reader, under the same capability and action. B21: `refusal` is how a content-tier failure of the reader is answered — the route's projection block and correlation id build the 503 (D1.3); without it the typed error propagates (a 500 as before; no caller today). */
+export interface MemoryReadOpts { withdrawn: boolean; scope: { tenantId: string; domainId: string }; refusal?: { projection: ProjectionBlock | undefined; correlationId: string } }
 /**
- * A STATEMENT-level failure of the canonical read that leaves the connection alive, by SQLSTATE: class 53 (insufficient
- * resources), class 58 (system error), class XX (internal error), 57014 (query_canceled — a statement timeout) and 55P03
- * (lock_not_available). A connection-class failure (08xxx; 57P01–57P03) is NOT one: it kills the transaction the metadata was
- * read in, and the request fails as before. An injected fault is told apart by its class (InjectedFault), not here.
+ * C7 (B20) and B21: while memory_items_current is WITHDRAWN and the content tier does not answer nothing verified remains to gate a
+ * metadata answer on — the ONE refusal B20 adds to a read, raised for every canonical statement of the withdrawn path (the reader's
+ * two, the retrieval's versions read), for a present row as for a missing one (a missing row's audience exists only in the canonical
+ * version). ONE literal (the harness regex, the memory page); the detail a trailing parenthesis.
  */
-export function isContentTierFailure(e: unknown): boolean {
-  const code = (e as { code?: unknown } | null | undefined)?.code;
-  if (typeof code !== 'string') return false;
-  return code.startsWith('53') || code.startsWith('58') || code.startsWith('XX') || code === '57014' || code === '55P03';
+export function refuseWithdrawnAndDown(block: ProjectionBlock | undefined, correlationId: string, detail: string | null): HttpException {
+  const mem = block?.partitions.find((p) => p.projection === 'memory_items_current');
+  return new HttpException(errorBody('EYE_DEG_001', correlationId,
+    `the memory_items_current projection of this domain is withdrawn (since ${String(mem?.withdrawn_since ?? 'an unknown instant')}: ${String(mem?.reason ?? 'no reason recorded')}) and the content tier did not answer; nothing verified remains to gate a metadata answer on — retry when the content tier answers, or after the rebuild (graph.projection.rebuild)${detail === null ? '' : ` (${detail})`}`), 503);
 }
-/** The source of the memory workspace's reads while its partition is withdrawn (§2.7): the log through the fallback reader, under the same capability and action. */
-export interface MemoryReadOpts { withdrawn: boolean; scope: { tenantId: string; domainId: string } }
 /** A retrieval SERVED: the served version's content, header fields and audience; the availability from the metadata tier. */
 export interface MemoryServed { item: Row; version: Row; versionServed: number; versions: number; asOf: string | null; availability: Row; content?: undefined; degraded?: undefined }
 /** A retrieval answered METADATA-ONLY (D9): no version served, the count is the content tier's, the degradation declared. */
@@ -548,9 +555,17 @@ export class MemoryService {
    * the route's 404 as an absent item). The source is decided by the caller from the projection block it read FIRST in its transaction.
    */
   async current(cap: GraphReads, itemId: string, opts?: MemoryReadOpts): Promise<Row | null> {
-    if (opts?.withdrawn === true) return (await memoryItemFromLog(cap, opts.scope, itemId)) ?? null;
+    if (opts?.withdrawn === true) {
+      try { return (await memoryItemFromLog(cap, opts.scope, itemId)) ?? null; }
+      catch (e) { throw MemoryService.withdrawnRefusal(e, opts); }
+    }
     const row = ((await cap.readMemoryItems().selectAll().where('item_id' as never, '=', itemId as never).execute()) as Row[])[0];
     return row === undefined ? null : { ...row, index_state: 'projected' };
+  }
+  /** B21 (D1.3): the reader's ContentTierUnavailable → the withdrawn 503 when the caller said how to refuse; anything else (and a caller without `refusal`) rethrown unchanged. */
+  private static withdrawnRefusal(e: unknown, opts: MemoryReadOpts): unknown {
+    if (e instanceof ContentTierUnavailable && opts.refusal !== undefined) return refuseWithdrawnAndDown(opts.refusal.projection, opts.refusal.correlationId, `${e.statement}: ${e.detail}`);
+    return e;
   }
 
   /**
@@ -567,7 +582,7 @@ export class MemoryService {
     Promise<MemoryRetrieval | null> {
     const tenantId = ctx.tenantId as string; const domainId = ctx.domainId as string;
     const withdrawn = a.projection?.withdrawn.includes('memory_items_current') ?? false;
-    const item = await this.current(cap, a.itemId, { withdrawn, scope: { tenantId, domainId } });
+    const item = await this.current(cap, a.itemId, { withdrawn, scope: { tenantId, domainId }, refusal: { projection: a.projection, correlationId: a.correlationId } });
     if (item === null) return null;
     // A WITHDRAWN item has left circulation (B10): its current reading is refused with the withdrawal named; every version it
     // ever had stays replayable AS OF an instant — the record is not rewritten by the withdrawal.
@@ -588,16 +603,12 @@ export class MemoryService {
           .orderBy('object_version' as never, 'desc').execute()) as Row[];
       });
     } catch (e) {
-      if (e instanceof InjectedFault) contentFailure = `injected fault at ${e.point}`;
-      else if (isContentTierFailure(e)) contentFailure = `${String((e as { code?: string }).code)}: ${String((e as Error).message).slice(0, 120)}`;
-      else throw e;
+      contentFailure = contentFailureDetail(e);
+      if (contentFailure === null) throw e;
     }
     if (contentFailure !== null) {
       // C7: while memory_items_current is WITHDRAWN nothing verified remains to gate a metadata answer on — refused (the one read B20 refuses).
-      if (withdrawn) {
-        const mem = a.projection?.partitions.find((p) => p.projection === 'memory_items_current');
-        throw new HttpException(errorBody('EYE_DEG_001', a.correlationId, `the memory_items_current projection of this domain is withdrawn (since ${String(mem?.withdrawn_since ?? 'an unknown instant')}: ${String(mem?.reason ?? 'no reason recorded')}) and the content tier did not answer; nothing verified remains to gate a metadata answer on — retry when the content tier answers, or after the rebuild (graph.projection.rebuild)`), 503);
-      }
+      if (withdrawn) throw refuseWithdrawnAndDown(a.projection, a.correlationId, contentFailure);
       // C7: the purpose gate is the audience LIST alone — narrower, never wider: the admitted purpose (purpose_scope) is the canonical version's and cannot be checked while the content tier does not answer.
       const listed = (item['audience_purposes'] as string[] | null) ?? [];
       if (!listed.includes(a.purpose)) throw new HttpException(errorBody('EYE_AUT_001', a.correlationId, `a memory item is read under a purpose its audience declares (${listed.length > 0 ? listed.join(', ') : 'none declared'}); the admitted purpose cannot be checked while the content tier does not answer; this read states ${a.purpose}`), 403);
@@ -694,9 +705,11 @@ export class MemoryService {
    * `projected`, `from` and `drift` kept on the listed row; a poisoned row absent).
    */
   async list(cap: GraphReads, limit = 200, opts?: MemoryReadOpts): Promise<Row[]> {
-    const rows = opts?.withdrawn === true
-      ? await memoryItemsFromLog(cap, opts.scope, { limit })
-      : ((await cap.readMemoryItems().selectAll().orderBy('recorded_at' as never, 'desc').limit(limit).execute()) as Row[]).map((r) => ({ ...r, index_state: 'projected' }));
+    let rows: Row[];
+    if (opts?.withdrawn === true) {
+      try { rows = await memoryItemsFromLog(cap, opts.scope, { limit }); }
+      catch (e) { throw MemoryService.withdrawnRefusal(e, opts); }
+    } else rows = ((await cap.readMemoryItems().selectAll().orderBy('recorded_at' as never, 'desc').limit(limit).execute()) as Row[]).map((r) => ({ ...r, index_state: 'projected' }));
     return rows.map((r) => MemoryService.record(r));
   }
   async events(cap: GraphReads, itemId: string): Promise<Row[]> {

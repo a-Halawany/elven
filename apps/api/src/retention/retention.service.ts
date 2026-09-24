@@ -707,27 +707,35 @@ export class RetentionService {
     const kind = action?.kind ?? '';
     const items = (await cap.readScopeItems().selectAll().where('action_id' as never, '=', actionId as never).execute()) as Row[];
     const observed: Row = {};
+    // B21.2 (D2.8): a root whose marker cannot be read proves NOTHING about bytes (B18's rule for the revocation cleanup, applied here): an
+    // observation that would have looked in an unreachable root reports NULL — verify_action reads NULL as present for a deletion (0075:78),
+    // as not-yet-archived (0075:49) and as not-yet-restored (0075:59) — never "gone". Read once per call.
+    const reachable = { evidence: await this.vault.rootReachable('evidence'), archive: await this.vault.rootReachable('archive') };
+    const rootsUnreachable = (['evidence', 'archive'] as const).filter((r) => !reachable[r]);
+    const orNull = (root: 'evidence' | 'archive', v: boolean): boolean | null => (reachable[root] ? v : null);
+    const either = (a: boolean | null, b: boolean | null): boolean | null => (a === true || b === true ? true : a === null || b === null ? null : false);
+    if (rootsUnreachable.length > 0) observed['__roots_unreachable__'] = rootsUnreachable;
     for (const i of items) {
       if (String(i['item_kind']) !== 'manifest') continue;
       const ref = String(i['ref']); const details = (i['details'] ?? {}) as Row;
       const locator = details['locator']; const digest = String(details['content_digest'] ?? '');
       if (typeof locator !== 'string') { observed[ref] = { bytes_present: null }; continue; }
-      const inEvidence = await this.vault.exists('evidence', scope, locator); const inArchive = await this.vault.exists('archive', scope, locator);
+      const inEvidence = orNull('evidence', await this.vault.exists('evidence', scope, locator)); const inArchive = orNull('archive', await this.vault.exists('archive', scope, locator));
       // A staged copy (0071; in either root since B12) is bytes in that root too: a deletion is not verified while one remains; an archive's and
       // a restore's own contracts need the PUBLISHED copy. A listing that fails counts as bytes PRESENT — the observer never concludes "nothing
       // staged" from an answer it did not get.
-      const stagedArchive = await this.vault.stagedCopiesIn('archive', scope, locator).then((n) => n.length > 0, () => true);
-      const stagedEvidence = await this.vault.stagedCopiesIn('evidence', scope, locator).then((n) => n.length > 0, () => true);
-      const staged = stagedArchive || stagedEvidence;
+      const stagedArchive = reachable.archive ? await this.vault.stagedCopiesIn('archive', scope, locator).then((n) => n.length > 0, () => true) : null;
+      const stagedEvidence = reachable.evidence ? await this.vault.stagedCopiesIn('evidence', scope, locator).then((n) => n.length > 0, () => true) : null;
+      const staged = either(stagedArchive, stagedEvidence);
       if (kind === 'archive') {
-        observed[ref] = { bytes_present: inEvidence, archive_present: inArchive, archive_digest_ok: await this.vault.read('archive', scope, locator, digest).then(() => true, () => false), staged_copies: staged };
+        observed[ref] = { bytes_present: inEvidence, archive_present: inArchive, archive_digest_ok: reachable.archive ? await this.vault.read('archive', scope, locator, digest).then(() => true, () => false) : null, staged_copies: staged, ...(rootsUnreachable.length > 0 ? { roots_unreachable: rootsUnreachable } : {}) };
       } else if (kind === 'restore') {
-        observed[ref] = { bytes_present: inEvidence, hot_digest_ok: await this.vault.read('evidence', scope, locator, digest).then(() => true, () => false), archive_present: inArchive, staged_copies: staged };
+        observed[ref] = { bytes_present: inEvidence, hot_digest_ok: reachable.evidence ? await this.vault.read('evidence', scope, locator, digest).then(() => true, () => false) : null, archive_present: inArchive, staged_copies: staged, ...(rootsUnreachable.length > 0 ? { roots_unreachable: rootsUnreachable } : {}) };
       } else if (kind === 'customer_export') {
         const file = await this.vault.readPackageFile(scope, actionId, `${ref}.bin`).then((b) => b, () => null);
-        observed[ref] = { bytes_present: inEvidence || inArchive || staged, export_present: file !== null, export_digest_ok: file !== null && sha256(file) === digest };
+        observed[ref] = { bytes_present: either(either(inEvidence, inArchive), staged), export_present: file !== null, export_digest_ok: file !== null && sha256(file) === digest, ...(rootsUnreachable.length > 0 ? { roots_unreachable: rootsUnreachable } : {}) };
       } else {
-        observed[ref] = { bytes_present: inEvidence || inArchive || staged, tiers_present: [...(inEvidence ? ['evidence'] : []), ...(inArchive ? ['archive'] : []), ...(stagedArchive ? ['archive-staged'] : []), ...(stagedEvidence ? ['evidence-staged'] : [])] };
+        observed[ref] = { bytes_present: either(either(inEvidence, inArchive), staged), tiers_present: [...(inEvidence === true ? ['evidence'] : []), ...(inArchive === true ? ['archive'] : []), ...(stagedArchive === true ? ['archive-staged'] : []), ...(stagedEvidence === true ? ['evidence-staged'] : [])], ...(rootsUnreachable.length > 0 ? { roots_unreachable: rootsUnreachable } : {}) };
       }
     }
     if (kind === 'customer_export') {
@@ -785,8 +793,11 @@ export class RetentionService {
    * and the error) beside the rest: a state read never throws for a directory it could not list.
    */
   async tierState(cap: RetentionReads, scope: { tenantId: string; domainId: string }): Promise<Row> {
-    const inventory = (vault: 'evidence' | 'archive'): Promise<Row> =>
-      this.vault.domainInventory(vault, scope).then((i) => ({ ...i }), (e: unknown) => ({ blobs: null, staged: null, temp: null, error: String((e as { message?: unknown })?.message ?? 'unknown').slice(0, 200) }));
+    // B21.2 (D2.10): `reachable` per root beside the inventory — an unmounted root lists zeros; the marker (B18) is the rule.
+    const inventory = async (vault: 'evidence' | 'archive'): Promise<Row> => ({
+      reachable: await this.vault.rootReachable(vault),
+      ...(await this.vault.domainInventory(vault, scope).then((i) => ({ ...i }), (e: unknown) => ({ blobs: null, staged: null, temp: null, error: String((e as { message?: unknown })?.message ?? 'unknown').slice(0, 200) }))),
+    });
     return { ...(await cap.tierState(scope)), vault: { evidence: await inventory('evidence'), archive: await inventory('archive') } };
   }
 

@@ -4,13 +4,21 @@
  * for the same change — is MARKED FOR ATTENTION once (prediction.mark_scenario_attention); its branches, its
  * indicators and its as-of binding are untouched: what to do with the tree is the owner's review.
  *
+ * CP-6 B21 (0081, D7, D9 c). A forecast ASSESSED UNFIT (GraphChanged/forecast.fitness_changed) reaches the scenarios
+ * resting on it through objects.forecasts as a withdrawal does; the mark's reason is the typed block's (the forecast and
+ * its class). And EVERY marked scenario is RE-CHECKED in the item's own transaction (prediction.check_scenario_coherence,
+ * trigger `subscription`) — a failed and changed check publishes ScenarioCoherenceFailed@v1 with the item (0066 §2); an
+ * already-attending scenario is not re-checked here (its review re-checks). A new method, so a new identity (METHOD_REF).
+ *
  * Items are scenario ids.
  */
 import { Injectable, type OnModuleInit } from '@nestjs/common';
 import { SubscriptionDispatcherService } from '../../graph/subscriptions/subscription-dispatcher.service.js';
 import { touchedIds } from '../../graph/subscriptions/change-events.js';
 import type { ChangeEvent, SubscriptionConsumer } from '../../graph/subscriptions/graph-change.js';
+import { newId } from '../../shared/ids.js';
 import { PredictionCapability, type PredictionSubscriberWrites } from '../prediction.capabilities.js';
+import { scenarioCoherenceFailedEvent } from '../scenarios/scenario-events.js';
 
 type Row = Record<string, unknown>;
 
@@ -53,8 +61,20 @@ export class ScenarioSubscriptionConsumer implements SubscriptionConsumer<Predic
   }
 
   async applyItem(cap: PredictionSubscriberWrites, scope: { tenantId: string; domainId: string }, event: ChangeEvent, item: string, actor: string, correlationId: string, subscriptionId: string) {
-    const reason = `${event.event_type}/${event.payload.change.kind} (outbox ${event.event_id}): the subject or the forecast this scenario rests on changed`;
+    // 0081 (B21): the reason for a fitness change is the typed block's — the forecast assessed unfit and its class; never a re-read.
+    const p = event.event_type === 'GraphChanged' ? event.payload : null;
+    const fitness = p !== null && p.change.kind === 'forecast.fitness_changed' ? { forecast_id: p.forecast_fitness?.forecast_id ?? p.objects.forecasts[0] ?? null, class: p.forecast_fitness?.class ?? null } : null;
+    const reason = fitness !== null
+      ? `${event.event_type}/${event.payload.change.kind} (outbox ${event.event_id}): forecast ${fitness.forecast_id} assessed unfit (${fitness.class})`
+      : `${event.event_type}/${event.payload.change.kind} (outbox ${event.event_id}): the subject or the forecast this scenario rests on changed`;
     const marked = await cap.markScenarioAttention({ scenarioId: item, tenantId: scope.tenantId, domainId: scope.domainId, reason, outboxEventId: event.event_id, subscriptionId, actor, correlationId });
-    return marked ? { effect: 'scenario.attention', effectRef: item } : { effect: 'scenario.already_attending', effectRef: item };
+    // An attending scenario is not re-checked by the subscriber: its review re-checks (0081).
+    if (!marked) return { effect: 'scenario.already_attending', effectRef: item };
+    // 0081 (B21, D9 c): the marked scenario is RE-CHECKED here, in the item's transaction; a failed and changed check is announced with the item.
+    const c = await cap.checkScenarioCoherence({ checkId: newId(), scenarioId: item, tenantId: scope.tenantId, domainId: scope.domainId, trigger: 'subscription', actor, eventId: newId(), correlationId });
+    const failedAndChanged = c['outcome'] === 'failed' && c['changed'] === true;
+    return { effect: 'scenario.attention', effectRef: item,
+             details: { coherence: { state: c['outcome'] ?? null, check_id: c['check_id'] ?? null, changed: c['changed'] === true } },
+             ...(failedAndChanged ? { outboxEvents: [scenarioCoherenceFailedEvent({ check: c, trigger: 'subscription', actor, occurredAt: new Date().toISOString() })] } : {}) };
   }
 }

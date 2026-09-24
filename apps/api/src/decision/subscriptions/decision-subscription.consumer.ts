@@ -26,6 +26,12 @@
  * re-simulate. A REOPENED package (0078, D11; C8) is open — its new draft hears of its inputs — and its standing commitment
  * is executed until it is re-committed.
  *
+ * THE FITNESS KIND (0081, B21; D7). A forecast an option cites ASSESSED UNFIT (GraphChanged/forecast.fitness_changed — a
+ * transition to unfit, or a class change while unfit) is exposed as `material_change` like the lifecycle kinds — human
+ * review for an open package, compensation for one whose decision was executed — with a note built from the typed
+ * `forecast_fitness` block (the class, the rule version, the window and the coverage): the forecast is NOT withdrawn, so the
+ * owner decides whether the option stands; the ledger event stays `input.invalidated`. A new method, so a new identity.
+ *
  * Items are package ids.
  */
 import { Injectable, type OnModuleInit } from '@nestjs/common';
@@ -126,9 +132,9 @@ export class DecisionSubscriptionConsumer implements SubscriptionConsumer<Decisi
   async applyItem(cap: DecisionSubscriberWrites, scope: { tenantId: string; domainId: string }, event: ChangeEvent, item: string, actor: string, correlationId: string, subscriptionId: string, policy?: Record<string, unknown>) {
     const a = (await this.affected(cap, event)).get(item) ?? { via: [], state: 'unknown', executed: false, citedForecast: null };
     const measure = await this.materiality(cap, event, policy, a.citedForecast);
-    // 0078 (B18): the lifecycle kinds are read from the event's typed block — the withdrawal, the invalidation, the admission.
+    // 0078 (B18): the lifecycle kinds are read from the event's typed block — the withdrawal, the invalidation, the admission; 0081 (B21): the fitness kind.
     const p = event.event_type === 'GraphChanged' ? event.payload : null;
-    const lifecycle = p !== null && (p.change.kind === 'forecast.withdrawn' || p.change.kind === 'simulation.invalidated') ? p : null;
+    const lifecycle = p !== null && (p.change.kind === 'forecast.withdrawn' || p.change.kind === 'simulation.invalidated' || p.change.kind === 'forecast.fitness_changed') ? p : null;
     // The admission is keyed on the KIND (C13): its typed block is read for the note; the objects.twins entry names the twin either way.
     const admission = p !== null && p.change.kind === 'twin.state_changed'
       ? { twin_id: p.twin?.twin_id ?? p.objects.twins[0] ?? null, version: p.twin?.version ?? null, supersedes: p.twin?.supersedes ?? null, branch_id: p.twin?.branch_id ?? null }
@@ -137,9 +143,19 @@ export class DecisionSubscriptionConsumer implements SubscriptionConsumer<Decisi
       ? admission === null ? null : { kind: 'twin.state_changed', twin_id: admission.twin_id, version: admission.version, supersedes: admission.supersedes }
       : lifecycle.change.kind === 'forecast.withdrawn'
         ? { kind: 'forecast.withdrawn', ref: lifecycle.forecast?.forecast_id ?? null, reason: lifecycle.forecast?.reason ?? null, unfit_class: lifecycle.forecast?.unfit_class ?? null }
-        : { kind: 'simulation.invalidated', ref: lifecycle.simulation?.run_id ?? null, reason: lifecycle.simulation?.reason ?? null, trigger: lifecycle.simulation?.trigger ?? null };
+        : lifecycle.change.kind === 'forecast.fitness_changed'
+          ? { kind: 'forecast.fitness_changed', ref: lifecycle.forecast_fitness?.forecast_id ?? lifecycle.objects.forecasts[0] ?? null, class: lifecycle.forecast_fitness?.class ?? null, state: lifecycle.forecast_fitness?.state ?? 'unfit' }
+          : { kind: 'simulation.invalidated', ref: lifecycle.simulation?.run_id ?? null, reason: lifecycle.simulation?.reason ?? null, trigger: lifecycle.simulation?.trigger ?? null };
     let exposure: { failureClass: 'executed_action' | 'material_change'; disposition: 'compensation' | 'human_review'; note: string } | undefined;
-    if (lifecycle !== null) {
+    if (lifecycle !== null && lifecycle.change.kind === 'forecast.fitness_changed') {
+      // 0081 (B21, D7): the forecast the option cites was ASSESSED UNFIT — not withdrawn (that stays the owner's act), so the option
+      // is not lost; it rests on a forecast the rule found unfit. Exposed as material like the lifecycle kinds; the note is the block's.
+      const ff = lifecycle.forecast_fitness;
+      const cov = ff?.measures.coverage?.['observed'];
+      const what = `forecast ${ff?.forecast_id ?? lifecycle.objects.forecasts[0]} (the one the option cites) was ASSESSED UNFIT (${ff?.class}) under rule v${ff?.rule_version}: ${ff?.measures.outcomes ?? 0} outcome(s), coverage ${cov === null || cov === undefined ? 'n/a' : String(cov)} — not withdrawn; the owner decides whether the option stands`;
+      exposure = { failureClass: 'material_change', disposition: a.executed ? 'compensation' : 'human_review',
+                   note: `${what}; routed as material because the option citing it may no longer be the recommendation — ${a.executed ? 'the decision was executed: compensation, challenge or a reopen (decision.package.reopen) is the owner\'s' : 'the owner reviews the package'}` };
+    } else if (lifecycle !== null) {
       // A CATEGORICAL loss of a cited input (0078, D16): the forecast withdrawn as unfit, the run's result invalidated — routed as
       // material because nothing replaced it and the change cannot be shown immaterial. The note is the block's, never a re-read.
       const what = lifecycle.change.kind === 'forecast.withdrawn'

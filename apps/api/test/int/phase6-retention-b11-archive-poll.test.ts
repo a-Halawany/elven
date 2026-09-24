@@ -9,6 +9,9 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
+import { mkdtempSync, readFileSync, realpathSync, renameSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { sql } from 'kysely';
 import { uuidv7 } from 'uuidv7';
 import { ObservationCapability, tierOf } from '../../src/observation/observation.capabilities.js';
@@ -24,6 +27,13 @@ import { Phase4Harness, SERIES_START, BASE, sdmxWindow } from './phase4-helpers.
 
 process.env['EYE_SCHEDULER_ENABLED'] = 'true';
 process.env['EYE_CONNECTOR_PER_SOURCE_CONCURRENCY'] = '1';
+// B21 (C5): this file's own vault roots (the B18 idiom) — before B21 its uploads landed under the workspace default (.eye-local/vault); the
+// B21.2 case below moves a marker, which must never be the demonstration's.
+const VAULT_DIR = realpathSync(mkdtempSync(join(tmpdir(), 'eye-b11poll-vault-')));
+process.env['EYE_VAULT_QUARANTINE_ROOT'] = join(VAULT_DIR, 'quarantine');
+process.env['EYE_VAULT_EVIDENCE_ROOT'] = join(VAULT_DIR, 'evidence');
+process.env['EYE_VAULT_ARCHIVE_ROOT'] = join(VAULT_DIR, 'archive');
+process.env['EYE_VAULT_EXPORT_ROOT'] = join(VAULT_DIR, 'export');
 
 let h: Phase4Harness; let observation: ObservationController; let retention: RetentionController; let scheduler: SchedulerService; let orchestrator: CollectionOrchestrator; let vault: VaultService;
 let steward: AuthenticatedPrincipal; let authority: AuthenticatedPrincipal;
@@ -183,5 +193,40 @@ describe('B11 · archived CURRENT evidence and the next live polls (the acquisit
     expect(c2.length).toBe(1);
     expect(c2[0]?.details['evd_object_id']).toBe(held.object_id);
     expect(await evidenceCount()).toBe(before);
+  }, 180_000);
+
+  it('B21.2 · the archive root UNREACHABLE (its marker moved aside): a live 200 of identical bytes CONFIRMS the archived held evidence by the RECORD\'s digest — item.noop unchanged, availability unverifiable, the quarantine copy kept (the sweeper\'s orphan) — no duplicate admitted, no held_unavailable; the marker restored, the next poll verifies again', async () => {
+    const before = await evidenceCount();
+    const marker = join(vault.rootFor('archive'), '.eye-vault-root');
+    const aside = join(VAULT_DIR, '.eye-vault-root.archive-aside');
+    expect(readFileSync(marker, 'utf8').trim()).toBe('archive');
+    expect(await vault.rootReachable('archive')).toBe(true);
+    renameSync(marker, aside);
+    let details: Record<string, unknown> = {};
+    try {
+      expect(await vault.rootReachable('archive')).toBe(false);
+      const r = await h.runOnce(connector());
+      expect(r.state, r.reason).toBe('finished');
+      const ev = await runEvents(r.runId);
+      const confirmed = ev.filter((e) => e.event === 'item.noop' && e.details['unchanged'] === true && e.details['poll_key'] === POLL_KEY);
+      expect(confirmed).toHaveLength(1);
+      details = confirmed[0]!.details;
+      expect(details).toMatchObject({ unchanged: true, evd_object_id: held.object_id, digest: held.content_digest, availability: 'unverifiable', quarantine_copy_kept: true });
+      expect(String(details['reason'])).toMatch(/the held bytes' tier root could not be reached: the record's digest matched, the bytes were not re-verified/);
+      expect(ev.find((e) => e.event === 'item.admitted' && String(e.details['item_key']).startsWith(`${POLL_KEY}@`))).toBeUndefined();
+      expect(ev.some((e) => e.details['held_unavailable'] !== undefined && e.details['held_unavailable'] !== null)).toBe(false);
+      expect(await evidenceCount()).toBe(before);
+      expect(await ledgerTier(held.manifest_id)).toBe('archive');
+    } finally {
+      renameSync(aside, marker);
+    }
+    expect(await vault.rootReachable('archive')).toBe(true);
+    const r2 = await h.runOnce(connector());
+    expect(r2.state, r2.reason).toBe('finished');
+    const c2 = (await runEvents(r2.runId)).filter((e) => e.event === 'item.noop' && e.details['unchanged'] === true && e.details['poll_key'] === POLL_KEY);
+    expect(c2).toHaveLength(1);
+    expect(c2[0]!.details).toMatchObject({ evd_object_id: held.object_id, availability: 'verified' });
+    expect(await evidenceCount()).toBe(before);
+    console.log(`B21.2 EVIDENCE V6: ${JSON.stringify({ fault_trace: 'the archive root marker moved aside', watermark: { availability: details['availability'], quarantine_copy_kept: details['quarantine_copy_kept'] }, consumer_behaviour: 'item.noop by the record\'s digest; no admission, no duplicate, no held_unavailable', operator_action: 'the marker restored', recovery: 'item.noop availability verified', reconciliation: 'the run events; the quarantine copy left for the sweeper (F17\'s class, stated)' })}`);
   }, 180_000);
 });

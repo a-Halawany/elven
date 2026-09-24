@@ -3573,3 +3573,179 @@ merge is the owner's word);
 #56's retarget to `main` and its merge after `main`'s chain is green; B20's PR retargeted after #56; Codex's bounded review of B20 if the
 owner wants one; the owner's walk of the demonstration; the owner's key for Comtrade; the owner's decision on a public host for the
 recipient; comprehensive hardening after the feature scope, with the residuals and the register rows left for it.
+
+## 35. The checkpoint after B20's records head `13ed40c` (2026-09-24): the stack merged — #57 (the C15 return), #56 (B19) and #58 (B20) on `main` `e180b18` with its chain published; B21 implemented — fitness, coherence and challenge: the four foresight rows bound (40/10/0) — one fitness vocabulary set only by a recorded act whose measures the port computes, the operating envelope enforced, a versioned rule behind every automatic verdict, the coherence check that admits and gates, the challenge decided by someone else and the promotion; Codex's B20-F1 corrected first; the vault clause of AU-MEM-0067 delivered for the root-unreachable class and bounded at the per-object class; the rehearsal wedge found and fixed; the demonstration's twin validated fit under the envelope the port computed, its corridor forecast assessed unfit under the versioned rule, a duplicate-branch scenario admitted incoherent and refused for simulation, a challenge re-run and dismissed, the control promoted, the cold tier made unreachable and answering metadata-only
+
+B20's hosted run at `1f6d04c` was bound in the records commit `13ed40c` on PR #58 (§34.4). On 2026-09-23, under the owner's
+authorization on Codex's B20 review (`audit/reviews/The_Eye_1f6d04c_B20_Review_C15_Unblock_and_B21_Delivery.md`), the C15 return
+(#57) was completed and merged, then #56 and #58 retargeted and merged in order — `main` `e180b18` with its chain published; the
+chains as they ran, the one process error and the lesson are §35.4. B21 is cut from `13ed40c` on `phase6-b21` (the PR base `main`;
+the candidate UNCOMMITTED while this section was written — the commit that carries it is the candidate). §34 stands as written; its
+Missing line "the remaining fourteen interface contracts" is reduced here to ten.
+
+### 35.1 What B21 implements (migration 0081) — `audit/CP6_BATCHES.md` §B21 for the mechanism
+
+- **Codex's B20-F1 corrected first (B21.1, no SQL).** The withdrawn-mode memory reader issued two canonical statements before the
+  content-tier boundary — the derivation with its policy columns on every withdrawn read, the absent rows' versions for a row the
+  log has and the projection lacks — and a cancelled statement there escaped raw (a 500, an `EYE-INT-001` audit row). Reproduced at
+  the function boundary with Codex's own 57014 double against `1f6d04c` (zero savepoints), then corrected where the statements are:
+  each under a savepoint at `b21.memory_fallback_content_unavailable`, the failure classified by the shared `content-tier.ts`;
+  withdrawn AND the tier down → 503 `EYE-DEG-001` for a present row as for a missing one on retrieve, list and get, one sentence,
+  the failure audit row `EYE-DEG-001`, the point consumed; the briefing composes WITHOUT its memory items as a degraded source
+  (`memorySource`, `memory_content 'unavailable'` on that composition's watermark only; an `on_degraded` agent stops naming the
+  reason); the fault registry's ordinal (`armNth`) reaches the second statement exactly — Codex's row. - **The vault clause of
+  AU-MEM-0067 (B21.2, 0081 §1.C).** `EvidenceService.retrieve` reads the PRIMARY root's marker before any per-object read: an
+  unreachable root answers 200 metadata-only under the same gate (`base64 null`, `integrity 'unavailable'`, `availability
+  'unreachable'`, the manifest's digest and byte length, the tier, the `degraded` block with `EYE-DEG-001` and the label), writes
+  `custody.retrieval_degraded` — the sixteenth custody kind, `digest_verified NULL` by a named CHECK — and audits
+  `success`/`EYE-DEG-001`. Class A (a per-object missing, corrupt, scope or oversize read under a REACHABLE root) UNCHANGED in shape
+  — one 409, one `custody.integrity_failed` row, no disclosure (A7) — and that custody row, rolled back by the route until now, is
+  durable (the refused read a typed result; the audit row `success`/`EYE-INT-001` — 0013's closure admits a business effect only
+  beside one success audit row; the 409 thrown after the pipeline returned). The extraction orchestrator skips a degraded read with
+  the code and no receipt; the series reader discloses it as a tombstone (`complete false`); the retention verifier never concludes
+  "bytes gone" from a root it could not read (`bytes_present NULL`); the lifecycle poll answers `unverifiable` and admits no
+  duplicate; `tier/state` gains `reachable`; the evidence page renders the degraded block from the flag. The rejected variant
+  (classify after a failed attempt) stays rejected for the oracle it leaks; two consequences stated. - **Fitness, coherence and
+  challenge (B21.3, 0081 §1–§10).** ONE vocabulary `none | fit | unfit | indeterminate` on twin versions and forecasts (`none | fit
+  | unfit` on runs; `unchecked | passed | failed` on scenarios), every pre-0081 row reading its honest default.
+  `twin.validate_version` — the verdict the person's, the envelope check and the calibration history the port's, the twin's owner
+  refused (the separation of duties), no GraphChanged — `ValidateTwin@v1`; `twin.envelope_check` shared with `open_run` (35
+  arguments): an unfit version's run refused, a run outside the envelope admitted only under a twin owner's or the administrator's
+  acknowledgement, the state carried on the run and on `SimulationStarted`. `prediction.assess_forecast_fitness` under
+  `forecast_fitness_rule` v1 over the family's last ten outcomes — `calibration_failure`, `drift`, `data_shift`, `envelope_breach`
+  judged in order, `indeterminate` when the ledger is thin — by the outcome write (the scored resolved forecast and the family's
+  issued ones; a withdrawn or superseded one skipped), the forecast consumer beside its mark, or a person —
+  `ForecastFitnessChanged@v1`, and `GraphChanged/forecast.fitness_changed` on a transition to unfit (the scenarios consumer marks
+  and re-checks, the decisions consumer exposes `material_change`, the twins consumer marks the citing version); `declare_scenario`
+  refuses an unfit forecast; nothing auto-withdrawn. `prediction.check_scenario_coherence` under `scenario_coherence_rule` v1 —
+  `duplicate_branch`, `assumption_invalid`, `forecast_relationship`, `temporal_order`, `dependency_retired`; `coverage` and
+  `basis_unchecked` as notes — at declare, on continue and promotion in review, by the consumer and by a person; a failed scenario
+  ADMITTED failed, never refused — `ScenarioCoherenceFailed@v1` with `routed_to`; `open_run` refuses its branch, `review_scenario`
+  refuses its promotion, `raise_warning` marks its warning `input_unverified`; no branch suspension (retire + a successor).
+  `simulation.challenges` — open / request re-run / withdraw / decide (neither the opener nor the run's operator), the three bound
+  to the RUN in the path and the port, the re-run a governed run naming `correctsRunId` and `challengeId` compared on the common
+  control; an upheld decision invalidates the run in the same write with the new trigger `challenge` (the withdrawn SIM version
+  admitted under `simulation.challenge.decide`) — `ChallengeSimulation@v1`; `simulation.promote_result` (OBJ-29) — a reviewer other
+  than the operator, once, the row's validation restated, no outbox event. The register 40/10/0 (L9-I05's clause re-homed to B22);
+  eight exact PDP rules; five refusal families and the five run gates' classes mapped by B9's order; the forecasts, scenarios and
+  decisions consumers' digests changed — the act re-registers them; the twins, simulations, forecasts, calibration and scenarios
+  pages; the demo walk (a demo spec, not a gate case). - **The rehearsal wedge (B21.4).** The first rehearsal's control run wedged
+  the copy's API — every login hung — because `SimulationService.open` nested a governed write (`series.retrieveBytes` →
+  `pipeline.write`) inside the run's transaction and `ctx.build`'s sweep of hour-old capability nonces made the nested write wait on
+  the outer transaction while the outer awaited the nested promise (a wait cycle PostgreSQL cannot see; phase 5's making; never on a
+  fresh database). Fixed where the act reached it: the run's and the reproduction's evidence retrievals run BEFORE the write under
+  `simulation.read`; T1.8 plants a crossing stream and watches the wedge's signature. Stated: a refused run now leaves its retrieval
+  rows; the residual sites of the same class (`twin.ground`, the forecast issue, backtest and outcome writes) unchanged; the
+  systemic remedy — `ctx.build`'s sweep with `FOR UPDATE SKIP LOCKED` in a later migration — the owner's call (the ctx boundary,
+  C18's watch).
+
+### 35.2 The local results
+
+`phase6-graph-projections-b21` F1 **1/1** on two fresh databases; `phase6-evidence-degradation-b21` V7, V1, V2, V3, V4(a), V5
+**6/6** on two fresh databases (3.99 s / 3.79 s) with V4(c) and V6 green in their own files; `phase6-fitness-b21` T1–T5 **5/5** on
+two fresh databases at the reconcile (35.16 s / 36.19 s) then **6/6 three times** with T1.8 after the wedge's fix; the C15 case
+green in `phase5-corrections`; the refute run 2/2; the neighbouring set **38 files in five groups** on fresh databases (53/53,
+239/239, 166/170 → the three files re-run 64/64 after the four pins the design moved, 117/117 — 579/579 in all; six pins moved in
+the batch, nothing else); the full integration suite **1085/1085 in 74 files** at the reconciled tree, then **1086/1086 in 74
+files** on a fresh database after the wedge's fix (644.0 s; = 1070 + 12 new + 2 appended + 1 + T1.8); the upgrade proof with
+0022–0081 (60 migrations; 81 files; the registry's 36 rows and the 31 roles unchanged — no row, no role in B21; the digests equal
+`d9018019…`; 297/297 before and after; 276/276 on the upgraded data); the unit suite **2389/2389** in 59 files (= 2338 + 51) and the
+meta suite 9/9, twice; `pnpm boundaries` green (538 modules); the web typecheck, build and 23 tests (= 15 + 8); the browser gate
+**51/51** on a fresh database (44.6 s; no new hosted walk — `evidence/cp6/b21-browser.txt`).
+
+### 35.3 The NORDWERK demonstration — `evidence/cp6/act-b21.txt`
+
+Rehearsed first on a restored copy with the vault copied (`eye_demo_b21`; `evidence/cp6/b21-rehearsal.txt` — the NINTH rehearsal
+held whole, 57 checks in 143 s; the eight stops before it recorded in the header: the wedge — a product defect, fixed; then the
+act's own pins corrected against the product's right refusals — a carried version needs its cut-off, the guard runs after the real
+act, the forecast reads the rule's first class, a version's `known_at` must follow the scenario it binds, a shock bound to an
+unflipped branch is a hypothetical naming no scenario, the intervention's shape is the demonstration's own, a control must be
+comparable), then on `eye_demo` (the backup FIRST to `.eye-local/backups/`, 52,584,453 bytes; 0081 applied; the API restarted on the
+B21 build): the register 40/10/0 with the four foresight rows bound; the forecasts, scenarios and decisions subscriptions of the
+origin revoked at cursor 14497 and registered anew (their methods changed), each replaying the revoked cursor's own event, the four
+other kinds left; the honest defaults said; T. Nakamura (the twin's owner) refused by the separation of duties and the administrator
+validating version 5 FIT with the envelope the port computed (`ValidateTwin@v1` at 14541; no GraphChanged) — his control run
+carrying `twin_fitness fit`, `envelope inside` on `SimulationStarted`; N. Eriksen's corridor forecast assessed UNFIT (`data_shift`,
+the rule's first class; the lapsed daily cadence beside it) with its measures over an empty ledger, `ForecastFitnessChanged@v1` at
+14544 and `GraphChanged/forecast.fitness_changed` at 14545 with six deliveries (the one scenario resting on it marked and
+re-checked; five applied with nothing), idempotent on repeat, the withdrawal left to its owner; a scenario on the unfit forecast
+refused; J. Weber's duplicate-branch scenario ADMITTED failed with the findings routed (`ScenarioCoherenceFailed@v1` at 14547), T.
+Nakamura's run on its branch refused, the scenario retired and its successor passed; J. Weber's challenge of the act's own
+hypothetical run (the demonstration's intervention runs all sit on scenarios retired by review) opened at 14557, the re-run bound to
+it and compared on the common control (`line_stop_days` 29 / 0 / 0), the administrator's dismissal at 14561 (the run stays valid),
+the control PROMOTED fit for the routing decision by the administrator, the operator refused to promote his own; the act itself
+moving the demonstration's archive root marker aside and restoring it byte-identical — the cold NORDWERK record answering
+metadata-only with its `custody.retrieval_degraded` row and the audit row `success`/`EYE-DEG-001` (seq 101511), no integrity
+incident, a hot record served beside it, the record verified again after. ALL SCENES HELD (54 checks, 22.2 s).
+
+### 35.4 Heads, hosted results, statuses
+
+| Head | What | Hosted `ci` | Hosted C19 |
+|---|---|---|---|
+| `13ed40c` | B20's records head on PR #58 — merged to `main` as `e180b18` (below) | 35779940271 attempt 2 (§34.4) | 35779940295 green |
+| `870b212` | `main`: #57 (the C15 return — the re-pin to the fixed official images, the six SCX re-issues approved by the owner on 2026-09-23, the recheck's return transition; head `6a1494d`) merged 2026-09-23T14:16Z | 35873000911 — attempt 1 FAILED on `phase1-acceptance:471` (a timing-oracle pin, 1054/1055); attempt 2 (a `--failed` re-run) succeeded but a partial re-run packages no archive, so C17 finalize 35878185367 FAILED; attempt 3 (a full re-run) succeeded and C17 finalize 35918728349 green — the C19 anchor 35918837855's publish REFUSED by its own causal rule ("resolution expected sourceRunAttempt=2 but the finalized evidence authenticates 3; a same-SHA match is not a causal binding"); every attempt preserved | 35873000726 green |
+| `6212c5b` | `main`: #56 (B19 at `3ea676d`) retargeted and merged 20:57Z — the cumulative chain covering #55 and #57 | 35919379221 attempt 1 green; C17 finalize 35921411985 green; C19 anchor 35921521108 PUBLISHED | 35919379263 attempt 2 green (attempt 1's delivery-chain-dry failed against `870b212`'s inconsistent evidence — the fixture resolver takes the newest finalization) |
+| **`e180b18`** | **`main`: #58 (B20 at `13ed40c`) retargeted, closed and reopened to re-run its required checks against `main` (supply-chain GREEN on the returned pin; C19 lifecycle re-run green; build-test attempt 1 failed on `phase6-retention-b14` H2, attempt 2 on `phase1-acceptance:471`) — merged 21:40Z WHILE attempt 2's build-test was still pending: the integrator's armed merge checked for zero failing checks and let a timed-out wait through — an error, recorded** | **35923830613 attempt 1 GREEN (the merged tree passed every hosted suite in one attempt); C17 finalize 35926060309 green; C19 anchor 35926159815 PUBLISHED (22:07Z)** | 35923830611 green |
+| **`a2303ff`** | **B21** (0081; the four foresight rows bound; Codex's B20-F1 corrected; the vault clause's Class B; the wedge fixed; the three harnesses; the act) — PR #59 `phase6-b21` → `main` (the merge awaits the owner's word) | **35982420268 green, one attempt** — build-test job 107577216792: unit 2389/2389 and the meta suite 9/9, acceptance 58/58, the integration suite **1086/1086 in 74 files** on a fresh database (`phase6-graph-projections-b21` 1/1, `phase6-evidence-degradation-b21` 6/6, `phase6-fitness-b21` 6/6), the upgrade proof +60 rows / 81 files, C18 623/623 + 44; supply-chain job 107577216542 **green** on the returned official pins (the recheck's return transition passing); browser-regression job 107577216741 **51 passed** — `evidence/cp6/hosted-a2303ff-build-test-summary.txt` | 35982420259 green |
+
+Statuses: AU-MEM-0067 gains the B21.1 and B21.2 evidence and stays `open` — the canonical-read clause met, the vault clause met for
+Class B (the tier's root unreachable) and bounded at Class A (an object missing or corrupt under a reachable root — A7's one 409,
+the custody row now durable); the design's conditions table (§B21.2) decides the promotion in the binding commit, the owner's word
+keeping the unit open until the vault behaviour is delivered; the nine group-b units AU-TWN-0014/-0015/-0018/-0031 and
+AU-PRD-0012/-0014/-0026/-0029/-0030 gain their evidence and stay `open` until the hosted run binds; AU-OBS-0103 stays
+`verified:local` with the note; V03-T-143 and V03-T-334 partial → `implemented`, FEX-12 and OBJ-29 (v08, v09) missing →
+`implemented`, ES-38-001 partial → `implemented`; FEX-08, FEX-09 and ES-33-009 missing → `partial` (stale since B20 — the reader
+map's finding); V03-T-097, V03-T-322, V03-T-328 (now `passed:harness`), V03-T-341, ES-36-001, IR-17-003, PR-33-005 and DP-28-005
+stay `partial` with their delivered and remaining clauses in their own prose; V03-T-349 stays `implemented`; the register's four
+rows L5-I05, L6-I03, L7-I04 and L8-I04 partial → `implemented` (`passed:harness`, bound in 0081) and L9-I05's clause re-homed to B22
+— the register 40/10/0; the rows the designs also name (V02-T-125, V03-T-117/-120/-354, V04-T-024, ES-35-008, ES-37-008/-009,
+AI-48-005/-49-004, FEX-11, L7-C08) not moved in this records pass. The split stays **3,555 = 3,179 open + 339 local + 37 CI** (no
+unit promoted by a local run). No completion percentage; no deployment leg accepted.
+
+### 35.5 Functioning, partial, missing — and the acceptance work remaining
+
+**Functioning** — everything §34.5 listed, and now fitness, coherence and challenge with their boundary lines: one fitness
+vocabulary on the three foresight objects, set only by a recorded act whose measures the port computes; the twin's validation under
+the declared operating envelope with the calibration history from the reconciliation ledger and the owner refused by the separation
+of duties; the envelope enforced at the run — an unfit version refused, a breach admitted only under an acknowledgement and
+recorded; the forecast assessed under a versioned rule over the ledgers this product holds, by the outcome write, the consumer or a
+person, announced from its write and reaching the scenarios, decisions and twins consumers; the coherence check over the fields the
+product holds — a failed scenario admitted, non-decision-active (no run on its branch, no promotion to simulation, its warning
+marked), routed to review, corrected by retire + a successor; the challenge as a person's typed case decided by someone else,
+resolved by a governed re-run compared on the common control, a dismissal or an invalidation with the trigger `challenge`; the
+promotion by a reviewer other than the operator; the four interface rows L5-I05, L6-I03, L7-I04 and L8-I04 bound (ten remain
+partial); the vault clause of AU-MEM-0067 for the root-unreachable class — the tier's root unreachable answering metadata-only under
+the same gate with its custody row and its audit code, the readers, the verifier and the poll disclosing it — with Class A bounded
+by A7 (one 409, the custody row durable), stated; Codex's B20-F1 corrected — the withdrawn-mode memory reader's canonical statements
+under the content-tier boundary and the briefing composing without its memory items as a declared degraded source; the run's and the
+reproduction's evidence retrievals before the write.
+
+**Partial** — the ten interface rows that stay partial (L1-I02 the stream form, L1-I03/L1-I04/L2-I02 without consumers, L3-I02 the
+purpose-bound context query, L4-I02 the change-set command, L7-I02, L10-I02, L10-I03, L10-I05 the attention policy — B22's package
+cause); no forecast scheduler or re-issue (an expired cadence reads `envelope_breach` honestly); the fitness rules as versioned
+constants — not bias tests, expert review or alternative assumptions; the series-length breach undetected; "domain validation on
+representative data" not a harness; coherence structural — a free-text assumption noted, never judged, the basis lookup CLM-only,
+distinctiveness, relevance, bias and sensitivity not computed; no branch suspension; the frequency-to-probability mapping object; no
+decision gate on unpromoted runs; the `challenge` disposition not produced on deliveries; a fitness or coherence failure reaching no
+briefing; the residual nested-write sites (`twin.ground`, the forecast issue, backtest and outcome writes) and the sweep's liveness
+hazard until the owner decides the remedy; the vault clause's Class A boundary as the owner's reading; the twenty-one older
+integration files uploading under the workspace vault roots (a hardening item); the B20 partial items of §34.5 (the operator and
+agent routes — the resolutions, mappings, impact and reassessment routes — serving a withdrawn partition unlabelled: §34.5's "the
+next batch", which B21 is not, re-homed to the hardening pass; a held poisoned row, a missing resolution row, event-driven verification, a
+drifted content column); the source-memory remaining capabilities of §33.5 (the source kinds beyond the telemetry rule, the observed
+series-window basis, the communication kind on the harness only, a warning-based record not marked when its forecast is withdrawn,
+memory retention declared and not executed); the rest of §32.5's Partial.
+
+**Missing** — a governed cross-domain REFERENCE (sharing without a copy); replication and portability packages; encryption of the
+package beyond TLS; the communications/telemetry INGESTION connectors and the analyses object; the remaining ten interface contracts
+(B22–B23: the consumers and the attention policy, the commands and the query); an in-migration rebuild for a representation bump;
+the systemic `ctx.build` remedy (a later migration — the owner's call); every deployment leg (S7).
+
+**Acceptance work remaining** — B21's hosted run at `a2303ff` bound here once (no records-refresh chain; no unit promoted by it; the
+supply-chain job expected green on the returned pin); the merge of B21's PR (base `main`) on the owner's word with its chain green;
+the owner's decisions — the `ctx.build` remedy (the sweep with `FOR UPDATE SKIP LOCKED` in a later migration, the ctx boundary under
+C18's watch) against per-site pre-flight assembly at the residual nested-write sites, AU-MEM-0067's Class A boundary as the reading
+of its clause (iii), and the recreation of the live demonstration containers onto the official images the C15 return pinned; Codex's
+bounded review of B21 if the owner wants one; the owner's walk of the demonstration; the owner's key for Comtrade; the owner's
+decision on a public host for the recipient; comprehensive hardening after the feature scope, with the residuals and the register
+rows left for it.

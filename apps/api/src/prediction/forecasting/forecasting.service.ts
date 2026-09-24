@@ -25,15 +25,34 @@
  * marked, the package noted, the twin version unverified; a run citing it is
  * NAMED here and invalidated by its reproduction or by the operator (a run is
  * immutable). The issue's answer carries what ForecastIssued@v2 needs.
+ *
+ * THE FITNESS ASSESSMENT (CP-6 B21, 0081; L6-I03). A forecast's fitness (none |
+ * fit | unfit | indeterminate) is set ONLY by a recorded assessment whose
+ * measures the PORT computes under the versioned rule
+ * (prediction.forecast_fitness_rule: the family's last K outcomes against the
+ * coverage floor, the pinball against the applicable backtest, the attention
+ * mark as data_shift, the refresh cadence's expiry as envelope_breach). Who
+ * assesses: the OUTCOME WRITE (the scored forecast when it is resolved after
+ * scoring, and the issued forecasts of its family — C19: a superseded or
+ * withdrawn forecast that is scored is not assessed), the forecast SUBSCRIBER
+ * beside its attention mark, and a PERSON (POST …/forecasts/:id/assess). The
+ * write publishes ForecastFitnessChanged@v1 when the verdict or the class moved,
+ * and GraphChanged/forecast.fitness_changed beside it on a transition to unfit —
+ * the scenario, decision and twin consumers do the rest; nothing is withdrawn
+ * automatically (the withdrawal stays the owner's act) and no scheduler re-issues.
  */
 import { HttpException, Injectable } from '@nestjs/common';
 import { canonicalHeaderDigest, errorBody, validateHeader, type CanonicalHeader } from '@eye/contracts';
 import { newId } from '../../shared/ids.js';
 import type { ScopeContext } from '../../shared/scope.js';
 import { withdrawnVersionHeaderOf } from '../../shared/withdrawn-version.js';
-import { forecastWithdrawnGraphEvent, type OutboxRow } from '../../graph/subscriptions/change-events.js';
-import type { PredictionReads, ForecastWrites, BacktestWrites, OutcomeWrites } from '../prediction.capabilities.js';
-import { FORECAST_UNFIT_CLASSES, FORECAST_WITHDRAW_METHOD_REF, forecastWithdrawnEvent } from './forecast-events.js';
+import { forecastFitnessChangedGraphEvent, forecastWithdrawnGraphEvent, type OutboxRow } from '../../graph/subscriptions/change-events.js';
+import type { PredictionReads, ForecastWrites, BacktestWrites, OutcomeWrites, AssessWrites } from '../prediction.capabilities.js';
+import { FORECAST_UNFIT_CLASSES, FORECAST_WITHDRAW_METHOD_REF, forecastFitnessChangedEvent, forecastWithdrawnEvent, type ForecastFitnessTrigger } from './forecast-events.js';
+
+/** B21 (0081): what an assessment needs of its capability — the assess route's, the outcome write's and the subscriber's all carry it. */
+type FitnessAssessor = Pick<AssessWrites, 'assessForecastFitness' | 'changeSubscriptions'>;
+const rec = (v: unknown): Record<string, unknown> => (v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
 import { SeriesService, cadenceOf, stepsFor, dayOf, type AssembledSeries, type Reader } from '../series/series.service.js';
 import { forecastWith, seasonalNaive, holtWinters, pinballMean, covered, SEASONAL_NAIVE, HOLT_WINTERS,
   MODEL_VERSION, T1_LOW, T1_HIGH, T2_SKILL, type ForecastOutput } from '../models/models.js';
@@ -464,9 +483,31 @@ export class ForecastingService {
    * an attested calendar the target stays unscored. The day actually observed and
    * the reason for any substitution are persisted with the score.
    */
+  /**
+   * ASSESS a forecast's fitness (B21, 0081): the port judges under the versioned rule and records the ledger row and the
+   * forecast's state; this write publishes ForecastFitnessChanged@v1 when the verdict or the class moved, and
+   * GraphChanged/forecast.fitness_changed beside it when the forecast is now UNFIT (a transition to unfit, or a class
+   * change while unfit — the consumers' selector; a fit or indeterminate verdict feeds no consumer). The port's answer is
+   * the assessment; the events are the caller's to publish in the same transaction.
+   */
+  async assess(cap: FitnessAssessor, ctx: ScopeContext, forecastId: string, trigger: ForecastFitnessTrigger, actor: string, correlationId: string):
+    Promise<{ assessment: Record<string, unknown>; events: OutboxRow[] }> {
+    const tenantId = ctx.tenantId as string; const domainId = ctx.domainId as string;
+    const now = new Date().toISOString();
+    const assessment = await cap.assessForecastFitness({ assessmentId: newId(), forecastId, tenantId, domainId, trigger, actor, eventId: newId(), correlationId });
+    const events: OutboxRow[] = [];
+    if (assessment['changed'] === true) {
+      events.push(forecastFitnessChangedEvent({ assessment, trigger, actor, occurredAt: now }));
+      if (assessment['verdict'] === 'unfit') {
+        events.push(forecastFitnessChangedGraphEvent({ assessment, trigger, subscriptions: await cap.changeSubscriptions({ tenantId, domainId, changeKind: 'forecast.fitness_changed' }), actor, occurredAt: now }));
+      }
+    }
+    return { assessment, events };
+  }
+
   async recordOutcome(
     cap: OutcomeWrites, ctx: ScopeContext, reader: Reader, forecastId: string, knownAt: string, actor: string, correlationId: string,
-  ): Promise<Record<string, unknown>> {
+  ): Promise<{ outcome: Record<string, unknown>; events: OutboxRow[] }> {
     const f = (await cap.readForecasts().selectAll()
       .where('forecast_id' as never, '=', forecastId as never).executeTakeFirst()) as Record<string, unknown> | undefined;
     if (f === undefined) throw new HttpException(errorBody('EYE_STA_001', correlationId, 'no authorized forecast matches'), 404);
@@ -508,8 +549,26 @@ export class ForecastingService {
       knownAt, observedOn: point.date, substitution, actor, eventId: newId(), correlationId,
     });
     const q = f['quantiles'] as { q10: number; q50: number; q90: number };
-    return { outcomeId, forecastId, target, observedOn: point.date, observed: point.value, substitution,
-             covered: covered(point.value, q), pinball_mean: round(pinballMean(point.value, q)) };
+    /*
+     * B21 (0081, D6 a; C19): the outcome write ASSESSES what is decision-active — the scored forecast when it is `resolved`
+     * after scoring (a superseded or withdrawn forecast can be scored and keeps its state: it is NOT assessed here — its
+     * assessment is the successor's, or none; the port would refuse it and fail the whole outcome write), and the ISSUED
+     * forecasts of its family (series, horizon, method; bounded 200), each with trigger `outcome` under this write's own
+     * bound action (prediction.outcome.record is in the port's authority list). The events ride this transaction.
+     */
+    const after = (await cap.readForecasts().selectAll().where('forecast_id' as never, '=', forecastId as never).executeTakeFirst()) as Record<string, unknown> | undefined;
+    const stateAfter = String(after?.['state'] ?? f['state'] ?? 'unknown');
+    const own = stateAfter === 'resolved' ? await this.assess(cap, ctx, forecastId, 'outcome', actor, correlationId) : null;
+    const family = (await cap.readForecasts().selectAll()
+      .where('series_key' as never, '=', f['series_key'] as never).where('horizon_code' as never, '=', f['horizon_code'] as never)
+      .where('method' as never, '=', f['method'] as never).where('state' as never, '=', 'issued' as never)
+      .orderBy('issued_at' as never).limit(200).execute()) as Array<Record<string, unknown>>;
+    const events: OutboxRow[] = [...(own?.events ?? [])];
+    for (const g of family) events.push(...(await this.assess(cap, ctx, String(g['forecast_id']), 'outcome', actor, correlationId)).events);
+    return { outcome: { outcomeId, forecastId, target, observedOn: point.date, observed: point.value, substitution,
+                        covered: covered(point.value, q), pinball_mean: round(pinballMean(point.value, q)),
+                        fitness: own?.assessment ?? null, fitness_skipped: own === null ? stateAfter : null, family_assessed: family.length },
+             events };
   }
 
   /**
@@ -542,9 +601,24 @@ export class ForecastingService {
       ? 'No forecast has been scored against an outcome yet: no issued horizon has elapsed against a recorded observation. '
         + 'The calibration numbers below come from BACKTESTS on held-out history, not from live outcomes, and say so.'
       : `${outcomes.length} outcome(s) scored across ${scored.length} series/horizon/method group(s).`;
+    // B21 (0081): the latest FITNESS assessment per family — the rule's verdict on live outcomes, beside the backtests' numbers.
+    const assessments = (await cap.readFitnessAssessments().selectAll().orderBy('assessed_at' as never, 'desc').execute()) as Array<Record<string, unknown>>;
+    const latestFitness = new Map<string, Record<string, unknown>>();
+    for (const a of assessments) {
+      const key = `${String(a['series_key'])}|${String(a['horizon_code'])}|${String(a['method'])}`;
+      if (!latestFitness.has(key)) latestFitness.set(key, a);
+    }
+    const fitness = [...latestFitness.values()].map((a) => {
+      const m = rec(a['measures']); const w = rec(m['window']); const cov = rec(m['coverage']); const pin = rec(m['pinball']);
+      return { series_key: a['series_key'], horizon_code: a['horizon_code'], method: a['method'], forecast_id: a['forecast_id'], state: a['verdict'], class: a['fitness_class'] ?? null,
+               outcomes: w['outcomes'] ?? null, coverage: cov['observed'] ?? null,
+               pinball_vs_backtest: pin['backtest'] === null || pin['backtest'] === undefined ? null : { observed: pin['observed'] ?? null, backtest: pin['backtest'], factor: pin['factor'] ?? null, checked: pin['checked'] === true },
+               rule_version: a['rule_version'], assessed_at: a['assessed_at'], trigger: a['trigger'] };
+    });
     return {
-      statement: emptyStatement,
+      statement: `${emptyStatement} Fitness (below) is the rule's verdict on LIVE outcomes over the family's last K; indeterminate says the ledger is thin.`,
       outcomes: scored,
+      fitness,
       backtests: [...latestByKey.values()].map((b) => ({
         backtest_id: b['backtest_id'], series_key: b['series_key'], horizon_code: b['horizon_code'], method: b['method'],
         baseline_method: b['baseline_method'], origins: b['origins'], coverage_80: b['coverage_80'], pinball_mean: b['pinball_mean'],
@@ -567,8 +641,16 @@ export class ForecastingService {
   }
 
   async get(cap: PredictionReads, forecastId: string): Promise<Record<string, unknown> | undefined> {
-    return (await cap.readForecasts().selectAll()
+    const f = (await cap.readForecasts().selectAll()
       .where('forecast_id' as never, '=', forecastId as never).executeTakeFirst()) as Record<string, unknown> | undefined;
+    if (f === undefined) return undefined;
+    // B21 (0081): the fitness as recorded — the state on the row and the assessment row its fitness_assessment_id names (never re-judged on read).
+    const aid = f['fitness_assessment_id'];
+    const a = aid === null || aid === undefined ? undefined
+      : (await cap.readFitnessAssessments().selectAll().where('assessment_id' as never, '=', aid as never).executeTakeFirst()) as Record<string, unknown> | undefined;
+    const fitness = { state: String(f['fitness_state'] ?? 'none'), class: f['fitness_class'] ?? null, assessment_id: aid ?? null,
+                      measures: a?.['measures'] ?? null, rule_version: a?.['rule_version'] ?? null, assessed_at: a?.['assessed_at'] ?? null, trigger: a?.['trigger'] ?? null };
+    return { ...f, fitness };
   }
 
   async events(cap: PredictionReads, forecastId: string): Promise<Array<Record<string, unknown>>> {
