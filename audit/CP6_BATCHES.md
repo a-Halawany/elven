@@ -3895,6 +3895,8 @@ packages are reached only where an option cites the forecast itself (the demonst
 validated, not enforced; the remaining materiality dimensions (probability, reversibility, exposure, strategic relevance, information value) are
 not policy dimensions yet; no approval step for a suppression; no new hosted browser walk (the page is covered by the web unit tests and the build).
 
+**Hosted (bound once):** ci 36043290422 at `9f6a77e` (PR #60; one attempt) — unit 2390/2390 + 9/9, acceptance 58/58, the integration suite 1103/1103 in 76 files with both B22 harnesses, the upgrade proof through 0083, C18 623/623 + 44, browser 51, supply-chain and the recheck green; C19 lifecycle 36043290505 green. The earlier head `567e669`'s build-test failed at the audit accounting control (the summary committed without its unit section) — preserved, corrected by `9f6a77e`. No unit promoted. The merge of #60 awaits the owner's word.
+
 ## Order and the next implementation batch
 
 B3, B1 and B2 are done in code, B4/B5 applied to the audit (the 2026-09-11 checkpoints), B6 done in

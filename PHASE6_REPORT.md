@@ -3806,7 +3806,8 @@ six overdue warnings escalated after the two-minute deadline was waited out. Sai
 |---|---|---|---|
 | `9c56bb4` | B21's records head on #59 — every check concluded green (ci 35984737389, C19 35984737353, CodeRabbit) | green | green |
 | **`5165a97`** | **`main`: #59 merged under the owner's 2026-09-24 word** | 36028182443 — attempt 1 FAILED on `phase6-retention-b14` H2 (the recipient's `unauthorized` receipt without a status, 1085/1086; the third time — the hardening item), PRESERVED; attempt 2 (a FULL re-run — never `--failed` on `main`) green; C17 finalize 36032657248 green; C19 anchor 36032778777 green, publish included | 36028182479 green |
-| (B22 candidate) | 0082 + 0083, the harnesses, the pins, the page, the act, these records — PR to `main` | bound once in the records commit that follows | — |
+| `567e669` | **B22** (0082 + 0083, the harnesses, the pins, the page, the act, the records) — PR #60 `phase6-b22` → `main` | 36042985523: build-test FAILED at the audit accounting control (`audit/SUMMARY.md` committed with its acceptance-unit section dropped by the summarisers' order) — preserved; the other jobs green | green |
+| **`9f6a77e`** | the summary regenerated (the only change) | **36043290422 green, one attempt** — unit 2390/2390 + 9/9, contracts 203/203, web 30/30, acceptance 58/58, the integration suite **1103/1103 in 76 files** on a fresh database (`phase6-nonce-sweep-b22` 6/6, `phase6-attention-b22` 11/11), the upgrade proof through 0022–0083 PASS, C18 623/623 + 44; browser-regression 51; supply-chain green on the official pins, the recheck green — `evidence/cp6/hosted-9f6a77e-build-test-summary.txt` | 36043290505 green |
 
 Statuses: fourteen units gain B22's evidence and their actual remaining clauses and stay `open` — AU-EXO-0025/-0027/-0057/-0062,
 AU-PRD-0017/-0037/-0038, AU-DEC-0062, AU-OBS-0116/-0117/-0118/-0126, AU-INT-0002/-0016 (no unit promoted by a local run); the requirement
@@ -3838,8 +3839,8 @@ gate on unpromoted runs, the `challenge` disposition on deliveries, the B20/B19 
 communications/telemetry INGESTION connectors and the analyses object; the six interface contracts above (B23); an in-migration rebuild for a
 representation bump; external notification channels (the Execution Gateway); every deployment leg (S7).
 
-**Acceptance work remaining** — B22's hosted run bound once in the records commit that follows (no records-refresh chain; no unit promoted by
-it); the merge of B22's PR on the owner's word with its chain green; AU-MEM-0067's per-object obligation (open, no waiver); the owner's walk of
+**Acceptance work remaining** — B22's hosted run bound here once (ci 36043290422 at `9f6a77e`, one attempt; no records-refresh chain; no unit
+promoted by it — the fourteen units stay open with their remaining clauses); the merge of B22's PR on the owner's word with its chain green; AU-MEM-0067's per-object obligation (open, no waiver); the owner's walk of
 the demonstration (the Attention page and the reopened B18 package — its draft version 3 is the owner's to propose, commit or withdraw); the
 owner's key for Comtrade; the owner's decision on a public host for the recipient; the owner's backup passphrase for a sealed bundle of today's
 state (the container return's backup is unsealed); comprehensive hardening after the feature scope.
