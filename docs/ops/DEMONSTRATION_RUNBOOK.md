@@ -315,3 +315,72 @@ act-side, corrected; the third held. **The browser gate** stops the demonstratio
 B20):** the demonstration's pre-migration backups live under `.eye-local/backups/` (`eye_demo-pre-0080-20260922T193304Z.dump`,
 51,890,423 bytes) — a durable directory the host never sweeps; the B18 and B19 dumps were written to the session scratchpad, which the host
 sweeps after three days, and were LOST that way over the five-day gap (stated).
+
+**Fitness, coherence and challenge; the cold tier unreachable (B21, 2026-09-24).** `eye_demo` is migrated through 0081; the API
+serves the B21 build. The act (`scripts/phase6/act-b21.mjs`, runner `$S/b21/act-b21.sh`) looks every object up at run time by SQL
+against the database it is pointed at (no id hard-coded) and casts BY ROLE: the administrator = the platform-admin session, N.
+Eriksen (`forecast_owner`), J. Weber (`strategy_owner`), T. Nakamura (`twin_owner` — the twin's owner and the runs' operator), A.
+Hoffmann (`domain_analyst`, the download); K. Vogel and S. Roth are mirror-domain personas and R. Adler and L. Ferreira hold no
+foresight role — named in the act's header as the correction; no persona is created. Scene 0 re-registers the THREE consumers whose
+method changed in B21 — `forecasts`, `scenarios`, `decisions` (the B8 rule: a changed method is a new consumer;
+`register-subscriptions.mjs` compares the live `code_digest` with the process's) — each replacement replaying from the revoked
+cursor's OWN event, and leaves the four others (`twins`, `retrieval`, `memory-mappings`, `relationships`); the register is read
+through the route (40/10/0; the four foresight rows `bound in 0081`; L9-I05's clause re-homed to B22) and the honest defaults
+printed. Then: the twin's owner refused (`POST …/twins/:twinId/versions/:version/validate` — the separation of duties) and the
+administrator validating the admitted version FIT (the envelope keys the port computed; `ValidateTwin@v1`; no GraphChanged), a
+control run carrying `twin_fitness` and `envelope_state` on `SimulationStarted` (the outside-envelope run is NOT staged: the
+demonstration's elements lie inside the model's envelope and nothing is regrounded for a show — the harness T1.6); N. Eriksen
+assessing the corridor forecast (`POST …/prediction/forecasts/:id/assess`) — the rule's verdict printed WITH its measures (the
+demonstration's read `unfit (data_shift)`: the attention mark from an earlier act is the first class in the rule's order; the lapsed
+daily cadence would name `envelope_breach` beside it; no scheduler re-issues), the event and its six deliveries, a second assessment
+idempotent, the forecast NEVER withdrawn by the act; J. Weber declaring a scenario with a duplicate downside branch (admitted
+`failed`, the findings and `routed_to`; a scenario on the unfit forecast refused first), T. Nakamura's run on its branch refused,
+the scenario retired and a successor declared (no branch-close act exists); J. Weber challenging a run OF THE ACT'S OWN (the
+demonstration's intervention runs all sit on scenarios retired by review — the act carries a twin version whose `known_at` follows
+the successor scenario, copies the demonstration's own intervention shape, opens a comparable control, and names no scenario: a
+shock bound to an unflipped branch is refused), the administrator requesting the re-run, T. Nakamura opening it as a governed run
+(`correctsRunId`, `challengeId` — the nested paths `…/simulations/:runId/challenges/:challengeId/{rerun,withdraw,decide}`), the
+compare on the common control, the administrator's DISMISSAL (the demonstration's runs are never invalidated by the act — the upheld
+path and the promotion-to-simulation refusal run on the rehearsal copy only, printed REHEARSAL ONLY) and the administrator's
+PROMOTION of the control (`POST …/simulations/:runId/promote`; the operator refused to promote his own). **The marker scene (scene
+5) and its guards:** the act ITSELF moves the demonstration's archive root marker (`.eye-local/vault/archive/.eye-vault-root`) aside
+to `.eye-local/vault/.eye-vault-root.archive-aside` — the product's own definition of reachability (B18) standing in for an
+unmounted cold volume; nothing under the root moves — after THREE refusals to start (the marker must read `archive`; no aside file
+may exist; the API must report the root reachable now), and restores it in its `finally` and on `exit`/`SIGINT`/`SIGTERM`/`SIGHUP`,
+printing the marker's sha256 before and after; a cold NORDWERK record answers metadata-only (`custody.retrieval_degraded`,
+`EYE-DEG-001`, `tier/state` archive `reachable false`) and verified again after; the runner prints `ls .eye-local/vault/` after the
+act as its independent proof. THE RULE: never move a marker under `.eye-local/vault` outside an act rehearsed on the copy; after any
+interrupted act check `ls .eye-local/vault/` for an `.eye-vault-root.*-aside` file and restore it by hand FIRST (`mv
+.eye-local/vault/.eye-vault-root.archive-aside .eye-local/vault/archive/.eye-vault-root`); a restarted API re-creates a missing
+marker (`ensureRoots`) and would hide the aside copy. `/retention/tier/state` now says `reachable` per root. Nothing else under
+`.eye-local` is edited by the act. **What the act leaves:** one validation, one assessment, two carried twin versions, two scenarios
+(one retired), one dismissed challenge, one re-run, one promotion, one `custody.retrieval_degraded` row on the cold record beside
+two `custody.retrieved` rows; the three re-registered subscriptions (a run on the same build leaves them); no evidence retired;
+nothing withdrawn; the marker back in place. **The rehearsal copy** (`eye_demo_b21` on :3411, `$S/b21/rehearsal.sh`) is restored
+afresh for every run WITH the vault copied (`$S/b21/demo/vault`; the API on :3411 runs with `EYE_VAULT_ARCHIVE_ROOT` under the copy)
+— the marker scene runs on the COPY's archive root first; the ninth rehearsal held whole (`evidence/cp6/b21-rehearsal.txt`), the
+eight stops before it every one recorded in the file's header: the FIRST WEDGED the copy's API at the control run — a governed write
+nested inside another deadlocking on `ctx.build`'s sweep of hour-old capability nonces (phase 5's making; never on a fresh database;
+a copy inherits the demonstration publisher's nonces) — a product defect fixed in B21 (the run's and the reproduction's evidence
+retrievals now run BEFORE the write; harness T1.8); THE RULE from it: never a governed write inside another — a handler that needs a
+governed read or retrieval does it before its own write, as `prediction.controller.ts` assembles under a read before its write and
+`twin.controller.ts` now retrieves under `simulation.read` before `simulation.run`; the residual sites of the same class
+(`twin.ground`, the forecast issue, backtest and outcome writes) are recorded for the owner (CP6_BATCHES §B21.4) with the systemic
+remedy (`ctx.build`'s sweep with `FOR UPDATE SKIP LOCKED`, a later migration under C18's watch); a rehearsal that hangs at a login
+is this wedge's signature — `pg_stat_activity` shows an `eye_commit` session idle in transaction and a second one waiting in
+`ctx.issue_commit`; kill the wedged instance, `rehearsal.sh` restores afresh. **The backups:** the pre-migration dump under
+`.eye-local/backups/` (`eye_demo-pre-0081-20260924T085136Z.dump`, 52,584,453 bytes — the durable directory, the B20 rule); the
+orphan fixture blobs that pre-C5 harness runs wrote under `.eye-local/vault/evidence/` were moved aside to
+`.eye-local/backups/vault-orphans-20260924/` (20 files of two verify-run tenants), not deleted — every harness file B21 adds or
+appends to names its own temporary vault roots. **The browser gate** stops the demonstration API and web as before (§8, B18) and is
+restarted by `scripts/ops/demo-restart.sh`; the B21 run was on `eye_browser_20260924` with isolated vault roots (51 tests; no new
+hosted walk — the fitness walk `e2e/phase6-fitness.demo.spec.ts` runs against the seeded demonstration through
+`playwright.demo.config.ts` only). **THE RULE FOR `main`'S CHAIN (from the merges of 2026-09-23):** a flake on `main`'s `ci` is
+re-run in FULL, never with `--failed` — a partial re-run packages no evidence archive, so C17 finalize fails on it, and the C19
+anchor's causal rule refuses to publish a resolution whose source attempt is not the one the finalized evidence authenticates ("a
+same-SHA match is not a causal binding" — the anchor at `870b212` was refused this way; every attempt preserved); and the C19
+lifecycle's delivery-chain dry run resolves the NEWEST finalization on `main`, so its first attempt after a head whose chain is
+inconsistent fails against the previous head's evidence and is re-run once its own finalization exists (the lifecycle at `6212c5b`,
+attempt 2 green; #58's own lifecycle on the PR likewise before its merge). An armed merge waits for the required checks to CONCLUDE,
+never for "zero failing checks" (the #58 merge went through on a timed-out wait while attempt 2's build-test was pending — the
+integrator's error, recorded; the post-merge chain on `main` decided it green).

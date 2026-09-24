@@ -196,8 +196,16 @@ export const observation = {
       s, `/evidence/${evdId}/get`, 'observation.read.evidence', 'EVD',
       knownAt === null ? {} : { knownAt }, evdId),
 
+  /**
+   * B11: the tier the bytes were read from. B21.2 (AU-MEM-0067, the vault clause — Class B): when the PRIMARY root of that tier
+   * could not be reached the answer is 200 metadata-only — `base64 null`, `integrity 'unavailable'`, `availability 'unreachable'`
+   * and the `degraded` block (EYE-DEG-001); nothing about the bytes was verified or refuted. A per-object failure under a
+   * reachable root stays the one 409 (A7) and never reaches this shape.
+   */
   downloadEvidence: (s: Scope, evdId: string) =>
-    obs<{ download: { filename: string; contentType: string; contentDisposition: string; contentDigest: string; byteLength: number; base64: string; integrity: string }; receipt: Receipt }>(
+    obs<{ download: { filename: string; contentType: string; contentDisposition: string; contentDigest: string; byteLength: number;
+                      base64: string | null; integrity: 'verified' | 'unavailable'; tier: 'hot' | 'archive'; availability: 'verified' | 'archived' | 'unreachable';
+                      degraded?: { kind: 'tier_unreachable'; code: 'EYE-DEG-001'; root: 'evidence' | 'archive'; label: string } }; receipt: Receipt }>(
       s, `/evidence/${evdId}/download`, 'observation.evidence.retrieve', 'EVD', {}, evdId),
 
   listQuarantine: (s: Scope, state: string | null) =>

@@ -556,7 +556,9 @@ describe('B8 · the flows\' telemetry (AU-MEM-0041) and the interface register w
     // The event interfaces this product publishes carry their schema version; the ones it does not publish say so.
     expect(r.interfaces.find((i) => i['interface_id'] === 'L4-I03')).toMatchObject({ name: 'GraphChanged', transport: 'event', binding_state: 'bound', schema_version: 'v1' });
     expect(r.interfaces.find((i) => i['interface_id'] === 'L2-I03')).toMatchObject({ name: 'ContradictionDetected', binding_state: 'bound', schema_version: 'v1' }); // bound by 0066 §5 (B9)
-    expect(r.interfaces.find((i) => i['interface_id'] === 'L8-I04')).toMatchObject({ binding_state: 'partial' }); // a partial binding says so (L9-I04 was bound by 0078)
+    // B21 (0081 §10): L8-I04 ChallengeSimulation is BOUND (with L5-I05, L6-I03, L7-I04 — the register 40/10/0); a partial binding still says so on one of the ten that stay partial (L7-I02).
+    expect(r.interfaces.find((i) => i['interface_id'] === 'L8-I04')).toMatchObject({ name: 'ChallengeSimulation', binding_state: 'bound', schema_version: 'v1', bound_in: '0081' });
+    expect(r.interfaces.find((i) => i['interface_id'] === 'L7-I02')).toMatchObject({ binding_state: 'partial' }); // a partial binding says so (L9-I04 was bound by 0078; L8-I04 by 0081)
     // eslint-disable-next-line no-console
     console.log('INTERFACE REGISTER', JSON.stringify(byState));
   }, 60_000);

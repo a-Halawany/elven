@@ -1,0 +1,49 @@
+=== B21's neighbouring set at the B21 tree (13ed40c + the B21 candidate uncommitted) on fresh databases eye_verify_b21_n1 / n2 / n3 / n3b / n4 (0001–0081; the scheduler on; the vault roots exported to a temporary directory for every group so nothing under .eye-local is written), 2026-09-23T23:03Z–23:12Z (the reconcile agent's runs) — 38 files in five groups; four pins the design moved were found by group n3's first run and re-run green as n3b ===
+THE PINS THAT MOVED (each named in the file with its B21 reason): phase6-graph-projections-b20.test.ts P9 — the register [50, 36, 14, 0] → [50, 40, 10, 0] (0081 §10 bound L5-I05, L6-I03, L7-I04, L8-I04); phase4-acceptance.test.ts D8 — 16 → 18 prediction tables under FORCE RLS (0081 §4 forecast_fitness_assessments, §6 scenario_coherence_checks); phase6-graph-subscriptions-3.test.ts B8 — L8-I04 partial → bound/v1/0081 (the "a partial binding says so" pin kept on L7-I02); phase6-graph-subscriptions-4.test.ts B9 — the scenario's events gain scenario.coherence_checked at the declare (trigger declare) and before the CONTINUE review (trigger review; a dissent checks nothing) and the direct simulation.open_run probe passes p_envelope_ack, p_challenge_id (the 35-argument form; the 33 dropped); phase6-graph-subscriptions.test.ts B6 — the scenario consumer's re-check (scenario.coherence_checked beside scenario.attention). Nothing else in 38 files moved.
+
+--- group n1 (n1-230335): Test Files  7 passed (7) · Tests  53 passed (53)
+  ✓ test/int/phase6-agents.test.ts: 9 passed
+  ✓ test/int/phase6-briefing-memory.test.ts: 6 passed
+  ✓ test/int/phase6-briefings.test.ts: 6 passed
+  ✓ test/int/phase6-executive-requests.test.ts: 10 passed
+  ✓ test/int/phase6-graph-projections-b20.test.ts: 9 passed
+  ✓ test/int/phase6-memory-derived.test.ts: 6 passed
+  ✓ test/int/phase6-monitoring.test.ts: 7 passed
+--- group n2 (n2-230545): Test Files  16 passed (16) · Tests  239 passed (239)
+  ✓ test/int/phase1-acceptance.test.ts: 46 passed
+  ✓ test/int/phase1-fault-injection.test.ts: 43 passed
+  ✓ test/int/phase2-acceptance.test.ts: 24 passed
+  ✓ test/int/phase4-corrections-2.test.ts: 7 passed
+  ✓ test/int/phase4-corrections-calendar.test.ts: 6 passed
+  ✓ test/int/phase4-corrections.test.ts: 14 passed
+  ✓ test/int/phase4-warning-levels.test.ts: 6 passed
+  ✓ test/int/phase6-retention-b11-archive-poll.test.ts: 5 passed
+  ✓ test/int/phase6-retention-b11-closure.test.ts: 9 passed
+  ✓ test/int/phase6-retention-b11.test.ts: 35 passed
+  ✓ test/int/phase6-retention-b12.test.ts: 12 passed
+  ✓ test/int/phase6-retention-b13.test.ts: 10 passed
+  ✓ test/int/phase6-retention-b14.test.ts: 5 passed
+  ✓ test/int/phase6-retention-b16.test.ts: 6 passed
+  ✓ test/int/phase6-retention-b17.test.ts: 5 passed
+  ✓ test/int/phase6-retention-b18.test.ts: 6 passed
+--- group n3 (n3-230406): Test Files  3 failed | 7 passed (10) · Tests  4 failed | 166 passed (170)
+  ✓ test/int/phase4-acceptance.test.ts: 16 passed
+  ✓ test/int/phase5-corrections.test.ts: 23 passed
+  ✓ test/int/phase5-simulations.test.ts: 9 passed
+  ✓ test/int/phase5-twins.test.ts: 15 passed
+  ✓ test/int/phase6-decisions.test.ts: 15 passed
+  ✓ test/int/phase6-graph-subscriptions-2.test.ts: 14 passed
+  × test/int/phase6-graph-subscriptions-3.test.ts: 18 passed, 1 failed (re-run green in n3b after the pin moved)
+  × test/int/phase6-graph-subscriptions-4.test.ts: 30 passed, 2 failed (re-run green in n3b after the pin moved)
+  × test/int/phase6-graph-subscriptions.test.ts: 12 passed, 1 failed (re-run green in n3b after the pin moved)
+  ✓ test/int/phase6-interfaces-b18.test.ts: 14 passed
+--- group n3b (n3b-230819): Test Files  3 passed (3) · Tests  64 passed (64)
+  ✓ test/int/phase6-graph-subscriptions-3.test.ts: 19 passed
+  ✓ test/int/phase6-graph-subscriptions-4.test.ts: 32 passed
+  ✓ test/int/phase6-graph-subscriptions.test.ts: 13 passed
+--- group n4 (n4-230959): Test Files  5 passed (5) · Tests  117 passed (117)
+  ✓ test/int/phase3-acceptance.test.ts: 43 passed
+  ✓ test/int/phase3-corrections.test.ts: 20 passed
+  ✓ test/int/phase6-residual-corrections-2.test.ts: 10 passed
+  ✓ test/int/phase6-residual-corrections.test.ts: 19 passed
+  ✓ test/int/phase6-review-corrections.test.ts: 25 passed

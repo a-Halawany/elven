@@ -21,10 +21,10 @@
 import { HttpException, Injectable } from '@nestjs/common';
 import { newId } from '../../shared/ids.js';
 import type { AuthenticatedPrincipal } from '../../shared/auth-types.js';
-import type { Envelope } from '@eye/contracts';
+import { errorBody, type Envelope } from '@eye/contracts';
 import { PipelineService } from '../../pipeline/pipeline.service.js';
 import { ObservationCapability, type AcquisitionWrites } from '../../observation/observation.capabilities.js';
-import { EvidenceService } from '../../observation/vault/evidence.service.js';
+import { EvidenceService, INTEGRITY_REFUSED_MESSAGE } from '../../observation/vault/evidence.service.js';
 import { PredictionCapability, type PredictionReads, type EvidenceVersionRow } from '../prediction.capabilities.js';
 import { parserFor, type ParsedObservation } from './parsers.js';
 import type { Point } from '../models/models.js';
@@ -200,18 +200,30 @@ export class SeriesService {
     r: Reader, objectId: string, version: number, context: Readonly<Record<string, string>>,
   ): Promise<{ bytes: Buffer } | { refused: string; status: number | null; error: unknown }> {
     try {
-      const got = await this.pipeline.write<{ base64: string }, AcquisitionWrites>(
+      const got = await this.pipeline.write<{ integrity: 'verified' | 'unavailable' | 'failed'; base64: string | null; label: string | null; message: string | null }, AcquisitionWrites>(
         this.envelope(r, 'observation.evidence.retrieve', 'EVD', objectId), r.principal,
-        { scope: 'DOMAIN', tenantId: r.tenantId, domainId: r.domainId,
-          action: 'observation.evidence.retrieve', objectType: 'EVD', objectId },
+        { scope: 'DOMAIN', tenantId: r.tenantId, domainId: r.domainId, action: 'observation.evidence.retrieve', objectType: 'EVD', objectId },
         ObservationCapability.acquisition,
         async (cap, scope) => {
-          const res = await this.evidence.retrieve(
-            cap, scope, `principal:${r.principal.principalId}`, objectId, r.correlationId, context, version);
-          return { result: { base64: res.base64 }, targetType: 'EVD', targetId: objectId,
-                   targetVersion: String(version), outboxEvent: null };
+          const res = await this.evidence.retrieve(cap, scope, `principal:${r.principal.principalId}`, objectId, r.correlationId, context, version);
+          // B21.2 (D2.6/D2.7): returned, not thrown — the custody row commits; the audit row carries the read's own code on a SUCCESS
+          // outcome either way (the custody row is a business effect; 0013's closure needs one success audit row beside it).
+          const evidence = res.integrity === 'verified' ? undefined
+            : res.integrity === 'unavailable'
+              ? { outcome: 'success' as const, resultCode: 'EYE-DEG-001', metadata: { integrity: 'unavailable', tier: res.tier, root_unreachable: res.degraded.root } }
+              : { outcome: 'success' as const, resultCode: 'EYE-INT-001', metadata: { integrity: 'failed' } };
+          return { result: { integrity: res.integrity, base64: res.integrity === 'verified' ? res.base64 : null,
+                             label: res.integrity === 'unavailable' ? res.degraded.label : null, message: res.integrity === 'failed' ? res.refusal.message : null },
+                   targetType: 'EVD', targetId: objectId, targetVersion: String(version), outboxEvent: null, ...(evidence === undefined ? {} : { evidence }) };
         });
-      return { bytes: Buffer.from(got.result.base64, 'base64') };
+      const res = got.result;
+      if (res.integrity === 'verified' && res.base64 !== null) return { bytes: Buffer.from(res.base64, 'base64') };
+      // A degraded read is disclosed as a tombstone is (unreadable, complete false): the tier, never the object. A refused read keeps
+      // today's wording and status (409) so every caller that matched on it still does; neither is a 403, so no caller re-throws it.
+      if (res.integrity === 'unavailable') {
+        return { refused: `degraded (EYE-DEG-001): ${String(res.label)}`, status: 503, error: new HttpException(errorBody('EYE_DEG_001', r.correlationId, String(res.label)), 503) };
+      }
+      return { refused: `refused (409): ${String(res.message ?? INTEGRITY_REFUSED_MESSAGE).slice(0, 160)}`, status: 409, error: new HttpException(errorBody('EYE_INT_001', r.correlationId, String(res.message ?? INTEGRITY_REFUSED_MESSAGE)), 409) };
     } catch (e) {
       const status = e instanceof HttpException ? e.getStatus() : null;
       const msg = e instanceof HttpException ? String((e.getResponse() as { message?: string })?.message ?? e.message) : (e instanceof Error ? e.message : 'unknown');

@@ -88,7 +88,12 @@ export type InjectionPoint =
   // CP-6 B12 (0072; D2) — the hot publish of a restore after the commit that recorded the move (the rename in the evidence root); fires once, so the retry route's publish succeeds
   | 'b12.restore_publish_fail'
   // CP-6 B20 (0080; D9) — the canonical read of a memory retrieval: the content tier did not answer; the metadata tier is served labelled
-  | 'b20.memory_content_unavailable';
+  | 'b20.memory_content_unavailable'
+  // CP-6 B21 (Codex B20-F1) — the withdrawn-mode memory reader's canonical statements (fallback.ts memoryItemsFromLog): the derivation's
+  // policy columns (memory.expected_items — arrival 1 on every withdrawn read) and the absent rows' versions (arrival 2, only when the log
+  // names a row the projection lacks). Fires on the first arrival, or on the nth when armed with armNth(): a caller answers by the
+  // withdrawn rule — 503 EYE-DEG-001 for a read, a degraded memory source for a briefing — never a raw failure.
+  | 'b21.memory_fallback_content_unavailable';
 
 /** Raised by an armed injection point. Distinguishable from a real failure. */
 export class InjectedFault extends Error {
@@ -113,8 +118,21 @@ export function arm(points: InjectionPoint[], runtimeEnv: string): void {
   for (const p of points) armed.add(p);
 }
 
+/**
+ * Arm a point to fire on its nth ARRIVAL (1 = the first, as arm()): the withdrawn-mode memory reader passes ONE point twice
+ * (B21), and Codex's B20-F1 row is the second statement failing after the first answered. The point stays armed (isArmed true)
+ * until it fires; disarm() clears the countdown with the set. Test-only, as arm().
+ */
+const countdown = new Map<InjectionPoint, number>();
+export function armNth(point: InjectionPoint, nth: number, runtimeEnv: string): void {
+  if (!Number.isInteger(nth) || nth < 1) throw new Error('an ordinal names a positive arrival (1 = the first, as arm())');
+  arm([point], runtimeEnv);
+  countdown.set(point, nth);
+}
+
 export function disarm(): void {
   armed.clear();
+  countdown.clear();
   enabled = false;
   // A hold still armed, or fired and not yet released, is released when the test disarms, so the code under test never waits on a test
   // that has moved on (a failed assertion, an afterAll).
@@ -170,8 +188,9 @@ export function isArmed(point: InjectionPoint): boolean {
  * a reader can see at a glance which durable boundary a given line sits on.
  */
 export function at(point: InjectionPoint): void {
-  if (enabled && armed.has(point)) {
-    armed.delete(point); // fire once: the retry path must be able to complete
-    throw new InjectedFault(point);
-  }
+  if (!(enabled && armed.has(point))) return;
+  const left = countdown.get(point) ?? 1;
+  if (left > 1) { countdown.set(point, left - 1); return; }   // not this arrival: the point stays armed for the next
+  armed.delete(point); countdown.delete(point);               // fire once: the retry path must be able to complete
+  throw new InjectedFault(point);
 }

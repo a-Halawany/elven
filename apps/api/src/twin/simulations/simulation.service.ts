@@ -35,6 +35,25 @@
  * which cause withheld it; a run already invalidated records the verdict alone.
  * The completion measures its RESOURCE EVIDENCE around the execution (D15) and
  * the events of the three transitions are built pure (simulation-events.ts).
+ *
+ * FITNESS, THE ENVELOPE, THE CHALLENGE AND THE PROMOTION (CP-6 B21, 0081; L8-I04,
+ * OBJ-29). The opening port refuses an UNFIT twin version and a branch of an
+ * INCOHERENT scenario, checks the run's OWN contract against the behaviour model's
+ * operating envelope (one rule with the validation — twin.envelope_check, the
+ * horizon from the constraints) and admits an outside run only under a twin
+ * owner's or the domain administrator's ACKNOWLEDGEMENT, recorded on the row; a
+ * RE-RUN answering a challenge names it and is bound by the port. The service
+ * performs NO fitness, coherence or challenge pre-check of its own (C1): the port
+ * is the one rule and the mapper answers its sentence. A CHALLENGE is a person's
+ * typed dispute of a completed valid run (assumptions | model | constraints |
+ * interpretation), sent to a re-run, withdrawn by its opener or DECIDED by someone
+ * who is neither the opener nor the operator; an UPHELD decision invalidates the
+ * run in the same write — the withdrawn SIM version admitted here, then the port
+ * with trigger `challenge` — unless the run was invalidated already (said). A
+ * PROMOTION marks a completed, valid, undisputed result fit for a stated use by a
+ * reviewer other than the operator; no outbox event (OBJ-29 is outside the
+ * catalogue) — the state rides the reads. Each challenge write publishes
+ * ChallengeSimulation@v1 built from the row as read back (simulation-events.ts).
  */
 import { HttpException, Injectable } from '@nestjs/common';
 import { createHash } from 'node:crypto';
@@ -51,9 +70,9 @@ import { SeriesService, type Reader } from '../../prediction/series/series.servi
 import { controlsOf, foldControls, type ControlInput, type Controls } from '../../prediction/controls.js';
 import { simulateSupplyFlow, validateParams, SUPPLY_FLOW_METHOD_REF, RNG_ALGORITHM, type Intervention, type SupplyFlowOptions, type SupplyFlowParams, type SupplyFlowOutputs } from '../models/supply-flow.js';
 import { SUPPLY_FLOW_IMPLEMENTATION_DIGEST } from '../models/supply-flow.digest.js';
-import type { CompleteWrites, InvalidateWrites, OpenedRun, ReproduceWrites, RunWrites, ShockBasis, SimulationReads } from '../simulation.capabilities.js';
-import type { Citation } from '../twin.capabilities.js';
-import { SIMULATION_INVALIDATE_METHOD_REF, simulationCompletedEvent, simulationInvalidatedEvent, type Resource } from './simulation-events.js';
+import type { ChallengeWrites, CompleteWrites, InvalidateWrites, OpenedRun, PromoteWrites, ReproduceWrites, RunWrites, ShockBasis, SimulationReads } from '../simulation.capabilities.js';
+import type { Citation, EnvelopeCheck } from '../twin.capabilities.js';
+import { SIMULATION_INVALIDATE_METHOD_REF, challengeSimulationEvent, simulationCompletedEvent, simulationInvalidatedEvent, type ChallengeState, type Resource } from './simulation-events.js';
 
 const sha256 = (s: string): string => createHash('sha256').update(s).digest('hex');
 export const digestOf = (v: unknown): string => sha256(jcsCanonicalize(v));
@@ -64,6 +83,10 @@ export interface RunIntake {
   interventions: Intervention[]; horizonDays: number;
   stochastic: { mode: 'deterministic' } | { mode: 'seeded'; seed: number; samples: number; jitter: Record<string, number> };
   sensitivityRelative: number;
+  /** B21 (0081, D3 b): the acknowledgement of a run whose own contract lies outside the operating envelope — `{ acknowledge: true, reason }`; the port checks the holder. */
+  envelope: { acknowledge: boolean; reason: string } | null;
+  /** B21 (0081, D11): the challenge this run answers as its RE-RUN (with `correctsRunId` the challenged run); the port binds it. */
+  challengeId: string | null;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -99,11 +122,27 @@ export function validateRunIntake(m: Record<string, unknown>, correlationId: str
   } else return bad("stochastic.mode must be 'deterministic' or 'seeded'; an unseeded stochastic run is refused");
   const rel = typeof m['sensitivityRelative'] === 'number' ? m['sensitivityRelative'] : 0.2;
   if (rel <= 0 || rel > 1) bad('sensitivityRelative must be in (0, 1]');
+  // B21 (0081; C20): the acknowledgement is `{ acknowledge: true, reason (8+) }` or absent — a malformed one is refused here; whether the run
+  // IS outside the envelope, and whether the acting principal may acknowledge it, the port decides (the intake never pre-judges the envelope).
+  const envRaw = m['envelope'];
+  let envelope: RunIntake['envelope'] = null;
+  if (envRaw !== undefined && envRaw !== null) {
+    const e = envRaw as Record<string, unknown>;
+    if (typeof e !== 'object' || Array.isArray(e) || e['acknowledge'] !== true || typeof e['reason'] !== 'string' || e['reason'].trim().length < 8) {
+      bad('envelope, when given, acknowledges a run outside the operating envelope: { acknowledge: true, reason (at least 8 characters) }');
+    }
+    envelope = { acknowledge: true, reason: (e['reason'] as string).trim() };
+  }
+  const correctsRunId = typeof m['correctsRunId'] === 'string' ? m['correctsRunId'] : null;
+  const challengeId = m['challengeId'] === undefined || m['challengeId'] === null ? null : m['challengeId'];
+  if (challengeId !== null && (typeof challengeId !== 'string' || !UUID.test(challengeId))) bad('challengeId must be a challenge id');
+  if (challengeId !== null && correctsRunId === null) bad('a re-run names the run it corrects (correctsRunId) and the challenge it answers (challengeId)');
   return {
     twinId: m['twinId'] as string, twinVersion: m['twinVersion'] as number, runKind, controlRunId: controlRunId as string | null,
-    correctsRunId: typeof m['correctsRunId'] === 'string' ? m['correctsRunId'] : null,
+    correctsRunId,
     scenarioId, scenarioBranchId,
     shock: m['shock'] as boolean, component: m['component'] as string, interventions, horizonDays: horizonDays as number, stochastic, sensitivityRelative: rel,
+    envelope, challengeId: challengeId as string | null,
   };
 }
 
@@ -216,17 +255,47 @@ interface ScenarioBinding { scenarioId: string; version: number; branchId: strin
 export interface UnavailableEntry { key: string; kind: string; id: string; version: number; cause: 'access' | 'lifecycle' | 'bytes'; state?: 'withdrawn' | 'retired'; by_version?: number; text: string }
 /** Why an unreproducible verdict did NOT invalidate the run (C2): the cause was not a lifecycle one, or the run was invalidated already. */
 export type InvalidationWithheld = 'implementation' | 'access' | 'infrastructure' | 'bytes' | 'already_invalidated';
+/**
+ * THE EVIDENCE AVAILABILITY ESTABLISHED BEFORE THE WRITE (the B21 rehearsal's wedge, 2026-09-24): what the governed retrieval of
+ * each evidence citation answered to this reader, keyed `${id}@${version}` (evidenceKey). A governed retrieval is a governed write
+ * of its own (observation.evidence.retrieve: its policy decision, its custody row, its audit row) and MUST NOT run inside another
+ * write's transaction: it opened a second connection whose capability context (ctx.issue_commit → ctx.build) swept the same expired
+ * nonces the caller's context had swept moments before, waited on the caller's transaction, and the caller's handler waited on it —
+ * a deadlock PostgreSQL cannot see (the caller is idle in transaction, not waiting on a lock) that queued every capability issuance
+ * of the process behind it, logins included. So the ROUTE establishes the availability first — each retrieval its own act, in
+ * sequence (retrieveEvidence) — and the write judges lifecycle under its own snapshot and consults this answer for the bytes.
+ */
+export type EvidenceAvailability = ReadonlyMap<string, { ok: true } | { refused: string } | { empty: true }>;
+export const evidenceKey = (id: string, version: number): string => `${id}@${version}`;
+type CitationRef = { key: string; kind: string; id: string; version: number };
+/** The citations of a run's immutable snapshot, and the scenario version it bound (the scenario is part of the experiment contract). */
+function snapshotCitations(r: Record<string, unknown>): CitationRef[] {
+  const snapshot = (r['initial_state'] as Snapshot[]) ?? [];
+  const citations: CitationRef[] = snapshot.flatMap((e) => (e.citations ?? []).map((c) => ({ key: e.key, kind: String(c.kind), id: c.id, version: c.version })));
+  if (r['scenario_id'] !== null && r['scenario_id'] !== undefined && r['scenario_version'] !== null && r['scenario_version'] !== undefined) {
+    citations.push({ key: 'scenario (the bound experiment contract)', kind: 'scenario', id: String(r['scenario_id']), version: Number(r['scenario_version']) });
+  }
+  return citations;
+}
 
 @Injectable()
 export class SimulationService {
   constructor(private readonly series: SeriesService) {}
 
-  /** Bind the contract and snapshot the initial state (governed write: `simulation.run`). */
-  async open(cap: RunWrites, ctx: ScopeContext, reader: Reader, intake: RunIntake, actor: string, correlationId: string, runId: string = newId()):
-    Promise<{ runId: string; opened: OpenedRun; params: SupplyFlowParams; options: SupplyFlowOptions; assumptions: Record<string, unknown>; envelope: Record<string, unknown>;
+  /**
+   * Bind the contract and snapshot the initial state (governed write: `simulation.run`). `evidence` is what the governed retrievals
+   * of the component's required evidence answered to this reader BEFORE this write (retrieveEvidence, called by the route): the
+   * retrievals are governed writes of their own and never run inside this transaction (EvidenceAvailability).
+   */
+  async open(cap: RunWrites, ctx: ScopeContext, evidence: EvidenceAvailability, intake: RunIntake, actor: string, correlationId: string, runId: string = newId()):
+    Promise<{ runId: string; opened: OpenedRun; params: SupplyFlowParams; options: SupplyFlowOptions; assumptions: Record<string, unknown>;
+              /** The behaviour model's declared operating envelope (the ranges the sensitivity sweep marks breaches against). */
+              operatingEnvelope: Record<string, unknown>;
               /** B18: what SimulationStarted carries beyond the port's answer — resolved here, never re-read by the route. */
               modelRef: string; implementationDigest: string; environment: { node: string; platform: string; arch: string }; environmentDigest: string; inputsDigest: string;
-              shockBasis: ShockBasis; rng: string | null; scenario: { scenario_id: string; version: number; branch_id: string; branch_state: string; flip_event_id: string | null } | null }> {
+              shockBasis: ShockBasis; rng: string | null; scenario: { scenario_id: string; version: number; branch_id: string; branch_state: string; flip_event_id: string | null } | null;
+              /** B21 (0081): the fitness and envelope contract the port bound at opening — for the route's answer and SimulationStarted. */
+              twinFitness: string; envelope: EnvelopeCheck; envelopeAck: Record<string, unknown> | null; challengeId: string | null }> {
     const twin = (await cap.readTwins().selectAll().where('twin_id' as never, '=', intake.twinId as never).executeTakeFirst()) as Record<string, unknown> | undefined;
     if (twin === undefined) throw new HttpException(errorBody('EYE_STA_001', correlationId, 'no authorized twin matches'), 404);
     const modelRef = String(twin['behaviour_model_ref']);
@@ -251,7 +320,7 @@ export class SimulationService {
      * the run may use, however complete the version was. (The port refuses the same,
      * from the object's own lifecycle; here the governed retrieval also decides.)
      */
-    const unavailable = await this.unavailableInputs(cap, reader, intake.twinId, intake.twinVersion, intake.component, correlationId);
+    const unavailable = await this.unavailableInputs(cap, evidence, intake.twinId, intake.twinVersion, intake.component, correlationId);
     if (unavailable.length > 0) {
       throw new HttpException(errorBody('EYE_STA_001', correlationId,
         `required inputs for ${intake.component} are no longer available to this reader under current policy, withdrawal and deletion controls: ${unavailable.join('; ')}`.slice(0, 2000)), 409);
@@ -345,11 +414,15 @@ export class SimulationService {
       shock: intake.shock, shockBasis, component: intake.component, modelRef, implementationDigest: SUPPLY_FLOW_IMPLEMENTATION_DIGEST, environmentDigest, environment,
       stochasticMode: stochastic.mode, rng: stochastic.mode === 'seeded' ? RNG_ALGORITHM : null, seed: stochastic.mode === 'seeded' ? stochastic.seed : null,
       samples: stochastic.mode === 'seeded' ? stochastic.samples : null, jitter: stochastic.mode === 'seeded' ? stochastic.jitter : null,
-      interventions: intake.interventions, constraints, assumptions: derived.assumptions, inputsDigest, validationStatus, controls, actor, eventId: newId(), correlationId,
+      interventions: intake.interventions, constraints, assumptions: derived.assumptions, inputsDigest, validationStatus, controls,
+      // B21 (0081): the acknowledgement and the challenge go to the port as given — it judges the envelope, the holder and the challenge's state.
+      envelopeAck: intake.envelope, challengeId: intake.challengeId,
+      actor, eventId: newId(), correlationId,
     });
-    return { runId, opened, params: derived.params, options, assumptions: derived.assumptions, envelope,
+    return { runId, opened, params: derived.params, options, assumptions: derived.assumptions, operatingEnvelope: envelope,
              modelRef, implementationDigest: SUPPLY_FLOW_IMPLEMENTATION_DIGEST, environment: { node: environment.node, platform: environment.platform, arch: environment.arch },
-             environmentDigest, inputsDigest, shockBasis, rng: stochastic.mode === 'seeded' ? RNG_ALGORITHM : null, scenario: scenarioBinding };
+             environmentDigest, inputsDigest, shockBasis, rng: stochastic.mode === 'seeded' ? RNG_ALGORITHM : null, scenario: scenarioBinding,
+             twinFitness: String(opened.twin_fitness ?? 'none'), envelope: opened.envelope, envelopeAck: opened.envelope_ack ?? null, challengeId: opened.challenge_id ?? null };
   }
 
   /**
@@ -359,10 +432,13 @@ export class SimulationService {
    * withdrawn one), and evidence bytes must survive the governed retrieval — policy,
    * governed deletion and integrity decide at the moment of asking. Returns what is
    * unavailable, named; an empty list is the only pass.
+   *
+   * The lifecycle is judged HERE, under this write's own snapshot; the bytes were asked
+   * for BEFORE this write (retrieveEvidence — the governed retrievals are governed writes
+   * of their own, never nested in this transaction) and `evidence` is what they answered.
+   * A citation the retrievals did not reach is not available: nothing established it.
    */
-  private async unavailable(
-    cap: SimulationReads, reader: Reader, citations: Array<{ key: string; kind: string; id: string; version: number }>, readFor: string, context: Record<string, string>,
-  ): Promise<UnavailableEntry[]> {
+  private async unavailable(cap: SimulationReads, evidence: EvidenceAvailability, citations: CitationRef[]): Promise<UnavailableEntry[]> {
     const out: UnavailableEntry[] = [];
     const seen = new Set<string>();
     for (const c of citations) {
@@ -386,19 +462,55 @@ export class SimulationService {
         continue;
       }
       if (c.kind === 'evidence') {
-        const got = await this.series.retrieveBytes(reader, c.id, c.version, { read_for: readFor, ...context, key: c.key });
-        if ('refused' in got) out.push({ ...named, cause: 'access', text: `evidence ${c.id}@${c.version} (${c.key}): ${got.refused}` });
-        else if (got.bytes.byteLength === 0) out.push({ ...named, cause: 'bytes', text: `evidence ${c.id}@${c.version} (${c.key}): no bytes` });
+        const got = evidence.get(evidenceKey(c.id, c.version));
+        if (got === undefined) out.push({ ...named, cause: 'access', text: `evidence ${c.id}@${c.version} (${c.key}): its availability to this reader was not established before this write (the governed retrieval precedes the run)` });
+        else if ('refused' in got) out.push({ ...named, cause: 'access', text: `evidence ${c.id}@${c.version} (${c.key}): ${got.refused}` });
+        else if ('empty' in got) out.push({ ...named, cause: 'bytes', text: `evidence ${c.id}@${c.version} (${c.key}): no bytes` });
       }
     }
     return out;
   }
 
   /** The selected component's required inputs, as the port selects them, checked for availability now (the sentences, for the refusal). */
-  private async unavailableInputs(cap: RunWrites, reader: Reader, twinId: string, version: number, component: string, correlationId: string): Promise<string[]> {
+  private async unavailableInputs(cap: RunWrites, evidence: EvidenceAvailability, twinId: string, version: number, component: string, correlationId: string): Promise<string[]> {
     void correlationId;
     const citations = await cap.requiredCitations({ twinId, version, component });
-    return (await this.unavailable(cap, reader, citations, 'simulation.run', { twin_id: twinId, version: String(version), component })).map((u) => u.text);
+    return (await this.unavailable(cap, evidence, citations)).map((u) => u.text);
+  }
+
+  /**
+   * THE GOVERNED RETRIEVALS, OUTSIDE ANY WRITE (EvidenceAvailability): every distinct evidence citation is retrieved through the reader —
+   * each retrieval the governed write it always was (observation.evidence.retrieve: policy, custody, audit), in sequence — and what each
+   * answered is the availability the opening or reproducing write consults. Called by the route BEFORE its write; never from a handler.
+   */
+  async retrieveEvidence(reader: Reader, citations: CitationRef[], readFor: string, context: Record<string, string>): Promise<EvidenceAvailability> {
+    const out = new Map<string, { ok: true } | { refused: string } | { empty: true }>();
+    for (const c of citations) {
+      if (c.kind !== 'evidence') continue;
+      const key = evidenceKey(c.id, c.version);
+      if (out.has(key)) continue;
+      const got = await this.series.retrieveBytes(reader, c.id, c.version, { read_for: readFor, ...context, key: c.key });
+      out.set(key, 'refused' in got ? { refused: got.refused } : got.bytes.byteLength === 0 ? { empty: true } : { ok: true });
+    }
+    return out;
+  }
+
+  /** The citations an OPENING establishes availability for: the port's own selection of the component's required inputs (twin.required_citations), read before the write. */
+  async citationsForRun(cap: SimulationReads, intake: Pick<RunIntake, 'twinId' | 'twinVersion' | 'component'>): Promise<CitationRef[]> {
+    return cap.requiredCitations({ twinId: intake.twinId, version: intake.twinVersion, component: intake.component });
+  }
+
+  /**
+   * The citations a REPRODUCTION establishes availability for: the completed run's immutable snapshot and the scenario version it bound
+   * — none when the reproducing write would refuse or withhold before asking (no such run, not completed, the implementation no longer
+   * the pinned one), so no retrieval is recorded that the write would not have made.
+   */
+  async citationsForReproduction(cap: SimulationReads, runId: string): Promise<CitationRef[]> {
+    const r = (await cap.readRuns().selectAll().where('run_id' as never, '=', runId as never).executeTakeFirst()) as Record<string, unknown> | undefined;
+    if (r === undefined || r['state'] !== 'completed') return [];
+    const model = (await cap.readBehaviourModels().selectAll().where('method_ref' as never, '=', r['model_ref'] as never).executeTakeFirst()) as Record<string, unknown> | undefined;
+    if (model === undefined || model['implementation_digest'] !== r['implementation_digest'] || SUPPLY_FLOW_IMPLEMENTATION_DIGEST !== r['implementation_digest']) return [];
+    return snapshotCitations(r);
   }
 
   private async elements(cap: SimulationReads, twinId: string, version: number): Promise<Snapshot[]> {
@@ -517,7 +629,7 @@ export class SimulationService {
    *      implementation; the cold attestation is derived from that execution — the
    *      child's pid and implementation digest are recorded — not from a request flag.
    */
-  async reproduce(cap: ReproduceWrites, ctx: ScopeContext, reader: Reader, runId: string, actor: string, correlationId: string, purposeId: string):
+  async reproduce(cap: ReproduceWrites, ctx: ScopeContext, evidence: EvidenceAvailability, runId: string, actor: string, correlationId: string, purposeId: string):
     Promise<{ runId: string; verdict: string; expected: string; actual: string | null; reason: string; environmentMatches: boolean; coldProcess: boolean; unavailable: string[];
               /** B18: the invalidation this verdict caused (a lifecycle cause), or null — and, when null on an unreproducible verdict, which cause withheld it. */
               invalidation: { invalidated_at: unknown; withdrawn_version: number; cause: 'lifecycle'; named: UnavailableEntry[] } | null;
@@ -547,12 +659,8 @@ export class SimulationService {
        *    what a reproduction establishes. Nothing is re-read to CHANGE the contract:
        *    the stored snapshot is what the separate process executes.
        */
-      const snapshot = (r['initial_state'] as Snapshot[]) ?? [];
-      const citations = snapshot.flatMap((e) => (e.citations ?? []).map((c) => ({ key: e.key, kind: String(c.kind), id: c.id, version: c.version })));
-      if (r['scenario_id'] !== null && r['scenario_id'] !== undefined && r['scenario_version'] !== null && r['scenario_version'] !== undefined) {
-        citations.push({ key: 'scenario (the bound experiment contract)', kind: 'scenario', id: String(r['scenario_id']), version: Number(r['scenario_version']) });
-      }
-      unavailable.push(...await this.unavailable(cap, reader, citations, 'simulation.reproduce', { run_id: runId }));
+      // The bytes were asked for before this write (citationsForReproduction → retrieveEvidence, the route); the lifecycle is judged here.
+      unavailable.push(...await this.unavailable(cap, evidence, snapshotCitations(r)));
       if (unavailable.length > 0) {
         verdict = 'unreproducible';
         reason = `an artefact the run rests on is no longer available to this reader under current policy, withdrawal and deletion controls: ${unavailable.map((u) => u.text).join('; ')}`.slice(0, 2000);
@@ -609,7 +717,7 @@ export class SimulationService {
    * would (C5): an unknown run 404; a run invalidated already, or not completed, 409 in the port's words.
    */
   async invalidate(
-    cap: InvalidateWrites, ctx: ScopeContext, runId: string, a: { reason: string; trigger: 'operator' | 'reproduction'; triggerRef: string | null },
+    cap: InvalidateWrites, ctx: ScopeContext, runId: string, a: { reason: string; trigger: 'operator' | 'reproduction' | 'challenge'; triggerRef: string | null },
     actor: string, correlationId: string, purposeId: string,
   ): Promise<{ invalidated: Record<string, unknown>; withdrawnVersion: number; event: OutboxRow; changed: OutboxRow }> {
     const reason = a.reason.trim();
@@ -639,8 +747,9 @@ export class SimulationService {
     await cap.admitObject(header, payload, canonicalHeaderDigest(header, payload));
     const withdrawnVersion = Number(header.object_version);
     const invalidated = await cap.invalidateRun({ runId, tenantId, domainId, reason, trigger: a.trigger, triggerRef: a.triggerRef, actor, eventId: newId(), correlationId });
-    // The bound action of the write, as the port enforced it: a reproduction invalidates under simulation.reproduce, a person under simulation.run.invalidate.
-    const action = a.trigger === 'reproduction' ? 'simulation.reproduce' as const : 'simulation.run.invalidate' as const;
+    // The bound action of the write, as the port enforced it: a reproduction invalidates under simulation.reproduce, an upheld challenge (0081)
+    // under simulation.challenge.decide, a person under simulation.run.invalidate.
+    const action = a.trigger === 'reproduction' ? 'simulation.reproduce' as const : a.trigger === 'challenge' ? 'simulation.challenge.decide' as const : 'simulation.run.invalidate' as const;
     const dependants = (invalidated['dependants'] !== null && typeof invalidated['dependants'] === 'object' ? invalidated['dependants'] : {}) as Record<string, unknown>;
     const event = simulationInvalidatedEvent({ invalidated, withdrawnVersion, trigger: a.trigger, reason, actor, occurredAt: now, action });
     const changed = simulationInvalidatedGraphEvent({
@@ -672,18 +781,111 @@ export class SimulationService {
     };
   }
 
+  // ───────────────────────── B21 (0081): the challenge and the promotion ─────────────────────────
+
+  /**
+   * The challenge ROW as read back after the port ran, with the run's identity beside it (as the row stands after the
+   * write) — what ChallengeSimulation@v1 is built from. The row was just written under this capability, so its absence
+   * is a fault, never a silent omission (the twins consumer's rule).
+   */
+  private async challengeForEvent(cap: SimulationReads, challengeId: string, runId: string): Promise<Record<string, unknown>> {
+    const row = (await cap.readChallenges().selectAll().where('challenge_id' as never, '=', challengeId as never).executeTakeFirst()) as Record<string, unknown> | undefined;
+    if (row === undefined) throw new Error(`challenge ${challengeId} was written but its row could not be read back`);
+    const run = (await cap.readRuns().select(['twin_id', 'twin_version', 'run_kind', 'control_run_id', 'operator_principal_id', 'validity', 'fitness_state', 'promoted_for'] as never)
+      .where('run_id' as never, '=', runId as never).executeTakeFirst()) as Record<string, unknown> | undefined;
+    return { ...row, run: run ?? {} };
+  }
+
+  /** OPEN a challenge on a completed valid run (governed write: `simulation.challenge.open`); the port refuses the rest. */
+  async openChallenge(cap: ChallengeWrites, ctx: ScopeContext, runId: string, a: { kind: string; statement: string; disputed: unknown }, actor: string, correlationId: string):
+    Promise<{ challenge: Record<string, unknown>; event: OutboxRow }> {
+    const challengeId = newId();
+    const challenge = await cap.openChallenge({ challengeId, runId, tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, kind: a.kind, statement: a.statement, disputed: a.disputed, actor, eventId: newId(), correlationId });
+    const event = challengeSimulationEvent({ challenge: await this.challengeForEvent(cap, challengeId, runId), state: 'opened', action: 'simulation.challenge.open', invalidation: null, invalidationWithheld: null, actor, occurredAt: new Date().toISOString() });
+    return { challenge, event };
+  }
+
+  /** REQUEST a re-run of the challenged run (governed write: `simulation.challenge.rerun`): the re-run itself is an ordinary governed run naming correctsRunId and challengeId. */
+  async requestRerun(cap: ChallengeWrites, ctx: ScopeContext, runId: string, challengeId: string, note: string | null, actor: string, correlationId: string):
+    Promise<{ challenge: Record<string, unknown>; event: OutboxRow }> {
+    const challenge = await cap.requestRerun({ challengeId, runId, tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, note, actor, eventId: newId(), correlationId });
+    const event = challengeSimulationEvent({ challenge: await this.challengeForEvent(cap, challengeId, runId), state: 'rerun_requested', action: 'simulation.challenge.rerun', invalidation: null, invalidationWithheld: null, actor, occurredAt: new Date().toISOString() });
+    return { challenge, event };
+  }
+
+  /** WITHDRAW a live challenge — its opener's act (governed write: `simulation.challenge.withdraw`). */
+  async withdrawChallenge(cap: ChallengeWrites, ctx: ScopeContext, runId: string, challengeId: string, reason: string, actor: string, correlationId: string):
+    Promise<{ challenge: Record<string, unknown>; event: OutboxRow }> {
+    const challenge = await cap.withdrawChallenge({ challengeId, runId, tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, reason, actor, eventId: newId(), correlationId });
+    const event = challengeSimulationEvent({ challenge: await this.challengeForEvent(cap, challengeId, runId), state: 'withdrawn', action: 'simulation.challenge.withdraw', invalidation: null, invalidationWithheld: null, actor, occurredAt: new Date().toISOString() });
+    return { challenge, event };
+  }
+
+  /**
+   * DECIDE a live challenge (governed write: `simulation.challenge.decide`, human-gated; the port refuses the opener and the
+   * run's operator). An UPHELD decision invalidates the run in this same write — the withdrawn SIM version admitted, then
+   * simulation.invalidate_run with trigger `challenge` and the challenge as the reference — unless the run was invalidated
+   * already (by the operator meanwhile): then the challenge is upheld and the invalidation withheld, said.
+   */
+  async decideChallenge(cap: ChallengeWrites, ctx: ScopeContext, runId: string, challengeId: string, a: { decision: string; note: string }, actor: string, correlationId: string, purposeId: string):
+    Promise<{ challenge: Record<string, unknown>; event: OutboxRow;
+              invalidation: { event: OutboxRow; changed: OutboxRow; withdrawnVersion: number; invalidatedAt: unknown } | null; invalidation_withheld: 'already_invalidated' | null }> {
+    const challenge = await cap.decideChallenge({ challengeId, runId, tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, decision: a.decision, note: a.note, actor, eventId: newId(), correlationId });
+    const state: ChallengeState = challenge['state'] === 'upheld' ? 'upheld' : 'dismissed';
+    const run = (challenge['run'] !== null && typeof challenge['run'] === 'object' ? challenge['run'] : {}) as Record<string, unknown>;
+    let invalidation: { event: OutboxRow; changed: OutboxRow; withdrawnVersion: number; invalidatedAt: unknown } | null = null;
+    let withheld: 'already_invalidated' | null = null;
+    if (state === 'upheld') {
+      if (run['validity'] === 'invalidated') withheld = 'already_invalidated';
+      else {
+        const inv = await this.invalidate(cap, ctx, runId, { reason: `challenge ${challengeId} upheld: ${a.note}`.slice(0, 2000), trigger: 'challenge', triggerRef: challengeId }, actor, correlationId, purposeId);
+        invalidation = { event: inv.event, changed: inv.changed, withdrawnVersion: inv.withdrawnVersion, invalidatedAt: inv.invalidated['invalidated_at'] ?? null };
+      }
+    }
+    const event = challengeSimulationEvent({
+      challenge: await this.challengeForEvent(cap, challengeId, runId), state, action: 'simulation.challenge.decide',
+      invalidation: invalidation === null ? null : { invalidated_at: invalidation.invalidatedAt, withdrawn_version: invalidation.withdrawnVersion },
+      invalidationWithheld: withheld, actor, occurredAt: new Date().toISOString(),
+    });
+    return { challenge, event, invalidation, invalidation_withheld: withheld };
+  }
+
+  /** PROMOTE a completed, valid, undisputed result as fit for a stated use (governed write: `simulation.result.promote`, human-gated; the port refuses the operator). No outbox event (OBJ-29). */
+  async promote(cap: PromoteWrites, ctx: ScopeContext, runId: string, a: { promotedFor: string; limitations: string[]; note: string }, actor: string, correlationId: string): Promise<Record<string, unknown>> {
+    return cap.promoteResult({ promotionId: newId(), runId, tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, promotedFor: a.promotedFor, limitations: a.limitations, note: a.note, actor, eventId: newId(), correlationId });
+  }
+
+  /** The challenges of the domain (or of one run), newest first, bounded 200. */
+  async listChallenges(cap: SimulationReads, runId: string | null): Promise<unknown[]> {
+    let q = cap.readChallenges().selectAll();
+    if (runId !== null) q = q.where('run_id' as never, '=', runId as never);
+    return (await q.orderBy('opened_at' as never, 'desc').limit(200).execute()) as unknown[];
+  }
+
   async get(cap: SimulationReads, runId: string): Promise<Record<string, unknown> | undefined> {
     const r = (await cap.readRuns().selectAll().where('run_id' as never, '=', runId as never).executeTakeFirst()) as Record<string, unknown> | undefined;
     if (r === undefined) return undefined;
     const events = (await cap.readRunEvents().selectAll().where('run_id' as never, '=', runId as never).orderBy('occurred_at' as never).execute()) as unknown[];
     const reproductions = (await cap.readReproductions().selectAll().where('run_id' as never, '=', runId as never).orderBy('reproduced_at' as never).execute()) as unknown[];
-    return { ...withDays(r), events, reproductions };
+    // B21 (0081): the run's challenges with their event ledger, and its promotion (the row, or null).
+    const challenges = (await cap.readChallenges().selectAll().where('run_id' as never, '=', runId as never).orderBy('opened_at' as never).execute()) as Array<Record<string, unknown>>;
+    const challengeEvents = challenges.length === 0 ? [] : (await cap.readChallengeEvents().selectAll()
+      .where('challenge_id' as never, 'in', challenges.map((c) => String(c['challenge_id'])) as never).orderBy('occurred_at' as never).execute()) as Array<Record<string, unknown>>;
+    const promotion = ((await cap.readPromotions().selectAll().where('run_id' as never, '=', runId as never).executeTakeFirst()) as Record<string, unknown> | undefined) ?? null;
+    return { ...withDays(r), events, reproductions,
+             challenges: challenges.map((c) => ({ ...c, events: challengeEvents.filter((e) => String(e['challenge_id']) === String(c['challenge_id'])) })), promotion };
   }
 
   async list(cap: SimulationReads, twinId: string | null): Promise<unknown[]> {
     let q = cap.readRuns().selectAll();
     if (twinId !== null) q = q.where('twin_id' as never, '=', twinId as never);
-    return ((await q.orderBy('opened_at' as never, 'desc').limit(200).execute()) as Array<Record<string, unknown>>).map(withDays);
+    const rows = ((await q.orderBy('opened_at' as never, 'desc').limit(200).execute()) as Array<Record<string, unknown>>).map(withDays);
+    // B21 (0081): how many challenges are LIVE (open or awaiting a re-run) on each run — the columns fitness_state, promoted_for, twin_fitness, envelope_* and challenge_id ride selectAll().
+    const live = rows.length === 0 ? [] : (await cap.readChallenges().select(['run_id'] as never)
+      .where('run_id' as never, 'in', rows.map((r) => String(r['run_id'])) as never).where('state' as never, 'in', ['open', 'rerun_requested'] as never).execute()) as Array<Record<string, unknown>>;
+    const counts = new Map<string, number>();
+    for (const c of live) { const id = String(c['run_id']); counts.set(id, (counts.get(id) ?? 0) + 1); }
+    return rows.map((r) => ({ ...r, live_challenges: counts.get(String(r['run_id'])) ?? 0 }));
   }
 }
 

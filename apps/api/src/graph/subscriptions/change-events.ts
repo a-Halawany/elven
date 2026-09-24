@@ -38,6 +38,11 @@
  * from the rebuild port's report with NO identities, NO relationships and an unwalked empty reach: the changed rows ride the
  * typed `projection` block only, so the consumers that select by identities or dependencies are fed nothing (a rebuild changes
  * no fact of the world) and the retrieval consumer alone acts (it re-verifies).
+ *
+ * 0081 (B21): `forecast.fitness_changed` — a forecast ASSESSED UNFIT under the versioned fitness rule (by the outcome write, the
+ * forecast subscriber or a person) — is built PURE from the assessment port's answer in the forecastWithdrawnGraphEvent shape:
+ * objects.forecasts the forecast, the typed `forecast_fitness` block carrying the class, what stood before and the measures. The
+ * trigger→action map is a LITERAL duplicated here on purpose: the graph imports nothing from prediction (the boundaries gate).
  */
 import type { GraphReads } from '../graph.capabilities.js';
 import type { ImpactService, WalkReads } from '../strategy/impact.service.js';
@@ -417,12 +422,51 @@ export function forecastWithdrawnGraphEvent(a: { forecastId: string; seriesKey: 
 }
 
 /**
+ * A forecast ASSESSED UNFIT (0081, D7): the forecastWithdrawnGraphEvent shape — no identities, objects.forecasts the forecast,
+ * `walked` true (the family the rule judged is the port's — nothing else is reached), the typed `forecast_fitness` block with
+ * the class the state carries, what stood before and the measures (the window, the coverage, the pinball, the expiry). Emitted
+ * ONLY on a transition to unfit or a class change while unfit: a fit or indeterminate verdict rides ForecastFitnessChanged alone.
+ * The cause is the act that assessed: the outcome write, the forecast subscriber's item, or a person's assess.
+ */
+const FORECAST_FITNESS_TRIGGER_ACTION_OF: Readonly<Record<'outcome' | 'subscription' | 'operator', string>> = Object.freeze({
+  outcome: 'prediction.outcome.record', subscription: 'prediction.forecast.subscription.apply', operator: 'prediction.forecast.assess',
+});
+const rec = (v: unknown): Row => (v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Row) : {});
+export function forecastFitnessChangedGraphEvent(a: { assessment: Row; trigger: 'outcome' | 'subscription' | 'operator'; subscriptions: SubscriptionRef[]; actor: string; occurredAt?: string }): OutboxRow {
+  const now = a.occurredAt ?? new Date().toISOString();
+  const x = a.assessment; const m = rec(x['measures']); const w = rec(m['window']);
+  const forecastId = String(x['forecast_id']);
+  const num = (v: unknown): number => (typeof v === 'number' ? v : Number(v ?? 0));
+  const payload: GraphChangedPayload = {
+    schema: 'GraphChanged', schema_version: 'v1',
+    change: { kind: 'forecast.fitness_changed', occurred_at: now, graph_event_id: null, invalidation_id: null, correction_case_id: null },
+    identities: [],
+    relationships: { edges: [], resolutions: [], dependencies: [] },
+    objects: { ...EMPTY_REACH, forecasts: [forecastId], walked: true },
+    temporal: { known_at: now },
+    subscriptions: a.subscriptions,
+    cause: { action: FORECAST_FITNESS_TRIGGER_ACTION_OF[a.trigger], actor: a.actor, target_type: 'FCT', target_id: forecastId },
+    forecast_fitness: {
+      forecast_id: forecastId, series_key: str(x['series_key']) ?? '', horizon: str(x['horizon']) ?? '', method: str(x['method']) ?? '',
+      state: 'unfit', class: str(x['class']), prior_state: str(x['prior_state']) ?? 'none', prior_class: str(x['prior_class']),
+      assessment_id: str(x['assessment_id']) ?? '', rule_version: str(m['rule_version']) ?? '', trigger: a.trigger,
+      measures: { outcomes: num(w['outcomes']), required: num(w['required']),
+                  coverage: m['coverage'] === null || typeof m['coverage'] !== 'object' ? null : (m['coverage'] as Row),
+                  pinball: m['pinball'] === null || typeof m['pinball'] !== 'object' ? null : (m['pinball'] as Row),
+                  expiry: m['expiry'] === null || typeof m['expiry'] !== 'object' ? null : (m['expiry'] as Row) },
+    },
+  };
+  return asRow('GraphChanged', payload);
+}
+
+/**
  * A completed run's result INVALIDATED (0078, D6/D7): objects.simulations the run, `walked` true (the PORT enumerated the
  * dependants — packages, commitments, decisions, twins, simulations — carried in the typed `simulation` block with the
- * reason and the trigger: a person's act, or a reproduction's unreproducible verdict, `trigger_ref` naming the reproduction).
- * The cause is the act that invalidated — simulation.run.invalidate by hand, simulation.reproduce inside the reproduce write.
+ * reason and the trigger: a person's act, or a reproduction's unreproducible verdict, `trigger_ref` naming the reproduction;
+ * 0081: or an UPHELD CHALLENGE, `trigger_ref` naming the challenge). The cause is the act that invalidated —
+ * simulation.run.invalidate by hand, simulation.reproduce inside the reproduce write, simulation.challenge.decide inside the deciding write.
  */
-export function simulationInvalidatedGraphEvent(a: { runId: string; reason: string; trigger: 'operator' | 'reproduction'; triggerRef: string | null; invalidatedAt: string; dependants: Row; subscriptions: SubscriptionRef[]; actor: string; action: 'simulation.run.invalidate' | 'simulation.reproduce'; occurredAt?: string }): OutboxRow {
+export function simulationInvalidatedGraphEvent(a: { runId: string; reason: string; trigger: 'operator' | 'reproduction' | 'challenge'; triggerRef: string | null; invalidatedAt: string; dependants: Row; subscriptions: SubscriptionRef[]; actor: string; action: 'simulation.run.invalidate' | 'simulation.reproduce' | 'simulation.challenge.decide'; occurredAt?: string }): OutboxRow {
   const now = a.occurredAt ?? new Date().toISOString();
   const payload: GraphChangedPayload = {
     schema: 'GraphChanged', schema_version: 'v1',

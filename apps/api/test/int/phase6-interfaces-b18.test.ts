@@ -54,8 +54,8 @@
  *   principals, a second reopen while the draft is open — and, reopened, the package still HEARS of its inputs: C8), the withdrawal
  *   of a package whose commitment stands (C9), the second commit over a standing commitment.
  *
- *   S4 · the register through the route: 50 rows, 36 bound / 14 partial / 0 unbound, the ten rows bound in 0078 with their event
- *   and schema version, the fourteen that stay partial listed exactly.
+ *   S4 · the register through the route: 50 rows, 40 bound / 10 partial / 0 unbound (B21, 0081: the four foresight rows bound), the ten
+ *   rows bound in 0078 and the four bound in 0081 with their event and schema version, the ten that stay partial listed exactly.
  *
  * Read against the design's own statements, what this harness does NOT claim: the failed-run state of SimulationCompleted is
  * unit-tested (every run here completes); the port-marked warnings are the port's own loop (the fixture raises none); a closed
@@ -115,7 +115,10 @@ const BOUND_IN_0078: ReadonlyArray<[string, string, string]> = [
   ['L8-I02', 'SimulationStarted', 'v1'], ['L8-I03', 'SimulationCompleted', 'v1'], ['L8-I05', 'SimulationInvalidated', 'v1'],
   ['L9-I02', 'DecisionPackageReady', 'v1'], ['L9-I04', 'DecisionCommitted', 'v1'], ['L9-I05', 'DecisionReopened', 'v1'],
 ];
-const STILL_PARTIAL = ['L1-I02', 'L1-I03', 'L1-I04', 'L2-I02', 'L3-I02', 'L4-I02', 'L5-I05', 'L6-I03', 'L7-I02', 'L7-I04', 'L8-I04', 'L10-I02', 'L10-I03', 'L10-I05'];
+// B21 (0081; Nit 3): L5-I05, L6-I03, L7-I04 and L8-I04 bound — the ten that stay partial.
+const STILL_PARTIAL = ['L1-I02', 'L1-I03', 'L1-I04', 'L2-I02', 'L3-I02', 'L4-I02', 'L7-I02', 'L10-I02', 'L10-I03', 'L10-I05'];
+/** The four foresight rows 0081 binds (B21.3), each to its event and schema version. */
+const BOUND_IN_0081: ReadonlyArray<[string, string, string]> = [['L5-I05', 'ValidateTwin', 'v1'], ['L6-I03', 'ForecastFitnessChanged', 'v1'], ['L7-I04', 'ScenarioCoherenceFailed', 'v1'], ['L8-I04', 'ChallengeSimulation', 'v1']];
 
 /* ───────────── the world of this file (set in beforeAll and S1) ───────────── */
 /** The twin's version 2 (the carried set plus the predicted element citing the forecast), admitted after the subscriptions; its mark. */
@@ -926,11 +929,11 @@ describe('S3 · the refusals, by family and status (0078 §1–§3, §3.3; D5, D
 });
 
 describe('S4 · the register through the route (0078 §4; AU-DP-0071, V04-T-005)', () => {
-  it('S4 · 50 rows: 36 bound, 14 partial, 0 unbound — the ten rows bound in 0078 with their event and schema version, the fourteen that stay partial listed exactly; the same counts by SQL', async () => {
+  it('S4 · 50 rows: 40 bound, 10 partial, 0 unbound (B21, 0081) — the ten rows bound in 0078 and the four bound in 0081 with their event and schema version, the ten that stay partial listed exactly; the same counts by SQL', async () => {
     const r = await interfaces();
     expect(r.interfaces).toHaveLength(50);
     const byState = (s: string) => r.interfaces.filter((i) => i['binding_state'] === s).map((i) => String(i['interface_id']));
-    expect(byState('bound')).toHaveLength(36);
+    expect(byState('bound')).toHaveLength(40);
     expect(byState('partial').sort()).toEqual([...STILL_PARTIAL].sort());
     expect(byState('unbound')).toEqual([]);
     for (const [id, event, schemaVersion] of BOUND_IN_0078) {
@@ -940,8 +943,14 @@ describe('S4 · the register through the route (0078 §4; AU-DP-0071, V04-T-005)
       expect(String(row!['bound_to']), `${id} bound_to`).toMatch(new RegExp(`${event}@${schemaVersion}`));
     }
     expect(String(r.interfaces.find((i) => i['interface_id'] === 'L8-I05')!['bound_to'])).toMatch(/unreproducible verdict/);
+    for (const [id, event, schemaVersion] of BOUND_IN_0081) {
+      const row = r.interfaces.find((i) => i['interface_id'] === id);
+      expect(row, id).toMatchObject({ binding_state: 'bound', bound_in: '0081', schema_version: schemaVersion });
+      expect(row!['bound_at'], `${id} bound_at`).not.toBeNull();
+      expect(String(row!['bound_to']), `${id} bound_to`).toMatch(new RegExp(`${event}@${schemaVersion}`));
+    }
     expect(String(r.interfaces.find((i) => i['interface_id'] === 'L9-I05')!['bound_to'])).toMatch(/policy change has no recorded cause/);
-    expect(await registerCounts()).toEqual({ bound: 36, partial: 14, unbound: 0 });
+    expect(await registerCounts()).toEqual({ bound: 40, partial: 10, unbound: 0 });
     expect(subs['twins']!.subscriptionId).toMatch(UUID);
   }, 60_000);
 });

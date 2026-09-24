@@ -23,6 +23,19 @@ abstract class ExecutiveCore {
     const r = await q.execute(this.#tx);
     return r.rows as T[];
   }
+  /** B21 (D1.5): the graph capability's savepoint (graph.capabilities.ts:46-57, byte for byte) — the shared fallback reader runs its canonical statements under one so a failure leaves the composer's transaction usable (B9-F2's idiom). */
+  async withSavepoint<T>(name: string, run: () => Promise<T>): Promise<T> {
+    const sp = name.replace(/[^a-z0-9_]/gi, '');
+    await sql.raw(`savepoint ${sp}`).execute(this.#tx);
+    try {
+      const out = await run();
+      await sql.raw(`release savepoint ${sp}`).execute(this.#tx);
+      return out;
+    } catch (e) {
+      await sql.raw(`rollback to savepoint ${sp}`).execute(this.#tx);
+      throw e;
+    }
+  }
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -80,6 +93,8 @@ export interface ExecutiveReads {
    * composes the memory items from their log for a briefing while the partition is withdrawn.
    */
   expected(projection: ProjectionName, a: { tenantId: string; domainId: string }): Promise<Array<Record<string, unknown>>>;
+  /** B21: the fallback reader's pick (ExpectedReads) names withSavepoint — the memory step's canonical statements run under one. */
+  withSavepoint<T>(name: string, run: () => Promise<T>): Promise<T>;
   /**
    * B20: the four graph projections beside readStrategy — the fallback reader's structural pick (ExpectedReads) names them, so
    * the executive capability satisfies it without a cast; the briefing composer reads the memory items alone, under RLS as ever.

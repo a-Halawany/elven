@@ -16,8 +16,16 @@
  * The event names ids, versions and digests — never the elements' bodies; every list that can grow is cut at
  * LIFECYCLE_EVENT_LIST_MAX with `truncated` said (D20). No read happens here: the write hands the builder what it
  * holds, so the harness proves the announcement on a live admission and the unit test proves the builder key by key.
+ *
+ * CP-6 B21 (0081, L5-I05): ValidateTwin@v1 — the register's own name — built PURE from the validate port's answer
+ * (`twin.validate_version`: the verdict, what stood before, the ENVELOPE CHECK and the CALIBRATION summary the port
+ * computed, the runs resting on the version, the version's digest and cut-offs) in the validating write; no GraphChanged
+ * follows (a validation changes no fact; no consumer selects by it — the ReviewRequested precedent).
  */
-import { LIFECYCLE_EVENT_LIST_MAX, type OutboxRow } from '../../graph/subscriptions/change-events.js';
+import { LIFECYCLE_EVENT_LIST_MAX, cutList, type OutboxRow } from '../../graph/subscriptions/change-events.js';
+import type { EnvelopeCheck } from '../twin.capabilities.js';
+
+type Row = Record<string, unknown>;
 
 /** A state element as the announcement compares it: the row's key, kind, value, unit, validity, confidence, health and citations. */
 export interface ElementRow { key: string; kind: string; value: unknown; unit: string | null; valid_from: string | null; confidence: number | null; health: string; citations: unknown[] }
@@ -93,6 +101,49 @@ export function twinStateChangedEvent(a: TwinStateChangedArgs): OutboxRow {
       truncated: a.changedVariables.length > LIFECYCLE_EVENT_LIST_MAX,
       temporal: { known_at: a.occurredAt },
       cause: { action: a.action, actor: a.actor, target_type: 'TWN', target_id: a.twinId },
+    },
+  };
+}
+
+// ───────────────────────── 0081 (B21): the validation ─────────────────────────
+
+export interface ValidateTwinArgs {
+  twinId: string; version: number; branchId: string | null; validationId: string;
+  verdict: string; priorState: string;
+  /** The port's check — the version's numeric elements against the model's declared ranges (horizon_days unchecked here: a run parameter). */
+  envelope: EnvelopeCheck;
+  /** The port's summary of twin.reconciliations since the previous validation (count 0 is said). */
+  calibration: Row;
+  limitations: string[];
+  /** The runs resting on this version, as the port named them (uncut; the builder cuts and says so). */
+  runs: Row[];
+  stateSetDigest: string | null; knownAt: string | null; observedThrough: string | null;
+  actor: string; occurredAt: string;
+}
+
+/**
+ * ValidateTwin@v1 — the person's verdict on an admitted version, from the validating write (twin.version.validate): the
+ * envelope check and the calibration history AS THE PORT COMPUTED THEM, the limitations, the runs resting on the version
+ * (named, never altered — a run is immutable; an unfit version refuses NEW runs only), the version's digest and cut-offs.
+ */
+export function validateTwinEvent(a: ValidateTwinArgs): OutboxRow {
+  const limitations = cutList(a.limitations);
+  const runs = cutList(a.runs);
+  return {
+    eventType: 'ValidateTwin',
+    payload: {
+      schema: 'ValidateTwin', schema_version: 'v1',
+      twin_id: a.twinId, version: a.version, branch_id: a.branchId, validation_id: a.validationId,
+      verdict: a.verdict, prior_state: a.priorState,
+      envelope: { state: a.envelope.state, model: a.envelope.model, keys: a.envelope.keys },
+      calibration: a.calibration,
+      limitations: limitations.list,
+      dependency_impacts: { runs: runs.list, truncated: runs.truncated },
+      state_set_digest: a.stateSetDigest,
+      freshness: { known_at: a.knownAt, observed_through: a.observedThrough },
+      truncated: limitations.truncated,
+      temporal: { known_at: a.occurredAt },
+      cause: { action: 'twin.version.validate', actor: a.actor, target_type: 'TWN', target_id: a.twinId },
     },
   };
 }

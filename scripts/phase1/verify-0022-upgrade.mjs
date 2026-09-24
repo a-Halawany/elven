@@ -196,8 +196,8 @@ const INTENDED_ADDITIONS = Object.freeze({
   // 0024: OBJ, ASU, DEC, CMT, OUT · 0028: SRC@v2 · 0029: FCT, SCN, WRN · 0032: TWN · 0033: SIM · 0041: DPK · 0042: APR · 0043: RPL · 0044: BRF · 0058: SCN@v2 · 0061: SCN@v3, WRN@v2 · 0066: MEM@v1 · 0079: MEM@v2
   // 0076: the import forms EVD@v2, ENT@v2, EVT@v2, REL@v2, ASM@v2, CLM@v3 (the base schema + imported_from)
   'objects.schema_registry': 36, // + SCN v2 (0058), SCN v3 and WRN v2 (0061), MEM v1 (0066), SRC v3 (0070), the six import forms (0076), MEM v2 (0079)
-  // one ledger line per migration applied above the ceiling (0022–0080)
-  'public.schema_migrations': 59, // + 0080 (B20: the index-tier degradation — the projection partitions, the symmetric check that withdraws, the rebuild writer, the derived watermark, the memory content-tier ledger event, the deletion pause)
+  // one ledger line per migration applied above the ceiling (0022–0081)
+  'public.schema_migrations': 60, // + 0081 (B21: fitness, coherence and challenge — twin validations, forecast fitness assessments, scenario coherence checks, simulation challenges and promotions; the register 40/10/0)
 });
 
 /** Structure only: columns, constraints, indexes, routines, policies, grants. */

@@ -20,7 +20,9 @@ const AT = '2026-09-17T12:00:00.000Z';
 const DIGEST = 'd'.repeat(64);
 
 const opened: OpenedRun = { initial_state: [], initial_state_digest: '1'.repeat(64), known_at: '2026-09-17T11:59:00.000Z', observed_through: '2024-01-17', branch_id: 'actual',
-                            synthetic_state: false, controls: { classification: 'internal' }, verification_state: 'verified', scenario_flip_event: null };
+                            synthetic_state: false, controls: { classification: 'internal' }, verification_state: 'verified', scenario_flip_event: null,
+                            // B21 (0081): the fitness and envelope contract the port binds at opening (pinned in phase6-fitness-events-b21.test.ts; here the B18 keys are the pins)
+                            twin_fitness: 'none', envelope: { state: 'inside', model: 'supply-flow@1', keys: {} }, envelope_ack: null, challenge_id: null };
 const intake = (over: Row = {}) => ({
   twinId: TWIN, twinVersion: 2, runKind: 'control' as const, controlRunId: null, correctsRunId: null, shock: false, component: 'magnet-assembly',
   stochastic: { mode: 'deterministic' as const }, ...over,
@@ -28,7 +30,8 @@ const intake = (over: Row = {}) => ({
 const environment = { node: process.version, platform: process.platform, arch: process.arch };
 const started = (over: Partial<Parameters<typeof simulationStartedEvent>[0]> = {}) => simulationStartedEvent({
   runId: RUN, opened, intake: intake(), scenario: null, shockBasis: 'none', modelRef: 'supply-flow@1', implementationDigest: DIGEST, environmentDigest: 'e'.repeat(64),
-  environment, inputsDigest: 'f'.repeat(64), rng: null, operator: OPERATOR, occurredAt: AT, ...over,
+  environment, inputsDigest: 'f'.repeat(64), rng: null, twinFitness: opened.twin_fitness, envelope: opened.envelope, envelopeAck: opened.envelope_ack, challengeId: opened.challenge_id,
+  operator: OPERATOR, occurredAt: AT, ...over,
 });
 
 describe('B18 · simulationStartedEvent — SimulationStarted@v1 from the opening write', () => {

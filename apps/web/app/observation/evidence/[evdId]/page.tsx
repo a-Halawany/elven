@@ -47,7 +47,8 @@ export default function EvidenceDetailPage() {
   const [knownAt, setKnownAt] = useState('');
   const [error, setError] = useState<{ code: string; message: string; correlationId: string } | null>(null);
   const [receipt, setReceipt] = useState<{ policyDecisionId: string; auditSeq: number } | null>(null);
-  const [download, setDownload] = useState<{ byteLength: number; contentDigest: string; integrity: string; preview: string } | null>(null);
+  /** B21.2: `preview` is null and `degraded` set when the tier's root could not be reached — the record served, the bytes not (EYE-DEG-001). */
+  const [download, setDownload] = useState<{ byteLength: number; contentDigest: string; integrity: string; tier: string; availability: string; preview: string | null; degraded: { root: string; label: string } | null } | null>(null);
 
   const load = useCallback(async (at: string | null) => {
     const r = await observation.getEvidence(scope, evdId, at);
@@ -214,6 +215,13 @@ export default function EvidenceDetailPage() {
               </>
             )}
           </DefinitionRow>
+          {/* B11's tier ledger as the detail carries it (evidence.service.ts's `availability` block); B21.2 says what it does NOT carry. */}
+          <DefinitionRow term="Availability">
+            {String((d['availability'] as Record<string, unknown> | null | undefined)?.['state'] ?? 'hot')} · tier {String((d['availability'] as Record<string, unknown> | null | undefined)?.['tier'] ?? 'hot')}
+            <div style={{ color: 'var(--eye-color-ink-muted)', fontSize: 'var(--eye-type-body-sm)' }}>
+              Whether the tier’s root is reachable is declared by a retrieval, not by this record
+            </div>
+          </DefinitionRow>
           {payload['fragment'] != null && (
             <DefinitionRow term="Fragment of parent">
               bytes {String((payload['fragment'] as Record<string, unknown>)['byte_start'])}–
@@ -260,40 +268,50 @@ export default function EvidenceDetailPage() {
             if (!r.ok || r.data === undefined) { setError(r.error ?? null); throw new Error('refused'); }
             setReceipt(r.data.receipt);
             const dl = r.data.download;
-            const text = typeof atob === 'function' ? atob(dl.base64) : '';
+            const text = dl.base64 === null ? null : (typeof atob === 'function' ? atob(dl.base64) : '');
             setDownload({
-              byteLength: dl.byteLength, contentDigest: dl.contentDigest, integrity: dl.integrity,
-              preview: text.slice(0, 600),
+              byteLength: dl.byteLength, contentDigest: dl.contentDigest, integrity: dl.integrity, tier: dl.tier, availability: dl.availability,
+              preview: text === null ? null : text.slice(0, 600), degraded: dl.degraded ?? null,
             });
           }}
         />
         {withdrawn && (
           <LiveStatus>This evidence is withdrawn: its bytes are no longer served.</LiveStatus>
         )}
-        {download !== null && (
+        {/* B21.2: rendered FROM THE FLAG — a served read keeps the line below byte for byte; an unreachable tier root is the degraded block. */}
+        {download !== null && download.availability !== 'unreachable' && (
           <div style={{ marginBlockStart: 'var(--eye-space-12)' }}>
             <LiveStatus>
               {fmtBytes(download.byteLength)} retrieved · integrity {download.integrity} · digest{' '}
               <Mono>{download.contentDigest.slice(0, 16)}…</Mono>
             </LiveStatus>
-            <ScrollBox label="Retrieved bytes">
-              <pre
-                style={{
-                  background: 'var(--eye-color-surface-secondary)',
-                  border: '1px solid var(--eye-color-border-default)',
-                  borderRadius: 'var(--eye-radius-md)',
-                  padding: 'var(--eye-space-8)',
-                  fontFamily: 'var(--eye-font-mono)',
-                  fontSize: 'var(--eye-type-mono-sm)',
-                  margin: 0,
-                  maxBlockSize: '18rem',
-                  overflow: 'auto',
-                }}
-              >
-                {download.preview}
-              </pre>
-            </ScrollBox>
+            {download.preview !== null && (
+              <ScrollBox label="Retrieved bytes">
+                <pre
+                  style={{
+                    background: 'var(--eye-color-surface-secondary)',
+                    border: '1px solid var(--eye-color-border-default)',
+                    borderRadius: 'var(--eye-radius-md)',
+                    padding: 'var(--eye-space-8)',
+                    fontFamily: 'var(--eye-font-mono)',
+                    fontSize: 'var(--eye-type-mono-sm)',
+                    margin: 0,
+                    maxBlockSize: '18rem',
+                    overflow: 'auto',
+                  }}
+                >
+                  {download.preview}
+                </pre>
+              </ScrollBox>
+            )}
           </div>
+        )}
+        {download !== null && download.availability === 'unreachable' && (
+          <UnknownNote>
+            <strong>Bytes unavailable — the {download.degraded?.root} root of the vault could not be reached.</strong>{' '}
+            The record is served — {fmtBytes(download.byteLength)} recorded under digest <Mono>{download.contentDigest.slice(0, 16)}…</Mono>, tier {download.tier} —
+            and the bytes are not; nothing about them was verified or refuted (EYE-DEG-001). {download.degraded?.label}
+          </UnknownNote>
         )}
       </section>
 

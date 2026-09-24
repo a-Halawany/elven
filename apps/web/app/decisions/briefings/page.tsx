@@ -92,6 +92,7 @@ export default function BriefingsPage() {
               <p style={{ fontSize: 'var(--eye-type-label-sm)' }}>
                 baseline: {briefing.watermark.prior_briefing_id ? <>since what the prior briefing knew at <Mono>{fmtInstant(briefing.watermark.prior_known_at ?? briefing.watermark.prior_composed_at)}</Mono></> : 'no prior briefing'} · read under <Mono>{fmtInstant(briefing.known_at)}</Mono> · content digest <Mono>{briefing.content_digest.slice(0, 16)}…</Mono>
                 {briefing.degraded ? <> · <strong style={{ color: 'var(--eye-color-critical)' }}>DEGRADED OR BLOCKED SOURCES INSIDE</strong></> : null}
+                {briefing.watermark.projection?.memory_content === 'unavailable' ? <> · <strong style={{ color: 'var(--eye-color-critical)' }}>the memory items were omitted: the memory projection was withdrawn and the content tier did not answer (EYE-DEG-001)</strong></> : null}
               </p>
               <h4 style={{ fontSize: 'var(--eye-type-heading-3)' }}>Sources</h4>
               <p style={{ fontSize: 'var(--eye-type-label-sm)' }}>{briefing.source_states.map((s) => <span key={`${s.source_key}`}><strong>{SOURCE_TEXT[s.state] ?? s.state}</strong> {s.name} ({s.acquisition_mode}) — {s.reason}; </span>)}</p>

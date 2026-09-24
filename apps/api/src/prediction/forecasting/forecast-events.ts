@@ -16,10 +16,26 @@
  * minimum transition data, `temporal.known_at`, `cause: {action, actor (the bare principal), target_type, target_id}`;
  * every list that can grow is cut at LIFECYCLE_EVENT_LIST_MAX with a sibling `truncated`. No read, no service import:
  * the write hands the builder what it holds.
+ *
+ * ForecastFitnessChanged@v1 (CP-6 B21, 0081; L6-I03) is what an ASSESSMENT publishes when the verdict or the class moved
+ * (`changed`): the family the rule judged, what stood before and what stands now, every class that held, the MEASURES
+ * (the window, the coverage against the floor, the pinball against the applicable backtest, the attention mark, the
+ * refresh expiry), the rule version and who triggered it — the outcome write, the forecast subscriber or a person. A
+ * transition to unfit is announced beside GraphChanged/forecast.fitness_changed (change-events.ts); a fit or
+ * indeterminate verdict rides this event alone.
  */
 import { LIFECYCLE_EVENT_LIST_MAX, type OutboxRow } from '../../graph/subscriptions/change-events.js';
 
 type Row = Record<string, unknown>;
+
+/**
+ * B21 (0081, D6): the bound action of each assessment trigger — the cause ForecastFitnessChanged names. The same map is
+ * duplicated as a literal in change-events.ts for GraphChanged/forecast.fitness_changed: the graph imports nothing from prediction.
+ */
+export const FORECAST_FITNESS_TRIGGER_ACTION: Readonly<Record<'outcome' | 'subscription' | 'operator', string>> = Object.freeze({
+  outcome: 'prediction.outcome.record', subscription: 'prediction.forecast.subscription.apply', operator: 'prediction.forecast.assess',
+});
+export type ForecastFitnessTrigger = keyof typeof FORECAST_FITNESS_TRIGGER_ACTION;
 
 /** The classes a withdrawal names (the port refuses any other): why the forecast is unfit, in the owner's words. */
 export const FORECAST_UNFIT_CLASSES = ['calibration_failure', 'data_shift', 'drift', 'envelope_breach', 'input_withdrawn', 'method_unfit', 'owner_judgement'] as const;
@@ -105,5 +121,30 @@ export function forecastWithdrawnEvent(a: { withdrawn: Row; reason: string; unfi
                   simulations: dependants['simulations'] ?? [], packages: dependants['packages'] ?? [], truncated: dependants['truncated'] === true },
     temporal: { known_at: a.occurredAt },
     cause: { action: 'prediction.forecast.withdraw', actor: a.actor, target_type: 'FCT', target_id: forecastId },
+  } };
+}
+
+/**
+ * ForecastFitnessChanged@v1 — built in the assessing write from the port's answer (`prediction.assess_forecast_fitness`:
+ * the forecast and its family, the verdict and its class, what stood before, every class that held, the measures, the
+ * assessment row) and the write's own facts (the trigger, the actor, the instant). Published only when `changed` is true
+ * — the caller decides; the builder announces what it is handed.
+ */
+export function forecastFitnessChangedEvent(a: { assessment: Row; trigger: ForecastFitnessTrigger; actor: string; occurredAt: string }): OutboxRow {
+  const x = a.assessment;
+  const measures = (x['measures'] !== null && typeof x['measures'] === 'object' ? x['measures'] : {}) as Row;
+  const forecastId = String(x['forecast_id']);
+  return { eventType: 'ForecastFitnessChanged', payload: {
+    schema: 'ForecastFitnessChanged', schema_version: 'v1',
+    forecast_id: forecastId, series_key: x['series_key'] ?? null, horizon: x['horizon'] ?? null, method: x['method'] ?? null, subject_entity_id: x['subject_entity_id'] ?? null,
+    forecast_state: x['state'] ?? null,
+    from: { state: x['prior_state'] ?? null, class: x['prior_class'] ?? null },
+    to: { state: x['verdict'] ?? null, class: x['class'] ?? null },
+    classes: Array.isArray(x['classes']) ? x['classes'] : [],
+    measures: x['measures'] ?? null,
+    rule_version: measures['rule_version'] ?? null,
+    trigger: a.trigger, assessment_id: x['assessment_id'] ?? null, assessed_at: x['assessed_at'] ?? null,
+    temporal: { known_at: a.occurredAt },
+    cause: { action: FORECAST_FITNESS_TRIGGER_ACTION[a.trigger], actor: a.actor, target_type: 'FCT', target_id: forecastId },
   } };
 }

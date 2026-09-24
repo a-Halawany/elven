@@ -819,7 +819,7 @@ describe('D1–D8 (database / API) — forecasts, scenarios, warnings, outcomes,
     const rows = (await sql<{ relname: string; relrowsecurity: boolean; relforcerowsecurity: boolean }>`
       select c.relname, c.relrowsecurity, c.relforcerowsecurity from pg_class c join pg_namespace n on n.oid = c.relnamespace
        where n.nspname = 'prediction' and c.relkind = 'r'`.execute(su)).rows;
-    expect(rows.length).toBe(16); // 12 of 0029–0037, the scenario kind vocabulary of 0058, the warning level versions and derivations of 0061, the warning suppressions of 0066
+    expect(rows.length).toBe(18); // 12 of 0029–0037, the scenario kind vocabulary of 0058, the warning level versions and derivations of 0061, the warning suppressions of 0066, the forecast fitness assessments and the scenario coherence checks of 0081 (B21)
     for (const r of rows) {
       expect(r.relrowsecurity, `${r.relname} has no row-level security`).toBe(true);
       expect(r.relforcerowsecurity, `${r.relname} does not FORCE it`).toBe(true);

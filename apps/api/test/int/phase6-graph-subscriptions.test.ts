@@ -313,7 +313,8 @@ describe('B6 · automatic updates through the six consumers, durable delivery, r
     // scenarios: the scenario on that forecast is marked for attention; its branches untouched.
     expect(by['scenarios']?.items).toEqual([S1]);
     expect((await sql<{ attention_state: string; state: string }>`select attention_state, state from prediction.scenarios_current where scenario_id = ${S1}::uuid`.execute(h.su)).rows[0]).toEqual({ attention_state: 'input_unverified', state: 'active' });
-    expect((await sql<{ event: string }>`select event from prediction.scenario_events where scenario_id = ${S1}::uuid`.execute(h.su)).rows.map((r) => r.event)).toEqual(['scenario.attention']);
+    // B21 (0081 D9 c): the scenario consumer RE-CHECKS coherence after its mark (trigger subscription) — the check's event rides beside the attention row.
+    expect((await sql<{ event: string }>`select event from prediction.scenario_events where scenario_id = ${S1}::uuid order by occurred_at`.execute(h.su)).rows.map((r) => r.event)).toEqual(['scenario.attention', 'scenario.coherence_checked']);
     // decisions: the invalidated input is recorded on the package; the package's state is unchanged (C-004).
     expect(by['decisions']?.items).toEqual([P1]);
     const pe = (await sql<{ event: string; details: Record<string, unknown> }>`select event, details from decision.package_events where package_id = ${P1}::uuid`.execute(h.su)).rows;

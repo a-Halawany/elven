@@ -27,8 +27,10 @@ import type { GraphReads } from '../graph.capabilities.js';
 // no-circular, type-only imports counted) refuses the cycle — the edge row's shape (EdgesService's EdgeRow, byte for byte) is
 // declared here; the service's EdgeRow is structurally the same type, so the two compose without a cast.
 import type { ProjectionName } from './projection-state.js';
+import { at } from '../../observation/fault-injection.js';
+import { ContentTierUnavailable, contentFailureDetail, type ContentTierStatement } from './content-tier.js';
 
-export type ExpectedReads = Pick<GraphReads, 'expected' | 'readEntities' | 'readEdges' | 'readResolutions' | 'readStrategy' | 'readInvalidations' | 'readMemoryItems' | 'readCanonicalObjects'>;
+export type ExpectedReads = Pick<GraphReads, 'withSavepoint' | 'expected' | 'readEntities' | 'readEdges' | 'readResolutions' | 'readStrategy' | 'readInvalidations' | 'readMemoryItems' | 'readCanonicalObjects'>;
 export interface Scope { tenantId: string; domainId: string }
 type Row = Record<string, unknown>;
 export interface Drift { projected: string; log: string }
@@ -276,6 +278,17 @@ const ownerOf = (accountable: unknown): string | null => {
   return /^principal:[0-9a-f-]{36}$/.test(s) ? s.slice('principal:'.length) : null;
 };
 
+/** ONE canonical statement of the withdrawn-mode reader under the content-tier boundary (D1.1): the savepoint, the fault point, the classification. */
+async function canonicalStatement<T>(cap: ExpectedReads, statement: ContentTierStatement, savepoint: string, run: () => Promise<T>): Promise<T> {
+  try {
+    return await cap.withSavepoint(savepoint, async () => { at('b21.memory_fallback_content_unavailable'); return run(); });
+  } catch (e) {
+    const detail = contentFailureDetail(e);
+    if (detail === null) throw e;   // a port refusal, a connection-class failure, a programming error: not the content tier's silence
+    throw new ContentTierUnavailable(statement, detail);
+  }
+}
+
 /**
  * The memory items from the log joined to their rows (C15): with `ids` EXACTLY those items (unbounded — the briefing's
  * candidates), with `limit` the newest `limit` by `recorded_at` (`/memory/list`). A present row keeps its content columns
@@ -285,16 +298,24 @@ const ownerOf = (accountable: unknown): string | null => {
  * validity, retention, related objects, derivation and owner; NEVER its statement (a statement is a retrieval's, under a
  * purpose and an access record; `MemoryService.record` strips it anyway) — with `projected: false`. Every row carries
  * `index_state: 'stale'` (D22: the partition says what a per-row flag cannot).
+ *
+ * B21 (Codex B20-F1): the reader's TWO canonical statements — the derivation (memory.expected_items joins the canonical table
+ * for the policy columns, 0080 §2) and the absent rows' versions — each run under a savepoint at the fault point
+ * b21.memory_fallback_content_unavailable; a statement that does not answer (an injected fault; a statement-level failure that
+ * leaves the connection alive) raises ContentTierUnavailable naming the statement, the transaction usable for the caller's
+ * answer and its audit row; everything else is rethrown. The projection read between them (memory.items_current) is the
+ * metadata tier and stays outside. A canonical row the data does not hold is NOT a failure (`content_tier: 'absent'`).
  */
 export async function memoryItemsFromLog(cap: ExpectedReads, scope: Scope, opts: { limit?: number; ids?: string[] } = {}): Promise<Row[]> {
-  let expected = await cap.expected('memory_items_current', scope);
+  let expected = await canonicalStatement(cap, 'memory.expected_items', 'mem_fallback_expected', () => cap.expected('memory_items_current', scope));
   if (opts.ids !== undefined) { const wanted = new Set(opts.ids); expected = expected.filter((e) => wanted.has(String(e['item_id']))); }
   const projected = await rowsOf(() => cap.readMemoryItems(), 'item_id', expected.map((e) => String(e['item_id'])));
   const absent = expected.filter((e) => !projected.has(String(e['item_id'])));
   const canonical = new Map<string, Row>();
   if (absent.length > 0) {
-    const objects = (await cap.readCanonicalObjects().selectAll().where('object_id' as never, 'in', absent.map((e) => String(e['item_id'])) as never)
-      .where('object_type' as never, '=', 'MEM' as never).execute()) as Row[];
+    const objects = await canonicalStatement(cap, 'canonical_versions', 'mem_fallback_canonical', async () =>
+      (await cap.readCanonicalObjects().selectAll().where('object_id' as never, 'in', absent.map((e) => String(e['item_id'])) as never)
+        .where('object_type' as never, '=', 'MEM' as never).execute()) as Row[]);
     const named = new Map(absent.map((e) => [String(e['item_id']), Number(e['object_version'])]));
     for (const o of objects) if (Number(o['object_version']) === named.get(String(o['object_id']))) canonical.set(String(o['object_id']), o);
   }

@@ -428,26 +428,28 @@ export class ObservationController {
       ObservationCapability.acquisition,
       async (cap, scope) => this.evidence.retrieve(
         cap, scope, `principal:${principal.principalId}`, evdId, envelope.correlation_id),
-      // The AUDIT RECORD IS DERIVED FROM WHAT THE READ ACTUALLY FOUND, so a
-      // corrupt or missing blob is recorded as the integrity failure it is rather
-      // than as a successful request that happened to return an error body.
-      (r) => ({
-        outcome: r.integrity === 'verified' ? 'success' : 'failure',
-        resultCode: r.integrity === 'verified' ? 'OK' : 'EYE-INT-001',
-        metadata: { integrity: r.integrity, byte_length: r.byteLength, digest_verified: r.integrity === 'verified' },
-      }));
+      // The AUDIT RECORD IS DERIVED FROM WHAT THE READ ACTUALLY FOUND (Gate-2.1 §7): a refused read is the integrity failure it is
+      // (EYE-INT-001 — the operation completed and recorded its finding; durable with its custody row before the 409 leaves, D2.6); an
+      // unreachable tier is the declared degraded answer (EYE-DEG-001); a served read is OK. All three ride a SUCCESS outcome (B20's D9
+      // shape): the custody row is a stamped business effect (0022 §13) and 0013's operation closure admits one only beside exactly one
+      // success audit row under the real decision — a failure outcome would roll the custody row back with the write (the reconcile of D2.6).
+      (r) => r.integrity === 'verified'
+        ? { outcome: 'success', resultCode: 'OK', metadata: { integrity: 'verified', byte_length: r.byteLength, digest_verified: true } }
+        : r.integrity === 'unavailable'
+          ? { outcome: 'success', resultCode: 'EYE-DEG-001', metadata: { integrity: 'unavailable', byte_length: null, digest_verified: null, tier: r.tier, root_unreachable: r.degraded.root } }
+          : { outcome: 'success', resultCode: 'EYE-INT-001', metadata: { integrity: 'failed', byte_length: null, digest_verified: false } });
+    const r = out.result;
+    if (r.integrity === 'failed') {
+      // A7's one shape, answered after its evidence is durable: the custody row and the failure audit row committed with the read.
+      throw new HttpException(errorBody('EYE_INT_001', envelope.correlation_id, r.refusal.message), 409);
+    }
     return {
       download: {
-        filename: (out.result as { filename: string }).filename,
-        contentType: 'application/octet-stream',
-        contentDisposition: 'attachment',
-        contentDigest: (out.result as { contentDigest: string }).contentDigest,
-        byteLength: (out.result as { byteLength: number }).byteLength,
-        base64: (out.result as { base64: string }).base64,
-        integrity: (out.result as { integrity: string }).integrity,
-        // B11: the tier the bytes were read from; archived evidence is served, its availability says cold.
-        tier: (out.result as { tier: string }).tier,
-        availability: (out.result as { availability: string }).availability,
+        filename: r.filename, contentType: 'application/octet-stream', contentDisposition: 'attachment',
+        contentDigest: r.contentDigest, byteLength: r.byteLength, base64: r.base64, integrity: r.integrity,
+        // B11: the tier the bytes were read from; B21.2: 'unreachable' with the degraded block when the tier's root could not be reached.
+        tier: r.tier, availability: r.availability,
+        ...(r.integrity === 'unavailable' ? { degraded: r.degraded } : {}),
       },
       receipt: receipt(out),
     };

@@ -17,8 +17,9 @@
  */
 import { useEffect, useState, type ReactNode } from 'react';
 import { useShell } from '../layout';
-import { prediction, type ScenarioRow, type IndicatorRow, type ScenarioReview, type ScenarioReviewOutcome } from '../../../lib/prediction';
+import { prediction, type ScenarioRow, type IndicatorRow, type ScenarioReview, type ScenarioReviewOutcome, type CoherenceCheck, type CoherenceFinding, type ScenarioCoherence } from '../../../lib/prediction';
 import type { Scope } from '../../../lib/observation';
+import { coherenceLabel } from '../../../lib/fitness';
 import { Empty, LiveStatus, Mono, ScrollBox, cardStyle, DefinitionRow, UnknownNote, GovernedButton, fmtInstant, textareaStyle } from '../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui';
 
@@ -52,6 +53,82 @@ function BranchState({ state }: { state: string }) {
   return <span style={{ color: `var(${v.token})`, fontWeight: state === 'flipped' ? 650 : 400 }}><span aria-hidden="true">{v.glyph}</span> {state.toUpperCase()}</span>;
 }
 
+/** B21: the coherence flag as the row carries it — PASSED / FAILED / unchecked (glyph + label + token); a FAILED scenario is admitted, not decision-active. */
+function CoherenceFlag({ state }: { state: unknown }) {
+  const c = coherenceLabel(state);
+  return <span style={{ color: `var(${c.token})`, fontWeight: 650 }}><span aria-hidden="true">{c.glyph}</span> {c.text}</span>;
+}
+/** The findings of a recorded check, verbatim: the FAIL rules first as the port ordered them, the notes beside. */
+function Findings({ findings }: { findings: CoherenceFinding[] | undefined }) {
+  if (findings === undefined || findings.length === 0) return <span style={muted}>no findings</span>;
+  return (
+    <ul style={{ margin: 0, paddingInlineStart: 'var(--eye-space-16)', ...small }}>
+      {findings.map((f, i) => (
+        <li key={i}>
+          <strong style={{ color: f.severity === 'fail' ? 'var(--eye-color-critical)' : 'var(--eye-color-ink-muted)' }}>{f.severity === 'fail' ? '✕ FAIL' : '◍ note'}</strong>{' '}
+          <Mono>{f.rule}</Mono> — {f.detail}{f.branch_id ? <> (branch <Mono>{f.branch_id.slice(0, 8)}…</Mono>{f.other_branch_id ? <> and <Mono>{f.other_branch_id.slice(0, 8)}…</Mono></> : null})</> : null}
+        </li>
+      ))}
+    </ul>
+  );
+}
+/**
+ * B21 (0081, L7-I04 ScenarioCoherenceFailed): the scenario's coherence as the server records it. The list row carries the state and the
+ * check's id; the recorded findings are read from the get on request; a reviewer's check (`prediction.scenario.check`, trigger operator)
+ * records a new check — a FAILED outcome is recorded, never a refusal — and the answer is shown as the port returned it.
+ */
+function CoherencePanel({ s, scope, canCheck, onChanged }: { s: ScenarioRow; scope: Scope; canCheck: boolean; onChanged: () => Promise<void> }) {
+  const [recorded, setRecorded] = useState<ScenarioCoherence | CoherenceCheck | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const [receipt, setReceipt] = useState<ReceiptT>(null);
+  const state = s.coherence_state ?? 'unchecked';
+  const outcomeOf = (c: ScenarioCoherence | CoherenceCheck): string => ('outcome' in c ? c.outcome : c.state);
+  return (
+    <div style={{ marginBlockStart: 'var(--eye-space-8)' }}>
+      <p style={{ ...small, margin: 0 }}>
+        coherence <CoherenceFlag state={state} />
+        {s.coherence_check_id ? <> · check <Mono>{s.coherence_check_id.slice(0, 8)}…</Mono></> : null}
+        {state === 'failed' ? <span style={muted}> — admitted, not decision-active: no branch of it is simulated and no review promotes it until the findings are resolved (retire it and declare a successor)</span>
+          : state === 'unchecked' ? <span style={muted}> — nothing has checked this scenario (declared before 0081, or never reviewed since)</span> : null}
+      </p>
+      <div style={{ display: 'flex', gap: 'var(--eye-space-8)', flexWrap: 'wrap', marginBlockStart: 'var(--eye-space-4)' }}>
+        {state === 'unchecked' ? null : (
+          <GovernedButton label="Show the recorded check" pendingLabel="reading" variant="quiet" onRun={async () => {
+            setProblem(null);
+            const r = await prediction.getScenario(scope, s.scenario_id);
+            if (!r.ok || r.data === undefined) { const m = refusal(r, 'the scenario could not be read'); setProblem(m); throw new Error(m); }
+            setRecorded(r.data.scenario.coherence ?? { state: 'unchecked' });
+          }} />
+        )}
+        {canCheck && s.state !== 'retired' ? (
+          <GovernedButton label="Check coherence now" pendingLabel="checking" variant="quiet" onRun={async () => {
+            setProblem(null);
+            const r = await prediction.checkCoherence(scope, s.scenario_id);
+            if (!r.ok || r.data === undefined) { const m = refusal(r, 'the check was not answered'); setRecorded(null); setReceipt(null); setProblem(m); throw new Error(m); }
+            setRecorded(r.data.coherence); setReceipt(r.data.receipt);
+            await onChanged();
+          }} />
+        ) : null}
+      </div>
+      {problem !== null && <LiveStatus assertive><span style={{ color: 'var(--eye-color-critical)' }}>not checked — {problem}</span></LiveStatus>}
+      {recorded === null ? null : (
+        <dl>
+          <DefinitionRow term="Coherence check">
+            outcome <CoherenceFlag state={outcomeOf(recorded)} />
+            {'check_id' in recorded && recorded.check_id ? <> · check <Mono>{String(recorded.check_id).slice(0, 8)}…</Mono></> : null}
+            {'rule_version' in recorded && recorded.rule_version ? <> · rule v{recorded.rule_version}</> : null}
+            {'checked_at' in recorded && recorded.checked_at ? <> · {fmtInstant(recorded.checked_at)}</> : null}
+            {'trigger' in recorded && recorded.trigger ? <> · trigger <Mono>{recorded.trigger}</Mono></> : null}
+            {'changed' in recorded ? <> · {recorded.changed ? `changed (was ${recorded.prior_state})` : 'unchanged'}</> : null}
+            <Findings findings={recorded.findings} />
+          </DefinitionRow>
+        </dl>
+      )}
+      <Receipt receipt={receipt} />
+    </div>
+  );
+}
+
 /** The scenario's review state, as the listing row carries it (0066 §8): counts and instants verbatim, nothing derived from the clock. */
 function ReviewState({ s }: { s: ScenarioRow }) {
   return (
@@ -80,6 +157,15 @@ function RecordedReview({ r }: { r: ScenarioReview }) {
         {' · '}{links.dependents.length} dependent(s){links.dependents.length > 0 ? <> (<Mono>{links.dependents.map((d) => `${d.type} ${d.id}`).join(', ')}</Mono>)</> : null}
         {' · '}{links.simulation_runs.length} simulation run(s){links.simulation_runs.length > 0 ? <> (<Mono>{links.simulation_runs.join(', ')}</Mono>)</> : null}
       </DefinitionRow>
+      {/* B21: a continuation or a promotion re-checked the scenario first; a dissent or a retirement checked nothing. */}
+      {r.coherence === undefined ? null : (
+        <DefinitionRow term="Coherence (re-checked by this review)">
+          {r.coherence === null ? <span style={muted}>not checked by this outcome</span> : <>
+            outcome <CoherenceFlag state={r.coherence.outcome} /> · check <Mono>{r.coherence.check_id.slice(0, 8)}…</Mono> · rule v{r.coherence.rule_version} · {r.coherence.changed ? `changed (was ${r.coherence.prior_state})` : 'unchanged'}
+            <Findings findings={r.coherence.findings} />
+          </>}
+        </DefinitionRow>
+      )}
     </dl>
   );
 }
@@ -132,7 +218,12 @@ function ReviewPanel({ s, scope, onRecorded }: { s: ScenarioRow; scope: Scope; o
       </p>
       <div style={rowStyle}>
         <Field id={`${idp}-outcome`} label="Outcome">
-          {(id) => sel(id, outcome, (v) => setOutcome(v as ScenarioReviewOutcome), OUTCOMES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>))}
+          {/* B21: a promotion of a FAILED scenario is refused by the server (a failed coherence check prohibits promotion); the option says so and is disabled. */}
+          {(id) => sel(id, outcome, (v) => setOutcome(v as ScenarioReviewOutcome), OUTCOMES.map((o) => (
+            <option key={o.value} value={o.value} disabled={o.value === 'promote_to_simulation' && s.coherence_state === 'failed'}>
+              {o.label}{o.value === 'promote_to_simulation' && s.coherence_state === 'failed' ? ' — refused: the scenario failed its coherence check; resolve the findings and review again' : ''}
+            </option>
+          )))}
         </Field>
         {outcome === 'retire' ? null : (
           <Field id={`${idp}-branch`} label={outcome === 'promote_to_simulation' ? 'Branch (a promotion names the branch it promotes)' : 'Branch (optional; a dissent may name the branch it dissents on)'}>
@@ -184,7 +275,7 @@ function ReviewPanel({ s, scope, onRecorded }: { s: ScenarioRow; scope: Scope; o
 }
 
 export default function ScenariosPage() {
-  const { scope, isForecastOwner } = useShell();
+  const { scope, isForecastOwner, isStrategyOwner } = useShell();
   const [rows, setRows] = useState<ScenarioRow[] | null>(null);
   const [indicators, setIndicators] = useState<IndicatorRow[]>([]);
   const [open, setOpen] = useState<ScenarioRow | null>(null);
@@ -217,6 +308,7 @@ export default function ScenariosPage() {
             {s.forecast_id === null ? null : <> · built on forecast <Mono>{s.forecast_id.slice(0, 8)}…</Mono></>}
           </p>
           <ReviewState s={s} />
+          <CoherencePanel s={s} scope={scope} canCheck={isForecastOwner || isStrategyOwner} onChanged={load} />
           <ScrollBox label={`branches of ${s.title}`}>
           <table className="eye-table" style={tableStyle}>
             <thead><tr><Th>Branch</Th><Th>Kind</Th><Th>Divergence · assumptions</Th><Th>State</Th><Th>Indicator</Th><Th>Signpost</Th><Th>Owner</Th><Th>Window · deadline</Th><Th>Consequence</Th><Th>Simulation candidate</Th></tr></thead>
@@ -275,6 +367,10 @@ export default function ScenariosPage() {
       <UnknownNote>A review is a person's act: the review state and each branch's simulation candidacy above are the server's records, and
         a recorded review is shown as the port returned it. A dissent changes nothing on the scenario; a retirement closes the open
         branches (a flipped branch keeps its history) and a retired scenario is not reviewed again.</UnknownNote>
+      <UnknownNote>Coherence (0081) is a versioned, structural check over what the product holds — duplicate branches, an assumption whose claim
+        basis was withdrawn, rejected, contradicted or superseded, a forecast withdrawn or assessed unfit, a decision due before its indicator
+        observes, a retired subject — run at declaration, before a continuation or a promotion, by the scenario consumer, and on request. A
+        free-text assumption is noted, never judged; coverage is a note for the review. A FAILED scenario is admitted and not decision-active.</UnknownNote>
     </>
   );
 }

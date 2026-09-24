@@ -1,0 +1,27 @@
+CP-6 B21.1 — THE REFUTE STEP (Codex B20-F1 reproduced, then corrected) — 2026-09-23T22:08:02Z
+tree: 13ed40c (phase6-b21, B20's records head 13ed40c, the B21.1 correction applied in the working tree)
+the uncorrected reader: git show 1f6d04c:apps/api/src/graph/projections/fallback.ts (identical to 13ed40c's; verified by diff) copied to apps/api/test/unit/graph/__refute_fallback_1f6d04c.ts with its two type-only imports re-pathed, nothing else touched
+the double: Codex's idiom — memory.expected_items answers ONE row the projection lacks; the canonical lookup of that row throws SQLSTATE 57014 (query_canceled); the savepoint sequence RECORDED
+the spec: apps/api/test/unit/graph/__refute_b20_f1.test.ts (throw-away; both files deleted after this run)
+command: npx vitest run --reporter=verbose test/unit/graph/__refute_b20_f1.test.ts
+
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/apps/api
+
+stdout | test/unit/graph/__refute_b20_f1.test.ts > REFUTE · Codex B20-F1 at the function boundary (the withdrawn-mode memory reader, a row the log has and the projection lacks, the lookup cancelled) > 1f6d04c (UNCORRECTED): the raw 57014 escapes memoryItemsFromLog with ZERO savepoints entered — Codex's finding reproduced
+REFUTE 1f6d04c: raw SQLSTATE 57014 escaped; savepoints entered = [] (Codex's "zero savepoints" reproduced)
+
+stdout | test/unit/graph/__refute_b20_f1.test.ts > REFUTE · Codex B20-F1 at the function boundary (the withdrawn-mode memory reader, a row the log has and the projection lacks, the lookup cancelled) > B21 (CORRECTED): the same double raises ContentTierUnavailable naming canonical_versions after two savepoints, the second rolled back — the transaction usable for the caller's 503 and its audit row
+REFUTE corrected: ContentTierUnavailable(canonical_versions); savepoints entered = ["mem_fallback_expected","mem_fallback_canonical"], rolled back = ["mem_fallback_canonical"]
+
+ ✓ test/unit/graph/__refute_b20_f1.test.ts > REFUTE · Codex B20-F1 at the function boundary (the withdrawn-mode memory reader, a row the log has and the projection lacks, the lookup cancelled) > 1f6d04c (UNCORRECTED): the raw 57014 escapes memoryItemsFromLog with ZERO savepoints entered — Codex's finding reproduced 2ms
+ ✓ test/unit/graph/__refute_b20_f1.test.ts > REFUTE · Codex B20-F1 at the function boundary (the withdrawn-mode memory reader, a row the log has and the projection lacks, the lookup cancelled) > B21 (CORRECTED): the same double raises ContentTierUnavailable naming canonical_versions after two savepoints, the second rolled back — the transaction usable for the caller's 503 and its audit row 0ms
+
+ Test Files  1 passed (1)
+      Tests  2 passed (2)
+   Start at  01:08:02
+   Duration  102ms (transform 31ms, setup 0ms, import 39ms, tests 3ms, environment 0ms)
+

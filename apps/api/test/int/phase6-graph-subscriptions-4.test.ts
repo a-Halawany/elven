@@ -1046,8 +1046,12 @@ describe('B9 · ScenarioReviewed (L7-I05): continuation, dissent, promotion to s
     expect(d.review).toMatchObject({ outcome: 'dissent', review_ordinal: 2, state_after: 'active', branch: { branch_id: baseline, kind: 'baseline', state_after: 'open' } });
     expect((await scenarioRow(scenarioId)).state).toBe('active'); expect((await branchRow(baseline)).state).toBe('open');
     const events = await scenarioEvents(scenarioId);
-    expect(events.map((e) => e.event)).toEqual(['scenario.declared', 'branch.added', 'branch.added', 'scenario.reviewed', 'scenario.reviewed']);
-    expect(events[4]!.details).toMatchObject({ outcome: 'dissent', review_ordinal: 2, dissent: { position: 'the baseline is optimistic' } });
+    // B21 (0081 §6, D9): the declaring write checks coherence at its end (trigger declare) and a CONTINUE review re-checks before its own work
+    // (trigger review); a dissent checks nothing — two scenario.coherence_checked rows ride between the branches and the reviews.
+    expect(events.map((e) => e.event)).toEqual(['scenario.declared', 'branch.added', 'branch.added', 'scenario.coherence_checked', 'scenario.coherence_checked', 'scenario.reviewed', 'scenario.reviewed']);
+    expect(events[3]!.details).toMatchObject({ trigger: 'declare', rule_version: '1' });
+    expect(events[4]!.details).toMatchObject({ trigger: 'review', rule_version: '1' });
+    expect(events[6]!.details).toMatchObject({ outcome: 'dissent', review_ordinal: 2, dissent: { position: 'the baseline is optimistic' } });
     await settle();
   }, 120_000);
 
@@ -1088,7 +1092,7 @@ describe('B9 · ScenarioReviewed (L7-I05): continuation, dissent, promotion to s
     const pinned = (await sql<{ d: string }>`select implementation_digest d from twin.behaviour_models where method_ref = 'supply-flow@1'`.execute(su)).rows[0]!.d;
     const portRefusal = await h.pipeline.write(h.env(operator, 'simulation.run', 'SIM', null), operator, { scope: 'DOMAIN', tenantId: T(), domainId: D(), action: 'simulation.run', objectType: 'SIM', objectId: uuidv7() }, (tx) => tx,
       async (tx) => {
-        await sql`select simulation.open_run(${uuidv7()}::uuid, ${T()}::uuid, ${D()}::uuid, ${twinId}::uuid, ${o.version.version}, 'control', null, null, ${scenarioId}::uuid, ${downside}::uuid, 1, 'closed', false, 'none', 'SYN-PART-MAG', 'supply-flow@1', ${pinned}, 'x', '{}'::jsonb, 'deterministic', null, null, null, '{}'::jsonb, '[{"type": "none"}]'::jsonb, '{}'::jsonb, '[]'::jsonb, 'x', 'unvalidated', '{}'::jsonb, ${operator.principalId}::uuid, ${uuidv7()}::uuid, ${uuidv7()}::uuid)`.execute(tx as never);
+        await sql`select simulation.open_run(${uuidv7()}::uuid, ${T()}::uuid, ${D()}::uuid, ${twinId}::uuid, ${o.version.version}, 'control', null, null, ${scenarioId}::uuid, ${downside}::uuid, 1, 'closed', false, 'none', 'SYN-PART-MAG', 'supply-flow@1', ${pinned}, 'x', '{}'::jsonb, 'deterministic', null, null, null, '{}'::jsonb, '[{"type": "none"}]'::jsonb, '{}'::jsonb, '[]'::jsonb, 'x', 'unvalidated', '{}'::jsonb, null::jsonb, null::uuid, ${operator.principalId}::uuid, ${uuidv7()}::uuid, ${uuidv7()}::uuid)`.execute(tx as never);   // B21 (0081 §9): p_envelope_ack, p_challenge_id after p_controls — the 35-argument form (the 33-argument one is dropped)
         return { result: 'admitted', targetType: 'SIM', targetId: uuidv7(), targetVersion: '1', outboxEvent: null };
       }).catch((e: Error) => e.message);
     expect(String(portRefusal)).toMatch(/retired by review; a retired branch is not simulated/);

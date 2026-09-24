@@ -2992,16 +2992,795 @@ re-pin to the official images, the provenance and compatibility evidence, the SC
 as the DRAFT PR #57 to `main` since 19:51Z — its merge the owner's word) — the parallel maintenance line, not this batch's. B20's PR opens with base `phase6-b19` (stacked on #56) once the candidate is committed and
 pushed; its hosted run will show the same supply-chain red on the recheck step — expected, and not the candidate's.
 
+## B21 — fitness, coherence and challenge: the four foresight rows bound (36/14/0 → 40/10/0) — one fitness vocabulary set only by a recorded act whose measures the port computes, the operating envelope enforced, a versioned rule behind every automatic verdict, the coherence check that admits and gates, the challenge decided by someone else and the promotion; Codex's B20-F1 corrected first; the vault clause of AU-MEM-0067 delivered for the root-unreachable class and bounded at the per-object class; the rehearsal wedge found and fixed (implemented)
+
+**Migration 0081** (`apps/api/migrations/0081_b21_fitness_coherence_challenge.sql`, sha256 `055b0571…`, 1,415 lines — the RECONCILED
+file: the first implementer's digest `6be052…` is stale, the reconcile pass typed §5's four class appends `::text`), on `phase6-b21`
+(cut from B20's records head `13ed40c`; the PR opens with base `main` — the stack #57/#56/#58 merged to `main` on 2026-09-23,
+§B21.9; the candidate UNCOMMITTED while these records were written — the commit that carries them is the candidate). Three parts in
+the B18 order (the correction first) and one defect found on the way: B21.1 Codex's B20-F1
+(`audit/reviews/The_Eye_1f6d04c_B20_Review_C15_Unblock_and_B21_Delivery.md:86-103`, filed with this candidate) reproduced then
+corrected — no SQL; B21.2 the vault clause of AU-MEM-0067 for the class the product can tell apart honestly (0081 §1.C; the owner's
+2026-09-23 instruction: "Keep AU-MEM-0067 open until its missing vault behavior is delivered; do not reduce the agreed scope";
+Codex's directive: "Do not seek an owner waiver merely to promote the unit"); B21.3 fitness, coherence and challenge (0081 §1–§10) —
+the register rows L5-I05 ValidateTwin, L6-I03 ForecastFitnessChanged, L7-I04 ScenarioCoherenceFailed and L8-I04 ChallengeSimulation
+bound, the nine open group-b units AU-TWN-0014/-0015/-0018/-0031 and AU-PRD-0012/-0014/-0026/-0029/-0030 exercised; B21.4 the
+rehearsal wedge — a defect of phase 5's making that the first rehearsal found. Read by three readers (`read-b20-f1.md`,
+`read-vault-degradation.md`, `read-fitness-coherence-challenge.md` — binding background; where a map and the code disagreed the code
+won and the design said so), designed by three designers and two checkers (SIX blocking findings folded before a line was written —
+C1 the five run gates of `open_run` carry a class in parentheses so the named generic `run rejected: ` row cannot catch them and
+B9's ordered alternations answer with the port's sentence; C2 the register guard compares a SET, never a collation-ordered string
+(`L10-I02` sorts before `L2-I02` under every collation); C3 the upheld decision's admission of the withdrawn SIM version registered
+for `simulation.challenge.decide` in `observation.canonical_write_actions`; C4 the forecasts, scenarios and decisions consumers'
+`METHOD_REF` literals re-worded so their digests change and the act's "re-registered" line is true; C5 the two appended harness
+cases on their OWN temporary vault roots, never `.eye-local/vault`; C6 the rerun, withdraw and decide routes bound to the RUN in the
+path and the port, since the pipeline binds the capability to `route.objectId` and the upheld write admits the run's withdrawn
+version — and fifteen should-level corrections with the nits, C7–C21, C13 rejected on the file's lines), implemented by five
+implementers on disjoint files and one compile/reconcile pass (twelve edits A–L, every one stated in §B21.5), the wedge mapped by a
+debugger and confirmed by a refuter (§B21.4), run on fresh databases, rehearsed nine times on a restored copy and exercised on the
+demonstration (§B21.7).
+
+**B21.1 — Codex's B20-F1 reproduced then corrected (no SQL).** Codex's B20-F1 (`…:86-103`): while `memory_items_current` is
+withdrawn a memory retrieval of a row the log has and the projection lacks issued its canonical lookup BEFORE the content-tier
+boundary, and a cancelled statement there escaped raw — a 500 `EYE_INT_001` with a failure audit row `EYE-INT-001`, no declared
+answer (Codex's probe: an independent query double throwing SQLSTATE 57014 at that lookup against `1f6d04c`'s `fallback.ts` — "raw
+57014 escaped; zero savepoints entered"; a service-boundary reproduction, not a real cancellation or an HTTP measurement, said so in
+the review). REPRODUCED at the same boundary with Codex's own idiom (`evidence/cp6/b21-refute-b20-f1.txt`, 2026-09-23T22:08Z):
+`1f6d04c`'s `fallback.ts` — byte-identical to `13ed40c`'s, verified by diff — copied to a throw-away spec with its two type-only
+imports re-pathed; the double answers ONE row from `memory.expected_items` that the projection lacks and throws 57014 at that row's
+canonical lookup; the UNCORRECTED reader let the raw 57014 escape `memoryItemsFromLog` with `savepoints entered = []` (Codex's row),
+and the CORRECTED reader under the same double raised `ContentTierUnavailable(canonical_versions)` after two savepoints
+`mem_fallback_expected`, `mem_fallback_canonical` with the second rolled back — the transaction usable for the caller's 503 and its
+audit row (2/2; the throw-away files deleted before the commit). THE HOLE IS WIDER than the row Codex measured: the withdrawn-mode
+reader issues TWO canonical statements before any boundary — S1 the derivation `memory.expected_items`, whose policy columns join
+the canonical table, on EVERY withdrawn read, and S2 the absent rows' versions when the log names a row the projection lacks — and
+`/memory/list`, `/memory/:id/get` and the briefing composer share the reader. CORRECTED where the statements are: each runs under a
+savepoint at the new fault point `b21.memory_fallback_content_unavailable` inside `memoryItemsFromLog`
+(`apps/api/src/graph/projections/fallback.ts`), a failure an injected fault or `isContentTierFailure` classifies (the classification
+moved to `graph/projections/content-tier.ts`, shared by the memory service and the fallback without a cycle — the boundaries gate
+green at 538 modules; `memory.service.ts` re-exports it, the B20 unit test's import path holds) raising the typed
+`ContentTierUnavailable` naming the statement, with the transaction usable; the projection read between them is the metadata tier
+and stays outside. THE RULE: withdrawn AND the content tier does not answer → 503 `EYE-DEG-001` — for a present row as for a missing
+one (a missing row's audience and classification exist only in the canonical version: nothing verified remains to gate a metadata
+answer on), on `/memory/:id/retrieve`, `/memory/list` and `/memory/:id/get` alike, ONE sentence (B20's P6(d) prefix byte for byte,
+the failed statement in a trailing parenthesis — additive; the memory page renders it verbatim), the pipeline's failure audit row
+`EYE-DEG-001` (never `EYE-INT-001`), no ledger row and no access row, the point consumed (the next read served from the log-built
+row with its access row — the recovery the B20 harness never exercised); a refused reader on a withdrawn partition with the tier
+down receives the same 503 (the fallback precedes every gate; the partition's state is not secret, the item's content is) — the gate
+ORDER is AUTHORITY (the PDP, before the handler) then the read, then AUDIENCE (`memory.service.ts`, after `current()`), so an
+analyst who holds `memory.item.retrieve` reaches the fallback and its 503; no existence oracle is added — a 403 from the audience
+gate confirms an id exactly as the 503 does (C12). THE BRIEFING composes WITHOUT its memory items as a DEGRADED SOURCE: `degraded`,
+the omission declared in the stored content (`watermark.projection.memory_content 'unavailable'` on that composition only — every
+other composition's content is byte for byte B20's, B10-F2 kept; "absent means served" is the reading rule) and in the answer's
+`memorySource` block with the reason; an agent with `on_degraded` STOPS naming the reason (`stopped`, never `faulted` — B20's raw pg
+message corrected to the declared reason), an agent without it finishes with `degraded true` and `memory_source 'unavailable'` in
+its outputs. The fault registry gains an ordinal (`armNth`: the point fires on the nth arrival; `at()`'s contract for `arm()`ed
+points unchanged) so the harness reaches the second statement exactly — Codex's row. The serving path is untouched (the fallback
+never runs there — pinned: the armed point is never reached); the metadata-only 200 and its ledger row unchanged; the executive
+capability gains `withSavepoint` (the graph capability's, byte for byte); the briefings page renders the answer's `memorySource`
+line (`apps/web/lib/decisions.ts`, `decisions/briefings/page.tsx` — additive). HARNESS `phase6-graph-projections-b21` F1
+(`apps/api/test/int/phase6-graph-projections-b21.test.ts`, 424 lines; a fresh database; no scheduler, no subscription — the
+operator's withdrawal and a superuser delete give Codex's state; the reader does not know who withdrew; the vault roots the file's
+own): Codex's four rows through HTTP at each statement (V the retrieval's versions read — B20's point; S1 armed once, S2 by `armNth
+2`) — serving + the tier down → metadata-only (B20's case re-pinned); withdrawn + a present row → 503 at V and at S1, served past S2
+(never issued for a present row); withdrawn + a missing row → served from the log when S2 answers (`projected false`), 503 at S2
+(Codex's row) and at S1; the refused reader's 503 with the point consumed and no rows; `/memory/list` and `/memory/:id/get` 503 at
+S1 and at S2; the audit rows `EYE-DEG-001` (failure, stage handler) and never `EYE-INT-001` on `memory.item.retrieve` or
+`graph.read`; the recovery after the 503 (served from the log-built row with an access row); the briefing composed without its
+memory items and declared (three compositions, the compose audit `success`), the `on_degraded` agent stopped with the reason, the
+plain agent finished with `memory_source 'unavailable'`; the rebuild `inserted 1` and the row `projected` after — **1/1 on two fresh
+databases** (`eye_verify_b21_h1a` 1,107 ms, `h1b` 1,210 ms; the `B21.1 EVIDENCE F1` line each — `evidence/cp6/b21-1-harness.txt`);
+the unit test `apps/api/test/unit/graph/memory-fallback-content-tier.test.ts` (the query double, the ordinal — 13 cases) green;
+`memory-content-tier`'s seven unchanged (the re-export); the B20 harness untouched but for its register pin (§B21.5), 9/9. STATED —
+what Codex's probe did not cover is covered here or named: (1) the fault point stands in for a statement's failure — a real 57014
+(`statement_timeout`, `pg_cancel_backend`) is not injected at S1 or S2: the API configures no `statement_timeout`, a cancellation
+from outside cannot be aimed at one statement of a route's transaction, and `at()` throws BEFORE the statement; shown instead by the
+57014 double (the classification and the savepoint sequence) and by the B9 savepoint precedent (the transaction's recovery after a
+real statement failure under `withSavepoint` — `relationships.consumer.ts`, the B9 harnesses); (2) Codex's probe stopped at the
+service boundary; the HTTP status, the body, the audit row and the three other callers are pinned by F1 on the CORRECTED tree — the
+uncorrected tree cannot be exercised through HTTP (the point does not exist there); the refute step is the double; (3) the refused
+reader's answer on a withdrawn partition with the tier down is the 503 — the alternative (gating on the log's state alone) does not
+exist for a missing row; (4) the composer's own canonical read of the candidates' versions and its withdrawn-by-cutoff read stay
+outside the boundary — a briefing composes the statements into its content and has no metadata-only form; a failure there fails the
+composition as before; (5) the strategy fallback's absent-row canonical read has the same shape and no content-tier promise (the
+strategy routes are metadata routes) — named, not corrected; (6) an agent's stop is recorded by the pipeline as the handler's
+failure — an `EYE-INT-001` failure row on `briefing.compose` (B10's shape for `max_items`, `on_degraded` and the budget alike); the
+run record carries the declared reason; out of B21.1 — a hardening item (a declared code for a stop); (7) a `ContentTierUnavailable`
+reaching a caller that passed no `refusal` block propagates (a 500 as before); no such caller exists on this tree; (8) the harness
+runs without the scheduler: the automatic withdrawal by a failed check (B20's P2/P4/P6) is not re-exercised; the reader's behaviour
+does not depend on who withdrew; (9) no hosted walk: the stored degraded briefing's line is rendered from a fixture-free path, and a
+walk would need a withdrawn partition AND an armed point on the gate's API, which the gate cannot arm.
+
+**B21.2 — the vault clause of AU-MEM-0067: Class B delivered, Class A bounded (0081 §1.C).** THE READER'S FINDING
+(`read-vault-degradation.md`, the code checked against it): every reader of the vault collapsed an unreachable root into `missing` —
+`vault.service.ts`'s `read` folds every failure into `missing` and `readTiered` swallows the listing error — so an unmounted cold
+tier produced a FALSE integrity incident (`custody.integrity_failed {failure: 'missing'}`) per retrieval per manifest, the lifecycle
+poll could conclude "gone" and admit anew, the retention verifier could conclude "bytes gone"; B18's reachability marker
+(`.eye-vault-root`, `rootReachable`) was consulted by one caller; and — the code against the map — the route's Class A custody row
+was never durable: `appendCustody` ran on the handler's own transaction and `retrieve()` THREW the 409 inside
+`consequentialReadEvidenced`'s transaction, so the custody row rolled back with it and only the POL/AUD rows survived (no test
+anywhere asserted the row; the map's F9 saw no route test and not the rollback); `integrity: 'unavailable'` had been declared in
+`evidence.service.ts` since phase 1 and never returned. THE MECHANISM: `EvidenceService.retrieve` reads the PRIMARY root's marker
+(`rootReachable(readFrom)` for `readFrom ∈ {evidence, archive}`; the quarantine root has no marker and keeps today's shape) BEFORE
+any per-object read; an UNREACHABLE root answers 200 METADATA-ONLY under the SAME gate (`observation.evidence.retrieve`) — `{
+filename, contentDigest (the manifest's), byteLength (the manifest's), base64: null, integrity: 'unavailable', tier, availability:
+'unreachable', degraded: { kind: 'tier_unreachable', code: 'EYE-DEG-001', root, label } }`, the label (`TIER_UNREACHABLE_LABEL`)
+"the archive root of the vault could not be reached; this evidence's record — its manifest, digest, tier and custody — is served;
+its bytes are not, and nothing about them was verified or refuted; retry when the tier is mounted (retention/tier/state names the
+roots)"; the served shape byte for byte as before (no `degraded` key on it — the B11/B12/B16 `toMatchObject` pins hold); ONE custody
+row `custody.retrieval_degraded` — the SIXTEENTH kind (0081 §1.C re-declares the CHECK with 0076's fifteen literals in order and the
+sixteenth last, and adds the named CHECK `custody_retrieval_degraded_unverified`: the kind can never carry a verification —
+`digest_verified NULL`, neither verified nor refuted; a `true` insert refused 23514 — the migration's own probe) with `details {
+failure: 'root_unreachable', root, tier, disclosure: 'none' }`, written through the existing `appendCustody` (no port, no registry
+row, no role, no PDP row); the route's audit row `success`/`EYE-DEG-001` with `integrity 'unavailable'` (B20's D9 shape). CLASS A —
+a per-object failure under a REACHABLE root (missing, corrupt, scope, oversize) — UNCHANGED in shape: one 409 `EYE_INT_001`, one
+`custody.integrity_failed` row, no disclosure (phase 1's A7; B20's D10) — and that row is now DURABLE: `retrieve()` returns a typed
+REFUSED result instead of throwing, the route audits, the transaction commits, and the controller throws the same 409 body after the
+pipeline returned; the audit outcome is `success`/`EYE-INT-001` with metadata `integrity 'failed', digest_verified false` — a
+DEVIATION from the design's D2.6 ("committed with the route's FAILURE audit row"), reconciled: `observation.custody_events` is a
+stamped business effect (0022 §13's trigger loop) and `ctx.assert_operation_closed` (0013, deferred to commit) admits a business
+effect only beside EXACTLY ONE `success` audit row under the real decision — a failure outcome raised 23514 ("business effect
+present without exactly one matching success audit event (found 0)") and rolled the custody row back with the write (Implementer 5's
+V1 finding, reproduced), so a refused read audits `success` with the refusal's code, B20's D9 idiom, the 409 still thrown after the
+pipeline returned, the custody row and the audit row durable under the real decision (C10) — a reviewer who asks why a refused
+download audits `success` reads this sentence. THE MACHINE READERS see the flag, not `base64` (the result is a typed union —
+`RetrievalServed | RetrievalDegraded | RetrievalRefused`; `tsc` found every `.base64` use): the extraction orchestrator skips a
+degraded read with `EYE-DEG-001` and no receipt (`evidenceRead` unchanged) and its write's audit row carries the read's own code
+through the additive `WriteEffect.evidence` (`pipeline.service.ts` — the batch's ONE pipeline touch; every other write reads
+`success`/`OK` exactly as before); the series reader answers `refused: 'degraded (EYE-DEG-001): <label>'` with `complete false` and
+the INCOMPLETE note — the tombstone idiom — and the twin reports the series' refused string verbatim (unchanged); the retention
+verifier's `observeForVerification` reports `bytes_present NULL` (with `roots_unreachable`) for a root it could not read —
+`retention.verify_action` (0075) already reads NULL as present for a deletion, as not archived, as not restored — so a deletion is
+never verified gone from an unreachable root (`verified false`, the action stays `executed`, `infrastructure`/`retry`, the bytes
+residual pending; the verify after the mount passes; no SQL); the lifecycle poll's `availabilityOf` answers `'unverifiable'` for a
+held tier whose root is unreachable — a live 200 of identical bytes CONFIRMS the held record by the RECORD's digest (`item.noop`),
+admits no duplicate, sets no `held_unavailable` and keeps the quarantine copy for the sweeper's orphan rule; `/retention/tier/state`
+gains `vault.<root>.reachable` beside the inventory (`/readyz` unchanged); the evidence page renders the degraded block FROM THE
+FLAG (`availability === 'unreachable'`) with the detail's `availability { tier, state }` beside the manifest and the served line
+byte for byte (the phase-1 walk's `retrieved · integrity verified` pin holds); the retention page's inventory prints `reachable`.
+D10 RESTATED as TWO CLASSES and ONE BOUNDARY: the content TIER is unavailable when its ROOT is (Class B) — the same condition for
+every manifest it holds, decided BEFORE the read by the primary root's marker alone, touching no byte and no directory of the
+object, oracle-free by construction (the decision depends on the tier, which B11's `tier` already discloses); an object missing or
+corrupt while its tier answers (Class A) is not the tier's unavailability but an OBJECT's integrity incident in DP-28-005's own
+words ("an object is missing, corrupt, …") and AU-OBS-0103's ("a blob is missing or corrupt … fails closed … never served"),
+governed by A7 — one 409, one custody row, no disclosure; the metadata tier for evidence is the detail route (the manifest, the
+tombstone, the tier ledger, the custody chain — never a byte). THE REJECTED VARIANT stays rejected — classifying AFTER a failed
+attempt by asking `rootReachable` for the roots the tiered read touched: with the primary root reachable and the fallback root down,
+a corrupt primary copy would answer 409 and a missing one 200 — missing-vs-corrupt distinguishable for the outage's window, the
+oracle A7 forbids. Two consequences stated, not fixed: (a) an ARCHIVED manifest whose hot copy lingers (its removal pending) answers
+metadata-only while the archive root is down although the fallback could serve it — a serveable read declared degraded, never a
+leak; (b) a RESTORED manifest whose hot publish is pending, its only copy in an unmounted archive root, stays one 409 with a
+`custody.integrity_failed {failure: 'missing'}` row (the narrow false incident; the restore's retry route resolves it). THE HARNESS
+`apps/api/test/int/phase6-evidence-degradation-b21.test.ts` (427 lines; a fresh database; the vault roots the file's own; the
+markers moved aside and restored in `finally`; each case logging the six V04-T-024/026 items — the marker as the fault trace,
+`availability unreachable` / `complete false` / `bytes_present null` / `unverifiable` as the watermark, the readers, the verifier
+and the poll as the consumers, the mount as the operator action, the served read after as the recovery, the custody chain as the
+reconciliation): V7 the gate and the canonical refusals precede the root check (a denied caller's 403, a withdrawn object's 409 and
+a tombstoned object's 409 the same with the root reachable and unreachable; no custody row on any of the three); V1 CLASS A through
+the route — a missing and a corrupt blob under a reachable root answer ONE 409 shape (the bodies equal), each with its
+`custody.integrity_failed` row COMMITTED beside the audit row `success`/`EYE-INT-001` under the real decision, the corrupt blob
+restored from the kept bytes and served again, the missing one refused for good (nothing can re-create bytes the vault lost; a
+governed recover-from-verified-copies act is not built — stated), the detail serving the metadata tier throughout; V2 CLASS B on the
+archive root — the archived manifest 200 metadata-only with its `custody.retrieval_degraded` row (one per read: two reads, two rows)
+and the audit row `success`/`EYE-DEG-001`, the hot manifest served beside it, the detail unaffected, `tier/state` naming the root,
+the chain `[retrieved, retrieval_degraded ×2, retrieved]`, zero integrity incidents in the window; the marker restored → served
+again, the digest equal; V3 CLASS B on the evidence root — the hot manifests metadata-only (`root evidence`, `tier hot`), the
+archived one served from its own reachable root (the fallback never consulted), no integrity incident; V4(a) THE SERIES READER — an
+archived window under an unreachable archive root disclosed as a tombstone is: unreadable with the degraded reason, `complete
+false`, the INCOMPLETE note ("1 evidence version(s) could not be read by this reader and contributed no points" — 732 of the whole's
+1,095 points), the forecast and the backtest refused, one custody row per read (`read_for prediction.series`), complete again after
+the mount; V5 THE VERIFIER — a deletion executed, then verified under an unreachable evidence root → `bytes_present NULL`, the check
+failed, `verified false`, the action `executed` with `infrastructure`/`retry`, no `DeletionVerified`; verified after the mount with
+ONE `DeletionVerified`, `retention.verifications` keeping the failed check beside the passed one — **6/6 on two fresh databases**
+(`eye_verify_b21_h2a` 3.99 s, `h2b` 3.79 s; the six `B21.2 EVIDENCE` lines each — `evidence/cp6/b21-2-harness.txt`); and the two
+cases appended to the files whose worlds already exist, each on its own temporary roots (C5): V4(c) THE EXTRACTION under an
+unreachable evidence root (`phase2-acceptance.test.ts`, last — every retrieval of the run answers metadata-only with a
+`custody.retrieval_degraded` row naming the extraction, `evidenceRead 0`, `claimsAdmitted 0`, no receipt, the run `completed`; the
+root restored → a new attempt read 22 evidence objects and admitted 44 claims as before) and V6 THE POLL under an unreachable
+archive root (`phase6-retention-b11-archive-poll.test.ts`, last — a live 200 of identical bytes CONFIRMS the archived held evidence
+by the record's digest: `item.noop`, `availability 'unverifiable'`, the quarantine copy kept, no duplicate admitted, no
+`held_unavailable`; the marker restored → the next poll verifies again) — 24/24 and 5/5 in the neighbouring run `eye_verify_b21_n2`;
+the unit test `apps/api/test/unit/evidence-retrieval-labels.test.ts` (3 cases: the label, the audit mapping) green. THE ACT's scene
+5 and its safety rule are §B21.7 and the runbook §8. THE RECORDS moved by this part are §B21.8 (AU-MEM-0067, AU-OBS-0103's note,
+V03-T-097, FEX-08 and FEX-09 — stale since B20, the map's F8 — ES-33-009, DP-28-005). AU-MEM-0067's CONDITIONS against the cases —
+the table the binding commit decides the status under (the design assumed nothing; the owner's word keeps the unit open until the
+vault behaviour is delivered, and the records say what is delivered and what is bounded):
+
+| Clause of the row | Reading | Cases | Met by B21? |
+|---|---|---|---|
+| content / permissions / retention / version history / indexes diverge → restricted access, metadata-only or the last valid state with a warning | B20's | B20 P2, P4, P6(a) (unchanged) | as before (B20) |
+| the content tier unavailable → metadata-only, says so — (i) the canonical payload | the memory case | B20 P6(b); B21.1 F1 (the withdrawn-mode fallback's two canonical statements under the boundary) | as before + B21.1 |
+| the content tier unavailable → metadata-only, says so — (ii) the vault bytes, CLASS B: the tier's root unreachable | the tier is unavailable as a tier: the same condition for every manifest it holds | V2 (the archive root), V3 (the evidence root), V4(a) the series, V4(c) the extraction, V6 the poll's `unverifiable`, the act's scene 5 | **MET**: 200 metadata-only, `integrity 'unavailable'`, `availability 'unreachable'`, the `degraded` block with `EYE-DEG-001`, `custody.retrieval_degraded`, the audit row `success`/`EYE-DEG-001`; recovered by the mount; every consumer discloses (the series `complete false`, the extraction skips with the code, the poll confirms nothing) |
+| the content tier unavailable → metadata-only, says so — (iii) the vault bytes, CLASS A: one object missing or corrupt under a reachable root | NOT the tier's unavailability: an OBJECT's integrity incident (DP-28-005, AU-OBS-0103), governed by A7 | V1 (the route-level pin: one 409, the two bodies equal, the custody row now DURABLE beside the audit row `success`/`EYE-INT-001`; the metadata tier on the detail route throughout) | **BOUNDED, stated**: no metadata-only 200 for Class A, ever — the metadata is served by the detail route; the content tier's refusal is the one shape. Not a reduction of scope: the confidentiality rule the row's neighbours require (D10 restated as Class A / Class B) |
+| all profiles; labelled, never presented as current and complete | the label on every degraded answer; nothing degraded reads as complete | V2/V3 (`degraded`, the label; the hot manifest served beside); V4(a) (`complete false`, INCOMPLETE); V5 (`bytes_present null` → `verified false`); V6 (`availability 'unverifiable'`); the web block from the flag | met on the harness (one profile — the local/hosted `saas`-equivalent fixture; the P3 package's evidence class is `harness`; "all profiles" read as the phase-3 rows read it) |
+
+The PROMOTION RULE the binding commit applies: `open → verified:ci` when the hosted run has exercised every row above (V1–V7, the
+appended V4(c)/V6 and B21.1's F1 on the hosted job's fresh database) AND the records carry the Class A boundary as the reading of
+clause (iii) — the unit's remaining work then being the hosted binding alone; if the owner reads clause (iii) as requiring a
+metadata-only answer for a per-object failure, the unit stays `open` with the boundary named as the disagreement — never promoted by
+a waiver (Codex's rule), never reduced (the owner's). The design recommends the first reading with one sentence: the condition's
+words are "the content TIER is unavailable", and a tier is unavailable when its root is; an object that is missing or corrupt while
+its tier answers is the integrity incident DP-28-005 describes, and its metadata-only answer is the route that never touches bytes.
+In THIS commit the unit stays `open` (no unit is promoted by a local run): Class B met, Class A bounded, the hosted run not yet
+bound, the owner's word not yet given on the reading.
+
+**B21.3 — fitness, coherence and challenge (0081 §1–§10, condensed; the migration's header carries the mechanism in full, D1–D13).**
+THE GAP after 0080: no fitness state existed on a twin version, a forecast or a run, and no act set one — the only fitness object
+was the method's (0066 §6); the operating envelope was declared on the behaviour model (0032) and enforced nowhere —
+`outside_envelope` (0033) a perturbation flag nobody read; a recorded outcome changed nothing (0030); "coherence" appeared nowhere
+in the service — the shape refusals of the ports were all there was; nothing made a scenario non-decision-active (FEX-12); the
+invalidation's trigger vocabulary was closed at `operator | reproduction` (0078); `corrects_run_id` was a bare pointer (0033); the
+`challenge` disposition had no producer. ONE VOCABULARY (D1): `twin_versions.fitness_state` and `forecasts_current.fitness_state`
+read `none | fit | unfit | indeterminate`; `runs_current.fitness_state` `none | fit | unfit` (a run is promoted fit by a reviewer or
+made unfit by an invalidation — nothing measures it); `scenarios_current.coherence_state` `unchecked | passed | failed`; every
+pre-0081 row reads its honest default (the demonstration's: twin versions `none` 5/5, forecasts `none` 3/3, scenarios `unchecked`
+6/6, runs `envelope_state unrecorded` 8/8 — printed by the act). VALIDATE TWIN (§1–§2, D2): `twin.validate_version` — append-only
+`twin.validations`, the version row's state and validation id, `twin_events` `version.validated`; the verdict the PERSON's, the
+ENVELOPE CHECK the port's (`twin.envelope_check`, §3 — ONE rule shared with `open_run`), the CALIBRATION summary from
+`twin.reconciliations` since the previous validation (the count, the keys, `since`), the limitations; the twin's OWNER refused 42501
+→ 403 (expert review is a workflow, not an owner-declared status — the separation of duties); `fit` outside the envelope refused; a
+draft refused; no GraphChanged — a validation changes no fact and no consumer selects by it (the ReviewRequested precedent, 0078) —
+`ValidateTwin@v1` alone (the version, the verdict, the prior state, the envelope, the calibration, `dependency_impacts.runs` cut at
+200, the cause). THE ENVELOPE ENFORCED (§3, §9, D3–D4): `simulation.open_run` (DROP + CREATE — 35 arguments, `p_envelope_ack jsonb`
+and `p_challenge_id uuid` after `p_controls`; 0066 §8's body with five blocks) refuses an UNFIT version (`run rejected (unfit_twin):
+…` 409); the run's OWN contract (`horizon_days` from the constraints, the other keys from the version's elements) is checked by the
+same helper, and a run outside the envelope is admitted only under `envelope_ack {acknowledge true, reason 8+}` by a twin owner, the
+domain administrator or the platform administrator (`twin.envelope_ack_holder` over `identity.role_bindings`; `run rejected
+(envelope): …` 422 without one, `run rejected (envelope_ack): …` 403 for a simulation operator's) — recorded on the run
+(`twin_fitness`, `envelope_state`, `envelope_check`, `envelope_ack`) and in `run.opened`, carried on `SimulationStarted`; the
+envelope key rule: every key of `operating_envelope` whose value is a two-element array; a key matches the run parameter of the same
+name, else the version's first NUMERIC element named K, K:<suffix>, shock.K or shock.K:<suffix> (exact equality first, then the
+suffixed forms by prefix with `left()` — never LIKE, C9); no numeric value → `unchecked`; any outside → `outside`, else any inside →
+`inside`, else `unchecked`; the acknowledgement read as TEXT, never cast (a non-boolean, `"yes"`, `1` or a missing key all read as
+"not acknowledged" — C20); the perturbation flag `outside_envelope` stays what it is (a perturbation left the envelope). FORECAST
+FITNESS (§4–§5, D5–D8): `prediction.assess_forecast_fitness` under the SQL constant `prediction.forecast_fitness_rule()` v1
+(`min_outcomes 10`, `coverage_floor 0.75` = T1_LOW, `drift_factor 1.5`, the cadence days daily 1 / weekly 7 / monthly 30 / quarterly
+91) over the FAMILY (series_key, horizon_code, method) — its last K `outcome_ledger` rows: `calibration_failure` (the q10–q90
+coverage below the floor over ≥ K), `drift` (the mean pinball above the factor × the applicable backtest's — no backtest: unchecked,
+said in the note), `data_shift` (`attention_state assumption_unverified`), `envelope_breach` (an ISSUED forecast past its refresh
+cadence's expiry with no successor); any class → `unfit` naming the FIRST in that order; none and n ≥ K → `fit`; else
+`indeterminate` with n said ("n of 10 outcomes in the family's window: the calibration and drift rules are not applied"); the ledger
+row `prediction.forecast_fitness_assessments`, the forecast's three columns, `forecast_events` `forecast.fitness_assessed`;
+`changed` says whether the state or the class moved (a second assessment is idempotent — no event); WHO ASSESSES (D6): the outcome
+write (`prediction.outcome.record` — the scored forecast when it is `resolved` after scoring, the ISSUED forecasts of its family
+bounded 200; a superseded or withdrawn forecast that is scored is NOT assessed — `fitness null`, `fitness_skipped <state>`,
+`family_assessed n` on the answer; C19, a latent failure of the whole outcome write found while folding), the forecast consumer
+beside its mark (`prediction.forecast.subscription.apply`), a person (`prediction.forecast.assess`, `POST
+…/prediction/forecasts/:forecastId/assess` — the acting principal recorded); no scheduler exists for prediction; THE ANNOUNCEMENT
+(D7) is the service's from the port's answer: `ForecastFitnessChanged@v1` on every change (`from {state, class}`, `to {state,
+class}`, `classes`, `measures`, `rule_version`, `trigger`, the cause action per trigger), `GraphChanged/forecast.fitness_changed` (a
+new `GRAPH_CHANGE_KINDS` entry with the typed `forecast_fitness` block; `objects.forecasts` the forecast) only on a transition to
+`unfit` or a class change while unfit (a fit/indeterminate change marks nothing); `declare_scenario` refuses a forecast assessed
+unfit beside the withdrawn one (`scenario rejected: forecast … was assessed unfit (<class>)` 409, D8); nothing is auto-withdrawn
+(the owner's act, L6-I05); `/calibration/summary` gains `fitness[]` — the latest assessment PER FAMILY — and its second sentence;
+`/forecasts/:id/get` the assessment joined. COHERENCE (§6, D9–D10): `prediction.check_scenario_coherence` under
+`prediction.scenario_coherence_rule()` v1 — the FAIL rules `duplicate_branch` (two live branches of one kind on the same indicator),
+`assumption_invalid` (a basis naming a claim version that is not this domain's, withdrawn/archived/deleted, rejected in review,
+under an open contradiction, or superseded by a newer version — C8's vocabulary), `forecast_relationship` (the scenario's forecast
+withdrawn, superseded or assessed unfit), `temporal_order` (a decision due before its indicator observes), `dependency_retired` (the
+subject entity retired); `coverage` and an unchecked free-text basis (`basis_unchecked`) as NOTES; over the OPEN and FLIPPED
+branches (a closed branch is history); append-only `prediction.scenario_coherence_checks`, the scenario's two columns,
+`scenario_events` `scenario.coherence_checked`; called by the SERVICE at the end of the declaring write (the branches are added
+after `declare_scenario` returns — the port cannot check inside it), by `review_scenario` on `continue` and `promote_to_simulation`
+(a dissent checks nothing), by the scenario consumer and by a person (`prediction.scenario.check`, `POST
+…/prediction/scenarios/:scenarioId/check-coherence`); a failed scenario is ADMITTED failed, never refused; `changed` = the state
+moved or the failing set changed; `ScenarioCoherenceFailed@v1` on failed AND changed only, with `routed_to` the review roles
+`platform_admin, domain_admin, strategy_owner, forecast_owner`; THE GATES (§6, §9): `open_run` refuses a branch of a failed scenario
+(`run rejected (incoherent_scenario): scenario … failed its coherence check … (<rule>)` 409), `review_scenario` refuses the
+promotion of one (`a failed coherence check prohibits promotion to simulation: …` 409; the transaction rolled back, no check row
+survives), `raise_warning` marks a warning raised on a branch of one `input_unverified` (raised, never suppressed — the flip is a
+fact); no branch suspension, no add-branch or close-branch command — the correction path is retire + a successor;
+`declare_scenario`, `review_scenario` and `raise_warning` re-declared whole with ONE block each. THE CHALLENGE (§7–§9, D11):
+`simulation.challenges` (`assumptions | model | constraints | interpretation`; `open | rerun_requested | upheld | dismissed |
+withdrawn`; one live challenge per run per opener) with its append-only `challenge_events`; `open_challenge` (a completed valid
+run), `request_rerun` (open → rerun_requested), `withdraw_challenge` (the opener, while live), `decide_challenge` (neither the
+opener nor the run's operator; `upheld | dismissed`) — the three bound to the RUN in the path (`POST
+…/twins/simulations/:runId/challenges/:challengeId/{rerun,withdraw,decide}`; `POST …/simulations/:runId/challenge` opens; `POST
+…/simulations/challenges/list` lists, declared first) and in the port (`p_run_id` after `p_challenge_id`; a challenge that is not
+the run's is `simulation challenge rejected: no such challenge … of run …` 404 — C6); the re-run bound at `open_run`
+(`p_challenge_id`: the challenge `rerun_requested` for `p_corrects`; `rerun_run_id` set once; `run rejected (challenge): …` 404 /
+409 / 422 by B9's order), compared on the common control by the compare route; an UPHELD decision changes the challenge and the
+service then invalidates the run in the same write — the withdrawn SIM version admitted under `simulation.challenge.decide` (the
+canonical-write action registered in 0081 — C3), then `invalidate_run` with the trigger `challenge` (its vocabulary widened, the
+reference checked against the upheld challenge, the run's fitness `unfit`) — three outbox rows under one correlation id
+(`ChallengeSimulation` upheld, `SimulationInvalidated` with `trigger 'challenge'`, ONE `GraphChanged/simulation.invalidated`) and
+the six deliveries; `invalidation_withheld 'already_invalidated'` when the run was already invalidated; `runs_current` carries the
+fitness, envelope and challenge columns, `runs_immutable`, `versions_immutable` and `invalidate_run` re-declared whole. THE
+PROMOTION (§7–§8, D12; OBJ-29): `simulation.promote_result` — a reviewer other than the operator marks a completed, valid,
+undisputed run fit for a stated use, ONCE (`promoted_for`, the limitations, the note); `simulation.promotions` restates the row's
+validation and sensitivity, never re-computed; `run_events` `run.promoted`; NO outbox event (a work-object action outside the
+fifty-interface catalogue — the state rides the get, the list and the page). THE REGISTER (§10, D13): L5-I05, L6-I03, L7-I04, L8-I04
+bound → 40 bound / 10 partial / 0 unbound (the guard compares the ten that stay partial as a SET — `L1-I02, L1-I03, L1-I04, L2-I02,
+L3-I02, L4-I02, L7-I02, L10-I02, L10-I03, L10-I05` — C2); L9-I05's package-cause clause re-homed from B20 to B22 in its `bound_to`
+(0080 bound nothing of it); no registry row and no role (the upgrade proof moves `public.schema_migrations` 59 → 60 only). THE PDP:
+eight exact rules, every one `requiresPurpose` — `twin.version.validate` (platform_admin@PLATFORM, domain_admin@DOMAIN,
+twin_owner@DOMAIN; human-gated, C2 — the twin's OWN owner refused by the port, a peer twin owner admitted),
+`prediction.forecast.assess` (the two administrators and forecast_owner; no human gate — a `forecast_agent` never assesses by hand:
+exact, not the issue prefix), `prediction.scenario.check` (the two administrators, strategy_owner, forecast_owner),
+`simulation.challenge.open|rerun|withdraw` (the two administrators, twin_owner, simulation_operator, strategy_owner, decision_owner
+— the people who decide on what a run represents), `simulation.challenge.decide` and `simulation.result.promote` (the two
+administrators, twin_owner, strategy_owner; human-gated — the port's SoD refuses the run's operator and the challenge's opener). THE
+REFUSAL FAMILIES (`observation-errors.ts`; the header paragraph): `twin validation rejected`, `forecast assessment rejected`,
+`coherence check rejected`, `simulation challenge rejected` and `run promotion rejected` answer the PORT's sentence through B9's
+ordered alternations — the standing (42501 → 403: "recorded by the acting principal", the owner's SoD, the decider's SoD, the
+reviewer, the envelope acknowledgement's holder), the absences (23503 → 404), the record's state (22023 → 409: a draft, withdrawn,
+superseded, retired, not completed, invalidated, live, promoted already, a disputed result, the unfit forecast at declare, the
+failed check at promotion) and the caller's request (22023 → 422); the five run gates carry a CLASS IN PARENTHESES — `run rejected
+(unfit_twin)`, `(incoherent_scenario)`, `(envelope)`, `(envelope_ack)`, `(challenge)` — so the named generic `run rejected: ` row
+cannot catch them: 409 / 409 / 422 / 403 / 404+409+422 by B9's order, always the port's sentence, nothing landing on the generic row
+(C1; the class-in-parentheses form is the product's own precedent — `projection_withdrawn`, 0080); the service performs NO fitness,
+coherence or challenge pre-check of its own (a duplicate check in TS would be a second source of the sentence; the intake's own 422s
+— a malformed `envelope`, a `challengeId` without `correctsRunId` — stay the service's); the unit test
+`apps/api/test/unit/phase6-refusals-b21.test.ts` (13 cases in five groups: the standing, the absences, the record's state placed
+before the families' 422 fallback, the caller's request, and THE ORDER — a `(challenge)` "disputes run" text lands 422 not 404/409,
+`(envelope_ack)` 403 not 422, the B9-era named `run rejected: scenario x was retired by review` row still answers its fixed
+sentence, B9's `challenge rejected: claim x has no lineage` untouched by `^simulation challenge rejected`, `a failed coherence check
+prohibits promotion …` 409 before the B9 422 row). THE EVENTS (pure builders, the 0066+ shape — ids never bodies,
+`temporal.known_at`, `cause`, lists cut at 200 with `truncated`): `validateTwinEvent`, `forecastFitnessChangedEvent`,
+`scenarioCoherenceFailedEvent` (`scenario-events.ts`, new), `challengeSimulationEvent`, `forecastFitnessChangedGraphEvent`
+(`change-events.ts`, the trigger→action map duplicated as a literal so graph imports nothing from prediction — the boundaries gate),
+`simulationInvalidatedEvent`'s trigger and action unions widened; the unit test
+`apps/api/test/unit/phase6-fitness-events-b21.test.ts` (22 cases: the five builders key by key, the `GRAPH_CHANGE_KINDS` pin). THE
+CONSUMERS' VERDICTS on `forecast.fitness_changed` (D3.6): the FORECASTS consumer selects nothing for its own kind (a fitness change
+is not a basis change) and, on every mark it makes, ASSESSES the marked forecast beside the mark (`trigger 'subscription'`;
+`ForecastFitnessChanged` on a changed verdict, `GraphChanged/forecast.fitness_changed` on a transition to unfit; an
+already-attending forecast is not re-assessed — it was assessed when marked); the SCENARIOS consumer marks the scenarios resting on
+the forecast `input_unverified` with the assessment's reason and RE-CHECKS them (`ScenarioCoherenceFailed` on a failed and changed
+check; an already-attending scenario is not re-checked by the consumer — its review re-checks); the DECISIONS consumer notes the
+packages citing the forecast with `material_change` exposed ("ASSESSED UNFIT (<class>) … — not withdrawn; the owner decides whether
+the option stands"; `human_review`); the TWINS consumer marks the citing versions `unverified` with its generic reason (unchanged);
+retrieval, memory-mappings and relationships verify / `[]` by construction; the three changed methods → three new digests
+(`CONSUMER_VERSION` stays `1.0.0`; the digest carries the change) → the act revokes and re-registers `forecasts`, `scenarios` and
+`decisions` on the demonstration, the harnesses register fresh; the seven digests of `13ed40c` pinned by T5 (`DIGESTS_13ED40C`,
+recorded in `evidence/cp6/b21-3-harness.txt`'s header: the four unchanged equal, the three re-worded differ). THE PAGES: the twins
+page renders the fitness FLAG on the version (`FIT` / `UNFIT — behaviours disabled` / `INDETERMINATE` / not validated) with the
+envelope state and a "Validate this version" panel (the verdict, the reason, the limitations; the server refuses the owner); the
+simulations page a "Fitness" column (`fit for <use>` / `UNFIT` / `—`, `envelope OUTSIDE (acknowledged by …)`), the run card's
+"Challenges" (state, kind, statement, "Request re-run", "Decide", "Withdraw"), "Challenge this result" and "Promote as fit for"
+forms, the run form's envelope acknowledgement and challenge-to-answer, the sensitivity line "a perturbation left the envelope"; the
+forecasts page the fitness flag beside `attention_state`, a "Fitness" row and "Assess fitness under the rule" (the forecasts page
+has NO withdraw control — B18 added none — so the assessment names the class and the withdrawal stays an API act, stated); the
+calibration page "Live fitness by family"; the scenarios page `PASSED` / `FAILED` with the findings / `unchecked`, "Check coherence
+now", the review panel's promotion option disabled with the reason while failed (the server refuses it too);
+`apps/web/lib/fitness.ts` the pure label helpers with `fitness.test.ts` (8 cases); the demo walk `e2e/phase6-fitness.demo.spec.ts`
+(164 lines; `playwright.demo.config.ts`'s `*.demo.spec.ts` match, ignored by the hosted config) walks what the act leaves — a demo
+spec, not a gate case; NO hosted walk (seeding a twin version, a scored forecast family and a scenario through HTTP needs the
+extraction fixture, a registered series with history and uploaded records — B20's D19 found the same for entities); the gate stays
+51. THE HARNESS `apps/api/test/int/phase6-fitness-b21.test.ts` (948 lines; a fresh database with the scheduler on, ALL SEVEN
+consumers registered fresh, the vault roots the file's own; the humans with sessions of their own — `dadmin`, `peerOwner`,
+`runOwner`, `operator2`, `forecastOwner`, `strategyOwner`, `decider`, `analyst`; every case logging the six V04-T-024/026 items as a
+`B21.3 EVIDENCE` line): T1 ValidateTwin — the SoD (a second twin owned by a peer, its owner refused 403; the analyst by the PDP; a
+draft 409; the intake 422s), the envelope the port computed on the fixture twin (`horizon_days unchecked`, `corridor_delay_days`
+inside `[0, 60]` from `shock.corridor_delay_days`, `consumption.weekly` from the observed element), the empty calibration history,
+the four fixture runs named, `ValidateTwin@v1` without a GraphChanged, `fit` refused outside the envelope naming the key (a version
+with 75 corridor days) and `indeterminate` admitted with `envelope outside`, the calibration's `since`, ENFORCEMENT (an unfit
+version opens no run — 409; re-validated fit, the run opens), the ENVELOPE at open (422 without an acknowledgement; 403 for a
+simulation operator's; a twin owner's admitted and recorded, the run completing with 75 and `sensitivity.outside_envelope`), the
+honest defaults on the fixture's pre-B21 runs; T1.8 the wedge's regression (§B21.4); T2 ForecastFitnessChanged — eleven forecasts of
+a second family issued and scored IN TURN over the fixture's disruption window: `indeterminate` at one outcome (`1 of 10`; the
+event; no GraphChanged), the tenth judged against the ledger the harness reads back (the coverage recomputed from the last ten
+`outcome_ledger` rows and pinned equal — C17; `fit at 0.8` on both recorded runs, the branch printed), the eleventh UNFIT
+`calibration_failure` at coverage 0.7 (deterministic: three targets inside the ×0.45 window) with
+`GraphChanged/forecast.fitness_changed` and its SIX deliveries applied — the scenario resting on it marked and re-checked
+(`ScenarioCoherenceFailed` from the consumer with `forecast_relationship`), the draft package noted `material_change`, the citing
+twin version `unverified`, forecasts `[]`, retrieval verified, memory-mappings `[]`; the owner's assessment of a live forecast
+(idempotent on repeat; the analyst refused; the get and the calibration's family table); declare refused on an unfit forecast; the
+withdrawal; the outcome write's skips (a withdrawn forecast scored → `fitness_skipped 'withdrawn'`, no assessment row; a superseded
+one → `fitness_skipped 'superseded'`, its successor assessed; the superseded forecast's own assessment 409 "assess the successor" —
+C19); the fixture's family `indeterminate (0 of 10)` (the demonstration's situation); DATA SHIFT through a real GraphChanged (an
+assumption resting on a planted edge — its object a second planted entity, never the fixture's, and the assumption's own
+`strategy.declared` applied before the forecast is issued — the reconcile's F/G; the edge retracted through the route; the forecast
+consumer marks AND assesses `unfit data_shift`); the expiry arithmetic (`expires_at = issued_at + 1 day` for a daily cadence — the
+positive `envelope_breach` class is the demonstration's); T3 ScenarioCoherenceFailed — the duplicate-branch scenario ADMITTED failed
+with the findings and `routed_to` and the event (the check rows `[declare failed, review failed]`), the run gate and the promotion
+prohibited (no check row surviving the rollback), the dissent checking nothing and the continuation re-checking (no second event),
+the correction path (retire — the port checks nothing; a successor without the duplicate `passed` with the coverage note only, no
+event), `temporal_order`, `assumption_invalid` on an unknown basis and on a planted claim withdrawn at version 2, the free-text
+`basis_unchecked` note, the WARNING GATE (a warning raised on a failed scenario's branch RAISED and marked `input_unverified`, never
+suppressed; a passing scenario's not marked), `dependency_retired` (the subject entity retired WITH its `entity.retired` event — the
+honest fixture; the operator's re-check finds it), the operator route (a passing re-check `changed false`; the analyst 403; a
+retired scenario 409; unknown 404); T4 ChallengeSimulation — open (one live per opener; the analyst refused), the SoD at decide (the
+opener; the run's operator), the RE-RUN (requested; the nested path's binding — a challenge reached through another run's path 404,
+C6; the intake's refusals; the governed re-run naming `correctsRunId` and `challengeId`, bound once — a second 409; compared on the
+common control), DISMISSED (the run stays valid, the package unnoted), WITHDRAWN (the opener's act; a withdrawn challenge is not
+decided), UPHELD (the run invalidated in the deciding write: three outbox rows under one correlation id, the six deliveries with the
+package noted `material_change`, the withdrawn SIM version 2, the citation gate refusing the invalidated run), upheld on an
+already-invalidated run (`invalidation_withheld`), the PROMOTION (fit for a stated use with the validation restated from the row —
+`twin_fitness 'none'` since the fixture runs were opened before any validation, `envelope_state 'unrecorded'`; once; the operator, a
+disputed result and the analyst refused; no outbox row), the get and the list (`challenges`, `promotion`, `live_challenges`); T5 the
+register 40/10/0 through the route with the four rows `bound_in '0081'`, `schema_version 'v1'`, `bound_to` naming `<Event>@v1`,
+L9-I05's `(L10-I05, B22)`, the SQL counts, the seven consumer digests against `13ed40c` (the three changed, the four unchanged), the
+two rule constants at version 1, the pre-0081 scenario reading `unchecked` — **5/5 on two fresh databases** at the reconcile
+(`eye_verify_b21_h3a` 35.16 s, `h3b` 36.19 s — the first h3a run 3/5: T2 and T3 stopped on the migration's `::text` defect and on
+the harness's edge reaching the fixture forecast, both corrected before the recorded runs) then **6/6 three times** after the
+wedge's fix with T1.8 (`fitfix3` 35.13 s, `fitfix4` 36.14 s, the refuter's `rh1`) — `evidence/cp6/b21-3-harness.txt`; the C15 case
+appended to `phase5-corrections.test.ts` after its F6 reconciliation (a domain administrator validates the reconciled version fit →
+`calibration.count 1` naming the key, `numeric.n 1`, `since null`; the owner is not the validator) 23/23 in the neighbouring run
+`eye_verify_b21_n3`.
+
+**B21.4 — the rehearsal wedge (found by the first rehearsal; a defect of phase 5's making, fixed in B21 where the act reached it;
+the rest stated for the owner).** The first rehearsal on the restored copy (2026-09-23T23:27Z) WEDGED at the act's control run
+(`POST …/twins/simulations/run`, scene 1): every login hung while GETs answered; `pg_stat_activity` showed the run's `eye_commit`
+session idle-in-transaction after `SimulationCapability.citedObject` and a second `eye_commit` session's `ctx.issue_commit` waiting
+on its transaction id, the publisher's lease, six schedule-capability issues and every identity op queued behind. ROOT CAUSE (the
+debugger, confirmed by the refuter in code and on the copy — `$S/b21/report-hang-fix.md`): a governed write NESTED inside another —
+`SimulationService.open → unavailableInputs → unavailable → series.retrieveBytes` (`series.service.ts`:
+`pipeline.write('observation.evidence.retrieve')`) opened a second commit-pool transaction while the run's was open; `ctx.build`
+(phase 1, 0038) begins every capability issuance — `issue_commit`, `issue_identity_op`, `issue_publish`,
+`issue_schedule_capability`, the outbox lease — with `DELETE FROM ctx.issued WHERE expires_at < clock_timestamp() - interval '1
+hour'`; the outer transaction had swept a row (an inherited publisher nonce crossing the hour line at that instant — `expires_at
+22:29:18.099Z`, crossing at 23:29:18Z, found in the source dump) uncommitted, the nested write's sweep hit the same row and waited
+on the outer xid while the outer handler awaited the nested promise — a wait cycle PostgreSQL cannot see (the outer session is
+`ClientRead`, not a lock waiter); every later minter, logins included, queued on the tuple; the BullMQ "could not renew lock" lines
+were downstream. It dates from phase 5 (1a05af8); B20's rehearsal did not hang because its act opened no run; the harnesses never
+see it because a fresh database has no hour-old nonces; the copy inherits the demonstration publisher's nonces (about 61 rows a
+minute crossing the sweep line for an hour after the dump) — the deadlock fires whenever a nested write's sweep lands while the
+outer write's sweep holds a deleted row, a phase relation between the inherited row stream and the local publisher's tick.
+REPRODUCED deterministically: the instance killed and restarted with its identical environment (captured in a mode-600 file, never
+printed, deleted after), 30,000 expired nonces planted crossing the line one per millisecond, the same request fired — no answer
+after 20 s, the root idle in transaction on the `citedObject` read, the nested `issue_commit` waiting on its xid holding the tuple
+lock, the publisher behind it. THE FIX (`simulation.service.ts`, `twin.controller.ts`; the design's spirit — the work moves to where
+it belongs; the precedent `prediction.controller.ts`, which assembles under a read before its write): the evidence retrievals of a
+run and of a reproduction are done BEFORE the write under a `simulation.read` consequentialRead (`side_effect_class 'none'`), each
+retrieval its own governed transaction as before (`retrieveEvidence`, `citationsForRun`, `citationsForReproduction`; the typed
+`EvidenceAvailability`); `unavailable()` judges lifecycle under the write's snapshot and consults the pre-established answers (a
+citation not reached → unavailable, `access`); the refusal texts unchanged; the audit trail of a run now reads `simulation.read →
+observation.evidence.retrieve ×N → simulation.run → simulation.run.complete` in distinct transactions; `pipeline.service.ts`
+untouched by the fix. HARNESS T1.8 added to `phase6-fitness-b21` (a planted stream of expired nonces crossing the sweep line every
+millisecond — 8,000 on the final harness, the first recorded run 40,000; removed in `finally`; a watchdog on the wedge's signature —
+a minter waiting on an idle-in-transaction holder — that terminates it and fails; the run must complete; the trail pinned — six rows
+in six distinct `xmin`; `SimulationStarted` and `SimulationCompleted` delivered as ever): `planted_nonces 8000, wedge null` — 6/6 on
+two fresh databases and once more by the refuter; `phase5-simulations`, `phase5-twins`, `phase5-corrections` and
+`phase6-evidence-degradation-b21` 53/53; the four subscription harnesses (their worlds open runs through the changed route) 78/78;
+the refuter's `phase6-graph-subscriptions` 13/13. PROVEN ON THE COPY by the ninth rehearsal (§B21.7) — the refuter's finding 1: the
+debugger's own copy proof (the identical request under the identical planted stream answering 201 in 81 ms with the six-transaction
+trail; the reproduce route 201 with a 24-retrieval trail) ran on an intermediate build, `twin.controller.ts` having been edited and
+rebuilt after those requests, and no repro/proof console output is filed — the final build is proven by the rehearsal that held
+whole and by T1.8, not by that proof. STATED — a recorded-behaviour change (the refuter's finding 2): the retrievals now precede the
+run's own decision and gates (at HEAD they ran after the policy decision and the port gates and only for citations whose exact
+object was visible and not withdrawn or retired), so a run refused 403/409/422 leaves the `simulation.read` and the
+evidence-retrieval audit and custody rows behind, and a withdrawn evidence citation is now retrieved (a custody row) where it was
+skipped — each retrieval under the principal's own `observation.evidence.retrieve` authority, nothing granted wider (the
+`simulation.read` holders are a superset of the `simulation.run` holders); the ORDER moved; the citations are read twice (a
+re-grounding between the read and the write yields an `access` refusal worded "not established before this write" — a misclassified
+cause, benign); the audit counts of the run and reproduce routes grow by one `simulation.read` pair. STATED — RESIDUAL SITES of the
+same class, pre-existing and UNCHANGED, not reached by act-b21 (its two `simulations/run` calls go through the fixed route; scene
+2's `assess` takes no reader): `twin.service.ts` inside `twin.ground` (the retrieval and the series assembly),
+`forecasting.service.ts` at the issue, the backtest (per origin inside the handler) and the outcome record — each nests
+`series.assemble` (a consequentialRead) and retrievals inside a write (T1.8's first draft, a 40-second stream not cleaned, wedged
+T2's forecast issue identically on the harness database — direct evidence the sites are live; `act-b18` called `ground` twice and
+`forecasts/issue` on the demonstration without wedging — a probability, not a certainty); the same remedy (pre-flight assembly
+before the write, as the scenario-evaluate route already does) per site, or the SYSTEMIC one: `ctx.build`'s sweep as `DELETE … WHERE
+nonce IN (SELECT nonce … FOR UPDATE SKIP LOCKED)` in a later migration (0082) — it removes both the nested-write deadlock and the
+liveness hazard that any long transaction which swept a row (a long import, an executor) blocks every capability issuance, logins
+included, until it commits; it touches the ctx boundary (C18's watch) — THE OWNER'S CALL; recorded as a hardening item of the first
+order, never waived. The wedged copy was discarded (`rehearsal.sh` restores afresh); the safe patterns the refuter verified (the
+consumers act through the dispatcher's capability; the scheduled briefing, the collection worker and the extraction orchestrator
+open their writes sequentially; the B21.2 diff adds no nested write; B21.1 uses savepoints on the same transaction only) are the
+reason the batch's other paths are not exposed.
+
+**B21.5 — what is stated.** (1) B21.1's nine limits are in §B21.1 (the fault point stands in for a statement's failure; Codex's
+probe stopped at the service boundary and the corrected tree is what HTTP can exercise; the refused reader's 503; the composer's own
+reads outside the boundary; the strategy fallback named, not corrected; an agent's stop recorded as the handler's failure; a
+`ContentTierUnavailable` with no `refusal` block propagates; no scheduler in the harness; no hosted walk). (2) B21.2's fourteen
+limits, as amended by C5 and the reconcile: a metadata-only answer for a PER-OBJECT missing or corrupt read is never given (A7; D10
+as Class A) — one 409, one custody row, the detail route for the metadata; the class is decided BEFORE the read by the primary
+root's marker alone, a fallback root's state never re-classifies (the two consequences of §B21.2); the quarantine root has no marker
+(the import's and the admission's reads keep today's shape); reachability is the MARKER's readability (B18's definition) — an
+unmounted volume, a permission fault and a moved marker read alike; the sweeper's poison line for a staged copy whose tier root is
+unmounted (a report a person reads; no destructive act) and the executors' per-item `failure 'missing'` wording for an unmounted
+root (an execution's refusal, retried; `tier/state` says why) stay as they are; "recover from verified copies" (DP-28-005) is not a
+governed act — the sweeper retains the staged copy for a person; `/readyz` does not probe the vault roots; the poll's `unverifiable`
+confirmation compares the RECORD's digest with the incoming bytes' digest and re-verifies nothing, the quarantine copy left as the
+sweeper's orphan (F17's class); the verifier's NULL is per observation, not per root (an item whose bytes were SEEN in the reachable
+root reads present — a deletion fails for that reason and says so; the residual stays pending until a verify after the mount); the
+twin's disclosure is the series' `refused` string verbatim — stated, not exercised; the web renders the degraded block from the flag
+and no hosted browser walk exercises it (optional later); the machine readers' audit rows carry the read's own code through
+`WriteEffect.evidence` (additive), and the route's refused read commits its custody row and its audit row `success`/`EYE-INT-001`
+under the REAL decision (C10; the reconcile's B) — a change of the audit's shape for a refused download; `retrieval_degraded` rows
+are one per read — a reader polling a degraded manifest writes one row per attempt, no coalescing; the demonstration's scene reads
+the cold record ONCE while the marker is aside, and the series/scheduler observations on the demonstration are expected empty
+(PortWatch's evidence is hot) and printed as such; the two appended cases' files ran on the workspace default roots before B21 and
+now carry their own (C5), the three new harness files likewise, and the twenty-one files under `apps/api/test/int/` that still
+upload under the workspace default — C5's grep on this tree, `/usr/bin/grep -L EYE_VAULT` over the files that call `uploadSource` or
+`upload(`: the nineteen harness files `phase5-corrections`, `phase5-propagation`, `phase5-simulations`, `phase5-source-readiness`,
+`phase5-twins`, `phase6-graph-projections-b20`, `phase6-graph-subscriptions`, `-2`, `-3`, `-4`, `phase6-memory-derived`,
+`phase6-monitoring`, `phase6-propagation-consumer`, `phase6-replay`, `phase6-repro-serving-lifecycle`, `phase6-residual-corrections`,
+`-2`, `phase6-retention-b11`, `phase6-review-corrections` and the two helper modules `phase4-helpers.ts` and `phase6-fixtures.ts`
+(whose callers set the roots) — are named HERE as a hardening item of C5's class, not edited by B21 (the reconcile pass and every run
+after exported temporary roots for them). (3) B21.3's limits (the design's §6 verbatim in
+substance; the act prints them): no forecast scheduler or re-issue exists — the assessment is event-driven, and an issued forecast
+whose daily cadence lapsed reads `envelope_breach` honestly (the demonstration's read `data_shift`, the first class in the rule's
+order, its attention mark from an earlier act); the fitness rules are versioned constants over the ledgers this product holds — not
+bias tests, expert review or alternative assumptions; the series-length breach is not detected (a governed evidence read outside the
+port); the twin's calibration history is the reconciliation ledger and "domain validation on representative data" is not a harness;
+the envelope covers the keys the model declares (`horizon_days` checked at `open_run`; a model with no ranges validates
+`unchecked`); coherence is structural over the fields the product holds — a free-text assumption is noted, never judged;
+distinctiveness, relevance, bias and sensitivity are not computed; no branch suspension, no add-branch or close-branch command
+(retire + a successor); the challenge re-run is a governed run, never an in-process re-execution; the frequency-to-probability
+mapping object is out; a decision gate on UNPROMOTED runs is out (an option may cite an unpromoted valid run); the `challenge`
+DISPOSITION on a delivery or a retention action is not produced by B21; no outbox event for a promotion (OBJ-29 is outside the
+catalogue); the register's other ten rows are untouched; the demonstration's outside-envelope run and the upheld path are harness
+and rehearsal cases; the walk is a demo spec, not a hosted gate case, and its run against the demonstration is not filed with this
+candidate; a fitness or coherence failure reaches no briefing. (4) THE CLM-ONLY BASIS LOOKUP (the reconcile's open item 2):
+`assumption_invalid` resolves a basis `CLM:<id>@<version>` against `object_type = 'CLM'` as designed, while the product's claim
+types are ENT/EVT/CLM/REL/ASM — a REL basis reads "is not a claim of this domain"; a design decision, stated; a later batch widens
+it. (5) THE RECONCILE PASS's twelve edits, each stated: A the migration's four class appends typed `::text` (a real defect — `text[]
+|| 'literal'` parses the literal as an array, 22P02 — found by Implementer 5's T2, reproduced with a DO block; the file's digest
+changed before `eye_demo` was migrated, so nothing recorded is invalidated); B the D2.6 deviation (§B21.2); C
+`phase6-graph-projections-b20.test.ts` P9's register pin `[50, 36, 14, 0]` → `[50, 40, 10, 0]` (a pin 0081 §10 moved that
+corrections-3 had called "untouched"; the title, the header and the evidence string say both states); D `phase4-acceptance.test.ts`
+D8's FORCE-RLS count 16 → 18 (the two prediction tables of §4 and §6); E no edit — `act-b20.txt`'s 36/14 line stands as a past act;
+F the harness's data-shift edge planted between two planted entities, never against the fixture's subject (an edge to the fixture
+entity put the fixture forecast into the retraction's reach and T3's declare was refused by D8); G the assumption's own
+`GraphChanged/strategy.declared` applied before the forecast is issued (a race seen once: applied after, the declaration's forecasts
+delivery marked the forecast first and the retraction found it already attending); H `phase6-graph-subscriptions-3.test.ts` B8:
+L8-I04 `partial` → `bound/v1/0081` ("a partial binding says so" kept on L7-I02); I `phase6-graph-subscriptions-4.test.ts` B9: the
+scenario's events gain `scenario.coherence_checked` after the branches (trigger `declare`) and before the CONTINUE review's own row
+(trigger `review`); J the same file's direct `simulation.open_run` probe passing the 35-argument form; K
+`phase6-graph-subscriptions.test.ts` B6: the scenario consumer's re-check beside `scenario.attention`; L the evidence files as the
+reconcile agent's outputs (Implementer 5's drafts replaced). (6) THE ORPHAN FIXTURE BLOBS (the reconcile's open item 3): the
+implementers' runs before C5 (`phase5-corrections`, `phase6-interfaces-b18`, `phase2-acceptance` at 2026-09-23T22:42Z, before those
+files had temporary roots) wrote 20 fixture blobs under `.eye-local/vault/evidence/` for two verify-run tenants — orphans under the
+demonstration's root, C5's hardening class — moved aside to `.eye-local/backups/vault-orphans-20260924/` (two tenant directories, 20
+files), not deleted; every run of the reconcile pass and after exported temporary roots or used the files' own; the demonstration
+tenant's own directory is the demo API's scheduler's. (7) THE WEDGE's two stated changes and the residual sites are §B21.4. (8) The
+web tests read 23 = 15 + 8 (`fitness.test.ts`); no evidence file carries them (the reconcile pass's run, as B20's "15 tests"
+before). (9) The seven consumer digests are pinned as literals for the first time (`DIGESTS_13ED40C`); a later change to any
+METHOD_REF moves the pin knowingly. (10) The hosted-runner timing flakes seen on `main`'s chains during the merges
+(`phase1-acceptance:471`'s 3× ratio — a timing oracle; `phase6-retention-b14` H2's tenth attempt without an HTTP status, the second
+time on this tree) are hardening items, never waived (§B21.9). (11) The records the designs also name for the same clauses —
+V02-T-125, V03-T-117/-120/-354, V04-T-024, ES-35-008, ES-37-008/-009, AI-48-005/-49-004, FEX-11, L7-C08 — are NOT moved in this
+records pass (the seventeen ids of §B21.8 — eighteen rows, OBJ-29 in v08 and v09; the register's four L-rows with L9-I05's clause,
+the ten units and AU-OBS-0103's note were); they belong to the binding commit or a later records pass, as B20's §7.2 rows did. (12)
+The earlier sections of `PHASE6_REPORT.md` that count "fourteen" interface contracts (§32.5, §33.5, §34.5) stand as written at their
+checkpoints; §35 counts ten; §34.5's "(the next batch)" on the resolutions, mappings, impact and reassessment routes serving a
+withdrawn partition unlabelled (§B20.3's stated limit) stands as written too — that batch is NOT B21: the item is re-homed to the
+hardening pass (the design's records plan), said in §35.5. (13) `evidence/cp6/b21-1-harness.txt` is dated 2026-09-23T22:54Z and `b21-3-harness.txt`'s post-fix
+runs 2026-09-24; the full suite's filed run is the post-fix one (`eye_verify_b21_all1`, 1086), the pre-fix run
+(`eye_verify_b21_all0`, 1085 in 74 files) named in its header without a log. (14) The C15 return's live effect on the demonstration
+host — the recreation of the running containers onto the official images the return pinned (CP-4a, `docs/images/ARM64_RISK_DECISION.md`)
+— is not this batch's and awaits the owner (§B21.9).
+
+**B21.6 — the harnesses, the gates.** LOCAL (the reconciled tree, 2026-09-23, and the wedge-fixed tree, 2026-09-24;
+`evidence/cp6/b21-*.txt`): `phase6-graph-projections-b21` F1 **1/1 on two fresh databases** (`h1a`, `h1b`; the `B21.1 EVIDENCE F1`
+line each — `b21-1-harness.txt`); `phase6-evidence-degradation-b21` V7, V1, V2, V3, V4(a), V5 **6/6 on two fresh databases** (`h2a`
+3.99 s, `h2b` 3.79 s; the six `B21.2 EVIDENCE` lines each) with V4(c) 24/24 in `phase2-acceptance` and V6 5/5 in
+`phase6-retention-b11-archive-poll` from the neighbouring run `n2` — `b21-2-harness.txt`; `phase6-fitness-b21` T1–T5 **5/5 on two
+fresh databases** at the reconcile (`h3a` 35.16 s, `h3b` 36.19 s; the first h3a 3/5 on the migration's `::text` defect and the
+harness's edge, corrected) then **6/6 three times** with T1.8 after the wedge's fix (`fitfix3` 35.13 s, `fitfix4` 36.14 s, the
+refuter's `rh1`), the C15 case 23/23 in `phase5-corrections` from `n3` — `b21-3-harness.txt` (with the `DIGESTS_13ED40C` block); the
+refute run 2/2 — `b21-refute-b20-f1.txt`; THE NEIGHBOURING SET **38 files in five groups on fresh databases** with the scheduler on
+and the vault roots exported to a temporary directory (`b21-neighbouring-suites.txt`, the per-file counts inside): n1 7 files 53/53
+(`phase6-agents` 9, `phase6-briefing-memory` 6, `phase6-briefings` 6, `phase6-executive-requests` 10, `phase6-graph-projections-b20`
+9, `phase6-memory-derived` 6, `phase6-monitoring` 7); n2 16 files 239/239 (`phase1-acceptance` 46, `phase1-fault-injection` 43,
+`phase2-acceptance` 24, `phase4-corrections` 14, `-2` 7, `-calendar` 6, `phase4-warning-levels` 6, the retention harnesses
+`-b11-archive-poll` 5, `-b11-closure` 9, `-b11` 35, `-b12` 12, `-b13` 10, `-b14` 5, `-b16` 6, `-b17` 5, `-b18` 6); n3 10 files
+166/170 on its first run — the four failures the four pins the design moved (H–K: `phase6-graph-subscriptions-3` 18/19, `-4` 30/32,
+`phase6-graph-subscriptions` 12/13) — and the three files re-run green as n3b 64/64 (19, 32, 13) beside the seven green in n3
+(`phase4-acceptance` 16 — its pin D already moved, `phase5-corrections` 23, `phase5-simulations` 9, `phase5-twins` 15,
+`phase6-decisions` 15, `phase6-graph-subscriptions-2` 14, `phase6-interfaces-b18` 14); n4 5 files 117/117 (`phase3-acceptance` 43,
+`phase3-corrections` 20, `phase6-residual-corrections-2` 10, `phase6-residual-corrections` 19, `phase6-review-corrections` 25) —
+579/579 across the 38 files once the three re-ran; six pins moved in all (C, D, H, I, J, K), nothing else in 38 files; after the
+wedge's fix the four subscription harnesses 78/78 and `phase5-simulations`/`-twins`/`-corrections` +
+`phase6-evidence-degradation-b21` 53/53 again (§B21.4). THE FULL INTEGRATION SUITE **1085/1085 in 74 files** at the reconciled tree
+(`eye_verify_b21_all0`, 2026-09-23 — before T1.8 existed; = 1070 + 12 new + 2 appended + 1 C15 case) then **1086/1086 in 74 files**
+after the wedge's fix (`eye_verify_b21_all1`, 644.0 s; the three B21 harnesses beside every earlier file — `b21-int-all-1.txt`, the
+per-file counts inside). THE UPGRADE PROOF with 0022–0081 (`b21-upgrade-proof.txt`; the vault roots exported to a temporary
+directory): 60 migrations above the ceiling; `public.schema_migrations` +60, `objects.schema_registry` +36 (no row in B21),
+`identity.roles` +31 (no role); 81 files; the schema digests equal `d9018019…`; the Phase 0 suite 297/297 before and after; 276/276
+on the upgraded data — PASS. THE UNIT SUITE **2389/2389 in 59 files** (= 2338 + 51: `memory-fallback-content-tier` 13,
+`evidence-retrieval-labels` 3, `phase6-refusals-b21` 13, `phase6-fitness-events-b21` 22; `twin/simulation-events` widened by the B21
+keys; `memory-content-tier`'s seven unchanged; 263.5 s) and the meta suite **9/9** (216.7 s) at the reconciled tree, and again
+2389/2389 + 9/9 after the wedge's fix — `b21-unit.txt`; `tsc` clean for `apps/api` and `apps/web` (twice — before and after the
+reconcile's edits); `pnpm boundaries` green (538 modules, 2,339 dependencies; `content-tier.ts` in no cycle; `change-events.ts`
+importing nothing from prediction); the web tests **23/23** (= 15 + 8) and `next build` green with the eight B21 pages (the twins,
+simulations, forecasts, calibration and scenarios pages of B21.3, the briefings page of B21.1, the evidence and retention pages of
+B21.2). THE BROWSER
+GATE **51/51** on a fresh database `eye_browser_20260924` with isolated vault roots (44.6 s; the demonstration API and web stopped
+for the run and restarted after — `b21-browser.txt`): the Phase 0 ten, the Phase 1 sixteen, the B18 twenty, the B19 two, the B20
+three — 51 as B20 left it; B21 adds no hosted walk (the fitness walk is a demo spec ignored by the hosted config); the phase-1
+evidence walk's served-line pin holds beside the degraded block the evidence page now renders from the flag; the step name in
+`.github/workflows/ci.yml` unchanged.
+
+**B21.7 — the demonstration.** `scripts/phase6/act-b21.mjs` (586 lines) → `evidence/cp6/act-b21.txt`; every object looked up at run
+time by SQL against the database the act is pointed at, no id hard-coded; the casting BY ROLE (D14, C10 — the brief's names checked
+against the seed): the administrator the platform-admin session; N. Eriksen `forecast_owner` (`scripts/phase4/seed-prediction.mjs`);
+J. Weber `strategy_owner` (`scripts/phase3/seed-graph.mjs`); T. Nakamura `twin_owner` — the twin's owner and the runs' operator
+(`scripts/phase5/seed-twins.mjs`); A. Hoffmann `domain_analyst` (the download); the brief's K. Vogel and S. Roth are MIRROR-domain
+personas (`act-b17.mjs`) and R. Adler (`record_authority`) and L. Ferreira (`extraction_manager`) hold no foresight role — named in
+the act's header as the correction; no persona created; every wait exceeds the dispatcher's 60-second reconcile tick. REHEARSED on a
+restored copy (`eye_demo_b21` on :3411 with the vault COPIED — scene 5's marker moved aside on the COPY's archive root first — and
+the rehearsal-only signing-key and station edits of B18–B20; `evidence/cp6/b21-rehearsal.txt`): the NINTH rehearsal held whole (57
+✓, 143.0 s, 2026-09-24T08:46Z; the runner's planted-aside guard refused scene 5 once on a planted aside file, as designed); the
+eight earlier runs, every one recorded in the file's header: (1) 2026-09-23T23:27Z the WEDGE (§B21.4 — a product defect, fixed); (2)
+08:12Z the act carried twin versions without `observed_through` (the B18 rule: a version without a world-time cut-off is refused at
+the run) and the runner executed the planted-aside guard BEFORE the real act on the same copy (the guard's scenes 0–4 mutated what
+the real act then pinned — the runner now runs the real act first, the guard after); (3) 08:18Z the forecast assessment answered
+`unfit/data_shift` where the act expected `envelope_breach` — the rule judges its classes in order and the demonstration's corridor
+forecast carries a data-shift attention mark from an earlier act; the pin follows the port's class, the reason stated — and no
+completed valid intervention run of the demonstration sits on a live scenario (act IV's and B18's Suez scenarios are retired by
+review): the act now disputes a run OF ITS OWN; (4)–(8) 08:24–08:41Z that run refused by the product in turn, each refusal right and
+now stated in the act: a scenario recorded after the version's `known_at` cannot give a shock its basis (the act carries a version
+AFTER the successor scenario, `known_at` now, the current cut-off); a shock bound to an unflipped branch is a hypothetical and names
+no scenario (the act's run names none); an invented reroute named a shipment the twin does not hold (the demonstration's own
+intervention shape — shock, component, interventions, horizon — is copied verbatim); a control run must be comparable with the
+intervention (the same shock, component and horizon). The demonstration itself was never touched by a rehearsal. THE ACT on
+`eye_demo` (2026-09-24T08:51Z; ALL SCENES HELD — 54 ✓ in 22.2 s; exit 0): the backup FIRST to
+`.eye-local/backups/eye_demo-pre-0081-20260924T085136Z.dump` (52,584,453 bytes — durable, the B20 rule), the demonstration API (pid
+4535) stopped, `eye_demo` migrated with 0081 (`applying 0081_b21_fitness_coherence_challenge.sql ... ok`, digest `055b05718270f34c`;
+the register `bound 40, partial 10`; the honest defaults `scenarios_unchecked 6, runs_unrecorded 8, retrieval_degraded 0`), the API
+restarted on the B21 build by the runbook's script (pid 24682; `/readyz` ok); then (0) THE STATE — the register through the route
+(J. Weber): 50 rows, 40 bound / 10 partial / 0 unbound, the four foresight rows `bound in 0081`, L9-I05's clause re-homed to B22;
+the seven subscriptions of the origin checked against this process's consumer digests — the FORECASTS, SCENARIOS and DECISIONS
+subscriptions (registered for the `13ed40c` consumers `cbcde853…`, `d2be51c5…`, `49416a32…`; this process's `e3932eb0…`,
+`06a9711b…`, `6e283700…`) REVOKED at cursor 14497 and registered anew by the administrator with the same owner, each replacement
+replaying ONE event from sequence 14496 — the revoked cursor's OWN event 14497 — `applied (no effect)`; the four unchanged kinds
+(twins `13996dd0…`, retrieval `cff991a7…`, memory-mappings `2e0ad122…`, relationships `fe16ee21…`) "already active" and left —
+exactly three re-registered, four left, as C4 promised; THE HONEST DEFAULTS before the act: twin versions fitness `none` 5/5,
+forecasts `none` 3/3, scenarios coherence `unchecked` 6/6 (declared before any check existed), runs `envelope_state unrecorded` 8/8
+(opened before 0081), `custody.retrieval_degraded` rows 0; (1) FITNESS (twin) — the twin "NORDWERK — Ningbo → Regensburg chain",
+owner T. Nakamura, admitted version 5, fitness `none`: T. Nakamura (the owner) REFUSED 403 `EYE-AUT-001` "twin validation rejected:
+the twin's owner does not validate their own twin; another twin owner or the domain administrator validates version 5 of …"; the
+administrator validated version 5 FIT — the envelope `inside` of `supply-flow@1` computed by the port (`horizon_days: unchecked`;
+`consumption.weekly: inside (9200 in [0, 100000] from consumption.weekly:SYN-PART-MAG)`; `corridor_delay_days: inside (14 in [0, 60]
+from shock.corridor_delay_days)`), calibration since never (1 reconciliation), 2 runs resting on the version named and never
+altered; `twin_versions.fitness_state fit` with its validation id (`twin.validations` 1 row); `ValidateTwin@v1` published (seq
+14541: version 5, verdict fit, prior none, envelope inside, `dependency_impacts.runs 2`); NO GraphChanged from the validation; T.
+Nakamura's control run completed with `twin_fitness fit`, `envelope inside` (the three keys inside), no acknowledgement needed —
+SYNTHETIC; `SimulationStarted` (seq 14542) carries both; STATED: the outside-envelope run is not staged on the demonstration (the
+demo's elements lie inside the model's envelope; nothing is regrounded for a show — the harness T1.6 carries the 422, the operator's
+403 and the acknowledged run); (2) FITNESS (forecast) — the forecast `portwatch:chokepoint4:n_total 30d seasonal-naive` (replay
+demonstration, issued 2026-09-09T06:58:16Z, cadence daily, fitness `none`; the family's outcome ledger 0 rows): N. Eriksen's
+assessment under rule v1 → UNFIT (`data_shift`) — `outcomes 0 of 10` in the family's window ("the calibration and drift rules are
+not applied; the verdict is indeterminate unless another class holds"), coverage not checked (floor 0.75), pinball vs backtest none,
+`attention assumption_unverified` (the class named — the first in the rule's order), the expiry 2026-09-10T06:58:16Z LAPSED (an
+issued forecast past its daily cadence is unfit by `envelope_breach` too; a scheduler would have re-issued it, none exists — said);
+`forecasts_current.fitness_state unfit (data_shift)` with the assessment row (`trigger operator`); `ForecastFitnessChanged@v1`
+published (seq 14544: from none to unfit (data_shift), rule v1); `GraphChanged/forecast.fitness_changed` (seq 14545) — SIX
+deliveries: scenarios `applied` with 1 item (`scenario.attention` — 1 scenario marked `input_unverified` and re-checked), retrieval
+`applied` with 1 item (`projections.verified`; the check `mismatched 0`), decisions / forecasts / memory-mappings / twins `applied`
+with no items (0 packages cite it; forecasts answers nothing for its own kind) — a DELIVERED event and non-empty consumer work told
+apart; a second assessment idempotent (`changed false`, the verdict unchanged, no second event); the calibration summary's live
+fitness table names the family (`unfit (data_shift), outcomes 0, rule v1`); STATED: the act does NOT withdraw the forecast — the
+withdrawal (L6-I05) stays N. Eriksen's own act; the assessment names the class; (3) COHERENCE — a scenario on the unfit forecast
+REFUSED 409 `EYE-STA-002` "scenario rejected: forecast … was assessed unfit (data_shift)" (D8); J. Weber's scenario on the
+`ecb-eurusd` forecast with a DUPLICATE downside branch on the demonstration's indicator ADMITTED failed, never refused —
+`duplicate_branch [fail]`: branches "Corridor collapse" and "Corridor collapse (restated)" are both downside and share the same
+indicator; `coverage [note]`: 2 live branches of 1 kind beside the baseline; `ScenarioCoherenceFailed@v1` published (seq 14547: 2
+findings, rule v1, `routed_to platform_admin, domain_admin, strategy_owner, forecast_owner`); T. Nakamura carried version 5 into
+version 6 (`known_at` now: the scenario is known to it — the run's shock basis); his run on the failed scenario's branch REFUSED 409
+`EYE-STA-002` "run rejected (incoherent_scenario): scenario … failed its coherence check … (duplicate_branch); a branch of an
+incoherent scenario is not simulated until a review resolves it"; the promotion-to-simulation refusal shown on the rehearsal copy
+only ("a failed coherence check prohibits promotion to simulation: … resolve the findings and review again" — the harness T3.2
+carries it); J. Weber RETIRED the scenario (no branch-close act exists — retire + a successor, D10); the successor PASSED (`coverage
+[note]`; `coherence_state passed`); (4) CHALLENGE — T. Nakamura carried version 6 into version 7 (`known_at` now; observed through
+2024-04-10); no completed valid intervention run of the demonstration sits on a live scenario, so the act disputes a run of its own:
+T. Nakamura's comparable control and his intervention run copied from the demonstration's own shape (`draw_down` of SYN-PART-MAG
+2024-01-11 → 2024-04-09 and `reroute` of SYN-SHIP-4472) as a HYPOTHETICAL shock naming no scenario (the live scenario's branch is
+not flipped within the cut-offs; the product refuses a shock bound to an unflipped branch — said), `fitness none`, `envelope
+inside`, `twin_fitness none` (opened under 0081 before any validation of version 7); J. Weber OPENED a challenge (`interpretation`)
+— `ChallengeSimulation@v1` published (seq 14557: opened, interpretation, the run's validity valid); J. Weber may not decide his own
+challenge (403 `EYE-AUT-001` "the decider is the challenge's opener; someone else decides …"); the administrator requested the
+re-run; T. Nakamura's re-run completed BOUND to the challenge (`challenge_id` on the run; `rerun_run_id` on the challenge;
+`challenge.rerun_opened` on its ledger) — SYNTHETIC; compared on the common control (`line_stop_days` 29 / 0 / 0); the administrator
+DISMISSED it — the run stays `valid`, no invalidation, no GraphChanged; `ChallengeSimulation@v1` published (seq 14561: dismissed,
+the re-run named); the administrator PROMOTED the control FIT for "the NORDWERK corridor routing decision (the demonstration)" — the
+validation restated from the row (`twin_fitness none`, `envelope_state inside`, the validation status "unvalidated (synthetic
+grounding); predicted inputs: context.fx_forecast rests on FCT:…@1 (unvalidated); the shock is HYPOTHETICAL …; outputs are
+SYNTHETIC", `outside_envelope_perturbation false`), the sensitivity kept, the limitations ["calendar days", "synthetic grounding"],
+`run.promoted` on its ledger; no outbox event for a promotion (D12); T. Nakamura (the operator) refused 403 `EYE-AUT-001` "run
+promotion rejected: the reviewer operated run …; a result is promoted by someone else (OBJ-29)"; STATED: the UPHELD path (a second
+challenge upheld → the run invalidated with `trigger challenge`, SIM version 2 withdrawn, fitness unfit; `SimulationInvalidated` and
+`GraphChanged/simulation.invalidated` with six deliveries) on the rehearsal copy only, printed REHEARSAL ONLY there — the
+demonstration's run is never invalidated by the act; (5) THE COLD TIER UNREACHABLE — the archive root as the act resolves it
+(`.eye-local/vault/archive`; nothing under a root is ever printed); the cold NORDWERK record (manifest 3,934 bytes, recorded
+2026-09-13) and a hot record; `custody.retrieval_degraded` rows in the domain before: 0; A. Hoffmann downloaded the cold record
+VERIFIED from the archive tier (3,934 bytes, the digest equal; `custody.retrieved` tier archive, `served_from published`) —
+SYNTHETIC — and the hot record verified (tier hot); the marker's sha256 before `371e16ce98051a3e…`, `tier/state` archive reachable
+true (blobs 1), evidence reachable true; THE ACT ITSELF MOVED THE MARKER ASIDE (three refusals to start — the marker must read
+`archive`, no aside file may exist from a run that stopped mid-scene, the API must report the root reachable now; restored in
+`finally` and on `exit`/`SIGINT`/`SIGTERM`/`SIGHUP`): `tier/state` archive `reachable false`, evidence `reachable true` — the
+inventory still lists blobs 1: the marker is the rule, an unmounted volume would read zeros; the cold record answered 200
+METADATA-ONLY (`base64 null`, `integrity unavailable`, `availability unreachable`, `tier archive`, the manifest's digest and 3,934
+bytes, `degraded { tier_unreachable, EYE-DEG-001, root archive }`, the label verbatim); the audit row `success`/`EYE-DEG-001` (seq
+101511); the custody chain's newest row `custody.retrieval_degraded { failure root_unreachable, root archive, tier archive,
+disclosure none }`, `digest_verified null`; NO `custody.integrity_failed` row for the cold record since the scene began — an
+unreachable root is never an integrity incident; the detail route's metadata tier untouched (`availability { tier archive, state
+archived }`, the custody chain carrying the degraded read); the hot record served verified in the same window (the evidence root
+reachable); STATED: S. Okafor's briefing and L. Brandt's memory retrieval are not exercised — no memory path reads vault bytes
+(`memory.service.ts` derives from the payload's digest); no registered series has an archived window on the demonstration
+(PortWatch's evidence is hot) — the series and extraction disclosures are V4 on the harness; the scheduler, observed: no poll
+confirmed by an unverifiable held record in the window (no scheduled source's held evidence is archived on the demonstration); the
+marker restored byte-identical (sha256 `371e16ce98051a3e…`), `tier/state` archive reachable true again, the cold record verified
+again with the digest equal; the chain of the scene `[custody.retrieved, custody.retrieval_degraded, custody.retrieved]`, the
+domain's `retrieval_degraded` rows 0 → 1 (the act read the cold record ONCE while aside); the runner's independent proof after the
+act: the marker in place (8 bytes, unchanged since 2026-09-17), aside files under `.eye-local/vault` 0; (6) THE STATE — the register
+40/10/0 unchanged; the twin's versions `v1–v4 none, v5 fit, v6 none, v7 none`; the forecast `issued, fitness unfit (data_shift)`;
+the two scenarios (`retired, failed` and the successor `active, passed`); the three runs (the control `valid, fitness fit` for the
+routing decision; the disputed intervention and the re-run `valid, fitness none`); the challenge `dismissed`; the origin's
+subscriptions at 14552 (relationships at 14254 — it receives no GraphChanged); WHAT THE ACT LEAVES: one validation (fit), one
+assessment (unfit), two carried twin versions (6 and 7) admitted, two scenarios (one retired), one challenge on the disputed run
+(dismissed), one re-run, one promotion, one `custody.retrieval_degraded` row with two `custody.retrieved` rows beside it, the three
+re-registered subscriptions; no evidence retired, nothing withdrawn on the demonstration, no persona created, the archive root's
+marker back in place. WHAT THE DEMONSTRATION SHOWED and WHAT THE HARNESS ALONE PROVES are the act's own two closing paragraphs (the
+outside-envelope run refused, refused for a simulation operator's acknowledgement and admitted under a twin owner's; the
+calibration-failure family across eleven scored forecasts with the six deliveries; data shift through a real GraphChanged; the
+outcome write's skips; the coherence rules one by one and the warning gate; the upheld challenge invalidating its run in the same
+write with the withdrawn SIM version and the citation gate; Class A pinned through the route beside Class B on both roots, the
+series reader, the extraction, the verifier and the poll; Codex's B20-F1 rows through HTTP). These are the author's logs; the hosted
+run is the only chain that verifies a harness unit.
+
+**B21.8 — the hosted run and the units.** THE HOSTED RUN of the B21 head is bound in the records commit that follows (the B20 idiom;
+the PR opens with base `main`, the supply-chain job expected GREEN on the returned pin — §B21.9). UNITS AND ROWS in this commit:
+AU-MEM-0067 gains the B21.1 and B21.2 evidence and STAYS `open` — the canonical-read clause met (B20 P6(b); B21.1 F1 for the
+fallback's two statements), the vault clause DELIVERED for Class B and BOUNDED at Class A (§B21.2's table; the owner's word "until
+its missing vault behavior is delivered" keeps it open; the C20 clause "promoted only with the owner's acceptance of D10" withdrawn
+— superseded by delivered behaviour plus a stated limit), its `notes` recording the latent rollback of the route's custody row
+corrected (D2.6 reconciled); the nine group-b units AU-TWN-0014 (the envelope declared, evaluated inside it, behaviours disabled,
+results crossing it marked, the threshold raised by the acknowledgement, the envelope exposed on the get and on `SimulationStarted`
+— remaining: the envelope on other behaviour models, approval thresholds beyond the acknowledgement), AU-TWN-0015 (the validation
+record per version, the calibration history from the reconciliation ledger, the expert-review workflow by the SoD — "domain
+validation on representative data" not a harness), AU-TWN-0018 (one indicator — model fitness — bound to decision-active status; the
+rest of the indicator set open), AU-PRD-0012 (the event and the four classes; the scheduler/re-issue clause open), AU-PRD-0014
+(model drift and calibration failure as declared failure states; the abstention product open), AU-PRD-0026 (the five rules, the
+event, duplicates non-decision-active, routed to review; distinctiveness, relevance, coverage-as-measure, bias and sensitivity
+open), AU-PRD-0029 (coherence bound to decision-active status; the rest open), AU-PRD-0030 ("branch incoherent" and "critical
+assumption invalidated" handled; the rest open) and AU-TWN-0031 (the workflow, the reviewer's promotion, the compare UI; the
+frequency-to-probability mapping open) gain their evidence and STAY `open` until the hosted run binds (the P4/P5 rule; every one
+carries its remaining clauses in its own prose); AU-OBS-0103 (`verified:local`) gains the note that an unreachable tier root is not
+this unit's failure; the requirement rows — V03-T-097 stays `partial` (the vault clause's Class B; the fallback's clause; the Class
+A boundary); V03-T-143 partial → `implemented` (the gate), V03-T-334 partial → `implemented` (the five rules; said structural),
+V03-T-349 stays `implemented` with the challenge step delivered, V03-T-322 / V03-T-328 (unverified → `passed:harness`) / V03-T-341
+stay `partial` with the delivered clauses named; FEX-08 (missing → `partial`, stale since B20) and FEX-09 (missing → `partial`; the
+declared row the catalogue lacks in its notes) corrected, FEX-12 missing → `implemented`; ES-33-009 missing → `partial`, ES-36-001
+stays `partial`, ES-38-001 partial → `implemented` (the challenge and invalidation history); IR-17-003 stays `partial` (the
+structured challenge workflow delivered; sensitivity stays a recorded field per run, not an analysis across parameters — the
+design's "implemented" not followed for that clause); PR-33-005 stays `partial` (duplicates, inconsistent assumptions and lost
+evidence links detected and gated; coverage a note the review judges, a collapse to one forecast not detected — the design's
+"implemented" not followed for those clauses); DP-28-005 stays `partial` with the unreachable-root note and the incident preserved
+on the route; OBJ-29 (v08 and v09) missing → `implemented`; the register's four rows L5-I05, L6-I03, L7-I04, L8-I04 partial →
+`implemented`/`passed:harness` with `bound in 0081 (<Event>@v1)` in their notes and L9-I05's remaining clause re-homed `(L10-I05,
+B22)`; every row whose evidence now rests on the candidate `release_status branch-only` with the note. THE SPLIT stays **3,555 =
+3,179 open + 339 local + 37 CI** — no unit promoted by a local run (the summaries regenerated by `audit/summarise.mjs` then
+`audit/summarise-units.mjs`; the delivery register's line unchanged).
+
+**B21.9 — the merges and the chain state (2026-09-23; exact).** Under the owner's authorization on Codex's B20 review (filed
+`audit/reviews/The_Eye_1f6d04c_B20_Review_C15_Unblock_and_B21_Delivery.md`): the six SCX re-issues approved (`approved_on
+2026-09-23`; scope, classification and expiry 2026-11-05 unchanged) and #57 COMPLETED — the recheck's return transition (the
+configured official pin passes, a newer compatible official build or an indeterminate check fails, the cadence unchanged; the
+scanner and trace fixtures re-recorded with the pinned tooling; head `6a1494d`, all checks green) — and MERGED to `main` as
+`870b212` (14:16Z). Its chain: C19 lifecycle 35873000726 green; ci 35873000911 attempt 1 FAILED on `phase1-acceptance:471` (a
+timing-oracle pin, 1054/1055), attempt 2 (a `--failed` re-run) succeeded but a PARTIAL re-run packages no archive, so C17 finalize
+35878185367 FAILED (no `c17-evidence-archive-a2-*`), attempt 3 (a FULL re-run) succeeded and C17 finalize 35918728349 green — but
+the C19 anchor 35918837855's publish was REFUSED by its own causal rule ("resolution expected sourceRunAttempt=2 but the finalized
+evidence authenticates 3; a same-SHA match is not a causal binding"); every attempt preserved; the lesson recorded in the runbook
+§8: a flake on `main`'s ci is re-run in FULL. #56 (B19 at `3ea676d`) retargeted to `main` and MERGED as `6212c5b` (20:57Z); its
+chain FULLY green — ci 35919379221 attempt 1, C17 finalize 35921411985, C19 anchor 35921521108 PUBLISHED; C19 lifecycle 35919379263
+attempt 1's delivery-chain-dry FAILED against `870b212`'s inconsistent evidence (the fixture resolver takes the newest
+finalization), attempt 2 green once its own finalization existed — this is the cumulative chain covering #55 and #57. #58 (B20 at
+`13ed40c`) retargeted to `main`, closed and reopened (the head unchanged) to re-run its required checks against `main`: supply-chain
+GREEN on the returned pin; its C19 lifecycle attempt 1 failed the same way and was re-run green; build-test attempt 1 failed on
+`phase6-retention-b14` H2 (the tenth attempt's receipt without an HTTP status — the second time on this tree), attempt 2 on
+`phase1-acceptance:471` (the timing oracle) — and THE MERGE (`main` `e180b18`, 21:40Z) WAS MADE WHILE ATTEMPT 2'S BUILD-TEST WAS
+STILL PENDING: the integrator's armed merge checked for zero failing checks and let a timed-out wait through — an error, recorded as
+such; the post-merge chain on `main` decided it: ci 35923830613 attempt 1 GREEN (the merged tree passed every hosted suite in one
+attempt), C19 lifecycle 35923830611 green, C17 finalize 35926060309 green, C19 anchor 35926159815 PUBLISHED (22:07Z). `main` now
+carries B18, the C15 return, B19 and B20; B21's PR opens with base `main`. Hardening items from the chains: the two hosted-runner
+timing flakes (`phase1-acceptance:471`'s 3× ratio; `phase6-retention-b14` H2's tenth attempt) — never waived; the C19 causal rule
+against partial re-runs (a process rule, in the runbook §8); the recreation of the live demonstration containers onto the official
+images the return pinned (CP-4a, `docs/images/ARM64_RISK_DECISION.md`) — the owner's call.
+
 ## Order and the next implementation batch
 
 B3, B1 and B2 are done in code, B4/B5 applied to the audit (the 2026-09-11 checkpoints), B6 done in
 code (2026-09-12, on the recovery machinery corrected by 0062 after Codex's finding) and B7 done in code
 (2026-09-12, after Codex's third finding), B8 (2026-09-12, after Codex's B7 findings), B9 (2026-09-13, after
 Codex's B8 findings; the accepted stack merged on `main` in the recorded order meanwhile) and B10 (2026-09-13, after
-Codex's B9 review: F1 closed on the fixed candidate, F2/F3 and G2 carried into this batch), B11 (2026-09-13; its closure of Codex's B11-F1/F2 on 2026-09-14, merged with #48 on 2026-09-15), B12 (2026-09-15, the register's next missing archive-lifecycle capability; merged with #49 on 2026-09-16 on Codex's bounded functional review) and B13 (2026-09-16, the schedule retirement and the customer export's delivery, on `main` after #49; merged with #50 on 2026-09-16 on Codex's bounded review) and B14 (2026-09-16, the https exchange proven, B13-F1 corrected, the trust anchor, the revocation notice, on `main` after #50; merged with #51 on 2026-09-16), B15 (2026-09-16, the relationship closure and the streamed archive; merged with #52 on 2026-09-16 after retargeting) and B16 (2026-09-16, the governed import and the NORDWERK round trip, B14-F1 and B15-F1 corrected, on `main` after #52; PR #53) and B17 (2026-09-16, imported knowledge published to subscribers, the origin's revocation propagated into the importing domain, the signed notice, the review gate; stacked on #53; #53 and #54 merged on 2026-09-16 under the owner's word on Codex's bounded B16/B17 review) and B18 (2026-09-16/17, on `main` after #54: Codex's B17-F1 corrected first, the lifecycle announced — ten interface rows bound, 36/14/0 — with the withdrawal → invalidation → reopen chain, the working domain of a tenant-homed principal and the hosted browser walks; PR #55) and B19 (2026-09-17, the source-derived memory records — a record derived by a person from a claim version or a warning with its provenance, inherited controls, the review and lifecycle gates, the basis followed and the deletion pause; stacked on #55; #55 merged to `main` as `e70f90f` on 2026-09-22 under the owner's word on Codex's bounded B18/B19 review, its ci red on the C15 patched-image recheck step by design and its C17 finalize skipped, #56 held for the C15 return) and B20 (2026-09-22, the index tier — the six projection partitions with a derived watermark on every graph and memory read, the symmetric check that withdraws where the JOIN-only check passed poisoned and missing rows, the operator's withdrawal and the rebuild writer, the labelled last-valid reads and the constrained traversals, the memory content tier's metadata-only fallback, the deletion pause and the briefing's flag; cut from B19's records head `3ea676d`, stacked on #56). The
+Codex's B9 review: F1 closed on the fixed candidate, F2/F3 and G2 carried into this batch), B11 (2026-09-13; its closure of Codex's B11-F1/F2 on 2026-09-14, merged with #48 on 2026-09-15), B12 (2026-09-15, the register's next missing archive-lifecycle capability; merged with #49 on 2026-09-16 on Codex's bounded functional review) and B13 (2026-09-16, the schedule retirement and the customer export's delivery, on `main` after #49; merged with #50 on 2026-09-16 on Codex's bounded review) and B14 (2026-09-16, the https exchange proven, B13-F1 corrected, the trust anchor, the revocation notice, on `main` after #50; merged with #51 on 2026-09-16), B15 (2026-09-16, the relationship closure and the streamed archive; merged with #52 on 2026-09-16 after retargeting) and B16 (2026-09-16, the governed import and the NORDWERK round trip, B14-F1 and B15-F1 corrected, on `main` after #52; PR #53) and B17 (2026-09-16, imported knowledge published to subscribers, the origin's revocation propagated into the importing domain, the signed notice, the review gate; stacked on #53; #53 and #54 merged on 2026-09-16 under the owner's word on Codex's bounded B16/B17 review) and B18 (2026-09-16/17, on `main` after #54: Codex's B17-F1 corrected first, the lifecycle announced — ten interface rows bound, 36/14/0 — with the withdrawal → invalidation → reopen chain, the working domain of a tenant-homed principal and the hosted browser walks; PR #55) and B19 (2026-09-17, the source-derived memory records — a record derived by a person from a claim version or a warning with its provenance, inherited controls, the review and lifecycle gates, the basis followed and the deletion pause; stacked on #55; #55 merged to `main` as `e70f90f` on 2026-09-22 under the owner's word on Codex's bounded B18/B19 review, its ci red on the C15 patched-image recheck step by design and its C17 finalize skipped, #56 held for the C15 return) and B20 (2026-09-22, the index tier — the six projection partitions with a derived watermark on every graph and memory read, the symmetric check that withdraws where the JOIN-only check passed poisoned and missing rows, the operator's withdrawal and the rebuild writer, the labelled last-valid reads and the constrained traversals, the memory content tier's metadata-only fallback, the deletion pause and the briefing's flag; cut from B19's records head `3ea676d`, stacked on #56; #57, #56 and #58 merged to `main` `e180b18` on 2026-09-23) and B21 (2026-09-24, fitness, coherence and challenge — the four foresight rows bound, the register 40/10/0; Codex's B20-F1 corrected first; the vault clause of AU-MEM-0067 delivered for Class B and bounded at Class A; the rehearsal wedge found and fixed; cut from B20's records head `13ed40c`, its PR with base `main`). The
 hosted run at `5118376` (836/836 on a fresh database) verified the B1/B2 units on the hosted chain —
 one artefact, no deployment leg. Every leg of every unit stays unaccepted until a deployment profile
 carries its own signed evidence (P7-D). The synthetic-company demonstration (`eye_demo`, NORDWERK) remains the deliverable
 every batch is exercised on: B3's kinds become visible on the demonstration when a scenario with the
 new kinds is declared there through the governed route (a scripted act, `scripts/phase4/`), which is
-the next demonstration step after the hosted run is green. Next from the register: B21 — fitness, coherence and challenge; the C15 return to the official images (`maintenance/c15-return-to-official-2026-09`, the draft PR #57 to `main`: the re-pin, the provenance and compatibility evidence, the SCX re-issues whose `approved_on` is the owner's) is the parallel maintenance line, not a batch.
+the next demonstration step after the hosted run is green. Next from the register: B22 — the consumers and the attention policy (L10-I05 AttentionPolicyChanged: the package-cause clause of L9-I05 re-homed to it by 0081 §10; L1-I03/L1-I04/L2-I02's consumers), then B23 (the commands and the query — L1-I02, L3-I02, L4-I02, L7-I02, L10-I02/-I03). The C15 return to the official images merged with #57 (`main` `870b212`) under the owner's 2026-09-23 approval of the six SCX re-issues — the parallel maintenance line closed on the tree; the recreation of the live demonstration containers onto those images is the owner's. PENDING THE OWNER'S DECISIONS before or beside B22: the `ctx.build` remedy — the sweep as `DELETE … WHERE nonce IN (SELECT nonce … FOR UPDATE SKIP LOCKED)` in a later migration (0082), which removes both the nested-write deadlock and the liveness hazard, and touches the ctx boundary under C18's watch — against per-site pre-flight assembly at the residual nested-write sites (`twin.ground`, the forecast issue, backtest and outcome writes; §B21.4); AU-MEM-0067's Class A boundary as the reading of its clause (iii) (§B21.2's table); the live containers' recreation onto the official images.

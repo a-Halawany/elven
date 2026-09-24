@@ -1,0 +1,151 @@
+=== CP-6 B21 on the demonstration (NORDWERK, eye_demo) — 20260924T085136Z, tree over 13ed40c (the B21 candidate, uncommitted at run time; committed as the next head): fitness, coherence and challenge (0081) — the twin validated under the envelope the port computes, the forecast assessed under the versioned rule, the incoherent scenario admitted and refused for simulation, the challenge re-run and dismissed, the control promoted; and the cold tier unreachable (0081 §1.C) — the archive root's marker moved aside and restored by the act, the NORDWERK record metadata-only with its custody row ===
+
+0b. the running target before anything (the runbook §2):
+     the API on :3401 is pid 4535; its demonstration settings:
+       EYE_CONNECTOR_PER_SOURCE_CONCURRENCY=1
+       EYE_DB_NAME=eye_demo
+       EYE_DEGRADED_DIR=/Users/halawany/work/personal/mohammed/new_project/apps/api/.eye-local/degraded-demo
+       EYE_RUNTIME_PORT=3401
+       EYE_SCHEDULER_ENABLED=true
+       (no EYE_VAULT_*_ROOT set: the roots are the workspace's .eye-local/vault/{quarantine,evidence,archive,export})
+       /readyz: {"status":"ok","db":true,"audit":"ok","auditIncidents":0,"degradedSince":null,"classification":"telemetry-only"}
+     VERIFIED: the demonstration API serves eye_demo and is ready
+
+1. the demonstration database migrated with 0081 (backup first; the migration adds twin.validations and twin.validate_version with twin.envelope_check, prediction.forecast_fitness_rule and prediction.assess_forecast_fitness with the assessment ledger, prediction.scenario_coherence_rule and prediction.check_scenario_coherence with the check ledger and the re-declared declare/review/raise_warning, simulation.challenges/challenge_events/promotions with the challenge ports, promote_result and the re-declared invalidate_run and open_run (35 arguments), the sixteenth custody kind custody.retrieval_degraded (§1.C), and the register at 40/10/0 with L5-I05, L6-I03, L7-I04 and L8-I04 bound; every pre-0081 row reads its honest default):
+     backup 52584453 bytes  /Users/halawany/work/personal/mohammed/new_project/.eye-local/backups/eye_demo-pre-0081-20260924T085136Z.dump
+   the demonstration API stopped for the migration (pid 4535)
+     applying 0081_b21_fitness_coherence_challenge.sql ... ok
+     migrations up to date
+     role passwords synchronized from environment
+     [{"filename":"0081_b21_fitness_coherence_challenge.sql","digest":"055b05718270f34c","applied_at":"2026-09-24T08:51:41.773Z"},{"filename":"0080_b20_index_tier_degradation.sql","digest":"663def51d5d2fa25","applied_at":"2026-09-22T19:33:09.622Z"},{"filename":"0079_b19_source_derived_memory_records.sql","digest":"f8cd2b93a89ed88b","applied_at":"2026-09-17T02:25:00.206Z"}]
+     the register: [{"binding_state":"bound","n":40},{"binding_state":"partial","n":10}]
+     the honest defaults: [{"scenarios_unchecked":6,"runs_unrecorded":8,"retrieval_degraded":0}]
+
+2. the demonstration API restarted on the B21 build by the runbook's script:
+     $ tsc -p tsconfig.build.json && node scripts/copy-assets.mjs
+     copied src/observation/connectors/xml-worker.js -> dist/observation/connectors/xml-worker.js
+     the API on :3401 is pid 24682; its demonstration settings:
+       EYE_CONNECTOR_PER_SOURCE_CONCURRENCY=1
+       EYE_DB_NAME=eye_demo
+       EYE_DEGRADED_DIR=/Users/halawany/work/personal/mohammed/new_project/apps/api/.eye-local/degraded-demo
+       EYE_RUNTIME_PORT=3401
+       EYE_SCHEDULER_ENABLED=true
+       (no EYE_VAULT_*_ROOT set: the roots are the workspace's .eye-local/vault/{quarantine,evidence,archive,export})
+       /readyz: {"status":"ok","db":true,"audit":"ok","auditIncidents":0,"degradedSince":null,"classification":"telemetry-only"}
+     VERIFIED: the demonstration API serves eye_demo and is ready
+
+
+0. THE STATE — the register through the route (40 bound / 10 partial / 0 unbound; the four foresight rows bound in 0081); the three consumers whose method changed in B21 revoked and registered anew, the four others left; the honest defaults of the demonstration's rows
+  ✓ the interface register (J. Weber, before): 50 rows — 40 bound / 10 partial / 0 unbound; L5-I05 ValidateTwin@v1 bound in 0081, L6-I03 ForecastFitnessChanged@v1 bound in 0081, L7-I04 ScenarioCoherenceFailed@v1 bound in 0081, L8-I04 ChallengeSimulation@v1 bound in 0081; L9-I05's clause re-homed to B22
+  ✓ twins: subscription 01a0ac8d… already active with this process's consumer identity (1.0.0 13996dd05ee7…) — no method changed in B21
+  · forecasts: subscription 01a09302… was registered for consumer 1.0.0 cbcde85317c8…; this process's is 1.0.0 e3932eb0354d… — REVOKED (cursor 14497), registered anew
+  ✓ forecasts: registered subscription 01a0d29d…, principal 01a0d29d… (role forecast_subscriber), consumer 1.0.0 e3932eb0354d…, owner 01a084f5…; worker running true
+  · forecasts: replayed 1 event(s) to the replacement from sequence 14496 (the revoked cursor's own event 14497)
+  · forecasts: replayed event 01a0ca9b…: applied (no effect)
+  · scenarios: subscription 01a09302… was registered for consumer 1.0.0 d2be51c5792f…; this process's is 1.0.0 06a9711bc0c0… — REVOKED (cursor 14497), registered anew
+  ✓ scenarios: registered subscription 01a0d29d…, principal 01a0d29d… (role scenario_subscriber), consumer 1.0.0 06a9711bc0c0…, owner 01a084f5…; worker running true
+  · scenarios: replayed 1 event(s) to the replacement from sequence 14496 (the revoked cursor's own event 14497)
+  · scenarios: replayed event 01a0ca9b…: applied (no effect)
+  · decisions: subscription 01a0ac8d… was registered for consumer 1.0.0 49416a3289ba…; this process's is 1.0.0 6e283700b3b7… — REVOKED (cursor 14497), registered anew
+  ✓ decisions: registered subscription 01a0d29d…, principal 01a0d29d… (role decision_subscriber), consumer 1.0.0 6e283700b3b7…, owner 01a084f5…; worker running true
+  · decisions: replayed 1 event(s) to the replacement from sequence 14496 (the revoked cursor's own event 14497)
+  · decisions: replayed event 01a0ca9b…: applied (no effect)
+  ✓ retrieval: subscription 01a0ca9b… already active with this process's consumer identity (1.0.0 cff991a74015…) — no method changed in B21
+  ✓ memory-mappings: subscription 01a0aacd… already active with this process's consumer identity (1.0.0 2e0ad122d8d0…) — no method changed in B21
+  ✓ relationships: subscription 01a097c8… already active with this process's consumer identity (1.0.0 fe16ee219856…) — no method changed in B21
+  ✓ the seven subscriptions of the origin: 3 re-registered (forecasts, scenarios, decisions — their METHOD_REF literals changed in 0081), 4 already active; the four unchanged kinds (twins, retrieval, memory-mappings, relationships) left
+  · THE HONEST DEFAULTS before the act: twin versions fitness none 5/5; forecasts fitness none 3/3; scenarios coherence unchecked 6/6 (declared before any check existed); runs envelope_state unrecorded 8/8 (opened before 0081); custody.retrieval_degraded rows 0 (0081 §1.C check 3)
+
+1. FITNESS (twin) — T. Nakamura (the twin's owner) is refused by the separation of duties; the administrator validates the admitted version FIT: the envelope the port computed, the calibration history, ValidateTwin@v1, no GraphChanged; T. Nakamura's control run carries twin_fitness fit and envelope_state inside
+  · the twin 01a084f6… "NORDWERK — Ningbo → Regensburg chain", owner 01a084f6… (T. Nakamura), admitted version 5; its fitness before: none
+  ✓ T. Nakamura (the owner) refused: 403 EYE-AUT-001 — twin validation rejected: the twin's owner does not validate their own twin; another twin owner or the domain administrator validates version 5 of 01a084f6-411e-7559-afab-1fdf6c76f525
+  ✓ the administrator validated version 5 FIT: envelope inside of supply-flow@1 — horizon_days: unchecked; consumption.weekly: inside (9200 in [0, 100000] from consumption.weekly:SYN-PART-MAG); corridor_delay_days: inside (14 in [0, 60] from shock.corridor_delay_days); calibration since never: 1 reconciliation(s); 2 run(s) rest on the version (named, never altered)
+  ✓ twin_versions.fitness_state fit, fitness_validation_id 01a0d29d… (twin.validations 1 row(s))
+  ✓ ValidateTwin@v1 published (seq 14541): version 5, verdict fit, prior none, envelope inside, dependency_impacts.runs 2
+  ✓ no GraphChanged from the validation: a validation changes no fact (D2)
+  ✓ T. Nakamura's control run 01a0d29d… completed: twin_fitness fit, envelope inside (horizon_days inside, consumption.weekly inside, corridor_delay_days inside), no acknowledgement needed — SYNTHETIC
+  ✓ SimulationStarted (seq 14542) carries twin_fitness fit and envelope inside
+  · STATED: the outside-envelope run is not staged on the demonstration (the demo's elements lie inside the model's envelope; nothing is regrounded for a show) — the harness T1.6 carries the 422, the operator's 403 and the acknowledged run
+
+2. FITNESS (forecast) — N. Eriksen assesses the corridor transit forecast: the rule's verdict WITH its measures (the ledger is thin; an issued forecast whose daily cadence lapsed reads envelope_breach); the events and the deliveries when unfit; the calibration summary read back; nothing withdrawn
+  · the forecast 01a084f5…: portwatch:chokepoint4:n_total 30d seasonal-naive, replay demonstration, issued 2026-09-09T06:58:16.471Z, cadence daily, fitness before none; the family's outcome ledger holds 0 row(s)
+  ✓ N. Eriksen's assessment under rule v1: unfit (data_shift) — outcomes 0 of 10 in the family's window (0 of 10 outcomes in the family's window: the calibration and drift rules are not applied; the verdict is indeterminate unless another class holds); coverage — (floor 0.75, checked false); pinball — vs backtest none; attention assumption_unverified; expiry 2026-09-10T06:58:16.471Z (cadence daily — LAPSED: an issued forecast past its refresh cadence is unfit by envelope_breach; a scheduler would have re-issued it, none exists)
+  ✓ forecasts_current.fitness_state unfit (data_shift), the assessment row 01a0d29d… on prediction.forecast_fitness_assessments (trigger operator)
+  ✓ ForecastFitnessChanged@v1 published (seq 14544): from none to unfit (data_shift), rule v1
+  ✓ GraphChanged/forecast.fitness_changed (seq 14545) — decisions applied (no items); forecasts applied (no items); memory-mappings applied (no items); retrieval applied (1 item(s): projections.verified); scenarios applied (1 item(s): scenario.attention); twins applied (no items)
+  · the consumers: scenarios 1 scenario(s) marked input_unverified and re-checked (scenario.attention); decisions 0 package(s) noted material_change — assessed unfit, not withdrawn (none cites it); forecasts answers nothing for its own kind
+  ✓ the retrieval subscriber verified the event: check 01a0d29d… mismatched 0
+  ✓ a second assessment is idempotent: changed false, the verdict unchanged, no second event
+  ✓ the calibration summary's live fitness table names the family: portwatch:chokepoint4:n_total 30d seasonal-naive → unfit (data_shift), outcomes 0, rule v1
+  · STATED: the act does NOT withdraw the forecast — the withdrawal (L6-I05) stays N. Eriksen's own act; the assessment names the class the withdraw page would offer
+
+3. COHERENCE — J. Weber declares a scenario with a DUPLICATE downside branch: admitted FAILED with the findings and routed_to, ScenarioCoherenceFailed@v1; T. Nakamura's run on its branch refused; retired by J. Weber; the successor without the duplicate passes
+  ✓ a scenario on the unfit forecast is REFUSED (D8): 409 EYE-STA-002 — scenario rejected: forecast 01a084f5-ca54-7463-85d7-696ebd1e7692 was assessed unfit (data_shift)
+  · the scenario rests on the forecast 01a084f5… (ecb-eurusd); its downside branches on the indicator 01a0924a… "Browser check · in time · mtxg3z8o: transits below 41 for five consecutive published observations"
+  ✓ J. Weber's scenario 01a0d29d… ADMITTED failed (never refused): duplicate_branch [fail]: branches "Corridor collapse" and "Corridor collapse (restated)" are both downside and share the same indicator; they do not cover distinct uncertainty | coverage [note]: 2 live branch(es) of 1 kind(s) beside the baseline; the portfolio may not cover the material uncertainty — the review judges it
+  ✓ ScenarioCoherenceFailed@v1 published (seq 14547): 2 finding(s), rule v1, routed_to platform_admin, domain_admin, strategy_owner, forecast_owner
+  · T. Nakamura carried version 5 into version 6 (known_at now: the scenario is known to it — the run's shock basis)
+  ✓ T. Nakamura's run on the failed scenario's branch REFUSED: 409 EYE-STA-002 — run rejected (incoherent_scenario): scenario 01a0d29d-4d4a-7c46-9ce1-5d6e7792ec1a failed its coherence check 01a0d29d-4d5b-7784-95f5-388dff1b6288 (duplicate_branch); a branch of an incoherent scenario is not simulated until a review resolves it
+  · the promotion-to-simulation refusal of a failed scenario is shown on the rehearsal copy only (the harness T3.2 carries it)
+  ✓ J. Weber RETIRED the scenario (no branch-close act exists — the correction path is retire + a successor, D10)
+  ✓ the successor 01a0d29d… PASSED: coverage [note] — coherence_state passed
+
+4. CHALLENGE — J. Weber disputes the demo's newest completed valid intervention run; the administrator requests the re-run; T. Nakamura opens it as a governed run naming the challenge; compared on the common control; the administrator DISMISSES (the run stays valid); the administrator PROMOTES the control as fit for the routing decision; the upheld path on the rehearsal copy only
+  · T. Nakamura carried version 6 into version 7 (known_at now: the successor scenario is known to it; observed through 2024-04-10)
+  · no completed valid intervention run of the demonstration sits on a live scenario (act IV's and B18's are retired by review): T. Nakamura opened intervention run 01a0d29d… as a HYPOTHETICAL shock naming no scenario (the live scenario's branch is not flipped within the cut-offs — the product refuses a shock bound to an unflipped branch), citing control 01a0d29d… on version 7 (scene 3's, whose known_at follows the scenario) — the act disputes a run of its own
+  · the run 01a0d29d…: twin 01a084f6…@7, operator 01a084f6… (T. Nakamura), control 01a0d29d… (completed valid, fitness none), interventions [{"to":"2024-04-09","from":"2024-01-11","type":"draw_down","component":"SYN-PART-MAG"},{"type":"reroute","shipment":"SYN-SHIP-4472"}], scenario none; fitness none, envelope inside, twin_fitness none (opened under 0081)
+  ✓ J. Weber OPENED challenge 01a0d29d… (interpretation) on run 01a0d29d…; the run's operator 01a084f6… and J. Weber may not decide it (separation of duties)
+  ✓ ChallengeSimulation@v1 published (seq 14557): state opened, kind interpretation, run validity valid
+  ✓ J. Weber may not decide his own challenge: 403 EYE-AUT-001 — simulation challenge rejected: the decider is the challenge's opener; someone else decides challenge 01a0d29d-52c1-7c22-b2a8-740b3b61c001
+  ✓ the administrator requested a re-run: open a governed run (POST …/twins/simulations/run) with correctsRunId = the challenged run and challengeId = this challenge; the compare route judges it on the common control
+  ✓ T. Nakamura's re-run 01a0d29d… completed, bound to the challenge (challenge_id on the run; rerun_run_id on the challenge; challenge.rerun_opened on its ledger) — SYNTHETIC
+  ✓ compared on the common control: 01a0d29d… line_stop_days 29, 01a0d29d… line_stop_days 0, 01a0d29d… line_stop_days 0
+  ✓ the administrator DISMISSED challenge 01a0d29d…: the run stays valid (valid); no invalidation, no GraphChanged
+  ✓ ChallengeSimulation@v1 published (seq 14561): state dismissed, rerun 01a0d29d…
+  ✓ the administrator PROMOTED the control 01a0d29d… FIT for "the NORDWERK corridor routing decision (the demonstration)": the validation restated from the row ({"twin_fitness":"none","envelope_state":"inside","validation_status":"unvalidated (synthetic grounding); predicted inputs: context.fx_forecast rests on FCT:01a0ac8d-3f5e-7871-91b1-5836896f26bc@1 (unvalidated); the shock is HYPOTHETICAL (no scenario branch supports it); outputs are SYNTHETIC","inherited_validation":[{"key":"context.fx_forecast","state":"unvalidated"}],"outside_envelope_perturbation":false}), the sensitivity kept, limitations ["calendar days","synthetic grounding"]; run.promoted on its ledger
+  ✓ no outbox event for a promotion (OBJ-29 is a work-object action outside the fifty-interface catalogue; the state rides the get, the list and the page — D12)
+  ✓ T. Nakamura (the operator) refused: 403 EYE-AUT-001 — run promotion rejected: the reviewer operated run 01a0d29d-5236-71e9-a1d2-5e3125730999; a result is promoted by someone else (OBJ-29)
+  · the UPHELD path (a challenge upheld → the run invalidated with trigger challenge) is shown on the rehearsal copy only — the demonstration's run is never invalidated by the act; the harness T4.6 carries the three outbox rows and the six deliveries
+
+5. THE COLD TIER UNREACHABLE — a cold NORDWERK record downloaded verified; the archive root's marker moved aside by the act itself (three refusals to start; restored whatever ends the process); the record answers metadata-only with its custody row and audit row; a hot record served beside it; the marker restored, the record verified again
+  · the archive root as this act resolves it: /Users/halawany/work/personal/mohammed/new_project/.eye-local/vault/archive (nothing under a root is ever printed)
+  · the cold record 01a09afe… (manifest 01a09afe…, 3934 bytes, recorded 2026-09-13T13:39:36.576Z); the hot record 01a0d291…; custody.retrieval_degraded rows in the domain before: 0
+  ✓ A. Hoffmann downloaded the cold record VERIFIED from the archive tier: 3934 bytes, digest equal — SYNTHETIC
+  · the newest custody.retrieved row: tier archive, served_from published
+  ✓ the hot record 01a0d291… downloaded verified (tier hot)
+  · the marker's sha256 before: 371e16ce98051a3e…; tier/state before: archive reachable true (blobs 1), evidence reachable true
+     the archive root of the demonstration's vault is now unreachable by the product's own definition (B18: its marker cannot be read) — standing in for an unmounted cold volume; nothing under the root moved
+  ✓ tier/state: archive reachable false, evidence reachable true (the inventory still lists: blobs 1 — the marker is the rule; an unmounted volume would read zeros)
+  ✓ the cold record answers 200 METADATA-ONLY: base64 null, integrity unavailable, availability unreachable, tier archive, the manifest's digest and 3934 bytes, degraded { tier_unreachable, EYE-DEG-001, root archive }
+  · the label, verbatim: the archive root of the vault could not be reached; this evidence's record — its manifest, digest, tier and custody — is served; its bytes are not, and nothing about them was verified or refuted; retry when the tier is mounted (retention/tier/state names the roots)
+  ✓ the audit row (seq 101511): success / EYE-DEG-001
+  ✓ the custody chain's newest row: custody.retrieval_degraded { failure root_unreachable, root archive, tier archive, disclosure none }, digest_verified null
+  ✓ no custody.integrity_failed row for the cold record since the scene began: an unreachable root is never an integrity incident
+  ✓ the detail route serves the metadata tier untouched: availability { tier archive, state archived }, the custody chain carrying the degraded read
+  ✓ the hot record 01a0d291… served verified in the same window (the evidence root is reachable)
+  · S. Okafor's briefing and L. Brandt's memory retrieval are not exercised: no memory path reads vault bytes (memory.service.ts derives from the payload's digest)
+  · no registered series has an archived window on the demonstration (PortWatch's evidence is hot): the series and extraction disclosures are V4 on the harness
+  · the scheduler, observed: no poll confirmed by an unverifiable held record in the window (no scheduled source's held evidence is archived on the demonstration)
+     the archive root's marker restored (/Users/halawany/work/personal/mohammed/new_project/.eye-local/vault/archive/.eye-vault-root)
+  ✓ the marker restored byte-identical (sha256 371e16ce98051a3e…)
+  ✓ tier/state: archive reachable true again
+  ✓ the cold record verified again after the restore, the digest equal
+  ✓ the chain of this scene: [custody.retrieved, custody.retrieval_degraded, custody.retrieved]; the domain's custody.retrieval_degraded rows 0 → 1 (the act read the cold record ONCE while aside)
+
+6. THE STATE — the four objects' states, the register, the subscriptions, what the act leaves, the stated limits
+  ✓ the interface register (J. Weber, after): 50 rows — 40 bound / 10 partial / 0 unbound; L5-I05 ValidateTwin@v1 bound in 0081, L6-I03 ForecastFitnessChanged@v1 bound in 0081, L7-I04 ScenarioCoherenceFailed@v1 bound in 0081, L8-I04 ChallengeSimulation@v1 bound in 0081; L9-I05's clause re-homed to B22
+  · the twin 01a084f6…: v1 none, v2 none, v3 none, v4 none, v5 fit, v6 none, v7 none; the forecast 01a084f5…: issued, fitness unfit (data_shift); the scenarios: 01a0d29d… {"state":"retired","coherence_state":"failed"}, successor 01a0d29d… {"state":"active","coherence_state":"passed"}; the runs: 01a0d29d… valid fitness fit (the NORDWERK corridor routing decision (the demonstration)); 01a0d29d… valid fitness none; 01a0d29d… valid fitness none; the challenges on 01a0d29d…: dismissed
+  · the subscriptions of the origin: decisions@14552, forecasts@14552, memory-mappings@14552, relationships@14254, retrieval@14552, scenarios@14552, twins@14552
+  · WHAT THE ACT LEAVES: one validation (fit), one assessment (unfit), two scenarios (one retired), 1 challenge(s) on the disputed run (dismissed), one re-run, one promotion, one custody.retrieval_degraded row on 01a09afe… with two custody.retrieved rows beside it; the three re-registered subscriptions; nothing retired; nothing withdrawn on the demonstration; no persona created; the archive root's marker back in place
+  · STATED: no forecast scheduler or re-issue exists (the assessment is event-driven; an expired daily cadence reads envelope_breach honestly); the fitness rules are versioned constants over the ledgers this product holds — not bias tests, expert review or alternative assumptions; the series-length breach is not detected; the twin's calibration history is the reconciliation ledger and "domain validation on representative data" is not a harness; the envelope covers the keys the model declares (horizon_days checked at open_run; a model with no ranges validates unchecked); coherence is structural over the fields the product holds (a free-text assumption is noted, never judged; distinctiveness, relevance, bias and sensitivity are not computed); no branch suspension, no add-branch or close-branch command (retire + a successor); the challenge re-run is a governed run, never an in-process re-execution; no frequency-to-probability mapping; no decision gate on unpromoted runs; the challenge DISPOSITION on a delivery is not produced; no outbox event for a promotion; the outside-envelope run and the upheld path are harness / rehearsal cases; a fitness or coherence failure reaches no briefing
+  · STATED (the cold tier): a metadata-only answer for a PER-OBJECT missing or corrupt read is never given (A7 — one 409, one custody.integrity_failed row, no disclosure; the metadata is the detail route's); the class is decided BEFORE the read by the primary root's marker alone (a fallback root's state never re-classifies); reachability is the marker's readability — the moved marker is an honest stand-in for an unmounted volume; the quarantine root has no marker; /readyz does not probe the vault roots (tier/state says reachable); one custody.retrieval_degraded row per read; the twin's disclosure is the series' refused string verbatim (V4 on the harness)
+
+WHAT THE DEMONSTRATION SHOWED: the four foresight objects of this product now carry ONE fitness vocabulary set only by a recorded act whose measures the port computes — the administrator validated T. Nakamura's twin fit over the envelope the port computed (T. Nakamura himself refused by the separation of duties) and the run that followed carried the verdict and its envelope state; N. Eriksen's assessment of the corridor forecast answered what the rule says over a thin ledger and the lapsed cadence, and where it said unfit the scenarios resting on it were marked and re-checked and the packages citing it noted; J. Weber's duplicated branch was ADMITTED incoherent, refused for simulation and retired for a successor that passed; J. Weber's dispute of the reroute was re-run under governance, compared on the common control and dismissed by the administrator, who then promoted the control fit for the routing decision; and the cold tier, made unreachable by the product's own definition, answered the NORDWERK record's metadata with its custody row and no integrity incident, then served the bytes again once mounted.
+WHAT THE HARNESS ALONE PROVES (phase6-fitness-b21, phase6-evidence-degradation-b21, phase6-graph-projections-b21 on fresh databases): the outside-envelope run refused, refused for a simulation operator's acknowledgement and admitted under a twin owner's; the calibration-failure family across eleven scored forecasts with the six deliveries; data shift through a real GraphChanged; the outcome write's skips of a withdrawn and a superseded forecast; the coherence rules one by one and the warning gate; the upheld challenge invalidating its run in the same write with the withdrawn SIM version and the citation gate; Class A pinned through the route beside Class B on both roots, the series reader, the extraction, the verifier and the poll; Codex's B20-F1 rows through HTTP.
+
+ALL SCENES HELD · 22.2 s
+act exit 0
+
+3. the archive root's marker after the act (the runner's independent proof that it is back, whatever the act printed):
+     -rw-------@ 1 halawany  staff  8 Sep 17 00:57 .eye-local/vault/archive/.eye-vault-root
+     aside files under .eye-local/vault: 0

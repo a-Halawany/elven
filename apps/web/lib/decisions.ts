@@ -41,7 +41,8 @@ export interface BriefingItem { item_id: string; kind: string; id: string; title
 export interface BriefingWindow { kind: string; id: string; title: string; closes_at: string; time_left_seconds: number; overdue: boolean; owner: string | null }
 export interface Briefing {
   briefing_id: string; room_id: string | null; package_id: string | null; composed_by: string; composed_via: 'human' | 'agent'; agent_id: string | null; known_at: string; prior_briefing_id: string | null;
-  watermark: { prior_briefing_id: string | null; prior_known_at?: string | null; prior_composed_at: string | null; known_at: string }; sources: string[]; items: BriefingItem[]; windows: BriefingWindow[];
+  /** B20: the memory projection's state at composition; B21 (Codex B20-F1): `memory_content 'unavailable'` rides ONLY a composition whose memory items were omitted because the withdrawn projection's log could not be read (absent means served). */
+  watermark: { prior_briefing_id: string | null; prior_known_at?: string | null; prior_composed_at: string | null; known_at: string; projection?: { memory?: 'serving' | 'withdrawn'; memory_content?: 'unavailable' } }; sources: string[]; items: BriefingItem[]; windows: BriefingWindow[];
   source_states: Array<{ source_key: string; name: string; acquisition_mode: string; state: string; reason: string }>; degraded: boolean; narrative: string | null; narrative_cites: string[]; content_digest: string; composed_at: string;
   /** B10: items withheld from THIS reader (outside a cited memory version's audience) and the present availability of the citations, apart from the content. */
   items_withheld?: number;

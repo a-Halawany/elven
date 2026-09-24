@@ -872,7 +872,11 @@ export interface RetentionTierPolicyIntake {
 }
 
 /** One blob root's inventory as the controller adds it to the tier state (one readdir of the domain's directory); nulls with `error` when the root could not be listed. */
-export interface RetentionVaultInventory { blobs: number | null; staged: number | null; temp: number | null; error?: string }
+export interface RetentionVaultInventory {
+  blobs: number | null; staged: number | null; temp: number | null; error?: string;
+  /** B21.2: whether the root's marker (B18's `.eye-vault-root`) could be read — the product's own definition of a mounted tier; absent from a server before 0081. */
+  reachable?: boolean;
+}
 
 /**
  * The cold tier's observable state (B12, `retention.tier_state` + the vault's inventory of both roots): the policy in force (the

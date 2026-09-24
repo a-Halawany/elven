@@ -14,6 +14,9 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sql } from 'kysely';
 import { uuidv7 } from 'uuidv7';
 import { createHash } from 'node:crypto';
+import { mkdtempSync, readFileSync, realpathSync, renameSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { INestApplicationContext } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { jcsCanonicalize, type Envelope } from '@eye/contracts';
@@ -35,6 +38,14 @@ import { AgentSessionService } from '../../src/observation/agents/agent-session.
 import { RestConnector } from '../../src/observation/connectors/rest.connector.js';
 import { VaultService } from '../../src/observation/vault/vault.service.js';
 import { seedPhase1Domain, type Phase1Fixture } from './phase1-helpers.js';
+
+// B21 (C5): this file's own vault roots (the B18 idiom) — before B21 its uploads landed under the workspace default (.eye-local/vault); the
+// B21.2 case below moves a marker, which must never be the demonstration's.
+const VAULT_DIR = realpathSync(mkdtempSync(join(tmpdir(), 'eye-p2a-vault-')));
+process.env['EYE_VAULT_QUARANTINE_ROOT'] = join(VAULT_DIR, 'quarantine');
+process.env['EYE_VAULT_EVIDENCE_ROOT'] = join(VAULT_DIR, 'evidence');
+process.env['EYE_VAULT_ARCHIVE_ROOT'] = join(VAULT_DIR, 'archive');
+process.env['EYE_VAULT_EXPORT_ROOT'] = join(VAULT_DIR, 'export');
 
 const sha256 = (s: string): string => createHash('sha256').update(s, 'utf8').digest('hex');
 
@@ -722,4 +733,59 @@ describe('B6 — Phase 0 and Phase 1 are untouched by Phase 2', () => {
       expect(Number(p.mismatched), `${p.projection} drifted from its event log`).toBe(0);
     }
   });
+});
+
+/* ═════════ B21.2 (0081 §1.C) · the evidence root UNREACHABLE: the extraction reads nothing, records why, admits nothing ═════════ */
+
+describe('B21.2 — the evidence root unreachable: the run reads nothing, records why, admits nothing', () => {
+  it('every retrieval of the run answers metadata-only (EYE-DEG-001) with a custody.retrieval_degraded row naming the extraction; no receipt, no claim, the run completed; the root restored, a new attempt reads as before', async () => {
+    const vault = app.get(VaultService);
+    const marker = join(vault.rootFor('evidence'), '.eye-vault-root');
+    const aside = join(VAULT_DIR, '.eye-vault-root.evidence-aside');
+    expect(readFileSync(marker, 'utf8').trim()).toBe('evidence');
+    expect(await vault.rootReachable('evidence')).toBe(true);
+    const claimsBefore = Number((await sql<{ n: string }>`select count(*)::text n from objects.canonical_objects where object_type = 'CLM' and tenant_id = ${fx.tenantId}::uuid and domain_id = ${fx.domainId}::uuid`.execute(su)).rows[0]?.n);
+    const auditBefore = Number((await sql<{ s: string }>`select coalesce(max(audit_seq), 0)::text s from audit.audit_events where tenant_id = ${fx.tenantId}::uuid`.execute(su)).rows[0]?.s);
+    const t0 = (await sql<{ t: Date }>`select clock_timestamp() t`.execute(su)).rows[0]!.t;
+    renameSync(marker, aside);
+    try {
+      expect(await vault.rootReachable('evidence')).toBe(false);
+      const out = await orchestrator.run({
+        envelope: envelopeFor(agentId, 'intelligence.claim.admit', 'CLM', null),
+        principal: agentPrincipal, tenantId: fx.tenantId, domainId: fx.domainId,
+        methodId, limit: 25, newAttempt: true,
+      });
+      expect(out).toMatchObject({ evidenceRead: 0, claimsAdmitted: 0, state: 'completed' });
+      const degraded = (await sql<{ manifest_id: string; digest_verified: boolean | null; details: Record<string, unknown> }>`
+        select manifest_id::text, digest_verified, details from observation.custody_events
+         where tenant_id = ${fx.tenantId}::uuid and event = 'custody.retrieval_degraded' and occurred_at >= ${t0} order by occurred_at`.execute(su)).rows;
+      expect(degraded.length, 'the run retrieved nothing and recorded why on every manifest it reached').toBeGreaterThanOrEqual(1);
+      expect(new Set(degraded.map((r) => r.manifest_id)).size, 'one row per manifest').toBe(degraded.length);
+      for (const r of degraded) {
+        expect(r.digest_verified).toBeNull();
+        expect(r.details).toMatchObject({ failure: 'root_unreachable', root: 'evidence', tier: 'hot', disclosure: 'none', read_for: 'intelligence.extraction', method_id: methodId, mode: 'replay' });
+        for (const k of ['purpose', 'method_key', 'run_id']) expect(r.details[k], k).toBeDefined();
+      }
+      const incidents = Number((await sql<{ n: string }>`select count(*)::text n from observation.custody_events where tenant_id = ${fx.tenantId}::uuid and event = 'custody.integrity_failed' and occurred_at >= ${t0}`.execute(su)).rows[0]?.n);
+      expect(incidents, 'an unreachable root is never an integrity incident').toBe(0);
+      const audit = (await sql<{ outcome: string; result_code: string }>`select outcome, result_code from audit.audit_events where tenant_id = ${fx.tenantId}::uuid and audit_seq > ${auditBefore} and action = 'observation.evidence.retrieve' order by audit_seq`.execute(su)).rows;
+      expect(audit.length).toBe(degraded.length);
+      expect(audit.every((a) => a.outcome === 'success' && a.result_code === 'EYE-DEG-001'), JSON.stringify(audit)).toBe(true);
+      const claimsAfter = Number((await sql<{ n: string }>`select count(*)::text n from objects.canonical_objects where object_type = 'CLM' and tenant_id = ${fx.tenantId}::uuid and domain_id = ${fx.domainId}::uuid`.execute(su)).rows[0]?.n);
+      expect(claimsAfter).toBe(claimsBefore);
+      console.log(`B21.2 EVIDENCE V4(c): ${JSON.stringify({ fault_trace: 'the evidence root marker moved aside', watermark: 'availability unreachable on every read', consumer_behaviour: { evidenceRead: out.evidenceRead, claimsAdmitted: out.claimsAdmitted, state: out.state, retrievals: degraded.length }, operator_action: 'the marker restored', recovery: 'a new attempt reads as before', reconciliation: 'custody.retrieval_degraded per manifest; audit success/EYE-DEG-001; no integrity_failed' })}`);
+    } finally {
+      renameSync(aside, marker);
+    }
+    expect(await vault.rootReachable('evidence')).toBe(true);
+    const again = await orchestrator.run({
+      envelope: envelopeFor(agentId, 'intelligence.claim.admit', 'CLM', null),
+      principal: agentPrincipal, tenantId: fx.tenantId, domainId: fx.domainId,
+      methodId, limit: 25, newAttempt: true,
+    });
+    expect(again.state).toBe('completed');
+    expect(again.evidenceRead, 'the root restored: the evidence is read again').toBeGreaterThan(0);
+    // a NEW attempt re-extracts by design (the idempotency of the "again" idiom above belongs to newAttempt: false): the claims it admits are printed, not pinned
+    console.log(`B21.2 V4(c): the attempt after the restore read ${again.evidenceRead} evidence object(s) and admitted ${again.claimsAdmitted} claim(s)`);
+  }, 300_000);
 });

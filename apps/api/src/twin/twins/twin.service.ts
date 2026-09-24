@@ -25,9 +25,9 @@ import { newId } from '../../shared/ids.js';
 import type { ScopeContext } from '../../shared/scope.js';
 import { SeriesService, type Reader } from '../../prediction/series/series.service.js';
 import { foldControls, type Controls, type ControlInput } from '../../prediction/controls.js';
-import type { AdmitWrites, Citation, CitationKind, CitedObjectRow, DeclareWrites, GroundWrites, TwinReads, VersionWrites } from '../twin.capabilities.js';
-import { LIFECYCLE_EVENT_LIST_MAX } from '../../graph/subscriptions/change-events.js';
-import { changedVariablesOf, type ChangedVariable, type ElementRow } from './twin-events.js';
+import type { AdmitWrites, Citation, CitationKind, CitedObjectRow, DeclareWrites, EnvelopeCheck, GroundWrites, TwinReads, ValidateWrites, VersionWrites } from '../twin.capabilities.js';
+import { LIFECYCLE_EVENT_LIST_MAX, type OutboxRow } from '../../graph/subscriptions/change-events.js';
+import { changedVariablesOf, validateTwinEvent, type ChangedVariable, type ElementRow } from './twin-events.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const KINDS = ['observed', 'estimated', 'assumed', 'predicted', 'simulated'] as const;
@@ -120,6 +120,20 @@ export function validateElementIntake(m: Partial<ElementIntake>, correlationId: 
     confidence: typeof m.confidence === 'number' && m.confidence >= 0 && m.confidence <= 1 ? m.confidence : null,
     record,
   };
+}
+
+/** B21 (0081, D2): a person's verdict on an admitted version — the intake the validate route checks before the pipeline (the port judges the rest). */
+export interface ValidationIntake { verdict: 'fit' | 'unfit' | 'indeterminate'; reason: string; limitations: string[] }
+const VERDICTS = ['fit', 'unfit', 'indeterminate'] as const;
+export function validateValidationIntake(m: Record<string, unknown>, correlationId: string): ValidationIntake {
+  const bad = (msg: string): never => { throw new HttpException(errorBody('EYE_REQ_001', correlationId, msg), 422); };
+  if (typeof m['verdict'] !== 'string' || !(VERDICTS as readonly string[]).includes(m['verdict'])) bad('verdict must be fit, unfit or indeterminate');
+  if (typeof m['reason'] !== 'string' || m['reason'].trim().length < 8) bad('reason states the validation (at least 8 characters)');
+  const limitations = m['limitations'] === undefined || m['limitations'] === null ? [] : m['limitations'];
+  if (!Array.isArray(limitations) || limitations.length > 50 || !limitations.every((x) => typeof x === 'string' && x.trim().length > 0 && x.length <= 200)) {
+    bad('limitations, when given, is a list of at most 50 strings of at most 200 characters');
+  }
+  return { verdict: m['verdict'] as ValidationIntake['verdict'], reason: (m['reason'] as string).trim(), limitations: limitations as string[] };
 }
 
 /** A stable digest for an entity citation: entities carry no content digest, so the row's identity is digested. */
@@ -551,6 +565,33 @@ export class TwinService {
     };
   }
 
+  /**
+   * B21 (0081, L5-I05): VALIDATE an admitted version (governed write: `twin.version.validate`, human-gated). The port
+   * (twin.validate_version) computes the ENVELOPE CHECK and the CALIBRATION summary, refuses the twin's owner (separation
+   * of duties), a draft and a `fit` verdict outside the envelope, records the ledger row and the version's state, and
+   * names the runs resting on the version (left as they are). The answer is the port's, whole; the event ValidateTwin@v1
+   * is built here from it for the route to publish in the same transaction (no GraphChanged: a validation changes no fact).
+   */
+  async validate(cap: ValidateWrites, ctx: ScopeContext, twinId: string, version: number, a: ValidationIntake, actor: string, correlationId: string):
+    Promise<{ validation: Record<string, unknown>; event: OutboxRow }> {
+    const validation = await cap.validateVersion({
+      validationId: newId(), twinId, tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, version,
+      verdict: a.verdict, reason: a.reason, limitations: a.limitations, actor, eventId: newId(), correlationId,
+    });
+    const s = (v: unknown): string | null => (v === null || v === undefined ? null : String(v));
+    const event = validateTwinEvent({
+      twinId, version, branchId: s(validation['branch_id']), validationId: String(validation['validation_id']),
+      verdict: String(validation['verdict'] ?? a.verdict), priorState: String(validation['prior_state'] ?? 'none'),
+      envelope: (validation['envelope'] !== null && typeof validation['envelope'] === 'object' ? validation['envelope'] : { state: 'unchecked', model: null, keys: {} }) as EnvelopeCheck,
+      calibration: (validation['calibration'] !== null && typeof validation['calibration'] === 'object' ? validation['calibration'] : {}) as Record<string, unknown>,
+      limitations: Array.isArray(validation['limitations']) ? (validation['limitations'] as unknown[]).map(String) : a.limitations,
+      runs: Array.isArray(validation['runs']) ? (validation['runs'] as Array<Record<string, unknown>>) : [],
+      stateSetDigest: s(validation['state_set_digest']), knownAt: s(validation['known_at']), observedThrough: s(validation['observed_through']),
+      actor, occurredAt: new Date().toISOString(),
+    });
+    return { validation, event };
+  }
+
   async list(cap: TwinReads): Promise<Array<Record<string, unknown>>> {
     const twins = (await cap.readTwins().selectAll().orderBy('declared_at' as never, 'desc').execute()) as Array<Record<string, unknown>>;
     const versions = (await cap.readVersions().selectAll().orderBy('version' as never).execute()) as Array<Record<string, unknown>>;
@@ -564,6 +605,8 @@ export class TwinService {
     const elements = (await cap.readElements().selectAll().where('twin_id' as never, '=', twinId as never).orderBy('version' as never).orderBy('key' as never).execute()) as Array<Record<string, unknown>>;
     const events = (await cap.readEvents().selectAll().where('twin_id' as never, '=', twinId as never).orderBy('occurred_at' as never).execute()) as Array<Record<string, unknown>>;
     const reconciliations = (await cap.readReconciliations().selectAll().where('twin_id' as never, '=', twinId as never).orderBy('recorded_at' as never).execute()) as Array<Record<string, unknown>>;
+    // B21: the recorded validation a version's fitness_validation_id names — the check as recorded, never re-computed on read (C14).
+    const validations = (await cap.readValidations().selectAll().where('twin_id' as never, '=', twinId as never).execute()) as Array<Record<string, unknown>>;
     /*
      * PROPAGATION PENDING. A correction case whose affected evidence REACHES this twin —
      * cited directly, or through a claim derived from it, a forecast that read it, or a
@@ -590,7 +633,7 @@ export class TwinService {
                        propagation: 'pending — an authorised operator has not yet run the dependency walk' });
       }
     }
-    return { ...t, versions: versions.map((v) => ({ ...withDays(v), elements: elements.filter((e) => Number(e['version']) === Number(v['version'])).map(withDays) })), events, reconciliations, propagation_pending: pending };
+    return { ...t, versions: versions.map((v) => ({ ...withDays(v), fitness: fitnessOf(v, validations), elements: elements.filter((e) => Number(e['version']) === Number(v['version'])).map(withDays) })), events, reconciliations, propagation_pending: pending };
   }
 
   /**
@@ -672,6 +715,7 @@ export class TwinService {
     const version = Number(v['version']);
     const elements = (await cap.readElements().selectAll()
       .where('twin_id' as never, '=', twinId as never).where('version' as never, '=', version as never).orderBy('key' as never).execute()) as Array<Record<string, unknown>>;
+    const validations = (await cap.readValidations().selectAll().where('twin_id' as never, '=', twinId as never).where('version' as never, '=', version as never).execute()) as Array<Record<string, unknown>>;
     const events = (await cap.readEvents().selectAll()
       .where('twin_id' as never, '=', twinId as never)
       .where('event' as never, 'in', ['version.admitted', 'version.unverified', 'version.reverified'] as never)
@@ -686,7 +730,7 @@ export class TwinService {
       else later.push({ event: e['event'], occurred_at: instantOf(e['occurred_at']), details: e['details'] });
     }
     return {
-      ...withDays(v), elements: elements.map(withDays), as_of: new Date(at).toISOString(),
+      ...withDays(v), fitness: fitnessOf(v, validations), elements: elements.map(withDays), as_of: new Date(at).toISOString(),
       verification_state: asOfState, verification_state_as_of: asOfState, verification_state_now: v['verification_state'],
       events_after_instant: later,
     };
@@ -735,6 +779,24 @@ function microsOf(iso: string): string {
   const m = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d{1,6}))?\d*Z$/.exec(iso);
   if (m === null) return new Date(iso).toISOString().replace('Z', '000Z');
   return `${m[1]}.${(m[2] ?? '').padEnd(6, '0')}Z`;
+}
+
+/**
+ * B21 (0081): a version's FITNESS as recorded — the state on the row and the validation row its `fitness_validation_id`
+ * names (the verdict, the envelope check and the calibration summary as the port computed them at validation). A version
+ * nobody validated reads `{ state: 'none', validation_id: null }`; the check is never re-computed on read (C14).
+ */
+function fitnessOf(v: Record<string, unknown>, validations: Array<Record<string, unknown>>): Record<string, unknown> {
+  const id = v['fitness_validation_id'];
+  const state = String(v['fitness_state'] ?? 'none');
+  if (id === null || id === undefined) return { state, validation_id: null };
+  const row = validations.find((x) => String(x['validation_id']) === String(id));
+  if (row === undefined) return { state, validation_id: String(id) };
+  return {
+    state, validation_id: String(id), validated_at: instantOf(row['validated_at']), validated_by: row['validated_by'] ?? null, verdict: row['verdict'] ?? null,
+    envelope_state: row['envelope_state'] ?? null, envelope: row['envelope_check'] ?? null, calibration: row['calibration'] ?? null,
+    limitations: Array.isArray(row['limitations']) ? row['limitations'] : [], reason: row['reason'] ?? null,
+  };
 }
 
 /** A state element row as the announcement compares it (B18): the day columns rendered as days, the citations counted as a list. */

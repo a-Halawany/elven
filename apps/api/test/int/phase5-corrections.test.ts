@@ -418,6 +418,22 @@ describe('F6 · as-of verification, comparison of material semantics, reconcilia
     const r = await reconcile({ key: simKey, fromVersion: simVersion, againstVersion: later, note: 'the plant count on 26 February came in' });
     expect(Number(r.reconciliation.difference.numeric)).toBeCloseTo(157.143, 2);
   }, 300_000);
+
+  it('B21.3 (C15) · THE CALIBRATION HISTORY of a validation: after the reconciliation above, a domain administrator validates the reconciled version fit — calibration.count 1 naming the key, numeric.n 1, since null (no earlier validation of this twin); the owner is not the validator (SoD)', async () => {
+    const validator = await h.humanWithSession(['domain_admin'], 'b21-validator');
+    const rec = (await sql<{ from_version: number; key: string }>`select from_version::int, key from twin.reconciliations where twin_id = ${twinId}::uuid order by recorded_at desc limit 1`.execute(h.su)).rows[0]!;
+    // the B21 route POST …/twins/:twinId/versions/:version/validate (twin.version.validate, human-gated) — declared beside admit
+    const validate = (twins as unknown as { validate: (req: never, tenantId: string, domainId: string, twinId: string, version: string, body: { payload: Record<string, unknown> }) => Promise<{ validation: Record<string, unknown> }> }).validate;
+    const r = await validate.call(twins, h.req(validator, 'twin.version.validate', 'TWN', twinId, 'twin'), h.fx.tenantId, h.fx.domainId, twinId, String(rec.from_version),
+      { payload: { verdict: 'fit', reason: 'the plant count reconciles the simulated on-hand within tolerance (B21 harness)', limitations: ['calendar days'] } });
+    expect(r.validation).toMatchObject({ verdict: 'fit', version: rec.from_version, prior_state: 'none' });
+    const cal = r.validation['calibration'] as Record<string, unknown>;
+    expect(cal).toMatchObject({ count: 1, since: null });
+    expect(cal['keys']).toEqual([rec.key]);
+    expect((cal['numeric'] as Record<string, unknown>)['n']).toBe(1);
+    expect((await sql<{ fitness_state: string }>`select fitness_state from twin.twin_versions where twin_id = ${twinId}::uuid and version = ${rec.from_version}`.execute(h.su)).rows[0]?.fitness_state).toBe('fit');
+    console.log(`B21.3 EVIDENCE C15: ${JSON.stringify({ twin: twinId, version: rec.from_version, calibration: cal })}`);
+  }, 120_000);
 });
 
 /* ═════════ R1–R4 · the four residuals of the review of 1a05af89 ═════════ */
