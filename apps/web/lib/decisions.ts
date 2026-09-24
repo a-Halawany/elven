@@ -47,7 +47,19 @@ export interface Briefing {
   /** B10: items withheld from THIS reader (outside a cited memory version's audience) and the present availability of the citations, apart from the content. */
   items_withheld?: number;
   availability?: { checked_at: string; checked: Record<string, number>; unavailable: Array<{ kind: string; id: string; version: number | null; reason: string }>; corrected: Array<{ kind: string; id: string; version: number; by_version: number; reason: string }> };
+  /* B23 (0084) attention: BRF@v2 — the edition's schema version (a v1 edition, composed before 0084, carries no attention section). */
+  schema_version?: 'v1' | 'v2';
+  attention?: BriefingAttention | null;
+  /* end B23 attention */
 }
+/* B23 (0084) attention: BRF@v2's attention section — the routed items AS OF the edition's known_at, each with its confidence band, every
+   state counted, and the material changes since the prior edition; inside the content digest (the server composes it, never the client). */
+export interface BriefingAttentionItem {
+  item_id: string; signal_class: string; subject_kind: string; subject_id: string; title: string; state: string; policy_version: number | null; owner: string | null;
+  consequence: string | null; confidence: number | null; confidence_band: 'high' | 'medium' | 'low' | 'unknown'; hours_to_window: number | null; created_at: string; cause_event_id: string;
+}
+export interface BriefingAttention { as_of: string; since: string | null; policy_version: number | null; items: BriefingAttentionItem[]; counts: Record<string, number>; material_changes_since_prior: BriefingAttentionItem[] }
+/* end B23 attention */
 
 /**
  * CP-6 B9 (0066 §9; interface L10-I04 ExecutiveActionRequested): a person's TYPED REQUEST with an exactly-once

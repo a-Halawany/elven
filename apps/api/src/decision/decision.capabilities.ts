@@ -154,6 +154,9 @@ export interface WithdrawWrites extends DecisionReads {
 /** CP-6 B6 (0063): the decision SUBSCRIBER's effect — an invalidated input is recorded on the package once per cause; nothing else moves. */
 export interface DecisionSubscriberWrites extends DecisionReads {
   noteInputInvalidated(a: { packageId: string; tenantId: string; domainId: string; details: Record<string, unknown>; outboxEventId: string; subscriptionId: string; actor: string; correlationId: string }): Promise<boolean>;
+  /* B23 (0084) attention: the domain's attention-policy versions — MaterialChangeRaised@v1 names the version active at publication. */
+  readAttentionPolicies(): any;
+  /* end B23 attention */
 }
 
 class DecisionCapabilityImpl extends DecisionCore implements DeclareWrites, VersionWrites, OptionWrites, TermsWrites, ChoiceWrites, DissentWrites, ProposeWrites, WithdrawWrites, ApproveWrites, CommitWrites, ReplayWrites, MonitorWrites, OutcomeWrites, CloseWrites, DecisionSubscriberWrites, ReopenWrites {
@@ -182,6 +185,9 @@ class DecisionCapabilityImpl extends DecisionCore implements DeclareWrites, Vers
   readReconciliations(): any { return this.from('twin.reconciliations'); }
   readCanonicalObjects(): any { return this.from('objects.canonical_objects'); }
   readRooms(): any { return this.from('executive.rooms_current'); }
+  /* B23 (0084) attention */
+  readAttentionPolicies(): any { return this.from('executive.attention_policies'); }
+  /* end B23 attention */
   async isMember(a: { roomId: string; principal: string }): Promise<boolean> {
     const rows = await this.call<{ m: boolean }>(sql`select executive.is_member(${a.roomId}::uuid, ${a.principal}::uuid) as m`);
     return rows[0]?.m === true;

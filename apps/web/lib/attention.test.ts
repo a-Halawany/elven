@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
   FIRST_POLICY_TEMPLATE, ITEM_STATES, SIGNAL_CLASSES, canAcknowledge, canClose, canSuppress, listPayload, parseRules, ruleLines, stateMark, whyLine,
+  /* B23 (0084) attention */ REVIEW_SUBJECT_KINDS, bandMark, convenePayload, reviewSubjectOf /* end B23 attention */,
 } from './attention';
 
 /** CP-6 B22 (0083): the queue's words are the server's; the helpers only word what the record says. */
 describe('attention is worded, never judged on the client', () => {
   it('the vocabularies are the migration\'s (executive.attention_items CHECKs)', () => {
-    expect([...SIGNAL_CLASSES]).toEqual(['forecast.unfit', 'scenario.incoherent', 'warning.raised', 'source.coverage_loss', 'proposal.review']);
+    // B23 (0084): decision.material_change (L10-I02) and review.convened (L10-I03) join the five
+    expect([...SIGNAL_CLASSES]).toEqual(['forecast.unfit', 'scenario.incoherent', 'warning.raised', 'source.coverage_loss', 'proposal.review', 'decision.material_change', 'review.convened']);
     expect([...ITEM_STATES]).toEqual(['open', 'escalated', 'unrouted', 'acknowledged', 'suppressed', 'deprioritized', 'closed']);
   });
   it('the list payload sends only what is set, with the limit', () => {
@@ -45,4 +47,21 @@ describe('attention is worded, never judged on the client', () => {
     expect(parseRules('[]').ok).toBe(false);
     expect(parseRules('{').ok).toBe(false);
   });
+  /* B23 (0084) attention */
+  it('the review\'s vocabulary is the migration\'s; the convening payload sends only what is set', () => {
+    expect([...REVIEW_SUBJECT_KINDS]).toEqual(['objective', 'decision', 'scenario', 'commitment', 'outcome']);
+    expect(convenePayload({ kind: 'decision', subjectId: ' p-1 ', version: '', question: ' Does it stand? ', chair: 'c-1', reviewers: 'r-1, r-2  r-3', due: null, key: ' k ', causeItemId: null }))
+      .toEqual({ subject: { kind: 'decision', id: 'p-1' }, question: 'Does it stand?', chair: 'c-1', convene_key: 'k', reviewers: ['r-1', 'r-2', 'r-3'] });
+    expect(convenePayload({ kind: 'scenario', subjectId: 's', version: '3', question: 'q', chair: 'c', reviewers: '', due: '2026-10-01T00:00:00.000Z', key: 'k', causeItemId: 'i' }))
+      .toEqual({ subject: { kind: 'scenario', id: 's', version: 3 }, question: 'q', chair: 'c', convene_key: 'k', due_at: '2026-10-01T00:00:00.000Z', cause_item_id: 'i' });
+  });
+  it('a queue item reviews as its subject (a material change\'s package as a decision); a band reads in three channels', () => {
+    expect(reviewSubjectOf({ subject_kind: 'package', signal_class: 'decision.material_change' })).toBe('decision');
+    expect(reviewSubjectOf({ subject_kind: 'scenario', signal_class: 'scenario.incoherent' })).toBe('scenario');
+    expect(reviewSubjectOf({ subject_kind: 'claim', signal_class: 'proposal.review' })).toBeNull();
+    expect(bandMark('high').text).toBe('HIGH CONFIDENCE');
+    expect(bandMark('low').token).toBe('--eye-color-warning');
+    expect(bandMark('whatever').text).toBe('CONFIDENCE UNKNOWN');
+  });
+  /* end B23 attention */
 });

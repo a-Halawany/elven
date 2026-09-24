@@ -15,7 +15,8 @@ import { call, type ApiResult } from './api';
 import type { Scope } from './observation';
 type Receipt = { policyDecisionId: string; auditSeq: number };
 
-export const SIGNAL_CLASSES = ['forecast.unfit', 'scenario.incoherent', 'warning.raised', 'source.coverage_loss', 'proposal.review'] as const;
+export const SIGNAL_CLASSES = ['forecast.unfit', 'scenario.incoherent', 'warning.raised', 'source.coverage_loss', 'proposal.review',
+  /* B23 (0084) attention: L10-I02 MaterialChangeRaised, L10-I03 ReviewConvened */ 'decision.material_change', 'review.convened' /* end B23 attention */] as const;
 export type SignalClass = (typeof SIGNAL_CLASSES)[number];
 export const ITEM_STATES = ['open', 'escalated', 'unrouted', 'acknowledged', 'suppressed', 'deprioritized', 'closed'] as const;
 export type ItemState = (typeof ITEM_STATES)[number];
@@ -174,3 +175,71 @@ export const FIRST_POLICY_TEMPLATE: PolicyRules = {
     'proposal.review': { materiality: { min_consequence: 'C1', min_confidence: 0.3 }, route_roles: ['knowledge_owner'], ack_within_minutes: 2880, suppression: { allowed: false }, notify: 'in_app' },
   },
 };
+
+/* B23 (0084) attention ───────────────────────── THE GOVERNED REVIEW (L10-I03 ReviewConvened) and BRF@v2's bands ─────────────────────────
+ * A review is a NAMED HUMAN's act around a declared objective, decision, scenario, commitment or outcome (the server checks that
+ * the subject is declared in the domain, at the version named or the current one, that the chair and reviewers are active humans,
+ * and that the convener holds one of the convening roles). The convene_key is the convener's idempotency key: the same key with
+ * the same review answers the recorded review (`repeated`); the same key with a different review is refused. The chair concludes;
+ * the convener or the chair withdraws. Nothing here decides who may: the server does, in its own words.
+ */
+export const REVIEW_SUBJECT_KINDS = ['objective', 'decision', 'scenario', 'commitment', 'outcome'] as const;
+export type ReviewSubjectKind = (typeof REVIEW_SUBJECT_KINDS)[number];
+export const REVIEW_STATES = ['convened', 'concluded', 'withdrawn'] as const;
+/** The roles the server admits to convene (executive.review_convening_roles; the PDP rule names the same). */
+export const REVIEW_CONVENER_ROLES = ['executive', 'strategy_owner', 'decision_owner', 'decision_authority', 'domain_admin', 'platform_admin'] as const;
+export interface Review {
+  review_id: string; repeated: boolean; state: (typeof REVIEW_STATES)[number] | string; subject_kind: ReviewSubjectKind | string; subject_id: string; subject_version: number | null; subject_title: string | null;
+  question: string; chair: string; reviewers: string[]; due_at: string | null; convened_by: string; convened_at: string; convene_key: string; request_digest: string;
+  cause_item_id: string | null; room_id: string | null; closed_at: string | null; closed_by: string | null; closing_note: string | null;
+  events?: ItemEvent[]; attention?: Array<{ item_id: string; signal_class: string; state: string; outcome: string; policy_version: number | null; owner_principal_id: string | null; due_at: string | null }>;
+}
+export interface ConveneForm { kind: string; subjectId: string; version: string; question: string; chair: string; reviewers: string; due: string | null; key: string; causeItemId: string | null; roomId?: string | null }
+
+/** The convening payload from the form: only what is set is sent; the reviewers are split on commas and spaces (the server validates each). */
+export function convenePayload(f: ConveneForm): Record<string, unknown> {
+  const subject: Record<string, unknown> = { kind: f.kind, id: f.subjectId.trim() };
+  if (f.version.trim() !== '') subject['version'] = Number(f.version.trim());
+  const reviewers = f.reviewers.split(/[\s,]+/).map((x) => x.trim()).filter((x) => x !== '');
+  const out: Record<string, unknown> = { subject, question: f.question.trim(), chair: f.chair.trim(), convene_key: f.key.trim() };
+  if (reviewers.length > 0) out['reviewers'] = reviewers;
+  if (f.due !== null && f.due !== '') out['due_at'] = f.due;
+  if (f.causeItemId !== null && f.causeItemId !== '') out['cause_item_id'] = f.causeItemId;
+  if (f.roomId !== undefined && f.roomId !== null && f.roomId !== '') out['room_id'] = f.roomId;
+  return out;
+}
+
+/** The subject kind a queue item's subject reviews as (a material change's package is a decision), or null when it is not reviewable as itself. */
+export function reviewSubjectOf(item: Pick<AttentionItem, 'subject_kind' | 'signal_class'>): ReviewSubjectKind | null {
+  if (item.subject_kind === 'package') return 'decision';
+  if (item.subject_kind === 'scenario') return 'scenario';
+  return null;
+}
+
+/** A confidence band (BRF@v2's attention section), three channels: glyph, word, colour token. */
+export function bandMark(band: string): { glyph: string; token: string; text: string } {
+  switch (band) {
+    case 'high': return { glyph: '●', token: '--eye-color-ink-default', text: 'HIGH CONFIDENCE' };
+    case 'medium': return { glyph: '◐', token: '--eye-color-uncertain', text: 'MEDIUM CONFIDENCE' };
+    case 'low': return { glyph: '○', token: '--eye-color-warning', text: 'LOW CONFIDENCE' };
+    default: return { glyph: '?', token: '--eye-color-ink-muted', text: 'CONFIDENCE UNKNOWN' };
+  }
+}
+
+export const reviews = {
+  list: (s: Scope, filter: { state?: string | null; subjectKind?: string | null; subjectId?: string | null } = {}) => {
+    const payload: Record<string, unknown> = { limit: 200 };
+    if (typeof filter.state === 'string' && filter.state !== '') payload['state'] = filter.state;
+    if (typeof filter.subjectKind === 'string' && filter.subjectKind !== '') payload['subjectKind'] = filter.subjectKind;
+    if (typeof filter.subjectId === 'string' && filter.subjectId !== '') payload['subjectId'] = filter.subjectId;
+    return p<{ reviews: Review[]; receipt: Receipt }>(s, '/executive/reviews/list', 'executive.review.read', 'RVW', payload, null, 'executive');
+  },
+  get: (s: Scope, id: string) => p<{ review: Review; receipt: Receipt }>(s, `/executive/reviews/${id}/get`, 'executive.review.read', 'RVW', {}, id, 'executive'),
+  /** Human-gated; exactly once on the convener's key. ReviewConvened@v1 is published from the write of a NEW review. */
+  convene: (s: Scope, f: ConveneForm) => p<{ review: Review; receipt: Receipt }>(s, '/executive/reviews/convene', 'executive.review.convene', 'RVW', convenePayload(f), null, 'executive'),
+  /** The chair concludes (a note of 8+ characters: the conclusion). */
+  conclude: (s: Scope, id: string, note: string) => p<{ review: Review; receipt: Receipt }>(s, `/executive/reviews/${id}/conclude`, 'executive.review.close', 'RVW', { note }, id, 'executive'),
+  /** The convener or the chair withdraws (a note of 8+ characters: why). */
+  withdraw: (s: Scope, id: string, note: string) => p<{ review: Review; receipt: Receipt }>(s, `/executive/reviews/${id}/withdraw`, 'executive.review.close', 'RVW', { note }, id, 'executive'),
+};
+/* end B23 attention */

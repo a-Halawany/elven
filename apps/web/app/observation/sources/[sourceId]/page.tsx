@@ -18,6 +18,8 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useShell } from '../../layout';
 import { observation, type HealthState, type Measurement } from '../../../../lib/observation';
+// B23 (0084) stream
+import type { AcquisitionStream, IncompleteRange, StreamRunAnswer } from '../../../../lib/observation';
 import {
   AuthorityBadge, DefinitionRow, Empty, GovernedButton, HealthBadge, LiveStatus,
   MeasurementState, ModeBadge, Mono, RightsBadge, ScrollBox, SyntheticMarker,
@@ -228,6 +230,16 @@ export default function SourceDetailPage() {
         </div>
       </section>
 
+      {/* B23 (0084) stream — the stream form of Acquire, next to Collect now */}
+      {lifecycle === 'active' && String(s['connector_kind']) === 'rest' && (
+        <StreamPanel
+          scope={scope} sourceId={sourceId} version={version}
+          defaultPartitionKey={`${String(s['source_key'])}:${String(s['acquisition_mode']) === 'live' ? 'backfill' : ''}`}
+          onError={(e) => setError(e)} onReceipt={(r) => setReceipt(r)} onChanged={load}
+        />
+      )}
+      {/* end B23 stream */}
+
       {/* ── health & coverage ──────────────────────────────────────── */}
       <section aria-labelledby="health" style={{ ...cardStyle, marginBlockStart: 'var(--eye-space-16)' }}>
         <h2 id="health" style={{ marginBlockStart: 0, fontSize: 'var(--eye-type-heading-3)' }}>Freshness, coverage and authenticity</h2>
@@ -377,6 +389,160 @@ export default function SourceDetailPage() {
     </>
   );
 }
+
+/* B23 (0084) stream */
+type ApiError = { code: string; message: string; correlationId: string };
+const inputStyle = {
+  blockSize: 'var(--eye-size-control-md)', border: '1px solid var(--eye-color-border-default)', borderRadius: 'var(--eye-radius-md)',
+  paddingInline: 'var(--eye-space-8)', background: 'var(--eye-color-surface-primary)', color: 'var(--eye-color-ink-default)',
+} as const;
+const labelStyle = { display: 'block', fontSize: 'var(--eye-type-label-sm)', textTransform: 'uppercase', color: 'var(--eye-color-ink-muted)' } as const;
+
+/**
+ * THE STREAM FORM of Acquire (L1-I02), beside Collect now. A stream is SEGMENT PULL WITH CREDIT-BASED FLOW CONTROL over the
+ * connector's pages under a stable partition key — not a socket. Every state shown here is the server's: a stream's state,
+ * its cursor and its incomplete ranges are rendered as the server returned them, and an incomplete range is shown as what it
+ * is — a gap the stream moved past, never a collected window.
+ */
+function StreamPanel({ scope, sourceId, version, defaultPartitionKey, onError, onReceipt, onChanged }: {
+  scope: { tenantId: string; domainId: string }; sourceId: string; version: number; defaultPartitionKey: string;
+  onError: (e: ApiError | null) => void; onReceipt: (r: { policyDecisionId: string; auditSeq: number }) => void; onChanged: () => Promise<void>;
+}) {
+  const [streams, setStreams] = useState<AcquisitionStream[]>([]);
+  const [partitionKey, setPartitionKey] = useState(defaultPartitionKey);
+  const [credit, setCredit] = useState('2');
+  const [maxSegments, setMaxSegments] = useState('');
+  const [reason, setReason] = useState('');
+  const [notice, setNotice] = useState<string | null>(null);
+  const [detail, setDetail] = useState<{ streamId: string; ranges: IncompleteRange[]; segments: number } | null>(null);
+
+  const refresh = useCallback(async () => {
+    const r = await observation.listStreams(scope, sourceId);
+    if (r.ok && r.data !== undefined) setStreams(r.data.streams);
+  }, [scope, sourceId]);
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  const limit = maxSegments.trim() === '' ? null : Number(maxSegments);
+  const report = async (r: { ok: boolean; data?: StreamRunAnswer; error?: ApiError }) => {
+    if (!r.ok || r.data === undefined) { onError(r.error ?? null); throw new Error('refused'); }
+    onError(null); onReceipt(r.data.receipt);
+    const run = r.data.run;
+    setNotice(`run ${run.state}: ${run.segments} segment(s) acknowledged · ${run.admitted} admitted · ${run.noop} no-op · ${run.quarantined} quarantined · `
+      + `${run.backpressureSignals} backpressure signal(s) · ${run.incompleteRanges} incomplete range(s) — stream ${r.data.stream?.state ?? 'not opened'}`
+      + `${run.reason !== undefined ? ` — ${run.reason}` : ''}`);
+    await refresh(); await onChanged();
+  };
+  const show = async (streamId: string) => {
+    const r = await observation.getStream(scope, streamId);
+    if (!r.ok || r.data === undefined) { onError(r.error ?? null); throw new Error('refused'); }
+    setDetail({ streamId, ranges: r.data.incompleteRanges, segments: r.data.segments.length });
+  };
+
+  return (
+    <section aria-labelledby="stream" style={{ ...cardStyle, marginBlockStart: 'var(--eye-space-16)' }}>
+      <h2 id="stream" style={{ marginBlockStart: 0, fontSize: 'var(--eye-type-heading-3)' }}>Stream acquisition</h2>
+      <p style={{ color: 'var(--eye-color-ink-muted)', fontSize: 'var(--eye-type-body-sm)', marginBlockStart: 0 }}>
+        The connector&apos;s pages are pulled one segment at a time; no more than <strong>credit</strong> segments are held
+        unacknowledged, and the stream waits (backpressure) until one is admitted. An interrupted stream resumes from its cursor
+        without admitting anything twice. A page the publisher did not serve is declared an <strong>incomplete range</strong>,
+        and such a stream closes incomplete — never complete.
+      </p>
+      {notice !== null && <LiveStatus>{notice}</LiveStatus>}
+      <div style={{ ...badgeRowStyle, alignItems: 'flex-end' }}>
+        <div>
+          <label htmlFor="stream-partition" style={labelStyle}>Partition key</label>
+          <input id="stream-partition" value={partitionKey} onChange={(e) => setPartitionKey(e.target.value)} style={{ ...inputStyle, inlineSize: '22rem' }} />
+        </div>
+        <div>
+          <label htmlFor="stream-credit" style={labelStyle}>Credit</label>
+          <input id="stream-credit" type="number" min={1} max={64} value={credit} onChange={(e) => setCredit(e.target.value)} style={{ ...inputStyle, inlineSize: '5rem' }} />
+        </div>
+        <div>
+          <label htmlFor="stream-max" style={labelStyle}>Segments this pull (optional)</label>
+          <input id="stream-max" type="number" min={1} value={maxSegments} onChange={(e) => setMaxSegments(e.target.value)} style={{ ...inputStyle, inlineSize: '7rem' }} />
+        </div>
+        <GovernedButton
+          label="Open stream" pendingLabel="Streaming"
+          onRun={async () => report(await observation.openStream(scope, sourceId, { contractVersion: version, partitionKey, credit: Number(credit), maxSegments: limit }))}
+        />
+      </div>
+      <label htmlFor="stream-reason" style={{ ...labelStyle, marginBlockStart: 'var(--eye-space-8)' }}>Interrupt reason (recorded)</label>
+      <input id="stream-reason" value={reason} onChange={(e) => setReason(e.target.value)} style={{ ...inputStyle, inlineSize: '100%', marginBlockEnd: 'var(--eye-space-8)' }} />
+      {streams.length === 0 ? <Empty>No stream has been opened for this source.</Empty> : (
+        <ScrollBox label="Streams">
+          <table className="eye-table">
+            <caption>Each stream of this source: its stable partition key, its state and cursor as the server holds them.</caption>
+            <thead>
+              <tr><th scope="col">Partition</th><th scope="col">State</th><th scope="col">Range</th><th scope="col">Next segment</th>
+                  <th scope="col">Covered to</th><th scope="col">Credit</th><th scope="col">Actions</th></tr>
+            </thead>
+            <tbody>
+              {streams.map((st) => (
+                <tr key={st.stream_id}>
+                  <td data-label="Partition"><Mono>{st.partition_key}</Mono></td>
+                  <td data-label="State">{st.state}{st.interrupt_requested !== null && st.interrupt_requested !== false ? ' · interrupt requested' : ''}</td>
+                  <td data-label="Range"><Mono>{st.range_from} → {st.range_to}</Mono></td>
+                  <td data-label="Next segment">{st.next_seq}</td>
+                  <td data-label="Covered to"><Mono>{st.high_water ?? '—'}</Mono></td>
+                  <td data-label="Credit">{st.credit}</td>
+                  <td data-label="Actions">
+                    <div style={badgeRowStyle}>
+                      <GovernedButton label="Details" pendingLabel="Reading" variant="quiet" onRun={() => show(st.stream_id)} />
+                      {!['completed', 'closed_incomplete'].includes(st.state) && (
+                        <>
+                          <GovernedButton
+                            label="Resume" pendingLabel="Resuming" variant="quiet" disabled={st.state === 'running' || st.state === 'backpressured'}
+                            onRun={async () => report(await observation.resumeStream(scope, st.stream_id, { credit: Number(credit), maxSegments: limit }))}
+                          />
+                          <GovernedButton
+                            label="Interrupt" pendingLabel="Interrupting" variant="critical" disabled={st.state === 'interrupted'}
+                            onRun={async () => {
+                              const r = await observation.interruptStream(scope, st.stream_id, reason);
+                              if (!r.ok || r.data === undefined) { onError(r.error ?? null); throw new Error('refused'); }
+                              onError(null); onReceipt(r.data.receipt);
+                              setNotice(r.data.stream.requested === true
+                                ? 'interrupt requested — the running stream stops at its next segment boundary'
+                                : `stream ${r.data.stream.state} at its cursor`);
+                              await refresh();
+                            }}
+                          />
+                        </>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </ScrollBox>
+      )}
+      {detail !== null && (
+        <ScrollBox label="Incomplete ranges">
+          <table className="eye-table">
+            <caption>
+              Stream <Mono>{detail.streamId.slice(0, 8)}…</Mono> — {detail.segments} segment(s) acknowledged. The ranges it did NOT collect,
+              declared explicitly; a resolved one was re-covered by the segment named.
+            </caption>
+            <thead><tr><th scope="col">Range</th><th scope="col">Class</th><th scope="col">Detail</th><th scope="col">Resolved by</th></tr></thead>
+            <tbody>
+              {detail.ranges.length === 0 ? (
+                <tr><td colSpan={4}>No incomplete range was declared on this stream.</td></tr>
+              ) : detail.ranges.map((r, i) => (
+                <tr key={i}>
+                  <td data-label="Range"><Mono>{r.range_from} → {r.range_to}</Mono></td>
+                  <td data-label="Class">{r.reason_class.replace(/_/g, ' ')}</td>
+                  <td data-label="Detail" style={{ maxInlineSize: '32rem' }}>{r.detail}</td>
+                  <td data-label="Resolved by">{r.resolved_by_seq === null ? 'unresolved' : `segment ${r.resolved_by_seq}`}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </ScrollBox>
+      )}
+    </section>
+  );
+}
+/* end B23 stream */
 
 /** URLs are shown without their query string, exactly as they are stored. */
 function redact(url: string): string {

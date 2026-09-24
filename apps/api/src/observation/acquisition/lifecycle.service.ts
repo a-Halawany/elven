@@ -39,6 +39,10 @@ import { BudgetExceeded, BudgetMeter, checkSchemaDrift, type AcquiredItem, type 
 import { EgressRefused } from '../connectors/http-client.js';
 import { ReplayIntegrityError } from '../connectors/replay.js';
 import * as fault from '../fault-injection.js';
+// B23 (0084) stream: the stream form's types and ports.
+import { createHash } from 'node:crypto';
+import { StreamPlanRefused, type AcquiredSegment, type StreamCursor, type StreamPlan } from '../connectors/sdk.js';
+import type { StreamAnswer, StreamSegmentArgs } from '../observation.capabilities.js';
 
 export interface RunRequest {
   sourceId: string;
@@ -115,6 +119,53 @@ export class SourceRunInFlight extends Error {
 }
 
 
+
+/* B23 (0084) stream */
+/**
+ * A STREAM run (L1-I02's stream form): a run request plus the stream it opens or resumes. `credit` null on a resume keeps the
+ * stream's own; `maxSegments` is a PULL LIMIT — the run stops after that many segments and the stream stays open at its cursor;
+ * `resumeStreamId` (the resume route) refuses anything but that live stream.
+ */
+export interface StreamRunRequest extends RunRequest {
+  stream: {
+    partitionKey: string;
+    credit: number | null;
+    range: { from: string; to: string } | null;
+    maxSegments: number | null;
+    resumeStreamId: string | null;
+  };
+}
+export interface StreamRunOutcome extends RunOutcome {
+  streamId: string | null;
+  /** The stream as it stood when the run ended (its state, cursor, next sequence). */
+  stream: StreamAnswer | null;
+  /** Segments acknowledged by this run, redelivered acknowledgements, backpressure signals, incomplete ranges declared. */
+  segments: number;
+  redelivered: number;
+  backpressureSignals: number;
+  incompleteRanges: number;
+}
+/** A stream the request cannot open: an unknown partition, a range outside the declared one, a connector with no stream form. */
+export class StreamRefused extends Error {
+  constructor(readonly status: 404 | 409 | 422, message: string) {
+    super(message);
+    this.name = 'StreamRefused';
+  }
+}
+/** A refusal raised by one of the stream ports (0084) — the caller's answer, mapped by the observation refusal rows. */
+export function isStreamRefusal(e: unknown): boolean {
+  const message = e instanceof Error ? e.message : String((e as { message?: unknown })?.message ?? '');
+  return /^acquisition stream rejected/.test(message);
+}
+/** The segment's digest: its partition, range, gap and each item's key and byte digest, in order. A redelivery reproduces it. */
+export function segmentDigest(seg: AcquiredSegment): string {
+  const sha = (b: Uint8Array): string => createHash('sha256').update(b).digest('hex');
+  return createHash('sha256').update(JSON.stringify([
+    seg.partition, seg.rangeFrom, seg.rangeTo, seg.gap?.reasonClass ?? null,
+    seg.items.map((i) => [i.itemKey, sha(i.bytes)]),
+  ])).digest('hex');
+}
+/* end B23 stream */
 
 /** The latest evidence held for an item or poll key — what a re-run compares against — and what must be true before it is reused. */
 interface PriorEvidence {
@@ -1341,6 +1392,373 @@ export class AcquisitionLifecycle {
       },
     );
   }
+
+  /* B23 (0084) stream */
+  // ===== the stream form (L1-I02) =====
+
+  /**
+   * Run one STREAM attempt: open — or resume — a partition's stream, then pull its segments ONE AT A TIME under credit.
+   *
+   * THE COMMAND FORM IS NOT TOUCHED. `run()` and `walk()` above are exactly what they were; this is a second entry point that
+   * reuses their parts — the contract read, the binding, the lease and the agent's re-authorization in ONE `run.start`
+   * transaction, and every item admitted through the SAME `admitOrQuarantine` (purpose, rights, residency, custody,
+   * quarantine, dedup unchanged). What is different is only the order of work:
+   *
+   *  * CREDIT-BASED FLOW CONTROL. The connector is pulled for the next segment only while fewer than `credit` segments are
+   *    delivered and not yet acknowledged; when the window is full and more remain, BACKPRESSURE is recorded and the producer
+   *    waits for the consumer (the admission of the oldest segment). The wait keeps the source: every admission event
+   *    heartbeats the lease and every acknowledged segment extends the run session (0057), as a committed page does.
+   *  * A SEGMENT IS ACKNOWLEDGED when its items are admitted and it is appended to the stream — which is also what moves the
+   *    stream's cursor. The command form's connector checkpoint is not written by a stream.
+   *  * INTERRUPTION AND RESUME. An operator's interrupt is honoured at the next segment boundary; a failure, a budget and the
+   *    escape path interrupt the stream too. Each segment delivered but not acknowledged is declared an EXPLICIT INCOMPLETE
+   *    RANGE; a resume starts from the stream's cursor, redelivers those segments (their items are deterministic, so what was
+   *    admitted before the cut is a recorded no-op) and resolves the ranges.
+   *  * A GAP IS SAID. A page the publisher did not serve is a segment with a gap: the stream moves past it and the range is
+   *    declared incomplete; the stream then closes `closed_incomplete`, never `completed`.
+   */
+  async runStream(req: StreamRunRequest): Promise<StreamRunOutcome> {
+    const runId = newId();
+    const none = { streamId: null, stream: null, segments: 0, redelivered: 0, backpressureSignals: 0, incompleteRanges: 0 };
+    const connector = req.connector;
+    if (connector.planStream === undefined || connector.acquireStream === undefined) {
+      return { runId, state: 'failed', admitted: 0, quarantined: 0, noop: 0, opened: false, ...none,
+               reason: `connector ${connector.name}@${connector.version} has no stream form` };
+    }
+    const contract = await this.loadContract(req, null, null, req.contractVersion);
+    if (contract === null) {
+      return { runId, state: 'failed', admitted: 0, quarantined: 0, noop: 0, reason: 'no such source contract version', opened: false, ...none };
+    }
+    const { tenant_id: tenantId, domain_id: domainId } = contract;
+    const prefix = `${contract.source_key}:`;
+    if (!req.stream.partitionKey.startsWith(prefix) || req.stream.partitionKey.length === prefix.length) {
+      throw new StreamRefused(422, `the partition key ${req.stream.partitionKey} does not name a partition of source ${contract.source_key} ('${contract.source_key}:<partition>')`);
+    }
+    const partition = req.stream.partitionKey.slice(prefix.length);
+    const binding = this.bindingFor(contract);
+    let plan: StreamPlan;
+    try {
+      plan = await connector.planStream(
+        { binding, checkpoint: null, budget: new BudgetMeter(binding.budgets), replayRoot: this.cfg['eye.connector.replay_root'] },
+        { partition, range: req.stream.range });
+    } catch (e) {
+      if (e instanceof StreamPlanRefused) throw new StreamRefused(422, e.message);
+      throw e;
+    }
+
+    // ── the lease, the agent's re-authorization, the contract lock, the stream opened (or resumed) and run.started: ONE transaction ──
+    let opened: StreamAnswer | null = null;
+    try {
+      await this.pipeline.write(
+        this.envelope(req, 'observation.run.start', 'RUN', runId, tenantId, domainId),
+        req.principal,
+        this.route('observation.run.start', tenantId, domainId, 'RUN', runId),
+        ObservationCapability.acquisition,
+        async (cap) => {
+          const lease = await cap.acquireSourceRunLease({
+            tenantId, domainId, sourceId: req.sourceId, contractVersion: req.contractVersion,
+            runId, trigger: req.trigger?.kind ?? 'operator',
+            leaseSeconds: this.cfg['eye.connector.run_lease_seconds'], correlationId: req.correlationId,
+          });
+          if (!lease.granted) throw new SourceRunInFlight(lease);
+          const agent = await cap.authorizeAgentRun({
+            agentId: req.agentId, tenantId, domainId, principalId: req.principal.principalId,
+            agentVersion: req.agentVersion, codeDigest: connector.codeDigest, sourceId: req.sourceId,
+          });
+          await cap.lockActiveContract({
+            sourceId: req.sourceId, contractVersion: req.contractVersion, tenantId, domainId, purpose: req.purposeId,
+          });
+          opened = await cap.openAcquisitionStream({
+            streamId: newId(), tenantId, domainId, sourceId: req.sourceId, contractVersion: req.contractVersion, runId,
+            partitionKey: req.stream.partitionKey, rangeFrom: plan.rangeFrom, rangeTo: plan.rangeTo,
+            initialCursor: plan.initialCursor, credit: req.stream.credit, expectStreamId: req.stream.resumeStreamId,
+            correlationId: req.correlationId,
+          });
+          await cap.appendRunEvent({
+            eventId: newId(), tenantId, domainId, runId,
+            sourceId: req.sourceId, contractVersion: req.contractVersion,
+            agentPrincipalId: req.principal.principalId, agentVersion: req.agentVersion, codeDigest: connector.codeDigest,
+            connector: connector.name, connectorVersion: connector.version,
+            acquisitionMode: contract.acquisition_mode,
+            event: 'run.started',
+            details: { agent_id: req.agentId, budgets: agent.budgets, owner: agent.owner_principal_id,
+                       trigger: req.trigger ?? { kind: 'operator' },
+                       lease: { held_for_seconds: this.cfg['eye.connector.run_lease_seconds'],
+                                ...(lease.granted && lease.tookOverFrom !== null ? { took_over_from_run: lease.tookOverFrom } : {}) },
+                       // The FORM of this run: a stream, with the stream it drives and where it starts.
+                       form: 'stream',
+                       stream: { stream_id: (opened as StreamAnswer).stream_id, partition_key: req.stream.partitionKey,
+                                 resumed: (opened as StreamAnswer).resumed === true, cursor: (opened as StreamAnswer).cursor,
+                                 next_seq: (opened as StreamAnswer).next_seq, credit: (opened as StreamAnswer).credit,
+                                 max_segments: req.stream.maxSegments } },
+            correlationId: req.correlationId,
+          });
+          return { result: { runId }, targetType: 'RUN', targetId: runId, targetVersion: '1', outboxEvent: null };
+        });
+    } catch (e) {
+      if (isInfrastructureFault(e)) throw e;
+      if (e instanceof SourceRunInFlight) {
+        return { runId, state: 'refused', admitted: 0, quarantined: 0, noop: 0, reason: e.message, opened: false,
+                 refusalClass: e.refusalClass, refusalDetail: e.holder, ...none };
+      }
+      // A stream port's refusal (a closed stream resumed, another contract version, a bad credit) is the caller's answer.
+      if (isStreamRefusal(e)) throw e;
+      return { runId, state: 'failed', admitted: 0, quarantined: 0, noop: 0, reason: describe(e), opened: false, ...none };
+    }
+    const stream = opened as unknown as StreamAnswer;
+    req.onOpened?.(runId);
+
+    try {
+      return await this.streamWalk(req, runId, contract, binding, partition, stream);
+    } catch (e) {
+      // THE ESCAPE PATH: the stream is interrupted and the run failed, in one transaction; the exception is rethrown unchanged.
+      await this.endStreamRun(req, runId, contract, 'observation.run.finish', 'run.failed',
+        { reason: describe(e), escaped: true, stream_id: stream.stream_id },
+        { kind: 'interrupt', streamId: stream.stream_id, reasonClass: 'escaped', reason: `the run did not return: ${describe(e)}`, inFlight: [], rangeClass: 'interrupted' },
+      ).catch(() => undefined);
+      throw e;
+    }
+  }
+
+  /** The body of a stream run: the pre-egress revalidation, then the pull loop, then close | pause | interrupt. */
+  private async streamWalk(
+    req: StreamRunRequest, runId: string, contract: ContractRow, binding: SourceBinding, partition: string, opened: StreamAnswer,
+  ): Promise<StreamRunOutcome> {
+    const { tenant_id: tenantId, domain_id: domainId } = contract;
+    const streamId = opened.stream_id;
+    let stream = opened;
+    let admitted = 0; let quarantined = 0; let noop = 0;
+    let segments = 0; let redelivered = 0; let backpressureSignals = 0; let incompleteRanges = 0;
+    /** Delivered by the connector, not yet acknowledged: the segment being admitted, then the read-ahead window. */
+    let current: (AcquiredSegment & { seq: number }) | null = null;
+    const window: Array<AcquiredSegment & { seq: number }> = [];
+    const inFlight = () => [...(current === null ? [] : [current]), ...window].map((s) => ({ seq: s.seq, range_from: s.rangeFrom, range_to: s.rangeTo }));
+    const tally = (state: RunOutcome['state'], reason?: string): StreamRunOutcome => ({
+      runId, state, admitted, quarantined, noop, ...(reason === undefined ? {} : { reason }),
+      streamId, stream, segments, redelivered, backpressureSignals, incompleteRanges,
+    });
+
+    try {
+      const stillActive = await this.loadContract(req, tenantId, domainId, req.contractVersion);
+      if (stillActive === null || stillActive.lifecycle_state !== 'active') {
+        stream = await this.endStreamRun(req, runId, contract, 'observation.run.cancel', 'run.cancelled',
+          { reason: 'contract was not active at the pre-egress revalidation', lifecycle_state: stillActive?.lifecycle_state ?? 'absent', stream_id: streamId },
+          { kind: 'interrupt', streamId, reasonClass: 'contract', reason: 'the contract was not active at the pre-egress revalidation', inFlight: [], rangeClass: 'interrupted' });
+        return tally('cancelled', 'contract not active before egress');
+      }
+      let credential: { header: string; value: string } | undefined;
+      if (binding.credential !== undefined && binding.acquisitionMode === 'live') {
+        const value = this.credentials.resolve(binding.credential.ref);
+        if (value === null) {
+          stream = await this.endStreamRun(req, runId, contract, 'observation.run.cancel', 'run.cancelled',
+            { reason: 'credential unresolved: the deployment binds no source credential under the contract\'s reference',
+              credential_ref: binding.credential.ref, credential_header: binding.credential.header, stream_id: streamId },
+            { kind: 'interrupt', streamId, reasonClass: 'credential', reason: `credential unresolved: ${binding.credential.ref}`, inFlight: [], rangeClass: 'interrupted' });
+          return tally('cancelled', `credential unresolved: the deployment binds no source credential named ${binding.credential.ref}`);
+        }
+        credential = { header: binding.credential.header, value };
+      }
+      const meter = new BudgetMeter(binding.budgets);
+      const pull = (req.connector.acquireStream as NonNullable<Connector['acquireStream']>)(
+        { binding, checkpoint: null, budget: meter, replayRoot: this.cfg['eye.connector.replay_root'], ...(credential === undefined ? {} : { credential }) },
+        { partition, rangeFrom: stream.range_from, rangeTo: stream.range_to, cursor: stream.cursor as StreamCursor },
+      )[Symbol.asyncIterator]();
+
+      const credit = stream.credit;
+      const limit = req.stream.maxSegments ?? Number.POSITIVE_INFINITY;
+      let nextSeq = stream.next_seq;
+      let pulled = 0;
+      let exhausted = false;
+      let backpressured = false;
+
+      /** An operator's interrupt, honoured HERE — at a segment boundary — with whatever is in flight declared incomplete. */
+      const honourInterrupt = async (): Promise<StreamRunOutcome> => {
+        stream = await this.endStreamRun(req, runId, contract, 'observation.run.cancel', 'run.cancelled',
+          { reason: 'an operator interrupted the stream; the run stopped at the segment boundary', stream_id: streamId, admitted, quarantined, noop, segments },
+          { kind: 'interrupt', streamId, reasonClass: 'operator', reason: `interrupted by an operator request, honoured after segment ${stream.next_seq - 1}`, inFlight: inFlight(), rangeClass: 'interrupted' });
+        return tally('cancelled', 'the stream was interrupted by an operator');
+      };
+
+      for (;;) {
+        // ── fill the window: pull while fewer than `credit` segments are unacknowledged ──
+        while (!exhausted && window.length < credit && pulled < limit) {
+          const next = await pull.next();
+          if (next.done === true) { exhausted = true; break; }
+          window.push({ ...next.value, seq: nextSeq });
+          nextSeq += 1; pulled += 1;
+          if (next.value.last) exhausted = true;
+        }
+        // ── the window is full and more remain: BACKPRESSURE — the producer waits for the consumer ──
+        if (!exhausted && pulled < limit && window.length >= credit && !backpressured) {
+          stream = await this.streamWrite(req, runId, contract, 'observation.run.checkpoint', (cap) => cap.signalStreamBackpressure({
+            streamId, tenantId, domainId, runId, correlationId: req.correlationId,
+            details: { unacknowledged: window.length, waiting_for_seq: window[0]?.seq ?? null,
+                       note: 'the credit is exhausted: the connector is not pulled again until a segment is acknowledged' },
+          }));
+          backpressured = true; backpressureSignals += 1;
+          if (stream.interrupt_requested) return await honourInterrupt();
+        }
+        current = window.shift() ?? null;
+        if (current === null) break;
+
+        // ── consume: every item through the ordinary admission, then ACKNOWLEDGE the segment ──
+        const seg: AcquiredSegment & { seq: number } = current;
+        // Counted AS EACH ITEM COMMITS, so a run that fails mid-segment reports what it really admitted before the cut.
+        const got = await this.admitSegment(req, contract, runId, binding, seg, streamId, (k) => {
+          if (k === 'admitted') admitted += 1; else if (k === 'noop') noop += 1; else quarantined += 1;
+        });
+        const args: StreamSegmentArgs = {
+          streamId, tenantId, domainId, runId, seq: seg.seq, partitionKey: req.stream.partitionKey,
+          rangeFrom: seg.rangeFrom, rangeTo: seg.rangeTo, cursorBefore: seg.cursorBefore, cursorAfter: seg.cursorAfter,
+          segmentDigest: segmentDigest(seg), evidenceIds: got.evidenceIds, itemCount: seg.items.length,
+          admitted: got.admitted, noop: got.noop, quarantined: got.quarantined, last: seg.last,
+          incomplete: seg.gap === null ? null : { reason_class: seg.gap.reasonClass, detail: seg.gap.detail },
+          relieved: backpressured, correlationId: req.correlationId,
+        };
+        stream = await this.appendSegmentAtLeastOnce(req, runId, contract, args);
+        current = null;
+        backpressured = false;
+        if (stream.redelivered === true) redelivered += 1; else segments += 1;
+        if (seg.gap !== null) incompleteRanges += 1;
+        if (got.quarantined > 0) incompleteRanges += 1;
+        // PROGRESS EXTENDS AUTHORITY (0057), exactly as a committed page does in the command form.
+        if (req.extendAuthority !== undefined) {
+          const until = await req.extendAuthority();
+          if (until === null) this.log.warn(`stream run ${runId}: the run session could not be extended after segment ${seg.seq}; the run continues on its remaining authority`);
+        }
+        if (stream.interrupt_requested) return await honourInterrupt();
+      }
+
+      const spent = meter.spent;
+      if (exhausted) {
+        stream = await this.endStreamRun(req, runId, contract, 'observation.run.finish', 'run.finished',
+          { admitted, quarantined, noop, budget_spent: spent, requests: spent.requests, bytes: spent.bytes, bytes_transferred: spent.bytes,
+            stream_id: streamId, segments, redelivered, backpressure_signals: backpressureSignals, form: 'stream' },
+          { kind: 'close', streamId, details: { run: runId, segments_this_run: segments } });
+      } else {
+        stream = await this.endStreamRun(req, runId, contract, 'observation.run.finish', 'run.finished',
+          { admitted, quarantined, noop, budget_spent: spent, requests: spent.requests, bytes: spent.bytes, bytes_transferred: spent.bytes,
+            stream_id: streamId, segments, redelivered, backpressure_signals: backpressureSignals, form: 'stream', paused: true },
+          { kind: 'pause', streamId, details: { run: runId, reason: `the run pulled the ${pulled} segment(s) it was asked for; the stream stays open at its cursor` } });
+      }
+      return tally('finished');
+    } catch (e) {
+      const budget = e instanceof BudgetExceeded;
+      let reason = describe(e);
+      const terminal = await this.endStreamRun(req, runId, contract, 'observation.run.finish', budget ? 'run.budget_exceeded' : 'run.failed',
+        { reason, admitted, quarantined, noop, stream_id: streamId, segments },
+        { kind: 'interrupt', streamId, reasonClass: budget ? 'budget' : 'failure', reason, inFlight: inFlight(), rangeClass: budget ? 'budget' : 'interrupted' },
+      ).then((s) => { stream = s; return null; }, (err: unknown) => describe(err));
+      if (terminal !== null) {
+        reason = `${reason} (terminal event NOT recorded: ${terminal}; the run stays 'started' until the sweeper reconciles it, which interrupts its stream)`;
+        this.log.warn(`stream run ${runId}: ${reason}`);
+      }
+      return tally(budget ? 'budget_exceeded' : 'failed', reason);
+    }
+  }
+
+  /**
+   * One segment's items, through the ORDINARY admission — the same `admitOrQuarantine` the command form uses, with the same
+   * re-read on a conflict. Every stream item is deterministic, so what is already held for its key is read first and a
+   * redelivered segment admits nothing twice.
+   */
+  private async admitSegment(
+    req: RunRequest, contract: ContractRow, runId: string, binding: SourceBinding, seg: AcquiredSegment & { seq: number }, streamId: string,
+    committed: (kind: 'admitted' | 'noop' | 'quarantined') => void,
+  ): Promise<{ admitted: number; noop: number; quarantined: number; evidenceIds: string[] }> {
+    const { tenant_id: tenantId, domain_id: domainId } = contract;
+    const out = { admitted: 0, noop: 0, quarantined: 0, evidenceIds: [] as string[] };
+    if (seg.items.length === 0) return out;
+    const prior = await this.loadPriorEvidence(req, tenantId, domainId, seg.items.filter((i) => i.deterministic === true).map((i) => i.itemKey));
+    const parentEvdByKey = new Map<string, string>();
+    const evidence = new Set<string>();
+    for (const item of seg.items) {
+      await this.appendEvent(req, tenantId, domainId, runId, contract, 'observation.run.checkpoint', 'item.fetched', {
+        item_key: item.itemKey, bytes: item.bytes.byteLength, transport: redactValue(item.transport),
+        stream: { stream_id: streamId, seq: seg.seq },
+      });
+      const parentEvd = item.parentItemKey != null ? parentEvdByKey.get(item.parentItemKey) ?? null : null;
+      let result = await this.admitOrQuarantine(req, contract, runId, item, binding, parentEvd,
+        item.deterministic === true ? prior.get(item.itemKey) ?? null : null, null);
+      if (result.kind === 'conflict') {
+        const fresh = await this.loadPriorEvidence(req, tenantId, domainId, [item.itemKey]);
+        result = await this.admitOrQuarantine(req, contract, runId, item, binding, parentEvd, fresh.get(item.itemKey) ?? null, null);
+        if (result.kind === 'conflict') {
+          throw new Error(`admission conflict for item key ${item.itemKey}: it is held by evidence ${result.heldEvdObjectId}@${result.heldObjectVersion} and could not be resolved by re-reading. Nothing was admitted twice.`);
+        }
+      }
+      if (result.kind === 'admitted') {
+        out.admitted += 1; committed('admitted'); parentEvdByKey.set(item.itemKey, result.evdObjectId); evidence.add(result.evdObjectId);
+      } else if (result.kind === 'noop') {
+        out.noop += 1; committed('noop');
+        if (result.evdObjectId !== undefined) { parentEvdByKey.set(item.itemKey, result.evdObjectId); evidence.add(result.evdObjectId); }
+      } else if (result.kind === 'quarantined') {
+        out.quarantined += 1; committed('quarantined');
+      }
+    }
+    out.evidenceIds = [...evidence];
+    return out;
+  }
+
+  /**
+   * THE ACKNOWLEDGEMENT IS AT-LEAST-ONCE. An append whose commit answer was lost (the connection dropped after the commit)
+   * is sent again; the port recognises the same (stream, seq) and digest and records a REDELIVERY — nothing is appended twice.
+   */
+  private async appendSegmentAtLeastOnce(req: RunRequest, runId: string, contract: ContractRow, args: StreamSegmentArgs): Promise<StreamAnswer> {
+    try {
+      return await this.streamWrite(req, runId, contract, 'observation.run.checkpoint', (cap) => cap.appendStreamSegment(args));
+    } catch (e) {
+      if (!isInfrastructureFault(e)) throw e;
+      this.log.warn(`stream run ${runId}: the acknowledgement of segment ${args.seq} met ${describe(e)}; sent once more (a redelivery if it had committed)`);
+      return this.streamWrite(req, runId, contract, 'observation.run.checkpoint', (cap) => cap.appendStreamSegment(args));
+    }
+  }
+
+  /** One governed write of the run's own, under an action the run already holds, answering the stream as it now stands. */
+  private async streamWrite(
+    req: RunRequest, runId: string, contract: ContractRow, action: string, fn: (cap: AcquisitionWrites) => Promise<StreamAnswer>,
+  ): Promise<StreamAnswer> {
+    const out = await this.pipeline.write<StreamAnswer, AcquisitionWrites>(
+      this.envelope(req, action, 'RUN', runId, contract.tenant_id, contract.domain_id),
+      req.principal,
+      this.route(action, contract.tenant_id, contract.domain_id, 'RUN', runId),
+      ObservationCapability.acquisition,
+      async (cap) => ({ result: await fn(cap), targetType: 'RUN', targetId: runId, targetVersion: '1', outboxEvent: null }),
+    );
+    return out.result;
+  }
+
+  /** The stream's end for this run (close | pause | interrupt) and the run's terminal event, in ONE transaction. */
+  private async endStreamRun(
+    req: RunRequest, runId: string, contract: ContractRow, action: string, event: string, details: Record<string, unknown>,
+    act: { kind: 'close' | 'pause'; streamId: string; details: Record<string, unknown> }
+       | { kind: 'interrupt'; streamId: string; reasonClass: string; reason: string;
+           inFlight: Array<{ seq: number; range_from: string; range_to: string }>; rangeClass: 'interrupted' | 'budget' },
+  ): Promise<StreamAnswer> {
+    const { tenant_id: tenantId, domain_id: domainId } = contract;
+    return this.streamWrite(req, runId, contract, action, async (cap) => {
+      let s: StreamAnswer;
+      if (act.kind === 'interrupt') {
+        s = await cap.interruptStream({ streamId: act.streamId, tenantId, domainId, runId, reasonClass: act.reasonClass, reason: act.reason,
+                                        inFlight: act.inFlight, rangeClass: act.rangeClass, correlationId: req.correlationId });
+      } else if (act.kind === 'close') {
+        s = await cap.closeAcquisitionStream({ streamId: act.streamId, tenantId, domainId, runId, details: act.details, correlationId: req.correlationId });
+      } else {
+        s = await cap.pauseAcquisitionStream({ streamId: act.streamId, tenantId, domainId, runId, details: act.details, correlationId: req.correlationId });
+      }
+      await cap.appendRunEvent({
+        eventId: newId(), tenantId, domainId, runId,
+        sourceId: req.sourceId, contractVersion: req.contractVersion,
+        agentPrincipalId: req.principal.principalId, agentVersion: req.agentVersion, codeDigest: req.connector.codeDigest,
+        connector: req.connector.name, connectorVersion: req.connector.version,
+        acquisitionMode: contract.acquisition_mode,
+        event, details: redactValue({ ...details, stream_state: s.state }) as Record<string, unknown>,
+        correlationId: req.correlationId,
+      });
+      return s;
+    });
+  }
+  /* end B23 stream */
 
   // ===== helpers =====
 

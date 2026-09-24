@@ -112,6 +112,10 @@ export interface ExecutiveReads {
   readForecasts(): any;
   readReviewCases(): any;
   readSubscriptions(): any;
+  /* B23 (0084) attention: the governed reviews and their log (L10-I03). */
+  readReviews(): any;
+  readReviewEvents(): any;
+  /* end B23 attention */
   isMember(a: { roomId: string; principal: string }): Promise<boolean>;
   liveApprovals(a: { packageId: string; version: number }): Promise<Array<{ approval_id: string; approver_principal_id: string; expires_at: string }>>;
   /** The approvals that STOOD at an instant, the approver's eligibility reconstructed then (0049). */
@@ -156,6 +160,14 @@ export interface AttentionSubscriberWrites extends ExecutiveReads {
   selectPlan(a: { tenantId: string; domainId: string; eventId: string; evdObjectId: string; evdVersion: number | null; sourceId: string | null; mode: string | null; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
 }
 
+/* B23 (0084) attention: the governed review's ports (L10-I03) — each asserts its own bound action. */
+export interface ReviewWrites extends ExecutiveReads {
+  conveneReview(a: { reviewId: string; tenantId: string; domainId: string; subjectKind: string; subjectId: string; subjectVersion: number | null; question: string; chair: string; reviewers: string[];
+                     dueAt: string | null; conveneKey: string; requestDigest: string; causeItemId: string | null; roomId: string | null; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+  closeReview(a: { reviewId: string; tenantId: string; domainId: string; disposition: 'concluded' | 'withdrawn'; note: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+}
+/* end B23 attention */
+
 export interface RoomWrites extends ExecutiveReads {
   openRoom(a: { roomId: string; tenantId: string; domainId: string; packageId: string; title: string; reviewEveryDays: number; actor: string; eventId: string; correlationId: string }): Promise<{ room_id: string; next_review_at: string }>;
   setMembership(a: { roomId: string; tenantId: string; domainId: string; principal: string; role: string; op: 'add' | 'remove'; actor: string; eventId: string; correlationId: string }): Promise<void>;
@@ -168,11 +180,13 @@ export interface BriefingWrites extends ExecutiveReads {
   recordMemoryAccess(a: { itemId: string; tenantId: string; domainId: string; version: number; purpose: string; reader: string; asOf: string | null; correlationId: string }): Promise<string>;
   composeBriefing(a: { briefingId: string; tenantId: string; domainId: string; roomId: string | null; packageId: string | null; composer: string; via: 'human' | 'agent'; agentId: string | null;
                        knownAt: string; prior: string | null; watermark: Record<string, unknown>; sources: unknown[]; items: unknown[]; windows: unknown[]; sourceStates: unknown[]; degraded: boolean;
-                       narrative: string | null; narrativeCites: string[]; contentDigest: string; headerDigest: string; memoryAccesses?: Array<{ item_id: string; version: number; access_id: string }>; controls: unknown; eventId: string; correlationId: string }): Promise<{ briefing_id: string; content_digest: string }>;
+                       narrative: string | null; narrativeCites: string[]; contentDigest: string; headerDigest: string; memoryAccesses?: Array<{ item_id: string; version: number; access_id: string }>; controls: unknown; eventId: string; correlationId: string;
+                       /* B23 (0084) attention: BRF@v2 — the edition's schema version and its attention section (null on a v1 edition). */
+                       schemaVersion: 'v1' | 'v2'; attention: Record<string, unknown> | null /* end B23 attention */ }): Promise<{ briefing_id: string; content_digest: string }>;
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-class ExecutiveCapabilityImpl extends ExecutiveCore implements RoomWrites, BriefingWrites, AgentWrites, AttentionWrites, AttentionSubscriberWrites {
+class ExecutiveCapabilityImpl extends ExecutiveCore implements RoomWrites, BriefingWrites, AgentWrites, AttentionWrites, AttentionSubscriberWrites, ReviewWrites {
   constructor(tx: Tx, action: string) { super(tx, action); }
   readRooms(): any { return this.from('executive.rooms_current'); }
   readMembers(): any { return this.from('executive.room_members'); }
@@ -224,6 +238,10 @@ class ExecutiveCapabilityImpl extends ExecutiveCore implements RoomWrites, Brief
   readForecasts(): any { return this.from('prediction.forecasts_current'); }
   readReviewCases(): any { return this.from('intelligence.review_current'); }
   readSubscriptions(): any { return this.from('graph.subscriptions'); }
+  /* B23 (0084) attention */
+  readReviews(): any { return this.from('executive.reviews'); }
+  readReviewEvents(): any { return this.from('executive.review_events'); }
+  /* end B23 attention */
   async projectionState(): Promise<Array<Record<string, unknown>>> {
     return this.call<Record<string, unknown>>(sql`select * from graph.projection_state()`);
   }
@@ -303,6 +321,15 @@ class ExecutiveCapabilityImpl extends ExecutiveCore implements RoomWrites, Brief
   async selectPlan(a: Parameters<AttentionSubscriberWrites['selectPlan']>[0]) {
     return this.one(sql`select intelligence.select_transformation_plan(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.eventId}::uuid, ${a.evdObjectId}::uuid, ${a.evdVersion}::int, ${a.sourceId}::uuid, ${a.mode}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'select_transformation_plan');
   }
+  /* B23 (0084) attention */
+  async conveneReview(a: Parameters<ReviewWrites['conveneReview']>[0]) {
+    return this.one(sql`select executive.convene_review(${a.reviewId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.subjectKind}, ${a.subjectId}::uuid, ${a.subjectVersion}::int, ${a.question},
+      ${a.chair}::uuid, ${a.reviewers}::uuid[], ${a.dueAt}::timestamptz, ${a.conveneKey}, ${a.requestDigest}, ${a.causeItemId}::uuid, ${a.roomId}::uuid, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'convene_review');
+  }
+  async closeReview(a: Parameters<ReviewWrites['closeReview']>[0]) {
+    return this.one(sql`select executive.close_review(${a.reviewId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.disposition}, ${a.note}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'close_review');
+  }
+  /* end B23 attention */
 
   async isMember(a: { roomId: string; principal: string }): Promise<boolean> {
     const rows = await this.call<{ m: boolean }>(sql`select executive.is_member(${a.roomId}::uuid, ${a.principal}::uuid) as m`);
@@ -365,7 +392,8 @@ class ExecutiveCapabilityImpl extends ExecutiveCore implements RoomWrites, Brief
       ${a.briefingId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.roomId}::uuid, ${a.packageId}::uuid, ${a.composer}::uuid, ${a.via}, ${a.agentId}::uuid, ${a.knownAt}::timestamptz,
       ${a.prior}::uuid, ${JSON.stringify(a.watermark)}::jsonb, ${JSON.stringify(a.sources)}::jsonb, ${JSON.stringify(a.items)}::jsonb, ${JSON.stringify(a.windows)}::jsonb, ${JSON.stringify(a.sourceStates)}::jsonb, ${a.degraded},
       ${a.narrative}, ${JSON.stringify(a.narrativeCites)}::jsonb, ${a.contentDigest}, ${a.headerDigest}, ${JSON.stringify(a.controls ?? {})}::jsonb, ${a.eventId}::uuid, ${a.correlationId}::uuid,
-      ${JSON.stringify(a.memoryAccesses ?? [])}::jsonb) as r`);
+      ${JSON.stringify(a.memoryAccesses ?? [])}::jsonb,
+      /* B23 (0084) attention */ ${a.schemaVersion}, ${a.attention === null ? null : JSON.stringify(a.attention)}::jsonb /* end B23 attention */) as r`);
     const r = rows[0]?.r; if (r === undefined) throw new Error('compose_briefing returned no row'); return r;
   }
 }
@@ -381,4 +409,7 @@ export const ExecutiveCapability = {
   attention(tx: Tx, action: string): AttentionWrites { return new ExecutiveCapabilityImpl(tx, action); },
   /** B22 (0083): the four consumers' capability (observations, source-health, proposals, attention) — the subscriber's own action. */
   attentionSubscriber(tx: Tx, action: string): AttentionSubscriberWrites { return new ExecutiveCapabilityImpl(tx, action); },
+  /* B23 (0084) attention: the governed review's convening and closure (L10-I03). */
+  review(tx: Tx, action: string): ReviewWrites { return new ExecutiveCapabilityImpl(tx, action); },
+  /* end B23 attention */
 };

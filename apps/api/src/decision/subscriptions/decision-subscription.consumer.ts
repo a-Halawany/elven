@@ -32,13 +32,23 @@
  * `forecast_fitness` block (the class, the rule version, the window and the coverage): the forecast is NOT withdrawn, so the
  * owner decides whether the option stands; the ledger event stays `input.invalidated`. A new method, so a new identity.
  *
+ * MATERIAL CHANGE AS AN EVENT (0084, B23; L10-I02). A `material_change` exposure on a NEW note (the note port answered true — once
+ * per cause) publishes MaterialChangeRaised@v1 from the item's own write (0066 §2: the outbox row commits with the note or not at
+ * all), with the transparent dimensions and the attention-policy version active at publication (material-change.ts); a redelivery or
+ * a replay finds the note already recorded and publishes nothing. The attention subscriber routes it (decision.material_change); the
+ * decisions consumer never routes anything itself. A new method, so a new identity.
+ *
  * Items are package ids.
  */
 import { Injectable, type OnModuleInit } from '@nestjs/common';
+import { sql } from 'kysely';
 import { SubscriptionDispatcherService } from '../../graph/subscriptions/subscription-dispatcher.service.js';
 import { touchedIds } from '../../graph/subscriptions/change-events.js';
 import type { ChangeEvent, SubscriptionConsumer } from '../../graph/subscriptions/graph-change.js';
 import { DecisionCapability, type DecisionSubscriberWrites } from '../decision.capabilities.js';
+/* B23 (0084) attention */
+import { materialChangeRaisedEvent, type MaterialBasis } from './material-change.js';
+/* end B23 attention */
 
 type Row = Record<string, unknown>;
 // 0078 (C8): a reopened package is open — the draft the reopen carried hears of the inputs it cites.
@@ -188,6 +198,35 @@ export class DecisionSubscriptionConsumer implements SubscriptionConsumer<Decisi
     const effect = measure === null ? 'input.invalidated' : measure.material ? 'input.recomputed_materially' : 'input.recomputed';
     const base = noted ? { effect, effectRef: item, details: { via: a.via, package_state: a.state, executed: a.executed, ...(measure === null ? {} : { recomputation: measure }), ...(lifecycleDetails === null ? {} : { lifecycle: lifecycleDetails }) } }
                        : { effect: 'input.already_noted', effectRef: item, details: { package_state: a.state, executed: a.executed } };
+    /* B23 (0084) attention: a material_change exposure on a NEW note → MaterialChangeRaised@v1 in this item's transaction (once per cause). */
+    if (noted && exposure !== undefined && exposure.failureClass === 'material_change') {
+      const basis: MaterialBasis = lifecycle !== null ? (lifecycle.change.kind === 'forecast.fitness_changed' ? 'assessed_unfit' : 'categorical_loss')
+        : measure !== null && measure.relative === null ? 'unmeasurable' : 'measured';
+      const raised = await this.materialChangeRaised(cap, event, item, a, exposure, basis, actor);
+      return { ...base, details: { ...base.details, material_change_raised: { dims: raised.payload['dims'], policy_version: raised.payload['policy_version'] } }, exposure, outboxEvents: [raised] };
+    }
+    /* end B23 attention */
     return exposure === undefined ? base : { ...base, exposure };
   }
+
+  /* B23 (0084) attention: the event's material — the package as it stands, its current version's decision deadline, the note just
+     recorded, and the attention-policy version active now (null: no policy — the engine abstains at delivery). */
+  private async materialChangeRaised(cap: DecisionSubscriberWrites, event: ChangeEvent, packageId: string, a: { via: string[]; state: string; executed: boolean },
+                                     exposure: { disposition: string; note: string }, basis: MaterialBasis, actor: string) {
+    const p = ((await cap.readPackages().select(['package_id', 'title', 'owner_principal_id', 'current_version', 'state'] as never).where('package_id' as never, '=', packageId as never).execute()) as Row[])[0] ?? null;
+    const version = p === null || p['current_version'] == null ? null : Number(p['current_version']);
+    const v = version === null ? null : ((await cap.readVersions().select(['choice'] as never).where('package_id' as never, '=', packageId as never).where('version' as never, '=', version as never).execute()) as Row[])[0] ?? null;
+    const choice = (v?.['choice'] ?? null) as Row | null;
+    const deadline = choice !== null && typeof choice['decision_deadline'] === 'string' ? choice['decision_deadline'] : null;
+    const note = ((await cap.readEvents().select(['event_id'] as never).where('package_id' as never, '=', packageId as never).where('event' as never, '=', 'input.invalidated' as never)
+      .where(sql`details ->> 'outbox_event_id'` as never, '=', event.event_id as never).execute()) as Row[])[0] ?? null;
+    const policy = ((await cap.readAttentionPolicies().select(['version'] as never).where('state' as never, '=', 'active' as never).execute()) as Row[])[0] ?? null;
+    return materialChangeRaisedEvent({
+      packageId, version, packageState: String(p?.['state'] ?? a.state), title: String(p?.['title'] ?? packageId), owner: (p?.['owner_principal_id'] as string | null | undefined) ?? null,
+      executed: a.executed, disposition: exposure.disposition,
+      trigger: { eventId: event.event_id, eventType: event.event_type, changeKind: String(event.payload.change.kind), noteId: note === null ? null : String(note['event_id']), via: a.via },
+      basis, deadline, policyVersion: policy === null ? null : Number(policy['version']), note: exposure.note, actor, occurredAt: new Date(),
+    });
+  }
+  /* end B23 attention */
 }

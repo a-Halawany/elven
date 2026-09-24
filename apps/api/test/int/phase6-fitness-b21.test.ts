@@ -118,7 +118,9 @@ const DIGESTS_A2303FF: Readonly<Record<'forecasts' | 'scenarios' | 'decisions', 
  * The register rows that stay partial (compared sorted): ten after 0081 (C2's set); 0083 (B22) binds L1-I03, L1-I04, L2-I02 and L10-I05,
  * so six stay partial.
  */
-const STILL_PARTIAL = ['L1-I02', 'L3-I02', 'L4-I02', 'L7-I02', 'L10-I02', 'L10-I03'];
+// B23 (0084): the six bound — L1-I02, L3-I02, L4-I02, L7-I02, L10-I02, L10-I03; none stays partial (50/0/0).
+const STILL_PARTIAL: string[] = [];
+const BOUND_IN_0084 = ['L1-I02', 'L3-I02', 'L4-I02', 'L7-I02', 'L10-I02', 'L10-I03'];
 const REVIEW_ROLES = ['platform_admin', 'domain_admin', 'strategy_owner', 'forecast_owner'];
 
 let h: Phase4Harness; let su: AnyDb; let w: DecisionWorld; let c: ReturnType<typeof decisionCalls>;
@@ -931,9 +933,10 @@ describe('B21.3 · fitness, coherence and challenge (0081; L5-I05, L6-I03, L7-I0
     const r = await interfaces();
     expect(r.interfaces).toHaveLength(50);
     const byState = (s: string) => r.interfaces.filter((i) => i['binding_state'] === s).map((i) => String(i['interface_id']));
-    expect(byState('bound')).toHaveLength(44); // 40 at 0081; + L1-I03, L1-I04, L2-I02, L10-I05 in 0083 (B22)
+    expect(byState('bound')).toHaveLength(50); // 40 at 0081; + L1-I03, L1-I04, L2-I02, L10-I05 in 0083 (B22); + the six in 0084 (B23)
     expect(byState('partial').sort()).toEqual([...STILL_PARTIAL].sort());
     expect(byState('unbound')).toEqual([]);
+    for (const id of BOUND_IN_0084) expect(r.interfaces.find((i) => i['interface_id'] === id), id).toMatchObject({ binding_state: 'bound', bound_in: '0084', schema_version: 'v1' });
     for (const [id, event] of [['L5-I05', 'ValidateTwin'], ['L6-I03', 'ForecastFitnessChanged'], ['L7-I04', 'ScenarioCoherenceFailed'], ['L8-I04', 'ChallengeSimulation']]) {
       const row = r.interfaces.find((i) => i['interface_id'] === id)!;
       expect(row, id).toMatchObject({ binding_state: 'bound', bound_in: '0081', schema_version: 'v1' });
@@ -944,7 +947,7 @@ describe('B21.3 · fitness, coherence and challenge (0081; L5-I05, L6-I03, L7-I0
     const l9 = String(r.interfaces.find((i) => i['interface_id'] === 'L9-I05')!['bound_to']);
     expect(l9).toMatch(/B22 \(0083\): a POLICY CHANGE is a recorded cause/);
     expect(l9).not.toMatch(/a policy change has no recorded cause/);
-    expect(await registerCounts()).toEqual({ bound: 44, partial: 6, unbound: 0 });
+    expect(await registerCounts()).toEqual({ bound: 50, partial: 0, unbound: 0 });
     // THE DIGESTS (C4): the three re-worded consumers changed, the four others byte for byte 13ed40c's; every live subscription carries this process's identity.
     // 0083 (B22): the seven unchanged by B22 (the three B21 moved are a2303ff's); the four B22 kinds carry identities of their own, none an earlier one.
     const earlier = new Set<string>([...Object.values(DIGESTS_13ED40C), ...Object.values(DIGESTS_A2303FF)]);
@@ -952,7 +955,9 @@ describe('B21.3 · fitness, coherence and challenge (0081; L5-I05, L6-I03, L7-I0
       if ((B22_KINDS as readonly string[]).includes(k)) expect(earlier.has(consumerCodeDigest(k)), `${k}: a new consumer (B22), a new identity`).toBe(false);
       else if (k === 'forecasts' || k === 'scenarios' || k === 'decisions') {
         expect(consumerCodeDigest(k), `${k}: a changed method is a new consumer`).not.toBe(DIGESTS_13ED40C[k]);
-        expect(consumerCodeDigest(k), `${k}: unchanged by B22 (a2303ff's)`).toBe(DIGESTS_A2303FF[k]);
+        // B23 (0084): the decisions method now publishes MaterialChangeRaised@v1 — a changed method, a new identity; forecasts and scenarios unchanged since a2303ff.
+        if (k === 'decisions') expect(consumerCodeDigest(k), `${k}: changed by B23`).not.toBe(DIGESTS_A2303FF[k]);
+        else expect(consumerCodeDigest(k), `${k}: unchanged by B22 and B23 (a2303ff's)`).toBe(DIGESTS_A2303FF[k]);
       } else expect(consumerCodeDigest(k), `${k}: unchanged since 13ed40c`).toBe(DIGESTS_13ED40C[k as PriorKind]);
     }
     expect(new Set(CONSUMER_KINDS.map((k) => consumerCodeDigest(k))).size).toBe(11);

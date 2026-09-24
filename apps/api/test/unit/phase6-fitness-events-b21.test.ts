@@ -136,10 +136,12 @@ describe('B21 · forecastFitnessChangedEvent — ForecastFitnessChanged@v1 from 
 });
 
 describe('B21 · forecastFitnessChangedGraphEvent — GraphChanged/forecast.fitness_changed with the typed block', () => {
-  it('the kind is in GRAPH_CHANGE_KINDS, last, and every earlier kind stays (eighteen kinds)', () => {
+  // B23 (0084): revision.committed is appended after it — the B21 kind keeps its place (the eighteenth), the list has nineteen.
+  it('the kind is in GRAPH_CHANGE_KINDS, the eighteenth, and every earlier kind stays (nineteen kinds since B23 appended revision.committed)', () => {
     expect(GRAPH_CHANGE_KINDS).toContain('forecast.fitness_changed');
-    expect(GRAPH_CHANGE_KINDS[GRAPH_CHANGE_KINDS.length - 1]).toBe('forecast.fitness_changed');
-    expect(GRAPH_CHANGE_KINDS).toHaveLength(18);
+    expect(GRAPH_CHANGE_KINDS[17]).toBe('forecast.fitness_changed');
+    expect(GRAPH_CHANGE_KINDS[GRAPH_CHANGE_KINDS.length - 1]).toBe('revision.committed');
+    expect(GRAPH_CHANGE_KINDS).toHaveLength(19);
     for (const k of ['entity.created', 'edge.asserted', 'forecast.superseded', 'import.admitted', 'import.revoked', 'twin.state_changed', 'forecast.withdrawn', 'simulation.invalidated', 'projection.rebuilt']) expect(GRAPH_CHANGE_KINDS).toContain(k);
   });
   it('the forecastWithdrawnGraphEvent shape: no identities, objects.forecasts the forecast, walked true, the cause per trigger (the literal map), the block with the class, what stood before and the measures', () => {
@@ -176,7 +178,8 @@ describe('B21 · scenarioCoherenceFailedEvent — ScenarioCoherenceFailed@v1 fro
     rule_version: '1', checked_at: '2026-09-24T10:30:00.123456+00:00', ...over,
   });
   it('the trigger→action map and the review roles are the register\'s', () => {
-    expect(SCENARIO_COHERENCE_TRIGGER_ACTION).toEqual({ declare: 'prediction.scenario.declare', review: 'prediction.scenario.review', subscription: 'prediction.scenario.subscription.apply', operator: 'prediction.scenario.check' });
+    // B23 (0084): the branching write's trigger `branch` added (phase6-branch-scenario-b23.test.ts pins it); the four B21 triggers unchanged.
+    expect(SCENARIO_COHERENCE_TRIGGER_ACTION).toEqual({ declare: 'prediction.scenario.declare', review: 'prediction.scenario.review', subscription: 'prediction.scenario.subscription.apply', operator: 'prediction.scenario.check', branch: 'prediction.scenario.branch' });
     expect([...SCENARIO_REVIEW_ROLES]).toEqual(['platform_admin', 'domain_admin', 'strategy_owner', 'forecast_owner']);
   });
   it('pinned key by key: the scenario, the check, what stood before, outcome failed, the findings in rule order, the rule version, the trigger, routed_to the review roles, the cause on the SCN', () => {
@@ -309,7 +312,9 @@ describe('B21 · the consumer identities (C4): the forecasts, scenarios and deci
   });
   it('B22 (0083): the seven identities are unchanged by B22 (the four at 13ed40c\'s, the three B21 moved at a2303ff\'s); the four new kinds carry identities of their own, distinct from every earlier one', () => {
     for (const k of ['twins', 'retrieval', 'memory-mappings', 'relationships'] as const) expect(consumerCodeDigest(k), k).toBe(DIGESTS_13ED40C[k]);
-    for (const k of ['forecasts', 'scenarios', 'decisions'] as const) expect(consumerCodeDigest(k), k).toBe(DIGESTS_A2303FF[k]);
+    // B23 (0084): the decisions method publishes MaterialChangeRaised@v1 — a changed method, a new identity; forecasts and scenarios stay a2303ff's.
+    for (const k of ['forecasts', 'scenarios'] as const) expect(consumerCodeDigest(k), k).toBe(DIGESTS_A2303FF[k]);
+    expect(consumerCodeDigest('decisions'), 'decisions: changed by B23').not.toBe(DIGESTS_A2303FF['decisions']);
     const earlier = new Set<string>([...Object.values(DIGESTS_13ED40C), ...Object.values(DIGESTS_A2303FF)]);
     for (const k of B22_KINDS) {
       expect(consumerCodeDigest(k), k).toMatch(/^[0-9a-f]{64}$/);

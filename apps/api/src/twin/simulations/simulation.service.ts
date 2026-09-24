@@ -350,6 +350,13 @@ export class SimulationService {
         throw new HttpException(errorBody('EYE_REQ_001', correlationId,
           `scenario ${intake.scenarioId} was recorded after this twin version's known_at (${knownAt}); it was not known at record time and cannot give this run's shock its basis`), 422);
       }
+      // B23 (0084, L7-I02): a branch ADDED after the declaration belongs to the version that added it; a run whose record cut-off binds
+      // an earlier version of the tree did not know it (the port refuses the same: `run rejected (branch_added_later)`).
+      const addedIn = Number(branch['added_in_version'] ?? 1);
+      if (addedIn > asOfVersion) {
+        throw new HttpException(errorBody('EYE_REQ_001', correlationId,
+          `run rejected (branch_added_later): branch "${String(branch['name'])}" was added in version ${addedIn} of scenario ${intake.scenarioId}, after version ${asOfVersion} that this twin version's known_at (${knownAt}) binds; it was not in the tree this run knew`), 422);
+      }
       /*
        * BOTH CLOCKS. A flip has two times and Phase 4 records both: the instant it was
        * written, and the day of the observation that caused it. A flip written after this

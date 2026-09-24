@@ -61,6 +61,9 @@ const NAV = [
   { href: '/graph/memory', label: 'Memory', glyph: '▤' },
   { href: '/graph/retention', label: 'Retention', glyph: '⌛' },
   { href: '/graph/ontology', label: 'Ontology', glyph: '⊞' },
+  /* B23 (0084) revision */
+  { href: '/graph/revisions', label: 'Revisions', glyph: '⊕' },
+  /* end B23 revision */
   { href: '/decisions', label: 'Decisions', glyph: '◆' },
   { href: '/decisions/briefings', label: 'Briefings', glyph: '☰' },
   { href: '/decisions/attention', label: 'Attention', glyph: '⚑' },

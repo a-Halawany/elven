@@ -3897,6 +3897,126 @@ not policy dimensions yet; no approval step for a suppression; no new hosted bro
 
 **Hosted (bound once):** ci 36043290422 at `9f6a77e` (PR #60; one attempt) — unit 2390/2390 + 9/9, acceptance 58/58, the integration suite 1103/1103 in 76 files with both B22 harnesses, the upgrade proof through 0083, C18 623/623 + 44, browser 51, supply-chain and the recheck green; C19 lifecycle 36043290505 green. The earlier head `567e669`'s build-test failed at the audit accounting control (the summary committed without its unit section) — preserved, corrected by `9f6a77e`. No unit promoted. The merge of #60 awaits the owner's word.
 
+## B23 — the six partial interfaces bound (0084): MaterialChangeRaised and ReviewConvened as events, the Acquire stream form, RetrieveContext, CommitGraphRevision, BranchScenario; the briefing's attention section (BRF@v2); the register 44/6/0 → 50/0/0 (implemented)
+
+**Where it stands.** `phase6-b23`, cut from the planning branch (`planning/delivery-plan-2026-09`, PR #61, stacked on #60). The first stage of the finite delivery plan (`audit/DELIVERY_PLAN.md` §3.1). Its completion conditions are clause by clause in `audit/delivery/STAGES.csv` (B23). B23 completes no feature group: it advances F-P6-07, F-P6-14, F-P1-09, F-P3-16, F-P3-08, F-P4-08 and F-P6-12, whose other remaining clauses stay open.
+
+**How it was built.** The current account (A1) ran it with five implementers, one per part, each in its own git worktree with its own disposable databases (`eye_verify_a1_b23_<part>_*`) and heavy runs through `scripts/dev/heavy-slot.sh`. The integrator combined the five sections into ONE migration, `0084_b23_interfaces_and_briefing_v2.sql`, before candidate verification (DELIVERY_PLAN.md §6.3 rule 6; `MIGRATION_LEDGER.csv`). No function is re-declared by two sections.
+
+### B23.1 — §A: MaterialChangeRaised@v1 (L10-I02), ReviewConvened@v1 (L10-I03), BRF@v2
+
+- **The producer.** The decisions subscriber publishes **MaterialChangeRaised@v1** in the same transaction as the package note, only when the note is new and of class `material_change`. It carries:
+  - consequence (C3 if the decision was executed, else C2);
+  - confidence (1 for a withdrawal, an invalidation or a measured material recomputation; 0.8 for an assessed-unfit forecast; 0.5 when not measurable);
+  - hours to the decision's deadline;
+  - the attention-policy version in force.
+- **The consumer.** The attention subscriber routes the class `decision.material_change` to the package owner under the policy. Redelivery, replay and an upstream re-drive make no second item (the delivery ledger and the item key). A malformed event is quarantined (`invalid_event` → human_review). A publication lost from the queue is reconciled.
+- **Governed reviews.**
+  - Tables: `executive.reviews` and the append-only `review_events`.
+  - Ports:
+    - `executive.convene_review`: a human-gated exact rule. The subject is an objective, decision, scenario, commitment or outcome, which must exist in the domain at the named version. The chair and the reviewers are active humans. The convene key works under the key + digest idiom.
+    - `executive.close_review`: the chair concludes; the convener or the chair withdraws.
+  - Event: **ReviewConvened@v1**, routed as `review.convened` to the chair. A closed review no longer stands.
+- **BRF@v2.** `executive.briefings` gains `schema_version` (default `v1`) and `attention`, bound by a CHECK. There is a `BRF@v2` schema row, and `compose_briefing` is re-declared from 0069 with two parameters. Every new edition carries the ATTENTION SECTION, built as of its `known_at` from the item event log and covered by the content digest: the routed items with confidence bands (≥0.8 high, ≥0.5 medium, else low or unknown), the counts by state, and the material changes since the prior edition. v1 editions still read as v1.
+- **Consumer identities and vocabulary.** Two identities changed: the decisions and attention consumers' METHOD_REFs are new digests, so live subscriptions are re-registered. The subscribable vocabulary goes from 10 to 12 types. The attention signal classes are +2.
+
+### B23.2 — §B: the Acquire STREAM form (L1-I02)
+
+- **Tables:** `observation.acquisition_streams` (one live stream per source and partition key), `acquisition_stream_events` (append-only), `acquisition_segments` (content immutable), `acquisition_incomplete_ranges`.
+- **Ports:**
+  - open (idempotent: an existing live stream is resumed, and a stream left running by a dead run is recorded interrupted first);
+  - append segment (the same digest is a redelivery; a different digest is refused, 23505 → 409);
+  - backpressure, incomplete range, pause, close (`completed` only at the end of the range with no unresolved range, else `closed_incomplete`);
+  - interrupt (the run, an operator, the sweeper).
+- **The loop.** `AcquisitionLifecycle.runStream` pulls one segment at a time with credit. Evidence goes ONLY through the existing admission (purpose, rights, residency, custody, quarantine, de-duplication unchanged).
+- **The command form is unchanged.** The stream never advances `connector_checkpoints`, and streams are not scheduled.
+- **The demo fixture.** A synthetic, labelled paged replay fixture for the Red Sea corridor, with a planted publisher gap: `fixtures/phase1/replay/red-sea-corridor-stream`, contract in `STREAM_SOURCE_CONTRACTS`.
+
+### B23.3 — §C: RetrieveContext (L3-I02)
+
+- **The query:** `memory.retrieve_context`, STABLE and SECURITY INVOKER. It serves the version current at `as_of` whose own payload names the subject, filtered by the query's PURPOSE, with explanation links (dependency, derivation, supersedes, related).
+- **Route:** `POST …/graph/memory/context` (an exact rule cloning `memory.item.retrieve`).
+- **The read's order:**
+  1. The projection state is read first.
+  2. Clearance and audience roles are applied in TypeScript (the briefing's rule). Items withheld by policy are neither counted nor mentioned.
+  3. One access row per served version is written, as the governance record of the read.
+- **Product state:**
+  - `partial`: something left out and named (a link resting on a withdrawn edges or entities partition; the content tier down while withdrawn — 200, not 503);
+  - `stale`: lagging or unverified;
+  - `complete`: otherwise.
+  - The audit result code is `OK` or `EYE-DEG-001`.
+- **No state change.** The harness PROVES it: the revision, the items hash, the MEM versions, the partitions, the dependencies and the outbox are all equal before and after; only POL, AUD and access rows grow.
+
+### B23.4 — §D: CommitGraphRevision (L4-I02)
+
+- **The domain's revision.** `graph.revision_heads` is advanced once per committed graph transaction by statement triggers on the six graph event tables. It starts at 0 in 0084, with no back-fill.
+- **The port:** `graph.commit_revision`, an exact rule; knowledge_owner may commit. Its order:
+  1. Lock the head.
+  2. Look up the idempotency key. The same change set returns the first result even after the head moved; a different change set under the key → 409.
+  3. The expected head → 409 on a conflict.
+  4. The change set's ontology version must be the active one.
+  5. Nodes need an ENT claim version admitted, with lineage, decided in review.
+  6. Edges need a REL claim. Evidence, digest, method, run and confidence are taken FROM the lineage; a mismatch is refused. Edges of earlier claim versions are superseded.
+- **All or nothing.** The event details are the ones the B20 derivations read. ONE GraphChanged `revision.committed` goes out per revision, built without reads; a repeat publishes nothing.
+- **Stated limits:**
+  - Graph writes in a domain queue behind the head lock.
+  - A revision and a split on the same entity can deadlock. PostgreSQL aborts one side with 40P01, which is answered 500, not a mapped 409.
+  - Strategy objects, retractions, splits and ontology amendments are not in a change set.
+
+### B23.5 — §E: BranchScenario (L7-I02)
+
+- **Schema:** `scenarios_current.current_version`, `branches_current.added_in_version`, and `prediction.scenario_branch_requests` (key + digest).
+- **The port:** `prediction.branch_scenario`. It admits SCN v(n+1) (v(n) untouched) and adds an upside, downside, disruption or user-defined branch.
+- **Idempotency and refusals:**
+  - the same key and body → the recorded result;
+  - a different body under the key → 409;
+  - a stale version, a concurrent writer or a duplicate (name, label, or a `duplicate_branch` match) → 409;
+  - baseline and the other kinds → 422.
+- **Coherence** is re-run on the new version (trigger `branch`).
+- **The run gate.** `simulation.open_run` refuses a branch added after the version the run binds. The two version-1 hardcodes (the warning source id and the check-coherence target) now read the current version.
+
+### B23.6 — the register and the stale rows
+
+- **The register.** The six rows are bound in 0084 with their `bound_to` texts, each stating what is NOT bound. 0084 §F asserts **50 / 0 / 0**.
+- **The stale-status candidates.** The 49 rows of `audit/delivery/STALE_STATUS_CANDIDATES.csv` were each checked against the code by a read-only verifier, and the verdicts applied:
+  - 16 moved to `implemented`;
+  - 31 moved to or within `partial`, each with its remaining work rewritten, and release corrected where the code is on `main`;
+  - 2 kept.
+  Every moved row cites its evidence ("B23 stale-status check 2026-09-25").
+- **Requirement rows.** L3-I02, L7-I02, L10-I02 and L10-I03 are `implemented`. L1-I02 and L4-I02 stay `partial`: residency and rate at acquisition; ontology amendments in a change set. L10-I05's BRF@v2 clause is delivered.
+- **Rows by implementation status:** implemented 984 → 1003, missing 2532 → 2513.
+- **Acceptance units.** Seven gain B23 evidence and stay open (no promotion): AU-OBS-0028, AU-MEM-0023, AU-MEM-0078, AU-PRD-0017, AU-EXO-0010, AU-EXO-0025, AU-EXO-0030. The split stays **3,555 = 3,179 + 339 + 37**.
+
+### B23.7 — the evidence
+
+- **Harnesses** (each on a fresh database):
+
+| Harness | Result |
+|---|---|
+| `phase6-attention-events-b23` | 9/9 |
+| `phase6-acquire-stream-b23` | 8/8 |
+| `phase6-retrieve-context-b23` | 9/9 |
+| `phase6-graph-revision-b23` | 11/11 |
+| `phase6-branch-scenario-b23` | 11/11 |
+
+- **Full integration suite on a fresh database:**
+  - run 1: 1149/1151 in 81 files. The two failures, `phase6-executive-requests` FOLLOW-UP (the briefing's window cut-off) and `phase6-graph-subscriptions-2` B7 telemetry (a transient unresolved retrieval delivery), pass alone (24/24) — load-timing, recorded with the carried H1 items;
+  - run 2: see §37.2 of PHASE6_REPORT.
+- **Unit and the rest:**
+  - unit 2441/2441 + the hermetic meta 9/9;
+  - acceptance 58/58;
+  - the upgrade proof PASS (migrations 63, schema registry 37, roles 35);
+  - browser 51/51 on a fresh database (the demo API and web stopped for it; the rehearsal Redis, never the demo's).
+- **The act on `eye_demo`:** `evidence/cp6/act-b23.txt` — ALL SCENES HELD, 49 checks, 28.5 s (two clean rehearsals on restored copies first). The backup before 0084 is `.eye-local/backups/eye_demo-pre-0084-20260924T232509Z.dump`.
+
+**Stated (not done here).**
+- Delivery beyond in_app, the timer host, the remaining materiality dimensions, suppression approval, delegation, queue evaluation and constraining markers are B24.
+- Residency evaluated at acquisition and per-contract rate limits.
+- Ontology amendments inside a revision.
+- Scenario rooms.
+- A timer for stream scheduling.
+- The deadlock mapping noted in B23.4.
+
 ## Order and the next implementation batch
 
 B3, B1 and B2 are done in code, B4/B5 applied to the audit (the 2026-09-11 checkpoints), B6 done in
@@ -3909,4 +4029,4 @@ one artefact, no deployment leg. Every leg of every unit stays unaccepted until 
 carries its own signed evidence (P7-D). The synthetic-company demonstration (`eye_demo`, NORDWERK) remains the deliverable
 every batch is exercised on: B3's kinds become visible on the demonstration when a scenario with the
 new kinds is declared there through the governed route (a scripted act, `scripts/phase4/`), which is
-the next demonstration step after the hosted run is green. B22 delivered the consumers and the attention policy (0083; the register 44/6/0) and the sweep's remedy (0082). Next from the register: B23 (the commands and the query — L1-I02, L3-I02, L4-I02, L7-I02, L10-I02/-I03). The C15 return to the official images merged with #57 (`main` `870b212`); the live demonstration containers were recreated onto those images on 2026-09-24 under the owner's word (§B22.2). The `ctx.build` remedy was delivered as 0082 (§B22.1) — the owner's 2026-09-24 word made it a technical choice. AU-MEM-0067 stays OPEN without a waiver: the per-object class (a missing or corrupt object under a reachable root) keeps A7's one 409 and the specification obligation stands (§B21.2's table).
+the next demonstration step after the hosted run is green. B22 delivered the consumers and the attention policy (0083; the register 44/6/0) and the sweep's remedy (0082). Then B23 (the commands and the query — L1-I02, L3-I02, L4-I02, L7-I02, L10-I02/-I03). B23 bound them and the briefing's attention section (0084; the register 50/0/0). From here the order is the finite delivery plan's (`audit/DELIVERY_PLAN.md`, `audit/delivery/STAGES.csv`): B24 (attention completion) next on A1. The C15 return to the official images merged with #57 (`main` `870b212`); the live demonstration containers were recreated onto those images on 2026-09-24 under the owner's word (§B22.2). The `ctx.build` remedy was delivered as 0082 (§B22.1) — the owner's 2026-09-24 word made it a technical choice. AU-MEM-0067 stays OPEN without a waiver: the per-object class (a missing or corrupt object under a reachable root) keeps A7's one 409 and the specification obligation stands (§B21.2's table).

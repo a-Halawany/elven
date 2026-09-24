@@ -518,6 +518,60 @@ export function projectionRebuiltEvent(a: { tenantId: string; domainId: string; 
   return asRow('GraphChanged', payload);
 }
 
+/* B23 (0084) revision */
+// ───────────────────────── 0084 (B23): the committed graph revision ─────────────────────────
+
+/**
+ * A CHANGE SET committed as ONE graph revision (0084 §3, L4-I02) — built PURE from graph.commit_revision's answer (the
+ * importAdmittedEvent precedent: many facts in ONE event, no read; the matching subscriptions handed in by the write). The
+ * identities are the nodes it CREATED (`created`, with their names) and the existing ends its edges touch (`subject` / `object`
+ * — a changed identity, so a twin bounded by one re-verifies as on edge.asserted; no name: nothing is read); the edges it
+ * ASSERTED (with their world interval and claim) and the ones it SUPERSEDED (an earlier version of the same claim); the claims
+ * the nodes and edges rest on and the evidence of the edges in `objects`. Every list is cut at LIFECYCLE_EVENT_LIST_MAX and
+ * `objects.truncated` says so; `walked` is false (nothing of the domain rests on ids minted in this write; the superseded edges'
+ * dependants are selected by the consumers' own reads). The typed `revision` block carries the ledger's identity of the
+ * revision; the cause is the commit act on the revision (GRV). A REPEAT (the same key and change set) is never announced: the
+ * route publishes nothing for it.
+ */
+export function revisionCommittedEvent(a: { revision: Row; subscriptions: SubscriptionRef[]; actor: string; occurredAt?: string }): OutboxRow {
+  const r = a.revision;
+  const now = a.occurredAt ?? str(r['committed_at']) ?? new Date().toISOString();
+  const rows = (v: unknown): Row[] => (Array.isArray(v) ? (v as Row[]) : []);
+  const nodes = rows(r['node_ids']); const edges = rows(r['edge_ids']); const superseded = rows(r['superseded_edges']);
+  const identities: AffectedIdentity[] = nodes.map((n) => ({ entity_id: String(n['entity_id']), role: 'created', canonical_name: str(n['canonical_name']), lifecycle_state: 'active', split_from: null }));
+  const seen = new Set(identities.map((i) => i.entity_id));
+  for (const e of edges) {
+    for (const [key, role] of [['subject_entity_id', 'subject'], ['object_entity_id', 'object']] as const) {
+      const id = String(e[key]);
+      if (!seen.has(id)) { seen.add(id); identities.push({ entity_id: id, role }); }
+    }
+  }
+  const asserted: AffectedEdge[] = edges.map((e) => ({ edge_id: String(e['edge_id']), state: 'asserted', predicate: String(e['predicate']), subject_entity_id: String(e['subject_entity_id']),
+    object_entity_id: String(e['object_entity_id']), valid_from: str(e['valid_from']), valid_to: str(e['valid_to']), claim_object_id: str(e['claim_object_id']) }));
+  const replaced: AffectedEdge[] = superseded.map((e) => ({ edge_id: String(e['edge_id']), state: 'superseded', superseded_at: now, claim_object_id: str(e['claim_object_id']) }));
+  const claims = [...new Set([...nodes.map((n) => String(n['claim_object_id'])), ...edges.map((e) => String(e['claim_object_id']))])];
+  const evidence = [...new Set(edges.map((e) => String(e['evidence_object_id'])))];
+  const ids = cutList(identities); const es = cutList([...asserted, ...replaced]); const cs = cutList(claims); const ev = cutList(evidence);
+  const counts = (r['counts'] ?? {}) as Record<string, unknown>;
+  const payload: GraphChangedPayload = {
+    schema: 'GraphChanged', schema_version: 'v1',
+    change: { kind: 'revision.committed', occurred_at: now, graph_event_id: null, invalidation_id: null, correction_case_id: null },
+    identities: ids.list,
+    relationships: { edges: es.list, resolutions: [], dependencies: [] },
+    objects: { ...EMPTY_REACH, claims: cs.list, evidence: ev.list, truncated: ids.truncated || es.truncated || cs.truncated || ev.truncated, walked: false },
+    temporal: { known_at: now },
+    subscriptions: a.subscriptions,
+    cause: { action: 'graph.revision.commit', actor: a.actor, target_type: 'GRV', target_id: String(r['revision_id']) },
+    revision: {
+      revision_id: String(r['revision_id']), revision: Number(r['revision']), expected: Number(r['expected']), idempotency_key: String(r['idempotency_key']),
+      request_digest: String(r['request_digest']), ontology_version_id: str(r['ontology_version_id']),
+      counts: Object.fromEntries(Object.entries(counts).map(([k, v]) => [k, Number(v)])),
+    },
+  };
+  return asRow('GraphChanged', payload);
+}
+/* end B23 revision */
+
 /**
  * The identity roles that mean the ENTITY ITSELF (or a relationship it is an end of) changed — as opposed to
  * `rests_on` (a declared object now depends on it) and `reached` (the walk passed through it): a twin bounded by the
