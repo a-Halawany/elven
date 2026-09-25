@@ -398,7 +398,8 @@ describe('C15 — after the return, the recheck decides against the CONFIGURED p
       expect(pins[service].reference).toBe(`${pins[service].repository}@${pins[service].digest}`);
       expect(pins[service].children['linux/amd64']).toMatch(/^sha256:[0-9a-f]{64}$/);
       expect(pins[service].children['linux/arm64']).toMatch(/^sha256:[0-9a-f]{64}$/);
-      expect(pins[service].pinned_at).toBe('2026-09-22');
+      // postgres pinned at the return (2026-09-22); redis re-pinned by the update process when its index moved (2026-09-25, §8.5).
+      expect(pins[service].pinned_at).toBe(({ postgres: '2026-09-22', redis: '2026-09-25' } as Record<string, string>)[service]);
     }
     const good = readManifest();
     const cut = (mutate: (d: any) => void) => { const d = JSON.parse(JSON.stringify(good)); mutate(d); return d; };
