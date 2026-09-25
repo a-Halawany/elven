@@ -550,11 +550,30 @@ Prompts are in `audit/delivery/ACCOUNT_PROMPTS.md`.
 ## 9. Uncertainty and recalibration
 
 - **Effort ranges** come from a one-pass characterization in U, not a task decomposition. P7-D (1,707 rows) and P7-E (910 rows) carry the widest ranges. The r = 1.0 column bounds the downside.
-- **Recalibration.** After B23 and the first two A2/A3 stages, record for each its actual session time and its re-estimated size in U. Then re-fit r, re-run the model and update the provisional dates. Implementation continues meanwhile. After that, re-run monthly (the first working day), or when a stage on the resource-limited path slips more than five working days.
+- **Recalibration.** After B23 and the next two stages completed on this account (the owner's instruction of 2026-09-25: A2/A3 are not allocated), record for each its build interval (active), its hosted-run wait and its review/approval wait separately, and its re-estimated size in U. Then re-fit r, re-run the model and update the provisional dates. Implementation continues meanwhile. After that, re-run monthly (the first working day), or when a stage on the resource-limited path slips more than five working days.
 - **M3's duration** is unknown until the in-stage verification rate is seen. **M4** has no date until the external prerequisites exist.
 - **Row-to-feature mapping.** Some rows were placed by area and package rather than clause by clause. A misplaced row moves in a records commit; the checker keeps the mapping total.
 - **Stale statuses** (§2.5) may move rows in B23; that changes counts, not stages.
-- **Observation 1 — B23 (2026-09-25; recorded, not yet a re-fit).** Sized 1.5–2.5 U (≈ 13–22 session-hours at 8.7 h/U), B23 went from the corrected plan (`e579514`, 00:40) to its combined, locally verified candidate with the act held on `eye_demo` in about **3 hours of wall-clock on ONE account** — because that account ran its own mapping, five implementers in isolated worktrees, an act-writer and the verifier as parallel subagents under the two-slot limiter. The unit (a B21/B22-sized batch worked sequentially) therefore overstates the wall-clock of a stage built this way, by several times; it does not measure review latency, the hosted run or the owner's merge word, which are unchanged. The re-fit waits for two more stages (the recalibration rule above), since one observation on a stage of well-mapped interface work does not transfer to lanes with unknown ground (P7-D, P7-E).
+- **Observation 1 — B23 (recorded 2026-09-25, corrected the same day after the bounded review; not yet a re-fit).** Three measures, kept apart (UTC, from the commits and the hosted run):
+
+  | Measure | Interval | Duration |
+  |---|---|---|
+  | Build — plan commit `e579514` (21:40:52) → candidate `a3176c8` (23:40:18) | active: the account worked this whole interval (mapping, five implementers in parallel worktrees, integration, local verification, the act on `eye_demo`) | **1 h 59 min** |
+  | Hosted run — push → ci 36073944410 build-test finished (00:05:18) | waiting on CI | ~25 min |
+  | Records — hosted finish → records `95dfcdb` (11:31:17) | the session idle until resumed (~11 h, NOT work); the records work itself ~15 min | 11 h 26 min elapsed |
+  | Review and approval | the bounded review arrived the same day; no merge yet | open |
+
+  B23 was sized 1.5–2.5 U (≈ 13–22 sequential session-hours at 8.7 h/U); its build took 1 h 59 min of active wall-clock with parallel subagents. The earlier "about 3 hours" mixed the build with the hosted wait and is withdrawn. **The re-fit uses B23 and the next two stages completed on THIS account** (B24, then the next A1 stage), each recorded with the same three measures — not unallocated A2/A3 stages.
+
+- **Observation 2: B24 (recorded 2026-09-25; not yet a re-fit).** The same measures, kept apart (UTC, from the session's messages and the commits):
+
+  | Measure | Interval | Duration |
+  |---|---|---|
+  | Build: the owner's instruction (14:18:59) → the local candidate with the demonstration and records (≈ 17:05) | active the whole interval. Folded in: the review's two residuals (the limiter fix `c0b9d25` at 14:22, B23-F1 by a parallel implementer), the #62 decision and the integration sequence (14:28–14:42). The B24 work itself: the prelude (14:24), five parts in parallel worktrees, the one 0086 combined at 15:06, three full integration runs, four act rehearsals, two act-found corrections, the demonstration and the demo walk | **≈ 2 h 45 min** |
+  | Hosted run | waiting on CI; recorded when bound | pending |
+  | Review and approval | no merge authorized; the stack's order in `INTEGRATION_SEQUENCE.md` | open |
+
+  B24 was sized 1.5–3 U (≈ 13–26 sequential session-hours at 8.7 h/U). It took about 2 h 45 min of active wall-clock with parallel subagents, and some of that was review work, not B24. The act's wall-clock is dominated by designed waits: 8 minutes per run, most of it the database clock and the 60 s tick. **Two of the three observations are now recorded** (B23, B24). The re-fit follows the next A1 stage (B28), per the instruction. The dates stay provisional until then.
 
 ## 10. Correction record (the bounded review of `5da4799`, applied 2026-09-25)
 

@@ -12,6 +12,8 @@ import { useShell } from './layout';
 import { decisions as api, type Package, type PackageVersion, type Option, type Replay } from '../../lib/decisions';
 import { Empty, LiveStatus, Mono, cardStyle, DefinitionRow, UnknownNote, fmtInstant } from '../../components/observation';
 import { tableStyle, Th, Td, buttonStyle, Receipt as ReceiptNote, ErrorNote } from '../../components/ui';
+// B24 (0086) markers
+import { SourceImpactControl } from './source-impact-control';
 
 const STATE_TEXT: Record<string, string> = { draft: '◌ DRAFT', proposed: '◍ PROPOSED', under_review: '◍ UNDER REVIEW', approved: '● APPROVED', committed: '■ COMMITTED', monitoring: '◉ MONITORING', closed: '□ CLOSED', rejected: '✕ REJECTED', withdrawn: '✕ WITHDRAWN' };
 const day = (v: unknown): string => (typeof v === 'string' ? v.slice(0, 10) : v === null || v === undefined ? '—' : String(v).slice(0, 10));
@@ -179,6 +181,9 @@ export default function DecisionsPage() {
                   {monitoring.outcomes.map((o) => <p key={String(o['outcome_id'])} style={{ fontSize: 'var(--eye-type-label-sm)' }}><strong>{o['met'] === true ? '● OUTCOME MET' : '○ OUTCOME NOT MET'}</strong> {String(o['criterion_key'])}: observed <Mono>{String(o['observed_value'])} {String(o['unit'] ?? '')}</Mono> against target {String(o['comparator'])} {String(o['target'])}{o['reconciliation_id'] ? <> · reconciled against the chosen run (<Mono>{short(o['reconciliation_id'])}</Mono>)</> : null}</p>)}
                 </>
               ) : null}
+              {/* B24 (0086) markers: the source impact on this version and its acknowledgement (the commitment is refused while one is outstanding) */}
+              <SourceImpactControl scope={scope} packageId={open.package_id} version={v.version} versionState={v.state} isAuthority={isAuthority} />
+              {/* end B24 markers */}
               <div style={{ display: 'flex', gap: 'var(--eye-space-8)', flexWrap: 'wrap', marginBlockStart: 'var(--eye-space-16)' }}>
                 {isApprover && ['proposed', 'under_review', 'approved'].includes(v.state) && v.version_digest !== null ? (
                   <>

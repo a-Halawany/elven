@@ -1,0 +1,12 @@
+scripts/dev/heavy-slot.test.sh on phase6-b24 (2026-09-25) — PLAN-F4 residual corrected (the review of 2026-09-25):
+PASS four jobs, two slots: at most 2 concurrent, 4 ran
+PASS the command's exit status is returned
+PASS TERM stops the command's process group and releases the slot
+PASS a SIGKILLed wrapper's command still running keeps its slot
+PASS the slot is reclaimed once the command has ended
+PASS a cancelled workload that shuts down late keeps its slot: the waiting job entered 1224 ms after it exited
+PASS a workload ignoring TERM is KILLed after its grace and only then released (1085 ms)
+PASS a finished command's lingering group member holds the slot until it exits
+heavy-slot: ALL PASS
+
+CONTROL — case 6 run against the committed limiter of e579514: the waiting job entered ~3,000 ms BEFORE the cancelled workload exited (the defect the review reproduced); the corrected limiter holds the slot until the workload's process group has exited.

@@ -27,7 +27,20 @@ import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui'
 /* B23 (0084) attention: the governed reviews (L10-I03) beside the queue */
 import { reviewSubjectOf } from '../../../lib/attention';
 import { ReviewsPanel, type ConvenePrefill } from './reviews-panel';
+// B24 (0086) markers
+import { MarkersPanel } from './markers-panel';
 /* end B23 attention */
+/* B24 (0086) timer: an item's deliveries and receipts beside its acknowledgement (the demo mailbox marked SYNTHETIC) */
+import { DeliveriesPanel } from './deliveries-panel';
+/* end B24 timer */
+/* B24 (0086) materiality: the deprioritized view — the waiting (overload) and the below-threshold items ranked, the elevations explained */
+import { DeprioritizedPanel } from './deprioritized-panel';
+/* end B24 materiality */
+/* B24 (0086) governance: suppression approval, item delegation, dispositions, the queue evaluated */
+import { SuppressionPanel } from './suppression-panel';
+import { EvaluationPanel } from './evaluation-panel';
+import { EVALUATOR_ROLES } from '../../../lib/attention-governance';
+/* end B24 governance */
 
 type ReceiptT = { policyDecisionId: string; auditSeq: number } | null;
 const str = (v: unknown) => (v === null || v === undefined || v === '' ? '—' : String(v));
@@ -148,8 +161,9 @@ export default function AttentionPage() {
       <UnknownNote>
         Each item is one signal: an unfit forecast, an incoherent scenario, a raised warning, a loss of source coverage or a proposal
         awaiting review. The server judged it under the <strong>policy version</strong> active when it arrived, over transparent
-        dimensions (consequence, confidence, hours to the response window). Its outcome and the engine's <strong>reasons</strong> are
-        shown on every row. A <strong>deprioritized</strong> item fell below the thresholds or the engine abstained. A
+        dimensions (consequence, confidence, hours to the response window, and the further ones a class sets). Its outcome and the engine's
+        <strong> reasons</strong> are shown on every row. A <strong>deprioritized</strong> item fell below the thresholds, the engine
+        abstained, or it waits for capacity under the overload rule (a C3 or C4 item is never held). A
         <strong> suppressed</strong> item was muted by a person, with a reason, until an instant. Both are listed here and never hidden.
         <strong> Acknowledge</strong> records receipt, not agreement. An item past its deadline is flagged <strong>OVERDUE</strong> by the
         server and escalated to the class's roles.
@@ -260,6 +274,10 @@ export default function AttentionPage() {
                 </ScrollBox>
               )}
 
+              {/* B24 (0086) timer */}
+              <DeliveriesPanel scope={scope} itemId={detail.item_id} me={me} refreshKey={`${detail.updated_at}|${detail.acknowledged_at ?? ''}`} />
+              {/* end B24 timer */}
+
               <p style={muted}>
                 The owner or a holder of a routed role acts on an item. The server also admits domain_admin and platform_admin, and refuses
                 anyone else in its own words.
@@ -334,7 +352,10 @@ export default function AttentionPage() {
               {/* end B23 attention */}
               {actProblem !== null && <LiveStatus assertive><span style={critical}>{actProblem}</span></LiveStatus>}
               {actAnswer?.kind === 'acknowledged' && <p>item <Mono>{actAnswer.r.item_id}</Mono> acknowledged (from {actAnswer.r.from_state}) at {fmtInstant(actAnswer.r.acknowledged_at)}; within the deadline: <Mono>{String(actAnswer.r.within_deadline)}</Mono>. This is a receipt, not agreement.</p>}
-              {actAnswer?.kind === 'suppressed' && <p>item <Mono>{actAnswer.r.item_id}</Mono> suppressed (from {actAnswer.r.from_state}) until {fmtInstant(actAnswer.r.until)}: {actAnswer.r.reason}</p>}
+              {actAnswer?.kind === 'suppressed' && actAnswer.r.approval_required !== true && <p>item <Mono>{actAnswer.r.item_id}</Mono> suppressed (from {actAnswer.r.from_state}) until {fmtInstant(actAnswer.r.until)}: {actAnswer.r.reason}</p>}
+              {/* B24 (0086) governance: an approval-required suppression is a REQUEST — the item stays live until a second person decides */}
+              {actAnswer?.kind === 'suppressed' && actAnswer.r.approval_required === true && <p>suppression of item <Mono>{actAnswer.r.item_id}</Mono> <strong>requested</strong> until {fmtInstant(actAnswer.r.until)} — request <Mono>{String(actAnswer.r.request_id)}</Mono> awaits a holder of <Mono>{(actAnswer.r.approver_roles ?? []).join(', ')}</Mono> other than you; the item stays {actAnswer.r.state} and keeps escalating.</p>}
+              {/* end B24 governance */}
               {actAnswer?.kind === 'closed' && <p>item <Mono>{actAnswer.r.item_id}</Mono> closed (from {actAnswer.r.from_state}) at {fmtInstant(actAnswer.r.closed_at)}</p>}
               <Receipt receipt={actReceipt} />
             </>
@@ -345,6 +366,17 @@ export default function AttentionPage() {
       {/* B23 (0084) attention */}
       <ReviewsPanel scope={scope} me={me} prefill={prefill} />
       {/* end B23 attention */}
+      {/* B24 (0086) materiality */}
+      <DeprioritizedPanel scope={scope} me={me} />
+      {/* end B24 materiality */}
+
+      {/* B24 (0086) markers */}
+      <MarkersPanel scope={scope} />
+      {/* end B24 markers */}
+      {/* B24 (0086) governance */}
+      <SuppressionPanel scope={scope} me={me} item={detail === null ? null : { itemId: detail.item_id, title: detail.title }} />
+      <EvaluationPanel scope={scope} mayEvaluate={me.bindings.some((b) => (EVALUATOR_ROLES as readonly string[]).includes(b.roleCode) && (b.scope === 'PLATFORM' || (b.scope === 'DOMAIN' && b.domainId === scope.domainId)))} />
+      {/* end B24 governance */}
 
       <section aria-labelledby="policy-h" style={cardStyle}>
         <h2 id="policy-h" style={{ fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 }}>Policy{active === null ? '' : <> — version <Mono>{active.version}</Mono></>}</h2>
@@ -401,7 +433,8 @@ export default function AttentionPage() {
         <p style={muted}>
           A new version supersedes the active one; no version is rewritten. The server admits only <Mono>domain_admin</Mono>, <Mono>executive</Mono>
           {' '}or <Mono>platform_admin</Mono> in this domain{mayPublish ? '' : '. You hold none of these, so the server will refuse'}. It validates
-          the rules whole: every key, every role, the thresholds, the deadlines, the suppression bounds and the channel (<Mono>in_app</Mono>).
+          the rules whole: every key, every role, the thresholds, the deadlines, the suppression bounds and the channels (<Mono>in_app</Mono>, or
+          {' '}<Mono>{'{channels, max_attempts}'}</Mono> over <Mono>in_app</Mono> and the SYNTHETIC <Mono>demo-mailbox</Mono>; email, SMS and Teams need a delivery provider, owner decision D6).
           It refuses rules that are unchanged. Live items are re-evaluated under the new version by the attention subscriber.
           {active === null ? ' The rules below are a starting template, not a published version.' : ' The rules below are the active version\'s.'}
         </p>

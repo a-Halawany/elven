@@ -85,6 +85,9 @@ export class ExtractionOrchestrator {
     envelope: Envelope; principal: AuthenticatedPrincipal;
     tenantId: string; domainId: string; methodId: string;
     limit: number; newAttempt: boolean;
+    /* B24 (0086) plan: a plan execution runs its method over exactly its evidence, at the method version its plan named. */
+    evidenceIds?: readonly string[]; methodVersion?: number;
+    /* end B24 plan */
   }): Promise<ExtractionOutcome> {
     const correlationId = a.envelope.correlation_id;
     const purposeId = a.envelope.purpose_id ?? 'intelligence';
@@ -104,14 +107,28 @@ export class ExtractionOrchestrator {
         errorBody('EYE_STA_002', correlationId,
           `extraction refused: the method is ${String(method['lifecycle_state'])}, not active`), 409);
     }
+    /* B24 (0086) plan: a plan named the method version it selected; a method re-versioned since is not silently run in its place. */
+    if (a.methodVersion !== undefined && Number(method['method_version']) !== a.methodVersion) {
+      throw new HttpException(
+        errorBody('EYE_STA_002', correlationId,
+          `extraction refused: the method is at version ${String(method['method_version'])}; the plan named version ${a.methodVersion}`), 409);
+    }
+    /* end B24 plan */
 
     // The evidence this method reads: EVD objects for its source (or the whole
     // domain when the method declares none), current versions only.
     const sourceId = method['source_id'] === null ? null : String(method['source_id']);
     const evidence = await this.read(read, 'EVD', null, async (cap) => {
-      const rows = (await cap.readCanonicalObjects()
+      let q = cap.readCanonicalObjects()
         .selectAll()
-        .where('object_type' as never, '=', 'EVD' as never)
+        .where('object_type' as never, '=', 'EVD' as never);
+      /* B24 (0086) plan: the evidence filter — the named objects only, however far back they were recorded. */
+      if (a.evidenceIds !== undefined) {
+        if (a.evidenceIds.length === 0) return [];
+        q = q.where('object_id' as never, 'in', [...a.evidenceIds] as never);
+      }
+      /* end B24 plan */
+      const rows = (await q
         .orderBy('recorded_at' as never, 'desc')
         .limit(400)
         .execute()) as Array<Record<string, unknown>>;

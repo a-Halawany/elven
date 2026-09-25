@@ -11,6 +11,10 @@
  *   Reporting agent  renders a report from stored records with attribution, classification
  *                    and truth states intact; it refuses an export its clearance does
  *                    not cover.
+ *   Attention agent  (B24, 0086 §T) the timer host's principal: on the cadence it runs the
+ *                    attention tick — the registered steps (escalate, rebalance, deliveries)
+ *                    in ONE governed write under executive.attention.tick; a drifted digest
+ *                    is refused and recorded; it sets no policy and acknowledges nothing.
  * Every run is opened and closed by the agent under its own session, with its trigger;
  * every output carries the agent's identity, version and method. Nothing learns.
  *
@@ -34,11 +38,16 @@ import { clearanceOf, covers } from '../../decision/clearance.js';
 import { ExecutiveCapability, type AgentWrites, type ExecutiveReads } from '../executive.capabilities.js';
 import { BriefingService, BudgetExceeded, StopCondition, type CompositionLimits } from '../briefings/briefing.service.js';
 import { DecisionAgentGrantRefused, DecisionAgentSessionService } from './agent-session.service.js';
+/* B24 (0086) timer */
+import type { Tx } from '../../shared/db.js';
+import { AttentionTickRegistry } from '../attention/tick.js';
+import { ATTENTION_TIMER_DIGEST, ATTENTION_TIMER_METHOD, ATTENTION_TIMER_VERSION, cadenceOf } from '../attention/timer-identity.js';
+/* end B24 timer */
 
-export type AgentKind = 'decision' | 'briefing' | 'reporting';
-export type AgentTask = 'draft' | 'briefing' | 'report' | 'monitor';
-const ROLE_OF: Record<AgentKind, string> = { decision: 'decision_agent', briefing: 'briefing_agent', reporting: 'reporting_agent' };
-const METHOD_OF: Record<AgentKind, string> = { decision: 'decision-agent-option-cards@1.0.0', briefing: 'briefing-agent@1.0.0', reporting: 'reporting-agent@1.0.0' };
+export type AgentKind = 'decision' | 'briefing' | 'reporting' | /* B24 (0086) timer */ 'attention' /* end B24 timer */;
+export type AgentTask = 'draft' | 'briefing' | 'report' | 'monitor' | /* B24 (0086) timer */ 'attention_tick' /* end B24 timer */;
+const ROLE_OF: Record<AgentKind, string> = { decision: 'decision_agent', briefing: 'briefing_agent', reporting: 'reporting_agent', /* B24 (0086) timer */ attention: 'attention_agent' /* end B24 timer */ };
+const METHOD_OF: Record<AgentKind, string> = { decision: 'decision-agent-option-cards@1.0.0', briefing: 'briefing-agent@1.0.0', reporting: 'reporting-agent@1.0.0', /* B24 (0086) timer */ attention: ATTENTION_TIMER_METHOD /* end B24 timer */ };
 const CLEARANCE_RANK: Record<string, number> = { public: 0, internal: 1, confidential: 2, restricted: 3 };
 /** The stop conditions this runtime implements; any other kind is refused at registration (here and at the port). */
 export const SUPPORTED_STOP_CONDITIONS = ['max_items', 'on_degraded'] as const;
@@ -48,9 +57,19 @@ export const STOP_CONDITION_KINDS: Readonly<Record<string, readonly AgentKind[]>
 export interface RegisterAgentIntake { kind: AgentKind; version: string; codeDigest: string; ownerPrincipalId: string; escalationPrincipalId: string; budgets: Record<string, unknown>; stopConditions: unknown[] }
 export function validateRegisterAgent(m: Partial<RegisterAgentIntake>, correlationId: string): RegisterAgentIntake {
   const bad = (msg: string): never => { throw new HttpException(errorBody('EYE_REQ_001', correlationId, msg), 422); };
-  if (m.kind !== 'decision' && m.kind !== 'briefing' && m.kind !== 'reporting') bad('kind is decision, briefing or reporting');
+  if (m.kind !== 'decision' && m.kind !== 'briefing' && m.kind !== 'reporting' && /* B24 (0086) timer */ m.kind !== 'attention' /* end B24 timer */) bad('kind is decision, briefing, reporting or attention');
   if (typeof m.version !== 'string' || !/^[0-9]+\.[0-9]+\.[0-9]+$/.test(m.version)) bad('version must be semver');
   if (typeof m.codeDigest !== 'string' || !/^[0-9a-f]{64}$/.test(m.codeDigest)) bad('codeDigest must be 64 hex');
+  /* B24 (0086) timer: the attention agent is registered with THIS runtime's timer identity (a changed method is a new digest — register anew) */
+  if (m.kind === 'attention' && (m.version !== ATTENTION_TIMER_VERSION || m.codeDigest !== ATTENTION_TIMER_DIGEST)) {
+    bad(`an attention agent is registered with this runtime's timer: version ${ATTENTION_TIMER_VERSION}, codeDigest ${ATTENTION_TIMER_DIGEST} (${ATTENTION_TIMER_METHOD})`);
+  }
+  {
+    const tick = ((m.budgets ?? {}) as Record<string, unknown>)['tick_every_seconds'];
+    if (tick !== undefined && m.kind !== 'attention') bad('budget tick_every_seconds is the attention timer\'s cadence; only an attention agent carries it');
+    if (tick !== undefined && (!Number.isInteger(tick) || Number(tick) < 60 || Number(tick) > 86_400)) bad('budget tick_every_seconds is a whole number of seconds in [60, 86400]');
+  }
+  /* end B24 timer */
   if (typeof m.ownerPrincipalId !== 'string' || typeof m.escalationPrincipalId !== 'string') bad('ownerPrincipalId and escalationPrincipalId name humans');
   const b = m.budgets ?? {};
   if (typeof b !== 'object' || b === null || !Number.isInteger(b['max_reads']) || !Number.isInteger(b['max_gateway_calls']) || !Number.isInteger(b['max_elapsed_ms'])) bad('budgets name integer max_reads, max_gateway_calls and max_elapsed_ms');
@@ -98,6 +117,7 @@ export class AgentsService {
   constructor(
     private readonly pipeline: PipelineService, private readonly principals: PrincipalsService, private readonly sessions: DecisionAgentSessionService,
     private readonly packages: PackageService, private readonly briefings: BriefingService,
+    /* B24 (0086) timer */ private readonly ticks: AttentionTickRegistry /* end B24 timer */,
   ) {}
 
   /** The envelope an agent's governed operation needs. Built server-side; never client-supplied. */
@@ -187,7 +207,9 @@ export class AgentsService {
    * stopped (escalated), refused (escalated) or faulted (escalated).
    */
   async run(a: { agentId: string; tenantId: string; domainId: string; task: AgentTask; trigger: { kind: 'operator' | 'scheduler' | 'request'; principalId: string | null; ref: string | null };
-                 roomId: string | null; packageId: string | null; version: number | null; correlationId: string }): Promise<RunOutcome> {
+                 roomId: string | null; packageId: string | null; version: number | null; correlationId: string;
+                 /* B24 (0086) timer: the attention tick's scheduled instant (the job's; null → the database clock) and cadence (null → the registration's) */
+                 tick?: { scheduledAt: string | null; cadenceSeconds: number | null } /* end B24 timer */ }): Promise<RunOutcome> {
     const T = a.tenantId; const D = a.domainId;
     let principal: AuthenticatedPrincipal; let registration: Awaited<ReturnType<DecisionAgentSessionService['openRunSession']>>['registration'];
     try {
@@ -211,6 +233,9 @@ export class AgentsService {
     try {
       if (a.task === 'draft') outputs = await this.draft(principal, T, D, a.packageId, a.version, meter, stops, refusals, a.correlationId, identity);
       else if (a.task === 'briefing' || a.task === 'monitor') outputs = await this.brief(principal, T, D, a.roomId, a.task, meter, stops, a.correlationId, identity);
+      /* B24 (0086) timer */
+      else if (a.task === 'attention_tick') outputs = await this.attentionTick(principal, T, D, runId, registration, meter, refusals, a.correlationId, identity, a.tick ?? { scheduledAt: null, cadenceSeconds: null });
+      /* end B24 timer */
       else outputs = await this.report(principal, T, D, a.packageId, budget, meter, a.correlationId, identity);
       if (outputs['refused'] === true) { outcome = 'refused'; stopReason = String(outputs['reason']); }
     } catch (e) {
@@ -317,6 +342,48 @@ export class AgentsService {
     return { room_id: roomId, package_id: packageId, briefing_id: briefingId, content_digest: out.result.contentDigest, items: out.result.items.length, degraded: out.result.degraded, memory_source: out.result.memorySource.state, monitoring, marked: 'agent-produced', agent: identity,
              provenance: { purpose: 'briefing', package_id: packageId, room_id: roomId, classification: String(out.result.controls.classification), contributors: out.result.sources } };
   }
+
+  /* B24 (0086) timer ───────────────────────── the attention agent ───────────────────────── */
+  /**
+   * THE ATTENTION TICK. The registration the session port read must name THIS runtime's timer (version and code digest): a drifted
+   * agent's tick is refused — recorded on the run with the reason and escalated — never run under a stale identity. Otherwise ONE
+   * governed write under executive.attention.tick: the tick's key taken from the scheduled instant (a duplicate answers `repeated`
+   * with the tick that ran, and nothing else happens), every registered step in order in that same transaction, and the tick's row
+   * with what each step answered. A step that fails rolls the whole tick back: the run is faulted (escalated) and the next tick
+   * starts from the same state.
+   */
+  private async attentionTick(p: AuthenticatedPrincipal, T: string, D: string, runId: string, registration: { agent_version: string; code_digest: string; budgets: Record<string, unknown> },
+                              meter: Meter, refusals: Refusal[], correlationId: string, identity: Record<string, unknown>, tick: { scheduledAt: string | null; cadenceSeconds: number | null }) {
+    const provenance = { purpose: 'executive', package_id: null, room_id: null, classification: 'internal', contributors: [] as string[] };
+    if (registration.agent_version !== ATTENTION_TIMER_VERSION || registration.code_digest !== ATTENTION_TIMER_DIGEST) {
+      const reason = `attention tick refused (drift): the agent is registered as ${registration.agent_version} with code digest ${registration.code_digest.slice(0, 12)}…; this runtime's timer is ${ATTENTION_TIMER_VERSION} with ${ATTENTION_TIMER_DIGEST.slice(0, 12)}… — the agent is registered anew before it ticks`;
+      refusals.push({ action: 'executive.attention.tick', code: 'EYE-AUT-001', reason, at: new Date().toISOString() });
+      return { refused: true, reason, marked: 'agent-produced', agent: identity, provenance };
+    }
+    meter.tick('the attention tick');
+    const cadence = tick.cadenceSeconds ?? cadenceOf(registration.budgets);
+    const tickId = newId();
+    let tickTx: Tx | null = null;
+    const out = await this.pipeline.write(this.env(p, T, D, 'executive.attention.tick', 'ATI', null, correlationId, 'executive'), p, this.route(T, D, 'executive.attention.tick', 'ATI', null),
+      (tx: Tx, action: string) => { tickTx = tx; return ExecutiveCapability.attentionTick(tx, action); },
+      async (cap) => {
+        const begun = await cap.beginTick({ tenantId: T, domainId: D, scheduledAt: tick.scheduledAt, cadenceSeconds: cadence, correlationId });
+        const tickKey = Number(begun['tick_key']);
+        if (begun['repeated'] === true) {
+          return { result: { tick_key: tickKey, cadence_seconds: cadence, scheduled_at: begun['scheduled_at'], repeated: true, prior: begun['prior'] } as Record<string, unknown>, targetType: 'ATI', targetId: null, targetVersion: null, outboxEvent: null };
+        }
+        const steps: Record<string, unknown> = {};
+        const order = this.ticks.steps().map((s) => ({ name: s.name, order: s.order }));
+        for (const step of this.ticks.steps()) {
+          meter.tick(`the tick step ${step.name}`);
+          steps[step.name] = await step.run({ tx: tickTx as unknown as Tx, tenantId: T, domainId: D, agentPrincipalId: p.principalId, tickKey, correlationId });
+        }
+        await cap.finishTick({ tickId, tenantId: T, domainId: D, tickKey, scheduledAt: String(begun['scheduled_at']), cadenceSeconds: cadence, runId, result: { steps, order }, correlationId });
+        return { result: { tick_id: tickId, tick_key: tickKey, cadence_seconds: cadence, scheduled_at: begun['scheduled_at'], repeated: false, order, steps } as Record<string, unknown>, targetType: 'ATI', targetId: null, targetVersion: null, outboxEvent: null };
+      });
+    return { ...out.result, tick_receipt: { policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq }, marked: 'agent-produced', agent: identity, provenance };
+  }
+  /* end B24 timer */
 
   // ───────────────────────── the reporting agent ─────────────────────────
   private async report(p: AuthenticatedPrincipal, T: string, D: string, packageId: string | null, budget: Record<string, unknown>, meter: Meter, correlationId: string, identity: Record<string, unknown>) {

@@ -17,6 +17,9 @@
  */
 type Row = Record<string, unknown>;
 
+/* B24 (0086) materiality: the further dimensions a line carries when its item was judged with them (in this order). */
+export const FURTHER_DIMENSIONS = ['probability', 'exposure', 'strategic_relevance', 'information_value', 'irreversibility'] as const;
+/* end B24 materiality */
 export const LIVE_AT_STATES = ['open', 'escalated', 'unrouted', 'acknowledged', 'suppressed'] as const;
 export const ALL_ITEM_STATES = ['open', 'escalated', 'unrouted', 'acknowledged', 'suppressed', 'deprioritized', 'closed'] as const;
 export type ConfidenceBand = 'high' | 'medium' | 'low' | 'unknown';
@@ -46,6 +49,10 @@ export function stateAsOf(events: Array<{ event: string; details: Row | null; oc
       case 'item.suppression_lapsed': state = acknowledged ? 'acknowledged' : 'open'; break;
       case 'item.reevaluated': state = typeof d['to_state'] === 'string' ? d['to_state'] : state; version = typeof d['to_version'] === 'number' ? d['to_version'] : version; break;
       case 'item.closed': state = 'closed'; break;
+      /* B24 (0086) materiality: held for capacity at routing (the overload rule), and elevated from there when capacity frees */
+      case 'item.overload_deprioritized': state = 'deprioritized'; version = typeof d['policy_version'] === 'number' ? d['policy_version'] : version; break;
+      case 'item.elevated': state = typeof d['to_state'] === 'string' ? d['to_state'] : 'open'; version = typeof d['policy_version'] === 'number' ? d['policy_version'] : version; break;
+      /* end B24 materiality */
       default: break; // item.repeated: no change
     }
   }
@@ -88,6 +95,10 @@ export function attentionSection(a: { items: Row[]; events: Array<Row & { item_i
       consequence: typeof dims['consequence'] === 'string' ? dims['consequence'] : null, confidence, confidence_band: confidenceBand(confidence),
       hours_to_window: typeof dims['hours_to_window'] === 'number' ? dims['hours_to_window'] : null, created_at: iso(x['created_at']), cause_event_id: String(x['cause_event_id'] ?? ''),
     };
+    /* B24 (0086) materiality: the further dimensions ADDED after the line's keys (never reordered), and only on an item judged with them —
+       an item recorded before 0086 composes exactly as it did, so an earlier edition recomposes to the same digest. */
+    for (const k of FURTHER_DIMENSIONS) if (k in dims) line[k] = dims[k] ?? null;
+    /* end B24 materiality */
     if ((LIVE_AT_STATES as readonly string[]).includes(at.state)) items.push(line);
     const created = iso(x['created_at']);
     if (x['signal_class'] === 'decision.material_change' && (a.since === null || created > a.since) && created <= a.knownAt) changes.push(line);

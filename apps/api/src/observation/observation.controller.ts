@@ -31,6 +31,9 @@ import { SweeperService } from './sweeper/sweeper.service.js';
 // B23 (0084) stream
 import { StreamRefused, isStreamRefusal, type StreamRunRequest } from './acquisition/lifecycle.service.js';
 import { asObservationRefusal } from './observation-errors.js';
+// B24 (0086) markers
+import { SourceImpactCapability } from './impact/source-impact.capabilities.js';
+import { SourceImpactService, type MarkersFilter } from './impact/source-impact.service.js';
 
 function ctx(req: EyeRequest) {
   const envelope = req.eyeEnvelope;
@@ -1021,4 +1024,27 @@ export class ObservationController {
       async (cap) => cap.rebuildProjections(tenantId, domainId));
     return { projections: out.result, receipt: receipt(out) };
   }
+
+  /* B24 (0086) markers */
+  // F-P6-07 (V03-T-077 "no UI shows markers"): the source-impact markers READ — the domain's markers grouped by the source they
+  // carry, each on the product it sits on (named), or the markers bearing on ONE package version with their acknowledgements and
+  // the commitment gate that follows. An audited read (`observation.source_impact.read`, an exact rule). The service is stateless.
+  private readonly sourceImpact = new SourceImpactService();
+
+  @Post('/source-impact/markers')
+  async sourceImpactMarkers(
+    @Req() req: EyeRequest,
+    @Param('tenantId') tenantId: string,
+    @Param('domainId') domainId: string,
+    @Body() body: { payload?: MarkersFilter },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(
+      envelope, principal,
+      { scope: 'DOMAIN', tenantId, domainId, action: 'observation.source_impact.read', objectType: 'SRC', objectId: null },
+      SourceImpactCapability.read,
+      async (cap, scope) => this.sourceImpact.markers(cap, scope, body.payload ?? {}, envelope.correlation_id));
+    return { ...out.result, receipt: receipt(out) };
+  }
+  /* end B24 markers */
 }
