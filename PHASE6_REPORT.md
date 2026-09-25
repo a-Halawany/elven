@@ -3844,3 +3844,75 @@ promoted by it — the fourteen units stay open with their remaining clauses); t
 the demonstration (the Attention page and the reopened B18 package — its draft version 3 is the owner's to propose, commit or withdraw); the
 owner's key for Comtrade; the owner's decision on a public host for the recipient; the owner's backup passphrase for a sealed bundle of today's
 state (the container return's backup is unsealed); comprehensive hardening after the feature scope.
+
+## 37. B23 (2026-09-25): the plan corrected once, then the six partial interfaces bound (0084) — the register 50/0/0; the briefing's attention section; the NORDWERK demonstration through all six
+
+### 37.1 The planning correction and the maintenance it surfaced
+
+- **The plan.** The bounded review of the finite delivery plan `5da4799` (`audit/reviews/The_Eye_5da4799_Delivery_Plan_Review.md`) was applied in one pass at `e579514`, on the planning PR #61, stacked on #60 (`audit/DELIVERY_PLAN.md` §10):
+  - construction before hardening (B100–B112);
+  - the stage authoritative, with the checker enforcing it;
+  - one calibrated effort unit (r = 1.5);
+  - the heavy slots and the owner's approval simulated;
+  - dependency-safe migration names;
+  - a working two-slot limiter;
+  - PortWatch no longer a blocker.
+  
+  The dates moved later and are provisional.
+- **The redis maintenance.** PR #61's required `supply-chain` job then failed on purpose. `redis:8-alpine`'s index moved to `38117873…`: only its `linux/riscv64` child was rebuilt; the pinned amd64/arm64 children are byte-identical, and no SCX record names the redis pin.
+  - The update process ran under the owner's standing instruction of 2026-09-23 (`docs/SUPPLY_CHAIN_MAINTENANCE_2026-09.md` §8.5), as **PR #62** to `main`.
+  - A real local gate run with the pinned scanners PASSED, and the trace fixture was re-recorded from it.
+  - Hosted `supply-chain` green. Its build-test hit the known `phase6-retention-b14` H2 flake, and the failed job was re-run (a PR run).
+  - #62's merge awaits the owner's word. Every other PR needs it for a green `supply-chain`.
+
+### 37.2 What B23 implements, and the local results
+
+The mechanism is in `audit/CP6_BATCHES.md` §B23. The results are in `evidence/cp6/b23-local-results.txt`.
+
+**Implemented:**
+- MaterialChangeRaised@v1 and ReviewConvened@v1, with governed reviews.
+- The Acquire stream form.
+- RetrieveContext.
+- CommitGraphRevision.
+- BranchScenario.
+- BRF@v2.
+- The register 50/0/0.
+- The 49 stale-status candidates checked against the code and moved with evidence.
+
+**Local results:**
+
+| Check | Result |
+|---|---|
+| Part harnesses | 9 + 8 + 9 + 11 + 11 = 48/48 |
+| Full integration run 1 | 1149/1151 |
+| Full integration run 2 | 1148/1151 |
+| Unit | 2441 + 9 |
+| Acceptance | 58/58 |
+| Upgrade proof | PASS |
+| Browser | 51/51 |
+
+The integration failures are three different load-timing items, none common to both runs. Each failing file passes alone (24/24 and 6/6), and they are recorded with the carried H1 items.
+
+### 37.3 The NORDWERK demonstration — `evidence/cp6/act-b23.txt`
+
+`eye_demo` was migrated through 0084 after a fresh backup, and the API restarted on the B23 build (VERIFIED). ALL SCENES HELD: 49 checks, 28.5 s. Before that, two clean rehearsals ran on restored copies with the rehearsal Redis.
+
+- **Re-registration.** The administrator re-registered the decisions and attention subscriptions (new code identities). M. Dvořák published attention policy v3.
+- **A material change.** A run behind a non-chosen option of the monitored "January corridor collapse — Regensburg line" package was invalidated. The package note and MaterialChangeRaised@v1 carry one correlation id, and the item was routed to L. Brandt. Replay and re-drive made no second item.
+- **A review.** L. Brandt convened a review of that decision with J. Weber as chair: routed; the repeat answered as recorded; A. Hoffmann refused.
+- **The corridor stream.** The synthetic corridor stream source was registered and activated through the routes. The stream was backpressured at credit 1, interrupted by an operator, and resumed to its planted publisher gap: `closed_incomplete` with the range declared. The command form of the same source was unchanged.
+- **The context query.** K. Müller's memory item about the Cape route was answered complete to A. Hoffmann under "sourcing decision" and not mentioned under "treasury". It came back partial, naming the omitted edge link, while `edges_current` was withdrawn, and complete after the rebuild.
+- **The graph revision.** K. Müller's change set was committed as revision 1, with its retry repeated, a stale head refused 409, and an invalid set refused 422 with nothing applied. One `revision.committed` reached six consumers.
+- **The branch.** N. Eriksen added the "insurer withdrawal" branch to the corridor scenario (v1 → v2): the repeat answered, a stale version refused, a second "regional blockade" refused as a duplicate.
+- **The briefing.** The weekly briefing was composed as v2 with its attention section (32 items with confidence bands, the material change among them). The earlier v1 edition still reads.
+
+### 37.4 Heads, hosted results, statuses
+
+- **Heads.** `main` `5165a97`. #60 (B22) green and awaiting the owner. #61 (the plan) stacked on #60. #62 (the redis maintenance) to `main`. B23 on `phase6-b23`, stacked on #61. B23's hosted run is bound in its records commit.
+- **Row counts:** implemented 984 → 1003, missing 2532 → 2513 (the stale-row verdicts and the six interface rows).
+- **Feature groups:** unchanged at 1 functioning / 167 partial / 15 missing / 18 externally blocked. B23 advances seven groups and completes none.
+- **Acceptance units.** The split stays **3,555 = 3,179 open + 339 local + 37 CI**: seven units gained evidence, and none was promoted.
+- **Hosted.** ci **36073944410** at `a3176c8` (one attempt): build-test green — unit 2441 + 9, acceptance 58/58, the integration suite **1151/1151 in 81 files** on a fresh database, upgrade PASS, C18 623 + 44; browser-regression green; C19 lifecycle **36073944521** green. `supply-chain`: the C15 gate PASS, the patched-image recheck red only on the moved redis index (PR #62). The three local load-timing items did not occur on the hosted run.
+- **Next.** B24 (the attention completion: the B22 deferrals) on A1. B50 and B80 are prepared for A2 and A3, subject to the owner's allocation.
+
+**37.5 — B23-F1 (the bounded review of 2026-09-25).** The context query's diagnostics counted records the caller may not see. Corrected by the forward migration 0085 (the reader's policy applied to every aggregate; unverified rows neither counted nor mentioned; truncation over the authorized items), with regressions for purpose, audience, clearance, truncation and the log-sourced answer (`audit/CP6_BATCHES.md` §B23.8). 0084 stays as applied.

@@ -1,0 +1,86 @@
+THE B23 ACT on eye_demo — 2026-09-24T23:25:26.386Z
+  ✓ the casting read from identity.role_bindings: a.hoffmann (domain_analyst); j.weber (strategy_owner); k.mueller (knowledge_owner); l.brandt (decision_authority, decision_owner); m.dvorak (collection_manager, executive); n.eriksen (forecast_owner); t.nakamura (twin_owner)
+
+B23-0 THE STATE — the register (50 / 0 / 0); the changed consumers re-registered; attention policy version 3
+  ✓ the interface register (J. Weber): 50 rows — 50 bound / 0 partial / 0 unbound; bound in 0084: L10-I02 MaterialChangeRaised, L10-I03 ReviewConvened, L1-I02 Acquire, L3-I02 RetrieveContext, L4-I02 CommitGraphRevision, L7-I02 BranchScenario
+  · the origin's 11 live subscriptions: attention, decisions registered for a consumer whose method has since changed
+  ✓ attention: subscription 01a0d48e… (consumer 8beb9dea43c0…, cursor 14701) REVOKED; registered anew as 01a0d5bc… (role attention_subscriber, consumer 1.0.0 f8f5dd178f1b…, event types ForecastFitnessChanged | ScenarioCoherenceFailed | EarlyWarningRaised | AttentionPolicyChanged | MaterialChangeRaised | ReviewConvened, owner m.dvorak), the backlog LEFT (1 re-driven)
+  ✓ decisions: subscription 01a0d29d… (consumer 6e283700b3b7…, cursor 14552) REVOKED; registered anew as 01a0d5bc… (role decision_subscriber, consumer 1.0.0 93cb33236b38…, event types GraphChanged | MemoryCorrected, owner j.weber), the backlog LEFT (1 re-driven)
+  ✓ every live subscription of the origin now carries this process's consumer identity (11 kinds); the attention kind selects 6 event types
+  · the mirror domain (not this act's): decisions, scenarios, forecasts outdated since earlier batches — left as they are, said
+  ✓ M. Dvořák published attention policy VERSION 3 (supersedes 2; changed sections materiality, routing, escalation, suppression, notification, classes; classes decision.material_change, review.convened) — version 2's 5 classes kept, the two B23 classes added
+  ✓ AttentionPolicyChanged@v1 (01a0d5bc…) applied by the NEW attention subscription: 32 item(s) re-evaluated — item.reevaluated ×31, policy.noted ×1
+
+B23-1 L10-I02 — a run a monitored decision cites is invalidated: the package note and MaterialChangeRaised@v1 in one transaction; routed to the owner
+  · the package: "January corridor collapse — Regensburg line" (monitoring, version 2, owner l.brandt); no material-change item on it yet
+  ✓ T. Nakamura INVALIDATED run 01a084f6… (intervention, option air-bridge-2 of "January corridor collapse — Regensburg line" — not the chosen option): the SIM withdrawn at version 2
+  ✓ GraphChanged/simulation.invalidated (01a0d5bd…, seq 14709) applied by the decisions subscriber: input.invalidated ×1 — on "January corridor collapse — Regensburg line": MaterialChangeRaised with dims {"basis":"categorical_loss","confidence":1,"consequence":"C3","hours_to_window":-23519.4,"decision_deadline":"2024-01-19"}, policy version 3
+  ✓ the package NOTE d0ce5eb1… (material_change → compensation) and MaterialChangeRaised@v1 (01a0d5bd…, seq 14710) share correlation 01a0d5bd… — ONE transaction: package 01a084f8… v2 (monitoring, executed true), trigger simulation.invalidated, dims { consequence C3, confidence 1, hours_to_window -23519.4 (deadline 2024-01-19), basis categorical_loss }, policy version 3
+  ✓ the attention subscriber ROUTED decision.material_change: item 01a0d5bd… "Decision "January corridor collapse — Regensburg line": a cited input changed materially (simulation.invalidated; executed — compensation or a reopen " → open, owner l.brandt (the package owner), roles decision_owner, due 2026-09-25T03:25:31.449Z, policy version 3; dimensions {"basis":"categorical_loss","executed":true,"confidence":1,"change_kind":"simulation.invalidated","consequence":"C3","hours_to_window":-23519.4}; reasons: consequence C3 at or above C2; confidence 1 at or above 0.5
+  ✓ the attention subscription REPLAYED from seq 14709 (1 event(s) re-driven): the delivery 2 time(s), replay 1, answered repeated — still ONE item for the cause (the de-duplication key: class, subject and cause event)
+  ✓ GraphChanged re-driven to the decisions subscription (1 event(s)): input.already_noted — no second note, still ONE MaterialChangeRaised for the cause
+  · a MALFORMED MaterialChangeRaised is not planted on a demonstration: its quarantine (invalid_event → human_review, nothing routed) is proven by the harness (phase6-attention-events-b23, E4), said, not staged
+
+B23-2 L10-I03 — a governed review convened by a named human; ReviewConvened routed to the chair; the same key answers the recorded review
+  ✓ A. Hoffmann (domain_analyst) refused: 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ L. Brandt CONVENED review 01a0d5bd…: decision "January corridor collapse — Regensburg line" at version 2, chair j.weber, reviewers m.dvorak, due 2026-09-27T23:25:35.758Z, from item 01a0d5bd…, in room 01a084f8…; digest 7bbe2243cc4f…
+  ✓ ReviewConvened@v1 (01a0d5bd…) from the write → the attention subscriber (attention.routed ×1): review.convened item 01a0d5bd… → open, owner j.weber (the chair), roles strategy_owner, due 2026-09-25T23:25:36.476Z, policy version 3; dimensions {"reviewers":1,"confidence":1,"consequence":"C2","subject_kind":"decision","hours_to_window":72}
+  ✓ the same key and content again → the RECORDED review 01a0d5bd… (repeated true); ReviewConvened published once for it (×1)
+  ✓ the same key with another question refused: 409 EYE-STA-002 — review convening rejected: convene key b23-act:review-of-the-monitored-decision was already used by this convener for a different review (digest 7bbe2243cc4f recorded, d6b34d9f6a79 offered); a new review takes a new key
+
+B23-3 L1-I02 — the corridor stream: credit backpressure, an operator's interrupt, the resume from the cursor, the explicit incomplete range; the command form unchanged
+  ✓ A. Hoffmann REGISTERED "Red Sea corridor feed — Bab el-Mandeb daily transits (SYNTHETIC stream fixture)" (source 01a0d5bd…, contract v1; kept out of the seed, registered through the route)
+  ✓ M. Dvořák APPROVED it (a different operator from the registrar)
+  ✓ M. Dvořák ACTIVATED it (no agent yet — so no schedule: the scheduler polls nothing no agent may collect)
+  ✓ the administrator PROVISIONED its collection agent 01a0d5bd… (owner A. Hoffmann)
+  ✓ N. Eriksen (forecast_owner) refused the stream: 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ M. Dvořák OPENED stream 01a0d5bd… on red-sea-corridor-stream:chokepoint4 (credit 1, pull limit 2): run 01a0d5bd… finished — 2 segment(s), 12 admitted, 0 unchanged, backpressure signalled 1×; the stream PAUSES at its cursor (state open, next seq 2, high water 2024-01-11); its ledger: opened → backpressured → segment.appended → backpressure.relieved → segment.appended → paused
+  ✓ A. Hoffmann INTERRUPTED the idle stream at once (state interrupted; the reason recorded on its ledger)
+  ✓ M. Dvořák RESUMED from the cursor with credit 2: run 01a0d5bd… finished — 4 segment(s), 18 admitted, 0 unchanged, backpressure 2×; the stream reached the end of its range (high water 2024-01-31) and CLOSED closed_incomplete: the EXPLICIT INCOMPLETE RANGE [2024-01-11, 2024-01-16) publisher_gap at seq 2 — "DEF-S1 (planted): the publisher served no page for this window — the stream must report an explicit incomplete"
+  ✓ a closed stream is not resumed: 409 EYE-STA-002 — acquisition stream rejected (not_resumable): stream 01a0d5bd-2773-7efd-9614-d0f73a6ab593 is closed_incomplete; a closed stream is not resumed — open the partition again for a new stream
+  ✓ the reads (A. Hoffmann): segments 0:6 · 1:6 · 2 gap:0 · 3:6 · 4:6 · 5:6; 1 incomplete range(s); 18 ledger event(s); the source's streams listed: 1
+  ✓ the COMMAND form unchanged: M. Dvořák's collect-now run 01a0d5bd… finished — 26 admitted, 0 unchanged, 0 quarantined (the whole snapshot in one run, under its own item keys); run.checkpointed 1×; no stream opened and no segment appended by it
+
+B23-4 L3-I02 — the corridor's context for a 'sourcing decision': complete; partial with the omission named while edges_current is withdrawn; complete again
+  ✓ K. Müller RECORDED memory item 01a0d5bd… "B23: the Cape corridor carried the bearing supply" — internal, audience purpose 'sourcing decision', citing the Cape of Good Hope (entity), the NORDWERK ANTRIEBSTECHNIK GmbH procures SYN-PART-BRG edge and evidence 01a084f5…@2
+  · its GraphChanged (memory_item.recorded) verified by the retrieval subscriber: retrieval applied
+  ✓ A. Hoffmann's context of the Cape of Good Hope under 'sourcing decision': complete (code OK, revision 14771, verified 14771, lag 0, current); 1 item(s) — "B23: the Cape corridor carried the bearing supply" v1 with its links dependency:entity "Cape of Good Hope" (active), dependency:edge "procures" (asserted), dependency:evidence; access a06d90f6… recorded
+  ✓ the same subject under 'treasury': 0 item(s), complete — the 'sourcing decision' item neither served nor mentioned
+  ✓ the administrator WITHDREW edges_current (the operator route; the reason recorded)
+  ✓ the context while it is withdrawn: PARTIAL (code EYE-DEG-001) — omitted: edges_current (rows 1), "1 explanation link(s) to graph edges are left out: the edges_current projection of this domain is withdrawn since 2026-09-24T23:25:47.822Z (B23 demons…"; the item still served with entity, evidence and 1 edge link(s) WITHHELD, never served from a partition that cannot vouch for it
+  ✓ the administrator REBUILT edges_current → the context COMPLETE again (0 omitted; the edge link served)
+
+B23-5 L4-I02 — one change set, one revision: the retry answers the first result; a stale head 409; an invalid set 422 and nothing applied
+  · the head: revision 0; active ontology v3 (01a099d4…); the change set: MV Hanse Trader carries SYN-SHIP-4468 (claim 01a084f5…@1; first asserted as 01a084f5…, retracted by the B6 act's demonstration); SYN-SHIP-4468 carries SYN-PART-PWR (claim 01a084f5…@1; first asserted as 01a084f5…, retracted by the B6 act's demonstration); NORDWERK ANTRIEBSTECHNIK GmbH depends_on SYN-PART-PWR (claim 01a084f5…@1; first asserted as 01a084f5…, retracted by the B6 act's demonstration); MV Hanse Trader transits Suez (claim 01a084f5…@1; first asserted as 01a084f5…, retracted by the B6 act's demonstration)
+  ✓ A. Hoffmann (domain_analyst) refused: 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ K. Müller COMMITTED revision 1 (01a0d5bd…; expected 0): 4 edge(s), 0 node(s), 0 identifier(s), superseded 0; ONE graph transaction — the head 0 → 1; digest 369ddf9d4706…
+  ✓ ONE GraphChanged/revision.committed (01a0d5bd…, seq 14774) delivered to 6 graph consumers: decisions applied (no effect); forecasts applied (no effect); memory-mappings applied (no effect); retrieval applied (projections.verified ×1); scenarios applied (no effect); twins applied (version.unverified ×2) — relationships selects claim corrections only (its registration's filter), so it receives none
+  ✓ the RETRY under the same key and change set → the first result: revision 1 (01a0d5bd…), repeated true, the head read 1 — no second effect, no event
+  ✓ a change set made against the stale head 0 (a new key) refused: 409 EYE-STA-002 — graph revision rejected (conflict): the domain stands at revision 1, the change set expects 0
+  ✓ an INVALID change set (edge 1 admissible, edge 2 a predicate the ontology does not declare) refused WHOLE: 422 EYE-REQ-001 — graph revision rejected (ontology): edge 2 has predicate smuggles, which ontology version 01a099d4-5c74-7558-b37c-e6c47a233057 (v3) does not declare — nothing applied: the head stays 1, the edges 12
+
+B23-6 L7-I02 — a user-defined branch added to the corridor scenario as a new version; repeat, stale and duplicate refused or answered
+  · the scenario: "Bab el-Mandeb over the next quarter — every scenario kind (vocabulary v1)" at version 1 (its user-defined "regional blockade" branch on indicator 01a084f5…); the new branch rests on indicator 01a09214… — "Bab el-Mandeb Strait transits below 41 per day for five consecutive pu"
+  ✓ A. Hoffmann (domain_analyst) refused: 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ N. Eriksen ADDED the user-defined branch "insurer withdrawal": scenario v1 → v2, branch 01a0d5bd… (owner J. Weber), coherence passed
+  ✓ ScenarioBranched@v1 (01a0d5bd…) from the write; the scenario stands at version 2 (the SCN v2 admitted in the write; v1 unchanged)
+  ✓ the same key and body again → the first result (repeated true, version 2); no second version, branch or event
+  ✓ a branch read from the stale version 1 (a new key) refused: 409 EYE-STA-002 — branch rejected (stale_version): scenario 01a09156-cceb-7b8d-9b43-1ba93a1c4bc6 stands at version 2, the request names version 1; reload the scenario and branch its current version
+  ✓ a second "regional blockade" branch refused — never admitted as a failing branch: 409 EYE-STA-002 — branch rejected (duplicate): scenario 01a09156-cceb-7b8d-9b43-1ba93a1c4bc6 already has a live user-defined branch "Blockade" of the kind "regional blockade" (01a09156-cced-7bc2-af9d-07ab0b67533e); the scenario stays at version 2 with 9 branches
+
+B23-7 BRF@v2 — the room briefing carries its attention section; a v1 edition still reads as v1
+  · the room's newest edition: 01a0d450… (v1, known at 2026-09-24T16:46:57.805Z)
+  ✓ M. Dvořák COMPOSED briefing 01a0d5bd… — schema_version v2, digest ffab37a613bf…: the ATTENTION SECTION as of 2026-09-24T23:25:54.231Z (since 2026-09-24T16:46:57.805Z), policy version 3, 32 routed item(s) (warning.raised 7, forecast.unfit 2, proposal.review 20, source.coverage_loss 1, decision.material_change 1, review.convened 1) each with its confidence band (high 32); counts open 22, escalated 6, suppressed 1, acknowledged 3, deprioritized 3; material changes since the prior edition: 1 — the B23-1 change 01a0d5bd… (open, confidence 1 high); the convened review listed
+  ✓ the earlier v1 edition 01a0d450… still reads: schema_version v1, no attention section (466 item(s))
+
+B23-8 THE STATE — what the act leaves
+  · the queue: 35 item(s) — warning.raised {escalated 6, suppressed 1, deprioritized 1}; proposal.review {open 19, acknowledged 1}; source.coverage_loss {acknowledged 1}; decision.material_change {open 1}; review.convened {open 1}; forecast.unfit {open 1, acknowledged 1}; scenario.incoherent {deprioritized 2}
+  · the policy: v1 superseded, v2 superseded, v3 active
+  · the reviews (read by J. Weber): 1 — 01a0d5bd… decision "January corridor collapse — Regensburg line" convened
+  · the streams: red-sea-corridor-stream:chokepoint4 closed_incomplete (6 segments, 1 unresolved range(s))
+  · the revision head: 1; accepted revisions 1 (r1 b23-act:corridor-relationships)
+  · the register: 50 bound / 0 partial / 0 unbound
+  · the projections: entities_current serving, resolutions_current serving, edges_current serving, strategy_current serving, invalidations_current serving, memory_items_current serving
+  · LIMITS said: in_app delivery only; the malformed-event quarantine and the lost-queue reconciliation are the harness's (E4, E8), not staged here; the stream is segment pull over the replay fixture (no socket, no live publisher); the review's due instant has no timer host (its attention item's deadline carries it); the context answer has no ranking; the change set carries edges only — no ENT claim the demonstration holds names a thing not already an entity; the invalidated run and the convened review stand as demonstration facts; nothing is cleaned.
+
+ALL SCENES HELD · 28.5 s

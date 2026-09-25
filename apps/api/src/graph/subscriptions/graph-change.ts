@@ -51,6 +51,13 @@ export const GRAPH_CHANGE_KINDS = [
   // unverified); the FORECAST consumer leaves its own kind alone (a fitness change is not a basis change). A fit or indeterminate
   // verdict marks nothing and rides ForecastFitnessChanged only; the measures ride the typed `forecast_fitness` block.
   'forecast.fitness_changed',
+  /* B23 (0084) revision */
+  // 0084 (B23, L4-I02): a CHANGE SET committed as one graph revision (graph.commit_revision) — the nodes it created (`created`), the
+  // existing ends its edges touch (`subject` / `object`), the edges it asserted and the ones it superseded, the claims and evidence they
+  // rest on; built PURE from the port's answer (the importAdmittedEvent precedent: many facts in ONE event, walked: false — nothing of
+  // the domain rests on ids minted in this write); the typed `revision` block carries the revision, the expected head and the counts.
+  'revision.committed',
+  /* end B23 revision */
 ] as const;
 export type GraphChangeKind = (typeof GRAPH_CHANGE_KINDS)[number];
 export const MEMORY_CHANGE_KINDS = ['evidence.corrected', 'claim.corrected'] as const;
@@ -128,6 +135,15 @@ export interface GraphChangedPayload {
   projection?: { projection: string; outcome: 'rebuilt' | 'restored'; rebuild_id: string; updated: number; inserted: number; removed: number;
                  restored: Array<{ id: string; change: string; to?: string; from?: string }>; restored_truncated: boolean; check: Record<string, unknown> | null;
                  representation_version: string; withdrawn_since: string | null; withdrawn_reason: string | null; withdrawn_by_check: string | null };
+  /* B23 (0084) revision */
+  /**
+   * 0084 (B23; L4-I02): the typed block of `revision.committed` — the graph revision a change set became (graph.revisions): its id,
+   * the resulting revision and the head it was made against (always revision − 1), the idempotency key and the request digest the
+   * ledger keeps, the ontology version it named (null while the domain has none) and the port's counts (nodes, identifiers,
+   * identifiers_already, edges, superseded). Absent on every other kind; never a second `cause`.
+   */
+  revision?: { revision_id: string; revision: number; expected: number; idempotency_key: string; request_digest: string; ontology_version_id: string | null; counts: Record<string, number> };
+  /* end B23 revision */
 }
 
 export interface CorrectedObject { object_id: string; object_type: string; from_version: number; to_version: number; lifecycle_state: string; recorded_at?: string | null; event_time?: string | null; observation_time?: string | null; valid_from?: string | null; valid_to?: string | null }
@@ -148,7 +164,8 @@ export type ChangeEvent = { event_id: string; event_type: 'GraphChanged'; payloa
  * and QUARANTINES a payload that is not the contract (failure class invalid_event → human_review).
  */
 export const FLAT_EVENT_TYPES = ['ObservationRecorded', 'SourceHealthChanged', 'ClaimsExtracted', 'IntelligenceObjectAdmitted', 'ForecastFitnessChanged', 'ScenarioCoherenceFailed',
-  'EarlyWarningRaised', 'AttentionPolicyChanged'] as const;
+  'EarlyWarningRaised', 'AttentionPolicyChanged',
+  /* B23 (0084) attention */ 'MaterialChangeRaised', 'ReviewConvened' /* end B23 attention */] as const;
 export type FlatEventType = (typeof FLAT_EVENT_TYPES)[number];
 export const SUBSCRIBABLE_EVENT_TYPES = ['GraphChanged', 'MemoryCorrected', ...FLAT_EVENT_TYPES] as const;
 export type SubscribableEventType = (typeof SUBSCRIBABLE_EVENT_TYPES)[number];
@@ -187,7 +204,8 @@ export const CONSUMER_EVENT_TYPES: Readonly<Record<ConsumerKind, readonly Subscr
   decisions: ['GraphChanged', 'MemoryCorrected'], retrieval: ['GraphChanged', 'MemoryCorrected'], 'memory-mappings': ['GraphChanged', 'MemoryCorrected'],
   relationships: ['GraphChanged', 'MemoryCorrected'],
   observations: ['ObservationRecorded'], 'source-health': ['SourceHealthChanged'], proposals: ['ClaimsExtracted', 'IntelligenceObjectAdmitted'],
-  attention: ['ForecastFitnessChanged', 'ScenarioCoherenceFailed', 'EarlyWarningRaised', 'AttentionPolicyChanged'],
+  attention: ['ForecastFitnessChanged', 'ScenarioCoherenceFailed', 'EarlyWarningRaised', 'AttentionPolicyChanged',
+    /* B23 (0084) attention: L10-I02 and L10-I03 */ 'MaterialChangeRaised', 'ReviewConvened' /* end B23 attention */],
 });
 /** The consumer's identity, the walker precedent: a changed method is a new consumer, registered anew. */
 export const CONSUMER_VERSION = '1.0.0';
@@ -200,7 +218,10 @@ const METHOD_REF: Readonly<Record<ConsumerKind, string>> = Object.freeze({
   scenarios: 'subject or forecast affected → prediction.mark_scenario_attention (once); forecast.fitness_changed (0081, B21) marks with the assessment\'s reason; the marked scenario then RE-CHECKED (prediction.check_scenario_coherence, trigger subscription — ScenarioCoherenceFailed on a failed and changed check)',
   // 0078 (B18): the two chain kinds are exposed as a categorical loss and a twin's admission is noted without exposure — a new method, so a new identity (the live decisions subscriptions are re-registered).
   // 0081 (B21): forecast.fitness_changed is exposed as material_change (assessed unfit, not withdrawn) — a new method again, so a new identity (the live decisions subscriptions are re-registered).
-  decisions: 'DEC or cited input affected → decision.note_input_invalidated (once per cause); forecast.superseded judged for materiality against the declared rule → material_change exposed; forecast.withdrawn / simulation.invalidated (0078) → material_change exposed as a categorical loss of the cited input; forecast.fitness_changed (0081, B21) → material_change exposed (assessed unfit, not withdrawn — the owner decides); twin.state_changed (0078) → noted without exposure (the cited runs of the superseded version stand; the owner judges)',
+  decisions: 'DEC or cited input affected → decision.note_input_invalidated (once per cause); forecast.superseded judged for materiality against the declared rule → material_change exposed; forecast.withdrawn / simulation.invalidated (0078) → material_change exposed as a categorical loss of the cited input; forecast.fitness_changed (0081, B21) → material_change exposed (assessed unfit, not withdrawn — the owner decides); twin.state_changed (0078) → noted without exposure (the cited runs of the superseded version stand; the owner judges)'
+    /* B23 (0084) attention: a material_change exposure on a NEW note publishes MaterialChangeRaised@v1 in the item's transaction — a new method, so a new
+       identity: every live decisions subscription registered before 0084 is re-registered (the B8 precedent; the act revokes and registers anew). */
+    + '; a material_change exposure on a new note → MaterialChangeRaised@v1 in the item\'s transaction (0084: consequence, confidence, hours to the decision deadline, the active attention-policy version)' /* end B23 attention */,
   // 0080 (B20): the check is SYMMETRIC (a poisoned or a missing row fails it), covers the memory projection and the representation version, and WITHDRAWS every partition it fails — a new method, so a new identity (the live retrieval subscriptions are re-registered; the act revokes and registers anew in both domains).
   retrieval: 'graph.rebuild_projections verified — symmetric (mismatched + missing + unexpected) with the memory projection as the sixth row and the representation version (0080) → graph.record_retrieval_check, which WITHDRAWS every partition that failed; a GraphChanged/projection.rebuilt is re-verified like any change',
   // 0077 (B17): the import.revoked branch is a new method, so a new identity — every live memory-mappings subscription registered before it is re-registered (the B8 precedent).
@@ -211,6 +232,9 @@ const METHOD_REF: Readonly<Record<ConsumerKind, string>> = Object.freeze({
   'source-health': 'SourceHealthChanged (the coverage evaluation\'s new_state or the lifecycle transition\'s state) → observation.mark_source_impact (markers on the issued forecasts of the source\'s series, the open warnings on them, the packages citing them; cleared on healthy | active) and, when degraded, executive.route_attention_item source.coverage_loss under the attention policy; a payload that is not the contract is quarantined',
   proposals: 'ClaimsExtracted / IntelligenceObjectAdmitted → each proposed claim held for review (a queued review case) routed as proposal.review under the attention policy; a claim with no review recorded no_review_required; nothing promoted; a payload that is not the contract is quarantined',
   attention: 'ForecastFitnessChanged (to unfit) → forecast.unfit; ScenarioCoherenceFailed → scenario.incoherent; EarlyWarningRaised → warning.raised — each routed under the domain\'s active attention policy (executive.route_attention_item, transparent dimensions); AttentionPolicyChanged → every live item re-evaluated (executive.reevaluate_attention_item) and the policy cause noted on every committed or monitored package (decision.note_policy_changed); overdue items escalated at every delivery (executive.escalate_attention_due); a payload that is not the contract is quarantined'
+    /* B23 (0084) attention: two more types, so a new method and a new identity — every live attention subscription registered before 0084 is
+       re-registered (it would not select the two types anyway: a registration names its event types). */
+    + '; MaterialChangeRaised (0084) → decision.material_change to the package owner; ReviewConvened (0084) → review.convened to the chair; a package withdrawn or closed, a review concluded or withdrawn since → signal.no_longer_stands' /* end B23 attention */,
 });
 export const consumerCodeDigest = (kind: ConsumerKind): string =>
   createHash('sha256').update(`graph.subscription.${kind}@${CONSUMER_VERSION}:${METHOD_REF[kind]}`, 'utf8').digest('hex');

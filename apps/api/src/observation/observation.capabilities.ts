@@ -126,6 +126,17 @@ export interface ObservationReads {
   replayHealth(tenantId: string, domainId: string, sourceId: string): Promise<Array<{
     evaluated_at: Date; state: string; calc_version: string; universe_version: string; reason: string;
   }>>;
+  /* B23 (0084) stream */
+  /** L1-I02's stream form: the streams, their append-only ledger, their segments and their explicit incomplete ranges (RLS). */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readAcquisitionStreams(): any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readAcquisitionStreamEvents(): any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readAcquisitionSegments(): any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readAcquisitionIncompleteRanges(): any;
+  /* end B23 stream */
 }
 
 /**
@@ -329,7 +340,57 @@ export interface AcquisitionWrites extends ObservationReads {
   markBasisWithdrawn(a: {
     tenantId: string; domainId: string; basisKind: 'claim' | 'warning' | 'evidence'; basisId: string; reason: string; actor: string; correlationId: string;
   }): Promise<Record<string, unknown>>;
+  /* B23 (0084) stream */
+  /** Open — or RESUME — the partition's stream, inside the run's own run.start transaction (after the lease, before run.started). */
+  openAcquisitionStream(a: {
+    streamId: string; tenantId: string; domainId: string; sourceId: string; contractVersion: number; runId: string;
+    partitionKey: string; rangeFrom: string | null; rangeTo: string | null; initialCursor: Record<string, unknown> | null;
+    credit: number | null; expectStreamId: string | null; correlationId: string;
+  }): Promise<StreamAnswer>;
+  /** Acknowledge one segment (at-least-once: a redelivery of the same digest is a recorded no-op; another digest is refused). */
+  appendStreamSegment(a: StreamSegmentArgs): Promise<StreamAnswer>;
+  signalStreamBackpressure(a: {
+    streamId: string; tenantId: string; domainId: string; runId: string; details: Record<string, unknown>; correlationId: string;
+  }): Promise<StreamAnswer>;
+  declareIncompleteRange(a: {
+    streamId: string; tenantId: string; domainId: string; runId: string; rangeFrom: string; rangeTo: string;
+    reasonClass: string; detail: string; correlationId: string;
+  }): Promise<string>;
+  pauseAcquisitionStream(a: {
+    streamId: string; tenantId: string; domainId: string; runId: string; details: Record<string, unknown>; correlationId: string;
+  }): Promise<StreamAnswer>;
+  closeAcquisitionStream(a: {
+    streamId: string; tenantId: string; domainId: string; runId: string; details: Record<string, unknown>; correlationId: string;
+  }): Promise<StreamAnswer>;
+  /** The run (runId), an operator (runId null, under observation.stream.interrupt) or the sweeper (the reconciled run). */
+  interruptStream(a: StreamInterruptArgs): Promise<StreamAnswer>;
+  /* end B23 stream */
 }
+
+/* B23 (0084) stream */
+/** What the stream ports answer: the stream as it now stands, plus the port's own facts (resumed, redelivered, requested, …). */
+export interface StreamAnswer {
+  stream_id: string; source_id: string; contract_version: number; partition_key: string;
+  range_from: string; range_to: string; cursor: Record<string, unknown>; high_water: string | null;
+  next_seq: number; credit: number; reached_end: boolean; state: string; current_run_id: string | null;
+  interrupt_requested: boolean;
+  resumed?: boolean; previous_state?: string; redelivered?: boolean; seq?: number; delivery_count?: number;
+  resolved?: Array<{ range_id: string; range_from: string; range_to: string }>; changed?: boolean; requested?: boolean;
+  in_flight?: Array<{ range_id: string; seq: number; range_from: string; range_to: string }>;
+  unresolved?: Array<{ range_id: string; range_from: string; range_to: string; reason_class: string; detail: string }>;
+  reason?: string;
+}
+export interface StreamSegmentArgs {
+  streamId: string; tenantId: string; domainId: string; runId: string; seq: number; partitionKey: string;
+  rangeFrom: string; rangeTo: string; cursorBefore: Record<string, unknown>; cursorAfter: Record<string, unknown>;
+  segmentDigest: string; evidenceIds: string[]; itemCount: number; admitted: number; noop: number; quarantined: number;
+  last: boolean; incomplete: { reason_class: string; detail: string } | null; relieved: boolean; correlationId: string;
+}
+export interface StreamInterruptArgs {
+  streamId: string; tenantId: string; domainId: string; runId: string | null; reasonClass: string; reason: string;
+  inFlight: Array<{ seq: number; range_from: string; range_to: string }>; rangeClass: 'interrupted' | 'budget' | null; correlationId: string;
+}
+/* end B23 stream */
 
 /** The lease answer, as the port returns it. A refusal names the holder; it is never a bare "no". */
 export type SourceRunLeaseAnswer =
@@ -518,6 +579,16 @@ class ObservationCapabilityImpl extends ObservationCore implements RegistryWrite
   readSourceRunLeases(): any { return this.from('observation.source_run_leases'); }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readAdmittedItems(): any { return this.from('observation.admitted_items'); }
+  /* B23 (0084) stream */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readAcquisitionStreams(): any { return this.from('observation.acquisition_streams'); }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readAcquisitionStreamEvents(): any { return this.from('observation.acquisition_stream_events'); }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readAcquisitionSegments(): any { return this.from('observation.acquisition_segments'); }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readAcquisitionIncompleteRanges(): any { return this.from('observation.acquisition_incomplete_ranges'); }
+  /* end B23 stream */
 
   async evidenceCounts(a: { sourceId: string; tenantId: string; domainId: string }): Promise<EvidenceCounts> {
     /*
@@ -894,6 +965,74 @@ class ObservationCapabilityImpl extends ObservationCore implements RegistryWrite
       ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.basisKind}, ${a.basisId}::uuid, ${a.reason}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
     return rows[0]?.r ?? {};
   }
+
+  /* B23 (0084) stream */
+  async openAcquisitionStream(a: {
+    streamId: string; tenantId: string; domainId: string; sourceId: string; contractVersion: number; runId: string;
+    partitionKey: string; rangeFrom: string | null; rangeTo: string | null; initialCursor: Record<string, unknown> | null;
+    credit: number | null; expectStreamId: string | null; correlationId: string;
+  }): Promise<StreamAnswer> {
+    const rows = await this.call<{ r: StreamAnswer }>(sql`select observation.open_acquisition_stream(
+      ${a.streamId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.sourceId}::uuid, ${a.contractVersion}::int, ${a.runId}::uuid,
+      ${a.partitionKey}, ${a.rangeFrom}, ${a.rangeTo}, ${a.initialCursor === null ? null : JSON.stringify(a.initialCursor)}::jsonb,
+      ${a.credit}::int, ${a.expectStreamId}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r as StreamAnswer;
+  }
+
+  async appendStreamSegment(a: StreamSegmentArgs): Promise<StreamAnswer> {
+    const rows = await this.call<{ r: StreamAnswer }>(sql`select observation.append_stream_segment(
+      ${a.streamId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.runId}::uuid, ${a.seq}::int, ${a.partitionKey},
+      ${a.rangeFrom}, ${a.rangeTo}, ${JSON.stringify(a.cursorBefore)}::jsonb, ${JSON.stringify(a.cursorAfter)}::jsonb,
+      ${a.segmentDigest}, ${JSON.stringify(a.evidenceIds)}::jsonb, ${a.itemCount}::int, ${a.admitted}::int, ${a.noop}::int,
+      ${a.quarantined}::int, ${a.last}::boolean, ${a.incomplete === null ? null : JSON.stringify(a.incomplete)}::jsonb,
+      ${a.relieved}::boolean, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r as StreamAnswer;
+  }
+
+  async signalStreamBackpressure(a: {
+    streamId: string; tenantId: string; domainId: string; runId: string; details: Record<string, unknown>; correlationId: string;
+  }): Promise<StreamAnswer> {
+    const rows = await this.call<{ r: StreamAnswer }>(sql`select observation.signal_stream_backpressure(
+      ${a.streamId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.runId}::uuid, ${JSON.stringify(a.details)}::jsonb,
+      ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r as StreamAnswer;
+  }
+
+  async declareIncompleteRange(a: {
+    streamId: string; tenantId: string; domainId: string; runId: string; rangeFrom: string; rangeTo: string;
+    reasonClass: string; detail: string; correlationId: string;
+  }): Promise<string> {
+    const rows = await this.call<{ r: string }>(sql`select observation.declare_incomplete_range(
+      ${a.streamId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.runId}::uuid, ${a.rangeFrom}, ${a.rangeTo},
+      ${a.reasonClass}, ${a.detail}, ${a.correlationId}::uuid) as r`);
+    return String(rows[0]?.r);
+  }
+
+  async pauseAcquisitionStream(a: {
+    streamId: string; tenantId: string; domainId: string; runId: string; details: Record<string, unknown>; correlationId: string;
+  }): Promise<StreamAnswer> {
+    const rows = await this.call<{ r: StreamAnswer }>(sql`select observation.pause_acquisition_stream(
+      ${a.streamId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.runId}::uuid, ${JSON.stringify(a.details)}::jsonb,
+      ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r as StreamAnswer;
+  }
+
+  async closeAcquisitionStream(a: {
+    streamId: string; tenantId: string; domainId: string; runId: string; details: Record<string, unknown>; correlationId: string;
+  }): Promise<StreamAnswer> {
+    const rows = await this.call<{ r: StreamAnswer }>(sql`select observation.close_acquisition_stream(
+      ${a.streamId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.runId}::uuid, ${JSON.stringify(a.details)}::jsonb,
+      ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r as StreamAnswer;
+  }
+
+  async interruptStream(a: StreamInterruptArgs): Promise<StreamAnswer> {
+    const rows = await this.call<{ r: StreamAnswer }>(sql`select observation.interrupt_stream(
+      ${a.streamId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.runId}::uuid, ${a.reasonClass}, ${a.reason},
+      ${JSON.stringify(a.inFlight)}::jsonb, ${a.rangeClass}, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r as StreamAnswer;
+  }
+  /* end B23 stream */
 }
 
 /**

@@ -1007,9 +1007,20 @@ const BUNDLE_V1: Rule[] = [
   { actionPrefix: 'prediction.scenario.review', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   // B21 (0081, L7-I04): a PERSON's coherence CHECK — the review roles; a check records what the versioned rule finds (the review decides), no gate.
   { actionPrefix: 'prediction.scenario.check', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* B23 (0084) branch */
+  // L7-I02 BranchScenario: a branch ADDED to a declared scenario as a new version — the DECLARING roles (prediction.scenario.declare), NOT
+  // human-gated because the declaration is not (a branch is a declarer's act of the same kind; the review stays the human-gated judgement).
+  // EXACT, and named outside the `prediction.scenario.declare` PREFIX rule (:421), which would otherwise swallow a `…declare.*` action.
+  { actionPrefix: 'prediction.scenario.branch', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B23 branch */
   // B9 (0066 §7): ontology change proposals (the people who shape the graph) and the steward's decision (human-gated; the port refuses the proposer).
   { actionPrefix: 'graph.ontology.propose', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'resolution_manager', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'ontology_steward', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
   { actionPrefix: 'graph.ontology.decide', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'ontology_steward', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* B23 (0084) revision */
+  // B23 (0084, L4-I02): a CHANGE SET committed as one graph revision — the knowledge owner (who holds no other graph write) and the resolution
+  // manager (the resolver's human) beside the administrators; exact, so no prefix rule answers for it (no earlier prefix is a prefix of it).
+  { actionPrefix: 'graph.revision.commit', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'knowledge_owner', atScope: 'DOMAIN' }, { role: 'resolution_manager', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B23 revision */
   /*
    * B9 (0066 §4): governed retention. The steward opens, resolves, executes and verifies; the retention authority (a
    * tenant role: the accountable lifecycle authority of DC-14/DZ-18) approves, on the resolved scope's digest; both the
@@ -1071,6 +1082,17 @@ const BUNDLE_V1: Rule[] = [
       { role: 'resolution_manager', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' },
       { role: 'decision_approver', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'briefing_agent', atScope: 'DOMAIN' }, { role: 'reporting_agent', atScope: 'DOMAIN' }, { role: 'decision_agent', atScope: 'DOMAIN' }],
     obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* B23 (0084) context */
+  // L3-I02 RetrieveContext: the context query is a RETRIEVAL of every item it serves — the same readers as memory.item.retrieve (an
+  // EXACT rule: no prefix rule starts with 'memory.context'), audited (audit_access), under a declared purpose, C2. The port asserts
+  // the action (memory.retrieve_context), the access ledger admits it (memory.record_access), the projection state admits it.
+  { actionPrefix: 'memory.context.retrieve', exact: true, requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'knowledge_owner', atScope: 'DOMAIN' }, { role: 'record_authority', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' },
+      { role: 'resolution_manager', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' },
+      { role: 'decision_approver', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'briefing_agent', atScope: 'DOMAIN' }, { role: 'reporting_agent', atScope: 'DOMAIN' }, { role: 'decision_agent', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B23 context */
   {
     // Retrieving the ORIGINAL BYTES is a consequential read of its own: POL and
     // AUD are durable before any byte moves, and it is not folded into the
@@ -1212,6 +1234,18 @@ const BUNDLE_V1: Rule[] = [
     ],
     requiresPurpose: true,
   },
+  /* B23 (0084) stream */
+  /*
+   * L1-I02's STREAM form: the operator's own acts on a partition's stream — open (or resume by partition), resume a stream by
+   * id, interrupt it with a reason — exact rules, the roles that may trigger a collection by hand (the collection agent
+   * excluded: the run acts as the agent, the operator's request is the human's). Placed before the catch-all `observation.`
+   * rule so it never widens to the agent. The run's own writes ride observation.run.* under that catch-all, unchanged; the
+   * reads are observation.read.streams under the `observation.read` rule.
+   */
+  { actionPrefix: 'observation.stream.open', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'collection_manager', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'observation.stream.resume', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'collection_manager', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'observation.stream.interrupt', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'collection_manager', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B23 stream */
   {
     // The COLLECTION surface: run lifecycle, admission, quarantine, checkpoints,
     // coverage measurement and sweeper reconciliation. Held by the agent role and
@@ -1254,6 +1288,16 @@ const BUNDLE_V1: Rule[] = [
     // cannot be authorized yet — fail closed rather than silently allow.
     maxConsequence: 'C2',
   },
+  /* B23 (0084) attention: THE GOVERNED REVIEW (L10-I03). EXACT rules — no prefix rule matches `executive.review.*` (the `decision.review`
+     prefix rule above is a different namespace; the room's review stays decision.review). CONVENING is a named human's act (human-gated):
+     the executive, the strategy owner, the decision owner and authority, the domain administrator (the platform administrator at its
+     scope) — the roles that own an objective, a decision, a scenario, a commitment or its outcome; the PORT re-checks the same roles
+     (executive.review_convening_roles). CLOSING is open to the domain's human roles at the PDP (a chair may hold any of them); the PORT
+     admits the chair (conclude), the convener or the chair (withdraw), or an administrator. READING is the attention queue's readers. */
+  { actionPrefix: 'executive.review.convene', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'executive.review.close', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'decision_approver', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }, { role: 'collection_manager', atScope: 'DOMAIN' }, { role: 'extraction_manager', atScope: 'DOMAIN' }, { role: 'knowledge_owner', atScope: 'DOMAIN' }, { role: 'resolution_manager', atScope: 'DOMAIN' }, { role: 'record_authority', atScope: 'DOMAIN' }, { role: 'retention_steward', atScope: 'DOMAIN' }, { role: 'ontology_steward', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'executive.review.read', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'decision_approver', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }, { role: 'collection_manager', atScope: 'DOMAIN' }, { role: 'extraction_manager', atScope: 'DOMAIN' }, { role: 'knowledge_owner', atScope: 'DOMAIN' }, { role: 'resolution_manager', atScope: 'DOMAIN' }, { role: 'record_authority', atScope: 'DOMAIN' }, { role: 'retention_steward', atScope: 'DOMAIN' }, { role: 'ontology_steward', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B23 attention */
 ];
 
 const CONSEQ_ORDER: ConsequenceClass[] = ['C0', 'C1', 'C2', 'C3', 'C4'];

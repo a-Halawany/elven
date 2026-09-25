@@ -52,6 +52,10 @@ const ROUTED: Record<string, (r: { tenant_id: string | null; domain_id: string |
   // 0083 (B22): the eight flat events a B22 consumer selects — routed the same way, on the lease's own `subscribed` answer.
   ...Object.fromEntries(['ObservationRecorded', 'SourceHealthChanged', 'ClaimsExtracted', 'IntelligenceObjectAdmitted', 'ForecastFitnessChanged', 'ScenarioCoherenceFailed', 'EarlyWarningRaised', 'AttentionPolicyChanged']
     .map((t) => [t, (r: { tenant_id: string | null; domain_id: string | null; subscribed: boolean }) => r.tenant_id === null || r.domain_id === null || !r.subscribed ? null : redisName(subscriptionQueueNameFor(r.tenant_id, r.domain_id))])),
+  /* B23 (0084) attention: L10-I02 MaterialChangeRaised and L10-I03 ReviewConvened — routed the same way, on the lease's own `subscribed` answer. */
+  ...Object.fromEntries(['MaterialChangeRaised', 'ReviewConvened']
+    .map((t) => [t, (r: { tenant_id: string | null; domain_id: string | null; subscribed: boolean }) => r.tenant_id === null || r.domain_id === null || !r.subscribed ? null : redisName(subscriptionQueueNameFor(r.tenant_id, r.domain_id))])),
+  /* end B23 attention */
 };
 
 interface PendingRow {

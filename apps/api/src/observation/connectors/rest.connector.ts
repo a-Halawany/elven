@@ -13,9 +13,12 @@
  */
 import { createHash } from 'node:crypto';
 import { egress as liveEgress, EgressRefused, type EgressPolicy, type EgressResult } from './http-client.js';
-import { ReplayResponder } from './replay.js';
+import { ReplayResponder, type ReplayStreamPartition } from './replay.js';
 import type { AcquiredItem, AcquisitionContext, AcquisitionOutput, BackfillDeclaration,
   BackfillProgress, Connector } from './sdk.js';
+// B23 (0084) stream: the stream form's types.
+import { StreamPlanRefused, type AcquiredSegment, type SegmentGap, type StreamCursor, type StreamPlan,
+  type StreamPlanRequest, type StreamPullRequest } from './sdk.js';
 
 /**
  * 1.2.0 adds the CLOSED-RANGE BACKFILL (Phase 4 §4a). The framing method refs
@@ -323,7 +326,195 @@ export class RestConnector implements Connector {
     }
     return { items, progress, bytes, requests };
   }
+
+  /* B23 (0084) stream */
+  /**
+   * THE STREAM FORM (L1-I02): plan a partition. A REPLAY source streams the pages its fixture MANIFEST declares for the
+   * partition (`stream.partitions`); a LIVE source streams its contract's declared closed-range traversal, as the one
+   * partition `backfill`. Nothing here changes `acquire()`: the command form keeps its own path, checkpoint and keys.
+   *
+   * THE CODE DIGEST IS UNCHANGED, deliberately and honestly: the stream form stamps no new method on any item. A live
+   * segment IS a backfill page — the same `nextRequest`/`advance` traversal, the same `rest-backfill-traversal@1.2.0` on the
+   * parent and the same framing refs on its rows — and a replay segment is a recorded page framed the same way. What is new
+   * is WHEN the lifecycle pulls a page (one at a time, under credit), which is the lifecycle's, not the connector's framing.
+   */
+  async planStream(ctx: AcquisitionContext, req: StreamPlanRequest): Promise<StreamPlan> {
+    const { binding } = ctx;
+    if (binding.acquisitionMode === 'replay') {
+      const partition = await replayPartition(ctx, req.partition);
+      const pages = selectPages(partition, req.range);
+      if (pages.length === 0) {
+        throw new StreamPlanRefused(`partition ${req.partition} declares no page inside [${req.range?.from ?? partition.range.from}, ${req.range?.to ?? partition.range.to})`);
+      }
+      const rangeFrom = req.range?.from ?? partition.range.from;
+      const rangeTo = req.range?.to ?? partition.range.to;
+      return { partition: req.partition, rangeFrom, rangeTo,
+               initialCursor: { position: partition.pages.indexOf(pages[0] as ReplayStreamPartition['pages'][number]), through: rangeFrom } };
+    }
+    const decl = binding.backfill;
+    if (decl === undefined) {
+      throw new StreamPlanRefused('this live contract declares no closed-range traversal (security_and_operations.backfill), so it has no stream form');
+    }
+    if (req.partition !== LIVE_STREAM_PARTITION) {
+      throw new StreamPlanRefused(`a live REST source streams its declared traversal as the one partition "${LIVE_STREAM_PARTITION}", not "${req.partition}"`);
+    }
+    const declaredTo = decl.to ?? this.today();
+    const rangeFrom = req.range?.from ?? decl.from;
+    const rangeTo = req.range?.to ?? declaredTo;
+    if (rangeFrom < decl.from || rangeTo > declaredTo || rangeFrom >= rangeTo) {
+      throw new StreamPlanRefused(`the range [${rangeFrom}, ${rangeTo}) is not inside the declared traversal [${decl.from}, ${declaredTo})`);
+    }
+    return { partition: req.partition, rangeFrom, rangeTo,
+             initialCursor: { position: decl.strategy === 'period-range' ? rangeFrom : 0, through: rangeFrom } };
+  }
+
+  /**
+   * Yield the partition's segments from the cursor, ONE PAGE PER PULL — nothing is fetched until the lifecycle asks for the
+   * next segment, which is what makes the credit a real bound on what is in flight. A page the publisher did not serve (a
+   * non-2xx answer, an error envelope, a declared replay gap) is a SEGMENT WITH A GAP — the stream moves past it and the range
+   * is declared incomplete — never a thrown run failure and never silently skipped. An ArcGIS offset page cannot be stepped
+   * over (the next offset is only known from the page), so a failed one throws and the stream resumes from the same offset.
+   */
+  async *acquireStream(ctx: AcquisitionContext, req: StreamPullRequest): AsyncGenerator<AcquiredSegment> {
+    const { binding } = ctx;
+    if (binding.acquisitionMode === 'replay') {
+      const partition = await replayPartition(ctx, req.partition);
+      const replay = new ReplayResponder(ctx.replayRoot);
+      const selected = selectPages(partition, { from: req.rangeFrom, to: req.rangeTo });
+      const lastIndex = selected.length === 0 ? -1 : partition.pages.indexOf(selected[selected.length - 1] as ReplayStreamPartition['pages'][number]);
+      for (let i = Number(req.cursor.position); i >= 0 && i <= lastIndex; i += 1) {
+        const page = partition.pages[i] as ReplayStreamPartition['pages'][number];
+        const before: StreamCursor = { position: i, through: page.from };
+        const after: StreamCursor = { position: i + 1, through: page.to };
+        const base = { partition: req.partition, rangeFrom: page.from, rangeTo: page.to, cursorBefore: before, cursorAfter: after, last: i === lastIndex };
+        ctx.budget.spendRequest();
+        if (page.gap !== undefined || page.url === undefined) {
+          yield { ...base, items: [], gap: { reasonClass: 'publisher_gap', detail: page.gap ?? 'the replay set declares no page for this window' }, requests: 1, bytes: 0 };
+          continue;
+        }
+        const got = await replay.fetch(binding.replaySet, page.url);
+        if (got === null || got.entry.status < 200 || got.entry.status >= 300) {
+          yield { ...base, items: [], gap: { reasonClass: 'publisher_gap', detail: got === null ? 'the replay set holds no recorded response for this page' : `the recorded page answered ${got.entry.status}` }, requests: 1, bytes: 0 };
+          continue;
+        }
+        ctx.budget.spendBytes(got.body.byteLength);
+        const parentItem: AcquiredItem = {
+          itemKey: `${safeUrl(page.url)}@stream:${req.partition}:${page.from}..${page.to}`,
+          bytes: got.body,
+          declaredMediaType: got.entry.retained_headers['content-type'] ?? null,
+          filename: got.entry.file,
+          publisherTime: got.entry.retained_headers['last-modified'] ?? null,
+          deterministic: true,
+          transport: {
+            connector: this.name, connectorVersion: VERSION, methodRef: BACKFILL_METHOD_REF, endpoint: page.url,
+            httpStatus: got.entry.status, retainedHeaders: got.entry.retained_headers,
+            // A replayed response makes NO transport-authenticity claim (as in acquire()).
+            tlsVerified: null, originAllowlisted: null,
+          },
+        };
+        yield { ...base, items: pageItems(parentItem, binding), gap: null, requests: 1, bytes: got.body.byteLength };
+      }
+      return;
+    }
+
+    const decl = binding.backfill;
+    if (decl === undefined) throw new StreamPlanRefused('this live contract declares no closed-range traversal, so it has no stream form');
+    const progress: BackfillProgress = {
+      strategy: decl.strategy, from: req.rangeFrom, to: req.rangeTo, contractVersion: binding.contractVersion,
+      cursor: decl.strategy === 'period-range' ? String(req.cursor.position) : Number(req.cursor.position),
+      done: decl.strategy === 'period-range' ? String(req.cursor.position) >= req.rangeTo : false,
+      requests: 0, items: 0, startedAt: new Date().toISOString(), finishedAt: null,
+    };
+    let through = String(req.cursor.through);
+    while (!progress.done) {
+      const step = nextRequest(decl, progress);
+      const before: StreamCursor = { position: progress.cursor, through };
+      const segFrom = decl.strategy === 'period-range' ? step.windowStart : `${req.rangeFrom}#${pad(step.offset)}`;
+      ctx.budget.spendRequest();
+      let res: EgressResult | null = null;
+      let gap: SegmentGap | null = null;
+      try {
+        res = await this.egress({ url: step.url, headers: {}, ...credentialsOf(ctx), policy: binding.egress });
+        if (res.status < 200 || res.status >= 300) gap = { reasonClass: 'publisher_gap', detail: `the publisher answered ${res.status} for this window` };
+        else {
+          const envelope = errorEnvelope(res.body);
+          if (envelope !== null) gap = { reasonClass: 'publisher_gap', detail: `the page is an error envelope: ${envelope}` };
+        }
+      } catch (e) {
+        if (!(e instanceof EgressRefused)) throw e;
+        gap = { reasonClass: 'refused', detail: `egress refused (${e.refusalClass})` };
+      }
+      if (gap !== null) {
+        // An offset walk cannot step over a page it never saw: the stream stops here and resumes from this offset.
+        if (decl.strategy !== 'period-range') throw new EgressRefused('transport_failure', `stream page answered no rows: ${gap.detail}`);
+        progress.cursor = step.windowEnd;
+        progress.done = step.windowEnd >= progress.to;
+        through = step.windowEnd;
+        yield { partition: req.partition, rangeFrom: step.windowStart, rangeTo: step.windowEnd, cursorBefore: before,
+                cursorAfter: { position: progress.cursor, through: step.windowEnd }, items: [], gap, last: progress.done,
+                requests: 1, bytes: 0 };
+        continue;
+      }
+      const body = (res as EgressResult).body;
+      ctx.budget.spendBytes(body.byteLength);
+      const parentItem: AcquiredItem = {
+        itemKey: step.itemKey, bytes: body,
+        declaredMediaType: (res as EgressResult).headers['content-type'] ?? null,
+        filename: step.filename,
+        publisherTime: (res as EgressResult).headers['last-modified'] ?? null,
+        deterministic: true,
+        transport: {
+          connector: this.name, connectorVersion: VERSION, methodRef: BACKFILL_METHOD_REF,
+          endpoint: (res as EgressResult).finalUrlRedacted, httpStatus: (res as EgressResult).status,
+          retainedHeaders: (res as EgressResult).headers, tlsVerified: (res as EgressResult).tlsVerified,
+          originAllowlisted: (res as EgressResult).originAllowlisted, pinnedAddress: (res as EgressResult).pinnedAddress,
+          redirectHops: (res as EgressResult).hops,
+        },
+      };
+      const items = pageItems(parentItem, binding);
+      const advanced = advance(decl, progress, step, body, items.length - 1);
+      progress.cursor = advanced.cursor;
+      progress.done = advanced.done;
+      through = decl.strategy === 'period-range' ? step.windowEnd : (advanced.done ? req.rangeTo : req.rangeFrom);
+      const segTo = decl.strategy === 'period-range' ? step.windowEnd : `${req.rangeFrom}#${pad(Number(advanced.cursor))}`;
+      yield { partition: req.partition, rangeFrom: segFrom, rangeTo: segTo, cursorBefore: before,
+              cursorAfter: { position: progress.cursor, through }, items, gap: null, last: advanced.done,
+              requests: 1, bytes: body.byteLength };
+    }
+  }
+  /* end B23 stream */
 }
+
+/* B23 (0084) stream */
+/** A live REST source has ONE stream partition: its contract's declared closed-range traversal. */
+export const LIVE_STREAM_PARTITION = 'backfill';
+
+async function replayPartition(ctx: AcquisitionContext, name: string): Promise<ReplayStreamPartition> {
+  const manifest = await new ReplayResponder(ctx.replayRoot).manifest(ctx.binding.replaySet);
+  const partition = manifest.stream?.partitions?.[name];
+  if (partition === undefined) {
+    throw new StreamPlanRefused(`replay set ${ctx.binding.replaySet} declares no stream partition "${name}"`);
+  }
+  return partition;
+}
+
+/** The partition's pages inside the range, in the manifest's order. */
+function selectPages(p: ReplayStreamPartition, range: { from: string; to: string } | null): ReplayStreamPartition['pages'] {
+  const from = range?.from ?? p.range.from;
+  const to = range?.to ?? p.range.to;
+  if (from < p.range.from || to > p.range.to || from >= to) return [];
+  return p.pages.filter((pg) => pg.from >= from && pg.to <= to);
+}
+
+/** A page's parent then the rows framed out of it — each DETERMINISTIC, keyed by the page, so a redelivery admits nothing twice. */
+function pageItems(parentItem: AcquiredItem, binding: AcquisitionContext['binding']): AcquiredItem[] {
+  const framed = frame(parentItem, binding.expectedSchema);
+  return framed === null ? [parentItem] : [parentItem, ...framed.map((f) => ({ ...f, deterministic: true }))];
+}
+
+/** Offsets as fixed-width text, so a segment's range compares in order. */
+const pad = (n: number): string => String(n).padStart(9, '0');
+/* end B23 stream */
 
 /* ───────────────────────── backfill traversal ───────────────────────── */
 

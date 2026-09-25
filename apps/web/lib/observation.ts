@@ -249,4 +249,50 @@ export const observation = {
 
   sweep: (s: Scope) =>
     obs<{ sweep: Record<string, unknown> }>(s, '/sweep', 'observation.sweeper.reconcile', 'RUN'),
+
+  /* B23 (0084) stream */
+  /**
+   * L1-I02's STREAM form: segment pull with credit-based flow control over the connector's pages (not a socket). Open (or
+   * resume by partition key), resume by id, interrupt with a reason; the answer is the stream as the SERVER left it and the
+   * run's counts — nothing here predicts a state.
+   */
+  openStream: (s: Scope, sourceId: string, body: { contractVersion: number; partitionKey: string; credit: number;
+                                                     range?: { from: string; to: string } | null; maxSegments?: number | null }) =>
+    obs<StreamRunAnswer>(s, `/sources/${sourceId}/streams/open`, 'observation.stream.open', 'AQS', body),
+
+  resumeStream: (s: Scope, streamId: string, body: { credit?: number; maxSegments?: number | null }) =>
+    obs<StreamRunAnswer>(s, `/streams/${streamId}/resume`, 'observation.stream.resume', 'AQS', body, streamId),
+
+  interruptStream: (s: Scope, streamId: string, reason: string) =>
+    obs<{ stream: AcquisitionStream & { requested?: boolean }; receipt: Receipt }>(
+      s, `/streams/${streamId}/interrupt`, 'observation.stream.interrupt', 'AQS', { reason }, streamId),
+
+  getStream: (s: Scope, streamId: string) =>
+    obs<{ stream: AcquisitionStream; segments: Array<Record<string, unknown>>; events: Array<Record<string, unknown>>;
+          incompleteRanges: IncompleteRange[]; receipt: Receipt }>(
+      s, `/streams/${streamId}/get`, 'observation.read.streams', 'AQS', {}, streamId),
+
+  listStreams: (s: Scope, sourceId: string) =>
+    obs<{ streams: AcquisitionStream[]; receipt: Receipt }>(s, '/streams/list', 'observation.read.streams', 'AQS', { sourceId, limit: 50 }),
+  /* end B23 stream */
 };
+
+/* B23 (0084) stream */
+export interface AcquisitionStream {
+  stream_id: string; source_id: string; contract_version: number; partition_key: string;
+  range_from: string; range_to: string; cursor: Record<string, unknown>; high_water: string | null;
+  next_seq: number; credit: number; reached_end: boolean; current_run_id: string | null;
+  state: 'open' | 'running' | 'backpressured' | 'interrupted' | 'completed' | 'closed_incomplete';
+  interrupt_requested: boolean | Record<string, unknown> | null;
+}
+export interface IncompleteRange {
+  range_from: string; range_to: string; reason_class: 'publisher_gap' | 'quarantined' | 'interrupted' | 'budget' | 'refused';
+  detail: string; declared_seq: number | null; resolved_by_seq: number | null;
+}
+export interface StreamRunAnswer {
+  stream: AcquisitionStream | null;
+  run: { runId: string; state: string; admitted: number; noop: number; quarantined: number; segments: number; redelivered: number;
+         backpressureSignals: number; incompleteRanges: number; reason?: string };
+  receipt: Receipt;
+}
+/* end B23 stream */

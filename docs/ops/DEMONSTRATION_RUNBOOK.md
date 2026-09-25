@@ -400,3 +400,13 @@ withdraw) and waits out the two-minute warning deadline before escalating. **Re-
 repeat a fact (the same rules are a 409; the four consumers are left as registered). **The rehearsal copy** (`eye_demo_b22` restored
 from the backup; its API on :3411 against the SEPARATE rehearsal Redis :6392 — the copy shares the demonstration's tenant and domain ids,
 so its queues must never share the demonstration's Redis — and an APFS clone of the vault; runner `$S/b22/rehearse.sh`).
+
+## 9. B23 on the demonstration (2026-09-25) — what changed and how to rehearse
+
+- `eye_demo` is migrated through **0084** (the backup before it: `.eye-local/backups/eye_demo-pre-0084-20260924T232509Z.dump`); the API restarted on the B23 build with `scripts/ops/demo-restart.sh` (VERIFIED), the web restarted through the `eye-web` launch configuration.
+- The **decisions** and **attention** subscriptions of the origin domain were revoked and registered again by the administrator (their consumer code digests changed in 0084; backlog left). The mirror domain's older decisions/forecasts/scenarios subscriptions carry earlier digests — reported by the act, left as they are.
+- Attention policy **v3** is active (v2's five classes + `decision.material_change` and `review.convened`).
+- The synthetic **red-sea-corridor-stream** replay source is registered, approved and active with its collection agent (its contract is `STREAM_SOURCE_CONTRACTS` in `scripts/phase1/source-contracts.mjs`, outside the seed); its stream on `red-sea-corridor-stream:chokepoint4` is `closed_incomplete` at the planted publisher gap — a declared incomplete range, by design.
+- The graph revision head of the origin domain is 1 (revision r1 re-asserts the four REL edges B6's act had retracted for its own scene); two twin versions went unverified on it (the twins subscriber's designed reaction).
+- **Rehearsal rig** (never the demo): the newest `eye_demo-pre-0084-*.dump` restored as `eye_demo_b23`, the API on :3411 against the REHEARSAL Redis `eye-redis-b12` (:6392 — the copy shares tenant and domain ids, so never the demo Redis), a vault copy; the heavy suites through `scripts/dev/heavy-slot.sh` (two slots on this host).
+

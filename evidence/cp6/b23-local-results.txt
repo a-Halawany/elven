@@ -1,0 +1,45 @@
+CP-6 B23 — the local results on phase6-b23 (migration 0084), 2026-09-25 (host: 14 cores / 24 GB; heavy runs through scripts/dev/heavy-slot.sh, two slots)
+
+== the five part harnesses (each on a fresh database, in the full runs below as well)
+phase6-attention-events-b23 9/9 · phase6-acquire-stream-b23 8/8 · phase6-retrieve-context-b23 9/9 · phase6-graph-revision-b23 11/11 · phase6-branch-scenario-b23 11/11
+
+== full integration suite, fresh database (run-suite.sh full1)
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  test/int/phase6-executive-requests.test.ts > B9 · L10-I04 — delegation, suppression, follow-up and the routed scenario request take their effect and remain visible > FOLLOW-UP: an owned, dated item on the package's agenda — in t
+ FAIL  test/int/phase6-graph-subscriptions-2.test.ts > B7 · telemetry (AU-MEM-0041) > every delivery reports its execution state — queue wait, apply time, end-to-end age, retries, unresolved dependencies, failure class — through the st
+ Test Files  2 failed | 79 passed (81)
+      Tests  2 failed | 1149 passed (1151)
+  both failing files passed ALONE on a fresh database: 24/24 (phase6-executive-requests + phase6-graph-subscriptions-2)
+
+== full integration suite, fresh database (run-suite.sh full2)
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  test/int/phase6-briefing-memory.test.ts > B10-F1 · a stored briefing serves a memory version within the cited version's audience only: a reader refused the item directly receives none of it through the briefing (withheld, with the r
+ FAIL  test/int/phase6-briefing-memory.test.ts > B10-F1 · a stored briefing serves a memory version within the cited version's audience only: a reader refused the item directly receives none of it through the briefing (withheld, with the r
+ FAIL  test/int/phase6-briefing-memory.test.ts > B10-F2 · the same inputs compose to ONE content digest while every access is recorded: two compositions by the same reader at the same cutoff with a bound prior — equal digests, two access
+ Test Files  1 failed | 80 passed (81)
+      Tests  3 failed | 1148 passed (1151)
+  the failing file passed ALONE on a fresh database: 6/6 (phase6-briefing-memory — the ms-truncated cutoff race B22 recorded, a carried H1 item)
+
+== unit (apps/api pnpm test)
+ Test Files  64 passed (64)
+      Tests  2441 passed (2441)
+ Test Files  1 passed (1)
+      Tests  9 passed (9)
+unit exit 0
+
+== acceptance (fresh database)
+ Test Files  1 passed (1)
+      Tests  58 passed (58)
+accept exit 0
+
+== the upgrade proof (0022 → 0084; migrations 63, schema registry 37, roles 35)
+=== PASS ===
+
+upgrade exit 0
+
+== browser (fresh database; the demo API and web stopped; the rehearsal Redis)
+
+  51 passed (41.9s)
+
+== the act on eye_demo: evidence/cp6/act-b23.txt
+ALL SCENES HELD · 28.5 s

@@ -1,0 +1,32 @@
+CP-6 B23 at a3176c8 — the hosted run: ci 36073944410 (attempt 1), C19 lifecycle 36073944521
+
+== build-test (green)
+packages/tokens test:  Test Files  1 passed (1)
+packages/tokens test:       Tests  3 passed (3)
+packages/contracts test:  Test Files  6 passed (6)
+packages/contracts test:       Tests  203 passed (203)
+apps/web test:  Test Files  6 passed (6)
+apps/web test:       Tests  32 passed (32)
+apps/api test:  Test Files  64 passed (64)
+apps/api test:       Tests  2441 passed (2441)
+apps/api test:  Test Files  1 passed (1)
+apps/api test:       Tests  9 passed (9)
+ Test Files  1 passed (1)
+      Tests  58 passed (58)
+ Test Files  81 passed (81)
+      Tests  1151 passed (1151)
+=== PASS ===
+C18 dual-path proof: PASS
+C18 evidence verification: PASS
+ Test Files  7 passed (7)
+      Tests  623 passed (623)
+ Test Files  2 passed (2)
+      Tests  44 passed (44)
+
+== browser-regression: green · C19 lifecycle (ubuntu, macos), delivery-chain-dry, foreign-checkout-pinning: green
+
+== supply-chain (red, as designed): the C15 gate PASS; the patched-image recheck:
+supply-chain gate: PASS
+c15-recheck: a COMPATIBLE FIXED OFFICIAL image now exists for redis: redis:8-alpine -> sha256:3811787313eba226a2ef38658c6ccb91cd5e110edc89c37767de373120a0e5a0
+  NEWER than the configured pin sha256:ba6e394f6acc2a695ef1b6944f161b9ca813711739be68319fa0db3470673f1d: the tag has moved.
+  → the update is PR #62 (maintenance/c15-redis-index-2026-09-25)

@@ -1,0 +1,125 @@
+{
+  "set": "red-sea-corridor-stream",
+  "source_key": "red-sea-corridor-stream",
+  "captured_by": "scripts/phase1/build-stream-fixtures.mjs",
+  "manifest_version": "v1",
+  "note": "SYNTHETIC replay set for the stream form of Acquire (CP-6 B23, L1-I02). Every row is synthetic (synthetic=true, data_provenance=synthetic-stream-fixture); the values are NOT IMF PortWatch figures. The host corridor-stream.synthetic.example resolves nowhere: nothing here was captured from a publisher. One planted defect: DEF-S1, a publisher gap on the third page.",
+  "entries": [
+    {
+      "url": "https://corridor-stream.synthetic.example/red-sea/chokepoint4",
+      "retrieved_at": "2026-09-25T00:00:00Z",
+      "status": 200,
+      "retained_headers": {
+        "content-type": "application/json; charset=utf-8"
+      },
+      "file": "snapshot.json",
+      "sha256": "43d10dfb738f42486893b0fdd8ff89a7ba8283e3e97adce32bfabd3f23d1fc52",
+      "byte_length": 8397,
+      "acquisition_mode": "replay",
+      "planted_defect": "DEF-S1: the days of the gap page (2024-01-11 … 2024-01-15) are absent from the snapshot as they are from the stream"
+    },
+    {
+      "url": "https://corridor-stream.synthetic.example/red-sea/chokepoint4?from=2024-01-01&to=2024-01-06",
+      "retrieved_at": "2026-09-25T00:00:00Z",
+      "status": 200,
+      "retained_headers": {
+        "content-type": "application/json; charset=utf-8"
+      },
+      "file": "page-2024-01-01_2024-01-06.json",
+      "sha256": "577deb0cd1cd3f8ac8a91a7c2373dd849fab1f25b994a03dc37526e4eed6f896",
+      "byte_length": 1725,
+      "acquisition_mode": "replay"
+    },
+    {
+      "url": "https://corridor-stream.synthetic.example/red-sea/chokepoint4?from=2024-01-06&to=2024-01-11",
+      "retrieved_at": "2026-09-25T00:00:00Z",
+      "status": 200,
+      "retained_headers": {
+        "content-type": "application/json; charset=utf-8"
+      },
+      "file": "page-2024-01-06_2024-01-11.json",
+      "sha256": "45647a2653bce8e41febd18777b324bb789ec1f953ee618a197ee38c0c34a0bf",
+      "byte_length": 1725,
+      "acquisition_mode": "replay"
+    },
+    {
+      "url": "https://corridor-stream.synthetic.example/red-sea/chokepoint4?from=2024-01-16&to=2024-01-21",
+      "retrieved_at": "2026-09-25T00:00:00Z",
+      "status": 200,
+      "retained_headers": {
+        "content-type": "application/json; charset=utf-8"
+      },
+      "file": "page-2024-01-16_2024-01-21.json",
+      "sha256": "581a12d58b59973f4f27090225624e63bcc21c8d93b07c647f836aab9621679e",
+      "byte_length": 1725,
+      "acquisition_mode": "replay"
+    },
+    {
+      "url": "https://corridor-stream.synthetic.example/red-sea/chokepoint4?from=2024-01-21&to=2024-01-26",
+      "retrieved_at": "2026-09-25T00:00:00Z",
+      "status": 200,
+      "retained_headers": {
+        "content-type": "application/json; charset=utf-8"
+      },
+      "file": "page-2024-01-21_2024-01-26.json",
+      "sha256": "4ef855e4199b59a3d8bc9c2d0c5c01bd8d28a7bc8003c3226812e6c5ac924a8c",
+      "byte_length": 1726,
+      "acquisition_mode": "replay"
+    },
+    {
+      "url": "https://corridor-stream.synthetic.example/red-sea/chokepoint4?from=2024-01-26&to=2024-01-31",
+      "retrieved_at": "2026-09-25T00:00:00Z",
+      "status": 200,
+      "retained_headers": {
+        "content-type": "application/json; charset=utf-8"
+      },
+      "file": "page-2024-01-26_2024-01-31.json",
+      "sha256": "6c68928c5e6cd028db94d9d1923928b0034a93e956f00d34788c46ca24b8e31d",
+      "byte_length": 1724,
+      "acquisition_mode": "replay"
+    }
+  ],
+  "stream": {
+    "partitions": {
+      "chokepoint4": {
+        "label": "Bab el-Mandeb Strait (chokepoint4) — daily transits, January 2024, SYNTHETIC, five-day pages",
+        "range": {
+          "from": "2024-01-01",
+          "to": "2024-01-31"
+        },
+        "pages": [
+          {
+            "from": "2024-01-01",
+            "to": "2024-01-06",
+            "url": "https://corridor-stream.synthetic.example/red-sea/chokepoint4?from=2024-01-01&to=2024-01-06"
+          },
+          {
+            "from": "2024-01-06",
+            "to": "2024-01-11",
+            "url": "https://corridor-stream.synthetic.example/red-sea/chokepoint4?from=2024-01-06&to=2024-01-11"
+          },
+          {
+            "from": "2024-01-11",
+            "to": "2024-01-16",
+            "gap": "DEF-S1 (planted): the publisher served no page for this window — the stream must report an explicit incomplete range (publisher_gap)"
+          },
+          {
+            "from": "2024-01-16",
+            "to": "2024-01-21",
+            "url": "https://corridor-stream.synthetic.example/red-sea/chokepoint4?from=2024-01-16&to=2024-01-21"
+          },
+          {
+            "from": "2024-01-21",
+            "to": "2024-01-26",
+            "url": "https://corridor-stream.synthetic.example/red-sea/chokepoint4?from=2024-01-21&to=2024-01-26"
+          },
+          {
+            "from": "2024-01-26",
+            "to": "2024-01-31",
+            "url": "https://corridor-stream.synthetic.example/red-sea/chokepoint4?from=2024-01-26&to=2024-01-31"
+          }
+        ]
+      }
+    }
+  }
+}

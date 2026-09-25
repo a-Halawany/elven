@@ -28,6 +28,9 @@ import { EvidenceService } from './vault/evidence.service.js';
 import { AgentsService } from './agents/agents.service.js';
 import { CollectionOrchestrator } from './acquisition/orchestrator.service.js';
 import { SweeperService } from './sweeper/sweeper.service.js';
+// B23 (0084) stream
+import { StreamRefused, isStreamRefusal, type StreamRunRequest } from './acquisition/lifecycle.service.js';
+import { asObservationRefusal } from './observation-errors.js';
 
 function ctx(req: EyeRequest) {
   const envelope = req.eyeEnvelope;
@@ -41,6 +44,32 @@ function ctx(req: EyeRequest) {
 const receipt = (o: { policyDecisionId: string; auditSeq: number }) => ({
   policyDecisionId: o.policyDecisionId, auditSeq: o.auditSeq,
 });
+
+/* B23 (0084) stream */
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+/** The request's own shape, before anything is read: a sentence for the first thing wrong, or null. */
+function streamRequestInvalid(
+  p: { contractVersion?: unknown; partitionKey?: unknown; credit?: unknown; range?: unknown; maxSegments?: unknown }, opening: boolean,
+): string | null {
+  if (opening && (typeof p.contractVersion !== 'number' || !Number.isInteger(p.contractVersion) || p.contractVersion < 1)) return 'contractVersion is required';
+  if (opening && (typeof p.partitionKey !== 'string' || !/^[a-z0-9][a-z0-9._-]*:[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(p.partitionKey))) {
+    return "partitionKey is required as '<source_key>:<partition>'";
+  }
+  if (p.credit !== undefined && p.credit !== null && (typeof p.credit !== 'number' || !Number.isInteger(p.credit) || p.credit < 1 || p.credit > 64)) {
+    return 'credit (the most unacknowledged segments) is an integer between 1 and 64';
+  }
+  if (p.maxSegments !== undefined && p.maxSegments !== null && (typeof p.maxSegments !== 'number' || !Number.isInteger(p.maxSegments) || p.maxSegments < 1)) {
+    return 'maxSegments, when given, is a positive integer';
+  }
+  if (opening && p.range !== undefined && p.range !== null) {
+    const r = p.range as { from?: unknown; to?: unknown };
+    if (typeof r.from !== 'string' || typeof r.to !== 'string' || !DAY.test(r.from) || !DAY.test(r.to) || r.from >= r.to) {
+      return 'range, when given, is { from, to } as YYYY-MM-DD dates with from before to';
+    }
+  }
+  return null;
+}
+/* end B23 stream */
 
 @Controller('/v1/tenants/:tenantId/domains/:domainId/observation')
 export class ObservationController {
@@ -354,6 +383,188 @@ export class ObservationController {
     }
     return { run: outcome };
   }
+
+  /* B23 (0084) stream */
+  // ───────────────────────── the stream form of Acquire (L1-I02) ─────────────────────────
+
+  /**
+   * OPEN a partition's stream — or resume it, when the partition already has a live one (the port is idempotent on the
+   * partition key). The operator's own act is a governed pre-flight read under `observation.stream.open` (its POL and AUD say
+   * who asked for which partition, before anything is collected); the run itself then acts as the AGENT, as `collect` does.
+   * A refusal is answered as one: a source already being collected 409 with the holder named, a closed or mismatched stream
+   * 409, an unknown partition or a bad credit 422.
+   */
+  @Post('/sources/:sourceId/streams/open')
+  async openStream(
+    @Req() req: EyeRequest,
+    @Param('tenantId') tenantId: string,
+    @Param('domainId') domainId: string,
+    @Param('sourceId') sourceId: string,
+    @Body() body: { payload?: { contractVersion?: number; partitionKey?: string; credit?: number; range?: { from?: string; to?: string } | null; maxSegments?: number | null } },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const route = { scope: 'DOMAIN' as const, tenantId, domainId, action: 'observation.stream.open', objectType: 'AQS', objectId: null };
+    const p = body.payload ?? {};
+    const invalid = streamRequestInvalid(p, true);
+    if (invalid !== null) await this.pipeline.rejectAuthenticatedRequest(envelope, principal, route, 'EYE-REQ-001', invalid, 422);
+    const pre = await this.pipeline.consequentialRead(
+      envelope, principal, route, ObservationCapability.read,
+      async (cap) => (await cap.readSourceContracts().select(['source_id' as never, 'contract_version' as never, 'source_key' as never])
+        .where('source_id' as never, '=', sourceId as never).where('contract_version' as never, '=', p.contractVersion as never)
+        .executeTakeFirst()) as { source_key: string } | undefined);
+    if (pre.result === undefined) {
+      throw new HttpException(errorBody('EYE_STA_001', envelope.correlation_id, 'no authorized source contract matches'), 404);
+    }
+    return this.runStreamRoute(envelope, principal, route, pre, {
+      tenantId, domainId, sourceId, contractVersion: p.contractVersion as number,
+      stream: {
+        partitionKey: p.partitionKey as string, credit: p.credit ?? 4,
+        range: p.range == null ? null : { from: p.range.from as string, to: p.range.to as string },
+        maxSegments: p.maxSegments ?? null, resumeStreamId: null,
+      },
+    });
+  }
+
+  /** RESUME a stream from its cursor — the stream's own partition, contract version and range; a closed stream is refused (409). */
+  @Post('/streams/:streamId/resume')
+  async resumeStream(
+    @Req() req: EyeRequest,
+    @Param('tenantId') tenantId: string,
+    @Param('domainId') domainId: string,
+    @Param('streamId') streamId: string,
+    @Body() body: { payload?: { credit?: number; maxSegments?: number | null } },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const route = { scope: 'DOMAIN' as const, tenantId, domainId, action: 'observation.stream.resume', objectType: 'AQS', objectId: streamId };
+    const p = body.payload ?? {};
+    const invalid = streamRequestInvalid(p, false);
+    if (invalid !== null) await this.pipeline.rejectAuthenticatedRequest(envelope, principal, route, 'EYE-REQ-001', invalid, 422);
+    const pre = await this.pipeline.consequentialRead(
+      envelope, principal, route, ObservationCapability.read,
+      async (cap) => (await cap.readAcquisitionStreams().selectAll()
+        .where('stream_id' as never, '=', streamId as never).executeTakeFirst()) as
+        { source_id: string; contract_version: number; partition_key: string; range_from: string; range_to: string } | undefined);
+    const s = pre.result;
+    if (s === undefined) {
+      throw new HttpException(errorBody('EYE_STA_001', envelope.correlation_id, 'no authorized stream matches'), 404);
+    }
+    return this.runStreamRoute(envelope, principal, route, pre, {
+      tenantId, domainId, sourceId: s.source_id, contractVersion: Number(s.contract_version),
+      stream: {
+        partitionKey: s.partition_key, credit: p.credit ?? null, range: { from: s.range_from, to: s.range_to },
+        maxSegments: p.maxSegments ?? null, resumeStreamId: streamId,
+      },
+    });
+  }
+
+  /**
+   * INTERRUPT a stream — an operator's act, with a recorded reason. A RUNNING stream records the request and its run honours
+   * it at the next segment boundary (what it had delivered and not acknowledged is declared incomplete and redelivered on
+   * resume); an idle stream is interrupted at once; an interrupted or closed one is refused (409).
+   */
+  @Post('/streams/:streamId/interrupt')
+  async interruptStream(
+    @Req() req: EyeRequest,
+    @Param('tenantId') tenantId: string,
+    @Param('domainId') domainId: string,
+    @Param('streamId') streamId: string,
+    @Body() body: { payload?: { reason?: string } },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const route = { scope: 'DOMAIN' as const, tenantId, domainId, action: 'observation.stream.interrupt', objectType: 'AQS', objectId: streamId };
+    const reason = typeof body.payload?.reason === 'string' ? body.payload.reason.trim() : '';
+    if (reason === '') await this.pipeline.rejectAuthenticatedRequest(envelope, principal, route, 'EYE-REQ-001', 'an interrupt records its reason', 422);
+    try {
+      const out = await this.pipeline.write(
+        envelope, principal, route, ObservationCapability.acquisition,
+        async (cap, scope) => {
+          const r = await cap.interruptStream({
+            streamId, tenantId: scope.tenantId as string, domainId: scope.domainId as string, runId: null,
+            reasonClass: 'operator', reason, inFlight: [], rangeClass: null, correlationId: envelope.correlation_id,
+          });
+          return { result: r, targetType: 'AQS', targetId: streamId, targetVersion: String(r.next_seq), outboxEvent: null };
+        });
+      return { stream: out.result, receipt: receipt(out) };
+    } catch (e) {
+      throw asObservationRefusal(e, envelope.correlation_id) ?? e;
+    }
+  }
+
+  @Post('/streams/:streamId/get')
+  async getStream(
+    @Req() req: EyeRequest,
+    @Param('tenantId') tenantId: string,
+    @Param('domainId') domainId: string,
+    @Param('streamId') streamId: string,
+  ) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(
+      envelope, principal,
+      { scope: 'DOMAIN', tenantId, domainId, action: 'observation.read.streams', objectType: 'AQS', objectId: streamId },
+      ObservationCapability.read,
+      async (cap) => this.orchestrator.streamDetail(cap, streamId));
+    if (out.result === null) {
+      throw new HttpException(errorBody('EYE_STA_001', envelope.correlation_id, 'no authorized stream matches'), 404);
+    }
+    return { ...out.result, receipt: receipt(out) };
+  }
+
+  @Post('/streams/list')
+  async listStreams(
+    @Req() req: EyeRequest,
+    @Param('tenantId') tenantId: string,
+    @Param('domainId') domainId: string,
+    @Body() body: { payload?: { sourceId?: string; limit?: number } },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(
+      envelope, principal,
+      { scope: 'DOMAIN', tenantId, domainId, action: 'observation.read.streams', objectType: 'AQS', objectId: null },
+      ObservationCapability.read,
+      async (cap) => this.orchestrator.listStreams(cap, body.payload?.sourceId ?? null, body.payload?.limit ?? 100));
+    return { streams: out.result, receipt: receipt(out) };
+  }
+
+  /** The run behind open and resume, and its answer: the stream as it stands, the run's counts, the pre-flight receipt. */
+  private async runStreamRoute(
+    envelope: ReturnType<typeof ctx>['envelope'], principal: ReturnType<typeof ctx>['principal'],
+    route: { scope: 'DOMAIN'; tenantId: string; domainId: string; action: string; objectType: string; objectId: string | null },
+    pre: { policyDecisionId: string; auditSeq: number },
+    a: { tenantId: string; domainId: string; sourceId: string; contractVersion: number; stream: StreamRunRequest['stream'] },
+  ) {
+    let outcome;
+    try {
+      outcome = await this.orchestrator.streamNow({
+        ...a, correlationId: envelope.correlation_id, purposeId: envelope.purpose_id ?? 'observation',
+        triggeredBy: `principal:${principal.principalId}`, triggerPrincipal: principal,
+      });
+    } catch (e) {
+      if (e instanceof StreamRefused) {
+        return this.pipeline.rejectAuthenticatedRequest(envelope, principal, route, 'EYE-REQ-001', e.message, e.status);
+      }
+      if (isStreamRefusal(e)) throw asObservationRefusal(e, envelope.correlation_id) ?? e;
+      throw e;
+    }
+    if (outcome.state === 'refused') {
+      throw new HttpException(
+        {
+          ...errorBody('EYE_STA_002', envelope.correlation_id, outcome.reason ?? 'a collection run for this source is already in flight'),
+          refusal_class: outcome.refusalClass ?? 'source_run_in_flight',
+          holder: {
+            holder_run_id: (outcome.refusalDetail?.['holderRunId'] as string) ?? null,
+            holder_trigger: (outcome.refusalDetail?.['holderTrigger'] as string) ?? null,
+            holder_contract_version: (outcome.refusalDetail?.['holderContractVersion'] as number) ?? null,
+            acquired_at: (outcome.refusalDetail?.['acquiredAt'] as string) ?? null,
+            heartbeat_at: (outcome.refusalDetail?.['heartbeatAt'] as string) ?? null,
+            expires_at: (outcome.refusalDetail?.['expiresAt'] as string) ?? null,
+          },
+        },
+        409);
+    }
+    const { stream, ...run } = outcome;
+    return { stream, run, receipt: receipt(pre) };
+  }
+  /* end B23 stream */
 
   @Post('/runs/:runId/get')
   async getRun(

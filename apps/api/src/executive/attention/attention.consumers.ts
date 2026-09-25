@@ -8,7 +8,9 @@
  *   proposals      ClaimsExtracted / IntelligenceObjectAdmitted (L2-I02) → each proposed claim HELD FOR REVIEW routed to the review
  *                  queue (proposal.review); nothing promoted.
  *   attention      ForecastFitnessChanged, ScenarioCoherenceFailed, EarlyWarningRaised → routed under the policy; AttentionPolicyChanged
- *                  (L10-I05) → every live item re-evaluated and the POLICY CAUSE noted on every committed or monitored package (L9-I05).
+ *                  (L10-I05) → every live item re-evaluated and the POLICY CAUSE noted on every committed or monitored package (L9-I05);
+ *                  B23 (0084): MaterialChangeRaised (L10-I02) → decision.material_change to the package owner; ReviewConvened (L10-I03)
+ *                  → review.convened to the chair.
  *
  * THE CONTRACT CHECK (the interface contracts' "quarantine invalid event"): each consumer reads its event's payload against the
  * contract its producers write; a payload that is not the contract resolves to ONE item, `event:<id>`, left UNRESOLVED with the class
@@ -28,6 +30,10 @@ import { ExecutiveCapability, type AttentionSubscriberWrites } from '../executiv
 import type { FlatEvent, SubscriptionConsumer } from '../../graph/subscriptions/graph-change.js';
 import { SubscriptionDispatcherService } from '../../graph/subscriptions/subscription-dispatcher.service.js';
 import { readPolicyChanged } from './attention.service.js';
+/* B23 (0084) attention */
+import { readMaterialChange, type MaterialChange } from '../../decision/subscriptions/material-change.js';
+import { readReviewConvened, type ReviewConvened } from '../reviews/reviews.service.js';
+/* end B23 attention */
 
 type Row = Record<string, unknown>;
 type Scope = { tenantId: string; domainId: string };
@@ -181,7 +187,10 @@ type Signal =
   | { kind: 'forecast'; id: string; unfit: boolean; fitClass: string | null; outcomes: number | null; required: number | null; series: string; horizon: string }
   | { kind: 'scenario'; id: string; owner: string | null; title: string; findings: number }
   | { kind: 'warning'; id: string; owner: string | null; closesAt: string | null; consequence: string | null }
-  | { kind: 'policy'; policyId: string; version: number; changedSections: string[]; changedClasses: string[] };
+  | { kind: 'policy'; policyId: string; version: number; changedSections: string[]; changedClasses: string[] }
+  /* B23 (0084) attention */
+  | ({ kind: 'package'; id: string } & MaterialChange)
+  | ({ kind: 'review'; id: string } & ReviewConvened) /* end B23 attention */;
 function readSignal(event: FlatEvent): Signal | string {
   const p = event.payload;
   switch (event.event_type) {
@@ -203,6 +212,16 @@ function readSignal(event: FlatEvent): Signal | string {
       const c = readPolicyChanged(p);
       return c === null ? 'not an AttentionPolicyChanged@v1 payload' : { kind: 'policy', ...c };
     }
+    /* B23 (0084) attention */
+    case 'MaterialChangeRaised': {
+      const m = readMaterialChange(p);
+      return typeof m === 'string' ? m : { kind: 'package', id: m.packageId, ...m };
+    }
+    case 'ReviewConvened': {
+      const r = readReviewConvened(p);
+      return typeof r === 'string' ? r : { kind: 'review', id: r.reviewId, ...r };
+    }
+    /* end B23 attention */
     default: return `the attention consumer does not read ${event.event_type}`;
   }
 }
@@ -243,6 +262,36 @@ export class AttentionConsumer extends B22Consumer implements SubscriptionConsum
         outboxEventId: event.event_id, subscriptionId, actor, correlationId });
       return { effect: r['noted'] === true ? 'policy.noted' : 'policy.not_noted', effectRef: (r['note_id'] as string | undefined) ?? null, details: { package_id: item.slice(8), ...r, escalation: esc } };
     }
+    /* B23 (0084) attention: L10-I02 — a material change on a decision package, routed to its owner under the active policy. */
+    if (s.kind === 'package') {
+      const pkg = ((await cap.readPackages().select(['package_id', 'title', 'state', 'owner_principal_id', 'current_version'] as never).where('package_id' as never, '=', s.id as never).execute()) as Row[])[0] ?? null;
+      // A signal that NO LONGER STANDS (a replayed or late delivery: the package withdrawn or closed since) is recorded, not routed.
+      if (pkg === null || ['withdrawn', 'closed'].includes(String(pkg['state']))) {
+        return { effect: 'signal.no_longer_stands', effectRef: null, details: { package_id: s.id, state: pkg?.['state'] ?? null, escalation: esc } };
+      }
+      const r = await cap.routeItem({ itemId: newId(), ...base, signalClass: 'decision.material_change', subjectKind: 'package', subjectId: s.id,
+        owner: (pkg['owner_principal_id'] as string | null | undefined) ?? s.owner,
+        dims: { consequence: s.dims.consequence, confidence: s.dims.confidence, hours_to_window: s.dims.hours_to_window, basis: s.dims.basis, executed: s.executed, change_kind: s.changeKind },
+        title: `Decision "${String(pkg['title'] ?? s.title).slice(0, 200)}": a cited input changed materially (${s.changeKind || 'material_change'}; ${s.executed ? 'executed — compensation or a reopen is the owner\'s' : 'the owner reviews the package'})`,
+        details: { package_id: s.id, version: s.version, disposition: s.disposition, executed: s.executed, trigger_event_id: s.triggerEventId, note_id: s.noteId, published_under_policy_version: s.policyVersion } });
+      return { effect: 'attention.routed', effectRef: String(r['item_id']), details: { signal: 'decision.material_change', ...r, escalation: esc } };
+    }
+    /* B23 (0084) attention: L10-I03 — a governed review convened, routed to its chair (the due instant is its window). */
+    if (s.kind === 'review') {
+      const rv = ((await cap.readReviews().select(['review_id', 'state', 'chair_principal_id', 'due_at', 'subject_kind', 'subject_title'] as never).where('review_id' as never, '=', s.id as never).execute()) as Row[])[0] ?? null;
+      if (rv === null || String(rv['state']) !== 'convened') {
+        return { effect: 'signal.no_longer_stands', effectRef: null, details: { review_id: s.id, state: rv?.['state'] ?? null, escalation: esc } };
+      }
+      const due = rv['due_at'] ?? s.dueAt;
+      const hours = due === null || due === undefined ? null : Math.round(((new Date(due instanceof Date ? due.toISOString() : String(due)).getTime() - Date.now()) / 3_600_000) * 10) / 10;
+      const r = await cap.routeItem({ itemId: newId(), ...base, signalClass: 'review.convened', subjectKind: 'review', subjectId: s.id, owner: String(rv['chair_principal_id'] ?? s.chair),
+        // CONSEQUENCE C2: a governed review is decision support (it decides nothing itself); CONFIDENCE 1: the convening is a recorded fact.
+        dims: { consequence: 'C2', confidence: 1, hours_to_window: hours, subject_kind: s.subjectKind, reviewers: s.reviewers.length },
+        title: `Review convened on the ${s.subjectKind} ${String(rv['subject_title'] ?? s.subjectTitle ?? s.subjectId).slice(0, 160)}: ${s.question.slice(0, 200)}`,
+        details: { review_id: s.id, subject_kind: s.subjectKind, subject_id: s.subjectId, chair: s.chair, reviewers: s.reviewers.slice(0, 20), due_at: s.dueAt } });
+      return { effect: 'attention.routed', effectRef: String(r['item_id']), details: { signal: 'review.convened', ...r, escalation: esc } };
+    }
+    /* end B23 attention */
     if (s.kind === 'forecast') {
       if (!s.unfit) return { effect: 'not_a_signal', effectRef: null, details: { forecast_id: s.id, note: 'a fit or indeterminate verdict is not an attention signal', escalation: esc } };
       const f = ((await cap.readForecasts().select(['forecast_id', 'issued_by', 'series_key', 'horizon_code', 'state', 'fitness_state'] as never).where('forecast_id' as never, '=', s.id as never).execute()) as Row[])[0] ?? null;
