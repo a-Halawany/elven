@@ -3912,5 +3912,6 @@ The integration failures are three different load-timing items, none common to b
 - **Row counts:** implemented 984 → 1003, missing 2532 → 2513 (the stale-row verdicts and the six interface rows).
 - **Feature groups:** unchanged at 1 functioning / 167 partial / 15 missing / 18 externally blocked. B23 advances seven groups and completes none.
 - **Acceptance units.** The split stays **3,555 = 3,179 open + 339 local + 37 CI**: seven units gained evidence, and none was promoted.
+- **Hosted.** ci **36073944410** at `a3176c8` (one attempt): build-test green — unit 2441 + 9, acceptance 58/58, the integration suite **1151/1151 in 81 files** on a fresh database, upgrade PASS, C18 623 + 44; browser-regression green; C19 lifecycle **36073944521** green. `supply-chain`: the C15 gate PASS, the patched-image recheck red only on the moved redis index (PR #62). The three local load-timing items did not occur on the hosted run.
 - **Next.** B24 (the attention completion: the B22 deferrals) on A1. B50 and B80 are prepared for A2 and A3, subject to the owner's allocation.
 

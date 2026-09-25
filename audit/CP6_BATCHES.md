@@ -4008,6 +4008,12 @@ not policy dimensions yet; no approval step for a suppression; no new hosted bro
   - the upgrade proof PASS (migrations 63, schema registry 37, roles 35);
   - browser 51/51 on a fresh database (the demo API and web stopped for it; the rehearsal Redis, never the demo's).
 - **The act on `eye_demo`:** `evidence/cp6/act-b23.txt` — ALL SCENES HELD, 49 checks, 28.5 s (two clean rehearsals on restored copies first). The backup before 0084 is `.eye-local/backups/eye_demo-pre-0084-20260924T232509Z.dump`.
+- **The hosted run (bound 2026-09-25):** ci **36073944410** at `a3176c8`, ONE attempt:
+  - build-test green: unit 2441/2441 + the meta 9/9, web 32, contracts 203, acceptance 58/58, **the integration suite 1151/1151 in 81 files on a fresh database**, the upgrade proof PASS, C18 623/623 + 44;
+  - browser-regression green;
+  - C19 lifecycle **36073944521** green.
+  - The `supply-chain` job: the C15 gate itself **PASS**; its patched-image recheck red ONLY because `redis:8-alpine`'s index moved upstream (38117873… vs the pin ba6e394f…) — the update is PR #62, and this job goes green on #62's merge.
+  - No unit promoted (the split stays 3,555 = 3,179 + 339 + 37).
 
 **Stated (not done here).**
 - Delivery beyond in_app, the timer host, the remaining materiality dimensions, suppression approval, delegation, queue evaluation and constraining markers are B24.
