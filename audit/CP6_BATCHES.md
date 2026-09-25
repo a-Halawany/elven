@@ -4175,6 +4175,12 @@ The plan selection recorded since 0083 now EXECUTES:
     - B24-7: an upload's plan executed once under the extraction agent (8 claims, replay mode).
     - B24-8: the B23-F1 correction on the demonstration.
     - B24-9: what the act leaves.
+- **The hosted run (bound 2026-09-25):** ci **36164184010** at `8459390` on PR #64, ONE attempt:
+  - build-test green: unit 2487/2487 + the meta 9/9, web 48, contracts 203, acceptance 58/58, **the integration suite 1182/1182 in 86 files on a fresh database**, the upgrade proof PASS, C18 623/623 + 44;
+  - browser-regression green;
+  - C19 lifecycle **36164183865** green.
+  - The `supply-chain` job: the C15 gate itself **PASS**; its patched-image recheck red ONLY on the moved redis index (PR #62), as on #61 and #63 (`evidence/cp6/hosted-8459390-summary.txt`).
+  - The local load-timing item (B7 telemetry) did not occur on the hosted run. No unit promoted.
 - **Synthetic vs real.** Every delivery shown is `in_app` or the SYNTHETIC `demo-mailbox`. Nothing here is real-provider acceptance: the stage's scene "escalates by email" is demonstrated as an escalation delivered to the synthetic mailbox, and the email clause waits for D6.
 
 ### B24.7 — what the act found, corrected before the demonstration

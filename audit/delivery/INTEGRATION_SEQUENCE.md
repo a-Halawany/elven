@@ -12,7 +12,7 @@ Prepared under the owner's instruction of 2026-09-25 ("Prepare its separate merg
 | #61 the corrected plan | `planning/delivery-plan-2026-09` → `phase6-b22` | `45fda0f` (was `e579514`) | `supply-chain` red (the redis recheck) until #62 is on its base; the limiter residual (PLAN-F4) CLOSED on it at `45fda0f` (step 3 done) |
 | #62 redis index re-pin | `maintenance/c15-redis-index-2026-09-25` → `main` | `17f0236` | CLEAN; every check green (ci 36129773111, C19 36129773207) |
 | #63 B23 | `phase6-b23` → `planning/delivery-plan-2026-09` | `d2fa829` (was `95dfcdb`) | `supply-chain` red (the redis recheck); B23-F1 CLOSED on it at `d2fa829` by the forward migration 0085 (step 4's precondition done) |
-| B24 | `phase6-b24` → `phase6-b23` | in progress | holds the limiter fix (`c0b9d25`), `phase6-b23` merged in (0085), and 0086 (B24) when integrated |
+| #64 B24 | `phase6-b24` → `phase6-b23` | `8459390` | `supply-chain` red (the redis recheck) until #62 is on its base; build-test (integration 1182/1182), browser-regression and C19 36164183865 green (ci 36164184010); holds the limiter fix (same patch as #61's `45fda0f`) and 0086 |
 
 ## 1. The #62 decision (ready for the owner's word)
 
@@ -31,7 +31,7 @@ Older heads' green checks never stand for a new combination: every step below pr
 2. **#61 (the plan).** Retarget to `main` (`gh pr edit 61 --base main` — a merge commit leaves `phase6-b22` in place, so GitHub does not retarget by itself); merge `main` into `planning/delivery-plan-2026-09`; its checks on the new head → the owner's decision.
 3. **The limiter fix on #61.** Before step 2's decision, the PLAN-F4 residual fix (`c0b9d25` on `phase6-b24`: the slot kept until the cancelled workload's process group has exited; three regressions; the control reproducing the old defect) is cherry-picked onto `planning/delivery-plan-2026-09`, so #61 carries the complete limiter. (The same patch reaches `phase6-b24` again through the stack's merges without conflict.)
 4. **#63 (B23).** Before its decision: the B23-F1 forward correction (migration 0085) is committed on `phase6-b23`, with its focused regressions and a records note, so #63 closes its own defect; retarget to `main` after #61 merges; merge `main` in; checks on the new head → the owner's decision.
-5. **B24.** Its PR stacks on #63 (base `phase6-b23`); after #63 merges, retarget to `main`, merge `main` in, checks on the new head → the owner's decision.
+5. **#64 (B24).** It stacks on #63 (base `phase6-b23`); after #63 merges, retarget to `main`, merge `main` in, checks on the new head → the owner's decision.
 
 Between two merges the first merge's `main` chain completes before the next merge (the B18 rule: the C17 finalize of a merge overtaken by another merge refuses).
 

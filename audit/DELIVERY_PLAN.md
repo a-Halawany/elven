@@ -569,11 +569,11 @@ Prompts are in `audit/delivery/ACCOUNT_PROMPTS.md`.
 
   | Measure | Interval | Duration |
   |---|---|---|
-  | Build: the owner's instruction (14:18:59) → the local candidate with the demonstration and records (≈ 17:05) | active the whole interval. Folded in: the review's two residuals (the limiter fix `c0b9d25` at 14:22, B23-F1 by a parallel implementer), the #62 decision and the integration sequence (14:28–14:42). The B24 work itself: the prelude (14:24), five parts in parallel worktrees, the one 0086 combined at 15:06, three full integration runs, four act rehearsals, two act-found corrections, the demonstration and the demo walk | **≈ 2 h 45 min** |
-  | Hosted run | waiting on CI; recorded when bound | pending |
+  | Build: the owner's instruction (14:18:59) → the candidate `8459390` with the demonstration and records (16:58:14) | active the whole interval. Folded in: the review's two residuals (the limiter fix `c0b9d25` at 14:22, B23-F1 by a parallel implementer), the #62 decision and the integration sequence (14:28–14:42). The B24 work itself: the prelude (14:24), five parts in parallel worktrees, the one 0086 combined at 15:06, three full integration runs, four act rehearsals, two act-found corrections, the demonstration and the demo walk | **2 h 39 min** |
+  | Hosted run: push → ci 36164184010 finished (17:24:46) | waiting on CI | ~26 min |
   | Review and approval | no merge authorized; the stack's order in `INTEGRATION_SEQUENCE.md` | open |
 
-  B24 was sized 1.5–3 U (≈ 13–26 sequential session-hours at 8.7 h/U). It took about 2 h 45 min of active wall-clock with parallel subagents, and some of that was review work, not B24. The act's wall-clock is dominated by designed waits: 8 minutes per run, most of it the database clock and the 60 s tick. **Two of the three observations are now recorded** (B23, B24). The re-fit follows the next A1 stage (B28), per the instruction. The dates stay provisional until then.
+  B24 was sized 1.5–3 U (≈ 13–26 sequential session-hours at 8.7 h/U). It took 2 h 39 min of active wall-clock with parallel subagents, and some of that was review work, not B24. The act's wall-clock is dominated by designed waits: 8 minutes per run, most of it the database clock and the 60 s tick. **Two of the three observations are now recorded** (B23, B24). The re-fit follows the next A1 stage (B28), per the instruction. The dates stay provisional until then.
 
 ## 10. Correction record (the bounded review of `5da4799`, applied 2026-09-25)
 

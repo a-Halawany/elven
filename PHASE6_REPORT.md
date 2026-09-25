@@ -3978,7 +3978,8 @@ The mechanism is in `audit/CP6_BATCHES.md` §B24. The results are in `evidence/c
 
 ### 38.4 Heads, statuses and what remains
 
-- **Heads.** `main` `5165a97`; #60 `7125550`; #61 `45fda0f`; #62 `17f0236`; #63 `d2fa829`. B24 is on `phase6-b24`, stacked on #63; its PR and hosted run are bound in its records.
+- **Heads.** `main` `5165a97`; #60 `7125550`; #61 `45fda0f`; #62 `17f0236`; #63 `d2fa829`; **#64 (B24)** candidate `8459390` on `phase6-b24`, stacked on #63.
+- **Hosted.** ci **36164184010** at `8459390` (one attempt): build-test green — unit 2487 + 9, web 48, contracts 203, acceptance 58/58, the integration suite **1182/1182 in 86 files** on a fresh database, upgrade PASS, C18 623 + 44; browser-regression green; C19 lifecycle **36164183865** green. `supply-chain`: the C15 gate PASS, the patched-image recheck red only on the moved redis index (PR #62).
 - **Rows:** implemented 1003 → 1013, missing 2513 → 2499.
 - **Feature groups:** the labels are unchanged. F-P6-07 stays partial on:
   - the real provider (D6);
