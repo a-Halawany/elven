@@ -8,9 +8,9 @@
  * asks this module what the answer IS:
  *
  *   partial   — something the answer depends on was LEFT OUT and is NAMED in `omitted` (the projection or tier, the reason, the
- *               rows): explanation links resting on a withdrawn edges_current / entities_current partition; memory rows the log
- *               cannot vouch for while memory_items_current is withdrawn; versions the content tier does not hold; the whole item
- *               set when the content tier did not answer (200 partial — never the 503 a single retrieval answers).
+ *               rows): explanation links resting on a withdrawn edges_current / entities_current partition (counted over the SERVED
+ *               items); versions the content tier does not hold, of items the reader may read (B23-F1); the whole item set when
+ *               the content tier did not answer (200 partial — never the 503 a single retrieval answers).
  *   stale     — nothing left out, and the condition of the context's partitions is lagging, unverified or withdrawn (served
  *               from the log, labelled): the answer is whole for the state the subscriber verified, not for the latest revision.
  *   complete  — otherwise.
@@ -20,6 +20,13 @@
  *
  * What the POLICY withholds (the purpose, the clearance, the audience roles) is NEVER an omission: it is neither counted nor
  * mentioned (B10's rule) — the answer states only that policy filtering applied (CONTEXT_POLICY_NOTE).
+ *
+ * B23-F1 (0085): the DIAGNOSTICS obey the same policy. The query takes the reader's clearance, roles and administrator flag, so its
+ * content-absent count and its scan-bound flag are over the AUTHORIZED set; a content-absent item is counted only while
+ * memory_items_current serves and its own row admits the reader (while it is withdrawn nothing trustworthy authorizes an absent
+ * version: nothing is counted). Rows the log cannot vouch for (the projection's rows the log does not know, while memory_items_current
+ * is withdrawn) carry untrusted policy metadata by definition: never served, never counted, never mentioned — a log-sourced answer
+ * says so once, in words that depend on no record (CONTEXT_LOG_NOTE), beside its stale/withdrawn label.
  */
 import type { PartitionState, ProjectionBlock, ProjectionName } from '../projections/projection-state.js';
 import { REBUILD_ROUTE } from '../projections/projection-state.js';
@@ -30,6 +37,10 @@ export interface ContextOmission { projection: ProjectionName | 'content_tier'; 
 
 /** Said on every answer: the policy applied, and what it withholds is not said (literal — the harness and the page pin it). */
 export const CONTEXT_POLICY_NOTE = 'policy-filtered: the declared purpose, the reader\'s clearance in this domain and the audience roles were applied to every item; what the policy withholds is neither counted nor mentioned';
+/* B23-F1 (0085) */
+/** Said on every answer served from the LOG (memory_items_current withdrawn) — constant: it counts nothing and names no record (literal — the harness and the page pin it). */
+export const CONTEXT_LOG_NOTE = 'served from the event log: memory rows the log cannot vouch for are never served and are not counted';
+/* end B23-F1 */
 /** Said on every answer: the consistency rule (the B20 wording). */
 export const CONTEXT_CONSISTENCY_NOTE = 'the projection state was read first in this transaction (read committed): the rows served may be newer than the stated revision, never older';
 /** The route's own bound on the items it serves; the port's scan bound is separate (CONTEXT_SCAN_BOUND). */
@@ -44,11 +55,7 @@ export function withheldLinksReason(projection: 'edges_current' | 'entities_curr
   const what = projection === 'edges_current' ? 'graph edges' : 'graph entities';
   return `${n} explanation link(s) to ${what} are left out: the ${projection} projection of this domain is withdrawn ${since(p)} and cannot vouch for them until it is rebuilt (${REBUILD_ROUTE(projection)})`;
 }
-/** Projection rows linked to the subject that the log does not know, while memory_items_current is withdrawn. */
-export function unverifiedRowsReason(p: PartitionState | undefined, n: number): string {
-  return `${n} memory row(s) linked to this subject are not served: the memory_items_current projection of this domain is withdrawn ${since(p)} and its event log does not know them — the log cannot vouch for them (${REBUILD_ROUTE('memory_items_current')})`;
-}
-/** Linked items whose current version (as the metadata tier names it) the content tier does not hold. */
+/** Linked items the reader may read whose current version (as the metadata tier names it) the content tier does not hold (B23-F1: counted by the query over the authorized set only). */
 export function contentAbsentReason(n: number): string {
   return `${n} memory item(s) linked to this subject are not served: the content tier holds no version the metadata tier names — an item is served with its version or not at all`;
 }
@@ -59,14 +66,13 @@ export function contentUnavailableReason(detail: string, memoryWithdrawn: boolea
 
 /**
  * The omissions of a served answer: the withheld links summed over the items SERVED (after the policy filter — a withheld item's
- * links are never counted), the rows the port could not vouch for, the versions the content tier does not hold.
+ * links are never counted), the versions the content tier does not hold of items the reader may read (the query's authorized count).
+ * B23-F1 (0085): no unverified branch — rows the log cannot vouch for are neither counted nor mentioned.
  */
-export function omissionsOf(block: ProjectionBlock, served: Array<{ withheld_links?: unknown }>, raw: { unverified_rows?: unknown; content_absent_rows?: unknown }): ContextOmission[] {
+export function omissionsOf(block: ProjectionBlock, served: Array<{ withheld_links?: unknown }>, raw: { content_absent_rows?: unknown }): ContextOmission[] {
   const part = (name: ProjectionName) => block.partitions.find((p) => p.projection === name);
   const sum = (key: 'edges_current' | 'entities_current') => served.reduce((n, it) => n + Number(((it.withheld_links ?? {}) as Record<string, unknown>)[key] ?? 0), 0);
   const out: ContextOmission[] = [];
-  const unverified = Number(raw.unverified_rows ?? 0);
-  if (unverified > 0) out.push({ projection: 'memory_items_current', reason: unverifiedRowsReason(part('memory_items_current'), unverified), rows: unverified });
   const absent = Number(raw.content_absent_rows ?? 0);
   if (absent > 0) out.push({ projection: 'content_tier', reason: contentAbsentReason(absent), rows: absent });
   for (const key of ['edges_current', 'entities_current'] as const) {

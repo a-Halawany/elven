@@ -482,6 +482,8 @@ export interface MemoryContext {
   items: ContextItem[];
   omitted: Array<{ projection: string; reason: string; rows: number | null }>;
   policy: string; consistency: string;
+  /** B23-F1 (0085): the constant note on an answer served from the event log (rows the log cannot vouch for are never served and not counted); null otherwise. */
+  log_note: string | null;
   bound: { limit: number; scan_bound: number; truncated: boolean };
   projection: ProjectionBlock;
 }

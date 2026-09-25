@@ -24,12 +24,31 @@
  *   the omission; the rebuild restores it → complete.
  *   X7 · THE CONTENT TIER DOWN while memory_items_current is WITHDRAWN: 200 partial, the item set left out whole with the reason (never
  *   the 503 a single retrieval answers — shown beside it), no access row, the fault point consumed; the retry is served from the LOG
- *   (stale, index_state stale); a POISONED memory row linked to the corridor → partial, the unverified row named, never served; the
- *   poison removed, the rebuild → complete.
+ *   (stale, index_state stale); a POISONED memory row linked to the corridor → never served, and (B23-F1, 0085 — the corrected
+ *   contract; before, a counted "unverified" omission) neither counted nor mentioned: stale, with the constant log note; the poison
+ *   removed, the rebuild → complete.
  *   X8 · NO STATE CHANGE: the revision, a hash of the domain's memory.items_current, the canonical MEM count, graph.projection_partitions,
  *   the dependencies and the outbox count equal before and after; only POL / AUD / item_access / memory.retrieved rows grow; the query
  *   function is STABLE and SECURITY INVOKER (pg_proc).
  *   X9 · THE REGISTER: L3-I02 bound in 0084 (no global count pinned — the integrator asserts 50/0/0).
+ *
+ * B23-F1 (migration 0085, the bounded review of 2026-09-25): the DIAGNOSTICS obey the same disclosure policy as the items — the
+ * purpose, the reader's clearance and the audience roles are applied INSIDE the query (memory.retrieve_context re-declared with the
+ * reader's clearance, roles and administrator flag), so every aggregate is computed over the AUTHORIZED set. An item linked to the
+ * subject whose content version is ABSENT (the X7 technique: a memory.items_current row and its dependency planted by the superuser,
+ * no canonical version) is the probe:
+ *   X10 · (a) THE PURPOSE: an absent item for "treasury" only → under "sourcing decision" no omission, no count, no mention, the product
+ *   state unchanged; under "treasury" it is named (content_tier, rows 1 — the positive control).
+ *   X11 · (b) THE AUDIENCE: an absent item for the executive role → the analyst: nothing; the executive and the administrator: named.
+ *   X12 · (c) THE CLEARANCE — the review's reproduction (zero authorized items + one absent confidential item under a purpose only it
+ *   declares): the analyst (internal) complete with no omission (before 0085: partial, rows 1, "1 memory item(s) linked to this subject
+ *   are not served…"); the domain administrator and the executive (confidential): named.
+ *   X13 · (d) TRUNCATION over the authorized set: the route's limit and the port's scan bound (lowered for the case by a proxy on the
+ *   capability's argument — the route and the query are the real ones): more purpose-admitted items than the bound but no more
+ *   authorized ones → truncated false for the analyst; true for the administrator, who is authorized for more.
+ *   X14 · (e) THE LOG: memory_items_current withdrawn, two poisoned rows linked to the subject (one that looks authorized, one that does
+ *   not) → for every reader: stale, nothing counted, nothing mentioned, the constant CONTEXT_LOG_NOTE; the query answers no
+ *   unverified_rows key at all (pg_proc).
  *
  * EACH CASE LOGS ONE `B23 CONTEXT EVIDENCE` LINE with the six things V04-T-024/026 demand (the fault trace, the affected-product
  * watermark, the consumer behaviour, the operator action, the recovery, the reconciliation).
@@ -37,7 +56,7 @@
  * What this harness does NOT claim: relevance or ranking (newest first is the order); a multi-hop reach from the subject (only the
  * items whose served version names it); a connection-class failure of the content tier (the B20 statement).
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { sql } from 'kysely';
 import { uuidv7 } from 'uuidv7';
 import { mkdtempSync, realpathSync } from 'node:fs';
@@ -49,7 +68,8 @@ import type { GraphController } from '../../src/graph/graph.controller.js';
 import type { ProjectionsController } from '../../src/graph/projections/projections.controller.js';
 import { SchedulerService } from '../../src/observation/scheduling/scheduler.service.js';
 import { asObservationRefusal } from '../../src/observation/observation-errors.js';
-import { CONTEXT_CONSISTENCY_NOTE, CONTEXT_POLICY_NOTE } from '../../src/graph/memory/context.js';
+import { CONTEXT_CONSISTENCY_NOTE, CONTEXT_LOG_NOTE, CONTEXT_POLICY_NOTE, contentAbsentReason } from '../../src/graph/memory/context.js';
+import type { MemoryService } from '../../src/graph/memory/memory.service.js';
 import * as fault from '../../src/observation/fault-injection.js';
 import { Phase4Harness } from './phase4-helpers.js';
 import type { AnyDb } from './helpers.js';
@@ -70,7 +90,7 @@ type Link = { kind: string; id: string; via: string; rationale?: string; version
 type Item = Row & { item_id: string; version: number; explanation_links: Link[]; withheld_links: { edges_current: number; entities_current: number }; access_id: string };
 type Context = { purpose: string; subject: Row; as_of: string | null; revision: number | null; verified_seq: number | null; lag_events: number; condition: string;
   product_state: 'complete' | 'stale' | 'partial'; code: string | null; label: string | null; source: string; items: Item[];
-  omitted: Array<{ projection: string; reason: string; rows: number | null }>; policy: string; consistency: string; bound: Row; projection: Row };
+  omitted: Array<{ projection: string; reason: string; rows: number | null }>; policy: string; consistency: string; log_note: string | null; bound: Row; projection: Row };
 
 let h: Phase4Harness; let su: AnyDb;
 let graph: GraphController; let projections: ProjectionsController; let scheduler: SchedulerService;
@@ -198,6 +218,31 @@ async function seedEdge(edgeId: string, subject: string, predicate: string, obje
 const ids = (c: Context): string[] => c.items.map((x) => x.item_id).sort();
 const itemOf = (c: Context, id: string): Item => { const x = c.items.find((i) => i.item_id === id); expect(x, `item ${id} served`).toBeDefined(); return x!; };
 const linkOf = (it: Item, kind: string, id?: string): Link | undefined => it.explanation_links.find((l) => l.kind === kind && (id === undefined || l.id === id));
+
+/* ───────────── B23-F1 (0085): the probe — an item linked to the corridor whose content version is ABSENT ───────────── */
+/** The X7 technique: a memory.items_current row naming version 1 with NO canonical version, and its dependency on the corridor — planted by the superuser (stated), removed by it. */
+const plantAbsent = async (m: { title: string; classification: string; roles: string[]; purposes: string[] }): Promise<string> => {
+  const id = uuidv7();
+  await sql`insert into memory.items_current (item_id, scope, tenant_id, domain_id, object_version, record_class, title, statement, source_kind, owner_principal_id, classification, audience_roles, audience_purposes, valid_from, retention_profile, recorded_by, correlation_id)
+    values (${id}::uuid, 'DOMAIN', ${T()}::uuid, ${D()}::uuid, 1, 'strategic', ${m.title}, 'A row whose content version the content tier does not hold (B23-F1 harness probe).', 'human', ${owner.principalId}::uuid, ${m.classification}, ${m.roles}::text[], ${m.purposes}::text[], '2024-01-01T00:00:00Z', 'strategic-record-7y', ${owner.principalId}::uuid, ${uuidv7()}::uuid)`.execute(su);
+  await sql`insert into graph.dependencies (dependency_id, scope, tenant_id, domain_id, dependent_object_id, dependent_type, depends_on_kind, depends_on_id, rationale, state, created_by, correlation_id)
+    values (${uuidv7()}::uuid, 'DOMAIN', ${T()}::uuid, ${D()}::uuid, ${id}::uuid, 'MEM', 'entity', ${CORRIDOR}::uuid, 'the probe cites the corridor', 'active', ${owner.principalId}::uuid, ${uuidv7()}::uuid)`.execute(su);
+  return id;
+};
+const removePlanted = async (id: string): Promise<void> => {
+  await sql`delete from graph.dependencies where dependent_object_id = ${id}::uuid`.execute(su);
+  await sql`delete from memory.items_current where item_id = ${id}::uuid`.execute(su);
+};
+/** What a policy-withheld probe must not change: the answer's state, its omissions, its items and its bound. */
+const disclosed = (c: Context) => ({ product_state: c.product_state, code: c.code, label: c.label, omitted: c.omitted, items: ids(c), truncated: c.bound['truncated'] });
+/** The capability with its scan bound lowered (X13): every other member is the real capability's, bound to it. */
+const lowered = <C extends object>(cap: C, bound: number): C => new Proxy(cap, {
+  get(t, p) {
+    const v = Reflect.get(t, p, t) as unknown;
+    if (p === 'retrieveContext') return (a: Row) => (v as (x: Row) => Promise<Row>).call(t, { ...a, scanBound: bound });
+    return typeof v === 'function' ? (v as (...x: unknown[]) => unknown).bind(t) : v;
+  },
+});
 
 beforeAll(async () => {
   h = await Phase4Harness.boot();
@@ -405,7 +450,7 @@ describe('B23 · L3-I02 RetrieveContext — one purpose-bound query, policy-filt
       recovery: `rebuild ${String(r['outcome'])}`, reconciliation: { product_state: back.product_state } });
   }, 240_000);
 
-  it('X7 · THE CONTENT TIER DOWN while memory_items_current is WITHDRAWN → 200 partial, the items left out whole and named (the single retrieval 503s beside it), no access row; the retry served from the log (stale); a poisoned row named, never served; the rebuild → complete', async () => {
+  it('X7 · THE CONTENT TIER DOWN while memory_items_current is WITHDRAWN → 200 partial, the items left out whole and named (the single retrieval 503s beside it), no access row; the retry served from the log (stale); a poisoned row never served and — B23-F1 (0085), the corrected contract — neither counted nor mentioned (stale, the log note); the rebuild → complete', async () => {
     await verified();
     const reason = 'B23 X7: the memory partition suspected (harness)';
     await withdraw('memory_items_current', reason);
@@ -413,7 +458,7 @@ describe('B23 · L3-I02 RetrieveContext — one purpose-bound query, policy-filt
     fault.arm(['b20.memory_content_unavailable'], 'test');
     const { context: down, receipt } = await context(analyst);
     expect(fault.isArmed('b20.memory_content_unavailable'), 'the context query consumed the point').toBe(false);
-    expect(down).toMatchObject({ product_state: 'partial', code: 'EYE-DEG-001', condition: 'withdrawn', source: 'log', items: [] });
+    expect(down).toMatchObject({ product_state: 'partial', code: 'EYE-DEG-001', condition: 'withdrawn', source: 'log', items: [], log_note: CONTEXT_LOG_NOTE });
     expect(down.omitted).toEqual([{ projection: 'content_tier', rows: null,
       reason: 'the memory items are not served: the content tier did not answer (injected fault at b20.memory_content_unavailable) while the memory_items_current projection of this domain is withdrawn; an item is served with its version or not at all — retry when the content tier answers' }]);
     expect(await accessCount(), 'nothing served, nothing recorded as served').toBe(n0);
@@ -424,20 +469,20 @@ describe('B23 · L3-I02 RetrieveContext — one purpose-bound query, policy-filt
     expect(single).toMatchObject({ status: 503, code: 'EYE-DEG-001' });
     // THE RETRY (the tier answers; still withdrawn): served from the LOG, labelled — stale, nothing left out
     const log = (await context(analyst)).context;
-    expect(log).toMatchObject({ product_state: 'stale', code: 'EYE-DEG-001', condition: 'withdrawn', source: 'log', omitted: [] });
+    expect(log).toMatchObject({ product_state: 'stale', code: 'EYE-DEG-001', condition: 'withdrawn', source: 'log', omitted: [], log_note: CONTEXT_LOG_NOTE });
     expect(log.label).toMatch(/^stale: the memory_items_current projection of this domain is withdrawn since .* \(B23 X7: the memory partition suspected \(harness\)\); this answer is derived from the event log/);
     expect(itemOf(log, M1)).toMatchObject({ version: 2, index_state: 'stale', projected: true, drift: null });
-    // A POISONED ROW linked to the corridor (the projection has it, the log does not): named as unverified, never served
+    // A POISONED ROW linked to the corridor (the projection has it, the log does not): never served — and, B23-F1 (0085), its policy
+    // metadata is untrusted by definition, so it is neither counted nor mentioned (before 0085: partial, a counted "unverified" omission)
     const P = uuidv7();
     await sql`insert into memory.items_current (item_id, scope, tenant_id, domain_id, object_version, record_class, title, statement, source_kind, owner_principal_id, classification, audience_roles, audience_purposes, valid_from, retention_profile, recorded_by, correlation_id)
       values (${P}::uuid, 'DOMAIN', ${T()}::uuid, ${D()}::uuid, 1, 'strategic', 'Poisoned corridor row', 'A row no event recorded (B23 harness poison).', 'human', ${owner.principalId}::uuid, 'internal', '{}', ARRAY[${PURPOSE}]::text[], '2024-01-01T00:00:00Z', 'strategic-record-7y', ${owner.principalId}::uuid, ${uuidv7()}::uuid)`.execute(su);
     await sql`insert into graph.dependencies (dependency_id, scope, tenant_id, domain_id, dependent_object_id, dependent_type, depends_on_kind, depends_on_id, rationale, state, created_by, correlation_id)
       values (${uuidv7()}::uuid, 'DOMAIN', ${T()}::uuid, ${D()}::uuid, ${P}::uuid, 'MEM', 'entity', ${CORRIDOR}::uuid, 'the poisoned row cites the corridor', 'active', ${owner.principalId}::uuid, ${uuidv7()}::uuid)`.execute(su);
     const poisoned = (await context(analyst)).context;
-    expect(poisoned).toMatchObject({ product_state: 'partial', code: 'EYE-DEG-001' });
-    expect(poisoned.omitted).toHaveLength(1);
-    expect(poisoned.omitted[0]).toMatchObject({ projection: 'memory_items_current', rows: 1 });
-    expect(poisoned.omitted[0]!.reason).toMatch(/^1 memory row\(s\) linked to this subject are not served: the memory_items_current projection of this domain is withdrawn since .* and its event log does not know them — the log cannot vouch for them/);
+    expect(poisoned).toMatchObject({ product_state: 'stale', code: 'EYE-DEG-001', source: 'log', omitted: [], log_note: CONTEXT_LOG_NOTE });
+    expect(poisoned.label).toBe(log.label);
+    expect(JSON.stringify(poisoned)).not.toMatch(/memory row\(s\)|unverified_rows/);
     expect(JSON.stringify(poisoned).includes(P)).toBe(false);
     expect(ids(poisoned)).toEqual([M1]);
     // the poison removed by the superuser (stated: it was planted by the superuser), the rebuild → complete
@@ -480,4 +525,147 @@ describe('B23 · L3-I02 RetrieveContext — one purpose-bound query, policy-filt
     expect(row.bound_to).not.toMatch(/stays owed|no single purpose-bound context query/);
     sixEvidence('X9', { fault_trace: null, watermark: null, consumer_behaviour: null, operator_action: null, recovery: null, reconciliation: { L3_I02: row.binding_state, bound_in: row.bound_in } });
   }, 60_000);
+
+  /* B23-F1 (0085) */
+  it('X10 · B23-F1 (a) THE PURPOSE: an absent item linked to the corridor for "treasury" only → under "sourcing decision" no omission, no count, no mention, the product state unchanged; under "treasury" it is named (the positive control)', async () => {
+    await verified();
+    const base = (await context(analyst)).context;
+    const A = await plantAbsent({ title: 'B23-F1 absent treasury probe', classification: 'internal', roles: [], purposes: ['treasury'] });
+    try {
+      const n0 = await accessCount();
+      const { context: c, receipt } = await context(analyst);
+      expect(disclosed(c)).toEqual(disclosed(base));
+      expect(c).toMatchObject({ product_state: 'complete', code: null, omitted: [], source: 'projection', log_note: null });
+      expect(ids(c)).toEqual([M1]);
+      expect(JSON.stringify(c).includes(A)).toBe(false);
+      expect(JSON.stringify(c)).not.toMatch(/not served/);
+      const aud = await auditRowOf(receipt.auditSeq);
+      expect(aud).toMatchObject({ result_code: 'OK', outcome: 'success' });
+      expect(aud!.metadata).toMatchObject({ product_state: 'complete', omitted: [] });
+      expect(JSON.stringify(aud).includes(A)).toBe(false);
+      // THE POSITIVE CONTROL: under "treasury" the reader may see the item — the content-absent omission is counted and named
+      const t = (await context(analyst, {}, 'treasury')).context;
+      expect(t).toMatchObject({ product_state: 'partial', code: 'EYE-DEG-001', source: 'projection' });
+      expect(t.omitted).toEqual([{ projection: 'content_tier', rows: 1, reason: contentAbsentReason(1) }]);
+      expect(ids(t)).toEqual([M2]);
+      expect(JSON.stringify(t).includes(A), 'counted, never named by id').toBe(false);
+      expect(await accessCount() - n0, 'the served items only (M1 under sourcing, M2 under treasury)').toBe(2);
+      expect(await accessRows(A)).toEqual([]);
+      sixEvidence('X10', { fault_trace: { probe: A, absent: 'content version 1', purposes: ['treasury'] }, watermark: { sourcing: c.product_state, treasury: t.product_state },
+        consumer_behaviour: { sourcing_omitted: c.omitted.length, treasury_omitted: t.omitted.map((o) => [o.projection, o.rows]) }, operator_action: 'the probe planted by the superuser',
+        recovery: null, reconciliation: { unchanged_for_the_withheld_purpose: true } });
+    } finally { await removePlanted(A); }
+  }, 180_000);
+
+  it('X11 · B23-F1 (b) THE AUDIENCE: an absent item for the executive role → the analyst (who lacks it): no omission, no count, no mention, the product state unchanged; the executive and the domain administrator: named', async () => {
+    await verified();
+    const base = (await context(analyst)).context;
+    const A = await plantAbsent({ title: 'B23-F1 absent executive probe', classification: 'internal', roles: ['executive'], purposes: [PURPOSE] });
+    try {
+      const { context: c, receipt } = await context(analyst);
+      expect(disclosed(c)).toEqual(disclosed(base));
+      expect(c).toMatchObject({ product_state: 'complete', omitted: [] });
+      expect(JSON.stringify(c).includes(A)).toBe(false);
+      expect(JSON.stringify(await auditRowOf(receipt.auditSeq)).includes(A)).toBe(false);
+      const ex = (await context(executive)).context;
+      expect(ex).toMatchObject({ product_state: 'partial', code: 'EYE-DEG-001' });
+      expect(ex.omitted).toEqual([{ projection: 'content_tier', rows: 1, reason: contentAbsentReason(1) }]);
+      expect(ids(ex)).toEqual([M1, M3, M4].sort());
+      const ad = (await context(domainAdmin)).context;
+      expect(ad.omitted).toEqual([{ projection: 'content_tier', rows: 1, reason: contentAbsentReason(1) }]);
+      expect(await accessRows(A)).toEqual([]);
+      sixEvidence('X11', { fault_trace: { probe: A, roles: ['executive'] }, watermark: { analyst: c.product_state, executive: ex.product_state, admin: ad.product_state },
+        consumer_behaviour: { analyst_omitted: c.omitted.length, executive: ex.omitted.map((o) => o.rows), admin: ad.omitted.map((o) => o.rows) }, operator_action: 'the probe planted by the superuser',
+        recovery: null, reconciliation: { unchanged_for_the_reader_without_the_role: true } });
+    } finally { await removePlanted(A); }
+  }, 180_000);
+
+  it('X12 · B23-F1 (c) THE CLEARANCE — the review\'s reproduction: zero authorized items + one absent CONFIDENTIAL item under a purpose only it declares → the analyst (internal): complete, no omission, no count, no mention; the domain administrator and the executive (confidential): named', async () => {
+    await verified();
+    const REPRO = 'b23-f1 reproduction';
+    const base = (await context(analyst, {}, REPRO)).context;
+    expect(base).toMatchObject({ product_state: 'complete', items: [], omitted: [] });
+    const A = await plantAbsent({ title: 'B23-F1 absent confidential probe', classification: 'confidential', roles: [], purposes: [REPRO] });
+    try {
+      const { context: c, receipt } = await context(analyst, {}, REPRO);
+      // the review's reproduction, as the route answers it (before 0085: partial, omitted [{content_tier, rows 1, "1 memory item(s) linked to this subject are not served: …"}])
+      console.log(`B23-F1 REPRODUCTION (the analyst, internal; purpose "${REPRO}"; one confidential content-absent item): ${JSON.stringify({ product_state: c.product_state, code: c.code, label: c.label, omitted: c.omitted, items: ids(c), truncated: c.bound['truncated'] })}`);
+      expect(disclosed(c)).toEqual(disclosed(base));
+      expect(c).toMatchObject({ product_state: 'complete', code: null, label: null, items: [], omitted: [] });
+      expect(JSON.stringify(c).includes(A)).toBe(false);
+      expect(JSON.stringify(c)).not.toMatch(/not served/);
+      expect(await auditRowOf(receipt.auditSeq)).toMatchObject({ result_code: 'OK' });
+      for (const who of [domainAdmin, executive]) {
+        const v = (await context(who, {}, REPRO)).context;
+        expect(v).toMatchObject({ product_state: 'partial', code: 'EYE-DEG-001', items: [] });
+        expect(v.omitted).toEqual([{ projection: 'content_tier', rows: 1, reason: contentAbsentReason(1) }]);
+      }
+      expect(await accessRows(A)).toEqual([]);
+      sixEvidence('X12', { fault_trace: { probe: A, classification: 'confidential', purpose: REPRO }, watermark: { analyst: c.product_state },
+        consumer_behaviour: { analyst: { items: c.items.length, omitted: c.omitted.length }, confidential_readers: 'content_tier rows 1' }, operator_action: 'the probe planted by the superuser',
+        recovery: null, reconciliation: { review_reproduction: 'complete with no omission (was partial, rows 1)' } });
+    } finally { await removePlanted(A); }
+  }, 180_000);
+
+  it('X13 · B23-F1 (d) TRUNCATION over the AUTHORIZED set: the route\'s limit and the port\'s scan bound — more purpose-admitted items than the bound, no more authorized ones → truncated false for the analyst; true for the domain administrator', async () => {
+    await verified();
+    // under "sourcing decision" three items are purpose-admitted (M1, M3 confidential, M4 for the executive); the analyst is authorized for M1 alone
+    const a1 = (await context(analyst, { limit: 1 })).context;
+    expect(ids(a1)).toEqual([M1]);
+    expect(a1.bound).toMatchObject({ limit: 1, truncated: false });
+    const d1 = (await context(domainAdmin, { limit: 1 })).context;
+    expect(d1.items).toHaveLength(1);
+    expect(d1.bound).toMatchObject({ limit: 1, truncated: true });
+    const d3 = (await context(domainAdmin, { limit: 3 })).context;
+    expect(ids(d3)).toEqual([M1, M3, M4].sort());
+    expect(d3.bound).toMatchObject({ limit: 3, truncated: false });
+    // THE PORT'S SCAN BOUND lowered to 1 for this case (a proxy on the capability's argument; the route and the query are the real ones)
+    const svc = (graph as unknown as { memory: MemoryService }).memory;
+    const real = svc.context.bind(svc);
+    const spy = vi.spyOn(svc, 'context').mockImplementation((cap, ...rest) => real(lowered(cap, 1), ...rest));
+    try {
+      const a = (await context(analyst)).context;
+      expect(ids(a)).toEqual([M1]);
+      expect(a.bound).toMatchObject({ truncated: false });
+      expect(a).toMatchObject({ product_state: 'complete', omitted: [] });
+      const d = (await context(domainAdmin)).context;
+      expect(d.items).toHaveLength(1);
+      expect(d.bound).toMatchObject({ truncated: true });
+      expect(spy).toHaveBeenCalledTimes(2);
+      sixEvidence('X13', { fault_trace: { scan_bound: 1, route_limit: [1, 3] }, watermark: { analyst: a.product_state },
+        consumer_behaviour: { analyst: { limit1: a1.bound['truncated'], scan1: a.bound['truncated'] }, admin: { limit1: d1.bound['truncated'], limit3: d3.bound['truncated'], scan1: d.bound['truncated'] } },
+        operator_action: null, recovery: null, reconciliation: 'truncation declared over the authorized set only' });
+    } finally { spy.mockRestore(); }
+  }, 180_000);
+
+  it('X14 · B23-F1 (e) THE LOG: memory_items_current withdrawn, two poisoned rows linked to the corridor → for every reader stale from the log, nothing counted, nothing mentioned, the constant log note; the query answers no unverified_rows key; the rebuild → complete', async () => {
+    await verified();
+    const reason = 'B23-F1 X14: the memory partition suspected (harness)';
+    await withdraw('memory_items_current', reason);
+    const P1 = await plantAbsent({ title: 'B23-F1 poisoned row that looks authorized', classification: 'internal', roles: [], purposes: [PURPOSE] });
+    const P2 = await plantAbsent({ title: 'B23-F1 poisoned restricted row', classification: 'restricted', roles: ['executive'], purposes: [PURPOSE] });
+    const seen: Row = {};
+    try {
+      for (const [name, who] of [['analyst', analyst], ['executive', executive], ['domain_admin', domainAdmin], ['tenant_admin', tenantAdmin]] as const) {
+        const c = (await context(who)).context;
+        expect(c, name).toMatchObject({ product_state: 'stale', code: 'EYE-DEG-001', condition: 'withdrawn', source: 'log', omitted: [], log_note: CONTEXT_LOG_NOTE });
+        const text = JSON.stringify(c);
+        expect(text.includes(P1) || text.includes(P2), `${name}: the poisoned rows are never mentioned`).toBe(false);
+        expect(text, name).not.toMatch(/unverified_rows|memory row\(s\)|not served/);
+        expect(c.items.every((i) => i['index_state'] === 'stale'), name).toBe(true);
+        seen[name] = { items: c.items.length, omitted: c.omitted.length };
+      }
+      const src = (await sql<{ unverified: boolean; nargs: number }>`select prosrc like '%unverified_rows%' as unverified, pronargs::int as nargs from pg_proc where proname = 'retrieve_context' and pronamespace = 'memory'::regnamespace`.execute(su)).rows;
+      expect(src).toEqual([{ unverified: false, nargs: 10 }]);
+    } finally { await removePlanted(P1); await removePlanted(P2); }
+    const r = (await rebuild('memory_items_current', 'B23-F1 X14: rebuilt after the suspicion (harness)')).rebuild;
+    expect(r).toMatchObject({ projection: 'memory_items_current', state: 'serving' });
+    await verified();
+    const back = (await context(analyst)).context;
+    expect(back).toMatchObject({ product_state: 'complete', source: 'projection', omitted: [], log_note: null });
+    sixEvidence('X14', { fault_trace: { withdrawn: 'memory_items_current', reason, poisoned: [P1, P2] }, watermark: { condition: 'withdrawn', product_state: 'stale' },
+      consumer_behaviour: seen, operator_action: 'graph.projection.withdraw / graph.projection.rebuild; the poison planted and removed by the superuser',
+      recovery: `rebuild ${String(r['outcome'])}`, reconciliation: { product_state: back.product_state } });
+  }, 240_000);
+  /* end B23-F1 */
 });

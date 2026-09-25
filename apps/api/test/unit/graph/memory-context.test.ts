@@ -1,7 +1,7 @@
 /**
  * The context query's product state at the function boundary (CP-6 B23, 0084; L3-I02 RetrieveContext): the PURE part —
- * `omissionsOf` (the withheld links summed over the SERVED items only, the unverified and content-absent rows, nothing for a
- * complete answer), `productStateOf` (partial when something is left out and named; stale when nothing is and the condition is
+ * `omissionsOf` (the withheld links summed over the SERVED items only, the content-absent rows — B23-F1 (0085): the query's
+ * AUTHORIZED count; no unverified branch — nothing for a complete answer), `productStateOf` (partial when something is left out and named; stale when nothing is and the condition is
  * lagging / unverified / withdrawn; complete otherwise — with the code and the label from the flags), the reasons BYTE FOR BYTE,
  * CONTEXT_PARTITIONS (outside the twelve B20 routes), and the refusal row (`memory context rejected: …` → 422 with the port's
  * text, caught by no earlier row). No database: the B23 harness proves the same on live rows.
@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 import { HttpException } from '@nestjs/common';
 import { CONTEXT_PARTITIONS, PROJECTIONS, ROUTE_PARTITIONS, blockOf, type ProjectionName } from '../../../src/graph/projections/projection-state.js';
 import {
-  CONTEXT_POLICY_NOTE, contentAbsentReason, contentUnavailableReason, omissionsOf, productStateOf, unverifiedRowsReason, withheldLinksReason,
+  CONTEXT_LOG_NOTE, CONTEXT_POLICY_NOTE, contentAbsentReason, contentUnavailableReason, omissionsOf, productStateOf, withheldLinksReason,
 } from '../../../src/graph/memory/context.js';
 import { asObservationRefusal } from '../../../src/observation/observation-errors.js';
 
@@ -42,7 +42,7 @@ describe('B23 · CONTEXT_PARTITIONS', () => {
 
 describe('B23 · omissionsOf', () => {
   it('nothing left out on a serving domain', () => {
-    expect(omissionsOf(block(), [{ withheld_links: { edges_current: 0, entities_current: 0 } }], { unverified_rows: 0, content_absent_rows: 0 })).toEqual([]);
+    expect(omissionsOf(block(), [{ withheld_links: { edges_current: 0, entities_current: 0 } }], { content_absent_rows: 0 })).toEqual([]);
   });
   it('the withheld links summed over the SERVED items only, named with the withdrawal and the rebuild route', () => {
     const b = block({ edges_current: withdrawn });
@@ -50,14 +50,25 @@ describe('B23 · omissionsOf', () => {
     expect(out).toEqual([{ projection: 'edges_current', rows: 3,
       reason: `3 explanation link(s) to graph edges are left out: the edges_current projection of this domain is withdrawn since ${SINCE.toISOString()} (suspected by the operator) and cannot vouch for them until it is rebuilt (POST …/graph/projections/edges_current/rebuild (graph.projection.rebuild))` }]);
   });
-  it('the unverified rows and the content-absent rows, in that order, before the links', () => {
-    const b = block({ memory_items_current: withdrawn, entities_current: withdrawn });
-    const out = omissionsOf(b, [{ withheld_links: { edges_current: 0, entities_current: 1 } }], { unverified_rows: '2', content_absent_rows: 1 });
-    expect(out.map((o) => [o.projection, o.rows])).toEqual([['memory_items_current', 2], ['content_tier', 1], ['entities_current', 1]]);
-    expect(out[0]!.reason).toBe(unverifiedRowsReason(b.partitions[0], 2));
-    expect(out[1]!.reason).toBe(contentAbsentReason(1));
-    expect(out[2]!.reason).toBe(withheldLinksReason('entities_current', b.partitions[2], 1));
+  it('the content-absent rows (the query\'s authorized count) before the links', () => {
+    const b = block({ entities_current: withdrawn });
+    const out = omissionsOf(b, [{ withheld_links: { edges_current: 0, entities_current: 1 } }], { content_absent_rows: '1' });
+    expect(out.map((o) => [o.projection, o.rows])).toEqual([['content_tier', 1], ['entities_current', 1]]);
+    expect(out[0]!.reason).toBe(contentAbsentReason(1));
+    expect(out[1]!.reason).toBe(withheldLinksReason('entities_current', b.partitions[2], 1));
   });
+  /* B23-F1 (0085) */
+  it('B23-F1: rows the log cannot vouch for are never an omission — an unverified_rows key (the pre-0085 answer) is ignored, nothing counted, nothing named', () => {
+    const b = block({ memory_items_current: withdrawn });
+    const pre0085 = { unverified_rows: 3, content_absent_rows: 0 } as unknown as { content_absent_rows?: unknown };
+    expect(omissionsOf(b, [], pre0085)).toEqual([]);
+    expect(productStateOf(b, omissionsOf(b, [], pre0085))).toMatchObject({ product_state: 'stale', code: 'EYE-DEG-001' });
+  });
+  it('B23-F1: the log note is constant — it counts nothing and names nothing', () => {
+    expect(CONTEXT_LOG_NOTE).toBe('served from the event log: memory rows the log cannot vouch for are never served and are not counted');
+    expect(CONTEXT_LOG_NOTE).not.toMatch(/[0-9]/);
+  });
+  /* end B23-F1 */
 });
 
 describe('B23 · productStateOf', () => {
@@ -104,6 +115,9 @@ describe('B23 · the refusal row', () => {
       'memory context rejected: the subject names {kind, id} — kind one of entity, claim, edge, strategy, evidence, warning, forecast; id an object id',
       'memory context rejected: the scan bound is 1..500 (not 0)',
       'memory context rejected: the withdrawn partitions are named among the six projections (not x)',
+      // B23-F1 (0085): the reader's policy arguments (the route's own statement, never the caller's)
+      'memory context rejected: the reader\'s clearance is one of public, internal, confidential, restricted (not <none>)',
+      'memory context rejected: the reader\'s roles in this domain and whether it administers are stated',
     ]) {
       const e = asObservationRefusal(Object.assign(new Error(text), { code: '22023' }), 'c');
       expect(e).toBeInstanceOf(HttpException);

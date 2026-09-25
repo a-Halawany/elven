@@ -4015,6 +4015,18 @@ not policy dimensions yet; no approval step for a suppression; no new hosted bro
   - The `supply-chain` job: the C15 gate itself **PASS**; its patched-image recheck red ONLY because `redis:8-alpine`'s index moved upstream (38117873… vs the pin ba6e394f…) — the update is PR #62, and this job goes green on #62's merge.
   - No unit promoted (the split stays 3,555 = 3,179 + 339 + 37).
 
+### B23.8 — B23-F1 corrected (0085; the bounded review of 2026-09-25)
+
+**The finding.** The context query filtered the SERVED items by purpose (SQL) and by clearance and audience (TypeScript), but its diagnostics did not: `unverified_rows` and `content_absent_rows` were counted without the reader's policy, and `bounded` before the clearance and audience filter. An answer could therefore count and mention records the caller may not see, and change its product state because of them — against the query's own contract.
+
+**The correction** (forward migration `0085_b23f1_context_disclosure.sql`; 0084 is applied and untouched):
+- `memory.retrieve_context` takes the reader's clearance, roles and administrator flag. Every aggregate is computed over the authorized set.
+- `content_absent_rows` is counted only where the metadata tier's own classification, audience roles and audience purposes admit the reader (nothing while the partition is withdrawn: no trustworthy policy metadata).
+- `unverified_rows` is removed (untrusted by definition). A log-sourced answer carries one constant note.
+- Truncation is over the authorized items.
+- The review's reproduction on live PostgreSQL, through the route: before, partial with `rows: 1` for an item the analyst may not see; after, complete with no omission.
+- Regressions X10–X14 cover purpose, audience, clearance, truncation and the log-sourced answer, with positive controls. `phase6-retrieve-context-b23` 14/14; the neighbours are green.
+
 **Stated (not done here).**
 - Delivery beyond in_app, the timer host, the remaining materiality dimensions, suppression approval, delegation, queue evaluation and constraining markers are B24.
 - Residency evaluated at acquisition and per-contract rate limits.

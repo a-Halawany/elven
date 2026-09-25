@@ -471,7 +471,9 @@ function ServedVersion({ r }: { r: MemoryRetrieval }) {
  * subject and that the purpose, your clearance and the audience roles admit, each with the links that explain why it is served. The
  * answer states its PRODUCT STATE from the server's flag — complete, stale (lagging / unverified / served from the log) or partial
  * (what was left out is named, with its reason) — and the revision it is for. What the policy withholds is never shown or counted:
- * the server says only that policy filtering applied. Every served item version is an access recorded on the item.
+ * the server says only that policy filtering applied. Every served item version is an access recorded on the item. B23-F1 (0085):
+ * the same holds for what the answer reports as left out; an answer served from the event log says, once, that rows the log cannot
+ * vouch for are neither served nor counted.
  */
 function ContextPanel({ scope }: { scope: { tenantId: string; domainId: string } }) {
   const [purpose, setPurpose] = useState('sourcing decision');
@@ -537,6 +539,8 @@ function ContextPanel({ scope }: { scope: { tenantId: string; domainId: string }
             </ul>
           )}
           <p style={muted}>{answer.policy}. {answer.consistency}.{answer.bound.truncated ? ` The answer is bounded at ${answer.bound.limit} items; more were admitted.` : ''}</p>
+          {/* B23-F1 (0085): the log-sourced answer's one constant note (it counts nothing and names no record) */}
+          {answer.log_note !== null && answer.log_note !== undefined && <p style={muted}>{answer.log_note}.</p>}
           {answer.items.length === 0 ? <Empty>No item is served for this subject under this purpose.</Empty> : answer.items.map((it) => (
             <article key={it.item_id} aria-label={it.title} style={{ borderBlockStart: '1px solid var(--eye-color-border-default)', paddingBlock: 'var(--eye-space-8)' }}>
               <h3 style={{ fontSize: 'var(--eye-type-heading-3)', marginBlock: 0 }}>{it.title}</h3>

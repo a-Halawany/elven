@@ -433,8 +433,13 @@ export interface ProjectionWrites extends GraphReads {
  * Nothing else: the query's handler cannot record, supersede or withdraw an item, and cannot touch a partition.
  */
 export interface MemoryContextReads extends GraphReads {
-  /** The query's one jsonb answer (0084 §2): items (purpose-filtered, with explanation links and withheld-link counts), unverified_rows, content_absent_rows, bounded. */
-  retrieveContext(a: { tenantId: string; domainId: string; purpose: string; subject: unknown; asOf: string | null; scanBound: number; withdrawn: readonly ProjectionName[] }): Promise<Record<string, unknown>>;
+  /**
+   * The query's one jsonb answer (0084 §2; B23-F1, 0085): items (filtered by the purpose AND the reader's policy — its clearance, its
+   * roles, whether it administers — with explanation links and withheld-link counts), content_absent_rows and bounded, both over the
+   * same AUTHORIZED set (no unverified_rows: rows the log cannot vouch for are neither counted nor mentioned).
+   */
+  retrieveContext(a: { tenantId: string; domainId: string; purpose: string; subject: unknown; asOf: string | null; scanBound: number; withdrawn: readonly ProjectionName[];
+    clearance: string; roles: readonly string[]; admin: boolean }): Promise<Record<string, unknown>>;
   /** OBJ-15's access row for each SERVED item version, inside the read's own transaction (the governance record of the read). */
   recordMemoryAccess(a: { itemId: string; tenantId: string; domainId: string; version: number; purpose: string; reader: string; asOf: string | null; correlationId: string }): Promise<string>;
 }
@@ -684,7 +689,9 @@ class GraphCapabilityImpl extends GraphCore
   // partitions are the ones the route read FIRST in its transaction (the source decision is the route's, the B20 idiom).
   async retrieveContext(a: Parameters<MemoryContextReads['retrieveContext']>[0]): Promise<Record<string, unknown>> {
     const subject = a.subject === undefined ? null : JSON.stringify(a.subject);
-    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select memory.retrieve_context(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.purpose}, ${subject}::jsonb, ${a.asOf}::timestamptz, ${a.scanBound}::int, ${[...a.withdrawn]}::text[]) as r`);
+    // B23-F1 (0085): the reader's policy is the query's own argument, so every aggregate it answers is over the authorized set.
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select memory.retrieve_context(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.purpose}, ${subject}::jsonb, ${a.asOf}::timestamptz, ${a.scanBound}::int, ${[...a.withdrawn]}::text[],
+      ${a.clearance}, ${[...a.roles]}::text[], ${a.admin}::boolean) as r`);
     return rows[0]?.r ?? {};
   }
   /* end B23 context */
