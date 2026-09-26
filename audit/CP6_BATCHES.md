@@ -4232,6 +4232,8 @@ The plan selection recorded since 0083 now EXECUTES:
 - X6 probes the new port's capability from both authorities.
 - Results: the file 7/7. The neighbours `phase2-acceptance`, `phase6-graph-subscriptions-4`, `phase6-attention-markers-b24`, `phase6-attention-b22` and `phase1-acceptance`: 117/117.
 
+**Hosted (bound 2026-09-26).** ci **36242673225** at `3409418` on #64, ONE attempt. build-test green: unit 2487 + 9, web 48, contracts 203, acceptance 58/58, **the integration suite 1183/1183** on a fresh database, the upgrade proof PASS (66), C18 623 + 44. browser-regression green. C19 **36242673205** green. `supply-chain`: the C15 gate PASS; the recheck red only on the moved redis index (#62) (`evidence/cp6/hosted-3409418-summary.txt`).
+
 **Stated.** A correction publishes no ObservationRecorded. A correction arriving AFTER a version-n execution finished is therefore not re-extracted automatically: the reselection happens when a queued execution meets a later version.
 
 ### B24.9 — B24-F2: the tracker corrected (one bounded pass)

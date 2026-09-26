@@ -4001,6 +4001,7 @@ The mechanism is in `audit/CP6_BATCHES.md` §B24. The results are in `evidence/c
   - The regression is X7, on the real database and the real correction route. The same X7 on the unfixed code reproduced the defect (done 1, refused 0).
   - Results: the plan file 7/7; neighbours 117/117; the full integration suite **1183/1183** on a fresh database.
   - `eye_demo` is migrated through 0087 after the backup `eye_demo-pre-0087-20260926T122536Z.dump`, and the API restart VERIFIED. 0084–0086 are untouched.
+  - Hosted: ci **36242673225** at `3409418`. build-test green (integration 1183/1183, unit 2487 + 9, acceptance 58/58, upgrade PASS, C18 623 + 44), browser green, C19 36242673205 green; `supply-chain` red only on the redis recheck.
 - **B24-F2 is corrected in one tracker pass** (§B24.9):
   - F-P6-07 completes in B34 after B28 and B32, with real-provider acceptance in R2 under D6.
   - B24 advances it and completes nothing.

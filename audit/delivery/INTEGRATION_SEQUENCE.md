@@ -12,7 +12,7 @@ Prepared under the owner's instruction of 2026-09-25 ("Prepare its separate merg
 | #61 the corrected plan | `planning/delivery-plan-2026-09` → `phase6-b22` | `45fda0f` (was `e579514`) | `supply-chain` red (the redis recheck) until #62 is on its base; the limiter residual (PLAN-F4) CLOSED on it at `45fda0f` (step 3 done) |
 | #62 redis index re-pin | `maintenance/c15-redis-index-2026-09-25` → `main` | `17f0236` | CLEAN; every check green (ci 36129773111, C19 36129773207) |
 | #63 B23 | `phase6-b23` → `planning/delivery-plan-2026-09` | `d2fa829` (was `95dfcdb`) | `supply-chain` red (the redis recheck); B23-F1 CLOSED on it at `d2fa829` by the forward migration 0085 (step 4's precondition done) |
-| #64 B24 | `phase6-b24` → `phase6-b23` | `8459390` → B24-F1 head (see §4) | `supply-chain` red (the redis recheck) until #62 is on its base; build-test (integration 1182/1182), browser-regression and C19 36164183865 green (ci 36164184010); holds the limiter fix (same patch as #61's `45fda0f`) and 0086 |
+| #64 B24 | `phase6-b24` → `phase6-b23` | `3409418` (B24-F1; records on top) — ci 36242673225: build-test 1183/1183, browser and C19 36242673205 green | `supply-chain` red (the redis recheck) until #62 is on its base; build-test (integration 1182/1182), browser-regression and C19 36164183865 green (ci 36164184010); holds the limiter fix (same patch as #61's `45fda0f`) and 0086 |
 
 ## 1. The #62 decision (ready for the owner's word)
 
