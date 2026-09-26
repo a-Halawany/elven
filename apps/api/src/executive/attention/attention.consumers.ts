@@ -48,6 +48,26 @@ const quarantined = (event: FlatEvent, why: string) => ({
   unresolved: { reason: `invalid event: ${event.event_type} ${event.event_id} is not the contract (${why}); quarantined for a person`, failureClass: 'invalid_event' as const, disposition: 'human_review' as const },
 });
 
+/* B24 (0086) materiality: THE FURTHER DIMENSIONS (V00-T-069, V03-T-262) — probability, exposure, strategic relevance, information
+   value, irreversibility — read from the records by executive.attention_dimensions in the item's own transaction: the real inputs this
+   product has for the class, each with its basis (dimension_basis), NULL where it has none (declared, never invented). The engine judges
+   a dimension only when the class's policy sets its threshold; the rank reads them (consequence, window, confidence, exposure, strategic
+   relevance). The windows of a warning and a review are measured on the DATABASE clock there (no Date.now() against the DB's instants). */
+type Further = { probability: unknown; exposure: unknown; strategic_relevance: unknown; information_value: unknown; irreversibility: unknown; dimension_basis: unknown; hours_to_window?: unknown };
+async function furtherDims(cap: AttentionSubscriberWrites, scope: Scope, signalClass: string, subjectId: string, hint: Row = {}): Promise<Further> {
+  const d = await cap.attentionDimensions({ tenantId: scope.tenantId, domainId: scope.domainId, signalClass, subjectId, hint });
+  const out: Further = { probability: d['probability'] ?? null, exposure: d['exposure'] ?? null, strategic_relevance: d['strategic_relevance'] ?? null,
+    information_value: d['information_value'] ?? null, irreversibility: d['irreversibility'] ?? null, dimension_basis: d['dimension_basis'] ?? {} };
+  if ('hours_to_window' in d) out.hours_to_window = d['hours_to_window'] ?? null;
+  return out;
+}
+/** The class with no real input for any further dimension (proposal.review): each declared NULL. */
+const NO_FURTHER_INPUT = { probability: null, exposure: null, strategic_relevance: null, information_value: null, irreversibility: null,
+  dimension_basis: { note: 'no further input exists for proposal.review: a held claim carries only the hold (a fact) and its own confidence' } } as const;
+/** A window measured by the database (its hours), without the key furtherDims adds it under. */
+const withoutWindow = ({ hours_to_window: _h, ...rest }: Further): Omit<Further, 'hours_to_window'> => rest;
+/* end B24 materiality */
+
 abstract class B22Consumer implements OnModuleInit {
   constructor(protected readonly dispatcher: SubscriptionDispatcherService) {}
   abstract readonly kind: 'observations' | 'source-health' | 'proposals' | 'attention';
@@ -81,7 +101,9 @@ export class ObservationsConsumer extends B22Consumer implements SubscriptionCon
     if (typeof o === 'string' || item.startsWith('event:')) return quarantined(event, typeof o === 'string' ? o : 'resolved as quarantined');
     const r = await cap.selectPlan({ tenantId: scope.tenantId, domainId: scope.domainId, eventId: event.event_id, evdObjectId: o.evd, evdVersion: o.version, sourceId: o.source, mode: o.mode, actor, correlationId });
     return { effect: r['outcome'] === 'selected' ? 'plan.selected' : 'plan.none', effectRef: String(r['selection_id']),
-             details: { evd_object_id: o.evd, evd_version: o.version, source_id: o.source, outcome: r['outcome'], methods: r['methods'], reason: r['reason'], repeated: r['repeated'] === true } };
+             details: { evd_object_id: o.evd, evd_version: o.version, source_id: o.source, outcome: r['outcome'], methods: r['methods'], reason: r['reason'], repeated: r['repeated'] === true,
+                        /* B24 (0086) plan: the executions the selection queued in this delivery's transaction (or found already queued) — run by the extraction agent, never here */
+                        executions: r['executions'] ?? [] /* end B24 plan */ } };
   }
 }
 
@@ -124,9 +146,12 @@ export class SourceHealthConsumer extends B22Consumer implements SubscriptionCon
       const contract = ((await cap.readSourceContracts().select(['name', 'source_key'] as never).where('source_id' as never, '=', h.source as never).orderBy('contract_version' as never, 'desc').limit(1).execute()) as Row[])[0];
       const name = String(contract?.['name'] ?? contract?.['source_key'] ?? h.source);
       const confidence = h.state === 'failed' || h.state === 'suspended' ? 1 : h.state === 'degraded' ? 0.8 : 0.5;
+      /* B24 (0086) materiality: exposure = the source's active impact markers (the ones just set or kept) */
+      const further = await furtherDims(cap, scope, 'source.coverage_loss', h.source);
+      /* end B24 materiality */
       routed = await cap.routeItem({ itemId: newId(), tenantId: scope.tenantId, domainId: scope.domainId, signalClass: 'source.coverage_loss', subjectKind: 'source', subjectId: h.source,
         causeEventId: event.event_id, causeEventType: event.event_type, owner: null,
-        dims: { consequence: affected.length > 0 ? 'C2' : 'C1', confidence, hours_to_window: null, affected_products: affected.length, health_state: h.state },
+        dims: { consequence: affected.length > 0 ? 'C2' : 'C1', confidence, hours_to_window: null, affected_products: affected.length, health_state: h.state, /* B24 (0086) materiality */ ...withoutWindow(further) /* end B24 materiality */ },
         title: `Source ${name} is ${h.state}${h.reason === null ? '' : ` — ${h.reason.slice(0, 160)}`}`,
         details: { source_id: h.source, prior_state: h.prior, state: h.state, reason: h.reason, decision_use_constraint: h.constraint, affected: affected.slice(0, 50) }, actor, correlationId });
     }
@@ -174,7 +199,7 @@ export class ProposalsConsumer extends B22Consumer implements SubscriptionConsum
       causeEventId: event.event_id, causeEventType: event.event_type, owner: null,
       // The HOLD is a fact (a queued review case), so the signal's confidence is 1; the claim's own confidence is carried beside it —
       // a low-confidence claim is exactly what review is for, never a reason to deprioritize its review.
-      dims: { consequence: 'C1', confidence: 1, hours_to_window: null, claim_confidence: Number.isFinite(confidence) ? confidence : null, queued_reason: review['queued_reason'] },
+      dims: { consequence: 'C1', confidence: 1, hours_to_window: null, claim_confidence: Number.isFinite(confidence) ? confidence : null, queued_reason: review['queued_reason'], /* B24 (0086) materiality */ ...NO_FURTHER_INPUT /* end B24 materiality */ },
       title: `Claim ${claimId.slice(0, 8)}… held for review (${String(review['queued_reason'] ?? 'queued')})`,
       details: { claim_object_id: claimId, review_case_id: review['case_id'] ?? null, queued_reason: review['queued_reason'] ?? null, promoted: false }, actor, correlationId });
     return { effect: 'review.routed', effectRef: String(routed['item_id']), details: { claim_object_id: claimId, outcome: routed['outcome'], state: routed['state'], policy_version: routed['policy_version'], repeated: routed['repeated'] === true } };
@@ -269,9 +294,12 @@ export class AttentionConsumer extends B22Consumer implements SubscriptionConsum
       if (pkg === null || ['withdrawn', 'closed'].includes(String(pkg['state']))) {
         return { effect: 'signal.no_longer_stands', effectRef: null, details: { package_id: s.id, state: pkg?.['state'] ?? null, escalation: esc } };
       }
+      /* B24 (0086) materiality: irreversibility and information value (the version's terms), strategic relevance, exposure */
+      const further = await furtherDims(cap, scope, 'decision.material_change', s.id, s.version === null ? {} : { version: s.version });
+      /* end B24 materiality */
       const r = await cap.routeItem({ itemId: newId(), ...base, signalClass: 'decision.material_change', subjectKind: 'package', subjectId: s.id,
         owner: (pkg['owner_principal_id'] as string | null | undefined) ?? s.owner,
-        dims: { consequence: s.dims.consequence, confidence: s.dims.confidence, hours_to_window: s.dims.hours_to_window, basis: s.dims.basis, executed: s.executed, change_kind: s.changeKind },
+        dims: { consequence: s.dims.consequence, confidence: s.dims.confidence, hours_to_window: s.dims.hours_to_window, basis: s.dims.basis, executed: s.executed, change_kind: s.changeKind, /* B24 (0086) materiality */ ...withoutWindow(further) /* end B24 materiality */ },
         title: `Decision "${String(pkg['title'] ?? s.title).slice(0, 200)}": a cited input changed materially (${s.changeKind || 'material_change'}; ${s.executed ? 'executed — compensation or a reopen is the owner\'s' : 'the owner reviews the package'})`,
         details: { package_id: s.id, version: s.version, disposition: s.disposition, executed: s.executed, trigger_event_id: s.triggerEventId, note_id: s.noteId, published_under_policy_version: s.policyVersion } });
       return { effect: 'attention.routed', effectRef: String(r['item_id']), details: { signal: 'decision.material_change', ...r, escalation: esc } };
@@ -282,11 +310,14 @@ export class AttentionConsumer extends B22Consumer implements SubscriptionConsum
       if (rv === null || String(rv['state']) !== 'convened') {
         return { effect: 'signal.no_longer_stands', effectRef: null, details: { review_id: s.id, state: rv?.['state'] ?? null, escalation: esc } };
       }
-      const due = rv['due_at'] ?? s.dueAt;
-      const hours = due === null || due === undefined ? null : Math.round(((new Date(due instanceof Date ? due.toISOString() : String(due)).getTime() - Date.now()) / 3_600_000) * 10) / 10;
+      /* B24 (0086) materiality: the hours to the due instant on the DATABASE clock (was Date.now() against the DB's instant — the
+         ms-cutoff flake source), strategic relevance when the subject is an objective */
+      const further = await furtherDims(cap, scope, 'review.convened', s.id);
+      const hours = typeof further.hours_to_window === 'number' ? further.hours_to_window : null;
+      /* end B24 materiality */
       const r = await cap.routeItem({ itemId: newId(), ...base, signalClass: 'review.convened', subjectKind: 'review', subjectId: s.id, owner: String(rv['chair_principal_id'] ?? s.chair),
         // CONSEQUENCE C2: a governed review is decision support (it decides nothing itself); CONFIDENCE 1: the convening is a recorded fact.
-        dims: { consequence: 'C2', confidence: 1, hours_to_window: hours, subject_kind: s.subjectKind, reviewers: s.reviewers.length },
+        dims: { consequence: 'C2', confidence: 1, hours_to_window: hours, subject_kind: s.subjectKind, reviewers: s.reviewers.length, /* B24 (0086) materiality */ ...withoutWindow(further) /* end B24 materiality */ },
         title: `Review convened on the ${s.subjectKind} ${String(rv['subject_title'] ?? s.subjectTitle ?? s.subjectId).slice(0, 160)}: ${s.question.slice(0, 200)}`,
         details: { review_id: s.id, subject_kind: s.subjectKind, subject_id: s.subjectId, chair: s.chair, reviewers: s.reviewers.slice(0, 20), due_at: s.dueAt } });
       return { effect: 'attention.routed', effectRef: String(r['item_id']), details: { signal: 'review.convened', ...r, escalation: esc } };
@@ -306,9 +337,12 @@ export class AttentionConsumer extends B22Consumer implements SubscriptionConsum
       // CONFIDENCE: a structural class (data_shift, envelope_breach) is certain; a measured one (calibration_failure, drift) as sure as its window is full.
       const measured = s.fitClass === 'calibration_failure' || s.fitClass === 'drift';
       const confidence = measured && s.outcomes !== null && s.required !== null && s.required > 0 ? Math.min(1, s.outcomes / s.required) : 1;
+      /* B24 (0086) materiality: exposure (the same scenarios and citing packages, counted in SQL), the citing packages' strategic relevance */
+      const further = await furtherDims(cap, scope, 'forecast.unfit', s.id);
+      /* end B24 materiality */
       const r = await cap.routeItem({ itemId: newId(), ...base, signalClass: 'forecast.unfit', subjectKind: 'forecast', subjectId: s.id,
         owner: f === null ? null : (f['issued_by'] as string | null),
-        dims: { consequence: scenarios.length + citing.length > 0 ? 'C2' : 'C1', confidence, hours_to_window: null, fitness_class: s.fitClass, scenarios: scenarios.length, packages: [...new Set(citing)].length },
+        dims: { consequence: scenarios.length + citing.length > 0 ? 'C2' : 'C1', confidence, hours_to_window: null, fitness_class: s.fitClass, scenarios: scenarios.length, packages: [...new Set(citing)].length, /* B24 (0086) materiality */ ...withoutWindow(further) /* end B24 materiality */ },
         title: `Forecast ${s.series || String(f?.['series_key'] ?? s.id)} ${s.horizon || String(f?.['horizon_code'] ?? '')} assessed UNFIT (${s.fitClass ?? 'unclassed'})`,
         details: { forecast_id: s.id, fitness_class: s.fitClass, forecast_state: f?.['state'] ?? null, scenarios: scenarios.map((x) => x['scenario_id']).slice(0, 50), packages: [...new Set(citing)].slice(0, 50) } });
       return { effect: 'attention.routed', effectRef: String(r['item_id']), details: { signal: 'forecast.unfit', ...r, escalation: esc } };
@@ -318,8 +352,11 @@ export class AttentionConsumer extends B22Consumer implements SubscriptionConsum
       if (sc === null || String(sc['state']) === 'retired' || String(sc['coherence_state']) !== 'failed') {
         return { effect: 'signal.no_longer_stands', effectRef: null, details: { scenario_id: s.id, state: sc?.['state'] ?? null, coherence_state: sc?.['coherence_state'] ?? null, escalation: esc } };
       }
+      /* B24 (0086) materiality: exposure (the runs on the scenario and the packages citing them) */
+      const further = await furtherDims(cap, scope, 'scenario.incoherent', s.id);
+      /* end B24 materiality */
       const r = await cap.routeItem({ itemId: newId(), ...base, signalClass: 'scenario.incoherent', subjectKind: 'scenario', subjectId: s.id, owner: s.owner,
-        dims: { consequence: 'C2', confidence: 1, hours_to_window: null, findings: s.findings },
+        dims: { consequence: 'C2', confidence: 1, hours_to_window: null, findings: s.findings, /* B24 (0086) materiality */ ...withoutWindow(further) /* end B24 materiality */ },
         title: `Scenario "${s.title.slice(0, 200)}" failed its coherence check (${s.findings} finding${s.findings === 1 ? '' : 's'})`,
         details: { scenario_id: s.id, findings: s.findings, check_id: event.payload['check_id'] ?? null, rule_version: event.payload['rule_version'] ?? null } });
       return { effect: 'attention.routed', effectRef: String(r['item_id']), details: { signal: 'scenario.incoherent', ...r, escalation: esc } };
@@ -329,10 +366,13 @@ export class AttentionConsumer extends B22Consumer implements SubscriptionConsum
     if (w === null || !['raised', 'acknowledged'].includes(String(w['state']))) {
       return { effect: 'signal.no_longer_stands', effectRef: null, details: { warning_id: s.id, state: w?.['state'] ?? null, escalation: esc } };
     }
-    const closes = w?.['response_window_closes_at'] ?? s.closesAt;
-    const hours = closes === null || closes === undefined ? null : Math.round(((new Date(String(closes instanceof Date ? closes.toISOString() : closes)).getTime() - Date.now()) / 3_600_000) * 10) / 10;
+    /* B24 (0086) materiality: the hours to the window's close on the DATABASE clock (was Date.now() against the DB's instant — the
+       ms-cutoff flake source); the probability bracket from the forecast's quantiles against the indicator's threshold */
+    const further = await furtherDims(cap, scope, 'warning.raised', s.id);
+    const hours = typeof further.hours_to_window === 'number' ? further.hours_to_window : null;
+    /* end B24 materiality */
     const r = await cap.routeItem({ itemId: newId(), ...base, signalClass: 'warning.raised', subjectKind: 'warning', subjectId: s.id, owner: (w?.['routed_to'] as string | null | undefined) ?? s.owner,
-      dims: { consequence: (w?.['consequence_class'] as string | null | undefined) ?? s.consequence, confidence: w === null ? null : Number(w['confidence']), hours_to_window: hours, level: w?.['level'] ?? null, urgency: w?.['urgency'] ?? null },
+      dims: { consequence: (w?.['consequence_class'] as string | null | undefined) ?? s.consequence, confidence: w === null ? null : Number(w['confidence']), hours_to_window: hours, level: w?.['level'] ?? null, urgency: w?.['urgency'] ?? null, /* B24 (0086) materiality */ ...withoutWindow(further) /* end B24 materiality */ },
       title: `Warning: ${String(w?.['title'] ?? s.id).slice(0, 300)}`,
       details: { warning_id: s.id, level: w?.['level'] ?? null, urgency: w?.['urgency'] ?? null } });
     return { effect: 'attention.routed', effectRef: String(r['item_id']), details: { signal: 'warning.raised', ...r, escalation: esc } };

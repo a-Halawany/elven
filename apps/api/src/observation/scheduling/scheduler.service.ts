@@ -64,6 +64,15 @@ export interface BriefingJobPayload {
 export type BriefingJobHandler = (payload: BriefingJobPayload, jobId: string) => Promise<void>;
 export function briefingQueueNameFor(tenantId: string, domainId: string): string { return `exec:${tenantId}:${domainId}:briefing`; }
 export function briefingSchedulerIdFor(tenantId: string, domainId: string, roomId: string): string { return `exec:${tenantId}:${domainId}:room:${roomId}`; }
+/* B24 (0086) timer: the attention timer — one tick per domain, its own job kind on its own queue (the briefing job kind's clone). */
+export interface AttentionTickPayload {
+  tenantId: string; domainId: string; agentId: string; cadenceSeconds: number; correlationId: string;
+}
+/** `scheduledAt` is the instant the job was scheduled for (BullMQ's prevMillis; epoch ms) — the tick's key is taken from it, so a duplicate of the same instant answers `repeated`. */
+export type AttentionTickHandler = (payload: AttentionTickPayload, jobId: string, scheduledAt: number | null) => Promise<void>;
+export function attentionQueueNameFor(tenantId: string, domainId: string): string { return `exec:${tenantId}:${domainId}:attention`; }
+export function attentionSchedulerIdFor(tenantId: string, domainId: string): string { return `exec:${tenantId}:${domainId}:attention-timer`; }
+/* end B24 timer */
 
 /** The STORED, logical queue name (scope-prefixed with ':'; see migration 0022). */
 export function queueNameFor(tenantId: string, domainId: string): string {
@@ -132,6 +141,7 @@ export class SchedulerService implements OnModuleDestroy {
   private readonly workers = new Map<string, Worker>();
   private handler: CollectionJobHandler | null = null;
   private briefingHandler: BriefingJobHandler | null = null;
+  /* B24 (0086) timer */ private attentionHandler: AttentionTickHandler | null = null; /* end B24 timer */
   private propagationHandler: PropagationJobHandler | null = null;
   private subscriptionHandler: SubscriptionJobHandler | null = null;
 
@@ -268,6 +278,82 @@ export class SchedulerService implements OnModuleDestroy {
     if (this.cfg['eye.runtime.env'] !== 'test') throw new Error('obliterateBriefingsForTests is available only in the test runtime');
     await this.queueNamed(redisName(briefingQueueNameFor(tenantId, domainId))).obliterate({ force: true }).catch(() => undefined);
   }
+
+  /* B24 (0086) timer ───────────────────────── the attention timer (the briefing job kind's clone, test hooks included) ───────────────────────── */
+  registerAttentionHandler(handler: AttentionTickHandler): void { this.attentionHandler = handler; }
+
+  /** One timer per domain (its scheduler id names the domain, not the agent): a re-registration re-points it to the new agent and cadence. */
+  async scheduleAttentionTick(tenantId: string, domainId: string, payload: AttentionTickPayload): Promise<{ schedulerId: string; queueName: string; cadenceSeconds: number }> {
+    const applied = Math.max(payload.cadenceSeconds, this.cfg['eye.scheduler.min_interval_seconds']);
+    const schedulerId = attentionSchedulerIdFor(tenantId, domainId);
+    const queueName = attentionQueueNameFor(tenantId, domainId);
+    if (this.enabled) {
+      await this.queueNamed(redisName(queueName)).upsertJobScheduler(redisName(schedulerId), { every: applied * 1000 },
+        { name: 'attention-tick', data: { ...payload, cadenceSeconds: applied }, opts: { attempts: 1, removeOnComplete: 200, removeOnFail: 100 } });
+      this.ensureAttentionWorker(tenantId, domainId);
+    }
+    return { schedulerId, queueName, cadenceSeconds: applied };
+  }
+
+  async unscheduleAttentionTick(tenantId: string, domainId: string): Promise<string> {
+    const schedulerId = attentionSchedulerIdFor(tenantId, domainId);
+    if (this.enabled) await this.queueNamed(redisName(attentionQueueNameFor(tenantId, domainId))).removeJobScheduler(redisName(schedulerId)).catch(() => undefined);
+    return schedulerId;
+  }
+
+  private ensureAttentionWorker(tenantId: string, domainId: string): void {
+    if (this.attentionHandler !== null) this.startAttentionWorker(tenantId, domainId, this.attentionHandler);
+  }
+
+  /** One job at a time per domain; the payload's scope is compared against the queue it arrived on before anything else looks at it (rule 4). */
+  startAttentionWorker(tenantId: string, domainId: string, handler: AttentionTickHandler): void {
+    if (!this.enabled) return;
+    const name = redisName(attentionQueueNameFor(tenantId, domainId));
+    if (this.workers.has(name)) return;
+    const worker = new Worker(name, async (job: Job<AttentionTickPayload>) => {
+      const payload = job.data;
+      if (payload.tenantId !== tenantId || payload.domainId !== domainId) throw new UnrecoverableError('job payload scope does not match the queue it was delivered on');
+      const prev = (job.opts as { prevMillis?: number }).prevMillis;
+      await handler(payload, job.id ?? 'unknown', typeof prev === 'number' && prev > 0 ? prev : null);
+    }, { connection: this.connection(), concurrency: 1 });
+    worker.on('failed', (job, err) => { this.log.warn(`attention tick ${job?.id ?? '?'} failed: ${err.message.slice(0, 200)}`); });
+    this.workers.set(name, worker);
+    this.log.log(`attention timer worker started for ${name}`);
+  }
+
+  /** Test-only: promote the delayed attention ticks of a domain (the next tick runs now, with ITS scheduled instant). */
+  async promoteDelayedAttentionTicksForTests(tenantId: string, domainId: string): Promise<number> {
+    if (this.cfg['eye.runtime.env'] !== 'test') throw new Error('promoteDelayedAttentionTicksForTests is available only in the test runtime');
+    const q = this.queueNamed(redisName(attentionQueueNameFor(tenantId, domainId)));
+    const delayed = await q.getDelayed();
+    for (const j of delayed) await j.promote().catch(() => undefined);
+    return delayed.length;
+  }
+  /** Test-only: the attention queue's counts, to wait for it to settle between controlled ticks. */
+  async attentionQueueCountsForTests(tenantId: string, domainId: string): Promise<{ active: number; waiting: number; delayed: number; completed: number; failed: number }> {
+    if (this.cfg['eye.runtime.env'] !== 'test') throw new Error('attentionQueueCountsForTests is available only in the test runtime');
+    const c = await this.queueNamed(redisName(attentionQueueNameFor(tenantId, domainId))).getJobCounts('active', 'waiting', 'delayed', 'prioritized', 'completed', 'failed');
+    return { active: c['active'] ?? 0, waiting: (c['waiting'] ?? 0) + (c['prioritized'] ?? 0), delayed: c['delayed'] ?? 0, completed: c['completed'] ?? 0, failed: c['failed'] ?? 0 };
+  }
+  /** Test-only: the Redis job scheduler of a domain's attention timer (its payload and cadence), or null when none. */
+  async attentionSchedulerForTests(tenantId: string, domainId: string): Promise<{ every: number | null; data: AttentionTickPayload | null } | null> {
+    if (this.cfg['eye.runtime.env'] !== 'test') throw new Error('attentionSchedulerForTests is available only in the test runtime');
+    const s = await this.queueNamed(redisName(attentionQueueNameFor(tenantId, domainId))).getJobScheduler(redisName(attentionSchedulerIdFor(tenantId, domainId)));
+    if (s === undefined || s === null) return null;
+    const every = (s as { every?: number | string }).every;
+    return { every: every === undefined ? null : Number(every), data: ((s as { template?: { data?: AttentionTickPayload } }).template?.data ?? null) };
+  }
+  async obliterateAttentionTicksForTests(tenantId: string, domainId: string): Promise<void> {
+    if (this.cfg['eye.runtime.env'] !== 'test') throw new Error('obliterateAttentionTicksForTests is available only in the test runtime');
+    const name = redisName(attentionQueueNameFor(tenantId, domainId));
+    const w = this.workers.get(name);
+    if (w !== undefined) { await w.close().catch(() => undefined); this.workers.delete(name); }
+    const q = this.queueNamed(name);
+    await q.obliterate({ force: true }).catch(() => undefined);
+    await q.close().catch(() => undefined);
+    this.queues.delete(name);
+  }
+  /* end B24 timer */
 
   // ───────────────────────── CP-6 B1: the propagation consumer ─────────────────────────
   registerPropagationHandler(handler: PropagationJobHandler): void { this.propagationHandler = handler; }

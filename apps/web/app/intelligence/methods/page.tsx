@@ -12,6 +12,9 @@ import { useShell } from '../layout';
 import { intelligence, type MethodSummary } from '../../../lib/intelligence';
 import { Empty, GovernedButton, LiveStatus, Mono, ModeBadge, cardStyle,
   DefinitionRow, textareaStyle, fmtInstant } from '../../../components/observation';
+/* B24 (0086) plan */
+import { PlanExecutionsPanel } from './plan-executions-panel';
+/* end B24 plan */
 
 export default function MethodsPage() {
   const { scope, isExtractionManager } = useShell();
@@ -125,6 +128,10 @@ export default function MethodsPage() {
           </div>
         </section>
       )}
+
+      {/* B24 (0086) plan: the selected plans' executions and the extraction agent that runs them */}
+      <PlanExecutionsPanel />
+      {/* end B24 plan */}
     </>
   );
 }

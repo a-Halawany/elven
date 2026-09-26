@@ -1,0 +1,28 @@
+CP-6 B24-F1 at 3409418 — the hosted run on PR #64: ci 36242673225 (attempt 1, 2026-09-26T12:40:40Z → 2026-09-26T13:09:25Z), C19 lifecycle 36242673205
+
+== build-test (green)
+packages/tokens test:  Test Files  1 passed (1)
+packages/tokens test:       Tests  3 passed (3)
+packages/contracts test:  Test Files  6 passed (6)
+packages/contracts test:       Tests  203 passed (203)
+apps/web test:  Test Files  8 passed (8)
+apps/web test:       Tests  48 passed (48)
+apps/api test:  Test Files  69 passed (69)
+apps/api test:       Tests  2487 passed (2487)
+apps/api test:  Test Files  1 passed (1)
+apps/api test:       Tests  9 passed (9)
+ Test Files  1 passed (1)
+      Tests  58 passed (58)
+ Test Files  86 passed (86)
+      Tests  1183 passed (1183)
+=== PASS ===
+C18 dual-path proof: PASS
+C18 evidence verification: PASS
+ Test Files  7 passed (7)
+      Tests  623 passed (623)
+ Test Files  2 passed (2)
+      Tests  44 passed (44)
+
+== browser-regression: green · C19 lifecycle: green
+
+== supply-chain (red, as designed until #62 is on this branch's base): the C15 gate PASS; the patched-image recheck red ONLY on the moved redis index (the same as 8459390 and 45ed41b)

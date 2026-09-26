@@ -133,6 +133,60 @@ export interface IntelligenceOverview {
   };
 }
 
+/* B24 (0086) plan */
+/**
+ * A PLAN EXECUTION (0086 §P): one selected method over one evidence version, queued by the observations subscriber when the evidence was
+ * recorded and run by the domain's EXTRACTION AGENT — pending (waiting for a drain, or for an agent to be registered), running, done
+ * (with its run), refused (a governance answer: the grant, the policy, the method's state, an unreadable evidence) or failed (a fault;
+ * taken again while under the agent's attempt budget). Served as stored.
+ */
+export interface PlanExecutionRow {
+  execution_id: string;
+  selection_id: string;
+  method_id: string;
+  method_key: string;
+  method_version: number;
+  evd_object_id: string;
+  evd_version: number;
+  state: 'pending' | 'running' | 'done' | 'refused' | 'failed';
+  run_id: string | null;
+  agent_id: string | null;
+  principal_id: string | null;
+  attempts: number;
+  last_error: string | null;
+  outcome: { claims_admitted?: number; idempotent_hits?: number; evidence_read?: number; mode?: GatewayMode; run_state?: string; exhausted?: boolean } & Record<string, unknown>;
+  queued_at: string;
+  claimed_at: string | null;
+  finished_at: string | null;
+}
+
+/** The domain's extraction agent as the registry holds it (0086 §P). */
+export interface ExtractionAgentRow {
+  agent_id: string;
+  principal_id: string;
+  agent_version: string;
+  code_digest: string;
+  owner_principal_id: string;
+  escalation_principal_id: string;
+  budgets: { max_executions_per_drain: number; max_attempts: number; drain_every_seconds: number };
+  status: 'active' | 'revoked';
+  created_at: string;
+  revoked_at: string | null;
+}
+
+export interface PlanStatus {
+  executor: { name: string; version: string; codeDigest: string };
+  /** The ACTIVE agent, or null — and then `note` says why the pending executions wait. */
+  agent: ExtractionAgentRow | null;
+  agents: ExtractionAgentRow[];
+  executions: PlanExecutionRow[];
+  counts: Record<PlanExecutionRow['state'], number>;
+  note: string | null;
+  runtime: { scheduler_enabled: boolean; worker_running: boolean; redis_queue: string };
+  receipt: Receipt;
+}
+/* end B24 plan */
+
 async function intel<T>(
   scope: Scope, path: string, action: string, objectType: string,
   payload: unknown = {}, objectId: string | null = null,
@@ -248,6 +302,26 @@ export const intelligence = {
                         runtime_version: string; recorded_from: string; recorded_at: string }>;
       receipt: Receipt;
     }>(s, '/gateway/calls', 'intelligence.read', 'GWC', { limit: 100 }),
+
+  /* B24 (0086) plan */
+  /** The plan executions (newest first; optionally one evidence's or one state's) and the domain's extraction agent — or none, and why they wait. */
+  planStatus: (s: Scope, filter: { evdObjectId?: string; state?: PlanExecutionRow['state'] } = {}) =>
+    intel<PlanStatus>(s, '/plan/status', 'intelligence.read', 'PLX', { ...filter, limit: 100 }),
+
+  /**
+   * Register the domain's EXTRACTION AGENT (human-gated: the extraction manager or the domain administrator naming the agent principal an
+   * administrator provisioned; a tenant administrator may leave `principalId` out and have one created). Its drain runs at once.
+   */
+  registerExtractionAgent: (s: Scope, intake: { principalId?: string; ownerPrincipalId: string; escalationPrincipalId?: string }) =>
+    intel<{ agent: { agentId: string; principalId: string; requeued: number; pending: number; principalCreated: boolean };
+            served: { drainScheduled: boolean; everySeconds: number; workerRunning: boolean }; receipt: Receipt }>(
+      s, '/extraction/agents/register', 'intelligence.extraction.agent.register', 'AGT', intake),
+
+  /** Revoke it (a reason of at least 8 characters). Its next drain is refused and recorded; a new registration re-queues what it refused. */
+  revokeExtractionAgent: (s: Scope, agentId: string, reason: string) =>
+    intel<{ agent: { agentId: string; status: string; pending: number }; receipt: Receipt }>(
+      s, `/extraction/agents/${agentId}/revoke`, 'intelligence.extraction.agent.revoke', 'AGT', { reason }, agentId),
+  /* end B24 plan */
 
   verifyProjections: (s: Scope) =>
     intel<{ projections: Array<{ projection: string; live_rows: string; rebuilt_rows: string; mismatched: string }>;

@@ -4035,6 +4035,223 @@ not policy dimensions yet; no approval step for a suppression; no new hosted bro
 - A timer for stream scheduling.
 - The deadlock mapping noted in B23.4.
 
+## B24 — the attention completion (0086): the timer host and the delivery port, the further materiality dimensions with the enforced overload rule and a transparent rank, suppression approval, delegation, dispositions and the queue evaluated, markers that constrain decision-active use, the selected transformation plan executed (implemented; the real notification provider stays owner decision D6)
+
+**Where it stands.** `phase6-b24`, cut from `phase6-b23` (PR #63). It holds the corrected limiter (PLAN-F4, `c0b9d25`), B23-F1's forward correction 0085 (merged from `phase6-b23` `d2fa829`) and ONE migration, `0086_b24_attention_completion.sql`. B24 is the plan's second stage (`audit/delivery/STAGES.csv` B24) and completes F-P6-07's in-scope clauses. The real-provider clauses stay open on owner decision D6, and novelty stays open for want of an input. The interface register stays **50/0/0**: B24 adds no interface.
+
+**How it was built.** The current account (A1) wrote the §0 PRELUDE first:
+- the seven item events B24 adds;
+- `validate_attention_rules` with every new rule key (the old refusal texts kept);
+- the role `attention_agent`;
+- the tick-step registry `apps/api/src/executive/attention/tick.ts`.
+
+Five implementers then built one part each, in their own worktrees on their own disposable databases (`eye_verify_a1_b24_<part>_*`), with heavy runs through `scripts/dev/heavy-slot.sh`. The integrator merged them and combined the part-local sections into the one 0086 before candidate verification (`MIGRATION_LEDGER.csv`, rule 6). No function is re-declared by two sections.
+
+### B24.1 — §T/§D: the timer host and the delivery port
+
+**The timer host (§T)** is a fourth executive agent kind, `attention`:
+- It runs as role `attention_agent`, method `attention-timer@1.0.0`, task `attention_tick`, with the one budget key `tick_every_seconds` (60–86400).
+- Registration is the existing agent route with `kind: 'attention'`. It points the domain's one timer at the new agent.
+
+Each tick:
+- is an agent run under the agent's OWN session, bound to the exact rule `executive.attention.tick` (no human gate, C2);
+- runs the registered steps in order: escalate (`escalate_attention_due`, with `executive.attention.tick` among its authorities, body otherwise verbatim), then the deliveries, then the rebalance (order 20), then the suppression expiry.
+
+Duplicates, refusals and drift:
+- `executive.attention_ticks` keeps one row per (tenant, domain, tick_key). A duplicate job answers `repeated`, and an advisory lock serialises two concurrent duplicates.
+- A revoked agent's tick is RECORDED as refused on `agent_runs`, never skipped silently.
+- A drifted code digest is refused by the run itself.
+
+**The delivery port (§D).** `executive.attention_deliveries` holds one row per attempt (queued → sent | delivered | failed | abandoned), with the channel's receipt on the row, beside the append-only `attention_delivery_events`.
+
+Planning:
+- One delivery per channel of the item's OWN policy version and per recipient (the owner and the holders of the event's roles).
+- Only events since the domain's first attention agent are planned (the history is not paged).
+
+Retries: bounded (1, 5, 25 … minutes up to `max_attempts`). The last attempt is ABANDONED, and an abandoned delivery never changes the item, which still escalates by its deadline.
+
+**RECEIPT is not ACKNOWLEDGEMENT.** A receipt is the channel's machine proof of placement; an acknowledgement is the person's act. Neither sets the other.
+
+**Channels:**
+- `in_app`: real.
+- `demo-mailbox`: **SYNTHETIC** (`executive.demo_mailbox`, `synthetic_state` always true). It demonstrates the port and closes no real-provider clause.
+- email, SMS, Teams and push: refused by the policy validator, citing **D6** (no provider).
+
+Reads: `POST …/attention/items/:itemId/deliveries` and `POST …/attention/mailbox`. The UI is the deliveries panel on `/decisions/attention`.
+
+### B24.2 — §M: the further dimensions, the enforced overload rule, the rank, the rebalance
+
+**The engine** (`evaluate_attention`, 0083 §4 copied whole) judges five further dimensions: probability, exposure, strategic relevance, information value and irreversibility.
+- A dimension is judged ONLY where a class sets its threshold. A threshold with no input says "no input, not judged", and the item abstains only when the class `require`s that dimension.
+- The inputs are the real ones this product has, each with its basis (`executive.attention_dimensions`): for example, probability as a bracket from a warning's forecast quantiles, and exposure from the live scenarios and packages citing a forecast.
+- NOVELTY has no input and is declared absent, not invented.
+
+**The rank** (ES-47-002: no opaque score) is LEXICOGRAPHIC and transparent: consequence, hours to the window, confidence, exposure, strategic relevance. It is given with its explanation in words.
+
+**The overload rule (PR-44-005)** is ENFORCED:
+- At the owner's cap (`max_open_per_owner` within `window_hours`), a material item below `exempt_min_consequence` is DEPRIORITIZED: recorded, visible, waiting (`item.overload_deprioritized`, `evaluation.overload`).
+- **C3 and C4 are never held, whatever the policy says.**
+- The legacy `max_open_per_role` is not enforced: stored versions are immutable, so enforcing it now would change what they meant when they were set.
+
+**The rebalance** (tick step and a human-gated route) elevates waiting items in rank order when capacity frees (`item.elevated`, with the explanation). It is bounded and idempotent.
+
+The deprioritized view is a panel on `/decisions/attention`. The briefing's attention section reads the new states and dimensions.
+
+### B24.3 — §G: suppression approval, delegation, dispositions, the queue evaluated
+
+**Suppression approval.** Where the class's rule says `approval_required`, a suppression is a REQUEST:
+- The item stays live and keeps escalating.
+- A second person holding an approver role decides. The requester is never the decider (42501).
+- An approved expiry is capped at the class's `max_hours`.
+- A pending request past its `until` EXPIRES visibly (tick step `suppression-expiry`).
+- Without `approval_required`, 0083's behaviour is byte-identical.
+
+**Delegation.** An item's standing is lent, for a bounded window with a reason, to an active human holding an acknowledgement role:
+- It is idempotent on (delegator, request_key) under the digest.
+- It can be ended by the delegator, the delegate, the owner or an administrator.
+- **The owner stays accountable**, and a delegate never delegates further.
+- `may_act_on_item` honours it within its window.
+
+**Dispositions.** A disposition records what the item turned out to be: actioned | not_material | duplicate | late | missed.
+
+**The queue evaluation** (`evaluate_attention_queue`) is a named human's act (executive or administrator; human-gated). It is computed inside the write from the ledgers and appended to `attention_queue_evaluations`. It measures:
+- precision and recall by class, each abstaining below `min_sample`;
+- ranking stability (Kendall tau-b of the rank at the window's ends);
+- severe-item visibility (C3/C4 acknowledged, and delivered, before the first deadline; never held for overload; every breach listed);
+- escalation latency.
+
+The verdict is measured | partial | abstained, with its reason.
+
+### B24.4 — §K: markers constrain decision-active use
+
+- **Reach.** The source-impact markers set since 0083 now also reach scenarios on a reached forecast, runs on a reached scenario, and packages reached through a run.
+- **The commitment gate.** `decision.commit_package` refuses a version that an active marker bears on until a named `decision_authority` holder acknowledges those markers FOR THAT VERSION, with a reason (`commitment rejected (source_impact)`, 409).
+- **The run gate.** `simulation.open_run` refuses a run on a scenario whose forecast carries a FAILED or SUSPENDED marker (409). A DEGRADED or UNKNOWN marker admits the run, with `controls.source_impact` declared and a run marker set.
+- **The integrator's change (§I).** `mark_source_impact` re-sets a marker when the non-healthy state changes, so an acknowledgement for the old state does not carry.
+- The UI is the markers panel and the source-impact control on `/decisions`.
+
+### B24.5 — §P: the selected transformation plan executes
+
+The plan selection recorded since 0083 now EXECUTES:
+- **Where.** One `intelligence.plan_executions` row per (method, method version, evidence, evidence version), inserted in the observations delivery's own transaction. A redelivery, a replay or a second producer never queues a second run.
+- **Who.** The domain's registered EXTRACTION AGENT runs it: `intelligence.extraction_agents`, with an accountable owner and an escalation principal. It runs under its own session, through the same governed pipeline an operator's `/extract` uses. The worker claims with SKIP LOCKED and reconciles at startup.
+- **No agent registered.** The rows stay PENDING and visible. A registration re-queues the refused ones.
+- The UI is the plan-executions panel on `/intelligence/methods`.
+
+### B24.6 — the evidence
+
+- **Harnesses** (each on a fresh database; the timer harness gained D1.7 with the act-found correction, B24.7):
+
+| Harness | Result |
+|---|---|
+| `phase6-attention-timer-b24` | 5/5 |
+| `phase6-attention-materiality-b24` | 5/5 |
+| `phase6-attention-governance-b24` | 6/6 |
+| `phase6-attention-markers-b24` | 4/4 |
+| `phase6-attention-plan-b24` | 6/6 |
+| `phase6-retrieve-context-b23` (B23-F1) | 14/14 |
+
+- **Full integration suite on a fresh database:**
+  - run 1: 1181/1182 in 86 files. Its one failure was the governance evaluation's expectation of NO delivery ledger. The timer part's ledger is now integrated, so the measure is real; the expectation was corrected to measurable, 0 of 3 planted items delivered (`70db852`).
+  - run 2: 1181/1182. `phase6-graph-subscriptions-2` B7 telemetry is the load-timing item carried from B23. It passes alone with the timer harness (19/19) and stays with H1.
+  - run 3, after the act-found corrections: **1182/1182 in 86 files**.
+- **Unit and the rest:**
+  - unit 2487/2487 + the hermetic meta 9/9 (on the committed candidate);
+  - acceptance 58/58;
+  - the upgrade proof PASS (migrations 65, roles 36);
+  - browser 51/51 on a fresh database (the demo API and web stopped for it; the rehearsal Redis, never the demo's);
+  - the demo walk `e2e/phase6-attention.demo.spec.ts` (`playwright.demo.config.ts` only; the hosted count stays 51): 2/2 on `eye_demo` after the act — the queue, the elevation explanation, the evaluation, the approved suppression, the active delegation, the markers panel, and an item's deliveries beside its acknowledgement with the demo mailbox marked SYNTHETIC (`evidence/phase6-browser/b24-01…02`). It is the attention page's first browser walk: B22's page had none.
+- **The act on `eye_demo`:** `evidence/cp6/act-b24.txt` — **ALL SCENES HELD, 63 checks, 486.1 s**. Most of that time is spent waiting on the database clock for the two-minute deadline and the 60 s tick.
+  - Before it: four rehearsals on restored copies with the rehearsal Redis. Rehearsals 1–3 held 62 checks each; rehearsal 4 held after the corrections, with the elevated item's delivery now a check.
+  - The backup before 0085/0086 is `.eye-local/backups/eye_demo-pre-0085-20260925T162716Z.dump`.
+  - The scenes:
+    - B24-0: the state, and the re-registrations.
+    - B24-1: the timer escalating a C3 material change under the attention agent's principal.
+    - B24-2: eight deliveries with receipts (in_app, SYNTHETIC demo-mailbox), then the acknowledgement as a separate act.
+    - B24-3: the dimensions and the rank; the cap holding two C2 items while the C3 item is exempt; the rebalance elevating after a closure.
+    - B24-4: a suppression approved by a second person (the requester and a non-approver refused); a delegation (the same key repeated; the agent refused as delegate).
+    - B24-5: four dispositions and the evaluation (verdict partial, its reason as the record states it).
+    - B24-6: a suspended source setting seven markers; the commitment refused until acknowledged for the version; a run on the scenario refused; reactivation clearing all seven.
+    - B24-7: an upload's plan executed once under the extraction agent (8 claims, replay mode).
+    - B24-8: the B23-F1 correction on the demonstration.
+    - B24-9: what the act leaves.
+- **The hosted run (bound 2026-09-25):** ci **36164184010** at `8459390` on PR #64, ONE attempt:
+  - build-test green: unit 2487/2487 + the meta 9/9, web 48, contracts 203, acceptance 58/58, **the integration suite 1182/1182 in 86 files on a fresh database**, the upgrade proof PASS, C18 623/623 + 44;
+  - browser-regression green;
+  - C19 lifecycle **36164183865** green.
+  - The `supply-chain` job: the C15 gate itself **PASS**; its patched-image recheck red ONLY on the moved redis index (PR #62), as on #61 and #63 (`evidence/cp6/hosted-8459390-summary.txt`).
+  - The local load-timing item (B7 telemetry) did not occur on the hosted run. No unit promoted.
+- **Synthetic vs real.** Every delivery shown is `in_app` or the SYNTHETIC `demo-mailbox`. Nothing here is real-provider acceptance: the stage's scene "escalates by email" is demonstrated as an escalation delivered to the synthetic mailbox, and the email clause waits for D6.
+
+### B24.7 — what the act found, corrected before the demonstration
+
+- **An elevated item was delivered to nobody.** The rehearsals showed the item the rebalance elevated got no delivery on later ticks. The planner (`plan_attention_deliveries`, §D2) planned only item.routed, item.escalated and item.unrouted events, while the tick and the rebalance state that the deliveries step plans for what was escalated or elevated.
+  - Corrected in 0086 before any shared application: item.elevated is planned like a routing (an elevated-unrouted item also reaches the class's escalation roles), with the delivery CHECK and the scan index widened to match.
+  - Regression: `phase6-attention-timer-b24` D1.7.
+  - The act's closing note is now a check.
+- **Option and choice refusals answered 500 (older, since 0041).** No row in the refusal mapper matched `option rejected: …` or `choice rejected: …`, so these deliberate refusals answered 500 through the routes. The act saw it on an option citing a run that rests on a withdrawn forecast.
+  - New rows answer as 0078's header states: 404 for the absent version, 409 for an immutable or closed version, 422 otherwise.
+  - Regressions in `test/unit/phase6-markers-b24.test.ts`.
+
+**Stated (not done here).**
+- A real notification provider (D6).
+- Novelty (no input).
+- Opportunity and commitment item classes, and a fairness measure.
+- The Strategic Health Score.
+- The remediation workflow on coverage loss.
+- Markers on claims, twins and briefings.
+- The run gate on a run naming no scenario.
+- A lock serialising two concurrent routings to one owner: one item may exceed the cap, and a later rebalance never demotes it.
+- Routing an exhausted plan execution to its escalation principal.
+- An outbox event for the new acts (the register stays 50/0/0).
+- Hosted browser-gate specs for the B24 panels (the demo walk covers them locally).
+
+### B24.8 — B24-F1 corrected (0087; the bounded B24 review of 2026-09-25)
+
+**The finding.** The execution ledger's identity is (method, method version, evidence object, evidence version). The worker, however, passed the orchestrator the evidence object only. The orchestrator then read the object's CURRENT version, and `record_plan_execution` never compared the version read with the queued one. A plan queued on version 1 whose evidence was corrected to version 2 before its drain therefore ran on version 2 and was marked `done` as the version-1 execution.
+
+**The control.** The new regression X7 was run against the B24 candidate's code, without the fix and without 0087. The version-1 execution was recorded `done` (drain: done 1, refused 0) after its evidence had been corrected to version 2. That is the defect exactly, reproduced through the real correction route on PostgreSQL.
+
+**The correction.** This is forward only: 0084–0086 are applied and untouched.
+- **The pin (TypeScript).** The worker passes `evidenceVersions {object: queued version}`. The orchestrator then reads exactly that version, or refuses before any run starts:
+  - a version not recorded answers 409 (`extraction refused (evidence_version)`);
+  - a later canonical version raises `EvidenceVersionSuperseded`.
+  - The run's retrieval receipt and its custody entry name the version read.
+- **The ledger's guard (0087).** `record_plan_execution` (0086 §P copied whole, plus one guard) accepts `done` only when the run's reported `evd_version` equals the execution's own. Anything else is refused with `plan execution rejected (evidence_version)` (22023).
+- **The explicit reselection (0087, new port `intelligence.reselect_plan_execution`, the scheduler's capability):**
+  - A LIVE successor is reselected. The version-n execution is recorded `refused`, with the reason and the successor named. ONE pending execution is queued for the same method version on the current evidence version. The ledger's UNIQUE identity means an existing one is named, never duplicated. The new row's first event is `reselected`, naming where it came from.
+  - A WITHDRAWN successor is not extracted: the worker records the refusal alone.
+
+**The regression (real database, the real correction route): `phase6-attention-plan-b24` X7.**
+- Queued on version 1, corrected to version 2 before the drain. The version-1 execution was refused (superseded) and version 2 was reselected, with no run and no claim.
+- The correct-version control: version 2 drained `done`, reporting version 2. The custody entry of its retrieval names version 2.
+- The duplicate control: a re-drain claims nothing.
+- The ledger refuses a forged `done` naming version 1 (22023).
+- The retry of version 2 is free: idempotent hit, no model call.
+- A withdrawn successor is refused alone, with nothing reselected.
+- X6 probes the new port's capability from both authorities.
+- Results: the file 7/7. The neighbours `phase2-acceptance`, `phase6-graph-subscriptions-4`, `phase6-attention-markers-b24`, `phase6-attention-b22` and `phase1-acceptance`: 117/117.
+
+**Hosted (bound 2026-09-26).** ci **36242673225** at `3409418` on #64, ONE attempt. build-test green: unit 2487 + 9, web 48, contracts 203, acceptance 58/58, **the integration suite 1183/1183** on a fresh database, the upgrade proof PASS (66), C18 623 + 44. browser-regression green. C19 **36242673205** green. `supply-chain`: the C15 gate PASS; the recheck red only on the moved redis index (#62) (`evidence/cp6/hosted-3409418-summary.txt`).
+
+**Stated.** A correction publishes no ObservationRecorded. A correction arriving AFTER a version-n execution finished is therefore not re-extracted automatically: the reselection happens when a queued execution meets a later version.
+
+### B24.9 — B24-F2: the tracker corrected (one bounded pass)
+
+- **F-P6-07 completes in B34,** after B28's novelty detector and B32's Strategy Graph and Strategic Health Score. It depends on F-P4-10, F-P6-08 and F-P6-09, and is advanced by B23, B24 and B28.
+- **Every unfinished clause has its stage:**
+  - B28: the novelty input.
+  - B34: opportunity and commitment items, the `act` transition, ranking fairness, the score consumed, and the channel adapters (against a local sink, synthetic).
+  - R2: real-provider delivery and the AT-44 record, external under D6.
+  - The residual construction is 1–2 U in B34, plus 0.25–0.5 U verification in R2.
+- **B24 completes nothing now.** It carries its own effort (1.5–3 U), explicit clause-level conditions and scenes B24-1…7, and advances F-P6-07.
+- **B28 carries the two B24 carryovers,** with their own effort (0.75–1.5 U). Each is an explicit completion condition with its scene:
+  - (a) the remediation workflow on coverage loss, scene B28-R;
+  - (b) markers reaching packages through assumptions, scene B28-A;
+  - plus (c) F-P6-07's novelty input, scene B28-N.
+- **F-P4-12 no longer depends on F-P6-07's unfinished clauses.** It needs the delivered attention queue: B28's `extra_depends_on` is B24.
+- **The schedule was re-derived once.** Three accounts: M1 expected 2027-07-02, unchanged. Two accounts: 2027-10-06. One account: 2028-08-02. The dates stay provisional. `feature-tracker.mjs` and `schedule-model.py --check` both PASS.
+
 ## Order and the next implementation batch
 
 B3, B1 and B2 are done in code, B4/B5 applied to the audit (the 2026-09-11 checkpoints), B6 done in
@@ -4047,4 +4264,4 @@ one artefact, no deployment leg. Every leg of every unit stays unaccepted until 
 carries its own signed evidence (P7-D). The synthetic-company demonstration (`eye_demo`, NORDWERK) remains the deliverable
 every batch is exercised on: B3's kinds become visible on the demonstration when a scenario with the
 new kinds is declared there through the governed route (a scripted act, `scripts/phase4/`), which is
-the next demonstration step after the hosted run is green. B22 delivered the consumers and the attention policy (0083; the register 44/6/0) and the sweep's remedy (0082). Then B23 (the commands and the query — L1-I02, L3-I02, L4-I02, L7-I02, L10-I02/-I03). B23 bound them and the briefing's attention section (0084; the register 50/0/0). From here the order is the finite delivery plan's (`audit/DELIVERY_PLAN.md`, `audit/delivery/STAGES.csv`): B24 (attention completion) next on A1. The C15 return to the official images merged with #57 (`main` `870b212`); the live demonstration containers were recreated onto those images on 2026-09-24 under the owner's word (§B22.2). The `ctx.build` remedy was delivered as 0082 (§B22.1) — the owner's 2026-09-24 word made it a technical choice. AU-MEM-0067 stays OPEN without a waiver: the per-object class (a missing or corrupt object under a reachable root) keeps A7's one 409 and the specification obligation stands (§B21.2's table).
+the next demonstration step after the hosted run is green. B22 delivered the consumers and the attention policy (0083; the register 44/6/0) and the sweep's remedy (0082). Then B23 (the commands and the query — L1-I02, L3-I02, L4-I02, L7-I02, L10-I02/-I03). B23 bound them and the briefing's attention section (0084; the register 50/0/0). From here the order is the finite delivery plan's (`audit/DELIVERY_PLAN.md`, `audit/delivery/STAGES.csv`): B24 (the attention completion, 0086) delivered on 2026-09-25 on `phase6-b24`, stacked on #63, and B24-F1 corrected on 2026-09-26 (0087, §B24.8) with the tracker corrected (§B24.9); B28 (stream processing, the weak-signal workbench, the early-warning lifecycle, and the two B24 carryovers) is in progress on A1. The C15 return to the official images merged with #57 (`main` `870b212`); the live demonstration containers were recreated onto those images on 2026-09-24 under the owner's word (§B22.2). The `ctx.build` remedy was delivered as 0082 (§B22.1) — the owner's 2026-09-24 word made it a technical choice. AU-MEM-0067 stays OPEN without a waiver: the per-object class (a missing or corrupt object under a reachable root) keeps A7's one 409 and the specification obligation stands (§B21.2's table).

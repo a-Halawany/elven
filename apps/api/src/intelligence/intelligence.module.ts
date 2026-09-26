@@ -19,6 +19,11 @@ import { ExtractionOrchestrator } from './extraction/orchestrator.service.js';
 import { ReviewService } from './review/review.service.js';
 import { ContradictionService } from './contradictions/contradiction.service.js';
 import { ObservationExceptionFilter } from '../observation/observation.filter.js';
+/* B24 (0086) plan */
+import { ExtractionAgentSessionService } from './plan/extraction-agent-session.service.js';
+import { ExtractionAgentsService } from './plan/extraction-agents.service.js';
+import { ExtractionPlanWorkerService } from './plan/extraction-plan-worker.service.js';
+/* end B24 plan */
 
 @Module({
   imports: [PipelineModule, IdentityModule, ObservationModule],
@@ -30,10 +35,15 @@ import { ObservationExceptionFilter } from '../observation/observation.filter.js
     ExtractionOrchestrator,
     ReviewService,
     ContradictionService,
+    /* B24 (0086) plan: the extraction agent's session, its registry and the worker that runs the selected plans */
+    ExtractionAgentSessionService,
+    ExtractionAgentsService,
+    ExtractionPlanWorkerService,
+    /* end B24 plan */
     // The same filter the observation routes use. A deliberate refusal from an
     // intelligence port is a rule, not a crash, and answers as one.
     { provide: APP_FILTER, useClass: ObservationExceptionFilter },
   ],
-  exports: [ModelGatewayService, ExtractionOrchestrator],
+  exports: [ModelGatewayService, ExtractionOrchestrator, /* B24 (0086) plan */ ExtractionPlanWorkerService /* end B24 plan */],
 })
 export class IntelligenceModule {}

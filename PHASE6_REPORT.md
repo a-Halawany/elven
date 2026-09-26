@@ -3916,3 +3916,95 @@ The integration failures are three different load-timing items, none common to b
 - **Next.** B24 (the attention completion: the B22 deferrals) on A1. B50 and B80 are prepared for A2 and A3, subject to the owner's allocation.
 
 **37.5 — B23-F1 (the bounded review of 2026-09-25).** The context query's diagnostics counted records the caller may not see. Corrected by the forward migration 0085 (the reader's policy applied to every aggregate; unverified rows neither counted nor mentioned; truncation over the authorized items), with regressions for purpose, audience, clearance, truncation and the log-sourced answer (`audit/CP6_BATCHES.md` §B23.8). 0084 stays as applied.
+
+## 38. B24 (2026-09-25): the attention completion (0086), the review's two residuals closed, the #62 decision and the integration sequence prepared
+
+### 38.1 The bounded review of 2026-09-25, applied alongside
+
+The review is `audit/reviews/The_Eye_B23_Plan_and_Redis_Review_2026-09-25.md`.
+
+- **B23-F1: corrected by the forward migration 0085.** The context query's diagnostics obey the reader's purpose, clearance and audience; 0084 stays as applied. The correction is on #63 at `d2fa829`, with regressions X10–X14 (`audit/CP6_BATCHES.md` §B23.8).
+- **PLAN-F4: closed.** `scripts/dev/heavy-slot.sh` keeps the slot until the cancelled workload's process group has exited: TERM, then the grace period `EYE_HEAVY_TERM_GRACE`, then KILL, then release. A normal finish also drains the group. There are three regressions, and a control reproduces the old defect (the next job entered about 3 s early). The fix is on #61 at `45fda0f`.
+- **#62: prepared for its separate merge decision.** Every check is green at `17f0236`. The decision, and the stack's order after it, are in `audit/delivery/INTEGRATION_SEQUENCE.md`: #62 first, then #60, #61, #63 and B24, one at a time, each on its new head's checks. No merge was made.
+- **The recalibration bookkeeping** keeps active build time, hosted waits and review/approval waits apart (`audit/DELIVERY_PLAN.md` §9, observations 1 and 2).
+
+### 38.2 What B24 implements, and the local results
+
+The mechanism is in `audit/CP6_BATCHES.md` §B24. The results are in `evidence/cp6/b24-local-results.txt`.
+
+**Implemented:**
+- The timer host: the attention agent's scheduled tick escalates overdue items under its own session.
+- The delivery port: receipts per attempt, bounded retries and abandonment. Channels are `in_app` and the SYNTHETIC demo mailbox.
+- The further materiality dimensions, each with its basis. Novelty is declared without input.
+- The enforced overload rule: C3 and C4 are never held.
+- The transparent rank, the rebalance and the deprioritized view.
+- Suppression approval under separation of duties, item delegation and dispositions.
+- The queue evaluation: precision and recall by class, rank stability, severe-item visibility and escalation latency.
+- Markers that constrain the commitment and the run.
+- The selected transformation plan, executed by the extraction agent.
+
+**Found by the act and corrected before the demonstration:**
+- An elevated item was delivered to nobody.
+- The option and choice refusals answered 500. This dates from 0041.
+
+**Local results:**
+
+| Check | Result |
+|---|---|
+| Part harnesses | 5 + 5 + 6 + 4 + 6 = 26/26, and B23-F1's 14/14 |
+| Full integration run 1 | 1181/1182 (a stale expectation of no delivery ledger, corrected) |
+| Full integration run 2 | 1181/1182 (the carried B7 telemetry timing item; it passes alone) |
+| Full integration run 3 | **1182/1182** |
+| Unit | 2487 + 9, on the committed tree |
+| Acceptance | 58/58 |
+| Upgrade proof | PASS (migrations 65, roles 36) |
+| Browser | 51/51 |
+| Demo walk | 2/2 |
+
+### 38.3 The NORDWERK demonstration: `evidence/cp6/act-b24.txt`
+
+`eye_demo` was migrated through 0086 after a fresh backup. The API was restarted on the B24 build (VERIFIED). **ALL SCENES HELD: 63 checks, 486.1 s.** Before that, four rehearsals ran on restored copies with the rehearsal Redis.
+
+- **The timer.** A C3 material change with a two-minute deadline was escalated by the attention agent's tick.
+- **The deliveries.** Eight deliveries with receipts, `in_app` and SYNTHETIC mailbox. The acknowledgement was a separate act, and neither changed the other.
+- **The overload rule.** The cap held two C2 items while the C3 item passed as exempt. A closure freed capacity, and the rebalance elevated the waiting item, which was then delivered.
+- **Suppression and delegation.** A suppression was approved by a second person; the requester and a non-approver were refused. A delegation was recorded, and repeating its key answered the same record.
+- **The evaluation.** Four dispositions were recorded, and the evaluation came back `partial`, with its reason.
+- **The markers.** A suspended source set seven markers. The commitment was refused until the markers were acknowledged for its version, and a run on the source's scenario was refused. Reactivating the source cleared all seven.
+- **The plan.** One plan execution ran under the extraction agent and admitted 8 claims in replay mode.
+- **B23-F1.** The correction was shown on the demonstration.
+
+**Real-provider acceptance is separate:** nothing in the act or the harnesses is email, SMS, Teams or push delivery (owner decision D6).
+
+### 38.4 Heads, statuses and what remains
+
+- **Heads.** `main` `5165a97`; #60 `7125550`; #61 `45fda0f`; #62 `17f0236`; #63 `d2fa829`; **#64 (B24)** candidate `8459390` on `phase6-b24`, stacked on #63.
+- **Hosted.** ci **36164184010** at `8459390` (one attempt): build-test green — unit 2487 + 9, web 48, contracts 203, acceptance 58/58, the integration suite **1182/1182 in 86 files** on a fresh database, upgrade PASS, C18 623 + 44; browser-regression green; C19 lifecycle **36164183865** green. `supply-chain`: the C15 gate PASS, the patched-image recheck red only on the moved redis index (PR #62).
+- **Rows:** implemented 1003 → 1013, missing 2513 → 2499.
+- **Feature groups:** the labels are unchanged. F-P6-07 stays partial on:
+  - the real provider (D6);
+  - novelty (no input);
+  - opportunity and commitment item classes (the objects of B32 and B34);
+  - a fairness measure;
+  - an `act` transition;
+  - the Strategic Health Score (B32).
+- **Acceptance units.** Seventeen gain B24 evidence and none is promoted. The split stays **3,555 = 3,179 + 339 + 37**.
+- **Carried to B28 (the next A1 stage):** the remediation workflow on coverage loss, and markers reaching packages through assumptions. Both were in B24's stated scope and were not delivered.
+- **H1 timing items, preserved.** None became a functional blocker. `phase6-graph-subscriptions-2` B7 telemetry recurred once under load, and the gate tests need a clean tree.
+
+**38.5 — The bounded B24 review of 2026-09-25 (`audit/reviews/The_Eye_B24_Bounded_Review_2026-09-25.md`), applied 2026-09-26.**
+- **B23-F1 and PLAN-F4 stay CLOSED.**
+- **B24-F1 is corrected** by the forward migration 0087 and the worker's version pin (`audit/CP6_BATCHES.md` §B24.8):
+  - A plan execution is done only against the evidence version it was queued for.
+  - A later LIVE version is reselected explicitly; a withdrawn one is refused alone.
+  - The ledger refuses a `done` naming another version.
+  - The regression is X7, on the real database and the real correction route. The same X7 on the unfixed code reproduced the defect (done 1, refused 0).
+  - Results: the plan file 7/7; neighbours 117/117; the full integration suite **1183/1183** on a fresh database.
+  - `eye_demo` is migrated through 0087 after the backup `eye_demo-pre-0087-20260926T122536Z.dump`, and the API restart VERIFIED. 0084–0086 are untouched.
+  - Hosted: ci **36242673225** at `3409418`. build-test green (integration 1183/1183, unit 2487 + 9, acceptance 58/58, upgrade PASS, C18 623 + 44), browser green, C19 36242673205 green; `supply-chain` red only on the redis recheck.
+- **B24-F2 is corrected in one tracker pass** (§B24.9):
+  - F-P6-07 completes in B34 after B28 and B32, with real-provider acceptance in R2 under D6.
+  - B24 advances it and completes nothing.
+  - B28 carries the two B24 carryovers as explicit completion conditions and scenes.
+  - The schedule was re-derived once: M1 at three accounts is still 2027-07-02.
+- **#61's A5 timing failure has a focused disposition** (`audit/delivery/INTEGRATION_SEQUENCE.md` §4). No runtime change is in #61's diff. A5 passed 40/40 on #61's exact code: 30 isolated runs, plus 10 whole-file runs on fresh databases alongside a full integration run for load. The gate is unchanged and required on #61's next head.

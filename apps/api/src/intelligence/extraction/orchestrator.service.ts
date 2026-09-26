@@ -23,6 +23,18 @@ import { ExtractionService, inheritedControlsOf, type EvidenceUnit,
 /** The declared-target bound the capability permits for one operation. */
 const MAX_CLAIMS_PER_EVIDENCE = 8;
 
+/**
+ * B24-F1: the version a plan execution PINNED is no longer the evidence object's current version (a correction or a withdrawal
+ * admitted a later canonical version after the plan was queued). Thrown BEFORE any run starts: the caller refuses the old execution
+ * or reselects the current version explicitly — the run is never done against a version other than the one its plan named.
+ */
+export class EvidenceVersionSuperseded extends Error {
+  constructor(readonly evidenceObjectId: string, readonly pinnedVersion: number, readonly currentVersion: number,
+              readonly currentLifecycle: string, readonly currentTruth: string) {
+    super(`extraction refused (evidence_version): evidence ${evidenceObjectId} is at version ${currentVersion} (${currentLifecycle}); the plan named version ${pinnedVersion}`);
+  }
+}
+
 @Injectable()
 export class ExtractionOrchestrator {
   constructor(
@@ -85,6 +97,12 @@ export class ExtractionOrchestrator {
     envelope: Envelope; principal: AuthenticatedPrincipal;
     tenantId: string; domainId: string; methodId: string;
     limit: number; newAttempt: boolean;
+    /* B24 (0086) plan: a plan execution runs its method over exactly its evidence, at the method version its plan named. */
+    evidenceIds?: readonly string[]; methodVersion?: number;
+    /* end B24 plan */
+    /* B24-F1: the evidence VERSION each named object was selected at — the run reads exactly that version or refuses before it starts. */
+    evidenceVersions?: Readonly<Record<string, number>>;
+    /* end B24-F1 */
   }): Promise<ExtractionOutcome> {
     const correlationId = a.envelope.correlation_id;
     const purposeId = a.envelope.purpose_id ?? 'intelligence';
@@ -104,14 +122,28 @@ export class ExtractionOrchestrator {
         errorBody('EYE_STA_002', correlationId,
           `extraction refused: the method is ${String(method['lifecycle_state'])}, not active`), 409);
     }
+    /* B24 (0086) plan: a plan named the method version it selected; a method re-versioned since is not silently run in its place. */
+    if (a.methodVersion !== undefined && Number(method['method_version']) !== a.methodVersion) {
+      throw new HttpException(
+        errorBody('EYE_STA_002', correlationId,
+          `extraction refused: the method is at version ${String(method['method_version'])}; the plan named version ${a.methodVersion}`), 409);
+    }
+    /* end B24 plan */
 
     // The evidence this method reads: EVD objects for its source (or the whole
     // domain when the method declares none), current versions only.
     const sourceId = method['source_id'] === null ? null : String(method['source_id']);
     const evidence = await this.read(read, 'EVD', null, async (cap) => {
-      const rows = (await cap.readCanonicalObjects()
+      let q = cap.readCanonicalObjects()
         .selectAll()
-        .where('object_type' as never, '=', 'EVD' as never)
+        .where('object_type' as never, '=', 'EVD' as never);
+      /* B24 (0086) plan: the evidence filter — the named objects only, however far back they were recorded. */
+      if (a.evidenceIds !== undefined) {
+        if (a.evidenceIds.length === 0) return [];
+        q = q.where('object_id' as never, 'in', [...a.evidenceIds] as never);
+      }
+      /* end B24 plan */
+      const rows = (await q
         .orderBy('recorded_at' as never, 'desc')
         .limit(400)
         .execute()) as Array<Record<string, unknown>>;
@@ -123,6 +155,23 @@ export class ExtractionOrchestrator {
           current.set(id, r);
         }
       }
+      /* B24-F1: a PINNED object is read at its pinned version, and only while that version is still the current one. A version not
+         recorded is refused (409); a later version (a correction or a withdrawal) raises EvidenceVersionSuperseded — never a silent
+         substitution of the current version for the one the plan was queued on. */
+      if (a.evidenceVersions !== undefined) {
+        for (const [id, pinned] of Object.entries(a.evidenceVersions)) {
+          const at = rows.find((r) => String(r['object_id']) === id && Number(r['object_version']) === pinned);
+          if (at === undefined) {
+            throw new HttpException(errorBody('EYE_STA_002', correlationId,
+              `extraction refused (evidence_version): evidence ${id} version ${pinned} is not recorded in this domain`), 409);
+          }
+          const cur = current.get(id)!;
+          if (Number(cur['object_version']) !== pinned) {
+            throw new EvidenceVersionSuperseded(id, pinned, Number(cur['object_version']), String(cur['lifecycle_state'] ?? ''), String(cur['truth_state'] ?? ''));
+          }
+        }
+      }
+      /* end B24-F1 */
       return [...current.values()].filter((r) => {
         if (sourceId === null) return true;
         return String(r['provenance_ref'] ?? '').startsWith(`SRC:${sourceId}@`);
@@ -210,6 +259,7 @@ export class ExtractionOrchestrator {
                 method_key: String(pinRow['method_key']),
                 run_id: runId,
                 mode,
+                evidence_version: String(evd['object_version']), // B24-F1: the custody entry names the version the run selected
               });
             // B21.2 (D2.6/D2.7): a refused or degraded read is RETURNED so its custody row commits; the audit row says what the read found —
             // on a SUCCESS outcome either way (the custody row is a business effect; 0013's closure needs one success audit row beside it).
@@ -231,6 +281,7 @@ export class ExtractionOrchestrator {
         retrievalAuditSeq = got.auditSeq;
         evidenceRetrievals.push({
           evidenceObjectId: evdObjectId,
+          evidenceVersion: Number(evd['object_version']),
           policyDecisionId: got.policyDecisionId,
           auditSeq: got.auditSeq,
         });

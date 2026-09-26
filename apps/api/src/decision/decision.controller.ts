@@ -21,6 +21,9 @@ import { PackageService, validateOptionIntake, validatePackageIntake, validateTe
 import { ApprovalService, validateApprovalIntake } from './approvals/approval.service.js';
 import { ReplayService } from './replay/replay.service.js';
 import { MonitoringService, validateOutcomeIntake } from './monitoring/monitoring.service.js';
+// B24 (0086) markers
+import { SourceImpactCapability } from '../observation/impact/source-impact.capabilities.js';
+import { SourceImpactService } from '../observation/impact/source-impact.service.js';
 
 function ctx(req: EyeRequest) {
   const envelope = req.eyeEnvelope;
@@ -371,4 +374,32 @@ export class DecisionController {
       DecisionCapability.read, async (cap) => cap.rebuildProjections());
     return { projections: out.result, receipt: receipt(out) };
   }
+
+  /* B24 (0086) markers */
+  // F-P6-07 (V03-T-077): the markers on a source's derived products CONSTRAIN the commitment (decision.commit_package refuses
+  // `commitment rejected (source_impact)` while an active marker bearing on the version is not acknowledged for it). The service is
+  // stateless (the capability carries the transaction), so it is held here rather than injected.
+  private readonly sourceImpact = new SourceImpactService();
+
+  /**
+   * THE ACKNOWLEDGEMENT of a source impact, for ONE version: a named human holding decision_authority (the role that commits — the
+   * person who answers for committing on a degraded source; the exact PDP rule `decision.source_impact.acknowledge`, human-gated)
+   * names the active markers that bear on that version and says why. Recorded as `source_impact.acknowledged`; a new version needs
+   * its own. The port judges the person, the markers and the version.
+   */
+  @Post('/:packageId/source-impact/acknowledge')
+  async acknowledgeSourceImpact(
+    @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('packageId') packageId: string,
+    @Body() body: { payload?: { version?: unknown; markerIds?: unknown; reason?: unknown } },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.write(
+      envelope, principal, this.route(tenantId, domainId, 'decision.source_impact.acknowledge', 'DPK', packageId), SourceImpactCapability.acknowledge,
+      async (cap, scope) => {
+        const r = await this.sourceImpact.acknowledge(cap, scope, packageId, body.payload ?? {}, principal.principalId, envelope.correlation_id);
+        return { result: r, targetType: 'DPK', targetId: packageId, targetVersion: String(r.version), outboxEvent: null };
+      });
+    return { acknowledgement: out.result, receipt: receipt(out) };
+  }
+  /* end B24 markers */
 }

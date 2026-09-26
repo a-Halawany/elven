@@ -99,6 +99,8 @@ export function inheritedControlsOf(evidence: Record<string, unknown>): Inherite
 
 export interface RetrievalReceipt {
   evidenceObjectId: string;
+  /* B24-F1: the canonical version of the evidence object the run selected and read (a plan execution pins it). */
+  evidenceVersion: number;
   policyDecisionId: string;
   auditSeq: number;
 }

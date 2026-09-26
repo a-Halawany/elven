@@ -70,6 +70,14 @@ export interface IntelligenceReads {
   rebuildProjections(): Promise<Array<{
     projection: string; live_rows: string; rebuilt_rows: string; mismatched: string;
   }>>;
+  /* B24 (0086) plan */
+  /** 0083 §7 / 0086 §P: the plan selections, the extraction agents and the plan executions (each with its append-only ledger) — RLS-scoped reads. */
+  readPlanSelections(): any;
+  readExtractionAgents(): any;
+  readExtractionAgentEvents(): any;
+  readPlanExecutions(): any;
+  readPlanExecutionEvents(): any;
+  /* end B24 plan */
 }
 
 // ───────────────────────── method registry ─────────────────────────
@@ -169,6 +177,19 @@ export interface ExtractionWrites extends IntelligenceReads, ContradictionWrites
   }): Promise<void>;
 }
 
+/* B24 (0086) plan */
+// ───────────────────────── the extraction agent (0086 §P) ─────────────────────────
+
+/** 0086 §P: the registry's two governed writes — a named human registers or revokes the domain's extraction agent. */
+export interface ExtractionAgentWrites extends IntelligenceReads {
+  registerExtractionAgent(a: {
+    agentId: string; tenantId: string; domainId: string; principalId: string; version: string; codeDigest: string;
+    owner: string; escalation: string; budgets: Record<string, unknown>; actor: string; eventId: string; correlationId: string;
+  }): Promise<{ agent_id: string; principal_id: string; version: string; code_digest: string; budgets: Record<string, unknown>; owner: string; escalation: string; requeued: number; pending: number }>;
+  revokeExtractionAgent(a: { agentId: string; tenantId: string; domainId: string; reason: string; actor: string; eventId: string; correlationId: string }): Promise<{ agent_id: string; status: string; pending: number }>;
+}
+/* end B24 plan */
+
 // ───────────────────────── review ─────────────────────────
 
 export interface ReviewWrites extends IntelligenceReads, ContradictionWrites {
@@ -192,8 +213,29 @@ export interface ReviewWrites extends IntelligenceReads, ContradictionWrites {
 // ───────────────────────── implementation ─────────────────────────
 
 class IntelligenceCapabilityImpl extends IntelligenceCore
-  implements MethodWrites, ExtractionWrites, ReviewWrites {
+  implements MethodWrites, ExtractionWrites, ReviewWrites, ExtractionAgentWrites {
   constructor(tx: Tx, action: string) { super(tx, action); }
+
+  /* B24 (0086) plan */
+  readPlanSelections(): any { return this.from('intelligence.plan_selections'); }
+  readExtractionAgents(): any { return this.from('intelligence.extraction_agents'); }
+  readExtractionAgentEvents(): any { return this.from('intelligence.extraction_agent_events'); }
+  readPlanExecutions(): any { return this.from('intelligence.plan_executions'); }
+  readPlanExecutionEvents(): any { return this.from('intelligence.plan_execution_events'); }
+  async registerExtractionAgent(a: Parameters<ExtractionAgentWrites['registerExtractionAgent']>[0]) {
+    type Answer = Awaited<ReturnType<ExtractionAgentWrites['registerExtractionAgent']>>;
+    const rows = await this.call<{ r: Answer }>(sql`select intelligence.register_extraction_agent(
+      ${a.agentId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.principalId}::uuid, ${a.version}, ${a.codeDigest},
+      ${a.owner}::uuid, ${a.escalation}::uuid, ${JSON.stringify(a.budgets)}::jsonb, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r as Answer;
+  }
+  async revokeExtractionAgent(a: Parameters<ExtractionAgentWrites['revokeExtractionAgent']>[0]) {
+    type Answer = Awaited<ReturnType<ExtractionAgentWrites['revokeExtractionAgent']>>;
+    const rows = await this.call<{ r: Answer }>(sql`select intelligence.revoke_extraction_agent(
+      ${a.agentId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r as Answer;
+  }
+  /* end B24 plan */
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readMethods(): any { return this.from('intelligence.methods_current'); }
@@ -422,4 +464,9 @@ export const IntelligenceCapability = {
   review(tx: Tx, action: string): ReviewWrites {
     return new IntelligenceCapabilityImpl(tx, action);
   },
+  /* B24 (0086) plan */
+  extractionAgents(tx: Tx, action: string): ExtractionAgentWrites {
+    return new IntelligenceCapabilityImpl(tx, action);
+  },
+  /* end B24 plan */
 };

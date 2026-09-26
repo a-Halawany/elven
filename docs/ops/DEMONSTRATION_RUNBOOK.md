@@ -410,3 +410,29 @@ so its queues must never share the demonstration's Redis — and an APFS clone o
 - The graph revision head of the origin domain is 1 (revision r1 re-asserts the four REL edges B6's act had retracted for its own scene); two twin versions went unverified on it (the twins subscriber's designed reaction).
 - **Rehearsal rig** (never the demo): the newest `eye_demo-pre-0084-*.dump` restored as `eye_demo_b23`, the API on :3411 against the REHEARSAL Redis `eye-redis-b12` (:6392 — the copy shares tenant and domain ids, so never the demo Redis), a vault copy; the heavy suites through `scripts/dev/heavy-slot.sh` (two slots on this host).
 
+
+## 10. B24 on the demonstration (2026-09-25): what changed and how to rehearse
+
+- **Migrations.** `eye_demo` is migrated through **0086**. The backup taken before 0085/0086 is `.eye-local/backups/eye_demo-pre-0085-20260925T162716Z.dump`. The API was restarted on the B24 build with `scripts/ops/demo-restart.sh` (VERIFIED), and the web through the `eye-web` launch configuration.
+- **Re-registered subscriptions.** The administrator revoked and re-registered the origin domain's **attention**, **observations**, **source-health** and **proposals** subscriptions, whose consumer code digests changed in 0086. Their backlogs were left.
+- **Two agents now run on the demonstration**, and the act leaves both running:
+  - The **attention agent** (`attention-timer@1.0.0`; M. Dvořák accountable) ticks every 60 s on the scheduler. It escalates overdue items, plans and drains deliveries, rebalances, and sweeps lapsed suppression requests.
+  - The **extraction agent** (`intelligence.plan-execution@1.0.0`; L. Ferreira owner, K. Müller escalation) runs the selected transformation plans of new observations.
+  - Revoke either through its governed route if a quiet demonstration is wanted. A revoked attention agent's tick is recorded as refused, never skipped.
+- **Attention policy v4 is active.** It adds the overload rule `max_open_per_owner` 1, the further materiality thresholds, notification on `in_app` and the SYNTHETIC `demo-mailbox` channel, and suppression approval on the approval-required class.
+- **The demo mailbox is SYNTHETIC.** `executive.demo_mailbox` is a local sink inside the database: no email, SMS, Teams or push message leaves the product. A real provider is owner decision D6.
+- **What the act leaves on `eye_demo`:**
+  - an invalidated run, and an act-owned package committed after the markers were acknowledged;
+  - a 90-day ECB-rate forecast with its scenario, twin version 8 and two runs;
+  - an upload with its admitted claims;
+  - an approved suppression and an active delegation;
+  - one queue evaluation;
+  - K. Müller's restricted memory item.
+  - The ECB source was suspended and then reactivated, and every marker it set is cleared.
+- **The rehearsal rig (never the demonstration).**
+  - Restore the newest `eye_demo-pre-0085-*.dump` as `eye_demo_b24`.
+  - Run the API on :3411 against the REHEARSAL Redis `eye-redis-b12` (:6392), with a vault copy.
+  - Run `scripts/phase6/act-b24.mjs` with `EYE_DB_NAME=eye_demo_b24 EYE_API=http://localhost:3411`.
+  - A run takes about 8 minutes, most of it waiting on the database clock for the two-minute deadline and the 60 s tick.
+- **The demo walk.** Run `e2e/phase6-attention.demo.spec.ts` through `playwright.demo.config.ts` after the act; screenshots go to `evidence/phase6-browser/b24-*.png`.
+- **B24-F1 (2026-09-26).** `eye_demo` is migrated through **0087**, the backup before it being `.eye-local/backups/eye_demo-pre-0087-20260926T122536Z.dump`. The API was restarted with `scripts/ops/demo-restart.sh` (VERIFIED). The extraction agent now runs a plan execution only against its queued evidence version: a corrected version is reselected explicitly, and a withdrawn one is refused.
