@@ -436,3 +436,21 @@ so its queues must never share the demonstration's Redis — and an APFS clone o
   - A run takes about 8 minutes, most of it waiting on the database clock for the two-minute deadline and the 60 s tick.
 - **The demo walk.** Run `e2e/phase6-attention.demo.spec.ts` through `playwright.demo.config.ts` after the act; screenshots go to `evidence/phase6-browser/b24-*.png`.
 - **B24-F1 (2026-09-26).** `eye_demo` is migrated through **0087**, the backup before it being `.eye-local/backups/eye_demo-pre-0087-20260926T122536Z.dump`. The API was restarted with `scripts/ops/demo-restart.sh` (VERIFIED). The extraction agent now runs a plan execution only against its queued evidence version: a corrected version is reselected explicitly, and a withdrawn one is refused.
+
+## 11. B28 on the demonstration (2026-09-26): what changed and how to rehearse
+
+- **Migrations.** `eye_demo` is migrated through **0088**. The backup taken before it is `.eye-local/backups/eye_demo-pre-0088-20260926T183223Z.dump`. The API was restarted with `scripts/ops/demo-restart.sh` (VERIFIED), and the web through the `eye-web` launch configuration.
+- **Subscriptions.** The attention subscription was revoked and registered anew, because its consumer identity changed in 0088 (novelty forwarded). The new kinds **stream-rules** and **warnings** were registered by the tenant administrator with the backlog left.
+- **Agents.** The **Weak Signal Agent** is registered (kind `weak_signal`); it nominates and ranks only. The **attention agent** now also raises candidates owed a warning right after its tick. It routes them to a named person, never to itself.
+- **The synthetic sources.** The SYNTHETIC late stream `red-sea-corridor-stream-late` is registered and active (its contract is in `STREAM_SOURCE_CONTRACTS`). The corridor stream rule is active, and its processor is running.
+- **What the act leaves:**
+  - the insurer-withdrawal weak signal under `monitor` with a falsify condition;
+  - the deduplicated Bab el-Mandeb warning, with three members (one contradicting), expired and escalated, plus J. Weber's `late` feedback and a warning evaluation;
+  - an assumption on NORDWERK's internal records, and a package committed after the marker was acknowledged;
+  - a remediation closed `closed_recovered`.
+- **The rehearsal rig (never the demonstration).**
+  - Restore the newest `eye_demo-pre-0088-*.dump` as `eye_demo_b28`.
+  - Run the API on :3411 against the REHEARSAL Redis `eye-redis-b12` (:6392).
+  - Run `scripts/phase6/act-b28.mjs` with `ACT_FAST_EXPIRY=1`. It moves only one warning's response window into the past with the superuser, prints a `REHEARSAL SHORTCUT` line saying so, and takes about 5 minutes.
+  - **On `eye_demo` the flag is never set**: the act waits for the real one-hour window (about 62 minutes).
+- **The demo walk.** Run `e2e/phase6-b28.demo.spec.ts` through `playwright.demo.config.ts` after the act; screenshots go to `evidence/phase6-browser/b28-*.png`.

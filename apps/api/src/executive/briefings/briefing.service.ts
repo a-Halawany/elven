@@ -104,6 +104,9 @@ export interface CompositionLimits { maxReads: number | null; maxItems: number |
 
 const hoursBetween = (a: string, b: string): number => Math.round(((new Date(b).getTime() - new Date(a).getTime()) / 3_600_000) * 100) / 100;
 const WARNING_STATE_OF: Readonly<Record<string, string>> = Object.freeze({ 'warning.raised': 'raised', 'warning.acknowledged': 'acknowledged', 'warning.expired': 'expired', 'warning.closed': 'closed' });
+/* B28 (0088) warnings: the warning events 0088 §0 adds that are not state transitions (the as-of state skips them) */
+const B28_NON_STATE_WARNING_EVENTS: ReadonlySet<string> = new Set(['warning.clustered', 'warning.context_set', 'warning.escalated', 'warning.feedback', 'warning.retracted']);
+/* end B28 warnings */
 
 @Injectable()
 export class BriefingService {
@@ -272,7 +275,13 @@ export class BriefingService {
     if (warnings.length > 0) {
       const events = (await cap.readWarningEvents().select(['warning_id', 'event', 'occurred_at'] as never).where('warning_id' as never, 'in', warnings.map((w) => String(w['warning_id'])) as never)
         .where('occurred_at' as never, '<=', knownAt as never).orderBy('occurred_at' as never).execute()) as Array<{ warning_id: string; event: string; occurred_at: unknown }>;
-      for (const e of events) stateAsOf.set(String(e.warning_id), WARNING_STATE_OF[e.event] ?? 'closed');
+      for (const e of events) {
+        /* B28 (0088) warnings: the lifecycle's NON-STATE events (a report folded in, the context set, the escalation on expiry, feedback, a
+           retraction) change no state — without this they would read as `closed` (the fallback below, unchanged for every older event). */
+        if (B28_NON_STATE_WARNING_EVENTS.has(e.event)) continue;
+        /* end B28 warnings */
+        stateAsOf.set(String(e.warning_id), WARNING_STATE_OF[e.event] ?? 'closed');
+      }
     }
     const warningState = (w: Record<string, unknown>): string => stateAsOf.get(String(w['warning_id'])) ?? 'raised';
     // 0066 §9: a suppression under policy as it stood at known_at — created by then, not lifted by then, not yet expired at known_at. The warning's own state is untouched.

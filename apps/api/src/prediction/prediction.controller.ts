@@ -29,6 +29,12 @@
  * CP-6 B23 (0084): POST …/scenarios/:scenarioId/branches (L7-I02 BranchScenario,
  * `prediction.scenario.branch`) adds a branch to a declared scenario as a new,
  * idempotent version and publishes ScenarioBranched@v1.
+ *
+ * CP-6 B28 (0088 §S, F-P4-11): the EVENT-TIME STREAM routes under …/streams — define and
+ * activate a versioned stream rule (human-gated), start a processor, list and get the
+ * processors (windows, watermark, state, signals with their LATE / PARTIAL labels,
+ * retractions, checkpoints), recover a processor from a compatible checkpoint and
+ * retract a signal (human-gated), reconcile its source offsets.
  */
 import { Body, Controller, HttpException, Param, Post, Req } from '@nestjs/common';
 import { errorBody, type Envelope } from '@eye/contracts';
@@ -43,6 +49,14 @@ import { ForecastingService, HORIZONS } from './forecasting/forecasting.service.
 import { forecastIssuedEvent } from './forecasting/forecast-events.js';
 import { ScenariosService, validateBranchCommand, validateScenario } from './scenarios/scenarios.service.js';
 import { PARSERS } from './series/parsers.js';
+/* B28 (0088) warnings */
+import { WarningLifecycleCapability } from './warnings/warning-lifecycle.capabilities.js';
+import { WarningLifecycleService, validateClose, validateContext, validateFeedback, validateWarningEvaluation } from './warnings/warning-lifecycle.service.js';
+/* end B28 warnings */
+/* B28 (0088) streams */
+import { StreamProcessorService } from './streams/stream-processor.service.js';
+import { StreamCapability } from './streams/stream.capabilities.js';
+/* end B28 streams */
 
 function ctx(req: EyeRequest) {
   const envelope = req.eyeEnvelope;
@@ -74,6 +88,8 @@ export class PredictionController {
     private readonly series: SeriesService,
     private readonly forecasting: ForecastingService,
     private readonly scenarios: ScenariosService,
+    /* B28 (0088) warnings */ private readonly warnings: WarningLifecycleService, /* end B28 warnings */
+    /* B28 (0088) streams */ private readonly streams: StreamProcessorService, /* end B28 streams */
   ) {}
 
   private route(tenantId: string, domainId: string, action: string, objectType: string | null, objectId: string | null) {
@@ -701,4 +717,290 @@ export class PredictionController {
       PredictionCapability.read, async (cap) => cap.rebuildProjections());
     return { projections: out.result, receipt: receipt(out) };
   }
+
+  /* B28 (0088) warnings ───────────────────────── the early-warning lifecycle (0088 §W; F-P4-12) ───────────────────────── */
+
+  /**
+   * PROCESS THE CANDIDATE INTAKE (human-gated, `prediction.warning.candidates.process`): every pending candidate decided — folded into
+   * the open warning of its key or into its storm's lead, refused with its reason, or RAISE-DUE. Each raise-due candidate is then RAISED
+   * in its own governed write under `prediction.warning.raise` (the indicator evaluation's idiom: the WRN object admitted, the port calls
+   * prediction.raise_warning, EarlyWarningRaised@v1 from the write); a candidate deferred behind a raise of its key (or of its storm) is
+   * decided again on the next pass — at most three passes. A raise that fails leaves its candidate PENDING (owed) and the call answers
+   * 409 after the others are committed, naming each — never silent.
+   */
+  @Post('/warnings/candidates/process')
+  async processWarningCandidates(
+    @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string,
+    @Body() body: { payload?: { limit?: number } },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const limit = body.payload?.limit ?? 50;
+    if (!Number.isInteger(limit) || limit < 1 || limit > 200) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'payload.limit is a whole number in [1, 200]'), 422);
+    const passes: Array<Record<string, unknown>> = [];
+    const raised: Array<Record<string, unknown>> = [];
+    const failed: Array<{ candidateId: string; reason: string }> = [];
+    let first: { policyDecisionId: string; auditSeq: number } | null = null;
+    for (let pass = 0; pass < 3; pass++) {
+      const out = await this.pipeline.write(
+        pass === 0 ? envelope : { ...envelope, message_id: newId() }, principal, this.route(tenantId, domainId, 'prediction.warning.candidates.process', 'WRN', null),
+        WarningLifecycleCapability.process,
+        async (cap, scope) => ({ result: await cap.processCandidates({ tenantId: scope.tenantId as string, domainId: scope.domainId as string, limit, actor: principal.principalId, correlationId: envelope.correlation_id }),
+                                 targetType: 'WRN', targetId: null, targetVersion: null, outboxEvent: null }));
+      first = first ?? receipt(out);
+      const due = Array.isArray(out.result['raise_due']) ? (out.result['raise_due'] as Array<Record<string, unknown>>) : [];
+      passes.push({ pass: pass + 1, ...out.result, receipt: receipt(out) });
+      const failedBefore = failed.length;
+      for (const d of due) {
+        const candidateId = String(d['candidate_id']);
+        // The warning's id is minted BEFORE the write: the raise's capability is bound to it as its target (the WRN admission checks the binding).
+        const warningId = newId();
+        try {
+          const w = await this.pipeline.write(
+            { ...envelope, action: 'prediction.warning.raise', message_id: newId(), object_id: warningId }, principal, this.route(tenantId, domainId, 'prediction.warning.raise', 'WRN', warningId),
+            WarningLifecycleCapability.raise,
+            async (cap, scope) => {
+              // The raise's authority class is the ENVELOPE's (the route sets none): recorded beside the label, never derived from it.
+              const r = await this.warnings.raiseCandidate(cap, scope, candidateId, warningId, principal.principalId, envelope.correlation_id, envelope.purpose_id ?? 'prediction', String(envelope.consequence_class ?? 'C1'));
+              return { result: r, targetType: 'WRN', targetId: r.decision === 'raised' ? String(r.result['warning_id']) : null, targetVersion: r.decision === 'raised' ? '1' : null, outboxEvent: r.outboxEvent };
+            });
+          raised.push({ candidate_id: candidateId, decision: w.result.decision, ...w.result.result, receipt: receipt(w) });
+        } catch (e) {
+          failed.push({ candidateId, reason: e instanceof HttpException ? String((e.getResponse() as { message?: string }).message ?? e.message) : e instanceof Error ? e.message : String(e) });
+        }
+      }
+      const deferred = Array.isArray(out.result['deferred']) ? out.result['deferred'].length : 0;
+      // a pass whose raises failed is not repeated: its candidates stay pending (owed), named in the answer below
+      if (deferred === 0 || due.length === 0 || failed.length > failedBefore) break;
+    }
+    if (failed.length > 0) {
+      throw new HttpException(errorBody('EYE_STA_001', envelope.correlation_id,
+        `${failed.length} candidate(s) are due a warning that could not be raised (${failed.map((f) => `${f.candidateId}: ${f.reason}`).join('; ')}); each stays PENDING on the intake and is raised by the next processing. `
+        + `${raised.filter((r) => r['decision'] === 'raised').length} warning(s) were raised.`), 409);
+    }
+    return { processing: { passes, raised }, receipt: first };
+  }
+
+  @Post('/warnings/candidates/list')
+  async listWarningCandidates(
+    @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string,
+    @Body() body: { payload?: { state?: string; limit?: number } },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(
+      envelope, principal, this.route(tenantId, domainId, 'prediction.read', 'WRN', null),
+      WarningLifecycleCapability.read, async (cap) => this.warnings.candidates(cap, body.payload ?? {}));
+    return { candidates: out.result, receipt: receipt(out) };
+  }
+
+  /** THE WARNING EVALUATION (a named human: the executive or the domain administrator, human-gated): the rates by origin, T3, the acknowledgement. */
+  @Post('/warnings/evaluations/run')
+  async runWarningEvaluation(
+    @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string,
+    @Body() body: { payload?: Record<string, unknown> },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const i = validateWarningEvaluation(body.payload ?? {}, envelope.correlation_id);
+    const evaluationId = newId();
+    const out = await this.pipeline.write(
+      envelope, principal, this.route(tenantId, domainId, 'prediction.warning.evaluate', 'WRN', null),
+      WarningLifecycleCapability.evaluate,
+      async (cap, scope) => ({ result: await cap.evaluate({ evaluationId, tenantId: scope.tenantId as string, domainId: scope.domainId as string, from: i.windowFrom, to: i.windowTo, minSample: i.minSample, actor: principal.principalId, correlationId: envelope.correlation_id }),
+                               targetType: 'WRN', targetId: null, targetVersion: null, outboxEvent: null }));
+    return { evaluation: out.result, receipt: receipt(out) };
+  }
+
+  @Post('/warnings/evaluations/list')
+  async listWarningEvaluations(
+    @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string,
+    @Body() body: { payload?: { limit?: number } },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(
+      envelope, principal, this.route(tenantId, domainId, 'prediction.warning.evaluations.read', 'WRN', null),
+      WarningLifecycleCapability.read, async (cap) => this.warnings.evaluations(cap, body.payload ?? {}));
+    return { evaluations: out.result, receipt: receipt(out) };
+  }
+
+  /** The warning's LIFECYCLE: origin, cluster and members with their stance, contradicting, affected, falsification, playbook, closure, feedback, coverage gaps. */
+  @Post('/warnings/:warningId/lifecycle')
+  async warningLifecycle(
+    @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string,
+    @Param('warningId') warningId: string,
+  ) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(
+      envelope, principal, this.route(tenantId, domainId, 'prediction.read', 'WRN', warningId),
+      WarningLifecycleCapability.read, async (cap) => this.warnings.lifecycle(cap, warningId));
+    if (out.result === undefined) throw new HttpException(errorBody('EYE_STA_001', envelope.correlation_id, 'no authorized warning matches'), 404);
+    return { lifecycle: out.result, receipt: receipt(out) };
+  }
+
+  /** THE CONTEXT, set whole at the version read (the owner or a domain administrator; human-gated). */
+  @Post('/warnings/:warningId/context')
+  async setWarningContext(
+    @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string,
+    @Param('warningId') warningId: string, @Body() body: { payload?: Record<string, unknown> },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const i = validateContext(body.payload ?? {}, envelope.correlation_id);
+    const out = await this.pipeline.write(
+      envelope, principal, this.route(tenantId, domainId, 'prediction.warning.context.set', 'WRN', warningId),
+      WarningLifecycleCapability.context,
+      async (cap, scope) => {
+        const r = await cap.setContext({ warningId, tenantId: scope.tenantId as string, domainId: scope.domainId as string, expectedVersion: i.expectedVersion, contradicting: i.contradicting,
+          affected: i.affected, falsification: i.falsification, playbook: i.playbook, actor: principal.principalId, correlationId: envelope.correlation_id });
+        return { result: r, targetType: 'WRN', targetId: warningId, targetVersion: String(r['context_version'] ?? ''), outboxEvent: null };
+      });
+    return { context: out.result, receipt: receipt(out) };
+  }
+
+  /** CLOSURE on a criterion with a reason (the owner or a domain administrator; human-gated). */
+  @Post('/warnings/:warningId/close')
+  async closeWarning(
+    @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string,
+    @Param('warningId') warningId: string, @Body() body: { payload?: Record<string, unknown> },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const i = validateClose(body.payload ?? {}, envelope.correlation_id);
+    const out = await this.pipeline.write(
+      envelope, principal, this.route(tenantId, domainId, 'prediction.warning.close', 'WRN', warningId),
+      WarningLifecycleCapability.close,
+      async (cap, scope) => ({ result: await cap.close({ warningId, tenantId: scope.tenantId as string, domainId: scope.domainId as string, criterion: i.criterion, ref: i.ref, reason: i.reason,
+                                                         actor: principal.principalId, eventId: newId(), correlationId: envelope.correlation_id }),
+                               targetType: 'WRN', targetId: warningId, targetVersion: null, outboxEvent: null }));
+    return { warning: out.result, receipt: receipt(out) };
+  }
+
+  /** FEEDBACK — false | late | missed | duplicated | useful — a named human's, once per kind (a repeat answers `repeated`; human-gated). */
+  @Post('/warnings/:warningId/feedback')
+  async warningFeedback(
+    @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string,
+    @Param('warningId') warningId: string, @Body() body: { payload?: Record<string, unknown> },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const i = validateFeedback(body.payload ?? {}, envelope.correlation_id);
+    const out = await this.pipeline.write(
+      envelope, principal, this.route(tenantId, domainId, 'prediction.warning.feedback', 'WRN', warningId),
+      WarningLifecycleCapability.feedback,
+      async (cap, scope) => ({ result: await cap.feedback({ feedbackId: newId(), warningId, tenantId: scope.tenantId as string, domainId: scope.domainId as string, kind: i.kind, note: i.note,
+                                                            actor: principal.principalId, correlationId: envelope.correlation_id }),
+                               targetType: 'WRN', targetId: warningId, targetVersion: null, outboxEvent: null }));
+    return { feedback: out.result, receipt: receipt(out) };
+  }
+  /* end B28 warnings */
+  /* B28 (0088) streams — F-P4-11: event-time windows, watermarks, CEP rules, late data never concealed, checkpoints, recovery. */
+
+  /** Define a stream rule VERSION (a draft): the series, the window geometry, the lag, the allowance, the stall threshold, the predicate. Human-gated. */
+  @Post('/streams/rules/define')
+  async defineStreamRule(
+    @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: Record<string, unknown> },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.write(
+      envelope, principal, this.route(tenantId, domainId, 'prediction.stream.rule.define', 'SPR', null), StreamCapability.rules,
+      async (cap, scope) => {
+        const rule = await this.streams.defineRule(cap, scope, body.payload ?? {}, principal.principalId, envelope.correlation_id);
+        return { result: rule, targetType: 'SPR', targetId: String(rule['rule_id']), targetVersion: String(rule['version']), outboxEvent: null };
+      });
+    return { rule: out.result, receipt: receipt(out) };
+  }
+
+  /** Activate a draft (the prior active version superseded, its live processor retired). Human-gated. */
+  @Post('/streams/rules/activate')
+  async activateStreamRule(
+    @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: Record<string, unknown> },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const ruleId = String(body.payload?.['ruleId'] ?? '');
+    const out = await this.pipeline.write(
+      envelope, principal, this.route(tenantId, domainId, 'prediction.stream.rule.activate', 'SPR', /^[0-9a-f-]{36}$/i.test(ruleId) ? ruleId : null), StreamCapability.rules,
+      async (cap, scope) => {
+        const rule = await this.streams.activateRule(cap, scope, ruleId, body.payload ?? {}, principal.principalId, envelope.correlation_id);
+        return { result: rule, targetType: 'SPR', targetId: ruleId, targetVersion: String(rule['version']), outboxEvent: null };
+      });
+    return { rule: out.result, receipt: receipt(out) };
+  }
+
+  /** Start the processor of an active rule (one live per rule). */
+  @Post('/streams/processors/start')
+  async startStreamProcessor(
+    @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: Record<string, unknown> },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.write(
+      envelope, principal, this.route(tenantId, domainId, 'prediction.stream.processor.start', 'SPR', null), StreamCapability.processor,
+      async (cap, scope) => {
+        const processor = await this.streams.start(cap, scope, body.payload ?? {}, principal.principalId, envelope.correlation_id);
+        return { result: processor, targetType: 'SPR', targetId: String(processor['processor_id']), targetVersion: '1', outboxEvent: null };
+      });
+    return { processor: out.result, receipt: receipt(out) };
+  }
+
+  @Post('/streams/processors/list')
+  async listStreamProcessors(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(
+      envelope, principal, this.route(tenantId, domainId, 'prediction.read', 'SPR', null), StreamCapability.read, async (cap) => this.streams.list(cap));
+    return { ...out.result, receipt: receipt(out) };
+  }
+
+  @Post('/streams/processors/:processorId/get')
+  async getStreamProcessor(
+    @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('processorId') processorId: string,
+  ) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(
+      envelope, principal, this.route(tenantId, domainId, 'prediction.read', 'SPR', /^[0-9a-f-]{36}$/i.test(processorId) ? processorId : null), StreamCapability.read,
+      async (cap) => this.streams.get(cap, processorId));
+    if (out.result === undefined) throw new HttpException(errorBody('EYE_STA_001', envelope.correlation_id, 'no authorized stream processor matches'), 404);
+    return { stream: out.result, receipt: receipt(out) };
+  }
+
+  /** Recover a suspended, stalled or corrupt processor from its newest compatible checkpoint. Human-gated. */
+  @Post('/streams/processors/:processorId/recover')
+  async recoverStreamProcessor(
+    @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('processorId') processorId: string,
+    @Body() body: { payload?: Record<string, unknown> },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.write(
+      envelope, principal, this.route(tenantId, domainId, 'prediction.stream.processor.recover', 'SPR', /^[0-9a-f-]{36}$/i.test(processorId) ? processorId : null), StreamCapability.processor,
+      async (cap, scope) => {
+        const r = await this.streams.recover(cap, scope, processorId, body.payload ?? {}, principal.principalId, envelope.correlation_id);
+        return { result: r, targetType: 'SPR', targetId: processorId, targetVersion: null, outboxEvent: null };
+      });
+    return { recovery: out.result, receipt: receipt(out) };
+  }
+
+  /** Reconcile the processor's source offsets against the partition's segments (a divergence suspends its outputs, the gap named). */
+  @Post('/streams/processors/:processorId/reconcile')
+  async reconcileStreamProcessor(
+    @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('processorId') processorId: string,
+  ) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.write(
+      envelope, principal, this.route(tenantId, domainId, 'prediction.stream.processor.reconcile', 'SPR', /^[0-9a-f-]{36}$/i.test(processorId) ? processorId : null), StreamCapability.processor,
+      async (cap, scope) => {
+        const r = await this.streams.reconcile(cap, scope, processorId, principal.principalId, envelope.correlation_id);
+        return { result: r, targetType: 'SPR', targetId: processorId, targetVersion: null, outboxEvent: null };
+      });
+    return { reconciliation: out.result, receipt: receipt(out) };
+  }
+
+  /** Retract a signal (a retraction row of its own; nothing is submitted). Human-gated. */
+  @Post('/streams/signals/:signalId/retract')
+  async retractStreamSignal(
+    @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('signalId') signalId: string,
+    @Body() body: { payload?: Record<string, unknown> },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.write(
+      envelope, principal, this.route(tenantId, domainId, 'prediction.stream.signal.retract', 'SPR', /^[0-9a-f-]{36}$/i.test(signalId) ? signalId : null), StreamCapability.processor,
+      async (cap, scope) => {
+        const r = await this.streams.retract(cap, scope, signalId, body.payload ?? {}, principal.principalId, envelope.correlation_id);
+        return { result: r, targetType: 'SPR', targetId: signalId, targetVersion: null, outboxEvent: null };
+      });
+    return { retraction: out.result, receipt: receipt(out) };
+  }
+  /* end B28 streams */
 }

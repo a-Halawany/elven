@@ -55,6 +55,9 @@ export interface SourceImpactReads {
   readScenarios(): any;
   readRuns(): any;
   readPackages(): any;
+  /* B28 (0088) remediation: an assumption a marker sits on (graph.strategy_current ASU), named by its title */
+  readStrategy(): any;
+  /* end B28 remediation */
   /** The active markers bearing on one version of a package, with the acknowledgement recorded for that version (0086 §M2). */
   bearing(a: { tenantId: string; domainId: string; packageId: string; version: number }): Promise<BearingRow[]>;
 }
@@ -72,6 +75,9 @@ class SourceImpactCapabilityImpl extends SourceImpactCore implements SourceImpac
   readScenarios(): any { return this.from('prediction.scenarios_current'); }
   readRuns(): any { return this.from('simulation.runs_current'); }
   readPackages(): any { return this.from('decision.packages_current'); }
+  /* B28 (0088) remediation */
+  readStrategy(): any { return this.from('graph.strategy_current'); }
+  /* end B28 remediation */
 
   async bearing(a: Parameters<SourceImpactReads['bearing']>[0]): Promise<BearingRow[]> {
     return this.call<BearingRow>(sql`

@@ -57,7 +57,10 @@ const NAV = [
   { href: '/prediction/forecasts', label: 'Forecasts', glyph: '↗' },
   { href: '/prediction/scenarios', label: 'Scenarios', glyph: '⑂' },
   { href: '/prediction/warnings', label: 'Warnings', glyph: '⚑' },
+  /* B28 (0088) warnings */ { href: '/prediction/warnings/evaluations', label: 'Warning evaluation', glyph: '◑' }, /* end B28 warnings */
   { href: '/prediction/calibration', label: 'Calibration', glyph: '◐' },
+  /* B28 (0088) signals: the weak-signal workbench */ { href: '/prediction/signals', label: 'Weak signals', glyph: '≈' }, /* end B28 signals */
+  /* B28 (0088) streams */ { href: '/prediction/streams', label: 'Streams', glyph: '≋' }, /* end B28 streams */
   { href: '/decisions', label: 'Decisions', glyph: '◆' },
   { href: '/decisions/briefings', label: 'Briefings', glyph: '☰' },
   { href: '/decisions/attention', label: 'Attention', glyph: '⚑' },

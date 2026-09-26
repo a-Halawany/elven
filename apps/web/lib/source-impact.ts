@@ -3,7 +3,8 @@
  *
  * When a source a product rests on is degraded, failed, suspended or of unknown health, the server MARKS the products derived
  * from it — the issued forecasts of its series, the open warnings on them, the scenarios declared on them, the runs bound to
- * those scenarios, and the decision packages whose current version cites one of those forecasts or runs — and clears the marks
+ * those scenarios, the assumptions resting on a claim extracted from its evidence (B28, to depth 4), and the decision packages
+ * whose current version cites one of those forecasts, runs or assumptions — and clears the marks
  * when the source recovers. Two uses are CONSTRAINED by the server, never here:
  *
  *   * a package version is not COMMITTED while an active marker bearing on it (on the package, or on what that version cites)
@@ -22,7 +23,7 @@ type Receipt = { policyDecisionId: string; auditSeq: number };
 /** The health states a marker carries (observation.source_impact_markers.health_state), worst first. */
 export const IMPACT_STATES = ['failed', 'suspended', 'degraded', 'unknown'] as const;
 /** The products a marker sits on (the CHECK 0086 re-declares). */
-export const IMPACT_SUBJECT_KINDS = ['forecast', 'warning', 'scenario', 'run', 'package'] as const;
+export const IMPACT_SUBJECT_KINDS = ['forecast', 'warning', 'scenario', 'run', 'package', /* B28 (0088) remediation */ 'assumption' /* end B28 remediation */] as const;
 /** The role the server admits to acknowledge (the exact PDP rule `decision.source_impact.acknowledge`; the port re-checks it). */
 export const ACKNOWLEDGER_ROLE = 'decision_authority';
 
@@ -72,6 +73,10 @@ export function constraintLine(kind: string, state: string): string {
       return 'a package version resting on it commits only once a decision authority acknowledges the impact for that version';
     case 'warning':
       return 'the warning rests on a forecast of the degraded source';
+    /* B28 (0088) remediation: an assumption resting on a claim extracted from the source's evidence (or on such an assumption) */
+    case 'assumption':
+      return 'a package version citing it commits only once a decision authority acknowledges the impact for that version';
+    /* end B28 remediation */
     default:
       return 'rests on the degraded source';
   }

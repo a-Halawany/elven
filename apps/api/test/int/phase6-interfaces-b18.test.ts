@@ -76,6 +76,10 @@ import type { IntelligenceController } from '../../src/intelligence/intelligence
 import { SchedulerService } from '../../src/observation/scheduling/scheduler.service.js';
 import { SubscriptionDispatcherService } from '../../src/graph/subscriptions/subscription-dispatcher.service.js';
 import { CONSUMER_EVENT_TYPES, CONSUMER_KINDS, type ConsumerKind } from '../../src/graph/subscriptions/graph-change.js';
+/* B28 (0088): the `warnings` and `stream-rules` kinds are exercised by their own harnesses (phase6-warnings-b28, phase6-streams-b28); this
+   file registers and counts the kinds it was written for. */
+const PRE_B28_KINDS = CONSUMER_KINDS.filter((k) => k !== 'warnings' && k !== 'stream-rules');
+/* end B28 */
 import { asObservationRefusal } from '../../src/observation/observation-errors.js';
 import { SUPPLY_FLOW_IMPLEMENTATION_DIGEST } from '../../src/twin/models/supply-flow.digest.js';
 import { Phase4Harness } from './phase4-helpers.js';
@@ -110,7 +114,7 @@ const instantOf = (v: unknown): string | null => (v === null || v === undefined 
 const sorted = (xs: unknown[]): string[] => xs.map(String).sort();
 const obj = (v: unknown): Row => (v ?? {}) as Row;
 /** The six consumer kinds a GraphChanged reaches; the seventh (`relationships`) selects MemoryCorrected/claim.corrected alone (B9) and is registered too, so its absence from every GraphChanged delivery is a fact of the registry, not of this file. 0083 (B22): so are the four kinds B22 adds (observations, source-health, proposals, attention), which select their own flat events and never GraphChanged. */
-const GRAPH_KINDS = CONSUMER_KINDS.filter((k) => k !== 'relationships' && CONSUMER_EVENT_TYPES[k].includes('GraphChanged'));
+const GRAPH_KINDS = PRE_B28_KINDS.filter((k) => k !== 'relationships' && CONSUMER_EVENT_TYPES[k].includes('GraphChanged'));
 /** The ten register rows 0078 binds, each to its event and schema version; the fourteen that stay partial (design §0). */
 const BOUND_IN_0078: ReadonlyArray<[string, string, string]> = [
   ['L2-I04', 'ReviewRequested', 'v1'], ['L5-I04', 'TwinStateChanged', 'v1'], ['L6-I02', 'ForecastIssued', 'v2'], ['L6-I05', 'ForecastWithdrawn', 'v1'],
@@ -313,7 +317,7 @@ beforeAll(async () => {
   reviewer = await h.humanWithSession(['domain_analyst'], 'b18-analyst');
   outsider = await h.humanWithSession(['strategy_owner'], 'b18-outsider');
   // THE SUBSCRIPTIONS: the seven kinds (eleven since 0083, B22 — the four new kinds on their own event types by default), registered by the tenant administrator (the B6 idiom), the domain's worker serving from registration.
-  for (const kind of CONSUMER_KINDS) {
+  for (const kind of PRE_B28_KINDS) {
     const r = await register(kind);
     subs[kind] = { subscriptionId: r.subscription.subscriptionId, principalId: r.subscription.principalId };
     expect(r.served.workerRunning, `${kind}: the domain's queue is served from registration`).toBe(true);

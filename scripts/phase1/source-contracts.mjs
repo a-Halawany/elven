@@ -770,5 +770,73 @@ export const STREAM_SOURCE_CONTRACTS = [
     },
     lifecycle: { contract_version: 1, effective_from: '2024-01-01T00:00:00Z', effective_to: null },
   },
+  /* B28 (0088) streams: THE LATE SET — the same SYNTHETIC corridor, February–March 2024, whose pages arrive LATE and OUT OF ORDER
+     (DEF-L1..L7, labelled on their pages and rows; scripts/phase1/build-stream-fixtures.mjs). Registered through the governed register
+     route by the B28 act (scripts/phase6/act-b28.mjs), never by the seed; its partition key is 'red-sea-corridor-stream-late:chokepoint4'. */
+  {
+    source_key: 'red-sea-corridor-stream-late',
+    name: 'Red Sea corridor feed, late and out of order — Bab el-Mandeb daily transits (SYNTHETIC stream fixture)',
+    publisher: 'Synthetic corridor publisher (does not exist)',
+    authority_class: 'observational',
+    connector_kind: 'rest',
+    acquisition_mode: 'replay',
+    data_origin: 'synthetic',
+    identity: {
+      source_identity: 'red-sea-corridor-stream-late',
+      publisher_identity: 'synthetic corridor publisher — a fixture; no such publisher exists',
+      endpoints: ['https://corridor-stream-late.synthetic.example/red-sea/chokepoint4'],
+      scheme_allowlist: HTTPS,
+      cadence_seconds: 86_400,
+      jitter_seconds: 300,
+      collection_window: null,
+    },
+    authority_and_rights: {
+      owner: 'observation.operations',
+      steward: 'a.hoffmann',
+      authority: 'Synthetic fixture for event-time stream processing (late and out-of-order pages) — not a real indicator',
+      legal_basis: 'Internal synthetic data created for the demonstration',
+      rights_state: 'confirmed',
+      licence: 'internal (synthetic)',
+      permitted_use: ['internal analysis'],
+      robots_policy: 'not applicable — replay of a synthetic fixture set',
+      purposes: ['observation', 'corridor monitoring'],
+      classification_ceiling: 'internal',
+      residency: 'EU',
+      retention: '24 months',
+      deletion_obligation: 'none',
+    },
+    security_and_operations: {
+      credential_ref: null,
+      authentication_method: 'anonymous (no credential required)',
+      authenticity_method: {
+        transport_endpoint: 'not applicable — replay of a synthetic fixture set; no transport was performed',
+        byte_integrity: 'SHA-256 digest verified pre-store, post-store and on every read',
+        source_origin: 'not applicable — the set is synthetic and says so at row level',
+        content_authenticity: 'not applicable — the records are synthetic and marked as such',
+      },
+      budgets: BUDGETS,
+      expected_schema: {
+        media_types: ['application/json'],
+        required_fields: ['features.[].attributes.date', 'features.[].attributes.n_total'],
+        drift_tolerance: 0,
+        max_bytes: 8_388_608,
+        item_path: 'features',
+        item_key_field: 'attributes.date',
+        item_time_field: 'attributes.date',
+      },
+      freshness_expectation: { threshold_seconds: 259_200, expected_interval: 'daily' },
+      coverage_expectations: {
+        universe_version: 'v1',
+        denominator_derivation: 'one framed row per day across the partition range (39 days, five-day pages)',
+        expected_items_per_window: 39,
+        not_applicable_dimensions: [],
+        not_applicable_reason: null,
+      },
+      correction_channel: 'none — a synthetic fixture set is re-generated, never corrected',
+      replay_set: 'red-sea-corridor-stream-late',
+    },
+    lifecycle: { contract_version: 1, effective_from: '2024-01-01T00:00:00Z', effective_to: null },
+  },
+  /* end B28 streams */
 ];
 /* end B23 stream */

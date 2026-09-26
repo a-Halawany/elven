@@ -201,15 +201,19 @@ export class ExecutiveController {
   /** An operator's trigger: recorded as the operator's governed act; the run then happens under the AGENT's own session. */
   @Post('/agents/decision/:agentId/run')
   async runAgent(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('agentId') agentId: string,
-                 @Body() body: { payload?: { task?: AgentTask; roomId?: string | null; packageId?: string | null; version?: number | null } }) {
+                 @Body() body: { payload?: { task?: AgentTask; roomId?: string | null; packageId?: string | null; version?: number | null; /* B28 (0088) signals */ asOf?: string | null /* end B28 signals */ } }) {
     const { envelope, principal } = ctx(req);
     const p = body.payload ?? {};
     const task = p.task ?? 'briefing';
-    if (!['draft', 'briefing', 'report', 'monitor'].includes(task)) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'task is draft, briefing, report or monitor'), 422);
+    if (!['draft', 'briefing', 'report', 'monitor', /* B28 (0088) signals */ 'signal_scan' /* end B28 signals */].includes(task)) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'task is draft, briefing, report, monitor or signal_scan'), 422);
+    /* B28 (0088) signals: the scan reads as of an OBSERVATION day (event time), or each subject's latest when none is named */
+    if (task === 'signal_scan' && p.asOf !== undefined && p.asOf !== null && (typeof p.asOf !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(p.asOf))) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'asOf is an observation day (YYYY-MM-DD)'), 422);
+    /* end B28 signals */
     const trigger = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'agent.trigger', 'AGT', agentId), ExecutiveCapability.read,
       async () => ({ result: { agentId, task, triggeredBy: principal.principalId }, targetType: 'AGT', targetId: agentId, targetVersion: '1', outboxEvent: null }));
     const run = await this.agents.run({ agentId, tenantId, domainId, task, trigger: { kind: 'operator', principalId: principal.principalId, ref: trigger.policyDecisionId },
-      roomId: typeof p.roomId === 'string' ? p.roomId : null, packageId: typeof p.packageId === 'string' ? p.packageId : null, version: Number.isInteger(p.version) ? (p.version as number) : null, correlationId: envelope.correlation_id });
+      roomId: typeof p.roomId === 'string' ? p.roomId : null, packageId: typeof p.packageId === 'string' ? p.packageId : null, version: Number.isInteger(p.version) ? (p.version as number) : null, correlationId: envelope.correlation_id,
+      /* B28 (0088) signals */ ...(task === 'signal_scan' ? { scan: { asOf: typeof p.asOf === 'string' ? p.asOf : null } } : {}) /* end B28 signals */ });
     // The agent finished its own authorized work; the OPERATOR receives the run's metadata and only the outputs the operator may read —
     // the same decision as the stored-output list (residual review R4c), recorded as the operator's governed read of the run.
     const seen = await this.pipeline.consequentialRead({ ...envelope, action: 'agent.read', object_type: 'RUN', object_id: run.runId, message_id: newId(), side_effect_class: 'none', consequence_class: 'C1' } as typeof envelope, principal, this.route(tenantId, domainId, 'agent.read', 'RUN', run.runId), ExecutiveCapability.read,

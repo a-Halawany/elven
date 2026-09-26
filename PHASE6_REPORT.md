@@ -4008,3 +4008,59 @@ The mechanism is in `audit/CP6_BATCHES.md` §B24. The results are in `evidence/c
   - B28 carries the two B24 carryovers as explicit completion conditions and scenes.
   - The schedule was re-derived once: M1 at three accounts is still 2027-07-02.
 - **#61's A5 timing failure has a focused disposition** (`audit/delivery/INTEGRATION_SEQUENCE.md` §4). No runtime change is in #61's diff. A5 passed 40/40 on #61's exact code: 30 isolated runs, plus 10 whole-file runs on fresh databases alongside a full integration run for load. The gate is unchanged and required on #61's next head.
+
+## 39. B28 (2026-09-26): stream processing, the weak-signal workbench, the early-warning lifecycle (0088), and the two B24 carryovers
+
+### 39.1 What B28 implements
+
+The mechanism is in `audit/CP6_BATCHES.md` §B28.
+
+- **Streams (F-P4-11):**
+  - Event-time windows and watermarks: a window fires on the watermark, never the wall clock.
+  - Late data is labelled, never hidden.
+  - Checkpoints, offsets reconciliation, the stall and corruption semantics, recovery from a compatible checkpoint, and retraction.
+  - The `stream-rules` consumer, and a SYNTHETIC late fixture.
+- **Weak signals (F-P4-10):**
+  - The object: its maturity changes only by corroboration.
+  - Detectors over what the product has; cross-domain convergence is declared absent. Readings are held when evidence is insufficient.
+  - Nomination by a detector, an analyst or the agent; the disposition is a named human's.
+  - The independence test and indicator governance.
+  - The Weak Signal Agent, which nominates and ranks only.
+  - The novelty input for the attention engine.
+- **The warning lifecycle (F-P4-12):**
+  - Every origin arrives through one intake. Candidates are clustered or raised, and storms are folded.
+  - Context: contradicting evidence, affected objectives, falsification conditions, a playbook. Closure.
+  - Escalation on expiry, feedback, and the warning evaluation with T3.
+  - The `warnings` consumer on graph impact, forecast revision and twin degradation.
+  - Coverage gaps carry the source's remediation. The attention agent raises owed candidates right after its tick.
+- **The B24 carryovers:**
+  - The remediation workflow on coverage loss: separation of duties on an accepted gap, automatic closure on recovery.
+  - Markers through assumptions: the commitment gate bears on them.
+- **Integration found and fixed a cross-part contract defect.** The streams part's `affected` block did not follow the intake's contract, so §W refused every stream-rule candidate. The intake now enforces the contract at submission.
+- **The act found and corrected two defects:**
+  - A warning raised by the agent was routed to the agent.
+  - A re-collection could not be recorded after a suspension.
+
+### 39.2 Results
+
+| Check | Result |
+|---|---|
+| Part harnesses | 10 + 10 + 7 + 4 = 31/31 |
+| Full integration | **1214/1214** in 90 files on a fresh database (after the harness pins and the contract fix) |
+| Unit | 2522 + 9 |
+| Browser | 51/51 |
+| Demo walk | 4/4 on `eye_demo` |
+
+**The act on `eye_demo`** (`evidence/cp6/act-b28.txt`): ALL SCENES HELD, 73 checks, with the real one-hour window. The host slept about 2 h 41 min during it; the agent's first tick after waking expired and escalated the warning. The backup before 0088 is `eye_demo-pre-0088-20260926T183223Z.dump`, and the API restart VERIFIED. The final candidate's results are in §B28.7.
+
+### 39.3 The plan
+
+- **B28 completes no feature.** Its residual clauses are assigned to the stages whose objects they need:
+  - F-P4-10 → B74;
+  - F-P4-11 → B75;
+  - F-P4-12 → B74 after B34;
+  - verification in H2 and R2;
+  - the real provider under D6.
+- **The dependents of B28's delivered core** (F-P4-13, F-P4-14, F-P4-15, F-P6-07) depend on B28 directly.
+- **The schedule was re-derived once.** The M1 dates are unchanged. The next A1 stage is B32.
+- **The recalibration after B23, B24 and B28** (DELIVERY_PLAN §9, observation 3): construction ran at about 1–1.5 U per active hour with parallel implementers, and none of the three stages has merged. r is not re-fitted from active time alone, and the provisional dates stand. Review, approval and merge, not construction, set the calendar.

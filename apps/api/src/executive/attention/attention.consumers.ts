@@ -53,12 +53,16 @@ const quarantined = (event: FlatEvent, why: string) => ({
    product has for the class, each with its basis (dimension_basis), NULL where it has none (declared, never invented). The engine judges
    a dimension only when the class's policy sets its threshold; the rank reads them (consequence, window, confidence, exposure, strategic
    relevance). The windows of a warning and a review are measured on the DATABASE clock there (no Date.now() against the DB's instants). */
-type Further = { probability: unknown; exposure: unknown; strategic_relevance: unknown; information_value: unknown; irreversibility: unknown; dimension_basis: unknown; hours_to_window?: unknown };
+type Further = { probability: unknown; exposure: unknown; strategic_relevance: unknown; information_value: unknown; irreversibility: unknown; dimension_basis: unknown; hours_to_window?: unknown;
+  /* B28 (0088) signals: the novelty input (F-P6-07) — the weak-signal novelty detector's measure, carried when the dimensions name it */ novelty?: unknown /* end B28 signals */ };
 async function furtherDims(cap: AttentionSubscriberWrites, scope: Scope, signalClass: string, subjectId: string, hint: Row = {}): Promise<Further> {
   const d = await cap.attentionDimensions({ tenantId: scope.tenantId, domainId: scope.domainId, signalClass, subjectId, hint });
   const out: Further = { probability: d['probability'] ?? null, exposure: d['exposure'] ?? null, strategic_relevance: d['strategic_relevance'] ?? null,
     information_value: d['information_value'] ?? null, irreversibility: d['irreversibility'] ?? null, dimension_basis: d['dimension_basis'] ?? {} };
   if ('hours_to_window' in d) out.hours_to_window = d['hours_to_window'] ?? null;
+  /* B28 (0088) signals: NOVELTY (executive.attention_dimensions, 0088 §S8) — passed to the engine as read; judged only where a class sets min_novelty */
+  if ('novelty' in d) out.novelty = d['novelty'] ?? null;
+  /* end B28 signals */
   return out;
 }
 /** The class with no real input for any further dimension (proposal.review): each declared NULL. */

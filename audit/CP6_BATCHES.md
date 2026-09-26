@@ -4252,6 +4252,167 @@ The plan selection recorded since 0083 now EXECUTES:
 - **F-P4-12 no longer depends on F-P6-07's unfinished clauses.** It needs the delivered attention queue: B28's `extra_depends_on` is B24.
 - **The schedule was re-derived once.** Three accounts: M1 expected 2027-07-02, unchanged. Two accounts: 2027-10-06. One account: 2028-08-02. The dates stay provisional. `feature-tracker.mjs` and `schedule-model.py --check` both PASS.
 
+## B28 — stream processing, the weak-signal workbench, the early-warning lifecycle, and the two B24 carryovers (0088): F-P4-10, F-P4-11 and F-P4-12 advanced, carryovers (a)–(c) delivered (implemented; a real delivery provider stays owner decision D6)
+
+**Where it stands.**
+- `phase6-b28` is stacked on B24 (#64); its PR base is `phase6-b24`.
+- It is the plan's next A1 stage (`audit/delivery/STAGES.csv` B28), with the B24-F2 correction applied: B28 carries the remediation workflow and the markers through assumptions as explicit conditions, plus the novelty input.
+- It has ONE migration, `0088_b28_signals_streams_warnings.sql`. The interface register stays **50/0/0**.
+
+**How it was built.**
+- The integrator wrote the §0 PRELUDE first:
+  - the three roles;
+  - the consumer kinds `stream-rules` and `warnings`;
+  - the warning's origin and cluster columns and events;
+  - **the warning-candidate intake**: every non-indicator origin submits there, and only §W turns a candidate into a warning.
+- Four parts were built in parallel worktrees on their own disposable databases (`eye_verify_a1_b28_<part>_*`), with heavy runs through `scripts/dev/heavy-slot.sh`.
+- The integrator merged them and combined one migration in the order the parts were verified. No function is re-declared by two sections.
+- **B28 completes no feature.** Their residual clauses are assigned to B34, B45, B74, B75, B84, H2 and R2 (DELIVERY_PLAN §10, "B28's residuals").
+
+### B28.1 — §S streams: event-time stream processing and complex event rules (F-P4-11)
+
+**Tables:**
+- `prediction.stream_rules`: versioned; frozen once active.
+- `stream_processors`: one live processor per rule.
+- `stream_inputs`: append-only. Every input is stored, with its lateness and whether it is new, a duplicate or a revision.
+- `stream_windows`.
+- `stream_checkpoints`.
+- `stream_signals`: append-only; retractions are their own rows.
+- The ledger.
+
+**Windows and lateness:**
+- The watermark is the highest event time minus the lag, NEVER the wall clock. A window fires when the watermark passes its end.
+- A late input into a fired window revises it, labelled `late_window`. An input beyond the allowance is counted as excluded; it is never evaluated and never hidden.
+- A window over an incomplete range, or with missing days, is marked partial.
+
+**Failure semantics:**
+- A digest mismatch marks the processor corrupt and retracts the signals after the last good checkpoint.
+- A stall, or an offsets divergence against the acquisition segments, suspends the outputs.
+- Recovery restores only from a COMPATIBLE checkpoint and replays; a duplicate output is suppressed.
+
+**Around it:**
+- The `stream-rules` consumer reads ObservationRecorded; the sweep is an attention-tick step.
+- A holding signal submits a warning candidate (origin `stream_rule`).
+- The UI is `/prediction/streams`.
+- The SYNTHETIC late set is `fixtures/phase1/replay/red-sea-corridor-stream-late/`: out-of-order pages, a redelivery after firing, a duplicate row and a revised value.
+
+### B28.2 — §S signals: weak signals, indicator governance, the Weak Signal Agent, the novelty input (F-P4-10; carryover (c))
+
+**Detectors and signals:**
+- The detectors read what the product has, as of an observation day: novelty, acceleration and change point over the evaluated observations; relationship change and diffusion over the graph relationships' validity dates.
+- Cross-domain convergence is recorded ABSENT: nothing reads across domains under RLS.
+- A reading is HELD, recorded and shown but never nominated, when there are too few points, a source gap, a drifting baseline or only synthetic sources.
+- The signal is versioned and carries its evidence and stance.
+
+**The rules around a signal:**
+- A trigger lets the maturity change ONLY with a `corroborated` event that names an independent evidence row.
+- Independence means a different source, publisher and digest, and neither synthetic. A shared upstream is `unknown` and never counted.
+- A disposition (confirm | monitor | dismiss | escalate, with strengthen/falsify conditions) is a named human's, human-gated; the nominator never disposes.
+- Escalation submits a warning candidate (origin `weak_signal`).
+
+**Indicator governance:** lineage, classification, expiry and review cadence, retire/renew with a ledger. An expired or retired indicator is not evaluated.
+
+**The Weak Signal Agent** (kind `weak_signal`) nominates and ranks ONLY. Its disposition attempt is refused and recorded.
+
+**Novelty (carryover (c)):** `min_novelty` is judged by the attention engine where a class sets it. The input is the originating signal's measure, or the indicator's latest novelty reading; otherwise it is "no input, not judged".
+
+The UI is `/prediction/signals`.
+
+### B28.3 — §W: the early-warning lifecycle (F-P4-12)
+
+**The intake:**
+- Processing (a tick step, plus a human-gated route) clusters a candidate into the open warning of its dedup key: cause, objectives, geographies, horizon. Distinct ones stay distinct.
+- A storm is folded into a lead warning, and the storm stays visible.
+- Otherwise the candidate is raised through `prediction.raise_warning`, unchanged.
+
+**Raising:**
+- The tick itself never raises: its write is `executive.attention.tick`.
+- **The attention agent raises the owed candidates right after its tick** (§I's after-tick hook `warning-raise`), under `prediction.warning.raise`. The PDP admits `attention_agent` there, as it admits `forecast_agent`.
+
+**The warning's content:**
+- Context: contradicting evidence, affected objectives (checked), assets, actors, geographies, horizons, falsification conditions, and a verification/simulation playbook (checked).
+- Closure criteria.
+- **Escalation on expiry:** the `warning-expiry` tick step escalates the linked attention item at once.
+
+**Feedback and evaluation:** feedback is false, late, missed, duplicated or useful. The warning evaluation reports rates by origin and T3 (the share raised before the decision deadline; acknowledgement p50/p90), abstaining below `min_sample`.
+
+**The `warnings` consumer:** graph impact, forecast revision and twin degradation become candidates.
+
+**Coverage gaps** on a warning carry the source's remediation (§I).
+
+### B28.4 — §R: the two B24 carryovers (conditions (a) and (b))
+
+**(a) The remediation workflow on coverage loss:**
+- `observation.coverage_remediations` plus its ledger; one open remediation per source.
+- It is opened from a `source.coverage_loss` item by its owner or a collection manager.
+- Steps:
+  - `fallback_source`: an active source that is not unhealthy;
+  - `recollect`: names a collection run of the source started after the opening;
+  - `accept_gap`: a reason, recorded by a SECOND person.
+- Closure: `recovered` only while the source is healthy; `closed_recovered` AUTOMATICALLY when the source recovers (`mark_source_impact`); `gap_accepted` only through the accepted step.
+
+**(b) Markers through assumptions:**
+- `source_derived_products` reaches the assumptions resting on claims extracted from the source's evidence, and assumptions resting on those, up to depth 4. It also reaches the packages whose current version's options cite them.
+- `source_impact_bearing` reads assumption citations, so the commitment gate refuses until the markers are acknowledged for that version.
+
+### B28.5 — §I the integrator, and what integration found
+
+- **The after-tick hook.** `AttentionTickRegistry.registerAfter`: after the tick's write commits, each hook runs its own governed write(s) under the agent's session. A hook's failure is recorded on the run and never undoes the tick.
+- **A cross-part contract defect, found and fixed.** The streams part submitted `affected` with its own keys (series, partition, horizon object). §W refused EVERY stream-rule candidate as malformed.
+  - The streams submission now uses the intake's contract: assets = the series and partition; horizon = the window.
+  - `submit_warning_candidate` now refuses a malformed `affected` block AT SUBMISSION.
+  - Regression: `phase6-streams-b28` R4 checks every stream-rule candidate against §W's contract.
+- **Older harnesses keep their kinds.** The kinds were selected as "every kind of GraphChanged", so the new `warnings` consumer entered them. `PRE_B28_KINDS` keeps what those harnesses were written for. `warnings` applied every delivery; the failures were the counts.
+- **Identity change.** The attention consumer's identity changed (novelty forwarded), so it is re-registered on the demonstration.
+
+### B28.6 — what the act found, corrected before the demonstration
+
+- **The attention agent became the routed owner.** A warning the agent raised after its tick, with no affected objective, was routed to the agent's principal. The preflight now routes to a NAMED, ACTIVE HUMAN, in this order: the objective's owner, the acting person, the submitter, then the origin's owner (the stream rule's owner, the signal's escalator). With none, the candidate stays pending and deferred with the reason. Regression: `phase6-streams-b28` R4.
+- **The re-collection was unreachable after a suspension.** A suspended source records no run, and a suspension is the product's path to a coverage loss. A `recollect` step without a run is now recorded as PLANNED, and a later step names the run. Regression: `phase6-remediation-b28` R1.
+- **An older race, carried as a stated item and not fixed here.** Registering a collection agent fires its first scheduled collection at once, racing the agent's grant (#44 era). The act lets it settle.
+
+### B28.7 — the evidence
+
+- **Harnesses** (each on a fresh database):
+
+| Harness | Result |
+|---|---|
+| `phase6-streams-b28` | 10/10 |
+| `phase6-signals-b28` | 10/10 |
+| `phase6-warnings-b28` | 7/7 |
+| `phase6-remediation-b28` | 4/4 |
+
+- **Full integration on fresh databases:**
+  - run 1 (5 part files, before the harness pins): six older files failed on registering and counting the new `warnings` kind (above);
+  - run 2 (one migration): 1211/1214 — b22 A2 (a kind count), streams R4 (the contract defect, fixed), warnings L4 (the tick's owed candidate now raised by the agent);
+  - run 3: **1214/1214 in 90 files**;
+  - the final run on the committed candidate: **1214/1214 in 90 files**.
+- **Unit and the rest:**
+  - unit 2522 + 9 on the committed candidate (a clean tree);
+  - acceptance 58/58 and the upgrade proof PASS (migrations 67, roles 39) on the committed candidate;
+  - browser 51/51 (the demo API and web stopped; the rehearsal Redis);
+  - the demo walk `e2e/phase6-b28.demo.spec.ts` 4/4 on `eye_demo` after the act, with B24's attention walk still 2/2 (`evidence/phase6-browser/b28-01…04`).
+- **The act on `eye_demo`:** `evidence/cp6/act-b28.txt` — **ALL SCENES HELD, 73 checks**.
+  - It waited for the REAL one-hour response window: no shortcut, no clock moved.
+  - Its wall time (13,274 s) includes about 2 h 41 min when the host was asleep; the attention agent's first tick after waking expired and escalated the warning at once.
+  - Before it: nine rehearsals on restored copies with the rehearsal Redis. Rehearsal 1 used the real wait; rehearsals 2 and 4–8 used the stated `ACT_FAST_EXPIRY` shortcut (6, 7 and 8 clean, the last after the act-found corrections); rehearsal 3 hit the collection-scheduling race.
+  - The backup before 0088 is `eye_demo-pre-0088-20260926T183223Z.dump`.
+
+**Stated (not done here):**
+- A real delivery provider (D6).
+- An anomaly model class in the model registry.
+- Learning from dispositions back into the detectors.
+- Seasonal-noise holds.
+- Automatic rule-fitness assessment.
+- Production load tests (a bounded run only).
+- A retraction does not withdraw a submitted candidate.
+- A correction of already-consumed evidence is not detected by the offsets reconciliation.
+- Policy-path approval of material warning policies.
+- Cross-domain convergence.
+- Compare/contextualize views.
+- Browser walks of the weak-signal journey.
+- The observation nav entry for remediations (the panel is on the attention page).
+
 ## Order and the next implementation batch
 
 B3, B1 and B2 are done in code, B4/B5 applied to the audit (the 2026-09-11 checkpoints), B6 done in
@@ -4264,4 +4425,4 @@ one artefact, no deployment leg. Every leg of every unit stays unaccepted until 
 carries its own signed evidence (P7-D). The synthetic-company demonstration (`eye_demo`, NORDWERK) remains the deliverable
 every batch is exercised on: B3's kinds become visible on the demonstration when a scenario with the
 new kinds is declared there through the governed route (a scripted act, `scripts/phase4/`), which is
-the next demonstration step after the hosted run is green. B22 delivered the consumers and the attention policy (0083; the register 44/6/0) and the sweep's remedy (0082). Then B23 (the commands and the query — L1-I02, L3-I02, L4-I02, L7-I02, L10-I02/-I03). B23 bound them and the briefing's attention section (0084; the register 50/0/0). From here the order is the finite delivery plan's (`audit/DELIVERY_PLAN.md`, `audit/delivery/STAGES.csv`): B24 (the attention completion, 0086) delivered on 2026-09-25 on `phase6-b24`, stacked on #63, and B24-F1 corrected on 2026-09-26 (0087, §B24.8) with the tracker corrected (§B24.9); B28 (stream processing, the weak-signal workbench, the early-warning lifecycle, and the two B24 carryovers) is in progress on A1. The C15 return to the official images merged with #57 (`main` `870b212`); the live demonstration containers were recreated onto those images on 2026-09-24 under the owner's word (§B22.2). The `ctx.build` remedy was delivered as 0082 (§B22.1) — the owner's 2026-09-24 word made it a technical choice. AU-MEM-0067 stays OPEN without a waiver: the per-object class (a missing or corrupt object under a reachable root) keeps A7's one 409 and the specification obligation stands (§B21.2's table).
+the next demonstration step after the hosted run is green. B22 delivered the consumers and the attention policy (0083; the register 44/6/0) and the sweep's remedy (0082). Then B23 (the commands and the query — L1-I02, L3-I02, L4-I02, L7-I02, L10-I02/-I03). B23 bound them and the briefing's attention section (0084; the register 50/0/0). From here the order is the finite delivery plan's (`audit/DELIVERY_PLAN.md`, `audit/delivery/STAGES.csv`): B24 (the attention completion, 0086) delivered on 2026-09-25 on `phase6-b24`, stacked on #63, and B24-F1 corrected on 2026-09-26 (0087, §B24.8) with the tracker corrected (§B24.9); B28 (stream processing, the weak-signal workbench, the early-warning lifecycle, and the two B24 carryovers) delivered on 2026-09-26 (0088, `phase6-b28`, stacked on #64). The next A1 stage in the re-derived schedule is B32 (the Strategy Graph, risk and opportunity, the Strategic Health Score), then B34. The C15 return to the official images merged with #57 (`main` `870b212`); the live demonstration containers were recreated onto those images on 2026-09-24 under the owner's word (§B22.2). The `ctx.build` remedy was delivered as 0082 (§B22.1) — the owner's 2026-09-24 word made it a technical choice. AU-MEM-0067 stays OPEN without a waiver: the per-object class (a missing or corrupt object under a reachable root) keeps A7's one 409 and the specification obligation stands (§B21.2's table).

@@ -54,6 +54,10 @@ import { SchedulerService } from '../../src/observation/scheduling/scheduler.ser
 import { CollectionOrchestrator } from '../../src/observation/acquisition/orchestrator.service.js';
 import { SubscriptionDispatcherService } from '../../src/graph/subscriptions/subscription-dispatcher.service.js';
 import { CONSUMER_EVENT_TYPES, CONSUMER_KINDS, type ConsumerKind } from '../../src/graph/subscriptions/graph-change.js';
+/* B28 (0088): the `warnings` and `stream-rules` kinds are exercised by their own harnesses (phase6-warnings-b28, phase6-streams-b28); this
+   file registers and counts the kinds it was written for. */
+const PRE_B28_KINDS = CONSUMER_KINDS.filter((k) => k !== 'warnings' && k !== 'stream-rules');
+/* end B28 */
 import { asObservationRefusal } from '../../src/observation/observation-errors.js';
 import { COMMIT_DB } from '../../src/shared/shared.module.js';
 import type { Db } from '../../src/shared/db.js';
@@ -336,7 +340,7 @@ beforeAll(async () => {
   await seedEntity(E2, 'place', 'B22 Strait Terminal', strategyOwner.principalId);
   await settle();
   // THE SUBSCRIPTIONS: all ELEVEN kinds, registered by the tenant administrator with the backlog left; the four B22 kinds select their own types by default.
-  for (const kind of CONSUMER_KINDS) {
+  for (const kind of PRE_B28_KINDS) {
     const r = await register(kind);
     subs[kind] = { subscriptionId: r.subscription.subscriptionId, principalId: r.subscription.principalId };
     expect(r.served.workerRunning, `${kind}: the domain's queue is served from registration`).toBe(true);
@@ -416,9 +420,9 @@ describe('B22 · the attention policy and the consumers (0083; L10-I05, L1-I03, 
   }, 180_000);
 
   it('A2 · SUBSCRIPTIONS: the eleven kinds, the four B22 kinds on their own event types by default; a foreign type refused by the service (400) and by the port (22023); the register 44/6/0 with L10-I05, L1-I03, L1-I04, L2-I02 bound in 0083 and L9-I05\'s clause rewritten', async () => {
-    expect(CONSUMER_KINDS).toHaveLength(11);
+    expect(CONSUMER_KINDS).toHaveLength(13); // 0088 (B28): + warnings, stream-rules
     const rows = (await sql<{ consumer_kind: string; event_types: string[]; status: string; principal_id: string }>`select consumer_kind, event_types, status, principal_id::text from graph.subscriptions where tenant_id = ${T()}::uuid and domain_id = ${D()}::uuid and status = 'active' order by consumer_kind`.execute(su)).rows;
-    expect(sorted(rows.map((r) => r.consumer_kind))).toEqual(sorted([...CONSUMER_KINDS]));
+    expect(sorted(rows.map((r) => r.consumer_kind))).toEqual(sorted([...PRE_B28_KINDS])); // the kinds this file registers (B28's two have their own harnesses)
     for (const k of NEW_KINDS) expect(rows.find((r) => r.consumer_kind === k)!.event_types, k).toEqual([...CONSUMER_EVENT_TYPES[k]]);
     expect(rows.find((r) => r.consumer_kind === 'attention')!.event_types).toEqual(['ForecastFitnessChanged', 'ScenarioCoherenceFailed', 'EarlyWarningRaised', 'AttentionPolicyChanged', 'MaterialChangeRaised', 'ReviewConvened']); // + the two B23 (0084) adds
     // each B22 subscriber holds exactly its own role
