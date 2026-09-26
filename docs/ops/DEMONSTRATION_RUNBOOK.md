@@ -435,3 +435,4 @@ so its queues must never share the demonstration's Redis — and an APFS clone o
   - Run `scripts/phase6/act-b24.mjs` with `EYE_DB_NAME=eye_demo_b24 EYE_API=http://localhost:3411`.
   - A run takes about 8 minutes, most of it waiting on the database clock for the two-minute deadline and the 60 s tick.
 - **The demo walk.** Run `e2e/phase6-attention.demo.spec.ts` through `playwright.demo.config.ts` after the act; screenshots go to `evidence/phase6-browser/b24-*.png`.
+- **B24-F1 (2026-09-26).** `eye_demo` is migrated through **0087**, the backup before it being `.eye-local/backups/eye_demo-pre-0087-20260926T122536Z.dump`. The API was restarted with `scripts/ops/demo-restart.sh` (VERIFIED). The extraction agent now runs a plan execution only against its queued evidence version: a corrected version is reselected explicitly, and a withdrawn one is refused.

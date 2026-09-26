@@ -36,13 +36,15 @@ import { newId } from '../../shared/ids.js';
 import { redisName } from '../../shared/queues.js';
 import type { AuthenticatedPrincipal } from '../../shared/auth-types.js';
 import { asObservationRefusal } from '../../observation/observation-errors.js';
-import { ExtractionOrchestrator } from '../extraction/orchestrator.service.js';
+import { EvidenceVersionSuperseded, ExtractionOrchestrator } from '../extraction/orchestrator.service.js';
 import { ExtractionAgentSessionService, ExtractionGrantRefused } from './extraction-agent-session.service.js';
 import { planQueueNameFor, planSchedulerIdFor, type PlanDrainJobPayload } from './plan-executor.js';
 
 /** A claimed execution, as the claim port answers it. */
 interface Claimed { execution_id: string; selection_id: string; method_id: string; method_key: string; method_version: number; evd_object_id: string; evd_version: number; attempts: number; correlation_id: string }
-type Outcome = { state: 'done' | 'refused' | 'failed'; runId: string | null; error: string | null; details: Record<string, unknown> };
+type Outcome = { state: 'done' | 'refused' | 'failed'; runId: string | null; error: string | null; details: Record<string, unknown>;
+                 /* B24-F1: a refusal that REQUESTS the explicit reselection of the current (live) evidence version (0087) */
+                 reselect?: { currentVersion: number; reason: string } };
 
 export interface PlanReconcileReport { at: string; reason: string; domains: Array<{ tenantId: string; domainId: string; agentId: string; claimable: number; everySeconds: number }>; failures: string[] }
 export interface DrainReport { at: string; tenantId: string; domainId: string; agentId: string; jobId: string; claimed: number; done: number; refused: number; failed: number; note: string | null }
@@ -184,6 +186,11 @@ export class ExtractionPlanWorkerService implements OnApplicationBootstrap, OnMo
   private async record(p: PlanDrainJobPayload, x: Claimed, o: Outcome): Promise<void> {
     await this.commitDb.transaction().execute(async (tx) => {
       await sql`select observation.issue_schedule_capability('plan execution recorded', 60)`.execute(tx);
+      /* B24-F1: a superseded evidence version is refused AND the live current version reselected explicitly (0087), in one write */
+      if (o.reselect !== undefined) {
+        await sql`select intelligence.reselect_plan_execution(${x.execution_id}::uuid, ${p.tenantId}::uuid, ${p.domainId}::uuid, ${o.reselect.currentVersion}::int, ${o.reselect.reason})`.execute(tx);
+        return;
+      }
       await sql`select intelligence.record_plan_execution(${x.execution_id}::uuid, ${p.tenantId}::uuid, ${p.domainId}::uuid, ${o.state}, ${o.runId}::uuid, ${o.error}, ${JSON.stringify(o.details)}::jsonb)`.execute(tx);
     });
   }
@@ -204,8 +211,11 @@ export class ExtractionPlanWorkerService implements OnApplicationBootstrap, OnMo
       const out = await this.orchestrator.run({
         envelope: this.env(principal, p.tenantId, p.domainId, x.correlation_id), principal, tenantId: p.tenantId, domainId: p.domainId,
         methodId: x.method_id, limit: 1, newAttempt: false, evidenceIds: [x.evd_object_id], methodVersion: x.method_version,
+        evidenceVersions: { [x.evd_object_id]: x.evd_version }, // B24-F1: the version the plan was queued for, and no other
       });
-      const details = { run_state: out.state, mode: out.mode, evidence_read: out.evidenceRead, claims_admitted: out.claimsAdmitted, claims: out.claims.map((c) => c.objectId),
+      // B24-F1: the version the run actually read — the ledger's `done` requires it to equal the execution's own (0087)
+      const read = out.evidenceRetrievals.find((r) => r.evidenceObjectId === x.evd_object_id);
+      const details = { evd_version: read?.evidenceVersion ?? null, run_state: out.state, mode: out.mode, evidence_read: out.evidenceRead, claims_admitted: out.claimsAdmitted, claims: out.claims.map((c) => c.objectId),
                         idempotent_hits: out.idempotentHits, abstentions: out.abstentions, calls_used: out.callsUsed, queued_for_review: out.queuedForReview, method_key: x.method_key };
       if (out.state !== 'completed') return { state: 'failed', runId: out.runId, error: out.failure ?? `the run ended ${out.state}`, details };
       if (out.evidenceRead === 0) {
@@ -214,6 +224,17 @@ export class ExtractionPlanWorkerService implements OnApplicationBootstrap, OnMo
       }
       return { state: 'done', runId: out.runId, error: null, details };
     } catch (e) {
+      /* B24-F1: the evidence was corrected or withdrawn after the plan was queued. Nothing ran. A LIVE successor is reselected explicitly
+         (the old execution refused, the current version queued once — 0087); a withdrawn one is refused alone: it is not extracted. */
+      if (e instanceof EvidenceVersionSuperseded) {
+        const withdrawn = e.currentLifecycle === 'withdrawn' || e.currentTruth === 'withdrawn';
+        const details = { evd_version: null, pinned_version: e.pinnedVersion, current_version: e.currentVersion, current_lifecycle: e.currentLifecycle, method_key: x.method_key };
+        return withdrawn
+          ? { state: 'refused', runId: null, details, error: `${e.message}: the current version is withdrawn — nothing is extracted from it` }
+          : { state: 'refused', runId: null, details, error: e.message,
+              reselect: { currentVersion: e.currentVersion, reason: `evidence ${x.evd_object_id} was ${e.currentLifecycle} to version ${e.currentVersion} after the plan was queued on version ${x.evd_version}` } };
+      }
+      /* end B24-F1 */
       // A governance answer (the policy's 403, an absent method's 404, a method no longer active or re-versioned 409, a port's refusal) is a REFUSAL;
       // anything else is a fault, recorded as failed and taken again by a later drain while under the attempt budget.
       const mapped = e instanceof HttpException ? e : asObservationRefusal(e, x.correlation_id);

@@ -12,7 +12,7 @@ Prepared under the owner's instruction of 2026-09-25 ("Prepare its separate merg
 | #61 the corrected plan | `planning/delivery-plan-2026-09` → `phase6-b22` | `45fda0f` (was `e579514`) | `supply-chain` red (the redis recheck) until #62 is on its base; the limiter residual (PLAN-F4) CLOSED on it at `45fda0f` (step 3 done) |
 | #62 redis index re-pin | `maintenance/c15-redis-index-2026-09-25` → `main` | `17f0236` | CLEAN; every check green (ci 36129773111, C19 36129773207) |
 | #63 B23 | `phase6-b23` → `planning/delivery-plan-2026-09` | `d2fa829` (was `95dfcdb`) | `supply-chain` red (the redis recheck); B23-F1 CLOSED on it at `d2fa829` by the forward migration 0085 (step 4's precondition done) |
-| #64 B24 | `phase6-b24` → `phase6-b23` | `8459390` | `supply-chain` red (the redis recheck) until #62 is on its base; build-test (integration 1182/1182), browser-regression and C19 36164183865 green (ci 36164184010); holds the limiter fix (same patch as #61's `45fda0f`) and 0086 |
+| #64 B24 | `phase6-b24` → `phase6-b23` | `8459390` → B24-F1 head (see §4) | `supply-chain` red (the redis recheck) until #62 is on its base; build-test (integration 1182/1182), browser-regression and C19 36164183865 green (ci 36164184010); holds the limiter fix (same patch as #61's `45fda0f`) and 0086 |
 
 ## 1. The #62 decision (ready for the owner's word)
 
@@ -31,9 +31,23 @@ Older heads' green checks never stand for a new combination: every step below pr
 2. **#61 (the plan).** Retarget to `main` (`gh pr edit 61 --base main` — a merge commit leaves `phase6-b22` in place, so GitHub does not retarget by itself); merge `main` into `planning/delivery-plan-2026-09`; its checks on the new head → the owner's decision.
 3. **The limiter fix on #61.** Before step 2's decision, the PLAN-F4 residual fix (`c0b9d25` on `phase6-b24`: the slot kept until the cancelled workload's process group has exited; three regressions; the control reproducing the old defect) is cherry-picked onto `planning/delivery-plan-2026-09`, so #61 carries the complete limiter. (The same patch reaches `phase6-b24` again through the stack's merges without conflict.)
 4. **#63 (B23).** Before its decision: the B23-F1 forward correction (migration 0085) is committed on `phase6-b23`, with its focused regressions and a records note, so #63 closes its own defect; retarget to `main` after #61 merges; merge `main` in; checks on the new head → the owner's decision.
-5. **#64 (B24).** It stacks on #63 (base `phase6-b23`); after #63 merges, retarget to `main`, merge `main` in, checks on the new head → the owner's decision.
+5. **#64 (B24).** B24-F1 (the evidence version, the bounded B24 review) is corrected on it first (0087, a new head whose checks must complete). It stacks on #63 (base `phase6-b23`); after #63 merges, retarget to `main`, merge `main` in, checks on the new head → the owner's decision.
 
 Between two merges the first merge's `main` chain completes before the next merge (the B18 rule: the C17 finalize of a merge overtaken by another merge refuses).
+
+## 4. #61's A5 timing-gate failure — the focused disposition (2026-09-26)
+
+- **The failure** (ci 36147700841, job 108112881879 at `45fda0f`): `phase1-acceptance` A5 "EXISTENCE AND TIMING", one of 1103 integration tests. The foreign-scope mean was 3.48 ms and the absent mean 12.11 ms; the ratio 3.48 is not below 3. The NON-existent path was the slow one.
+- **It is not caused by #61.** #61's diff against #60 (`phase6-b22`) contains no runtime code: the register doc, the plan records, `scripts/dev/heavy-slot.sh` and its test. The same test passed on #60's head, on #63 `d2fa829` (ci 36149261460) and on #64 `8459390` (ci 36164184010).
+- **It does not reproduce on #61's exact code** (a worktree at `45fda0f`, fresh databases, the heavy slot):
+  - 30/30 runs of A5 alone;
+  - 10/10 runs of the whole file (46/46 each) on a fresh database each, alongside a full integration run for load.
+- **It is not treated as a proven isolation leak, nor waived.** It reads as a transient stall inflating one path's 12-sample mean. That is inferred from the numbers, not proven.
+- **Disposition:**
+  - The gate is UNCHANGED: threshold 3, the same statistic, required.
+  - #61 gets a new head in step 2 (`main` merged in), and A5 must pass there like every other check. Its merge decision is not asked for until it does.
+  - If it fails again, the next step is to record the per-probe samples of the failing run (a diagnostics-only change to the test, same threshold) before any other change.
+  - Redis explains only the `supply-chain` red, not this one.
 
 ## 3. What is never done in this sequence
 

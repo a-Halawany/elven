@@ -3991,3 +3991,19 @@ The mechanism is in `audit/CP6_BATCHES.md` §B24. The results are in `evidence/c
 - **Acceptance units.** Seventeen gain B24 evidence and none is promoted. The split stays **3,555 = 3,179 + 339 + 37**.
 - **Carried to B28 (the next A1 stage):** the remediation workflow on coverage loss, and markers reaching packages through assumptions. Both were in B24's stated scope and were not delivered.
 - **H1 timing items, preserved.** None became a functional blocker. `phase6-graph-subscriptions-2` B7 telemetry recurred once under load, and the gate tests need a clean tree.
+
+**38.5 — The bounded B24 review of 2026-09-25 (`audit/reviews/The_Eye_B24_Bounded_Review_2026-09-25.md`), applied 2026-09-26.**
+- **B23-F1 and PLAN-F4 stay CLOSED.**
+- **B24-F1 is corrected** by the forward migration 0087 and the worker's version pin (`audit/CP6_BATCHES.md` §B24.8):
+  - A plan execution is done only against the evidence version it was queued for.
+  - A later LIVE version is reselected explicitly; a withdrawn one is refused alone.
+  - The ledger refuses a `done` naming another version.
+  - The regression is X7, on the real database and the real correction route. The same X7 on the unfixed code reproduced the defect (done 1, refused 0).
+  - Results: the plan file 7/7; neighbours 117/117; the full integration suite **1183/1183** on a fresh database.
+  - `eye_demo` is migrated through 0087 after the backup `eye_demo-pre-0087-20260926T122536Z.dump`, and the API restart VERIFIED. 0084–0086 are untouched.
+- **B24-F2 is corrected in one tracker pass** (§B24.9):
+  - F-P6-07 completes in B34 after B28 and B32, with real-provider acceptance in R2 under D6.
+  - B24 advances it and completes nothing.
+  - B28 carries the two B24 carryovers as explicit completion conditions and scenes.
+  - The schedule was re-derived once: M1 at three accounts is still 2027-07-02.
+- **#61's A5 timing failure has a focused disposition** (`audit/delivery/INTEGRATION_SEQUENCE.md` §4). No runtime change is in #61's diff. A5 passed 40/40 on #61's exact code: 30 isolated runs, plus 10 whole-file runs on fresh databases alongside a full integration run for load. The gate is unchanged and required on #61's next head.

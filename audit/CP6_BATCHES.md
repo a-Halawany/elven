@@ -4206,6 +4206,50 @@ The plan selection recorded since 0083 now EXECUTES:
 - An outbox event for the new acts (the register stays 50/0/0).
 - Hosted browser-gate specs for the B24 panels (the demo walk covers them locally).
 
+### B24.8 — B24-F1 corrected (0087; the bounded B24 review of 2026-09-25)
+
+**The finding.** The execution ledger's identity is (method, method version, evidence object, evidence version). The worker, however, passed the orchestrator the evidence object only. The orchestrator then read the object's CURRENT version, and `record_plan_execution` never compared the version read with the queued one. A plan queued on version 1 whose evidence was corrected to version 2 before its drain therefore ran on version 2 and was marked `done` as the version-1 execution.
+
+**The control.** The new regression X7 was run against the B24 candidate's code, without the fix and without 0087. The version-1 execution was recorded `done` (drain: done 1, refused 0) after its evidence had been corrected to version 2. That is the defect exactly, reproduced through the real correction route on PostgreSQL.
+
+**The correction.** This is forward only: 0084–0086 are applied and untouched.
+- **The pin (TypeScript).** The worker passes `evidenceVersions {object: queued version}`. The orchestrator then reads exactly that version, or refuses before any run starts:
+  - a version not recorded answers 409 (`extraction refused (evidence_version)`);
+  - a later canonical version raises `EvidenceVersionSuperseded`.
+  - The run's retrieval receipt and its custody entry name the version read.
+- **The ledger's guard (0087).** `record_plan_execution` (0086 §P copied whole, plus one guard) accepts `done` only when the run's reported `evd_version` equals the execution's own. Anything else is refused with `plan execution rejected (evidence_version)` (22023).
+- **The explicit reselection (0087, new port `intelligence.reselect_plan_execution`, the scheduler's capability):**
+  - A LIVE successor is reselected. The version-n execution is recorded `refused`, with the reason and the successor named. ONE pending execution is queued for the same method version on the current evidence version. The ledger's UNIQUE identity means an existing one is named, never duplicated. The new row's first event is `reselected`, naming where it came from.
+  - A WITHDRAWN successor is not extracted: the worker records the refusal alone.
+
+**The regression (real database, the real correction route): `phase6-attention-plan-b24` X7.**
+- Queued on version 1, corrected to version 2 before the drain. The version-1 execution was refused (superseded) and version 2 was reselected, with no run and no claim.
+- The correct-version control: version 2 drained `done`, reporting version 2. The custody entry of its retrieval names version 2.
+- The duplicate control: a re-drain claims nothing.
+- The ledger refuses a forged `done` naming version 1 (22023).
+- The retry of version 2 is free: idempotent hit, no model call.
+- A withdrawn successor is refused alone, with nothing reselected.
+- X6 probes the new port's capability from both authorities.
+- Results: the file 7/7. The neighbours `phase2-acceptance`, `phase6-graph-subscriptions-4`, `phase6-attention-markers-b24`, `phase6-attention-b22` and `phase1-acceptance`: 117/117.
+
+**Stated.** A correction publishes no ObservationRecorded. A correction arriving AFTER a version-n execution finished is therefore not re-extracted automatically: the reselection happens when a queued execution meets a later version.
+
+### B24.9 — B24-F2: the tracker corrected (one bounded pass)
+
+- **F-P6-07 completes in B34,** after B28's novelty detector and B32's Strategy Graph and Strategic Health Score. It depends on F-P4-10, F-P6-08 and F-P6-09, and is advanced by B23, B24 and B28.
+- **Every unfinished clause has its stage:**
+  - B28: the novelty input.
+  - B34: opportunity and commitment items, the `act` transition, ranking fairness, the score consumed, and the channel adapters (against a local sink, synthetic).
+  - R2: real-provider delivery and the AT-44 record, external under D6.
+  - The residual construction is 1–2 U in B34, plus 0.25–0.5 U verification in R2.
+- **B24 completes nothing now.** It carries its own effort (1.5–3 U), explicit clause-level conditions and scenes B24-1…7, and advances F-P6-07.
+- **B28 carries the two B24 carryovers,** with their own effort (0.75–1.5 U). Each is an explicit completion condition with its scene:
+  - (a) the remediation workflow on coverage loss, scene B28-R;
+  - (b) markers reaching packages through assumptions, scene B28-A;
+  - plus (c) F-P6-07's novelty input, scene B28-N.
+- **F-P4-12 no longer depends on F-P6-07's unfinished clauses.** It needs the delivered attention queue: B28's `extra_depends_on` is B24.
+- **The schedule was re-derived once.** Three accounts: M1 expected 2027-07-02, unchanged. Two accounts: 2027-10-06. One account: 2028-08-02. The dates stay provisional. `feature-tracker.mjs` and `schedule-model.py --check` both PASS.
+
 ## Order and the next implementation batch
 
 B3, B1 and B2 are done in code, B4/B5 applied to the audit (the 2026-09-11 checkpoints), B6 done in
@@ -4218,4 +4262,4 @@ one artefact, no deployment leg. Every leg of every unit stays unaccepted until 
 carries its own signed evidence (P7-D). The synthetic-company demonstration (`eye_demo`, NORDWERK) remains the deliverable
 every batch is exercised on: B3's kinds become visible on the demonstration when a scenario with the
 new kinds is declared there through the governed route (a scripted act, `scripts/phase4/`), which is
-the next demonstration step after the hosted run is green. B22 delivered the consumers and the attention policy (0083; the register 44/6/0) and the sweep's remedy (0082). Then B23 (the commands and the query — L1-I02, L3-I02, L4-I02, L7-I02, L10-I02/-I03). B23 bound them and the briefing's attention section (0084; the register 50/0/0). From here the order is the finite delivery plan's (`audit/DELIVERY_PLAN.md`, `audit/delivery/STAGES.csv`): B24 (the attention completion, 0086) delivered on 2026-09-25 on `phase6-b24`, stacked on #63; B28 (stream processing, the weak-signal workbench, the early-warning lifecycle) is next on A1. The C15 return to the official images merged with #57 (`main` `870b212`); the live demonstration containers were recreated onto those images on 2026-09-24 under the owner's word (§B22.2). The `ctx.build` remedy was delivered as 0082 (§B22.1) — the owner's 2026-09-24 word made it a technical choice. AU-MEM-0067 stays OPEN without a waiver: the per-object class (a missing or corrupt object under a reachable root) keeps A7's one 409 and the specification obligation stands (§B21.2's table).
+the next demonstration step after the hosted run is green. B22 delivered the consumers and the attention policy (0083; the register 44/6/0) and the sweep's remedy (0082). Then B23 (the commands and the query — L1-I02, L3-I02, L4-I02, L7-I02, L10-I02/-I03). B23 bound them and the briefing's attention section (0084; the register 50/0/0). From here the order is the finite delivery plan's (`audit/DELIVERY_PLAN.md`, `audit/delivery/STAGES.csv`): B24 (the attention completion, 0086) delivered on 2026-09-25 on `phase6-b24`, stacked on #63, and B24-F1 corrected on 2026-09-26 (0087, §B24.8) with the tracker corrected (§B24.9); B28 (stream processing, the weak-signal workbench, the early-warning lifecycle, and the two B24 carryovers) is in progress on A1. The C15 return to the official images merged with #57 (`main` `870b212`); the live demonstration containers were recreated onto those images on 2026-09-24 under the owner's word (§B22.2). The `ctx.build` remedy was delivered as 0082 (§B22.1) — the owner's 2026-09-24 word made it a technical choice. AU-MEM-0067 stays OPEN without a waiver: the per-object class (a missing or corrupt object under a reachable root) keeps A7's one 409 and the specification obligation stands (§B21.2's table).

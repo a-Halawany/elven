@@ -36,6 +36,7 @@ import { jcsCanonicalize } from '@eye/contracts';
 import type { AuthenticatedPrincipal } from '../../src/shared/auth-types.js';
 import type { GraphController } from '../../src/graph/graph.controller.js';
 import type { IntelligenceController } from '../../src/intelligence/intelligence.controller.js';
+import type { ObservationController } from '../../src/observation/observation.controller.js';
 import { SchedulerService } from '../../src/observation/scheduling/scheduler.service.js';
 import { SubscriptionDispatcherService } from '../../src/graph/subscriptions/subscription-dispatcher.service.js';
 import { VaultService } from '../../src/observation/vault/vault.service.js';
@@ -69,6 +70,7 @@ const METHOD = { key: 'b24-plan-' + 'extraction', modelId: 'b24-plan-model', pro
 let h: Phase4Harness; let su: AnyDb; let graph: GraphController; let intelligence: IntelligenceController;
 let scheduler: SchedulerService; let dispatcher: SubscriptionDispatcherService; let vault: VaultService; let worker: ExtractionPlanWorkerService;
 let tenantAdmin: AuthenticatedPrincipal; let dadmin: AuthenticatedPrincipal; let extractionManager: AuthenticatedPrincipal; let analyst: AuthenticatedPrincipal;
+let observation: ObservationController; let collectionManager: AuthenticatedPrincipal;
 let subscription = { subscriptionId: '', principalId: '' };
 let planSource = ''; let methodId = '';
 /** What the cases leave one another (each named where it is made). */
@@ -178,6 +180,14 @@ const recordFor = async (evd: Evd, claims: Row[]): Promise<void> => {
     { payload: { recordings: [{ requestDigest: requestDigestOf(req), response: { claims }, modelId: METHOD.modelId, runtimeVersion: METHOD.runtimeVersion }] } });
 };
 const claimOf = (value: string): Row => ({ claim_kind: 'claim', subject: 'B24 Plan Terminal', predicate: 'throughput', object_value: value, confidence: 0.95, byte_start: 0, byte_end: 12 });
+/** B24-F1: a correction (or a withdrawal) of evidence through the real routes — received, then applied by the collection manager (the B20 harness :302 idiom). */
+const correctEvidence = async (evdId: string, reason: string, kind: 'correction' | 'withdrawal'): Promise<void> => {
+  const o = await observation.submitCorrection(h.req(collectionManager, 'observation.correction.receive', 'COR', null, 'observation'), T(), D(),
+    { payload: { sourceId: planSource, kind, channel: 'operator re-upload', publisherRef: `fixture ${reason}`, reason, affectedEvdIds: [evdId] } } as never) as unknown as { correction: { caseId: string } };
+  await observation.applyCorrection(h.req(collectionManager, 'observation.correction.apply', 'COR', o.correction.caseId, 'observation'), T(), D(), o.correction.caseId,
+    { payload: { decision: 'apply', affectedEvdIds: [evdId], reason } } as never);
+};
+const evidenceVersions = async (evdId: string) => (await sql<{ v: number; lifecycle_state: string }>`select object_version::int v, lifecycle_state from objects.canonical_objects where object_id = ${evdId}::uuid order by object_version`.execute(su)).rows;
 /** An agent principal as an administrator would provision it — PLANTED by the superuser (the harness's agent idiom, phase4-helpers :318): kind agent, extraction_agent here. */
 async function provisionAgentPrincipal(label: string): Promise<string> {
   const id = uuidv7();
@@ -194,12 +204,15 @@ beforeAll(async () => {
   const { GraphController: Gc } = await import('../../src/graph/graph.controller.js');
   const { IntelligenceController: Ic } = await import('../../src/intelligence/intelligence.controller.js');
   graph = h.app.get(Gc); intelligence = h.app.get(Ic);
+  const { ObservationController: Oc } = await import('../../src/observation/observation.controller.js');
+  observation = h.app.get(Oc);
   scheduler = h.app.get(SchedulerService); dispatcher = h.app.get(SubscriptionDispatcherService); vault = h.app.get(VaultService); worker = h.app.get(ExtractionPlanWorkerService);
   // THE HUMANS of this file, each with a session of its own (the ports compare the acting principal).
   tenantAdmin = await h.humanWithSession(['tenant_admin'], 'b24p-tenant-admin', 'TENANT');
   dadmin = await h.humanWithSession(['domain_admin'], 'b24p-domain-admin');
   extractionManager = await h.humanWithSession(['extraction_manager'], 'b24p-extraction-manager');
   analyst = await h.humanWithSession(['domain_analyst'], 'b24p-analyst');
+  collectionManager = await h.humanWithSession(['collection_manager'], 'b24p-collection-manager');
   // THE SOURCES (each with its own upload agent) BEFORE the subscription, so their registrations' events are left behind.
   planSource = await h.uploadSource('internal', PLAN_LABEL);
   await h.uploadSource('internal', OTHER_LABEL);
@@ -420,6 +433,89 @@ describe('CP-6 B24 (0086 §P): the selected transformation plan executes under t
       recovery: 'the refused execution re-queued by the registration and run by the new agent', reconciliation: { refusals: ['422 no reason', '404 unknown', '403 analyst', '404 twice', '409 reused principal'], run: done.run_id } });
   }, 300_000);
 
+  it('X7 · B24-F1 THE EVIDENCE VERSION: a plan queued on version 1 whose evidence is CORRECTED to version 2 before its drain is never done against version 2 — refused, version 2 RESELECTED explicitly, then done on version 2; a re-drain queues and runs nothing twice; the ledger refuses a done naming another version; a WITHDRAWN successor is refused alone', async () => {
+    const active = (await sql<{ agent_id: string }>`select agent_id::text from intelligence.extraction_agents where tenant_id = ${T()}::uuid and domain_id = ${D()}::uuid and status = 'active'`.execute(su)).rows[0]!;
+    // THE DRAIN HELD (stated): the repeatable drain removed, so each drain below is the harness's own call — never a race with the 60 s cadence.
+    await drainsIdle();
+    await worker.obliterateDrainsForTests(T(), D());
+    let n = 0;
+    const drainNow = () => worker.drain({ tenantId: T(), domainId: D(), agentId: active.agent_id, correlationId: uuidv7() } as never, `b24f1-${n++}`);
+    /* (a) QUEUED ON VERSION 1 */
+    const t0 = await mark();
+    const E4 = await uploadOn(PLAN_LABEL, 'b24p-e4.csv', 'site,throughput\nB24 Plan Terminal,44\n');
+    const ev = await outboxEvent('ObservationRecorded', t0, (p) => p['evd_object_id'] === E4.id);
+    await observed(ev.id);
+    const v1 = await waitExecution(E4.id, 'pending');
+    expect(v1).toMatchObject({ evd_version: 1 });
+    /* (b) THE CORRECTION ARRIVES BEFORE THE DRAIN (the real path): version 2, corrected */
+    await correctEvidence(E4.id, 'B24-F1: the publisher corrected the throughput figure', 'correction');
+    expect(await evidenceVersions(E4.id)).toEqual([{ v: 1, lifecycle_state: expect.any(String) }, { v: 2, lifecycle_state: 'corrected' }]);
+    /* (c) THE DRAIN: version 1 is REFUSED (superseded) and version 2 RESELECTED — no run starts, nothing is extracted from either yet */
+    const runsBefore = (await runsOfMethod()).length;
+    const r1 = await drainNow();
+    expect(r1).toMatchObject({ claimed: 1, done: 0, refused: 1, failed: 0 });
+    const afterReselect = await executionsOf(E4.id);
+    expect(afterReselect).toHaveLength(2);
+    const old = afterReselect.find((x) => x.evd_version === 1)!; const fresh = afterReselect.find((x) => x.evd_version === 2)!;
+    expect(old).toMatchObject({ execution_id: v1.execution_id, state: 'refused', run_id: null });
+    expect(old.last_error).toMatch(/^superseded: evidence version 2 is current \(corrected\); evidence .* was corrected to version 2 after the plan was queued on version 1$/);
+    expect(old.outcome).toMatchObject({ superseded_by_version: 2, reselected_execution_id: fresh.execution_id, queued: true });
+    expect(fresh).toMatchObject({ state: 'pending', method_version: v1.method_version, selection_id: v1.selection_id, attempts: 0 });
+    expect((await executionEvents(old.execution_id)).map((e) => e.event)).toEqual(['queued', 'claimed', 'refused']);
+    expect(await executionEvents(fresh.execution_id)).toEqual([{ event: 'reselected', details: expect.objectContaining({ from_execution: v1.execution_id, from_version: 1, evd_version: 2 }) }]);
+    expect(await runsOfMethod()).toHaveLength(runsBefore);
+    expect(await claimsOn(E4.id)).toEqual([]);
+    /* (d) THE CORRECT VERSION: the response recorded for version 2's request; the next drain runs version 2 → done, reporting version 2 */
+    await recordFor(E4, [claimOf('44 units (corrected)')]);
+    const r2 = await drainNow();
+    expect(r2).toMatchObject({ claimed: 1, done: 1 });
+    const doneRow = (await executionsOf(E4.id)).find((x) => x.evd_version === 2)!;
+    expect(doneRow).toMatchObject({ execution_id: fresh.execution_id, state: 'done', agent_id: active.agent_id, attempts: 1 });
+    expect(doneRow.outcome).toMatchObject({ evd_version: 2, run_state: 'completed', evidence_read: 1, claims_admitted: 1 });
+    expect(await claimsOn(E4.id)).toEqual([{ claim_object_id: (doneRow.outcome['claims'] as string[])[0], run_id: doneRow.run_id }]);
+    const custody = (await sql<{ n: number }>`select count(*)::int n from observation.custody_events where evd_object_id = ${E4.id}::uuid and event = 'custody.retrieved' and details ->> 'run_id' = ${doneRow.run_id} and details ->> 'evidence_version' = '2'`.execute(su)).rows[0]!.n;
+    expect(custody).toBe(1);
+    /* (e) DUPLICATE / RETRY: a re-drain claims nothing; the refused version-1 execution is not taken again; no second run */
+    expect(await drainNow()).toMatchObject({ claimed: 0 });
+    expect(await executionsOf(E4.id)).toHaveLength(2);
+    expect(await runsOfMethod()).toHaveLength(runsBefore + 1);
+    /* (f) THE LEDGER'S GUARD: a claimed version-2 execution recorded `done` naming version 1 is refused (0087) — in one transaction, rolled back */
+    const { COMMIT_DB } = await import('../../src/shared/shared.module.js');
+    const commit = h.app.get<import('../../src/shared/db.js').Db>(COMMIT_DB);
+    await sql`update intelligence.plan_executions set state = 'pending', finished_at = null where execution_id = ${fresh.execution_id}::uuid`.execute(su);   // the lost-outcome idiom (X2), stated
+    const forged = await commit.transaction().execute(async (tx) => {
+      await sql`select observation.issue_schedule_capability('b24f1 forged record', 60)`.execute(tx);
+      await sql`select * from intelligence.claim_plan_executions(${T()}::uuid, ${D()}::uuid, ${active.agent_id}::uuid, 1, ${uuidv7()}::uuid)`.execute(tx);
+      await sql`select intelligence.record_plan_execution(${fresh.execution_id}::uuid, ${T()}::uuid, ${D()}::uuid, 'done', ${doneRow.run_id}::uuid, null, ${JSON.stringify({ evd_version: 1 })}::jsonb)`.execute(tx);
+    }).then(() => null, (e: { code?: string; message?: string }) => e);
+    expect(forged).toMatchObject({ code: '22023', message: expect.stringMatching(/^plan execution rejected \(evidence_version\): execution .* was queued for evidence version 2; the run reports version 1$/) });
+    // the retry of the same version is FREE (0023's extraction identity) and done on version 2
+    const r3 = await drainNow();
+    expect(r3).toMatchObject({ claimed: 1, done: 1 });
+    const again = (await executionsOf(E4.id)).find((x) => x.evd_version === 2)!;
+    expect(again).toMatchObject({ state: 'done', attempts: 2 });
+    expect(again.outcome).toMatchObject({ evd_version: 2, claims_admitted: 0, idempotent_hits: 1, calls_used: 0 });
+    /* (g) A WITHDRAWN SUCCESSOR: queued on version 1, withdrawn before the drain → refused, nothing reselected, nothing extracted */
+    const t1 = await mark();
+    const E5 = await uploadOn(PLAN_LABEL, 'b24p-e5.csv', 'site,throughput\nB24 Plan Terminal,45\n');
+    await observed((await outboxEvent('ObservationRecorded', t1, (p) => p['evd_object_id'] === E5.id)).id);
+    const w1 = await waitExecution(E5.id, 'pending');
+    await correctEvidence(E5.id, 'B24-F1: the publisher withdrew the record', 'withdrawal');
+    expect((await evidenceVersions(E5.id)).at(-1)).toEqual({ v: 2, lifecycle_state: 'withdrawn' });
+    expect(await drainNow()).toMatchObject({ claimed: 1, refused: 1, done: 0 });
+    const wRows = await executionsOf(E5.id);
+    expect(wRows).toHaveLength(1);
+    expect(wRows[0]).toMatchObject({ execution_id: w1.execution_id, state: 'refused', run_id: null });
+    expect(wRows[0]!.last_error).toMatch(/^extraction refused \(evidence_version\): evidence .* is at version 2 \(withdrawn\); the plan named version 1: the current version is withdrawn — nothing is extracted from it$/);
+    expect(await claimsOn(E5.id)).toEqual([]);
+    expect(await runsOfMethod()).toHaveLength(runsBefore + 2);
+    // THE DRAIN RESTORED for the next case.
+    await worker.schedule(T(), D(), active.agent_id, 60);
+    sixEvidence('X7', { fault_trace: { queued_v1: v1.execution_id, corrected_to: 2, withdrawn: E5.id }, watermark: { v1: 'refused (superseded)', v2: 'reselected → done', withdrawn: 'refused alone' },
+      consumer_behaviour: 'the worker pins the queued version; the orchestrator refuses a superseded one before any run', operator_action: 'the collection manager corrected and withdrew the evidence',
+      recovery: 'the corrected version reselected explicitly and extracted; a retry of it free', reconciliation: { forged_done: '22023', runs: runsBefore + 2 } });
+  }, 300_000);
+
   it('X6 · AUTHORITY: every new port refuses without its capability and is unreachable by the other authority (the C14 rule, by hand for 0086 §P); a drifted executor digest opens no session', async () => {
     const { COMMIT_DB, IDENTITY_DB } = await import('../../src/shared/shared.module.js');
     const pools = { commit: h.app.get<import('../../src/shared/db.js').Db>(COMMIT_DB), identity: h.app.get<import('../../src/shared/db.js').Db>(IDENTITY_DB) };
@@ -433,6 +529,7 @@ describe('CP-6 B24 (0086 §P): the selected transformation plan executes under t
       ['intelligence.claim_plan_executions', 'commit', 'select * from intelligence.claim_plan_executions(null,null,null,null,null)'],
       ['intelligence.record_plan_execution', 'commit', 'select intelligence.record_plan_execution(null,null,null,null,null,null,null)'],
       ['intelligence.plan_executions_to_reconcile', 'commit', 'select * from intelligence.plan_executions_to_reconcile()'],
+      ['intelligence.reselect_plan_execution', 'commit', 'select intelligence.reselect_plan_execution(null,null,null,null,null)'],
       ['intelligence.extraction_agent_session_open', 'identity', 'select intelligence.extraction_agent_session_open(null,null,null,null,null,null,null,null,null,null)'],
       ['intelligence.extraction_agent_session_extend', 'identity', 'select intelligence.extraction_agent_session_extend(null,null,null,null,null,null,null)'],
     ];
