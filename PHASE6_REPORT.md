@@ -4051,7 +4051,7 @@ The mechanism is in `audit/CP6_BATCHES.md` §B28.
 | Browser | 51/51 |
 | Demo walk | 4/4 on `eye_demo` |
 
-**The act on `eye_demo`** (`evidence/cp6/act-b28.txt`): ALL SCENES HELD, 73 checks, with the real one-hour window. The host slept about 2 h 41 min during it; the agent's first tick after waking expired and escalated the warning. The backup before 0088 is `eye_demo-pre-0088-20260926T183223Z.dump`, and the API restart VERIFIED. The final candidate's results are in §B28.7.
+**The act on `eye_demo`** (`evidence/cp6/act-b28.txt`): ALL SCENES HELD, 73 checks, with the real one-hour window. The host slept about 2 h 41 min during it; the agent's first tick after waking expired and escalated the warning. The backup before 0088 is `eye_demo-pre-0088-20260926T183223Z.dump`, and the API restart VERIFIED. The final candidate's results are in §B28.7. **Hosted** (ci 36276627852 at `2c75487`): integration **1214/1214**, unit 2522 + 9, acceptance 58/58, upgrade PASS; browser and C19 36276627853 green; `supply-chain` red only on the redis recheck. **build-test is red on ONE C18 control** (622/623: the C18.1.11 "expiry drifts by five milliseconds" mutation, whose detection depends on the run's own timing), carried to H1 with the gate unchanged and C18 not reopened.
 
 ### 39.3 The plan
 

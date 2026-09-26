@@ -4397,6 +4397,10 @@ The UI is `/prediction/signals`.
   - Its wall time (13,274 s) includes about 2 h 41 min when the host was asleep; the attention agent's first tick after waking expired and escalated the warning at once.
   - Before it: nine rehearsals on restored copies with the rehearsal Redis. Rehearsal 1 used the real wait; rehearsals 2 and 4–8 used the stated `ACT_FAST_EXPIRY` shortcut (6, 7 and 8 clean, the last after the act-found corrections); rehearsal 3 hit the collection-scheduling race.
   - The backup before 0088 is `eye_demo-pre-0088-20260926T183223Z.dump`.
+- **The hosted run (bound 2026-09-27):** ci **36276627852** at `2c75487` on #65, ONE attempt (`evidence/cp6/hosted-2c75487-summary.txt`).
+  - build-test: unit 2522 + 9, web 63, contracts 203, acceptance 58/58, **the integration suite 1214/1214 in 90 files**, the upgrade proof PASS, C18 dual-path proof and verification PASS.
+  - **C18 controls 622/623.** The C18.1.11 differential control "the rotated seed credential expiry drifts by five milliseconds" was accepted this run. That control's detection depends on the run's own marking-to-bound gap staying under 5 ms: a timing property, not B28's. B28 touches no C18 code, and the same control passed 623/623 on both #64 runs. It is carried to H1; the gate is unchanged, C18 is not reopened, and no re-run was requested.
+  - browser-regression and C19 **36276627853** green; `supply-chain` red only on the redis recheck (#62).
 
 **Stated (not done here):**
 - A real delivery provider (D6).

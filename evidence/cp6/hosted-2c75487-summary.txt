@@ -1,0 +1,32 @@
+CP-6 B28 at 2c75487 — the hosted run on PR #65: ci 36276627852 (attempt 1, 2026-09-26T22:32:46Z → 2026-09-26T23:01:23Z), C19 lifecycle 36276627853
+
+== build-test (RED on ONE C18 control; every other suite green)
+packages/tokens test:  Test Files  1 passed (1)
+packages/tokens test:       Tests  3 passed (3)
+packages/contracts test:  Test Files  6 passed (6)
+packages/contracts test:       Tests  203 passed (203)
+apps/web test:  Test Files  12 passed (12)
+apps/web test:       Tests  63 passed (63)
+apps/api test:  Test Files  72 passed (72)
+apps/api test:       Tests  2522 passed (2522)
+apps/api test:  Test Files  1 passed (1)
+apps/api test:       Tests  9 passed (9)
+ Test Files  1 passed (1)
+      Tests  58 passed (58)
+ Test Files  90 passed (90)
+      Tests  1214 passed (1214)
+=== PASS ===
+C18 dual-path proof: PASS
+C18 evidence verification: PASS
+ Test Files  1 failed | 6 passed (7)
+      Tests  1 failed | 622 passed (623)
+
+the one failure: test/gate/c18-mutation-controls-1.ctl.ts > C18.1.11 — DIFFERENTIAL > "the rotated seed credential expiry drifts by five
+milliseconds — a424505 ACCEPTS it; C18.1.11 REJECTS it": C18.1.11 ACCEPTED the +5 ms mutation this run (622/623). The verifier rejects
+only when expires_at − 24 h leaves (created_at, rotated_at) or passes the audited bootstrap stamp; a +5 ms drift is detectable only
+while the run's own marking instant lies within 5 ms of that bound — a property of the run's timing, not of B28 (B28 changes no C18
+code; C18 is frozen at 0021 and CLOSED at a8d34c4 — not reopened). The same control passed on #64 (ci 36164184010, 36242673225:
+623/623). Disposition: a carried timing item (H1), the gate unchanged and required on the next head; no job re-run requested.
+
+== browser-regression: green · C19 lifecycle: green
+== supply-chain (red, as designed until #62 is on this branch's base): the C15 gate PASS; the patched-image recheck red ONLY on the moved redis index
