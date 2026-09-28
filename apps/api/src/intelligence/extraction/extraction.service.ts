@@ -135,6 +135,11 @@ export interface ExtractionOutcome {
    * the reason its output looks thinner than the model's.
    */
   undeclaredRefusals: Array<{ evidenceObjectId: string; kind: string; objectType: string }>;
+  /**
+   * B24-F1: evidence whose governed read SERVED a version other than the one selected (a correction committed between the selection and
+   * the read). Nothing was extracted from it; a plan execution refuses and reselects it (0087).
+   */
+  evidenceVersionMismatches: Array<{ evidenceObjectId: string; selectedVersion: number; servedVersion: number }>;
 }
 
 @Injectable()

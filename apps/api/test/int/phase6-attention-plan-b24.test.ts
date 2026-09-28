@@ -516,6 +516,70 @@ describe('CP-6 B24 (0086 §P): the selected transformation plan executes under t
       recovery: 'the corrected version reselected explicitly and extracted; a retry of it free', reconciliation: { forged_done: '22023', runs: runsBefore + 2 } });
   }, 300_000);
 
+  it('X8 · B24-F1 AT THE READ: a correction committed BETWEEN the version precheck and the governed byte read — the read serves version 2, nothing is extracted, the version-1 execution is refused and version 2 reselected; the custody entry names the version SERVED; a withdrawal committed at the same point is refused by the read (nothing reselected, nothing read)', async () => {
+    const active = (await sql<{ agent_id: string }>`select agent_id::text from intelligence.extraction_agents where tenant_id = ${T()}::uuid and domain_id = ${D()}::uuid and status = 'active'`.execute(su)).rows[0]!;
+    await drainsIdle();
+    await worker.obliterateDrainsForTests(T(), D());   // THE DRAIN HELD (stated): each drain below is the harness's own call
+    let n = 100;
+    const drainNow = () => worker.drain({ tenantId: T(), domainId: D(), agentId: active.agent_id, correlationId: uuidv7() } as never, `b24f1-read-${n++}`);
+    const runsBefore = (await runsOfMethod()).length;
+    /* (a) QUEUED ON VERSION 1; the model's answer recorded (a correction keeps the bytes, so the same request serves version 2 later) */
+    const t0 = await mark();
+    const E6 = await uploadOn(PLAN_LABEL, 'b24p-e6.csv', 'site,throughput\nB24 Plan Terminal,46\n');
+    await observed((await outboxEvent('ObservationRecorded', t0, (p) => p['evd_object_id'] === E6.id)).id);
+    const v1 = await waitExecution(E6.id, 'pending');
+    expect(v1).toMatchObject({ evd_version: 1 });
+    await recordFor(E6, [claimOf('46 units')]);
+    /* THE INTERLEAVING (deterministic): the hook commits the correction after the precheck saw version 1, before the governed read */
+    let fired = 0;
+    worker.setRetrievalHookForTests(async (evd) => { if (evd === E6.id && fired++ === 0) await correctEvidence(E6.id, 'B24-F1: corrected between the precheck and the read', 'correction'); });
+    try {
+      expect(await drainNow()).toMatchObject({ claimed: 1, done: 0, refused: 1 });
+    } finally { worker.setRetrievalHookForTests(null); }
+    expect(fired).toBe(1);
+    expect((await evidenceVersions(E6.id)).map((x) => x.v)).toEqual([1, 2]);
+    const rows = await executionsOf(E6.id);
+    const old = rows.find((x) => x.evd_version === 1)!; const fresh = rows.find((x) => x.evd_version === 2)!;
+    expect(old).toMatchObject({ execution_id: v1.execution_id, state: 'refused' });
+    expect(old.last_error).toMatch(/^superseded: evidence version 2 is current \(corrected\); evidence .* was corrected to version 2 between the precheck and the governed read of version 1 \(run .*\)$/);
+    expect(old.outcome).toMatchObject({ superseded_by_version: 2, reselected_execution_id: fresh.execution_id, queued: true });
+    expect(fresh).toMatchObject({ state: 'pending' });
+    // a run STARTED (the precheck passed) and read nothing it may extract: no claim, and its custody entry names the version SERVED (2) beside the expectation (1)
+    const runs = await runsOfMethod();
+    expect(runs).toHaveLength(runsBefore + 1);
+    expect(runs.at(-1)).toMatchObject({ evidence_read: 0, claims_admitted: 0 });
+    expect(await claimsOn(E6.id)).toEqual([]);
+    const custody = (await sql<{ served: string; expected: string }>`select details ->> 'evidence_version' served, details ->> 'expected_version' expected from observation.custody_events
+                                                                        where evd_object_id = ${E6.id}::uuid and event = 'custody.retrieved' and details ->> 'run_id' = ${runs.at(-1)!.run_id}`.execute(su)).rows;
+    expect(custody).toEqual([{ served: '2', expected: '1' }]);
+    /* the correct version: version 2 drained → done, reporting version 2, the claim on it */
+    expect(await drainNow()).toMatchObject({ claimed: 1, done: 1 });
+    const done = (await executionsOf(E6.id)).find((x) => x.evd_version === 2)!;
+    expect(done).toMatchObject({ state: 'done' });
+    expect(done.outcome).toMatchObject({ evd_version: 2, evidence_read: 1, claims_admitted: 1 });
+    expect(await claimsOn(E6.id)).toHaveLength(1);
+    /* (b) THE WITHDRAWAL CONTROL: withdrawn at the same point — the read refuses it (never forced to version 1), nothing reselected, nothing read */
+    const t1 = await mark();
+    const E7 = await uploadOn(PLAN_LABEL, 'b24p-e7.csv', 'site,throughput\nB24 Plan Terminal,47\n');
+    await observed((await outboxEvent('ObservationRecorded', t1, (p) => p['evd_object_id'] === E7.id)).id);
+    const w1 = await waitExecution(E7.id, 'pending');
+    let wfired = 0;
+    worker.setRetrievalHookForTests(async (evd) => { if (evd === E7.id && wfired++ === 0) await correctEvidence(E7.id, 'B24-F1: withdrawn between the precheck and the read', 'withdrawal'); });
+    try {
+      expect(await drainNow()).toMatchObject({ claimed: 1, done: 0, refused: 1 });
+    } finally { worker.setRetrievalHookForTests(null); }
+    expect(wfired).toBe(1);
+    const wRows = await executionsOf(E7.id);
+    expect(wRows).toHaveLength(1);
+    expect(wRows[0]).toMatchObject({ execution_id: w1.execution_id, state: 'refused' });
+    expect(wRows[0]!.last_error).toMatch(/^the evidence was not read \(refused, withdrawn, tombstoned, unreachable or damaged/);
+    expect(await claimsOn(E7.id)).toEqual([]);
+    await worker.schedule(T(), D(), active.agent_id, 60);   // THE DRAIN RESTORED
+    sixEvidence('X8', { fault_trace: { corrected_between_reads: E6.id, withdrawn_between_reads: E7.id }, watermark: { v1: 'refused (served v2)', v2: 'reselected → done', withdrawn: 'refused by the read' },
+      consumer_behaviour: 'the governed read resolves the current version; a served version other than the selected one is not extracted', operator_action: 'the collection manager corrected and withdrew the evidence mid-drain (the hook)',
+      recovery: 'the served version reselected explicitly and extracted', reconciliation: { custody: custody[0], runs: runsBefore + 2 } });
+  }, 300_000);
+
   it('X6 · AUTHORITY: every new port refuses without its capability and is unreachable by the other authority (the C14 rule, by hand for 0086 §P); a drifted executor digest opens no session', async () => {
     const { COMMIT_DB, IDENTITY_DB } = await import('../../src/shared/shared.module.js');
     const pools = { commit: h.app.get<import('../../src/shared/db.js').Db>(COMMIT_DB), identity: h.app.get<import('../../src/shared/db.js').Db>(IDENTITY_DB) };
