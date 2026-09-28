@@ -4269,6 +4269,16 @@ The plan selection recorded since 0083 now EXECUTES:
 
 **Stated.** The 0087 limit stands: a correction arriving AFTER an execution finished is not re-extracted automatically.
 
+### B24.8b — B24-F1 at the audit (the bounded B32 review of 2026-09-28)
+
+**The residual.** The receipt and the custody named the version the read served, but the retrieval callback still returned `targetVersion: '1'`, and `PipelineService` writes that field into the audit row's target as is. A read serving version 2 was audited as version 1.
+
+**The correction** (`16d8646`, TypeScript only, no migration): the callback's audit target is `String(r.objectVersion)` — the version the governed read resolved and served, as the receipt and the custody already record. An integrity-failed read carries the version it resolved (`RetrievalRefused.objectVersion`, internal only: the evidence route still answers the requester the same 409 and discloses nothing). Extraction, receipt and custody are unchanged; the series service already audits the exact version it pins.
+
+**The regression — X8 extended.** The audit rows of the corrected evidence's retrievals name the served version: `['2']` after the refused version-1 attempt, `['2', '2']` after version 2 drains. **The control** (the callback's `targetVersion: '1'` restored): X8 fails on the audit assertion. The plan file 8/8.
+
+**Results at the stack's top** (`phase6-b32` `aa038f3`, which carries this commit): full integration **1243/1243** on a fresh database, unit 2547 + 9, acceptance 58/58, upgrade PASS, browser 51/51. B24-F1 is closed at the read, the receipt, the custody and the audit.
+
 ### B24.9 — B24-F2: the tracker corrected (one bounded pass)
 
 - **F-P6-07 completes in B34,** after B28's novelty detector and B32's Strategy Graph and Strategic Health Score. It depends on F-P4-10, F-P6-08 and F-P6-09, and is advanced by B23, B24 and B28.
