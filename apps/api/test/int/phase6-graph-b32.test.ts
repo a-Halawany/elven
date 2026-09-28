@@ -458,4 +458,58 @@ describe('B32 graph · capabilities, initiatives, resources, measures and alignm
       consumer_behaviour: 'one measure row per approved MSR; value NULL where nothing was observed', operator_action: 'the executive approved the lead-time measure',
       recovery: 'none needed', reconciliation: { measure_value: m['value'], objective_ids: m.objective_ids } });
   }, 180_000);
+
+  it('G8 · B32-F1 THE FRESHNESS BOUNDARY: the observation\'s response reads at a DATABASE instant at or after its own recorded_at — the first observation and a stale → fresh transition answer the NEW reading; the millisecond boundary confirmed on the rows (a millisecond instant inside the row\'s millisecond precedes it and reads the previous observation); the as-of reads of earlier instants unchanged', async () => {
+    const obj8 = await declare(lead, 'OBJ', 'Freshness boundary objective (B32-F1)', [onClaim(C1)]);
+    const m8 = await declare(lead, 'MSR', 'Freshness boundary measure (B32-F1)', [onClaim(C1)]);
+    await define(lead, m8, measureDef(obj8));
+    const iso = (v: unknown): string => new Date(v as string).toISOString();
+    const readAfterRow = async (observationId: string, readAt: string): Promise<boolean> =>
+      (await sql<{ ok: boolean }>`select ${readAt}::timestamptz >= recorded_at as ok from graph.measure_observations where observation_id = ${observationId}::uuid`.execute(su)).rows[0]!.ok;
+    const freshAt = async (at: string) => (await sql<{ state: string; last_observed_at: Date | null }>`select state, last_observed_at from graph.measure_freshness(${T()}::uuid, ${D()}::uuid, ${at}::timestamptz) where measure_id = ${m8}::uuid`.execute(su)).rows[0]!;
+    /* (1) THE FIRST OBSERVATION — nothing before it: the response is its own reading (never `no_observation`) */
+    const firstAt = new Date(Date.now() - 12 * DAY).toISOString();
+    const first = (await observe(analyst, m8, { value: 80, observedAt: firstAt, source: { kind: 'claim', id: C1 } })).observation;
+    expect(first.freshness).toMatchObject({ state: 'stale', freshness_days: expect.anything() });
+    expect(iso(first.freshness!['last_observed_at'])).toBe(firstAt);
+    expect(String(first.freshness!['read_at'])).toMatch(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{6}Z$/);
+    expect(await readAfterRow(String(first['observation_id']), String(first.freshness!['read_at']))).toBe(true);
+    /* (2) STALE → FRESH: the new reading's response is FRESH and names the new reading, read at or after the new row */
+    const freshObserved = new Date(Date.now() - 1 * DAY).toISOString();
+    const fresh = (await observe(analyst, m8, { value: 93.5, observedAt: freshObserved, source: { kind: 'claim', id: C1 } })).observation;
+    expect(fresh['value']).toBe(93.5);
+    expect(fresh.freshness).toMatchObject({ state: 'fresh' });
+    expect(iso(fresh.freshness!['last_observed_at'])).toBe(freshObserved);
+    expect(await readAfterRow(String(fresh['observation_id']), String(fresh.freshness!['read_at']))).toBe(true);
+    /* (3) THE BOUNDARY, CONFIRMED ON THE ROWS: recorded_at keeps microseconds; the millisecond instant of the row's own millisecond (what a
+       JavaScript Date carries) precedes it whenever the stamp has sub-millisecond digits, and the as-of read at that instant — correctly —
+       answers the PREVIOUS observation (stale, the 80 reading). One more fresh reading is taken only if a stamp falls exactly on its
+       millisecond (a one-in-a-thousand case), so the confirmation never depends on timing. */
+    let probe = { id: String(fresh['observation_id']), observed: freshObserved };
+    let row = (await sql<{ ms: string; exact: string; sub: boolean }>`select to_char(date_trunc('milliseconds', recorded_at) at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') ms,
+        to_char(recorded_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') exact, date_trunc('milliseconds', recorded_at) < recorded_at sub
+        from graph.measure_observations where observation_id = ${probe.id}::uuid`.execute(su)).rows[0]!;
+    for (let i = 0; !row.sub && i < 5; i += 1) {
+      const at = new Date(Date.parse(probe.observed) + 1000).toISOString();
+      const again = (await observe(analyst, m8, { value: 93.5, observedAt: at, source: { kind: 'claim', id: C1 } })).observation;
+      probe = { id: String(again['observation_id']), observed: at };
+      row = (await sql<{ ms: string; exact: string; sub: boolean }>`select to_char(date_trunc('milliseconds', recorded_at) at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') ms,
+          to_char(recorded_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') exact, date_trunc('milliseconds', recorded_at) < recorded_at sub
+          from graph.measure_observations where observation_id = ${probe.id}::uuid`.execute(su)).rows[0]!;
+    }
+    expect(row.sub).toBe(true);
+    expect(row.exact).toMatch(/\.\d{6}Z$/);
+    const atMillisecond = await freshAt(row.ms);                      // the instant a millisecond clock would carry, inside the row's millisecond
+    expect(atMillisecond.state).toBe(probe.id === String(fresh['observation_id']) ? 'stale' : 'fresh');
+    if (probe.id === String(fresh['observation_id'])) expect(iso(atMillisecond.last_observed_at)).toBe(firstAt);   // the PREVIOUS reading
+    const atStamp = await freshAt(row.exact);                         // the row's own stamp: it is visible
+    expect(iso(atStamp.last_observed_at)).toBe(probe.observed);
+    /* (4) HISTORY PRESERVED: an as-of read before the fresh reading was recorded still answers the first reading (stale) */
+    const before = await freshAt(iso(Date.parse(String(first.freshness!['read_at']))));
+    expect(before).toMatchObject({ state: 'stale' });
+    expect(iso(before.last_observed_at)).toBe(firstAt);
+    sixEvidence('G8', { fault_trace: { boundary: { recorded_at: row.exact, millisecond_instant: row.ms, read_at_that_instant: atMillisecond } },
+      watermark: { first: first.freshness, fresh: fresh.freshness }, consumer_behaviour: 'the response reads at GREATEST(clock_timestamp(), the row\'s recorded_at); graph.measure_freshness unchanged',
+      operator_action: 'none', recovery: 'the stale → fresh transition answers the new reading', reconciliation: { history: before } });
+  }, 120_000);
 });

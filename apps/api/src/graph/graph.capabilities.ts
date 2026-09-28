@@ -509,6 +509,14 @@ export interface StrategyAlignmentWrites extends StrategyAlignmentReads {
   recordMeasureObservation(a: { observationId: string; tenantId: string; domainId: string; measureId: string; value: number; observedAt: string; sourceKind: string; sourceId: string; note: string | null; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
   recordAuthorityAct(a: { actId: string; tenantId: string; domainId: string; actKind: string; subjectId: string; subjectDigest: string; decision: string; rationale: string; expiresAt: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
   assignStrategyOwner(a: { objectId: string; tenantId: string; domainId: string; owner: string; reason: string; actor: string; eventId: string; correlationId: string }): Promise<Record<string, unknown>>;
+  /**
+   * B32-F1: the freshness an observation LEAVES, read at a DATABASE instant never earlier than the observation's own recorded_at (the
+   * row the port wrote or, on a repeat, the first one) — `at` is GREATEST(clock_timestamp(), that recorded_at), microseconds kept, and
+   * graph.measure_freshness applies its as-of rule (observed_at and recorded_at at or before the instant) unchanged. A JavaScript
+   * millisecond instant could fall inside the millisecond the row was stamped in and precede it, so the answer would describe the
+   * PREVIOUS observation (the review of 2026-09-28).
+   */
+  measureFreshnessAfterObservation(a: { tenantId: string; domainId: string; observationId: string }): Promise<{ at: string; rows: Array<Record<string, unknown>> }>;
 }
 /* end B32 graph */
 
@@ -1002,6 +1010,14 @@ class GraphCapabilityImpl extends GraphCore
   }
   async measureFreshness(a: Parameters<StrategyAlignmentReads['measureFreshness']>[0]): Promise<Array<Record<string, unknown>>> {
     return this.call<Record<string, unknown>>(sql`select * from graph.measure_freshness(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.at}::timestamptz)`);
+  }
+  async measureFreshnessAfterObservation(a: Parameters<StrategyAlignmentWrites['measureFreshnessAfterObservation']>[0]): Promise<{ at: string; rows: Array<Record<string, unknown>> }> {
+    const rows = await this.call<Record<string, unknown>>(sql`with i as (
+        select greatest(clock_timestamp(), coalesce((select o.recorded_at from graph.measure_observations o where o.observation_id = ${a.observationId}::uuid), clock_timestamp())) as at)
+      select f.*, to_char(i.at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as read_at from i, graph.measure_freshness(${a.tenantId}::uuid, ${a.domainId}::uuid, i.at) f`);
+    const at = rows.length > 0 ? String(rows[0]!['read_at'])
+      : String((await this.call<{ t: string }>(sql`select to_char(clock_timestamp() at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as t`))[0]!.t);
+    return { at, rows: rows.map(({ read_at: _r, ...x }) => x) };
   }
   async subjectState(a: Parameters<StrategyAlignmentReads['subjectState']>[0]): Promise<Record<string, unknown> | null> {
     const rows = await this.call<Record<string, unknown>>(sql`select * from graph.strategy_subject_state(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.subjectKind}, ${a.subjectId}::uuid)`);

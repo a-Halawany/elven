@@ -148,10 +148,11 @@ export class StrategyAlignmentService {
   async observe(cap: StrategyAlignmentWrites, ctx: ScopeContext, a: { measureId: string; intake: ObservationIntake; actor: string; correlationId: string }): Promise<Row> {
     const r = await cap.recordMeasureObservation({ observationId: newId(), tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, measureId: a.measureId, ...a.intake,
       actor: a.actor, correlationId: a.correlationId });
-    // the freshness the observation leaves, as of now (the same read the gap view makes)
-    const fr = (await cap.measureFreshness({ tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, at: new Date().toISOString() }))
-      .find((x) => String(x['measure_id']) === a.measureId);
-    return { ...r, freshness: fr === undefined ? null : { state: fr['state'], age_days: fr['age_days'], freshness_days: fr['freshness_days'], last_observed_at: fr['last_observed_at'] } };
+    // the freshness the observation leaves — the gap view's read (graph.measure_freshness, its as-of rule unchanged) at a DATABASE instant
+    // never earlier than this observation's recorded_at (B32-F1: a JavaScript millisecond clock could precede the row's microsecond stamp)
+    const read = await cap.measureFreshnessAfterObservation({ tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, observationId: String(r['observation_id']) });
+    const fr = read.rows.find((x) => String(x['measure_id']) === a.measureId);
+    return { ...r, freshness: fr === undefined ? null : { state: fr['state'], age_days: fr['age_days'], freshness_days: fr['freshness_days'], last_observed_at: fr['last_observed_at'], read_at: read.at } };
   }
 
   async authority(cap: StrategyAlignmentWrites, ctx: ScopeContext, a: { subjectId: string; intake: AuthorityIntake; actor: string; correlationId: string }): Promise<Row> {
