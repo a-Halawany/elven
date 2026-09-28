@@ -4015,3 +4015,4 @@ The mechanism is in `audit/CP6_BATCHES.md` §B24. The results are in `evidence/c
 - X8 commits a correction deterministically between the precheck and the read, with a withdrawal control. The pre-fix control reproduced the defect.
 - Results: full integration **1184/1184**, unit 2487 + 9, acceptance 58/58, upgrade PASS.
 - There is no new migration. `audit/CP6_BATCHES.md` §B24.8a has the detail.
+- **The audit (the bounded review of 2026-09-28, `16d8646`):** the governed read's audit target is the served version too (the callback returned `'1'`); X8 asserts the audit rows (served 2), and the control on the pre-fix callback fails. Closed at the read, the receipt, the custody and the audit — `audit/CP6_BATCHES.md` §B24.8b.
