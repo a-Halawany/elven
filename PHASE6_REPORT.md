@@ -4009,6 +4009,13 @@ The mechanism is in `audit/CP6_BATCHES.md` §B24. The results are in `evidence/c
   - The schedule was re-derived once: M1 at three accounts is still 2027-07-02.
 - **#61's A5 timing failure has a focused disposition** (`audit/delivery/INTEGRATION_SEQUENCE.md` §4). No runtime change is in #61's diff. A5 passed 40/40 on #61's exact code: 30 isolated runs, plus 10 whole-file runs on fresh databases alongside a full integration run for load. The gate is unchanged and required on #61's next head.
 
+**38.6 — B24-F1 at the governed read** (the bounded review of 2026-09-27, `audit/reviews/The_Eye_B28_Bounded_Review_2026-09-27.md`). The precheck bound the version, but the byte read served the newest row, and the receipt repeated the earlier selection.
+- The read now reports what it SERVED, and the receipt and custody record it.
+- A served version other than the selected one is refused and reselected before extraction. Withdrawal, deletion and access refusals are preserved, because the read still resolves the current version.
+- X8 commits a correction deterministically between the precheck and the read, with a withdrawal control. The pre-fix control reproduced the defect.
+- Results: full integration **1184/1184**, unit 2487 + 9, acceptance 58/58, upgrade PASS.
+- There is no new migration. `audit/CP6_BATCHES.md` §B24.8a has the detail.
+
 ## 39. B28 (2026-09-26): stream processing, the weak-signal workbench, the early-warning lifecycle (0088), and the two B24 carryovers
 
 ### 39.1 What B28 implements

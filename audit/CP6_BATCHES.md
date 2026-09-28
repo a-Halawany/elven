@@ -4236,6 +4236,39 @@ The plan selection recorded since 0083 now EXECUTES:
 
 **Stated.** A correction publishes no ObservationRecorded. A correction arriving AFTER a version-n execution finished is therefore not re-extracted automatically: the reselection happens when a queued execution meets a later version.
 
+### B24.8a — B24-F1 at the governed read (the bounded review of 2026-09-27)
+
+**The residual.** The precheck bound the version, but the governed byte read did not:
+- `EvidenceService.retrieve` was given the version only as descriptive context, and served the NEWEST canonical row.
+- The run's receipt copied the version selected earlier, not the one served.
+- A correction committed between the precheck and the read was therefore read as version 2 and reported as version 1. The 0087 guard compared "1" with "1" and could not see it.
+
+**The correction** (TypeScript only; 0084–0088 untouched; no new migration):
+- The read keeps resolving the CURRENT version, so a withdrawal, a governed deletion or an access refusal that lands in between still refuses it. An old version is never forced past them.
+- `retrieve` now reports the version it SERVED (`objectVersion`).
+- The receipt is built from the served version. The custody entry records the served version as `evidence_version` beside the reader's `expected_version`.
+- A served version other than the selected one is NOT extracted. The run records the mismatch, and the worker refuses the execution and reselects the served, live version explicitly (0087's port) before any claim.
+
+**The regression — `phase6-attention-plan-b24` X8, real database, deterministic.** A test-only hook (the worker's, `eye.runtime.env=test` only) commits the correction exactly between the precheck and the read.
+- The version-1 execution is refused and version 2 reselected.
+- The run reads nothing it may extract: no claim.
+- The custody entry records served 2 beside expected 1.
+- Version 2 then drains done, reporting version 2, with its claim.
+- The withdrawal control: a withdrawal committed at the same point is refused by the read, with nothing reselected and nothing read.
+- **The control on the pre-fix read** (the receipt from the selection, no mismatch check) reproduced the review's defect: X8 failed with done 1, refused 0.
+
+**Results:**
+
+| Suite | Result |
+|---|---|
+| The plan file | 8/8 |
+| Full integration | **1184/1184** |
+| Unit | 2487 + 9 |
+| Acceptance | 58/58 |
+| Upgrade proof | PASS |
+
+**Stated.** The 0087 limit stands: a correction arriving AFTER an execution finished is not re-extracted automatically.
+
 ### B24.9 — B24-F2: the tracker corrected (one bounded pass)
 
 - **F-P6-07 completes in B34,** after B28's novelty detector and B32's Strategy Graph and Strategic Health Score. It depends on F-P4-10, F-P6-08 and F-P6-09, and is advanced by B23, B24 and B28.

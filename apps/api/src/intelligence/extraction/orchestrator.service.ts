@@ -102,6 +102,9 @@ export class ExtractionOrchestrator {
     /* end B24 plan */
     /* B24-F1: the evidence VERSION each named object was selected at — the run reads exactly that version or refuses before it starts. */
     evidenceVersions?: Readonly<Record<string, number>>;
+    /* The test runtime's interleaving hook (the plan worker installs it only under eye.runtime.env=test): awaited between the version
+       precheck and each governed byte read, so a regression can commit a correction exactly there. */
+    beforeEvidenceRead?: (evidenceObjectId: string) => Promise<void>;
     /* end B24-F1 */
   }): Promise<ExtractionOutcome> {
     const correlationId = a.envelope.correlation_id;
@@ -211,6 +214,7 @@ export class ExtractionOrchestrator {
     const claims: ExtractionOutcome['claims'] = [];
     const evidenceRetrievals: RetrievalReceipt[] = [];
     const undeclaredRefusals: ExtractionOutcome['undeclaredRefusals'] = [];
+    const evidenceVersionMismatches: ExtractionOutcome['evidenceVersionMismatches'] = [];
 
     for (const evd of evidence) {
       // BUDGETS STOP THE RUN. They are not advisory and they are not checked after
@@ -240,9 +244,15 @@ export class ExtractionOrchestrator {
       let bytes: Buffer;
       let retrievalDecisionId: string;
       let retrievalAuditSeq: number;
+      /* B24-F1 (the bounded review of 2026-09-27): the version the read SERVES is established by the read itself. The read resolves the
+         CURRENT version, so a withdrawal, a governed deletion or an access refusal that landed after the precheck still refuses it — an old
+         version is never forced past them; a served version other than the selected one is not extracted (below). */
+      const selectedVersion = Number(evd['object_version']);
+      if (a.beforeEvidenceRead !== undefined) await a.beforeEvidenceRead(evdObjectId);
+      /* end B24-F1 */
       try {
         const got = await this.pipeline.write<
-          { integrity: 'verified' | 'unavailable' | 'failed'; base64: string | null; contentDigest: string | null }, AcquisitionWrites>(
+          { integrity: 'verified' | 'unavailable' | 'failed'; base64: string | null; contentDigest: string | null; objectVersion: number | null }, AcquisitionWrites>(
           this.envelope({ ...read, principal: a.principal },
             'observation.evidence.retrieve', 'EVD', evdObjectId),
           a.principal,
@@ -259,7 +269,7 @@ export class ExtractionOrchestrator {
                 method_key: String(pinRow['method_key']),
                 run_id: runId,
                 mode,
-                evidence_version: String(evd['object_version']), // B24-F1: the custody entry names the version the run selected
+                expected_version: String(selectedVersion), // B24-F1: the expectation; the custody entry's evidence_version is what was SERVED
               });
             // B21.2 (D2.6/D2.7): a refused or degraded read is RETURNED so its custody row commits; the audit row says what the read found —
             // on a SUCCESS outcome either way (the custody row is a business effect; 0013's closure needs one success audit row beside it).
@@ -267,7 +277,8 @@ export class ExtractionOrchestrator {
               : r.integrity === 'unavailable'
                 ? { outcome: 'success' as const, resultCode: 'EYE-DEG-001', metadata: { integrity: 'unavailable', tier: r.tier, root_unreachable: r.degraded.root } }
                 : { outcome: 'success' as const, resultCode: 'EYE-INT-001', metadata: { integrity: 'failed' } };
-            return { result: { integrity: r.integrity, base64: r.integrity === 'verified' ? r.base64 : null, contentDigest: r.integrity === 'failed' ? null : r.contentDigest },
+            return { result: { integrity: r.integrity, base64: r.integrity === 'verified' ? r.base64 : null, contentDigest: r.integrity === 'failed' ? null : r.contentDigest,
+                               objectVersion: r.integrity === 'failed' ? null : r.objectVersion },
                      targetType: 'EVD', targetId: evdObjectId, targetVersion: '1',
                      outboxEvent: null, ...(evidence === undefined ? {} : { evidence }) };
           });
@@ -276,15 +287,23 @@ export class ExtractionOrchestrator {
           // and the audit row the write committed; the evidence is skipped without a receipt, exactly as a thrown refusal was.
           continue;
         }
-        bytes = Buffer.from(got.result.base64, 'base64');
-        retrievalDecisionId = got.policyDecisionId;
-        retrievalAuditSeq = got.auditSeq;
+        const servedVersion = Number(got.result.objectVersion);
+        // The receipt names what the read SERVED (B24-F1), never the earlier selection.
         evidenceRetrievals.push({
           evidenceObjectId: evdObjectId,
-          evidenceVersion: Number(evd['object_version']),
+          evidenceVersion: servedVersion,
           policyDecisionId: got.policyDecisionId,
           auditSeq: got.auditSeq,
         });
+        if (servedVersion !== selectedVersion) {
+          // A later canonical version was committed between the precheck and the read: nothing is extracted from bytes the plan did not
+          // select; the mismatch is reported (a plan execution refuses and reselects it explicitly — 0087), never admitted as claims.
+          evidenceVersionMismatches.push({ evidenceObjectId: evdObjectId, selectedVersion, servedVersion });
+          continue;
+        }
+        bytes = Buffer.from(got.result.base64, 'base64');
+        retrievalDecisionId = got.policyDecisionId;
+        retrievalAuditSeq = got.auditSeq;
       } catch {
         // A refused (403), withdrawn or tombstoned object is not this run's to repair. It is already recorded by the refusal.
         continue;
@@ -401,6 +420,6 @@ export class ExtractionOrchestrator {
 
     return { runId, mode, state, evidenceRead, claimsAdmitted, abstentions,
              idempotentHits, callsUsed, queuedForReview, failure, claims, evidenceRetrievals,
-             undeclaredRefusals };
+             undeclaredRefusals, evidenceVersionMismatches };
   }
 }

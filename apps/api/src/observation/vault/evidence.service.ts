@@ -36,7 +36,9 @@ export interface EvidenceSummary {
   [k: string]: unknown;
 }
 
-interface RetrievalBase { filename: string; contentDigest: string; byteLength: number; tier: 'hot' | 'archive'; }
+interface RetrievalBase { filename: string; contentDigest: string; byteLength: number; tier: 'hot' | 'archive';
+  /* B24-F1 (the bounded review of 2026-09-27): the canonical version THIS read resolved and served — never the caller's expectation */
+  objectVersion: number; }
 /** The bytes, verified on this read (phase 1; B11's tier and availability). */
 export interface RetrievalServed extends RetrievalBase {
   integrity: 'verified'; base64: string; availability: 'verified' | 'archived';
@@ -315,11 +317,11 @@ export class EvidenceService {
         agentPrincipalId: null, agentVersion: null, codeDigest: null,
         connector: null, connectorVersion: null, methodRef: null,
         contentDigest: manifest.content_digest, digestVerified: null,
-        details: { failure: 'root_unreachable', root: readFrom, tier: tier.tier, disclosure: 'none', ...context },
+        details: { failure: 'root_unreachable', root: readFrom, tier: tier.tier, disclosure: 'none', ...context, ...servedVersionDetail(context, evd) },
         correlationId,
       });
       return {
-        filename: `${evdId}.bin`, contentDigest: manifest.content_digest, byteLength: Number(manifest.byte_length),
+        filename: `${evdId}.bin`, contentDigest: manifest.content_digest, byteLength: Number(manifest.byte_length), objectVersion: Number(evd.object_version),
         base64: null, integrity: 'unavailable', tier: tier.tier, availability: 'unreachable',
         degraded: { kind: 'tier_unreachable', code: 'EYE-DEG-001', root: readFrom, label: TIER_UNREACHABLE_LABEL(readFrom) },
       };
@@ -373,7 +375,7 @@ export class EvidenceService {
       agentPrincipalId: null, agentVersion: null, codeDigest: null,
       connector: null, connectorVersion: null, methodRef: null,
       contentDigest: manifest.content_digest, digestVerified: true,
-      details: { verified_on_read: true, byte_length: bytes.byteLength, tier: tier.tier, served_from: servedFrom, ...context },
+      details: { verified_on_read: true, byte_length: bytes.byteLength, tier: tier.tier, served_from: servedFrom, ...context, ...servedVersionDetail(context, evd) },
       correlationId,
     });
 
@@ -381,12 +383,22 @@ export class EvidenceService {
       filename: `${evdId}.bin`,
       contentDigest: manifest.content_digest,
       byteLength: bytes.byteLength,
+      objectVersion: Number(evd.object_version),
       base64: bytes.toString('base64'),
       integrity: 'verified',
       tier: tier.tier,
       availability: tier.tier === 'archive' ? 'archived' : 'verified',
     };
   }
+}
+
+/**
+ * B24-F1: a reader that states the version it EXPECTED (`expected_version`, the plan execution's pinned version) gets the version this read
+ * actually SERVED written beside it on the custody entry (`evidence_version`) — authoritative, after the caller's context, so the custody
+ * chain never repeats an expectation as a fact. Other readers' custody entries are unchanged.
+ */
+function servedVersionDetail(context: Readonly<Record<string, string>>, evd: EvidenceSummary): Record<string, string> {
+  return context['expected_version'] === undefined ? {} : { evidence_version: String(evd.object_version) };
 }
 
 function sourceIdOf(evd: EvidenceSummary): string {

@@ -212,7 +212,20 @@ export class ExtractionPlanWorkerService implements OnApplicationBootstrap, OnMo
         envelope: this.env(principal, p.tenantId, p.domainId, x.correlation_id), principal, tenantId: p.tenantId, domainId: p.domainId,
         methodId: x.method_id, limit: 1, newAttempt: false, evidenceIds: [x.evd_object_id], methodVersion: x.method_version,
         evidenceVersions: { [x.evd_object_id]: x.evd_version }, // B24-F1: the version the plan was queued for, and no other
+        ...(this.retrievalHook === null ? {} : { beforeEvidenceRead: this.retrievalHook }),
       });
+      /* B24-F1 (the bounded review of 2026-09-27): the governed read SERVED a later version than the one queued (a correction committed
+         between the precheck and the read) — nothing was extracted; the execution is refused and the served, live version reselected
+         explicitly (0087). A withdrawal in between never reaches here: the read refuses it, and the run reads nothing (refused below). */
+      const mismatch = out.evidenceVersionMismatches.find((m) => m.evidenceObjectId === x.evd_object_id);
+      if (mismatch !== undefined) {
+        return { state: 'refused', runId: out.runId,
+                 details: { evd_version: null, pinned_version: x.evd_version, served_version: mismatch.servedVersion, run_state: out.state, method_key: x.method_key },
+                 error: `extraction refused (evidence_version): the governed read served version ${mismatch.servedVersion} of evidence ${x.evd_object_id}; the plan named version ${x.evd_version} — nothing extracted`,
+                 reselect: { currentVersion: mismatch.servedVersion,
+                             reason: `evidence ${x.evd_object_id} was corrected to version ${mismatch.servedVersion} between the precheck and the governed read of version ${x.evd_version} (run ${out.runId})` } };
+      }
+      /* end B24-F1 */
       // B24-F1: the version the run actually read — the ledger's `done` requires it to equal the execution's own (0087)
       const read = out.evidenceRetrievals.find((r) => r.evidenceObjectId === x.evd_object_id);
       const details = { evd_version: read?.evidenceVersion ?? null, run_state: out.state, mode: out.mode, evidence_read: out.evidenceRead, claims_admitted: out.claimsAdmitted, claims: out.claims.map((c) => c.objectId),
@@ -301,6 +314,13 @@ export class ExtractionPlanWorkerService implements OnApplicationBootstrap, OnMo
 
   private testOnly(what: string): void {
     if (this.cfg['eye.runtime.env'] !== 'test') throw new Error(`${what} is available only in the test runtime`);
+  }
+  /* B24-F1: the test runtime's interleaving hook — awaited between the orchestrator's version precheck and each governed byte read. */
+  private retrievalHook: ((evidenceObjectId: string) => Promise<void>) | null = null;
+  /** Test-only: install (or clear, with null) the hook a regression uses to commit a correction between the precheck and the read. */
+  setRetrievalHookForTests(hook: ((evidenceObjectId: string) => Promise<void>) | null): void {
+    this.testOnly('setRetrievalHookForTests');
+    this.retrievalHook = hook;
   }
   /** Test-only: promote the delayed drains of a domain (never wait on BullMQ's 60-second floor). */
   async promoteDelayedDrainsForTests(tenantId: string, domainId: string): Promise<number> {
