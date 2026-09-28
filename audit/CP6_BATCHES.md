@@ -4301,6 +4301,7 @@ The plan selection recorded since 0083 now EXECUTES:
 - Four parts were built in parallel worktrees on their own disposable databases (`eye_verify_a1_b28_<part>_*`), with heavy runs through `scripts/dev/heavy-slot.sh`.
 - The integrator merged them and combined one migration in the order the parts were verified. No function is re-declared by two sections.
 - **B28 completes no feature.** Their residual clauses are assigned to B34, B45, B74, B75, B84, H2 and R2 (DELIVERY_PLAN §10, "B28's residuals").
+- **B84 is an explicit completion prerequisite of B74** (the bounded review of 2026-09-27, B28-F1). F-P4-10's UX construction (the compare and contextualize views; the disposition's digest, consequence preview and signature) is owned in B84's conditions, and B74 depends on B84. The checks were run once and PASS, and the M1 dates are unchanged.
 
 ### B28.1 — §S streams: event-time stream processing and complex event rules (F-P4-11)
 

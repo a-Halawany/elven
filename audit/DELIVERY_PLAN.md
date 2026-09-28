@@ -276,15 +276,15 @@ Feature IDs are shown without the `F-` prefix. The stages are listed in plan ord
 | B48 | A | Contradiction/corroboration, calibration, object inspector | P2-10, P2-14, P2-16 | — | B45, B46 | 5.5–10 | A2 | 2027-01-18 → 2027-02-04 |
 | B49 | A | Assessments, summaries, analyst review, context manifests | P2-11, P2-12, P2-13, P2-17 | — | B45, B48, B53 | 7–12 | A2 | 2027-03-29 → 2027-04-15 |
 | B50 | A | Knowledge core: canonical headers, lifecycle, provenance, timeline, correction closure | P3-01, P3-02, P3-03, P3-04, P3-05 | — | — | 8.25–14.5 | A2 | 2026-09-28 → 2026-10-20 |
-| B51 | A | Ontology, atomic graph revisions, graph reasoning | P3-07, P3-08, P3-09 | — | B50 | 6.5–11.5 | A2 | 2026-11-18 → 2026-12-09 |
+| B51 | A | Ontology, atomic graph revisions, graph reasoning | P3-07, P3-08, P3-09 | — | B50 | 6.5–11.5 | A2 | 2026-11-18 → 2026-12-08 |
 | B52 | A | Entity resolution and graph curation workspace | P3-10, P3-12 | — | B46, B51 | 4.5–7.5 | A3 | 2027-06-07 → 2027-06-22 |
 | B53 | A | Hybrid semantic retrieval and context assembly | P3-15, P3-16 | — | B45, B51 | 5.5–9 | A2 | 2027-01-28 → 2027-02-17 |
 | B54 | A | Enterprise Memory completion and retention across derivatives | P3-06, P3-14 | — | B50, B53 | 4–7.5 | A2 | 2027-06-08 → 2027-06-22 |
 | B55 | A | Strategy Graph alignment diagnostics and research workspace | P3-13, P3-17 | — | B44, B49, B51, B53 | 4–7 | A3 | 2027-05-04 → 2027-05-19 |
-| B60 | D | Canonical contracts and the state-class platform | P7D-14, P7D-15 | — | — | 7–12 | A3 | 2026-10-27 → 2026-11-20 |
-| B61 | D | Identity federation/MFA/privileged access; keys, secrets, encryption | P7D-01, P7D-03 | — | — | 6–10 | A3 | 2026-11-10 → 2026-11-24 |
+| B60 | D | Canonical contracts and the state-class platform | P7D-14, P7D-15 | — | — | 7–12 | A3 | 2026-11-20 → 2026-12-09 |
+| B61 | D | Identity federation/MFA/privileged access; keys, secrets, encryption | P7D-01, P7D-03 | — | — | 6–10 | A3 | 2026-12-04 → 2026-12-23 |
 | B62 | D | Policy bundles, privacy lifecycle, residency and sovereignty | P7D-04, P7D-05, P7D-06 | — | B61 | 7–10 | A3 | 2027-01-19 → 2027-02-05 |
-| B63 | D | Telemetry/tracing, degraded modes and service health, isolation and quotas | P7D-07, P7D-08, P7D-11 | — | — | 6–10 | A3 | 2026-12-02 → 2026-12-23 |
+| B63 | D | Telemetry/tracing, degraded modes and service health, isolation and quotas | P7D-07, P7D-08, P7D-11 | — | — | 6–10 | A3 | 2026-12-16 → 2027-01-04 |
 | B64 | D | SLOs, error budgets; backup, PITR and restore verification | P7D-09, P7D-12 | — | B60, B61, B63 | 5–8 | A3 | 2027-01-08 → 2027-02-04 |
 | B65 | D | Packaging/installer/management plane; signed releases, upgrade, rollback | P7D-16, P7D-17 | — | B60, B61 | 6–10 | A3 | 2026-12-29 → 2027-01-15 |
 | B66 | D | Security detection, incident command; trust and audit investigation | P7D-18, P7D-19 | — | B61, B63, B65 | 4.5–6.5 | A3 | 2027-04-01 → 2027-04-14 |
@@ -293,16 +293,16 @@ Feature IDs are shown without the `F-` prefix. The stages are listed in plan ord
 | B71 | C | Planner, supervisor, checkpoints and agent control | P7A-03, P7A-04, P7A-06, P7A-10 | — | B70 | 6–10.5 | A2 | 2027-04-12 → 2027-05-03 |
 | B72 | C | Agent Operations workspace and supervision surfaces | P7A-11, P7A-12 | — | B71 | 3.5–5.5 | A2 | 2027-06-23 → 2027-07-02 |
 | B73 | C | Specialist agent families (observation, extraction, graph/memory/reasoning, foresight) | P7A-13, P7A-14, P7A-15, P7A-16 | — | B70, B71, B74 | 6–10 | A3 | 2027-05-26 → 2027-06-11 |
-| B74 | C | Evaluation foundation: datasets, registry, metrics, AI inventory | P4-10, P4-12, P7B-03, P7B-04, P7B-05, P7B-10 | — | B34, B45 | 7.75–13 | A2 | 2027-02-24 → 2027-03-12 |
+| B74 | C | Evaluation foundation: datasets, registry, metrics, AI inventory | P4-10, P4-12, P7B-03, P7B-04, P7B-05, P7B-10 | — | B34, B45, B84 | 7.75–13 | A2 | 2027-02-24 → 2027-03-12 |
 | B75 | C | Monitoring, red-team suites, release/canary/rollback, evaluator models | P4-11, P7B-06, P7B-07, P7B-08, P7B-09 | — | B70, B74 | 6.75–11.5 | A2 | 2027-04-23 → 2027-05-19 |
 | B76 | C | The Learn stage: lessons, attribution, governance console, incidents, loop closure | P7B-01, P7B-02, P7B-11, P7B-12, P7B-13 | — | B71, B74, B75 | 6.5–10.5 | A2 | 2027-05-25 → 2027-06-10 |
 | B77 | C | Marketplace core: signed packages, admission, revocation, agent marketplace | P7C-01, P7C-02, P7C-03, P7C-04 | — | B70, B74 | 6–10 | A3 | 2027-04-15 → 2027-05-04 |
 | B78 | C | Scenario/data marketplaces, domain packs, decision templates, domain agents | P7A-17, P7C-05, P7C-06, P7C-07, P7C-08 | — | B70, B71, B77 | 9–15 | A2 | 2027-05-06 → 2027-05-31 |
 | B80 | E | Shell and foundations: tokens, component library, navigation | P7-E-01, P7-E-03, P7-E-05 | — | — | 6–9.5 | A3 | 2026-09-28 → 2026-10-19 |
 | B81 | E | Interaction patterns: human authority, degraded states, content, object pages, layout, command palette | P7-E-02, P7-E-04, P7-E-06, P7-E-18, P7-E-19, P7-E-20 | — | B80 | 9.5–15.5 | A3 | 2026-10-08 → 2026-11-03 |
-| B82 | E | Visualization library and the trust/provenance experience | P7-E-07, P7-E-21 | — | B80, B81 | 5.5–9 | A3 | 2026-11-20 → 2026-12-08 |
+| B82 | E | Visualization library and the trust/provenance experience | P7-E-07, P7-E-21 | — | B80, B81 | 5.5–9 | A3 | 2026-10-27 → 2026-11-20 |
 | B83 | E | Knowledge and foresight workspaces | P7-E-13, P7-E-14 | — | B81, B82 | 6–10 | A3 | 2027-02-01 → 2027-02-17 |
-| B84 | E | Decision/briefing/publishing UX, attention center, governance administration | P7-E-12, P7-E-15, P7-E-16 | — | B80, B81, B82 | 8–13 | A3 | 2026-12-14 → 2027-01-04 |
+| B84 | E | Decision/briefing/publishing UX, attention center, governance administration | P7-E-12, P7-E-15, P7-E-16 | — | B80, B81, B82 | 8–13 | A3 | 2026-11-05 → 2026-11-24 |
 | B85 | E | Personas and executive home; localization build | P7-E-09, P7-E-11 | — | B80, B81, B83, B84 | 5–9 | A3 | 2027-03-12 → 2027-03-25 |
 | B86 | E | Mobile, field, offline | P7-E-10 | — | B80, B81, B84 | 5–8 | A3 | 2027-03-23 → 2027-04-13 |
 | B90 | F | Data products, semantic metrics, metadata catalog | P7-09, P7-10, P7-11 | — | — | 6.5–10.5 | A1 | 2026-12-08 → 2026-12-24 |
@@ -353,7 +353,7 @@ Comprehensive hardening follows implementation. Every stage still keeps the exis
 Stage dependencies are **derived** by the checker from the completing groups' `depends_on` (the stage completing each dependency; `pkg:P7-D` maps to B65), plus explicit extras (B24 → B23). H depends on all of M1; R depends on H1–H3 and its external prerequisites. The full edge list is in the `depends_on` column of §3.2.
 
 <!-- model:chain:begin -->
-Longest precedence chain by midpoint effort: **B23 → B24 → B28 → B32 → B34 → B74 → B77 → B78** = 63.38 U — a lower bound on M1 whatever the account count (≈ 53 working days at r=1.5 ×1.25 with no waits). The resource-limited 3-account finish (expected) is **B72**, merged 2027-07-02. A slip on the precedence chain moves M1 only while that chain is also the resource-limited path; this model does not establish that it is.
+Longest precedence chain by midpoint effort: **B80 → B81 → B82 → B84 → B74 → B77 → B78** = 68.38 U — a lower bound on M1 whatever the account count (≈ 57 working days at r=1.5 ×1.25 with no waits). The resource-limited 3-account finish (expected) is **B72**, merged 2027-07-02. A slip on the precedence chain moves M1 only while that chain is also the resource-limited path; this model does not establish that it is.
 <!-- model:chain:end -->
 
 The first wave's structure: lane A's knowledge core (B50) heads the longest chain; lane B's interfaces (B23 → B24 → B28 → B32 → B36) carry the decision spine; lanes D and E start independently (B80, B60, B61). The profile software (B106 → B109 / B110 / B111) needs most of the product before it, so it sits late in M1.
@@ -434,8 +434,8 @@ Four accounts are not four times one. The single coordinator, the owner's approv
 | Account | Sequence, 3 accounts at the expected rate (start → merged) |
 |---|---|
 | A1 | B23 (26-09-28→26-10-01) → B24 (26-09-30→26-10-06) → B28 (26-10-05→26-10-20) → B32 (26-10-19→26-11-04) → B34 (26-11-03→26-11-23) → B29 (26-11-23→26-12-09) → B90 (26-12-08→26-12-24) → B27 (26-12-23→27-01-05) → B31 (27-01-04→27-01-15) → B36 (27-01-14→27-02-05) → B91 (27-02-04→27-02-18) → B25 (27-02-17→27-03-05) → B92 (27-03-04→27-03-12) → B30 (27-03-11→27-03-26) → B35 (27-03-25→27-04-14) → B33 (27-04-14→27-05-04) → B94 (27-05-03→27-05-20) → B107 (27-05-19→27-06-01) → B93 (27-05-31→27-06-14) → B26 (27-06-11→27-06-23) → B100 (27-06-22→27-07-01) |
-| A2 | B50 (26-09-28→26-10-20) → B40 (26-10-13→26-11-04) → B45 (26-10-29→26-11-23) → B51 (26-11-18→26-12-09) → B43 (26-12-02→26-12-23) → B46 (26-12-15→27-01-05) → B42 (26-12-29→27-02-03) → B48 (27-01-18→27-02-04) → B53 (27-01-28→27-02-17) → B70 (27-02-08→27-03-04) → B74 (27-02-24→27-03-12) → B44 (27-03-11→27-04-13) → B49 (27-03-29→27-04-15) → B71 (27-04-12→27-05-03) → B75 (27-04-23→27-05-19) → B78 (27-05-06→27-05-31) → B76 (27-05-25→27-06-10) → B102 (27-06-07→27-06-11) → B54 (27-06-08→27-06-22) → B47 (27-06-16→27-06-30) → B72 (27-06-23→27-07-02) |
-| A3 | B80 (26-09-28→26-10-19) → B81 (26-10-08→26-11-03) → B60 (26-10-27→26-11-20) → B61 (26-11-10→26-11-24) → B82 (26-11-20→26-12-08) → B63 (26-12-02→26-12-23) → B84 (26-12-14→27-01-04) → B65 (26-12-29→27-01-15) → B64 (27-01-08→27-02-04) → B62 (27-01-19→27-02-05) → B83 (27-02-01→27-02-17) → B103 (27-02-11→27-03-03) → B67 (27-02-18→27-03-03) → B105 (27-02-24→27-03-04) → B106 (27-02-26→27-03-05) → B111 (27-03-02→27-03-25) → B85 (27-03-12→27-03-25) → B86 (27-03-23→27-04-13) → B66 (27-04-01→27-04-14) → B108 (27-04-09→27-04-15) → B104 (27-04-13→27-05-03) → B77 (27-04-15→27-05-04) → B110 (27-04-28→27-05-18) → B55 (27-05-04→27-05-19) → B41 (27-05-12→27-06-01) → B73 (27-05-26→27-06-11) → B52 (27-06-07→27-06-22) → B109 (27-06-15→27-06-30) → B101 (27-06-24→27-07-01) → B112 (27-06-28→27-07-02) |
+| A2 | B50 (26-09-28→26-10-20) → B40 (26-10-13→26-11-04) → B45 (26-10-29→26-11-23) → B51 (26-11-18→26-12-08) → B43 (26-12-02→26-12-23) → B46 (26-12-15→27-01-05) → B42 (26-12-29→27-02-03) → B48 (27-01-18→27-02-04) → B53 (27-01-28→27-02-17) → B70 (27-02-08→27-03-04) → B74 (27-02-24→27-03-12) → B44 (27-03-11→27-04-13) → B49 (27-03-29→27-04-15) → B71 (27-04-12→27-05-03) → B75 (27-04-23→27-05-19) → B78 (27-05-06→27-05-31) → B76 (27-05-25→27-06-10) → B102 (27-06-07→27-06-11) → B54 (27-06-08→27-06-22) → B47 (27-06-16→27-06-30) → B72 (27-06-23→27-07-02) |
+| A3 | B80 (26-09-28→26-10-19) → B81 (26-10-08→26-11-03) → B82 (26-10-27→26-11-20) → B84 (26-11-05→26-11-24) → B60 (26-11-20→26-12-09) → B61 (26-12-04→26-12-23) → B63 (26-12-16→27-01-04) → B65 (26-12-29→27-01-15) → B64 (27-01-08→27-02-04) → B62 (27-01-19→27-02-05) → B83 (27-02-01→27-02-17) → B103 (27-02-11→27-03-03) → B67 (27-02-18→27-03-03) → B105 (27-02-24→27-03-04) → B106 (27-02-26→27-03-05) → B111 (27-03-02→27-03-25) → B85 (27-03-12→27-03-25) → B86 (27-03-23→27-04-13) → B66 (27-04-01→27-04-14) → B108 (27-04-09→27-04-15) → B104 (27-04-13→27-05-03) → B77 (27-04-15→27-05-04) → B110 (27-04-28→27-05-18) → B55 (27-05-04→27-05-19) → B41 (27-05-12→27-06-01) → B73 (27-05-26→27-06-11) → B52 (27-06-07→27-06-22) → B109 (27-06-15→27-06-30) → B101 (27-06-24→27-07-01) → B112 (27-06-28→27-07-02) |
 <!-- model:accounts:end -->
 
 Overlapping windows are stacking: an account implements its next stage while the previous one waits for integration or approval. "Help" stages outside an account's lanes are assigned by the coordinator when the account's own lanes have nothing ready.
