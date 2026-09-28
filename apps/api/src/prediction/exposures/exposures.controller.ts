@@ -90,10 +90,11 @@ export class ExposuresController {
   @Post('/exposures/health-inputs')
   async healthInputs(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: { at?: string } }) {
     const { envelope, principal } = ctx(req);
-    const at = body.payload?.at ?? new Date().toISOString();
-    if (Number.isNaN(new Date(at).getTime())) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'at is an instant'), 422);
+    // B34 (0090 §I): no instant named → the DATABASE's now (read inside the call), never the host's clock
+    const at = body.payload?.at ?? null;
+    if (at !== null && Number.isNaN(new Date(at).getTime())) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'at is an instant'), 422);
     const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'prediction.exposure.read', 'RSK', null), ExposuresCapability.read,
-      async (cap, scope) => this.exposures.health(cap, scope.tenantId as string, scope.domainId as string, new Date(at).toISOString()));
+      async (cap, scope) => this.exposures.health(cap, scope.tenantId as string, scope.domainId as string, at === null ? await cap.dbNow() : new Date(at).toISOString()));
     return { health: out.result, receipt: receipt(out) };
   }
 

@@ -76,6 +76,8 @@ export interface ExposureReads {
   objectives(exposureId: string): Promise<string[]>;
   /** prediction.health_inputs (0089 §0's contract, this part's branch). */
   healthInputs(tenantId: string, domainId: string, at: string): Promise<Row[]>;
+  /** B34 (0090 §I), carried to B32: the database's instant ("as of now" when no instant is named). */
+  dbNow(): Promise<string>;
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
@@ -163,6 +165,12 @@ class ExposuresImpl extends ExposuresCore implements TaxonomyWrites, AppetiteWri
   }
   async healthInputs(tenantId: string, domainId: string, at: string): Promise<Row[]> {
     return this.rows(sql`select * from prediction.health_inputs(${tenantId}::uuid, ${domainId}::uuid, ${at}::timestamptz)`);
+  }
+  /** B34 (0090 §I), carried to B32: the DATABASE's instant, microseconds kept — "as of now" when the caller names no instant (a host clock may lag the database's, so
+   *  a JavaScript `new Date()` could precede a write already committed and hide it — the B32-F1 class). */
+  async dbNow(): Promise<string> {
+    const r = await this.rows(sql`select to_char(clock_timestamp() at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as t`);
+    return String(r[0]!['t']);
   }
 
   async publishTaxonomy(a: Parameters<TaxonomyWrites['publishTaxonomy']>[0]): Promise<Row> {
