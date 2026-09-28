@@ -4598,6 +4598,9 @@ The UI is `/prediction/signals`.
 
 **Results** (`phase6-b32` `aa038f3`, the stack's top — it also carries B24-F1's audit correction): the graph file **8/8** (G1–G8, the dependent cases recovered); full integration **1243/1243** in 93 files on a fresh database; unit 2547 + 9 on a clean tree; acceptance 58/58; upgrade PASS; browser **51/51**. The demonstration API was rebuilt and restarted on this build (VERIFIED). The review (`The_Eye_B32_Bounded_Review_2026-09-28.md`) is NOT committed: its text quotes the literal the `.gitleaks.toml` §7 exclusion covers, only for migration 0089, and the review asks for no further scanner exception — so it stays with the owner's correspondence and is cited here by name.
 
+
+**Carried back from B34 (2026-09-29, the same class):** two more reads named the API HOST's `new Date()` as "now" right after a write stamped by the DATABASE's clock — the exposures' `health-inputs` route (its default instant; phase6-exposures-b32 X13 failed once on it in B34's full run) and a Phase 3 test's `knownAt` (phase3-corrections H1, twice). Both now read at the database's instant (`45ff10b`, `e1926dd`); the two files pass on this branch. The remaining routes that default "as of now" to the host clock are one named sweep, assigned to H1 in B34's records.
+
 ## Order and the next implementation batch
 
 B3, B1 and B2 are done in code, B4/B5 applied to the audit (the 2026-09-11 checkpoints), B6 done in
