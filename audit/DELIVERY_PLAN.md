@@ -597,7 +597,9 @@ Prompts are in `audit/delivery/ACCOUNT_PROMPTS.md`.
   | Measure | Interval | Duration |
   |---|---|---|
   | **Construction** (active build) — the prelude commit `799719d` (12:07 +0300, 09:07 UTC) → the evidence commit `e45353e` (13:33 +0300, 10:33 UTC) | active the whole interval: three parts in parallel worktrees (health 34 min, graph 46 min, exposures 59 min wall each), the integration (§I, the owner-transfer fix, the D8 pin), the full integration run, the unit/acceptance/upgrade/browser gates, three act rehearsals, the act and the demo walk. The mapping and the prelude before 12:07 ran in the same session interleaved with the B24-F1 read fix and the B84 records, and are not separable | **1 h 26 min** (plus the unseparated mapping and prelude before it) |
-  | **Wait** — the hosted checks and the owner's review/approval | not yet observed: the hosted run is pending at the candidate; no review, approval or merge | not yet observed |
+  | **Wait** — the hosted checks | the candidate `2f10189` pushed ~14:39 +0300 → ci 36417086803 created 11:40:48 UTC, completed 12:05:55 UTC (red: B32-F1) | ~25 min hosted run; the correction's run not yet observed |
+  | **Wait** — the owner's review/approval | the bounded B32 review of 2026-09-28 returned one finding (B32-F1) and B24-F1's audit residual; no approval or merge | not yet observed |
+  | **Construction** — the bounded correction pass (B24-F1 audit + B32-F1) | the review received → `aa038f3` verified and the demonstration restarted | kept apart from B32's construction; not summed |
 
   B32 was sized 7–12 U. Construction took 1 h 26 min of active wall-clock with three parallel implementers, consistent with observation 3. The wait is the term that sets the calendar; its review-and-approval part is still unobserved for every stage since B23 (none has merged), so r is not re-fitted and the provisional dates stand.
 

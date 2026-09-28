@@ -4585,6 +4585,19 @@ The UI is `/prediction/signals`.
 - The tracker: F-P4-13 → **B34**, F-P6-08 and F-P6-09 → **B36**, each with verification in **R2**; B32 advances the three and carries its own effort (5.25–8.5 U). The dependents of the delivered core (F-P4-15, F-P6-01, F-P6-07) depend on B32 through `extra_depends_on` (B33, B35, B34). The schedule was re-derived once: M1 is unchanged (three accounts 2027-07-02; two 2027-10-06; one 2028-08-02). The next A1 stage is B34.
 - The ledger: 0089 frozen (applied to `eye_demo`). The calibration (DELIVERY_PLAN §9, observation 4): construction 1 h 26 min active; the wait not yet observed.
 
+
+### B32.10 — B32-F1 corrected: the observation's freshness read (the bounded B32 review of 2026-09-28)
+
+**The finding.** The hosted run at `2f10189` (ci 36417086803) failed build-test on the new graph file: integration 1238/1242, G1/G2/G4/G5. G1 failed first (a fresh observation answered `stale`); G2, G4 and G5 depend on what G1 builds, so they fell with it. The upgrade proof and the C18 database-history steps were skipped after the integration failure. Browser, C19 36417086772 and the exposure (14/14) and health (6/6) harnesses passed.
+
+**The cause, confirmed on the database.** `StrategyAlignmentService.observe` wrote the observation, then read `graph.measure_freshness` at `new Date().toISOString()` — a MILLISECOND instant — while the row's `recorded_at` is PostgreSQL `clock_timestamp()` with MICROSECONDS. Inside the row's own millisecond the JavaScript instant precedes the stamp, and the as-of rule (`observed_at <= p_at AND recorded_at <= p_at`) correctly hides the new row: the response carried the new value with the PREVIOUS observation's freshness. The review's probe reproduced it with explicit doubles; G8 confirms it on real rows (below).
+
+**The correction** (`aa038f3`, TypeScript only; 0089 applied and untouched; no forward migration needed): the response reads its freshness at a DATABASE instant never earlier than the observation's own `recorded_at` — `GREATEST(clock_timestamp(), recorded_at)`, microseconds kept, returned as `freshness.read_at`. `graph.measure_freshness` and its as-of semantics are unchanged; the gap view, the detections and every `at` read keep their historical behaviour. No sleep, no weakened assertion, nothing carried to H1.
+
+**The regression — `phase6-graph-b32` G8, real database, deterministic:** (1) the FIRST observation answers its own reading (read at or after its row); (2) STALE → FRESH: the new reading's response is `fresh` and names the new reading, read at or after its row; (3) THE BOUNDARY on the rows: the row's `recorded_at` keeps six fractional digits, and the as-of read at the millisecond instant inside the row's own millisecond (what a JavaScript Date carries) answers the PREVIOUS observation — the mechanism, confirmed without depending on timing (a further reading is taken only if a stamp falls exactly on its millisecond); (4) HISTORY: an as-of read before the fresh reading was recorded still answers the first reading.
+
+**Results** (`phase6-b32` `aa038f3`, the stack's top — it also carries B24-F1's audit correction): the graph file **8/8** (G1–G8, the dependent cases recovered); full integration **1243/1243** in 93 files on a fresh database; unit 2547 + 9 on a clean tree; acceptance 58/58; upgrade PASS; browser **51/51**. The demonstration API was rebuilt and restarted on this build (VERIFIED). The review (`The_Eye_B32_Bounded_Review_2026-09-28.md`) is NOT committed: its text quotes the literal the `.gitleaks.toml` §7 exclusion covers, only for migration 0089, and the review asks for no further scanner exception — so it stays with the owner's correspondence and is cited here by name.
+
 ## Order and the next implementation batch
 
 B3, B1 and B2 are done in code, B4/B5 applied to the audit (the 2026-09-11 checkpoints), B6 done in

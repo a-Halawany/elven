@@ -4116,6 +4116,8 @@ The mechanism is in `audit/CP6_BATCHES.md` §B32. There is one migration, `0089_
 
 The backups before 0089 are `eye_demo-pre-0089-20260928T091041Z.dump` and `eye_demo-pre-0089-20260928T103136Z.dump`, and the API restart was VERIFIED. **Disclosed:** four second-role bindings were made through the database controller, because Phase 0 has no governed route for them.
 
+**40.2a — B32-F1 corrected** (the bounded review of 2026-09-28). The hosted run at `2f10189` failed build-test on the graph file (1238/1242, G1/G2/G4/G5 — one failure and its dependents): the observation's response read freshness at a JavaScript millisecond instant that can precede the row's microsecond `recorded_at`, so it answered the previous observation. It now reads at `GREATEST(clock_timestamp(), recorded_at)` (`aa038f3`, TypeScript only, 0089 untouched); G8 proves the first observation, the stale → fresh transition, the boundary on real rows and the history. The graph file 8/8; full integration 1243/1243; unit 2547 + 9; acceptance 58/58; upgrade PASS; browser 51/51. `audit/CP6_BATCHES.md` §B32.10.
+
 ### 40.3 The plan
 
 - **B32 completes no feature.** Its residual clauses are assigned:
