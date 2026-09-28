@@ -552,12 +552,18 @@ describe('CP-6 B24 (0086 §P): the selected transformation plan executes under t
     const custody = (await sql<{ served: string; expected: string }>`select details ->> 'evidence_version' served, details ->> 'expected_version' expected from observation.custody_events
                                                                         where evd_object_id = ${E6.id}::uuid and event = 'custody.retrieved' and details ->> 'run_id' = ${runs.at(-1)!.run_id}`.execute(su)).rows;
     expect(custody).toEqual([{ served: '2', expected: '1' }]);
+    // and its AUDIT row names the version SERVED (2), as the receipt and the custody do — never the version selected before the read (the review of 2026-09-28)
+    const audited = (await sql<{ v: string | null }>`select event ->> 'target_version' v from audit.audit_events where action = 'observation.evidence.retrieve' and event ->> 'target_type' = 'EVD'
+                                                        and event ->> 'target_id' = ${E6.id} order by audit_seq`.execute(su)).rows;
+    expect(audited.map((x) => x.v)).toEqual(['2']);
     /* the correct version: version 2 drained → done, reporting version 2, the claim on it */
     expect(await drainNow()).toMatchObject({ claimed: 1, done: 1 });
     const done = (await executionsOf(E6.id)).find((x) => x.evd_version === 2)!;
     expect(done).toMatchObject({ state: 'done' });
     expect(done.outcome).toMatchObject({ evd_version: 2, evidence_read: 1, claims_admitted: 1 });
     expect(await claimsOn(E6.id)).toHaveLength(1);
+    expect((await sql<{ v: string | null }>`select event ->> 'target_version' v from audit.audit_events where action = 'observation.evidence.retrieve' and event ->> 'target_type' = 'EVD'
+                                               and event ->> 'target_id' = ${E6.id} order by audit_seq`.execute(su)).rows.map((x) => x.v)).toEqual(['2', '2']);
     /* (b) THE WITHDRAWAL CONTROL: withdrawn at the same point — the read refuses it (never forced to version 1), nothing reselected, nothing read */
     const t1 = await mark();
     const E7 = await uploadOn(PLAN_LABEL, 'b24p-e7.csv', 'site,throughput\nB24 Plan Terminal,47\n');

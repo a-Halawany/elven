@@ -279,7 +279,9 @@ export class ExtractionOrchestrator {
                 : { outcome: 'success' as const, resultCode: 'EYE-INT-001', metadata: { integrity: 'failed' } };
             return { result: { integrity: r.integrity, base64: r.integrity === 'verified' ? r.base64 : null, contentDigest: r.integrity === 'failed' ? null : r.contentDigest,
                                objectVersion: r.integrity === 'failed' ? null : r.objectVersion },
-                     targetType: 'EVD', targetId: evdObjectId, targetVersion: '1',
+                     // B24-F1 (the review of 2026-09-28): the AUDIT target is the version the governed read resolved and served — as the receipt and
+                     // the custody entry are — never the version selected before the read (the pipeline writes this field into the audit row as is)
+                     targetType: 'EVD', targetId: evdObjectId, targetVersion: String(r.objectVersion),
                      outboxEvent: null, ...(evidence === undefined ? {} : { evidence }) };
           });
         if (got.result.base64 === null) {

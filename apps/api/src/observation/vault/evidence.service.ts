@@ -56,7 +56,8 @@ export interface RetrievalDegraded extends RetrievalBase {
  * B21.2 (D2.6): a failure of an ATTEMPTED read under a reachable root (A7's one shape — missing, corrupt, scope, oversize alike). Carries
  * nothing about the object: the route answers the 409 from `refusal.message` AFTER the custody row and the audit row committed.
  */
-export interface RetrievalRefused { integrity: 'failed'; refusal: { message: string } }
+/** B24-F1: `objectVersion` is the version the read RESOLVED (whose bytes failed integrity) — for the caller's audit target only; the route never discloses it. */
+export interface RetrievalRefused { integrity: 'failed'; refusal: { message: string }; objectVersion: number }
 export type RetrievalResult = RetrievalServed | RetrievalDegraded | RetrievalRefused;
 
 export const INTEGRITY_REFUSED_MESSAGE = 'evidence bytes failed integrity verification and were not served';
@@ -362,8 +363,9 @@ export class EvidenceService {
       });
       // D2.6: the refusal is RETURNED, not thrown, so the custody row above commits with the route's audit row (success/EYE-INT-001 — the
       // custody row is a business effect and 0013's closure admits it only beside a success audit row); the route answers
-      // the same 409 after the commit. Nothing about the object rides on this value.
-      return { integrity: 'failed', refusal: { message: INTEGRITY_REFUSED_MESSAGE } };
+      // the same 409 after the commit. Nothing about the object rides on this value for the requester; `objectVersion` is the resolved version
+      // an internal caller records as its audit target (B24-F1: the audit, like the receipt and the custody, names what the read resolved).
+      return { integrity: 'failed', refusal: { message: INTEGRITY_REFUSED_MESSAGE }, objectVersion: Number(evd.object_version) };
     }
 
     await cap.appendCustody({
