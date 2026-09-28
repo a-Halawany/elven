@@ -52,24 +52,33 @@ import { ATTENTION_TIMER_DIGEST, ATTENTION_TIMER_METHOD, ATTENTION_TIMER_VERSION
 import { WEAK_SIGNAL_AGENT_DIGEST, WEAK_SIGNAL_AGENT_METHOD, WEAK_SIGNAL_AGENT_VERSION } from '../../prediction/signals/signal-agent-identity.js';
 import { SignalsCapability } from '../../prediction/signals/signals.capabilities.js';
 /* end B28 signals */
+/* B32 (0089) exposures: the Risk and Opportunity Agents — their identity and the one capability they hold (estimate); acceptance and sponsorship they are refused */
+import { OPPORTUNITY_AGENT_DIGEST, OPPORTUNITY_AGENT_METHOD, OPPORTUNITY_AGENT_VERSION, RISK_AGENT_DIGEST, RISK_AGENT_METHOD, RISK_AGENT_VERSION } from '../../prediction/exposures/exposure-agent-identity.js';
+import { ExposuresCapability, type ExposureReads } from '../../prediction/exposures/exposures.capabilities.js';
+/* end B32 exposures */
 
-export type AgentKind = 'decision' | 'briefing' | 'reporting' | /* B24 (0086) timer */ 'attention' /* end B24 timer */ | /* B28 (0088) signals */ 'weak_signal' /* end B28 signals */;
-export type AgentTask = 'draft' | 'briefing' | 'report' | 'monitor' | /* B24 (0086) timer */ 'attention_tick' /* end B24 timer */ | /* B28 (0088) signals */ 'signal_scan' /* end B28 signals */;
+export type AgentKind = 'decision' | 'briefing' | 'reporting' | /* B24 (0086) timer */ 'attention' /* end B24 timer */ | /* B28 (0088) signals */ 'weak_signal' /* end B28 signals */
+  | /* B32 (0089) exposures */ 'risk' | 'opportunity' /* end B32 exposures */;
+export type AgentTask = 'draft' | 'briefing' | 'report' | 'monitor' | /* B24 (0086) timer */ 'attention_tick' /* end B24 timer */ | /* B28 (0088) signals */ 'signal_scan' /* end B28 signals */
+  | /* B32 (0089) exposures */ 'risk_assess' | 'opportunity_assess' /* end B32 exposures */;
 const ROLE_OF: Record<AgentKind, string> = { decision: 'decision_agent', briefing: 'briefing_agent', reporting: 'reporting_agent', /* B24 (0086) timer */ attention: 'attention_agent' /* end B24 timer */,
-  /* B28 (0088) signals */ weak_signal: 'weak_signal_agent' /* end B28 signals */ };
+  /* B28 (0088) signals */ weak_signal: 'weak_signal_agent' /* end B28 signals */, /* B32 (0089) exposures */ risk: 'risk_agent', opportunity: 'opportunity_agent' /* end B32 exposures */ };
 const METHOD_OF: Record<AgentKind, string> = { decision: 'decision-agent-option-cards@1.0.0', briefing: 'briefing-agent@1.0.0', reporting: 'reporting-agent@1.0.0', /* B24 (0086) timer */ attention: ATTENTION_TIMER_METHOD /* end B24 timer */,
-  /* B28 (0088) signals */ weak_signal: WEAK_SIGNAL_AGENT_METHOD /* end B28 signals */ };
+  /* B28 (0088) signals */ weak_signal: WEAK_SIGNAL_AGENT_METHOD /* end B28 signals */, /* B32 (0089) exposures */ risk: RISK_AGENT_METHOD, opportunity: OPPORTUNITY_AGENT_METHOD /* end B32 exposures */ };
 const CLEARANCE_RANK: Record<string, number> = { public: 0, internal: 1, confidential: 2, restricted: 3 };
 /** The stop conditions this runtime implements; any other kind is refused at registration (here and at the port). */
 export const SUPPORTED_STOP_CONDITIONS = ['max_items', 'on_degraded'] as const;
 /** Which agent kinds enforce each condition in their task (registration refuses any other pairing, here and at the port). */
-export const STOP_CONDITION_KINDS: Readonly<Record<string, readonly AgentKind[]>> = Object.freeze({ max_items: ['decision', 'briefing', /* B28 (0088) signals: the scan's nominations */ 'weak_signal' /* end B28 signals */], on_degraded: ['briefing'] });
+export const STOP_CONDITION_KINDS: Readonly<Record<string, readonly AgentKind[]>> = Object.freeze({ max_items: ['decision', 'briefing', /* B28 (0088) signals: the scan's nominations */ 'weak_signal' /* end B28 signals */,
+  /* B32 (0089) exposures: the exposures one estimate re-estimates */ 'risk', 'opportunity' /* end B32 exposures */], on_degraded: ['briefing'] });
 
 export interface RegisterAgentIntake { kind: AgentKind; version: string; codeDigest: string; ownerPrincipalId: string; escalationPrincipalId: string; budgets: Record<string, unknown>; stopConditions: unknown[] }
 export function validateRegisterAgent(m: Partial<RegisterAgentIntake>, correlationId: string): RegisterAgentIntake {
   const bad = (msg: string): never => { throw new HttpException(errorBody('EYE_REQ_001', correlationId, msg), 422); };
   if (m.kind !== 'decision' && m.kind !== 'briefing' && m.kind !== 'reporting' && /* B24 (0086) timer */ m.kind !== 'attention' /* end B24 timer */
-      && /* B28 (0088) signals */ m.kind !== 'weak_signal' /* end B28 signals */) bad('kind is decision, briefing, reporting, attention or weak_signal');
+      && /* B28 (0088) signals */ m.kind !== 'weak_signal' /* end B28 signals */ && /* B32 (0089) exposures */ m.kind !== 'risk' && m.kind !== 'opportunity' /* end B32 exposures */) {
+    bad('kind is decision, briefing, reporting, attention, weak_signal, risk or opportunity');
+  }
   if (typeof m.version !== 'string' || !/^[0-9]+\.[0-9]+\.[0-9]+$/.test(m.version)) bad('version must be semver');
   if (typeof m.codeDigest !== 'string' || !/^[0-9a-f]{64}$/.test(m.codeDigest)) bad('codeDigest must be 64 hex');
   /* B24 (0086) timer: the attention agent is registered with THIS runtime's timer identity (a changed method is a new digest — register anew) */
@@ -87,6 +96,14 @@ export function validateRegisterAgent(m: Partial<RegisterAgentIntake>, correlati
     bad(`a weak_signal agent is registered with this runtime's scan: version ${WEAK_SIGNAL_AGENT_VERSION}, codeDigest ${WEAK_SIGNAL_AGENT_DIGEST} (${WEAK_SIGNAL_AGENT_METHOD})`);
   }
   /* end B28 signals */
+  /* B32 (0089) exposures: the Risk and Opportunity Agents are registered with THIS runtime's estimate (a changed method is a new digest — register anew) */
+  if (m.kind === 'risk' && (m.version !== RISK_AGENT_VERSION || m.codeDigest !== RISK_AGENT_DIGEST)) {
+    bad(`a risk agent is registered with this runtime's estimate: version ${RISK_AGENT_VERSION}, codeDigest ${RISK_AGENT_DIGEST} (${RISK_AGENT_METHOD})`);
+  }
+  if (m.kind === 'opportunity' && (m.version !== OPPORTUNITY_AGENT_VERSION || m.codeDigest !== OPPORTUNITY_AGENT_DIGEST)) {
+    bad(`an opportunity agent is registered with this runtime's estimate: version ${OPPORTUNITY_AGENT_VERSION}, codeDigest ${OPPORTUNITY_AGENT_DIGEST} (${OPPORTUNITY_AGENT_METHOD})`);
+  }
+  /* end B32 exposures */
   if (typeof m.ownerPrincipalId !== 'string' || typeof m.escalationPrincipalId !== 'string') bad('ownerPrincipalId and escalationPrincipalId name humans');
   const b = m.budgets ?? {};
   if (typeof b !== 'object' || b === null || !Number.isInteger(b['max_reads']) || !Number.isInteger(b['max_gateway_calls']) || !Number.isInteger(b['max_elapsed_ms'])) bad('budgets name integer max_reads, max_gateway_calls and max_elapsed_ms');
@@ -258,6 +275,9 @@ export class AgentsService {
       /* B28 (0088) signals */
       else if (a.task === 'signal_scan') outputs = await this.signalScan(principal, T, D, runId, registration, meter, stops, refusals, a.correlationId, identity, a.scan ?? { asOf: null });
       /* end B28 signals */
+      /* B32 (0089) exposures */
+      else if (a.task === 'risk_assess' || a.task === 'opportunity_assess') outputs = await this.exposureEstimate(principal, T, D, runId, registration, meter, stops, refusals, a.correlationId, identity, a.task === 'risk_assess' ? 'risk' : 'opportunity');
+      /* end B32 exposures */
       else outputs = await this.report(principal, T, D, a.packageId, budget, meter, a.correlationId, identity);
       if (outputs['refused'] === true) { outcome = 'refused'; stopReason = String(outputs['reason']); }
     } catch (e) {
@@ -459,6 +479,47 @@ export class AgentsService {
              marked: 'agent-produced', agent: identity, provenance: { ...provenance, contributors: list('nominated').map((x) => `SIG:${String(x['signal_id'])}`) } };
   }
   /* end B28 signals */
+
+  /* B32 (0089) exposures ───────────────────────── the Risk and Opportunity Agents ───────────────────────── */
+  /**
+   * THE ESTIMATE (AG-023 / AG-024). The registration the session port read must name THIS runtime's estimate (version and digest): a drifted
+   * agent's run is refused — recorded with the reason and escalated — never run under a stale identity. Otherwise ONE governed write under
+   * the agent's own session: prediction.exposure.estimate (prediction.estimate_exposures, rule exposure-estimate@1 — re-estimates PROPOSED,
+   * correlation estimates recorded, at most the registered max_items). The agent's contract ends there: its attempt to ACCEPT the first
+   * estimate (risk) or to SPONSOR it (opportunity) is refused at the PDP and recorded on the run (the boundary is exercised, not assumed).
+   */
+  private async exposureEstimate(p: AuthenticatedPrincipal, T: string, D: string, runId: string, registration: { agent_version: string; code_digest: string },
+                                 meter: Meter, stops: Array<Record<string, unknown>>, refusals: Refusal[], correlationId: string, identity: Record<string, unknown>, polarity: 'risk' | 'opportunity') {
+    const provenance = { purpose: 'prediction', package_id: null, room_id: null, classification: 'internal', contributors: [] as string[] };
+    const [version, digest] = polarity === 'risk' ? [RISK_AGENT_VERSION, RISK_AGENT_DIGEST] : [OPPORTUNITY_AGENT_VERSION, OPPORTUNITY_AGENT_DIGEST];
+    if (registration.agent_version !== version || registration.code_digest !== digest) {
+      const reason = `${polarity} estimate refused (drift): the agent is registered as ${registration.agent_version} with code digest ${registration.code_digest.slice(0, 12)}…; this runtime's estimate is ${version} with ${digest.slice(0, 12)}… — the agent is registered anew before it estimates`;
+      refusals.push({ action: 'prediction.exposure.estimate', code: 'EYE-AUT-001', reason, at: new Date().toISOString() });
+      return { refused: true, reason, marked: 'agent-produced', agent: identity, provenance };
+    }
+    const maxItems = stops.filter((s) => s['kind'] === 'max_items').map((s) => Number(s['value'])).reduce<number | null>((acc, v) => (acc === null ? v : Math.min(acc, v)), null);
+    meter.read('the exposures\' estimate');
+    const estimated = await this.pipeline.write(this.env(p, T, D, 'prediction.exposure.estimate', 'RSK', null, correlationId, 'prediction'), p, this.route(T, D, 'prediction.exposure.estimate', 'RSK', null), ExposuresCapability.estimate,
+      async (cap) => ({ result: await cap.estimate({ tenantId: T, domainId: D, polarity, runId, maxItems, actor: p.principalId, correlationId }), targetType: 'RSK', targetId: null, targetVersion: null, outboxEvent: null }));
+    const list = (k: string): Array<Record<string, unknown>> => (Array.isArray(estimated.result[k]) ? (estimated.result[k] as Array<Record<string, unknown>>) : []);
+    const first = list('estimated')[0];
+    const target = typeof first?.['exposure_id'] === 'string' ? String(first['exposure_id']) : null;
+    // The agent estimates and recommends; ACCEPTANCE is the owner's, SPONSORSHIP the sponsor's. Its attempt is refused at the PDP (no grant) and recorded.
+    const decide = polarity === 'risk' ? 'prediction.exposure.accept' : 'prediction.exposure.sponsor';
+    try {
+      await this.pipeline.write(this.env(p, T, D, decide, 'RSK', target, correlationId, 'prediction'), p, this.route(T, D, decide, 'RSK', target), (polarity === 'risk' ? ExposuresCapability.accept : ExposuresCapability.sponsor) as (tx: Tx, action: string) => ExposureReads,
+        async () => ({ result: null, targetType: 'RSK', targetId: target, targetVersion: null, outboxEvent: null }));
+    } catch (e) {
+      if (e instanceof HttpException && e.getStatus() === 403) refusals.push({ action: decide, code: String((e.getResponse() as { code?: string }).code ?? 'EYE-AUT-001'), reason: String((e.getResponse() as { message?: string }).message ?? ''), at: new Date().toISOString() });
+      else throw e;
+    }
+    return { polarity, rule: estimated.result['rule'], estimated: list('estimated').map((x) => ({ exposure_id: x['exposure_id'], version: x['version'], digest: x['digest'], base_version: x['base_version'] })),
+             waiting: list('waiting'), unchanged: list('unchanged'), correlations: list('correlations'), max_items: maxItems,
+             receipts: { estimate: { policyDecisionId: estimated.policyDecisionId, auditSeq: estimated.auditSeq } },
+             marked: 'agent-produced: proposed, never accepted by the agent', agent: identity,
+             provenance: { ...provenance, contributors: list('estimated').map((x) => `RSK:${String(x['exposure_id'])}@${String(x['version'])}`) } };
+  }
+  /* end B32 exposures */
 
   // ───────────────────────── the reporting agent ─────────────────────────
   private async report(p: AuthenticatedPrincipal, T: string, D: string, packageId: string | null, budget: Record<string, unknown>, meter: Meter, correlationId: string, identity: Record<string, unknown>) {

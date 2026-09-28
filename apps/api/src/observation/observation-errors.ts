@@ -632,6 +632,43 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
      caller's own malformed candidate (22023) → 422; no earlier row starts with the phrase. */
   { match: /^warning candidate rejected/i, status: 422, code: 'EYE_REQ_001' },
   /* end B28 integrator */
+  /* B32 (0089) graph — the Strategy Graph's alignment, measure, authority and owner ports (0089 §G): `strategy alignment rejected`, `strategy
+     measure rejected`, `strategy authority rejected`, `strategy owner rejected` — anchored phrases no earlier row matches, and their texts carry
+     no phrase an unanchored earlier row matches (the refusal unit test runs every text through the mapper). Every refusal carries a CLASS IN
+     PARENTHESES except the two standing texts (the acting principal, a named active human). B9's order: the standing 403 (those two;
+     `(not_eligible)` — no planning authority role; `(separation)` — the subject's declarer; `(not_authority)` — neither the owner nor a strategy
+     owner or domain administrator); the absences 404 (`(unknown_object)`, `(unknown_evidence)`, `(unknown_alignment)`, `(unknown_measure)`,
+     `(unknown_source)`, `(unknown_subject)`); the record's state 409 (`(inactive)`, `(duplicate)`, `(retired)`, `(value_conflict)`,
+     `(source_withdrawn)`, `(missing_owner)`, `(stale_digest)`, `(unchanged)`); the caller's own request 422 (everything else). */
+  { match: /^strategy (alignment|measure|authority|owner) rejected: (recorded by the acting principal|a named, active human)|^strategy authority rejected \((not_eligible|separation)\)|^strategy owner rejected \(not_authority\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^strategy (alignment|measure|authority|owner) rejected \(unknown_(object|evidence|alignment|measure|source|subject)\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^strategy (alignment|measure|authority|owner) rejected \((inactive|duplicate|retired|value_conflict|source_withdrawn|missing_owner|stale_digest|unchanged)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^strategy (alignment|measure|authority|owner) rejected/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B32 graph */
+  /* B32 (0089) health — the Strategic Health Score's ports (0089 §H): `health definition rejected`, `health score rejected`, `health change
+     rejected` — anchored phrases no earlier row starts with (no earlier row reads `^health`; the texts carry no phrase an unanchored earlier
+     row matches — the unit test runs every text through the mapper). B9's order: the standing 403 (the acting principal, the proposer's and
+     the approver's roles, `(separation)` — the proposer deciding their own definition, the challenger or the definition's approver deciding
+     a challenge —, the change people's roles, the challenger alone withdraws); the absences 404 (the definition, an objective a dimension
+     names, the change); the record's state 409 (`(pending)` — one proposal at a time, `(unchanged)`, `(not_proposed)`, `(stale_basis)`,
+     `(no_definition)` — nothing active to compute under, `(not_raised)`, `(not_open)`, `(not_challenged)`); the caller's own request 422
+     (the model, the reason, the instant, `(gaming_review)` — a flagged proposal approved without the anti-gaming review). */
+  { match: /^health (definition|score|change) rejected: (proposed|decided|computed|recorded) by the acting principal|^health definition rejected: a definition is (proposed|approved) by a named human|^health (definition|change) rejected \(separation\)|^health change rejected: (a score change is acknowledged or challenged by a named human|a challenge is withdrawn by its challenger|a challenge is decided by a named human)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^health definition rejected: no such (definition|objective) |^health change rejected: no such change in this domain/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^health definition rejected \((pending|unchanged|not_proposed|stale_basis)\)|^health score rejected \(no_definition\)|^health change rejected \((not_raised|not_open|not_challenged)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^health (definition|score|change) rejected/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B32 health */
+  /* B32 (0089) exposures — the risk and opportunity ports (0089 §R): `exposure rejected`, `exposure (assessment|acceptance|control|routing|hypothesis|
+     sponsorship|response|closure|correlation|aggregation|estimate) rejected`, `risk (taxonomy|appetite) rejected` — anchored phrases no earlier row
+     matches (no earlier row starts with `exposure` or `risk `; the unanchored TWIN/INTELLIGENCE rows name `run rejected: `, `no such run`, `is admitted
+     and immutable` — none of which these texts carry). B9's order: the standing 403 (the acting principal; the owner, the sponsor, a named human; a
+     challenge by someone other than the assessor), the absences 404, the record's state 409 (a stale version or digest, a duplicate, a closed or
+     superseded record, no taxonomy, an agent's unaccepted estimate, no breach to route, invalid aggregation members), the caller's own request 422. */
+  { match: /^(exposure|exposure (assessment|acceptance|control|routing|hypothesis|sponsorship|response|closure|correlation|aggregation|estimate)|risk (taxonomy|appetite)) rejected: recorded by the acting principal|^exposure assessment rejected: (an assessment is a named human's act|the assessor of version .* does not contest it)|^exposure acceptance rejected: the assessment is accepted by the exposure's owner|^exposure sponsorship rejected: an opportunity is sponsored by|^exposure response rejected: a response is opened by|^exposure closure rejected: an exposure is closed by|^exposure correlation rejected: a declared correlation is a named human's act|^exposure estimate rejected: an estimate is made by|^risk taxonomy rejected: a taxonomy is published by|^risk appetite rejected: an appetite is approved by/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^exposure rejected: no (such RSK|category)|^exposure (assessment|acceptance|control|routing|hypothesis|sponsorship|response|closure|correlation|aggregation) rejected: no such (exposure|version|evidence object|capability|objective|decision|package)|^risk appetite rejected: no category/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^exposure rejected \((duplicate|not_active|no_taxonomy)\)|^exposure (assessment|acceptance|control|routing|hypothesis|sponsorship|response|closure) rejected \((stale_version|stale_digest|closed|state|already_accepted|superseded|already_sponsored|agent_estimate|no_breach)\)|^exposure assessment rejected: (version .* (is immutable|does not move)|an assessment version is never deleted)|^exposure aggregation rejected \(invalid_members\)|^risk (taxonomy|appetite) rejected \((stale_version|no_taxonomy)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^(exposure|exposure (assessment|acceptance|control|routing|hypothesis|sponsorship|response|closure|correlation|aggregation|estimate)|risk (taxonomy|appetite)) rejected/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B32 exposures */
 ];
 
 export function asObservationRefusal(e: unknown, correlationId: string): HttpException | null {

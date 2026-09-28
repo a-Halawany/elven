@@ -14,6 +14,7 @@ Prepared under the owner's instruction of 2026-09-25 ("Prepare its separate merg
 | #63 B23 | `phase6-b23` → `planning/delivery-plan-2026-09` | `d2fa829` (was `95dfcdb`) | `supply-chain` red (the redis recheck); B23-F1 CLOSED on it at `d2fa829` by the forward migration 0085 (step 4's precondition done) |
 | #64 B24 | `phase6-b24` → `phase6-b23` | `3409418` (B24-F1; records on top) — ci 36242673225: build-test 1183/1183, browser and C19 36242673205 green | `supply-chain` red (the redis recheck) until #62 is on its base; build-test (integration 1182/1182), browser-regression and C19 36164183865 green (ci 36164184010); holds the limiter fix (same patch as #61's `45fda0f`) and 0086 |
 | #65 B28 | `phase6-b28` → `phase6-b24` | `2c75487` | ci 36276627852: integration 1214/1214, browser and C19 36276627853 green; build-test red on ONE C18 timing control (622/623 — carried to H1; must pass on the next head); `supply-chain` red (the redis recheck) until #62 is on its base |
+| B32 | `phase6-b32` → `phase6-b28` | `e45353e` (code, act and evidence; the records on top) | stacked on #65; no PR opened; the hosted run: pending at the candidate; reported to the owner, not re-recorded |
 
 ## 1. The #62 decision (ready for the owner's word)
 
@@ -35,6 +36,8 @@ Older heads' green checks never stand for a new combination: every step below pr
 5. **#64 (B24).** B24-F1 (the evidence version, the bounded B24 review) is corrected on it first (0087, a new head whose checks must complete). It stacks on #63 (base `phase6-b23`); after #63 merges, retarget to `main`, merge `main` in, checks on the new head → the owner's decision.
 
 6. **#65 (B28).** Stacks on #64 (base `phase6-b24`); after #64 merges, retarget to `main`, merge `main` in, checks on the new head → the owner's decision.
+
+7. **B32.** Stacks on #65 (base `phase6-b28`); after #65 merges, retarget to `main`, merge `main` in, checks on the new head → the owner's decision.
 
 Between two merges the first merge's `main` chain completes before the next merge (the B18 rule: the C17 finalize of a merge overtaken by another merge refuses).
 

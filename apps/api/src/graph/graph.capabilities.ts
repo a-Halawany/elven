@@ -351,6 +351,9 @@ export interface ImpactWrites extends GraphReads {
     twins: unknown[]; simulations: unknown[];
     /** 0065 §8: warnings the port marks for attention and briefings it re-flags (AU-MEM-0031); 0066 §3: memory items marked for attention. */
     warnings?: unknown[]; briefings?: unknown[]; memoryItems?: unknown[];
+    /* B32 (0089) graph: the capabilities, initiatives, resources, measures, stakeholders and risks/opportunities the walk reached — recorded, nothing marked. */
+    strategyNodes?: unknown[];
+    /* end B32 graph */
     statement: string;
     /** A bounded walk that stopped early is recorded as partial, never as assessed. */
     truncated: boolean; unexplored: unknown[];
@@ -470,13 +473,53 @@ export interface RevisionWrites extends GraphReads {
 }
 /* end B23 revision */
 
+/* B32 (0089) graph */
+// ───────────────────────── the Strategy Graph's alignment, measures and authority (CP-6 B32, 0089 §G) ─────────────────────────
+
+/**
+ * The reads of the alignment workspace (0089 §G): the ledgers under FORCE RLS, and the three computed reads — the GAP VIEW
+ * (graph.alignment_gaps), the DETECTIONS with their declared continuity (graph.strategy_detections) and the measures' FRESHNESS
+ * (graph.measure_freshness) — each `LANGUAGE sql STABLE`, no definer: the caller's own context bounds what they read, and none
+ * of them can write.
+ */
+export interface StrategyAlignmentReads extends GraphReads {
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  readAlignments(): any;
+  readAlignmentEvents(): any;
+  readMeasures(): any;
+  readMeasureObservations(): any;
+  readMeasureEvents(): any;
+  readAuthorityActs(): any;
+  /* eslint-enable @typescript-eslint/no-explicit-any */
+  alignmentGaps(a: { tenantId: string; domainId: string; objectiveId: string | null; at: string }): Promise<Array<Record<string, unknown>>>;
+  strategyDetections(a: { tenantId: string; domainId: string; at: string }): Promise<Array<Record<string, unknown>>>;
+  measureFreshness(a: { tenantId: string; domainId: string; at: string }): Promise<Array<Record<string, unknown>>>;
+  /** The subject an authority act names: its version and the digest the approver reads (graph.strategy_subject_state). */
+  subjectState(a: { tenantId: string; domainId: string; subjectKind: 'strategy' | 'measure' | 'alignment'; subjectId: string }): Promise<Record<string, unknown> | null>;
+}
+
+/**
+ * The six governed writes (0089 §G1–§G4). Each is ONE port that asserts its own bound action, the scope and the acting principal
+ * (a named active human for all but the observation); the capability passes the request through and returns the port's answer.
+ */
+export interface StrategyAlignmentWrites extends StrategyAlignmentReads {
+  declareAlignment(a: { alignmentId: string; tenantId: string; domainId: string; kind: string; from: string; to: string; strength: string; evidence: Array<{ kind: string; id: string }>; rationale: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+  retireAlignment(a: { alignmentId: string; tenantId: string; domainId: string; reason: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+  defineMeasure(a: { measureId: string; tenantId: string; domainId: string; objectiveId: string; unit: string; direction: string; targetValue: number; targetDate: string | null; freshnessDays: number; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+  recordMeasureObservation(a: { observationId: string; tenantId: string; domainId: string; measureId: string; value: number; observedAt: string; sourceKind: string; sourceId: string; note: string | null; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+  recordAuthorityAct(a: { actId: string; tenantId: string; domainId: string; actKind: string; subjectId: string; subjectDigest: string; decision: string; rationale: string; expiresAt: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+  assignStrategyOwner(a: { objectId: string; tenantId: string; domainId: string; owner: string; reason: string; actor: string; eventId: string; correlationId: string }): Promise<Record<string, unknown>>;
+}
+/* end B32 graph */
+
 // ───────────────────────── implementation ─────────────────────────
 
 class GraphCapabilityImpl extends GraphCore
   implements ResolverWrites, ResolutionDecisionWrites, SplitWrites, EdgeWrites,
              EdgeRetractionWrites, StrategyWrites, MemoryWrites, OntologyWrites, ImpactWrites, PropagationAgentWrites, SubscriptionWrites, GraphSubscriberWrites, ProjectionWrites,
              MemoryContextReads,
-             RevisionWrites {
+             RevisionWrites,
+             /* B32 (0089) graph */ StrategyAlignmentWrites /* end B32 graph */ {
   constructor(tx: Tx, action: string) { super(tx, action); }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -854,6 +897,7 @@ class GraphCapabilityImpl extends GraphCore
     actor: string; eventId: string; correlationId: string;
     /** 0065 §8: the warnings marked for attention and the briefings re-flagged by the assessment; 0066 §3: the memory items marked. */
     warnings?: unknown[]; briefings?: unknown[]; memoryItems?: unknown[];
+    /* B32 (0089) graph */ strategyNodes?: unknown[]; /* end B32 graph */
   }): Promise<void> {
     await this.call(sql`select graph.record_impact(
       ${a.invalidationId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid,
@@ -862,7 +906,8 @@ class GraphCapabilityImpl extends GraphCore
       ${JSON.stringify(a.forecasts)}::jsonb, ${JSON.stringify(a.twins)}::jsonb, ${JSON.stringify(a.simulations)}::jsonb,
       ${a.statement}, ${a.truncated}, ${JSON.stringify(a.unexplored)}::jsonb,
       ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid,
-      ${JSON.stringify(a.warnings ?? [])}::jsonb, ${JSON.stringify(a.briefings ?? [])}::jsonb, ${JSON.stringify(a.memoryItems ?? [])}::jsonb)`);
+      ${JSON.stringify(a.warnings ?? [])}::jsonb, ${JSON.stringify(a.briefings ?? [])}::jsonb, ${JSON.stringify(a.memoryItems ?? [])}::jsonb,
+      ${JSON.stringify(a.strategyNodes ?? [])}::jsonb)`); // B32 (0089): the twentieth argument, p_strategy_nodes
   }
 
   async propagationRootBegin(a: { eventId: string; tenantId: string; domainId: string; root: string }): Promise<boolean> {
@@ -940,6 +985,58 @@ class GraphCapabilityImpl extends GraphCore
     return r;
   }
   /* end B23 revision */
+  /* B32 (0089) graph */
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  readAlignments(): any { return this.from('graph.alignments'); }
+  readAlignmentEvents(): any { return this.from('graph.alignment_events'); }
+  readMeasures(): any { return this.from('graph.measures'); }
+  readMeasureObservations(): any { return this.from('graph.measure_observations'); }
+  readMeasureEvents(): any { return this.from('graph.measure_events'); }
+  readAuthorityActs(): any { return this.from('graph.strategy_authority_acts'); }
+  /* eslint-enable @typescript-eslint/no-explicit-any */
+  async alignmentGaps(a: Parameters<StrategyAlignmentReads['alignmentGaps']>[0]): Promise<Array<Record<string, unknown>>> {
+    return this.call<Record<string, unknown>>(sql`select * from graph.alignment_gaps(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.objectiveId}::uuid, ${a.at}::timestamptz)`);
+  }
+  async strategyDetections(a: Parameters<StrategyAlignmentReads['strategyDetections']>[0]): Promise<Array<Record<string, unknown>>> {
+    return this.call<Record<string, unknown>>(sql`select * from graph.strategy_detections(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.at}::timestamptz)`);
+  }
+  async measureFreshness(a: Parameters<StrategyAlignmentReads['measureFreshness']>[0]): Promise<Array<Record<string, unknown>>> {
+    return this.call<Record<string, unknown>>(sql`select * from graph.measure_freshness(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.at}::timestamptz)`);
+  }
+  async subjectState(a: Parameters<StrategyAlignmentReads['subjectState']>[0]): Promise<Record<string, unknown> | null> {
+    const rows = await this.call<Record<string, unknown>>(sql`select * from graph.strategy_subject_state(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.subjectKind}, ${a.subjectId}::uuid)`);
+    return rows[0] ?? null;
+  }
+  async declareAlignment(a: Parameters<StrategyAlignmentWrites['declareAlignment']>[0]): Promise<Record<string, unknown>> {
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select graph.declare_alignment(${a.alignmentId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.kind}, ${a.from}::uuid, ${a.to}::uuid,
+      ${a.strength}, ${JSON.stringify(a.evidence)}::jsonb, ${a.rationale}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  async retireAlignment(a: Parameters<StrategyAlignmentWrites['retireAlignment']>[0]): Promise<Record<string, unknown>> {
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select graph.retire_alignment(${a.alignmentId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  async defineMeasure(a: Parameters<StrategyAlignmentWrites['defineMeasure']>[0]): Promise<Record<string, unknown>> {
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select graph.define_measure(${a.measureId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.objectiveId}::uuid, ${a.unit}, ${a.direction},
+      ${a.targetValue}::numeric, ${a.targetDate}::date, ${a.freshnessDays}::numeric, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  async recordMeasureObservation(a: Parameters<StrategyAlignmentWrites['recordMeasureObservation']>[0]): Promise<Record<string, unknown>> {
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select graph.record_measure_observation(${a.observationId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.measureId}::uuid,
+      ${a.value}::numeric, ${a.observedAt}::timestamptz, ${a.sourceKind}, ${a.sourceId}::uuid, ${a.note}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  async recordAuthorityAct(a: Parameters<StrategyAlignmentWrites['recordAuthorityAct']>[0]): Promise<Record<string, unknown>> {
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select graph.record_strategy_authority_act(${a.actId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.actKind}, ${a.subjectId}::uuid,
+      ${a.subjectDigest}, ${a.decision}, ${a.rationale}, ${a.expiresAt}::timestamptz, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  async assignStrategyOwner(a: Parameters<StrategyAlignmentWrites['assignStrategyOwner']>[0]): Promise<Record<string, unknown>> {
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select graph.assign_strategy_owner(${a.objectId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.owner}::uuid, ${a.reason},
+      ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  /* end B32 graph */
   async keepEdgeUnderReassessment(a: { edgeId: string; tenantId: string; domainId: string; reason: string; actor: string; correlationId: string }): Promise<void> {
     await this.call(sql`select graph.keep_edge_under_reassessment(${a.edgeId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}, ${a.actor}::uuid, ${a.correlationId}::uuid)`);
   }
@@ -1005,4 +1102,14 @@ export const GraphCapability = {
     return new GraphCapabilityImpl(tx, action);
   },
   /* end B23 revision */
+  /* B32 (0089) graph */
+  /** B32 (0089 §G): the alignment workspace's reads — the ledgers, the gap view, the detections, the freshness, a subject's digest. */
+  alignmentRead(tx: Tx, action: string): StrategyAlignmentReads {
+    return new GraphCapabilityImpl(tx, action);
+  },
+  /** B32 (0089 §G): the six governed writes — declare / retire an alignment, define / observe a measure, an authority act, an owner transfer. */
+  alignment(tx: Tx, action: string): StrategyAlignmentWrites {
+    return new GraphCapabilityImpl(tx, action);
+  },
+  /* end B32 graph */
 };

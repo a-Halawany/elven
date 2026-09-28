@@ -74,6 +74,14 @@ export interface ReachedObjects {
   briefings?: string[];
   /** 0066 §3: the memory items the walk reached (resting on what changed). Absent on events written before 0066. */
   memoryItems?: string[];
+  /* B32 (0089) graph */
+  /**
+   * 0089 §G: the six new strategy types the walk reached (through the alignments' mirrors and their own rests_on) — present only when
+   * the walk reached one (absent otherwise, so every earlier payload shape is unchanged). No consumer selects by them: every
+   * consumer's selection method is unchanged and no METHOD_REF moves.
+   */
+  capabilities?: string[]; initiatives?: string[]; resources?: string[]; measures?: string[]; stakeholders?: string[]; exposures?: string[];
+  /* end B32 graph */
   /** The walker stopped at its bound before the graph was exhausted: the selection above is incomplete and says so. */
   truncated: boolean;
   /** False only where the write legitimately skipped the walk (see change-events.ts): consumers then select by their own reads. */

@@ -38,6 +38,9 @@ import { StrategyService, validateStrategy } from './strategy/strategy.service.j
 import { MemoryService, validateDeriveIntake, validateMemoryItem, type DeriveAnswer } from './memory/memory.service.js';
 import { CONTEXT_LIMIT_MAX } from './memory/context.js';
 import { ImpactService } from './strategy/impact.service.js';
+/* B32 (0089) graph */
+import { SUBJECT_OF, StrategyAlignmentService, atOf, validateAlignment, validateAuthority, validateMeasure, validateObservation, validateOwner } from './strategy/alignment.service.js';
+/* end B32 graph */
 import { SearchService } from './search/search.service.js';
 import { PropagationAgentsService } from './propagation/propagation-agents.service.js';
 import { graphChangedEvent, revisionCommittedEvent } from './subscriptions/change-events.js';
@@ -62,6 +65,10 @@ function ctx(req: EyeRequest) {
 const receipt = (o: { policyDecisionId: string; auditSeq: number }) => ({
   policyDecisionId: o.policyDecisionId, auditSeq: o.auditSeq,
 });
+
+/* B32 (0089) graph */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/* end B32 graph */
 
 /** B20: the established DOMAIN context as the fallback readers' scope (every one of the twelve routes is DOMAIN-scoped). */
 const scopeOf = (ctx: ScopeContext): Scope => ({ tenantId: ctx.tenantId as string, domainId: ctx.domainId as string });
@@ -99,6 +106,7 @@ export class GraphController {
     private readonly propagationAgents: PropagationAgentsService,
     private readonly subscriptions: SubscriptionsService,
     private readonly memory: MemoryService,
+    /* B32 (0089) graph */ private readonly alignment: StrategyAlignmentService, /* end B32 graph */
   ) {}
 
   private route(tenantId: string, domainId: string, action: string,
@@ -1036,7 +1044,9 @@ export class GraphController {
         // GraphChanged (B6): the declared object, the entities it rests on and its dependencies; the object is its own reach.
         const restsOnEntities = intake.restsOn.filter((x) => x.kind === 'entity').map((x) => ({ entity_id: x.id, role: 'rests_on' }));
         const own: ReachedObjects = { ...EMPTY_REACH };
-        const bucket = ({ ASU: 'assumptions', OBJ: 'objectives', DEC: 'decisions', CMT: 'commitments' } as Record<string, keyof ReachedObjects | undefined>)[intake.objectType];
+        const bucket = ({ ASU: 'assumptions', OBJ: 'objectives', DEC: 'decisions', CMT: 'commitments',
+                          /* B32 (0089) graph: the new types are their own reach too (the optional buckets) */
+                          CAP: 'capabilities', INI: 'initiatives', RSC: 'resources', MSR: 'measures', STK: 'stakeholders', RSK: 'exposures' /* end B32 graph */ } as Record<string, keyof ReachedObjects | undefined>)[intake.objectType];
         if (bucket !== undefined) (own as unknown as Record<string, string[]>)[bucket] = [objectId];
         own.claims = intake.restsOn.filter((x) => x.kind === 'claim').map((x) => x.id);
         const changed = await graphChangedEvent(cap, this.impact, {
@@ -1114,6 +1124,157 @@ export class GraphController {
     }
     return { ...out.result, receipt: receipt(out) };
   }
+
+  /* B32 (0089) graph */
+  // ───────────────────────── the Strategy Graph's alignment, measures and authority (CP-6 B32, 0089 §G; F-P6-09) ─────────────────────────
+  //   The WRITES are six ports, each asserting its own bound action (the PDP's exact rules; all but the observation human-gated). They
+  //   publish NO GraphChanged: an alignment's reach is its mirror in graph.dependencies, which every later walk and change event
+  //   follows (GRAPH_CHANGE_KINDS is unchanged). The READS are graph.strategy.alignment.read (exact; audit_access): the gap view, the
+  //   detections, the measures, the alignments and the acts — each AS OF an instant stated in the answer.
+
+  /** Declare an alignment between two active strategy objects (graph.alignment.declare, human-gated): the port types its ends and mirrors it into the dependencies. */
+  @Post('/strategy/alignments/declare')
+  async declareAlignment(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: Record<string, unknown> }) {
+    const { envelope, principal } = ctx(req);
+    const intake = validateAlignment(body.payload ?? {}, envelope.correlation_id);
+    const alignmentId = newId();
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'graph.alignment.declare', 'ALN', alignmentId), GraphCapability.alignment,
+      async (cap, scope) => ({ result: await this.alignment.declareAlignment(cap, scope, { alignmentId, intake, actor: principal.principalId, correlationId: envelope.correlation_id }),
+                               targetType: 'ALN', targetId: alignmentId, targetVersion: '1', outboxEvent: null }));
+    return { alignment: out.result, receipt: receipt(out) };
+  }
+
+  /** Retire an alignment (graph.alignment.retire, human-gated): it stays as history; the mirror it created is removed — the continuity that breaks a cycle. */
+  @Post('/strategy/alignments/:alignmentId/retire')
+  async retireAlignment(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('alignmentId') alignmentId: string, @Body() body: { payload?: { reason?: string } }) {
+    const { envelope, principal } = ctx(req);
+    const reason = String(body.payload?.reason ?? '');
+    if (reason.trim().length < 8) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'reason is at least 8 characters'), 422);
+    if (!UUID_RE.test(alignmentId)) throw new HttpException(errorBody('EYE_STA_001', envelope.correlation_id, 'no authorized alignment matches'), 404);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'graph.alignment.retire', 'ALN', alignmentId), GraphCapability.alignment,
+      async (cap, scope) => ({ result: await this.alignment.retireAlignment(cap, scope, { alignmentId, reason, actor: principal.principalId, correlationId: envelope.correlation_id }),
+                               targetType: 'ALN', targetId: alignmentId, targetVersion: null, outboxEvent: null }));
+    return { alignment: out.result, receipt: receipt(out) };
+  }
+
+  /** The alignments (active; `includeRetired` for the history), each with its digest and the authority acts naming it. */
+  @Post('/strategy/alignments/list')
+  async listAlignments(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: { includeRetired?: boolean } }) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'graph.strategy.alignment.read', 'ALN', null), GraphCapability.alignmentRead,
+      async (cap) => this.alignment.alignments(cap, { includeRetired: body.payload?.includeRetired === true }));
+    return { alignments: out.result, receipt: receipt(out) };
+  }
+
+  /** Define (or redefine) the measure of an MSR object (graph.measure.define, human-gated): a redefinition resets the approval to proposed. */
+  @Post('/strategy/measures/:measureId/define')
+  async defineMeasure(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('measureId') measureId: string, @Body() body: { payload?: Record<string, unknown> }) {
+    const { envelope, principal } = ctx(req);
+    const intake = validateMeasure(body.payload ?? {}, envelope.correlation_id);
+    if (!UUID_RE.test(measureId)) throw new HttpException(errorBody('EYE_STA_001', envelope.correlation_id, 'no authorized strategy object matches'), 404);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'graph.measure.define', 'MSR', measureId), GraphCapability.alignment,
+      async (cap, scope) => {
+        const r = await this.alignment.defineMeasure(cap, scope, { measureId, intake, actor: principal.principalId, correlationId: envelope.correlation_id });
+        return { result: r, targetType: 'MSR', targetId: measureId, targetVersion: String(r['definition_version'] ?? ''), outboxEvent: null };
+      });
+    return { measure: out.result, receipt: receipt(out) };
+  }
+
+  /** Record an observation of a measure (graph.measure.observe), read from a named claim or evidence object; idempotent on (instant, source). */
+  @Post('/strategy/measures/:measureId/observe')
+  async observeMeasure(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('measureId') measureId: string, @Body() body: { payload?: Record<string, unknown> }) {
+    const { envelope, principal } = ctx(req);
+    const intake = validateObservation(body.payload ?? {}, envelope.correlation_id);
+    if (!UUID_RE.test(measureId)) throw new HttpException(errorBody('EYE_STA_001', envelope.correlation_id, 'no authorized measure matches'), 404);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'graph.measure.observe', 'MSR', measureId), GraphCapability.alignment,
+      async (cap, scope) => ({ result: await this.alignment.observe(cap, scope, { measureId, intake, actor: principal.principalId, correlationId: envelope.correlation_id }),
+                               targetType: 'MSR', targetId: measureId, targetVersion: null, outboxEvent: null }));
+    return { observation: out.result, receipt: receipt(out) };
+  }
+
+  /** Approve (or reject) a measure's CURRENT definition — the approve_measure authority act (graph.strategy.authority.act, human-gated). */
+  @Post('/strategy/measures/:measureId/approve')
+  async approveMeasure(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('measureId') measureId: string, @Body() body: { payload?: Record<string, unknown> }) {
+    return this.authorityAct(req, tenantId, domainId, measureId, validateAuthority(body.payload ?? {}, requireCorrelation(req), 'approve_measure'));
+  }
+
+  /** The measures AS OF an instant: definition, approval standing, freshness, the observations. */
+  @Post('/strategy/measures/list')
+  async listMeasures(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: { at?: string } }) {
+    const { envelope, principal } = ctx(req);
+    const at = atOf(body.payload?.at, envelope.correlation_id);
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'graph.strategy.alignment.read', 'MSR', null), GraphCapability.alignmentRead,
+      async (cap, scope) => this.alignment.measures(cap, scope, { at }));
+    return { ...out.result, receipt: receipt(out) };
+  }
+
+  /** THE GAP VIEW (alignment_rule@1) AS OF an instant, for the domain or one objective. */
+  @Post('/strategy/gaps')
+  async alignmentGaps(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: { objectiveId?: string; at?: string } }) {
+    const { envelope, principal } = ctx(req);
+    const at = atOf(body.payload?.at, envelope.correlation_id);
+    const objectiveId = body.payload?.objectiveId ?? null;
+    if (objectiveId !== null && !UUID_RE.test(objectiveId)) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'objectiveId must be the id of an objective'), 422);
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'graph.strategy.alignment.read', 'OBJ', objectiveId), GraphCapability.alignmentRead,
+      async (cap, scope) => this.alignment.gaps(cap, scope, { objectiveId, at }));
+    return { gaps: out.result, receipt: receipt(out) };
+  }
+
+  /** THE DETECTIONS AS OF an instant — conflict, stale measure, cycle, missing owner — each with its declared continuity. */
+  @Post('/strategy/detections')
+  async strategyDetections(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: { at?: string } }) {
+    const { envelope, principal } = ctx(req);
+    const at = atOf(body.payload?.at, envelope.correlation_id);
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'graph.strategy.alignment.read', 'OBJ', null), GraphCapability.alignmentRead,
+      async (cap, scope) => this.alignment.detections(cap, scope, { at }));
+    return { detections: out.result, receipt: receipt(out) };
+  }
+
+  /** The authority acts naming a subject (or all), newest first. */
+  @Post('/strategy/authority/list')
+  async listAuthorityActs(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: { subjectId?: string } }) {
+    const { envelope, principal } = ctx(req);
+    const subjectId = body.payload?.subjectId ?? null;
+    if (subjectId !== null && !UUID_RE.test(subjectId)) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'subjectId must be an id'), 422);
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'graph.strategy.alignment.read', 'OBJ', subjectId), GraphCapability.alignmentRead,
+      async (cap) => this.alignment.acts(cap, { subjectId }));
+    return { acts: out.result, receipt: receipt(out) };
+  }
+
+  /**
+   * PR-37-003 — THE HUMAN AUTHORITY'S ACT on a subject (graph.strategy.authority.act, human-gated): set_objective (an objective),
+   * approve_measure (a measure's definition), approve_tradeoff (a conflicts_with alignment), allocate_resource (a resources
+   * alignment) — on the digest of the version read, by an eligible named human who did not declare it, expiring.
+   */
+  @Post('/strategy/:subjectId/authority')
+  async strategyAuthority(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('subjectId') subjectId: string, @Body() body: { payload?: Record<string, unknown> }) {
+    return this.authorityAct(req, tenantId, domainId, subjectId, validateAuthority(body.payload ?? {}, requireCorrelation(req)));
+  }
+
+  private async authorityAct(req: EyeRequest, tenantId: string, domainId: string, subjectId: string, intake: ReturnType<typeof validateAuthority>) {
+    const { envelope, principal } = ctx(req);
+    if (!UUID_RE.test(subjectId)) throw new HttpException(errorBody('EYE_STA_001', envelope.correlation_id, 'no authorized subject matches'), 404);
+    const targetType = ({ strategy: 'OBJ', measure: 'MSR', alignment: 'ALN' } as const)[SUBJECT_OF[intake.actKind]];
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'graph.strategy.authority.act', targetType, subjectId), GraphCapability.alignment,
+      async (cap, scope) => {
+        const r = await this.alignment.authority(cap, scope, { subjectId, intake, actor: principal.principalId, correlationId: envelope.correlation_id });
+        return { result: r, targetType, targetId: subjectId, targetVersion: String(r['subject_version'] ?? ''), outboxEvent: null };
+      });
+    return { act: out.result, receipt: receipt(out) };
+  }
+
+  /** Transfer a strategy object's ownership to an active human with a planning role (graph.strategy.owner.assign, human-gated) — strategy.owner_assigned. */
+  @Post('/strategy/:objectId/owner')
+  async assignStrategyOwner(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('objectId') objectId: string, @Body() body: { payload?: Record<string, unknown> }) {
+    const { envelope, principal } = ctx(req);
+    const p = validateOwner(body.payload ?? {}, envelope.correlation_id);
+    if (!UUID_RE.test(objectId)) throw new HttpException(errorBody('EYE_STA_001', envelope.correlation_id, 'no authorized strategy object matches'), 404);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'graph.strategy.owner.assign', 'OBJ', objectId), GraphCapability.alignment,
+      async (cap, scope) => ({ result: await this.alignment.assignOwner(cap, scope, { objectId, owner: p.owner, reason: p.reason, actor: principal.principalId, correlationId: envelope.correlation_id }),
+                               targetType: 'OBJ', targetId: objectId, targetVersion: null, outboxEvent: null }));
+    return { owner: out.result, receipt: receipt(out) };
+  }
+  /* end B32 graph */
 
   // ───────────────────────── impact ─────────────────────────
 

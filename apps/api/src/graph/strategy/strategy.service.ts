@@ -18,11 +18,12 @@ import { newId } from '../../shared/ids.js';
 import type { ScopeContext } from '../../shared/scope.js';
 import type { GraphReads, StrategyWrites } from '../graph.capabilities.js';
 
-export const STRATEGY_TYPES = ['OBJ', 'ASU', 'DEC', 'CMT', 'OUT'] as const;
+export const STRATEGY_TYPES = ['OBJ', 'ASU', 'DEC', 'CMT', 'OUT', /* B32 (0089) */ 'CAP', 'INI', 'RSC', 'MSR', 'STK', 'RSK'] as const;
 export type StrategyType = (typeof STRATEGY_TYPES)[number];
 
 const KIND_OF: Readonly<Record<StrategyType, string>> = Object.freeze({
   OBJ: 'objective', ASU: 'assumption', DEC: 'decision', CMT: 'commitment', OUT: 'outcome',
+  /* B32 (0089) */ CAP: 'capability', INI: 'initiative', RSC: 'resource', MSR: 'measure', STK: 'stakeholder', RSK: 'exposure',
 });
 
 /**
@@ -32,6 +33,8 @@ const KIND_OF: Readonly<Record<StrategyType, string>> = Object.freeze({
  */
 const TRUTH_OF: Readonly<Record<StrategyType, string>> = Object.freeze({
   OBJ: 'asserted', ASU: 'asserted', DEC: 'decided', CMT: 'asserted', OUT: 'asserted',
+  /* B32 (0089): a risk or opportunity is an ASSESSMENT (its estimate is judged, not merely asserted); the others are declared */
+  CAP: 'asserted', INI: 'asserted', RSC: 'asserted', MSR: 'asserted', STK: 'asserted', RSK: 'assessed',
 });
 
 export interface RestsOn {

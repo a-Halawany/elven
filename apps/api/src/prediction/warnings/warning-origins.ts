@@ -18,6 +18,13 @@ import type { ChangeEvent, GraphChangedPayload } from '../../graph/subscriptions
 
 export type WarningOrigin = 'graph_impact' | 'forecast_revision' | 'twin_degradation';
 export const WARNING_ORIGINS: readonly WarningOrigin[] = ['graph_impact', 'forecast_revision', 'twin_degradation'];
+/* B32 (0089) exposures: EVERY origin a warning can carry — the CHECKs of prediction.warnings_current / warning_candidates (0088 §0, widened by
+   0089 §R1): an indicator breach (every warning before B28), the B28 origins, and `exposure` — an exposure's residual outside its appetite,
+   submitted by prediction.route_exposure under prediction.exposure.route and routed by the preflight to the EXPOSURE'S OWNER (PER-10). This
+   consumer makes only the three above; the list is the vocabulary the reads and the page word. */
+export const ALL_WARNING_ORIGIN_KINDS = ['indicator_breach', 'stream_rule', 'weak_signal', 'graph_impact', 'forecast_revision', 'twin_degradation', 'exposure'] as const;
+export type AnyWarningOrigin = (typeof ALL_WARNING_ORIGIN_KINDS)[number];
+/* end B32 exposures */
 
 /** The change kinds whose walk reaching an objective is a graph impact. */
 export const GRAPH_IMPACT_KINDS = ['invalidation.assessed', 'edge.retracted', 'import.revoked', 'entity.split'] as const;

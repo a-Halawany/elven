@@ -69,12 +69,21 @@ type Row = Record<string, unknown>;
 const str = (v: unknown): string | null => (v === null || v === undefined ? null : v instanceof Date ? v.toISOString() : String(v));
 
 /** A walk's result (or an assessed impact record) as the event's `objects`. */
-export function reachOf(w: Pick<Walked, 'assumptions' | 'objectives' | 'decisions' | 'commitments' | 'forecasts' | 'scenarios' | 'warnings' | 'twins' | 'simulations' | 'reachedClaims' | 'truncated'> & { reachedEvidence?: string[]; briefings?: Array<{ strategy_object_id: string }>; memoryItems?: Array<{ strategy_object_id: string }> }): ReachedObjects {
+export function reachOf(w: Pick<Walked, 'assumptions' | 'objectives' | 'decisions' | 'commitments' | 'forecasts' | 'scenarios' | 'warnings' | 'twins' | 'simulations' | 'reachedClaims' | 'truncated'> & { reachedEvidence?: string[]; briefings?: Array<{ strategy_object_id: string }>; memoryItems?: Array<{ strategy_object_id: string }> }
+  /* B32 (0089) graph */ & Partial<Pick<Walked, 'capabilities' | 'initiatives' | 'resources' | 'measures' | 'stakeholders' | 'exposures'>> /* end B32 graph */): ReachedObjects {
   const ids = (xs: Array<{ strategy_object_id: string }>): string[] => xs.map((x) => x.strategy_object_id);
+  /* B32 (0089) graph: the new types ride the event only when the walk reached one — an empty bucket is ABSENT, so every earlier payload is unchanged */
+  const b32: Partial<ReachedObjects> = {};
+  for (const k of ['capabilities', 'initiatives', 'resources', 'measures', 'stakeholders', 'exposures'] as const) {
+    const xs = w[k];
+    if (xs !== undefined && xs.length > 0) b32[k] = ids(xs);
+  }
+  /* end B32 graph */
   return {
     claims: [...w.reachedClaims], assumptions: ids(w.assumptions), objectives: ids(w.objectives), decisions: ids(w.decisions), commitments: ids(w.commitments),
     forecasts: ids(w.forecasts), scenarios: ids(w.scenarios), warnings: ids(w.warnings), twins: ids(w.twins), simulations: ids(w.simulations),
     evidence: [...(w.reachedEvidence ?? [])], briefings: ids(w.briefings ?? []), memoryItems: ids(w.memoryItems ?? []), truncated: w.truncated, walked: true,
+    /* B32 (0089) graph */ ...b32, /* end B32 graph */
   };
 }
 

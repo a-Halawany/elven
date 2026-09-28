@@ -1144,9 +1144,11 @@ describe('C7 — Phase 0, 1 and 2 are unchanged underneath', () => {
     expect(byAction.get('observation.item.admit')).toEqual(['OBS', 'EVD']);
     expect(byAction.get('intelligence.claim.admit'))
       .toEqual(['ENT', 'EVT', 'CLM', 'REL', 'ASM']);
-    // Phase 3's action writes the five strategy types and NOTHING else — it
-    // cannot admit a claim, an observation or an evidence object.
-    expect(byAction.get('graph.strategy.declare')).toEqual(['OBJ', 'ASU', 'DEC', 'CMT', 'OUT']);
+    // Phase 3's action writes the strategy types and NOTHING else — it cannot
+    // admit a claim, an observation or an evidence object. B32 (0089 §0) added
+    // the six Strategy Graph types after Phase 3's five, in that order.
+    expect(byAction.get('graph.strategy.declare'))
+      .toEqual(['OBJ', 'ASU', 'DEC', 'CMT', 'OUT', 'CAP', 'INI', 'RSC', 'MSR', 'STK', 'RSK']);
   });
 
   it('CLM@v1 still belongs to Phase 0 and CLM@v2 to Phase 2', async () => {

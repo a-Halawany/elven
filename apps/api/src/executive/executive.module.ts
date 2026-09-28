@@ -37,6 +37,9 @@ import { AttentionMaterialityService, AttentionRebalanceStep } from './attention
 /* B24 (0086) governance */
 import { AttentionGovernanceService } from './attention/governance.service.js';
 /* end B24 governance */
+/* B32 (0089) health */
+import { HealthService } from './health/health.service.js';
+/* end B32 health */
 @Module({
   imports: [PipelineModule, IdentityModule, ObservationModule, DecisionModule, GraphModule],
   controllers: [ExecutiveController],
@@ -47,7 +50,8 @@ import { AttentionGovernanceService } from './attention/governance.service.js';
     /* B24 (0086) §0 */ AttentionTickRegistry /* end B24 §0 */,
     /* B24 (0086) timer */ AttentionTimerService, DeliveryService, InAppChannel, DemoMailboxChannel /* end B24 timer */,
     /* B24 (0086) materiality */ AttentionMaterialityService, AttentionRebalanceStep /* end B24 materiality */,
-    /* B24 (0086) governance: suppression approval, item delegation, disposition, queue evaluation (0086 §G) */ AttentionGovernanceService /* end B24 governance */],
+    /* B24 (0086) governance: suppression approval, item delegation, disposition, queue evaluation (0086 §G) */ AttentionGovernanceService /* end B24 governance */,
+    /* B32 (0089) health: the decomposable Strategic Health Score (0089 §H) */ HealthService /* end B32 health */],
   exports: [RoomService, BriefingService, AgentsService, AgentWorkerService, RequestsService, AttentionService, AttentionTickRegistry,
     /* B24 (0086) timer */ AttentionTimerService, DeliveryService /* end B24 timer */],
 })

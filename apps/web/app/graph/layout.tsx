@@ -56,6 +56,9 @@ const NAV = [
   { href: '/graph/resolutions', label: 'Resolutions', glyph: '⚖' },
   { href: '/graph/explore', label: 'Explore', glyph: '⁂' },
   { href: '/graph/strategy', label: 'Strategy', glyph: '◇' },
+  /* B32 (0089) graph */
+  { href: '/graph/strategy/alignment', label: 'Alignment', glyph: '⋈' },
+  /* end B32 graph */
   { href: '/graph/impact', label: 'Impact', glyph: '⚠' },
   { href: '/graph/subscriptions', label: 'Subscriptions', glyph: '⟳' },
   { href: '/graph/memory', label: 'Memory', glyph: '▤' },

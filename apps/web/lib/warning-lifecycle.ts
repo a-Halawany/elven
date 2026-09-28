@@ -14,7 +14,7 @@
 import { call, type ApiResult } from './api';
 import type { Receipt, Scope } from './observation';
 
-export const ORIGIN_KINDS = ['indicator_breach', 'stream_rule', 'weak_signal', 'graph_impact', 'forecast_revision', 'twin_degradation'] as const;
+export const ORIGIN_KINDS = ['indicator_breach', 'stream_rule', 'weak_signal', 'graph_impact', 'forecast_revision', 'twin_degradation', /* B32 (0089) exposures */ 'exposure' /* end B32 exposures */] as const;
 export const FEEDBACK_KINDS = ['false', 'late', 'missed', 'duplicated', 'useful'] as const;
 export type FeedbackKind = (typeof FEEDBACK_KINDS)[number];
 export const CLOSURE_CRITERIA = ['resolved', 'falsified', 'duplicate', 'no_longer_relevant'] as const;
@@ -85,6 +85,7 @@ export function originWords(kind: unknown): string {
     case 'graph_impact': return 'graph impact on an objective';
     case 'forecast_revision': return 'forecast revision';
     case 'twin_degradation': return 'twin degradation';
+    /* B32 (0089) exposures */ case 'exposure': return 'exposure outside appetite (routed to its owner)'; /* end B32 exposures */
     default: return kind === undefined || kind === null ? 'indicator breach' : String(kind);
   }
 }

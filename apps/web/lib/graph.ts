@@ -109,7 +109,7 @@ export interface EdgeRow {
 
 export interface StrategyRow {
   strategy_object_id: string;
-  object_type: 'OBJ' | 'ASU' | 'DEC' | 'CMT' | 'OUT';
+  object_type: 'OBJ' | 'ASU' | 'DEC' | 'CMT' | 'OUT' | /* B32 (0089) */ 'CAP' | 'INI' | 'RSC' | 'MSR' | 'STK' | 'RSK';
   object_version: number;
   title: string;
   statement: string;

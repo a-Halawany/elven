@@ -4,7 +4,7 @@ import { CLOSURE_CRITERIA, FEEDBACK_KINDS, ORIGIN_KINDS, closePayload, evaluateP
 /** CP-6 B28 (0088 §W): the lifecycle's words are the server's; the helpers only word what the record says. */
 describe('the early-warning lifecycle is worded, never judged on the client', () => {
   it('the vocabularies are the migration\'s (the CHECKs of 0088 §0 and §W)', () => {
-    expect([...ORIGIN_KINDS]).toEqual(['indicator_breach', 'stream_rule', 'weak_signal', 'graph_impact', 'forecast_revision', 'twin_degradation']);
+    expect([...ORIGIN_KINDS]).toEqual(['indicator_breach', 'stream_rule', 'weak_signal', 'graph_impact', 'forecast_revision', 'twin_degradation', /* B32 (0089) */ 'exposure']);
     expect([...FEEDBACK_KINDS]).toEqual(['false', 'late', 'missed', 'duplicated', 'useful']);
     expect([...CLOSURE_CRITERIA]).toEqual(['resolved', 'falsified', 'duplicate', 'no_longer_relevant']);
   });
