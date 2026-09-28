@@ -80,7 +80,12 @@ export class ApprovalService {
   }
 
   /** The exact C3 commit: the bounded CMT, in Phase 3's strategy schema, admitted under decision.commit. */
-  async commit(cap: CommitWrites, ctx: ScopeContext, packageId: string, version: number, versionDigest: string, committer: string, purposeId: string, correlationId: string, commitmentId: string) {
+  /**
+   * B34 (0090) gates: the commit CARRIES the digest of its committer's consequence preview (HX-13), and a failing commit-stage approval
+   * condition HOLDS it — recorded first, through its own port (decision.hold_check → commit.held), so the hold survives: the answer is
+   * `{ held }` and nothing else moves. A refusal that raised would roll back and leave no record.
+   */
+  async commit(cap: CommitWrites, ctx: ScopeContext, packageId: string, version: number, versionDigest: string, committer: string, purposeId: string, correlationId: string, commitmentId: string, previewDigest = '') {
     const p = (await cap.readPackages().selectAll().where('package_id' as never, '=', packageId as never).executeTakeFirst()) as Record<string, unknown> | undefined;
     const v = (await cap.readVersions().selectAll().where('package_id' as never, '=', packageId as never).where('version' as never, '=', version as never).executeTakeFirst()) as Record<string, unknown> | undefined;
     if (p === undefined || v === undefined) state(correlationId, 'no authorized package version matches', 404);
@@ -89,8 +94,13 @@ export class ApprovalService {
     if (pkg['committed_version'] !== null && pkg['committed_version'] !== undefined && ['committed', 'monitoring', 'closed'].includes(String(pkg['state']))) {
       state(correlationId, `commitment rejected: package is already committed at version ${String(pkg['committed_version'])} and the commitment stands; a committed decision is reopened (decision.package.reopen), never re-committed over`);
     }
-    if (pv['state'] !== 'approved') state(correlationId, `version ${version} is ${String(pv['state'])}, not approved`);
+    // B34: a proposed or reviewed version goes on to the port, which commits it only under a live emergency override's quorum cover.
+    if (!['approved', 'proposed', 'under_review'].includes(String(pv['state']))) state(correlationId, `version ${version} is ${String(pv['state'])}, not approved`);
     if (typeof versionDigest !== 'string' || pv['version_digest'] !== versionDigest) state(correlationId, `the digest committed is not the digest of version ${version}`);
+    /* B34 (0090) gates: the hold, before anything is admitted */
+    const hold = await cap.holdCheck({ tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, packageId, version, actor: committer, eventId: newId(), correlationId });
+    if (hold.held) return { held: { packageId, version, failed: hold.failed ?? [], conditions: hold.conditions, eventId: hold.event_id ?? null } } as const;
+    /* end B34 gates */
     const live = await cap.liveApprovals({ packageId, version });
     const choice = pv['choice'] as Record<string, unknown>;
     const option = (await cap.readOptions().selectAll().where('package_id' as never, '=', packageId as never).where('version' as never, '=', version as never)
@@ -131,8 +141,9 @@ export class ApprovalService {
     if (!check.ok) bad(correlationId, `commitment header invalid: ${(check.errors ?? []).join('; ')}`);
     const headerDigest = canonicalHeaderDigest(header, payload);
     await cap.admitObject(header, payload, headerDigest);
-    const r = await cap.commitPackage({ commitmentId, tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, packageId, version, committer, versionDigest, headerDigest, title, statement, eventId: newId(), correlationId });
+    const r = await cap.commitPackage({ commitmentId, tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, packageId, version, committer, versionDigest, headerDigest, title, statement, eventId: newId(), correlationId, previewDigest });
     return {
+      held: null, previewDigest: r.preview_digest ?? previewDigest, overrides: r.overrides ?? [],
       commitmentId: r.commitment_id, packageId, version, approvals: r.approvals, opClass: r.op_class, decidedAt: r.decided_at, title,
       // B18: what DecisionCommitted names (the route builds it in this transaction).
       versionDigest, boundAction: 'decision.commit', policyDecisionId: r.policy_decision_id ?? null, choice, decisionObjectId: String(pkg['decision_object_id']),
@@ -141,3 +152,6 @@ export class ApprovalService {
     };
   }
 }
+
+/** B34 (0090) gates: the commit's answer — `{ held }` (recorded, nothing committed) or the commitment with `held: null`. */
+export type CommitAnswer = Awaited<ReturnType<ApprovalService['commit']>>;

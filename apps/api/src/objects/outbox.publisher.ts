@@ -56,6 +56,10 @@ const ROUTED: Record<string, (r: { tenant_id: string | null; domain_id: string |
   ...Object.fromEntries(['MaterialChangeRaised', 'ReviewConvened']
     .map((t) => [t, (r: { tenant_id: string | null; domain_id: string | null; subscribed: boolean }) => r.tenant_id === null || r.domain_id === null || !r.subscribed ? null : redisName(subscriptionQueueNameFor(r.tenant_id, r.domain_id))])),
   /* end B23 attention */
+  /* B34 (0090) attention: the prelude's three events — routed the same way, on the lease's own `subscribed` answer. */
+  ...Object.fromEntries(['ExposureChanged', 'HealthScoreChanged', 'CommitmentChanged']
+    .map((t) => [t, (r: { tenant_id: string | null; domain_id: string | null; subscribed: boolean }) => r.tenant_id === null || r.domain_id === null || !r.subscribed ? null : redisName(subscriptionQueueNameFor(r.tenant_id, r.domain_id))])),
+  /* end B34 attention */
 };
 
 interface PendingRow {

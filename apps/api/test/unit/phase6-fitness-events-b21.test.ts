@@ -140,8 +140,9 @@ describe('B21 · forecastFitnessChangedGraphEvent — GraphChanged/forecast.fitn
   it('the kind is in GRAPH_CHANGE_KINDS, the eighteenth, and every earlier kind stays (nineteen kinds since B23 appended revision.committed)', () => {
     expect(GRAPH_CHANGE_KINDS).toContain('forecast.fitness_changed');
     expect(GRAPH_CHANGE_KINDS[17]).toBe('forecast.fitness_changed');
-    expect(GRAPH_CHANGE_KINDS[GRAPH_CHANGE_KINDS.length - 1]).toBe('revision.committed');
-    expect(GRAPH_CHANGE_KINDS).toHaveLength(19);
+    expect(GRAPH_CHANGE_KINDS[18]).toBe('revision.committed');
+    expect(GRAPH_CHANGE_KINDS[GRAPH_CHANGE_KINDS.length - 1]).toBe('objective.changed'); // B34 (0090) appended it after revision.committed
+    expect(GRAPH_CHANGE_KINDS).toHaveLength(20);
     for (const k of ['entity.created', 'edge.asserted', 'forecast.superseded', 'import.admitted', 'import.revoked', 'twin.state_changed', 'forecast.withdrawn', 'simulation.invalidated', 'projection.rebuilt']) expect(GRAPH_CHANGE_KINDS).toContain(k);
   });
   it('the forecastWithdrawnGraphEvent shape: no identities, objects.forecasts the forecast, walked true, the cause per trigger (the literal map), the block with the class, what stood before and the measures', () => {
@@ -308,8 +309,8 @@ describe('B21 · the consumer identities (C4): the forecasts, scenarios and deci
     for (const k of ['forecasts', 'scenarios', 'decisions'] as const) expect(consumerCodeDigest(k), k).not.toBe(DIGESTS_13ED40C[k]);
     // 0083 (B22): the seven, then the four B22 adds — eleven kinds, eleven distinct identities.
     // 0088 (B28): + warnings, stream-rules — thirteen kinds, thirteen distinct identities.
-    expect([...CONSUMER_KINDS]).toEqual(['twins', 'forecasts', 'scenarios', 'decisions', 'retrieval', 'memory-mappings', 'relationships', ...B22_KINDS, 'warnings', 'stream-rules']);
-    expect(new Set(CONSUMER_KINDS.map((k) => consumerCodeDigest(k))).size).toBe(13);
+    expect([...CONSUMER_KINDS]).toEqual(['twins', 'forecasts', 'scenarios', 'decisions', 'retrieval', 'memory-mappings', 'relationships', ...B22_KINDS, 'warnings', 'stream-rules', 'commitments']);
+    expect(new Set(CONSUMER_KINDS.map((k) => consumerCodeDigest(k))).size).toBe(14); // 0090 (B34): + commitments
   });
   it('B22 (0083): the seven identities are unchanged by B22 (the four at 13ed40c\'s, the three B21 moved at a2303ff\'s); the four new kinds carry identities of their own, distinct from every earlier one', () => {
     for (const k of ['twins', 'retrieval', 'memory-mappings', 'relationships'] as const) expect(consumerCodeDigest(k), k).toBe(DIGESTS_13ED40C[k]);

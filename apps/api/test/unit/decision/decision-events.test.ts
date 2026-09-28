@@ -82,7 +82,8 @@ describe('B18 · decisionCommittedEvent', () => {
       choice: { option_key: 'reroute', action_owner: OWNER, decision_deadline: '2024-01-19', outcome_criteria: 1 },
       commitments: [{ strategy_object_id: CMT, object_type: 'CMT', rests_on: { decision: DEC, objectives: [OBJ], runs: [RER], baseline_run_id: CTL } }],
       monitoring_conditions: [{ index: 0, kind: 'indicator', ref: IND, owner: OWNER }, { index: 1, kind: 'review', ref: null, owner: OWNER }],
-      execution_handoff: { bound_action: 'decision.commit', op_class: 'C3', interface: null, statement: 'the CMT is the handoff record; no execution interface exists (AU-DEC-0020: the open execution-interface unit)' },
+      // B34 (0090): the execution interface exists — decision.execution.issue, a separately governed act
+      execution_handoff: { bound_action: 'decision.commit', op_class: 'C3', interface: 'decision.execution.issue', statement: expect.stringMatching(/decision\.execution\.issue.*execution_authority.*SYNTHETIC/) },
       replay_snapshot: { as_of: '2026-09-17T10:00:00.123456+00:00', version_digest: DIGEST, cmt_header_digest: HEADER, recorded_on_demand: 'decision.replay' },
       reopened_from: null, truncated: false,
       temporal: { known_at: '2026-09-17T10:00:00.123456+00:00' },

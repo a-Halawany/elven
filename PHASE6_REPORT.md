@@ -4132,3 +4132,85 @@ The backups before 0089 are `eye_demo-pre-0089-20260928T091041Z.dump` and `eye_d
   - Wait (hosted checks, review and approval): not yet observed.
 
   r is not re-fitted.
+
+## 41. B34 (2026-09-28/29): durable workflow and collaboration, the human gates completed, the commitment tracker and the governed execution handoff, the attention classes and the act, risk and opportunity continued (0090)
+
+### 41.1 What B34 implements
+
+The mechanism is in `audit/CP6_BATCHES.md` §B34. There is one migration, `0090_b34_workflow_gates_commitments.sql` (§0 prelude, §A, §C, §X, §G, §W, §I). It is forward-only (0084–0089 untouched), and the interface register stays 50/0/0.
+
+- **Durable workflow, human tasks and collaboration (F-P6-14):**
+  - Versioned definitions pinned by digest, the transition log, timers fired once by the tick, compensation, resumption under a lease, irreconcilable instances escalated; the restart, duplicate-task, duplicate-timer and definition-change drills.
+  - Human tasks with deadlines, escalation and reassignment that moves work, never authority.
+  - Collaboration workspaces (discussion, artifacts, reviews). Participation is never room membership or approver standing.
+  - External collaborators invited through the SYNTHETIC mailbox, with a grant bounded by purpose, audience ceiling and a ≤ 30-day expiry; at the expiry the grant lapses and their tasks are reassigned.
+- **The human gates (F-P6-04):**
+  - Typed approval conditions evaluated at commitment and in monitoring. A failing condition holds the commit, and the hold is recorded.
+  - Defer, reject and request-for-information with a next review; review and acknowledge as distinct acts.
+  - Overrides (normal and emergency), approval delegation ≤ 30 days, and decision-ready by an independent reviewer.
+  - The consequence preview, whose digest the commit must carry. The reserved board class. Control decisions versioned and shown in the replay.
+- **The commitment tracker and the governed execution handoff (F-P6-05):**
+  - The tracker is seeded from every commitment, with items, deadlines, exceptions and a deadline sweep.
+  - A governed gateway to a SYNTHETIC ERP. The handoff is issued by an execution authority who is neither the drafter nor the committer. Receipts, partial effects, residuals, a co-signed compensation and reconciliation are recorded.
+  - The five-lane timeline; closure co-signed by the reviewer; an objective change re-tasks the items.
+- **Attention (F-P6-07):**
+  - Opportunity, health-change and commitment items in the queue.
+  - The act: a consequential action launched from an item under the human gate.
+  - Ranking fairness in the queue evaluation (it gates nothing).
+  - Email, SMS and Teams adapters proven against local sinks. They are SYNTHETIC and close no real-provider clause.
+- **Risk and opportunity (F-P4-13, continued from B32):**
+  - Exposure events into the outbox and the queue. The taxonomy activated by a second person. The polarity on the canonical RSK, and scenarios linked.
+  - The outcome loop. Holds and detections. The further dimensions and concentration. Owner resolution. The signature and the active context on the page, with four hosted browser cases.
+- **§I:** the breach's act (`propose_extension`), and the assumption verified by a person (`graph.assumption.verify`, human-gated).
+- **Integration found and fixed four defects:**
+  - a first prelude that altered the frozen Phase 0 identity schema. The upgrade proof refused it, and the marker moved to B34 tables;
+  - the replay reading the tracker's seed as "observed after the decision". The root event now carries the commitment's instant;
+  - the exposures page showing a receipt only inside an opened exposure. The hosted browser case found it;
+  - an "as of now" read at the API host's clock that can precede a committed write (X13, the B32-F1 class). It now reads at the database's instant (`62d6f02`).
+
+### 41.2 Results
+
+| Check | Result |
+|---|---|
+| Part harnesses | 7 + 11 + 10 + 7 + 6 = 41/41 (workflow, gates, commitments with the integrator's I1, attention, exposures) |
+| Full integration | at `74f711f`: 1279/1284 on a fresh database (three replay cases — the real finding — and two pins, all fixed). At `3d630d4`: 1283/1284 in 98 files (X13, corrected at `62d6f02`; the two exposures files then 20/20, twice). The last full run: at `62d6f02`: 1282/1284 in 98 files — the two failures phase3-corrections H1 (a Phase 3 test naming the HOST's `new Date()` as knownAt right after writing its chain: the same host-versus-database clock class), corrected in the test (the database's instant) and then 20/20 twice; the hosted run is the authoritative full run at the candidate |
+| Unit | 2581 + 9 on a clean tree |
+| Acceptance / upgrade | 58/58 / PASS (the Phase 0 authority suite 297/297, with the identity service's credential-expiry refusal) |
+| Browser | 55/55 (51 + the exposures part's 4 hosted cases) |
+| Demo walk | 3/3 on `eye_demo` |
+| Hosted | pending at the candidate; reported to the owner, not re-recorded |
+
+**The act on `eye_demo`** (`evidence/cp6/act-b34.txt`): ALL SCENES HELD in 352 s, after six rehearsals on a restored pre-0090 copy (the last two held).
+- **Collaboration:** the customs expert (a SYNTHETIC partner firm) was invited for 14 days. The tick escalated her review to M. Dvořák, who reviewed it.
+- **The gate:** the commitment was HELD on "only if customs pre-clearance holds". C. Brenner deferred it, J. Weber verified the assumption, the gate was resumed, and L. Brandt committed with the preview.
+- **The handoff:** the tracker was seeded. K. Lange issued the handoff to the SYNTHETIC ERP target, and the production egress refused the loopback target by design (the B14 precedent).
+- **Attention:** the opportunity and the commitment breach were routed. L. Brandt acted on the breach and J. Weber co-signed. The breach escalated, and its notice was delivered through the email adapter to the local sink. Ranking fairness was measured over ten classes.
+- **The taxonomy:** S. Okafor activated version 2.
+
+The backups before 0090 are `eye_demo-pre-0090-20260928T205841Z.dump` and `eye_demo-pre-0090-20260928T213126Z.dump`. T. Richter and K. Lange were created through the governed principal route. **Disclosed:**
+- The external collaborator's principal, role binding and credential are written by the collaboration port, not by the frozen Phase 0 identity route. The governed route is B61's.
+- The Phase 0 identity service now refuses an active credential past its expiry.
+- The external's sign-in is proven by the harness only.
+- The positive exchange, the partial effect, compensation and closure are proven by the harness (the loopback refusal).
+- The older act scripts would be refused if re-run, because the commit now requires the preview digest.
+
+### 41.3 The plan
+
+- **B34 completes F-P6-05.** Its one residual is a real execution target (R2 under D6).
+- **F-P6-14, F-P6-04, F-P6-07 and F-P4-13 are advanced and complete in B36.** Their named residuals are B36's completion conditions (i)–(s):
+  - the external's web shell, task dependencies, and hosted cases for the collaboration pages;
+  - a signature and distribution, recusal, challenge, first-class missing information, the board role, versioned PDP denials and one uniform gate state, plus a hosted case for the gate panel;
+  - a resume route for a failed settle, accept-priority, the digest/preview/signature on the queue, the bias/staleness hold, recovery routes, the queue's active context, and hosted cases for the act panel;
+  - the outcome step walked and played, and the loop on an opportunity.
+- **Owned elsewhere:**
+  - the governed identity route for external principals → **B61**;
+  - the as-of-now sweep (19 sites that default a read to the host's clock) → **H1**;
+  - real providers and the AT records → **R2**;
+  - `health.change` has no act: a product decision, not a residual.
+- **B36 now depends on B34 explicitly.** F-P4-12's dependency on F-P6-04 is replaced by B74's `extra_depends_on` B34.
+- **The schedule was re-derived once.** The M1 dates are unchanged, and the next A1 stage is B29.
+- **Calibration** (DELIVERY_PLAN §9, observation 5), as two separate lines:
+  - Construction: about 3 h 45 min active, with five parallel implementers that stalled and were resumed.
+  - Wait: the #66 hosted run for the corrected B32 was observed. B34's own wait is not yet observed.
+
+  r is not re-fitted.

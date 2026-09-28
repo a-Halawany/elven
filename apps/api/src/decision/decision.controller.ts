@@ -15,15 +15,22 @@ import { newId } from '../shared/ids.js';
 import { requireCorrelation } from '../shared/correlation.js';
 import { PipelineService } from '../pipeline/pipeline.service.js';
 import type { EyeRequest } from '../pipeline/http.js';
+import type { WriteEffect } from '../pipeline/pipeline.service.js';
 import { DecisionCapability } from './decision.capabilities.js';
 import { decisionCommittedEvent, decisionPackageReadyEvent, decisionReopenedEvent } from './decision-events.js';
 import { PackageService, validateOptionIntake, validatePackageIntake, validateTermsIntake } from './packages/package.service.js';
-import { ApprovalService, validateApprovalIntake } from './approvals/approval.service.js';
+import { ApprovalService, validateApprovalIntake, type CommitAnswer } from './approvals/approval.service.js';
 import { ReplayService } from './replay/replay.service.js';
 import { MonitoringService, validateOutcomeIntake } from './monitoring/monitoring.service.js';
+/* B34 (0090) commitments */
+import { commitWithTracker, rootOpenedEvents } from './commitments/commit-tracker.js';
+/* end B34 commitments */
 // B24 (0086) markers
 import { SourceImpactCapability } from '../observation/impact/source-impact.capabilities.js';
 import { SourceImpactService } from '../observation/impact/source-impact.service.js';
+// B34 (0090) gates
+import { GateCapability } from './gates/gate.capabilities.js';
+import { GateService, gateActOf, gateActionOf } from './gates/gate.service.js';
 
 function ctx(req: EyeRequest) {
   const envelope = req.eyeEnvelope;
@@ -253,17 +260,20 @@ export class DecisionController {
   @Post('/:packageId/versions/:version/commit')
   async commit(
     @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('packageId') packageId: string, @Param('version') version: string,
-    @Body() body: { payload?: { versionDigest?: string } },
+    @Body() body: { payload?: { versionDigest?: string; previewDigest?: string } },
   ) {
     const { envelope, principal } = ctx(req);
     const v = versionOf(version, envelope.correlation_id);
     const commitmentId = newId();
+    // B34 (0090) gates: the commit carries its preview's digest; a failing approval condition HOLDS it (recorded; 200 {commitment: null, held}).
+    const previewDigest = typeof body.payload?.previewDigest === 'string' ? body.payload.previewDigest : '';
     const out = await this.pipeline.write(
       envelope, principal,
       { ...this.route(tenantId, domainId, 'decision.commit', 'CMT', commitmentId), consequenceClass: 'C3', writableTargets: [commitmentId] },
-      DecisionCapability.commit,
-      async (cap, scope) => {
-        const r = await this.approvals.commit(cap, scope, packageId, v, String(body.payload?.versionDigest ?? ''), principal.principalId, envelope.purpose_id ?? 'decision', envelope.correlation_id, commitmentId);
+      /* B34 (0090) commitments: the commit capability with the tracker's read (the seeded root item) */ commitWithTracker /* end B34 commitments */,
+      async (cap, scope): Promise<WriteEffect<CommitAnswer>> => {
+        const r = await this.approvals.commit(cap, scope, packageId, v, String(body.payload?.versionDigest ?? ''), principal.principalId, envelope.purpose_id ?? 'decision', envelope.correlation_id, commitmentId, previewDigest);
+        if (r.held !== null) return { result: r, targetType: 'DPK', targetId: packageId, targetVersion: String(v), outboxEvent: null };
         // B18 (0078, L9-I04): the commitment ANNOUNCED from the C3 transaction — the CMT, the conditions, the handoff statement, the replay snapshot.
         return { result: r, targetType: 'CMT', targetId: commitmentId, targetVersion: '1',
                  outboxEvent: decisionCommittedEvent({
@@ -271,8 +281,11 @@ export class DecisionController {
                    opClass: r.opClass, boundAction: r.boundAction, policyDecisionId: r.policyDecisionId, decidedAt: r.decidedAt, choice: r.choice, decisionObjectId: r.decisionObjectId,
                    objectives: r.objectives, runs: r.runs, baselineRunId: r.baselineRunId, monitoringConditions: r.monitoringConditions, cmtHeaderDigest: r.cmtHeaderDigest,
                    reopenedFrom: r.reopenedFrom, actor: principal.principalId,
-                 }) };
+                 }),
+                 /* B34 (0090) commitments: the tracker's ROOT item, seeded by the commitment's insert, announced — CommitmentChanged item.opened */
+                 outboxEvents: await rootOpenedEvents(cap, r.commitmentId, principal.principalId) /* end B34 commitments */ };
       });
+    if (out.result.held !== null) return { commitment: null, held: out.result.held, receipt: receipt(out) };
     return { commitment: out.result, receipt: receipt(out) };
   }
 
@@ -402,4 +415,155 @@ export class DecisionController {
     return { acknowledgement: out.result, receipt: receipt(out) };
   }
   /* end B24 markers */
+
+  /* B34 (0090) gates */
+  // F-P6-04 — the human gate made complete. Every act below is a named member's, human-gated at the PDP (an EXACT rule per action; no
+  // prefix rule matches `decision.gate.`, `decision.override.`, `decision.delegation.`, `decision.board.`, `decision.control.` or
+  // `decision.commit.preview`); the ports judge the person, the separation of duties and the record. Stateless, held here like the
+  // markers' service.
+  private readonly gates = new GateService();
+
+  /** The gate as it stands for one version: conditions evaluated now, the acts, overrides, delegations, previews, holds and gate tasks. */
+  @Post('/:packageId/versions/:version/gate/status')
+  async gateStatus(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('packageId') packageId: string, @Param('version') version: string) {
+    const { envelope, principal } = ctx(req);
+    const v = versionOf(version, envelope.correlation_id);
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'decision.read', 'DPK', packageId), GateCapability.read,
+      async (cap, scope) => this.gates.status(cap, scope, packageId, v));
+    if (out.result === undefined) throw new HttpException(errorBody('EYE_STA_001', envelope.correlation_id, 'no authorized package version matches'), 404);
+    return { gate: out.result, receipt: receipt(out) };
+  }
+
+  /** The seven DISTINCT gate acts (HX-12): review, acknowledge, ready, defer, reject, request-information, resume — each its own PDP action. */
+  @Post('/:packageId/versions/:version/gate/:act')
+  async gateAct(
+    @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('packageId') packageId: string, @Param('version') version: string,
+    @Param('act') segment: string, @Body() body: { payload?: Record<string, unknown> },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const v = versionOf(version, envelope.correlation_id);
+    const act = gateActOf(segment, envelope.correlation_id);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, gateActionOf(act), 'DPK', packageId), GateCapability.act,
+      async (cap, scope) => {
+        const r = await this.gates.act(cap, scope, packageId, v, act, body.payload ?? {}, principal.principalId, envelope.correlation_id);
+        return { result: r, targetType: 'DPK', targetId: packageId, targetVersion: String(v), outboxEvent: null };
+      });
+    return { gate: out.result, receipt: receipt(out) };
+  }
+
+  /** THE CONSEQUENCE PREVIEW (HX-13): the committing authority's recorded reading; the commit carries its digest within 30 minutes. */
+  @Post('/:packageId/versions/:version/preview')
+  async preview(
+    @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('packageId') packageId: string, @Param('version') version: string,
+    @Body() body: { payload?: Record<string, unknown> },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const v = versionOf(version, envelope.correlation_id);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'decision.commit.preview', 'DPK', packageId), GateCapability.preview,
+      async (cap, scope) => {
+        const r = await this.gates.preview(cap, scope, packageId, v, body.payload ?? {}, principal.principalId, envelope.correlation_id);
+        return { result: r, targetType: 'DPK', targetId: packageId, targetVersion: String(v), outboxEvent: null };
+      });
+    return { preview: out.result, receipt: receipt(out) };
+  }
+
+  /** OVERRIDE as a recorded object: normal (a decision authority; the failing conditions only) or emergency (an executive; + the quorum shortfall; a review task). */
+  @Post('/:packageId/versions/:version/override')
+  async grantOverride(
+    @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('packageId') packageId: string, @Param('version') version: string,
+    @Body() body: { payload?: Record<string, unknown> },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const v = versionOf(version, envelope.correlation_id);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'decision.override.grant', 'DPK', packageId), GateCapability.override,
+      async (cap, scope) => {
+        const r = await this.gates.grantOverride(cap, scope, packageId, v, body.payload ?? {}, principal.principalId, envelope.correlation_id);
+        return { result: r, targetType: 'DPK', targetId: packageId, targetVersion: String(v), outboxEvent: null };
+      });
+    return { override: out.result, receipt: receipt(out) };
+  }
+
+  /** The mandatory after-the-fact review of an emergency override (never its grantor). */
+  @Post('/:packageId/overrides/:overrideId/review')
+  async reviewOverride(
+    @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('packageId') packageId: string, @Param('overrideId') overrideId: string,
+    @Body() body: { payload?: Record<string, unknown> },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'decision.override.review', 'DPK', packageId), GateCapability.override,
+      async (cap, scope) => {
+        const r = await this.gates.reviewOverride(cap, scope, overrideId, body.payload ?? {}, principal.principalId, envelope.correlation_id);
+        return { result: { ...r, packageId }, targetType: 'DPK', targetId: packageId, targetVersion: '0', outboxEvent: null };
+      });
+    return { review: out.result, receipt: receipt(out) };
+  }
+
+  /** An approver DELEGATES their approval of this package to a named member until an expiry (≤ 30 days). */
+  @Post('/:packageId/delegations')
+  async delegate(
+    @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('packageId') packageId: string,
+    @Body() body: { payload?: Record<string, unknown> },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'decision.delegation.grant', 'DPK', packageId), GateCapability.delegate,
+      async (cap, scope) => {
+        const r = await this.gates.delegate(cap, scope, packageId, body.payload ?? {}, principal.principalId, envelope.correlation_id);
+        return { result: r, targetType: 'DPK', targetId: packageId, targetVersion: '0', outboxEvent: null };
+      });
+    return { delegation: out.result, receipt: receipt(out) };
+  }
+
+  /** The delegator ENDS a delegation, or REASSIGNS it (reassignTo) to another member. */
+  @Post('/:packageId/delegations/:delegationId/end')
+  async endDelegation(
+    @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('packageId') packageId: string, @Param('delegationId') delegationId: string,
+    @Body() body: { payload?: Record<string, unknown> },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'decision.delegation.end', 'DPK', packageId), GateCapability.delegate,
+      async (cap, scope) => {
+        const r = await this.gates.endDelegation(cap, scope, delegationId, body.payload ?? {}, principal.principalId, envelope.correlation_id);
+        return { result: { ...r, packageId }, targetType: 'DPK', targetId: packageId, targetVersion: '0', outboxEvent: null };
+      });
+    return { delegation: out.result, receipt: receipt(out) };
+  }
+
+  /** An executive reserves a DRAFT package for the board (PER-01): never overridden, never delegated, decision-ready required. */
+  @Post('/:packageId/board/reserve')
+  async reserveBoard(
+    @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('packageId') packageId: string,
+    @Body() body: { payload?: Record<string, unknown> },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'decision.board.reserve', 'DPK', packageId), GateCapability.board,
+      async (cap, scope) => {
+        const r = await this.gates.reserveBoard(cap, scope, packageId, body.payload ?? {}, principal.principalId, envelope.correlation_id);
+        return { result: r, targetType: 'DPK', targetId: packageId, targetVersion: '0', outboxEvent: null };
+      });
+    return { board: out.result, receipt: receipt(out) };
+  }
+
+  /** A policy revision or a control decision, VERSIONED per key (each superseding the one before); linked to a package when named. */
+  @Post('/controls')
+  async recordControl(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: Record<string, unknown> }) {
+    const { envelope, principal } = ctx(req);
+    const pkg = typeof body.payload?.['packageId'] === 'string' ? body.payload['packageId'] : null;
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'decision.control.record', 'DPK', pkg), GateCapability.control,
+      async (cap, scope) => {
+        const r = await this.gates.recordControl(cap, scope, body.payload ?? {}, principal.principalId, envelope.correlation_id);
+        return { result: r, targetType: 'DPK', targetId: pkg, targetVersion: String(r['version'] ?? 1), outboxEvent: null };
+      });
+    return { control: out.result, receipt: receipt(out) };
+  }
+
+  /** The controls IN FORCE at an instant (default now): per key, the latest version recorded and effective by then. */
+  @Post('/controls/as-of')
+  async controlsAsOf(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: { at?: string } }) {
+    const { envelope, principal } = ctx(req);
+    const at = instant(body.payload?.at, new Date().toISOString());
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'decision.read', 'DPK', null), GateCapability.read,
+      async (cap, scope) => cap.controlsAsOf({ tenantId: scope.tenantId as string, domainId: scope.domainId as string, at }));
+    return { at, controls: out.result, receipt: receipt(out) };
+  }
+  /* end B34 gates */
 }

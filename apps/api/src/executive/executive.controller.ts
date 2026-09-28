@@ -36,6 +36,10 @@ import { AttentionGovernanceService, delegationDigest, validateDecide, validateD
 /* B32 (0089) health */
 import { HealthService, validateAcknowledge, validateApprove, validateChallenge, validateCompute, validateDecideChange, validatePropose, validateRefuse, validateWithdraw } from './health/health.service.js';
 /* end B32 health */
+/* B34 (0090) attention */
+import { AttentionActService, validateAct } from './attention/act.service.js';
+import { healthScoreChangedEvents } from './attention/b34-signals.js';
+/* end B34 attention */
 
 function ctx(req: EyeRequest) {
   const envelope = req.eyeEnvelope;
@@ -57,7 +61,8 @@ export class ExecutiveController {
               /* B24 (0086) timer */ private readonly attentionTimer: AttentionTimerService, private readonly deliveries: DeliveryService /* end B24 timer */,
               /* B24 (0086) materiality */ private readonly materiality: AttentionMaterialityService /* end B24 materiality */,
               /* B24 (0086) governance */ private readonly governance: AttentionGovernanceService /* end B24 governance */,
-              /* B32 (0089) health */ private readonly health: HealthService /* end B32 health */) {}
+              /* B32 (0089) health */ private readonly health: HealthService /* end B32 health */,
+              /* B34 (0090) attention */ private readonly acts: AttentionActService /* end B34 attention */) {}
   private route(tenantId: string, domainId: string, action: string, objectType: string | null, objectId: string | null) {
     return { scope: 'DOMAIN' as const, tenantId, domainId, action, objectType, objectId };
   }
@@ -645,6 +650,32 @@ export class ExecutiveController {
   }
   /* end B24 governance */
 
+  /* B34 (0090) attention: THE ACT TRANSITION (0090 §A4) — a registered governed action launched from an item under the human gate ───────── */
+  /** Launch → the governed action (its own write, its own PDP rule) → settle acted | refused; a refused governed action is recorded, then answered with its status. */
+  @Post('/executive/attention/items/:itemId/act')
+  async actOnAttentionItem(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('itemId') itemId: string, @Body() body: { payload?: Record<string, unknown> }) {
+    const { envelope, principal } = ctx(req);
+    this.idOr422(itemId, 'itemId', envelope.correlation_id);
+    const intake = validateAct(body.payload ?? {}, envelope.correlation_id);
+    return this.acts.act(envelope, principal, tenantId, domainId, itemId, intake);
+  }
+
+  /** The act registry (what each class may launch; health.change has none) and an item's acts, newest first. */
+  @Post('/executive/attention/acts/list')
+  async listAttentionActs(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: { itemId?: string } }) {
+    const { envelope, principal } = ctx(req);
+    const itemId = typeof body.payload?.itemId === 'string' && ExecutiveController.UUID.test(body.payload.itemId) ? body.payload.itemId : null;
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'executive.attention.read', 'ATI', itemId), ExecutiveCapability.read,
+      async (cap) => {
+        let q = cap.readAttentionItemActs().selectAll();
+        if (itemId !== null) q = q.where('item_id' as never, '=', itemId as never);
+        const acts = (await q.orderBy('launched_at' as never, 'desc').limit(200).execute()) as Array<Record<string, unknown>>;
+        return { ...(await this.acts.registry(cap)), items: acts };
+      });
+    return { ...out.result, receipt: receipt(out) };
+  }
+  /* end B34 attention */
+
   /* B32 (0089) health: THE DECOMPOSABLE STRATEGIC HEALTH SCORE (0089 §H; F-P6-08) — a two-person definition, the computation from the
      health input contract, the decomposed snapshots, the baseline comparison, the score changes acknowledged and challenged ───────────── */
   /** The definition versions — the active one, the pending proposal, the refused and the superseded. */
@@ -712,8 +743,12 @@ export class ExecutiveController {
     const intake = validateCompute(body.payload ?? {}, envelope.correlation_id);
     const snapshotId = newId();
     const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'executive.health.compute', 'HSS', snapshotId), ExecutiveCapability.health,
-      async (cap, scope) => ({ result: await cap.computeScore({ snapshotId, tenantId: scope.tenantId as string, domainId: scope.domainId as string, at: intake.at, actor: principal.principalId, correlationId: envelope.correlation_id }),
-                               targetType: 'HSS', targetId: snapshotId, targetVersion: null, outboxEvent: null }));
+      async (cap, scope) => {
+        const r = await cap.computeScore({ snapshotId, tenantId: scope.tenantId as string, domainId: scope.domainId as string, at: intake.at, actor: principal.principalId, correlationId: envelope.correlation_id });
+        /* B34 (0090) attention: HealthScoreChanged@v1 — one per change this compute RAISED, in the same governed write (an as_of replay raises none) */
+        return { result: r, targetType: 'HSS', targetId: snapshotId, targetVersion: null, outboxEvent: null, outboxEvents: healthScoreChangedEvents(r, principal.principalId) };
+        /* end B34 attention */
+      });
     return { snapshot: out.result, receipt: receipt(out) };
   }
 

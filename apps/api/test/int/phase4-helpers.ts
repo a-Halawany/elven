@@ -174,6 +174,11 @@ export class Phase4Harness {
                 values (${uuidv7()}::uuid, ${p.principalId}::uuid, ${b.roleCode}, 'DOMAIN', ${this.fx.tenantId}::uuid, ${b.domainId}::uuid)`.execute(this.su);
       bindings.push({ roleCode: b.roleCode, scope: 'DOMAIN', tenantId: this.fx.tenantId, domainId: b.domainId });
     }
+    return this.openSession({ ...p, bindings });
+  }
+
+  /** A session for an EXISTING principal (its bindings already written): the humanWithSession tail, for a fixture principal that must act. */
+  async openSession(p: AuthenticatedPrincipal): Promise<AuthenticatedPrincipal> {
     const identityDb = this.app.get<Db>(IDENTITY_DB);
     const sessionId = uuidv7();
     const familyId = uuidv7();
@@ -185,7 +190,7 @@ export class Phase4Harness {
       await sql`select identity.session_open(${sessionId}::uuid, ${p.principalId}::uuid, 'password', ${sha256(refresh)}, ${sha256(contextKey)}, ${new Date(Date.now() + 3600_000)}, ${familyId}::uuid)`.execute(tx);
       await sql`select audit.commit_identity_event(${p.principalId}::uuid, ${sessionId}::uuid, 'identity.login', 'identity.session.create', 'success', 'OK', ${uuidv7()}::uuid, '{"fixture":true}'::jsonb)`.execute(tx);
     });
-    return { ...p, bindings, sessionId, contextKey };
+    return { ...p, sessionId, contextKey };
   }
 
   /** The live contract with a declared period-range backfill. */

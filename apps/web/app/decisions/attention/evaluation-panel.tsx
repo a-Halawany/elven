@@ -11,6 +11,9 @@
  */
 import { useEffect, useState } from 'react';
 import { EVALUATOR_ROLES, governance as api, measuresOf, ratioWords, verdictMark, type QueueEvaluation } from '../../../lib/attention-governance';
+/* B34 (0090) attention */
+import { disparityWords, fairnessRows } from '../../../lib/attention-governance';
+/* end B34 attention */
 import type { Scope } from '../../../lib/observation';
 import { Empty, LiveStatus, Mono, ScrollBox, cardStyle, GovernedButton, fmtInstant } from '../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui';
@@ -48,6 +51,26 @@ function EvaluationView({ e }: { e: QueueEvaluation }) {
       )}
       <h4>Ranking stability</h4>
       <p>{m.ranking_stability === undefined ? 'not reported' : m.ranking_stability.abstained ? <>abstained — {m.ranking_stability.reason}</> : <>Kendall tau-b <Mono>{String(m.ranking_stability.value)}</Mono> over {m.ranking_stability.ranked} ranked item(s) ({m.ranking_stability.concordant} concordant, {m.ranking_stability.discordant} discordant pairs)</>}</p>
+      {/* B34 (0090) attention: the RANKING FAIRNESS (AT-44) — how the transparent rank places each class; reported, gating nothing */}
+      <h4>Ranking fairness</h4>
+      {m.ranking_fairness === undefined ? <p>not reported (an evaluation recorded before 0090)</p> : (
+        <>
+          <p style={muted}>
+            Per class: the mean rank percentile (0 = first in the queue, 1 = last), the share in the top decile, and the share of items with no input
+            for a rank dimension (a missing input ranks after one with). Disparity: {disparityWords(m.ranking_fairness.disparity)}. This measure gates nothing.
+          </p>
+          <ScrollBox label="ranking fairness by class">
+            <table className="eye-table" style={tableStyle}>
+              <thead><tr><Th>Class</Th><Th>Items</Th><Th>Mean rank percentile</Th><Th>Top decile</Th><Th>No input (structural)</Th></tr></thead>
+              <tbody>{fairnessRows(m.ranking_fairness).map((r) => (
+                <tr key={r.signalClass}><Td mono>{r.signalClass}</Td><Td>{r.items}{r.measured ? '' : ' (below min_sample)'}</Td><Td mono>{r.mean}</Td><Td>{r.top}</Td><Td>{r.nulls}</Td></tr>
+              ))}</tbody>
+            </table>
+          </ScrollBox>
+          <p style={muted}>By consequence tier: {Object.entries(m.ranking_fairness.by_consequence_tier).map(([t, v]) => `${t} — ${disparityWords(v.disparity)}`).join('; ') || 'no tier'}</p>
+        </>
+      )}
+      {/* end B34 attention */}
       <h4>Severe items (C3/C4)</h4>
       {m.severe === undefined ? <p>not reported</p> : (
         <>

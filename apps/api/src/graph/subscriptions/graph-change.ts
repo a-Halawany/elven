@@ -58,6 +58,15 @@ export const GRAPH_CHANGE_KINDS = [
   // the domain rests on ids minted in this write); the typed `revision` block carries the revision, the expected head and the counts.
   'revision.committed',
   /* end B23 revision */
+  /* B34 (0090) commitments */
+  // 0090 (B34, V02-T-117): an OBJECTIVE CHANGED — revised (graph.revise_objective: the OBJ's next version) or its owner transferred
+  // (graph.assign_strategy_owner on an OBJ); objects.objectives the objective, no walk; the typed `objective` block. Only the
+  // commitments consumer selects it: every other consumer's selection yields nothing for it (the warnings consumer's graph-impact
+  // kinds are a fixed list without it; the decisions consumer matches a package's DEC and its options' citations, never an OBJ; the
+  // twins, forecasts, scenarios, relationships and memory-mappings consumers select by identities, edges, claims, evidence and forecasts,
+  // all empty here; the retrieval consumer re-verifies the projections as for any change) — NO existing METHOD_REF changes.
+  'objective.changed',
+  /* end B34 commitments */
 ] as const;
 export type GraphChangeKind = (typeof GRAPH_CHANGE_KINDS)[number];
 export const MEMORY_CHANGE_KINDS = ['evidence.corrected', 'claim.corrected'] as const;
@@ -152,6 +161,10 @@ export interface GraphChangedPayload {
    */
   revision?: { revision_id: string; revision: number; expected: number; idempotency_key: string; request_digest: string; ontology_version_id: string | null; counts: Record<string, number> };
   /* end B23 revision */
+  /* B34 (0090) commitments */
+  /** 0090 (B34): the typed block of `objective.changed` — the objective, what changed (a revision or an owner transfer), its versions and owners, the reason. Absent on every other kind. */
+  objective?: { objective_id: string; change: 'revised' | 'owner_assigned'; from_version: number; to_version: number; owner_from: string | null; owner_to: string | null; reason: string | null };
+  /* end B34 commitments */
 }
 
 export interface CorrectedObject { object_id: string; object_type: string; from_version: number; to_version: number; lifecycle_state: string; recorded_at?: string | null; event_time?: string | null; observation_time?: string | null; valid_from?: string | null; valid_to?: string | null }
@@ -173,7 +186,8 @@ export type ChangeEvent = { event_id: string; event_type: 'GraphChanged'; payloa
  */
 export const FLAT_EVENT_TYPES = ['ObservationRecorded', 'SourceHealthChanged', 'ClaimsExtracted', 'IntelligenceObjectAdmitted', 'ForecastFitnessChanged', 'ScenarioCoherenceFailed',
   'EarlyWarningRaised', 'AttentionPolicyChanged',
-  /* B23 (0084) attention */ 'MaterialChangeRaised', 'ReviewConvened' /* end B23 attention */] as const;
+  /* B23 (0084) attention */ 'MaterialChangeRaised', 'ReviewConvened' /* end B23 attention */,
+  /* B34 (0090) attention: the prelude's three outbox events (their contracts: executive/attention/signal-contracts.ts) */ 'ExposureChanged', 'HealthScoreChanged', 'CommitmentChanged' /* end B34 attention */] as const;
 export type FlatEventType = (typeof FLAT_EVENT_TYPES)[number];
 export const SUBSCRIBABLE_EVENT_TYPES = ['GraphChanged', 'MemoryCorrected', ...FLAT_EVENT_TYPES] as const;
 export type SubscribableEventType = (typeof SUBSCRIBABLE_EVENT_TYPES)[number];
@@ -188,7 +202,8 @@ export const CONSUMER_KINDS = ['twins', 'forecasts', 'scenarios', 'decisions', '
   // 0083 (B22): the consumers of L1-I03, L1-I04 and L2-I02, and the attention router (L10-I05 and the foresight signals).
   'observations', 'source-health', 'proposals', 'attention',
   /* B28 (0088) warnings: the warnings consumer (graph impact, forecast revision, twin degradation → warning candidates) */ 'warnings' /* end B28 warnings */,
-  /* B28 (0088) streams: the event-time stream processors' feed (F-P4-11) */ 'stream-rules' /* end B28 streams */] as const;
+  /* B28 (0088) streams: the event-time stream processors' feed (F-P4-11) */ 'stream-rules' /* end B28 streams */,
+  /* B34 (0090) commitments: the commitment tracker's re-tasking (V02-T-117) */ 'commitments' /* end B34 commitments */] as const;
 export type ConsumerKind = (typeof CONSUMER_KINDS)[number];
 export const CONSUMER_ACTION: Readonly<Record<ConsumerKind, string>> = Object.freeze({
   twins: 'twin.subscription.apply',
@@ -204,6 +219,7 @@ export const CONSUMER_ACTION: Readonly<Record<ConsumerKind, string>> = Object.fr
   attention: 'executive.attention.subscription.apply',
   /* B28 (0088) warnings */ warnings: 'prediction.warning.subscription.apply', /* end B28 warnings */
   /* B28 (0088) streams */ 'stream-rules': 'prediction.stream.subscription.apply', /* end B28 streams */
+  /* B34 (0090) commitments */ commitments: 'decision.commitment.subscription.apply', /* end B34 commitments */
 });
 export const CONSUMER_ROLE: Readonly<Record<ConsumerKind, string>> = Object.freeze({
   twins: 'twin_subscriber', forecasts: 'forecast_subscriber', scenarios: 'scenario_subscriber', decisions: 'decision_subscriber', retrieval: 'retrieval_subscriber', 'memory-mappings': 'mapping_subscriber',
@@ -211,6 +227,7 @@ export const CONSUMER_ROLE: Readonly<Record<ConsumerKind, string>> = Object.free
   observations: 'observation_subscriber', 'source-health': 'source_health_subscriber', proposals: 'proposal_subscriber', attention: 'attention_subscriber',
   /* B28 (0088) warnings */ warnings: 'warning_subscriber', /* end B28 warnings */
   /* B28 (0088) streams */ 'stream-rules': 'stream_rule_subscriber', /* end B28 streams */
+  /* B34 (0090) commitments */ commitments: 'commitment_subscriber', /* end B34 commitments */
 });
 /** 0083: the event types each kind may select (graph.subscription_consumer_events) — the default of a registration that names none. */
 export const CONSUMER_EVENT_TYPES: Readonly<Record<ConsumerKind, readonly SubscribableEventType[]>> = Object.freeze({
@@ -219,9 +236,11 @@ export const CONSUMER_EVENT_TYPES: Readonly<Record<ConsumerKind, readonly Subscr
   relationships: ['GraphChanged', 'MemoryCorrected'],
   observations: ['ObservationRecorded'], 'source-health': ['SourceHealthChanged'], proposals: ['ClaimsExtracted', 'IntelligenceObjectAdmitted'],
   attention: ['ForecastFitnessChanged', 'ScenarioCoherenceFailed', 'EarlyWarningRaised', 'AttentionPolicyChanged',
-    /* B23 (0084) attention: L10-I02 and L10-I03 */ 'MaterialChangeRaised', 'ReviewConvened' /* end B23 attention */],
+    /* B23 (0084) attention: L10-I02 and L10-I03 */ 'MaterialChangeRaised', 'ReviewConvened' /* end B23 attention */,
+    /* B34 (0090) attention */ 'ExposureChanged', 'HealthScoreChanged', 'CommitmentChanged' /* end B34 attention */],
   /* B28 (0088) warnings */ warnings: ['GraphChanged'], /* end B28 warnings */
   /* B28 (0088) streams */ 'stream-rules': ['ObservationRecorded'], /* end B28 streams */
+  /* B34 (0090) commitments */ commitments: ['GraphChanged'], /* end B34 commitments */
 });
 /** The consumer's identity, the walker precedent: a changed method is a new consumer, registered anew. */
 export const CONSUMER_VERSION = '1.0.0';
@@ -268,13 +287,19 @@ const METHOD_REF: Readonly<Record<ConsumerKind, string>> = Object.freeze({
     + '; each routed signal carries the further dimensions (0086: probability, exposure, strategic relevance, information value, irreversibility — the real inputs from executive.attention_dimensions, null where none) and the warning and review windows on the database clock' /* end B24 materiality */
     /* B28 (0088) integrator: the routed warning's dimensions carry NOVELTY (the weak-signal detectors' measure, 0088 §S8) where the input
        exists — a new method, so a new identity: every live attention subscription registered before 0088 is re-registered (demo: the act) */
-    + '; the novelty dimension forwarded where the detector measured it (0088: the originating signal\'s measure or the indicator\'s latest novelty reading)' /* end B28 integrator */,
+    + '; the novelty dimension forwarded where the detector measured it (0088: the originating signal\'s measure or the indicator\'s latest novelty reading)' /* end B28 integrator */
+    /* B34 (0090) attention: three more types, so a new method and a new identity — every live attention subscription registered before 0090 is
+       revoked and re-registered (demo: the integrator's act). */
+    + '; ExposureChanged (0090) → opportunity.raised for an opportunity with an accepted assessment (a risk not a signal here); HealthScoreChanged (0090) → health.change (review, never action); CommitmentChanged (0090) → commitment.due | commitment.breach, the item read only through decision.commitment_item_signal (NULL → not routed)' /* end B34 attention */,
   /* B28 (0088) warnings: a NEW consumer — its own identity from the start (no existing subscription is re-registered). */
   warnings: 'GraphChanged → the ORIGINS of a warning other than an indicator breach — an invalidation, retracted edge, revoked import or split entity whose walk reached an objective (graph_impact, one item per objective), a forecast superseded, withdrawn or assessed unfit (forecast_revision, one per forecast), a twin version admitted or a twin the walk reached (twin_degradation, one per twin) — each SUBMITTED as a warning candidate (prediction.submit_warning_candidate, origin_key = the event id and the item; C2, confidence not stated); never a warning: the lifecycle clusters or raises it',
   /* end B28 warnings */
   /* B28 (0088) streams: the stream-rules consumer — its own identity from the start (a new kind; no live subscription to re-register). */
   'stream-rules': 'ObservationRecorded of a live processor\'s source → the evidence version read through the governed retrieval (custody by prediction.stream_evidence_custody in the item\'s transaction), parsed by the series\' registered parser into (day, value) points — the event time the publisher\'s day — and ingested (prediction.ingest_stream_input: the state verified, each point keyed evd@version:day and labelled on_time | late_within_allowance | late_beyond_allowance and new | duplicate | revision, the watermark = max event time − lag, the due windows fired, a late input\'s window revised, a holding predicate\'s warning candidate submitted through prediction.submit_warning_candidate); unreadable evidence recorded, never guessed at; a payload that is not the contract quarantined (invalid_event)',
   /* end B28 streams */
+  /* B34 (0090) commitments: a NEW consumer — its own identity from the start (a new kind; no live subscription to re-register). */
+  commitments: 'GraphChanged/objective.changed → every live commitment item resting on the objective (decision.items_resting_on) re-tasked by decision.apply_objective_change: an objective_changed exception keyed by the event (once), the item retask_required, the reviewer reassigned to the objective\'s owner when its basis is objective_owner and the owner moved; CommitmentChanged item.retasked / reviewer.reassigned in the item\'s transaction; every other kind selects nothing',
+  /* end B34 commitments */
 });
 export const consumerCodeDigest = (kind: ConsumerKind): string =>
   createHash('sha256').update(`graph.subscription.${kind}@${CONSUMER_VERSION}:${METHOD_REF[kind]}`, 'utf8').digest('hex');

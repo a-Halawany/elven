@@ -10,7 +10,8 @@ import {
 describe('attention is worded, never judged on the client', () => {
   it('the vocabularies are the migration\'s (executive.attention_items CHECKs)', () => {
     // B23 (0084): decision.material_change (L10-I02) and review.convened (L10-I03) join the five
-    expect([...SIGNAL_CLASSES]).toEqual(['forecast.unfit', 'scenario.incoherent', 'warning.raised', 'source.coverage_loss', 'proposal.review', 'decision.material_change', 'review.convened']);
+    expect([...SIGNAL_CLASSES]).toEqual(['forecast.unfit', 'scenario.incoherent', 'warning.raised', 'source.coverage_loss', 'proposal.review', 'decision.material_change', 'review.convened',
+      'opportunity.raised', 'health.change', 'commitment.due', 'commitment.breach']);
     expect([...ITEM_STATES]).toEqual(['open', 'escalated', 'unrouted', 'acknowledged', 'suppressed', 'deprioritized', 'closed']);
   });
   it('the list payload sends only what is set, with the limit', () => {

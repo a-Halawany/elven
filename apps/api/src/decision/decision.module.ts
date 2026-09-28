@@ -13,13 +13,19 @@ import { ApprovalService } from './approvals/approval.service.js';
 import { ReplayService } from './replay/replay.service.js';
 import { MonitoringService } from './monitoring/monitoring.service.js';
 import { DecisionSubscriptionConsumer } from './subscriptions/decision-subscription.consumer.js';
+/* B34 (0090) commitments */
+import { CommitmentController } from './commitments/commitment.controller.js';
+import { CommitmentService, ExecutionEgress } from './commitments/commitment.service.js';
+import { CommitmentsSubscriptionConsumer } from './subscriptions/commitments.consumer.js';
+/* end B34 commitments */
 
 // CP-6 B6 (0063): the decision CONSUMER registers itself into the graph's dispatcher; the graph module
 // imports nothing from here.
 @Module({
   imports: [PipelineModule, GraphModule],
-  controllers: [DecisionController],
-  providers: [PackageService, ApprovalService, ReplayService, MonitoringService, DecisionSubscriptionConsumer],
-  exports: [PackageService, ApprovalService, ReplayService, MonitoringService],
+  controllers: [DecisionController, /* B34 (0090) commitments */ CommitmentController /* end B34 commitments */],
+  providers: [PackageService, ApprovalService, ReplayService, MonitoringService, DecisionSubscriptionConsumer,
+    /* B34 (0090) commitments */ CommitmentService, ExecutionEgress, CommitmentsSubscriptionConsumer /* end B34 commitments */],
+  exports: [PackageService, ApprovalService, ReplayService, MonitoringService, /* B34 (0090) commitments */ CommitmentService, ExecutionEgress /* end B34 commitments */],
 })
 export class DecisionModule {}

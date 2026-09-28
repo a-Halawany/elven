@@ -475,3 +475,39 @@ so its queues must never share the demonstration's Redis — and an APFS clone o
   - Run `scripts/phase6/act-b32.mjs` with `EYE_DB_NAME=eye_demo_b32 EYE_API=http://localhost:3411`. It takes a few seconds; it has no clock shortcut and needs none.
   - **Every harness and rehearsal sets `EYE_REDIS_PORT=6392`.** The harness default :6379 is the demonstration's Redis (§B32.6 of `audit/CP6_BATCHES.md`).
 - **The demo walk.** Run `e2e/phase6-b32.demo.spec.ts` through `playwright.demo.config.ts` after the act; screenshots go to `evidence/phase6-browser/b32-*.png`. The pages are `/graph/strategy/alignment`, `/prediction/exposures` and `/decisions/health`.
+
+## 13. B34 on the demonstration (2026-09-28/29): what changed, the operator preparation, and how to rehearse
+
+- **Migrations.** `eye_demo` is migrated through **0090**. The backups taken before it are `.eye-local/backups/eye_demo-pre-0090-20260928T205841Z.dump` and `eye_demo-pre-0090-20260928T213126Z.dump`.
+- **The operator preparation** (before the act, and before any later restart that should keep the B34 channels working; the act says each in its output):
+  - **The SYNTHETIC ERP** (`scripts/execution/synthetic-erp.mjs`) runs on loopback **:3444**. It is a stand-in for NORDWERK's purchasing system, never a product component, and it refuses any non-loopback address. Its certificate is under `.eye-local/execution-erp-demo`; T. Richter declared that certificate as the execution target's trust anchor. Its bearer is bound BY REFERENCE, `EYE_DST_NORDWERK_ERP_DEMO`, in the local secret handoff. The value is never printed or typed.
+  - **The local sinks** (SYNTHETIC; loopback only; nothing is forwarded; memory only): `node scripts/attention/local-sinks.mjs --host 127.0.0.1 --smtp-port 2525 --http-port 3446`.
+  - **The demo API restarted with the sinks named, IN THE CALLER'S ENVIRONMENT:**
+
+    ```
+    EYE_ATTENTION_SINK_HOST=127.0.0.1 EYE_ATTENTION_SMTP_PORT=2525 \
+    EYE_ATTENTION_SMS_WEBHOOK_URL=http://127.0.0.1:3446/sms \
+    EYE_ATTENTION_TEAMS_WEBHOOK_URL=http://127.0.0.1:3446/teams \
+    scripts/ops/demo-restart.sh
+    ```
+
+    Do not put these in `.eye-local/env`: every harness sources that file, and a harness must never deliver to the demonstration's sinks. **A restart WITHOUT them leaves the email, SMS and Teams deliveries failing and retrying** (the in-app channel is unaffected). After a host restart, start the ERP and the sinks again before restarting the API this way.
+- **The production egress refuses the loopback target by design** (the B14 precedent). On `eye_demo`, K. Lange's handoff is therefore issued and then refused at the transport. It is never effected, and the tracker shows it in progress. The positive exchange, the partial effect, compensation and closure are proven by `phase6-commitments-b34` (E2–E4, Z1).
+- **Principals and roles.** **T. Richter** (`domain_admin`) and **K. Lange** (`execution_authority`) were created through the governed principal route. The customs expert is an EXTERNAL collaborator (SYNTHETIC partner firm). Her principal, role binding and credential were written by the collaboration port, not by the frozen Phase 0 identity route (disclosed; the governed route is B61's). She is never an active member. Her invitation went to the SYNTHETIC demo mailbox, and its token never leaves the API process, so she does not sign in on the demonstration.
+- **Subscriptions and policy.** The attention subscription was revoked and registered anew, because its consumer identity changed in 0090. The new kind **commitments** was registered by the administrator with the backlog left. M. Dvořák published attention policy **version 6** with the four new classes (email notification SYNTHETIC).
+- **What the act leaves** (nothing is cleaned; the expert, the purchase lines, the amounts and the ERP are SYNTHETIC):
+  - the collaboration workspace on the corridor mitigation case, with M. Dvořák as a reviewer, the customs brief, and the expert's grant (expires 2026-10-12, then lapses by the tick and her tasks are reassigned);
+  - the expert's review task, escalated to M. Dvořák and completed (endorse with conditions);
+  - the assumption "Customs pre-clearance holds for the rerouted consignments", verified by J. Weber;
+  - the mitigation case version 1, held, then deferred (next review 2026-10-05), resumed and committed, and its commitment's tracker: the root, the handoff item on the bearings budget, the customs deliverable (overdue, with an extension J. Weber co-signed);
+  - the execution target `nordwerk-purchasing-demo`, and one handoff refused at the transport;
+  - the opportunity and commitment items in the queue, one act, and a breach escalated with its email receipt from the local sink;
+  - risk taxonomy version 2, activated by S. Okafor.
+- **Commit now requires the consequence preview's digest.** The older act scripts and `seed-decisions.mjs` would be refused if re-run. They are historical, and they are not rehearsal material for a database at 0090.
+- **The rehearsal rig (never the demonstration).**
+  - Restore the newest `eye_demo-pre-0090-*.dump` as a rehearsal copy, then migrate it.
+  - Run the API on :3411 against the REHEARSAL Redis (:6392), with a copy of the vault.
+  - Run a second synthetic ERP and a second set of sinks on other loopback ports, and name them in that API's environment. Never point the rehearsal at :3444, :2525 or :3446.
+  - Run `scripts/phase6/act-b34.mjs` with `EYE_DB_NAME=<the copy> EYE_API=http://localhost:3411` (and `ACT_ERP_ENDPOINT` / `ACT_ERP_CERT` for the rehearsal ERP). It takes about 6 minutes. The review deadline and the deliverable's due instant are set minutes out so that the real scheduled ticks cross them, and the act says so.
+  - **Every harness and rehearsal sets `EYE_REDIS_PORT=6392`** (§12).
+- **The demo walk.** Run `e2e/phase6-b34.demo.spec.ts` through `playwright.demo.config.ts` after the act; screenshots go to `evidence/phase6-browser/b34-*.png`. The pages are `/decisions/tasks`, `/decisions/workspaces` and `/decisions/commitments`.

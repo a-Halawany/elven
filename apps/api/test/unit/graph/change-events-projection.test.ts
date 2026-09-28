@@ -43,7 +43,7 @@ describe('B20 · the kind and the consumer identities', () => {
     expect(consumerCodeDigest('retrieval')).not.toBe(before0080);
     for (const kind of CONSUMER_KINDS) expect(consumerCodeDigest(kind)).toMatch(/^[0-9a-f]{64}$/);
     expect(new Set(CONSUMER_KINDS.map((k) => consumerCodeDigest(k))).size).toBe(CONSUMER_KINDS.length);
-    expect(CONSUMER_KINDS.length).toBe(13); // 0083 (B22): + observations, source-health, proposals, attention; 0088 (B28): + warnings, stream-rules
+    expect(CONSUMER_KINDS.length).toBe(14); // 0083 (B22): + observations, source-health, proposals, attention; 0088 (B28): + warnings, stream-rules; 0090 (B34): + commitments
   });
 });
 

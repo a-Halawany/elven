@@ -9,7 +9,7 @@
  */
 import type { AttentionTickWrites } from '../../executive.capabilities.js';
 
-export const DELIVERY_CHANNELS = ['in_app', 'demo-mailbox'] as const;
+export const DELIVERY_CHANNELS = ['in_app', 'demo-mailbox', /* B34 (0090) attention: SYNTHETIC adapters to LOCAL sinks (0090 §0.5; a real provider is owner decision D6) */ 'email', 'sms', 'teams' /* end B34 attention */] as const;
 export type DeliveryChannel = (typeof DELIVERY_CHANNELS)[number];
 
 /** One claimed attempt, as the channel sees it: who, what and on which delivery row; `via` is the tick's capability (the adapter's only way to the database). */

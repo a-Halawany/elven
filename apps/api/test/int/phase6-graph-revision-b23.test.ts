@@ -49,7 +49,7 @@ import { SubscriptionDispatcherService } from '../../src/graph/subscriptions/sub
 import { CONSUMER_EVENT_TYPES, CONSUMER_KINDS, type ConsumerKind } from '../../src/graph/subscriptions/graph-change.js';
 /* B28 (0088): the `warnings` and `stream-rules` kinds are exercised by their own harnesses (phase6-warnings-b28, phase6-streams-b28); this
    file registers and counts the kinds it was written for. */
-const PRE_B28_KINDS = CONSUMER_KINDS.filter((k) => k !== 'warnings' && k !== 'stream-rules');
+const PRE_B28_KINDS = CONSUMER_KINDS.filter((k) => k !== 'warnings' && k !== 'stream-rules' && k !== 'commitments'); // B34: the commitments kind is registered by its own harness
 /* end B28 */
 import { asObservationRefusal } from '../../src/observation/observation-errors.js';
 import { Phase4Harness } from './phase4-helpers.js';

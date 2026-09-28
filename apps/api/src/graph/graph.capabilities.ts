@@ -519,6 +519,18 @@ export interface StrategyAlignmentWrites extends StrategyAlignmentReads {
   measureFreshnessAfterObservation(a: { tenantId: string; domainId: string; observationId: string }): Promise<{ at: string; rows: Array<Record<string, unknown>> }>;
 }
 /* end B32 graph */
+/* B34 (0090) commitments */
+/**
+ * B34 (0090 §C8): an objective REVISED (graph.objective.revise → graph.revise_objective: the OBJ's next version admitted, the strategy row
+ * re-declared) and the live subscriptions an objective.changed event names; the owner transfer's route reads the same subscriptions.
+ */
+export interface ObjectiveRevisionWrites extends StrategyAlignmentWrites {
+  reviseObjective(a: { objectId: string; tenantId: string; domainId: string; title: string | null; statement: string | null; reason: string; actor: string; eventId: string; correlationId: string }): Promise<Record<string, unknown>>;
+  canonicalLatest(a: { objectType: string; objectId: string }): Promise<Record<string, unknown> | undefined>;
+  admitObject(header: unknown, payload: unknown, digest: string): Promise<{ contentDigest: string }>;
+  subscriptionsMatching(a: { tenantId: string; domainId: string; eventType: 'GraphChanged' | 'MemoryCorrected'; changeKind: string }): Promise<Array<{ subscription_id: string; consumer_kind: string }>>;
+}
+/* end B34 commitments */
 
 // ───────────────────────── implementation ─────────────────────────
 
@@ -1053,6 +1065,17 @@ class GraphCapabilityImpl extends GraphCore
     return rows[0]?.r ?? {};
   }
   /* end B32 graph */
+  /* B34 (0090) commitments */
+  async reviseObjective(a: Parameters<ObjectiveRevisionWrites['reviseObjective']>[0]): Promise<Record<string, unknown>> {
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select graph.revise_objective(${a.objectId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.title}::text, ${a.statement}::text,
+      ${a.reason}, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  async canonicalLatest(a: { objectType: string; objectId: string }): Promise<Record<string, unknown> | undefined> {
+    const rows = await this.call<{ o: Record<string, unknown> }>(sql`select to_jsonb(o) - 'content_digest' as o from objects.canonical_objects o where o.object_type = ${a.objectType} and o.object_id = ${a.objectId}::uuid order by o.object_version desc limit 1`);
+    return rows[0]?.o;
+  }
+  /* end B34 commitments */
   async keepEdgeUnderReassessment(a: { edgeId: string; tenantId: string; domainId: string; reason: string; actor: string; correlationId: string }): Promise<void> {
     await this.call(sql`select graph.keep_edge_under_reassessment(${a.edgeId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}, ${a.actor}::uuid, ${a.correlationId}::uuid)`);
   }
@@ -1128,4 +1151,10 @@ export const GraphCapability = {
     return new GraphCapabilityImpl(tx, action);
   },
   /* end B32 graph */
+  /* B34 (0090) commitments */
+  /** B34 (0090 §C8): the objective's revision and the owner transfer that ANNOUNCES objective.changed (both read the matching subscriptions). */
+  objectiveRevision(tx: Tx, action: string): ObjectiveRevisionWrites {
+    return new GraphCapabilityImpl(tx, action);
+  },
+  /* end B34 commitments */
 };

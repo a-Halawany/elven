@@ -40,7 +40,7 @@ import { SubscriptionSessionService, SubscriptionGrantRefused } from '../../src/
 import { CONSUMER_EVENT_TYPES, CONSUMER_KINDS, CONSUMER_ROLE, CONSUMER_VERSION, consumerCodeDigest, type ConsumerKind } from '../../src/graph/subscriptions/graph-change.js';
 /* B28 (0088): the `warnings` and `stream-rules` kinds are exercised by their own harnesses (phase6-warnings-b28, phase6-streams-b28); this
    file registers and counts the kinds it was written for. */
-const PRE_B28_KINDS = CONSUMER_KINDS.filter((k) => k !== 'warnings' && k !== 'stream-rules');
+const PRE_B28_KINDS = CONSUMER_KINDS.filter((k) => k !== 'warnings' && k !== 'stream-rules' && k !== 'commitments'); // B34: the commitments kind is registered by its own harness
 /* end B28 */
 import { Phase4Harness, SERIES_START, SERIES_END, syntheticEgress } from './phase4-helpers.js';
 import type { TwinController } from '../../src/twin/twin.controller.js';

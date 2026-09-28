@@ -26,12 +26,16 @@ export interface PackageVersion {
 export interface Package {
   package_id: string; decision_object_id: string; title: string; statement: string; owner_principal_id: string; state: string; current_version: number | null; committed_version: number | null;
   decided_at: string | null; synthetic_state: boolean; controls: Record<string, unknown>; declared_at: string; versions: PackageVersion[];
+  /* B34 (0090) gates: the reserved board class (PER-01) */
+  decision_class?: 'standard' | 'board'; board?: Record<string, unknown> | null;
   decision?: { title: string; statement: string; status: string } | null; commitment?: Record<string, unknown> | null; events?: Array<Record<string, unknown>>;
 }
 export interface Replay {
   replayId: string; contentDigest: string; asOf: string; cutoffs: Record<string, unknown>;
   layers: { known: Array<Record<string, unknown>>; believed: Record<string, Array<Record<string, unknown>>>; tested: Record<string, Array<Record<string, unknown>>>; decided: Record<string, unknown>; observed: Record<string, Array<Record<string, unknown>>> };
   excluded: Array<Record<string, unknown>>; unavailable: Array<Record<string, unknown>>; summary: Record<string, number>; invocation: Record<string, unknown>;
+  /** B34 (0090) gates: the policy revisions and control decisions IN FORCE at the decision instant (beside the content, not in its digest). */
+  controlsInForce?: { at: string; controls: Array<Record<string, unknown>> };
 }
 export interface Room {
   room_id: string; package_id: string; title: string; owner_principal_id: string; state: string; package_state?: string; package_title?: string; review_every_days: number; next_review_at: string; last_review_at: string | null;
@@ -122,11 +126,13 @@ export const decisions = {
   replays: (s: Scope, id: string) => p<{ replays: Array<Record<string, unknown>>; receipt: Receipt }>(s, `/decisions/${id}/replays/list`, 'decision.read', 'DPK', {}, id),
   /** The package's workflow steps and, since 0066 §9, the follow-ups on its agenda (overdue read against now). */
   workflow: (s: Scope, id: string) => p<{ workflow: Array<Record<string, unknown>>; follow_ups: FollowUp[]; receipt: Receipt }>(s, `/workflow/${id}`, 'decision.read', 'DPK', {}, id),
-  approve: (s: Scope, id: string, version: number, payload: { decision: 'approve' | 'reject'; versionDigest: string; rationale: string }) =>
+  /** B34 (0090): `conditions` — typed approval conditions (lib/gates buildCondition) evaluated at commitment and in monitoring. */
+  approve: (s: Scope, id: string, version: number, payload: { decision: 'approve' | 'reject'; versionDigest: string; rationale: string; conditions?: unknown[] }) =>
     p<{ approval: Record<string, unknown>; receipt: Receipt }>(s, `/decisions/${id}/versions/${version}/approve`, 'decision.approve', 'APR', payload),
-  /** The commit: the route pins C3 on the server; the envelope says what every write says. */
-  commit: (s: Scope, id: string, version: number, versionDigest: string) =>
-    p<{ commitment: Record<string, unknown>; receipt: Receipt }>(s, `/decisions/${id}/versions/${version}/commit`, 'decision.commit', 'CMT', { versionDigest }),
+  /** The commit: the route pins C3 on the server; the envelope says what every write says. B34 (0090): it carries the preview's digest
+   *  (lib/gates `preview` first); a failing approval condition answers `{commitment: null, held}` — recorded by the server. */
+  commit: (s: Scope, id: string, version: number, versionDigest: string, previewDigest: string) =>
+    p<{ commitment: Record<string, unknown> | null; held?: { failed: Array<Record<string, unknown>> }; receipt: Receipt }>(s, `/decisions/${id}/versions/${version}/commit`, 'decision.commit', 'CMT', { versionDigest, previewDigest }),
   dissent: (s: Scope, id: string, version: number, payload: { position: string; rationale: string }) =>
     p<{ dissent: Record<string, unknown>; receipt: Receipt }>(s, `/decisions/${id}/versions/${version}/dissent`, 'decision.dissent', 'DPK', payload, id),
   replay: (s: Scope, id: string, version: number, asOf: string | null) =>

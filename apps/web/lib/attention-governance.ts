@@ -46,7 +46,33 @@ export interface QueueEvaluation {
              breaches: Array<{ item_id: string; signal_class: string; consequence: string; breach: string; deadline?: string | null; acknowledged_at?: string | null }> };
   escalation_latency?: { abstained: boolean; escalations: number; reason?: string; p50_seconds?: number; p90_seconds?: number; max_seconds?: number };
   measures?: Omit<QueueEvaluation, 'measures'>;
+  /* B34 (0090) attention: the RANKING FAIRNESS (AT-44) — reported, gating nothing */
+  ranking_fairness?: RankingFairness;
+  /* end B34 attention */
 }
+/* B34 (0090) attention */
+export interface FairnessClass { items: number; measured: boolean; mean_rank_percentile: number; top_decile_share: number;
+  structural_null_shares: { hours_to_window: number; confidence: number; exposure: number; strategic_relevance: number } }
+export interface Disparity { abstained: boolean; value?: number; classes_measured: number; reason?: string }
+export interface RankingFairness {
+  items: number; gates_nothing: boolean; by_class: Record<string, FairnessClass>; disparity: Disparity;
+  by_consequence_tier: Record<string, { classes: Record<string, { items: number; measured: boolean; mean_rank_percentile: number }>; disparity: Disparity }>;
+  definitions?: Record<string, string>;
+}
+/** The fairness rows in words, class by class (0 = first in the queue, 1 = last); a class under min_sample marked, never hidden. */
+export function fairnessRows(f: RankingFairness | undefined | null): Array<{ signalClass: string; items: number; mean: string; top: string; nulls: string; measured: boolean }> {
+  if (f === undefined || f === null) return [];
+  const pct = (v: number) => `${Math.round(v * 1000) / 10}%`;
+  return Object.entries(f.by_class).sort(([a], [b]) => a.localeCompare(b)).map(([k, c]) => ({
+    signalClass: k, items: c.items, measured: c.measured, mean: c.mean_rank_percentile.toFixed(2), top: pct(c.top_decile_share),
+    nulls: Object.entries(c.structural_null_shares).filter(([, v]) => v > 0).map(([d, v]) => `${d.replace(/_/g, ' ')} ${pct(v)}`).join(' · ') || 'none',
+  }));
+}
+export function disparityWords(d: Disparity | undefined | null): string {
+  if (d === undefined || d === null) return 'not reported';
+  return d.abstained ? `abstained — ${d.reason ?? 'too few classes measured'}` : `${String(d.value)} between ${d.classes_measured} classes (spread of the mean rank percentile)`;
+}
+/* end B34 attention */
 
 const base = (s: Scope) => `/v1/tenants/${s.tenantId}/domains/${s.domainId}`;
 /** The governance routes are made under the purpose `executive` (the reviews' idiom). */

@@ -1,0 +1,84 @@
+THE B34 ACT on eye_demo — 2026-09-28T21:31:45.669Z
+
+B34-0 THE STATE — 0090, the register, the casting, the new personas, the subscriptions, the policy
+  ✓ migration 0090_b34_workflow_gates_commitments.sql applied
+  ✓ the casting read from identity.role_bindings: a.hoffmann (domain_analyst); c.brenner (decision_owner, risk_owner, strategy_owner); j.weber (strategy_owner); l.brandt (decision_authority, decision_owner, opportunity_sponsor, strategy_owner); m.dvorak (collection_manager, executive); n.eriksen (forecast_owner); s.okafor (decision_approver, executive)
+  ✓ the administrator CREATED T. Richter through the governed principal route — role domain_admin
+  ✓ the administrator CREATED K. Lange through the governed principal route — role execution_authority
+  ✓ the register: 50 bound / 0 partial / 0 unbound (B34 adds no interface)
+  · 13 live subscriptions; attention registered for a consumer whose method has since changed
+  ✓ attention: subscription 01a0…56f6be (consumer 7b8fef025c59…, cursor 15031) REVOKED; registered anew as 01a0…a99165 (consumer 1bc9f6d2bdc5…, event types ForecastFitnessChanged | ScenarioCoherenceFailed | EarlyWarningRaised | AttentionPolicyChanged | MaterialChangeRaised | ReviewConvened | ExposureChanged | HealthScoreChanged | CommitmentChanged, owner M. Dvořák, the backlog LEFT)
+  ✓ the administrator REGISTERED the NEW kind commitments: subscription 01a0…d6ebed — role commitment_subscriber, event types GraphChanged, owner L. Brandt, the backlog LEFT
+  ✓ M. Dvořák PUBLISHED attention policy VERSION 6 (changed classes commitment.breach, commitment.due, health.change, opportunity.raised): commitment.breach acknowledged within 2 min, escalated to the executive, notified in_app + email (SYNTHETIC — the local sink); opportunity.raised; health.change; commitment.due
+  ✓ the inputs: the Regensburg objective 01a0…3d1d00 (owner J. Weber); the corridor exposure 01a0…b2cb46 and its MITIGATION case 01a0…9f461d "Mitigate the corridor closure — Regensburg line" (draft, owner C. Brenner); the Morocco opportunity 01a0…a18123; the runs control 01a0…332f38 / reroute 01a0…049267 on the twin 01a0…76f525
+
+B34-W F-P6-14 — a customs expert from a partner firm invited for 14 days; their review escalates to the chief of staff when the deadline passes
+  ✓ L. Brandt OPENED the collaboration workspace 01a0…0321bc on the mitigation case — purpose collaboration.dual-sourcing-review, ceiling internal
+  ✓ L. Brandt ADDED M. Dvořák (the chief of staff) as a reviewer
+  ✓ L. Brandt SHARED the artifact "customs-brief" (internal) in the workspace
+  ✓ L. Brandt INVITED the customs expert (SYNTHETIC partner firm): grant 01a0…6e9ec8 invited, expires 2026-10-12 (14 days), ceiling internal, principal 01a0…4c297a marked EXTERNAL, the invitation mailed demo-mailbox (synthetic: true)
+  ✓ the expert is EXTERNAL (external) and is never an active member (approver, committer, room member, escalation target): is_active_human = false
+  ✓ L. Brandt REQUESTED the expert's review: task 01a0…1b3706 open, deadline in 100 s (SET SHORT FOR THE DEMONSTRATION — said), escalating to M. Dvořák
+
+B34-G F-P6-04 — "only if customs pre-clearance holds": the commitment HELD, the owner DEFERS, the assumption VERIFIED, resumed, committed
+  ✓ J. Weber DECLARED the assumption 01a0…c12d64 "Customs pre-clearance holds for the rerouted consignments" — unverified
+  ✓ C. Brenner DRAFTED and PROPOSED version 1 of the mitigation case (status-quo vs dual-source; action owner L. Brandt; approver S. Okafor) — digest 973ba95ad8d1…
+  ✓ S. Okafor APPROVED version 1 "only if customs pre-clearance holds" (assumption_holds on 01a0…c12d64, at commitment and in monitoring)
+  ✓ L. Brandt PREVIEWED the commitment: would commit false; blockers ["1 approval condition(s) do not hold — the commit would be HELD"]
+  ✓ L. Brandt's COMMITMENT HELD — recorded (commit.held), nothing committed: assumption_holds 01a0…c12d64 holds=false
+  ✓ C. Brenner DEFERRED version 1 with a next review on 2026-10-05 → deferred; a gate.review task opened
+  ✓ J. Weber VERIFIED the assumption (0090 §I — a person's governed act, human-gated, with its reason)
+  ✓ C. Brenner RESUMED the gate → approved
+  ✓ L. Brandt COMMITTED version 1 (C3, the preview cddf057f840a… carried): commitment 01a0…5ab01c — the condition now holds
+
+B34-C F-P6-05 — the tracker, the purchase-request handoff to the SYNTHETIC ERP, the timeline
+  ✓ the tracker SEEDED the root item 1a22…80a564 from the commitment: owner L. Brandt (the action owner), reviewer J. Weber (the objective's owner), open
+  ✓ L. Brandt ACCEPTED the commitment
+  ✓ L. Brandt DECLARED the handoff item 01a0…aab306 resting on the bearings budget 01a0…920f50 (mirrored into the dependencies)
+  ✓ L. Brandt DECLARED the customs deliverable 01a0…b82016 due in 150 s (SET SHORT FOR THE DEMONSTRATION — said)
+  ✓ T. Richter DECLARED the execution target nordwerk-purchasing-demo (active; SYNTHETIC; https://127.0.0.1:3444; the ERP's certificate its trust anchor; the bearer bound BY REFERENCE EYE_DST_NORDWERK_ERP_DEMO)
+  ✓ L. Brandt DRAFTED the purchase-request handoff 01a0…e2438b (two lines; payload digest 7c53ec26bb55…)
+  ✓ L. Brandt issuing their own handoff (no execution authority; the drafter and the committer) REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ K. Lange ISSUED the handoff (C3, human-gated; not the drafter, not the committer): issuing; attempt 1 → transport  — the PRODUCTION egress refuses a loopback target by design (SAID: the B14 precedent; the positive exchange, the partial effect and the compensation are the harness's, phase6-commitments-b34 E2–E4)
+  ✓ THE TRACKER (M. Dvořák): 3 item(s) of this commitment — Customs pre-clearance filed with the bro in_progress; Purchase request: second bearing source  in_progress; Execute: Mitigate the corridor closure — in_progress; summary {"items":3,"overdue":0,"exceptions":0,"with_residual":0,"retask_required":0,"commitments":1}
+  ✓ THE TIMELINE: 13 entries over the lanes governance, commitment, resource, operational
+
+B34-A F-P6-07 — an opportunity, a score change and an overdue commitment enter the queue beside the corridor warning; the act; the escalation to the e-mail sink; ranking fairness
+  ✓ C. Brenner ACCEPTED the Morocco opportunity's v2 (the agent's estimate; the owner decides) → ExposureChanged/assessment_accepted in the same write
+  · A. Hoffmann COMPUTED the health score: partial, aggregate 57.42; 0 change(s) raised (each one HealthScoreChanged — none when nothing moved)
+  · waiting for the customs deliverable's due instant and the attention agent's scheduled tick (the sweep, step 45) — 0.0 min
+  ·   routed: commitment.due "Commitment due: Execute: Mitigate the corridor closure — Regensburg li" → deprioritized, owner L. Brandt
+  ·   routed: commitment.due "Commitment due: Purchase request: second bearing source (SYNTHETIC)" → deprioritized, owner L. Brandt
+  ·   routed: commitment.due "Commitment due: Customs pre-clearance filed with the broker (SYNTHETIC" → deprioritized, owner L. Brandt
+  ·   routed: commitment.due "Commitment due: Purchase request: second bearing source (SYNTHETIC)" → deprioritized, owner L. Brandt
+  ·   routed: opportunity.raised "Opportunity: Alternative supplier in Morocco (sourcing; sponsored)" → deprioritized, owner C. Brenner
+  ·   routed: commitment.due "Commitment due: Customs pre-clearance filed with the broker (SYNTHETIC" → deprioritized, owner L. Brandt
+  ·   routed: commitment.breach "Commitment BREACH: Customs pre-clearance filed with the broker (SYNTHE" → open, owner L. Brandt
+  ·   routed: commitment.breach "Commitment BREACH: Customs pre-clearance filed with the broker (SYNTHE" → open, owner L. Brandt
+  ✓ the COMMITMENT BREACH routed (the tracker's CommitmentChanged read through decision.commitment_item_signal): item 01a0…a22895 for L. Brandt
+  ✓ the OPPORTUNITY routed (ExposureChanged): item 01a0…20bca1 "Opportunity: Alternative supplier in Morocco (sourcing; spon"
+  ✓ THE QUEUE (M. Dvořák) — the live items in rank order: commitment.breach (open); commitment.breach (open); warning.raised (escalated); warning.raised (escalated); source.coverage_loss (escalated); warning.raised (escalated); warning.raised (escalated); warning.raised (escalated); counts {"open":24,"escalated":16,"unrouted":0,"acknowledged":6,"suppressed":0,"deprioritized":10,"closed":1}
+  ✓ M. Dvořák acting on L. Brandt's breach item as if it were theirs (not the item's person) REFUSED — 403 EYE-AUT-001 — attention act rejected: item 01a0e9f0-e434-7c8f-b691-f2a9c7a22895 is routed to decision_owner (owner 01a084f6-991d-7ce9-9370-f985bd4d518d); the acting principal may not act on it
+  ✓ L. Brandt ACTED on the breach item through the governed transition: acted — CMX:c56438ca-1771-4036-8291-3c1f4a81bbc3:extension_proposed (decision.commitment.exception.decide, propose_extension; human-gated)
+  ✓ J. Weber (the item's reviewer) CO-SIGNED the extension → extended
+  · waiting for the breach item's 2-minute acknowledgement window (acting is not acknowledging) and the tick's escalation and delivery — 2.9 min
+  ✓ the unacknowledged COMMITMENT BREACH ESCALATED to the executive: {"state":"escalated","escalations":1}
+  ✓ the escalation's notice DELIVERED through the EMAIL ADAPTER to the local SINK (SYNTHETIC): receipt {"to":"principal-01a084f6-991d-7ce9-9370-f985bd4d518d@synthetic.eye.invalid","note":"SYNTHETIC — delivered to a LOCAL sink on the loopback interface; no email, SMS or Teams message
+  · the local sink received 36 e-mail(s) (SYNTHETIC — no real provider; D6)
+  ✓ M. Dvořák ran the QUEUE EVALUATION — RANKING FAIRNESS (gates nothing): disparity {"value":0.5965,"abstained":false,"classes_measured":10}; by class commitment.due mean 0.3684, forecast.unfit mean 0.5146, warning.raised mean 0.2281, proposal.review mean 0.614, review.convened mean 0.3509, commitment.breach mean 0.0526, opportunity.raised mean 0.4211, scenario.incoherent mean 0.5088, source.coverage_loss mean 0.4971, decision.material_change mean
+
+B34-W (part 2) — the expert's review deadline passed: the tick ESCALATED the task to the chief of staff, who reviews
+  ✓ the review task ESCALATED by the tick (workflow-timers, step 20) when its deadline passed: escalated, level 1, assignee M. Dvořák (the chief of staff)
+  ✓ M. Dvořák REVIEWED it (endorse with conditions) → the task completed (endorse_with_conditions)
+
+B34-X F-P4-13 — the next risk taxonomy version published and ACTIVATED by a second person
+  ✓ M. Dvořák PUBLISHED risk taxonomy version 2 (+ supply_chain.customs) — not yet in force
+  ✓ M. Dvořák activating their own version REFUSED — 403 EYE-AUT-001 — risk taxonomy activation rejected (separation): the publisher of version 2 does not activate it — a second named human does
+  ✓ S. Okafor ACTIVATED taxonomy version 2 (the second person) — now in force
+
+B34-9 THE STATE and the LIMITS
+  · in the ledgers: 10 human tasks, 3 commitment items, 1 execution handoffs, 1 attention acts
+  · the expert's review task at the end: completed, escalation level 1, assignee M. Dvořák
+  · LIMITS said: the customs expert, the purchase lines, the amounts and the ERP are SYNTHETIC; the review deadline, the deliverable's due instant and the opportunity's acknowledgement window are set minutes out so the scheduled ticks cross them during the act; the expert's sign-in, acceptance and scope refusals are the harness's (phase6-workflow-b34 C1 — the invitation token never leaves the API process, by design); the production egress refuses the loopback ERP by design — the positive exchange, the partial effect, the compensation and the co-signed closure are the harness's (phase6-commitments-b34 E2–E4, Z1); the e-mail, SMS and Teams adapters reach LOCAL sinks only (a real provider is D6); the exposure outcome loop, the canonical polarity, the detections and the further dimensions are the harness's (phase6-exposures-b34 E3–E6); the external collaborator's principal is written by the collaboration port (the Phase 0 identity path is frozen — B61 owns the governed route); nothing is cleaned.
+
+ALL SCENES HELD · 351.9 s

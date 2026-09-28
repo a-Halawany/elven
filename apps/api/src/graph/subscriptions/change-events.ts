@@ -580,6 +580,33 @@ export function revisionCommittedEvent(a: { revision: Row; subscriptions: Subscr
   return asRow('GraphChanged', payload);
 }
 /* end B23 revision */
+/* B34 (0090) commitments */
+/**
+ * 0090 (B34, V02-T-117): GraphChanged/objective.changed — an objective REVISED (graph.revise_objective; the answer's versions and
+ * reason) or its OWNER transferred (graph.assign_strategy_owner on an OBJ; the answer's from/to). objects.objectives the objective, no
+ * identities, no relationships, walked: false (the commitments consumer selects the items resting on it by its own read); the typed
+ * `objective` block. Built PURE from the port's answer.
+ */
+export function objectiveChangedEvent(a: { answer: Row; change: 'revised' | 'owner_assigned'; subscriptions: SubscriptionRef[]; actor: string; action: 'graph.objective.revise' | 'graph.strategy.owner.assign'; occurredAt?: string }): OutboxRow {
+  const r = a.answer;
+  const now = a.occurredAt ?? new Date().toISOString();
+  const id = String(r['strategy_object_id']);
+  const payload: GraphChangedPayload = {
+    schema: 'GraphChanged', schema_version: 'v1',
+    change: { kind: 'objective.changed', occurred_at: now, graph_event_id: str(r['graph_event_id']), invalidation_id: null, correction_case_id: null },
+    identities: [],
+    relationships: { edges: [], resolutions: [], dependencies: [] },
+    objects: { ...EMPTY_REACH, objectives: [id], walked: false },
+    temporal: { known_at: now },
+    subscriptions: a.subscriptions,
+    cause: { action: a.action, actor: a.actor, target_type: 'OBJ', target_id: id },
+    objective: a.change === 'revised'
+      ? { objective_id: id, change: 'revised', from_version: Number(r['from_version']), to_version: Number(r['to_version']), owner_from: str(r['owner']), owner_to: str(r['owner']), reason: str(r['reason']) }
+      : { objective_id: id, change: 'owner_assigned', from_version: Number(r['object_version'] ?? 0), to_version: Number(r['object_version'] ?? 0), owner_from: str(r['from']), owner_to: str(r['to']), reason: str(r['reason']) },
+  };
+  return asRow('GraphChanged', payload);
+}
+/* end B34 commitments */
 
 /**
  * The identity roles that mean the ENTITY ITSELF (or a relationship it is an end of) changed — as opposed to

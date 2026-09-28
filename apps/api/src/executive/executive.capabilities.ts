@@ -134,6 +134,12 @@ export interface ExecutiveReads {
   readHealthChanges(): any;
   readHealthChangeEvents(): any;
   /* end B32 health */
+  /* B34 (0090) attention: the register an opportunity signal is read from, the act registry and the acts. */
+  readExposures(): any;
+  readExposureVersions(): any;
+  readAttentionActRegistry(): any;
+  readAttentionItemActs(): any;
+  /* end B34 attention */
   isMember(a: { roomId: string; principal: string }): Promise<boolean>;
   liveApprovals(a: { packageId: string; version: number }): Promise<Array<{ approval_id: string; approver_principal_id: string; expires_at: string }>>;
   /** The approvals that STOOD at an instant, the approver's eligibility reconstructed then (0049). */
@@ -184,6 +190,9 @@ export interface AttentionSubscriberWrites extends ExecutiveReads {
      the real inputs with their basis, NULL where none exists; the windows on the database clock). */
   attentionDimensions(a: { tenantId: string; domainId: string; signalClass: string; subjectId: string; hint: Record<string, unknown> }): Promise<Record<string, unknown>>;
   /* end B24 materiality */
+  /* B34 (0090) attention: a commitment item READ THROUGH THE SIGNAL CONTRACT ONLY (decision.commitment_item_signal, 0090 §0.7) — null when it knows no such item. */
+  commitmentItemSignal(a: { tenantId: string; domainId: string; itemId: string }): Promise<Record<string, unknown> | null>;
+  /* end B34 attention */
 }
 
 /* B23 (0084) attention: the governed review's ports (L10-I03) — each asserts its own bound action. */
@@ -232,6 +241,12 @@ export interface HealthWrites extends ExecutiveReads {
   decideChange(a: { changeId: string; tenantId: string; domainId: string; decision: string; note: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
 }
 /* end B32 health */
+/* B34 (0090) attention: THE ACT — launched and settled under executive.attention.item.act (human-gated); the governed action is its own write. */
+export interface AttentionActWrites extends ExecutiveReads {
+  launchAct(a: { actId: string; itemId: string; tenantId: string; domainId: string; actionKey: string; rationale: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+  settleAct(a: { actId: string; tenantId: string; domainId: string; outcome: 'acted' | 'refused'; effectRef: string | null; effect: Record<string, unknown> | null; refusal: string | null; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+}
+/* end B34 attention */
 
 export interface RoomWrites extends ExecutiveReads {
   openRoom(a: { roomId: string; tenantId: string; domainId: string; packageId: string; title: string; reviewEveryDays: number; actor: string; eventId: string; correlationId: string }): Promise<{ room_id: string; next_review_at: string }>;
@@ -252,7 +267,7 @@ export interface BriefingWrites extends ExecutiveReads {
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 class ExecutiveCapabilityImpl extends ExecutiveCore implements RoomWrites, BriefingWrites, AgentWrites, AttentionWrites, AttentionSubscriberWrites, ReviewWrites, /* B24 (0086) timer */ AttentionTickWrites /* end B24 timer */,
-  /* B24 (0086) governance */ AttentionGovernanceWrites /* end B24 governance */, /* B32 (0089) health */ HealthWrites /* end B32 health */ {
+  /* B24 (0086) governance */ AttentionGovernanceWrites /* end B24 governance */, /* B32 (0089) health */ HealthWrites /* end B32 health */, /* B34 (0090) attention */ AttentionActWrites /* end B34 attention */ {
   constructor(tx: Tx, action: string) { super(tx, action); }
   readRooms(): any { return this.from('executive.rooms_current'); }
   readMembers(): any { return this.from('executive.room_members'); }
@@ -326,6 +341,22 @@ class ExecutiveCapabilityImpl extends ExecutiveCore implements RoomWrites, Brief
   readHealthChanges(): any { return this.from('executive.health_score_changes'); }
   readHealthChangeEvents(): any { return this.from('executive.health_score_change_events'); }
   /* end B32 health */
+  /* B34 (0090) attention */
+  readExposures(): any { return this.from('prediction.exposure_current'); }
+  readExposureVersions(): any { return this.from('prediction.exposure_versions'); }
+  readAttentionActRegistry(): any { return this.from('executive.attention_act_registry'); }
+  readAttentionItemActs(): any { return this.from('executive.attention_item_acts'); }
+  async commitmentItemSignal(a: Parameters<AttentionSubscriberWrites['commitmentItemSignal']>[0]) {
+    const rows = await this.call<{ r: Record<string, unknown> | null }>(sql`select decision.commitment_item_signal(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.itemId}::uuid) as r`);
+    return rows[0]?.r ?? null;
+  }
+  async launchAct(a: Parameters<AttentionActWrites['launchAct']>[0]) {
+    return this.one(sql`select executive.launch_attention_act(${a.actId}::uuid, ${a.itemId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.actionKey}, ${a.rationale}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'launch_attention_act');
+  }
+  async settleAct(a: Parameters<AttentionActWrites['settleAct']>[0]) {
+    return this.one(sql`select executive.act_on_attention_item(${a.actId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.outcome}, ${a.effectRef}, ${a.effect === null ? null : JSON.stringify(a.effect)}::jsonb, ${a.refusal}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'act_on_attention_item');
+  }
+  /* end B34 attention */
   async projectionState(): Promise<Array<Record<string, unknown>>> {
     return this.call<Record<string, unknown>>(sql`select * from graph.projection_state()`);
   }
@@ -587,4 +618,7 @@ export const ExecutiveCapability = {
   /* B32 (0089) health: the Strategic Health Score's definition, computation and change ports (0089 §H). */
   health(tx: Tx, action: string): HealthWrites { return new ExecutiveCapabilityImpl(tx, action); },
   /* end B32 health */
+  /* B34 (0090) attention: the act transition (launch, settle) under executive.attention.item.act. */
+  attentionAct(tx: Tx, action: string): AttentionActWrites { return new ExecutiveCapabilityImpl(tx, action); },
+  /* end B34 attention */
 };

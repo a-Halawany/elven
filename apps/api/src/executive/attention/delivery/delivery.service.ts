@@ -23,6 +23,11 @@ import { AttentionTickRegistry, type AttentionTickContext } from '../tick.js';
 import type { ChannelAdapter, ChannelResult, DeliveryMessage } from './channel.js';
 import { InAppChannel } from './in-app.channel.js';
 import { DemoMailboxChannel } from './demo-mailbox.channel.js';
+/* B34 (0090) attention: the SYNTHETIC email / sms / teams adapters (local sinks only) */
+import { EmailChannel } from './email.channel.js';
+import { SmsChannel, TeamsChannel } from './webhook.channel.js';
+import { SYNTHETIC_SINK_NOTE } from './local-sink.js';
+/* end B34 attention */
 
 type Row = Record<string, unknown>;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -44,6 +49,7 @@ export function attentionMessage(c: Row): { subject: string; body: string } {
     `Attempt ${String(c['attempt'])} of ${String(c['max_attempts'])} on ${String(c['channel'])}.`,
     'Open the attention queue to acknowledge it: this message is a delivery, and its receipt is not your acknowledgement.',
     ...(c['channel'] === 'demo-mailbox' ? [SYNTHETIC_NOTE] : []),
+    /* B34 (0090) attention */ ...(['email', 'sms', 'teams'].includes(String(c['channel'])) ? [SYNTHETIC_SINK_NOTE] : []) /* end B34 attention */,
   ].join('\n');
   return { subject, body };
 }
@@ -52,9 +58,15 @@ export function attentionMessage(c: Row): { subject: string; body: string } {
 export class DeliveryService implements OnModuleInit {
   private readonly channels = new Map<string, ChannelAdapter>();
 
-  constructor(@Inject(EYE_CONFIG) private readonly cfg: EyeConfig, private readonly ticks: AttentionTickRegistry, inApp: InAppChannel, demoMailbox: DemoMailboxChannel) {
+  constructor(@Inject(EYE_CONFIG) private readonly cfg: EyeConfig, private readonly ticks: AttentionTickRegistry, inApp: InAppChannel, demoMailbox: DemoMailboxChannel,
+              /* B34 (0090) attention */ private readonly email: EmailChannel, private readonly sms: SmsChannel, private readonly teams: TeamsChannel /* end B34 attention */) {
     this.channels.set(inApp.name, inApp);
     this.channels.set(demoMailbox.name, demoMailbox);
+    /* B34 (0090) attention */
+    this.channels.set(email.name, email);
+    this.channels.set(sms.name, sms);
+    this.channels.set(teams.name, teams);
+    /* end B34 attention */
   }
 
   /** The DELIVERIES step (order 30): plan, then drain — both in the tick's own write. */
@@ -63,10 +75,12 @@ export class DeliveryService implements OnModuleInit {
   }
 
   /** TEST CONTROL ONLY: replace a channel's adapter with a double (a failing one), or restore the product's with null. */
-  useChannelForTests(name: 'in_app' | 'demo-mailbox', adapter: ChannelAdapter | null): void {
+  useChannelForTests(name: 'in_app' | 'demo-mailbox' | /* B34 (0090) attention */ 'email' | 'sms' | 'teams', adapter: ChannelAdapter | null): void {
     if (this.cfg['eye.runtime.env'] !== 'test') throw new Error('useChannelForTests is available only in the test runtime');
     if (adapter === null) {
-      this.channels.set(name, name === 'in_app' ? new InAppChannel() : new DemoMailboxChannel());
+      /* B34 (0090) attention: the product's own adapter restored */
+      const own: Record<string, ChannelAdapter> = { email: this.email, sms: this.sms, teams: this.teams };
+      this.channels.set(name, own[name] ?? (name === 'in_app' ? new InAppChannel() : new DemoMailboxChannel()));
       return;
     }
     this.channels.set(name, adapter);

@@ -78,7 +78,7 @@ import { SubscriptionDispatcherService } from '../../src/graph/subscriptions/sub
 import { CONSUMER_EVENT_TYPES, CONSUMER_KINDS, type ConsumerKind } from '../../src/graph/subscriptions/graph-change.js';
 /* B28 (0088): the `warnings` and `stream-rules` kinds are exercised by their own harnesses (phase6-warnings-b28, phase6-streams-b28); this
    file registers and counts the kinds it was written for. */
-const PRE_B28_KINDS = CONSUMER_KINDS.filter((k) => k !== 'warnings' && k !== 'stream-rules');
+const PRE_B28_KINDS = CONSUMER_KINDS.filter((k) => k !== 'warnings' && k !== 'stream-rules' && k !== 'commitments'); // B34: the commitments kind is registered by its own harness
 /* end B28 */
 import { asObservationRefusal } from '../../src/observation/observation-errors.js';
 import { SUPPLY_FLOW_IMPLEMENTATION_DIGEST } from '../../src/twin/models/supply-flow.digest.js';
@@ -491,7 +491,7 @@ describe('S1 · the seven announced events, each in its transition\'s own transa
       choice: { option_key: 'reroute', action_owner: w.owner.principalId, decision_deadline: '2024-01-19', outcome_criteria: 1 },
       commitments: [{ strategy_object_id: cm.commitmentId, object_type: 'CMT', rests_on: { decision: w.decisionId, objectives: [w.objectiveId], runs: [rerouteV2], baseline_run_id: ctlV2 } }],
       monitoring_conditions: expect.arrayContaining([expect.objectContaining({ kind: 'indicator', ref: w.indicatorId }), expect.objectContaining({ kind: 'review' })]),
-      execution_handoff: { bound_action: 'decision.commit', op_class: 'C3', interface: null, statement: expect.stringMatching(/no execution interface exists/) },
+      execution_handoff: { bound_action: 'decision.commit', op_class: 'C3', interface: 'decision.execution.issue', statement: expect.stringMatching(/governed handoff/) }, // B34 (0090): the execution interface exists
       replay_snapshot: { version_digest: versionDigest1, cmt_header_digest: expect.stringMatching(HEX64), recorded_on_demand: 'decision.replay' },
       reopened_from: null, cause: { action: 'decision.commit', actor: w.authority.principalId, target_type: 'CMT', target_id: cm.commitmentId },
     });

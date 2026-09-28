@@ -4,3 +4,6 @@
  * the decision/executive imports where they were.
  */
 export { CLEARANCE_RANK, bindingReaches, clearanceOf, covers, assertClearance, assertPurpose, denyRead, type TargetContext } from '../shared/clearance.js';
+/* B34 (0090) workflow: the external collaborator's clearance (its grant's audience ceiling) */
+export { EXTERNAL_ROLE, isExternal } from '../shared/clearance.js';
+/* end B34 workflow */

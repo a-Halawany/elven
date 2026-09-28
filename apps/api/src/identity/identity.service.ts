@@ -74,6 +74,11 @@ export class IdentityService {
     const ok = await argon2.verify(row.secret_hash, password).catch(() => false);
     if (!ok) return null;
     const mustRotate = row.credential_status === 'must_rotate';
+    /* B34 (0090) workflow: an ACTIVE credential past its expiry is refused. Only an external collaborator's credential carries one (it
+       expires with its grant, or with its invitation window); a member's active credential has none (0008: expiry is otherwise only the
+       must_rotate bootstrap secret's, handled below). */
+    if (!mustRotate && row.credential_expires_at !== null && new Date(row.credential_expires_at) <= new Date()) return null;
+    /* end B34 workflow */
     const expiredUnused =
       mustRotate && row.credential_expires_at !== null && new Date(row.credential_expires_at) < new Date();
     return { principalId: row.principal_id, credentialId: row.credential_id, mustRotate, expiredUnused };

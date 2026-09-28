@@ -136,10 +136,17 @@ export function decisionCalls(h: Phase4Harness, w: DecisionWorld) {
   const get = (pkg: string, as = w.owner) => dc.get(h.req(as, 'decision.read', 'DPK', pkg, 'decision'), T(), D(), pkg) as Promise<{ package: Record<string, unknown> & { versions: Array<Record<string, unknown> & { options: Array<Record<string, unknown>>; dissent: unknown[]; approvals: unknown[] }>; commitment: Record<string, unknown> | null } }>;
   const approve = (pkg: string, v: number, payload: Record<string, unknown>, as = w.approver) => dc.approve(h.req(as, 'decision.approve', 'APR', null, 'decision'), T(), D(), pkg, String(v), { payload }) as Promise<{ approval: { approvalId: string; state: string; liveApprovals: number; quorum: number; expiresAt: string; eligibleBy: string } }>;
   const revoke = (pkg: string, approvalId: string, reason: string, as = w.approver) => dc.revoke(h.req(as, 'decision.approve.revoke', 'APR', approvalId, 'decision'), T(), D(), pkg, approvalId, { payload: { reason } }) as Promise<{ revocation: { state: string; liveApprovals: number; quorum: number } }>;
-  /** The commit as the product sends it: the envelope says C2 like every other write; the ROUTE pins C3. */
-  const commit = (pkg: string, v: number, versionDigest: string, as = w.authority, consequence: 'C2' | 'C3' | 'C4' = 'C2') => {
+  /** B34 (0090): the committing authority's consequence preview (HX-13) — the commit carries its digest. */
+  const preview = (pkg: string, v: number, versionDigest: string, as = w.authority) => dc.preview(h.req(as, 'decision.commit.preview', 'DPK', pkg, 'decision'), T(), D(), pkg, String(v), { payload: { versionDigest } }) as Promise<{ preview: { preview_id: string; preview_digest: string; preview: Record<string, unknown> } }>;
+  /**
+   * The commit as the product sends it: the envelope says C2 like every other write; the ROUTE pins C3. B34 (0090): the product previews
+   * first and the commit carries the preview's digest — here the preview is taken as the committer (a refused preview leaves the commit's
+   * own refusal to answer, which is what the suites pin); `previewDigest` given (a string, or null for none) skips it.
+   */
+  const commit = async (pkg: string, v: number, versionDigest: string, as = w.authority, consequence: 'C2' | 'C3' | 'C4' = 'C2', previewDigest?: string | null) => {
+    const pd = previewDigest !== undefined ? previewDigest : await preview(pkg, v, versionDigest, as).then((r) => r.preview.preview_digest, () => null);
     const env = { ...h.env(as, 'decision.commit', 'CMT', null, 'decision'), consequence_class: consequence };
-    return dc.commit({ eyeEnvelope: env, eyePrincipal: as } as never, T(), D(), pkg, String(v), { payload: { versionDigest } }) as Promise<{ commitment: { commitmentId: string; approvals: Array<{ approval_id: string; approver: string }>; opClass: string; decidedAt: string; title: string } }>;
+    return dc.commit({ eyeEnvelope: env, eyePrincipal: as } as never, T(), D(), pkg, String(v), { payload: { versionDigest, previewDigest: pd ?? '' } }) as Promise<{ commitment: { commitmentId: string; approvals: Array<{ approval_id: string; approver: string }>; opClass: string; decidedAt: string; title: string }; held?: Record<string, unknown> }>;
   };
   const validTerms = (over: Record<string, unknown> = {}) => ({
     objectives: [w.objectiveId], constraints: ['no air freight above 60 t/week'],
@@ -208,7 +215,7 @@ export function decisionCalls(h: Phase4Harness, w: DecisionWorld) {
   const compose = (payload: Record<string, unknown>, as = w.executive) => ec.compose(h.req(as, 'briefing.compose', 'BRF', null, 'briefing'), T(), D(), { payload }) as Promise<{ briefing: { briefingId: string; contentDigest: string; watermark: Record<string, unknown>; items: Array<Record<string, unknown>>; windows: Array<Record<string, unknown>>; sourceStates: Array<Record<string, unknown>>; sources: string[]; degraded: boolean; narrative: string | null; narrativeCites: string[]; composedVia: string } }>;
   const getBriefing = (id: string, as = w.executive) => ec.getBriefing(h.req(as, 'briefing.read', 'BRF', id, 'briefing'), T(), D(), id) as Promise<{ briefing: Record<string, unknown> }>;
   const listBriefings = (roomId: string | null, as = w.executive) => ec.listBriefings(h.req(as, 'briefing.read', 'BRF', null, 'briefing'), T(), D(), { payload: { roomId } }) as Promise<{ briefings: Array<Record<string, unknown>> }>;
-  return { declare, open, option, terms, choice, propose, dissent, withdraw, get, approve, revoke, commit, replay, replays, validTerms, validChoice, fullDraft, proposed, committed,
+  return { preview, declare, open, option, terms, choice, propose, dissent, withdraw, get, approve, revoke, commit, replay, replays, validTerms, validChoice, fullDraft, proposed, committed,
            openRoom, membership, cadence, review, getRoom, listRooms, compose, getBriefing, listBriefings, monitor, outcome, close, outcomes,
            registerAgent, revokeAgent, listAgents, runAgent, scheduleRoom, report, workflow };
 }

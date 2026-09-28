@@ -119,8 +119,12 @@ export interface CommitWrites extends DecisionReads {
   admitObject(header: unknown, payload: unknown, digest: string): Promise<{ contentDigest: string }>;
   /** 0078 (B18): a package reopened, re-proposed and re-approved commits ANEW — a second commitment row; `reopened_from` says so. */
   commitPackage(a: { commitmentId: string; tenantId: string; domainId: string; packageId: string; version: number; committer: string; versionDigest: string; headerDigest: string;
-                     title: string; statement: string; eventId: string; correlationId: string }):
-    Promise<{ commitment_id: string; approvals: Array<{ approval_id: string; approver: string }>; op_class: string; decided_at: string; policy_decision_id: string | null; reopened_from?: Record<string, unknown> | null }>;
+                     title: string; statement: string; eventId: string; correlationId: string; /* B34 (0090) gates */ previewDigest: string }):
+    Promise<{ commitment_id: string; approvals: Array<{ approval_id: string; approver: string }>; op_class: string; decided_at: string; policy_decision_id: string | null; reopened_from?: Record<string, unknown> | null;
+              /* B34 (0090) gates */ preview_digest?: string; overrides?: unknown[] }>;
+  /* B34 (0090) gates: THE HOLD, recorded before the commitment is tried (decision.hold_check, under decision.commit) — commit.held with the failed conditions */
+  holdCheck(a: { tenantId: string; domainId: string; packageId: string; version: number; actor: string; eventId: string; correlationId: string }): Promise<{ held: boolean; failed?: unknown[]; conditions: unknown[]; event_id?: string }>;
+  /* end B34 gates */
 }
 /** B18 (0078, L9-I05): the REOPEN — the package owner re-enters a committed decision's lifecycle on a RECORDED cause (an input.invalidated note after the commitment, or a breach of the committed version), by its id. */
 export interface ReopenWrites extends DecisionReads {
@@ -133,6 +137,8 @@ export interface ReplayWrites extends DecisionReads {
   replayLayers(a: { packageId: string; version: number; asOf: string | null }): Promise<Record<string, unknown>>;
   recordReplay(a: { replayId: string; tenantId: string; domainId: string; packageId: string; version: number; asOf: string; contentDigest: string; headerDigest: string;
                     reader: string; purpose: string; unavailable: unknown[]; summary: Record<string, unknown>; eventId: string; correlationId: string }): Promise<void>;
+  /** B34 (0090) gates: the policy revisions and control decisions IN FORCE at an instant (the replay's decision instant). */
+  controlsAsOf(a: { tenantId: string; domainId: string; at: string }): Promise<Array<Record<string, unknown>>>;
 }
 export interface MonitorWrites extends DecisionReads {
   evaluateConditions(a: { tenantId: string; domainId: string; packageId: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
@@ -310,11 +316,22 @@ class DecisionCapabilityImpl extends DecisionCore implements DeclareWrites, Vers
   async commitPackage(a: Parameters<CommitWrites['commitPackage']>[0]) {
     const rows = await this.call<{ r: { commitment_id: string; approvals: Array<{ approval_id: string; approver: string }>; op_class: string; decided_at: string; policy_decision_id: string | null; reopened_from?: Record<string, unknown> | null } }>(sql`select decision.commit_package(
       ${a.commitmentId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.packageId}::uuid, ${a.version}::int, ${a.committer}::uuid, ${a.versionDigest}, ${a.headerDigest},
-      ${a.title}, ${a.statement}, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`);
+      ${a.title}, ${a.statement}, ${a.eventId}::uuid, ${a.correlationId}::uuid, ${a.previewDigest}) as r`);
     const r = rows[0]?.r;
     if (r === undefined) throw new Error('commitment returned no row');
     return r;
   }
+  /* B34 (0090) gates */
+  async holdCheck(a: Parameters<CommitWrites['holdCheck']>[0]) {
+    const rows = await this.call<{ r: { held: boolean; failed?: unknown[]; conditions: unknown[]; event_id?: string } }>(sql`select decision.hold_check(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.packageId}::uuid,
+      ${a.version}::int, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`);
+    const r = rows[0]?.r; if (r === undefined) throw new Error('hold_check returned no row'); return r;
+  }
+  async controlsAsOf(a: { tenantId: string; domainId: string; at: string }): Promise<Array<Record<string, unknown>>> {
+    const rows = await this.call<{ c: Array<Record<string, unknown>> }>(sql`select decision.control_decisions_as_of(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.at}::timestamptz) as c`);
+    return rows[0]?.c ?? [];
+  }
+  /* end B34 gates */
   async withdrawPackage(a: Parameters<WithdrawWrites['withdrawPackage']>[0]): Promise<void> {
     await this.call(sql`select decision.withdraw_package(${a.packageId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
   }

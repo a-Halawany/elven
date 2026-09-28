@@ -39,6 +39,9 @@ import { DeprioritizedPanel } from './deprioritized-panel';
 /* B24 (0086) governance: suppression approval, item delegation, dispositions, the queue evaluated */
 import { SuppressionPanel } from './suppression-panel';
 import { EvaluationPanel } from './evaluation-panel';
+/* B34 (0090) attention */
+import { ActPanel } from './act-panel';
+/* end B34 attention */
 import { EVALUATOR_ROLES } from '../../../lib/attention-governance';
 /* end B24 governance */
 /* B28 (0088) remediation: the remediation of a source's coverage loss, opened from its coverage-loss item */
@@ -280,6 +283,9 @@ export default function AttentionPage() {
               {/* B24 (0086) timer */}
               <DeliveriesPanel scope={scope} itemId={detail.item_id} me={me} refreshKey={`${detail.updated_at}|${detail.acknowledged_at ?? ''}`} />
               {/* end B24 timer */}
+              {/* B34 (0090) attention: the act transition from the item (the registry's acts of its class; health.change has none) */}
+              <ActPanel scope={scope} item={{ item_id: detail.item_id, signal_class: detail.signal_class, state: detail.state, title: detail.title, subject_id: detail.subject_id }} />
+              {/* end B34 attention */}
 
               <p style={muted}>
                 The owner or a holder of a routed role acts on an item. The server also admits domain_admin and platform_admin, and refuses

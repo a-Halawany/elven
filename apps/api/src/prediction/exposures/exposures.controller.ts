@@ -28,10 +28,13 @@ import { graphChangedEvent } from '../../graph/subscriptions/change-events.js';
 import { EMPTY_REACH, type ReachedObjects } from '../../graph/subscriptions/graph-change.js';
 import { DecisionCapability } from '../../decision/decision.capabilities.js';
 import { PackageService, validatePackageIntake } from '../../decision/packages/package.service.js';
-import { ExposuresCapability } from './exposures.capabilities.js';
+import { ExposuresCapability, type ExposureReads } from './exposures.capabilities.js';
+import { exposureChangedEvent } from './exposure-events.js';
+import type { ExposureChangeKind } from '../../executive/attention/signal-contracts.js';
 import {
   ExposuresService, validateAccept, validateAggregate, validateAppetite, validateAssess, validateClose, validateControl, validateCorrelation, validateHypothesis,
   validateOpenDecision, validateReason, validateRegister, validateSponsor, validateTaxonomy, type DecisionIntake,
+  /* B34 (0090) */ validateActivate, validateOutcomeReview, validateOwnerResolve, validateScenarioLink,
 } from './exposures.service.js';
 
 type Row = Record<string, unknown>;
@@ -67,6 +70,10 @@ export class ExposuresController {
   /** A further governed write of the same request: its own action, message and target — audited as itself. */
   private chained(envelope: Envelope, action: string, objectType: string, objectId: string | null): Envelope {
     return { ...envelope, action, message_id: newId(), object_type: objectType, object_id: objectId } as Envelope;
+  }
+  /** B34 (0090): ExposureChanged@v1 described in the same governed write as the port that changed the record (null: nothing changed). */
+  private changed(cap: ExposureReads, exposureId: string, kind: ExposureChangeKind, envelope: Envelope, action: string, principal: AuthenticatedPrincipal) {
+    return exposureChangedEvent(cap, { exposureId, kind, correlationId: envelope.correlation_id, action, actor: principal.principalId });
   }
 
   // ───────────────────────── the static routes FIRST (a path id never shadows them) ─────────────────────────
@@ -116,6 +123,19 @@ export class ExposuresController {
                                targetType: 'RSK', targetId: null, targetVersion: null, outboxEvent: null }));
     return { taxonomy: out.result, receipt: receipt(out) };
   }
+
+  /* B34 (0090) exposures: the ACTIVATION — a published version is in force once a second named member activates it (human-gated). */
+  @Post('/exposures/taxonomy/activate')
+  async activateTaxonomy(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: Row }) {
+    const { envelope, principal } = ctx(req);
+    const intake = validateActivate(body.payload ?? {}, envelope.correlation_id);
+    const activationId = newId();
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'prediction.exposure.taxonomy.activate', 'RSK', null), ExposuresCapability.activate,
+      async (cap, scope) => ({ result: await cap.activateTaxonomy({ activationId, tenantId: scope.tenantId as string, domainId: scope.domainId as string, ...intake, actor: principal.principalId, correlationId: envelope.correlation_id }),
+                               targetType: 'RSK', targetId: null, targetVersion: String(intake.version), outboxEvent: null }));
+    return { activation: out.result, receipt: receipt(out) };
+  }
+  /* end B34 exposures */
 
   @Post('/exposures/appetites/approve')
   async approveAppetite(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: Row }) {
@@ -203,7 +223,8 @@ export class ExposuresController {
     const reason = validateReason(body.payload ?? {}, envelope.correlation_id, 'a challenge');
     const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'prediction.exposure.contest', 'RSK', id), ExposuresCapability.contest,
       async (cap, scope) => ({ result: await cap.contest({ exposureId: id, tenantId: scope.tenantId as string, domainId: scope.domainId as string, version: v, reason, actor: principal.principalId, correlationId: envelope.correlation_id }),
-                               targetType: 'RSK', targetId: id, targetVersion: String(v), outboxEvent: null }));
+                               targetType: 'RSK', targetId: id, targetVersion: String(v),
+                               outboxEvent: await this.changed(cap, id, 'contested', envelope, 'prediction.exposure.contest', principal) }));
     return { contest: out.result, receipt: receipt(out) };
   }
 
@@ -220,7 +241,8 @@ export class ExposuresController {
     const intake = validateAccept(body.payload ?? {}, envelope.correlation_id);
     const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'prediction.exposure.accept', 'RSK', id), ExposuresCapability.accept,
       async (cap, scope) => ({ result: await cap.accept({ exposureId: id, tenantId: scope.tenantId as string, domainId: scope.domainId as string, version: v, ...intake, actor: principal.principalId, correlationId: envelope.correlation_id }),
-                               targetType: 'RSK', targetId: id, targetVersion: String(v), outboxEvent: null }));
+                               targetType: 'RSK', targetId: id, targetVersion: String(v),
+                               outboxEvent: await this.changed(cap, id, 'assessment_accepted', envelope, 'prediction.exposure.accept', principal) }));
     const routing = out.result['route_due'] === true ? await this.routeBreach(envelope, principal, tenantId, domainId, id) : { state: 'not_due' };
     return { acceptance: out.result, routing, receipt: receipt(out) };
   }
@@ -245,7 +267,8 @@ export class ExposuresController {
     const id = idOr404(exposureId, 'exposure', envelope.correlation_id);
     const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'prediction.exposure.route', 'RSK', id), ExposuresCapability.route,
       async (cap, scope) => ({ result: await cap.route({ exposureId: id, tenantId: scope.tenantId as string, domainId: scope.domainId as string, actor: principal.principalId, correlationId: envelope.correlation_id }),
-                               targetType: 'RSK', targetId: id, targetVersion: null, outboxEvent: null }));
+                               targetType: 'RSK', targetId: id, targetVersion: null,
+                               outboxEvent: await this.changed(cap, id, 'appetite_breached', envelope, 'prediction.exposure.route', principal) }));
     return { routing: out.result, receipt: receipt(out) };
   }
 
@@ -257,7 +280,8 @@ export class ExposuresController {
     const hypothesisId = newId();
     const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'prediction.exposure.hypothesis.declare', 'RSK', id), ExposuresCapability.hypothesis,
       async (cap, scope) => ({ result: await cap.declareHypothesis({ hypothesisId, exposureId: id, tenantId: scope.tenantId as string, domainId: scope.domainId as string, ...intake, actor: principal.principalId, correlationId: envelope.correlation_id }),
-                               targetType: 'RSK', targetId: id, targetVersion: null, outboxEvent: null }));
+                               targetType: 'RSK', targetId: id, targetVersion: null,
+                               outboxEvent: await this.changed(cap, id, 'hypothesis_declared', envelope, 'prediction.exposure.hypothesis.declare', principal) }));
     return { hypothesis: out.result, receipt: receipt(out) };
   }
 
@@ -276,7 +300,8 @@ export class ExposuresController {
     const intake = validateSponsor(body.payload ?? {}, envelope.correlation_id, title);
     const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'prediction.exposure.sponsor', 'RSK', id), ExposuresCapability.sponsor,
       async (cap, scope) => ({ result: await cap.sponsor({ exposureId: id, tenantId: scope.tenantId as string, domainId: scope.domainId as string, version: v, digest: intake.digest, terms: intake.terms, actor: principal.principalId, correlationId: envelope.correlation_id }),
-                               targetType: 'RSK', targetId: id, targetVersion: String(v), outboxEvent: null }));
+                               targetType: 'RSK', targetId: id, targetVersion: String(v),
+                               outboxEvent: await this.changed(cap, id, 'sponsored', envelope, 'prediction.exposure.sponsor', principal) }));
     const objective = typeof intake.terms['objective_id'] === 'string' ? String(intake.terms['objective_id']) : null;
     let evaluation: Row;
     try {
@@ -308,6 +333,53 @@ export class ExposuresController {
     }
   }
 
+  /* B34 (0090) exposures ───────────────────────── */
+  /** A SCENARIO linked to the exposure (materializes_in | stresses | relieves) with its rationale — once per pair. */
+  @Post('/exposures/:exposureId/scenarios/link')
+  async linkScenario(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('exposureId') exposureId: string, @Body() body: { payload?: Row }) {
+    const { envelope, principal } = ctx(req);
+    const id = idOr404(exposureId, 'exposure', envelope.correlation_id);
+    const intake = validateScenarioLink(body.payload ?? {}, envelope.correlation_id);
+    const linkId = newId();
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'prediction.exposure.scenario.link', 'RSK', id), ExposuresCapability.scenarioLink,
+      async (cap, scope) => ({ result: await cap.linkScenario({ linkId, exposureId: id, tenantId: scope.tenantId as string, domainId: scope.domainId as string, ...intake, actor: principal.principalId, correlationId: envelope.correlation_id }),
+                               targetType: 'RSK', targetId: id, targetVersion: null, outboxEvent: null }));
+    return { link: out.result, receipt: receipt(out) };
+  }
+
+  /**
+   * THE OUTCOME LOOP (JRN-08 monitor → outcome, JRN-09 learn, AI-52-005): the owner (or the sponsor) reviews the OUTCOMES the response's
+   * decision recorded (decision.outcomes, the decision module's own record) against the exposure — the effect judged, the residual computed
+   * again and its verdict (stands | reassess | close), the lesson recorded — and ExposureChanged(outcome_recorded) in the same write.
+   */
+  @Post('/exposures/:exposureId/outcomes/review')
+  async reviewOutcome(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('exposureId') exposureId: string, @Body() body: { payload?: Row }) {
+    const { envelope, principal } = ctx(req);
+    const id = idOr404(exposureId, 'exposure', envelope.correlation_id);
+    const intake = validateOutcomeReview(body.payload ?? {}, envelope.correlation_id);
+    const reviewId = newId();
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'prediction.exposure.outcome.review', 'RSK', id), ExposuresCapability.outcomeReview,
+      async (cap, scope) => ({ result: await cap.reviewOutcome({ reviewId, exposureId: id, tenantId: scope.tenantId as string, domainId: scope.domainId as string, ...intake, actor: principal.principalId, correlationId: envelope.correlation_id }),
+                               targetType: 'RSK', targetId: id, targetVersion: null,
+                               outboxEvent: await this.changed(cap, id, 'outcome_recorded', envelope, 'prediction.exposure.outcome.review', principal) }));
+    // the residual reviewed still outside appetite is routed as the acceptance's is (its own write; a failure answers `owed`)
+    const routing = out.result['route_due'] === true ? await this.routeBreach(envelope, principal, tenantId, domainId, id) : { state: 'not_due' };
+    return { review: out.result, routing, receipt: receipt(out) };
+  }
+
+  /** OWNER RESOLUTION: an exposure whose owner is missing or no longer an active risk owner is re-owned by a named resolver (a domain administrator). */
+  @Post('/exposures/:exposureId/owner/resolve')
+  async resolveOwner(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('exposureId') exposureId: string, @Body() body: { payload?: Row }) {
+    const { envelope, principal } = ctx(req);
+    const id = idOr404(exposureId, 'exposure', envelope.correlation_id);
+    const intake = validateOwnerResolve(body.payload ?? {}, envelope.correlation_id);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'prediction.exposure.owner.resolve', 'RSK', id), ExposuresCapability.ownerResolve,
+      async (cap, scope) => ({ result: await cap.resolveOwner({ exposureId: id, tenantId: scope.tenantId as string, domainId: scope.domainId as string, ...intake, actor: principal.principalId, correlationId: envelope.correlation_id }),
+                               targetType: 'RSK', targetId: id, targetVersion: null, outboxEvent: null }));
+    return { resolution: out.result, receipt: receipt(out) };
+  }
+  /* end B34 exposures */
+
   @Post('/exposures/:exposureId/close')
   async close(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('exposureId') exposureId: string, @Body() body: { payload?: Row }) {
     const { envelope, principal } = ctx(req);
@@ -315,7 +387,8 @@ export class ExposuresController {
     const intake = validateClose(body.payload ?? {}, envelope.correlation_id);
     const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'prediction.exposure.close', 'RSK', id), ExposuresCapability.close,
       async (cap, scope) => ({ result: await cap.close({ exposureId: id, tenantId: scope.tenantId as string, domainId: scope.domainId as string, ...intake, actor: principal.principalId, correlationId: envelope.correlation_id }),
-                               targetType: 'RSK', targetId: id, targetVersion: null, outboxEvent: null }));
+                               targetType: 'RSK', targetId: id, targetVersion: null,
+                               outboxEvent: await this.changed(cap, id, 'closed', envelope, 'prediction.exposure.close', principal) }));
     return { closure: out.result, receipt: receipt(out) };
   }
 
@@ -333,7 +406,8 @@ export class ExposuresController {
     try {
       const r = await this.pipeline.write(this.chained(envelope, 'prediction.exposure.route', 'RSK', id), principal, this.route(tenantId, domainId, 'prediction.exposure.route', 'RSK', id), ExposuresCapability.route,
         async (cap, scope) => ({ result: await cap.route({ exposureId: id, tenantId: scope.tenantId as string, domainId: scope.domainId as string, actor: principal.principalId, correlationId: envelope.correlation_id }),
-                                 targetType: 'RSK', targetId: id, targetVersion: null, outboxEvent: null }));
+                                 targetType: 'RSK', targetId: id, targetVersion: null,
+                                 outboxEvent: await this.changed(cap, id, 'appetite_breached', envelope, 'prediction.exposure.route', principal) }));
       return { state: 'routed', ...r.result, receipt: receipt(r) };
     } catch (e) {
       return { state: 'owed', reason: why(e), how: 'POST …/exposures/:id/route routes the breach again (idempotent on the residual)' };
