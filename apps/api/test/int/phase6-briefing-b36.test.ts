@@ -302,6 +302,7 @@ describe('B36 briefing · b5 DISPUTED assessments and EMERGING indicators as ite
     await sql`insert into prediction.signals_current (signal_id, scope, tenant_id, domain_id, version, title, statement, subject_kind, subject_id, nominator_kind, nominated_by, observation, baseline, novelty_basis, novelty, confidence, maturity, classification, synthetic_state, correlation_id)
       values (${signalId}::uuid, 'DOMAIN', ${T()}::uuid, ${D()}::uuid, 1, 'Bab el-Mandeb transit chatter rising (SYNTHETIC)', 'A weak signal nominated by an analyst for the harness: transit chatter above its baseline for a week.', 'none', null, 'analyst', ${w.twinOwner.principalId}::uuid,
               '{"metric":"chatter","value":1.4}'::jsonb, '{"metric":"chatter","value":1.0}'::jsonb, '{"method":"fixture"}'::jsonb, 0.7, 0.55, 'tentative', 'internal', true, ${uuidv7()}::uuid)`.execute(h.su);
+    await sleep(10);   // a known_at is an ISO instant at millisecond precision; what was recorded in the same millisecond would sit just after it
     const k4 = await dbNow();
     const E4 = (await compose({ roomId, knownAt: k4, priorBriefingId: E3.briefingId })).briefing;
     const dis = item(E4, 'disputed', (i) => obj(i['details'])['basis'] === 'dissent') as Row;
