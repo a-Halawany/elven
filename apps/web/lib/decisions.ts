@@ -22,6 +22,7 @@ export interface PackageVersion {
   approver_policy: { quorum?: number; principals?: string[]; roles?: string[]; expires_after_days?: number }; monitoring_conditions: Array<Record<string, unknown>>;
   choice: Choice | null; reversibility: string | null; information_value: string | null; baseline_run_id: string | null; version_digest: string | null; synthetic_state: boolean;
   proposed_at: string | null; options: Option[]; dissent: Dissent[]; approvals: Approval[];
+  /* B36 (0094) gates: the validated fields */ missing_information?: Array<Record<string, unknown>>; expected_effects?: Array<Record<string, unknown>>;
 }
 export interface Package {
   package_id: string; decision_object_id: string; title: string; statement: string; owner_principal_id: string; state: string; current_version: number | null; committed_version: number | null;
@@ -36,6 +37,8 @@ export interface Replay {
   excluded: Array<Record<string, unknown>>; unavailable: Array<Record<string, unknown>>; summary: Record<string, number>; invocation: Record<string, unknown>;
   /** B34 (0090) gates: the policy revisions and control decisions IN FORCE at the decision instant (beside the content, not in its digest). */
   controlsInForce?: { at: string; controls: Array<Record<string, unknown>> };
+  /** B36 (0094) gates: the PDP denials recorded on the package's versions (decision.pdp_denials), beside the content. */
+  denials?: Array<Record<string, unknown>>;
 }
 export interface Room {
   room_id: string; package_id: string; title: string; owner_principal_id: string; state: string; package_state?: string; package_title?: string; review_every_days: number; next_review_at: string; last_review_at: string | null;

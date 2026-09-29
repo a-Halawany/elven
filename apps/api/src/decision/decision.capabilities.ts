@@ -73,6 +73,12 @@ export interface DecisionReads {
   citedObject(a: { objectType: string; id: string; version: number | null }): Promise<CitedObjectRow | undefined>;
   versionDigest(a: { packageId: string; version: number }): Promise<string>;
   rebuildProjections(): Promise<Array<{ projection: string; live_rows: string; rebuilt_rows: string; mismatched: string }>>;
+  /* B36 (0094) gates */
+  /** The open challenge on a version (decision.open_challenge_of; null when none): a commitment is HELD while one is open. */
+  openChallengeOf(a: { packageId: string; version: number }): Promise<Record<string, unknown> | null>;
+  /** The PDP denials recorded on a package's versions (decision.pdp_denials_of) — the replay lists them beside its content. */
+  pdpDenialsOf(a: { packageId: string; version: number | null }): Promise<Array<Record<string, unknown>>>;
+  /* end B36 gates */
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
@@ -332,6 +338,16 @@ class DecisionCapabilityImpl extends DecisionCore implements DeclareWrites, Vers
     return rows[0]?.c ?? [];
   }
   /* end B34 gates */
+  /* B36 (0094) gates */
+  async openChallengeOf(a: { packageId: string; version: number }): Promise<Record<string, unknown> | null> {
+    const rows = await this.call<{ r: Record<string, unknown> | null }>(sql`select decision.open_challenge_of(${a.packageId}::uuid, ${a.version}::int) as r`);
+    return rows[0]?.r ?? null;
+  }
+  async pdpDenialsOf(a: { packageId: string; version: number | null }): Promise<Array<Record<string, unknown>>> {
+    const rows = await this.call<{ d: Array<Record<string, unknown>> }>(sql`select decision.pdp_denials_of(${a.packageId}::uuid, ${a.version}::int) as d`);
+    return rows[0]?.d ?? [];
+  }
+  /* end B36 gates */
   async withdrawPackage(a: Parameters<WithdrawWrites['withdrawPackage']>[0]): Promise<void> {
     await this.call(sql`select decision.withdraw_package(${a.packageId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
   }

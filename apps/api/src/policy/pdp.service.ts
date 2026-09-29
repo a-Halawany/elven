@@ -1360,6 +1360,25 @@ const BUNDLE_V1: Rule[] = [
   { actionPrefix: 'decision.board.reserve', exact: true, requiredAnyRole: [{ role: 'executive', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   { actionPrefix: 'decision.control.record', exact: true, requiredAnyRole: [{ role: 'executive', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'domain_admin', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   /* end B34 gates */
+  /* B36 (0094) gates */
+  /* THE HUMAN GATE COMPLETED (0094 §G; F-P6-04): EXACT rules, every act human-gated and ≤ C2 — no prefix rule matches these names
+     (`decision.approve` is a prefix of neither `decision.sign.*` nor `decision.board.*`; `decision.board.reserve` above is exact). The
+     signature: an approval by an approver or a board member (its own approval), a decision by its owner or the committing authority.
+     Recusal: an approver's or a board member's own act. A challenge: a room member (any decision role) or the tenant's AUDITOR; its
+     resolution the owner's. The distribution: the owner or the authority. THE BOARD (PER-01): board_member holds ONLY decision.board.* —
+     its approve / reject / defer on a board-class package (the port refuses a standard one) and the board surface's read; no standard
+     action (decision.approve, decision.gate.*) admits the role, so a board member's standard act is refused at the PDP. */
+  { actionPrefix: 'decision.sign.approval', exact: true, requiredAnyRole: [{ role: 'decision_approver', atScope: 'DOMAIN' }, { role: 'board_member', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'decision.sign.decision', exact: true, requiredAnyRole: [{ role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'decision.recuse', exact: true, requiredAnyRole: [{ role: 'decision_approver', atScope: 'DOMAIN' }, { role: 'board_member', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'decision.challenge', exact: true, requiredAnyRole: [{ role: 'auditor', atScope: 'TENANT' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_approver', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'decision.challenge.resolve', exact: true, requiredAnyRole: [{ role: 'decision_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'decision.distribute', exact: true, requiredAnyRole: [{ role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'decision.board.approve', exact: true, requiredAnyRole: [{ role: 'board_member', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'decision.board.reject', exact: true, requiredAnyRole: [{ role: 'board_member', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'decision.board.defer', exact: true, requiredAnyRole: [{ role: 'board_member', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'decision.board.read', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' }, { role: 'board_member', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'executive_operator', atScope: 'DOMAIN' }], obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B36 gates */
   /* B28 (0088) remediation */
   /*
    * THE REMEDIATION WORKFLOW ON SOURCE COVERAGE LOSS (the B24 carryover (a)). EXACT rules, placed before the catch-all `observation.`

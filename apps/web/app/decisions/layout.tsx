@@ -24,6 +24,7 @@ import { WorkingDomainChooser, WorkingDomainMark } from '../../components/workin
 interface ShellContext {
   scope: Scope; me: Me;
   isDecisionOwner: boolean; isApprover: boolean; isAuthority: boolean; isExecutive: boolean;
+  /* B36 (0094) gates: the board member (PER-01) and the tenant's auditor (a challenger) */ isBoardMember: boolean; isAuditor: boolean;
 }
 const Ctx = createContext<ShellContext | null>(null);
 export function useShell(): ShellContext {
@@ -40,6 +41,7 @@ export const NAV = [
   /* B34 (0090) workflow */ { href: '/decisions/tasks', label: 'Tasks', glyph: '☑' }, { href: '/decisions/workspaces', label: 'Workspaces', glyph: '⧉' },
   { href: '/decisions/workflow', label: 'Workflow', glyph: '⇄' }, /* end B34 workflow */
   /* B34 (0090) commitments */ { href: '/decisions/commitments', label: 'Commitments', glyph: '⇢' }, /* end B34 commitments */
+  /* B36 (0094) gates */ { href: '/decisions/board', label: 'Board', glyph: '▣' }, /* end B36 gates */
   { href: '/twins', label: 'Twins', glyph: '◫' },
   { href: '/prediction', label: 'Prediction', glyph: '↗' },
   { href: '/graph', label: 'Graph', glyph: '◈' },
@@ -79,7 +81,8 @@ export default function DecisionsLayout({ children }: { children: ReactNode }) {
   if (domainId === null) return <WorkingDomainChooser workspace="Decisions" me={me} onChosen={setWorking} />;
   const scope: Scope = { tenantId: me.homeTenantId, domainId };
   const holds = (role: string) => me.bindings.some((b) => b.roleCode === role && (b.scope === 'PLATFORM' || (b.scope === 'DOMAIN' && b.domainId === scope.domainId)));
-  const value: ShellContext = { scope, me, isDecisionOwner: holds('decision_owner') || holds('platform_admin'), isApprover: holds('decision_approver'), isAuthority: holds('decision_authority'), isExecutive: holds('executive') };
+  const value: ShellContext = { scope, me, isDecisionOwner: holds('decision_owner') || holds('platform_admin'), isApprover: holds('decision_approver'), isAuthority: holds('decision_authority'), isExecutive: holds('executive'),
+    /* B36 (0094) gates */ isBoardMember: holds('board_member'), isAuditor: me.bindings.some((b) => b.roleCode === 'auditor' && b.scope === 'TENANT' && b.tenantId === scope.tenantId) /* end B36 gates */ };
   return (
     <Ctx.Provider value={value}>
       <div style={{ minBlockSize: '100vh', display: 'flex', flexDirection: 'column' }}>
