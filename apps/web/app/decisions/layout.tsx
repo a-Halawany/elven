@@ -33,6 +33,7 @@ export function useShell(): ShellContext {
   return v;
 }
 export const NAV = [
+  /* B36 (0094 §H) home: the executive home first (WS-01) */ { href: '/home', label: 'Home', glyph: '⌂' }, /* end B36 home */
   { href: '/decisions', label: 'Decisions', glyph: '◆' },
   { href: '/decisions/briefings', label: 'Briefings', glyph: '☰' },
   { href: '/decisions/attention', label: 'Attention', glyph: '⚑' },
