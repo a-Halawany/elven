@@ -545,6 +545,9 @@ const BUNDLE_V1: Rule[] = [
   // B21 (0081, L5-I05): the VALIDATION of an admitted version — a twin owner (the twin's OWN owner is refused by the port: separation of duties;
   // a peer twin owner validates) or the domain administrator; human-gated. Placed BEFORE the `twin.version` prefix rule, which would otherwise match first.
   { actionPrefix: 'twin.version.validate', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  // B29-F1 (0093): the WITHDRAWAL of an open draft — a twin owner (the port refuses everyone but the twin's own owner and the draft's opener) or
+  // the platform administrator; a reason is required by the port. Placed BEFORE the `twin.version` prefix rule, which would otherwise match first.
+  { actionPrefix: 'twin.version.withdraw', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
   {
     actionPrefix: 'twin.version',
     requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }],

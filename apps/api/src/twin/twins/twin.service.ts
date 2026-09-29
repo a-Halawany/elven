@@ -25,7 +25,7 @@ import { newId } from '../../shared/ids.js';
 import type { ScopeContext } from '../../shared/scope.js';
 import { SeriesService, type Reader } from '../../prediction/series/series.service.js';
 import { foldControls, type Controls, type ControlInput } from '../../prediction/controls.js';
-import type { AdmitWrites, Citation, CitationKind, CitedObjectRow, DeclareWrites, EnvelopeCheck, GroundWrites, TwinReads, ValidateWrites, VersionWrites } from '../twin.capabilities.js';
+import type { AdmitWrites, Citation, CitationKind, CitedObjectRow, DeclareWrites, EnvelopeCheck, GroundWrites, TwinReads, ValidateWrites, VersionWrites, WithdrawWrites } from '../twin.capabilities.js';
 import { LIFECYCLE_EVENT_LIST_MAX, type OutboxRow } from '../../graph/subscriptions/change-events.js';
 import { changedVariablesOf, validateTwinEvent, type ChangedVariable, type ElementRow } from './twin-events.js';
 import { checkFamilyAdmission, checkFamilyGround } from '../families/admission.js'; // B29 (0092)
@@ -276,6 +276,29 @@ export class TwinService {
   }
 
   /**
+   * B29-F1 (0093): WITHDRAW an open draft — the governed, history-preserving recovery of a draft the family's whole-version rule refuses
+   * at admission (or one grounded wrong, whose key cannot be re-grounded): the row moves draft → withdrawn once, by the twin's owner or the
+   * draft's opener (the port), with a reason; the elements stay; the branch is free for a new draft. An admitted version is immutable
+   * (409); a withdrawn one is already withdrawn (409); the port's own refusals map through observation-errors.
+   */
+  async withdrawVersion(cap: WithdrawWrites, ctx: ScopeContext, twinId: string, version: number, reason: string, actor: string, correlationId: string):
+    Promise<{ twinId: string; version: number; branchId: string; state: 'withdrawn'; elementCount: number; withdrawnAt: string; withdrawnBy: string; reason: string }> {
+    if (typeof reason !== 'string' || reason.trim().length < 2 || reason.trim().length > 1000) {
+      throw new HttpException(errorBody('EYE_REQ_001', correlationId, 'a withdrawal names its reason (2–1000 characters)'), 422);
+    }
+    const v = (await cap.readVersions().select(['state', 'branch_id', 'withdrawn_at', 'withdrawal_reason'] as never)
+      .where('twin_id' as never, '=', twinId as never).where('version' as never, '=', version as never).executeTakeFirst()) as Record<string, unknown> | undefined;
+    if (v === undefined) throw new HttpException(errorBody('EYE_STA_001', correlationId, 'no authorized twin version matches'), 404);
+    if (v['state'] === 'admitted') throw new HttpException(errorBody('EYE_STA_002', correlationId, `version ${version} is admitted and immutable; a later version supersedes it`), 409);
+    if (v['state'] === 'withdrawn') {
+      throw new HttpException(errorBody('EYE_STA_002', correlationId, `version ${version} was withdrawn at ${instantOf(v['withdrawn_at'])} (${String(v['withdrawal_reason'] ?? '')})`), 409);
+    }
+    const r = await cap.withdrawVersion({ twinId, tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, version, reason: reason.trim(), actor, eventId: newId(), correlationId });
+    return { twinId, version, branchId: String(r['branch_id'] ?? v['branch_id']), state: 'withdrawn', elementCount: Number(r['element_count'] ?? 0),
+             withdrawnAt: instantOf(r['withdrawn_at']), withdrawnBy: String(r['withdrawn_by'] ?? actor), reason: String(r['reason'] ?? reason.trim()) };
+  }
+
+  /**
    * Resolve every citation to the exact object it names — id, version, digest —
    * and carry back the truth state, lifecycle, record time, observation time,
    * validation state and controls that decide what the element may be.
@@ -322,10 +345,11 @@ export class TwinService {
       .where('twin_id' as never, '=', twinId as never).where('version' as never, '=', version as never).executeTakeFirst()) as Record<string, unknown> | undefined;
     if (v === undefined) throw new HttpException(errorBody('EYE_STA_001', correlationId, 'no authorized twin version matches'), 404);
     if (v['state'] !== 'draft') {
-      throw new HttpException(errorBody('EYE_STA_001', correlationId,
-        `version ${version} is admitted and immutable; open a new version to change the state`), 409);
+      throw new HttpException(errorBody('EYE_STA_001', correlationId, v['state'] === 'withdrawn' // B29-F1 (0093)
+        ? `version ${version} was withdrawn at ${instantOf(v['withdrawn_at'])} (${String(v['withdrawal_reason'] ?? '')}); open a new version on the branch`
+        : `version ${version} is admitted and immutable; open a new version to change the state`), 409);
     }
-    await checkFamilyGround(cap, twinId, elements, correlationId); // B29 (0092): element keys and units checked BEFORE they enter the draft (nothing written on a refusal)
+    await checkFamilyGround(cap, twinId, version, elements, correlationId); // B29 (0092): element keys and units checked BEFORE they enter the draft (nothing written on a refusal); B29-F1 (0093): the family's rules over the accumulated draft too
     const knownAt = instantOf(v['known_at']);
     const observedThrough = v['observed_through'] === null || v['observed_through'] === undefined ? null : dayOf(v['observed_through']);
     const out: Array<{ key: string; material: boolean; health: string; syntheticState: boolean; inheritedValidation: string | null }> = [];
@@ -440,7 +464,7 @@ export class TwinService {
     const v = (await cap.readVersions().selectAll()
       .where('twin_id' as never, '=', twinId as never).where('version' as never, '=', version as never).executeTakeFirst()) as Record<string, unknown> | undefined;
     if (v === undefined) throw new HttpException(errorBody('EYE_STA_001', correlationId, 'no authorized twin version matches'), 404);
-    if (v['state'] !== 'draft') throw new HttpException(errorBody('EYE_STA_001', correlationId, `version ${version} is admitted and immutable`), 409);
+    if (v['state'] !== 'draft') throw new HttpException(errorBody('EYE_STA_001', correlationId, v['state'] === 'withdrawn' ? `version ${version} was withdrawn; open a new version on the branch` : `version ${version} is admitted and immutable`), 409);
     const knownAt = instantOf(v['known_at']);
     const observedThrough = v['observed_through'] === null || v['observed_through'] === undefined ? null : dayOf(v['observed_through']);
     const assembled = await this.series.assemble(reader, seriesKey, knownAt, observedThrough);
@@ -448,7 +472,7 @@ export class TwinService {
     const health: 'complete' | 'incomplete' = assembled.complete && last !== undefined ? 'complete' : 'incomplete';
     // B29 (0092): the family check at grounding, on the series' latest value (its key and unit as the element carries them); a series with
     // no point grounds nothing checkable here — the version-level check at admission still reads it
-    if (last !== undefined) await checkFamilyGround(cap, twinId, [{ key, value: last.value, unit: assembled.series.unit }], correlationId);
+    if (last !== undefined) await checkFamilyGround(cap, twinId, version, [{ key, value: last.value, unit: assembled.series.unit }], correlationId);
     const citations: Citation[] = assembled.evidence.map((ev) => ({ kind: 'evidence' as const, id: ev.evidence_object_id, version: ev.evidence_version, digest: ev.evidence_digest }));
     const value = last === undefined
       ? { series_key: seriesKey, points: 0, latest: null, note: 'no observation is known under these cut-offs' }
@@ -490,7 +514,7 @@ export class TwinService {
     const v = (await cap.readVersions().selectAll()
       .where('twin_id' as never, '=', twinId as never).where('version' as never, '=', version as never).executeTakeFirst()) as Record<string, unknown> | undefined;
     if (twin === undefined || v === undefined) throw new HttpException(errorBody('EYE_STA_001', correlationId, 'no authorized twin version matches'), 404);
-    if (v['state'] !== 'draft') throw new HttpException(errorBody('EYE_STA_001', correlationId, `version ${version} is already admitted`), 409);
+    if (v['state'] !== 'draft') throw new HttpException(errorBody('EYE_STA_001', correlationId, v['state'] === 'withdrawn' ? `version ${version} was withdrawn at ${instantOf(v['withdrawn_at'])} (${String(v['withdrawal_reason'] ?? '')}) and is not admitted` : `version ${version} is already admitted`), 409);
     const elements = (await cap.readElements().selectAll()
       .where('twin_id' as never, '=', twinId as never).where('version' as never, '=', version as never)
       .orderBy('key' as never).execute()) as Array<Record<string, unknown>>;

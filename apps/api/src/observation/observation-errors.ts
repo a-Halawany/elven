@@ -743,6 +743,13 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   { match: /^(twin kind|twin contract|twin link|coupling) rejected \((duplicate|retired|state|link_retired|draft_conflict|uncontracted|live_link)\)/i, status: 409, code: 'EYE_STA_002' },
   { match: /^(twin kind|twin contract|twin link|coupling) rejected/i, status: 422, code: 'EYE_REQ_001' },
   /* end B29 §A */
+  /* B29-F1 (0093): the draft withdrawal port — `draft withdrawal rejected (<class>): …` (anchored; the executive's unanchored `withdrawal
+     rejected` 422 family is placed after these and never reaches an anchored `draft withdrawal` text). The standing 403 (the acting principal,
+     not the owner nor the opener), the absences 404, the record's state 409 (admitted, already withdrawn), the caller's own 422 (the reason). */
+  { match: /^draft withdrawal rejected \((actor|ownership)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^draft withdrawal rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^draft withdrawal rejected \(state\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^draft withdrawal rejected/i, status: 422, code: 'EYE_REQ_001' },
   /* B29 §D (0092) constraints — the constraint engine's ports: `constraint set rejected (…)` (declare, version, retire) and `plan check
      rejected (…)` (the check record) — anchored phrases no other row matches (no earlier row starts with `constraint set` or `plan check`;
      §C's `constraint check rejected` is its own port's family, simulation.run_constraint_checks; the unanchored `run rejected: ` /

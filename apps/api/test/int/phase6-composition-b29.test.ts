@@ -51,6 +51,7 @@ let base: Evd; let cut: Evd; let later: Evd;
 let S: string; let P: string; let E: string; let M: string;
 /** C1's refusal probe: a process twin and its draft, refused at grounding and recovered in the same draft. */
 let X9: string; let x9: number;
+let Z: string; let z: number; let O: string; let o: number; // B29-F1 (0093): the refused drafts and their recovery
 
 /** A refusal as the HTTP answer the filter would give (a port's text mapped by observation-errors), or 'ok'. */
 async function refusal(p: Promise<unknown>): Promise<{ status: number | 'ok'; message: string }> {
@@ -114,6 +115,22 @@ async function applyAndAdmit(owner: AuthenticatedPrincipal, twinId: string): Pro
   await admit(owner, twinId, v);
   return { proposal, version: v };
 }
+/** B29-F1 (0093): the withdraw route (twin.version.withdraw). */
+const withdraw = (owner: AuthenticatedPrincipal, twinId: string, v: number, reason: string) =>
+  twins.withdraw(req(owner, 'twin.version.withdraw', 'TWN', twinId), T, D, twinId, String(v), { payload: { reason } }) as Promise<{ withdrawn: Row; receipt: Row }>;
+/** A trigger's raw refusal on a direct SQL write (no HTTP mapping: the text as PostgreSQL raised it). */
+const raised = async (p: Promise<unknown>): Promise<string> => { try { await p; return ''; } catch (e) { return e instanceof Error ? e.message : String(e); } };
+const elementCount = async (twinId: string, v: number): Promise<number> =>
+  (await sql<{ n: number }>`select count(*)::int n from twin.state_elements where twin_id = ${twinId}::uuid and version = ${v}`.execute(h.su)).rows[0]?.n ?? -1;
+/** An element written as the SQL paths write one (a carry-forward, a coupling: twin.ground_element, under the ground route's preflight's sight of nothing) — the row as such a path leaves it. */
+async function plant(twinId: string, v: number, key: string, value: number, unit: string): Promise<void> {
+  await sql`insert into twin.state_elements (element_id, scope, tenant_id, domain_id, twin_id, version, key, kind, basis_truth_state, value, unit, material, citations, health, synthetic_state, controls, grounded_by, correlation_id)
+    select ${uuidv7()}::uuid, 'DOMAIN', ${T}::uuid, ${D}::uuid, ${twinId}::uuid, ${v}, ${key}, 'assumed', null, ${JSON.stringify(value)}::jsonb, ${unit}, twin.key_is_material(${twinId}::uuid, ${key}),
+           e.citations, 'complete', false, '{}'::jsonb, ${processOwner.principalId}::uuid, ${uuidv7()}::uuid
+      from twin.state_elements e where e.twin_id = ${S}::uuid and e.version = 1 and e.key = 'supply.capacity_per_day'`.execute(h.su);
+  await sql`update twin.twin_versions set element_count = element_count + 1 where twin_id = ${twinId}::uuid and version = ${v}`.execute(h.su);
+}
+
 async function events(twinId: string, event: string): Promise<Row[]> {
   return (await sql<Row>`select event, details from twin.twin_events where twin_id = ${twinId}::uuid and event = ${event} order by occurred_at`.execute(h.su)).rows;
 }
@@ -176,7 +193,7 @@ describe('C1 · twin families as kind schemas with domain behaviour', () => {
     expect(await measures(enterpriseOwner, E)).toMatchObject({ family: 'enterprise', measures: { demand_per_day: 800, capacity_utilisation: null } });
   });
 
-  it('refusal: a family validator refuses a non-conforming element at GROUNDING — nothing written, the draft still open; a whole-version rule at admission', async () => {
+  it('refusal: a family validator refuses a non-conforming element at GROUNDING — nothing written, the draft still open; a whole-version rule at grounding too (B29-F1), and at admission for what another path wrote', async () => {
     X9 = await declare(processOwner, 'process', 'Regensburg line 9 (refusal probe)');
     x9 = await openDraft(processOwner, X9);
     const r = await refusal(ground(processOwner, X9, x9, [assumed('line.capacity_per_day:l9', 7000, 'units/day', base), assumed('line.capacity_per_day:l10', 7000, 'units/week', base),
@@ -186,15 +203,80 @@ describe('C1 · twin families as kind schemas with domain behaviour', () => {
     // Nothing of the batch was written (not even its conforming first element), and the draft is still open for the owner.
     const row = (await sql<{ state: string; element_count: number }>`select state, element_count from twin.twin_versions where twin_id = ${X9}::uuid and version = ${x9}`.execute(h.su)).rows[0];
     expect(row).toEqual({ state: 'draft', element_count: 0 });
-    expect((await sql<{ n: number }>`select count(*)::int n from twin.state_elements where twin_id = ${X9}::uuid`.execute(h.su)).rows[0]?.n).toBe(0);
-    // The family's own version-level rule, judged at admission: a line of zero capacity.
-    const Z = await declare(processOwner, 'process', 'Regensburg line 0 (refusal probe)');
-    const z = await openDraft(processOwner, Z);
-    await ground(processOwner, Z, z, [assumed('line.capacity_per_day:l0', 0, 'units/day', base)]);
+    expect(await elementCount(X9, x9)).toBe(0);
+    // B29-F1 (0093): the family's own VERSION-LEVEL rule, judged at GROUNDING over the accumulated draft — a line of zero capacity is refused before it enters the draft.
+    Z = await declare(processOwner, 'process', 'Regensburg line 0 (refusal probe)');
+    z = await openDraft(processOwner, Z);
+    const z0 = await refusal(ground(processOwner, Z, z, [assumed('line.capacity_per_day:l0', 0, 'units/day', base)]));
+    expect(z0.status).toBe(422);
+    expect(z0.message).toMatch(/^family validation refused \(process\) at grounding: line\.capacity_per_day:l0: a line with no capacity is not a line — retire it from the process — nothing was grounded$/);
+    expect(await elementCount(Z, z)).toBe(0);
+    // The CROSS-ELEMENT rule accumulated across two ground calls (organisation: roles filled beyond the headcount) — the second batch is refused, the first stands.
+    O = await declare(processOwner, 'organisation', 'Regensburg plant organisation (refusal probe)');
+    o = await openDraft(processOwner, O);
+    await ground(processOwner, O, o, [assumed('headcount', 10, 'people', base), assumed('roles.filled:assembly', 6, 'people', base)]);
+    const o2 = await refusal(ground(processOwner, O, o, [assumed('roles.filled:maintenance', 6, 'people', base)]));
+    expect(o2.status).toBe(422);
+    expect(o2.message).toMatch(/^family validation refused \(organisation\) at grounding: roles\.filled: 12 roles filled by a headcount of 10 — nothing was grounded$/);
+    expect(await elementCount(O, o)).toBe(2);
+    // The ADMISSION validator stands for what arrives by a path the ground route's preflight cannot see (a carry-forward, a coupling — both
+    // write twin.ground_element directly): the refused elements planted as such a path leaves them, admission refuses each version.
+    await plant(Z, z, 'line.capacity_per_day:l0', 0, 'units/day');
     expect((await refusal(admit(processOwner, Z, z))).message).toMatch(/a line with no capacity is not a line/);
+    await plant(O, o, 'roles.filled:maintenance', 6, 'people');
+    expect((await refusal(admit(processOwner, O, o))).message).toMatch(/roles\.filled: 12 roles filled by a headcount of 10/);
   });
 
-  it('recovery: the conforming element grounds into the same draft and the version admits; the supply-chain kind (no schema) admits as before', async () => {
+  it('recovery (B29-F1, 0093): the family-refused draft is WITHDRAWN by its owner — the row withdrawn once, its elements kept, the branch free — and a valid version admits on the same branch; the cross-element case the same way; the conforming element grounds into X9', async () => {
+    // Before the correction the owner was stuck: one element per key per draft (409), and no second draft while this one is open (409).
+    expect((await refusal(ground(processOwner, Z, z, [assumed('line.capacity_per_day:l0', 1000, 'units/day', base)]))).status).toBe(409);
+    const blocked = await refusal(openDraft(processOwner, Z));
+    expect(blocked.status).toBe(409);
+    expect(blocked.message).toMatch(/already has an open draft/);
+    // The withdrawal's own refusals: an operator (the PDP), a peer twin owner (the port: ownership), an admitted version (state), an absent reason.
+    expect((await refusal(withdraw(operator, Z, z, 'not mine to withdraw'))).status).toBe(403);
+    const peer = await refusal(withdraw(supplyOwner, Z, z, 'a peer owner tidying up'));
+    expect(peer.status).toBe(403);
+    expect(peer.message).toMatch(/^draft withdrawal rejected \(ownership\): draft version \d+ of twin .* is withdrawn by the twin's owner or by the person who opened it/);
+    expect((await refusal(withdraw(processOwner, P, 1, 'an admitted version'))).status).toBe(409);
+    expect((await refusal(withdraw(processOwner, Z, z, ''))).status).toBe(422);
+    expect((await refusal(withdraw(processOwner, Z, z + 40, 'no such version'))).status).toBe(404);
+    expect(await events(Z, 'version.withdrawn')).toHaveLength(0);
+    // THE WITHDRAWAL: the owner's act, with a reason; the answer and the receipt.
+    const w = await withdraw(processOwner, Z, z, 'line 0 was entered with no capacity; the line is re-entered with its rated capacity');
+    expect(w.withdrawn).toMatchObject({ twinId: Z, version: z, branchId: 'actual', state: 'withdrawn', elementCount: 1, withdrawnBy: processOwner.principalId });
+    expect(typeof w.receipt['auditSeq']).toBe('number');
+    const row = (await sql<Row>`select state, element_count, withdrawn_by::text wb, withdrawal_reason, state_set_digest, admitted_at from twin.twin_versions where twin_id = ${Z}::uuid and version = ${z}`.execute(h.su)).rows[0];
+    expect(row).toMatchObject({ state: 'withdrawn', element_count: 1, wb: processOwner.principalId, withdrawal_reason: 'line 0 was entered with no capacity; the line is re-entered with its rated capacity', state_set_digest: null, admitted_at: null });
+    expect(await elementCount(Z, z)).toBe(1); // history preserved: the refused element stays as it was written
+    const ev = await events(Z, 'version.withdrawn');
+    expect(ev).toHaveLength(1);
+    expect(ev[0]!['details']).toMatchObject({ version: z, branch_id: 'actual', element_count: 1, reason: 'line 0 was entered with no capacity; the line is re-entered with its rated capacity' });
+    // Withdrawn = closed and immutable: grounding, admission and a second withdrawal are refused; the row cannot be moved back by anyone (the trigger).
+    expect((await refusal(ground(processOwner, Z, z, [assumed('line.capacity_per_day:l0', 1000, 'units/day', base)]))).status).toBe(409);
+    expect((await refusal(admit(processOwner, Z, z))).status).toBe(409);
+    const again = await refusal(withdraw(processOwner, Z, z, 'again'));
+    expect(again.status).toBe(409);
+    expect(again.message).toMatch(/was withdrawn at/);
+    expect(await raised(sql`update twin.twin_versions set state = 'draft', withdrawn_at = null, withdrawn_by = null, withdrawal_reason = null where twin_id = ${Z}::uuid and version = ${z}`.execute(h.su))).toMatch(/withdrawn and immutable/);
+    expect(await raised(sql`update twin.twin_versions set state = 'withdrawn' where twin_id = ${X9}::uuid and version = ${x9}`.execute(h.su))).toMatch(/withdrawal port alone|twv_withdrawn_bound/);
+    expect(await raised(sql`delete from twin.state_elements where twin_id = ${Z}::uuid and version = ${z}`.execute(h.su))).toMatch(/append-only/);
+    // THE BRANCH IS FREE: a new draft on `actual`, the corrected value, admission, the family measures — the recovery on the same branch.
+    const z2 = await openDraft(processOwner, Z);
+    expect(z2).toBe(z + 1);
+    await ground(processOwner, Z, z2, [assumed('line.capacity_per_day:l0', 1000, 'units/day', base)]);
+    expect((await admit(processOwner, Z, z2)).admitted).toMatchObject({ version: z2, supersedes: null });
+    expect((await measures(processOwner, Z))['measures']).toMatchObject({ throughput_per_day: 1000, bottleneck: 'line' });
+    const states = (await sql<{ version: number; state: string }>`select version, state from twin.twin_versions where twin_id = ${Z}::uuid order by version`.execute(h.su)).rows;
+    expect(states).toEqual([{ version: z, state: 'withdrawn' }, { version: z2, state: 'admitted' }]);
+    // THE CROSS-ELEMENT CASE: the organisation's refused draft withdrawn the same way, then 10 people with 6 + 4 roles filled admitted.
+    expect((await withdraw(processOwner, O, o, 'roles filled beyond the headcount were entered; re-entered within it')).withdrawn).toMatchObject({ state: 'withdrawn', elementCount: 3 });
+    const o2 = await openDraft(processOwner, O);
+    await ground(processOwner, O, o2, [assumed('headcount', 10, 'people', base), assumed('roles.filled:assembly', 6, 'people', base), assumed('roles.filled:maintenance', 4, 'people', base)]);
+    expect((await admit(processOwner, O, o2)).admitted).toMatchObject({ version: o2 });
+    expect((await measures(processOwner, O))['measures']).toMatchObject({ headcount: 10 });
+    expect(await elementCount(O, o)).toBe(3);
+    // The conforming element grounds into X9's still-open draft and the version admits; the supply-chain kind (no schema) admits as before.
     await ground(processOwner, X9, x9, [assumed('line.capacity_per_day:l9', 7000, 'units/day', base)]);
     expect((await admit(processOwner, X9, x9)).admitted).toMatchObject({ version: x9 });
     expect((await measures(processOwner, X9))['measures']).toMatchObject({ throughput_per_day: 7000 });
@@ -203,7 +285,7 @@ describe('C1 · twin families as kind schemas with domain behaviour', () => {
     const X2 = await declare(processOwner, 'process', 'Regensburg line 2');
     expect(await version(processOwner, X2, [assumed('line.capacity_per_day:l2', 900, 'units/day', base), assumed('line.availability', 0.9, 'ratio', base)])).toBe(1);
     expect((await measures(processOwner, X2))['measures']).toMatchObject({ throughput_per_day: 810 });
-  });
+  }, 120_000);
 });
 
 describe('C4 · the extension surface (tenant/domain twin kinds)', () => {

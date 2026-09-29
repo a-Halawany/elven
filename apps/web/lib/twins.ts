@@ -30,9 +30,10 @@ export interface TwinFitness {
   envelope_state?: string | null; envelope?: EnvelopeCheck | null; calibration?: Record<string, unknown> | null; limitations?: string[]; reason?: string | null;
 }
 export interface TwinVersion {
-  version: number; branch_id: string; forked_from_version: number | null; supersedes: number | null; state: 'draft' | 'admitted';
+  version: number; branch_id: string; forked_from_version: number | null; supersedes: number | null; state: 'draft' | 'admitted' | 'withdrawn' /* B29-F1 (0093): a draft withdrawn by its owner; its elements kept */;
   known_at: string; observed_through: string | null; state_set_digest: string | null; element_count: number; completeness: 'complete' | 'incomplete';
   missing_keys: string[]; synthetic_state: boolean; verification_state: 'verified' | 'unverified'; admitted_at: string | null; elements?: Element[];
+  withdrawn_at?: string | null; withdrawn_by?: string | null; withdrawal_reason?: string | null;
   /** B21 (0081, L5-I05 ValidateTwin): set only by a recorded validation; an `unfit` version opens no run. Absent from a server before 0081. */
   fitness?: TwinFitness;
 }

@@ -4292,3 +4292,19 @@ The mechanism is in `audit/CP6_BATCHES.md` §B29. There is one migration, `0092_
 - **The requirement rows:** 23 updated (implemented 1121 → 1131; missing 2404 → 2403). The acceptance units are unchanged.
 - **The schedule was re-derived:** only R2's row changed; the M1 dates are unchanged. The next A1 stage is **B36**.
 - **The candidate** is PR #68 (`phase6-b29` → `phase6-b34`), stacked on #67; the hosted run is pending.
+
+### 42.4 The owner's bounded review of 2026-09-29 (B29-F): B34-F1/F2 closed; B29-F1 and B29-F2 corrected forward (0093)
+
+"The Eye — B29 bounded review, 2026-09-29" (the owner's file, cited by name, NOT committed) CLOSED **B34-F1 and B34-F2 at `864029f`** and preserved the earlier closures. It recorded #68's hosted result at `425eab4` — build-test FAIL (integration 1339/1342, three failures in the methods harness; **the upgrade and C18 steps SKIPPED**), browser and C19 pass, supply-chain red on the Redis recheck — and raised two bounded findings, both corrected on `phase6-b29` (`audit/CP6_BATCHES.md` §B29.11):
+- **B29-F1 — a family-refused draft had no recovery.** Now (i) the grounding preflight judges the family's PREFIX rules (those a later element cannot cure) over the ACCUMULATED draft with the offered elements — the zero-capacity line and the cross-element organisation rule are refused at grounding, nothing written; a whole-version rule (the supply network's topology) stays admission's; and (ii) **0093** adds the governed, history-preserving WITHDRAWAL of an open draft (`twin.version.withdraw`: the owner's or the opener's act with a reason; the row withdrawn once and frozen; the elements kept; the event `version.withdrawn`; the branch free for a new draft) — the recovery whatever path filled the draft (a coupling, a carry-forward), proven on the real database with the refused drafts themselves and a cross-element case, and played on `eye_demo` by E. Kovács (`evidence/cp6/act-b29f.txt`).
+- **B29-F2 — the containment proof's competing bounds.** The harness adapter's time bound is 10 s (the heap bound is reached in ~80 ms here; the hosted OOM run took over 1.5 s under load); timeout, crash and heap exhaustion are three cases each proving its own classification; the memory case makes the third consecutive fault a memory fault whatever came before; the reinstatement case establishes its own passing probe. The classifications, the quarantine criterion, separation and reinstatement checks are preserved.
+
+| Check | Result |
+|---|---|
+| Part harnesses | composition 14/14, methods 16/16 |
+| Full integration | **1344/1344** in 104 files on a fresh database (B29's 1342 + 2: the methods fault path as three cases; the first full run judged the supply network's topology at grounding and failed 5 + 4 interference cases — corrected, then this run on the final code) |
+| Unit / acceptance / upgrade | API 2664 + 9, web 107, typecheck clean / 58/58 / PASS (roles 49, migrations 72) |
+| Demo | `eye_demo` at 0093 (backup `eye_demo-pre-0093-20260929T204305Z.dump`); the B29-F act held on the rehearsal copy (twice) and on `eye_demo` |
+| Hosted | #68's first run recorded once (above); the corrected head's run is bound in `INTEGRATION_SEQUENCE.md` when it completes |
+
+Stack maintenance: the reviewed pins (fast-uri 3.1.7, multer 2.4.0) carried down to #64–#66 and merged forward. No tracker row, schedule or acceptance change; no merge, purchase or account allocation; #62 and real-provider activation stay the owner's decisions. The next A1 stage remains **B36**.

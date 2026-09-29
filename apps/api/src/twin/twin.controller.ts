@@ -174,6 +174,31 @@ export class TwinController {
   }
 
   /**
+   * B29-F1 (0093): WITHDRAW an open draft — the governed, history-preserving recovery of a draft the family's whole-version rule refuses at
+   * admission, or one grounded wrong (a key is grounded once per draft). `twin.version.withdraw`: the twin's owner or the draft's opener,
+   * with a reason; the row moves draft → withdrawn once, the elements stay, the event version.withdrawn is written, the branch is free for a
+   * new draft. No outbox event: a draft was never announced.
+   */
+  @Post('/:twinId/versions/:version/withdraw')
+  async withdraw(
+    @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('twinId') twinId: string,
+    @Param('version') versionRaw: string, @Body() body: { payload?: { reason?: string } },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const version = Number(versionRaw);
+    if (!Number.isInteger(version) || version < 1) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'version must be a positive integer'), 400);
+    const reason = body.payload?.reason;
+    if (typeof reason !== 'string' || reason.trim().length < 2) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'a withdrawal names its reason'), 422);
+    const out = await this.pipeline.write(
+      envelope, principal, this.route(tenantId, domainId, 'twin.version.withdraw', 'TWN', twinId), TwinCapability.withdraw,
+      async (cap, scope) => {
+        const r = await this.twins.withdrawVersion(cap, scope, twinId, version, reason, principal.principalId, envelope.correlation_id);
+        return { result: r, targetType: 'TWN', targetId: twinId, targetVersion: String(version), outboxEvent: null };
+      });
+    return { withdrawn: out.result, receipt: receipt(out) };
+  }
+
+  /**
    * B21 (0081, L5-I05): VALIDATE an admitted version — a person other than the twin's owner records a verdict (fit | unfit |
    * indeterminate) over the envelope check and the calibration history the port computes; human-gated. The write publishes
    * ValidateTwin@v1; no GraphChanged (a validation changes no fact). An unfit version opens no run from now on (the port).

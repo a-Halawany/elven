@@ -45,6 +45,13 @@ process.env['EYE_VAULT_EXPORT_ROOT'] = join(VAULT_DIR, 'export');
 const HERE = dirname(fileURLToPath(import.meta.url));
 const UNSTABLE_MODULE = join(HERE, 'phase6-methods-unstable.cjs');
 const UNSTABLE = 'harness-unstable@1';
+/* B29-F2 (the bounded B29 review of 2026-09-29): the harness adapter's containment. The time bound is wide enough that an EXHAUSTED HEAP
+   is reached long before it on a loaded hosted runner (locally the heap bound of 48 MB is reached in ~80 ms; hosted, one run took over
+   1,500 ms and was killed as a TIMEOUT — a competing resource limit, not a containment defect). Each fault kind is proven on its own
+   below; the timeout case waits the whole bound. */
+const TIMEOUT_MS = 10_000;
+const HEAP_MB = 48;
+const QUARANTINE_AFTER = 3;
 type Row = Record<string, unknown>;
 
 let h: Phase4Harness;
@@ -147,7 +154,7 @@ beforeAll(async () => {
   const entry = registry.registerModule(UNSTABLE_MODULE);
   await sql`insert into twin.behaviour_models (method_ref, name, version, required_inputs, parameter_schema, operating_envelope, validation_notes, implementation_digest, family, adapter, containment)
     values (${UNSTABLE}, 'the harness''s unstable adapter (never shipped)', 1, ARRAY['demand.daily'], '{"mode": ["ok", "hang", "crash", "oom", "garbage"]}'::jsonb, '{"horizon_days": [1, 30]}'::jsonb,
-            'B29 §C harness only', ${entry.adapter.digest}, 'system-dynamics', 'method-worker', '{"isolated": true, "timeout_ms": 1500, "max_old_space_mb": 48, "quarantine_after": 3}'::jsonb)
+            'B29 §C harness only', ${entry.adapter.digest}, 'system-dynamics', 'method-worker', ${JSON.stringify({ isolated: true, timeout_ms: TIMEOUT_MS, max_old_space_mb: HEAP_MB, quarantine_after: QUARANTINE_AFTER })}::jsonb)
     on conflict (method_ref) do nothing`.execute(h.su);
 }, 300_000);
 
@@ -331,12 +338,24 @@ describe('B29 §C · C1 containment — faults, quarantine, the probe and the go
     expect(ok.run['pid']).not.toBe(process.pid);
   }, 120_000);
 
-  it('RECOVERY (the fault path): a hang, a crash mid-run and an exhausted heap — each run FAILED with its fault recorded, never half-completed; the third quarantines', async () => {
+  /* B29-F2: the three fault kinds, each proven ON ITS OWN — its classification, its run failed with nothing half-written, its place in the
+     streak — so a failure of one never masks another; the third consecutive fault quarantines (the memory case, made so whatever came before). */
+  it('RECOVERY (the fault path, 1 of 3 — TIMEOUT): a hang is killed at the TIME bound and recorded as a timeout fault; the run failed, never half-completed', async () => {
+    const streak = Number((await health(UNSTABLE))?.['consecutive_faults'] ?? 0);
     const t = await refusal(run(unstable('hang')));
     expect(t.status).toBe(409);
-    expect(t.message).toMatch(/^run failed \(adapter_fault: timeout\): run .* is failed, never half-completed — the adapter of harness-unstable@1 faulted \(timeout\): .*1500 ms/);
-    expect(await health(UNSTABLE)).toMatchObject({ state: 'healthy', consecutive_faults: 1 });
+    expect(t.message).toMatch(new RegExp(`^run failed \\(adapter_fault: timeout\\): run .* is failed, never half-completed — the adapter of harness-unstable@1 faulted \\(timeout\\): .*${TIMEOUT_MS} ms`));
+    const hung = String((await rows(sql`select run_id from simulation.runs_current where model_ref = ${UNSTABLE} order by opened_at desc limit 1`))[0]!['run_id']);
+    expect(await runRow(hung)).toMatchObject({ state: 'failed', outputs: null, outputs_digest: null, header_digest: null });
+    expect(String((await runRow(hung))['failure'])).toMatch(/faulted \(timeout\)/);
+    expect(await health(UNSTABLE)).toMatchObject({ state: 'healthy', consecutive_faults: streak + 1 });
+    expect(((await health(UNSTABLE))!['last_fault'] as Row)['kind']).toBe('timeout');
+  }, 180_000);
+
+  it('RECOVERY (the fault path, 2 of 3 — CRASH): an abnormal exit mid-run is recorded as a crash fault; no canonical object, the run\'s ledger complete', async () => {
+    const streak = Number((await health(UNSTABLE))?.['consecutive_faults'] ?? 0);
     const c = await refusal(run(unstable('crash')));
+    expect(c.status).toBe(409);
     expect(c.message).toMatch(/^run failed \(adapter_fault: crash\)/);
     const crashed = String((await rows(sql`select run_id from simulation.runs_current where model_ref = ${UNSTABLE} order by opened_at desc limit 1`))[0]!['run_id']);
     const cr = await runRow(crashed);
@@ -344,21 +363,37 @@ describe('B29 §C · C1 containment — faults, quarantine, the probe and the go
     expect(String(cr['failure'])).toMatch(/faulted \(crash\)/);
     expect((await rows(sql`select count(*)::int n from objects.canonical_objects where object_id = ${crashed}::uuid`))[0]!['n']).toBe(0);
     expect((await runEvents(crashed)).map((e) => e.event).sort()).toEqual(['adapter.faulted', 'constraint.checked', 'run.failed', 'run.opened']);
+    expect(await health(UNSTABLE)).toMatchObject({ state: 'healthy', consecutive_faults: streak + 1 });
+    expect(((await health(UNSTABLE))!['last_fault'] as Row)['kind']).toBe('crash');
+  }, 180_000);
+
+  it('RECOVERY (the fault path, 3 of 3 — MEMORY): an exhausted heap is recorded as a MEMORY fault — the heap bound reached, not the time bound — and the third consecutive fault QUARANTINES the adapter in this domain', async () => {
+    // Whatever the two cases above left, this case quarantines with a MEMORY fault: the streak is brought to quarantine_after − 1 first.
+    while (Number((await health(UNSTABLE))?.['consecutive_faults'] ?? 0) < QUARANTINE_AFTER - 1) await refusal(run(unstable('oom')));
+    expect(await health(UNSTABLE)).toMatchObject({ state: 'healthy', consecutive_faults: QUARANTINE_AFTER - 1 });
     // the LAST fault is by an operator who is also a method steward (the separation case below)
     const m = await refusal(run(unstable('oom'), opSteward));
-    expect(m.message).toMatch(/^run failed \(adapter_fault: memory\).*QUARANTINED in this domain/);
+    expect(m.status).toBe(409);
+    expect(m.message).toMatch(new RegExp(`^run failed \\(adapter_fault: memory\\).*exhausted its heap bound of ${HEAP_MB} MB.*QUARANTINED in this domain`));
+    expect(m.message).not.toMatch(/timeout/);
     const hq = await health(UNSTABLE);
-    expect(hq).toMatchObject({ state: 'quarantined', consecutive_faults: 3, total_faults: 3, last_fault_operator: opSteward.principalId });
+    expect(hq).toMatchObject({ state: 'quarantined', consecutive_faults: QUARANTINE_AFTER, last_fault_operator: opSteward.principalId });
     expect((hq!['last_fault'] as Row)['kind']).toBe('memory');
     const oomRun = String(hq!['quarantined_by_run']);
+    const oomRow = await runRow(oomRun);
+    expect(oomRow).toMatchObject({ state: 'failed', outputs: null, outputs_digest: null, header_digest: null });
+    expect(String(oomRow['failure'])).toMatch(/faulted \(memory\)/);
     expect((await runEvents(oomRun)).map((e) => e.event)).toEqual(expect.arrayContaining(['adapter.faulted', 'adapter.quarantined', 'run.failed']));
+    // the three faults of the streak, each its own kind, on the health row's ledger
+    const kinds = await rows(sql`select details ->> 'kind' k from simulation.adapter_events where tenant_id = ${T()}::uuid and domain_id = ${D()}::uuid and model_ref = ${UNSTABLE} and event = 'faulted' order by occurred_at`);
+    expect(kinds.slice(-3).map((r) => r['k'])).toEqual(['timeout', 'crash', 'memory']);
   }, 180_000);
 
   it('REFUSAL: a quarantined adapter opens no run; the reinstatement is refused without a passing probe and to the last faulted run\'s operator; the probe is a steward\'s', async () => {
     const before = await runsOf(UNSTABLE);
     const q = await refusal(run(unstable('ok')));
     expect(q).toMatchObject({ status: 409 });
-    expect(q.message).toMatch(/^run rejected \(quarantined\): the adapter of harness-unstable@1 is quarantined in this domain .* after 3 consecutive faults \(last: memory\)/);
+    expect(q.message).toMatch(new RegExp(`^run rejected \\(quarantined\\): the adapter of harness-unstable@1 is quarantined in this domain .* after ${QUARANTINE_AFTER} consecutive faults \\(last: memory\\)`));
     expect(await runsOf(UNSTABLE)).toBe(before);
     const np = await refusal(reinstate(UNSTABLE));
     expect(np).toMatchObject({ status: 409 });
@@ -375,21 +410,24 @@ describe('B29 §C · C1 containment — faults, quarantine, the probe and the go
     expect(await health(UNSTABLE)).toMatchObject({ state: 'quarantined' });
   }, 180_000);
 
-  it('RECOVERY: the steward reinstates after the passing probe; the run succeeds; the ledger says it all; a new fault starts a new streak', async () => {
+  it('RECOVERY: the steward\'s OWN passing probe, then the reinstatement; the run succeeds; the ledger says it all; a new fault starts a new streak', async () => {
+    // B29-F2: the recovery establishes its own passing probe — it rests on no earlier case's.
+    const own = await probe(UNSTABLE);
+    expect(own.probe).toMatchObject({ passed: true, state: 'quarantined' });
     const r = await reinstate(UNSTABLE);
     expect(r.adapter).toMatchObject({ state: 'healthy', model_ref: UNSTABLE });
     expect(await health(UNSTABLE)).toMatchObject({ state: 'healthy', consecutive_faults: 0, reinstated_by: steward.principalId });
     const ok = await run(unstable('ok'));
     expect(ok.run).toMatchObject({ state: 'completed', isolated: true });
     const ledger = await rows(sql`select event from simulation.adapter_events where tenant_id = ${T()}::uuid and domain_id = ${D()}::uuid and model_ref = ${UNSTABLE} order by occurred_at`);
-    expect(ledger.map((e) => e['event'])).toEqual(['faulted', 'faulted', 'faulted', 'quarantined', 'probed', 'reinstated']);
+    expect(ledger.map((e) => e['event'])).toEqual(['faulted', 'faulted', 'faulted', 'quarantined', 'probed', 'probed', 'reinstated']);
     const oomRun = String((await health(UNSTABLE))!['quarantined_by_run']);
     expect((await runEvents(oomRun)).map((e) => e.event)).toContain('adapter.reinstated');
     const g = await refusal(run(unstable('garbage')));
     expect(g.message).toMatch(/^run failed \(adapter_fault: invalid_output\).*series is not an array/);
     expect(await health(UNSTABLE)).toMatchObject({ state: 'healthy', consecutive_faults: 1, total_faults: 4 });
     const health2 = (await methods.health(h.req(steward, 'simulation.read', 'SIM', null), T(), D(), { payload: { modelRef: UNSTABLE } })) as { adapter: { probes: Row[]; events: Row[] } };
-    expect(health2.adapter.probes).toHaveLength(1);
+    expect(health2.adapter.probes).toHaveLength(2);
   }, 180_000);
 });
 

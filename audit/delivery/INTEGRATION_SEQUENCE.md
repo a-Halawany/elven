@@ -12,10 +12,11 @@ Prepared under the owner's instruction of 2026-09-25 ("Prepare its separate merg
 | #61 the corrected plan | `planning/delivery-plan-2026-09` → `phase6-b22` | `45fda0f` (was `e579514`) | `supply-chain` red (the redis recheck) until #62 is on its base; the limiter residual (PLAN-F4) CLOSED on it at `45fda0f` (step 3 done) |
 | #62 redis index re-pin | `maintenance/c15-redis-index-2026-09-25` → `main` | `17f0236` | CLEAN; every check green (ci 36129773111, C19 36129773207) |
 | #63 B23 | `phase6-b23` → `planning/delivery-plan-2026-09` | `d2fa829` (was `95dfcdb`) | `supply-chain` red (the redis recheck); B23-F1 CLOSED on it at `d2fa829` by the forward migration 0085 (step 4's precondition done) |
-| #64 B24 | `phase6-b24` → `phase6-b23` | `3409418` (B24-F1; records on top) — ci 36242673225: build-test 1183/1183, browser and C19 36242673205 green | `supply-chain` red (the redis recheck) until #62 is on its base; build-test (integration 1182/1182), browser-regression and C19 36164183865 green (ci 36164184010); holds the limiter fix (same patch as #61's `45fda0f`) and 0086 |
-| #65 B28 | `phase6-b28` → `phase6-b24` | `2c75487` | ci 36276627852: integration 1214/1214, browser and C19 36276627853 green; build-test red on ONE C18 timing control (622/623 — carried to H1; must pass on the next head); `supply-chain` red (the redis recheck) until #62 is on its base |
-| #66 B32 | `phase6-b32` → `phase6-b28` | `a71a3b7` (B32-F1 corrected at `aa038f3`; the records on top; was `e45353e`) | stacked on #65; the hosted run for the correction pass at `a71a3b7`: build-test green (1243/1243) |
-| B34 | `phase6-b34` → `phase6-b32` | `62d6f02` (code, act and evidence at `3d630d4`, the integrator's as-of-now read fix on top; the records on `b34/records`) | stacked on #66; no PR opened by these records; the hosted run: pending at the candidate; reported to the owner, not re-recorded |
+| #64 B24 | `phase6-b24` → `phase6-b23` | `1bd2bce` (the reviewed pins fast-uri 3.1.7 / multer 2.4.0 cherry-picked 2026-09-29; was `3409418` — B24-F1; records on top — ci 36242673225: build-test 1183/1183, browser and C19 36242673205 green) | `supply-chain` red (the redis recheck) until #62 is on its base; build-test (integration 1182/1182), browser-regression and C19 36164183865 green (ci 36164184010); holds the limiter fix (same patch as #61's `45fda0f`) and 0086 |
+| #65 B28 | `phase6-b28` → `phase6-b24` | `9e9dd9e` (the pins merged forward 2026-09-29; was `2c75487`) | ci 36276627852: integration 1214/1214, browser and C19 36276627853 green; build-test red on ONE C18 timing control (622/623 — carried to H1; must pass on the next head); `supply-chain` red (the redis recheck) until #62 is on its base |
+| #66 B32 | `phase6-b32` → `phase6-b28` | `11c8102` (the pins merged forward 2026-09-29; was `a71a3b7` — B32-F1 corrected at `aa038f3`; the records on top; was `e45353e`) | stacked on #65; the hosted run for the correction pass at `a71a3b7`: build-test green (1243/1243) |
+| #67 B34 | `phase6-b34` → `phase6-b32` | `522f747` (the pins merge, content-identical; was `864029f` — B34-F; B34-F1/F2 CLOSED there by the review of 2026-09-29) | stacked on #66; hosted at `864029f`: build-test pass (job 109362321377: integration 1293/1293, unit 2585 + 9, acceptance 58/58, C18 dual-path proof completed then 623 + 44 controls, 32m10s — the 55-minute job budget proven necessary), browser and C19 pass, `supply-chain` red on the redis recheck only |
+| #68 B29 | `phase6-b29` → `phase6-b34` | the B29-F correction commit on top of `425eab4` (0093; `audit/CP6_BATCHES.md` §B29.11) | stacked on #67; hosted at `425eab4` (recorded once): build-test FAIL — integration 1339/1342 (three methods-harness failures, B29-F2), **the upgrade and C18 steps SKIPPED**; browser pass; C19 36570595109 pass; `supply-chain` red on the redis recheck; the corrected head's run is bound here when it completes |
 
 ## 1. The #62 decision (ready for the owner's word)
 
@@ -40,7 +41,9 @@ Older heads' green checks never stand for a new combination: every step below pr
 
 7. **#66 (B32).** Stacks on #65 (base `phase6-b28`); after #65 merges, retarget to `main`, merge `main` in, checks on the new head → the owner's decision.
 
-8. **B34.** Stacks on #66 (base `phase6-b32`); after #66 merges, retarget to `main`, merge `main` in, checks on the new head → the owner's decision.
+8. **#67 (B34).** Stacks on #66 (base `phase6-b32`); after #66 merges, retarget to `main`, merge `main` in, checks on the new head → the owner's decision.
+
+9. **#68 (B29).** Stacks on #67 (base `phase6-b34`); the B29-F correction pass (0093) is on it first, its hosted checks — the build job's upgrade and C18 steps included, which the first run skipped — must complete; after #67 merges, retarget to `main`, merge `main` in, checks on the new head → the owner's decision.
 
 Between two merges the first merge's `main` chain completes before the next merge (the B18 rule: the C17 finalize of a merge overtaken by another merge refuses).
 

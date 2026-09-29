@@ -76,8 +76,15 @@ export function conformsToSchema(schema: ElementSchema, elements: readonly Famil
 }
 
 export interface FamilyDefinition {
-  /** The family's own domain rules, beyond the schema (run on every element of the version, complete or not). */
+  /** The family's own domain rules, beyond the schema (run on every element of the version, complete or not) — judged at ADMISSION over the whole version. */
   rules(elements: readonly FamilyElement[]): string[];
+  /**
+   * B29-F1 (0093): the rules among `rules` that hold on EVERY PREFIX of a version — a violation no later element can cure (a line of zero
+   * capacity; roles filled beyond a headcount, each key grounded once) — judged at GROUNDING over the accumulated draft together with the
+   * offered elements, so the ground route never writes what admission would refuse. Absent: nothing of the family is judged before
+   * admission (the supply network's topology needs the whole version — a route may be grounded before its site).
+   */
+  prefixRules?(elements: readonly FamilyElement[]): string[];
   measures(elements: readonly FamilyElement[], asOf: string | null): Measures;
 }
 
@@ -112,6 +119,7 @@ export const FAMILIES: Readonly<Record<ProductFamily, FamilyDefinition>> = Objec
       for (const [k, v] of byPrefix(elements, 'line.capacity_per_day')) if (v === 0) errors.push(`line.capacity_per_day${k === '' ? '' : `:${k}`}: a line with no capacity is not a line — retire it from the process`);
       return errors;
     },
+    prefixRules(elements) { return this.rules(elements); }, // B29-F1 (0093): a zero-capacity line is wrong in every prefix
     /** Line throughput per day: the lines' capacity at their availability, bounded by the supply capacity reaching the process. */
     measures(elements) {
       const line = sum(byPrefix(elements, 'line.capacity_per_day'));
@@ -180,6 +188,7 @@ export const FAMILIES: Readonly<Record<ProductFamily, FamilyDefinition>> = Objec
       const filled = sum(byPrefix(elements, 'roles.filled'));
       return headcount !== null && filled !== null && filled > headcount ? [`roles.filled: ${filled} roles filled by a headcount of ${headcount}`] : [];
     },
+    prefixRules(elements) { return this.rules(elements); }, // B29-F1 (0093): roles filled beyond the headcount stay so in every prefix (each key grounded once)
     measures(elements) {
       const required = sum(byPrefix(elements, 'roles.required'));
       const filled = sum(byPrefix(elements, 'roles.filled'));
@@ -208,6 +217,16 @@ export function validateFamily(family: string | null, schema: ElementSchema, ele
   const def = definitionOf(family); // B29 §B (0092): the eight and the supply network
   if (errors.length === 0 && def !== null) errors.push(...def.rules(elements));
   return errors;
+}
+
+/**
+ * B29-F1 (0093): THE GROUND-TIME VALIDATOR — the schema check on the offered elements is the caller's; here the family's PREFIX rules over
+ * the accumulated draft with the offered elements (a family that declares none is judged at admission alone).
+ */
+export function validateFamilyPrefix(family: string | null, schema: ElementSchema, accumulated: readonly FamilyElement[]): string[] {
+  if (Object.keys(schema).length === 0) return [];
+  const def = definitionOf(family);
+  return def?.prefixRules === undefined ? [] : def.prefixRules(accumulated);
 }
 
 /** The family-derived measures of a version's elements; an extension or a schema-less kind derives none. */
