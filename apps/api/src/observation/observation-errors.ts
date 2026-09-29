@@ -720,6 +720,17 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   { match: /^gate rejected \((state|stale_package)\)|^override rejected \((state|nothing_to_override)\)|^override review rejected \((reviewed|normal)\)|^delegation rejected \((state|duplicate)\)|^delegation end rejected \(ended\)|^board reservation rejected \((reserved|state)\)|^preview rejected \(state\)|^preview rejected: the digest previewed|^commitment rejected \((conditions_hold|not_ready|no_preview)\)|^approval rejected \(delegation\)/i, status: 409, code: 'EYE_STA_002' },
   { match: /^(gate|override|override review|delegation|delegation end|board reservation|preview|control) rejected|^approval rejected \(conditions\)/i, status: 422, code: 'EYE_REQ_001' },
   /* end B34 gates */
+  /* B36 (0094) gates — the gate completed (0094 §G): `signature rejected` (the prelude's port and §G2's), `recusal rejected`, `challenge rejected`,
+     `challenge resolution rejected`, `distribution rejected`, `version fields rejected`, `board decision rejected`, `pdp denial rejected`,
+     `decision record rejected`, `gate state rejected` — anchored phrases no earlier row matches (the B34 rows read `gate rejected`, `board reservation
+     rejected`, `approval rejected (…)` with their own classes; the two new approval / commitment classes below are named exactly). B9's order:
+     the standing 403 (actor, ownership, authority, separation, class, context; a recused approver; the caller's scope), the absences 404
+     (unknown_*), the record's state 409 (state, stale_digest, a challenged commitment), the caller's own request 422 (everything else). */
+  { match: /^(signature|recusal|challenge|challenge resolution|distribution|version fields|board decision|pdp denial) rejected \((actor|ownership|authority|separation|class|context)\)|^approval rejected \(recused\)|^decision record rejected: outside/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^(signature|recusal|challenge|challenge resolution|distribution|version fields|board decision|gate state) rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^(signature|recusal|challenge|challenge resolution|distribution|version fields|board decision) rejected \((state|stale_digest)\)|^commitment rejected \(challenged\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^(signature|recusal|challenge|challenge resolution|distribution|version fields|board decision|pdp denial|gate state) rejected/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B36 gates */
   /* B34 (0090) commitments — the tracker's and the execution gateway's ports (0090 §C): `commitment (item|exception|closure) rejected`,
      `execution (target|handoff|issue|attempt|compensation|reconcile) rejected`, `objective revision rejected` and the package closure's
      `closure rejected (commitment_open)` — anchored phrases no earlier row matches (no earlier row starts with `commitment item`,

@@ -18,6 +18,12 @@ import { CommitmentController } from './commitments/commitment.controller.js';
 import { CommitmentService, ExecutionEgress } from './commitments/commitment.service.js';
 import { CommitmentsSubscriptionConsumer } from './subscriptions/commitments.consumer.js';
 /* end B34 commitments */
+/* B36 (0094) gates: the gate completed — the signer by key reference (§0), the SYNTHETIC delivery adapters (B34's local sinks) for the distribution */
+import { GateCompletionService } from './gates/gate-completion.service.js';
+import { SignatureService } from '../executive/signatures/signature.service.js';
+import { EmailChannel } from '../executive/attention/delivery/email.channel.js';
+import { SmsChannel, TeamsChannel } from '../executive/attention/delivery/webhook.channel.js';
+/* end B36 gates */
 
 // CP-6 B6 (0063): the decision CONSUMER registers itself into the graph's dispatcher; the graph module
 // imports nothing from here.
@@ -25,7 +31,8 @@ import { CommitmentsSubscriptionConsumer } from './subscriptions/commitments.con
   imports: [PipelineModule, GraphModule],
   controllers: [DecisionController, /* B34 (0090) commitments */ CommitmentController /* end B34 commitments */],
   providers: [PackageService, ApprovalService, ReplayService, MonitoringService, DecisionSubscriptionConsumer,
-    /* B34 (0090) commitments */ CommitmentService, ExecutionEgress, CommitmentsSubscriptionConsumer /* end B34 commitments */],
+    /* B34 (0090) commitments */ CommitmentService, ExecutionEgress, CommitmentsSubscriptionConsumer /* end B34 commitments */,
+    /* B36 (0094) gates */ GateCompletionService, SignatureService, EmailChannel, SmsChannel, TeamsChannel /* end B36 gates */],
   exports: [PackageService, ApprovalService, ReplayService, MonitoringService, /* B34 (0090) commitments */ CommitmentService, ExecutionEgress /* end B34 commitments */],
 })
 export class DecisionModule {}

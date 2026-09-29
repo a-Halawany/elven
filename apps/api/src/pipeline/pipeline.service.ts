@@ -535,6 +535,22 @@ export class PipelineService {
           target: { type: route.objectType, id: route.objectId, version: null },
           metadata: { assurance: principal.assurance, reason: (policyResult.reason ?? '').slice(0, 200) },
         });
+        /* B36 (0094) gates (l5): a DENIED decision.* action is recorded as a versioned object (decision.pdp_denials) linked to the policy
+           decision just written and, through its target, to the package version at the time — under this very evidence context (the port
+           reads the bound action, the subject and the scope from it). Its own failure never loses the denial's evidence: a savepoint. */
+        if (route.action.startsWith('decision.')) {
+          await sql`savepoint b36_pdp_denial`.execute(tx);
+          try {
+            await sql`select decision.record_pdp_denial(${newId()}::uuid, ${route.action}, ${route.objectType}, ${route.objectId}::uuid, ${polId}::uuid,
+              ${policyResult.decision === 'deny' ? 'deny' : 'indeterminate'}, ${policyResult.reason ?? ''}, ${policyResult.bundleVersion}, ${envelope.correlation_id}::uuid)`.execute(tx);
+            await sql`release savepoint b36_pdp_denial`.execute(tx);
+          } catch (denialError) {
+            await sql`rollback to savepoint b36_pdp_denial`.execute(tx);
+            degradedAudit.record({ kind: 'audit_unavailable', correlationId: envelope.correlation_id, route: route.action, failureClass: 'pdp_denial_object_not_recorded', scope: route.scope,
+              detail: (denialError instanceof Error ? denialError.message : String(denialError)).slice(0, 300), suppressedCarried: 0 });
+          }
+        }
+        /* end B36 gates */
       });
     } catch (e) {
       // If the caller's own authority is too weak even to carry its denial (a
