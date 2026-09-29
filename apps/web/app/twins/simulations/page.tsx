@@ -12,6 +12,8 @@ import type { Scope } from '../../../lib/observation';
 import { envelopeKeyLines, envelopeLine, fitnessLabel } from '../../../lib/fitness';
 import { Empty, LiveStatus, Mono, cardStyle, DefinitionRow, UnknownNote, GovernedButton, fmtInstant, textareaStyle } from '../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui';
+import { MethodPanel } from './method-panel'; /* B29 (0092) §C */
+import { summaryLines } from '../../../lib/methods'; /* B29 (0092): a method run's headline results */
 
 const money = (v: unknown): string => (typeof v === 'string' ? `€${Number(v).toLocaleString('en-GB', { minimumFractionDigits: 2 })}` : '—');
 const iv = (r: Run): string => r.interventions.map((i) => (i['type'] === 'none' ? 'none' : `${String(i['type'])}${i['shipment'] ? ` ${String(i['shipment'])}` : ''}${i['weeks'] ? ` ${String(i['weeks'])}w` : ''}`)).join(' + ');
@@ -227,7 +229,7 @@ export default function SimulationsPage() {
                 <Td mono>v{r.twin_version} · {r.branch_id}</Td>
                 <Td>{r.shock_basis === 'scenario-branch-flipped' ? 'corridor delay — flipped branch' : r.shock_basis === 'hypothetical' ? <strong>corridor delay — HYPOTHETICAL</strong> : r.shock ? 'corridor delay (basis unrecorded)' : 'none'}</Td>
                 <Td>{iv(r)}</Td>
-                <Td mono>{r.outputs?.totals?.line_stop_days ?? '—'}</Td>
+                <Td mono>{r.outputs?.totals?.line_stop_days ?? (r.outputs?.summary?.['line_stop_days'] as number | undefined) ?? '—'}</Td>
                 <Td mono>{money(r.outputs?.totals?.cost.total)}</Td>
                 <Td>{r.state === 'failed' ? <strong style={{ color: 'var(--eye-color-critical)' }}>FAILED — {r.failure}</strong> : r.state}{r.validation_status.includes('UNVERIFIED') ? <div style={{ color: 'var(--eye-color-critical)', fontSize: 'var(--eye-type-label-sm)' }}>twin version UNVERIFIED</div> : null}{r.validity === 'invalidated' ? <div style={{ color: 'var(--eye-color-critical)', fontSize: 'var(--eye-type-label-sm)' }}>INVALIDATED ({r.invalidation?.trigger ?? 'trigger unrecorded'})</div> : null}</Td>
                 {/* B21: the run's fitness (a promotion's use / an invalidation), its own envelope state when outside, the live challenges. */}
@@ -271,6 +273,8 @@ export default function SimulationsPage() {
               : open.scenario_id ? <>none — bound to scenario <Mono>{String(open.scenario_id).slice(0, 8)}…</Mono> version {open.scenario_version ?? '?'}, branch {open.scenario_branch_state ?? '?'}</> : 'none'}</DefinitionRow>
             <DefinitionRow term="Bound"><Mono>{open.model_ref}</Mono> impl <Mono>{open.implementation_digest.slice(0, 16)}…</Mono> · env <Mono>{open.environment_digest.slice(0, 16)}…</Mono> · {open.stochastic_mode}{open.stochastic_mode === 'seeded' ? ` (${open.rng}, seed ${open.seed}, ${open.samples} samples)` : ''}</DefinitionRow>
             <DefinitionRow term="Digests">initial state <Mono>{open.initial_state_digest.slice(0, 16)}…</Mono> · inputs <Mono>{open.inputs_digest.slice(0, 16)}…</Mono> · outputs <Mono>{String(open.outputs_digest ?? '').slice(0, 16)}…</Mono></DefinitionRow>
+            {/* B29 (0092): a method-fabric run carries its own headline results instead of supply-flow's totals */}
+            {open.outputs?.summary !== undefined && <DefinitionRow term="Method results">{summaryLines(open.outputs.summary).map(([k, v]) => `${k} ${v}`).join(' · ')}</DefinitionRow>}
             <DefinitionRow term="Totals">{open.outputs?.totals ? <>{open.outputs.totals.line_stop_days} line-stop day(s) from {open.outputs.totals.first_line_stop_date ?? 'never'} · {open.outputs.totals.days_below_safety_stock} day(s) below safety stock · min on-hand {open.outputs.totals.min_on_hand} · cost {money(open.outputs.totals.cost.total)} (reroute {money(open.outputs.totals.cost.reroute)}, air {money(open.outputs.totals.cost.air)}, line stop {money(open.outputs.totals.cost.line_stop)})</> : '—'}</DefinitionRow>
             <DefinitionRow term="Assumptions carrying the result">{(open.sensitivity?.factors ?? []).slice(0, 4).map((f) => <div key={f.key}><Mono>{f.key}</Mono> — cost spread {money(f.cost_spread)}</div>)}{open.sensitivity?.outside_envelope ? <strong style={{ color: 'var(--eye-color-critical)' }}>a perturbation left the envelope (a sensitivity fact; the run’s own contract is the Envelope row)</strong> : null}</DefinitionRow>
             <DefinitionRow term="Validation">{open.validation_status}</DefinitionRow>
@@ -359,6 +363,7 @@ export default function SimulationsPage() {
           ) : null}
         </section>
       )}
+      <MethodPanel />
       {last === null ? null : <LiveStatus>{last}</LiveStatus>}
       <Receipt receipt={receipt} />
     </>

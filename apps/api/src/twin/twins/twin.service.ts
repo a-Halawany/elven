@@ -28,15 +28,16 @@ import { foldControls, type Controls, type ControlInput } from '../../prediction
 import type { AdmitWrites, Citation, CitationKind, CitedObjectRow, DeclareWrites, EnvelopeCheck, GroundWrites, TwinReads, ValidateWrites, VersionWrites } from '../twin.capabilities.js';
 import { LIFECYCLE_EVENT_LIST_MAX, type OutboxRow } from '../../graph/subscriptions/change-events.js';
 import { changedVariablesOf, validateTwinEvent, type ChangedVariable, type ElementRow } from './twin-events.js';
+import { checkFamilyAdmission, checkFamilyGround } from '../families/admission.js'; // B29 (0092)
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const KINDS = ['observed', 'estimated', 'assumed', 'predicted', 'simulated'] as const;
 export type ElementKind = typeof KINDS[number];
 const OBJECT_TYPE_OF: Readonly<Record<Exclude<CitationKind, 'entity'>, string>> = Object.freeze({
-  evidence: 'EVD', claim: 'CLM', forecast: 'FCT', assumption: 'ASU', run: 'SIM',
+  evidence: 'EVD', claim: 'CLM', forecast: 'FCT', assumption: 'ASU', run: 'SIM', /* B29 (0092): a coupled element cites the upstream twin version */ twin: 'TWN',
 });
 const DEPENDS_ON_KIND: Readonly<Record<CitationKind, string>> = Object.freeze({
-  evidence: 'evidence', claim: 'claim', entity: 'entity', forecast: 'forecast', assumption: 'strategy', run: 'run',
+  evidence: 'evidence', claim: 'claim', entity: 'entity', forecast: 'forecast', assumption: 'strategy', run: 'run', /* B29 (0092) */ twin: 'twin',
 });
 const VALIDATION_STATES = ['validated', 'validated_retrospective', 'unvalidated', 'validation_impossible'] as const;
 /** The dependency walk's bound, applied to the pending-closure read as well. */
@@ -324,6 +325,7 @@ export class TwinService {
       throw new HttpException(errorBody('EYE_STA_001', correlationId,
         `version ${version} is admitted and immutable; open a new version to change the state`), 409);
     }
+    await checkFamilyGround(cap, twinId, elements, correlationId); // B29 (0092): element keys and units checked BEFORE they enter the draft (nothing written on a refusal)
     const knownAt = instantOf(v['known_at']);
     const observedThrough = v['observed_through'] === null || v['observed_through'] === undefined ? null : dayOf(v['observed_through']);
     const out: Array<{ key: string; material: boolean; health: string; syntheticState: boolean; inheritedValidation: string | null }> = [];
@@ -444,6 +446,9 @@ export class TwinService {
     const assembled = await this.series.assemble(reader, seriesKey, knownAt, observedThrough);
     const last = assembled.points[assembled.points.length - 1];
     const health: 'complete' | 'incomplete' = assembled.complete && last !== undefined ? 'complete' : 'incomplete';
+    // B29 (0092): the family check at grounding, on the series' latest value (its key and unit as the element carries them); a series with
+    // no point grounds nothing checkable here — the version-level check at admission still reads it
+    if (last !== undefined) await checkFamilyGround(cap, twinId, [{ key, value: last.value, unit: assembled.series.unit }], correlationId);
     const citations: Citation[] = assembled.evidence.map((ev) => ({ kind: 'evidence' as const, id: ev.evidence_object_id, version: ev.evidence_version, digest: ev.evidence_digest }));
     const value = last === undefined
       ? { series_key: seriesKey, points: 0, latest: null, note: 'no observation is known under these cut-offs' }
@@ -489,6 +494,7 @@ export class TwinService {
     const elements = (await cap.readElements().selectAll()
       .where('twin_id' as never, '=', twinId as never).where('version' as never, '=', version as never)
       .orderBy('key' as never).execute()) as Array<Record<string, unknown>>;
+    await checkFamilyAdmission(cap, twin, elements, correlationId); // B29 (0092): the family validator — element keys and units conform to the kind's schema
     const expected = await cap.stateSetDigest({ twinId, version });
     const missing = await cap.missingRequiredKeys({ twinId, version });
     const completeness = missing.length === 0 ? 'complete' : 'incomplete';

@@ -23,7 +23,8 @@ import { TwinCapability } from './twin.capabilities.js';
 import { TwinService, validateElementIntake, validateTwinIntake, validateValidationIntake } from './twins/twin.service.js';
 import { twinStateChangedEvent } from './twins/twin-events.js';
 import { SimulationCapability } from './simulation.capabilities.js';
-import { SimulationService, environmentOf, validateRunIntake } from './simulations/simulation.service.js';
+import { SimulationService, environmentOf, outputQuantities, validateRunIntake, type GateVerdict } from './simulations/simulation.service.js';
+import type { ConstraintSubject } from './methods/types.js'; /* B29 (0092) §C */
 import { simulationCompletedEvent, simulationStartedEvent } from './simulations/simulation-events.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -273,14 +274,25 @@ export class TwinController {
     // (policy, custody, audit), in sequence; the opening write then judges lifecycle under its own snapshot and consults these answers
     // for the bytes. A retrieval INSIDE the opening write ran on a second connection whose capability context waited on the run's
     // transaction (ctx.build's sweep of expired nonces) while the run's handler waited on it — a deadlock that queued every login.
-    const citations = (await this.pipeline.consequentialRead(
+    // B29 (0092) §C: the same read says WHAT THE RUN WILL BE — its method (named, or the twin's own), its path, the citations its required
+    // inputs rest on (the model-aware selection for an explicitly bound method) and the opening subject of §D's constraint gate.
+    const prepared = (await this.pipeline.consequentialRead(
       { ...envelope, action: 'simulation.read', side_effect_class: 'none', message_id: newId() } as Envelope, principal, this.route(tenantId, domainId, 'simulation.read', 'SIM', null), SimulationCapability.read,
-      async (cap) => this.simulations.citationsForRun(cap, intake))).result;
+      async (cap) => this.simulations.prepareRun(cap, intake, runId))).result;
+    const citations = prepared.citations;
     const evidence = await this.simulations.retrieveEvidence(reader, citations, 'simulation.run', { twin_id: intake.twinId, version: String(intake.twinVersion), component: intake.component });
+    // B29 (0092) §C: §D's GATE on the run's inputs, asked outside any write; a VIOLATED verdict refuses the run before it exists (422, naming the
+    // constraint); satisfied or INDETERMINATE is recorded on the run by the opening write (indeterminate is never read as satisfied).
+    const gateScope = { tenantId, domainId };
+    const openingVerdict = prepared.subject === null ? null : await this.simulations.checkGate(gateScope, prepared.subject);
+    if (openingVerdict !== null) this.simulations.refuseViolation(openingVerdict, envelope.correlation_id);
+    if (prepared.path === 'method') return this.runMethod(tenantId, domainId, envelope, principal, intake, runId, evidence, openingVerdict);
+    let preview: ConstraintSubject | null = null;
     const opened = await this.pipeline.write(
       envelope, principal, this.route(tenantId, domainId, 'simulation.run', 'SIM', runId), SimulationCapability.run,
       async (cap, scope) => {
-        const r = await this.simulations.open(cap, scope, evidence, intake, principal.principalId, envelope.correlation_id, runId);
+        const r = await this.simulations.open(cap, scope, evidence, intake, principal.principalId, envelope.correlation_id, runId, openingVerdict);
+        try { preview = this.simulations.previewSupplyFlow(r, intake.interventions, intake.component); } catch { preview = null; }
         return { result: { runId: r.runId, initialStateDigest: r.opened.initial_state_digest, knownAt: r.opened.known_at, observedThrough: r.opened.observed_through,
                            // B21 (0081): the fitness and envelope contract the port bound at opening
                            twinFitness: r.twinFitness, envelope: r.envelope, envelopeAck: r.envelopeAck, challengeId: r.challengeId },
@@ -292,6 +304,8 @@ export class TwinController {
                    operator: principal.principalId, occurredAt: new Date().toISOString(),
                  }) };
       });
+    // B29 (0092) §C: §D's gate on the outputs (supply-flow@1's, computed from the bound contract), asked before the completing write records it.
+    const completionVerdict = preview === null ? null : await this.simulations.checkGate(gateScope, preview);
     // The elapsed time until a FAILURE is measured here (the service measures a completion around its own execution).
     const t0 = Date.now();
     try {
@@ -299,7 +313,7 @@ export class TwinController {
         { ...envelope, action: 'simulation.run.complete', message_id: newId() }, principal,
         this.route(tenantId, domainId, 'simulation.run.complete', 'SIM', runId), SimulationCapability.complete,
         async (cap, scope) => {
-          const { event, ...r } = await this.simulations.complete(cap, scope, runId, envelope.purpose_id ?? 'simulation', principal.principalId, envelope.correlation_id);
+          const { event, ...r } = await this.simulations.complete(cap, scope, runId, envelope.purpose_id ?? 'simulation', principal.principalId, envelope.correlation_id, completionVerdict);
           return { result: r, targetType: 'SIM', targetId: runId, targetVersion: '1', outboxEvent: event };
         });
       return { run: { ...opened.result, ...done.result, state: 'completed' }, receipt: receipt(done) };
@@ -323,6 +337,86 @@ export class TwinController {
         }).catch(() => undefined);
       throw e;
     }
+  }
+
+  /**
+   * B29 (0092) §C: A METHOD-FABRIC RUN — three governed steps and one contained execution between them. `simulation.run` opens it (the
+   * port checks the binding, the approved use and the quarantine); the method EXECUTES outside any write under its registry row's
+   * containment (out of process, bounded in time and heap); §D's gate is asked about the outputs; `simulation.run.complete` completes
+   * it — or FAILS it, with the adapter's fault recorded in the same write (timeout, crash, memory, invalid output: the streak, the
+   * quarantine at the threshold). A crash mid-run leaves the run failed and the fault said, never half-completed.
+   */
+  private async runMethod(tenantId: string, domainId: string, envelope: Envelope, principal: EyeRequest['eyePrincipal'] & object, intake: ReturnType<typeof validateRunIntake>,
+                          runId: string, evidence: Awaited<ReturnType<SimulationService['retrieveEvidence']>>, openingVerdict: GateVerdict | null) {
+    let execution: Parameters<SimulationService['execute']>[0] | null = null;
+    const opened = await this.pipeline.write(
+      envelope, principal, this.route(tenantId, domainId, 'simulation.run', 'SIM', runId), SimulationCapability.run,
+      async (cap, scope) => {
+        const r = await this.simulations.openMethod(cap, scope, evidence, intake, principal.principalId, envelope.correlation_id, runId, openingVerdict);
+        execution = r.execution;
+        return { result: { runId: r.runId, initialStateDigest: r.opened.initial_state_digest, knownAt: r.opened.known_at, observedThrough: r.opened.observed_through,
+                           twinFitness: r.twinFitness, envelope: r.envelope, envelopeAck: r.envelopeAck, challengeId: r.challengeId,
+                           modelRef: r.modelRef, implementationDigest: r.implementationDigest, openingConstraint: openingVerdict },
+                 targetType: 'SIM', targetId: runId, targetVersion: '0',
+                 outboxEvent: simulationStartedEvent({
+                   runId, opened: r.opened, intake, scenario: r.scenario, shockBasis: r.shockBasis, modelRef: r.modelRef, implementationDigest: r.implementationDigest,
+                   environmentDigest: r.environmentDigest, environment: r.environment, inputsDigest: r.inputsDigest, rng: r.rng,
+                   twinFitness: r.twinFitness, envelope: r.envelope, envelopeAck: r.envelopeAck, challengeId: r.challengeId,
+                   operator: principal.principalId, occurredAt: new Date().toISOString(),
+                 }) };
+      });
+    const exec = execution as Parameters<SimulationService['execute']>[0] | null;
+    if (exec === null) throw new HttpException(errorBody('EYE_STA_001', envelope.correlation_id, 'the run opened without an execution contract'), 500);
+    const t0 = Date.now();
+    const completing = <T>(handler: (cap: ReturnType<typeof SimulationCapability.complete>, scope: Parameters<Parameters<PipelineService['write']>[4]>[1]) => Promise<{ result: T; targetType: string; targetId: string; targetVersion: string; outboxEvent: ReturnType<typeof simulationCompletedEvent> }>) =>
+      this.pipeline.write({ ...envelope, action: 'simulation.run.complete', message_id: newId() }, principal,
+        this.route(tenantId, domainId, 'simulation.run.complete', 'SIM', runId), SimulationCapability.complete, handler);
+    const fail = async (failure: string, fault: { kind: 'timeout' | 'crash' | 'memory' | 'invalid_output'; message: string } | null): Promise<{ answer: Record<string, unknown> | null; recorded: string | null }> => {
+      let answer: Record<string, unknown> | null = null;
+      try {
+        await completing(async (cap, scope) => {
+          answer = await this.simulations.recordFailure(cap, scope, runId, exec.modelRef, failure, fault, principal.principalId, envelope.correlation_id);
+          const row = ((await cap.readRuns().selectAll().where('run_id' as never, '=', runId as never).executeTakeFirst()) as Record<string, unknown> | undefined)
+            ?? { twin_id: intake.twinId, twin_version: intake.twinVersion, run_kind: intake.runKind, control_run_id: intake.controlRunId, component: intake.component };
+          const env = environmentOf();
+          return { result: {}, targetType: 'SIM', targetId: runId, targetVersion: '0',
+                   outboxEvent: simulationCompletedEvent({
+                     runId, state: 'failed', run: row, outputsDigest: null, totals: null, impacts: { control_run_id: null, deltas: null }, sensitivity: null,
+                     validation: { validation_status: row['validation_status'] === null || row['validation_status'] === undefined ? null : String(row['validation_status']), inherited_validation: [], outside_envelope: false },
+                     resource: { elapsed_ms: Date.now() - t0, samples_run: 0, process: { node: env.node, platform: env.platform, arch: env.arch }, memory_rss_bytes: process.memoryUsage().rss },
+                     simObject: null, failure: failure.slice(0, 500), actor: principal.principalId, occurredAt: new Date().toISOString(),
+                   }) };
+        });
+        return { answer, recorded: null };
+      } catch (e) {
+        return { answer, recorded: e instanceof Error ? e.message : String(e) };
+      }
+    };
+    const got = await this.simulations.execute(exec);
+    if (got.outcome === 'ok') {
+      // §D's gate on the outputs, outside any write; a violated verdict is recorded and announced (constraint.refused) on the completed run.
+      const completionVerdict = await this.simulations.checkGate({ tenantId, domainId }, { kind: 'run_output', ref: runId, quantities: outputQuantities(got.output) });
+      try {
+        const done = await completing(async (cap, scope) => {
+          const { event, ...r } = await this.simulations.completeMethod(cap, scope, runId, got, completionVerdict, envelope.purpose_id ?? 'simulation', principal.principalId, envelope.correlation_id);
+          return { result: r, targetType: 'SIM', targetId: runId, targetVersion: '1', outboxEvent: event };
+        });
+        return { run: { ...opened.result, ...done.result, state: 'completed' }, receipt: receipt(done) };
+      } catch (e) {
+        const failure = e instanceof HttpException ? String((e.getResponse() as { message?: string }).message ?? e.message) : (e instanceof Error ? e.message : String(e));
+        await fail(failure, null);
+        throw e;
+      }
+    }
+    const fault = got.outcome === 'fault' ? { kind: got.kind, message: got.message } : null;
+    const failure = got.outcome === 'fault' ? `the adapter of ${exec.modelRef} faulted (${got.kind}): ${got.message}`
+      : got.outcome === 'invalid' ? `the stored contract is not a valid input of ${exec.modelRef}: ${got.problems.join('; ')}` : `the method could not be executed: ${got.reason}`;
+    const { answer, recorded } = await fail(failure, fault);
+    const quarantined = answer !== null && (answer as Record<string, unknown>)['quarantined'] === true;
+    throw new HttpException(errorBody(got.outcome === 'invalid' ? 'EYE_REQ_001' : 'EYE_STA_001', envelope.correlation_id,
+      `run failed (${got.outcome === 'fault' ? `adapter_fault: ${got.kind}` : got.outcome}): run ${runId} is failed, never half-completed — ${failure}`
+      + (quarantined ? `; the adapter of ${exec.modelRef} is now QUARANTINED in this domain` : '')
+      + (recorded === null ? '' : `; the failure could not be recorded: ${recorded}`)), got.outcome === 'invalid' ? 422 : 409);
   }
 
   /**

@@ -4242,3 +4242,53 @@ The backups before 0090 are `eye_demo-pre-0090-20260928T205841Z.dump` and `eye_d
 **CI and supply chain:** build-test's bound 30 → 55 minutes and the integration step's own bound 28 (C18's watchdog and step bound unchanged; pinned by the C17.2 contract test, `a9b2e6d`) after #67's job ended inside C18. The #64/#65 gitleaks-history finding was 0089's known false positive on heads without B32's `.gitleaks.toml` §7; the same scoped exclusion was carried to #64–#67 (no history rewrite). New advisories (fast-uri HIGH ×2, multer MODERATE) are overridden on #67 (`e483b44`), not yet on #64–#66; #60/#61/#63 also lack §7 (noted).
 
 **The plan:** F-P6-05 is ADVANCED in B34 and COMPLETES in **B36** with (u) the enforced activation of a future authorized real execution target (`dc49399`); B36 also owns (t) the local invitation pickup and delivery. The binding-revocation and principal-disable ports are **B61**'s; the real ERP stays **R2**. The schedule moved (B34 5.25–9 U; B36 13.5–23.5 U); the M1 dates are unchanged. H1's sweep and #62 are unchanged. No merge, purchase, real-provider activation or additional account. The candidate is PR #67 at the B34-F head.
+
+## 42. B29 (2026-09-29): twin families and composition, the simulation method fabric and the constraint runtime (0092) — F-P5-01 and F-P5-05
+
+### 42.1 What B29 implements
+
+The mechanism is in `audit/CP6_BATCHES.md` §B29. There is one migration, `0092_b29_twin_families_methods_constraints.sql` (2487 lines: §0 prelude, §A, §D, §C, §B, §I). It is forward-only (0084–0091 untouched), and the interface register stays 50/0/0. It was built as the integrator's prelude (`d73eb44`: the three roles, the event vocabulary, the registry columns, the frozen TypeScript contract `MethodAdapter` / `ConstraintGate`, the PDP exact rules) and four parts in parallel worktrees (composition `255f40d`, supply network `4395455`, methods `f40f4d2`, constraints `cec9441`), combined by the integrator.
+
+- **Families and composition (F-P5-01):**
+  - Eight product families (enterprise, market, competitor, product, process, infrastructure, regulation, organisation) as kind schemas with element schemas, required dependencies and default methods; a validator per family at grounding (nothing written on a refusal; the series grounding path too) and at admission; family measures.
+  - Versioned twin contracts with exposed keys (units, cadence) and approved uses; links declared by the DOWNSTREAM owner and refused outside the contract, on an unapproved use, a cycle, an undeclared key or unit, self or duplicate.
+  - Coupling proposed per live link on an upstream admission, each coupled element citing the upstream version's digest; applied or declined by the downstream owner through the existing ports.
+  - The ownership boundary on every write path (a trigger on `twin_events`); dependency completeness (L5-C06); the extension surface `twin.register_kind` (an `x-` kind per tenant and domain, human-gated).
+- **The supply network and the agent (F-P5-01):** the `supply-network` kind (tier, site, material, route, capacity per day) validated at grounding and admission; tier coverage, the capacity bottleneck through each site's bill of materials, single-source exposure. The Supply Chain Agent drafts proposals only (keyed by the digest of their numbers; resumable scans); every agent write to a twin is refused by a trigger and at the PDP; the twin's owner decides.
+- **The method fabric (F-P5-05):** six pure adapters (discrete-event, system dynamics, agent-based, optimisation, war-gaming, counterfactual) each pinned by the sha256 of its file, beside `supply-flow@1` (unchanged). Isolated adapters run in a child process under a memory ceiling and a SIGKILL timeout with a scrubbed environment; the parent recomputes the outputs digest. Adapter health, quarantine after consecutive faults, a method steward's probe, human-gated reinstatement. Method bindings per twin under the approved use; the one `simulation.open_run` redefinition.
+- **The constraint runtime (F-P5-05):** versioned constraint sets; a pure evaluator (topology, conservation, business rules) answering satisfied | violated | indeterminate — never a pass on a missing input or an exhausted budget; the plan check recorded before answering and reproducible against the exact versions; the gate on every run with a narrowed machine capability (reviewed: 0039's minter pattern, one tenant and domain, one bound action); the Constraints page.
+- **Integration and the walk found and fixed:** part C's harness updated to the real gate's answer (satisfied with no set); the family check on the series grounding path; a pure method or constraint steward could not open the shell (`identity.self.read` gains both; unit `phase6-stewards-b29`); the run page now shows a method run's own results.
+
+### 42.2 Results
+
+| Check | Result |
+|---|---|
+| Part harnesses | 14 + 6 + 14 + 15 = 49/49 (composition, supply network, methods, constraints) |
+| Full integration | 1342/1342 in 104 files (B34's 1293 + 49) |
+| Unit | API 2664 + 9; web 107; typecheck clean |
+| Acceptance / upgrade | 58/58 / PASS (roles 49, migrations 71) |
+| Browser | the browser gate 55/55 on the B29 head; the demo walk 5/5 (+ B34's 4) |
+| Demo walk | 5/5 (+ B34's 4) on `eye_demo` |
+| Hosted | pending at the candidate |
+
+**The act on `eye_demo`** (`evidence/cp6/act-b29.txt`): every scene held in 2.0 s, after one rehearsal on `eye_demo_b29` that held every scene on the first attempt. The backup before 0092 is `eye_demo-pre-0092-20260929T121053Z.dump` (65,718,364 bytes). Every figure is SYNTHETIC.
+- **Personas:** E. Kovács (plant operations; twin owner), R. Aydın (enterprise planning; twin owner), H. Petrović (method steward), S. Lindqvist (constraint steward), created through the governed principal route; the Supply Chain Agent registered (accountable T. Nakamura, escalation M. Dvořák).
+- **Composition:** the enterprise twin composes the Regensburg process twin, which composes the corridor twin; completeness 0/3 → 2/3 (the market not linked, said). T. Nakamura opening the process twin: refused 403 (the ownership boundary).
+- **Propagation:** the corridor's capacity 1000 → 620/day coupled through both links, each applied by its downstream owner: the enterprise capacity utilisation 0.8 → 1.2903.
+- **The network:** the 3-tier hub-module network's bottleneck — the tier-2 bearing maker (Ningbo) at 1800 pcs/day holds Regensburg to 450/day. The agent drafted 4 findings; its admit was refused at the PDP; T. Nakamura accepted the bottleneck.
+- **The methods:** the Regensburg line under a 21-day bearing shortage (discrete-event@1, seed 29): output 25280 units (601.90/day vs 818.18), backlog 7480, 18 line-stop days of 21; reproduced in a separate process with the identical digest. H. Petrović probed the method. War-gaming@1 on the process twin: refused 422 (not an approved use).
+- **Constraints:** S. Lindqvist's warehouse capacity (≤ 1800 pallets/day) refused E. Kovács's week-42 plan (2350 on 2026-10-14, exceeds by 550) and satisfied the amended plan.
+- **Harness-proven, not staged:** quarantine → probe → reinstatement; conservation, topology, the gate at run opening, indeterminate.
+
+### 42.3 The plan
+
+- **B29 closes the tracker's clauses of F-P5-01 and F-P5-05.** Both stay `partial` by the tracker's rule (computed from the rows): 6/11/0 and 5/2/0. Their open rows carry other features' clauses:
+  - calibration history, drift, the validity contract and freshness, reconciliation and the explorer, the scenario element kind, estimators, envelope disablement, and the estimation/reconciliation/calibration of coupled state → **B30**;
+  - consequence estimation, the sensitivity product, and hosted browser cases for the composition panel, the method panel and the constraints page → **B31**;
+  - the other families populated by domain packages, the network's ownership/contract/geographic/provenance uncertainty, alternatives, the agent's schedule and the concurrent-draft race → **B33**;
+  - the other layers' extension namespaces → **B78** (the ontology's B51);
+  - a real customer operational dataset → **R2** (F-P5-01 gains verify stage R2, 0.25–0.5 U).
+- **An external solver or simulator adapter** is optional — the in-repo fabric closes the clause; integrating one is the owner's decision (the D6 precedent), R2 if taken.
+- **The requirement rows:** 23 updated (implemented 1121 → 1131; missing 2404 → 2403). The acceptance units are unchanged.
+- **The schedule was re-derived:** only R2's row changed; the M1 dates are unchanged. The next A1 stage is **B36**.
+- **The candidate** is PR #68 (`phase6-b29` → `phase6-b34`), stacked on #67; the hosted run is pending.

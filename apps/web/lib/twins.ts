@@ -71,7 +71,7 @@ export interface Run {
   scenario_id: string | null; scenario_branch_id: string | null; scenario_version: number | null; scenario_branch_state: 'open' | 'flipped' | 'closed' | null;
   shock_basis: 'none' | 'hypothetical' | 'scenario-branch-flipped' | 'unrecorded';
   implementation_digest: string; environment_digest: string; stochastic_mode: 'deterministic' | 'seeded'; rng: string | null; seed: number | null; samples: number | null;
-  interventions: Array<Record<string, unknown>>; inputs_digest: string; outputs: { totals?: Totals; days?: Array<Record<string, unknown>> } | null;
+  interventions: Array<Record<string, unknown>>; inputs_digest: string; outputs: { totals?: Totals; days?: Array<Record<string, unknown>>; /* B29 (0092): a method-fabric run's headline results */ summary?: Record<string, string | number | boolean | null> } | null;
   outputs_digest: string | null; sensitivity: { factors?: Array<{ key: string; cost_spread: string }>; outside_envelope?: boolean } | null;
   validation_status: string; outside_envelope: boolean; state: 'opened' | 'completed' | 'failed'; failure: string | null; opened_at: string; completed_at: string | null;
   events?: Array<Record<string, unknown>>; reproductions?: Array<{ verdict: string; reason: string; cold_process: boolean; environment_matches: boolean; reproduced_at: string }>;

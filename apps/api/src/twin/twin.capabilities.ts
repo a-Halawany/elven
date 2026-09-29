@@ -15,7 +15,7 @@
 import { sql } from 'kysely';
 import type { Tx } from '../shared/db.js';
 
-export type CitationKind = 'evidence' | 'claim' | 'entity' | 'forecast' | 'assumption' | 'run';
+export type CitationKind = 'evidence' | 'claim' | 'entity' | 'forecast' | 'assumption' | 'run' | /* B29 (0092): a coupled element's upstream twin version */ 'twin';
 export interface Citation { kind: CitationKind; id: string; version: number; digest: string }
 
 /**

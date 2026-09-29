@@ -1,0 +1,95 @@
+THE B29 ACT on eye_demo — 2026-09-29T12:12:58.874Z
+
+B29-0 THE STATE — 0092, the casting, the new personas, the Supply Chain Agent
+  ✓ migration 0092_b29_twin_families_methods_constraints.sql applied
+  ✓ the casting read from identity.role_bindings: m.dvorak (collection_manager, executive); t.nakamura (twin_owner)
+  ✓ the administrator CREATED E. Kovács through the governed principal route — role twin_owner
+  ✓ the administrator CREATED R. Aydın through the governed principal route — role twin_owner
+  ✓ the administrator CREATED H. Petrović through the governed principal route — role method_steward
+  ✓ the administrator CREATED S. Lindqvist through the governed principal route — role constraint_steward
+  ✓ the administrator REGISTERED the Supply Chain Agent 01a0…416428 — role supply_chain_agent, 1.0.0 digest 06da2e9120cb…, accountable T. Nakamura, escalation M. Dvořák
+  ✓ the corridor twin TWN 01a0…76f525 (T. Nakamura's), latest admitted v8; the NORDWERK terms record EVD 01a0…34a479@1 (SYNTHETIC) is what the new twins' ASSUMED elements cite
+
+B29-A COMPOSITION — the enterprise and process twins, the contracts, the links (declared downstream), dependency completeness, the ownership boundary
+  ✓ R. Aydın DECLARED "Enterprise twin — NORDWERK" (kind enterprise) — TWN 01a0…253955, asserted by a person, its boundary the corridor's entities
+  ✓ E. Kovács DECLARED "Regensburg plant — assembly line (process twin)" (kind process) — TWN 01a0…629c00, asserted by a person, its boundary the corridor's entities
+  ✓ E. Kovács GROUNDED line.capacity_per_day:SYN-LINE-A1 = 1000 units/day (ASSUMED, citing the terms record; the process family's schema holds each key and unit) and ADMITTED v1
+  ✓ R. Aydın GROUNDED demand.per_day = 800 units/day (ASSUMED, citing the terms record; the enterprise family's schema holds each key and unit) and ADMITTED v1
+  · the family measures: process v1 {"line_capacity_per_day":1000,"supply_capacity_per_day":null,"throughput_per_day":1000,"bottleneck":"line"}; enterprise v1 {"demand_per_day":800,"effective_capacity_per_day":null,"capacity_utilisation":null,"processes":0}
+  ✓ T. Nakamura PUBLISHED the corridor twin's contract v1: exposes supply.capacity_per_day · approved methods flow, discrete-event · decisions capacity-planning
+  ✓ E. Kovács PUBLISHED the process twin's contract v1: exposes line.capacity_per_day:SYN-LINE-A1, supply.capacity_per_day · approved methods discrete-event, flow · decisions capacity-planning
+  · BEFORE the links: the enterprise twin's dependency completeness — 0 of 3 required families linked (ratio 0; linked: none; missing: market, process, supply-chain|supply-network)
+  ✓ E. Kovács (the DOWNSTREAM owner) DECLARED the link process ← corridor — supply.capacity_per_day → supply.capacity_per_day · use capacity-planning · on the upstream's contract v1
+  ✓ R. Aydın (the DOWNSTREAM owner) DECLARED the link enterprise ← process — line.capacity_per_day:SYN-LINE-A1 → process.line_capacity_per_day:regensburg; supply.capacity_per_day → process.supply_capacity_per_day:regensburg · use capacity-planning · on the upstream's contract v1
+  · AFTER the links: the enterprise twin's dependency completeness — 2 of 3 required families linked (ratio 0.6667; linked: process, supply-chain; missing: market) (the market family is not linked in the demonstration — SAID)
+  · the process twin's dependency completeness — 1 of 1 required families linked (ratio 1; linked: supply-chain; missing: none)
+  ✓ T. Nakamura (the corridor's owner) opening a version of the process twin REFUSED — 403 EYE-AUT-001 — coupling rejected (ownership_boundary): the owner of upstream twin 01a084f6-411e-7559-afab-1fdf6c76f525 does not write downstream twin 01a0ed15-1f04-7973-bf66-bb96cb629c00 (version.opened refused); its owner applies what
+  ✓ nothing of the process twin was opened by T. Nakamura (0 draft(s))
+
+B29-A2 PROPAGATION — the corridor at 62 %: coupling proposals applied by the downstream owners; the enterprise measure moves
+  · the corridor has never carried its capacity: the BASELINE round first (1000 units/day)
+  ✓ T. Nakamura ADMITTED corridor v9 (everything carried from v8) with supply.capacity_per_day = 1000 units/day (ASSUMED, SYNTHETIC)
+  · a coupling PROPOSED on the process twin: supply.capacity_per_day ← supply.capacity_per_day = 1000 units/day — citing twin 01a0…76f525@v9 (digest 9b910959d01b…)
+  ✓ E. Kovács APPLIED the proposal 8a98…ddadbc into a draft v2 of the process twin (the coupled element cites the upstream version) and ADMITTED it
+  · a coupling PROPOSED on the enterprise twin: process.line_capacity_per_day:regensburg ← line.capacity_per_day:SYN-LINE-A1 = 1000 units/day; process.supply_capacity_per_day:regensburg ← supply.capacity_per_day = 1000 units/day — citing twin 01a0…629c00@v2 (digest 82ed7b8e651d…)
+  ✓ R. Aydın APPLIED the proposal 3b04…cc680c into a draft v2 of the enterprise twin (the coupled element cites the upstream version) and ADMITTED it
+  · BEFORE: the enterprise twin v2 — capacity_utilisation 0.8, effective_capacity_per_day 1000, demand_per_day 800
+  ✓ T. Nakamura ADMITTED corridor v10 (everything carried from v9) with supply.capacity_per_day = 620 units/day (ASSUMED, SYNTHETIC)
+  · a coupling PROPOSED on the process twin: supply.capacity_per_day ← supply.capacity_per_day = 620 units/day — citing twin 01a0…76f525@v10 (digest e1e0d29b7bab…)
+  ✓ E. Kovács APPLIED the proposal 6649…c4bd98 into a draft v3 of the process twin (the coupled element cites the upstream version) and ADMITTED it
+  · a coupling PROPOSED on the enterprise twin: process.line_capacity_per_day:regensburg ← line.capacity_per_day:SYN-LINE-A1 = 1000 units/day; process.supply_capacity_per_day:regensburg ← supply.capacity_per_day = 620 units/day — citing twin 01a0…629c00@v3 (digest 4eb761bda6dc…)
+  ✓ R. Aydın APPLIED the proposal 674d…58c252 into a draft v3 of the enterprise twin (the coupled element cites the upstream version) and ADMITTED it
+  · the process twin v3: throughput_per_day 620, bottleneck supply
+  ✓ AFTER: the enterprise twin v3 — capacity_utilisation 1.2903 (was 0.8), effective_capacity_per_day 620: 800 units/day of demand on 620 units/day of corridor capacity
+  · the ledger: coupling.applied × 4, coupling.proposed × 4 on the process and enterprise twins
+
+B29-B THE SUPPLY NETWORK AND THE AGENT — the 3-tier network, the Supply Chain Agent's findings, its admit refused, the owner accepts
+  ✓ T. Nakamura DECLARED "Hub-module supply network — NORDWERK Regensburg (3 tiers)" (kind supply-network) — TWN 01a0…aeaa71, asserted by a person, its boundary the corridor's entities
+  ✓ T. Nakamura GROUNDED 21 elements (3 tiers, 5 sites, 3 materials, 5 routes, 5 capacities; ASSUMED, citing the terms record) and ADMITTED v1 under the supply-network family's validator
+  · the analysis of v1: throughput to regensburg 450 pcs/day; tier coverage 1
+  ✓ the BOTTLENECK: bearing-maker (tier 2) at 1800 pcs/day of bearing holds Regensburg to 450 modules/day (relieved: 1000/day)
+  · the findings: bottleneck:bearing-maker.bearing, single_source:bearing-maker.steel, single_source:module-a.bearing, single_source:module-b.bearing
+  ✓ M. Dvořák RAN the Supply Chain Agent (run 01a0…63b551, finished, —): scanned 01a0…aeaa71 v1 (4 drafted)
+  ✓ the agent's attempt to ADMIT refused at the PDP and recorded on the run: twin.version.admit EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  · single_source:module-b.bearing — proposed · drafted by the Supply Chain Agent (principal 01a0…4f5ac5) · module-b receives bearing from bearing-maker (tier 2) alone at 1800 pcs/day: a single-source exposure
+  · single_source:module-a.bearing — proposed · drafted by the Supply Chain Agent (principal 01a0…4f5ac5) · module-a receives bearing from bearing-maker (tier 2) alone at 1800 pcs/day: a single-source exposure
+  · single_source:bearing-maker.steel — proposed · drafted by the Supply Chain Agent (principal 01a0…4f5ac5) · bearing-maker receives steel from steel-mill (tier 3) alone at 40 t/day: a single-source exposure
+  · bottleneck:bearing-maker.bearing — proposed · drafted by the Supply Chain Agent (principal 01a0…4f5ac5) · Bearing maker (Ningbo) (tier 2) at 1800 pcs/day of bearing bounds the network's throughput to NORDWERK Regensburg at 450 pcs/day; relieved, the network would ca
+  · the bottleneck finding's numbers: {"site":"bearing-maker","tier":2,"unit":"pcs/day","material":"bearing","terminal":"regensburg","site_name":"Bearing maker (Ningbo)","throughput_unit":"pcs/day","capacity_per_day":1800,"throughput_per_day":450,"relieved_throughput_per_day":1000}
+  ✓ T. Nakamura (the network's owner) ACCEPTED the bottleneck finding — accepted; the agent proposed, a person decided
+  ✓ the network holds 1 version(s), none opened by the agent (0)
+
+B29-C THE METHODS — the portfolio, the discrete-event run of the Regensburg line under a 21-day bearing shortage, its reproduction, the adapter's health
+  · agent-based@1 — family agent-based, adapter method-worker, contained out of process (timeout 20000 ms, heap 256 MB, quarantine after 3 faults), digest b2ad3a2c45e1… (this server runs these bytes), health healthy
+  · counterfactual@1 — family counterfactual, adapter method-worker, contained out of process (timeout 20000 ms, heap 256 MB, quarantine after 3 faults), digest c6acab10c085… (this server runs these bytes), health healthy
+  · discrete-event@1 — family discrete-event, adapter method-worker, contained out of process (timeout 20000 ms, heap 256 MB, quarantine after 3 faults), digest 14006316c0c3… (this server runs these bytes), health healthy
+  · optimisation@1 — family optimisation, adapter method-worker, contained out of process (timeout 20000 ms, heap 256 MB, quarantine after 3 faults), digest 5426cac9bd2a… (this server runs these bytes), health healthy
+  · supply-flow@1 — family flow, adapter in-process, in process, digest 7f129e6ffcde… (this server runs these bytes), health healthy
+  · system-dynamics@1 — family system-dynamics, adapter method-worker, contained out of process (timeout 20000 ms, heap 256 MB, quarantine after 3 faults), digest 637e325e3fea… (this server runs these bytes), health healthy
+  · war-gaming@1 — family war-gaming, adapter method-worker, contained out of process (timeout 20000 ms, heap 256 MB, quarantine after 3 faults), digest 1d752244cde0… (this server runs these bytes), health healthy
+  ✓ E. Kovács DECLARED "Regensburg plant — line 1 and its bearing supply (discrete-event study)" (kind supply-chain) — TWN 01a0…f22440, asserted by a person, its boundary the corridor's entities
+  ✓ E. Kovács GROUNDED the study twin: 16 of the corridor v10's elements (observed values established again from their records) + 12 line elements (ASSUMED); ADMITTED v1 — complete
+  ✓ E. Kovács (the twin's owner) BOUND discrete-event@1 to the study twin — active (method.bound)
+  ✓ E. Kovács RAN discrete-event@1 on v1 (run 01a0…3dec3b, completed, out of process, seed 29): bearing deliveries at 40 % for 21 days from day 8 of 42 (2026-10-05 on)
+  · THE NUMBERS (SYNTHETIC): output 25280 units (601.90/day; unconstrained 818.18/day, bottleneck station winding); demand 32760, shipped 25280; backlog final 7480, peak 7760; line-stop days 18 of 21 shortage days; starved 13703.5 min
+  ✓ the reproduction: reproduced in a separate process — expected 81fe0dd05dc7a0c65712e24f03687b5e8665b06c66e227837ea646d94f438407 · actual 81fe0dd05dc7a0c65712e24f03687b5e8665b06c66e227837ea646d94f438407 (re-executed from the stored contract in a separate process (pid 99985, implementation 14006316c0c3c5)
+  ✓ H. Petrović (method steward) PROBED discrete-event@1 on its fixed probe input, out of process: PASSED — the adapter healthy, outputs abab8ba6f861505e…
+  · the health of discrete-event@1 in this domain: healthy, consecutive faults 0, total faults 0, probes 1, events probed
+  · THE CONTAINMENT PATH (a fault streak → QUARANTINE → a passing probe → the steward's REINSTATEMENT) is HARNESS-PROVEN (phase6-methods-b29 C1, with a harness-only unstable adapter that hangs, crashes and exhausts its heap) — not staged on the demonstration: no product adapter is made to fail here
+  ✓ E. Kovács binding war-gaming@1 to the process twin (outside its contract's approved uses) REFUSED — 422 EYE-REQ-001 — method binding rejected (method_family): the war-gaming family (war-gaming@1) is not among the approved uses of twin 01a0ed15-1f04-7973-bf66-bb96cb629c00
+
+B29-D CONSTRAINTS — the warehouse capacity declared by its steward; the week-42 replenishment plan refused, then amended and passing
+  ✓ S. Lindqvist (constraint steward) DECLARED "Regensburg warehouse capacity" (regensburg-warehouse-capacity) v1: business rule warehouse:regensburg.pallets ≤ 1800 pallets per day, applies to plans — digest 8e25030c6ed9…
+  ✓ E. Kovács's week-42 replenishment plan (2350 pallets on 2026-10-14) REFUSED — 422 EYE-REQ-001 — plan refused: regensburg-replenishment-w42 violates 1 constraint — regensburg-pallets (business_rule): bound ≤ 1800 pallets per day, observed 2350 pallets on 2026-10-14
+  · the violation recorded: regensburg-pallets (business_rule) — bound ≤ 1800 pallets per day, observed 2350 pallets on 2026-10-14: [regensburg-warehouse-capacity v1] Regensburg warehouse capacity: warehouse:regensburg.pallets exceeds the bound by 550 pallets on 2026-10-14
+  ✓ the AMENDED plan (the 550 pallets moved to 2026-10-17; the same 9100 pallets): 201 satisfied against regensburg-warehouse-capacity v1
+  · the recorded checks of regensburg-replenishment-w42: satisfied (route, by E. Kovács, pinned to regensburg-warehouse-capacity v1); violated (route, by E. Kovács, pinned to regensburg-warehouse-capacity v1)
+  · the conservation and topology constraints, the gate at a run's opening and completion and the indeterminate verdicts are HARNESS-PROVEN (phase6-constraints-b29 D3–D5) — the demonstration declares the business rule only
+
+B29-9 THE STATE and the LIMITS
+  · in the ledgers: 2 live twin links, 2 current contracts, 4 applied couplings, 4 agent findings, 1 active method bindings, 1 method-fabric runs, 1 adapter probes, 1 live constraint sets, 2 plan checks
+  · the twins by kind: enterprise × 1, process × 1, supply-chain × 2, supply-network × 1
+  · the discrete-event run the walk reads: 01a0ed15-229f-708a-a899-4046e13dec3b
+  · LIMITS said: every figure is SYNTHETIC (the capacities, the demand, the network, the line, the shortage, the pallets) and the new twins' elements are ASSUMED, citing the NORDWERK terms record; the method adapters are the product's own in-process implementations run in a worker process — no external solver is integrated; the containment path (quarantine → probe → reinstatement) is HARNESS-PROVEN (phase6-methods-b29 C1) with a harness-only unstable adapter, not staged here; the line's station model lives in a supply-chain-kind study twin because the process family holds line capacity only; the enterprise twin links no market twin (2 of 3 required families); the family validators' refusals, the cycle and contract refusals, the declined and re-proposed couplings, the agent's budget resumption, the conservation and topology constraints and the gate verdicts are the harnesses' (phase6-composition-b29, phase6-supply-network-b29, phase6-constraints-b29); nothing is cleaned.
+
+ALL SCENES HELD · 2.0 s

@@ -13,6 +13,7 @@ import { twins as api, type Twin, type TwinVersion, type Element, type Validatio
 import { envelopeKeyLines, fitnessLabel } from '../../lib/fitness';
 import { Empty, LiveStatus, Mono, cardStyle, DefinitionRow, UnknownNote, GovernedButton, fmtInstant, textareaStyle } from '../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../components/ui';
+import { CompositionPanel } from './composition-panel'; // B29 (0092): families, contracts, links, coupling, dependency completeness
 
 const KIND: Record<Element['kind'], { glyph: string; token: string; text: string }> = {
   observed: { glyph: '●', token: '--eye-color-success', text: 'OBSERVED' },
@@ -243,6 +244,7 @@ export default function TwinsPage() {
               {(open.reconciliations ?? []).map((r, i) => <div key={i}><Mono>{String(r['key'])}</Mono> — {String(r['from_kind'])} v{String(r['from_version'])} against observed v{String(r['against_version'])}: difference <Mono>{JSON.stringify(r['difference'])}</Mono></div>)}
             </DefinitionRow>
           ) : null}
+          <CompositionPanel scope={scope} twinId={open.twin_id} isTwinOwner={isTwinOwner} />{/* B29 (0092) */}
         </section>
       )}
       <UnknownNote>A twin is grounded in evidence, graph entities and declared assumptions and never presents synthetic state as observed fact. An entity names a subject and substantiates no value; a derived claim keeps its truth state; a version is immutable once admitted and change is a new version. Corrections reach a twin only when an operator runs the dependency walk.</UnknownNote>

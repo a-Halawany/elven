@@ -127,6 +127,10 @@ const BUNDLE_V1: Rule[] = [
       /* B34 (0090) commitments: the execution authority resolves its own scope (a pure issuer opens the shell) */
       { role: 'execution_authority', atScope: 'DOMAIN' },
       /* end B34 commitments */
+      /* B29 (0092): the method and constraint stewards resolve their own scope (a pure steward opens the shell — found by the B29 demo walk) */
+      { role: 'method_steward', atScope: 'DOMAIN' },
+      { role: 'constraint_steward', atScope: 'DOMAIN' },
+      /* end B29 */
     ],
     obligations: [{ type: 'audit_access' }],
     requiresPurpose: true,
@@ -487,6 +491,30 @@ const BUNDLE_V1: Rule[] = [
   //   * READ is broad: a twin is for the people who decide on what it represents.
   //   * A twin is DECLARED, versioned, grounded and admitted by its owner — four
   //     separate governed writes. A simulation operator holds none of them.
+  /* B29 (0092) — twin families, composition, the method fabric and the constraint engine: EXACT rules, placed before the twin and
+     simulation PREFIX rules (none of these names falls under twin.read / twin.declare / twin.version / twin.ground / simulation.run /
+     simulation.reproduce, and exact rules make the placement explicit). The ports check ownership, separation and the approved uses. */
+  { actionPrefix: 'twin.kind.register', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true },
+  { actionPrefix: 'twin.contract.publish', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }], requiresPurpose: true },
+  { actionPrefix: 'twin.link.declare', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }], requiresPurpose: true },
+  { actionPrefix: 'twin.link.retire', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }], requiresPurpose: true },
+  { actionPrefix: 'twin.coupling.apply', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }], requiresPurpose: true },
+  { actionPrefix: 'twin.coupling.decline', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }], requiresPurpose: true },
+  { actionPrefix: 'twin.proposal.draft', exact: true, requiredAnyRole: [{ role: 'supply_chain_agent', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'twin.proposal.decide', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }], requiresPurpose: true },
+  { actionPrefix: 'simulation.method.bind', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }], requiresPurpose: true },
+  { actionPrefix: 'simulation.method.unbind', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }], requiresPurpose: true },
+  { actionPrefix: 'simulation.adapter.reinstate', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'method_steward', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true },
+  /* B29 §C (part C adds): the PROBE a reinstatement rests on — a method steward runs a contained adapter on its fixed probe input; the answer is recorded (a failing probe is a fault) */
+  { actionPrefix: 'simulation.adapter.probe', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'method_steward', atScope: 'DOMAIN' }], requiresPurpose: true },
+  { actionPrefix: 'simulation.constraint.declare', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'constraint_steward', atScope: 'DOMAIN' }], requiresPurpose: true },
+  { actionPrefix: 'simulation.constraint.version', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'constraint_steward', atScope: 'DOMAIN' }], requiresPurpose: true },
+  { actionPrefix: 'simulation.constraint.retire', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'constraint_steward', atScope: 'DOMAIN' }], requiresPurpose: true },
+  { actionPrefix: 'simulation.constraint.read', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' },
+    { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }, { role: 'constraint_steward', atScope: 'DOMAIN' }, { role: 'method_steward', atScope: 'DOMAIN' }], obligations: [{ type: 'audit_access' }], requiresPurpose: true },
+  { actionPrefix: 'simulation.plan.check', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }, { role: 'constraint_steward', atScope: 'DOMAIN' }],
+    requiresPurpose: true },
+  /* end B29 */
   {
     actionPrefix: 'twin.read',
     requiredAnyRole: [
@@ -499,6 +527,7 @@ const BUNDLE_V1: Rule[] = [
       { role: 'forecast_owner', atScope: 'DOMAIN' },
       { role: 'twin_owner', atScope: 'DOMAIN' },
       { role: 'simulation_operator', atScope: 'DOMAIN' },
+      /* B29 (0092) */ { role: 'supply_chain_agent', atScope: 'DOMAIN' }, { role: 'method_steward', atScope: 'DOMAIN' }, { role: 'constraint_steward', atScope: 'DOMAIN' },
     ],
     obligations: [{ type: 'audit_access' }],
     requiresPurpose: true,
@@ -622,6 +651,10 @@ const BUNDLE_V1: Rule[] = [
     requiresPurpose: true,
     maxConsequence: 'C2',
   },
+  /* B29 (0092): the Supply Chain Agent opens and closes its own runs — an EXACT `agent.run` rule inserted before B32's (the first match wins):
+     the seven agents before it and the supply_chain agent. */
+  { actionPrefix: 'agent.run', exact: true, requiredAnyRole: [{ role: 'decision_agent', atScope: 'DOMAIN' }, { role: 'briefing_agent', atScope: 'DOMAIN' }, { role: 'reporting_agent', atScope: 'DOMAIN' }, { role: 'attention_agent', atScope: 'DOMAIN' }, { role: 'weak_signal_agent', atScope: 'DOMAIN' }, { role: 'risk_agent', atScope: 'DOMAIN' }, { role: 'opportunity_agent', atScope: 'DOMAIN' }, { role: 'supply_chain_agent', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B29 */
   /* B32 (0089) exposures: the Risk and Opportunity Agents open and close their own runs — an EXACT `agent.run` rule INSERTED before B28's exact
      rule (the first match wins, and B28's names the five agents before it): the same five and the risk and opportunity agents. B28's and B24's
      rules below are kept as they were (they now match nothing this one does not); the integrator may fold the three. */
@@ -782,6 +815,7 @@ const BUNDLE_V1: Rule[] = [
       { role: 'forecast_owner', atScope: 'DOMAIN' },
       { role: 'twin_owner', atScope: 'DOMAIN' },
       { role: 'simulation_operator', atScope: 'DOMAIN' },
+      /* B29 (0092) */ { role: 'supply_chain_agent', atScope: 'DOMAIN' }, { role: 'method_steward', atScope: 'DOMAIN' }, { role: 'constraint_steward', atScope: 'DOMAIN' },
     ],
     obligations: [{ type: 'audit_access' }],
     requiresPurpose: true,
