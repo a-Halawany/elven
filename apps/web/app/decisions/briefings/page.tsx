@@ -4,16 +4,28 @@
  * composed from stored records under a bound baseline: what changed, why it matters,
  * who owns it, which window is closing. Degraded or blocked sources never render as
  * normal; a narrative is labelled and cites only included items.
+ *
+ * CP-6 B36 (0094 §B): THE STUDIO — BRF@v3. The composer sets the AUDIENCE CONTRACT (roles, locale, accessibility, channels; the
+ * disputed / indicator sections excludable), the PURPOSE and the EXPIRY (datetime-local → an instant); the edition renders the band
+ * beside every conclusion (computed by the server, never here), the OMISSIONS declared with their count, the items SUPPRESSED under
+ * policy, the DISPUTED and INDICATOR sections with their as-of, the items RETAINED from the prior edition under an outage with their
+ * original as-of, and EXPIRED when the server says so. An executive publishes the suppression policy here. Every state is the record's.
  */
 import { useEffect, useState } from 'react';
 import { useShell } from '../layout';
-import { decisions as api, type Room, type Briefing } from '../../../lib/decisions';
-import { Empty, LiveStatus, Mono, cardStyle, DefinitionRow, UnknownNote, fmtInstant } from '../../../components/observation';
-import { tableStyle, Th, Td, buttonStyle, Receipt as ReceiptNote, ErrorNote } from '../../../components/ui';
+import { decisions as api, type Room, type Briefing, type BriefingPolicy } from '../../../lib/decisions';
+import { Empty, LiveStatus, Mono, cardStyle, DefinitionRow, UnknownNote, fmtInstant, textareaStyle } from '../../../components/observation';
+import { tableStyle, Th, Td, buttonStyle, inputStyle, Receipt as ReceiptNote, ErrorNote } from '../../../components/ui';
 /* B23 (0084) attention */
-import { bandMark } from '../../../lib/attention';
+import { bandMark as attentionBandMark } from '../../../lib/attention';
 import type { BriefingAttention, BriefingAttentionItem } from '../../../lib/decisions';
 /* end B23 attention */
+/* B36 briefing */
+import {
+  AUDIENCE_CHANNELS, AUDIENCE_ROLES, DEFAULT_AUDIENCE_FORM, DEFAULT_POLICY_FORM, EXCLUDABLE, ITEM_KINDS, LOCALES, audiencePayload, audienceProblem, bandMark, defaultExpiryLocal, disputedLine, expiryLine,
+  fromDatetimeLocal, isBoardAudience, omissionLine, omissionsCount, policyLines, policyRulesPayload, suppressionLine, uncertaintyLine, type AudienceForm, type PolicyForm,
+} from '../../../lib/briefings';
+/* end B36 briefing */
 
 const short = (v: unknown): string => (typeof v === 'string' ? `${v.slice(0, 8)}…` : '—');
 const SOURCE_TEXT: Record<string, string> = { live: '● live', replayed: '◍ REPLAYED', degraded: '◍ DEGRADED', blocked: '✕ BLOCKED', 'operator-upload': '⇧ operator upload', internal: '◦ internal record' };
@@ -22,7 +34,7 @@ const left = (s: number): string => (s < 0 ? `overdue by ${Math.round(-s / 3600)
 /* B23 (0084) attention: BRF@v2's ATTENTION SECTION — the routed items as of the edition's known_at (their state THEN, the policy version THEN,
    the confidence band in three channels), every state counted, the material changes since the prior edition. A v1 edition says it has none. */
 function Band({ band }: { band: string }) {
-  const m = bandMark(band);
+  const m = attentionBandMark(band);
   return <span style={{ color: `var(${m.token})`, fontWeight: 650, fontSize: 'var(--eye-type-label-sm)', whiteSpace: 'nowrap' }}><span aria-hidden="true">{m.glyph}</span> {m.text}</span>;
 }
 function AttentionRows({ rows, caption }: { rows: BriefingAttentionItem[]; caption: string }) {
@@ -41,7 +53,7 @@ function AttentionRows({ rows, caption }: { rows: BriefingAttentionItem[]; capti
   );
 }
 function AttentionSection({ version, attention }: { version: string | undefined; attention: BriefingAttention | null | undefined }) {
-  if (version !== 'v2' || attention === null || attention === undefined) {
+  if ((version !== 'v2' && version !== 'v3') || attention === null || attention === undefined) {
     return <p style={{ fontSize: 'var(--eye-type-label-sm)', color: 'var(--eye-color-ink-muted)' }}>No attention section (v1 edition): this briefing was composed before the attention section existed; its content and digest are what they were.</p>;
   }
   const counted = Object.entries(attention.counts).filter(([, n]) => n > 0).map(([k, n]) => `${k} ${n}`).join(' · ');
@@ -58,6 +70,15 @@ function AttentionSection({ version, attention }: { version: string | undefined;
 }
 /* end B23 attention */
 
+/* B36 briefing: the band beside a conclusion — the server's band, the rules on hover */
+function ItemBand({ item }: { item: Briefing['items'][number] }) {
+  if (item.uncertainty === undefined) return <span style={{ color: 'var(--eye-color-ink-muted)', fontSize: 'var(--eye-type-label-sm)' }}>no band (pre-v3)</span>;
+  const m = bandMark(item.uncertainty.band);
+  return <span title={uncertaintyLine(item.uncertainty)} style={{ color: `var(${m.token})`, fontWeight: 650, fontSize: 'var(--eye-type-label-sm)', whiteSpace: 'nowrap' }}><span aria-hidden="true">{m.glyph}</span> {m.text}</span>;
+}
+const checkLabel = { display: 'inline-flex', gap: 4, alignItems: 'center', marginInlineEnd: 10, fontSize: 'var(--eye-type-label-sm)' } as const;
+/* end B36 briefing */
+
 export default function BriefingsPage() {
   const { scope, isExecutive, isDecisionOwner, isApprover, isAuthority } = useShell();
   const [rooms, setRooms] = useState<Room[] | null>(null);
@@ -67,8 +88,19 @@ export default function BriefingsPage() {
   const [error, setError] = useState<{ code: string; message: string; correlationId: string } | null>(null);
   const [receipt, setReceipt] = useState<{ policyDecisionId: string; auditSeq: number } | null>(null);
   const [busy, setBusy] = useState(false);
+  /* B36 briefing: the studio's contract, the policy panel */
+  const [audience, setAudience] = useState<AudienceForm>(DEFAULT_AUDIENCE_FORM);
+  const [purpose, setPurpose] = useState('');
+  const [expiry, setExpiry] = useState(() => defaultExpiryLocal(Date.now()));
+  const [disputedNote, setDisputedNote] = useState('');
+  const [formProblem, setFormProblem] = useState<string | null>(null);
+  const [policy, setPolicy] = useState<BriefingPolicy | null>(null);
+  const [policyForm, setPolicyForm] = useState<PolicyForm>(DEFAULT_POLICY_FORM);
+  const [policyProblem, setPolicyProblem] = useState<string | null>(null);
+  /* end B36 briefing */
 
   useEffect(() => { void (async () => { const r = await api.rooms(scope); if (!r.ok || r.data === undefined) { setProblem(r.error?.message ?? 'the rooms could not be read'); return; } setRooms(r.data.rooms); })(); }, [scope]);
+  useEffect(() => { void (async () => { const r = await api.briefingPolicy(scope); if (r.ok && r.data !== undefined) setPolicy(r.data.policy); })(); }, [scope]);
   const openRoom = async (id: string) => {
     const r = await api.room(scope, id);
     if (!r.ok || r.data === undefined) { setError(r.error ?? null); return; }
@@ -81,7 +113,15 @@ export default function BriefingsPage() {
   };
   const compose = async () => {
     if (room === null) return;
-    setBusy(true); const r = await api.compose(scope, room.room_id); setBusy(false);
+    const ap = audienceProblem(audience);
+    const expiresAt = fromDatetimeLocal(expiry);
+    if (ap !== null) { setFormProblem(ap); return; }
+    if (expiresAt === null) { setFormProblem('the expiry is an instant'); return; }
+    if (purpose.trim().length > 0 && purpose.trim().length < 8) { setFormProblem('a purpose says something (8 characters or more), or is left to the default'); return; }
+    setFormProblem(null);
+    setBusy(true);
+    const r = await api.compose(scope, room.room_id, { audience: audiencePayload(audience), expiresAt, ...(purpose.trim().length >= 8 ? { purpose: purpose.trim() } : {}), ...(disputedNote.trim().length >= 8 ? { disputedNote: disputedNote.trim() } : {}) });
+    setBusy(false);
     if (!r.ok || r.data === undefined) { setError(r.error ?? null); return; }
     setReceipt(r.data.receipt); setBriefing(r.data.briefing); await openRoom(room.room_id); setBriefing(r.data.briefing);
   };
@@ -91,9 +131,21 @@ export default function BriefingsPage() {
     if (!r.ok || r.data === undefined) { setError(r.error ?? null); return; }
     setReceipt(r.data.receipt); await openRoom(room.room_id);
   };
+  const publishPolicy = async () => {
+    const p = policyRulesPayload(policyForm);
+    if ('problem' in p) { setPolicyProblem(p.problem); return; }
+    setPolicyProblem(null); setBusy(true);
+    const r = await api.setBriefingPolicy(scope, p.rules, 'Published from the briefing studio: prefer silence over false certainty.');
+    setBusy(false);
+    if (!r.ok || r.data === undefined) { setError(r.error ?? null); return; }
+    setReceipt(r.data.receipt); setError(null);
+    const again = await api.briefingPolicy(scope); if (again.ok && again.data !== undefined) setPolicy(again.data.policy);
+  };
+  const toggle = (list: string[], v: string): string[] => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
 
   if (problem !== null) return <LiveStatus assertive>{problem}</LiveStatus>;
   if (rooms === null) return <Empty>reading rooms…</Empty>;
+  const board = isBoardAudience(audience.roles);
   return (
     <>
       <h1 style={{ fontSize: 'var(--eye-type-heading-1)', marginBlockStart: 0 }}>Briefings</h1>
@@ -112,6 +164,35 @@ export default function BriefingsPage() {
         </table>
       )}
       <ErrorNote error={error} />
+      {/* B36 briefing: the suppression policy — read by every reader, published by an executive */}
+      <section aria-labelledby="pol-h" style={{ ...cardStyle, marginBlockStart: 'var(--eye-space-16)' }}>
+        <h2 id="pol-h" style={{ fontSize: 'var(--eye-type-heading-3)', marginBlockStart: 0 }}>Suppression policy — prefer silence over false certainty</h2>
+        <ul style={{ fontSize: 'var(--eye-type-label-sm)', marginBlockStart: 0 }}>{policyLines(policy).map((l) => <li key={l}>{l}</li>)}</ul>
+        {isExecutive ? (
+          <div style={{ display: 'flex', gap: 'var(--eye-space-8)', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+            <label style={{ fontSize: 'var(--eye-type-label-sm)' }}>Minimum independent sources <input style={inputStyle} inputMode="numeric" value={policyForm.minSources} onChange={(e) => setPolicyForm({ ...policyForm, minSources: e.target.value })} /></label>
+            <label style={{ fontSize: 'var(--eye-type-label-sm)' }}>Maximum staleness (hours) <input style={inputStyle} inputMode="numeric" value={policyForm.maxStalenessHours} onChange={(e) => setPolicyForm({ ...policyForm, maxStalenessHours: e.target.value })} /></label>
+            <label style={{ fontSize: 'var(--eye-type-label-sm)' }}>Minimum confidence (0–1, empty for none) <input style={inputStyle} inputMode="decimal" value={policyForm.minConfidence} onChange={(e) => setPolicyForm({ ...policyForm, minConfidence: e.target.value })} /></label>
+            <label style={{ fontSize: 'var(--eye-type-label-sm)' }}>Class override
+              <select style={inputStyle} value="" onChange={(e) => { if (e.target.value !== '') setPolicyForm({ ...policyForm, classOverrides: [...policyForm.classOverrides, { kind: e.target.value, minSources: '', maxStalenessHours: '', minConfidence: '' }] }); }}>
+                <option value="">add a class…</option>{ITEM_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
+              </select>
+            </label>
+            <button type="button" style={buttonStyle} disabled={busy} onClick={() => void publishPolicy()}>Publish the suppression policy</button>
+          </div>
+        ) : null}
+        {isExecutive && policyForm.classOverrides.length > 0 ? policyForm.classOverrides.map((o, i) => (
+          <div key={`${o.kind}-${i}`} style={{ display: 'flex', gap: 'var(--eye-space-8)', flexWrap: 'wrap', alignItems: 'flex-end', marginBlockStart: 'var(--eye-space-8)' }}>
+            <Mono>{o.kind}</Mono>
+            <label style={{ fontSize: 'var(--eye-type-label-sm)' }}>{o.kind} minimum sources <input style={inputStyle} inputMode="numeric" value={o.minSources} onChange={(e) => setPolicyForm({ ...policyForm, classOverrides: policyForm.classOverrides.map((x, j) => (j === i ? { ...x, minSources: e.target.value } : x)) })} /></label>
+            <label style={{ fontSize: 'var(--eye-type-label-sm)' }}>{o.kind} maximum staleness (hours) <input style={inputStyle} inputMode="numeric" value={o.maxStalenessHours} onChange={(e) => setPolicyForm({ ...policyForm, classOverrides: policyForm.classOverrides.map((x, j) => (j === i ? { ...x, maxStalenessHours: e.target.value } : x)) })} /></label>
+            <label style={{ fontSize: 'var(--eye-type-label-sm)' }}>{o.kind} minimum confidence <input style={inputStyle} inputMode="decimal" value={o.minConfidence} onChange={(e) => setPolicyForm({ ...policyForm, classOverrides: policyForm.classOverrides.map((x, j) => (j === i ? { ...x, minConfidence: e.target.value } : x)) })} /></label>
+            <button type="button" style={buttonStyle} onClick={() => setPolicyForm({ ...policyForm, classOverrides: policyForm.classOverrides.filter((_, j) => j !== i) })}>Remove {o.kind} override</button>
+          </div>
+        )) : null}
+        {policyProblem === null ? null : <LiveStatus assertive>{policyProblem}</LiveStatus>}
+      </section>
+      {/* end B36 briefing */}
       {room === null ? null : (
         <section aria-labelledby="room-h" style={{ ...cardStyle, marginBlockStart: 'var(--eye-space-24)' }}>
           <h2 id="room-h" style={{ fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 }}>{room.title}</h2>
@@ -120,11 +201,46 @@ export default function BriefingsPage() {
             <DefinitionRow term="Members">{(room.members ?? []).filter((m) => m.live).map((m) => <span key={m.principal_id}><Mono>{short(m.principal_id)}</Mono> ({m.role}) </span>)}</DefinitionRow>
             <DefinitionRow term="Briefings">{(room.briefings ?? []).length === 0 ? 'none composed' : (room.briefings ?? []).map((b) => (
               <button key={String(b['briefing_id'])} type="button" onClick={() => void openBriefing(String(b['briefing_id']))} style={{ border: '1px solid var(--eye-color-border-default)', background: 'none', padding: '4px 8px', cursor: 'pointer', borderRadius: 6, marginInlineEnd: 6 }}>
-                {fmtInstant(b['composed_at'])} · {String(b['composed_via'])}{b['degraded'] === true ? ' · DEGRADED' : ''}
+                {fmtInstant(b['composed_at'])} · {String(b['composed_via'])}{b['degraded'] === true ? ' · DEGRADED' : ''}{b['schema_version'] === 'v3' ? ' · v3' : ''}
               </button>
             ))}</DefinitionRow>
           </dl>
-          <div style={{ display: 'flex', gap: 'var(--eye-space-8)', flexWrap: 'wrap' }}>
+          {/* B36 briefing: THE STUDIO — the contract the next edition is composed under */}
+          {(isExecutive || isDecisionOwner) && room.member ? (
+            <section aria-labelledby="studio-h" style={{ ...cardStyle, marginBlockStart: 'var(--eye-space-8)' }}>
+              <h3 id="studio-h" style={{ fontSize: 'var(--eye-type-heading-3)', marginBlockStart: 0 }}>Compose the next edition (BRF@v3)</h3>
+              <fieldset style={{ border: 'none', padding: 0, margin: 0 }}>
+                <legend style={{ fontSize: 'var(--eye-type-label-sm)', fontWeight: 650 }}>Audience roles</legend>
+                {AUDIENCE_ROLES.map((r) => <label key={r} style={checkLabel}><input type="checkbox" checked={audience.roles.includes(r)} onChange={() => setAudience({ ...audience, roles: toggle(audience.roles, r) })} /> {r}</label>)}
+              </fieldset>
+              {board ? <UnknownNote>A BOARD audience: the disputed section is carried only with the owner's note below.</UnknownNote> : null}
+              <div style={{ display: 'flex', gap: 'var(--eye-space-8)', flexWrap: 'wrap', alignItems: 'flex-end', marginBlockStart: 'var(--eye-space-8)' }}>
+                <label style={{ fontSize: 'var(--eye-type-label-sm)' }}>Locale <select style={inputStyle} value={audience.locale} onChange={(e) => setAudience({ ...audience, locale: e.target.value })}>{LOCALES.map((l) => <option key={l} value={l}>{l}</option>)}</select></label>
+                <label style={checkLabel}><input type="checkbox" checked={audience.plainLanguage} onChange={() => setAudience({ ...audience, plainLanguage: !audience.plainLanguage })} /> plain language</label>
+                <label style={checkLabel}><input type="checkbox" checked={audience.screenReader} onChange={() => setAudience({ ...audience, screenReader: !audience.screenReader })} /> screen reader</label>
+              </div>
+              <fieldset style={{ border: 'none', padding: 0, margin: 0, marginBlockStart: 'var(--eye-space-8)' }}>
+                <legend style={{ fontSize: 'var(--eye-type-label-sm)', fontWeight: 650 }}>Channels</legend>
+                {AUDIENCE_CHANNELS.map((c) => <label key={c} style={checkLabel}><input type="checkbox" checked={audience.channels.includes(c)} onChange={() => setAudience({ ...audience, channels: toggle(audience.channels, c) })} /> {c}</label>)}
+              </fieldset>
+              <fieldset style={{ border: 'none', padding: 0, margin: 0, marginBlockStart: 'var(--eye-space-8)' }}>
+                <legend style={{ fontSize: 'var(--eye-type-label-sm)', fontWeight: 650 }}>Exclude sections</legend>
+                {EXCLUDABLE.map((x) => <label key={x} style={checkLabel}><input type="checkbox" checked={audience.exclude.includes(x)} onChange={() => setAudience({ ...audience, exclude: toggle(audience.exclude, x) })} /> exclude {x} items</label>)}
+              </fieldset>
+              <label style={{ display: 'block', fontSize: 'var(--eye-type-label-sm)', marginBlockStart: 'var(--eye-space-8)' }}>Purpose (empty for the standing purpose)
+                <textarea style={textareaStyle} rows={2} value={purpose} onChange={(e) => setPurpose(e.target.value)} />
+              </label>
+              <label style={{ display: 'block', fontSize: 'var(--eye-type-label-sm)', marginBlockStart: 'var(--eye-space-8)' }}>Expires at
+                <input type="datetime-local" style={inputStyle} value={expiry} onChange={(e) => setExpiry(e.target.value)} />
+              </label>
+              <label style={{ display: 'block', fontSize: 'var(--eye-type-label-sm)', marginBlockStart: 'var(--eye-space-8)' }}>Owner's note on disputed items (8 characters or more; a board audience carries disputed items only with it)
+                <textarea style={textareaStyle} rows={2} value={disputedNote} onChange={(e) => setDisputedNote(e.target.value)} />
+              </label>
+              {formProblem === null ? null : <LiveStatus assertive>{formProblem}</LiveStatus>}
+            </section>
+          ) : null}
+          {/* end B36 briefing */}
+          <div style={{ display: 'flex', gap: 'var(--eye-space-8)', flexWrap: 'wrap', marginBlockStart: 'var(--eye-space-8)' }}>
             {(isExecutive || isDecisionOwner) && room.member ? <button type="button" style={buttonStyle} disabled={busy} onClick={() => void compose()}>Compose a briefing now</button> : null}
             {(isExecutive || isDecisionOwner || isApprover || isAuthority) && room.member ? <button type="button" style={buttonStyle} disabled={busy} onClick={() => void review()}>Record a review</button> : null}
           </div>
@@ -137,6 +253,25 @@ export default function BriefingsPage() {
                 {briefing.degraded ? <> · <strong style={{ color: 'var(--eye-color-critical)' }}>DEGRADED OR BLOCKED SOURCES INSIDE</strong></> : null}
                 {briefing.watermark.projection?.memory_content === 'unavailable' ? <> · <strong style={{ color: 'var(--eye-color-critical)' }}>the memory items were omitted: the memory projection was withdrawn and the content tier did not answer (EYE-DEG-001)</strong></> : null}
               </p>
+              {/* B36 briefing: the contract, the expiry, the omissions */}
+              {briefing.schema_version === 'v3' ? (
+                <>
+                  {briefing.expired === true ? <LiveStatus assertive><strong>EXPIRED</strong> — {expiryLine(briefing, fmtInstant)}; a later edition supersedes it.</LiveStatus> : null}
+                  <p style={{ fontSize: 'var(--eye-type-label-sm)' }}>
+                    <strong>Audience</strong> {(briefing.audience?.roles ?? []).join(', ')} · locale <Mono>{briefing.audience?.locale ?? '—'}</Mono> · {briefing.audience?.accessibility.plain_language ? 'plain language' : 'standard language'}{briefing.audience?.accessibility.screen_reader ? ' · screen reader' : ''} · channels {(briefing.audience?.channels ?? []).join(', ')}{(briefing.audience?.exclude ?? []).length > 0 ? ` · excludes ${(briefing.audience?.exclude ?? []).join(', ')}` : ''}
+                    <br /><strong>Purpose</strong> {briefing.purpose} · <strong>{expiryLine(briefing, fmtInstant)}</strong> · policy {briefing.policy_version === null || briefing.policy_version === undefined ? 'none in force at known_at' : <Mono>v{briefing.policy_version}</Mono>}
+                  </p>
+                  <h4 style={{ fontSize: 'var(--eye-type-heading-3)' }}>Omissions — {omissionsCount((briefing.omissions ?? []).length)}</h4>
+                  {(briefing.omissions ?? []).length === 0 ? <Empty>Nothing the edition could not include.</Empty> : <ul style={{ fontSize: 'var(--eye-type-label-sm)' }}>{(briefing.omissions ?? []).map((o, i) => <li key={`${o.kind}-${i}`}>{omissionLine(o)}</li>)}</ul>}
+                  {(briefing.suppressed ?? []).length === 0 ? null : (
+                    <>
+                      <h4 style={{ fontSize: 'var(--eye-type-heading-3)' }}>Suppressed under policy — {(briefing.suppressed ?? []).length} item(s) not rendered</h4>
+                      <ul style={{ fontSize: 'var(--eye-type-label-sm)' }}>{(briefing.suppressed ?? []).map((s) => <li key={s.item_id}>{suppressionLine(s)}</li>)}</ul>
+                    </>
+                  )}
+                </>
+              ) : <p style={{ fontSize: 'var(--eye-type-label-sm)', color: 'var(--eye-color-ink-muted)' }}>An edition before BRF@v3: no audience contract, purpose, expiry or omissions ledger; its content and digest are what they were.</p>}
+              {/* end B36 briefing */}
               <h4 style={{ fontSize: 'var(--eye-type-heading-3)' }}>Sources</h4>
               <p style={{ fontSize: 'var(--eye-type-label-sm)' }}>{briefing.source_states.map((s) => <span key={`${s.source_key}`}><strong>{SOURCE_TEXT[s.state] ?? s.state}</strong> {s.name} ({s.acquisition_mode}) — {s.reason}; </span>)}</p>
               <h4 style={{ fontSize: 'var(--eye-type-heading-3)' }}>Which window is closing</h4>
@@ -147,6 +282,18 @@ export default function BriefingsPage() {
               <h4 style={{ fontSize: 'var(--eye-type-heading-3)' }}>What needs attention (BRF@{briefing.schema_version ?? 'v1'})</h4>
               <AttentionSection version={briefing.schema_version} attention={briefing.attention} />
               {/* end B23 attention */}
+              {/* B36 briefing: the disputed and indicator sections, with their as-of */}
+              {briefing.schema_version === 'v3' ? (
+                <>
+                  <h4 style={{ fontSize: 'var(--eye-type-heading-3)' }}>Disputed assessments</h4>
+                  {(briefing.disputed ?? []).length === 0 ? <Empty>{(briefing.audience?.exclude ?? []).includes('disputed') ? 'Excluded by the audience contract.' : isBoardAudience(briefing.audience?.roles ?? []) ? 'A board audience: disputed items are carried only with the owner\'s note.' : 'No package under challenge, no standing dissent, no contradiction ref at known_at.'}</Empty>
+                    : <ul style={{ fontSize: 'var(--eye-type-label-sm)' }}>{(briefing.disputed ?? []).map((d) => <li key={d.item_id}>{disputedLine(d)}</li>)}</ul>}
+                  <h4 style={{ fontSize: 'var(--eye-type-heading-3)' }}>Emerging indicators</h4>
+                  {briefing.items.filter((i) => i.kind === 'indicator').length === 0 ? <Empty>{(briefing.audience?.exclude ?? []).includes('indicator') ? 'Excluded by the audience contract.' : 'No weak signal nominated and no stream rule fired in the interval.'}</Empty>
+                    : <ul style={{ fontSize: 'var(--eye-type-label-sm)' }}>{briefing.items.filter((i) => i.kind === 'indicator').map((i) => <li key={i.item_id}>{i.title} — as of <Mono>{fmtInstant(i.at)}</Mono> · <ItemBand item={i} /></li>)}</ul>}
+                </>
+              ) : null}
+              {/* end B36 briefing */}
               <h4 style={{ fontSize: 'var(--eye-type-heading-3)' }}>What changed · why it matters · who owns it</h4>
               {(briefing.items_withheld ?? 0) > 0 ? <UnknownNote><strong>{briefing.items_withheld} item(s) withheld from you</strong> — outside the audience of the memory version cited; the snapshot and its digest are unchanged.</UnknownNote> : null}
               {briefing.availability !== undefined && (briefing.availability.unavailable.length > 0 || briefing.availability.corrected.length > 0) ? (
@@ -156,11 +303,13 @@ export default function BriefingsPage() {
               ) : null}
               {briefing.items.length === 0 ? <Empty>Nothing changed since the baseline.</Empty> : (
                 <table className="eye-table" style={tableStyle}>
-                  <thead><tr><Th>Kind</Th><Th>What</Th><Th>Truth</Th><Th>Source</Th><Th>Freshness</Th><Th>Why it matters</Th><Th>Owner</Th></tr></thead>
+                  <thead><tr><Th>Kind</Th><Th>What</Th><Th>Truth</Th><Th>Uncertainty</Th><Th>Source</Th><Th>Freshness</Th><Th>Why it matters</Th><Th>Owner</Th></tr></thead>
                   <tbody>{briefing.items.map((i) => (
                     <tr key={i.item_id}>
-                      <Td>{i.kind}</Td><Td>{i.title}</Td>
+                      <Td>{i.kind}</Td>
+                      <Td>{i.title}{i.retained_from ? <> <strong style={{ color: 'var(--eye-color-warning)' }}>RETAINED</strong> from the prior edition, as of <Mono>{fmtInstant(i.retained_as_of)}</Mono> (not re-derived)</> : null}</Td>
                       <Td>{i.synthetic_state ? <strong style={{ color: 'var(--eye-color-critical)' }}>SYNTHETIC </strong> : null}{i.truth_state}</Td>
+                      <Td><ItemBand item={i} /></Td>
                       <Td><strong style={{ color: ['degraded', 'blocked'].includes(i.source_state) ? 'var(--eye-color-critical)' : undefined }}>{SOURCE_TEXT[i.source_state] ?? i.source_state}</strong></Td>
                       <Td mono>{i.freshness.age_hours} h old</Td>
                       <Td>{i.matters.length === 0 ? '—' : i.matters.map((m) => `${m.dependent_type} ${m.dependent_object_id.slice(0, 8)}…`).join(', ')}</Td>

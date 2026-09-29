@@ -41,7 +41,18 @@ export interface Room {
   room_id: string; package_id: string; title: string; owner_principal_id: string; state: string; package_state?: string; package_title?: string; review_every_days: number; next_review_at: string; last_review_at: string | null;
   review_overdue: boolean; review_status?: string; member?: boolean; members?: Array<{ principal_id: string; role: string; live: boolean }>; events?: Array<Record<string, unknown>>; briefings?: Array<Record<string, unknown>>;
 }
-export interface BriefingItem { item_id: string; kind: string; id: string; title: string; at: string; truth_state: string; synthetic_state: boolean; freshness: { recorded_at: string; age_hours: number }; source_state: string; owner: string | null; matters: Array<{ dependent_object_id: string; dependent_type: string; rationale: string }>; details: Record<string, unknown> }
+export interface BriefingItem { item_id: string; kind: string; id: string; title: string; at: string; truth_state: string; synthetic_state: boolean; freshness: { recorded_at: string; age_hours: number }; source_state: string; owner: string | null; matters: Array<{ dependent_object_id: string; dependent_type: string; rationale: string }>; details: Record<string, unknown>;
+  /* B36 briefing (BRF@v3): the band beside the conclusion (the server computes it) and, under an outage, the prior edition an urgent item was retained from with its original as-of. */
+  uncertainty?: BriefingUncertainty; retained_from?: string | null; retained_as_of?: string | null }
+/* B36 briefing (0094 §B): BRF@v3 — the audience contract, the ledgers and the band; every row is the server's, the client only words it. */
+export interface BriefingUncertainty { band: 'high' | 'medium' | 'low' | 'unknown'; basis: { confidence: number | null; confidence_source: 'record' | 'none'; freshness_hours: number; freshness_bound_hours: number; source_state: string; truth_state: string; independent_sources: number; rules_applied: string[] } }
+export interface BriefingAudience { roles: string[]; locale: string; accessibility: { plain_language: boolean; screen_reader: boolean }; channels: string[]; exclude?: Array<'disputed' | 'indicator'> }
+export interface BriefingOmission { kind: 'source_degraded' | 'source_blocked' | 'memory_unavailable' | 'below_clearance' | 'suppressed' | 'outage'; object: string | null; source: string | null; reason: string }
+export interface BriefingSuppression { item_id: string; kind: string; rule: { class: string; policy_version: number; min_sources: number; max_staleness_hours: number; min_confidence: number | null }; measure: { independent_sources: number; freshness_hours: number; confidence: number | null }; because: string[] }
+export interface BriefingDisputed { item_id: string; basis: 'challenge' | 'dissent' | 'contradiction'; as_of: string; subject: string | null; owner_note: string | null }
+export interface BriefingPolicy { policy_id: string; version: number; rules: { default: { min_sources: number; max_staleness_hours: number; min_confidence: number | null }; classes?: Record<string, { min_sources?: number; max_staleness_hours?: number; min_confidence?: number | null }> }; reason: string; set_by: string; effective_at: string; superseded_at: string | null }
+export interface BriefingComposeV3 { audience?: BriefingAudience; purpose?: string; expiresAt?: string; disputedNote?: string }
+/* end B36 briefing */
 export interface BriefingWindow { kind: string; id: string; title: string; closes_at: string; time_left_seconds: number; overdue: boolean; owner: string | null }
 export interface Briefing {
   briefing_id: string; room_id: string | null; package_id: string | null; composed_by: string; composed_via: 'human' | 'agent'; agent_id: string | null; known_at: string; prior_briefing_id: string | null;
@@ -52,9 +63,14 @@ export interface Briefing {
   items_withheld?: number;
   availability?: { checked_at: string; checked: Record<string, number>; unavailable: Array<{ kind: string; id: string; version: number | null; reason: string }>; corrected: Array<{ kind: string; id: string; version: number; by_version: number; reason: string }> };
   /* B23 (0084) attention: BRF@v2 — the edition's schema version (a v1 edition, composed before 0084, carries no attention section). */
-  schema_version?: 'v1' | 'v2';
+  schema_version?: 'v1' | 'v2' | 'v3';
   attention?: BriefingAttention | null;
   /* end B23 attention */
+  /* B36 briefing (0094 §B): BRF@v3 — the contract, expiry (the database's clock and the tick's event), the ledgers, the policy version in force at known_at; absent on a v1 / v2 edition. */
+  audience?: BriefingAudience | null; purpose?: string | null; expires_at?: string | null; expired?: boolean; expired_at?: string | null;
+  omissions?: BriefingOmission[]; suppressed?: BriefingSuppression[]; disputed?: BriefingDisputed[]; indicators?: Array<{ item_id: string; indicator: string; as_of: string }>; policy_version?: number | null;
+  events?: Array<{ event: string; occurred_at: string; details: Record<string, unknown> }>;
+  /* end B36 briefing */
 }
 /* B23 (0084) attention: BRF@v2's attention section — the routed items AS OF the edition's known_at, each with its confidence band, every
    state counted, and the material changes since the prior edition; inside the content digest (the server composes it, never the client). */
@@ -144,7 +160,12 @@ export const decisions = {
   review: (s: Scope, id: string, note: string) => p<{ review: Record<string, unknown>; receipt: Receipt }>(s, `/rooms/${id}/review`, 'decision.review', 'DRM', { note }, id),
   briefings: (s: Scope, roomId: string | null) => p<{ briefings: Array<Record<string, unknown>>; receipt: Receipt }>(s, '/briefings/list', 'briefing.read', 'BRF', { roomId }, null, 'briefing'),
   briefing: (s: Scope, id: string) => p<{ briefing: Briefing; receipt: Receipt }>(s, `/briefings/${id}/get`, 'briefing.read', 'BRF', {}, id, 'briefing'),
-  compose: (s: Scope, roomId: string | null) => p<{ briefing: Briefing; receipt: Receipt }>(s, '/briefings/compose', 'briefing.compose', 'BRF', { roomId }, null, 'briefing'),
+  /** B36 (0094 §B): the studio composes with the v3 contract (audience, purpose, expiry, the owner's note on disputed items); absent fields take the server's defaults. */
+  compose: (s: Scope, roomId: string | null, v3: BriefingComposeV3 = {}) => p<{ briefing: Briefing; receipt: Receipt }>(s, '/briefings/compose', 'briefing.compose', 'BRF', { roomId, ...v3 }, null, 'briefing'),
+  /* B36 briefing (0094 §B.2): the suppression policy — read under briefing.read; published by a named human under briefing.policy.set. */
+  briefingPolicy: (s: Scope) => p<{ policy: BriefingPolicy | null; history: BriefingPolicy[]; receipt: Receipt }>(s, '/briefings/policy/get', 'briefing.read', 'BRP', {}, null, 'briefing'),
+  setBriefingPolicy: (s: Scope, rules: BriefingPolicy['rules'], reason: string) => p<{ policy: Record<string, unknown>; receipt: Receipt }>(s, '/briefings/policy/set', 'briefing.policy.set', 'BRP', { rules, reason }, null, 'briefing'),
+  /* end B36 briefing */
   agents: (s: Scope) => p<{ agents: Array<Record<string, unknown>>; runs: Array<Record<string, unknown>>; planner: Record<string, unknown>; receipt: Receipt }>(s, '/agents/decision/list', 'agent.read', 'AGT'),
 
   /** CP-6 B9 (0066 §9): the domain's typed requests, newest first; `state` and `kind` narrow the list when given. */
