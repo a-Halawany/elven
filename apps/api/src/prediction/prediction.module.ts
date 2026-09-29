@@ -35,13 +35,14 @@ import { StreamRulesConsumer } from './streams/stream-rules.consumer.js';
    package a response opens (DecisionModule imports nothing from here) */
 import { DecisionModule } from '../decision/decision.module.js';
 import { ExposuresController } from './exposures/exposures.controller.js';
+/* B36 (0094 §C5) collab: the learn step */ import { ExposureLearningController } from './exposures/exposure-learning.controller.js'; /* end B36 collab */
 import { ExposuresService } from './exposures/exposures.service.js';
 /* end B32 exposures */
 
 @Module({
   imports: [PipelineModule, ObservationModule, GraphModule, /* B28 (0088) warnings: the attention tick's registry */ ExecutiveModule /* end B28 warnings */,
             /* B32 (0089) exposures */ DecisionModule /* end B32 exposures */],
-  controllers: [PredictionController, /* B28 (0088) signals */ SignalsController /* end B28 signals */, /* B32 (0089) exposures */ ExposuresController /* end B32 exposures */],
+  controllers: [PredictionController, /* B28 (0088) signals */ SignalsController /* end B28 signals */, /* B32 (0089) exposures */ ExposuresController /* end B32 exposures */, /* B36 (0094 §C5) collab */ ExposureLearningController /* end B36 collab */],
   providers: [
     SeriesService,
     ForecastingService,

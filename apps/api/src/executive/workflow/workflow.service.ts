@@ -233,9 +233,14 @@ export class WorkflowService {
       const db = b['deadline_at'] === null || b['deadline_at'] === undefined ? Number.POSITIVE_INFINITY : new Date(String(b['deadline_at'])).getTime();
       return da - db;
     }).slice(0, limitOf(p.limit, 100, 500));
+    /* B36 (0094 §C2): what each open task waits on (finish-to-start) — the inbox says "waits on …" and offers Complete only when nothing is unmet */
+    const waits = new Map<string, Row[]>();
+    for (const t of sorted) if (t['state'] === 'open' || t['state'] === 'escalated') waits.set(String(t['task_id']), await cap.unmetDependencies(String(t['task_id'])));
+    /* end B36 */
     return {
       now: await cap.now(),
-      tasks: sorted.map((t) => ({ ...taskOf(t), escalation_chain: assignments.filter((a) => a['task_id'] === t['task_id']).map(assignmentOf) })),
+      tasks: sorted.map((t) => ({ ...taskOf(t), escalation_chain: assignments.filter((a) => a['task_id'] === t['task_id']).map(assignmentOf),
+        /* B36 (0094 §C2) */ waits_on: waits.get(String(t['task_id'])) ?? [], blocked: (waits.get(String(t['task_id'])) ?? []).length > 0 /* end B36 */ })),
       order: 'soonest deadline first; a task without a deadline last (no score)',
     };
   }
@@ -249,6 +254,7 @@ export class WorkflowService {
     const events = (await cap.readTaskEvents().selectAll().where('task_id' as never, '=', taskId as never).orderBy('at' as never).execute()) as Row[];
     const timers = (await cap.readTimers().selectAll().where('owner_id' as never, '=', taskId as never).orderBy('created_at' as never).execute()) as Row[];
     const firings = (await cap.readTimerFirings().selectAll().execute()) as Row[];
-    return { task: taskOf(t), escalation_chain: assignments.map(assignmentOf), events: events.map(eventOf), timers: timers.map((x) => timerOf(x, firings.find((f) => f['timer_id'] === x['timer_id']))) };
+    return { task: taskOf(t), escalation_chain: assignments.map(assignmentOf), events: events.map(eventOf), timers: timers.map((x) => timerOf(x, firings.find((f) => f['timer_id'] === x['timer_id']))),
+             /* B36 (0094 §C2) */ dependencies: await cap.taskDependencies(taskId) /* end B36 */ };
   }
 }

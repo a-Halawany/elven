@@ -673,6 +673,20 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   { match: /^exposure rejected \((duplicate|not_active|no_taxonomy)\)|^exposure (assessment|acceptance|control|routing|hypothesis|sponsorship|response|closure) rejected \((stale_version|stale_digest|closed|state|already_accepted|superseded|already_sponsored|agent_estimate|no_breach)\)|^exposure assessment rejected: (version .* (is immutable|does not move)|an assessment version is never deleted)|^exposure aggregation rejected \(invalid_members\)|^risk (taxonomy|appetite) rejected \((stale_version|no_taxonomy)\)/i, status: 409, code: 'EYE_STA_002' },
   { match: /^(exposure|exposure (assessment|acceptance|control|routing|hypothesis|sponsorship|response|closure|correlation|aggregation|estimate)|risk (taxonomy|appetite)) rejected/i, status: 422, code: 'EYE_REQ_001' },
   /* end B32 exposures */
+  /* B36 collab (0094 §C) — collaboration completed and the carried mechanisms: `task dependency rejected` (§C2's port), `task rejected
+     (dependency)` (§C2's guard on the task's completion — raised inside 0090's complete_human_task and the owning ports' _resolve), `workflow
+     rejected (dependency)` and `workflow definition rejected (depends_on)` (§C2's transition and definition guards — placed BEFORE the B34
+     workflow rows, whose catch-alls would answer 422), `invitation rejected` (§C3's delivery; the pickup maps its own outcomes in the
+     service), `execution registration rejected` / `execution activation rejected` (§C4's register / activate / deactivate), `execution handoff
+     rejected (inactive_target)` (§C4's one addition to the gateway — placed BEFORE the B34 commitments rows), `exposure learning rejected`
+     (§C5). Anchored nouns no earlier row reads (`^task rejected` is not `^human task rejected`; `^invitation` , `^execution registration`,
+     `^execution activation` and `^exposure learning` are new); B9's unanchored `activation rejected: rights …` rows read none of these texts.
+     The classes: actor / ownership → 403; unknown_* → 404; state → 409; the rest → 422. */
+  { match: /^(task dependency|invitation|execution registration|execution activation|exposure learning) rejected \((actor|not_holder|provisioner|authority|separation|not_owner)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^(task dependency|invitation|execution registration|execution activation|exposure learning) rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^(task dependency|invitation|execution registration|execution activation|exposure learning) rejected \((state|duplicate|retired|synthetic|decision_not_committed|locked|picked_up|expired|not_delivered|not_in_sink|seal)\)|^task rejected \(dependency\)|^workflow rejected \(dependency\)|^execution handoff rejected \(inactive_target\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^(task dependency|invitation|execution registration|execution activation|exposure learning) rejected|^workflow definition rejected \(depends_on\)/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B36 collab */
   /* B34 (0090) workflow — the durable workflow engine, the human tasks (the prelude's service core included: its `human task rejected (…)` and
      `workflow timer rejected` texts are mapped here too) and collaboration (0090 §W): `workflow definition rejected`, `workflow rejected`,
      `workflow drill rejected`, `workflow timer rejected`, `human task rejected`, `collaboration rejected`, `collaboration grant rejected` —

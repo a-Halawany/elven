@@ -15,6 +15,7 @@ import { MonitoringService } from './monitoring/monitoring.service.js';
 import { DecisionSubscriptionConsumer } from './subscriptions/decision-subscription.consumer.js';
 /* B34 (0090) commitments */
 import { CommitmentController } from './commitments/commitment.controller.js';
+/* B36 (0094 §C4) collab: the enforced activation of a real execution target */ import { ExecutionActivationController } from './commitments/execution-activation.controller.js'; /* end B36 collab */
 import { CommitmentService, ExecutionEgress } from './commitments/commitment.service.js';
 import { CommitmentsSubscriptionConsumer } from './subscriptions/commitments.consumer.js';
 /* end B34 commitments */
@@ -29,7 +30,7 @@ import { SmsChannel, TeamsChannel } from '../executive/attention/delivery/webhoo
 // imports nothing from here.
 @Module({
   imports: [PipelineModule, GraphModule],
-  controllers: [DecisionController, /* B34 (0090) commitments */ CommitmentController /* end B34 commitments */],
+  controllers: [DecisionController, /* B34 (0090) commitments */ CommitmentController /* end B34 commitments */, /* B36 (0094 §C4) collab */ ExecutionActivationController /* end B36 collab */],
   providers: [PackageService, ApprovalService, ReplayService, MonitoringService, DecisionSubscriptionConsumer,
     /* B34 (0090) commitments */ CommitmentService, ExecutionEgress, CommitmentsSubscriptionConsumer /* end B34 commitments */,
     /* B36 (0094) gates */ GateCompletionService, SignatureService, EmailChannel, SmsChannel, TeamsChannel /* end B36 gates */],
