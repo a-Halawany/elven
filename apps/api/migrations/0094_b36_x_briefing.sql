@@ -272,7 +272,7 @@ CREATE OR REPLACE FUNCTION executive.compose_briefing(
   p_audience jsonb, p_purpose text, p_expires_at timestamptz, p_omissions jsonb, p_suppressed jsonb, p_disputed jsonb, p_policy_version int
 ) RETURNS jsonb
 SECURITY DEFINER SET search_path = executive, decision, observation, ctx, public, pg_catalog, pg_temp AS $$
-DECLARE r record; pr record; c jsonb; v_ids jsonb; v_unavailable boolean; v_suppressed_omissions int; i jsonb;
+DECLARE r record; pr record; c jsonb; v_ids jsonb; v_unavailable boolean; v_suppressed_omissions int; v_i jsonb;
 BEGIN
   PERFORM observation.assert_authority(ARRAY['briefing.compose']);
   PERFORM observation.assert_scope(p_tenant, p_domain);
@@ -333,13 +333,13 @@ BEGIN
       RAISE EXCEPTION 'briefing rejected (ledgers): omissions, suppressed and disputed are arrays' USING ERRCODE = '22023';
     END IF;
     -- every displayed conclusion carries its uncertainty band and basis (computed by the composer; never asserted by a caller)
-    FOR i IN SELECT * FROM jsonb_array_elements(p_items) LOOP
-      IF jsonb_typeof(i -> 'uncertainty') <> 'object' OR (i -> 'uncertainty' ->> 'band') IS NULL OR (i -> 'uncertainty' ->> 'band') NOT IN ('high', 'medium', 'low', 'unknown') OR jsonb_typeof(i -> 'uncertainty' -> 'basis') <> 'object' THEN
-        RAISE EXCEPTION 'briefing rejected (uncertainty): item % carries no uncertainty band (high | medium | low | unknown) with its basis', i ->> 'item_id' USING ERRCODE = '22023';
+    FOR v_i IN SELECT * FROM jsonb_array_elements(p_items) LOOP
+      IF jsonb_typeof(v_i -> 'uncertainty') <> 'object' OR (v_i -> 'uncertainty' ->> 'band') IS NULL OR (v_i -> 'uncertainty' ->> 'band') NOT IN ('high', 'medium', 'low', 'unknown') OR jsonb_typeof(v_i -> 'uncertainty' -> 'basis') <> 'object' THEN
+        RAISE EXCEPTION 'briefing rejected (uncertainty): item % carries no uncertainty band (high | medium | low | unknown) with its basis', v_i ->> 'item_id' USING ERRCODE = '22023';
       END IF;
     END LOOP;
-    FOR i IN SELECT * FROM jsonb_array_elements(p_omissions) LOOP
-      IF (i ->> 'kind') IS NULL OR (i ->> 'kind') NOT IN ('source_degraded', 'source_blocked', 'memory_unavailable', 'below_clearance', 'suppressed', 'outage') OR (i ->> 'reason') IS NULL OR length(btrim(i ->> 'reason')) < 8 THEN
+    FOR v_i IN SELECT * FROM jsonb_array_elements(p_omissions) LOOP
+      IF (v_i ->> 'kind') IS NULL OR (v_i ->> 'kind') NOT IN ('source_degraded', 'source_blocked', 'memory_unavailable', 'below_clearance', 'suppressed', 'outage') OR (v_i ->> 'reason') IS NULL OR length(btrim(v_i ->> 'reason')) < 8 THEN
         RAISE EXCEPTION 'briefing rejected (omission): an omission names its kind (source_degraded | source_blocked | memory_unavailable | below_clearance | suppressed | outage) and its reason' USING ERRCODE = '22023';
       END IF;
     END LOOP;
@@ -357,9 +357,9 @@ BEGIN
       RAISE EXCEPTION 'briefing rejected (undeclared_omission): % item(s) suppressed under policy but % declared as omissions of kind suppressed', jsonb_array_length(p_suppressed), v_suppressed_omissions USING ERRCODE = '22023';
     END IF;
     -- a suppressed item is not rendered: it is not among the items, and the narrative cannot cite it
-    FOR i IN SELECT * FROM jsonb_array_elements(p_suppressed) LOOP
-      IF EXISTS (SELECT 1 FROM jsonb_array_elements(p_items) x WHERE (x ->> 'item_id') = (i ->> 'item_id')) THEN
-        RAISE EXCEPTION 'briefing rejected (suppressed): item % is suppressed under policy and rendered at once', i ->> 'item_id' USING ERRCODE = '22023';
+    FOR v_i IN SELECT * FROM jsonb_array_elements(p_suppressed) LOOP
+      IF EXISTS (SELECT 1 FROM jsonb_array_elements(p_items) x WHERE (x ->> 'item_id') = (v_i ->> 'item_id')) THEN
+        RAISE EXCEPTION 'briefing rejected (suppressed): item % is suppressed under policy and rendered at once', v_i ->> 'item_id' USING ERRCODE = '22023';
       END IF;
     END LOOP;
   ELSIF p_audience IS NOT NULL OR p_purpose IS NOT NULL OR p_expires_at IS NOT NULL THEN
@@ -381,17 +381,17 @@ BEGIN
   END IF;
   -- B36: the v3 ledger — what was withheld, what was declared, what is disputed; one event each, in this transaction, by the composer
   IF p_schema_version = 'v3' THEN
-    FOR i IN SELECT * FROM jsonb_array_elements(p_suppressed) LOOP
+    FOR v_i IN SELECT * FROM jsonb_array_elements(p_suppressed) LOOP
       INSERT INTO executive.briefing_events (event_id, scope, tenant_id, domain_id, briefing_id, event, actor_principal_id, details, correlation_id)
-      VALUES (gen_random_uuid(), 'DOMAIN', p_tenant, p_domain, p_briefing_id, 'briefing.suppressed', p_composer, jsonb_build_object('item_id', i ->> 'item_id', 'kind', i ->> 'kind', 'rule', i -> 'rule', 'measure', i -> 'measure', 'policy_version', p_policy_version), p_correlation);
+      VALUES (gen_random_uuid(), 'DOMAIN', p_tenant, p_domain, p_briefing_id, 'briefing.suppressed', p_composer, jsonb_build_object('item_id', v_i ->> 'item_id', 'kind', v_i ->> 'kind', 'rule', v_i -> 'rule', 'measure', v_i -> 'measure', 'policy_version', p_policy_version), p_correlation);
     END LOOP;
-    FOR i IN SELECT * FROM jsonb_array_elements(p_omissions) LOOP
+    FOR v_i IN SELECT * FROM jsonb_array_elements(p_omissions) LOOP
       INSERT INTO executive.briefing_events (event_id, scope, tenant_id, domain_id, briefing_id, event, actor_principal_id, details, correlation_id)
-      VALUES (gen_random_uuid(), 'DOMAIN', p_tenant, p_domain, p_briefing_id, 'briefing.omission_declared', p_composer, i, p_correlation);
+      VALUES (gen_random_uuid(), 'DOMAIN', p_tenant, p_domain, p_briefing_id, 'briefing.omission_declared', p_composer, v_i, p_correlation);
     END LOOP;
-    FOR i IN SELECT * FROM jsonb_array_elements(p_disputed) LOOP
+    FOR v_i IN SELECT * FROM jsonb_array_elements(p_disputed) LOOP
       INSERT INTO executive.briefing_events (event_id, scope, tenant_id, domain_id, briefing_id, event, actor_principal_id, details, correlation_id)
-      VALUES (gen_random_uuid(), 'DOMAIN', p_tenant, p_domain, p_briefing_id, 'briefing.disputed_item', p_composer, i, p_correlation);
+      VALUES (gen_random_uuid(), 'DOMAIN', p_tenant, p_domain, p_briefing_id, 'briefing.disputed_item', p_composer, v_i, p_correlation);
     END LOOP;
   END IF;
   RETURN jsonb_build_object('briefing_id', p_briefing_id, 'content_digest', p_content_digest, 'schema_version', p_schema_version,

@@ -138,8 +138,9 @@ describe('P6-M4 · F4 — briefings: what changed, why it matters, who owns it, 
     const r3 = (await c.compose({ roomId, knownAt: k3 })).briefing;
     expect(r3.watermark['prior_briefing_id']).toBe(r2.briefingId);
     expect(String(r3.watermark['prior_composed_at']).length).toBeGreaterThan(0);
-    expect(r3.items.map((i) => String(i['kind']))).toEqual(['package', 'package', 'dissent']);
-    expect(r3.items.map((i) => (i['details'] as Record<string, unknown>)['event'])).toEqual(['review.recorded', 'version.approved', 'dissent.recorded']);
+    // B36 (0094 §B, b5): the dissent STANDING on the version open at known_at is also a `disputed` item of its own (with its as-of) beside the event that recorded it
+    expect(r3.items.map((i) => String(i['kind'])).sort()).toEqual(['disputed', 'dissent', 'package', 'package']);
+    expect(r3.items.filter((i) => i['kind'] !== 'disputed').map((i) => (i['details'] as Record<string, unknown>)['event'])).toEqual(['review.recorded', 'version.approved', 'dissent.recorded']);
     expect(r3.windows.map((x) => x['kind'])).toEqual(['decision-deadline', 'review', 'approval-expiry']);
     expect(r3.contentDigest).not.toBe(d1);
     // the same watermark again, explicitly: the same digest, whoever composes
