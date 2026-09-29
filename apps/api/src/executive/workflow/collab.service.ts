@@ -327,7 +327,7 @@ export class CollabService {
       }),
       reviews: reviews.map((r) => ({ review_id: r['review_id'], reviewer: r['reviewer_principal_id'], affiliation: r['reviewer_affiliation'], verdict: r['verdict'], statement: r['statement'],
         task_id: r['task_id'] ?? null, artifact_id: r['artifact_id'] ?? null, recorded_at: iso(r['recorded_at']) })),
-      tasks: tasks.map(taskOf),
+      tasks: await Promise.all(tasks.map(async (t) => ({ ...taskOf(t), /* B36 (0094 §C2) */ waits_on: t['state'] === 'open' || t['state'] === 'escalated' ? await cap.unmetDependencies(String(t['task_id'])) : [] /* end B36 */ }))),
       grants: await Promise.all(grants.map(async (g) => ({ ...this.grantOf(g, now), /* B36 (0094 §C3) */ delivery: external ? null : await cap.invitationDelivery(String(g['grant_id'])) /* end B36 */ }))),
       invitation_mail: mail.filter((m) => grants.some((g) => g['grant_id'] === m['grant_id'])).map((m) => ({ grant_id: m['grant_id'], to: m['recipient_principal_id'], channel: m['channel'], subject: m['subject'],
         body_digest: m['body_digest'], synthetic: m['synthetic_state'] === true, placed_at: iso(m['placed_at']), note: SYNTHETIC_INVITATION_NOTE })),

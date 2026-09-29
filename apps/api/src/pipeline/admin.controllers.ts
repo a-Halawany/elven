@@ -85,7 +85,7 @@ export class AdminControllers {
     if (externalBindings.length > 0 && principal.bindings.every((b) => b.roleCode === 'external_collaborator')) {
       const b = externalBindings[0] as { tenantId: string; domainId: string };
       const { CollabB36Capability } = await import('../executive/workflow/collab-b36.capabilities.js');
-      const surface = await this.pipeline.consequentialRead({ ...envelope, message_id: newId() }, principal,
+      const surface = await this.pipeline.consequentialRead({ ...envelope, message_id: newId(), action: 'executive.collab.read', object_type: 'CGR', object_id: null, scope: 'DOMAIN', tenant_id: b.tenantId, domain_id: b.domainId }, principal,
         { scope: 'DOMAIN', tenantId: b.tenantId, domainId: b.domainId, action: 'executive.collab.read', objectType: 'CGR', objectId: null },
         CollabB36Capability.surface, async (cap) => cap.grantSurface(principal.principalId));
       const grants = (surface.result['grants'] ?? []) as Array<Record<string, unknown>>;

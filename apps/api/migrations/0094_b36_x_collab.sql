@@ -304,7 +304,7 @@ CREATE TABLE executive.invitation_deliveries (
   recipient_principal_id uuid NOT NULL,
   channel                text NOT NULL DEFAULT 'demo-mailbox' CHECK (channel = 'demo-mailbox'),
   code_hash              text NOT NULL CHECK (code_hash ~ '^[0-9a-f]{64}$'),
-  sealed_material        text NOT NULL CHECK (sealed_material ~ '^[A-Za-z0-9+/=]{64,4096}$'),
+  sealed_material        text NOT NULL CHECK (sealed_material ~ '^[A-Za-z0-9+/=]+$' AND length(sealed_material) BETWEEN 64 AND 4096),
   code_expires_at        timestamptz NOT NULL,
   failures               int NOT NULL DEFAULT 0 CHECK (failures BETWEEN 0 AND 5),
   locked_at              timestamptz,
@@ -365,7 +365,7 @@ BEGIN
   SELECT * INTO m FROM executive.collab_invitation_mail x WHERE x.grant_id = p_grant;
   IF NOT FOUND THEN RAISE EXCEPTION 'invitation rejected (state): the grant has no mailbox record to deliver' USING ERRCODE = '23505'; END IF;
   IF EXISTS (SELECT 1 FROM executive.invitation_deliveries d WHERE d.grant_id = p_grant) THEN RAISE EXCEPTION 'invitation rejected (duplicate): the invitation of grant % is delivered already', p_grant USING ERRCODE = '23505'; END IF;
-  IF coalesce(p_code_hash, '') !~ '^[0-9a-f]{64}$' OR coalesce(p_sealed, '') !~ '^[A-Za-z0-9+/=]{64,4096}$' THEN
+  IF coalesce(p_code_hash, '') !~ '^[0-9a-f]{64}$' OR coalesce(p_sealed, '') !~ '^[A-Za-z0-9+/=]+$' OR length(coalesce(p_sealed, '')) NOT BETWEEN 64 AND 4096 THEN
     RAISE EXCEPTION 'invitation rejected (material): a delivery carries the code''s hash and the sealed acceptance material' USING ERRCODE = '22023';
   END IF;
   IF p_code_expires_at IS NULL OR p_code_expires_at <= clock_timestamp() OR p_code_expires_at > g.invitation_expires_at THEN
