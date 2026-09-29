@@ -138,11 +138,15 @@ export class ExecutiveController {
   // ───────────────────────── briefings ─────────────────────────
   @Post('/briefings/compose')
   async compose(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string,
-                @Body() body: { payload?: { roomId?: string | null; knownAt?: string; priorBriefingId?: string | null; narrative?: string | null; narrativeCites?: string[] } }) {
+                @Body() body: { payload?: { roomId?: string | null; knownAt?: string; priorBriefingId?: string | null; narrative?: string | null; narrativeCites?: string[];
+                                            /* B36 briefing (0094 §B): the v3 contract — absent means the defaults (every reader role, in-app, plain; the cadence's expiry) */
+                                            audience?: unknown; purpose?: string | null; expiresAt?: string | null; disputedNote?: string | null } }) {
     const { envelope, principal } = ctx(req);
     const p = body.payload ?? {};
     const briefingId = newId();
     const via: 'human' | 'agent' = principal.kind === 'agent' ? 'agent' : 'human';
+    /* B36 briefing: the contract as sent (validated by the composer, then by the port); `undefined` = the default */
+    const v3 = { audience: p.audience, purpose: typeof p.purpose === 'string' ? p.purpose : null, expiresAt: typeof p.expiresAt === 'string' ? p.expiresAt : null, disputedNote: typeof p.disputedNote === 'string' ? p.disputedNote : null };
     const out = await this.pipeline.write(envelope, principal, { ...this.route(tenantId, domainId, 'briefing.compose', 'BRF', briefingId), writableTargets: [briefingId] }, ExecutiveCapability.briefing,
       async (cap, scope) => {
         let agentId: string | null = null;
@@ -158,11 +162,31 @@ export class ExecutiveController {
         // the composition is returned to the composer: a human reads it under the clearance the target context gives (residual review R4a)
         via === 'human' ? clearanceOf(principal, { tenantId: scope.tenantId, domainId: scope.domainId }) : null,
         // B10: the composer's roles in the target — a memory item for an audience role is read by a holder of it
-        principal.bindings.filter((b) => bindingReaches(b, { tenantId: scope.tenantId, domainId: scope.domainId })).map((b) => b.roleCode));
+        principal.bindings.filter((b) => bindingReaches(b, { tenantId: scope.tenantId, domainId: scope.domainId })).map((b) => b.roleCode),
+        /* B36 briefing (0094 §B): the v3 contract */ v3);
         return { result: r, targetType: 'BRF', targetId: briefingId, targetVersion: '1', outboxEvent: null };
       });
     return { briefing: out.result, receipt: receipt(out) };
   }
+
+  /* B36 briefing (0094 §B.2): the suppression policy — published by a named human (briefing.policy.set), read under briefing.read. */
+  @Post('/briefings/policy/set')
+  async setBriefingPolicy(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: { rules?: unknown; reason?: string } }) {
+    const { envelope, principal } = ctx(req);
+    const policyId = newId();
+    const out = await this.pipeline.write(envelope, principal, { ...this.route(tenantId, domainId, 'briefing.policy.set', 'BRP', policyId), writableTargets: [policyId] }, ExecutiveCapability.briefingPolicy,
+      async (cap, scope) => ({ result: await this.briefings.setPolicy(cap, scope, policyId, body.payload?.rules, body.payload?.reason, principal.principalId, envelope.correlation_id), targetType: 'BRP', targetId: policyId, targetVersion: '1', outboxEvent: null }));
+    return { policy: out.result, receipt: receipt(out) };
+  }
+
+  @Post('/briefings/policy/get')
+  async getBriefingPolicy(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: { at?: string } }) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'briefing.read', 'BRP', null), ExecutiveCapability.read,
+      async (cap, scope) => this.briefings.policy(cap, scope, typeof body.payload?.at === 'string' ? instant(body.payload.at, await cap.now()) : null));
+    return { policy: out.result.current, history: out.result.history, receipt: receipt(out) };
+  }
+  /* end B36 briefing */
 
   @Post('/briefings/list')
   async listBriefings(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: { roomId?: string | null } }) {

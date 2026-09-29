@@ -598,6 +598,8 @@ const BUNDLE_V1: Rule[] = [
       { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' },
       { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_approver', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' },
       { role: 'executive', atScope: 'DOMAIN' }, { role: 'briefing_agent', atScope: 'DOMAIN' }, { role: 'reporting_agent', atScope: 'DOMAIN' },
+      /* B36 briefing (0094 §0's roles): the board member and the executive operator read rooms and briefings — under room membership and, on a BRF@v3 edition, the audience contract at read time */
+      { role: 'board_member', atScope: 'DOMAIN' }, { role: 'executive_operator', atScope: 'DOMAIN' },
     ],
     obligations: [{ type: 'audit_access' }],
     requiresPurpose: true,
@@ -615,6 +617,11 @@ const BUNDLE_V1: Rule[] = [
     requiresPurpose: true,
     maxConsequence: 'C2',
   },
+  /* B36 briefing (0094 §B): the suppression policy's publication — an EXACT rule placed before the briefing.compose / briefing.read
+     PREFIX rules (neither prefix matches `briefing.policy.set`, and the exact rule makes the placement explicit). A named human of the
+     executive or the domain administration publishes it; the port asserts the human and records the acting principal. */
+  { actionPrefix: 'briefing.policy.set', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B36 briefing */
   {
     actionPrefix: 'briefing.compose',
     requiredAnyRole: [{ role: 'executive', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'briefing_agent', atScope: 'DOMAIN' }],
@@ -629,6 +636,8 @@ const BUNDLE_V1: Rule[] = [
       { role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' },
       { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_approver', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' },
       { role: 'executive', atScope: 'DOMAIN' }, { role: 'briefing_agent', atScope: 'DOMAIN' }, { role: 'reporting_agent', atScope: 'DOMAIN' },
+      /* B36 briefing (0094 §0's roles): the board member and the executive operator read rooms and briefings — under room membership and, on a BRF@v3 edition, the audience contract at read time */
+      { role: 'board_member', atScope: 'DOMAIN' }, { role: 'executive_operator', atScope: 'DOMAIN' },
     ],
     obligations: [{ type: 'audit_access' }],
     requiresPurpose: true,
