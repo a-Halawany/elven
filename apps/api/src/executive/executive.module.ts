@@ -56,9 +56,13 @@ import { AttentionActService } from './attention/act.service.js';
 import { EmailChannel } from './attention/delivery/email.channel.js';
 import { SmsChannel, TeamsChannel } from './attention/delivery/webhook.channel.js';
 /* end B34 attention */
+/* B36 (0094 §A) attention: the completion — the resume, accept-priority, the hold, the recovery routes, the context on the queue, forums */
+import { AttentionB36Controller } from './attention/attention-b36.controller.js';
+import { AttentionB36Service } from './attention/attention-b36.service.js';
+/* end B36 attention */
 @Module({
   imports: [PipelineModule, IdentityModule, ObservationModule, DecisionModule, GraphModule],
-  controllers: [ExecutiveController, /* B34 (0090) workflow */ WorkflowController /* end B34 workflow */],
+  controllers: [ExecutiveController, /* B34 (0090) workflow */ WorkflowController /* end B34 workflow */, /* B36 (0094 §A) attention */ AttentionB36Controller /* end B36 attention */],
   providers: [SignatureService /* B36 §0 (0094) */, RoomService, BriefingService, AgentsService, AgentWorkerService, DecisionAgentSessionService, RequestsService, AttentionService,
     // B22 (0083): the four consumers of L1-I03, L1-I04, L2-I02 and the attention router (the graph module's dispatcher registers them).
     ObservationsConsumer, SourceHealthConsumer, ProposalsConsumer, AttentionConsumer,
@@ -70,7 +74,8 @@ import { SmsChannel, TeamsChannel } from './attention/delivery/webhook.channel.j
     /* B32 (0089) health: the decomposable Strategic Health Score (0089 §H) */ HealthService /* end B32 health */,
     /* B34 (0090) workflow */ WorkflowService, CollabService, WorkflowTimerRegistry, WorkflowTimerSteps /* end B34 workflow */,
     /* B34-F1 (0091) */ CollabIdentityService /* end B34-F1 */,
-    /* B34 (0090) attention */ AttentionActService, EmailChannel, SmsChannel, TeamsChannel /* end B34 attention */],
+    /* B34 (0090) attention */ AttentionActService, EmailChannel, SmsChannel, TeamsChannel /* end B34 attention */,
+    /* B36 (0094 §A) attention */ AttentionB36Service /* end B36 attention */],
   exports: [SignatureService, RoomService, BriefingService, AgentsService, AgentWorkerService, RequestsService, AttentionService, AttentionTickRegistry,
     /* B24 (0086) timer */ AttentionTimerService, DeliveryService /* end B24 timer */,
     /* B34 (0090) workflow: the timer registry (the commitments and gates parts register their kinds' handlers) */ WorkflowTimerRegistry, CollabService /* end B34 workflow */],

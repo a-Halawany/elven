@@ -26,6 +26,7 @@ import { exposureChangedEvent } from '../../prediction/exposures/exposure-events
 import { PredictionCapability } from '../../prediction/prediction.capabilities.js';
 import { asObservationRefusal } from '../../observation/observation-errors.js';
 /* B34 (0090) integrator */ import { CommitmentCapability } from '../../decision/commitments/commitment.capabilities.js'; /* end B34 integrator */
+/* B36 (0094 §A1) attention: the settle failure recorded after a committed governed action; the SYNTHETIC settle fault */ import { AttentionB36Capability } from './attention-b36.capabilities.js'; /* end B36 attention */
 
 type Row = Record<string, unknown>;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -106,6 +107,13 @@ export class AttentionActService {
 
   constructor(private readonly pipeline: PipelineService) {}
 
+  /* B36 (0094 §A1) attention: THE SYNTHETIC SETTLE FAULT — armed once (the fixture route executive.attention.fixture.arm, or a harness on this
+     instance), the NEXT act's settle in this process fails after its governed action committed; the way (n) is reproduced. Never on by default. */
+  private settleFault: { by: string; at: string } | null = null;
+  armSettleFault(a: { by: string; at: string }): Record<string, unknown> { this.settleFault = a; return { armed: true, synthetic: true, by: a.by, at: a.at, note: 'the next act\'s settle in this process fails once, after its governed action committed' }; }
+  settleFaultArmed(): { by: string; at: string } | null { return this.settleFault; }
+  /* end B36 attention */
+
   /** The action keys this runtime can perform (a registry row with no performer is refused before any write — stated, never guessed). */
   performable(): string[] { return Object.keys(this.performers).sort(); }
 
@@ -128,6 +136,7 @@ export class AttentionActService {
       async (cap, scope) => ({ result: await cap.launchAct({ actId, itemId, tenantId: scope.tenantId as string, domainId: scope.domainId as string, actionKey: intake.actionKey, rationale: intake.rationale, actor: principal.principalId, correlationId: envelope.correlation_id }),
                                targetType: 'ATI', targetId: itemId, targetVersion: null, outboxEvent: null }));
     const l = launched.result;
+    if (l['state'] === 'settle_failed') return { act: l, receipts: { launch: receipt(launched) }, note: 'a repeat of an act whose settle failed: nothing performed again — resume it (POST …/executive/attention/acts/:actId/resume)' };
     if (l['state'] !== 'launched') return { act: l, receipts: { launch: receipt(launched) }, note: 'a repeat of a settled act: nothing performed again' };
     /* 2. THE GOVERNED ACTION — its own write */
     let effect: Effect | null = null; let refusal: { status: number; code: string | null; message: string } | null = null;
@@ -143,6 +152,7 @@ export class AttentionActService {
     const settleEnv = this.chained(envelope, act, 'ATI', itemId);
     let settled: { result: Row; policyDecisionId: string; auditSeq: number };
     try {
+      /* B36 (0094 §A1) */ if (this.settleFault !== null) { const f = this.settleFault; this.settleFault = null; throw new Error(`SYNTHETIC settle fault (armed by ${f.by} at ${f.at}): the settle write failed after the governed action committed`); } /* end B36 */
       settled = await this.pipeline.write(settleEnv, principal, this.route(tenantId, domainId, act, 'ATI', itemId), ExecutiveCapability.attentionAct,
         async (cap, scope) => ({ result: await cap.settleAct({ actId, tenantId: scope.tenantId as string, domainId: scope.domainId as string, outcome: effect === null ? 'refused' : 'acted',
                                                                 effectRef: effect?.effectRef ?? null, effect: effect?.effect ?? null,
@@ -152,7 +162,26 @@ export class AttentionActService {
     } catch (e) {
       // the governed action's outcome stands; the act stays `launched` (visible) — the settle is owed
       if (refusal !== null) throw new HttpException(errorBody(refusal.code === null ? 'EYE_STA_002' : (refusal.code.replace(/-/g, '_') as never), envelope.correlation_id, refusal.message), refusal.status);
-      return { act: l, effect: effect?.effect ?? null, effect_ref: effect?.effectRef ?? null, settle: { state: 'owed', reason: e instanceof Error ? e.message : String(e) }, receipts: { launch: receipt(launched), action: effect?.receipt ?? null } };
+      /* B36 (0094 §A1): the governed action COMMITTED and the settle failed → the act reads settle_failed with the failure and the committed
+         action's receipt (a further write under the act's action); the resume route re-runs the settle from that record — the governed action
+         is never performed again. When even that record fails, the act stays launched and the resume finds the commit in the audit chain. */
+      const reason = e instanceof Error ? e.message : String(e);
+      let recorded: Row | null = null; let recordFailure: string | null = null;
+      if (effect !== null) {
+        try {
+          const failEnv = this.chained(envelope, act, 'ATI', itemId);
+          const r = await this.pipeline.write(failEnv, principal, this.route(tenantId, domainId, act, 'ATI', itemId), AttentionB36Capability.actResume,
+            async (cap, scope) => ({ result: await cap.recordSettleFailure({ actId, tenantId: scope.tenantId as string, domainId: scope.domainId as string, failure: { reason, effect_ref: effect!.effectRef, effect: effect!.effect },
+                                                                            actionReceipt: effect!.receipt, actor: principal.principalId, correlationId: failEnv.correlation_id }),
+                                     targetType: 'ATI', targetId: itemId, targetVersion: null, outboxEvent: null }));
+          recorded = r.result;
+        } catch (e2) { recordFailure = e2 instanceof Error ? e2.message : String(e2); }
+      }
+      return { act: recorded ?? l, effect: effect?.effect ?? null, effect_ref: effect?.effectRef ?? null,
+               settle: { state: recorded === null ? 'owed' : 'failed', reason, recorded: recorded !== null, record_failure: recordFailure },
+               resume: `the launcher or the executive operator resumes the settle: POST …/executive/attention/acts/${actId}/resume (executive.attention.item.act.resume); the governed action is not performed again`,
+               receipts: { launch: receipt(launched), action: effect?.receipt ?? null } };
+      /* end B36 */
     }
     if (refusal !== null) {
       throw new HttpException(errorBody(refusal.code === null ? 'EYE_STA_002' : (refusal.code.replace(/-/g, '_') as never), envelope.correlation_id,
