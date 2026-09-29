@@ -43,7 +43,11 @@ import { SUBJECT_OF, StrategyAlignmentService, atOf, validateAlignment, validate
 /* end B32 graph */
 import { SearchService } from './search/search.service.js';
 import { PropagationAgentsService } from './propagation/propagation-agents.service.js';
-import { graphChangedEvent, revisionCommittedEvent, /* B34 (0090) commitments */ objectiveChangedEvent } from './subscriptions/change-events.js';
+import { graphChangedEvent, revisionCommittedEvent, /* B34 (0090) commitments */ objectiveChangedEvent, /* B36 (0094 §S) strategy */ strategyChangedEvent } from './subscriptions/change-events.js';
+/* B36 (0094 §S) strategy */
+import { REVOCATION_CHANGE_KIND, StrategyDetectionsService, validateRevocation } from './strategy/detections.service.js';
+import type { StrategyAlignmentReads } from './graph.capabilities.js';
+/* end B36 strategy */
 /* B34 (0090) commitments */ import { nextVersionHeader } from './strategy/next-version.js';
 /* B23 (0084) revision */
 import { revisionHead, validateRevisionIntake } from './revisions/revision.service.js';
@@ -108,7 +112,23 @@ export class GraphController {
     private readonly subscriptions: SubscriptionsService,
     private readonly memory: MemoryService,
     /* B32 (0089) graph */ private readonly alignment: StrategyAlignmentService, /* end B32 graph */
+    /* B36 (0094 §S) strategy */ private readonly detections: StrategyDetectionsService, /* end B36 strategy */
   ) {}
+
+  /* B36 (0094 §S) strategy: GraphChanged on an alignment, measure or owner change — built pure from the port's answer, the matching subscriptions read in the same write. */
+  private async strategyChanged(cap: StrategyAlignmentReads, tenantId: string, domainId: string, actor: string, action: string,
+                                a: { kind: 'strategy.alignment_changed' | 'strategy.measure_changed' | 'strategy.owner_changed'; subjectKind: 'alignment' | 'measure' | 'strategy_object'; subjectId: string; subjectType: string | null;
+                                     change: string; objectiveIds: string[]; targetType: string; actId?: string | null; ownerFrom?: string | null; ownerTo?: string | null; reason?: string | null }) {
+    const subscriptions = await cap.subscriptionsMatching({ tenantId, domainId, eventType: 'GraphChanged', changeKind: a.kind });
+    return strategyChangedEvent({ ...a, subscriptions, actor, action });
+  }
+  private static objectivesOf(r: Record<string, unknown>): string[] {
+    const ids: string[] = [];
+    for (const k of ['objective_id', 'from_id', 'to_id']) if (typeof r[k] === 'string') { const t = r[k === 'objective_id' ? 'object_type' : k.replace('_id', '_type')]; if (k === 'objective_id' || t === 'OBJ') ids.push(r[k] as string); }
+    if (Array.isArray(r['objective_ids'])) for (const x of r['objective_ids'] as unknown[]) if (typeof x === 'string') ids.push(x);
+    return ids;
+  }
+  /* end B36 strategy */
 
   private route(tenantId: string, domainId: string, action: string,
                 objectType: string | null, objectId: string | null) {
@@ -1140,8 +1160,13 @@ export class GraphController {
     const intake = validateAlignment(body.payload ?? {}, envelope.correlation_id);
     const alignmentId = newId();
     const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'graph.alignment.declare', 'ALN', alignmentId), GraphCapability.alignment,
-      async (cap, scope) => ({ result: await this.alignment.declareAlignment(cap, scope, { alignmentId, intake, actor: principal.principalId, correlationId: envelope.correlation_id }),
-                               targetType: 'ALN', targetId: alignmentId, targetVersion: '1', outboxEvent: null }));
+      async (cap, scope) => {
+        const r = await this.alignment.declareAlignment(cap, scope, { alignmentId, intake, actor: principal.principalId, correlationId: envelope.correlation_id });
+        /* B36 (0094 §S): announced as GraphChanged/strategy.alignment_changed */
+        const announced = await this.strategyChanged(cap, tenantId, domainId, principal.principalId, 'graph.alignment.declare',
+          { kind: 'strategy.alignment_changed', subjectKind: 'alignment', subjectId: alignmentId, subjectType: intake.kind, change: 'alignment.declared', objectiveIds: GraphController.objectivesOf(r), targetType: 'ALN' });
+        return { result: r, targetType: 'ALN', targetId: alignmentId, targetVersion: '1', outboxEvent: announced };
+      });
     return { alignment: out.result, receipt: receipt(out) };
   }
 
@@ -1153,8 +1178,13 @@ export class GraphController {
     if (reason.trim().length < 8) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'reason is at least 8 characters'), 422);
     if (!UUID_RE.test(alignmentId)) throw new HttpException(errorBody('EYE_STA_001', envelope.correlation_id, 'no authorized alignment matches'), 404);
     const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'graph.alignment.retire', 'ALN', alignmentId), GraphCapability.alignment,
-      async (cap, scope) => ({ result: await this.alignment.retireAlignment(cap, scope, { alignmentId, reason, actor: principal.principalId, correlationId: envelope.correlation_id }),
-                               targetType: 'ALN', targetId: alignmentId, targetVersion: null, outboxEvent: null }));
+      async (cap, scope) => {
+        const r = await this.alignment.retireAlignment(cap, scope, { alignmentId, reason, actor: principal.principalId, correlationId: envelope.correlation_id });
+        /* B36 (0094 §S): announced as GraphChanged/strategy.alignment_changed */
+        const announced = await this.strategyChanged(cap, tenantId, domainId, principal.principalId, 'graph.alignment.retire',
+          { kind: 'strategy.alignment_changed', subjectKind: 'alignment', subjectId: alignmentId, subjectType: typeof r['kind'] === 'string' ? r['kind'] : null, change: 'alignment.retired', objectiveIds: [], targetType: 'ALN', reason });
+        return { result: r, targetType: 'ALN', targetId: alignmentId, targetVersion: null, outboxEvent: announced };
+      });
     return { alignment: out.result, receipt: receipt(out) };
   }
 
@@ -1176,7 +1206,10 @@ export class GraphController {
     const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'graph.measure.define', 'MSR', measureId), GraphCapability.alignment,
       async (cap, scope) => {
         const r = await this.alignment.defineMeasure(cap, scope, { measureId, intake, actor: principal.principalId, correlationId: envelope.correlation_id });
-        return { result: r, targetType: 'MSR', targetId: measureId, targetVersion: String(r['definition_version'] ?? ''), outboxEvent: null };
+        /* B36 (0094 §S): announced as GraphChanged/strategy.measure_changed (a repeated identical definition announces nothing) */
+        const announced = r['repeated'] === true ? null : await this.strategyChanged(cap, tenantId, domainId, principal.principalId, 'graph.measure.define',
+          { kind: 'strategy.measure_changed', subjectKind: 'measure', subjectId: measureId, subjectType: 'MSR', change: 'measure.defined', objectiveIds: GraphController.objectivesOf(r), targetType: 'MSR' });
+        return { result: r, targetType: 'MSR', targetId: measureId, targetVersion: String(r['definition_version'] ?? ''), outboxEvent: announced };
       });
     return { measure: out.result, receipt: receipt(out) };
   }
@@ -1188,8 +1221,13 @@ export class GraphController {
     const intake = validateObservation(body.payload ?? {}, envelope.correlation_id);
     if (!UUID_RE.test(measureId)) throw new HttpException(errorBody('EYE_STA_001', envelope.correlation_id, 'no authorized measure matches'), 404);
     const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'graph.measure.observe', 'MSR', measureId), GraphCapability.alignment,
-      async (cap, scope) => ({ result: await this.alignment.observe(cap, scope, { measureId, intake, actor: principal.principalId, correlationId: envelope.correlation_id }),
-                               targetType: 'MSR', targetId: measureId, targetVersion: null, outboxEvent: null }));
+      async (cap, scope) => {
+        const r = await this.alignment.observe(cap, scope, { measureId, intake, actor: principal.principalId, correlationId: envelope.correlation_id });
+        /* B36 (0094 §S): announced as GraphChanged/strategy.measure_changed (a repeated observation announces nothing) */
+        const announced = r['repeated'] === true ? null : await this.strategyChanged(cap, tenantId, domainId, principal.principalId, 'graph.measure.observe',
+          { kind: 'strategy.measure_changed', subjectKind: 'measure', subjectId: measureId, subjectType: 'MSR', change: 'measure.observed', objectiveIds: [], targetType: 'MSR' });
+        return { result: r, targetType: 'MSR', targetId: measureId, targetVersion: null, outboxEvent: announced };
+      });
     return { observation: out.result, receipt: receipt(out) };
   }
 
@@ -1259,10 +1297,56 @@ export class GraphController {
     const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'graph.strategy.authority.act', targetType, subjectId), GraphCapability.alignment,
       async (cap, scope) => {
         const r = await this.alignment.authority(cap, scope, { subjectId, intake, actor: principal.principalId, correlationId: envelope.correlation_id });
-        return { result: r, targetType, targetId: subjectId, targetVersion: String(r['subject_version'] ?? ''), outboxEvent: null };
+        /* B36 (0094 §S): an act on a measure or an alignment is announced (strategy.measure_changed | strategy.alignment_changed); set_objective announces nothing (the objective itself is unchanged) */
+        const kind = REVOCATION_CHANGE_KIND[String(r['subject_kind'])] ?? null;
+        const announced = kind === null ? null : await this.strategyChanged(cap, tenantId, domainId, principal.principalId, 'graph.strategy.authority.act',
+          { kind, subjectKind: kind === 'strategy.measure_changed' ? 'measure' : 'alignment', subjectId, subjectType: targetType, change: `act.${intake.actKind}.${intake.decision}`, objectiveIds: [], targetType, actId: typeof r['act_id'] === 'string' ? r['act_id'] : null });
+        return { result: r, targetType, targetId: subjectId, targetVersion: String(r['subject_version'] ?? ''), outboxEvent: announced };
       });
     return { act: out.result, receipt: receipt(out) };
   }
+
+  /* B36 (0094 §S) strategy */
+  /** REVOKE an authority act (graph.strategy.authority.revoke, human-gated): its issuer or a domain administrator, with a reason; a lapsed act is not revoked. Announced as a measure or alignment change. */
+  @Post('/strategy/authority/:actId/revoke')
+  async revokeAuthorityAct(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('actId') actId: string, @Body() body: { payload?: Record<string, unknown> }) {
+    const { envelope, principal } = ctx(req);
+    const intake = validateRevocation(body.payload ?? {}, envelope.correlation_id);
+    if (!UUID_RE.test(actId)) throw new HttpException(errorBody('EYE_STA_001', envelope.correlation_id, 'no authorized authority act matches'), 404);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'graph.strategy.authority.revoke', 'ALN', actId), GraphCapability.strategyRevoke,
+      async (cap, scope) => {
+        const r = await this.detections.revoke(cap, scope, { actId, reason: intake.reason, actor: principal.principalId, correlationId: envelope.correlation_id });
+        const kind = REVOCATION_CHANGE_KIND[String(r['subject_kind'])] ?? null;
+        const targetType = typeof r['object_type'] === 'string' ? r['object_type'] : 'ALN';
+        const announced = kind === null ? null : await this.strategyChanged(cap, tenantId, domainId, principal.principalId, 'graph.strategy.authority.revoke',
+          { kind, subjectKind: kind === 'strategy.measure_changed' ? 'measure' : 'alignment', subjectId: String(r['subject_id']), subjectType: targetType, change: `act.${String(r['act_kind'])}.revoked`, objectiveIds: [], targetType, actId, reason: intake.reason });
+        return { result: r, targetType, targetId: String(r['subject_id'] ?? actId), targetVersion: null, outboxEvent: announced };
+      });
+    return { revocation: out.result, receipt: receipt(out) };
+  }
+
+  /** The detections RAISED ON THE SCHEDULE (the table; each with the attention item it was routed as) — the 0089 read stays "as of this read". */
+  @Post('/strategy/detections/list')
+  async listRaisedDetections(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: { kind?: string; subjectId?: string; limit?: number } }) {
+    const { envelope, principal } = ctx(req);
+    const subjectId = body.payload?.subjectId ?? null;
+    if (subjectId !== null && !UUID_RE.test(subjectId)) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'subjectId must be an id'), 422);
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'graph.strategy.alignment.read', 'OBJ', subjectId), GraphCapability.strategyCompletionRead,
+      async (cap) => this.detections.raised(cap, { kind: body.payload?.kind ?? null, subjectId, limit: Number(body.payload?.limit ?? 200) }));
+    return { detections: out.result, receipt: receipt(out) };
+  }
+
+  /** The plan links an objective has when Part P's planning objects exist in this deployment (stated absent otherwise). */
+  @Post('/strategy/plans/links')
+  async strategyPlanLinks(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: { objectiveId?: string } }) {
+    const { envelope, principal } = ctx(req);
+    const objectiveId = body.payload?.objectiveId ?? null;
+    if (objectiveId !== null && !UUID_RE.test(objectiveId)) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'objectiveId must be the id of an objective'), 422);
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'graph.strategy.alignment.read', 'OBJ', objectiveId), GraphCapability.strategyCompletionRead,
+      async (cap, scope) => this.detections.planLinks(cap, scope, { objectiveId }));
+    return { links: out.result, receipt: receipt(out) };
+  }
+  /* end B36 strategy */
 
   /** Transfer a strategy object's ownership to an active human with a planning role (graph.strategy.owner.assign, human-gated) — strategy.owner_assigned. */
   /**
@@ -1298,7 +1382,10 @@ export class GraphController {
         const announced = r['object_type'] === 'OBJ'
           ? objectiveChangedEvent({ answer: r, change: 'owner_assigned', subscriptions: await cap.subscriptionsMatching({ tenantId, domainId, eventType: 'GraphChanged', changeKind: 'objective.changed' }),
                                     actor: principal.principalId, action: 'graph.strategy.owner.assign' })
-          : null;
+          /* B36 (0094 §S): another type's transfer is announced as strategy.owner_changed */
+          : await this.strategyChanged(cap, tenantId, domainId, principal.principalId, 'graph.strategy.owner.assign',
+              { kind: 'strategy.owner_changed', subjectKind: 'strategy_object', subjectId: objectId, subjectType: typeof r['object_type'] === 'string' ? r['object_type'] : null, change: 'owner.assigned', objectiveIds: [], targetType: 'OBJ',
+                ownerFrom: typeof r['from'] === 'string' ? r['from'] : null, ownerTo: typeof r['to'] === 'string' ? r['to'] : null, reason: p.reason });
         return { result: r, targetType: 'OBJ', targetId: objectId, targetVersion: null, outboxEvent: announced };
       });
     /* end B34 commitments */

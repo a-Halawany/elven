@@ -40,6 +40,7 @@ import { AttentionGovernanceService } from './attention/governance.service.js';
 /* end B24 governance */
 /* B32 (0089) health */
 import { HealthService } from './health/health.service.js';
+/* B36 (0094 §S) strategy */ import { HealthInputsService } from './health/health-inputs.service.js'; /* end B36 strategy */
 /* end B32 health */
 /* B34 (0090) workflow: the durable workflow engine, the human tasks' routes, the collaboration workspaces and their external collaborators,
    and the workflow timers' firing (the attention tick's steps workflow-timers 20 and collab-grant-expiry 22) */
@@ -68,6 +69,7 @@ import { SmsChannel, TeamsChannel } from './attention/delivery/webhook.channel.j
     /* B24 (0086) materiality */ AttentionMaterialityService, AttentionRebalanceStep /* end B24 materiality */,
     /* B24 (0086) governance: suppression approval, item delegation, disposition, queue evaluation (0086 §G) */ AttentionGovernanceService /* end B24 governance */,
     /* B32 (0089) health: the decomposable Strategic Health Score (0089 §H) */ HealthService /* end B32 health */,
+    /* B36 (0094 §S) strategy: the score completed — owners, exceptions, the signed snapshot approval */ HealthInputsService /* end B36 strategy */,
     /* B34 (0090) workflow */ WorkflowService, CollabService, WorkflowTimerRegistry, WorkflowTimerSteps /* end B34 workflow */,
     /* B34-F1 (0091) */ CollabIdentityService /* end B34-F1 */,
     /* B34 (0090) attention */ AttentionActService, EmailChannel, SmsChannel, TeamsChannel /* end B34 attention */],
