@@ -10,8 +10,8 @@
 -- workspaces, the grants), 0091 §F1 (the identity path — used, never re-declared), 0090 §C5 (the gateway — ONE port re-declared with ONE
 -- addition), 0090 §X5 (the outcome review — used; the learn step is new).
 --
---   §C0  the vocabularies: human_task_events (+ task.dependency_declared, task.released), collab_events (+ invitation.delivered,
---        invitation.picked_up, invitation.pickup_refused, invitation.locked), prediction.exposure_events (+ exposure.learning_recorded)
+--   §C0  the vocabularies: human_task_events (+ task.dependency_declared, task.released), collab_events (+ invitation.picked_up,
+--        invitation.pickup_refused, invitation.locked), prediction.exposure_events (+ exposure.learning_recorded)
 --   §C1  THE EXTERNAL'S BOUNDED SELF READ (q): executive.collab_grant_surface(principal) — the grants that bound an external collaborator
 --        (its workspace, purpose, audience ceiling, expiry, whether live or expired at the DATABASE's instant); nothing of the tenant beyond
 --   §C2  TASK DEPENDENCIES (r; PR-46-002): executive.human_task_dependencies (finish_to_start; a cycle refused), the port
@@ -54,8 +54,9 @@ ALTER TABLE executive.collab_events DROP CONSTRAINT collab_events_event_check;
 ALTER TABLE executive.collab_events ADD CONSTRAINT collab_events_event_check CHECK (event IN ('workspace.opened', 'participant.added', 'participant.removed',
   'thread.opened', 'message.posted', 'artifact.added', 'review.requested', 'review.recorded', 'grant.invited', 'grant.accepted', 'grant.revoked', 'grant.lapsed',
   'access.refused', 'grant.requested', 'grant.provisioning',
-  -- B36 (0094 §C3)
-  'invitation.delivered', 'invitation.picked_up', 'invitation.pickup_refused', 'invitation.locked'));
+  -- B36 (0094 §C3): the pickup's outcomes (the delivery itself is the row of executive.invitation_deliveries — no event on the provisioning path,
+  -- whose log the B34-F1 harness pins exactly)
+  'invitation.picked_up', 'invitation.pickup_refused', 'invitation.locked'));
 
 -- prediction.exposure_events (0090 §X0, whole, plus the learn step)
 ALTER TABLE prediction.exposure_events DROP CONSTRAINT exposure_events_event_check;
@@ -350,7 +351,7 @@ CREATE TRIGGER xip_append_only BEFORE UPDATE OR DELETE ON executive.invitation_p
 
 /* THE DELIVERY (the identity administrator's act, after 0091's activation committed — the same bound action executive.collab.provision):
    the grant is `invited` and its mailbox record exists; one delivery per grant; the code's hash and the sealed material recorded; the
-   workspace's log gains invitation.delivered (the channel, synthetic; never the code, never the token). */
+   delivery's own row is the record (never the code, never the token). */
 CREATE OR REPLACE FUNCTION executive.deliver_invitation(p_delivery_id uuid, p_tenant uuid, p_domain uuid, p_grant uuid, p_code_hash text, p_sealed text, p_code_expires_at timestamptz, p_actor uuid, p_correlation uuid) RETURNS jsonb
 SECURITY DEFINER SET search_path = executive, observation, ctx, public, pg_catalog, pg_temp AS $$
 DECLARE g executive.collab_grants%ROWTYPE; m executive.collab_invitation_mail%ROWTYPE;
@@ -371,11 +372,9 @@ BEGIN
   IF p_code_expires_at IS NULL OR p_code_expires_at <= clock_timestamp() OR p_code_expires_at > g.invitation_expires_at THEN
     RAISE EXCEPTION 'invitation rejected (expiry): the code expires in the future and no later than the invitation window' USING ERRCODE = '22023';
   END IF;
+  -- the delivery IS the record (its row; the workspace's event log gains nothing here: the provisioning path's log is pinned by the B34-F1 harness)
   INSERT INTO executive.invitation_deliveries (delivery_id, scope, tenant_id, domain_id, grant_id, message_id, recipient_principal_id, code_hash, sealed_material, code_expires_at, delivered_by, correlation_id)
   VALUES (p_delivery_id, 'DOMAIN', p_tenant, p_domain, p_grant, m.message_id, g.principal_id, p_code_hash, p_sealed, p_code_expires_at, p_actor, p_correlation);
-  PERFORM executive._collab_event(g.workspace_id, p_tenant, p_domain, 'invitation.delivered', p_actor,
-            jsonb_build_object('grant_id', p_grant, 'delivery_id', p_delivery_id, 'message_id', m.message_id, 'channel', 'demo-mailbox', 'synthetic', true, 'code_expires_at', p_code_expires_at,
-                               'token', 'sealed under the pickup code; written nowhere in clear'), p_correlation);
   RETURN jsonb_build_object('delivery_id', p_delivery_id, 'grant_id', p_grant, 'message_id', m.message_id, 'channel', 'demo-mailbox', 'synthetic', true, 'code_expires_at', p_code_expires_at,
                             'recipient', g.principal_id, 'login_name', g.login_name, 'delivered_by', p_actor, 'pickup', 'POST /v1/collab/invitations/pickup {invitationId, code}');
 END $$ LANGUAGE plpgsql;

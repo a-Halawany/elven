@@ -231,7 +231,7 @@ describe('B36 collab · collaboration completed and the carried mechanisms (0094
     expect(g['delivery']).toMatchObject({ pending: false, channel: 'demo-mailbox', synthetic: true, grant_id: grantT1 });
     expect(g['state']).toBe('invited');
     expect(JSON.stringify(g)).not.toMatch(/token/i);
-    expect(await collabEvents(grantT1)).toEqual(['grant.requested', 'grant.provisioning', 'grant.invited', 'invitation.delivered']);
+    expect(await collabEvents(grantT1), 'the provisioning path\'s log is unchanged (the B34-F1 pin); the delivery is its own row').toEqual(['grant.requested', 'grant.provisioning', 'grant.invited']);
     const control = collab.syntheticInvitation(grantT1)!;               // TEST CONTROL (in process): the token beside the message — never a route
     tokenT1 = control.token; loginT1 = control.login;
     expect(control.body).not.toContain(tokenT1);
@@ -270,7 +270,7 @@ describe('B36 collab · collaboration completed and the carried mechanisms (0094
     await refused(pickup(g2, wrong), /^invitation rejected \(locked\)/, 409, 'EYE-STA-002');
     await refused(pickup(g2, realCode), /^invitation rejected \(locked\)/, 409);
     expect((await deliveryState(g2)).delivery).toMatchObject({ state: 'locked', failures: 5 });
-    expect(await collabEvents(g2)).toEqual(['grant.requested', 'grant.provisioning', 'grant.invited', 'invitation.delivered', 'invitation.pickup_refused', 'invitation.pickup_refused', 'invitation.pickup_refused', 'invitation.pickup_refused', 'invitation.locked']);
+    expect(await collabEvents(g2)).toEqual(['grant.requested', 'grant.provisioning', 'grant.invited', 'invitation.pickup_refused', 'invitation.pickup_refused', 'invitation.pickup_refused', 'invitation.pickup_refused', 'invitation.locked']);
     await refused(pickup(uuidv7(), realCode), /^invitation rejected \(unknown_invitation\)/, 404, 'EYE-STA-001');
     await refused(pickup(g2, 'not-a-code'), /payload\.code is the one-time pickup code/, 422);
     await refused(pickup('nope', realCode), /payload\.invitationId is the invitation/, 422);
