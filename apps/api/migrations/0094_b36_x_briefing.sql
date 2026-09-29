@@ -321,7 +321,8 @@ BEGIN
   -- ── B36 (0094 §B): the v3 contract ─────────────────────────────────────────────────────────────────────────────────────────────
   IF p_schema_version = 'v3' THEN
     IF NOT executive.briefing_audience_ok(p_audience) THEN
-      RAISE EXCEPTION 'briefing rejected (audience): the audience contract names roles (non-empty), a locale, accessibility { plain_language, screen_reader } and channels (non-empty)' USING ERRCODE = '22023';
+      -- the class is `contract` (the caller's malformed request, 422); `audience` is the READ's refusal of a reader outside the roles (403)
+      RAISE EXCEPTION 'briefing rejected (contract): the audience contract names roles (non-empty), a locale, accessibility { plain_language, screen_reader } and channels (non-empty)' USING ERRCODE = '22023';
     END IF;
     IF p_purpose IS NULL OR length(btrim(p_purpose)) < 8 OR length(btrim(p_purpose)) > 400 THEN RAISE EXCEPTION 'briefing rejected (purpose): a purpose of 8 to 400 characters says what the edition is for' USING ERRCODE = '22023'; END IF;
     IF p_expires_at IS NULL OR p_expires_at <= p_known_at THEN RAISE EXCEPTION 'briefing rejected (expiry): expires_at is an instant after the edition''s known_at' USING ERRCODE = '22023'; END IF;
@@ -343,9 +344,9 @@ BEGIN
       END IF;
     END LOOP;
     -- an edition whose composition met an UNAVAILABLE DEPENDENCY declares an omission, or is refused: a degraded or blocked source among
-    -- the states the composition read, the memory content unavailable (B21's token in the watermark), or an item withheld under policy
-    v_unavailable := coalesce(p_degraded, false)
-      OR EXISTS (SELECT 1 FROM jsonb_array_elements(coalesce(p_source_states, '[]'::jsonb)) s WHERE (s ->> 'state') IN ('degraded', 'blocked'))
+    -- the states the composition read, the memory content unavailable (B21's token in the watermark), or an item withheld under policy.
+    -- (`degraded` alone is not the test: a withdrawn memory projection served from its log, labelled, omits nothing — B20.)
+    v_unavailable := EXISTS (SELECT 1 FROM jsonb_array_elements(coalesce(p_source_states, '[]'::jsonb)) s WHERE (s ->> 'state') IN ('degraded', 'blocked'))
       OR (p_watermark -> 'projection' ->> 'memory_content') = 'unavailable'
       OR jsonb_array_length(p_suppressed) > 0;
     IF v_unavailable AND jsonb_array_length(p_omissions) = 0 THEN

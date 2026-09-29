@@ -494,13 +494,15 @@ export class BriefingService {
     }
     windows.sort((x, y) => (x.closes_at < y.closes_at ? -1 : x.closes_at > y.closes_at ? 1 : x.id < y.id ? -1 : 1));
     // B20: a withdrawn memory projection degrades the briefing (its memory items are served from their log, labelled) beside a degraded or blocked source.
-    const degraded = items.some((i) => i.source_state === 'degraded' || i.source_state === 'blocked') || memoryWithdrawn;
+    // B36 (0094 §B; B.md b6): a composition that RAN UNDER a degraded or blocked source is degraded whether or not an item of this interval
+    // cites it — the source's state at known_at is what the edition read; the omission names it and the prior's urgent items are retained.
+    const degraded = items.some((i) => i.source_state === 'degraded' || i.source_state === 'blocked') || memoryWithdrawn || sourceStates.some((s) => s.state === 'degraded' || s.state === 'blocked');
     /* B36 briefing (0094 §B): BRF@v3 ──────────────────────────────────────────────────────────────────────────────────────────── */
     // b3 THE AUDIENCE CONTRACT, THE PURPOSE, THE EXPIRY — as sent, or the defaults; a problem is said in words here and refused again by the port.
     const audienceIn = v3?.audience;
     if (audienceIn !== undefined && audienceIn !== null) {
       const problem = audienceProblem(audienceIn);
-      if (problem !== null) throw new HttpException(errorBody('EYE_REQ_001', correlationId, `briefing rejected (audience): ${problem}`), 422);
+      if (problem !== null) throw new HttpException(errorBody('EYE_REQ_001', correlationId, `briefing rejected (contract): ${problem}`), 422);
     }
     const audience: Audience = audienceIn === undefined || audienceIn === null ? DEFAULT_AUDIENCE : (audienceIn as Audience);
     const purpose = typeof v3?.purpose === 'string' && v3.purpose.trim().length > 0 ? v3.purpose.trim()
@@ -578,7 +580,8 @@ export class BriefingService {
     // a header's confidence.value), its freshness, its source's state, its truth state, its corroboration refs. Never asserted by a caller.
     const confidenceOf = (i: BriefingItem): unknown => {
       const d = i.details ?? {};
-      if (i.kind === 'indicator' && typeof d['confidence'] === 'number') return d['confidence'];
+      // a signal's numeric confidence reaches the composer as pg's numeric (a string): read as a number, never invented when absent
+      if (i.kind === 'indicator') return typeof d['confidence'] === 'number' ? d['confidence'] : (typeof d['confidence'] === 'string' && d['confidence'] !== '' ? Number(d['confidence']) : null);
       return null;
     };
     const headerConfidence = new Map<string, unknown>(); const corroborations = new Map<string, unknown>();

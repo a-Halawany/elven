@@ -51,8 +51,12 @@ const T = () => h.fx.tenantId; const D = () => h.fx.domainId;
 const obj = (v: unknown): Row => (v ?? {}) as Row;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const dbNow = async (): Promise<string> => (await sql<{ t: Date }>`select clock_timestamp() t`.execute(h.su)).rows[0]!.t.toISOString();
-const plantHealth = (state: 'healthy' | 'degraded', reason: string) => sql`insert into observation.source_health_events (event_id, scope, tenant_id, domain_id, source_id, prior_state, new_state, evaluated_at, calc_version, coverage_universe_version, evidence_refs, reason, lag_class, correlation_id)
-  values (${uuidv7()}::uuid, 'DOMAIN', ${T()}::uuid, ${D()}::uuid, ${h.fx.sourceId}::uuid, null, ${state}, clock_timestamp(), 'fixture', 'fixture', '[]'::jsonb, ${reason}, 'none', ${uuidv7()}::uuid)`.execute(h.su);
+/** A health verdict planted through the source-health path (0044's source_states); a pause follows because a known_at is an ISO instant at MILLISECOND precision while the verdict's evaluated_at carries microseconds — planted in the same millisecond, the verdict would sit just after the truncated instant. */
+const plantHealth = async (state: 'healthy' | 'degraded', reason: string): Promise<void> => {
+  await sql`insert into observation.source_health_events (event_id, scope, tenant_id, domain_id, source_id, prior_state, new_state, evaluated_at, calc_version, coverage_universe_version, evidence_refs, reason, lag_class, correlation_id)
+    values (${uuidv7()}::uuid, 'DOMAIN', ${T()}::uuid, ${D()}::uuid, ${h.fx.sourceId}::uuid, null, ${state}, clock_timestamp(), 'fixture', 'fixture', '[]'::jsonb, ${reason}, 'none', ${uuidv7()}::uuid)`.execute(h.su);
+  await sleep(10);
+};
 const events = async (id: string) => (await sql<{ event: string; details: Row }>`select event, details from executive.briefing_events where briefing_id = ${id}::uuid order by occurred_at, event_id`.execute(h.su)).rows;
 const setPolicy = (rules: unknown, reason: string, as = w.executive) => w.exec.setBriefingPolicy(h.req(as, 'briefing.policy.set', 'BRP', null, 'briefing'), T(), D(), { payload: { rules, reason } as never }) as unknown as Promise<{ policy: Row }>;
 const getPolicy = (as = w.executive) => w.exec.getBriefingPolicy(h.req(as, 'briefing.read', 'BRP', null, 'briefing'), T(), D(), { payload: {} }) as unknown as Promise<{ policy: Row | null; history: Row[] }>;
@@ -171,13 +175,13 @@ describe('B36 briefing · b3 the AUDIENCE contract, PURPOSE and EXPIRY', () => {
     expect((await c.listBriefings(roomId, w.approver)).briefings.some((b) => b['briefing_id'] === E0.briefingId)).toBe(true);
     expect(await message(c.getBriefing(E1.briefingId, outsider))).toMatch(/read by the room's members/);
     const k = await dbNow();
-    expect(await message(compose({ roomId, knownAt: k, priorBriefingId: E1.briefingId, audience: { roles: [], locale: 'en', accessibility: { plain_language: false, screen_reader: false }, channels: ['in-app'] } }))).toMatch(/^briefing rejected \(audience\): audience.roles/);
+    expect(await message(compose({ roomId, knownAt: k, priorBriefingId: E1.briefingId, audience: { roles: [], locale: 'en', accessibility: { plain_language: false, screen_reader: false }, channels: ['in-app'] } }))).toMatch(/^briefing rejected \(contract\): audience.roles/);
     expect(await status(compose({ roomId, knownAt: k, priorBriefingId: E1.briefingId, audience: { roles: ['executive'], locale: 'english', accessibility: { plain_language: false, screen_reader: false }, channels: ['in-app'] } }))).toBe(422);
     expect(await message(compose({ roomId, knownAt: k, priorBriefingId: E1.briefingId, expiresAt: new Date(new Date(k).getTime() - 60_000).toISOString() }))).toMatch(/^briefing rejected \(expiry\)/);
     expect(await message(compose({ roomId, knownAt: k, priorBriefingId: E1.briefingId, purpose: 'x' }))).toMatch(/^briefing rejected \(purpose\)/);
     // the PORT refuses the contract too (a caller that bypassed the composer's words)
     const r = await refused(portCompose(w.executive, { audience: { roles: ['executive'], locale: 'en', accessibility: { plain_language: 'yes' }, channels: ['in-app'] } }));
-    expect(r.status).toBe(422); expect(r.message).toMatch(/^briefing rejected \(audience\)/);
+    expect(r.status).toBe(422); expect(r.message).toMatch(/^briefing rejected \(contract\)/);
     const r2 = await refused(portCompose(w.executive, { expiresAt: new Date(Date.now() - 86_400_000).toISOString() }));
     expect(r2.status).toBe(422); expect(r2.message).toMatch(/^briefing rejected \(expiry\)/);
   });
@@ -269,8 +273,7 @@ describe('B36 briefing · b4 the unsafe-product SUPPRESSION rule — prefer sile
     const cited = String(dom.suppressed[0]!['item_id']);
     expect(await status(compose({ roomId: null, knownAt: kFuture, priorBriefingId: null, narrative: 'The evidence says the corridor holds.', narrativeCites: [cited] }))).toBe(422);
     expect(dom.items.some((i) => i['kind'] === 'run')).toBe(true);
-    // the same instant and policy recompose to the same digest
-    expect((await compose({ roomId: null, knownAt: kFuture, priorBriefingId: null })).briefing.contentDigest).toBe(dFirst);
+    // (determinism at a PRESENT instant is b1's; at this future instant anything the enabled scheduler records meanwhile falls inside the window)
   });
   it('REFUSAL: an approver cannot publish (the PDP, 403); malformed rules are 422; the unchanged rules are 409', async () => {
     expect(await status(setPolicy(RULES_V1, 'an approver publishing (B36 harness)', w.approver))).toBe(403);
@@ -394,7 +397,8 @@ describe('B36 briefing · b6 URGENT-STATE retention during an outage', () => {
     expect((g['items'] as Row[]).find((i) => i['item_id'] === kept['item_id'])!['retained_from']).toBe(E7.briefingId);
   });
   it('REFUSAL: an outage edition that declares no omission is refused by the port (b2\'s rule holds the retention too)', async () => {
-    const r = await refused(portCompose(w.executive, { degraded: true, items: [{ item_id: `warning:${warningId}`, kind: 'warning', id: warningId, version: null, title: 'retained probe', at: E7.knownAt, truth_state: 'inferred', source_state: 'internal', synthetic_state: true, retained_from: E7.briefingId, uncertainty: { band: 'low', basis: {} } }], omissions: [] }));
+    const r = await refused(portCompose(w.executive, { degraded: true, sourceStates: [{ source_id: h.fx.sourceId, contract_version: 1, state: 'degraded', reason: 'the outage probe' }],
+      items: [{ item_id: `warning:${warningId}`, kind: 'warning', id: warningId, version: null, title: 'retained probe', at: E7.knownAt, truth_state: 'inferred', source_state: 'internal', synthetic_state: true, retained_from: E7.briefingId, uncertainty: { band: 'low', basis: {} } }], omissions: [] }));
     expect(r.status).toBe(409); expect(r.message).toMatch(/^briefing rejected \(undeclared_omission\)/);
   });
   it('RECOVERY: a healthy verdict recomposes without a retained item; the warning keeps its open window among the windows', async () => {

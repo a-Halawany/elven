@@ -122,6 +122,8 @@ describe('B36 briefing · the refusal rows through the mapper (anchored; 403 →
     expect(mapped('briefing rejected (undeclared_omission): the composition met an unavailable dependency', '22023')).toEqual({ status: 409, code: 'EYE-STA-002' });
     expect(mapped('briefing policy rejected (state): the rules are unchanged from version 1', '22023')).toEqual({ status: 409, code: 'EYE-STA-002' });
     expect(mapped('briefing rejected (uncertainty): item x carries no uncertainty band', '22023')).toEqual({ status: 422, code: 'EYE-REQ-001' });
+    // the malformed contract at COMPOSITION is the caller's (contract → 422); a reader outside the audience at READ is standing (audience → 403)
+    expect(mapped('briefing rejected (contract): the audience contract names roles (non-empty)', '22023')).toEqual({ status: 422, code: 'EYE-REQ-001' });
     expect(mapped('briefing rejected (expiry): expires_at is an instant after the edition\'s known_at', '22023')).toEqual({ status: 422, code: 'EYE-REQ-001' });
     expect(mapped('briefing rejected (suppressed): item x is suppressed under policy and rendered at once', '22023')).toEqual({ status: 422, code: 'EYE-REQ-001' });
     expect(mapped('briefing policy rejected (rules): rules are { default: … }', '22023')).toEqual({ status: 422, code: 'EYE-REQ-001' });

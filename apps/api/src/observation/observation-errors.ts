@@ -793,7 +793,8 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
      HttpExceptions answer first, and the harness reads the port's text). B9's order: the standing 403 (the acting principal, a policy set
      by a named human, a reader outside the audience), the absences 404 (an unknown policy version), the record's state 409 (an edition that
      met an unavailable dependency and declares no omission; a policy whose rules are unchanged), the caller's own request 422 (the rest:
-     a malformed audience, purpose, expiry, omission, an item without its band, a suppressed item rendered, malformed rules). */
+     a malformed audience CONTRACT at composition (`contract`), purpose, expiry, omission, an item without its band, a suppressed item
+     rendered, malformed rules). `audience` is the READ's class alone: a reader outside the contract's roles is standing, 403. */
   { match: /^briefing rejected \((actor|audience)\)|^briefing policy rejected \(actor\)|^briefing expiry rejected \(actor\)/i, status: 403, code: 'EYE_AUT_001' },
   { match: /^briefing rejected \(unknown_(policy|room|prior)\)/i, status: 404, code: 'EYE_STA_001' },
   { match: /^briefing rejected \((state|undeclared_omission|expired)\)|^briefing policy rejected \(state\)/i, status: 409, code: 'EYE_STA_002' },
