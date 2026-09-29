@@ -20,6 +20,8 @@ import {
   health as api, APPROVER_ROLES, CHALLENGE_KINDS, PROPOSER_ROLES, barPercent, changeMark, coverageWords, freshnessBadge, gamingFlagWords, parseModel, scoreWords, sensitivityWords,
   statusMark, trendWords, whatIf,
   type Comparison, type HealthChange, type HealthComponent, type HealthDefinition, type HealthDimension, type HealthResult, type HealthSnapshot,
+  /* B36 (0094 §S) strategy */ healthCompletion, EXCEPTION_APPROVER_ROLES, SNAPSHOT_APPROVER_ROLES, contextLine, exceptionLine, ownerLine, signatureLine,
+  type ApprovalPreview, type HealthContract, type HealthException, /* end B36 strategy */
 } from '../../../lib/health';
 import { Empty, LiveStatus, Mono, ScrollBox, cardStyle, GovernedButton, fmtInstant, textareaStyle } from '../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui';
@@ -124,7 +126,9 @@ function ChangeRow({ c, onDone, scope }: { c: HealthChange; onDone: () => Promis
       <p><Mark m={changeMark(String(c.state))} /> <strong>{c.subject_label}</strong>: {c.from_value === null ? 'no score' : c.from_value} → {c.to_value === null ? 'no score' : c.to_value}
         {c.delta !== null && <> ({c.delta > 0 ? '+' : ''}{c.delta})</>}{c.from_band !== null && c.to_band !== null && c.from_band !== c.to_band && <> · band {c.from_band} → {c.to_band}</>} · {c.triggers.join(', ')}
         <span style={muted}> · a change triggers review, never action</span></p>
-      {c.gaming_flags.length > 0 && <ul aria-label="anti-gaming flags (shown; they gate nothing)">{c.gaming_flags.map((f) => <li key={`${f.flag}-${f.component ?? f.band ?? ''}`} style={{ color: 'var(--eye-color-warning)' }}>⚠ {gamingFlagWords(f)}</li>)}</ul>}
+      {c.gaming_flags.length > 0 && <ul aria-label="anti-gaming flags (shown; they gate nothing)">{c.gaming_flags.map((f) => <li key={`${f.flag}-${f.component ?? f.band ?? ''}-${f.edit_id ?? ''}`} style={{ color: 'var(--eye-color-warning)' }}>⚠ {gamingFlagWords(f)}</li>)}</ul>}
+      {/* B36 (0094 §S1): the anti-gaming MEASURE on the change — an owner edit inside the window before this favourable change */}
+      {c.owner_edit_flag === true && <p style={{ color: 'var(--eye-color-warning)', margin: 0 }}><strong>OWNER-EDIT FLAG</strong> — {(c.owner_edit_ids ?? []).length} owner edit(s) inside the policy window before this favourable change (counted against the owner; gating nothing)</p>}
       {c.challenge_statement !== null && <p style={muted}>Challenged ({c.challenge_kind}) by <Mono>{short(c.challenged_by)}</Mono>: {c.challenge_statement}{c.decision_note !== null && <> — decided: {c.decision_note}</>}{c.withdrawal_reason !== null && <> — withdrawn: {c.withdrawal_reason}</>}</p>}
       {c.state === 'raised' && (
         <div style={rowStyle}>
@@ -256,6 +260,164 @@ function ComparePanel({ snapshot, snapshots }: { snapshot: HealthSnapshot; snaps
   );
 }
 
+/* ───────────────────────── B36 (0094 §S) strategy: the score completed ───────────────────────── */
+/** THE INPUT CONTRACT with owners and edit history, the OWNER-CORRECTION route (the input's owner only — the server refuses anyone else), the owner-edit analysis. */
+function ContractPanel({ contract, onChanged }: { contract: HealthContract | null; onChanged: () => Promise<void> }) {
+  const { scope } = useShell();
+  const [component, setComponent] = useState(''); const [value, setValue] = useState(''); const [reason, setReason] = useState('');
+  const [receipt, setReceipt] = useState<ReceiptT>(null); const [problem, setProblem] = useState<string | null>(null);
+  const inputs = contract?.inputs ?? [];
+  return (
+    <section aria-labelledby="contract-h" style={cardStyle}>
+      <h2 id="contract-h" style={h2}>The input contract — owners and edit history</h2>
+      <p style={muted}>Each component&apos;s input has an OWNER derived from the input&apos;s own object (the measure&apos;s, the indicator&apos;s, the exposure&apos;s, the objective&apos;s) — never assigned by hand. Only that owner restates a reading, with a reason; every restatement is ledgered, and one inside the policy window ({contract?.owner_edits.window_days ?? '?'} day(s)) before a favourable change is FLAGGED on that change and counted against the owner.</p>
+      {inputs.length === 0 ? <Empty>{contract?.note ?? 'No input has been read yet — compute the score once, and the register fills with every component\'s owner.'}</Empty> : (
+        <ScrollBox label="the health input contract">
+          <table className="eye-table" style={tableStyle}>
+            <thead><tr><Th>Component</Th><Th>Input</Th><Th>Owner and edits</Th><Th>Value</Th><Th>As of</Th><Th>History</Th></tr></thead>
+            <tbody>{inputs.map((i) => (
+              <tr key={i.input_id}>
+                <Td><strong>{i.component_key}</strong></Td>
+                <Td><Mono title={i.input_ref}>{i.input_kind} {short(i.input_ref)}</Mono></Td>
+                <Td>{ownerLine(i)}</Td>
+                <Td>{i.value === null ? '—' : `${num(i.value)}${i.unit ? ` ${i.unit}` : ''}`}{i.owner_stated && <span style={{ color: 'var(--eye-color-warning)' }}> · owner-stated</span>}</Td>
+                <Td>{i.as_of === null ? '—' : fmtInstant(i.as_of)}</Td>
+                <Td>{i.history.length === 0 ? <span style={muted}>none</span> : <ul style={{ margin: 0, paddingInlineStart: '1rem' }}>{i.history.slice(0, 5).map((e) => <li key={e.edit_id}><Mono>{short(e.editor)}</Mono> {e.from_value === null ? 'none' : e.from_value} → {e.to_value} at {e.edited_at === null ? '—' : fmtInstant(e.edited_at)}: {e.reason}</li>)}</ul>}</Td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </ScrollBox>
+      )}
+      {contract !== null && contract.owner_edits.owners.length > 0 && (
+        <p aria-label="the owner-edit analysis">Owner edits: {contract.owner_edits.totals.edits} in all, <strong>{contract.owner_edits.totals.flagged_edits} flagged</strong> — {contract.owner_edits.owners.map((o) => `${o.owner.slice(0, 8)}… ${o.edits} edit(s), ${o.flagged_edits} flagged (${o.components.join(', ')})`).join('; ')}.</p>
+      )}
+      <h3 style={h3}>Restate a reading (the input&apos;s owner)</h3>
+      <div style={rowStyle}>
+        <Field id="ci-comp" label="Component">{(id) => (
+          <select id={id} style={{ ...inputStyle, inlineSize: '100%' }} value={component} onChange={(e) => setComponent(e.target.value)}>
+            <option value="">— choose —</option>
+            {inputs.map((i) => <option key={i.input_id} value={i.component_key}>{i.component_key} ({i.input_kind})</option>)}
+          </select>
+        )}</Field>
+        <Field id="ci-value" label="The restated value">{(id) => <input id={id} inputMode="decimal" style={{ ...inputStyle, inlineSize: '100%' }} value={value} onChange={(e) => setValue(e.target.value)} />}</Field>
+        <Field id="ci-reason" label="Why (8+ characters)">{(id) => <input id={id} style={{ ...inputStyle, inlineSize: '100%' }} value={reason} onChange={(e) => setReason(e.target.value)} />}</Field>
+        <div style={{ alignSelf: 'end' }}><GovernedButton label="Restate the reading" pendingLabel="restating" disabled={component === '' || value.trim() === '' || reason.trim().length < 8} onRun={async () => {
+          const r = await healthCompletion.setInput(scope, component, Number(value), reason);
+          if (!r.ok || r.data === undefined) { const m = `not restated — ${refusal(r, 'no answer')}`; setProblem(m); throw new Error(m); }
+          setProblem(null); setReceipt(r.data.receipt); setValue(''); setReason(''); await onChanged();
+        }} /></div>
+      </div>
+      {problem !== null && <LiveStatus assertive><span style={critical}>{problem}</span></LiveStatus>}
+      <Receipt receipt={receipt} />
+    </section>
+  );
+}
+
+/** THE EXCEPTIONS as recorded objects: requested by a named human, approved or refused by ANOTHER holding the executive's authority; in force from the approval until the expiry. */
+function ExceptionsPanel({ contract, onChanged }: { contract: HealthContract | null; onChanged: () => Promise<void> }) {
+  const { scope } = useShell();
+  const [rows, setRows] = useState<HealthException[] | null>(null); const [problem, setProblem] = useState<string | null>(null);
+  const [component, setComponent] = useState(''); const [kind, setKind] = useState<'exclude' | 'relax_bound'>('exclude'); const [days, setDays] = useState(''); const [reason, setReason] = useState(''); const [expires, setExpires] = useState('');
+  const [notes, setNotes] = useState<Record<string, string>>({});
+  const [receipt, setReceipt] = useState<ReceiptT>(null); const [actProblem, setActProblem] = useState<string | null>(null);
+  const load = async () => {
+    const r = await healthCompletion.exceptions(scope);
+    if (!r.ok || r.data === undefined) { setProblem(refusal(r, 'the exceptions could not be read')); return; }
+    setProblem(null); setRows(r.data.exceptions);
+  };
+  useEffect(() => { void load(); }, [scope]);
+  const done = async (r: { ok: boolean; status: number; error?: { code: string; message: string }; data?: { receipt: ReceiptT } }, what: string) => {
+    if (!r.ok || r.data === undefined) { const m = `not ${what} — ${refusal(r, 'no answer')}`; setActProblem(m); throw new Error(m); }
+    setActProblem(null); setReceipt(r.data.receipt); await load(); await onChanged();
+  };
+  return (
+    <section aria-labelledby="exc-h" style={cardStyle}>
+      <h2 id="exc-h" style={h2}>Exceptions — recorded objects</h2>
+      <p style={muted}>A component EXCLUDED for a period or its freshness bound RELAXED: requested by a named person, approved (or refused) by ANOTHER holding the executive&apos;s authority (<Mono>{EXCEPTION_APPROVER_ROLES.join(', ')}</Mono>) with a note and an expiry. The score names the exceptions in force at its instant; an unapproved or expired one has no effect.</p>
+      {problem !== null && <LiveStatus assertive><span style={critical}>not listed — {problem}</span></LiveStatus>}
+      {rows === null ? null : rows.length === 0 ? <Empty>No exception has been requested.</Empty> : (
+        <ul aria-label="health exceptions" style={{ listStyle: 'none', padding: 0 }}>{rows.map((x) => (
+          <li key={x.exception_id} style={{ marginBlockEnd: 'var(--eye-space-8)' }}>
+            <p style={{ margin: 0 }}><strong>{exceptionLine(x)}</strong> — {x.reason} <span style={muted}>(requested by <Mono>{short(x.requested_by)}</Mono>{x.approved_by !== null && <>, approved by <Mono>{short(x.approved_by)}</Mono>: {x.approval_note}</>}{x.refused_by !== null && <>, refused by <Mono>{short(x.refused_by)}</Mono>: {x.refusal_reason}</>})</span></p>
+            {x.state === 'requested' && (
+              <div style={rowStyle}>
+                <Field id={`exn-${x.exception_id}`} label="Decision note (8+ characters)">{(id) => <input id={id} style={{ ...inputStyle, inlineSize: '100%' }} value={notes[x.exception_id] ?? ''} onChange={(e) => setNotes({ ...notes, [x.exception_id]: e.target.value })} />}</Field>
+                <div style={{ alignSelf: 'end', display: 'flex', gap: 'var(--eye-space-8)', flexWrap: 'wrap' }}>
+                  <GovernedButton label="Approve the exception" pendingLabel="approving" onRun={async () => done(await healthCompletion.decideException(scope, x.exception_id, 'approve', notes[x.exception_id] ?? ''), 'approved')} />
+                  <GovernedButton label="Refuse the exception" pendingLabel="refusing" variant="critical" onRun={async () => done(await healthCompletion.decideException(scope, x.exception_id, 'refuse', notes[x.exception_id] ?? ''), 'refused')} />
+                </div>
+              </div>
+            )}
+          </li>
+        ))}</ul>
+      )}
+      <h3 style={h3}>Request an exception</h3>
+      <div style={rowStyle}>
+        <Field id="ex-comp" label="Component">{(id) => (
+          <select id={id} style={{ ...inputStyle, inlineSize: '100%' }} value={component} onChange={(e) => setComponent(e.target.value)}>
+            <option value="">— choose —</option>
+            {(contract?.inputs ?? []).map((i) => <option key={i.input_id} value={i.component_key}>{i.component_key}</option>)}
+          </select>
+        )}</Field>
+        <Field id="ex-kind" label="Kind">{(id) => (
+          <select id={id} style={{ ...inputStyle, inlineSize: '100%' }} value={kind} onChange={(e) => setKind(e.target.value as 'exclude' | 'relax_bound')}>
+            <option value="exclude">exclude — left out for the period</option><option value="relax_bound">relax_bound — the freshness bound relaxed</option>
+          </select>
+        )}</Field>
+        {kind === 'relax_bound' && <Field id="ex-days" label="Relaxed stale_after_days">{(id) => <input id={id} inputMode="decimal" style={{ ...inputStyle, inlineSize: '100%' }} value={days} onChange={(e) => setDays(e.target.value)} />}</Field>}
+        <Field id="ex-expires" label="Expires at">{(id) => <input id={id} type="datetime-local" style={{ ...inputStyle, inlineSize: '100%' }} value={expires} onChange={(e) => setExpires(e.target.value)} />}</Field>
+        <Field id="ex-reason" label="Why (8+ characters)">{(id) => <input id={id} style={{ ...inputStyle, inlineSize: '100%' }} value={reason} onChange={(e) => setReason(e.target.value)} />}</Field>
+        <div style={{ alignSelf: 'end' }}><GovernedButton label="Request the exception" pendingLabel="requesting" disabled={component === '' || reason.trim().length < 8 || toIso(expires) === null || (kind === 'relax_bound' && !(Number(days) > 0))} onRun={async () => {
+          await done(await healthCompletion.requestException(scope, { componentKey: component, kind, relaxedDays: kind === 'relax_bound' ? Number(days) : null, reason, expiresAt: toIso(expires) ?? '' }), 'requested');
+          setReason('');
+        }} /></div>
+      </div>
+      {actProblem !== null && <LiveStatus assertive><span style={critical}>{actProblem}</span></LiveStatus>}
+      <Receipt receipt={receipt} />
+    </section>
+  );
+}
+
+/** THE APPROVAL of a current snapshot: the digest and the consequence PREVIEWED, then the executive's acceptance — recorded and SIGNED beyond the audit chain. */
+function ApprovalPanel({ snapshot }: { snapshot: HealthSnapshot }) {
+  const { scope } = useShell();
+  const [preview, setPreview] = useState<ApprovalPreview | null>(null); const [problem, setProblem] = useState<string | null>(null);
+  const [note, setNote] = useState(''); const [receipt, setReceipt] = useState<ReceiptT>(null); const [actProblem, setActProblem] = useState<string | null>(null);
+  const load = async () => {
+    const r = await healthCompletion.approvalPreview(scope, snapshot.snapshot_id);
+    if (!r.ok || r.data === undefined) { setProblem(refusal(r, 'the preview could not be read')); return; }
+    setProblem(null); setPreview(r.data.preview);
+  };
+  useEffect(() => { void load(); }, [scope, snapshot.snapshot_id]);
+  return (
+    <section aria-labelledby="appr-h" style={cardStyle}>
+      <h2 id="appr-h" style={h2}>The executive&apos;s acceptance of this snapshot</h2>
+      {problem !== null && <LiveStatus assertive><span style={critical}>not previewed — {problem}</span></LiveStatus>}
+      {preview === null ? null : (
+        <>
+          <p><strong>Digest previewed:</strong> <Mono>{preview.result_digest}</Mono> · inputs <Mono>{preview.inputs_digest.slice(0, 12)}…</Mono></p>
+          <p aria-label="the consequence of accepting"><strong>Consequence:</strong> {preview.consequence}</p>
+          <p>Exceptions in force: {preview.exceptions_in_force.length === 0 ? 'none' : preview.exceptions_in_force.map((x) => `${String(x['component_key'])} ${String(x['kind'])}`).join(', ')} · owner-stated inputs: {preview.owner_stated_inputs.length === 0 ? 'none' : preview.owner_stated_inputs.map((x) => x.component_key).join(', ')} · changes with the owner-edit flag: {preview.changes.filter((c) => c.owner_edit_flag).length}</p>
+          <p aria-label="approvals and signatures">{preview.approvals.length === 0 ? 'Not yet accepted.' : preview.approvals.map((a) => `accepted by ${a.approved_by.slice(0, 8)}… at ${a.approved_at ?? '—'}: ${a.note}`).join('; ')} · {preview.signatures.length === 0 ? signatureLine(null) : preview.signatures.map((s) => signatureLine(s)).join('; ')}</p>
+          {preview.acceptable && (
+            <div style={rowStyle}>
+              <Field id="appr-note" label={`Acceptance note (8+ characters; ${SNAPSHOT_APPROVER_ROLES.join(', ')})`}>{(id) => <input id={id} style={{ ...inputStyle, inlineSize: '100%' }} value={note} onChange={(e) => setNote(e.target.value)} />}</Field>
+              <div style={{ alignSelf: 'end' }}><GovernedButton label="Accept and sign" pendingLabel="accepting" disabled={note.trim().length < 8} onRun={async () => {
+                const r = await healthCompletion.approveSnapshot(scope, snapshot.snapshot_id, preview.result_digest, note);
+                if (!r.ok || r.data === undefined) { const m = `not accepted — ${refusal(r, 'no answer')}`; setActProblem(m); throw new Error(m); }
+                setActProblem(null); setReceipt(r.data.receipt); setNote(''); await load();
+              }} /></div>
+            </div>
+          )}
+          {actProblem !== null && <LiveStatus assertive><span style={critical}>{actProblem}</span></LiveStatus>}
+          <Receipt receipt={receipt} />
+        </>
+      )}
+    </section>
+  );
+}
+/* end B36 strategy */
+
 export default function HealthPage() {
   const { scope } = useShell();
   const [snapshots, setSnapshots] = useState<HealthSnapshot[] | null>(null);
@@ -266,6 +428,11 @@ export default function HealthPage() {
   const [at, setAt] = useState('');
   const [computeReceipt, setComputeReceipt] = useState<ReceiptT>(null); const [computeProblem, setComputeProblem] = useState<string | null>(null);
   const [computed, setComputed] = useState<string | null>(null);
+  /* B36 (0094 §S) strategy: the input contract (owners, edits, the reader's context) */
+  const [contract, setContract] = useState<HealthContract | null>(null);
+  const loadContract = async () => { const r = await healthCompletion.contract(scope); if (r.ok && r.data !== undefined) setContract(r.data.contract); };
+  useEffect(() => { void loadContract(); }, [scope]);
+  /* end B36 strategy */
 
   const loadDetail = async (id: string) => {
     const r = await api.snapshot(scope, id);
@@ -287,6 +454,8 @@ export default function HealthPage() {
     <div>
       <h1 style={{ fontSize: 'var(--eye-type-heading-1)', marginBlockStart: 0 }}>Strategic health</h1>
       <p style={muted}>A decomposable score: every number below is the server&apos;s, and each one opens into the measures, weights, evidence and freshness behind it. The score informs attention; it never authorizes an action.</p>
+      {/* B36 (0094 §S): the reader's ACTIVE CONTEXT (§0 executive.current_context) named on the page */}
+      <p aria-label="the active context"><strong>Active context:</strong> {contextLine(contract?.context ?? null)}</p>
 
       <section aria-labelledby="compute-h" style={cardStyle}>
         <h2 id="compute-h" style={h2}>Compute</h2>
@@ -341,7 +510,12 @@ export default function HealthPage() {
             {result.reasons.length > 0 && <ul aria-label="what qualifies the score">{result.reasons.map((r) => <li key={r}>{r}</li>)}</ul>}
             <p style={muted}>{result.rule}. Peer comparison: none — {result.peer.reason}.</p>
           </section>
+          {/* B36 (0094 §S): the exceptions in force at this snapshot, named */}
+          {Array.isArray((result as unknown as { exceptions?: unknown[] }).exceptions) && ((result as unknown as { exceptions: Array<Record<string, unknown>> }).exceptions.length > 0) && (
+            <p aria-label="exceptions in force">Exceptions in force at this instant: {(result as unknown as { exceptions: Array<Record<string, unknown>> }).exceptions.map((x) => `${String(x['component_key'])} ${String(x['kind'])}${x['relaxed_stale_after_days'] ? ` → ${String(x['relaxed_stale_after_days'])} d` : ''} (until ${String(x['expires_at'])})`).join('; ')}</p>
+          )}
           {result.dimensions.map((d) => <DimensionCard key={`${detail.snapshot_id}-${d.key}`} d={d} components={detail.components} minCoverage={result.min_coverage} />)}
+          <ApprovalPanel key={`appr-${detail.snapshot_id}`} snapshot={detail} />
           <section aria-labelledby="changes-h" style={cardStyle}>
             <h2 id="changes-h" style={h2}>Score changes raised by this snapshot</h2>
             {detail.changes.length === 0 ? <Empty>This snapshot raised no change (an as_of replay never does).</Empty> : (
@@ -351,7 +525,10 @@ export default function HealthPage() {
           {snapshots !== null && <ComparePanel snapshot={detail} snapshots={snapshots} />}
         </>
       )}
-      <DefinitionsPanel onChanged={async () => load()} />
+      <DefinitionsPanel onChanged={async () => { await load(); await loadContract(); }} />
+      {/* B36 (0094 §S): the contract with owners, the owner-correction route, the exceptions */}
+      <ContractPanel contract={contract} onChanged={async () => { await loadContract(); await load(); }} />
+      <ExceptionsPanel contract={contract} onChanged={async () => loadContract()} />
     </div>
   );
 }
