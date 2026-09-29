@@ -708,6 +708,17 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   { match: /^attention act rejected \((not_live|in_flight|already_acted|settled|act_id_reused)\)|^attention act rejected: act .* is \w+ and settles once/i, status: 409, code: 'EYE_STA_002' },
   { match: /^attention act rejected/i, status: 422, code: 'EYE_REQ_001' },
   /* end B34 attention */
+  /* B36 (0094 §A) attention — the attention completion's ports: `act resumption rejected`, `settle failure rejected`, `priority acceptance
+     rejected`, `queue hold rejected`, `queue transition rejected` (the read-only guard of a held queue, raised from any item transition), `queue
+     recovery rejected`, `forum rejected` — anchored families no earlier row matches (no earlier row starts with these nouns; B9's `^challenge
+     rejected` and the unanchored TWIN/INTELLIGENCE phrases name none of these texts) and every text carries a CLASS IN PARENTHESES. B9's
+     order: the standing 403 (actor, accountable, authority, membership), the absences 404 (unknown_*), the record's state 409 (state, held),
+     the caller's own request 422. */
+  { match: /^(act resumption|settle failure|priority acceptance|queue hold|queue recovery|forum) rejected \((actor|accountable|authority|membership)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^(act resumption|settle failure|priority acceptance|queue hold|queue recovery|forum) rejected \(unknown_\w+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^(act resumption|settle failure|priority acceptance|queue hold|forum) rejected \(state\)|^queue transition rejected \(held\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^(act resumption|settle failure|priority acceptance|queue hold|queue transition|queue recovery|forum) rejected/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B36 attention */
   /* B34 (0090) gates — the human gate's ports (0090 §G): `gate rejected`, `override rejected`, `override review rejected`, `delegation (end )?rejected`,
      `board reservation rejected`, `preview rejected`, `control rejected`, the typed conditions of `approval rejected (conditions|condition_ref|delegation|board)`,
      and the commitment's new classes `commitment rejected (conditions_hold|not_ready|no_preview|override_self|board_quorum)` — anchored phrases no earlier

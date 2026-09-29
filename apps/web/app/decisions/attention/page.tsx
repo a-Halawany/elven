@@ -47,6 +47,11 @@ import { EVALUATOR_ROLES } from '../../../lib/attention-governance';
 /* B28 (0088) remediation: the remediation of a source's coverage loss, opened from its coverage-loss item */
 import { RemediationPanel } from './remediation-panel';
 /* end B28 remediation */
+/* B36 (0094 §A) attention: the context strip and the hold banner, accept-priority and the resume, the forums; the recovery routes at /decisions/attention/recovery */
+import { ContextStrip } from './context-strip';
+import { PriorityPanel } from './priority-panel';
+import { ForumsPanel } from './forums-panel';
+/* end B36 attention */
 
 type ReceiptT = { policyDecisionId: string; auditSeq: number } | null;
 const str = (v: unknown) => (v === null || v === undefined || v === '' ? '—' : String(v));
@@ -127,6 +132,9 @@ export default function AttentionPage() {
   /* B23 (0084) attention */
   const [prefill, setPrefill] = useState<ConvenePrefill | null>(null);
   /* end B23 attention */
+  /* B36 (0094 §A) attention: the context strip re-reads after an act on an item */
+  const [contextKey, setContextKey] = useState(0);
+  /* end B36 attention */
 
   const load = async () => {
     const r = await api.items(scope, { state: stateFilter, signalClass: classFilter });
@@ -174,6 +182,11 @@ export default function AttentionPage() {
         <strong> Acknowledge</strong> records receipt, not agreement. An item past its deadline is flagged <strong>OVERDUE</strong> by the
         server and escalated to the class's roles.
       </UnknownNote>
+
+      {/* B36 (0094 §A5, §A3): the active objective, horizon, scenario, classification, effective time and policy EXPLICIT above the queue; the hold banner */}
+      <ContextStrip scope={scope} me={me} refreshKey={String(contextKey)} onChanged={() => { void load(); if (open !== null) void loadDetail(open); }} />
+      <p style={muted}>The queue&apos;s degraded states and their recovery routes are on <a href="/decisions/attention/recovery">Attention recovery</a>.</p>
+      {/* end B36 attention */}
 
       <section aria-labelledby="queue-h" style={cardStyle}>
         <h2 id="queue-h" style={{ fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 }}>Queue{total === null ? '' : ` (${total} in the domain)`}</h2>
@@ -284,8 +297,11 @@ export default function AttentionPage() {
               <DeliveriesPanel scope={scope} itemId={detail.item_id} me={me} refreshKey={`${detail.updated_at}|${detail.acknowledged_at ?? ''}`} />
               {/* end B24 timer */}
               {/* B34 (0090) attention: the act transition from the item (the registry's acts of its class; health.change has none) */}
-              <ActPanel scope={scope} item={{ item_id: detail.item_id, signal_class: detail.signal_class, state: detail.state, title: detail.title, subject_id: detail.subject_id }} />
+              <ActPanel scope={scope} item={{ item_id: detail.item_id, signal_class: detail.signal_class, state: detail.state, title: detail.title, subject_id: detail.subject_id }} onActed={() => setContextKey((k) => k + 1)} />
               {/* end B34 attention */}
+              {/* B36 (0094 §A1, §A2) attention: accept-priority with its signature; the resume of a settle that failed */}
+              <PriorityPanel scope={scope} item={{ item_id: detail.item_id, title: detail.title, state: detail.state }} refreshKey={`${detail.updated_at}|${contextKey}`} onChanged={() => { setContextKey((k) => k + 1); void afterAct(detail.item_id); }} />
+              {/* end B36 attention */}
 
               <p style={muted}>
                 The owner or a holder of a routed role acts on an item. The server also admits domain_admin and platform_admin, and refuses
@@ -389,6 +405,9 @@ export default function AttentionPage() {
       <SuppressionPanel scope={scope} me={me} item={detail === null ? null : { itemId: detail.item_id, title: detail.title }} />
       <EvaluationPanel scope={scope} mayEvaluate={me.bindings.some((b) => (EVALUATOR_ROLES as readonly string[]).includes(b.roleCode) && (b.scope === 'PLATFORM' || (b.scope === 'DOMAIN' && b.domainId === scope.domainId)))} />
       {/* end B24 governance */}
+      {/* B36 (0094 §A6) attention: governance forums over the same memory */}
+      <ForumsPanel scope={scope} me={me} />
+      {/* end B36 attention */}
 
       <section aria-labelledby="policy-h" style={cardStyle}>
         <h2 id="policy-h" style={{ fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 }}>Policy{active === null ? '' : <> — version <Mono>{active.version}</Mono></>}</h2>

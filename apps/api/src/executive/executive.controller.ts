@@ -43,6 +43,9 @@ import { HealthInputsService, validateExceptionDecision, validateExceptionReques
 import { AttentionActService, validateAct } from './attention/act.service.js';
 import { healthScoreChangedEvents } from './attention/b34-signals.js';
 /* end B34 attention */
+/* B36 (0094 §A3) attention: the evaluation route holds the queue through the B36 capability */
+import { AttentionB36Capability } from './attention/attention-b36.capabilities.js';
+/* end B36 attention */
 
 function ctx(req: EyeRequest) {
   const envelope = req.eyeEnvelope;
@@ -662,11 +665,19 @@ export class ExecutiveController {
     const { envelope, principal } = ctx(req);
     const intake = validateEvaluate(body.payload ?? {}, envelope.correlation_id);
     const evaluationId = newId();
-    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'executive.attention.queue.evaluate', 'ATE', evaluationId), ExecutiveCapability.governance,
-      async (cap, scope) => ({ result: await cap.evaluateQueue({ evaluationId, tenantId: scope.tenantId as string, domainId: scope.domainId as string, windowFrom: intake.windowFrom, windowTo: intake.windowTo, minSample: intake.minSample,
-                                                                 actor: principal.principalId, correlationId: envelope.correlation_id }),
-                               targetType: 'ATE', targetId: evaluationId, targetVersion: null, outboxEvent: null }));
-    return { evaluation: out.result, receipt: receipt(out) };
+    /* B36 (0094 §A3; PR-44-005): the evaluation ACTS — after 0090 §A5's measures, executive.hold_queue in the same write: the fairness measure
+       below the policy's floor or the staleness measure above its ceiling holds the queue (read-only) and routes a queue.governance item to
+       the executive; a policy without governance fields is reported as before, gating nothing. */
+    const holdId = newId();
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'executive.attention.queue.evaluate', 'ATE', evaluationId), AttentionB36Capability.hold,
+      async (cap, scope) => {
+        const evaluation = await cap.evaluateQueue({ evaluationId, tenantId: scope.tenantId as string, domainId: scope.domainId as string, windowFrom: intake.windowFrom, windowTo: intake.windowTo, minSample: intake.minSample,
+                                                     actor: principal.principalId, correlationId: envelope.correlation_id });
+        const governance = await cap.holdQueue({ holdId, tenantId: scope.tenantId as string, domainId: scope.domainId as string, evaluationId, actor: principal.principalId, correlationId: envelope.correlation_id });
+        return { result: { evaluation, governance }, targetType: 'ATE', targetId: evaluationId, targetVersion: null, outboxEvent: null };
+      });
+    return { evaluation: out.result.evaluation, governance: out.result.governance, receipt: receipt(out) };
+    /* end B36 attention */
   }
 
   @Post('/executive/attention/evaluations/list')
