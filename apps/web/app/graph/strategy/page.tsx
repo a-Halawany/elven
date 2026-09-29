@@ -18,6 +18,9 @@ import { graph, type StrategyRow, type EntityRow } from '../../../lib/graph';
 import { Empty, LiveStatus, Mono, cardStyle, DefinitionRow, UnknownNote, GovernedButton,
   fmtInstant } from '../../../components/observation';
 import { inputStyle, textareaStyleFallback, tableStyle, Th, Td, Receipt } from './form-bits';
+/* B36 (0094 §P) planning: the plan panel — an objective's initiatives, an initiative's plan (the data is Part P's; the link read-only) */
+import { planning, STATE_LABEL, type InitiativeRow } from '../../../lib/planning';
+/* end B36 planning */
 
 const TYPES: Array<{ code: StrategyRow['object_type']; label: string }> = [
   { code: 'OBJ', label: 'Objective' },
@@ -65,6 +68,16 @@ export default function StrategyPage() {
   const [problem, setProblem] = useState<string | null>(null);
   const [open, setOpen] = useState<StrategyRow | null>(null);
   const [receipt, setReceipt] = useState<{ policyDecisionId: string; auditSeq: number } | null>(null);
+  /* B36 (0094 §P) planning: the initiatives linked to the open objective, or the open initiative's own planning row */
+  const [planLinks, setPlanLinks] = useState<InitiativeRow[] | null>(null);
+  useEffect(() => {
+    if (open === null || (open.object_type !== 'OBJ' && open.object_type !== 'INI')) { setPlanLinks(null); return; }
+    void planning.initiatives(scope, open.object_type === 'OBJ' ? { objectiveId: open.strategy_object_id } : {}).then((r) => {
+      if (!r.ok || r.data === undefined) { setPlanLinks([]); return; }
+      setPlanLinks(open.object_type === 'OBJ' ? r.data.initiatives : r.data.initiatives.filter((i) => i.initiative_id === open.strategy_object_id));
+    });
+  }, [open, scope]);
+  /* end B36 planning */
 
   const [objectType, setObjectType] = useState<StrategyRow['object_type']>('OBJ');
   const [title, setTitle] = useState('');
@@ -157,6 +170,23 @@ export default function StrategyPage() {
                 </ul>
               )}
             </DefinitionRow>
+            {/* B36 (0094 §P) planning: the plan panel */}
+            {open.object_type === 'OBJ' || open.object_type === 'INI' ? (
+              <DefinitionRow term={open.object_type === 'OBJ' ? 'Plans and initiatives' : 'In a plan'}>
+                {planLinks === null ? 'reading…' : planLinks.length === 0 ? (open.object_type === 'OBJ' ? 'no initiative is proposed under this objective' : 'not proposed into a plan') : (
+                  <ul aria-label="plan links" style={{ margin: 0, paddingInlineStart: '1rem' }}>
+                    {planLinks.map((i) => (
+                      <li key={i.initiative_id}>
+                        {open.object_type === 'OBJ' ? <>{i.title} — </> : null}{STATE_LABEL[i.state]} · plan <Mono>{i.plan_id.slice(0, 8)}…</Mono>
+                        {i.proposed_by_kind === 'agent' ? ' · proposed by the Planning Agent' : ''}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {' '}<a href="/graph/strategy/planning">open the planning workspace</a>
+              </DefinitionRow>
+            ) : null}
+            {/* end B36 planning */}
           </dl>
         </section>
       )}

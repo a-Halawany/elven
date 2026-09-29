@@ -847,6 +847,19 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   { match: /^(publication|external draft) rejected \((state|stale_digest|stale_source|source_state|withdrawn|archived|unchanged|external_review|legal_hold|residency|signature|object)\)/i, status: 409, code: 'EYE_STA_002' },
   { match: /^(publication|external draft) rejected/i, status: 422, code: 'EYE_REQ_001' },
   /* end B36 publishing */
+  /* B36 planning (0094 §P) — the plan and initiative ports (`plan rejected`, `plan baseline rejected`, `initiative rejected`, `milestone
+     rejected`, `plan dependency rejected`, `plan measure rejected`, `plan run rejected`, `plan breach rejected`, `initiative citation rejected`)
+     and the commitment HOLD (`plan commitment rejected (breach_open)`) — anchored phrases no earlier row matches (B22's `^plan selection
+     rejected` and B24's `^plan execution rejected` are other nouns; no earlier row starts with `plan rejected`, `plan baseline`, `initiative`,
+     `milestone`, `plan dependency`, `plan measure`, `plan run`, `plan breach` or `plan commitment`), every text carrying a CLASS IN
+     PARENTHESES. B9's order: the standing 403 (the acting principal, the sponsor, the separation of proposer and approver, the package's
+     owner), the absences 404 (`unknown_*`), the record's state 409 (state, closed, duplicate, an open breach), the caller's own 422 (the
+     budget authority among them: funding above the ceiling is the request's fault, not the record's). */
+  { match: /^(plan|plan baseline|initiative|milestone|plan dependency|plan measure|plan run|plan breach|initiative citation) rejected \((actor|not_sponsor|separation|not_owner)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^(plan|plan baseline|initiative|milestone|plan dependency|plan measure|plan run|plan breach|initiative citation) rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^(plan|plan baseline|initiative|milestone|plan dependency|plan measure|plan run|plan breach|initiative citation) rejected \((state|closed|duplicate|breach_open)\)|^plan commitment rejected \(breach_open\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^(plan|plan baseline|initiative|milestone|plan dependency|plan measure|plan run|plan breach|initiative citation|plan commitment) rejected/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B36 planning */
 ];
 
 export function asObservationRefusal(e: unknown, correlationId: string): HttpException | null {
