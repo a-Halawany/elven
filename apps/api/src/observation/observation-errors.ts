@@ -835,6 +835,18 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   { match: /^briefing rejected \((state|undeclared_omission|expired)\)|^briefing policy rejected \(state\)/i, status: 409, code: 'EYE_STA_002' },
   { match: /^briefing rejected \(|^briefing policy rejected/i, status: 422, code: 'EYE_REQ_001' },
   /* end B36 briefing */
+  /* B36 (0094) publishing — the publishing and distribution center's ports (0094 §D): `publication rejected (<class>)` and `external draft
+     rejected (<class>)` — anchored phrases no earlier row matches (no earlier row starts with `publication` or `external draft`; every text
+     carries a CLASS IN PARENTHESES). B9's order: the standing 403 (the acting principal, the authority, the separation of the approver or
+     reviewer from the drafter, not the recipient, the source's own read refusal), the absences 404 (`unknown_*`), the record's state 409
+     (a version not drafted / not approved, a stale digest or snapshot, a withdrawn or archived publication, nothing changed, the external
+     review not approved, the export path's gates legal_hold and residency, the signature or the canonical object missing from the write),
+     the caller's own request 422 (everything else: the format declared unsupported among them). */
+  { match: /^(publication|external draft) rejected \((actor|authority|separation|not_recipient|source_read)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^(publication|external draft) rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^(publication|external draft) rejected \((state|stale_digest|stale_source|source_state|withdrawn|archived|unchanged|external_review|legal_hold|residency|signature|object)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^(publication|external draft) rejected/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B36 publishing */
 ];
 
 export function asObservationRefusal(e: unknown, correlationId: string): HttpException | null {

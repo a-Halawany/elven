@@ -64,9 +64,13 @@ import { BriefingExpiryStep } from './briefings/expiry-step.js';
 import { AttentionB36Controller } from './attention/attention-b36.controller.js';
 import { AttentionB36Service } from './attention/attention-b36.service.js';
 /* end B36 attention */
+/* B36 (0094) publishing: the publishing and distribution center (F-P6-13) — the routes, the orchestration around the §D ports */
+import { PublishingController } from './publishing/publishing.controller.js';
+import { PublishingService } from './publishing/publishing.service.js';
+/* end B36 publishing */
 @Module({
   imports: [PipelineModule, IdentityModule, ObservationModule, DecisionModule, GraphModule],
-  controllers: [ExecutiveController, /* B34 (0090) workflow */ WorkflowController /* end B34 workflow */, /* B36 (0094 §A) attention */ AttentionB36Controller /* end B36 attention */],
+  controllers: [ExecutiveController, /* B34 (0090) workflow */ WorkflowController /* end B34 workflow */, /* B36 (0094 §A) attention */ AttentionB36Controller /* end B36 attention */, /* B36 (0094) publishing */ PublishingController /* end B36 publishing */],
   providers: [SignatureService /* B36 §0 (0094) */, RoomService, BriefingService, AgentsService, AgentWorkerService, DecisionAgentSessionService, RequestsService, AttentionService,
     // B22 (0083): the four consumers of L1-I03, L1-I04, L2-I02 and the attention router (the graph module's dispatcher registers them).
     ObservationsConsumer, SourceHealthConsumer, ProposalsConsumer, AttentionConsumer,
@@ -81,9 +85,11 @@ import { AttentionB36Service } from './attention/attention-b36.service.js';
     /* B34-F1 (0091) */ CollabIdentityService /* end B34-F1 */,
     /* B34 (0090) attention */ AttentionActService, EmailChannel, SmsChannel, TeamsChannel /* end B34 attention */,
     /* B36 briefing (0094 §B.6): the tick step briefing-expiry */ BriefingExpiryStep /* end B36 briefing */,
-    /* B36 (0094 §A) attention */ AttentionB36Service /* end B36 attention */],
+    /* B36 (0094 §A) attention */ AttentionB36Service /* end B36 attention */,
+    /* B36 (0094) publishing */ PublishingService /* end B36 publishing */],
   exports: [SignatureService, RoomService, BriefingService, AgentsService, AgentWorkerService, RequestsService, AttentionService, AttentionTickRegistry,
     /* B24 (0086) timer */ AttentionTimerService, DeliveryService /* end B24 timer */,
-    /* B34 (0090) workflow: the timer registry (the commitments and gates parts register their kinds' handlers) */ WorkflowTimerRegistry, CollabService /* end B34 workflow */],
+    /* B34 (0090) workflow: the timer registry (the commitments and gates parts register their kinds' handlers) */ WorkflowTimerRegistry, CollabService /* end B34 workflow */,
+    /* B36 (0094) publishing */ PublishingService /* end B36 publishing */],
 })
 export class ExecutiveModule {}
