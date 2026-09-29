@@ -524,7 +524,11 @@ BEGIN
                                        (i.state = 'escalated') DESC, executive.attention_rank_key(i.evaluation -> 'dimensions'), i.due_at NULLS LAST, i.created_at DESC) AS ord
       FROM executive.attention_items i WHERE i.tenant_id = p_tenant AND i.domain_id = p_domain AND i.state IN ('open', 'escalated', 'unrouted', 'acknowledged') AND i.created_at <= v_at) x WHERE ord <= v_limit;
   IF v_holds_tbl THEN
-    EXECUTE 'SELECT count(*)::int FROM executive.attention_queue_holds h WHERE h.tenant_id = $1 AND h.domain_id = $2 AND h.released_at IS NULL' INTO v_held USING p_tenant, p_domain;
+    -- the attention part's table read by name only; a shape this read does not expect is declared, never a failure of the home
+    BEGIN
+      EXECUTE 'SELECT count(*)::int FROM executive.attention_queue_holds h WHERE h.tenant_id = $1 AND h.domain_id = $2 AND h.released_at IS NULL' INTO v_held USING p_tenant, p_domain;
+    EXCEPTION WHEN OTHERS THEN v_held := -1;
+    END;
   END IF;
   -- INTELLIGENCE: the newest signals (B28) under the ceiling; the hidden ones counted
   SELECT count(*) FILTER (WHERE simulation.classification_rank(s.classification) <= simulation.classification_rank(v_ceiling)), count(*) FILTER (WHERE simulation.classification_rank(s.classification) > simulation.classification_rank(v_ceiling))
@@ -589,6 +593,7 @@ BEGIN
           'the queue as the reader''s own scope shows it (RLS); ranked by the evaluated dimensions, the context''s subjects first',
           CASE WHEN v_held > 0 THEN format('the queue is HELD (%s hold(s) in force)', v_held) END,
           CASE WHEN NOT v_holds_tbl THEN 'queue holds not read (the attention part''s executive.attention_queue_holds is absent)' END,
+          CASE WHEN v_held = -1 THEN 'queue holds not read (executive.attention_queue_holds has another shape than this read expects)' END,
           CASE WHEN v_pri_n > v_limit THEN format('%s of %s shown', v_limit, v_pri_n) END], NULL)) l)),
       'intelligence', jsonb_build_object('as_of', v_at, 'count', v_int_n, 'items', v_int, 'context', v_ctx ->> 'digest',
         'limitations', (SELECT jsonb_agg(l) FROM unnest(array_remove(ARRAY[
