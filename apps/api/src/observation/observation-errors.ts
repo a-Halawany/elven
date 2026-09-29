@@ -787,6 +787,18 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   { match: /^twin proposal rejected \((state|version)\)/i, status: 409, code: 'EYE_STA_002' },
   { match: /^twin proposal rejected/i, status: 422, code: 'EYE_REQ_001' },
   /* end B29 §B */
+  /* B36 briefing (0094 §B) — BRF@v3's ports in the CLASS form `briefing rejected (<class>): …` (the composition's v3 gates), `briefing
+     policy rejected (<class>): …` (the suppression policy's publication) and `briefing expiry rejected (actor)` (the tick step's port) —
+     anchored phrases no earlier row matches (0044/0084's unclassed `briefing rejected: …` texts stay as they were: the composer's own
+     HttpExceptions answer first, and the harness reads the port's text). B9's order: the standing 403 (the acting principal, a policy set
+     by a named human, a reader outside the audience), the absences 404 (an unknown policy version), the record's state 409 (an edition that
+     met an unavailable dependency and declares no omission; a policy whose rules are unchanged), the caller's own request 422 (the rest:
+     a malformed audience, purpose, expiry, omission, an item without its band, a suppressed item rendered, malformed rules). */
+  { match: /^briefing rejected \((actor|audience)\)|^briefing policy rejected \(actor\)|^briefing expiry rejected \(actor\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^briefing rejected \(unknown_(policy|room|prior)\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^briefing rejected \((state|undeclared_omission|expired)\)|^briefing policy rejected \(state\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^briefing rejected \(|^briefing policy rejected/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B36 briefing */
 ];
 
 export function asObservationRefusal(e: unknown, correlationId: string): HttpException | null {
