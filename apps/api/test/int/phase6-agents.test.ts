@@ -151,7 +151,7 @@ describe('P6-M6 · F7 — the briefing agent composes within its budget; a budge
     expect(b['agent_id']).toBe(briefingAgent.agentId);
     expect(b['composed_by']).toBe(briefingAgent.principalId);
     const obj = (await sql<{ m: string; h: string[] }>`select method_ref m, human_refs h from objects.canonical_objects where object_id = ${String(r.outputs['briefing_id'])}::uuid`.execute(h.su)).rows[0];
-    expect(obj?.m).toBe(`briefing-composer@1.1.0/agent:${briefingAgent.agentId}`);
+    expect(obj?.m).toBe(`briefing-composer@1.2.0/agent:${briefingAgent.agentId}`); // B36 (0094 §B): the composer is 1.2.0 (BRF@v3)
     expect(obj?.h).toEqual([`principal:${w.owner.principalId}`]);
     // a member reads it under their own authority; an outsider does not, whatever the agent could read
     expect(await status(c.getBriefing(String(r.outputs['briefing_id']), w.executive))).toBe('ok');
