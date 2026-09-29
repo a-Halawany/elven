@@ -307,7 +307,7 @@ export interface BriefingExpiryWrites extends ExecutiveReads {
 /* eslint-disable @typescript-eslint/no-explicit-any */
 class ExecutiveCapabilityImpl extends ExecutiveCore implements RoomWrites, BriefingWrites, AgentWrites, AttentionWrites, AttentionSubscriberWrites, ReviewWrites, /* B24 (0086) timer */ AttentionTickWrites /* end B24 timer */,
   /* B24 (0086) governance */ AttentionGovernanceWrites /* end B24 governance */, /* B32 (0089) health */ HealthWrites /* end B32 health */, /* B34 (0090) attention */ AttentionActWrites /* end B34 attention */,
-  /* B36 (0094 §S) strategy */ HealthInputWrites /* end B36 strategy */ {
+  /* B36 (0094 §S) strategy */ HealthInputWrites /* end B36 strategy */,
   /* B36 briefing */ BriefingPolicyWrites, BriefingExpiryWrites /* end B36 briefing */ {
   constructor(tx: Tx, action: string) { super(tx, action); }
   readRooms(): any { return this.from('executive.rooms_current'); }
