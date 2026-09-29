@@ -397,6 +397,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = executive, pg_catalog, pg
   SELECT coalesce(sum(i.funded_amount), 0)::numeric(18,2) FROM executive.initiatives i WHERE i.plan_id = p_plan AND i.state IN ('funded', 'approved')
 $$;
 REVOKE ALL ON FUNCTION executive._funded_sum(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION executive._funded_sum(uuid) TO eye_app, eye_commit;  -- the invoker reads (plan_view, plan_as_of) sum it under the caller
 
 /* Open a breach once per (plan, kind, cause); answers the breach id (the existing one when already open). */
 CREATE OR REPLACE FUNCTION executive._open_breach(p_plan uuid, p_tenant uuid, p_domain uuid, p_initiative uuid, p_kind text, p_cause text, p_detail text, p_impact jsonb, p_actor uuid, p_correlation uuid)
@@ -936,7 +937,7 @@ GRANT EXECUTE ON FUNCTION executive.run_quantity_at(jsonb, text, date) TO eye_ap
 
 CREATE OR REPLACE FUNCTION executive.detect_plan_variance(p_tenant uuid, p_domain uuid, p_actor uuid, p_correlation uuid) RETURNS jsonb
 SECURITY DEFINER SET search_path = executive, graph, decision, simulation, identity, observation, ctx, public, pg_catalog, pg_temp AS $$
-DECLARE v_now timestamptz := clock_timestamp(); v_today date := clock_timestamp()::date; c record; b record; pol executive.attention_policies%ROWTYPE;
+DECLARE v_now timestamptz := clock_timestamp(); v_today date := clock_timestamp()::date; c record; rb record; pol executive.attention_policies%ROWTYPE;
         v_eval jsonb; v_route jsonb; v_state text; v_owner uuid; v_item uuid; v_var uuid; v_variance numeric; v_adverse boolean; v_title text;
         v_raised jsonb := '[]'::jsonb; v_opened jsonb := '[]'::jsonb; v_resolved jsonb := '[]'::jsonb; v_id uuid; v_causes jsonb;
 BEGIN
@@ -1011,7 +1012,7 @@ BEGIN
   -- ── BREACHES: each kind once per cause while it holds; resolved when it no longer holds ──
   SELECT coalesce(jsonb_agg(to_jsonb(cz)), '[]'::jsonb) INTO v_causes FROM (
     -- LOST LINKAGE: an initiative (not closed) whose objective is no longer active in the Strategy Graph
-    SELECT i.plan_id, i.initiative_id, 'lost_linkage', io.objective_id::text,
+    SELECT i.plan_id, i.initiative_id, 'lost_linkage', io.objective_id::text || ':' || i.initiative_id::text,
            format('initiative "%s" is linked to objective "%s", which is %s in the Strategy Graph', i.title, s.title, s.status),
            jsonb_build_object('objective_id', io.objective_id, 'objective_status', s.status, 'initiative_id', i.initiative_id, 'initiative_state', i.state, 'funded_amount', i.funded_amount,
                               'milestones', (SELECT coalesce(jsonb_agg(jsonb_build_object('milestone_id', m.milestone_id, 'name', m.name, 'due_date', m.due_date)), '[]'::jsonb) FROM executive.milestones m WHERE m.initiative_id = i.initiative_id AND m.state IN ('planned', 'at_risk')))
@@ -1058,18 +1059,18 @@ BEGIN
      WHERE pl.tenant_id = p_tenant AND pl.domain_id = p_domain AND pl.state = 'baselined' AND coalesce(pl.last_reviewed_at, pl.updated_at) < v_now - make_interval(days => pl.review_cadence_days)
   ) cz (plan_id, initiative_id, kind, cause_key, detail, impact);
   -- resolve what no longer holds
-  FOR b IN SELECT x.breach_id, x.plan_id, x.kind, x.cause_key FROM executive.plan_breaches x
+  FOR rb IN SELECT x.breach_id, x.plan_id, x.kind, x.cause_key FROM executive.plan_breaches x
             WHERE x.tenant_id = p_tenant AND x.domain_id = p_domain AND x.state <> 'resolved'
               AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_causes) c2 WHERE (c2 ->> 'plan_id')::uuid = x.plan_id AND c2 ->> 'kind' = x.kind AND c2 ->> 'cause_key' = x.cause_key) LOOP
-    UPDATE executive.plan_breaches SET state = 'resolved', resolved_at = v_now, resolved_by = p_actor, resolution = format('the condition no longer held at %s (the attention tick step plan-variance)', v_now) WHERE breach_id = b.breach_id;
-    PERFORM executive._plan_event(b.plan_id, p_tenant, p_domain, 'breach', b.breach_id, 'breach.resolved', p_actor, jsonb_build_object('kind', b.kind, 'cause_key', b.cause_key), p_correlation);
-    v_resolved := v_resolved || jsonb_build_object('breach_id', b.breach_id, 'kind', b.kind, 'plan_id', b.plan_id);
+    UPDATE executive.plan_breaches SET state = 'resolved', resolved_at = v_now, resolved_by = p_actor, resolution = format('the condition no longer held at %s (the attention tick step plan-variance)', v_now) WHERE breach_id = rb.breach_id;
+    PERFORM executive._plan_event(rb.plan_id, p_tenant, p_domain, 'breach', rb.breach_id, 'breach.resolved', p_actor, jsonb_build_object('kind', rb.kind, 'cause_key', rb.cause_key), p_correlation);
+    v_resolved := v_resolved || jsonb_build_object('breach_id', rb.breach_id, 'kind', rb.kind, 'plan_id', rb.plan_id);
   END LOOP;
   -- open what holds and is not yet open
-  FOR b IN SELECT * FROM jsonb_to_recordset(v_causes) AS z (plan_id uuid, initiative_id uuid, kind text, cause_key text, detail text, impact jsonb) LOOP
-    IF EXISTS (SELECT 1 FROM executive.plan_breaches x WHERE x.plan_id = b.plan_id AND x.kind = b.kind AND x.cause_key = b.cause_key AND x.state <> 'resolved') THEN CONTINUE; END IF;
-    v_id := executive._open_breach(b.plan_id, p_tenant, p_domain, b.initiative_id, b.kind, b.cause_key, b.detail, b.impact, p_actor, p_correlation);
-    v_opened := v_opened || jsonb_build_object('breach_id', v_id, 'kind', b.kind, 'plan_id', b.plan_id, 'initiative_id', b.initiative_id, 'cause_key', b.cause_key);
+  FOR rb IN SELECT * FROM jsonb_to_recordset(v_causes) AS z (plan_id uuid, initiative_id uuid, kind text, cause_key text, detail text, impact jsonb) LOOP
+    IF EXISTS (SELECT 1 FROM executive.plan_breaches x WHERE x.plan_id = rb.plan_id AND x.kind = rb.kind AND x.cause_key = rb.cause_key AND x.state <> 'resolved') THEN CONTINUE; END IF;
+    v_id := executive._open_breach(rb.plan_id, p_tenant, p_domain, rb.initiative_id, rb.kind, rb.cause_key, rb.detail, rb.impact, p_actor, p_correlation);
+    v_opened := v_opened || jsonb_build_object('breach_id', v_id, 'kind', rb.kind, 'plan_id', rb.plan_id, 'initiative_id', rb.initiative_id, 'cause_key', rb.cause_key);
   END LOOP;
   RETURN jsonb_build_object('raised_at', v_now, 'variances', v_raised, 'variance_count', jsonb_array_length(v_raised), 'breaches_opened', v_opened, 'breaches_resolved', v_resolved, 'policy_version', pol.version);
 END $$ LANGUAGE plpgsql;
