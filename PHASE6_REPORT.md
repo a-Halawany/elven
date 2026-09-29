@@ -4305,6 +4305,6 @@ The mechanism is in `audit/CP6_BATCHES.md` §B29. There is one migration, `0092_
 | Full integration | **1344/1344** in 104 files on a fresh database (B29's 1342 + 2: the methods fault path as three cases; the first full run judged the supply network's topology at grounding and failed 5 + 4 interference cases — corrected, then this run on the final code) |
 | Unit / acceptance / upgrade | API 2664 + 9, web 107, typecheck clean / 58/58 / PASS (roles 49, migrations 72) |
 | Demo | `eye_demo` at 0093 (backup `eye_demo-pre-0093-20260929T204305Z.dump`); the B29-F act held on the rehearsal copy (twice) and on `eye_demo` |
-| Hosted | #68's first run recorded once (above); the corrected head's run is bound in `INTEGRATION_SEQUENCE.md` when it completes |
+| Hosted | #68's first run recorded once (above); the corrected head `4e0e441` — ci 36632092967: build-test PASS (integration 1344/1344; the upgrade proof and the C18 dual-path proof completed, 623 + 44 controls), browser pass, C19 36632092838 pass; supply-chain red on the Redis recheck only |
 
 Stack maintenance: the reviewed pins (fast-uri 3.1.7, multer 2.4.0) carried down to #64–#66 and merged forward. No tracker row, schedule or acceptance change; no merge, purchase or account allocation; #62 and real-provider activation stay the owner's decisions. The next A1 stage remains **B36**.
