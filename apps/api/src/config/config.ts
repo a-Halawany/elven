@@ -104,6 +104,12 @@ const schema = z.object({
   'eye.attention.sms_webhook_url': z.string().default('').refine((v) => v === '' || loopbackUrl(v), 'eye.attention.sms_webhook_url must be an http(s) URL on a loopback host'),
   'eye.attention.teams_webhook_url': z.string().default('').refine((v) => v === '' || loopbackUrl(v), 'eye.attention.teams_webhook_url must be an http(s) URL on a loopback host'),
   /* end B34 attention */
+  /* B34-F2 (0091) execution: THE SYNTHETIC LOOPBACK PATH of the execution egress — an explicit deployment switch, OFF unless set to `on`.
+     ON, a handoff to a target recorded SYNTHETIC whose endpoint host is an IPv4 loopback LITERAL (127.0.0.0/8) and whose trust anchor is
+     declared is carried over the pinned transport to that literal (the anchor still verified, the bearer still by reference); every other
+     target — and every target with the switch OFF — goes through the unchanged production vetting. No real ERP; no provider. */
+  'eye.execution.synthetic_loopback': z.enum(['on', 'off']).default('off'),
+  /* end B34-F2 execution */
 });
 
 export type EyeConfig = z.infer<typeof schema>;
@@ -165,6 +171,9 @@ const ENV_MAP: Record<string, keyof EyeConfig> = {
   EYE_ATTENTION_SMS_WEBHOOK_URL: 'eye.attention.sms_webhook_url',
   EYE_ATTENTION_TEAMS_WEBHOOK_URL: 'eye.attention.teams_webhook_url',
   /* end B34 attention */
+  /* B34-F2 (0091) execution */
+  EYE_EXECUTION_SYNTHETIC_LOOPBACK: 'eye.execution.synthetic_loopback',
+  /* end B34-F2 execution */
 };
 
 /**

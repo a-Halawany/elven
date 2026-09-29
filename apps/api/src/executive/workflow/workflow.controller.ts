@@ -3,7 +3,9 @@
  * 0090 §W; F-P6-14). Same envelope, same capabilities, same receipts as the executive controller: every write is one governed write whose
  * port asserts the route's own action; every read is a consequential read. The actions are EXACT PDP rules (pdp.service.ts, the B34
  * workflow block): an external collaborator holds executive.collab.{read,discuss,review}, executive.task.complete and the acceptance of its
- * own invitation — nothing else — and every collaboration port checks its live grant.
+ * own invitation — nothing else — and every collaboration port checks its live grant. B34-F1 (0091): the invitation is the owner's REQUEST
+ * and an identity administrator's PROVISIONING (executive.collab.provision); every identity row — the invitee's principal, its credentials,
+ * their revocation — is written by the identity authority (collab-identity.service.ts), never by a collaboration port.
  */
 import { Body, Controller, HttpException, Param, Post, Req } from '@nestjs/common';
 import { errorBody } from '@eye/contracts';
@@ -14,6 +16,7 @@ import type { EyeRequest } from '../../pipeline/http.js';
 import { bindingReaches } from '../../shared/clearance.js';
 import { WorkflowCapability } from './workflow.capabilities.js';
 import { WorkflowService, assertUuid, validateAdvance, validateComplete, validateDefine, validateDrill, validateReason, validateReassign, validateStart } from './workflow.service.js';
+import { CollabIdentityService } from './collab-identity.service.js';
 import { CollabService, validateAccept, validateArtifact, validateInvite, validateMessage, validateOpenWorkspace, validateParticipant, validateReview, validateReviewRequest } from './collab.service.js';
 
 type Row = Record<string, unknown>;
@@ -29,7 +32,8 @@ const receipt = (o: { policyDecisionId: string; auditSeq: number }) => ({ policy
 
 @Controller('/v1/tenants/:tenantId/domains/:domainId')
 export class WorkflowController {
-  constructor(private readonly pipeline: PipelineService, private readonly workflow: WorkflowService, private readonly collab: CollabService) {}
+  constructor(private readonly pipeline: PipelineService, private readonly workflow: WorkflowService, private readonly collab: CollabService,
+              /* B34-F1 (0091) */ private readonly collabIdentity: CollabIdentityService) {}
   private route(tenantId: string, domainId: string, action: string, objectType: string | null, objectId: string | null) {
     return { scope: 'DOMAIN' as const, tenantId, domainId, action, objectType, objectId };
   }
@@ -282,51 +286,55 @@ export class WorkflowController {
     return { review: out.result, receipt: receipt(out) };
   }
 
+  /* B34-F1 (0091): THE INVITATION IS TWO GOVERNED ACTS, AND EVERY IDENTITY ROW IS THE IDENTITY AUTHORITY'S (collab-identity.service.ts) */
   /**
-   * INVITE an external collaborator: a scoped principal, the grant (the workspace's purpose, an audience ceiling, an expiry ≤ 30 days) and
-   * the invitation placed in the SYNTHETIC invitation mailbox once the write committed. The response never carries the token.
+   * REQUEST an invitation (the workspace's owner): the grant `requested` — who (a display name, a SYNTHETIC contact label), the audience
+   * ceiling, the expiry (≤ 30 days). No principal and no credential yet: an identity administrator provisions it.
    */
   @Post('/executive/collab/workspaces/:workspaceId/invitations')
   async invite(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('workspaceId') workspaceId: string, @Body() body: Payload) {
     const { envelope, principal } = ctx(req);
     assertUuid(workspaceId, envelope.correlation_id, 'workspace');
     const p = validateInvite(body.payload ?? {}, envelope.correlation_id, Date.now());
-    const grantId = newId(); const principalId = newId();
-    let invitation: Awaited<ReturnType<CollabService['buildInvitation']>> | null = null;
+    const grantId = newId();
     const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'executive.collab.invite', 'CGR', grantId), WorkflowCapability.collab,
-      async (cap) => {
-        const w = ((await cap.readWorkspaces().select(['title', 'purpose'] as never).where('workspace_id' as never, '=', workspaceId as never).execute()) as Row[])[0];
-        const inv = await this.collab.buildInvitation({ grantId, principalId, workspaceTitle: String(w?.['title'] ?? 'the workspace'), purpose: String(w?.['purpose'] ?? ''), expiresAt: p.expiresAt,
-          nowMs: new Date(await cap.now()).getTime(), inviterLabel: `principal ${principal.principalId}` });
-        invitation = inv;
-        const r = await cap.invite({ grantId, principalId, tenantId, domainId, workspaceId, displayName: p.displayName, loginName: inv.loginName, contactLabel: p.contactLabel, ceiling: p.ceiling,
-          expiresAt: p.expiresAt, tokenHash: inv.tokenHash, credentialHash: inv.credentialHash, invitationExpiresAt: inv.invitationExpiresAt, mailSubject: inv.mail.subject,
-          mailBodyDigest: inv.mail.bodyDigest, actor: principal.principalId, correlationId: envelope.correlation_id });
-        return { result: r, targetType: 'CGR', targetId: grantId, targetVersion: '1', outboxEvent: null };
-      });
-    if (invitation !== null) this.collab.place(invitation);
+      async (cap) => ({ result: await cap.requestInvite({ grantId, tenantId, domainId, workspaceId, displayName: p.displayName, contactLabel: p.contactLabel, ceiling: p.ceiling, expiresAt: p.expiresAt,
+                                                          actor: principal.principalId, correlationId: envelope.correlation_id }), targetType: 'CGR', targetId: grantId, targetVersion: '0', outboxEvent: null }));
     return { grant: out.result, receipt: receipt(out) };
   }
 
-  /** ACCEPT (the invitee, signed in with the invitation token): the token again and their own password — a credential expiring with the grant. */
+  /**
+   * PROVISION a requested invitation (an identity administrator — platform_admin or tenant_admin, never the requester): the invitee's
+   * principal created by identity.create_principal on the IDENTITY authority, its one-time invitation credential issued by the identity
+   * ports, the grant activated (`invited`) once what they wrote is verified; the invitation placed in the SYNTHETIC mailbox. A failure
+   * after the identity write is compensated (the credential revoked). The response never carries the token.
+   */
+  @Post('/executive/collab/grants/:grantId/provision')
+  async provisionInvitation(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('grantId') grantId: string) {
+    const { envelope, principal } = ctx(req);
+    assertUuid(grantId, envelope.correlation_id, 'grant');
+    return this.collabIdentity.provision(envelope, principal, tenantId, domainId, grantId);
+  }
+
+  /**
+   * ACCEPT (the invitee, signed in with the invitation token): the acceptance recorded, then the invitation credential ROTATED to their own
+   * password by the identity authority — a credential expiring with the grant; every session revoked (sign in again with the password).
+   */
   @Post('/executive/collab/grants/:grantId/accept')
   async acceptInvitation(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('grantId') grantId: string, @Body() body: Payload) {
     const { envelope, principal } = ctx(req);
     assertUuid(grantId, envelope.correlation_id, 'grant');
     const p = validateAccept(body.payload ?? {}, envelope.correlation_id);
-    const hashes = await this.collab.acceptHashes(p.token, p.password);
-    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'executive.collab.accept', 'CGR', grantId), WorkflowCapability.collab,
-      async (cap) => ({ result: await cap.accept({ grantId, tenantId, domainId, ...hashes, actor: principal.principalId, correlationId: envelope.correlation_id }), targetType: 'CGR', targetId: grantId, targetVersion: '2', outboxEvent: null }));
-    return { grant: out.result, receipt: receipt(out) };
+    return this.collabIdentity.accept(envelope, principal, tenantId, domainId, grantId, p.token, p.password, this.collab.tokenHash(p.token));
   }
 
+  /** REVOKE (the workspace's owner): the grant ended, then the external's credentials, sessions and epoch revoked by the identity authority. */
   @Post('/executive/collab/grants/:grantId/revoke')
   async revokeGrant(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('grantId') grantId: string, @Body() body: Payload) {
     const { envelope, principal } = ctx(req);
     assertUuid(grantId, envelope.correlation_id, 'grant');
     const p = validateReason(body.payload ?? {}, envelope.correlation_id, 'the grant is revoked');
-    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'executive.collab.grant.revoke', 'CGR', grantId), WorkflowCapability.collab,
-      async (cap) => ({ result: await cap.revokeGrant({ grantId, tenantId, domainId, reason: p.reason, actor: principal.principalId, correlationId: envelope.correlation_id }), targetType: 'CGR', targetId: grantId, targetVersion: null, outboxEvent: null }));
-    return { grant: out.result, receipt: receipt(out) };
+    return this.collabIdentity.revokeGrant(envelope, principal, tenantId, domainId, grantId, p.reason);
   }
+  /* end B34-F1 */
 }

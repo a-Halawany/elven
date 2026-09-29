@@ -105,9 +105,18 @@ export interface CollabWrites extends WorkflowReads {
   requestReview(a: { taskId: string; tenantId: string; domainId: string; workspaceId: string; reviewer: string; title: string; deadlineAt: string | null; escalation: Row; requestKey: string;
                      actor: string; correlationId: string }): Promise<Row>;
   recordReview(a: { reviewId: string; tenantId: string; domainId: string; workspaceId: string; taskId: string | null; artifactId: string | null; verdict: string; statement: string; actor: string; correlationId: string }): Promise<Row>;
-  invite(a: { grantId: string; principalId: string; tenantId: string; domainId: string; workspaceId: string; displayName: string; loginName: string; contactLabel: string; ceiling: string;
-              expiresAt: string; tokenHash: string; credentialHash: string; invitationExpiresAt: string; mailSubject: string; mailBodyDigest: string; actor: string; correlationId: string }): Promise<Row>;
-  accept(a: { grantId: string; tenantId: string; domainId: string; tokenHash: string; newCredentialHash: string; actor: string; correlationId: string }): Promise<Row>;
+  /* B34-F1 (0091): the invitation is TWO acts — the owner's request (no identity write) and the identity administrator's provisioning
+     (reserve → the identity authority creates the principal and its invitation credential → activate, which verifies what it wrote) */
+  requestInvite(a: { grantId: string; tenantId: string; domainId: string; workspaceId: string; displayName: string; contactLabel: string; ceiling: string; expiresAt: string;
+                     actor: string; correlationId: string }): Promise<Row>;
+  reserveInvitee(a: { grantId: string; principalId: string; tenantId: string; domainId: string; loginName: string; actor: string; correlationId: string }): Promise<Row>;
+  activateInvite(a: { grantId: string; tenantId: string; domainId: string; tokenHash: string; invitationExpiresAt: string; mailSubject: string; mailBodyDigest: string; actor: string;
+                      correlationId: string }): Promise<Row>;
+  /** Records the acceptance only: the credential is rotated by the identity authority (collab-identity.service.ts). */
+  accept(a: { grantId: string; tenantId: string; domainId: string; tokenHash: string; actor: string; correlationId: string }): Promise<Row>;
+  /** The external principals still holding a live credential or session although no live grant names them (0091 §7). */
+  accessPending(a: { tenantId: string; domainId: string }): Promise<Row[]>;
+  /* end B34-F1 */
   revokeGrant(a: { grantId: string; tenantId: string; domainId: string; reason: string; actor: string; correlationId: string }): Promise<Row>;
 }
 
@@ -121,6 +130,8 @@ export interface WorkflowTickWrites extends WorkflowReads {
   stepTimeout(a: { timerId: string; tenantId: string; domainId: string; actor: string; correlationId: string }): Promise<Row>;
   lapseGrant(a: { timerId: string; tenantId: string; domainId: string; actor: string; correlationId: string }): Promise<Row>;
   lapseExpiredGrants(a: { tenantId: string; domainId: string; actor: string; correlationId: string }): Promise<Row>;
+  /** B34-F1 (0091 §7): what the after-tick hook revokes through the identity authority. */
+  accessPending(a: { tenantId: string; domainId: string }): Promise<Row[]>;
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -194,14 +205,26 @@ class WorkflowCapabilityImpl extends WorkflowCore implements WorkflowWrites, Tas
     return this.one(sql`select executive.record_collab_review(${a.reviewId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.workspaceId}::uuid, ${a.taskId}::uuid, ${a.artifactId}::uuid, ${a.verdict}, ${a.statement},
       ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'record_collab_review');
   }
-  async invite(a: Parameters<CollabWrites['invite']>[0]) {
-    return this.one(sql`select executive.invite_collaborator(${a.grantId}::uuid, ${a.principalId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.workspaceId}::uuid, ${a.displayName}, ${a.loginName},
-      ${a.contactLabel}, ${a.ceiling}, ${a.expiresAt}::timestamptz, ${a.tokenHash}, ${a.credentialHash}, ${a.invitationExpiresAt}::timestamptz, ${a.mailSubject}, ${a.mailBodyDigest},
-      ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'invite_collaborator');
+  /* B34-F1 (0091) */
+  async requestInvite(a: Parameters<CollabWrites['requestInvite']>[0]) {
+    return this.one(sql`select executive.request_collaborator(${a.grantId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.workspaceId}::uuid, ${a.displayName}, ${a.contactLabel}, ${a.ceiling},
+      ${a.expiresAt}::timestamptz, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'request_collaborator');
+  }
+  async reserveInvitee(a: Parameters<CollabWrites['reserveInvitee']>[0]) {
+    return this.one(sql`select executive.reserve_collaborator(${a.grantId}::uuid, ${a.principalId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.loginName}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`,
+      'reserve_collaborator');
+  }
+  async activateInvite(a: Parameters<CollabWrites['activateInvite']>[0]) {
+    return this.one(sql`select executive.activate_collaborator(${a.grantId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.tokenHash}, ${a.invitationExpiresAt}::timestamptz, ${a.mailSubject},
+      ${a.mailBodyDigest}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'activate_collaborator');
   }
   async accept(a: Parameters<CollabWrites['accept']>[0]) {
-    return this.one(sql`select executive.accept_collaboration(${a.grantId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.tokenHash}, ${a.newCredentialHash}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'accept_collaboration');
+    return this.one(sql`select executive.accept_collaboration(${a.grantId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.tokenHash}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'accept_collaboration');
   }
+  async accessPending(a: { tenantId: string; domainId: string }): Promise<Row[]> {
+    return (await this.one(sql`select jsonb_build_object('pending', executive.collab_access_pending(${a.tenantId}::uuid, ${a.domainId}::uuid)) as r`, 'collab_access_pending'))['pending'] as Row[];
+  }
+  /* end B34-F1 */
   async revokeGrant(a: Parameters<CollabWrites['revokeGrant']>[0]) {
     return this.one(sql`select executive.revoke_collaboration_grant(${a.grantId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'revoke_collaboration_grant');
   }

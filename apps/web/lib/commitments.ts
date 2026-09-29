@@ -98,7 +98,9 @@ export function residualWords(r: Array<{ line_key: string; residual: number; com
   if (r === null || r === undefined || r.length === 0) return 'no residual';
   return r.map((x) => {
     const c = x.compensation ?? null;
-    return `${x.line_key}: ${x.residual} outstanding${c === null ? ' — no compensation owner yet' : ` — ${String(c['kind'])} by ${String(c['owner']).slice(0, 8)}… (${String(c['state'])})`}`;
+    // the compensation row names its owner owner_principal_id (the get route); `owner` is the assign route's answer
+    const owner = c === null ? null : (c['owner'] ?? c['owner_principal_id'] ?? null);
+    return `${x.line_key}: ${x.residual} outstanding${c === null ? ' — no compensation owner yet' : ` — ${String(c['kind'])} by ${owner === null ? 'an unnamed owner' : `${String(owner).slice(0, 8)}…`} (${String(c['state'])})`}`;
   }).join('; ');
 }
 
@@ -118,7 +120,14 @@ export function attemptWords(a: Row): string {
   const o = String(a['outcome']);
   const why: Record<string, string> = { unbound: 'the receipt named another handoff or attempt — kept as evidence, not an effect', transport: 'no receipt — retried with backoff', denied: 'the target refused the requester',
     invalid_receipt: 'the answer was not a receipt', target_retired: 'the target is retired', effected: 'every line effected', partial: 'part of the lines effected', rejected: 'no line effected' };
-  return `attempt ${String(a['attempt'])}${a['by_tick'] === true ? ' (the tick)' : ''}: ${o}${a['http_status'] === null || a['http_status'] === undefined ? '' : ` (HTTP ${String(a['http_status'])})`} — ${why[o] ?? o}`;
+  return `attempt ${String(a['attempt'])}${a['by_tick'] === true ? ' (the tick)' : ''}: ${o}${a['http_status'] === null || a['http_status'] === undefined ? '' : ` (HTTP ${String(a['http_status'])})`} — ${why[o] ?? o}${transportWords(a['transport'])}`;
+}
+
+/** B34-F2 (0091): the path that carried an attempt, as the server recorded it — nothing for an attempt recorded before it or never transported. */
+export function transportWords(t: unknown): string {
+  if (t === 'synthetic-loopback') return ' · via the SYNTHETIC loopback path (the deployment switch on; a synthetic target, no real ERP)';
+  if (t === 'production') return ' · via the production egress (vetted)';
+  return '';
 }
 
 /** The deliverables parsed from the closure form's lines ("title — evidence"); a line without evidence is refused here and by the server. */

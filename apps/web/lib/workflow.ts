@@ -6,6 +6,10 @@
  * and its committed transitions, the replay's verdict, a timer's firing and drift, a drill's verdict, a grant's purpose, audience ceiling
  * and expiry. The words here only render those facts; the page offers what the server may refuse, and shows the refusal as it states it
  * (a gate or commitment task completes through its OWNING action — the page does not offer Complete for it; the server refuses it too).
+ *
+ * B34-F1 (migration 0091): an invitation is TWO acts — the workspace's owner REQUESTS it (the grant `requested`, no identity yet) and an
+ * identity administrator PROVISIONS it (the invitee's principal and its one-time credential are the identity authority's to create); the
+ * page offers Provision on a requested grant and shows the server's refusal to anyone else.
  */
 import { call, type ApiResult } from './api';
 import type { Scope } from './observation';
@@ -36,8 +40,9 @@ export interface Transition { seq: number; kind: string; event: string; from: st
 export interface Drill { drill_id: string; kind: string; instance_id: string | null; verdict: 'pass' | 'fail' | string; observations: Row; run_by: string; run_at: string | null }
 export interface WorkflowDefinition { definition_id: string; def_key: string; version: number; digest: string; spec: Row; owner: string; escalation: string; supersedes_version: number | null; reason: string;
   published_at: string | null; running_pinned: number; instances_pinned: number }
-export interface Grant { grant_id: string; principal: string; purpose: string; audience_ceiling: string; state: string; expires_at: string | null; invitation_expires_at: string | null; invited_at: string | null;
-  accepted_at: string | null; revoked_at: string | null; revoke_reason: string | null; lapsed_at: string | null; contact_label: string; live: boolean; days_left: number | null }
+export interface Grant { grant_id: string; principal: string | null; purpose: string; audience_ceiling: string; state: string; expires_at: string | null; invitation_expires_at: string | null; invited_at: string | null;
+  accepted_at: string | null; revoked_at: string | null; revoke_reason: string | null; lapsed_at: string | null; contact_label: string; live: boolean; days_left: number | null;
+  /* B34-F1 (0091) */ display_name?: string | null; login_name?: string | null; provisioned_by?: string | null; provisioned_at?: string | null }
 export interface Workspace { workspace_id: string; title: string; subject: Row; purpose: string; classification_ceiling: string; owner: string; state: string; opened_at: string | null; participants?: number; grant?: Grant }
 export interface WorkspaceDetail {
   now: string; viewer: { affiliation: 'member' | 'external'; principal: string; ceiling: string; clearance: string }; workspace: Workspace;
@@ -101,9 +106,12 @@ export const collab = {
       escalation: { ...(a.escalateTo === null || a.escalateTo.trim() === '' ? {} : { principal: a.escalateTo.trim() }), max_escalations: 1, extend_minutes: 1440 }, request_key: a.requestKey }, null, purpose),
   review: (s: Scope, id: string, purpose: string, a: { taskId: string | null; verdict: string; statement: string }) =>
     p<{ review: Row; receipt: Receipt }>(s, `/executive/collab/workspaces/${id}/reviews`, 'executive.collab.review', 'CWS', { ...(a.taskId === null ? {} : { task_id: a.taskId }), verdict: a.verdict, statement: a.statement.trim() }, id, purpose),
-  invite: (s: Scope, id: string, purpose: string, a: { displayName: string; contactLabel: string; ceiling: string; days: number }) =>
+  /** B34-F1: the owner's REQUEST (the grant `requested`); an identity administrator provisions it next. */
+  request: (s: Scope, id: string, purpose: string, a: { displayName: string; contactLabel: string; ceiling: string; days: number }) =>
     p<{ grant: Row; receipt: Receipt }>(s, `/executive/collab/workspaces/${id}/invitations`, 'executive.collab.invite', 'CGR',
       { display_name: a.displayName.trim(), contact_label: a.contactLabel.trim(), audience_ceiling: a.ceiling, expires_in_days: a.days }, null, purpose),
+  /** B34-F1: the identity administrator's PROVISIONING of a requested invitation (platform or tenant administrator; never the requester). */
+  provision: (s: Scope, grantId: string, purpose: string) => p<{ grant: Row; receipt: Receipt }>(s, `/executive/collab/grants/${grantId}/provision`, 'executive.collab.provision', 'CGR', {}, grantId, purpose),
   revoke: (s: Scope, grantId: string, purpose: string, reason: string) => p<{ grant: Row; receipt: Receipt }>(s, `/executive/collab/grants/${grantId}/revoke`, 'executive.collab.grant.revoke', 'CGR', { reason: reason.trim() }, grantId, purpose),
   accept: (s: Scope, grantId: string, purpose: string, token: string, password: string) =>
     p<{ grant: Row; receipt: Receipt }>(s, `/executive/collab/grants/${grantId}/accept`, 'executive.collab.accept', 'CGR', { token, password }, grantId, purpose),
@@ -138,9 +146,12 @@ export const completableHere = (kind: string): boolean => !kind.startsWith('gate
 export function grantWords(g: Pick<Grant, 'state' | 'expires_at' | 'live'>, now: string): string {
   if (g.state === 'revoked') return 'revoked — access is lost';
   if (g.state === 'lapsed') return 'lapsed at its expiry — access is lost';
+  if (g.state === 'requested') return g.live || (g.expires_at !== null && g.expires_at > now) ? 'requested — awaiting an identity administrator\'s provisioning' : 'requested — expired before it was provisioned';
   if (!g.live) return 'expired — access is lost';
   return `${g.state} · ${deadlineWords(g.expires_at, now).replace('due in', 'expires in')}`;
 }
+/** B34-F1: whether the page offers Provision for a grant (a requested one; the server decides who may). */
+export const provisionable = (g: Pick<Grant, 'state'>): boolean => g.state === 'requested';
 /** Whether a ceiling covers a classification (the server's rank: public < internal < confidential < restricted). */
 export const covers = (ceiling: string, classification: string): boolean =>
   (CLASSIFICATIONS as readonly string[]).indexOf(classification) >= 0 && (CLASSIFICATIONS as readonly string[]).indexOf(classification) <= (CLASSIFICATIONS as readonly string[]).indexOf(ceiling);

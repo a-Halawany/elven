@@ -19,15 +19,17 @@
  *   not eligible, excluded, an external); completion refused for gate.* and commitment.* (409, the owning action); a non-assignee refused
  *   (403); the inbox; a failing timer handler (a test double) retried by the next tick and abandoned on the third failure, the product's
  *   handler restored (recovery).
- *   C1 · THE DEMO SCENE: a customs expert from a partner firm (SYNTHETIC) invited with a 14-day expiry to review the dual-sourcing case; the
+ *   C1 · THE DEMO SCENE: a customs expert from a partner firm (SYNTHETIC) invited with a 14-day expiry to review the dual-sourcing case — the
+ *   owner REQUESTS, the tenant administrator PROVISIONS through the identity authority (B34-F1, 0091; the owner refused the provisioning); the
  *   invitation in the SYNTHETIC mailbox; signed in with its token, the invitation accepted (the credential now expires with the grant); the
  *   external reads only its workspace and only at its audience ceiling, discusses and adds an artifact; refused everything else (PDP 403 —
  *   the inbox, the workflow, an invitation, an approval; the port — another purpose 403, above its ceiling 422, a workspace it was never
  *   granted 404; a room membership: is_active_human is false for an external); its review task's deadline passes and a REAL TICK escalates
  *   it to the chief of staff; the external's late review refused (403); the chief of staff records the review, the task completed.
  *   C2 · ACCESS LOST: a grant LAPSES at its expiry (the grant.expiry timer fired by a tick): the external's open task reassigned with reason
- *   access_lost, the binding revoked (the old session refused), the sign-in refused (the credential expired with the grant); a grant whose
- *   timer never fired lapsed by the sweep step (22); a REVOKED grant — the sign-in refused.
+ *   access_lost, the credentials and sessions revoked and the epoch bumped by the identity authority (the after-tick hook
+ *   collab-access-revocation — B34-F1: the old session refused, the sign-in refused); a grant whose timer never fired lapsed by the sweep
+ *   step (22); a REVOKED grant — its access revoked by the identity authority at once, the sign-in refused.
  *
  * EACH CASE LOGS ONE `B34 EVIDENCE` LINE with the six things V04-T-024/026 demand.
  */
@@ -95,7 +97,10 @@ const post = (ws: string, payload: Row, as: AuthenticatedPrincipal, purpose = PU
 const artifact = (ws: string, payload: Row, as: AuthenticatedPrincipal, purpose = PURPOSE) => wf.addArtifact(r(as, 'executive.collab.discuss', 'CWS', ws, purpose), T(), D(), ws, { payload }) as Promise<{ artifact: Row }>;
 const requestReview = (ws: string, payload: Row, as = caseOwner) => wf.requestReview(r(as, 'executive.collab.review.request', 'HTK', null, PURPOSE), T(), D(), ws, { payload }) as Promise<{ task: Row }>;
 const review = (ws: string, payload: Row, as: AuthenticatedPrincipal, purpose = PURPOSE) => wf.recordReview(r(as, 'executive.collab.review', 'CWS', ws, purpose), T(), D(), ws, { payload }) as Promise<{ review: Row }>;
-const invite = (ws: string, payload: Row, as = caseOwner) => wf.invite(r(as, 'executive.collab.invite', 'CGR', null, PURPOSE), T(), D(), ws, { payload }) as Promise<{ grant: Row }>;
+const request = (ws: string, payload: Row, as = caseOwner) => wf.invite(r(as, 'executive.collab.invite', 'CGR', null, PURPOSE), T(), D(), ws, { payload }) as Promise<{ grant: Row }>;
+/* B34-F1 (0091): the tenant administrator provisions a requested invitation through the identity authority */
+const provision = (grantId: string, as = tenantAdmin) => wf.provisionInvitation(r(as, 'executive.collab.provision', 'CGR', grantId, PURPOSE), T(), D(), grantId) as Promise<{ grant: Row }>;
+const invite = async (ws: string, payload: Row, as = caseOwner) => provision(String((await request(ws, payload, as)).grant['grant_id']));
 const accept = (grantId: string, payload: Row, as: AuthenticatedPrincipal, purpose = PURPOSE) => wf.acceptInvitation(r(as, 'executive.collab.accept', 'CGR', grantId, purpose), T(), D(), grantId, { payload }) as Promise<{ grant: Row }>;
 const revoke = (grantId: string, reason: string, as = caseOwner) => wf.revokeGrant(r(as, 'executive.collab.grant.revoke', 'CGR', grantId, PURPOSE), T(), D(), grantId, { payload: { reason } }) as Promise<{ grant: Row }>;
 
@@ -108,9 +113,11 @@ const signIn = async (username: string, password: string): Promise<Authenticated
 };
 /** One tick of the domain's attention agent, standing for its own instant (the timer host's own path). */
 let slot = 0;
+let lastAfter: Record<string, Row> = {};
 const tick = async () => {
   const o = await timer.tickNow({ tenantId: T(), domainId: D(), agentId, scheduledAt: new Date(Date.UTC(2034, 0, 1) + (slot++) * 60_000) });
   expect(o.outcome, JSON.stringify(o.run?.outputs ?? o.stopReason).slice(0, 600)).toBe('finished');
+  lastAfter = (o.run?.outputs['after'] ?? {}) as Record<string, Row>;
   return (o.run?.outputs['steps'] ?? {}) as Record<string, Row>;
 };
 const taskRow = async (id: string) => (await sql<{ state: string; assignee: string | null; escalation_level: number; deadline_at: Date | null; deadline_timer_id: string | null; outcome: string | null }>`
@@ -350,9 +357,13 @@ describe('B34 · the durable workflow engine, the human tasks and collaboration 
     await refused(invite(ws, { display_name: 'Customs expert (partner firm, SYNTHETIC)', contact_label: 'customs.expert@partner.example (SYNTHETIC)', audience_ceiling: 'internal', expires_in_days: 45 }), /expires_in_days is 1\.\.30/, 422, 'EYE-REQ-001');
     await refused(invite(ws, { display_name: 'Customs expert (partner firm, SYNTHETIC)', contact_label: 'customs.expert@partner.example (SYNTHETIC)', audience_ceiling: 'restricted', expires_in_days: 14 }), /^collaboration grant rejected \(ceiling\)/, 422, 'EYE-REQ-001');
     await refused(invite(ws, { display_name: 'Customs expert (partner firm, SYNTHETIC)', contact_label: 'customs.expert@partner.example (SYNTHETIC)', audience_ceiling: 'internal', expires_in_days: 14 }, chief), /^collaboration grant rejected \(not_owner\)/, 403, 'EYE-AUT-001');
-    const g = (await invite(ws, { display_name: 'Customs expert (partner firm, SYNTHETIC)', contact_label: 'customs.expert@partner.example (SYNTHETIC)', audience_ceiling: 'internal', expires_in_days: 14 })).grant;
+    // B34-F1: the owner REQUESTS (no identity row); the owner cannot PROVISION (403 — the identity administrators' act); the tenant administrator does
+    const requested = (await request(ws, { display_name: 'Customs expert (partner firm, SYNTHETIC)', contact_label: 'customs.expert@partner.example (SYNTHETIC)', audience_ceiling: 'internal', expires_in_days: 14 })).grant;
+    expect(requested).toMatchObject({ state: 'requested', purpose: PURPOSE, audience_ceiling: 'internal' });
+    await refused(provision(String(requested['grant_id']), caseOwner), /./, 403, 'EYE-AUT-001');
+    const g = (await provision(String(requested['grant_id']))).grant;
     expertGrant = String(g['grant_id']); expertLogin = String(g['login_name']);
-    expect(g).toMatchObject({ state: 'invited', purpose: PURPOSE, audience_ceiling: 'internal', mail: { channel: 'demo-mailbox', synthetic: true } });
+    expect(g).toMatchObject({ state: 'invited', purpose: PURPOSE, audience_ceiling: 'internal', requested_by: caseOwner.principalId, provisioned_by: tenantAdmin.principalId, mail: { channel: 'demo-mailbox', synthetic: true } });
     expect(JSON.stringify(g)).not.toMatch(/token/i);
     const days = (new Date(String(g['expires_at'])).getTime() - Date.now()) / 86_400_000;
     expect(days).toBeGreaterThan(13.9); expect(days).toBeLessThanOrEqual(14);
@@ -369,7 +380,8 @@ describe('B34 · the durable workflow engine, the human tasks and collaboration 
     await refused(accept(expertGrant, { token: mail.token, password: EXPERT_PASSWORD }, withToken, 'executive'), /^collaboration grant rejected \(purpose\)/, 403, 'EYE-AUT-001');
     await refused(accept(expertGrant, { token: mail.token, password: EXPERT_PASSWORD }, caseOwner), /./, 403, 'EYE-AUT-001');
     const acc = (await accept(expertGrant, { token: mail.token, password: EXPERT_PASSWORD }, withToken)).grant;
-    expect(acc).toMatchObject({ state: 'accepted', credential_expires_at: g['expires_at'] });
+    expect(acc).toMatchObject({ state: 'accepted', credential_expires_at: g['expires_at'], credential: 'rotated by the identity authority' });
+    expect((await sql<{ status: string }>`select status from identity.sessions where id = ${withToken.sessionId}::uuid`.execute(su)).rows[0]!.status, 'the rotation revoked the invitation session').toBe('revoked');
     await refused(signIn(expertLogin, mail.token), /./, 401);
     expert = await signIn(expertLogin, EXPERT_PASSWORD);
     const cred = (await sql<{ expires_at: Date }>`select expires_at from identity.credentials where principal_id = ${expert.principalId}::uuid and status = 'active'`.execute(su)).rows[0]!;
@@ -440,7 +452,7 @@ describe('B34 · the durable workflow engine, the human tasks and collaboration 
     expect((await timerRow(String((await taskRow(reviewTask)).deadline_timer_id))).cancelled_at, 'the pending deadline cancelled with the completion').not.toBeNull();
     sixEvidence('C1', { fault_trace: { deadline_missed_by: expert.principalId }, watermark: { grant: expertGrant, expires_in_days: 14, task: reviewTask, deadline_timer: deadlineTimer },
       consumer_behaviour: { escalated_to: chief.principalId, external_scope: seen.artifacts.map((a) => a['key']), refused: ['PDP inbox/workflow/invite/open/approve 403', 'purpose 403', 'above_ceiling 422', 'not granted 404', 'room member 403'] },
-      operator_action: 'the case owner invites; the chief of staff reviews', recovery: 'the escalated task completed by the chief of staff', reconciliation: { firings: 1, mail: 'SYNTHETIC demo-mailbox' } });
+      operator_action: 'the case owner requests, the tenant administrator provisions; the chief of staff reviews', recovery: 'the escalated task completed by the chief of staff', reconciliation: { firings: 1, mail: 'SYNTHETIC demo-mailbox' } });
   }, 240_000);
 
   it('C2 · ACCESS LOST: a grant lapses at its expiry — tasks reassigned (access_lost), the session and the sign-in refused; a grant whose timer never fired lapsed by the sweep; a revoked grant\'s sign-in refused', async () => {
@@ -467,7 +479,12 @@ describe('B34 · the durable workflow engine, the human tasks and collaboration 
     expect(await taskRow(ta)).toMatchObject({ state: 'open', assignee: caseOwner.principalId });
     expect((await assignments(ta)).map((x) => x.reason)).toEqual(['opened', 'access_lost']);
     expect((await taskEvents(ta)).find((e) => e.event === 'task.reassigned')?.details).toMatchObject({ reason: 'access_lost', grant_id: a.grantId });
-    // the old session is refused (the binding revoked — the epoch moved), and the sign-in (the credential expired with the grant)
+    // B34-F1: the identity half — the after-tick hook revoked a's and b's credentials and sessions (the epoch bumped) through the identity authority
+    const revokedBy = (((lastAfter['collab-access-revocation'] ?? {}) as Row)['revoked'] ?? []) as Row[];
+    expect(revokedBy.map((x) => x['principal']).sort()).toEqual([a.session.principalId, b.session.principalId].sort());
+    expect(revokedBy.every((x) => Number(x['credentials_revoked']) === 1 && Number(x['sessions_revoked']) >= 1)).toBe(true);
+    expect((await sql<{ n: number }>`select count(*)::int n from identity.credentials where principal_id in (${a.session.principalId}::uuid, ${b.session.principalId}::uuid) and status in ('active', 'must_rotate')`.execute(su)).rows[0]!.n).toBe(0);
+    // the old session is refused (the sessions revoked — the epoch moved), and the sign-in (the credential revoked)
     await refused(getWs(ws, a.session), /./, 403);
     await refused(signIn(a.login, pwd), /./, 401);
     await refused(signIn(b.login, pwd), /./, 401);
@@ -475,7 +492,7 @@ describe('B34 · the durable workflow engine, the human tasks and collaboration 
     const c = await onboard('Revoked expert', 600);
     await refused(revoke(c.grantId, 'ended'), /payload\.reason/, 422, 'EYE-REQ-001');
     await refused(revoke(c.grantId, 'the engagement ended (B34 harness)', chief), /^collaboration grant rejected \(not_owner\)/, 403, 'EYE-AUT-001');
-    expect((await revoke(c.grantId, 'the engagement ended (B34 harness)')).grant).toMatchObject({ state: 'revoked' });
+    expect((await revoke(c.grantId, 'the engagement ended (B34 harness)')).grant).toMatchObject({ state: 'revoked', access: { principal: c.session.principalId, credentials_revoked: 1, epoch_bumped: true } });
     await refused(revoke(c.grantId, 'the engagement ended again (B34 harness)'), /^collaboration grant rejected \(state\)/, 409, 'EYE-STA-002');
     await refused(signIn(c.login, pwd), /./, 401);
     const owner = await getWs(ws, caseOwner);

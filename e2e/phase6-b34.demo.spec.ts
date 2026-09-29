@@ -48,6 +48,12 @@ test.describe.serial('CP-6 B34 — tasks, workspaces, commitments, the gate and 
     await expect(page.getByRole('heading', { name: 'Workspaces', level: 1 })).toBeVisible();
     await expect(page.getByText(/Dual-sourcing review/).first()).toBeVisible({ timeout: 20_000 });
     await shot(page, 'b34-02-workspaces');
+    // B34-F1 (0091): the grants — the invitation provisioned through the identity authority (invited) and the 0090-era grant revoked
+    await page.getByRole('button', { name: /Dual-sourcing review/ }).first().click();
+    await expect(page.getByText(/R\. Haddad/).first()).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText(/invited/).first()).toBeVisible();
+    await expect(page.getByText(/revoked/).first()).toBeVisible();
+    await shot(page, 'b34-05-grants');
   });
 
   test('COMMITMENTS: the tracker — the purchase-request handoff and the customs deliverable', async ({ page }) => {
@@ -57,5 +63,22 @@ test.describe.serial('CP-6 B34 — tasks, workspaces, commitments, the gate and 
     await expect(page.getByText(/Purchase request: second bearing source/).first()).toBeVisible({ timeout: 20_000 });
     await expect(page.getByText(/Customs pre-clearance filed/).first()).toBeVisible();
     await shot(page, 'b34-03-commitments');
+  });
+
+  test('EXECUTION (B34-F2): the purchase request through the synthetic ERP — the receipt, the partial effect, the residual reissued, reconciled', async ({ page }) => {
+    await uiLogin(page, 'l.brandt', required('EYE_TEST_ADMIN_PASSWORD'));
+    await page.goto('/decisions/commitments');
+    await expect(page.getByRole('heading', { name: 'Commitments', level: 1 })).toBeVisible();
+    const row = page.getByRole('row').filter({ hasText: /Purchase request: second bearing source/ }).first();
+    await expect(row).toBeVisible({ timeout: 20_000 });
+    await row.getByRole('button', { name: /^open commitment / }).click();
+    // what the record says of each attempt: the refused one (production egress) and the ones the synthetic loopback path carried
+    const attempts = page.getByRole('list', { name: 'attempts' });
+    await expect(attempts.getByText(/via the SYNTHETIC loopback path/).first()).toBeVisible({ timeout: 20_000 });
+    // the refused attempts were recorded before 0091 (no path recorded): their outcome is the transport refusal
+    await expect(attempts.getByText(/^attempt \d+.*: transport/).first()).toBeVisible();
+    await expect(page.getByText(/reconciled/i).first()).toBeVisible();
+    await expect(page.getByText(/by undefined/)).toHaveCount(0); // every residual names its compensation owner
+    await shot(page, 'b34-04-execution');
   });
 });

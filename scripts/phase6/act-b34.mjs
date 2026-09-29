@@ -14,7 +14,8 @@
  *         attention policy version = the active one + the four B34 classes (opportunity.raised acknowledged within 2 minutes, escalated to the
  *         executive, notified in_app + EMAIL — the SYNTHETIC adapter to the local sink).
  *   B34-W F-P6-14: L. Brandt opens the collaboration workspace on the dual-sourcing (mitigation) case, adds M. Dvořák (the chief of staff)
- *         as reviewer, INVITES a customs expert from a partner firm (SYNTHETIC) for 14 days under an `internal` ceiling, and requests the
+ *         as reviewer, INVITES a customs expert from a partner firm (SYNTHETIC) for 14 days under an `internal` ceiling — B34-F1 (0091): they
+ *         REQUESTS the invitation and the administrator PROVISIONS it through the identity authority — and requests the
  *         expert's review with a deadline a few minutes out, escalating to M. Dvořák; the deadline passes → the tick ESCALATES the task to
  *         M. Dvořák, who reviews it (the task completed). The expert's sign-in is the harness's (the invitation token never leaves the API
  *         process — by design), SAID.
@@ -26,6 +27,9 @@
  *         deliverable due a few minutes out; T. Richter declares the SYNTHETIC ERP target; L. Brandt drafts the purchase-request handoff;
  *         K. Lange (not the drafter, not the committer) ISSUES it → the production egress REFUSES the loopback target by design (SAID — the
  *         B14 precedent; the partial effect and compensation are the harness's, phase6-commitments-b34 E2); the tracker and the timeline read.
+ *   B34-C (B34-F2, 0091) THE POSITIVE SCENE through the product: the refused handoff's residual reissued by a named compensation owner, carried
+ *         by the SYNTHETIC LOOPBACK path (EYE_EXECUTION_SYNTHETIC_LOOPBACK=on) — the receipt bound, HALF effected (the ERP's partial mode), the
+ *         residual reissued again and effected, every handoff reconciled; the refusal above stays the negative evidence.
  *   B34-A F-P6-07 (+ F-P4-13's events, F-P6-08's score changes): C. Brenner accepts the Opportunity Agent's estimate for the Morocco
  *         opportunity → ExposureChanged → an OPPORTUNITY item; A. Hoffmann computes the health score → HealthScoreChanged when a change is
  *         raised; the customs deliverable passes its due instant → the tick's sweep → CommitmentChanged → a COMMITMENT BREACH item for
@@ -42,6 +46,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { request as httpsRequest } from 'node:https';
 import { createRequire } from 'node:module';
 import { loadLocalEnv } from '../local-env.mjs';
 import { call, login, adminSession, demoScope, as, ok, bad, note, failureCount, createPersona } from '../phase4/governed.mjs';
@@ -88,6 +93,8 @@ console.log('\nB34-0 THE STATE — 0090, the register, the casting, the new pers
 {
   const m = (await q(`select filename from public.schema_migrations where filename like '0090%'`))[0];
   if (m) ok(`migration ${m.filename} applied`); else { bad('0090 is not applied'); process.exit(1); }
+  const f1 = (await q(`select filename from public.schema_migrations where filename like '0091%'`))[0];
+  if (f1) ok(`migration ${f1.filename} applied (B34-F1: the invitation's identity rows are the identity authority's)`); else { bad('0091 (B34-F1) is not applied'); process.exit(1); }
 }
 const CAST = { 'm.dvorak': ['executive'], 'n.eriksen': ['forecast_owner'], 'j.weber': ['strategy_owner'], 'l.brandt': ['decision_authority', 'decision_owner', 'opportunity_sponsor'],
   'a.hoffmann': ['domain_analyst'], 's.okafor': ['decision_approver', 'executive'], 'c.brenner': ['decision_owner', 'risk_owner', 'strategy_owner'] };
@@ -196,10 +203,34 @@ if (WS !== null) {
   const art = await col(brandt, `workspaces/${WS}/artifacts`, 'executive.collab.discuss', 'CWS', { key: 'customs-brief', title: 'Customs brief for the rerouted consignments (SYNTHETIC)', kind: 'note', classification: 'internal',
     content: 'The rerouted bearing and magnet consignments enter through Hamburg; pre-clearance is needed before arrival. SYNTHETIC.' }, WS);
   if (art.ok) ok(`L. Brandt SHARED the artifact "customs-brief" (internal) in the workspace`); else note(`the artifact: ${refusalLine(art)}`);
-  const inv = await col(brandt, `workspaces/${WS}/invitations`, 'executive.collab.invite', 'CGR', { display_name: 'R. Haddad — customs broker, partner firm (SYNTHETIC)', contact_label: 'customs-broker@partner.example (SYNTHETIC)', audience_ceiling: 'internal', expires_in_days: 14 });
+  // B34-F1 (0091): L. Brandt REQUESTS the invitation; they cannot provision it (403); the administrator PROVISIONS it through the identity authority.
+  // A grant provisioned under 0091 on this workspace stands on a rerun; a grant INVITED UNDER 0090 (its principal written by the removed
+  // bypass port) is REVOKED below through the corrected path — the identity authority revokes its credentials and sessions, bumps its epoch.
+  const idFacts = async (pid) => (await q(`select (select count(*)::int from identity.credentials where principal_id = $1 and status = 'active') creds,
+                                                  (select count(*)::int from identity.sessions where principal_id = $1 and revoked_at is null) sessions,
+                                                  (select revocation_epoch from identity.principals where id = $1) epoch`, [pid]))[0];
+  const provisioned = (await q(`select grant_id::text, principal_id::text, state from executive.collab_grants where workspace_id = $1 and provisioned_at is not null order by provisioned_at limit 1`, [WS]))[0] ?? null;
+  const legacy = await q(`select grant_id::text, principal_id::text, state from executive.collab_grants where workspace_id = $1 and provisioned_at is null and principal_id is not null and state in ('invited', 'accepted') order by invited_at`, [WS]);
+  const req = provisioned !== null ? { ok: false, skip: true } : await col(brandt, `workspaces/${WS}/invitations`, 'executive.collab.invite', 'CGR', { display_name: 'R. Haddad — customs broker, partner firm (SYNTHETIC)', contact_label: 'customs-broker@partner.example (SYNTHETIC)', audience_ceiling: 'internal', expires_in_days: 14 });
+  let inv = req.skip ? { ok: true, body: { grant: { ...provisioned, expires_at: '' } }, standing: true } : req;
+  if (req.skip) note(`the invitation provisioned under 0091 stands (grant ${short(provisioned.grant_id)} ${provisioned.state}) — an earlier run`);
+  else if (req.ok) {
+    ok(`L. Brandt REQUESTED the invitation: grant ${short(req.body.grant.grant_id)} ${req.body.grant.state} — no principal yet; an identity administrator provisions it`);
+    const gid = req.body.grant.grant_id;
+    expectRefused('L. Brandt (the requester, not an identity administrator) provisioning the invitation', await col(brandt, `grants/${gid}/provision`, 'executive.collab.provision', 'CGR', {}, gid), 403);
+    inv = await col(admin, `grants/${gid}/provision`, 'executive.collab.provision', 'CGR', {}, gid);
+  }
   let EXT = null;
-  if (!inv.ok) fail('L. Brandt invites the customs expert', inv);
-  else { const g = inv.body.grant; EXT = g.principal_id; ok(`L. Brandt INVITED the customs expert (SYNTHETIC partner firm): grant ${short(g.grant_id)} ${g.state}, expires ${String(g.expires_at).slice(0, 10)} (14 days), ceiling internal, principal ${short(g.principal_id)} marked EXTERNAL, the invitation mailed ${g.mail?.channel ?? 'demo-mailbox'} (synthetic: ${g.mail?.synthetic})`); }
+  if (!inv.ok) fail('the invitation (request → provision)', inv);
+  else if (inv.standing) EXT = provisioned.principal_id;
+  else { const g = inv.body.grant; EXT = g.principal_id; ok(`the administrator PROVISIONED the customs expert (SYNTHETIC partner firm) through the identity authority: grant ${short(g.grant_id)} ${g.state}, expires ${String(g.expires_at).slice(0, 10)} (14 days), ceiling internal, principal ${short(g.principal_id)} marked EXTERNAL, the invitation mailed ${g.mail?.channel ?? 'demo-mailbox'} (synthetic: ${g.mail?.synthetic})`); }
+  for (const g of legacy) {
+    const before = await idFacts(g.principal_id);
+    const rv = await col(brandt, `grants/${g.grant_id}/revoke`, 'executive.collab.grant.revoke', 'CGR', { reason: 'superseded: the invitation 0090 wrote around the identity authority is withdrawn; the provisioned one replaces it' }, g.grant_id);
+    if (!rv.ok) { fail(`L. Brandt revokes the 0090-era grant ${short(g.grant_id)}`, rv); continue; }
+    const after = await idFacts(g.principal_id);
+    (after.creds === 0 && after.sessions === 0 && Number(after.epoch) > Number(before.epoch) ? ok : bad)(`L. Brandt REVOKED the grant ${short(g.grant_id)} INVITED UNDER 0090 (its principal written by the removed bypass port): ${rv.body.grant?.state ?? '—'}; the IDENTITY AUTHORITY revoked what it held — active credentials ${before.creds} → ${after.creds}, live sessions ${before.sessions} → ${after.sessions}, epoch ${before.epoch} → ${after.epoch}`);
+  }
   if (EXT !== null) {
     const ext = (await q(`select decision.is_active_human($1::uuid, $2::uuid) member, executive.principal_affiliation($1::uuid) aff`, [EXT, T]))[0];
     (ext.member === false && ext.aff === 'external' ? ok : bad)(`the expert is EXTERNAL (${ext.aff}) and is never an active member (approver, committer, room member, escalation target): is_active_human = ${ext.member}`);
@@ -314,7 +345,87 @@ if (COMMITMENT !== null) {
         expectRefused('L. Brandt issuing their own handoff (no execution authority; the drafter and the committer)', selfI, 403);
         const is = await cm(lange, `handoffs/${HO.handoff_id}/issue`, 'decision.execution.issue', 'EXH', { payloadDigest: HO.payload_digest }, HO.handoff_id, { consequence: 'C3' });
         if (!is.ok) fail('K. Lange issues the handoff', is);
-        else { const h = is.body.handoff; ok(`K. Lange ISSUED the handoff (C3, human-gated; not the drafter, not the committer): ${h.state}; attempt ${h.attempt?.attempt} → ${h.attempt?.outcome ?? '—'} ${h.attempt?.failure_class ?? h.egress?.failure_class ?? ''} — the PRODUCTION egress refuses a loopback target by design (SAID: the B14 precedent; the positive exchange, the partial effect and the compensation are the harness's, phase6-commitments-b34 E2–E4)`); }
+        else { const h = is.body.handoff; ok(`K. Lange ISSUED the handoff (C3, human-gated; not the drafter, not the committer): ${h.state}; attempt ${h.attempt?.attempt} → ${h.attempt?.outcome ?? '—'} ${h.attempt?.failure_class ?? h.egress?.failure_class ?? ''} — carried by the ${h.transport ?? 'production'} path (with the synthetic loopback switch off the PRODUCTION egress refuses a loopback target by design — the refusal phase6-execution-b34f R1 keeps)`); }
+      }
+    }
+  }
+  // B34-F2 (0091) — THE POSITIVE SCENE through the product's own SYNTHETIC LOOPBACK PATH (the API started with
+  // EYE_EXECUTION_SYNTHETIC_LOOPBACK=on; the target recorded synthetic on a loopback literal with its anchor declared). The first handoff's
+  // refusal above stays the NEGATIVE evidence (the production vetting). Its residual — every line — is reissued by a named compensation
+  // owner; the reissue is carried to the SYNTHETIC ERP and HALF effected (the ERP's partial mode, set by the operator's control call);
+  // the remaining half is reissued again and effected; the handoffs are reconciled. The receipt, the partial effect, the residual and the
+  // compensation are the ledgers' — the act states what they record.
+  if (HANDOFF_ITEM && (await q(`select 1 from public.schema_migrations where filename like '0091%'`)).length === 0) bad('0091 is not applied — the positive ERP scene needs the synthetic loopback path');
+  else if (HANDOFF_ITEM) {
+    const target = (await q(`select target_key, endpoint, trust_anchor_pem, credential_ref, synthetic, state from decision.execution_targets where tenant_id = $1 and domain_id = $2 and target_key = $3`, [T, D, TARGET_KEY]))[0];
+    const bearer = env[target.credential_ref] ?? process.env[target.credential_ref] ?? '';
+    if (REHEARSAL && target && new URL(target.endpoint).port === '3444') { bad('a REHEARSAL copy\'s target names the demonstration\'s ERP (:3444) — refused; the rig repoints it at the rehearsal ERP'); process.exit(3); }
+    const erp = (method, path, body) => new Promise((res, rej) => {
+      const u = new URL(target.endpoint); const payload = body === undefined ? null : Buffer.from(JSON.stringify(body), 'utf8');
+      const rq = httpsRequest({ host: u.hostname, port: Number(u.port), path, method, ca: target.trust_anchor_pem, rejectUnauthorized: true,
+        headers: { authorization: `Bearer ${bearer}`, ...(payload === null ? {} : { 'content-type': 'application/json', 'content-length': String(payload.byteLength) }) } }, (r) => {
+        const chunks = []; r.on('data', (x) => chunks.push(x));
+        r.on('end', () => { try { res({ status: r.statusCode ?? 0, body: JSON.parse(Buffer.concat(chunks).toString('utf8')) }); } catch (e) { rej(e); } });
+      });
+      rq.on('error', rej); if (payload !== null) rq.write(payload); rq.end();
+    });
+    const attemptsOf = (id) => q(`select attempt, outcome, http_status, transport, receipt ->> 'handoff_id' r_handoff, receipt ->> 'attempt' r_attempt, receipt ->> 'payload_digest' r_digest,
+                                         receipt ->> 'status' r_status, egress ->> 'pinned_address' pinned, egress ->> 'tls_verified' tls from decision.execution_attempts where handoff_id = $1 order by attempt`, [id]);
+    const effectsOf = (id) => q(`select line_key, requested_quantity::float8 req, effected_quantity::float8 eff, status from decision.execution_effects where handoff_id = $1 order by line_key`, [id]);
+    const handoffs = await q(`select handoff_id::text, role, compensation_id::text, state, payload_digest, lines from decision.execution_handoffs where item_id = $1 order by drafted_at`, [HANDOFF_ITEM]);
+    const synthetic = await q(`select count(*)::int n from decision.execution_attempts a join decision.execution_handoffs h using (handoff_id) where h.item_id = $1 and a.transport = 'synthetic-loopback'`, [HANDOFF_ITEM]);
+    if (synthetic[0].n > 0) note(`the positive scene stands from an earlier run (${handoffs.map((h) => `${short(h.handoff_id)} ${h.role} ${h.state}`).join('; ')})`);
+    else if (!target || target.synthetic !== true || target.state !== 'active') bad(`the target ${TARGET_KEY} is not an active synthetic target (${JSON.stringify(target ?? null).slice(0, 120)})`);
+    else if (bearer === '') bad(`the ERP's bearer is not bound under ${target.credential_ref} in this environment — the operator's control call needs it`);
+    else {
+      const first = handoffs.find((h) => h.role === 'primary');
+      // the reissue of a residual: the item's owner (L. Brandt) names the owner; the owner drafts; K. Lange issues; the ERP answers
+      const reissue = async (from, label, mode) => {
+        const c = await cm(brandt, `handoffs/${from.handoff_id}/compensations`, 'decision.execution.compensation.assign', 'EXH', { kind: 'reissue_residual', owner: brandt.principalId, dueAt: at(3 * DAY), note: `reissue the ${label} residual to the second source through the synthetic ERP` }, from.handoff_id);
+        if (!c.ok) { fail(`L. Brandt assigns the ${label} residual`, c); return null; }
+        const comp = c.body.compensation;
+        ok(`L. Brandt ASSIGNED the ${label} residual to a named owner (${nm(comp.owner_principal_id)}; reissue_residual; ${comp.state}): ${(comp.residual ?? []).map((x) => `${x.line_key} ${x.residual}`).join(', ')}`);
+        const m = await erp('POST', '/_control', { mode });
+        if (m.status !== 200) { bad(`the operator's control call to the SYNTHETIC ERP (mode ${mode}): HTTP ${m.status}`); return null; }
+        note(`the operator set the SYNTHETIC ERP's answer to "${mode}" (its control route; SAID — the ERP decides what it effects)`);
+        const lines = (comp.residual ?? []).map((x) => { const l = (first.lines ?? []).find((y) => y.line_key === x.line_key) ?? {}; return { line_key: x.line_key, description: l.description ?? `${x.line_key} (SYNTHETIC)`, quantity: Number(x.residual), unit: l.unit ?? 'pcs' }; });
+        const d = await cm(brandt, `items/${HANDOFF_ITEM}/handoffs`, 'decision.execution.draft', 'EXH', { targetKey: TARGET_KEY, compensationId: comp.compensation_id, lines });
+        if (!d.ok) { fail(`the compensation's owner drafts the ${label} reissue`, d); return null; }
+        const ho = d.body.handoff;
+        ok(`${nm(comp.owner_principal_id)} (the compensation's owner) DRAFTED the compensating handoff ${short(ho.handoff_id)}: ${lines.map((l) => `${l.line_key} ${l.quantity} ${l.unit}`).join(', ')}`);
+        const before = (await erp('GET', '/_received')).body.received?.length ?? 0;
+        const is = await cm(lange, `handoffs/${ho.handoff_id}/issue`, 'decision.execution.issue', 'EXH', { payloadDigest: ho.payload_digest }, ho.handoff_id, { consequence: 'C3' });
+        if (!is.ok) { fail(`K. Lange issues the ${label} reissue`, is); return null; }
+        const h = is.body.handoff;
+        const a = (await attemptsOf(ho.handoff_id))[0];
+        const got = ((await erp('GET', '/_received')).body.received ?? []).slice(before);
+        const bound = a && a.r_handoff === ho.handoff_id && a.r_attempt === '1' && a.r_digest === ho.payload_digest;
+        if (h.transport === 'synthetic-loopback' && a?.transport === 'synthetic-loopback' && bound && got.length === 1 && got[0].handoff_id === ho.handoff_id)
+          ok(`K. Lange ISSUED it (C3): carried by the SYNTHETIC LOOPBACK path (pinned ${a.pinned}, TLS verified against the declared anchor ${a.tls}, the bearer by reference) — THE RECEIPT bound by the database (handoff ${short(a.r_handoff)}, attempt ${a.r_attempt}, digest ${String(a.r_digest).slice(0, 12)}…; the ERP answered "${a.r_status}", its own log names the same handoff) → ${h.attempt?.state}`);
+        else bad(`the ${label} reissue: transport ${h.transport}/${a?.transport}, bound ${bound}, the ERP received ${got.length} (${JSON.stringify(h.attempt ?? {}).slice(0, 160)})`);
+        const eff = await effectsOf(ho.handoff_id);
+        ok(`THE EFFECTS (${label}): ${eff.map((e) => `${e.line_key} ${e.eff} of ${e.req} ${e.status}`).join('; ')}`);
+        return { handoff: ho, comp, eff };
+      };
+      const r1 = first ? await reissue(first, 'refused handoff\'s whole', 'partial') : null;
+      if (r1) {
+        const ex = await q(`select kind, state from decision.commitment_exceptions where item_id = $1 order by raised_at`, [HANDOFF_ITEM]);
+        ok(`THE PARTIAL EFFECT opened the item's exception: ${ex.map((e) => `${e.kind} ${e.state}`).join(', ')}; the residual per line ${r1.eff.map((e) => `${e.line_key} ${e.req - e.eff}`).join(', ')}`);
+        expectRefused('L. Brandt reconciling the half-effected reissue while its residual is undisposed', await cm(brandt, `handoffs/${r1.handoff.handoff_id}/reconcile`, 'decision.execution.reconcile', 'EXH', {}, r1.handoff.handoff_id), 409, /residual_undisposed/);
+        const r2 = await reissue({ ...r1.handoff, lines: first.lines }, 'remaining half', 'normal');
+        await erp('POST', '/_control', { mode: 'normal' });
+        if (r2) {
+          const comps = await q(`select kind, state from decision.execution_compensations where item_id = $1 order by created_at`, [HANDOFF_ITEM]);
+          ok(`THE COMPENSATIONS: ${comps.map((c) => `${c.kind} ${c.state}`).join(', ')}`);
+          // the last reissue first: each reconcile disposes the residual of the handoff before it (a compensation whose partially effected
+          // handoff is reconciled is done — 0091 §F3), so the refused original reconciles last
+          for (const h of [r2.handoff, r1.handoff, first]) {
+            const rc = await cm(brandt, `handoffs/${h.handoff_id}/reconcile`, 'decision.execution.reconcile', 'EXH', {}, h.handoff_id);
+            if (rc.ok) ok(`L. Brandt RECONCILED the handoff ${short(h.handoff_id)} (${rc.body.handoff.from} → ${rc.body.handoff.state})`); else fail(`L. Brandt reconciles ${short(h.handoff_id)}`, rc);
+          }
+          const it = (await q(`select i.state, (select string_agg(kind || ' ' || state, ', ' order by raised_at) from decision.commitment_exceptions e where e.item_id = i.item_id) ex from decision.commitment_items i where item_id = $1`, [HANDOFF_ITEM]))[0];
+          ok(`the purchase-request item: ${it.state}; its exceptions ${it.ex}`);
+        }
       }
     }
   }
@@ -324,6 +435,12 @@ if (COMMITMENT !== null) {
   if (tl.ok) ok(`THE TIMELINE: ${(tl.body.commitment.timeline ?? []).length} entries over the lanes ${[...new Set((tl.body.commitment.timeline ?? []).map((x) => x.lane))].join(', ')}`); else fail('the timeline read', tl);
 }
 
+// ACT_SCENES=b34f (the B34-F run of 2026-09-29): scenes A, W (part 2) and X held on 2026-09-28 (evidence/cp6/act-b34.txt) and need a
+// fresh state and minute-scale waits; the B34-F run replays the corrected scenes (W: the invitation through the identity authority;
+// C: the positive execution scene) and says so here.
+if (process.env.ACT_SCENES === 'b34f') {
+  console.log('\nB34-A, B34-W (part 2), B34-X — HELD on 2026-09-28 (evidence/cp6/act-b34.txt); not replayed by the B34-F run (fresh state and minute-scale waits)');
+} else {
 /* ── B34-A ───────────────────────────────────────────────────────────────────────────── */
 console.log('\nB34-A F-P6-07 — an opportunity, a score change and an overdue commitment enter the queue beside the corridor warning; the act; the escalation to the e-mail sink; ranking fairness');
 const tA = new Date();
@@ -412,6 +529,8 @@ console.log('\nB34-X F-P4-13 — the next risk taxonomy version published and AC
     const a = await call(`${XP}/taxonomy/activate`, env_(okafor, 'prediction')({ action: 'prediction.exposure.taxonomy.activate', objectType: 'RSK' }), { version: v, reason: 'reviewed: the customs category is needed for the rerouted consignments' }, okafor.token);
     if (!a.ok) fail('S. Okafor activates the taxonomy', a); else ok(`S. Okafor ACTIVATED taxonomy version ${v} (the second person) — now in force`);
   }
+}
+
 }
 
 /* ── B34-9 ───────────────────────────────────────────────────────────────────────────── */

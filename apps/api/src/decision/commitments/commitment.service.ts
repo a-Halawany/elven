@@ -13,7 +13,11 @@
  *              (http-client.ts `deliver`: the address resolved and vetted, then the pinned POST verified against the target's declared
  *              trust anchor, the credential by reference on the one hop, no redirect) — its provider `ExecutionEgress`, which a harness
  *              substitutes with the client's own `deliverPinned` on a loopback synthetic ERP and nothing else (the B14 substitution); the
- *              receipt echoes the handoff id, the attempt and the payload digest — the database refuses to call any other answer an effect
+ *              receipt echoes the handoff id, the attempt and the payload digest — the database refuses to call any other answer an effect;
+ *              B34-F2 (0091): THE SYNTHETIC LOOPBACK PATH — under the deployment switch eye.execution.synthetic_loopback = on, a target
+ *              recorded synthetic whose endpoint host is an IPv4 loopback literal and whose trust anchor is declared is carried over the
+ *              client's pinned transport to that literal (no substitution: the product's own path); everything else — and everything
+ *              with the switch off — goes through the unchanged production vetting; each attempt records which path carried it
  *   FEX-18     partial effects per line, the residual, compensation with a named owner (accept_residual co-signed), reconciliation
  *   closure    proposed by the owner with deliverables, co-signed by the reviewer → CMT version 2 (status closed) admitted under
  *              decision.commitment.close
@@ -25,7 +29,7 @@
  * The tick registry lives in the executive module, which imports this one: it is resolved from the application container at module
  * start (ModuleRef, strict: false), the stream processor's precedent.
  */
-import { HttpException, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
+import { HttpException, Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { canonicalHeaderDigest, errorBody, validateHeader, type Envelope } from '@eye/contracts';
 import { newId } from '../../shared/ids.js';
@@ -33,7 +37,9 @@ import type { ScopeContext } from '../../shared/scope.js';
 import type { AuthenticatedPrincipal } from '../../shared/auth-types.js';
 import { PipelineService } from '../../pipeline/pipeline.service.js';
 import { AttentionTickRegistry, type AttentionTickContext } from '../../executive/attention/tick.js';
-import { deliver, EgressRefused, type DeliveryRequest, type EgressPolicy, type EgressResult } from '../../observation/connectors/http-client.js';
+import { deliver, deliverPinned, EgressRefused, type DeliveryRequest, type EgressPolicy, type EgressResult } from '../../observation/connectors/http-client.js';
+import { EYE_CONFIG } from '../../config/config.module.js';
+import type { EyeConfig } from '../../config/config.js';
 import { sha256 } from '../../observation/vault/vault.service.js';
 import { DestinationCredentialStore } from '../../retention/export-signing.js';
 import type { CommitmentChangeKind } from '../../executive/attention/signal-contracts.js';
@@ -67,19 +73,61 @@ export const itemAnswerOf = (r: Row): Row => ({
   owner: r['owner_principal_id'] ?? r['owner'], reviewer: r['reviewer_principal_id'] ?? r['reviewer'] ?? null, reviewer_basis: r['reviewer_basis'], due_at: iso(r['due_at']), state: r['state'], version: r['version'],
 });
 
+/** B34-F2 (0091): which path carried an attempt — recorded on the attempt (egress.transport; the column decision.execution_attempts.transport). */
+export type ExecutionTransport = 'synthetic-loopback' | 'production';
+export interface ExecutionPath { transport: ExecutionTransport; switch: 'on' | 'off'; pinned: string | null; basis: string }
+/** An IPv4 loopback LITERAL (127.0.0.0/8, each octet 0..255) — a name (localhost included) never is: a name is resolved, and resolving is the vetting's. */
+export function isLoopbackLiteral(host: string): boolean {
+  const m = /^127\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+  return m !== null && [m[1], m[2], m[3]].every((o) => Number(o) <= 255);
+}
+/**
+ * B34-F2 (0091) — THE PATH A TARGET'S ATTEMPT TAKES (pure). `synthetic-loopback` only when ALL hold: the deployment switch is on; the
+ * target is recorded synthetic; its endpoint is an https URL without userinfo whose host is an IPv4 loopback literal; its trust anchor is
+ * declared (the TLS identity is the declared party's, never the deployment's store). Otherwise `production` — the unchanged vetting, which
+ * refuses every loopback, private, link-local and reserved address. The basis says why, for the attempt's record.
+ */
+export function executionPathOf(target: Row, switchOn: boolean): ExecutionPath {
+  const sw = switchOn ? 'on' : 'off';
+  const production = (basis: string): ExecutionPath => ({ transport: 'production', switch: sw, pinned: null, basis });
+  if (!switchOn) return production('the synthetic loopback switch is off');
+  if (target['synthetic'] !== true) return production('the target is not recorded synthetic');
+  let u: URL;
+  try { u = new URL(String(target['endpoint'])); } catch { return production('the endpoint is not a URL'); }
+  if (u.protocol !== 'https:' || u.username !== '' || u.password !== '') return production('the endpoint is not an https URL without userinfo');
+  if (!isLoopbackLiteral(u.hostname)) return production('the endpoint host is not an IPv4 loopback literal');
+  const anchor = target['trust_anchor_pem'];
+  if (typeof anchor !== 'string' || anchor.trim() === '') return production('the target declares no trust anchor');
+  return { transport: 'synthetic-loopback', switch: sw, pinned: u.hostname, basis: 'a synthetic target on a loopback literal, the switch on, the declared anchor verified' };
+}
+
 /**
  * THE EXECUTION EGRESS as a provider (the B14 DeliveryEgress precedent): production is http-client.ts `deliver` (the host allowlist, the
- * address resolved and VETTED — every loopback, private, link-local and reserved address refused — then the pinned POST). A harness that
- * drives the synthetic ERP on a loopback address substitutes `deliver` with the client's own `deliverPinned(req, '127.0.0.1')` and nothing
+ * address resolved and VETTED — every loopback, private, link-local and reserved address refused — then the pinned POST). The B34 harness
+ * that drives the synthetic ERP on a loopback NAME substitutes `deliver` with the client's own `deliverPinned(req, '127.0.0.1')` and nothing
  * else: the TLS verification against the declared anchor, the headers, the credential and the answer's handling stay the product's.
+ *
+ * B34-F2 (0091): `deliverSyntheticLoopback` is the SUPPORTED synthetic path, not a substitution: the same `deliverPinned`, to the endpoint's
+ * own loopback literal, only under the deployment switch; it re-checks its preconditions and refuses (address_not_public) otherwise.
  */
 @Injectable()
 export class ExecutionEgress {
+  constructor(@Inject(EYE_CONFIG) private readonly cfg: EyeConfig) {}
   deliver(req: DeliveryRequest): Promise<EgressResult> { return deliver(req); }
+  /** The deployment switch, read at each attempt (the attempt records what it was). */
+  syntheticLoopback(): boolean { return this.cfg['eye.execution.synthetic_loopback'] === 'on'; }
+  deliverSyntheticLoopback(req: DeliveryRequest, pinned: string): Promise<EgressResult> {
+    let host = '';
+    try { host = new URL(req.url).hostname; } catch { host = ''; }
+    if (!this.syntheticLoopback() || !isLoopbackLiteral(host) || pinned !== host || req.policy.trustAnchorPem === undefined) {
+      return Promise.reject(new EgressRefused('address_not_public', 'the synthetic loopback path is for a synthetic target on a loopback literal with a declared anchor, under the switch'));
+    }
+    return deliverPinned(req, pinned);
+  }
 }
 
 /** What one attempt's transport came to — the record port classifies it (the receipt's binding is the database's check). */
-export interface AttemptTransport { httpStatus: number | null; receipt: Row | null; failureDetail: string | null; egress: Row | null }
+export interface AttemptTransport { httpStatus: number | null; receipt: Row | null; failureDetail: string | null; egress: Row | null; transport?: ExecutionTransport | null }
 
 @Injectable()
 export class CommitmentService implements OnModuleInit {
@@ -121,7 +169,7 @@ export class CommitmentService implements OnModuleInit {
       const t = target['state'] === 'active' ? await this.transport(target, d['payload'] as Row, String(d['handoff_id']), Number(d['attempt']), String(d['payload_digest']))
                                              : { httpStatus: null, receipt: null, failureDetail: 'the target is retired', egress: null };
       const r = await this.recordAttempt(cap, { tenantId: c.tenantId, domainId: c.domainId, actor: c.agentPrincipalId, correlationId: c.correlationId }, String(d['handoff_id']), Number(d['attempt']), t);
-      attempted.push({ handoff_id: d['handoff_id'], attempt: d['attempt'], outcome: r['outcome'], state: r['state'] });
+      attempted.push({ handoff_id: d['handoff_id'], attempt: d['attempt'], outcome: r['outcome'], state: r['state'], transport: t.transport ?? null });
       events.push(...arr(r['events']));
     }
     return { due: due.length, attempted, events };
@@ -153,11 +201,15 @@ export class CommitmentService implements OnModuleInit {
 
   /** One POST of the handoff to its target: the payload with the attempt and the digest; the answer parsed; nothing thrown — every outcome is recorded. */
   async transport(target: Row, payload: Row, handoffId: string, attempt: number, payloadDigest: string): Promise<AttemptTransport> {
+    // B34-F2 (0091): the path first — recorded on every attempt, whatever it came to (egress.transport, the switch, the basis)
+    const path = executionPathOf(target, this.egress.syntheticLoopback());
+    const via: Row = { transport: path.transport, synthetic_loopback_switch: path.switch, transport_basis: path.basis };
     let url: URL;
-    try { url = new URL(String(target['endpoint'])); } catch { return { httpStatus: null, receipt: null, failureDetail: 'the endpoint is not a URL', egress: null }; }
+    try { url = new URL(String(target['endpoint'])); } catch { return { httpStatus: null, receipt: null, failureDetail: 'the endpoint is not a URL', egress: via, transport: path.transport }; }
     const credentialRef = target['credential_ref'] === null || target['credential_ref'] === undefined ? null : String(target['credential_ref']);
     if (credentialRef !== null && !this.credentials.has(credentialRef)) {
-      return { httpStatus: null, receipt: null, failureDetail: `the target names credential ${credentialRef}, and this deployment binds none under that name; nothing left the process`, egress: { credential_unbound: credentialRef } };
+      return { httpStatus: null, receipt: null, failureDetail: `the target names credential ${credentialRef}, and this deployment binds none under that name; nothing left the process`,
+               egress: { ...via, credential_unbound: credentialRef }, transport: path.transport };
     }
     const credential = credentialRef === null ? null : this.credentials.resolve(credentialRef);
     const body = Buffer.from(JSON.stringify({ ...payload, attempt, payload_digest: payloadDigest }), 'utf8');
@@ -165,19 +217,22 @@ export class CommitmentService implements OnModuleInit {
     const policy: EgressPolicy = { ...EXECUTION_POLICY, hostAllowlist: [url.hostname.toLowerCase()], ...(anchor === null ? {} : { trustAnchorPem: anchor }) };
     let res: EgressResult;
     try {
-      res = await this.egress.deliver({ url: url.toString(), body, contentType: 'application/json', policy,
+      const req: DeliveryRequest = { url: url.toString(), body, contentType: 'application/json', policy,
         headers: { 'x-eye-handoff-id': handoffId, 'x-eye-attempt': String(attempt), 'x-eye-payload-digest': payloadDigest, 'x-eye-synthetic': 'true' },
-        ...(credential === null ? {} : { credentials: { authorization: `Bearer ${credential}` } }) });
+        ...(credential === null ? {} : { credentials: { authorization: `Bearer ${credential}` } }) };
+      res = path.transport === 'synthetic-loopback' ? await this.egress.deliverSyntheticLoopback(req, path.pinned as string) : await this.egress.deliver(req);
     } catch (e) {
       const detail = e instanceof EgressRefused ? `${e.refusalClass}: ${e.message}` : String((e as Error)?.message ?? e);
       return { httpStatus: e instanceof EgressRefused && typeof e.status === 'number' ? e.status : null, receipt: null, failureDetail: detail.slice(0, 300),
-               egress: { refused: e instanceof EgressRefused ? e.refusalClass : null, request_sent: e instanceof EgressRefused ? (e.requestSent ?? null) : null } };
+               egress: { ...via, refused: e instanceof EgressRefused ? e.refusalClass : null, request_sent: e instanceof EgressRefused ? (e.requestSent ?? null) : null }, transport: path.transport };
     }
-    const egress: Row = { status: res.status, pinned_address: res.pinnedAddress, tls_verified: res.tlsVerified, hops: res.hops, body_digest: sha256(res.body), body_length: res.body.byteLength, request_sent: res.requestSent };
+    const egress: Row = { ...via, status: res.status, pinned_address: res.pinnedAddress, tls_verified: res.tlsVerified, hops: res.hops, body_digest: sha256(res.body), body_length: res.body.byteLength,
+                          request_sent: res.requestSent };
     let parsed: unknown;
     try { parsed = JSON.parse(res.body.toString('utf8')); } catch { parsed = undefined; }
     const receipt = parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Row) : null;
-    return { httpStatus: res.status, receipt, failureDetail: res.status >= 200 && res.status < 300 ? (receipt === null ? 'the answer is not a JSON object' : null) : `the target answered ${res.status}`, egress };
+    return { httpStatus: res.status, receipt, failureDetail: res.status >= 200 && res.status < 300 ? (receipt === null ? 'the answer is not a JSON object' : null) : `the target answered ${res.status}`, egress,
+             transport: path.transport };
   }
 
   private async recordAttempt(cap: AttemptRecorder, s: { tenantId: string; domainId: string; actor: string; correlationId: string }, handoffId: string, attempt: number, t: AttemptTransport): Promise<Row> {
@@ -204,7 +259,7 @@ export class CommitmentService implements OnModuleInit {
     const exceptions = itemIds.length === 0 ? [] : (await cap.readExceptions().selectAll().where('item_id' as never, 'in', itemIds as never).orderBy('raised_at' as never).execute()) as Row[];
     const handoffs = (await cap.readHandoffs().selectAll().where('commitment_id' as never, '=', commitmentId as never).orderBy('drafted_at' as never).execute()) as Row[];
     const hIds = handoffs.map((h) => String(h['handoff_id']));
-    const attempts = hIds.length === 0 ? [] : (await cap.readAttempts().select(['attempt_id', 'handoff_id', 'attempt', 'outcome', 'http_status', 'failure_detail', 'receipt', 'by_tick', 'attempted_at'] as never)
+    const attempts = hIds.length === 0 ? [] : (await cap.readAttempts().select(['attempt_id', 'handoff_id', 'attempt', 'outcome', 'http_status', 'failure_detail', 'receipt', 'by_tick', 'attempted_at', 'transport'] as never)
       .where('handoff_id' as never, 'in', hIds as never).orderBy('attempted_at' as never).execute()) as Row[];
     const effects = hIds.length === 0 ? [] : (await cap.readEffects().selectAll().where('handoff_id' as never, 'in', hIds as never).orderBy('line_key' as never).execute()) as Row[];
     const compensations = hIds.length === 0 ? [] : (await cap.readCompensations().selectAll().where('handoff_id' as never, 'in', hIds as never).orderBy('created_at' as never).execute()) as Row[];
@@ -334,7 +389,7 @@ export class CommitmentService implements OnModuleInit {
     const { target, ...rest } = issued;
     const tgt = target as Row;
     return { result: { ...rest, target: { target_key: tgt['target_key'], endpoint: tgt['endpoint'], synthetic: tgt['synthetic'], trust_anchor_declared: tgt['trust_anchor_pem'] !== null },
-                       attempt, egress: t.egress, receipt: t.receipt }, events };
+                       attempt, transport: t.transport ?? null, egress: t.egress, receipt: t.receipt }, events };
   }
 
   async assignCompensation(cap: CompensationWrites, scope: ScopeContext, handoffId: string, p: Row, actor: string, correlationId: string) {

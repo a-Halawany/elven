@@ -1,0 +1,110 @@
+# The B34-F run on eye_demo, 2026-09-29 (ACT_SCENES=b34f; 0091 applied; the API restarted with EYE_EXECUTION_SYNTHETIC_LOOPBACK=on and the sinks in the caller's environment).
+# RUN 1 played scene W (the invitation requested and provisioned through the identity authority; the 0090-era grant revoked) and stopped at scene C:
+# the act was started without the local env file sourced, so the ERP's bearer (by reference) was not in its environment. RUN 2 (the env sourced) held.
+
+════════ RUN 1 ════════
+THE B34 ACT on eye_demo — 2026-09-29T09:51:01.226Z
+
+B34-0 THE STATE — 0090, the register, the casting, the new personas, the subscriptions, the policy
+  ✓ migration 0090_b34_workflow_gates_commitments.sql applied
+  ✓ migration 0091_b34f_identity_authority_execution_path.sql applied (B34-F1: the invitation's identity rows are the identity authority's)
+  ✓ the casting read from identity.role_bindings: a.hoffmann (domain_analyst); c.brenner (decision_owner, risk_owner, strategy_owner); j.weber (strategy_owner); l.brandt (decision_authority, decision_owner, opportunity_sponsor, strategy_owner); m.dvorak (collection_manager, executive); n.eriksen (forecast_owner); s.okafor (decision_approver, executive)
+  · T. Richter is present — an earlier run
+  · K. Lange is present — an earlier run
+  ✓ the register: 50 bound / 0 partial / 0 unbound (B34 adds no interface)
+  · 14 live subscriptions; every one carries this process's consumer identity (an earlier run re-registered them)
+  · the commitments subscription is live — an earlier run registered it
+  · attention policy version 6 already names the B34 classes — an earlier run
+  ✓ the inputs: the Regensburg objective 01a0…3d1d00 (owner J. Weber); the corridor exposure 01a0…b2cb46 and its MITIGATION case 01a0…9f461d "Mitigate the corridor closure — Regensburg line" (committed, owner C. Brenner); the Morocco opportunity 01a0…a18123; the runs control 01a0…332f38 / reroute 01a0…049267 on the twin 01a0…76f525
+
+B34-W F-P6-14 — a customs expert from a partner firm invited for 14 days; their review escalates to the chief of staff when the deadline passes
+  · the workspace 01a0…0321bc on the case stands — an earlier run
+  · M. Dvořák as reviewer: 409 EYE-STA-002 — collaboration rejected (duplicate): 01a084f5-75d2-776d-a4a1-0073ec383c43 already takes part (or took part) in this workspace
+  ✓ L. Brandt SHARED the artifact "customs-brief" (internal) in the workspace
+  ✓ L. Brandt REQUESTED the invitation: grant 01a0…610c7e requested — no principal yet; an identity administrator provisions it
+  ✓ L. Brandt (the requester, not an identity administrator) provisioning the invitation REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ the administrator PROVISIONED the customs expert (SYNTHETIC partner firm) through the identity authority: grant 01a0…610c7e invited, expires 2026-10-13 (14 days), ceiling internal, principal 01a0…587b24 marked EXTERNAL, the invitation mailed demo-mailbox (synthetic: true)
+  ✓ L. Brandt REVOKED the grant 01a0…6e9ec8 INVITED UNDER 0090 (its principal written by the removed bypass port): revoked; the IDENTITY AUTHORITY revoked what it held — active credentials 1 → 0, live sessions 0 → 0, epoch 1 → 2
+  ✓ the expert is EXTERNAL (external) and is never an active member (approver, committer, room member, escalation target): is_active_human = false
+  ✓ L. Brandt REQUESTED the expert's review: task 01a0…1b3706 completed (repeated), deadline in 100 s (SET SHORT FOR THE DEMONSTRATION — said), escalating to M. Dvořák
+
+B34-G F-P6-04 — "only if customs pre-clearance holds": the commitment HELD, the owner DEFERS, the assumption VERIFIED, resumed, committed
+  · the assumption 01a0…c12d64 stands (verified) — an earlier run
+  · the mitigation case is committed (01a0…5ab01c) — an earlier run
+
+B34-C F-P6-05 — the tracker, the purchase-request handoff to the SYNTHETIC ERP, the timeline
+  ✓ the tracker SEEDED the root item 1a22…80a564 from the commitment: owner L. Brandt (the action owner), reviewer J. Weber (the objective's owner), in_progress
+  · the execution target nordwerk-purchasing-demo stands (active) — an earlier run
+  · the handoff 01a0…e2438b stands (failed) — an earlier run
+  ✗ the ERP's bearer is not bound under EYE_DST_NORDWERK_ERP_DEMO in this environment — the operator's control call needs it
+  ✓ THE TRACKER (M. Dvořák): 3 item(s) of this commitment — Customs pre-clearance filed with the bro in_progress; Purchase request: second bearing source  exception; Execute: Mitigate the corridor closure — in_progress; summary {"items":3,"overdue":0,"exceptions":1,"with_residual":0,"retask_required":0,"commitments":1}
+  ✓ THE TIMELINE: 28 entries over the lanes governance, commitment, resource, operational, deviation
+
+B34-A, B34-W (part 2), B34-X — HELD on 2026-09-28 (evidence/cp6/act-b34.txt); not replayed by the B34-F run (fresh state and minute-scale waits)
+
+B34-9 THE STATE and the LIMITS
+  · in the ledgers: 11 human tasks, 3 commitment items, 1 execution handoffs, 1 attention acts
+  · the expert's review task at the end: completed, escalation level 1, assignee M. Dvořák
+  · LIMITS said: the customs expert, the purchase lines, the amounts and the ERP are SYNTHETIC; the review deadline, the deliverable's due instant and the opportunity's acknowledgement window are set minutes out so the scheduled ticks cross them during the act; the expert's sign-in, acceptance and scope refusals are the harness's (phase6-workflow-b34 C1 — the invitation token never leaves the API process, by design); the production egress refuses the loopback ERP by design — the positive exchange, the partial effect, the compensation and the co-signed closure are the harness's (phase6-commitments-b34 E2–E4, Z1); the e-mail, SMS and Teams adapters reach LOCAL sinks only (a real provider is D6); the exposure outcome loop, the canonical polarity, the detections and the further dimensions are the harness's (phase6-exposures-b34 E3–E6); the external collaborator's principal is written by the collaboration port (the Phase 0 identity path is frozen — B61 owns the governed route); nothing is cleaned.
+
+1 FAILURE(S) · 0.9 s
+
+════════ RUN 2 ════════
+THE B34 ACT on eye_demo — 2026-09-29T09:51:09.258Z
+
+B34-0 THE STATE — 0090, the register, the casting, the new personas, the subscriptions, the policy
+  ✓ migration 0090_b34_workflow_gates_commitments.sql applied
+  ✓ migration 0091_b34f_identity_authority_execution_path.sql applied (B34-F1: the invitation's identity rows are the identity authority's)
+  ✓ the casting read from identity.role_bindings: a.hoffmann (domain_analyst); c.brenner (decision_owner, risk_owner, strategy_owner); j.weber (strategy_owner); l.brandt (decision_authority, decision_owner, opportunity_sponsor, strategy_owner); m.dvorak (collection_manager, executive); n.eriksen (forecast_owner); s.okafor (decision_approver, executive)
+  · T. Richter is present — an earlier run
+  · K. Lange is present — an earlier run
+  ✓ the register: 50 bound / 0 partial / 0 unbound (B34 adds no interface)
+  · 14 live subscriptions; every one carries this process's consumer identity (an earlier run re-registered them)
+  · the commitments subscription is live — an earlier run registered it
+  · attention policy version 6 already names the B34 classes — an earlier run
+  ✓ the inputs: the Regensburg objective 01a0…3d1d00 (owner J. Weber); the corridor exposure 01a0…b2cb46 and its MITIGATION case 01a0…9f461d "Mitigate the corridor closure — Regensburg line" (committed, owner C. Brenner); the Morocco opportunity 01a0…a18123; the runs control 01a0…332f38 / reroute 01a0…049267 on the twin 01a0…76f525
+
+B34-W F-P6-14 — a customs expert from a partner firm invited for 14 days; their review escalates to the chief of staff when the deadline passes
+  · the workspace 01a0…0321bc on the case stands — an earlier run
+  · M. Dvořák as reviewer: 409 EYE-STA-002 — collaboration rejected (duplicate): 01a084f5-75d2-776d-a4a1-0073ec383c43 already takes part (or took part) in this workspace
+  ✓ L. Brandt SHARED the artifact "customs-brief" (internal) in the workspace
+  · the invitation provisioned under 0091 stands (grant 01a0…610c7e invited) — an earlier run
+  ✓ the expert is EXTERNAL (external) and is never an active member (approver, committer, room member, escalation target): is_active_human = false
+  ✓ L. Brandt REQUESTED the expert's review: task 01a0…1b3706 completed (repeated), deadline in 100 s (SET SHORT FOR THE DEMONSTRATION — said), escalating to M. Dvořák
+
+B34-G F-P6-04 — "only if customs pre-clearance holds": the commitment HELD, the owner DEFERS, the assumption VERIFIED, resumed, committed
+  · the assumption 01a0…c12d64 stands (verified) — an earlier run
+  · the mitigation case is committed (01a0…5ab01c) — an earlier run
+
+B34-C F-P6-05 — the tracker, the purchase-request handoff to the SYNTHETIC ERP, the timeline
+  ✓ the tracker SEEDED the root item 1a22…80a564 from the commitment: owner L. Brandt (the action owner), reviewer J. Weber (the objective's owner), in_progress
+  · the execution target nordwerk-purchasing-demo stands (active) — an earlier run
+  · the handoff 01a0…e2438b stands (failed) — an earlier run
+  ✓ L. Brandt ASSIGNED the refused handoff's whole residual to a named owner (L. Brandt; reissue_residual; assigned): brg-6205 400, mag-n42 120
+  · the operator set the SYNTHETIC ERP's answer to "partial" (its control route; SAID — the ERP decides what it effects)
+  ✓ L. Brandt (the compensation's owner) DRAFTED the compensating handoff 01a0…3d7da3: brg-6205 400 pcs, mag-n42 120 pcs
+  ✓ K. Lange ISSUED it (C3): carried by the SYNTHETIC LOOPBACK path (pinned 127.0.0.1, TLS verified against the declared anchor true, the bearer by reference) — THE RECEIPT bound by the database (handoff 01a0…3d7da3, attempt 1, digest 8a834555f0d7…; the ERP answered "partial", its own log names the same handoff) → partially_effected
+  ✓ THE EFFECTS (refused handoff's whole): brg-6205 200 of 400 partial; mag-n42 60 of 120 partial
+  ✓ THE PARTIAL EFFECT opened the item's exception: blocked open, partial_effect open; the residual per line brg-6205 200, mag-n42 60
+  ✓ L. Brandt reconciling the half-effected reissue while its residual is undisposed REFUSED — 409 EYE-STA-002 — execution reconcile rejected (residual_undisposed): handoff 01a0ec93-46ab-7515-a6bc-40039e3d7da3 is partially_effected and its residual is not disposed (0 compensation(s) disposed, 0 live) — assign a compensation and com
+  ✓ L. Brandt ASSIGNED the remaining half residual to a named owner (L. Brandt; reissue_residual; assigned): brg-6205 200, mag-n42 60
+  · the operator set the SYNTHETIC ERP's answer to "normal" (its control route; SAID — the ERP decides what it effects)
+  ✓ L. Brandt (the compensation's owner) DRAFTED the compensating handoff 01a0…9db06d: brg-6205 200 pcs, mag-n42 60 pcs
+  ✓ K. Lange ISSUED it (C3): carried by the SYNTHETIC LOOPBACK path (pinned 127.0.0.1, TLS verified against the declared anchor true, the bearer by reference) — THE RECEIPT bound by the database (handoff 01a0…9db06d, attempt 1, digest b0530a1680f8…; the ERP answered "accepted", its own log names the same handoff) → effected
+  ✓ THE EFFECTS (remaining half): brg-6205 200 of 200 effected; mag-n42 60 of 60 effected
+  ✓ THE COMPENSATIONS: reissue_residual in_progress, reissue_residual done
+  ✓ L. Brandt RECONCILED the handoff 01a0…9db06d (effected → reconciled)
+  ✓ L. Brandt RECONCILED the handoff 01a0…3d7da3 (partially_effected → reconciled)
+  ✓ L. Brandt RECONCILED the handoff 01a0…e2438b (failed → reconciled)
+  ✓ the purchase-request item: in_progress; its exceptions blocked resolved, partial_effect resolved
+  ✓ THE TRACKER (M. Dvořák): 3 item(s) of this commitment — Customs pre-clearance filed with the bro in_progress; Purchase request: second bearing source  in_progress; Execute: Mitigate the corridor closure — in_progress; summary {"items":3,"overdue":0,"exceptions":0,"with_residual":0,"retask_required":0,"commitments":1}
+  ✓ THE TIMELINE: 51 entries over the lanes governance, commitment, resource, operational, deviation
+
+B34-A, B34-W (part 2), B34-X — HELD on 2026-09-28 (evidence/cp6/act-b34.txt); not replayed by the B34-F run (fresh state and minute-scale waits)
+
+B34-9 THE STATE and the LIMITS
+  · in the ledgers: 14 human tasks, 3 commitment items, 3 execution handoffs, 1 attention acts
+  · the expert's review task at the end: completed, escalation level 1, assignee M. Dvořák
+  · LIMITS said: the customs expert, the purchase lines, the amounts and the ERP are SYNTHETIC; the review deadline, the deliverable's due instant and the opportunity's acknowledgement window are set minutes out so the scheduled ticks cross them during the act; the expert's sign-in, acceptance and scope refusals are the harness's (phase6-workflow-b34 C1 — the invitation token never leaves the API process, by design); the production egress refuses the loopback ERP by design — the positive exchange, the partial effect, the compensation and the co-signed closure are the harness's (phase6-commitments-b34 E2–E4, Z1); the e-mail, SMS and Teams adapters reach LOCAL sinks only (a real provider is D6); the exposure outcome loop, the canonical polarity, the detections and the further dimensions are the harness's (phase6-exposures-b34 E3–E6); the external collaborator's principal is written by the collaboration port (the Phase 0 identity path is frozen — B61 owns the governed route); nothing is cleaned.
+
+ALL SCENES HELD · 0.9 s

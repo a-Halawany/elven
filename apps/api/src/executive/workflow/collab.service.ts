@@ -8,16 +8,18 @@
  * its threads, artifacts and reviews — and nothing more: participation is never room membership and never approver standing (no approval,
  * commit or room port reads it). Artifacts are classified at or below the ceiling; a member reads those their clearance covers.
  *
- * AN EXTERNAL COLLABORATOR (a partner firm's person) is INVITED by the workspace's owner: a DOMAIN principal of affiliation `external` with
- * the one role external_collaborator, bounded by a GRANT — the workspace's purpose, an audience ceiling at or below the workspace's, an
- * expiry at most 30 days out. The invitation goes through the SYNTHETIC invitation mailbox (a local sink: the database keeps the subject and
- * the body's digest; the message itself is held in this process's synthetic sink — no e-mail is sent, a real provider is owner decision D6).
- * It carries a one-time token that is also the invitation credential (argon2id, expiring with the invitation window); ACCEPTING it, signed
- * in with the token, the invitee sets their own password — a credential that EXPIRES WITH THE GRANT (identity.service.ts refuses it once
- * expired). Every collaboration port checks the LIVE grant (accepted, unexpired, unrevoked, the request's purpose the grant's); the reads
+ * AN EXTERNAL COLLABORATOR (a partner firm's person) is INVITED in TWO acts (B34-F1, 0091): the workspace's owner REQUESTS the invitation
+ * (the grant `requested` — no identity write), and an IDENTITY ADMINISTRATOR PROVISIONS it through the identity authority
+ * (collab-identity.service.ts): a DOMAIN principal of affiliation `external` with the one role external_collaborator, bounded by a GRANT —
+ * the workspace's purpose, an audience ceiling at or below the workspace's, an expiry at most 30 days out. The invitation goes through the
+ * SYNTHETIC invitation mailbox (a local sink: the database keeps the subject and the body's digest; the message itself is held in this
+ * process's synthetic sink — no e-mail is sent, a real provider is owner decision D6). It carries a one-time token that is also the
+ * invitation credential (argon2id, expiring with the invitation window, issued by the identity ports); ACCEPTING it, signed in with the
+ * token, the invitee sets their own password — the identity authority rotates the credential to one that EXPIRES WITH THE GRANT
+ * (identity.service.ts refuses it once expired). Every collaboration port checks the LIVE grant (accepted, unexpired, unrevoked, the request's purpose the grant's); the reads
  * here show an external only the workspaces it holds a live grant on, and only the artifacts at or below its audience ceiling
- * (clearance.ts maps the role to the grant's ceiling). When the grant lapses or is revoked, the external's binding is revoked (its sessions
- * end) and its open tasks are reassigned with reason access_lost.
+ * (clearance.ts maps the role to the grant's ceiling). When the grant lapses or is revoked, its open tasks are reassigned with reason access_lost
+ * and the identity authority revokes its credentials and sessions and bumps its epoch (B34-F1).
  */
 import { createHash, randomBytes } from 'node:crypto';
 import { HttpException, Inject, Injectable } from '@nestjs/common';
@@ -36,7 +38,8 @@ export const CLASSIFICATIONS = ['public', 'internal', 'confidential', 'restricte
 export const PARTICIPANT_ROLES = ['contributor', 'reviewer', 'observer'] as const;
 export const ARTIFACT_KINDS = ['note', 'document', 'evidence_ref'] as const;
 export const VERDICTS = ['endorse', 'endorse_with_conditions', 'concerns', 'object'] as const;
-export const GRANT_STATES = ['invited', 'accepted', 'revoked', 'lapsed'] as const;
+/** B34-F1 (0091): `requested` — the owner's request, awaiting an identity administrator's provisioning. */
+export const GRANT_STATES = ['requested', 'invited', 'accepted', 'revoked', 'lapsed'] as const;
 /** A grant expires at most this many days after its invitation (the port and the table enforce it too). */
 export const MAX_GRANT_DAYS = 30;
 /** The invitation window (the one-time credential's life), capped at the grant's expiry. */
@@ -213,9 +216,8 @@ export class CollabService {
     return m === undefined ? null : { ...m, runtime: this.cfg['eye.runtime.env'] };
   }
 
-  async acceptHashes(token: string, password: string): Promise<{ tokenHash: string; newCredentialHash: string }> {
-    return { tokenHash: sha256(token), newCredentialHash: await argon2.hash(password, { type: argon2.argon2id }) };
-  }
+  /** The invitation token's hash the acceptance port compares (B34-F1: the new password is hashed by the identity half, never here). */
+  tokenHash(token: string): string { return sha256(token); }
 
   // ───────────────────────── the reads (executive.collab.read) ─────────────────────────
   /**
@@ -318,6 +320,7 @@ export class CollabService {
       grant_id: g['grant_id'], principal: g['principal_id'], purpose: g['purpose'], audience_ceiling: g['audience_ceiling'], state: g['state'], expires_at: expires,
       invitation_expires_at: iso(g['invitation_expires_at']), invited_by: g['invited_by'], invited_at: iso(g['invited_at']), accepted_at: iso(g['accepted_at']), revoked_at: iso(g['revoked_at']),
       revoke_reason: g['revoke_reason'] ?? null, lapsed_at: iso(g['lapsed_at']), contact_label: g['contact_label'],
+      /* B34-F1 (0091) */ display_name: g['display_name'] ?? null, login_name: g['login_name'] ?? null, provisioned_by: g['provisioned_by'] ?? null, provisioned_at: iso(g['provisioned_at']),
       live: (g['state'] === 'accepted' || g['state'] === 'invited') && expires !== null && expires > now,
       days_left: expires === null ? null : Math.max(0, Math.round(((new Date(expires).getTime() - new Date(now).getTime()) / 86_400_000) * 10) / 10),
     };

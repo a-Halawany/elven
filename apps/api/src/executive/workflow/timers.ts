@@ -12,7 +12,11 @@
  *     failure fires it as `failed` (abandoned, visible). A kind no handler serves is left due and reported (`unhandled`): the part that
  *     owns the kind registers its handler (commitment.checkpoint — the commitments part; gate.expiry — the gates part).
  *   collab-grant-expiry (order 22) — every collaboration grant past its expiry that is still invited or accepted LAPSES (the grant.expiry
- *     timer normally did it at step 20; the sweep leaves no grant live past its expiry whatever happened to its timer).
+ *     timer normally did it at step 20; the sweep leaves no grant live past its expiry whatever happened to its timer); then it READS the
+ *     external principals still holding a live credential or session that no live grant names (B34-F1, 0091 §7: executive.collab_access_pending).
+ *   the after-tick hook collab-access-revocation (B34-F1) — once the tick committed, each principal step 22 found is revoked by the IDENTITY
+ *     authority (collab-identity.service.ts: credentials, sessions, epoch): never nested inside the tick's write; a failure is recorded on
+ *     the tick's run and the next tick's read finds the principal again.
  *
  * The kinds served here: task.deadline (ESCALATE the task), task.reminder, workflow.step_timeout, grant.expiry. Every port they call lists
  * executive.attention.tick. The tick's row is written after its steps (agents.service.ts), so a firing carries the tick's KEY and its
@@ -23,11 +27,14 @@ import { EYE_CONFIG } from '../../config/config.module.js';
 import type { EyeConfig } from '../../config/config.js';
 import { AttentionTickRegistry, type AttentionTickContext } from '../attention/tick.js';
 import { WorkflowCapability, type WorkflowTickWrites } from './workflow.capabilities.js';
+import { CollabIdentityService } from './collab-identity.service.js';
 
 type Row = Record<string, unknown>;
 /** The tick steps this part registers (their orders are the B34 map's). */
 export const WORKFLOW_TIMERS_STEP = 'workflow-timers';
 export const COLLAB_GRANT_EXPIRY_STEP = 'collab-grant-expiry';
+/** B34-F1 (0091): the after-tick hook that revokes, through the identity authority, what step 22 found still live. */
+export const COLLAB_ACCESS_REVOCATION_HOOK = 'collab-access-revocation';
 /** At most this many timers are fired per tick (the claim's bound; what one tick leaves, the next one takes). */
 export const FIRE_LIMIT = 100;
 
@@ -61,7 +68,7 @@ export class WorkflowTimerRegistry {
 
 @Injectable()
 export class WorkflowTimerSteps implements OnModuleInit {
-  constructor(private readonly ticks: AttentionTickRegistry, private readonly registry: WorkflowTimerRegistry) {}
+  constructor(private readonly ticks: AttentionTickRegistry, private readonly registry: WorkflowTimerRegistry, /* B34-F1 */ private readonly collabIdentity: CollabIdentityService) {}
 
   onModuleInit(): void {
     // the four kinds this part serves; each calls its own port under the tick's action
@@ -71,6 +78,16 @@ export class WorkflowTimerSteps implements OnModuleInit {
     this.registry.register({ kind: 'grant.expiry', handle: async (c, t) => c.cap.lapseGrant({ timerId: t.timer_id, tenantId: c.tenantId, domainId: c.domainId, actor: c.agentPrincipalId, correlationId: c.correlationId }) });
     this.ticks.register({ name: WORKFLOW_TIMERS_STEP, order: 20, run: async (ctx) => this.fire(ctx) });
     this.ticks.register({ name: COLLAB_GRANT_EXPIRY_STEP, order: 22, run: async (ctx) => this.sweepGrants(ctx) });
+    /* B34-F1 (0091): the identity half of every lapse and revocation, after the tick's write committed */
+    this.ticks.registerAfter({
+      name: COLLAB_ACCESS_REVOCATION_HOOK,
+      run: async (a) => {
+        const pending = (((a.steps[COLLAB_GRANT_EXPIRY_STEP] ?? {}) as Row)['access_pending'] ?? []) as Row[];
+        if (pending.length === 0) return { pending: 0, revoked: [], failed: [] };
+        return this.collabIdentity.revokePending(pending, { principalId: a.principal.principalId, sessionId: a.principal.sessionId }, a.correlationId);
+      },
+    });
+    /* end B34-F1 */
   }
 
   /** Step 20: claim, dispatch by kind, mark fired once — each timer in its own savepoint. */
@@ -103,9 +120,11 @@ export class WorkflowTimerSteps implements OnModuleInit {
     return { claimed: claimed.length, ...tally, timers };
   }
 
-  /** Step 22: every grant past its expiry that is still invited or accepted lapses (its tasks reassigned with reason access_lost). */
+  /** Step 22: every grant past its expiry that is still invited or accepted lapses (its tasks reassigned with reason access_lost); the access still to revoke read. */
   async sweepGrants(ctx: AttentionTickContext): Promise<Row> {
     const cap = WorkflowCapability.tick(ctx.tx, 'executive.attention.tick');
-    return cap.lapseExpiredGrants({ tenantId: ctx.tenantId, domainId: ctx.domainId, actor: ctx.agentPrincipalId, correlationId: ctx.correlationId });
+    const lapsed = await cap.lapseExpiredGrants({ tenantId: ctx.tenantId, domainId: ctx.domainId, actor: ctx.agentPrincipalId, correlationId: ctx.correlationId });
+    /* B34-F1 (0091 §7): what the after-tick hook revokes through the identity authority (this step's lapses and step 20's, and any left live before) */
+    return { ...lapsed, access_pending: await cap.accessPending({ tenantId: ctx.tenantId, domainId: ctx.domainId }) };
   }
 }

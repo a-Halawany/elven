@@ -47,6 +47,9 @@ import { WorkflowService } from './workflow/workflow.service.js';
 import { CollabService } from './workflow/collab.service.js';
 import { WorkflowTimerRegistry, WorkflowTimerSteps } from './workflow/timers.js';
 /* end B34 workflow */
+/* B34-F1 (0091): the external collaborator's identity, on the identity authority */
+import { CollabIdentityService } from './workflow/collab-identity.service.js';
+/* end B34-F1 */
 /* B34 (0090) attention: the act transition and the SYNTHETIC email / sms / teams adapters (local sinks only) */
 import { AttentionActService } from './attention/act.service.js';
 import { EmailChannel } from './attention/delivery/email.channel.js';
@@ -65,6 +68,7 @@ import { SmsChannel, TeamsChannel } from './attention/delivery/webhook.channel.j
     /* B24 (0086) governance: suppression approval, item delegation, disposition, queue evaluation (0086 §G) */ AttentionGovernanceService /* end B24 governance */,
     /* B32 (0089) health: the decomposable Strategic Health Score (0089 §H) */ HealthService /* end B32 health */,
     /* B34 (0090) workflow */ WorkflowService, CollabService, WorkflowTimerRegistry, WorkflowTimerSteps /* end B34 workflow */,
+    /* B34-F1 (0091) */ CollabIdentityService /* end B34-F1 */,
     /* B34 (0090) attention */ AttentionActService, EmailChannel, SmsChannel, TeamsChannel /* end B34 attention */],
   exports: [RoomService, BriefingService, AgentsService, AgentWorkerService, RequestsService, AttentionService, AttentionTickRegistry,
     /* B24 (0086) timer */ AttentionTimerService, DeliveryService /* end B24 timer */,

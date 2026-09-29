@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CLASSIFICATIONS, DRILL_KINDS, INSTANCE_STATUSES, TASK_STATES, chainWords, completableHere, covers, deadlineWords, grantWords, parseSpec, taskMark, timerWords } from './workflow';
+import { CLASSIFICATIONS, DRILL_KINDS, INSTANCE_STATUSES, TASK_STATES, chainWords, completableHere, covers, deadlineWords, grantWords, parseSpec, provisionable, taskMark, timerWords } from './workflow';
 
 /** CP-6 B34 (0090 §W): the tasks, the workflow and the workspaces are the server's; the pages word them. */
 describe('the workflow, the tasks and the grants are worded, never decided on the client', () => {
@@ -31,6 +31,10 @@ describe('the workflow, the tasks and the grants are worded, never decided on th
     expect(grantWords({ state: 'accepted', expires_at: '2026-10-12T12:00:00.000Z', live: true }, now)).toBe('accepted · expires in 14 d');
     expect(grantWords({ state: 'lapsed', expires_at: '2026-09-28T11:00:00.000Z', live: false }, now)).toBe('lapsed at its expiry — access is lost');
     expect(grantWords({ state: 'accepted', expires_at: '2026-09-28T11:00:00.000Z', live: false }, now)).toBe('expired — access is lost');
+    // B34-F1 (0091): a requested grant awaits an identity administrator's provisioning; only it offers Provision
+    expect(grantWords({ state: 'requested', expires_at: '2026-10-12T12:00:00.000Z', live: false }, now)).toBe('requested — awaiting an identity administrator\'s provisioning');
+    expect(grantWords({ state: 'requested', expires_at: '2026-09-28T11:00:00.000Z', live: false }, now)).toBe('requested — expired before it was provisioned');
+    expect(['requested', 'invited', 'accepted', 'revoked', 'lapsed'].filter((state) => provisionable({ state }))).toEqual(['requested']);
     expect(covers('internal', 'public')).toBe(true);
     expect(covers('internal', 'confidential')).toBe(false);
     expect(covers('internal', 'bogus')).toBe(false);

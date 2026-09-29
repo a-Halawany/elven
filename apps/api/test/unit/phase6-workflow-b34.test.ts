@@ -109,6 +109,13 @@ describe('B34 workflow · the refusal rows (anchored; 403 → 404 → 409 → 42
     answer('23505', 'collaboration grant rejected (state): the grant is revoked', 409, 'EYE-STA-002');
     answer('22023', 'collaboration grant rejected (expiry): a grant expires in the future and at most 30 days out', 422, 'EYE-REQ-001');
     answer('22023', 'collaboration grant rejected (ceiling): the audience ceiling restricted is at or below the workspace\'s ceiling confidential', 422, 'EYE-REQ-001');
+    /* B34-F1 (0091): the provisioning's refusals */
+    answer('42501', 'collaboration grant rejected (separation): the requester of an invitation does not provision it — an identity administrator does', 403, 'EYE-AUT-001');
+    answer('42501', 'collaboration grant rejected (provisioner): a named, active human of the tenant or the platform provisions an invitee', 403, 'EYE-AUT-001');
+    answer('23505', 'collaboration grant rejected (not_reserved): the grant\'s invitee is reserved by its provisioner first', 409, 'EYE-STA-002');
+    answer('23505', 'collaboration grant rejected (identity): the invitee holds exactly one credential, expiring with the invitation window', 409, 'EYE-STA-002');
+    answer('23505', 'collaboration grant rejected (state): the requested grant expired at 2026-09-29 10:00:00+00', 409, 'EYE-STA-002');
+    answer('22023', 'collaboration grant rejected (invitee): an ext- login name', 422, 'EYE-REQ-001');
   });
 });
 
@@ -138,6 +145,13 @@ describe('B34 workflow · the PDP (exact rules; the external collaborator holds 
     for (const role of ['decision_owner', 'strategy_owner', 'executive']) expect(decide('executive.collab.invite', role).decision, role).toBe('allow_with_obligations');
     for (const role of ['domain_analyst', 'decision_approver', 'auditor']) expect(decide('executive.collab.invite', role, role === 'auditor' ? 'TENANT' : 'DOMAIN').decision, role).toBe('deny');
     for (const role of ['executive', 'decision_owner', 'domain_admin']) expect(decide('executive.collab.accept', role).decision, role).toBe('deny');
+    /* B34-F1 (0091): provisioning creates an identity principal — the identity administrators' act (the roles identity.principal.create admits) */
+    expect(decide('executive.collab.provision', 'tenant_admin', 'TENANT').obligations).toEqual([{ type: 'human_gate' }]);
+    for (const role of ['decision_owner', 'strategy_owner', 'executive', 'domain_admin', 'external_collaborator']) {
+      expect(decide('executive.collab.provision', role).decision, role).toBe('deny');
+      expect(decide('identity.principal.create', role).decision, role).toBe('deny');
+    }
+    expect(decide('identity.principal.create', 'tenant_admin', 'TENANT').decision).not.toBe('deny');
     expect(decide('executive.task.read', 'auditor', 'TENANT').decision).toBe('allow');
     expect(decide('executive.task.complete', 'decision_approver').obligations).toEqual([{ type: 'human_gate' }]);
   });

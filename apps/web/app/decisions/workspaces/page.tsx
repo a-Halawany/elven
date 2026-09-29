@@ -6,15 +6,17 @@
  * review — participation is never room membership and never approver standing. Every request here is made under the workspace's purpose
  * (typed at the top): an external collaborator's grant is for that purpose and any other is refused.
  *
- * An EXTERNAL COLLABORATOR (a partner firm's person) is invited by the workspace's owner — an audience ceiling at or below the workspace's,
- * an expiry of at most 30 days; the invitation goes to the SYNTHETIC mailbox (no e-mail is sent). The grants are listed with their state and
+ * An EXTERNAL COLLABORATOR (a partner firm's person) is invited in TWO acts (B34-F1, migration 0091): the workspace's owner REQUESTS the
+ * invitation — an audience ceiling at or below the workspace's, an expiry of at most 30 days — and an IDENTITY ADMINISTRATOR (a tenant or
+ * platform administrator, never the requester) PROVISIONS it: the invitee's principal and its one-time credential are created by the
+ * identity authority, and the invitation goes to the SYNTHETIC mailbox (no e-mail is sent). The grants are listed with their state and
  * time left; a lapsed or revoked grant has lost its access, and its holder's open tasks were reassigned (access lost). An external sees only
  * its own workspace and only what its audience ceiling covers. The review request carries a deadline and a named escalation principal:
  * when the deadline passes, the task escalates to them (the Tasks page shows the chain).
  */
 import { useEffect, useState } from 'react';
 import { useShell } from '../layout';
-import { collab as api, CLASSIFICATIONS, MAX_GRANT_DAYS, VERDICTS, deadlineWords, grantWords, taskMark, type Workspace, type WorkspaceDetail } from '../../../lib/workflow';
+import { collab as api, CLASSIFICATIONS, MAX_GRANT_DAYS, VERDICTS, deadlineWords, grantWords, provisionable, taskMark, type Workspace, type WorkspaceDetail } from '../../../lib/workflow';
 import { Empty, LiveStatus, Mono, cardStyle, GovernedButton, fmtInstant, textareaStyle } from '../../../components/observation';
 import { inputStyle, Receipt } from '../../../components/ui';
 
@@ -86,7 +88,12 @@ export default function WorkspacesPage() {
           <h3>Participants</h3>
           <ul>{d.participants.map((p) => <li key={p.principal}><Mono>{p.principal.slice(0, 8)}…</Mono> · {p.role} · {p.affiliation}{p.removed_at !== null ? ` · removed (${p.removal_reason ?? ''})` : ''}</li>)}</ul>
           <h3>Grants</h3>
-          {d.grants.length === 0 ? <Empty>No external collaborator.</Empty> : <ul>{d.grants.map((g) => <li key={g.grant_id}><Mono>{g.grant_id.slice(0, 8)}…</Mono> · {g.contact_label} · audience {g.audience_ceiling} · {grantWords(g, d.now)} · expires {fmtInstant(g.expires_at)}</li>)}</ul>}
+          {d.grants.length === 0 ? <Empty>No external collaborator.</Empty> : <ul>{d.grants.map((g) => <li key={g.grant_id}><Mono>{g.grant_id.slice(0, 8)}…</Mono> · {g.display_name !== null && g.display_name !== undefined ? `${g.display_name} · ` : ''}{g.contact_label} · audience {g.audience_ceiling} · {grantWords(g, d.now)} · expires {fmtInstant(g.expires_at)}
+            {provisionable(g) && <GovernedButton label="Provision (identity administrator)" pendingLabel="provisioning" variant="quiet" onRun={async () => {
+              const r = await api.provision(scope, g.grant_id, purpose);
+              if (!r.ok) { setProblem(refusal(r, 'the provisioning was refused — an identity administrator (tenant or platform administrator) other than the requester provisions it')); return; }
+              done(`provisioned — the invitee ${String(r.data?.grant['login_name'] ?? '')} was created by the identity authority; the invitation is in the SYNTHETIC mailbox`, r.data?.receipt ?? null);
+            }} />}</li>)}</ul>}
           {d.invitation_mail.length > 0 && <p style={muted}>Invitations placed in the SYNTHETIC mailbox: {d.invitation_mail.map((m) => m.subject).join('; ')} — {d.invitation_mail[0]?.note}</p>}
           <h3>Tasks</h3>
           {d.tasks.length === 0 ? <Empty>No task.</Empty> : <ul>{d.tasks.map((t) => <li key={t.task_id}>{t.title} · {taskMark(t.state, t.escalation_level).text} · {deadlineWords(t.deadline_at, d.now)} · <Mono>{t.task_id.slice(0, 8)}…</Mono></li>)}</ul>}
@@ -143,22 +150,23 @@ export default function WorkspacesPage() {
                 const r = await api.participant(scope, d.workspace.workspace_id, purpose, member, memberRole, 'add');
                 if (!r.ok) { setProblem(refusal(r, 'the participant was refused')); return; } done('participant added', r.data?.receipt ?? null);
               }} /></fieldset>
-            <fieldset style={fs}><legend>Invite an external collaborator (at most {MAX_GRANT_DAYS} days; the SYNTHETIC mailbox)</legend>
+            <fieldset style={fs}><legend>Request an invitation for an external collaborator (at most {MAX_GRANT_DAYS} days; an identity administrator provisions it)</legend>
               <label htmlFor="iv-name">Name</label><input id="iv-name" style={inputStyle} value={invName} onChange={(e) => setInvName(e.target.value)} />
               <label htmlFor="iv-contact">Contact label (SYNTHETIC — nothing is sent)</label><input id="iv-contact" style={inputStyle} value={invContact} onChange={(e) => setInvContact(e.target.value)} />
               <label htmlFor="iv-ceiling">Audience ceiling</label>
               <select id="iv-ceiling" style={inputStyle} value={invCeiling} onChange={(e) => setInvCeiling(e.target.value)}>{CLASSIFICATIONS.map((c) => <option key={c} value={c}>{c}</option>)}</select>
               <label htmlFor="iv-days">Expires after (days)</label><input id="iv-days" type="number" min={1} max={MAX_GRANT_DAYS} style={inputStyle} value={invDays} onChange={(e) => setInvDays(e.target.value)} />
-              <GovernedButton label="Invite" pendingLabel="inviting" onRun={async () => {
-                const r = await api.invite(scope, d.workspace.workspace_id, purpose, { displayName: invName, contactLabel: invContact, ceiling: invCeiling, days: Number(invDays) });
-                if (!r.ok) { setProblem(refusal(r, 'the invitation was refused')); return; } done(`invited — the grant expires ${fmtInstant(r.data?.grant['expires_at'])}`, r.data?.receipt ?? null);
+              <GovernedButton label="Request" pendingLabel="requesting" onRun={async () => {
+                const r = await api.request(scope, d.workspace.workspace_id, purpose, { displayName: invName, contactLabel: invContact, ceiling: invCeiling, days: Number(invDays) });
+                if (!r.ok) { setProblem(refusal(r, 'the invitation request was refused')); return; }
+                done(`requested — an identity administrator provisions it; the grant expires ${fmtInstant(r.data?.grant['expires_at'])}`, r.data?.receipt ?? null);
               }} /></fieldset>
             <fieldset style={fs}><legend>Revoke a grant</legend>
               <label htmlFor="rv-g">Grant id</label><input id="rv-g" style={inputStyle} value={grantId} onChange={(e) => setGrantId(e.target.value)} />
               <label htmlFor="rv-r">Reason</label><input id="rv-r" style={inputStyle} value={revokeReason} onChange={(e) => setRevokeReason(e.target.value)} />
               <GovernedButton label="Revoke" pendingLabel="revoking" variant="critical" onRun={async () => {
                 const r = await api.revoke(scope, grantId.trim(), purpose, revokeReason);
-                if (!r.ok) { setProblem(refusal(r, 'the revocation was refused')); return; } done('revoked — the collaborator\'s open tasks were reassigned', r.data?.receipt ?? null);
+                if (!r.ok) { setProblem(refusal(r, 'the revocation was refused')); return; } done('revoked — the collaborator\'s open tasks were reassigned; its credentials and sessions revoked by the identity authority', r.data?.receipt ?? null);
               }} /></fieldset>
           </>)}
         </section>
