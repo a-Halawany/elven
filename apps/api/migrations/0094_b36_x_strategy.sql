@@ -325,7 +325,7 @@ LANGUAGE sql STABLE SET search_path = executive, pg_catalog, pg_temp AS $$
   ), flagged AS (
     SELECT DISTINCT unnest(c.owner_edit_ids) AS edit_id, c.change_id, c.subject FROM executive.health_score_changes c JOIN d ON d.definition_id = c.definition_id WHERE c.owner_edit_flag
   ), per_owner AS (
-    SELECT e.editor_principal_id AS owner, count(*)::int AS edits, count(f.edit_id)::int AS flagged_edits,
+    SELECT e.editor_principal_id AS owner, count(DISTINCT e.edit_id)::int AS edits, count(DISTINCT f.edit_id)::int AS flagged_edits,
            array_agg(DISTINCT e.component_key ORDER BY e.component_key) AS components,
            max(e.edited_at) AS last_edit_at,
            coalesce(jsonb_agg(DISTINCT jsonb_build_object('edit_id', e.edit_id, 'component_key', e.component_key, 'change_id', f.change_id, 'subject', f.subject)) FILTER (WHERE f.edit_id IS NOT NULL), '[]'::jsonb) AS flags
@@ -1310,17 +1310,19 @@ BEGIN
     SELECT 'owner_missing', d.subject_ids[1], (d.subjects -> 0 ->> 'type'), NULL::uuid, coalesce(d.subjects -> 0 ->> 'owner', 'none'), d.routed_to[1], d.detail, (d.subjects -> 0 ->> 'title')
       FROM graph.strategy_detections(p_tenant, p_domain, v_now) d WHERE d.detection_kind = 'missing_owner' AND d.state = 'open'
     UNION ALL
-    -- GAMED MEASURE: an owner edit of a MEASURE input flagged on a favourable score change (§S5) — once per edit, routed to the measured
-    -- objective's owner (accountable above the editor)
-    SELECT 'gamed_measure', e.input_ref, 'MSR', e.input_ref, e.edit_id::text,
-           (SELECT s.owner_principal_id FROM graph.measures m JOIN graph.strategy_current s ON s.strategy_object_id = m.objective_id WHERE m.measure_id = e.input_ref),
+    -- GAMED MEASURE: an owner edit of a MEASURE input flagged on a favourable score change (§S5) — once per edit (the dimension's change
+    -- named first, the aggregate's only when no dimension change flags it), routed to the measured objective's owner (accountable above the editor)
+    SELECT 'gamed_measure', g.input_ref, 'MSR', g.input_ref, g.edit_id::text,
+           (SELECT s.owner_principal_id FROM graph.measures m JOIN graph.strategy_current s ON s.strategy_object_id = m.objective_id WHERE m.measure_id = g.input_ref),
            format('the owner of measure "%s" restated it %s → %s at %s, inside the %s-day window before a favourable change of %s (score change %s)',
-                  coalesce((SELECT s.title FROM graph.strategy_current s WHERE s.strategy_object_id = e.input_ref), e.input_ref::text), coalesce(e.from_value::text, 'none'), e.to_value, e.edited_at,
-                  (SELECT x.owner_edit_window_days FROM executive.health_score_definitions x WHERE x.definition_id = e.definition_id), ch.subject, ch.change_id),
-           coalesce((SELECT s.title FROM graph.strategy_current s WHERE s.strategy_object_id = e.input_ref), e.input_ref::text)
-      FROM executive.health_input_edits e
-      JOIN executive.health_score_changes ch ON ch.owner_edit_flag AND e.edit_id = ANY (ch.owner_edit_ids) AND ch.tenant_id = p_tenant AND ch.domain_id = p_domain
-     WHERE e.tenant_id = p_tenant AND e.domain_id = p_domain AND e.input_kind = 'measure'
+                  coalesce((SELECT s.title FROM graph.strategy_current s WHERE s.strategy_object_id = g.input_ref), g.input_ref::text), coalesce(g.from_value::text, 'none'), g.to_value, g.edited_at,
+                  (SELECT x.owner_edit_window_days FROM executive.health_score_definitions x WHERE x.definition_id = g.definition_id), g.subject, g.change_id),
+           coalesce((SELECT s.title FROM graph.strategy_current s WHERE s.strategy_object_id = g.input_ref), g.input_ref::text)
+      FROM (SELECT DISTINCT ON (e.edit_id) e.edit_id, e.input_ref, e.from_value, e.to_value, e.edited_at, e.definition_id, ch.subject, ch.change_id
+              FROM executive.health_input_edits e
+              JOIN executive.health_score_changes ch ON ch.owner_edit_flag AND e.edit_id = ANY (ch.owner_edit_ids) AND ch.tenant_id = p_tenant AND ch.domain_id = p_domain
+             WHERE e.tenant_id = p_tenant AND e.domain_id = p_domain AND e.input_kind = 'measure'
+             ORDER BY e.edit_id, (ch.subject = 'aggregate'), ch.raised_at) g
   LOOP
     IF c.subject_id IS NULL THEN CONTINUE; END IF;
     IF EXISTS (SELECT 1 FROM graph.strategy_detections x WHERE x.tenant_id = p_tenant AND x.domain_id = p_domain AND x.kind = c.kind AND x.subject_id = c.subject_id AND x.cause_key = c.cause_key) THEN CONTINUE; END IF;
