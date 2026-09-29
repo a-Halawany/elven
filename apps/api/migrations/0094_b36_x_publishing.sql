@@ -157,7 +157,8 @@ CREATE TABLE executive.publication_deliveries (
   domain_id              uuid NOT NULL,
   publication_id         uuid NOT NULL REFERENCES executive.publications (publication_id),
   version                int  NOT NULL,
-  recipient_principal_id uuid NOT NULL,
+  recipient_principal_id uuid,
+  external_recipient     text CHECK (external_recipient IS NULL OR external_recipient ~ '^external:(partner|regulator|press|other):.{2,200}$'),
   channel                text NOT NULL CHECK (channel IN ('in_app', 'email', 'teams')),
   kind                   text NOT NULL CHECK (kind IN ('publication', 'correction_notice', 'withdrawal_notice')),
   state                  text NOT NULL CHECK (state IN ('delivered', 'failed')),
@@ -173,10 +174,12 @@ CREATE TABLE executive.publication_deliveries (
   acknowledgement_note   text,
   correlation_id         uuid NOT NULL,
   CONSTRAINT xpd_scope CHECK (observation.scope_ok(scope, tenant_id, domain_id)),
-  CONSTRAINT xpd_once UNIQUE (publication_id, version, recipient_principal_id, channel, kind),
+  CONSTRAINT xpd_recipient CHECK ((recipient_principal_id IS NULL) <> (external_recipient IS NULL)),
   CONSTRAINT xpd_ack_bound CHECK ((acknowledged_at IS NULL) = (acknowledged_by IS NULL)),
   CONSTRAINT xpd_state_bound CHECK ((state = 'delivered') = (receipt IS NOT NULL) AND (state = 'failed') = (error IS NOT NULL))
 );
+/* One PLACED delivery per (version, recipient, channel, kind); a failed attempt stays as its own row and may be retried. */
+CREATE UNIQUE INDEX xpd_once ON executive.publication_deliveries (publication_id, version, coalesce(recipient_principal_id::text, external_recipient), channel, kind) WHERE state = 'delivered';
 CREATE INDEX xpd_publication ON executive.publication_deliveries (publication_id, version);
 CREATE INDEX xpd_recipient ON executive.publication_deliveries (tenant_id, domain_id, recipient_principal_id);
 
@@ -527,7 +530,7 @@ BEGIN
   v_rcpt := executive.publication_recipients(p_tenant, p_domain, p.audience);
   IF jsonb_array_length(v_rcpt) = 0 AND p.external IS NULL THEN RAISE EXCEPTION 'publication rejected (audience): the audience resolves to nobody now' USING ERRCODE = '22023'; END IF;
   FOR r IN SELECT value FROM jsonb_array_elements(v_rcpt) LOOP
-    IF EXISTS (SELECT 1 FROM executive.publication_deliveries d WHERE d.publication_id = p_publication_id AND d.version = p_version AND d.recipient_principal_id = (r ->> 'principal_id')::uuid AND d.channel = 'in_app' AND d.kind = 'publication') THEN CONTINUE; END IF;
+    IF EXISTS (SELECT 1 FROM executive.publication_deliveries d WHERE d.publication_id = p_publication_id AND d.version = p_version AND d.recipient_principal_id = (r ->> 'principal_id')::uuid AND d.channel = 'in_app' AND d.kind = 'publication' AND d.state = 'delivered') THEN CONTINUE; END IF;
     v_id := gen_random_uuid();
     INSERT INTO executive.publication_deliveries (delivery_id, scope, tenant_id, domain_id, publication_id, version, recipient_principal_id, channel, kind, state, receipt_id, receipt, provider_ref, synthetic_state, delivered_by, correlation_id)
     VALUES (v_id, 'DOMAIN', p_tenant, p_domain, p_publication_id, p_version, (r ->> 'principal_id')::uuid, 'in_app', 'publication', 'delivered', gen_random_uuid(),
@@ -540,7 +543,8 @@ BEGIN
   v_ev := executive.publication_event(gen_random_uuid(), p_publication_id, p_version, p_tenant, p_domain, 'publication.delivered', p_actor,
             jsonb_build_object('recipients', jsonb_array_length(v_rcpt), 'in_app_placed', jsonb_array_length(v_placed), 'channels', to_jsonb(p.channels), 'external', p.external), p_correlation);
   RETURN jsonb_build_object('publication_id', p_publication_id, 'version', p_version, 'state', 'delivered', 'recipients', v_rcpt, 'in_app', v_placed, 'channels', to_jsonb(p.channels),
-                            'external', p.external, 'title', p.title, 'bytes_digest', v.bytes_digest, 'format', v.format, 'event_id', v_ev);
+                            'external', p.external, 'external_recipient', CASE WHEN p.external IS NULL THEN NULL ELSE 'external:' || (p.external ->> 'kind') || ':' || btrim(p.external ->> 'name') END,
+                            'title', p.title, 'bytes_digest', v.bytes_digest, 'format', v.format, 'event_id', v_ev);
 END $$ LANGUAGE plpgsql;
 REVOKE ALL ON FUNCTION executive.deliver_publication(uuid,uuid,uuid,int,uuid,uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION executive.deliver_publication(uuid,uuid,uuid,int,uuid,uuid) TO eye_commit;
@@ -549,7 +553,7 @@ GRANT EXECUTE ON FUNCTION executive.deliver_publication(uuid,uuid,uuid,int,uuid,
    correction notice or a withdrawal notice; under the delivering, correcting or withdrawing action. Idempotent on the (version, recipient,
    channel, kind) key: a repeated attempt answers the row it made. */
 CREATE OR REPLACE FUNCTION executive.record_publication_delivery(
-  p_delivery_id uuid, p_tenant uuid, p_domain uuid, p_publication_id uuid, p_version int, p_recipient uuid, p_channel text, p_kind text, p_state text,
+  p_delivery_id uuid, p_tenant uuid, p_domain uuid, p_publication_id uuid, p_version int, p_recipient uuid, p_external text, p_channel text, p_kind text, p_state text,
   p_receipt jsonb, p_provider_ref text, p_error text, p_synthetic boolean, p_actor uuid, p_correlation uuid
 ) RETURNS jsonb
 SECURITY DEFINER SET search_path = executive, observation, ctx, public, pg_catalog, pg_temp AS $$
@@ -563,16 +567,17 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM executive.publication_versions v WHERE v.publication_id = p_publication_id AND v.version = p_version AND v.tenant_id = p_tenant AND v.domain_id = p_domain) THEN
     RAISE EXCEPTION 'publication rejected (unknown_version): publication % has no version %', p_publication_id, p_version USING ERRCODE = '23503';
   END IF;
-  SELECT * INTO d FROM executive.publication_deliveries x WHERE x.publication_id = p_publication_id AND x.version = p_version AND x.recipient_principal_id = p_recipient AND x.channel = p_channel AND x.kind = p_kind;
+  IF (p_recipient IS NULL) = (p_external IS NULL) THEN RAISE EXCEPTION 'publication rejected (delivery): a delivery names its recipient principal or its external audience' USING ERRCODE = '22023'; END IF;
+  SELECT * INTO d FROM executive.publication_deliveries x WHERE x.publication_id = p_publication_id AND x.version = p_version AND x.recipient_principal_id IS NOT DISTINCT FROM p_recipient AND x.external_recipient IS NOT DISTINCT FROM p_external AND x.channel = p_channel AND x.kind = p_kind AND x.state = 'delivered';
   IF FOUND THEN RETURN jsonb_build_object('delivery_id', d.delivery_id, 'repeated', true, 'state', d.state, 'receipt_id', d.receipt_id); END IF;
-  INSERT INTO executive.publication_deliveries (delivery_id, scope, tenant_id, domain_id, publication_id, version, recipient_principal_id, channel, kind, state, receipt_id, receipt, provider_ref, error, synthetic_state, delivered_by, correlation_id)
-  VALUES (p_delivery_id, 'DOMAIN', p_tenant, p_domain, p_publication_id, p_version, p_recipient, p_channel, p_kind, p_state, gen_random_uuid(), CASE WHEN p_state = 'delivered' THEN coalesce(p_receipt, '{}'::jsonb) END, p_provider_ref, CASE WHEN p_state = 'failed' THEN coalesce(p_error, 'failed') END, p_synthetic, p_actor, p_correlation);
+  INSERT INTO executive.publication_deliveries (delivery_id, scope, tenant_id, domain_id, publication_id, version, recipient_principal_id, external_recipient, channel, kind, state, receipt_id, receipt, provider_ref, error, synthetic_state, delivered_by, correlation_id)
+  VALUES (p_delivery_id, 'DOMAIN', p_tenant, p_domain, p_publication_id, p_version, p_recipient, p_external, p_channel, p_kind, p_state, gen_random_uuid(), CASE WHEN p_state = 'delivered' THEN coalesce(p_receipt, '{}'::jsonb) END, p_provider_ref, CASE WHEN p_state = 'failed' THEN coalesce(p_error, 'failed') END, p_synthetic, p_actor, p_correlation);
   PERFORM executive.publication_event(gen_random_uuid(), p_publication_id, p_version, p_tenant, p_domain, CASE WHEN p_state = 'delivered' THEN 'publication.delivered' ELSE 'publication.delivery_failed' END, p_actor,
-            jsonb_build_object('delivery_id', p_delivery_id, 'recipient', p_recipient, 'channel', p_channel, 'kind', p_kind, 'provider_ref', p_provider_ref, 'error', p_error, 'synthetic', p_synthetic), p_correlation);
+            jsonb_build_object('delivery_id', p_delivery_id, 'recipient', p_recipient, 'external_recipient', p_external, 'channel', p_channel, 'kind', p_kind, 'provider_ref', p_provider_ref, 'error', p_error, 'synthetic', p_synthetic), p_correlation);
   RETURN jsonb_build_object('delivery_id', p_delivery_id, 'repeated', false, 'state', p_state, 'receipt_id', (SELECT receipt_id FROM executive.publication_deliveries WHERE delivery_id = p_delivery_id));
 END $$ LANGUAGE plpgsql;
-REVOKE ALL ON FUNCTION executive.record_publication_delivery(uuid,uuid,uuid,uuid,int,uuid,text,text,text,jsonb,text,text,boolean,uuid,uuid) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION executive.record_publication_delivery(uuid,uuid,uuid,uuid,int,uuid,text,text,text,jsonb,text,text,boolean,uuid,uuid) TO eye_commit;
+REVOKE ALL ON FUNCTION executive.record_publication_delivery(uuid,uuid,uuid,uuid,int,uuid,text,text,text,text,jsonb,text,text,boolean,uuid,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION executive.record_publication_delivery(uuid,uuid,uuid,uuid,int,uuid,text,text,text,text,jsonb,text,text,boolean,uuid,uuid) TO eye_commit;
 
 /* d2 ACKNOWLEDGE: the recipient's own act on a delivery — receipt, not agreement; once. */
 CREATE OR REPLACE FUNCTION executive.acknowledge_publication(p_delivery_id uuid, p_tenant uuid, p_domain uuid, p_note text, p_actor uuid, p_correlation uuid) RETURNS jsonb
@@ -584,7 +589,7 @@ BEGIN
   IF p_actor IS DISTINCT FROM public.eye_principal() THEN RAISE EXCEPTION 'publication rejected (actor): acknowledged by the acting principal' USING ERRCODE = '42501'; END IF;
   SELECT * INTO d FROM executive.publication_deliveries x WHERE x.delivery_id = p_delivery_id AND x.tenant_id = p_tenant AND x.domain_id = p_domain FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'publication rejected (unknown_delivery): no delivery % in this domain', p_delivery_id USING ERRCODE = '23503'; END IF;
-  IF d.recipient_principal_id <> p_actor THEN RAISE EXCEPTION 'publication rejected (not_recipient): a delivery is acknowledged by its recipient' USING ERRCODE = '42501'; END IF;
+  IF d.recipient_principal_id IS DISTINCT FROM p_actor THEN RAISE EXCEPTION 'publication rejected (not_recipient): a delivery is acknowledged by its recipient (an external audience''s synthetic delivery has none)' USING ERRCODE = '42501'; END IF;
   IF d.state <> 'delivered' THEN RAISE EXCEPTION 'publication rejected (state): delivery % failed; nothing reached the recipient to acknowledge', p_delivery_id USING ERRCODE = '22023'; END IF;
   IF d.acknowledged_at IS NOT NULL THEN RAISE EXCEPTION 'publication rejected (state): delivery % was acknowledged at %', p_delivery_id, d.acknowledged_at USING ERRCODE = '22023'; END IF;
   UPDATE executive.publication_deliveries SET acknowledged_by = p_actor, acknowledged_at = clock_timestamp(), acknowledgement_note = NULLIF(btrim(coalesce(p_note, '')), '') WHERE delivery_id = p_delivery_id;
@@ -602,7 +607,7 @@ CREATE OR REPLACE FUNCTION executive.notify_publication_recipients(p_publication
 SET search_path = executive, identity, pg_catalog, pg_temp AS $$
 DECLARE r record; v_ev uuid; v_item uuid; v_out jsonb := '[]'::jsonb; v_ttl text;
 BEGIN
-  FOR r IN SELECT DISTINCT d.recipient_principal_id FROM executive.publication_deliveries d WHERE d.publication_id = p_publication_id AND d.version = p_version AND d.kind = 'publication' AND d.state = 'delivered' ORDER BY 1 LOOP
+  FOR r IN SELECT DISTINCT d.recipient_principal_id FROM executive.publication_deliveries d WHERE d.publication_id = p_publication_id AND d.version = p_version AND d.kind = 'publication' AND d.state = 'delivered' AND d.recipient_principal_id IS NOT NULL ORDER BY 1 LOOP
     v_ev := executive.publication_event(gen_random_uuid(), p_publication_id, p_version, p_tenant, p_domain, CASE p_kind WHEN 'correction' THEN 'publication.correction_notified' ELSE 'publication.withdrawal_notified' END, p_actor, p_details || jsonb_build_object('recipient', r.recipient_principal_id), p_correlation);
     v_item := gen_random_uuid();
     v_ttl := left(CASE p_kind WHEN 'correction' THEN 'Correction of a publication you received: ' ELSE 'Withdrawal of a publication you received: ' END || p_title, 512);
@@ -621,10 +626,10 @@ REVOKE ALL ON FUNCTION executive.notify_publication_recipients(uuid,uuid,uuid,in
    digest; the prior version reads corrected_by_version; every recipient of the prior version notified. The new version is drafted: it is
    approved by digest and delivered like the first. A withdrawn or archived publication is not corrected. */
 CREATE OR REPLACE FUNCTION executive.correct_publication(
-  p_publication_id uuid, p_tenant uuid, p_domain uuid, p_reason text, p_source_version int, p_source_digest text, p_bytes_digest text, p_byte_length int, p_vault_ref text, p_render_method text, p_actor uuid, p_correlation uuid
+  p_publication_id uuid, p_tenant uuid, p_domain uuid, p_reason text, p_source_id uuid, p_source_version int, p_source_digest text, p_bytes_digest text, p_byte_length int, p_vault_ref text, p_render_method text, p_actor uuid, p_correlation uuid
 ) RETURNS jsonb
 SECURITY DEFINER SET search_path = executive, identity, objects, observation, decision, ctx, public, pg_catalog, pg_temp AS $$
-DECLARE p executive.publications%ROWTYPE; v executive.publication_versions%ROWTYPE; s jsonb; v_next int; v_changed jsonb; v_ev uuid; v_notified jsonb; v_draft uuid;
+DECLARE p executive.publications%ROWTYPE; v executive.publication_versions%ROWTYPE; s jsonb; v_next int; v_changed jsonb; v_ev uuid; v_notified jsonb; v_draft uuid; v_src uuid;
 BEGIN
   PERFORM observation.assert_authority(ARRAY['executive.publication.correct']);
   PERFORM observation.assert_scope(p_tenant, p_domain);
@@ -639,7 +644,10 @@ BEGIN
   IF p_reason IS NULL OR length(btrim(p_reason)) < 8 THEN RAISE EXCEPTION 'publication rejected (reason): a correction names its reason (8+ characters)' USING ERRCODE = '22023'; END IF;
   SELECT * INTO v FROM executive.publication_versions q WHERE q.publication_id = p_publication_id AND q.version = p.current_version FOR UPDATE;
   IF v.state NOT IN ('approved', 'delivered') THEN RAISE EXCEPTION 'publication rejected (state): version % is %; a correction follows an approved or delivered version (approve or withdraw the draft first)', v.version, v.state USING ERRCODE = '22023'; END IF;
-  s := executive.publication_source(p_tenant, p_domain, v.source_kind, v.source_id, p_source_version);
+  -- the corrected snapshot: a briefing publication may bind a NEW EDITION (another briefing id); a report publication stays on its package (another version of it)
+  v_src := coalesce(p_source_id, v.source_id);
+  IF v.source_kind = 'report' AND v_src <> v.source_id THEN RAISE EXCEPTION 'publication rejected (source): a report publication corrects to another version of the same package %, not to package %', v.source_id, v_src USING ERRCODE = '22023'; END IF;
+  s := executive.publication_source(p_tenant, p_domain, v.source_kind, v_src, p_source_version);
   IF NOT (s ->> 'found')::boolean THEN RAISE EXCEPTION 'publication rejected (unknown_source): %', s ->> 'reason' USING ERRCODE = '23503'; END IF;
   IF (s ->> 'digest') IS DISTINCT FROM p_source_digest THEN RAISE EXCEPTION 'publication rejected (stale_source): the snapshot presented (%) is not the recorded % (%)', left(p_source_digest, 16), s ->> 'object_type', left(s ->> 'digest', 16) USING ERRCODE = '22023'; END IF;
   IF decision.classification_rank(p.classification) < decision.classification_rank(s #>> '{controls,classification}') THEN
@@ -648,12 +656,12 @@ BEGIN
   IF p_bytes_digest IS NULL OR p_bytes_digest !~ '^[0-9a-f]{64}$' OR coalesce(p_byte_length, 0) <= 0 OR p_vault_ref IS NULL OR p_vault_ref !~ '^[0-9a-f-]{36}/[0-9a-f-]{36}\.bin$' OR split_part(p_vault_ref, '/', 1) <> p_publication_id::text THEN
     RAISE EXCEPTION 'publication rejected (bytes): the rendered bytes are named by their sha256, their length and their vault reference under the publication''s own export directory' USING ERRCODE = '22023';
   END IF;
-  IF p_bytes_digest = v.bytes_digest AND p_source_digest = v.source_digest THEN RAISE EXCEPTION 'publication rejected (unchanged): the correction binds the same snapshot and the same bytes as version %; nothing changed', v.version USING ERRCODE = '22023'; END IF;
+  IF p_source_digest = v.source_digest THEN RAISE EXCEPTION 'publication rejected (unchanged): the correction binds the same snapshot (%) as version %; a correction binds a new edition or a new package version', left(v.source_digest, 16), v.version USING ERRCODE = '22023'; END IF;
   v_next := v.version + 1;
-  v_changed := jsonb_build_object('prior_version', v.version, 'prior_bytes_digest', v.bytes_digest, 'bytes_digest', p_bytes_digest, 'prior_source_digest', v.source_digest, 'source_digest', p_source_digest,
-                                  'prior_source_version', v.source_version, 'source_version', p_source_version, 'bytes_changed', p_bytes_digest <> v.bytes_digest, 'snapshot_changed', p_source_digest <> v.source_digest, 'reason', btrim(p_reason));
+  v_changed := jsonb_build_object('prior_version', v.version, 'prior_bytes_digest', v.bytes_digest, 'bytes_digest', p_bytes_digest, 'prior_source_digest', v.source_digest, 'source_digest', p_source_digest, 'prior_source_id', v.source_id, 'source_id', v_src,
+                                  'prior_source_version', v.source_version, 'source_version', p_source_version, 'bytes_changed', p_bytes_digest <> v.bytes_digest, 'snapshot_changed', true, 'reason', btrim(p_reason));
   INSERT INTO executive.publication_versions (publication_id, version, scope, tenant_id, domain_id, source_kind, source_id, source_version, source_digest, format, bytes_digest, byte_length, vault_ref, render_method, state, drafted_by, correction_of, correction_reason, changed, correlation_id)
-  VALUES (p_publication_id, v_next, 'DOMAIN', p_tenant, p_domain, v.source_kind, v.source_id, p_source_version, p_source_digest, p.format, p_bytes_digest, p_byte_length, p_vault_ref, p_render_method, 'drafted', p_actor, v.version, btrim(p_reason), v_changed, p_correlation);
+  VALUES (p_publication_id, v_next, 'DOMAIN', p_tenant, p_domain, v.source_kind, v_src, p_source_version, p_source_digest, p.format, p_bytes_digest, p_byte_length, p_vault_ref, p_render_method, 'drafted', p_actor, v.version, btrim(p_reason), v_changed, p_correlation);
   UPDATE executive.publication_versions SET state = 'corrected', corrected_by_version = v_next WHERE publication_id = p_publication_id AND version = v.version;
   UPDATE executive.publications SET state = 'corrected', current_version = v_next, updated_at = clock_timestamp() WHERE publication_id = p_publication_id;
   v_ev := executive.publication_event(gen_random_uuid(), p_publication_id, v_next, p_tenant, p_domain, 'publication.corrected', p_actor, v_changed, p_correlation);
@@ -667,8 +675,8 @@ BEGIN
   RETURN jsonb_build_object('publication_id', p_publication_id, 'version', v_next, 'state', 'drafted', 'correction_of', v.version, 'changed', v_changed, 'notified', v_notified, 'title', p.title, 'channels', to_jsonb(p.channels),
                             'external_draft_id', v_draft, 'event_id', v_ev);
 END $$ LANGUAGE plpgsql;
-REVOKE ALL ON FUNCTION executive.correct_publication(uuid,uuid,uuid,text,int,text,text,int,text,text,uuid,uuid) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION executive.correct_publication(uuid,uuid,uuid,text,int,text,text,int,text,text,uuid,uuid) TO eye_commit;
+REVOKE ALL ON FUNCTION executive.correct_publication(uuid,uuid,uuid,text,uuid,int,text,text,int,text,text,uuid,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION executive.correct_publication(uuid,uuid,uuid,text,uuid,int,text,text,int,text,text,uuid,uuid) TO eye_commit;
 
 /* d3 WITHDRAW: a reason; the recipients of the current version notified the same way; the bytes retained (nothing is removed from the vault);
    the read says withdrawn; the PUB's withdrawn version (0078's lifecycle idiom: lifecycle and truth state withdrawn, the reason in the header)
@@ -771,7 +779,8 @@ GRANT EXECUTE ON FUNCTION executive.archive_publication(uuid,uuid,uuid,bigint,uu
 
 /* d5 EXPORT CHECK: the export of an archived publication (its record with every receipt written under the export root by the service) is
    REFUSED while an active legal hold rests on the source's evidence (the export path's gate: a hold takes precedence — AU-MEM-0060) or the
-   source carries a residency restriction (its bytes stay where the vault is); the class names are the export path's gates. */
+   source carries a residency profile and the publication is addressed OUTSIDE the tenant (its bytes stay where the vault is; an internal
+   publication's export to the tenant's own export namespace stays in residency, the profile carried); the class names are the export path's gates. */
 CREATE OR REPLACE FUNCTION executive.export_publication_check(p_publication_id uuid, p_tenant uuid, p_domain uuid, p_actor uuid, p_correlation uuid) RETURNS jsonb
 SECURITY DEFINER SET search_path = executive, identity, observation, ctx, public, pg_catalog, pg_temp AS $$
 DECLARE p executive.publications%ROWTYPE; v_controls jsonb; v_ev uuid;
@@ -789,10 +798,12 @@ BEGIN
   IF jsonb_array_length(coalesce(v_controls -> 'holds', '[]'::jsonb)) > 0 THEN
     RAISE EXCEPTION 'publication rejected (legal_hold): % active legal hold(s) rest on the source''s evidence (hold %); a legal hold takes precedence over an export (AU-MEM-0060) — the archive stands, nothing leaves', jsonb_array_length(v_controls -> 'holds'), v_controls #>> '{holds,0,hold_id}' USING ERRCODE = '22023';
   END IF;
-  IF (v_controls #>> '{controls,residency_profile}') IS NOT NULL THEN
-    RAISE EXCEPTION 'publication rejected (residency): the source carries the residency profile %; its bytes stay in the vault''s residency — the archive stands, nothing leaves', v_controls #>> '{controls,residency_profile}' USING ERRCODE = '22023';
+  -- the RESIDENCY gate: the export namespace is the tenant's own vault, inside the source's residency; an EXTERNAL publication (addressed outside
+  -- the tenant) of a residency-bound source would carry the bytes out of it — refused; an internal one is exported with the profile carried
+  IF (v_controls #>> '{controls,residency_profile}') IS NOT NULL AND p.external IS NOT NULL THEN
+    RAISE EXCEPTION 'publication rejected (residency): the source carries the residency profile % and this publication is addressed outside the tenant (%: %); its bytes stay in the vault''s residency — the archive stands, nothing leaves', v_controls #>> '{controls,residency_profile}', p.external ->> 'kind', p.external ->> 'name' USING ERRCODE = '22023';
   END IF;
-  v_ev := executive.publication_event(gen_random_uuid(), p_publication_id, p.current_version, p_tenant, p_domain, 'publication.exported', p_actor, jsonb_build_object('controls', v_controls -> 'controls', 'gates', jsonb_build_object('legal_hold', 'none active on the source''s evidence', 'residency', 'no residency profile on the source', 'classification', p.classification)), p_correlation);
+  v_ev := executive.publication_event(gen_random_uuid(), p_publication_id, p.current_version, p_tenant, p_domain, 'publication.exported', p_actor, jsonb_build_object('controls', v_controls -> 'controls', 'gates', jsonb_build_object('legal_hold', 'none active on the source''s evidence', 'residency', CASE WHEN (v_controls #>> '{controls,residency_profile}') IS NULL THEN 'no residency profile on the source' ELSE 'the export stays in the vault''s residency (' || (v_controls #>> '{controls,residency_profile}') || '); an external publication would be refused' END, 'classification', p.classification)), p_correlation);
   RETURN jsonb_build_object('publication_id', p_publication_id, 'state', p.state, 'controls', v_controls -> 'controls', 'holds', v_controls -> 'holds', 'classification', p.classification, 'event_id', v_ev);
 END $$ LANGUAGE plpgsql;
 REVOKE ALL ON FUNCTION executive.export_publication_check(uuid,uuid,uuid,uuid,uuid) FROM PUBLIC;

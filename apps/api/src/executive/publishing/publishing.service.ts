@@ -150,19 +150,23 @@ export class PublishingService {
     return { ...r, signature: sig, pub: { object_version: objectVersion, content_digest: admitted.contentDigest, schema_ref: PUB_SCHEMA } };
   }
 
-  private async sendNotices(cap: PublishingWrites, scope: Scope, actor: string, a: { publicationId: string; version: number; channels: string[]; recipients: string[]; kind: 'publication' | 'correction_notice' | 'withdrawal_notice'; title: string; bytesDigest: string; classification: string; reason?: string | null; changed?: Row | null; eventId: string; correlationId: string }): Promise<Row[]> {
+  private async sendNotices(cap: PublishingWrites, scope: Scope, actor: string, a: { publicationId: string; version: number; channels: string[]; recipients: string[]; externalRecipient?: string | null; kind: 'publication' | 'correction_notice' | 'withdrawal_notice'; title: string; bytesDigest: string; classification: string; reason?: string | null; changed?: Row | null; eventId: string; correlationId: string }): Promise<Row[]> {
     const out: Row[] = [];
-    for (const channel of a.channels.filter((c) => c !== 'in_app')) {
-      const adapter = this.adapterOf(channel);
-      for (const recipient of a.recipients) {
+    // the external audience's SYNTHETIC delivery: one row on the first synthetic channel (email, else teams), addressed as external:<kind>:<name> at the sink
+    const targets: Array<{ recipient: string | null; external: string | null; address: string; channels: string[] }> = a.recipients.map((r) => ({ recipient: r, external: null, address: r, channels: a.channels.filter((c) => c !== 'in_app') }));
+    const synthetic = a.channels.filter((c) => c !== 'in_app');
+    if (a.externalRecipient && synthetic.length > 0) targets.push({ recipient: null, external: a.externalRecipient, address: a.externalRecipient.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase().slice(0, 60), channels: [synthetic[0] as string] });
+    for (const t of targets) {
+      for (const channel of t.channels) {
+        const adapter = this.adapterOf(channel);
         const deliveryId = newId();
         const { subject, body } = channelMessage({ kind: a.kind, title: a.title, publicationId: a.publicationId, version: a.version, bytesDigest: a.bytesDigest, classification: a.classification, reason: a.reason ?? null, changed: a.changed ?? null });
-        const msg: DeliveryMessage = { deliveryId, tenantId: scope.tenantId, domainId: scope.domainId, itemId: a.publicationId, itemEventId: a.eventId, itemEvent: a.kind, channel, recipient, attempt: 1, maxAttempts: 1, subject, body, correlationId: a.correlationId,
+        const msg: DeliveryMessage = { deliveryId, tenantId: scope.tenantId, domainId: scope.domainId, itemId: a.publicationId, itemEventId: a.eventId, itemEvent: a.kind, channel, recipient: t.address, attempt: 1, maxAttempts: 1, subject, body, correlationId: a.correlationId,
           via: null as unknown as AttentionTickWrites };
         const res = adapter === null ? { state: 'failed' as const, receipt: null, error: `${channel}: no adapter` } : await adapter.deliver(msg);
-        const rec = await cap.recordDelivery({ deliveryId, tenantId: scope.tenantId, domainId: scope.domainId, publicationId: a.publicationId, version: a.version, recipient, channel, kind: a.kind, state: res.state === 'failed' ? 'failed' : 'delivered',
-          receipt: res.receipt, providerRef: res.providerRef ?? null, error: res.error ?? null, synthetic: true, actor, correlationId: a.correlationId });
-        out.push({ ...rec, channel, recipient, kind: a.kind, state: res.state === 'failed' ? 'failed' : 'delivered', receipt: res.receipt, provider_ref: res.providerRef ?? null, error: res.error ?? null, synthetic_state: true });
+        const rec = await cap.recordDelivery({ deliveryId, tenantId: scope.tenantId, domainId: scope.domainId, publicationId: a.publicationId, version: a.version, recipient: t.recipient, externalRecipient: t.external, channel, kind: a.kind, state: res.state === 'failed' ? 'failed' : 'delivered',
+          receipt: res.receipt === null ? null : { ...res.receipt, ...(t.external === null ? {} : { external_recipient: t.external, note: 'SYNTHETIC — the external audience is a local sink; no message left this machine' }) }, providerRef: res.providerRef ?? null, error: res.error ?? null, synthetic: true, actor, correlationId: a.correlationId });
+        out.push({ ...rec, channel, recipient: t.recipient, external_recipient: t.external, kind: a.kind, state: res.state === 'failed' ? 'failed' : 'delivered', receipt: res.receipt, provider_ref: res.providerRef ?? null, error: res.error ?? null, synthetic_state: true });
       }
     }
     return out;
@@ -173,7 +177,7 @@ export class PublishingService {
     const p = await this.publicationOf(cap, publicationId, correlationId);
     const r = await cap.deliver({ publicationId, tenantId: scope.tenantId, domainId: scope.domainId, version, actor: principal.principalId, correlationId });
     const recipients = ((r['recipients'] ?? []) as Row[]).map((x) => String(x['principal_id']));
-    const channelDeliveries = await this.sendNotices(cap, scope, principal.principalId, { publicationId, version, channels: strArr(r['channels']), recipients, kind: 'publication', title: String(r['title']), bytesDigest: String(r['bytes_digest']),
+    const channelDeliveries = await this.sendNotices(cap, scope, principal.principalId, { publicationId, version, channels: strArr(r['channels']), recipients, externalRecipient: (r['external_recipient'] as string | null) ?? null, kind: 'publication', title: String(r['title']), bytesDigest: String(r['bytes_digest']),
       classification: String(p['classification']), eventId: String(r['event_id']), correlationId });
     return { ...r, channel_deliveries: channelDeliveries, external_delivery: p['external'] === null || p['external'] === undefined ? null : { synthetic: true, note: 'the external audience is SYNTHETIC: its delivery is the local sink\'s; no message left this machine' } };
   }
@@ -183,14 +187,16 @@ export class PublishingService {
   }
 
   /** d3 CORRECT: the next version rendered and bound; the prior version's recipients notified (the items by the port, the channel notices here). */
-  async correct(cap: PublishingWrites, scope: Scope, principal: AuthenticatedPrincipal, purpose: string, publicationId: string, a: { reason: string; sourceVersion: number | null; sourceDigest: string }, correlationId: string): Promise<Row> {
+  async correct(cap: PublishingWrites, scope: Scope, principal: AuthenticatedPrincipal, purpose: string, publicationId: string, a: { reason: string; sourceId: string | null; sourceVersion: number | null; sourceDigest: string }, correlationId: string): Promise<Row> {
     const p = await this.publicationOf(cap, publicationId, correlationId);
     const cur = await this.versionOf(cap, publicationId, Number(p['current_version']), correlationId);
-    const sourceVersion = a.sourceVersion ?? Number(cur['source_version']);
+    const sourceId = a.sourceId ?? String(cur['source_id']);
+    const sourceVersion = a.sourceVersion ?? (a.sourceId !== null && a.sourceId !== String(cur['source_id']) ? 1 : Number(cur['source_version']));
     const next = Number(cur['version']) + 1; const blobId = newId(); const vaultRef = `${publicationId}/${blobId}.bin`;
     const binding: RenderBinding = { publicationId, version: next, title: String(p['title']), template: String(p['template']), classification: String(p['classification']), accessibility: p['accessibility'] as RenderBinding['accessibility'], external: (p['external'] as RenderBinding['external']) ?? null };
-    const r = await this.render(cap, scope, principal, purpose, { kind: String(cur['source_kind']) as 'briefing' | 'report', id: String(cur['source_id']), version: sourceVersion }, binding, String(p['format']) as PublicationFormat, correlationId);
-    const out = await cap.correct({ publicationId, tenantId: scope.tenantId, domainId: scope.domainId, reason: a.reason, sourceVersion, sourceDigest: a.sourceDigest, bytesDigest: r.digest, byteLength: r.byteLength, vaultRef, renderMethod: RENDER_METHOD, actor: principal.principalId, correlationId });
+    if (String(cur['source_kind']) === 'report' && sourceId !== String(cur['source_id'])) throw new HttpException(errorBody('EYE_REQ_001', correlationId, `publication rejected (source): a report publication corrects to another version of the same package ${String(cur['source_id'])}, not to package ${sourceId}`), 422);
+    const r = await this.render(cap, scope, principal, purpose, { kind: String(cur['source_kind']) as 'briefing' | 'report', id: sourceId, version: sourceVersion }, binding, String(p['format']) as PublicationFormat, correlationId);
+    const out = await cap.correct({ publicationId, tenantId: scope.tenantId, domainId: scope.domainId, reason: a.reason, sourceId, sourceVersion, sourceDigest: a.sourceDigest, bytesDigest: r.digest, byteLength: r.byteLength, vaultRef, renderMethod: RENDER_METHOD, actor: principal.principalId, correlationId });
     await this.vault.writePackageFile(scope, publicationId, `${blobId}.bin`, r.bytes);
     const notified = ((out['notified'] ?? []) as Row[]).map((x) => String(x['recipient']));
     const notices = await this.sendNotices(cap, scope, principal.principalId, { publicationId, version: Number(cur['version']), channels: strArr(out['channels']), recipients: notified, kind: 'correction_notice', title: String(out['title']),
@@ -265,7 +271,7 @@ export class PublishingService {
       format: EXPORT_FORMAT,
       package: { publication_id: publicationId, tenant_id: scope.tenantId, domain_id: scope.domainId, locator_prefix: `${scope.tenantId}/${scope.domainId}/${publicationId}/`, exported_by: `principal:${principal.principalId}`, title: pub['title'], classification: pub['classification'] },
       authorization: { archived_by: pub['archived_by'] === undefined ? null : `principal:${String(pub['archived_by'])}`, archived_at: iso(pub['archived_at']), archive_ref: pub['archive_ref'] ?? null, export_event_id: check['event_id'] },
-      gates: { legal_hold: 'no active hold on the source\'s evidence (a hold refuses the export — AU-MEM-0060)', residency: 'no residency profile on the source (one refuses the export)', classification: pub['classification'], controls: check['controls'] ?? null },
+      gates: { legal_hold: 'no active hold on the source\'s evidence (a hold refuses the export — AU-MEM-0060)', residency: 'the export stays in the vault\'s residency; an external publication of a residency-bound source is refused', classification: pub['classification'], controls: check['controls'] ?? null },
       objects: versions.map((v) => ({ object: `PUB:${publicationId}@${String(v['pub_object_version'] ?? '')}`, version: v['version'], state: v['state'], file: String(v['vault_ref']).split('/')[1], sha256: v['bytes_digest'], byte_length: v['byte_length'], format: v['format'],
                                      source: { kind: v['source_kind'], id: v['source_id'], version: v['source_version'], digest: v['source_digest'] }, approval: { by: v['approved_by'], at: iso(v['approved_at']), digest: v['approval_digest'], signature_id: v['signature_id'] }, signatures: v['signatures'] })),
       deliveries: record['deliveries'] ?? [], external_drafts: record['external_drafts'] ?? [], events: record['events'] ?? [],

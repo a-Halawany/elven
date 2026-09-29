@@ -125,7 +125,7 @@ export class PublishingController {
   }
 
   @Post('/:publicationId/correct')
-  async correct(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('publicationId') publicationId: string, @Body() body: { payload?: { reason?: string; sourceVersion?: number; sourceDigest?: string } }) {
+  async correct(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('publicationId') publicationId: string, @Body() body: { payload?: { reason?: string; sourceId?: string; sourceVersion?: number; sourceDigest?: string } }) {
     const { envelope, principal } = ctx(req);
     const reason = reasonOf(body.payload?.reason, 'a correction', envelope.correlation_id);
     const sourceDigest = validateDigest(body.payload?.sourceDigest);
@@ -133,9 +133,11 @@ export class PublishingController {
     const sv = body.payload?.sourceVersion;
     const sourceVersion = sv === undefined || sv === null ? null : Number(sv);
     if (sourceVersion !== null && (!Number.isInteger(sourceVersion) || sourceVersion < 1)) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'sourceVersion is a positive integer'), 422);
+    const sourceId = typeof body.payload?.sourceId === 'string' && body.payload.sourceId !== '' ? body.payload.sourceId.toLowerCase() : null;
+    if (sourceId !== null && !/^[0-9a-f-]{36}$/.test(sourceId)) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'sourceId is the corrected edition\'s briefing id (a uuid)'), 422);
     const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'executive.publication.correct', 'PUB', publicationId), PublishingCapability.write,
       async (cap) => {
-        const r = await this.publishing.correct(cap, this.scope(tenantId, domainId), principal, envelope.purpose_id ?? 'decision', publicationId, { reason, sourceVersion, sourceDigest }, envelope.correlation_id);
+        const r = await this.publishing.correct(cap, this.scope(tenantId, domainId), principal, envelope.purpose_id ?? 'decision', publicationId, { reason, sourceId, sourceVersion, sourceDigest }, envelope.correlation_id);
         return { result: r, targetType: 'PUB', targetId: publicationId, targetVersion: String(r['version'] ?? ''), outboxEvent: null };
       });
     return { correction: out.result, receipt: receipt(out) };

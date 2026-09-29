@@ -57,9 +57,9 @@ export interface PublishingWrites extends PublishingReads {
              accessibility: Row; template: string; external: Row | null; bytesDigest: string; byteLength: number; vaultRef: string; renderMethod: string; actor: string; correlationId: string }): Promise<Row>;
   approve(a: { publicationId: string; tenantId: string; domainId: string; version: number; digest: string; signatureId: string; objectVersion: number; actor: string; correlationId: string }): Promise<Row>;
   deliver(a: { publicationId: string; tenantId: string; domainId: string; version: number; actor: string; correlationId: string }): Promise<Row>;
-  recordDelivery(a: { deliveryId: string; tenantId: string; domainId: string; publicationId: string; version: number; recipient: string; channel: string; kind: string; state: string; receipt: Row | null; providerRef: string | null; error: string | null; synthetic: boolean; actor: string; correlationId: string }): Promise<Row>;
+  recordDelivery(a: { deliveryId: string; tenantId: string; domainId: string; publicationId: string; version: number; recipient: string | null; externalRecipient: string | null; channel: string; kind: string; state: string; receipt: Row | null; providerRef: string | null; error: string | null; synthetic: boolean; actor: string; correlationId: string }): Promise<Row>;
   acknowledge(a: { deliveryId: string; tenantId: string; domainId: string; note: string | null; actor: string; correlationId: string }): Promise<Row>;
-  correct(a: { publicationId: string; tenantId: string; domainId: string; reason: string; sourceVersion: number; sourceDigest: string; bytesDigest: string; byteLength: number; vaultRef: string; renderMethod: string; actor: string; correlationId: string }): Promise<Row>;
+  correct(a: { publicationId: string; tenantId: string; domainId: string; reason: string; sourceId: string; sourceVersion: number; sourceDigest: string; bytesDigest: string; byteLength: number; vaultRef: string; renderMethod: string; actor: string; correlationId: string }): Promise<Row>;
   withdraw(a: { publicationId: string; tenantId: string; domainId: string; reason: string; objectVersion: number | null; actor: string; correlationId: string }): Promise<Row>;
   archive(a: { publicationId: string; tenantId: string; domainId: string; objectVersion: number | null; actor: string; correlationId: string }): Promise<Row>;
   exportCheck(a: { publicationId: string; tenantId: string; domainId: string; actor: string; correlationId: string }): Promise<Row>;
@@ -114,14 +114,14 @@ class PublishingCapabilityImpl extends PublishingCore implements PublishingWrite
     return this.one(sql`select executive.deliver_publication(${a.publicationId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.version}::int, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
   }
   recordDelivery(a: Parameters<PublishingWrites['recordDelivery']>[0]): Promise<Row> {
-    return this.one(sql`select executive.record_publication_delivery(${a.deliveryId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.publicationId}::uuid, ${a.version}::int, ${a.recipient}::uuid, ${a.channel}, ${a.kind}, ${a.state},
+    return this.one(sql`select executive.record_publication_delivery(${a.deliveryId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.publicationId}::uuid, ${a.version}::int, ${a.recipient}::uuid, ${a.externalRecipient}, ${a.channel}, ${a.kind}, ${a.state},
       ${a.receipt === null ? null : JSON.stringify(a.receipt)}::jsonb, ${a.providerRef}, ${a.error}, ${a.synthetic}::boolean, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
   }
   acknowledge(a: Parameters<PublishingWrites['acknowledge']>[0]): Promise<Row> {
     return this.one(sql`select executive.acknowledge_publication(${a.deliveryId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.note}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
   }
   correct(a: Parameters<PublishingWrites['correct']>[0]): Promise<Row> {
-    return this.one(sql`select executive.correct_publication(${a.publicationId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}, ${a.sourceVersion}::int, ${a.sourceDigest}, ${a.bytesDigest}, ${a.byteLength}::int, ${a.vaultRef}, ${a.renderMethod}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    return this.one(sql`select executive.correct_publication(${a.publicationId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}, ${a.sourceId}::uuid, ${a.sourceVersion}::int, ${a.sourceDigest}, ${a.bytesDigest}, ${a.byteLength}::int, ${a.vaultRef}, ${a.renderMethod}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
   }
   withdraw(a: Parameters<PublishingWrites['withdraw']>[0]): Promise<Row> {
     return this.one(sql`select executive.withdraw_publication(${a.publicationId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}, ${a.objectVersion}::bigint, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
