@@ -98,6 +98,9 @@ export function EvaluationPanel({ scope, mayEvaluate }: { scope: Scope; mayEvalu
   const [problem, setProblem] = useState<string | null>(null);
   const [from, setFrom] = useState(''); const [to, setTo] = useState(''); const [minSample, setMinSample] = useState('5');
   const [latest, setLatest] = useState<QueueEvaluation | null>(null);
+  /* B36 (0094 §A3): what the evaluation's governance came to — held (the cause, the measure against the threshold) or within policy */
+  const [governance, setGovernance] = useState<Record<string, unknown> | null>(null);
+  /* end B36 attention */
   const [receipt, setReceipt] = useState<ReceiptT>(null);
   const [actProblem, setActProblem] = useState<string | null>(null);
   const [open, setOpen] = useState<string | null>(null);
@@ -130,11 +133,20 @@ export function EvaluationPanel({ scope, mayEvaluate }: { scope: Scope; mayEvalu
             setActProblem(null); setLatest(null);
             const r = await api.evaluate(scope, { from: toIso(from), to: toIso(to), minSample });
             if (!r.ok || r.data === undefined) { const m = `not evaluated — ${refusal(r, 'the evaluation was not answered')}`; setActProblem(m); throw new Error(m); }
-            setLatest(r.data.evaluation); setReceipt(r.data.receipt); await load();
+            setLatest(r.data.evaluation); setReceipt(r.data.receipt); /* B36 */ setGovernance(((r.data as unknown as { governance?: Record<string, unknown> }).governance) ?? null); /* end B36 */ await load();
           }} />
       </div>
       {actProblem !== null && <LiveStatus assertive><span style={critical}>{actProblem}</span></LiveStatus>}
       {latest !== null && <EvaluationView e={latest} />}
+      {/* B36 (0094 §A3; PR-44-005): the evaluation ACTS — the governance's answer in the server's words */}
+      {governance !== null && (
+        <p role="status" data-testid="governance-answer" style={governance['held'] === true ? { ...critical, fontWeight: 650 } : muted}>
+          Governance: {governance['held'] === true
+            ? `the queue is HELD (${String(governance['cause'])}: measure ${String(governance['measure'])} against ${String(governance['threshold'])}); the governance item ${String(governance['governance_item_id'])} is routed to the executive`
+            : `not held — ${String(governance['reason'] ?? '')}`}
+        </p>
+      )}
+      {/* end B36 attention */}
       <Receipt receipt={receipt} />
 
       <h3 style={h3}>Evaluations</h3>
