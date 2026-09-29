@@ -44,6 +44,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sql } from 'kysely';
+import { createHash } from 'node:crypto';
 import { uuidv7 } from 'uuidv7';
 import { generateKeyPairSync } from 'node:crypto';
 import { mkdtempSync, realpathSync } from 'node:fs';
@@ -565,23 +566,21 @@ describe('B36 strategy · the score and the Strategy Graph completed (0094 §S)'
       recovery: { stale_measure_after_fresh: n }, reconciliation: { kinds: [...new Set(raised.map((d) => d['kind']))].sort() } });
   }, 300_000);
 
-  it('S7 · THE PLAN LINKS (d): absent in this deployment and stated so; Part P\'s objects planted (stated) → linked; dropped', async () => {
+  it('S7 · THE PLAN LINKS (d): Part P\'s tables declared (B36 integration) — available, empty for an unplanned objective; a planted plan and initiative (stated) → linked; the other objective still empty', async () => {
+    // Since the integration of Part P (0094 §P), executive.plans / executive.initiatives exist: the read is AVAILABLE and empty for an objective in no plan.
     const none = await planLinks(OBJ);
-    expect(none).toMatchObject({ available: false, initiatives: [] });
-    expect(String(none.reason)).toMatch(/executive\.initiatives is not declared/);
-    // Part P's table, PLANTED by the superuser with the columns the link reads (stated): the read finds it by to_regclass
-    await sql`create table executive.initiatives (initiative_id uuid primary key, tenant_id uuid not null, domain_id uuid not null, objective_id uuid, title text not null, state text not null default 'proposed')`.execute(su);
-    try {
-      const ini = uuidv7();
-      await sql`insert into executive.initiatives (initiative_id, tenant_id, domain_id, objective_id, title) values (${ini}::uuid, ${T()}::uuid, ${D()}::uuid, ${OBJ}::uuid, 'Dual sourcing (SYNTHETIC plan link)')`.execute(su);
-      const linked = await planLinks(OBJ);
-      expect(linked.available).toBe(true);
-      expect(linked.initiatives.map((i) => i['initiative_id'])).toEqual([ini]);
-      expect((await planLinks(OBJ2)).initiatives).toEqual([]);
-    } finally {
-      await sql`drop table executive.initiatives`.execute(su);
-    }
-    expect((await planLinks(OBJ)).available).toBe(false);
-    sixEvidence('S7', { fault_trace: 'none', watermark: { objective: OBJ }, consumer_behaviour: 'the link read only when the table exists; absent and stated otherwise', operator_action: 'none', recovery: 'n/a', reconciliation: { available_after_drop: false } });
+    expect(none).toMatchObject({ available: true, initiatives: [] });
+    // A plan and an initiative PLANTED by the superuser as Part P's ports leave them (stated; the ports' own harness is phase6-planning-b36): the
+    // initiative IS the INI strategy object (one object, two views) and names OBJ as its objective.
+    const plan = uuidv7(); const digest = createHash('sha256').update(plan).digest('hex');
+    await sql`insert into executive.plans (plan_id, scope, tenant_id, domain_id, title, statement, horizon, objective_ids, owner_principal_id, budget_currency, budget_total, budget_authority, digest, declared_by, correlation_id)
+      values (${plan}::uuid, 'DOMAIN', ${T()}::uuid, ${D()}::uuid, 'Dual sourcing 2027 (SYNTHETIC plan link)', 'the plan the link read finds', '12m', ARRAY[${OBJ}::uuid], ${lead.principalId}::uuid, 'EUR', 1200000, 900000, ${digest}, ${lead.principalId}::uuid, ${uuidv7()}::uuid)`.execute(su);
+    await sql`insert into executive.initiatives (initiative_id, scope, tenant_id, domain_id, plan_id, objective_id, title, sponsor_principal_id, owner_principal_id, proposed_by, proposed_by_kind, digest, correlation_id)
+      values (${INI}::uuid, 'DOMAIN', ${T()}::uuid, ${D()}::uuid, ${plan}::uuid, ${OBJ}::uuid, 'Dual-sourcing initiative (SYNTHETIC plan link)', ${executive.principalId}::uuid, ${lead.principalId}::uuid, ${lead.principalId}::uuid, 'human', ${createHash('sha256').update(INI).digest('hex')}, ${uuidv7()}::uuid)`.execute(su);
+    const linked = await planLinks(OBJ);
+    expect(linked.available).toBe(true);
+    expect(linked.initiatives.map((i) => i['initiative_id'])).toEqual([INI]);
+    expect((await planLinks(OBJ2)).initiatives).toEqual([]);
+    sixEvidence('S7', { fault_trace: 'none', watermark: { objective: OBJ }, consumer_behaviour: 'the link read on Part P\'s tables (available since the B36 integration); an unplanned objective reads empty', operator_action: 'none', recovery: 'n/a', reconciliation: { planted: true } });
   }, 120_000);
 });
