@@ -824,6 +824,19 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   { match: /^briefing rejected \((state|undeclared_omission|expired)\)|^briefing policy rejected \(state\)/i, status: 409, code: 'EYE_STA_002' },
   { match: /^briefing rejected \(|^briefing policy rejected/i, status: 422, code: 'EYE_REQ_001' },
   /* end B36 briefing */
+  /* B36 home (0094 §H) — the executive home's families in the CLASS form `<noun> rejected (<class>): …`: `cadence rejected`, `executive room
+     rejected` (0044's unclassed `room rejected: …` texts are the decision room's and are mapped by no row; the noun here is `executive room`
+     and every row is anchored), `objective review rejected` (the SoD of §H2's re-declared convene_review and of open_subject_room — B23's
+     `^review convening rejected` rows read another noun), `agenda rejected`, `escalation rejected`, `search rejected`, `command view rejected`
+     and §0's `context rejected` (the prelude's port; this part owns its only route — `^memory context rejected` and `^warning context rejected`
+     are other nouns, anchored). B9's order: the standing 403 (the acting principal, a role not held, the separation of duties), the absences
+     404 (unknown_*), the record's state 409 (state, stale), the caller's own request 422 (the rest). The unit test runs every text through
+     the mapper. */
+  { match: /^(cadence|executive room|agenda|escalation|search|context) rejected \(actor\)|^objective review rejected \(separation_of_duties\)|^command view rejected \(role\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^(cadence|executive room|agenda|escalation|command view) rejected \(unknown_(subject|cadence|object|escalation|view)\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^(cadence|executive room|agenda|escalation) rejected \(state\)|^context rejected \(stale\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^(cadence|executive room|agenda|escalation|search|context|command view) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B36 home */
 ];
 
 export function asObservationRefusal(e: unknown, correlationId: string): HttpException | null {

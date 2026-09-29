@@ -60,9 +60,13 @@ import { SmsChannel, TeamsChannel } from './attention/delivery/webhook.channel.j
 /* B36 briefing (0094 §B.6): the attention tick's step briefing-expiry (order 60) */
 import { BriefingExpiryStep } from './briefings/expiry-step.js';
 /* end B36 briefing */
+/* B36 home (0094 §H): the executive home, the cadence, the command views, the search, the metrics; the tick step room-deadlines (order 58) */
+import { HomeController } from './home/home.controller.js';
+import { HomeService } from './home/home.service.js';
+/* end B36 home */
 @Module({
   imports: [PipelineModule, IdentityModule, ObservationModule, DecisionModule, GraphModule],
-  controllers: [ExecutiveController, /* B34 (0090) workflow */ WorkflowController /* end B34 workflow */],
+  controllers: [ExecutiveController, /* B34 (0090) workflow */ WorkflowController /* end B34 workflow */, /* B36 home (0094 §H) */ HomeController /* end B36 home */],
   providers: [SignatureService /* B36 §0 (0094) */, RoomService, BriefingService, AgentsService, AgentWorkerService, DecisionAgentSessionService, RequestsService, AttentionService,
     // B22 (0083): the four consumers of L1-I03, L1-I04, L2-I02 and the attention router (the graph module's dispatcher registers them).
     ObservationsConsumer, SourceHealthConsumer, ProposalsConsumer, AttentionConsumer,
@@ -76,7 +80,8 @@ import { BriefingExpiryStep } from './briefings/expiry-step.js';
     /* B34 (0090) workflow */ WorkflowService, CollabService, WorkflowTimerRegistry, WorkflowTimerSteps /* end B34 workflow */,
     /* B34-F1 (0091) */ CollabIdentityService /* end B34-F1 */,
     /* B34 (0090) attention */ AttentionActService, EmailChannel, SmsChannel, TeamsChannel /* end B34 attention */,
-    /* B36 briefing (0094 §B.6): the tick step briefing-expiry */ BriefingExpiryStep /* end B36 briefing */],
+    /* B36 briefing (0094 §B.6): the tick step briefing-expiry */ BriefingExpiryStep /* end B36 briefing */,
+    /* B36 home (0094 §H): the home's service and the tick step room-deadlines */ HomeService /* end B36 home */],
   exports: [SignatureService, RoomService, BriefingService, AgentsService, AgentWorkerService, RequestsService, AttentionService, AttentionTickRegistry,
     /* B24 (0086) timer */ AttentionTimerService, DeliveryService /* end B24 timer */,
     /* B34 (0090) workflow: the timer registry (the commitments and gates parts register their kinds' handlers) */ WorkflowTimerRegistry, CollabService /* end B34 workflow */],
