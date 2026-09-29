@@ -787,6 +787,19 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   { match: /^twin proposal rejected \((state|version)\)/i, status: 409, code: 'EYE_STA_002' },
   { match: /^twin proposal rejected/i, status: 422, code: 'EYE_REQ_001' },
   /* end B29 §B */
+  /* B36 (0094 §S) strategy — the score completed and the Strategy Graph completed (0094 §S1–§S7): `health input rejected`, `health exception
+     rejected`, `health approval rejected`, `strategy revocation rejected` — anchored FAMILIES no earlier row starts with (B32's health rows read
+     `^health (definition|score|change) rejected` and its graph rows `^strategy (alignment|measure|authority|owner) rejected`; neither names these
+     nouns; the texts carry no phrase an unanchored earlier row matches — the unit test runs every text through the mapper). B9's order: the standing
+     403 (the acting principal; `(ownership)` — not the input's owner; `(separation)` — the requester deciding their own exception; the standing
+     human phrase of assert_strategy_actor; `(not_authority)` — neither the act's issuer nor a domain administrator); the absences 404
+     (`(unknown_component)`, `(unknown_exception)`, `(unknown_snapshot)`, `(unknown_act)`); the record's state 409 (`(no_definition)`,
+     `(pending)`, `(state)`, `(expired)`, `(stale_digest)`, `(duplicate)`, `(revoked)`, `(lapsed)`); the caller's own request 422 (the rest). */
+  { match: /^(health input|health exception|health approval) rejected \((actor|ownership|separation)\)|^strategy revocation rejected: (recorded by the acting principal|a named, active human)|^strategy revocation rejected \(not_authority\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^(health input|health exception|health approval) rejected \(unknown_(component|exception|snapshot)\)|^strategy revocation rejected \(unknown_act\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^(health input|health exception|health approval) rejected \((no_definition|pending|state|expired|stale_digest|duplicate)\)|^strategy revocation rejected \((revoked|lapsed)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^(health input|health exception|health approval|strategy revocation) rejected/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B36 strategy */
 ];
 
 export function asObservationRefusal(e: unknown, correlationId: string): HttpException | null {

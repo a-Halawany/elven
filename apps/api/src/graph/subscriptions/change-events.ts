@@ -607,6 +607,32 @@ export function objectiveChangedEvent(a: { answer: Row; change: 'revised' | 'own
   return asRow('GraphChanged', payload);
 }
 /* end B34 commitments */
+/* B36 (0094 §S) strategy */
+/**
+ * 0094 (B36, F-P6-09 (a)): GraphChanged/strategy.alignment_changed | strategy.measure_changed | strategy.owner_changed — built PURE from the
+ * port's answer (the objectiveChangedEvent precedent): objects.objectives the objectives the subject bears on, no identities, no walk
+ * (walked: false); the typed `strategy` block names the subject, the change, the act or edit and the owners.
+ */
+export function strategyChangedEvent(a: { kind: 'strategy.alignment_changed' | 'strategy.measure_changed' | 'strategy.owner_changed'; subjectKind: 'alignment' | 'measure' | 'strategy_object'; subjectId: string;
+                                          subjectType: string | null; change: string; objectiveIds: string[]; actId?: string | null; ownerFrom?: string | null; ownerTo?: string | null; reason?: string | null;
+                                          subscriptions: SubscriptionRef[]; actor: string; action: string; targetType: string; occurredAt?: string }): OutboxRow {
+  const now = a.occurredAt ?? new Date().toISOString();
+  const objectives = [...new Set(a.objectiveIds.filter((x) => typeof x === 'string' && x !== ''))];
+  const payload: GraphChangedPayload = {
+    schema: 'GraphChanged', schema_version: 'v1',
+    change: { kind: a.kind, occurred_at: now, graph_event_id: null, invalidation_id: null, correction_case_id: null },
+    identities: [],
+    relationships: { edges: [], resolutions: [], dependencies: [] },
+    objects: { ...EMPTY_REACH, objectives, walked: false },
+    temporal: { known_at: now },
+    subscriptions: a.subscriptions,
+    cause: { action: a.action, actor: a.actor, target_type: a.targetType, target_id: a.subjectId },
+    strategy: { subject_kind: a.subjectKind, subject_id: a.subjectId, subject_type: a.subjectType, change: a.change, objective_ids: objectives, act_id: a.actId ?? null,
+                owner_from: a.ownerFrom ?? null, owner_to: a.ownerTo ?? null, reason: a.reason ?? null },
+  };
+  return asRow('GraphChanged', payload);
+}
+/* end B36 strategy */
 
 /**
  * The identity roles that mean the ENTITY ITSELF (or a relationship it is an end of) changed — as opposed to

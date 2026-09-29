@@ -23,7 +23,7 @@ import { errorBody } from '@eye/contracts';
 import type { ExecutiveReads } from '../executive.capabilities.js';
 
 type Row = Record<string, unknown>;
-export const INPUT_KINDS = ['indicator', 'measure', 'risk', 'opportunity'] as const;
+export const INPUT_KINDS = ['indicator', 'measure', 'risk', 'opportunity', /* B36 (0094 §S2) */ 'capability', 'execution', 'outcome', 'quality'] as const;
 export const DEFINITION_STATES = ['proposed', 'active', 'superseded', 'refused'] as const;
 export const SNAPSHOT_STATUSES = ['complete', 'partial', 'indeterminate'] as const;
 export const CHANGE_STATES = ['raised', 'acknowledged', 'challenged', 'upheld', 'dismissed', 'withdrawn'] as const;
