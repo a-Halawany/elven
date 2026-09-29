@@ -3,6 +3,7 @@
  * the bounded agents. It imports the pipeline; it is imported by none of Phases 0–5
  * nor by the decision module.
  */
+import { SignatureService } from './signatures/signature.service.js'; // B36 §0 (0094)
 import { Module } from '@nestjs/common';
 import { PipelineModule } from '../pipeline/pipeline.module.js';
 import { IdentityModule } from '../identity/identity.module.js';
@@ -58,7 +59,7 @@ import { SmsChannel, TeamsChannel } from './attention/delivery/webhook.channel.j
 @Module({
   imports: [PipelineModule, IdentityModule, ObservationModule, DecisionModule, GraphModule],
   controllers: [ExecutiveController, /* B34 (0090) workflow */ WorkflowController /* end B34 workflow */],
-  providers: [RoomService, BriefingService, AgentsService, AgentWorkerService, DecisionAgentSessionService, RequestsService, AttentionService,
+  providers: [SignatureService /* B36 §0 (0094) */, RoomService, BriefingService, AgentsService, AgentWorkerService, DecisionAgentSessionService, RequestsService, AttentionService,
     // B22 (0083): the four consumers of L1-I03, L1-I04, L2-I02 and the attention router (the graph module's dispatcher registers them).
     ObservationsConsumer, SourceHealthConsumer, ProposalsConsumer, AttentionConsumer,
     /* B23 (0084) attention: the governed review (L10-I03) */ ReviewsService /* end B23 attention */,
@@ -70,7 +71,7 @@ import { SmsChannel, TeamsChannel } from './attention/delivery/webhook.channel.j
     /* B34 (0090) workflow */ WorkflowService, CollabService, WorkflowTimerRegistry, WorkflowTimerSteps /* end B34 workflow */,
     /* B34-F1 (0091) */ CollabIdentityService /* end B34-F1 */,
     /* B34 (0090) attention */ AttentionActService, EmailChannel, SmsChannel, TeamsChannel /* end B34 attention */],
-  exports: [RoomService, BriefingService, AgentsService, AgentWorkerService, RequestsService, AttentionService, AttentionTickRegistry,
+  exports: [SignatureService, RoomService, BriefingService, AgentsService, AgentWorkerService, RequestsService, AttentionService, AttentionTickRegistry,
     /* B24 (0086) timer */ AttentionTimerService, DeliveryService /* end B24 timer */,
     /* B34 (0090) workflow: the timer registry (the commitments and gates parts register their kinds' handlers) */ WorkflowTimerRegistry, CollabService /* end B34 workflow */],
 })

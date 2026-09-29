@@ -131,6 +131,10 @@ const BUNDLE_V1: Rule[] = [
       { role: 'method_steward', atScope: 'DOMAIN' },
       { role: 'constraint_steward', atScope: 'DOMAIN' },
       /* end B29 */
+      /* B36 (0094): the executive operator and the board member resolve their own scope (a pure holder opens the shell) */
+      { role: 'executive_operator', atScope: 'DOMAIN' },
+      { role: 'board_member', atScope: 'DOMAIN' },
+      /* end B36 */
     ],
     obligations: [{ type: 'audit_access' }],
     requiresPurpose: true,
