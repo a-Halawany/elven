@@ -17,41 +17,44 @@ export type DependencyKind = 'finish_to_start' | 'shares_resource';
 
 export interface PlanRow {
   plan_id: string; title: string; statement: string; horizon: Horizon; objective_ids: string[]; owner_principal_id: string;
-  budget_currency: string; budget_total: string; budget_authority: string; classification: string; review_cadence_days: number; last_reviewed_at: string | null;
+  budget_currency: string; budget_total: Decimal; budget_authority: Decimal; classification: string; review_cadence_days: number; last_reviewed_at: string | null;
   state: 'open' | 'baselined' | 'closed'; current_version: number; digest: string; declared_by: string; declared_at: string; updated_at: string;
 }
 export interface Transition { transition: string; from: string | null; to: string; actor: string; actor_kind: 'human' | 'agent'; reason: string | null; at: string; details: Record<string, unknown> }
 export interface MilestoneRow {
-  milestone_id: string; initiative_id: string; plan_id: string; name: string; due_date: string; measure_id: string; measure_title?: string; target_value: string; unit?: string; direction?: string;
+  milestone_id: string; initiative_id: string; plan_id: string; name: string; due_date: string; measure_id: string; measure_title?: string; target_value: Decimal; unit?: string; direction?: string;
   state: 'planned' | 'at_risk' | 'met' | 'missed' | 'cancelled'; declared_at: string;
 }
 export interface InitiativeRow {
-  initiative_id: string; plan_id: string; objective_id: string; title: string; sponsor_principal_id: string; owner_principal_id: string; budget_share: string; funded_amount: string | null;
+  initiative_id: string; plan_id: string; objective_id: string; title: string; sponsor_principal_id: string; owner_principal_id: string; budget_share: Decimal; funded_amount: Decimal | null;
   priority: number | null; state: InitiativeState; proposed_by: string; proposed_by_kind: 'human' | 'agent'; proposed_at: string; approved_by: string | null; approved_at: string | null;
   approved_object_version: number | null; pause_reason: string | null; close_reason: string | null; version: number; digest: string;
   graph_status?: string; graph_version?: number; objectives?: Array<{ objective_id: string; title: string; status: string }>; transitions?: Transition[]; milestones?: MilestoneRow[];
 }
 export interface DependencyRow { dependency_id: string; from_initiative_id: string; to_initiative_id: string; from_title?: string; to_title?: string; kind: DependencyKind; rationale: string; state: string; declared_at: string }
-export interface PlanMeasureRow { measure_id: string; quantity_key: string | null; title: string; objective_id: string; unit: string; direction: string; target_value: string; target_date: string | null; definition_version: number; approval_state: string; last_value: string | null; last_observed_at: string | null; bound_at: string }
+export interface PlanMeasureRow { measure_id: string; quantity_key: string | null; title: string; objective_id: string; unit: string; direction: string; target_value: Decimal; target_date: string | null; definition_version: number; approval_state: string; last_value: Decimal | null; last_observed_at: string | null; bound_at: string }
 export interface PlanRunRow { run_id: string; model_ref: string; outputs_digest: string; scenario_id: string | null; component: string; completed_at: string; attached_at: string }
 export interface VersionRow { version_id: string; version: number; digest: string; note: string | null; baselined_by: string; baselined_at: string; signatures: Array<{ signature_id: string; signer: string; key_id: string; signed_at: string; bound_action: string }> }
 export interface VarianceRow {
   variance_id: string; plan_id: string; initiative_id: string; initiative_title?: string; milestone_id: string; milestone?: string; measure_id: string; basis_kind: 'observation' | 'run'; basis_id: string; basis_digest: string | null; basis_date: string | null;
-  observed_value: string; target_value: string; direction: string; variance: string; adverse: boolean; owner_principal_id: string | null; routed_item_id: string | null; routing: Record<string, unknown>; raised_at: string;
+  observed_value: Decimal; target_value: Decimal; direction: string; variance: Decimal; adverse: boolean; owner_principal_id: string | null; routed_item_id: string | null; routing: Record<string, unknown>; raised_at: string;
 }
 export interface BreachRow {
   breach_id: string; plan_id: string; initiative_id: string | null; kind: BreachKind; cause_key: string; detail: string; forecast_impact: Record<string, unknown>;
   state: 'open' | 'acknowledged' | 'resolved'; opened_at: string; acknowledged_by: string | null; acknowledged_at: string | null; authorization_note: string | null; resolved_at: string | null; resolution: string | null;
 }
 export interface PlanView extends PlanRow {
-  at: string; funded: string; objectives: Array<{ objective_id: string; title: string; status: string; owner: string }>; initiatives: InitiativeRow[]; dependencies: DependencyRow[]; measures: PlanMeasureRow[];
+  at: string; funded: Decimal; objectives: Array<{ objective_id: string; title: string; status: string; owner: string }>; initiatives: InitiativeRow[]; dependencies: DependencyRow[]; measures: PlanMeasureRow[];
   runs: PlanRunRow[]; versions: VersionRow[]; variances: VarianceRow[]; breaches: BreachRow[]; events: Array<{ event: string; subject_kind: string; subject_id: string; actor: string; at: string; details: Record<string, unknown> }>;
 }
-export interface SensitivityMilestone { milestone_id: string; name: string; initiative_id: string; initiative_title: string; due_date: string; measure_title: string; target_value: string; unit: string; direction: string; quantity_key: string | null; value: string | null; value_date: string | null; status: 'at_risk' | 'on_track' | 'unmapped' | 'no_value'; variance: string | null }
+export interface SensitivityMilestone { milestone_id: string; name: string; initiative_id: string; initiative_title: string; due_date: string; measure_title: string; target_value: Decimal; unit: string; direction: string; quantity_key: string | null; value: Decimal | null; value_date: string | null; status: 'at_risk' | 'on_track' | 'unmapped' | 'no_value'; variance: string | null }
 export interface Sensitivity {
   available: boolean; reason?: string; plan_id?: string; run_id?: string; model_ref?: string; outputs_digest?: string; scenario_id?: string | null; run_completed_at?: string; at?: string; attached?: boolean;
   milestones?: SensitivityMilestone[]; summary?: { at_risk: number; on_track: number; unmapped: number; no_value: number; line: string } | null;
 }
+
+/** Money and measured values: a decimal STRING from a row read (the list routes) or a JSON number from a jsonb answer (the view, the replay, the sensitivity) — never computed here beyond a comparison for the OVER AUTHORITY word. */
+export type Decimal = string | number;
 
 /* ───────────── what the screen says, in words (glyph + text, never colour alone) ───────────── */
 export const STATE_LABEL: Record<InitiativeState, string> = {
@@ -87,7 +90,7 @@ export const SENSITIVITY_LABEL: Record<SensitivityMilestone['status'], string> =
   at_risk: '◍ at risk under this scenario', on_track: '● on track under this scenario', unmapped: '? measure not mapped to a run output key', no_value: '? no value at the milestone\'s date in this run',
 };
 /** The budget line: funded vs total vs authority, in the plan's currency, as strings — never computed into a percentage. */
-export function budgetLine(p: { budget_currency: string; budget_total: string; budget_authority: string; funded: string }): string {
+export function budgetLine(p: { budget_currency: string; budget_total: Decimal; budget_authority: Decimal; funded: Decimal }): string {
   const over = Number(p.funded) > Number(p.budget_authority);
   return `${p.funded} ${p.budget_currency} funded · ${p.budget_total} ${p.budget_currency} planned · authority ${p.budget_authority} ${p.budget_currency}${over ? ' — OVER AUTHORITY' : ''}`;
 }
@@ -103,7 +106,7 @@ export function dayOf(v: string | null | undefined): string {
   return m === null ? v : m[1]!;
 }
 /** The number of decimals a money string carries is kept (never re-rounded); an integer is shown as is. */
-export function money(v: string | null | undefined, currency: string): string {
+export function money(v: Decimal | null | undefined, currency: string): string {
   return v === null || v === undefined ? '—' : `${v} ${currency}`;
 }
 

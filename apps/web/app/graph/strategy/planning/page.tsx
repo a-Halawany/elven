@@ -65,7 +65,7 @@ export default function PlanningPage() {
     const r = await planning.get(scope, planId);
     if (!r.ok || r.data === undefined) { setProblem(r.error?.message ?? 'the plan could not be read'); return; }
     setView(r.data.plan);
-    setAuthority((prev) => (prev === '' ? r.data!.plan.budget_authority : prev));
+    setAuthority((prev) => (prev === '' ? String(r.data!.plan.budget_authority) : prev));
   };
   useEffect(() => { void loadPlans(); }, [scope]);
   useEffect(() => { void loadView(); }, [scope, planId]);
