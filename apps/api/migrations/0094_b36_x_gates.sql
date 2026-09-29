@@ -570,7 +570,8 @@ GRANT EXECUTE ON FUNCTION decision.open_challenge_of(uuid, int) TO eye_app, eye_
    action, under the EVIDENCE context ctx.issue_evidence minted for that very request: the context's mode is `evidence`, its bound action
    the denied action, its subject the denied principal — the port reads all three from the context, never from the caller's word. The
    policy decision named is the one policy.commit_decision wrote in the same transaction. When the target names a package (DPK; an APR or
-   a CMT resolves to its package where the row exists), the package's current version at the time is kept and gate.denied is recorded on it. */
+   a CMT resolves to its package where the row exists), the package's current version at the time is kept, and gate.denied is recorded on it when the
+   denied act is one of the gate's own. */
 CREATE OR REPLACE FUNCTION decision.record_pdp_denial(
   p_denial_id uuid, p_action text, p_object_type text, p_object_id uuid, p_policy_decision_id uuid, p_decision text, p_reason text, p_bundle text, p_correlation uuid
 ) RETURNS jsonb
@@ -591,7 +592,9 @@ BEGIN
   END IF;
   INSERT INTO decision.pdp_denials (denial_id, scope, tenant_id, domain_id, principal_id, action, object_type, object_id, package_id, package_version, policy_decision_id, decision, reason, rule, correlation_id)
   VALUES (p_denial_id, 'DOMAIN', v_tenant, v_domain, v_principal, p_action, p_object_type, p_object_id, v_pkg, v_ver, p_policy_decision_id, p_decision, left(coalesce(p_reason, ''), 2000), coalesce(p_bundle, ''), p_correlation);
-  IF v_pkg IS NOT NULL THEN
+  /* the package EVENT gate.denied is the GATE's: the acts at the gate (approve, commit, the gate acts, override, delegation, board, sign, recuse,
+     challenge, distribute); a denied drafting act (decision.package.*, decision.read …) is a denial row without a gate event */
+  IF v_pkg IS NOT NULL AND (p_action ~ '^decision\.(approve|commit|gate\.|override\.|delegation\.|board\.|sign\.|recuse|challenge|distribute)') THEN
     INSERT INTO decision.package_events (event_id, scope, tenant_id, domain_id, package_id, event, actor_principal_id, details, correlation_id)
     VALUES (gen_random_uuid(), 'DOMAIN', v_tenant, v_domain, v_pkg, 'gate.denied', v_principal,
             jsonb_strip_nulls(jsonb_build_object('version', v_ver, 'denial_id', p_denial_id, 'action', p_action, 'object_type', p_object_type, 'object_id', p_object_id, 'policy_decision_id', p_policy_decision_id, 'decision', p_decision, 'reason', left(coalesce(p_reason, ''), 400))), p_correlation);
