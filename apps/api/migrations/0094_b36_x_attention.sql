@@ -73,6 +73,19 @@ ALTER TABLE executive.attention_item_acts ADD CONSTRAINT xaia_settled CHECK (
   AND (resumed_at IS NULL OR state = 'acted'));
 DROP INDEX executive.xaia_one_in_flight;
 CREATE UNIQUE INDEX xaia_one_in_flight ON executive.attention_item_acts (item_id) WHERE state IN ('launched', 'settle_failed');
+/* One act in flight per item, SAID in 0090 §A4's words before the index answers: the launch port (0090:1017, untouched) checks only `launched`;
+   a settle_failed act is in flight too — a further launch is refused (in_flight) and told to resume. */
+CREATE OR REPLACE FUNCTION executive.attention_item_acts_one_in_flight() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE v_state text;
+BEGIN
+  SELECT z.state INTO v_state FROM executive.attention_item_acts z WHERE z.item_id = NEW.item_id AND z.state IN ('launched', 'settle_failed') AND z.act_id <> NEW.act_id LIMIT 1;
+  IF v_state IS NOT NULL THEN
+    RAISE EXCEPTION 'attention act rejected (in_flight): item % has an act % and not yet settled%', NEW.item_id, v_state,
+      CASE WHEN v_state = 'settle_failed' THEN ' — the launcher or the executive operator resumes it (executive.attention.item.act.resume)' ELSE '' END USING ERRCODE = '22023';
+  END IF;
+  RETURN NEW;
+END $$;
+CREATE TRIGGER xaia_one_in_flight_guard BEFORE INSERT ON executive.attention_item_acts FOR EACH ROW EXECUTE FUNCTION executive.attention_item_acts_one_in_flight();
 COMMENT ON COLUMN executive.attention_item_acts.settle_failure IS 'B36 (0094 §A1): what the settle met after the governed action committed — {reason, effect_ref, effect, failed_at}; the act reads settle_failed until it is resumed';
 COMMENT ON COLUMN executive.attention_item_acts.action_receipt IS 'B36 (0094 §A1): the committed governed action''s receipt {policyDecisionId, auditSeq} — the audit chain''s row the resume settles from; never a re-execution';
 
@@ -743,6 +756,21 @@ END $$ LANGUAGE plpgsql;
 REVOKE ALL ON FUNCTION executive.attention_degraded_states(uuid, uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION executive.attention_degraded_states(uuid, uuid) TO eye_app, eye_commit;
 
+/* THE AUTHORITY PROBE (executive.attention.queue.recover): the same checks recover_queue makes, callable as the run OPENS — before the route's
+   mechanics (a tick under the agent's session, an evaluation under its own action) run for a person the port would refuse. */
+CREATE OR REPLACE FUNCTION executive.assert_recovery_authority(p_tenant uuid, p_domain uuid, p_actor uuid) RETURNS void
+SECURITY DEFINER SET search_path = executive, identity, observation, ctx, public, pg_catalog, pg_temp AS $$
+BEGIN
+  PERFORM observation.assert_authority(ARRAY['executive.attention.queue.recover']);
+  PERFORM observation.assert_scope(p_tenant, p_domain);
+  IF p_actor IS DISTINCT FROM public.eye_principal() THEN RAISE EXCEPTION 'queue recovery rejected (actor): run by the acting principal' USING ERRCODE = '42501'; END IF;
+  IF NOT executive.holds_role(p_actor, p_tenant, p_domain, ARRAY['executive', 'executive_operator', 'domain_admin', 'platform_admin']) THEN
+    RAISE EXCEPTION 'queue recovery rejected (authority): a recovery route is run by a named human holding executive, executive_operator, domain_admin or platform_admin' USING ERRCODE = '42501';
+  END IF;
+END $$ LANGUAGE plpgsql;
+REVOKE ALL ON FUNCTION executive.assert_recovery_authority(uuid, uuid, uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION executive.assert_recovery_authority(uuid, uuid, uuid) TO eye_commit;
+
 -- THE RECOVERY (executive.attention.queue.recover; human-gated): the executive, the executive operator or an administrator runs a state's
 -- route. The database side of re-deliver is here (the abandoned deliveries re-queued); re-tick, re-validate and re-evaluate run their
 -- mechanics as their own governed acts BEFORE this record (the tick under the agent's session, the validator, the evaluation) and this port
@@ -782,7 +810,11 @@ BEGIN
     v_states := executive.attention_degraded_states(p_tenant, p_domain);
     SELECT s INTO v_st FROM jsonb_array_elements(v_states -> 'states') s WHERE s ->> 'state' = p_state;
     v_after := jsonb_build_object('active', (v_st ->> 'active')::boolean, 'detail', v_st -> 'detail', 'as_of', v_states -> 'as_of');
-    v_outcome := CASE WHEN (v_st ->> 'active')::boolean THEN 'still_degraded' ELSE CASE WHEN coalesce((p_before ->> 'active')::boolean, true) THEN 'recovered' ELSE 'unchanged' END END;
+    -- recovered when the state was degraded before the route, or when the LAST run of this state's route left it degraded (a correction
+    -- made between the runs — a published policy version — is what the re-run records); unchanged when it was nominal throughout
+    v_outcome := CASE WHEN (v_st ->> 'active')::boolean THEN 'still_degraded'
+                      WHEN coalesce((p_before ->> 'active')::boolean, false) OR coalesce((executive.attention_last_recovery_route(p_tenant, p_domain, p_state) ->> 'outcome') = 'still_degraded', false) THEN 'recovered'
+                      ELSE 'unchanged' END;
   END IF;
   INSERT INTO executive.attention_recovery_routes (route_id, scope, tenant_id, domain_id, degraded_state, route, before_state, after_state, outcome, note, run_by, run_at, correlation_id)
   VALUES (p_route_id, 'DOMAIN', p_tenant, p_domain, p_state, v_route, p_before, v_after, v_outcome, nullif(left(btrim(p_note), 1000), ''), p_actor, v_at, p_correlation);

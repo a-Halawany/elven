@@ -76,6 +76,8 @@ export interface HoldWrites extends AttentionB36Reads {
   releaseHold(a: { holdId: string; tenantId: string; domainId: string; reason: string; actor: string; correlationId: string }): Promise<Row>;
 }
 export interface RecoveryWrites extends AttentionB36Reads {
+  /** The port's authority answered before any mechanics run (executive.assert_recovery_authority: the same roles recover_queue admits). */
+  assertRecoveryAuthority(a: { tenantId: string; domainId: string; actor: string }): Promise<void>;
   recoverQueue(a: { routeId: string; tenantId: string; domainId: string; state: string; before: Row; note: string | null; actor: string; correlationId: string }): Promise<Row>;
 }
 export interface ForumWrites extends AttentionB36Reads {
@@ -131,6 +133,9 @@ class AttentionB36CapabilityImpl extends AttentionB36Core implements ActResumeWr
   }
   async releaseHold(a: Parameters<HoldWrites['releaseHold']>[0]) {
     return this.one(sql`select executive.release_queue_hold(${a.holdId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'release_queue_hold');
+  }
+  async assertRecoveryAuthority(a: Parameters<RecoveryWrites['assertRecoveryAuthority']>[0]): Promise<void> {
+    await this.call(sql`select executive.assert_recovery_authority(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.actor}::uuid)`);
   }
   async recoverQueue(a: Parameters<RecoveryWrites['recoverQueue']>[0]) {
     return this.one(sql`select executive.recover_queue(${a.routeId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.state}, ${JSON.stringify(a.before)}::jsonb, ${a.note}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'recover_queue');

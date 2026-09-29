@@ -198,8 +198,14 @@ export class AttentionB36Service {
    * and PDP), then executive.recover_queue records the run with the state after. The hold's route is the release (its own action).
    */
   async recover(envelope: Envelope, principal: AuthenticatedPrincipal, tenantId: string, domainId: string, intake: { state: DegradedState; note: string | null }): Promise<Row> {
-    const before = await this.pipeline.consequentialRead(this.chained(envelope, 'executive.attention.queue.read', 'ATR', null), principal, this.route(tenantId, domainId, 'executive.attention.queue.read', 'ATR', null), AttentionB36Capability.read,
-      async (cap) => this.stateOf(await cap.degradedStates({ tenantId, domainId }), intake.state, cap));
+    const routeId = newId();
+    /* THE RUN OPENED as a governed write under the route's own action (audited: "the route opened by …"): the PDP's human gate and the
+       port's authority answer BEFORE any mechanics run — a refused person ticks nothing, evaluates nothing. The state before is read here. */
+    const before = await this.pipeline.write(this.chained(envelope, 'executive.attention.queue.recover', 'ATR', routeId), principal, this.route(tenantId, domainId, 'executive.attention.queue.recover', 'ATR', routeId), AttentionB36Capability.recovery,
+      async (cap, scope) => {
+        await cap.assertRecoveryAuthority({ tenantId: scope.tenantId as string, domainId: scope.domainId as string, actor: principal.principalId });
+        return { result: { ...(await this.stateOf(await cap.degradedStates({ tenantId, domainId }), intake.state, cap)), opened: 'the route opened; the mechanics follow, then the record' } as Row, targetType: 'ATR', targetId: routeId, targetVersion: null, outboxEvent: null };
+      });
     const mechanics: Row = {};
     if (intake.state === 'tick_stalled') {
       const r = await this.timer.reconcile('recovery route re-tick');
@@ -215,7 +221,6 @@ export class AttentionB36Service {
       const e = await this.evaluateAndHold(this.chained(envelope, 'executive.attention.queue.evaluate', 'ATE', null), principal, tenantId, domainId, { windowFrom: null, windowTo: null, minSample: 5 });
       mechanics['evaluation'] = { evaluation_id: (e['evaluation'] as Row)['evaluation_id'], verdict: (e['evaluation'] as Row)['verdict'], governance: e['governance'] };
     }
-    const routeId = newId();
     const out = await this.pipeline.write(this.chained(envelope, 'executive.attention.queue.recover', 'ATR', routeId), principal, this.route(tenantId, domainId, 'executive.attention.queue.recover', 'ATR', routeId), AttentionB36Capability.recovery,
       async (cap, scope) => ({ result: await cap.recoverQueue({ routeId, tenantId: scope.tenantId as string, domainId: scope.domainId as string, state: intake.state, before: { ...before.result, mechanics }, note: intake.note, actor: principal.principalId, correlationId: envelope.correlation_id }),
                                targetType: 'ATR', targetId: routeId, targetVersion: null, outboxEvent: null }));
