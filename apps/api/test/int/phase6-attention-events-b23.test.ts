@@ -501,7 +501,7 @@ describe('B23 · material changes and governed reviews as events; the briefing\'
     await settle();
     const k1 = new Date().toISOString();
     const b1 = (await c.compose({ roomId: null, knownAt: k1, priorBriefingId: null })).briefing as unknown as Row & { briefingId: string; contentDigest: string; attention: Row; schemaVersion: string };
-    expect(b1.schemaVersion).toBe('v2');
+    expect(b1.schemaVersion).toBe('v3') /* B36 (0094 §B): every new edition is BRF@v3 */;
     const a1 = b1.attention as { as_of: string; since: string | null; policy_version: number | null; items: Row[]; counts: Record<string, number>; material_changes_since_prior: Row[] };
     expect(a1).toMatchObject({ as_of: k1, since: null, policy_version: 1 });
     const live = a1.items.map((x) => x['item_id']);
@@ -513,13 +513,13 @@ describe('B23 · material changes and governed reviews as events; the briefing\'
     expect(Object.values(a1.counts).reduce((s, n) => s + n, 0), 'every item counted, whatever its state').toBe(total);
     /* THE RECORD: v2 on the row, BRF@v2 on the header, the stored payload valid against BRF@v2 — and not against BRF@v1. */
     const row = (await sql<{ schema_version: string; attention: Row }>`select schema_version, attention from executive.briefings where briefing_id = ${b1.briefingId}::uuid`.execute(su)).rows[0]!;
-    expect(row.schema_version).toBe('v2');
+    expect(row.schema_version).toBe('v3');
     expect(row.attention).toEqual(JSON.parse(JSON.stringify(a1)));
     const canon = (await sql<{ schema_ref: string; payload: Row }>`select schema_ref, payload from objects.canonical_objects where object_id = ${b1.briefingId}::uuid`.execute(su)).rows[0]!;
-    expect(canon.schema_ref).toBe('BRF@v2');
+    expect(canon.schema_ref).toBe('BRF@v3');
     const schemas = Object.fromEntries((await sql<{ schema_version: string; json_schema: object }>`select schema_version, json_schema from objects.schema_registry where object_type = 'BRF'`.execute(su)).rows.map((r) => [r.schema_version, r.json_schema]));
     const ajv = new Ajv2020({ strict: false });
-    const v2 = ajv.compile(schemas['v2']!); const v1 = ajv.compile(schemas['v1']!);
+    const v2 = ajv.compile(schemas['v3']!); const v1 = ajv.compile(schemas['v1']!); /* B36: the payload is BRF@v3's */
     expect(v2(canon.payload), JSON.stringify(v2.errors)).toBe(true);
     expect(v1(canon.payload), 'BRF@v1 forbids the section (additionalProperties false)').toBe(false);
     /* DETERMINISTIC: the same known_at and the same (no) prior → the same digest. */
@@ -528,7 +528,7 @@ describe('B23 · material changes and governed reviews as events; the briefing\'
     /* AS OF known_at: the item acknowledged AFTER the edition — the edition keeps what it knew; a recomposition at k1 too. */
     await acknowledge(w.owner, item2, 'seen: the committed reroute is under review (harness)');
     const got1 = (await c.getBriefing(b1.briefingId)).briefing;
-    expect(got1['schema_version']).toBe('v2');
+    expect(got1['schema_version']).toBe('v3');
     expect((obj(got1['attention'])['items'] as Row[]).find((x) => x['item_id'] === item2)!['state']).toBe('open');
     const b1c = (await c.compose({ roomId: null, knownAt: k1, priorBriefingId: null })).briefing;
     expect(b1c.contentDigest, 'a later acknowledgement never rewrites an earlier known_at').toBe(b1.contentDigest);
@@ -557,7 +557,7 @@ describe('B23 · material changes and governed reviews as events; the briefing\'
     expect(gv1).toMatchObject({ briefing_id: v1Id, schema_version: 'v1', attention: null });
     const listed = (await c.listBriefings(null, tenantAdmin)).briefings;
     expect(listed.find((x) => x['briefing_id'] === v1Id)!['schema_version']).toBe('v1');
-    expect(listed.find((x) => x['briefing_id'] === b1.briefingId)!['schema_version']).toBe('v2');
+    expect(listed.find((x) => x['briefing_id'] === b1.briefingId)!['schema_version']).toBe('v3');
     /* THE CHECK binds the version to the section (23514), both ways. */
     expect(await sqlstate(sql`insert into executive.briefings (briefing_id, scope, tenant_id, domain_id, composed_by, composed_via, known_at, watermark, sources, items, windows, content_digest, header_digest, correlation_id, schema_version)
       values (${uuidv7()}::uuid, 'DOMAIN', ${T()}::uuid, ${D()}::uuid, ${executive.principalId}::uuid, 'human', clock_timestamp(), '{}'::jsonb, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, ${'c'.repeat(64)}, ${'c'.repeat(64)}, ${uuidv7()}::uuid, 'v2')`.execute(su))).toBe('23514');
