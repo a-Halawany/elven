@@ -66,7 +66,12 @@ jobs:
   build-test:
     # C17.2 — an explicit JOB bound. No job had one; a hung step could only be stopped
     # by the 6-hour platform default, which is not a bound anyone reviews.
-    timeout-minutes: 30
+    # B34 (2026-09-29): 30 → 55. The job's steps outgrew 30: at #67 the integration suite (98 files) ran
+    # 20.7 min and C18 was cancelled 2.5 min into its window by the JOB bound, not by its own watchdog.
+    # The budget is the steps' bounds: setup, build and the hermetic gate (~5 min observed), the integration
+    # suite (its own step bound, 28 min), the upgrade proof (~2 min), C18 (its 900-second watchdog; the step's
+    # 25 min remains the outer defence) and a margin. C18's watchdog and step bound are unchanged.
+    timeout-minutes: 55
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -135,6 +140,9 @@ jobs:
       # Includes the Phase 1 suites: A4 fault injection (F01–F46), A10 hostile
       # input, and the A1/A2/A3/A5/A6/A7/A9/A11 acceptance matrix.
       - name: Integration tests (isolation, privileges, audit concurrency, refresh, Phase 1 acceptance)
+        # B34 (2026-09-29): the suite's own bound inside the job budget above, so a slow suite fails here and
+        # never consumes C18's window.
+        timeout-minutes: 28
         env:
           EYE_DB_HOST: localhost
           EYE_DB_MIGRATE_PASSWORD: ${{ env.EYE_DB_PASSWORD }}
