@@ -171,3 +171,31 @@ rules = ['''sourcegraph-access-token''']
 paths = ['''(^|/)infra/images/published/20260910/gosu-arm64-3a8ef022\.govulncheck\.json$''']
 regexTarget = "line"
 regexes = ['''go\.googlesource\.com/[a-z]+/\+/[0-9a-f]{40}''']
+
+# ── 7. A JSON KEY NAME in the health-score migration, not a credential ───────
+[[allowlists]]
+description = """
+FALSE POSITIVE, scoped as narrowly as the finding — to ONE rule, ONE file and ONE
+match. In migration 0089 (B32 §H, executive.health_sensitivity) a jsonb object is
+built from key/value pairs:
+
+  jsonb_build_object('key', p_parts -> i -> 'key', 'weight_plus_10pct', v_u, ...)
+
+The generic-api-key rule keys on the word `key` followed by a quoted token and
+matched the NEXT key NAME, 'weight_plus_10pct' — a sensitivity field of the
+decomposable score, not a secret. The migration is applied (its digest is locked
+on the demonstration) and migrations are forward-only, so the text cannot be
+reworded; the exclusion is recorded here instead.
+
+Carried to this branch (2026-09-29): its history scan covers every pushed ref,
+so the finding in phase6-b32's 0089 reaches this head too; the same exclusion,
+unchanged, is its disposition (no history rewrite).
+
+Scope: the rule, the one migration, and only the literal match
+`key', 'weight_plus_10pct'`. All three conditions must hold (condition = AND).
+"""
+condition = "AND"
+rules = ['''generic-api-key''']
+paths = ['''(^|/)apps/api/migrations/0089_b32_strategy_exposures_health\.sql$''']
+regexTarget = "match"
+regexes = ['''^key', 'weight_plus_10pct'$''']
