@@ -40,6 +40,7 @@ export const NAV = [
   /* B34 (0090) workflow */ { href: '/decisions/tasks', label: 'Tasks', glyph: '☑' }, { href: '/decisions/workspaces', label: 'Workspaces', glyph: '⧉' },
   { href: '/decisions/workflow', label: 'Workflow', glyph: '⇄' }, /* end B34 workflow */
   /* B34 (0090) commitments */ { href: '/decisions/commitments', label: 'Commitments', glyph: '⇢' }, /* end B34 commitments */
+  /* B36 (0094) publishing */ { href: '/decisions/publications', label: 'Publications', glyph: '⎙' }, /* end B36 publishing */
   { href: '/twins', label: 'Twins', glyph: '◫' },
   { href: '/prediction', label: 'Prediction', glyph: '↗' },
   { href: '/graph', label: 'Graph', glyph: '◈' },
