@@ -361,7 +361,9 @@ describe('B36 strategy · the score and the Strategy Graph completed (0094 §S)'
     expect(compOf(S5, 'on_time')).toMatchObject({ stale_after_days: 30 });
     const named = arr(obj(S5['result'])['exceptions']);
     expect(named.map((e) => `${String(e['component_key'])}:${String(e['kind'])}`).sort()).toEqual(['execution:exclude', 'on_time:relax_bound']);
-    expect(dimOf(S5, 'delivery')['coverage'], 'the dimension judged on the rest: coverage over the remaining weight').toBe(0.9474);
+    // the excluded component's weight is simply not covered (the coverage is the INCLUDED weight of the declared 1, never renormalised — the exception is named, not hidden)
+    expect(dimOf(S5, 'delivery')['coverage']).toBe(0.9);
+    expect(arr(dimOf(S5, 'delivery')['components']).map(String).sort()).toEqual(['capability_cov', 'on_time', 'outcomes', 'quality']);
     // an EXPIRED request is not decided; a REFUSED one has no effect and stays
     const soon = (await requestException(lead, { component_key: 'quality', kind: 'exclude', reason: 'a request that will lapse before it is decided (B36 harness)', expires_at: new Date(Date.now() + 2500).toISOString() })).exception;
     await sleep(3000);

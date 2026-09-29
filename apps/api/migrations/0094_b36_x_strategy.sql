@@ -537,7 +537,8 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(d.model -> 'components') c WHERE c ->> 'key' = p_component) THEN
     RAISE EXCEPTION 'health exception rejected (unknown_component): the active definition (version %) has no component %', d.version, coalesce(p_component, '<none>') USING ERRCODE = '23503';
   END IF;
-  IF EXISTS (SELECT 1 FROM executive.health_exceptions z WHERE z.definition_id = d.definition_id AND z.component_key = p_component AND z.kind = p_kind AND z.state = 'requested') THEN
+  -- one undecided request per (component, kind) at a time; a request that lapsed undecided blocks nothing (its record stays)
+  IF EXISTS (SELECT 1 FROM executive.health_exceptions z WHERE z.definition_id = d.definition_id AND z.component_key = p_component AND z.kind = p_kind AND z.state = 'requested' AND z.expires_at > v_now) THEN
     RAISE EXCEPTION 'health exception rejected (pending): a % exception for component % awaits a decision', p_kind, p_component USING ERRCODE = '22023';
   END IF;
   INSERT INTO executive.health_exceptions (exception_id, scope, tenant_id, domain_id, definition_id, component_key, kind, relaxed_stale_after_days, reason, expires_at, requested_by, requested_at, correlation_id)
