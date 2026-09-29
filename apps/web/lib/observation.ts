@@ -17,6 +17,8 @@ export interface Me {
   homeTenantId: string | null;
   homeDomainId: string | null;
   bindings: Array<{ roleCode: string; scope: string; tenantId: string | null; domainId: string | null }>;
+  /* B36 (0094 §C1): an EXTERNAL collaborator's answer is bounded to its grant — the shell shows that one surface; an expired grant signs it out */
+  external?: { affiliation: 'external'; bounded_to: string; grants: Array<Record<string, unknown>>; live: number; expired: boolean; surface: string | null; note: string };
 }
 
 export interface Receipt {

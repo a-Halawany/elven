@@ -14,9 +14,10 @@
  * its own workspace and only what its audience ceiling covers. The review request carries a deadline and a named escalation principal:
  * when the deadline passes, the task escalates to them (the Tasks page shows the chain).
  */
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useShell } from '../layout';
-import { collab as api, CLASSIFICATIONS, MAX_GRANT_DAYS, VERDICTS, deadlineWords, grantWords, provisionable, taskMark, type Workspace, type WorkspaceDetail } from '../../../lib/workflow';
+import { collab as api, CLASSIFICATIONS, MAX_GRANT_DAYS, VERDICTS, deadlineWords, deliveryWords, grantWords, provisionable, taskMark, waitsOnWords, type Workspace, type WorkspaceDetail } from '../../../lib/workflow';
 import { Empty, LiveStatus, Mono, cardStyle, GovernedButton, fmtInstant, textareaStyle } from '../../../components/observation';
 import { inputStyle, Receipt } from '../../../components/ui';
 
@@ -29,8 +30,18 @@ const fs = { border: '1px solid var(--eye-color-border-default)', borderRadius: 
 const toIso = (v: string): string | null => { if (v.trim() === '') return null; const d = new Date(v); return Number.isNaN(d.getTime()) ? null : d.toISOString(); };
 
 export default function WorkspacesPage() {
-  const { scope } = useShell();
-  const [purpose, setPurpose] = useState('collaboration.dual-sourcing-review');
+  return <Suspense fallback={null}><Workspaces /></Suspense>;
+}
+
+function Workspaces() {
+  const { scope, isExternal, externalGrant, me } = useShell();
+  const params = useSearchParams();
+  /* B36 (0094 §C1): an external's purpose is its grant's; `?workspace=` (the pickup's landing) opens that workspace */
+  const [purpose, setPurpose] = useState(externalGrant?.purpose ?? 'collaboration.dual-sourcing-review');
+  const wanted = params.get('workspace') ?? externalGrant?.workspace_id ?? null;
+  const isIdentityAdmin = me.bindings.some((b) => b.roleCode === 'platform_admin' || b.roleCode === 'tenant_admin');
+  const [mailbox, setMailbox] = useState<{ grant: string; subject: string; body: string } | null>(null);
+  /* end B36 */
   const [list, setList] = useState<Workspace[] | null>(null);
   const [sel, setSel] = useState<string | null>(null);
   const [d, setD] = useState<WorkspaceDetail | null>(null);
@@ -59,12 +70,14 @@ export default function WorkspacesPage() {
     if (!r.ok || r.data === undefined) { setProblem(refusal(r, 'the workspace could not be read')); setD(null); return; }
     setProblem(null); setD(r.data);
   };
-  useEffect(() => { void load(); }, [scope.tenantId, scope.domainId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { void load(); if (wanted !== null && sel === null) void open(wanted); }, [scope.tenantId, scope.domainId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div>
       <h1 style={{ fontSize: 'var(--eye-type-heading-1)' }}>Workspaces</h1>
       <p style={muted}>Participation is never room membership and never approver standing: a workspace discusses, shares and reviews; decisions are taken in the decision itself.</p>
+      {/* B36 (0094 §C1): the external's surface says what bounds it */}
+      {isExternal && externalGrant !== null && <p role="status" aria-label="your surface">You are an external collaborator: this workspace, under the purpose <strong>{externalGrant.purpose}</strong>, at or below audience <strong>{externalGrant.audience_ceiling}</strong>, until {String(externalGrant.expires_at ?? '').slice(0, 10)} — nothing beyond it.</p>}
       <label htmlFor="ws-purpose">Purpose (every request here is made under it)</label>
       <div style={{ display: 'flex', gap: 'var(--eye-space-8)' }}>
         <input id="ws-purpose" style={inputStyle} value={purpose} onChange={(e) => setPurpose(e.target.value)} />
@@ -92,11 +105,25 @@ export default function WorkspacesPage() {
             {provisionable(g) && <GovernedButton label="Provision (identity administrator)" pendingLabel="provisioning" variant="quiet" onRun={async () => {
               const r = await api.provision(scope, g.grant_id, purpose);
               if (!r.ok) { setProblem(refusal(r, 'the provisioning was refused — an identity administrator (tenant or platform administrator) other than the requester provisions it')); return; }
-              done(`provisioned — the invitee ${String(r.data?.grant['login_name'] ?? '')} was created by the identity authority; the invitation is in the SYNTHETIC mailbox`, r.data?.receipt ?? null);
-            }} />}</li>)}</ul>}
+              done(`provisioned — the invitee ${String(r.data?.grant['login_name'] ?? '')} was created by the identity authority; the invitation with its one-time pickup code is in the SYNTHETIC mailbox`, r.data?.receipt ?? null);
+            }} />}
+            {/* B36 (0094 §C3): the delivery's state (never the code); the provisioner re-drives a failed delivery; an identity administrator reads the SYNTHETIC mailbox */}
+            {!isExternal && g.state !== 'requested' && <span aria-label={`delivery of ${g.grant_id}`}> · delivery: {deliveryWords(g.delivery, d.now)}</span>}
+            {!isExternal && g.state === 'invited' && (g.delivery === null || g.delivery === undefined) && <GovernedButton label="Deliver again" pendingLabel="delivering" variant="quiet" onRun={async () => {
+              const r = await api.deliver(scope, g.grant_id, purpose);
+              if (!r.ok) { setProblem(refusal(r, 'the delivery was refused')); return; } done('delivered to the SYNTHETIC mailbox', null);
+            }} />}
+            {isIdentityAdmin && g.state === 'invited' && g.delivery !== null && g.delivery !== undefined && <GovernedButton label="Read the synthetic mailbox" pendingLabel="reading" variant="quiet" onRun={async () => {
+              const r = await api.mailbox(scope, g.grant_id, purpose);
+              if (!r.ok || r.data === undefined) { setProblem(refusal(r, 'the mailbox read was refused')); return; }
+              setMailbox(r.data.message === null ? { grant: g.grant_id, subject: '(the message is not held by this process)', body: r.data.note } : { grant: g.grant_id, subject: r.data.message.subject, body: r.data.message.body });
+            }} />}
+            </li>)}</ul>}
+          {mailbox !== null && <section aria-label="synthetic mailbox message" style={{ ...cardStyle, marginBlock: 'var(--eye-space-8)' }}><h4>SYNTHETIC mailbox — {mailbox.subject}</h4><pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'var(--eye-font-mono)', fontSize: 'var(--eye-type-label-sm)' }}>{mailbox.body}</pre>
+            <p style={muted}>The invitee opens <Mono>/login?invitation={mailbox.grant}</Mono> and enters the code; the material is answered once.</p></section>}
           {d.invitation_mail.length > 0 && <p style={muted}>Invitations placed in the SYNTHETIC mailbox: {d.invitation_mail.map((m) => m.subject).join('; ')} — {d.invitation_mail[0]?.note}</p>}
           <h3>Tasks</h3>
-          {d.tasks.length === 0 ? <Empty>No task.</Empty> : <ul>{d.tasks.map((t) => <li key={t.task_id}>{t.title} · {taskMark(t.state, t.escalation_level).text} · {deadlineWords(t.deadline_at, d.now)} · <Mono>{t.task_id.slice(0, 8)}…</Mono></li>)}</ul>}
+          {d.tasks.length === 0 ? <Empty>No task.</Empty> : <ul>{d.tasks.map((t) => <li key={t.task_id}>{t.title} · {taskMark(t.state, t.escalation_level).text} · {deadlineWords(t.deadline_at, d.now)} · <Mono>{t.task_id.slice(0, 8)}…</Mono>{t.waits_on !== undefined && t.waits_on.length > 0 ? <span> · {waitsOnWords(t.waits_on)}</span> : null}</li>)}</ul>}
           <h3>Discussion</h3>
           {d.threads.length === 0 ? <Empty>No thread.</Empty> : d.threads.map((t) => (
             <div key={t.thread_id}><h4>{t.title} <span style={muted}><Mono>{t.thread_id.slice(0, 8)}…</Mono></span></h4>

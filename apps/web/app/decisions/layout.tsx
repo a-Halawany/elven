@@ -20,11 +20,13 @@ import { whoAmI, type Me, type Scope } from '../../lib/observation';
 import { clearWorkingDomain, readWorkingDomain, workingDomainFor, type WorkingDomain } from '../../lib/working-domain';
 import { DegradedBanner } from '../../components/ui';
 import { WorkingDomainChooser, WorkingDomainMark } from '../../components/working-domain';
+/* B36 (0094 §C1): the external collaborator's bounded surface */ import { externalSurface, type GrantSurface } from '../../lib/workflow'; /* end B36 */
 
 interface ShellContext {
   scope: Scope; me: Me;
   isDecisionOwner: boolean; isApprover: boolean; isAuthority: boolean; isExecutive: boolean;
   /* B36 (0094) gates: the board member (PER-01) and the tenant's auditor (a challenger) */ isBoardMember: boolean; isAuditor: boolean;
+  /* B36 (0094 §C1) collab: an EXTERNAL collaborator sees one surface — its workspace under its grant */ isExternal: boolean; externalGrant: GrantSurface | null;
 }
 const Ctx = createContext<ShellContext | null>(null);
 export function useShell(): ShellContext {
@@ -81,8 +83,20 @@ export default function DecisionsLayout({ children }: { children: ReactNode }) {
   if (domainId === null) return <WorkingDomainChooser workspace="Decisions" me={me} onChosen={setWorking} />;
   const scope: Scope = { tenantId: me.homeTenantId, domainId };
   const holds = (role: string) => me.bindings.some((b) => b.roleCode === role && (b.scope === 'PLATFORM' || (b.scope === 'DOMAIN' && b.domainId === scope.domainId)));
+  /* B36 (0094 §C1) collab: the server's answer for an external is BOUNDED TO ITS GRANT — the shell shows the workspace surface only; an expired or ended grant signs it out of everything */
+  const surface = externalSurface(me.external === undefined ? null : { grants: me.external.grants as unknown as GrantSurface[], expired: me.external.expired });
+  const isExternal = me.external !== undefined;
+  if (isExternal && surface.kind !== 'workspace') {
+    return <main style={{ padding: 'var(--eye-space-32)' }}><h1 style={{ fontSize: 'var(--eye-type-heading-1)' }}>Collaboration</h1>
+      <p role="alert">Your access has ended: the grant is <strong>{surface.kind === 'expired' ? surface.reason : 'not live'}</strong>. Nothing of this tenant is shown to you beyond it.</p>
+      <button type="button" style={{ background: 'none', border: 'none', color: 'var(--eye-color-accent-default)', cursor: 'pointer' }} onClick={() => { clearWorkingDomain(); setSession(null); router.replace('/login'); }}>Sign out</button></main>;
+  }
+  const externalGrant = isExternal && surface.kind === 'workspace' ? surface.grant : null;
+  const nav = isExternal ? NAV.filter((n) => n.href === '/decisions/workspaces') : NAV;
+  /* end B36 collab */
   const value: ShellContext = { scope, me, isDecisionOwner: holds('decision_owner') || holds('platform_admin'), isApprover: holds('decision_approver'), isAuthority: holds('decision_authority'), isExecutive: holds('executive'),
-    /* B36 (0094) gates */ isBoardMember: holds('board_member'), isAuditor: me.bindings.some((b) => b.roleCode === 'auditor' && b.scope === 'TENANT' && b.tenantId === scope.tenantId) /* end B36 gates */ };
+    /* B36 (0094) gates */ isBoardMember: holds('board_member'), isAuditor: me.bindings.some((b) => b.roleCode === 'auditor' && b.scope === 'TENANT' && b.tenantId === scope.tenantId) /* end B36 gates */,
+    /* B36 (0094 §C1) collab */ isExternal, externalGrant /* end B36 collab */ };
   return (
     <Ctx.Provider value={value}>
       <div style={{ minBlockSize: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -94,6 +108,9 @@ export default function DecisionsLayout({ children }: { children: ReactNode }) {
             {me.homeDomainId === null && <WorkingDomainMark onChange={() => { clearWorkingDomain(); setWorking(null); }} />}
           </span>
           <span style={{ color: 'var(--eye-color-ink-muted)', fontSize: 'var(--eye-type-label-sm)' }}>{me.bindings.map((b) => b.roleCode).join(' · ') || 'no role binding'}</span>
+          {/* B36 (0094 §C1) collab: the external's grant on the banner — what bounds this surface */}
+          {externalGrant !== null && <span aria-label="your grant" style={{ color: 'var(--eye-color-warning)', fontSize: 'var(--eye-type-label-sm)', fontWeight: 650 }}>
+            external collaborator · {externalGrant.workspace_title} · purpose {externalGrant.purpose} · audience {externalGrant.audience_ceiling} · access ends {String(externalGrant.expires_at ?? '').slice(0, 10)}</span>}
           <span style={{ marginInlineStart: 'auto' }}>
             <button type="button" style={{ background: 'none', border: 'none', color: 'var(--eye-color-accent-default)', cursor: 'pointer' }} onClick={() => { clearWorkingDomain(); setSession(null); router.replace('/login'); }}>Sign out</button>
           </span>
@@ -101,7 +118,7 @@ export default function DecisionsLayout({ children }: { children: ReactNode }) {
         <div style={{ display: 'flex', flex: 1, minInlineSize: 0 }}>
           <nav aria-label="Decisions" style={{ inlineSize: 'clamp(3.5rem, 14vw, 13rem)', borderInlineEnd: '1px solid var(--eye-color-border-default)', padding: 'var(--eye-space-8)', background: 'var(--eye-color-surface-primary)' }}>
             <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-              {NAV.map((n) => {
+              {nav.map((n) => {
                 const active = n.href === '/decisions' ? pathname === n.href : pathname.startsWith(n.href);
                 return (
                   <li key={n.href} style={{ marginBlockEnd: 'var(--eye-space-4)' }}>
