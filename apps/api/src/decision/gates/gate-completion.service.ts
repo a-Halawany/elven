@@ -117,7 +117,11 @@ export class GateCompletionService {
     const bound = i.kind === 'approval'
       ? await cap.signApproval({ tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, packageId, version, approvalId: i.approvalId as string, signatureId, actor, eventId: newId(), correlationId })
       : await cap.signDecision({ tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, packageId, version, signatureId, actor, eventId: newId(), correlationId });
-    return { ...bound, verified: this.signer.verify({ key_id: String(bound['key_id']), signature: String((row as Row)['signature'] ?? ''), subject_digest: i.digest } as Pick<SignatureRow, 'key_id' | 'signature' | 'subject_digest'>), key_id: bound['key_id'] };
+    // the row's BYTES are read back (executive.signature_of; the port returns the row's identity, not its bytes) and verified against the bound key
+    const after = await cap.signatureSubject({ kind: i.kind, packageId, version, approvalId: i.approvalId });
+    const mine = (Array.isArray(after?.['signatures']) ? (after!['signatures'] as Row[]) : []).find((s) => s['signature_id'] === signatureId) ?? null;
+    const verified = mine === null ? false : this.signer.verify({ key_id: String(mine['key_id']), signature: String(mine['signature']), subject_digest: String(mine['subject_digest']) } as Pick<SignatureRow, 'key_id' | 'signature' | 'subject_digest'>);
+    return { ...bound, verified };
   }
 
   /** The signatures of a record, each VERIFIED against the bound key (a signature over another digest, or by an unknown key, reads as not verified). */
@@ -140,7 +144,7 @@ export class GateCompletionService {
   }
 
   async challenge(cap: ChallengeWrites, ctx: ScopeContext, packageId: string, version: number, m: Row, actor: string, correlationId: string): Promise<Row> {
-    const reason = validateReason('challenge', m, correlationId);
+    const reason = validateReason('decision challenge', m, correlationId);
     return cap.challenge({ challengeId: newId(), tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, packageId, version, reason, actor, eventId: newId(), correlationId });
   }
 
@@ -179,7 +183,7 @@ export class GateCompletionService {
         state: result.state === 'failed' ? 'failed' : 'delivered', receipt: result.receipt, providerRef: result.providerRef ?? null, error: result.state === 'failed' ? (result.error ?? 'the channel reported a failure without a reason') : null });
       rows.push({ ...row, state: recorded['state'], receipt: result.receipt, error: result.state === 'failed' ? result.error ?? null : null, synthetic: true });
     }
-    return { distribution_id: r['distribution_id'], package_id: packageId, version, commitment_id: r['commitment_id'], record_digest: r['record_digest'], recipients: r['recipients'], channels: r['channels'], rows,
+    return { distribution_id: r['distribution_id'], package_id: packageId, version, commitment_id: r['commitment_id'], record_digest: r['record_digest'], record, recipients: r['recipients'], channels: r['channels'], rows,
              synthetic_note: 'in_app is the product\'s channel; email / sms / teams are SYNTHETIC — carried to LOCAL sinks on the loopback interface; this closes no real-provider clause (owner decision D6)' };
   }
 

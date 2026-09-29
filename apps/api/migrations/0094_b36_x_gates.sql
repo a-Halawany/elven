@@ -30,7 +30,7 @@
 --       board's own acts decision.board.approve / .reject / .defer), the canonical-write registration of the board's approval.
 --   §G9 THE RE-DECLARATIONS (this part alone; each copied whole with ONE change) — decision.record_approval (0090:4485) admits the board's
 --       bound actions; decision.gate_act (0090:3916) admits decision.board.defer.
--- Refusals are a FAMILY `<noun> rejected (<class>): …`; the classes actor / ownership / authority / separation / class / recused answer 403,
+-- Refusals are a FAMILY `<noun> rejected (<class>): …` (the challenge's noun is `decision challenge`: `challenge rejected` is B9's review challenge); the classes actor / ownership / authority / separation / class / recused answer 403,
 -- unknown_* 404, state / stale_digest 409, the rest 422 (apps/api/src/observation/observation-errors.ts, the B36 gates block).
 -- Every figure a harness seeds is SYNTHETIC. Forward-only; 0084–0093 untouched.
 
@@ -465,23 +465,23 @@ DECLARE p record; v record; v_room uuid; v_standing text; v_open uuid;
 BEGIN
   PERFORM observation.assert_authority(ARRAY['decision.challenge']);
   PERFORM observation.assert_scope(p_tenant, p_domain);
-  IF p_actor IS DISTINCT FROM public.eye_principal() THEN RAISE EXCEPTION 'challenge rejected (actor): a challenge is the acting principal''s own' USING ERRCODE = '42501'; END IF;
-  IF NOT decision.is_active_human(p_actor, p_tenant) THEN RAISE EXCEPTION 'challenge rejected (actor): only a named, active member challenges a decision' USING ERRCODE = '42501'; END IF;
-  IF p_reason IS NULL OR length(btrim(p_reason)) < 8 OR length(p_reason) > 4000 THEN RAISE EXCEPTION 'challenge rejected (reason): a challenge states its reason (8 to 4000 characters)' USING ERRCODE = '22023'; END IF;
+  IF p_actor IS DISTINCT FROM public.eye_principal() THEN RAISE EXCEPTION 'decision challenge rejected (actor): a challenge is the acting principal''s own' USING ERRCODE = '42501'; END IF;
+  IF NOT decision.is_active_human(p_actor, p_tenant) THEN RAISE EXCEPTION 'decision challenge rejected (actor): only a named, active member challenges a decision' USING ERRCODE = '42501'; END IF;
+  IF p_reason IS NULL OR length(btrim(p_reason)) < 8 OR length(p_reason) > 4000 THEN RAISE EXCEPTION 'decision challenge rejected (reason): a challenge states its reason (8 to 4000 characters)' USING ERRCODE = '22023'; END IF;
   SELECT * INTO p FROM decision.packages_current x WHERE x.package_id = p_package_id AND x.tenant_id = p_tenant AND x.domain_id = p_domain FOR UPDATE;
-  IF NOT FOUND THEN RAISE EXCEPTION 'challenge rejected (unknown_package): no such package in this domain' USING ERRCODE = '23503'; END IF;
+  IF NOT FOUND THEN RAISE EXCEPTION 'decision challenge rejected (unknown_package): no such package in this domain' USING ERRCODE = '23503'; END IF;
   SELECT * INTO v FROM decision.package_versions x WHERE x.package_id = p_package_id AND x.version = p_version FOR UPDATE;
-  IF NOT FOUND THEN RAISE EXCEPTION 'challenge rejected (unknown_version): no such version % of package %', p_version, p_package_id USING ERRCODE = '23503'; END IF;
+  IF NOT FOUND THEN RAISE EXCEPTION 'decision challenge rejected (unknown_version): no such version % of package %', p_version, p_package_id USING ERRCODE = '23503'; END IF;
   SELECT r.room_id INTO v_room FROM executive.rooms_current r WHERE r.package_id = p_package_id;
   IF v_room IS NOT NULL AND executive.is_member(v_room, p_actor) THEN v_standing := 'member';
   ELSIF decision.holds_role(p_actor, p_tenant, p_domain, 'auditor') THEN v_standing := 'auditor';
-  ELSE RAISE EXCEPTION 'challenge rejected (authority): principal % is neither a member of the package''s room nor the tenant''s auditor', p_actor USING ERRCODE = '42501';
+  ELSE RAISE EXCEPTION 'decision challenge rejected (authority): principal % is neither a member of the package''s room nor the tenant''s auditor', p_actor USING ERRCODE = '42501';
   END IF;
   IF v.state IN ('draft', 'rejected', 'superseded') OR p.state IN ('withdrawn', 'closed') THEN
-    RAISE EXCEPTION 'challenge rejected (state): version % is % (the package is %); a challenge is raised on a version at the gate or committed', p_version, v.state, p.state USING ERRCODE = '22023';
+    RAISE EXCEPTION 'decision challenge rejected (state): version % is % (the package is %); a challenge is raised on a version at the gate or committed', p_version, v.state, p.state USING ERRCODE = '22023';
   END IF;
   SELECT c.challenge_id INTO v_open FROM decision.challenges c WHERE c.package_id = p_package_id AND c.version = p_version AND c.resolved_at IS NULL;
-  IF v_open IS NOT NULL THEN RAISE EXCEPTION 'challenge rejected (state): challenge % is already open on version %; it is resolved before another is raised', v_open, p_version USING ERRCODE = '22023'; END IF;
+  IF v_open IS NOT NULL THEN RAISE EXCEPTION 'decision challenge rejected (state): challenge % is already open on version %; it is resolved before another is raised', v_open, p_version USING ERRCODE = '22023'; END IF;
   INSERT INTO decision.challenges (challenge_id, scope, tenant_id, domain_id, package_id, version, challenger_principal_id, standing, reason, after_commitment, version_state_at_raise, package_state_at_raise, correlation_id)
   VALUES (p_challenge_id, 'DOMAIN', p_tenant, p_domain, p_package_id, p_version, p_actor, v_standing, btrim(p_reason), v.state = 'committed', v.state, p.state, p_correlation);
   INSERT INTO decision.package_events (event_id, scope, tenant_id, domain_id, package_id, event, actor_principal_id, details, correlation_id)
@@ -680,10 +680,10 @@ BEGIN
   SELECT r2.room_id INTO v_room FROM executive.rooms_current r2 WHERE r2.package_id = p_package_id;
   v_rec := decision.decision_record(p_tenant, p_domain, p_package_id, p_version);
   FOR r IN
-    SELECT q.principal_id, min(q.basis) AS basis FROM (
-      SELECT rm.owner_principal_id AS principal_id, 'room_owner' AS basis FROM executive.rooms_current rm WHERE rm.room_id = v_room
-      UNION ALL SELECT m.principal_id, 'room_member' FROM executive.room_members m WHERE m.room_id = v_room AND m.removed_at IS NULL
-      UNION ALL SELECT x, 'named' FROM unnest(coalesce(p_recipients, ARRAY[]::uuid[])) x) q
+    SELECT q.principal_id, (ARRAY['room_owner', 'room_member', 'named'])[min(q.rank)] AS basis FROM (
+      SELECT rm.owner_principal_id AS principal_id, 1 AS rank FROM executive.rooms_current rm WHERE rm.room_id = v_room
+      UNION ALL SELECT m.principal_id, 2 FROM executive.room_members m WHERE m.room_id = v_room AND m.removed_at IS NULL
+      UNION ALL SELECT x, 3 FROM unnest(coalesce(p_recipients, ARRAY[]::uuid[])) x) q
      WHERE decision.is_active_human(q.principal_id, p_tenant) GROUP BY q.principal_id ORDER BY q.principal_id
   LOOP
     v_recipients := v_recipients || jsonb_build_object('principal_id', r.principal_id, 'basis', r.basis);
