@@ -124,8 +124,8 @@ async function openAnatomy(page: Page): Promise<void> {
   await page.getByRole('link', { name: new RegExp(`^Anatomy of “${esc(TITLE)}”`) }).click();
   await expect(page.getByRole('heading', { name: `Anatomy: ${TITLE}`, level: 1 })).toBeVisible();
 }
-const branch = (page: Page): Locator => page.getByRole('region', { name: `Branch: ${BRANCH}` });
-const register = (page: Page): Locator => page.getByRole('region', { name: 'Assumption register' });
+const branch = (page: Page): Locator => page.getByRole('region', { name: `Branch: ${BRANCH}`, exact: true });
+const register = (page: Page): Locator => page.getByRole('region', { name: 'Assumption register', exact: true });
 
 test.describe.configure({ mode: 'serial' });
 
@@ -195,7 +195,7 @@ test.describe('CP-6 B27 §A — scenario anatomy: elements by kind, the critical
   test('1. the strategy owner opens the anatomy from the scenario page: the elements BY KIND (the whole scenario\'s and the branch\'s), the mechanism\'s cause → effect, the register\'s CRITICAL link with its condition', async ({ page }) => {
     await uiLogin(page, strategist.username, PW);
     await openAnatomy(page);
-    const whole = page.getByRole('region', { name: 'The whole scenario' });
+    const whole = page.getByRole('region', { name: 'The whole scenario', exact: true });
     const wideRow = (name: string) => whole.getByRole('row').filter({ hasText: name });
     await expect(wideRow('Houthi activity')).toContainText('Drivers');
     await expect(wideRow('Houthi activity')).toContainText('exogenous (a shock from outside)');
