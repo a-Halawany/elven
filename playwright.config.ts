@@ -122,6 +122,23 @@ process.env['EYE_E2E_EXPORT_PUBLIC_PEM'] = createPublicKey(
   createPrivateKey({ key: Buffer.from(raw, 'base64'), format: 'der', type: 'pkcs8' }),
 ).export({ type: 'spki', format: 'pem' }) as string;
 
+/* B36 */
+/**
+ * B36: the browser gate's EXECUTIVE SIGNING KEY. The B36 gate cases (e2e/phase6-b36-gates.spec.ts — the signature on the approval and on
+ * the decision; e2e/phase6-b36-strategy.spec.ts — the executive's signed acceptance of a health snapshot) have the API sign with the key
+ * it holds under EYE_EXECUTIVE_SIGNING_KEY_DEMO (apps/api/src/executive/signatures/signature.service.ts: the default reference, or the
+ * one EYE_EXECUTIVE_SIGNING_KEY_REF names — the demonstration binds its own in .eye-local/env; a harness generates a pair). The same
+ * discipline as the export key above: an Ed25519 private key as the one-line base64 of its PKCS8 DER, generated ONCE at config load
+ * (the guard keeps every Playwright worker on the key the API holds), never persisted; the API verifies each signature against its own
+ * key and the pages render the server's VERIFIED — nothing here derives a public key for the cases.
+ */
+const executiveKeyRef = process.env['EYE_EXECUTIVE_SIGNING_KEY_REF'] ?? 'EYE_EXECUTIVE_SIGNING_KEY_DEMO';
+if (!process.env[executiveKeyRef]) {
+  const { privateKey } = generateKeyPairSync('ed25519');
+  process.env[executiveKeyRef] = (privateKey.export({ type: 'pkcs8', format: 'der' }) as Buffer).toString('base64');
+}
+/* end B36 */
+
 function required(name: string): string {
   const v = process.env[name];
   if (!v) throw new Error(`${name} must be provided (generated .eye-local/env or caller environment)`);
@@ -165,6 +182,8 @@ export default defineConfig({
         EYE_REDIS_PASSWORD: required('EYE_REDIS_PASSWORD'),
         EYE_IDENTITY_JWT_SECRET: required('EYE_IDENTITY_JWT_SECRET'),
         EYE_EXPORT_SIGNING_KEY_E2E: required('EYE_EXPORT_SIGNING_KEY_E2E'),
+        /* B36 */ ...(process.env['EYE_EXECUTIVE_SIGNING_KEY_REF'] ? { EYE_EXECUTIVE_SIGNING_KEY_REF: required('EYE_EXECUTIVE_SIGNING_KEY_REF') } : {}),
+        [executiveKeyRef]: required(executiveKeyRef), /* end B36 */
       },
     },
     {
