@@ -442,6 +442,7 @@ export default function ScenariosPage() {
   return (
     <>
       <h1 style={{ fontSize: 'var(--eye-type-heading-1)', marginBlockStart: 0 }}>Scenarios</h1>
+      {/* B27 sets */}<p><a href="/prediction/scenarios/sets">Scenario sets — plurality, side-by-side comparison, portfolio review, proposals</a></p>{/* end B27 sets */}
       {rows.length === 0 ? <Empty>No scenario tree has been declared yet.</Empty> : rows.map((s) => (
         <section key={s.scenario_id} aria-labelledby={`scn-${s.scenario_id}`} style={{ ...cardStyle, marginBlockStart: 'var(--eye-space-16)' }}>
           <h2 id={`scn-${s.scenario_id}`} style={{ fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 }}>{s.title}</h2>
