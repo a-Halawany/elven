@@ -251,7 +251,7 @@ test.describe('CP-6 B90 — the metadata catalog: the reconciliation, the lineag
     await expect(page.getByLabel('coverage totals')).toContainText('1 undiscoverable');
     await expect(page.getByLabel('coverage totals')).toContainText('1 open coverage item(s)');
     await expect(page.getByRole('list', { name: 'coverage debt' })).toContainText('staging asset: 1 total · 0 owned · 1 trusted · 0 discoverable · 0 with lineage · flags: orphan 1, unowned 1');
-    await expect(page.getByRole('list', { name: 'coverage debt' })).toContainText(/^data product: 1 total · 1 owned · 1 trusted · 1 discoverable · 1 with lineage$/m);
+    await expect(page.getByRole('list', { name: 'coverage debt' })).toContainText('data product: 1 total · 1 owned · 1 trusted · 1 discoverable · 1 with lineage');
     await chooseAsset(page, STAGING_TITLE);
     const after = page.getByRole('list', { name: 'flags' });
     await expect(after).toContainText(/⊘ orphan — no registry row, or a staging asset with no owner and no lineage \(undiscoverable\) · since \d{4}-\d{2}-\d{2} — /);

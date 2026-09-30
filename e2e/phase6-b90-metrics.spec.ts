@@ -311,7 +311,8 @@ test.describe('CP-6 B90 — the certified semantic layer: the owner certifies fr
     await expect(values.getByRole('columnheader', { name: 'Value (EUR)' })).toBeVisible();
     await expect(values.getByRole('row').filter({ hasText: /^\d{4}-\d{2}/ })).toHaveCount(3);
     for (const v of ['420000 EUR', '610000 EUR', '550000 EUR']) await expect(values.getByRole('cell', { name: v, exact: true })).toBeVisible();
-    // the serving is recorded on the model's ledger
+    // the serving is recorded on the model's ledger (the model re-read: the serve panel does not reload the model)
+    await openMetric(page, TITLE_EUR);
     await expect(page.getByRole('list', { name: 'servings' })).toContainText('analyst · grain month');
     await expect(page.getByRole('list', { name: 'servings' })).toContainText('v1 · certified · revision');
   });

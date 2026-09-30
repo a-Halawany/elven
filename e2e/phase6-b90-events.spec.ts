@@ -209,10 +209,15 @@ test.describe('CP-6 B90 — event products and subscriptions: the stream release
     await expect(form.getByRole('checkbox', { name: 'I can process replays' })).toBeChecked();
     await form.getByRole('button', { name: 'Register subscription' }).click();
     // MY SUBSCRIPTION as the server records it: registered, the checkpoint against the head, the grant, the purpose
-    await expect(page.getByLabel('my subscription state')).toHaveText("◌ REGISTERED — awaiting the owner's authorization");
-    await expect(page.getByLabel('my lag')).toHaveText(LAG_LINE);
-    await expect(page.getByText('closes_at, consequence_class, title · consequence C2 · no time window')).toBeVisible();
-    await expect(page.getByText('procurement · v1')).toBeVisible();
+    const mine = page.locator('section[aria-labelledby="mine-h"]');
+    await expect(mine.getByLabel('my subscription state')).toHaveText("◌ REGISTERED — awaiting the owner's authorization");
+    await expect(mine.getByLabel('my lag')).toHaveText(LAG_LINE);
+    await expect(mine.getByText('closes_at, consequence_class, title · consequence C2 · no time window', { exact: true })).toBeVisible();
+    await expect(mine.getByText('procurement · v1', { exact: true })).toBeVisible();
+    // the same subscription in the product's list (every reader sees the subscriptions; the owner's controls are the owner's)
+    const listed = page.getByRole('list', { name: 'subscriptions' }).locator('li').filter({ hasText: `consumer ${short8(consumer.principalId)}` });
+    await expect(listed.getByLabel('subscription state')).toHaveText("◌ REGISTERED — awaiting the owner's authorization");
+    await expect(listed.getByRole('button', { name: 'Authorize' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Acknowledge', exact: true })).toBeDisabled();
     await expect(page.getByText(/committed — POL/).first()).toBeVisible();
   });

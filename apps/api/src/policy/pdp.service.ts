@@ -138,6 +138,10 @@ const BUNDLE_V1: Rule[] = [
       /* B36 collab (0094 §C1): the external collaborator reads its OWN identity — the route answers it BOUNDED TO ITS GRANT (F-P6-14 (q)) */
       { role: 'external_collaborator', atScope: 'DOMAIN' },
       /* end B36 collab */
+      /* B90 browser (0095 §0): the data steward resolves its own scope (a PURE steward opens the shell — found by the B90 browser gate: the
+         /graph/data pages answered "no qualifying role binding for action in resolved scope" to a principal holding data_steward alone) */
+      { role: 'data_steward', atScope: 'DOMAIN' },
+      /* end B90 browser */
     ],
     obligations: [{ type: 'audit_access' }],
     requiresPurpose: true,
