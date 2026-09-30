@@ -289,6 +289,20 @@ describe('B27 §S · c THE COMPARATOR (CAP-DS-02)', () => {
     expect(['boolean']).toContain(typeof cmp['anatomy_available']);
   });
 
+  it('c · §I (the integrator): a probability set through §Q\'s route shows on the comparison with its method; withdrawn, it is no longer shown', async () => {
+    const { ScenarioQualityController: Qc } = await import('../../src/prediction/scenarios/quality/quality.controller.js');
+    const q = h.app.get(Qc);
+    const blk = ((await compare(analyst, SET)).comparison['branches'] as Row[]).find((b) => b['scenario_id'] === SCN_A && b['kind'] === 'user-defined')!;
+    const branchId = String(blk['branch_id']);
+    const basis = { elicitation: { experts: ['N. Eriksen (SYNTHETIC)', 'J. Weber (SYNTHETIC)'], question: 'will a regional blockade halt transits within the quarter?', elicited_at: '2026-09-29T10:00:00Z',
+      record: 'two experts, independent estimates, reconciled in a recorded session (SYNTHETIC)' } };
+    await q.setProbability(P(strategist, 'prediction.scenario.probability.set', 'BRN', branchId), T(), D(), branchId, { payload: { method: 'expert_elicitation', low: 0.05, high: 0.15, basis } } as never);
+    const shown = ((await compare(analyst, SET)).comparison['branches'] as Row[]).find((b) => b['branch_id'] === branchId)!;
+    expect(obj(shown['probability'])).toMatchObject({ method: 'expert_elicitation', probability_low: 0.05, probability_high: 0.15 });
+    await q.withdrawProbability(P(strategist, 'prediction.scenario.probability.withdraw', 'BRN', branchId), T(), D(), branchId, { payload: { reason: 'the elicitation is re-run next week (B27 sets harness)' } } as never);
+    const gone = ((await compare(analyst, SET)).comparison['branches'] as Row[]).find((b) => b['branch_id'] === branchId)!;
+    expect(gone['probability'] ?? null).toBeNull();
+  });
   it('c · REFUSAL: an outsider is refused by the policy; an unknown set is 404', async () => {
     await refused(compare(outsider, SET), /./, 403);
     await refused(compare(analyst, uuidv7()), /^scenario set rejected \(unknown_set\):/, 404);
