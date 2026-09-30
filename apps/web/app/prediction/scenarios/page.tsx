@@ -450,6 +450,7 @@ export default function ScenariosPage() {
             owner <Mono>{s.owner_principal_id.slice(0, 8)}…</Mono> · review {s.review_cadence} · declared {fmtInstant(s.declared_at)} · version <Mono>{String(s.current_version ?? 1)}</Mono>
             {s.forecast_id === null ? null : <> · built on forecast <Mono>{s.forecast_id.slice(0, 8)}…</Mono></>}
           </p>
+          {/* B27 anatomy */}<p style={{ fontSize: 'var(--eye-type-label-sm)' }}><a href={`/prediction/scenarios/anatomy?scenario=${s.scenario_id}`}>Anatomy of “{s.title}”: drivers, actors, mechanisms, the assumption register, suspensions and records →</a></p>{/* end B27 anatomy */}
           <ReviewState s={s} />
           <CoherencePanel s={s} scope={scope} canCheck={isForecastOwner || isStrategyOwner} onChanged={load} />
           <ScrollBox label={`branches of ${s.title}`}>
