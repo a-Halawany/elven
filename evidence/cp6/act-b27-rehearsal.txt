@@ -1,0 +1,94 @@
+THE B27 ACT on eye_demo_b27 (REHEARSAL) — 2026-09-30T21:31:21.177Z
+
+B27-0 THE STATE — 0097, the casting, the attention agent, the inputs
+  ✓ migration 0097_b27_scenario_anatomy_sets_coherence.sql applied
+  ✓ the casting read from identity.role_bindings: a.hoffmann (domain_analyst); j.weber (strategy_owner); l.brandt (decision_authority, decision_owner, opportunity_sponsor, strategy_owner); m.dvorak (collection_manager, executive); n.eriksen (forecast_owner); s.okafor (decision_approver, executive)
+  ✓ the attention agent 01a0…1cb088 (registered in B24) — cadence 60 s; 5 tick run(s) in the last ten minutes (the latest at 2026-09-30T21:31:17Z) — the B27 steps scenario-relevance (67) and scenario-quality (68) run inside it
+  ✓ the inputs: the Regensburg objective 01a0…3d1d00; the corridor risk 01a0…b2cb46; the January Regensburg decision 01a0…fdb43e (its package monitoring); the run pair 01a0…332f38 / 01a0…049267; the forecast 01a0…6aafd5 of red-sea-corridor-stream-late:chokepoint4:n_total (fitness none); the every-kind scenario 01a0…1c4bc6; the escalated signal "Bab el-Mandeb: SYNTHETIC a second insurer withdraws war-risk cover (B9"
+  · the B27 transit signpost 01a0…d4bf7c stands (active) — an earlier run
+
+B27-A THE ANATOMY — "Bab el-Mandeb closure": drivers, actors, the mechanism; the critical insurer assumption INVALIDATED → the disruption branch SUSPENDED, its owner TASKED
+  · the scenario 01a0…fd61d4 "Bab el-Mandeb closure — Houthi activity and insurer withdrawal (SYNTHETIC)" stands — an earlier run
+  · the driver "Houthi activity" stands (v1) — an earlier run
+  · the driver "Insurer withdrawal" stands (v1) — an earlier run
+  · the actor "Carriers" stands (v1) — an earlier run
+  · the mechanism "War-risk premium → rerouting" stands (v1) — an earlier run
+  · the intervention "Naval escort" stands (v1) — an earlier run
+  · the impact "Regensburg line stop" stands (v1) — an earlier run
+  ✓ A. Hoffmann (domain_analyst) declares a driver REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  · the assumption 01a0…a663d1 "Insurers keep war-risk cover" stands (invalidated) — an earlier run
+  · the critical link 01a0…e09b6b stands (v1) — an earlier run
+  · the narrative record "How the corridor closes" stands — an earlier run
+  · the implication record "Magnets arrive three weeks late" stands — an earlier run
+  · the option record "Dual-source the magnets before the season" stands — an earlier run
+  · the disruption branch is SUSPENDED — an earlier run
+  ✓ THE SUSPENSION: "Insurer withdrawal" is SUSPENDED (from open, by J. Weber) — "the critical assumption "Insurers keep war-risk cover" was invalidated: the Joint War Committee listed the cor…"; cause assumption via graph.assumption.verify
+  ✓ the Baseline stays open (no critical link names it)
+  ✓ THE TASK: 4bbc…cf2467 "Branch suspended: Insurer withdrawal (Bab el-Mandeb closure — Houthi activity and insurer " → open, owner N. Eriksen (the branch owner; subject branch)
+  · the scenario ledger: 1 branch.suspended event(s) on the disruption branch
+  ✓ N. Eriksen reinstates the branch while the assumption stays invalidated REFUSED — 409 EYE-STA-002 — branch suspension rejected (invalidated): the critical assumption "Insurers keep war-risk cover" is still invalidated; verify it again or unlink it with a reason before the branch is reinstated
+  ✓ A. Hoffmann READ the anatomy: scenario-wide drivers Houthi activity; actors Carriers; the disruption branch suspended (live false, decision-active false), its mechanisms War-risk premium → rerouting, its map Naval escort → Regensburg line stop; the register: critical true, invalidated true, condition met true; 3 record(s)
+
+B27-S THE SET — the Regensburg supply decision weighed against baseline, disruption and "regional blockade"; the missing STRESS branch flagged before the recommendation is allowed
+  · the set 01a0…3035be "Regensburg supply — the corridor scenario set (SYNTHETIC)" stands (active, v5, last check passed) — an earlier run
+  · the member "Baseline" stands — an earlier run
+  · the member "Disruption" stands — an earlier run
+  · the member "Blockade" stands — an earlier run
+  · the set is active — an earlier run
+  ✓ THE FLAG: the set-gap item 5ad2…0c6d53 "Scenario set not plural: Regensburg supply — the corridor scenario set (SYNTHETIC) — missi" → closed, owner J. Weber (1 item(s) on the set)
+  ✓ L. Brandt binds the set to the monitoring January package REFUSED — 409 EYE-STA-002 — scenario set rejected (state): package 01a084f8-014b-73a0-b608-a0cda0651748 is monitoring; a set is bound to a package still open to a proposal
+  · the package 01a0…23eb0b "Regensburg supply — dual-source against the corridor scenarios (SYNTHETIC)" stands (proposed, v1) — an earlier run
+  · the set is bound to the package — an earlier run
+  · the plurality refusal was staged by an earlier run (the version is proposed, stress member true)
+  · the member "Stress" stands — an earlier run
+  ✓ the set-gap item 5ad2…0c6d53 closed — the flag cleared by the stress branch's arrival
+  · the version is proposed — an earlier run
+  ✓ the set: active v5, last check passed; the recorded checks activate:failed → bind:failed → member:passed
+  ✓ L. Brandt COMPARED the set side by side (plurality PASSED, stale after 14 days):
+      Baseline     baseline                           open      live true  —   signpost none — transits hold near their seasonal level; the third shipment 
+      Disruption   disruption                         open      live true  —   signpost < 41 (stale) — a sudden closure of the strait interrupts every booked trans
+      Stress       stress                             open      live true  —   signpost < 41 (stale) — the strait and the Cape route degrade together, so rerouting
+      Blockade     user-defined  “regional blockade”  open      live true  —   signpost < 41 (stale) — naval activity halts transits outright and insurers withdraw
+  · the portfolio review 01a0…79a5a4 stands (most robust dual-source, least regret dual-source) — an earlier run
+  ✓ THE TICK (scenario-relevance, order 67): the every-kind scenario scored 0.80 at 2026-09-30T21:31:17Z (basis {"rule":"relevance v1: min(1, 0.6·movement + 0.2·signpost breached + 0.2·review due)","branches":[{"kind":"adversarial",)
+  · the tick's signpost notices on the member scenario (once per breach, to its owner): 8 — Adversarial (open, N. Eriksen), Blockade (open, N. Eriksen), Counterfactual (open, N. Eriksen), Disruption (open, N. Eriksen), Downside (open, N. Eriksen), Insurer withdrawal (open, N. Eriksen), Stress (open, N. Eriksen), Upside (open, N. Eriksen)
+  · the proposal 01a0…d2dab0 from the insurer signal stands (accepted) — an earlier run
+  · the proposal is accepted — an earlier run
+
+B27-Q THE QUALITY — two corridor branches that differ only in wording FAIL distinctiveness; the missing freight-rate signpost named; governed probabilities
+  · the series freight-rate:red-sea-container-spot stands — an earlier run
+  · the freight-rate signpost 01a0…7eb78f stands (retired) — an earlier run
+  · the scenario 01a0…cda719 "Bab el-Mandeb freight exposure (SYNTHETIC)" stands (v3) — an earlier run
+  · the branch "Strait closure" stands — an earlier run
+  · the branch "Strait shutdown" stands — an earlier run
+  · the freight-rate signpost is retired — an earlier run
+  · the evaluation 01a0…2c2fec stands (failed: indistinct_branches, indicator_missing) — an earlier run
+  ✓ THE DISTINCTIVENESS: FAIL — branches "Strait closure" and "Strait shutdown" share their assumptions, elements, indicator and divergence, and their statements overlap 1.0000 (threshold 0.75): they differ only in wording
+  ✓ THE MISSING SIGNPOST: FAIL — indicator 01a0f43a-ab8d-773b-949a-7275d47eb78f (freight-rate:red-sea-container-spot) of "Freight-rate spike" is retired
+  · every finding: indistinct_branches:fail, indicator_missing:fail, coverage:note, signpost_shared:note
+  ✓ THE TASK: ace3…46388d "Scenario quality failed: Bab el-Mandeb freight exposure (SYNTHETIC) (indicator_missing, in" → open, owner J. Weber
+  · the map "Corridor incident frequency (SYNTHETIC)" v1 stands — an earlier run
+  · the probability of "Strait closure" stands (frequency_map 0.05–0.25) — an earlier run
+  ✓ J. Weber sets a probability on a NARRATIVE basis REFUSED — 422 EYE-REQ-001 — branch probability rejected (narrative): a probability is never derived from narrative text — state the observed frequency, the elicitation record or the model run
+  ✓ A. Hoffmann (domain_analyst) sets a probability REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  · the probability of "Freight-rate spike" stands (expert_elicitation 0.1–0.2) — an earlier run
+  ✓ A. Hoffmann READ the quality: decision-active {"value":false,"reasons":["the quality evaluation of 2026-09-30 21:31:20.946251+00 failed: indicator_missing, indistinct_branches"]}; probabilities Freight-rate spike expert_elicitation 0.1–0.2; Strait closure frequency_map 0.05–0.25; the lows sum {"live_low":0.15,"live_high":0.45,"not_summed":0}
+
+B27-9 THE STATE and the LIMITS
+  · in the ledgers: 6 anatomy elements, 1 linked assumptions, 3 records, 1 suspended branch(es); 1 set(s), 3 plurality checks, 1 binding(s), 1 portfolio review(s), 1 relevance scores, 1 proposal(s); 1 quality evaluation(s), 1 map version(s), 2 probability row(s); 15 B27 attention items
+  the env lines for the walks:
+  EYE_B27_ANATOMY_STRATEGY=j.weber
+  EYE_B27_ANATOMY_BRANCH_OWNER=n.eriksen
+  EYE_B27_ANATOMY_READER=a.hoffmann
+  EYE_B27_ANATOMY_SCENARIO=Bab el-Mandeb closure
+  EYE_B27_ANATOMY_BRANCH=Insurer withdrawal
+  EYE_B27_ANATOMY_STAGE=suspended
+  EYE_B27_SETS_TITLE=Regensburg supply
+  EYE_B27_SETS_DECIDER=l.brandt
+  EYE_B27_SETS_OWNER=j.weber
+  EYE_B27_QUALITY_OWNER=j.weber
+  EYE_B27_QUALITY_READER=a.hoffmann
+  EYE_B27_QUALITY_SCENARIO_TITLE=Bab el-Mandeb freight exposure
+  · LIMITS said: EVERY FIGURE IS SYNTHETIC — the anatomy's drivers, actor, mechanism, intervention and impact, the records, the insurer assumption and its invalidation, the portfolio payoffs (EUR k), the frequency map's bands, the incident frequency and the expert elicitation are the personas' own statements for the demonstration, not measurements; the freight-rate series freight-rate:red-sea-container-spot is REGISTERED with no source behind it (no freight-rate provider; its signpost is defined and retired unobserved); the transit signpost rests on the real PortWatch series key but is never evaluated by this act; the set's scenario is the every-kind corridor scenario of the earlier acts (its branches by N. Eriksen), not a new one; the recommendation proposed is a FRESH package by L. Brandt on the January Regensburg decision (both standing Regensburg packages are committed and a set does not bind a committed package — the refusal staged); the anatomy scene is LEFT SUSPENDED (the walk reads that stage; the reinstatement is refused while the assumption stays invalidated); the relevance score is the attention agent's REAL scheduled tick (waited for, not driven). NOT STAGED (HARNESS-PROVEN): anatomy — element revision and retirement (refused while another rests on it), the claim and indicator conditions, the run refused on a suspended branch (a twin run the demonstration would have to open), the recovery (re-verify → reinstate → item closed → run admitted), a flipped branch suspended by a person returning to flipped, a scenario-wide critical link suspending every live branch, unlink, record supersession (phase6-anatomy-b27 A–E); sets — member removal, the set retirement refused while bound, the unbound package unaffected, the forecast-shift, risk and planning-cycle proposals (the demonstration holds no superseded forecast), relevance signposts notified once per breach (phase6-sets-b27 a–f); quality — collapse, prohibited contradictions, temporal order, the stale signpost (a stated superuser move of last_observation_at), review timeliness, the model method, the map superseded, the sum > 1 and non-owner refusals, withdrawal, the tick's re-evaluation (phase6-quality-b27 a–e). Nothing is cleaned: every object stands as a demonstration fact.
+
+ALL SCENES HELD · 0.4 s
