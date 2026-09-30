@@ -141,8 +141,9 @@ describe('B21 · forecastFitnessChangedGraphEvent — GraphChanged/forecast.fitn
     expect(GRAPH_CHANGE_KINDS).toContain('forecast.fitness_changed');
     expect(GRAPH_CHANGE_KINDS[17]).toBe('forecast.fitness_changed');
     expect(GRAPH_CHANGE_KINDS[18]).toBe('revision.committed');
-    expect(GRAPH_CHANGE_KINDS[GRAPH_CHANGE_KINDS.length - 1]).toBe('objective.changed'); // B34 (0090) appended it after revision.committed
-    expect(GRAPH_CHANGE_KINDS).toHaveLength(20);
+    expect(GRAPH_CHANGE_KINDS[19]).toBe('objective.changed'); // B34 (0090) appended it after revision.committed
+    expect(GRAPH_CHANGE_KINDS.slice(20)).toEqual(['strategy.alignment_changed', 'strategy.measure_changed', 'strategy.owner_changed']); // B36 (0094 §S) appended the three strategy kinds
+    expect(GRAPH_CHANGE_KINDS).toHaveLength(23);
     for (const k of ['entity.created', 'edge.asserted', 'forecast.superseded', 'import.admitted', 'import.revoked', 'twin.state_changed', 'forecast.withdrawn', 'simulation.invalidated', 'projection.rebuilt']) expect(GRAPH_CHANGE_KINDS).toContain(k);
   });
   it('the forecastWithdrawnGraphEvent shape: no identities, objects.forecasts the forecast, walked true, the cause per trigger (the literal map), the block with the class, what stood before and the measures', () => {

@@ -44,8 +44,9 @@ const answer = (over: Row = {}): Row => ({
 describe('B23 · GraphChanged/revision.committed — pure, many facts in ONE event', () => {
   it('the kind is appended to GRAPH_CHANGE_KINDS (nineteen; revision.committed last)', () => {
     expect(GRAPH_CHANGE_KINDS[18]).toBe('revision.committed');
-    expect(GRAPH_CHANGE_KINDS[GRAPH_CHANGE_KINDS.length - 1]).toBe('objective.changed'); // B34 (0090) appended it after revision.committed
-    expect(GRAPH_CHANGE_KINDS).toHaveLength(20);
+    expect(GRAPH_CHANGE_KINDS[19]).toBe('objective.changed'); // B34 (0090) appended it after revision.committed
+    expect(GRAPH_CHANGE_KINDS.slice(20)).toEqual(['strategy.alignment_changed', 'strategy.measure_changed', 'strategy.owner_changed']); // B36 (0094 §S) appended the three strategy kinds
+    expect(GRAPH_CHANGE_KINDS).toHaveLength(23);
   });
 
   it('pins the payload key by key: created nodes, the existing end, asserted + superseded edges, claims, evidence, the revision block, the GRV cause', () => {
