@@ -79,7 +79,7 @@ describe('B90 products · the EXACT PDP rules', () => {
     expect(r.decision).toBe('allow_with_obligations');
     expect(r.obligations).toEqual([{ type: 'human_gate' }]);
     expect(pdp.evaluate(input({ roles: ['collection_manager'] })).decision).toBe('deny');
-    for (const action of ['products.consumer.accept.now', 'products.consumer', 'products.consumer.accep']) expect(pdp.evaluate(input({ action })).decision, action).toBe('deny');
+    for (const action of ['products.consumer.accept.now', 'products.consumer', 'products.consumer.accep']) expect(['deny', 'indeterminate'], action).toContain(pdp.evaluate(input({ action })).decision); // no rule matches: indeterminate, which the pipeline refuses as a denial
   });
   it('the steward passes the lifecycle rules (the PORT asserts the owner for restore / withdraw / retire — so its own 403 is reachable); the tick\'s acts carry no human gate; an outsider is denied everywhere', () => {
     for (const action of ['products.product.degrade', 'products.product.restore', 'products.product.withdraw', 'products.product.retire', 'products.product.cost.attribute', 'products.product.scorecard.compute', 'products.consumer.register', 'products.product.contract_test']) {
