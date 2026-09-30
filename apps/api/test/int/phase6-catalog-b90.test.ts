@@ -35,6 +35,7 @@ import type { ProductsController } from '../../src/products/products.controller.
 import type { ExecutiveController } from '../../src/executive/executive.controller.js';
 import { SchedulerService } from '../../src/observation/scheduling/scheduler.service.js';
 import { AttentionTimerService } from '../../src/executive/attention/attention-timer.service.js';
+import { AttentionTickRegistry } from '../../src/executive/attention/tick.js';
 import { ATTENTION_TIMER_DIGEST, ATTENTION_TIMER_VERSION } from '../../src/executive/attention/timer-identity.js';
 import { asObservationRefusal } from '../../src/observation/observation-errors.js';
 import { Phase4Harness } from './phase4-helpers.js';
@@ -341,9 +342,9 @@ describe('B90 §K · c2 THE CONTINUITY RULE', () => {
     expect(c['trusted']).toBe(true);
   });
   it('THE TICK: the step catalog-reconcile runs the same port under executive.attention.tick (the run recorded with trigger tick and the agent as actor); the coverage read exposes the debt per kind', async () => {
-    const t = await tick();
-    const steps = (t as unknown as { steps?: Row }).steps ?? {};
-    expect(Object.keys(steps)).toContain('catalog-reconcile');
+    const registry = h.app.get(AttentionTickRegistry);
+    expect(registry.steps().map((s) => [s.name, s.order])).toContainEqual(['catalog-reconcile', 66]);
+    await tick();
     const runs = await rows(sql`select trigger, actor_principal_id::text as actor, counts from products.catalog_reconciliations where tenant_id = ${T()}::uuid and domain_id = ${D()}::uuid order by finished_at desc limit 1`);
     expect(runs[0]).toMatchObject({ trigger: 'tick', actor: agentPrincipalId });
     expect(Number((runs[0]!['counts'] as Row)['created'])).toBe(0);
@@ -374,8 +375,10 @@ describe('B90 §K · d DISCOVERY', () => {
     expect(s['clearance']).toBe('internal');
     const byOwner = (await search(analyst, 'b90k-owner-two')).search;
     expect((byOwner['hits'] as Row[]).map((x) => x['asset_id'])).toContain(A_SRC);
+    // the glossary term binds the external asset and the source; the forecasts product says "transit" in its title — a hit by the word, not the term
     const byTerm = (await search(analyst, 'Transit')).search;
-    expect((byTerm['hits'] as Row[]).map((x) => x['asset_id']).sort()).toEqual([A_EXT, A_SRC].sort());
+    expect((byTerm['hits'] as Row[]).map((x) => x['asset_id']).sort()).toEqual([A_EXT, A_SRC, A_P1].sort());
+    expect((byTerm['hits'] as Row[]).filter((x) => (x['terms'] as Row[]).length > 0).map((x) => x['asset_id']).sort()).toEqual([A_EXT, A_SRC].sort());
     const ais = (await search(analyst, 'ais_staging')).search;
     expect(ais).toMatchObject({ total: 1, hidden: 1, hidden_by: { undiscoverable: 1, clearance: 0 }, hits: [] });
     const onlyProducts = (await search(analyst, 'corridor', ['product'])).search;
