@@ -1,0 +1,102 @@
+THE B90 ACT on eye_demo_b90 (REHEARSAL) — 2026-09-30T13:11:17.256Z
+
+B90-0 THE STATE — 0095, the casting, the new SYNTHETIC personas, the attention agent, the policy extended
+  ✓ migration 0095_b90_data_products_metrics_catalog.sql applied
+  ✓ the casting read from identity.role_bindings: a.hoffmann (domain_analyst); a.novak (strategy_owner); j.weber (strategy_owner); m.dvorak (collection_manager, executive); n.eriksen (forecast_owner); t.richter (domain_admin)
+  · F. Aydın is present — an earlier run
+  · H. Weber is present — an earlier run
+  ✓ the attention agent 01a0…1cb088 (registered in B24) — cadence 60 s; 5 tick run(s) in the last ten minutes (the latest at 2026-09-30T13:11:17Z) — the B90 steps event-products (61), subscription-lag (63), product-scorecards (64), metric-certification (65), catalog-reconcile (66) run inside it
+  · attention policy version 8 carries the four B90 classes routed to data_steward — an earlier run
+  ✓ the inputs: the Regensburg objective 01a0…3d1d00 "Keep the Regensburg line supplied through Q1"; the evidence the signals cite 01a0…7342d1@1 (NORDWERK's synthetic internal records); the schemas WRN@v2, FCT@v1
+
+B90-R THE PLATFORM'S OWN PRODUCTS — scripts/phase6/b90-platform-products.mjs (the nine, by their demonstration owners; rerun-safe on its own)
+      · F. Aydın is present — an earlier run
+      · platform.object-api stands — an earlier run (released, v1 released)
+      · platform.observation-evidence stands — an earlier run (released, v1 released)
+      · platform.graph-query stands — an earlier run (released, v1 released)
+      · platform.twin-snapshot stands — an earlier run (released, v1 released)
+      · platform.forecast-package stands — an earlier run (released, v1 released)
+      · platform.scenario-portfolio stands — an earlier run (released, v1 released)
+      · platform.simulation-run stands — an earlier run (released, v1 released)
+      · platform.decision-package stands — an earlier run (released, v1 released)
+      · platform.briefing stands — an earlier run (released, v1 released)
+      · LIMITS said: every figure is SYNTHETIC (the availability probe is the act's own observation, not a measurement of the platform); the products DESCRIBE the platform's own surfaces and mutate nothing; the scorecards are the schedule's (the attention tick step product-scorecards), not this script's.
+  ✓ the platform's nine products stand in the registry: 9 registered, 9 released (each with an owner, an SLO and a first availability observation — SYNTHETIC)
+
+B90-E THE CORRIDOR WARNING STREAM — the event product owned by the intelligence domain; procurement subscribes, falls behind its lag policy and is flagged; the scorecard shows the attainment
+  · corridor-warning-stream stands (released, v1 released, owner N. Eriksen) — an earlier run
+  · the event declaration of corridor-warning-stream stands (declaration 1, schema v1) — an earlier run
+  · corridor-forecasts stands (released, v1 released, owner N. Eriksen) — an earlier run
+  · H. Weber's consumer registration 01a0…a5f520 stands (accepted, v1) — an earlier run
+  · H. Weber's subscription 01a0…98ed27 stands (active, checkpoint 4) — an earlier run
+  · the subscription was flagged lagging by the tick — an earlier run
+  · the conformance and the resumption stand — an earlier run
+  ✓ THE NEXT TICK observed lag_events 0 → met (at 2026-09-30T13:11:17.216Z) — the subscription back within its policy after the conformance and the resumption
+  ✓ THE OWNER'S READ of corridor-warning-stream: head 4, stream {"signal":4}, subscriptions 1 — H. Weber's active at checkpoint 4 (lag 0); the SLO on the product: lag_events 0 → met true (subscription-lag tick)
+  ✓ THE SCORECARD of corridor-warning-stream (the schedule's): ok, SLO attainment 75% against the floor 50% (4 card(s)) — lag_events observed 1 missed, 3 met: missed at the lag, attained after the conformance and the resumption
+
+B90-D THE DEGRADATION AND THE RESTORATION — the steward degrades the stream with a reason; the consumer's item; the domain review; the owner restores
+  · corridor-warning-stream was degraded (by human: "The corridor warning stream is served from its last emission while the warning l") — an earlier run; restored since
+  ✓ THE CONSUMER'S ITEM: 7981…6b1fa0 "Product corridor-warning-stream DEGRADED: The corridor warning stream is served from its l" → open, on H. Weber's queue (product.degradation)
+  · the restoration stands (released) — an earlier run
+
+B90-M THE CERTIFIED METRIC — "corridor exposure (EUR at risk)" served with its grain and source revision; the uncertified variant refused in the executive view; the Strategic Health Score
+  · the measure 01a0…64a4fd "Corridor exposure (EUR at risk)" stands — an earlier run
+  · 2 reading(s) of the measure stand — an earlier run
+  · corridor-exposure-eur stands (registered) — an earlier run
+  · the semantic model corridor-exposure-eur stands (certified, v1 certified) — an earlier run
+  · corridor-exposure-eur is certified (v1) — an earlier run
+  · corridor-exposure-eur-draft stands (registered) — an earlier run
+  · the semantic model corridor-exposure-eur-draft stands (declared, v1) — an earlier run
+  · strategic-health-score stands (registered) — an earlier run
+  · the semantic model strategic-health-score stands (certified, v1 certified) — an earlier run
+  · strategic-health-score is certified (v1) — an earlier run
+  ✓ THE EXECUTIVE VIEW SERVED corridor-exposure-eur: certified, definition v1 (db150ea4e649…), grain month, unit EUR, last — SOURCE graph.measure_observations revision f9d97dd8bad696e4… over 2 row(s), freshness 10 d; values 2026-08: 610,000 EUR, 2026-09: 550,000 EUR (as of 2026-09-30T13:11:18Z, the database's instant)
+  ✓ the executive view of the UNCERTIFIED draft REFUSED — 409 EYE-STA-002 — metric rejected (certification): metric corridor-exposure-eur-draft is declared — the executive view serves certified metrics only (dashboards are access modes); the analyst view serves it marked uncertified
+  ✓ THE ANALYST VIEW SERVED the draft MARKED: "UNCERTIFIED (declared) — served in the analyst view only; no" — avg per month, values 2026-08: 610,000, 2026-09: 550,000, certified false
+  ✓ M. Dvořák certifying the draft (the same measure, grain and filters under another definition) REFUSED — 409 EYE-STA-002 — metric certification rejected (conflict): metric corridor-exposure-eur-draft conflicts with the certified metric corridor-exposure-eur (the same measure, grain and filters) under a different definition — reconcile defini
+  ✓ THE STRATEGIC HEALTH SCORE SERVED in the executive view: certified, grain component — source executive.health_score_snapshots revision 4215e794b11357f8…; components corridor_risk 40.0, corridor_transits 38.3, morocco_supplier 100.0, on_time_delivery withheld
+
+B90-K THE CATALOG — the synthetic AIS source, the reconciliation, the owner, the lineage to the corridor forecasts and the warning stream, the orphaned staging asset, the search
+  · the source red-sea-ais-positions "Red Sea AIS positions (synthetic)" stands (active) — an earlier run
+  · the first reconciliation stands (the AIS source is catalogued) — an earlier run
+  · the AIS entry's owner A. Hoffmann stands — an earlier run
+  · the lineage "Red Sea AIS positions (synthetic)" → "Corridor transit forecasts (SYNTHETIC)" stands — an earlier run
+  · the lineage "Corridor transit forecasts (SYNTHETIC)" → "Corridor warning stream (SYNTHETIC)" stands — an earlier run
+  · the glossary term "AIS position" v1 stands — an earlier run
+  · the staging asset ais_staging_2025w40 stands (flags ["unowned","orphan"]) — an earlier run
+  ✓ ais_staging_2025w40 is flagged ORPHAN since 2026-09-30 ("a staging asset with no owner and no lineage") and UNDISCOVERABLE (discoverable false, trusted true)
+  ✓ THE COVERAGE ITEM: bfa7…908256 "catalog coverage: staging AIS staging 2025 week 40 (SYNTHETIC) (ais_staging_2025w40) flagg" → open, routed to the role data_steward (the steward's queue: no owner to name)
+  ✓ F. Aydın SEARCHED "Red Sea AIS": 1 hit(s), 0 hidden (clearance internal) — "Red Sea AIS positions (synthetic)" owner A. Hoffmann — observation operator, trusted true, flags [], downstream feeds → "Corridor transit forecasts (SYNTHETIC)"
+  ✓ the search "ais_staging" (F. Aydın): 1 total, 1 hidden ({"clearance":0,"undiscoverable":1}) — the orphan is counted, never served
+  ✓ A. Novák (an internal-cleared reader) SEARCHED "Red Sea AIS": 1 hit(s), 0 hidden — clearance internal; no steward's controls
+  ✓ THE COVERAGE DEBT: field 43 (owned 0, discoverable 43, flagged {"unowned":43}); schema 49 (owned 0, discoverable 49, flagged {"unowned":49}); source 14 (owned 1, discoverable 14, flagged {"unowned":13}); product 14 (owned 14, discoverable 14, flagged {"lineage_missing":9}); staging 1 (owned 0, discoverable 0, flagged {"orphan":1,"unowned":1}); 1 undiscoverable, 1 open item(s); last reconciliation tick
+
+B90-9 THE STATE and the LIMITS
+  · in the ledgers: 14 products (11 released), 1 consumer rows, 1 subscriptions, 4 stream rows, 27 SLO observations, 44 scorecards, 3 semantic models (2 active certifications, 9 servings), 121 catalog entries, 2 live lineage edges, 3 B90 attention items
+  the env lines for the walks:
+  EYE_B90_STEWARD=f.aydin
+  EYE_B90_STEWARD_LOGIN=f.aydin
+  EYE_B90_PRODUCTS_OWNER=n.eriksen
+  EYE_B90_P_OBJECT=01a0f26d-7cd7-796f-9d82-ee7c0e8ee384
+  EYE_B90_P_EVIDENCE=01a0f26d-7d30-7388-9519-fe834d8ee325
+  EYE_B90_P_GRAPH=01a0f26d-7d6d-736b-bf46-2f7246dea609
+  EYE_B90_P_TWIN_SNAPSHOT=01a0f26d-7da6-7c6c-bdba-13668984d333
+  EYE_B90_P_FORECAST=01a0f26d-7dd9-7ec0-a771-9b7d9956726f
+  EYE_B90_P_SCENARIO=01a0f26d-7e08-7023-b547-14e52bc6dd24
+  EYE_B90_P_SIMULATION=01a0f26d-7e3b-7df5-9bfa-95ec539b1488
+  EYE_B90_P_DECISION=01a0f26d-7e69-7c1d-8f6b-34ae22d99daf
+  EYE_B90_P_BRIEFING=01a0f26d-7ea6-72f1-a5f9-f50b73fca390
+  EYE_B90_EVENTS_STREAM_TITLE=Corridor warning stream
+  EYE_B90_EVENTS_OWNER=n.eriksen
+  EYE_B90_EVENTS_CONSUMER=h.weber
+  EYE_B90_CONSUMER=h.weber
+  EYE_B90_EXECUTIVE_LOGIN=m.dvorak
+  EYE_B90_METRIC_TITLE=Corridor exposure \(EUR at risk\)(?! — draft)
+  EYE_B90_DRAFT_TITLE=draft
+  EYE_B90_HEALTH_TITLE=Strategic Health Score
+  EYE_B90_AIS_TITLE=Red Sea AIS
+  EYE_B90_READER=a.novak
+  · LIMITS said: EVERY FIGURE IS SYNTHETIC — the AIS source is a synthetic upload contract with no bytes behind it (no real AIS provider), the corridor warnings are synthetic reports nominated and escalated for the demonstration, the EUR readings and the availability probes are the personas' own observations, not measurements; the event product is served by PULL only (no push delivery, no webhook, no real consumer system — H. Weber reads it by hand); the consumer, the subscriber and the steward are personas of this demonstration; the ticks are the attention agent's REAL scheduled ticks (the act waits for them, drives none by hand: there is no tick route outside the test runtime); the stream's SLO floor (50 %) and grace (3 ticks) are declared by its owner so one missed lag observation does not degrade the stream by the schedule before the steward's own degradation scene — the attainment climbs with every healthy tick; the metric certifications are signed with the demonstration's own key (EYE_EXECUTIVE_SIGNING_KEY_DEMO, bound by reference); the semantic layer computes from the platform's own canonical rows (graph.measure_observations, executive.health_score_snapshots) and creates no parallel truth; the catalog DESCRIBES and INDEXES authority and mutates no source, schema, product or object. HARNESS-PROVEN and not staged: events — the breaking schema re-declaration pausing a subscription (reason schema) and its conformance to the new version, the correction row withheld from a consumer that cannot process corrections, the replay moving a checkpoint back, the revocation preserving the offsets, the authority-boundary refusals (another tenant, fields outside the schema, a purpose outside the policy), RLS isolation (phase6-events-b90 e, f, g); products — contract tests and the breaking release denied over accepted consumers without a passing test, the migration, the cost attribution, the degradation BY THE TICK after grace_ticks below-floor scorecards, the withdrawal (the DPR's withdrawn version) and the retirement (the archived version; refused over an accepted consumer or without a retirement review) (phase6-products-b90 b, c, d, e); metrics — the definition diff withdrawing a certification and exposing its servings, the reproducibility fault (a source row changed → the recalculation withdraws), the expiry sweep by the tick step metric-certification and its item, the whitelist refusals (phase6-metrics-b90 d); catalog — stale and ownership-lapsed entries (stated superuser moves on the dates), the duplicate flag, the steward's hand flag, the clearance hiding a confidential entry, the trust read as the stop of new consumption, the tick step catalog-reconcile (phase6-catalog-b90 c2, d). Nothing is cleaned: every object stands as a demonstration fact.
+
+ALL SCENES HELD · 1.1 s
