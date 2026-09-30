@@ -12,10 +12,10 @@
  *   /decisions/workflow — a definition whose transition declares depends_on, published by the chief of staff and listed with its reason;
  *   the instance started on it in the table.
  *   (i) /prediction/exposures — the outcome → learn panel: the corridor risk registered, assessed and accepted by its owner, its MITIGATION
- *   response opened (a decision package), drafted, approved and COMMITTED → the "responses monitored" list reads the response's monitor
- *   state and what is OWED (the decision's outcome is recorded when observed) — the honest state this gate reaches: an outcome rests on a
- *   twin's observed element, which rests on a resolved graph entity the gate's routes do not seed (the review of the outcome and the learn
- *   step are the harness's, apps/api/test/int/phase6-collab-b36.test.ts I1/J1, and the demonstration walk's).
+ *   response opened (a decision package) → the "responses monitored" list reads the response's monitor state and what is OWED (the
+ *   response's decision is committed first) — the honest state this walk reaches: an outcome rests on a twin's observed element (a record
+ *   uploaded and grounded on an admitted twin version), beyond the gate's routes (the review of the outcome and the learn step are the
+ *   harness's, apps/api/test/int/phase6-collab-b36.test.ts I1/J1, and the demonstration walk's).
  *
  * The seeding is the API's, in the Phase 1 idiom: this suite makes its own tenant, ONE domain, eight DOMAIN principals and one TENANT
  * principal with a per-run password. The pickup and the external's own surface (q, t) are the login page's flow, walked on the demonstration
@@ -87,7 +87,7 @@ async function uiLogin(page: Page, username: string, password: string): Promise<
 }
 
 interface Ctx { token: string; principalId: string; username: string }
-let admin: Ctx; let tadmin: Ctx; let dadmin: Ctx; let executive: Ctx; let chief: Ctx; let caseOwner: Ctx; let analyst: Ctx; let riskOwner: Ctx; let approver: Ctx; let authority: Ctx;
+let admin: Ctx; let tadmin: Ctx; let dadmin: Ctx; let executive: Ctx; let chief: Ctx; let caseOwner: Ctx; let analyst: Ctx; let riskOwner: Ctx;
 let T = ''; let D = ''; let WS = ''; let GRANT = ''; let TASK_A = ''; let TASK_B = ''; let RSK = '';
 const WS_TITLE = `Dual-sourcing review — customs and bearings (e2e ${run})`;
 const TASK_A_TITLE = `A · the customs brief (e2e ${run})`;
@@ -109,8 +109,6 @@ const as = (who: Ctx, path: string, action: string, objectType: string, objectId
   api(`/v1/tenants/${T}/domains/${D}${path}`, { action, scope: 'DOMAIN', tenant_id: T, domain_id: D, object_type: objectType, object_id: objectId, principal_id: `principal:${who.principalId}`, purpose_id: purpose, ...over }, payload, who.token);
 const ok = (r: { status: number; body: Record<string, unknown> }, what: string, status = 201) => { expect(r.status, `${what}: ${JSON.stringify(r.body).slice(0, 400)}`).toBe(status); return r.body; };
 const col = (who: Ctx, path: string, action: string, objectType: string, objectId: string | null, payload: unknown) => as(who, `/executive/collab/${path}`, action, objectType, objectId, payload, PURPOSE);
-const dec = (who: Ctx, pkg: string, path: string, action: string, objectType: string, objectId: string | null, payload: unknown, over: Record<string, unknown> = {}) =>
-  as(who, `/decisions/${pkg}${path}`, action, objectType, objectId, payload, 'decision', over);
 
 /* ───────────────────────── the pages' own selectors ───────────────────────── */
 const short8 = (id: string) => `${id.slice(0, 8)}…`;
@@ -158,7 +156,7 @@ test.describe('CP-6 B36 — collaboration completed: the grant surface, a task t
     // THE PEOPLE: the tenant administrator (provisions the invitation, reads the mailbox — the identity authority's), the domain administrator
     // (declares the strategy objects, activates the taxonomy), the executive (publishes the taxonomy), the chief of staff (the reviewer, the
     // task holder, the workflow's owner), the case owner (opens the workspace and the tasks), an analyst (registers and assesses the risk),
-    // the risk owner (accepts the assessment, opens the response), an approver and an authority (the response's decision committed).
+    // the risk owner (accepts the assessment, opens the response).
     tadmin = await person(`c36-tadmin-${run}`, 'tenant_admin', 'TENANT');
     dadmin = await person(`c36-dadmin-${run}`, 'domain_admin');
     executive = await person(`c36-exec-${run}`, 'executive');
@@ -166,16 +164,14 @@ test.describe('CP-6 B36 — collaboration completed: the grant surface, a task t
     caseOwner = await person(`c36-owner-${run}`, 'decision_owner');
     analyst = await person(`c36-analyst-${run}`, 'domain_analyst');
     riskOwner = await person(`c36-riskowner-${run}`, 'risk_owner');
-    approver = await person(`c36-approver-${run}`, 'decision_approver');
-    authority = await person(`c36-authority-${run}`, 'decision_authority');
     // THE WORKSPACE on a decision package (the DEC on a SYNTHETIC entity reference — the gate seeds no graph)
     const declare = async (who: Ctx, objectType: string, title: string, restsOn: unknown[]) => {
       const r = ok(await as(who, '/graph/strategy/declare', 'graph.strategy.declare', objectType, null, { objectType, title, statement: `${title} (e2e, SYNTHETIC)`, restsOn }, 'graph'), `${objectType} declared`);
       return (r as { strategy: { objectId: string } }).strategy.objectId;
     };
     const DECID = await declare(dadmin, 'DEC', `Routing of SYN-SHIP-4472 (e2e ${run})`, [{ kind: 'entity', id: crypto.randomUUID(), rationale: 'SYNTHETIC entity reference (the browser gate seeds no graph)' }]);
-    const pkg = ok(await dec(caseOwner, '', '/declare', 'decision.package.declare', 'DPK', null,
-      { decisionObjectId: DECID, title: `Dual-sourcing review — partner review (e2e ${run}, SYNTHETIC)`, statement: 'whether to take the partner\'s customs review (e2e)', owner: caseOwner.principalId }), 'the package declared');
+    const pkg = ok(await as(caseOwner, '/decisions/declare', 'decision.package.declare', 'DPK', null,
+      { decisionObjectId: DECID, title: `Dual-sourcing review — partner review (e2e ${run}, SYNTHETIC)`, statement: 'whether to take the partner\'s customs review (e2e)', owner: caseOwner.principalId }, 'decision'), 'the package declared');
     const pkgId = (pkg as { package: { packageId: string } }).package.packageId;
     const ws = ok(await col(caseOwner, 'workspaces/open', 'executive.collab.workspace.open', 'CWS', null,
       { title: WS_TITLE, subject: { kind: 'decision_package', id: pkgId }, purpose: PURPOSE, classification_ceiling: 'internal' }), 'the workspace opened');
@@ -204,8 +200,8 @@ test.describe('CP-6 B36 — collaboration completed: the grant surface, a task t
     ok(await as(chief, '/executive/workflow/instances/start', 'executive.workflow.start', 'WFI', null,
       { def_key: DEF_KEY, subject: { kind: 'decision_package', id: pkgId }, start_key: `b36-deps-1-${run}` }, 'executive'), 'the instance started');
     // THE EXPOSURE (F-P4-13): the taxonomy published and activated by two people; the corridor risk declared, registered, assessed and
-    // ACCEPTED by its owner; its MITIGATION response opened — a decision package — drafted by the platform administrator (the package's
-    // draft acts are a decision owner's or the platform's), approved and committed through the gate.
+    // ACCEPTED by its owner; its MITIGATION response opened — a decision package (left at its opening: a choice binds a twin, which this
+    // walk does not seed — the gates walk does; the outcome itself rests on a twin element beyond every gate route).
     ok(await as(executive, '/prediction/exposures/taxonomy/publish', 'prediction.exposure.taxonomy.publish', 'RSK', null,
       { expectedVersion: 0, categories: [{ key: 'supply_chain', label: 'Supply chain', polarity: 'risk' }, { key: 'sourcing', label: 'Sourcing', polarity: 'opportunity' }], reason: 'the first taxonomy of the domain (e2e)' }, 'prediction'), 'the taxonomy published');
     ok(await as(dadmin, '/prediction/exposures/taxonomy/activate', 'prediction.exposure.taxonomy.activate', 'RSK', null, { version: 1, reason: 'reviewed against the risk policy (e2e)' }, 'prediction'), 'the taxonomy activated');
@@ -217,26 +213,14 @@ test.describe('CP-6 B36 — collaboration completed: the grant surface, a task t
         impact: { low: 400000, high: 900000, unit: 'EUR' }, horizon: '2024-Q1', options: [{ key: 'reroute', label: 'Reroute via the Cape', kind: 'mitigate', class: 'no_regret' }] } }, 'prediction'), 'the exposure assessed');
     const assDigest = (ass as { assessment: { digest: string } }).assessment.digest;
     ok(await as(riskOwner, `/prediction/exposures/${RSK}/versions/1/accept`, 'prediction.exposure.accept', 'RSK', RSK, { digest: assDigest, rationale: 'The bracket matches the carrier notices; accepted (e2e)' }, 'prediction'), 'the assessment accepted');
+    // the response's DEC and package are declared by those who hold their acts (the route otherwise chains graph.strategy.declare and
+    // decision.package.declare as the responder — a risk owner holds neither; the governed principal route binds one role); the owner links them
+    const RDEC = await declare(dadmin, 'DEC', `Mitigate the corridor closure (e2e ${run})`, [{ kind: 'strategy', id: RSK, rationale: 'the response decides on this exposure' }]);
+    const rpkg = ok(await as(caseOwner, '/decisions/declare', 'decision.package.declare', 'DPK', null,
+      { decisionObjectId: RDEC, title: `Mitigate the corridor closure (e2e ${run})`, statement: 'reroute the magnet shipments via the Cape (e2e)', owner: caseOwner.principalId }, 'decision'), 'the response package declared');
     const resp = ok(await as(riskOwner, `/prediction/exposures/${RSK}/decisions/open`, 'prediction.exposure.respond', 'RSK', RSK,
-      { kind: 'mitigate', decision: { title: `Mitigate the corridor closure (e2e ${run})`, statement: 'reroute the magnet shipments via the Cape (e2e)' } }, 'prediction'), 'the response opened');
-    const rp = (resp as { response: { package_id: string } }).response.package_id;
-    const v = ((ok(await dec(admin, rp, '/versions/open', 'decision.package.version', 'DPK', rp, { knownAt: new Date().toISOString(), observedThrough: '2024-01-17' }), 'the version opened')) as { version: { version: number } }).version.version;
-    ok(await dec(admin, rp, `/versions/${v}/options`, 'decision.package.option', 'DPK', rp,
-      { key: 'status-quo', title: 'Hold the booked routing', kind: 'status_quo', consequences: [], unsimulatedReason: 'the browser gate seeds no twin and no run (e2e)', risks: [], opportunities: [] }), 'the status quo option');
-    ok(await dec(admin, rp, `/versions/${v}/options`, 'decision.package.option', 'DPK', rp,
-      { key: 'reroute', title: 'Reroute via the Cape', kind: 'intervention', consequences: [], unsimulatedReason: 'the browser gate seeds no twin and no run (e2e)', risks: ['+14 days of transit'], opportunities: [] }), 'the intervention option');
-    ok(await dec(admin, rp, `/versions/${v}/terms`, 'decision.package.terms', 'DPK', rp,
-      { objectives: [], constraints: ['no air freight above 60 t/week'], approverPolicy: { quorum: 1, principals: [approver.principalId], expires_after_days: 14 },
-        monitoringConditions: [{ kind: 'review', every_days: 7, owner: riskOwner.principalId }], reversibility: 'reversible until the vessel passes Suez', informationValue: 'the customs answer decides the timing, not the option' }), 'the terms');
-    ok(await dec(admin, rp, `/versions/${v}/choice`, 'decision.package.choice', 'DPK', rp,
-      { option_key: 'reroute', rationale: 'The corridor exposure is outside appetite; the reroute keeps the line running (e2e).', decision_deadline: '2030-01-15', accepted_trade_offs: ['+14 days of transit'], action_owner: riskOwner.principalId,
-        outcome_criteria: [{ key: 'line_stop_days', quantity: 'line-stop days at SYN-LINE-A1 over the decision window', unit: 'days', target: 0, comparator: '<=', by: '2030-04-10', observed_on: 'twin:outcome.line_stop_days:SYN-LINE-A1' }] }), 'the choice');
-    const pr = ok(await dec(admin, rp, `/versions/${v}/propose`, 'decision.package.propose', 'DPK', rp, {}), 'the proposal');
-    const vd = (pr as { proposal: { versionDigest: string } }).proposal.versionDigest;
-    ok(await dec(approver, rp, `/versions/${v}/approve`, 'decision.approve', 'APR', null, { decision: 'approve', versionDigest: vd, rationale: 'The reroute keeps the line running; the premium is acceptable (e2e).' }), 'the approval');
-    const pv = ok(await dec(authority, rp, `/versions/${v}/preview`, 'decision.commit.preview', 'DPK', rp, { versionDigest: vd }), 'the preview');
-    const cm = ok(await dec(authority, rp, `/versions/${v}/commit`, 'decision.commit', 'CMT', null, { versionDigest: vd, previewDigest: (pv as { preview: { preview_digest: string } }).preview.preview_digest }, { consequence_class: 'C3' }), 'the commitment');
-    expect((cm as { commitment: unknown }).commitment, 'the response\'s decision committed').not.toBeNull();
+      { kind: 'mitigate', decision: { decisionObjectId: RDEC, packageId: (rpkg as { package: { packageId: string } }).package.packageId } }, 'prediction'), 'the response opened');
+    expect((resp as { response: { package_id: string } }).response.package_id, 'the response linked the decision package').toBe((rpkg as { package: { packageId: string } }).package.packageId);
   });
 
   test('1. /decisions/workspaces — the grant surface: the workspace, its participants, the invitation delivered to the SYNTHETIC mailbox; the tenant administrator reads the mailbox through the chooser (the code inside, never the token)', async ({ page }) => {
@@ -292,9 +276,9 @@ test.describe('CP-6 B36 — collaboration completed: the grant surface, a task t
     await a.getByRole('button', { name: 'Complete', exact: true }).click();
     await expect(page.getByRole('status').filter({ hasText: 'completed' })).toBeVisible();
     await page.getByLabel('include closed tasks').check();
-    await expect(taskCard(page, TASK_A)).toContainText('completed');
+    await expect(taskCard(page, TASK_A)).toContainText('COMPLETED');
     const bAfter = taskCard(page, TASK_B);
-    await expect(bAfter.getByLabel(`waits on ${TASK_B}`)).toHaveText(`This task waits on "${TASK_A_TITLE}" (completed) — completed when they are`);
+    await expect(bAfter.getByLabel(`waits on ${TASK_B}`)).toHaveText('This task waits on nothing'); // the unmet prerequisites: none since A closed
     await expect(bAfter.getByRole('button', { name: 'Complete', exact: true })).toBeVisible();
     await expect(page.getByText(/committed — POL/).first()).toBeVisible();
   });
@@ -321,10 +305,10 @@ test.describe('CP-6 B36 — collaboration completed: the grant surface, a task t
     await page.getByRole('button', { name: RSK_TITLE, exact: true }).click();
     await expect(page.getByRole('heading', { name: new RegExp(RSK_TITLE.replace(/[()]/g, '.')) })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Responses — the decisions and their outcomes' })).toBeVisible();
-    await expect(page.getByText(/^mitigate — decision .* package .* committed · no outcome recorded yet$/)).toBeVisible();
+    await expect(page.getByText(/^mitigate — decision .* package .* · no outcome recorded yet$/)).toBeVisible();
     const monitored = page.getByRole('list', { name: 'responses monitored' });
     await expect(monitored).toBeVisible();
-    await expect(monitored).toContainText('mitigate · monitor: monitoring — owed: the decision\'s outcome is recorded when observed (decision.outcome)');
+    await expect(monitored).toContainText('mitigate · monitor: decision_open — owed: the response\'s decision is committed first');
     // the review and the learn step follow an outcome, which rests on a twin's observed element: not reached on this gate (the file's header) — nothing rendered claims otherwise
     await expect(monitored.getByRole('button', { name: 'Review the outcome' })).toHaveCount(0);
     await expect(monitored.getByLabel('learn step')).toHaveCount(0);
