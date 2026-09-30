@@ -846,7 +846,7 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
      rendered, malformed rules). `audience` is the READ's class alone: a reader outside the contract's roles is standing, 403. */
   { match: /^briefing rejected \((actor|audience)\)|^briefing policy rejected \(actor\)|^briefing expiry rejected \(actor\)/i, status: 403, code: 'EYE_AUT_001' },
   { match: /^briefing rejected \(unknown_(policy|room|prior)\)/i, status: 404, code: 'EYE_STA_001' },
-  { match: /^briefing rejected \((state|undeclared_omission|expired)\)|^briefing policy rejected \(state\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^briefing rejected \((state|undeclared_omission|expired)\)|^briefing policy rejected \(state\)|^briefing rejected: the prior briefing belongs to another room/i, status: 409, code: 'EYE_STA_002' },
   { match: /^briefing rejected \(|^briefing policy rejected/i, status: 422, code: 'EYE_REQ_001' },
   /* end B36 briefing */
   /* B36 (0094) publishing — the publishing and distribution center's ports (0094 §D): `publication rejected (<class>)` and `external draft

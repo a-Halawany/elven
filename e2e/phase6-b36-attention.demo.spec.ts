@@ -8,7 +8,7 @@
  *
  * What is asserted is what the record says on screen — never a state derived here. Screenshots go to EYE_SHOTS
  * (evidence/phase6-browser/b36-attention-*.png). The personas: l.brandt (the corridor item's owner), m.dvorak (the executive),
- * EYE_B36_OPERATOR_LOGIN (the chief of staff, SYNTHETIC; default a.novak).
+ * EYE_B36_OPERATOR_LOGIN (the chief of staff, SYNTHETIC; default chief.of.staff — a.novak is the planning lead).
  */
 import { expect as baseExpect, test, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
@@ -25,7 +25,7 @@ function required(name: string): string {
 const SHOTS = process.env['EYE_SHOTS'] ?? join(process.cwd(), 'evidence', 'phase6-browser');
 mkdirSync(SHOTS, { recursive: true });
 const shot = (page: Page, name: string) => page.screenshot({ path: join(SHOTS, `${name}.png`), fullPage: true });
-const OPERATOR = process.env['EYE_B36_OPERATOR_LOGIN'] ?? 'a.novak';
+const OPERATOR = process.env['EYE_B36_OPERATOR_LOGIN'] ?? 'chief.of.staff';
 
 async function uiLogin(page: Page, username: string, password: string): Promise<void> {
   await page.goto('/login');

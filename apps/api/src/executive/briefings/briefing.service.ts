@@ -115,7 +115,8 @@ export interface CompositionLimits { maxReads: number | null; maxItems: number |
 const hoursBetween = (a: string, b: string): number => Math.round(((new Date(b).getTime() - new Date(a).getTime()) / 3_600_000) * 100) / 100;
 const WARNING_STATE_OF: Readonly<Record<string, string>> = Object.freeze({ 'warning.raised': 'raised', 'warning.acknowledged': 'acknowledged', 'warning.expired': 'expired', 'warning.closed': 'closed' });
 /* B28 (0088) warnings: the warning events 0088 §0 adds that are not state transitions (the as-of state skips them) */
-const B28_NON_STATE_WARNING_EVENTS: ReadonlySet<string> = new Set(['warning.clustered', 'warning.context_set', 'warning.escalated', 'warning.feedback', 'warning.retracted']);
+const B28_NON_STATE_WARNING_EVENTS: ReadonlySet<string> = new Set(['warning.clustered', 'warning.context_set', 'warning.escalated', 'warning.feedback', 'warning.retracted',
+  /* B36 (the act-b36 rehearsal): `warning.attention` (B21 — a scenario's coherence flip raised attention on a warning) changes no state either; without this a RAISED warning read `closed` and the outage retention skipped it */ 'warning.attention']);
 /* end B28 warnings */
 
 @Injectable()
@@ -232,6 +233,8 @@ export class BriefingService {
     } else if (a.priorBriefingId !== null) {
       prior = (await cap.readBriefings().selectAll().where('briefing_id' as never, '=', a.priorBriefingId as never).executeTakeFirst()) as Record<string, unknown> | undefined ?? null;
       if (prior === null) throw new HttpException(errorBody('EYE_STA_001', correlationId, 'the prior briefing does not exist in this domain'), 404);
+      // B36 (the act-b36 rehearsal): the port refuses a prior from another room (0094 §B.5); said here as the record's state, not as an integrity failure
+      if ((prior['room_id'] ?? null) !== (a.roomId ?? null)) throw new HttpException(errorBody('EYE_STA_002', correlationId, 'briefing rejected: the prior briefing belongs to another room'), 409);
     }
     // The interval: (prior.known_at, known_at] — what the prior KNEW, not when it was composed.
     const since = prior === null ? null : iso(prior['known_at']);

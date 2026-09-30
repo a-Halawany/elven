@@ -40,7 +40,7 @@ async function openNewestEdition(page: Page): Promise<void> {
   await row.getByRole('button').first().click();
   const room = page.locator('section[aria-labelledby="room-h"]');
   await expect(room.getByText(/Members/)).toBeVisible();
-  await room.locator('button', { hasText: /v3/ }).first().click();
+  await room.locator('button', { hasText: /v3/ }).last().click(); // the room lists its editions oldest first (composed_at ascending): the NEWEST is the last
   await expect(page.locator('section[aria-labelledby="brf-h"]').getByText(/composed by/)).toBeVisible({ timeout: 20_000 });
 }
 
@@ -101,7 +101,7 @@ test.describe.serial('CP-6 B36 — the briefing studio v2 completed (BRF@v3) on 
     await row.getByRole('button').first().click();
     const room = page.locator('section[aria-labelledby="room-h"]');
     // the act's outage edition is marked DEGRADED among the room's editions
-    await room.locator('button', { hasText: /DEGRADED/ }).first().click();
+    await room.locator('button', { hasText: /DEGRADED/ }).last().click(); // the newest degraded edition — the outage edition the act composes last
     const brf = page.locator('section[aria-labelledby="brf-h"]');
     await expect(brf.getByText(/DEGRADED OR BLOCKED SOURCES INSIDE/)).toBeVisible({ timeout: 20_000 });
     await expect(brf.getByText(/^RETAINED$/).first()).toBeVisible();
