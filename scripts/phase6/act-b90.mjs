@@ -370,7 +370,9 @@ else {
       if (!rs.ok) fail('N. Eriksen resumes', rs); else ok(`N. Eriksen RESUMED the subscription: ${rs.body.subscription.state}, checkpoint ${rs.body.subscription.checkpoint_sequence}`);
       SUB = await subOf();
     } else if (resumed) note('the conformance and the resumption stand — an earlier run');
-    const metTrue = () => q(`select value, met, observed_at from products.slo_observations where product_id = $1 and measure = 'lag_events' and met order by observed_at desc limit 1`, [STREAM.id]).then((r) => r[0] ?? null);
+    // the met observation AFTER the owner's resumption (rehearsal 2: the first tick's lag 1 met, before the lag, satisfied an unbounded read at once)
+    const metTrue = () => q(`select o.value, o.met, o.observed_at from products.slo_observations o where o.product_id = $1 and o.measure = 'lag_events' and o.met
+                              and o.observed_at > (select max(e.occurred_at) from products.product_events e where e.product_id = $1 and e.event = 'subscription.resumed') order by o.observed_at desc limit 1`, [STREAM.id]).then((r) => r[0] ?? null);
     let mt1 = await metTrue();
     if (mt1 === null && SUB?.state === 'active') { note(`waiting for the next tick's lag observation (subscription-lag 63) — ${elapsed()}`); mt1 = await waitFor('lag_events met', metTrue, (r) => r !== null, 3 * MIN); }
     (mt1 ? ok : bad)(`THE NEXT TICK observed lag_events ${mt1 ? `${mt1.value} → met (at ${new Date(mt1.observed_at).toISOString()})` : 'NOT met'} — the subscription back within its policy after the conformance and the resumption`);
