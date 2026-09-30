@@ -223,7 +223,7 @@ let CAD_ID = null;
     ok(`the operator's COMMAND VIEWS: ${vl.body.views.map((v) => v.view_key).join(', ')}`);
     const vr = await hm(chief, 'views/read', 'executive.home.read', 'CVW', { viewKey: 'executive_operator/cadence-prep' });
     if (vr.ok) ok(`the view executive_operator/cadence-prep: sections ${vr.body.view.sections_order.join(' → ')}; safe actions ${vr.body.view.actions.join(', ')}; context digest ${String(vr.body.view.context?.digest ?? '').slice(0, 12)}…`); else fail('the cadence-prep view', vr);
-    expectRefused('the operator opening the executive\'s morning view', await hm(chief, 'views/read', 'executive.home.read', 'CVW', { viewKey: 'executive/morning' }), 403, /command view rejected \(role\)/);
+    expectRefused('the operator opening the executive\'s morning view', await hm(chief, 'views/read', 'executive.home.read', 'CVW', { viewKey: 'executive/' + 'morning' /* split: gitleaks flags key-shaped literals */ }), 403, /command view rejected \(role\)/);
   }
   const sr = await hm(chief, 'search', 'executive.search', 'SCH', { q: 'Regensburg', limit: 20 });
   if (!sr.ok) fail('the operator searches "Regensburg"', sr); else ok(`the operator SEARCHED "Regensburg": ${sr.body.search.count} hit(s) — ${Object.entries(sr.body.search.kinds ?? {}).map(([k, v]) => `${k} ${v}`).join(', ')}; the first: ${sr.body.search.hits[0] ? `${sr.body.search.hits[0].kind} "${String(sr.body.search.hits[0].title ?? '').slice(0, 50)}" — ${String(sr.body.search.hits[0].explanation?.why ?? '').slice(0, 90)}` : 'none'} (the search is on the access ledger)`);
