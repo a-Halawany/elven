@@ -36,9 +36,8 @@ async function uiLogin(page: Page, username: string, password: string): Promise<
   await page.waitForURL((u) => !u.pathname.startsWith('/login'));
 }
 async function openSet(page: Page): Promise<void> {
-  await page.goto('/prediction/scenarios');
-  // the scenario page links to the sets (the B27 sets block)
-  await page.getByRole('link', { name: /^Scenario sets/ }).click();
+  // the sets page directly: a decision owner or authority holds no prediction.read, so the scenario page (which links here) refuses them
+  await page.goto('/prediction/scenarios/sets');
   await expect(page.getByRole('heading', { name: 'Scenario sets', level: 1 })).toBeVisible();
   // a wrapping <label> includes its option text: select by role; selectOption takes the option's exact label, read from the option itself
   const chooser = page.getByRole('combobox', { name: 'Scenario set', exact: true });
