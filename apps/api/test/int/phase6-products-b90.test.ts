@@ -417,6 +417,11 @@ describe('B90 §R · e. THE LIFECYCLE (DP-41-005, DP-05-006 "retirement evidence
     expect(p).toMatchObject({ state: 'degraded', degraded_reason: 'the briefing renderer is being replaced; served from the last edition (B90 harness)', notified: [] });
     await refused(degrade(other, P1, 'an analyst degrades the stream'), /data product rejected \(authority\)/, 403);
     await refused(degrade(steward, P4, 'degraded a second time'), /data product rejected \(state\): product platform.briefing is degraded/, 409);
+    // a PERSON's degradation is not restored by the green scorecards computed before it (P4 reads ok): only a domain review newer than it restores
+    expect((await cards(P4)).at(-1)!['overall']).toBe('ok');
+    await refused(restore(owner, P4), /data product rejected \(review\): product platform.briefing stays degraded — degraded by a person .* no accepted domain review is newer than the degradation/, 409);
+    await review(reviewer, P4, { version: 1, kind: 'domain', outcome: 'accepted', notes: 'the renderer replaced; the briefing served from the new edition (B90 harness)' });
+    expect((await restore(owner, P4)).product).toMatchObject({ state: 'released', degraded_at: null, restored_on: 'domain_review' });
     await expect(sql`delete from products.product_consumers where consumer_id = ${CB}::uuid`.execute(su)).rejects.toThrow(/never deleted/);
     await expect(sql`update products.contract_tests set outcome = 'pass' where product_id = ${P1}::uuid`.execute(su)).rejects.toThrow(/append-only/);
     await expect(sql`delete from products.scorecards where product_id = ${P1}::uuid`.execute(su)).rejects.toThrow(/append-only/);
