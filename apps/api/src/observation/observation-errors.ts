@@ -886,6 +886,17 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   { match: /^data product rejected \((state|duplicate|duplicate_authority|review|canonical|meaning|consumers|contract_tests)\)/i, status: 409, code: 'EYE_STA_002' },
   { match: /^data product rejected/i, status: 422, code: 'EYE_REQ_001' },
   /* end B90 prelude */
+  /* B90 catalog (0095 §K) — the metadata catalog's families `catalog asset rejected (<class>)`, `catalog rejected (<class>)`, `glossary term
+     rejected (<class>)` and `lineage rejected (<class>)` (anchored; no earlier row starts with `catalog`, `glossary` or `lineage`, and
+     `catalog rejected` is not a suffix of `catalog asset rejected`'s anchored phrase). B9's order: the standing 403 (the acting principal,
+     the authority — a steward's act or an owner's —, the owner's own recertification), the absences 404 (`unknown_*`: an asset, an owner,
+     a registry ref), the record's state 409 (state, duplicate), the caller's own 422 (the kind, the ref, the title, the classification,
+     the shape, a self edge, a term, a definition, a flag, a reason, a query). */
+  { match: /^(catalog asset|catalog|glossary term|lineage) rejected \((actor|authority|not_owner)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^(catalog asset|catalog|glossary term|lineage) rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^(catalog asset|catalog|glossary term|lineage) rejected \((state|duplicate)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^(catalog asset|catalog|glossary term|lineage) rejected/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B90 catalog */
   /* B36 home (0094 §H) — the executive home's families in the CLASS form `<noun> rejected (<class>): …`: `cadence rejected`, `executive room
      rejected` (0044's unclassed `room rejected: …` texts are the decision room's and are mapped by no row; the noun here is `executive room`
      and every row is anchored), `objective review rejected` (the SoD of §H2's re-declared convene_review and of open_subject_room — B23's

@@ -8,11 +8,15 @@ import { PipelineModule } from '../pipeline/pipeline.module.js';
 import { ExecutiveModule } from '../executive/executive.module.js';
 import { ProductsController } from './products.controller.js';
 import { ProductsService } from './products.service.js';
+/* B90 catalog */
+import { CatalogController } from './catalog/catalog.controller.js';
+import { CatalogService } from './catalog/catalog.service.js';
+/* end B90 catalog */
 
 @Module({
   imports: [PipelineModule, ExecutiveModule],
-  controllers: [ProductsController],
-  providers: [ProductsService],
-  exports: [ProductsService],
+  controllers: [ProductsController, /* B90 catalog */ CatalogController /* end B90 catalog */],
+  providers: [ProductsService, /* B90 catalog */ CatalogService /* end B90 catalog */],
+  exports: [ProductsService, /* B90 catalog */ CatalogService /* end B90 catalog */],
 })
 export class ProductsModule {}
