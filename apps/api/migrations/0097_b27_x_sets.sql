@@ -586,6 +586,7 @@ BEGIN
     UPDATE prediction.scenario_sets SET state = 'active', activated_by = p_actor, activated_at = clock_timestamp(), updated_at = clock_timestamp() WHERE set_id = p_set_id RETURNING * INTO s;
     PERFORM prediction.pss_event(p_set_id, p_tenant, p_domain, 'set.activated', s.version, p_actor, '{}'::jsonb, p_correlation);
     v_check := prediction.pss_record_check(gen_random_uuid(), p_set_id, p_tenant, p_domain, 'activate', p_actor, p_correlation);
+    SELECT * INTO s FROM prediction.scenario_sets x WHERE x.set_id = p_set_id;
   ELSE
     IF s.state = 'retired' THEN RAISE EXCEPTION 'scenario set rejected (state): set % was retired at %', p_set_id, s.retired_at USING ERRCODE = '22023'; END IF;
     IF p_reason IS NULL OR length(btrim(p_reason)) < 8 THEN RAISE EXCEPTION 'scenario set rejected (reason): a retirement says why (8+ characters)' USING ERRCODE = '22023'; END IF;
@@ -883,19 +884,20 @@ GRANT EXECUTE ON FUNCTION prediction.review_scenario_portfolio(uuid,uuid,uuid,uu
 -- ═════════════════════════════════════════════════════════════════════
 -- §S.5 LIVING SCENARIOS
 -- ═════════════════════════════════════════════════════════════════════
-/* THE RELEVANCE of one scenario (pure; the rule v1): movement = the largest, over the scenario's live non-baseline branches, of 1 for a
-   breached indicator and streak / consecutive_days otherwise (how far the run toward the threshold has gone); signposts = the live
-   branches whose indicator is breached; review_due = next_review_due_at has passed. score = min(1, 0.6·movement + 0.2·[signposts > 0] +
+/* THE RELEVANCE of one scenario (pure; the rule v1): movement = the largest, over the scenario's live non-baseline branches, of 1 for an
+   indicator with a breach on record (breached now, or breached_at set — evaluate_indicator resets `breached` once the run ends, the
+   instant stays) and streak / consecutive_days otherwise (how far the run toward the threshold has gone); signposts = the live branches
+   whose indicator has a breach on record; review_due = next_review_due_at has passed. score = min(1, 0.6·movement + 0.2·[signposts > 0] +
    0.2·[review_due]), rounded to 3 places. */
 CREATE OR REPLACE FUNCTION prediction.scenario_relevance_of(p_scenario_id uuid) RETURNS jsonb
 LANGUAGE sql STABLE SET search_path = prediction, pg_catalog, pg_temp AS $$
   WITH br AS (
     SELECT b.branch_id, b.name, b.kind, i.indicator_id, i.breached, i.breached_at, i.streak, i.consecutive_days, i.last_value, i.threshold, i.comparator,
-           CASE WHEN i.indicator_id IS NULL THEN 0::numeric WHEN i.breached THEN 1::numeric ELSE least(1::numeric, greatest(0, i.streak)::numeric / greatest(1, i.consecutive_days)) END AS movement
+           CASE WHEN i.indicator_id IS NULL THEN 0::numeric WHEN i.breached OR i.breached_at IS NOT NULL THEN 1::numeric ELSE least(1::numeric, greatest(0, i.streak)::numeric / greatest(1, i.consecutive_days)) END AS movement
       FROM prediction.branches_current b LEFT JOIN prediction.indicators_current i ON i.indicator_id = b.indicator_id
      WHERE b.scenario_id = p_scenario_id AND prediction.branch_live(b.state) AND b.kind <> 'baseline'),
-  agg AS (SELECT coalesce(max(movement), 0) AS movement, count(*) FILTER (WHERE breached) AS signposts,
-                 coalesce(jsonb_agg(jsonb_build_object('branch_id', branch_id, 'name', name, 'kind', kind, 'indicator_id', indicator_id, 'movement', round(movement, 3), 'breached', coalesce(breached, false),
+  agg AS (SELECT coalesce(max(movement), 0) AS movement, count(*) FILTER (WHERE breached OR breached_at IS NOT NULL) AS signposts,
+                 coalesce(jsonb_agg(jsonb_build_object('branch_id', branch_id, 'name', name, 'kind', kind, 'indicator_id', indicator_id, 'movement', round(movement, 3), 'breached', coalesce(breached, false) OR breached_at IS NOT NULL,
                                                        'breached_at', breached_at, 'streak', streak, 'consecutive_days', consecutive_days, 'last_value', last_value, 'comparator', comparator, 'threshold', threshold) ORDER BY name), '[]'::jsonb) AS branches
             FROM br),
   sc AS (SELECT s.next_review_due_at, s.next_review_due_at IS NOT NULL AND s.next_review_due_at < clock_timestamp() AS review_due FROM prediction.scenarios_current s WHERE s.scenario_id = p_scenario_id)
@@ -938,7 +940,7 @@ BEGIN
     -- the SIGNPOSTS: once per breach (the branch, the indicator's breached_at)
     FOR br IN SELECT b.branch_id, b.name, i.indicator_id, i.breached_at, i.series_key, i.comparator, i.threshold, i.last_value
                 FROM prediction.branches_current b JOIN prediction.indicators_current i ON i.indicator_id = b.indicator_id
-               WHERE b.scenario_id = x.scenario_id AND prediction.branch_live(b.state) AND i.breached AND i.breached_at IS NOT NULL ORDER BY b.branch_id LOOP
+               WHERE b.scenario_id = x.scenario_id AND prediction.branch_live(b.state) AND i.breached_at IS NOT NULL ORDER BY b.branch_id LOOP
       CONTINUE WHEN EXISTS (SELECT 1 FROM prediction.scenario_events e WHERE e.scenario_id = x.scenario_id AND e.event = 'scenario.signpost_notified'
                               AND e.branch_id = br.branch_id AND (e.details ->> 'breached_at')::timestamptz = br.breached_at);
       v_ev := gen_random_uuid(); v_item := gen_random_uuid(); v_due := clock_timestamp() + interval '24 hours';
@@ -1023,9 +1025,11 @@ BEGIN
     v_facts := jsonb_build_object('signal_id', sig.signal_id, 'title', sig.title, 'maturity', sig.maturity, 'disposition', sig.disposition, 'disposition_by', sig.disposition_by, 'disposition_at', sig.disposition_at, 'candidate_id', sig.candidate_id);
   ELSIF p_kind = 'risk' THEN
     IF coalesce(p_source ->> 'exposure_id', '') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN RAISE EXCEPTION 'scenario proposal rejected (source): a risk names {exposure_id}' USING ERRCODE = '22023'; END IF;
-    SELECT x.exposure_id, x.title, x.state, x.accepted_version INTO ex FROM prediction.exposure_current x WHERE x.exposure_id = (p_source ->> 'exposure_id')::uuid AND x.tenant_id = p_tenant AND x.domain_id = p_domain;
+    SELECT x.exposure_id, g.title, x.state, x.accepted_version, x.polarity INTO ex FROM prediction.exposure_current x JOIN graph.strategy_current g ON g.strategy_object_id = x.exposure_id
+     WHERE x.exposure_id = (p_source ->> 'exposure_id')::uuid AND x.tenant_id = p_tenant AND x.domain_id = p_domain;
     IF ex.exposure_id IS NULL THEN RAISE EXCEPTION 'scenario proposal rejected (unknown_exposure): % is not an exposure of this domain', p_source ->> 'exposure_id' USING ERRCODE = '23503'; END IF;
     SELECT r2.residual_high, r2.threshold, r2.breach, r2.unit, r2.computed_at INTO res FROM prediction.exposure_residuals r2 WHERE r2.exposure_id = ex.exposure_id ORDER BY r2.computed_at DESC LIMIT 1;
+    IF ex.polarity <> 'risk' THEN RAISE EXCEPTION 'scenario proposal rejected (source): exposure % is an opportunity; a risk proposal rests on a risk', ex.exposure_id USING ERRCODE = '22023'; END IF;
     IF ex.state <> 'accepted' OR res.breach IS DISTINCT FROM true THEN
       RAISE EXCEPTION 'scenario proposal rejected (source): exposure % is % and its newest residual is %; a proposal rests on an accepted exposure above its appetite', ex.exposure_id, ex.state,
         CASE WHEN res.breach IS TRUE THEN 'outside appetite' WHEN res.breach IS FALSE THEN 'within appetite' ELSE 'not judged against an appetite' END USING ERRCODE = '22023';
