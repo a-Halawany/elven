@@ -63,6 +63,11 @@ INSERT INTO prediction.scenario_quality_rules (version, rules) VALUES ('1', $jso
   },
   "statement": "Wording is normalised (lower case, punctuation removed, stop words dropped, the endings -ing/-ed/-s stripped from words longer than 5/4/3 letters) and two statements overlap by the Jaccard index of their token sets. A contradiction is two statements whose tokens, negations removed, are equal and whose negation counts differ in parity, or whose tokens differ by exactly one declared antonym pair."
 }$json$::jsonb);
+-- A rule is not tenant data, but every prediction table is under FORCED row-level security (0058's idiom for the kind vocabulary): a shared read.
+REVOKE ALL ON prediction.scenario_quality_rules FROM PUBLIC;
+ALTER TABLE prediction.scenario_quality_rules ENABLE ROW LEVEL SECURITY;
+ALTER TABLE prediction.scenario_quality_rules FORCE ROW LEVEL SECURITY;
+CREATE POLICY scenario_quality_rules_shared ON prediction.scenario_quality_rules FOR SELECT USING (true);
 
 /* The rule in force (the highest version). */
 CREATE OR REPLACE FUNCTION prediction.scenario_quality_rule() RETURNS jsonb
