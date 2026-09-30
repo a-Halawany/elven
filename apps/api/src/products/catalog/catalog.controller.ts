@@ -9,7 +9,7 @@ import { Body, Controller, HttpException, Param, Post, Req } from '@nestjs/commo
 import { errorBody } from '@eye/contracts';
 import { newId } from '../../shared/ids.js';
 import { requireCorrelation } from '../../shared/correlation.js';
-import { clearanceOf } from '../../shared/clearance.js';
+import { assertClearance, clearanceOf } from '../../shared/clearance.js';
 import { PipelineService } from '../../pipeline/pipeline.service.js';
 import type { EyeRequest } from '../../pipeline/http.js';
 import { CatalogCapability } from './catalog.capabilities.js';
@@ -184,6 +184,8 @@ export class CatalogController {
     const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'products.catalog.read', assetId), CatalogCapability.read,
       async (cap) => ({ at: await cap.now(), asset: await cap.asset(assetId) }));
     if (out.result.asset === null) throw new HttpException(errorBody('EYE_STA_001', envelope.correlation_id, `catalog asset rejected (unknown_asset): ${assetId} is not a catalog asset of this domain`), 404);
+    // the same rule the search serves under: an entry classified above the reader's clearance is not read by its id either
+    assertClearance(principal, { tenantId, domainId }, String(out.result.asset['classification']), 'catalog asset', envelope.correlation_id);
     return { ...out.result, receipt: receipt(out) };
   }
 }
