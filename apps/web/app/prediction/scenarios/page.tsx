@@ -453,6 +453,7 @@ export default function ScenariosPage() {
           {/* B27 anatomy */}<p style={{ fontSize: 'var(--eye-type-label-sm)' }}><a href={`/prediction/scenarios/anatomy?scenario=${s.scenario_id}`}>Anatomy of “{s.title}”: drivers, actors, mechanisms, the assumption register, suspensions and records →</a></p>{/* end B27 anatomy */}
           <ReviewState s={s} />
           <CoherencePanel s={s} scope={scope} canCheck={isForecastOwner || isStrategyOwner} onChanged={load} />
+          {/* B27 quality */}<p style={{ fontSize: 'var(--eye-type-label-sm)' }}><a href={`/prediction/scenarios/quality?scenario=${s.scenario_id}`}>Quality, indicator freshness and probabilities of {s.title}</a></p>{/* end B27 quality */}
           <ScrollBox label={`branches of ${s.title}`}>
           <table className="eye-table" style={tableStyle}>
             <thead><tr><Th>Branch</Th><Th>Kind</Th><Th>Divergence · assumptions</Th><Th>State</Th><Th>Indicator</Th><Th>Signpost</Th><Th>Owner</Th><Th>Window · deadline</Th><Th>Consequence</Th><Th>Simulation candidate</Th></tr></thead>

@@ -947,6 +947,18 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   { match: /^(scenario element|scenario assumption|scenario record|branch suspension) rejected \((state|stale|duplicate|in_use|invalidated)\)|^run rejected \(branch_suspended\)/i, status: 409, code: 'EYE_STA_002' },
   { match: /^(scenario element|scenario assumption|scenario record|branch suspension) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
   /* end B27 anatomy */
+  /* B27 quality (0097 §Q) — the quality evaluation's, the governed probability's and the frequency map's families `scenario quality rejected
+     (<class>)`, `branch probability rejected (<class>)` and `frequency map rejected (<class>)`, every row anchored and requiring the class
+     parenthesis (the older `^scenario rejected`, `^branch rejected` and `^coherence check rejected` rows read other nouns; none of these
+     nouns is a suffix of an earlier unanchored row's). B9's order: the standing 403 (the acting principal; the authority — a named human,
+     the scenario's or the branch's owner or an administrator), the absences 404 (unknown_*: the scenario, the branch, the map, the run, the
+     owner), the record's state 409 (a retired or closed scenario, a closed branch, a superseded map, no standing probability), the caller's
+     own 422 (the trigger, the method, the basis, narrative, the band, the sum, the map, the bands, the name, the horizon, the reason). */
+  { match: /^(scenario quality|branch probability|frequency map) rejected \((actor|authority)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^(scenario quality|branch probability|frequency map) rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^(scenario quality|branch probability|frequency map) rejected \(state\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^(scenario quality|branch probability|frequency map) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B27 quality */
   /* B36 home (0094 §H) — the executive home's families in the CLASS form `<noun> rejected (<class>): …`: `cadence rejected`, `executive room
      rejected` (0044's unclassed `room rejected: …` texts are the decision room's and are mapped by no row; the noun here is `executive room`
      and every row is anchored), `objective review rejected` (the SoD of §H2's re-declared convene_review and of open_subject_room — B23's
