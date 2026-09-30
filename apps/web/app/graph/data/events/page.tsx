@@ -89,7 +89,7 @@ export default function EventProductsPage() {
       </p>
 
       <label htmlFor="event-product">Event product</label>
-      <select id="event-product" style={inputStyle} value={productId} onChange={(e) => { setProductId(e.target.value); setLastRead(null); setFields([]); }}>
+      <select id="event-product" style={inputStyle} value={productId} onChange={(e) => { if (e.target.value === productId) return; /* B90 browser: a change to the SAME product reloads nothing, so it resets nothing (the granted fields stayed empty under a loaded view) */ setProductId(e.target.value); setLastRead(null); setFields([]); }}>
         <option value="">— choose —</option>
         {products.map((x) => <option key={x.product_id} value={x.product_id}>{x.title} · {x.product_key} · {x.state} · schema {x.event.schema_version}</option>)}
       </select>
