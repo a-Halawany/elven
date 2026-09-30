@@ -55,6 +55,8 @@ export interface EventWrites extends EventReads {
     handlesCorrections: boolean; handlesReplays: boolean; actor: string; eventId: string; correlationId: string }): Promise<Row>;
   authorizeSubscription(a: { subscriptionId: string; tenantId: string; domainId: string; actor: string; eventId: string; correlationId: string }): Promise<Row>;
   advanceCheckpoint(a: { checkpointId: string; subscriptionId: string; tenantId: string; domainId: string; sequence: number; actor: string; eventId: string; correlationId: string }): Promise<Row>;
+  /* B90-F1 (0096): the CONSUMER's catch-up of a LAGGING subscription's authorized backlog (products.catch_up_subscription_events under products.subscription.catch_up) */
+  catchUp(a: { catchupId: string; subscriptionId: string; tenantId: string; domainId: string; afterSequence: number | null; limit: number; actor: string; eventId: string; correlationId: string }): Promise<Row>;
   pauseSubscription(a: { subscriptionId: string; tenantId: string; domainId: string; reason: string; actor: string; eventId: string; correlationId: string }): Promise<Row>;
   conformSubscription(a: { subscriptionId: string; tenantId: string; domainId: string; declaration: Row; actor: string; eventId: string; correlationId: string }): Promise<Row>;
   resumeSubscription(a: { subscriptionId: string; tenantId: string; domainId: string; actor: string; eventId: string; correlationId: string }): Promise<Row>;
@@ -101,6 +103,10 @@ class EventsCapabilityImpl extends EventsCore implements EventWrites, EventTickW
   }
   async authorizeSubscription(a: Parameters<EventWrites['authorizeSubscription']>[0]): Promise<Row> {
     return this.one(sql`select products.authorize_subscription(${a.subscriptionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`, 'authorize_subscription');
+  }
+  /* B90-F1 (0096) */
+  async catchUp(a: Parameters<EventWrites['catchUp']>[0]): Promise<Row> {
+    return this.one(sql`select products.catch_up_subscription_events(${a.catchupId}::uuid, ${a.subscriptionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.afterSequence}::bigint, ${a.limit}::int, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`, 'catch_up_subscription_events');
   }
   async advanceCheckpoint(a: Parameters<EventWrites['advanceCheckpoint']>[0]): Promise<Row> {
     return this.one(sql`select products.advance_checkpoint(${a.checkpointId}::uuid, ${a.subscriptionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.sequence}::bigint, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`, 'advance_checkpoint');

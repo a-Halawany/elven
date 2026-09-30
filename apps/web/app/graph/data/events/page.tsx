@@ -191,11 +191,21 @@ export default function EventProductsPage() {
                   {mine.replays.length > 0 ? <DefinitionRow term="Replays">{mine.replays.map((r) => `${r.from_sequence} → ${r.to_sequence} (${r.reason})`).join(' · ')}</DefinitionRow> : null}
                 </dl>
                 <div style={{ display: 'flex', gap: 'var(--eye-space-8)', flexWrap: 'wrap', alignItems: 'end' }}>
-                  <GovernedButton label="Read events" pendingLabel="Reading" onRun={async () => {
-                    const r = await events.readEvents(scope, mine.subscription_id, null);
-                    if (!r.ok || r.data === undefined) throw new Error(r.error?.message ?? 'the read was refused');
-                    setLastRead(r.data.read); setReceipt(r.data.receipt); setAckSequence(String(r.data.read.next_after));
-                  }} />
+                  {mine.state === 'lagging' ? (
+                    /* B90-F1 (0096): while lagging, ordinary delivery stays paused; the consumer catches up its authorized backlog, processes it and
+                       acknowledges only what the catch-up served, then conforms — the owner resumes */
+                    <GovernedButton label="Catch up the backlog" pendingLabel="Catching up" onRun={async () => {
+                      const r = await events.catchUp(scope, mine.subscription_id, null);
+                      if (!r.ok || r.data === undefined) throw new Error(r.error?.message ?? 'the catch-up was refused');
+                      setLastRead(r.data.catchup); setReceipt(r.data.receipt); setAckSequence(String(r.data.catchup.through));
+                    }} />
+                  ) : (
+                    <GovernedButton label="Read events" pendingLabel="Reading" onRun={async () => {
+                      const r = await events.readEvents(scope, mine.subscription_id, null);
+                      if (!r.ok || r.data === undefined) throw new Error(r.error?.message ?? 'the read was refused');
+                      setLastRead(r.data.read); setReceipt(r.data.receipt); setAckSequence(String(r.data.read.next_after));
+                    }} />
+                  )}
                   <div>
                     <label htmlFor="ack-seq">Acknowledge through</label>
                     <input id="ack-seq" style={inputStyle} inputMode="numeric" value={ackSequence} onChange={(e) => setAckSequence(e.target.value)} />

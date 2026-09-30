@@ -359,17 +359,58 @@ else {
         expectRefused('N. Eriksen resuming before the conformance', await ev(eriksen, `subscriptions/${SUB.id}/resume`, 'products.subscription.resume', 'SUB', {}, SUB.id), 409, /subscription rejected \(state\)/);
       } else bad(`the subscription is ${got?.state ?? 'unknown'} after the tick (head ${head}, checkpoint ${got?.checkpoint})`);
     } else note(`the subscription was flagged lagging by the tick — an earlier run`);
-    // (3) CONFORMANCE, the catch-up, the owner's resumption; the next tick observes lag_events met
-    SUB = await subOf();
-    if (SUB && SUB.state === 'lagging') {
-      const c = await ev(hweber, `subscriptions/${SUB.id}/conform`, 'products.subscription.conform', 'SUB', { declaration: { caught_up: true, can_process: true, note: 'the procurement backlog processed; the three new warnings read from the intake (SYNTHETIC)' } }, SUB.id);
-      if (!c.ok) fail('H. Weber declares conformance', c); else ok(`H. Weber DECLARED CONFORMANCE (caught up, can process) — the row keeps the declaration; the state stays ${c.body.subscription.state} until the owner resumes`);
-      const head = await streamHead();
-      if (SUB.checkpoint < head) { const a = await ev(hweber, `subscriptions/${SUB.id}/checkpoint`, 'products.subscription.checkpoint', 'SUB', { sequence: head }, SUB.id); if (!a.ok) fail('H. Weber catches up', a); else ok(`H. Weber CAUGHT UP: acknowledged through ${a.body.subscription.checkpoint_sequence} while lagging (lag ${a.body.subscription.lag_events}) — not resumed on her own`); }
-      const rs = await ev(eriksen, `subscriptions/${SUB.id}/resume`, 'products.subscription.resume', 'SUB', {}, SUB.id);
-      if (!rs.ok) fail('N. Eriksen resumes', rs); else ok(`N. Eriksen RESUMED the subscription: ${rs.body.subscription.state}, checkpoint ${rs.body.subscription.checkpoint_sequence}`);
+    // (3) THE RECOVERY — B90-F1 (0096): the CATCH-UP of the authorized backlog (ordinary delivery stays paused), each batch PROCESSED
+    //     (every served event named: sequence, kind, source event, projected payload) and acknowledged only once served; then the
+    //     consumer's conformance (refused before the backlog is acknowledged) and the owner's resumption.
+    //     The first run on eye_demo (2026-09-30, before 0096; evidence/cp6/act-b90.txt) resolved its lag by acknowledging the head without a
+    //     read — the defect the owner's review found; that evidence is kept as it stands. On a demonstration whose lag was resolved that way,
+    //     this scene plays a SECOND lag episode through the catch-up (three more warnings, the tick flags the lag again).
+    const catchups = async () => q(`select after_sequence::int a, through_sequence::int t, backlog_head::int h, sequences::int[] seqs, served from products.subscription_catchups where subscription_id = $1 order by served_at`, [SUB.id]);
+    const recover = async () => {
       SUB = await subOf();
-    } else if (resumed) note('the conformance and the resumption stand — an earlier run');
+      const frozen = Number((await q(`select catchup_head::int h from products.event_subscriptions where subscription_id = $1`, [SUB.id]))[0].h);
+      const head = await streamHead();
+      expectRefused('H. Weber acknowledging the backlog it was never served', await ev(hweber, `subscriptions/${SUB.id}/checkpoint`, 'products.subscription.checkpoint', 'SUB', { sequence: frozen }, SUB.id), 409, /subscription rejected \(backlog\)/);
+      expectRefused('H. Weber declaring conformance before reading the backlog', await ev(hweber, `subscriptions/${SUB.id}/conform`, 'products.subscription.conform', 'SUB', { declaration: { caught_up: true, can_process: true } }, SUB.id), 409, /subscription rejected \(backlog\)/);
+      let after = SUB.checkpoint; const processed = [];
+      for (let batch = 1; batch <= 10 && after < frozen; batch += 1) {
+        const c = await ev(hweber, `subscriptions/${SUB.id}/catch-up`, 'products.subscription.catch_up', 'SUB', { limit: 2 }, SUB.id);
+        if (!c.ok) { fail(`H. Weber catches up (batch ${batch})`, c); return false; }
+        const cu = c.body.catchup;
+        for (const e of cu.events ?? []) processed.push(e);
+        ok(`CATCH-UP batch ${batch} (H. Weber): after ${cu.after} → through ${cu.through} of the backlog ${cu.backlog_head} — ${cu.served} served: ${(cu.events ?? []).map((e) => `#${e.sequence} ${e.event_kind} ${e.source_event} "${String(e.payload?.title ?? '').slice(0, 40)}"`).join('; ') || 'none'}; ${cu.remaining} remaining`);
+        const a = await ev(hweber, `subscriptions/${SUB.id}/checkpoint`, 'products.subscription.checkpoint', 'SUB', { sequence: cu.through }, SUB.id);
+        if (!a.ok) { fail(`H. Weber acknowledges batch ${batch}`, a); return false; }
+        ok(`H. Weber PROCESSED and ACKNOWLEDGED through ${a.body.subscription.checkpoint_sequence} (still ${a.body.subscription.state})`);
+        after = cu.through;
+      }
+      const seqs = processed.map((e) => e.sequence);
+      const rows = await q(`select sequence::int s, source_event from products.event_stream where product_id = $1 and sequence > $2 and sequence <= $3 order by sequence`, [STREAM.id, SUB.checkpoint, frozen]);
+      const same = rows.length === processed.length && rows.every((r, i) => r.s === seqs[i] && r.source_event === processed[i].source_event);
+      (same ? ok : bad)(`THE BACKLOG PROCESSED WHOLE: ${seqs.map((s) => '#' + s).join(', ')} — ${same ? 'every event of the authorized backlog, each once, in order, as the stream holds it' : `the stream holds ${rows.map((r) => '#' + r.s).join(', ')}`}`);
+      const c = await ev(hweber, `subscriptions/${SUB.id}/conform`, 'products.subscription.conform', 'SUB', { declaration: { caught_up: true, can_process: true, note: `the backlog ${seqs.map((s) => '#' + s).join(', ')} read through the catch-up and processed (SYNTHETIC)` } }, SUB.id);
+      if (!c.ok) { fail('H. Weber declares conformance', c); return false; }
+      ok(`H. Weber DECLARED CONFORMANCE at checkpoint ${c.body.subscription.checkpoint_sequence} — the state stays ${c.body.subscription.state} until the owner resumes`);
+      const rs = await ev(eriksen, `subscriptions/${SUB.id}/resume`, 'products.subscription.resume', 'SUB', {}, SUB.id);
+      if (!rs.ok) { fail('N. Eriksen resumes', rs); return false; }
+      ok(`N. Eriksen RESUMED the subscription: ${rs.body.subscription.state}, checkpoint ${rs.body.subscription.checkpoint_sequence} (the head is ${await streamHead()}; the backlog was ${frozen}, head ${head} at the catch-up)`);
+      SUB = await subOf();
+      return true;
+    };
+    SUB = await subOf();
+    const done = (await catchups()).length > 0;
+    if (SUB && SUB.state === 'lagging') await recover();
+    else if (SUB && SUB.state === 'active' && !done) {
+      note('THE SECOND LAG EPISODE (B90-F1): this demonstration\'s first lag was resolved before 0096 by acknowledging the head without a read (evidence/cp6/act-b90.txt) — the catch-up is played on a new backlog');
+      const before = await streamHead();
+      await raiseWarnings(['a tanker diverted around the Cape', 'port congestion at Jeddah reported', 'a second insurer withdraws war-risk cover']);
+      const got = await waitFor('the lag flag (second episode)', subOf, (s) => s?.state === 'lagging', 4 * MIN);
+      if (got?.state === 'lagging') { ok(`THE TICK streamed ${(await streamHead()) - before} more and FLAGGED the subscription LAGGING again at checkpoint ${got.checkpoint} — the backlog frozen at the head`); await recover(); }
+      else bad(`the subscription is ${got?.state ?? 'unknown'} after the tick (second episode)`);
+    } else if (done) {
+      const cs = await catchups();
+      note(`the catch-up stands — an earlier run: ${cs.length} batch(es), ${cs.map((c) => `${c.a}→${c.t} [${(c.seqs ?? []).join(',')}]`).join(' · ')} of the backlog ${cs[0]?.h}; the subscription ${SUB?.state} at ${SUB?.checkpoint}`);
+    }
     // the met observation AFTER the owner's resumption (rehearsal 2: the first tick's lag 1 met, before the lag, satisfied an unbounded read at once)
     const metTrue = () => q(`select o.value, o.met, o.observed_at from products.slo_observations o where o.product_id = $1 and o.measure = 'lag_events' and o.met
                               and o.observed_at > (select max(e.occurred_at) from products.product_events e where e.product_id = $1 and e.event = 'subscription.resumed') order by o.observed_at desc limit 1`, [STREAM.id]).then((r) => r[0] ?? null);

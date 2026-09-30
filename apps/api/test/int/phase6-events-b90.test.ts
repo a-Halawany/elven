@@ -97,6 +97,26 @@ const pause = (as: AuthenticatedPrincipal, id: string, reason: string) => events
 const conform = (as: AuthenticatedPrincipal, id: string, declaration: Row) => events.conform(E(as, 'products.subscription.conform', 'SUB', id), T(), D(), id, { payload: { declaration } }) as Promise<{ subscription: Row }>;
 const resume = (as: AuthenticatedPrincipal, id: string) => events.resume(E(as, 'products.subscription.resume', 'SUB', id), T(), D(), id) as Promise<{ subscription: Row }>;
 const replay = (as: AuthenticatedPrincipal, id: string, fromSequence: number, reason: string) => events.replay(E(as, 'products.subscription.replay', 'SUB', id), T(), D(), id, { payload: { fromSequence, reason } }) as Promise<{ subscription: Row }>;
+/* B90-F1 (0096): the consumer's catch-up of a lagging subscription's authorized backlog, and its ledger */
+const catchUp = (as: AuthenticatedPrincipal, id: string, payload: Row = {}) => events.catchUp(E(as, 'products.subscription.catch_up', 'SUB', id), T(), D(), id, { payload }) as Promise<{ catchup: Row }>;
+const catchups = async (id: string) => rows(sql`select after_sequence::int as after, through_sequence::int as through, backlog_head::int as head, sequences::int[] as sequences, served, served_to::text as served_to from products.subscription_catchups where subscription_id = ${id}::uuid order by served_at`);
+/** What the consumer PROCESSES: each served event checked against the stream row it names — the identity (sequence, source event, subject),
+ *  and the payload exactly the row's payload projected to the granted fields (no field outside the grant). */
+const processServed = async (id: string, productId: string, served: Row[]): Promise<number[]> => {
+  const grant = (await rows(sql`select granted -> 'fields' as fields from products.event_subscriptions where subscription_id = ${id}::uuid`))[0]!;
+  const fields = (grant['fields'] as string[]);
+  const st = await stream(productId);
+  for (const e of served) {
+    const row = st.find((x) => x['sequence'] === e['sequence']);
+    expect(row, `stream row ${String(e['sequence'])}`).toBeDefined();
+    expect(e).toMatchObject({ source_event: row!['source_event'], subject_id: row!['subject_id'], event_kind: row!['event_kind'], schema_version: row!['schema_version'] });
+    const payload = obj(e['payload']); const src = obj(row!['payload']);
+    expect(Object.keys(payload).every((k) => fields.includes(k)), JSON.stringify(Object.keys(payload))).toBe(true);
+    for (const k of Object.keys(payload)) expect(payload[k]).toEqual(src[k]);
+    expect(Object.keys(payload).length).toBeGreaterThan(0);
+  }
+  return served.map((e) => Number(e['sequence']));
+};
 const revoke = (as: AuthenticatedPrincipal, id: string, reason: string) => events.revoke(E(as, 'products.subscription.revoke', 'SUB', id), T(), D(), id, { payload: { reason } }) as Promise<{ subscription: Row }>;
 
 /* ───────────── the warnings (the B28 route: the intake under prediction.warning.raise, then the owner's processing) ───────────── */
@@ -322,22 +342,50 @@ describe('B90 §E · d CHECKPOINTS, LAG, PAUSE AND CONFORMANCE', () => {
     await refused(ack(owner, SUB, 2), /subscription rejected \(not_consumer\)/, 403);
     await refused(resume(owner, SUB), /subscription rejected \(state\): .* has not declared conformance since the pause/, 409);
     await refused(conform(owner, SUB, { caught_up: true, can_process: true }), /subscription rejected \(not_consumer\)/, 403);
+    // B90-F1 (0096): the backlog 2–4 was never SERVED — acknowledging it is refused, and so is a conformance that only declares it caught up
+    await refused(ack(consumer, SUB, 4), /subscription rejected \(backlog\): .* is lagging; sequence 4 is beyond what the catch-up has served \(through 1\)/, 409);
+    await refused(conform(consumer, SUB, { caught_up: true, can_process: true, note: 'declared without reading the backlog (B90 events harness)' }), /subscription rejected \(backlog\): .* lagging at checkpoint 1; the authorized backlog through 4 is read through the catch-up route/, 409);
     await refused(conform(consumer, SUB, { caught_up: false, can_process: true }), /subscription rejected \(conformance\): a consumer that has not caught up/, 422);
-    expect((await conform(consumer, SUB, { caught_up: true, can_process: true, note: 'the backlog processed (B90 events harness)' })).subscription).toMatchObject({ state: 'lagging' });
-    await refused(resume(owner, SUB), /subscription rejected \(lag\): .* still 3 events behind the head \(policy 2\)/, 409);
+    // the catch-up is the consumer's own, within the backlog, never before the checkpoint; the owner may not take it
+    await refused(catchUp(owner, SUB), /subscription rejected \(not_consumer\)/, 403);
+    await refused(catchUp(consumer, SUB, { afterSequence: 0 }), /subscription rejected \(window\): a catch-up from sequence 0 is before the checkpoint 1/, 422);
+    await refused(catchUp(consumer, SUB, { afterSequence: 9 }), /subscription rejected \(backlog\): sequence 9 is beyond the authorized backlog through 4/, 409);
+    await refused(catchUp(consumer2, SUB), /subscription rejected \(not_consumer\)/, 403);
+    expect(await catchups(SUB)).toEqual([]);
     await refused(resume(consumer, SUB), /subscription rejected \(authority\)/, 403);
     await refused(pause(owner, SUB, 'a lagging subscription is already paused (B90 events harness)'), /subscription rejected \(state\): .* only an active subscription is paused/, 409);
   });
-  it('d · RECOVERY: the consumer catches up (acknowledges through 4 while lagging — not resumed on its own); the owner resumes; the next tick observes lag_events met true and raises nothing twice', async () => {
-    expect((await ack(consumer, SUB, 4)).subscription).toMatchObject({ checkpoint_sequence: 4, state: 'lagging', lag_events: 0 });
+  it('d · RECOVERY (B90-F1): the consumer CATCHES UP — the unread backlog 2–4 SERVED in two bounded batches (identities and projected payloads checked against the stream), each acknowledged only once served; then conformance; the owner resumes; the next tick observes lag_events met true and raises nothing twice', async () => {
+    expect(await subRow(SUB)).toMatchObject({ state: 'lagging', checkpoint: 1 });
+    // batch 1 (limit 2): events 2 and 3 SERVED; ordinary delivery stays paused
+    const b1 = (await catchUp(consumer, SUB, { limit: 2 })).catchup;
+    expect(b1).toMatchObject({ state: 'lagging', after: 1, through: 3, backlog_head: 4, remaining: 1, served: 2, checkpoint: 1 });
+    const done = await processServed(SUB, P1, b1['events'] as Row[]);
+    expect(done).toEqual([2, 3]);
+    await refused(readEvents(consumer, SUB), /subscription rejected \(state\): .* is lagging .* served by the catch-up route/, 409);
+    await refused(ack(consumer, SUB, 4), /subscription rejected \(backlog\): .* sequence 4 is beyond what the catch-up has served \(through 3\)/, 409);
+    expect((await ack(consumer, SUB, 3)).subscription).toMatchObject({ checkpoint_sequence: 3, state: 'lagging' });
+    await refused(conform(consumer, SUB, { caught_up: true, can_process: true }), /subscription rejected \(backlog\): .* lagging at checkpoint 3/, 409);
+    // batch 2: event 4 SERVED; the backlog exhausted
+    const b2 = (await catchUp(consumer, SUB)).catchup;
+    expect(b2).toMatchObject({ after: 3, through: 4, backlog_head: 4, remaining: 0, served: 1 });
+    done.push(...await processServed(SUB, P1, b2['events'] as Row[]));
+    expect(done).toEqual([2, 3, 4]); // every event of the backlog, each once, in order — nothing skipped
+    expect((await ack(consumer, SUB, 4)).subscription).toMatchObject({ checkpoint_sequence: 4, state: 'lagging', lag_events: 0 }); // not resumed on its own
+    expect(await catchups(SUB)).toEqual([
+      { after: 1, through: 3, head: 4, sequences: [2, 3], served: 2, served_to: consumer.principalId },
+      { after: 3, through: 4, head: 4, sequences: [4], served: 1, served_to: consumer.principalId }]);
+    expect((await conform(consumer, SUB, { caught_up: true, can_process: true, note: 'the backlog 2–4 read through the catch-up and processed (B90 events harness)' })).subscription).toMatchObject({ state: 'lagging', checkpoint_sequence: 4 });
     expect((await resume(owner, SUB)).subscription).toMatchObject({ state: 'active', paused_reason: null, checkpoint_sequence: 4 });
+    await refused(catchUp(consumer, SUB), /subscription rejected \(state\): .* is active; the catch-up serves the authorized backlog of a LAGGING subscription only/, 409);
     const { lag } = await tick(4);
     expect(lag).toMatchObject({ lagging: 0, healthy: 1 }); // consumer 2's P2 subscription is already lagging (not evaluated again)
     expect((await slo(P1, 'lag_events')).map((x) => [Number(x['value']), x['met']])).toEqual([[3, false], [0, true]]);
     expect((await items(SUB)).length).toBe(1);
     expect((await readEvents(consumer, SUB)).read).toMatchObject({ served: 0, after: 4, head: 4 });
     const ck = await rows(sql`select kind, from_sequence::int as f, to_sequence::int as t from products.subscription_checkpoints where subscription_id = ${SUB}::uuid order by acknowledged_at`);
-    expect(ck).toEqual([{ kind: 'advance', f: 0, t: 1 }, { kind: 'advance', f: 1, t: 4 }]);
+    expect(ck).toEqual([{ kind: 'advance', f: 0, t: 1 }, { kind: 'advance', f: 1, t: 3 }, { kind: 'advance', f: 3, t: 4 }]);
+    expect((await productEvents(P1)).filter((e) => e === 'events.caught_up').length).toBe(2);
   });
 });
 
@@ -397,9 +445,14 @@ describe('B90 §E · f REPLAY, CORRECTIONS AND REVOCATION', () => {
     expect(await productEvents(P1)).toContain('events.replayed');
   });
   it('f · REFUSAL: consumer 2 (cannot process corrections) reads P2 and the correction is WITHHELD and counted; a replay by a consumer that cannot process replays, from at or beyond the checkpoint, without a reason; reading before the checkpoint', async () => {
-    // consumer 2 is lagging on P2 (never acknowledged): it conforms and catches up, the owner resumes, then reads
-    await conform(consumer2, SUB2, { caught_up: true, can_process: true });
+    // consumer 2 is lagging on P2 (never acknowledged): it CATCHES UP (B90-F1 — the backlog 1–4 served and processed), acknowledges what it
+    // was served, conforms; the owner resumes; then it reads
+    const c2 = (await catchUp(consumer2, SUB2)).catchup;
+    expect(c2).toMatchObject({ after: 0, through: 4, backlog_head: 4, remaining: 0 });
+    const got2 = await processServed(SUB2, P2, c2['events'] as Row[]);
+    expect(got2.length).toBe(Number(c2['served']));
     await ack(consumer2, SUB2, 4);
+    await conform(consumer2, SUB2, { caught_up: true, can_process: true });
     await resume(owner, SUB2);
     const r = (await readEvents(consumer2, SUB2)).read;
     expect(r).toMatchObject({ after: 4, next_after: 5, served: 0, omitted: { corrections: 1, reason: expect.stringMatching(/cannot process corrections; the correction rows are withheld and counted/) } });
@@ -439,7 +492,7 @@ describe('B90 §E · g ISOLATION AND THE READS', () => {
     const s = (await getSub(consumer, SUB)).subscription;
     expect(s).toMatchObject({ state: 'revoked', head: 5, lag_events: 4, product: { product_key: 'corridor-' + 'warning-stream', schema_version: 'v3', emits_corrections: true } });
     expect((s['replays'] as Row[]).length).toBe(1);
-    expect((s['checkpoints'] as Row[]).map((c) => c['kind'])).toEqual(['replay', 'advance', 'advance', 'advance']);
+    expect((s['checkpoints'] as Row[]).map((c) => c['kind'])).toEqual(['replay', 'advance', 'advance', 'advance', 'advance']); // B90-F1: the lag's recovery acknowledges in two steps (1 → 3, 3 → 4), each after its catch-up batch
   });
   it('g · REFUSAL: an analyst of another domain of the tenant lists NO event product and sees no subscription (RLS); an outsider is refused by the policy; a read outside the caller\'s scope answers unknown', async () => {
     expect((await (events.list(E2(elsewhere, 'products.product.read', 'DPR'), T(), D2, { payload: {} }) as Promise<{ event_products: Row[] }>)).event_products).toEqual([]);

@@ -115,6 +115,8 @@ export const events = {
   get: (s: Scope, id: string) => p<{ at: string; subscription: SubscriptionView; receipt: Receipt }>(s, `/subscriptions/${id}/get`, 'products.subscription.read', 'SUB', {}, id),
   readEvents: (s: Scope, id: string, afterSequence: number | null, limit = 50) => p<{ at: string; read: ReadResult; receipt: Receipt }>(s, `/subscriptions/${id}/read`, 'products.subscription.read', 'SUB', { afterSequence, limit }, id),
   authorize: (s: Scope, id: string) => p<{ subscription: SubscriptionRow; receipt: Receipt }>(s, `/subscriptions/${id}/authorize`, 'products.subscription.authorize', 'SUB', {}, id),
+  /** B90-F1 (0096): the consumer's CATCH-UP of a lagging subscription's authorized backlog (bounded; recorded; ordinary delivery stays paused). */
+  catchUp: (s: Scope, id: string, afterSequence: number | null, limit = 50) => p<{ catchup: ReadResult & { through: number; backlog_head: number; remaining: number; catchup_id: string }; receipt: Receipt }>(s, `/subscriptions/${id}/catch-up`, 'products.subscription.catch_up', 'SUB', { afterSequence, limit }, id),
   checkpoint: (s: Scope, id: string, sequence: number) => p<{ subscription: SubscriptionRow; receipt: Receipt }>(s, `/subscriptions/${id}/checkpoint`, 'products.subscription.checkpoint', 'SUB', { sequence }, id),
   pause: (s: Scope, id: string, reason: string) => p<{ subscription: SubscriptionRow; receipt: Receipt }>(s, `/subscriptions/${id}/pause`, 'products.subscription.pause', 'SUB', { reason }, id),
   conform: (s: Scope, id: string, declaration: { caught_up: boolean; can_process: boolean; note?: string; schema_version?: string; handles_corrections?: boolean }) =>

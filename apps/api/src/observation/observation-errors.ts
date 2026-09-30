@@ -931,7 +931,8 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
      registration, the fields, the purpose, the window, the lag policy, the capability, the source among them). */
   { match: /^(event product|subscription) rejected \((actor|authority|not_consumer)\)/i, status: 403, code: 'EYE_AUT_001' },
   { match: /^(event product|subscription) rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
-  { match: /^(event product|subscription) rejected \((state|lag|schema_pending)\)/i, status: 409, code: 'EYE_STA_002' },
+  /* B90-F1 (0096): `backlog` — acknowledging past what the catch-up served, conforming before the backlog is acknowledged — is the record's state (409) */
+  { match: /^(event product|subscription) rejected \((state|lag|schema_pending|backlog)\)/i, status: 409, code: 'EYE_STA_002' },
   { match: /^(event product|subscription) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
   /* end B90 events */
   /* B36 home (0094 §H) — the executive home's families in the CLASS form `<noun> rejected (<class>): …`: `cadence rejected`, `executive room

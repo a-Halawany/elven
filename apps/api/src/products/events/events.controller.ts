@@ -127,6 +127,21 @@ export class EventsController {
   }
 
   /** ACKNOWLEDGE (the consumer): the checkpoint advances to a sequence — never back, never beyond the head. */
+  /** B90-F1 (0096) THE CATCH-UP (the consumer, on a LAGGING subscription): its authorized backlog — frozen when the tick flagged the lag —
+   *  served in bounded batches (≤ 100) under the ordinary read's projection, window, filters, retention and correction rules; each batch
+   *  recorded. Ordinary delivery stays paused; the consumer acknowledges only what a catch-up served, then conforms; the owner resumes. */
+  @Post('/subscriptions/:subscriptionId/catch-up')
+  async catchUp(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('subscriptionId') subscriptionId: string, @Body() body: Payload) {
+    const { envelope, principal } = ctx(req);
+    assertUuid(subscriptionId, 'subscription', envelope.correlation_id);
+    const w = validateReadWindow(body.payload ?? {}, envelope.correlation_id);
+    const catchupId = newId();
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'products.subscription.catch_up', 'SUB', subscriptionId), EventCapability.write,
+      async (cap) => ({ result: await cap.catchUp({ catchupId, subscriptionId, tenantId, domainId, afterSequence: w.afterSequence, limit: Math.min(w.limit, 100), actor: principal.principalId, eventId: newId(), correlationId: envelope.correlation_id }),
+        targetType: 'SUB', targetId: subscriptionId, targetVersion: null, outboxEvent: null }));
+    return { catchup: out.result, receipt: receipt(out) };
+  }
+
   @Post('/subscriptions/:subscriptionId/checkpoint')
   async checkpoint(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('subscriptionId') subscriptionId: string, @Body() body: Payload) {
     const { envelope, principal } = ctx(req);
