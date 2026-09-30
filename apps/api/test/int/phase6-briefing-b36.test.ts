@@ -39,7 +39,8 @@ import { bootDecisionWorld, decisionCalls, message, status, type DecisionWorld }
 
 // The B6 rule: the scheduler (the attention timer's worker) is enabled BEFORE the boot, at module top; the verification Redis (:6392), never the demonstration's.
 process.env['EYE_SCHEDULER_ENABLED'] = 'true';
-process.env['EYE_REDIS_PORT'] = process.env['EYE_REDIS_PORT'] ?? '6392';
+// The Redis port is the environment's (the hosted job's compose Redis; locally the verification Redis passed as EYE_REDIS_PORT): a hard-coded local
+// fallback here made the hosted run connect to a port nothing listens on and time the hook out (the B36 hosted run of 2026-09-30).
 
 type Row = Record<string, unknown>;
 let h: Phase4Harness; let w: DecisionWorld; let c: ReturnType<typeof decisionCalls>;
