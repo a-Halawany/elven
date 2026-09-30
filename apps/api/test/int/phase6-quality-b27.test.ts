@@ -281,6 +281,17 @@ describe('B27 §Q · a SEMANTIC COHERENCE beyond v1 (collapse, prohibited contra
     expect(ee, JSON.stringify(ee.findings)).toMatchObject({ outcome: 'passed', prior_outcome: 'failed', new_failure: false });
     expect(obj(ee.measures)).toMatchObject({ elements: 0 });
   });
+  it('a · §I (the integrator): elements DECLARED THROUGH §A\'s ROUTE (its timing keys start / end) are judged — a mechanism whose cause (an actor) starts after it fails element_temporal_order', async () => {
+    if (STANDIN) return; // §A is combined at integration; this case proves the two parts read the same keys
+    const { AnatomyController: Ac } = await import('../../src/prediction/scenarios/anatomy/anatomy.controller.js');
+    const anatomy = h.app.get(Ac);
+    const t2 = await tree('B27Q route-declared timing tree', [br('Blockade onset', 'downside', 'a regional blockade halts transits below 40', I1, { assumptions: [{ statement: 'the blockade holds for a month' }] })]);
+    const decl = (payload: Row) => anatomy.declareElement(h.req(owner, 'prediction.scenario.anatomy.element', 'SCN', t2.id, 'prediction'), T(), D(), t2.id, { payload }) as unknown as Promise<{ element: Row & { element_id: string } }>;
+    const actor = (await decl({ kind: 'actor', name: 'Blockading navy', description: 'a regional navy blockading the strait (synthetic)', attributes: { agency: 'high', timing: { start: '2026-10-20' } } })).element.element_id;
+    await decl({ kind: 'mechanism', name: 'Rate spike', description: 'freight rates spike as sailings stop (synthetic)', attributes: { cause: 'the blockade closes the strait', effect: 'freight rates spike', dependencies: [actor], timing: { start: '2026-10-01' } } });
+    const ev = (await evaluate(owner, t2.id)).evaluation;
+    expect(fails(ev), JSON.stringify(ev.findings)).toContain('element_temporal_order');
+  });
 });
 
 describe('B27 §Q · b DISTINCTIVENESS, COVERAGE and BIAS (AI-49-004)', () => {

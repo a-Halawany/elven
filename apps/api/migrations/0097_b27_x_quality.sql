@@ -403,7 +403,7 @@ BEGIN
   -- (4) TEMPORAL ORDERING of elements with timing attributes (§A): from after until; a dependency starting after the element it causes
   FOR e IN SELECT el FROM jsonb_array_elements(v_elements) el ORDER BY el ->> 'name' LOOP
     BEGIN
-      v_from := NULLIF(e -> 'attributes' -> 'timing' ->> 'from', '')::timestamptz; v_until := NULLIF(e -> 'attributes' -> 'timing' ->> 'until', '')::timestamptz;
+      v_from := NULLIF(coalesce(e -> 'attributes' -> 'timing' ->> 'start', e -> 'attributes' -> 'timing' ->> 'from'), '')::timestamptz; v_until := NULLIF(coalesce(e -> 'attributes' -> 'timing' ->> 'end', e -> 'attributes' -> 'timing' ->> 'until'), '')::timestamptz; -- §I: §A's keys are start/end (from/until accepted)
     EXCEPTION WHEN OTHERS THEN v_from := NULL; v_until := NULL;
     END;
     IF v_from IS NOT NULL AND v_until IS NOT NULL AND v_from > v_until THEN
@@ -412,7 +412,7 @@ BEGIN
     END IF;
     IF v_from IS NOT NULL AND jsonb_typeof(e -> 'attributes' -> 'dependencies') = 'array' THEN
       FOR d IN SELECT el2 FROM jsonb_array_elements(v_elements) el2 WHERE (el2 ->> 'element_id') IN (SELECT jsonb_array_elements_text(e -> 'attributes' -> 'dependencies')) ORDER BY el2 ->> 'name' LOOP
-        BEGIN v_dep_from := NULLIF(d -> 'attributes' -> 'timing' ->> 'from', '')::timestamptz; EXCEPTION WHEN OTHERS THEN v_dep_from := NULL; END;
+        BEGIN v_dep_from := NULLIF(coalesce(d -> 'attributes' -> 'timing' ->> 'start', d -> 'attributes' -> 'timing' ->> 'from'), '')::timestamptz; EXCEPTION WHEN OTHERS THEN v_dep_from := NULL; END;
         IF v_dep_from IS NOT NULL AND v_dep_from > v_from THEN
           v_findings := v_findings || jsonb_build_object('rule', 'element_temporal_order', 'outcome', 'fail', 'branch_ids', CASE WHEN e ->> 'branch_id' IS NULL THEN '[]'::jsonb ELSE jsonb_build_array(e ->> 'branch_id') END,
             'element_id', e ->> 'element_id', 'detail', format('%s "%s" (from %s) depends on %s "%s", which begins later (%s): the effect precedes its cause', e ->> 'kind', e ->> 'name', v_from, d ->> 'kind', d ->> 'name', v_dep_from));
