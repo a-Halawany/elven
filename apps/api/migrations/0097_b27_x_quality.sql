@@ -341,19 +341,19 @@ BEGIN
   IF NOT FOUND THEN RETURN NULL; END IF;
   -- the live branches (open | flipped), each with its normalised statement, divergence, assumptions, links, elements and indicator threshold
   SELECT coalesce(jsonb_agg(jsonb_build_object(
-           'branch_id', x.branch_id, 'name', x.name, 'kind', x.kind,
-           'tokens', to_jsonb(prediction.psq_tokens(x.statement, p_rule)),
-           'divergence', to_jsonb(prediction.psq_tokens(x.divergence, p_rule)),
-           'assumptions', to_jsonb(ARRAY(SELECT array_to_string(prediction.psq_tokens(q ->> 'statement', p_rule), ' ') FROM jsonb_array_elements(coalesce(x.assumptions, '[]'::jsonb)) q ORDER BY 1)),
-           'raw_assumptions', coalesce(x.assumptions, '[]'::jsonb),
-           'linked', to_jsonb(ARRAY(SELECT l ->> 'assumption_id' FROM jsonb_array_elements(v_links) l WHERE (l ->> 'branch_id') = x.branch_id::text ORDER BY 1)),
-           'elements', to_jsonb(ARRAY(SELECT (el ->> 'kind') || ':' || lower(btrim(el ->> 'name')) FROM jsonb_array_elements(v_elements) el WHERE (el ->> 'branch_id') = x.branch_id::text ORDER BY 1)),
-           'indicator_id', x.indicator_id,
-           'signature', (SELECT i.series_key || ' ' || i.comparator || ' ' || i.threshold::text FROM prediction.indicators_current i WHERE i.indicator_id = x.indicator_id))
-         ORDER BY x.name, x.branch_id), '[]'::jsonb)
-    INTO v_b FROM prediction.branches_current x WHERE x.scenario_id = p_scenario_id AND prediction.branch_live(x.state);
+           'branch_id', bx.branch_id, 'name', bx.name, 'kind', bx.kind,
+           'tokens', to_jsonb(prediction.psq_tokens(bx.statement, p_rule)),
+           'divergence', to_jsonb(prediction.psq_tokens(bx.divergence, p_rule)),
+           'assumptions', to_jsonb(ARRAY(SELECT array_to_string(prediction.psq_tokens(q ->> 'statement', p_rule), ' ') FROM jsonb_array_elements(coalesce(bx.assumptions, '[]'::jsonb)) q ORDER BY 1)),
+           'raw_assumptions', coalesce(bx.assumptions, '[]'::jsonb),
+           'linked', to_jsonb(ARRAY(SELECT l ->> 'assumption_id' FROM jsonb_array_elements(v_links) l WHERE (l ->> 'branch_id') = bx.branch_id::text ORDER BY 1)),
+           'elements', to_jsonb(ARRAY(SELECT (el ->> 'kind') || ':' || lower(btrim(el ->> 'name')) FROM jsonb_array_elements(v_elements) el WHERE (el ->> 'branch_id') = bx.branch_id::text ORDER BY 1)),
+           'indicator_id', bx.indicator_id,
+           'signature', (SELECT i.series_key || ' ' || i.comparator || ' ' || i.threshold::text FROM prediction.indicators_current i WHERE i.indicator_id = bx.indicator_id))
+         ORDER BY bx.name, bx.branch_id), '[]'::jsonb)
+    INTO v_b FROM prediction.branches_current bx WHERE bx.scenario_id = p_scenario_id AND prediction.branch_live(bx.state);
   v_live := jsonb_array_length(v_b);
-  SELECT count(*) INTO v_suspended FROM prediction.branches_current x WHERE x.scenario_id = p_scenario_id AND x.state = 'suspended';
+  SELECT count(*) INTO v_suspended FROM prediction.branches_current bx WHERE bx.scenario_id = p_scenario_id AND bx.state = 'suspended';
 
   -- (1) DISTINCTIVENESS: the same assumptions, elements, indicator and divergence; statements differing only in wording
   FOR x IN SELECT p ->> 'branch_id' AS a_id, p ->> 'name' AS a_name, q ->> 'branch_id' AS b_id, q ->> 'name' AS b_name,
@@ -603,11 +603,11 @@ BEGIN
   END IF;
   IF p_name IS NULL OR length(btrim(p_name)) NOT BETWEEN 3 AND 128 THEN RAISE EXCEPTION 'frequency map rejected (name): a map is named (3 to 128 characters)' USING ERRCODE = '22023'; END IF;
   IF p_horizon IS NULL OR length(btrim(p_horizon)) NOT BETWEEN 2 AND 64 THEN RAISE EXCEPTION 'frequency map rejected (horizon): a map names the window its probabilities speak of (2 to 64 characters)' USING ERRCODE = '22023'; END IF;
-  IF p_bands IS NULL OR jsonb_typeof(p_bands) <> 'array' OR jsonb_array_length(p_bands) = 0 THEN RAISE EXCEPTION 'frequency map rejected (bands): a map has at least one band' USING ERRCODE = '22023'; END IF;
+  IF p_bands IS NULL OR coalesce(jsonb_typeof(p_bands), 'absent') <> 'array' OR jsonb_array_length(p_bands) = 0 THEN RAISE EXCEPTION 'frequency map rejected (bands): a map has at least one band' USING ERRCODE = '22023'; END IF;
   FOR b IN SELECT x FROM jsonb_array_elements(p_bands) x LOOP
     n := n + 1;
-    IF jsonb_typeof(b) <> 'object' OR jsonb_typeof(b -> 'frequency_label') <> 'string' OR length(btrim(b ->> 'frequency_label')) < 2 OR jsonb_typeof(b -> 'min_per_year') <> 'number'
-       OR (b ? 'max_per_year' AND jsonb_typeof(b -> 'max_per_year') NOT IN ('number', 'null')) OR jsonb_typeof(b -> 'probability_low') <> 'number' OR jsonb_typeof(b -> 'probability_high') <> 'number' THEN
+    IF coalesce(jsonb_typeof(b), 'absent') <> 'object' OR coalesce(jsonb_typeof(b -> 'frequency_label'), 'absent') <> 'string' OR length(btrim(b ->> 'frequency_label')) < 2 OR coalesce(jsonb_typeof(b -> 'min_per_year'), 'absent') <> 'number'
+       OR (b ? 'max_per_year' AND coalesce(jsonb_typeof(b -> 'max_per_year'), 'absent') NOT IN ('number', 'null')) OR coalesce(jsonb_typeof(b -> 'probability_low'), 'absent') <> 'number' OR coalesce(jsonb_typeof(b -> 'probability_high'), 'absent') <> 'number' THEN
       RAISE EXCEPTION 'frequency map rejected (bands): band % names a frequency_label, min_per_year, max_per_year (a number, or null for the last band) and probability_low / probability_high', n USING ERRCODE = '22023';
     END IF;
     v_min := (b ->> 'min_per_year')::numeric; v_max := (b ->> 'max_per_year')::numeric; v_low := (b ->> 'probability_low')::numeric; v_high := (b ->> 'probability_high')::numeric;
@@ -664,7 +664,7 @@ BEGIN
   IF p_method IS NULL OR p_method NOT IN ('frequency_map', 'expert_elicitation', 'model') THEN
     RAISE EXCEPTION 'branch probability rejected (method): the method is frequency_map, expert_elicitation or model' USING ERRCODE = '22023';
   END IF;
-  IF v_basis IS NULL OR jsonb_typeof(v_basis) <> 'object' THEN RAISE EXCEPTION 'branch probability rejected (basis): a probability states its basis (an object)' USING ERRCODE = '22023'; END IF;
+  IF v_basis IS NULL OR coalesce(jsonb_typeof(v_basis), 'absent') <> 'object' THEN RAISE EXCEPTION 'branch probability rejected (basis): a probability states its basis (an object)' USING ERRCODE = '22023'; END IF;
   IF v_basis ? 'narrative' THEN
     RAISE EXCEPTION 'branch probability rejected (narrative): a probability is never derived from narrative text — state the observed frequency, the elicitation record or the model run' USING ERRCODE = '22023';
   END IF;
@@ -674,10 +674,10 @@ BEGIN
     SELECT * INTO m FROM prediction.frequency_probability_maps x WHERE x.map_id = p_map_id AND x.tenant_id = p_tenant AND x.domain_id = p_domain;
     IF NOT FOUND THEN RAISE EXCEPTION 'branch probability rejected (unknown_map): % is not a frequency map of this domain', p_map_id USING ERRCODE = '23503'; END IF;
     IF m.state <> 'active' THEN RAISE EXCEPTION 'branch probability rejected (state): map "%" version % is superseded; use its current version', m.name, m.version USING ERRCODE = '22023'; END IF;
-    IF jsonb_typeof(v_basis -> 'frequency_per_year') <> 'number' OR (v_basis ->> 'frequency_per_year')::numeric < 0 THEN
+    IF coalesce(jsonb_typeof(v_basis -> 'frequency_per_year'), 'absent') <> 'number' OR (v_basis ->> 'frequency_per_year')::numeric < 0 THEN
       RAISE EXCEPTION 'branch probability rejected (basis): the frequency_map method states frequency_per_year (a number ≥ 0)' USING ERRCODE = '22023';
     END IF;
-    IF jsonb_typeof(v_basis -> 'observation') <> 'string' OR length(btrim(v_basis ->> 'observation')) < 8 THEN
+    IF coalesce(jsonb_typeof(v_basis -> 'observation'), 'absent') <> 'string' OR length(btrim(v_basis ->> 'observation')) < 8 THEN
       RAISE EXCEPTION 'branch probability rejected (basis): the frequency_map method states where the frequency was observed (observation, ≥ 8 characters)' USING ERRCODE = '22023';
     END IF;
     v_freq := (v_basis ->> 'frequency_per_year')::numeric;
@@ -692,16 +692,16 @@ BEGIN
     END IF;
     IF p_method = 'expert_elicitation' THEN
       e := v_basis -> 'elicitation';
-      IF e IS NULL OR jsonb_typeof(e) <> 'object' OR jsonb_typeof(e -> 'experts') <> 'array' OR jsonb_array_length(e -> 'experts') = 0
-         OR EXISTS (SELECT 1 FROM jsonb_array_elements(e -> 'experts') q WHERE jsonb_typeof(q) <> 'string' OR length(btrim(q #>> '{}')) < 2)
-         OR jsonb_typeof(e -> 'question') <> 'string' OR length(btrim(e ->> 'question')) < 8 OR jsonb_typeof(e -> 'record') <> 'string' OR length(btrim(e ->> 'record')) < 16
-         OR jsonb_typeof(e -> 'elicited_at') <> 'string' THEN
+      IF e IS NULL OR coalesce(jsonb_typeof(e), 'absent') <> 'object' OR coalesce(jsonb_typeof(e -> 'experts'), 'absent') <> 'array' OR jsonb_array_length(e -> 'experts') = 0
+         OR EXISTS (SELECT 1 FROM jsonb_array_elements(e -> 'experts') q WHERE coalesce(jsonb_typeof(q), 'absent') <> 'string' OR length(btrim(q #>> '{}')) < 2)
+         OR coalesce(jsonb_typeof(e -> 'question'), 'absent') <> 'string' OR length(btrim(e ->> 'question')) < 8 OR coalesce(jsonb_typeof(e -> 'record'), 'absent') <> 'string' OR length(btrim(e ->> 'record')) < 16
+         OR coalesce(jsonb_typeof(e -> 'elicited_at'), 'absent') <> 'string' THEN
         RAISE EXCEPTION 'branch probability rejected (basis): the expert_elicitation method carries the elicitation record {experts (named), question, elicited_at, record (≥ 16 characters)}' USING ERRCODE = '22023';
       END IF;
       BEGIN v_at := (e ->> 'elicited_at')::timestamptz; EXCEPTION WHEN OTHERS THEN RAISE EXCEPTION 'branch probability rejected (basis): elicited_at is an instant' USING ERRCODE = '22023'; END;
       IF v_at > clock_timestamp() THEN RAISE EXCEPTION 'branch probability rejected (basis): the elicitation (%) lies in the future', v_at USING ERRCODE = '22023'; END IF;
     ELSE
-      IF jsonb_typeof(v_basis -> 'run_id') <> 'string' OR (v_basis ->> 'run_id') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+      IF coalesce(jsonb_typeof(v_basis -> 'run_id'), 'absent') <> 'string' OR (v_basis ->> 'run_id') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
         RAISE EXCEPTION 'branch probability rejected (basis): the model method names the simulation run (run_id)' USING ERRCODE = '22023';
       END IF;
       SELECT r.run_id, r.state, r.validity INTO v_run FROM simulation.runs_current r WHERE r.run_id = (v_basis ->> 'run_id')::uuid AND r.tenant_id = p_tenant AND r.domain_id = p_domain;

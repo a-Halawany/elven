@@ -283,7 +283,7 @@ describe('B27 §Q · b DISTINCTIVENESS, COVERAGE and BIAS (AI-49-004)', () => {
     const common = { indicatorId: I2, divergence: 'the strait closes to merchant traffic (SYNTHETIC)', assumptions: [{ statement: 'naval activity halts transits' }], owner: owner.principalId,
       consequence: 'reroute every open booking via the Cape', responseWindowHours: 24 };
     const b1 = (await branchScenario(owner, SD, { expected_version: 1, idempotency_key: 'b27q-closure-1', branch: { name: 'Strait closure', kind: 'disruption', statement: 'Strait closure: transits halt for seven days', ...common } })).branching;
-    const b2 = (await branchScenario(owner, SD, { expected_version: 2, idempotency_key: 'b27q-closure-2', branch: { name: 'Strait shutdown', kind: 'user_defined', kindLabel: 'strait shutdown', statement: 'The strait closes — transits halted for seven days.', ...common } })).branching;
+    const b2 = (await branchScenario(owner, SD, { expected_version: 2, idempotency_key: 'b27q-closure-2', branch: { name: 'Strait shutdown', kind: 'user_defined', kindLabel: 'strait shutdown', statement: 'Strait closure — transits halted for seven days.', ...common } })).branching;
     expect(obj(b2.coherence)['outcome']).toBe('passed');
     const e = (await evaluate(owner, SD, { trigger: 'branch' })).evaluation;
     expect(e).toMatchObject({ outcome: 'failed', trigger: 'branch', scenario_version: 3, new_failure: true });
