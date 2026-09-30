@@ -21,11 +21,15 @@ import { MetricsService } from './metrics/metrics.service.js';
 import { CatalogController } from './catalog/catalog.controller.js';
 import { CatalogService } from './catalog/catalog.service.js';
 /* end B90 catalog */
+/* B90 events */
+import { EventsController } from './events/events.controller.js';
+import { EventsService } from './events/events.service.js';
+/* end B90 events */
 
 @Module({
   imports: [PipelineModule, ExecutiveModule],
-  controllers: [ProductsController, /* B90 products */ ConsumersController /* end B90 products */, /* B90 metrics */ MetricsController /* end B90 metrics */, /* B90 catalog */ CatalogController /* end B90 catalog */],
-  providers: [ProductsService, /* B90 products */ ConsumersService, ScorecardStepService /* end B90 products */, /* B90 metrics */ MetricsService /* end B90 metrics */, /* B90 catalog */ CatalogService /* end B90 catalog */],
-  exports: [ProductsService, /* B90 products */ ConsumersService /* end B90 products */, /* B90 metrics */ MetricsService /* end B90 metrics */, /* B90 catalog */ CatalogService /* end B90 catalog */],
+  controllers: [ProductsController, /* B90 products */ ConsumersController /* end B90 products */, /* B90 events */ EventsController /* end B90 events */, /* B90 metrics */ MetricsController /* end B90 metrics */, /* B90 catalog */ CatalogController /* end B90 catalog */],
+  providers: [ProductsService, /* B90 products */ ConsumersService, ScorecardStepService /* end B90 products */, /* B90 events */ EventsService /* end B90 events */, /* B90 metrics */ MetricsService /* end B90 metrics */, /* B90 catalog */ CatalogService /* end B90 catalog */],
+  exports: [ProductsService, /* B90 products */ ConsumersService /* end B90 products */, /* B90 events */ EventsService /* end B90 events */, /* B90 metrics */ MetricsService /* end B90 metrics */, /* B90 catalog */ CatalogService /* end B90 catalog */],
 })
 export class ProductsModule {}
