@@ -93,7 +93,8 @@ test.describe.serial('CP-6 B90 §K — the metadata catalog on the demonstration
     await expect(page.getByLabel('hidden line')).toContainText(/1 hidden: 1 undiscoverable/);
     // the entry itself, chosen from the entries list: the orphan flag with its since and reason
     const assets = page.getByRole('combobox', { name: 'Asset', exact: true });
-    const label = await assets.locator('option').filter({ hasText: STAGING }).first().textContent();
+    // the entries list names an entry by its TITLE (the ref is the search's): the staging asset's title is "AIS staging 2025 week 40 (SYNTHETIC)"
+    const label = await assets.locator('option').filter({ hasText: /AIS staging 2025 week 40/ }).first().textContent();
     await assets.selectOption({ label: label ?? '' });
     await expect(page.getByRole('heading', { name: /AIS staging/i, level: 2 })).toBeVisible();
     const flags = page.getByRole('list', { name: 'flags' });
@@ -112,7 +113,9 @@ test.describe.serial('CP-6 B90 §K — the metadata catalog on the demonstration
     await expect(page.getByRole('button', { name: 'Run the reconciliation' })).toHaveCount(0);
     await expect(page.getByText(/data steward's acts/)).toBeVisible();
     await searchFor(page, AIS);
-    await expect(page.getByLabel('hidden line')).toContainText(/your clearance is (internal|confidential|restricted)/);
+    // the hidden count is the labelled span; the reader's clearance is printed beside it in the same status line
+    await expect(page.getByLabel('hidden line')).toContainText(/match\(es\)/);
+    await expect(page.getByText(/your clearance is (internal|confidential|restricted)/)).toBeVisible();
     await expect(page.getByRole('list', { name: 'catalog hits' }).locator('li').filter({ hasText: AIS }).first()).toBeVisible();
     await shot(page, 'b90-catalog-04-reader');
   });
