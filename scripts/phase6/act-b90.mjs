@@ -230,6 +230,16 @@ const STREAM = await releasedProduct({
   beforeDeclare: async (p) => {
     const had = (await q(`select declaration_version, schema_version from products.event_products where product_id = $1`, [p.id]))[0] ?? null;
     if (had) { note(`the event declaration of ${STREAM_KEY} stands (declaration ${had.declaration_version}, schema ${had.schema_version}) — an earlier run`); return; }
+    // THE INTAKE DRAINED FIRST: the stream carries every warning raised in the domain after its declaration (since = declared_at), and the demonstration
+    // holds candidates earlier batches left pending (twin degradations, exposures) — processed by their owner now, BEFORE the declaration, so the scene's
+    // stream counts only the scene's own warnings (rehearsal 1: six pending candidates raised with the first warning put the subscription 7 behind at once)
+    for (let pass = 0; pass < 3; pass += 1) {
+      const pend = Number((await q(`select count(*)::int n from prediction.warning_candidates where tenant_id = $1 and domain_id = $2 and state = 'pending'`, [T, D]))[0].n);
+      if (pend === 0) { if (pass === 0) note('the warning intake holds no pending candidate — nothing to drain before the declaration'); break; }
+      const d = await pd(eriksen, 'warnings/candidates/process', 'prediction.warning.candidates.process', 'WRN', { limit: 50 });
+      if (!d.ok) { fail('N. Eriksen drains the intake before the declaration', d); break; }
+      ok(`N. Eriksen PROCESSED the warning intake BEFORE the stream's declaration: ${pend} pending → ${(d.body.processing?.raised ?? []).filter((x) => x.decision === 'raised').length} raised, the rest decided otherwise (the earlier batches' candidates; the stream starts after them)`);
+    }
     const r = await ev(eriksen, `${p.id}/declare`, 'products.event_product.declare', 'DPR', { declaration: EVENT_DECL }, p.id);
     if (!r.ok) fail('N. Eriksen event-declares the stream', r);
     else ok(`N. Eriksen EVENT-DECLARED ${STREAM_KEY}: schema v1 (${EVENT_DECL.schema.fields.map((f) => f.name).join(', ')}), subject warning, ordering by subject, PULL, retention 30 days, replay allowed, source prediction.warning_events [${EVENT_DECL.source.kinds.join(', ')}] — emits corrections ${r.body.event_product?.emits_corrections ?? '?'}`);
@@ -363,6 +373,7 @@ else {
     const metTrue = () => q(`select value, met, observed_at from products.slo_observations where product_id = $1 and measure = 'lag_events' and met order by observed_at desc limit 1`, [STREAM.id]).then((r) => r[0] ?? null);
     let mt1 = await metTrue();
     if (mt1 === null && SUB?.state === 'active') { note(`waiting for the next tick's lag observation (subscription-lag 63) — ${elapsed()}`); mt1 = await waitFor('lag_events met', metTrue, (r) => r !== null, 3 * MIN); }
+    (mt1 ? ok : bad)(`THE NEXT TICK observed lag_events ${mt1 ? `${mt1.value} → met (at ${new Date(mt1.observed_at).toISOString()})` : 'NOT met'} — the subscription back within its policy after the conformance and the resumption`);
     const rd = await ev(eriksen, `${STREAM.id}/read`, 'products.product.read', 'DPR', {}, STREAM.id, READ);
     if (!rd.ok) fail('N. Eriksen reads the event product', rd);
     else {
