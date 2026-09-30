@@ -43,6 +43,23 @@ async function openPackage(page: Page, title: RegExp): Promise<void> {
   await page.getByRole('button', { name: title }).first().click();
   await expect(page.getByRole('heading', { level: 2, name: title })).toBeVisible({ timeout: 20_000 });
 }
+/** The demonstration domain's id, read from a domain persona's own session (the server reported it at sign-in; nothing is inferred). */
+async function demoDomainId(page: Page): Promise<string> {
+  await uiLogin(page, 's.okafor', required('EYE_TEST_ADMIN_PASSWORD'));
+  const id = await page.evaluate(() => (JSON.parse(sessionStorage.getItem('eye.session') ?? '{}') as { scope?: { domainId?: string | null } }).scope?.domainId ?? null);
+  if (id === null) throw new Error('the demonstration domain id was not in the session');
+  return id;
+}
+/** A TENANT-homed principal (the auditor) has no home domain: the Decisions shell offers the working-domain chooser first (B18) — the id is pasted. */
+async function chooseWorkingDomain(page: Page, domainId: string): Promise<void> {
+  await page.goto('/decisions');
+  const chooser = page.getByRole('form', { name: 'Working domain' });
+  await expect(chooser.or(page.getByRole('heading', { name: 'Decisions', level: 1 })).first()).toBeVisible({ timeout: 20_000 });
+  if (await chooser.count() > 0) {
+    await chooser.getByLabel(/^Domain id/).fill(domainId);
+    await chooser.getByRole('button', { name: 'Open this domain' }).click();
+  }
+}
 
 test.describe.serial('CP-6 B36 — the gate completed on the demonstration', () => {
   test('SIGNED and DISTRIBUTED: S. Okafor opens the committed dual-sourcing decision — the approval signed and VERIFIED, the decision signed by C. Brenner, the distribution rows with their receipts (email SYNTHETIC)', async ({ page }) => {
@@ -111,7 +128,9 @@ test.describe.serial('CP-6 B36 — the gate completed on the demonstration', () 
   });
 
   test('THE AUDITOR reads the same gate badge on the committed decision and may raise a challenge (offered; not performed by the walk)', async ({ page }) => {
+    const domainId = await demoDomainId(page);
     await uiLogin(page, AUDITOR_LOGIN, required('EYE_TEST_ADMIN_PASSWORD'));
+    await chooseWorkingDomain(page, domainId); // the auditor is bound at the TENANT: the working domain is pasted
     await openPackage(page, COMMITTED);
     await expect(page.getByTestId('gate-state').first()).toContainText('APPROVED', { timeout: 20_000 });
     await expect(page.getByRole('button', { name: 'Challenge this decision' })).toBeVisible();

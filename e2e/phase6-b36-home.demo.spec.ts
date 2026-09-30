@@ -98,11 +98,16 @@ test.describe.serial('CP-6 B36 — the executive home on the demonstration', () 
     await views.getByRole('button', { name: /Cadence preparation/ }).click();
     const open = page.getByTestId('command-view-open');
     await expect(open).toBeVisible({ timeout: 20_000 });
-    await expect(open.getByText(/Safe actions offered:/)).toContainText('Curate the agenda');
+    // the safe actions line: its <strong> label and the words after it are one paragraph (getByText would resolve the <strong> alone)
+    await expect(open.locator('p').filter({ hasText: 'Safe actions offered:' })).toContainText('Curate the agenda');
     await expect(open.getByTestId('home-section-cadence')).toBeVisible();
     await expect(open.getByTestId('home-section-warnings')).toHaveCount(0);
-    // the agenda the act curated (the operator's tooling on the cadence section)
-    await expect(page.getByTestId('home-section-cadence').getByRole('list', { name: 'agenda' }).first()).toBeVisible();
+    // the agenda the act curated was cycle #1's; the act's RESET closed that cycle and opened #2, whose agenda is none — the cadence section
+    // names the open cycle, the last reset's closing record, and the agenda either way (the operator's tooling on the cadence section)
+    const cadence = page.getByTestId('home-section-cadence').first(); // the home's own; the open command view renders the section a second time
+    await expect(cadence.getByLabel('the cadence')).toContainText(/cycle #\d+ open since .* · the previous \(#\d+\) closed/);
+    await expect(cadence.getByText(/^Agenda:/)).toBeVisible();
+    await expect(cadence.getByRole('list', { name: 'agenda' }).or(cadence.getByText(/^Agenda: none set$/)).first()).toBeVisible();
     await shot(page, 'b36-home-05-operator-view');
     // the metrics computed on read: three lines, each with its population and as-of; nothing stored
     await page.getByRole('button', { name: 'Read the metrics' }).click();

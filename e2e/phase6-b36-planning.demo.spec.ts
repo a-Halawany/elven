@@ -36,9 +36,11 @@ async function uiLogin(page: Page, username: string, password: string): Promise<
 async function openPlan(page: Page): Promise<void> {
   await page.goto('/graph/strategy/planning');
   await expect(page.getByRole('heading', { name: 'Strategy and Planning', level: 1 })).toBeVisible();
-  // a wrapping <label> includes its option text: select by role
-  await page.getByRole('combobox', { name: 'Plan' }).selectOption({ label: /Dual-sourcing 2027/ });
-  await expect(page.getByRole('heading', { name: /Dual-sourcing 2027/, level: 2 })).toBeVisible();
+  // a wrapping <label> includes its option text: select by role; selectOption takes the option's exact label (a string), read from the option itself
+  const plans = page.getByRole('combobox', { name: 'Plan', exact: true }); // "Objective (of the plan's set)" also contains the word
+  const label = await plans.locator('option').filter({ hasText: /Dual-sourcing 2027/ }).first().textContent();
+  await plans.selectOption({ label: label ?? '' });
+  await expect(page.getByRole('heading', { name: /^Dual-sourcing 2027$/, level: 2 })).toBeVisible(); // the plan's own heading, not "Propose an initiative into …"
 }
 
 test.describe.serial('CP-6 B36 §P — the planning workspace on the demonstration', () => {
@@ -59,7 +61,7 @@ test.describe.serial('CP-6 B36 §P — the planning workspace on the demonstrati
     await expect(page.getByRole('heading', { name: /second NdFeB source|dual-sourcing/i, level: 3 }).first()).toBeVisible();
     await expect(page.getByLabel('initiative state').first()).toContainText(/approved|paused|closed|funded/);
     await expect(page.getByLabel('authority banner').first()).toContainText(/^Next: /);
-    await expect(page.getByText(/Q2/).first()).toBeVisible();
+    await expect(page.locator('li').filter({ hasText: /Q2 2024 magnet stock floor/ }).first()).toBeVisible(); // the milestone row (a hidden <pre> of the breach's forecast impact also says Q2)
     await shot(page, 'b36-planning-01-plan');
   });
 
@@ -109,7 +111,8 @@ test.describe.serial('CP-6 B36 §P — the planning workspace on the demonstrati
     await uiLogin(page, LEAD, required('EYE_TEST_ADMIN_PASSWORD'));
     await page.goto('/graph/strategy');
     await expect(page.getByRole('heading', { name: 'Strategy Graph', level: 1 })).toBeVisible();
-    await page.getByRole('button', { name: /corridor|Keep the Regensburg line/i }).first().click();
+    // the plan is on the Regensburg objective (EYE_B36_OBJECTIVE_TITLE): its own button, not another "corridor" object's (a plan panel renders for an OBJ or INI only)
+    await page.getByRole('button', { name: process.env['EYE_B36_OBJECTIVE_TITLE'] ?? 'Keep the Regensburg line supplied through Q1', exact: true }).first().click();
     const links = page.getByRole('list', { name: 'plan links' });
     await expect(links.first()).toBeVisible();
     await expect(page.getByText(/open the planning workspace/)).toBeVisible();
