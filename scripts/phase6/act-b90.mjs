@@ -195,7 +195,7 @@ async function releasedProduct({ key, title, kind, purpose, owner, decl, beforeD
   } else note(`${key} stands (${p.state}${p.released_version ? `, v${p.released_version} released` : ''}, owner ${nm(p.owner)}) — an earlier run`);
   if (beforeDeclare !== null) await beforeDeclare(p);
   if (['released', 'degraded', 'withdrawn', 'retired'].includes(p.state)) return p;
-  if (p.current_version === null) {
+  if (p.current_version === null || Number(p.current_version) < 1) { // the registry reads 0 before the first declaration
     const d = await pr(owner, `${p.id}/declare`, 'products.product.declare', 'DPR', { declaration: decl }, p.id);
     if (!d.ok) { fail(`${nm(owner.principalId)} declares ${key}`, d); return p; }
     ok(`${nm(owner.principalId)} DECLARED ${key} v${d.body.product.version}: contract ${JSON.stringify(decl.contract.schema ?? decl.contract.fields?.map((f) => f.name))}, serving ${decl.serving_modes.join('+')}, SLO ${JSON.stringify(decl.slo)}, purposes ${decl.policy.purposes.join('+')} (digest ${String(d.body.product.digest).slice(0, 12)}…)`);
@@ -438,8 +438,10 @@ const METRICS = [
   { key: 'corridor-exposure-eur-draft', title: 'Corridor exposure (EUR at risk) — draft', purpose: 'an analyst draft of the exposure metric (the mean per month), never certified (SYNTHETIC)', certify: false,
     def: () => ({ measure: 'measure_observations', unit: 'EUR', aggregation: 'avg', grain: 'month', dimensions: ['measure_id', 'objective_id'], filters: { measure_id: MSR } }), effective: '80 days' },
   { key: 'strategic-health-score', title: 'Strategic Health Score', purpose: 'the decomposable Strategic Health Score served as a certified metric (its owner the executive)', certify: true,
-    def: () => ({ measure: 'health_score', unit: 'points', aggregation: 'last', grain: 'component', dimensions: ['definition_id', 'component_key'], filters: {} }), effective: null },
+    // the ACTIVE definition's components (the measure serves the latest snapshot per definition; the superseded definition's would appear beside it)
+    def: () => ({ measure: 'health_score', unit: 'points', aggregation: 'last', grain: 'component', dimensions: ['definition_id', 'component_key'], filters: ACTIVE_DEF ? { definition_id: ACTIVE_DEF } : {} }), effective: null },
 ];
+const ACTIVE_DEF = (await q(`select definition_id::text id from executive.health_score_definitions where tenant_id = $1 and domain_id = $2 and state = 'active' order by version desc limit 1`, [T, D]))[0]?.id ?? null;
 const MODEL = {};
 for (const M of METRICS) {
   let p = await productByKey(M.key);
