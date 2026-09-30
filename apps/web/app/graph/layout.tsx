@@ -61,6 +61,9 @@ const NAV = [
   /* B36 (0094 §P) planning */
   { href: '/graph/strategy/planning', label: 'Planning', glyph: '▤' },
   /* end B36 planning */
+  /* B90 catalog (0095 §K) */
+  { href: '/graph/data/catalog', label: 'Catalog', glyph: '⊟' },
+  /* end B90 catalog */
   /* end B32 graph */
   { href: '/graph/impact', label: 'Impact', glyph: '⚠' },
   { href: '/graph/subscriptions', label: 'Subscriptions', glyph: '⟳' },
