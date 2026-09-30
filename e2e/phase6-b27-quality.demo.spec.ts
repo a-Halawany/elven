@@ -63,7 +63,7 @@ test.describe.serial('CP-6 B27 §Q — scenario quality on the demonstration', (
     await uiLogin(page, OWNER, required('EYE_TEST_ADMIN_PASSWORD'));
     await openQuality(page);
     await expect(page.getByRole('status').filter({ hasText: /DECISION-ACTIVE/ }).first()).toContainText(/NOT DECISION-ACTIVE — .*failed: .*indistinct_branches/);
-    const findings = page.getByRole('region', { name: 'Findings' });
+    const findings = page.getByRole('region', { name: 'Findings', exact: true });
     const row = findings.getByRole('row').filter({ hasText: /distinctiveness — branches differ only in wording/ }).first();
     await expect(row).toContainText('FAIL');
     await expect(row).toContainText(/differ only in wording/);
@@ -73,7 +73,7 @@ test.describe.serial('CP-6 B27 §Q — scenario quality on the demonstration', (
   test('THE FRESHNESS: the freight-rate signpost is named MISSING (or STALE) with its reason; the other signposts carry their state in words', async ({ page }) => {
     await uiLogin(page, OWNER, required('EYE_TEST_ADMIN_PASSWORD'));
     await openQuality(page);
-    const fresh = page.getByRole('region', { name: 'Indicator freshness' });
+    const fresh = page.getByRole('region', { name: 'Indicator freshness', exact: true });
     await expect(fresh).toContainText(/\d+ missing · \d+ stale/);
     const freight = fresh.getByRole('row').filter({ hasText: /[Ff]reight/ }).first();
     await expect(freight).toContainText(/MISSING|STALE/);
@@ -84,12 +84,12 @@ test.describe.serial('CP-6 B27 §Q — scenario quality on the demonstration', (
   test('THE PROBABILITIES: each governed band with its method and basis, the live lows\' sum, the map with its bands; the owner holds set / withdraw', async ({ page }) => {
     await uiLogin(page, OWNER, required('EYE_TEST_ADMIN_PASSWORD'));
     await openQuality(page);
-    const probs = page.getByRole('region', { name: 'Branch probabilities' });
+    const probs = page.getByRole('region', { name: 'Branch probabilities', exact: true });
     await expect(probs).toContainText(/lows sum to \d+(\.\d+)?%/);
     await expect(probs.getByRole('row').filter({ hasText: /frequency map|expert elicitation|model — simulation run/ }).first()).toBeVisible();
     await expect(page.getByRole('button', { name: 'Set the probability' })).toBeVisible();
     await expect(page.getByRole('combobox', { name: 'Method', exact: true })).toBeVisible();
-    const maps = page.getByRole('region', { name: 'Frequency-to-probability maps' });
+    const maps = page.getByRole('region', { name: 'Frequency-to-probability maps', exact: true });
     await expect(maps).toContainText(/version \d+/);
     await shot(page, 'b27-quality-04-probabilities');
   });
@@ -97,7 +97,7 @@ test.describe.serial('CP-6 B27 §Q — scenario quality on the demonstration', (
   test('THE READER: an analyst reads the quality and the probabilities but is offered no set or withdraw (the server would refuse it anyway)', async ({ page }) => {
     await uiLogin(page, READER, required('EYE_TEST_ADMIN_PASSWORD'));
     await openQuality(page);
-    await expect(page.getByRole('region', { name: 'Branch probabilities' })).toContainText(/is set or withdrawn by the scenario's owner, the branch's owner or an administrator/);
+    await expect(page.getByRole('region', { name: 'Branch probabilities', exact: true })).toContainText(/is set or withdrawn by the scenario's owner, the branch's owner or an administrator/);
     await expect(page.getByRole('button', { name: 'Set the probability' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Evaluate the quality now' })).toHaveCount(0);
     await shot(page, 'b27-quality-05-reader');

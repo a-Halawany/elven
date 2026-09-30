@@ -58,7 +58,7 @@ test.describe.serial('CP-6 B27 §A — scenario anatomy on the demonstration', (
     await expect(page.getByRole('cell', { name: /carriers/i }).first()).toBeVisible();
     await expect(page.getByText(/war-risk premium/i).first()).toBeVisible();
     await expect(page.getByText(/exogenous \(a shock from outside\)/).first()).toBeVisible();
-    const register = page.getByRole('region', { name: 'Assumption register' });
+    const register = page.getByRole('region', { name: 'Assumption register', exact: true });
     await expect(register.getByText(/insurers keep war-risk cover/i).first()).toBeVisible();
     await expect(register.getByText(/^CRITICAL · assumption (invalidated|verified|unverified)/).first()).toBeVisible();
     await shot(page, 'b27-anatomy-01-anatomy');
