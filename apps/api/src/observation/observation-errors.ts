@@ -886,6 +886,17 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   { match: /^data product rejected \((state|duplicate|duplicate_authority|review|canonical|meaning|consumers|contract_tests)\)/i, status: 409, code: 'EYE_STA_002' },
   { match: /^data product rejected/i, status: 422, code: 'EYE_REQ_001' },
   /* end B90 prelude */
+  /* B90 events (0095 §E) — the event product's and the subscription's families `event product rejected (<class>)` and `subscription
+     rejected (<class>)`, every row requiring the class parenthesis: 0063's graph subscriptions raise the unclassed `subscription rejected:
+     …` texts, which no row reads and none of these rows may catch. B9's order: the standing 403 (the acting principal, the authority of the
+     owner or the steward, the consumer's own act), the absences 404 (unknown_*), the record's state 409 (state; lag — the consumer still
+     behind when the owner would resume; schema_pending — the accepted version still the broken one), the caller's own 422 (the schema on
+     registration, the fields, the purpose, the window, the lag policy, the capability, the source among them). */
+  { match: /^(event product|subscription) rejected \((actor|authority|not_consumer)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^(event product|subscription) rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^(event product|subscription) rejected \((state|lag|schema_pending)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^(event product|subscription) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B90 events */
   /* B36 home (0094 §H) — the executive home's families in the CLASS form `<noun> rejected (<class>): …`: `cadence rejected`, `executive room
      rejected` (0044's unclassed `room rejected: …` texts are the decision room's and are mapped by no row; the noun here is `executive room`
      and every row is anchored), `objective review rejected` (the SoD of §H2's re-declared convene_review and of open_subject_room — B23's

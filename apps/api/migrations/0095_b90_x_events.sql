@@ -29,7 +29,7 @@
 --   subscription lagging beyond its policy, or accepting a schema the product broke, is PAUSED with its offset preserved, its owner
 --   notified, and RESUMES only after the consumer's conformance and the owner's word.
 --   Refusal family: `event product rejected (<class>)` and `subscription rejected (<class>)` — actor | authority | not_consumer → 403,
---   unknown_* → 404, state | lag | schema (on resume) → 409, the rest → 422. Every figure a harness seeds is SYNTHETIC. Forward-only.
+--   unknown_* → 404, state | lag | schema_pending → 409, the rest → 422. Every figure a harness seeds is SYNTHETIC. Forward-only.
 
 -- ═════════════════════════════════════════════════════════════════════
 -- §E.1 THE VOCABULARY
@@ -831,7 +831,7 @@ BEGIN
     RAISE EXCEPTION 'subscription rejected (state): subscription % is % (%) and its consumer has not declared conformance since the pause; conformance is required before resumption (DP-43-006)', p_subscription_id, s.state, s.paused_reason USING ERRCODE = '22023';
   END IF;
   IF s.paused_reason = 'schema' AND s.schema_version <> ep.schema_version THEN
-    RAISE EXCEPTION 'subscription rejected (schema): subscription % still accepts schema % while the product serves % (breaking); the consumer conforms to the current version first', p_subscription_id, s.schema_version, ep.schema_version USING ERRCODE = '22023';
+    RAISE EXCEPTION 'subscription rejected (schema_pending): subscription % still accepts schema % while the product serves % (breaking); the consumer conforms to the current version first', p_subscription_id, s.schema_version, ep.schema_version USING ERRCODE = '22023';
   END IF;
   IF s.paused_reason = 'lag' THEN
     v_head := coalesce((SELECT max(x.sequence) FROM products.event_stream x WHERE x.product_id = s.product_id), 0);
