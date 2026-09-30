@@ -38,11 +38,16 @@ import { ExposuresController } from './exposures/exposures.controller.js';
 /* B36 (0094 §C5) collab: the learn step */ import { ExposureLearningController } from './exposures/exposure-learning.controller.js'; /* end B36 collab */
 import { ExposuresService } from './exposures/exposures.service.js';
 /* end B32 exposures */
+/* B27 anatomy (0097 §A): the scenario's anatomy — its own controller under …/prediction/scenarios/anatomy, and its service (the read's map) */
+import { AnatomyController } from './scenarios/anatomy/anatomy.controller.js';
+import { AnatomyService } from './scenarios/anatomy/anatomy.service.js';
+/* end B27 anatomy */
 
 @Module({
   imports: [PipelineModule, ObservationModule, GraphModule, /* B28 (0088) warnings: the attention tick's registry */ ExecutiveModule /* end B28 warnings */,
             /* B32 (0089) exposures */ DecisionModule /* end B32 exposures */],
-  controllers: [PredictionController, /* B28 (0088) signals */ SignalsController /* end B28 signals */, /* B32 (0089) exposures */ ExposuresController /* end B32 exposures */, /* B36 (0094 §C5) collab */ ExposureLearningController /* end B36 collab */],
+  controllers: [PredictionController, /* B28 (0088) signals */ SignalsController /* end B28 signals */, /* B32 (0089) exposures */ ExposuresController /* end B32 exposures */, /* B36 (0094 §C5) collab */ ExposureLearningController /* end B36 collab */,
+                /* B27 anatomy */ AnatomyController /* end B27 anatomy */],
   providers: [
     SeriesService,
     ForecastingService,
@@ -57,6 +62,7 @@ import { ExposuresService } from './exposures/exposures.service.js';
     StreamRulesConsumer,
     /* end B28 streams */
     /* B32 (0089) exposures */ ExposuresService, /* end B32 exposures */
+    /* B27 anatomy */ AnatomyService, /* end B27 anatomy */
     { provide: APP_FILTER, useClass: ObservationExceptionFilter },
   ],
   exports: [SeriesService, ForecastingService, ScenariosService],
