@@ -100,7 +100,9 @@ describe('the route validators (the SHAPE; the ports judge the rest)', () => {
 });
 
 describe('every refusal text of 0097 §A maps to its class\'s status', () => {
-  const sqlText = readFileSync(join(__dirname, '../../migrations/0097_b27_x_anatomy.sql'), 'utf8');
+  // §I: the part file is combined into the one 0097 — judge §A's section only (between its header and §Q's)
+  const whole = readFileSync(join(__dirname, '../../migrations/0097_b27_scenario_anatomy_sets_coherence.sql'), 'utf8');
+  const sqlText = whole.slice(whole.indexOf('-- section `anatomy` (§A)'), whole.indexOf('-- section `quality` (§Q)'));
   const raw = [...sqlText.matchAll(/RAISE EXCEPTION '((?:[^']|'')*)'/g)].map((m) => m[1]!.replace(/''/g, "'"));
   const families = ['scenario element', 'scenario assumption', 'scenario record', 'branch suspension'];
   const texts = raw.flatMap((t) => (t.startsWith('% rejected') ? families.map((f) => f + t.slice(1)) : [t]))
