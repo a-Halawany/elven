@@ -90,6 +90,9 @@ describe('B90 products · the EXACT PDP rules', () => {
     expect(pdp.evaluate(input({ action: 'products.product.scorecard.compute', roles: ['domain_analyst'] })).obligations).toEqual([]);
     expect(pdp.evaluate(input({ action: 'products.product.retire', roles: ['domain_analyst'] })).obligations).toEqual([{ type: 'human_gate' }]);
   });
+  it('a PURE data steward resolves its own scope (identity.self.read — found by the B90 browser gate: the /graph/data pages refused a steward holding no other role)', () => {
+    expect(pdp.evaluate(input({ action: 'identity.self.read', roles: ['data_steward'] })).decision).not.toBe('deny');
+  });
 });
 
 describe('B90 products · the validators and the tick\'s wording', () => {
