@@ -252,7 +252,9 @@ test.describe('CP-6 B90 — event products and subscriptions: the stream release
     await uiLogin(page, consumer.username, PW);
     await openStream(page);
     await expect(page.getByLabel('my subscription state')).toHaveText('⏸ PAUSED (owner) — conform, then the owner resumes');
-    await expect(page.getByText(PAUSE_REASON)).toBeVisible();
+    // the note twice on the page: the subscription's own record (its dd, in "My subscription") and the events ledger's line ("pause: …")
+    await expect(page.getByLabel('My subscription', { exact: true }).getByText(PAUSE_REASON, { exact: true })).toBeVisible();
+    await expect(page.getByText(`pause: ${PAUSE_REASON}`).first()).toBeVisible();
     await expect(page.getByLabel('my lag')).toHaveText(LAG_LINE);
     await expect(page.getByRole('button', { name: 'Declare conformance' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Acknowledge', exact: true })).toBeDisabled();

@@ -221,7 +221,9 @@ test.describe('CP-6 B90 — the data product registry: register → declare → 
     await expect(obs).toContainText('synthetic availability probe (e2e)');
     // THE LEDGER so far
     const events = page.getByRole('list', { name: 'product events' });
-    for (const e of ['product.registered', 'product.declared', 'product.reviewed', 'product.released', 'slo.observed']) await expect(events).toContainText(e);
+    // (an SLO observation lives in its own ledger — the "slo observations" table above — and is no product event: 0095's CHECK names none)
+    for (const e of ['product.registered', 'product.declared', 'product.reviewed', 'product.released']) await expect(events).toContainText(e);
+    await expect(events).not.toContainText('slo');
     // no scorecard yet (the schedule's), said; THE OWNER COMPUTES ONE NOW — the verdict and the attainment are the server's
     await expect(page.getByText('No scorecard yet — the schedule computes one per tick on a released product; the owner or the steward may compute one now.')).toBeVisible();
     await page.getByRole('button', { name: 'Compute scorecard now' }).click();
