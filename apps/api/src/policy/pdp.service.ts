@@ -135,6 +135,9 @@ const BUNDLE_V1: Rule[] = [
       { role: 'executive_operator', atScope: 'DOMAIN' },
       { role: 'board_member', atScope: 'DOMAIN' },
       /* end B36 */
+      /* B36 collab (0094 §C1): the external collaborator reads its OWN identity — the route answers it BOUNDED TO ITS GRANT (F-P6-14 (q)) */
+      { role: 'external_collaborator', atScope: 'DOMAIN' },
+      /* end B36 collab */
     ],
     obligations: [{ type: 'audit_access' }],
     requiresPurpose: true,
@@ -1795,6 +1798,22 @@ const BUNDLE_V1: Rule[] = [
   { actionPrefix: 'executive.external_draft.review', exact: true, requiredAnyRole: [{ role: 'executive', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   { actionPrefix: 'executive.publication.read', exact: true, requiredAnyRole: [{ role: 'board_member', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'executive_operator', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_approver', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' }, { role: 'opportunity_sponsor', atScope: 'DOMAIN' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'retention_authority', atScope: 'TENANT' }, { role: 'platform_admin', atScope: 'PLATFORM' }], requiresPurpose: true, maxConsequence: 'C2' },
   /* end B36 publishing */
+  /* B36 collab (0094 §C): COLLABORATION COMPLETED AND THE CARRIED MECHANISMS (F-P6-14 (q)–(t), F-P6-05 (u), F-P4-13 (i)–(j)). EXACT rules —
+     no earlier rule is a prefix of executive.task.dependency.*, executive.collab.mailbox.*, decision.execution.target.* or
+     prediction.exposure.learn (the workflow, commitment and exposure rules above are all exact). The EXTERNAL COLLABORATOR gains nothing
+     here: the pickup route is public (the mailbox's code is its authority — no PDP), and the external's bounded self read is
+     identity.self.read (above) composed with executive.collab.read (B34's rule). A task dependency is declared by the task readers who
+     act (the port: the holder, the opener, the workspace's owner, an executive or an administrator). The mailbox message is the identity
+     administrators' read (the code inside is the invitee's). A REAL execution target is REGISTERED by the domain administrator (inactive),
+     ACTIVATED by the execution authority (the port: not the registrar, with the owner's committed decision) and DEACTIVATED by either.
+     The learn step is the exposure's owner's or sponsor's, as the outcome review is. */
+  { actionPrefix: 'executive.task.dependency.declare', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'decision_approver', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' }, { role: 'opportunity_sponsor', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'execution_authority', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'executive.collab.mailbox.read', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }], obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'decision.execution.target.register', exact: true, requiredAnyRole: [{ role: 'domain_admin', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'decision.execution.target.activate', exact: true, requiredAnyRole: [{ role: 'execution_authority', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'decision.execution.target.deactivate', exact: true, requiredAnyRole: [{ role: 'execution_authority', atScope: 'DOMAIN' }, { role: 'domain_admin', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'prediction.exposure.learn', exact: true, requiredAnyRole: [{ role: 'risk_owner', atScope: 'DOMAIN' }, { role: 'opportunity_sponsor', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B36 collab */
 ];
 
 const CONSEQ_ORDER: ConsequenceClass[] = ['C0', 'C1', 'C2', 'C3', 'C4'];

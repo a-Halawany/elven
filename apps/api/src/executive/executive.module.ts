@@ -76,9 +76,15 @@ import { PlanningService } from './planning/planning.service.js';
 import { HomeController } from './home/home.controller.js';
 import { HomeService } from './home/home.service.js';
 /* end B36 home */
+/* B36 (0094 §C) collab: the invitation delivery and pickup, the external's bounded surface, task dependencies */
+import { CollabB36Controller, InvitationPickupController } from './workflow/collab-b36.controller.js';
+import { AuditModule } from '../audit/audit.module.js';
+import { InvitationDeliveryService } from './workflow/invitation-delivery.service.js';
+/* end B36 collab */
 @Module({
-  imports: [PipelineModule, IdentityModule, ObservationModule, DecisionModule, GraphModule],
-  controllers: [ExecutiveController, /* B34 (0090) workflow */ WorkflowController /* end B34 workflow */, /* B36 (0094 §A) attention */ AttentionB36Controller /* end B36 attention */, /* B36 (0094) publishing */ PublishingController /* end B36 publishing */, /* B36 planning */ PlanningController /* end B36 planning */, /* B36 home (0094 §H) */ HomeController /* end B36 home */],
+  imports: [PipelineModule, IdentityModule, ObservationModule, DecisionModule, GraphModule, /* B36 (0094 §C) collab: the pickup route's security intake */ AuditModule /* end B36 collab */],
+  controllers: [ExecutiveController, /* B34 (0090) workflow */ WorkflowController /* end B34 workflow */, /* B36 (0094 §A) attention */ AttentionB36Controller /* end B36 attention */, /* B36 (0094) publishing */ PublishingController /* end B36 publishing */, /* B36 planning */ PlanningController /* end B36 planning */, /* B36 home (0094 §H) */ HomeController /* end B36 home */,
+    /* B36 (0094 §C) collab */ CollabB36Controller, InvitationPickupController /* end B36 collab */],
   providers: [SignatureService /* B36 §0 (0094) */, RoomService, BriefingService, AgentsService, AgentWorkerService, DecisionAgentSessionService, RequestsService, AttentionService,
     // B22 (0083): the four consumers of L1-I03, L1-I04, L2-I02 and the attention router (the graph module's dispatcher registers them).
     ObservationsConsumer, SourceHealthConsumer, ProposalsConsumer, AttentionConsumer,
@@ -96,7 +102,8 @@ import { HomeService } from './home/home.service.js';
     /* B36 (0094 §A) attention */ AttentionB36Service /* end B36 attention */,
     /* B36 (0094) publishing */ PublishingService /* end B36 publishing */,
     /* B36 planning */ PlanningService /* end B36 planning */,
-    /* B36 home (0094 §H): the home's service and the tick step room-deadlines */ HomeService /* end B36 home */],
+    /* B36 home (0094 §H): the home's service and the tick step room-deadlines */ HomeService /* end B36 home */,
+    /* B36 (0094 §C) collab */ InvitationDeliveryService /* end B36 collab */],
   exports: [SignatureService, RoomService, BriefingService, AgentsService, AgentWorkerService, RequestsService, AttentionService, AttentionTickRegistry,
     /* B24 (0086) timer */ AttentionTimerService, DeliveryService /* end B24 timer */,
     /* B34 (0090) workflow: the timer registry (the commitments and gates parts register their kinds' handlers) */ WorkflowTimerRegistry, CollabService /* end B34 workflow */,

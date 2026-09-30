@@ -21,7 +21,8 @@ import { useEffect, useState } from 'react';
 import { useShell } from '../layout';
 import { exposures, POLARITY_LABEL, STATE_LABEL, assessorLine, gapLine, likelihoodLine, methodLine, rangeLine, residualLine,
          type Aggregation, type ExposureDetail, type ExposureRow, type Polarity, type Preview, type Register, type ResponseKind,
-         /* B34 (0090) */ OUTCOME_EFFECTS, RESIDUAL_VERDICTS, SCENARIO_RELATIONS, detectionLine, signatureLine } from '../../../lib/exposures';
+         /* B34 (0090) */ OUTCOME_EFFECTS, RESIDUAL_VERDICTS, SCENARIO_RELATIONS, detectionLine, signatureLine,
+         /* B36 (0094 §C5) */ learningLine } from '../../../lib/exposures';
 import { Empty, LiveStatus, Mono, cardStyle, DefinitionRow, UnknownNote, GovernedButton, fmtInstant } from '../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui';
 
@@ -56,6 +57,8 @@ export default function ExposuresPage() {
   const [reown, setReown] = useState({ owner: '', reason: '' });
   const [scn, setScn] = useState({ id: '', relation: 'materializes_in' as (typeof SCENARIO_RELATIONS)[number], rationale: '' });
   const [rv, setRv] = useState({ effect: 'effective' as (typeof OUTCOME_EFFECTS)[number], verdict: 'stands' as (typeof RESIDUAL_VERDICTS)[number], lesson: '' });
+  /* B36 (0094 §C5): the learn step — what was expected, what happened, what changes in the basis */
+  const [ln, setLn] = useState({ expected: '', observed: '', basisChange: '' });
   const mayActivate = holds('executive') || holds('domain_admin') || holds('platform_admin');
   const mayResolve = holds('domain_admin') || holds('platform_admin');
   /* end B34 */
@@ -382,6 +385,18 @@ export default function ExposuresPage() {
             <ul aria-label="responses monitored">{open.responses.map((r) => (
               <li key={`m-${r.response_id}`}>{r.response_kind} · monitor: <strong>{r.monitor?.state ?? 'unknown'}</strong>{r.monitor?.owed ? <> — owed: {r.monitor.owed}</> : null}
                 {(r.reviews ?? []).map((k) => <div key={k.review_id}>reviewed: {k.effect.replace(/_/g, ' ')} · residual {k.residual_verdict} · lesson: {k.lesson}</div>)}
+                {/* B36 (0094 §C5): THE LEARN STEP (JRN-09) — each review's learning on the lineage; the owner or the sponsor records the one still owed */}
+                {(r.learnings ?? []).map((l) => <div key={l.learning_id} aria-label="learning">learned: {learningLine(l)}</div>)}
+                {(r.learn_owed ?? []).length > 0 && (x.owner_principal_id === me.principalId || x.sponsor_principal_id === me.principalId) ? (
+                  <div aria-label="learn step">
+                    <p style={{ color: 'var(--eye-color-warning)', fontWeight: 650 }}>Learn: the review is recorded; what was expected, what happened, what changes in the estimate&apos;s basis?</p>
+                    <input aria-label="what was expected" placeholder="what was expected (8..2000)" style={inputStyle} value={ln.expected} onChange={(e) => setLn({ ...ln, expected: e.target.value })} />
+                    <input aria-label="what happened" placeholder="what happened (8..2000)" style={inputStyle} value={ln.observed} onChange={(e) => setLn({ ...ln, observed: e.target.value })} />
+                    <input aria-label="what changes in the basis" placeholder="what changes in the estimate's basis (16..4000)" style={inputStyle} value={ln.basisChange} onChange={(e) => setLn({ ...ln, basisChange: e.target.value })} />
+                    <GovernedButton label="Record the learning" pendingLabel="recording the learning"
+                      onRun={() => act('the learning was recorded on the exposure', () => exposures.recordLearning(scope, x.exposure_id, { reviewId: String((r.learn_owed ?? [])[0]), ...ln }), () => reopen(x.exposure_id))} />
+                  </div>
+                ) : null}
                 {r.monitor?.state === 'outcome_recorded' && (x.owner_principal_id === me.principalId || x.sponsor_principal_id === me.principalId) ? (
                   <div>
                     <select aria-label="outcome effect" style={inputStyle} value={rv.effect} onChange={(e) => setRv({ ...rv, effect: e.target.value as (typeof OUTCOME_EFFECTS)[number] })}>{OUTCOME_EFFECTS.map((k) => <option key={k}>{k}</option>)}</select>

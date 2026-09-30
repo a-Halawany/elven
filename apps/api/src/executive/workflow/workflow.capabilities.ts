@@ -78,6 +78,12 @@ export interface WorkflowReads {
   readGrants(): any;
   readCollabEvents(): any;
   readInvitationMail(): any;
+  /* B36 (0094 §C2): what a task waits on (the inbox and the task read say it) */
+  taskDependencies(taskId: string): Promise<Row>;
+  unmetDependencies(taskId: string): Promise<Row[]>;
+  /* B36 (0094 §C3): the delivery's state, for the workspace read */
+  invitationDelivery(grantId: string): Promise<Row | null>;
+  /* end B36 */
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
@@ -157,6 +163,15 @@ class WorkflowCapabilityImpl extends WorkflowCore implements WorkflowWrites, Tas
   readGrants(): any { return this.from('executive.collab_grants'); }
   readCollabEvents(): any { return this.from('executive.collab_events'); }
   readInvitationMail(): any { return this.from('executive.collab_invitation_mail'); }
+  /* B36 (0094 §C2/§C3) */
+  async taskDependencies(taskId: string): Promise<Row> { return this.one(sql`select executive.task_dependencies_of(${taskId}::uuid) as r`, 'task_dependencies_of'); }
+  async unmetDependencies(taskId: string): Promise<Row[]> {
+    return (await this.one(sql`select jsonb_build_object('unmet', executive.task_unmet_dependencies(${taskId}::uuid)) as r`, 'task_unmet_dependencies'))['unmet'] as Row[];
+  }
+  async invitationDelivery(grantId: string): Promise<Row | null> {
+    return ((await this.one(sql`select jsonb_build_object('d', executive.invitation_delivery_of(${grantId}::uuid)) as r`, 'invitation_delivery_of'))['d'] ?? null) as Row | null;
+  }
+  /* end B36 */
 
   async publishDefinition(a: Parameters<WorkflowWrites['publishDefinition']>[0]) {
     return this.one(sql`select executive.publish_workflow_definition(${a.definitionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.defKey}, ${JSON.stringify(a.spec)}::jsonb,

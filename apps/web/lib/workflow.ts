@@ -29,7 +29,25 @@ export interface HumanTask {
   task_id: string; kind: string; title: string; subject: Row; state: string; assignee: string | null; candidate_roles: string[]; deadline_at: string | null; escalation: Row;
   escalation_level: number; outcome: string | null; completed_by: string | null; completed_at: string | null; completion_evidence: Row | null; opened_by: string; opened_at: string | null;
   completes_through_owning_action: boolean; escalation_chain?: Assignment[];
+  /* B36 (0094 §C2): what the task waits on (finish-to-start) — the server's unmet prerequisites; Complete is offered only when nothing is unmet */
+  waits_on?: WaitsOn[]; blocked?: boolean;
 }
+/* B36 (0094 §C2) */
+export interface WaitsOn { task_id: string; title: string; state: string; assignee?: string | null; deadline_at?: string | null }
+export interface TaskDependencies {
+  waits_on: Array<WaitsOn & { dependency_id: string; kind: string; met: boolean; released_at: string | null; released_by_state: string | null; declared_by: string; declared_at: string }>;
+  released_by_this: Array<{ dependency_id: string; task_id: string; title: string; state: string; released_at: string | null }>; blocked: boolean;
+}
+/* B36 (0094 §C3): the invitation's delivery as a member reads it (never the code, never the material) */
+export interface Delivery { delivery_id: string; channel: string; synthetic: boolean; delivered_at: string | null; code_expires_at: string | null; failures: number; locked_at: string | null;
+  picked_up_at: string | null; picked_up_from: string | null; state: 'delivered' | 'picked_up' | 'locked' | 'expired' | string; attempts: Array<{ outcome: string; from: string; at: string | null }> }
+/** The pickup's answer — the acceptance material, answered ONCE to the addressed person (the token lives in this tab's memory only, never stored). */
+export interface PickedUpInvitation { grant_id: string; tenant_id: string; domain_id: string; workspace_id: string; workspace_title: string; purpose: string; audience_ceiling: string; expires_at: string;
+  invitation_expires_at: string; principal_id: string; display_name: string | null; login: string; token: string; picked_up_at: string; next: string; synthetic: true }
+/** The external collaborator's bounded surface (the /v1/me answer's `external`, and /executive/collab/self). */
+export interface GrantSurface { grant_id: string; workspace_id: string; workspace_title: string; purpose: string; audience_ceiling: string; state: string; expires_at: string | null; invitation_expires_at: string | null;
+  accepted_at: string | null; live: boolean; expired: boolean; ended: boolean; reason: string | null }
+/* end B36 */
 export interface WorkflowTimer { timer_id: string; owner_kind: string; owner_id: string; kind: string; due_at: string | null; fired_at: string | null; drift_seconds: number | null; cancelled_at: string | null;
   state: 'pending' | 'fired' | 'cancelled' | string; firing: { outcome: string; tick_key: number | null; result: Row; at: string | null } | null; failures?: Array<{ attempt: number; error: string; at: string | null }> }
 export interface WorkflowInstance {
@@ -42,7 +60,8 @@ export interface WorkflowDefinition { definition_id: string; def_key: string; ve
   published_at: string | null; running_pinned: number; instances_pinned: number }
 export interface Grant { grant_id: string; principal: string | null; purpose: string; audience_ceiling: string; state: string; expires_at: string | null; invitation_expires_at: string | null; invited_at: string | null;
   accepted_at: string | null; revoked_at: string | null; revoke_reason: string | null; lapsed_at: string | null; contact_label: string; live: boolean; days_left: number | null;
-  /* B34-F1 (0091) */ display_name?: string | null; login_name?: string | null; provisioned_by?: string | null; provisioned_at?: string | null }
+  /* B34-F1 (0091) */ display_name?: string | null; login_name?: string | null; provisioned_by?: string | null; provisioned_at?: string | null;
+  /* B36 (0094 §C3) */ delivery?: Delivery | null }
 export interface Workspace { workspace_id: string; title: string; subject: Row; purpose: string; classification_ceiling: string; owner: string; state: string; opened_at: string | null; participants?: number; grant?: Grant }
 export interface WorkspaceDetail {
   now: string; viewer: { affiliation: 'member' | 'external'; principal: string; ceiling: string; clearance: string }; workspace: Workspace;
@@ -86,6 +105,11 @@ export const tasks = {
   reassign: (s: Scope, id: string, to: string, reason: string) => p<{ task: Row; receipt: Receipt }>(s, `/executive/tasks/${id}/reassign`, 'executive.task.reassign', 'HTK', { to: to.trim(), reason: reason.trim() }, id),
   complete: (s: Scope, id: string, outcome: string, note: string, purpose = 'executive') =>
     p<{ task: Row; receipt: Receipt }>(s, `/executive/tasks/${id}/complete`, 'executive.task.complete', 'HTK', { outcome: outcome.trim(), note: note.trim() }, id, purpose),
+  /* B36 (0094 §C2): a task waits on another (finish-to-start; the server refuses a cycle and a closed prerequisite) */
+  declareDependency: (s: Scope, id: string, dependsOn: string) =>
+    p<{ dependency: Row & { dependencies: TaskDependencies }; receipt: Receipt }>(s, `/executive/tasks/${id}/dependencies`, 'executive.task.dependency.declare', 'HTK', { depends_on: dependsOn.trim() }, id),
+  dependencies: (s: Scope, id: string) => p<{ dependencies: TaskDependencies; receipt: Receipt }>(s, `/executive/tasks/${id}/dependencies/get`, 'executive.task.read', 'HTK', {}, id),
+  /* end B36 */
 };
 
 /** The collaboration routes are made under the WORKSPACE's purpose (an external's grant is for it; any other purpose is refused). */
@@ -115,6 +139,21 @@ export const collab = {
   revoke: (s: Scope, grantId: string, purpose: string, reason: string) => p<{ grant: Row; receipt: Receipt }>(s, `/executive/collab/grants/${grantId}/revoke`, 'executive.collab.grant.revoke', 'CGR', { reason: reason.trim() }, grantId, purpose),
   accept: (s: Scope, grantId: string, purpose: string, token: string, password: string) =>
     p<{ grant: Row; receipt: Receipt }>(s, `/executive/collab/grants/${grantId}/accept`, 'executive.collab.accept', 'CGR', { token, password }, grantId, purpose),
+  /* B36 (0094 §C1/§C3): the external's bounded surface; the delivery's state; the provisioner's re-delivery; the identity administrator's mailbox read */
+  self: (s: Scope, purpose: string) => p<{ surface: { now: string; grants: GrantSurface[] }; receipt: Receipt }>(s, '/executive/collab/self', 'executive.collab.read', 'CGR', {}, null, purpose),
+  deliveryState: (s: Scope, grantId: string, purpose: string) => p<{ delivery: Delivery | null; receipt: Receipt }>(s, `/executive/collab/grants/${grantId}/delivery`, 'executive.collab.read', 'CGR', {}, grantId, purpose),
+  deliver: (s: Scope, grantId: string, purpose: string) => p<{ delivery: Row }>(s, `/executive/collab/grants/${grantId}/deliver`, 'executive.collab.provision', 'CGR', {}, grantId, purpose),
+  mailbox: (s: Scope, grantId: string, purpose: string) =>
+    p<{ delivery: Delivery; message: { to: string; login: string; subject: string; body: string; placedAt: string; channel: string; synthetic: true } | null; note: string; receipt: Receipt }>(
+      s, `/executive/collab/grants/${grantId}/mailbox`, 'executive.collab.mailbox.read', 'CGR', {}, grantId, purpose),
+  /**
+   * THE PICKUP (no principal — the addressed person is not yet one): the invitation id from the message and the one-time code. The answer
+   * carries the acceptance material ONCE; the page uses it in memory and never stores it.
+   */
+  pickup: (invitationId: string, code: string) => call<{ invitation: PickedUpInvitation }>('/v1/collab/invitations/pickup', {
+    scope: 'PLATFORM', action: 'executive.collab.pickup', object_type: 'CGR', object_id: null, principal_id: 'anonymous', purpose_id: 'authentication', side_effect_class: 'reversible', consequence_class: 'C1',
+  }, { invitationId: invitationId.trim(), code: code.trim() }),
+  /* end B36 */
 };
 
 // ───────────────────────── the words (pure; unit-tested) ─────────────────────────
@@ -171,3 +210,38 @@ export function parseSpec(text: string): { ok: true; spec: Row } | { ok: false; 
     return { ok: false, error: `not JSON: ${e instanceof Error ? e.message : String(e)}` };
   }
 }
+
+/* ───────────── B36 (0094 §C): the words of the dependencies, the delivery and the external's surface (pure; unit-tested) ───────────── */
+/** What a task waits on, in words: nothing, or the unmet prerequisites by title with their state. */
+export function waitsOnWords(waits: WaitsOn[] | undefined | null): string {
+  if (waits === undefined || waits === null || waits.length === 0) return 'waits on nothing';
+  return `waits on ${waits.map((w) => `"${w.title}" (${w.state})`).join(', ')} — completed when they are`;
+}
+/** Whether this page offers Complete: the kind completes here AND nothing is unmet (the server's guard refuses it too). */
+export const completableNow = (t: Pick<HumanTask, 'kind' | 'blocked'>): boolean => completableHere(t.kind) && t.blocked !== true;
+/** The delivery's state in words: delivered (the code's expiry), picked up (when, from where), locked (five wrong codes), expired, or not delivered. */
+export function deliveryWords(d: Delivery | null | undefined, now: string): string {
+  if (d === null || d === undefined) return 'not delivered to the mailbox';
+  const failures = d.failures > 0 ? ` · ${d.failures} wrong code(s)` : '';
+  switch (d.state) {
+    case 'picked_up': return `picked up${d.picked_up_from !== null ? ` from ${d.picked_up_from}` : ''}${failures}`;
+    case 'locked': return `LOCKED after ${d.failures} wrong codes — the owner revokes and re-invites`;
+    case 'expired': return `code expired${failures}`;
+    default: return `delivered to the SYNTHETIC mailbox · ${deadlineWords(d.code_expires_at, now).replace('due in', 'code expires in').replace('overdue by', 'code expired')}${failures}`;
+  }
+}
+/** The pickup code as a person types it, normalised for display (upper-case, three groups; O→0, I/L→1); null when it is not 12 symbols. */
+export function pickupCodeShape(input: string): string | null {
+  const raw = input.toUpperCase().replace(/[\s-]/g, '').replace(/O/g, '0').replace(/[IL]/g, '1');
+  if (raw.length !== 12 || /[^0-9A-HJKMNP-TV-Z]/.test(raw)) return null;
+  return `${raw.slice(0, 4)}-${raw.slice(4, 8)}-${raw.slice(8, 12)}`;
+}
+/** The external's surface from the server's answer: the one workspace to show, or why there is none (expired, ended, not accepted). */
+export function externalSurface(e: { grants: GrantSurface[]; expired: boolean } | null | undefined): { kind: 'none' } | { kind: 'expired'; reason: string } | { kind: 'workspace'; grant: GrantSurface } {
+  if (e === null || e === undefined || e.grants.length === 0) return { kind: 'none' };
+  const live = e.grants.find((g) => g.live);
+  if (live !== undefined) return { kind: 'workspace', grant: live };
+  const g = e.grants[0] as GrantSurface;
+  return { kind: 'expired', reason: g.reason ?? (e.expired ? 'expired' : 'not live') };
+}
+/* end B36 */
