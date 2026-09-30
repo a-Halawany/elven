@@ -96,8 +96,21 @@ class ScorecardsImpl extends Core implements ScorecardTickWrites {
   constructor(tx: Tx, action: string) { super(tx, action); }
   async scorecard(productId: string): Promise<Row | null> {
     const rows = await this.call<{ r: Row | null }>(sql`select products.product_scorecard(${productId}::uuid) as r`);
-    return rows[0]?.r ?? null;
+    const r = rows[0]?.r ?? null;
+    if (r === null) return null;
+    /* B90-F1 integrator (found on the demonstration): the read carries the latest 100 events, and the tick's routine events (a scorecard,
+       an emission, a checkpoint on every tick) push a product's LIFECYCLE out of that window within hours — the page then no longer shows
+       when it was released, degraded, restored, withdrawn or retired. The lifecycle events are always merged in (under the caller's RLS). */
+    const life = await this.call<Row>(sql`select e.event_id, e.event, e.occurred_at, e.actor_principal_id, e.details from products.product_events e
+      where e.product_id = ${productId}::uuid and e.event in ('product.registered', 'product.released', 'product.degraded', 'product.restored', 'product.withdrawn', 'product.retired')
+      order by e.occurred_at desc`);
+    const events = Array.isArray(r['events']) ? (r['events'] as Row[]) : [];
+    const seen = new Set(events.map((e) => String(e['event_id'])));
+    const merged = [...events, ...life.filter((e) => !seen.has(String(e['event_id'])))]
+      .sort((a, b) => String(b['occurred_at'] instanceof Date ? (b['occurred_at'] as Date).toISOString() : b['occurred_at']).localeCompare(String(a['occurred_at'] instanceof Date ? (a['occurred_at'] as Date).toISOString() : a['occurred_at'])));
+    return { ...r, events: merged };
   }
+
   async listWithScorecards(a: { state: string | null; kind: string | null; limit: number }): Promise<Row[]> {
     return this.call<Row>(sql`select products.product_json(p) as product, s.overall, s.attainment_pct, s.floor_pct, s.below_floor, s.computed_at as scorecard_at
       from products.products_current p
