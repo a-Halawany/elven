@@ -131,6 +131,8 @@ function changeOf(r: Row): Row {
     challenge_kind: r['challenge_kind'] ?? null, challenge_statement: r['challenge_statement'] ?? null, challenged_by: r['challenged_by'] ?? null, challenged_at: iso(r['challenged_at']),
     decided_by: r['decided_by'] ?? null, decided_at: iso(r['decided_at']), decision_note: r['decision_note'] ?? null, withdrawn_at: iso(r['withdrawn_at']), withdrawal_reason: r['withdrawal_reason'] ?? null,
     authorizes_action: false,
+    /* B36 (0094 §S1): the owner-edit anti-gaming flag on a favourable change and the edits it rests on — found missing by the hosted gate case */
+    owner_edit_flag: r['owner_edit_flag'] === true, owner_edit_ids: Array.isArray(r['owner_edit_ids']) ? r['owner_edit_ids'] : [],
   };
 }
 

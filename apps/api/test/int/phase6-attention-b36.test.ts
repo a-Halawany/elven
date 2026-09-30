@@ -107,9 +107,9 @@ const stateOf = async (name: string, as = operator): Promise<Row> => (await stat
 const recover = (as: AuthenticatedPrincipal, state: string, note?: string) => b36.recover(E(as, 'executive.attention.queue.recover', 'ATR', null), T(), D(), { payload: note === undefined ? { state } : { state, note } }) as unknown as Promise<{ recovery: Row; mechanics: Row }>;
 const release = (as: AuthenticatedPrincipal, holdId: string, reason: string) => b36.release(E(as, 'executive.attention.queue.release', 'ATH', holdId), T(), D(), holdId, { payload: { reason } }) as unknown as Promise<{ hold: Row }>;
 const holds = (as = executive) => b36.holds(E(as, 'executive.attention.queue.read', 'ATH', null), T(), D(), { payload: {} }) as unknown as Promise<{ holds: Row[] }>;
-const convene = (as: AuthenticatedPrincipal, payload: Row) => b36.convene(E(as, 'executive.forum.convene', 'ROOM', null), T(), D(), { payload }) as unknown as Promise<{ forum: Row }>;
-const forums = (as = operator) => b36.forums(E(as, 'executive.attention.queue.read', 'ROOM', null), T(), D()) as unknown as Promise<{ forums: Row[] }>;
-const forumQueue = (as: AuthenticatedPrincipal, roomId: string) => b36.forumQueue(E(as, 'executive.attention.queue.read', 'ROOM', roomId), T(), D(), roomId, { payload: {} }) as unknown as Promise<Row>;
+const convene = (as: AuthenticatedPrincipal, payload: Row) => b36.convene(E(as, 'executive.forum.convene', 'DRM', null), T(), D(), { payload }) as unknown as Promise<{ forum: Row }>;
+const forums = (as = operator) => b36.forums(E(as, 'executive.attention.queue.read', 'DRM', null), T(), D()) as unknown as Promise<{ forums: Row[] }>;
+const forumQueue = (as: AuthenticatedPrincipal, roomId: string) => b36.forumQueue(E(as, 'executive.attention.queue.read', 'DRM', roomId), T(), D(), roomId, { payload: {} }) as unknown as Promise<Row>;
 
 /* ───────────── the rows ───────────── */
 const itemEvents = async (itemId: string) => (await sql<{ event: string; actor: string; details: Row }>`select event, actor_principal_id::text actor, details from executive.attention_item_events where item_id = ${itemId}::uuid order by occurred_at, event_id`.execute(su)).rows;

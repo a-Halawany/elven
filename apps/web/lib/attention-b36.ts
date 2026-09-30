@@ -79,10 +79,10 @@ export const attentionB36 = {
   recover: (s: Scope, state: string, note: string) => p<{ recovery: RecoveryRoute & { before: Row; after: Row }; mechanics: Row; receipt: Receipt }>(s, '/executive/attention/recovery/run', 'executive.attention.queue.recover', 'ATR', note.trim() === '' ? { state } : { state, note: note.trim() }),
   /** The SYNTHETIC one-shot settle fault (how the resume is reproduced): human-gated, audited, closes nothing. */
   armSettleFault: (s: Scope) => p<{ fixture: Row; receipt: Receipt }>(s, '/executive/attention/recovery/fixtures/arm', 'executive.attention.fixture.arm', 'ATI', { fixture: 'settle_fault' }),
-  forums: (s: Scope) => p<{ forums: Forum[]; receipt: Receipt }>(s, '/executive/attention/forums/list', 'executive.attention.queue.read', 'ROOM'),
+  forums: (s: Scope) => p<{ forums: Forum[]; receipt: Receipt }>(s, '/executive/attention/forums/list', 'executive.attention.queue.read', 'DRM'),
   /** (o5) Human-gated; the executive operator. */
-  convene: (s: Scope, f: ForumForm) => p<{ forum: Row; receipt: Receipt }>(s, '/executive/attention/forums/convene', 'executive.forum.convene', 'ROOM', forumPayload(f)),
-  forumQueue: (s: Scope, roomId: string, limit = 200) => p<{ forum: Row; context: Row; policy: Row; hold: QueueHoldSummary | null; items: QueueItem[]; filtered: FilteredItem[]; counts: QueueCounts; ranking: Row; receipt: Receipt }>(s, `/executive/attention/forums/${roomId}/queue`, 'executive.attention.queue.read', 'ROOM', { limit }, roomId),
+  convene: (s: Scope, f: ForumForm) => p<{ forum: Row; receipt: Receipt }>(s, '/executive/attention/forums/convene', 'executive.forum.convene', 'DRM', forumPayload(f)),
+  forumQueue: (s: Scope, roomId: string, limit = 200) => p<{ forum: Row; context: Row; policy: Row; hold: QueueHoldSummary | null; items: QueueItem[]; filtered: FilteredItem[]; counts: QueueCounts; ranking: Row; receipt: Receipt }>(s, `/executive/attention/forums/${roomId}/queue`, 'executive.attention.queue.read', 'DRM', { limit }, roomId),
 };
 
 /* ───────────── pure helpers: words for what the server recorded (unit-tested) ───────────── */
