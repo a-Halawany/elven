@@ -364,6 +364,8 @@ if (SET) {
   const act = (await q(`select activated_at from prediction.scenario_sets where set_id = $1`, [SET.id]))[0]?.activated_at ?? null;
   const rel = await waitFor('the tick\'s relevance score of the set\'s scenario', async () => (await q(`select score, trigger, scored_at, basis from prediction.scenario_relevance where scenario_id = $1 and trigger = 'tick' and ($2::timestamptz is null or scored_at >= $2) order by scored_at desc limit 1`, [EVERY.id, act]))[0] ?? null, (x) => x !== null, 180_000);
   (rel ? ok : bad)(`THE TICK (scenario-relevance, order 67): ${rel ? `the every-kind scenario scored ${Number(rel.score).toFixed(2)} at ${new Date(rel.scored_at).toISOString().slice(0, 19)}Z (basis ${JSON.stringify(rel.basis).slice(0, 120)})` : 'no tick score arrived'}`);
+  const sp = await q(`select a.state, a.owner_principal_id::text owner, b.name from executive.attention_items a join prediction.branches_current b on b.branch_id = a.subject_id where a.tenant_id = $1 and a.domain_id = $2 and a.signal_class = 'scenario.signpost' and b.scenario_id = $3 order by b.name`, [T, D, EVERY.id]);
+  note(`the tick's signpost notices on the member scenario (once per breach, to its owner): ${sp.length === 0 ? 'none' : `${sp.length} — ${sp.map((x) => `${x.name} (${x.state}, ${nm(x.owner)})`).join(', ')}`}`);
   // CREATION TRIGGERS: a scenario proposed from the escalated insurer signal; the proposer cannot resolve it; the strategy owner resolves
   let PROP = (await q(`select proposal_id::text id, state, proposed_by::text by from prediction.scenario_proposals where tenant_id = $1 and domain_id = $2 and kind = 'weak_signal' and source_key = $3 order by proposed_at desc limit 1`, [T, D, SIGNAL.id]))[0] ?? null;
   if (PROP) note(`the proposal ${short(PROP.id)} from the insurer signal stands (${PROP.state}) — an earlier run`);
@@ -374,7 +376,7 @@ if (SET) {
     else { PROP = { id: r.body.proposal.proposal_id, state: 'open', by: eriksen.principalId }; ok(`N. Eriksen PROPOSED the scenario "War-risk cover withdrawn across the corridor" from the escalated signal ${short(SIGNAL.id)} — ${short(PROP.id)} open, routed to the strategy owners (facts ${JSON.stringify(r.body.proposal.source_facts ?? {}).slice(0, 90)})`); }
   }
   if (PROP && PROP.state === 'open') {
-    expectRefused('N. Eriksen resolves her own proposal', await st(eriksen, `proposals/${PROP.id}/resolve`, 'prediction.scenario.proposal.resolve', 'SCP', { resolution: 'accepted', note: 'resolving my own proposal (SYNTHETIC)' }, PROP.id), 403);
+    expectRefused('N. Eriksen (the proposer; a forecast owner holds no resolve rule) resolves her own proposal', await st(eriksen, `proposals/${PROP.id}/resolve`, 'prediction.scenario.proposal.resolve', 'SCP', { resolution: 'accepted', note: 'resolving my own proposal (SYNTHETIC)' }, PROP.id), 403);
     const r = await st(weber, `proposals/${PROP.id}/resolve`, 'prediction.scenario.proposal.resolve', 'SCP', { resolution: 'accepted', note: 'accepted: a corridor-wide cover withdrawal scenario is owed; its owner declares it through the scenario route (SYNTHETIC)' }, PROP.id);
     if (!r.ok) fail('J. Weber resolves the proposal', r); else ok(`J. Weber RESOLVED the proposal → ${r.body.proposal.state} (accepting declares nothing: the scenario is declared by its owner through the scenario route)`);
   } else if (PROP) note(`the proposal is ${PROP.state} — an earlier run`);
