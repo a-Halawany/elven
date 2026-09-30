@@ -874,6 +874,18 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   { match: /^(plan|plan baseline|initiative|milestone|plan dependency|plan measure|plan run|plan breach|initiative citation) rejected \((state|closed|duplicate|breach_open)\)|^plan commitment rejected \(breach_open\)/i, status: 409, code: 'EYE_STA_002' },
   { match: /^(plan|plan baseline|initiative|milestone|plan dependency|plan measure|plan run|plan breach|initiative citation|plan commitment) rejected/i, status: 422, code: 'EYE_REQ_001' },
   /* end B36 planning */
+  /* B90 prelude (0095 §0) — the data product registry's family `data product rejected (<class>)` (the parts' families are their own and
+     anchored distinctly: `data product consumer rejected`, `product scorecard rejected`, `event product rejected`, `subscription rejected`,
+     `metric rejected`, `metric certification rejected`, `catalog asset rejected`, `catalog rejected`, `glossary term rejected`, `lineage
+     rejected`; no earlier row starts with `data product`). B9's order: the standing 403 (the acting principal, the authority, the owner, the
+     separation of owner and reviewer), the absences 404 (`unknown_*`), the record's state 409 (state, duplicate, duplicate_authority,
+     review, canonical, meaning, consumers, contract_tests), the caller's own 422 (the contract among them: publication denied for what the
+     declaration lacks is the request's fault). */
+  { match: /^data product rejected \((actor|authority|not_owner|separation)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^data product rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^data product rejected \((state|duplicate|duplicate_authority|review|canonical|meaning|consumers|contract_tests)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^data product rejected/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B90 prelude */
   /* B36 home (0094 §H) — the executive home's families in the CLASS form `<noun> rejected (<class>): …`: `cadence rejected`, `executive room
      rejected` (0044's unclassed `room rejected: …` texts are the decision room's and are mapped by no row; the noun here is `executive room`
      and every row is anchored), `objective review rejected` (the SoD of §H2's re-declared convene_review and of open_subject_room — B23's
