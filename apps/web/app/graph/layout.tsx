@@ -67,6 +67,9 @@ const NAV = [
   /* B90 products */
   { href: '/graph/data/products', label: 'Products', glyph: '▦' },
   /* end B90 products */
+  /* B90 catalog (0095 §K) */
+  { href: '/graph/data/catalog', label: 'Catalog', glyph: '⊟' },
+  /* end B90 catalog */
   /* end B32 graph */
   { href: '/graph/impact', label: 'Impact', glyph: '⚠' },
   { href: '/graph/subscriptions', label: 'Subscriptions', glyph: '⟳' },
