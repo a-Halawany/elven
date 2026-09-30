@@ -886,6 +886,19 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   { match: /^data product rejected \((state|duplicate|duplicate_authority|review|canonical|meaning|consumers|contract_tests)\)/i, status: 409, code: 'EYE_STA_002' },
   { match: /^data product rejected/i, status: 422, code: 'EYE_REQ_001' },
   /* end B90 prelude */
+  /* B90 metrics (0095 §M) — the semantic layer's families `metric rejected (<class>)` and `metric certification rejected (<class>)` —
+     anchored phrases no earlier row matches (no earlier row starts with `metric`; `data product rejected` is another noun and `metric
+     rejected` is no suffix of an unanchored earlier row). B9's order: the standing 403 (the acting principal, the authority — a steward
+     certifying, a non-owner declaring), the absences 404 (`unknown_*`: product, metric, version, serving), the record's state 409 (state,
+     the executive view's `certification` refusal of an uncertified / withdrawn / expired model, a `conflict` with another certified model,
+     `unchanged`, no definition `effective` at the instant, the `signature` or the `canonical` object missing from the write), the caller's
+     own request 422 (the rest: a measure outside the whitelist, a grain or dimension the measure does not allow, a filter off the
+     dimensions, the aggregation, the unit, the view, the instant, the expiry, the reason). */
+  { match: /^(metric|metric certification) rejected \((actor|authority)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^(metric|metric certification) rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^(metric|metric certification) rejected \((state|certification|conflict|unchanged|effective|signature|canonical)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^(metric|metric certification) rejected/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B90 metrics */
   /* B36 home (0094 §H) — the executive home's families in the CLASS form `<noun> rejected (<class>): …`: `cadence rejected`, `executive room
      rejected` (0044's unclassed `room rejected: …` texts are the decision room's and are mapped by no row; the noun here is `executive room`
      and every row is anchored), `objective review rejected` (the SoD of §H2's re-declared convene_review and of open_subject_room — B23's

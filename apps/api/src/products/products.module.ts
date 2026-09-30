@@ -8,11 +8,15 @@ import { PipelineModule } from '../pipeline/pipeline.module.js';
 import { ExecutiveModule } from '../executive/executive.module.js';
 import { ProductsController } from './products.controller.js';
 import { ProductsService } from './products.service.js';
+/* B90 metrics */
+import { MetricsController } from './metrics/metrics.controller.js';
+import { MetricsService } from './metrics/metrics.service.js';
+/* end B90 metrics */
 
 @Module({
   imports: [PipelineModule, ExecutiveModule],
-  controllers: [ProductsController],
-  providers: [ProductsService],
-  exports: [ProductsService],
+  controllers: [ProductsController, /* B90 metrics */ MetricsController /* end B90 metrics */],
+  providers: [ProductsService, /* B90 metrics */ MetricsService /* end B90 metrics */],
+  exports: [ProductsService, /* B90 metrics */ MetricsService /* end B90 metrics */],
 })
 export class ProductsModule {}
