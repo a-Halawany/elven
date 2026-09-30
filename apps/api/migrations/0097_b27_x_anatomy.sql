@@ -196,7 +196,7 @@ CREATE OR REPLACE FUNCTION prediction.psa_assert_graph_ref(p_family text, p_tena
 SET search_path = prediction, graph, pg_catalog, pg_temp AS $$
 DECLARE v_kind text := p_ref ->> 'kind'; v_id uuid; v_label text;
 BEGIN
-  IF jsonb_typeof(p_ref) <> 'object' OR v_kind IS NULL OR v_kind NOT IN ('entity', 'strategy') OR coalesce(p_ref ->> 'id', '') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+  IF jsonb_typeof(p_ref) IS DISTINCT FROM 'object' OR v_kind IS NULL OR v_kind NOT IN ('entity', 'strategy') OR coalesce(p_ref ->> 'id', '') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
     RAISE EXCEPTION '% rejected (graph_ref): a graph reference is {kind: entity|strategy, id: <uuid>}', p_family USING ERRCODE = '22023';
   END IF;
   v_id := (p_ref ->> 'id')::uuid;
@@ -218,10 +218,10 @@ CREATE OR REPLACE FUNCTION prediction.psa_element_attributes(p_tenant uuid, p_do
 SET search_path = prediction, pg_catalog, pg_temp AS $$
 DECLARE a jsonb := coalesce(p_attributes, '{}'::jsonb); v_list text; x jsonb; v_id uuid; e prediction.scenario_elements%ROWTYPE; v_ids jsonb; v_out jsonb := '{}'::jsonb;
 BEGIN
-  IF jsonb_typeof(a) <> 'object' THEN RAISE EXCEPTION 'scenario element rejected (attributes): the attributes are an object' USING ERRCODE = '22023'; END IF;
+  IF jsonb_typeof(a) IS DISTINCT FROM 'object' THEN RAISE EXCEPTION 'scenario element rejected (attributes): the attributes are an object' USING ERRCODE = '22023'; END IF;
   CASE p_kind
     WHEN 'driver' THEN
-      IF jsonb_typeof(a -> 'exogenous') <> 'boolean' THEN
+      IF jsonb_typeof(a -> 'exogenous') IS DISTINCT FROM 'boolean' THEN
         RAISE EXCEPTION 'scenario element rejected (attributes): a driver says whether it is exogenous (a shock from outside the system) or endogenous (exogenous: true|false)' USING ERRCODE = '22023';
       END IF;
       v_out := jsonb_build_object('exogenous', (a ->> 'exogenous')::boolean);
@@ -240,12 +240,12 @@ BEGIN
       IF length(btrim(coalesce(a ->> 'by', ''))) < 2 OR length(btrim(coalesce(a ->> 'expected_effect', ''))) < 4 THEN
         RAISE EXCEPTION 'scenario element rejected (attributes): an intervention names who acts (by) and its expected effect (expected_effect)' USING ERRCODE = '22023';
       END IF;
-      IF jsonb_typeof(a -> 'targets') <> 'array' OR jsonb_array_length(a -> 'targets') = 0 THEN
+      IF jsonb_typeof(a -> 'targets') IS DISTINCT FROM 'array' OR jsonb_array_length(a -> 'targets') = 0 THEN
         RAISE EXCEPTION 'scenario element rejected (attributes): an intervention acts on at least one driver or mechanism of the scenario (targets: [element ids])' USING ERRCODE = '22023';
       END IF;
       v_out := jsonb_build_object('by', left(btrim(a ->> 'by'), 256), 'expected_effect', left(btrim(a ->> 'expected_effect'), 512));
     WHEN 'impact' THEN
-      IF jsonb_typeof(a -> 'on') <> 'object' THEN
+      IF jsonb_typeof(a -> 'on') IS DISTINCT FROM 'object' THEN
         RAISE EXCEPTION 'scenario element rejected (attributes): an impact names what it falls on — an entity or an objective of the domain (on: {kind, id})' USING ERRCODE = '22023';
       END IF;
       IF coalesce(a ->> 'direction', '') NOT IN ('adverse', 'favourable', 'mixed') OR coalesce(a ->> 'magnitude', '') NOT IN ('low', 'moderate', 'high', 'severe')
@@ -260,12 +260,12 @@ BEGIN
   FOREACH v_list IN ARRAY ARRAY['dependencies', 'targets'] LOOP
     CONTINUE WHEN v_list = 'targets' AND p_kind <> 'intervention';
     v_ids := '[]'::jsonb;
-    IF a ? v_list AND jsonb_typeof(a -> v_list) <> 'array' THEN
+    IF a ? v_list AND jsonb_typeof(a -> v_list) IS DISTINCT FROM 'array' THEN
       RAISE EXCEPTION 'scenario element rejected (attributes): % is a list of element ids', v_list USING ERRCODE = '22023';
     END IF;
     IF jsonb_array_length(coalesce(a -> v_list, '[]'::jsonb)) > 32 THEN RAISE EXCEPTION 'scenario element rejected (attributes): at most 32 %', v_list USING ERRCODE = '22023'; END IF;
     FOR x IN SELECT value FROM jsonb_array_elements(coalesce(a -> v_list, '[]'::jsonb)) LOOP
-      IF jsonb_typeof(x) <> 'string' OR (x #>> '{}') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+      IF jsonb_typeof(x) IS DISTINCT FROM 'string' OR (x #>> '{}') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
         RAISE EXCEPTION 'scenario element rejected (attributes): % holds element ids', v_list USING ERRCODE = '22023';
       END IF;
       v_id := (x #>> '{}')::uuid;
@@ -284,7 +284,7 @@ BEGIN
   END LOOP;
   -- timing (optional; §Q's temporal ordering reads it): {start?: date, end?: date, lag_days?: int ≥ 0}, start ≤ end
   IF a ? 'timing' THEN
-    IF jsonb_typeof(a -> 'timing') <> 'object' THEN RAISE EXCEPTION 'scenario element rejected (timing): timing is {start?, end?, lag_days?}' USING ERRCODE = '22023'; END IF;
+    IF jsonb_typeof(a -> 'timing') IS DISTINCT FROM 'object' THEN RAISE EXCEPTION 'scenario element rejected (timing): timing is {start?, end?, lag_days?}' USING ERRCODE = '22023'; END IF;
     BEGIN
       IF (a -> 'timing' ->> 'start') IS NOT NULL AND (a -> 'timing' ->> 'end') IS NOT NULL AND (a -> 'timing' ->> 'start')::date > (a -> 'timing' ->> 'end')::date THEN
         RAISE EXCEPTION 'scenario element rejected (timing): the start (%) lies after the end (%)', a -> 'timing' ->> 'start', a -> 'timing' ->> 'end' USING ERRCODE = '22023';
@@ -340,7 +340,7 @@ BEGIN
   IF length(btrim(coalesce(p_name, ''))) NOT BETWEEN 2 AND 128 THEN RAISE EXCEPTION 'scenario element rejected (name): the name is 2-128 characters' USING ERRCODE = '22023'; END IF;
   IF length(btrim(coalesce(p_description, ''))) NOT BETWEEN 8 AND 4096 THEN RAISE EXCEPTION 'scenario element rejected (description): the description is 8-4096 characters' USING ERRCODE = '22023'; END IF;
   v_attr := prediction.psa_element_attributes(p_tenant, p_domain, p_scenario_id, p_branch_id, p_element_id, p_kind, p_attributes);
-  IF p_graph_refs IS NOT NULL AND jsonb_typeof(p_graph_refs) <> 'array' THEN RAISE EXCEPTION 'scenario element rejected (graph_ref): graph_refs is a list' USING ERRCODE = '22023'; END IF;
+  IF p_graph_refs IS NOT NULL AND jsonb_typeof(p_graph_refs) IS DISTINCT FROM 'array' THEN RAISE EXCEPTION 'scenario element rejected (graph_ref): graph_refs is a list' USING ERRCODE = '22023'; END IF;
   IF jsonb_array_length(coalesce(p_graph_refs, '[]'::jsonb)) > 16 THEN RAISE EXCEPTION 'scenario element rejected (graph_ref): at most 16 graph references' USING ERRCODE = '22023'; END IF;
   FOR x IN SELECT value FROM jsonb_array_elements(coalesce(p_graph_refs, '[]'::jsonb)) LOOP
     v_refs := v_refs || jsonb_build_array(prediction.psa_assert_graph_ref('scenario element', p_tenant, p_domain, x));
@@ -414,7 +414,7 @@ CREATE OR REPLACE FUNCTION prediction.psa_condition(p_tenant uuid, p_domain uuid
 SET search_path = prediction, objects, pg_catalog, pg_temp AS $$
 DECLARE c jsonb := coalesce(p_condition, jsonb_build_object('kind', 'state')); v_kind text; v_text text; v_id uuid; v_label text;
 BEGIN
-  IF jsonb_typeof(c) <> 'object' THEN RAISE EXCEPTION 'scenario assumption rejected (condition): the invalidation condition is {kind: state|claim|indicator, …, text}' USING ERRCODE = '22023'; END IF;
+  IF jsonb_typeof(c) IS DISTINCT FROM 'object' THEN RAISE EXCEPTION 'scenario assumption rejected (condition): the invalidation condition is {kind: state|claim|indicator, …, text}' USING ERRCODE = '22023'; END IF;
   v_kind := coalesce(c ->> 'kind', 'state'); v_text := btrim(coalesce(c ->> 'text', ''));
   IF v_kind NOT IN ('state', 'claim', 'indicator') THEN
     RAISE EXCEPTION 'scenario assumption rejected (condition): % is not a condition kind (state, claim, indicator)', v_kind USING ERRCODE = '22023';
@@ -554,11 +554,11 @@ BEGIN
   END IF;
   IF length(btrim(coalesce(p_title, ''))) NOT BETWEEN 2 AND 256 THEN RAISE EXCEPTION 'scenario record rejected (title): the title is 2-256 characters' USING ERRCODE = '22023'; END IF;
   IF length(btrim(coalesce(p_body, ''))) NOT BETWEEN 8 AND 8000 THEN RAISE EXCEPTION 'scenario record rejected (body): the body is 8-8000 characters' USING ERRCODE = '22023'; END IF;
-  IF p_cites IS NOT NULL AND jsonb_typeof(p_cites) <> 'array' THEN RAISE EXCEPTION 'scenario record rejected (cites): cites is a list of {kind, id}' USING ERRCODE = '22023'; END IF;
+  IF p_cites IS NOT NULL AND jsonb_typeof(p_cites) IS DISTINCT FROM 'array' THEN RAISE EXCEPTION 'scenario record rejected (cites): cites is a list of {kind, id}' USING ERRCODE = '22023'; END IF;
   IF jsonb_array_length(coalesce(p_cites, '[]'::jsonb)) > 32 THEN RAISE EXCEPTION 'scenario record rejected (cites): at most 32 citations' USING ERRCODE = '22023'; END IF;
   FOR x IN SELECT value FROM jsonb_array_elements(coalesce(p_cites, '[]'::jsonb)) LOOP
     v_kind := x ->> 'kind';
-    IF jsonb_typeof(x) <> 'object' OR v_kind IS NULL OR v_kind NOT IN ('claim', 'evidence', 'entity', 'strategy')
+    IF jsonb_typeof(x) IS DISTINCT FROM 'object' OR v_kind IS NULL OR v_kind NOT IN ('claim', 'evidence', 'entity', 'strategy')
        OR coalesce(x ->> 'id', '') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
       RAISE EXCEPTION 'scenario record rejected (cites): a citation is {kind: claim|evidence|entity|strategy, id: <uuid>}' USING ERRCODE = '22023';
     END IF;
