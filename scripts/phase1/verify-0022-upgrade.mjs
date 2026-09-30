@@ -192,7 +192,7 @@ const INTENDED_ADDITIONS = Object.freeze({
   // 0060: propagation_agent · 0063: twin_subscriber, forecast_subscriber, scenario_subscriber, decision_subscriber, retrieval_subscriber, mapping_subscriber
   // 0066: relationship_subscriber, knowledge_owner, record_authority, retention_steward, retention_authority, ontology_steward
   // 0083: observation_subscriber, source_health_subscriber, proposal_subscriber, attention_subscriber (B22: the four new consumer kinds)
-  'identity.roles': 51, // + attention_agent (0086) + stream_rule_subscriber, weak_signal_agent, warning_subscriber (0088) + risk_owner, opportunity_sponsor, risk_agent, opportunity_agent (0089) + execution_authority, external_collaborator, commitment_subscriber (0090) + supply_chain_agent, method_steward, constraint_steward (0092) + executive_operator, board_member (0094)
+  'identity.roles': 52, // + attention_agent (0086) + stream_rule_subscriber, weak_signal_agent, warning_subscriber (0088) + risk_owner, opportunity_sponsor, risk_agent, opportunity_agent (0089) + execution_authority, external_collaborator, commitment_subscriber (0090) + supply_chain_agent, method_steward, constraint_steward (0092) + executive_operator, board_member, planning_agent (0094)
   // 0022: SRC, OBS, EVD · 0023: CLM@v2, ENT, EVT, REL, ASM
   // 0024: OBJ, ASU, DEC, CMT, OUT · 0028: SRC@v2 · 0029: FCT, SCN, WRN · 0032: TWN · 0033: SIM · 0041: DPK · 0042: APR · 0043: RPL · 0044: BRF · 0058: SCN@v2 · 0061: SCN@v3, WRN@v2 · 0066: MEM@v1 · 0079: MEM@v2
   // 0076: the import forms EVD@v2, ENT@v2, EVT@v2, REL@v2, ASM@v2, CLM@v3 (the base schema + imported_from)
