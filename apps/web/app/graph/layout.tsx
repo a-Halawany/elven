@@ -64,6 +64,9 @@ const NAV = [
   /* B90 metrics */
   { href: '/graph/data/metrics', label: 'Metrics', glyph: '∑' },
   /* end B90 metrics */
+  /* B90 products */
+  { href: '/graph/data/products', label: 'Products', glyph: '▦' },
+  /* end B90 products */
   /* end B32 graph */
   { href: '/graph/impact', label: 'Impact', glyph: '⚠' },
   { href: '/graph/subscriptions', label: 'Subscriptions', glyph: '⟳' },
