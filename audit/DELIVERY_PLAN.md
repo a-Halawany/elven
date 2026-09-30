@@ -327,7 +327,7 @@ Feature IDs are shown without the `F-` prefix. The stages are listed in plan ord
 | H2 | H | Comprehensive verification II: identity/network probes and drift, capacity/soak evidence, HA/DR drills, compose-vs-kind parity, agent containment and escape exercises | — | P4-11, P7A-08, P7D-02, P7D-10, P7D-13, P7D-23, P7D-25 | M1 | 3.25–6 | A1+A2+A3 | 2027-07-02 → 2027-07-13 |
 | H3 | H | Experience and governance acceptance: WCAG audit and assistive-technology testing, usability studies, design and product-governance acceptance by named authorities, independent adversarial review | P7-13 | P7B-07, P7-E-08, P7-E-17, P7-12 | M1 | 2.5–4.75 | A1+A2+A3 | 2027-07-02 → 2027-07-12 |
 | R1 | R | Deployment profiles installed and certified on real SaaS, private-cloud and on-premise infrastructure; parity on every profile | — | P1-17, P2-18, P3-18, P5-08, P6-15, P7A-09, P7D-21, P7D-22, P7D-24 | H1, H2, H3 | 9–17.5 | owner + A1 | externally gated |
-| R2 | R | Production proof of the loop and attested acceptance records | R0-06 | R0-04, P4-10, P4-12, P4-13, P5-01, P6-04, P6-05, P6-07, P6-08, P6-09, P6-14 | H1, H2, H3 | 4–9 | owner + A1 | externally gated |
+| R2 | R | Production proof of the loop and attested acceptance records | R0-06 | R0-04, P4-10, P4-12, P4-13, P5-01, P6-04, P6-05, P6-07, P6-08, P6-09, P6-10, P6-11, P6-12, P6-13, P6-14 | H1, H2, H3 | 5–11 | owner + A1 | externally gated |
 | R3 | R | Commercial, marketplace commerce and investor package proof | P7-14, P7-15, P7-16 | P7C-09 | H1, H2, H3 | 1.75–3.75 | owner + A1 | externally gated |
 <!-- model:stages:end -->
 
