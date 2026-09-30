@@ -120,11 +120,12 @@ export class MetricsService implements OnModuleInit {
     if (v === undefined) throw new HttpException(errorBody('EYE_STA_001', correlationId, `metric certification rejected (unknown_version): metric ${String(m['metric_key'])} has no version ${version}`), 404);
     // every other rule is the PORT's (the owner, the current version, the expiry, the conflict): a refused act rolls the signature and the object back with it
     const digest = String(v['digest']);
-    const signature = await this.signatures.sign(cap, { tenantId: scope.tenantId, domainId: scope.domainId, action: 'products.metric.certify', kind: METRIC_CERTIFICATION_SIGNATURE_KIND,
-      subjectId: modelId, subjectVersion: version, subjectDigest: digest, actor: principal.principalId, correlationId });
-    const signatureId = String(signature['signature_id']);
     const prior = await cap.latestObjectVersion(modelId);
     const ordinal = (prior ?? 0) + 1;
+    // the signature's subject is the model at THIS certification's ordinal (a definition version may be certified again after an expiry); its digest is the version's
+    const signature = await this.signatures.sign(cap, { tenantId: scope.tenantId, domainId: scope.domainId, action: 'products.metric.certify', kind: METRIC_CERTIFICATION_SIGNATURE_KIND,
+      subjectId: modelId, subjectVersion: ordinal, subjectDigest: digest, actor: principal.principalId, correlationId });
+    const signatureId = String(signature['signature_id']);
     const certificationId = newId();
     const payload: Row = {
       model_id: modelId, product_id: modelId, metric_key: String(m['metric_key']), title: String(m['title']), owner_principal_id: String(m['owner_principal_id']),

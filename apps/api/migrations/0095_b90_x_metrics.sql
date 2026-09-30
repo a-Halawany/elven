@@ -500,10 +500,11 @@ BEGIN
   IF FOUND THEN
     RAISE EXCEPTION 'metric certification rejected (conflict): metric % conflicts with the certified metric % (%) under a different definition — reconcile definitions under semantic governance: withdraw one or re-declare', m.metric_key, v_other.metric_key, v_other.how USING ERRCODE = '22023';
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM executive.signatures s WHERE s.signature_id = p_signature_id AND s.subject_kind = 'metric_certification' AND s.subject_id = p_model_id AND s.subject_version = p_version AND s.signer = p_actor AND s.subject_digest = pv.digest) THEN
+  SELECT count(*)::int + 1 INTO v_ordinal FROM products.metric_certifications x WHERE x.model_id = p_model_id;
+  -- the signature's subject is the model at THIS certification's ordinal (a definition version may be certified again after an expiry), its digest the version's
+  IF NOT EXISTS (SELECT 1 FROM executive.signatures s WHERE s.signature_id = p_signature_id AND s.subject_kind = 'metric_certification' AND s.subject_id = p_model_id AND s.subject_version = v_ordinal AND s.signer = p_actor AND s.subject_digest = pv.digest) THEN
     RAISE EXCEPTION 'metric certification rejected (signature): version % of metric % carries no signature by its owner over its digest in this write', p_version, m.metric_key USING ERRCODE = '22023';
   END IF;
-  SELECT count(*)::int + 1 INTO v_ordinal FROM products.metric_certifications x WHERE x.model_id = p_model_id;
   IF NOT EXISTS (SELECT 1 FROM objects.canonical_objects c WHERE c.object_id = p_model_id AND c.object_type = 'MET' AND c.object_version = v_ordinal AND c.tenant_id = p_tenant) THEN
     RAISE EXCEPTION 'metric certification rejected (canonical): certification % of metric % was not admitted as a MET object in this write', v_ordinal, m.metric_key USING ERRCODE = '22023';
   END IF;
@@ -562,7 +563,7 @@ BEGIN
   IF NOT FOUND THEN RAISE EXCEPTION 'metric rejected (unknown_metric): % is not a semantic model of this domain', coalesce(p_metric_key, 'null') USING ERRCODE = '22023'; END IF;
   SELECT * INTO r FROM products.products_current x WHERE x.product_id = m.model_id;
   IF r.state IN ('withdrawn', 'retired') THEN RAISE EXCEPTION 'metric rejected (state): product % is %; nothing is served from it', r.product_key, r.state USING ERRCODE = '22023'; END IF;
-  v_as_of := coalesce(p_as_of, v_now);
+  v_as_of := date_trunc('milliseconds', coalesce(p_as_of, v_now));   -- millisecond precision: the instant round-trips through a caller's ISO 8601 string
   IF v_as_of > v_now THEN RAISE EXCEPTION 'metric rejected (as_of): the instant is not in the future (asked %, now %)', v_as_of, v_now USING ERRCODE = '22023'; END IF;
   SELECT * INTO pv FROM products.metric_versions x WHERE x.model_id = m.model_id AND x.effective_from <= v_as_of ORDER BY x.effective_from DESC, x.version DESC LIMIT 1;
   IF NOT FOUND THEN RAISE EXCEPTION 'metric rejected (effective): no definition of metric % is effective at % (the first is effective from %)', m.metric_key, v_as_of, m.effective_from USING ERRCODE = '22023'; END IF;
@@ -639,6 +640,7 @@ BEGIN
     RAISE EXCEPTION 'metric rejected (authority): a recalculation is the product''s owner''s or a data steward''s act' USING ERRCODE = '42501';
   END IF;
   IF p_as_of IS NULL OR p_as_of > v_now THEN RAISE EXCEPTION 'metric rejected (as_of): a recalculation names a past instant' USING ERRCODE = '22023'; END IF;
+  p_as_of := date_trunc('milliseconds', p_as_of);
   SELECT * INTO pv FROM products.metric_versions x WHERE x.model_id = p_model_id AND x.effective_from <= p_as_of ORDER BY x.effective_from DESC, x.version DESC LIMIT 1;
   IF NOT FOUND THEN RAISE EXCEPTION 'metric rejected (effective): no definition of metric % is effective at %', m.metric_key, p_as_of USING ERRCODE = '22023'; END IF;
   SELECT * INTO s FROM products.metric_servings x WHERE x.model_id = p_model_id AND x.as_of = p_as_of AND x.view IN ('executive', 'analyst') ORDER BY x.served_at DESC LIMIT 1;
@@ -656,7 +658,7 @@ BEGIN
     ELSE RAISE EXCEPTION 'metric rejected (measure): % is not a whitelisted measure', pv.definition ->> 'measure' USING ERRCODE = '22023';
   END CASE;
   IF v_revision IS NULL THEN v_revision := encode(digest('', 'sha256'), 'hex'); v_n := 0; END IF;
-  v_reproduced := v_revision = s.source_revision AND pv.version = s.version;
+  v_reproduced := v_revision = s.source_revision;   -- the SOURCE revision decides; the versions are reported beside it
   INSERT INTO products.metric_servings (serving_id, model_id, tenant_id, domain_id, version, view, grain, filters, as_of, certified, source_revision, source_rows, value_digest, result, served_to, served_at, correlation_id)
   VALUES (v_serving, p_model_id, p_tenant, p_domain, pv.version, 'recalculation', s.grain, s.filters, p_as_of, m.state = 'certified', v_revision, v_n, encode(digest(v_rows::text, 'sha256'), 'hex'), v_rows, p_actor, v_now, p_correlation);
   -- the `reproducible` observation on the product (the one SLO ledger; §0's observe_slo does not list this action, so the row is written here under it)
@@ -724,7 +726,7 @@ LANGUAGE sql STABLE SET search_path = products, executive, public, pg_catalog, p
               'measure_spec', products.metric_measures() -> m.measure,
               'versions', coalesce((SELECT jsonb_agg(jsonb_build_object('version', v.version, 'digest', v.digest, 'definition', v.definition, 'effective_from', v.effective_from, 'declared_by', v.declared_by, 'declared_at', v.declared_at) ORDER BY v.version)
                                       FROM products.metric_versions v WHERE v.model_id = m.model_id), '[]'::jsonb),
-              'certifications', coalesce((SELECT jsonb_agg((to_jsonb(c) - 'tenant_id' - 'domain_id' - 'correlation_id') || jsonb_build_object('signatures', executive.signature_of('metric_certification', c.model_id, c.version)) ORDER BY c.certified_at)
+              'certifications', coalesce((SELECT jsonb_agg((to_jsonb(c) - 'tenant_id' - 'domain_id' - 'correlation_id') || jsonb_build_object('signatures', executive.signature_of('metric_certification', c.model_id, c.met_object_version)) ORDER BY c.certified_at)
                                             FROM products.metric_certifications c WHERE c.model_id = m.model_id), '[]'::jsonb),
               'active_certification', (SELECT to_jsonb(c) - 'tenant_id' - 'domain_id' - 'correlation_id' FROM products.metric_certifications c WHERE c.model_id = m.model_id AND c.state = 'active' ORDER BY c.certified_at DESC LIMIT 1),
               'diffs', coalesce((SELECT jsonb_agg((to_jsonb(d) - 'tenant_id' - 'domain_id' - 'correlation_id') ORDER BY d.recorded_at) FROM products.metric_definition_diffs d WHERE d.model_id = m.model_id), '[]'::jsonb),
