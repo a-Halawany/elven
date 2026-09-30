@@ -187,12 +187,19 @@ GRANT SELECT ON prediction.branch_probabilities_current TO eye_app, eye_commit;
 -- ═════════════════════════════════════════════════════════════════════
 -- §Q.3 THE MEASURES (pure reads; no port)
 -- ═════════════════════════════════════════════════════════════════════
-/* A statement's normalised TOKENS under the rule (sorted, distinct): lower case; "n't" → " not"; punctuation removed; stop words dropped;
+/* A statement's words, cleaned: lower case; won't / can't / n't opened into will not / cannot / not (the apostrophe straight or curved);
+   anything but letters, digits and spaces becomes a space. */
+CREATE OR REPLACE FUNCTION prediction.psq_clean(p_text text) RETURNS text
+LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, pg_temp AS $$
+  SELECT regexp_replace(replace(replace(replace(translate(lower(coalesce(p_text, '')), '’', ''''), 'won''t', 'will not'), 'can''t', 'cannot'), 'n''t', ' not'), '[^a-z0-9 ]+', ' ', 'g') $$;
+GRANT EXECUTE ON FUNCTION prediction.psq_clean(text) TO eye_app, eye_commit;
+
+/* A statement's normalised TOKENS under the rule (sorted, distinct): psq_clean (lower case, the negating contractions opened, punctuation removed); stop words dropped;
    -ing / -ed / -s stripped from words longer than 5 / 4 / 3 letters. With p_keep_negations false the negation words are dropped too. */
 CREATE OR REPLACE FUNCTION prediction.psq_tokens(p_text text, p_rule jsonb, p_keep_negations boolean DEFAULT true) RETURNS text[]
 LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, pg_temp AS $$
   WITH w AS (
-    SELECT x AS word FROM regexp_split_to_table(regexp_replace(replace(lower(coalesce(p_text, '')), 'n''t', ' not'), '[^a-z0-9 ]+', ' ', 'g'), '\s+') x WHERE x <> ''),
+    SELECT x AS word FROM regexp_split_to_table(prediction.psq_clean(p_text), '\s+') x WHERE x <> ''),
   s AS (
     SELECT CASE WHEN length(word) > 5 AND word ~ 'ing$' THEN left(word, -3)
                 WHEN length(word) > 4 AND word ~ 'ed$' THEN left(word, -2)
@@ -206,7 +213,7 @@ LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, pg_temp AS $$
 /* The count of negation words in a statement (its parity decides X vs not-X). */
 CREATE OR REPLACE FUNCTION prediction.psq_negations(p_text text, p_rule jsonb) RETURNS int
 LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, pg_temp AS $$
-  SELECT count(*)::int FROM regexp_split_to_table(regexp_replace(replace(lower(coalesce(p_text, '')), 'n''t', ' not'), '[^a-z0-9 ]+', ' ', 'g'), '\s+') x
+  SELECT count(*)::int FROM regexp_split_to_table(prediction.psq_clean(p_text), '\s+') x
    WHERE x = ANY (ARRAY(SELECT jsonb_array_elements_text(p_rule -> 'params' -> 'negations'))) $$;
 
 /* The Jaccard overlap of two token sets (1 when both are empty). */
@@ -229,7 +236,8 @@ BEGIN
   da := ARRAY(SELECT unnest(a) EXCEPT SELECT unnest(b)); db := ARRAY(SELECT unnest(b) EXCEPT SELECT unnest(a));
   IF cardinality(da) <> 1 OR cardinality(db) <> 1 THEN RETURN false; END IF;
   RETURN EXISTS (SELECT 1 FROM jsonb_array_elements(p_rule -> 'params' -> 'antonyms') p
-                  WHERE (p ->> 0 = da[1] AND p ->> 1 = db[1]) OR (p ->> 1 = da[1] AND p ->> 0 = db[1]));
+                  WHERE (prediction.psq_tokens(p ->> 0, p_rule, false) = ARRAY[da[1]] AND prediction.psq_tokens(p ->> 1, p_rule, false) = ARRAY[db[1]])
+                     OR (prediction.psq_tokens(p ->> 1, p_rule, false) = ARRAY[da[1]] AND prediction.psq_tokens(p ->> 0, p_rule, false) = ARRAY[db[1]]));
 END $$;
 GRANT EXECUTE ON FUNCTION prediction.psq_tokens(text, jsonb, boolean) TO eye_app, eye_commit;
 GRANT EXECUTE ON FUNCTION prediction.psq_negations(text, jsonb) TO eye_app, eye_commit;
