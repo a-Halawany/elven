@@ -56,7 +56,7 @@ CREATE TABLE products.product_consumers (
   revoked_by             uuid,
   revocation_reason      text,
   migrated_from          uuid REFERENCES products.product_consumers (consumer_id),   -- the row this one continues (a migration)
-  migrated_to            uuid REFERENCES products.product_consumers (consumer_id),   -- the row that continues this one
+  migrated_to            uuid REFERENCES products.product_consumers (consumer_id) DEFERRABLE INITIALLY DEFERRED,   -- the row that continues this one (written before it exists: the old row closes first, so the live-once index admits the new one)
   migrated_at            timestamptz,
   updated_at             timestamptz NOT NULL DEFAULT clock_timestamp(),
   correlation_id         uuid NOT NULL,
@@ -318,11 +318,12 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM products.contract_tests t WHERE t.product_id = p_product_id AND t.consumer_id = p_consumer_id AND t.version = p_version AND t.outcome = 'pass') THEN
     RAISE EXCEPTION 'data product consumer rejected (contract_tests): consumer % holds no passing contract test on version % of product %; record one first', p_consumer_id, p_version, r.product_key USING ERRCODE = '22023';
   END IF;
+  -- the old row closes FIRST (one live registration per consumer per product — prc_live_once), then the new row continues it
+  UPDATE products.product_consumers SET state = 'migrated', migrated_to = p_new_consumer_id, migrated_at = v_now, updated_at = v_now WHERE consumer_id = p_consumer_id;
   INSERT INTO products.product_consumers (consumer_id, scope, tenant_id, domain_id, product_id, consumer_principal_id, consumer_domain_id, purpose, impact, contract_version, state, usage, registered_by, registered_at,
                                           accepted_at, accepted_by, migrated_from, correlation_id)
   VALUES (p_new_consumer_id, 'DOMAIN', p_tenant, p_domain, p_product_id, c.consumer_principal_id, c.consumer_domain_id, c.purpose, c.impact, p_version, 'accepted', c.usage, p_actor, v_now, v_now, p_actor, p_consumer_id, p_correlation)
   RETURNING * INTO n;
-  UPDATE products.product_consumers SET state = 'migrated', migrated_to = p_new_consumer_id, migrated_at = v_now, updated_at = v_now WHERE consumer_id = p_consumer_id;
   INSERT INTO products.product_events (event_id, scope, tenant_id, domain_id, product_id, event, actor_principal_id, details, correlation_id)
   VALUES (p_event_id, 'DOMAIN', p_tenant, p_domain, p_product_id, 'consumer.migrated', p_actor,
           jsonb_build_object('consumer_id', p_consumer_id, 'new_consumer_id', p_new_consumer_id, 'consumer_principal_id', c.consumer_principal_id, 'from_version', c.contract_version, 'to_version', p_version), p_correlation);
@@ -398,8 +399,9 @@ BEGIN
   VALUES (p_attribution_id, 'DOMAIN', p_tenant, p_domain, p_product_id, p_period_start, p_period_end, p_amount, p_currency, btrim(p_basis), coalesce(p_details, '{}'::jsonb), p_actor, p_correlation) RETURNING * INTO k;
   INSERT INTO products.product_events (event_id, scope, tenant_id, domain_id, product_id, event, actor_principal_id, details, correlation_id)
   VALUES (p_event_id, 'DOMAIN', p_tenant, p_domain, p_product_id, 'cost.attributed', p_actor,
-          jsonb_build_object('attribution_id', p_attribution_id, 'period_start', p_period_start, 'period_end', p_period_end, 'amount', p_amount, 'currency', p_currency, 'basis', btrim(p_basis)), p_correlation);
-  RETURN to_jsonb(k) - 'scope' - 'tenant_id' - 'domain_id' - 'correlation_id';
+          jsonb_build_object('attribution_id', p_attribution_id, 'period_start', p_period_start, 'period_end', p_period_end, 'amount', k.amount::text, 'currency', p_currency, 'basis', btrim(p_basis)), p_correlation);
+  -- money leaves as a DECIMAL STRING with its two places (a JSON number would drop them and become a float on the wire)
+  RETURN (to_jsonb(k) - 'scope' - 'tenant_id' - 'domain_id' - 'correlation_id') || jsonb_build_object('amount', k.amount::text);
 END $$ LANGUAGE plpgsql;
 REVOKE ALL ON FUNCTION products.attribute_cost(uuid,uuid,uuid,uuid,date,date,numeric,text,text,jsonb,uuid,uuid,uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION products.attribute_cost(uuid,uuid,uuid,uuid,date,date,numeric,text,text,jsonb,uuid,uuid,uuid) TO eye_commit;
@@ -457,7 +459,7 @@ BEGIN
                AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(r.declaration -> 'inputs') i WHERE jsonb_typeof(i -> 'kind') <> 'string' OR length(btrim(coalesce(i ->> 'ref', ''))) = 0);
   v_policy := jsonb_typeof(r.declaration #> '{policy,purposes}') = 'array' AND jsonb_array_length(r.declaration #> '{policy,purposes}') > 0
               AND jsonb_typeof(r.declaration #> '{policy,data_classes}') = 'array' AND jsonb_array_length(r.declaration #> '{policy,data_classes}') > 0;
-  SELECT to_jsonb(k) - 'scope' - 'tenant_id' - 'domain_id' - 'correlation_id' INTO v_cost
+  SELECT (to_jsonb(k) - 'scope' - 'tenant_id' - 'domain_id' - 'correlation_id') || jsonb_build_object('amount', k.amount::text) INTO v_cost
     FROM products.cost_attributions k WHERE k.product_id = p_product_id ORDER BY k.period_end DESC, k.attributed_at DESC LIMIT 1;
   -- the verdict, with its reasons in words
   IF v_att IS NULL THEN v_reasons := v_reasons || to_jsonb(format('no SLO observation in the last %s day(s)', v_window)); END IF;
@@ -676,7 +678,7 @@ LANGUAGE sql STABLE SET search_path = products, pg_catalog, pg_temp AS $$
                               FROM (SELECT * FROM products.scorecards x WHERE x.product_id = p_product_id ORDER BY x.computed_at DESC LIMIT 12) s), '[]'::jsonb),
     'consumers', coalesce((SELECT jsonb_agg((to_jsonb(c) - 'scope' - 'tenant_id' - 'domain_id' - 'correlation_id') ORDER BY c.registered_at) FROM products.product_consumers c WHERE c.product_id = p_product_id), '[]'::jsonb),
     'contract_tests', coalesce((SELECT jsonb_agg((to_jsonb(t) - 'scope' - 'tenant_id' - 'domain_id' - 'correlation_id') ORDER BY t.recorded_at DESC) FROM products.contract_tests t WHERE t.product_id = p_product_id), '[]'::jsonb),
-    'cost', coalesce((SELECT jsonb_agg((to_jsonb(k) - 'scope' - 'tenant_id' - 'domain_id' - 'correlation_id') ORDER BY k.period_end DESC, k.attributed_at DESC) FROM products.cost_attributions k WHERE k.product_id = p_product_id), '[]'::jsonb),
+    'cost', coalesce((SELECT jsonb_agg(((to_jsonb(k) - 'scope' - 'tenant_id' - 'domain_id' - 'correlation_id') || jsonb_build_object('amount', k.amount::text)) ORDER BY k.period_end DESC, k.attributed_at DESC) FROM products.cost_attributions k WHERE k.product_id = p_product_id), '[]'::jsonb),
     'observations', coalesce((SELECT jsonb_agg((to_jsonb(o) - 'tenant_id' - 'domain_id' - 'correlation_id') ORDER BY o.observed_at DESC)
                                 FROM (SELECT * FROM products.slo_observations x WHERE x.product_id = p_product_id ORDER BY x.observed_at DESC LIMIT 50) o), '[]'::jsonb),
     'events', coalesce((SELECT jsonb_agg(jsonb_build_object('event_id', e.event_id, 'event', e.event, 'occurred_at', e.occurred_at, 'actor_principal_id', e.actor_principal_id, 'details', e.details) ORDER BY e.occurred_at DESC)
