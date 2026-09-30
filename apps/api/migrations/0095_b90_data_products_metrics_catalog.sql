@@ -3660,7 +3660,7 @@ CREATE OR REPLACE FUNCTION products.restore_product(
   p_product_id uuid, p_tenant uuid, p_domain uuid, p_note text, p_actor uuid, p_event_id uuid, p_correlation uuid
 ) RETURNS jsonb
 SECURITY DEFINER SET search_path = products, executive, identity, observation, ctx, public, pg_catalog, pg_temp AS $$
-DECLARE r products.products_current%ROWTYPE; v_now timestamptz := clock_timestamp(); v_card record; v_review record; v_basis text;
+DECLARE r products.products_current%ROWTYPE; v_now timestamptz := clock_timestamp(); v_card record; v_review record; v_basis text; v_by text;
 BEGIN
   PERFORM observation.assert_authority(ARRAY['products.product.restore']);
   PERFORM observation.assert_scope(p_tenant, p_domain);
@@ -3671,8 +3671,15 @@ BEGIN
   IF r.state <> 'degraded' THEN RAISE EXCEPTION 'data product rejected (state): product % is %; a degraded product is restored', r.product_key, r.state USING ERRCODE = '22023'; END IF;
   SELECT s.scorecard_id, s.overall, s.computed_at INTO v_card FROM products.scorecards s WHERE s.product_id = p_product_id ORDER BY s.computed_at DESC LIMIT 1;
   SELECT x.review_id, x.reviewed_at INTO v_review FROM products.product_reviews x WHERE x.product_id = p_product_id AND x.kind = 'domain' AND x.outcome = 'accepted' AND x.reviewed_at > r.degraded_at ORDER BY x.reviewed_at DESC LIMIT 1;
-  IF v_card.scorecard_id IS NOT NULL AND v_card.overall = 'ok' THEN v_basis := 'scorecard';
+  -- WHO degraded it decides what restores it: a degradation BY THE TICK (the SLO under its floor) is restored by an ok scorecard computed
+  -- AFTER the degradation, or by a domain review; a degradation BY A PERSON names a reason no scorecard measures, so only an accepted domain
+  -- review newer than it restores (the B90 rehearsal: a steward's degradation was restored on a green scorecard computed BEFORE it)
+  SELECT e.details ->> 'by' INTO v_by FROM products.product_events e WHERE e.product_id = p_product_id AND e.event = 'product.degraded' ORDER BY e.occurred_at DESC, e.event_id DESC LIMIT 1;
+  IF v_by = 'tick' AND v_card.scorecard_id IS NOT NULL AND v_card.overall = 'ok' AND v_card.computed_at > r.degraded_at THEN v_basis := 'scorecard';
   ELSIF v_review.review_id IS NOT NULL THEN v_basis := 'domain_review';
+  ELSIF v_by IS DISTINCT FROM 'tick' THEN
+    RAISE EXCEPTION 'data product rejected (review): product % stays degraded — degraded by a person ("%") at %, a reason no scorecard measures; no accepted domain review is newer than the degradation — restore through a domain review',
+      r.product_key, left(coalesce(r.degraded_reason, ''), 120), r.degraded_at USING ERRCODE = '22023';
   ELSE
     RAISE EXCEPTION 'data product rejected (review): product % stays degraded — the latest scorecard reads % and no accepted domain review is newer than the degradation at %; restore through a domain review or a controlled release',
       r.product_key, coalesce(v_card.overall, 'nothing (none computed)'), r.degraded_at USING ERRCODE = '22023';

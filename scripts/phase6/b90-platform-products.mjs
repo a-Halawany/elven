@@ -85,7 +85,7 @@ for (const P of PRODUCTS) {
     ok(`F. Aydın REGISTERED ${P.key} (${P.kind}) for its owner ${P.owner} — ${short(product.product_id)}`);
   } else note(`${P.key} stands — an earlier run (${product.state}${product.released_version ? `, v${product.released_version} released` : ''})`);
   const id = product.product_id;
-  if (product.state === 'released' || product.state === 'degraded' || product.state === 'withdrawn' || product.state === 'retired') { ENV_OUT[`EYE_B90_P_${P.key.replace(/[^a-z0-9]/g, '_').toUpperCase()}`] = id; continue; }
+  if (product.state === 'released' || product.state === 'degraded' || product.state === 'withdrawn' || product.state === 'retired') { ENV_OUT[`EYE_B90_P_${P.kind.toUpperCase()}`] = id; continue; }
   const d = await call(`${PR}/${id}/declare`, O({ action: 'products.product.declare', objectType: 'DPR', objectId: id }), { declaration: DECL(P.decl) }, ownerSession.token);
   if (!d.ok) { fail(`declare ${P.key}`, d); continue; }
   const version = d.body.product.version;
@@ -98,7 +98,7 @@ for (const P of PRODUCTS) {
   ok(`${P.owner} RELEASED ${P.key} v${version} — the DPR admitted at object_version ${rl.body.product.dpr.object_version}`);
   const ob = await call(`${PR}/${id}/slo`, O({ action: 'products.slo.observe', objectType: 'DPR', objectId: id }), { measure: 'availability_pct', value: 99.9, threshold: 99.5, met: true, source: 'synthetic availability probe (the B90 act)', details: { synthetic: true } }, ownerSession.token);
   if (!ob.ok) fail(`observe ${P.key}`, ob); else ok(`availability_pct 99.9 OBSERVED on ${P.key} (SYNTHETIC; the schedule's first scorecard reads it)`);
-  ENV_OUT[`EYE_B90_P_${P.key.replace(/[^a-z0-9]/g, '_').toUpperCase()}`] = id;
+  ENV_OUT[`EYE_B90_P_${P.kind.toUpperCase()}`] = id;
 }
 
 console.log('\nENV for the walks:');
