@@ -158,7 +158,8 @@ describe('B10-F1 · a stored briefing serves a memory version within the cited v
     const memPayload = { ...(await storedPayload(restricted)), statement: 'REWRITTEN BY THE ANALYST', audience: { ...((await storedPayload(restricted))['audience'] as Row), roles: [] } };
     await expect(correctIt(restricted, 'MEM', memPayload)).rejects.toThrow(/may not admit a MEM object — it is written through its own port/);
     expect((await sql<{ n: number }>`select count(*)::int n from objects.canonical_objects where object_id = ${restricted}::uuid`.execute(h.su)).rows[0]!.n).toBe(1);
-    await expect(correctIt(briefingId, 'BRF', await storedPayload(briefingId), 'v2')).rejects.toThrow(/may not admit a BRF object — it is written through its own port/);
+    // B36 (0094 §B): a briefing composed now is BRF@v3 — the correction names v3 so the refusal stays the port's, not a schema violation
+    await expect(correctIt(briefingId, 'BRF', await storedPayload(briefingId), 'v3')).rejects.toThrow(/may not admit a BRF object — it is written through its own port/);
     expect((await sql<{ n: number }>`select count(*)::int n from objects.canonical_objects where object_id = ${briefingId}::uuid`.execute(h.su)).rows[0]!.n).toBe(1);
   }, 60_000);
 });
