@@ -38,11 +38,15 @@ import { ExposuresController } from './exposures/exposures.controller.js';
 /* B36 (0094 §C5) collab: the learn step */ import { ExposureLearningController } from './exposures/exposure-learning.controller.js'; /* end B36 collab */
 import { ExposuresService } from './exposures/exposures.service.js';
 /* end B32 exposures */
+/* B27 quality (0097 §Q): scenario quality and governed branch probabilities — its own controller under the prediction prefix, its tick step */
+import { ScenarioQualityController } from './scenarios/quality/quality.controller.js';
+import { ScenarioQualityService } from './scenarios/quality/quality.service.js';
+/* end B27 quality */
 
 @Module({
   imports: [PipelineModule, ObservationModule, GraphModule, /* B28 (0088) warnings: the attention tick's registry */ ExecutiveModule /* end B28 warnings */,
             /* B32 (0089) exposures */ DecisionModule /* end B32 exposures */],
-  controllers: [PredictionController, /* B28 (0088) signals */ SignalsController /* end B28 signals */, /* B32 (0089) exposures */ ExposuresController /* end B32 exposures */, /* B36 (0094 §C5) collab */ ExposureLearningController /* end B36 collab */],
+  controllers: [PredictionController, /* B28 (0088) signals */ SignalsController /* end B28 signals */, /* B32 (0089) exposures */ ExposuresController /* end B32 exposures */, /* B36 (0094 §C5) collab */ ExposureLearningController /* end B36 collab */, /* B27 quality */ ScenarioQualityController /* end B27 quality */],
   providers: [
     SeriesService,
     ForecastingService,
@@ -57,6 +61,7 @@ import { ExposuresService } from './exposures/exposures.service.js';
     StreamRulesConsumer,
     /* end B28 streams */
     /* B32 (0089) exposures */ ExposuresService, /* end B32 exposures */
+    /* B27 quality */ ScenarioQualityService, /* end B27 quality */
     { provide: APP_FILTER, useClass: ObservationExceptionFilter },
   ],
   exports: [SeriesService, ForecastingService, ScenariosService],
