@@ -156,7 +156,7 @@ function BranchSection({ b, scope, scenarioOwner, me, canWrite, onDone, onProble
   const [note, setNote] = useState('');
   const [reason, setReason] = useState('');
   const mayReinstate = me === b.owner_principal_id || me === scenarioOwner;
-  const idp = `brn-${b.branch_id.slice(0, 8)}`;
+  const idp = `brn-${b.branch_id}`; // the FULL id: uuidv7 branches minted in one declaration share their first 8 characters (the B27 browser gate found the duplicate ids)
   return (
     <section aria-labelledby={idp} style={{ ...cardStyle, marginBlockStart: 'var(--eye-space-16)' }}>
       <h2 id={idp} style={{ fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 }}>Branch: {b.name}</h2>
