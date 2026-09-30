@@ -17,6 +17,7 @@ Prepared under the owner's instruction of 2026-09-25 ("Prepare its separate merg
 | #66 B32 | `phase6-b32` → `phase6-b28` | `11c8102` (the pins merged forward 2026-09-29; was `a71a3b7` — B32-F1 corrected at `aa038f3`; the records on top; was `e45353e`) | stacked on #65; the hosted run for the correction pass at `a71a3b7`: build-test green (1243/1243) |
 | #67 B34 | `phase6-b34` → `phase6-b32` | `522f747` (the pins merge, content-identical; was `864029f` — B34-F; B34-F1/F2 CLOSED there by the review of 2026-09-29) | stacked on #66; hosted at `864029f`: build-test pass (job 109362321377: integration 1293/1293, unit 2585 + 9, acceptance 58/58, C18 dual-path proof completed then 623 + 44 controls, 32m10s — the 55-minute job budget proven necessary), browser and C19 pass, `supply-chain` red on the redis recheck only |
 | #68 B29 | `phase6-b29` → `phase6-b34` | `4e0e441` (B29-F: `8b3ba25` — 0093, `audit/CP6_BATCHES.md` §B29.11 — plus the pins merge; was `425eab4`) | stacked on #67; hosted at `425eab4` (recorded once): build-test FAIL — integration 1339/1342 (three methods-harness failures, B29-F2), the upgrade and C18 steps SKIPPED; **hosted at `4e0e441` — ci 36632092967: build-test PASS (job 109623575085, 33m10s: unit 2664 + 9, acceptance 58/58, integration 1344/1344 in 104 files, the upgrade proof PASS — roles 49, migrations 72, 276/276 on upgraded data — and the C18 dual-path proof completed, then 623 + 44 controls), browser-regression pass, C19 36632092838 pass; `supply-chain` red on the redis recheck only (#62)** |
+| #69 B36 | `phase6-b36` → `phase6-b29` | `fd47d1c` (+ the records: `audit/CP6_BATCHES.md` §B36; the integrator's pin commit `829d0da` above it) | stacked on #68; hosted pending |
 
 ## 1. The #62 decision (ready for the owner's word)
 
@@ -44,6 +45,8 @@ Older heads' green checks never stand for a new combination: every step below pr
 8. **#67 (B34).** Stacks on #66 (base `phase6-b32`); after #66 merges, retarget to `main`, merge `main` in, checks on the new head → the owner's decision.
 
 9. **#68 (B29).** Stacks on #67 (base `phase6-b34`); the B29-F correction pass (0093) is on it first, its hosted checks — the build job's upgrade and C18 steps included, which the first run skipped — must complete; after #67 merges, retarget to `main`, merge `main` in, checks on the new head → the owner's decision.
+
+10. **#69 (B36).** Stacks on #68 (base `phase6-b29`); the records are on it (`audit/CP6_BATCHES.md` §B36 — the hosted browser cases of its conditions (e), (h), (i), (m), (p) and (s) are open at `fd47d1c`: every B36 spec is a demo walk); its hosted checks — build-test with the upgrade proof (roles 52, migrations 73) and the C18 steps, browser-regression, C19 — must complete on its head; after #68 merges, retarget to `main`, merge `main` in, checks on the new head → the owner's decision.
 
 Between two merges the first merge's `main` chain completes before the next merge (the B18 rule: the C17 finalize of a merge overtaken by another merge refuses).
 
