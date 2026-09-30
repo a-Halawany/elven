@@ -195,3 +195,18 @@ rules = ['''generic-api-key''']
 paths = ['''(^|/)apps/api/migrations/0089_b32_strategy_exposures_health\.sql$''']
 regexTarget = "match"
 regexes = ['''^key', 'weight_plus_10pct'$''']
+
+[[allowlists]]
+description = """
+B36 (2026-09-30): four HISTORICAL commits carry key-shaped test and act literals that gitleaks'
+generic-api-key rule reads as secrets — a command view's key (viewKey 'executive/morning'), a
+SYNTHETIC execution target's key (targetKey 'nordwerk-erp-synthetic-b36') and a fixed Ed25519 key
+id in a web unit fixture (ed25519:0123456789abcdef). None is a credential: each names a record by a
+human-readable key. The checkout was corrected (each literal split as the repository's rule says)
+before the stage's candidate; this allowlist exists solely so the FULL-HISTORY scan does not fail on
+the four commits that carried the unsplit forms. Scope: those exact commits, those exact files,
+those exact literals — any other match, in any other commit or file, is still reported.
+"""
+commits = ['''442d891a81e2e21ba5a2b55c7a0bfe37b6beee0d''', '''595c652def0dc7ee47cd41f7103428340df4f492''', '''a272fb7b1db47190b9d30f1f4429a76061c5312a''', '''e0b8820dfe7f6661cb897653619f6befcbeeb76c''']
+paths = ['''(^|/)apps/api/test/int/phase6-collab-b36\.test\.ts$''', '''(^|/)scripts/phase6/act-b36\.mjs$''', '''(^|/)apps/web/lib/health\.test\.ts$''', '''(^|/)PHASE6_REPORT\.md$''', '''(^|/)audit/CP6_BATCHES\.md$''']
+regexes = ['''viewKey: 'executive/morning\'''', '''targetKey: 'nordwerk-erp-synthetic-b36\'''', '''ed25519:0123456789abcdef''']

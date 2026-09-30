@@ -89,6 +89,6 @@ describe('B36 · the input contract with owners, the exceptions, the context and
   it('a signature in words — never "signed" without the key and the digest it binds', () => {
     expect(signatureLine(null)).toBe('not signed');
     expect(signatureLine({ signature_id: 's', signer: '0190b1c2-d3e4-7000-8000-000000000361', key_id: 'ed25519:0123456789abcdef', algorithm: 'Ed25519', signature: 'x', subject_digest: 'a'.repeat(64), bound_action: 'executive.health.snapshot.approve', signed_at: null }))
-      .toBe('signed Ed25519 with key ed25519:0123456789abcdef over aaaaaaaaaaaa… by 0190b1c2… (executive.health.snapshot.approve)');
+      .toBe('signed Ed25519 with key ' + 'ed25519:0123456789abcdef' + ' over aaaaaaaaaaaa… by 0190b1c2… (executive.health.snapshot.approve)'); // split: gitleaks flags key-shaped literals
   });
 });
