@@ -4330,10 +4330,10 @@ The mechanism is in `audit/CP6_BATCHES.md` §B36. There is one migration, `0094_
 | Check | Result |
 |---|---|
 | Part harnesses | 24 + 6 + 8 + 19 + 14 + 12 + 18 + 6 = 107/107 (gates, attention, strategy, briefing, publishing, planning, home, collab), each on a fresh database |
-| Full integration | «INT» |
+| Full integration | **1451/1451** in 112 files on a fresh database (B29-F's 1344 + 107: the eight B36 harnesses 24 + 6 + 8 + 19 + 14 + 12 + 18 + 6; the first full run read 1449/1451 — two pins moved to what B36 changed: the prediction tables under FORCE RLS are 54 with the exposure learnings, and the briefing correction names BRF@v3 — then those two files 22/22 on a fresh database) |
 | Unit | «UNIT» (the parts: API 11 + 13 + 11 + 7 + 8 + 14 + 31 + 13; web 5 + 8 + 17 + 5 + 4 + 5 + 6 + 6) |
-| Acceptance / upgrade | «ACC» / «UPG» (roles 52, migrations 73) |
-| Browser | «BROWSER» — no B36 spec runs under the hosted gate: every B36 spec is a `*.demo.spec.ts` demo walk |
+| Acceptance / upgrade | 58/58 / PASS (roles 52 — executive_operator, board_member, planning_agent; migrations 73; the schema registry 46 — BRF v3, PLN v1, PUB v1; 276/276 on upgraded data) (roles 52, migrations 73) |
+| Browser | 55/55 (45.5 s) on `eye_browser_20260930` with Redis :6393 and isolated vault roots — the eight B36 walks are demo specs (`*.demo.spec.ts`, ignored by the gate); the gate-form cases for conditions (e), (h), (i), (m), (p), (s) are §B36.12 residual 1 — no B36 spec runs under the hosted gate: every B36 spec is a `*.demo.spec.ts` demo walk |
 | The act on `eye_demo` | «ACT» |
 | Hosted | «HOSTED» |
 
