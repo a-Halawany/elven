@@ -886,6 +886,19 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   { match: /^data product rejected \((state|duplicate|duplicate_authority|review|canonical|meaning|consumers|contract_tests)\)/i, status: 409, code: 'EYE_STA_002' },
   { match: /^data product rejected/i, status: 422, code: 'EYE_REQ_001' },
   /* end B90 prelude */
+  /* B90 products (0095 §R) — the registry completed: `data product consumer rejected (<class>)` (the consumers), `contract test rejected
+     (<class>)`, `product scorecard rejected (<class>)`, `product cost rejected (<class>)` — anchored nouns no earlier row starts with (the
+     prelude's `^data product rejected` does not match `data product consumer rejected`; no earlier row starts with `contract test`,
+     `product scorecard` or `product cost`; no unanchored earlier row names these phrases). The lifecycle ports (degrade / restore / withdraw
+     / retire) use the prelude's `data product rejected` family with its classes (not_owner, state, review, canonical, consumers,
+     contract_tests). B9's order: the standing 403 (the acting principal, the authority, the owner, THE CONSUMER — a contract is accepted by
+     nobody else), the absences 404 (`unknown_*`), the record's state 409 (state, duplicate, contract_tests, review, canonical, consumers),
+     the caller's own 422 (a version that is not the released one, a period, an amount, a window among them). */
+  { match: /^(data product consumer|contract test|product scorecard|product cost) rejected \((actor|authority|not_owner|not_consumer|separation)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^(data product consumer|contract test|product scorecard|product cost) rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^(data product consumer|contract test|product scorecard|product cost) rejected \((state|duplicate|contract_tests|review|canonical|consumers)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^(data product consumer|contract test|product scorecard|product cost) rejected/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B90 products */
   /* B36 home (0094 §H) — the executive home's families in the CLASS form `<noun> rejected (<class>): …`: `cadence rejected`, `executive room
      rejected` (0044's unclassed `room rejected: …` texts are the decision room's and are mapped by no row; the noun here is `executive room`
      and every row is anchored), `objective review rejected` (the SoD of §H2's re-declared convene_review and of open_subject_room — B23's

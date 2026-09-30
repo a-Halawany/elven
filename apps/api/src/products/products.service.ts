@@ -6,6 +6,7 @@
  * rolls back with the object. Every figure a harness or the demonstration registers is SYNTHETIC.
  */
 import { HttpException, Injectable } from '@nestjs/common';
+/* B90 products */ import { sql } from 'kysely'; /* end B90 products */
 import { canonicalHeaderDigest, errorBody, validateHeader, type CanonicalHeader } from '@eye/contracts';
 import type { AuthenticatedPrincipal } from '../shared/auth-types.js';
 import { newId } from '../shared/ids.js';
@@ -90,6 +91,10 @@ export class ProductsService {
     if (p === null) throw new HttpException(errorBody('EYE_STA_001', correlationId, `data product rejected (unknown_product): ${productId} is not a product of this domain`), 404);
     const v = await cap.version(productId, version);
     if (v === null) throw new HttpException(errorBody('EYE_STA_001', correlationId, `data product rejected (unknown_version): product ${String(p['product_key'])} has no version ${version}`), 404);
+    /* B90 products (0095 §R, DP-41-006): a BREAKING version over an accepted consumer without a passing contract test on it is refused
+       before the DPR is admitted (the port names the consumers). */
+    await cap.call(sql`select products.assert_release_consumers(${productId}::uuid, ${version}::int)`);
+    /* end B90 products */
     const prior = await cap.latestObjectVersion(productId);
     // the port's newer-than rule, judged here too: the admission would otherwise refuse a duplicate DPR version before the port could say why
     if (prior !== null && version <= prior) throw new HttpException(errorBody('EYE_STA_002', correlationId, `data product rejected (state): version ${version} of product ${String(p['product_key'])} is not newer than the released version ${prior}`), 409);
