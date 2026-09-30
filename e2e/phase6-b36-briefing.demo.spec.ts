@@ -79,17 +79,18 @@ async function openNewestEdition(page: Page): Promise<void> {
 
 test.describe.serial('CP-6 B36 — the briefing studio v2 completed (BRF@v3) on the demonstration', () => {
   test('STUDIO: the executive sees the suppression policy in force and the contract the next edition is composed under', async ({ page }) => {
-    await uiLogin(page, 's.okafor', required('EYE_TEST_ADMIN_PASSWORD'));
+    // the studio renders for an executive or a decision owner who is a MEMBER of the room: L. Brandt (decision owner) in the B36 gate room the act composed in
+    await uiLogin(page, 'l.brandt', required('EYE_TEST_ADMIN_PASSWORD'));
     await roomsOrSkip(page, 'b36-briefing-00-rooms-refused');
     // the policy the act published (prefer silence over false certainty): a version and its default line
     const pol = page.locator('section[aria-labelledby="pol-h"]');
     await expect(pol.getByText(/^v\d+ · default: ≥ \d+ source\(s\)/)).toBeVisible({ timeout: 20_000 });
-    const row = page.getByRole('row').filter({ hasText: /corridor/i }).first();
+    const row = page.getByRole('row').filter({ hasText: /B36 gate room/i }).first();
     await row.getByRole('button').first().click();
     // the studio: the audience roles (a wrapping label includes its option text — selected by role), the expiry as datetime-local, the purpose
     const studio = page.locator('section[aria-labelledby="studio-h"]');
-    await expect(studio.getByRole('checkbox', { name: 'executive' })).toBeChecked();
-    await expect(studio.getByRole('checkbox', { name: 'board_member' })).toBeVisible();
+    await expect(studio.getByRole('checkbox', { name: 'executive', exact: true })).toBeChecked();
+    await expect(studio.getByRole('checkbox', { name: 'board_member', exact: true })).toBeVisible();
     await expect(studio.getByLabel('Expires at')).toHaveAttribute('type', 'datetime-local');
     await expect(studio.getByLabel(/Purpose/)).toBeVisible();
     await shot(page, 'b36-briefing-01-studio');
