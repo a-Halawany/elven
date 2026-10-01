@@ -345,6 +345,8 @@ describe('B35 recommendation · r3 · the human-led incomplete-package mode (FEX
     const cm = await completeness(C3.pkg, C3.v);
     expect(cm).toMatchObject({ complete: false, mode: 'incomplete', live_recommendations: 1 });
     expect(cm.gaps.map((g) => g.category).sort()).toEqual(['alternatives', 'evidence']);
+    // the explanation (§E) is read through to_regclass: not assessed while §E is absent, an ADVISORY (shown, not blocking) once it is combined
+    expect([...(cm['not_assessed'] as Row[]), ...(cm['advisories'] as Row[])].map((x) => x['category'])).toContain('explanation');
     await refused(c.propose(C3.pkg, C3.v), /^incomplete package rejected \(unattested\): version 1 carries 1 live recommendation\(s\) and is incomplete — (?=.*alternatives: 1 intervention\(s\) beside the status quo)(?=.*evidence: .*pre-clearance quote)/, 409);
     expect((await sql<{ state: string }>`select state from decision.package_versions where package_id = ${C3.pkg}::uuid`.execute(su)).rows[0]!.state).toBe('draft');
     // nothing new without a recommendation: the fixture's one-intervention draft proposes as before, its header 'complete'

@@ -113,6 +113,7 @@ function CompletenessCard({ pkg, c, onDone }: { pkg: PackageView; c: Completenes
       <h3 id="completeness" style={h3}>Completeness of version {c.version} ({c.version_state})</h3>
       <p style={c.complete ? undefined : critical}>{completenessWords(c)}</p>
       {c.gaps.length > 0 && <ul>{c.gaps.map((g) => <li key={g.key}><strong>{g.category}</strong> — {g.detail} <span style={muted}>(<Mono>{g.key}</Mono>)</span></li>)}</ul>}
+      {c.advisories.length > 0 && <p style={muted}>Advisory (not blocking): {c.advisories.map((g) => g.detail).join('; ')}</p>}
       {c.attestation !== null && <p>Attestation <Mono>{short(c.attestation.attestation_id)}</Mono> — {c.attestation.state}; by <Mono>{short(c.attestation.attested_by)}</Mono>: {c.attestation.reason}
         {c.attestation.acknowledged_by !== null && <> · acknowledged by <Mono>{short(c.attestation.acknowledged_by)}</Mono>: {c.attestation.acknowledgement_note}</>}</p>}
       {!c.complete && c.version_state === 'draft' && c.mode !== 'human_led' && (

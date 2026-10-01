@@ -35,7 +35,7 @@ export interface Attestation {
   attested_by: string; attested_at: string; acknowledged_by: string | null; acknowledged_at: string | null; acknowledgement_note: string | null; set_aside: Row[];
 }
 export interface Completeness {
-  package_id: string; version: number; version_state: string; package_state: string; complete: boolean; gaps: Gap[]; not_assessed: Array<{ category: string; reason: string }>;
+  package_id: string; version: number; version_state: string; package_state: string; complete: boolean; gaps: Gap[]; advisories: Gap[]; not_assessed: Array<{ category: string; reason: string }>;
   live_recommendations: number; attestation: Attestation | null; covered: boolean; uncovered: Gap[]; mode: 'complete' | 'human_led' | 'attested' | 'incomplete'; label: string;
 }
 export interface PackageView {

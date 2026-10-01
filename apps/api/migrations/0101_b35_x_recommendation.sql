@@ -15,7 +15,8 @@
 --        could make it wrong). The Decision Agent records; it never reviews (the PDP and the port).
 --   §R3  THE HUMAN-LED INCOMPLETE-PACKAGE MODE (decision.incomplete_package_attestations; FEX-15): the version's completeness read
 --        (decision.recommendation_completeness: declared missing information, the recommendations' missing evidence, interventions resting on
---        no run, fewer than two alternatives beside the status quo, and — through to_regclass — §E's explanation of the version); the owner
+--        no run, fewer than two alternatives beside the status quo; §E's explanation of the version read through to_regclass as an
+--        advisory, shown and not blocking); the owner
 --        attests the named gaps with a reason, a second human acknowledges; the version's live recommendations are set aside (human-led
 --        analysis WITHOUT recommendation) and the proposal goes ahead labelled human-led. The proposal gate is the service's (package.service
 --        propose, its B35 block): a version CARRYING live recommendations that is incomplete is refused unless an acknowledged attestation
@@ -399,13 +400,13 @@ GRANT EXECUTE ON FUNCTION decision.dsr_coverage(uuid, int, text) TO eye_app, eye
 /* A version's RECOMMENDATION COMPLETENESS (an invoker read under the caller's RLS; NULL when the version is not visible): the GAPS by
    FEX-15's categories — evidence (the version's declared missing information; the live recommendations' missing evidence), uncertainty (an
    intervention resting on no completed run: its uncertainty is not quantified), alternatives (fewer than two interventions beside the
-   status quo), explanation (§E's explanation of the version — read through to_regclass; `not_assessed` when §E is absent) — each with a
-   stable key; the live recommendations; the live attestation; whether an ACKNOWLEDGED attestation names every gap (covered); the mode:
+   status quo) — each with a stable key; the EXPLANATION (§E's explanation of the version, read through to_regclass) an ADVISORY, shown and
+   not blocking (`not_assessed` when §E is absent; the integrator may promote it to a gap at §I); the live recommendations; the live attestation; whether an ACKNOWLEDGED attestation names every gap (covered); the mode:
    complete | human_led | attested (awaiting the second human) | incomplete. */
 CREATE OR REPLACE FUNCTION decision.recommendation_completeness(p_package_id uuid, p_version int) RETURNS jsonb
 LANGUAGE plpgsql STABLE SET search_path = decision, simulation, prediction, pg_catalog, pg_temp AS $$
 DECLARE v record; v_gaps jsonb := '[]'::jsonb; v_not jsonb := '[]'::jsonb; x jsonb; i int; rr record; o record; v_int int; v_live int; a record; v_att jsonb; v_named text[];
-        v_uncovered jsonb := '[]'::jsonb; v_covered boolean := false; v_has boolean; v_mode text;
+        v_uncovered jsonb := '[]'::jsonb; v_covered boolean := false; v_has boolean; v_mode text; v_adv jsonb := '[]'::jsonb;
 BEGIN
   SELECT pv.*, p.title, p.owner_principal_id, p.state AS package_state INTO v FROM decision.package_versions pv JOIN decision.packages_current p ON p.package_id = pv.package_id
    WHERE pv.package_id = p_package_id AND pv.version = p_version;
@@ -447,7 +448,7 @@ BEGIN
     BEGIN
       EXECUTE 'SELECT EXISTS (SELECT 1 FROM decision.explanations e WHERE e.subject_kind = ''package_version'' AND e.subject_id = $1 AND e.subject_version = $2)' INTO v_has USING p_package_id, p_version;
       IF NOT v_has THEN
-        v_gaps := v_gaps || jsonb_build_object('category', 'explanation', 'key', 'explanation', 'detail', format('no explanation of version %s has been generated', p_version));
+        v_adv := v_adv || jsonb_build_object('category', 'explanation', 'key', 'explanation', 'detail', format('no explanation of version %s has been generated', p_version));
       END IF;
     EXCEPTION WHEN undefined_column OR undefined_table THEN
       v_not := v_not || jsonb_build_object('category', 'explanation', 'reason', 'the explanation part''s table does not carry (subject_kind, subject_id, subject_version)');
@@ -467,7 +468,7 @@ BEGIN
                  WHEN v_att IS NOT NULL AND v_att ->> 'state' = 'attested' THEN 'attested'
                  ELSE 'incomplete' END;
   RETURN jsonb_build_object('package_id', p_package_id, 'version', p_version, 'version_state', v.state, 'package_state', v.package_state,
-    'complete', jsonb_array_length(v_gaps) = 0, 'gaps', v_gaps, 'not_assessed', v_not, 'live_recommendations', v_live,
+    'complete', jsonb_array_length(v_gaps) = 0, 'gaps', v_gaps, 'advisories', v_adv, 'not_assessed', v_not, 'live_recommendations', v_live,
     'attestation', v_att, 'covered', v_covered, 'uncovered', CASE WHEN v_att IS NULL THEN v_gaps ELSE v_uncovered END, 'mode', v_mode,
     'label', CASE v_mode WHEN 'complete' THEN 'COMPLETE: no gap stands against a recommendation'
                          WHEN 'human_led' THEN 'HUMAN-LED — incomplete package, analysis without recommendation (attested and acknowledged)'
