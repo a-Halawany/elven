@@ -321,7 +321,7 @@ describe('B31 validity · P · the invalidation reaches the package (V03-T-156/-
     expect(m).toMatch(/run use rejected \(refused\)|was invalidated|reopen|material/);
     const d = await c.declare({ decisionObjectId: w.decisionId, title: 'Cite the invalidated run (B31 harness)', statement: 'a draft that cites the invalidated reroute', owner: w.owner.principalId });
     const v = (await c.open(d.package.packageId)).version.version;
-    await refused(c.option(d.package.packageId, v, { key: 'reroute', title: 'Reroute via the Cape', kind: 'intervention', consequences: [{ kind: 'run', id: w.rerouteId }] }), /was invalidated at .*; a consequence cannot rest on an invalidated result/, 422);
+    await refused(c.option(d.package.packageId, v, { key: 'reroute', title: 'Reroute via the Cape', kind: 'intervention', consequences: [{ kind: 'run', id: w.rerouteId }] }), /^reroute: run .*@2 is withdrawn; a consequence cannot rest on it|was invalidated at .*; a consequence cannot rest on an invalidated result/, 422);
     await refused(pkgRead(uuidv7()), /^run use rejected \(unknown_package\)/, 404);
     evidence('P2', { commit_refusal: m.slice(0, 120) });
   });
@@ -371,9 +371,12 @@ describe('B31 validity · Q · the quality failure and the suspension consulted 
     expect((await branchRow(DISRUPT)).state).toBe('flipped');
   });
 
-  it('Q3 · RECOVERY → REFUSAL: the indistinct branch suspended, the evaluation passes; the run and the promotion stand — and the suspended branch is not promoted (branch_suspended)', async () => {
+  it('Q3 · RECOVERY → REFUSAL: the indistinct branch and the stale-signpost branch suspended, the evaluation passes; the run and the promotion stand — and the suspended branch is not promoted (branch_suspended)', async () => {
     await suspend(strategyOwner, QSHUT, 'the shutdown branch restates the closure; suspended pending a rewrite (B31 harness)');
-    expect((await evaluateQuality(strategyOwner, Q)).evaluation.outcome).toBe('passed');
+    // the breach of Q2 left the collapse signpost's last observation in 2023 (the fixture series): STALE — suspended too, pending a fresh series
+    await suspend(strategyOwner, QDOWN, 'the collapse signpost is stale; suspended until the series is observed again (B31 harness)');
+    const e2 = (await evaluateQuality(strategyOwner, Q)).evaluation;
+    expect(e2.outcome, JSON.stringify(e2.findings)).toBe('passed');
     const r = await runOn(Q, QBASE);
     expect(r.run.state).toBe('completed');
     await reviewScenario(strategyOwner, Q, { outcome: 'promote_to_simulation', branch_id: QBASE, note: 'promote the baseline now the tree passes (B31 harness)' });
@@ -415,7 +418,7 @@ describe('B31 validity · C · the claim and indicator conditions suspend (F-P4-
     expect(b).toMatchObject({ state: 'suspended', suspended_from: 'flipped', suspension_cause: { kind: 'assumption', id: ASU_COVER, via: 'claim' } });
     const items = await itemsOf('scenario.suspension', DISRUPT);
     expect(items.at(-1)).toMatchObject({ owner_principal_id: forecastOwner.principalId, state: 'open', subject_kind: 'branch' });
-    await refused(runOn(S, DISRUPT, vTwin, true), /^run rejected \(branch_suspended\)/, 409);
+    await refused(runOn(S, DISRUPT, vTwin, false), /^run rejected \(branch_suspended\)/, 409);
   });
   it('C2 · REFUSAL: a NON-critical claim condition met suspends nothing', async () => {
     const other = await seedClaim(w.evd);

@@ -738,7 +738,7 @@ GRANT EXECUTE ON FUNCTION prediction.branch_twin_binding_read(uuid) TO eye_app, 
    in the top three; unmapped critical assumptions are named (their sensitivity is not measured). NULL when the run is not visible. */
 CREATE OR REPLACE FUNCTION simulation.run_assumption_sensitivity(p_run_id uuid) RETURNS jsonb
 LANGUAGE plpgsql STABLE SET search_path = simulation, prediction, graph, pg_catalog, pg_temp AS $$
-DECLARE r simulation.runs_current%ROWTYPE; v_factors jsonb := '[]'::jsonb; v_source text := 'run'; v_map jsonb := '[]'::jsonb; v_out jsonb := '[]'::jsonb; a record; m jsonb; f jsonb; v_rank int;
+DECLARE r simulation.runs_current%ROWTYPE; v_factors jsonb := '[]'::jsonb; v_source text := 'run'; v_map jsonb := '[]'::jsonb; v_out jsonb := '[]'::jsonb; a record; m jsonb; v_f jsonb; v_rank int;
 BEGIN
   SELECT * INTO r FROM simulation.runs_current x WHERE x.run_id = p_run_id;
   IF NOT FOUND THEN RETURN NULL; END IF;
@@ -748,8 +748,8 @@ BEGIN
   END IF;
   IF jsonb_array_length(v_factors) = 0 THEN
     -- the run's own one-at-a-time factors, ranked by the cost spread (the service's sensitivityOf; supply-flow)
-    SELECT coalesce(jsonb_agg(jsonb_build_object('key', x.f ->> 'key', 'spread', (x.f ->> 'cost_spread')::numeric, 'rank', x.rk) ORDER BY x.rk), '[]'::jsonb) INTO v_factors
-      FROM (SELECT f, row_number() OVER (ORDER BY coalesce((f ->> 'cost_spread')::numeric, 0) DESC, f ->> 'key') AS rk FROM jsonb_array_elements(coalesce(r.sensitivity -> 'factors', '[]'::jsonb)) f) x;
+    SELECT coalesce(jsonb_agg(jsonb_build_object('key', x.fx ->> 'key', 'spread', (x.fx ->> 'cost_spread')::numeric, 'rank', x.rk) ORDER BY x.rk), '[]'::jsonb) INTO v_factors
+      FROM (SELECT fe.fx, row_number() OVER (ORDER BY coalesce((fe.fx ->> 'cost_spread')::numeric, 0) DESC, fe.fx ->> 'key') AS rk FROM jsonb_array_elements(coalesce(r.sensitivity -> 'factors', '[]'::jsonb)) AS fe(fx)) x;
   END IF;
   SELECT coalesce(k.assumption_factors, '[]'::jsonb) INTO v_map FROM prediction.branch_twin_bindings k WHERE k.branch_id = r.scenario_branch_id AND k.state = 'active';
   v_map := coalesce(v_map, '[]'::jsonb);
@@ -758,17 +758,17 @@ BEGIN
             WHERE r.scenario_id IS NOT NULL AND l.scenario_id = r.scenario_id AND (l.branch_id IS NULL OR l.branch_id = r.scenario_branch_id) AND l.state = 'linked' AND l.critical
             ORDER BY s.title LOOP
     SELECT x INTO m FROM jsonb_array_elements(v_map) x WHERE x ->> 'assumption_id' = a.assumption_id::text LIMIT 1;
-    f := NULL; v_rank := NULL;
+    v_f := NULL; v_rank := NULL;
     IF m IS NOT NULL THEN
-      SELECT x INTO f FROM jsonb_array_elements(v_factors) x WHERE x ->> 'key' = m ->> 'factor_key' LIMIT 1;
-      v_rank := (f ->> 'rank')::int;
+      SELECT x INTO v_f FROM jsonb_array_elements(v_factors) x WHERE x ->> 'key' = m ->> 'factor_key' LIMIT 1;
+      v_rank := (v_f ->> 'rank')::int;
     END IF;
     v_out := v_out || jsonb_build_object('assumption_id', a.assumption_id, 'title', a.title, 'verification_state', a.verification_state, 'condition', a.invalidation_condition, 'condition_met', a.met,
-      'factor_key', m ->> 'factor_key', 'factor', f, 'rank', v_rank,
-      'material', CASE WHEN m IS NULL OR f IS NULL THEN NULL ELSE v_rank <= 3 END,
-      'measured', m IS NOT NULL AND f IS NOT NULL,
+      'factor_key', m ->> 'factor_key', 'factor', v_f, 'rank', v_rank,
+      'material', CASE WHEN m IS NULL OR v_f IS NULL THEN NULL ELSE v_rank <= 3 END,
+      'measured', m IS NOT NULL AND v_f IS NOT NULL,
       'note', CASE WHEN m IS NULL THEN 'no factor is mapped to this critical assumption on the branch''s binding: its sensitivity is not measured'
-                   WHEN f IS NULL THEN format('factor %s is not among the run''s sensitivity factors', m ->> 'factor_key')
+                   WHEN v_f IS NULL THEN format('factor %s is not among the run''s sensitivity factors', m ->> 'factor_key')
                    WHEN v_rank <= 3 THEN format('MATERIAL: the result is sensitive to this assumption (factor %s ranks %s of %s)', m ->> 'factor_key', v_rank, jsonb_array_length(v_factors))
                    ELSE format('not material: factor %s ranks %s of %s', m ->> 'factor_key', v_rank, jsonb_array_length(v_factors)) END);
   END LOOP;
