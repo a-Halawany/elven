@@ -325,6 +325,16 @@ describe('B31 validity · P · the invalidation reaches the package (V03-T-156/-
     evidence('P2', { commit_refusal: m.slice(0, 120) });
   });
 
+  it('P2b · REFUSAL WITHOUT A POLICY (the B31 integration\'s correction; V03-T-156, FEX-13): the domain\'s policy set to require nothing — the version proposed BEFORE its run was invalidated still cannot be committed (refused, with or without a policy); the policy restored for P3', async () => {
+    const off = (await setPolicy(w.authority, { require: false, rationale: 'no decision-use requirement for this domain (B31 harness)', expectedVersion: 1 })).policy;
+    expect(off).toMatchObject({ version: 2, require_decision_use: false });
+    await refused(c.commit(REACHED.pkg, REACHED.v, REACHED.digest), /^run use rejected \(refused\): package .* recommends option "reroute", which cites run .* an invalidated input is refused at the commitment with or without a decision-use policy/, 409);
+    expect((await sql<{ n: number }>`select count(*)::int n from decision.package_events where package_id = ${REACHED.pkg}::uuid and event = 'package.committed'`.execute(su)).rows[0]!.n).toBe(0);
+    const on = (await setPolicy(w.authority, { require: true, rationale: 'only promoted results support a commitment (B31 harness, restored)', expectedVersion: 2 })).policy;
+    expect(on).toMatchObject({ version: 3, require_decision_use: true });
+    evidence('P2b', { policy_off: off['version'], commit_refused_without_policy: true });
+  });
+
   it('P3 · RECOVERY: a re-run of the corrected case, promoted by a reviewer, is cited instead and the new package proposes under the policy', async () => {
     RERUN = (await twinRun({ twinId: w.twinId, twinVersion: w.v1, runKind: 'intervention', controlRunId: w.controlId, shock: true, component: 'SYN-PART-MAG',
       interventions: [{ type: 'reroute', shipment: 'SYN-SHIP-4472' }], horizonDays: 90, stochastic: { mode: 'deterministic' } })).run.runId;

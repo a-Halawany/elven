@@ -1844,15 +1844,17 @@ END $$ LANGUAGE plpgsql;
 REVOKE ALL ON FUNCTION simulation.set_decision_use_policy(uuid,uuid,uuid,boolean,text,int,uuid,uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION simulation.set_decision_use_policy(uuid,uuid,uuid,boolean,text,int,uuid,uuid) TO eye_commit;
 
-/* THE GATE (BEFORE INSERT on decision.package_events, version.proposed and package.committed): under a policy that requires it, the
-   RECOMMENDED option's cited runs must each be decision-grade. A refused use names the run and its reasons; a diagnostic one says the run
-   may still be read diagnostically. No policy (or require false): nothing is checked. */
+/* THE GATE (BEFORE INSERT on decision.package_events, version.proposed and package.committed). ALWAYS — with or without a policy
+   (V03-T-156, FEX-13; the B31 integration's correction): the RECOMMENDED option may not rest on an INVALIDATED run — a version proposed
+   before its run was invalidated cannot be committed (decision.commit_package does not re-check citations; derive_option refuses only at
+   derivation). Under a policy that requires it, every cited run of the recommended option must ALSO be decision-grade: a refused use names
+   the run and its reasons; a diagnostic one says the run may still be read diagnostically. No policy (or require false): only the
+   invalidation is checked. */
 CREATE OR REPLACE FUNCTION simulation.siv_decision_use_gate() RETURNS trigger
 SECURITY DEFINER SET search_path = simulation, decision, prediction, pg_catalog, pg_temp AS $$
 DECLARE pol simulation.decision_use_policies%ROWTYPE; v_version int; v_key text; o decision.options%ROWTYPE; c jsonb; u jsonb;
 BEGIN
   SELECT * INTO pol FROM simulation.siv_policy_of(NEW.tenant_id, NEW.domain_id);
-  IF pol.policy_id IS NULL OR NOT pol.require_decision_use THEN RETURN NEW; END IF;
   v_version := (NEW.details ->> 'version')::int;
   v_key := coalesce(NEW.details -> 'choice' ->> 'option_key',
                     (SELECT pv.choice ->> 'option_key' FROM decision.package_versions pv WHERE pv.package_id = NEW.package_id AND pv.version = v_version));
@@ -1863,6 +1865,12 @@ BEGIN
     IF (c ->> 'kind') <> 'run' THEN CONTINUE; END IF;
     u := simulation.run_decision_use((c ->> 'id')::uuid);
     IF u IS NULL OR (u ->> 'use') = 'decision' THEN CONTINUE; END IF;
+    IF (u ->> 'validity') = 'invalidated' THEN
+      RAISE EXCEPTION 'run use rejected (refused): package % version % recommends option "%", which cites run % — %; an invalidated input is refused at % with or without a decision-use policy: cite another run (a re-run of the corrected case)',
+        NEW.package_id, v_version, v_key, c ->> 'id', u ->> 'label', CASE NEW.event WHEN 'version.proposed' THEN 'the proposal' ELSE 'the commitment' END
+        USING ERRCODE = '22023';
+    END IF;
+    IF pol.policy_id IS NULL OR NOT pol.require_decision_use THEN CONTINUE; END IF;
     RAISE EXCEPTION 'run use rejected (%): package % version % recommends option "%", which cites run % — %; the domain''s decision-use policy (v%) requires a decision-grade result at %: %',
       CASE u ->> 'use' WHEN 'refused' THEN 'refused' ELSE 'diagnostic_only' END, NEW.package_id, v_version, v_key, c ->> 'id', u ->> 'label', pol.version,
       CASE NEW.event WHEN 'version.proposed' THEN 'the proposal' ELSE 'the commitment' END,
