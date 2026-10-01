@@ -89,6 +89,8 @@ export interface Run {
   envelope_state?: 'inside' | 'outside' | 'unchecked' | 'unrecorded'; envelope_check?: EnvelopeCheck | null;
   envelope_ack?: { acknowledged_by: string; acknowledged_at: string; reason: string; keys: string } | null;
   challenge_id?: string | null; challenges?: Challenge[]; promotion?: Promotion | null; live_challenges?: number;
+  /** B31 (0099 §V1): the run's decision use with the server's label — absent before 0099. */
+  decision_use?: { use: 'decision' | 'diagnostic' | 'refused'; label: string } | null;
 }
 export interface Totals { line_stop_days: number; days_below_safety_stock: number; min_on_hand: string; first_line_stop_date: string | null; cost: { reroute: string; air: string; line_stop: string; total: string } }
 

@@ -237,7 +237,8 @@ export default function SimulationsPage() {
                 {/* B21: the run's fitness (a promotion's use / an invalidation), its own envelope state when outside, the live challenges. */}
                 <Td><RunFitness r={r} />
                   {r.envelope_state === 'outside' ? <div style={{ fontSize: 'var(--eye-type-label-sm)', color: 'var(--eye-color-critical)' }}>{envelopeLine(r)}</div> : null}
-                  {(r.live_challenges ?? 0) > 0 ? <div style={{ fontSize: 'var(--eye-type-label-sm)', color: 'var(--eye-color-warning)' }}>{r.live_challenges} live challenge(s)</div> : null}</Td>
+                  {(r.live_challenges ?? 0) > 0 ? <div style={{ fontSize: 'var(--eye-type-label-sm)', color: 'var(--eye-color-warning)' }}>{r.live_challenges} live challenge(s)</div> : null}
+                  {/* B31 validity */}{r.decision_use && r.decision_use.use !== 'decision' ? <div style={{ fontSize: 'var(--eye-type-label-sm)', color: r.decision_use.use === 'refused' ? 'var(--eye-color-critical)' : 'var(--eye-color-warning)' }}>{r.decision_use.label}</div> : null}{/* end B31 validity */}</Td>
               </tr>
             ))}
           </tbody>
