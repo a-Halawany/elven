@@ -6,7 +6,7 @@
  * objective here), the DEC, the corridor scenario with its baseline and downside, its forecast).
  *
  * The package: "Second source for bearings (SYNTHETIC)" — the owner's (L. Brandt's part), three options: keep the single source (the control
- * run), dual-source via Morocco (the reroute run stands in for its simulated consequence), raise the safety stock (unsimulated).
+ * run), dual-source via Morocco (the air-bridge run stands in for its simulated consequence), raise the safety stock (unsimulated).
  *
  *   a1 CRITERIA WITH EXPOSED WEIGHTS, versioned, a named value-judgment owner; the server's weighted scores and ranking re-derived here;
  *      WEIGHT SENSITIVITY (the weight at which the lead flips) re-derived here and then ENACTED — the next set at that weight changes the
@@ -68,7 +68,7 @@ let pipeline: PipelineService;
 let corridorOwner: AuthenticatedPrincipal; let strategist: AuthenticatedPrincipal; let analyst: AuthenticatedPrincipal; let outsider: AuthenticatedPrincipal; let operatorS: AuthenticatedPrincipal;
 let processOwner: AuthenticatedPrincipal;
 /** What the cases leave one another. */
-let PKG = ''; let V = 1; let COST_OBJ = ''; let RSK = ''; let BASE = ''; let DOWN = ''; let SET = ''; let REVIEW = ''; let VOI = ''; let PORT = ''; let BROKERS = ''; let FUEL = '';
+let PKG = ''; let V = 1; let COST_OBJ = ''; let RSK = ''; let BASE = ''; let DOWN = ''; let SET = ''; let REVIEW = ''; let VOI = ''; let PORT = ''; let EXPORT = ''; let BROKERS = ''; let FUEL = '';
 let COMMITTED = '';
 const T = () => h.fx.tenantId; const D = () => h.fx.domainId;
 const rows = async (q0: ReturnType<typeof sql>) => (await q0.execute(su)).rows as Row[];
@@ -166,7 +166,7 @@ beforeAll(async () => {
   PKG = (await c.declare({ decisionObjectId: w.decisionId, title: 'Second source for bearings (SYNTHETIC)', statement: 'whether to qualify a second bearing source against the corridor scenarios', owner: w.owner.principalId })).package.packageId;
   V = (await c.open(PKG)).version.version;
   await c.option(PKG, V, { key: 'status-quo', title: 'Keep the single source', kind: 'status_quo', consequences: [{ kind: 'run', id: w.controlId }] });
-  await c.option(PKG, V, { key: 'morocco', title: 'Dual-source via Morocco', kind: 'intervention', consequences: [{ kind: 'run', id: w.rerouteId }], reversibility: 'the framework contract is cancellable at 90 days' });
+  await c.option(PKG, V, { key: 'morocco', title: 'Dual-source via Morocco', kind: 'intervention', consequences: [{ kind: 'run', id: w.airId }], reversibility: 'the framework contract is cancellable at 90 days' });
   await c.option(PKG, V, { key: 'buffer', title: 'Raise the bearing safety stock', kind: 'intervention', consequences: [{ kind: 'evidence', id: w.evd.id, version: w.evd.version }], unsimulatedReason: 'no run models a stock increase on this twin' });
   await c.terms(PKG, V, c.validTerms());
 }, 600_000);
@@ -195,8 +195,8 @@ describe('B35 §A · a1 CRITERIA WITH EXPOSED WEIGHTS, THE SCORES, THE WEIGHT SE
     const sq = (await assess(w.owner, { option: 'status-quo', criterion: 'line_stop', cited: { kind: 'run', id: w.controlId, measure: 'line_stop_days' } })).assessment;
     expect(sq).toMatchObject({ basis_kind: 'computed', option_key: 'status-quo', criterion_key: 'line_stop' });
     expect(Number(sq['value'])).toBe(await runTotal(w.controlId));
-    const mo = (await assess(w.owner, { option: 'morocco', criterion: 'line_stop', cited: { kind: 'run', id: w.rerouteId, measure: 'line_stop_days' } })).assessment;
-    expect(Number(mo['value'])).toBe(await runTotal(w.rerouteId));
+    const mo = (await assess(w.owner, { option: 'morocco', criterion: 'line_stop', cited: { kind: 'run', id: w.airId, measure: 'line_stop_days' } })).assessment;
+    expect(Number(mo['value'])).toBe(await runTotal(w.airId));
     await assess(analyst, { option: 'buffer', criterion: 'line_stop', value: 2, basis: 'six weeks of safety stock bridge a two-day gap in a closure (SYNTHETIC)' });
     for (const [o, cost, customs] of [['status-quo', 0, 3], ['morocco', 480, 7], ['buffer', 260, 3]] as const) {
       await assess(analyst, { option: o, criterion: 'cost', value: cost, basis: 'the sourcing desk\'s landed-cost quote for Q1 (SYNTHETIC)' });
@@ -297,9 +297,9 @@ describe('B35 §A · a3 / a6 TRADE-OFFS, THE VALUE OF INFORMATION, THE VALIDATED
 
   it('a3 · REFUSAL: a value computed from a run the option does not cite (422), an unknown measure (422), a value-of-information assessment of no such package (404), a computed value entered beside its citation (422)', async () => {
     await refused(assess(w.owner, { option: 'morocco', criterion: 'line_stop', cited: { kind: 'run', id: w.controlId, measure: 'line_stop_days' } }), /^analysis rejected \(cited\): run .* is not one option morocco cites/, 422);
-    await refused(assess(w.owner, { option: 'morocco', criterion: 'line_stop', cited: { kind: 'run', id: w.rerouteId, measure: 'throughput' } }), /^analysis rejected \(measure\)/, 422);
+    await refused(assess(w.owner, { option: 'morocco', criterion: 'line_stop', cited: { kind: 'run', id: w.airId, measure: 'throughput' } }), /^analysis rejected \(measure\)/, 422);
     await refused(assess(w.owner, { option: 'morocco', criterion: 'cost', cited: { kind: 'voi', id: uuidv7(), measure: 'expected_payoff' } }), /^analysis rejected \(unknown_assessment\)/, 404);
-    await refused(assess(w.owner, { option: 'morocco', criterion: 'line_stop', value: 1, cited: { kind: 'run', id: w.rerouteId, measure: 'line_stop_days' } }), /^analysis rejected \(basis\): a computed value is read from the cited object/, 422);
+    await refused(assess(w.owner, { option: 'morocco', criterion: 'line_stop', value: 1, cited: { kind: 'run', id: w.airId, measure: 'line_stop_days' } }), /^analysis rejected \(basis\): a computed value is read from the cited object/, 422);
   });
 
   it('a3 · RECOVERY + POSITIVE: the governed probabilities set, "one more week of transit data" assessed for the package (WAIT) — on the analysis as the option value; the composition linked, the reroute\'s second-order effects derived — VALIDATED on the analysis; a value computed from the assessment', async () => {
@@ -328,14 +328,14 @@ describe('B35 §A · a3 / a6 TRADE-OFFS, THE VALUE OF INFORMATION, THE VALIDATED
     await w.twins.ground(tw(processOwner, 'twin.ground', pt.twin.twinId), T(), D(), pt.twin.twinId, String(o.version.version), { payload: { elements: [{ key: 'line.capacity_per_day:l1', kind: 'assumed', value: 1000, unit: 'units/day', citations: [cite(w.records.terms)] }] } });
     await w.twins.admit(tw(processOwner, 'twin.version.admit', pt.twin.twinId), T(), D(), pt.twin.twinId, String(o.version.version), { payload: { allowIncomplete: true } });
     await comp.declareLink(tw(processOwner, 'twin.link.declare', pt.twin.twinId), T(), D(), { payload: { upstreamTwinId: w.twinId, downstreamTwinId: pt.twin.twinId, mapping: [{ from: 'supply.capacity_per_day', to: 'supply.capacity_per_day' }], use: 'capacity-planning' } });
-    const so = (await impact.secondOrder(h.req(operatorS, 'simulation.impact.second_order', 'SIM', w.rerouteId, 'simulation'), T(), D(), w.rerouteId) as { secondOrder: Row }).secondOrder;
+    const so = (await impact.secondOrder(h.req(operatorS, 'simulation.impact.second_order', 'SIM', w.airId, 'simulation'), T(), D(), w.airId) as { secondOrder: Row }).secondOrder;
     const a = (await read()).analysis;
     const mo = a.second_order.find((s) => s['option'] === 'morocco')!;
     expect(mo).toMatchObject({ validated: true, derivation_id: so['derivation_id'], reason: null, validity: 'valid' });
     expect(mo.effects.length).toBe((so['effects'] as unknown[]).length);
     expect(a.value_of_information).toEqual([expect.objectContaining({ assessment_id: VOI, recommendation: 'wait' })]);
     expect(a.futures.option_value).toMatchObject({ assessment_id: VOI, recommendation: 'wait', net_value_of_waiting: voi['net_value'] });
-    console.log(`B35 §A EVIDENCE a3: the reroute's effects validated (${mo.effects.length} entities); waiting for the transit data is worth ${String(voi['net_value'])} k€ net`);
+    console.log(`B35 §A EVIDENCE a3: the air bridge's effects validated (${mo.effects.length} entities); waiting for the transit data is worth ${String(voi['net_value'])} k€ net`);
   });
 
   it('a6 · REFUSAL + RECOVERY + POSITIVE: a review measure the review does not yield (422); the set bound and reviewed — robustness and regret per option on the analysis, a value computed from the review', async () => {
@@ -413,7 +413,7 @@ describe('B35 §A · a4 OPTION GENERATION (V00-T-064, V03-T-358) · a5 AUTOMATIC
     expect(find('forecast', w.forecastId)!.why).toContain('the forecast scenario "Bab el-Mandeb over the next 30 days" is built on');
     expect(find('risk', RSK)!.why).toContain('it rests on the objective "Keep the Regensburg line running through Q1"');
     expect(find('prior_decision', COMMITTED)!.why[0]).toMatch(/^decided on the same decision object "Routing of SYN-SHIP-4472" \(committed\)/);
-    expect(find('run', w.rerouteId)!.why).toContain('option morocco cites it');
+    expect(find('run', w.airId)!.why).toContain('option morocco cites it');
     expect(find('value_of_information', VOI)).toBeDefined();
     expect(as['counts']).toMatchObject({ scenario: 1, scenario_set: 1, risk: 1, prior_decision: 1, run: 2, value_of_information: 1 });
     expect((await read()).analysis.assembly).toMatchObject({ assembly_id: as['assembly_id'] });
@@ -425,6 +425,7 @@ describe('B35 §A · a7 ADVERSARIAL-RESPONSE SENSITIVITY (V01-T-016, F-P5-07)', 
     const S = w.scenarioId;
     const el = (payload: Row) => anatomy.declareElement(h.req(strategist, 'prediction.scenario.anatomy.element', 'SCN', S, 'prediction'), T(), D(), S, { payload }) as unknown as Promise<{ element: Row & { element_id: string } }>;
     PORT = (await el({ kind: 'actor', name: 'Moroccan port authority', description: 'the authority at Tanger Med that sets the inspection regime (SYNTHETIC)', attributes: { agency: 'high', interest: 'inspection revenue' } })).element.element_id;
+    EXPORT = (await el({ kind: 'actor', name: 'Export control authority (origin)', description: 'the authority that licenses bearing exports from the single source\'s country (SYNTHETIC)', attributes: { agency: 'high' } })).element.element_id;
     BROKERS = (await el({ kind: 'actor', name: 'Spot freight brokers', description: 'the brokers who quote spot capacity on the lane (SYNTHETIC)', attributes: { agency: 'low' } })).element.element_id;
     FUEL = (await el({ kind: 'driver', name: 'Bunker fuel price', description: 'the price of marine fuel on the corridor (SYNTHETIC)', attributes: { exogenous: true } })).element.element_id;
     const body = (actor: string, option = 'morocco') => ({ option, actorElementId: actor, response: 'imposes a ten-day inspection on every new bearing supplier', effects: [{ criterion: 'customs_days', op: 'add', value: 10 }, { criterion: 'cost', op: 'multiply', value: 1.2 }],
@@ -437,25 +438,34 @@ describe('B35 §A · a7 ADVERSARIAL-RESPONSE SENSITIVITY (V01-T-016, F-P5-07)', 
     expect(await count(sql`select count(*)::int n from decision.adversarial_assessments`)).toBe(0);
   });
 
-  it('a7 · RECOVERY + POSITIVE: Morocco under the port authority\'s inspection regime — the response applied to its values, the score and the rank under it re-derived here; the analysis names the rank change; the actors offered are the package\'s scenarios\'', async () => {
-    const effects = [{ criterion: 'customs_days', op: 'add', value: 10 }, { criterion: 'cost', op: 'multiply', value: 1.2 }];
+  it('a7 · RECOVERY + POSITIVE: the leader (the stock increase on the single source) under the export authority\'s licensing — it loses the lead; Morocco under the port authority\'s inspection regime — already last on both, it keeps its rank; each score and rank re-derived here; the analysis names the rank changes; the actors offered are the package\'s scenarios\'', async () => {
     const before = (await read()).analysis;
-    const r = (await adversarial(w.owner, { option: 'morocco', actorElementId: PORT, response: 'imposes a ten-day inspection on every new bearing supplier', effects,
-      basis: 'the authority applied the same regime to new auto suppliers in 2025 (SYNTHETIC)' })).adversarial;
-    const mo = before.options.find((o) => o.key === 'morocco')!;
-    const baseVals = Object.fromEntries(Object.entries(mo.values).map(([k, v]) => [k, Number(v)]));
-    const under = applyResponse(baseVals, effects);
     const ranked = before.options.filter((o) => o.rank !== null).map((o) => o.key);
-    const mirror = mirrorOf({ ...before, options: before.options.filter((o) => ranked.includes(o.key)) }, { morocco: under });
-    expect(r).toMatchObject({ option_key: 'morocco', actor_name: 'Moroccan port authority', actor_agency: 'high', scenario_id: w.scenarioId, base_rank: mo.rank });
-    expect(r['response_values']).toEqual(Object.fromEntries(Object.entries(under).map(([k, v]) => [k, v])));
-    expect(Number(r['response_score'])).toBeCloseTo(mirror.m.scores['morocco']!, 5);
-    expect(Number(r['response_rank'])).toBe(mirror.m.ranking.indexOf('morocco') + 1);
-    expect(Number(r['rank_change'])).toBe(Number(r['base_rank']) - Number(r['response_rank']));
+    const leader = before.ranking[0]!;
+    const check = async (option: string, actor: string, response: string, effects: Array<{ criterion: string; op: string; value: number }>) => {
+      const r = (await adversarial(w.owner, { option, actorElementId: actor, response, effects, basis: 'the authority applied the same regime to comparable suppliers in 2025 (SYNTHETIC)' })).adversarial;
+      const o = before.options.find((x) => x.key === option)!;
+      const under = applyResponse(Object.fromEntries(Object.entries(o.values).map(([k, v]) => [k, Number(v)])), effects);
+      const mirror = mirrorOf({ ...before, options: before.options.filter((x) => ranked.includes(x.key)) }, { [option]: under });
+      expect(r).toMatchObject({ option_key: option, actor_agency: 'high', scenario_id: w.scenarioId, base_rank: o.rank });
+      expect(r['response_values']).toEqual(under);
+      expect(Number(r['response_score'])).toBeCloseTo(mirror.m.scores[option]!, 5);
+      expect(Number(r['response_rank'])).toBe(mirror.m.ranking.indexOf(option) + 1);
+      expect(Number(r['rank_change'])).toBe(Number(r['base_rank']) - Number(r['response_rank']));
+      expect(r['leader_under_response']).toBe(mirror.m.ranking[0]);
+      return r;
+    };
+    // under a licence freeze the stock only delays the stop: the line stops as long as the single source's control run says, plus two weeks to re-source (a declared 'set')
+    const sqStop = Number(before.options.find((x) => x.key === 'status-quo')!.values['line_stop']);
+    const lead = await check(leader, EXPORT, 'freezes export licences for bearings from the single source', [{ criterion: 'line_stop', op: 'set', value: sqStop + 14 }]);
+    expect(Number(lead['rank_change'])).toBeLessThan(0);
+    expect(lead['leader_under_response']).not.toBe(leader);
+    const mo = await check('morocco', PORT, 'imposes a ten-day inspection on every new bearing supplier', [{ criterion: 'customs_days', op: 'add', value: 10 }, { criterion: 'cost', op: 'multiply', value: 1.2 }]);
     const view = await read();
-    expect(view.analysis.adversarial).toEqual([expect.objectContaining({ actor: 'Moroccan port authority', option: 'morocco', rank_change: r['rank_change'] })]);
-    expect(view.actors.map((x) => x['name']).sort()).toEqual(['Moroccan port authority', 'Spot freight brokers']);
-    console.log(`B35 §A EVIDENCE a7: Morocco ${String(r['base_rank'])} → ${String(r['response_rank'])} under the port authority's inspection regime (score ${String(r['base_score'])} → ${String(r['response_score'])})`);
+    expect(view.analysis.adversarial.map((x) => [x['actor'], x['option'], x['rank_change']])).toEqual([
+      ['Moroccan port authority', 'morocco', mo['rank_change']], ['Export control authority (origin)', leader, lead['rank_change']]]);
+    expect(view.actors.map((x) => x['name']).sort()).toEqual(['Export control authority (origin)', 'Moroccan port authority', 'Spot freight brokers']);
+    console.log(`B35 §A EVIDENCE a7: ${leader} ${String(lead['base_rank'])} → ${String(lead['response_rank'])} under the export authority's licensing (score ${String(lead['base_score'])} → ${String(lead['response_score'])}; the lead passes to ${String(lead['leader_under_response'])}); morocco ${String(mo['base_rank'])} → ${String(mo['response_rank'])} under the port authority's inspections`);
   });
 });
 
