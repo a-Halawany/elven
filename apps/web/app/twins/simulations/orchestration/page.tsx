@@ -199,7 +199,7 @@ export default function SimulationCenterPage() {
         <h2 id="list-h" style={{ fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 }}>Experiments</h2>
         {list.length === 0 ? <Empty>No experiment has been declared in this domain.</Empty> : (
           <ScrollBox label="experiments">
-            <table style={tableStyle}><thead><tr><Th>Experiment</Th><Th>State</Th><Th>Paths</Th><Th>Run</Th><Th>Declared</Th></tr></thead>
+            <table aria-label="experiments" style={tableStyle}><thead><tr><Th>Experiment</Th><Th>State</Th><Th>Paths</Th><Th>Run</Th><Th>Declared</Th></tr></thead>
               <tbody>{list.map((e) => (
                 <tr key={e.experiment_id} aria-selected={e.experiment_id === selected}>
                   <Td><button type="button" style={{ background: 'none', border: 'none', padding: 0, color: 'var(--eye-color-accent-strong)', cursor: 'pointer', textAlign: 'start' }} onClick={() => { setSelected(e.experiment_id); void open(e.experiment_id); }}>{e.title}</button></Td>
@@ -218,20 +218,20 @@ export default function SimulationCenterPage() {
           <div><StateMark state={v.state} /></div>
           <p>{v.question}</p>
           <DefinitionRow term="Contract">{v.method_ref} on twin <Mono>{short(v.twin_id)}</Mono> v{v.twin_version}{v.scenario_id ? <> · scenario <Mono>{short(v.scenario_id)}</Mono> branch <Mono>{short(v.scenario_branch_id)}</Mono></> : ' · no scenario (a shock is hypothetical)'} · seed {v.seed} · {v.paths} paths in chunks of {v.chunk_size}</DefinitionRow>
-          <DefinitionRow term="Budget">{budgetUseLine(v.budget_use)} · digest <Mono>{v.budget_digest.slice(0, 12)}…</Mono>{v.approved_by ? <> · approved by <Mono>{short(v.approved_by)}</Mono> {fmtInstant(v.approved_at)} — {v.approval_note}</> : ' · NOT APPROVED'}</DefinitionRow>
+          <DefinitionRow term="Budget"><span aria-label="budget use">{budgetUseLine(v.budget_use)}</span> · digest <Mono>{v.budget_digest.slice(0, 12)}…</Mono>{v.approved_by ? <span aria-label="approval"> · approved by <Mono>{short(v.approved_by)}</Mono> {fmtInstant(v.approved_at)} — {v.approval_note}</span> : <span aria-label="approval"> · NOT APPROVED</span>}</DefinitionRow>
           <DefinitionRow term="Stop conditions">{v.stop_conditions.paths} paths{v.stop_conditions.converged ? ` · or converged: ${v.stop_conditions.converged.measure} half-width ≤ ${v.stop_conditions.converged.ci_half_width} after ${v.stop_conditions.converged.min_paths} paths (stops PARTIAL)` : ''} · the budget</DefinitionRow>
-          <DefinitionRow term="Admission">{admissionLine(v.admission)}</DefinitionRow>
+          <DefinitionRow term="Admission"><span aria-label="admission">{admissionLine(v.admission)}</span></DefinitionRow>
           <DefinitionRow term="Executor">{v.executor?.active ? `${v.executor.kind} — active` : 'NO ACTIVE ATTENTION AGENT in this domain: nothing executes until one is registered'}</DefinitionRow>
           <div style={{ marginBlockStart: 'var(--eye-space-8)' }}>
             <label htmlFor="exp-progress" style={{ display: 'block' }}>Progress — {progressLine(v)}</label>
             <progress id="exp-progress" max={v.paths} value={v.progress.paths_done} style={{ inlineSize: '100%' }} />
           </div>
-          <DefinitionRow term="Produced run">{runLine(v.run)}</DefinitionRow>
+          <DefinitionRow term="Produced run"><span aria-label="produced run">{runLine(v.run)}</span></DefinitionRow>
           {v.stop_pending ? <DefinitionRow term="Stopping">{v.stop_pending.outcome} ({v.stop_pending.reason}) — written by the worker after its next tick</DefinitionRow> : null}
 
           <h3 style={{ fontSize: 'var(--eye-type-heading-3)' }}>Indicators (the latest checkpoint)</h3>
           {Object.keys(stab).length === 0 ? <Empty>No checkpoint yet.</Empty> : (
-            <ul style={small}>
+            <ul aria-label="indicators" style={small}>
               {Object.values(stab).map((s) => <li key={s.measure}>{stabilityLine(s)}</li>)}
               <li>constraint satisfaction: {v.indicators.constraint_satisfaction?.outcome ?? '—'}{v.indicators.constraint_satisfaction?.note ? ` — ${v.indicators.constraint_satisfaction.note}` : ''}</li>
               <li>latency: last chunk {v.indicators.latency?.chunk_wall_ms ?? '—'} ms ({v.indicators.latency?.ms_per_path ?? '—'} ms/path)</li>
@@ -242,21 +242,21 @@ export default function SimulationCenterPage() {
           <h3 style={{ fontSize: 'var(--eye-type-heading-3)' }}>Checkpoints</h3>
           {(v.checkpoints ?? []).length === 0 ? <Empty>No checkpoint yet.</Empty> : (
             <ScrollBox label="checkpoints">
-              <table style={tableStyle}><thead><tr><Th>#</Th><Th>Chunk</Th><Th>Paths done</Th><Th>Digest (chained)</Th><Th>At</Th></tr></thead>
+              <table aria-label="checkpoints" style={tableStyle}><thead><tr><Th>#</Th><Th>Chunk</Th><Th>Paths done</Th><Th>Digest (chained)</Th><Th>At</Th></tr></thead>
                 <tbody>{(v.checkpoints ?? []).map((k) => <tr key={k.seq}><Td>{k.seq}</Td><Td>{k.chunk_index}</Td><Td>{k.paths_done}</Td><Td><Mono>{k.digest.slice(0, 12)}…</Mono></Td><Td>{fmtInstant(k.created_at)}</Td></tr>)}</tbody></table>
             </ScrollBox>
           )}
           <h3 style={{ fontSize: 'var(--eye-type-heading-3)' }}>Chunks</h3>
           {(v.chunks ?? []).length === 0 ? <Empty>No chunk is queued (the experiment has not started).</Empty> : (
             <ScrollBox label="chunks">
-              <table style={tableStyle}><thead><tr><Th>Chunk</Th><Th>Paths (seed offset)</Th><Th>State</Th><Th>Attempts</Th><Th>Wall ms</Th><Th>Digest / error</Th></tr></thead>
+              <table aria-label="chunks" style={tableStyle}><thead><tr><Th>Chunk</Th><Th>Paths (seed offset)</Th><Th>State</Th><Th>Attempts</Th><Th>Wall ms</Th><Th>Digest / error</Th></tr></thead>
                 <tbody>{(v.chunks ?? []).map((c) => <tr key={c.chunk_index}><Td>{c.chunk_index}</Td><Td>{c.first_path}–{c.first_path + c.paths - 1}</Td><Td>{c.state}</Td><Td>{c.attempts}</Td><Td>{c.wall_ms ?? '—'}</Td><Td>{c.digest ? <Mono>{c.digest.slice(0, 12)}…</Mono> : (c.error ?? '—')}</Td></tr>)}</tbody></table>
             </ScrollBox>
           )}
           <h3 style={{ fontSize: 'var(--eye-type-heading-3)' }}>Ledger</h3>
-          <ul style={small}>{(v.events ?? []).map((e) => <li key={e.event_id}>{fmtInstant(e.occurred_at)} — {eventLine(e)} · <Mono>{short(e.actor)}</Mono></li>)}</ul>
+          <ul aria-label="ledger" style={small}>{(v.events ?? []).map((e) => <li key={e.event_id}>{fmtInstant(e.occurred_at)} — {eventLine(e)} · <Mono>{short(e.actor)}</Mono></li>)}</ul>
           {v.manifest === null ? null : (
-            <details><summary>Manifest (versions, seed, every chunk's seed offset and digest, the checkpoint head, the approved budget)</summary>
+            <details aria-label="manifest"><summary>Manifest (versions, seed, every chunk's seed offset and digest, the checkpoint head, the approved budget)</summary>
               <pre style={{ ...small, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{JSON.stringify(v.manifest, null, 2)}</pre></details>
           )}
 
