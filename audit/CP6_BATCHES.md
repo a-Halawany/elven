@@ -5575,6 +5575,10 @@ Unchanged: the remaining B36 construction and B61's governed external identity r
 - **Local gates at `b6b83b4`:** API unit **3000 + 9**; the upgrade proof PASS (migrations **79**; 276/276); acceptance **58/58**; the complete integration **1644/1644** in 123 files (a first complete run was INVALID — it pointed at a Redis container already removed in cleanup, so the queue-backed harnesses failed and retried; it was stopped and is not counted); the browser gate **93/93**.
 - **Hosted:** #71 on `d77f059` against its new base `phase6-b36` (ci 36889874987): build-test, browser-regression and the C19 lifecycle jobs passed; supply-chain red on the C15 patched-image recheck only (#62's). #72 on `2eb4fbd` (ci 36882504633): the same — everything passed but the Redis recheck. #72's run on this pass's head is the PR's next.
 
+### B31.9 addendum — #72's hosted run on `2b591de` and its correction
+
+- ci 36909407667 on `2b591de` FAILED build-test: `phase6-orchestration-b31` O1 counted experiments across the whole database and expected none; the complete integration shares one database across files, and B31-F's validity cases declare three experiments of their own (4 failed, 1640 passed; the upgrade proof and C18 did not run). The count is scoped to the harness's tenant (`1dbb93d`), reproduced before and after in the hosted order. ci 36921570491 on `1dbb93d`: build-test (integration, upgrade, C18) and browser-regression green; C19 36921570496 green; supply-chain the Redis recheck only.
+
 ## Order and the next implementation batch
 
 B3, B1 and B2 are done in code, B4/B5 applied to the audit (the 2026-09-11 checkpoints), B6 done in
