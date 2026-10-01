@@ -64,7 +64,7 @@ let analyst: AuthenticatedPrincipal; let dadmin: AuthenticatedPrincipal; let twi
 let S = ''; let BASE = ''; let DISRUPT = ''; let DOWN = ''; let Q = ''; let QBASE = ''; let QCLOSE = ''; let QSHUT = ''; let QDOWN = ''; let vTwin = 0; let vTwin2 = 0;
 let ASU_COVER = ''; let ASU_RATES = ''; let ASU_CANAL = ''; let CLAIM = ''; let QI1 = ''; let QI2 = '';
 let PARTIAL = ''; let GATED = { pkg: '', v: 0, digest: '' }; let REACHED = { pkg: '', v: 0, digest: '' }; let RERUN = ''; let BASE_RUN = '';
-let claimDispute: () => Promise<void> = async () => undefined;
+let claimDispute: () => Promise<void> = async () => undefined; let claimResolve: () => Promise<void> = async () => undefined;
 const T = () => h.fx.tenantId; const D = () => h.fx.domainId;
 
 /* ───────────── refusals (the B21/B27 idiom) ───────────── */
@@ -134,7 +134,7 @@ const validateTwin = (as: AuthenticatedPrincipal, version: number) => twins.vali
   { payload: { verdict: 'fit', reason: 'the corridor model reconciles within tolerance (B31 harness)', limitations: ['calendar days'] } }) as unknown as Promise<{ validation: Row }>;
 
 /** A claim as the extraction would have admitted it (the B21/B27 seedClaim idiom), version 1 active; version 2 DISPUTED when asked. SYNTHETIC. */
-async function seedClaim(ev: { id: string; version: number }): Promise<{ id: string; dispute: () => Promise<void> }> {
+async function seedClaim(ev: { id: string; version: number }): Promise<{ id: string; dispute: () => Promise<void>; resolve: () => Promise<void> }> {
   const claimId = uuidv7();
   const payload: Row = { claim_kind: 'claim', subject: 'Bab el-Mandeb Strait', predicate: 'war_risk_cover', object_value: 'underwriters keep writing cover (synthetic)', confidence: 0.8,
     review: { state: 'approved', reason: 'fixture', decider: null } };
@@ -153,7 +153,8 @@ async function seedClaim(ev: { id: string; version: number }): Promise<{ id: str
   };
   await insert(1, 'active');
   // the harness itself stands for the review that disputes it (a stated superuser move; 0006's lifecycle — the condition reads the new version)
-  return { id: claimId, dispute: () => insert(2, 'disputed') };
+  // B31-F1: the review that RESOLVES the dispute (version 3 active again) — the same stated superuser move, the reverse of the dispute
+  return { id: claimId, dispute: () => insert(2, 'disputed'), resolve: () => insert(3, 'active') };
 }
 
 beforeAll(async () => {
@@ -207,7 +208,7 @@ beforeAll(async () => {
   ASU_COVER = await declareAssumption('Insurers keep war-risk cover', 'hull and cargo insurers keep writing war-risk cover for the corridor (synthetic)');
   ASU_RATES = await declareAssumption('Freight rates hold', 'container freight rates on the corridor stay within their recent regime (synthetic)');
   ASU_CANAL = await declareAssumption('The canal stays open', 'the canal at the corridor\'s northern end stays open to transits (synthetic)');
-  const cl = await seedClaim(w.evd); CLAIM = cl.id; claimDispute = cl.dispute;
+  const cl = await seedClaim(w.evd); CLAIM = cl.id; claimDispute = cl.dispute; claimResolve = cl.resolve;
   // the twin version the scenario runs bind: admitted AFTER the declarations (its known_at binds the trees as declared)
   vTwin = (await openVersion()).version.version;
   expect((await admit(vTwin)).admitted.completeness).toBe('complete');
@@ -435,9 +436,15 @@ describe('B31 validity · C · the claim and indicator conditions suspend (F-P4-
     await other.dispute();
     expect((await branchRow(BASE)).state).toBe('open');
   });
-  it('C3 · RECOVERY: the owner reinstates the claim-suspended branch (the ASU itself stands verified-or-unverified, not invalidated) — back to flipped', async () => {
-    await reinstate(forecastOwner, DISRUPT, 'the cover claim is disputed but a second underwriter confirms cover (B31 harness)');
+  it('C3 · REFUSAL → RECOVERY (B31-F1): while the claim stays DISPUTED the owner\'s reinstatement is refused — a note does not clear the condition, however reasoned; the claim RESOLVED (its next version active), the reinstatement stands — back to flipped', async () => {
+    await refused(reinstate(forecastOwner, DISRUPT, 'the cover claim is disputed but a second underwriter confirms cover (B31 harness)'),
+      /^branch suspension rejected \(invalidated\): the critical assumption ".*" \(its claim condition is met — claim .* is disputed or withdrawn\) still holds against the branch/, 409);
+    expect((await branchRow(DISRUPT)).state).toBe('suspended');
+    expect((await itemsOf('scenario.suspension', DISRUPT)).at(-1)).toMatchObject({ state: 'open' });
+    await claimResolve();
+    await reinstate(forecastOwner, DISRUPT, 'the cover claim was reviewed and stands again; the branch holds (B31 harness)');
     expect((await branchRow(DISRUPT)).state).toBe('flipped');
+    expect((await itemsOf('scenario.suspension', DISRUPT)).at(-1)).toMatchObject({ state: 'closed' });
   });
 });
 
@@ -500,18 +507,128 @@ describe('B31 validity · B · the branch bound to its twin state (F-P4-07, AI-4
   });
 });
 
+describe('B31-F2 · the constraint contract recorded in a branch binding is honoured at run admission (V03-T-332, AI-49-002)', () => {
+  /* The binding records a constraint SET and its VERSION; the gate evaluates every live set at its current version. A run on the bound
+     branch is admitted only while the set is live AT the bound version — a newer version is never silently substituted, a retired set never
+     silently omitted: the owner rebinds. A violated bound constraint refuses the run before it exists; an unverifiable check refuses it too.
+     Each through the real routes: the constraint routes, the binding routes, the run route and the experiment's start (its run opens through
+     the same path). SYNTHETIC. */
+  type Ctl = { declare: Function; version: Function; retire: Function };
+  let constraints: Ctl; let orchestration: { declare: Function; approve: Function; start: Function }; let gate: { check: Function };
+  let steward: AuthenticatedPrincipal; let SET = ''; let QKEY = ''; let QUNIT = ''; let QVAL = 0; let KEYC = '';
+  const creq = (as: AuthenticatedPrincipal, action: string, id: string | null) => h.req(as, action, 'CST', id, 'twin');
+  const rule = (bound: number) => [{ key: 'b31f-on-hand', kind: 'business_rule', title: 'B31-F2 bound input (synthetic)', quantity: QKEY, op: '<=', value: bound, unit: QUNIT, applies_to: ['run_input'] }];
+  const setVersion = async (constraintsList: Row[], expectedVersion: number, note: string) =>
+    (await constraints.version(creq(steward, 'simulation.constraint.version', SET), T(), D(), SET, { payload: { expectedVersion, constraints: constraintsList, note } }) as { set: Row }).set;
+  const bindWithSet = async (expectedVersion: number | null, note: string) => (await bind(strategyOwner, BASE, { twinId: w.twinId, twinVersion: vTwin, initialConditions: [{ key: KEYC }],
+    constraintSetId: SET, rationale: note, ...(expectedVersion === null ? {} : { expectedVersion }) })).binding;
+  const xreq = (as: AuthenticatedPrincipal, action: string, id: string | null = null) => h.req(as, action, 'SXP', id, 'simulation');
+  /** The experiment path: declared by a twin owner, approved by another person, started — its run opens through the same admission. */
+  const experiment = async (title: string): Promise<{ error: string | null; state: string; reason: unknown }> => {
+    const d = (await orchestration.declare(xreq(twinOwner2, 'simulation.experiment.declare'), T(), D(), { payload: {
+      title, question: 'Does the bound baseline hold under lead-time jitter? (B31-F2 harness)',
+      run: { twinId: w.twinId, twinVersion: vTwin, runKind: 'control', controlRunId: null, shock: false, component: 'SYN-PART-MAG', interventions: [{ type: 'none' }], horizonDays: 90, scenarioId: S, scenarioBranchId: BASE },
+      paths: 100, chunkSize: 50, seed: 7, jitter: { '0': 0.5, '3': 0.5 }, measures: ['total_cost'], budget: { max_paths: 100, max_wall_seconds: 300, max_chunks: 4 } } }) as { experiment: Row }).experiment;
+    const id = String(d['experiment_id']);
+    await orchestration.approve(xreq(strategyOwner, 'simulation.experiment.approve', id), T(), D(), id, { payload: { budgetDigest: d['budget_digest'], note: 'proportionate (B31-F2 harness)' } });
+    const error = await orchestration.start(xreq(twinOwner2, 'simulation.experiment.start', id), T(), D(), id).then(() => null,
+      (e: unknown) => (e instanceof HttpException ? String((e.getResponse() as { message?: string }).message ?? e.message) : String(e)));
+    const row = (await sql<{ state: string; outcome: Row | null }>`select state, outcome from simulation.experiments where experiment_id = ${id}::uuid`.execute(su)).rows[0]!;
+    return { error, state: row.state, reason: row.outcome?.['reason'] ?? null };
+  };
+  beforeAll(async () => {
+    const { ConstraintsController: Cc } = await import('../../src/twin/constraints/constraints.controller.js');
+    const { OrchestrationController: Oc } = await import('../../src/twin/simulations/orchestration/orchestration.controller.js');
+    const { ConstraintService: Cs } = await import('../../src/twin/constraints/constraint.service.js');
+    constraints = h.app.get(Cc) as unknown as Ctl; orchestration = h.app.get(Oc) as unknown as typeof orchestration; gate = h.app.get(Cs) as unknown as { check: Function };
+    steward = await h.humanWithSession(['constraint_steward'], 'b31f-steward');
+    // the bound input: a DATED numeric element of the admitted state among supply-flow@1's required inputs (the run's opening subject)
+    const el = (await sql<{ key: string; unit: string | null; value: string }>`select e.key, e.unit, e.value::text as value from twin.state_elements e, twin.behaviour_models m
+       where m.method_ref = 'supply-flow@1' and e.twin_id = ${w.twinId}::uuid and e.version = ${vTwin} and e.valid_from is not null and e.value::text ~ '^-?[0-9.]+$'
+         and split_part(e.key, ':', 1) = any(m.required_inputs) order by e.key limit 1`.execute(su)).rows[0];
+    expect(el, 'a dated numeric required input in the admitted state').toBeDefined();
+    QKEY = el!.key; QUNIT = el!.unit ?? 'units'; QVAL = Number(el!.value);
+    KEYC = (await sql<{ key: string }>`select key from twin.state_elements where twin_id = ${w.twinId}::uuid and version = ${vTwin} order by key limit 1`.execute(su)).rows[0]!.key;
+    SET = String(((await constraints.declare(creq(steward, 'simulation.constraint.declare', null), T(), D(), { payload: { setKey: 'b31f-corridor-input', title: 'B31-F2 corridor input bound (synthetic)',
+      constraints: rule(QVAL + 1_000_000), note: 'a bound the admitted state satisfies (B31-F2 harness)' } })) as { set: Row }).set['set_id']);
+  });
+
+  it('F2a · POSITIVE → REFUSAL → RECOVERY (a version change): bound to v1, a run stands; the set moves to v2 — the run and the experiment are REFUSED (rebind to adopt), nothing substituted; the owner rebinds to v2 — the run stands', async () => {
+    const b = await bindWithSet(null, 'the baseline starts from the admitted state under the corridor input bound v1 (B31-F2 harness)');
+    expect(b).toMatchObject({ state: 'active', constraint_set_id: SET, constraint_set_version: 1 });
+    expect((await runOn(S, BASE)).run.state).toBe('completed');
+    await setVersion(rule(QVAL + 2_000_000), 1, 'the bound widened for the refit (B31-F2 harness)');
+    await refused(runOn(S, BASE), /^run rejected \(branch_binding\): branch .* is bound \(binding v\d+\) to constraint set "b31f-corridor-input" v1, which now stands at v2; .* rebind the branch to adopt v2/, 409);
+    const x = await experiment('B31-F2 — bound set moved (SYNTHETIC)');
+    expect(x).toMatchObject({ state: 'failed', reason: 'run_refused' });
+    expect(x.error).toMatch(/run rejected \(branch_binding\): .* constraint set "b31f-corridor-input" v1, which now stands at v2/);
+    const b2 = await bindWithSet(Number(b['version']), 'the baseline adopts the corridor input bound v2 (B31-F2 harness)');
+    expect(b2).toMatchObject({ constraint_set_version: 2, superseded_version: b['version'] });
+    expect((await runOn(S, BASE)).run.state).toBe('completed');
+    evidence('F2a', { set: SET, bound: [1, 2], refused_run: true, refused_experiment: x.state });
+  }, 300_000);
+
+  it('F2b · REFUSAL (a violated bound constraint): v3 bounds the input below the admitted value; rebound to v3, the run and the experiment are refused by the gate before the run exists (422 constraint)', async () => {
+    const v3 = await setVersion(rule(QVAL - 1), 2, 'the bound tightened below the admitted value (B31-F2 harness)');
+    expect(Number(v3['version'])).toBe(3);
+    const cur = (await bindingRead(BASE)).active!;
+    await bindWithSet(Number(cur['version']), 'the baseline adopts the tightened bound v3 (B31-F2 harness)');
+    const before = (await sql<{ n: number }>`select count(*)::int n from simulation.runs_current where scenario_branch_id = ${BASE}::uuid`.execute(su)).rows[0]!.n;
+    await refused(runOn(S, BASE), /^run rejected \(constraint\): the run's inputs violate constraint set .* v3: b31f-on-hand \(business_rule\)/, 422);
+    const x = await experiment('B31-F2 — bound constraint violated (SYNTHETIC)');
+    expect(x).toMatchObject({ state: 'failed', reason: 'run_refused' });
+    expect(x.error).toMatch(/run rejected \(constraint\)/);
+    expect((await sql<{ n: number }>`select count(*)::int n from simulation.runs_current where scenario_branch_id = ${BASE}::uuid`.execute(su)).rows[0]!.n).toBe(before);
+  }, 300_000);
+
+  it('F2c · REFUSAL → RECOVERY (an unverifiable check): the gate failing on a run bound to a set is INDETERMINATE — refused, never admitted unchecked; the gate back, the satisfied v4 bound — the run stands', async () => {
+    await setVersion(rule(QVAL + 1_000_000), 3, 'the bound relaxed again (B31-F2 harness)');
+    const cur = (await bindingRead(BASE)).active!;
+    await bindWithSet(Number(cur['version']), 'the baseline adopts the relaxed bound v4 (B31-F2 harness)');
+    const original = gate.check;
+    gate.check = async () => { throw new Error('the constraint store is unreachable (B31-F2 harness)'); };
+    try {
+      await refused(runOn(S, BASE), /^run rejected \(branch_binding\): branch .* is bound \(binding v\d+\) to constraint set .* v4, and the opening check could not verify it \(the constraint gate failed: the constraint store is unreachable/, 409);
+    } finally { gate.check = original; }
+    expect((await runOn(S, BASE)).run.state).toBe('completed');
+  }, 300_000);
+
+  it('F2d · REFUSAL → RECOVERY (a retirement): the bound set retired — the run and the experiment are refused, the set never silently omitted; the owner rebinds without the set — the run stands', async () => {
+    await constraints.retire(creq(steward, 'simulation.constraint.retire', SET), T(), D(), SET, { payload: { reason: 'the corridor input bound is withdrawn (B31-F2 harness)' } });
+    await refused(runOn(S, BASE), /^run rejected \(branch_binding\): branch .* is bound \(binding v\d+\) to constraint set "b31f-corridor-input" v4, which is retired/, 409);
+    const x = await experiment('B31-F2 — bound set retired (SYNTHETIC)');
+    expect(x).toMatchObject({ state: 'failed', reason: 'run_refused' });
+    expect(x.error).toMatch(/which is retired/);
+    const cur = (await bindingRead(BASE)).active!;
+    const b = (await bind(strategyOwner, BASE, { twinId: w.twinId, twinVersion: vTwin, initialConditions: [{ key: KEYC }], rationale: 'the baseline no longer carries a constraint set (B31-F2 harness)',
+      expectedVersion: Number(cur['version']) })).binding;
+    expect(b).toMatchObject({ constraint_set_id: null, constraint_set_version: null });
+    expect((await runOn(S, BASE)).run.state).toBe('completed');
+    await retireBinding(strategyOwner, BASE, 'the baseline is no longer held to one admitted state (B31-F2 harness)');
+  }, 300_000);
+});
+
 describe('B31 validity · C (indicator) · a critical indicator condition met suspends (F-P4-07)', () => {
-  it('C4 · POSITIVE → RECOVERY: a second indicator on the fixture series named by a critical link of the baseline; its breach suspends the baseline and tasks the owner; the owner reinstates it', async () => {
+  it('C4 · POSITIVE → REFUSAL → RECOVERY (B31-F1): a second indicator on the fixture series named by a critical link of the baseline; its breach suspends the baseline and tasks the owner; the reinstatement refused while it stays breached; the link revised non-critical by its owner, the reinstatement stands', async () => {
     const ind = (await prediction.defineIndicator(h.req(w.twinOwner, 'prediction.indicator.define', 'IND', null), T(), D(),
-      { payload: { seriesKey: w.seriesKey, description: 'corridor thinning: transits below 45 for three days (B31 harness)', comparator: '<', threshold: 45, consecutiveDays: 3, owner: w.twinOwner.principalId } })) as unknown as { indicator: { indicatorId: string } };
+      { payload: { seriesKey: w.seriesKey, description: 'corridor thinning: transits below 1000 for three days — every fixture day is below it, so the breach STANDS (B31 harness)', comparator: '<', threshold: 1000, consecutiveDays: 3, owner: w.twinOwner.principalId } })) as unknown as { indicator: { indicatorId: string } };
     const I2 = ind.indicator.indicatorId;
-    await link(strategyOwner, S, { assumptionId: ASU_RATES, branchId: BASE, critical: true, condition: { kind: 'indicator', indicatorId: I2, text: 'transits stay below 45 for three days' }, rationale: 'the baseline assumes traffic holds', expectedVersion: 3 });
+    await link(strategyOwner, S, { assumptionId: ASU_RATES, branchId: BASE, critical: true, condition: { kind: 'indicator', indicatorId: I2, text: 'transits stay below 1000 for three days' }, rationale: 'the baseline assumes traffic holds', expectedVersion: 3 });
     await evaluateIndicator(I2);
     const b = await branchRow(BASE);
     expect(b).toMatchObject({ state: 'suspended', suspended_from: 'open', suspension_cause: { kind: 'assumption', id: ASU_RATES, via: 'indicator' } });
     expect((await itemsOf('scenario.suspension', BASE)).at(-1)).toMatchObject({ owner_principal_id: strategyOwner.principalId, state: 'open' });
     await refused(runOn(S, BASE), /^run rejected \(branch_suspended\)/, 409);
-    await reinstate(strategyOwner, BASE, 'traffic thinned but the baseline routing still holds (B31 harness)');
+    // B31-F1: while the indicator stays BREACHED the reinstatement is refused, whatever the note says
+    expect((await sql<{ breached: boolean }>`select breached from prediction.indicators_current where indicator_id = ${I2}::uuid`.execute(su)).rows[0]!.breached).toBe(true);
+    await refused(reinstate(strategyOwner, BASE, 'traffic thinned but the baseline routing still holds (B31 harness)'),
+      /^branch suspension rejected \(invalidated\): the critical assumption ".*" \(its indicator condition is met — indicator .* is breached\) still holds against the branch/, 409);
+    expect((await branchRow(BASE)).state).toBe('suspended');
+    // the GOVERNED CHANGE to the link: its owner revises it non-critical, with the reason — then the reinstatement stands
+    const revised = (await link(strategyOwner, S, { assumptionId: ASU_RATES, branchId: BASE, critical: false, condition: { kind: 'indicator', indicatorId: I2, text: 'transits stay below 1000 for three days' },
+      rationale: 'the baseline no longer rests on traffic holding: the reroute capacity covers the thinning (B31 harness)', expectedVersion: 4 })).link;
+    expect(revised).toMatchObject({ critical: false, version: 5, change: 'revised' });
+    await reinstate(strategyOwner, BASE, 'traffic thinned, and the baseline no longer rests on it (B31 harness)');
     expect((await branchRow(BASE)).state).toBe('open');
   });
 });

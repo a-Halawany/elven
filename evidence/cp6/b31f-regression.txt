@@ -1,0 +1,31 @@
+B31-F (the owner's bounded pass of 2026-10-01): B31-F1 and B31-F2 — phase6-validity-b31 on fresh databases, BEFORE (through 0099) and AFTER (through the final 0100).
+B31-F1: reinstatement re-evaluates every linked critical condition (claim disputed/withdrawn, indicator breached), not only the ASU's verification (0097's refusal for an invalidated ASU kept word for word).
+B31-F2: a run honours the constraint contract recorded in its branch binding (the set live at the bound version; an indeterminate opening check on a bound set refused).
+
+== BEFORE — a database migrated through 0099 (0100 absent)
+  × B31 validity · C · the claim and indicator conditions suspend (F-P4-07) > C3 · REFUSAL → RECOVERY (B31-F1): while the claim stays DISPUTED the owner's reinstatement is refused — a note does not clea
+  × B31-F2 · the constraint contract recorded in a branch binding is honoured at run admission (V03-T-332, AI-49-002) > F2a · POSITIVE → REFUSAL → RECOVERY (a version change): bound to v1, a run stands;
+  ✓ B31-F2 · the constraint contract recorded in a branch binding is honoured at run admission (V03-T-332, AI-49-002) > F2b · REFUSAL (a violated bound constraint): v3 bounds the input below the admitte
+  × B31-F2 · the constraint contract recorded in a branch binding is honoured at run admission (V03-T-332, AI-49-002) > F2c · REFUSAL → RECOVERY (an unverifiable check): the gate failing on a run bound 
+  × B31-F2 · the constraint contract recorded in a branch binding is honoured at run admission (V03-T-332, AI-49-002) > F2d · REFUSAL → RECOVERY (a retirement): the bound set retired — the run and the e
+  × B31 validity · C (indicator) · a critical indicator condition met suspends (F-P4-07) > C4 · POSITIVE → REFUSAL → RECOVERY (B31-F1): a second indicator on the fixture series named by a critical link 
+Tests  5 failed | 26 passed (31)
+  the failures, as reported:
+   C3: Error: the call should have been refused
+   F2a: Error: the call should have been refused
+   F2c: Error: the call should have been refused
+   F2d: Error: the call should have been refused
+   C4: Error: the call should have been refused
+
+== AFTER — a database migrated through 0100
+  ✓ B31 validity · C · the claim and indicator conditions suspend (F-P4-07) > C3 · REFUSAL → RECOVERY (B31-F1): while the claim stays DISPUTED the owner's reinstatement is refused — a note does not clea
+  ✓ B31-F2 · the constraint contract recorded in a branch binding is honoured at run admission (V03-T-332, AI-49-002) > F2a · POSITIVE → REFUSAL → RECOVERY (a version change): bound to v1, a run stands;
+  ✓ B31-F2 · the constraint contract recorded in a branch binding is honoured at run admission (V03-T-332, AI-49-002) > F2b · REFUSAL (a violated bound constraint): v3 bounds the input below the admitte
+  ✓ B31-F2 · the constraint contract recorded in a branch binding is honoured at run admission (V03-T-332, AI-49-002) > F2c · REFUSAL → RECOVERY (an unverifiable check): the gate failing on a run bound 
+  ✓ B31-F2 · the constraint contract recorded in a branch binding is honoured at run admission (V03-T-332, AI-49-002) > F2d · REFUSAL → RECOVERY (a retirement): the bound set retired — the run and the e
+  ✓ B31 validity · C (indicator) · a critical indicator condition met suspends (F-P4-07) > C4 · POSITIVE → REFUSAL → RECOVERY (B31-F1): a second indicator on the fixture series named by a critical link 
+Tests  31 passed (31)
+
+F2b passes on both: a VIOLATED current bound version was already refused by the gate before 0100 (the case is coverage of the contract, not a defect).
+Pinned harnesses after 0100 (fresh databases): anatomy-b27 18/18 (0097's refusal text for an invalidated ASU unchanged), quality-b27 16, sets-b27 22, orchestration-b31 8, impact-b31 22, methods-b29 16, constraints-b29 15, phase5-simulations 9, phase4-acceptance 16, decisions 15, fitness-b21 6, attention-events-b23 9.
+What "the call should have been refused" means before 0100, case by case: C3 — the reinstatement ACCEPTED while the claim stayed disputed; C4 — ACCEPTED while the indicator stayed breached; F2a — the run on a branch bound to v1 ADMITTED and checked against v2 (substituted); F2c — the run ADMITTED on an INDETERMINATE opening check (the bound set unverified); F2d — the run ADMITTED with the bound set retired (omitted). The experiment path (F2a, F2d) opens its run through the same admission.
