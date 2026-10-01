@@ -63,6 +63,8 @@ const expectRefused = (label, r, status, re) => {
   else bad(`${label}: expected a ${status} refusal${re ? ` matching ${re}` : ''}, got ${r.ok ? `${r.status} (accepted)` : refusalLine(r)}`);
 };
 const ENV_OUT = {};
+/** Run the steps in order; the first refused one is returned (null when every step was accepted). */
+const firstFailure = async (steps) => { for (const st of steps) { const r = await st(); if (!r.ok) return r; } return null; };
 const num = (x) => (x === null || x === undefined ? '—' : Number(x).toFixed(3).replace(/\.?0+$/, ''));
 
 /* ── B35-0 THE STATE ─────────────────────────────────────────────────────────────────── */
@@ -141,20 +143,154 @@ else {
 const JAN = (await q(`select package_id::text pkg, decision_object_id::text dec, state from decision.packages_current where tenant_id = $1 and domain_id = $2 and title = 'January corridor collapse — Regensburg line' limit 1`, [T, D]))[0] ?? null;
 const OBJ_REG = (await q(`select strategy_object_id::text id, title from graph.strategy_current where tenant_id = $1 and domain_id = $2 and object_type = 'OBJ' and status = 'active' and title = 'Keep the Regensburg line supplied through Q1' limit 1`, [T, D]))[0] ?? null;
 const OBJ_DEL = (await q(`select strategy_object_id::text id, title from graph.strategy_current where tenant_id = $1 and domain_id = $2 and object_type = 'OBJ' and status = 'active' and title = 'On-time delivery 95%' limit 1`, [T, D]))[0] ?? null;
-// the corridor control (promoted by J. Weber in act-b31's twin, the reroute's pair from B21) and the dual-sourcing stand-in: the draw-down + reroute intervention on it
-const PAIR = (await q(`select c.run_id::text control, i.run_id::text intervention, (c.outputs -> 'totals' ->> 'line_stop_days')::numeric c_ls, (i.outputs -> 'totals' ->> 'line_stop_days')::numeric i_ls
-     from simulation.runs_current c join simulation.runs_current i on i.control_run_id = c.run_id and i.run_kind = 'intervention' and i.state = 'completed' and i.validity = 'valid'
-    where c.tenant_id = $1 and c.domain_id = $2 and c.run_kind = 'control' and c.state = 'completed' and c.validity = 'valid' and c.promotion_id is not null
-      and i.interventions @> '[{"type": "draw_down"}]'::jsonb and i.interventions @> '[{"type": "reroute"}]'::jsonb order by i.opened_at limit 1`, [T, D]))[0] ?? null;
+// the options' runs: the corridor control J. Weber PROMOTED in act-b31 (decision-grade; the single source under the closure) and act-b24's
+// "Qualify the second source and reroute" intervention (the second source's flow; its own control on the B24 scenario)
+const PAIR = (await q(`select (select run_id::text from simulation.runs_current where tenant_id = $1 and domain_id = $2 and run_kind = 'control' and state = 'completed' and validity = 'valid' and promotion_id is not null
+                               and scenario_id is not null order by opened_at desc limit 1) control,
+                              (select i.run_id::text from decision.options o cross join lateral jsonb_array_elements(o.consequences) c join simulation.runs_current i on i.run_id = (c ->> 'id')::uuid
+                                 join decision.packages_current p on p.package_id = o.package_id
+                                where p.tenant_id = $1 and p.domain_id = $2 and p.title like 'B24 — second source for the magnet sets%' and o.key = 'second-source' and c ->> 'kind' = 'run' and i.run_kind = 'intervention' and i.validity = 'valid' limit 1) intervention`, [T, D]))[0];
+for (const k of ['control', 'intervention']) if (PAIR?.[k]) PAIR[`${k[0]}_ls`] = (await q(`select (outputs -> 'totals' ->> 'line_stop_days')::numeric v from simulation.runs_current where run_id = $1`, [PAIR[k]]))[0].v;
+if (PAIR && (!PAIR.control || !PAIR.intervention)) PAIR.missing = true;
 // the corridor forecast: the live Bab el-Mandeb transit forecast the corridor scenarios rest on
 const FCT = (await q(`select f.forecast_id::text id, f.series_key, f.horizon_code, f.label from prediction.forecasts_current f where f.tenant_id = $1 and f.domain_id = $2 and f.state = 'issued' and f.series_key like '%chokepoint4:n_total'
                       order by (f.label = 'live') desc, f.issued_at desc limit 1`, [T, D]))[0] ?? null;
 const MITIG = (await q(`select package_id::text pkg, state, committed_version cv, current_version v, owner_principal_id::text owner from decision.packages_current where tenant_id = $1 and domain_id = $2 and title = 'Mitigate the corridor closure — Regensburg line' limit 1`, [T, D]))[0] ?? null;
 {
-  const have = { JAN: !!JAN, OBJ_REG: !!OBJ_REG, OBJ_DEL: !!OBJ_DEL, PAIR: !!PAIR, FCT: !!FCT, MITIG: !!MITIG };
+  const have = { JAN: !!JAN, OBJ_REG: !!OBJ_REG, OBJ_DEL: !!OBJ_DEL, PAIR: !!PAIR && !PAIR.missing, FCT: !!FCT, MITIG: !!MITIG };
   if (Object.values(have).some((x) => !x)) { bad(`an input is missing: ${JSON.stringify(have)}`); process.exit(1); }
-  ok(`the inputs: the January decision ${short(JAN.dec)}; the objectives "${OBJ_DEL.title}" and "${OBJ_REG.title}"; the PROMOTED corridor control ${short(PAIR.control)} (${num(PAIR.c_ls)} line-stop days) and its draw-down + reroute intervention ${short(PAIR.intervention)} (${num(PAIR.i_ls)}); the corridor forecast ${short(FCT.id)} (${FCT.series_key} ${FCT.horizon_code}, ${FCT.label}); act-b34's MITIG package ${short(MITIG.pkg)} (${MITIG.state}, committed v${MITIG.cv}, owner ${nm(MITIG.owner)})`);
+  ok(`the inputs: the January decision ${short(JAN.dec)}; the objectives "${OBJ_DEL.title}" and "${OBJ_REG.title}"; the PROMOTED corridor control ${short(PAIR.control)} (${num(PAIR.c_ls)} line-stop days) and act-b24's second-source intervention ${short(PAIR.intervention)} (${num(PAIR.i_ls)}); the corridor forecast ${short(FCT.id)} (${FCT.series_key} ${FCT.horizon_code}, ${FCT.label}); act-b34's MITIG package ${short(MITIG.pkg)} (${MITIG.state}, committed v${MITIG.cv}, owner ${nm(MITIG.owner)})`);
 }
+
+/* ── B35-A ANALYSIS ──────────────────────────────────────────────────────────────────── */
+console.log('\nB35-A ANALYSIS (F-P6-01) — L. Brandt\'s "Second source for bearings": three options scored against the delivery objectives with exposed weights, the customs obligation evaluated, the weight at the flip moves the ranking, the Decision Agent generates candidates and assembles the package');
+const A_TITLE = 'Second source for bearings (SYNTHETIC)';
+const AN = 'analysis/packages';
+const an = (s, path, action, payload = {}, pkg = null, extra = {}) => dc(s, `${AN}/${path}`, action, 'DPK', payload, pkg, extra);
+const readAnalysis = async (s, pkg) => { const r = await an(s, `${pkg}/read`, 'decision.analysis.read', {}, pkg, READ); return r.ok ? r.body.analysis : (fail('the analysis read', r), null); };
+let APKG = (await q(`select package_id::text id, state, current_version v from decision.packages_current where tenant_id = $1 and domain_id = $2 and title = $3 and owner_principal_id = $4 order by declared_at limit 1`, [T, D, A_TITLE, brandt.principalId]))[0] ?? null;
+if (APKG) note(`the package ${short(APKG.id)} "${A_TITLE}" stands (${APKG.state}, v${APKG.v}) — an earlier run`);
+else {
+  const d = await dc(brandt, 'declare', 'decision.package.declare', 'DPK', { decisionObjectId: JAN.dec, title: A_TITLE, statement: 'whether to qualify a second bearing source for the Regensburg line against the corridor closure (SYNTHETIC)', owner: brandt.principalId });
+  if (!d.ok) fail('L. Brandt declares the package', d);
+  else {
+    const id = d.body.package.packageId;
+    const o = await dc(brandt, `${id}/versions/open`, 'decision.package.version', 'DPK', { knownAt: new Date(await dbNow()).toISOString(), observedThrough: null }, id);
+    if (!o.ok) fail('L. Brandt opens version 1', o);
+    else {
+      const v = o.body.version.version;
+      const steps = await firstFailure([
+        () => dc(brandt, `${id}/versions/${v}/options`, 'decision.package.option', 'DPK', { key: 'status-quo', title: 'Keep the single source', kind: 'status_quo', consequences: [{ kind: 'run', id: PAIR.control, version: 1 }], risks: ['one bearing source behind the corridor stops the line when it closes'], opportunities: [] }, id),
+        () => dc(brandt, `${id}/versions/${v}/options`, 'decision.package.option', 'DPK', { key: 'morocco', title: 'Dual-source via Morocco', kind: 'intervention', consequences: [{ kind: 'run', id: PAIR.intervention, version: 1 }],
+          reversibility: 'the framework contract is cancellable at 90 days', risks: ['the Moroccan lot must clear customs at Tanger Med and at the Hauptzollamt'], opportunities: ['a second source for every corridor future'] }, id),
+        () => dc(brandt, `${id}/versions/${v}/options`, 'decision.package.option', 'DPK', { key: 'buffer', title: 'Raise the bearing safety stock', kind: 'intervention', consequences: [], unsimulatedReason: 'no run models a stock increase on the corridor twin (SYNTHETIC)', risks: ['the stock only delays the stop if the closure lasts'], opportunities: [] }, id),
+        () => dc(brandt, `${id}/versions/${v}/terms`, 'decision.package.terms', 'DPK', { objectives: [OBJ_DEL.id, OBJ_REG.id], constraints: ['bearings clear customs within five days of arrival (the AEO commitment)'],
+          approverPolicy: { quorum: 1, principals: [okafor.principalId], expires_after_days: 14 }, monitoringConditions: [{ kind: 'review', every_days: 7, owner: brandt.principalId }],
+          reversibility: 'reversible until the framework contract is signed', informationValue: 'the Moroccan supplier\'s first-article inspection is worth waiting for if the corridor holds' }, id),
+        ]);
+      const b1 = steps;
+      if (b1) fail('L. Brandt drafts the package (the drafting stopped at the first refusal)', b1);
+      else ok(`L. Brandt DECLARED ${short(id)} "${A_TITLE}" on the January decision and DRAFTED v${v}: keep the single source (the promoted corridor control ${short(PAIR.control)}), dual-source via Morocco (act-b24's second-source run ${short(PAIR.intervention)} stands in for its flow), raise the bearing safety stock (unsimulated, said); the objectives "${OBJ_DEL.title}" and "${OBJ_REG.title}"`);
+    }
+  }
+  APKG = (await q(`select package_id::text id, state, current_version v from decision.packages_current where tenant_id = $1 and domain_id = $2 and title = $3 and owner_principal_id = $4 order by declared_at limit 1`, [T, D, A_TITLE, brandt.principalId]))[0] ?? null;
+}
+const CRITERIA = (over = {}) => [
+  { key: 'line_stop', title: 'Line-stop days over the horizon', objectiveId: OBJ_REG.id, direction: 'min', weight: over.line_stop ?? 5, scale: 'ratio', unit: 'days' },
+  { key: 'cost', title: 'Landed cost premium', objectiveId: OBJ_DEL.id, direction: 'min', weight: over.cost ?? 3, scale: 'ratio', unit: 'EUR k' },
+  { key: 'customs_days', title: 'Customs clearance lead time', objectiveId: OBJ_DEL.id, direction: 'min', weight: over.customs_days ?? 2, scale: 'ratio', unit: 'days' },
+];
+const fmtRank = (a) => `${(a?.ranking ?? []).join(' > ')} (scores ${(a?.options ?? []).map((o) => `${o.key} ${num(o.score)}`).join(', ')})`;
+if (APKG) {
+  const V = APKG.v;
+  // THE CRITERIA v1 — exposed weights, the value judgment's owner named; the Decision Agent never sets them (refused at the policy, re-asked on every run)
+  expectRefused('the Decision Agent sets the weights', await an(agent, `${APKG.id}/versions/${V}/criteria`, 'decision.analysis.criteria', { criteria: CRITERIA(), valueOwner: brandt.principalId, rationale: 'the agent weighs (SYNTHETIC)', expectedVersion: null }, APKG.id), 403);
+  let a = await readAnalysis(brandt, APKG.id);
+  if ((a?.criteria_version ?? 0) >= 1) note(`the criteria stand at v${a.criteria_version} (value owner ${nm(a.criteria?.[0]?.value_owner)}) — an earlier run`);
+  else {
+    const r = await an(brandt, `${APKG.id}/versions/${V}/criteria`, 'decision.analysis.criteria', { criteria: CRITERIA(), valueOwner: brandt.principalId, rationale: 'line stops dominate: the quarter\'s objective is a running line; cost and customs follow (SYNTHETIC)', expectedVersion: null }, APKG.id);
+    if (!r.ok) fail('L. Brandt sets the criteria', r);
+    else ok(`L. Brandt SET the criteria v${r.body.criteria.criteria_version}: ${CRITERIA().map((c) => `${c.key} (${c.direction}, weight ${c.weight}, ${c.unit})`).join(', ')} — the weights a value judgment owned by ${nm(r.body.criteria.value_owner)}`);
+  }
+  // THE VALUES: line stops COMPUTED from the runs the options cite; the rest ENTERED with a basis by the analyst
+  const nAss = (await q(`select count(*)::int n from decision.option_assessments where package_id = $1 and version = $2`, [APKG.id, V]))[0].n;
+  if (nAss > 0) note(`${nAss} option assessment(s) stand — an earlier run`);
+  else {
+    const steps = [
+      ['L. Brandt', await an(brandt, `${APKG.id}/versions/${V}/assess`, 'decision.analysis.assess', { option: 'status-quo', criterion: 'line_stop', cited: { kind: 'run', id: PAIR.control, measure: 'line_stop_days' } }, APKG.id)],
+      ['L. Brandt', await an(brandt, `${APKG.id}/versions/${V}/assess`, 'decision.analysis.assess', { option: 'morocco', criterion: 'line_stop', cited: { kind: 'run', id: PAIR.intervention, measure: 'line_stop_days' } }, APKG.id)],
+      ['A. Hoffmann', await an(hoffmann, `${APKG.id}/versions/${V}/assess`, 'decision.analysis.assess', { option: 'buffer', criterion: 'line_stop', value: 18, basis: 'six weeks of safety stock bridge eleven of the closure\'s line-stop days (SYNTHETIC)' }, APKG.id)],
+    ];
+    for (const [o, cost, customs] of [['status-quo', 0, 3], ['morocco', 480, 7], ['buffer', 260, 3]]) {
+      steps.push(['A. Hoffmann', await an(hoffmann, `${APKG.id}/versions/${V}/assess`, 'decision.analysis.assess', { option: o, criterion: 'cost', value: cost, basis: 'the sourcing desk\'s landed-cost quote for Q1 (SYNTHETIC)' }, APKG.id)]);
+      steps.push(['A. Hoffmann', await an(hoffmann, `${APKG.id}/versions/${V}/assess`, 'decision.analysis.assess', { option: o, criterion: 'customs_days', value: customs, basis: 'the customs broker\'s clearance estimate per lane (SYNTHETIC)' }, APKG.id)]);
+    }
+    const b1 = steps.find(([, x]) => !x.ok);
+    if (b1) fail(`${b1[0]} assesses an option`, b1[1]);
+    else ok(`the VALUES: line stops COMPUTED from the cited runs (status quo ${num(steps[0][1].body.assessment.value)}, Morocco ${num(steps[1][1].body.assessment.value)} days) by L. Brandt; the stock increase's line stops (18, no run) and every cost (0 / 480 / 260 k€) and customs lead time (3 / 7 / 3 days) ENTERED with their basis by A. Hoffmann`);
+  }
+  a = await readAnalysis(brandt, APKG.id);
+  if (a) {
+    const bases = a.options.map((o) => `${o.key}: ${Object.entries(o.bases ?? {}).map(([k, b]) => `${k} ${b}`).join(', ')}`).join('; ');
+    (a.options.every((o) => o.rank !== null) ? ok : bad)(`the SERVER'S scores (criteria v${a.criteria_version}): ${fmtRank(a)}; leader ${a.sensitivity?.leader}; the bases — ${bases}`);
+  }
+  // THE CUSTOMS OBLIGATION (Hauptzollamt, ≤ 5 days) declared and EVALUATED per option by its rule
+  const OB = (await q(`select obligation_id::text id from decision.obligations where package_id = $1 and key = 'customs'`, [APKG.id]))[0] ?? null;
+  if (OB) note(`the customs obligation ${short(OB.id)} stands — an earlier run`);
+  else {
+    const r = await dc(brandt, `analysis/packages/${APKG.id}/obligations`, 'decision.analysis.obligation', 'DPK', { key: 'customs', kind: 'obligation', stakeholder: 'Hauptzollamt Regensburg (SYNTHETIC)',
+      statement: 'bearings clear customs within five days of arrival (the AEO commitment)', test: { kind: 'threshold', criterion: 'customs_days', op: '<=', value: 5 }, owner: brandt.principalId }, APKG.id);
+    if (!r.ok) fail('L. Brandt declares the customs obligation', r); else ok(`L. Brandt DECLARED the obligation "customs" owed to ${r.body.obligation.stakeholder}: customs_days <= 5 (a rule test), owner ${nm(r.body.obligation.owner_principal_id)}`);
+  }
+  const nEval = (await q(`select count(*)::int n from decision.obligation_evaluations where package_id = $1 and version = $2`, [APKG.id, V]))[0].n;
+  if (nEval > 0) note(`${nEval} obligation evaluation row(s) stand — an earlier run`);
+  else {
+    const r = await an(brandt, `${APKG.id}/versions/${V}/evaluate`, 'decision.analysis.evaluate', { judgments: [] }, APKG.id);
+    if (!r.ok) fail('L. Brandt evaluates the obligations', r);
+    else ok(`L. Brandt EVALUATED the obligations: ${r.body.evaluation.results.map((x) => `${x.obligation}/${x.option} ${String(x.result).toUpperCase()}`).join(', ')}; violated ${JSON.stringify(r.body.evaluation.violated.map((x) => `${x.obligation} by ${x.option} (owed to ${x.stakeholder})`))}`);
+  }
+  // THE WEIGHT SENSITIVITY: the weight at which another option takes the lead — ENACTED as v2 (2 % past the smallest flip)
+  a = await readAnalysis(brandt, APKG.id);
+  if (a && a.criteria_version >= 2) note(`the criteria stand at v${a.criteria_version}: ${fmtRank(a)} — the history ${a.criteria_history.map((h) => `v${h.criteria_version}`).join(', ')} — an earlier run`);
+  else if (a) {
+    note(`the sensitivity read at v1: leader ${a.sensitivity.leader}; ${a.sensitivity.criteria.map((c) => `${c.key} weight ${num(c.weight)} → ${c.flip_up ? `up to ${num(c.flip_up.weight)} makes ${c.flip_up.to} lead` : 'no flip up'}; ${c.flip_down ? `down to ${num(c.flip_down.weight)} makes ${c.flip_down.to} lead` : 'no flip down'}`).join(' | ')}; most sensitive: ${a.sensitivity.most_sensitive}`);
+    const flips = a.sensitivity.criteria.flatMap((c) => [c.flip_up ? { key: c.key, w: Number(c.weight), f: c.flip_up, up: true } : null, c.flip_down ? { key: c.key, w: Number(c.weight), f: c.flip_down, up: false } : null]).filter(Boolean)
+      .sort((x, y) => Math.abs(Number(x.f.weight) - x.w) / x.w - Math.abs(Number(y.f.weight) - y.w) / y.w);
+    if (flips.length === 0) bad('no weight changes the lead — the sensitivity scene has nothing to enact');
+    else {
+      const fl = flips[0]; const target = Math.round(Number(fl.f.weight) * (fl.up ? 1.02 : 0.98) * 1e6) / 1e6;
+      const r = await an(brandt, `${APKG.id}/versions/${V}/criteria`, 'decision.analysis.criteria', { criteria: CRITERIA({ [fl.key]: target }), valueOwner: brandt.principalId,
+        rationale: `after the corridor review the ${fl.key} weight moves past its reported flip (${num(fl.f.weight)}) to ${target} (SYNTHETIC)`, expectedVersion: a.criteria_version }, APKG.id);
+      if (!r.ok) fail('L. Brandt sets the criteria v2', r);
+      else {
+        const c = r.body.criteria;
+        (c.ranking_changed && c.ranking_after[0] === fl.f.to ? ok : bad)(`L. Brandt SET v${c.criteria_version}: ${fl.key} ${num(fl.w)} → ${target} (the reported flip ${num(fl.f.weight)}) — the ranking ${c.ranking_before.join(' > ')} → ${c.ranking_after.join(' > ')}; ${fl.f.to} now leads, as the sensitivity said`);
+      }
+    }
+  }
+  // THE CANDIDATES (defer, stage, pilot, hedge, acquire information, exit) and THE ASSEMBLY — the Decision Agent's drafts (decision.options untouched)
+  const nCand = (await q(`select count(*)::int n from decision.option_candidates where package_id = $1 and version = $2`, [APKG.id, V]))[0].n;
+  if (nCand > 0) note(`${nCand} generated candidate(s) stand — an earlier run`);
+  else {
+    const before = (await q(`select count(*)::int n from decision.options where package_id = $1`, [APKG.id]))[0].n;
+    const r = await an(agent, `${APKG.id}/versions/${V}/generate`, 'decision.analysis.generate', {}, APKG.id);
+    if (!r.ok) fail('the Decision Agent generates candidates', r);
+    else {
+      const g = r.body.generation; const after = (await q(`select count(*)::int n from decision.options where package_id = $1`, [APKG.id]))[0].n;
+      ok(`the Decision Agent GENERATED ${g.candidates.length} candidate(s) against the leader ${g.leader}: ${g.candidates.map((x) => `${x.posture} "${x.title}" (${x.rule})`).join('; ')}${g.skipped?.length ? `; skipped ${g.skipped.map((x) => x.key).join(', ')}` : ''} — decision.options ${before} → ${after} (untouched; the owner adopts through the option route)`);
+    }
+  }
+  const asm = (await q(`select assembly_id::text id, counts from decision.package_assemblies where package_id = $1 and version = $2 order by assembled_at desc limit 1`, [APKG.id, V]))[0] ?? null;
+  if (asm) note(`the assembly ${short(asm.id)} stands (${JSON.stringify(asm.counts)}) — an earlier run`);
+  else {
+    const r = await an(agent, `${APKG.id}/versions/${V}/assemble`, 'decision.analysis.assemble', {}, APKG.id);
+    if (!r.ok) fail('the Decision Agent assembles the package', r);
+    else ok(`the Decision Agent ASSEMBLED the package: ${JSON.stringify(r.body.assembly.counts)} — ${[...new Map(r.body.assembly.items.map((i) => [i.kind, i])).values()].map((i) => `${i.kind}: ${(i.why ?? [])[0] ?? ''}`).join('; ')}`);
+  }
+  a = await readAnalysis(hoffmann, APKG.id);
+  if (a) note(`the analysis read by A. Hoffmann: criteria v${a.criteria_version}, ${fmtRank(a)}; violations ${JSON.stringify((a.violations ?? []).map((x) => `${x.obligation}/${x.option}`))}; trade-offs — not dominated ${JSON.stringify(a.tradeoffs?.non_dominated)}; candidates ${(a.candidates ?? []).length}; second-order ${(a.second_order ?? []).map((s) => `${s.option} ${s.validated ? 'validated' : 'not validated'}`).join(', ')}`);
+}
+ENV_OUT.EYE_B35_ANALYSIS_TITLE = 'Second source for bearings'; ENV_OUT.EYE_B35_ANALYSIS_OWNER = 'l.brandt'; ENV_OUT.EYE_B35_ANALYSIS_PACKAGE = APKG?.id ?? '—';
 
 /* ── B35-9 THE STATE, THE ENV LINES, THE LIMITS ──────────────────────────────────────── */
 console.log('\nB35-9 THE STATE and the LIMITS');
