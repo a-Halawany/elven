@@ -1009,6 +1009,20 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   { match: /^(run use|branch binding) rejected \((state|stale|duplicate|diagnostic_only|refused)\)|^run rejected \((scenario_quality|branch_binding)\)|^promotion to simulation rejected \((branch_suspended|scenario_quality)\)/i, status: 409, code: 'EYE_STA_002' },
   { match: /^(run use|branch binding) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
   /* end B31 validity */
+  /* B35 explanation (0101 §E) — the families `explanation rejected (<class>)` (the governed explanation, its generation and its renderings
+     through the faithfulness check v1) and `appeal rejected (<class>)` (contest and appeal cases), every row anchored and requiring the class
+     parenthesis (no earlier row starts with `explanation` or `appeal`; no unanchored row reads either noun). B9's order: the standing 403
+     (the acting principal; the authority — the bench, the assigned adjudicator, an agent never adjudicating; the standing v1; the
+     separation — neither the appellant nor a subject owner adjudicates), the absences 404 (unknown_*), the record's state 409 (state — a
+     superseded explanation, a draft package, a case out of step; stale — a moved subject; duplicate — an open case of the same appellant;
+     unavailable — the recommendation or analysis part not installed), the caller's own request 422 (the rest: subject_kind, version,
+     audience, sentences, unfaithful, category, role, scope, grounds, evidence, deadline, explanation, adjudicator, outcome, rationale,
+     correction, note, subject, case). */
+  { match: /^(explanation|appeal) rejected \((actor|authority|standing|separation)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^(explanation|appeal) rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^(explanation|appeal) rejected \((state|stale|duplicate|unavailable)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^(explanation|appeal) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B35 explanation */
   /* B36 home (0094 §H) — the executive home's families in the CLASS form `<noun> rejected (<class>): …`: `cadence rejected`, `executive room
      rejected` (0044's unclassed `room rejected: …` texts are the decision room's and are mapped by no row; the noun here is `executive room`
      and every row is anchored), `objective review rejected` (the SoD of §H2's re-declared convene_review and of open_subject_room — B23's
