@@ -292,9 +292,11 @@ REVOKE ALL ON FUNCTION decision.dse_item(text, text, jsonb, text, text, boolean,
    subject here. A recommendation (§R) and an analysis (§A) are read only when their part is installed (to_regclass / to_regprocedure);
    otherwise the answer says unavailable. */
 CREATE OR REPLACE FUNCTION decision.dse_subject(p_tenant uuid, p_domain uuid, p_kind text, p_id uuid, p_version int) RETURNS jsonb
-STABLE SECURITY DEFINER SET search_path = decision, prediction, simulation, observation, objects, graph, pg_catalog, pg_temp AS $$
+STABLE SECURITY DEFINER SET search_path = decision, prediction, simulation, observation, objects, graph, public, pg_catalog, pg_temp AS $$
 DECLARE p record; v record; o record; f record; r record; s record; cl record; x record; v_ver int; v_state jsonb; v_rec jsonb; v_an jsonb; v_sub jsonb;
 BEGIN
+  -- a definer read answers only inside the caller's established context (never another tenant's or domain's subject)
+  IF p_tenant IS DISTINCT FROM public.eye_tenant() OR (public.eye_scope() IS DISTINCT FROM 'TENANT' AND p_domain IS DISTINCT FROM public.eye_domain()) THEN RETURN NULL; END IF;
   IF p_kind IN ('package', 'package_version', 'analysis') THEN
     SELECT * INTO p FROM decision.packages_current z WHERE z.package_id = p_id AND z.tenant_id = p_tenant AND z.domain_id = p_domain;
     IF NOT FOUND THEN RETURN NULL; END IF;
