@@ -186,7 +186,8 @@ describe('B31 part O · simulation orchestration (0099 §O; F-P5-06)', () => {
     await refused(declare(declaration({ run: { ...declaration().run, twinVersion: 99 } })), /experiment rejected \(unknown_twin_version\)/, 404);
     // the PDP: an analyst does not declare
     await refused(declare(declaration(), analyst), /./, 403);
-    expect((await rows(sql`select count(*)::int n from simulation.experiments`))[0]?.['n']).toBe(0);
+    // scoped to THIS harness's tenant: the complete integration run shares one database across files (phase6-validity-b31's F2 cases declare experiments of their own)
+    expect((await rows(sql`select count(*)::int n from simulation.experiments where tenant_id = ${T()}::uuid`))[0]?.['n']).toBe(0);
     // POSITIVE: the 5,000-path corridor experiment (the demonstration's scene), in chunks of 500, one chunk per tick
     const d = (await declare(declaration({ paths: 5000, chunkSize: 500, title: 'Corridor closure — 5,000 paths (SYNTHETIC)' }, { max_paths: 5000, max_wall_seconds: 900, max_chunks: 14 }))).experiment;
     MAIN = String(d['experiment_id']);
