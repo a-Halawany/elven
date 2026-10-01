@@ -427,6 +427,92 @@ if (CASE) {
 }
 ENV_OUT.EYE_B35_EXPLANATION_FORECAST = FCT.id; ENV_OUT.EYE_B35_APPELLANT = 'j.weber'; ENV_OUT.EYE_B35_READER = 'l.brandt'; ENV_OUT.EYE_B35_APPEAL_CASE = CASE?.id ?? '—';
 
+/* ── B35-P REOPEN AND OUTCOME ────────────────────────────────────────────────────────── */
+console.log('\nB35-P REOPEN AND OUTCOME (F-P6-06) — act-b34\'s committed dual-sourcing decision reopened when the corridor reopens; the cited scenario\'s owner tasked and the scenario re-versioned; the outcome assessment in four separate fields');
+const RV = 'review';
+const CHANGE_TITLE = 'The corridor reopens (SYNTHETIC)';
+const IND_UP = (await q(`select indicator_id::text id, description from prediction.indicators_current where tenant_id = $1 and domain_id = $2 and state = 'active' and series_key = 'portwatch:chokepoint4:n_total' and comparator = '>' order by indicator_id limit 1`, [T, D]))[0] ?? null;
+const reviewOf = async (s, pkg) => { const r = await dc(s, `${RV}/packages/${pkg}`, 'decision.review.read', 'DPK', {}, pkg, READ); return r.ok ? r.body.review : (fail('the review read', r), null); };
+const mitig = async () => (await q(`select state, committed_version cv, current_version v, reopens from decision.packages_current where package_id = $1`, [MITIG.pkg]))[0];
+note(`the committed dual-sourcing decision: act-b34's "Mitigate the corridor closure — Regensburg line" ${short(MITIG.pkg)} (owner C. Brenner; its "dual-source" option "Dual-source the bearings and reroute" chosen and committed v${MITIG.cv}; now ${MITIG.state}) — chosen over act-b36's Morocco package, which is CLOSED (a closed decision is not reopened); no fresh package, so the decision-use policy's commitment gate is not met here`);
+if (IND_UP === null) bad('the corridor-recovery indicator (transits back above 50) is absent');
+let CHANGE = (await q(`select change_id::text id, committed_version cv, recorded_by::text by from decision.condition_changes where package_id = $1 and title = $2 order by recorded_at desc limit 1`, [MITIG.pkg, CHANGE_TITLE]))[0] ?? null;
+if (CHANGE) note(`the change of conditions ${short(CHANGE.id)} "${CHANGE_TITLE}" stands (recorded by ${nm(CHANGE.by)} against v${CHANGE.cv}) — an earlier run`);
+else if (IND_UP) {
+  const r = await dc(weber, `${RV}/packages/${MITIG.pkg}/changes`, 'decision.review.change', 'DPK', { title: CHANGE_TITLE,
+    statement: 'Merchant transits through Bab el-Mandeb are back above the seasonal level; the closure the decision answered no longer holds (SYNTHETIC).',
+    evidence: [{ kind: 'indicator', id: IND_UP.id, note: 'the corridor-recovery signpost: transits back above 50 per day' }, { kind: 'forecast', id: FCT.id, note: 'the corridor transit forecast' }] }, MITIG.pkg);
+  if (!r.ok) fail('J. Weber records the change of conditions', r);
+  else { CHANGE = { id: r.body.change.change_id, cv: r.body.change.committed_version, by: weber.principalId }; ok(`J. Weber RECORDED the change of conditions ${short(CHANGE.id)} "${CHANGE_TITLE}" against v${CHANGE.cv} with its evidence: ${r.body.change.evidence.map((e) => `${e.kind} ${short(e.id)}`).join(', ')}`); }
+}
+// THE REOPEN: the package owner reopens on the recorded change (DecisionReopened from the same transaction)
+{
+  const m = await mitig();
+  const spent = CHANGE ? (await q(`select count(*)::int n from decision.package_events where package_id = $1 and event = 'package.reopened' and details -> 'cause' ->> 'ref' = $2`, [MITIG.pkg, CHANGE.id]))[0].n : 0;
+  if (spent > 0) note(`the decision was reopened on the change — an earlier run (now ${m.state}, v${m.v}, ${m.reopens} reopen(s))`);
+  else if (CHANGE) {
+    expectRefused('L. Brandt (not the package owner) reopens it', await dc(brandt, `${RV}/packages/${MITIG.pkg}/reopen`, 'decision.package.reopen', 'DPK', { cause: { kind: 'conditions_changed', ref: CHANGE.id } }, MITIG.pkg), 403);
+    const r = await dc(brenner, `${RV}/packages/${MITIG.pkg}/reopen`, 'decision.package.reopen', 'DPK', { cause: { kind: 'conditions_changed', ref: CHANGE.id } }, MITIG.pkg);
+    if (!r.ok) fail('C. Brenner reopens the decision', r);
+    else {
+      const x = r.body.reopened;
+      const ob = (await q(`select count(*)::int n from objects.object_outbox where event_type = 'DecisionReopened' and payload ->> 'package_id' = $1 and payload -> 'recorded_cause' ->> 'ref' = $2`, [MITIG.pkg, CHANGE.id]))[0].n;
+      ok(`C. Brenner (the owner) REOPENED the decision on conditions_changed: committed v${x.committed_version} → v${x.new_version} open (reopen ${x.reopens}); options carried ${JSON.stringify(x.options_carried)}; exposed inputs ${(x.exposed_inputs ?? []).map((e) => e.kind).join(', ')}; scenario owners TASKED: ${(x.scenario_reversions ?? []).map((s) => `${short(s.scenario_id)} v${s.scenario_version} → ${nm(s.owner)}`).join('; ') || 'none'}; DecisionReopened in the outbox ${ob}`);
+    }
+  }
+}
+// THE RE-VERSIONING (V02-T-014): each tasked scenario owner branches the scenario through the existing route, then resolves the request
+const REQS = await q(`select r.request_id::text id, r.state, r.scenario_id::text scenario, r.scenario_version_at_request at, r.owner_principal_id::text owner, r.resolved_version, s.title, s.current_version now
+                        from decision.scenario_reversion_requests r join prediction.scenarios_current s on s.scenario_id = r.scenario_id where r.package_id = $1 order by r.requested_at`, [MITIG.pkg]);
+if (REQS.length === 0) bad('no scenario was tasked for re-versioning on the reopen');
+const OWNERS = { [eriksen.principalId]: eriksen, [weber.principalId]: weber };
+for (const rq of REQS) {
+  if (rq.state !== 'open') { note(`the reversion request ${short(rq.id)} on "${rq.title}" is ${rq.state.toUpperCase()} (v${rq.at} → v${rq.resolved_version}) — an earlier run`); continue; }
+  const s = OWNERS[rq.owner];
+  if (!s) { bad(`the reversion request ${short(rq.id)} is owned by ${nm(rq.owner)}, whom this act does not cast`); continue; }
+  if (Number(rq.now) <= Number(rq.at)) {
+    expectRefused(`${nm(rq.owner)} marks the request re-versioned before re-versioning`, await dc(s, `${RV}/reversions/${rq.id}/resolve`, 'decision.review.reversion', 'SCN', { resolution: 'reversioned', note: 'nothing was re-versioned yet (SYNTHETIC)' }, rq.id), 409, /^review rejected \(state\)/);
+    const b = await pd(s, `scenarios/${rq.scenario}/branches`, 'prediction.scenario.branch', 'SCN', { expected_version: Number(rq.now), idempotency_key: `b35-corridor-reopened-${rq.id.slice(-12)}`,
+      branch: { name: 'Corridor reopened', kind: 'upside', statement: 'merchant transits resume above the seasonal level and the war-risk cover returns (SYNTHETIC)', indicatorId: IND_UP.id, owner: s.principalId,
+        consequence: 'release the second source to its framework minimum', responseWindowHours: 72, divergence: 'insurers restore war-risk cover and carriers return to the strait (SYNTHETIC)' } }, rq.scenario);
+    if (!b.ok) { fail(`${nm(rq.owner)} branches the scenario`, b); continue; }
+    ok(`${nm(rq.owner)} (the scenario's owner) RE-VERSIONED "${rq.title}" through the branch route: v${rq.now} → v${(await q(`select current_version v from prediction.scenarios_current where scenario_id = $1`, [rq.scenario]))[0].v} — the upside branch "Corridor reopened" on the recovery signpost`);
+  }
+  const r = await dc(s, `${RV}/reversions/${rq.id}/resolve`, 'decision.review.reversion', 'SCN', { resolution: 'reversioned', note: 'the corridor-reopened branch added on the recovery signpost (SYNTHETIC)' }, rq.id);
+  if (!r.ok) fail(`${nm(rq.owner)} resolves the reversion request`, r);
+  else ok(`${nm(rq.owner)} RESOLVED the request ${short(rq.id)} → ${r.body.reversion.state} at v${r.body.reversion.resolved_version}; the routed item ${(await q(`select state from executive.attention_items where item_id = (select item_id from decision.scenario_reversion_requests where request_id = $1)`, [rq.id]))[0]?.state ?? '—'}`);
+}
+// THE OUTCOME ASSESSMENT of the committed v1: observed (the recorded outcome), inferred contribution (method, confidence), counterfactual (the status-quo run), changed conditions
+{
+  const OA = (await q(`select assessment_id::text id, assessment_version av, assessed_by::text by from decision.outcome_assessments where package_id = $1 and version = $2 order by assessment_version desc limit 1`, [MITIG.pkg, MITIG.cv]))[0] ?? null;
+  if (OA) note(`the outcome assessment ${short(OA.id)} v${OA.av} of v${MITIG.cv} stands (by ${nm(OA.by)}) — an earlier run`);
+  else {
+    const OUT = await q(`select outcome_id::text id, criterion_key, observed_value, unit, met from decision.outcomes where package_id = $1 and version = $2 order by recorded_at`, [MITIG.pkg, MITIG.cv]);
+    const SQRUN = (await q(`select c ->> 'id' id from decision.options o cross join lateral jsonb_array_elements(o.consequences) c where o.package_id = $1 and o.version = $2 and o.key = 'status-quo' and c ->> 'kind' = 'run' limit 1`, [MITIG.pkg, MITIG.cv]))[0]?.id ?? null;
+    if (OUT.length === 0 || SQRUN === null) bad(`the committed v${MITIG.cv} carries ${OUT.length} recorded outcome(s) and status-quo run ${SQRUN ?? 'none'} — the assessment needs both`);
+    else {
+      const r = await dc(brandt, `${RV}/packages/${MITIG.pkg}/versions/${MITIG.cv}/outcome-assessments`, 'decision.review.outcome', 'DPK', {
+        observed: { outcomeIds: OUT.map((o) => o.id), statement: `Observed: ${OUT.map((o) => `${o.criterion_key} ${num(o.observed_value)} ${o.unit ?? ''}`).join(', ')} at the Regensburg line over the decision window, against a target of none; the dual-sourcing premium paid was 48 k€ (SYNTHETIC).` },
+        inferred: { statement: 'The second source is inferred to have saved about twelve line-stop days while the corridor was closed, worth about 1.7 M€ of avoided line-stop cost (SYNTHETIC).', method: 'simulation_comparison', confidence: 0.55, magnitude: 12, unit: 'days' },
+        counterfactual: { claim: 'Without the second source the line would have stopped for about fifteen days, as the single source\'s run under the closure says (SYNTHETIC).', basis: { kind: 'run', runId: SQRUN } },
+        changedConditions: [{ condition: 'The corridor reopened: transits back above 50 per day (SYNTHETIC)', effect: 'the premium for the second source buys less from here on', evidence: [{ kind: 'indicator', id: IND_UP?.id }] }],
+      }, MITIG.pkg);
+      if (!r.ok) fail('L. Brandt assesses the outcome', r);
+      else { const a = r.body.assessment; ok(`L. Brandt ASSESSED the outcome of v${a.version} (assessment v${a.assessment_version}) in four separate fields — OBSERVED ${(a.observed?.outcomes ?? []).map((o) => `${o.criterion_key} ${num(o.observed_value)} (met ${o.met})`).join(', ')}; INFERRED ${a.inferred?.method}, confidence ${a.inferred?.confidence}, ${a.inferred?.magnitude} ${a.inferred?.unit}; COUNTERFACTUAL on the run ${short(a.counterfactual?.basis?.run_id ?? a.counterfactual?.basis?.runId ?? SQRUN)}; CHANGED CONDITIONS ${(a.changed_conditions ?? []).length}`); }
+    }
+  }
+}
+{
+  const v = await reviewOf(brenner, MITIG.pkg);
+  const m = await mitig();
+  if (v) note(`the review read by C. Brenner: the package ${m.state} (v${m.v}, committed v${m.cv}, ${m.reopens} reopen(s)); changes ${(v.changes ?? v.condition_changes ?? []).length}; reversion requests ${(v.reversion_requests ?? []).map((x) => `${x.state} v${x.scenario_version_at_request} → v${x.scenario_version_now}`).join(', ')}; outcome assessments ${(v.outcome_assessments ?? []).length}; events ${(v.events ?? []).map((e) => e.event).join(', ')}`);
+  const mt = await dc(brenner, `${RV}/packages/${MITIG.pkg}/metrics`, 'decision.review.metrics', 'DPK', {}, MITIG.pkg, READ);
+  if (mt.ok) { const mm = mt.body.metrics ?? mt.body; const brief = (x) => (x === null || typeof x !== 'object' ? String(x) : x.label ?? (x.score !== undefined ? `${x.met ?? ''}${x.of !== undefined ? `/${x.of}` : ''} (${x.score})` : JSON.stringify(x).slice(0, 80)));
+      note(`the decision metrics (v${mm.version}, ${mm.state}): ${Object.entries(mm).filter(([k]) => !['as_of', 'state', 'title', 'version', 'package_id', 'receipt'].includes(k)).map(([k, x]) => `${k} ${brief(x)}`).join('; ')}`); } else fail('the decision metrics', mt);
+}
+ENV_OUT.EYE_B35_REOPEN_TITLE = 'Mitigate the corridor closure'; ENV_OUT.EYE_B35_REOPEN_DECIDER = 'c.brenner'; ENV_OUT.EYE_B35_REOPEN_OWNER = REQS[0] ? (REQS[0].owner === weber.principalId ? 'j.weber' : 'n.eriksen') : 'n.eriksen';
+ENV_OUT.EYE_B35_REOPEN_PACKAGE = MITIG.pkg;
+
 /* ── B35-9 THE STATE, THE ENV LINES, THE LIMITS ──────────────────────────────────────── */
 console.log('\nB35-9 THE STATE and the LIMITS');
 await su.end();
