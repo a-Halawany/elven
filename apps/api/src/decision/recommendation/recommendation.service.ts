@@ -80,7 +80,7 @@ export function validateReview(p: Row, correlationId: string): ReviewCommand {
   if (typeof p['verdict'] !== 'string' || !(VERDICTS as readonly string[]).includes(p['verdict'])) refuse(correlationId, '(verdict): a review accepts for consideration, declines or requests changes');
   if (!text(p['rationale'], 8, 4000)) refuse(correlationId, '(rationale): a review states its rationale (8 to 4000 characters)');
   const o = p['override'];
-  if (o !== undefined && o !== null && o !== '' && !text(o, 16, 2000)) refuse(correlationId, '(override): an override states why the flags do not stand against consideration (16 to 2000 characters)');
+  if (o !== undefined && o !== null && !(typeof o === 'string' && o.trim() === '') && !text(o, 16, 2000)) refuse(correlationId, '(override): an override states why the flags do not stand against consideration (16 to 2000 characters)');
   const d = p['expectedDigest'];
   if (d !== undefined && d !== null && (typeof d !== 'string' || !DIGEST.test(d))) refuse(correlationId, '(expected_digest): the digest read is 64 hex characters');
   return { verdict: p['verdict'] as Verdict, rationale: (p['rationale'] as string).trim(), override: typeof o === 'string' && o.trim() !== '' ? o.trim() : null,
