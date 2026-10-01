@@ -4487,3 +4487,33 @@ The mechanism is in `audit/CP6_BATCHES.md` §B27. There is one migration, `0097_
 - **Consolidation:** #71 retargeted to `phase6-b36` as the complete B90 + B27 candidate (it carries #70's head and migrations 0095–0098 in order); #70 kept open, not merged independently (its head alone fails C18: 0098 without 0097); no migration renumbered or inserted.
 - **B31-F1:** reinstatement re-evaluates every linked critical condition — a disputed claim or a breached indicator refuses it as an invalidated assumption does; a note never clears it; recovery by resolution or a governed link change. **B31-F2:** a run honours the constraint set and version recorded in its branch binding — a newer version or a retired set refuses the run until the owner rebinds, an unverifiable opening check refuses it, a violated bound constraint is refused by the gate; the experiment path included. Both forward in `0100`; the regression fails 5 cases through 0099 and passes 31/31 through 0100 (`evidence/cp6/b31f-regression.txt`).
 - **Residuals owned:** F-P5-06 completes at B73 (after B30, B35, B62, B74, B110), F-P5-07 at B26 (after B30, B35); B31 completes F-P5-09 by its rows and keeps its delivered effort. M1 399.9–689.0 U; the three-account finish 2027-07-08. Gates at `b6b83b4`: integration 1644/1644, unit 3000 + 9, acceptance 58/58, upgrade PASS (79), browser 93/93; `eye_demo` through 0100, the affected acts and walks standing. `audit/CP6_BATCHES.md` §B31.9.
+
+## 47. B35 (2026-10-01/02): decision analysis, recommendation, explanation and appeal, reopen and replay (0101) — F-P6-01, F-P6-02, F-P6-03, F-P6-06
+
+### 47.1 What B35 implements
+
+- **Analysis (F-P6-01):** criteria with exposed weights and their owner, server-computed scores, ranking and the flip weight, obligations per option, trade-offs, value of information and second-order effects on the analysis, generated candidates, the package assembly, robustness and regret across futures, adversarial-response sensitivity.
+- **Recommendation (F-P6-02):** a distinct explained object with what could make it wrong and separated components; its review comparing AI and human recommendations, accepted for consideration by a named non-author; the human-led incomplete-package mode; quality and run-indicator flags needing a stated override; decision coverage.
+- **Explanation and appeal (F-P6-03):** the server-generated explanation with separated item categories, counter-evidence and competing hypotheses; the faithfulness check of renderings; contest and appeal cases with standing, deadline, a separate adjudicator, notification and closure.
+- **Reopen and outcomes (F-P6-06):** reopen on an upheld challenge, an upheld appeal or a named change of conditions, the scenario owners tasked to re-version; outcome assessments separating observed result, inferred contribution, counterfactual and changed conditions; review terms, replay reasons, decision metrics, lessons as governed memory; set review cadences and relevance outside active sets.
+
+### 47.2 Results
+
+| Check | Result |
+|---|---|
+| Part harnesses | analysis 18/18, explanation 14/14, reopen 20/20, recommendation 20/20 (combined 0101, seams asserted) |
+| Full integration | 1716/1716 in 127 files at `5ee776b` |
+| Unit | API 3099 + 9; web 225 |
+| Acceptance / upgrade | 58/58 / PASS (migrations 80) |
+| Browser | 93/93 |
+| The act on `eye_demo` | HELD (34 ✓, no ✗, 0.9 s; the rerun 0.4 s) — `evidence/cp6/act-b35.txt` |
+| The walks | 14/14 twice; B90 + B27 + B31 36/36 |
+| Hosted | pending (PR #73) |
+
+- **Found and corrected at integration:** two merges committed with conflict markers (rebuilt in the next commit); the reopen harness's stand-in appeal table replaced by the real appeal path; the cross-part seams asserted; shared-database counts scoped. **One substitution:** the act opens the Decision Agent's run session outside the API (no route lets the agent record a recommendation; the secrets read from the environment, never printed). `audit/CP6_BATCHES.md` §B35.
+
+### 47.3 The plan
+
+- **B35 completes none of its four features** and advances them with its delivered effort: F-P6-01 completes at B73, F-P6-02 and F-P6-03 at B26, F-P6-06 at B100, each after its remaining construction (§B35.5). M1 401.85–692.85 U; the three-account finish 2027-07-14.
+- **Rows:** implemented 1288 → 1333, partial 2608 → 2570, missing 2342 → 2335; the acceptance split unchanged. The next A1 stage is **B30**.
+- **The candidate** is PR #73 (`phase6-b35` → `phase6-b31`), stacked on #72.
