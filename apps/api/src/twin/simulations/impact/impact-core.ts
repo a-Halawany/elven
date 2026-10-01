@@ -48,6 +48,14 @@ export interface Factor {
   key: string; field: string; kind: 'parameter' | 'timing'; element_kind: string | null; base_value: number | string;
   low: { value: number | string; metric: number }; high: { value: number | string; metric: number };
   delta_low: number; delta_high: number; swing: number; rank: number; outside_envelope: boolean;
+  /** V02-T-167 "nonlinear response": |delta_low + delta_high| — zero for a response linear in the move; NONLINEAR above a tenth of the swing. */
+  asymmetry: number; nonlinear: boolean;
+}
+/** The response's shape from its two deltas: the swing, the asymmetry and whether it is nonlinear (asymmetric beyond a tenth of the swing). */
+export function responseOf(dl: number, dh: number): { swing: number; asymmetry: number; nonlinear: boolean } {
+  const swing = round6(Math.max(Math.abs(dl), Math.abs(dh)));
+  const asymmetry = round6(Math.abs(dl + dh));
+  return { swing, asymmetry, nonlinear: swing > 0 && asymmetry > 0.1 * swing };
 }
 export interface Robustness { verdict: 'stable' | 'unstable' | 'not_assessed'; samples?: number; jitter?: Record<string, number>; ranks?: Record<string, string[]>; basis?: string }
 
@@ -119,7 +127,7 @@ export function supplyFlowSweep(a: { params: SupplyFlowParams; options: SupplyFl
     const dl = round6(m[0]! - base); const dh = round6(m[1]! - base);
     return { key: p.key, field: p.field, kind: p.kind, element_kind: p.element_kind, base_value: p.base_value,
              low: { value: p.values[0], metric: m[0]! }, high: { value: p.values[1], metric: m[1]! }, delta_low: dl, delta_high: dh,
-             swing: round6(Math.max(Math.abs(dl), Math.abs(dh))), outside_envelope: p.outside[0] || p.outside[1] };
+             ...responseOf(dl, dh), outside_envelope: p.outside[0] || p.outside[1] };
   });
   return { base, factors: rankFactors(rows) };
 }

@@ -170,10 +170,10 @@ export default function ImpactPage() {
                   {latest.seeds ? <> · seeds <Mono>{latest.seeds.join(', ')}</Mono></> : null} · analysed {fmtInstant(latest.analysed_at)} · <Mono>{short(latest.analysis_id)}</Mono></p>
                 <Tornado a={latest} />
                 <table style={tableStyle} aria-label="sensitivity factors">
-                  <thead><tr><Th>Rank</Th><Th>Factor (twin element)</Th><Th>Base</Th><Th>Low → metric</Th><Th>High → metric</Th><Th>Swing</Th></tr></thead>
+                  <thead><tr><Th>Rank</Th><Th>Factor (twin element)</Th><Th>Base</Th><Th>Low → metric</Th><Th>High → metric</Th><Th>Swing</Th><Th>Response</Th></tr></thead>
                   <tbody>{latest.factors.map((f) => (
                     <tr key={f.key}><Td>{f.rank}</Td><Td><Mono>{f.key}</Mono>{f.element_kind ? ` (${f.element_kind})` : ''}{f.outside_envelope ? ' · leaves the envelope' : ''}</Td><Td>{String(f.base_value)}</Td>
-                      <Td>{String(f.low.value)} → {f.low.metric} ({f.delta_low >= 0 ? '+' : ''}{f.delta_low})</Td><Td>{String(f.high.value)} → {f.high.metric} ({f.delta_high >= 0 ? '+' : ''}{f.delta_high})</Td><Td>{f.swing}</Td></tr>
+                      <Td>{String(f.low.value)} → {f.low.metric} ({f.delta_low >= 0 ? '+' : ''}{f.delta_low})</Td><Td>{String(f.high.value)} → {f.high.metric} ({f.delta_high >= 0 ? '+' : ''}{f.delta_high})</Td><Td>{f.swing}</Td><Td>{f.nonlinear === undefined ? '—' : f.nonlinear ? `NONLINEAR (asymmetry ${f.asymmetry ?? ''})` : 'linear'}</Td></tr>
                   ))}</tbody>
                 </table>
               </>

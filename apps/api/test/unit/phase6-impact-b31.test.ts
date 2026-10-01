@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
 import { asObservationRefusal } from '../../src/observation/observation-errors.js';
 import { simulateSupplyFlow, type SupplyFlowOutputs, type SupplyFlowParams } from '../../src/twin/models/supply-flow.js';
 import {
-  SUPPLY_FLOW_FACTORS, headroomOf, lostDays, movedLeaf, numericLeaves, rankFactors, secondOrder, summaryMetric, supplyFlowPerturbations, supplyFlowRobustness, supplyFlowSweep,
+  SUPPLY_FLOW_FACTORS, headroomOf, responseOf, lostDays, movedLeaf, numericLeaves, rankFactors, secondOrder, summaryMetric, supplyFlowPerturbations, supplyFlowRobustness, supplyFlowSweep,
   validateSensitivity, validateVoi, verdictOf, voiOf, withPath, type ChainTwin,
 } from '../../src/twin/simulations/impact/impact-core.js';
 
@@ -46,6 +46,12 @@ describe('the sweep (one at a time, ranked by swing — the tornado)', () => {
       ['timing:air_bridge:2024-01-17', 'timing', ['2024-01-10', '2024-01-24'], [false, false]],
     ]);
     expect(p[1]!.apply(1).interventions).toEqual([{ type: 'air_bridge', component: 'SYN-PART-MAG', weeks: 1, decision_date: '2024-01-24' }]);
+  });
+  it('the response\'s shape (V02-T-167): linear when the two moves answer alike and opposite, NONLINEAR when asymmetric beyond a tenth of the swing — a threshold one-sided', () => {
+    expect(responseOf(-10, 10)).toEqual({ swing: 10, asymmetry: 0, nonlinear: false });
+    expect(responseOf(-10, 10.5)).toEqual({ swing: 10.5, asymmetry: 0.5, nonlinear: false });
+    expect(responseOf(0, 142000)).toEqual({ swing: 142000, asymmetry: 142000, nonlinear: true });
+    expect(responseOf(0, 0)).toEqual({ swing: 0, asymmetry: 0, nonlinear: false });
   });
   it('ranks ties by key; the verdict is stable only when every seed orders the factors alike', () => {
     expect(rankFactors([{ key: 'b', swing: 2 }, { key: 'a', swing: 2 }, { key: 'c', swing: 5 }]).map((f) => [f.key, f.rank])).toEqual([['c', 1], ['a', 2], ['b', 3]]);

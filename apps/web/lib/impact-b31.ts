@@ -17,6 +17,8 @@ export interface Factor {
   key: string; field: string; kind: 'parameter' | 'timing'; element_kind: string | null; base_value: number | string;
   low: { value: number | string; metric: number }; high: { value: number | string; metric: number };
   delta_low: number; delta_high: number; swing: number; rank: number; outside_envelope: boolean;
+  /** V02-T-167: the server's reading of the response's shape (asymmetric beyond a tenth of the swing is NONLINEAR). */
+  asymmetry?: number; nonlinear?: boolean;
 }
 export interface Robustness { verdict: 'stable' | 'unstable' | 'not_assessed'; samples?: number; jitter?: Record<string, number>; ranks?: Record<string, string[]>; stable?: string[]; unstable?: Array<{ key: string; ranks: Record<string, number> }>; basis?: string }
 export interface Analysis {

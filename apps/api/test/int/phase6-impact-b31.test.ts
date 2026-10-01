@@ -194,6 +194,8 @@ describe('B31 §I · s THE SENSITIVITY ANALYSIS (L8-C08, V00-T-062)', () => {
       expect(f.low.metric, f.key).toBeCloseTo(lo, 6);
       expect(f.high.metric, f.key).toBeCloseTo(hi, 6);
       expect(f.swing, f.key).toBeCloseTo(Math.max(Math.abs(lo - base), Math.abs(hi - base)), 6);
+      // V02-T-167: the response's shape — nonlinear when the two moves do not answer alike and opposite
+      expect(f['nonlinear'], f.key).toBe(f.swing > 0 && Math.abs(lo + hi - 2 * base) > 0.1 * f.swing);
     }
     // the line-stop cost scales the dominant cost of a shocked corridor: it cannot be narrow
     expect(factors.findIndex((f) => f.key === 'terms.line_stop_cost_per_day:SYN-LINE-A1')).toBeLessThan(6);

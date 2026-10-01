@@ -15,7 +15,7 @@ import { simulateSupplyFlow, SUPPLY_FLOW_METHOD_REF, type SupplyFlowOutputs } fr
 import { contractOf, methodInputOf, SimulationService } from '../simulation.service.js';
 import { containmentOf } from '../../methods/method-runner.js';
 import {
-  SUPPLY_METRICS, digestOf, movedLeaf, numericLeaves, rankFactors, round6, secondOrder, summaryMetric, supplyFlowRobustness, supplyFlowSweep, verdictOf, withPath,
+  SUPPLY_METRICS, digestOf, movedLeaf, responseOf, numericLeaves, rankFactors, round6, secondOrder, summaryMetric, supplyFlowRobustness, supplyFlowSweep, verdictOf, withPath,
   type ChainLink, type ChainTwin, type Effect, type Factor, type Robustness, type SensitivityIntake, type SupplyMetric,
 } from './impact-core.js';
 
@@ -108,7 +108,7 @@ export class ImpactService {
         const hi = await execute(withPath(input.params, leaf.path, moved[1]), seed, `${leaf.path} = ${moved[1]}`);
         const dl = round6(lo - b); const dh = round6(hi - b);
         rows.push({ key: `params.${leaf.path}`, field: leaf.path, kind: 'parameter', element_kind: null, base_value: leaf.value, low: { value: moved[0], metric: lo }, high: { value: moved[1], metric: hi },
-                    delta_low: dl, delta_high: dh, swing: round6(Math.max(Math.abs(dl), Math.abs(dh))), outside_envelope: false });
+                    delta_low: dl, delta_high: dh, ...responseOf(dl, dh), outside_envelope: false });
       }
       return rankFactors(rows);
     };
