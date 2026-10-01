@@ -984,6 +984,19 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   { match: /^(impact analysis|value of information) rejected \((state|stale|execution)\)/i, status: 409, code: 'EYE_STA_002' },
   { match: /^(impact analysis|value of information) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
   /* end B31 impact */
+  /* B31 orchestration (0099 §O) — the experiment's family in the CLASS form `experiment rejected (<class>): …`, every row anchored and
+     requiring the class parenthesis (no earlier row starts with `experiment`; 0033's `the experiment contract of run … is immutable` is
+     another sentence). B9's order: the standing 403 (the acting principal; the authority — the approver a named human, the executor an
+     active attention agent, an operator's act its declarer's, starter's, a twin owner's or the administrator's; the separation of duties —
+     the declarer never approves its own budget), the absences 404 (unknown_*), the record's state 409 (state; stale — a budget digest not
+     the declared one, a chunk's attempt fenced, a stop no longer pending, a chunk set that moved; admission — the refusal recorded), the
+     caller's own request 422 (the rest: declaration, method, paths, chunk_size, budget, measures, stop_conditions, pace, determinism, note,
+     reason, contract, outputs, chunk, outcome). */
+  { match: /^experiment rejected \((actor|authority|separation_of_duties)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^experiment rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^experiment rejected \((state|stale|admission)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^experiment rejected \(/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B31 orchestration */
   /* B36 home (0094 §H) — the executive home's families in the CLASS form `<noun> rejected (<class>): …`: `cadence rejected`, `executive room
      rejected` (0044's unclassed `room rejected: …` texts are the decision room's and are mapped by no row; the noun here is `executive room`
      and every row is anchored), `objective review rejected` (the SoD of §H2's re-declared convene_review and of open_subject_room — B23's

@@ -158,6 +158,7 @@ export default function SimulationsPage() {
   return (
     <>
       <h1 style={{ fontSize: 'var(--eye-type-heading-1)', marginBlockStart: 0 }}>Simulations</h1>
+      {/* B31 orchestration */}<p style={{ fontSize: 'var(--eye-type-label-sm)' }}><a href="/twins/simulations/orchestration">Simulation center — background experiments under an approved budget: checkpoints, pause and resume, partial runs →</a></p>{/* end B31 orchestration */}
       <UnknownNote><strong>Every number on this screen is SYNTHETIC</strong> — the output of a declared model on a declared state, reproducible from its stored contract. It is not an observation and not a forecast. Interventions are compared only against a compatible control on the same initial state.</UnknownNote>
       {isSimulationOperator ? (
         <section aria-labelledby="run-h" style={{ ...cardStyle, marginBlockStart: 'var(--eye-space-16)' }}>
