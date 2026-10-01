@@ -122,7 +122,7 @@ async function p<T>(s: Scope, path: string, action: string, objectType: string, 
 export const impact = {
   list: (s: Scope) => p<{ at: string; analyses: AnalysisRow[]; receipt: Receipt }>(s, '/list', READ, 'SIM'),
   read: (s: Scope, runId: string) => p<{ impact: RunImpact; receipt: Receipt }>(s, `/runs/${runId}/read`, READ, 'SIM', {}, runId),
-  sensitivity: (s: Scope, runId: string, payload: { metric?: string; relative?: number; seeds?: number[] | null; samples?: number; jitter?: Record<string, number> | null; timingShiftDays?: number | null }) =>
+  sensitivity: (s: Scope, runId: string, payload: { metric?: string; relative?: number; seeds?: number[] | null; samples?: number; jitter?: Record<string, number> | null; timingShiftDays?: number | null; parameters?: string[] | null }) =>
     p<{ analysis: Analysis; receipt: Receipt }>(s, `/runs/${runId}/sensitivity`, 'simulation.impact.sensitivity', 'SIM', payload as Row, runId),
   secondOrder: (s: Scope, runId: string) =>
     p<{ secondOrder: { derivation_id: string; run_id: string; twin_id: string; links_traversed: number; effects: Effect[]; synthetic: boolean }; receipt: Receipt }>(s, `/runs/${runId}/second-order`, 'simulation.impact.second_order', 'SIM', {}, runId),

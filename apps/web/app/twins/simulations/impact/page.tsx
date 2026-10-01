@@ -68,6 +68,7 @@ export default function ImpactPage() {
   const [samples, setSamples] = useState('100');
   const [jitter, setJitter] = useState('{"0": 0.5, "3": 0.3, "7": 0.2}');
   const [shift, setShift] = useState('7');
+  const [parameters, setParameters] = useState('');
   // the comparison
   const [compared, setCompared] = useState<Array<{ run_id: string; run_kind: string; totals: { line_stop_days: number; days_below_safety_stock: number; cost: { total: string } }; carrying: string[] }> | null>(null);
   // the probability statement
@@ -151,22 +152,24 @@ export default function ImpactPage() {
               <label>Samples per seed<input type="number" style={inputStyle} value={samples} onChange={(e) => setSamples(e.target.value)} /></label>
               <label>Lead-time jitter (a deterministic run declares one)<input type="text" style={inputStyle} value={jitter} onChange={(e) => setJitter(e.target.value)} /></label>
               <label>Move dated interventions by ± days (blank: no timing)<input type="number" style={inputStyle} value={shift} onChange={(e) => setShift(e.target.value)} /></label>
+              <label>Parameters to move (comma-separated keys or paths; blank: all)<input type="text" style={inputStyle} value={parameters} onChange={(e) => setParameters(e.target.value)} /></label>
             </div>
             <GovernedButton label="Analyse sensitivity" pendingLabel="analysing" onRun={async () => {
               const sd = seeds.split(',').map((x) => x.trim()).filter((x) => x !== '').map(Number);
               let jt: Record<string, number> | null = null;
               if (sd.length > 0 && view.run.stochastic_mode !== 'seeded') { try { jt = JSON.parse(jitter) as Record<string, number>; } catch { throw new Error('the jitter is not JSON'); } }
-              const r = await api.sensitivity(scope, view.run.run_id, { metric, relative: Number(relative), seeds: sd.length === 0 ? null : sd, samples: Number(samples), jitter: jt, timingShiftDays: shift.trim() === '' ? null : Number(shift) });
+              const r = await api.sensitivity(scope, view.run.run_id, { metric, relative: Number(relative), seeds: sd.length === 0 ? null : sd, samples: Number(samples), jitter: jt, timingShiftDays: shift.trim() === '' ? null : Number(shift),
+                parameters: parameters.trim() === '' ? null : parameters.split(',').map((x) => x.trim()).filter((x) => x !== '') });
               if (!r.ok || r.data === undefined) { const m = refusal(r, 'the analysis was not answered'); setProblem(m); throw new Error(m); }
               setProblem(null);
               await done(`sensitivity analysis ${short(r.data.analysis.analysis_id)} recorded — widest: ${r.data.analysis.factors[0]?.key ?? '—'}; ${r.data.analysis.robustness_verdict}`, r.data.receipt);
             }} />
             {latest === null ? <Empty>no sensitivity analysis of this run yet</Empty> : (
               <>
-                <p><span style={{ color: `var(${rob.token})`, fontWeight: 650 }}><span aria-hidden="true">{rob.glyph}</span> {rob.text}</span>
+                <p aria-label="robustness verdict"><span style={{ color: `var(${rob.token})`, fontWeight: 650 }}><span aria-hidden="true">{rob.glyph}</span> {rob.text}</span>
                   {latest.seeds ? <> · seeds <Mono>{latest.seeds.join(', ')}</Mono></> : null} · analysed {fmtInstant(latest.analysed_at)} · <Mono>{short(latest.analysis_id)}</Mono></p>
                 <Tornado a={latest} />
-                <table style={tableStyle}>
+                <table style={tableStyle} aria-label="sensitivity factors">
                   <thead><tr><Th>Rank</Th><Th>Factor (twin element)</Th><Th>Base</Th><Th>Low → metric</Th><Th>High → metric</Th><Th>Swing</Th></tr></thead>
                   <tbody>{latest.factors.map((f) => (
                     <tr key={f.key}><Td>{f.rank}</Td><Td><Mono>{f.key}</Mono>{f.element_kind ? ` (${f.element_kind})` : ''}{f.outside_envelope ? ' · leaves the envelope' : ''}</Td><Td>{String(f.base_value)}</Td>
@@ -187,7 +190,7 @@ export default function ImpactPage() {
               await done(`second-order effects derived over ${r.data.secondOrder.links_traversed} link(s)`, r.data.receipt);
             }} />
             {view.second_order.length === 0 ? <Empty>no second-order derivation of this run yet</Empty> : (
-              <table style={tableStyle}>
+              <table style={tableStyle} aria-label="second-order effects">
                 <thead><tr><Th>Depth</Th><Th>Twin</Th><Th>Effect</Th><Th>Values</Th><Th>Timing</Th></tr></thead>
                 <tbody>{view.second_order.map((e) => (
                   <tr key={e.effect_id ?? `${e.depth}-${e.entity_twin_id}`}><Td>{e.depth}</Td><Td>{e.entity_label}{e.via_link_id ? <> · via link <Mono>{short(e.via_link_id)}</Mono></> : ''}</Td>
@@ -207,7 +210,7 @@ export default function ImpactPage() {
               }} />
             )}
             {compared === null ? null : (
-              <table style={tableStyle}>
+              <table style={tableStyle} aria-label="run comparison">
                 <thead><tr><Th>Run</Th><Th>Kind</Th><Th>Line-stop days</Th><Th>Total cost</Th><Th>Carried by</Th></tr></thead>
                 <tbody>{compared.map((c) => <tr key={c.run_id}><Td><Mono>{short(c.run_id)}</Mono></Td><Td>{c.run_kind}</Td><Td>{c.totals.line_stop_days}</Td><Td>{c.totals.cost.total}</Td><Td>{c.carrying.join(', ')}</Td></tr>)}</tbody>
               </table>
@@ -229,7 +232,7 @@ export default function ImpactPage() {
               setProblem(null);
               await done(probabilityLine(r.data.statement), r.data.receipt);
             }} />
-            {view.probabilities.length === 0 ? <Empty>no probability stated for this run</Empty> : <ul>{view.probabilities.map((s) => <li key={s.statement_id}>{probabilityLine(s)} — <span style={{ color: 'var(--eye-color-ink-muted)' }}>{s.conversion}</span></li>)}</ul>}
+            {view.probabilities.length === 0 ? <Empty>no probability stated for this run</Empty> : <ul aria-label="probability statements">{view.probabilities.map((s) => <li key={s.statement_id}>{probabilityLine(s)} — <span style={{ color: 'var(--eye-color-ink-muted)' }}>{s.conversion}</span></li>)}</ul>}
           </section>
         </>
       )}
@@ -267,7 +270,7 @@ export default function ImpactPage() {
           const as = await api.assessments(scope); if (as.ok && as.data !== undefined) setAssessments(as.data.assessments);
         }} />
         {assessments.length === 0 ? <Empty>no value-of-information assessment yet</Empty> : (
-          <ul>{assessments.map((a) => { const v = voiVerdict(a); return (
+          <ul aria-label="value of information assessments">{assessments.map((a) => { const v = voiVerdict(a); return (
             <li key={a.assessment_id} style={{ marginBlock: 'var(--eye-space-8)' }}>
               <span style={{ color: `var(${v.token})`, fontWeight: 650 }}><span aria-hidden="true">{v.glyph}</span> {v.text}</span>
               <div style={{ fontSize: 'var(--eye-type-label-sm)', color: 'var(--eye-color-ink-muted)' }}>
