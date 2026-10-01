@@ -4451,3 +4451,33 @@ The mechanism is in `audit/CP6_BATCHES.md` §B27. There is one migration, `0097_
 - **Hosted:** #71 ci 36782666166 at `21ee226` FAILED (integration A5 3.0688, browser phase0 case 6, supply-chain next 16.3.3 and Redis); the upgrade proof and C18 did not run; C19 green. Corrected at `da19ef9` and carried in (§44.5).
 - **Local gates at `8708b45`:** unit 2942 + 9, upgrade PASS (77), acceptance 58/58, integration 1583/1583 (A5's samples printed, ratio 1.0068), browser 93/93.
 - **Cleanup disclosure:** five older verification databases were dropped on 2026-09-30 at 21:57 UTC (`eye_verify_a1_b34f_execution_1`, `_2`, `eye_verify_a1_b34f_int_1`, `eye_verify_a1_b23_mig`, `eye_verify_a1_b28_full1`). There were no backups, and no record or evidence cites them. No further older database is dropped as routine cleanup. `audit/CP6_BATCHES.md` §B27.10.
+
+## 46. B31 (2026-10-01): simulation orchestration, impact analysis, validity (0099) — F-P5-06, F-P5-07, F-P5-09
+
+### 46.1 What B31 implements
+
+- **Orchestration (F-P5-06):** background experiments under a budget approved by a named human other than the declarer; admission; chunks run by the attention agent's after-tick worker in child processes with chained checkpoints and indicators; pause, resume, cancel, retries and a fenced lost worker; a completed run identical to a single run over the same contract; PARTIAL runs with their declaration (budget exceeded, chunk failed, converged, cancelled); the simulation center page.
+- **Impact (F-P5-07):** sensitivity ranked by swing with robustness across seeds; second-order effects over the twin links to downstream delivery dates; value of information over governed branch probabilities (EVPI, EVSI, WAIT or ACT, the package owner tasked); probability statements only through an active frequency map; the set comparator's per-branch sensitivity; the impact page.
+- **Validity (F-P5-09):** each run's decision use (decision, diagnostic, refused) on every run read; the decision gate — an invalidated cited run refused at proposal and commitment always, every cited run decision-grade under a domain policy; invalidation marked on the package; the reach of a twin correction; the gates consulting scenario quality and suspension; the SCN → ASU dependency, claim and indicator suspension, the branch's twin binding, assumption sensitivity; the validity page.
+
+### 46.2 Results
+
+| Check | Result |
+|---|---|
+| Part harnesses | orchestration 8/8, impact 22/22, validity 27/27 (fresh databases) |
+| Full integration | 1640/1640 in 123 files at `6efdf17` |
+| Unit | API 3000 + 9; web 201 |
+| Acceptance / upgrade | 58/58 / PASS (migrations 78) |
+| Browser | 93/93 |
+| The act on `eye_demo` | HELD (56 ✓, no ✗, 227.8 s; the rerun 0.4 s) after the rehearsal on the final 0099 — `evidence/cp6/act-b31.txt` |
+| The walks | 9/9 twice; B90 + B27 + B31 together 36/36 |
+| Hosted | pending (PR #72) |
+
+- **Found at integration and corrected:** a cross-part read by a column that does not exist (the seams now asserted); the decision gate checking an invalidated run only under a policy (regression P2b fails before, passes after — `evidence/cp6/b31-decision-gate-regression.txt`); run labels built from a uuidv7's shared timestamp prefix (the walks found it). A local database credential was printed in an agent session's tool output; it is in no file or commit; rotation is the owner's decision. `audit/CP6_BATCHES.md` §B31.
+
+### 46.3 The plan
+
+- **The tracker:** F-P5-09 8/0/0 — complete at B31. F-P5-06 25/11/0 and F-P5-07 8/4/0 stay partial: distributed execution → B110; the Simulation Agent → B73; the acceptance record → R2; the rest have no stage named and await the owner's placement (§B31.7). F-P4-07/-08/-09's B31 pieces are evidenced; they complete at B83, B26 and B78.
+- **Rows:** implemented 1268 → 1288, partial 2626 → 2608, missing 2344 → 2342; the acceptance split unchanged (3,555 = 3,179 + 339 + 37). No stage, effort or date changed. The next A1 stage is **B35**.
+- **Preserved:** B27's, B90's and B36's residuals as assigned.
+- **The candidate** is PR #72 (`phase6-b31` → `phase6-b27`), stacked on #71.
