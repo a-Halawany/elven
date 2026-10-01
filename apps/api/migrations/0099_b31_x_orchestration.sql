@@ -621,7 +621,7 @@ GRANT EXECUTE ON FUNCTION simulation.fail_experiment_start(uuid, uuid, uuid, tex
    answers — {kind: 'finish', outcome, reason} when a stop is pending or every chunk is done; {kind: 'chunk', …, run: the stored contract}
    for its next chunk: a QUEUED one, or a RUNNING one whose lease lapsed (a worker that died mid-chunk: reclaimed, chunk_reclaimed) —
    FOR UPDATE SKIP LOCKED, the attempt counted against the budget's chunk executions; or null (nothing to do). */
-CREATE OR REPLACE FUNCTION simulation.claim_experiment_chunk(p_tenant uuid, p_domain uuid, p_experiment_id uuid, p_lease_seconds int, p_actor uuid, p_correlation uuid) RETURNS jsonb
+CREATE OR REPLACE FUNCTION simulation.claim_experiment_chunk(p_tenant uuid, p_domain uuid, p_experiment_id uuid, p_exclude uuid[], p_lease_seconds int, p_actor uuid, p_correlation uuid) RETURNS jsonb
 SECURITY DEFINER SET search_path = simulation, observation, ctx, public, pg_catalog, pg_temp AS $$
 DECLARE e simulation.experiments%ROWTYPE; c simulation.experiment_chunks%ROWTYPE; r simulation.runs_current%ROWTYPE; v_lease int := greatest(5, least(coalesce(p_lease_seconds, 300), 3600));
         v_left int; v_reclaimed boolean := false;
@@ -631,7 +631,7 @@ BEGIN
   PERFORM simulation.sio_assert_actor(p_actor);
   PERFORM simulation.sio_assert_worker(p_tenant, p_domain, p_actor);
   SELECT * INTO e FROM simulation.experiments x
-   WHERE x.tenant_id = p_tenant AND x.domain_id = p_domain AND x.state = 'running' AND x.run_id IS NOT NULL AND (p_experiment_id IS NULL OR x.experiment_id = p_experiment_id)
+   WHERE x.tenant_id = p_tenant AND x.domain_id = p_domain AND x.state = 'running' AND x.run_id IS NOT NULL AND (p_experiment_id IS NULL OR x.experiment_id = p_experiment_id) AND NOT (x.experiment_id = ANY (coalesce(p_exclude, ARRAY[]::uuid[])))
    ORDER BY x.started_at, x.experiment_id LIMIT 1 FOR UPDATE SKIP LOCKED;
   IF NOT FOUND THEN RETURN NULL; END IF;
   IF e.stop_pending IS NOT NULL THEN RETURN jsonb_build_object('kind', 'finish', 'experiment_id', e.experiment_id, 'outcome', e.stop_pending ->> 'outcome', 'reason', e.stop_pending ->> 'reason'); END IF;
@@ -654,13 +654,13 @@ BEGIN
   IF v_reclaimed THEN PERFORM simulation.sio_event(e, 'chunk_reclaimed', p_actor, jsonb_build_object('chunk_index', c.chunk_index, 'attempt', c.attempts, 'lease_seconds', v_lease), p_correlation); END IF;
   SELECT * INTO r FROM simulation.runs_current x WHERE x.run_id = e.run_id;
   RETURN jsonb_build_object('kind', 'chunk', 'experiment_id', e.experiment_id, 'chunk_index', c.chunk_index, 'first_path', c.first_path, 'paths', c.paths, 'attempt', c.attempts,
-                            'reclaimed', v_reclaimed, 'run_id', e.run_id,
+                            'reclaimed', v_reclaimed, 'run_id', e.run_id, 'chunks_per_tick', coalesce((e.pace ->> 'chunks_per_tick')::int, 1),
                             'run', jsonb_build_object('initial_state', r.initial_state, 'component', r.component, 'constraints', r.constraints, 'shock', r.shock, 'stochastic_mode', r.stochastic_mode,
                                                       'seed', r.seed, 'samples', r.samples, 'jitter', r.jitter, 'interventions', r.interventions, 'assumptions', r.assumptions,
                                                       'model_ref', r.model_ref, 'implementation_digest', r.implementation_digest));
 END $$ LANGUAGE plpgsql;
-REVOKE ALL ON FUNCTION simulation.claim_experiment_chunk(uuid, uuid, uuid, int, uuid, uuid) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION simulation.claim_experiment_chunk(uuid, uuid, uuid, int, uuid, uuid) TO eye_commit;
+REVOKE ALL ON FUNCTION simulation.claim_experiment_chunk(uuid, uuid, uuid, uuid[], int, uuid, uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION simulation.claim_experiment_chunk(uuid, uuid, uuid, uuid[], int, uuid, uuid) TO eye_commit;
 
 /* RECORD (the WORKER's): the chunk's attempt is FENCED (a reclaimed chunk's late worker is refused — stale); done → the port computes
    the chunk's aggregate from its paths, merges the running aggregate, writes the CHECKPOINT (the digest chained to the previous one, the

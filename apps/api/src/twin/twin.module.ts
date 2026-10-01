@@ -23,14 +23,20 @@ import { MethodsController } from './methods/methods.controller.js';
 import { ConstraintService } from './constraints/constraint.service.js';
 import { CONSTRAINT_GATE } from './methods/types.js';
 /* end B29 */
+/* B31 orchestration */
+import { OrchestrationController } from './simulations/orchestration/orchestration.controller.js';
+import { OrchestrationService } from './simulations/orchestration/orchestration.service.js';
+/* end B31 orchestration */
 
 // CP-6 B6 (0063): the twin CONSUMER of GraphChanged/MemoryCorrected registers itself into the graph's
 // dispatcher at module init; the graph module imports nothing from here (the direction stays ES-04-003's).
 @Module({
   imports: [PipelineModule, PredictionModule, GraphModule],
-  controllers: [TwinController, /* B29 (0092) */ CompositionController, ConstraintsController, MethodsController, SupplyNetworkController],
+  controllers: [TwinController, /* B29 (0092) */ CompositionController, ConstraintsController, MethodsController, SupplyNetworkController,
+    /* B31 orchestration */ OrchestrationController /* end B31 orchestration */],
   providers: [TwinService, SimulationService, TwinSubscriptionConsumer,
-    /* B29 (0092) */ CompositionService, SupplyNetworkService, MethodRegistry, ConstraintService, { provide: CONSTRAINT_GATE, useExisting: ConstraintService }],
-  exports: [TwinService, SimulationService, /* B29 (0092) */ SupplyNetworkService],
+    /* B29 (0092) */ CompositionService, SupplyNetworkService, MethodRegistry, ConstraintService, { provide: CONSTRAINT_GATE, useExisting: ConstraintService },
+    /* B31 orchestration */ OrchestrationService /* end B31 orchestration */],
+  exports: [TwinService, SimulationService, /* B29 (0092) */ SupplyNetworkService, /* B31 orchestration */ OrchestrationService],
 })
 export class TwinModule {}
