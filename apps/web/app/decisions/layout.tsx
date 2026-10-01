@@ -47,15 +47,9 @@ export const NAV = [
   /* B34 (0090) commitments */ { href: '/decisions/commitments', label: 'Commitments', glyph: '⇢' }, /* end B34 commitments */
   /* B36 (0094) gates */ { href: '/decisions/board', label: 'Board', glyph: '▣' }, /* end B36 gates */
   /* B36 (0094) publishing */ { href: '/decisions/publications', label: 'Publications', glyph: '⎙' }, /* end B36 publishing */
-<<<<<<< HEAD
-<<<<<<< HEAD
   /* B35 explanation */ { href: '/decisions/explanations', label: 'Explanations', glyph: '¶' }, /* end B35 explanation */
-=======
   /* B35 reopen */ { href: '/decisions/review', label: 'Review', glyph: '↺' }, /* end B35 reopen */
->>>>>>> b35/reopen
-=======
   /* B35 recommendation */ { href: '/decisions/recommendations', label: 'Recommendations', glyph: '⚖' }, /* end B35 recommendation */
->>>>>>> b35/recommendation
   { href: '/twins', label: 'Twins', glyph: '◫' },
   { href: '/prediction', label: 'Prediction', glyph: '↗' },
   { href: '/graph', label: 'Graph', glyph: '◈' },

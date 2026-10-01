@@ -1020,8 +1020,6 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   { match: /^(run use|branch binding) rejected \((state|stale|duplicate|diagnostic_only|refused)\)|^run rejected \((scenario_quality|branch_binding)\)|^promotion to simulation rejected \((branch_suspended|scenario_quality)\)/i, status: 409, code: 'EYE_STA_002' },
   { match: /^(run use|branch binding) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
   /* end B31 validity */
-<<<<<<< HEAD
-<<<<<<< HEAD
   /* B35 analysis (0101 §A) — the family `analysis rejected (<class>): …` (the criteria, the assessments, the obligations and their evaluation,
      the candidates, the assembly, the adversarial response), every row anchored and requiring the class parenthesis (no earlier row starts
      with `analysis`; B31's `^impact analysis rejected` is another noun, anchored). B9's order: the standing 403 (actor — the acting principal;
@@ -1047,7 +1045,6 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   { match: /^(explanation|appeal) rejected \((state|stale|duplicate|unavailable)\)/i, status: 409, code: 'EYE_STA_002' },
   { match: /^(explanation|appeal) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
   /* end B35 explanation */
-=======
   /* B35 reopen (0101 §P) — the family `review rejected (<class>)` (a change of conditions, a reversion request, an outcome assessment, the
      review terms, a replay's reason, a lesson's link, a set's review cadence). Anchored, requiring the class parenthesis; no earlier row starts
      with `review rejected` (`objective review rejected`, `override review rejected`, `exposure outcome review rejected` are other nouns, anchored).
@@ -1059,8 +1056,6 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   { match: /^review rejected \((state|stale|duplicate|append_only)\)/i, status: 409, code: 'EYE_STA_002' },
   { match: /^review rejected \(/i, status: 422, code: 'EYE_REQ_001' },
   /* end B35 reopen */
->>>>>>> b35/reopen
-=======
   /* B35 recommendation (0101 §R) — the families `recommendation rejected (<class>)` (its 403 / 404 / 422 rows are B27's anchored rows above:
      actor | authority | separation_of_duties → 403, unknown_* → 404, the rest → 422; its 409 classes state | stale | duplicate |
      quality_flagged sit just before B27's catch-all) and `incomplete package rejected (<class>)` (the human-led mode's attestation and the
@@ -1071,7 +1066,6 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   { match: /^incomplete package rejected \((state|stale|unattested)\)/i, status: 409, code: 'EYE_STA_002' },
   { match: /^incomplete package rejected \(/i, status: 422, code: 'EYE_REQ_001' },
   /* end B35 recommendation */
->>>>>>> b35/recommendation
   /* B36 home (0094 §H) — the executive home's families in the CLASS form `<noun> rejected (<class>): …`: `cadence rejected`, `executive room
      rejected` (0044's unclassed `room rejected: …` texts are the decision room's and are mapped by no row; the noun here is `executive room`
      and every row is anchored), `objective review rejected` (the SoD of §H2's re-declared convene_review and of open_subject_room — B23's

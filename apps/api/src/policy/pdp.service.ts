@@ -1833,7 +1833,6 @@ const BUNDLE_V1: Rule[] = [
   { actionPrefix: 'simulation.validity.bind', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   { actionPrefix: 'simulation.validity.reach', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   /* end B31 validity */
-<<<<<<< HEAD
   /* B35 analysis (0101 §A): DECISION OPTION ANALYSIS (F-P6-01; F-P5-07's adversarial-response sensitivity; F-P4-08's reversibility and option
      value across futures). EXACT rules named `decision.analysis.*` — no earlier PREFIX rule is a prefix of these names (`decision.approve`,
      `decision.review`, `decision.read`, `decision.package.` and the rest name other actions) and none of them is a prefix of another rule's.
@@ -1872,7 +1871,6 @@ const BUNDLE_V1: Rule[] = [
   { actionPrefix: 'decision.appeal.adjudicate', exact: true, requiredAnyRole: [{ role: 'auditor', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   { actionPrefix: 'decision.appeal.close', exact: true, requiredAnyRole: [{ role: 'auditor', atScope: 'TENANT' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_approver', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'domain_admin', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   /* end B35 explanation */
-=======
   /* B35 recommendation (0101 §R; F-P6-02, F-P4-09's and F-P5-06's B35 pieces). EXACT rules named `decision.recommendation.*` and
      `decision.incomplete.attest` — no earlier PREFIX rule is a prefix of these names (`decision.read`, `decision.review`, `decision.replay`
      and `decision.package.` are not), so first-match reaches them here; none reaches C3. RECORD — the package owner, an analyst and the
@@ -1887,7 +1885,6 @@ const BUNDLE_V1: Rule[] = [
   { actionPrefix: 'decision.recommendation.read', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_approver', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'decision_agent', atScope: 'DOMAIN' }], obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
   { actionPrefix: 'decision.incomplete.attest', exact: true, requiredAnyRole: [{ role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_approver', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   /* end B35 recommendation */
->>>>>>> b35/recommendation
   /* B36 home */
   /* THE EXECUTIVE HOME, THE CADENCE, THE COMMAND VIEWS, THE SEARCH, THE METRICS (0094 §H; F-P6-11: WS-01, JRN-19, PER-03, CAP-EO-01/-02/-04).
      EXACT rules — no `executive` prefix rule exists and none of these names is a prefix of another rule's. THE READS (executive.home.read
