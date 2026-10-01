@@ -25,15 +25,17 @@ import { SignatureService } from '../executive/signatures/signature.service.js';
 import { EmailChannel } from '../executive/attention/delivery/email.channel.js';
 import { SmsChannel, TeamsChannel } from '../executive/attention/delivery/webhook.channel.js';
 /* end B36 gates */
+/* B35 reopen */ import { DecisionReviewController } from './review/review.controller.js'; import { DecisionReviewService } from './review/review.service.js'; /* end B35 reopen */
 
 // CP-6 B6 (0063): the decision CONSUMER registers itself into the graph's dispatcher; the graph module
 // imports nothing from here.
 @Module({
   imports: [PipelineModule, GraphModule],
-  controllers: [DecisionController, /* B34 (0090) commitments */ CommitmentController /* end B34 commitments */, /* B36 (0094 §C4) collab */ ExecutionActivationController /* end B36 collab */],
+  controllers: [DecisionController, /* B34 (0090) commitments */ CommitmentController /* end B34 commitments */, /* B36 (0094 §C4) collab */ ExecutionActivationController /* end B36 collab */, /* B35 reopen */ DecisionReviewController /* end B35 reopen */],
   providers: [PackageService, ApprovalService, ReplayService, MonitoringService, DecisionSubscriptionConsumer,
     /* B34 (0090) commitments */ CommitmentService, ExecutionEgress, CommitmentsSubscriptionConsumer /* end B34 commitments */,
-    /* B36 (0094) gates */ GateCompletionService, SignatureService, EmailChannel, SmsChannel, TeamsChannel /* end B36 gates */],
+    /* B36 (0094) gates */ GateCompletionService, SignatureService, EmailChannel, SmsChannel, TeamsChannel /* end B36 gates */,
+    /* B35 reopen */ DecisionReviewService /* end B35 reopen */],
   exports: [PackageService, ApprovalService, ReplayService, MonitoringService, /* B34 (0090) commitments */ CommitmentService, ExecutionEgress /* end B34 commitments */],
 })
 export class DecisionModule {}
