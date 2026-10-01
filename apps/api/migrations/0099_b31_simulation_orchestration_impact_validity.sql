@@ -2451,7 +2451,7 @@ BEGIN
   SELECT * INTO r FROM simulation.runs_current x WHERE x.run_id = p_run_id;
   IF NOT FOUND THEN RETURN NULL; END IF;
   IF to_regclass('simulation.sensitivity_analyses') IS NOT NULL THEN
-    EXECUTE 'SELECT coalesce((SELECT a.factors FROM simulation.sensitivity_analyses a WHERE a.run_id = $1 ORDER BY a.requested_at DESC NULLS LAST LIMIT 1), ''[]''::jsonb)' INTO v_factors USING p_run_id;
+    EXECUTE 'SELECT coalesce((SELECT a.factors FROM simulation.sensitivity_analyses a WHERE a.run_id = $1 ORDER BY a.analysed_at DESC LIMIT 1), ''[]''::jsonb)' INTO v_factors USING p_run_id;
     IF jsonb_array_length(v_factors) > 0 THEN v_source := 'analysis'; END IF;
   END IF;
   IF jsonb_array_length(v_factors) = 0 THEN

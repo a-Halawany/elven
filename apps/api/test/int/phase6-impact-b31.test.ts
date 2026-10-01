@@ -466,6 +466,11 @@ describe('B31 §I · c THE COMPARATOR\'S SENSITIVITY EVIDENCE (F-P4-08, CAP-DS-0
     expect(base).toMatchObject({ analysis_id: a['analysis_id'], run_id: BOUND_RUN, run_validity: 'valid', run_state: 'completed', metric: 'total_cost', robustness_verdict: a['robustness_verdict'], factor_count: 12 });
     expect((base['top'] as Row[]).map((f) => f['key'])).toEqual((a['factors'] as Row[]).slice(0, 3).map((f) => f['key']));
     expect((cmp['branches'] as Row[]).find((b) => b['branch_id'] === DOWN)!['sensitivity']).toBeNull();
+    /* B31 integration (§V9 reads §I through to_regclass): the run's sensitivity to its branch's material assumptions now reads THIS analysis
+       (source analysis, its factors in its rank order) — the seam that the part harnesses could not reach on their own (each lacked the other's table). */
+    const asu = obj((await rows(sql`select simulation.run_assumption_sensitivity(${BOUND_RUN}::uuid) as r`))[0]!['r']);
+    expect(asu['source']).toBe('analysis');
+    expect((asu['factors'] as Row[]).map((f) => f['key'])).toEqual((a['factors'] as Row[]).map((f) => f['key']));
   });
 });
 
