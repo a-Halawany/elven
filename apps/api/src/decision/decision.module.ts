@@ -29,16 +29,20 @@ import { SmsChannel, TeamsChannel } from '../executive/attention/delivery/webhoo
 import { AnalysisController } from './analysis/analysis.controller.js';
 import { AnalysisService } from './analysis/analysis.service.js';
 /* end B35 analysis */
+/* B35 explanation (0101 §E): the governed explanation, its renderings, contest and appeal cases — two controllers of its own, the tick step appeal-deadlines (71) */
+import { ExplanationController, AppealController } from './explanation/explanation.controller.js';
+import { AppealDeadlinesService } from './explanation/explanation.service.js';
+/* end B35 explanation */
 
 // CP-6 B6 (0063): the decision CONSUMER registers itself into the graph's dispatcher; the graph module
 // imports nothing from here.
 @Module({
   imports: [PipelineModule, GraphModule],
-  controllers: [DecisionController, /* B34 (0090) commitments */ CommitmentController /* end B34 commitments */, /* B36 (0094 §C4) collab */ ExecutionActivationController /* end B36 collab */, /* B35 analysis */ AnalysisController /* end B35 analysis */],
+  controllers: [DecisionController, /* B34 (0090) commitments */ CommitmentController /* end B34 commitments */, /* B36 (0094 §C4) collab */ ExecutionActivationController /* end B36 collab */, /* B35 analysis */ AnalysisController /* end B35 analysis */, /* B35 explanation */ ExplanationController, AppealController /* end B35 explanation */],
   providers: [PackageService, ApprovalService, ReplayService, MonitoringService, DecisionSubscriptionConsumer,
     /* B34 (0090) commitments */ CommitmentService, ExecutionEgress, CommitmentsSubscriptionConsumer /* end B34 commitments */,
     /* B36 (0094) gates */ GateCompletionService, SignatureService, EmailChannel, SmsChannel, TeamsChannel /* end B36 gates */,
-    /* B35 analysis */ AnalysisService /* end B35 analysis */],
+    /* B35 analysis */ AnalysisService /* end B35 analysis */, /* B35 explanation */ AppealDeadlinesService /* end B35 explanation */],
   exports: [PackageService, ApprovalService, ReplayService, MonitoringService, /* B34 (0090) commitments */ CommitmentService, ExecutionEgress /* end B34 commitments */],
 })
 export class DecisionModule {}
