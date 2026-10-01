@@ -317,8 +317,7 @@ describe('B31 validity · P · the invalidation reaches the package (V03-T-156/-
 
   it('P2 · REFUSAL: the commitment of the version citing the invalidated run is refused (refused); a new draft citing it is refused at derivation; an unknown package 404', async () => {
     await c.approve(REACHED.pkg, REACHED.v, { decision: 'approve', versionDigest: REACHED.digest, rationale: 'The reroute keeps the line running; the premium is acceptable.' });
-    const m = (await refusal(c.commit(REACHED.pkg, REACHED.v, REACHED.digest))).message;
-    expect(m).toMatch(/run use rejected \(refused\)|was invalidated|reopen|material/);
+    const m = await refused(c.commit(REACHED.pkg, REACHED.v, REACHED.digest), /^run use rejected \(refused\): package .* recommends option "reroute", which cites run .* — REFUSED for decision use: invalidated; .* at the commitment/, 409);
     const d = await c.declare({ decisionObjectId: w.decisionId, title: 'Cite the invalidated run (B31 harness)', statement: 'a draft that cites the invalidated reroute', owner: w.owner.principalId });
     const v = (await c.open(d.package.packageId)).version.version;
     await refused(c.option(d.package.packageId, v, { key: 'reroute', title: 'Reroute via the Cape', kind: 'intervention', consequences: [{ kind: 'run', id: w.rerouteId }] }), /^reroute: run .*@2 is withdrawn; a consequence cannot rest on it|was invalidated at .*; a consequence cannot rest on an invalidated result/, 422);
