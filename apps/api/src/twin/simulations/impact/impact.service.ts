@@ -49,7 +49,10 @@ export class ImpactService {
       if (!(SUPPLY_METRICS as readonly string[]).includes(intake.metric)) bad(correlationId, `impact analysis rejected (metric): ${modelRef} reads ${SUPPLY_METRICS.join(', ')}; ${intake.metric} is not one of its outputs`);
       const metric = intake.metric as SupplyMetric;
       const contract = contractOf(r);
-      const snapshotKeys = ((r['initial_state'] as Array<{ key: string; kind: string }>) ?? []).map((e) => ({ key: e.key, kind: e.kind }));
+      const named = intake.parameters;
+      const snapshotKeys = ((r['initial_state'] as Array<{ key: string; kind: string }>) ?? []).map((e) => ({ key: e.key, kind: e.kind }))
+        .filter((e) => named === null || named.some((k) => e.key === k || e.key.startsWith(`${k}:`)));
+      if (named !== null && snapshotKeys.length === 0) bad(correlationId, `impact analysis rejected (parameters): none of ${named.join(', ')} is an element key of the run's snapshot`);
       const sweep = supplyFlowSweep({ params: contract.params, options: contract.options, interventions: contract.interventions, snapshotKeys, relative: intake.relative, metric, envelope,
                                       shiftDays: intake.timingShiftDays });
       base = sweep.base; factors = sweep.factors;
@@ -65,7 +68,7 @@ export class ImpactService {
       const fabric = await this.fabricSweep(r, inputs.model, intake, correlationId);
       base = fabric.base; factors = fabric.factors; robustness = fabric.robustness;
     }
-    const digest = digestOf({ run_id: r['run_id'], outputs_digest: outputsDigest, metric: intake.metric, relative: intake.relative, base, factors, robustness, timing_shift_days: intake.timingShiftDays });
+    const digest = digestOf({ run_id: r['run_id'], outputs_digest: outputsDigest, metric: intake.metric, relative: intake.relative, base, factors, robustness, timing_shift_days: intake.timingShiftDays, parameters: intake.parameters });
     return { outputsDigest, metric: intake.metric, relative: intake.relative, base, factors, seeds: intake.seeds, robustness, timingShiftDays: intake.timingShiftDays, digest };
   }
 
@@ -84,22 +87,25 @@ export class ImpactService {
     if (intake.timingShiftDays !== null) bad(correlationId, 'impact analysis rejected (timing): timing sensitivity moves supply-flow@1 interventions; a fabric run\'s dates are its parameters');
     const input = methodInputOf(r);
     const containment = containmentOf(model?.['containment']);
-    const leaves = numericLeaves(input.params).slice(0, 16);
-    const execute = async (params: Record<string, unknown>, seed: number | null): Promise<number> => {
+    const all = numericLeaves(input.params);
+    const unknown = (intake.parameters ?? []).filter((k) => !all.some((l) => l.path === k));
+    if (unknown.length > 0) bad(correlationId, `impact analysis rejected (parameters): ${unknown.join(', ')} is not a numeric parameter of ${modelRef}'s run (it carries ${all.map((l) => l.path).join(', ') || 'none'})`);
+    const leaves = (intake.parameters === null ? all : all.filter((l) => (intake.parameters as string[]).includes(l.path))).slice(0, 24);
+    const execute = async (params: Record<string, unknown>, seed: number | null, label: string): Promise<number> => {
       const got = await this.simulations.execute({ modelRef, input: { ...input, params, seed }, containment });
       if (got.outcome !== 'ok') {
-        bad(correlationId, `impact analysis rejected (execution): a perturbed execution of ${modelRef} did not complete (${got.outcome}${got.outcome === 'fault' ? `: ${got.kind} — ${got.message}` : got.outcome === 'invalid' ? `: ${got.problems.join('; ')}` : got.outcome === 'unavailable' ? `: ${got.reason}` : ''})`, 409);
+        bad(correlationId, `impact analysis rejected (execution): the execution of ${modelRef} with ${label} did not complete — name the parameters the method admits moved (parameters) (${got.outcome}${got.outcome === 'fault' ? `: ${got.kind} — ${got.message}` : got.outcome === 'invalid' ? `: ${got.problems.join('; ')}` : got.outcome === 'unavailable' ? `: ${got.reason}` : ''})`, 409);
       }
       const v = summaryMetric((got as Extract<typeof got, { outcome: 'ok' }>).output.summary as Record<string, unknown>, intake.metric);
-      if (v === null) bad(correlationId, `impact analysis rejected (metric): a perturbed execution of ${modelRef} answered no numeric ${intake.metric}`, 409);
+      if (v === null) bad(correlationId, `impact analysis rejected (execution): the execution of ${modelRef} with ${label} answered no numeric ${intake.metric}`, 409);
       return v as number;
     };
     const sweepAt = async (seed: number | null, b: number): Promise<Array<Factor>> => {
       const rows: Array<Omit<Factor, 'rank'>> = [];
       for (const leaf of leaves) {
         const moved = movedLeaf(leaf.value, intake.relative);
-        const lo = await execute(withPath(input.params, leaf.path, moved[0]), seed);
-        const hi = await execute(withPath(input.params, leaf.path, moved[1]), seed);
+        const lo = await execute(withPath(input.params, leaf.path, moved[0]), seed, `${leaf.path} = ${moved[0]}`);
+        const hi = await execute(withPath(input.params, leaf.path, moved[1]), seed, `${leaf.path} = ${moved[1]}`);
         const dl = round6(lo - b); const dh = round6(hi - b);
         rows.push({ key: `params.${leaf.path}`, field: leaf.path, kind: 'parameter', element_kind: null, base_value: leaf.value, low: { value: moved[0], metric: lo }, high: { value: moved[1], metric: hi },
                     delta_low: dl, delta_high: dh, swing: round6(Math.max(Math.abs(dl), Math.abs(dh))), outside_envelope: false });
@@ -111,7 +117,7 @@ export class ImpactService {
     if (intake.seeds !== null) {
       if (input.seed === null) bad(correlationId, `impact analysis rejected (robustness): run ${String(r['run_id'])} is deterministic; robustness across seeds needs a seeded method run`);
       const ranks: Record<string, string[]> = {};
-      for (const seed of intake.seeds) ranks[String(seed)] = (await sweepAt(seed, await execute(input.params, seed))).map((f) => f.key);
+      for (const seed of intake.seeds) ranks[String(seed)] = (await sweepAt(seed, await execute(input.params, seed, `seed ${seed}`))).map((f) => f.key);
       robustness = { verdict: verdictOf(ranks), ranks, basis: `the swing of each parameter on ${intake.metric} of the method's summary, per seed` };
     }
     return { base: base as number, factors, robustness };

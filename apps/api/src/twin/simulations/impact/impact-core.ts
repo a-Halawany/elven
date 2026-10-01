@@ -269,7 +269,11 @@ export function secondOrder(a: { runTwin: ChainTwin; run: SupplyFlowOutputs; cou
 }
 
 /* ───────────── THE INTAKES (the refusals before anything is computed) ───────────── */
-export interface SensitivityIntake { metric: string; relative: number; seeds: number[] | null; samples: number; jitter: Record<string, number> | null; timingShiftDays: number | null }
+export interface SensitivityIntake {
+  metric: string; relative: number; seeds: number[] | null; samples: number; jitter: Record<string, number> | null; timingShiftDays: number | null;
+  /** The parameters to move (supply-flow: element-key prefixes; a fabric method: parameter paths); null — every one the run carries. */
+  parameters: string[] | null;
+}
 export function validateSensitivity(p: Record<string, unknown>): { ok: SensitivityIntake } | { problem: string } {
   const metric = p['metric'] === undefined ? 'total_cost' : p['metric'];
   if (typeof metric !== 'string' || !/^[a-z][a-z0-9_.]{0,63}$/.test(metric)) return { problem: 'impact analysis rejected (metric): the metric is a named output of the run' };
@@ -296,7 +300,15 @@ export function validateSensitivity(p: Record<string, unknown>): { ok: Sensitivi
   }
   const t = p['timingShiftDays'] === undefined || p['timingShiftDays'] === null ? null : p['timingShiftDays'];
   if (t !== null && (!Number.isInteger(t) || (t as number) < 1 || (t as number) > 90)) return { problem: 'impact analysis rejected (timing): timingShiftDays is a whole number of days in 1..90' };
-  return { ok: { metric, relative, seeds, samples: samples as number, jitter, timingShiftDays: t as number | null } };
+  let parameters: string[] | null = null;
+  if (p['parameters'] !== undefined && p['parameters'] !== null) {
+    const q = p['parameters'];
+    if (!Array.isArray(q) || q.length === 0 || q.length > 24 || q.some((x) => typeof x !== 'string' || !/^[A-Za-z0-9_.:-]{1,128}$/.test(x))) {
+      return { problem: 'impact analysis rejected (parameters): parameters, when given, names 1 to 24 parameters (element keys or parameter paths)' };
+    }
+    parameters = q as string[];
+  }
+  return { ok: { metric, relative, seeds, samples: samples as number, jitter, timingShiftDays: t as number | null, parameters } };
 }
 
 export interface VoiIntake {

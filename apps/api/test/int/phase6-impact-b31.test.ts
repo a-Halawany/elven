@@ -22,6 +22,9 @@
  *     routed an item (simulation.value_of_information); a costlier wait says ACT and closes it; the payoffs taken from a PORTFOLIO REVIEW.
  *   c THE COMPARATOR'S SENSITIVITY EVIDENCE (F-P4-08, CAP-DS-02): a run bound to the scenario's baseline analysed — the set's comparison
  *     carries the analysis on that branch (the three widest factors, the robustness verdict), the downside none.
+ *   f THE METHOD FABRIC (L8-C08 for every method, not supply-flow alone): a system-dynamics run's numeric parameters moved and EXECUTED
+ *     through the method runner (contained, out of process), the metric read from its summary; a step the adapter refuses (dt) refused with
+ *     the parameter named — recovered by naming the parameters to move; a discrete-event run's robustness across three seeds.
  *   g THE LEDGERS: append-only; the analysed runs' exact run-event lists unchanged (no run.* event added); no outbox row from an analysis.
  *
  * Per clause a POSITIVE, a REFUSAL and a RECOVERY case. SYNTHETIC throughout (NORDWERK's data is the demonstration's). Stated superuser moves:
@@ -49,6 +52,8 @@ import { asObservationRefusal } from '../../src/observation/observation-errors.j
 import { Phase4Harness } from './phase4-helpers.js';
 import { bootDecisionWorld, decisionCalls, type DecisionWorld } from './phase6-fixtures.js';
 import { cite, completeElements } from './phase5-fixtures.js';
+import { BEARING, FAMILY_ELEMENTS, FAMILY_PARAMS, LINE_ELEMENTS } from './phase6-methods-fixtures.js';
+import type { MethodsController } from '../../src/twin/methods/methods.controller.js';
 import type { AnyDb } from './helpers.js';
 
 // C5 / Nit 8: this file's own vault roots (bootDecisionWorld uploads through h.uploadSource()).
@@ -459,6 +464,47 @@ describe('B31 §I · c THE COMPARATOR\'S SENSITIVITY EVIDENCE (F-P4-08, CAP-DS-0
     expect(base).toMatchObject({ analysis_id: a['analysis_id'], run_id: BOUND_RUN, run_validity: 'valid', run_state: 'completed', metric: 'total_cost', robustness_verdict: a['robustness_verdict'], factor_count: 12 });
     expect((base['top'] as Row[]).map((f) => f['key'])).toEqual((a['factors'] as Row[]).slice(0, 3).map((f) => f['key']));
     expect((cmp['branches'] as Row[]).find((b) => b['branch_id'] === DOWN)!['sensitivity']).toBeNull();
+  });
+});
+
+describe('B31 §I · f THE METHOD FABRIC (L8-C08 across the methods)', () => {
+  let FT = ''; let SD = ''; let DES = '';
+  it('f · REFUSAL: a system-dynamics run — a step its adapter refuses (dt 0.25 → 0.2) refused naming the parameter (409 execution); an unknown metric of its summary; seeds on a deterministic method run', async () => {
+    const { MethodsController: Mc } = await import('../../src/twin/methods/methods.controller.js');
+    const methods = h.app.get(Mc) as MethodsController;
+    const owner = await h.humanWithSession(['twin_owner'], 'b31i-line-owner');
+    FT = await declareTwin(owner, 'supply-chain', 'Regensburg plant — line 1 (B31 impact method study)');
+    const a = (e: { key: string; value: unknown; unit: string | null }) => ({ key: e.key, kind: 'assumed', value: e.value, unit: e.unit ?? undefined, citations: [cite(w.records.terms)] });
+    const v = await admitVersion(owner, FT, [...completeElements(w.records), ...LINE_ELEMENTS.map(a), ...FAMILY_ELEMENTS.map(a)], '2024-01-17');
+    for (const m of ['system-dynamics@1', 'discrete-event@1']) await methods.bind(h.req(owner, 'simulation.method.bind', 'TWN', FT), T(), D(), { payload: { twinId: FT, modelRef: m, reason: 'the Regensburg line study (B31)' } });
+    const fab = (family: string) => { const f = FAMILY_PARAMS[family]!; return { twinId: FT, twinVersion: v, runKind: 'control', controlRunId: null, shock: false, component: BEARING, interventions: [{ type: 'none' }],
+      horizonDays: f.horizonDays, stochastic: f.seeded ? { mode: 'seeded', seed: 29, samples: 1, jitter: {} } : { mode: 'deterministic' }, modelRef: f.modelRef, params: f.params }; };
+    SD = ((await w.twins.run(h.req(operatorS, 'simulation.run', 'SIM', null), T(), D(), { payload: fab('system-dynamics') })) as { run: { runId: string } }).run.runId;
+    DES = ((await w.twins.run(h.req(operatorS, 'simulation.run', 'SIM', null), T(), D(), { payload: fab('discrete-event') })) as { run: { runId: string } }).run.runId;
+    await refused(sensitivity(operatorS, SD, { metric: 'peak_backlog' }), /^impact analysis rejected \(execution\): the execution of system-dynamics@1 with dt = 0\.2 did not complete — name the parameters the method admits moved \(parameters\) \(invalid: .*params\.dt is one of/, 409);
+    await refused(sensitivity(operatorS, SD, { metric: 'throughput_index', parameters: ['capacity_loss.days'] }), /^impact analysis rejected \(metric\): system-dynamics@1's summary carries no numeric throughput_index/, 422);
+    await refused(sensitivity(operatorS, SD, { metric: 'peak_backlog', parameters: ['capacity_loss.days'], seeds: [1, 2, 3] }), /^impact analysis rejected \(robustness\): run .* is deterministic; robustness across seeds needs a seeded method run/, 422);
+    await refused(sensitivity(operatorS, SD, { metric: 'peak_backlog', parameters: ['shortage.days'] }), /^impact analysis rejected \(parameters\): shortage\.days is not a numeric parameter of system-dynamics@1's run/, 422);
+    expect((await rows(sql`select count(*)::int n from simulation.sensitivity_analyses where run_id in (${SD}::uuid, ${DES}::uuid)`))[0]!['n']).toBe(0);
+  });
+
+  it('f · RECOVERY + POSITIVE: the capacity loss\'s three parameters named — each moved ±20 % and executed out of process; the swing on the peak backlog ranked; the base the run\'s own stored summary', async () => {
+    const a = (await sensitivity(operatorS, SD, { metric: 'peak_backlog', parameters: ['capacity_loss.start_day', 'capacity_loss.days', 'capacity_loss.fraction'] })).analysis;
+    expect(a).toMatchObject({ run_id: SD, model_ref: 'system-dynamics@1', metric: 'peak_backlog', robustness_verdict: 'not_assessed' });
+    const stored = obj(obj((await runRow(SD))['outputs'])['summary']);
+    expect(Number(a['base_value'])).toBeCloseTo(Number(stored['peak_backlog']), 6);
+    const factors = a['factors'] as Array<Row & { key: string; low: { value: number }; high: { value: number } }>;
+    expect(factors.map((f) => f.key).sort()).toEqual(['params.capacity_loss.days', 'params.capacity_loss.fraction', 'params.capacity_loss.start_day']);
+    expect(factors.find((f) => f.key === 'params.capacity_loss.days')).toMatchObject({ base_value: 21, low: { value: 17 }, high: { value: 25 } });
+    expect(factors.find((f) => f.key === 'params.capacity_loss.fraction')).toMatchObject({ base_value: 0.4, low: { value: 0.32 }, high: { value: 0.48 } });
+    console.log(`B31 §I EVIDENCE f: system-dynamics@1 peak backlog ${String(a['base_value'])} — ${factors.map((f) => `${f.key} swing ${String(f['swing'])}`).join('; ')}`);
+  });
+
+  it('f · POSITIVE: a SEEDED discrete-event run — the shortage\'s parameters across three seeds, each seed\'s rank order executed out of process; the verdict the port derived', async () => {
+    const a = (await sensitivity(operatorS, DES, { metric: 'line_stop_days', parameters: ['shortage.days', 'shortage.fraction'], seeds: [5, 6, 7] })).analysis;
+    expect(a).toMatchObject({ run_id: DES, model_ref: 'discrete-event@1', seeds: [5, 6, 7] });
+    expect(['stable', 'unstable']).toContain(a['robustness_verdict']);
+    expect(Object.keys(obj(obj(a['robustness'])['ranks'])).sort()).toEqual(['5', '6', '7']);
   });
 });
 
