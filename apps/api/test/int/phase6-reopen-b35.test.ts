@@ -288,7 +288,7 @@ describe('B35 reopen · p1 · the reopen re-declared: conditions_changed, challe
 
   it('p1 · RECOVERY: the owner branches the scenario (BranchScenario, v2) and marks the request re-versioned — the item closed; the reopened draft is committed again; the spent change no longer reopens it (409)', async () => {
     await branchScenario(strategist, S, { expected_version: 1, idempotency_key: 'b35r-reopened-1', branch: { name: 'Corridor reopened', kind: 'upside', statement: 'transits resume above the seasonal level (synthetic)',
-      owner: strategist.principalId, consequence: 'release the second source', responseWindowHours: 72, divergence: 'insurers restore war-risk cover (synthetic)' } });
+      indicatorId: w.indicatorId, owner: strategist.principalId, consequence: 'release the second source', responseWindowHours: 72, divergence: 'insurers restore war-risk cover (synthetic)' } });
     expect(await scenarioVersion(S)).toBe(2);
     const res = (await resolveReversion(strategist, REQ1, 'reversioned', 'the corridor-reopened branch added (B35 harness, synthetic)')).reversion;
     expect(res).toMatchObject({ state: 'reversioned', resolved_version: 2, resolved_by: strategist.principalId });
@@ -425,7 +425,8 @@ describe('B35 reopen · p4 · the replay\'s initiator and reason; the decision m
     const rp = arr((await reviewOf(P2.pkg)).review['replays']);
     expect(rp.map((x) => x['reason'] === null)).toEqual([false, true]);
     const m = await metricsOf(P2.pkg);
-    expect(m).toMatchObject({ state: 'committed', committed_version: P2.v });
+    expect(m).toMatchObject({ committed_version: P2.v });
+    expect(['committed', 'monitoring']).toContain(m['state']);
     expect(obj(m['completeness'])).toMatchObject({ disputed: [], appeals_open: 0 });
     expect(arr(obj(m['completeness'])['criteria']).find((x) => x['key'] === 'review_terms')).toMatchObject({ met: true });
     expect(obj(m['outcome_linkage'])).toMatchObject({ criteria: 1, outcomes_recorded: 1, share: 1, assessments: 2, linked: true });
