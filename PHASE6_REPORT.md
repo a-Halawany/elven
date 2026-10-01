@@ -4481,3 +4481,9 @@ The mechanism is in `audit/CP6_BATCHES.md` §B27. There is one migration, `0097_
 - **Rows:** implemented 1268 → 1288, partial 2626 → 2608, missing 2344 → 2342; the acceptance split unchanged (3,555 = 3,179 + 339 + 37). No stage, effort or date changed. The next A1 stage is **B35**.
 - **Preserved:** B27's, B90's and B36's residuals as assigned.
 - **The candidate** is PR #72 (`phase6-b31` → `phase6-b27`), stacked on #71.
+
+### 46.4 The owner's bounded review of 2026-10-01 (B31-F): the consolidated candidate, 0100, the residuals owned
+
+- **Consolidation:** #71 retargeted to `phase6-b36` as the complete B90 + B27 candidate (it carries #70's head and migrations 0095–0098 in order); #70 kept open, not merged independently (its head alone fails C18: 0098 without 0097); no migration renumbered or inserted.
+- **B31-F1:** reinstatement re-evaluates every linked critical condition — a disputed claim or a breached indicator refuses it as an invalidated assumption does; a note never clears it; recovery by resolution or a governed link change. **B31-F2:** a run honours the constraint set and version recorded in its branch binding — a newer version or a retired set refuses the run until the owner rebinds, an unverifiable opening check refuses it, a violated bound constraint is refused by the gate; the experiment path included. Both forward in `0100`; the regression fails 5 cases through 0099 and passes 31/31 through 0100 (`evidence/cp6/b31f-regression.txt`).
+- **Residuals owned:** F-P5-06 completes at B73 (after B30, B35, B62, B74, B110), F-P5-07 at B26 (after B30, B35); B31 completes F-P5-09 by its rows and keeps its delivered effort. M1 399.9–689.0 U; the three-account finish 2027-07-08. Gates at `b6b83b4`: integration 1644/1644, unit 3000 + 9, acceptance 58/58, upgrade PASS (79), browser 93/93; `eye_demo` through 0100, the affected acts and walks standing. `audit/CP6_BATCHES.md` §B31.9.
