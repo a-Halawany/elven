@@ -292,6 +292,74 @@ if (APKG) {
 }
 ENV_OUT.EYE_B35_ANALYSIS_TITLE = 'Second source for bearings'; ENV_OUT.EYE_B35_ANALYSIS_OWNER = 'l.brandt'; ENV_OUT.EYE_B35_ANALYSIS_PACKAGE = APKG?.id ?? '—';
 
+/* ── B35-R THE RECOMMENDATION ────────────────────────────────────────────────────────── */
+console.log('\nB35-R RECOMMENDATION (F-P6-02) — the Decision Agent records "dual-source via Morocco", L. Brandt her own on the stock increase; S. Okafor accepts the agent\'s FOR CONSIDERATION; both say what could make them wrong; side by side');
+const RC = 'recommendations';
+const recView = async (s, pkg) => { const r = await dc(s, `${RC}/packages/${pkg}`, 'decision.recommendation.read', 'DPK', {}, pkg, READ); return r.ok ? r.body.package : (fail('the recommendation read', r), null); };
+let AGENT_REC = null; let OWNER_REC = null;
+if (APKG) {
+  const V = APKG.v;
+  const live = async (author) => (await q(`select recommendation_id::text id, state, option_key, digest from decision.recommendations where package_id = $1 and version = $2 and author_principal_id = $3 and state in ('proposed', 'accepted_for_consideration') order by recorded_at desc limit 1`, [APKG.id, V, author]))[0] ?? null;
+  // THE AGENT'S: what, for whom, by when, the assumptions, what could make it wrong, the four components SEPARATED and sourced
+  AGENT_REC = await live(agent.principalId);
+  if (AGENT_REC) note(`the Decision Agent's recommendation ${short(AGENT_REC.id)} on ${AGENT_REC.option_key} stands (${AGENT_REC.state}) — an earlier run`);
+  else {
+    const r = await dc(agent, `${RC}/packages/${APKG.id}/versions/${V}/record`, 'decision.recommendation.record', 'DPK', {
+      optionKey: 'morocco', what: 'Dual-source the bearings via Morocco beside the incumbent supplier (SYNTHETIC)', forWhom: 'L. Brandt, the decision owner of the Regensburg line\'s bearing supply', byWhen: '2026-11-16',
+      assumptions: [{ statement: 'the Moroccan supplier qualifies its first lot within six weeks (SYNTHETIC)' }],
+      whatCouldMakeItWrong: [{ statement: 'customs clearance of the Moroccan lot takes longer than the five days owed to the Hauptzollamt (SYNTHETIC)', signpost: 'the broker\'s first clearance time at Tanger Med' },
+        { statement: 'the corridor reopens before the second source is qualified, and the premium buys nothing (SYNTHETIC)', signpost: 'the corridor transit forecast' }],
+      missingEvidence: [],
+      components: {
+        valueJudgments: [{ statement: 'delivery reliability outweighs the landed-cost premium this quarter (SYNTHETIC)', source: { kind: 'principal', ref: brandt.principalId } }],
+        policyConstraints: [{ statement: 'every second source carries the customs obligation: clearance within five days (SYNTHETIC)', source: { kind: 'obligation', ref: 'customs' } }],
+        analyticalAssumptions: [{ statement: 'the second-source run\'s flow stands for the Moroccan lane (SYNTHETIC)', source: { kind: 'stated', ref: 'the analysis of the package' } }],
+        modelOutputs: [{ statement: 'the second-source run halves the line-stop days of the single source under the closure (SYNTHETIC)', source: { kind: 'run', ref: PAIR.intervention } },
+          { statement: 'the single source under the closure stops the line for the whole window (SYNTHETIC)', source: { kind: 'run', ref: PAIR.control } }],
+      } }, APKG.id);
+    if (!r.ok) fail('the Decision Agent records its recommendation', r);
+    else { const x = r.body.recommendation; ok(`the Decision Agent RECORDED ${short(x.recommendation_id)} on "${x.option_title}" (author kind ${x.author_kind}, ${x.state}; digest ${String(x.digest).slice(0, 12)}…; flags ${JSON.stringify(x.flags ?? [])}; ${x.coverage?.label ?? 'no coverage'})`); }
+    AGENT_REC = await live(agent.principalId);
+  }
+  // THE OWNER'S OWN, on another option
+  OWNER_REC = await live(brandt.principalId);
+  if (OWNER_REC) note(`L. Brandt's recommendation ${short(OWNER_REC.id)} on ${OWNER_REC.option_key} stands (${OWNER_REC.state}) — an earlier run`);
+  else {
+    const r = await dc(brandt, `${RC}/packages/${APKG.id}/versions/${V}/record`, 'decision.recommendation.record', 'DPK', {
+      optionKey: 'buffer', what: 'Raise the bearing safety stock to six weeks while the second source is qualified (SYNTHETIC)', forWhom: 'the Regensburg plant\'s supply planning', byWhen: '2026-10-30',
+      assumptions: [{ statement: 'the warehouse holds six weeks of bearings without a new lease (SYNTHETIC)' }],
+      whatCouldMakeItWrong: [{ statement: 'the closure outlasts six weeks of stock and the line stops anyway (SYNTHETIC)', signpost: 'the corridor transit forecast\'s next issue' }],
+      missingEvidence: [],
+      components: {
+        valueJudgments: [{ statement: 'no line stop is acceptable this quarter, and no new supplier risk either (SYNTHETIC)', source: { kind: 'objective', ref: OBJ_REG.id } }],
+        policyConstraints: [{ statement: 'the customs obligation is met: the stock comes through the incumbent lane (SYNTHETIC)', source: { kind: 'obligation', ref: 'customs' } }],
+        analyticalAssumptions: [{ statement: 'six weeks of stock bridge eleven of the closure\'s line-stop days (SYNTHETIC)', source: { kind: 'stated', ref: 'A. Hoffmann\'s entered value' } }],
+        modelOutputs: [{ statement: 'the single source under the closure stops the line for the whole window (SYNTHETIC)', source: { kind: 'run', ref: PAIR.control } }],
+      } }, APKG.id);
+    if (!r.ok) fail('L. Brandt records her recommendation', r);
+    else { const x = r.body.recommendation; ok(`L. Brandt RECORDED ${short(x.recommendation_id)} on "${x.option_title}" (author kind ${x.author_kind}, ${x.state})`); }
+    OWNER_REC = await live(brandt.principalId);
+  }
+  // THE REVIEW: the agent never reviews (the policy); S. Okafor (decision approver, not the author) ACCEPTS the agent's FOR CONSIDERATION, the comparison read at review
+  if (OWNER_REC) expectRefused('the Decision Agent reviews L. Brandt\'s recommendation', await dc(agent, `${RC}/${OWNER_REC.id}/review`, 'decision.recommendation.review', 'REC', { verdict: 'decline', rationale: 'the agent tries to review (SYNTHETIC)' }, OWNER_REC.id), 403);
+  if (AGENT_REC && AGENT_REC.state === 'accepted_for_consideration') note(`the agent's recommendation was accepted for consideration — an earlier run`);
+  else if (AGENT_REC) {
+    const r = await dc(okafor, `${RC}/${AGENT_REC.id}/review`, 'decision.recommendation.review', 'REC', { verdict: 'accept_for_consideration',
+      rationale: 'The Morocco source is worth weighing beside the owner\'s stock increase; both say what could make them wrong (SYNTHETIC).', expectedDigest: AGENT_REC.digest }, AGENT_REC.id);
+    if (!r.ok) fail('S. Okafor reviews the agent\'s recommendation', r);
+    else ok(`S. Okafor ACCEPTED the agent's recommendation FOR CONSIDERATION → ${r.body.review.state} (not a decision); the comparison read at review: ${(r.body.review.comparison ?? []).map((c) => `${short(c.recommendation_id)} ${c.author_kind} on ${c.option_key ?? '?'}`).join(', ')}`);
+  }
+  const v = await recView(hoffmann, APKG.id);
+  if (v) {
+    const card = (r) => `${r.author_kind === 'agent' ? 'THE DECISION AGENT' : nm(r.author_principal_id)} on ${r.option_key} — ${r.state}; what could make it wrong: ${(r.what_could_make_it_wrong ?? []).map((w) => `"${w.statement}"`).join('; ')}; components ${Object.entries(r.components ?? {}).map(([k, x]) => `${k} ${x.length}`).join(', ')}; ${r.coverage?.label ?? 'no coverage'}`;
+    const live2 = (v.recommendations ?? []).filter((r) => ['proposed', 'accepted_for_consideration'].includes(r.state));
+    ((v.side_by_side?.agent?.length ?? 0) > 0 && (v.side_by_side?.human?.length ?? 0) > 0 ? ok : bad)(`SIDE BY SIDE (read by A. Hoffmann, v${v.side_by_side?.version}): ${live2.map(card).join(' ‖ ')}`);
+    note(`the completeness of v${V}: ${v.completeness?.mode ?? '—'} (complete ${v.completeness?.complete}); gaps ${JSON.stringify((v.completeness?.gaps ?? []).map((g) => g.key))}; advisories ${JSON.stringify((v.completeness?.advisories ?? []).map((g) => g.category))}`);
+  }
+}
+ENV_OUT.EYE_B35_REC_TITLE = 'Second source for bearings'; ENV_OUT.EYE_B35_REC_OWNER = 'l.brandt'; ENV_OUT.EYE_B35_REC_REVIEWER = 's.okafor';
+ENV_OUT.EYE_B35_REC_AGENT = AGENT_REC?.id ?? '—'; ENV_OUT.EYE_B35_REC_OWN = OWNER_REC?.id ?? '—';
+
 /* ── B35-9 THE STATE, THE ENV LINES, THE LIMITS ──────────────────────────────────────── */
 console.log('\nB35-9 THE STATE and the LIMITS');
 await su.end();
