@@ -356,6 +356,11 @@ describe('B31 part O · simulation orchestration (0099 §O; F-P5-06)', () => {
       decision_use: 'diagnostic only: a partial run is never decision-active' });
     expect((obj(run['partial'])['missing_outputs'] as string[])[0]).toBe('stochastic.sample_totals for 250 of 1000 declared paths');
     expect((obj(obj(run['outputs'])['stochastic'])['sample_totals'] as unknown[]).length).toBe(750);
+    /* B31 integration (§O writes the partial run, §V judges it): the run's DECISION USE is diagnostic, its reasons naming the partial run —
+       the seam the part harnesses could not reach on their own (§V planted its partial run by a stated superuser insert). */
+    const use = obj((await rows(sql`select simulation.run_decision_use(${String(eb['run_id'])}::uuid) as u`))[0]!['u']);
+    expect(use['use']).toBe('diagnostic');
+    expect((use['reasons'] as Row[]).map((x) => x['class'])).toContain('partial');
     expect(run['header_digest']).toBeNull();
     expect(await runEvents(String(eb['run_id']))).toEqual(['run.opened']);
     const budgetItems = await items('simulation.budget', B);
