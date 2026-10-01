@@ -23,14 +23,20 @@ import { MethodsController } from './methods/methods.controller.js';
 import { ConstraintService } from './constraints/constraint.service.js';
 import { CONSTRAINT_GATE } from './methods/types.js';
 /* end B29 */
+/* B31 impact */
+import { ImpactController } from './simulations/impact/impact.controller.js';
+import { ImpactService } from './simulations/impact/impact.service.js';
+/* end B31 impact */
 
 // CP-6 B6 (0063): the twin CONSUMER of GraphChanged/MemoryCorrected registers itself into the graph's
 // dispatcher at module init; the graph module imports nothing from here (the direction stays ES-04-003's).
 @Module({
   imports: [PipelineModule, PredictionModule, GraphModule],
-  controllers: [TwinController, /* B29 (0092) */ CompositionController, ConstraintsController, MethodsController, SupplyNetworkController],
+  controllers: [TwinController, /* B29 (0092) */ CompositionController, ConstraintsController, MethodsController, SupplyNetworkController,
+    /* B31 impact */ ImpactController /* end B31 impact */],
   providers: [TwinService, SimulationService, TwinSubscriptionConsumer,
-    /* B29 (0092) */ CompositionService, SupplyNetworkService, MethodRegistry, ConstraintService, { provide: CONSTRAINT_GATE, useExisting: ConstraintService }],
+    /* B29 (0092) */ CompositionService, SupplyNetworkService, MethodRegistry, ConstraintService, { provide: CONSTRAINT_GATE, useExisting: ConstraintService },
+    /* B31 impact */ ImpactService /* end B31 impact */],
   exports: [TwinService, SimulationService, /* B29 (0092) */ SupplyNetworkService],
 })
 export class TwinModule {}
