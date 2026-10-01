@@ -184,7 +184,7 @@ describe('B35 §A · a1 CRITERIA WITH EXPOSED WEIGHTS, THE SCORES, THE WEIGHT SE
     await refused(setCriteria(w.owner, { ...payload, criteria: CRITERIA({ cost: 0 }) }), /^analysis rejected \(weight\): criterion cost carries an exposed weight in \(0, 1000\]/, 422);
     await refused(setCriteria(w.owner, { ...payload, criteria: [{ ...CRITERIA()[0]!, objectiveId: w.decisionId }] }), /^analysis rejected \(unknown_objective\):/, 404);
     await refused(setCriteria(w.owner, { ...payload, valueOwner: w.machinePrincipalId }), /^analysis rejected \(value_owner\)/, 422);
-    expect(await count(sql`select count(*)::int n from decision.analysis_criteria`)).toBe(0);
+    expect(await count(sql`select count(*)::int n from decision.analysis_criteria where tenant_id = ${T()}::uuid`)).toBe(0);
   });
 
   it('a1 · POSITIVE: the owner sets three criteria (v1) and the values — computed from the cited runs where they exist, entered with a basis otherwise; the SERVER\'s scores, ranking and sensitivity re-derived here', async () => {
@@ -368,7 +368,7 @@ describe('B35 §A · a4 OPTION GENERATION (V00-T-064, V03-T-358) · a5 AUTOMATIC
     await refused(generate(outsider), /./, 403);
     await refused(generate(w.owner, COMMITTED, 1), /^analysis rejected \(state\)/, 409);
     await refused(generate(w.owner, uuidv7(), 1), /^analysis rejected \(unknown_package\)/, 404);
-    expect(await count(sql`select count(*)::int n from decision.option_candidates`)).toBe(0);
+    expect(await count(sql`select count(*)::int n from decision.option_candidates where tenant_id = ${T()}::uuid`)).toBe(0);
   });
 
   it('a4 · POSITIVE: the Decision Agent generates — defer and acquire information (the assessment says WAIT), pilot the unsimulated stock increase, hedge (when the leader is not the most robust), exit the prior commitment — each with its rule; decision.options untouched', async () => {
@@ -435,7 +435,7 @@ describe('B35 §A · a7 ADVERSARIAL-RESPONSE SENSITIVITY (V01-T-016, F-P5-07)', 
     await refused(adversarial(w.owner, body(uuidv7())), /^analysis rejected \(unknown_actor\)/, 404);
     await refused(adversarial(w.owner, body(PORT, 'defer')), /^analysis rejected \(incomplete\): option defer is not assessed on every criterion/, 422);
     await refused(adversarial(w.agent, body(PORT)), /./, 403);
-    expect(await count(sql`select count(*)::int n from decision.adversarial_assessments`)).toBe(0);
+    expect(await count(sql`select count(*)::int n from decision.adversarial_assessments where tenant_id = ${T()}::uuid`)).toBe(0);
   });
 
   it('a7 · RECOVERY + POSITIVE: the leader (the stock increase on the single source) under the export authority\'s licensing — it loses the lead; Morocco under the port authority\'s inspection regime — already last on both, it keeps its rank; each score and rank re-derived here; the analysis names the rank changes; the actors offered are the package\'s scenarios\'', async () => {
