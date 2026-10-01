@@ -970,6 +970,18 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   { match: /^(scenario set|portfolio review|scenario proposal) rejected \((state|duplicate|bound|empty)\)|^recommendation rejected \(plurality\)/i, status: 409, code: 'EYE_STA_002' },
   { match: /^(scenario set|portfolio review|scenario proposal|recommendation) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
   /* end B27 sets */
+  /* B31 validity (0099 §V) — the families `run use rejected (<class>)` (the decision-use policy, the gate on a package's proposal and commitment,
+     the twin-correction reach) and `branch binding rejected (<class>)` (a branch bound to its twin state), the run gates in the CLASS form
+     `run rejected (scenario_quality|branch_binding)` (the generic `run rejected: ` row needs the colon) and the promotion gate `promotion to
+     simulation rejected (branch_suspended|scenario_quality)` (the older `^promotion to simulation names the branch` row reads another
+     sentence). Every row anchored and requiring the class parenthesis; no earlier row starts with `run use` or `branch binding`. B9's order:
+     the standing 403 (the acting principal, the owners), the absences 404 (unknown_*), the record's state 409 (state, stale, duplicate; the
+     gate's diagnostic_only and refused; the run and promotion gates), the caller's own request 422 (the rest). */
+  { match: /^(run use|branch binding) rejected \((actor|ownership|authority)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^(run use|branch binding) rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^(run use|branch binding) rejected \((state|stale|duplicate|diagnostic_only|refused)\)|^run rejected \((scenario_quality|branch_binding)\)|^promotion to simulation rejected \((branch_suspended|scenario_quality)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^(run use|branch binding) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B31 validity */
   /* B36 home (0094 §H) — the executive home's families in the CLASS form `<noun> rejected (<class>): …`: `cadence rejected`, `executive room
      rejected` (0044's unclassed `room rejected: …` texts are the decision room's and are mapped by no row; the noun here is `executive room`
      and every row is anchored), `objective review rejected` (the SoD of §H2's re-declared convene_review and of open_subject_room — B23's
