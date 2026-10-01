@@ -225,12 +225,14 @@ export class OrchestrationService implements OnModuleInit {
              clock_quality: 'trusted', correlation_id: correlationId, trace_id: 'experiment-worker' } as unknown as Envelope;
   }
 
+  /** One governed write of the worker under simulation.experiment.execute; its target the experiment — or the RUN when the write admits the run's SIM object (the capability is bound to it). */
   private exec<T>(a: { principal: AuthenticatedPrincipal; tenantId: string; domainId: string; correlationId: string }, objectId: string | null,
-                  handler: (cap: ExperimentExecuteWrites, scope: ScopeContext) => Promise<{ result: T; outboxEvent?: { eventType: string; payload: Record<string, unknown> } | null }>): Promise<T> {
+                  handler: (cap: ExperimentExecuteWrites, scope: ScopeContext) => Promise<{ result: T; outboxEvent?: { eventType: string; payload: Record<string, unknown> } | null }>,
+                  objectType: string = EXPERIMENT_OBJECT_TYPE): Promise<T> {
     const action = 'simulation.experiment.execute';
-    return this.pipeline.write(this.env(a.principal, a.tenantId, a.domainId, action, EXPERIMENT_OBJECT_TYPE, objectId, a.correlationId), a.principal,
-      { scope: 'DOMAIN' as const, tenantId: a.tenantId, domainId: a.domainId, action, objectType: EXPERIMENT_OBJECT_TYPE, objectId }, OrchestrationCapability.execute,
-      async (cap, scope) => { const r = await handler(cap, scope); return { result: r.result, targetType: EXPERIMENT_OBJECT_TYPE, targetId: objectId, targetVersion: null, outboxEvent: r.outboxEvent ?? null }; })
+    return this.pipeline.write(this.env(a.principal, a.tenantId, a.domainId, action, objectType, objectId, a.correlationId), a.principal,
+      { scope: 'DOMAIN' as const, tenantId: a.tenantId, domainId: a.domainId, action, objectType, objectId }, OrchestrationCapability.execute,
+      async (cap, scope) => { const r = await handler(cap, scope); return { result: r.result, targetType: objectType, targetId: objectId, targetVersion: objectType === 'SIM' ? '1' : null, outboxEvent: r.outboxEvent ?? null }; })
       .then((o) => o.result);
   }
 
@@ -253,7 +255,7 @@ export class OrchestrationService implements OnModuleInit {
       for (;;) {
         if (claimed === null) break;
         if (claimed['kind'] === 'finish') {
-          steps.push(await this.finish(a, experimentId, String(claimed['outcome']), String(claimed['reason'])));
+          steps.push(await this.finish(a, experimentId, String(claimed['run_id']), String(claimed['outcome']), String(claimed['reason'])));
           break;
         }
         const ran = await this.executor(claimed);
@@ -265,7 +267,7 @@ export class OrchestrationService implements OnModuleInit {
             actor: a.principal.principalId, eventId: newId(), correlationId: a.correlationId }) }));
         } catch (e) { steps.push({ step: 'record', experiment_id: experimentId, chunk_index: claimed['chunk_index'], error: textOf(e).slice(0, 300) }); break; }
         steps.push({ step: 'chunk', experiment_id: experimentId, chunk_index: claimed['chunk_index'], attempt: claimed['attempt'], outcome: ran.ok ? 'done' : 'failed', wall_ms: ran.wallMs, next: rec['next'] });
-        if (rec['next'] === 'finish') { steps.push(await this.finish(a, experimentId, String(rec['outcome']), String(rec['reason']))); break; }
+        if (rec['next'] === 'finish') { steps.push(await this.finish(a, experimentId, String(claimed['run_id']), String(rec['outcome']), String(rec['reason']))); break; }
         if (rec['next'] !== 'continue' || done >= Number(claimed['chunks_per_tick'] ?? 1) || performance.now() - t0 >= DRAIN_WALL_MS) break;
         try { claimed = await this.exec(a, experimentId, async (cap) => ({ result: await cap.claim({ tenantId: a.tenantId, domainId: a.domainId, experimentId, exclude: [], leaseSeconds: LEASE_SECONDS, actor: a.principal.principalId, correlationId: a.correlationId }) })); }
         catch (e) { steps.push({ step: 'claim', experiment_id: experimentId, error: textOf(e).slice(0, 300) }); break; }
@@ -285,17 +287,16 @@ export class OrchestrationService implements OnModuleInit {
    * paths are not re-swept), the SIM object admitted (synthetic; the experiment named in its payload) and SimulationCompleted published.
    * PARTIAL: the outputs over the chunks done; the port declares what is missing. FAILED: nothing ran.
    */
-  private async finish(a: { principal: AuthenticatedPrincipal; tenantId: string; domainId: string; correlationId: string }, experimentId: string, outcome: string, reason: string): Promise<Row> {
+  private async finish(a: { principal: AuthenticatedPrincipal; tenantId: string; domainId: string; correlationId: string }, experimentId: string, runId: string, outcome: string, reason: string): Promise<Row> {
     try {
-      const out = await this.exec(a, experimentId, async (cap, scope) => {
+      const completing = outcome === 'completed';
+      const out = await this.exec(a, completing ? runId : experimentId, async (cap, scope) => {
         if (outcome === 'failed') {
           return { result: await cap.finish({ experimentId, tenantId: a.tenantId, domainId: a.domainId, outcome, reason, outputs: null, outputsDigest: null, sensitivity: null, headerDigest: null, resource: null,
                                               actor: a.principal.principalId, eventId: newId(), correlationId: a.correlationId }) };
         }
-        const e = await cap.experiment(experimentId);
-        const runId = String((e ?? {})['run_id']);
         const run = await cap.run(runId);
-        if (e === null || run === null) throw new Error(`experiment ${experimentId} or its run is not readable`);
+        if (run === null) throw new Error(`the run ${runId} of experiment ${experimentId} is not readable`);
         const chunks = await cap.chunkPaths(experimentId);
         const c = contractOf(run);
         const { totals } = pathsInOrder(chunks);
@@ -319,7 +320,7 @@ export class OrchestrationService implements OnModuleInit {
           resource, simObject: { object_id: runId, version: 1, header_digest: sim.headerDigest }, failure: null, actor: a.principal.principalId, occurredAt: new Date().toISOString() });
         const payload = event.payload as Row;
         return { result: finished, outboxEvent: { eventType: event.eventType, payload: { ...payload, cause: { ...(payload['cause'] as Row), action: 'simulation.experiment.execute', experiment_id: experimentId } } } };
-      });
+      }, completing ? 'SIM' : EXPERIMENT_OBJECT_TYPE);
       return { step: 'finish', experiment_id: experimentId, outcome, reason, state: out['state'] };
     } catch (e) {
       return { step: 'finish', experiment_id: experimentId, outcome, reason, error: textOf(e).slice(0, 300) };

@@ -634,9 +634,9 @@ BEGIN
    WHERE x.tenant_id = p_tenant AND x.domain_id = p_domain AND x.state = 'running' AND x.run_id IS NOT NULL AND (p_experiment_id IS NULL OR x.experiment_id = p_experiment_id) AND NOT (x.experiment_id = ANY (coalesce(p_exclude, ARRAY[]::uuid[])))
    ORDER BY x.started_at, x.experiment_id LIMIT 1 FOR UPDATE SKIP LOCKED;
   IF NOT FOUND THEN RETURN NULL; END IF;
-  IF e.stop_pending IS NOT NULL THEN RETURN jsonb_build_object('kind', 'finish', 'experiment_id', e.experiment_id, 'outcome', e.stop_pending ->> 'outcome', 'reason', e.stop_pending ->> 'reason'); END IF;
+  IF e.stop_pending IS NOT NULL THEN RETURN jsonb_build_object('kind', 'finish', 'experiment_id', e.experiment_id, 'run_id', e.run_id, 'outcome', e.stop_pending ->> 'outcome', 'reason', e.stop_pending ->> 'reason'); END IF;
   SELECT count(*) INTO v_left FROM simulation.experiment_chunks k WHERE k.experiment_id = e.experiment_id AND k.state <> 'done';
-  IF v_left = 0 THEN RETURN jsonb_build_object('kind', 'finish', 'experiment_id', e.experiment_id, 'outcome', 'completed', 'reason', 'paths'); END IF;
+  IF v_left = 0 THEN RETURN jsonb_build_object('kind', 'finish', 'experiment_id', e.experiment_id, 'run_id', e.run_id, 'outcome', 'completed', 'reason', 'paths'); END IF;
   SELECT * INTO c FROM simulation.experiment_chunks k
    WHERE k.experiment_id = e.experiment_id AND (k.state = 'queued' OR (k.state = 'running' AND k.started_at < clock_timestamp() - make_interval(secs => v_lease)))
    ORDER BY k.chunk_index LIMIT 1 FOR UPDATE SKIP LOCKED;
@@ -646,7 +646,7 @@ BEGIN
     UPDATE simulation.experiments SET stop_pending = jsonb_build_object('outcome', CASE WHEN (e.progress ->> 'chunks_done')::int > 0 THEN 'partial' ELSE 'failed' END, 'reason', 'budget_exceeded')
      WHERE experiment_id = e.experiment_id RETURNING * INTO e;
     PERFORM simulation.sio_event(e, 'budget_exceeded', p_actor, jsonb_build_object('budget', 'max_chunks', 'used', e.progress, 'approved', e.budget), p_correlation);
-    RETURN jsonb_build_object('kind', 'finish', 'experiment_id', e.experiment_id, 'outcome', e.stop_pending ->> 'outcome', 'reason', 'budget_exceeded');
+    RETURN jsonb_build_object('kind', 'finish', 'experiment_id', e.experiment_id, 'run_id', e.run_id, 'outcome', e.stop_pending ->> 'outcome', 'reason', 'budget_exceeded');
   END IF;
   UPDATE simulation.experiment_chunks SET state = 'running', attempts = attempts + 1, claimed_by = p_actor, started_at = clock_timestamp(), finished_at = NULL, error = NULL
    WHERE experiment_id = c.experiment_id AND chunk_index = c.chunk_index RETURNING * INTO c;
