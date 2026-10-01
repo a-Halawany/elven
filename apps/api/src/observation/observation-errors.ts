@@ -975,6 +975,10 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   { match: /^(scenario set|portfolio review|scenario proposal|recommendation) rejected \((actor|authority|separation_of_duties)\)/i, status: 403, code: 'EYE_AUT_001' },
   { match: /^(scenario set|portfolio review|scenario proposal|recommendation) rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
   { match: /^(scenario set|portfolio review|scenario proposal) rejected \((state|duplicate|bound|empty)\)|^recommendation rejected \(plurality\)/i, status: 409, code: 'EYE_STA_002' },
+  /* B35 recommendation (0101 §R): the record's-state classes of the SAME family `recommendation rejected (<class>)` — they must precede B27's
+     catch-all 422 row just below (first match wins), so they sit here, inside B27's block, and nowhere else; `plurality` stays B27's own. */
+  { match: /^recommendation rejected \((state|stale|duplicate|quality_flagged)\)/i, status: 409, code: 'EYE_STA_002' },
+  /* end B35 recommendation */
   { match: /^(scenario set|portfolio review|scenario proposal|recommendation) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
   /* end B27 sets */
   /* B31 impact (0099 §I) — the families `impact analysis rejected (<class>)` (the sensitivity analysis, the second-order derivation, the
@@ -1017,6 +1021,7 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   { match: /^(run use|branch binding) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
   /* end B31 validity */
 <<<<<<< HEAD
+<<<<<<< HEAD
   /* B35 analysis (0101 §A) — the family `analysis rejected (<class>): …` (the criteria, the assessments, the obligations and their evaluation,
      the candidates, the assembly, the adversarial response), every row anchored and requiring the class parenthesis (no earlier row starts
      with `analysis`; B31's `^impact analysis rejected` is another noun, anchored). B9's order: the standing 403 (actor — the acting principal;
@@ -1055,6 +1060,18 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   { match: /^review rejected \(/i, status: 422, code: 'EYE_REQ_001' },
   /* end B35 reopen */
 >>>>>>> b35/reopen
+=======
+  /* B35 recommendation (0101 §R) — the families `recommendation rejected (<class>)` (its 403 / 404 / 422 rows are B27's anchored rows above:
+     actor | authority | separation_of_duties → 403, unknown_* → 404, the rest → 422; its 409 classes state | stale | duplicate |
+     quality_flagged sit just before B27's catch-all) and `incomplete package rejected (<class>)` (the human-led mode's attestation and the
+     proposal gate — no earlier row starts with `incomplete package`). B9's order: the standing 403 (the acting principal, the owner's authority,
+     the second human), the absences 404 (unknown_*), the record's state 409 (state, stale, unattested), the caller's own request 422 (the rest). */
+  { match: /^incomplete package rejected \((actor|authority|separation_of_duties)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^incomplete package rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^incomplete package rejected \((state|stale|unattested)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^incomplete package rejected \(/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B35 recommendation */
+>>>>>>> b35/recommendation
   /* B36 home (0094 §H) — the executive home's families in the CLASS form `<noun> rejected (<class>): …`: `cadence rejected`, `executive room
      rejected` (0044's unclassed `room rejected: …` texts are the decision room's and are mapped by no row; the noun here is `executive room`
      and every row is anchored), `objective review rejected` (the SoD of §H2's re-declared convene_review and of open_subject_room — B23's

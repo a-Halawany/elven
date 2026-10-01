@@ -32,6 +32,7 @@ import type {
   ChoiceWrites, Citation, CitedObjectRow, ConsequenceKind, DeclareWrites, DecisionReads, DissentWrites, OptionWrites, ProposeWrites, ReopenWrites, TermsWrites, VersionWrites, WithdrawWrites,
 } from '../decision.capabilities.js';
 import type { ReadyOption } from '../decision-events.js';
+/* B35 recommendation (0101 §R; FEX-15) */ import { proposalGate } from '../recommendation/recommendation.service.js'; /* end B35 recommendation */
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const KINDS: readonly ConsequenceKind[] = ['run', 'forecast', 'claim', 'evidence', 'assumption', 'warning'] as const;
@@ -227,6 +228,7 @@ export class PackageService {
       dissent: Array<{ dissent_id: string; principal_id: string; position: string }>; approverPolicy: Record<string, unknown>; monitoringConditions: unknown[];
       baselineRunId: string | null; syntheticState: boolean; reopenedFrom: { version: number; commitment_id: string | null } | null;
     };
+    /* B35 recommendation (0101 §R; FEX-15): present only when the version proceeds in the human-led incomplete-package mode */ humanLed?: Record<string, unknown>; /* end B35 recommendation */
   }> {
     const p = (await cap.readPackages().selectAll().where('package_id' as never, '=', packageId as never).executeTakeFirst()) as Record<string, unknown> | undefined;
     const v = (await cap.readVersions().selectAll().where('package_id' as never, '=', packageId as never).where('version' as never, '=', version as never).executeTakeFirst()) as Record<string, unknown> | undefined;
@@ -237,6 +239,12 @@ export class PackageService {
     if (options.filter((o) => o['kind'] === 'status_quo').length !== 1) throw new HttpException(errorBody('EYE_STA_001', correlationId, 'exactly one option is the explicit status quo (do nothing)'), 409);
     if (v['choice'] === null || v['choice'] === undefined) throw new HttpException(errorBody('EYE_STA_001', correlationId, 'the choice is what is proposed; the draft has none'), 409);
     if ((v['objectives'] as unknown[]).length === 0) throw new HttpException(errorBody('EYE_STA_001', correlationId, 'the draft names no objective'), 409);
+    /* B35 recommendation (0101 §R; FEX-15, PR-38-005): every refusal above stands unchanged. A version CARRYING live recommendations that
+       fails the recommendation completeness is refused unless an acknowledged attestation names every gap (the human-led mode: its
+       recommendations were set aside at the acknowledgement); a version without recommendations meets nothing new. */
+    const b35Gate = proposalGate(await cap.recommendationCompleteness({ packageId, version }), version);
+    if (b35Gate.refuse !== null) throw new HttpException(errorBody('EYE_STA_002', correlationId, b35Gate.refuse), 409);
+    /* end B35 recommendation */
     // One common baseline: every simulated consequence rests on the same control run.
     const runIds = [...new Set(options.flatMap((o) => (o['consequences'] as Citation[]).filter((c) => c.kind === 'run').map((c) => c.id)))];
     const baselines = new Set<string>();
@@ -287,7 +295,7 @@ export class PackageService {
       contradiction_refs: [], corroboration_refs: [], human_refs: [...new Set([`principal:${String(p['owner_principal_id'])}`, `principal:${actor}`])],
       classification: controls.classification, purpose_scope: purposeId, rights_profile: controls.rights_profile,
       residency_profile: controls.residency_profile, retention_profile: controls.retention_profile, access_policy_ref: controls.access_policy_ref,
-      quality_profile: null, quality_state: { completeness: 'complete', verification: 'proposed', baseline: baselineRunId === null ? 'none' : 'one-control-run' },
+      quality_profile: null, quality_state: { completeness: /* B35 recommendation (FEX-15) */ b35Gate.humanLed === null ? 'complete' : 'human_led_incomplete' /* end B35 recommendation */, verification: 'proposed', baseline: baselineRunId === null ? 'none' : 'one-control-run' },
       freshness_state: null, schema_ref: 'DPK@v1', ontology_ref: null,
       correction_of: null, supersedes: supersedes === null ? null : `DPK:${packageId}@${supersedes}`, withdrawal_reason: null,
       audit_correlation_id: correlationId, content_ref: null,
@@ -318,6 +326,7 @@ export class PackageService {
         baselineRunId: r.baseline_run_id, syntheticState,
         reopenedFrom: reopenedFromVersion === null ? null : { version: reopenedFromVersion, commitment_id: carriedFrom === undefined ? null : String(carriedFrom['commitment_id']) },
       },
+      /* B35 recommendation (FEX-15) */ ...(b35Gate.humanLed === null ? {} : { humanLed: b35Gate.humanLed }), /* end B35 recommendation */
     };
   }
 
