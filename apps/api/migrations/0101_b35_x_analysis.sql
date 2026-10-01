@@ -781,7 +781,8 @@ GRANT EXECUTE ON FUNCTION decision.evaluate_obligations(uuid,uuid,uuid,uuid,int,
    not generated (named under skipped). decision.options is never written here.
      defer@1 — unless the newest value-of-information assessment says ACT, deferring to the decision deadline is a viable alternative;
      acquire_information@1 — the newest value-of-information assessment says WAIT: acquire the information first (EVSI, net, days);
-     pilot@1 — an intervention neither simulated nor assessed from a computed record: pilot it at a limited scale first;
+     pilot@1 — an intervention neither simulated nor assessed (newest per criterion) from a computed record, and not itself a generated
+               posture: pilot it at a limited scale first;
      stage@1 — the leading intervention's ranking is fragile (a weight within 25% flips it) or an obligation is unknown for it: commit a
                first tranche, decide the rest at a checkpoint;
      hedge@1 — the portfolio review over the package's futures names a most robust option that is not the leader: keep it beside the leader;
@@ -820,7 +821,9 @@ BEGIN
   END IF;
   -- pilot@1
   FOR o IN SELECT x.key, x.title FROM decision.options x WHERE x.package_id = p_package_id AND x.version = p_version AND x.kind = 'intervention' AND NOT x.simulated
-             AND NOT EXISTS (SELECT 1 FROM decision.option_assessments a WHERE a.package_id = p_package_id AND a.version = p_version AND a.option_key = x.key AND a.basis_kind = 'computed') ORDER BY x.key LOOP
+             AND NOT EXISTS (SELECT 1 FROM (SELECT DISTINCT ON (a.criterion_key) a.basis_kind FROM decision.option_assessments a WHERE a.package_id = p_package_id AND a.version = p_version AND a.option_key = x.key
+                                            ORDER BY a.criterion_key, a.assessed_at DESC, a.assessment_id DESC) z WHERE z.basis_kind = 'computed')
+             AND NOT EXISTS (SELECT 1 FROM decision.option_candidates oc WHERE oc.package_id = p_package_id AND oc.key = x.key) ORDER BY x.key LOOP
     v_cands := v_cands || jsonb_build_object('posture', 'pilot', 'key', left('pilot-' || o.key, 41), 'title', left(format('Pilot "%s" at a limited scale', o.title), 256), 'rule', 'pilot@1',
       'rationale', format('option %s is neither simulated nor assessed from a computed record: a pilot measures it before the full commitment', o.key),
       'basis', jsonb_build_object('option', o.key, 'simulated', false, 'computed_assessments', 0));
