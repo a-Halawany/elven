@@ -38,6 +38,7 @@ export const NAV = [
   /* B36 (0094 §H) home: the executive home first (WS-01) */ { href: '/home', label: 'Home', glyph: '⌂' }, /* end B36 home */
   { href: '/decisions', label: 'Decisions', glyph: '◆' },
   { href: '/decisions/briefings', label: 'Briefings', glyph: '☰' },
+  /* B35 analysis */ { href: '/decisions/analysis', label: 'Analysis', glyph: '⚖' }, /* end B35 analysis */
   { href: '/decisions/attention', label: 'Attention', glyph: '⚑' },
   { href: '/decisions/requests', label: 'Requests', glyph: '✎' },
   /* B32 (0089) health */ { href: '/decisions/health', label: 'Health', glyph: '◔' }, /* end B32 health */
