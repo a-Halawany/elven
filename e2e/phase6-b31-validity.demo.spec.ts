@@ -63,7 +63,7 @@ test.describe.serial('CP-6 B31 §V — simulation validity on the demonstration'
     const runs = page.getByRole('region', { name: 'Runs and their decision use' });
     await expect(runs.getByRole('table')).toContainText('DECISION-GRADE');
     await expect(runs.getByRole('table')).toContainText('DIAGNOSTIC ONLY');
-    await runs.getByRole('checkbox', { name: `compare run ${promoted.slice(0, 8)}…` }).check();
+    await runs.getByRole('checkbox', { name: `compare run ${promoted.slice(0, 8)}…${promoted.slice(-6)}` }).check();
     // one unpromoted run beside it: the first row reading DIAGNOSTIC ONLY
     const diag = runs.getByRole('row').filter({ hasText: 'DIAGNOSTIC ONLY' }).first();
     await diag.getByRole('checkbox').check();

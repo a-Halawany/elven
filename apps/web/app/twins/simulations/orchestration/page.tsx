@@ -23,7 +23,8 @@ const small = { fontSize: 'var(--eye-type-label-sm)' } as const;
 const grid = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(14rem, 1fr))', gap: 'var(--eye-space-8)' } as const;
 const refusal = (r: { status: number; error?: { code: string; message: string } }, fallback: string) =>
   `HTTP ${r.status}${r.error?.code !== undefined && r.error.code !== '' ? ` ${r.error.code}` : ''} — ${r.error?.message ?? fallback}`;
-const short = (id: string | null | undefined) => (id ? `${id.slice(0, 8)}…` : '—');
+// B31 walk-found: a uuidv7's first 8 characters are its timestamp, shared by runs opened together — the label carries the tail too.
+const short = (id: string | null | undefined) => (id ? `${id.slice(0, 8)}…${id.slice(-6)}` : '—');
 const money = (v: unknown): string => (typeof v === 'string' ? `€${Number(v).toLocaleString('en-GB', { minimumFractionDigits: 2 })}` : '—');
 
 function Field({ id, label, children }: { id: string; label: string; children: (id: string) => ReactNode }) {

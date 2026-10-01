@@ -42,8 +42,7 @@ async function openRun(page: Page, runId: string): Promise<void> {
   await expect(page.getByRole('heading', { name: 'Impact analysis', level: 1 })).toBeVisible();
   // a wrapping <label> includes its option text: select by role; selectOption takes the option's exact label, read from the option itself
   const chooser = page.getByRole('combobox', { name: /^Completed run/ });
-  const label = await chooser.locator('option').filter({ hasText: new RegExp(`^${runId.slice(0, 8)}`) }).first().textContent();
-  await chooser.selectOption({ label: label ?? '' });
+  await chooser.selectOption(runId);   // by the run's id (the option's value) — a prefix is shared by runs opened together
   await expect(page.getByRole('heading', { name: 'Sensitivity and robustness', level: 2 })).toBeVisible();
 }
 

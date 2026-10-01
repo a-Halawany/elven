@@ -1,0 +1,195 @@
+THE B31 ACT on eye_demo (the demonstration), 2026-10-01 — eye_demo migrated through 0099 (backup .eye-local/backups/eye_demo-pre-0099-20261001T142416Z.dump), the API restarted on the B31 build (VERIFIED)
+
+=== RUN 1
+THE B31 ACT on eye_demo — 2026-10-01T14:26:49.538Z
+
+B31-0 THE STATE — 0099, the casting, the attention agent, the inputs
+  ✓ migration 0099_b31_simulation_orchestration_impact_validity.sql applied
+  ✓ the casting read from identity.role_bindings: a.hoffmann (domain_analyst); c.brenner (decision_owner, risk_owner, strategy_owner); j.weber (strategy_owner); l.brandt (decision_authority, decision_owner, opportunity_sponsor, strategy_owner); m.dvorak (collection_manager, executive); n.eriksen (forecast_owner); s.okafor (decision_approver, executive); t.nakamura (twin_owner)
+  · T. Nakamura holds twin_owner and NOT simulation_operator: every route the act casts him in (simulation.run, the experiment's declare / start / pause / resume, the sensitivity and the second-order derivation) admits twin_owner — no role granted, no persona created
+  ✓ the attention agent 01a0…1cb088 (registered in B24) — cadence 60 s; 10 tick run(s) in the last ten minutes (the latest at 2026-10-01T14:26:32Z) — the experiment chunks run in its after-tick hook simulation-experiments
+  ✓ the inputs: the corridor twin 01a0…76f525 "NORDWERK — Ningbo → Regensburg chain" at its newest admitted version v14 (known 2026-09-30T02:03:36Z, observed through 2024-04-09); the scenario 01a0…c87981 "Bab el-Mandeb over the next quarter — every scenario kind, recovery and deterior…" (owner N. Eriksen): Downside 01a0…c72db7 FLIPPED, Baseline 01a0…ac0594 open; the links corridor → Regensburg plant — assembly line (process twin) → Enterprise twin — NORDWERK (act-b29, both live); the January Regensburg decision 01a0…fdb43e; L. Brandt's Regensburg package 01a0…54b4e1 (proposed, v1); the frequency map "Corridor incident frequency (SYNTHETIC)" v1
+
+B31-O ORCHESTRATION — a 5,000-path corridor experiment under J. Weber's approved budget, checkpointed halfway, paused, resumed, completed with its manifest; a one-second budget → a PARTIAL run
+  ✓ T. Nakamura declares the experiment with a budget below its paths REFUSED — 422 EYE-REQ-001 — experiment rejected (budget): the declared 5000 paths exceed the budget's max_paths 500
+  ✓ T. Nakamura DECLARED 01a0…f46ffe "Corridor closure — 5,000 paths (SYNTHETIC)": 5000 paths in chunks of 500, seed 31, the jitter {"0":0.5,"3":0.3,"7":0.2}, the run control on v14 with the shock on the flipped Downside; the budget {"max_paths":5000,"max_chunks":14,"max_wall_seconds":900} (digest e7e912842db0…), 5 chunk(s) a tick → declared
+  · the approval request: 1edb…e1d9e6 open, routed to ["domain_admin","strategy_owner","twin_owner"]
+  ✓ T. Nakamura (the declarer) approves his own budget REFUSED — 403 EYE-AUT-001 — experiment rejected (separation_of_duties): the declarer of experiment 01a0f7dc-5f8f-7e01-a379-2090e8f46ffe does not approve its own budget
+  ✓ J. Weber APPROVED the budget by its digest e7e912842db0… → approved; the approval request 1edb…e1d9e6 closed
+  ✓ T. Nakamura STARTED it: admitted {"rule":"sio-admission@1","chunks":10,"in_use":0,"reasons":[],"admitted":true,"capacity":2,"checked_at":"2026-10-01T14:26:49.932111+00:00","deterministic":true,; the run 01a0…6ab3f2 opened through the existing path (seeded, seed 31, 5000 samples) and bound → running
+  ✓ SimulationStarted in the outbox for the run: 1
+  ✓ THE TICK ran five chunks: 5 checkpoints, the fifth at chunk 4 — 2500/5000 paths (chained digest cb759931ce35…)
+  ✓ T. Nakamura PAUSED it at the fifth checkpoint ("halfway review") → paused
+  ✓ THE PAUSED TICK 01a0…334d04 at 14:28:32Z: 0 step(s) for the experiment (the drain: 0 chunk(s) across 0 experiment(s)); still 2500/5000 paths
+  ✓ A. Hoffmann (domain_analyst) resumes the experiment REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ T. Nakamura RESUMED it from the last checkpoint → running
+  ✓ THE EXPERIMENT COMPLETED (read by M. Dvořák, the executive): 5000/5000 paths; 10 of 14 chunk executions; 5.129 s of 900 s; 10 chained checkpoints (head seq 10, 03c1a4908e06…)
+  · the ledger: declared → approved → started → run_opened → checkpointed → checkpointed → checkpointed → checkpointed → checkpointed → paused → resumed → checkpointed → checkpointed → checkpointed → checkpointed → checkpointed → completed
+  · the indicators: total_cost STABLE (mean 4444174, ±10573.401523, n 5000); line_stop_days STABLE (mean 31.297, ±0.074461, n 5000)
+  ✓ the run 01a0…6ab3f2 completed (5000 samples, outputs e031a3287324… = the manifest's e031a3287324…); line-stop days median 29.000 (p10 29.000, p90 36.000) — SYNTHETIC
+  ✓ SimulationCompleted: 1 row(s) — cause simulation.experiment.execute by the attention agent, the experiment named
+  · the declarer told: f222…23d6b2 "Simulation experiment completed: Corridor closure — 5,000 paths (SYNTHETIC) (500" → T. Nakamura (open)
+  ✓ T. Nakamura DECLARED 01a0…e9773f "Corridor closure — a one-second budget (SYNTHETIC)": 2000 paths in chunks of 250, seed 31, the jitter {"0":0.5,"3":0.3,"7":0.2}, the run control on v14 with the shock on the flipped Downside; the budget {"max_paths":2000,"max_chunks":10,"max_wall_seconds":1} (digest a43827881451…), 8 chunk(s) a tick → declared
+  · the approval request: 1d2c…4cb183 open, routed to ["domain_admin","strategy_owner","twin_owner"]
+  ✓ J. Weber APPROVED the budget by its digest a43827881451… → approved; the approval request 1d2c…4cb183 closed
+  ✓ T. Nakamura STARTED it: admitted {"rule":"sio-admission@1","chunks":8,"in_use":0,"reasons":[],"admitted":true,"capacity":2,"checked_at":"2026-10-01T14:29:36.631948+00:00","deterministic":true,"; the run 01a0…2ee4f7 opened through the existing path (seeded, seed 31, 2000 samples) and bound → running
+  ✓ SimulationStarted in the outbox for the run: 1
+  ✓ THE PARTIAL: "Corridor closure — a one-second budget (SYNTHETIC)" → partial (declared → approved → started → run_opened → checkpointed → checkpointed → checkpointed → checkpointed → budget_exceeded → partial); the run 01a0…2ee4f7 partial: budget_exceeded, 1000 of 2000 paths, missing [{"state":"queued","to_path":1249,"from_path":1000,"chunk_index":4},{"state":"qu; "diagnostic only: a partial run is never decision-active"
+  ✓ A. Hoffmann READ its decision use: DIAGNOSTIC ONLY — not decision-active: partial, unpromoted
+  · the budget notices: approval_requested → ["domain_admin","strategy_owner","twin_owner"] (closed); budget_exceeded → T. Nakamura (open)
+
+B31-I IMPACT — the corridor closure run's tornado and robustness, its second-order effect on the Regensburg delivery dates, the elicited futures, the value of one more week of transit data
+  ✓ T. Nakamura RAN the corridor closure 01a0…1a188e: control, the shock on the flipped Downside, v14, 90 days, seeded (seed 311, 500 samples, jitter {"0":0.5,"3":0.3,"7":0.2}) → completed
+  · its line-stop days over the samples: median 29.000, p10 29.000, p90 36.000; total cost median 4118000.00 (SYNTHETIC)
+  ✓ T. Nakamura REQUESTED the sensitivity analysis 01a0…f07b4c: 12 factors moved ±20 % one at a time on total_cost (base 4118000)
+      the tornado (rank · factor · swing · low → high):
+       1 · inventory.on_hand:SYN-PART-MAG                      1420000   5396000 → 2698000
+       2 · inventory.safety_stock:SYN-PART-MAG                  852000   3266000 → 4970000
+       3 · terms.line_stop_cost_per_day:SYN-LINE-A1             823600   3294400 → 4941600
+       4 · consumption.weekly:SYN-PART-MAG                      710000   3408000 → 4544000
+       5 · route.inland_days                                    426000   3692000 → 4544000
+  ✓ THE ROBUSTNESS across seeds 11, 12, 13: UNSTABLE — the ranks that move: inventory.safety_stock:SYN-PART-MAG, terms.line_stop_cost_per_day:SYN-LINE-A1
+  ✓ T. Nakamura DERIVED the second-order effects over 2 live links
+      depth 0 · NORDWERK — Ningbo → Regensburg chain             line_stop_days_added       p10/p50/p90 14/14/14 · first affected 2024-01-28 · back on plan 2024-02-26 (headroom null)
+      depth 1 · Regensburg plant — assembly line (process twin)  delivery_date_shift_days   p10/p50/p90 14/14/14 · first affected 2024-01-28 · the twin declares no demand per day: the shift is carried, i
+      depth 2 · Enterprise twin — NORDWERK                       delivery_date_shift_days   p10/p50/p90 14/14/14 · first affected 2024-01-28 · back on plan 2024-04-07 (headroom 0.25)
+  ✓ THE REGENSBURG DELIVERY DATES: Regensburg plant — assembly line (process twin) shift 14 days at p50; Enterprise twin — NORDWERK shift 14 days at p50
+  ✓ L. Brandt assesses the value of information while the futures carry no governed probability REFUSED — 422 EYE-REQ-001 — value of information rejected (no_probability): branch "Baseline" has no governed probability — set one by a frequency map, an elicitation or a model run (0097 §Q); a probability is never derived from narrative
+  ✓ A. Hoffmann (domain_analyst) elicits a probability REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ N. Eriksen (the scenario's owner) ELICITED "Baseline" 0.55–0.65 (two experts, the recorded session — SYNTHETIC)
+  ✓ N. Eriksen (the scenario's owner) ELICITED "Downside" 0.30–0.40 (two experts, the recorded session — SYNTHETIC)
+  ✓ L. Brandt ASSESSED "one more week of transit data" on his Regensburg package 01a0…54b4e1
+  ✓ THE VALUE OF INFORMATION: WAIT — EVPI 303.2 k€, EVSI 169.7 k€ against a delay cost of 40 k€ → net 129.7 k€; acting now: dual-source; after "transits recover" status-quo, after "transits stay low" dual-source (weights Baseline expert_elicitation 0.631579, Downside expert_elicitation 0.368421; SYNTHETIC payoffs)
+  ✓ THE ITEM: 1da3…48e5dc "Worth waiting for: one more week of transit data — Regensburg supply — dual-source against" → L. Brandt (open)
+  ✓ N. Eriksen STATED through "Corridor incident frequency (SYNTHETIC)" v1: 500/500 samples stop the line → 4.055556 a year → frequent 0.25–0.6 ("a SIMULATED frequency mapped through the named map; the run is synthet…")
+  ✓ A. Hoffmann READ the run's impact: 1 analysis(es), 3 second-order effect(s), 1 probability statement(s)
+
+B31-V VALIDITY — the decision-use policy; a promoted control DECISION-GRADE; the reroute recommended, challenged and UPHELD → INPUT INVALIDATED, the commitment refused
+  ✓ M. Dvořák (executive) sets the decision-use policy REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ L. Brandt (the decision authority) SET the domain's decision-use policy v1: require true — a DECISION-GRADE result at proposal and commitment, from now on, for this domain
+  ✓ T. Nakamura RAN the corridor control 01a0…8b84d2 and the reroute of SYN-SHIP-4472 via the Cape 01a0…54f0fb (deterministic, the shock on the flipped Downside, v14)
+  ✓ T. Nakamura (the run's operator) promotes his own control REFUSED — 403 EYE-AUT-001 — run promotion rejected: the reviewer operated run 01a0f7df-d634-7a05-a033-a479a78b84d2; a result is promoted by someone else (OBJ-29)
+  ✓ J. Weber (a reviewer other than its operator) PROMOTED the control 01a0…8b84d2 as fit for "the NORDWERK corridor routing decision (B31, SYNTHETIC)"
+  ✓ the control's decision use (read by T. Nakamura): DECISION-GRADE: promoted as fit for "the NORDWERK corridor routing decision (B31, SYNTHETIC)"
+  ✓ L. Brandt DECLARED the FRESH package 01a0…1480f5 "Regensburg routing — reroute the magnets via the Cape on the B31 corridor runs (SYNTHETIC)" on the January Regensburg decision and DRAFTED version 1: status-quo (the control 01a0…8b84d2) vs reroute (01a0…54f0fb), the choice reroute, approver S. Okafor — fresh because the January package is committed (now monitoring; a committed version is not re-proposed) and B27's Regensburg package recommends dual-sourcing, not the reroute
+  ✓ L. Brandt proposes the reroute while its run is unpromoted REFUSED — 409 EYE-STA-002 — run use rejected (diagnostic_only): package 01a0f7df-d6e9-717a-93d7-7536121480f5 version 1 recommends option "reroute", which cites run 01a0f7df-d67e-7f84-b0a6-abfc1354f0fb — DIAGNOSTIC ONLY — not decision-active: unpromoted; the domain's d
+  ✓ J. Weber PROMOTED the reroute 01a0…54f0fb — the proposal's recommended option now rests on a decision-grade result
+  ✓ L. Brandt PROPOSED version 1 under the policy — digest 8873b684a380… → proposed
+  ✓ C. Brenner (the corridor risk's owner) CHALLENGED the reroute 01a0…54f0fb → open (interpretation; disputed route.reroute_delay_days)
+  · the reroute while challenged: DIAGNOSTIC ONLY — not decision-active: challenged
+  ✓ C. Brenner (the opener) decides the challenge REFUSED — 403 EYE-AUT-001 — simulation challenge rejected: the decider is the challenge's opener; someone else decides challenge 01a0f7df-d775-70cb-b25e-2e056b4ca237
+  ✓ J. Weber UPHELD the challenge 01a0…4ca237 → the reroute 01a0…54f0fb INVALIDATED in the same write ({"runId":"01a0f7df-d67e-7f84-b0a6-abfc1354f0fb","withdrawnVersion":2,"invalidatedAt":"2026-10-01T14:30:37.20719+00:00"})
+  ✓ the reroute's decision use: REFUSED for decision use: invalidated
+  ✓ L. Brandt READ the package's inputs: input invalidated true; "reroute" (recommended true) marked INPUT_INVALIDATED, refused on its next derivation true, its run 01a0…54f0fb invalidated → refused; "status-quo" marked nothing
+  ✓ S. Okafor APPROVED version 1 (approved; quorum 1/1)
+  · L. Brandt previewed the commitment: would commit true; blockers []
+  ✓ L. Brandt COMMITS version 1 citing the invalidated reroute REFUSED — 409 EYE-STA-002 — run use rejected (refused): package 01a0f7df-d6e9-717a-93d7-7536121480f5 version 1 recommends option "reroute", which cites run 01a0f7df-d67e-7f84-b0a6-abfc1354f0fb — REFUSED for decision use: invalidated; an invalidated input is refused at
+  · the version stays approved; commitments on the package: 0
+  ✓ N. Eriksen (the branch's owner) BOUND the flipped Downside to the corridor's admitted v14 (binding v1; initial conditions route.reroute_delay_days, shock.corridor_delay_days)
+  · the binding read: active v1; 7 run(s) on the branch, 5 from the bound state
+
+B31-9 THE STATE and the LIMITS
+  · in the ledgers: 2 experiment(s) with 14 checkpoints; 1 sensitivity analysis(es), 1 second-order derivation(s), 1 value-of-information assessment(s), 1 probability statement(s); 1 decision-use policy version(s), 1 branch binding(s), 3 promoted run(s); 6 B31 attention items
+  the env lines for the walks:
+  EYE_B31_OPERATOR=t.nakamura
+  EYE_B31_APPROVER=j.weber
+  EYE_B31_EXPERIMENT_TITLE='Corridor closure — 5,000 paths'
+  EYE_B31_IMPACT_RUN=01a0f7df-ce8b-7ba3-9db5-ecba9b1a188e
+  EYE_B31_IMPACT_OPERATOR=t.nakamura
+  EYE_B31_IMPACT_DECIDER=l.brandt
+  EYE_B31_IMPACT_DOWNSTREAM='Regensburg plant'
+  EYE_B31_IMPACT_INFORMATION='one more week of transit data'
+  EYE_B31_VALIDITY_PACKAGE=01a0f7df-d6e9-717a-93d7-7536121480f5
+  EYE_B31_VALIDITY_RUN=01a0f7df-d67e-7f84-b0a6-abfc1354f0fb
+  EYE_B31_VALIDITY_PROMOTED_RUN=01a0f7df-d634-7a05-a033-a479a78b84d2
+  EYE_B31_VALIDITY_DECIDER=l.brandt
+  EYE_B31_VALIDITY_OPERATOR=t.nakamura
+  · LIMITS said: EVERY FIGURE IS SYNTHETIC — the experiment's budget, the jitter, the payoffs (k€), the likelihoods of "one more week of transit data", the delay cost, the elicited bands and the challenge's surcharge are the personas' statements for the demonstration, not measurements; the runs are supply-flow@1 over NORDWERK's synthetic grounding. THE POLICY: L. Brandt's decision-use policy (require: true) NOW APPLIES TO THE DEMONSTRATION DOMAIN'S LATER PROPOSALS AND COMMITMENTS — a recommended option citing an unpromoted, challenged, partial or invalidated run is refused at proposal and at commitment from here on (the B27 Regensburg package was proposed before it; its commitment would meet it); the walks and later acts meet it. THE BINDING: runs on the scenario's flipped Downside must now start from the bound corridor version (a run from another version is refused, branch_binding) until its owner rebinds or retires it. The executor of the chunks is the attention agent's REAL scheduled tick (waited for, not driven); the chunk runs in a separate process on this host. The VOI's package is L. Brandt's B27 Regensburg package (status quo vs dual-source; it was proposed, so it can be informed); the validity scene's package is a FRESH one (the January package is committed and B27's recommends dual-sourcing, not the reroute). The commitment refusal is re-asked on every run (a refusal writes nothing). NOT STAGED (HARNESS-PROVEN): orchestration — a crashed chunk retried, chunk executions exhausted, a chunk failed for good, convergence, a worker lost mid-chunk (fenced, reclaimed), capacity and cancellation, the worker's authority, the cold reproduction of the completed run (phase6-orchestration-b31 O1–O8); impact — the timing (sequencing) factor of a dated intervention, the forged rankings and reach refused, the map superseded, a portfolio review's payoffs, the comparator's sensitivity evidence, the method fabric's sweeps (phase6-impact-b31 s/o/p/v/c/f/g); validity — the commitment refused while a challenge is live and admitted once dismissed, a partial run cited, the quality gate on runs, promotions and warnings, the ASU → SCN dependency, the claim and indicator conditions, the binding's refusals and rebind, the run's assumption sensitivity, the reach of an unverified twin version (phase6-validity-b31 U/G/P/Q/A/C/B/S/R). LEFT OUT (named in the parts' reports): distributed execution across machines (F-P5-08/B110), the Simulation Agent (AG-021), chunking beyond supply-flow@1, SimulationCompleted for a partial run (the contract has no partial state); adversarial sensitivity, convergence and rare-event diagnostics, model discrepancy, map evaluation, VOI on the decision pages; SimulationPromoted@v1, the constraint set enforced at run open. Nothing is cleaned: every object stands as a demonstration fact.
+
+ALL SCENES HELD · 227.8 s
+
+=== RUN 2 (rerun)
+THE B31 ACT on eye_demo — 2026-10-01T14:30:37.466Z
+
+B31-0 THE STATE — 0099, the casting, the attention agent, the inputs
+  ✓ migration 0099_b31_simulation_orchestration_impact_validity.sql applied
+  ✓ the casting read from identity.role_bindings: a.hoffmann (domain_analyst); c.brenner (decision_owner, risk_owner, strategy_owner); j.weber (strategy_owner); l.brandt (decision_authority, decision_owner, opportunity_sponsor, strategy_owner); m.dvorak (collection_manager, executive); n.eriksen (forecast_owner); s.okafor (decision_approver, executive); t.nakamura (twin_owner)
+  · T. Nakamura holds twin_owner and NOT simulation_operator: every route the act casts him in (simulation.run, the experiment's declare / start / pause / resume, the sensitivity and the second-order derivation) admits twin_owner — no role granted, no persona created
+  ✓ the attention agent 01a0…1cb088 (registered in B24) — cadence 60 s; 10 tick run(s) in the last ten minutes (the latest at 2026-10-01T14:30:32Z) — the experiment chunks run in its after-tick hook simulation-experiments
+  ✓ the inputs: the corridor twin 01a0…76f525 "NORDWERK — Ningbo → Regensburg chain" at its newest admitted version v14 (known 2026-09-30T02:03:36Z, observed through 2024-04-09); the scenario 01a0…c87981 "Bab el-Mandeb over the next quarter — every scenario kind, recovery and deterior…" (owner N. Eriksen): Downside 01a0…c72db7 FLIPPED, Baseline 01a0…ac0594 open; the links corridor → Regensburg plant — assembly line (process twin) → Enterprise twin — NORDWERK (act-b29, both live); the January Regensburg decision 01a0…fdb43e; L. Brandt's Regensburg package 01a0…54b4e1 (proposed, v1); the frequency map "Corridor incident frequency (SYNTHETIC)" v1
+
+B31-O ORCHESTRATION — a 5,000-path corridor experiment under J. Weber's approved budget, checkpointed halfway, paused, resumed, completed with its manifest; a one-second budget → a PARTIAL run
+  · the experiment 01a0…f46ffe "Corridor closure — 5,000 paths (SYNTHETIC)" stands (completed) — an earlier run
+  · the budget was approved by J. Weber — an earlier run
+  · the experiment was paused at the halfway checkpoint — an earlier run
+  ✓ THE EXPERIMENT COMPLETED (read by M. Dvořák, the executive): 5000/5000 paths; 10 of 14 chunk executions; 5.129 s of 900 s; 10 chained checkpoints (head seq 10, 03c1a4908e06…)
+  · the ledger: declared → approved → started → run_opened → checkpointed → checkpointed → checkpointed → checkpointed → checkpointed → paused → resumed → checkpointed → checkpointed → checkpointed → checkpointed → checkpointed → completed
+  · the indicators: total_cost STABLE (mean 4444174, ±10573.401523, n 5000); line_stop_days STABLE (mean 31.297, ±0.074461, n 5000)
+  ✓ the run 01a0…6ab3f2 completed (5000 samples, outputs e031a3287324… = the manifest's e031a3287324…); line-stop days median 29.000 (p10 29.000, p90 36.000) — SYNTHETIC
+  ✓ SimulationCompleted: 1 row(s) — cause simulation.experiment.execute by the attention agent, the experiment named
+  · the declarer told: f222…23d6b2 "Simulation experiment completed: Corridor closure — 5,000 paths (SYNTHETIC) (500" → T. Nakamura (open)
+  · the experiment 01a0…e9773f "Corridor closure — a one-second budget (SYNTHETIC)" stands (partial) — an earlier run
+  · the budget was approved by J. Weber — an earlier run
+  ✓ THE PARTIAL: "Corridor closure — a one-second budget (SYNTHETIC)" → partial (declared → approved → started → run_opened → checkpointed → checkpointed → checkpointed → checkpointed → budget_exceeded → partial); the run 01a0…2ee4f7 partial: budget_exceeded, 1000 of 2000 paths, missing [{"state":"queued","to_path":1249,"from_path":1000,"chunk_index":4},{"state":"qu; "diagnostic only: a partial run is never decision-active"
+  ✓ A. Hoffmann READ its decision use: DIAGNOSTIC ONLY — not decision-active: partial, unpromoted
+  · the budget notices: approval_requested → ["domain_admin","strategy_owner","twin_owner"] (closed); budget_exceeded → T. Nakamura (open)
+
+B31-I IMPACT — the corridor closure run's tornado and robustness, its second-order effect on the Regensburg delivery dates, the elicited futures, the value of one more week of transit data
+  · the seeded corridor closure run 01a0…1a188e stands — an earlier run
+  · its line-stop days over the samples: median 29.000, p10 29.000, p90 36.000; total cost median 4118000.00 (SYNTHETIC)
+  · the sensitivity analysis 01a0…f07b4c stands — an earlier run
+      the tornado (rank · factor · swing · low → high):
+       1 · inventory.on_hand:SYN-PART-MAG                      1420000   5396000 → 2698000
+       2 · inventory.safety_stock:SYN-PART-MAG                  852000   3266000 → 4970000
+       3 · terms.line_stop_cost_per_day:SYN-LINE-A1             823600   3294400 → 4941600
+       4 · consumption.weekly:SYN-PART-MAG                      710000   3408000 → 4544000
+       5 · route.inland_days                                    426000   3692000 → 4544000
+  ✓ THE ROBUSTNESS across seeds 11, 12, 13: UNSTABLE — the ranks that move: inventory.safety_stock:SYN-PART-MAG, terms.line_stop_cost_per_day:SYN-LINE-A1
+  · the second-order derivation stands — an earlier run
+      depth 0 · NORDWERK — Ningbo → Regensburg chain             line_stop_days_added       p10/p50/p90 14/14/14 · first affected 2024-01-28 · back on plan 2024-02-26 (headroom null)
+      depth 1 · Regensburg plant — assembly line (process twin)  delivery_date_shift_days   p10/p50/p90 14/14/14 · first affected 2024-01-28 · the twin declares no demand per day: the shift is carried, i
+      depth 2 · Enterprise twin — NORDWERK                       delivery_date_shift_days   p10/p50/p90 14/14/14 · first affected 2024-01-28 · back on plan 2024-04-07 (headroom 0.25)
+  ✓ THE REGENSBURG DELIVERY DATES: Regensburg plant — assembly line (process twin) shift 14 days at p50; Enterprise twin — NORDWERK shift 14 days at p50
+  · the probability of "Baseline" stands (expert_elicitation 0.55–0.65) — an earlier run
+  · the probability of "Downside" stands (expert_elicitation 0.3–0.4) — an earlier run
+  · the value-of-information assessment 01a0…3fbc0b stands (wait) — an earlier run
+  ✓ THE VALUE OF INFORMATION: WAIT — EVPI 303.2 k€, EVSI 169.7 k€ against a delay cost of 40 k€ → net 129.7 k€; acting now: dual-source; after "transits recover" status-quo, after "transits stay low" dual-source (weights Baseline expert_elicitation 0.631579, Downside expert_elicitation 0.368421; SYNTHETIC payoffs)
+  ✓ THE ITEM: 1da3…48e5dc "Worth waiting for: one more week of transit data — Regensburg supply — dual-source against" → L. Brandt (open)
+  · the probability statement 01a0…52ff6f stands (500/500 samples, 4.055556/year → frequent 0.25–0.6) — an earlier run
+  ✓ A. Hoffmann READ the run's impact: 1 analysis(es), 3 second-order effect(s), 1 probability statement(s)
+
+B31-V VALIDITY — the decision-use policy; a promoted control DECISION-GRADE; the reroute recommended, challenged and UPHELD → INPUT INVALIDATED, the commitment refused
+  · the domain's decision-use policy v1 (require: true, set by L. Brandt) stands — an earlier run
+  · the package 01a0…1480f5 stands (approved, v1); its runs: the control 01a0…8b84d2, the reroute 01a0…54f0fb — an earlier run
+  · the control 01a0…8b84d2 is promoted ("the NORDWERK corridor routing decision (B31, SYNTHETIC)") — an earlier run
+  ✓ the control's decision use (read by T. Nakamura): DECISION-GRADE: promoted as fit for "the NORDWERK corridor routing decision (B31, SYNTHETIC)"
+  · the version is approved — an earlier run
+  · the challenge 01a0…4ca237 on the reroute stands (UPHELD by J. Weber) — an earlier run
+  ✓ the reroute's decision use: REFUSED for decision use: invalidated
+  ✓ L. Brandt READ the package's inputs: input invalidated true; "reroute" (recommended true) marked INPUT_INVALIDATED, refused on its next derivation true, its run 01a0…54f0fb invalidated → refused; "status-quo" marked nothing
+  · S. Okafor's approval stands — an earlier run
+  · L. Brandt previewed the commitment: would commit true; blockers []
+  ✓ L. Brandt COMMITS version 1 citing the invalidated reroute REFUSED — 409 EYE-STA-002 — run use rejected (refused): package 01a0f7df-d6e9-717a-93d7-7536121480f5 version 1 recommends option "reroute", which cites run 01a0f7df-d67e-7f84-b0a6-abfc1354f0fb — REFUSED for decision use: invalidated; an invalidated input is refused at
+  · the version stays approved; commitments on the package: 0
+  · the Downside's binding v1 to the corridor's v14 stands — an earlier run
+  · the binding read: active v1; 7 run(s) on the branch, 5 from the bound state
+
+B31-9 THE STATE and the LIMITS
+  · in the ledgers: 2 experiment(s) with 14 checkpoints; 1 sensitivity analysis(es), 1 second-order derivation(s), 1 value-of-information assessment(s), 1 probability statement(s); 1 decision-use policy version(s), 1 branch binding(s), 3 promoted run(s); 6 B31 attention items
+  the env lines for the walks:
+  EYE_B31_OPERATOR=t.nakamura
+  EYE_B31_APPROVER=j.weber
+  EYE_B31_EXPERIMENT_TITLE='Corridor closure — 5,000 paths'
+  EYE_B31_IMPACT_RUN=01a0f7df-ce8b-7ba3-9db5-ecba9b1a188e
+  EYE_B31_IMPACT_OPERATOR=t.nakamura
+  EYE_B31_IMPACT_DECIDER=l.brandt
+  EYE_B31_IMPACT_DOWNSTREAM='Regensburg plant'
+  EYE_B31_IMPACT_INFORMATION='one more week of transit data'
+  EYE_B31_VALIDITY_PACKAGE=01a0f7df-d6e9-717a-93d7-7536121480f5
+  EYE_B31_VALIDITY_RUN=01a0f7df-d67e-7f84-b0a6-abfc1354f0fb
+  EYE_B31_VALIDITY_PROMOTED_RUN=01a0f7df-d634-7a05-a033-a479a78b84d2
+  EYE_B31_VALIDITY_DECIDER=l.brandt
+  EYE_B31_VALIDITY_OPERATOR=t.nakamura
+  · LIMITS said: EVERY FIGURE IS SYNTHETIC — the experiment's budget, the jitter, the payoffs (k€), the likelihoods of "one more week of transit data", the delay cost, the elicited bands and the challenge's surcharge are the personas' statements for the demonstration, not measurements; the runs are supply-flow@1 over NORDWERK's synthetic grounding. THE POLICY: L. Brandt's decision-use policy (require: true) NOW APPLIES TO THE DEMONSTRATION DOMAIN'S LATER PROPOSALS AND COMMITMENTS — a recommended option citing an unpromoted, challenged, partial or invalidated run is refused at proposal and at commitment from here on (the B27 Regensburg package was proposed before it; its commitment would meet it); the walks and later acts meet it. THE BINDING: runs on the scenario's flipped Downside must now start from the bound corridor version (a run from another version is refused, branch_binding) until its owner rebinds or retires it. The executor of the chunks is the attention agent's REAL scheduled tick (waited for, not driven); the chunk runs in a separate process on this host. The VOI's package is L. Brandt's B27 Regensburg package (status quo vs dual-source; it was proposed, so it can be informed); the validity scene's package is a FRESH one (the January package is committed and B27's recommends dual-sourcing, not the reroute). The commitment refusal is re-asked on every run (a refusal writes nothing). NOT STAGED (HARNESS-PROVEN): orchestration — a crashed chunk retried, chunk executions exhausted, a chunk failed for good, convergence, a worker lost mid-chunk (fenced, reclaimed), capacity and cancellation, the worker's authority, the cold reproduction of the completed run (phase6-orchestration-b31 O1–O8); impact — the timing (sequencing) factor of a dated intervention, the forged rankings and reach refused, the map superseded, a portfolio review's payoffs, the comparator's sensitivity evidence, the method fabric's sweeps (phase6-impact-b31 s/o/p/v/c/f/g); validity — the commitment refused while a challenge is live and admitted once dismissed, a partial run cited, the quality gate on runs, promotions and warnings, the ASU → SCN dependency, the claim and indicator conditions, the binding's refusals and rebind, the run's assumption sensitivity, the reach of an unverified twin version (phase6-validity-b31 U/G/P/Q/A/C/B/S/R). LEFT OUT (named in the parts' reports): distributed execution across machines (F-P5-08/B110), the Simulation Agent (AG-021), chunking beyond supply-flow@1, SimulationCompleted for a partial run (the contract has no partial state); adversarial sensitivity, convergence and rare-event diagnostics, model discrepancy, map evaluation, VOI on the decision pages; SimulationPromoted@v1, the constraint set enforced at run open. Nothing is cleaned: every object stands as a demonstration fact.
+
+ALL SCENES HELD · 0.4 s

@@ -96,7 +96,7 @@ export function partialLine(p: PartialDeclaration | null | undefined): string {
 /** The run the experiment produced, in words. */
 export function runLine(r: ExperimentRun | null | undefined): string {
   if (r === null || r === undefined) return 'no run opened yet';
-  const head = `run ${r.run_id.slice(0, 8)}… ${r.state.toUpperCase()}${r.validity === 'invalidated' ? ' · INVALIDATED' : ''}`;
+  const head = `run ${r.run_id.slice(0, 8)}…${r.run_id.slice(-6)} ${r.state.toUpperCase()}${r.validity === 'invalidated' ? ' · INVALIDATED' : ''}`;
   if (r.state === 'partial') return `${head} — ${partialLine(r.partial)}`;
   if (r.state === 'failed') return `${head} — ${r.failure ?? 'failed'}`;
   if (r.state === 'completed') return `${head} — ${r.samples ?? '?'} paths, outputs ${r.outputs_digest?.slice(0, 12) ?? '—'}…`;

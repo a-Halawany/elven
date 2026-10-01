@@ -36,6 +36,8 @@ async function uiLogin(page: Page, username: string, password: string): Promise<
   await page.getByRole('button', { name: 'Sign in' }).click();
   await page.waitForURL((u) => !u.pathname.startsWith('/login'));
 }
+/** The experiment's own panel (a region named by its title) — the list and the comparison carry like-named labels. */
+const panel = (page: Page) => page.getByRole('region', { name: new RegExp(`^${TITLE}`) });
 async function openExperiment(page: Page): Promise<void> {
   // from the simulations page, through its link (the one line the center adds there)
   await page.goto('/twins/simulations');
@@ -50,14 +52,14 @@ test.describe.serial('CP-6 B31 §O — the simulation center on the demonstratio
   test('THE EXPERIMENT: T. Nakamura\'s 5,000-path corridor experiment COMPLETED under its approved budget — every chunk done, ten chained checkpoints, the run completed', async ({ page }) => {
     await uiLogin(page, OPERATOR, required('EYE_TEST_ADMIN_PASSWORD'));
     await openExperiment(page);
-    await expect(page.getByLabel('experiment state').first()).toContainText('COMPLETED');
-    await expect(page.getByLabel('budget use')).toContainText(/^paths 5000\/5000 \(approved ≤ \d+\) · wall [\d.]+ s of \d+ s · chunk executions \d+ of \d+/);
-    await expect(page.getByLabel('admission')).toContainText(/^ADMITTED — deterministic \(10 chunks\)/);
-    await expect(page.getByLabel('produced run')).toContainText(/COMPLETED — 5000 paths, outputs [0-9a-f]{12}…/);
-    const checkpoints = page.getByRole('table', { name: 'checkpoints' });
+    await expect(panel(page).getByLabel('experiment state')).toContainText('COMPLETED');   // the experiment's own panel, not the list's newest row
+    await expect(panel(page).getByLabel('budget use', { exact: true })).toContainText(/^paths 5000\/5000 \(approved ≤ \d+\) · wall [\d.]+ s of \d+ s · chunk executions \d+ of \d+/);
+    await expect(panel(page).getByLabel('admission', { exact: true })).toContainText(/^ADMITTED — deterministic \(10 chunks\)/);
+    await expect(panel(page).getByLabel('produced run', { exact: true })).toContainText(/COMPLETED — 5000 paths, outputs [0-9a-f]{12}…/);
+    const checkpoints = panel(page).getByRole('table', { name: 'checkpoints' });
     await expect(checkpoints.getByRole('row')).toHaveCount(11);   // the header and ten checkpoints
-    await expect(page.getByRole('table', { name: 'chunks' })).not.toContainText(/queued|running|failed/);
-    await expect(page.getByLabel('indicators')).toContainText(/total_cost: (STABLE|UNSTABLE) — mean/);
+    await expect(panel(page).getByRole('table', { name: 'chunks' })).not.toContainText(/queued|running|failed/);
+    await expect(panel(page).getByLabel('indicators', { exact: true })).toContainText(/total_cost: (STABLE|UNSTABLE) — mean/);
     await shot(page, 'b31-orchestration-01-completed');
   });
 
@@ -79,7 +81,7 @@ test.describe.serial('CP-6 B31 §O — the simulation center on the demonstratio
   test('THE APPROVAL: J. Weber\'s approval of the budget is on the record (a named human other than the declarer)', async ({ page }) => {
     await uiLogin(page, APPROVER, required('EYE_TEST_ADMIN_PASSWORD'));
     await openExperiment(page);
-    await expect(page.getByLabel('approval')).toContainText(/approved by .* — .{8,}/);
+    await expect(panel(page).getByLabel('approval', { exact: true })).toContainText(/approved by .* — .{8,}/);
     await expect(page.getByRole('list', { name: 'ledger' })).toContainText(/approved/);
     await shot(page, 'b31-orchestration-03-approval');
   });

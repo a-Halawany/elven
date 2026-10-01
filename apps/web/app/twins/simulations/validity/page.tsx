@@ -24,7 +24,8 @@ const muted = { color: 'var(--eye-color-ink-muted)' } as const;
 const small = { fontSize: 'var(--eye-type-label-sm)' } as const;
 const h2 = { fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 } as const;
 const section = { ...cardStyle, marginBlockStart: 'var(--eye-space-16)' } as const;
-const short = (id: string | null | undefined) => (id === null || id === undefined ? '—' : `${id.slice(0, 8)}…`);
+// B31 walk-found: a uuidv7's first 8 characters are its timestamp, shared by runs opened together — the label carries the tail too.
+const short = (id: string | null | undefined) => (id === null || id === undefined ? '—' : `${id.slice(0, 8)}…${id.slice(-6)}`);
 const failed = (r: { ok: boolean; status: number; error?: { code: string; message: string } }, what: string) =>
   new Error(`HTTP ${r.status}${r.error?.code ? ` ${r.error.code}` : ''} — ${r.error?.message ?? `${what} was refused`}`);
 

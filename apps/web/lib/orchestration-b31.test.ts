@@ -28,9 +28,9 @@ describe('the simulation center is worded, never judged on the client', () => {
     const p = { reason: 'budget_exceeded', completed_paths: 750, declared_paths: 1000, missing_paths: [{ chunk_index: 3, from_path: 750, to_path: 999, state: 'failed' }], missing_outputs: ['x'], decision_use: 'diagnostic only: a partial run is never decision-active' };
     expect(partialLine(p)).toBe('PARTIAL (budget_exceeded) — 750 of 1000 paths completed; missing paths 750–999; diagnostic only: a partial run is never decision-active');
     expect(runLine({ run_id: '0190f3e2-aaaa-7000-8000-000000000001', state: 'partial', validity: 'valid', fitness_state: 'none', partial: p, outputs_digest: 'a'.repeat(64), samples: 1000, seed: 31, failure: null }))
-      .toMatch(/^run 0190f3e2… PARTIAL — PARTIAL \(budget_exceeded\)/);
+      .toMatch(/^run 0190f3e2…000001 PARTIAL — PARTIAL \(budget_exceeded\)/);
     expect(runLine({ run_id: '0190f3e2-aaaa-7000-8000-000000000001', state: 'completed', validity: 'invalidated', fitness_state: 'unfit', partial: null, outputs_digest: 'b'.repeat(64), samples: 5000, seed: 31, failure: null }))
-      .toBe('run 0190f3e2… COMPLETED · INVALIDATED — 5000 paths, outputs bbbbbbbbbbbb…');
+      .toBe('run 0190f3e2…000001 COMPLETED · INVALIDATED — 5000 paths, outputs bbbbbbbbbbbb…');
     expect(runLine(null)).toBe('no run opened yet');
   });
   it('the ledger in words', () => {

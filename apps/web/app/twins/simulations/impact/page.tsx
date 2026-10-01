@@ -21,7 +21,8 @@ import { Empty, LiveStatus, Mono, cardStyle, GovernedButton, UnknownNote, fmtIns
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../../components/ui';
 
 type Rec = { policyDecisionId: string; auditSeq: number };
-const short = (v: unknown): string => (typeof v === 'string' && v !== '' ? `${v.slice(0, 8)}…` : '—');
+// B31 walk-found: a uuidv7's first 8 characters are its timestamp, shared by runs opened together — the label carries the tail too.
+const short = (v: unknown): string => (typeof v === 'string' && v !== '' ? `${v.slice(0, 8)}…${v.slice(-6)}` : '—');
 const refusal = (r: { status: number; error?: { code: string; message: string } }, fallback: string) =>
   `HTTP ${r.status}${r.error?.code !== undefined && r.error.code !== '' ? ` ${r.error.code}` : ''} — ${r.error?.message ?? fallback}`;
 const sectionStyle = { ...cardStyle, marginBlockStart: 'var(--eye-space-16)' };
@@ -128,7 +129,7 @@ export default function ImpactPage() {
         <h2 id="run-h" style={h2}>Run</h2>
         <label>Completed run<select style={inputStyle} value={runId} onChange={(e) => setRunId(e.target.value)}>
           <option value="">choose</option>
-          {runs.map((r) => <option key={r.run_id} value={r.run_id}>{r.run_id.slice(0, 8)}… {r.run_kind} · {r.model_ref ?? 'supply-flow@1'} · v{r.twin_version}{r.shock ? ' · shock' : ''}{r.scenario_branch_id ? ' · on a branch' : ''}</option>)}
+          {runs.map((r) => <option key={r.run_id} value={r.run_id}>{short(r.run_id)} {r.run_kind} · {r.model_ref ?? 'supply-flow@1'} · v{r.twin_version}{r.shock ? ' · shock' : ''}{r.scenario_branch_id ? ' · on a branch' : ''}</option>)}
         </select></label>
         {view === null ? (runId === '' ? <Empty>choose a completed run</Empty> : null) : (
           <p style={{ fontSize: 'var(--eye-type-label-sm)' }}>
