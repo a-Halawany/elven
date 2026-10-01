@@ -1009,6 +1009,17 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   { match: /^(run use|branch binding) rejected \((state|stale|duplicate|diagnostic_only|refused)\)|^run rejected \((scenario_quality|branch_binding)\)|^promotion to simulation rejected \((branch_suspended|scenario_quality)\)/i, status: 409, code: 'EYE_STA_002' },
   { match: /^(run use|branch binding) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
   /* end B31 validity */
+  /* B35 analysis (0101 §A) — the family `analysis rejected (<class>): …` (the criteria, the assessments, the obligations and their evaluation,
+     the candidates, the assembly, the adversarial response), every row anchored and requiring the class parenthesis (no earlier row starts
+     with `analysis`; B31's `^impact analysis rejected` is another noun, anchored). B9's order: the standing 403 (actor — the acting principal;
+     ownership — the package owner, the value-judgment owner, the obligation's owner; authority — a named human, never an agent), the absences
+     404 (unknown_*: the package, the version, the option, the criterion, the objective, the run, the forecast, the assessment, the review,
+     the obligation, the stakeholder, the actor), the record's state 409 (state, stale, duplicate), the caller's own request 422 (the rest). */
+  { match: /^analysis rejected \((actor|ownership|authority)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^analysis rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^analysis rejected \((state|stale|duplicate)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^analysis rejected \(/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B35 analysis */
   /* B36 home (0094 §H) — the executive home's families in the CLASS form `<noun> rejected (<class>): …`: `cadence rejected`, `executive room
      rejected` (0044's unclassed `room rejected: …` texts are the decision room's and are mapped by no row; the noun here is `executive room`
      and every row is anchored), `objective review rejected` (the SoD of §H2's re-declared convene_review and of open_subject_room — B23's
