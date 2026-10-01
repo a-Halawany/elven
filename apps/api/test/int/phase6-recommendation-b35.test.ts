@@ -507,3 +507,21 @@ describe('B35 recommendation · r5 · the stability and constraint INDICATORS re
     expect(r.state).toBe('accepted_for_consideration');
   });
 });
+
+describe('B35 integration · the seams on the combined 0101', () => {
+  it('s · §E reads §R and §R reads §E: the agent\'s recommendation EXPLAINED (its conclusion an agent judgment, what could make it wrong a material counterfactual); the package version explained — the completeness advisory on the missing explanation clears', async () => {
+    const { ExplanationController: Xc } = await import('../../src/decision/explanation/explanation.controller.js');
+    const xc = h.app.get(Xc) as unknown as { generate: Function };
+    const gen = async (payload: Row) => ((await xc.generate(h.req(w.owner, 'decision.explanation.generate', 'XPL', null, 'decision'), T(), D(), { payload })) as { explanation: Row }).explanation;
+    const x = await gen({ subjectKind: 'recommendation', subjectId: AGENT_REC });
+    const items = x['items'] as Row[];
+    expect(items.find((i) => i['role'] === 'conclusion')).toMatchObject({ category: 'agent_judgment' });
+    expect(items.some((i) => i['role'] === 'counterfactual')).toBe(true);
+    const before = (await completeness(A.pkg, A.v)) as unknown as Row;
+    expect((before['advisories'] as Row[]).some((a) => a['category'] === 'explanation')).toBe(true);
+    await gen({ subjectKind: 'package_version', subjectId: A.pkg, subjectVersion: A.v });
+    const after = (await completeness(A.pkg, A.v)) as unknown as Row;
+    expect((after['advisories'] as Row[]).some((a) => a['category'] === 'explanation')).toBe(false);
+    expect((after['not_assessed'] as Row[]).some((a) => a['category'] === 'explanation')).toBe(false);
+  });
+});

@@ -482,3 +482,15 @@ describe('B35 §A · g THE LEDGERS', () => {
     await refused(read(w.owner, uuidv7()), /^analysis rejected \(unknown_package\)/, 404);
   });
 });
+
+describe('B35 integration · the seams on the combined 0101', () => {
+  it('s · §E reads §A: the analysis EXPLAINED — the server-computed ranking a deterministic transformation, the criteria weights the value-judgment owner\'s human assessment, the read named', async () => {
+    const { ExplanationController: Xc } = await import('../../src/decision/explanation/explanation.controller.js');
+    const xc = h.app.get(Xc) as unknown as { generate: Function };
+    const x = ((await xc.generate(h.req(w.owner, 'decision.explanation.generate', 'XPL', null, 'decision'), T(), D(), { payload: { subjectKind: 'analysis', subjectId: PKG, subjectVersion: V } })) as { explanation: Row }).explanation;
+    const items = x['items'] as Row[];
+    expect(items.find((i) => i['role'] === 'conclusion')).toMatchObject({ category: 'deterministic_transformation' });
+    expect(items.some((i) => i['category'] === 'human_assessment')).toBe(true);
+    expect(JSON.stringify(x)).toContain('decision.package_analysis');
+  });
+});

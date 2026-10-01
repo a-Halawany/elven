@@ -9,7 +9,7 @@
  *        (conditions_changed); the decision ledger's reopen events and the DecisionReopened payload as B18 left them; the scenario the
  *        committed version rests on (a run on its branch) — its owner TASKED (decision.reversion) with a reversion request; re-versioned
  *        through BranchScenario and the request resolved. A challenge upheld after the commitment (reopen_required) → reopen
- *        (challenge_upheld). An upheld APPEAL — §E's decision.appeal_cases is not in this worktree: a stated superuser stand-in table of the
+ *        (challenge_upheld). An upheld APPEAL through §E's real decision.appeal_cases (the stand-in of the part's own run replaced at integration) — formerly a stated superuser stand-in table of the
  *        columns the seam reads (case_id, package_id, state, outcome, effect, adjudicated_at, …) proves the to_regclass path; without it the
  *        reopen answers unknown_appeal. The integrator asserts the real seam in the combined harness.
  *   p2 · THE OUTCOME ASSESSMENT in four separate fields by a named human (observed from the recorded 0045 outcome; inferred with method and
@@ -317,24 +317,30 @@ describe('B35 reopen · p1 · the reopen re-declared: conditions_changed, challe
     evidence('p1·row11', { challenge: CHALLENGE, reopened: 3 });
   }, 180_000);
 
-  it('p1 · appeal_upheld (§E through to_regclass): without §E\'s table the reopen answers unknown_appeal (404); with a stated stand-in of the columns the seam reads — dismissed 409, upheld reopens', async () => {
+  it('p1 · appeal_upheld (§E\'s decision.appeal_cases — the seam asserted on the combined 0101): an unknown case 404; a DISMISSED appeal of the decided package refuses the reopen (409); an UPHELD one (reopen_required) reopens it', async () => {
+    const { AppealController: Ac } = await import('../../src/decision/explanation/explanation.controller.js');
+    const ac = h.app.get(Ac) as unknown as { open: Function; assign: Function; adjudicate: Function; close: Function };
+    const areq = (as: AuthenticatedPrincipal, action: string, id: string | null) => h.req(as, action, 'APL', id, 'decision');
+    const appellant = await h.humanWithSession(['strategy_owner'], 'b35p-appellant');
+    const appeal = async (outcome: 'dismissed' | 'upheld', grounds: string, rationale: string): Promise<string> => {
+      const k = ((await ac.open(areq(appellant, 'decision.appeal.open', null), T(), D(), { payload: { subjectKind: 'package', subjectId: P1,
+        scope: { statement: 'the committed corridor decision (B35 reopen harness)' }, grounds } })) as { case: Row }).case;
+      const id = String(k['case_id']);
+      await ac.assign(areq(w.authority, 'decision.appeal.adjudicate', id), T(), D(), id, { payload: { adjudicator: w.authority2.principalId } });
+      await ac.adjudicate(areq(w.authority2, 'decision.appeal.adjudicate', id), T(), D(), id, { payload: { outcome, rationale,
+        ...(outcome === 'upheld' ? { correction: 'The owner reopens the package on the cause appeal_upheld (B35 reopen harness).' } : {}) } });
+      return id;
+    };
     APPEAL = uuidv7();
-    await refused(reopen(w.owner, P1, { kind: 'appeal_upheld', ref: APPEAL }), /^reopen rejected \(unknown_appeal\): no appeal cases are recorded in this database/, 404);
-    // the STAND-IN for §E's decision.appeal_cases (a stated superuser table, the columns 0101 §P3 reads; §E's own table replaces it at integration)
-    await sql`create table decision.appeal_cases (case_id uuid primary key, package_id uuid, subject_kind text, subject_id uuid, state text, outcome text, effect jsonb, adjudicated_at timestamptz,
-      appellant_principal_id uuid, adjudicator_principal_id uuid, grounds text, rationale text)`.execute(su);
-    await sql`grant select on decision.appeal_cases to public`.execute(su);
-    await sql`insert into decision.appeal_cases values (${APPEAL}::uuid, ${P1}::uuid, 'package', ${P1}::uuid, 'adjudicated', 'dismissed', '{"kind":"none"}'::jsonb, clock_timestamp(),
-      ${forecaster.principalId}::uuid, ${dadmin.principalId}::uuid, 'J. Weber contests the corridor forecast''s source (SYNTHETIC)', 'the source stands (SYNTHETIC)')`.execute(su);
-    await refused(reopen(w.owner, P1, { kind: 'appeal_upheld', ref: APPEAL }), /^reopen rejected \(cause_state\): appeal .* is adjudicated \(outcome dismissed, effect none\)/, 409);
-    const UPHELD = uuidv7();
-    await sql`insert into decision.appeal_cases values (${UPHELD}::uuid, ${P1}::uuid, 'forecast', ${w.forecastId}::uuid, 'adjudicated', 'upheld', '{"kind":"reopen_required"}'::jsonb, clock_timestamp(),
-      ${forecaster.principalId}::uuid, ${dadmin.principalId}::uuid, 'J. Weber contests the corridor forecast''s source (SYNTHETIC)', 'the source was superseded (SYNTHETIC)')`.execute(su);
+    await refused(reopen(w.owner, P1, { kind: 'appeal_upheld', ref: APPEAL }), /^reopen rejected \(unknown_appeal\): no such appeal .* on package/, 404);
+    const DISMISSED = await appeal('dismissed', 'J. Weber contests the corridor forecast source behind this decision (SYNTHETIC).', 'The source stands; the decision rests on it as recorded (SYNTHETIC).');
+    await refused(reopen(w.owner, P1, { kind: 'appeal_upheld', ref: DISMISSED }), /^reopen rejected \(cause_state\): appeal .* is adjudicated \(outcome dismissed, effect none\)/, 409);
+    await ac.close(areq(w.authority2, 'decision.appeal.close', DISMISSED), T(), D(), DISMISSED, { payload: { note: 'dismissed; the appellant is told (B35 reopen harness)' } });
+    const UPHELD = await appeal('upheld', 'The corridor reopened after the commitment; the decision rests on a closure that no longer holds (SYNTHETIC).', 'The decided routing rests on a closure that no longer holds; it is reopened by its owner (SYNTHETIC).');
     const r = (await reopen(w.owner, P1, { kind: 'appeal_upheld', ref: UPHELD })).reopened;
-    expect(r).toMatchObject({ committed_version: 3, new_version: 4, reopens: 3, cause: { kind: 'appeal_upheld', ref: UPHELD, outcome: 'upheld', subject_kind: 'forecast' } });
-    await sql`drop table decision.appeal_cases`.execute(su);
+    expect(r).toMatchObject({ committed_version: 3, new_version: 4, reopens: 3, cause: { kind: 'appeal_upheld', ref: UPHELD, outcome: 'upheld', subject_kind: 'package' } });
     expect(await recommit(P1)).toBe(4);
-    evidence('p1·appeal', { stand_in: true, reopened: 4 });
+    evidence('p1·appeal', { seam: '§E appeal_cases', dismissed: DISMISSED, upheld: UPHELD, reopened: 4 });
   }, 180_000);
 });
 
