@@ -970,6 +970,20 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   { match: /^(scenario set|portfolio review|scenario proposal) rejected \((state|duplicate|bound|empty)\)|^recommendation rejected \(plurality\)/i, status: 409, code: 'EYE_STA_002' },
   { match: /^(scenario set|portfolio review|scenario proposal|recommendation) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
   /* end B27 sets */
+  /* B31 impact (0099 §I) — the families `impact analysis rejected (<class>)` (the sensitivity analysis, the second-order derivation, the
+     probability statement) and `value of information rejected (<class>)`, every row anchored and requiring the class parenthesis (no
+     earlier row starts with either noun; the unanchored `impact rejected: no such invalidation` row reads another text, which these never
+     contain). B9's order: the standing 403 (the acting principal; the authority — a named human), the absences 404 (unknown_*: the run, the
+     link, the map, the scenario, the package, the branch, the review, the option), the record's state 409 (state — a run not completed or
+     invalidated, a superseded map, an inactive scenario, a closed package, a branch not live; stale — outputs that changed under the
+     analysis; execution — a perturbed fabric execution that did not complete), the caller's own 422 (the rest: the metric, the step, the
+     factors, the robustness, the timing, the links, the reach, the effects, the samples, the event, the frequency map, the branches, the
+     probability, the options, the payoffs, the unit, the basis, the information, the likelihood). */
+  { match: /^(impact analysis|value of information) rejected \((actor|authority)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^(impact analysis|value of information) rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^(impact analysis|value of information) rejected \((state|stale|execution)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^(impact analysis|value of information) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B31 impact */
   /* B36 home (0094 §H) — the executive home's families in the CLASS form `<noun> rejected (<class>): …`: `cadence rejected`, `executive room
      rejected` (0044's unclassed `room rejected: …` texts are the decision room's and are mapped by no row; the noun here is `executive room`
      and every row is anchored), `objective review rejected` (the SoD of §H2's re-declared convene_review and of open_subject_room — B23's

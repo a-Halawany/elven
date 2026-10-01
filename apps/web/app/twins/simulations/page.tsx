@@ -364,6 +364,7 @@ export default function SimulationsPage() {
         </section>
       )}
       <MethodPanel />
+      {/* B31 impact */}<p><a href="/twins/simulations/impact">Impact analysis — sensitivity and robustness, second-order effects, value of information</a></p>{/* end B31 impact */}
       {last === null ? null : <LiveStatus>{last}</LiveStatus>}
       <Receipt receipt={receipt} />
     </>
