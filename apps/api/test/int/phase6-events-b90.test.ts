@@ -351,6 +351,11 @@ describe('B90 §E · d CHECKPOINTS, LAG, PAUSE AND CONFORMANCE', () => {
     await refused(catchUp(consumer, SUB, { afterSequence: 0 }), /subscription rejected \(window\): a catch-up from sequence 0 is before the checkpoint 1/, 422);
     await refused(catchUp(consumer, SUB, { afterSequence: 9 }), /subscription rejected \(backlog\): sequence 9 is beyond the authorized backlog through 4/, 409);
     await refused(catchUp(consumer2, SUB), /subscription rejected \(not_consumer\)/, 403);
+    // B90-F1 second pass (0098): a caller-chosen cursor cannot MANUFACTURE coverage — from 4 (would serve nothing, crediting 2–4) and from 3
+    // (would serve only 4, crediting 2–3) are refused; nothing is recorded; the unread acknowledgement stays refused
+    await refused(catchUp(consumer, SUB, { afterSequence: 4 }), /subscription rejected \(backlog\): a catch-up from sequence 4 would skip events never served — coverage runs contiguously from the checkpoint 1 and has reached 1/, 409);
+    await refused(catchUp(consumer, SUB, { afterSequence: 3 }), /subscription rejected \(backlog\): a catch-up from sequence 3 would skip events never served/, 409);
+    await refused(ack(consumer, SUB, 4), /subscription rejected \(backlog\): .* beyond what the catch-up has served \(through 1\)/, 409);
     expect(await catchups(SUB)).toEqual([]);
     await refused(resume(consumer, SUB), /subscription rejected \(authority\)/, 403);
     await refused(pause(owner, SUB, 'a lagging subscription is already paused (B90 events harness)'), /subscription rejected \(state\): .* only an active subscription is paused/, 409);
@@ -364,6 +369,11 @@ describe('B90 §E · d CHECKPOINTS, LAG, PAUSE AND CONFORMANCE', () => {
     expect(done).toEqual([2, 3]);
     await refused(readEvents(consumer, SUB), /subscription rejected \(state\): .* is lagging .* served by the catch-up route/, 409);
     await refused(ack(consumer, SUB, 4), /subscription rejected \(backlog\): .* sequence 4 is beyond what the catch-up has served \(through 3\)/, 409);
+    // a RETRY is preserved (0098): re-reading from the checkpoint serves 2–3 again and leaves the served mark at 3; jumping past it is not
+    const retry = (await catchUp(consumer, SUB, { afterSequence: 1, limit: 2 })).catchup;
+    expect(retry).toMatchObject({ after: 1, through: 3, served: 2 });
+    expect((retry['events'] as Row[]).map((e) => e['sequence'])).toEqual([2, 3]);
+    await refused(catchUp(consumer, SUB, { afterSequence: 4 }), /subscription rejected \(backlog\): a catch-up from sequence 4 would skip events never served — coverage runs contiguously from the checkpoint 1 and has reached 3/, 409);
     expect((await ack(consumer, SUB, 3)).subscription).toMatchObject({ checkpoint_sequence: 3, state: 'lagging' });
     await refused(conform(consumer, SUB, { caught_up: true, can_process: true }), /subscription rejected \(backlog\): .* lagging at checkpoint 3/, 409);
     // batch 2: event 4 SERVED; the backlog exhausted
@@ -374,6 +384,7 @@ describe('B90 §E · d CHECKPOINTS, LAG, PAUSE AND CONFORMANCE', () => {
     expect((await ack(consumer, SUB, 4)).subscription).toMatchObject({ checkpoint_sequence: 4, state: 'lagging', lag_events: 0 }); // not resumed on its own
     expect(await catchups(SUB)).toEqual([
       { after: 1, through: 3, head: 4, sequences: [2, 3], served: 2, served_to: consumer.principalId },
+      { after: 1, through: 3, head: 4, sequences: [2, 3], served: 2, served_to: consumer.principalId }, // the retry
       { after: 3, through: 4, head: 4, sequences: [4], served: 1, served_to: consumer.principalId }]);
     expect((await conform(consumer, SUB, { caught_up: true, can_process: true, note: 'the backlog 2–4 read through the catch-up and processed (B90 events harness)' })).subscription).toMatchObject({ state: 'lagging', checkpoint_sequence: 4 });
     expect((await resume(owner, SUB)).subscription).toMatchObject({ state: 'active', paused_reason: null, checkpoint_sequence: 4 });
@@ -385,7 +396,7 @@ describe('B90 §E · d CHECKPOINTS, LAG, PAUSE AND CONFORMANCE', () => {
     expect((await readEvents(consumer, SUB)).read).toMatchObject({ served: 0, after: 4, head: 4 });
     const ck = await rows(sql`select kind, from_sequence::int as f, to_sequence::int as t from products.subscription_checkpoints where subscription_id = ${SUB}::uuid order by acknowledged_at`);
     expect(ck).toEqual([{ kind: 'advance', f: 0, t: 1 }, { kind: 'advance', f: 1, t: 3 }, { kind: 'advance', f: 3, t: 4 }]);
-    expect((await productEvents(P1)).filter((e) => e === 'events.caught_up').length).toBe(2);
+    expect((await productEvents(P1)).filter((e) => e === 'events.caught_up').length).toBe(3); // two batches and the retry
   });
 });
 

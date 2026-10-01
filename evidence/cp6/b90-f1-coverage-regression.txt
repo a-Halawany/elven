@@ -1,0 +1,27 @@
+B90-F1 second pass — the catch-up's coverage made contiguous (0098), the real-database regression, 2026-10-01
+File: apps/api/test/int/phase6-events-b90.test.ts — the lag refusal case gains the two cursor jumps of the review (afterSequence 4: would serve nothing and credit 2–4; afterSequence 3: would serve only 4 and credit 2–3), each REFUSED with nothing recorded; the recovery case keeps the two-batch catch-up and adds a RETRY from the checkpoint (served again, the mark unchanged) and a jump past the mark refused.
+BEFORE: a fresh database migrated through 0096 only (0098 held aside) — the current behaviour
+AFTER: a fresh database migrated through 0098
+
+=== BEFORE (through 0096)
+     × d · REFUSAL: the read is refused while lagging (the reason named); acknowledging backwards, beyond the head, by another principal; resumption before conformance, and after conformance while still behind; conformance by the owner; a pause of a lagging subscription 82ms
+     × d · RECOVERY (B90-F1): the consumer CATCHES UP — the unread backlog 2–4 SERVED in two bounded batches (identities and projected payloads checked against the stream), each acknowledged only once served; then conformance; the owner resumes; the next tick observes lag_events met true and raises nothing twice 20ms
+     × e · POSITIVE: the owner re-declares the event product with schema v2 BREAKING; the next tick pauses the subscription (reason schema) and notifies the owner once 81ms
+     × e · REFUSAL: the read while paused; resumption before conformance; a conformance naming a version the product does not serve; a conformance without the version leaves the schema pending 16ms
+     × e · RECOVERY: conformance to v2, the owner resumes; an ADDITIVE re-declaration (v3) pauses nothing on the next tick; a new subscription must name the current version 8ms
+     × f · POSITIVE: a correction row (stated superuser move on the SOURCE ledger: warning.retracted on warning A) is emitted as kind correction with schema v3 and served to the consumer that handles corrections; a replay from 1 moves the checkpoint back and re-serves 2..5 103ms
+     × f · REFUSAL: consumer 2 (cannot process corrections) reads P2 and the correction is WITHHELD and counted; a replay by a consumer that cannot process replays, from at or beyond the checkpoint, without a reason; reading before the checkpoint 45ms
+     × f · RECOVERY: the owner revokes the subscription with a reason — the offsets preserved, every later read refused, a second revocation refused; the consumer registers anew and, once authorized, reads from a fresh checkpoint 6ms
+     × g · POSITIVE: the owner's read lists the subscriptions with their lag and the latest lag observations; the consumer's read of its subscription names the product, the head, the checkpoints and the replays 8ms
+     × g · RECOVERY: the ledgers are append-only and the rows are never deleted (superuser moves refused by the triggers) 4ms
+⎯⎯⎯⎯⎯⎯ Failed Tests 10 ⎯⎯⎯⎯⎯⎯⎯
+Error: the call should have been refused
+ ❯ test/int/phase6-events-b90.test.ts:356:5
+Error: the call should have been refused
+ ❯ test/int/phase6-events-b90.test.ts:371:5
+      Tests  10 failed | 9 passed (19)
+
+  (line 356 is the jump from afterSequence 4: on 0096 the catch-up was ACCEPTED — the defect; the later cases fail in cascade)
+
+=== AFTER (through 0098)
+      Tests  19 passed (19)
