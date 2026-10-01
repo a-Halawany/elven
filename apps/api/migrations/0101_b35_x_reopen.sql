@@ -995,8 +995,8 @@ LANGUAGE sql STABLE SET search_path = decision, simulation, objects, pg_catalog,
                                WHEN r.state <> 'completed' THEN 'disputed' ELSE 'standing' END
                      FROM (SELECT 1) one LEFT JOIN simulation.runs_current r ON r.run_id = ci.id)
                 ELSE
-                  (SELECT CASE WHEN co.object_id IS NULL THEN 'missing' WHEN co.lifecycle_state IN ('disputed', 'contested') THEN 'disputed'
-                               WHEN co.lifecycle_state IN ('withdrawn', 'revoked', 'retracted') THEN 'withdrawn' ELSE 'standing' END
+                  (SELECT CASE WHEN co.object_id IS NULL THEN 'missing' WHEN co.lifecycle_state = 'disputed' THEN 'disputed'
+                               WHEN co.lifecycle_state IN ('withdrawn', 'deleted') THEN 'withdrawn' ELSE 'standing' END
                      FROM (SELECT 1) one LEFT JOIN LATERAL (SELECT x.object_id, x.lifecycle_state FROM objects.canonical_objects x WHERE x.object_id = ci.id ORDER BY x.object_version DESC LIMIT 1) co ON true)
            END AS standing
       FROM cites ci)
