@@ -467,6 +467,13 @@ const TWIN_RULES: typeof RULES = [
  * 409 → 422, so a new refusal is never phrased so that an earlier rule catches it.
  */
 const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 'EYE_STA_001' | 'EYE_AUT_001' | 'EYE_REQ_001' }> = [
+  /* B35 reopen (0101 §P3) — the reopen's NEW causes refuse in the CLASS form `reopen rejected (<class>): …` (unknown_challenge, unknown_appeal,
+     unknown_change → 404; cause_state → 409; cause → 422). Placed at the head: the unclassed `^reopen rejected` 422 row below would shadow them.
+     The older unclassed reopen texts keep their rows. */
+  { match: /^reopen rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^reopen rejected \(cause_state\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^reopen rejected \(/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B35 reopen */
   // B22 (0083): the attention policy and the queue (`attention policy rejected`, `attention item rejected`), the plan selection and
   // the source-impact ports — first, in the same 403 → 404 → 409 → 422 order; no earlier family starts with these phrases.
   { match: /^attention (policy|item) rejected: (set|acknowledged|suppressed|closed) by the acting principal|^attention policy rejected: a policy is set by a named human|^attention item rejected: item .* is routed to/i, status: 403, code: 'EYE_AUT_001' },
@@ -1009,6 +1016,7 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   { match: /^(run use|branch binding) rejected \((state|stale|duplicate|diagnostic_only|refused)\)|^run rejected \((scenario_quality|branch_binding)\)|^promotion to simulation rejected \((branch_suspended|scenario_quality)\)/i, status: 409, code: 'EYE_STA_002' },
   { match: /^(run use|branch binding) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
   /* end B31 validity */
+<<<<<<< HEAD
   /* B35 analysis (0101 §A) — the family `analysis rejected (<class>): …` (the criteria, the assessments, the obligations and their evaluation,
      the candidates, the assembly, the adversarial response), every row anchored and requiring the class parenthesis (no earlier row starts
      with `analysis`; B31's `^impact analysis rejected` is another noun, anchored). B9's order: the standing 403 (actor — the acting principal;
@@ -1034,6 +1042,19 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   { match: /^(explanation|appeal) rejected \((state|stale|duplicate|unavailable)\)/i, status: 409, code: 'EYE_STA_002' },
   { match: /^(explanation|appeal) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
   /* end B35 explanation */
+=======
+  /* B35 reopen (0101 §P) — the family `review rejected (<class>)` (a change of conditions, a reversion request, an outcome assessment, the
+     review terms, a replay's reason, a lesson's link, a set's review cadence). Anchored, requiring the class parenthesis; no earlier row starts
+     with `review rejected` (`objective review rejected`, `override review rejected`, `exposure outcome review rejected` are other nouns, anchored).
+     B9's order: the standing 403 (actor, ownership), the absences 404 (unknown_*), the record's state 409 (state, stale, duplicate,
+     append_only), the caller's own request 422 (the rest). The reopen's new CLASSED texts are mapped at the head of B9_REFUSALS (the unclassed
+     `^reopen rejected` 422 row would shadow them here). */
+  { match: /^review rejected \((actor|ownership)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^review rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^review rejected \((state|stale|duplicate|append_only)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^review rejected \(/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B35 reopen */
+>>>>>>> b35/reopen
   /* B36 home (0094 §H) — the executive home's families in the CLASS form `<noun> rejected (<class>): …`: `cadence rejected`, `executive room
      rejected` (0044's unclassed `room rejected: …` texts are the decision room's and are mapped by no row; the noun here is `executive room`
      and every row is anchored), `objective review rejected` (the SoD of §H2's re-declared convene_review and of open_subject_room — B23's
