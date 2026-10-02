@@ -61,6 +61,10 @@ import type { TwinController } from '../../src/twin/twin.controller.js';
 import { SchedulerService } from '../../src/observation/scheduling/scheduler.service.js';
 import { SubscriptionDispatcherService } from '../../src/graph/subscriptions/subscription-dispatcher.service.js';
 import { CONSUMER_EVENT_TYPES, CONSUMER_KINDS, consumerCodeDigest, type ConsumerKind } from '../../src/graph/subscriptions/graph-change.js';
+/* B28 (0088): the `warnings` and `stream-rules` kinds are exercised by their own harnesses (phase6-warnings-b28, phase6-streams-b28); this
+   file registers and counts the kinds it was written for. */
+const PRE_B28_KINDS = CONSUMER_KINDS.filter((k) => k !== 'warnings' && k !== 'stream-rules');
+/* end B28 */
 import { asObservationRefusal } from '../../src/observation/observation-errors.js';
 import { Phase4Harness } from './phase4-helpers.js';
 import { bootDecisionWorld, decisionCalls, type DecisionWorld } from './phase6-fixtures.js';
@@ -87,7 +91,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
  * adds (observations, source-health, proposals, attention) select their own flat events — never GraphChanged — so they are registered too
  * and absent from every GraphChanged delivery.
  */
-const GRAPH_KINDS = CONSUMER_KINDS.filter((k) => k !== 'relationships' && CONSUMER_EVENT_TYPES[k].includes('GraphChanged'));
+const GRAPH_KINDS = PRE_B28_KINDS.filter((k) => k !== 'relationships' && CONSUMER_EVENT_TYPES[k].includes('GraphChanged'));
 /** 0083 (B22): the four consumer kinds B22 adds, each with an identity of its own from the start. */
 const B22_KINDS = ['observations', 'source-health', 'proposals', 'attention'] as const satisfies readonly ConsumerKind[];
 type PriorKind = Exclude<ConsumerKind, (typeof B22_KINDS)[number]>;
@@ -374,7 +378,7 @@ beforeAll(async () => {
   await seedEntity(E1, 'organization', 'B21 Holding AG', graphOwner.principalId);
   await seedEntity(E2, 'place', 'B21 Strait Terminal', graphOwner.principalId);
   // THE SUBSCRIPTIONS: all seven kinds (eleven since 0083, B22 — the four new kinds on their own event types by default), registered by the tenant administrator with the backlog left (the B18 idiom).
-  for (const kind of CONSUMER_KINDS) {
+  for (const kind of PRE_B28_KINDS) {
     const r = await register(kind);
     subs[kind] = { subscriptionId: r.subscription.subscriptionId, principalId: r.subscription.principalId };
     expect(r.served.workerRunning, `${kind}: the domain's queue is served from registration`).toBe(true);
@@ -952,7 +956,7 @@ describe('B21.3 · fitness, coherence and challenge (0081; L5-I05, L6-I03, L7-I0
     // 0083 (B22): the seven unchanged by B22 (the three B21 moved are a2303ff's); the four B22 kinds carry identities of their own, none an earlier one.
     const earlier = new Set<string>([...Object.values(DIGESTS_13ED40C), ...Object.values(DIGESTS_A2303FF)]);
     for (const k of CONSUMER_KINDS) {
-      if ((B22_KINDS as readonly string[]).includes(k)) expect(earlier.has(consumerCodeDigest(k)), `${k}: a new consumer (B22), a new identity`).toBe(false);
+      if ((B22_KINDS as readonly string[]).includes(k) || k === 'warnings' || k === 'stream-rules') expect(earlier.has(consumerCodeDigest(k)), `${k}: a new consumer (B22; B28), a new identity`).toBe(false);
       else if (k === 'forecasts' || k === 'scenarios' || k === 'decisions') {
         expect(consumerCodeDigest(k), `${k}: a changed method is a new consumer`).not.toBe(DIGESTS_13ED40C[k]);
         // B23 (0084): the decisions method now publishes MaterialChangeRaised@v1 — a changed method, a new identity; forecasts and scenarios unchanged since a2303ff.
@@ -960,9 +964,9 @@ describe('B21.3 · fitness, coherence and challenge (0081; L5-I05, L6-I03, L7-I0
         else expect(consumerCodeDigest(k), `${k}: unchanged by B22 and B23 (a2303ff's)`).toBe(DIGESTS_A2303FF[k]);
       } else expect(consumerCodeDigest(k), `${k}: unchanged since 13ed40c`).toBe(DIGESTS_13ED40C[k as PriorKind]);
     }
-    expect(new Set(CONSUMER_KINDS.map((k) => consumerCodeDigest(k))).size).toBe(11);
+    expect(new Set(CONSUMER_KINDS.map((k) => consumerCodeDigest(k))).size).toBe(13); // 0088 (B28): + warnings, stream-rules
     const st = (await statusOf()).subscriptions;
-    for (const k of CONSUMER_KINDS) {
+    for (const k of PRE_B28_KINDS) {
       expect(st.consumers.find((x) => x['kind'] === k), k).toMatchObject({ registeredInThisProcess: true, codeDigest: consumerCodeDigest(k), version: '1.0.0' });
       const live = st.subscriptions.find((s) => s['consumer_kind'] === k && s['status'] === 'active')!;
       expect(live, k).toMatchObject({ code_digest: consumerCodeDigest(k), consumer_version: '1.0.0' });

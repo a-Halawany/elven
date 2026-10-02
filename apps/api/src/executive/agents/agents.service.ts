@@ -15,6 +15,11 @@
  *                    attention tick — the registered steps (escalate, rebalance, deliveries)
  *                    in ONE governed write under executive.attention.tick; a drifted digest
  *                    is refused and recorded; it sets no policy and acknowledges nothing.
+ *   Weak Signal      (B28, 0088 §S6; AG-031) runs the detectors and nominates what fired
+ *   agent            (prediction.signal.nominate), then ranks the live signals
+ *                    (prediction.signal.rank) — NOMINATE AND RANK ONLY: its attempt at a
+ *                    disposition is refused at the PDP and recorded on the run; a drifted
+ *                    digest is refused and recorded.
  * Every run is opened and closed by the agent under its own session, with its trigger;
  * every output carries the agent's identity, version and method. Nothing learns.
  *
@@ -43,21 +48,28 @@ import type { Tx } from '../../shared/db.js';
 import { AttentionTickRegistry } from '../attention/tick.js';
 import { ATTENTION_TIMER_DIGEST, ATTENTION_TIMER_METHOD, ATTENTION_TIMER_VERSION, cadenceOf } from '../attention/timer-identity.js';
 /* end B24 timer */
+/* B28 (0088) signals: the Weak Signal Agent — its identity and the two capabilities it holds (nominate, rank); the disposition it is refused */
+import { WEAK_SIGNAL_AGENT_DIGEST, WEAK_SIGNAL_AGENT_METHOD, WEAK_SIGNAL_AGENT_VERSION } from '../../prediction/signals/signal-agent-identity.js';
+import { SignalsCapability } from '../../prediction/signals/signals.capabilities.js';
+/* end B28 signals */
 
-export type AgentKind = 'decision' | 'briefing' | 'reporting' | /* B24 (0086) timer */ 'attention' /* end B24 timer */;
-export type AgentTask = 'draft' | 'briefing' | 'report' | 'monitor' | /* B24 (0086) timer */ 'attention_tick' /* end B24 timer */;
-const ROLE_OF: Record<AgentKind, string> = { decision: 'decision_agent', briefing: 'briefing_agent', reporting: 'reporting_agent', /* B24 (0086) timer */ attention: 'attention_agent' /* end B24 timer */ };
-const METHOD_OF: Record<AgentKind, string> = { decision: 'decision-agent-option-cards@1.0.0', briefing: 'briefing-agent@1.0.0', reporting: 'reporting-agent@1.0.0', /* B24 (0086) timer */ attention: ATTENTION_TIMER_METHOD /* end B24 timer */ };
+export type AgentKind = 'decision' | 'briefing' | 'reporting' | /* B24 (0086) timer */ 'attention' /* end B24 timer */ | /* B28 (0088) signals */ 'weak_signal' /* end B28 signals */;
+export type AgentTask = 'draft' | 'briefing' | 'report' | 'monitor' | /* B24 (0086) timer */ 'attention_tick' /* end B24 timer */ | /* B28 (0088) signals */ 'signal_scan' /* end B28 signals */;
+const ROLE_OF: Record<AgentKind, string> = { decision: 'decision_agent', briefing: 'briefing_agent', reporting: 'reporting_agent', /* B24 (0086) timer */ attention: 'attention_agent' /* end B24 timer */,
+  /* B28 (0088) signals */ weak_signal: 'weak_signal_agent' /* end B28 signals */ };
+const METHOD_OF: Record<AgentKind, string> = { decision: 'decision-agent-option-cards@1.0.0', briefing: 'briefing-agent@1.0.0', reporting: 'reporting-agent@1.0.0', /* B24 (0086) timer */ attention: ATTENTION_TIMER_METHOD /* end B24 timer */,
+  /* B28 (0088) signals */ weak_signal: WEAK_SIGNAL_AGENT_METHOD /* end B28 signals */ };
 const CLEARANCE_RANK: Record<string, number> = { public: 0, internal: 1, confidential: 2, restricted: 3 };
 /** The stop conditions this runtime implements; any other kind is refused at registration (here and at the port). */
 export const SUPPORTED_STOP_CONDITIONS = ['max_items', 'on_degraded'] as const;
 /** Which agent kinds enforce each condition in their task (registration refuses any other pairing, here and at the port). */
-export const STOP_CONDITION_KINDS: Readonly<Record<string, readonly AgentKind[]>> = Object.freeze({ max_items: ['decision', 'briefing'], on_degraded: ['briefing'] });
+export const STOP_CONDITION_KINDS: Readonly<Record<string, readonly AgentKind[]>> = Object.freeze({ max_items: ['decision', 'briefing', /* B28 (0088) signals: the scan's nominations */ 'weak_signal' /* end B28 signals */], on_degraded: ['briefing'] });
 
 export interface RegisterAgentIntake { kind: AgentKind; version: string; codeDigest: string; ownerPrincipalId: string; escalationPrincipalId: string; budgets: Record<string, unknown>; stopConditions: unknown[] }
 export function validateRegisterAgent(m: Partial<RegisterAgentIntake>, correlationId: string): RegisterAgentIntake {
   const bad = (msg: string): never => { throw new HttpException(errorBody('EYE_REQ_001', correlationId, msg), 422); };
-  if (m.kind !== 'decision' && m.kind !== 'briefing' && m.kind !== 'reporting' && /* B24 (0086) timer */ m.kind !== 'attention' /* end B24 timer */) bad('kind is decision, briefing, reporting or attention');
+  if (m.kind !== 'decision' && m.kind !== 'briefing' && m.kind !== 'reporting' && /* B24 (0086) timer */ m.kind !== 'attention' /* end B24 timer */
+      && /* B28 (0088) signals */ m.kind !== 'weak_signal' /* end B28 signals */) bad('kind is decision, briefing, reporting, attention or weak_signal');
   if (typeof m.version !== 'string' || !/^[0-9]+\.[0-9]+\.[0-9]+$/.test(m.version)) bad('version must be semver');
   if (typeof m.codeDigest !== 'string' || !/^[0-9a-f]{64}$/.test(m.codeDigest)) bad('codeDigest must be 64 hex');
   /* B24 (0086) timer: the attention agent is registered with THIS runtime's timer identity (a changed method is a new digest — register anew) */
@@ -70,6 +82,11 @@ export function validateRegisterAgent(m: Partial<RegisterAgentIntake>, correlati
     if (tick !== undefined && (!Number.isInteger(tick) || Number(tick) < 60 || Number(tick) > 86_400)) bad('budget tick_every_seconds is a whole number of seconds in [60, 86400]');
   }
   /* end B24 timer */
+  /* B28 (0088) signals: the Weak Signal Agent is registered with THIS runtime's scan (a changed method is a new digest — register anew) */
+  if (m.kind === 'weak_signal' && (m.version !== WEAK_SIGNAL_AGENT_VERSION || m.codeDigest !== WEAK_SIGNAL_AGENT_DIGEST)) {
+    bad(`a weak_signal agent is registered with this runtime's scan: version ${WEAK_SIGNAL_AGENT_VERSION}, codeDigest ${WEAK_SIGNAL_AGENT_DIGEST} (${WEAK_SIGNAL_AGENT_METHOD})`);
+  }
+  /* end B28 signals */
   if (typeof m.ownerPrincipalId !== 'string' || typeof m.escalationPrincipalId !== 'string') bad('ownerPrincipalId and escalationPrincipalId name humans');
   const b = m.budgets ?? {};
   if (typeof b !== 'object' || b === null || !Number.isInteger(b['max_reads']) || !Number.isInteger(b['max_gateway_calls']) || !Number.isInteger(b['max_elapsed_ms'])) bad('budgets name integer max_reads, max_gateway_calls and max_elapsed_ms');
@@ -209,7 +226,9 @@ export class AgentsService {
   async run(a: { agentId: string; tenantId: string; domainId: string; task: AgentTask; trigger: { kind: 'operator' | 'scheduler' | 'request'; principalId: string | null; ref: string | null };
                  roomId: string | null; packageId: string | null; version: number | null; correlationId: string;
                  /* B24 (0086) timer: the attention tick's scheduled instant (the job's; null → the database clock) and cadence (null → the registration's) */
-                 tick?: { scheduledAt: string | null; cadenceSeconds: number | null } /* end B24 timer */ }): Promise<RunOutcome> {
+                 tick?: { scheduledAt: string | null; cadenceSeconds: number | null } /* end B24 timer */;
+                 /* B28 (0088) signals: the scan's event-time as-of day (null → each subject's latest observation) */
+                 scan?: { asOf: string | null } /* end B28 signals */ }): Promise<RunOutcome> {
     const T = a.tenantId; const D = a.domainId;
     let principal: AuthenticatedPrincipal; let registration: Awaited<ReturnType<DecisionAgentSessionService['openRunSession']>>['registration'];
     try {
@@ -236,6 +255,9 @@ export class AgentsService {
       /* B24 (0086) timer */
       else if (a.task === 'attention_tick') outputs = await this.attentionTick(principal, T, D, runId, registration, meter, refusals, a.correlationId, identity, a.tick ?? { scheduledAt: null, cadenceSeconds: null });
       /* end B24 timer */
+      /* B28 (0088) signals */
+      else if (a.task === 'signal_scan') outputs = await this.signalScan(principal, T, D, runId, registration, meter, stops, refusals, a.correlationId, identity, a.scan ?? { asOf: null });
+      /* end B28 signals */
       else outputs = await this.report(principal, T, D, a.packageId, budget, meter, a.correlationId, identity);
       if (outputs['refused'] === true) { outcome = 'refused'; stopReason = String(outputs['reason']); }
     } catch (e) {
@@ -381,9 +403,62 @@ export class AgentsService {
         await cap.finishTick({ tickId, tenantId: T, domainId: D, tickKey, scheduledAt: String(begun['scheduled_at']), cadenceSeconds: cadence, runId, result: { steps, order }, correlationId });
         return { result: { tick_id: tickId, tick_key: tickKey, cadence_seconds: cadence, scheduled_at: begun['scheduled_at'], repeated: false, order, steps } as Record<string, unknown>, targetType: 'ATI', targetId: null, targetVersion: null, outboxEvent: null };
       });
-    return { ...out.result, tick_receipt: { policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq }, marked: 'agent-produced', agent: identity, provenance };
+    /* B28 (0088) integrator: the after-tick hooks, each its own governed write under this session, once the tick has committed */
+    const after: Record<string, unknown> = {};
+    if (out.result['repeated'] !== true) {
+      for (const h of this.ticks.afterTick()) {
+        try { after[h.name] = await h.run({ principal: p, tenantId: T, domainId: D, correlationId, steps: (out.result['steps'] ?? {}) as Record<string, unknown> }); }
+        catch (e) { after[h.name] = { error: String((e as Error)?.message ?? e).slice(0, 500) }; }
+      }
+    }
+    /* end B28 integrator */
+    return { ...out.result, after, tick_receipt: { policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq }, marked: 'agent-produced', agent: identity, provenance };
   }
   /* end B24 timer */
+
+  /* B28 (0088) signals ───────────────────────── the Weak Signal Agent ───────────────────────── */
+  /**
+   * THE SCAN (AG-031, OBJ-17). The registration the session port read must name THIS runtime's scan (version and digest): a drifted agent's
+   * run is refused — recorded with the reason and escalated — never run under a stale identity. Otherwise TWO governed writes under the
+   * agent's own session: prediction.signal.nominate (prediction.scan_signals — every available detector, every reading recorded once, the
+   * fired and not held readings nominated with nominator `agent`, at most the registered max_items) and prediction.signal.rank
+   * (prediction.rank_signals). The agent's contract ends there: its attempt to DISPOSE of the top signal is refused at the PDP and recorded
+   * on the run (the decision agent's precedent: the boundary is exercised, not assumed).
+   */
+  private async signalScan(p: AuthenticatedPrincipal, T: string, D: string, runId: string, registration: { agent_version: string; code_digest: string },
+                           meter: Meter, stops: Array<Record<string, unknown>>, refusals: Refusal[], correlationId: string, identity: Record<string, unknown>, scan: { asOf: string | null }) {
+    const provenance = { purpose: 'prediction', package_id: null, room_id: null, classification: 'internal', contributors: [] as string[] };
+    if (registration.agent_version !== WEAK_SIGNAL_AGENT_VERSION || registration.code_digest !== WEAK_SIGNAL_AGENT_DIGEST) {
+      const reason = `signal scan refused (drift): the agent is registered as ${registration.agent_version} with code digest ${registration.code_digest.slice(0, 12)}…; this runtime's scan is ${WEAK_SIGNAL_AGENT_VERSION} with ${WEAK_SIGNAL_AGENT_DIGEST.slice(0, 12)}… — the agent is registered anew before it scans`;
+      refusals.push({ action: 'prediction.signal.nominate', code: 'EYE-AUT-001', reason, at: new Date().toISOString() });
+      return { refused: true, reason, marked: 'agent-produced', agent: identity, provenance };
+    }
+    const maxItems = stops.filter((s) => s['kind'] === 'max_items').map((s) => Number(s['value'])).reduce<number | null>((acc, v) => (acc === null ? v : Math.min(acc, v)), null);
+    meter.read('the detectors\' scan');
+    const scanned = await this.pipeline.write(this.env(p, T, D, 'prediction.signal.nominate', 'SIG', null, correlationId, 'prediction'), p, this.route(T, D, 'prediction.signal.nominate', 'SIG', null), SignalsCapability.nominate,
+      async (cap) => ({ result: await cap.scan({ tenantId: T, domainId: D, asOf: scan.asOf, runId, maxItems, actor: p.principalId, correlationId }), targetType: 'SIG', targetId: null, targetVersion: null, outboxEvent: null }));
+    meter.read('the rank');
+    const ranked = await this.pipeline.write(this.env(p, T, D, 'prediction.signal.rank', 'SIG', null, correlationId, 'prediction'), p, this.route(T, D, 'prediction.signal.rank', 'SIG', null), SignalsCapability.rank,
+      async (cap) => ({ result: await cap.rank({ tenantId: T, domainId: D, runId, actor: p.principalId, correlationId }), targetType: 'SIG', targetId: null, targetVersion: null, outboxEvent: null }));
+    const ordering = (ranked.result['ordering'] ?? []) as Array<Record<string, unknown>>;
+    const top = typeof ordering[0]?.['signal_id'] === 'string' ? String(ordering[0]['signal_id']) : null;
+    // The agent nominates and ranks; a disposition is a named human's. Its attempt is refused at the PDP (no grant) and recorded.
+    try {
+      await this.pipeline.write(this.env(p, T, D, 'prediction.signal.dispose', 'SIG', top, correlationId, 'prediction'), p, this.route(T, D, 'prediction.signal.dispose', 'SIG', top), SignalsCapability.disposition,
+        async () => ({ result: null, targetType: 'SIG', targetId: top, targetVersion: null, outboxEvent: null }));
+    } catch (e) {
+      if (e instanceof HttpException && e.getStatus() === 403) refusals.push({ action: 'prediction.signal.dispose', code: String((e.getResponse() as { code?: string }).code ?? 'EYE-AUT-001'), reason: String((e.getResponse() as { message?: string }).message ?? ''), at: new Date().toISOString() });
+      else throw e;
+    }
+    const s = scanned.result;
+    const list = (k: string): Array<Record<string, unknown>> => (Array.isArray(s[k]) ? (s[k] as Array<Record<string, unknown>>) : []);
+    return { as_of: scan.asOf, nominator_kind: s['nominator_kind'], detections: list('detections').length, nominated: list('nominated').map((x) => ({ signal_id: x['signal_id'], title: x['title'], detector: x['detector'], measure: x['measure'] })),
+             repeated: list('repeated').length, held: list('held'), waiting: list('waiting'), absent: list('absent'), max_items: maxItems,
+             ranking: { ranking_id: ranked.result['ranking_id'], top, places: ordering.length, rule: ranked.result['rule'] },
+             receipts: { scan: { policyDecisionId: scanned.policyDecisionId, auditSeq: scanned.auditSeq }, rank: { policyDecisionId: ranked.policyDecisionId, auditSeq: ranked.auditSeq } },
+             marked: 'agent-produced', agent: identity, provenance: { ...provenance, contributors: list('nominated').map((x) => `SIG:${String(x['signal_id'])}`) } };
+  }
+  /* end B28 signals */
 
   // ───────────────────────── the reporting agent ─────────────────────────
   private async report(p: AuthenticatedPrincipal, T: string, D: string, packageId: string | null, budget: Record<string, unknown>, meter: Meter, correlationId: string, identity: Record<string, unknown>) {

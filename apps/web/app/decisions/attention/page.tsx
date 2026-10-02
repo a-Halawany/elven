@@ -41,6 +41,9 @@ import { SuppressionPanel } from './suppression-panel';
 import { EvaluationPanel } from './evaluation-panel';
 import { EVALUATOR_ROLES } from '../../../lib/attention-governance';
 /* end B24 governance */
+/* B28 (0088) remediation: the remediation of a source's coverage loss, opened from its coverage-loss item */
+import { RemediationPanel } from './remediation-panel';
+/* end B28 remediation */
 
 type ReceiptT = { policyDecisionId: string; auditSeq: number } | null;
 const str = (v: unknown) => (v === null || v === undefined || v === '' ? '—' : String(v));
@@ -373,6 +376,9 @@ export default function AttentionPage() {
       {/* B24 (0086) markers */}
       <MarkersPanel scope={scope} />
       {/* end B24 markers */}
+      {/* B28 (0088) remediation */}
+      <RemediationPanel scope={scope} me={me} item={detail !== null && detail.signal_class === 'source.coverage_loss' && detail.subject_kind === 'source' ? { itemId: detail.item_id, sourceId: detail.subject_id, title: detail.title } : null} />
+      {/* end B28 remediation */}
       {/* B24 (0086) governance */}
       <SuppressionPanel scope={scope} me={me} item={detail === null ? null : { itemId: detail.item_id, title: detail.title }} />
       <EvaluationPanel scope={scope} mayEvaluate={me.bindings.some((b) => (EVALUATOR_ROLES as readonly string[]).includes(b.roleCode) && (b.scope === 'PLATFORM' || (b.scope === 'DOMAIN' && b.domainId === scope.domainId)))} />

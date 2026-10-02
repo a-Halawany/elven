@@ -381,6 +381,9 @@ export function overloadRuleLine(r: OverloadRule | null): string {
 /** The further dimensions of an item in words — a dimension with no input says so (never a guessed value). */
 export function furtherLine(dims: Record<string, unknown>): string {
   const parts = FURTHER_DIMENSIONS.filter((k) => k in dims).map((k) => `${k.replace(/_/g, ' ')} ${dims[k] === null || dims[k] === undefined ? '— no input' : String(dims[k])}`);
+  /* B28 (0088) signals: the novelty input (the weak-signal novelty detector's measure), shown where the item's dimensions carry it */
+  if ('novelty' in dims) parts.push(`novelty ${dims['novelty'] === null || dims['novelty'] === undefined ? '— no input' : String(dims['novelty'])}`);
+  /* end B28 signals */
   return parts.length === 0 ? 'judged before 0086: no further dimension recorded' : parts.join(' · ');
 }
 /* end B24 materiality */

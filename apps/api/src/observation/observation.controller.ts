@@ -34,6 +34,10 @@ import { asObservationRefusal } from './observation-errors.js';
 // B24 (0086) markers
 import { SourceImpactCapability } from './impact/source-impact.capabilities.js';
 import { SourceImpactService, type MarkersFilter } from './impact/source-impact.service.js';
+// B28 (0088) remediation
+import { CoverageRemediationCapability } from './impact/coverage-remediation.capabilities.js';
+import { CoverageRemediationService, type CloseIntake, type ListFilter, type OpenIntake, type StepIntake, type WithdrawIntake } from './impact/coverage-remediation.service.js';
+// end B28 remediation
 
 function ctx(req: EyeRequest) {
   const envelope = req.eyeEnvelope;
@@ -1047,4 +1051,113 @@ export class ObservationController {
     return { ...out.result, receipt: receipt(out) };
   }
   /* end B24 markers */
+
+  /* B28 (0088) remediation */
+  // THE REMEDIATION WORKFLOW ON SOURCE COVERAGE LOSS (the B24 carryover (a)): a source.coverage_loss attention item is answered by a
+  // remediation — opened by the item's owner or a collection manager, owned by a named collection manager, with its gap, its steps (a
+  // fallback source, a named re-collection run, the gap accepted by a second person) and its closure (recovered only while the source is
+  // healthy — automatically when the source-health subscriber applies the recovery — or gap accepted). Every write is human-gated (exact
+  // PDP rules `observation.coverage_remediation.*`); the ports judge the rest and refuse in their own words. The service is stateless.
+  private readonly remediation = new CoverageRemediationService();
+
+  @Post('/sources/:sourceId/remediations/list')
+  async listRemediations(
+    @Req() req: EyeRequest,
+    @Param('tenantId') tenantId: string,
+    @Param('domainId') domainId: string,
+    @Param('sourceId') sourceId: string,
+    @Body() body: { payload?: ListFilter },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(
+      envelope, principal,
+      { scope: 'DOMAIN', tenantId, domainId, action: 'observation.coverage_remediation.read', objectType: 'SRC', objectId: sourceId },
+      CoverageRemediationCapability.read,
+      async (cap, scope) => this.remediation.list(cap, scope, sourceId, body.payload ?? {}, envelope.correlation_id));
+    return { ...out.result, receipt: receipt(out) };
+  }
+
+  @Post('/sources/:sourceId/remediations/open')
+  async openRemediation(
+    @Req() req: EyeRequest,
+    @Param('tenantId') tenantId: string,
+    @Param('domainId') domainId: string,
+    @Param('sourceId') sourceId: string,
+    @Body() body: { payload?: OpenIntake },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.write(
+      envelope, principal,
+      { scope: 'DOMAIN', tenantId, domainId, action: 'observation.coverage_remediation.open', objectType: 'SRC', objectId: sourceId },
+      CoverageRemediationCapability.write,
+      async (cap, scope) => {
+        const r = await this.remediation.open(cap, scope, sourceId, body.payload ?? {}, principal.principalId, envelope.correlation_id);
+        return { result: r, targetType: 'CRM', targetId: r.remediation_id, targetVersion: '1', outboxEvent: null };
+      });
+    return { remediation: out.result, receipt: receipt(out) };
+  }
+
+  @Post('/sources/:sourceId/remediations/:remediationId/step')
+  async remediationStep(
+    @Req() req: EyeRequest,
+    @Param('tenantId') tenantId: string,
+    @Param('domainId') domainId: string,
+    @Param('sourceId') sourceId: string,
+    @Param('remediationId') remediationId: string,
+    @Body() body: { payload?: StepIntake },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.write(
+      envelope, principal,
+      { scope: 'DOMAIN', tenantId, domainId, action: 'observation.coverage_remediation.step', objectType: 'SRC', objectId: sourceId },
+      CoverageRemediationCapability.write,
+      async (cap, scope) => {
+        const r = await this.remediation.step(cap, scope, sourceId, remediationId, body.payload ?? {}, principal.principalId, envelope.correlation_id);
+        return { result: r, targetType: 'CRM', targetId: remediationId, targetVersion: String(r['steps'] ?? ''), outboxEvent: null };
+      });
+    return { remediation: out.result, receipt: receipt(out) };
+  }
+
+  @Post('/sources/:sourceId/remediations/:remediationId/close')
+  async closeRemediation(
+    @Req() req: EyeRequest,
+    @Param('tenantId') tenantId: string,
+    @Param('domainId') domainId: string,
+    @Param('sourceId') sourceId: string,
+    @Param('remediationId') remediationId: string,
+    @Body() body: { payload?: CloseIntake },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.write(
+      envelope, principal,
+      { scope: 'DOMAIN', tenantId, domainId, action: 'observation.coverage_remediation.close', objectType: 'SRC', objectId: sourceId },
+      CoverageRemediationCapability.write,
+      async (cap, scope) => {
+        const r = await this.remediation.close(cap, scope, sourceId, remediationId, body.payload ?? {}, principal.principalId, envelope.correlation_id);
+        return { result: r, targetType: 'CRM', targetId: remediationId, targetVersion: r.state, outboxEvent: null };
+      });
+    return { remediation: out.result, receipt: receipt(out) };
+  }
+
+  @Post('/sources/:sourceId/remediations/:remediationId/withdraw')
+  async withdrawRemediation(
+    @Req() req: EyeRequest,
+    @Param('tenantId') tenantId: string,
+    @Param('domainId') domainId: string,
+    @Param('sourceId') sourceId: string,
+    @Param('remediationId') remediationId: string,
+    @Body() body: { payload?: WithdrawIntake },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.write(
+      envelope, principal,
+      { scope: 'DOMAIN', tenantId, domainId, action: 'observation.coverage_remediation.withdraw', objectType: 'SRC', objectId: sourceId },
+      CoverageRemediationCapability.write,
+      async (cap, scope) => {
+        const r = await this.remediation.withdraw(cap, scope, sourceId, remediationId, body.payload ?? {}, principal.principalId, envelope.correlation_id);
+        return { result: r, targetType: 'CRM', targetId: remediationId, targetVersion: r.state, outboxEvent: null };
+      });
+    return { remediation: out.result, receipt: receipt(out) };
+  }
+  /* end B28 remediation */
 }

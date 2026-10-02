@@ -452,6 +452,9 @@ const BUNDLE_V1: Rule[] = [
       { role: 'platform_admin', atScope: 'PLATFORM' },
       { role: 'forecast_owner', atScope: 'DOMAIN' },
       { role: 'forecast_agent', atScope: 'DOMAIN' },
+      /* B28 (0088) integrator: the attention agent raises a candidate owed a warning after its tick (the warning-candidate intake, 0088 §0/§W) */
+      { role: 'attention_agent', atScope: 'DOMAIN' },
+      /* end B28 integrator */
     ],
     requiresPurpose: true,
   },
@@ -606,6 +609,11 @@ const BUNDLE_V1: Rule[] = [
     requiresPurpose: true,
     maxConsequence: 'C2',
   },
+  /* B28 (0088) signals: the Weak Signal Agent opens and closes its own runs — an EXACT `agent.run` rule INSERTED before B24's exact rule
+     (the first match wins, and B24's names the four agents before it): the same four and the weak_signal agent. B24's rule below is kept
+     as it was (it now matches nothing this one does not); the integrator may fold the two. */
+  { actionPrefix: 'agent.run', exact: true, requiredAnyRole: [{ role: 'decision_agent', atScope: 'DOMAIN' }, { role: 'briefing_agent', atScope: 'DOMAIN' }, { role: 'reporting_agent', atScope: 'DOMAIN' }, { role: 'attention_agent', atScope: 'DOMAIN' }, { role: 'weak_signal_agent', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B28 signals */
   /* B24 (0086) timer: the attention agent (the timer host's principal) opens and closes its own runs — an EXACT `agent.run` rule placed
      before the prefix rule below (which it would otherwise meet first): the three agents of P6-M6 and the attention agent. */
   { actionPrefix: 'agent.run', exact: true, requiredAnyRole: [{ role: 'decision_agent', atScope: 'DOMAIN' }, { role: 'briefing_agent', atScope: 'DOMAIN' }, { role: 'reporting_agent', atScope: 'DOMAIN' }, { role: 'attention_agent', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
@@ -1269,6 +1277,31 @@ const BUNDLE_V1: Rule[] = [
     obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
   { actionPrefix: 'decision.source_impact.acknowledge', exact: true, requiredAnyRole: [{ role: 'decision_authority', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   /* end B24 markers */
+  /* B28 (0088) remediation */
+  /*
+   * THE REMEDIATION WORKFLOW ON SOURCE COVERAGE LOSS (the B24 carryover (a)). EXACT rules, placed before the catch-all `observation.`
+   * rule (which would otherwise answer every `observation.coverage_remediation.*` action for the collection roles AND the collection
+   * agent); no earlier prefix rule matches `observation.coverage_remediation` (`observation.correction.*` and `observation.read` are
+   * not its prefixes).
+   *   * READING a source's remediations is an audited read for the people who answer for the source and for what rests on it — the
+   *     same holders as the source-impact markers' read.
+   *   * OPENING, a STEP, CLOSING and WITHDRAWING are HUMAN-GATED acts of the humans who work the attention queue's coverage losses —
+   *     the collection manager (the class's route role), the domain administrator (its escalation role), the analyst and the
+   *     executive (an item delegated to them); never the collection agent. The PORTS decide the rest: the opener is the item's owner
+   *     or a collection_manager; a fallback or a re-collection is recorded by the remediation's owner or a collection_manager; the
+   *     gap is accepted by a SECOND person (never the owner) holding collection_manager or domain_admin.
+   */
+  { actionPrefix: 'observation.coverage_remediation.read', exact: true, requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'collection_manager', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' },
+      { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_approver', atScope: 'DOMAIN' },
+      { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'observation.coverage_remediation.open', exact: true, requiredAnyRole: [{ role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'collection_manager', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'observation.coverage_remediation.step', exact: true, requiredAnyRole: [{ role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'collection_manager', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'observation.coverage_remediation.close', exact: true, requiredAnyRole: [{ role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'collection_manager', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'observation.coverage_remediation.withdraw', exact: true, requiredAnyRole: [{ role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'collection_manager', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B28 remediation */
   {
     // The COLLECTION surface: run lifecycle, admission, quarantine, checkpoints,
     // coverage measurement and sweeper reconciliation. Held by the agent role and
@@ -1355,6 +1388,58 @@ const BUNDLE_V1: Rule[] = [
   { actionPrefix: 'executive.attention.disposition.record', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'decision_approver', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }, { role: 'collection_manager', atScope: 'DOMAIN' }, { role: 'extraction_manager', atScope: 'DOMAIN' }, { role: 'knowledge_owner', atScope: 'DOMAIN' }, { role: 'resolution_manager', atScope: 'DOMAIN' }, { role: 'record_authority', atScope: 'DOMAIN' }, { role: 'retention_steward', atScope: 'DOMAIN' }, { role: 'ontology_steward', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   { actionPrefix: 'executive.attention.queue.evaluate', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   /* end B24 governance */
+  /* B28 (0088) warnings: THE EARLY-WARNING LIFECYCLE (0088 §W; F-P4-12). Every rule EXACT and named outside the two prefix rules of the
+     warnings (`prediction.warning.raise`, `prediction.warning.acknowledge` — neither is a prefix of these actions), so no earlier rule answers.
+     PROCESSING the candidate intake is the raisers' act (a raise-due candidate is raised in its own write under prediction.warning.raise, whose
+     prefix rule admits the forecast owner and the platform administrator): the forecast owner, human-gated — the tick does the same under its
+     own action (executive.attention.tick) and never raises in that write — the attention agent raises the owed candidates right after it (0088 §I, under prediction.warning.raise). The CONTEXT and the CLOSURE are the owner's (the port: the warning's routed_to, or a
+     domain administrator) among the domain's foresight roles, human-gated. FEEDBACK is any named human of the domain's decision and foresight
+     roles, human-gated (the port re-checks a named human). The EVALUATION is the executive's or the domain administrator's, human-gated; its
+     list is a read of the same people plus the foresight owners and the auditors. The warnings CONSUMER holds exactly its action. */
+  { actionPrefix: 'prediction.warning.candidates.process', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'forecast_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'prediction.warning.context.set', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'prediction.warning.close', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'prediction.warning.feedback', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'decision_approver', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }, { role: 'collection_manager', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'prediction.warning.evaluate', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'prediction.warning.evaluations.read', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }], obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'prediction.warning.subscription.apply', exact: true, requiredAnyRole: [{ role: 'warning_subscriber', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B28 warnings */
+  /* B28 (0088) signals: THE WEAK-SIGNAL WORKBENCH (F-P4-10; PR-25-003 "AI may nominate and rank weak signals; humans decide strategic
+     relevance, escalation, collection changes, and incorporation into assessments"). EXACT rules — no earlier rule's prefix is a prefix of
+     `prediction.signal.*` (`prediction.read`, `prediction.series.register`, … are other names) or of `prediction.indicator.govern|retire|renew`
+     (`prediction.indicator.define` and `.evaluate` are other names). NOMINATE and RANK: the domain's analysts and owners, and the Weak Signal
+     Agent (its only two actions; no human gate — the agent is a machine; the port records which kind nominated). EVERY OTHER act is a NAMED
+     HUMAN's, human-gated: adding evidence (corroboration), the independence test, the disposition, the conditions, the escalation (the
+     intake's admitted action, 0088 §0) — the ports refuse the nominator's own disposition. Reading the workbench is prediction.read. THE
+     INDICATOR REGISTRY's governance (classification, expiry, review cadence, lineage note; retire; renew): the stewards who may define an
+     indicator, human-gated. */
+  { actionPrefix: 'prediction.signal.nominate', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'weak_signal_agent', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'prediction.signal.rank', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'weak_signal_agent', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'prediction.signal.evidence.add', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'prediction.signal.independence.test', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'prediction.signal.dispose', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'prediction.signal.conditions.set', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'prediction.signal.escalate', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'prediction.indicator.govern', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'prediction.indicator.retire', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'prediction.indicator.renew', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B28 signals */
+  /* B28 (0088) streams: THE EVENT-TIME STREAM PROCESSORS (F-P4-11). EXACT rules — no rule's prefix is a prefix of `prediction.stream.*` (the
+     prediction prefix rules read prediction.read / .series.register / .forecast.issue / .backtest.record / .outcome.record / .scenario.declare /
+     .indicator.define / .indicator.evaluate / .warning.raise / .warning.acknowledge). What an organisation's stream WATCHES FOR is a person's act:
+     defining and activating a rule version are human-gated, for the domain administrator, the strategy owner and the forecast owner (the platform
+     administrator at its scope); starting a processor and reconciling its offsets are the same roles' operational acts (the collection manager may
+     reconcile, the stream's acquisition being theirs); RECOVERING a processor and RETRACTING a signal are human-gated. The stream-rules consumer
+     holds exactly prediction.stream.subscription.apply (0088 §0: its role stream_rule_subscriber) — the one action the warning-candidate intake
+     admits for a stream. The reads are prediction.read. */
+  { actionPrefix: 'prediction.stream.rule.define', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'prediction.stream.rule.activate', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'prediction.stream.processor.start', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'prediction.stream.processor.reconcile', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'collection_manager', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'prediction.stream.processor.recover', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'prediction.stream.signal.retract', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'prediction.stream.subscription.apply', exact: true, requiredAnyRole: [{ role: 'stream_rule_subscriber', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B28 streams */
 ];
 
 const CONSEQ_ORDER: ConsequenceClass[] = ['C0', 'C1', 'C2', 'C3', 'C4'];

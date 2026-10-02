@@ -160,7 +160,7 @@ describe('B23 · the vocabularies, the PDP rules and the consumer identities', (
   it('the decisions and attention identities changed with their methods; all eleven distinct', () => {
     // the digests main (5165a97) serves — the B21/B22 unit file's pins (phase6-fitness-events-b21.test.ts DIGESTS_A2303FF.decisions)
     expect(consumerCodeDigest('decisions')).not.toBe('6e283700b3b7d74c0699e6c565a4da6c0558b015d749e6f8a6d56426b07b6e5f');
-    expect(new Set(CONSUMER_KINDS.map((k) => consumerCodeDigest(k))).size).toBe(11);
+    expect(new Set(CONSUMER_KINDS.map((k) => consumerCodeDigest(k))).size).toBe(13); // 0088 (B28): + warnings, stream-rules
   });
   it('the PDP: exact rules — convening human-gated for the six roles, an analyst refused, closing and reading open wider', () => {
     const pdp = new PdpService();

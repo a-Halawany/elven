@@ -38,6 +38,10 @@ import { SchedulerService, propagationQueueNameFor, redisName, subscriptionQueue
 import { SubscriptionDispatcherService } from '../../src/graph/subscriptions/subscription-dispatcher.service.js';
 import { SubscriptionSessionService, SubscriptionGrantRefused } from '../../src/graph/subscriptions/subscription-session.service.js';
 import { CONSUMER_EVENT_TYPES, CONSUMER_KINDS, CONSUMER_ROLE, CONSUMER_VERSION, consumerCodeDigest, type ConsumerKind } from '../../src/graph/subscriptions/graph-change.js';
+/* B28 (0088): the `warnings` and `stream-rules` kinds are exercised by their own harnesses (phase6-warnings-b28, phase6-streams-b28); this
+   file registers and counts the kinds it was written for. */
+const PRE_B28_KINDS = CONSUMER_KINDS.filter((k) => k !== 'warnings' && k !== 'stream-rules');
+/* end B28 */
 import { Phase4Harness, SERIES_START, SERIES_END, syntheticEgress } from './phase4-helpers.js';
 import type { TwinController } from '../../src/twin/twin.controller.js';
 import type { GraphController } from '../../src/graph/graph.controller.js';
@@ -233,7 +237,7 @@ afterAll(async () => {
 // B6's six consumer kinds. B9 (0066 §2) added a seventh, `relationships`, which selects by MemoryCorrected/claim.corrected and is
 // exercised by its own harness (phase6-graph-subscriptions-4); this file keeps the six it was written for. B22 (0083) added four more
 // (observations, source-health, proposals, attention) that select their own flat events, never GraphChanged — exercised by B22's harness.
-const B6_KINDS = CONSUMER_KINDS.filter((k) => k !== 'relationships' && CONSUMER_EVENT_TYPES[k].includes('GraphChanged'));
+const B6_KINDS = PRE_B28_KINDS.filter((k) => k !== 'relationships' && CONSUMER_EVENT_TYPES[k].includes('GraphChanged'));
 
 describe('B6 · six subscriptions, each a registered, revocable grant holding exactly its own action', () => {
   it('registration is the tenant administrator\'s: a principal of the kind\'s role on the identity authority, the subscription on the commit authority, the domain served; one live subscription per kind (AU-MEM-0112)', async () => {

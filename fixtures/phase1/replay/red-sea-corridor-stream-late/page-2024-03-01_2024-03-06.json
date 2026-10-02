@@ -1,0 +1,98 @@
+{
+  "features": [
+    {
+      "attributes": {
+        "portid": "chokepoint4",
+        "portname": "Bab el-Mandeb Strait",
+        "date": "2024-03-01",
+        "n_total": 24,
+        "n_container": 7,
+        "n_tanker": 6,
+        "capacity": 912000,
+        "synthetic": true,
+        "data_provenance": "synthetic-stream-fixture"
+      }
+    },
+    {
+      "attributes": {
+        "portid": "chokepoint4",
+        "portname": "Bab el-Mandeb Strait",
+        "date": "2024-03-02",
+        "n_total": 34,
+        "n_container": 10,
+        "n_tanker": 9,
+        "capacity": 1292000,
+        "synthetic": true,
+        "data_provenance": "synthetic-stream-fixture"
+      }
+    },
+    {
+      "attributes": {
+        "portid": "chokepoint4",
+        "portname": "Bab el-Mandeb Strait",
+        "date": "2024-03-03",
+        "n_total": 36,
+        "n_container": 11,
+        "n_tanker": 9,
+        "capacity": 1368000,
+        "synthetic": true,
+        "data_provenance": "synthetic-stream-fixture"
+      }
+    },
+    {
+      "attributes": {
+        "portid": "chokepoint4",
+        "portname": "Bab el-Mandeb Strait",
+        "date": "2024-03-04",
+        "n_total": 38,
+        "n_container": 11,
+        "n_tanker": 10,
+        "capacity": 1444000,
+        "synthetic": true,
+        "data_provenance": "synthetic-stream-fixture"
+      }
+    },
+    {
+      "attributes": {
+        "portid": "chokepoint4",
+        "portname": "Bab el-Mandeb Strait",
+        "date": "2024-03-05",
+        "n_total": 35,
+        "n_container": 11,
+        "n_tanker": 9,
+        "capacity": 1330000,
+        "synthetic": true,
+        "data_provenance": "synthetic-stream-fixture"
+      }
+    },
+    {
+      "attributes": {
+        "portid": "chokepoint4",
+        "portname": "Bab el-Mandeb Strait",
+        "date": "2024-02-23",
+        "n_total": 28,
+        "n_container": 8,
+        "n_tanker": 7,
+        "capacity": 1064000,
+        "synthetic": true,
+        "data_provenance": "synthetic-stream-fixture",
+        "planted": "DEF-L5 (planted): a revised value for 2024-02-23 (35 before)"
+      }
+    },
+    {
+      "attributes": {
+        "portid": "chokepoint4",
+        "portname": "Bab el-Mandeb Strait",
+        "date": "2024-02-02",
+        "n_total": 19,
+        "n_container": 6,
+        "n_tanker": 5,
+        "capacity": 722000,
+        "synthetic": true,
+        "data_provenance": "synthetic-stream-fixture",
+        "planted": "DEF-L6 (planted): 2024-02-02 arriving 26 days behind the watermark, beyond the allowance"
+      }
+    }
+  ],
+  "exceededTransferLimit": false
+}

@@ -23,7 +23,7 @@ type Row = Record<string, unknown>;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 /** The health states a marker carries, worst first (a failed or suspended source refuses a run on it; degraded or unknown admits it, declared). */
 export const IMPACT_STATES = ['failed', 'suspended', 'degraded', 'unknown'] as const;
-export const IMPACT_SUBJECT_KINDS = ['forecast', 'warning', 'scenario', 'run', 'package'] as const;
+export const IMPACT_SUBJECT_KINDS = ['forecast', 'warning', 'scenario', 'run', 'package', /* B28 (0088) remediation */ 'assumption' /* end B28 remediation */] as const;
 const worst = (states: string[]): string => IMPACT_STATES.find((s) => states.includes(s)) ?? 'unknown';
 const iso = (v: unknown): string | null => (v instanceof Date ? v.toISOString() : typeof v === 'string' ? v : null);
 const bad = (correlationId: string, msg: string): never => { throw new HttpException(errorBody('EYE_REQ_001', correlationId, msg), 422); };
@@ -133,6 +133,12 @@ export class SourceImpactService {
     if (pk.length > 0) for (const r of (await cap.readPackages().select(['package_id', 'title', 'state'] as never).where('package_id' as never, 'in', pk as never).execute()) as Row[]) {
       out.set(`package:${String(r['package_id'])}`, `decision package: ${String(r['title'])} (${String(r['state'])})`);
     }
+    /* B28 (0088) remediation: an assumption reached through a claim extracted from the source's evidence (or through such an assumption) */
+    const as = ids('assumption');
+    if (as.length > 0) for (const r of (await cap.readStrategy().select(['strategy_object_id', 'title', 'status', 'verification_state'] as never).where('strategy_object_id' as never, 'in', as as never).where('object_type' as never, '=', 'ASU' as never).execute()) as Row[]) {
+      out.set(`assumption:${String(r['strategy_object_id'])}`, `assumption: ${String(r['title'])} (${String(r['status'])}, ${String(r['verification_state'])})`);
+    }
+    /* end B28 remediation */
     return out;
   }
 }

@@ -307,8 +307,9 @@ describe('B21 · the consumer identities (C4): the forecasts, scenarios and deci
     for (const k of ['twins', 'retrieval', 'memory-mappings', 'relationships'] as const) expect(consumerCodeDigest(k), k).toBe(DIGESTS_13ED40C[k]);
     for (const k of ['forecasts', 'scenarios', 'decisions'] as const) expect(consumerCodeDigest(k), k).not.toBe(DIGESTS_13ED40C[k]);
     // 0083 (B22): the seven, then the four B22 adds — eleven kinds, eleven distinct identities.
-    expect([...CONSUMER_KINDS]).toEqual(['twins', 'forecasts', 'scenarios', 'decisions', 'retrieval', 'memory-mappings', 'relationships', ...B22_KINDS]);
-    expect(new Set(CONSUMER_KINDS.map((k) => consumerCodeDigest(k))).size).toBe(11);
+    // 0088 (B28): + warnings, stream-rules — thirteen kinds, thirteen distinct identities.
+    expect([...CONSUMER_KINDS]).toEqual(['twins', 'forecasts', 'scenarios', 'decisions', 'retrieval', 'memory-mappings', 'relationships', ...B22_KINDS, 'warnings', 'stream-rules']);
+    expect(new Set(CONSUMER_KINDS.map((k) => consumerCodeDigest(k))).size).toBe(13);
   });
   it('B22 (0083): the seven identities are unchanged by B22 (the four at 13ed40c\'s, the three B21 moved at a2303ff\'s); the four new kinds carry identities of their own, distinct from every earlier one', () => {
     for (const k of ['twins', 'retrieval', 'memory-mappings', 'relationships'] as const) expect(consumerCodeDigest(k), k).toBe(DIGESTS_13ED40C[k]);

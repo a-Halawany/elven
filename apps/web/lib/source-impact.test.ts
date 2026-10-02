@@ -5,7 +5,7 @@ import { ACKNOWLEDGER_ROLE, IMPACT_STATES, IMPACT_SUBJECT_KINDS, acknowledgePayl
 describe('source-impact markers are worded, never judged on the client', () => {
   it('the vocabularies are the migration\'s (observation.source_impact_markers CHECKs, the PDP rule)', () => {
     expect([...IMPACT_STATES]).toEqual(['failed', 'suspended', 'degraded', 'unknown']);
-    expect([...IMPACT_SUBJECT_KINDS]).toEqual(['forecast', 'warning', 'scenario', 'run', 'package']);
+    expect([...IMPACT_SUBJECT_KINDS]).toEqual(['forecast', 'warning', 'scenario', 'run', 'package', 'assumption']);
     expect(ACKNOWLEDGER_ROLE).toBe('decision_authority');
   });
   it('every state has glyph + word + token (never colour alone)', () => {
@@ -25,6 +25,8 @@ describe('source-impact markers are worded, never judged on the client', () => {
     expect(constraintLine('forecast', 'unknown')).toMatch(/admitted/);
     expect(constraintLine('package', 'degraded')).toMatch(/decision authority acknowledges the impact for that version/);
     expect(constraintLine('run', 'suspended')).toMatch(/for that version/);
+    // B28 (0088): a marker on an assumption bears on the package versions citing it
+    expect(constraintLine('assumption', 'suspended')).toMatch(/a package version citing it commits only once a decision authority acknowledges/);
   });
   it('the gate line reads the server\'s gate and count', () => {
     expect(gateLine({ gate: 'clear', outstanding: 0, version: 2, markers: [] })).toBe('no active source-impact marker bears on version 2');

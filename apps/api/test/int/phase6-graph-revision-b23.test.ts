@@ -47,6 +47,10 @@ import { GraphCapability } from '../../src/graph/graph.capabilities.js';
 import { SchedulerService } from '../../src/observation/scheduling/scheduler.service.js';
 import { SubscriptionDispatcherService } from '../../src/graph/subscriptions/subscription-dispatcher.service.js';
 import { CONSUMER_EVENT_TYPES, CONSUMER_KINDS, type ConsumerKind } from '../../src/graph/subscriptions/graph-change.js';
+/* B28 (0088): the `warnings` and `stream-rules` kinds are exercised by their own harnesses (phase6-warnings-b28, phase6-streams-b28); this
+   file registers and counts the kinds it was written for. */
+const PRE_B28_KINDS = CONSUMER_KINDS.filter((k) => k !== 'warnings' && k !== 'stream-rules');
+/* end B28 */
 import { asObservationRefusal } from '../../src/observation/observation-errors.js';
 import { Phase4Harness } from './phase4-helpers.js';
 import type { AnyDb } from './helpers.js';
@@ -69,7 +73,7 @@ type Delivery = { event_id: string; consumer_kind: string; state: string; items:
 type Claim = { id: string; version: number; methodId: string; runId: string; evidence: Evd };
 type Answer = Row & { revision_id: string; revision: number; expected: number; repeated: boolean; counts: Record<string, number>; node_ids: Row[]; edge_ids: Row[]; identifier_ids: Row[]; superseded_edges: Row[]; head?: number };
 /** The six consumer kinds a GraphChanged reaches (relationships selects MemoryCorrected/claim.corrected alone; the B22 kinds their own types). */
-const GRAPH_KINDS = CONSUMER_KINDS.filter((k) => k !== 'relationships' && CONSUMER_EVENT_TYPES[k].includes('GraphChanged'));
+const GRAPH_KINDS = PRE_B28_KINDS.filter((k) => k !== 'relationships' && CONSUMER_EVENT_TYPES[k].includes('GraphChanged'));
 
 let h: Phase4Harness; let su: AnyDb;
 let graph: GraphController; let scheduler: SchedulerService; let dispatcher: SubscriptionDispatcherService;

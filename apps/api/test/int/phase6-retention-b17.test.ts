@@ -90,6 +90,10 @@ import { VaultService } from '../../src/observation/vault/vault.service.js';
 import { SchedulerService } from '../../src/observation/scheduling/scheduler.service.js';
 import { SubscriptionDispatcherService } from '../../src/graph/subscriptions/subscription-dispatcher.service.js';
 import { CONSUMER_EVENT_TYPES, CONSUMER_KINDS, type ConsumerKind } from '../../src/graph/subscriptions/graph-change.js';
+/* B28 (0088): the `warnings` and `stream-rules` kinds are exercised by their own harnesses (phase6-warnings-b28, phase6-streams-b28); this
+   file registers and counts the kinds it was written for. */
+const PRE_B28_KINDS = CONSUMER_KINDS.filter((k) => k !== 'warnings' && k !== 'stream-rules');
+/* end B28 */
 import { IMPORT_EVENT_LIST_MAX } from '../../src/graph/subscriptions/change-events.js';
 import { LINKS_FILE, buildUstar, listedFilesOf } from '../../src/retention/export-archive.js';
 import { objectsDigestOf, packageDigestOf, type ExportManifestShape } from '../../src/retention/export-package.js';
@@ -181,7 +185,7 @@ const sorted = (xs: unknown[]): string[] => xs.map(String).sort();
 const E1 = uuidv7(); const E2 = uuidv7();
 const LEI = '5299000NORDWERK00001';
 /** The six consumer kinds a GraphChanged reaches; the seventh (`relationships`) selects MemoryCorrected/claim.corrected alone (B9) and is registered too, so its absence from every GraphChanged delivery is a fact of the registry, not of this file. 0083 (B22): so are the four kinds B22 adds (observations, source-health, proposals, attention), which select their own flat events and never GraphChanged. */
-const GRAPH_KINDS = CONSUMER_KINDS.filter((k) => k !== 'relationships' && CONSUMER_EVENT_TYPES[k].includes('GraphChanged'));
+const GRAPH_KINDS = PRE_B28_KINDS.filter((k) => k !== 'relationships' && CONSUMER_EVENT_TYPES[k].includes('GraphChanged'));
 
 /* ───────────── the rows ───────────── */
 const manifestOf = async (evdId: string, version: number) => (await sql<{ manifest_id: string }>`select (payload ->> 'manifest_id') as manifest_id from objects.canonical_objects o where o.object_id = ${evdId}::uuid and o.object_version = ${version}`.execute(su)).rows[0]!;
@@ -546,7 +550,7 @@ beforeAll(async () => {
   originPartnerId = String((await declarePartnerFor(KEY1, ORIGIN_PARTNER, ORIGIN_PARTY)).partner['partner_id']);
   foreignPartnerId = String((await declarePartnerFor(KEY2, FOREIGN_PARTNER, FOREIGN_PARTY)).partner['partner_id']);
   // THE SUBSCRIPTIONS in the mirror: the seven kinds (eleven since 0083, B22 — the four new kinds on their own event types by default), registered by the tenant administrator (the B6 idiom), the domain's worker serving from registration.
-  for (const kind of CONSUMER_KINDS) {
+  for (const kind of PRE_B28_KINDS) {
     const r = await register(kind);
     subs[kind] = { subscriptionId: r.subscription.subscriptionId, principalId: r.subscription.principalId };
     expect(r.served.workerRunning, `${kind}: the mirror's queue is served from registration`).toBe(true);

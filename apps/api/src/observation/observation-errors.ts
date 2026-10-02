@@ -581,6 +581,57 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   { match: /^(option|choice) rejected: version .* is .* and immutable|^option rejected: version .* of package .* is not an open draft/i, status: 409, code: 'EYE_STA_002' },
   { match: /^(option|choice) rejected/i, status: 422, code: 'EYE_REQ_001' },
   /* end B24 act-found */
+  /* B28 (0088) remediation — the coverage remediation's ports (`coverage remediation rejected …`, 0088 §R), anchored; no row above starts
+     with this phrase and none of its texts carries an earlier unanchored phrase. Every refusal carries a CLASS IN PARENTHESES except the
+     two standing texts (the acting principal, a named active human). B9's order: the standing 403 (the acting principal, a named human,
+     `(not_owner)` — neither the item's / remediation's owner nor a collection_manager — and `(separation)` — the owner accepting their
+     own gap, or a second person holding neither collection_manager nor domain_admin); the absences 404 (`(unknown_item)`,
+     `(unknown_remediation)`, `(unknown_source)`, `(unknown_run)`); the record's state 409 (`(source_healthy)` — nothing to remediate,
+     `(already_open)` — one open per source, `(not_open)`, `(item_closed)`, `(fallback_inactive)`, `(not_recovered)`,
+     `(no_accepted_gap)`, `(stale_run)`); the caller's own request 422 (`(not_coverage_loss)`, `(owner)`, `(reason)`, `(step)`,
+     `(closure)`). */
+  { match: /^coverage remediation rejected: (recorded by the acting principal|a named, active human)|^coverage remediation rejected \((not_owner|separation)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^coverage remediation rejected \(unknown_(item|remediation|source|run)\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^coverage remediation rejected \((source_healthy|already_open|not_open|item_closed|fallback_inactive|not_recovered|no_accepted_gap|stale_run)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^coverage remediation rejected/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B28 remediation */
+  /* B28 (0088) warnings — the early-warning lifecycle's ports (0088 §W): `warning context rejected`, `warning closure rejected`, `warning feedback
+     rejected`, `warning evaluation rejected`, `warning cluster rejected` — anchored phrases no earlier row matches (the older `^warning rejected: `
+     row needs the word right after `warning`; no unanchored earlier rule matches their texts — the unit test runs every text through the mapper).
+     B9's order: the standing 403 (the acting principal, the owner or a domain administrator, a named human, the evaluator's roles), the absences
+     404 (the warning, the objects, objectives, indicators, scenarios, branches and runs a context names, the candidate), the record's state 409
+     (a stale context version, a closed warning's context, a warning not open, a falsified closure with no declared condition, a candidate no
+     longer pending), the caller's own request 422. */
+  { match: /^warning (context|closure|feedback|evaluation) rejected: recorded by the acting principal|^warning context rejected: the context is set by the warning's owner|^warning closure rejected \(not_owner\)|^warning feedback rejected: feedback is a named human's act|^warning evaluation rejected: the warnings are evaluated by a named human/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^warning (context|closure|feedback|cluster) rejected: no such /i, status: 404, code: 'EYE_STA_001' },
+  { match: /^warning context rejected \((stale_version|closed)\)|^warning closure rejected \((not_open|no_falsification)\)|^warning cluster rejected \(not_pending\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^warning (context|closure|feedback|evaluation|cluster) rejected/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B28 warnings */
+  /* B28 (0088) signals — the weak-signal ports' `signal rejected …` and the indicator registry's `indicator governance rejected …`, anchored;
+     no row above starts with either phrase (the earlier indicator rows read `indicator rejected:` and `evaluation rejected:`), and the texts
+     carry no phrase an unanchored earlier row matches (the refusal unit test runs every text through the mapper). B9's order: the standing
+     403 (the acting principal, a named human, the agent's two authorities, the nominator never disposes); the absences 404 (the signal, an
+     evidence object or claim, a subject, a condition's indicator, the indicator); the record's state 409 (a stale version, the maturity
+     gate, an invalid signal, withdrawn or duplicate evidence, a retired or expired indicator); the caller's own request 422. */
+  { match: /^signal rejected: (recorded by the acting principal|the detectors are run by a named human|an analyst's nomination is a named human's act|.* is a named human's act; the Weak Signal Agent nominates and ranks only|the nominator of signal .* does not dispose of it|the signals are ranked by a named human)|^indicator governance rejected: (recorded by the acting principal|the registry is governed by a named, active human)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^signal rejected: no such signal|^signal rejected \((evidence|subject|condition)\): no |^indicator governance rejected: no such indicator/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^signal rejected \((stale_version|maturity|maturity_gate|evidence_state|duplicate_evidence|duplicate)\)|^signal rejected: a signal is never deleted|^indicator governance rejected \((retired|expired)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^signal rejected|^indicator governance rejected/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B28 signals */
+  /* B28 (0088) streams — the event-time stream ports (F-P4-11): `stream rule rejected`, `stream processor rejected (class)`, `stream input rejected`,
+     `stream signal rejected` — anchored phrases no earlier row matches (the B23 stream rows read `^acquisition stream rejected`). B9's order: the
+     standing 403 (the acting principal), the absences 404 (the rule, the series, the processor, the source, the signal), the record's state 409 (an
+     unchanged definition, an open draft, a rule not a draft or not active, a processor already running, retired, not recoverable or without a
+     compatible checkpoint, an event key held with another value, a signal already retracted or itself a retraction), the caller's own request 422. */
+  { match: /^stream rule rejected: (defined|activated) by the acting principal|^stream processor rejected \(actor\)|^stream signal rejected: retracted by the acting principal/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^stream rule rejected: (no such rule|no series .* is registered)|^stream processor rejected \((no_rule|no_processor|no_source)\)|^stream input rejected: evidence .* is not an admitted evidence version|^stream signal rejected: no such signal/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^stream rule rejected \((unchanged|open_draft|not_draft)\)|^stream processor rejected \((rule_not_active|already_running|retired|not_recoverable|no_compatible_checkpoint)\)|^stream input rejected \(value_conflict\)|^stream signal rejected \((already_retracted|not_an_emission)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^stream (rule|processor|input|signal) rejected/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B28 streams */
+  /* B28 (0088) integrator — the prelude's intake (0088 §0, prediction.submit_warning_candidate): every `warning candidate rejected` text is the
+     caller's own malformed candidate (22023) → 422; no earlier row starts with the phrase. */
+  { match: /^warning candidate rejected/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B28 integrator */
 ];
 
 export function asObservationRefusal(e: unknown, correlationId: string): HttpException | null {

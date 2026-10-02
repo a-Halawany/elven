@@ -1,0 +1,176 @@
+{
+  "set": "red-sea-corridor-stream-late",
+  "source_key": "red-sea-corridor-stream-late",
+  "captured_by": "scripts/phase1/build-stream-fixtures.mjs",
+  "manifest_version": "v1",
+  "data_provenance": "synthetic-stream-fixture",
+  "note": "SYNTHETIC replay set for the event-time stream processor (CP-6 B28, F-P4-11): the Red Sea corridor feed whose pages arrive LATE and OUT OF ORDER. Every row is synthetic (synthetic=true, data_provenance=synthetic-stream-fixture); the values are NOT IMF PortWatch figures. The host corridor-stream-late.synthetic.example resolves nowhere: nothing here was captured from a publisher. Planted defects DEF-L1..DEF-L7, each labelled on its page and row.",
+  "entries": [
+    {
+      "url": "https://corridor-stream-late.synthetic.example/red-sea/chokepoint4",
+      "retrieved_at": "2026-09-25T00:00:00Z",
+      "status": 200,
+      "retained_headers": {
+        "content-type": "application/json; charset=utf-8"
+      },
+      "file": "snapshot.json",
+      "sha256": "9841baf46260cf44107408b007914f62575700c5eb1f9724b122a72782d2727e",
+      "byte_length": 11366,
+      "acquisition_mode": "replay",
+      "planted_defect": "DEF-L3: the days of the gap page (2024-02-16 … 2024-02-20) are absent from the snapshot as they are from the stream"
+    },
+    {
+      "url": "https://corridor-stream-late.synthetic.example/red-sea/chokepoint4?from=2024-02-01&to=2024-02-06",
+      "retrieved_at": "2026-09-25T00:00:00Z",
+      "status": 200,
+      "retained_headers": {
+        "content-type": "application/json; charset=utf-8"
+      },
+      "file": "page-2024-02-01_2024-02-06.json",
+      "sha256": "10f9319acd888c3e8e1e4f8c1e57913a9d3db208380118bd510e49e7e8d7051c",
+      "byte_length": 1726,
+      "acquisition_mode": "replay"
+    },
+    {
+      "url": "https://corridor-stream-late.synthetic.example/red-sea/chokepoint4?from=2024-02-11&to=2024-02-16",
+      "retrieved_at": "2026-09-25T00:00:00Z",
+      "status": 200,
+      "retained_headers": {
+        "content-type": "application/json; charset=utf-8"
+      },
+      "file": "page-2024-02-11_2024-02-16.json",
+      "sha256": "76d20b3b1b85d7749a2e0e069109add7d92b5fd50a5906c6d2af7f28d54b476a",
+      "byte_length": 1712,
+      "acquisition_mode": "replay",
+      "planted_defect": "DEF-L1 (planted): out of order — this page arrives before 2024-02-06..11"
+    },
+    {
+      "url": "https://corridor-stream-late.synthetic.example/red-sea/chokepoint4?from=2024-02-06&to=2024-02-11",
+      "retrieved_at": "2026-09-25T00:00:00Z",
+      "status": 200,
+      "retained_headers": {
+        "content-type": "application/json; charset=utf-8"
+      },
+      "file": "page-2024-02-06_2024-02-11.json",
+      "sha256": "21d7b67606fed3df6c845ab6c7e146f3dd413f8802a7b696bdf0669f144a1ad9",
+      "byte_length": 1718,
+      "acquisition_mode": "replay",
+      "planted_defect": "DEF-L2 (planted): a late page — it arrives after the window 2024-02-06..11 fired"
+    },
+    {
+      "url": "https://corridor-stream-late.synthetic.example/red-sea/chokepoint4?from=2024-02-21&to=2024-02-26",
+      "retrieved_at": "2026-09-25T00:00:00Z",
+      "status": 200,
+      "retained_headers": {
+        "content-type": "application/json; charset=utf-8"
+      },
+      "file": "page-2024-02-21_2024-02-26.json",
+      "sha256": "6382e30160790942fbf389ee23940515346faa77d395571414542fa76eb7c594",
+      "byte_length": 1724,
+      "acquisition_mode": "replay"
+    },
+    {
+      "url": "https://corridor-stream-late.synthetic.example/red-sea/chokepoint4?from=2024-02-26&to=2024-03-01",
+      "retrieved_at": "2026-09-25T00:00:00Z",
+      "status": 200,
+      "retained_headers": {
+        "content-type": "application/json; charset=utf-8"
+      },
+      "file": "page-2024-02-26_2024-03-01.json",
+      "sha256": "67342cbd48d987c6a38957e801145c71eee7cbb6528d270b6dcc68b0c6da14bb",
+      "byte_length": 1799,
+      "acquisition_mode": "replay",
+      "planted_defect": "DEF-L4 (planted): carries a duplicate row of 2024-02-13"
+    },
+    {
+      "url": "https://corridor-stream-late.synthetic.example/red-sea/chokepoint4?from=2024-03-01&to=2024-03-06",
+      "retrieved_at": "2026-09-25T00:00:00Z",
+      "status": 200,
+      "retained_headers": {
+        "content-type": "application/json; charset=utf-8"
+      },
+      "file": "page-2024-03-01_2024-03-06.json",
+      "sha256": "cc7caea49e6d27b9766602376e7e1bbd09026bb432c54038c19ceb39d2c6eac9",
+      "byte_length": 2578,
+      "acquisition_mode": "replay",
+      "planted_defect": "DEF-L5 and DEF-L6 (planted): a revised value of a fired window and a row beyond the allowed lateness"
+    },
+    {
+      "url": "https://corridor-stream-late.synthetic.example/red-sea/chokepoint4?from=2024-03-06&to=2024-03-11",
+      "retrieved_at": "2026-09-25T00:00:00Z",
+      "status": 200,
+      "retained_headers": {
+        "content-type": "application/json; charset=utf-8"
+      },
+      "file": "page-2024-03-06_2024-03-11.json",
+      "sha256": "b28d9ce7518a1ae5239bdaa7c5784887054e35b1657b63e63212fbaf05091ced",
+      "byte_length": 1725,
+      "acquisition_mode": "replay",
+      "planted_defect": "the last page, streamed separately by the harness to show an offsets divergence"
+    }
+  ],
+  "stream": {
+    "partitions": {
+      "chokepoint4": {
+        "label": "Bab el-Mandeb Strait (chokepoint4) — daily transits, February–March 2024, SYNTHETIC, five-day pages arriving late and out of order",
+        "range": {
+          "from": "2024-02-01",
+          "to": "2024-03-11"
+        },
+        "pages": [
+          {
+            "from": "2024-02-01",
+            "to": "2024-02-06",
+            "url": "https://corridor-stream-late.synthetic.example/red-sea/chokepoint4?from=2024-02-01&to=2024-02-06"
+          },
+          {
+            "from": "2024-02-11",
+            "to": "2024-02-16",
+            "url": "https://corridor-stream-late.synthetic.example/red-sea/chokepoint4?from=2024-02-11&to=2024-02-16",
+            "planted": "DEF-L1 (planted): out of order — this page arrives before 2024-02-06..11"
+          },
+          {
+            "from": "2024-02-06",
+            "to": "2024-02-11",
+            "url": "https://corridor-stream-late.synthetic.example/red-sea/chokepoint4?from=2024-02-06&to=2024-02-11",
+            "planted": "DEF-L2 (planted): a late page — it arrives after the window 2024-02-06..11 fired"
+          },
+          {
+            "from": "2024-02-16",
+            "to": "2024-02-21",
+            "gap": "DEF-L3 (planted): the publisher served no page for this window — the stream must report an explicit incomplete range (publisher_gap)"
+          },
+          {
+            "from": "2024-02-21",
+            "to": "2024-02-26",
+            "url": "https://corridor-stream-late.synthetic.example/red-sea/chokepoint4?from=2024-02-21&to=2024-02-26"
+          },
+          {
+            "from": "2024-02-26",
+            "to": "2024-03-01",
+            "url": "https://corridor-stream-late.synthetic.example/red-sea/chokepoint4?from=2024-02-26&to=2024-03-01",
+            "planted": "DEF-L4 (planted): carries a duplicate row of 2024-02-13"
+          },
+          {
+            "from": "2024-03-01",
+            "to": "2024-03-06",
+            "url": "https://corridor-stream-late.synthetic.example/red-sea/chokepoint4?from=2024-03-01&to=2024-03-06",
+            "planted": "DEF-L5 and DEF-L6 (planted): a revised value of a fired window and a row beyond the allowed lateness"
+          },
+          {
+            "from": "2024-02-01",
+            "to": "2024-02-06",
+            "url": "https://corridor-stream-late.synthetic.example/red-sea/chokepoint4?from=2024-02-01&to=2024-02-06",
+            "planted": "DEF-L7 (planted): the first page served again after its window fired (at-least-once)"
+          },
+          {
+            "from": "2024-03-06",
+            "to": "2024-03-11",
+            "url": "https://corridor-stream-late.synthetic.example/red-sea/chokepoint4?from=2024-03-06&to=2024-03-11",
+            "planted": "the last page, streamed separately by the harness to show an offsets divergence"
+          }
+        ]
+      }
+    }
+  }
+}

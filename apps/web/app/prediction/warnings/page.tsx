@@ -13,6 +13,10 @@ import { RESPONSE_TIMING_LABEL, RESPONSE_TIMING_TOKEN, responseTiming } from '..
 import { LEVEL_TOKEN, URGENCY_LABEL, levelBadge, levelOf } from '../../../lib/warning-level';
 import { Empty, LiveStatus, Mono, cardStyle, DefinitionRow, UnknownNote, GovernedButton, fmtInstant } from '../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui';
+/* B28 (0088) warnings: the lifecycle — origin, cluster, context, closure, feedback, coverage gaps; the candidate intake processed by a person */
+import { LifecyclePanel } from './lifecycle-panel';
+import { originWords, warningLifecycle } from '../../../lib/warning-lifecycle';
+/* end B28 warnings */
 
 /**
  * The RESPONSE, on the warning's own clock. A replayed warning's window is dated
@@ -106,10 +110,24 @@ export default function WarningsPage() {
   return (
     <>
       <h1 style={{ fontSize: 'var(--eye-type-heading-1)', marginBlockStart: 0 }}>Warnings</h1>
+      {/* B28 (0088) warnings: the intake's candidates (every origin other than an indicator breach) decided and raised by a person here, or by the attention agent right after its tick (0088 §I, the after-tick hook) — the tick's own write never raises */}
+      {isForecastOwner ? (
+        <p>
+          <GovernedButton label="Process the warning candidates" pendingLabel="processing" onRun={async () => {
+            const r = await warningLifecycle.process(scope);
+            if (!r.ok || r.data === undefined) throw new Error(r.error?.message ?? 'the processing was refused');
+            const raised = r.data.processing.raised.filter((x) => x['decision'] === 'raised').length;
+            const folded = r.data.processing.passes.reduce((n, x) => n + (Array.isArray(x['clustered']) ? x['clustered'].length : 0) + (Array.isArray(x['storm']) ? x['storm'].length : 0), 0);
+            if (r.data.receipt !== null) setReceipt(r.data.receipt);
+            setLast(`${raised} warning(s) raised; ${folded} report(s) folded into open warnings`); await load();
+          }} />{' '}<a href="/prediction/warnings/evaluations">Warning evaluation</a>
+        </p>
+      ) : <p><a href="/prediction/warnings/evaluations">Warning evaluation</a></p>}
+      {/* end B28 warnings */}
       {rows.length === 0 ? <Empty>No warning has been raised.</Empty> : (
         <table className="eye-table" style={tableStyle}>
           <caption style={{ captionSide: 'top', textAlign: 'start', color: 'var(--eye-color-ink-muted)' }}>{rows.length} warning(s)</caption>
-          <thead><tr><Th>Level</Th><Th>Warning</Th><Th>Routed to</Th><Th>Raised as of</Th><Th>Window closes</Th><Th>Response</Th><Th>Issuance</Th><Th>Confidence</Th></tr></thead>
+          <thead><tr><Th>Level</Th><Th>Warning</Th>{/* B28 (0088) warnings */}<Th>Origin</Th>{/* end B28 warnings */}<Th>Routed to</Th><Th>Raised as of</Th><Th>Window closes</Th><Th>Response</Th><Th>Issuance</Th><Th>Confidence</Th></tr></thead>
           <tbody>
             {rows.map((w) => (
               <tr key={w.warning_id}>
@@ -117,6 +135,7 @@ export default function WarningsPage() {
                 <Td><button type="button" onClick={() => { setOpen(w); setNote(''); }}
                   style={{ background: 'none', border: 'none', padding: 0, color: 'var(--eye-color-accent-default)', cursor: 'pointer', textDecoration: 'underline', textAlign: 'start' }}>
                   {w.title}</button></Td>
+                {/* B28 (0088) warnings */}<Td>{originWords((w as unknown as Record<string, unknown>)['origin_kind'])}{(w as unknown as Record<string, unknown>)['cluster_id'] ? ' · clustered' : ''}</Td>{/* end B28 warnings */}
                 <Td mono>{w.routed_to.slice(0, 8)}…{w.routed_to === me.principalId ? ' (you)' : ''}</Td>
                 <Td>{fmtInstant(w.raised_as_of ?? w.raised_at)}{(w.timing_mode ?? 'live') === 'replay' ? <div style={{ fontSize: 'var(--eye-type-label-sm)', color: 'var(--eye-color-warning)' }}>REPLAY</div> : null}</Td>
                 <Td>{fmtInstant(w.response_window_closes_at)}</Td>
@@ -167,6 +186,7 @@ export default function WarningsPage() {
           {isForecastOwner && open.state === 'expired' ? (
             <p style={{ color: 'var(--eye-color-critical)' }}>This window closed without an answer; the record keeps it as expired. An acknowledgement now is refused as such.</p>
           ) : null}
+          {/* B28 (0088) warnings */}<LifecyclePanel scope={scope} me={me} warningId={open.warning_id} onChanged={load} />{/* end B28 warnings */}
           <Receipt receipt={receipt} />
         </section>
       )}

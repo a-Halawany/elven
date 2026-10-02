@@ -18,10 +18,23 @@ import { ScenariosService } from './scenarios/scenarios.service.js';
 import { ForecastSubscriptionConsumer } from './subscriptions/forecast-subscription.consumer.js';
 import { ScenarioSubscriptionConsumer } from './subscriptions/scenario-subscription.consumer.js';
 import { ObservationExceptionFilter } from '../observation/observation.filter.js';
+/* B28 (0088) warnings: the early-warning lifecycle (its tick steps join the attention tick; its consumer the dispatcher) */
+import { ExecutiveModule } from '../executive/executive.module.js';
+import { WarningLifecycleService } from './warnings/warning-lifecycle.service.js';
+import { WarningsSubscriptionConsumer } from './warnings/warning-subscription.consumer.js';
+/* end B28 warnings */
+/* B28 (0088) signals: the weak-signal workbench — its own controller under the prediction prefix, and its reads */
+import { SignalsController } from './signals/signals.controller.js';
+import { SignalsService } from './signals/signals.service.js';
+/* end B28 signals */
+/* B28 (0088) streams */
+import { StreamProcessorService } from './streams/stream-processor.service.js';
+import { StreamRulesConsumer } from './streams/stream-rules.consumer.js';
+/* end B28 streams */
 
 @Module({
-  imports: [PipelineModule, ObservationModule, GraphModule],
-  controllers: [PredictionController],
+  imports: [PipelineModule, ObservationModule, GraphModule, /* B28 (0088) warnings: the attention tick's registry */ ExecutiveModule /* end B28 warnings */],
+  controllers: [PredictionController, /* B28 (0088) signals */ SignalsController /* end B28 signals */],
   providers: [
     SeriesService,
     ForecastingService,
@@ -29,6 +42,12 @@ import { ObservationExceptionFilter } from '../observation/observation.filter.js
     // CP-6 B6 (0063): the forecast and scenario CONSUMERS register themselves into the graph's dispatcher.
     ForecastSubscriptionConsumer,
     ScenarioSubscriptionConsumer,
+    /* B28 (0088) warnings */ WarningLifecycleService, WarningsSubscriptionConsumer, /* end B28 warnings */
+    /* B28 (0088) signals */ SignalsService /* end B28 signals */,
+    /* B28 (0088) streams: the event-time stream processors (F-P4-11) — the service (its sweep a step of the attention tick) and the stream-rules consumer */
+    StreamProcessorService,
+    StreamRulesConsumer,
+    /* end B28 streams */
     { provide: APP_FILTER, useClass: ObservationExceptionFilter },
   ],
   exports: [SeriesService, ForecastingService, ScenariosService],
