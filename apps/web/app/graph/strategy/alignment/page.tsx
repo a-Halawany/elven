@@ -17,7 +17,8 @@ import { useEffect, useState } from 'react';
 import { useShell } from '../../layout';
 import { graph, type StrategyRow } from '../../../../lib/graph';
 import { alignment, CLAIM_LABEL, CONTINUITY_LABEL, REASON_LABEL, criteriaLine, freshnessLine,
-  type AlignmentKind, type AlignmentRow, type AuthorityAct, type Detection, type Gaps, type MeasureRow } from '../../../../lib/strategy-alignment';
+  type AlignmentKind, type AlignmentRow, type AuthorityAct, type Detection, type Gaps, type MeasureRow,
+  /* B36 (0094 §S) strategy */ strategyCompletion, actStanding, raisedLine, type AuthorityActRow, type PlanLinks, type RaisedDetection /* end B36 strategy */ } from '../../../../lib/strategy-alignment';
 import { Empty, LiveStatus, Mono, cardStyle, UnknownNote, GovernedButton, fmtInstant } from '../../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../form-bits';
 
@@ -43,6 +44,13 @@ export default function StrategyAlignmentPage() {
   const [measures, setMeasures] = useState<MeasureRow[]>([]);
   const [alignments, setAlignments] = useState<AlignmentRow[]>([]);
   const [objects, setObjects] = useState<StrategyRow[]>([]);
+  /* B36 (0094 §S) strategy: the acts (revocable), the schedule's detections, the plan links */
+  const [acts, setActs] = useState<AuthorityActRow[]>([]);
+  const [raised, setRaised] = useState<RaisedDetection[]>([]);
+  const [plans, setPlans] = useState<PlanLinks | null>(null);
+  const [revokeReason, setRevokeReason] = useState<Record<string, string>>({});
+  const [revokeProblem, setRevokeProblem] = useState<string | null>(null);
+  /* end B36 strategy */
   const [problem, setProblem] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<{ policyDecisionId: string; auditSeq: number } | null>(null);
   // the alignment form
@@ -65,6 +73,12 @@ export default function StrategyAlignmentPage() {
     setMeasures(m.ok && m.data !== undefined ? m.data.measures : []);
     setAlignments(a.ok && a.data !== undefined ? a.data.alignments : []);
     setObjects(s.ok && s.data !== undefined ? s.data.strategy.filter((x) => x.status === 'active') : []);
+    /* B36 (0094 §S) */
+    const [ac, rd, pl] = await Promise.all([strategyCompletion.acts(scope), strategyCompletion.raised(scope), strategyCompletion.planLinks(scope)]);
+    setActs(ac.ok && ac.data !== undefined ? ac.data.acts : []);
+    setRaised(rd.ok && rd.data !== undefined ? rd.data.detections : []);
+    setPlans(pl.ok && pl.data !== undefined ? pl.data.links : null);
+    /* end B36 */
   };
   useEffect(() => { void load(); }, [scope]);
 
@@ -122,6 +136,27 @@ export default function StrategyAlignmentPage() {
               <br />routed to: {d.routed_to.length === 0 ? 'nobody holds the planning roles' : d.routed_to.map((x) => <Mono key={x}>{x.slice(0, 8)}… </Mono>)}
             </li>
           ))}
+        </ul>
+      )}
+
+      {/* B36 (0094 §S7): the detections the SCHEDULE raised and routed — the list above is "as of this read"; these exist without anyone reading the page */}
+      <h2 style={{ fontSize: 'var(--eye-type-heading-2)' }}>Detections raised by the schedule</h2>
+      {raised.length === 0 ? <Empty>The attention tick has raised no strategy detection yet.</Empty> : (
+        <ul aria-label="detections raised by the schedule" style={{ paddingInlineStart: '1rem' }}>
+          {raised.map((d) => (
+            <li key={d.detection_id} style={{ marginBlockEnd: 'var(--eye-space-8)' }}>
+              <strong>{raisedLine(d)}</strong> — {d.detail}
+              <br /><span style={{ color: 'var(--eye-color-ink-muted)' }}>raised {fmtInstant(d.raised_at)} · subject {d.subject_type} <Mono>{d.subject_id.slice(0, 8)}…</Mono></span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {/* B36 (0094 §S8): the plan links, only when Part P's planning objects exist in this deployment */}
+      <h2 style={{ fontSize: 'var(--eye-type-heading-2)' }}>Plans and initiatives</h2>
+      {plans === null || !plans.available ? <Empty>{plans?.reason ?? 'no planning objects in this deployment'}</Empty> : plans.initiatives.length === 0 ? <Empty>No initiative is linked to an objective yet.</Empty> : (
+        <ul aria-label="plan links" style={{ paddingInlineStart: '1rem' }}>
+          {plans.initiatives.map((i, n) => <li key={String(i['initiative_id'] ?? n)}>{String(i['title'] ?? i['initiative_id'] ?? '')} — objective <Mono>{String(i['objective_id'] ?? '').slice(0, 8)}…</Mono>{i['state'] !== undefined ? ` · ${String(i['state'])}` : ''}</li>)}
         </ul>
       )}
 
@@ -216,6 +251,37 @@ export default function StrategyAlignmentPage() {
             await load();
           }}
         />
+      </section>
+      {/* B36 (0094 §S6): the acts recorded, each with its standing; REVOCATION by the act's issuer or a domain administrator, with a reason — the gap view and the walk see it at once */}
+      <section aria-labelledby="acts-h" style={{ ...cardStyle, marginBlockStart: 'var(--eye-space-24)' }}>
+        <h2 id="acts-h" style={{ fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 }}>Authority acts and their revocation</h2>
+        {acts.length === 0 ? <Empty>No authority act has been recorded.</Empty> : (
+          <table className="eye-table" style={tableStyle}>
+            <thead><tr><Th>Act</Th><Th>Subject</Th><Th>Decision</Th><Th>Standing</Th><Th>Revoke</Th></tr></thead>
+            <tbody>
+              {acts.map((a) => (
+                <tr key={a.act_id}>
+                  <Td>{a.act_kind} <span style={{ color: 'var(--eye-color-ink-muted)' }}>by <Mono>{a.approver_principal_id.slice(0, 8)}…</Mono> at {fmtInstant(a.recorded_at)}</span></Td>
+                  <Td>{a.subject_kind} <Mono>{a.subject_id.slice(0, 8)}…</Mono> v{a.subject_version}</Td>
+                  <Td>{a.decision} — {a.rationale}</Td>
+                  <Td>{actStanding(a)}</Td>
+                  <Td>{a.revoked_at !== null ? '—' : (
+                    <div style={{ display: 'grid', gap: 'var(--eye-space-4)' }}>
+                      <label htmlFor={`rv-${a.act_id}`}>Reason (8+ characters)</label>
+                      <input id={`rv-${a.act_id}`} style={inputStyle} value={revokeReason[a.act_id] ?? ''} onChange={(e) => setRevokeReason({ ...revokeReason, [a.act_id]: e.target.value })} />
+                      <GovernedButton label={`Revoke ${a.act_kind}`} pendingLabel="revoking" variant="critical" disabled={(revokeReason[a.act_id] ?? '').trim().length < 8} onRun={async () => {
+                        const r = await strategyCompletion.revoke(scope, a.act_id, revokeReason[a.act_id] ?? '');
+                        if (!r.ok || r.data === undefined) { const m = r.error?.message ?? 'the revocation was refused'; setRevokeProblem(m); throw new Error(m); }
+                        setRevokeProblem(null); setReceipt(r.data.receipt); await load();
+                      }} />
+                    </div>
+                  )}</Td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        {revokeProblem !== null && <LiveStatus assertive>{revokeProblem}</LiveStatus>}
       </section>
       <Receipt receipt={receipt} />
     </>

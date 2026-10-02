@@ -14,17 +14,17 @@
     "V10": 441
   },
   "impl": {
-    "implemented": 1121,
-    "missing": 2404,
+    "implemented": 1215,
+    "missing": 2381,
     "not-applicable": 26,
-    "partial": 2713
+    "partial": 2642
   },
   "verif": {
     "not-applicable": 422,
-    "passed:browser": 359,
+    "passed:browser": 363,
     "passed:ci": 196,
     "passed:ci+browser": 3,
-    "passed:harness": 2074,
+    "passed:harness": 2070,
     "passed:harness+browser": 22,
     "passed:harness+ci": 5,
     "unverified": 3183
@@ -50,14 +50,14 @@
     "P1": 217,
     "P2": 229,
     "P3": 327,
-    "P4": 206,
-    "P5": 115,
-    "P6": 208,
+    "P4": 203,
+    "P5": 113,
+    "P6": 151,
     "P7-A": 315,
     "P7-B": 255,
     "P7-C": 97,
     "P7-D": 1679,
-    "P7-E": 900,
+    "P7-E": 897,
     "P7-F": 642,
     "R0": 40
   },

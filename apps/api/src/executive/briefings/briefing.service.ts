@@ -76,6 +76,14 @@ import { memoryItemsFromLog } from '../../graph/projections/fallback.js';
 /* B23 (0084) attention */
 import { attentionSection } from './attention-section.js';
 /* end B23 attention */
+/* B36 briefing (0094 §B): BRF@v3 — the uncertainty band per conclusion, the suppression policy, the omissions, the urgent retention, the
+   audience contract (uncertainty.ts, pure). Every rule's answer is stored INSIDE the content, so the digest covers it. */
+import { DEFAULT_AUDIENCE, audienceProblem, defaultExpiry, isBoardAudience, omission, readerInAudience, suppressionOf, uncertaintyOf, urgentRetained,
+         type Audience, type BriefingPolicy, type Omission, type Suppression, type Uncertainty } from './uncertainty.js';
+import type { BriefingPolicyWrites } from '../executive.capabilities.js';
+/** The v3 contract as the route sends it: `undefined` = the default (audience: every reader role, in-app, plain; expiry: the cadence, 7 days after known_at). */
+export interface BriefingV3Request { audience?: unknown; purpose?: string | null; expiresAt?: string | null; disputedNote?: string | null }
+/* end B36 briefing */
 
 const iso = (v: unknown): string => (v instanceof Date ? v.toISOString() : new Date(String(v)).toISOString());
 const isoOrNull = (v: unknown): string | null => (v === null || v === undefined ? null : iso(v));
@@ -85,6 +93,8 @@ export interface BriefingItem {
   item_id: string; kind: string; id: string; version: number | null; title: string; at: string; truth_state: string; synthetic_state: boolean;
   freshness: { recorded_at: string; age_hours: number }; source_state: SourceState; source: Record<string, unknown> | null;
   owner: string | null; matters: Array<{ dependent_object_id: string; dependent_type: string; rationale: string }>; details: Record<string, unknown>;
+  /* B36 briefing (BRF@v3): the band beside the conclusion (computed, never asserted); an item retained from the prior edition under an outage names it and keeps its as-of. */
+  uncertainty?: Uncertainty; retained_from?: string | null; retained_as_of?: string | null;
 }
 export interface BriefingWindow { kind: string; id: string; title: string; closes_at: string; time_left_seconds: number; overdue: boolean; owner: string | null }
 type MemoryAudienceState = { kind: 'missing' } | { kind: 'present'; admitted: boolean; reason: string; withdrawn: boolean; withdrawalReason: string | null; currentVersion: number };
@@ -105,7 +115,8 @@ export interface CompositionLimits { maxReads: number | null; maxItems: number |
 const hoursBetween = (a: string, b: string): number => Math.round(((new Date(b).getTime() - new Date(a).getTime()) / 3_600_000) * 100) / 100;
 const WARNING_STATE_OF: Readonly<Record<string, string>> = Object.freeze({ 'warning.raised': 'raised', 'warning.acknowledged': 'acknowledged', 'warning.expired': 'expired', 'warning.closed': 'closed' });
 /* B28 (0088) warnings: the warning events 0088 §0 adds that are not state transitions (the as-of state skips them) */
-const B28_NON_STATE_WARNING_EVENTS: ReadonlySet<string> = new Set(['warning.clustered', 'warning.context_set', 'warning.escalated', 'warning.feedback', 'warning.retracted']);
+const B28_NON_STATE_WARNING_EVENTS: ReadonlySet<string> = new Set(['warning.clustered', 'warning.context_set', 'warning.escalated', 'warning.feedback', 'warning.retracted',
+  /* B36 (the act-b36 rehearsal): `warning.attention` (B21 — a scenario's coherence flip raised attention on a warning) changes no state either; without this a RAISED warning read `closed` and the outage retention skipped it */ 'warning.attention']);
 /* end B28 warnings */
 
 @Injectable()
@@ -193,7 +204,9 @@ export class BriefingService {
                 /** The composer's clearance in the target context, for a HUMAN composer: the response is a read of the fold, refused before admission when it is not covered (residual review R4a). */
                 composerClearance: string | null = null,
                 /** B10: the composer's role codes in the target context (a person's bindings; an agent's registered role) — a memory item for an audience ROLE is read only by a holder of it. */
-                composerRoles: readonly string[] = []) {
+                composerRoles: readonly string[] = [],
+                /** B36 (0094 §B): the v3 contract — null / absent fields take the defaults (the agent composes with them). */
+                v3: BriefingV3Request | null = null) {
     const lim: CompositionLimits = typeof limits === 'number' ? { maxReads: limits, maxItems: null, stopOnDegraded: false } : (limits ?? { maxReads: null, maxItems: null, stopOnDegraded: false });
     // every unit of read work is reserved BEFORE it happens; the deadline is checked with it and again before admission (residual review R7)
     const reserve = (what: string): void => {
@@ -220,6 +233,8 @@ export class BriefingService {
     } else if (a.priorBriefingId !== null) {
       prior = (await cap.readBriefings().selectAll().where('briefing_id' as never, '=', a.priorBriefingId as never).executeTakeFirst()) as Record<string, unknown> | undefined ?? null;
       if (prior === null) throw new HttpException(errorBody('EYE_STA_001', correlationId, 'the prior briefing does not exist in this domain'), 404);
+      // B36 (the act-b36 rehearsal): the port refuses a prior from another room (0094 §B.5); said here as the record's state, not as an integrity failure
+      if ((prior['room_id'] ?? null) !== (a.roomId ?? null)) throw new HttpException(errorBody('EYE_STA_002', correlationId, 'briefing rejected: the prior briefing belongs to another room'), 409);
     }
     // The interval: (prior.known_at, known_at] — what the prior KNEW, not when it was composed.
     const since = prior === null ? null : iso(prior['known_at']);
@@ -348,6 +363,8 @@ export class BriefingService {
     const candidates = memoryVersions.filter((v) => !withdrawnByCutoff.has(String(v['object_id'])) && projections.has(String(v['object_id'])))
       .sort((x, y) => (iso(x['recorded_at']) < iso(y['recorded_at']) ? -1 : iso(x['recorded_at']) > iso(y['recorded_at']) ? 1 : String(x['object_id']) < String(y['object_id']) ? -1 : 1)).slice(0, 200);
     const memoryAccesses: Array<{ item_id: string; version: number; access_id: string }> = [];
+    /* B36 (b2): a memory version the composer's clearance does not cover is an OMISSION the edition declares (its id and classification, nothing of its content) */
+    const belowClearance: Omission[] = [];
     for (const v of candidates) {
       const itemId = String(v['object_id']);
       const m = projections.get(itemId)!;
@@ -356,7 +373,10 @@ export class BriefingService {
       const purposes = Array.isArray(audience['purposes']) ? (audience['purposes'] as string[]) : [];
       const roles = Array.isArray(audience['roles']) ? (audience['roles'] as string[]) : [];
       if (!purposes.includes(purposeId)) continue;
-      if (!covers(readerClearance, String(v['classification'] ?? 'internal'))) continue;
+      if (!covers(readerClearance, String(v['classification'] ?? 'internal'))) {
+        belowClearance.push(omission('below_clearance', { object: `memory:${itemId}@${Number(v['object_version'])}`, reason: `classified ${String(v['classification'] ?? 'internal')}, above the composer's clearance ${readerClearance}; the item is not read and nothing of it is carried` }));
+        continue;
+      }
       if (roles.length > 0 && !roles.some((r) => composerRoles.includes(r)) && !composerRoles.some((r) => r === 'platform_admin' || r === 'tenant_admin' || r === 'domain_admin')) continue;
       const accessId = await cap.recordMemoryAccess({ itemId, tenantId, domainId, version: Number(v['object_version']), purpose: purposeId, reader: composer, asOf: knownAt, correlationId });
       memoryAccesses.push({ item_id: itemId, version: Number(v['object_version']), access_id: accessId });
@@ -477,7 +497,137 @@ export class BriefingService {
     }
     windows.sort((x, y) => (x.closes_at < y.closes_at ? -1 : x.closes_at > y.closes_at ? 1 : x.id < y.id ? -1 : 1));
     // B20: a withdrawn memory projection degrades the briefing (its memory items are served from their log, labelled) beside a degraded or blocked source.
-    const degraded = items.some((i) => i.source_state === 'degraded' || i.source_state === 'blocked') || memoryWithdrawn;
+    // B36 (0094 §B; B.md b6): a composition that RAN UNDER a degraded or blocked source is degraded whether or not an item of this interval
+    // cites it — the source's state at known_at is what the edition read; the omission names it and the prior's urgent items are retained.
+    const degraded = items.some((i) => i.source_state === 'degraded' || i.source_state === 'blocked') || memoryWithdrawn || sourceStates.some((s) => s.state === 'degraded' || s.state === 'blocked');
+    /* B36 briefing (0094 §B): BRF@v3 ──────────────────────────────────────────────────────────────────────────────────────────── */
+    // b3 THE AUDIENCE CONTRACT, THE PURPOSE, THE EXPIRY — as sent, or the defaults; a problem is said in words here and refused again by the port.
+    const audienceIn = v3?.audience;
+    if (audienceIn !== undefined && audienceIn !== null) {
+      const problem = audienceProblem(audienceIn);
+      if (problem !== null) throw new HttpException(errorBody('EYE_REQ_001', correlationId, `briefing rejected (contract): ${problem}`), 422);
+    }
+    const audience: Audience = audienceIn === undefined || audienceIn === null ? DEFAULT_AUDIENCE : (audienceIn as Audience);
+    const purpose = typeof v3?.purpose === 'string' && v3.purpose.trim().length > 0 ? v3.purpose.trim()
+      : room === null ? 'the standing briefing of the domain: what changed, why it matters, who owns it, which window is closing'
+      : `the standing briefing of the room "${String(room['title'])}": what changed, why it matters, who owns it, which window is closing`;
+    if (purpose.length < 8 || purpose.length > 400) throw new HttpException(errorBody('EYE_REQ_001', correlationId, 'briefing rejected (purpose): a purpose of 8 to 400 characters says what the edition is for'), 422);
+    const expiresAt = typeof v3?.expiresAt === 'string' && !Number.isNaN(new Date(v3.expiresAt).getTime()) ? new Date(v3.expiresAt).toISOString() : defaultExpiry(knownAt);
+    if (expiresAt <= knownAt) throw new HttpException(errorBody('EYE_REQ_001', correlationId, `briefing rejected (expiry): expires_at ${expiresAt} is not after the edition's known_at ${knownAt}`), 422);
+    const excluded = new Set<string>(audience.exclude ?? []);
+    const boardAudience = isBoardAudience(audience);
+    const ownerNote = typeof v3?.disputedNote === 'string' && v3.disputedNote.trim().length >= 8 ? v3.disputedNote.trim() : null;
+    // b5 DISPUTED ASSESSMENTS as items of their own: a package under challenge (G's decision.challenges — feature-detected; none while the
+    // table does not exist), a dissent STANDING on the version open at known_at, an assessment carrying a contradiction ref. A board
+    // audience carries a disputed item only with the owner's note; the contract may exclude the section.
+    const disputedSection: Array<Record<string, unknown>> = [];
+    const pushDisputed = (id: string, basis: 'challenge' | 'dissent' | 'contradiction', title: string, at: string, owner: string | null, synthetic: boolean, details: Record<string, unknown>) => {
+      if (excluded.has('disputed')) return;
+      if (boardAudience && ownerNote === null) return;
+      if (items.some((i) => i.kind === 'disputed' && i.id === id)) return;
+      push({ kind: 'disputed', id, version: null, title, at, truth_state: 'disputed', synthetic_state: synthetic, source_state: 'internal', source: null, owner, details: { basis, ...details, owner_note: ownerNote } });
+      disputedSection.push({ item_id: `disputed:${id}`, basis, as_of: at, subject: details['subject'] ?? null, owner_note: ownerNote });
+    };
+    reserve('the disputed assessments');
+    if (pkg !== null && versionAsOf !== null) {
+      const pkgId = String(pkg['package_id']);
+      const standing = (await cap.readDissent().selectAll().where('package_id' as never, '=', pkgId as never).where('version' as never, '=', versionAsOf as never).where('recorded_at' as never, '<=', knownAt as never)
+        .orderBy('recorded_at' as never).orderBy('dissent_id' as never).limit(100).execute()) as Array<Record<string, unknown>>;
+      for (const d of standing) {
+        pushDisputed(String(d['dissent_id']), 'dissent', `dissent on ${String(pkg['title'])}: ${String(d['position'])}`, iso(d['recorded_at']), String(d['principal_id']), pkg['synthetic_state'] === true,
+          { subject: `DPK:${pkgId}@${versionAsOf}`, package_id: pkgId, version: versionAsOf, position: d['position'], rationale: d['rationale'], citation: d['citation'] ?? null });
+      }
+    }
+    for (const ch of await cap.challengesOpenAt({ packageId: pkg === null ? null : String(pkg['package_id']), at: knownAt })) {
+      const chId = String(ch['challenge_id'] ?? ch['id'] ?? '');
+      if (chId === '') continue;
+      const chPkg = String(ch['package_id'] ?? '');
+      pushDisputed(chId, 'challenge', `challenge on ${pkgCache.get(chPkg)?.['title'] ?? pkg?.['title'] ?? chPkg}`, iso(ch['raised_at'] ?? ch['created_at'] ?? knownAt), typeof ch['raised_by'] === 'string' ? ch['raised_by'] : (typeof ch['challenger_principal_id'] === 'string' ? ch['challenger_principal_id'] : null), pkg?.['synthetic_state'] === true,
+        { subject: `DPK:${chPkg}@${String(ch['version'] ?? '')}`, package_id: chPkg, version: ch['version'] ?? null, grounds: ch['grounds'] ?? ch['reason'] ?? null, state: ch['state'] ?? 'open' });
+    }
+    for (const o of objs) {
+      const refs = Array.isArray(o['contradiction_refs']) ? (o['contradiction_refs'] as unknown[]) : [];
+      if (refs.length === 0) continue;
+      const oid = `${String(o['object_id'])}@${Number(o['object_version'])}`;
+      pushDisputed(oid, 'contradiction', `${o['object_type'] === 'EVD' ? 'evidence' : 'claim'} ${String(o['object_id']).slice(0, 8)}… contradicted`, iso(o['recorded_at']), null, o['synthetic_state'] === true,
+        { subject: `${String(o['object_type'])}:${oid}`, contradiction_refs: refs, truth_state: o['truth_state'] });
+    }
+    // b5 EMERGING SCENARIO INDICATORS: B28's weak signals nominated in the window (not invalid) and the stream signals whose rule FIRED in the
+    // window — each an item of kind `indicator` with its as-of; the contract may exclude the section. (A warning is an item already.)
+    const indicators: Array<Record<string, unknown>> = [];
+    if (!excluded.has('indicator')) {
+      reserve('the weak signals and the stream signals');
+      const weak = (await cap.readSignals().selectAll().where('created_at' as never, '<=', knownAt as never).where('maturity' as never, '<>', 'invalid' as never)
+        .$if(since !== null, (q: { where: (...x: unknown[]) => unknown }) => q.where('created_at' as never, '>', since as never)).orderBy('created_at' as never).orderBy('signal_id' as never).limit(200).execute()) as Array<Record<string, unknown>>;
+      for (const s of weak) {
+        controlInputs.push({ synthetic_state: s['synthetic_state'] === true, classification: s['classification'] });
+        push({ kind: 'indicator', id: String(s['signal_id']), version: Number(s['version'] ?? 1), title: `weak signal: ${String(s['title'])}`, at: iso(s['created_at']), truth_state: s['maturity'] === 'corroborated' ? 'assessed' : 'inferred', synthetic_state: s['synthetic_state'] === true,
+               source_state: 'internal', source: null, owner: String(s['nominated_by']), details: { indicator: 'weak_signal', statement: s['statement'], maturity: s['maturity'], novelty: s['novelty'], confidence: s['confidence'], independent_sources: s['independent_sources'], contradicting_sources: s['contradicting_sources'], subject_kind: s['subject_kind'], subject_id: s['subject_id'], disposition: s['disposition'] ?? null } });
+        indicators.push({ item_id: `indicator:${String(s['signal_id'])}@${Number(s['version'] ?? 1)}`, indicator: 'weak_signal', as_of: iso(s['created_at']) });
+      }
+      const fired = (await cap.readStreamSignals().selectAll().where('emission' as never, '=', 'fired' as never).where('emitted_at' as never, '<=', knownAt as never)
+        .$if(since !== null, (q: { where: (...x: unknown[]) => unknown }) => q.where('emitted_at' as never, '>', since as never)).orderBy('emitted_at' as never).orderBy('signal_id' as never).limit(200).execute()) as Array<Record<string, unknown>>;
+      for (const s of fired) {
+        push({ kind: 'indicator', id: String(s['signal_id']), version: null, title: `stream rule fired: window ${iso(s['window_start'])} → ${iso(s['window_end'])} (${String(s['label'])})`, at: iso(s['emitted_at']), truth_state: 'inferred', synthetic_state: false,
+               source_state: 'internal', source: null, owner: String(s['emitted_by']), details: { indicator: 'stream_signal', rule_id: s['rule_id'], processor_id: s['processor_id'], window_start: iso(s['window_start']), window_end: iso(s['window_end']), revision: s['revision'], label: s['label'], value: s['value'], holds: s['holds'], completeness: s['completeness'] } });
+        indicators.push({ item_id: `indicator:${String(s['signal_id'])}`, indicator: 'stream_signal', as_of: iso(s['emitted_at']) });
+      }
+    }
+    items.sort((x, y) => (x.at < y.at ? -1 : x.at > y.at ? 1 : x.item_id < y.item_id ? -1 : 1));
+    // b4 THE POLICY IN FORCE AT known_at (published by then, not superseded by then) — none means nothing is suppressed.
+    reserve('the briefing policy');
+    const policies = (await cap.readBriefingPolicies().select(['version', 'rules', 'effective_at', 'superseded_at'] as never).where('effective_at' as never, '<=', knownAt as never).orderBy('version' as never, 'desc').execute()) as Array<Record<string, unknown>>;
+    const policyRow = policies.find((p) => p['superseded_at'] === null || p['superseded_at'] === undefined || iso(p['superseded_at']) > knownAt);
+    const policy: BriefingPolicy | null = policyRow === undefined ? null : { version: Number(policyRow['version']), rules: policyRow['rules'] as BriefingPolicy['rules'] };
+    // b1 UNCERTAINTY per displayed conclusion — computed from what the cited object carries: its recorded confidence (a warning's, a signal's,
+    // a header's confidence.value), its freshness, its source's state, its truth state, its corroboration refs. Never asserted by a caller.
+    const confidenceOf = (i: BriefingItem): unknown => {
+      const d = i.details ?? {};
+      // a signal's numeric confidence reaches the composer as pg's numeric (a string): read as a number, never invented when absent
+      if (i.kind === 'indicator') return typeof d['confidence'] === 'number' ? d['confidence'] : (typeof d['confidence'] === 'string' && d['confidence'] !== '' ? Number(d['confidence']) : null);
+      return null;
+    };
+    const headerConfidence = new Map<string, unknown>(); const corroborations = new Map<string, unknown>();
+    for (const o of objs) {
+      const k = `${o['object_type'] === 'EVD' ? 'evidence' : 'claim'}:${String(o['object_id'])}@${Number(o['object_version'])}`;
+      const c = o['confidence'] as Record<string, unknown> | null;
+      headerConfidence.set(k, c !== null && typeof c === 'object' && typeof c['value'] === 'number' ? c['value'] : null);
+      corroborations.set(k, o['corroboration_refs'] ?? []);
+    }
+    for (const w of warnings) headerConfidence.set(`warning:${String(w['warning_id'])}`, w['confidence'] === null || w['confidence'] === undefined ? null : Number(w['confidence']));
+    for (const i of items) {
+      const bound = policy === null ? undefined : (policy.rules.classes?.[i.kind]?.max_staleness_hours ?? policy.rules.default.max_staleness_hours);
+      i.uncertainty = uncertaintyOf({ confidence: headerConfidence.has(i.item_id) ? headerConfidence.get(i.item_id) : confidenceOf(i), freshnessHours: i.freshness.age_hours, freshnessBoundHours: bound, sourceState: i.source_state, truthState: i.truth_state, corroborationRefs: corroborations.get(i.item_id) ?? [] });
+    }
+    // b4 THE SUPPRESSION RULE — "prefer silence over false certainty": an item below the policy is NOT rendered; recorded as suppressed
+    // (the item, the rule, the measure) and declared as an omission. The composer never fills the gap with a weaker conclusion.
+    const suppressed: Suppression[] = [];
+    const omissions: Omission[] = [...belowClearance];
+    for (let k = items.length - 1; k >= 0; k -= 1) {
+      const i = items[k] as BriefingItem;
+      const s = suppressionOf(policy, { item_id: i.item_id, kind: i.kind, uncertainty: i.uncertainty as Uncertainty });
+      if (s === null) continue;
+      suppressed.unshift(s);
+      items.splice(k, 1);
+      omissions.push(omission('suppressed', { object: i.item_id, reason: `withheld under briefing policy v${policy?.version ?? 0} (${i.kind}): ${s.because.join('; ')} — no weaker conclusion fills the gap` }));
+    }
+    // b2 UNAVAILABLE DEPENDENCIES AND OMISSIONS declared — what the edition could not include and why.
+    for (const s of sourceStates) {
+      if (s.state === 'degraded') omissions.push(omission('source_degraded', { source: `SRC:${s.source_id}@${s.contract_version}`, reason: `${s.name} (${s.source_key}) is degraded as of known_at: ${s.reason}; what it would have contributed after its last good observation is not carried` }));
+      if (s.state === 'blocked') omissions.push(omission('source_blocked', { source: `SRC:${s.source_id}@${s.contract_version}`, reason: `${s.name} (${s.source_key}) is blocked as of known_at: ${s.reason}; nothing of it is carried` }));
+    }
+    if (memoryContentUnavailable !== null) omissions.push(omission('memory_unavailable', { reason: `the memory items are omitted: the memory projection is withdrawn and the content tier did not answer at ${memoryContentUnavailable.statement} (${memoryContentUnavailable.detail})` }));
+    // b6 URGENT-STATE RETENTION during an outage: under degraded sources the PRIOR edition's urgent items are retained with their ORIGINAL
+    // as-of and a retained_from marker — never re-derived from unavailable data; the outage is declared as an omission.
+    if (degraded && prior !== null) {
+      const priorItems = Array.isArray(prior['items']) ? (prior['items'] as Array<Record<string, unknown>>) : [];
+      const retained = urgentRetained({ priorBriefingId: String(prior['briefing_id']), priorKnownAt: since as string, priorItems, knownAt, presentIds: new Set(items.map((i) => i.item_id)) });
+      for (const r of retained) items.push(r as unknown as BriefingItem);
+      if (retained.length > 0) items.sort((x, y) => (x.at < y.at ? -1 : x.at > y.at ? 1 : x.item_id < y.item_id ? -1 : 1));
+      omissions.push(omission('outage', { object: `BRF:${String(prior['briefing_id'])}`, reason: `the composition ran under degraded or blocked sources (an outage): ${retained.length} urgent item(s) of the prior edition retained with their original as-of ${since as string}, not re-derived; the present state of what those sources observe is not carried` }));
+    }
+    omissions.sort((x, y) => (x.kind < y.kind ? -1 : x.kind > y.kind ? 1 : String(x.object ?? x.source ?? '') < String(y.object ?? y.source ?? '') ? -1 : 1));
+    /* end B36 briefing */
     // B20 (D12): the memory partition's STATE rides the watermark — serving | withdrawn — never the projection watermark (revision,
     // verified sequence, lag), which changes with every event and would make the same inputs compose to different digests (B10-F2).
     // Inside the watermark, not at the payload's top level: BRF@v1's schema (0044) forbids a top-level key it does not name (see the header).
@@ -503,7 +653,10 @@ export class BriefingService {
     const attention = attentionSection({ items: attnItems, events: attnEvents, policies: attnPolicies, knownAt, since });
     /* end B23 attention */
     const content = { room_id: a.roomId, package_id: pkg === null ? null : String(pkg['package_id']), watermark, sources: sourceList, items, windows, source_states: sourceStates, degraded,
-                      /* B23 (0084) attention: BRF@v2 */ attention /* end B23 attention */ };
+                      /* B23 (0084) attention: BRF@v2 */ attention /* end B23 attention */,
+                      /* B36 briefing: BRF@v3 — inside the content, so the digest covers the contract, the ledgers and every band */
+                      audience, purpose, expires_at: expiresAt, omissions, suppressed, disputed: disputedSection, indicators, policy_version: policy === null ? null : policy.version
+                      /* end B36 briefing */ };
     const digest = contentDigest(content);
     // the narrative: labelled, cites only included items, outside the content digest
     const narrative = a.narrative === null || a.narrative.trim().length === 0 ? null : a.narrative;
@@ -532,11 +685,11 @@ export class BriefingService {
       source_object_ids: sourceList.filter((s) => /^(EVD|CLM|DPK|SRC|run):/.test(s)).map((s) => s.replace(/^run:/, 'SIM:')).slice(0, 200),
       event_time: null, observation_time: null, valid_from: null, valid_to: null, recorded_at: now, time_precision: 'exact', source_clock_quality: 'trusted',
       truth_state: 'asserted', synthetic_state: controls.synthetic_state, confidence: null, uncertainty: null, evidence_refs: [],
-      provenance_ref: `principal:${composer}`, method_ref: `briefing-composer@1.1.0${via === 'agent' ? `/agent:${agentId}` : ''}`, contradiction_refs: [], corroboration_refs: [],
+      provenance_ref: `principal:${composer}`, method_ref: `briefing-composer@1.2.0${via === 'agent' ? `/agent:${agentId}` : ''}` /* B36: 1.2.0 = BRF@v3 */, contradiction_refs: [], corroboration_refs: [],
       human_refs: via === 'human' ? [`principal:${composer}`] : [`principal:${room === null ? composer : String(room['owner_principal_id'])}`],
       classification: controls.classification, purpose_scope: purposeId, rights_profile: controls.rights_profile, residency_profile: controls.residency_profile, retention_profile: controls.retention_profile, access_policy_ref: controls.access_policy_ref,
       quality_profile: null, quality_state: { degraded, items: items.length, windows: windows.length, narrative: narrative === null ? 'none' : 'labelled', controls_inputs: controls.inputs }, freshness_state: null,
-      /* B23 (0084) attention: BRF@v2 */ schema_ref: 'BRF@v2' /* end B23 attention */, ontology_ref: null,
+      /* B23 (0084) attention: BRF@v2; B36 (0094 §B): BRF@v3 */ schema_ref: 'BRF@v3' /* end B23 attention */, ontology_ref: null,
       correction_of: null, supersedes: prior === null ? null : `BRF:${String(prior['briefing_id'])}@1`, withdrawal_reason: null, audit_correlation_id: correlationId, content_ref: null,
     };
     const check = validateHeader(header);
@@ -546,7 +699,9 @@ export class BriefingService {
     await cap.admitObject(header, payload, headerDigest);
     await cap.composeBriefing({ briefingId, tenantId, domainId, roomId: a.roomId, packageId: pkg === null ? null : String(pkg['package_id']), composer, via, agentId, knownAt, prior: watermark.prior_briefing_id,
       watermark, sources: sourceList, items, windows, sourceStates, degraded, narrative, narrativeCites: cites, contentDigest: digest, headerDigest, controls, eventId: newId(), correlationId, memoryAccesses,
-      /* B23 (0084) attention */ schemaVersion: 'v2', attention: attention as unknown as Record<string, unknown> /* end B23 attention */ });
+      /* B23 (0084) attention */ schemaVersion: 'v3', attention: attention as unknown as Record<string, unknown> /* end B23 attention */,
+      /* B36 briefing: the v3 contract and ledgers — the port re-checks the contract, the undeclared omission and every band, then writes the ledger events */
+      audience: audience as unknown as Record<string, unknown>, purpose, expiresAt, omissions, suppressed, disputed: disputedSection, policyVersion: policy === null ? null : policy.version /* end B36 briefing */ });
     // B20: the compose answer carries the full projection block of the memory partition (the watermark included — the answer, not the content) beside `degraded`.
     const projection: ProjectionBlock = memBlock;
     // B21 (D1.6): the memory source's state in the answer — served / withdrawn (from the log, labelled) / unavailable (omitted, the reason named).
@@ -557,7 +712,8 @@ export class BriefingService {
       : memoryWithdrawn ? { state: 'withdrawn' as const, code: 'EYE-DEG-001' as const, statement: null, detail: null, items: memoryAccesses.length, reason: 'the memory items are composed from their log (the memory projection is withdrawn), labelled' }
       : { state: 'served' as const, code: null, statement: null, detail: null, items: memoryAccesses.length, reason: null };
     return { briefingId, roomId: a.roomId, packageId: pkg === null ? null : String(pkg['package_id']), knownAt, watermark, contentDigest: digest, headerDigest, items, windows, sourceStates, sources: sourceList, degraded, narrative, narrativeCites: cites, composedVia: via, agentId, controls, memoryAccesses, projection, memorySource,
-             /* B23 (0084) attention */ schemaVersion: 'v2' as const, attention /* end B23 attention */ };
+             /* B23 (0084) attention */ schemaVersion: 'v3' as const, attention /* end B23 attention */,
+             /* B36 briefing: BRF@v3 */ audience, purpose, expiresAt, omissions, suppressed, disputed: disputedSection, indicators, policyVersion: policy === null ? null : policy.version /* end B36 briefing */ };
   }
 
   /**
@@ -680,6 +836,14 @@ export class BriefingService {
     if (b['room_id'] !== null && !(await cap.isMember({ roomId: String(b['room_id']), principal: readerId }))) {
       denyRead(correlationId, 'a room briefing is read by the room\'s members; a stored snapshot lends no reader the composer\'s authority');
     }
+    /* B36 briefing (b3): a BRF@v3 edition is read within its AUDIENCE CONTRACT — the reader's roles in the target context against the
+       contract's roles (an administrator is admitted to every audience); outside it the edition is refused, and the reader learns only that. */
+    const readerRoles = typeof reader === 'string' ? [] : reader.bindings.filter((bd) => bindingReaches(bd, target ?? { tenantId: String(b['tenant_id']), domainId: String(b['domain_id']) })).map((bd) => bd.roleCode);
+    const contract = (b['audience'] ?? null) as Audience | null;
+    if (b['schema_version'] === 'v3' && !readerInAudience(contract, readerRoles)) {
+      throw new HttpException(errorBody('EYE_AUT_001', correlationId, `briefing rejected (audience): the edition is for the audience ${(contract?.roles ?? []).join(', ')}; the reader holds none of these roles in this domain`), 403);
+    }
+    /* end B36 briefing */
     const admitted = await this.admitted(cap, briefingId);
     if (purpose !== null) assertPurpose(purpose, admitted.purpose_scope, 'briefing', correlationId);
     const clearance = typeof reader === 'string' ? 'restricted' : assertClearance(reader, target ?? { tenantId: String(b['tenant_id']), domainId: String(b['domain_id']) }, admitted.classification, 'briefing', correlationId);
@@ -709,14 +873,23 @@ export class BriefingService {
              /* B23 (0084) attention: the edition's version; a v1 edition carries no attention section */ schema_version: b['schema_version'] ?? 'v1', attention: b['attention'] ?? null, /* end B23 attention */
              composed_at: iso(b['composed_at']), known_at: iso(b['known_at']), admitted_for: admitted.purpose_scope, classification: admitted.classification, availability,
              memory_accesses: Array.isArray(b['memory_accesses']) ? b['memory_accesses'] : [],
-             re_flagged: reFlagged.map((e) => ({ event: e['event'], occurred_at: iso(e['occurred_at']), details: e['details'] })) };
+             re_flagged: reFlagged.map((e) => ({ event: e['event'], occurred_at: iso(e['occurred_at']), details: e['details'] })),
+             /* B36 briefing (b3): EXPIRY is a fact of the clock (the database's instant) and the ledger — the tick step briefing-expiry writes
+                briefing.expired once; a read that finds expires_at passed before the tick reaches it says expired all the same. */
+             expires_at: isoOrNull(b['expires_at']), expired: b['expires_at'] !== null && b['expires_at'] !== undefined && iso(b['expires_at']) <= (await cap.now()),
+             expired_at: (() => { const e = reFlagged.find((x) => x['event'] === 'briefing.expired'); return e === undefined ? null : iso(e['occurred_at']); })(),
+             audience: b['audience'] ?? null, purpose: b['purpose'] ?? null, omissions: b['omissions'] ?? [], suppressed: b['suppressed'] ?? [], disputed: b['disputed'] ?? [], policy_version: b['policy_version'] ?? null,
+             events: reFlagged.map((e) => ({ event: e['event'], occurred_at: iso(e['occurred_at']), details: e['details'] })) /* end B36 briefing */ };
   }
 
   async list(cap: ExecutiveReads, reader: AuthenticatedPrincipal | string, roomId: string | null, purpose: string | null = null, target: { tenantId: string | null; domainId: string | null } | null = null): Promise<Array<Record<string, unknown>>> {
     const readerId = typeof reader === 'string' ? reader : reader.principalId;
     const clearance = typeof reader === 'string' ? 'restricted' : (target === null ? 'internal' : clearanceOf(reader, target));
+    /* B36 briefing: the reader's roles in the target (the audience contract) and the database's instant (expiry) */
+    const readerRoles = typeof reader === 'string' || target === null ? [] : reader.bindings.filter((bd) => bindingReaches(bd, target)).map((bd) => bd.roleCode);
+    const now = await cap.now();
     let q = cap.readBriefings().select(['briefing_id', 'room_id', 'package_id', 'composed_by', 'composed_via', 'agent_id', 'known_at', 'prior_briefing_id', 'content_digest', 'degraded', 'composed_at', 'controls',
-      /* B23 (0084) attention */ 'schema_version' /* end B23 attention */] as never).orderBy('composed_at' as never, 'desc').limit(200);
+      /* B23 (0084) attention */ 'schema_version' /* end B23 attention */, /* B36 briefing */ 'audience', 'purpose', 'expires_at', 'policy_version' /* end B36 briefing */] as never).orderBy('composed_at' as never, 'desc').limit(200);
     if (roomId !== null) q = q.where('room_id' as never, '=', roomId as never);
     const rows = (await q.execute()) as Array<Record<string, unknown>>;
     const out: Array<Record<string, unknown>> = [];
@@ -725,8 +898,27 @@ export class BriefingService {
       const admitted = await this.admitted(cap, String(b['briefing_id']));
       if (!covers(clearance, admitted.classification)) continue;
       if (purpose !== null && admitted.purpose_scope !== null && admitted.purpose_scope !== purpose) continue;
-      out.push({ ...b, composed_at: iso(b['composed_at']), known_at: iso(b['known_at']), classification: admitted.classification });
+      /* B36 briefing (b3): a v3 edition is listed to a reader within its audience; expiry is the clock's fact */
+      if (b['schema_version'] === 'v3' && !readerInAudience((b['audience'] ?? null) as Audience | null, readerRoles)) continue;
+      const expired = b['expires_at'] !== null && b['expires_at'] !== undefined && iso(b['expires_at']) <= now;
+      out.push({ ...b, composed_at: iso(b['composed_at']), known_at: iso(b['known_at']), classification: admitted.classification, expires_at: isoOrNull(b['expires_at']), expired });
     }
     return out;
   }
+
+  /* B36 briefing (0094 §B.2): the suppression policy — a named human publishes it (the port asserts the human and the acting principal);
+     the read answers the version in force at an instant and the history. The rules' shape is checked here in words, then by the port. */
+  async setPolicy(cap: BriefingPolicyWrites, ctx: ScopeContext, policyId: string, rules: unknown, reason: unknown, actor: string, correlationId: string): Promise<Record<string, unknown>> {
+    if (rules === null || typeof rules !== 'object' || Array.isArray(rules)) throw new HttpException(errorBody('EYE_REQ_001', correlationId, 'briefing policy rejected (rules): rules are { default: { min_sources, max_staleness_hours, min_confidence }, classes?: { <item kind>: <partial rule> } }'), 422);
+    if (typeof reason !== 'string' || reason.trim().length < 8) throw new HttpException(errorBody('EYE_REQ_001', correlationId, 'briefing policy rejected (reason): a reason of at least 8 characters says why the policy changes'), 422);
+    return cap.setBriefingPolicy({ policyId, tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, rules: rules as Record<string, unknown>, reason: reason.trim(), actor, correlationId });
+  }
+  async policy(cap: ExecutiveReads, _ctx: ScopeContext, at: string | null): Promise<{ current: Record<string, unknown> | null; history: Array<Record<string, unknown>> }> {
+    const instant = at ?? (await cap.now());
+    const rows = (await cap.readBriefingPolicies().select(['policy_id', 'version', 'rules', 'reason', 'set_by', 'effective_at', 'superseded_at'] as never).orderBy('version' as never, 'desc').limit(50).execute()) as Array<Record<string, unknown>>;
+    const history = rows.map((r) => ({ ...r, effective_at: iso(r['effective_at']), superseded_at: isoOrNull(r['superseded_at']) }));
+    const current = history.find((r) => String(r['effective_at']) <= instant && (r['superseded_at'] === null || String(r['superseded_at']) > instant)) ?? null;
+    return { current, history };
+  }
+  /* end B36 briefing */
 }

@@ -531,6 +531,26 @@ export interface ObjectiveRevisionWrites extends StrategyAlignmentWrites {
   subscriptionsMatching(a: { tenantId: string; domainId: string; eventType: 'GraphChanged' | 'MemoryCorrected'; changeKind: string }): Promise<Array<{ subscription_id: string; consumer_kind: string }>>;
 }
 /* end B34 commitments */
+/* B36 (0094 §S) strategy */
+/**
+ * B36 (0094 §S6–§S8): the reads the completed Strategy Graph adds — the detections RAISED on the schedule (the table graph.strategy_detections,
+ * under FORCE RLS), the plan links Part P's objects give an objective (graph.strategy_plan_links; empty and stated when none exist) — and the
+ * two governed writes: the REVOCATION of an authority act (graph.revoke_authority_act, the caller's action graph.strategy.authority.revoke)
+ * and the tick step's RAISE (graph.raise_strategy_detections under executive.attention.tick). The strategy routes that announce a change
+ * read the matching subscriptions through subscriptionsMatching (GraphReads) with the alignment capability they already hold.
+ */
+export interface StrategyCompletionReads extends StrategyAlignmentReads {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readStrategyDetectionsRaised(): any;
+  planLinks(a: { tenantId: string; domainId: string; objectiveId: string | null }): Promise<Record<string, unknown>>;
+}
+export interface StrategyRevocationWrites extends StrategyCompletionReads {
+  revokeAuthorityAct(a: { actId: string; tenantId: string; domainId: string; reason: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+}
+export interface StrategyDetectionWrites extends StrategyCompletionReads {
+  raiseStrategyDetections(a: { tenantId: string; domainId: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+}
+/* end B36 strategy */
 
 // ───────────────────────── implementation ─────────────────────────
 
@@ -539,7 +559,7 @@ class GraphCapabilityImpl extends GraphCore
              EdgeRetractionWrites, StrategyWrites, MemoryWrites, OntologyWrites, ImpactWrites, PropagationAgentWrites, SubscriptionWrites, GraphSubscriberWrites, ProjectionWrites,
              MemoryContextReads,
              RevisionWrites,
-             /* B32 (0089) graph */ StrategyAlignmentWrites /* end B32 graph */ {
+             /* B32 (0089) graph */ StrategyAlignmentWrites /* end B32 graph */, /* B36 (0094 §S) strategy */ StrategyRevocationWrites, StrategyDetectionWrites /* end B36 strategy */ {
   constructor(tx: Tx, action: string) { super(tx, action); }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1065,6 +1085,22 @@ class GraphCapabilityImpl extends GraphCore
     return rows[0]?.r ?? {};
   }
   /* end B32 graph */
+  /* B36 (0094 §S) strategy */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readStrategyDetectionsRaised(): any { return this.from('graph.strategy_detections'); }
+  async planLinks(a: Parameters<StrategyCompletionReads['planLinks']>[0]): Promise<Record<string, unknown>> {
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select graph.strategy_plan_links(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.objectiveId}::uuid) as r`);
+    return rows[0]?.r ?? { available: false, initiatives: [] };
+  }
+  async revokeAuthorityAct(a: Parameters<StrategyRevocationWrites['revokeAuthorityAct']>[0]): Promise<Record<string, unknown>> {
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select graph.revoke_authority_act(${a.actId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  async raiseStrategyDetections(a: Parameters<StrategyDetectionWrites['raiseStrategyDetections']>[0]): Promise<Record<string, unknown>> {
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select graph.raise_strategy_detections(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  /* end B36 strategy */
   /* B34 (0090) commitments */
   async reviseObjective(a: Parameters<ObjectiveRevisionWrites['reviseObjective']>[0]): Promise<Record<string, unknown>> {
     const rows = await this.call<{ r: Record<string, unknown> }>(sql`select graph.revise_objective(${a.objectId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.title}::text, ${a.statement}::text,
@@ -1157,4 +1193,12 @@ export const GraphCapability = {
     return new GraphCapabilityImpl(tx, action);
   },
   /* end B34 commitments */
+  /* B36 (0094 §S) strategy */
+  /** B36 (0094 §S6): the revocation of an authority act (graph.strategy.authority.revoke, human-gated) — and the alignment reads it answers with. */
+  strategyRevoke(tx: Tx, action: string): StrategyRevocationWrites { return new GraphCapabilityImpl(tx, action); },
+  /** B36 (0094 §S7): the tick step's raise of the scheduled detections (executive.attention.tick — the attention agent's). */
+  strategyTick(tx: Tx, action: string): StrategyDetectionWrites { return new GraphCapabilityImpl(tx, action); },
+  /** B36 (0094 §S7/§S8): the raised detections and the plan links, under the alignment read action. */
+  strategyCompletionRead(tx: Tx, action: string): StrategyCompletionReads { return new GraphCapabilityImpl(tx, action); },
+  /* end B36 strategy */
 };

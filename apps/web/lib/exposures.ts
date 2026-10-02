@@ -60,7 +60,8 @@ export interface ExposureDetail {
   residuals: Residual[]; hypotheses: Array<{ version: number; statement: string; falsifier: string; value_low: string | number; value_high: string | number; unit: string; timing: Record<string, unknown>; required_capabilities: string[] }>;
   correlations: { declared: Array<Record<string, unknown>>; estimated: Array<Record<string, unknown>> };
   responses: Array<{ response_id: string; response_kind: ResponseKind; decision_object_id: string; package_id: string; package: Record<string, unknown> | null; outcomes: Array<Record<string, unknown>>;
-    /* B34 (0090) */ monitor?: { state: string; owed: string | null }; reviews?: OutcomeReview[] }>;
+    /* B34 (0090) */ monitor?: { state: string; owed: string | null }; reviews?: OutcomeReview[];
+    /* B36 (0094 §C5) */ learnings?: Learning[]; learn_owed?: string[] }>;
   candidate: Record<string, unknown> | null; warning: Record<string, unknown> | null; at: string;
   /* B34 (0090) */
   scenarios?: Array<{ link_id: string; scenario_id: string; relation: string; rationale: string; scenario_title: string | null; scenario_state: string | null }>;
@@ -69,6 +70,18 @@ export interface ExposureDetail {
 /* ───────────── B34 (0090) exposures: the detections, the outcome loop, the signatures ───────────── */
 export interface Detection { kind: string; detail: string; resolvers?: Array<{ principal_id: string; name: string | null }>; [k: string]: unknown }
 export interface OutcomeReview { review_id: string; response_id: string; package_id: string; effect: string; residual_verdict: string; lesson: string; reviewed_by: string; reviewed_at: string; outcomes: Array<Record<string, unknown>> }
+/* B36 (0094 §C5): the learn step — what was expected (the server reads the accepted bracket), what happened (the review's outcomes), what changes in the basis */
+export interface Learning { learning_id: string; review_id: string; response_id: string; basis_version: number | null; expected: Record<string, unknown>; observed: Record<string, unknown>; basis_change: string; recorded_by: string; recorded_at: string }
+/** The learn step in words: the expected bracket against what happened, then what changes. */
+export function learningLine(l: Pick<Learning, 'expected' | 'observed' | 'basis_change' | 'basis_version'>): string {
+  const e = l.expected; const o = l.observed;
+  const prob = e['probability'] as { low?: unknown; high?: unknown } | null | undefined;
+  const impact = e['impact'] as { low?: unknown; high?: unknown; unit?: unknown } | null | undefined;
+  const expected = [prob ? `p ${String(prob.low)}–${String(prob.high)}` : typeof e['plausibility'] === 'string' ? `plausibility ${e['plausibility']}` : null,
+                    impact ? `impact ${String(impact.low)}–${String(impact.high)} ${String(impact.unit ?? '')}`.trim() : null].filter((x) => x !== null).join(', ');
+  return `expected (v${String(l.basis_version ?? '?')}: ${expected || 'no bracket'}; ${String(e['note'] ?? '')}) → happened (${String(o['effect'] ?? '')}; ${String(o['note'] ?? '')}) → basis changes: ${l.basis_change}`;
+}
+/* end B36 */
 export interface Signature { act: 'accept' | 'sponsor'; version: number; digest: string | null; signer: string; at: string | null }
 export const OUTCOME_EFFECTS = ['effective', 'partly_effective', 'ineffective', 'inconclusive'] as const;
 export const RESIDUAL_VERDICTS = ['stands', 'reassess', 'close'] as const;
@@ -178,4 +191,8 @@ export const exposures = {
   resolveOwner: (s: Scope, id: string, owner: string, reason: string) =>
     p<{ resolution: Record<string, unknown>; receipt: Receipt }>(s, `/exposures/${id}/owner/resolve`, 'prediction.exposure.owner.resolve', { owner, reason }, id),
   /* end B34 */
+  /* B36 (0094 §C5): the learn step after an outcome review */
+  recordLearning: (s: Scope, id: string, payload: { reviewId: string; expected: string; observed: string; basisChange: string }) =>
+    p<{ learning: Learning; receipt: Receipt }>(s, `/exposures/${id}/learnings/record`, 'prediction.exposure.learn', payload, id),
+  /* end B36 */
 };

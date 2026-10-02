@@ -45,9 +45,12 @@ export class RoomService {
     const now = Date.now();
     const out: Array<Record<string, unknown>> = [];
     for (const r of rooms) {
-      const p = (await cap.readPackages().select(['state' as never]).where('package_id' as never, '=', String(r['package_id']) as never).executeTakeFirst()) as { state: string } | undefined;
+      // B36 (0094 §0): a scenario room, an objective review or a forum has no package — its state is the room's own (open until its deadline passes); found by the B36 demo walk (a null package_id read as the literal "null")
+      const pkgId = r['package_id'] === null || r['package_id'] === undefined ? null : String(r['package_id']);
+      const p = pkgId === null ? undefined : (await cap.readPackages().select(['state' as never]).where('package_id' as never, '=', pkgId as never).executeTakeFirst()) as { state: string } | undefined;
       const member = await cap.isMember({ roomId: String(r['room_id']), principal: reader });
-      out.push({ room_id: r['room_id'], package_id: r['package_id'], title: r['title'], owner_principal_id: r['owner_principal_id'], state: roomStateOf(String(p?.state ?? 'closed')),
+      const subjectState = pkgId === null ? (r['deadline'] !== null && r['deadline'] !== undefined && new Date(String(r['deadline'])).getTime() < now ? 'overdue' : 'open') : roomStateOf(String(p?.state ?? 'closed'));
+      out.push({ room_id: r['room_id'], package_id: r['package_id'], kind: r['kind'] ?? 'decision', subject_id: r['subject_id'] ?? null, deadline: iso(r['deadline']), title: r['title'], owner_principal_id: r['owner_principal_id'], state: subjectState,
                  review_every_days: r['review_every_days'], next_review_at: iso(r['next_review_at']), last_review_at: iso(r['last_review_at']),
                  review_overdue: new Date(String(r['next_review_at'])).getTime() < now, member });
     }
@@ -61,15 +64,19 @@ export class RoomService {
     if (!(await cap.isMember({ roomId, principal: reader }))) throw new HttpException(errorBody('EYE_AUT_001', correlationId, 'the room is read by its members; you are not one'), 403);
     const members = (await cap.readMembers().selectAll().where('room_id' as never, '=', roomId as never).orderBy('added_at' as never).execute()) as Array<Record<string, unknown>>;
     const events = (await cap.readRoomEvents().selectAll().where('room_id' as never, '=', roomId as never).orderBy('occurred_at' as never).execute()) as Array<Record<string, unknown>>;
-    const p = (await cap.readPackages().selectAll().where('package_id' as never, '=', String(r['package_id']) as never).executeTakeFirst()) as Record<string, unknown> | undefined;
-    const briefings = (await cap.readBriefings().select(['briefing_id', 'composed_at', 'composed_by', 'composed_via', 'known_at', 'prior_briefing_id', 'content_digest', 'degraded'] as never).where('room_id' as never, '=', roomId as never).orderBy('composed_at' as never).execute()) as Array<Record<string, unknown>>;
+    // B36 (0094 §0): a room without a package (scenario, objective review, forum) reads its own state — open until its deadline passes
+    const pkgId = r['package_id'] === null || r['package_id'] === undefined ? null : String(r['package_id']);
+    const p = pkgId === null ? undefined : (await cap.readPackages().selectAll().where('package_id' as never, '=', pkgId as never).executeTakeFirst()) as Record<string, unknown> | undefined;
+    const briefings = (await cap.readBriefings().select(['briefing_id', 'composed_at', 'composed_by', 'composed_via', 'known_at', 'prior_briefing_id', 'content_digest', 'degraded', /* B36 (0094 §B): the edition's schema version, so the room's list says v3 (the page reads it) */ 'schema_version', 'expires_at'] as never).where('room_id' as never, '=', roomId as never).orderBy('composed_at' as never).execute()) as Array<Record<string, unknown>>;
     const now = await cap.now();
     const overdue = new Date(String(r['next_review_at'])).getTime() < new Date(now).getTime();
     // 0066 §9: the delegations of standing in this room — visible, each with its window and whether it stands now.
     const delegations = (await cap.readDelegations().selectAll().where('room_id' as never, '=', roomId as never).orderBy('from_at' as never).execute()) as Array<Record<string, unknown>>;
     return {
       ...r, next_review_at: iso(r['next_review_at']), last_review_at: iso(r['last_review_at']), opened_at: iso(r['opened_at']),
-      state: roomStateOf(String(p?.['state'] ?? 'closed')), package_state: p?.['state'] ?? null, package_title: p?.['title'] ?? null,
+      member: true, // the reader passed the membership guard above — the page's studio and its acts read this (the list row says it; the room read did not — found by the B36 demo walk)
+      state: pkgId === null ? (r['deadline'] !== null && r['deadline'] !== undefined && new Date(String(r['deadline'])).getTime() < new Date(now).getTime() ? 'overdue' : 'open') : roomStateOf(String(p?.['state'] ?? 'closed')),
+      package_state: p?.['state'] ?? null, package_title: p?.['title'] ?? null, deadline: iso(r['deadline']),
       review_overdue: overdue, review_status: overdue ? `review overdue since ${iso(r['next_review_at'])}` : `next review due ${iso(r['next_review_at'])}`,
       members: members.map((m) => ({ ...m, added_at: iso(m['added_at']), removed_at: iso(m['removed_at']), live: m['removed_at'] === null })),
       events: events.map((e) => ({ ...e, occurred_at: iso(e['occurred_at']) })),

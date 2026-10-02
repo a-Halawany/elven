@@ -268,6 +268,9 @@ export class ExposuresService {
     /* B34 (0090): the detections, the outcome reviews, the canonical polarity */
     const detections = await cap.detections(exposureId);
     const reviews = (await cap.readOutcomeReviews().selectAll().where('exposure_id' as never, '=', exposureId as never).orderBy('reviewed_at' as never).execute()) as Row[];
+    /* B36 (0094 §C5): the learn step — each review's learning (what was expected, what happened, what changes in the basis) */
+    const learnings = (await cap.readLearnings().selectAll().where('exposure_id' as never, '=', exposureId as never).orderBy('recorded_at' as never).execute()) as Row[];
+    /* end B36 */
     const row = { ...x, title: strategy?.['title'] ?? null, statement: strategy?.['statement'] ?? null, breach: latest?.['breach'] ?? null,
                   has_agent_proposal: versions.some((v) => v['assessed_kind'] === 'agent' && v['state'] === 'proposed'), detections };
     return {
@@ -278,10 +281,12 @@ export class ExposuresService {
         const outs = outcomes.filter((o) => o['package_id'] === r['package_id']);
         const rv = reviews.filter((k) => k['response_id'] === r['response_id']);
         const covered = new Set(rv.flatMap((k) => (k['outcome_ids'] as string[] | null) ?? []));
-        return { ...r, package: pkg, outcomes: outs, reviews: rv, /* B34 (0090) */ monitor: responseMonitor(pkg?.['state'], outs.length, outs.filter((o) => covered.has(String(o['outcome_id']))).length) };
+        const learned = learnings.filter((l) => l['response_id'] === r['response_id']);
+        return { ...r, package: pkg, outcomes: outs, reviews: rv, /* B34 (0090) */ monitor: responseMonitor(pkg?.['state'], outs.length, outs.filter((o) => covered.has(String(o['outcome_id']))).length),
+                 /* B36 (0094 §C5) */ learnings: learned, learn_owed: rv.filter((k) => !learned.some((l) => l['review_id'] === k['review_id'])).map((k) => k['review_id']) /* end B36 */ };
       }),
       candidate, warning,
-      /* B34 (0090) */ scenarios, detections, reviews,
+      /* B34 (0090) */ scenarios, detections, reviews, /* B36 (0094 §C5) */ learnings, /* end B36 */
       signatures: {
         accepted: x['accepted_version'] === null ? null : { act: 'accept', version: x['accepted_version'], digest: versions.find((v) => v['version'] === x['accepted_version'])?.['digest'] ?? null,
                                                              signer: x['accepted_by'], at: x['accepted_at'] },

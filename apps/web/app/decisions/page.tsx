@@ -16,6 +16,9 @@ import { tableStyle, Th, Td, buttonStyle, Receipt as ReceiptNote, ErrorNote } fr
 import { SourceImpactControl } from './source-impact-control';
 // B34 (0090) gates
 import { GateControl } from './gate-control';
+/* B36 (0094) gates: the gate completed — signature, recusal, challenge, distribution, the validated fields, the one gate state */
+import { GateCompletion } from './gate-completion';
+/* end B36 gates */
 import { CONDITION_KINDS, buildCondition, type TypedCondition } from '../../lib/gates';
 
 const STATE_TEXT: Record<string, string> = { draft: '◌ DRAFT', proposed: '◍ PROPOSED', under_review: '◍ UNDER REVIEW', approved: '● APPROVED', committed: '■ COMMITTED', monitoring: '◉ MONITORING', closed: '□ CLOSED', rejected: '✕ REJECTED', withdrawn: '✕ WITHDRAWN',
@@ -37,7 +40,7 @@ function Uncertainty({ o }: { o: Option }) {
 }
 
 export default function DecisionsPage() {
-  const { scope, isApprover, isAuthority, isDecisionOwner, isExecutive } = useShell();
+  const { scope, me, isApprover, isAuthority, isDecisionOwner, isExecutive, /* B36 (0094) gates */ isBoardMember, isAuditor /* end B36 gates */ } = useShell();
   const [rows, setRows] = useState<Package[] | null>(null);
   const [open, setOpen] = useState<Package | null>(null);
   const [version, setVersion] = useState<number | null>(null);
@@ -196,6 +199,10 @@ export default function DecisionsPage() {
               <GateControl scope={scope} packageId={open.package_id} version={v.version} versionState={v.state} versionDigest={v.version_digest}
                 roles={{ isApprover, isAuthority, isDecisionOwner, isExecutive }} onChange={() => void openPackage(open.package_id)} />
               {/* end B34 gates */}
+              {/* B36 (0094) gates: the gate's record — the one state badge, the signatures verified, recusals, challenges, denials, distributions, the fields */}
+              <GateCompletion scope={scope} packageId={open.package_id} version={v.version} versionState={v.state} me={me.principalId}
+                roles={{ isApprover, isAuthority, isDecisionOwner, isExecutive, isBoardMember, isAuditor }} onChange={() => void openPackage(open.package_id)} />
+              {/* end B36 gates */}
               <div style={{ display: 'flex', gap: 'var(--eye-space-8)', flexWrap: 'wrap', marginBlockStart: 'var(--eye-space-16)' }}>
                 {isApprover && ['proposed', 'under_review', 'approved'].includes(v.state) && v.version_digest !== null ? (
                   <>
@@ -241,6 +248,8 @@ export default function DecisionsPage() {
                     <DefinitionRow term="Decided">version digest <Mono>{String((replay.layers.decided['version'] as Record<string, unknown>)?.['version_digest'] ?? '').slice(0, 16)}…</Mono> · {((replay.layers.decided['dissent'] as unknown[]) ?? []).length} dissent on this version, {((replay.layers.decided['prior_dissent'] as unknown[]) ?? []).length} on earlier versions · {((replay.layers.decided['approvals'] as unknown[]) ?? []).length} approval(s) · commitment at class <Mono>{String((replay.layers.decided['commitment'] as Record<string, unknown>)?.['op_class'])}</Mono> · policy decision <Mono>{short((replay.layers.decided['policy'] as Record<string, unknown> | null)?.['policy_decision_id'])}</Mono> · audit seq <Mono>{String((replay.layers.decided['audit'] as Record<string, unknown> | null)?.['audit_seq'] ?? '—')}</Mono></DefinitionRow>
                     {/* B34 (0090) gates: the controls in force at the decision instant */}
                     <DefinitionRow term="Controls in force when decided">{(replay.controlsInForce?.controls ?? []).length === 0 ? 'no policy revision or control decision recorded by then' : (replay.controlsInForce?.controls ?? []).map((c) => `${String(c['control_key'])} v${String(c['version'])} (${String(c['kind'])})`).join(' · ')}</DefinitionRow>
+                    {/* B36 (0094) gates: the PDP denials on the package's versions, beside the content */}
+                    <DefinitionRow term="Denied acts (the PDP)">{(replay.denials ?? []).length === 0 ? 'no decision act was refused by the policy decision point' : (replay.denials ?? []).map((d) => `${String(d['principal_id']).slice(0, 8)}… tried ${String(d['action'])} — ${String(d['reason'])}`).join(' · ')}</DefinitionRow>
                     <DefinitionRow term="Observed (after the decision)">{Object.entries(replay.layers.observed).filter(([, arr]) => arr.length > 0).map(([k, arr]) => `${k}: ${arr.length}`).join(' · ') || 'nothing yet'}</DefinitionRow>
                   </dl>
                 </section>

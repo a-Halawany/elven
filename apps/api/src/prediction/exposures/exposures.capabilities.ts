@@ -76,6 +76,7 @@ export interface ExposureReads {
   readScenarioLinks(): any;
   readScenarios(): any;
   readOutcomeReviews(): any;
+  /* B36 (0094 §C5) collab */ readLearnings(): any; /* end B36 collab */
   readCanonical(): any;
   /* end B34 */
   readCandidates(): any;
@@ -188,6 +189,9 @@ class ExposuresImpl extends ExposuresCore implements TaxonomyWrites, AppetiteWri
   readOutcomeReviews(): any { return this.from('prediction.exposure_outcome_reviews'); }
   readCanonical(): any { return this.from('objects.canonical_objects'); }
   /* end B34 */
+  /* B36 (0094 §C5) collab: the learn step's lineage */
+  readLearnings(): any { return this.from('prediction.exposure_learnings'); }
+  /* end B36 collab */
   /* eslint-enable @typescript-eslint/no-explicit-any */
 
   async preview(exposureId: string, version: number): Promise<Row | null> {

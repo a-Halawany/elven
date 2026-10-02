@@ -111,3 +111,38 @@ export const alignment = {
   assignOwner: (s: Scope, objectId: string, ownerPrincipalId: string, reason: string) =>
     p<{ owner: Record<string, unknown>; receipt: Receipt }>(s, `/strategy/${objectId}/owner`, 'graph.strategy.owner.assign', 'OBJ', { ownerPrincipalId, reason }, objectId),
 };
+
+/* ───────────────────────── B36 (0094 §S) strategy: revocable acts, the scheduled detections, the plan links ───────────────────────── */
+export type RaisedDetectionKind = 'stale_measure' | 'gamed_measure' | 'lost_linkage' | 'owner_missing';
+export interface RaisedDetection {
+  detection_id: string; kind: RaisedDetectionKind | string; subject_id: string; subject_type: string; measure_id: string | null; cause_key: string; detail: string;
+  owner_principal_id: string | null; routed_item_id: string | null; routing: { state?: string; outcome?: string; route_roles?: string[]; policy_version?: number | null; due_at?: string | null }; raised_at: string; raised_by: string;
+}
+export interface AuthorityActRow { act_id: string; act_kind: AuthorityAct; subject_kind: string; subject_id: string; subject_version: number; decision: string; rationale: string; approver_principal_id: string; expires_at: string; recorded_at: string; revoked_at: string | null; revoked_by: string | null; revocation_reason: string | null }
+export interface PlanLinks { available: boolean; reason?: string; initiatives: Array<Record<string, unknown>> }
+export const RAISED_KIND_LABEL: Record<RaisedDetectionKind, string> = {
+  stale_measure: '◍ stale measure — the input is shown stale, never current; the owner refreshes it',
+  gamed_measure: '⚠ gamed measure — an owner edit inside the window before a favourable score change',
+  lost_linkage: '⊘ lost linkage — an approved measure measures no active objective',
+  owner_missing: '→ owner missing — routed to the planning review to assign one',
+};
+/** An act's standing in words: in force until, lapsed at, or REVOKED (when, by whom, why). */
+export function actStanding(a: Pick<AuthorityActRow, 'decision' | 'expires_at' | 'revoked_at' | 'revoked_by' | 'revocation_reason'>, now: Date = new Date()): string {
+  if (a.revoked_at !== null) return `✕ REVOKED at ${a.revoked_at} by ${(a.revoked_by ?? '?').slice(0, 8)}… — ${a.revocation_reason ?? ''}`;
+  if (new Date(a.expires_at).getTime() <= now.getTime()) return `○ lapsed at ${a.expires_at}`;
+  return a.decision === 'approve' ? `● in force until ${a.expires_at}` : `○ rejected (until ${a.expires_at})`;
+}
+/** A raised detection in words: the kind, the routing the schedule gave it, whom. */
+export function raisedLine(d: Pick<RaisedDetection, 'kind' | 'routing' | 'owner_principal_id' | 'routed_item_id'>): string {
+  const kind = RAISED_KIND_LABEL[d.kind as RaisedDetectionKind] ?? d.kind;
+  const state = d.routing.state ?? 'unrouted';
+  const who = d.owner_principal_id === null ? `the roles ${(d.routing.route_roles ?? []).join(', ') || 'nobody'}` : `${d.owner_principal_id.slice(0, 8)}… and the roles ${(d.routing.route_roles ?? []).join(', ') || '—'}`;
+  return `${kind} · routed ${state} to ${who}${d.routed_item_id === null ? '' : ` · item ${d.routed_item_id.slice(0, 8)}…`}`;
+}
+export const strategyCompletion = {
+  /** Revoke an authority act (human-gated): its issuer or a domain administrator; a lapsed act is refused by the server. */
+  revoke: (s: Scope, actId: string, reason: string) => p<{ revocation: Record<string, unknown>; receipt: Receipt }>(s, `/strategy/authority/${actId}/revoke`, 'graph.strategy.authority.revoke', 'ALN', { reason: reason.trim() }, actId),
+  acts: (s: Scope, subjectId?: string) => p<{ acts: AuthorityActRow[]; receipt: Receipt }>(s, '/strategy/authority/list', 'graph.strategy.alignment.read', 'OBJ', subjectId ? { subjectId } : {}, subjectId ?? null),
+  raised: (s: Scope, kind?: string) => p<{ detections: RaisedDetection[]; receipt: Receipt }>(s, '/strategy/detections/list', 'graph.strategy.alignment.read', 'OBJ', kind ? { kind, limit: 200 } : { limit: 200 }),
+  planLinks: (s: Scope, objectiveId?: string) => p<{ links: PlanLinks; receipt: Receipt }>(s, '/strategy/plans/links', 'graph.strategy.alignment.read', 'OBJ', objectiveId ? { objectiveId } : {}, objectiveId ?? null),
+};

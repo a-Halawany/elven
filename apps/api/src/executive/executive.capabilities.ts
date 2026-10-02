@@ -134,12 +134,25 @@ export interface ExecutiveReads {
   readHealthChanges(): any;
   readHealthChangeEvents(): any;
   /* end B32 health */
+  /* B36 (0094 §S) strategy: the input register with owners, the owner-edit ledger, the exceptions, the snapshot approvals (0094 §S1–§S4). */
+  readHealthInputs(): any;
+  readHealthInputEdits(): any;
+  readHealthExceptions(): any;
+  readHealthSnapshotApprovals(): any;
+  /* end B36 strategy */
   /* B34 (0090) attention: the register an opportunity signal is read from, the act registry and the acts. */
   readExposures(): any;
   readExposureVersions(): any;
   readAttentionActRegistry(): any;
   readAttentionItemActs(): any;
   /* end B34 attention */
+  /* B36 briefing (0094 §B): the suppression policy's versions, B28's weak signals and stream signals (the indicator items), and G's
+     challenges — FEATURE-DETECTED at read (to_regclass): an empty list while decision.challenges does not exist in this database. */
+  readBriefingPolicies(): any;
+  readSignals(): any;
+  readStreamSignals(): any;
+  challengesOpenAt(a: { packageId: string | null; at: string }): Promise<Array<Record<string, unknown>>>;
+  /* end B36 briefing */
   isMember(a: { roomId: string; principal: string }): Promise<boolean>;
   liveApprovals(a: { packageId: string; version: number }): Promise<Array<{ approval_id: string; approver_principal_id: string; expires_at: string }>>;
   /** The approvals that STOOD at an instant, the approver's eligibility reconstructed then (0049). */
@@ -241,6 +254,20 @@ export interface HealthWrites extends ExecutiveReads {
   decideChange(a: { changeId: string; tenantId: string; domainId: string; decision: string; note: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
 }
 /* end B32 health */
+/* B36 (0094 §S) strategy: the score completed (0094 §S1–§S4) — the owner-correction route, the exceptions, the signed snapshot approval, the reads beside them. */
+export interface HealthInputWrites extends HealthWrites {
+  setHealthInput(a: { editId: string; tenantId: string; domainId: string; componentKey: string; value: number; reason: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+  requestHealthException(a: { exceptionId: string; tenantId: string; domainId: string; componentKey: string; kind: string; relaxedDays: number | null; reason: string; expiresAt: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+  approveHealthException(a: { exceptionId: string; tenantId: string; domainId: string; decision: string; note: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+  approveHealthSnapshot(a: { approvalId: string; tenantId: string; domainId: string; snapshotId: string; digest: string; note: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+  previewSnapshotApproval(a: { snapshotId: string }): Promise<Record<string, unknown> | null>;
+  ownerEditAnalysis(a: { tenantId: string; domainId: string; definitionId: string | null }): Promise<Record<string, unknown>>;
+  /** §0's executive.current_context of a principal (NULL when none was set). */
+  currentContext(a: { principalId: string }): Promise<Record<string, unknown> | null>;
+  /** The signer's one statement under this capability's bound action (SignatureService.sign → executive.record_signature). */
+  signer(): { call<T>(q: ReturnType<typeof sql>): Promise<T[]> };
+}
+/* end B36 strategy */
 /* B34 (0090) attention: THE ACT — launched and settled under executive.attention.item.act (human-gated); the governed action is its own write. */
 export interface AttentionActWrites extends ExecutiveReads {
   launchAct(a: { actId: string; itemId: string; tenantId: string; domainId: string; actionKey: string; rationale: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
@@ -262,18 +289,46 @@ export interface BriefingWrites extends ExecutiveReads {
                        knownAt: string; prior: string | null; watermark: Record<string, unknown>; sources: unknown[]; items: unknown[]; windows: unknown[]; sourceStates: unknown[]; degraded: boolean;
                        narrative: string | null; narrativeCites: string[]; contentDigest: string; headerDigest: string; memoryAccesses?: Array<{ item_id: string; version: number; access_id: string }>; controls: unknown; eventId: string; correlationId: string;
                        /* B23 (0084) attention: BRF@v2 — the edition's schema version and its attention section (null on a v1 edition). */
-                       schemaVersion: 'v1' | 'v2'; attention: Record<string, unknown> | null /* end B23 attention */ }): Promise<{ briefing_id: string; content_digest: string }>;
+                       schemaVersion: 'v1' | 'v2' | 'v3'; attention: Record<string, unknown> | null /* end B23 attention */;
+                       /* B36 briefing (0094 §B): the v3 contract — the audience, purpose and expiry, the omissions / suppressed / disputed ledgers, the policy version in force at known_at (all absent on a v1 / v2 edition). */
+                       audience?: Record<string, unknown> | null; purpose?: string | null; expiresAt?: string | null; omissions?: unknown[]; suppressed?: unknown[]; disputed?: unknown[]; policyVersion?: number | null;
+                       /* end B36 briefing */ }): Promise<{ briefing_id: string; content_digest: string; omissions?: number; suppressed?: number; disputed?: number }>;
 }
+/* B36 briefing (0094 §B.2): the suppression policy's publication — a named human's act under briefing.policy.set. */
+export interface BriefingPolicyWrites extends ExecutiveReads {
+  setBriefingPolicy(a: { policyId: string; tenantId: string; domainId: string; rules: Record<string, unknown>; reason: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+}
+/* B36 briefing (0094 §B.6): the tick step briefing-expiry's port (the tick's own bound action executive.attention.tick). */
+export interface BriefingExpiryWrites extends ExecutiveReads {
+  expireBriefings(a: { tenantId: string; domainId: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+}
+/* end B36 briefing */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 class ExecutiveCapabilityImpl extends ExecutiveCore implements RoomWrites, BriefingWrites, AgentWrites, AttentionWrites, AttentionSubscriberWrites, ReviewWrites, /* B24 (0086) timer */ AttentionTickWrites /* end B24 timer */,
-  /* B24 (0086) governance */ AttentionGovernanceWrites /* end B24 governance */, /* B32 (0089) health */ HealthWrites /* end B32 health */, /* B34 (0090) attention */ AttentionActWrites /* end B34 attention */ {
+  /* B24 (0086) governance */ AttentionGovernanceWrites /* end B24 governance */, /* B32 (0089) health */ HealthWrites /* end B32 health */, /* B34 (0090) attention */ AttentionActWrites /* end B34 attention */,
+  /* B36 (0094 §S) strategy */ HealthInputWrites /* end B36 strategy */,
+  /* B36 briefing */ BriefingPolicyWrites, BriefingExpiryWrites /* end B36 briefing */ {
   constructor(tx: Tx, action: string) { super(tx, action); }
   readRooms(): any { return this.from('executive.rooms_current'); }
   readMembers(): any { return this.from('executive.room_members'); }
   readRoomEvents(): any { return this.from('executive.room_events'); }
   readBriefings(): any { return this.from('executive.briefings'); }
   readBriefingEvents(): any { return this.from('executive.briefing_events'); }
+  /* B36 briefing (0094 §B) */
+  readBriefingPolicies(): any { return this.from('executive.briefing_policies'); }
+  readSignals(): any { return this.from('prediction.signals_current'); }
+  readStreamSignals(): any { return this.from('prediction.stream_signals'); }
+  /** G's decision.challenges, feature-detected (to_regclass): the challenges OPEN at an instant (raised by then, not resolved by then) — none while the table does not exist. */
+  async challengesOpenAt(a: { packageId: string | null; at: string }): Promise<Array<Record<string, unknown>>> {
+    const present = await this.call<{ ok: boolean }>(sql`select to_regclass('decision.challenges') is not null as ok`);
+    if (present[0]?.ok !== true) return [];
+    return this.call<Record<string, unknown>>(sql`select to_jsonb(c) as row from decision.challenges c
+      where (${a.packageId}::uuid is null or c.package_id = ${a.packageId}::uuid)
+        and c.raised_at <= ${a.at}::timestamptz and (c.resolved_at is null or c.resolved_at > ${a.at}::timestamptz)
+      order by c.raised_at, c.challenge_id limit 200`).then((rows) => rows.map((r) => (r['row'] ?? {}) as Record<string, unknown>));
+  }
+  /* end B36 briefing */
   readAgents(): any { return this.from('executive.agents'); }
   readAgentRuns(): any { return this.from('executive.agent_runs'); }
   readPackages(): any { return this.from('decision.packages_current'); }
@@ -341,6 +396,12 @@ class ExecutiveCapabilityImpl extends ExecutiveCore implements RoomWrites, Brief
   readHealthChanges(): any { return this.from('executive.health_score_changes'); }
   readHealthChangeEvents(): any { return this.from('executive.health_score_change_events'); }
   /* end B32 health */
+  /* B36 (0094 §S) strategy */
+  readHealthInputs(): any { return this.from('executive.health_inputs'); }
+  readHealthInputEdits(): any { return this.from('executive.health_input_edits'); }
+  readHealthExceptions(): any { return this.from('executive.health_exceptions'); }
+  readHealthSnapshotApprovals(): any { return this.from('executive.health_snapshot_approvals'); }
+  /* end B36 strategy */
   /* B34 (0090) attention */
   readExposures(): any { return this.from('prediction.exposure_current'); }
   readExposureVersions(): any { return this.from('prediction.exposure_versions'); }
@@ -527,6 +588,33 @@ class ExecutiveCapabilityImpl extends ExecutiveCore implements RoomWrites, Brief
     return this.one(sql`select executive.decide_health_change(${a.changeId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.decision}, ${a.note}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'decide_health_change');
   }
   /* end B32 health */
+  /* B36 (0094 §S) strategy */
+  async setHealthInput(a: Parameters<HealthInputWrites['setHealthInput']>[0]) {
+    return this.one(sql`select executive.set_health_input(${a.editId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.componentKey}, ${a.value}::numeric, ${a.reason}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'set_health_input');
+  }
+  async requestHealthException(a: Parameters<HealthInputWrites['requestHealthException']>[0]) {
+    return this.one(sql`select executive.request_health_exception(${a.exceptionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.componentKey}, ${a.kind}, ${a.relaxedDays}::numeric, ${a.reason}, ${a.expiresAt}::timestamptz, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'request_health_exception');
+  }
+  async approveHealthException(a: Parameters<HealthInputWrites['approveHealthException']>[0]) {
+    return this.one(sql`select executive.approve_health_exception(${a.exceptionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.decision}, ${a.note}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'approve_health_exception');
+  }
+  async approveHealthSnapshot(a: Parameters<HealthInputWrites['approveHealthSnapshot']>[0]) {
+    return this.one(sql`select executive.approve_health_snapshot(${a.approvalId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.snapshotId}::uuid, ${a.digest}, ${a.note}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'approve_health_snapshot');
+  }
+  async previewSnapshotApproval(a: { snapshotId: string }): Promise<Record<string, unknown> | null> {
+    const rows = await this.call<{ r: Record<string, unknown> | null }>(sql`select executive.preview_health_snapshot_approval(${a.snapshotId}::uuid) as r`);
+    return rows[0]?.r ?? null;
+  }
+  async ownerEditAnalysis(a: { tenantId: string; domainId: string; definitionId: string | null }): Promise<Record<string, unknown>> {
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select executive.owner_edit_analysis(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.definitionId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  async currentContext(a: { principalId: string }): Promise<Record<string, unknown> | null> {
+    const rows = await this.call<{ r: Record<string, unknown> | null }>(sql`select executive.current_context(${a.principalId}::uuid) as r`);
+    return rows[0]?.r ?? null;
+  }
+  signer(): { call<T>(q: ReturnType<typeof sql>): Promise<T[]> } { return { call: <T>(q: ReturnType<typeof sql>) => this.call<T>(q) }; }
+  /* end B36 strategy */
 
   async isMember(a: { roomId: string; principal: string }): Promise<boolean> {
     const rows = await this.call<{ m: boolean }>(sql`select executive.is_member(${a.roomId}::uuid, ${a.principal}::uuid) as m`);
@@ -590,9 +678,21 @@ class ExecutiveCapabilityImpl extends ExecutiveCore implements RoomWrites, Brief
       ${a.prior}::uuid, ${JSON.stringify(a.watermark)}::jsonb, ${JSON.stringify(a.sources)}::jsonb, ${JSON.stringify(a.items)}::jsonb, ${JSON.stringify(a.windows)}::jsonb, ${JSON.stringify(a.sourceStates)}::jsonb, ${a.degraded},
       ${a.narrative}, ${JSON.stringify(a.narrativeCites)}::jsonb, ${a.contentDigest}, ${a.headerDigest}, ${JSON.stringify(a.controls ?? {})}::jsonb, ${a.eventId}::uuid, ${a.correlationId}::uuid,
       ${JSON.stringify(a.memoryAccesses ?? [])}::jsonb,
-      /* B23 (0084) attention */ ${a.schemaVersion}, ${a.attention === null ? null : JSON.stringify(a.attention)}::jsonb /* end B23 attention */) as r`);
+      /* B23 (0084) attention */ ${a.schemaVersion}, ${a.attention === null ? null : JSON.stringify(a.attention)}::jsonb /* end B23 attention */,
+      /* B36 briefing (0094 §B): the v3 contract — NULL / [] on a v1 or v2 edition */
+      ${a.audience === undefined || a.audience === null ? null : JSON.stringify(a.audience)}::jsonb, ${a.purpose ?? null}, ${a.expiresAt ?? null}::timestamptz,
+      ${JSON.stringify(a.omissions ?? [])}::jsonb, ${JSON.stringify(a.suppressed ?? [])}::jsonb, ${JSON.stringify(a.disputed ?? [])}::jsonb, ${a.policyVersion ?? null}::int
+      /* end B36 briefing */) as r`);
     const r = rows[0]?.r; if (r === undefined) throw new Error('compose_briefing returned no row'); return r;
   }
+  /* B36 briefing (0094 §B): the suppression policy's publication and the tick step's expiry port. */
+  async setBriefingPolicy(a: Parameters<BriefingPolicyWrites['setBriefingPolicy']>[0]) {
+    return this.one(sql`select executive.set_briefing_policy(${a.policyId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${JSON.stringify(a.rules)}::jsonb, ${a.reason}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'set_briefing_policy');
+  }
+  async expireBriefings(a: Parameters<BriefingExpiryWrites['expireBriefings']>[0]) {
+    return this.one(sql`select executive.expire_briefings(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'expire_briefings');
+  }
+  /* end B36 briefing */
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
@@ -618,7 +718,14 @@ export const ExecutiveCapability = {
   /* B32 (0089) health: the Strategic Health Score's definition, computation and change ports (0089 §H). */
   health(tx: Tx, action: string): HealthWrites { return new ExecutiveCapabilityImpl(tx, action); },
   /* end B32 health */
+  /* B36 (0094 §S) strategy: the owner-correction route, the exceptions, the signed snapshot approval (0094 §S1–§S4). */
+  healthInputs(tx: Tx, action: string): HealthInputWrites { return new ExecutiveCapabilityImpl(tx, action); },
+  /* end B36 strategy */
   /* B34 (0090) attention: the act transition (launch, settle) under executive.attention.item.act. */
   attentionAct(tx: Tx, action: string): AttentionActWrites { return new ExecutiveCapabilityImpl(tx, action); },
   /* end B34 attention */
+  /* B36 briefing (0094 §B): the suppression policy's publication (briefing.policy.set) and the tick step briefing-expiry's port (executive.attention.tick). */
+  briefingPolicy(tx: Tx, action: string): BriefingPolicyWrites { return new ExecutiveCapabilityImpl(tx, action); },
+  briefingExpiry(tx: Tx, action: string): BriefingExpiryWrites { return new ExecutiveCapabilityImpl(tx, action); },
+  /* end B36 briefing */
 };

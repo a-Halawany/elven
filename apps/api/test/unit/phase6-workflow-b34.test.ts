@@ -130,9 +130,11 @@ describe('B34 workflow · the PDP (exact rules; the external collaborator holds 
     for (const a of EXTERNAL_HOLDS) expect(decide(a, 'external_collaborator').decision, a).not.toBe('deny');
     for (const a of ['executive.task.read', 'executive.task.reassign', 'executive.workflow.read', 'executive.workflow.start', 'executive.collab.invite', 'executive.collab.workspace.open',
                      'executive.collab.participant.set', 'executive.collab.review.request', 'executive.collab.grant.revoke', 'decision.approve', 'decision.commit', 'room.membership', 'room.read',
-                     'executive.attention.read', 'decision.read', 'identity.self.read']) {
+                     'executive.attention.read', 'decision.read']) {
       expect(['deny', 'indeterminate'], a).toContain(decide(a, 'external_collaborator').decision);
     }
+    // B36 (0094 §C, F-P6-14 (q)): the external collaborator resolves its OWN scope — identity.self.read admits the role, bounded by the grant in the port.
+    expect(decide('identity.self.read', 'external_collaborator').decision).not.toBe('deny');
     expect(decide('executive.collab.discuss', 'external_collaborator').obligations).toEqual([{ type: 'human_gate' }]);
     expect(decide('executive.collab.read', 'external_collaborator').obligations).toEqual([{ type: 'audit_access' }]);
   });

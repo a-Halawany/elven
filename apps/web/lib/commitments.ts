@@ -48,6 +48,14 @@ export const commitments = {
   tracker: (s: Scope, at: string | null = null) => p<{ tracker: { at: string; items: TrackerItem[]; summary: Record<string, number> }; receipt: Receipt }>(s, '/tracker', 'decision.commitment.read', 'CMI', at === null ? {} : { at }),
   get: (s: Scope, id: string) => p<{ commitment: CommitmentDetail; receipt: Receipt }>(s, `/${id}/get`, 'decision.commitment.read', 'CMT', {}, id),
   targets: (s: Scope) => p<{ targets: Row[]; receipt: Receipt }>(s, '/targets/list', 'decision.commitment.read', 'EXT'),
+  /* B36 (0094 §C4): a REAL target registered inactive, activated by the execution authority with the owner's committed decision, deactivated with a reason (nothing real is activated by the demonstration) */
+  registerTarget: (s: Scope, a: { targetKey: string; label: string; endpoint: string; trustAnchorPem: string; credentialRef: string | null }) =>
+    p<{ target: Row; receipt: Receipt; note: string }>(s, '/targets/register', 'decision.execution.target.register', 'EXT', { ...a, credentialRef: a.credentialRef ?? '' }),
+  activateTarget: (s: Scope, targetKey: string, decisionPackageId: string) =>
+    p<{ target: Row; receipt: Receipt }>(s, `/targets/${targetKey}/activate`, 'decision.execution.target.activate', 'EXT', { decisionPackageId: decisionPackageId.trim() }),
+  deactivateTarget: (s: Scope, targetKey: string, reason: string) =>
+    p<{ target: Row; receipt: Receipt }>(s, `/targets/${targetKey}/deactivate`, 'decision.execution.target.deactivate', 'EXT', { reason: reason.trim() }),
+  /* end B36 */
   declareItem: (s: Scope, commitmentId: string, item: { kind: string; title: string; owner: string; reviewer?: string; dueAt: string; resourceIds?: string[] }) =>
     p<{ item: Row; receipt: Receipt }>(s, `/${commitmentId}/items`, 'decision.commitment.item.declare', 'CMT', item, commitmentId),
   accept: (s: Scope, itemId: string, note: string) => p<{ item: Row; receipt: Receipt }>(s, `/items/${itemId}/accept`, 'decision.commitment.item.accept', 'CMI', { note: note.trim() }, itemId),
@@ -143,3 +151,15 @@ export function parseDeliverables(text: string): { ok: true; deliverables: Array
   }
   return { ok: true, deliverables: out };
 }
+
+/* B36 (0094 §C4): a target's activation state in words (pure; unit-tested). */
+export function activationWords(t: Row): string {
+  if (t['state'] === 'retired') return 'retired';
+  if (t['synthetic'] === true) return 'SYNTHETIC — no activation to make; reached only on the synthetic loopback path';
+  switch (t['activation_state']) {
+    case 'active': return `ACTIVE — authorized by decision ${String(t['authorized_by_decision'] ?? '').slice(0, 8)}… (real target; nothing reaches it from a demonstration)`;
+    case 'inactive': return t['deactivation_reason'] ? `INACTIVE — deactivated: ${String(t['deactivation_reason'])}` : 'INACTIVE — registered; an execution authority activates it with the owner\'s committed decision';
+    default: return String(t['activation_state'] ?? 'unknown');
+  }
+}
+/* end B36 */

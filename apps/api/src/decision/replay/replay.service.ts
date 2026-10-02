@@ -91,6 +91,9 @@ export class ReplayService {
              excluded: content['excluded'], unavailable, summary, invocation, contributors, controls,
              /* B34 (0090) gates: the policy revisions and control decisions IN FORCE at the decision instant — beside the content, never inside
                 its digest (record_replay is not re-declared); a control recorded or effective after the decision is not among them */
-             controlsInForce: { at: cutoffs['decided_at'], controls: await cap.controlsAsOf({ tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, at: String(cutoffs['decided_at']) }) } };
+             controlsInForce: { at: cutoffs['decided_at'], controls: await cap.controlsAsOf({ tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, at: String(cutoffs['decided_at']) }) },
+             /* B36 (0094) gates (l5): the PDP DENIALS recorded on the package's versions — who tried what and was refused by which policy decision — beside the
+                content, never inside its digest (record_replay is not re-declared) */
+             denials: await cap.pdpDenialsOf({ packageId, version: null }) /* end B36 gates */ };
   }
 }

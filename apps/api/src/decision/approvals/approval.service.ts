@@ -97,6 +97,11 @@ export class ApprovalService {
     // B34: a proposed or reviewed version goes on to the port, which commits it only under a live emergency override's quorum cover.
     if (!['approved', 'proposed', 'under_review'].includes(String(pv['state']))) state(correlationId, `version ${version} is ${String(pv['state'])}, not approved`);
     if (typeof versionDigest !== 'string' || pv['version_digest'] !== versionDigest) state(correlationId, `the digest committed is not the digest of version ${version}`);
+    /* B36 (0094) gates (l2): a commitment on a challenged version is HELD until the owner resolves the challenge — the row's own trigger
+       (decision.commitments_refuse_challenged) says the same sentence to a direct call of the port */
+    const challenge = await cap.openChallengeOf({ packageId, version });
+    if (challenge !== null) state(correlationId, `commitment rejected (challenged): challenge ${String(challenge['challenge_id'])} is open on version ${version} of package ${packageId}; the commitment is held until the owner resolves it`);
+    /* end B36 gates */
     /* B34 (0090) gates: the hold, before anything is admitted */
     const hold = await cap.holdCheck({ tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, packageId, version, actor: committer, eventId: newId(), correlationId });
     if (hold.held) return { held: { packageId, version, failed: hold.failed ?? [], conditions: hold.conditions, eventId: hold.event_id ?? null } } as const;

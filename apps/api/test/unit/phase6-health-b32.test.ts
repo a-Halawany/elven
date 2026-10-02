@@ -30,7 +30,8 @@ const status422 = (f: () => unknown, re: RegExp): void => {
 
 describe('B32 health · the vocabularies and the intakes', () => {
   it('the vocabularies are the migration\'s (the CHECKs of 0089 §H and the contract\'s input kinds)', () => {
-    expect([...INPUT_KINDS]).toEqual(['indicator', 'measure', 'risk', 'opportunity']);
+    /* B36 (0094 §S2): the contract's kinds gain capability, execution, outcome and quality (executive.health_input_kinds re-declared) */
+    expect([...INPUT_KINDS]).toEqual(['indicator', 'measure', 'risk', 'opportunity', 'capability', 'execution', 'outcome', 'quality']);
     expect([...CHANGE_STATES]).toEqual(['raised', 'acknowledged', 'challenged', 'upheld', 'dismissed', 'withdrawn']);
     expect([...CHALLENGE_KINDS]).toEqual(['input', 'weight', 'threshold', 'formula', 'interpretation']);
     expect(PEER_ABSENT).toEqual({ peer: null, reason: 'no peer input in this product' });

@@ -76,6 +76,29 @@ export class AdminControllers {
         homeDomainId: principal.homeDomainId,
         bindings: principal.bindings,
       }));
+    /* B36 (0094 §C1) collab: THE EXTERNAL COLLABORATOR'S OWN SURFACE (F-P6-14 (q); PER-22). A principal whose bindings here are the
+       external role's is answered BOUNDED TO ITS GRANT: a second consequential read (executive.collab.read on the commit authority —
+       the collaboration's own action) names the grants that bound it — the workspace, the purpose, the audience ceiling, the expiry,
+       live or EXPIRED at the database's instant — and nothing of the tenant beyond; the shell shows that one surface, and an expired
+       grant signs the external out of everything. A member's answer is unchanged. */
+    const externalBindings = principal.bindings.filter((b) => b.roleCode === 'external_collaborator' && b.scope === 'DOMAIN' && b.tenantId !== null && b.domainId !== null);
+    if (externalBindings.length > 0 && principal.bindings.every((b) => b.roleCode === 'external_collaborator')) {
+      const b = externalBindings[0] as { tenantId: string; domainId: string };
+      const { CollabB36Capability } = await import('../executive/workflow/collab-b36.capabilities.js');
+      const surface = await this.pipeline.consequentialRead({ ...envelope, message_id: newId(), action: 'executive.collab.read', object_type: 'CGR', object_id: null, scope: 'DOMAIN', tenant_id: b.tenantId, domain_id: b.domainId }, principal,
+        { scope: 'DOMAIN', tenantId: b.tenantId, domainId: b.domainId, action: 'executive.collab.read', objectType: 'CGR', objectId: null },
+        CollabB36Capability.surface, async (cap) => cap.grantSurface(principal.principalId));
+      const grants = (surface.result['grants'] ?? []) as Array<Record<string, unknown>>;
+      const live = grants.filter((g) => g['live'] === true);
+      const external = {
+        affiliation: 'external' as const, bounded_to: 'the grant', grants, live: live.length,
+        expired: grants.length > 0 && live.length === 0 && grants.every((g) => g['expired'] === true || g['ended'] === true),
+        surface: live.length > 0 ? `/decisions/workspaces?workspace=${String(live[0]?.['workspace_id'] ?? '')}` : null,
+        note: 'an external collaborator sees its workspace under its grant — its purpose, its audience ceiling, its expiry — and nothing of the tenant beyond; every other route answers 403 at the policy decision point',
+      };
+      return { me: { ...out.result, external }, receipt: { policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq }, surface_receipt: { policyDecisionId: surface.policyDecisionId, auditSeq: surface.auditSeq } };
+    }
+    /* end B36 collab */
     return { me: out.result, receipt: { policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq } };
   }
 

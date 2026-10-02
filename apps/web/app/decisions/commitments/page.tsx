@@ -18,6 +18,7 @@ import {
 } from '../../../lib/commitments';
 import { Empty, Mono, cardStyle, GovernedButton, fmtInstant, textareaStyle } from '../../../components/observation';
 import { inputStyle, tableStyle, Th, Td } from '../../../components/ui';
+/* B36 (0094 §C4) */ import { activationWords } from '../../../lib/commitments'; /* end B36 */
 
 type Row = Record<string, unknown>;
 const refusal = (r: { status: number; error?: { code: string; message: string } }, fallback: string) =>
@@ -137,6 +138,52 @@ export default function CommitmentsPage() {
         </>
       )}
       {open !== null && <Detail id={open} onChanged={() => void load()} />}
+      {/* B36 (0094 §C4): the execution targets — the synthetic ERP, and a REAL target's enforced activation (registered inactive; activated with the owner's committed decision; nothing real is activated by a demonstration) */}
+      <Targets />
     </main>
   );
 }
+
+/* B36 (0094 §C4) collab: THE EXECUTION TARGETS PANEL */
+function Targets() {
+  const { scope, me } = useShell();
+  const [rows, setRows] = useState<Row[] | null>(null); const [err, setErr] = useState('');
+  const [reg, setReg] = useState({ key: '', label: '', endpoint: '', anchor: '', credentialRef: '' });
+  const [decision, setDecision] = useState(''); const [reason, setReason] = useState('');
+  const holds = (role: string) => me.bindings.some((b) => b.roleCode === role);
+  const load = async () => { const r = await api.targets(scope); if (r.ok && r.data !== undefined) setRows(r.data.targets); else setErr(refusal(r, 'the targets')); };
+  useEffect(() => { void load(); }, [scope.tenantId, scope.domainId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const done = (m: string) => { setErr(m); void load(); };
+  return (
+    <section aria-label="execution targets" style={{ ...cardStyle, marginBlockStart: 'var(--eye-space-16)' }}>
+      <h2 style={{ fontSize: 'var(--eye-type-heading-2)' }}>Execution targets</h2>
+      <p style={muted}>A SYNTHETIC target is reached only on the synthetic loopback path. A REAL target is registered INACTIVE by the domain administrator and carries a handoff only once a named execution authority — not its registrar — ACTIVATES it with the owner&apos;s committed decision that names it; a deactivation refuses new handoffs at once. Nothing real is activated here: the registered target of the demonstration is a loopback literal the production egress refuses.</p>
+      {err !== '' && <p role="alert">{err}</p>}
+      {rows === null ? <p role="status">Loading the targets…</p> : rows.length === 0 ? <Empty>No execution target is declared.</Empty> : (
+        <ul aria-label="targets">{rows.map((t) => (
+          <li key={String(t['target_id'])}><strong>{String(t['label'])}</strong> <Mono>{String(t['target_key'])}</Mono> · {String(t['endpoint'])} · <span aria-label={`activation of ${String(t['target_key'])}`}>{activationWords(t)}</span>
+            {t['synthetic'] !== true && t['state'] === 'active' && t['activation_state'] === 'inactive' && holds('execution_authority') && (
+              <span> <label>the owner&apos;s committed decision (package id) <input style={inputStyle} value={decision} onChange={(e) => setDecision(e.target.value)} /></label>
+                <GovernedButton label={`Activate ${String(t['target_key'])}`} pendingLabel="activating" onRun={async () => { const r = await api.activateTarget(scope, String(t['target_key']), decision); done(r.ok ? 'activated — recorded on the decision\'s log' : refusal(r, 'the activation')); }} /></span>)}
+            {t['synthetic'] !== true && t['state'] === 'active' && t['activation_state'] === 'active' && (holds('execution_authority') || holds('domain_admin')) && (
+              <span> <label>reason <input style={inputStyle} value={reason} onChange={(e) => setReason(e.target.value)} /></label>
+                <GovernedButton label={`Deactivate ${String(t['target_key'])}`} pendingLabel="deactivating" variant="critical" onRun={async () => { const r = await api.deactivateTarget(scope, String(t['target_key']), reason); done(r.ok ? 'deactivated — new handoffs are refused' : refusal(r, 'the deactivation')); }} /></span>)}
+          </li>))}</ul>
+      )}
+      {holds('domain_admin') && (
+        <fieldset style={{ border: '1px solid var(--eye-color-border-default)', borderRadius: 'var(--eye-radius-md)' }}><legend>Register a REAL target (inactive until activated)</legend>
+          <label htmlFor="rt-key">Key</label><input id="rt-key" style={inputStyle} value={reg.key} onChange={(e) => setReg({ ...reg, key: e.target.value })} />
+          <label htmlFor="rt-label">Label</label><input id="rt-label" style={inputStyle} value={reg.label} onChange={(e) => setReg({ ...reg, label: e.target.value })} />
+          <label htmlFor="rt-endpoint">Endpoint (https://…)</label><input id="rt-endpoint" style={inputStyle} value={reg.endpoint} onChange={(e) => setReg({ ...reg, endpoint: e.target.value })} />
+          <label htmlFor="rt-anchor">Trust anchor (PEM)</label><textarea id="rt-anchor" style={textareaStyle} rows={3} value={reg.anchor} onChange={(e) => setReg({ ...reg, anchor: e.target.value })} />
+          <label htmlFor="rt-cred">Credential reference (EYE_DST_…)</label><input id="rt-cred" style={inputStyle} value={reg.credentialRef} onChange={(e) => setReg({ ...reg, credentialRef: e.target.value })} />
+          <GovernedButton label="Register (inactive)" pendingLabel="registering" variant="quiet" onRun={async () => {
+            const r = await api.registerTarget(scope, { targetKey: reg.key, label: reg.label, endpoint: reg.endpoint, trustAnchorPem: reg.anchor, credentialRef: reg.credentialRef.trim() === '' ? null : reg.credentialRef.trim() });
+            done(r.ok ? 'registered INACTIVE — an execution authority activates it with the owner\'s committed decision' : refusal(r, 'the registration'));
+          }} />
+        </fieldset>
+      )}
+    </section>
+  );
+}
+/* end B36 collab */

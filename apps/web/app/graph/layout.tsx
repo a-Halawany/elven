@@ -58,6 +58,9 @@ const NAV = [
   { href: '/graph/strategy', label: 'Strategy', glyph: '◇' },
   /* B32 (0089) graph */
   { href: '/graph/strategy/alignment', label: 'Alignment', glyph: '⋈' },
+  /* B36 (0094 §P) planning */
+  { href: '/graph/strategy/planning', label: 'Planning', glyph: '▤' },
+  /* end B36 planning */
   /* end B32 graph */
   { href: '/graph/impact', label: 'Impact', glyph: '⚠' },
   { href: '/graph/subscriptions', label: 'Subscriptions', glyph: '⟳' },

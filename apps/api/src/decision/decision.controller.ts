@@ -31,6 +31,11 @@ import { SourceImpactService } from '../observation/impact/source-impact.service
 // B34 (0090) gates
 import { GateCapability } from './gates/gate.capabilities.js';
 import { GateService, gateActOf, gateActionOf } from './gates/gate.service.js';
+/* B36 (0094) gates: the gate completed — the signature, recusal, challenge, distribution, the validated fields, the board, the one gate state */
+import { GateCompletionCapability } from './gates/gate-completion.capabilities.js';
+import { GateCompletionService, boardActOf, boardActionOf, signActionOf, validateSignIntake } from './gates/gate-completion.service.js';
+import { GateCapability as GateActCapability } from './gates/gate.capabilities.js';
+/* end B36 gates */
 
 function ctx(req: EyeRequest) {
   const envelope = req.eyeEnvelope;
@@ -55,7 +60,8 @@ const versionOf = (v: string, correlationId: string): number => {
 
 @Controller('/v1/tenants/:tenantId/domains/:domainId/decisions')
 export class DecisionController {
-  constructor(private readonly pipeline: PipelineService, private readonly packages: PackageService, private readonly approvals: ApprovalService, private readonly replays: ReplayService, private readonly monitoring: MonitoringService) {}
+  constructor(private readonly pipeline: PipelineService, private readonly packages: PackageService, private readonly approvals: ApprovalService, private readonly replays: ReplayService, private readonly monitoring: MonitoringService,
+              /* B36 (0094) gates */ private readonly completion: GateCompletionService /* end B36 gates */) {}
 
   private route(tenantId: string, domainId: string, action: string, objectType: string | null, objectId: string | null) {
     return { scope: 'DOMAIN' as const, tenantId, domainId, action, objectType, objectId };
@@ -169,9 +175,15 @@ export class DecisionController {
     const { envelope, principal } = ctx(req);
     const v = versionOf(version, envelope.correlation_id);
     const out = await this.pipeline.write(
-      envelope, principal, this.route(tenantId, domainId, 'decision.package.propose', 'DPK', packageId), DecisionCapability.propose,
-      async (cap, scope) => {
-        const { ready, ...r } = await this.packages.propose(cap, scope, packageId, v, envelope.purpose_id ?? 'decision', principal.principalId, envelope.correlation_id);
+      envelope, principal, this.route(tenantId, domainId, 'decision.package.propose', 'DPK', packageId),
+      /* B36 (0094) gates: the proposal's capability beside the fields' validator (the same transaction, the same bound action) */
+      (tx, action) => ({ propose: DecisionCapability.propose(tx, action), fields: GateCompletionCapability.fields(tx, action) }),
+      async ({ propose: cap, fields }, scope) => {
+        /* B36 (0094) gates (l3): missing_information and expected_effects validated at the proposal — version.fields_validated recorded; a malformed field refused naming it */
+        const validated = await fields.validateVersionFieldsAtPropose({ tenantId: scope.tenantId as string, domainId: scope.domainId as string, packageId, version: v, actor: principal.principalId, eventId: newId(), correlationId: envelope.correlation_id });
+        /* end B36 gates */
+        const { ready, ...r0 } = await this.packages.propose(cap, scope, packageId, v, envelope.purpose_id ?? 'decision', principal.principalId, envelope.correlation_id);
+        const r = { ...r0, fieldsValidated: validated };
         // B18 (0078, L9-I02): the proposal ANNOUNCED from its own transaction; the answer keeps its keys.
         return { result: r, targetType: 'DPK', targetId: packageId, targetVersion: String(v),
                  outboxEvent: decisionPackageReadyEvent({ ...ready, actor: principal.principalId, occurredAt: new Date().toISOString() }) };
@@ -566,4 +578,171 @@ export class DecisionController {
     return { at, controls: out.result, receipt: receipt(out) };
   }
   /* end B34 gates */
+  // ───────────────────────── B36 (0094 §G): the human gate COMPLETED (F-P6-04) ─────────────────────────
+  // Every act below is a named member's, human-gated at the PDP by an EXACT rule (decision.sign.approval / .decision, decision.recuse,
+  // decision.challenge, decision.challenge.resolve, decision.distribute, decision.board.approve / .reject / .defer, decision.board.read);
+  // the ports judge the person, the record and the rule. The board member reaches the gate ONLY through the decision.board.* routes: no
+  // standard action admits the role, and decision.board_gate_check refuses a standard package before the act runs.
+
+  /** k1 THE SIGNATURE beyond the audit chain: {kind: approval | decision, digest, approvalId?} — the action is the kind's (decision.sign.<kind>). */
+  @Post('/:packageId/versions/:version/sign')
+  async sign(
+    @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('packageId') packageId: string, @Param('version') version: string,
+    @Body() body: { payload?: Record<string, unknown> },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const v = versionOf(version, envelope.correlation_id);
+    const i = validateSignIntake(body.payload ?? {}, envelope.correlation_id);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, signActionOf(i.kind), 'DPK', packageId), GateCompletionCapability.sign,
+      async (cap, scope) => {
+        const r = await this.completion.sign(cap, scope, packageId, v, i, principal.principalId, envelope.correlation_id);
+        return { result: r, targetType: 'DPK', targetId: packageId, targetVersion: String(v), outboxEvent: null };
+      });
+    return { signature: out.result, receipt: receipt(out) };
+  }
+
+  /** l1 RECUSAL: the approver's own withdrawal from the version, with a reason; the standing approval voided, the quorum re-read. */
+  @Post('/:packageId/versions/:version/recuse')
+  async recuse(
+    @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('packageId') packageId: string, @Param('version') version: string,
+    @Body() body: { payload?: Record<string, unknown> },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const v = versionOf(version, envelope.correlation_id);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'decision.recuse', 'DPK', packageId), GateCompletionCapability.recuse,
+      async (cap, scope) => {
+        const r = await this.completion.recuse(cap, scope, packageId, v, body.payload ?? {}, principal.principalId, envelope.correlation_id);
+        return { result: r, targetType: 'DPK', targetId: packageId, targetVersion: String(v), outboxEvent: null };
+      });
+    return { recusal: out.result, receipt: receipt(out) };
+  }
+
+  /** l2 CHALLENGE: a room member or the auditor, before or after commitment; the gate reads `challenged`, a commitment is held. */
+  @Post('/:packageId/versions/:version/challenge')
+  async challenge(
+    @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('packageId') packageId: string, @Param('version') version: string,
+    @Body() body: { payload?: Record<string, unknown> },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const v = versionOf(version, envelope.correlation_id);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'decision.challenge', 'DPK', packageId), GateCompletionCapability.challenge,
+      async (cap, scope) => {
+        const r = await this.completion.challenge(cap, scope, packageId, v, body.payload ?? {}, principal.principalId, envelope.correlation_id);
+        return { result: r, targetType: 'DPK', targetId: packageId, targetVersion: String(v), outboxEvent: null };
+      });
+    return { challenge: out.result, receipt: receipt(out) };
+  }
+
+  /** l2 THE RESOLUTION: the owner (never the challenger) upholds (the withdrawal chain / reopen required) or dismisses (the state returns). */
+  @Post('/:packageId/versions/:version/resolve-challenge')
+  async resolveChallenge(
+    @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('packageId') packageId: string, @Param('version') version: string,
+    @Body() body: { payload?: Record<string, unknown> },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const v = versionOf(version, envelope.correlation_id);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'decision.challenge.resolve', 'DPK', packageId), GateCompletionCapability.challenge,
+      async (cap, scope) => {
+        const r = await this.completion.resolveChallenge(cap, scope, body.payload ?? {}, principal.principalId, envelope.correlation_id);
+        return { result: r, targetType: 'DPK', targetId: packageId, targetVersion: String(v), outboxEvent: null };
+      });
+    return { resolution: out.result, receipt: receipt(out) };
+  }
+
+  /** k2 DISTRIBUTION after commitment: in_app always; email / sms / teams SYNTHETIC (the local sinks); receipts recorded; never an external. */
+  @Post('/:packageId/versions/:version/distribute')
+  async distribute(
+    @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('packageId') packageId: string, @Param('version') version: string,
+    @Body() body: { payload?: Record<string, unknown> },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const v = versionOf(version, envelope.correlation_id);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'decision.distribute', 'DPK', packageId), GateCompletionCapability.distribute,
+      async (cap, scope) => {
+        const r = await this.completion.distribute(cap, scope, packageId, v, body.payload ?? {}, principal.principalId, envelope.correlation_id);
+        return { result: r, targetType: 'DPK', targetId: packageId, targetVersion: String(v), outboxEvent: null };
+      });
+    return { distribution: out.result, receipt: receipt(out) };
+  }
+
+  /** l3 THE VALIDATED FIELDS on a draft (under the terms' authority): {missingInformation: [{what, owner, needed_by}], expectedEffects: [{effect, measure, direction, horizon, basis}]}. */
+  @Post('/:packageId/versions/:version/fields')
+  async setFields(
+    @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('packageId') packageId: string, @Param('version') version: string,
+    @Body() body: { payload?: Record<string, unknown> },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const v = versionOf(version, envelope.correlation_id);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'decision.package.terms', 'DPK', packageId), GateCompletionCapability.fields,
+      async (cap, scope) => {
+        const r = await this.completion.setFields(cap, scope, packageId, v, body.payload ?? {}, principal.principalId, envelope.correlation_id);
+        return { result: r, targetType: 'DPK', targetId: packageId, targetVersion: String(v), outboxEvent: null };
+      });
+    return { fields: out.result, receipt: receipt(out) };
+  }
+
+  /** The gate's completion record for one version: signatures VERIFIED, recusals, challenges, PDP denials, distributions, the fields, the uniform state. */
+  @Post('/:packageId/versions/:version/gate-record')
+  async gateRecord(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('packageId') packageId: string, @Param('version') version: string) {
+    const { envelope, principal } = ctx(req);
+    const v = versionOf(version, envelope.correlation_id);
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'decision.read', 'DPK', packageId), GateCompletionCapability.read,
+      async (cap) => this.completion.record(cap, packageId, v));
+    if (out.result === null) throw new HttpException(errorBody('EYE_STA_001', envelope.correlation_id, 'no authorized package version matches'), 404);
+    return { record: out.result, receipt: receipt(out) };
+  }
+
+  /** l6 ONE uniform human-gate state (ADR-003) for a decision version, a source contract or a merge: {kind, id, version?} → {kind, id, state, since, by}. */
+  @Post('/gate-state')
+  async gateState(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: Record<string, unknown> }) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'decision.read', 'DPK', typeof body.payload?.['id'] === 'string' ? (body.payload['id'] as string) : null), GateCompletionCapability.read,
+      async (cap) => this.completion.gateState(cap, body.payload ?? {}, envelope.correlation_id));
+    if (out.result === null) throw new HttpException(errorBody('EYE_STA_001', envelope.correlation_id, 'gate state rejected (unknown_subject): no such subject is visible in this domain'), 404);
+    return { gate: out.result, receipt: receipt(out) };
+  }
+
+  /** l4 THE BOARD SURFACE (PER-01): the board-class packages with their gate state, approvals (live, recused), signatures and the reader's own standing. */
+  @Post('/board/list')
+  async boardList(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'decision.board.read', 'DPK', null), GateCompletionCapability.read,
+      async (cap, scope) => this.completion.board(cap, scope, principal.principalId));
+    return { board: out.result, receipt: receipt(out) };
+  }
+
+  /**
+   * l4 THE BOARD MEMBER'S OWN ACTS on a board-class package, through the gate: approve / reject (an approval record under the board's
+   * policy) and defer (a gate act) — each under its EXACT action decision.board.<act>; the class and the standing judged by the port first.
+   */
+  @Post('/board/:packageId/versions/:version/:act')
+  async boardAct(
+    @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('packageId') packageId: string, @Param('version') version: string,
+    @Param('act') segment: string, @Body() body: { payload?: Record<string, unknown> },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const v = versionOf(version, envelope.correlation_id);
+    const act = boardActOf(segment, envelope.correlation_id);
+    if (act === 'defer') {
+      const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, boardActionOf(act), 'DPK', packageId),
+        (tx, action) => ({ board: GateCompletionCapability.board(tx, action), gate: GateActCapability.act(tx, action) }),
+        async ({ board, gate }, scope) => {
+          await this.completion.boardCheck(board, scope, packageId, v, act, principal.principalId);
+          const r = await this.gates.act(gate, scope, packageId, v, 'defer', body.payload ?? {}, principal.principalId, envelope.correlation_id);
+          return { result: r, targetType: 'DPK', targetId: packageId, targetVersion: String(v), outboxEvent: null };
+        });
+      return { board: out.result, receipt: receipt(out) };
+    }
+    const intake = validateApprovalIntake({ ...(body.payload ?? {}), decision: act } as never, envelope.correlation_id);
+    const approvalId = newId();
+    const out = await this.pipeline.write(envelope, principal, { ...this.route(tenantId, domainId, boardActionOf(act), 'APR', approvalId), writableTargets: [approvalId] },
+      (tx, action) => ({ board: GateCompletionCapability.board(tx, action), approve: DecisionCapability.approve(tx, action) }),
+      async ({ board, approve }, scope) => {
+        await this.completion.boardCheck(board, scope, packageId, v, act, principal.principalId);
+        const r = await this.approvals.approve(approve, scope, packageId, v, intake, principal.principalId, envelope.purpose_id ?? 'decision', envelope.correlation_id, approvalId);
+        return { result: r, targetType: 'APR', targetId: approvalId, targetVersion: '1', outboxEvent: null };
+      });
+    return { board: out.result, receipt: receipt(out) };
+  }
+  /* end B36 gates */
 }

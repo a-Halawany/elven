@@ -37,6 +37,7 @@ import { PrincipalsService } from '../../identity/principals.service.js';
 import { PipelineService } from '../../pipeline/pipeline.service.js';
 import { WorkflowCapability } from './workflow.capabilities.js';
 import { CollabService, EXTERNAL_ROLE } from './collab.service.js';
+/* B36 (0094 §C3) */ import { InvitationDeliveryService } from './invitation-delivery.service.js'; /* end B36 */
 
 type Row = Record<string, unknown>;
 /** Who an identity act is recorded against: the acting principal and, for a route, its session (a tick has none). */
@@ -49,7 +50,7 @@ export const inviteeLogin = (principalId: string): string => `ext-${principalId.
 @Injectable()
 export class CollabIdentityService {
   constructor(@Inject(IDENTITY_DB) private readonly identityDb: Db, private readonly pipeline: PipelineService, private readonly principals: PrincipalsService,
-              private readonly collab: CollabService) {}
+              private readonly collab: CollabService, /* B36 (0094 §C3) */ private readonly delivery: InvitationDeliveryService /* end B36 */) {}
 
   /** One declared identity operation bound to its subject (0011, 0017): nothing else can run in this transaction. */
   private async inIdentityOp<T>(operation: string, subject: string, correlationId: string, fn: (tx: Tx) => Promise<T>): Promise<T> {
@@ -96,7 +97,13 @@ export class CollabIdentityService {
       // 4. the activation (commit): what 2 and 3 wrote verified; the timer, the participant, the mailbox record; the grant `invited`
       const out = await this.activate(envelope, admin, tenantId, domainId, grantId, inv);
       this.collab.place(inv);
-      return { grant: out.result, receipt: { policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq } };
+      /* B36 (0094 §C3): THE DELIVERY — the pickup code's hash and the SEALED material recorded (executive.deliver_invitation); the message
+         with the code is in the sink. A delivery that fails after the activation is answered `pending` (the grant is invited; the
+         provisioner re-drives it: POST …/grants/:id/deliver) — never a compensation: the identity rows are right. */
+      const delivery = await this.delivery.deliver(envelope, admin, tenantId, domainId, inv)
+        .then((d) => ({ ...d, pending: false }) as Row, (e: unknown) => ({ pending: true, error: String((e as Error)?.message ?? e).slice(0, 300), redeliver: 'POST …/executive/collab/grants/:grantId/deliver' }) as Row);
+      return { grant: { ...out.result, delivery }, receipt: { policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq } };
+      /* end B36 */
     } catch (e) {
       // THE COMPENSATION: the identity side committed (2, perhaps 3) and the provisioning did not complete — nothing it wrote may sign in
       const compensation = await this.revokeAccess({ principalId, actor: { principalId: admin.principalId, sessionId: admin.sessionId }, grantId,

@@ -1,0 +1,373 @@
+THE B36 ACT on eye_demo — 2026-09-30T02:01:20.791Z
+
+B36-0 THE STATE — 0094, the casting, the new SYNTHETIC personas
+  ✓ migration 0094_b36_strategic_planning_home_briefing_publishing.sql applied
+  ✓ the casting read from identity.role_bindings: a.hoffmann (domain_analyst); c.brenner (decision_owner, risk_owner, strategy_owner); j.weber (strategy_owner); k.lange (execution_authority); l.brandt (decision_authority, decision_owner, opportunity_sponsor, strategy_owner); m.dvorak (collection_manager, executive); n.eriksen (forecast_owner); s.okafor (decision_approver, executive); t.nakamura (twin_owner); t.richter (domain_admin)
+  ✓ the administrator CREATED R. Vogel through the governed principal route — role board_member at the DOMAIN
+  ✓ the administrator CREATED F. Kraus through the governed principal route — role board_member at the DOMAIN
+  ✓ the administrator CREATED I. Saitō through the governed principal route — role board_member at the DOMAIN
+  ✓ the administrator CREATED E. Lindqvist through the governed principal route — role auditor at the TENANT
+  ✓ the administrator CREATED The chief of staff through the governed principal route — role executive_operator at the DOMAIN
+  ✓ the administrator CREATED A. Novák through the governed principal route — role strategy_owner at the DOMAIN
+  ✓ the administrator CREATED A. Moreau through the governed principal route — role executive at the DOMAIN
+  ✓ the inputs: the Regensburg objective 01a0…3d1d00 (owner J. Weber); the corridor exposure 01a0…b2cb46 → the MITIGATION case 01a0…9f461d "Mitigate the corridor closure — Regensburg line" (committed v1, owner C. Brenner); the Morocco opportunity 01a0…a18123 → the exploit package 01a0…8608c4 "Evaluate the Moroccan supplier" (draft); the January package 01a0…651748 (v2, room 01a0…a83e8b); the runs control 01a0…332f38 / reroute 01a0…049267; the DES run 01a0…3dec3b; the corridor twin 01a0…76f525; the corridor scenario 01a0…5f0eb7 "B21 — the corridor, one collapse branch (2026-09-24)"; the workspace 01a0…0321bc
+
+B36-H THE HOME AND THE CADENCE — the weekly loop, the agenda, a gap escalated, a scenario room, the reset; the operator's context, view, search and metrics
+  ✓ M. Dvořák OPENED the weekly cadence: cycle #1 01a0…6f1ac8
+  ✓ the chief of staff SET the agenda of cycle 01a0…6f1ac8: 1:room, 2:package, 3:attention_item
+  ✓ the chief of staff ESCALATED a gap to M. Dvořák: escalation 01a0…9d82ce open → a queue.governance item e4dc…342369 on the executive's queue
+  ✓ M. Dvořák OPENED a scenario room 01a0…d06432 on "B21 — the corridor, one collapse branch (2026-09-24)" — deadline 2026-10-02, review every 3 days
+  ✓ M. Dvořák RESET the loop: cycle #1 closed (confirmed false; decided {"rejected":0,"committed":[],"withdrawn":0}, committed {"items_done":0,"items_opened":0}, left open {"rooms_overdue":0,"attention_items":41,"packages_in_flight":0,"board_decisions_open":[],"commitment_items_overdue":0}) → cycle #2 01a0…0cd7f7 open
+  ✓ the chief of staff SET the context: objective "Keep the Regensburg line supplied through Q1", horizon 30d, internal — digest 8c96eaccd7cc…
+  ✓ the operator's COMMAND VIEWS: executive_operator/cadence-prep
+  ✓ the view executive_operator/cadence-prep: sections cadence → priorities → decisions → commitments; safe actions set_agenda, route_work, escalate_gap; context digest 8c96eaccd7cc…
+  ✓ the operator opening the executive's morning view REFUSED — 403 EYE-AUT-001 — command view rejected (role): the view executive/morning is the executive's; the reader holds no such role in this domain
+  ✓ the operator SEARCHED "Regensburg": 17 hit(s) — room 1, review 1, package 2, warning 1, briefing 6, attention_item 5, commitment_item 1; the first: commitment_item "Execute: Mitigate the corridor closure — Regensbur" — regensburg matched in title: Execute: Mitigate the corridor closure — Regensburg line (the search is on the access ledger)
+  ✓ THE METRICS (computed on read, stored false): time_to_understanding n=46 median 176.255; decision_latency n=6 median 1.072; review_completion n=1 ratio 0
+  ✓ THE HOME (M. Dvořák) answered: cadence 1, outcomes 0, warnings 1, decisions 3, priorities 47, commitments 3, intelligence 6; context the default; ceiling confidential; cadence cycle #2, agenda 0, escalations 0
+
+B36-G THE GATES — the dual-sourcing decision signed and distributed; the B36 gate package recused, challenged, dismissed, a denial on the record; the board package
+  ✓ S. Okafor SIGNED the approval 01a0…066ca7 of version 1: key ed25519:2b6c48b937b0b8d2, over c9d0af9bfdab…, verified true
+  ✓ C. Brenner (the owner) SIGNED the committed decision: key ed25519:2b6c48b937b0b8d2, over the header bbd796f5b91c…, verified true
+  ✓ C. Brenner OPENED the room 01a0…e92061 "Mitigate the corridor closure — the decision room (SYNTHETIC)" — members S. Okafor (approver), L. Brandt (observer), M. Dvořák (observer)
+  ✓ C. Brenner DISTRIBUTED the decision record (digest 805d27da57bd…) to the room: M. Dvořák (room_member), L. Brandt (room_member), S. Okafor (room_member), C. Brenner (room_owner) — rows in_app delivered, email delivered SYNTHETIC, in_app delivered, email delivered SYNTHETIC, in_app delivered, email delivered SYNTHETIC, in_app delivered, email delivered SYNTHETIC; in_app is the product's channel; email / sms / teams are SYNTHETIC — carried to LOCAL sinks on the loopback interface; this closes no real-provider clause (owner decision D6)
+  ✓ THE GATE'S RECORD of the dual-sourcing decision: gate approved; approvals 1 (signatures 1); decision signatures 1 (C. Brenner VERIFIED); signing key ed25519:2b6c48b937b0b8d2
+  ✓ C. Brenner DECLARED and PROPOSED "B36 gate — the corridor second-source review (SYNTHETIC)" 01a0…6d3ccc version 1 (status-quo vs second-source; action owner L. Brandt) — digest 97363b7ca790…
+  ✓ C. Brenner OPENED the room 01a0…c47116 "B36 gate room — the corridor second-source review (SYNTHETIC)" — members S. Okafor (approver), L. Brandt (observer), M. Dvořák (observer), R. Vogel (observer), the chief of staff (observer)
+  ✓ S. Okafor APPROVED version 1 (approved)
+  ✓ S. Okafor RECUSED: the approval 01a0…15d8cd voided, live approvals 1 → 0, version approved → under_review (quorum lost true)
+  ✓ E. Lindqvist (the tenant's auditor) CHALLENGED version 1: standing auditor, gate challenged
+  ✓ C. Brenner RESOLVED it dismissed: effect {"kind":"none","package_state":"under_review","version_state":"under_review"}
+  ✓ K. Lange (execution authority) deferring the gate REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ THE DENIAL on the record: K. Lange tried decision.gate.defer on version 1 — deny, policy decision 01a0…cc1824
+  · the replay of an uncommitted version: 409 EYE-STA-001 — version 1 is under_review, not committed; a replay reconstructs what a decision was taken with — the gate record carries the denial
+  ✓ the gate package is LEFT UNCOMMITTED: package under_review, version 1 under_review, gate recused
+  ✓ M. Dvořák RESERVED the draft for the BOARD (quorum 2)
+  ✓ C. Brenner DECLARED and PROPOSED "B36 board — the second-source capital request (SYNTHETIC)" 01a0…82f843 version 1 (status-quo vs second-source; action owner L. Brandt) — digest 8d5fbed7acc1…
+  ✓ R. Vogel APPROVED through decision.board.approve: under_review, 1 of 2 (eligible by role:board_member) — the second board vote is left for the walk
+  ✓ R. Vogel on the STANDARD approve route REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ THE BOARD SURFACE (R. Vogel): "B36 board — the second-source capital request (SYNTHETIC)" — class board, gate review_requested, quorum 2, live approvals 1, own approval approve
+
+B36-A THE ATTENTION COMPLETION — the policy with governance, a real corridor warning, the settle fault and the resume, the priority accepted, the hold, the forum
+  ✓ M. Dvořák PUBLISHED attention policy VERSION 7: governance {fairness_floor 0.7, staleness_ceiling_hours 168}; classes strategy.detection, plan.variance (+ queue.governance, source.coverage_loss, proposal.review kept); overload.max_open_per_owner 20 — changed overload, materiality, routing, escalation, classes, notification
+  ✓ L. Brandt SET the context: the Regensburg objective, 90d — digest b4c0b3a2b0d9…
+  ✓ the BRIEFING AGENT COMPOSED edition 01a0…888401 of the gate room (v3 by default, — items) — triggered by L. Brandt (B36-B's first act, staged here so the person's edition has its prior and the warning falls in her window)
+  ✓ N. Eriksen DEFINED the probe indicator 01a0…bd26e5 on red-sea-corridor-stream-late:chokepoint4:n_total: Bab el-Mandeb transits below 41 per day for five consecutive observed days on the corridor stream
+  ✓ N. Eriksen ISSUED a 30-day forecast 01a0…6aafd5 of red-sea-corridor-stream-late:chokepoint4:n_total resting on the assumption "The Cape of Good Hope corridor stays open" (seasonal-naive; not yet assessed)
+  ✓ N. Eriksen DECLARED the probe scenario 01a0…9c989c on the stream forecast 01a0…6aafd5 — its downside branch bound to the indicator
+  ✓ N. Eriksen EVALUATED the probe indicator (streak 32, last value —, flips 1) — THE CORRIDOR WARNING 01a0…5ede80 "B36 — the corridor probe scenario (SYNTHETIC) — branch "Corridor colla" RAISED in time: level normal, urgency prompt, routed to N. Eriksen, window closes 2026-10-03T02:01
+  ✓ THE CORRIDOR ITEM PLANTED (stated; the harness's idiom): 59c0…06ecf7 "B36 corridor warning (the act's item — PLANTED, SYNTHETIC)" → open, owner L. Brandt, on the RAISED warning 01a0…5ede80 "B36 — the corridor probe scenario (SYNTHETIC) — branch "Corr" (state raised) under policy version 7
+  ✓ the chief of staff CONVENED the forum 01a0…466e15 "Supply resilience forum (B36, SYNTHETIC)" — monthly (review every 30 days), members L. Brandt + M. Dvořák, context the Regensburg objective / 90d
+
+B36-S THE SCORE AND THE STRATEGY GRAPH — the owner's restatement and its flag, the customs exception, the signed acceptance, the revoked allocation, the scheduled detection
+  ✓ A. Hoffmann restating on_time_delivery (not the input's owner) REFUSED — 403 EYE-AUT-001 — health input rejected (ownership): component on_time_delivery is restated by the owner of its input only (the owner of MSR "On-time delivery rate"); principal 01a084f5-75aa-7b62-b484-2ac50526a0ed is not
+  ✓ J. Weber (the owner of MSR "On-time delivery rate") RESTATED on_time_delivery: 91 → 97 (edit 01a0…5bda20, window 7 days)
+  ✓ A. Hoffmann COMPUTED the score: complete, aggregate 64.53; 2 change(s), 2 with the OWNER-EDIT FLAG — aggregate favourable (— → —), edits ["01a0f00b-9df6-7c62-b726-3e83945bda20"]
+  ✓ J. Weber DECLARED and DEFINED the measure 01a0…9e71f0 "Customs clearance time" (target ≤ 48 h, freshness 1 day); A. Hoffmann OBSERVED 56 h two days ago (STALE against its window); M. Dvořák APPROVED it (act 01a0…0999c5)
+  ✓ M. Dvořák PROPOSED and T. Richter APPROVED health definition version 2 (active) — the customs component customs_clearance in dimension supply_resilience
+  ✓ J. Weber REQUESTED an exclude exception on customs_clearance (requested, expires 2026-10-30) — no effect until another approves it
+  ✓ J. Weber deciding their own request REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ M. Dvořák APPROVED the exception 01a0…8085db: approved, in force now true
+  ✓ A. Hoffmann COMPUTED the score under the exception: partial, aggregate 57.42; components corridor_transits, corridor_risk, on_time_delivery, morocco_supplier; exceptions named customs_clearance:exclude
+  ✓ M. Dvořák PREVIEWED the acceptance of snapshot 01a0…19bd9f: acceptable true, digest 2fa2eb73b40b…, exceptions in force 1 — "accepting records the executive's acceptance of this decompo"
+  ✓ M. Dvořák ACCEPTED the snapshot on its digest — SIGNED ed25519:2b6c48b937b0b8d2 over 2fa2eb73b40b…; authorizes action false
+  ✓ J. Weber revoking the allocation (not its issuer) REFUSED — 403 EYE-AUT-001 — strategy revocation rejected (not_authority): act 01a0e792-26ba-7e8a-bddc-2a89eab85f97 was recorded by 01a084f5-75d2-776d-a4a1-0073ec383c43; its issuer or a domain administrator revokes it
+  ✓ M. Dvořák (the issuer) REVOKED the allocate_resource act 01a0…b85f97 (subject alignment 01a0…f166ea)
+  · the gap view sees it at once: objective 01a0…bc5e38 → initiative_unresourced
+  · waiting for the attention agent's scheduled tick (strategy-detections; every 60 s) — 0.1 min
+  ✓ THE DETECTION raised by the SCHEDULE: stale_measure on "Customs clearance time" → routed as the attention item 0964…1b0fdb (open, owner J. Weber) under policy version 7 — nobody read the page
+
+B36-B THE BRIEFING STUDIO v3 — the suppression policy; the window's content (a stale single-source record, a weak signal); L. Brandt's edition under its contract after the agent's; the outage edition retaining the corridor warning; the edition after the recovery
+  ✓ M. Dvořák PUBLISHED briefing policy version 1: default ≥ 1 source / 8760 h; the class rule ≥ 2 independent sources within 24 h — prefer silence over false certainty
+  ✓ E. Lindqvist CHALLENGED the gate package a second time (auditor, gate challenged) — LEFT OPEN for the briefing's disputed item
+  ✓ A. Hoffmann UPLOADED the broker's customs note (SYNTHETIC; document time three weeks back; ONE source) → evidence 01a0…185758@1 (run 01a0…69a118: 1 admitted)
+  ✓ N. Eriksen NOMINATED the weak signal 01a0…d7b20c "Bab el-Mandeb transit chatter rising after the broker's note (B36, SYNTHETIC)": maturity tentative, confidence 0.55, 1 independent source(s) — the edition's emerging indicator
+  ✓ L. Brandt COMPOSED her edition 01a0…a5a2f8 (v3; audience executive, board_member; purpose set; expires 2026-10-07; policy v1; prior the agent's edition 01a0…888401 — the window opens at 2026-09-30T02:01): 12 items, every one with its band
+  ✓ the corridor warning item: "raised: B36 — the corridor probe scenario (SYNTHETIC) — branch "Corrid" band high (recorded confidence 0.8 → high); window closes 2026-10-03T02:01
+  ✓ SUPPRESSED under policy: 1 item(s) not rendered — evidence evidence:01a0f00c-9d94-7138-8e5c-94f4b11: 1 independent source(s), the policy asks 2; declared as omissions 1
+  ✓ the DEGRADED SOURCES declared as omissions: IMF PortWatch — Chokepoints (imf-portwatch-chokepo; ECB EUR/USD reference rate (ecb-eurusd) is degrade; GDELT DOC 2.0 — discovery (gdelt-discovery) is deg; IMF PortWatch — Ports (imf-portwatch-ports) is deg (degraded true — the demonstration's collectors)
+  ✓ the challenged gate package as DISPUTED: challenge on DPK:01a0f00b-86be-7c7f-88fc-51b9576d3ccc@1 as of 2026-09-30T02:02 (with the owner's note)
+  ✓ EMERGING INDICATORS: weak_signal as of 2026-09-30
+  · a DEGRADED health verdict PLANTED on "NORDWERK internal records (SYNTHETIC)" (a stated superuser move, as the briefing harness plants it — the demonstration has no collector fault to wait for)
+  ✓ THE OUTAGE EDITION 01a0…c91b8f (degraded true): "raised: B36 — the corridor probe scenario (SYNTHETIC) — bran" RETAINED from 01a0…a5a2f8 as of 2026-09-30T02:02 — its original at 2026-09-30T02:01, never re-derived; omissions outage, source_degraded, source_degraded, source_degraded, source_degraded
+  · the health verdict RESTORED to healthy (planted)
+  ✓ L. Brandt COMPOSED the edition after the recovery 01a0…47a92b (v3; 9 items; degraded true — the demonstration's collectors; omissions outage, source_degraded, source_degraded, source_degraded, source_degraded)
+
+B36-D THE PUBLISHING CENTER — the Board pack from L. Brandt's corridor edition, approved by digest, delivered with receipts, corrected to the later edition, archived and exported; the partner letter from the corridor decision reviewed, delivered, its export refused
+  ✓ L. Brandt ADDED the chief of staff to the January corridor room as observer (a report of a package with a room renders for the room's members)
+  ✓ L. Brandt ADDED A. Moreau to the January corridor room as observer (a report of a package with a room renders for the room's members)
+  ✓ the chief of staff DRAFTED "Board pack — the corridor second-source briefing (SYNTHETIC)" 01a0…85d15b from L. Brandt's edition 01a0…a5a2f8 (BRF digest 1127d74cc284… read first): bytes sha256 d3b439245216…, md, template board-pack@1, in_app + email, recipients F. Kraus, I. Saitō, L. Brandt, R. Vogel
+  ✓ M. Dvořák APPROVED version 1 by its digest d3b439245216… — SIGNED (PUB@1 admitted)
+  ✓ the chief of staff DELIVERED version 1: in_app 4 placed; email delivered SYNTHETIC, email delivered SYNTHETIC, email delivered SYNTHETIC, email delivered SYNTHETIC
+  ✓ R. Vogel (a recipient, reading his own deliveries) ACKNOWLEDGED the in_app delivery — a receipt is the channel's machine proof of placement; an ac
+  ✓ the chief of staff CORRECTED the Board pack: version 2 bound to the edition 01a0…47a92b (b1e5784a76f5…; changed {"bytes":true,"snapshot":true}); recipients NOTIFIED L. Brandt, R. Vogel, F. Kraus, I. Saitō — items 4, e-mail notices 4 delivered (SYNTHETIC sink)
+  ✓ M. Dvořák APPROVED version 2 by its digest 89ab778d7640… — SIGNED (PUB@2 admitted)
+  ✓ the chief of staff DELIVERED version 2: in_app 4 placed; email delivered SYNTHETIC, email delivered SYNTHETIC, email delivered SYNTHETIC, email delivered SYNTHETIC
+  ✓ M. Dvořák ARCHIVED the Board pack: archived; the record carries 2 version(s), 20 deliveries, 2 signature(s); controls {"classification":"internal","rights_profile":"ESCB reuse policy: publicly available ESCB statistics may be reused free of charge, on condition that the source is quoted (e.g. \"Source: ECB statistics.\") and that the statistics, including metadata, are not modified. Read at the source 2026-09-05 (plan §6).; UNVERIFIED — no unambiguous reuse notice located in primary documentation; internal; IMF Copyright and Usage terms (systematic download requires permission). Permission GRANTED — owner-reported 2026-09-10; the grant text, permitted uses, attribution wording and any rate or scope conditions are pending at docs/sources/portwatch-grant.md and will be recorded verbatim as rights evidence when supplied.; internal (synthetic)","access_policy_ref":null,"residency_profile":"EU","retention_profile":"24 months; institutional-record-10y"}; holds 0
+  ✓ M. Dvořák EXPORTED the Board pack: eye-publication-export/1, 2 object(s), 20 receipt(s), manifest 9d8d43e8c7b0… (manifest.json, repeated false); residency EU carried — the export stays in the vault's residency; an external publication of 
+  ✓ the chief of staff DRAFTED the partner letter 01a0…c37d0a (external draft 97a5…3cf8a3, review_requested)
+  ✓ M. Dvořák approving the letter before its external review REFUSED — 409 EYE-STA-002 — publication rejected (external_review): the external communication draft is review_requested — an external publication is approved only after its review is approved
+  ✓ A. Moreau (a second executive, not the drafter) REVIEWED the external draft: approved — signed over 538001d98f73…
+  ✓ M. Dvořák APPROVED the partner letter by its digest (signed)
+  ✓ the chief of staff DELIVERED the letter: external recipient external:partner:Partner customs brokerage (SYNTHETIC) — email delivered SYNTHETIC (to principal-external-partner-partner-customs-brokera); internal in_app 1
+  ✓ M. Dvořák ARCHIVED the partner letter (archived)
+  ✓ M. Dvořák exporting the partner letter (the source carries residency EU; the letter is addressed outside the tenant) REFUSED — 409 EYE-STA-002 — publication rejected (residency): the source carries the residency profile EU and this publication is addressed outside the tenant (partner: Partner customs brokerage (SYNTHETIC)); its bytes stay in the vault's residency
+
+B36-P THE PLANNING WORKSPACE — "Dual-sourcing 2027": the initiatives, the milestones on the stock measures, the runs, the signed baseline; the Q2 variance by the schedule; the authority cut → the breach; the commitment held, acknowledged, committed
+  ✓ A. Novák DECLARED the plan 01a0…a5cc9d "Dual-sourcing 2027": EUR 1 200 000 planned, authority 900 000, horizon 12m, on the Regensburg objective
+  ✓ A. Novák DECLARED the INI object 01a0…bf940d "Dual-sourcing 2027: qualify the second NdFeB source (SYNTHETIC)"
+  ✓ A. Novák DECLARED the INI object 01a0…0ff23a "Dual-sourcing 2027: dual-tooling at Regensburg (SYNTHETIC)"
+  ✓ A. Novák DECLARED and DEFINED the measure 01a0…59d803 "Magnet stock on hand at Regensburg (B36, SYNTHETIC)" (units, target 500, higher_better)
+  ✓ A. Novák DECLARED and DEFINED the measure 01a0…9e4e65 "Bearing component stock through the shortage study (B36, SYNTHETIC)" (pcs, target 2000, higher_better)
+  ✓ A. Novák PROPOSED the initiative 01a0…bf940d (share EUR 600000.00, sponsor and owner L. Brandt) → proposed
+  ✓ A. Novák PROPOSED the initiative 01a0…0ff23a (share EUR 250000.00, sponsor and owner L. Brandt) → proposed
+  ✓ A. Novák ALIGNS 01a0…bf940d → aligned
+  ✓ A. Novák PRIORITISES 01a0…bf940d at 1 → prioritised
+  ✓ M. Dvořák FUNDS 01a0…bf940d with EUR 600000.00 → funded (funded 600000)
+  ✓ M. Dvořák APPROVES 01a0…bf940d → approved (funded 600000)
+  ✓ A. Novák ALIGNS 01a0…0ff23a → aligned
+  ✓ A. Novák PRIORITISES 01a0…0ff23a at 2 → prioritised
+  ✓ M. Dvořák FUNDS 01a0…0ff23a with EUR 250000.00 → funded (funded 250000)
+  ✓ M. Dvořák APPROVES 01a0…0ff23a → approved (funded 250000)
+  ✓ A. Novák SET the milestone "Q2 2024 magnet stock floor held during qualification (SYNTHETIC)" due 2024-03-01 — proven by the stock measure, target ≥ 100000
+  ✓ A. Novák SET the milestone "Bearing component stock floor through the shortage study (SYNTHETIC)" due 2026-11-10 — proven by the bearing-stock measure, target ≥ 2000
+  ✓ A. Novák BOUND the plan measure 01a0…59d803 to the run output key "on_hand_end"
+  ✓ A. Novák BOUND the plan measure 01a0…9e4e65 to the run output key "component_stock_end"
+  ✓ A. Novák ATTACHED the corridor control run (supply-flow@1; act-b24/b34's pair) 01a0…332f38 (supply-flow@1)
+  ✓ A. Novák ATTACHED act-b29's discrete-event run of the Regensburg line 01a0…3dec3b (discrete-event@1)
+  ✓ M. Dvořák BASELINED the plan: version 1, digest b1565650a4bf… — SIGNED ed25519:2b6c48b937b0b8d2 (PLN@1 admitted)
+  · waiting for the attention agent's scheduled tick (plan-variance; every 60 s) — 1.2 min
+  ✓ THE VARIANCE raised by the SCHEDULE: "Bearing component stock floor through th" from run: 0 against 2000 (adverse true) → routed as item 6409…6d9816; "Q2 2024 magnet stock floor held during q" from run: 95485.714 against 100000 (adverse true) → routed as item e40e…a2459e
+  · THE SENSITIVITY under the control run (a read, nothing recorded): 1 at risk · 0 on track · 0 unmapped · 1 without a value at their date; outputs digest 4565becb8e1e…
+  ✓ M. Dvořák LOWERED the authority 900000 → 700000 under the funded 850000: breach: the funded sum exceeds the new ceiling — breach 8767…186cdb OPEN at once
+  ✓ C. Brenner DECLARED and PROPOSED "B36 plan — the second-source purchase authorisation (SYNTHETIC)" 01a0…d1d9cf version 1 (status-quo vs second-source; action owner L. Brandt) — digest 1b615b7f4831…
+  ✓ C. Brenner CITED the initiative 01a0…bf940d on the package 01a0…d1d9cf (plan 01a0…a5cc9d)
+  ✓ S. Okafor APPROVED the purchase authorisation
+  ✓ L. Brandt committing while the plan breach is open REFUSED — 409 EYE-STA-002 — plan commitment rejected (breach_open): package 01a0f00d-8c9d-77a7-80a0-2fee33d1d9cf cites initiative "Dual-sourcing 2027: qualify the second NdFeB source (SYNTHETIC)" of a plan with open breach(es) — budget_over_authori
+  ✓ M. Dvořák ACKNOWLEDGED the breach with the authority named → acknowledged
+  ✓ L. Brandt COMMITTED the purchase authorisation (C3): commitment 01a0…c01b4e — the breach acknowledged, the hold lifted
+  ✓ THE WORKSPACE (A. Novák): "Dual-sourcing 2027" baselined v1; funded 850000 of 1200000 under authority 700000; initiatives Dual-sourcing 2027: qualify th approved; Dual-sourcing 2027: dual-tooli approved; variances 2, breaches budget_over_authority acknowledged
+
+B36-C THE COLLABORATION COMPLETION — the invitation delivered to the SYNTHETIC mailbox, tasks waiting on one another, the real target's activation and the egress refusal, the outcome loop closed on both exposures
+  ✓ L. Brandt REVOKED act-b34's grant 01a0…610c7e (invited → revoked) — a new invitation follows
+  ✓ L. Brandt REQUESTED R. Haddad's invitation: grant 01a0…d7085a requested
+  ✓ the administrator PROVISIONED it through the identity authority and the invitation was DELIVERED: grant 01a0…d7085a invited, delivery {"channel":"demo-mailbox","synthetic":true,"pending":false} — the answer carries no token
+  ✓ L. Brandt reading the synthetic mailbox (an identity administrator's read) REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ THE SYNTHETIC MAILBOX (the administrator's read): delivery delivered, 0 failure(s); the message carries the one-time pickup code (present) and the login ext-648bfb5cb3c2; the token is nowhere in it (no token)
+  · the PICKUP and the ACCEPTANCE are LEFT FOR THE WALK (from /login?invitation=01a0f00d-8d90-754a-812d-e3f4dfd7085a, the code from the mailbox page, the password EYE_B36_EXPERT_PASSWORD) — the act never picks the material up; the harness proves the pickup route (phase6-collab-b36 T1)
+  ✓ L. Brandt REQUESTED M. Dvořák's review "A · the customs brief for the rerouted consignments (B36, SYNTHETIC)": task 01a0…2c12c2 open
+  ✓ L. Brandt REQUESTED M. Dvořák's review "B · the route summary after the brief (B36, SYNTHETIC)": task 01a0…2c2a7e open
+  ✓ L. Brandt DECLARED: task B 01a0…2c2a7e WAITS ON task A 01a0…2c12c2 (finish_to_start; B blocked true) — B completes only when A has closed
+  ✓ T. Richter REGISTERED the REAL target nordwerk-erp-real: inactive, synthetic false, a self-signed trust anchor for 127.0.0.1 declared (no credential bound; nothing real exists behind the literal)
+  ✓ L. Brandt DRAFTED the handoff 01a0…b0aa66 to nordwerk-erp-real (one line, 400 pcs)
+  ✓ K. Lange issuing to the INACTIVE real target REFUSED — 409 EYE-STA-002 — execution handoff rejected (inactive_target): target nordwerk-erp-real is inactive — a named execution authority activates it with the owner's committed decision before any handoff reaches it
+  ✓ T. Richter (the registrar) activating the target REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ K. Lange ACTIVATED nordwerk-erp-real with the committed purchase authorisation 01a0…d1d9cf (its choice rationale names the target): active, authorized by decision 01a0…d1d9cf
+  ✓ K. Lange ISSUED it: transport production; the PRODUCTION EGRESS REFUSED the loopback literal (address_not_public; request sent false) — attempt 1 transport; NOTHING REAL WAS REACHED
+  ✓ T. Richter DEACTIVATED nordwerk-erp-real with a reason → inactive
+  · A. Hoffmann UPLOADED the SYNTHETIC outcome record "SYN-OUT-2024Q1-B36-MITIG" to "NORDWERK internal records (SYNTHETIC)" (run 01a0…e5eb16: 1 admitted) → evidence 01a0…c02718@1
+  ✓ T. Nakamura GROUNDED the twin: version 11 simulated 15 days (the reroute run) → version 12 observed 3 days (the record SYN-OUT-2024Q1-B36-MITIG); RECONCILED 01a0…7c9ef6
+  ✓ C. Brenner RECORDED the OUTCOME 01a0…f8386d: line_stop_days observed 3 against 0 → NOT MET
+  ✓ C. Brenner (the exposure's owner) REVIEWED the outcome against the exposure: partly_effective, residual reassess — the learn step is now OWED
+  ✓ C. Brenner RECORDED the LEARNING 01a0…5373ab on the lineage: basis v2 → "the buffer, not the route, is the binding constraint: the next bracket rests on "
+  · the brief casts L. Brandt as the reviewer; the port admits the exposure's owner or its sponsor only (exposure outcome review rejected otherwise) — C. Brenner, the corridor's owner, reviews and learns; L. Brandt reads it on the walk
+  ✓ L. Brandt DRAFTED and PROPOSED "Evaluate the Moroccan supplier" version 1 (wait vs qualify; the criterion: a passed first article within 12 weeks)
+  ✓ S. Okafor APPROVED the exploit
+  ✓ L. Brandt COMMITTED the exploit (C3): commitment 01a0…c958d9
+  · A. Hoffmann UPLOADED the SYNTHETIC outcome record "SYN-OUT-2024H1-B36-MA" to "NORDWERK internal records (SYNTHETIC)" (run 01a0…b7ee5b: 1 admitted) → evidence 01a0…7342d1@1
+  ✓ T. Nakamura GROUNDED the twin: version 13 simulated 12 weeks (the reroute run) → version 14 observed 9 weeks (the record SYN-OUT-2024H1-B36-MA); RECONCILED 01a0…56ffc5
+  ✓ L. Brandt RECORDED the OUTCOME 01a0…898c50: qualification_weeks observed 9 against 12 → MET
+  ✓ L. Brandt (the exposure's owner) REVIEWED the outcome against the exposure: effective, residual stands — the learn step is now OWED
+  ✓ L. Brandt RECORDED the LEARNING 01a0…e90863 on the lineage: basis v2 → "nine weeks is the evidenced qualification time: the next hypothesis window rests"
+  ✓ L. Brandt ACCEPTED the commitment's root item
+  ✓ L. Brandt PROPOSED the closure 01a0…93b396 (proposed)
+  ✓ J. Weber (the item's reviewer) CO-SIGNED the closure → cosigned
+  ✓ L. Brandt CLOSED the Morocco package: closed, outcomes recorded 1
+
+B36-A (part 2) THE HOLD — the skew planted (stated), the evaluation under the governance floor, the queue held and LEFT FOR THE WALK (last: every later scene's human transition would be refused under it)
+  ✓ T. Richter ARMED the SYNTHETIC settle fault (armed true, synthetic true) — the next act's settle in this process fails once
+  ✓ L. Brandt ACTED (acknowledge_warning → prediction.warning.acknowledge): the governed action COMMITTED (audit seq 130626), the settle FAILED → settle_failed — SYNTHETIC settle fault (armed by 01a0e9ee-548f-719c-a208-35b9cad9ee42 at 2026-09
+  · the warning is acknowledged by L. Brandt — the effect stands although the settle failed
+  ✓ the analyst resuming (not the launcher, not the operator) REFUSED — 403 EYE-AUT-001 — act resumption rejected (actor): act 01a0f00d-924e-7463-8853-97664a17bbcd is resumed by the member who launched it or by the executive operator
+  ✓ the chief of staff RESUMED the act from the audit chain: acted, re-executed false (the receipt audit.audit_events seq 130626) — the governed action never performed twice
+  ✓ L. Brandt ACCEPTED the priority: evaluation digest 605fb71f8a73…, consequence "the accountable person answers for item 59c02b2c-9de1-4bae-8ed7-3ae9e406ecf7 within its re…" — SIGNED ed25519:2b6c48b937b0b8d2 (Ed25519)
+  · round 1: six items PLANTED by the act as a stated superuser move (three C4 source.coverage_loss, three C1 proposal.review — the harness's skew; SYNTHETIC)
+  · the evaluation 01a0…b454c5: fairness 0.0795 against the floor 0.7 → held true
+  ✓ THE HOLD RAISED by the evaluation: hold 01a0…caa500, cause fairness_below_floor, measure 0.0795 < 0.7, routed to the executive as the queue.governance item 0afd…6906ce — the queue is served READ-ONLY until M. Dvořák releases it (LEFT FOR THE WALK)
+  ✓ THE QUEUE (L. Brandt): context executive.contexts objective 01a0…3d1d00 horizon 90d; policy v7 governance {"fairness_floor":0.7,"staleness_ceiling_hours":168}; 50 served, 0 filtered; hold fairness_below_floor (read-only)
+
+B36-9 THE STATE and the LIMITS
+  · in the ledgers: 2 cadences, 9 signatures, 2 publications, 1 plans, 2 initiatives, 1 invitation deliveries, execution targets inactive 1 / synthetic 1, 2 exposure learnings, 3 strategy detections, 1 queue hold(s), 1 priority acceptance(s), 8 distribution rows, 4 BRF@v3 editions
+  the env lines for the walks:
+  EYE_B36_OBJECTIVE_TITLE=Keep the Regensburg line supplied through Q1
+  EYE_B36_PACKAGE_TITLE=Mitigate the corridor closure — Regensburg line
+  EYE_B36_GATE_PACKAGE_TITLE=B36 gate
+  EYE_B36_BOARD_LOGIN=r.vogel
+  EYE_B36_AUDITOR_LOGIN=e.lindqvist
+  EYE_B36_OPERATOR_LOGIN=chief.of.staff
+  EYE_B36_EXECUTIVE_LOGIN=m.dvorak
+  EYE_DEMO_EXECUTIVE=m.dvorak
+  EYE_DEMO_STRATEGY_LEAD=j.weber
+  EYE_B36_PUBLICATION_TITLE=Board pack
+  EYE_B36_PLANNING_LEAD=a.novak
+  EYE_B36_EXPERT_PASSWORD=customs-broker-b36-synthetic
+  EYE_B36_INVITATION_ID=01a0f00d-8d90-754a-812d-e3f4dfd7085a
+  EYE_B36_EXPERT_LOGIN=ext-648bfb5cb3c2
+  · LIMITS said: EVERY FIGURE IS SYNTHETIC (the personas, the amounts, the budgets, the milestones, the customs hours, the outcome records); every channel is a LOCAL SINK (the e-mail receipts of the distribution, the publication deliveries and the correction notices reach the loopback SMTP/HTTP sinks; the invitation is delivered to the SYNTHETIC mailbox — no real provider, D6); the REAL execution target is a loopback literal with a self-signed anchor and no credential — the production egress refuses it by design (address_not_public) and NOTHING REAL IS ACTIVATED OR REACHED; the signing key is the demonstration's own (EYE_EXECUTIVE_SIGNING_KEY_DEMO, bound by reference); the corridor warning is REAL (a probe indicator on the B28 corridor stream series, whose condition holds on its latest observations, evaluated by its owner — the PortWatch series carries a governed-deleted evidence version and the product evaluates no indicator on an incomplete history, for any reader; the exposure route raises no second corridor warning: its candidates cluster into act-b32's acknowledged one), while the corridor ITEM on it, the six skew items of the hold and the degraded health verdict of the outage are PLANTED as stated superuser moves (the harness's idiom); every edition of the gate room reads DEGRADED because the demonstration's collectors are (PortWatch's verdict, the others' last scheduled attempts) — the retention shows on the THIRD edition (the agent's first, the person's second: a human's prior-less edition folds to restricted, and the page lists a room's editions oldest-first); the Board pack is a BRIEFING publication (a report of a monitoring package has no later version to correct to); the invitation's pickup and acceptance are left for the walk (the harness proves the route and the token's absence — phase6-collab-b36 T1); the exposure outcome is reviewed by the exposure's OWNER (the port admits the owner or the sponsor). HARNESS-PROVEN and not staged: home — the deadline-passed room item raised by the tick, the operator's refusals at the PDP, the metrics on an empty window (h3 RECOVERY, h5 REFUSAL, h6); gates — the unbound-key refusal, a tampered signature, the sms/teams sinks failing and recovering, a challenge upheld before commitment (withdrawal chain), the uniform gate state of a source and a merge, a direct denial record refused (k1/k2 RECOVERY, l2 RECOVERY, l5 REFUSAL, l6); attention — the recovery routes tick_stalled / delivery_sink_down / evaluation_stale / policy_invalid, the staleness cause of the hold, an agent at the gate, a planted launched act (RC, H1, R1); strategy — GraphChanged on strategy changes through the dispatcher, the gamed / lost-linkage / owner-missing detections, an as_of replay not accepted, a lapsed act (S4, S5, S6); briefing — the port's own refusals (uncertainty, contract, undeclared omission), the expiry tick, a pure board audience without the owner's note, the policy's unchanged/malformed refusals (b1–b5 REFUSAL, b3 EXPIRY); publishing — a legal hold refusing the export then lifted, the teams sink failing, a withdrawal with its notices, a stale digest rolling the signature back (d2/d3 RECOVERY, d5 REFUSAL); planning — the Planning Agent's proposal and its refusals at the human gate, the drift and infeasibility breaches, a lost objective linkage, an unsigned baseline refused (p2, p3); collab — the pickup with wrong codes and the lock, the re-driven delivery, the external's bounded self read and expiry, a workflow definition's depends_on (T1, Q1, R1). Nothing is cleaned: every object stands as a demonstration fact.
+
+ALL SCENES HELD · 135.7 s
+
+
+===== THE RERUN (rerun-safety: every scene stands) =====
+THE B36 ACT on eye_demo — 2026-09-30T02:03:47.683Z
+
+B36-0 THE STATE — 0094, the casting, the new SYNTHETIC personas
+  ✓ migration 0094_b36_strategic_planning_home_briefing_publishing.sql applied
+  ✓ the casting read from identity.role_bindings: a.hoffmann (domain_analyst); c.brenner (decision_owner, risk_owner, strategy_owner); j.weber (strategy_owner); k.lange (execution_authority); l.brandt (decision_authority, decision_owner, opportunity_sponsor, strategy_owner); m.dvorak (collection_manager, executive); n.eriksen (forecast_owner); s.okafor (decision_approver, executive); t.nakamura (twin_owner); t.richter (domain_admin)
+  · R. Vogel is present — an earlier run
+  · F. Kraus is present — an earlier run
+  · I. Saitō is present — an earlier run
+  · E. Lindqvist is present — an earlier run
+  · The chief of staff is present — an earlier run
+  · A. Novák is present — an earlier run
+  · A. Moreau is present — an earlier run
+  ✓ the inputs: the Regensburg objective 01a0…3d1d00 (owner J. Weber); the corridor exposure 01a0…b2cb46 → the MITIGATION case 01a0…9f461d "Mitigate the corridor closure — Regensburg line" (monitoring v1, owner C. Brenner); the Morocco opportunity 01a0…a18123 → the exploit package 01a0…8608c4 "Evaluate the Moroccan supplier" (closed); the January package 01a0…651748 (v2, room 01a0…a83e8b); the runs control 01a0…332f38 / reroute 01a0…049267; the DES run 01a0…3dec3b; the corridor twin 01a0…76f525; the corridor scenario 01a0…5f0eb7 "B21 — the corridor, one collapse branch (2026-09-24)"; the workspace 01a0…0321bc
+
+B36-H THE HOME AND THE CADENCE — the weekly loop, the agenda, a gap escalated, a scenario room, the reset; the operator's context, view, search and metrics
+  · the weekly cadence cycle #2 is open (01a0…0cd7f7) — an earlier run (or the walk)
+  · the chief of staff's agenda stands (3 row(s) over the cycles) — an earlier run
+  · the chief of staff's escalation 01a0…9d82ce stands (open) — an earlier run
+  · the scenario room 01a0…d06432 "Bab el-Mandeb collapse scenario room (SYNTHETIC)" stands — an earlier run
+  · the loop was reset 1 time(s) — an earlier run (or the walk)
+  · the chief of staff's context on the Regensburg objective (30d) stands — an earlier run
+  ✓ the operator's COMMAND VIEWS: executive_operator/cadence-prep
+  ✓ the view executive_operator/cadence-prep: sections cadence → priorities → decisions → commitments; safe actions set_agenda, route_work, escalate_gap; context digest 8c96eaccd7cc…
+  ✓ the operator opening the executive's morning view REFUSED — 403 EYE-AUT-001 — command view rejected (role): the view executive/morning is the executive's; the reader holds no such role in this domain
+  ✓ the operator SEARCHED "Regensburg": 18 hit(s) — room 1, review 1, package 2, warning 1, briefing 7, attention_item 5, commitment_item 1; the first: commitment_item "Execute: Mitigate the corridor closure — Regensbur" — regensburg matched in title: Execute: Mitigate the corridor closure — Regensburg line (the search is on the access ledger)
+  ✓ THE METRICS (computed on read, stored false): time_to_understanding n=66 median 152.191; decision_latency n=8 median 0.584; review_completion n=1 ratio 0
+  ✓ THE HOME (M. Dvořák) answered: cadence 1, outcomes 2, warnings 2, decisions 7, priorities 86, commitments 4, intelligence 7; context the default; ceiling confidential; cadence cycle #2, agenda 0, escalations 0
+
+B36-G THE GATES — the dual-sourcing decision signed and distributed; the B36 gate package recused, challenged, dismissed, a denial on the record; the board package
+  · S. Okafor's signature on the approval stands — an earlier run
+  · C. Brenner's signature on the decision stands — an earlier run
+  · the room 01a0…e92061 on the package stands — an earlier run
+  · the decision is distributed (8 row(s)) — an earlier run
+  ✓ THE GATE'S RECORD of the dual-sourcing decision: gate approved; approvals 1 (signatures 1); decision signatures 1 (C. Brenner VERIFIED); signing key ed25519:2b6c48b937b0b8d2
+  · the package 01a0…6d3ccc "B36 gate — the corridor second-source review (SYNTHETIC)" stands (under_review, v1) — an earlier run
+  · the room 01a0…c47116 on the package stands — an earlier run
+  · S. Okafor's approval stands — an earlier run
+  · S. Okafor's recusal stands (1) — an earlier run
+  · E. Lindqvist's challenge 01a0…3d8922 stands, dismissed — an earlier run
+  · K. Lange's denial is on the record — an earlier run
+  ✓ THE DENIAL on the record: K. Lange tried decision.gate.defer on version 1 — deny, policy decision 01a0…cc1824
+  · the replay of an uncommitted version: 409 EYE-STA-001 — version 1 is under_review, not committed; a replay reconstructs what a decision was taken with — the gate record carries the denial
+  ✓ the gate package is LEFT UNCOMMITTED: package under_review, version 1 under_review, gate challenged
+  · the package 01a0…82f843 "B36 board — the second-source capital request (SYNTHETIC)" stands (under_review, v1) — an earlier run
+  · R. Vogel's board approval stands (1 of 2) — an earlier run
+  ✓ R. Vogel on the STANDARD approve route REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ THE BOARD SURFACE (R. Vogel): "B36 board — the second-source capital request (SYNTHETIC)" — class board, gate review_requested, quorum 2, live approvals 1, own approval approve
+
+B36-A THE ATTENTION COMPLETION — the policy with governance, a real corridor warning, the settle fault and the resume, the priority accepted, the hold, the forum
+  · attention policy version 7 carries the governance fields and the B36 classes — an earlier run
+  · L. Brandt's context on the Regensburg objective (90d) stands — an earlier run
+  · the briefing agent's edition 01a0…888401 of the gate room stands — an earlier run
+  · the probe indicator 01a0…bd26e5 stands (active, breached true) — an earlier run
+  · the branch 01a0…7075da on "B36 — the corridor probe scenario (SYNTHETIC)" is bound to the indicator (flipped) — an earlier run
+  · the corridor warning 01a0…5ede80 "B36 — the corridor probe scenario (SYNTHETIC) — branch "Corr" (acknowledged) stands — an earlier run
+  · the planted corridor item 59c0…06ecf7 stands (open) on the warning 01a0…5ede80 — an earlier run
+  · the forum 01a0…466e15 "Supply resilience forum (B36, SYNTHETIC)" stands — an earlier run
+
+B36-S THE SCORE AND THE STRATEGY GRAPH — the owner's restatement and its flag, the customs exception, the signed acceptance, the revoked allocation, the scheduled detection
+  · the owner's restatement of on_time_delivery stands (91 → 97) — an earlier run
+  · the measure 01a0…9e71f0 "Customs clearance time" stands — an earlier run
+  · definition version 2 carries customs_clearance — an earlier run
+  · the customs exception stands approved (01a0…8085db) — an earlier run
+  · M. Dvořák's signed acceptance 01a0…b2aae9 of snapshot 01a0…19bd9f stands — an earlier run (no new snapshot computed)
+  · the allocation act 01a0…b85f97 is revoked — an earlier run
+  · the stale_measure detection 880c…7b2a92 stands (item 0964…1b0fdb open) — an earlier run
+
+B36-B THE BRIEFING STUDIO v3 — the suppression policy; the window's content (a stale single-source record, a weak signal); L. Brandt's edition under its contract after the agent's; the outage edition retaining the corridor warning; the edition after the recovery
+  · briefing policy version 1 stands — an earlier run
+  · an open challenge 01a0…7b163e stands on the gate package — an earlier run
+  · A. Hoffmann UPLOADED the broker's customs note (SYNTHETIC; document time three weeks back; ONE source) → evidence 01a0…185758@1 — an earlier run
+  · the weak signal 01a0…d7b20c "Bab el-Mandeb transit chatter rising after the broker's note (B36, SYNTHETIC)" stands (tentative, confidence 0.55) — an earlier run
+  · L. Brandt's edition 01a0…a5a2f8 stands (v3) — an earlier run
+  · the outage edition 01a0…c91b8f stands (DEGRADED) — an earlier run
+  · L. Brandt's edition after the recovery 01a0…47a92b stands — an earlier run
+
+B36-D THE PUBLISHING CENTER — the Board pack from L. Brandt's corridor edition, approved by digest, delivered with receipts, corrected to the later edition, archived and exported; the partner letter from the corridor decision reviewed, delivered, its export refused
+  · the publication 01a0…85d15b "Board pack — the corridor second-source briefing (SYNTHETIC)" stands (archived) — an earlier run
+  · version 1 is corrected — an earlier run
+  · R. Vogel's acknowledgement stands — an earlier run
+  · the correction (version 2 ← BRF 01a0…47a92b) stands — an earlier run
+  · version 2 is delivered — an earlier run
+  · the Board pack is archived — an earlier run
+  · M. Dvořák exported the Board pack — an earlier run (the same manifest served again): eye-publication-export/1, 2 object(s), 20 receipt(s), manifest c6f23d4b19f4… (manifest.json, repeated true); residency EU carried — the export stays in the vault's residency; an external publication of 
+  · the partner letter 01a0…c37d0a stands (archived) — an earlier run
+  · the partner letter is archived — an earlier run
+  ✓ M. Dvořák exporting the partner letter (the source carries residency EU; the letter is addressed outside the tenant) REFUSED — 409 EYE-STA-002 — publication rejected (residency): the source carries the residency profile EU and this publication is addressed outside the tenant (partner: Partner customs brokerage (SYNTHETIC)); its bytes stay in the vault's residency
+
+B36-P THE PLANNING WORKSPACE — "Dual-sourcing 2027": the initiatives, the milestones on the stock measures, the runs, the signed baseline; the Q2 variance by the schedule; the authority cut → the breach; the commitment held, acknowledged, committed
+  · the plan 01a0…a5cc9d "Dual-sourcing 2027" stands (baselined, v1, authority 700000.00) — an earlier run
+  · the initiative 01a0…bf940d stands (approved) — an earlier run
+  · the initiative 01a0…0ff23a stands (approved) — an earlier run
+  · the milestones stand ("Q2 2024 magnet stock floor hel" at_risk; "Bearing component stock floor " at_risk) — an earlier run
+  · the measure 01a0…59d803 is bound to the run key on_hand_end — an earlier run
+  · the measure 01a0…9e4e65 is bound to the run key component_stock_end — an earlier run
+  · the run 01a0…332f38 is attached — an earlier run
+  · the run 01a0…3dec3b is attached — an earlier run
+  · the plan is baselined (version 1, signed) — an earlier run
+  · the variances stand ("Bearing component stock " run 0 vs 2000; "Q2 2024 magnet stock flo" run 95485.714 vs 100000) — an earlier run
+  · THE SENSITIVITY under the control run (a read, nothing recorded): 1 at risk · 0 on track · 0 unmapped · 1 without a value at their date; outputs digest 4565becb8e1e…
+  · the budget breach 8767…186cdb stands (acknowledged) — an earlier run
+  · the package 01a0…d1d9cf "B36 plan — the second-source purchase authorisation (SYNTHETIC)" stands (committed, v1) — an earlier run
+  · the package cites the initiative — an earlier run
+  · the purchase authorisation is committed (01a0…c01b4e) — an earlier run
+  ✓ THE WORKSPACE (A. Novák): "Dual-sourcing 2027" baselined v1; funded 850000 of 1200000 under authority 700000; initiatives Dual-sourcing 2027: qualify th approved; Dual-sourcing 2027: dual-tooli approved; variances 2, breaches budget_over_authority acknowledged
+
+B36-C THE COLLABORATION COMPLETION — the invitation delivered to the SYNTHETIC mailbox, tasks waiting on one another, the real target's activation and the egress refusal, the outcome loop closed on both exposures
+  · the delivered invitation 01a0…d7085a stands (grant invited, delivery delivered via demo-mailbox) — an earlier run
+  ✓ L. Brandt reading the synthetic mailbox (an identity administrator's read) REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ THE SYNTHETIC MAILBOX (the administrator's read): delivery delivered, 0 failure(s); the message carries the one-time pickup code (present) and the login ext-648bfb5cb3c2; the token is nowhere in it (no token)
+  · the PICKUP and the ACCEPTANCE are LEFT FOR THE WALK (from /login?invitation=01a0f00d-8d90-754a-812d-e3f4dfd7085a, the code from the mailbox page, the password EYE_B36_EXPERT_PASSWORD) — the act never picks the material up; the harness proves the pickup route (phase6-collab-b36 T1)
+  · the task "A · the customs brief for the rerouted consignments (B36, SYNTHETIC)" 01a0…2c12c2 stands (open) — an earlier run
+  · the task "B · the route summary after the brief (B36, SYNTHETIC)" 01a0…2c2a7e stands (open) — an earlier run
+  · B waits on A (blocked true) — an earlier run
+  · the target nordwerk-erp-real stands (inactive) — an earlier run
+  · the handoffs to nordwerk-erp-real stand (01a0…b0aa66 issuing / transport) — an earlier run
+  · the outcome 01a0…f8386d of 01a0…9f461d stands (line_stop_days observed 3, met false) — an earlier run
+  · the outcome review 01a0…7967f4 stands (monitor reviewed) — an earlier run
+  · the learning stands — an earlier run
+  · the brief casts L. Brandt as the reviewer; the port admits the exposure's owner or its sponsor only (exposure outcome review rejected otherwise) — C. Brenner, the corridor's owner, reviews and learns; L. Brandt reads it on the walk
+  · the Morocco package is closed — an earlier run
+  · the outcome 01a0…898c50 of 01a0…8608c4 stands (qualification_weeks observed 9, met true) — an earlier run
+  · the outcome review 01a0…dbdf12 stands (monitor reviewed) — an earlier run
+  · the learning stands — an earlier run
+  · the Morocco package is closed — an earlier run
+
+B36-A (part 2) THE HOLD — the skew planted (stated), the evaluation under the governance floor, the queue held and LEFT FOR THE WALK (last: every later scene's human transition would be refused under it)
+  · L. Brandt's act on the item stands (acknowledge_warning acted) — an earlier run
+  · the priority acceptance 01a0…7fb38f by L. Brandt stands — an earlier run
+  · the queue hold 01a0…caa500 stands (fairness_below_floor, held, measure 0.0795) — an earlier run
+  ✓ THE QUEUE (L. Brandt): context executive.contexts objective 01a0…3d1d00 horizon 90d; policy v7 governance {"fairness_floor":0.7,"staleness_ceiling_hours":168}; 50 served, 0 filtered; hold fairness_below_floor (read-only)
+
+B36-9 THE STATE and the LIMITS
+  · in the ledgers: 2 cadences, 9 signatures, 2 publications, 1 plans, 2 initiatives, 1 invitation deliveries, execution targets inactive 1 / synthetic 1, 2 exposure learnings, 3 strategy detections, 1 queue hold(s), 1 priority acceptance(s), 8 distribution rows, 4 BRF@v3 editions
+  the env lines for the walks:
+  EYE_B36_OBJECTIVE_TITLE=Keep the Regensburg line supplied through Q1
+  EYE_B36_PACKAGE_TITLE=Mitigate the corridor closure — Regensburg line
+  EYE_B36_GATE_PACKAGE_TITLE=B36 gate
+  EYE_B36_BOARD_LOGIN=r.vogel
+  EYE_B36_AUDITOR_LOGIN=e.lindqvist
+  EYE_B36_OPERATOR_LOGIN=chief.of.staff
+  EYE_B36_EXECUTIVE_LOGIN=m.dvorak
+  EYE_DEMO_EXECUTIVE=m.dvorak
+  EYE_DEMO_STRATEGY_LEAD=j.weber
+  EYE_B36_PUBLICATION_TITLE=Board pack
+  EYE_B36_PLANNING_LEAD=a.novak
+  EYE_B36_EXPERT_PASSWORD=customs-broker-b36-synthetic
+  EYE_B36_INVITATION_ID=01a0f00d-8d90-754a-812d-e3f4dfd7085a
+  EYE_B36_EXPERT_LOGIN=ext-648bfb5cb3c2
+  · LIMITS said: EVERY FIGURE IS SYNTHETIC (the personas, the amounts, the budgets, the milestones, the customs hours, the outcome records); every channel is a LOCAL SINK (the e-mail receipts of the distribution, the publication deliveries and the correction notices reach the loopback SMTP/HTTP sinks; the invitation is delivered to the SYNTHETIC mailbox — no real provider, D6); the REAL execution target is a loopback literal with a self-signed anchor and no credential — the production egress refuses it by design (address_not_public) and NOTHING REAL IS ACTIVATED OR REACHED; the signing key is the demonstration's own (EYE_EXECUTIVE_SIGNING_KEY_DEMO, bound by reference); the corridor warning is REAL (a probe indicator on the B28 corridor stream series, whose condition holds on its latest observations, evaluated by its owner — the PortWatch series carries a governed-deleted evidence version and the product evaluates no indicator on an incomplete history, for any reader; the exposure route raises no second corridor warning: its candidates cluster into act-b32's acknowledged one), while the corridor ITEM on it, the six skew items of the hold and the degraded health verdict of the outage are PLANTED as stated superuser moves (the harness's idiom); every edition of the gate room reads DEGRADED because the demonstration's collectors are (PortWatch's verdict, the others' last scheduled attempts) — the retention shows on the THIRD edition (the agent's first, the person's second: a human's prior-less edition folds to restricted, and the page lists a room's editions oldest-first); the Board pack is a BRIEFING publication (a report of a monitoring package has no later version to correct to); the invitation's pickup and acceptance are left for the walk (the harness proves the route and the token's absence — phase6-collab-b36 T1); the exposure outcome is reviewed by the exposure's OWNER (the port admits the owner or the sponsor). HARNESS-PROVEN and not staged: home — the deadline-passed room item raised by the tick, the operator's refusals at the PDP, the metrics on an empty window (h3 RECOVERY, h5 REFUSAL, h6); gates — the unbound-key refusal, a tampered signature, the sms/teams sinks failing and recovering, a challenge upheld before commitment (withdrawal chain), the uniform gate state of a source and a merge, a direct denial record refused (k1/k2 RECOVERY, l2 RECOVERY, l5 REFUSAL, l6); attention — the recovery routes tick_stalled / delivery_sink_down / evaluation_stale / policy_invalid, the staleness cause of the hold, an agent at the gate, a planted launched act (RC, H1, R1); strategy — GraphChanged on strategy changes through the dispatcher, the gamed / lost-linkage / owner-missing detections, an as_of replay not accepted, a lapsed act (S4, S5, S6); briefing — the port's own refusals (uncertainty, contract, undeclared omission), the expiry tick, a pure board audience without the owner's note, the policy's unchanged/malformed refusals (b1–b5 REFUSAL, b3 EXPIRY); publishing — a legal hold refusing the export then lifted, the teams sink failing, a withdrawal with its notices, a stale digest rolling the signature back (d2/d3 RECOVERY, d5 REFUSAL); planning — the Planning Agent's proposal and its refusals at the human gate, the drift and infeasibility breaches, a lost objective linkage, an unsigned baseline refused (p2, p3); collab — the pickup with wrong codes and the lock, the re-driven delivery, the external's bounded self read and expiry, a workflow definition's depends_on (T1, Q1, R1). Nothing is cleaned: every object stands as a demonstration fact.
+
+ALL SCENES HELD · 2.0 s

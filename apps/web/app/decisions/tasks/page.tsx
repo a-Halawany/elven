@@ -12,7 +12,7 @@
  */
 import { useEffect, useState } from 'react';
 import { useShell } from '../layout';
-import { tasks as api, chainWords, completableHere, deadlineWords, taskMark, type HumanTask } from '../../../lib/workflow';
+import { tasks as api, chainWords, completableHere, completableNow, deadlineWords, taskMark, waitsOnWords, type HumanTask } from '../../../lib/workflow';
 import { Empty, LiveStatus, Mono, cardStyle, GovernedButton, fmtInstant } from '../../../components/observation';
 import { inputStyle, Receipt } from '../../../components/ui';
 
@@ -30,6 +30,7 @@ function TaskCard({ t, now, onDone }: { t: HumanTask; now: string; onDone: (msg:
   const { scope } = useShell();
   const [to, setTo] = useState(''); const [reason, setReason] = useState('');
   const [outcome, setOutcome] = useState('done'); const [note, setNote] = useState('');
+  const [dependsOn, setDependsOn] = useState(''); /* B36 (0094 §C2) */
   const [problem, setProblem] = useState<string | null>(null);
   const overdue = t.deadline_at !== null && t.deadline_at < now && (t.state === 'open' || t.state === 'escalated');
   const live = t.state === 'open' || t.state === 'escalated';
@@ -39,6 +40,8 @@ function TaskCard({ t, now, onDone }: { t: HumanTask; now: string; onDone: (msg:
       <p><Mark m={taskMark(t.state, t.escalation_level)} /> · <Mono>{t.kind}</Mono> · subject <Mono title={String(t.subject['id'] ?? '')}>{String(t.subject['kind'] ?? '')} {String(t.subject['id'] ?? '').slice(0, 8)}…</Mono></p>
       <p style={overdue ? { color: 'var(--eye-color-critical)', fontWeight: 650 } : undefined}>Deadline: {t.deadline_at === null ? 'none' : fmtInstant(t.deadline_at)} — {deadlineWords(t.deadline_at, now)}</p>
       <p>Escalation chain: {chainWords(t.escalation_chain)}</p>
+      {/* B36 (0094 §C2): what the task waits on (finish-to-start) — the server's unmet prerequisites */}
+      {live && <p aria-label={`waits on ${t.task_id}`} style={t.blocked === true ? { color: 'var(--eye-color-warning)', fontWeight: 650 } : muted}>This task {waitsOnWords(t.waits_on)}</p>}
       {typeof t.escalation['principal'] === 'string' && <p style={muted}>Escalates to <Mono>{String(t.escalation['principal']).slice(0, 8)}…</Mono> (at most {String(t.escalation['max_escalations'] ?? 0)} time(s), {String(t.escalation['extend_minutes'] ?? 1440)} min each)</p>}
       {problem !== null && <p role="alert" style={{ color: 'var(--eye-color-critical)' }}>{problem}</p>}
       {live && (
@@ -55,7 +58,20 @@ function TaskCard({ t, now, onDone }: { t: HumanTask; now: string; onDone: (msg:
               setProblem(null); onDone(`reassigned to ${to.slice(0, 8)}…`, r.data?.receipt ?? null);
             }} />
           </fieldset>
-          {completableHere(t.kind) ? (
+          {/* B36 (0094 §C2): declare that this task waits on another (the holder, the opener, the workspace's owner, an executive or an administrator) */}
+          {completableHere(t.kind) && (
+            <fieldset style={{ border: '1px solid var(--eye-color-border-default)', borderRadius: 'var(--eye-radius-md)' }}>
+              <legend>Waits on (finish-to-start)</legend>
+              <label htmlFor={`dep-${t.task_id}`}>The task this one waits on (task id)</label>
+              <input id={`dep-${t.task_id}`} style={inputStyle} value={dependsOn} onChange={(e) => setDependsOn(e.target.value)} />
+              <GovernedButton label="Declare" pendingLabel="declaring" variant="quiet" onRun={async () => {
+                const r = await api.declareDependency(scope, t.task_id, dependsOn);
+                if (!r.ok) { setProblem(refusal(r, 'the dependency was refused')); return; }
+                setProblem(null); setDependsOn(''); onDone(`waits on ${dependsOn.slice(0, 8)}… — released when it closes`, r.data?.receipt ?? null);
+              }} />
+            </fieldset>
+          )}
+          {completableNow(t) ? (
             <fieldset style={{ border: '1px solid var(--eye-color-border-default)', borderRadius: 'var(--eye-radius-md)' }}>
               <legend>Complete</legend>
               <label htmlFor={`out-${t.task_id}`}>Outcome</label>
@@ -68,7 +84,8 @@ function TaskCard({ t, now, onDone }: { t: HumanTask; now: string; onDone: (msg:
                 setProblem(null); onDone('completed', r.data?.receipt ?? null);
               }} />
             </fieldset>
-          ) : <p style={muted}>A {t.kind} task completes through its owning action (the approval, the review, the checkpoint) — not here.</p>}
+          ) : completableHere(t.kind) ? <p style={muted}>Complete is offered when what this task waits on has closed (the server refuses it until then: task rejected (dependency)).</p>
+            : <p style={muted}>A {t.kind} task completes through its owning action (the approval, the review, the checkpoint) — not here.</p>}
         </div>
       )}
     </section>

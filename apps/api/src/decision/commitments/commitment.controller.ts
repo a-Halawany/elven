@@ -63,7 +63,8 @@ export class CommitmentController {
   async listTargets(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string) {
     const { envelope, principal } = ctx(req);
     const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'decision.commitment.read', 'EXT', null), CommitmentCapability.read,
-      async (cap) => ((await cap.readTargets().select(['target_id', 'target_key', 'label', 'endpoint', 'credential_ref', 'synthetic', 'state', 'retired_at', 'declared_at'] as never).orderBy('declared_at' as never).execute()) as Row[]));
+      async (cap) => ((await cap.readTargets().select(['target_id', 'target_key', 'label', 'endpoint', 'credential_ref', 'synthetic', 'state', 'retired_at', 'declared_at', 'declared_by',
+        /* B36 (0094 §C4) collab: the activation state of a real target */ 'activation_state', 'activated_at', 'activated_by', 'authorized_by_decision', 'deactivated_at', 'deactivated_by', 'deactivation_reason' /* end B36 collab */] as never).orderBy('declared_at' as never).execute()) as Row[]));
     return { targets: out.result, receipt: receipt(out) };
   }
 

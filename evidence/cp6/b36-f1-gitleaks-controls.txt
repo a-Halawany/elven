@@ -1,0 +1,72 @@
+B36-F1 — the secret-scanner history exception, corrected and proven with the pinned scanner
+Date: 2026-09-30. Scanner: gitleaks 8.30.1 (the C15 pin), the repository config .gitleaks.toml.
+Notation: every match string below is printed with its operator in brackets — viewKey[:] 'x', key ed25519[:]x — so that
+this evidence file is not itself a finding of the rule it documents; the scanner saw the plain form.
+Reviewed head: adc05d0 (PR #69). The finding: the B36 history allowlist listed commits, paths and regexes in
+one block with no condition, so gitleaks (default OR; the commit/path check runs before any rule) skipped
+every listed file in every commit and every file in the four listed commits.
+
+1. THE HISTORICAL FINDINGS THE EXCEPTION EXISTS FOR (the config WITHOUT the B36 block; the pushed history)
+   e0b8820  generic-api-key  audit/CP6_BATCHES.md                            match="viewKey[:] 'executive/morning'"
+   e0b8820  generic-api-key  PHASE6_REPORT.md                                match="viewKey[:] 'executive/morning'"
+   442d891  generic-api-key  apps/api/test/int/phase6-collab-b36.test.ts     match="targetKey[:] 'nordwerk-erp-synthetic-b36'"
+   442d891  generic-api-key  apps/api/test/int/phase6-collab-b36.test.ts     match="targetKey[:] 'nordwerk-erp-synthetic-b36'"
+   a272fb7  generic-api-key  apps/web/lib/health.test.ts                     match='key ed25519[:]0123456789abcdef '
+   595c652  generic-api-key  scripts/phase6/act-b36.mjs                      match="viewKey[:] 'executive/morning'"
+   (the same scan over ALL local refs reports 20 further hits, all on never-pushed part/backup branches — unchanged by this correction)
+
+2. THE CORRECTED CONFIG OVER THE PUSHED HISTORY (--full-history --remotes=origin): 0 findings
+   the tracked working tree (a git ls-files export, --no-git): 0 findings
+
+3. NEGATIVE CONTROLS — a throwaway clone (never pushed), one control commit 82fae71 on top of adc05d0 that adds to EACH of
+   the five listed files: (a) the exact historical literal, (b) a same-rule FOREIGN value of the same shape, (c) an
+   AWS-shaped canary (another rule); and the three exact literals to an UNLISTED file audit/b36-f1-unlisted-control.txt.
+   Four scans of that one commit:
+   A. corrected config, the historical commits listed (the control commit is NOT listed) — 18 findings
+      expected: every planted line reported (18: 5 × exact + 5 × foreign + 5 × canary + 3 in the unlisted file): a listed literal in ANOTHER commit is still a finding
+      aws-access-token   PHASE6_REPORT.md                               <aws-shaped canary, redacted>
+      generic-api-key    PHASE6_REPORT.md                               "viewKey[:] 'executive/m0rning'"
+      generic-api-key    PHASE6_REPORT.md                               "viewKey[:] 'executive/morning'"
+      aws-access-token   apps/api/test/int/phase6-collab-b36.test.ts    <aws-shaped canary, redacted>
+      generic-api-key    apps/api/test/int/phase6-collab-b36.test.ts    "targetKey[:] 'nordwerk-erp-c0ntrol-x7q2'"
+      generic-api-key    apps/api/test/int/phase6-collab-b36.test.ts    "targetKey[:] 'nordwerk-erp-synthetic-b36'"
+      aws-access-token   apps/web/lib/health.test.ts                    <aws-shaped canary, redacted>
+      generic-api-key    apps/web/lib/health.test.ts                    'key ed25519[:]0123456789abcdef '
+      generic-api-key    apps/web/lib/health.test.ts                    'key ed25519[:]fedcba9876543210 '
+      aws-access-token   audit/CP6_BATCHES.md                           <aws-shaped canary, redacted>
+      generic-api-key    audit/CP6_BATCHES.md                           "viewKey[:] 'executive/m0rning'"
+      generic-api-key    audit/CP6_BATCHES.md                           "viewKey[:] 'executive/morning'"
+      generic-api-key    audit/b36-f1-unlisted-control.txt              'key ed25519[:]0123456789abcdef '
+      generic-api-key    audit/b36-f1-unlisted-control.txt              "targetKey[:] 'nordwerk-erp-synthetic-b36'"
+      generic-api-key    audit/b36-f1-unlisted-control.txt              "viewKey[:] 'executive/morning'"
+      aws-access-token   scripts/phase6/act-b36.mjs                     <aws-shaped canary, redacted>
+      generic-api-key    scripts/phase6/act-b36.mjs                     "viewKey[:] 'executive/m0rning'"
+      generic-api-key    scripts/phase6/act-b36.mjs                     "viewKey[:] 'executive/morning'"
+   B. corrected config with the control commit substituted for the historical commits — 13 findings
+      expected: only the five exact literals in their five files are excluded (18 − 5 = 13 remain): the foreign values, the AWS canaries in the SAME files and commit, and the exact literals in the unlisted file are all reported
+      aws-access-token   PHASE6_REPORT.md                               <aws-shaped canary, redacted>
+      generic-api-key    PHASE6_REPORT.md                               "viewKey[:] 'executive/m0rning'"
+      aws-access-token   apps/api/test/int/phase6-collab-b36.test.ts    <aws-shaped canary, redacted>
+      generic-api-key    apps/api/test/int/phase6-collab-b36.test.ts    "targetKey[:] 'nordwerk-erp-c0ntrol-x7q2'"
+      aws-access-token   apps/web/lib/health.test.ts                    <aws-shaped canary, redacted>
+      generic-api-key    apps/web/lib/health.test.ts                    'key ed25519[:]fedcba9876543210 '
+      aws-access-token   audit/CP6_BATCHES.md                           <aws-shaped canary, redacted>
+      generic-api-key    audit/CP6_BATCHES.md                           "viewKey[:] 'executive/m0rning'"
+      generic-api-key    audit/b36-f1-unlisted-control.txt              'key ed25519[:]0123456789abcdef '
+      generic-api-key    audit/b36-f1-unlisted-control.txt              "targetKey[:] 'nordwerk-erp-synthetic-b36'"
+      generic-api-key    audit/b36-f1-unlisted-control.txt              "viewKey[:] 'executive/morning'"
+      aws-access-token   scripts/phase6/act-b36.mjs                     <aws-shaped canary, redacted>
+      generic-api-key    scripts/phase6/act-b36.mjs                     "viewKey[:] 'executive/m0rning'"
+   C. the adc05d0 (OR) form, the historical commits listed — 3 findings
+      expected: the five listed files are skipped ENTIRELY in a new commit — even the AWS canaries (3 remain, all from the unlisted file): the defect (1)
+      generic-api-key    audit/b36-f1-unlisted-control.txt              'key ed25519[:]0123456789abcdef '
+      generic-api-key    audit/b36-f1-unlisted-control.txt              "targetKey[:] 'nordwerk-erp-synthetic-b36'"
+      generic-api-key    audit/b36-f1-unlisted-control.txt              "viewKey[:] 'executive/morning'"
+   D. the adc05d0 (OR) form with the control commit substituted — 0 findings
+      expected: a listed commit is skipped ENTIRELY — the unlisted file too (0 remain): the defect (2)
+
+4. ALSO CORRECTED: blocks 6 and 7 spelled their rule restriction `rules = [...]`, a key the 8.30.1 parser does not read
+   (it reads `targetRules`); both blocks were path-and-match only. Now `targetRules`; the scans above include them.
+
+Result: the corrected exception excludes exactly the six historical findings (one commit, one file set, one rule, one
+anchored match each) and nothing else; the gate's assertions and the two gitleaks steps' arguments are unchanged.

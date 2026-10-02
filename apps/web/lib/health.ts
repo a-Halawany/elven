@@ -16,7 +16,13 @@ import { call, type ApiResult } from './api';
 import type { Scope } from './observation';
 type Receipt = { policyDecisionId: string; auditSeq: number };
 
-export const INPUT_KINDS = ['indicator', 'measure', 'risk', 'opportunity'] as const;
+export const INPUT_KINDS = ['indicator', 'measure', 'risk', 'opportunity', /* B36 (0094 §S2) */ 'capability', 'execution', 'outcome', 'quality'] as const;
+/* B36 (0094 §S) strategy: the score completed — the vocabularies of the exceptions and the signature kind. */
+export const EXCEPTION_KINDS = ['exclude', 'relax_bound'] as const;
+export const EXCEPTION_STATES = ['requested', 'approved', 'refused'] as const;
+export const EXCEPTION_APPROVER_ROLES = ['executive', 'domain_admin', 'platform_admin'] as const;
+export const SNAPSHOT_APPROVER_ROLES = ['executive', 'platform_admin'] as const;
+/* end B36 strategy */
 export const SNAPSHOT_STATUSES = ['complete', 'partial', 'indeterminate'] as const;
 export const COMPONENT_STATES = ['included', 'stale', 'missing', 'inconsistent'] as const;
 export const CHANGE_STATES = ['raised', 'acknowledged', 'challenged', 'upheld', 'dismissed', 'withdrawn'] as const;
@@ -48,7 +54,9 @@ export interface HealthResult {
 export interface HealthChange {
   change_id: string; snapshot_id: string; prior_snapshot_id: string; definition_version: number; definition_approved_by: string; subject: string; subject_label: string;
   from_value: number | null; to_value: number | null; delta: number | null; from_band: string | null; to_band: string | null; triggers: string[]; direction: string;
-  gaming_flags: Array<{ flag: string; detail?: string; component?: string; band?: string; floor?: number; value?: number; from_value?: number; to_value?: number }>;
+  gaming_flags: Array<{ flag: string; detail?: string; component?: string; band?: string; floor?: number; value?: number; from_value?: number | null; to_value?: number; edit_id?: string; owner?: string; edited_at?: string; window_days?: number }>;
+  /* B36 (0094 §S1): the anti-gaming measure on the change itself */
+  owner_edit_flag?: boolean; owner_edit_ids?: string[];
   state: (typeof CHANGE_STATES)[number] | string; raised_at: string | null; acknowledged_by: string | null; acknowledged_at: string | null; challenge_kind: string | null; challenge_statement: string | null;
   challenged_by: string | null; decided_by: string | null; decision_note: string | null; withdrawal_reason: string | null; authorizes_action: false; what_follows?: string;
   events?: Array<{ event: string; actor: string; occurred_at: string | null; details: Record<string, unknown> }>;
@@ -173,6 +181,8 @@ export function changeMark(state: string): { glyph: string; token: string; text:
 export function gamingFlagWords(f: HealthChange['gaming_flags'][number]): string {
   if (f.flag === 'restated_input') return `restated input: ${f.component ?? '?'} ${String(f.from_value ?? '?')} → ${String(f.to_value ?? '?')} for the same observation, before a favourable change`;
   if (f.flag === 'on_threshold') return `sits on a threshold: ${String(f.value ?? '?')} is within a point of the ${f.band ?? '?'} floor ${String(f.floor ?? '?')}`;
+  /* B36 (0094 §S1): the owner-edit flag — the owner restated the input inside the window before a favourable change */
+  if (f.flag === 'owner_edit') return `owner edit: ${f.component ?? '?'} restated ${String(f.from_value ?? 'none')} → ${String(f.to_value ?? '?')} by its owner inside the ${String(f.window_days ?? '?')}-day window before this favourable change`;
   return f.detail ?? f.flag;
 }
 
@@ -209,4 +219,73 @@ export function parseModel(text: string): { ok: true; model: Record<string, unkn
   } catch (e) {
     return { ok: false, error: `not JSON: ${e instanceof Error ? e.message : String(e)}` };
   }
+}
+
+/* ───────────────────────── B36 (0094 §S) strategy: the score completed — the contract with owners, the exceptions, the signed approval ───────────────────────── */
+export interface HealthInputEdit { edit_id: string; editor: string; from_value: number | null; to_value: number; reason: string; edited_at: string | null }
+export interface HealthInput {
+  input_id: string; definition_id: string; component_key: string; input_kind: string; input_ref: string; owner_principal_id: string | null; owner_basis: string;
+  value: number | null; unit: string | null; as_of: string | null; digest: string; owner_stated: boolean; edits: number; last_edit_id: string | null; refreshed_at: string | null; history: HealthInputEdit[];
+}
+export interface OwnerEditAnalysis {
+  definition_id: string | null; definition_version: number | null; window_days: number | null; rule?: string;
+  owners: Array<{ owner: string; edits: number; flagged_edits: number; components: string[]; last_edit_at: string | null; flags: Array<{ edit_id: string; component_key: string; change_id: string; subject: string }> }>;
+  totals: { edits: number; flagged_edits: number };
+}
+/** §0's executive context of the reader (null when none was set: the whole domain, horizon 90d, effective now). */
+export interface ExecutiveContext { context_id: string; objective_id: string | null; horizon: string; scenario_id: string | null; classification: string; effective_at: string | null; set_at: string | null; digest: string }
+export interface HealthContract { definition_id: string | null; inputs: HealthInput[]; owner_edits: OwnerEditAnalysis; context: ExecutiveContext | null; note?: string }
+export interface HealthException {
+  exception_id: string; definition_id: string; component_key: string; kind: (typeof EXCEPTION_KINDS)[number] | string; relaxed_stale_after_days: number | null; reason: string; expires_at: string | null;
+  state: (typeof EXCEPTION_STATES)[number] | string; requested_by: string; requested_at: string | null; approved_by: string | null; approved_at: string | null; approval_note: string | null;
+  refused_by: string | null; refused_at: string | null; refusal_reason: string | null; in_force_now?: boolean;
+}
+export interface SignatureRow { signature_id: string; signer: string; key_id: string; algorithm: string; signature: string; subject_digest: string; bound_action: string; signed_at: string | null }
+export interface ApprovalPreview {
+  snapshot_id: string; kind: string; at: string | null; definition_version: number; formula_version: string; status: string; aggregate: number | null; coverage: number | null; result_digest: string; inputs_digest: string;
+  acceptable: boolean; consequence: string; exceptions_in_force: Array<Record<string, unknown>>; owner_stated_inputs: Array<{ component_key: string; owner: string | null; edit_id: string | null; as_of: string | null }>;
+  changes: Array<{ change_id: string; subject: string; direction: string; from_value: number | null; to_value: number | null; owner_edit_flag: boolean; owner_edit_ids: string[]; gaming_flags: HealthChange['gaming_flags'] }>;
+  approvals: Array<{ approval_id: string; approved_by: string; approved_at: string | null; note: string }>; signatures: SignatureRow[];
+}
+export const healthCompletion = {
+  contract: (s: Scope, definitionId: string | null = null) => p<{ contract: HealthContract; receipt: Receipt }>(s, '/executive/health/inputs/list', 'executive.health.read', 'HSD', definitionId === null ? {} : { definitionId }),
+  /** THE OWNER-CORRECTION ROUTE (human-gated; the input's owner only — the server refuses anyone else). */
+  setInput: (s: Scope, componentKey: string, value: number, reason: string) =>
+    p<{ edit: Record<string, unknown>; receipt: Receipt }>(s, '/executive/health/inputs/set', 'executive.health.input.set', 'HSD', { component_key: componentKey, value, reason: reason.trim() }),
+  ownerEdits: (s: Scope, definitionId: string | null = null) => p<{ analysis: OwnerEditAnalysis; receipt: Receipt }>(s, '/executive/health/owner-edits', 'executive.health.read', 'HSD', definitionId === null ? {} : { definitionId }),
+  exceptions: (s: Scope) => p<{ exceptions: HealthException[]; receipt: Receipt }>(s, '/executive/health/exceptions/list', 'executive.health.read', 'HSX', { limit: 100 }),
+  requestException: (s: Scope, a: { componentKey: string; kind: 'exclude' | 'relax_bound'; relaxedDays: number | null; reason: string; expiresAt: string }) =>
+    p<{ exception: HealthException; receipt: Receipt }>(s, '/executive/health/exceptions/request', 'executive.health.exception.request', 'HSX',
+      { component_key: a.componentKey, kind: a.kind, ...(a.relaxedDays === null ? {} : { relaxed_stale_after_days: a.relaxedDays }), reason: a.reason.trim(), expires_at: a.expiresAt }),
+  /** Human-gated; the executive's authority; never the requester. */
+  decideException: (s: Scope, id: string, decision: 'approve' | 'refuse', note: string) =>
+    p<{ exception: HealthException; receipt: Receipt }>(s, `/executive/health/exceptions/${id}/approve`, 'executive.health.exception.approve', 'HSX', { decision, note: note.trim() }, id),
+  approvalPreview: (s: Scope, snapshotId: string) => p<{ preview: ApprovalPreview; receipt: Receipt }>(s, `/executive/health/snapshots/${snapshotId}/approval-preview`, 'executive.health.read', 'HSS', {}, snapshotId),
+  /** Human-gated; the executive accepts the digest PREVIEWED; signed beyond the audit chain in the same write. */
+  approveSnapshot: (s: Scope, snapshotId: string, resultDigest: string, note: string) =>
+    p<{ approval: Record<string, unknown> & { signature?: SignatureRow }; receipt: Receipt }>(s, `/executive/health/snapshots/${snapshotId}/approve`, 'executive.health.snapshot.approve', 'HSS', { result_digest: resultDigest, note: note.trim() }, snapshotId),
+};
+
+/** An input's owner and last edit, in words: "owner 1a2b3c4d… · last restated 2 edit(s), 91 → 93.5". */
+export function ownerLine(i: Pick<HealthInput, 'owner_principal_id' | 'owner_basis' | 'edits' | 'history' | 'owner_stated'>): string {
+  const who = i.owner_principal_id === null ? `no owner — ${i.owner_basis}` : `owner ${i.owner_principal_id.slice(0, 8)}… (${i.owner_basis})`;
+  if (i.edits === 0 || i.history.length === 0) return `${who} · never restated`;
+  const last = i.history[0]!;
+  return `${who} · ${i.edits} edit(s), last ${last.from_value === null ? 'none' : last.from_value} → ${last.to_value}${i.owner_stated ? ' (the owner\'s statement is what the score reads)' : ''}`;
+}
+/** An exception in words: its kind, its standing and its window. */
+export function exceptionLine(x: Pick<HealthException, 'kind' | 'relaxed_stale_after_days' | 'state' | 'expires_at' | 'in_force_now' | 'component_key'>): string {
+  const what = x.kind === 'exclude' ? `${x.component_key} excluded` : `${x.component_key} bound relaxed to ${String(x.relaxed_stale_after_days ?? '?')} d`;
+  const standing = x.state === 'approved' ? (x.in_force_now === false ? 'approved — expired' : 'APPROVED — in force') : x.state === 'refused' ? 'refused — no effect' : 'requested — no effect until approved';
+  return `${what} · ${standing}${x.expires_at === null ? '' : ` · until ${x.expires_at}`}`;
+}
+/** The active context in words (§0): the objective, the horizon, the scenario, the classification ceiling, the effective instant. */
+export function contextLine(c: ExecutiveContext | null): string {
+  if (c === null) return 'no context set — the whole domain, horizon 90d, the reader\'s own classification ceiling, effective now';
+  return `objective ${c.objective_id === null ? 'the whole domain' : `${c.objective_id.slice(0, 8)}…`} · horizon ${c.horizon} · scenario ${c.scenario_id === null ? 'none' : `${c.scenario_id.slice(0, 8)}…`} · ceiling ${c.classification} · effective ${c.effective_at ?? 'now'}`;
+}
+/** A signature in words — never "signed" without the key and the digest it binds. */
+export function signatureLine(s: SignatureRow | null | undefined): string {
+  if (s === null || s === undefined) return 'not signed';
+  return `signed ${s.algorithm} with key ${s.key_id} over ${s.subject_digest.slice(0, 12)}… by ${s.signer.slice(0, 8)}… (${s.bound_action})`;
 }

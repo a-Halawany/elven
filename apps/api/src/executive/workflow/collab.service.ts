@@ -22,6 +22,7 @@
  * and the identity authority revokes its credentials and sessions and bumps its epoch (B34-F1).
  */
 import { createHash, randomBytes } from 'node:crypto';
+/* B36 (0094 §C3) */ import { newPickupCode, pickupCodeHash, sealMaterial } from './invitation-sealing.js'; /* end B36 */
 import { HttpException, Inject, Injectable } from '@nestjs/common';
 import * as argon2 from 'argon2';
 import { errorBody } from '@eye/contracts';
@@ -172,49 +173,82 @@ export function validateAccept(p: Row, correlationId: string): { token: string; 
   return { token, password };
 }
 
-/** What one invitation is made of: the ids, the one-time token (in the synthetic message only), its hashes, the message and its digest. */
+/**
+ * What one invitation is made of: the ids, the one-time token (the acceptance material — B36 (t): SEALED under the pickup code, never in
+ * the message), its hashes, the PICKUP CODE (the one-time code the synthetic message carries — B36 (t)) and its hash, the sealed material,
+ * the message and its digest.
+ */
 export interface Invitation {
   grantId: string; principalId: string; loginName: string; token: string; tokenHash: string; credentialHash: string; invitationExpiresAt: string;
   mail: { subject: string; body: string; bodyDigest: string };
+  /* B36 (0094 §C3) */ pickup: { code: string; codeHash: string; sealed: string; codeExpiresAt: string }; /* end B36 */
 }
 
 @Injectable()
 export class CollabService {
-  /** THE SYNTHETIC INVITATION SINK (this process): the placed messages, their bodies with the token. Nothing leaves the process. */
-  private readonly sink = new Map<string, { to: string; login: string; subject: string; body: string; token: string; placedAt: string }>();
+  /**
+   * THE SYNTHETIC INVITATION SINK (this process): the placed messages — their bodies carry the PICKUP CODE (B36 (t)); the token is kept
+   * beside them for the TEST control read only (the B34-F1 harness signs the invitee in with it). Nothing leaves the process.
+   */
+  private readonly sink = new Map<string, { to: string; login: string; subject: string; body: string; token: string; code: string; sealed: string; codeHash: string; codeExpiresAt: string; placedAt: string }>();
 
   constructor(@Inject(EYE_CONFIG) private readonly cfg: EyeConfig) {}
 
-  /** Builds an invitation: the principal's login name, the token and its two hashes, the synthetic message and its digest. */
+  /**
+   * Builds an invitation: the principal's login name, the token and its two hashes, the PICKUP CODE (B36 (t): random, hashed at rest,
+   * expiring with the invitation window) under which the token is SEALED, and the synthetic message — it carries the code and the pickup
+   * route, NEVER the token — with its digest.
+   */
   async buildInvitation(a: { grantId: string; principalId: string; workspaceTitle: string; purpose: string; expiresAt: string; nowMs: number; inviterLabel: string }): Promise<Invitation> {
     const loginName = `ext-${a.principalId.replace(/-/g, '').slice(-12)}`;
     const token = randomBytes(24).toString('base64url');
     const invitationExpiresAt = new Date(Math.min(a.nowMs + INVITATION_WINDOW_HOURS * 3_600_000, new Date(a.expiresAt).getTime() - 1_000)).toISOString();
+    /* B36 (0094 §C3): the pickup code and the sealed acceptance material */
+    const code = newPickupCode();
+    const codeHash = pickupCodeHash(a.grantId, code);
+    const sealed = sealMaterial(a.grantId, code, { login: loginName, token });
+    const codeExpiresAt = invitationExpiresAt;
+    /* end B36 */
     const subject = `[THE EYE · collaboration] You are invited to review: ${a.workspaceTitle}`.slice(0, 300);
     const body = [
       `You are invited by ${a.inviterLabel} to the collaboration workspace "${a.workspaceTitle}" for the purpose ${a.purpose}.`,
-      `Your access ends at ${a.expiresAt}. Sign in as ${loginName} with this one-time invitation token before ${invitationExpiresAt}, then accept the invitation and set your own password:`,
-      token,
+      `Your access ends at ${a.expiresAt}. Before ${invitationExpiresAt}, open the sign-in page with the invitation ${a.grantId} and enter this one-time pickup code:`,
+      code,
+      `The pickup answers your sign-in material once (as ${loginName}); five wrong codes lock the invitation. Then accept the invitation and set your own password.`,
       'You will see only this workspace and only what its owner shared with your audience; you cannot approve, commit or join a decision room.',
       SYNTHETIC_INVITATION_NOTE,
     ].join('\n');
     return { grantId: a.grantId, principalId: a.principalId, loginName, token, tokenHash: sha256(token), credentialHash: await argon2.hash(token, { type: argon2.argon2id }), invitationExpiresAt,
-             mail: { subject, body, bodyDigest: sha256(body) } };
+             mail: { subject, body, bodyDigest: sha256(body) }, pickup: { code, codeHash, sealed, codeExpiresAt } };
   }
 
   /** Places the invitation in the synthetic sink AFTER its governed write committed (the database keeps the subject and the digest). */
   place(inv: Invitation): void {
-    this.sink.set(inv.grantId, { to: inv.principalId, login: inv.loginName, subject: inv.mail.subject, body: inv.mail.body, token: inv.token, placedAt: new Date().toISOString() });
+    this.sink.set(inv.grantId, { to: inv.principalId, login: inv.loginName, subject: inv.mail.subject, body: inv.mail.body, token: inv.token,
+      code: inv.pickup.code, sealed: inv.pickup.sealed, codeHash: inv.pickup.codeHash, codeExpiresAt: inv.pickup.codeExpiresAt, placedAt: new Date().toISOString() });
   }
 
   /**
-   * TEST AND DEMONSTRATION CONTROL ONLY: the synthetic message of a grant (its token included) — the invitee's "mailbox" in this process.
-   * This runtime is local or test (config.ts); a deployment with a real provider (owner decision D6) replaces the sink, not this read.
+   * TEST CONTROL ONLY (in process, never a route): the synthetic message of a grant with the token beside it — the B34-F1 harness signs the
+   * invitee in with the token directly. This runtime is local or test (config.ts); a deployment with a real provider (owner decision D6)
+   * replaces the sink, not this read.
    */
-  syntheticInvitation(grantId: string): { to: string; login: string; subject: string; body: string; token: string; placedAt: string; runtime: string } | null {
+  syntheticInvitation(grantId: string): { to: string; login: string; subject: string; body: string; token: string; code: string; placedAt: string; runtime: string } | null {
     const m = this.sink.get(grantId);
-    return m === undefined ? null : { ...m, runtime: this.cfg['eye.runtime.env'] };
+    return m === undefined ? null : { to: m.to, login: m.login, subject: m.subject, body: m.body, token: m.token, code: m.code, placedAt: m.placedAt, runtime: this.cfg['eye.runtime.env'] };
   }
+
+  /* B36 (0094 §C3): THE MAILBOX as the addressed person reads it — the message (the code inside it), NEVER the token; and the delivery
+     material the provisioner re-delivers with. */
+  mailboxMessage(grantId: string): { to: string; login: string; subject: string; body: string; placedAt: string; channel: 'demo-mailbox'; synthetic: true; runtime: string } | null {
+    const m = this.sink.get(grantId);
+    return m === undefined ? null : { to: m.to, login: m.login, subject: m.subject, body: m.body, placedAt: m.placedAt, channel: 'demo-mailbox', synthetic: true, runtime: this.cfg['eye.runtime.env'] };
+  }
+  deliveryMaterial(grantId: string): { codeHash: string; sealed: string; codeExpiresAt: string } | null {
+    const m = this.sink.get(grantId);
+    return m === undefined ? null : { codeHash: m.codeHash, sealed: m.sealed, codeExpiresAt: m.codeExpiresAt };
+  }
+  /* end B36 */
 
   /** The invitation token's hash the acceptance port compares (B34-F1: the new password is hashed by the identity half, never here). */
   tokenHash(token: string): string { return sha256(token); }
@@ -293,8 +327,8 @@ export class CollabService {
       }),
       reviews: reviews.map((r) => ({ review_id: r['review_id'], reviewer: r['reviewer_principal_id'], affiliation: r['reviewer_affiliation'], verdict: r['verdict'], statement: r['statement'],
         task_id: r['task_id'] ?? null, artifact_id: r['artifact_id'] ?? null, recorded_at: iso(r['recorded_at']) })),
-      tasks: tasks.map(taskOf),
-      grants: grants.map((g) => this.grantOf(g, now)),
+      tasks: await Promise.all(tasks.map(async (t) => ({ ...taskOf(t), /* B36 (0094 §C2) */ waits_on: t['state'] === 'open' || t['state'] === 'escalated' ? await cap.unmetDependencies(String(t['task_id'])) : [] /* end B36 */ }))),
+      grants: await Promise.all(grants.map(async (g) => ({ ...this.grantOf(g, now), /* B36 (0094 §C3) */ delivery: external ? null : await cap.invitationDelivery(String(g['grant_id'])) /* end B36 */ }))),
       invitation_mail: mail.filter((m) => grants.some((g) => g['grant_id'] === m['grant_id'])).map((m) => ({ grant_id: m['grant_id'], to: m['recipient_principal_id'], channel: m['channel'], subject: m['subject'],
         body_digest: m['body_digest'], synthetic: m['synthetic_state'] === true, placed_at: iso(m['placed_at']), note: SYNTHETIC_INVITATION_NOTE })),
     };

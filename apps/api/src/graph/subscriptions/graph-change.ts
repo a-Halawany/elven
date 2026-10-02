@@ -67,6 +67,16 @@ export const GRAPH_CHANGE_KINDS = [
   // all empty here; the retrieval consumer re-verifies the projections as for any change) — NO existing METHOD_REF changes.
   'objective.changed',
   /* end B34 commitments */
+  /* B36 (0094 §S) strategy */
+  // 0094 (B36, F-P6-09 (a)): the Strategy Graph's ALIGNMENT, MEASURE and OWNER changes announced — an alignment declared or retired, a
+  // trade-off or allocation act recorded or revoked (strategy.alignment_changed); a measure defined, observed, its definition approved
+  // or that approval revoked (strategy.measure_changed); a non-objective strategy object's owner transferred (strategy.owner_changed — an
+  // OBJECTIVE's transfer stays objective.changed, B34's). objects.objectives the objectives the subject bears on, no identities, no walk
+  // (walked: false); the typed `strategy` block carries the subject, the change and the ids. The decisions and commitments consumers
+  // select nothing for them by construction (no package cites an alignment; only objective.changed re-tasks); a subscription that names
+  // the kind in its change_kinds is delivered and applied (the register's re-tasking path exercised end to end).
+  'strategy.alignment_changed', 'strategy.measure_changed', 'strategy.owner_changed',
+  /* end B36 strategy */
 ] as const;
 export type GraphChangeKind = (typeof GRAPH_CHANGE_KINDS)[number];
 export const MEMORY_CHANGE_KINDS = ['evidence.corrected', 'claim.corrected'] as const;
@@ -165,6 +175,10 @@ export interface GraphChangedPayload {
   /** 0090 (B34): the typed block of `objective.changed` — the objective, what changed (a revision or an owner transfer), its versions and owners, the reason. Absent on every other kind. */
   objective?: { objective_id: string; change: 'revised' | 'owner_assigned'; from_version: number; to_version: number; owner_from: string | null; owner_to: string | null; reason: string | null };
   /* end B34 commitments */
+  /* B36 (0094 §S) strategy */
+  /** 0094 (B36): the typed block of the three strategy kinds — the subject (an alignment, a measure or a strategy object), what changed, the objectives it bears on, the act or edit involved. Absent on every other kind. */
+  strategy?: { subject_kind: 'alignment' | 'measure' | 'strategy_object'; subject_id: string; subject_type: string | null; change: string; objective_ids: string[]; act_id: string | null; owner_from: string | null; owner_to: string | null; reason: string | null };
+  /* end B36 strategy */
 }
 
 export interface CorrectedObject { object_id: string; object_type: string; from_version: number; to_version: number; lifecycle_state: string; recorded_at?: string | null; event_time?: string | null; observation_time?: string | null; valid_from?: string | null; valid_to?: string | null }
