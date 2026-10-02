@@ -20,7 +20,7 @@
  * exists only so mutation controls can prove the same production path without using the network.
  */
 import {
-  appendFileSync, chmodSync, cpSync, lstatSync, mkdirSync, mkdtempSync, readFileSync,
+  appendFileSync, chmodSync, cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync,
   readdirSync, realpathSync, rmSync, utimesSync, writeFileSync,
 } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -92,8 +92,45 @@ export const REQUIRED_FINALIZER_STEPS = Object.freeze([
  * lockfile by the integrity hash the registry serves. 312 + 8 = 320, and the count
  * has not moved since — Phase 2 (`6b4b22d6`) and PR #33 (`ea7b3089`) added no
  * dependencies and both reported 320.
+ *
+ * 320 → 313 at `1f51373` (PR #62, 2026-10-02; the C17 finalize of that merge, run
+ * 37010824759, measured 313 on both hosts). The merge carried the reviewed C15 pins.
+ * multer 2.3.0 → 2.4.0 no longer depends on `concat-stream`, and its subtree leaves
+ * the closure with it — exactly seven packages:
+ *
+ *   concat-stream@2.0.0 → buffer-from@1.1.2, typedarray@0.0.6, readable-stream@3.6.2
+ *                         (inherits@2.0.4 stays: other packages use it)
+ *   readable-stream@3.6.2 → string_decoder@1.3.0, util-deprecate@1.0.2
+ *   string_decoder@1.3.0  → safe-buffer@5.2.1
+ *
+ * The other moves are version swaps that leave the count unchanged: next 16.3.3 → 16.3.6
+ * (with @next/env and the @next/swc-* binaries), fast-uri 3.1.6 → 3.1.8 and multer itself.
+ * 320 − 7 = 313, reconciled against the pnpm-lock.yaml diff of 5165a97..1f51373.
  */
-export const DEVELOPMENT_COMPONENTS = 320;
+export const DEVELOPMENT_COMPONENTS = 313;
+
+/**
+ * The measured closure THE VERIFIED SOURCE declares (2026-10-02, with the 320 → 313 move).
+ *
+ * `verify` regenerates the source archive from `--root`, the source checked out at the
+ * evidence's own SHA. A C19 dry-run or re-verification of an EARLIER publication therefore
+ * runs this file's newer code against evidence measured under that source's closure. One
+ * constant cannot hold for both: the first move after C19 existed (320 → 313) refused the
+ * last real publication, measured at 320, in every dry-run.
+ *
+ * So the expected count is the one the source itself declares in its own copy of this
+ * file. It is bound to the published SHA by the source-archive verification that runs on
+ * the same root. When the root has no such declaration (a source older than this
+ * constant), this file's own value is used. The check stays exact: Linux, macOS and the
+ * comparison must all equal the declared count.
+ */
+export function declaredDevelopmentComponents(root) {
+  if (typeof root !== 'string' || root.length === 0) return DEVELOPMENT_COMPONENTS;
+  const file = join(root, 'scripts', 'gate', 'c17-cross-host-finalization.mjs');
+  if (!existsSync(file)) return DEVELOPMENT_COMPONENTS;
+  const m = /^export const DEVELOPMENT_COMPONENTS = (\d+);$/m.exec(readFileSync(file, 'utf8'));
+  return m === null ? DEVELOPMENT_COMPONENTS : Number(m[1]);
+}
 export const COMPARISON_SCHEMA = '1.0.0';
 
 /**
@@ -499,7 +536,7 @@ function parseJsonBytes(bytes, problems, label) {
   }
 }
 
-function validateDevelopmentCounts(buffers, problems, label) {
+function validateDevelopmentCounts(buffers, problems, label, expected = DEVELOPMENT_COMPONENTS) {
   const devSbom = parseJsonBytes(buffers.get('sbom-development'), problems, `${label} development SBOM`);
   const inventory = parseJsonBytes(buffers.get('license-inventory'), problems, `${label} inventory`);
   const reconciliation = parseJsonBytes(buffers.get('license-reconciliation'), problems, `${label} reconciliation`);
@@ -510,8 +547,8 @@ function validateDevelopmentCounts(buffers, problems, label) {
     [`${label} development inventory_classified`, reconciliation?.targets?.development?.inventory_classified],
   ];
   for (const [name, actual] of checks) {
-    if (actual !== DEVELOPMENT_COMPONENTS) {
-      problems.push(`${name} is ${JSON.stringify(actual)}, expected measured ${DEVELOPMENT_COMPONENTS}`);
+    if (actual !== expected) {
+      problems.push(`${name} is ${JSON.stringify(actual)}, expected measured ${expected}`);
     }
   }
 }
@@ -761,7 +798,7 @@ export function createCrossHostFinalization({ sourceZip, darwinC16Dir, darwinC17
   }
 }
 
-function verifyComparisonShape(comparison, sourceReceipt, sourceRun, finalizer, sourceZipBytes, source, darwin, problems) {
+function verifyComparisonShape(comparison, sourceReceipt, sourceRun, finalizer, sourceZipBytes, source, darwin, problems, expectedDevelopment = DEVELOPMENT_COMPONENTS) {
   if (comparison === null) return;
   const exactKeys = (value, expected, label) => {
     if (value === null || typeof value !== 'object' || Array.isArray(value)) {
@@ -791,8 +828,8 @@ function verifyComparisonShape(comparison, sourceReceipt, sourceRun, finalizer, 
   if (comparison.contract?.artifact_count !== CROSS_HOST_ARTIFACTS.length) {
     problems.push(`comparison artifact_count is ${comparison.contract?.artifact_count}, expected ${CROSS_HOST_ARTIFACTS.length}`);
   }
-  if (comparison.contract?.development_components !== DEVELOPMENT_COMPONENTS) {
-    problems.push(`comparison development_components is ${comparison.contract?.development_components}, expected ${DEVELOPMENT_COMPONENTS}`);
+  if (comparison.contract?.development_components !== expectedDevelopment) {
+    problems.push(`comparison development_components is ${comparison.contract?.development_components}, expected ${expectedDevelopment}`);
   }
   if (comparison.contract?.source_host_os !== SOURCE_OS || comparison.contract?.finalizer_host_os !== FINALIZER_OS) {
     problems.push('comparison host contract is not Linux -> macOS');
@@ -1038,6 +1075,7 @@ export async function verifyFinalizerHostedRun(receipt, {
 export async function verifyCrossHostFinalization({
   zipPath, sourceArchiveVerifier = null, requireSourceVerification = true,
   onlineVerifier = null, requireOnline = false, fetchImpl = globalThis.fetch, token = null,
+  developmentComponents = DEVELOPMENT_COMPONENTS,
 }) {
   const problems = [];
   const notes = [];
@@ -1098,11 +1136,11 @@ export async function verifyCrossHostFinalization({
         if (b !== null) darwin.set(artifact.id, b);
       }
       validateDarwinManifest(darwinManifest, sourceReceipt, problems, darwin);
-      validateDevelopmentCounts(source, problems, 'Linux');
-      validateDevelopmentCounts(darwin, problems, 'macOS');
+      validateDevelopmentCounts(source, problems, 'Linux', developmentComponents);
+      validateDevelopmentCounts(darwin, problems, 'macOS', developmentComponents);
       if (sourceZipBytes !== null) {
         verifyComparisonShape(
-          comparison, sourceReceipt, sourceRun, finalizer, sourceZipBytes, source, darwin, problems,
+          comparison, sourceReceipt, sourceRun, finalizer, sourceZipBytes, source, darwin, problems, developmentComponents,
         );
       }
 
@@ -1123,7 +1161,7 @@ export async function verifyCrossHostFinalization({
           problems.push(`finalizer hosted-run verification threw: ${e instanceof Error ? e.message : e}`);
         }
       }
-      notes.push(`cross_host_artifacts=${CROSS_HOST_ARTIFACTS.length} development_components=${DEVELOPMENT_COMPONENTS}`);
+      notes.push(`cross_host_artifacts=${CROSS_HOST_ARTIFACTS.length} development_components=${developmentComponents}`);
       notes.push(`source=${sourceRun?.runner_os}/${sourceRun?.runner_arch} finalizer=${finalizer?.runner_os}/${finalizer?.runner_arch}`);
     } finally {
       rmSync(sourceExtracted.dir, { recursive: true, force: true });
@@ -1219,6 +1257,8 @@ async function main() {
       }),
       requireOnline: online,
       token: process.env.GITHUB_TOKEN ?? null,
+      // the closure the verified source declares (see declaredDevelopmentComponents)
+      developmentComponents: declaredDevelopmentComponents(args['--root']),
     });
     for (const n of result.notes) console.log(`  ${n}`);
     if (!result.ok) {
