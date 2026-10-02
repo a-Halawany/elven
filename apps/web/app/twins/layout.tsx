@@ -63,6 +63,7 @@ const NAV = [
   /* B29 (0092) §D */ { href: '/twins/constraints', label: 'Constraints', glyph: '⊨' },
   /* B30 branches */ { href: '/twins/explorer', label: 'Explorer', glyph: '⑂' }, /* end B30 branches */
   /* B30 envelope */ { href: '/twins/models', label: 'Models', glyph: '⚖' }, /* end B30 envelope */
+  /* B30 estimation */ { href: '/twins/reconciliation', label: 'Reconciliation', glyph: '⇄' }, /* end B30 estimation */
   { href: '/prediction', label: 'Prediction', glyph: '↗' },
   { href: '/graph', label: 'Graph', glyph: '◈' },
   { href: '/intelligence', label: 'Intelligence', glyph: '❝' },

@@ -41,6 +41,10 @@ import { BranchService } from './branches/branch.service.js';
 /* B30 envelope */
 import { EnvelopeController } from './envelope/envelope.controller.js';
 /* end B30 envelope */
+/* B30 estimation */
+import { EstimationController } from './estimation/estimation.controller.js';
+import { EstimationService } from './estimation/estimation.service.js';
+/* end B30 estimation */
 
 // CP-6 B6 (0063): the twin CONSUMER of GraphChanged/MemoryCorrected registers itself into the graph's
 // dispatcher at module init; the graph module imports nothing from here (the direction stays ES-04-003's).
@@ -51,12 +55,14 @@ import { EnvelopeController } from './envelope/envelope.controller.js';
     /* B31 orchestration */ OrchestrationController /* end B31 orchestration */,
     /* B31 validity */ ValidityController /* end B31 validity */,
     /* B30 branches */ BranchesController /* end B30 branches */,
-    /* B30 envelope */ EnvelopeController /* end B30 envelope */],
+    /* B30 envelope */ EnvelopeController /* end B30 envelope */,
+    /* B30 estimation */ EstimationController /* end B30 estimation */],
   providers: [TwinService, SimulationService, TwinSubscriptionConsumer,
     /* B29 (0092) */ CompositionService, SupplyNetworkService, MethodRegistry, ConstraintService, { provide: CONSTRAINT_GATE, useExisting: ConstraintService },
     /* B31 impact */ ImpactService /* end B31 impact */,
     /* B31 orchestration */ OrchestrationService /* end B31 orchestration */,
-    /* B30 branches */ BranchService /* end B30 branches */],
+    /* B30 branches */ BranchService /* end B30 branches */,
+    /* B30 estimation */ EstimationService /* end B30 estimation */],
   exports: [TwinService, SimulationService, /* B29 (0092) */ SupplyNetworkService, /* B31 orchestration */ OrchestrationService],
 })
 export class TwinModule {}

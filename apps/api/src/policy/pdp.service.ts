@@ -138,6 +138,9 @@ const BUNDLE_V1: Rule[] = [
       /* B36 collab (0094 §C1): the external collaborator reads its OWN identity — the route answers it BOUNDED TO ITS GRANT (F-P6-14 (q)) */
       { role: 'external_collaborator', atScope: 'DOMAIN' },
       /* end B36 collab */
+      /* B30 estimation: the Reconciliation Agent (the prelude's DOMAIN role) resolves its own scope, as every new domain role does */
+      { role: 'reconciliation_agent', atScope: 'DOMAIN' },
+      /* end B30 estimation */
       /* B90 browser (0095 §0): the data steward resolves its own scope (a PURE steward opens the shell — found by the B90 browser gate: the
          /graph/data pages answered "no qualifying role binding for action in resolved scope" to a principal holding data_steward alone) */
       { role: 'data_steward', atScope: 'DOMAIN' },
@@ -399,6 +402,9 @@ const BUNDLE_V1: Rule[] = [
       // B32 (0089 §I): the risk owner and the opportunity sponsor read the foresight their exposures rest on (the warning routed to them).
       { role: 'risk_owner', atScope: 'DOMAIN' },
       { role: 'opportunity_sponsor', atScope: 'DOMAIN' },
+      /* B30 estimation: the Reconciliation Agent reads the series its estimators declare (the forecast agent's precedent: in its own right, audited) */
+      { role: 'reconciliation_agent', atScope: 'DOMAIN' },
+      /* end B30 estimation */
     ],
     obligations: [{ type: 'audit_access' }],
     requiresPurpose: true,
@@ -693,6 +699,10 @@ const BUNDLE_V1: Rule[] = [
     requiresPurpose: true,
     maxConsequence: 'C2',
   },
+  /* B30 estimation: the Reconciliation Agent opens and closes its own runs — an EXACT `agent.run` rule inserted before B29's (the first match wins):
+     the eight agents before it and the reconciliation agent. B29's rule below is kept as it was (it now matches nothing this one does not). */
+  { actionPrefix: 'agent.run', exact: true, requiredAnyRole: [{ role: 'decision_agent', atScope: 'DOMAIN' }, { role: 'briefing_agent', atScope: 'DOMAIN' }, { role: 'reporting_agent', atScope: 'DOMAIN' }, { role: 'attention_agent', atScope: 'DOMAIN' }, { role: 'weak_signal_agent', atScope: 'DOMAIN' }, { role: 'risk_agent', atScope: 'DOMAIN' }, { role: 'opportunity_agent', atScope: 'DOMAIN' }, { role: 'supply_chain_agent', atScope: 'DOMAIN' }, { role: 'reconciliation_agent', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B30 estimation */
   /* B29 (0092): the Supply Chain Agent opens and closes its own runs — an EXACT `agent.run` rule inserted before B32's (the first match wins):
      the seven agents before it and the supply_chain agent. */
   { actionPrefix: 'agent.run', exact: true, requiredAnyRole: [{ role: 'decision_agent', atScope: 'DOMAIN' }, { role: 'briefing_agent', atScope: 'DOMAIN' }, { role: 'reporting_agent', atScope: 'DOMAIN' }, { role: 'attention_agent', atScope: 'DOMAIN' }, { role: 'weak_signal_agent', atScope: 'DOMAIN' }, { role: 'risk_agent', atScope: 'DOMAIN' }, { role: 'opportunity_agent', atScope: 'DOMAIN' }, { role: 'supply_chain_agent', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
@@ -1226,6 +1236,9 @@ const BUNDLE_V1: Rule[] = [
       // custody, with the purpose and the series named on the entry.
       { role: 'forecast_owner', atScope: 'DOMAIN' },
       { role: 'forecast_agent', atScope: 'DOMAIN' },
+      // B30 estimation, THE SAME WAY: the Reconciliation Agent reads the series its estimators declare out of the evidence bytes — manifest-resolved,
+      // digest-verified and in custody, the purpose and the series named on the entry.
+      { role: 'reconciliation_agent', atScope: 'DOMAIN' },
           { role: 'twin_owner', atScope: 'DOMAIN' },
       { role: 'simulation_operator', atScope: 'DOMAIN' },
       // B9 (0066 §3/§4): the Enterprise Memory and retention roles.
@@ -1912,6 +1925,25 @@ const BUNDLE_V1: Rule[] = [
   { actionPrefix: 'twin.ai_context.read', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }, { role: 'method_steward', atScope: 'DOMAIN' }, { role: 'constraint_steward', atScope: 'DOMAIN' },
     { role: 'decision_agent', atScope: 'DOMAIN' }, { role: 'briefing_agent', atScope: 'DOMAIN' }, { role: 'supply_chain_agent', atScope: 'DOMAIN' }, { role: 'reconciliation_agent', atScope: 'DOMAIN' }, { role: 'attention_agent', atScope: 'DOMAIN' }], obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
   /* end B30 envelope */
+  /* B30 estimation (0103 §ES; F-P5-02). EXACT rules named `twin.estimator.*`, `twin.estimate.*`, `twin.estimation.*` and `twin.observation.*` —
+     none falls under an earlier PREFIX rule (`twin.read`, `twin.declare`, `twin.version.admit`, `twin.version`, `twin.ground` are not prefixes
+     of these names), so first-match reaches them here. READ — the twin readers, the auditor, the administrators and the Reconciliation Agent
+     (audited). DECLARE an estimator (and retire it) — a twin owner (the port: the twin's own owner). PROPOSE — a twin owner, an analyst, a
+     simulation operator and the Reconciliation Agent (no human gate: an agent proposes; the port binds an agent to its running scan). DECIDE —
+     a twin owner, human-gated (the port: the twin's own owner, never the proposer; the approval opens the snapshot through the version, ground
+     and admit ports, which serve this action). REQUEST observations — the proposers. TRIGGER — the attention agent only (after its tick). */
+  { actionPrefix: 'twin.estimation.read', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' },
+    { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' },
+    { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }, { role: 'method_steward', atScope: 'DOMAIN' }, { role: 'constraint_steward', atScope: 'DOMAIN' },
+    { role: 'reconciliation_agent', atScope: 'DOMAIN' }], obligations: [{ type: 'audit_access' }], requiresPurpose: true },
+  { actionPrefix: 'twin.estimator.declare', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'twin.estimate.propose', exact: true, requiredAnyRole: [{ role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' },
+    { role: 'reconciliation_agent', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'twin.estimate.decide', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'twin.observation.request', exact: true, requiredAnyRole: [{ role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' },
+    { role: 'reconciliation_agent', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'twin.estimation.trigger', exact: true, requiredAnyRole: [{ role: 'attention_agent', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B30 estimation */
   /* B36 home */
   /* THE EXECUTIVE HOME, THE CADENCE, THE COMMAND VIEWS, THE SEARCH, THE METRICS (0094 §H; F-P6-11: WS-01, JRN-19, PER-03, CAP-EO-01/-02/-04).
      EXACT rules — no `executive` prefix rule exists and none of these names is a prefix of another rule's. THE READS (executive.home.read
