@@ -72,7 +72,7 @@ test.describe.serial('CP-6 B30 §BR — the twin state and branch explorer on th
     await expect(merge.getByRole('list', { name: 'diverging keys' })).toContainText(/shock\.corridor_delay_days: branch \d+ days \(scenario\) · actual \d+ days \(assumed\)/);
     await expect(merge.getByRole('list', { name: 'diverging keys' })).toContainText('UNRESOLVED');
     await merge.getByRole('button', { name: 'Merge the branch back into actual' }).click();
-    await expect(page.getByText(/HTTP 409 EYE_STA_002 — branch merge rejected \(unreconciled\): merging branch blockade back into actual is refused until reconciliation/)).toBeVisible();
+    await expect(page.getByText(/HTTP 409 EYE-STA-002 — branch merge rejected \(unreconciled\): merging branch blockade back into actual is refused until reconciliation/)).toBeVisible();
     await shot(page, 'b30-branches-03-merge-refused');
   });
 

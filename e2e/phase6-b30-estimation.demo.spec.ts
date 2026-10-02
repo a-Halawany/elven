@@ -23,6 +23,9 @@ function required(name: string): string {
   if (v === undefined || v === '') throw new Error(`${name} is required`);
   return v;
 }
+/** Who proposed the staged estimate, as the act records it: `agent` when the Reconciliation Agent proposed on a NEW count, `person` when the
+ *  publisher had nothing new and a person proposed through the route (the act's B30-S says which and prints this line). */
+const BY_AGENT = (process.env['EYE_B30_PROPOSED_BY'] ?? 'agent') === 'agent';
 const SHOTS = process.env['EYE_SHOTS'] ?? join(process.cwd(), 'evidence', 'phase6-browser');
 mkdirSync(SHOTS, { recursive: true });
 const shot = (page: Page, name: string) => page.screenshot({ path: join(SHOTS, `${name}.png`), fullPage: true });
@@ -44,7 +47,7 @@ async function openReconciliation(page: Page): Promise<void> {
   await page.goto('/twins');
   await page.getByRole('link', { name: /Reconciliation/ }).click();
   await expect(page.getByRole('heading', { name: 'Reconciliation', level: 1 })).toBeVisible();
-  await page.getByLabel('Twin', { exact: true }).selectOption({ label: TWIN });
+  await page.getByRole('combobox', { name: 'Twin', exact: true }).selectOption({ label: TWIN });
   await expect(page.getByRole('table', { name: 'estimators' })).toContainText(KEY);
 }
 /** The newest estimate of the key in the given state, opened from the list. */
@@ -64,19 +67,19 @@ test.describe.serial('CP-6 B30 §ES — reconciliation on the demonstration', ()
     await shot(page, 'b30-estimation-01-estimators');
   });
 
-  test('THE PROPOSAL AND THE APPROVAL: the Reconciliation Agent proposed 62 % on the new count — every candidate kept, the inputs qualified, the conservation check SATISFIED — and T. Nakamura approved it into a new snapshot', async ({ page }) => {
+  test('THE PROPOSAL AND THE APPROVAL: 62 % proposed on the count (by the Reconciliation Agent on a new count, or by a person when the publisher had nothing new — EYE_B30_PROPOSED_BY, as the act records it) — every candidate kept, the inputs qualified, the conservation check SATISFIED — and T. Nakamura approved it into a new snapshot', async ({ page }) => {
     await uiLogin(page, OWNER, required('EYE_TEST_ADMIN_PASSWORD'));
     await openReconciliation(page);
     await openEstimate(page, 'approved');
     await expect(page.getByLabel('proposal', { exact: true })).toContainText(new RegExp(`^${KEY.replace(/\./g, '\\.')} = ${VALUE} % \\(confidence`));
-    await expect(page.getByText(/the Reconciliation Agent \(run .*\) — it proposes only/)).toBeVisible();
+    if (BY_AGENT) await expect(page.getByText(/the Reconciliation Agent \(run .*\) — it proposes only/)).toBeVisible();
     await expect(page.getByLabel('constraint check', { exact: true })).toContainText(new RegExp(`^SATISFIED — ${SET} v\\d+`));
     await expect(page.getByLabel('materiality', { exact: true })).toContainText(/^MATERIAL/);
     await expect(page.getByRole('list', { name: 'candidates' })).toContainText(/\(primary, ratio_to_baseline\): /);
     await expect(page.getByRole('list', { name: 'qualification' })).toContainText(/QUALIFIED — health healthy/);
     await expect(page.getByLabel('snapshot', { exact: true })).toContainText(/^published as v\d+$/);
     const ledger = page.getByRole('list', { name: 'ledger' });
-    await expect(ledger).toContainText(/proposed .* by the Reconciliation Agent — constraint satisfied/);
+    await expect(ledger).toContainText(BY_AGENT ? /proposed .* by the Reconciliation Agent — constraint satisfied/ : /proposed .* by a person — constraint satisfied/);
     await expect(ledger).toContainText(/approved — snapshot v\d+/);
     await shot(page, 'b30-estimation-02-approved');
   });

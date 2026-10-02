@@ -296,6 +296,8 @@ if (APPROVED) {
   (el?.kind === 'estimated' && Math.abs(Number(el.value) - e.v) < 1e-9 && v?.state === 'admitted' ? ok : bad)(`the snapshot v${v?.version} (supersedes v${v?.supersedes}; ${v?.state}, ${v?.completeness}, observed through ${dayOf(v?.observed_through)}) carries ${KEY} = ${el?.value} ${el?.unit} ESTIMATED (confidence ${el?.confidence}, citing ${(el?.citations ?? []).length} evidence version(s)); approved by ${nm(e.decided_by)}; proposed by ${e.proposer_kind === 'agent' ? 'the Reconciliation Agent' : nm(e.proposed_by)}; TwinStateChanged ${ann}`);
   const item = e.item ? (await q(`select state from executive.attention_items where item_id = $1`, [e.item]))[0]?.state : null;
   note(`the routed item ${short(e.item)} is ${item ?? '—'} (the B30 estimation part leaves closing the item on decision out — its report's gap)`);
+  // the estimation walk asserts the proposer the record names (the agent on a new count, or a person when the publisher had nothing new)
+  ENV_OUT.EYE_B30_PROPOSED_BY = e.proposer_kind === 'agent' ? 'agent' : 'person';
 }
 ENV_OUT.EYE_B30_OWNER = 't.nakamura'; ENV_OUT.EYE_B30_TWIN_TITLE = TWIN_TITLE; ENV_OUT.EYE_B30_ESTIMATE_KEY = KEY; ENV_OUT.EYE_B30_CONSTRAINT_SET = SET_KEY; ENV_OUT.EYE_B30_ESTIMATE_VALUE = '62';
 
