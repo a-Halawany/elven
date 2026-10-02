@@ -8,15 +8,20 @@
 # A slot is a directory created atomically with mkdir under $EYE_HEAVY_SLOT_DIR (default ~/.eye-verify/slots): slot-1 …
 # slot-$EYE_HEAVY_SLOTS (default 2). The holder writes its pid, host, label, command and start time into the slot and
 # removes the slot on exit (normal exit, error, SIGINT/SIGTERM). A slot whose holder pid no longer runs on this host is
-# stale and is reclaimed, with a message. The lock is HOST-LOCAL: it coordinates the processes of this machine only; an
+# stale and is reclaimed, with a message. The command runs in its OWN PROCESS GROUP: the slot is held until every process of
+# that group has exited — on a normal finish, and on INT/TERM (the whole group is signalled TERM, given
+# $EYE_HEAVY_TERM_GRACE seconds (default 30) to shut down, then KILLed; the slot is released only after the group is gone). The lock is HOST-LOCAL: it coordinates the processes of this machine only; an
 # account on another machine or a cloud session runs its heavy suites on its own host (with its own limiter) or on hosted
 # CI, never against this host's databases. The command's exit status is returned.
 set -u
 SLOT_DIR="${EYE_HEAVY_SLOT_DIR:-$HOME/.eye-verify/slots}"
 SLOTS="${EYE_HEAVY_SLOTS:-2}"
 POLL="${EYE_HEAVY_POLL_SECONDS:-5}"
+GRACE="${EYE_HEAVY_TERM_GRACE:-30}"
 HOST="$(hostname -s 2>/dev/null || hostname)"
 mkdir -p "$SLOT_DIR"
+
+group_alive() { kill -0 -- "-$1" 2>/dev/null; }   # any process of the process group $1 still running
 
 holder_alive() { # $1 = slot path — alive while the wrapper OR the command it started still runs
   local pid child host
@@ -25,7 +30,7 @@ holder_alive() { # $1 = slot path — alive while the wrapper OR the command it 
   [ -z "$pid" ] && return 0              # being written right now: treat as alive
   [ "$host" != "$HOST" ] && return 0     # another host's record: never reclaimed from here
   kill -0 "$pid" 2>/dev/null && return 0
-  [ -n "$child" ] && kill -0 "$child" 2>/dev/null
+  [ -n "$child" ] && group_alive "$child"
 }
 
 if [ "${1:-}" = "--status" ]; then
@@ -41,10 +46,22 @@ if [ -z "$LABEL" ] || [ $# -eq 0 ]; then echo "usage: heavy-slot.sh <label> -- <
 
 MINE=""; CHILD=""
 release() { [ -n "$MINE" ] && rm -rf "$MINE"; MINE=""; }
-stop_child() { [ -n "$CHILD" ] && kill -TERM "$CHILD" 2>/dev/null; }
+# Wait until the workload's process group is gone; after $1 seconds (the grace) KILL what is left, then wait for that too.
+drain_group() {
+  [ -z "$CHILD" ] && return 0
+  local waited=0
+  while group_alive "$CHILD" && [ "$waited" -lt "$(( $1 * 5 ))" ]; do sleep 0.2; waited=$((waited + 1)); done
+  if group_alive "$CHILD"; then
+    echo "heavy-slot: $LABEL — the workload's process group $CHILD outlived its grace (${1}s); KILLed" >&2
+    kill -KILL -- "-$CHILD" 2>/dev/null
+    while group_alive "$CHILD"; do sleep 0.1; done
+  fi
+}
+# A cancellation: TERM the whole group, keep the slot until it has exited, then release.
+cancel() { trap '' INT TERM; [ -n "$CHILD" ] && kill -TERM -- "-$CHILD" 2>/dev/null; drain_group "$GRACE"; release; exit "$1"; }
 trap 'release' EXIT
-trap 'stop_child; release; exit 130' INT
-trap 'stop_child; release; exit 143' TERM
+trap 'cancel 130' INT
+trap 'cancel 143' TERM
 
 announced=0
 while [ -z "$MINE" ]; do
@@ -68,10 +85,13 @@ while [ -z "$MINE" ]; do
   fi
 done
 echo "heavy-slot: $LABEL holds $(basename "$MINE")" >&2
+set -m                         # job control: the workload gets its own process group (pgid = its pid)
 "$@" &
 CHILD=$!
+set +m
 echo "child=$CHILD" >> "$MINE/owner"
 wait "$CHILD"
 status=$?
+drain_group "$GRACE"           # what the command started in its group (workers, servers) exits before the slot is released
 release
 exit $status
