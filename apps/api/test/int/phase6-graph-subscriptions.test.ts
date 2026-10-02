@@ -37,7 +37,7 @@ import { RestConnector } from '../../src/observation/connectors/rest.connector.j
 import { SchedulerService, propagationQueueNameFor, redisName, subscriptionQueueNameFor } from '../../src/observation/scheduling/scheduler.service.js';
 import { SubscriptionDispatcherService } from '../../src/graph/subscriptions/subscription-dispatcher.service.js';
 import { SubscriptionSessionService, SubscriptionGrantRefused } from '../../src/graph/subscriptions/subscription-session.service.js';
-import { CONSUMER_KINDS, CONSUMER_ROLE, CONSUMER_VERSION, consumerCodeDigest, type ConsumerKind } from '../../src/graph/subscriptions/graph-change.js';
+import { CONSUMER_EVENT_TYPES, CONSUMER_KINDS, CONSUMER_ROLE, CONSUMER_VERSION, consumerCodeDigest, type ConsumerKind } from '../../src/graph/subscriptions/graph-change.js';
 import { Phase4Harness, SERIES_START, SERIES_END, syntheticEgress } from './phase4-helpers.js';
 import type { TwinController } from '../../src/twin/twin.controller.js';
 import type { GraphController } from '../../src/graph/graph.controller.js';
@@ -231,8 +231,9 @@ afterAll(async () => {
 }, 120_000);
 
 // B6's six consumer kinds. B9 (0066 §2) added a seventh, `relationships`, which selects by MemoryCorrected/claim.corrected and is
-// exercised by its own harness (phase6-graph-subscriptions-4); this file keeps the six it was written for.
-const B6_KINDS = CONSUMER_KINDS.filter((k) => k !== 'relationships');
+// exercised by its own harness (phase6-graph-subscriptions-4); this file keeps the six it was written for. B22 (0083) added four more
+// (observations, source-health, proposals, attention) that select their own flat events, never GraphChanged — exercised by B22's harness.
+const B6_KINDS = CONSUMER_KINDS.filter((k) => k !== 'relationships' && CONSUMER_EVENT_TYPES[k].includes('GraphChanged'));
 
 describe('B6 · six subscriptions, each a registered, revocable grant holding exactly its own action', () => {
   it('registration is the tenant administrator\'s: a principal of the kind\'s role on the identity authority, the subscription on the commit authority, the domain served; one live subscription per kind (AU-MEM-0112)', async () => {
@@ -432,7 +433,7 @@ describe('B6 · automatic updates through the six consumers, durable delivery, r
     expect(report?.domains.find((d) => d.tenantId === T() && d.domainId === D())?.subscriptions).toBe(6);
     expect(report?.reDriven.filter((e) => e.tenantId === T() && e.domainId === D())).toEqual([]);
     expect(scheduler.runningWorkers()).toContain(redisName(subscriptionQueueNameFor(T(), D())));
-    expect(dispatcher.registeredKinds().length).toBe(CONSUMER_KINDS.length); // every consumer module registers its kind (seven since 0066)
+    expect(dispatcher.registeredKinds().length).toBe(CONSUMER_KINDS.length); // every consumer module registers its kind (seven since 0066, eleven since 0083 — B22)
     expect((await deliveriesFor(gcEvent)).every((d) => d.state === 'applied' && d.deliveries === 2)).toBe(true);
   }, 180_000);
 

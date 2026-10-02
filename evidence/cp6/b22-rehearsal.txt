@@ -1,0 +1,72 @@
+=== the B22 act rehearsed on a restored copy of eye_demo (eye_demo_b22 restored from .eye-local/backups/containers-return-20260924T164303Z/eye_demo.dump, migrated 0082–0083; its API on :3411 against the SEPARATE rehearsal Redis :6392 and an APFS clone of the vault) — the FIFTH rehearsal, held whole. The four stops before it (act-side): (1) U. Fischer holds collection_manager in the mirror domain only → the source scenes cast M. Dvořák; the re-evaluation keeps a routed item's running deadline (the integrator's escalation-history rule) → version 1 carries the two-minute warning deadline, version 2 changes the scenario threshold and the warning escalation; (2) held whole on those corrections, the replay count and the observations line printed imprecisely; (3) the reactivation's first scheduled tick took the day's PortWatch rows before the person's collection → the scene counts the source's observations from the reactivation and names which run admitted what; (4) held; the observations scene said nothing new (the tick's timing) → the scene waits up to 90 s for the tick. ===
+THE B22 ACT on eye_demo_b22 (REHEARSAL) — 2026-09-24T17:52:51.340Z
+
+0. THE STATE — the register (44 bound / 6 partial / 0 unbound); the four new consumers registered by the administrator
+  ✓ the interface register (J. Weber): 50 rows — 44 bound / 6 partial / 0 unbound; L10-I05 AttentionPolicyChanged, L1-I03 ObservationRecorded, L1-I04 SourceHealthChanged, L2-I02 IntelligenceObjectProposed bound in 0083; L9-I05: a policy change is a recorded cause; partial: L1-I02, L10-I02, L10-I03, L3-I02, L4-I02, L7-I02
+  ✓ attention: subscription 01a0d48c… (role attention_subscriber, event types ForecastFitnessChanged | ScenarioCoherenceFailed | EarlyWarningRaised | AttentionPolicyChanged, backlog replay, owner M. Dvořák); 12 event(s) re-driven
+  ✓ proposals: subscription 01a0d48c… (role proposal_subscriber, event types ClaimsExtracted | IntelligenceObjectAdmitted, backlog replay, owner L. Ferreira); 23 event(s) re-driven
+  ✓ source-health: subscription 01a0d48c… (role source_health_subscriber, event types SourceHealthChanged, backlog leave, owner M. Dvořák); 1 event(s) re-driven
+  ✓ observations: subscription 01a0d48c… (role observation_subscriber, event types ObservationRecorded, backlog leave, owner L. Ferreira); 2 event(s) re-driven
+  · attention: the replayed history — 11 delivery(ies) (EarlyWarningRaised 8, ForecastFitnessChanged 1, ScenarioCoherenceFailed 2; states applied 11); effects attention.routed ×10, signal.no_longer_stands ×1
+  · proposals: the replayed history — 23 delivery(ies) (ClaimsExtracted 23; states applied 23); effects no_review_required ×53, review.routed ×20, review_decided ×3
+  ✓ with no policy published, the 30 replayed signal(s) are ABSTAINED — deprioritized and visible (warning.raised 8, forecast.unfit 1, scenario.incoherent 1, proposal.review 20); the reason: "no attention policy is published for this domain"
+
+1. THE POLICY — a named human sets it; version 1; AttentionPolicyChanged@v1; every live item re-evaluated; the policy cause noted on the packages
+  ✓ A. Hoffmann (domain_analyst) refused: 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ M. Dvořák's rule naming an unknown role refused (the key named): 422 EYE-REQ-001 — attention policy rejected: class forecast.unfit route_roles names a role that is not a human role of this product
+  ✓ M. Dvořák published VERSION 1 (policy 01a0d48c…; changed sections classes; classes forecast.unfit, proposal.review, scenario.incoherent, source.coverage_loss, warning.raised; digest c0fa4d8db4a5…)
+  ✓ AttentionPolicyChanged@v1 published (outbox 01a0d48c…): version 1, set by M. Dvořák, "The first attention policy of the corridor domain: who must …"
+  ✓ the attention subscriber applied it: 32 item(s) — item.reevaluated ×30, policy.noted ×2
+  · the queue under version 1: deprioritized 1, open 29 (warning.raised 7, forecast.unfit 1, scenario.incoherent 1, proposal.review 20)
+  ·   warning.raised: "Warning: Bab el-Mandeb over the next quarter — every scenario kind, recovery and deteriora" → open, owner 01a084f5…, roles strategy_owner+decision_owner, due 2026-09-24T17:54:59.717Z; reasons: consequence C2 at or above C2; confidence 0.8 at or above 0.5
+  ·   warning.raised: "Warning: Bab el-Mandeb over the next quarter — every scenario kind, recovery and deteriora" → open, owner 01a084f5…, roles strategy_owner+decision_owner, due 2026-09-24T17:54:59.727Z; reasons: consequence C2 at or above C2; confidence 0.8 at or above 0.5
+  ·   warning.raised: "Warning: Bab el-Mandeb over the next quarter — every scenario kind, recovery and deteriora" → open, owner 01a084f5…, roles strategy_owner+decision_owner, due 2026-09-24T17:54:59.739Z; reasons: consequence C2 at or above C2; confidence 0.8 at or above 0.5
+  ·   warning.raised: "Warning: Bab el-Mandeb over the next quarter — every scenario kind, recovery and deteriora" → open, owner 01a084f5…, roles strategy_owner+decision_owner, due 2026-09-24T17:54:59.756Z; reasons: consequence C2 at or above C2; confidence 0.8 at or above 0.5
+  ·   warning.raised: "Warning: Bab el-Mandeb over the next quarter — every scenario kind, recovery and deteriora" → open, owner 01a084f5…, roles strategy_owner+decision_owner, due 2026-09-24T17:54:59.776Z; reasons: consequence C2 at or above C2; confidence 0.8 at or above 0.5
+  ·   warning.raised: "Warning: Bab el-Mandeb over the next quarter — every scenario kind, recovery and deteriora" → open, owner 01a084f5…, roles strategy_owner+decision_owner, due 2026-09-24T17:54:59.793Z; reasons: consequence C2 at or above C2; confidence 0.8 at or above 0.5
+  ✓ the POLICY CAUSE noted on 2 committed/monitored package(s): "January corridor collapse — Regensburg line" (from version none — no policy stood at the commitment to 1); "B18 — corridor decision on the 90d FX forecast (20" (from version none — no policy stood at the commitment to 1)
+
+2. THE QUEUE — acknowledgement is receipt, not agreement; a suppression carries its reason and expiry; a person not routed is refused
+  ✓ A. Hoffmann refused on the forecast item (not its owner, no routed role): 403 EYE-AUT-001 — attention item rejected: item 01a0d48c-8f06-7bfe-bcd3-faa53d5e842a is routed to forecast_owner (owner 01a084f5-af3e-71f6-bc3e-bddb9cd461ba); the acting principal is neither
+  ✓ N. Eriksen ACKNOWLEDGED "Forecast portwatch:chokepoint4:n_total 30d assessed UNFIT (data_shift)" (receipt, not agreement; within the deadline true)
+  ✓ J. Weber SUPPRESSED "Warning: Bab el-Mandeb over the next quarter — every scenario kind, re" until 2026-09-25T13:53:02.025Z — reason and expiry on the item and its event (visible, lapsing)
+  ✓ a suppression beyond the class's 72-hour maximum refused: 422 EYE-REQ-001 — attention item rejected: a suppression expires after now and within 72 hours (policy version 1)
+  ✓ L. Ferreira acknowledged the review item "Claim 01a084f5… held for review (challenged)"
+  ✓ the queue read by A. Hoffmann (executive.attention.read): counts open 26, acknowledged 2, suppressed 1, deprioritized 1 — the deprioritized and suppressed listed, not hidden
+
+3. SOURCE HEALTH — the PortWatch chokepoints source suspended: impact markers on its derived products and the coverage loss routed; reactivated: the markers cleared
+  ✓ M. Dvořák SUSPENDED "IMF PortWatch — Chokepoints" (contract version 2)
+  ✓ SourceHealthChanged (01a0d48c…) applied by the source-health subscriber: markers.set ×1
+  ✓ IMPACT MARKERS set: forecast 01a084f5… (suspended), warning 01a084f5… (suspended)
+  ✓ the COVERAGE LOSS routed: "Source IMF PortWatch — Chokepoints is suspended — B22 demonstration: the source is suspended for a minute to show its derived products marked and the coverage loss routed." → open, roles collection_manager, due 2026-09-24T18:23:02.783Z; dimensions {"confidence":1,"consequence":"C2","health_state":"suspended","hours_to_window":null,"affected_products":2}
+  ✓ M. Dvořák acknowledged the coverage loss
+  ✓ M. Dvořák REACTIVATED "IMF PortWatch — Chokepoints"
+  ✓ the markers CLEARED (2) by the reactivation's SourceHealthChanged (markers.cleared ×1)
+
+4. OBSERVATIONS — a collection now; each ObservationRecorded selects its transformation plan
+  · M. Dvořák collected "IMF PortWatch — Chokepoints": {"runId":"01a0d48c-b965-7801-9ec8-c0c8813d7595","state":"finished","admitted":0,"quarantined":0,"noop":1,"triggeredBy":"principal:01a084f5-75d2-776d-a4a1-0073ec383c43"}
+  · the reactivation's scheduled tick(s): scheduler finished (0 admitted, 1 unchanged)
+  · the publisher returned nothing new (no evidence admitted, so no ObservationRecorded) — the observations subscriber had nothing to select for; said, not staged
+
+5. POLICY v2 AND THE REOPEN — a changed policy re-evaluates the queue and is a recorded cause to reopen a committed decision (L9-I05)
+  ✓ VERSION 2 published (supersedes 1; changed sections materiality, escalation; classes scenario.incoherent, warning.raised)
+  ✓ the attention subscriber applied version 2: item.reevaluated ×31, policy.noted ×2
+  · 31 item(s) re-evaluated under version 2 (abstained→abstained, material→material, material→below_threshold)
+  ✓ "B18 — corridor decision on the 90d FX forecast (2026-09-16)" carries the policy note 37b0a7a4… (from version none to 2; sections materiality, escalation)
+  ✓ J. Weber (not the owner) refused: 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ L. Brandt REOPENED "B18 — corridor decision on the 90d FX forecast (2026-09-16)" on the POLICY CAUSE: version 3 opened as a draft; cause {"ref":"37b0a7a4-c24b-420e-b701-7956952169bc","kind":"policy_changed","policy_id":"01a0d48d-1843-7bee-8143-43fb5bc64a2b","to_version":2,"recorded_at":"2026-09-2
+  ✓ DecisionReopened@v1 published with recorded_cause policy_changed (from none to 2)
+
+6. ESCALATION — the warning items' two-minute deadline passes (waited out, no clock moved); the executive escalates the overdue
+  · 6 open warning item(s); waiting 89 s for the deadline
+  ✓ 6 overdue item(s) ESCALATED to the executive (lapsed suppressions reopened: 0; exhausted: 0)
+  ·   item 01a0d48c…: escalation 1, missed deadline 2026-09-24T17:54:59.727995+00:00, roles decision_owner+domain_admin+executive+strategy_owner
+
+7. THE STATE — what the act leaves
+  · the queue: 31 item(s) — by state deprioritized 2, suppressed 1, escalated 6, acknowledged 3, open 19; by class warning.raised 8, forecast.unfit 1, scenario.incoherent 1, proposal.review 20, source.coverage_loss 1; under version 2
+  · the policy: v1 superseded, v2 active
+  · the markers: cleared 2
+  · the plan selections: selected 87, no_plan 32
+  · LIMITS said: in_app delivery only (no external channel); no timer host — the escalation runs at the attention subscriber's deliveries and on a person's request; the briefing gains no attention section in B22 (BRF@v1 is closed); the extraction run on a selected plan stays an agent's act; the quarantine of an invalid event is exercised by the harness, not staged here; packages are marked by source health only where an option cites the forecast itself (the demonstration's cite runs and assumptions).
+
+ALL SCENES HELD · 133.5 s

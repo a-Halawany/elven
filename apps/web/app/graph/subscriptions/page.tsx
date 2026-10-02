@@ -35,7 +35,26 @@ import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui'
 
 type Status = NonNullable<Awaited<ReturnType<typeof graph.subscriptionStatus>>['data']>['subscriptions'];
 type Row = Record<string, unknown>;
-const KINDS = ['twins', 'forecasts', 'scenarios', 'decisions', 'retrieval', 'memory-mappings', 'relationships'] as const;
+const KINDS = ['twins', 'forecasts', 'scenarios', 'decisions', 'retrieval', 'memory-mappings', 'relationships',
+  // B22 (0083): the consumers of ObservationRecorded, SourceHealthChanged and the proposals, and the attention router.
+  'observations', 'source-health', 'proposals', 'attention'] as const;
+/**
+ * What each kind consumes and does with it, in one line (the server's METHOD_REF is the authority; a registration names no
+ * event types — the server selects the kind's own: GraphChanged/MemoryCorrected for the first seven, the B22 kinds' below).
+ */
+const KIND_NOTE: Record<(typeof KINDS)[number], string> = {
+  twins: 'GraphChanged / MemoryCorrected → the twin versions citing or bound to the change marked (TwinStateChanged/version.unverified).',
+  forecasts: 'GraphChanged / MemoryCorrected → the affected forecasts marked for attention, then assessed for fitness.',
+  scenarios: 'GraphChanged / MemoryCorrected → the affected scenarios marked, then re-checked for coherence.',
+  decisions: 'GraphChanged / MemoryCorrected → a cited input invalidated on the committed packages (material change exposed where it is).',
+  retrieval: 'GraphChanged / MemoryCorrected → the projections re-verified against their logs; a failed partition withdrawn.',
+  'memory-mappings': 'GraphChanged / MemoryCorrected → a mapping reconciliation proposed for a person to decide.',
+  relationships: 'MemoryCorrected (claim.corrected) → the pending edge reassessed and the relationship re-derived.',
+  observations: 'ObservationRecorded → a transformation plan selected (the active extraction methods for the source, or no_plan with the reason).',
+  'source-health': 'SourceHealthChanged → impact markers on the forecasts, warnings and packages the source feeds; a degraded source routed as source.coverage_loss.',
+  proposals: 'ClaimsExtracted / IntelligenceObjectAdmitted → each proposed claim held in the review queue and routed as proposal.review.',
+  attention: 'ForecastFitnessChanged / ScenarioCoherenceFailed / EarlyWarningRaised / AttentionPolicyChanged → attention items routed under the policy; a policy change re-evaluates the queue.',
+};
 const short = (v: unknown) => (typeof v === 'string' && v.length > 12 ? `${v.slice(0, 8)}…` : String(v ?? '—'));
 const str = (v: unknown) => (v === null || v === undefined ? '—' : String(v));
 const rec = (v: unknown): Row => (v !== null && typeof v === 'object' ? (v as Row) : {});
@@ -319,6 +338,7 @@ export default function SubscriptionsPage() {
         <select id="kind" style={inputStyle} value={kind} onChange={(e) => setKind(e.target.value as (typeof KINDS)[number])}>
           {KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
         </select>
+        <p style={{ color: 'var(--eye-color-ink-muted)', marginBlock: 'var(--eye-space-4)' }}>{KIND_NOTE[kind]}</p>
         <label htmlFor="owner">Accountable owner (a human principal id)</label>
         <input id="owner" style={inputStyle} value={ownerId} onChange={(e) => setOwnerId(e.target.value)} placeholder="the principal who answers for this subscriber" />
         <label htmlFor="backlog">Past events</label>

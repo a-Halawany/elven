@@ -103,6 +103,15 @@ export interface ExecutiveReads {
   readEdges(): any;
   readResolutions(): any;
   readInvalidations(): any;
+  /** B22 (0083): the attention policy's versions, the queue and its log, the source-health markers, the plan selections — and the reads the four consumers resolve their items with. */
+  readAttentionPolicies(): any;
+  readAttentionItems(): any;
+  readAttentionItemEvents(): any;
+  readSourceImpactMarkers(): any;
+  readPlanSelections(): any;
+  readForecasts(): any;
+  readReviewCases(): any;
+  readSubscriptions(): any;
   isMember(a: { roomId: string; principal: string }): Promise<boolean>;
   liveApprovals(a: { packageId: string; version: number }): Promise<Array<{ approval_id: string; approver_principal_id: string; expires_at: string }>>;
   /** The approvals that STOOD at an instant, the approver's eligibility reconstructed then (0049). */
@@ -128,6 +137,25 @@ export interface RequestWrites extends ExecutiveReads {
   completeFollowUp(a: { followUpId: string; tenantId: string; domainId: string; note: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
 }
 
+/** B22 (0083, L10-I05): the attention policy's publication and the queue's human acts — each port asserts its own bound action. */
+export interface AttentionWrites extends ExecutiveReads {
+  publishPolicy(a: { policyId: string; tenantId: string; domainId: string; rules: Record<string, unknown>; reason: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+  acknowledgeItem(a: { itemId: string; tenantId: string; domainId: string; note: string | null; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+  suppressItem(a: { itemId: string; tenantId: string; domainId: string; until: string; reason: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+  closeItem(a: { itemId: string; tenantId: string; domainId: string; note: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+  escalateDue(a: { tenantId: string; domainId: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+}
+/** B22 (0083): the four consumers' ports (each asserts the subscriber's own action); the ledger ports come from the dispatcher. */
+export interface AttentionSubscriberWrites extends ExecutiveReads {
+  routeItem(a: { itemId: string; tenantId: string; domainId: string; signalClass: string; subjectKind: string; subjectId: string; causeEventId: string; causeEventType: string; owner: string | null;
+                 dims: Record<string, unknown>; title: string; details: Record<string, unknown>; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+  reevaluateItem(a: { itemId: string; tenantId: string; domainId: string; causeEventId: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+  escalateDue(a: { tenantId: string; domainId: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+  notePolicyChanged(a: { packageId: string; tenantId: string; domainId: string; policyId: string; toVersion: number; details: Record<string, unknown>; outboxEventId: string; subscriptionId: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+  markSourceImpact(a: { tenantId: string; domainId: string; sourceId: string; healthState: string; reason: string | null; eventId: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+  selectPlan(a: { tenantId: string; domainId: string; eventId: string; evdObjectId: string; evdVersion: number | null; sourceId: string | null; mode: string | null; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+}
+
 export interface RoomWrites extends ExecutiveReads {
   openRoom(a: { roomId: string; tenantId: string; domainId: string; packageId: string; title: string; reviewEveryDays: number; actor: string; eventId: string; correlationId: string }): Promise<{ room_id: string; next_review_at: string }>;
   setMembership(a: { roomId: string; tenantId: string; domainId: string; principal: string; role: string; op: 'add' | 'remove'; actor: string; eventId: string; correlationId: string }): Promise<void>;
@@ -144,7 +172,7 @@ export interface BriefingWrites extends ExecutiveReads {
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-class ExecutiveCapabilityImpl extends ExecutiveCore implements RoomWrites, BriefingWrites, AgentWrites {
+class ExecutiveCapabilityImpl extends ExecutiveCore implements RoomWrites, BriefingWrites, AgentWrites, AttentionWrites, AttentionSubscriberWrites {
   constructor(tx: Tx, action: string) { super(tx, action); }
   readRooms(): any { return this.from('executive.rooms_current'); }
   readMembers(): any { return this.from('executive.room_members'); }
@@ -188,6 +216,14 @@ class ExecutiveCapabilityImpl extends ExecutiveCore implements RoomWrites, Brief
   readEdges(): any { return this.from('graph.edges_current'); }
   readResolutions(): any { return this.from('graph.resolutions_current'); }
   readInvalidations(): any { return this.from('graph.invalidations_current'); }
+  readAttentionPolicies(): any { return this.from('executive.attention_policies'); }
+  readAttentionItems(): any { return this.from('executive.attention_items'); }
+  readAttentionItemEvents(): any { return this.from('executive.attention_item_events'); }
+  readSourceImpactMarkers(): any { return this.from('observation.source_impact_markers'); }
+  readPlanSelections(): any { return this.from('intelligence.plan_selections'); }
+  readForecasts(): any { return this.from('prediction.forecasts_current'); }
+  readReviewCases(): any { return this.from('intelligence.review_current'); }
+  readSubscriptions(): any { return this.from('graph.subscriptions'); }
   async projectionState(): Promise<Array<Record<string, unknown>>> {
     return this.call<Record<string, unknown>>(sql`select * from graph.projection_state()`);
   }
@@ -230,6 +266,42 @@ class ExecutiveCapabilityImpl extends ExecutiveCore implements RoomWrites, Brief
   async completeFollowUp(a: Parameters<RequestWrites['completeFollowUp']>[0]): Promise<Record<string, unknown>> {
     const rows = await this.call<{ r: Record<string, unknown> }>(sql`select executive.complete_follow_up(${a.followUpId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.note}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
     const r = rows[0]?.r; if (r === undefined) throw new Error('complete_follow_up returned no row'); return r;
+  }
+
+  private async one(q: ReturnType<typeof sql>, what: string): Promise<Record<string, unknown>> {
+    const rows = await this.call<{ r: Record<string, unknown> }>(q);
+    const r = rows[0]?.r; if (r === undefined || r === null) throw new Error(`${what} returned no row`); return r;
+  }
+  async publishPolicy(a: Parameters<AttentionWrites['publishPolicy']>[0]) {
+    return this.one(sql`select executive.publish_attention_policy(${a.policyId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${JSON.stringify(a.rules)}::jsonb, ${a.reason}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'publish_attention_policy');
+  }
+  async acknowledgeItem(a: Parameters<AttentionWrites['acknowledgeItem']>[0]) {
+    return this.one(sql`select executive.acknowledge_attention_item(${a.itemId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.note}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'acknowledge_attention_item');
+  }
+  async suppressItem(a: Parameters<AttentionWrites['suppressItem']>[0]) {
+    return this.one(sql`select executive.suppress_attention_item(${a.itemId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.until}::timestamptz, ${a.reason}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'suppress_attention_item');
+  }
+  async closeItem(a: Parameters<AttentionWrites['closeItem']>[0]) {
+    return this.one(sql`select executive.close_attention_item(${a.itemId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.note}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'close_attention_item');
+  }
+  async escalateDue(a: Parameters<AttentionWrites['escalateDue']>[0]) {
+    return this.one(sql`select executive.escalate_attention_due(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'escalate_attention_due');
+  }
+  async routeItem(a: Parameters<AttentionSubscriberWrites['routeItem']>[0]) {
+    return this.one(sql`select executive.route_attention_item(${a.itemId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.signalClass}, ${a.subjectKind}, ${a.subjectId}::uuid, ${a.causeEventId}::uuid, ${a.causeEventType},
+      ${a.owner}::uuid, ${JSON.stringify(a.dims)}::jsonb, ${a.title}, ${JSON.stringify(a.details)}::jsonb, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'route_attention_item');
+  }
+  async reevaluateItem(a: Parameters<AttentionSubscriberWrites['reevaluateItem']>[0]) {
+    return this.one(sql`select executive.reevaluate_attention_item(${a.itemId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.causeEventId}::uuid, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'reevaluate_attention_item');
+  }
+  async notePolicyChanged(a: Parameters<AttentionSubscriberWrites['notePolicyChanged']>[0]) {
+    return this.one(sql`select decision.note_policy_changed(${a.packageId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.policyId}::uuid, ${a.toVersion}::int, ${JSON.stringify(a.details)}::jsonb, ${a.outboxEventId}::uuid, ${a.subscriptionId}::uuid, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'note_policy_changed');
+  }
+  async markSourceImpact(a: Parameters<AttentionSubscriberWrites['markSourceImpact']>[0]) {
+    return this.one(sql`select observation.mark_source_impact(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.sourceId}::uuid, ${a.healthState}, ${a.reason}, ${a.eventId}::uuid, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'mark_source_impact');
+  }
+  async selectPlan(a: Parameters<AttentionSubscriberWrites['selectPlan']>[0]) {
+    return this.one(sql`select intelligence.select_transformation_plan(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.eventId}::uuid, ${a.evdObjectId}::uuid, ${a.evdVersion}::int, ${a.sourceId}::uuid, ${a.mode}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'select_transformation_plan');
   }
 
   async isMember(a: { roomId: string; principal: string }): Promise<boolean> {
@@ -305,4 +377,8 @@ export const ExecutiveCapability = {
   briefing(tx: Tx, action: string): BriefingWrites { return new ExecutiveCapabilityImpl(tx, action); },
   agent(tx: Tx, action: string): AgentWrites { return new ExecutiveCapabilityImpl(tx, action); },
   request(tx: Tx, action: string): RequestWrites { return new ExecutiveCapabilityImpl(tx, action); },
+  /** B22 (0083): the attention policy and the queue's human acts. */
+  attention(tx: Tx, action: string): AttentionWrites { return new ExecutiveCapabilityImpl(tx, action); },
+  /** B22 (0083): the four consumers' capability (observations, source-health, proposals, attention) — the subscriber's own action. */
+  attentionSubscriber(tx: Tx, action: string): AttentionSubscriberWrites { return new ExecutiveCapabilityImpl(tx, action); },
 };

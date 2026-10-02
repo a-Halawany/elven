@@ -16,10 +16,15 @@ import { RoomService } from './rooms/room.service.js';
 import { BriefingService } from './briefings/briefing.service.js';
 
 import { RequestsService } from './requests/requests.service.js';
+import { GraphModule } from '../graph/graph.module.js';
+import { AttentionService } from './attention/attention.service.js';
+import { AttentionConsumer, ObservationsConsumer, ProposalsConsumer, SourceHealthConsumer } from './attention/attention.consumers.js';
 @Module({
-  imports: [PipelineModule, IdentityModule, ObservationModule, DecisionModule],
+  imports: [PipelineModule, IdentityModule, ObservationModule, DecisionModule, GraphModule],
   controllers: [ExecutiveController],
-  providers: [RoomService, BriefingService, AgentsService, AgentWorkerService, DecisionAgentSessionService, RequestsService],
-  exports: [RoomService, BriefingService, AgentsService, AgentWorkerService, RequestsService],
+  providers: [RoomService, BriefingService, AgentsService, AgentWorkerService, DecisionAgentSessionService, RequestsService, AttentionService,
+    // B22 (0083): the four consumers of L1-I03, L1-I04, L2-I02 and the attention router (the graph module's dispatcher registers them).
+    ObservationsConsumer, SourceHealthConsumer, ProposalsConsumer, AttentionConsumer],
+  exports: [RoomService, BriefingService, AgentsService, AgentWorkerService, RequestsService, AttentionService],
 })
 export class ExecutiveModule {}

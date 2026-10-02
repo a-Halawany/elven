@@ -557,6 +557,7 @@ describe('B8 · the flows\' telemetry (AU-MEM-0041) and the interface register w
     expect(r.interfaces.find((i) => i['interface_id'] === 'L4-I03')).toMatchObject({ name: 'GraphChanged', transport: 'event', binding_state: 'bound', schema_version: 'v1' });
     expect(r.interfaces.find((i) => i['interface_id'] === 'L2-I03')).toMatchObject({ name: 'ContradictionDetected', binding_state: 'bound', schema_version: 'v1' }); // bound by 0066 §5 (B9)
     // B21 (0081 §10): L8-I04 ChallengeSimulation is BOUND (with L5-I05, L6-I03, L7-I04 — the register 40/10/0); a partial binding still says so on one of the ten that stay partial (L7-I02).
+    // B22 (0083 §9): L1-I03, L1-I04, L2-I02 and L10-I05 bound — the register 44/6/0; L7-I02 is among the six that stay partial.
     expect(r.interfaces.find((i) => i['interface_id'] === 'L8-I04')).toMatchObject({ name: 'ChallengeSimulation', binding_state: 'bound', schema_version: 'v1', bound_in: '0081' });
     expect(r.interfaces.find((i) => i['interface_id'] === 'L7-I02')).toMatchObject({ binding_state: 'partial' }); // a partial binding says so (L9-I04 was bound by 0078; L8-I04 by 0081)
     // eslint-disable-next-line no-console

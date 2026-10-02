@@ -49,6 +49,9 @@ const ROUTED: Record<string, (r: { tenant_id: string | null; domain_id: string |
   // type — the lease says so, from the registry; the outbox row stays the durable log the dispatcher's reconciliation reads.
   GraphChanged: (r) => r.tenant_id === null || r.domain_id === null || !r.subscribed ? null : redisName(subscriptionQueueNameFor(r.tenant_id, r.domain_id)),
   MemoryCorrected: (r) => r.tenant_id === null || r.domain_id === null || !r.subscribed ? null : redisName(subscriptionQueueNameFor(r.tenant_id, r.domain_id)),
+  // 0083 (B22): the eight flat events a B22 consumer selects — routed the same way, on the lease's own `subscribed` answer.
+  ...Object.fromEntries(['ObservationRecorded', 'SourceHealthChanged', 'ClaimsExtracted', 'IntelligenceObjectAdmitted', 'ForecastFitnessChanged', 'ScenarioCoherenceFailed', 'EarlyWarningRaised', 'AttentionPolicyChanged']
+    .map((t) => [t, (r: { tenant_id: string | null; domain_id: string | null; subscribed: boolean }) => r.tenant_id === null || r.domain_id === null || !r.subscribed ? null : redisName(subscriptionQueueNameFor(r.tenant_id, r.domain_id))])),
 };
 
 interface PendingRow {

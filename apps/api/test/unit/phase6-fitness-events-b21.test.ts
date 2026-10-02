@@ -40,6 +40,18 @@ const DIGESTS_13ED40C = {
   'memory-mappings': '2e0ad122d8d03b9cc5cfcc90a71dbb0d1017f7d6eda5c43cba70b077207f67a2',
   relationships: 'fe16ee21985684b1fe4d96f7f228d58e0347939ed7c20f96de45312f53700716',
 } as const;
+/**
+ * 0083 (B22): the three digests B21 moved, as a2303ff left them (graph-change.ts is untouched between a2303ff and main 5165a97; computed from
+ * `git show a2303ff:apps/api/src/graph/subscriptions/graph-change.ts`). B22 adds four kinds and re-words none of the seven, so the seven
+ * identities are these and 13ed40c's four — no live subscription of an old kind is re-registered for B22.
+ */
+const DIGESTS_A2303FF = {
+  forecasts: 'e3932eb0354d8b4943f9c352bc8eccb70ffa595f4797445e6633a9f5f491c2a2',
+  scenarios: '06a9711bc0c00f94d0d433c7a3423f0a26b01fc845bdfa86fc32379bf85a3f74',
+  decisions: '6e283700b3b7d74c0699e6c565a4da6c0558b015d749e6f8a6d56426b07b6e5f',
+} as const;
+/** 0083 (B22): the four consumer kinds B22 adds (L1-I03, L1-I04, L2-I02 and the attention router). */
+const B22_KINDS = ['observations', 'source-health', 'proposals', 'attention'] as const;
 
 const ENVELOPE: EnvelopeCheck = {
   state: 'inside', model: 'supply-flow@1',
@@ -291,8 +303,19 @@ describe('B21 · the consumer identities (C4): the forecasts, scenarios and deci
   it('the digests of twins, retrieval, memory-mappings and relationships are the ones recorded at 13ed40c; forecasts, scenarios and decisions differ', () => {
     for (const k of ['twins', 'retrieval', 'memory-mappings', 'relationships'] as const) expect(consumerCodeDigest(k), k).toBe(DIGESTS_13ED40C[k]);
     for (const k of ['forecasts', 'scenarios', 'decisions'] as const) expect(consumerCodeDigest(k), k).not.toBe(DIGESTS_13ED40C[k]);
-    expect([...CONSUMER_KINDS]).toEqual(['twins', 'forecasts', 'scenarios', 'decisions', 'retrieval', 'memory-mappings', 'relationships']);
-    expect(new Set(CONSUMER_KINDS.map((k) => consumerCodeDigest(k))).size).toBe(7);
+    // 0083 (B22): the seven, then the four B22 adds — eleven kinds, eleven distinct identities.
+    expect([...CONSUMER_KINDS]).toEqual(['twins', 'forecasts', 'scenarios', 'decisions', 'retrieval', 'memory-mappings', 'relationships', ...B22_KINDS]);
+    expect(new Set(CONSUMER_KINDS.map((k) => consumerCodeDigest(k))).size).toBe(11);
+  });
+  it('B22 (0083): the seven identities are unchanged by B22 (the four at 13ed40c\'s, the three B21 moved at a2303ff\'s); the four new kinds carry identities of their own, distinct from every earlier one', () => {
+    for (const k of ['twins', 'retrieval', 'memory-mappings', 'relationships'] as const) expect(consumerCodeDigest(k), k).toBe(DIGESTS_13ED40C[k]);
+    for (const k of ['forecasts', 'scenarios', 'decisions'] as const) expect(consumerCodeDigest(k), k).toBe(DIGESTS_A2303FF[k]);
+    const earlier = new Set<string>([...Object.values(DIGESTS_13ED40C), ...Object.values(DIGESTS_A2303FF)]);
+    for (const k of B22_KINDS) {
+      expect(consumerCodeDigest(k), k).toMatch(/^[0-9a-f]{64}$/);
+      expect(earlier.has(consumerCodeDigest(k)), `${k}: a new consumer, a new identity`).toBe(false);
+    }
+    expect(new Set(B22_KINDS.map((k) => consumerCodeDigest(k))).size).toBe(4);
   });
 });
 

@@ -1,0 +1,9 @@
+=== the hosted ci run 36043290422 at 9f6a77e (PR #60, B22 = 567e669 + the SUMMARY regeneration), ONE attempt, 2026-09-24 ===
+build-test (job 107780494900): audit accounting controls all passed; packages/tokens 3/3, packages/contracts 203/203, apps/web 30/30,
+apps/api unit 2390/2390 in 59 files + the meta suite 9/9; acceptance 58/58; the integration suite 1103/1103 in 76 files on a fresh
+database (phase6-nonce-sweep-b22 6/6, phase6-attention-b22 11/11); the upgrade proof through 0022–0083 (roles +35, migrations +62;
+297/297 and 276/276) PASS; C18 623/623 + 44/44.
+browser-regression: 51 passed. supply-chain: the C15 gate PASS on the official pins; the recheck PASS (no newer compatible build).
+C19 lifecycle 36043290505: lifecycle ubuntu / macos, delivery-chain-dry, foreign-checkout-pinning — all success. CodeRabbit success.
+The earlier head 567e669's ci 36042985523: build-test FAILED at the audit accounting control (audit/SUMMARY.md committed with the
+acceptance-unit section dropped by the summarisers' order) — PRESERVED; the other jobs green; corrected by 9f6a77e.

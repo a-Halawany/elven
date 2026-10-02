@@ -1,0 +1,5 @@
+=== the unit suite at the B22 tree (apps/api pnpm test): run 1 under load (full integration suites and agent runs concurrent) 2389/2390 — one gate case, hermetic-isolation C16-R3.4 §3 (the hermetic C15 run did not print its verdict line within the case), passes ALONE 8/8; run 2 on a quiet host below ===
+ Test Files  59 passed (59)
+      Tests  2390 passed (2390)
+ Test Files  1 passed (1)
+      Tests  9 passed (9)

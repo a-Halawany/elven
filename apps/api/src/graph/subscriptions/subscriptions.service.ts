@@ -14,7 +14,7 @@ import { PrincipalsService } from '../../identity/principals.service.js';
 import { PrincipalsCapability } from '../../shared/capabilities.js';
 import { SchedulerService, redisName, subscriptionQueueNameFor } from '../../observation/scheduling/scheduler.service.js';
 import { GraphCapability, type GraphReads } from '../graph.capabilities.js';
-import { CONSUMER_KINDS, CONSUMER_ROLE, CONSUMER_VERSION, consumerCodeDigest, type ConsumerKind } from './graph-change.js';
+import { CONSUMER_EVENT_TYPES, CONSUMER_KINDS, CONSUMER_ROLE, CONSUMER_VERSION, consumerCodeDigest, type ConsumerKind, type SubscribableEventType } from './graph-change.js';
 import { SubscriptionDispatcherService, type SubscriptionReconcileReport } from './subscription-dispatcher.service.js';
 import { PROJECTIONS, blockOf } from '../projections/projection-state.js';
 
@@ -23,7 +23,7 @@ export interface SubscriptionBudgets { max_items_per_event: number; max_elapsed_
   materiality?: { relative_q50: number; band: boolean } }
 const DEFAULT_BUDGETS: SubscriptionBudgets = { max_items_per_event: 200, max_elapsed_ms: 600_000, backlog_policy: 'leave' };
 export interface RegisterSubscriptionIntake {
-  consumerKind: ConsumerKind; ownerPrincipalId: string; eventTypes?: Array<'GraphChanged' | 'MemoryCorrected'>; filter?: { change_kinds?: string[] };
+  consumerKind: ConsumerKind; ownerPrincipalId: string; eventTypes?: SubscribableEventType[]; filter?: { change_kinds?: string[] };
   backlog?: 'replay' | 'leave'; budgets?: Partial<Pick<SubscriptionBudgets, 'max_items_per_event' | 'max_elapsed_ms'>> & { materiality?: { relative_q50?: number; band?: boolean } };
 }
 
@@ -41,8 +41,11 @@ export class SubscriptionsService {
     const bad = (m: string): never => { throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, m), 400); };
     if (!(CONSUMER_KINDS as readonly string[]).includes(intake.consumerKind)) bad(`consumerKind is one of ${CONSUMER_KINDS.join(', ')}`);
     if (typeof intake.ownerPrincipalId !== 'string' || intake.ownerPrincipalId.length < 8) bad('ownerPrincipalId (the accountable human) is required');
-    const eventTypes = intake.eventTypes ?? ['GraphChanged', 'MemoryCorrected'];
-    if (!Array.isArray(eventTypes) || eventTypes.length === 0 || eventTypes.some((t) => t !== 'GraphChanged' && t !== 'MemoryCorrected')) bad('eventTypes is a non-empty list of GraphChanged | MemoryCorrected');
+    // 0083 (B22): a kind selects the event types it declares (graph.subscription_consumer_events; the port refuses any other) —
+    // by default all of them.
+    const allowed = CONSUMER_EVENT_TYPES[intake.consumerKind] as readonly string[];
+    const eventTypes = intake.eventTypes ?? [...allowed] as SubscribableEventType[];
+    if (!Array.isArray(eventTypes) || eventTypes.length === 0 || eventTypes.some((t) => !allowed.includes(t))) bad(`eventTypes is a non-empty list of ${allowed.join(' | ')} (what the ${intake.consumerKind} consumer reads)`);
     const backlog = intake.backlog ?? 'leave';
     if (backlog !== 'replay' && backlog !== 'leave') bad("backlog is 'replay' or 'leave'");
     const filter: Record<string, unknown> = {};
