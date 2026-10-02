@@ -25,7 +25,10 @@ overrides:
   # and an oversized array index). Reached transitively through @nestjs/platform-express, which
   # still declares multer 2.2.0 through its 12.0.1 release. EXACT REVIEWED VERSION: 2.3.0 is the
   # first version carrying all three fixes and stays on the 2.x line Nest declares.
-  multer: 2.3.0
+  # C15 on #65/#66 (runs 36541560879 / 36541572754, 2026-09-29): multer >=2.2.0 <2.4.0 carries
+  # GHSA-3pph-fpjx-jg34 (MODERATE — denial of service via orphaned disk writes on aborted uploads);
+  # 2.4.0 is the first patched version, on the same 2.x line (Nest 12.1.1 itself now declares 2.4.0).
+  multer: 2.4.0
   postcss: '>=8.5.23'
   # Gate-2.2 C15/C16: nanoid <3.3.17 is CVE-2026-67213 (HIGH — denial of service via
   # an infinite loop when a custom generator is called with size 0). Reached only
@@ -57,7 +60,15 @@ overrides:
   # a range is not a reviewed decision. 3.1.6 is the first version carrying all four
   # fixes (every advisory states "patched >=3.1.6") and stays on the 3.x line ajv
   # declares, so nothing is forced across a semver major.
-  fast-uri: 3.1.6
+  # C15 on #65/#66 (runs 36541560879 / 36541572754, 2026-09-29): two further HIGH advisories
+  # published 2026-09-28 reach the reviewed 3.1.6 — GHSA-qw65-cvwx-89v3 (<3.1.7: authority
+  # injection via an unvalidated port in serialize) and GHSA-58mr-gqgx-xq4g (=3.1.6: host
+  # confusion via an unclosed bracket in the authority). 3.1.7 is the first version patched for
+  # both (and for the four above) and stays on the 3.x line; the same exact-version rule.
+  # C15 on #62's refreshed run (ci 37005512372, 2026-10-02): GHSA-hrr3-gc8f-f4qj (MODERATE) reaches 3.1.7
+  # (vulnerable >=3.0.0 <3.1.8); 3.1.8 is the first patched version, on the same 3.x line — the same
+  # exact-version rule. The final-manifest assertion accepts only a clean audit receipt.
+  fast-uri: 3.1.8
   # Gate: qs <6.16.0 carries two MODERATE advisories published 2026-09-02 —
   # GHSA-4mjr-xmp4-gh2g (denial of service via an attacker-controlled isBuffer) and
   # GHSA-x5fp-wj9c-mxmx (array-limit bypass via bracket-key comma parsing). Reached
