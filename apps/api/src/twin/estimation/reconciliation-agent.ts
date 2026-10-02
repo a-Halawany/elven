@@ -18,9 +18,19 @@ import { HttpException } from '@nestjs/common';
 import type { AuthenticatedPrincipal } from '../../shared/auth-types.js';
 import type { PipelineService } from '../../pipeline/pipeline.service.js';
 import { digestOf } from './estimators.js';
-import { EstimationCapability } from './estimation.capabilities.js';
+import { EstimationCapability, type RequestWrites } from './estimation.capabilities.js';
+import type { Computed, RequestIntake } from './estimation.types.js';
+import type { Envelope } from '@eye/contracts';
+import type { ScopeContext } from '../../shared/scope.js';
 import type { ScanArgs, ScanEnv } from './reconciliation-bridge.js';
-import type { EstimationService } from './estimation.service.js';
+/** The estimation surface the scan uses — STRUCTURAL, so this file does not import estimation.service.ts (which imports reconcileScan from
+ *  here): `pnpm boundaries` (dependency-cruiser, no-circular) refuses the cycle, a type-only import included. */
+interface EstimationSurface {
+  compute(base: Envelope, principal: AuthenticatedPrincipal, tenantId: string, domainId: string, twinId: string, key: string): Promise<Computed>;
+  propose(base: Envelope, principal: AuthenticatedPrincipal, tenantId: string, domainId: string, twinId: string, key: string,
+          agent: { agentId: string; runId: string } | null, trigger: Record<string, unknown>): Promise<{ estimate: Record<string, unknown>; computed: Computed; receipt: { policyDecisionId: string; auditSeq: number } }>;
+  request(cap: RequestWrites, scope: ScopeContext, intake: RequestIntake, agent: { agentId: string; runId: string } | null, actor: string, correlationId: string): Promise<Record<string, unknown>>;
+}
 
 export const RECONCILIATION_AGENT_VERSION = '1.0.0';
 export const RECONCILIATION_AGENT_METHOD = `reconciliation-agent@${RECONCILIATION_AGENT_VERSION}`;
@@ -35,7 +45,7 @@ const METHOD_TEXT = 'one run under the Reconciliation Agent\'s own session, task
 export const RECONCILIATION_AGENT_DIGEST = digestOf(`twin.reconciliation.agent@${RECONCILIATION_AGENT_VERSION}:${METHOD_TEXT}`);
 
 type Row = Record<string, unknown>;
-export interface ReconcileDeps extends ScanEnv { estimation: EstimationService; pipeline: PipelineService }
+export interface ReconcileDeps extends ScanEnv { estimation: EstimationSurface; pipeline: PipelineService }
 
 export async function reconcileScan(d: ReconcileDeps, p: AuthenticatedPrincipal, a: ScanArgs): Promise<Row> {
   const provenance = { purpose: 'twin', package_id: null, room_id: null, classification: 'internal', contributors: [] as string[] };

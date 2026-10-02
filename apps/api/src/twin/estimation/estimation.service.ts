@@ -61,17 +61,12 @@ const VERSION_DAYS = ['observed_through'] as const;
 const ELEMENT_DAYS = ['valid_from', 'valid_to'] as const;
 const textOf = (e: unknown): string => (e instanceof HttpException ? String((e.getResponse() as { message?: string }).message ?? e.message) : (e instanceof Error ? e.message : String(e)));
 
-export interface Computed {
-  twin: Row; head: Row | null; headElements: Row[]; estimators: EstimatorDecl[]; now: string;
-  facts: Record<string, Row[]>; qualification: Array<{ estimator_id: string; version: number; inputs: Row[] }>;
-  candidates: Candidate[]; primary: Candidate | null; asOf: string | null;
-  constraint: { outcome: 'satisfied' | 'violated' | 'indeterminate'; pins: unknown[]; violations: unknown[]; applied: string[]; vacuous: boolean; reason: string | null; subject: unknown };
-  /** The primary's disqualified inputs with their reasons (what an observation request is for). */
-  unqualified: Array<{ estimator_id: string; index: number; input: Row; reasons: string[]; reason_class: 'missing' | 'stale' | 'disqualified' }>;
-}
+// B30 (the boundaries gate): Computed and RequestIntake live in estimation.types.ts so reconciliation-agent.ts can name them without importing
+// this file (which imports reconcileScan from it); re-exported here for the existing imports.
+export type { Computed, RequestIntake } from './estimation.types.js';
+import type { Computed, RequestIntake } from './estimation.types.js';
 
 export interface DecisionIntake { decision: 'approved' | 'declined'; note: string | null; allowIncomplete: boolean }
-export interface RequestIntake { twinId: string; key: string | null; estimatorId: string | null; input: Row; reasonClass: string; note: string }
 
 @Injectable()
 export class EstimationService implements OnModuleInit {
