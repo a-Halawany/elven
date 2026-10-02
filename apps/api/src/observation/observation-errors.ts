@@ -1066,6 +1066,18 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   { match: /^incomplete package rejected \((state|stale|unattested)\)/i, status: 409, code: 'EYE_STA_002' },
   { match: /^incomplete package rejected \(/i, status: 422, code: 'EYE_REQ_001' },
   /* end B35 recommendation */
+  /* B30 envelope (0103 §EN) — the families `exploratory admission rejected (<class>)` (the twin owner's exploratory admission of an
+     outside-envelope run, the method steward's concurrence, the promotion gate ten_exploratory_promotion), `calibration rejected (<class>)`
+     (twin.calibrate) and `behaviour model rejected (<class>)` (the stewardship lifecycle, the compatibility declarations, the run gate
+     ten_model_lifecycle). No earlier row starts with these nouns (TWIN_RULES' unanchored `admission rejected: ` needs the colon; these carry
+     the class parenthesis) and every row is anchored. B9's order: the standing 403 (the acting principal, the twin owner's ownership, the
+     steward's authority, the separation of duties), the absences 404 (unknown_*), the record's state 409 (state, stale, duplicate,
+     unconcurred), the caller's own request 422 (the rest: reason, note, model, key, tolerance, kind, compatible, incompatible, lifecycle_state). */
+  { match: /^(exploratory admission|calibration|behaviour model) rejected \((actor|ownership|authority|separation_of_duties)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^(exploratory admission|calibration|behaviour model) rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^(exploratory admission|calibration|behaviour model) rejected \((state|stale|duplicate|unconcurred)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^(exploratory admission|calibration|behaviour model) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B30 envelope */
   /* B36 home (0094 §H) — the executive home's families in the CLASS form `<noun> rejected (<class>): …`: `cadence rejected`, `executive room
      rejected` (0044's unclassed `room rejected: …` texts are the decision room's and are mapped by no row; the noun here is `executive room`
      and every row is anchored), `objective review rejected` (the SoD of §H2's re-declared convene_review and of open_subject_room — B23's

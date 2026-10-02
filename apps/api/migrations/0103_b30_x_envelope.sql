@@ -217,9 +217,10 @@ BEGIN
 END $$ LANGUAGE plpgsql;
 REVOKE ALL ON FUNCTION twin.ten_notify(uuid, uuid, text, uuid, text, jsonb, uuid, text[], uuid, jsonb, interval, uuid, uuid) FROM PUBLIC;
 
-/* The model's state in a domain: the lifecycle row's, else 'approved' (every model in use before B30 — default-off). */
+/* The model's state in a domain: the lifecycle row's, else 'approved' (every model in use before B30 — default-off). INVOKER: RLS answers
+   only the caller's own domain (N-01's rule for a read that takes tenant/domain arguments). */
 CREATE OR REPLACE FUNCTION twin.ten_model_state(p_tenant uuid, p_domain uuid, p_model text) RETURNS text
-SECURITY DEFINER SET search_path = twin, pg_catalog, pg_temp AS $$
+SET search_path = twin, pg_catalog, pg_temp AS $$
   SELECT coalesce((SELECT m.state FROM twin.model_lifecycle m WHERE m.tenant_id = p_tenant AND m.domain_id = p_domain AND m.method_ref = p_model), 'approved')
 $$ LANGUAGE sql STABLE;
 REVOKE ALL ON FUNCTION twin.ten_model_state(uuid, uuid, text) FROM PUBLIC;
