@@ -33,6 +33,9 @@ export interface EstimationReads {
   qualify(a: { tenantId: string; domainId: string; estimatorId: string; version: number; facts: unknown[] }): Promise<Row[]>;
   /** The pending proposal checks of the domain (triggers not yet answered by a proposal). */
   pending(): Promise<Row[]>;
+  /** B30 act: the day each exact evidence version observes (its event time, else its valid-from) — an UNREADABLE version is judged against
+   *  the estimator's window by it (estimation.service.ts compute). Answers [{ id, version, day | null }]. */
+  evidenceDays(refs: Array<{ id: string; version: number }>): Promise<Row[]>;
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
@@ -96,6 +99,13 @@ class EstimationCapabilityImpl implements EstimatorWrites, ProposeWrites, Decide
   }
   async pending(): Promise<Row[]> {
     const r = await sql<Row>`select twin_id::text, key, triggers::int, kinds, oldest from twin.estimation_pending()`.execute(this.#tx);
+    return r.rows;
+  }
+  async evidenceDays(refs: Array<{ id: string; version: number }>): Promise<Row[]> {
+    if (refs.length === 0) return [];
+    const r = await sql<Row>`select o.object_id::text as id, o.object_version::int as version, to_char(coalesce(o.event_time, o.valid_from) at time zone 'UTC', 'YYYY-MM-DD') as day
+      from objects.canonical_objects o join jsonb_to_recordset(${JSON.stringify(refs)}::jsonb) as x(id uuid, version int) on o.object_id = x.id and o.object_version = x.version
+     where o.object_type = 'EVD'`.execute(this.#tx);
     return r.rows;
   }
 

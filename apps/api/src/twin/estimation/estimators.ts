@@ -119,6 +119,26 @@ export function candidateOf(d: EstimatorDecl, points: Point[] | null, element: {
            window: { from: (win[0] as Point).date, to: last.date, n: win.length }, last_point: { date: last.date, value: last.value }, evidence: [...evidence.values()] };
 }
 
+/**
+ * B30 act (a defect the demonstration found): WHICH UNREADABLE EVIDENCE VERSIONS COUNT AGAINST A SERIES INPUT. A version whose bytes the
+ * reader cannot read (governed-deleted, withdrawn, unavailable) counts only when it could hold a point the estimators read: its day (the
+ * evidence's event time, else its valid-from) on or after the first day of the WIDEST window any estimator of this series reads — its
+ * method's window and the 7-point confidence window — or when it states no day at all (it might hold anything). Before, ANY unreadable
+ * version of the series' source disqualified the input for good: the routine retention of superseded evidence from years before left a
+ * series unestimable forever (the demonstration's 2024 PortWatch seed version, tombstoned by a retention action). The rest are disclosed
+ * (outside), never hidden.
+ */
+export function unreadableInWindow(points: Point[], decls: EstimatorDecl[], seriesKey: string, unreadable: Array<{ day: string | null }>): { counted: number; outside: number; windowFrom: string | null } {
+  if (unreadable.length === 0 || points.length === 0) return { counted: unreadable.length, outside: 0, windowFrom: null };
+  const reads = decls.filter((d) => d.inputs[0]?.kind === 'series' && (d.inputs[0] as SeriesInput).series_key === seriesKey);
+  const widest = Math.max(7, ...reads.map((d) => (d.method === 'kalman_1d' ? (d.parameters.window ?? 30) : d.method === 'moving_average' ? (d.parameters.window ?? 2)
+    : d.method === 'ratio_to_baseline' ? (d.parameters.window ?? 1) : 1)));
+  const sorted = [...points].sort((a, b) => a.date.localeCompare(b.date));
+  const windowFrom = (sorted[Math.max(0, sorted.length - widest)] as Point).date;
+  const counted = unreadable.filter((u) => u.day === null || u.day >= windowFrom).length;
+  return { counted, outside: unreadable.length - counted, windowFrom };
+}
+
 /** The spread among the stated candidates — the disagreement, kept and stated (relative to the proposal). */
 export function spreadOf(candidates: Candidate[], proposed: number): { n: number; min: number | null; max: number | null; abs: number | null; relative: number | null } {
   const vs = candidates.map((c) => c.value).filter((v): v is number => v !== null);
