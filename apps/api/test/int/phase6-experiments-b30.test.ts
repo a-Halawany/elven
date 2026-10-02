@@ -258,6 +258,9 @@ describe('B30 experiments · X1 chunked method-fabric experiments (F-P5-06: L8-C
     expect([...await runEvents(DES_RUN)].sort()).toEqual(['constraint.checked', 'run.completed', 'run.opened']);
     expect(obj(e['manifest'])['chunks']).toHaveLength(3);
     expect(new Set(paths.map((p) => JSON.stringify(p['summary']))).size).toBeGreaterThan(1);
+    // the run REPRODUCES cold through the existing route: every path re-executed in one separate process, the same outputs digest
+    const rep = (await twins.reproduce(h.req(nakamura, 'simulation.reproduce', 'SIM', DES_RUN), T(), D(), DES_RUN, { payload: {} }) as { reproduction: { verdict: string; coldProcess: boolean } }).reproduction;
+    expect(rep).toMatchObject({ verdict: 'reproduced', coldProcess: true });
     evidence('X1a', { experiment: DES_EXP, run: DES_RUN, chunks: (e['chunks'] as Row[]).map((x) => x['digest']), mean_line_stop_days: obj(out['totals'])['line_stop_days'] });
   }, 600_000);
 

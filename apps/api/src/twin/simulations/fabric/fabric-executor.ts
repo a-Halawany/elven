@@ -9,7 +9,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { CHUNK_CONTAINMENT } from '../orchestration/experiment-plan.js';
-import { digestOfJson, type FabricPath } from './fabric-plan.js';
+import { assembleFabricOutputs, digestOfJson, type FabricPath, type Measure } from './fabric-plan.js';
 
 type Row = Record<string, unknown>;
 export type FabricChunkExecution = { ok: true; sampleTotals: FabricPath[]; digest: string; wallMs: number; pid: number | null } | { ok: false; error: string; wallMs: number };
@@ -58,4 +58,19 @@ export async function fabricProcessExecutor(claimed: Row): Promise<FabricChunkEx
     child.stdin?.on('error', () => undefined);
     child.stdin?.end(JSON.stringify({ run, first_path: claimed['first_path'], paths: claimed['paths'] }));
   });
+}
+
+/**
+ * THE COLD REPRODUCTION of a chunked fabric experiment's run (the existing reproduce route, simulation.reproduce): every path [0, samples)
+ * re-executed in ONE separate process from the stored contract and the per-path seeds, the outputs re-assembled with the projection the
+ * run recorded, their digest answered for the route to compare with the stored one. A run too large for the chunk bound is unreproducible
+ * here (the infrastructure's — the route withholds any invalidation).
+ */
+export async function reexecuteFabricExperiment(r: Row): Promise<{ outputs_digest: string; implementation_digest: string; pid: number } | { failed: string }> {
+  const samples = Number(r['samples']);
+  const got = await fabricProcessExecutor({ run: r, first_path: 0, paths: samples });
+  if (!got.ok) return { failed: got.error };
+  const projection = ((((r['outputs'] ?? {}) as Row)['projection'] ?? []) as Array<{ measure: Measure }>).map((p) => p.measure);
+  const outputs = assembleFabricOutputs(String(r['model_ref']), String(r['component']), Number(r['seed']), got.sampleTotals, projection);
+  return { outputs_digest: digestOfJson(outputs), implementation_digest: String(r['implementation_digest']), pid: got.pid ?? 0 };
 }

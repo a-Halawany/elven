@@ -78,6 +78,10 @@ import { CONSTRAINT_GATE, type ConstraintGate, type ConstraintSubject, type Cons
 import { MethodRegistry, type MethodEntry } from '../methods/method-registry.js';
 import { containmentOf, type Contained } from '../methods/method-runner.js';
 import type { BindWrites, ProbeWrites, ReinstateWrites } from '../simulation.capabilities.js';
+/* B30 experiments */
+import { isFabricChunkable } from './fabric/fabric-plan.js';
+import { reexecuteFabricExperiment } from './fabric/fabric-executor.js';
+/* end B30 experiments */
 
 const sha256 = (s: string): string => createHash('sha256').update(s).digest('hex');
 export const digestOf = (v: unknown): string => sha256(jcsCanonicalize(v));
@@ -1096,7 +1100,10 @@ export class SimulationService {
         if (!unavailable.some((u) => u.cause === 'lifecycle')) withheld = unavailable[0]?.cause === 'bytes' ? 'bytes' : 'access';
       } else {
         // 3. RE-EXECUTION in a separate process the product spawns (B29 §C: a method-fabric run through the method worker, always out of process).
-        const child = String(r['model_ref']) === SUPPLY_FLOW_METHOD_REF ? await executeInSeparateProcess(r) : await this.reexecuteMethod(cap, ctx, r, actor, correlationId);
+        const child = String(r['model_ref']) === SUPPLY_FLOW_METHOD_REF ? await executeInSeparateProcess(r)
+          /* B30 experiments: a chunked fabric experiment's run (its samples the experiment's paths) is re-executed path by path, cold */
+          : isFabricChunkable(r['model_ref']) && Number(r['samples'] ?? 1) > 1 ? await reexecuteFabricExperiment(r)
+          : await this.reexecuteMethod(cap, ctx, r, actor, correlationId);
         if ('failed' in child) {
           verdict = 'unreproducible'; withheld = 'infrastructure'; reason = `the stored contract could not be re-executed in a separate process: ${child.failed}`;
         } else if (child.implementation_digest !== r['implementation_digest']) {
