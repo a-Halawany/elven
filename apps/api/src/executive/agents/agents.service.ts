@@ -56,28 +56,32 @@ import { SignalsCapability } from '../../prediction/signals/signals.capabilities
 import { OPPORTUNITY_AGENT_DIGEST, OPPORTUNITY_AGENT_METHOD, OPPORTUNITY_AGENT_VERSION, RISK_AGENT_DIGEST, RISK_AGENT_METHOD, RISK_AGENT_VERSION } from '../../prediction/exposures/exposure-agent-identity.js';
 import { ExposuresCapability, type ExposureReads } from '../../prediction/exposures/exposures.capabilities.js';
 /* end B32 exposures */
+/* B29 (0092) §B: the Supply Chain Agent — its identity and its scan (supply-chain-agent.ts) */
+import { SUPPLY_CHAIN_AGENT_DIGEST, SUPPLY_CHAIN_AGENT_METHOD, SUPPLY_CHAIN_AGENT_VERSION, supplyScan } from './supply-chain-agent.js';
+/* end B29 §B */
 
 export type AgentKind = 'decision' | 'briefing' | 'reporting' | /* B24 (0086) timer */ 'attention' /* end B24 timer */ | /* B28 (0088) signals */ 'weak_signal' /* end B28 signals */
-  | /* B32 (0089) exposures */ 'risk' | 'opportunity' /* end B32 exposures */;
+  | /* B32 (0089) exposures */ 'risk' | 'opportunity' /* end B32 exposures */ | /* B29 (0092) */ 'supply_chain';
 export type AgentTask = 'draft' | 'briefing' | 'report' | 'monitor' | /* B24 (0086) timer */ 'attention_tick' /* end B24 timer */ | /* B28 (0088) signals */ 'signal_scan' /* end B28 signals */
-  | /* B32 (0089) exposures */ 'risk_assess' | 'opportunity_assess' /* end B32 exposures */;
+  | /* B32 (0089) exposures */ 'risk_assess' | 'opportunity_assess' /* end B32 exposures */ | /* B29 (0092) */ 'supply_scan';
 const ROLE_OF: Record<AgentKind, string> = { decision: 'decision_agent', briefing: 'briefing_agent', reporting: 'reporting_agent', /* B24 (0086) timer */ attention: 'attention_agent' /* end B24 timer */,
-  /* B28 (0088) signals */ weak_signal: 'weak_signal_agent' /* end B28 signals */, /* B32 (0089) exposures */ risk: 'risk_agent', opportunity: 'opportunity_agent' /* end B32 exposures */ };
+  /* B28 (0088) signals */ weak_signal: 'weak_signal_agent' /* end B28 signals */, /* B32 (0089) exposures */ risk: 'risk_agent', opportunity: 'opportunity_agent' /* end B32 exposures */, /* B29 (0092) */ supply_chain: 'supply_chain_agent' };
 const METHOD_OF: Record<AgentKind, string> = { decision: 'decision-agent-option-cards@1.0.0', briefing: 'briefing-agent@1.0.0', reporting: 'reporting-agent@1.0.0', /* B24 (0086) timer */ attention: ATTENTION_TIMER_METHOD /* end B24 timer */,
-  /* B28 (0088) signals */ weak_signal: WEAK_SIGNAL_AGENT_METHOD /* end B28 signals */, /* B32 (0089) exposures */ risk: RISK_AGENT_METHOD, opportunity: OPPORTUNITY_AGENT_METHOD /* end B32 exposures */ };
+  /* B28 (0088) signals */ weak_signal: WEAK_SIGNAL_AGENT_METHOD /* end B28 signals */, /* B32 (0089) exposures */ risk: RISK_AGENT_METHOD, opportunity: OPPORTUNITY_AGENT_METHOD /* end B32 exposures */, /* B29 (0092) */ supply_chain: SUPPLY_CHAIN_AGENT_METHOD };
 const CLEARANCE_RANK: Record<string, number> = { public: 0, internal: 1, confidential: 2, restricted: 3 };
 /** The stop conditions this runtime implements; any other kind is refused at registration (here and at the port). */
 export const SUPPORTED_STOP_CONDITIONS = ['max_items', 'on_degraded'] as const;
 /** Which agent kinds enforce each condition in their task (registration refuses any other pairing, here and at the port). */
 export const STOP_CONDITION_KINDS: Readonly<Record<string, readonly AgentKind[]>> = Object.freeze({ max_items: ['decision', 'briefing', /* B28 (0088) signals: the scan's nominations */ 'weak_signal' /* end B28 signals */,
-  /* B32 (0089) exposures: the exposures one estimate re-estimates */ 'risk', 'opportunity' /* end B32 exposures */], on_degraded: ['briefing'] });
+  /* B32 (0089) exposures: the exposures one estimate re-estimates */ 'risk', 'opportunity' /* end B32 exposures */, /* B29 (0092) §B: the findings one supply scan drafts */ 'supply_chain'], on_degraded: ['briefing'] });
 
 export interface RegisterAgentIntake { kind: AgentKind; version: string; codeDigest: string; ownerPrincipalId: string; escalationPrincipalId: string; budgets: Record<string, unknown>; stopConditions: unknown[] }
 export function validateRegisterAgent(m: Partial<RegisterAgentIntake>, correlationId: string): RegisterAgentIntake {
   const bad = (msg: string): never => { throw new HttpException(errorBody('EYE_REQ_001', correlationId, msg), 422); };
   if (m.kind !== 'decision' && m.kind !== 'briefing' && m.kind !== 'reporting' && /* B24 (0086) timer */ m.kind !== 'attention' /* end B24 timer */
-      && /* B28 (0088) signals */ m.kind !== 'weak_signal' /* end B28 signals */ && /* B32 (0089) exposures */ m.kind !== 'risk' && m.kind !== 'opportunity' /* end B32 exposures */) {
-    bad('kind is decision, briefing, reporting, attention, weak_signal, risk or opportunity');
+      && /* B28 (0088) signals */ m.kind !== 'weak_signal' /* end B28 signals */ && /* B32 (0089) exposures */ m.kind !== 'risk' && m.kind !== 'opportunity' /* end B32 exposures */
+      && /* B29 (0092) §B */ m.kind !== 'supply_chain') {
+    bad('kind is decision, briefing, reporting, attention, weak_signal, risk, opportunity or supply_chain');
   }
   if (typeof m.version !== 'string' || !/^[0-9]+\.[0-9]+\.[0-9]+$/.test(m.version)) bad('version must be semver');
   if (typeof m.codeDigest !== 'string' || !/^[0-9a-f]{64}$/.test(m.codeDigest)) bad('codeDigest must be 64 hex');
@@ -104,6 +108,11 @@ export function validateRegisterAgent(m: Partial<RegisterAgentIntake>, correlati
     bad(`an opportunity agent is registered with this runtime's estimate: version ${OPPORTUNITY_AGENT_VERSION}, codeDigest ${OPPORTUNITY_AGENT_DIGEST} (${OPPORTUNITY_AGENT_METHOD})`);
   }
   /* end B32 exposures */
+  /* B29 (0092) §B: the Supply Chain Agent is registered with THIS runtime's scan (a changed method is a new digest — register anew) */
+  if (m.kind === 'supply_chain' && (m.version !== SUPPLY_CHAIN_AGENT_VERSION || m.codeDigest !== SUPPLY_CHAIN_AGENT_DIGEST)) {
+    bad(`a supply_chain agent is registered with this runtime's scan: version ${SUPPLY_CHAIN_AGENT_VERSION}, codeDigest ${SUPPLY_CHAIN_AGENT_DIGEST} (${SUPPLY_CHAIN_AGENT_METHOD})`);
+  }
+  /* end B29 §B */
   if (typeof m.ownerPrincipalId !== 'string' || typeof m.escalationPrincipalId !== 'string') bad('ownerPrincipalId and escalationPrincipalId name humans');
   const b = m.budgets ?? {};
   if (typeof b !== 'object' || b === null || !Number.isInteger(b['max_reads']) || !Number.isInteger(b['max_gateway_calls']) || !Number.isInteger(b['max_elapsed_ms'])) bad('budgets name integer max_reads, max_gateway_calls and max_elapsed_ms');
@@ -278,6 +287,12 @@ export class AgentsService {
       /* B32 (0089) exposures */
       else if (a.task === 'risk_assess' || a.task === 'opportunity_assess') outputs = await this.exposureEstimate(principal, T, D, runId, registration, meter, stops, refusals, a.correlationId, identity, a.task === 'risk_assess' ? 'risk' : 'opportunity');
       /* end B32 exposures */
+      /* B29 (0092) §B */
+      else if (a.task === 'supply_scan') {
+        outputs = await supplyScan({ pipeline: this.pipeline, env: (action, type, id) => this.env(principal, T, D, action, type, id, a.correlationId, 'twin'), route: (action, type, id) => this.route(T, D, action, type, id) },
+          principal, { tenantId: T, domainId: D, agentId: a.agentId, runId, registration, meter, stops, refusals, correlationId: a.correlationId, identity });
+      }
+      /* end B29 §B */
       else outputs = await this.report(principal, T, D, a.packageId, budget, meter, a.correlationId, identity);
       if (outputs['refused'] === true) { outcome = 'refused'; stopReason = String(outputs['reason']); }
     } catch (e) {

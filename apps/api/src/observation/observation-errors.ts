@@ -733,6 +733,60 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   { match: /^(commitment (item|exception|closure)|execution (target|handoff|issue|attempt|compensation|reconcile)|objective revision) rejected \((state|closed|root|duplicate|retired|target_retired|stale_digest|stale_version|open_exception|unreconciled_handoff|residual_undisposed|not_ready|live_compensation|compensation_state|inactive|unchanged|no_reviewer|attempt|canonical|commitment)\)|^closure rejected \(commitment_open\)/i, status: 409, code: 'EYE_STA_002' },
   { match: /^(commitment (item|exception|closure)|execution (target|handoff|issue|attempt|compensation|reconcile)|objective revision) rejected/i, status: 422, code: 'EYE_REQ_001' },
   /* end B34 commitments */
+  /* B29 §A (0092) composition — the twin family, contract, link and coupling ports: `twin kind rejected`, `twin contract rejected`, `twin link
+     rejected`, `coupling rejected` — anchored phrases no earlier row matches (TWIN_RULES' unanchored `twin rejected: ` needs `twin rejected`,
+     which none of these texts carries; no earlier row starts with these families). B9's order: the standing 403 (the acting principal, the
+     ownership boundary, a kind outside its tenant and domain), the absences 404, the record's state 409 (a duplicate, a retired link, a
+     decided proposal, a draft in the way, an upstream without a contract, a contract that would strand a live link), the caller's own 422. */
+  { match: /^(twin kind|twin contract|twin link|coupling) rejected \((actor|ownership|ownership_boundary|scope)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^(twin kind|twin contract|twin link|coupling) rejected: no such /i, status: 404, code: 'EYE_STA_001' },
+  { match: /^(twin kind|twin contract|twin link|coupling) rejected \((duplicate|retired|state|link_retired|draft_conflict|uncontracted|live_link)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^(twin kind|twin contract|twin link|coupling) rejected/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B29 §A */
+  /* B29-F1 (0093): the draft withdrawal port — `draft withdrawal rejected (<class>): …` (anchored; the executive's unanchored `withdrawal
+     rejected` 422 family is placed after these and never reaches an anchored `draft withdrawal` text). The standing 403 (the acting principal,
+     not the owner nor the opener), the absences 404, the record's state 409 (admitted, already withdrawn), the caller's own 422 (the reason). */
+  { match: /^draft withdrawal rejected \((actor|ownership)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^draft withdrawal rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^draft withdrawal rejected \(state\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^draft withdrawal rejected/i, status: 422, code: 'EYE_REQ_001' },
+  /* B29 §D (0092) constraints — the constraint engine's ports: `constraint set rejected (…)` (declare, version, retire) and `plan check
+     rejected (…)` (the check record) — anchored phrases no other row matches (no earlier row starts with `constraint set` or `plan check`;
+     §C's `constraint check rejected` is its own port's family, simulation.run_constraint_checks; the unanchored `run rejected: ` /
+     `twin rejected: ` rows need those words, which none of these texts carries), each text with its CLASS IN PARENTHESES.
+     B9's order: the standing 403 (the acting principal, a steward naming another steward without the domain administrator's role, ANOTHER
+     steward versioning or retiring the set), the absences 404 (`unknown_*`), the record's state 409 (a duplicate key — the port's own text
+     or the unique index's —, a retired set, a stale expected version, a stale pin), the caller's own request 422 (everything else — a named
+     steward without the role among them). A VIOLATED plan is not a port refusal: the plan check route answers it (422 with the violations). */
+  { match: /^(constraint set|plan check) rejected \((actor|steward|not_steward)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^(constraint set|plan check) rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^(constraint set|plan check) rejected \((duplicate|retired|stale_version|stale_pin)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /duplicate key value violates unique constraint "cset_key_unique"/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^(constraint set|plan check) rejected/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B29 §D */
+  /* B29 (0092) §C methods — the method fabric: open_run's three new gates in the CLASS form (`run rejected (unbound_method|method_family|
+     quarantined)`, which the generic `run rejected: ` row cannot catch) and the ports `method binding rejected`, `adapter fault rejected`,
+     `adapter probe rejected`, `adapter reinstatement rejected`, `constraint check rejected` — anchored phrases no earlier row matches (the
+     extraction method rows read `method (approval|transition) rejected`). The service's own `run rejected (constraint)` (§D's violated verdict
+     at opening, 422) and `run failed (…)` are HttpExceptions and never reach this mapper. B9's order: the standing 403 (not the twin's owner;
+     the reinstater who operated the last faulted run), the absences 404 (no twin, model, active binding or run), the record's state 409 (an
+     unbound method, a quarantined adapter, a binding already there, an adapter not quarantined, no passing probe since the last fault), the
+     caller's own request 422 (everything else — a family outside the twin's approved uses among them). */
+  { match: /^method binding rejected \(not_owner\)|^adapter reinstatement rejected \(separation\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^method binding rejected: (no twin|no behaviour model|.* is not bound to twin)|^adapter (fault|probe) rejected: (no behaviour model|run .* is not a run of)|^constraint check rejected: no run/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^run rejected \((unbound_method|quarantined)\)|^method binding rejected \(already_bound\)|^adapter reinstatement rejected(: the adapter of .* is not quarantined| \(no_probe\))/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^run rejected \(method_family\)|^method binding rejected|^adapter (fault|probe|reinstatement) rejected|^constraint check rejected/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B29 §C methods */
+  /* B29 (0092) §B supply network — the Supply Chain Agent's proposal ports (`twin proposal rejected`) and the agent's write boundary on the
+     twin event log (`twin write rejected (agent)`) — anchored phrases no earlier row matches (TWIN_RULES' unanchored `twin rejected: ` needs
+     `twin rejected`, which neither carries). B9's order: the standing 403 (the acting principal, not the domain's active Supply Chain Agent,
+     not its running scan, not the twin's owner, an agent writing a twin), the absences 404, the record's state 409 (a decided proposal, a
+     version that is not admitted on actual), the caller's own 422 (a malformed finding, a twin of another family, a decision without reason). */
+  { match: /^twin proposal rejected \((actor|not_agent|run|ownership)\)|^twin write rejected \(agent\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^twin proposal rejected: no such /i, status: 404, code: 'EYE_STA_001' },
+  { match: /^twin proposal rejected \((state|version)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^twin proposal rejected/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B29 §B */
 ];
 
 export function asObservationRefusal(e: unknown, correlationId: string): HttpException | null {

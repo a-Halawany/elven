@@ -6,6 +6,12 @@
  * — and answers with the outputs digest, the implementation digest it ran and its
  * own pid. The service derives the cold-process attestation from this answer; a
  * request cannot supply it.
+ *
+ * CP-6 B29 (0092) §C: this worker re-executes supply-flow@1 only (its path is unchanged).
+ * A method-fabric run (discrete-event, system dynamics, agent-based, optimisation,
+ * war-gaming, counterfactual) is re-executed by the method fabric's own separate
+ * process (../methods/method-worker.ts), from the same stored run (methodInputOf),
+ * always out of process and under its registry row's bounds.
  */
 import { createHash } from 'node:crypto';
 import { jcsCanonicalize } from '@eye/contracts';

@@ -214,7 +214,7 @@ export class ExecutiveController {
     const { envelope, principal } = ctx(req);
     const p = body.payload ?? {};
     const task = p.task ?? 'briefing';
-    if (!['draft', 'briefing', 'report', 'monitor', /* B28 (0088) signals */ 'signal_scan' /* end B28 signals */, /* B32 (0089) exposures */ 'risk_assess', 'opportunity_assess' /* end B32 exposures */].includes(task)) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'task is draft, briefing, report, monitor, signal_scan, risk_assess or opportunity_assess'), 422);
+    if (!['draft', 'briefing', 'report', 'monitor', /* B28 (0088) signals */ 'signal_scan' /* end B28 signals */, /* B32 (0089) exposures */ 'risk_assess', 'opportunity_assess' /* end B32 exposures */, /* B29 (0092) §B */ 'supply_scan'].includes(task)) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'task is draft, briefing, report, monitor, signal_scan, risk_assess, opportunity_assess or supply_scan'), 422);
     /* B28 (0088) signals: the scan reads as of an OBSERVATION day (event time), or each subject's latest when none is named */
     if (task === 'signal_scan' && p.asOf !== undefined && p.asOf !== null && (typeof p.asOf !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(p.asOf))) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'asOf is an observation day (YYYY-MM-DD)'), 422);
     /* end B28 signals */

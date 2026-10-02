@@ -15,7 +15,7 @@
 import { sql } from 'kysely';
 import type { Tx } from '../shared/db.js';
 
-export type CitationKind = 'evidence' | 'claim' | 'entity' | 'forecast' | 'assumption' | 'run';
+export type CitationKind = 'evidence' | 'claim' | 'entity' | 'forecast' | 'assumption' | 'run' | /* B29 (0092): a coupled element's upstream twin version */ 'twin';
 export interface Citation { kind: CitationKind; id: string; version: number; digest: string }
 
 /**
@@ -157,8 +157,17 @@ export interface ValidateWrites extends TwinReads {
                        reason: string; limitations: string[]; actor: string; eventId: string; correlationId: string }): Promise<Record<string, unknown>>;
 }
 
+/**
+ * CP-6 B29-F1 (0093): the governed WITHDRAWAL of an open draft (twin.withdraw_version, the bound action twin.version.withdraw) — the
+ * draft's row moves draft → withdrawn once, by the twin's owner or the draft's opener, with a reason; its elements stay (append-only);
+ * the branch is free for a new draft. The answer is the port's, whole.
+ */
+export interface WithdrawWrites extends TwinReads {
+  withdrawVersion(a: { twinId: string; tenantId: string; domainId: string; version: number; reason: string; actor: string; eventId: string; correlationId: string }): Promise<Record<string, unknown>>;
+}
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
-class TwinCapabilityImpl extends TwinCore implements DeclareWrites, VersionWrites, GroundWrites, AdmitWrites, TwinSubscriberWrites, ValidateWrites {
+class TwinCapabilityImpl extends TwinCore implements DeclareWrites, VersionWrites, GroundWrites, AdmitWrites, TwinSubscriberWrites, ValidateWrites, WithdrawWrites {
   constructor(tx: Tx, action: string) { super(tx, action); }
 
   readTwins(): any { return this.from('twin.twins_current'); }
@@ -288,6 +297,13 @@ class TwinCapabilityImpl extends TwinCore implements DeclareWrites, VersionWrite
       ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`);
     return rows[0]?.r ?? {};
   }
+  /** B29-F1 (0093): twin.withdraw_version(uuid,uuid,uuid,int,text,uuid,uuid,uuid) — the port's jsonb answer, whole. */
+  async withdrawVersion(a: Parameters<WithdrawWrites['withdrawVersion']>[0]): Promise<Record<string, unknown>> {
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select twin.withdraw_version(
+      ${a.twinId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.version}::int, ${a.reason},
+      ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
@@ -300,4 +316,6 @@ export const TwinCapability = {
   subscriber(tx: Tx, action: string): TwinSubscriberWrites { return new TwinCapabilityImpl(tx, action); },
   /** B21 (0081): the validate route's capability (twin.version.validate, human-gated) — the port's own SoD refuses the twin's owner. */
   validate(tx: Tx, action: string): ValidateWrites { return new TwinCapabilityImpl(tx, action); },
+  /** B29-F1 (0093): the withdraw route's capability (twin.version.withdraw) — the port refuses everyone but the twin's owner and the draft's opener. */
+  withdraw(tx: Tx, action: string): WithdrawWrites { return new TwinCapabilityImpl(tx, action); },
 };

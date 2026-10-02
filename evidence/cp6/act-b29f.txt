@@ -1,0 +1,40 @@
+THE B29-F ACT on eye_demo — 2026-09-29T20:43:20.053Z
+
+B29F-0 THE STATE — 0093, the persona
+  ✓ migration 0093_b29f_draft_withdrawal.sql applied
+  ✓ E. Kovács (twin_owner; SYNTHETIC) opened a session
+
+B29F-1 THE DRAFT RECOVERY — a zero-capacity line refused at grounding; a wrong figure grounded; the draft withdrawn; the right figure admitted on the same branch
+  ✓ E. Kovács DECLARED "Regensburg plant — line 3 (process twin; the B29-F draft recovery)" (kind process) — TWN 01a0…5fbcd2
+  ✓ E. Kovács OPENED draft v1 on branch actual
+  ✓ grounding line.capacity_per_day:l3 = 0 units/day (a line with no capacity) REFUSED — 422 EYE-REQ-001 — family validation refused (process) at grounding: line.capacity_per_day:l3: a line with no capacity is not a line — retire it from the process — nothing was grounded
+  ✓ nothing was grounded: the draft holds 0 elements
+  ✓ E. Kovács GROUNDED line.capacity_per_day:l3 = 500 units/day — the shift's rate, entered where the day's belongs (the wrong figure)
+  ✓ grounding line.capacity_per_day:l3 again (= 1000) in draft v1 REFUSED — 409 EYE-STA-002 — the request conflicts with a rule this record enforces.
+  ✓ opening another draft on branch actual while v1 is open REFUSED — 409 EYE-STA-002 — this branch already has an open draft: ground into it or admit it before opening another version.
+  ✓ E. Kovács WITHDREW draft v1 (branch actual) — state withdrawn, 1 element(s) kept, at 2026-09-29T20:43:20.199Z; receipt auditSeq 127248
+  ✓ the row reads withdrawn with its 1 element(s) as grounded (history preserved); the event version.withdrawn names the reason: "line 3 was entered at the shift's rate (500), not the day's (1000); the draft is withdrawn and the line re-entered"
+  ✓ grounding into the withdrawn draft v1 REFUSED — 409 EYE-STA-001 — version 1 was withdrawn at 2026-09-29T20:43:20.199Z (line 3 was entered at the shift's rate (500), not the day's (1000); the draft is withdrawn and the line re-entered); open a new version on the branch
+  ✓ E. Kovács OPENED draft v2 on branch actual (the branch is free)
+  ✓ E. Kovács GROUNDED line.capacity_per_day:l3 = 1000 units/day into v2
+  ✓ E. Kovács ADMITTED v2 — completeness incomplete, supersedes nothing (the withdrawn draft was never admitted)
+  · the process family's measures on v2: {"line_capacity_per_day":1000,"supply_capacity_per_day":null,"throughput_per_day":1000,"bottleneck":"line"}
+  · the twin's versions: v1 withdrawn ("line 3 was entered at the shift's rate (500), not the day's (1000); the draft is withdrawn and the line re-entered") · 1 element(s); v2 admitted · 1 element(s)
+  · the twin's ledger: element.grounded × 2, twin.declared × 1, version.admitted × 1, version.opened × 2, version.withdrawn × 1
+  · LIMITS said: every figure is SYNTHETIC; the refusal at grounding is the product's accumulated-draft rule (0093); the admission-time refusal of an element another path wrote (a coupling, a carry-forward) and its recovery by the same withdrawal are HARNESS-PROVEN (phase6-composition-b29 C1, on the real database), not staged here; nothing is cleaned.
+
+ALL SCENES HELD · 0.2 s
+THE B29-F ACT on eye_demo — 2026-09-29T21:00:08.001Z
+
+B29F-0 THE STATE — 0093, the persona
+  ✓ migration 0093_b29f_draft_withdrawal.sql applied
+  ✓ E. Kovács (twin_owner; SYNTHETIC) opened a session
+
+B29F-1 THE DRAFT RECOVERY — a zero-capacity line refused at grounding; a wrong figure grounded; the draft withdrawn; the right figure admitted on the same branch
+  · "Regensburg plant — line 3 (process twin; the B29-F draft recovery)" stands — an earlier run (TWN 01a0…5fbcd2)
+  · v2 is admitted — an earlier run's recovery stands; the scene is not replayed
+  · the twin's versions: v1 withdrawn ("line 3 was entered at the shift's rate (500), not the day's (1000); the draft is withdrawn and the line re-entered") · 1 element(s); v2 admitted · 1 element(s)
+  · the twin's ledger: element.grounded × 2, twin.declared × 1, version.admitted × 1, version.opened × 2, version.withdrawn × 1
+  · LIMITS said: every figure is SYNTHETIC; the refusal at grounding is the product's accumulated-draft rule (0093); the admission-time refusal of an element another path wrote (a coupling, a carry-forward) and its recovery by the same withdrawal are HARNESS-PROVEN (phase6-composition-b29 C1, on the real database), not staged here; nothing is cleaned.
+
+ALL SCENES HELD · 0.1 s

@@ -55,7 +55,7 @@
  * catalogue) — the state rides the reads. Each challenge write publishes
  * ChallengeSimulation@v1 built from the row as read back (simulation-events.ts).
  */
-import { HttpException, Injectable } from '@nestjs/common';
+import { HttpException, Inject, Injectable } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
@@ -73,6 +73,11 @@ import { SUPPLY_FLOW_IMPLEMENTATION_DIGEST } from '../models/supply-flow.digest.
 import type { ChallengeWrites, CompleteWrites, InvalidateWrites, OpenedRun, PromoteWrites, ReproduceWrites, RunWrites, ShockBasis, SimulationReads } from '../simulation.capabilities.js';
 import type { Citation, EnvelopeCheck } from '../twin.capabilities.js';
 import { SIMULATION_INVALIDATE_METHOD_REF, challengeSimulationEvent, simulationCompletedEvent, simulationInvalidatedEvent, type ChallengeState, type Resource } from './simulation-events.js';
+/* B29 (0092) §C */
+import { CONSTRAINT_GATE, type ConstraintGate, type ConstraintSubject, type ConstraintVerdict, type MethodInput, type MethodOutput } from '../methods/types.js';
+import { MethodRegistry, type MethodEntry } from '../methods/method-registry.js';
+import { containmentOf, type Contained } from '../methods/method-runner.js';
+import type { BindWrites, ProbeWrites, ReinstateWrites } from '../simulation.capabilities.js';
 
 const sha256 = (s: string): string => createHash('sha256').update(s).digest('hex');
 export const digestOf = (v: unknown): string => sha256(jcsCanonicalize(v));
@@ -87,9 +92,14 @@ export interface RunIntake {
   envelope: { acknowledge: boolean; reason: string } | null;
   /** B21 (0081, D11): the challenge this run answers as its RE-RUN (with `correctsRunId` the challenged run); the port binds it. */
   challengeId: string | null;
+  /** B29 (0092) §C: the METHOD the run uses (a model reference bound to the twin), or null — the twin's own behaviour model (the implicit binding). */
+  modelRef: string | null;
+  /** B29 (0092) §C: a method-fabric run's parameters, validated by the method's adapter at opening; null for supply-flow@1 (its parameters come from the twin). */
+  methodParams: Record<string, unknown> | null;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MODEL_REF = /^[a-z0-9-]+@[0-9]+$/;
 export function validateRunIntake(m: Record<string, unknown>, correlationId: string): RunIntake {
   const bad = (msg: string): never => { throw new HttpException(errorBody('EYE_REQ_001', correlationId, msg), 422); };
   if (typeof m['twinId'] !== 'string' || !UUID.test(m['twinId'])) bad('twinId must be a twin id');
@@ -137,19 +147,84 @@ export function validateRunIntake(m: Record<string, unknown>, correlationId: str
   const challengeId = m['challengeId'] === undefined || m['challengeId'] === null ? null : m['challengeId'];
   if (challengeId !== null && (typeof challengeId !== 'string' || !UUID.test(challengeId))) bad('challengeId must be a challenge id');
   if (challengeId !== null && correctsRunId === null) bad('a re-run names the run it corrects (correctsRunId) and the challenge it answers (challengeId)');
+  // B29 (0092) §C: the method (a model reference) and its parameters, when the run names them; the adapter judges the parameters at opening.
+  const modelRef = m['modelRef'] === undefined || m['modelRef'] === null ? null : m['modelRef'];
+  if (modelRef !== null && (typeof modelRef !== 'string' || !MODEL_REF.test(modelRef))) bad('modelRef, when given, is a behaviour model reference like discrete-event@1');
+  const paramsRaw = m['params'] === undefined || m['params'] === null ? null : m['params'];
+  if (paramsRaw !== null && (typeof paramsRaw !== 'object' || Array.isArray(paramsRaw))) bad('params, when given, is an object of the method\'s parameters');
+  if (paramsRaw !== null && JSON.stringify(paramsRaw).length > 65_536) bad('params exceed 64 KiB');
+  const methodParams = paramsRaw as Record<string, unknown> | null;
+  if (methodParams !== null && methodParams['component'] !== undefined && methodParams['component'] !== m['component']) bad('params.component, when given, is the run\'s component');
   return {
     twinId: m['twinId'] as string, twinVersion: m['twinVersion'] as number, runKind, controlRunId: controlRunId as string | null,
     correctsRunId,
     scenarioId, scenarioBranchId,
     shock: m['shock'] as boolean, component: m['component'] as string, interventions, horizonDays: horizonDays as number, stochastic, sensitivityRelative: rel,
     envelope, challengeId: challengeId as string | null,
+    modelRef: modelRef as string | null, methodParams,
   };
 }
 
 /** The runtime this process is: what a reproduction compares itself against. */
 export function environmentOf(): { node: string; platform: string; arch: string; model_ref: string; implementation_digest: string } {
-  return { node: process.version, platform: process.platform, arch: process.arch, model_ref: SUPPLY_FLOW_METHOD_REF, implementation_digest: SUPPLY_FLOW_IMPLEMENTATION_DIGEST };
+  return environmentFor(SUPPLY_FLOW_METHOD_REF, SUPPLY_FLOW_IMPLEMENTATION_DIGEST);
 }
+/** B29 (0092) §C: the runtime for one method — the same shape (and, for supply-flow@1, the same digest) as environmentOf(). */
+export function environmentFor(modelRef: string, implementationDigest: string): { node: string; platform: string; arch: string; model_ref: string; implementation_digest: string } {
+  return { node: process.version, platform: process.platform, arch: process.arch, model_ref: modelRef, implementation_digest: implementationDigest };
+}
+
+/**
+ * B29 (0092) §C: THE METHOD INPUT OF A STORED RUN — built from the run's own record only (the immutable snapshot, the component, the
+ * horizon and the method's parameters bound in `constraints`, the seed), never from the twin as it stands: the opening route, the
+ * completion and a reproduction build it the same way. Only COMPLETE elements are passed (a stale or unreadable element is not an
+ * input a method may read; the port refused a required prefix with no complete candidate). The run's component wins over a parameter.
+ */
+export function methodInputOf(r: Record<string, unknown>): MethodInput {
+  const snapshot = ((r['initial_state'] as Snapshot[] | null) ?? []).filter((e) => (e.health ?? 'complete') === 'complete');
+  const constraints = (r['constraints'] ?? {}) as Record<string, unknown>;
+  const methodParams = (constraints['method_params'] ?? {}) as Record<string, unknown>;
+  return {
+    modelRef: String(r['model_ref']), params: { ...methodParams, component: String(r['component']) },
+    elements: snapshot.map((e) => ({ key: e.key, value: e.value, unit: e.unit ?? null })),
+    horizonDays: Number(constraints['horizon_days']), seed: r['stochastic_mode'] === 'seeded' ? Number(r['seed']) : null,
+  };
+}
+
+/** B29 (0092) §C: the numeric quantities of a set of elements — the opening subject of §D's gate (key, the element's valid_from, value, unit). */
+function quantitiesOf(elements: Array<{ key: string; value: unknown; unit: string | null; valid_from?: string | null }>, prefixes: readonly string[] | null): ConstraintSubject['quantities'] {
+  const out: ConstraintSubject['quantities'] = [];
+  for (const e of elements) {
+    if (prefixes !== null && !prefixes.includes(e.key.split(':')[0] ?? '')) continue;
+    const v = typeof e.value === 'number' ? e.value : typeof e.value === 'string' && e.value.trim() !== '' ? Number(e.value) : NaN;
+    if (Number.isFinite(v)) out.push({ key: e.key, date: e.valid_from ?? null, value: v, unit: e.unit });
+  }
+  return out;
+}
+/**
+ * B29 (0092) §C: a method's OUTPUT as §D's subject — every numeric (or numeric-string) cell of a series row that names its `date`, keyed
+ * by the column, and each balance's four quantities keyed `<key>.opening|inflow|outflow|closing` (date null). §D's conservation rules read
+ * the balances; its business rules the dated quantities.
+ */
+export function outputQuantities(o: MethodOutput): ConstraintSubject['quantities'] {
+  const out: ConstraintSubject['quantities'] = [];
+  for (const row of o.series) {
+    const date = typeof row['date'] === 'string' ? row['date'] : null;
+    if (date === null) continue;
+    for (const [k, v] of Object.entries(row)) {
+      if (k === 'date' || k === 'day' || typeof v === 'boolean' || v === null) continue;
+      const n = typeof v === 'number' ? v : Number(v);
+      if (Number.isFinite(n)) out.push({ key: k, date, value: n, unit: null });
+    }
+  }
+  for (const b of o.balances ?? []) for (const f of ['opening', 'inflow', 'outflow', 'closing'] as const) out.push({ key: `${b.key}.${f}`, date: null, value: b[f], unit: null });
+  return out;
+}
+
+/** B29 (0092) §C: what a gate verdict carries into the run's record and the refusal. */
+export interface GateVerdict { outcome: ConstraintVerdict['outcome']; setId: string | null; setVersion: number | null; violations: ConstraintVerdict['violations']; reason: string | null }
+/** The time §D's gate is given to answer before its verdict is INDETERMINATE (never read as satisfied). */
+const GATE_BUDGET_MS = 15_000;
 
 interface Snapshot { key: string; kind: string; value: unknown; unit: string | null; valid_from: string | null; material: boolean; health: string; inherited_validation?: string | null; citations?: Citation[] }
 
@@ -280,14 +355,17 @@ function snapshotCitations(r: Record<string, unknown>): CitationRef[] {
 
 @Injectable()
 export class SimulationService {
-  constructor(private readonly series: SeriesService) {}
+  /* B29 (0092) §C: the method registry (which implementation a model reference names in this process) and §D's constraint gate. */
+  constructor(private readonly series: SeriesService, private readonly methods: MethodRegistry, @Inject(CONSTRAINT_GATE) private readonly gate: ConstraintGate) {}
 
   /**
    * Bind the contract and snapshot the initial state (governed write: `simulation.run`). `evidence` is what the governed retrievals
    * of the component's required evidence answered to this reader BEFORE this write (retrieveEvidence, called by the route): the
    * retrievals are governed writes of their own and never run inside this transaction (EvidenceAvailability).
    */
-  async open(cap: RunWrites, ctx: ScopeContext, evidence: EvidenceAvailability, intake: RunIntake, actor: string, correlationId: string, runId: string = newId()):
+  async open(cap: RunWrites, ctx: ScopeContext, evidence: EvidenceAvailability, intake: RunIntake, actor: string, correlationId: string, runId: string = newId(),
+             /** B29 (0092) §C: §D's verdict on the run's inputs, asked before this write (checkGate); recorded on the run, never announced in supply-flow@1's event ledger. */
+             verdict: GateVerdict | null = null):
     Promise<{ runId: string; opened: OpenedRun; params: SupplyFlowParams; options: SupplyFlowOptions; assumptions: Record<string, unknown>;
               /** The behaviour model's declared operating envelope (the ranges the sensitivity sweep marks breaches against). */
               operatingEnvelope: Record<string, unknown>;
@@ -298,11 +376,396 @@ export class SimulationService {
               twinFitness: string; envelope: EnvelopeCheck; envelopeAck: Record<string, unknown> | null; challengeId: string | null }> {
     const twin = (await cap.readTwins().selectAll().where('twin_id' as never, '=', intake.twinId as never).executeTakeFirst()) as Record<string, unknown> | undefined;
     if (twin === undefined) throw new HttpException(errorBody('EYE_STA_001', correlationId, 'no authorized twin matches'), 404);
-    const modelRef = String(twin['behaviour_model_ref']);
+    // B29 (0092) §C: the run names its method (intake.modelRef) or uses the twin's own (the implicit binding); this path executes supply-flow@1 —
+    // a method-fabric run opens through openMethod (the route dispatches on prepareRun's answer), and the refusal below stays for any other caller.
+    const modelRef = intake.modelRef ?? String(twin['behaviour_model_ref']);
+    const explicitModel = modelRef === String(twin['behaviour_model_ref']) ? null : modelRef;
     if (modelRef !== SUPPLY_FLOW_METHOD_REF) throw new HttpException(errorBody('EYE_REQ_001', correlationId, `no implementation is pinned for ${modelRef}`), 422);
     const model = (await cap.readBehaviourModels().selectAll().where('method_ref' as never, '=', modelRef as never).executeTakeFirst()) as Record<string, unknown> | undefined;
     const envelope = (model?.['operating_envelope'] ?? {}) as Record<string, unknown>;
     // The snapshot the port will take is the admitted version's element set; read it here only to derive parameters and refuse early.
+    if (intake.methodParams !== null) throw new HttpException(errorBody('EYE_REQ_001', correlationId, 'supply-flow@1 derives its parameters from the twin\'s snapshot; `params` are a method-fabric run\'s'), 422);
+    const { version, knownAt, observedThrough } = await this.admittedVersion(cap, intake, correlationId);
+    /*
+     * AVAILABILITY NOW, FOR THIS READER. The version's stored health is what was true
+     * when it was grounded; this run is asked for now. A required input whose document
+     * has since been withdrawn, deleted or become unreadable to this reader is not one
+     * the run may use, however complete the version was. (The port refuses the same,
+     * from the object's own lifecycle; here the governed retrieval also decides.)
+     */
+    const unavailable = await this.unavailableInputs(cap, evidence, intake.twinId, intake.twinVersion, intake.component, correlationId, explicitModel);
+    if (unavailable.length > 0) {
+      throw new HttpException(errorBody('EYE_STA_001', correlationId,
+        `required inputs for ${intake.component} are no longer available to this reader under current policy, withdrawal and deletion controls: ${unavailable.join('; ')}`.slice(0, 2000)), 409);
+    }
+    const scenario = await this.bindScenario(cap, intake, knownAt, observedThrough, correlationId);
+    const shockBasis: ShockBasis = !intake.shock ? 'none' : (scenario === null ? 'hypothetical' : 'scenario-branch-flipped');
+    // CONTROLS fold from the twin version and the scenario into the run (rule 7).
+    const twinControls = controlsOf(version['controls']) ?? { synthetic_state: version['synthetic_state'] === true, classification: 'restricted' };
+    const controls: Controls = foldControls(scenario === null || scenario.controls === null ? [twinControls] : [twinControls, scenario.controls]);
+    const environment = environmentOf();
+    const environmentDigest = digestOf(environment);
+    const stochastic: SupplyFlowOptions['stochastic'] = intake.stochastic.mode === 'seeded'
+      ? { mode: 'seeded', seed: intake.stochastic.seed, samples: intake.stochastic.samples, jitter: intake.stochastic.jitter } : { mode: 'deterministic' };
+    const options: SupplyFlowOptions = { horizon_days: intake.horizonDays, shock: intake.shock, stochastic };
+    const constraints = { horizon_days: intake.horizonDays, sensitivity_relative: intake.sensitivityRelative, single_component: intake.component };
+    const scenarioBinding = scenario === null ? null : { scenario_id: scenario.scenarioId, version: scenario.version, branch_id: scenario.branchId, branch_state: scenario.branchState, flip_event_id: scenario.flipEventId };
+    // Open: the port snapshots the state set and checks compatibility. Parameters are derived from the SNAPSHOT it returns.
+    const provisionalInputs = digestOf({ twin: [intake.twinId, intake.twinVersion], model: [modelRef, SUPPLY_FLOW_IMPLEMENTATION_DIGEST], environment: environmentDigest,
+      interventions: intake.interventions, constraints, stochastic, shock: intake.shock, shock_basis: shockBasis, scenario: scenarioBinding,
+      component: intake.component, run_kind: intake.runKind, control: intake.controlRunId });
+    // Derive the assumptions the port compares (they come from the element set; identical to the snapshot the port takes in this transaction).
+    const elements = await this.elements(cap, intake.twinId, intake.twinVersion);
+    const derived = paramsFromSnapshot(elements, intake.component);
+    if (derived.problems.length > 0) throw new HttpException(errorBody('EYE_STA_001', correlationId, `the twin does not hold what the model needs for ${intake.component}: ${derived.problems.join('; ')}`), 409);
+    const problems = validateParams(derived.params, options, intake.interventions);
+    if (problems.length > 0) throw new HttpException(errorBody('EYE_REQ_001', correlationId, `supply-flow@1 contract invalid: ${problems.join('; ')}`), 422);
+    const inputsDigest = digestOf({ provisional: provisionalInputs, assumptions: derived.assumptions });
+    // VALIDATION STATUS: the twin's declared status, then every predicted input's inherited state, by name.
+    const inherited = elements.filter((e) => e.kind === 'predicted' && e.inherited_validation).map((e) => ({
+      key: e.key, forecast: (e.citations ?? []).filter((c) => c.kind === 'forecast').map((c) => `FCT:${c.id}@${c.version}`).join(','), state: String(e.inherited_validation) }));
+    const validationStatus = `${String(twin['validation'] && (twin['validation'] as Record<string, unknown>)['status'])}`
+      + (inherited.length === 0 ? '' : `; predicted inputs: ${inherited.map((i) => `${i.key} rests on ${i.forecast} (${i.state})`).join('; ')}`)
+      + (shockBasis === 'hypothetical' ? '; the shock is HYPOTHETICAL (no scenario branch supports it)' : '')
+      + '; outputs are SYNTHETIC';
+    const opened = await cap.openRun({
+      runId, tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, twinId: intake.twinId, twinVersion: intake.twinVersion, runKind: intake.runKind,
+      controlRunId: intake.controlRunId, correctsRunId: intake.correctsRunId,
+      scenarioId: scenario?.scenarioId ?? null, scenarioBranchId: scenario?.branchId ?? null, scenarioVersion: scenario?.version ?? null, scenarioBranchState: scenario?.branchState ?? null,
+      shock: intake.shock, shockBasis, component: intake.component, modelRef, implementationDigest: SUPPLY_FLOW_IMPLEMENTATION_DIGEST, environmentDigest, environment,
+      stochasticMode: stochastic.mode, rng: stochastic.mode === 'seeded' ? RNG_ALGORITHM : null, seed: stochastic.mode === 'seeded' ? stochastic.seed : null,
+      samples: stochastic.mode === 'seeded' ? stochastic.samples : null, jitter: stochastic.mode === 'seeded' ? stochastic.jitter : null,
+      interventions: intake.interventions, constraints, assumptions: derived.assumptions, inputsDigest, validationStatus, controls,
+      // B21 (0081): the acknowledgement and the challenge go to the port as given — it judges the envelope, the holder and the challenge's state.
+      envelopeAck: intake.envelope, challengeId: intake.challengeId,
+      actor, eventId: newId(), correlationId,
+    });
+    if (verdict !== null) await this.recordVerdict(cap, ctx, runId, 'opening', verdict, false, actor, correlationId);
+    return { runId, opened, params: derived.params, options, assumptions: derived.assumptions, operatingEnvelope: envelope,
+             modelRef, implementationDigest: SUPPLY_FLOW_IMPLEMENTATION_DIGEST, environment: { node: environment.node, platform: environment.platform, arch: environment.arch },
+             environmentDigest, inputsDigest, shockBasis, rng: stochastic.mode === 'seeded' ? RNG_ALGORITHM : null, scenario: scenarioBinding,
+             twinFitness: String(opened.twin_fitness ?? 'none'), envelope: opened.envelope, envelopeAck: opened.envelope_ack ?? null, challengeId: opened.challenge_id ?? null };
+  }
+
+  // ───────────────────────── B29 (0092) §C: THE GENERALISED BEHAVIOUR RUNTIME ─────────────────────────
+  //
+  // A run names its METHOD (intake.modelRef) or uses the twin's own behaviour model (the implicit binding). supply-flow@1 keeps its own
+  // path above (open / complete / reproduce, byte-identical). Any other method: the route reads what the run will be (prepareRun), asks
+  // §D's gate about the inputs OUTSIDE any write (checkGate — a violated verdict refuses the run, 422 naming the constraint), opens it
+  // (openMethod: the port checks the binding, the approved use, the quarantine — the one rule), EXECUTES it outside any write under the
+  // registry row's containment (execute: out of process, bounded), asks the gate about the outputs, and completes it (completeMethod),
+  // or — on a fault — fails it with the fault recorded (recordFailure: the adapter's streak, the quarantine at the threshold). A run is
+  // completed or failed, never half-completed.
+
+  /** The implementation digest this process holds for a model reference (the registry's), or null — a method this build does not carry. */
+  implementationOf(modelRef: string): string | null { return this.methods.get(modelRef)?.adapter.digest ?? null; }
+
+  /**
+   * WHAT A RUN WILL BE, read before any write (the route's simulation.read): the method (named, or the twin's own), its path, the
+   * citations its required inputs rest on (the model-aware selection for an explicit binding — the evidence retrieved next) and the
+   * opening SUBJECT of §D's gate (the numeric quantities of the method's required inputs). A twin that is not there answers nothing:
+   * the opening says 404.
+   */
+  async prepareRun(cap: SimulationReads, intake: RunIntake, runId: string): Promise<{ modelRef: string | null; path: 'supply-flow' | 'method'; citations: CitationRef[]; subject: ConstraintSubject | null }> {
+    const twin = (await cap.readTwins().selectAll().where('twin_id' as never, '=', intake.twinId as never).executeTakeFirst()) as Record<string, unknown> | undefined;
+    if (twin === undefined) return { modelRef: null, path: intake.modelRef === null || intake.modelRef === SUPPLY_FLOW_METHOD_REF ? 'supply-flow' : 'method', citations: [], subject: null };
+    const own = String(twin['behaviour_model_ref']);
+    const modelRef = intake.modelRef ?? own;
+    const explicit = modelRef === own ? null : modelRef;
+    const citations = await cap.requiredCitations({ twinId: intake.twinId, version: intake.twinVersion, component: intake.component, modelRef: explicit });
+    const model = (await cap.readBehaviourModels().selectAll().where('method_ref' as never, '=', modelRef as never).executeTakeFirst()) as Record<string, unknown> | undefined;
+    const prefixes = Array.isArray(model?.['required_inputs']) ? (model['required_inputs'] as string[]) : [];
+    const elements = (await this.elements(cap, intake.twinId, intake.twinVersion)).filter((e) => e.health === 'complete');
+    return { modelRef, path: modelRef === SUPPLY_FLOW_METHOD_REF ? 'supply-flow' : 'method', citations,
+             subject: { kind: 'run_input', ref: runId, quantities: quantitiesOf(elements, prefixes) } };
+  }
+
+  /**
+   * §D's GATE, asked OUTSIDE any write (the gate may record its own check; a governed write never nests in another's transaction —
+   * the B21 wedge). An answer later than GATE_BUDGET_MS, a failure of the gate, a malformed answer: INDETERMINATE, with the reason —
+   * never read as satisfied. A violated verdict must name what it violates, or it is indeterminate.
+   */
+  async checkGate(scope: { tenantId: string; domainId: string }, subject: ConstraintSubject): Promise<GateVerdict> {
+    const indeterminate = (reason: string): GateVerdict => ({ outcome: 'indeterminate', setId: null, setVersion: null, violations: [], reason });
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      const v = await Promise.race([
+        this.gate.check(scope, subject),
+        new Promise<'timeout'>((resolve) => { timer = setTimeout(() => resolve('timeout'), GATE_BUDGET_MS); }),
+      ]);
+      if (v === 'timeout') return indeterminate(`the constraint gate did not answer within ${GATE_BUDGET_MS} ms`);
+      if (v === null || typeof v !== 'object' || !['satisfied', 'violated', 'indeterminate'].includes(v.outcome)) return indeterminate('the constraint gate answered no verdict');
+      const base = { setId: v.setId ?? null, setVersion: v.setVersion ?? null, violations: Array.isArray(v.violations) ? v.violations : [] };
+      if (v.outcome === 'violated' && base.violations.length === 0) return indeterminate('the constraint gate answered violated without naming a violation');
+      if (v.outcome === 'indeterminate') return { outcome: 'indeterminate', ...base, reason: v.indeterminateReason ?? 'the constraint gate gave no reason' };
+      return { outcome: v.outcome, ...base, reason: null };
+    } catch (e) {
+      return indeterminate(`the constraint gate failed: ${e instanceof Error ? e.message : String(e)}`.slice(0, 500));
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
+  }
+
+  /** A VIOLATED verdict at opening refuses the run before it exists: 422, naming every violated constraint, its bound and what the inputs hold. */
+  refuseViolation(verdict: GateVerdict, correlationId: string): void {
+    if (verdict.outcome !== 'violated') return;
+    const named = verdict.violations.map((v) => `${v.constraintKey} (${v.kind}): bound ${v.bound}, observed ${v.observed} — ${v.message}`).join('; ');
+    throw new HttpException(errorBody('EYE_REQ_001', correlationId,
+      `run rejected (constraint): the run's inputs violate constraint set ${verdict.setId ?? '(unnamed)'}${verdict.setVersion === null ? '' : ` v${verdict.setVersion}`}: ${named}`.slice(0, 2000)), 422);
+  }
+
+  private async recordVerdict(cap: RunWrites | CompleteWrites, ctx: ScopeContext, runId: string, stage: 'opening' | 'completion', verdict: GateVerdict, announce: boolean,
+                              actor: string, correlationId: string): Promise<void> {
+    await cap.recordConstraintCheck({ checkId: newId(), tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, runId, stage, outcome: verdict.outcome,
+      setId: verdict.setId, setVersion: verdict.setVersion, violations: verdict.violations, reason: verdict.reason, announce, actor, eventId: newId(), correlationId });
+  }
+
+  /**
+   * supply-flow@1's OUTPUTS computed ahead of its completing write, from the contract the opening bound — for §D's gate only (the
+   * completion recomputes them from the stored row: the same pure function, the same bytes). The subject: the component's daily stock.
+   */
+  previewSupplyFlow(opened: { runId: string; params: SupplyFlowParams; options: SupplyFlowOptions }, interventions: Intervention[], component: string): ConstraintSubject {
+    const out = simulateSupplyFlow(opened.params, opened.options, interventions);
+    return { kind: 'run_output', ref: opened.runId, quantities: out.days.map((d) => ({ key: `inventory.on_hand:${component}`, date: d.date, value: Number(d.on_hand_end), unit: null })) };
+  }
+
+  /** Open a METHOD-FABRIC run (governed write: `simulation.run`) — the contract bound as supply-flow@1's is, the method's parameters validated by its adapter. */
+  async openMethod(cap: RunWrites, ctx: ScopeContext, evidence: EvidenceAvailability, intake: RunIntake, actor: string, correlationId: string, runId: string, verdict: GateVerdict | null):
+    Promise<{ runId: string; opened: OpenedRun; modelRef: string; implementationDigest: string; environment: { node: string; platform: string; arch: string }; environmentDigest: string;
+              inputsDigest: string; shockBasis: ShockBasis; rng: string | null; scenario: { scenario_id: string; version: number; branch_id: string; branch_state: string; flip_event_id: string | null } | null;
+              twinFitness: string; envelope: EnvelopeCheck; envelopeAck: Record<string, unknown> | null; challengeId: string | null;
+              /** what the route executes, outside any write: the method input built from the PORT's snapshot, and the registry row's containment */
+              execution: { modelRef: string; input: MethodInput; containment: ReturnType<typeof containmentOf> } }> {
+    const bad = (msg: string, status = 422): never => { throw new HttpException(errorBody(status === 422 ? 'EYE_REQ_001' : 'EYE_STA_001', correlationId, msg), status); };
+    const twin = (await cap.readTwins().selectAll().where('twin_id' as never, '=', intake.twinId as never).executeTakeFirst()) as Record<string, unknown> | undefined;
+    if (twin === undefined) return bad('no authorized twin matches', 404);
+    const own = String(twin['behaviour_model_ref']);
+    const modelRef = intake.modelRef ?? own;
+    const explicit = modelRef === own ? null : modelRef;
+    const entry = this.methods.get(modelRef);
+    if (entry === undefined) return bad(`no implementation of ${modelRef} is registered in this process`);
+    const model = (await cap.readBehaviourModels().selectAll().where('method_ref' as never, '=', modelRef as never).executeTakeFirst()) as Record<string, unknown> | undefined;
+    if (model === undefined) return bad(`no behaviour model ${modelRef} is registered`);
+    if (intake.runKind !== 'control') bad(`a ${modelRef} run is a control run: a method's own interventions are its parameters (counterfactual@1's do-intervention); an intervention run compares supply-flow@1 runs`);
+    if (intake.stochastic.mode === 'seeded' && intake.stochastic.samples !== 1) bad(`a ${modelRef} run draws one sample per seed (stochastic.samples 1)`);
+    const { version, knownAt, observedThrough } = await this.admittedVersion(cap, intake, correlationId);
+    const unavailable = await this.unavailableInputs(cap, evidence, intake.twinId, intake.twinVersion, intake.component, correlationId, explicit);
+    if (unavailable.length > 0) {
+      bad(`required inputs for ${intake.component} are no longer available to this reader under current policy, withdrawal and deletion controls: ${unavailable.join('; ')}`.slice(0, 2000), 409);
+    }
+    const scenario = await this.bindScenario(cap, intake, knownAt, observedThrough, correlationId);
+    const shockBasis: ShockBasis = !intake.shock ? 'none' : (scenario === null ? 'hypothetical' : 'scenario-branch-flipped');
+    const twinControls = controlsOf(version['controls']) ?? { synthetic_state: version['synthetic_state'] === true, classification: 'restricted' };
+    const controls: Controls = foldControls(scenario === null || scenario.controls === null ? [twinControls] : [twinControls, scenario.controls]);
+    const implementationDigest = entry.adapter.digest;
+    const environment = environmentFor(modelRef, implementationDigest);
+    const environmentDigest = digestOf(environment);
+    const constraints = { horizon_days: intake.horizonDays, method_params: intake.methodParams ?? {}, single_component: intake.component };
+    const seeded = intake.stochastic.mode === 'seeded' ? intake.stochastic : null;
+    const elements = await this.elements(cap, intake.twinId, intake.twinVersion);
+    // The method's parameters, judged by its own adapter against the version's elements, before anything is bound.
+    const problems = entry.adapter.validate(methodInputOf({ initial_state: elements, component: intake.component, constraints, model_ref: modelRef,
+                                                            stochastic_mode: intake.stochastic.mode, seed: seeded?.seed ?? null }));
+    if (problems.length > 0) bad(`${modelRef} contract invalid: ${problems.join('; ')}`.slice(0, 2000));
+    const assumptions: Record<string, unknown> = {};
+    for (const e of elements) if (e.kind === 'assumed') assumptions[e.key] = e.value;
+    const scenarioBinding = scenario === null ? null : { scenario_id: scenario.scenarioId, version: scenario.version, branch_id: scenario.branchId, branch_state: scenario.branchState, flip_event_id: scenario.flipEventId };
+    const stochastic = seeded === null ? { mode: 'deterministic' as const } : { mode: 'seeded' as const, seed: seeded.seed, samples: seeded.samples, jitter: seeded.jitter };
+    const inputsDigest = digestOf({
+      provisional: digestOf({ twin: [intake.twinId, intake.twinVersion], model: [modelRef, implementationDigest], environment: environmentDigest, interventions: intake.interventions,
+                              constraints, stochastic, shock: intake.shock, shock_basis: shockBasis, scenario: scenarioBinding, component: intake.component, run_kind: intake.runKind, control: intake.controlRunId }),
+      assumptions });
+    const inherited = elements.filter((e) => e.kind === 'predicted' && e.inherited_validation).map((e) => ({
+      key: e.key, forecast: (e.citations ?? []).filter((c) => c.kind === 'forecast').map((c) => `FCT:${c.id}@${c.version}`).join(','), state: String(e.inherited_validation) }));
+    const validationStatus = `${String(twin['validation'] && (twin['validation'] as Record<string, unknown>)['status'])}`
+      + (inherited.length === 0 ? '' : `; predicted inputs: ${inherited.map((i) => `${i.key} rests on ${i.forecast} (${i.state})`).join('; ')}`)
+      + (shockBasis === 'hypothetical' ? '; the shock is HYPOTHETICAL (no scenario branch supports it)' : '')
+      + `; method ${modelRef} (${entry.adapter.family}) — unvalidated; outputs are SYNTHETIC`;
+    const opened = await cap.openRun({
+      runId, tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, twinId: intake.twinId, twinVersion: intake.twinVersion, runKind: intake.runKind,
+      controlRunId: intake.controlRunId, correctsRunId: intake.correctsRunId,
+      scenarioId: scenario?.scenarioId ?? null, scenarioBranchId: scenario?.branchId ?? null, scenarioVersion: scenario?.version ?? null, scenarioBranchState: scenario?.branchState ?? null,
+      shock: intake.shock, shockBasis, component: intake.component, modelRef, implementationDigest, environmentDigest, environment,
+      stochasticMode: stochastic.mode, rng: seeded === null ? null : RNG_ALGORITHM, seed: seeded?.seed ?? null, samples: seeded?.samples ?? null, jitter: seeded?.jitter ?? null,
+      interventions: intake.interventions, constraints, assumptions, inputsDigest, validationStatus, controls,
+      envelopeAck: intake.envelope, challengeId: intake.challengeId,
+      actor, eventId: newId(), correlationId,
+    });
+    if (verdict !== null) await this.recordVerdict(cap, ctx, runId, 'opening', verdict, true, actor, correlationId);
+    const input = methodInputOf({ initial_state: opened.initial_state, component: intake.component, constraints, model_ref: modelRef, stochastic_mode: stochastic.mode, seed: seeded?.seed ?? null });
+    return { runId, opened, modelRef, implementationDigest, environment: { node: environment.node, platform: environment.platform, arch: environment.arch }, environmentDigest, inputsDigest,
+             shockBasis, rng: seeded === null ? null : RNG_ALGORITHM, scenario: scenarioBinding,
+             twinFitness: String(opened.twin_fitness ?? 'none'), envelope: opened.envelope, envelopeAck: opened.envelope_ack ?? null, challengeId: opened.challenge_id ?? null,
+             execution: { modelRef, input, containment: containmentOf(model['containment']) } };
+  }
+
+  /** EXECUTE a method-fabric run OUTSIDE any write, under its registry row's containment (out of process when isolated, bounded). */
+  async execute(execution: { modelRef: string; input: MethodInput; containment: ReturnType<typeof containmentOf> }): Promise<Contained> {
+    const entry = this.methods.get(execution.modelRef);
+    if (entry === undefined) return { outcome: 'unavailable', reason: `no implementation of ${execution.modelRef} is registered in this process` };
+    return this.methods.execute(entry, execution.input, execution.containment);
+  }
+
+  /**
+   * COMPLETE a method-fabric run (governed write: `simulation.run.complete`) with the outputs its contained execution answered: the
+   * SIM object admitted (synthetic; totals = the method's summary), the outputs and their digest bound, the adapter's streak ended,
+   * §D's verdict on the outputs recorded and announced.
+   */
+  async completeMethod(cap: CompleteWrites, ctx: ScopeContext, runId: string, done: Extract<Contained, { outcome: 'ok' }>, verdict: GateVerdict | null, purposeId: string, actor: string, correlationId: string):
+    Promise<{ runId: string; outputsDigest: string; totals: unknown; summary: Record<string, unknown>; balances: MethodOutput['balances'] | null; days: number; resource: Resource;
+              isolated: boolean; pid: number | null; constraint: GateVerdict | null; simObject: { object_id: string; version: 1; header_digest: string }; event: OutboxRow }> {
+    const r = (await cap.readRuns().selectAll().where('run_id' as never, '=', runId as never).executeTakeFirst()) as Record<string, unknown> | undefined;
+    if (r === undefined) throw new HttpException(errorBody('EYE_STA_001', correlationId, 'no authorized run matches'), 404);
+    if (r['state'] !== 'opened') throw new HttpException(errorBody('EYE_STA_001', correlationId, `run ${runId} is ${String(r['state'])} and immutable`), 409);
+    if (done.implementationDigest !== r['implementation_digest']) {
+      throw new HttpException(errorBody('EYE_STA_001', correlationId, `the executor ran implementation ${done.implementationDigest.slice(0, 16)}…, not the one run ${runId} bound`), 409);
+    }
+    const outputs = done.output;
+    const outputsDigest = done.outputsDigest;
+    const outsideEnvelope = r['envelope_state'] === 'outside';
+    const sensitivity = { relative: 0, method: String(r['model_ref']), factors: [] as unknown[], outside_envelope: outsideEnvelope,
+                          note: 'the method fabric runs no one-at-a-time sweep; a method reports its own spread (the counterfactual\'s deltas, the LP bound, a seeded run\'s seed)' };
+    const env = environmentOf();
+    const resource: Resource = { elapsed_ms: done.elapsedMs, samples_run: 1, process: { node: env.node, platform: env.platform, arch: env.arch }, memory_rss_bytes: process.memoryUsage().rss };
+    const controls = foldControls([controlsOf(r['controls']) ?? { synthetic_state: true, classification: 'restricted' }]);
+    const now = new Date().toISOString();
+    const scenarioId = r['scenario_id'] === null || r['scenario_id'] === undefined ? null : String(r['scenario_id']);
+    const scenarioVersion = r['scenario_version'] === null || r['scenario_version'] === undefined ? null : Number(r['scenario_version']);
+    const payload = {
+      twin: { twin_id: r['twin_id'], version: Number(r['twin_version']), branch_id: r['branch_id'] }, run_kind: r['run_kind'], control_run_id: r['control_run_id'] ?? null,
+      corrects_run_id: r['corrects_run_id'] ?? null,
+      scenario: scenarioId === null ? null : { scenario_id: scenarioId, version: scenarioVersion, branch_id: r['scenario_branch_id'], branch_state: r['scenario_branch_state'], flip_event_id: r['scenario_flip_event'] ?? null },
+      shock: r['shock'], shock_basis: String(r['shock_basis']), component: r['component'],
+      cutoffs: { known_at: instantOf(r['known_at']), observed_through: dayOf(r['observed_through']) },
+      initial_state_digest: r['initial_state_digest'], model: { ref: r['model_ref'], implementation_digest: r['implementation_digest'] },
+      environment: { digest: r['environment_digest'], ...(r['environment'] as Record<string, unknown>) },
+      stochastic: r['stochastic_mode'] === 'seeded' ? { mode: 'seeded', rng: r['rng'], seed: Number(r['seed']), samples: Number(r['samples']), jitter: r['jitter'] } : { mode: 'deterministic' },
+      interventions: r['interventions'], constraints: r['constraints'], assumptions: r['assumptions'], inputs_digest: r['inputs_digest'], outputs_digest: outputsDigest,
+      totals: outputs.summary, sensitivity: { relative: 0, carrying: [] }, outside_envelope: outsideEnvelope, validation_status: r['validation_status'], inherited_validation: [],
+      operator: `principal:${String(r['operator_principal_id'])}`,
+    };
+    const header: CanonicalHeader = {
+      object_id: runId, object_type: 'SIM', tenant_id: ctx.tenantId, domain_id: ctx.domainId, scope: 'DOMAIN', object_version: '1', lifecycle_state: 'active',
+      owning_component: 'CP-SIM-01', accountable_owner: `principal:${String(r['operator_principal_id'])}`,
+      source_object_ids: [`TWN:${String(r['twin_id'])}@${String(r['twin_version'])}`, ...(scenarioId === null ? [] : [`SCN:${scenarioId}@${String(scenarioVersion)}`])],
+      event_time: null, observation_time: null, valid_from: null, valid_to: null, recorded_at: now, time_precision: 'exact', source_clock_quality: 'trusted',
+      truth_state: 'synthetic', synthetic_state: true, confidence: null, uncertainty: null,
+      evidence_refs: [], provenance_ref: `twin:${String(r['twin_id'])}@${String(r['twin_version'])}`, method_ref: `${String(r['model_ref'])}#${String(r['implementation_digest']).slice(0, 16)}`,
+      contradiction_refs: [], corroboration_refs: [], human_refs: [`principal:${String(r['operator_principal_id'])}`],
+      classification: controls.classification, purpose_scope: purposeId, rights_profile: controls.rights_profile, residency_profile: controls.residency_profile,
+      retention_profile: controls.retention_profile, access_policy_ref: controls.access_policy_ref, quality_profile: null,
+      quality_state: { validation: r['validation_status'], outside_envelope: outsideEnvelope, shock_basis: r['shock_basis'], method: r['model_ref'] }, freshness_state: null, schema_ref: 'SIM@v2', ontology_ref: null,
+      correction_of: r['corrects_run_id'] ? `SIM:${String(r['corrects_run_id'])}@1` : null, supersedes: null, withdrawal_reason: null, audit_correlation_id: correlationId, content_ref: null,
+    };
+    const check = validateHeader(header);
+    if (!check.ok) throw new HttpException(errorBody('EYE_REQ_001', correlationId, `simulation header invalid: ${(check.errors ?? []).join('; ')}`), 422);
+    const headerDigest = canonicalHeaderDigest(header, payload);
+    await cap.admitObject(header, payload, headerDigest);
+    await cap.completeRun({ runId, tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, outputs, outputsDigest, sensitivity, outsideEnvelope,
+      headerDigest, resource, actor, eventId: newId(), correlationId });
+    if (done.isolated) await cap.recordAdapterSuccess({ tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, modelRef: String(r['model_ref']) });
+    if (verdict !== null) await this.recordVerdict(cap, ctx, runId, 'completion', verdict, true, actor, correlationId);
+    const simObject = { object_id: runId, version: 1 as const, header_digest: headerDigest };
+    const event = simulationCompletedEvent({
+      runId, state: 'completed', run: r, outputsDigest, totals: outputs.summary, impacts: { control_run_id: null, deltas: null },
+      sensitivity: { relative: 0, outside_envelope: outsideEnvelope, factors: [] },
+      validation: { validation_status: r['validation_status'] === null || r['validation_status'] === undefined ? null : String(r['validation_status']), inherited_validation: [], outside_envelope: outsideEnvelope },
+      resource, simObject, failure: null, actor, occurredAt: now,
+    });
+    return { runId, outputsDigest, totals: outputs.summary, summary: outputs.summary, balances: outputs.balances ?? null, days: outputs.series.length, resource,
+             isolated: done.isolated, pid: done.pid, constraint: verdict, simObject, event };
+  }
+
+  /**
+   * FAIL a run whose completion did not happen (governed write: `simulation.run.complete`): the run `failed` with the reason; when the
+   * cause was the ADAPTER's fault (timeout, crash, memory, invalid output), the fault recorded against it in the same write — the streak
+   * grows, and at the registry row's threshold the adapter is quarantined (the port's answer says so).
+   */
+  async recordFailure(cap: CompleteWrites, ctx: ScopeContext, runId: string, modelRef: string, failure: string, fault: { kind: 'timeout' | 'crash' | 'memory' | 'invalid_output'; message: string } | null,
+                      actor: string, correlationId: string): Promise<Record<string, unknown> | null> {
+    await cap.failRun({ runId, tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, failure: failure.slice(0, 500), actor, eventId: newId(), correlationId });
+    if (fault === null) return null;
+    return cap.recordAdapterFault({ tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, modelRef, runId, probeId: null, kind: fault.kind, message: fault.message,
+                                    actor, eventId: newId(), correlationId });
+  }
+
+  /** A method-fabric run's RE-EXECUTION for a reproduction: always out of process (the cold attestation), under the row's bounds; a fault is the adapter's, recorded. */
+  private async reexecuteMethod(cap: ReproduceWrites, ctx: ScopeContext, r: Record<string, unknown>, actor: string, correlationId: string):
+    Promise<{ outputs_digest: string; implementation_digest: string; pid: number } | { failed: string }> {
+    const modelRef = String(r['model_ref']);
+    const entry = this.methods.get(modelRef);
+    if (entry === undefined) return { failed: `no implementation of ${modelRef} is registered in this process` };
+    const model = (await cap.readBehaviourModels().selectAll().where('method_ref' as never, '=', modelRef as never).executeTakeFirst()) as Record<string, unknown> | undefined;
+    const got = await this.methods.execute(entry, methodInputOf(r), { ...containmentOf(model?.['containment']), isolated: true });
+    const scope = { tenantId: ctx.tenantId as string, domainId: ctx.domainId as string };
+    if (got.outcome === 'ok') {
+      await cap.recordAdapterSuccess({ ...scope, modelRef });
+      return { outputs_digest: got.outputsDigest, implementation_digest: got.implementationDigest, pid: got.pid ?? -1 };
+    }
+    if (got.outcome === 'fault') {
+      await cap.recordAdapterFault({ ...scope, modelRef, runId: String(r['run_id']), probeId: null, kind: got.kind, message: got.message, actor, eventId: newId(), correlationId });
+      return { failed: `the adapter faulted (${got.kind}): ${got.message}` };
+    }
+    return { failed: got.outcome === 'invalid' ? `the stored contract is not a valid input of ${modelRef}: ${got.problems.join('; ')}` : got.reason };
+  }
+
+  /** THE PROBE's execution, outside any write: the method on its FIXED probe input under the row's bounds, always out of process. */
+  async executeProbe(modelRef: string, containmentRaw: unknown, correlationId: string): Promise<{ entry: MethodEntry; got: Contained }> {
+    const entry = this.methods.get(modelRef);
+    if (entry === undefined) throw new HttpException(errorBody('EYE_REQ_001', correlationId, `no implementation of ${modelRef} is registered in this process`), 422);
+    if (entry.probe === null) throw new HttpException(errorBody('EYE_REQ_001', correlationId, `adapter probe rejected: ${modelRef} is not a contained method; nothing is probed`), 422);
+    return { entry, got: await this.methods.execute(entry, entry.probe, { ...containmentOf(containmentRaw), isolated: true }) };
+  }
+
+  /** Record the probe (governed write: `simulation.adapter.probe`); an executor that is not there records nothing (409). */
+  async recordProbe(cap: ProbeWrites, ctx: ScopeContext, modelRef: string, probe: { entry: MethodEntry; got: Contained }, actor: string, correlationId: string): Promise<Record<string, unknown>> {
+    const g = probe.got;
+    if (g.outcome === 'unavailable') throw new HttpException(errorBody('EYE_STA_001', correlationId, `the probe could not be executed: ${g.reason}`), 409);
+    const passed = g.outcome === 'ok';
+    const fault = g.outcome === 'fault' ? { kind: g.kind, message: g.message } : g.outcome === 'invalid' ? { kind: 'invalid_output', message: `the adapter refused its own probe input: ${g.problems.join('; ')}` } : null;
+    return cap.recordProbe({ probeId: newId(), tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, modelRef, implementationDigest: probe.entry.adapter.digest, passed,
+                             outputsDigest: g.outcome === 'ok' ? g.outputsDigest : null, faultKind: fault?.kind ?? null, fault: fault?.message ?? null,
+                             elapsedMs: g.outcome === 'ok' || g.outcome === 'fault' ? g.elapsedMs : null, pid: g.outcome === 'ok' || g.outcome === 'fault' ? g.pid : null,
+                             actor, eventId: newId(), correlationId });
+  }
+
+  async bind(cap: BindWrites, ctx: ScopeContext, a: { twinId: string; modelRef: string; reason: string | null }, actor: string, correlationId: string): Promise<Record<string, unknown>> {
+    return cap.bindMethod({ bindingId: newId(), tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, ...a, actor, eventId: newId(), correlationId });
+  }
+  async unbind(cap: BindWrites, ctx: ScopeContext, a: { twinId: string; modelRef: string; reason: string }, actor: string, correlationId: string): Promise<Record<string, unknown>> {
+    return cap.unbindMethod({ tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, ...a, actor, eventId: newId(), correlationId });
+  }
+  async reinstate(cap: ReinstateWrites, ctx: ScopeContext, a: { modelRef: string; reason: string }, actor: string, correlationId: string): Promise<Record<string, unknown>> {
+    return cap.reinstateAdapter({ tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, ...a, actor, eventId: newId(), correlationId });
+  }
+
+  /** The method portfolio as this domain sees it: every registry row, whether this process carries its implementation (and the same bytes), and the domain's adapter health. */
+  async listMethods(cap: SimulationReads): Promise<unknown[]> {
+    const rows = (await cap.readBehaviourModels().selectAll().orderBy('method_ref' as never).execute()) as Array<Record<string, unknown>>;
+    const health = (await cap.readAdapterHealth().selectAll().execute()) as Array<Record<string, unknown>>;
+    return rows.map((m) => {
+      const held = this.implementationOf(String(m['method_ref']));
+      const h = health.find((x) => x['model_ref'] === m['method_ref']) ?? null;
+      return { method_ref: m['method_ref'], name: m['name'], family: m['family'], adapter: m['adapter'], containment: containmentOf(m['containment']), required_inputs: m['required_inputs'],
+               parameter_schema: m['parameter_schema'], operating_envelope: m['operating_envelope'], implementation_digest: m['implementation_digest'],
+               carried: held !== null, carried_digest_matches: held !== null && held === m['implementation_digest'],
+               health: h === null ? { state: 'healthy', consecutive_faults: 0, total_faults: 0 } : h };
+    });
+  }
+  async listBindings(cap: SimulationReads, twinId: string | null): Promise<unknown[]> {
+    let q = cap.readBindings().selectAll();
+    if (twinId !== null) q = q.where('twin_id' as never, '=', twinId as never);
+    return (await q.orderBy('bound_at' as never, 'desc').limit(500).execute()) as unknown[];
+  }
+  async adapterHealth(cap: SimulationReads, modelRef: string): Promise<Record<string, unknown>> {
+    const health = ((await cap.readAdapterHealth().selectAll().where('model_ref' as never, '=', modelRef as never).executeTakeFirst()) as Record<string, unknown> | undefined) ?? null;
+    const events = (await cap.readAdapterEvents().selectAll().where('model_ref' as never, '=', modelRef as never).orderBy('occurred_at' as never, 'desc').limit(50).execute()) as unknown[];
+    const probes = (await cap.readAdapterProbes().selectAll().where('model_ref' as never, '=', modelRef as never).orderBy('probed_at' as never, 'desc').limit(20).execute()) as unknown[];
+    return { model_ref: modelRef, health: health ?? { state: 'healthy', consecutive_faults: 0, total_faults: 0 }, events, probes };
+  }
+
+  /** The admitted, complete version the run reads, with its two cut-offs — refused early, named (the port refuses the same). */
+  private async admittedVersion(cap: RunWrites, intake: RunIntake, correlationId: string): Promise<{ version: Record<string, unknown>; knownAt: string; observedThrough: string | null }> {
     const version = (await cap.readVersions().selectAll().where('twin_id' as never, '=', intake.twinId as never).where('version' as never, '=', intake.twinVersion as never).executeTakeFirst()) as Record<string, unknown> | undefined;
     if (version === undefined || version['state'] !== 'admitted') throw new HttpException(errorBody('EYE_STA_001', correlationId, `version ${intake.twinVersion} is not an admitted version of this twin`), 409);
     if (version['completeness'] !== 'complete') {
@@ -313,18 +776,11 @@ export class SimulationService {
     }
     const knownAt = instantOf(version['known_at']);
     const observedThrough = dayOf(version['observed_through']);
-    /*
-     * AVAILABILITY NOW, FOR THIS READER. The version's stored health is what was true
-     * when it was grounded; this run is asked for now. A required input whose document
-     * has since been withdrawn, deleted or become unreadable to this reader is not one
-     * the run may use, however complete the version was. (The port refuses the same,
-     * from the object's own lifecycle; here the governed retrieval also decides.)
-     */
-    const unavailable = await this.unavailableInputs(cap, evidence, intake.twinId, intake.twinVersion, intake.component, correlationId);
-    if (unavailable.length > 0) {
-      throw new HttpException(errorBody('EYE_STA_001', correlationId,
-        `required inputs for ${intake.component} are no longer available to this reader under current policy, withdrawal and deletion controls: ${unavailable.join('; ')}`.slice(0, 2000)), 409);
-    }
+    return { version, knownAt, observedThrough };
+  }
+
+  /** The scenario binding a run applies (B29 §C: shared by supply-flow@1's opening and a method-fabric run's; the text unchanged). */
+  private async bindScenario(cap: RunWrites, intake: RunIntake, knownAt: string, observedThrough: string | null, correlationId: string): Promise<ScenarioBinding | null> {
     /*
      * THE SCENARIO IS RESOLVED AND BOUND, UNDER THIS RUN'S OWN RECORD CUT-OFF. A tree
      * admitted after the twin version's `known_at`, or a branch that flipped after it,
@@ -385,51 +841,7 @@ export class SimulationService {
                    controls: { synthetic_state: obj.synthetic_state, classification: obj.classification, rights_profile: obj.rights_profile,
                                residency_profile: obj.residency_profile, retention_profile: obj.retention_profile, access_policy_ref: obj.access_policy_ref } };
     }
-    const shockBasis: ShockBasis = !intake.shock ? 'none' : (scenario === null ? 'hypothetical' : 'scenario-branch-flipped');
-    // CONTROLS fold from the twin version and the scenario into the run (rule 7).
-    const twinControls = controlsOf(version['controls']) ?? { synthetic_state: version['synthetic_state'] === true, classification: 'restricted' };
-    const controls: Controls = foldControls(scenario === null || scenario.controls === null ? [twinControls] : [twinControls, scenario.controls]);
-    const environment = environmentOf();
-    const environmentDigest = digestOf(environment);
-    const stochastic: SupplyFlowOptions['stochastic'] = intake.stochastic.mode === 'seeded'
-      ? { mode: 'seeded', seed: intake.stochastic.seed, samples: intake.stochastic.samples, jitter: intake.stochastic.jitter } : { mode: 'deterministic' };
-    const options: SupplyFlowOptions = { horizon_days: intake.horizonDays, shock: intake.shock, stochastic };
-    const constraints = { horizon_days: intake.horizonDays, sensitivity_relative: intake.sensitivityRelative, single_component: intake.component };
-    const scenarioBinding = scenario === null ? null : { scenario_id: scenario.scenarioId, version: scenario.version, branch_id: scenario.branchId, branch_state: scenario.branchState, flip_event_id: scenario.flipEventId };
-    // Open: the port snapshots the state set and checks compatibility. Parameters are derived from the SNAPSHOT it returns.
-    const provisionalInputs = digestOf({ twin: [intake.twinId, intake.twinVersion], model: [modelRef, SUPPLY_FLOW_IMPLEMENTATION_DIGEST], environment: environmentDigest,
-      interventions: intake.interventions, constraints, stochastic, shock: intake.shock, shock_basis: shockBasis, scenario: scenarioBinding,
-      component: intake.component, run_kind: intake.runKind, control: intake.controlRunId });
-    // Derive the assumptions the port compares (they come from the element set; identical to the snapshot the port takes in this transaction).
-    const elements = await this.elements(cap, intake.twinId, intake.twinVersion);
-    const derived = paramsFromSnapshot(elements, intake.component);
-    if (derived.problems.length > 0) throw new HttpException(errorBody('EYE_STA_001', correlationId, `the twin does not hold what the model needs for ${intake.component}: ${derived.problems.join('; ')}`), 409);
-    const problems = validateParams(derived.params, options, intake.interventions);
-    if (problems.length > 0) throw new HttpException(errorBody('EYE_REQ_001', correlationId, `supply-flow@1 contract invalid: ${problems.join('; ')}`), 422);
-    const inputsDigest = digestOf({ provisional: provisionalInputs, assumptions: derived.assumptions });
-    // VALIDATION STATUS: the twin's declared status, then every predicted input's inherited state, by name.
-    const inherited = elements.filter((e) => e.kind === 'predicted' && e.inherited_validation).map((e) => ({
-      key: e.key, forecast: (e.citations ?? []).filter((c) => c.kind === 'forecast').map((c) => `FCT:${c.id}@${c.version}`).join(','), state: String(e.inherited_validation) }));
-    const validationStatus = `${String(twin['validation'] && (twin['validation'] as Record<string, unknown>)['status'])}`
-      + (inherited.length === 0 ? '' : `; predicted inputs: ${inherited.map((i) => `${i.key} rests on ${i.forecast} (${i.state})`).join('; ')}`)
-      + (shockBasis === 'hypothetical' ? '; the shock is HYPOTHETICAL (no scenario branch supports it)' : '')
-      + '; outputs are SYNTHETIC';
-    const opened = await cap.openRun({
-      runId, tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, twinId: intake.twinId, twinVersion: intake.twinVersion, runKind: intake.runKind,
-      controlRunId: intake.controlRunId, correctsRunId: intake.correctsRunId,
-      scenarioId: scenario?.scenarioId ?? null, scenarioBranchId: scenario?.branchId ?? null, scenarioVersion: scenario?.version ?? null, scenarioBranchState: scenario?.branchState ?? null,
-      shock: intake.shock, shockBasis, component: intake.component, modelRef, implementationDigest: SUPPLY_FLOW_IMPLEMENTATION_DIGEST, environmentDigest, environment,
-      stochasticMode: stochastic.mode, rng: stochastic.mode === 'seeded' ? RNG_ALGORITHM : null, seed: stochastic.mode === 'seeded' ? stochastic.seed : null,
-      samples: stochastic.mode === 'seeded' ? stochastic.samples : null, jitter: stochastic.mode === 'seeded' ? stochastic.jitter : null,
-      interventions: intake.interventions, constraints, assumptions: derived.assumptions, inputsDigest, validationStatus, controls,
-      // B21 (0081): the acknowledgement and the challenge go to the port as given — it judges the envelope, the holder and the challenge's state.
-      envelopeAck: intake.envelope, challengeId: intake.challengeId,
-      actor, eventId: newId(), correlationId,
-    });
-    return { runId, opened, params: derived.params, options, assumptions: derived.assumptions, operatingEnvelope: envelope,
-             modelRef, implementationDigest: SUPPLY_FLOW_IMPLEMENTATION_DIGEST, environment: { node: environment.node, platform: environment.platform, arch: environment.arch },
-             environmentDigest, inputsDigest, shockBasis, rng: stochastic.mode === 'seeded' ? RNG_ALGORITHM : null, scenario: scenarioBinding,
-             twinFitness: String(opened.twin_fitness ?? 'none'), envelope: opened.envelope, envelopeAck: opened.envelope_ack ?? null, challengeId: opened.challenge_id ?? null };
+    return scenario;
   }
 
   /**
@@ -479,9 +891,11 @@ export class SimulationService {
   }
 
   /** The selected component's required inputs, as the port selects them, checked for availability now (the sentences, for the refusal). */
-  private async unavailableInputs(cap: RunWrites, evidence: EvidenceAvailability, twinId: string, version: number, component: string, correlationId: string): Promise<string[]> {
+  private async unavailableInputs(cap: RunWrites, evidence: EvidenceAvailability, twinId: string, version: number, component: string, correlationId: string,
+                                  /** B29 (0092) §C: an explicitly bound method (its required inputs); null for the twin's own model. */
+                                  modelRef: string | null = null): Promise<string[]> {
     void correlationId;
-    const citations = await cap.requiredCitations({ twinId, version, component });
+    const citations = await cap.requiredCitations({ twinId, version, component, modelRef });
     return (await this.unavailable(cap, evidence, citations)).map((u) => u.text);
   }
 
@@ -516,7 +930,7 @@ export class SimulationService {
     const r = (await cap.readRuns().selectAll().where('run_id' as never, '=', runId as never).executeTakeFirst()) as Record<string, unknown> | undefined;
     if (r === undefined || r['state'] !== 'completed') return [];
     const model = (await cap.readBehaviourModels().selectAll().where('method_ref' as never, '=', r['model_ref'] as never).executeTakeFirst()) as Record<string, unknown> | undefined;
-    if (model === undefined || model['implementation_digest'] !== r['implementation_digest'] || SUPPLY_FLOW_IMPLEMENTATION_DIGEST !== r['implementation_digest']) return [];
+    if (model === undefined || model['implementation_digest'] !== r['implementation_digest'] || this.implementationOf(String(r['model_ref'])) !== r['implementation_digest']) return [];
     return snapshotCitations(r);
   }
 
@@ -535,7 +949,9 @@ export class SimulationService {
    * sweep), lands on the row and in run.completed through the port, and the answer carries it with the impacts against the
    * control, the SIM object admitted and the SimulationCompleted event the route publishes.
    */
-  async complete(cap: CompleteWrites, ctx: ScopeContext, runId: string, purposeId: string, actor: string, correlationId: string):
+  async complete(cap: CompleteWrites, ctx: ScopeContext, runId: string, purposeId: string, actor: string, correlationId: string,
+                 /** B29 (0092) §C: §D's verdict on the outputs (checkGate over previewOutputs, before this write); recorded on the run. */
+                 verdict: GateVerdict | null = null):
     Promise<{ runId: string; outputsDigest: string; totals: unknown; sensitivity: unknown; outsideEnvelope: boolean;
               impacts: { control_run_id: string | null; deltas: { line_stop_days: number; total_cost: string } | null }; resource: Resource;
               simObject: { object_id: string; version: 1; header_digest: string }; event: OutboxRow }> {
@@ -604,6 +1020,7 @@ export class SimulationService {
       await cap.admitObject(header, payload, headerDigest);
       await cap.completeRun({ runId, tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, outputs, outputsDigest, sensitivity, outsideEnvelope: sensitivity.outside_envelope,
         headerDigest, resource, actor, eventId: newId(), correlationId });
+      if (verdict !== null) await this.recordVerdict(cap, ctx, runId, 'completion', verdict, false, actor, correlationId);
       const simObject = { object_id: runId, version: 1 as const, header_digest: headerDigest };
       const impacts = { control_run_id: controlId, deltas };
       const event = simulationCompletedEvent({
@@ -647,7 +1064,9 @@ export class SimulationService {
     if (r === undefined) throw new HttpException(errorBody('EYE_STA_001', correlationId, 'no authorized run matches'), 404);
     if (r['state'] !== 'completed') throw new HttpException(errorBody('EYE_STA_001', correlationId, `run ${runId} is ${String(r['state'])}; only a completed run is reproduced`), 409);
     const expected = String(r['outputs_digest']);
-    const environment = environmentOf();
+    // B29 (0092) §C: the runtime FOR THE RUN'S METHOD (for supply-flow@1 the same object, the same digest, as environmentOf()).
+    const held = this.implementationOf(String(r['model_ref']));
+    const environment = environmentFor(String(r['model_ref']), held ?? '');
     const environmentDigest = digestOf(environment);
     const environmentMatches = environmentDigest === String(r['environment_digest']);
     const model = (await cap.readBehaviourModels().selectAll().where('method_ref' as never, '=', r['model_ref'] as never).executeTakeFirst()) as Record<string, unknown> | undefined;
@@ -655,7 +1074,7 @@ export class SimulationService {
     const unavailable: UnavailableEntry[] = [];
     // Which cause an unreproducible verdict rests on (C2): only a lifecycle cause is the RESULT's unfitness; the others withhold the invalidation.
     let withheld: InvalidationWithheld | null = null;
-    if (model === undefined || model['implementation_digest'] !== r['implementation_digest'] || SUPPLY_FLOW_IMPLEMENTATION_DIGEST !== r['implementation_digest']) {
+    if (model === undefined || model['implementation_digest'] !== r['implementation_digest'] || held !== r['implementation_digest']) {
       verdict = 'unreproducible'; withheld = 'implementation';
       reason = `the pinned implementation of ${String(r['model_ref'])} is no longer the one the run recorded (${String(r['implementation_digest']).slice(0, 16)}…); the stored contract cannot be re-executed by the same code`;
     } else {
@@ -674,8 +1093,8 @@ export class SimulationService {
         // No lifecycle cause among them: the first named one says what withheld the invalidation (the reader's access, or the store's bytes).
         if (!unavailable.some((u) => u.cause === 'lifecycle')) withheld = unavailable[0]?.cause === 'bytes' ? 'bytes' : 'access';
       } else {
-        // 3. RE-EXECUTION in a separate process the product spawns.
-        const child = await executeInSeparateProcess(r);
+        // 3. RE-EXECUTION in a separate process the product spawns (B29 §C: a method-fabric run through the method worker, always out of process).
+        const child = String(r['model_ref']) === SUPPLY_FLOW_METHOD_REF ? await executeInSeparateProcess(r) : await this.reexecuteMethod(cap, ctx, r, actor, correlationId);
         if ('failed' in child) {
           verdict = 'unreproducible'; withheld = 'infrastructure'; reason = `the stored contract could not be re-executed in a separate process: ${child.failed}`;
         } else if (child.implementation_digest !== r['implementation_digest']) {
@@ -879,8 +1298,11 @@ export class SimulationService {
     const challengeEvents = challenges.length === 0 ? [] : (await cap.readChallengeEvents().selectAll()
       .where('challenge_id' as never, 'in', challenges.map((c) => String(c['challenge_id'])) as never).orderBy('occurred_at' as never).execute()) as Array<Record<string, unknown>>;
     const promotion = ((await cap.readPromotions().selectAll().where('run_id' as never, '=', runId as never).executeTakeFirst()) as Record<string, unknown> | undefined) ?? null;
+    // B29 (0092) §C: §D's verdicts recorded on the run (opening, completion) — an indeterminate one says why and is never read as satisfied.
+    const constraintChecks = (await cap.readRunConstraintChecks().selectAll().where('run_id' as never, '=', runId as never).orderBy('checked_at' as never).execute()) as unknown[];
     return { ...withDays(r), events, reproductions,
-             challenges: challenges.map((c) => ({ ...c, events: challengeEvents.filter((e) => String(e['challenge_id']) === String(c['challenge_id'])) })), promotion };
+             challenges: challenges.map((c) => ({ ...c, events: challengeEvents.filter((e) => String(e['challenge_id']) === String(c['challenge_id'])) })), promotion,
+             constraint_checks: constraintChecks };
   }
 
   async list(cap: SimulationReads, twinId: string | null): Promise<unknown[]> {

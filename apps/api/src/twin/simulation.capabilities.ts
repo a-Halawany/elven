@@ -16,6 +16,12 @@
  * `challenge_id`; the CHALLENGE ports (open, request a re-run, withdraw, decide — the upheld path invalidating under the
  * decide route's own action, trigger `challenge`) and the PROMOTION (`simulation.promote_result`) are the writes of
  * ChallengeWrites and PromoteWrites; the challenge, challenge-event and promotion tables are read back on the reads.
+ *
+ * CP-6 B29 (0092) §C: the METHOD FABRIC's ports — the verdict of §D's gate recorded on a run (record_constraint_check, at opening
+ * on RunWrites and at completion on CompleteWrites), a contained adapter's fault and success (record_adapter_fault / _success, on the
+ * completing and reproducing writes), the bindings (BindWrites), the probe (ProbeWrites), the reinstatement (ReinstateWrites);
+ * `requiredCitations` takes the method (the model-aware twin.required_citations/4) and the reads gain the bindings, the adapters'
+ * health, ledger and probes, and the constraint verdicts.
  */
 import { sql } from 'kysely';
 import type { Tx } from '../shared/db.js';
@@ -53,8 +59,14 @@ export interface SimulationReads {
    */
   branchStateAsOf(a: { branchId: string; at: string; observedThrough: string | null }):
     Promise<{ state: string; flipRecordedAt: string | null; flipObservedAt: string | null } | undefined>;
-  /** The citations the SELECTED component's required inputs rest on — the selection rule lives in the port. */
-  requiredCitations(a: { twinId: string; version: number; component: string }): Promise<Array<{ key: string; kind: string; id: string; version: number; digest: string }>>;
+  /** The citations the SELECTED component's required inputs rest on — the selection rule lives in the port. B29 (0092) §C: with `modelRef`, the METHOD's required inputs (twin.required_citations/4); without, the twin's own model's (/3, unchanged). */
+  requiredCitations(a: { twinId: string; version: number; component: string; modelRef?: string | null }): Promise<Array<{ key: string; kind: string; id: string; version: number; digest: string }>>;
+  /** B29 (0092) §C: the method bindings (twin.twin_method_bindings), the adapters' health, ledger and probes, and the constraint verdicts recorded on runs. */
+  readBindings(): any;
+  readAdapterHealth(): any;
+  readAdapterEvents(): any;
+  readAdapterProbes(): any;
+  readRunConstraintChecks(): any;
   rebuildProjections(): Promise<Array<{ projection: string; live_rows: string; rebuilt_rows: string; mismatched: string }>>;
   /** B18 (0078): what is subscribed to a GraphChanged of this kind at publication — evidence for the event, never authority (the 0065 shape). */
   changeSubscriptions(a: { tenantId: string; domainId: string; changeKind: string }): Promise<Array<{ subscription_id: string; consumer_kind: string }>>;
@@ -86,8 +98,19 @@ export interface OpenedRun {
   twin_fitness: string; envelope: EnvelopeCheck; envelope_ack: Record<string, unknown> | null; challenge_id: string | null;
 }
 
+/** B29 (0092) §C: §D's verdict recorded ON THE RUN (simulation.record_constraint_check) — `announce` writes run_events constraint.checked / constraint.refused. */
+export interface ConstraintCheckArgs {
+  checkId: string; tenantId: string; domainId: string; runId: string; stage: 'opening' | 'completion'; outcome: 'satisfied' | 'violated' | 'indeterminate';
+  setId: string | null; setVersion: number | null; violations: unknown[]; reason: string | null; announce: boolean; actor: string; eventId: string; correlationId: string;
+}
+/** B29 (0092) §C: a contained adapter's fault (simulation.record_adapter_fault) — of one run or one probe; the port grows the streak and quarantines at the threshold. */
+export interface AdapterFaultArgs {
+  tenantId: string; domainId: string; modelRef: string; runId: string | null; probeId: string | null; kind: 'timeout' | 'crash' | 'memory' | 'invalid_output'; message: string;
+  actor: string; eventId: string; correlationId: string;
+}
 export interface RunWrites extends SimulationReads {
   openRun(a: OpenRunArgs): Promise<OpenedRun>;
+  recordConstraintCheck(a: ConstraintCheckArgs): Promise<Record<string, unknown>>;
 }
 export interface CompleteWrites extends SimulationReads {
   admitObject(header: unknown, payload: unknown, digest: string): Promise<{ contentDigest: string }>;
@@ -95,6 +118,10 @@ export interface CompleteWrites extends SimulationReads {
   completeRun(a: { runId: string; tenantId: string; domainId: string; outputs: unknown; outputsDigest: string; sensitivity: unknown; outsideEnvelope: boolean;
                    headerDigest: string; resource: Resource; actor: string; eventId: string; correlationId: string }): Promise<void>;
   failRun(a: { runId: string; tenantId: string; domainId: string; failure: string; actor: string; eventId: string; correlationId: string }): Promise<void>;
+  /** B29 (0092) §C: the completion's verdict, the contained adapter's fault (in the failing write) or its success (the streak ends). */
+  recordConstraintCheck(a: ConstraintCheckArgs): Promise<Record<string, unknown>>;
+  recordAdapterFault(a: AdapterFaultArgs): Promise<Record<string, unknown>>;
+  recordAdapterSuccess(a: { tenantId: string; domainId: string; modelRef: string }): Promise<void>;
 }
 /**
  * B18 (0078, L8-I05): the INVALIDATION of a completed run's result — the withdrawn SIM version admitted, then the port
@@ -114,6 +141,9 @@ export interface InvalidateWrites extends SimulationReads {
 }
 /** A reproduction records its verdict and, on an unreproducible one caused by a withdrawn or retired input, invalidates in the same write. */
 export interface ReproduceWrites extends InvalidateWrites {
+  /** B29 (0092) §C: a contained re-execution that faulted is the adapter's fault; one that ran ends its streak. */
+  recordAdapterFault(a: AdapterFaultArgs): Promise<Record<string, unknown>>;
+  recordAdapterSuccess(a: { tenantId: string; domainId: string; modelRef: string }): Promise<void>;
   recordReproduction(a: { reproductionId: string; tenantId: string; domainId: string; runId: string; verdict: 'reproduced' | 'mismatch' | 'unreproducible';
                           expected: string; actual: string | null; reason: string; environmentDigest: string; environmentMatches: boolean; cold: boolean;
                           actor: string; eventId: string; correlationId: string }): Promise<void>;
@@ -138,8 +168,23 @@ export interface PromoteWrites extends SimulationReads {
                      actor: string; eventId: string; correlationId: string }): Promise<Record<string, unknown>>;
 }
 
+/** B29 (0092) §C: a twin's owner binds or unbinds a method (simulation.method.bind / .unbind). */
+export interface BindWrites extends SimulationReads {
+  bindMethod(a: { bindingId: string; tenantId: string; domainId: string; twinId: string; modelRef: string; reason: string | null; actor: string; eventId: string; correlationId: string }): Promise<Record<string, unknown>>;
+  unbindMethod(a: { tenantId: string; domainId: string; twinId: string; modelRef: string; reason: string; actor: string; eventId: string; correlationId: string }): Promise<Record<string, unknown>>;
+}
+/** B29 (0092) §C: a method steward's probe of a contained adapter (simulation.adapter.probe) — the answer executed before the write, recorded here. */
+export interface ProbeWrites extends SimulationReads {
+  recordProbe(a: { probeId: string; tenantId: string; domainId: string; modelRef: string; implementationDigest: string; passed: boolean; outputsDigest: string | null;
+                   faultKind: string | null; fault: string | null; elapsedMs: number | null; pid: number | null; actor: string; eventId: string; correlationId: string }): Promise<Record<string, unknown>>;
+}
+/** B29 (0092) §C: the governed reinstatement of a quarantined adapter (simulation.adapter.reinstate, human-gated). */
+export interface ReinstateWrites extends SimulationReads {
+  reinstateAdapter(a: { tenantId: string; domainId: string; modelRef: string; reason: string; actor: string; eventId: string; correlationId: string }): Promise<Record<string, unknown>>;
+}
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
-class SimulationCapabilityImpl implements RunWrites, CompleteWrites, InvalidateWrites, ReproduceWrites, ChallengeWrites, PromoteWrites {
+class SimulationCapabilityImpl implements RunWrites, CompleteWrites, InvalidateWrites, ReproduceWrites, ChallengeWrites, PromoteWrites, BindWrites, ProbeWrites, ReinstateWrites {
   readonly #tx: Tx; readonly #action: string;
   constructor(tx: Tx, action: string) { this.#tx = tx; this.#action = action; }
   get action(): string { return this.#action; }
@@ -158,6 +203,12 @@ class SimulationCapabilityImpl implements RunWrites, CompleteWrites, InvalidateW
   readBehaviourModels(): any { return this.from('twin.behaviour_models'); }
   readScenarios(): any { return this.from('prediction.scenarios_current'); }
   readBranches(): any { return this.from('prediction.branches_current'); }
+  /* B29 (0092) §C */
+  readBindings(): any { return this.from('twin.twin_method_bindings'); }
+  readAdapterHealth(): any { return this.from('simulation.adapter_health'); }
+  readAdapterEvents(): any { return this.from('simulation.adapter_events'); }
+  readAdapterProbes(): any { return this.from('simulation.adapter_probes'); }
+  readRunConstraintChecks(): any { return this.from('simulation.run_constraint_checks'); }
 
   async versionAsOf(a: { objectType: string; id: string; at: string }): Promise<number | null> {
     const rows = await this.call<{ v: number | null }>(sql`select max(o.object_version)::int as v from objects.canonical_objects o
@@ -178,9 +229,11 @@ class SimulationCapabilityImpl implements RunWrites, CompleteWrites, InvalidateW
     return { state: r.s, flipRecordedAt: r.recorded, flipObservedAt: r.observed };
   }
 
-  async requiredCitations(a: { twinId: string; version: number; component: string }): Promise<Array<{ key: string; kind: string; id: string; version: number; digest: string }>> {
+  async requiredCitations(a: { twinId: string; version: number; component: string; modelRef?: string | null }): Promise<Array<{ key: string; kind: string; id: string; version: number; digest: string }>> {
     const rows = await this.call<{ c: Array<{ key: string; kind: string; id: string; version: number; digest: string }> }>(
-      sql`select twin.required_citations(${a.twinId}::uuid, ${a.version}::int, ${a.component}) as c`);
+      a.modelRef === undefined || a.modelRef === null
+        ? sql`select twin.required_citations(${a.twinId}::uuid, ${a.version}::int, ${a.component}) as c`
+        : sql`select twin.required_citations(${a.twinId}::uuid, ${a.version}::int, ${a.component}, ${a.modelRef}) as c`);
     return rows[0]?.c ?? [];
   }
 
@@ -287,6 +340,41 @@ class SimulationCapabilityImpl implements RunWrites, CompleteWrites, InvalidateW
   async failRun(a: Parameters<CompleteWrites['failRun']>[0]): Promise<void> {
     await this.call(sql`select simulation.fail_run(${a.runId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.failure}, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
   }
+  // ───────────────────────── B29 (0092) §C: the method fabric's ports ─────────────────────────
+  async recordConstraintCheck(a: ConstraintCheckArgs): Promise<Record<string, unknown>> {
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select simulation.record_constraint_check(${a.checkId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.runId}::uuid,
+      ${a.stage}, ${a.outcome}, ${a.setId}, ${a.setVersion}::int, ${JSON.stringify(a.violations)}::jsonb, ${a.reason}, ${a.announce}, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  async recordAdapterFault(a: AdapterFaultArgs): Promise<Record<string, unknown>> {
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select simulation.record_adapter_fault(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.modelRef}, ${a.runId}::uuid, ${a.probeId}::uuid,
+      ${a.kind}, ${a.message}, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  async recordAdapterSuccess(a: { tenantId: string; domainId: string; modelRef: string }): Promise<void> {
+    await this.call(sql`select simulation.record_adapter_success(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.modelRef})`);
+  }
+  async bindMethod(a: Parameters<BindWrites['bindMethod']>[0]): Promise<Record<string, unknown>> {
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select simulation.bind_method(${a.bindingId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.twinId}::uuid, ${a.modelRef},
+      ${a.reason}, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  async unbindMethod(a: Parameters<BindWrites['unbindMethod']>[0]): Promise<Record<string, unknown>> {
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select simulation.unbind_method(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.twinId}::uuid, ${a.modelRef},
+      ${a.reason}, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  async recordProbe(a: Parameters<ProbeWrites['recordProbe']>[0]): Promise<Record<string, unknown>> {
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select simulation.record_probe(${a.probeId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.modelRef},
+      ${a.implementationDigest}, ${a.passed}, ${a.outputsDigest}, ${a.faultKind}, ${a.fault}, ${a.elapsedMs}::int, ${a.pid}::int, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+  async reinstateAdapter(a: Parameters<ReinstateWrites['reinstateAdapter']>[0]): Promise<Record<string, unknown>> {
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select simulation.reinstate_adapter(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.modelRef}, ${a.reason},
+      ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
+
   async recordReproduction(a: Parameters<ReproduceWrites['recordReproduction']>[0]): Promise<void> {
     await this.call(sql`select simulation.record_reproduction(${a.reproductionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.runId}::uuid, ${a.verdict},
       ${a.expected}, ${a.actual}, ${a.reason}, ${a.environmentDigest}, ${a.environmentMatches}, ${a.cold}, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
@@ -305,4 +393,8 @@ export const SimulationCapability = {
   challenge(tx: Tx, action: string): ChallengeWrites { return new SimulationCapabilityImpl(tx, action); },
   /** B21 (0081, OBJ-29): the promote route's capability (simulation.result.promote, human-gated). */
   promote(tx: Tx, action: string): PromoteWrites { return new SimulationCapabilityImpl(tx, action); },
+  /** B29 (0092) §C: the method fabric's governed writes — bind/unbind (the twin's owner), the probe and the reinstatement (a method steward). */
+  bind(tx: Tx, action: string): BindWrites { return new SimulationCapabilityImpl(tx, action); },
+  probe(tx: Tx, action: string): ProbeWrites { return new SimulationCapabilityImpl(tx, action); },
+  reinstate(tx: Tx, action: string): ReinstateWrites { return new SimulationCapabilityImpl(tx, action); },
 };
