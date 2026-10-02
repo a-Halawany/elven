@@ -19,7 +19,7 @@ import { parse as parseYaml } from 'yaml';
 
 import {
   canonicalJson, createCrossHostFinalization, verifyCrossHostFinalization,
-  verifyFinalizerHostedRun,
+  verifyFinalizerHostedRun, declaredDevelopmentComponents,
   CROSS_HOST_ARTIFACTS, DEVELOPMENT_COMPONENTS, FINALIZED_PAYLOAD,
   REQUIRED_FINALIZER_STEPS, finalizerRunUrl, finalizerJobsUrl, finalizerArtifactsUrl,
   writeFinalizerReceipt,
@@ -280,13 +280,13 @@ describe('C17.2 I — machine-bound cross-host finalization', () => {
   it('creates a canonical exact-nine comparison and verifies it independently', async () => {
     const result = await verifyFinal(f.finalized);
     expect(result.ok, result.problems.join('\n')).toBe(true);
-    expect(result.notes.join('\n')).toMatch(/cross_host_artifacts=9 development_components=320/);
+    expect(result.notes.join('\n')).toMatch(/cross_host_artifacts=9 development_components=313/);
     const dir = unzip(f.finalized, 'eye-c17-cross-host-positive-');
     try {
       const comparison = JSON.parse(readFileSync(join(dir, 'cross-host-comparison.json'), 'utf8'));
       expect(comparison.artifacts).toHaveLength(9);
       expect(comparison.artifacts.every((a: any) => a.equal === true)).toBe(true);
-      expect(comparison.contract.development_components).toBe(320);
+      expect(comparison.contract.development_components).toBe(313);
       expect(walk(dir).sort()).toEqual([...FINALIZED_PAYLOAD, 'SHA256SUMS.txt'].sort());
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
@@ -608,10 +608,63 @@ describe('C17.2 I — machine-bound cross-host finalization', () => {
     try {
       const result = await verifyFinal(m.zip);
       expect(result.ok).toBe(false);
-      expect(result.problems.join('\n')).toMatch(/is 296, expected measured 320/);
-      expect(result.problems.join('\n')).toMatch(/development_components is 296, expected 320/);
+      expect(result.problems.join('\n')).toMatch(/is 296, expected measured 313/);
+      expect(result.problems.join('\n')).toMatch(/development_components is 296, expected 313/);
       expect(result.problems.join('\n')).not.toMatch(/checksum claims/);
     } finally { rmSync(m.root, { recursive: true, force: true }); }
+  });
+
+  it('accepts evidence measured under the closure its VERIFIED SOURCE declares (an earlier publication), and nothing else', async () => {
+    const m = mutateFinalized(f.finalized, (root) => {
+      const embedded = join(root, 'source/c17-evidence.zip');
+      const source = unzip(embedded, 'eye-c17-cross-host-declared296-');
+      try {
+        for (const a of CROSS_HOST_ARTIFACTS.filter((x) =>
+          ['sbom-development', 'license-inventory', 'license-reconciliation'].includes(x.id))) {
+          write(source, a.source, bytesFor(a.id, 296));
+          write(root, a.darwin, bytesFor(a.id, 296));
+        }
+        checksums(source);
+        rmSync(embedded);
+        zipExact(source, embedded);
+      } finally { rmSync(source, { recursive: true, force: true }); }
+      updateComparison(root, (doc) => { doc.contract.development_components = 296; });
+      rebindComparisonArtifacts(root);
+      // an earlier publication is consistent throughout: its macOS manifest binds the bytes it delivered
+      const manifestPath = join(root, 'darwin/c17-manifest.json');
+      const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+      for (const a of CROSS_HOST_ARTIFACTS.filter((x) => ['license-inventory', 'license-reconciliation'].includes(x.id))) {
+        const bytes = readFileSync(join(root, a.darwin));
+        const record = manifest.artifacts.find((item: any) => item.path === a.generated);
+        if (record !== undefined) { record.bytes = bytes.byteLength; record.sha256 = hash(bytes); }
+      }
+      writeFileSync(manifestPath, canonicalJson(manifest));
+    });
+    try {
+      const declared = await verifyFinal(m.zip, { developmentComponents: 296 });
+      expect(declared.problems).toEqual([]);
+      expect(declared.ok).toBe(true);
+      expect(declared.notes.join('\n')).toMatch(/development_components=296/);
+      // the same evidence against another declaration is still refused, exactly
+      const other = await verifyFinal(m.zip, { developmentComponents: 320 });
+      expect(other.ok).toBe(false);
+      expect(other.problems.join('\n')).toMatch(/is 296, expected measured 320/);
+      expect(other.problems.join('\n')).toMatch(/development_components is 296, expected 320/);
+    } finally { rmSync(m.root, { recursive: true, force: true }); }
+  });
+
+  it('reads the declared closure from the verified source root, else falls back to this file', () => {
+    const root = mkdtempSync(join(tmpdir(), 'eye-c17-declared-'));
+    try {
+      expect(declaredDevelopmentComponents(root)).toBe(DEVELOPMENT_COMPONENTS);
+      expect(declaredDevelopmentComponents(undefined as unknown as string)).toBe(DEVELOPMENT_COMPONENTS);
+      mkdirSync(join(root, 'scripts', 'gate'), { recursive: true });
+      const file = join(root, 'scripts', 'gate', 'c17-cross-host-finalization.mjs');
+      writeFileSync(file, '// an earlier source\nexport const DEVELOPMENT_COMPONENTS = 320;\n');
+      expect(declaredDevelopmentComponents(root)).toBe(320);
+      writeFileSync(file, '// no declaration here\n');
+      expect(declaredDevelopmentComponents(root)).toBe(DEVELOPMENT_COMPONENTS);
+    } finally { rmSync(root, { recursive: true, force: true }); }
   });
 
   it('requires composition with the original C17 source-archive verifier', async () => {

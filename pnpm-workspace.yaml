@@ -65,7 +65,10 @@ overrides:
   # injection via an unvalidated port in serialize) and GHSA-58mr-gqgx-xq4g (=3.1.6: host
   # confusion via an unclosed bracket in the authority). 3.1.7 is the first version patched for
   # both (and for the four above) and stays on the 3.x line; the same exact-version rule.
-  fast-uri: 3.1.7
+  # C15 on #62's refreshed run (ci 37005512372, 2026-10-02): GHSA-hrr3-gc8f-f4qj (MODERATE) reaches 3.1.7
+  # (vulnerable >=3.0.0 <3.1.8); 3.1.8 is the first patched version, on the same 3.x line — the same
+  # exact-version rule. The final-manifest assertion accepts only a clean audit receipt.
+  fast-uri: 3.1.8
   # Gate: qs <6.16.0 carries two MODERATE advisories published 2026-09-02 —
   # GHSA-4mjr-xmp4-gh2g (denial of service via an attacker-controlled isBuffer) and
   # GHSA-x5fp-wj9c-mxmx (array-limit bypass via bracket-key comma parsing). Reached
