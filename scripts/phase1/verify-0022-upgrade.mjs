@@ -192,13 +192,13 @@ const INTENDED_ADDITIONS = Object.freeze({
   // 0060: propagation_agent · 0063: twin_subscriber, forecast_subscriber, scenario_subscriber, decision_subscriber, retrieval_subscriber, mapping_subscriber
   // 0066: relationship_subscriber, knowledge_owner, record_authority, retention_steward, retention_authority, ontology_steward
   // 0083: observation_subscriber, source_health_subscriber, proposal_subscriber, attention_subscriber (B22: the four new consumer kinds)
-  'identity.roles': 35,
+  'identity.roles': 36, // + attention_agent (0086)
   // 0022: SRC, OBS, EVD · 0023: CLM@v2, ENT, EVT, REL, ASM
   // 0024: OBJ, ASU, DEC, CMT, OUT · 0028: SRC@v2 · 0029: FCT, SCN, WRN · 0032: TWN · 0033: SIM · 0041: DPK · 0042: APR · 0043: RPL · 0044: BRF · 0058: SCN@v2 · 0061: SCN@v3, WRN@v2 · 0066: MEM@v1 · 0079: MEM@v2
   // 0076: the import forms EVD@v2, ENT@v2, EVT@v2, REL@v2, ASM@v2, CLM@v3 (the base schema + imported_from)
   'objects.schema_registry': 37, // + SCN v2 (0058), SCN v3 and WRN v2 (0061), MEM v1 (0066), SRC v3 (0070), the six import forms (0076), MEM v2 (0079) + BRF v2 (0084)
   // one ledger line per migration applied above the ceiling (0022–0083)
-  'public.schema_migrations': 64, // + 0081 (B21: fitness, coherence and challenge — twin validations, forecast fitness assessments, scenario coherence checks, simulation challenges and promotions; the register 40/10/0) + 0082 (B22: ctx.build's nonce sweep under FOR UPDATE SKIP LOCKED) + 0083 (B22: the attention policy and queue, the four consumers of L1-I03, L1-I04, L2-I02 and L10-I05, the policy cause on a package; the register 44/6/0) + 0084 (B23: the six partial interfaces bound — MaterialChangeRaised, ReviewConvened, the Acquire stream, RetrieveContext, CommitGraphRevision, BranchScenario — and BRF v2; the register 50/0/0) + 0085 (B23-F1: the context query's diagnostics under the reader's policy)
+  'public.schema_migrations': 66, // + 0081 (B21: fitness, coherence and challenge — twin validations, forecast fitness assessments, scenario coherence checks, simulation challenges and promotions; the register 40/10/0) + 0082 (B22: ctx.build's nonce sweep under FOR UPDATE SKIP LOCKED) + 0083 (B22: the attention policy and queue, the four consumers of L1-I03, L1-I04, L2-I02 and L10-I05, the policy cause on a package; the register 44/6/0) + 0084 (B23: the six partial interfaces bound — MaterialChangeRaised, ReviewConvened, the Acquire stream, RetrieveContext, CommitGraphRevision, BranchScenario — and BRF v2; the register 50/0/0) + 0085 (B23-F1: the context query's diagnostics under the reader's policy) + 0086 (B24: the attention completion — the timer host, the delivery port, the further dimensions and the overload rule, suppression approval, delegation, the queue evaluation, the markers constraining decision-active use, the plan executed) + 0087 (B24-F1: a plan execution done only against the evidence version it was queued for; the explicit reselection)
 });
 
 /** Structure only: columns, constraints, indexes, routines, policies, grants. */

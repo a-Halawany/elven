@@ -116,6 +116,17 @@ export interface ExecutiveReads {
   readReviews(): any;
   readReviewEvents(): any;
   /* end B23 attention */
+  /* B24 (0086) timer: the ticks, the deliveries (one row per attempt), their log and the SYNTHETIC demo mailbox. */
+  readAttentionTicks(): any;
+  readAttentionDeliveries(): any;
+  readAttentionDeliveryEvents(): any;
+  readDemoMailbox(): any;
+  /* end B24 timer */
+  /* B24 (0086) governance: the suppression requests, the item delegations and the queue's evaluations (0086 §G). */
+  readSuppressionRequests(): any;
+  readItemDelegations(): any;
+  readQueueEvaluations(): any;
+  /* end B24 governance */
   isMember(a: { roomId: string; principal: string }): Promise<boolean>;
   liveApprovals(a: { packageId: string; version: number }): Promise<Array<{ approval_id: string; approver_principal_id: string; expires_at: string }>>;
   /** The approvals that STOOD at an instant, the approver's eligibility reconstructed then (0049). */
@@ -148,6 +159,10 @@ export interface AttentionWrites extends ExecutiveReads {
   suppressItem(a: { itemId: string; tenantId: string; domainId: string; until: string; reason: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
   closeItem(a: { itemId: string; tenantId: string; domainId: string; note: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
   escalateDue(a: { tenantId: string; domainId: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+  /* B24 (0086) materiality: the waiting (overload-deprioritized) items elevated in rank order when capacity frees — the operator's
+     route (executive.attention.rebalance) and the attention tick's step (executive.attention.tick) assert their own bound action. */
+  rebalance(a: { tenantId: string; domainId: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+  /* end B24 materiality */
 }
 /** B22 (0083): the four consumers' ports (each asserts the subscriber's own action); the ledger ports come from the dispatcher. */
 export interface AttentionSubscriberWrites extends ExecutiveReads {
@@ -158,6 +173,10 @@ export interface AttentionSubscriberWrites extends ExecutiveReads {
   notePolicyChanged(a: { packageId: string; tenantId: string; domainId: string; policyId: string; toVersion: number; details: Record<string, unknown>; outboxEventId: string; subscriptionId: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
   markSourceImpact(a: { tenantId: string; domainId: string; sourceId: string; healthState: string; reason: string | null; eventId: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
   selectPlan(a: { tenantId: string; domainId: string; eventId: string; evdObjectId: string; evdVersion: number | null; sourceId: string | null; mode: string | null; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+  /* B24 (0086) materiality: the further dimensions of a signal on its subject, read from the records (executive.attention_dimensions —
+     the real inputs with their basis, NULL where none exists; the windows on the database clock). */
+  attentionDimensions(a: { tenantId: string; domainId: string; signalClass: string; subjectId: string; hint: Record<string, unknown> }): Promise<Record<string, unknown>>;
+  /* end B24 materiality */
 }
 
 /* B23 (0084) attention: the governed review's ports (L10-I03) — each asserts its own bound action. */
@@ -167,6 +186,33 @@ export interface ReviewWrites extends ExecutiveReads {
   closeReview(a: { reviewId: string; tenantId: string; domainId: string; disposition: 'concluded' | 'withdrawn'; note: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
 }
 /* end B23 attention */
+
+/* B24 (0086) timer: THE ATTENTION TICK's ports — each asserts executive.attention.tick (the attention agent's one action). */
+export interface AttentionTickWrites extends ExecutiveReads {
+  /** The tick's key from the scheduled instant (or the database clock) and whether that key already ticked (`repeated`, with the tick that ran). */
+  beginTick(a: { tenantId: string; domainId: string; scheduledAt: string | null; cadenceSeconds: number; correlationId: string }): Promise<Record<string, unknown>>;
+  finishTick(a: { tickId: string; tenantId: string; domainId: string; tickKey: number; scheduledAt: string; cadenceSeconds: number; runId: string; result: Record<string, unknown>; correlationId: string }): Promise<Record<string, unknown>>;
+  /** 0083's escalate-due (re-declared in 0086 with executive.attention.tick among its authorities). */
+  escalateDue(a: { tenantId: string; domainId: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+  planDeliveries(a: { tenantId: string; domainId: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+  claimDeliveries(a: { tenantId: string; domainId: string; limit: number }): Promise<Array<Record<string, unknown>>>;
+  recordDeliveryAttempt(a: { deliveryId: string; tenantId: string; domainId: string; state: 'sent' | 'delivered' | 'failed'; receipt: Record<string, unknown> | null; providerRef: string | null; error: string | null; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+  /** The SYNTHETIC sink: a demo-mailbox delivery placed as a message (subject, body digest) — nothing leaves the database. */
+  placeDemoMail(a: { messageId: string; deliveryId: string; tenantId: string; domainId: string; subject: string; bodyDigest: string; correlationId: string }): Promise<Record<string, unknown>>;
+  /** The in-app placement: whether the item stands in the recipient's queue (executive.may_act_on_item) — the in_app channel's receipt. */
+  inAppPlacement(a: { deliveryId: string; tenantId: string; domainId: string }): Promise<Record<string, unknown>>;
+}
+/* end B24 timer */
+/* B24 (0086) governance: the queue's governance ports (0086 §G) — each asserts its own bound action. */
+export interface AttentionGovernanceWrites extends ExecutiveReads {
+  decideSuppression(a: { requestId: string; tenantId: string; domainId: string; decision: 'approve' | 'refuse'; reason: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+  expireSuppressions(a: { tenantId: string; domainId: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+  delegateItem(a: { delegationId: string; tenantId: string; domainId: string; itemId: string; to: string; reason: string; until: string; requestKey: string; requestDigest: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+  endDelegation(a: { delegationId: string; tenantId: string; domainId: string; reason: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+  recordDisposition(a: { itemId: string; tenantId: string; domainId: string; disposition: string; note: string | null; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+  evaluateQueue(a: { evaluationId: string; tenantId: string; domainId: string; windowFrom: string | null; windowTo: string | null; minSample: number; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+}
+/* end B24 governance */
 
 export interface RoomWrites extends ExecutiveReads {
   openRoom(a: { roomId: string; tenantId: string; domainId: string; packageId: string; title: string; reviewEveryDays: number; actor: string; eventId: string; correlationId: string }): Promise<{ room_id: string; next_review_at: string }>;
@@ -186,7 +232,8 @@ export interface BriefingWrites extends ExecutiveReads {
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-class ExecutiveCapabilityImpl extends ExecutiveCore implements RoomWrites, BriefingWrites, AgentWrites, AttentionWrites, AttentionSubscriberWrites, ReviewWrites {
+class ExecutiveCapabilityImpl extends ExecutiveCore implements RoomWrites, BriefingWrites, AgentWrites, AttentionWrites, AttentionSubscriberWrites, ReviewWrites, /* B24 (0086) timer */ AttentionTickWrites /* end B24 timer */,
+  /* B24 (0086) governance */ AttentionGovernanceWrites /* end B24 governance */ {
   constructor(tx: Tx, action: string) { super(tx, action); }
   readRooms(): any { return this.from('executive.rooms_current'); }
   readMembers(): any { return this.from('executive.room_members'); }
@@ -242,6 +289,17 @@ class ExecutiveCapabilityImpl extends ExecutiveCore implements RoomWrites, Brief
   readReviews(): any { return this.from('executive.reviews'); }
   readReviewEvents(): any { return this.from('executive.review_events'); }
   /* end B23 attention */
+  /* B24 (0086) timer */
+  readAttentionTicks(): any { return this.from('executive.attention_ticks'); }
+  readAttentionDeliveries(): any { return this.from('executive.attention_deliveries'); }
+  readAttentionDeliveryEvents(): any { return this.from('executive.attention_delivery_events'); }
+  readDemoMailbox(): any { return this.from('executive.demo_mailbox'); }
+  /* end B24 timer */
+  /* B24 (0086) governance */
+  readSuppressionRequests(): any { return this.from('executive.attention_suppression_requests'); }
+  readItemDelegations(): any { return this.from('executive.attention_delegations'); }
+  readQueueEvaluations(): any { return this.from('executive.attention_queue_evaluations'); }
+  /* end B24 governance */
   async projectionState(): Promise<Array<Record<string, unknown>>> {
     return this.call<Record<string, unknown>>(sql`select * from graph.projection_state()`);
   }
@@ -321,6 +379,14 @@ class ExecutiveCapabilityImpl extends ExecutiveCore implements RoomWrites, Brief
   async selectPlan(a: Parameters<AttentionSubscriberWrites['selectPlan']>[0]) {
     return this.one(sql`select intelligence.select_transformation_plan(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.eventId}::uuid, ${a.evdObjectId}::uuid, ${a.evdVersion}::int, ${a.sourceId}::uuid, ${a.mode}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'select_transformation_plan');
   }
+  /* B24 (0086) materiality */
+  async rebalance(a: Parameters<AttentionWrites['rebalance']>[0]) {
+    return this.one(sql`select executive.rebalance_attention(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'rebalance_attention');
+  }
+  async attentionDimensions(a: Parameters<AttentionSubscriberWrites['attentionDimensions']>[0]) {
+    return this.one(sql`select executive.attention_dimensions(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.signalClass}, ${a.subjectId}::uuid, ${JSON.stringify(a.hint)}::jsonb) as r`, 'attention_dimensions');
+  }
+  /* end B24 materiality */
   /* B23 (0084) attention */
   async conveneReview(a: Parameters<ReviewWrites['conveneReview']>[0]) {
     return this.one(sql`select executive.convene_review(${a.reviewId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.subjectKind}, ${a.subjectId}::uuid, ${a.subjectVersion}::int, ${a.question},
@@ -330,6 +396,54 @@ class ExecutiveCapabilityImpl extends ExecutiveCore implements RoomWrites, Brief
     return this.one(sql`select executive.close_review(${a.reviewId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.disposition}, ${a.note}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'close_review');
   }
   /* end B23 attention */
+  /* B24 (0086) timer */
+  async beginTick(a: Parameters<AttentionTickWrites['beginTick']>[0]) {
+    return this.one(sql`select executive.attention_tick_begin(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.scheduledAt}::timestamptz, ${a.cadenceSeconds}::int, ${a.correlationId}::uuid) as r`, 'attention_tick_begin');
+  }
+  async finishTick(a: Parameters<AttentionTickWrites['finishTick']>[0]) {
+    return this.one(sql`select executive.attention_tick_finish(${a.tickId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.tickKey}::bigint, ${a.scheduledAt}::timestamptz, ${a.cadenceSeconds}::int, ${a.runId}::uuid,
+      ${JSON.stringify(a.result)}::jsonb, ${a.correlationId}::uuid) as r`, 'attention_tick_finish');
+  }
+  async planDeliveries(a: Parameters<AttentionTickWrites['planDeliveries']>[0]) {
+    return this.one(sql`select executive.plan_attention_deliveries(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'plan_attention_deliveries');
+  }
+  async claimDeliveries(a: Parameters<AttentionTickWrites['claimDeliveries']>[0]): Promise<Array<Record<string, unknown>>> {
+    const rows = await this.call<{ r: Array<Record<string, unknown>> }>(sql`select executive.claim_attention_deliveries(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.limit}::int) as r`);
+    return rows[0]?.r ?? [];
+  }
+  async recordDeliveryAttempt(a: Parameters<AttentionTickWrites['recordDeliveryAttempt']>[0]) {
+    return this.one(sql`select executive.record_delivery_attempt(${a.deliveryId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.state}, ${a.receipt === null ? null : JSON.stringify(a.receipt)}::jsonb,
+      ${a.providerRef}, ${a.error}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'record_delivery_attempt');
+  }
+  async placeDemoMail(a: Parameters<AttentionTickWrites['placeDemoMail']>[0]) {
+    return this.one(sql`select executive.place_demo_mail(${a.messageId}::uuid, ${a.deliveryId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.subject}, ${a.bodyDigest}, ${a.correlationId}::uuid) as r`, 'place_demo_mail');
+  }
+  async inAppPlacement(a: Parameters<AttentionTickWrites['inAppPlacement']>[0]) {
+    return this.one(sql`select executive.attention_in_app_placement(${a.deliveryId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid) as r`, 'attention_in_app_placement');
+  }
+  /* end B24 timer */
+  /* B24 (0086) governance */
+  async decideSuppression(a: Parameters<AttentionGovernanceWrites['decideSuppression']>[0]) {
+    return this.one(sql`select executive.decide_attention_suppression(${a.requestId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.decision}, ${a.reason}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'decide_attention_suppression');
+  }
+  async expireSuppressions(a: Parameters<AttentionGovernanceWrites['expireSuppressions']>[0]) {
+    return this.one(sql`select executive.expire_attention_suppressions(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'expire_attention_suppressions');
+  }
+  async delegateItem(a: Parameters<AttentionGovernanceWrites['delegateItem']>[0]) {
+    return this.one(sql`select executive.delegate_attention_item(${a.delegationId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.itemId}::uuid, ${a.to}::uuid, ${a.reason}, ${a.until}::timestamptz,
+      ${a.requestKey}, ${a.requestDigest}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'delegate_attention_item');
+  }
+  async endDelegation(a: Parameters<AttentionGovernanceWrites['endDelegation']>[0]) {
+    return this.one(sql`select executive.end_attention_delegation(${a.delegationId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'end_attention_delegation');
+  }
+  async recordDisposition(a: Parameters<AttentionGovernanceWrites['recordDisposition']>[0]) {
+    return this.one(sql`select executive.record_attention_disposition(${a.itemId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.disposition}, ${a.note}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'record_attention_disposition');
+  }
+  async evaluateQueue(a: Parameters<AttentionGovernanceWrites['evaluateQueue']>[0]) {
+    return this.one(sql`select executive.evaluate_attention_queue(${a.evaluationId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.windowFrom}::timestamptz, ${a.windowTo}::timestamptz, ${a.minSample}::int,
+      ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'evaluate_attention_queue');
+  }
+  /* end B24 governance */
 
   async isMember(a: { roomId: string; principal: string }): Promise<boolean> {
     const rows = await this.call<{ m: boolean }>(sql`select executive.is_member(${a.roomId}::uuid, ${a.principal}::uuid) as m`);
@@ -412,4 +526,10 @@ export const ExecutiveCapability = {
   /* B23 (0084) attention: the governed review's convening and closure (L10-I03). */
   review(tx: Tx, action: string): ReviewWrites { return new ExecutiveCapabilityImpl(tx, action); },
   /* end B23 attention */
+  /* B24 (0086) timer: the attention tick's ports — the timer host's write and every step it runs (each step builds it from the tick's transaction). */
+  attentionTick(tx: Tx, action: string): AttentionTickWrites { return new ExecutiveCapabilityImpl(tx, action); },
+  /* end B24 timer */
+  /* B24 (0086) governance: the queue's suppression approval, item delegation, disposition and evaluation (0086 §G). */
+  governance(tx: Tx, action: string): AttentionGovernanceWrites { return new ExecutiveCapabilityImpl(tx, action); },
+  /* end B24 governance */
 };

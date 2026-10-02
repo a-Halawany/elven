@@ -25,6 +25,9 @@ import { MethodsService, validateMethod } from './methods/methods.service.js';
 import { ExtractionOrchestrator } from './extraction/orchestrator.service.js';
 import { ReviewService, type ReviewDecision } from './review/review.service.js';
 import { reviewRequestedEvent } from './review/review-events.js';
+/* B24 (0086) plan */
+import { ExtractionAgentsService, type RegisterExtractionAgentIntake } from './plan/extraction-agents.service.js';
+/* end B24 plan */
 
 function ctx(req: EyeRequest) {
   const envelope = req.eyeEnvelope;
@@ -69,6 +72,9 @@ export class IntelligenceController {
     private readonly methods: MethodsService,
     private readonly extraction: ExtractionOrchestrator,
     private readonly review: ReviewService,
+    /* B24 (0086) plan */
+    private readonly extractionAgents: ExtractionAgentsService,
+    /* end B24 plan */
   ) {}
 
   // ───────────────────────── methods ─────────────────────────
@@ -651,6 +657,72 @@ export class IntelligenceController {
       async (cap) => cap.rebuildProjections());
     return { projections: out.result, receipt: receipt(out) };
   }
+
+  /* B24 (0086) plan */
+  // ───────────────────────── the selected plan's executions (0086 §P) ─────────────────────────
+
+  /**
+   * Register the domain's EXTRACTION AGENT — the principal the selected transformation plans run under (a named human's act, human-gated:
+   * the domain administrator or the extraction manager naming an agent principal an administrator provisioned; a tenant or platform
+   * administrator may also have the principal created). The domain's drain is served from this moment and takes what was waiting.
+   */
+  @Post('/extraction/agents/register')
+  async registerExtractionAgent(
+    @Req() req: EyeRequest,
+    @Param('tenantId') tenantId: string,
+    @Param('domainId') domainId: string,
+    @Body() body: { payload?: Partial<RegisterExtractionAgentIntake> },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const p = body.payload ?? {};
+    return this.extractionAgents.register(envelope, principal, tenantId, domainId, {
+      ownerPrincipalId: p.ownerPrincipalId as string,
+      ...(p.principalId === undefined ? {} : { principalId: p.principalId }),
+      ...(p.escalationPrincipalId === undefined ? {} : { escalationPrincipalId: p.escalationPrincipalId }),
+      ...(p.budgets === undefined ? {} : { budgets: p.budgets }),
+    });
+  }
+
+  @Post('/extraction/agents/:agentId/revoke')
+  async revokeExtractionAgent(
+    @Req() req: EyeRequest,
+    @Param('tenantId') tenantId: string,
+    @Param('domainId') domainId: string,
+    @Param('agentId') agentId: string,
+    @Body() body: { payload?: { reason?: string } },
+  ) {
+    const { envelope, principal } = ctx(req);
+    return this.extractionAgents.revoke(envelope, principal, tenantId, domainId, agentId, body.payload?.reason as string);
+  }
+
+  /** The plan executions (pending, running, done, refused, failed) with the domain's extraction agent — or none, and why they wait. */
+  @Post('/plan/status')
+  async planStatus(
+    @Req() req: EyeRequest,
+    @Param('tenantId') tenantId: string,
+    @Param('domainId') domainId: string,
+    @Body() body: { payload?: { evdObjectId?: string; state?: string; limit?: number } },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const f = body.payload ?? {};
+    if (f.state !== undefined && !['pending', 'running', 'done', 'refused', 'failed'].includes(f.state)) {
+      throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'state is pending, running, done, refused or failed'), 422);
+    }
+    if (f.evdObjectId !== undefined && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(f.evdObjectId)) {
+      throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'evdObjectId is an evidence object id'), 422);
+    }
+    const out = await this.pipeline.consequentialRead(
+      envelope, principal,
+      { scope: 'DOMAIN', tenantId, domainId, action: 'intelligence.read', objectType: 'PLX', objectId: null },
+      IntelligenceCapability.read,
+      async (cap) => this.extractionAgents.status(cap, tenantId, domainId, {
+        ...(f.evdObjectId === undefined ? {} : { evdObjectId: f.evdObjectId }),
+        ...(f.state === undefined ? {} : { state: f.state }),
+        ...(typeof f.limit === 'number' ? { limit: f.limit } : {}),
+      }));
+    return { ...out.result, receipt: receipt(out) };
+  }
+  /* end B24 plan */
 }
 
 function isoOrNull(v: unknown): string | null {

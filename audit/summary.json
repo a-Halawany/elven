@@ -14,25 +14,25 @@
     "V10": 441
   },
   "impl": {
-    "implemented": 1003,
-    "missing": 2513,
+    "implemented": 1013,
+    "missing": 2499,
     "not-applicable": 26,
-    "partial": 2722
+    "partial": 2726
   },
   "verif": {
     "not-applicable": 422,
     "passed:browser": 361,
     "passed:ci": 196,
     "passed:ci+browser": 3,
-    "passed:harness": 1950,
+    "passed:harness": 1965,
     "passed:harness+browser": 22,
     "passed:harness+ci": 5,
-    "unverified": 3305
+    "unverified": 3290
   },
   "release": {
-    "branch-only": 1802,
-    "merged": 1898,
-    "none": 2564
+    "branch-only": 1819,
+    "merged": 1895,
+    "none": 2550
   },
   "phase": {
     "not-applicable": 358,
@@ -52,7 +52,7 @@
     "P3": 327,
     "P4": 268,
     "P5": 115,
-    "P6": 264,
+    "P6": 254,
     "P7-A": 315,
     "P7-B": 255,
     "P7-C": 97,

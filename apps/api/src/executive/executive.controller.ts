@@ -19,9 +19,20 @@ import { AgentWorkerService } from './agents/agent-worker.service.js';
 import { DecisionCapability } from '../decision/decision.capabilities.js';
 import { RequestsService, validateRequest } from './requests/requests.service.js';
 import { AttentionService } from './attention/attention.service.js';
+/* B24 (0086) materiality */
+import { AttentionMaterialityService } from './attention/materiality.js';
+/* end B24 materiality */
 /* B23 (0084) attention */
 import { ReviewsService, validateConvene } from './reviews/reviews.service.js';
 /* end B23 attention */
+/* B24 (0086) timer */
+import { AttentionTimerService } from './attention/attention-timer.service.js';
+import { DeliveryService } from './attention/delivery/delivery.service.js';
+import { cadenceOf } from './attention/timer-identity.js';
+/* end B24 timer */
+/* B24 (0086) governance */
+import { AttentionGovernanceService, delegationDigest, validateDecide, validateDelegate, validateDisposition, validateEvaluate } from './attention/governance.service.js';
+/* end B24 governance */
 
 function ctx(req: EyeRequest) {
   const envelope = req.eyeEnvelope;
@@ -39,7 +50,10 @@ function instant(v: unknown, fallback: string): string {
 @Controller('/v1/tenants/:tenantId/domains/:domainId')
 export class ExecutiveController {
   constructor(private readonly pipeline: PipelineService, private readonly rooms: RoomService, private readonly briefings: BriefingService, private readonly agents: AgentsService, private readonly worker: AgentWorkerService, private readonly requests: RequestsService, private readonly attention: AttentionService,
-              /* B23 (0084) attention */ private readonly reviews: ReviewsService /* end B23 attention */) {}
+              /* B23 (0084) attention */ private readonly reviews: ReviewsService /* end B23 attention */,
+              /* B24 (0086) timer */ private readonly attentionTimer: AttentionTimerService, private readonly deliveries: DeliveryService /* end B24 timer */,
+              /* B24 (0086) materiality */ private readonly materiality: AttentionMaterialityService /* end B24 materiality */,
+              /* B24 (0086) governance */ private readonly governance: AttentionGovernanceService /* end B24 governance */) {}
   private route(tenantId: string, domainId: string, action: string, objectType: string | null, objectId: string | null) {
     return { scope: 'DOMAIN' as const, tenantId, domainId, action, objectType, objectId };
   }
@@ -157,6 +171,15 @@ export class ExecutiveController {
   async registerAgent(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: Record<string, unknown> }) {
     const { envelope, principal } = ctx(req);
     const intake = validateRegisterAgent((body.payload ?? {}) as never, envelope.correlation_id);
+    /* B24 (0086) timer: an ATTENTION agent is the domain's timer host — its registration points the domain's one timer at it (and its cadence) */
+    if (intake.kind === 'attention') {
+      const registered = await this.agents.register(envelope, principal, tenantId, domainId, intake);
+      // the registration stands if the scheduler is unreachable now: the startup reconciliation points the timer at it (said in the answer)
+      const timer = await this.attentionTimer.scheduleDomain(tenantId, domainId, String(registered.agent.agentId), cadenceOf(intake.budgets))
+        .catch((e: Error) => ({ scheduled: false, error: `the timer was not scheduled now (${e.message.slice(0, 200)}); the startup reconciliation schedules it` }));
+      return { ...registered, timer };
+    }
+    /* end B24 timer */
     return this.agents.register(envelope, principal, tenantId, domainId, intake);
   }
 
@@ -413,6 +436,48 @@ export class ExecutiveController {
     return { escalation: out.result, receipt: receipt(out) };
   }
 
+  /* B24 (0086) timer: THE DELIVERY PORT's reads ───────────────────────── */
+  /** An item's deliveries (every attempt with its receipt) beside its acknowledgement — a receipt is not an acknowledgement; neither sets the other. */
+  @Post('/executive/attention/items/:itemId/deliveries')
+  async attentionDeliveries(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('itemId') itemId: string) {
+    const { envelope, principal } = ctx(req);
+    // the id is the read's audited target: a malformed one is the caller's request, refused before any decision is recorded
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(itemId)) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'the item id is a uuid'), 422);
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'executive.attention.read', 'ATI', itemId), ExecutiveCapability.read,
+      async (cap) => this.deliveries.forItem(cap, itemId, envelope.correlation_id));
+    return { ...out.result, receipt: receipt(out) };
+  }
+
+  /** The SYNTHETIC demo mailbox (the demo-mailbox channel's local sink): nothing in it was sent by email, SMS or Teams (owner decision D6). */
+  @Post('/executive/attention/mailbox')
+  async attentionMailbox(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: { recipient?: string; limit?: number } }) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'executive.attention.read', 'ATI', null), ExecutiveCapability.read,
+      async (cap) => this.deliveries.mailbox(cap, body.payload ?? {}, envelope.correlation_id));
+    return { ...out.result, timer: { reconciliation: this.attentionTimer.lastReconciliation(tenantId, domainId), recent_ticks: this.attentionTimer.recentTicks(tenantId, domainId) }, receipt: receipt(out) };
+  }
+  /* end B24 timer */
+  /* B24 (0086) materiality: THE DEPRIORITIZED VIEW AND THE REBALANCE ───────────────────────── */
+  /** The deprioritized view: the items WAITING for capacity (overload) and those below the thresholds or abstained on — in RANK order, each with its explanation — and the recent elevations with theirs. */
+  @Post('/executive/attention/deprioritized')
+  async deprioritizedAttention(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'executive.attention.read', 'ATI', null), ExecutiveCapability.read,
+      async (cap) => this.materiality.deprioritized(cap, await cap.now()));
+    return { ...out.result, receipt: receipt(out) };
+  }
+
+  /** The waiting items elevated in rank order where capacity has freed, on an operator's demand (the attention tick does it on its schedule — step `rebalance`). */
+  @Post('/executive/attention/rebalance')
+  async rebalanceAttention(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'executive.attention.rebalance', 'ATI', null), ExecutiveCapability.attention,
+      async (cap, scope) => ({ result: await cap.rebalance({ tenantId: scope.tenantId as string, domainId: scope.domainId as string, actor: principal.principalId, correlationId: envelope.correlation_id }),
+                               targetType: 'ATI', targetId: null, targetVersion: null, outboxEvent: null }));
+    return { rebalance: out.result, receipt: receipt(out) };
+  }
+  /* end B24 materiality */
+
   /* B23 (0084) attention: THE GOVERNED REVIEW (L10-I03 ReviewConvened) ───────────────────────── */
   /**
    * A NAMED HUMAN convenes a review around a declared objective, decision, scenario, commitment or outcome (human-gated); idempotent on
@@ -466,4 +531,109 @@ export class ExecutiveController {
     return { review: out.result, receipt: receipt(out) };
   }
   /* end B23 attention */
+
+  /* B24 (0086) governance: THE QUEUE'S GOVERNANCE (0086 §G) — suppression approval, item delegation, disposition, evaluation ───────────── */
+  private static readonly UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  private idOr422(id: string, what: string, correlationId: string): void {
+    if (!ExecutiveController.UUID.test(id)) throw new HttpException(errorBody('EYE_REQ_001', correlationId, `${what} must be an id`), 422);
+  }
+
+  /** The suppression requests (pending, approved, refused, expired) — a pending one past its instant shown lapsed. */
+  @Post('/executive/attention/suppressions/list')
+  async listSuppressionRequests(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: { state?: string; itemId?: string; limit?: number } }) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'executive.attention.read', 'ATS', null), ExecutiveCapability.read,
+      async (cap) => this.governance.requests(cap, body.payload ?? {}, await cap.now()));
+    return { requests: out.result, receipt: receipt(out) };
+  }
+
+  /** A SECOND person approves or refuses a pending request — never the requester; a holder of the approver roles (human-gated). */
+  @Post('/executive/attention/suppressions/:requestId/decide')
+  async decideSuppression(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('requestId') requestId: string, @Body() body: { payload?: Record<string, unknown> }) {
+    const { envelope, principal } = ctx(req);
+    this.idOr422(requestId, 'requestId', envelope.correlation_id);
+    const intake = validateDecide(body.payload ?? {}, envelope.correlation_id);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'executive.attention.suppression.decide', 'ATS', requestId), ExecutiveCapability.governance,
+      async (cap, scope) => ({ result: await cap.decideSuppression({ requestId, tenantId: scope.tenantId as string, domainId: scope.domainId as string, decision: intake.decision, reason: intake.reason, actor: principal.principalId, correlationId: envelope.correlation_id }),
+                               targetType: 'ATS', targetId: requestId, targetVersion: null, outboxEvent: null }));
+    return { request: out.result, receipt: receipt(out) };
+  }
+
+  /** The approvers' sweep: every pending request past its instant recorded EXPIRED (the attention tick runs the same step). */
+  @Post('/executive/attention/suppressions/expire')
+  async expireSuppressions(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'executive.attention.suppression.decide', 'ATS', null), ExecutiveCapability.governance,
+      async (cap, scope) => ({ result: await cap.expireSuppressions({ tenantId: scope.tenantId as string, domainId: scope.domainId as string, actor: principal.principalId, correlationId: envelope.correlation_id }),
+                               targetType: 'ATS', targetId: null, targetVersion: null, outboxEvent: null }));
+    return { expiry: out.result, receipt: receipt(out) };
+  }
+
+  /** The item delegations (active, ended) — `in_force` inside the window; the owner stays accountable. */
+  @Post('/executive/attention/delegations/list')
+  async listItemDelegations(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: { state?: string; itemId?: string; limit?: number } }) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'executive.attention.read', 'ATD', null), ExecutiveCapability.read,
+      async (cap) => this.governance.delegations(cap, body.payload ?? {}, await cap.now()));
+    return { delegations: out.result, receipt: receipt(out) };
+  }
+
+  /** An item lent to an active human holding an acknowledgement role, for a window, with a reason; exactly once on the delegator's key (human-gated). */
+  @Post('/executive/attention/items/:itemId/delegate')
+  async delegateAttentionItem(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('itemId') itemId: string, @Body() body: { payload?: Record<string, unknown> }) {
+    const { envelope, principal } = ctx(req);
+    this.idOr422(itemId, 'itemId', envelope.correlation_id);
+    const intake = validateDelegate(body.payload ?? {}, envelope.correlation_id);
+    const delegationId = newId();
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'executive.attention.item.delegate', 'ATI', itemId), ExecutiveCapability.governance,
+      async (cap, scope) => ({ result: await cap.delegateItem({ delegationId, tenantId: scope.tenantId as string, domainId: scope.domainId as string, itemId, to: intake.to, reason: intake.reason, until: intake.until,
+                                                                requestKey: intake.requestKey, requestDigest: delegationDigest(itemId, intake), actor: principal.principalId, correlationId: envelope.correlation_id }),
+                               targetType: 'ATI', targetId: itemId, targetVersion: null, outboxEvent: null }));
+    return { delegation: out.result, receipt: receipt(out) };
+  }
+
+  /** The delegator, the delegate, the item's owner or an administrator ends a delegation, saying why. */
+  @Post('/executive/attention/delegations/:delegationId/end')
+  async endItemDelegation(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('delegationId') delegationId: string, @Body() body: { payload?: { reason?: string } }) {
+    const { envelope, principal } = ctx(req);
+    this.idOr422(delegationId, 'delegationId', envelope.correlation_id);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'executive.attention.item.delegate', 'ATD', delegationId), ExecutiveCapability.governance,
+      async (cap, scope) => ({ result: await cap.endDelegation({ delegationId, tenantId: scope.tenantId as string, domainId: scope.domainId as string, reason: String(body.payload?.reason ?? ''), actor: principal.principalId, correlationId: envelope.correlation_id }),
+                               targetType: 'ATD', targetId: delegationId, targetVersion: null, outboxEvent: null }));
+    return { delegation: out.result, receipt: receipt(out) };
+  }
+
+  /** What the item turned out to be (actioned | not_material | duplicate | late | missed), by a person who may act on it (human-gated). */
+  @Post('/executive/attention/items/:itemId/disposition')
+  async recordAttentionDisposition(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('itemId') itemId: string, @Body() body: { payload?: Record<string, unknown> }) {
+    const { envelope, principal } = ctx(req);
+    this.idOr422(itemId, 'itemId', envelope.correlation_id);
+    const intake = validateDisposition(body.payload ?? {}, envelope.correlation_id);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'executive.attention.disposition.record', 'ATI', itemId), ExecutiveCapability.governance,
+      async (cap, scope) => ({ result: await cap.recordDisposition({ itemId, tenantId: scope.tenantId as string, domainId: scope.domainId as string, disposition: intake.disposition, note: intake.note, actor: principal.principalId, correlationId: envelope.correlation_id }),
+                               targetType: 'ATI', targetId: itemId, targetVersion: null, outboxEvent: null }));
+    return { disposition: out.result, receipt: receipt(out) };
+  }
+
+  /** The queue EVALUATED over a window by a named human (executive, domain_admin, platform_admin; human-gated) — measures from the ledgers, each abstaining below min_sample. */
+  @Post('/executive/attention/evaluations/run')
+  async evaluateAttentionQueue(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: Record<string, unknown> }) {
+    const { envelope, principal } = ctx(req);
+    const intake = validateEvaluate(body.payload ?? {}, envelope.correlation_id);
+    const evaluationId = newId();
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'executive.attention.queue.evaluate', 'ATE', evaluationId), ExecutiveCapability.governance,
+      async (cap, scope) => ({ result: await cap.evaluateQueue({ evaluationId, tenantId: scope.tenantId as string, domainId: scope.domainId as string, windowFrom: intake.windowFrom, windowTo: intake.windowTo, minSample: intake.minSample,
+                                                                 actor: principal.principalId, correlationId: envelope.correlation_id }),
+                               targetType: 'ATE', targetId: evaluationId, targetVersion: null, outboxEvent: null }));
+    return { evaluation: out.result, receipt: receipt(out) };
+  }
+
+  @Post('/executive/attention/evaluations/list')
+  async listAttentionEvaluations(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: { limit?: number } }) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'executive.attention.read', 'ATE', null), ExecutiveCapability.read,
+      async (cap) => this.governance.evaluations(cap, body.payload ?? {}));
+    return { evaluations: out.result, receipt: receipt(out) };
+  }
+  /* end B24 governance */
 }

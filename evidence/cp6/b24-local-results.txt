@@ -1,0 +1,46 @@
+CP-6 B24 — the local results on phase6-b24 (migrations 0085 B23-F1, 0086 B24), 2026-09-25 (host: 14 cores / 24 GB; heavy runs through scripts/dev/heavy-slot.sh, two slots)
+
+== the part harnesses (each on a fresh database)
+phase6-attention-timer-b24 5/5 (D1.7 the act-found elevated delivery) · phase6-attention-materiality-b24 5/5 · phase6-attention-governance-b24 6/6 · phase6-attention-markers-b24 4/4 · phase6-attention-plan-b24 6/6 · phase6-retrieve-context-b23 (B23-F1) 14/14
+after the act-found corrections: timer-b24 + materiality-b24 + interfaces-b18 + fitness-b21 on one fresh database 30/30
+
+== full integration suite, fresh database (run-suite.sh full1, at 6f15f07)
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  test/int/phase6-attention-governance-b24.test.ts > B24 · the attention queue's governance (0086 §G): suppression approval, delegation, disposition, evaluation > E1 · EVALUATION: precision 0.5 / recall 0.6 for warning.rai
+ Test Files  1 failed | 85 passed (86)
+      Tests  1 failed | 1181 passed (1182)
+  the one failure: the governance evaluation expected NO delivery ledger (written before the timer part merged); the ledger is integrated, the measure real → corrected (70db852); the file 6/6
+
+== full integration suite, fresh database (run-suite.sh full2, at 70db852)
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  test/int/phase6-graph-subscriptions-2.test.ts > B7 · telemetry (AU-MEM-0041) > every delivery reports its execution state — queue wait, apply time, end-to-end age, retries, unresolved dependencies, failure class — thro
+ Test Files  1 failed | 85 passed (86)
+      Tests  1 failed | 1181 passed (1182)
+  the failing file passed ALONE on a fresh database with the timer harness: 19/19 (the load-timing item carried from B23 — H1)
+
+== full integration suite, fresh database (run-suite.sh full3, at 3d5ec43, after the act-found corrections)
+ Test Files  86 passed (86)
+      Tests  1182 passed (1182)
+
+== unit (apps/api pnpm test), on the committed candidate (a clean tree — the gate tests refuse a dirty one)
+ Test Files  69 passed (69)
+      Tests  2487 passed (2487)
+ Test Files  1 passed (1)
+      Tests  9 passed (9)
+
+== acceptance (fresh database), on the committed candidate
+      Tests  58 passed (58)
+accept exit 0
+
+== the upgrade proof (0022 → 0086; migrations 65, roles 36), on the committed candidate
+=== PASS ===
+
+upgrade exit 0
+
+== browser (fresh database; the demo API and web stopped; the rehearsal Redis)
+  51 passed (42.1s)
+
+== the demo walk (playwright.demo.config.ts, on eye_demo after the act): e2e/phase6-attention.demo.spec.ts 2 passed
+
+== the act: four rehearsals on restored copies (62, 62, 62, 63 checks), then eye_demo: evidence/cp6/act-b24.txt
+ALL SCENES HELD · 63 checks · 486.1 s

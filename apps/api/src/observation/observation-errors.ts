@@ -523,6 +523,64 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   { match: /^acquisition stream rejected \((not_resumable|stale_contract|range_mismatch|not_running|out_of_order|not_interruptible|digest_conflict)\)/i, status: 409, code: 'EYE_STA_002' },
   { match: /^acquisition stream rejected/i, status: 422, code: 'EYE_REQ_001' },
   /* end B23 stream */
+  /* B24 (0086) markers — F-P6-07: the two GATES carry a CLASS IN PARENTHESES, the B21 run-gate convention (`run rejected (class): …`,
+     which the named generic `run rejected: ` row — a fixed sentence, 422 — cannot catch) and the commitment family's class form
+     (`commitment rejected (source_impact): …` — B18's 409 text `commitment rejected: package is already committed …` needs the colon):
+     both are the RECORD'S STATE (an active marker on what the run or the version rests on), 409, the port's sentence as the message.
+     The acknowledgement port's `source impact acknowledgement rejected …` (never B22's `source impact rejected`, which the 422 row above
+     anchors on its own phrase): the standing 403 (the acting principal, a named human, decision_authority); the absences 404 (the
+     package, the version, `(unknown_marker)`); the record's state 409 (`(version_state)`, `(cleared)`); the caller's own request 422
+     (the reason, the list, `(not_bearing)`). Appended after every family: no row above matches these anchored phrases. */
+  { match: /^commitment rejected \(source_impact\)|^run rejected \(source_impact\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^source impact acknowledgement rejected: (recorded by the acting principal|a named, active human|principal .* does not hold decision_authority)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^source impact acknowledgement rejected: no such (package|version)|^source impact acknowledgement rejected \(unknown_marker\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^source impact acknowledgement rejected \((version_state|cleared)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^source impact acknowledgement rejected/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B24 markers */
+  /* B24 (0086) plan — the extraction agent's registry (`extraction agent rejected`, `extraction agent revocation rejected`) and the plan
+     worker's ledger ports (`plan execution rejected`), anchored; no row above starts with these phrases, and none of the texts carries an
+     unanchored earlier phrase (`no such agent`, `case is already`, `run rejected: `). The standing 403; the absences 404; the record's
+     state 409 (a second active agent, a principal registered before, an execution not running); the caller's own request 422. */
+  { match: /^extraction agent (revocation )?rejected: recorded by the acting principal/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^extraction agent revocation rejected: .* is not an active extraction agent of this domain|^plan execution rejected: (agent .* is not registered in this domain|execution .* is not an execution of this domain)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^extraction agent rejected: (this domain already has an active extraction agent|principal .* was already registered)|^plan execution rejected: execution .* is \w+, not running/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^extraction agent (revocation )?rejected|^plan execution rejected/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B24 plan */
+  /* B24 (0086) timer — the tick's and the delivery port's texts (`attention tick rejected …`, `attention delivery rejected …`), anchored; no
+     row above starts with either phrase (the B22 rows read `^attention (policy|item) rejected`). In B9's order: the standing 403 (a tick
+     not run by the domain's active attention agent under its own session), the absences 404, the record's state 409 (an attempt of a
+     delivery that is no longer queued), the caller's own request 422. */
+  { match: /^attention tick rejected: the tick is run by an active attention agent/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^attention (tick|delivery) rejected: no such (agent|delivery)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^attention delivery rejected \(not_queued\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^attention (tick|delivery) rejected/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B24 timer */
+  /* B24 (0086) materiality — the rebalance port's `attention rebalance rejected …` texts, anchored (no row above starts with this phrase;
+     the B22 rows read `attention (policy|item) rejected`): the standing 403, anything else the caller's own request 422. */
+  { match: /^attention rebalance rejected: rebalanced by the acting principal/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^attention rebalance rejected/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B24 materiality */
+  /* B24 (0086) governance — the queue's governance ports (0086 §G): `attention suppression rejected`, `attention delegation rejected`,
+     `attention disposition rejected`, `attention queue evaluation rejected` — anchored phrases no earlier row matches (B22's rows read
+     `^attention (policy|item) rejected`; no unanchored earlier rule matches their texts). B9's order: the standing 403 (the acting principal,
+     the separation of duties, the approver roles, who may delegate / end / record, the evaluator's roles), the absences 404, the record's
+     state 409 (a request not pending, lapsed, a second pending request, an item no longer live, a version that no longer allows suppressing,
+     a key reused for a different delegation, a delegation already standing or already ended, `missed` on an item judged material), the
+     caller's own request 422. */
+  { match: /^attention (suppression|delegation|disposition|queue evaluation) rejected: (decided|recorded|ended) by the acting principal|^attention suppression rejected: (the requester does not decide their own request|the decider holds none of the approver roles)|^attention (delegation|disposition) rejected: item .* is routed to|^attention delegation rejected: a delegation is ended by its delegator|^attention queue evaluation rejected: the queue is evaluated by a named human/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^attention (suppression|delegation|disposition) rejected: no such (suppression request|item|delegation) in this domain/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^attention suppression rejected: (request .* is \w+; only a pending request|request .* lapsed at|item .* already has a pending suppression request|item .* is \w+; only a live item|policy version .* no longer allows)|^attention delegation rejected: (request key .* was already used by this principal for a different delegation|item .* is \w+; only a live item|item .* is already delegated to|delegation .* already ended at)|^attention disposition rejected: item .* was judged material when it arrived/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^attention (suppression|delegation|disposition|queue evaluation) rejected/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B24 governance */
+  /* B24 (act-found) — the decision option and choice ports' refusals (0041, 0048, 0049, 0078: `option rejected: …`, `choice rejected: …`)
+     had no row and answered 500 through the routes (the B24 act saw it on POST …/versions/:v/options citing a run resting on a withdrawn
+     forecast). 0078's header states the answer these texts take: 23503 → 404 for the absent version, the record's state → 409 (an
+     immutable version, a version not an open draft), 422 otherwise (a citation the option may not rest on, a malformed choice). No earlier
+     row starts with either phrase. */
+  { match: /^(option|choice) rejected: no such package version in this domain/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^(option|choice) rejected: version .* is .* and immutable|^option rejected: version .* of package .* is not an open draft/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^(option|choice) rejected/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B24 act-found */
 ];
 
 export function asObservationRefusal(e: unknown, correlationId: string): HttpException | null {

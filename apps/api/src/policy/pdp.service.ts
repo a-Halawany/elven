@@ -606,6 +606,10 @@ const BUNDLE_V1: Rule[] = [
     requiresPurpose: true,
     maxConsequence: 'C2',
   },
+  /* B24 (0086) timer: the attention agent (the timer host's principal) opens and closes its own runs — an EXACT `agent.run` rule placed
+     before the prefix rule below (which it would otherwise meet first): the three agents of P6-M6 and the attention agent. */
+  { actionPrefix: 'agent.run', exact: true, requiredAnyRole: [{ role: 'decision_agent', atScope: 'DOMAIN' }, { role: 'briefing_agent', atScope: 'DOMAIN' }, { role: 'reporting_agent', atScope: 'DOMAIN' }, { role: 'attention_agent', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B24 timer */
   {
     actionPrefix: 'agent.run',
     requiredAnyRole: [{ role: 'decision_agent', atScope: 'DOMAIN' }, { role: 'briefing_agent', atScope: 'DOMAIN' }, { role: 'reporting_agent', atScope: 'DOMAIN' }],
@@ -1246,6 +1250,25 @@ const BUNDLE_V1: Rule[] = [
   { actionPrefix: 'observation.stream.resume', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'collection_manager', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
   { actionPrefix: 'observation.stream.interrupt', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'collection_manager', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
   /* end B23 stream */
+  /* B24 (0086) markers */
+  /*
+   * F-P6-07 (V03-T-077): SOURCE-IMPACT MARKERS. EXACT rules, placed before the catch-all `observation.` rule (which would otherwise
+   * answer `observation.source_impact.read` for the collection roles alone); no prefix rule starts `decision.source_impact`.
+   *   * READING the markers (the domain's, grouped by source, or those bearing on one package version) is an audited read for the
+   *     people who use or answer for the products they sit on — the decision, strategy, forecast, twin and simulation roles, the
+   *     collection manager whose source it is, the executive, the analyst, the administrators and the auditor.
+   *   * ACKNOWLEDGING a source impact for one package version is the DECISION AUTHORITY's (the role that commits — the person who
+   *     answers for committing on a degraded source; not the decision owner, who drafts and proposes, nor the approver), human-gated;
+   *     the port (decision.acknowledge_source_impact) re-checks the role, the acting principal and a named active human.
+   */
+  { actionPrefix: 'observation.source_impact.read', exact: true, requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'collection_manager', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' },
+      { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_approver', atScope: 'DOMAIN' },
+      { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'decision.source_impact.acknowledge', exact: true, requiredAnyRole: [{ role: 'decision_authority', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B24 markers */
   {
     // The COLLECTION surface: run lifecycle, admission, quarantine, checkpoints,
     // coverage measurement and sweeper reconciliation. Held by the agent role and
@@ -1298,6 +1321,40 @@ const BUNDLE_V1: Rule[] = [
   { actionPrefix: 'executive.review.close', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'decision_approver', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }, { role: 'collection_manager', atScope: 'DOMAIN' }, { role: 'extraction_manager', atScope: 'DOMAIN' }, { role: 'knowledge_owner', atScope: 'DOMAIN' }, { role: 'resolution_manager', atScope: 'DOMAIN' }, { role: 'record_authority', atScope: 'DOMAIN' }, { role: 'retention_steward', atScope: 'DOMAIN' }, { role: 'ontology_steward', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   { actionPrefix: 'executive.review.read', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'decision_approver', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }, { role: 'collection_manager', atScope: 'DOMAIN' }, { role: 'extraction_manager', atScope: 'DOMAIN' }, { role: 'knowledge_owner', atScope: 'DOMAIN' }, { role: 'resolution_manager', atScope: 'DOMAIN' }, { role: 'record_authority', atScope: 'DOMAIN' }, { role: 'retention_steward', atScope: 'DOMAIN' }, { role: 'ontology_steward', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
   /* end B23 attention */
+  /* B24 (0086) plan: THE EXTRACTION AGENT (0086 §P) — the principal the selected transformation plans run under. EXACT rules: no earlier
+     prefix rule matches `intelligence.extraction.*` (`intelligence.read`, `intelligence.run`, `intelligence.method.*`, `intelligence.claim.admit`,
+     `intelligence.review.*` and `intelligence.gateway.call` are other names). Registering and revoking are a NAMED HUMAN's act (human-gated): the
+     domain administrator and the extraction manager — who already decide what extraction may run (method approval and activation) — and the
+     tenant and platform administrators. Creating the agent's principal stays `identity.principal.create` (tenant / platform administrator); an
+     extraction manager or domain administrator registers a principal an administrator provisioned. No agent role holds either action: nothing
+     that runs extraction decides who runs it. The RUN itself uses the existing actions under the agent's own session (intelligence.read,
+     intelligence.run.*, observation.evidence.retrieve, intelligence.claim.admit — all already held by extraction_agent). */
+  { actionPrefix: 'intelligence.extraction.agent.register', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'extraction_manager', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'intelligence.extraction.agent.revoke', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'extraction_manager', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B24 plan */
+  /* B24 (0086) timer: THE ATTENTION TICK — the timer host's one action, EXACT (no prefix rule matches `executive.attention.tick`: every
+     executive.attention.* rule above is exact). Only the attention agent holds it, under its own session; NO human gate — it is the
+     machine's scheduled act (escalate the overdue, plan and drain the deliveries). The human route executive.attention.escalate above
+     keeps its human gate; a person never ticks, and the agent never publishes a policy, acknowledges, suppresses or closes. */
+  { actionPrefix: 'executive.attention.tick', exact: true, requiredAnyRole: [{ role: 'attention_agent', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B24 timer */
+  /* B24 (0086) materiality: THE REBALANCE on an operator's demand — the waiting (overload-deprioritized) items elevated in rank order where
+     capacity has freed. EXACT, human-gated, the executive and the domain administrator (the attention tick does the same under its own
+     action, executive.attention.tick). No prefix rule matches `executive.attention.rebalance`. Reading the deprioritized view is the
+     queue's read (executive.attention.read). */
+  { actionPrefix: 'executive.attention.rebalance', exact: true, requiredAnyRole: [{ role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B24 materiality */
+  /* B24 (0086) governance: THE QUEUE'S GOVERNANCE (0086 §G). EXACT rules — no rule's prefix is a prefix of these four actions. DECIDING a
+     suppression request, DELEGATING an item and RECORDING a disposition are open to the domain's human roles that may acknowledge (the
+     acknowledge rule's holders), human-gated; the PORTS decide the person: the decider is never the requester and holds the approver roles
+     of the item's policy version; the delegator acts on the item in their own right and the delegate is an active human holding one of these
+     roles; a disposition is recorded by a person who may act on the item (its delegate included). EVALUATING the queue is a named human's act
+     — the executive or the domain administrator (the platform administrator at its scope), human-gated; the port re-checks the same roles. */
+  { actionPrefix: 'executive.attention.suppression.decide', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'decision_approver', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }, { role: 'collection_manager', atScope: 'DOMAIN' }, { role: 'extraction_manager', atScope: 'DOMAIN' }, { role: 'knowledge_owner', atScope: 'DOMAIN' }, { role: 'resolution_manager', atScope: 'DOMAIN' }, { role: 'record_authority', atScope: 'DOMAIN' }, { role: 'retention_steward', atScope: 'DOMAIN' }, { role: 'ontology_steward', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'executive.attention.item.delegate', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'decision_approver', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }, { role: 'collection_manager', atScope: 'DOMAIN' }, { role: 'extraction_manager', atScope: 'DOMAIN' }, { role: 'knowledge_owner', atScope: 'DOMAIN' }, { role: 'resolution_manager', atScope: 'DOMAIN' }, { role: 'record_authority', atScope: 'DOMAIN' }, { role: 'retention_steward', atScope: 'DOMAIN' }, { role: 'ontology_steward', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'executive.attention.disposition.record', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'decision_approver', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }, { role: 'collection_manager', atScope: 'DOMAIN' }, { role: 'extraction_manager', atScope: 'DOMAIN' }, { role: 'knowledge_owner', atScope: 'DOMAIN' }, { role: 'resolution_manager', atScope: 'DOMAIN' }, { role: 'record_authority', atScope: 'DOMAIN' }, { role: 'retention_steward', atScope: 'DOMAIN' }, { role: 'ontology_steward', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'executive.attention.queue.evaluate', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B24 governance */
 ];
 
 const CONSEQ_ORDER: ConsequenceClass[] = ['C0', 'C1', 'C2', 'C3', 'C4'];
