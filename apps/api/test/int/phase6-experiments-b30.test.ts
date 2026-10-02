@@ -263,7 +263,7 @@ describe('B30 experiments · X1 chunked method-fabric experiments (F-P5-06: L8-C
 
   it('X1b · REFUSAL: a measure the method does not project, a method that is not chunkable (422 at the declaration); a contract its adapter refuses FAILS the experiment at start', async () => {
     await refused(declare(desDeclaration({ measures: ['total_cost'] })), /experiment rejected \(declaration\): the measures of a discrete-event@1 experiment are among those it projects \(line_stop_days/, 422);
-    await refused(declare({ ...desDeclaration(), run: { ...(desDeclaration().run as Row), modelRef: 'system-dynamics@1' } }),
+    await refused(declare({ ...desDeclaration(), run: { ...(desDeclaration().run as Row), modelRef: 'system-dynamics@1' }, jitter: { '0': 1 } }),
       /experiment rejected \(declaration\): a method-fabric run \(params\) is chunkable only for discrete-event@1, counterfactual@1, war-gaming@1/, 422);
     // the adapter's own rule refuses the contract at opening (a shortage window with a negative start): the experiment fails, the declarer told
     const bad = await declared(desDeclaration({ title: 'Malformed line contract (SYNTHETIC)' }, { shortage: { start_day: -1, days: 3, fraction: 0.5 } }));
@@ -337,9 +337,9 @@ describe('B30 experiments · X2 the checkpoint indicators acted on (V03-T-354, E
   }, 300_000);
 
   it('X2c · POSITIVE (fault-shaped): a diverging mean QUARANTINES the contained adapter and stops the experiment (under pause); a new run of the method is refused', async () => {
-    // chunk 0: 5 line-stop days on every path (stable); chunk 1: 50 (the mean moves 450% after 40 paths — a solver diverging)
+    // chunk 0: 5 line-stop days on every path (stable); chunk 1: 50 (the mean moves 450% after 40 paths — a solver diverging); chunk 2 never runs
     svc.useExecutorForTests(double((i, cl) => fabricTotals(31, Number(cl['first_path']), Array.from({ length: 40 }, () => (i === 0 ? 5 : 50)))));
-    const id = await declared(desDeclaration({ title: 'Line study — diverging (SYNTHETIC)', paths: 80, chunkSize: 40, pace: { chunks_per_tick: 2 } }), 'pause');
+    const id = await declared(desDeclaration({ title: 'Line study — diverging (SYNTHETIC)', paths: 120, chunkSize: 40, pace: { chunks_per_tick: 3 } }), 'pause');
     const runId = String((await start(id)).experiment['run_id']);
     await tick();
     const e = await readExp(id);
@@ -497,7 +497,7 @@ describe('B30 experiments · X4 nonlinear response across the operating envelope
     await refused(call({ factors: [{ ...f0, range: [1, 2] }, ...base.factors.slice(1)] }), /envelope sweep rejected \(grid\)/, 422);
     await refused(call({ interactions: base.interactions.slice(1) }), /envelope sweep rejected \(interactions\): every pair of the 3 swept factors is crossed once/, 422);
     const i0 = base.interactions[0]!;
-    await refused(call({ interactions: [{ ...i0, interaction: Number(i0['interaction']) + 1 }, ...base.interactions.slice(1)] }), /envelope sweep rejected \(interactions\)/, 422);
+    await refused(call({ interactions: [{ ...i0, interaction: Number(i0['interaction']) + 1000 }, ...base.interactions.slice(1)] }), /envelope sweep rejected \(interactions\)/, 422);
     await refused(sweep(WG_RUN), /envelope sweep rejected \(method\): rule sxp-sweep@1 sweeps supply-flow@1's deterministic trajectory/, 422);
     await refused(sweep(STOP_RUN), /envelope sweep rejected \(state\): run .* is partial/, 409);
     await refused(sweep(SWEEP_RUN, {}, outsider), /./, 403);

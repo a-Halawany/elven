@@ -684,9 +684,9 @@ REVOKE ALL ON FUNCTION simulation.sxp_run_control_not_retired() FROM PUBLIC;
 CREATE TRIGGER sxp_run_control_not_retired BEFORE INSERT ON simulation.runs_current FOR EACH ROW EXECUTE FUNCTION simulation.sxp_run_control_not_retired();
 
 -- §EX.5 NONLINEAR RESPONSE ACROSS THE ENVELOPE ─────────────────────────
-/* Two numbers agree to the rule's rounding (six decimals, relative to the larger magnitude). */
+/* Two numbers agree to the rule's rounding: six decimals, plus a binary floating-point error of a billionth of the larger magnitude. */
 CREATE OR REPLACE FUNCTION simulation.sxp_close(a numeric, b numeric) RETURNS boolean LANGUAGE sql IMMUTABLE AS $$
-  SELECT a IS NOT NULL AND b IS NOT NULL AND abs(a - b) <= 0.000002 * greatest(1, abs(a), abs(b))
+  SELECT a IS NOT NULL AND b IS NOT NULL AND abs(a - b) <= 0.000002 + 0.000000001 * greatest(abs(a), abs(b))
 $$;
 
 /* SWEEP THE ENVELOPE (simulation.sweep.run — a twin owner, a simulation operator, the domain administrator): RECORD the sweep the service
