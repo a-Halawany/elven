@@ -206,7 +206,7 @@ async function strategyRows(cap: ExpectedReads, scope: Scope, ids: string[] | nu
   const statements = new Map<string, Row>();
   if (absent.length > 0) {
     const objects = (await cap.readCanonicalObjects().selectAll().where('object_id' as never, 'in', absent as never)
-      .where('object_type' as never, 'in', ['OBJ', 'ASU', 'DEC', 'CMT', 'OUT'] as never).execute()) as Row[];
+      .where('object_type' as never, 'in', ['OBJ', 'ASU', 'DEC', 'CMT', 'OUT', /* B32 (0089) */ 'CAP', 'INI', 'RSC', 'MSR', 'STK', 'RSK'] as never).execute()) as Row[];
     for (const o of objects) {
       const id = String(o['object_id']); const prev = statements.get(id);
       if (prev === undefined || Number(o['object_version']) > Number(prev['object_version'])) statements.set(id, o);
@@ -417,6 +417,8 @@ export async function overviewFromLog(cap: ExpectedReads, scope: Scope, withdraw
       decisions: by(strategy, 'object_type', 'DEC'),
       commitments: by(strategy, 'object_type', 'CMT'),
       outcomes: by(strategy, 'object_type', 'OUT'),
+      /* B32 (0089) */ capabilities: by(strategy, 'object_type', 'CAP'), initiatives: by(strategy, 'object_type', 'INI'), resources: by(strategy, 'object_type', 'RSC'),
+      measures: by(strategy, 'object_type', 'MSR'), stakeholders: by(strategy, 'object_type', 'STK'), exposures: by(strategy, 'object_type', 'RSK'), /* end B32 */
       unverified: strategy.filter((s) => s['object_type'] === 'ASU' && s['verification_state'] === 'unverified').length,
       from: from('strategy_current'),
     },

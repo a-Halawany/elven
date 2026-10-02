@@ -33,6 +33,9 @@ import { cadenceOf } from './attention/timer-identity.js';
 /* B24 (0086) governance */
 import { AttentionGovernanceService, delegationDigest, validateDecide, validateDelegate, validateDisposition, validateEvaluate } from './attention/governance.service.js';
 /* end B24 governance */
+/* B32 (0089) health */
+import { HealthService, validateAcknowledge, validateApprove, validateChallenge, validateCompute, validateDecideChange, validatePropose, validateRefuse, validateWithdraw } from './health/health.service.js';
+/* end B32 health */
 
 function ctx(req: EyeRequest) {
   const envelope = req.eyeEnvelope;
@@ -53,7 +56,8 @@ export class ExecutiveController {
               /* B23 (0084) attention */ private readonly reviews: ReviewsService /* end B23 attention */,
               /* B24 (0086) timer */ private readonly attentionTimer: AttentionTimerService, private readonly deliveries: DeliveryService /* end B24 timer */,
               /* B24 (0086) materiality */ private readonly materiality: AttentionMaterialityService /* end B24 materiality */,
-              /* B24 (0086) governance */ private readonly governance: AttentionGovernanceService /* end B24 governance */) {}
+              /* B24 (0086) governance */ private readonly governance: AttentionGovernanceService /* end B24 governance */,
+              /* B32 (0089) health */ private readonly health: HealthService /* end B32 health */) {}
   private route(tenantId: string, domainId: string, action: string, objectType: string | null, objectId: string | null) {
     return { scope: 'DOMAIN' as const, tenantId, domainId, action, objectType, objectId };
   }
@@ -205,7 +209,7 @@ export class ExecutiveController {
     const { envelope, principal } = ctx(req);
     const p = body.payload ?? {};
     const task = p.task ?? 'briefing';
-    if (!['draft', 'briefing', 'report', 'monitor', /* B28 (0088) signals */ 'signal_scan' /* end B28 signals */].includes(task)) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'task is draft, briefing, report, monitor or signal_scan'), 422);
+    if (!['draft', 'briefing', 'report', 'monitor', /* B28 (0088) signals */ 'signal_scan' /* end B28 signals */, /* B32 (0089) exposures */ 'risk_assess', 'opportunity_assess' /* end B32 exposures */].includes(task)) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'task is draft, briefing, report, monitor, signal_scan, risk_assess or opportunity_assess'), 422);
     /* B28 (0088) signals: the scan reads as of an OBSERVATION day (event time), or each subject's latest when none is named */
     if (task === 'signal_scan' && p.asOf !== undefined && p.asOf !== null && (typeof p.asOf !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(p.asOf))) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'asOf is an observation day (YYYY-MM-DD)'), 422);
     /* end B28 signals */
@@ -640,4 +644,162 @@ export class ExecutiveController {
     return { evaluations: out.result, receipt: receipt(out) };
   }
   /* end B24 governance */
+
+  /* B32 (0089) health: THE DECOMPOSABLE STRATEGIC HEALTH SCORE (0089 §H; F-P6-08) — a two-person definition, the computation from the
+     health input contract, the decomposed snapshots, the baseline comparison, the score changes acknowledged and challenged ───────────── */
+  /** The definition versions — the active one, the pending proposal, the refused and the superseded. */
+  @Post('/executive/health/definitions/list')
+  async listHealthDefinitions(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: { state?: string; limit?: number } }) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'executive.health.read', 'HSD', null), ExecutiveCapability.read,
+      async (cap) => this.health.definitions(cap, body.payload ?? {}));
+    return { ...out.result, receipt: receipt(out) };
+  }
+
+  @Post('/executive/health/definitions/:definitionId/get')
+  async getHealthDefinition(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('definitionId') definitionId: string) {
+    const { envelope, principal } = ctx(req);
+    this.idOr422(definitionId, 'definitionId', envelope.correlation_id);
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'executive.health.read', 'HSD', definitionId), ExecutiveCapability.read,
+      async (cap) => this.health.definition(cap, definitionId, envelope.correlation_id));
+    return { definition: out.result, receipt: receipt(out) };
+  }
+
+  /** A new VERSION of the score model PROPOSED by a named human (human-gated); it awaits a second person. */
+  @Post('/executive/health/definitions/propose')
+  async proposeHealthDefinition(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: Record<string, unknown> }) {
+    const { envelope, principal } = ctx(req);
+    const intake = validatePropose(body.payload ?? {}, envelope.correlation_id);
+    const definitionId = newId();
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'executive.health.definition.propose', 'HSD', definitionId), ExecutiveCapability.health,
+      async (cap, scope) => {
+        const r = await cap.proposeDefinition({ definitionId, tenantId: scope.tenantId as string, domainId: scope.domainId as string, model: intake.model, reason: intake.reason, actor: principal.principalId, correlationId: envelope.correlation_id });
+        return { result: r, targetType: 'HSD', targetId: definitionId, targetVersion: String(r['version']), outboxEvent: null };
+      });
+    return { definition: out.result, receipt: receipt(out) };
+  }
+
+  /** A SECOND person approves (activates) the proposal — never the proposer; the anti-gaming review where it is flagged (human-gated). */
+  @Post('/executive/health/definitions/:definitionId/approve')
+  async approveHealthDefinition(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('definitionId') definitionId: string, @Body() body: { payload?: Record<string, unknown> }) {
+    const { envelope, principal } = ctx(req);
+    this.idOr422(definitionId, 'definitionId', envelope.correlation_id);
+    const intake = validateApprove(body.payload ?? {}, envelope.correlation_id);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'executive.health.definition.approve', 'HSD', definitionId), ExecutiveCapability.health,
+      async (cap, scope) => {
+        const r = await cap.approveDefinition({ definitionId, tenantId: scope.tenantId as string, domainId: scope.domainId as string, note: intake.note, gamingReview: intake.gamingReview, actor: principal.principalId, correlationId: envelope.correlation_id });
+        return { result: r, targetType: 'HSD', targetId: definitionId, targetVersion: String(r['version']), outboxEvent: null };
+      });
+    return { definition: out.result, receipt: receipt(out) };
+  }
+
+  /** A SECOND person refuses the proposal, saying why (human-gated). */
+  @Post('/executive/health/definitions/:definitionId/refuse')
+  async refuseHealthDefinition(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('definitionId') definitionId: string, @Body() body: { payload?: Record<string, unknown> }) {
+    const { envelope, principal } = ctx(req);
+    this.idOr422(definitionId, 'definitionId', envelope.correlation_id);
+    const intake = validateRefuse(body.payload ?? {}, envelope.correlation_id);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'executive.health.definition.approve', 'HSD', definitionId), ExecutiveCapability.health,
+      async (cap, scope) => ({ result: await cap.refuseDefinition({ definitionId, tenantId: scope.tenantId as string, domainId: scope.domainId as string, reason: intake.reason, actor: principal.principalId, correlationId: envelope.correlation_id }),
+                               targetType: 'HSD', targetId: definitionId, targetVersion: null, outboxEvent: null }));
+    return { definition: out.result, receipt: receipt(out) };
+  }
+
+  /** The score COMPUTED under the active definition from the health input contract, at now or an earlier instant (an as_of replay). */
+  @Post('/executive/health/compute')
+  async computeHealthScore(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: Record<string, unknown> }) {
+    const { envelope, principal } = ctx(req);
+    const intake = validateCompute(body.payload ?? {}, envelope.correlation_id);
+    const snapshotId = newId();
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'executive.health.compute', 'HSS', snapshotId), ExecutiveCapability.health,
+      async (cap, scope) => ({ result: await cap.computeScore({ snapshotId, tenantId: scope.tenantId as string, domainId: scope.domainId as string, at: intake.at, actor: principal.principalId, correlationId: envelope.correlation_id }),
+                               targetType: 'HSS', targetId: snapshotId, targetVersion: null, outboxEvent: null }));
+    return { snapshot: out.result, receipt: receipt(out) };
+  }
+
+  @Post('/executive/health/snapshots/list')
+  async listHealthSnapshots(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: { definitionId?: string; kind?: string; limit?: number } }) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'executive.health.read', 'HSS', null), ExecutiveCapability.read,
+      async (cap) => this.health.snapshots(cap, body.payload ?? {}));
+    return { snapshots: out.result, receipt: receipt(out) };
+  }
+
+  /** One snapshot DECOMPOSED: dimensions, components, evidence, confidence, trend, freshness, sensitivity, decision links, its changes. */
+  @Post('/executive/health/snapshots/:snapshotId/get')
+  async getHealthSnapshot(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('snapshotId') snapshotId: string) {
+    const { envelope, principal } = ctx(req);
+    this.idOr422(snapshotId, 'snapshotId', envelope.correlation_id);
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'executive.health.read', 'HSS', snapshotId), ExecutiveCapability.read,
+      async (cap) => this.health.snapshot(cap, snapshotId, envelope.correlation_id));
+    return { snapshot: out.result, receipt: receipt(out) };
+  }
+
+  /** The snapshot against a BASELINE of the same definition and formula (refused otherwise, 409); the peer comparison declared absent. */
+  @Post('/executive/health/compare')
+  async compareHealthSnapshots(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: { snapshot_id?: string; baseline_id?: string } }) {
+    const { envelope, principal } = ctx(req);
+    const p = body.payload ?? {};
+    const target = typeof p.snapshot_id === 'string' && ExecutiveController.UUID.test(p.snapshot_id) ? p.snapshot_id : null;
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'executive.health.read', 'HSS', target), ExecutiveCapability.read,
+      async (cap) => this.health.compare(cap, { snapshotId: p.snapshot_id, baselineId: p.baseline_id }, envelope.correlation_id));
+    return { comparison: out.result, receipt: receipt(out) };
+  }
+
+  @Post('/executive/health/changes/list')
+  async listHealthChanges(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: { state?: string; snapshotId?: string; limit?: number } }) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'executive.health.read', 'HSC', null), ExecutiveCapability.read,
+      async (cap) => this.health.changes(cap, body.payload ?? {}));
+    return { changes: out.result, receipt: receipt(out) };
+  }
+
+  /** Receipt, never agreement (OBJ-20): a named human of the domain's strategy and decision roles (human-gated). */
+  @Post('/executive/health/changes/:changeId/acknowledge')
+  async acknowledgeHealthChange(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('changeId') changeId: string, @Body() body: { payload?: Record<string, unknown> }) {
+    const { envelope, principal } = ctx(req);
+    this.idOr422(changeId, 'changeId', envelope.correlation_id);
+    const intake = validateAcknowledge(body.payload ?? {}, envelope.correlation_id);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'executive.health.change.acknowledge', 'HSC', changeId), ExecutiveCapability.health,
+      async (cap, scope) => ({ result: await cap.acknowledgeChange({ changeId, tenantId: scope.tenantId as string, domainId: scope.domainId as string, note: intake.note, actor: principal.principalId, correlationId: envelope.correlation_id }),
+                               targetType: 'HSC', targetId: changeId, targetVersion: null, outboxEvent: null }));
+    return { change: out.result, receipt: receipt(out) };
+  }
+
+  /** A score change CHALLENGED — an input, a weight, a threshold, the formula or the interpretation, with the case (human-gated). */
+  @Post('/executive/health/changes/:changeId/challenge')
+  async challengeHealthChange(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('changeId') changeId: string, @Body() body: { payload?: Record<string, unknown> }) {
+    const { envelope, principal } = ctx(req);
+    this.idOr422(changeId, 'changeId', envelope.correlation_id);
+    const intake = validateChallenge(body.payload ?? {}, envelope.correlation_id);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'executive.health.change.challenge', 'HSC', changeId), ExecutiveCapability.health,
+      async (cap, scope) => ({ result: await cap.challengeChange({ changeId, tenantId: scope.tenantId as string, domainId: scope.domainId as string, kind: intake.kind, statement: intake.statement, actor: principal.principalId, correlationId: envelope.correlation_id }),
+                               targetType: 'HSC', targetId: changeId, targetVersion: null, outboxEvent: null }));
+    return { change: out.result, receipt: receipt(out) };
+  }
+
+  /** The challenger withdraws their challenge, saying why (human-gated). */
+  @Post('/executive/health/changes/:changeId/withdraw')
+  async withdrawHealthChallenge(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('changeId') changeId: string, @Body() body: { payload?: Record<string, unknown> }) {
+    const { envelope, principal } = ctx(req);
+    this.idOr422(changeId, 'changeId', envelope.correlation_id);
+    const intake = validateWithdraw(body.payload ?? {}, envelope.correlation_id);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'executive.health.change.challenge', 'HSC', changeId), ExecutiveCapability.health,
+      async (cap, scope) => ({ result: await cap.withdrawChallenge({ changeId, tenantId: scope.tenantId as string, domainId: scope.domainId as string, reason: intake.reason, actor: principal.principalId, correlationId: envelope.correlation_id }),
+                               targetType: 'HSC', targetId: changeId, targetVersion: null, outboxEvent: null }));
+    return { change: out.result, receipt: receipt(out) };
+  }
+
+  /** A challenge DECIDED (upheld | dismissed) by a person who is neither the challenger nor the definition's approver (human-gated). */
+  @Post('/executive/health/changes/:changeId/decide')
+  async decideHealthChange(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('changeId') changeId: string, @Body() body: { payload?: Record<string, unknown> }) {
+    const { envelope, principal } = ctx(req);
+    this.idOr422(changeId, 'changeId', envelope.correlation_id);
+    const intake = validateDecideChange(body.payload ?? {}, envelope.correlation_id);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'executive.health.change.decide', 'HSC', changeId), ExecutiveCapability.health,
+      async (cap, scope) => ({ result: await cap.decideChange({ changeId, tenantId: scope.tenantId as string, domainId: scope.domainId as string, decision: intake.decision, note: intake.note, actor: principal.principalId, correlationId: envelope.correlation_id }),
+                               targetType: 'HSC', targetId: changeId, targetVersion: null, outboxEvent: null }));
+    return { change: out.result, receipt: receipt(out) };
+  }
+  /* end B32 health */
 }

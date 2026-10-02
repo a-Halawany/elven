@@ -94,6 +94,21 @@ export interface ImpactResult {
   briefings: AffectedObject[];
   /** 0066 §3 (AU-MEM-0031, AU-MEM-0065): memory items resting on what changed — marked for the owner's attention through the port, never rewritten. */
   memoryItems: AffectedObject[];
+  /* B32 (0089) graph */
+  /**
+   * 0089 §G: the six new strategy types the walk reached — capabilities, initiatives, resources, measures, stakeholders and
+   * risks/opportunities. The walk already FOLLOWED them (a strategy object of any type is pushed to the frontier); these buckets
+   * stop it DROPPING them from the answer. LISTED for human review and recorded on the invalidation (affected_strategy_nodes),
+   * exactly as objectives are — nothing is marked on them. Optional in the type (every walk fills them) so a hand-built walk
+   * written before B32 still type-checks.
+   */
+  capabilities?: AffectedObject[];
+  initiatives?: AffectedObject[];
+  resources?: AffectedObject[];
+  measures?: AffectedObject[];
+  stakeholders?: AffectedObject[];
+  exposures?: AffectedObject[];
+  /* end B32 graph */
   /** Entities and edges the changed object reached on the way. */
   reachedEntities: string[];
   reachedEdges: string[];
@@ -359,6 +374,9 @@ export class ImpactService {
       simulations: of('SIM'),
       briefings: of('BRF'),
       memoryItems: of('MEM'),
+      /* B32 (0089) graph */
+      capabilities: of('CAP'), initiatives: of('INI'), resources: of('RSC'), measures: of('MSR'), stakeholders: of('STK'), exposures: of('RSK'),
+      /* end B32 graph */
       reachedEntities: [...reachedEntities],
       reachedEdges: [...reachedEdges],
       reachedClaims: [...reachedClaims],
@@ -434,6 +452,7 @@ export class ImpactService {
       warnings: walked.warnings.map((w) => ({ warning_id: w.strategy_object_id, reached_via: w.reached_via, hop: w.hop })),
       briefings: walked.briefings.map((b) => ({ briefing_id: b.strategy_object_id, reached_via: b.reached_via, hop: b.hop })),
       memoryItems: walked.memoryItems.map((m) => ({ item_id: m.strategy_object_id, reached_via: m.reached_via, hop: m.hop })),
+      /* B32 (0089) graph */ strategyNodes: strategyNodesOf(walked), /* end B32 graph */
       statement, truncated: walked.truncated, unexplored: walked.unexplored,
       actor: a.actor, eventId: newId(), correlationId: a.correlationId,
     });
@@ -550,12 +569,23 @@ export class ImpactService {
  * the walk found nothing it says so plainly — "nothing rested on it" is a real
  * answer and must never be presented as absence of the feature.
  */
+/* B32 (0089) graph */
+/** The six new strategy types the walk reached, as graph.record_impact records them (affected_strategy_nodes): one list, each with its type. */
+export function strategyNodesOf(w: Pick<ImpactResult, 'capabilities' | 'initiatives' | 'resources' | 'measures' | 'stakeholders' | 'exposures'>):
+  Array<{ strategy_object_id: string; object_type: string; title: string; reached_via: string; hop: number }> {
+  return [...(w.capabilities ?? []), ...(w.initiatives ?? []), ...(w.resources ?? []), ...(w.measures ?? []), ...(w.stakeholders ?? []), ...(w.exposures ?? [])]
+    .map((x) => ({ strategy_object_id: x.strategy_object_id, object_type: x.object_type, title: x.title, reached_via: x.reached_via, hop: x.hop }));
+}
+/* end B32 graph */
+
 function buildStatement(
   invalidationId: string,
   w: Omit<ImpactResult, 'invalidationId' | 'correctionCaseId' | 'statement'>,
 ): string {
+  /* B32 (0089) graph */ const b32 = strategyNodesOf(w); /* end B32 graph */
   const total = w.assumptions.length + w.objectives.length + w.decisions.length + w.commitments.length
-    + w.forecasts.length + w.scenarios.length + w.warnings.length + w.twins.length + w.simulations.length + w.briefings.length + w.memoryItems.length;
+    + w.forecasts.length + w.scenarios.length + w.warnings.length + w.twins.length + w.simulations.length + w.briefings.length + w.memoryItems.length
+    /* B32 (0089) graph */ + b32.length /* end B32 graph */;
   const reach = `reached ${w.reachedClaims.length} claim(s), ${w.reachedEntities.length} `
     + `entity(ies) and ${w.reachedEdges.length} edge(s)`;
   const phase4 = w.forecasts.length + w.scenarios.length + w.warnings.length === 0 ? ''
@@ -563,7 +593,11 @@ function buildStatement(
   const phase5 = w.twins.length + w.simulations.length === 0 ? ''
     : `; ${w.twins.length} twin(s) whose citing versions are marked unverified and ${w.simulations.length} simulation run(s) surfaced`;
   const phase6 = (w.briefings.length === 0 ? '' : `; ${w.briefings.length} briefing(s) composed on what changed re-flagged`)
-    + (w.memoryItems.length === 0 ? '' : `; ${w.memoryItems.length} memory item(s) resting on what changed marked for attention`);
+    + (w.memoryItems.length === 0 ? '' : `; ${w.memoryItems.length} memory item(s) resting on what changed marked for attention`)
+    /* B32 (0089) graph: the new types, counted per type, reported for human review (nothing marked) */
+    + (b32.length === 0 ? '' : `; ${[['CAP', 'capability(ies)'], ['INI', 'initiative(s)'], ['RSC', 'resource(s)'], ['MSR', 'measure(s)'], ['STK', 'stakeholder(s)'], ['RSK', 'risk(s)/opportunity(ies)']]
+      .map(([t, words]) => [b32.filter((x) => x.object_type === t).length, words] as const).filter(([n]) => n > 0).map(([n, words]) => `${n} ${words}`).join(', ')} reported for human review`)
+    /* end B32 graph */;
   /*
    * AN INCOMPLETE WALK SAYS SO, FIRST.
    *

@@ -4461,6 +4461,146 @@ The UI is `/prediction/signals`.
 - Browser walks of the weak-signal journey.
 - The observation nav entry for remediations (the panel is on the attention page).
 
+## B32 — the Strategy Graph's capabilities and alignment, risk and opportunity intelligence, the decomposable Strategic Health Score (0089): F-P6-09, F-P4-13 and F-P6-08 advanced (implemented; completes no feature)
+
+**Where it stands.**
+- `phase6-b32` is stacked on B28 (#65); its base is `phase6-b28`. No PR is opened by these records.
+- It is the plan's next A1 stage (`audit/delivery/STAGES.csv` B32).
+- It has ONE migration, `0089_b32_strategy_exposures_health.sql`, in five sections (§0, §R, §G, §H, §I). It is forward-only: 0084–0088 are untouched. The interface register stays **50/0/0** (B32 adds no interface).
+- **The hosted run: pending at the candidate; reported to the owner, not re-recorded.**
+
+**How it was built.**
+- The integrator (A1) wrote the §0 PRELUDE first:
+  - the six strategy types CAP, INI, RSC, MSR, STK, RSK widened everywhere the five were listed (the CHECKs, the dependency trigger, the write action, the schema registry, `expected_strategy`, `rebuild_projection`, the TS and web lists);
+  - the event `strategy.owner_assigned`, and `rebuild_projection` keeping an owner transfer (the latest `strategy.owner_assigned`);
+  - the roles `risk_owner`, `opportunity_sponsor`, `risk_agent`, `opportunity_agent`;
+  - **the health input contract** `executive.health_measure_inputs` (the indicator branch first).
+- Three implementers built the parts in parallel worktrees on their own disposable databases (graph, exposures, health), each providing its branch of the contract with exactly the contract's columns.
+- The integrator merged them, wrote §I, and combined one migration.
+- **B32 completes no feature.** The residual clauses are assigned to B34, B36, B61 and R2 (§B32.8; DELIVERY_PLAN §10, "B32's residuals").
+
+### B32.1 — §G the Strategy Graph: capabilities, initiatives, resources, measures and alignment (F-P6-09)
+
+- **Alignments** (`graph.alignments` and their events): supports OBJ→CAP, builds INI→CAP, resources RSC→INI, measures MSR→OBJ, affects STK→OBJ, conflicts_with. Each is MIRRORED into `graph.dependencies` (never ASU), so the impact walk and `graph.record_impact` reach the new types; retirement removes only the mirror it created.
+- **Measures** (`graph.measures`, append-only observations, freshness): unit, direction, target value and date, freshness window, approval state. A redefinition resets the approval and the old digest is refused.
+- **The gap view** (`alignment_rule@1`): per objective × capability, five criteria, each shown and none averaged — the objective set by an authority, the capability evidenced (at least two counted refs, one observed or extracted), an active initiative building it, an allocation approved by a human authority resourcing it, an approved measure fresh. Gap reasons are named (e.g. `capability_under_evidenced`, `measure_stale`).
+- **Detections with declared continuity:** conflict → HOLD (resolved by a trade-off); cycle → HOLD with its path; missing owner (not an active human) → ROUTED to the owner; stale measure → the affected scope EXPOSED.
+- **Human authority** (PR-37-003; the 0042 approvals shape): `set_objective`, `approve_measure`, `approve_tradeoff`, `allocate_resource` — a named human eligible by role, on the subject version's digest, never its declarer, expiring; an agent refused and its denial recorded.
+- **Owner transfer** (`strategy.owner_assigned`), surviving a projection rebuild.
+- The walk's buckets for the six types; `graph.record_impact` records them; `graph.health_inputs` (the measure branch).
+- Routes under `/graph/strategy`; the web `/graph/strategy/alignment`.
+
+### B32.2 — §R risk and opportunity intelligence (F-P4-13)
+
+- **The register.** The exposure IS its RSK (declared through the Strategy Graph; its `rests_on` are its drivers), filed as a risk or an opportunity under a versioned taxonomy, owned by a named active human holding `risk_owner` (PER-10).
+- **Assessments** (`prediction.exposure_versions`, immutable but for their state): mechanism, probability bracket or plausibility, impact or value range with its unit, horizon, response window, velocity, reversibility, controllability, options, evidence, confidence.
+- **Acceptance** (OBJ-22): the owner accepts the exact version by its digest after the consequence preview (human-gated). **Appetites** are approved by a named human; **controls** carry an effectiveness bracket and an owner; the **residual** is stored with its computation.
+- **A breach** is routed through B28's warning intake under `prediction.exposure.route` (origin `exposure`; both origin CHECKs widened; `submit_warning_candidate` and `warning_candidate_preflight` re-declared with one block each). The preflight routes an exposure's warning to the EXPOSURE'S OWNER.
+- **Aggregation without double counting:** the max over shared drivers; a sum only where a human declared independence; bounded otherwise; refused when a member is unowned, unaccepted, contested, stale or closed. An agent's correlation estimate is shown, never used.
+- **Opportunities:** hypotheses (statement, falsifier, value range, timing, options, the CAP nodes they need); sponsorship by an opportunity sponsor (human-gated, OBJ-23) opens the evaluation (a DEC resting on the RSK, its package and the response link — each its own governed write, resumable).
+- **Responses** (mitigate | exploit | accept | transfer | avoid) open a decision; closure with a criterion.
+- **The priority** (`prediction.exposure_priority`, IMMUTABLE): lexicographic over appetite breach, hours to the response window, likelihood, residual impact, irreversibility, controllability and strategic relevance; "no input" ranks last; no weighted score.
+- **The Risk and Opportunity Agents** (kinds `risk` / `opportunity`; `register_agent` and `open_agent_run` re-declared) estimate and recommend only; their accept / sponsor attempts are refused at the PDP and recorded on the run.
+- `prediction.health_inputs` (the risk and opportunity branch); routes under `…/prediction/exposures/*`; the WS-09 page `/prediction/exposures`.
+- A naming clash stated: `RSK` is also the retention signing-key RouteInfo object type; the audit rows stay distinct by action.
+
+### B32.3 — §H the decomposable Strategic Health Score (F-P6-08)
+
+- **The definition** (`executive.health_score_definitions`): versioned, immutable, dimensions and components with weights, directions, normalisation, stale bounds, criticality and threshold bands; a formula version and a model digest. **Two people:** proposed by one named human, approved or refused by another; a weight or threshold move beyond the policy delta is flagged for the anti-gaming review.
+- **The pure composition** (`executive.health_compose`, `health_weighted`, `health_sensitivity`, IMMUTABLE): stale, missing and inconsistent inputs excluded AND declared; a dimension indeterminate below its coverage floor; a critical failure forces partial and the lowest band; the aggregate NULL when any dimension is indeterminate.
+- **The computation** reads ONLY `executive.health_measure_inputs` into append-only snapshots and components: value, normalised, weight, contribution, evidence, confidence, trend, freshness, sensitivity (±10% weight and the 0/100 bounds), decision links and lineage. An as-of replay says whether it reproduces.
+- **Changes** (a band crossing, a move, a determinacy change): acknowledged (a receipt), challenged, decided (upheld | dismissed) by neither the challenger nor the definition's approver, or withdrawn. The anti-gaming flags `restated_input` and `on_threshold` are shown and gate nothing.
+- **Comparison:** the baseline between snapshots, refused across definitions or formula versions. **Peer:** declared absent (`{"peer": null, "reason": "no peer input in this product"}`) — a product decision, recorded as such; the clause's "peer or baseline" is met by the baseline.
+- Routes `/executive/health/*` (seven exact PDP rules); the page `/decisions/health` (VIZ-12: status and coverage before any number; no number when indeterminate; the alternative-weight view).
+
+### B32.4 — §I the integrator, and what integration found
+
+- **§I:** the health input contract = the UNION ALL of the indicator branch, `graph.health_inputs` (measures) and `prediction.health_inputs` (risks and opportunities).
+- **The PDP:** `risk_owner`, `opportunity_sponsor`, `risk_agent` and `opportunity_agent` on `identity.self.read`; `risk_owner` and `opportunity_sponsor` on `prediction.read`; `risk_owner` on `prediction.warning.acknowledge`. A PURE risk owner opens the shell and acknowledges the warning routed to them (unit-tested).
+- **Found and fixed:** a rebuilt strategy row lost an owner transfer (it took the declarer). The rebuild now keeps the latest `strategy.owner_assigned`; `phase6-graph-b32` G5 proves it through withdraw → rebuild, and its control on the pre-fix prelude failed.
+- **The pins that followed the migration:** phase3-acceptance C7 (the declare action writes eleven types); phase4-acceptance D8 (50 prediction tables — +12 of §R — every one under FORCE row-level security); verify-0022 (roles 43, schema registry 43, migrations 68).
+
+### B32.5 — the act and what its rehearsals found
+
+- `scripts/phase6/act-b32.mjs`: scenes G (F-P6-09), R and O (F-P4-13), A (the agents and the aggregation), H (F-P6-08), through the governed routes.
+- Three rehearsals on a restored pre-0089 copy of `eye_demo` (`eye_demo_b32`, API :3411, the rehearsal Redis :6392). Rehearsal 1 stopped on the act's own column names (fixed in the act); rehearsals 2 and 3: ALL SCENES HELD.
+- **Disclosed, outside the governed routes:** C. Brenner was created through the governed principal route (`risk_owner`). Four second-role bindings were made by the administrator through the database controller, because Phase 0 has no route binding a second role to an existing human (C14 frozen), as `seed-decisions.mjs` did: C. Brenner `strategy_owner` and `decision_owner`; L. Brandt `opportunity_sponsor` and `strategy_owner`.
+
+### B32.6 — an incident: two part harnesses on the demonstration's Redis
+
+- The graph and exposures implementers' first harness runs used the default Redis :6379 — the harness default, shared with the demonstration.
+- The demonstration was not affected: the demo API stayed healthy (readyz ok, 0 audit incidents); all 733 demo BullMQ queues showed 0 waiting / 0 active / 0 failed; the test tenants' routed queues are per tenant and never consumed by demo workers.
+- The brief and the run scripts now set `EYE_REDIS_PORT=6392` (the rehearsal Redis).
+
+### B32.7 — the evidence
+
+- **Harnesses** (each on a fresh database, the rehearsal Redis):
+
+| Harness | Result |
+|---|---|
+| `phase6-graph-b32` | 7/7 (G1 the scene … G7 the health branch) |
+| `phase6-exposures-b32` | 14/14 (X1–X14) |
+| `phase6-health-b32` | 6/6 (D1, C1, CH, D2, D3, U1) |
+
+- **Unit tests:** `phase6-graph-b32` (9), `phase6-exposures-b32` (9, including the pure risk owner's PDP case), `phase6-health-b32` (7).
+- **Candidate verification** (local, `ab9d90b` / `6a44262`):
+  - the full integration suite on a fresh database: 1241/1242 in 93 files. The one failure was phase4-acceptance D8's table-count pin, corrected at `6a44262`; phase4-acceptance then 16/16;
+  - the unit gate on a clean tree: 2547 + 9 (75 + 1 files);
+  - acceptance 58/58; the upgrade proof PASS (after D8);
+  - the browser gate 51/51 on a fresh database; the web build OK.
+  - gitleaks 8.30.1 (the pinned binary) on the candidate's history and the working tree: no leaks, after ONE false positive was excluded in `.gitleaks.toml` §7 — the generic-api-key rule matched the jsonb key NAME `'weight_plus_10pct'` after `'key',` in 0089 §H (`executive.health_sensitivity`); the migration is applied, so the exclusion is scoped to that rule, that file and that literal match (condition AND), as §2 does for `context_key_hash`.
+- **The act on `eye_demo`** (`evidence/cp6/act-b32.txt`): **ALL SCENES HELD**.
+  - Before it: `eye_demo` backed up (`.eye-local/backups/eye_demo-pre-0089-20260928T091041Z.dump` and `eye_demo-pre-0089-20260928T103136Z.dump`, 3351 TOC entries each), migrated to 0089, the API restarted (`scripts/ops/demo-restart.sh` VERIFIED).
+  - G: "On-time delivery 95%" × "Regensburg assembly" — **GAP, 3/5 criteria**, reasons `capability_under_evidenced` and `measure_stale` (the on-time measure 9.00 days old against its 7-day window); J. Weber's own authority act refused (the declarer); the stale measure routed to J. Weber.
+  - R: the corridor closure accepted by C. Brenner — residual **EUR 120k–540k**, outside the **EUR 250k** appetite → a warning of origin `exposure` routed to C. Brenner (the exposure's owner), acknowledged; J. Weber's acceptance refused (not the risk owner); a control → **EUR 36k–270k**, still outside; the mitigation DEC and its package opened.
+  - O: the Morocco opportunity (EUR 150k–400k) sponsored by L. Brandt → the evaluation DEC and its package.
+  - A: the agents' accept and sponsor attempts refused and recorded; the aggregation of the corridor and the magnet-price risk: method max, **EUR 40k–270k** against a naive sum of **EUR 480k** — the shared driver counted once.
+  - H: the definition proposed by J. Weber (his own approval refused), approved by S. Okafor; supply resilience **46.67 → 39.17** (critical), the aggregate **62.67 → 57.42**; the on-time measure STALE, declared and excluded; the change acknowledged by C. Brenner, challenged by L. Brandt, S. Okafor (the approver) refused, **dismissed by M. Dvořák**; peer declared absent.
+- **The demo walk** `e2e/phase6-b32.demo.spec.ts`: 3/3 on `eye_demo` after the act (`evidence/phase6-browser/b32-01-alignment.png`, `b32-02-exposures.png`, `b32-03-health.png`). It is a demo walk, not a hosted case: the hosted browser count stays 51.
+
+### B32.8 — the residuals, each assigned (the B24-F2 lesson)
+
+| # | Residual | Owned by |
+|---|---|---|
+| 1 | The owner-edit anti-gaming clause is not measured: the health input contract carries no owner column | **B36** (F-P6-08 completes there) |
+| 2 | The RSK polarity is not on the canonical object (only in `exposure_current`) | **B34** (F-P4-13 completes there) |
+| 3 | `exposure.*` events and health score changes are not in the outbox and not routed to attention | **B34** (the attention opportunity class and the score's consumption, F-P6-07; for F-P6-08 a prerequisite of B36) |
+| 4 | An exposure response's outcome recording is not exercised (monitor → outcome, learn) | **B34** |
+| 5 | Alignment, measure and owner changes publish no GraphChanged (walks reach the new types through the dependency mirrors) | **B36** (F-P6-09 completes there) |
+| 6 | Authority acts are not revocable (they lapse at expiry or on a stale digest) | **B36** |
+| 7 | Detections are computed on read (no scheduler) | **B36** |
+| 8 | The risk taxonomy has no separate activation step | **B34** |
+| 9 | No governed route binds a second role to an existing human (Phase 0 frozen) — the act's disclosed bindings | **B61** (its completion conditions; not a clause of a B32 feature) |
+| 10 | Peer comparison has no input | none — **a product decision**, declared absent; the clause is met by the baseline |
+| 11 | The pages are verified by the local demo walk only (no hosted browser case; the hosted count stays 51) | **B34** (`/prediction/exposures`), **B36** (`/graph/strategy/alignment`, `/decisions/health`) |
+
+- **Row-level residuals named in the register:** F-P4-13 — persistence, option value and information value; the likelihood as a distribution; the indicators watching an exposure; second-order effects, portfolio concentration and the mitigation-versus-capture trade-off; false precision, invalidated dependencies, duplicate and time-expired opportunities; the signature, the active context and the owner-resolution route on the workspace (all **B34**). F-P6-08 — capability, execution, outcome and quality inputs; exceptions as recorded objects; the component's owner, the digest/preview/signature, the active context and the owner-correction route on the page (all **B36**). F-P6-09 — plans and options for the strategy lead (**B36**, with F-P6-10).
+- **Verification:** the AT-27, AT-28, AT-37 and AT-43 records and the UX-35-006 / UX-43-006 conformance packages — **R2**.
+- **Not re-marked here (outside a normal records update):** F-P3-13's rows (B55) overlap B32's delivered types and alignment classes, and the OBJ row's "measures not modelled" note; both are candidates for the next stale-status pass.
+
+### B32.9 — the records
+
+- 67 requirement rows moved (implemented 1048 → 1070; 22 rows implemented, the rest partial with their residual named); UX-35-006, UX-43-006 and the two Volume 9 CAP-FW footers unchanged.
+- Thirty-three units gain evidence and stay open (the split 3,555 = 3,179 + 339 + 37 is unchanged).
+- The tracker: F-P4-13 → **B34**, F-P6-08 and F-P6-09 → **B36**, each with verification in **R2**; B32 advances the three and carries its own effort (5.25–8.5 U). The dependents of the delivered core (F-P4-15, F-P6-01, F-P6-07) depend on B32 through `extra_depends_on` (B33, B35, B34). The schedule was re-derived once: M1 is unchanged (three accounts 2027-07-02; two 2027-10-06; one 2028-08-02). The next A1 stage is B34.
+- The ledger: 0089 frozen (applied to `eye_demo`). The calibration (DELIVERY_PLAN §9, observation 4): construction 1 h 26 min active; the wait not yet observed.
+
+
+### B32.10 — B32-F1 corrected: the observation's freshness read (the bounded B32 review of 2026-09-28)
+
+**The finding.** The hosted run at `2f10189` (ci 36417086803) failed build-test on the new graph file: integration 1238/1242, G1/G2/G4/G5. G1 failed first (a fresh observation answered `stale`); G2, G4 and G5 depend on what G1 builds, so they fell with it. The upgrade proof and the C18 database-history steps were skipped after the integration failure. Browser, C19 36417086772 and the exposure (14/14) and health (6/6) harnesses passed.
+
+**The cause, confirmed on the database.** `StrategyAlignmentService.observe` wrote the observation, then read `graph.measure_freshness` at `new Date().toISOString()` — a MILLISECOND instant — while the row's `recorded_at` is PostgreSQL `clock_timestamp()` with MICROSECONDS. Inside the row's own millisecond the JavaScript instant precedes the stamp, and the as-of rule (`observed_at <= p_at AND recorded_at <= p_at`) correctly hides the new row: the response carried the new value with the PREVIOUS observation's freshness. The review's probe reproduced it with explicit doubles; G8 confirms it on real rows (below).
+
+**The correction** (`aa038f3`, TypeScript only; 0089 applied and untouched; no forward migration needed): the response reads its freshness at a DATABASE instant never earlier than the observation's own `recorded_at` — `GREATEST(clock_timestamp(), recorded_at)`, microseconds kept, returned as `freshness.read_at`. `graph.measure_freshness` and its as-of semantics are unchanged; the gap view, the detections and every `at` read keep their historical behaviour. No sleep, no weakened assertion, nothing carried to H1.
+
+**The regression — `phase6-graph-b32` G8, real database, deterministic:** (1) the FIRST observation answers its own reading (read at or after its row); (2) STALE → FRESH: the new reading's response is `fresh` and names the new reading, read at or after its row; (3) THE BOUNDARY on the rows: the row's `recorded_at` keeps six fractional digits, and the as-of read at the millisecond instant inside the row's own millisecond (what a JavaScript Date carries) answers the PREVIOUS observation — the mechanism, confirmed without depending on timing (a further reading is taken only if a stamp falls exactly on its millisecond); (4) HISTORY: an as-of read before the fresh reading was recorded still answers the first reading.
+
+**Results** (`phase6-b32` `aa038f3`, the stack's top — it also carries B24-F1's audit correction): the graph file **8/8** (G1–G8, the dependent cases recovered); full integration **1243/1243** in 93 files on a fresh database; unit 2547 + 9 on a clean tree; acceptance 58/58; upgrade PASS; browser **51/51**. The demonstration API was rebuilt and restarted on this build (VERIFIED). The review (`The_Eye_B32_Bounded_Review_2026-09-28.md`) is NOT committed: its text quotes the literal the `.gitleaks.toml` §7 exclusion covers, only for migration 0089, and the review asks for no further scanner exception — so it stays with the owner's correspondence and is cited here by name.
+
+
+**Carried back from B34 (2026-09-29, the same class):** two more reads named the API HOST's `new Date()` as "now" right after a write stamped by the DATABASE's clock — the exposures' `health-inputs` route (its default instant; phase6-exposures-b32 X13 failed once on it in B34's full run) and a Phase 3 test's `knownAt` (phase3-corrections H1, twice). Both now read at the database's instant (`45ff10b`, `e1926dd`); the two files pass on this branch. The remaining routes that default "as of now" to the host clock are one named sweep, assigned to H1 in B34's records.
+
 ## Order and the next implementation batch
 
 B3, B1 and B2 are done in code, B4/B5 applied to the audit (the 2026-09-11 checkpoints), B6 done in
@@ -4473,4 +4613,4 @@ one artefact, no deployment leg. Every leg of every unit stays unaccepted until 
 carries its own signed evidence (P7-D). The synthetic-company demonstration (`eye_demo`, NORDWERK) remains the deliverable
 every batch is exercised on: B3's kinds become visible on the demonstration when a scenario with the
 new kinds is declared there through the governed route (a scripted act, `scripts/phase4/`), which is
-the next demonstration step after the hosted run is green. B22 delivered the consumers and the attention policy (0083; the register 44/6/0) and the sweep's remedy (0082). Then B23 (the commands and the query — L1-I02, L3-I02, L4-I02, L7-I02, L10-I02/-I03). B23 bound them and the briefing's attention section (0084; the register 50/0/0). From here the order is the finite delivery plan's (`audit/DELIVERY_PLAN.md`, `audit/delivery/STAGES.csv`): B24 (the attention completion, 0086) delivered on 2026-09-25 on `phase6-b24`, stacked on #63, and B24-F1 corrected on 2026-09-26 (0087, §B24.8) with the tracker corrected (§B24.9); B28 (stream processing, the weak-signal workbench, the early-warning lifecycle, and the two B24 carryovers) delivered on 2026-09-26 (0088, `phase6-b28`, stacked on #64). The next A1 stage in the re-derived schedule is B32 (the Strategy Graph, risk and opportunity, the Strategic Health Score), then B34. The C15 return to the official images merged with #57 (`main` `870b212`); the live demonstration containers were recreated onto those images on 2026-09-24 under the owner's word (§B22.2). The `ctx.build` remedy was delivered as 0082 (§B22.1) — the owner's 2026-09-24 word made it a technical choice. AU-MEM-0067 stays OPEN without a waiver: the per-object class (a missing or corrupt object under a reachable root) keeps A7's one 409 and the specification obligation stands (§B21.2's table).
+the next demonstration step after the hosted run is green. B22 delivered the consumers and the attention policy (0083; the register 44/6/0) and the sweep's remedy (0082). Then B23 (the commands and the query — L1-I02, L3-I02, L4-I02, L7-I02, L10-I02/-I03). B23 bound them and the briefing's attention section (0084; the register 50/0/0). From here the order is the finite delivery plan's (`audit/DELIVERY_PLAN.md`, `audit/delivery/STAGES.csv`): B24 (the attention completion, 0086) delivered on 2026-09-25 on `phase6-b24`, stacked on #63, and B24-F1 corrected on 2026-09-26 (0087, §B24.8) with the tracker corrected (§B24.9); B28 (stream processing, the weak-signal workbench, the early-warning lifecycle, and the two B24 carryovers) delivered on 2026-09-26 (0088, `phase6-b28`, stacked on #64); B32 (the Strategy Graph's capabilities and alignment, risk and opportunity intelligence, the decomposable Strategic Health Score) delivered on 2026-09-28 (0089, `phase6-b32`, stacked on #65; §B32). The next A1 stage in the re-derived schedule is B34. The C15 return to the official images merged with #57 (`main` `870b212`); the live demonstration containers were recreated onto those images on 2026-09-24 under the owner's word (§B22.2). The `ctx.build` remedy was delivered as 0082 (§B22.1) — the owner's 2026-09-24 word made it a technical choice. AU-MEM-0067 stays OPEN without a waiver: the per-object class (a missing or corrupt object under a reachable root) keeps A7's one 409 and the specification obligation stands (§B21.2's table).

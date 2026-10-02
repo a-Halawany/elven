@@ -127,6 +127,13 @@ export interface ExecutiveReads {
   readItemDelegations(): any;
   readQueueEvaluations(): any;
   /* end B24 governance */
+  /* B32 (0089) health: the Strategic Health Score's definitions, snapshots, components, changes and their log (0089 §H). */
+  readHealthDefinitions(): any;
+  readHealthSnapshots(): any;
+  readHealthComponents(): any;
+  readHealthChanges(): any;
+  readHealthChangeEvents(): any;
+  /* end B32 health */
   isMember(a: { roomId: string; principal: string }): Promise<boolean>;
   liveApprovals(a: { packageId: string; version: number }): Promise<Array<{ approval_id: string; approver_principal_id: string; expires_at: string }>>;
   /** The approvals that STOOD at an instant, the approver's eligibility reconstructed then (0049). */
@@ -213,6 +220,18 @@ export interface AttentionGovernanceWrites extends ExecutiveReads {
   evaluateQueue(a: { evaluationId: string; tenantId: string; domainId: string; windowFrom: string | null; windowTo: string | null; minSample: number; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
 }
 /* end B24 governance */
+/* B32 (0089) health: the Strategic Health Score's ports (0089 §H) — each asserts its own bound action. */
+export interface HealthWrites extends ExecutiveReads {
+  proposeDefinition(a: { definitionId: string; tenantId: string; domainId: string; model: Record<string, unknown>; reason: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+  approveDefinition(a: { definitionId: string; tenantId: string; domainId: string; note: string; gamingReview: string | null; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+  refuseDefinition(a: { definitionId: string; tenantId: string; domainId: string; reason: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+  computeScore(a: { snapshotId: string; tenantId: string; domainId: string; at: string | null; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+  acknowledgeChange(a: { changeId: string; tenantId: string; domainId: string; note: string | null; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+  challengeChange(a: { changeId: string; tenantId: string; domainId: string; kind: string; statement: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+  withdrawChallenge(a: { changeId: string; tenantId: string; domainId: string; reason: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+  decideChange(a: { changeId: string; tenantId: string; domainId: string; decision: string; note: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
+}
+/* end B32 health */
 
 export interface RoomWrites extends ExecutiveReads {
   openRoom(a: { roomId: string; tenantId: string; domainId: string; packageId: string; title: string; reviewEveryDays: number; actor: string; eventId: string; correlationId: string }): Promise<{ room_id: string; next_review_at: string }>;
@@ -233,7 +252,7 @@ export interface BriefingWrites extends ExecutiveReads {
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 class ExecutiveCapabilityImpl extends ExecutiveCore implements RoomWrites, BriefingWrites, AgentWrites, AttentionWrites, AttentionSubscriberWrites, ReviewWrites, /* B24 (0086) timer */ AttentionTickWrites /* end B24 timer */,
-  /* B24 (0086) governance */ AttentionGovernanceWrites /* end B24 governance */ {
+  /* B24 (0086) governance */ AttentionGovernanceWrites /* end B24 governance */, /* B32 (0089) health */ HealthWrites /* end B32 health */ {
   constructor(tx: Tx, action: string) { super(tx, action); }
   readRooms(): any { return this.from('executive.rooms_current'); }
   readMembers(): any { return this.from('executive.room_members'); }
@@ -300,6 +319,13 @@ class ExecutiveCapabilityImpl extends ExecutiveCore implements RoomWrites, Brief
   readItemDelegations(): any { return this.from('executive.attention_delegations'); }
   readQueueEvaluations(): any { return this.from('executive.attention_queue_evaluations'); }
   /* end B24 governance */
+  /* B32 (0089) health */
+  readHealthDefinitions(): any { return this.from('executive.health_score_definitions'); }
+  readHealthSnapshots(): any { return this.from('executive.health_score_snapshots'); }
+  readHealthComponents(): any { return this.from('executive.health_score_components'); }
+  readHealthChanges(): any { return this.from('executive.health_score_changes'); }
+  readHealthChangeEvents(): any { return this.from('executive.health_score_change_events'); }
+  /* end B32 health */
   async projectionState(): Promise<Array<Record<string, unknown>>> {
     return this.call<Record<string, unknown>>(sql`select * from graph.projection_state()`);
   }
@@ -444,6 +470,32 @@ class ExecutiveCapabilityImpl extends ExecutiveCore implements RoomWrites, Brief
       ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'evaluate_attention_queue');
   }
   /* end B24 governance */
+  /* B32 (0089) health */
+  async proposeDefinition(a: Parameters<HealthWrites['proposeDefinition']>[0]) {
+    return this.one(sql`select executive.propose_health_definition(${a.definitionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${JSON.stringify(a.model)}::jsonb, ${a.reason}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'propose_health_definition');
+  }
+  async approveDefinition(a: Parameters<HealthWrites['approveDefinition']>[0]) {
+    return this.one(sql`select executive.approve_health_definition(${a.definitionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.note}, ${a.gamingReview}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'approve_health_definition');
+  }
+  async refuseDefinition(a: Parameters<HealthWrites['refuseDefinition']>[0]) {
+    return this.one(sql`select executive.refuse_health_definition(${a.definitionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'refuse_health_definition');
+  }
+  async computeScore(a: Parameters<HealthWrites['computeScore']>[0]) {
+    return this.one(sql`select executive.compute_health_score(${a.snapshotId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.at}::timestamptz, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'compute_health_score');
+  }
+  async acknowledgeChange(a: Parameters<HealthWrites['acknowledgeChange']>[0]) {
+    return this.one(sql`select executive.acknowledge_health_change(${a.changeId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.note}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'acknowledge_health_change');
+  }
+  async challengeChange(a: Parameters<HealthWrites['challengeChange']>[0]) {
+    return this.one(sql`select executive.challenge_health_change(${a.changeId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.kind}, ${a.statement}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'challenge_health_change');
+  }
+  async withdrawChallenge(a: Parameters<HealthWrites['withdrawChallenge']>[0]) {
+    return this.one(sql`select executive.withdraw_health_challenge(${a.changeId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'withdraw_health_challenge');
+  }
+  async decideChange(a: Parameters<HealthWrites['decideChange']>[0]) {
+    return this.one(sql`select executive.decide_health_change(${a.changeId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.decision}, ${a.note}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'decide_health_change');
+  }
+  /* end B32 health */
 
   async isMember(a: { roomId: string; principal: string }): Promise<boolean> {
     const rows = await this.call<{ m: boolean }>(sql`select executive.is_member(${a.roomId}::uuid, ${a.principal}::uuid) as m`);
@@ -532,4 +584,7 @@ export const ExecutiveCapability = {
   /* B24 (0086) governance: the queue's suppression approval, item delegation, disposition and evaluation (0086 §G). */
   governance(tx: Tx, action: string): AttentionGovernanceWrites { return new ExecutiveCapabilityImpl(tx, action); },
   /* end B24 governance */
+  /* B32 (0089) health: the Strategic Health Score's definition, computation and change ports (0089 §H). */
+  health(tx: Tx, action: string): HealthWrites { return new ExecutiveCapabilityImpl(tx, action); },
+  /* end B32 health */
 };

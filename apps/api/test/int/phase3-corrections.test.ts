@@ -33,6 +33,9 @@ import { EdgesService } from '../../src/graph/edges/edges.service.js';
 import { seedPhase1Domain, type Phase1Fixture } from './phase1-helpers.js';
 
 const sha256 = (s: string): string => createHash('sha256').update(s, 'utf8').digest('hex');
+/** B34 (0090): "known now" is the DATABASE's instant — the rows just written carry its clock, and the host's may lag it (a `new Date()` knownAt
+ *  could precede a committed row and hide it: the B32-F1 class). */
+const dbNow = async (): Promise<string> => (await sql<{ t: string }>`select to_char(clock_timestamp() at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') t`.execute(su)).rows[0]!.t;
 
 let app: INestApplicationContext;
 let pipeline: PipelineService;
@@ -211,7 +214,7 @@ describe('F3 (database) — a historical read returns the version current then',
 
   it('reports whether a historical edge answer was complete', async () => {
     const r = await readAs(async (cap) => edges.asOfBounded(cap, {
-      knownAt: new Date().toISOString(), validAt: new Date().toISOString() }));
+      knownAt: await dbNow(), validAt: new Date().toISOString() }));
     expect(typeof r.complete).toBe('boolean');
     expect(r.complete, 'this fixture is far below the scan bound').toBe(true);
   });
@@ -628,7 +631,7 @@ describe('G5 (database) — a corrected relationship retires the edge it replace
 
     // THE CURRENT GRAPH shows one edge, pointing at the corrected end.
     const now = await readAs(async (cap) => edges.asOf(cap, {
-      knownAt: new Date().toISOString(), validAt: '2024-06-01T00:00:00.000Z' }));
+      knownAt: await dbNow(), validAt: '2024-06-01T00:00:00.000Z' }));
     const forClaim = now.filter((e) => e.claim_object_id === claimId);
     expect(forClaim.map((e) => e.edge_id),
       'both the obsolete and the corrected edge are visible in the current graph')
@@ -796,7 +799,7 @@ describe('H1 (API) — completeness across the graph responses', () => {
     const r = await controller.path(
       req('graph.read', 'EDG', null), fx.tenantId, fx.domainId,
       { payload: { from: ids[0], to: ids[5],
-                   knownAt: new Date().toISOString(), validAt: '2024-06-01T00:00:00.000Z' } }) as {
+                   knownAt: await dbNow(), validAt: '2024-06-01T00:00:00.000Z' } }) as {
         path: unknown[] | null; complete: boolean; note: string | null };
     // Five hops exceed MAX_DEPTH (4): the path is not found. That is allowed.
     // What is NOT allowed is presenting that as an exhaustive search.
@@ -815,7 +818,7 @@ describe('H1 (API) — completeness across the graph responses', () => {
     const r = await controller.path(
       req('graph.read', 'EDG', null), fx.tenantId, fx.domainId,
       { payload: { from: ids[0], to: ids[4],
-                   knownAt: new Date().toISOString(), validAt: '2024-06-01T00:00:00.000Z' } }) as {
+                   knownAt: await dbNow(), validAt: '2024-06-01T00:00:00.000Z' } }) as {
         path: unknown[] | null; complete: boolean };
     expect(r.path?.length).toBe(4);
   });

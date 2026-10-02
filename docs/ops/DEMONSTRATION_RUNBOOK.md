@@ -454,3 +454,24 @@ so its queues must never share the demonstration's Redis — and an APFS clone o
   - Run `scripts/phase6/act-b28.mjs` with `ACT_FAST_EXPIRY=1`. It moves only one warning's response window into the past with the superuser, prints a `REHEARSAL SHORTCUT` line saying so, and takes about 5 minutes.
   - **On `eye_demo` the flag is never set**: the act waits for the real one-hour window (about 62 minutes).
 - **The demo walk.** Run `e2e/phase6-b28.demo.spec.ts` through `playwright.demo.config.ts` after the act; screenshots go to `evidence/phase6-browser/b28-*.png`.
+
+## 12. B32 on the demonstration (2026-09-28): what changed and how to rehearse
+
+- **Migrations.** `eye_demo` is migrated through **0089**. The backups taken before it are `.eye-local/backups/eye_demo-pre-0089-20260928T091041Z.dump` and `eye_demo-pre-0089-20260928T103136Z.dump` (3351 TOC entries each). The API was restarted with `scripts/ops/demo-restart.sh` (VERIFIED).
+- **Principals and roles.** **C. Brenner** was created through the governed principal route with the role `risk_owner`. Four second-role bindings were made by the administrator through the database controller, because Phase 0 has no governed route that binds a second role to an existing human (C14 frozen). As `seed-decisions.mjs` did before, this is the one act outside the governed routes, and it is disclosed in the act's output:
+  - C. Brenner: `strategy_owner` and `decision_owner`;
+  - L. Brandt: `opportunity_sponsor` and `strategy_owner`.
+- **Agents.** The **Risk Agent** and the **Opportunity Agent** are registered (kinds `risk` and `opportunity`, accountable C. Brenner, escalation M. Dvořák). They estimate only.
+- **What the act leaves** (nothing is cleaned; all amounts, targets and probabilities are SYNTHETIC):
+  - "On-time delivery 95%" linked to the Regensburg assembly capability, the dual-sourcing initiative, the bearings budget and the line workforce. The gap view shows GAP 3/5. The on-time measure's only reading is A. Hoffmann's entry for a day nine days before the act, so it goes further out of date every day;
+  - the risk taxonomy v1 and the supply-chain appetite (EUR 250k);
+  - the corridor-closure risk, accepted outside appetite, with its control, its warning of origin `exposure` (acknowledged by C. Brenner) and its mitigation decision (draft);
+  - the Morocco opportunity, sponsored, with its evaluation decision (draft);
+  - the magnet-price risk and one aggregation;
+  - the health definition v1 (approved by S. Okafor), two snapshots, and a supply-resilience change that was challenged and dismissed.
+- **The rehearsal rig (never the demonstration).**
+  - Restore the newest `eye_demo-pre-0089-*.dump` as `eye_demo_b32`, then migrate it.
+  - Run the API on :3411 against the REHEARSAL Redis `eye-redis-b12` (:6392), with a copy of the vault.
+  - Run `scripts/phase6/act-b32.mjs` with `EYE_DB_NAME=eye_demo_b32 EYE_API=http://localhost:3411`. It takes a few seconds; it has no clock shortcut and needs none.
+  - **Every harness and rehearsal sets `EYE_REDIS_PORT=6392`.** The harness default :6379 is the demonstration's Redis (§B32.6 of `audit/CP6_BATCHES.md`).
+- **The demo walk.** Run `e2e/phase6-b32.demo.spec.ts` through `playwright.demo.config.ts` after the act; screenshots go to `evidence/phase6-browser/b32-*.png`. The pages are `/graph/strategy/alignment`, `/prediction/exposures` and `/decisions/health`.

@@ -255,57 +255,57 @@ Feature IDs are shown without the `F-` prefix. The stages are listed in plan ord
 | B24 | B | Attention completion (the B22 deferrals) | — (advances P6-07) | — | B23 | 1.5–3 | A1 | 2026-09-30 → 2026-10-06 |
 | B25 | B | Forecasting portfolio I: grounded context, multi-method horizons, ensembles | P4-01, P4-02, P4-03 | — | — | 6–10 | A1 | 2027-02-17 → 2027-03-05 |
 | B26 | B | Forecasting portfolio II: explanation, fitness/refresh/scoring, review workspace | P4-04, P4-05, P4-06 | — | B25 | 4–7 | A1 | 2027-06-11 → 2027-06-23 |
-| B27 | B | Scenario anatomy, sets and coherence | P4-07, P4-08, P4-09 | — | — | 5–8.5 | A1 | 2026-12-23 → 2027-01-05 |
+| B27 | B | Scenario anatomy, sets and coherence | P4-07, P4-08, P4-09 | — | — | 5–8.5 | A1 | 2027-01-12 → 2027-01-26 |
 | B28 | B | Stream processing, weak-signal workbench, early-warning lifecycle | — (advances P4-10, P4-11, P4-12, P6-07) | — | B24 | 6–10.5 | A1 | 2026-10-05 → 2026-10-20 |
-| B29 | B | Twin families, composition and simulation methods | P5-01, P5-05 | — | — | 7–12 | A1 | 2026-11-23 → 2026-12-09 |
-| B30 | B | Twin state, reconciliation, envelope and calibration | P5-02, P5-03, P5-04 | — | B29 | 5.5–9.5 | A1 | 2027-03-11 → 2027-03-26 |
-| B31 | B | Simulation orchestration, impact analysis, validity | P5-06, P5-07, P5-09 | — | B29 | 4.75–8.25 | A1 | 2027-01-04 → 2027-01-15 |
-| B32 | B | Strategy Graph, risk and opportunity, Strategic Health Score | P4-13, P6-08, P6-09 | — | B28 | 7–12 | A1 | 2026-10-19 → 2026-11-04 |
+| B29 | B | Twin families, composition and simulation methods | P5-01, P5-05 | — | — | 7–12 | A1 | 2026-11-19 → 2026-12-07 |
+| B30 | B | Twin state, reconciliation, envelope and calibration | P5-02, P5-03, P5-04 | — | B29 | 5.5–9.5 | A1 | 2027-03-12 → 2027-03-26 |
+| B31 | B | Simulation orchestration, impact analysis, validity | P5-06, P5-07, P5-09 | — | B29 | 4.75–8.25 | A1 | 2027-01-25 → 2027-02-05 |
+| B32 | B | Strategy Graph, risk and opportunity, Strategic Health Score | — (advances P4-13, P6-08, P6-09) | — | B28 | 5.25–8.5 | A1 | 2026-10-19 → 2026-10-30 |
 | B33 | B | Supply-chain intelligence and domain packages | P4-14, P4-15 | — | B28, B29, B32 | 7.5–13 | A1 | 2027-04-14 → 2027-05-04 |
-| B34 | B | Durable workflow, human gates and commitments | P6-04, P6-05, P6-07, P6-14 | — | B28, B32 | 8–14 | A1 | 2026-11-03 → 2026-11-23 |
+| B34 | B | Durable workflow, human gates and commitments | P4-13, P6-04, P6-05, P6-07, P6-14 | — | B28, B32 | 8.75–15.5 | A1 | 2026-10-30 → 2026-11-19 |
 | B35 | B | Decision analysis, recommendation, explanation/appeal, replay | P6-01, P6-02, P6-03, P6-06 | — | B27, B31, B32 | 8.5–13.5 | A1 | 2027-03-25 → 2027-04-14 |
-| B36 | B | Strategic planning, executive home, briefing v2 completion, publishing | P6-10, P6-11, P6-12, P6-13 | — | B32, B34 | 9–15 | A1 | 2027-01-14 → 2027-02-05 |
-| B40 | A | Source platform: registry/rights, vault, intake sandbox, acquisition policy, connector runtime | P1-01, P1-02, P1-03, P1-04, P1-12 | — | — | 7.5–14 | A2 | 2026-10-13 → 2026-11-04 |
+| B36 | B | Strategic planning, executive home, briefing v2 completion, publishing | P6-08, P6-09, P6-10, P6-11, P6-12, P6-13 | — | B32, B34 | 10–17 | A1 | 2026-12-21 → 2027-01-13 |
+| B40 | A | Source platform: registry/rights, vault, intake sandbox, acquisition policy, connector runtime | P1-01, P1-02, P1-03, P1-04, P1-12 | — | — | 7.5–14 | A2 | 2026-10-13 → 2026-11-02 |
 | B41 | A | Source health, quality SLOs, collection planning | P1-13, P1-14, P1-15 | — | B40, B55 | 6.5–11.5 | A3 | 2027-05-12 → 2027-06-01 |
-| B42 | A | Public-source connectors, bulk/secure transfer, licensed-feed adapters | P1-05, P1-06, P1-11 | — | B40, B43 | 8.5–17 | A2 | 2026-12-29 → 2027-02-03 |
-| B43 | A | Event/stream/telemetry ingestion and edge collection | P1-09, P1-10 | — | B40 | 6–11 | A2 | 2026-12-02 → 2026-12-23 |
+| B42 | A | Public-source connectors, bulk/secure transfer, licensed-feed adapters | P1-05, P1-06, P1-11 | — | B40, B43 | 8.5–17 | A2 | 2026-12-29 → 2027-01-25 |
+| B43 | A | Event/stream/telemetry ingestion and edge collection | P1-09, P1-10 | — | B40 | 6–11 | A2 | 2026-12-02 → 2026-12-21 |
 | B44 | A | Enterprise applications/CDC, crawler/search, intake agents | P1-07, P1-08, P1-16 | — | B40, B42, B46 | 8.5–16 | A2 | 2027-03-11 → 2027-04-13 |
-| B45 | A | Model fabric: registry, evaluation harness, provider adapters, routing, inference security | P2-01, P2-02, P2-03, P2-04, P2-15 | — | — | 10–18.5 | A2 | 2026-10-29 → 2026-11-23 |
-| B46 | A | Documents: parsing/OCR/chunking, language/normalization, NER and events | P2-06, P2-08, P2-09 | — | B40, B45, B51 | 7.5–13 | A2 | 2026-12-15 → 2027-01-05 |
+| B45 | A | Model fabric: registry, evaluation harness, provider adapters, routing, inference security | P2-01, P2-02, P2-03, P2-04, P2-15 | — | — | 10–18.5 | A2 | 2026-10-29 → 2026-11-20 |
+| B46 | A | Documents: parsing/OCR/chunking, language/normalization, NER and events | P2-06, P2-08, P2-09 | — | B40, B45, B51 | 7.5–13 | A2 | 2026-12-15 → 2027-01-12 |
 | B47 | A | Media intelligence: image, audio, video, geospatial | P2-07 | — | B45, B46 | 3–6 | A2 | 2027-06-16 → 2027-06-30 |
 | B48 | A | Contradiction/corroboration, calibration, object inspector | P2-10, P2-14, P2-16 | — | B45, B46 | 5.5–10 | A2 | 2027-01-18 → 2027-02-04 |
 | B49 | A | Assessments, summaries, analyst review, context manifests | P2-11, P2-12, P2-13, P2-17 | — | B45, B48, B53 | 7–12 | A2 | 2027-03-29 → 2027-04-15 |
 | B50 | A | Knowledge core: canonical headers, lifecycle, provenance, timeline, correction closure | P3-01, P3-02, P3-03, P3-04, P3-05 | — | — | 8.25–14.5 | A2 | 2026-09-28 → 2026-10-20 |
-| B51 | A | Ontology, atomic graph revisions, graph reasoning | P3-07, P3-08, P3-09 | — | B50 | 6.5–11.5 | A2 | 2026-11-18 → 2026-12-08 |
+| B51 | A | Ontology, atomic graph revisions, graph reasoning | P3-07, P3-08, P3-09 | — | B50 | 6.5–11.5 | A2 | 2026-11-18 → 2026-12-07 |
 | B52 | A | Entity resolution and graph curation workspace | P3-10, P3-12 | — | B46, B51 | 4.5–7.5 | A3 | 2027-06-07 → 2027-06-22 |
 | B53 | A | Hybrid semantic retrieval and context assembly | P3-15, P3-16 | — | B45, B51 | 5.5–9 | A2 | 2027-01-28 → 2027-02-17 |
 | B54 | A | Enterprise Memory completion and retention across derivatives | P3-06, P3-14 | — | B50, B53 | 4–7.5 | A2 | 2027-06-08 → 2027-06-22 |
 | B55 | A | Strategy Graph alignment diagnostics and research workspace | P3-13, P3-17 | — | B44, B49, B51, B53 | 4–7 | A3 | 2027-05-04 → 2027-05-19 |
-| B60 | D | Canonical contracts and the state-class platform | P7D-14, P7D-15 | — | — | 7–12 | A3 | 2026-11-20 → 2026-12-09 |
-| B61 | D | Identity federation/MFA/privileged access; keys, secrets, encryption | P7D-01, P7D-03 | — | — | 6–10 | A3 | 2026-12-04 → 2026-12-23 |
+| B60 | D | Canonical contracts and the state-class platform | P7D-14, P7D-15 | — | — | 7–12 | A3 | 2026-11-20 → 2026-12-08 |
+| B61 | D | Identity federation/MFA/privileged access; keys, secrets, encryption | P7D-01, P7D-03 | — | — | 6–10 | A3 | 2026-12-04 → 2026-12-22 |
 | B62 | D | Policy bundles, privacy lifecycle, residency and sovereignty | P7D-04, P7D-05, P7D-06 | — | B61 | 7–10 | A3 | 2027-01-19 → 2027-02-05 |
-| B63 | D | Telemetry/tracing, degraded modes and service health, isolation and quotas | P7D-07, P7D-08, P7D-11 | — | — | 6–10 | A3 | 2026-12-16 → 2027-01-04 |
-| B64 | D | SLOs, error budgets; backup, PITR and restore verification | P7D-09, P7D-12 | — | B60, B61, B63 | 5–8 | A3 | 2027-01-08 → 2027-02-04 |
-| B65 | D | Packaging/installer/management plane; signed releases, upgrade, rollback | P7D-16, P7D-17 | — | B60, B61 | 6–10 | A3 | 2026-12-29 → 2027-01-15 |
+| B63 | D | Telemetry/tracing, degraded modes and service health, isolation and quotas | P7D-07, P7D-08, P7D-11 | — | — | 6–10 | A3 | 2026-12-16 → 2027-01-12 |
+| B64 | D | SLOs, error budgets; backup, PITR and restore verification | P7D-09, P7D-12 | — | B60, B61, B63 | 5–8 | A3 | 2027-01-08 → 2027-01-25 |
+| B65 | D | Packaging/installer/management plane; signed releases, upgrade, rollback | P7D-16, P7D-17 | — | B60, B61 | 6–10 | A3 | 2026-12-29 → 2027-01-13 |
 | B66 | D | Security detection, incident command; trust and audit investigation | P7D-18, P7D-19 | — | B61, B63, B65 | 4.5–6.5 | A3 | 2027-04-01 → 2027-04-14 |
 | B67 | D | Disconnected and air-gapped operation | P7D-20 | — | B61, B65 | 3–5 | A3 | 2027-02-18 → 2027-03-03 |
 | B70 | C | Agent runtime: packages/admission, durable workflow, message contracts, tool gateway, sandbox | P7A-01, P7A-02, P7A-05, P7A-07, P7A-08 | — | — | 7.75–14 | A2 | 2027-02-08 → 2027-03-04 |
 | B71 | C | Planner, supervisor, checkpoints and agent control | P7A-03, P7A-04, P7A-06, P7A-10 | — | B70 | 6–10.5 | A2 | 2027-04-12 → 2027-05-03 |
 | B72 | C | Agent Operations workspace and supervision surfaces | P7A-11, P7A-12 | — | B71 | 3.5–5.5 | A2 | 2027-06-23 → 2027-07-02 |
 | B73 | C | Specialist agent families (observation, extraction, graph/memory/reasoning, foresight) | P7A-13, P7A-14, P7A-15, P7A-16 | — | B70, B71, B74 | 6–10 | A3 | 2027-05-26 → 2027-06-11 |
-| B74 | C | Evaluation foundation: datasets, registry, metrics, AI inventory | P4-10, P4-12, P7B-03, P7B-04, P7B-05, P7B-10 | — | B34, B45, B84 | 7.75–13 | A2 | 2027-02-24 → 2027-03-12 |
+| B74 | C | Evaluation foundation: datasets, registry, metrics, AI inventory | P4-10, P4-12, P7B-03, P7B-04, P7B-05, P7B-10 | — | B34, B45, B84 | 7.75–13 | A2 | 2027-02-24 → 2027-03-15 |
 | B75 | C | Monitoring, red-team suites, release/canary/rollback, evaluator models | P4-11, P7B-06, P7B-07, P7B-08, P7B-09 | — | B70, B74 | 6.75–11.5 | A2 | 2027-04-23 → 2027-05-19 |
 | B76 | C | The Learn stage: lessons, attribution, governance console, incidents, loop closure | P7B-01, P7B-02, P7B-11, P7B-12, P7B-13 | — | B71, B74, B75 | 6.5–10.5 | A2 | 2027-05-25 → 2027-06-10 |
 | B77 | C | Marketplace core: signed packages, admission, revocation, agent marketplace | P7C-01, P7C-02, P7C-03, P7C-04 | — | B70, B74 | 6–10 | A3 | 2027-04-15 → 2027-05-04 |
 | B78 | C | Scenario/data marketplaces, domain packs, decision templates, domain agents | P7A-17, P7C-05, P7C-06, P7C-07, P7C-08 | — | B70, B71, B77 | 9–15 | A2 | 2027-05-06 → 2027-05-31 |
 | B80 | E | Shell and foundations: tokens, component library, navigation | P7-E-01, P7-E-03, P7-E-05 | — | — | 6–9.5 | A3 | 2026-09-28 → 2026-10-19 |
-| B81 | E | Interaction patterns: human authority, degraded states, content, object pages, layout, command palette | P7-E-02, P7-E-04, P7-E-06, P7-E-18, P7-E-19, P7-E-20 | — | B80 | 9.5–15.5 | A3 | 2026-10-08 → 2026-11-03 |
-| B82 | E | Visualization library and the trust/provenance experience | P7-E-07, P7-E-21 | — | B80, B81 | 5.5–9 | A3 | 2026-10-27 → 2026-11-20 |
+| B81 | E | Interaction patterns: human authority, degraded states, content, object pages, layout, command palette | P7-E-02, P7-E-04, P7-E-06, P7-E-18, P7-E-19, P7-E-20 | — | B80 | 9.5–15.5 | A3 | 2026-10-08 → 2026-10-30 |
+| B82 | E | Visualization library and the trust/provenance experience | P7-E-07, P7-E-21 | — | B80, B81 | 5.5–9 | A3 | 2026-10-27 → 2026-11-19 |
 | B83 | E | Knowledge and foresight workspaces | P7-E-13, P7-E-14 | — | B81, B82 | 6–10 | A3 | 2027-02-01 → 2027-02-17 |
-| B84 | E | Decision/briefing/publishing UX, attention center, governance administration | P7-E-12, P7-E-15, P7-E-16 | — | B80, B81, B82 | 8–13 | A3 | 2026-11-05 → 2026-11-24 |
+| B84 | E | Decision/briefing/publishing UX, attention center, governance administration | P7-E-12, P7-E-15, P7-E-16 | — | B80, B81, B82 | 8–13 | A3 | 2026-11-05 → 2026-12-04 |
 | B85 | E | Personas and executive home; localization build | P7-E-09, P7-E-11 | — | B80, B81, B83, B84 | 5–9 | A3 | 2027-03-12 → 2027-03-25 |
 | B86 | E | Mobile, field, offline | P7-E-10 | — | B80, B81, B84 | 5–8 | A3 | 2027-03-23 → 2027-04-13 |
-| B90 | F | Data products, semantic metrics, metadata catalog | P7-09, P7-10, P7-11 | — | — | 6.5–10.5 | A1 | 2026-12-08 → 2026-12-24 |
+| B90 | F | Data products, semantic metrics, metadata catalog | P7-09, P7-10, P7-11 | — | — | 6.5–10.5 | A1 | 2026-12-07 → 2026-12-22 |
 | B91 | F | Usage metering, cost ledger, entitlements and licensing | P7-01, P7-02 | — | — | 5–9 | A1 | 2027-02-04 → 2027-02-18 |
 | B92 | F | Product analytics and UX telemetry | P7-03 | — | B90 | 3–5 | A1 | 2027-03-04 → 2027-03-12 |
 | B93 | F | Integration center, APIs/SDKs/webhooks; exit package completion | P7-07, P7-08 | — | B84, B90 | 4.5–8 | A1 | 2027-05-31 → 2027-06-14 |
@@ -327,7 +327,7 @@ Feature IDs are shown without the `F-` prefix. The stages are listed in plan ord
 | H2 | H | Comprehensive verification II: identity/network probes and drift, capacity/soak evidence, HA/DR drills, compose-vs-kind parity, agent containment and escape exercises | — | P4-11, P7A-08, P7D-02, P7D-10, P7D-13, P7D-23, P7D-25 | M1 | 3.25–6 | A1+A2+A3 | 2027-07-02 → 2027-07-13 |
 | H3 | H | Experience and governance acceptance: WCAG audit and assistive-technology testing, usability studies, design and product-governance acceptance by named authorities, independent adversarial review | P7-13 | P7B-07, P7-E-08, P7-E-17, P7-12 | M1 | 2.5–4.75 | A1+A2+A3 | 2027-07-02 → 2027-07-12 |
 | R1 | R | Deployment profiles installed and certified on real SaaS, private-cloud and on-premise infrastructure; parity on every profile | — | P1-17, P2-18, P3-18, P5-08, P6-15, P7A-09, P7D-21, P7D-22, P7D-24 | H1, H2, H3 | 9–17.5 | owner + A1 | externally gated |
-| R2 | R | Production proof of the loop and attested acceptance records | R0-06 | R0-04, P4-10, P4-12, P6-07 | H1, H2, H3 | 2.25–5.5 | owner + A1 | externally gated |
+| R2 | R | Production proof of the loop and attested acceptance records | R0-06 | R0-04, P4-10, P4-12, P4-13, P6-07, P6-08, P6-09 | H1, H2, H3 | 3–7 | owner + A1 | externally gated |
 | R3 | R | Commercial, marketplace commerce and investor package proof | P7-14, P7-15, P7-16 | P7C-09 | H1, H2, H3 | 1.75–3.75 | owner + A1 | externally gated |
 <!-- model:stages:end -->
 
@@ -433,9 +433,9 @@ Four accounts are not four times one. The single coordinator, the owner's approv
 <!-- model:accounts:begin -->
 | Account | Sequence, 3 accounts at the expected rate (start → merged) |
 |---|---|
-| A1 | B23 (26-09-28→26-10-01) → B24 (26-09-30→26-10-06) → B28 (26-10-05→26-10-20) → B32 (26-10-19→26-11-04) → B34 (26-11-03→26-11-23) → B29 (26-11-23→26-12-09) → B90 (26-12-08→26-12-24) → B27 (26-12-23→27-01-05) → B31 (27-01-04→27-01-15) → B36 (27-01-14→27-02-05) → B91 (27-02-04→27-02-18) → B25 (27-02-17→27-03-05) → B92 (27-03-04→27-03-12) → B30 (27-03-11→27-03-26) → B35 (27-03-25→27-04-14) → B33 (27-04-14→27-05-04) → B94 (27-05-03→27-05-20) → B107 (27-05-19→27-06-01) → B93 (27-05-31→27-06-14) → B26 (27-06-11→27-06-23) → B100 (27-06-22→27-07-01) |
-| A2 | B50 (26-09-28→26-10-20) → B40 (26-10-13→26-11-04) → B45 (26-10-29→26-11-23) → B51 (26-11-18→26-12-08) → B43 (26-12-02→26-12-23) → B46 (26-12-15→27-01-05) → B42 (26-12-29→27-02-03) → B48 (27-01-18→27-02-04) → B53 (27-01-28→27-02-17) → B70 (27-02-08→27-03-04) → B74 (27-02-24→27-03-12) → B44 (27-03-11→27-04-13) → B49 (27-03-29→27-04-15) → B71 (27-04-12→27-05-03) → B75 (27-04-23→27-05-19) → B78 (27-05-06→27-05-31) → B76 (27-05-25→27-06-10) → B102 (27-06-07→27-06-11) → B54 (27-06-08→27-06-22) → B47 (27-06-16→27-06-30) → B72 (27-06-23→27-07-02) |
-| A3 | B80 (26-09-28→26-10-19) → B81 (26-10-08→26-11-03) → B82 (26-10-27→26-11-20) → B84 (26-11-05→26-11-24) → B60 (26-11-20→26-12-09) → B61 (26-12-04→26-12-23) → B63 (26-12-16→27-01-04) → B65 (26-12-29→27-01-15) → B64 (27-01-08→27-02-04) → B62 (27-01-19→27-02-05) → B83 (27-02-01→27-02-17) → B103 (27-02-11→27-03-03) → B67 (27-02-18→27-03-03) → B105 (27-02-24→27-03-04) → B106 (27-02-26→27-03-05) → B111 (27-03-02→27-03-25) → B85 (27-03-12→27-03-25) → B86 (27-03-23→27-04-13) → B66 (27-04-01→27-04-14) → B108 (27-04-09→27-04-15) → B104 (27-04-13→27-05-03) → B77 (27-04-15→27-05-04) → B110 (27-04-28→27-05-18) → B55 (27-05-04→27-05-19) → B41 (27-05-12→27-06-01) → B73 (27-05-26→27-06-11) → B52 (27-06-07→27-06-22) → B109 (27-06-15→27-06-30) → B101 (27-06-24→27-07-01) → B112 (27-06-28→27-07-02) |
+| A1 | B23 (26-09-28→26-10-01) → B24 (26-09-30→26-10-06) → B28 (26-10-05→26-10-20) → B32 (26-10-19→26-10-30) → B34 (26-10-30→26-11-19) → B29 (26-11-19→26-12-07) → B90 (26-12-07→26-12-22) → B36 (26-12-21→27-01-13) → B27 (27-01-12→27-01-26) → B31 (27-01-25→27-02-05) → B91 (27-02-04→27-02-18) → B25 (27-02-17→27-03-05) → B92 (27-03-04→27-03-12) → B30 (27-03-12→27-03-26) → B35 (27-03-25→27-04-14) → B33 (27-04-14→27-05-04) → B94 (27-05-03→27-05-20) → B107 (27-05-19→27-06-01) → B93 (27-05-31→27-06-14) → B26 (27-06-11→27-06-23) → B100 (27-06-22→27-07-01) |
+| A2 | B50 (26-09-28→26-10-20) → B40 (26-10-13→26-11-02) → B45 (26-10-29→26-11-20) → B51 (26-11-18→26-12-07) → B43 (26-12-02→26-12-21) → B46 (26-12-15→27-01-12) → B42 (26-12-29→27-01-25) → B48 (27-01-18→27-02-04) → B53 (27-01-28→27-02-17) → B70 (27-02-08→27-03-04) → B74 (27-02-24→27-03-15) → B44 (27-03-11→27-04-13) → B49 (27-03-29→27-04-15) → B71 (27-04-12→27-05-03) → B75 (27-04-23→27-05-19) → B78 (27-05-06→27-05-31) → B76 (27-05-25→27-06-10) → B102 (27-06-07→27-06-11) → B54 (27-06-08→27-06-22) → B47 (27-06-16→27-06-30) → B72 (27-06-23→27-07-02) |
+| A3 | B80 (26-09-28→26-10-19) → B81 (26-10-08→26-10-30) → B82 (26-10-27→26-11-19) → B84 (26-11-05→26-12-04) → B60 (26-11-20→26-12-08) → B61 (26-12-04→26-12-22) → B63 (26-12-16→27-01-12) → B65 (26-12-29→27-01-13) → B64 (27-01-08→27-01-25) → B62 (27-01-19→27-02-05) → B83 (27-02-01→27-02-17) → B103 (27-02-11→27-03-03) → B67 (27-02-18→27-03-03) → B105 (27-02-24→27-03-04) → B106 (27-02-26→27-03-05) → B111 (27-03-02→27-03-25) → B85 (27-03-12→27-03-25) → B86 (27-03-23→27-04-13) → B66 (27-04-01→27-04-14) → B108 (27-04-09→27-04-15) → B104 (27-04-13→27-05-03) → B77 (27-04-15→27-05-04) → B110 (27-04-28→27-05-18) → B55 (27-05-04→27-05-19) → B41 (27-05-12→27-06-01) → B73 (27-05-26→27-06-11) → B52 (27-06-07→27-06-22) → B109 (27-06-15→27-06-30) → B101 (27-06-24→27-07-01) → B112 (27-06-28→27-07-02) |
 <!-- model:accounts:end -->
 
 Overlapping windows are stacking: an account implements its next stage while the previous one waits for integration or approval. "Help" stages outside an account's lanes are assigned by the coordinator when the account's own lanes have nothing ready.
@@ -592,6 +592,17 @@ Prompts are in `audit/delivery/ACCOUNT_PROMPTS.md`.
 
   **Conclusion:** r is NOT re-fitted from active time alone, since that would move every date earlier on a measurement that excludes the waits that bound it. The provisional dates stand, and the first re-fit uses the first merged stage's full interval. What the observations do establish is that construction is not the constraint on this account: review, approval and merge are. That is why `INTEGRATION_SEQUENCE.md` keeps each merge a separate, checked step.
 
+- **Observation 4: B32 (recorded 2026-09-28; construction and wait kept SEPARATE, as the owner asked for this calibration update).** Two lines, never summed:
+
+  | Measure | Interval | Duration |
+  |---|---|---|
+  | **Construction** (active build) — the prelude commit `799719d` (12:07 +0300, 09:07 UTC) → the evidence commit `e45353e` (13:33 +0300, 10:33 UTC) | active the whole interval: three parts in parallel worktrees (health 34 min, graph 46 min, exposures 59 min wall each), the integration (§I, the owner-transfer fix, the D8 pin), the full integration run, the unit/acceptance/upgrade/browser gates, three act rehearsals, the act and the demo walk. The mapping and the prelude before 12:07 ran in the same session interleaved with the B24-F1 read fix and the B84 records, and are not separable | **1 h 26 min** (plus the unseparated mapping and prelude before it) |
+  | **Wait** — the hosted checks | the candidate `2f10189` pushed ~14:39 +0300 → ci 36417086803 created 11:40:48 UTC, completed 12:05:55 UTC (red: B32-F1) | ~25 min hosted run; the correction's run not yet observed |
+  | **Wait** — the owner's review/approval | the bounded B32 review of 2026-09-28 returned one finding (B32-F1) and B24-F1's audit residual; no approval or merge | not yet observed |
+  | **Construction** — the bounded correction pass (B24-F1 audit + B32-F1) | the review received → `aa038f3` verified and the demonstration restarted | kept apart from B32's construction; not summed |
+
+  B32 was sized 7–12 U. Construction took 1 h 26 min of active wall-clock with three parallel implementers, consistent with observation 3. The wait is the term that sets the calendar; its review-and-approval part is still unobserved for every stage since B23 (none has merged), so r is not re-fitted and the provisional dates stand.
+
 ## 10. Correction record (the bounded review of `5da4799`, applied 2026-09-25)
 
 | Finding | Disposition |
@@ -602,6 +613,7 @@ Prompts are in `audit/delivery/ACCOUNT_PROMPTS.md`.
 | **PLAN-F4**: stage-numbered provisional migrations can reverse dependencies; the lock was a convention | Provisional names are coordinator-issued in start order (`MIGRATION_LEDGER.csv`). Final names are frozen at integration, before candidate verification and before any shared or demo application. Rebuild, never rewrite. `scripts/dev/heavy-slot.sh` implements two slots (tested, host-local; cross-host rule stated). The old databases are not bulk-dropped. **Residual (the review of 2026-09-25):** a cancellation released the slot before the workload exited — corrected: the workload's process group is drained before release (eight cases pass; the control reproduces the old defect) |
 | **B24-F2** (the bounded B24 review of 2026-09-25): unfinished attention still pointed to B24 as its completing stage | One bounded tracker pass (2026-09-26). F-P6-07 completes in **B34**, after B28 (novelty) and B32 (Strategy Graph, the score), with real-provider acceptance in **R2** under D6. B24 advances it, completes nothing, and carries its own effort, conditions and scenes. B28 carries the two B24 carryovers as explicit conditions and scenes (B28-R, B28-A) and the novelty input (B28-N), with its own effort. F-P4-12's dependency on F-P6-07 is replaced by B28's `extra_depends_on` B24 (the delivered queue). The schedule was re-derived once, and the checks PASS (`audit/CP6_BATCHES.md` §B24.9) |
 | **B28's residuals** (2026-09-26; the B24-F2 lesson applied at delivery, not after a review) | B28 delivered F-P4-10/11/12's named clauses and completes none. **F-P4-10** completes in **B74** (the anomaly model class in B45's registry, learning from dispositions, the UX in B84), with verification in R2. **F-P4-11** completes in **B75** (automatic rule fitness), with load tests in H2. **F-P4-12** completes in **B74**, after B34's human gates (policy-path approval, the forecast-movement summary, the evaluation into the learning dataset), with real-provider proof in R2 under D6. The features that needed only B28's delivered core (F-P4-13, F-P4-14, F-P4-15, F-P6-07) depend on B28 through `extra_depends_on`. B28's own effort is 6–10.5 U. Re-derived once; the checks PASS; the M1 dates are unchanged |
+| **B32's residuals** (2026-09-28; the B24-F2 lesson applied at delivery) | B32 delivered the named clauses of F-P6-09, F-P4-13 and F-P6-08 and completes none. **F-P4-13** completes in **B34**: the exposure events into the outbox and the attention queue (with F-P6-07's opportunity class), a response's outcome recorded and monitored, the polarity on the canonical object, a taxonomy activation step, the further assessment dimensions, the continuity cases still open and the workspace's hosted browser case. **F-P6-08** and **F-P6-09** complete in **B36**: the owner-edit anti-gaming clause (the input contract gains the owner), capability/execution/outcome inputs and exceptions, GraphChanged for alignment, measure and owner changes, revocable authority acts, scheduled detections, planning objects, the pages' remaining UX and hosted browser cases; B34 owns the score's change consumption (a prerequisite of B36). Verification in **R2** (AT-27, AT-28, AT-37, AT-43). The governed second-role binding the act lacked is **B61**'s. Peer comparison is declared absent: a product decision, not a residual. The dependents of B32's delivered core (F-P4-15, F-P6-01, F-P6-07) depend on B32 through `extra_depends_on`. B32's own effort is 5.25–8.5 U. Re-derived once |
 | **PortWatch** | Authorized; removed from D4 and from F-P1-06's prerequisites (the Comtrade key binding and genuinely new licensed feeds remain) |
 
 The runner's behavior behind PLAN-F4 was confirmed by reading `apps/api/scripts/migrate.mjs` (filename-sorted apply; a filename-keyed `schema_migrations` with digest lock). The review's probe hash `db1df307…` differs from the committed bytes at `5da4799` (`7db08482…`), likely a download encoding; the control flow is the same.

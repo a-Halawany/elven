@@ -25,6 +25,14 @@ const TYPES: Array<{ code: StrategyRow['object_type']; label: string }> = [
   { code: 'DEC', label: 'Decision' },
   { code: 'CMT', label: 'Commitment' },
   { code: 'OUT', label: 'Outcome' },
+  /* B32 (0089) */
+  { code: 'CAP', label: 'Capability' },
+  { code: 'INI', label: 'Initiative' },
+  { code: 'RSC', label: 'Resource' },
+  { code: 'MSR', label: 'Measure' },
+  { code: 'STK', label: 'Stakeholder' },
+  { code: 'RSK', label: 'Risk / opportunity' },
+  /* end B32 */
 ];
 
 function VerificationBadge({ state, type }: { state: string; type: string }) {

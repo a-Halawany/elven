@@ -22,6 +22,7 @@ import { ResolutionService } from './entities/resolution.service.js';
 import { EdgesService } from './edges/edges.service.js';
 import { StrategyService } from './strategy/strategy.service.js';
 import { ImpactService } from './strategy/impact.service.js';
+/* B32 (0089) graph */ import { StrategyAlignmentService } from './strategy/alignment.service.js'; /* end B32 graph */
 import { SearchService } from './search/search.service.js';
 import { PropagationAgentSessionService } from './propagation/propagation-agent-session.service.js';
 import { PropagationAgentsService } from './propagation/propagation-agents.service.js';
@@ -55,6 +56,7 @@ import { ObservationExceptionFilter } from '../observation/observation.filter.js
     EdgesService,
     StrategyService,
     ImpactService,
+    /* B32 (0089) graph */ StrategyAlignmentService, /* end B32 graph */
     SearchService,
     PropagationAgentSessionService,
     PropagationAgentsService,

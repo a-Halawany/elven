@@ -4072,3 +4072,63 @@ The mechanism is in `audit/CP6_BATCHES.md` §B28.
 - **The dependents of B28's delivered core** (F-P4-13, F-P4-14, F-P4-15, F-P6-07) depend on B28 directly.
 - **The schedule was re-derived once.** The M1 dates are unchanged. The next A1 stage is B32.
 - **The recalibration after B23, B24 and B28** (DELIVERY_PLAN §9, observation 3): construction ran at about 1–1.5 U per active hour with parallel implementers, and none of the three stages has merged. r is not re-fitted from active time alone, and the provisional dates stand. Review, approval and merge, not construction, set the calendar.
+
+## 40. B32 (2026-09-28): the Strategy Graph's capabilities and alignment, risk and opportunity intelligence, and the decomposable Strategic Health Score (0089)
+
+### 40.1 What B32 implements
+
+The mechanism is in `audit/CP6_BATCHES.md` §B32. There is one migration, `0089_b32_strategy_exposures_health.sql` (§0 prelude, §R, §G, §H, §I). It is forward-only, and the interface register stays 50/0/0.
+
+- **The Strategy Graph (F-P6-09):**
+  - Capabilities, initiatives, resources, measures and stakeholders as strategy types, with typed alignments mirrored into the dependencies so the impact walk reaches them.
+  - Measures with observations and freshness. The gap view (`alignment_rule@1`) shows five criteria, each on its own, with gap reasons.
+  - Detections with declared continuity: a conflict or a cycle held, a missing owner routed, a stale measure exposing its scope.
+  - The four human authority acts (digest, separation, expiry), and owner transfer that survives a rebuild.
+- **Risk and opportunity intelligence (F-P4-13):**
+  - A register on the RSK. The taxonomy is versioned, and appetites are approved by a named human. The owner accepts an assessment on its exact digest after a preview. Controls and the residual are stored with the computation.
+  - An appetite breach routed as a warning to the exposure's owner. Aggregation without double counting (the max over shared drivers).
+  - Opportunity hypotheses, and sponsorship opening an owned evaluation. Responses opening decisions. A lexicographic priority with no weighted score.
+  - The Risk and Opportunity Agents only estimate; their accept and sponsor attempts are refused and recorded. The WS-09 workspace.
+- **The Strategic Health Score (F-P6-08):**
+  - A versioned definition that takes two people. The pure composition declares missing and stale data, never averages a critical failure away, and shows no number when indeterminate.
+  - Snapshots and components carry evidence, confidence, trend, freshness, sensitivity, decision links and lineage. Changes are acknowledged, challenged and decided under separation. Anti-gaming flags are shown. The as-of replay and the baseline comparison are in place. Peer comparison is declared absent, as a product decision.
+- **Integration found and fixed one defect:** a rebuilt strategy row lost its owner transfer. The rebuild now keeps the latest `strategy.owner_assigned` (G5, with a failing control on the pre-fix prelude).
+- **An incident, with no effect on the demonstration:** two part harnesses first ran on the default Redis :6379, which the demonstration uses. The demo API stayed healthy, and its 733 queues showed nothing waiting, active or failed. The runs now set `EYE_REDIS_PORT=6392`.
+
+### 40.2 Results
+
+| Check | Result |
+|---|---|
+| Part harnesses | 7 + 14 + 6 = 27/27 |
+| Full integration | 1241/1242 in 93 files on a fresh database. The one failure (phase4-acceptance D8's table-count pin) was corrected at `6a44262`; phase4-acceptance then passed 16/16 |
+| Unit | 2547 + 9 on a clean tree |
+| Acceptance / upgrade | 58/58 / PASS |
+| Browser | 51/51 on a fresh database |
+| Demo walk | 3/3 on `eye_demo` |
+| Hosted | pending at the candidate; reported to the owner, not re-recorded |
+
+**The act on `eye_demo`** (`evidence/cp6/act-b32.txt`): ALL SCENES HELD, after three rehearsals on a restored copy (the last two held).
+- **Gap view:** GAP 3/5 (`capability_under_evidenced`, `measure_stale`).
+- **The corridor risk:** the residual of EUR 120k–540k breached the EUR 250k appetite. The warning was routed to C. Brenner, who acknowledged it. The mitigation decision was opened.
+- **The opportunity:** L. Brandt sponsored the Morocco opportunity.
+- **Aggregation:** the shared driver counted once (EUR 40k–270k, against a naive sum of EUR 480k).
+- **Health:** supply resilience fell from 46.67 to 39.17, with the stale measure declared. A third person dismissed the challenge.
+
+The backups before 0089 are `eye_demo-pre-0089-20260928T091041Z.dump` and `eye_demo-pre-0089-20260928T103136Z.dump`, and the API restart was VERIFIED. **Disclosed:** four second-role bindings were made through the database controller, because Phase 0 has no governed route for them.
+
+**40.2a — B32-F1 corrected** (the bounded review of 2026-09-28). The hosted run at `2f10189` failed build-test on the graph file (1238/1242, G1/G2/G4/G5 — one failure and its dependents): the observation's response read freshness at a JavaScript millisecond instant that can precede the row's microsecond `recorded_at`, so it answered the previous observation. It now reads at `GREATEST(clock_timestamp(), recorded_at)` (`aa038f3`, TypeScript only, 0089 untouched); G8 proves the first observation, the stale → fresh transition, the boundary on real rows and the history. The graph file 8/8; full integration 1243/1243; unit 2547 + 9; acceptance 58/58; upgrade PASS; browser 51/51. `audit/CP6_BATCHES.md` §B32.10.
+
+### 40.3 The plan
+
+- **B32 completes no feature.** Its residual clauses are assigned:
+  - F-P4-13 → **B34**: the exposure events into the outbox and the attention queue, a response's outcome, the polarity on the canonical object, the taxonomy activation step, the further dimensions, the workspace's hosted browser case.
+  - F-P6-08 and F-P6-09 → **B36**: the owner-edit anti-gaming clause, further score inputs and exceptions, GraphChanged for the new changes, revocable authority acts, scheduled detections, planning objects, the pages' hosted browser cases. B34 owns the score's change consumption.
+  - The governed second-role binding → **B61**.
+  - Verification (AT-27, AT-28, AT-37, AT-43) in **R2**.
+- **The dependents of B32's delivered core** (F-P4-15, F-P6-01, F-P6-07) now depend on B32 directly.
+- **The schedule was re-derived once.** The M1 dates are unchanged. The next A1 stage is B34.
+- **Calibration** (DELIVERY_PLAN §9, observation 4), kept as two separate lines:
+  - Construction: 1 h 26 min active, with three parallel implementers.
+  - Wait (hosted checks, review and approval): not yet observed.
+
+  r is not re-fitted.

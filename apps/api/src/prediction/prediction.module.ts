@@ -31,10 +31,17 @@ import { SignalsService } from './signals/signals.service.js';
 import { StreamProcessorService } from './streams/stream-processor.service.js';
 import { StreamRulesConsumer } from './streams/stream-rules.consumer.js';
 /* end B28 streams */
+/* B32 (0089) exposures: risk and opportunity intelligence — its own controller under the prediction prefix; the decision module for the
+   package a response opens (DecisionModule imports nothing from here) */
+import { DecisionModule } from '../decision/decision.module.js';
+import { ExposuresController } from './exposures/exposures.controller.js';
+import { ExposuresService } from './exposures/exposures.service.js';
+/* end B32 exposures */
 
 @Module({
-  imports: [PipelineModule, ObservationModule, GraphModule, /* B28 (0088) warnings: the attention tick's registry */ ExecutiveModule /* end B28 warnings */],
-  controllers: [PredictionController, /* B28 (0088) signals */ SignalsController /* end B28 signals */],
+  imports: [PipelineModule, ObservationModule, GraphModule, /* B28 (0088) warnings: the attention tick's registry */ ExecutiveModule /* end B28 warnings */,
+            /* B32 (0089) exposures */ DecisionModule /* end B32 exposures */],
+  controllers: [PredictionController, /* B28 (0088) signals */ SignalsController /* end B28 signals */, /* B32 (0089) exposures */ ExposuresController /* end B32 exposures */],
   providers: [
     SeriesService,
     ForecastingService,
@@ -48,6 +55,7 @@ import { StreamRulesConsumer } from './streams/stream-rules.consumer.js';
     StreamProcessorService,
     StreamRulesConsumer,
     /* end B28 streams */
+    /* B32 (0089) exposures */ ExposuresService, /* end B32 exposures */
     { provide: APP_FILTER, useClass: ObservationExceptionFilter },
   ],
   exports: [SeriesService, ForecastingService, ScenariosService],

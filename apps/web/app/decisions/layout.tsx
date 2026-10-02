@@ -36,6 +36,7 @@ export const NAV = [
   { href: '/decisions/briefings', label: 'Briefings', glyph: '☰' },
   { href: '/decisions/attention', label: 'Attention', glyph: '⚑' },
   { href: '/decisions/requests', label: 'Requests', glyph: '✎' },
+  /* B32 (0089) health */ { href: '/decisions/health', label: 'Health', glyph: '◔' }, /* end B32 health */
   { href: '/twins', label: 'Twins', glyph: '◫' },
   { href: '/prediction', label: 'Prediction', glyph: '↗' },
   { href: '/graph', label: 'Graph', glyph: '◈' },

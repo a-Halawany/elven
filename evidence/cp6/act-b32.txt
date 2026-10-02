@@ -1,0 +1,97 @@
+THE B32 ACT on eye_demo — 2026-09-28T10:31:49.609Z
+
+B32-0 THE STATE — 0089, the register, the casting, the risk owner, the disclosed bindings
+  ✓ migration 0089_b32_strategy_exposures_health.sql applied
+  ✓ the casting read from identity.role_bindings: a.hoffmann (domain_analyst); j.weber (strategy_owner); l.brandt (decision_authority, decision_owner); m.dvorak (collection_manager, executive); n.eriksen (forecast_owner); s.okafor (decision_approver, executive)
+  ✓ the administrator CREATED C. Brenner through the governed principal route (identity.principal.create) — role risk_owner in NORDWERK
+  · DISCLOSED — outside the governed routes (Phase 0 offers no route binding a SECOND role to an existing human; C14 freezes it): bound now: c.brenner strategy_owner, c.brenner decision_owner, l.brandt opportunity_sponsor, l.brandt strategy_owner (identity.role_bindings, the administrator, as seed-decisions.mjs did)
+  ✓ the register: 50 bound / 0 partial / 0 unbound (B32 adds no interface)
+  ✓ the inputs: 22 claims the NORDWERK records' extraction admitted (source 01a0…ece022); the shipment record 01a0…fc9c60 v1 ("SYN-SHIP-4481 carries SYN-PART-BRG", "MV Hanse Meridian transits Bab el-Mandeb")
+  ✓ the Regensburg objective 01a0…3d1d00 "Keep the Regensburg line supplied through Q1"; the corridor indicator 01a0…5fe9ec "Bab el-Mandeb Strait transits below 41 per day for five cons…" — 1011 evaluations from the PortWatch series, the latest 23 transits on 2026-09-05
+
+B32-G F-P6-09 — "On-time delivery 95%" linked to the Regensburg assembly capability and the dual-sourcing initiative; the gap view
+  ✓ J. Weber DECLARED OBJ 01a0…bc5e38 "On-time delivery 95%" resting on claim 01a0…8c40c3
+  ✓ J. Weber DECLARED CAP 01a0…a3dd8f "Regensburg assembly" resting on claim 01a0…1075bd
+  ✓ J. Weber DECLARED INI 01a0…4521b2 "Dual-sourcing initiative" resting on claim 01a0…aa6bdd
+  ✓ J. Weber DECLARED RSC 01a0…920f50 "Bearings procurement budget" resting on claim 01a0…8c40c3
+  ✓ J. Weber DECLARED MSR 01a0…ea97f4 "On-time delivery rate" resting on claim 01a0…964045
+  ✓ J. Weber DECLARED STK 01a0…fe8751 "Regensburg line workforce" resting on claim 01a0…1075bd
+  ✓ J. Weber DECLARED supports 01a0…bc5e38 → 01a0…a3dd8f (01a0…4b221d; mirrored into the dependencies: 01a0…bc5e38 rests on 01a0…a3dd8f)
+  ✓ J. Weber DECLARED builds 01a0…4521b2 → 01a0…a3dd8f (01a0…e6197b; mirrored into the dependencies: 01a0…a3dd8f rests on 01a0…4521b2)
+  ✓ J. Weber DECLARED resources 01a0…920f50 → 01a0…4521b2 (01a0…f166ea; mirrored into the dependencies: 01a0…4521b2 rests on 01a0…920f50)
+  ✓ J. Weber DECLARED affects 01a0…fe8751 → 01a0…bc5e38 (01a0…3f67e9; mirrored into the dependencies: 01a0…fe8751 rests on 01a0…bc5e38)
+  ✓ J. Weber DEFINED the measure 01a0…ea97f4 on "On-time delivery 95%": percent, higher is better, target 95 by 2027-12-31, fresh for 7 days — definition v1, proposed
+  ✓ A. Hoffmann ENTERED the reading 91% observed 2026-09-19 from the shipment record 01a0…fc9c60 v1 — freshness stale (9.00 days against 7)
+  ✓ J. Weber setting their own objective REFUSED — 403 EYE-AUT-001 — strategy authority rejected (separation): principal 01a084f5-ab4d-7b74-b951-9250c53fd0f3 declared 01a0e792-25db-7943-ab5d-fce230bc5e38; the declarer never records the authority act on it
+  ✓ M. Dvořák RECORDED set_objective on OBJ 01a0…bc5e38 v1 — eligible by role:executive, declarer J. Weber, act 01a0…c826c4
+  ✓ M. Dvořák RECORDED approve_measure on MSR 01a0…ea97f4 v1 — eligible by role:executive, declarer J. Weber, act 01a0…65d41b
+  ✓ M. Dvořák RECORDED allocate_resource on ALN 01a0…f166ea v1 — eligible by role:executive, declarer J. Weber, act 01a0…b85f97
+  ✓ THE GAP VIEW (alignment_rule@1: set by a human authority; the capability evidenced by at least 2 counted refs, one observed or extracted; an active initiative builds it; an allocation approved by a human authority resources it; an approved measure is fresh — each criterion shown, none averaged): "On-time delivery 95%" × "Regensburg assembly" — GAP, 3/5 criteria met; gap reasons capability_under_evidenced, measure_stale; evidence 0 (strongest null); initiatives active 1, resourced 1; measures 01a0…ea97f4 approved stale 9 d
+  ·   criterion objective_set: met — set by act 01a0e792-26ad-71a5-b495-cb9da0c826c4 until 2027-03-27 10:31:50.186+00
+  ·   criterion capability_evidenced: NOT met — 0 counted evidence ref(s), the strongest none (the rule: at least 2, one observed or extracted)
+  ·   criterion initiative_active: met — 1 active initiative(s) build the capability
+  ·   criterion initiative_resourced: met — 1 initiative(s) with an allocation approved by a human authority
+  ·   criterion measure_current: NOT met — 1 measure(s): 1 approved at the instant, 0 approved and fresh
+  ✓ THE DETECTIONS: {"stale_measure":1} open — stale_measure on 01a0…ea97f4: continuity expose_affected_scope, routed to J. Weber, affected 01a0…ea97f4, 01a0…bc5e38 — measure "On-time delivery rate" was last observed 9.00 day(s) before 2026-09-28 10:31:50.219+00 (window 7 day(s))
+
+B32-R F-P4-13 — the corridor closure registered as a risk to the Regensburg line; the owner accepts; the appetite breached; the mitigation decision
+  ✓ M. Dvořák PUBLISHED the risk taxonomy version 1: supply_chain (risk), sourcing (opportunity), market (both)
+  ✓ M. Dvořák APPROVED the supply_chain APPETITE v1: EUR 250,000 residual, approved by M. Dvořák
+  ✓ C. Brenner DECLARED RSK 01a0…b2cb46 "Corridor closure — Regensburg line" resting on claim 01a0…7c99bf, strategy 01a0…3d1d00
+  ✓ A. Hoffmann REGISTERED 01a0…b2cb46 as a risk in supply_chain (taxonomy v1), owner C. Brenner — 2 driver(s) from its rests_on
+  ✓ A. Hoffmann ASSESSED the corridor: version 1 proposed (human), probability 0.3–0.6, impact EUR 400,000–EUR 900,000, horizon 2027-Q1, digest e221c4455236…
+  ✓ C. Brenner PREVIEWED accepting v1: residual EUR 120,000–EUR 540,000, breach true; the residual exceeds the appetite of supply_chain: accepting records the breach and routes a warning candidate to the owner
+  ✓ J. Weber accepting the corridor assessment (not the risk owner) REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ C. Brenner ACCEPTED v1: residual EUR 120,000–EUR 540,000 — OUTSIDE the EUR 250k appetite; routing routed → candidate 006d…f803ca pending, routed to C. Brenner
+  ✓ N. Eriksen PROCESSED the candidates: 1 raised in this pass — the corridor's warning 01a0…acad1a origin exposure, raised, routed to C. Brenner (the exposure's owner, not the objective's)
+  ✓ C. Brenner ACKNOWLEDGED the warning 01a0…acad1a → "acknowledged"
+  ✓ C. Brenner ADDED the control "Dual-sourcing framework contract (bearings)" 01a0…db93f5 (preventive, effectiveness 0.5–0.7): residual now EUR 36,000–EUR 270,000, still outside appetite; routing routed
+  ✓ C. Brenner OPENED THE MITIGATION DECISION: DEC 01a0…49ca29 and its package 01a0…9f461d (draft) linked as the mitigate response
+
+B32-O F-P4-13 — the same change surfaces an opportunity: an alternative supplier in Morocco, sponsored by L. Brandt
+  ✓ L. Brandt DECLARED RSK 01a0…a18123 "Alternative supplier in Morocco" resting on claim 01a0…7c99bf, strategy 01a0…3d1d00
+  ✓ L. Brandt REGISTERED 01a0…a18123 as a opportunity in sourcing (taxonomy v1), owner C. Brenner — 2 driver(s) from its rests_on
+  ✓ L. Brandt STATED the hypothesis v1: value EUR 150,000–EUR 400,000 in 2027-Q2, falsified if the grade test fails or 20 t/month is not shipped; needs the capability 01a0…a3dd8f
+  ✓ A. Hoffmann ASSESSED the opportunity: version 1 (plausibility medium, value EUR 150,000–EUR 400,000)
+  ✓ L. Brandt SPONSORED v1 (sponsored; option qualify, EUR 60k, two conditions) — the evaluation opened: DEC 01a0…302abd, package 01a0…8608c4 (exploit)
+  ✓ C. Brenner (its owner) ACCEPTED the opportunity's v1 — its value now enters the health inputs
+
+B32-A the Risk and Opportunity Agents estimate and never decide; the aggregation counts a shared driver once
+  ✓ the administrator REGISTERED the Risk Agent 01a0…6938bd — role risk_agent, 1.0.0 digest a5e674e4341a…, accountable C. Brenner, escalation M. Dvořák
+  ✓ the administrator REGISTERED the Opportunity Agent 01a0…4bac6d — role opportunity_agent, 1.0.0 digest dc94ae81b481…, accountable C. Brenner, escalation M. Dvořák
+  ✓ M. Dvořák RAN the Risk Agent (run 01a0…e3a2eb, finished, —): estimated 1 (01a0…b2cb46 v2), waiting 0, correlations 0
+  ✓ the agent's attempt to ACCEPT refused at the PDP and recorded on the run: prediction.exposure.accept EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ M. Dvořák RAN the Opportunity Agent (run 01a0…63ee5c): estimated 01a0…a18123 v2
+  ✓ the agent's attempt to SPONSOR refused and recorded: EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ C. Brenner DECLARED RSK 01a0…fd7918 "Magnet price spike" resting on claim 01a0…7c99bf, strategy 01a0…3d1d00
+  ✓ A. Hoffmann REGISTERED 01a0…fd7918 as a risk in supply_chain (taxonomy v1), owner C. Brenner — 2 driver(s) from its rests_on
+  ✓ C. Brenner ACCEPTED "Magnet price spike" v1: residual EUR 40,000–EUR 210,000
+  ✓ A. Hoffmann AGGREGATED the corridor and the price risk: method max, total EUR 40,000–EUR 270,000 against a naive sum of EUR 480,000 — the shared driver counted ONCE (01a0…3d1d00+01a0…7c99bf); agent estimates not used: 0
+
+B32-H F-P6-08 — the decomposable Strategic Health Score: supply resilience falls; the drill-down; the change acknowledged, challenged and decided
+  ✓ J. Weber PROPOSED health definition v1 (shs-weighted-coverage@1, digest 9e432c8f36c0…): 2 dimensions, 4 components (indicator, risk, measure, opportunity)
+  ✓ J. Weber approving their own definition (no executive role, and the proposer) REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ S. Okafor APPROVED it — active, approved by S. Okafor (the second person)
+  ✓ A. Hoffmann COMPUTED S1 01a0…a54d80: status partial, coverage 0.86, aggregate 62.67; supply_resilience 46.67 critical (partial), sourcing 100 healthy (complete)
+  ✓ C. Brenner ACCEPTED the Risk Agent's estimate v2 (an agent proposes, the owner decides): residual EUR 36,000–EUR 360,000; superseded [1]
+  ✓ A. Hoffmann COMPUTED S2 01a0…10d1db: status partial, coverage 0.86, aggregate 57.42; supply_resilience 39.17 critical (partial), sourcing 100 healthy (complete)
+  ✓ SUPPLY RESILIENCE 46.67 (critical) → 39.17 (critical), trend {"delta":-7.5,"prior_value":46.67}; bounds if the excluded input scored 0 / 100: {"if_excluded_at_0":31.33,"if_excluded_at_100":51.33}
+  · the changes raised: aggregate 62.67→57.42 (move); dimension:supply_resilience 46.67→39.17 (move)
+  ✓ THE DRILL-DOWN (C. Brenner): corridor risk — value EUR 360,000, normalised 40, weight 0.4, contribution 20, confidence 0.6, included; evidence object 01a0…fc9c60 v1, object 01a0…256501, object 01a0…7fd13b, object 01a0…acad1a; sensitivity {"key":"corridor_risk","if_0":19.17,"swing":0.13,"if_100":69.17,"weight_plus_10pct":39.23,"weight_minus_10pct":39.1}
+  ✓ the on-time measure: STALE — 9 days old against its 7-day bound; observed 9 days before the instant; stale after 7 days (declared and excluded, never averaged away)
+  ·   component corridor_transits (indicator): included, value 23, contribution 19.1667, decisions "Evaluate the Moroccan supplier" 01a0…302abd, "January corridor collapse — response" 01a0…fdb43e
+  ·   component corridor_risk (risk): included, value 360000, contribution 20, decisions "Evaluate the Moroccan supplier" 01a0…302abd, "January corridor collapse — response" 01a0…fdb43e
+  ·   component on_time_delivery (measure): stale, value 91, contribution —, decisions "Evaluate the Moroccan supplier" 01a0…302abd, "January corridor collapse — response" 01a0…fdb43e
+  ·   component morocco_supplier (opportunity): included, value 400000, contribution 100, decisions "Evaluate the Moroccan supplier" 01a0…302abd, "January corridor collapse — response" 01a0…fdb43e
+  · peer comparison: {"peer":null,"reason":"no peer input in this product"}
+  ✓ C. Brenner ACKNOWLEDGED the supply-resilience change 2778…21e146 → acknowledged
+  ✓ L. Brandt CHALLENGED it (weight): challenged
+  ✓ S. Okafor deciding the challenge (the definition's approver) REFUSED — 403 EYE-AUT-001 — health change rejected (separation): the approver of definition version 1 does not decide a challenge to the scores it produced
+  ✓ M. Dvořák DECIDED the challenge: dismissed (neither the challenger nor the approver) — the change stands as recorded
+  ✓ THE COMPARISON S2 against S1: aggregate {"subject":"aggregate","from":62.67,"to":57.42,"delta":-5.25,"qualified":"partial on the snapshot — coverage below 1 or a critical failure; read the decomposition"}; supply_resilience 46.67→39.17 (critical→critical), sourcing 100→100 (healthy→healthy); peer {"peer":null,"reason":"no peer input in this product"}
+
+B32-9 THE STATE and the LIMITS
+  · in the ledgers: 5 active alignments, 1 measures, 3 exposures, 2 health snapshots
+  · LIMITS said: every amount, target and probability is SYNTHETIC; the measure reading is an analyst's entry for a day nine days ago (no delivery-performance feed exists); the Morocco supplier is a hypothesis, not a real supplier; the peer comparison has no input (declared); the anti-gaming flags, the as-of replay, the refused proposal and the conflict / cycle / missing-owner detections are the harnesses' (phase6-health-b32, phase6-graph-b32), not staged here; the owner-edit anti-gaming clause is not measured (the health input contract carries no owner — a residual named in the records); risk and opportunity events stay in the exposure ledger (the attention opportunity class is B34's); the four second-role bindings are the one act outside the governed routes, disclosed above; nothing is cleaned: the objects, the exposures, the decisions opened and the snapshots stand as demonstration facts.
+
+ALL SCENES HELD · 1.2 s
