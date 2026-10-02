@@ -19,6 +19,9 @@ import { AgentWorkerService } from './agents/agent-worker.service.js';
 import { DecisionCapability } from '../decision/decision.capabilities.js';
 import { RequestsService, validateRequest } from './requests/requests.service.js';
 import { AttentionService } from './attention/attention.service.js';
+/* B23 (0084) attention */
+import { ReviewsService, validateConvene } from './reviews/reviews.service.js';
+/* end B23 attention */
 
 function ctx(req: EyeRequest) {
   const envelope = req.eyeEnvelope;
@@ -35,7 +38,8 @@ function instant(v: unknown, fallback: string): string {
 
 @Controller('/v1/tenants/:tenantId/domains/:domainId')
 export class ExecutiveController {
-  constructor(private readonly pipeline: PipelineService, private readonly rooms: RoomService, private readonly briefings: BriefingService, private readonly agents: AgentsService, private readonly worker: AgentWorkerService, private readonly requests: RequestsService, private readonly attention: AttentionService) {}
+  constructor(private readonly pipeline: PipelineService, private readonly rooms: RoomService, private readonly briefings: BriefingService, private readonly agents: AgentsService, private readonly worker: AgentWorkerService, private readonly requests: RequestsService, private readonly attention: AttentionService,
+              /* B23 (0084) attention */ private readonly reviews: ReviewsService /* end B23 attention */) {}
   private route(tenantId: string, domainId: string, action: string, objectType: string | null, objectId: string | null) {
     return { scope: 'DOMAIN' as const, tenantId, domainId, action, objectType, objectId };
   }
@@ -408,4 +412,58 @@ export class ExecutiveController {
                                targetType: 'ATI', targetId: null, targetVersion: null, outboxEvent: null }));
     return { escalation: out.result, receipt: receipt(out) };
   }
+
+  /* B23 (0084) attention: THE GOVERNED REVIEW (L10-I03 ReviewConvened) ───────────────────────── */
+  /**
+   * A NAMED HUMAN convenes a review around a declared objective, decision, scenario, commitment or outcome (human-gated); idempotent on
+   * the convener's convene_key under the review's digest; ReviewConvened@v1 published from the write of a NEW review (a repeat, none).
+   */
+  @Post('/executive/reviews/convene')
+  async conveneReview(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: Record<string, unknown> }) {
+    const { envelope, principal } = ctx(req);
+    const intake = validateConvene(body.payload ?? {}, envelope.correlation_id);
+    const reviewId = newId();
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'executive.review.convene', 'RVW', reviewId), ExecutiveCapability.review,
+      async (cap, scope) => {
+        const r = await this.reviews.convene(cap, { tenantId: scope.tenantId as string, domainId: scope.domainId as string }, reviewId, intake, principal.principalId, envelope.correlation_id);
+        return { result: r.review, targetType: 'RVW', targetId: String(r.review['review_id']), targetVersion: '1', outboxEvent: r.event };
+      });
+    return { review: out.result, receipt: receipt(out) };
+  }
+
+  @Post('/executive/reviews/list')
+  async listReviews(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: { state?: string; subjectKind?: string; subjectId?: string; limit?: number } }) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'executive.review.read', 'RVW', null), ExecutiveCapability.read, async (cap) => this.reviews.list(cap, body.payload ?? {}));
+    return { reviews: out.result, receipt: receipt(out) };
+  }
+
+  @Post('/executive/reviews/:reviewId/get')
+  async getReview(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('reviewId') reviewId: string) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'executive.review.read', 'RVW', reviewId), ExecutiveCapability.read, async (cap) => this.reviews.get(cap, reviewId, envelope.correlation_id));
+    return { review: out.result, receipt: receipt(out) };
+  }
+
+  /** The chair concludes the review with its conclusion (a domain / platform administrator may too). */
+  @Post('/executive/reviews/:reviewId/conclude')
+  async concludeReview(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('reviewId') reviewId: string, @Body() body: { payload?: { note?: string } }) {
+    return this.closeReview(req, tenantId, domainId, reviewId, 'concluded', body.payload?.note);
+  }
+
+  /** The convener (or the chair) withdraws the review, saying why. */
+  @Post('/executive/reviews/:reviewId/withdraw')
+  async withdrawReview(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('reviewId') reviewId: string, @Body() body: { payload?: { note?: string } }) {
+    return this.closeReview(req, tenantId, domainId, reviewId, 'withdrawn', body.payload?.note);
+  }
+
+  private async closeReview(req: EyeRequest, tenantId: string, domainId: string, reviewId: string, disposition: 'concluded' | 'withdrawn', note: unknown) {
+    const { envelope, principal } = ctx(req);
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(reviewId)) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'reviewId must be a review id'), 422);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'executive.review.close', 'RVW', reviewId), ExecutiveCapability.review,
+      async (cap, scope) => ({ result: await this.reviews.close(cap, { tenantId: scope.tenantId as string, domainId: scope.domainId as string }, reviewId, disposition, typeof note === 'string' ? note : '', principal.principalId, envelope.correlation_id),
+                               targetType: 'RVW', targetId: reviewId, targetVersion: '2', outboxEvent: null }));
+    return { review: out.result, receipt: receipt(out) };
+  }
+  /* end B23 attention */
 }

@@ -120,7 +120,8 @@ describe('P6-M4 · F4 — briefings: what changed, why it matters, who owns it, 
     // the BRF record
     const obj = (await sql<Record<string, unknown>>`select object_type, schema_ref, owning_component, supersedes, quality_state from objects.canonical_objects where object_id = ${b1}::uuid`.execute(h.su)).rows[0] as Record<string, unknown>;
     expect(obj['object_type']).toBe('BRF');
-    expect(obj['schema_ref']).toBe('BRF@v1');
+    // B23 (0084): every new edition is BRF@v2 (the attention section; phase6-attention-events-b23 E9) — a v1 edition stays v1
+    expect(obj['schema_ref']).toBe('BRF@v2');
     expect(obj['owning_component']).toBe('CP-EXE-01');
     expect(obj['supersedes']).toBeNull();
     expect((obj['quality_state'] as Record<string, unknown>)['narrative']).toBe('none');

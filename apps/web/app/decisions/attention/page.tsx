@@ -24,6 +24,10 @@ import {
 } from '../../../lib/attention';
 import { Empty, LiveStatus, Mono, ScrollBox, cardStyle, DefinitionRow, UnknownNote, GovernedButton, fmtInstant, textareaStyle } from '../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui';
+/* B23 (0084) attention: the governed reviews (L10-I03) beside the queue */
+import { reviewSubjectOf } from '../../../lib/attention';
+import { ReviewsPanel, type ConvenePrefill } from './reviews-panel';
+/* end B23 attention */
 
 type ReceiptT = { policyDecisionId: string; auditSeq: number } | null;
 const str = (v: unknown) => (v === null || v === undefined || v === '' ? '—' : String(v));
@@ -101,6 +105,9 @@ export default function AttentionPage() {
   const [published, setPublished] = useState<PublishedPolicy | null>(null);
   const [pubReceipt, setPubReceipt] = useState<ReceiptT>(null);
   const [pubProblem, setPubProblem] = useState<string | null>(null);
+  /* B23 (0084) attention */
+  const [prefill, setPrefill] = useState<ConvenePrefill | null>(null);
+  /* end B23 attention */
 
   const load = async () => {
     const r = await api.items(scope, { state: stateFilter, signalClass: classFilter });
@@ -314,6 +321,17 @@ export default function AttentionPage() {
                   </div>
                 </>
               )}
+              {/* B23 (0084) attention: a material change on a decision (or an incoherent scenario) → a governed review of its subject, from this item */}
+              {reviewSubjectOf(detail) !== null && (
+                <>
+                  <h3 style={h3}>Convene a review</h3>
+                  <p style={muted}>Opens a governed review of this {reviewSubjectOf(detail)} (the form below the item, pre-filled from it). The server decides who may convene.</p>
+                  <button type="button" style={linkButton} onClick={() => { setPrefill({ kind: reviewSubjectOf(detail) as string, subjectId: detail.subject_id, causeItemId: detail.item_id, title: detail.title }); document.getElementById('reviews-h')?.scrollIntoView(); }}>
+                    Convene a review of this {reviewSubjectOf(detail)}
+                  </button>
+                </>
+              )}
+              {/* end B23 attention */}
               {actProblem !== null && <LiveStatus assertive><span style={critical}>{actProblem}</span></LiveStatus>}
               {actAnswer?.kind === 'acknowledged' && <p>item <Mono>{actAnswer.r.item_id}</Mono> acknowledged (from {actAnswer.r.from_state}) at {fmtInstant(actAnswer.r.acknowledged_at)}; within the deadline: <Mono>{String(actAnswer.r.within_deadline)}</Mono>. This is a receipt, not agreement.</p>}
               {actAnswer?.kind === 'suppressed' && <p>item <Mono>{actAnswer.r.item_id}</Mono> suppressed (from {actAnswer.r.from_state}) until {fmtInstant(actAnswer.r.until)}: {actAnswer.r.reason}</p>}
@@ -323,6 +341,10 @@ export default function AttentionPage() {
           )}
         </section>
       )}
+
+      {/* B23 (0084) attention */}
+      <ReviewsPanel scope={scope} me={me} prefill={prefill} />
+      {/* end B23 attention */}
 
       <section aria-labelledby="policy-h" style={cardStyle}>
         <h2 id="policy-h" style={{ fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 }}>Policy{active === null ? '' : <> — version <Mono>{active.version}</Mono></>}</h2>

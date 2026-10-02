@@ -38,7 +38,24 @@ export interface ReplayManifest {
   captured_by: string;
   manifest_version: string;
   entries: ReplayEntry[];
+  /* B23 (0084) stream */
+  /**
+   * OPTIONAL: the set's pages as STREAM PARTITIONS (L1-I02's stream form over replay). Each partition declares its range and
+   * its ORDERED pages; a page names the entry that serves it (by URL — the entry's digest is verified on every read, as for
+   * any replay read) or declares a planted PUBLISHER GAP, which the stream reports as an explicit incomplete range. A set
+   * without this block is exactly what it was.
+   */
+  stream?: { partitions: Record<string, ReplayStreamPartition> };
+  /* end B23 stream */
 }
+
+/* B23 (0084) stream */
+export interface ReplayStreamPartition {
+  label?: string;
+  range: { from: string; to: string };
+  pages: Array<{ from: string; to: string; url?: string; gap?: string }>;
+}
+/* end B23 stream */
 
 export class ReplayIntegrityError extends Error {
   constructor(readonly entry: string, message: string) {

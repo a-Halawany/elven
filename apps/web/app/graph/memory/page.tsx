@@ -32,6 +32,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useShell } from '../layout';
 import { graph, projectionNote, type MemoryDeriveIntake, type MemoryDerived, type MemoryIntake, type MemoryRetrieval, type MemoryRow } from '../../../lib/graph';
+import { CONTEXT_SUBJECT_KINDS, type ContextSubjectKind, type MemoryContext } from '../../../lib/graph';
 import { Empty, LiveStatus, Mono, ScrollBox, cardStyle, DefinitionRow, UnknownNote, GovernedButton,
   fmtInstant, textareaStyle } from '../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui';
@@ -463,6 +464,114 @@ function ServedVersion({ r }: { r: MemoryRetrieval }) {
   );
 }
 
+/* B23 (0084) context */
+/**
+ * CONTEXT FOR A PURPOSE (L3-I02): ONE governed, audited query about a SUBJECT (an entity such as a corridor, a claim, an edge, a
+ * strategy object, an evidence object, a warning or a forecast) under a DECLARED purpose — the items whose served version names the
+ * subject and that the purpose, your clearance and the audience roles admit, each with the links that explain why it is served. The
+ * answer states its PRODUCT STATE from the server's flag — complete, stale (lagging / unverified / served from the log) or partial
+ * (what was left out is named, with its reason) — and the revision it is for. What the policy withholds is never shown or counted:
+ * the server says only that policy filtering applied. Every served item version is an access recorded on the item. B23-F1 (0085):
+ * the same holds for what the answer reports as left out; an answer served from the event log says, once, that rows the log cannot
+ * vouch for are neither served nor counted.
+ */
+function ContextPanel({ scope }: { scope: { tenantId: string; domainId: string } }) {
+  const [purpose, setPurpose] = useState('sourcing decision');
+  const [kind, setKind] = useState<ContextSubjectKind>('entity');
+  const [subjectId, setSubjectId] = useState('');
+  const [asOf, setAsOf] = useState('');
+  const [answer, setAnswer] = useState<MemoryContext | null>(null);
+  const [receipt, setReceipt] = useState<ReceiptT>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const note = answer === null ? null : answer.product_state === 'complete' ? null
+    : { text: answer.label ?? projectionNote(answer.projection)?.text ?? `the answer is ${answer.product_state}`, code: answer.code };
+  return (
+    <section aria-labelledby="context-h" style={cardStyle}>
+      <h2 id="context-h" style={{ fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 }}>Context for a purpose</h2>
+      <p style={muted}>
+        One audited query: the memory about a subject that your declared purpose, your clearance and the items' audiences admit, with the
+        links that explain each item. The answer says whether it is complete, stale or partial — and names what a partial answer left out.
+      </p>
+      <div style={rowStyle}>
+        <Field id="ctx-purpose" label="Declared purpose">
+          {(id) => <><input id={id} list="ctx-purposes" style={{ ...inputStyle, inlineSize: '100%' }} value={purpose} onChange={(e) => setPurpose(e.target.value)} />
+            <datalist id="ctx-purposes">{['sourcing decision', ...PURPOSES].map((p) => <option key={p} value={p} />)}</datalist></>}
+        </Field>
+        <Field id="ctx-kind" label="Subject kind">
+          {(id) => <select id={id} style={{ ...inputStyle, inlineSize: '100%' }} value={kind} onChange={(e) => setKind(e.target.value as ContextSubjectKind)}>{CONTEXT_SUBJECT_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}</select>}
+        </Field>
+        <Field id="ctx-subject" label="Subject id">
+          {(id) => <input id={id} style={{ ...inputStyle, inlineSize: '100%' }} value={subjectId} onChange={(e) => setSubjectId(e.target.value.trim())} placeholder="the object id" />}
+        </Field>
+        <Field id="ctx-asof" label="As of (optional)">
+          {(id) => <input id={id} type="datetime-local" style={{ ...inputStyle, inlineSize: '100%' }} value={asOf} onChange={(e) => setAsOf(e.target.value)} />}
+        </Field>
+      </div>
+      <div style={{ marginBlockStart: 'var(--eye-space-8)' }}>
+        <GovernedButton label="Retrieve the context" pendingLabel="retrieving" disabled={!UUID.test(subjectId)}
+          onRun={async () => {
+            setProblem(null);
+            const iso = toIso(asOf);
+            const r = await graph.memoryContext(scope, purpose, { kind, id: subjectId }, iso === null ? undefined : iso);
+            if (!r.ok || r.data === undefined) {
+              const m = refusal(r, 'the context was not answered');
+              setAnswer(null); setReceipt(null); setProblem(m); throw new Error(m);
+            }
+            setAnswer(r.data.context); setReceipt(r.data.receipt);
+          }} />
+      </div>
+      {problem !== null && <LiveStatus assertive><span style={{ color: 'var(--eye-color-critical)' }}>not served — {problem}</span></LiveStatus>}
+      {answer !== null && (
+        <>
+          <p>
+            <strong>{answer.product_state === 'complete' ? 'Complete.' : answer.product_state === 'stale' ? 'Stale.' : 'Partial.'}</strong>{' '}
+            For revision <Mono>{str(answer.revision)}</Mono> · verified through <Mono>{str(answer.verified_seq)}</Mono> · {answer.lag_events} change(s) not yet verified ·
+            projection {answer.condition} · served from the {answer.source}{answer.as_of !== null ? <> · as of {fmtInstant(answer.as_of)}</> : null}
+          </p>
+          {note !== null && (
+            <LiveStatus>
+              <span style={muted}>{note.text}{note.code !== null ? <> · code <Mono>{note.code}</Mono></> : null}</span>
+            </LiveStatus>
+          )}
+          {answer.omitted.length > 0 && (
+            <ul aria-label="left out of this answer">
+              {answer.omitted.map((o, i) => <li key={i}><Mono>{o.projection}</Mono>{o.rows !== null ? ` (${o.rows})` : ''} — {o.reason}</li>)}
+            </ul>
+          )}
+          <p style={muted}>{answer.policy}. {answer.consistency}.{answer.bound.truncated ? ` The answer is bounded at ${answer.bound.limit} items; more were admitted.` : ''}</p>
+          {/* B23-F1 (0085): the log-sourced answer's one constant note (it counts nothing and names no record) */}
+          {answer.log_note !== null && answer.log_note !== undefined && <p style={muted}>{answer.log_note}.</p>}
+          {answer.items.length === 0 ? <Empty>No item is served for this subject under this purpose.</Empty> : answer.items.map((it) => (
+            <article key={it.item_id} aria-label={it.title} style={{ borderBlockStart: '1px solid var(--eye-color-border-default)', paddingBlock: 'var(--eye-space-8)' }}>
+              <h3 style={{ fontSize: 'var(--eye-type-heading-3)', marginBlock: 0 }}>{it.title}</h3>
+              <p style={muted}>
+                <Mono>{it.item_id}</Mono> · version {it.version}{it.served_is_current ? ' (current)' : ` (current is ${it.current_version})`} · {it.classification} · {it.truth_state} · index {it.index_state}
+                {it.basis_state !== null ? ` · basis ${it.basis_state}` : ''}{it.drift !== null ? ` · drifted: the projection says ${it.drift.projected}, the log says ${it.drift.log}` : ''}
+              </p>
+              <p>{it.statement}</p>
+              <p style={muted}>Why it is served:</p>
+              <ul aria-label={`explanation links of ${it.title}`}>
+                {it.explanation_links.map((l, i) => (
+                  <li key={i}>
+                    <Mono>{l.via}</Mono> → {l.kind} {l.label !== undefined ? <strong>{l.label}</strong> : null} <Mono>{short(l.id)}</Mono>
+                    {l.version !== undefined ? `@${l.version}` : ''}{l.state !== undefined ? ` (${l.state})` : ''}{l.names_subject === true ? ' — the subject' : ''}
+                    {l.rationale !== undefined ? ` — ${l.rationale}` : ''}{l.digest !== undefined ? <> · <Mono>{short(l.digest)}</Mono></> : null}
+                  </li>
+                ))}
+              </ul>
+              {it.withheld_links.edges_current + it.withheld_links.entities_current > 0 && (
+                <p style={muted}>{it.withheld_links.edges_current + it.withheld_links.entities_current} link(s) left out (named above).</p>
+              )}
+            </article>
+          ))}
+        </>
+      )}
+      <Receipt receipt={receipt} />
+    </section>
+  );
+}
+/* end B23 context */
+
 export default function MemoryPage() {
   const { scope } = useShell();
   const [rows, setRows] = useState<MemoryRow[] | null>(null);
@@ -588,6 +697,10 @@ export default function MemoryPage() {
           </ScrollBox>
         )}
       </section>
+
+      {/* B23 (0084) context */}
+      <ContextPanel scope={scope} />
+      {/* end B23 context */}
 
       {current !== null && selected !== null && (
         <>

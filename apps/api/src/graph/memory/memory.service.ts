@@ -75,11 +75,13 @@ import { validateHeader, canonicalHeaderDigest, type CanonicalHeader } from '@ey
 import type { ScopeContext } from '../../shared/scope.js';
 import type { AuthenticatedPrincipal } from '../../shared/auth-types.js';
 import { newId } from '../../shared/ids.js';
-import { assertClearance, bindingReaches } from '../../shared/clearance.js';
+import { assertClearance, bindingReaches, clearanceOf, covers } from '../../shared/clearance.js';
 import { at } from '../../observation/fault-injection.js';
-import type { GraphReads, MemoryWrites } from '../graph.capabilities.js';
+import type { GraphReads, MemoryContextReads, MemoryWrites } from '../graph.capabilities.js';
 import { effectiveReviewState, isoOr } from '../edges/derive.js';
 import type { ProjectionBlock } from '../projections/projection-state.js';
+import { CONTEXT_PARTITIONS, projectionStateOf } from '../projections/projection-state.js';
+import { CONTEXT_CONSISTENCY_NOTE, CONTEXT_LOG_NOTE, CONTEXT_POLICY_NOTE, CONTEXT_SCAN_BOUND, contentUnavailableReason, omissionsOf, productStateOf, type ContextOmission, type ContextProductState } from './context.js';
 import { memoryItemFromLog, memoryItemsFromLog } from '../projections/fallback.js';
 import { ContentTierUnavailable, contentFailureDetail } from '../projections/content-tier.js';
 export { isContentTierFailure } from '../projections/content-tier.js';   // B21: moved to content-tier.ts; the unit test's import path stands
@@ -723,4 +725,84 @@ export class MemoryService {
   async dependencies(cap: GraphReads, itemId: string): Promise<Row[]> {
     return (await cap.readDependencies().selectAll().where('dependent_object_id' as never, '=', itemId as never).where('dependent_type' as never, '=', 'MEM' as never).execute()) as Row[];
   }
+
+  /* B23 (0084) context */
+  /**
+   * L3-I02 RetrieveContext: ONE purpose-bound query about a SUBJECT. (1) The projection state of the context's three partitions
+   * FIRST in the transaction (the revision, the verified sequence, the lag, the condition; the source decision). (2) The STABLE
+   * query memory.retrieve_context under a savepoint at the content tier's fault point (b20.memory_content_unavailable — the same
+   * boundary as a single retrieval): when the content tier does not answer, the item set is LEFT OUT whole and named (200 partial;
+   * never the 503 a single retrieval answers while withdrawn and down; no access row, nothing served). (3) CLEARANCE and AUDIENCE
+   * ROLES — the briefing's rule (briefing.service.ts): an item the reader may not read is dropped and neither counted nor
+   * mentioned. (4) The route's limit. (5) ONE access row (and memory.retrieved event) per SERVED item version, in this transaction.
+   * (6) The omissions and the product state (context.ts). The query writes nothing; (5) is the governance record of the read.
+   * B23-F1 (0085): (3) is applied INSIDE the query as well — the reader's clearance, roles and administrator flag are its arguments —
+   * so its diagnostics (the content-absent count, the scan-bound flag) are over the AUTHORIZED set; the filter here stays as defence
+   * in depth (the same result). A log-sourced answer carries the constant CONTEXT_LOG_NOTE.
+   */
+  async context(cap: MemoryContextReads, principal: AuthenticatedPrincipal, ctx: ScopeContext, a: { purpose: string; subject: unknown; asOf: string | null; limit: number; correlationId: string }): Promise<MemoryContext> {
+    const tenantId = ctx.tenantId as string; const domainId = ctx.domainId as string;
+    const projection = await projectionStateOf(cap, CONTEXT_PARTITIONS);
+    const memoryWithdrawn = projection.withdrawn.includes('memory_items_current');
+    const head = { purpose: a.purpose, subject: a.subject, as_of: a.asOf, revision: projection.revision, verified_seq: projection.verified_seq, lag_events: projection.lag_events, condition: projection.condition };
+    // CLEARANCE and AUDIENCE ROLES (the briefing's rule): administrators are admitted to every audience role (0066 §3).
+    // B23-F1 (0085): read BEFORE the query — the query applies them itself, so every aggregate it answers is over the authorized set.
+    const target = { tenantId, domainId };
+    const clearance = clearanceOf(principal, target);
+    const mine = principal.bindings.filter((b) => bindingReaches(b, target)).map((b) => b.roleCode);
+    const admin = mine.some((r) => r === 'platform_admin' || r === 'tenant_admin' || r === 'domain_admin');
+    const logNote = memoryWithdrawn ? CONTEXT_LOG_NOTE : null;
+    let raw: Row | null = null; let contentFailure: string | null = null;
+    try {
+      raw = await cap.withSavepoint('mem_context', async () => {
+        at('b20.memory_content_unavailable');
+        return cap.retrieveContext({ tenantId, domainId, purpose: a.purpose, subject: a.subject, asOf: a.asOf, scanBound: CONTEXT_SCAN_BOUND, withdrawn: projection.withdrawn, clearance, roles: mine, admin });
+      });
+    } catch (e) {
+      contentFailure = contentFailureDetail(e);
+      if (contentFailure === null) throw e;   // a port refusal (22023 → 422), a connection-class failure, a programming error
+    }
+    if (raw === null) {
+      const omitted: ContextOmission[] = [{ projection: 'content_tier', reason: contentUnavailableReason(contentFailure as string, memoryWithdrawn), rows: null }];
+      return { ...head, ...productStateOf(projection, omitted), source: memoryWithdrawn ? 'log' : 'projection', items: [], omitted,
+               policy: CONTEXT_POLICY_NOTE, consistency: CONTEXT_CONSISTENCY_NOTE, log_note: logNote, bound: { limit: a.limit, scan_bound: CONTEXT_SCAN_BOUND, truncated: false }, projection };
+    }
+    // Defence in depth (B23-F1): the query already applied the same clearance and audience rule; this filter gives the same result.
+    const readable = ((raw['items'] ?? []) as Row[]).filter((it) => {
+      if (!covers(clearance, String(it['classification'] ?? 'restricted'))) return false;
+      const roles = (((it['audience'] ?? {}) as Row)['roles'] ?? []) as string[];
+      return roles.length === 0 || admin || roles.some((r) => mine.includes(r));
+    });
+    const served = readable.slice(0, a.limit);
+    const items: Row[] = [];
+    for (const it of served) {
+      const accessId = await cap.recordMemoryAccess({ itemId: String(it['item_id']), tenantId, domainId, version: Number(it['version']), purpose: a.purpose, reader: principal.principalId, asOf: a.asOf, correlationId: a.correlationId });
+      items.push({ ...it, access_id: accessId });
+    }
+    // B23-F1 (0085): the query's diagnostics are over the authorized set (content_absent_rows; bounded); nothing else is read from it.
+    const omitted = omissionsOf(projection, served, { content_absent_rows: raw['content_absent_rows'] });
+    const source = String(raw['source'] ?? (memoryWithdrawn ? 'log' : 'projection')) as 'log' | 'projection';
+    return { ...head, subject: raw['subject'] ?? a.subject, ...productStateOf(projection, omitted), source, items, omitted,
+             policy: CONTEXT_POLICY_NOTE, consistency: CONTEXT_CONSISTENCY_NOTE, log_note: source === 'log' ? CONTEXT_LOG_NOTE : null,
+             // truncated: the AUTHORIZED items exceed the route's limit, or the authorized scan bound was reached
+             bound: { limit: a.limit, scan_bound: CONTEXT_SCAN_BOUND, truncated: readable.length > a.limit || raw['bounded'] === true }, projection };
+  }
+  /* end B23 context */
 }
+
+/* B23 (0084) context */
+/** The context query's answer (L3-I02): what was asked, the watermark, the product state, the items served with their links, what was left out and why. */
+export interface MemoryContext {
+  purpose: string; subject: unknown; as_of: string | null;
+  revision: number | null; verified_seq: number | null; lag_events: number; condition: ProjectionBlock['condition'];
+  product_state: ContextProductState; code: 'EYE-DEG-001' | null; label: string | null;
+  /** Where the items' availability came from: the projection, or the log while memory_items_current is withdrawn. */
+  source: 'projection' | 'log';
+  items: Row[]; omitted: ContextOmission[];
+  policy: string; consistency: string;
+  /** B23-F1 (0085): CONTEXT_LOG_NOTE on an answer served from the log (memory_items_current withdrawn); null otherwise. */
+  log_note: string | null;
+  bound: { limit: number; scan_bound: number; truncated: boolean };
+  projection: ProjectionBlock;
+}
+/* end B23 context */

@@ -98,6 +98,31 @@ export interface BranchRow {
   warning_state?: 'none' | 'owed' | 'raised'; decision_deadline?: string | null;
   /** 0066 §8 (L7-I05): the instant a review promoted this branch to simulation; null until one did. */
   simulation_candidate_at?: string | null;
+  /** B23 (0084, L7-I02): the scenario version that added the branch — 1 when declared with the tree, higher when a BranchScenario added it. */
+  added_in_version?: number;
+}
+
+/** B23 (0084, L7-I02): the kinds BranchScenario adds, spelled as the vocabulary spells them (baseline and the other four are declared with the tree). */
+export type BranchableKind = 'upside' | 'downside' | 'disruption' | 'user-defined';
+
+/** What is sent to add a branch — the declaration's branch keys verbatim. */
+export interface BranchIntake {
+  name: string; kind: BranchableKind; statement: string; indicatorId: string; owner: string; consequence: string; responseWindowHours: number;
+  /** Required for, and only for, a user-defined kind (2-64 characters). */
+  kindLabel?: string | null;
+  /** Required for a disruption or a user-defined kind (8+ characters): how it diverges from the baseline. */
+  divergence?: string | null;
+  assumptions?: Array<{ statement: string; basis?: string | null }>;
+  consequenceClass?: 'C0' | 'C1' | 'C2' | 'C3' | 'C4' | null;
+  signpost?: string | null; decisionDeadline?: string | null;
+}
+
+/** The branching as the port recorded it — VERBATIM: `repeated` says the same key and body were answered the first result (no second effect). */
+export interface Branching {
+  request_id: string; scenario_id: string; branch_id: string; base_version: number; version: number; repeated: boolean;
+  name: string; kind: string; kind_label: string | null; requested_at: string; request_digest: string;
+  /** The check the write ran on the new version (trigger `branch`); null on a repeat (nothing was checked again). */
+  coherence: CoherenceCheck | null;
 }
 
 export interface ScenarioRow {
@@ -116,6 +141,12 @@ export interface ScenarioRow {
    * promotes it until the findings are resolved (the correction path: retire, declare a successor).
    */
   coherence_state?: 'unchecked' | 'passed' | 'failed'; coherence_check_id?: string | null; coherence?: ScenarioCoherence;
+  /**
+   * B23 (0084, L7-I02 BranchScenario): the SCN version the tree stands at (1 at declaration, one more per accepted branching) — what an
+   * "Add a branch" request names as its expected_version; the get adds the history (every version, what it supersedes, its branches).
+   */
+  current_version?: number;
+  versions?: Array<{ version: number; recorded_at: string; supersedes: string | null; branch_ids: string[] }>;
 }
 
 /** A review's outcome (0066 §8): the four the server accepts, spelled as it spells them. */
@@ -255,6 +286,16 @@ export const prediction = {
    */
   reviewScenario: (s: Scope, id: string, intake: ScenarioReviewIntake) =>
     p<{ review: ScenarioReview; receipt: Receipt }>(s, `/scenarios/${id}/review`, 'prediction.scenario.review', 'SCN', { ...intake }, id),
+  /**
+   * B23 (0084, L7-I02 BranchScenario): add an upside, downside, disruption or user-defined branch to a declared scenario as a NEW
+   * VERSION (`prediction.scenario.branch`, C2, not human-gated). `expectedVersion` is the current_version the form was opened on;
+   * `idempotencyKey` is kept for the life of one open form, so a retry after a lost answer is answered the first result
+   * (`repeated: true`). A stale version, a used key with a different branch and a duplicate branch come back 409; baseline and the
+   * other kinds 422 — each as the server states it.
+   */
+  branchScenario: (s: Scope, id: string, expectedVersion: number, idempotencyKey: string, branch: BranchIntake) =>
+    p<{ branching: Branching; receipt: Receipt }>(s, `/scenarios/${id}/branches`, 'prediction.scenario.branch', 'SCN',
+      { expected_version: expectedVersion, idempotency_key: idempotencyKey, branch }, id),
   listIndicators: (s: Scope) => p<{ indicators: IndicatorRow[]; receipt: Receipt }>(s, '/indicators/list', 'prediction.read', 'IND'),
   evaluateIndicator: (s: Scope, id: string, timing: 'live' | 'replay' = 'live') =>
     p<{ evaluation: { evaluated: number; breached: boolean; streak: number; flips: unknown[]; expiredWarnings: number; knownAt: string; timing: string; owedRecovered: number };

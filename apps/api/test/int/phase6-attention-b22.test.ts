@@ -83,8 +83,10 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 /** The six consumer kinds a GraphChanged reaches (relationships selects MemoryCorrected/claim.corrected alone; the four B22 kinds select their own types). */
 const GRAPH_KINDS = ['twins', 'forecasts', 'scenarios', 'decisions', 'retrieval', 'memory-mappings'];
 const NEW_KINDS: ConsumerKind[] = ['observations', 'source-health', 'proposals', 'attention'];
-/** The six register rows that stay partial after 0083. */
-const STILL_PARTIAL = ['L1-I02', 'L3-I02', 'L4-I02', 'L7-I02', 'L10-I02', 'L10-I03'];
+/** The register rows that stay partial: six after 0083 (B22); none after 0084 (B23). */
+// B23 (0084): the six bound — L1-I02, L3-I02, L4-I02, L7-I02, L10-I02, L10-I03; none stays partial (50/0/0).
+const STILL_PARTIAL: string[] = [];
+const BOUND_IN_0084 = ['L1-I02', 'L3-I02', 'L4-I02', 'L7-I02', 'L10-I02', 'L10-I03'];
 const SIGNAL_CLASSES = ['forecast.unfit', 'proposal.review', 'scenario.incoherent', 'source.coverage_loss', 'warning.raised'];
 
 let h: Phase4Harness; let su: AnyDb; let w: DecisionWorld; let c: ReturnType<typeof decisionCalls>;
@@ -418,7 +420,7 @@ describe('B22 · the attention policy and the consumers (0083; L10-I05, L1-I03, 
     const rows = (await sql<{ consumer_kind: string; event_types: string[]; status: string; principal_id: string }>`select consumer_kind, event_types, status, principal_id::text from graph.subscriptions where tenant_id = ${T()}::uuid and domain_id = ${D()}::uuid and status = 'active' order by consumer_kind`.execute(su)).rows;
     expect(sorted(rows.map((r) => r.consumer_kind))).toEqual(sorted([...CONSUMER_KINDS]));
     for (const k of NEW_KINDS) expect(rows.find((r) => r.consumer_kind === k)!.event_types, k).toEqual([...CONSUMER_EVENT_TYPES[k]]);
-    expect(rows.find((r) => r.consumer_kind === 'attention')!.event_types).toEqual(['ForecastFitnessChanged', 'ScenarioCoherenceFailed', 'EarlyWarningRaised', 'AttentionPolicyChanged']);
+    expect(rows.find((r) => r.consumer_kind === 'attention')!.event_types).toEqual(['ForecastFitnessChanged', 'ScenarioCoherenceFailed', 'EarlyWarningRaised', 'AttentionPolicyChanged', 'MaterialChangeRaised', 'ReviewConvened']); // + the two B23 (0084) adds
     // each B22 subscriber holds exactly its own role
     for (const k of NEW_KINDS) {
       const roles = (await sql<{ role_code: string }>`select role_code from identity.role_bindings where principal_id = ${subs[k]!.principalId}::uuid and revoked_at is null`.execute(su)).rows.map((r) => r.role_code);
@@ -427,7 +429,7 @@ describe('B22 · the attention policy and the consumers (0083; L10-I05, L1-I03, 
     /* THE SERVICE: a kind selects only its own types (400). */
     const svc = await failure(register('attention', { eventTypes: ['GraphChanged'] }));
     expect(svc.status).toBe(400);
-    expect(svc.message).toMatch(/eventTypes is a non-empty list of ForecastFitnessChanged \| ScenarioCoherenceFailed \| EarlyWarningRaised \| AttentionPolicyChanged/);
+    expect(svc.message).toMatch(/eventTypes is a non-empty list of ForecastFitnessChanged \| ScenarioCoherenceFailed \| EarlyWarningRaised \| AttentionPolicyChanged \| MaterialChangeRaised \| ReviewConvened/);
     expect((await failure(register('twins', { eventTypes: ['AttentionPolicyChanged'] }))).status).toBe(400);
     /* THE PORT: the same rule in the database, below the service (the kind's own vocabulary, 22023) — a direct call under a commit context. */
     const commitDb = h.app.get<Db>(COMMIT_DB);
@@ -441,11 +443,11 @@ describe('B22 · the attention policy and the consumers (0083; L10-I05, L1-I03, 
       catch (e) { portMsg = (e as Error).message; throw e; }
     }).catch(() => undefined);
     expect(portMsg).toMatch(/consumer kind observations selects only ObservationRecorded/);
-    /* THE REGISTER: 44/6/0. */
+    /* THE REGISTER: 44/6/0 at 0083; 50/0/0 since 0084 (B23). */
     const r = await interfaces();
     expect(r.interfaces).toHaveLength(50);
     const byState = (s: string) => r.interfaces.filter((i) => i['binding_state'] === s).map((i) => String(i['interface_id']));
-    expect(byState('bound')).toHaveLength(44);
+    expect(byState('bound')).toHaveLength(50);
     expect(byState('partial').sort()).toEqual([...STILL_PARTIAL].sort());
     expect(byState('unbound')).toEqual([]);
     for (const id of ['L10-I05', 'L1-I03', 'L1-I04', 'L2-I02']) {
@@ -460,10 +462,10 @@ describe('B22 · the attention policy and the consumers (0083; L10-I05, L1-I03, 
     const l9 = String(r.interfaces.find((i) => i['interface_id'] === 'L9-I05')!['bound_to']);
     expect(l9).toContain('a POLICY CHANGE is a recorded cause');
     expect(l9).not.toContain('a policy change has no recorded cause on a package (L10-I05, B22)');
-    expect(await registerCounts()).toEqual({ bound: 44, partial: 6, unbound: 0 });
+    expect(await registerCounts()).toEqual({ bound: 50, partial: 0, unbound: 0 });
     // the vocabulary the ports read
     const vocab = (await sql<{ event_type: string }>`select event_type from graph.subscribable_event_types order by event_type`.execute(su)).rows.map((x) => x.event_type);
-    expect(vocab).toHaveLength(10);
+    expect(vocab).toHaveLength(12); // 10 at 0083; + MaterialChangeRaised, ReviewConvened (0084)
     sixEvidence('A2', { fault_trace: { service: svc.status, port: portCode }, watermark: { register: '44/6/0', kinds: CONSUMER_KINDS.length }, consumer_behaviour: Object.fromEntries(NEW_KINDS.map((k) => [k, CONSUMER_EVENT_TYPES[k]])),
       operator_action: 'the tenant administrator registers the eleven kinds (backlog leave)', recovery: 'none', reconciliation: { vocabulary: vocab } });
   }, 120_000);

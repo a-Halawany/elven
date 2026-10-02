@@ -31,7 +31,7 @@ It decomposes the owner's packages (R0, P1–P7-F in `audit/The_Eye_Full_Product
 | `main` | `5165a97` (#59 merged; its C17/C19 chain completed) |
 | PR #60 (B22) | Open at `7125550`, every check green, GitHub `CLEAN`. **The merge awaits the owner's word** |
 | Planning | `5da4799` on `planning/delivery-plan-2026-09` (descends from #60). This correction is carried on the same branch through a planning PR stacked on #60; B22 is not replayed |
-| B23 | Starts after this correction, on the current account, stacked as needed |
+| B23 | Implemented on `phase6-b23` (migration 0084; stacked on #61) — the local gates and the act on `eye_demo` green (`audit/CP6_BATCHES.md` §B23); its hosted run binds in its records commit; the merge awaits the owner's word |
 | Demonstration | `eye_demo` through 0083 on the official image pins; API :3401, web :3000. Backups under `.eye-local/backups/` are preserved |
 | Interface register | 44 bound / 6 partial / 0 unbound |
 | Acceptance units | 3,555 = 3,179 open + 339 verified locally + 37 verified in CI. **Verification, not implementation completion; no percentage is derived** |
@@ -554,6 +554,7 @@ Prompts are in `audit/delivery/ACCOUNT_PROMPTS.md`.
 - **M3's duration** is unknown until the in-stage verification rate is seen. **M4** has no date until the external prerequisites exist.
 - **Row-to-feature mapping.** Some rows were placed by area and package rather than clause by clause. A misplaced row moves in a records commit; the checker keeps the mapping total.
 - **Stale statuses** (§2.5) may move rows in B23; that changes counts, not stages.
+- **Observation 1 — B23 (2026-09-25; recorded, not yet a re-fit).** Sized 1.5–2.5 U (≈ 13–22 session-hours at 8.7 h/U), B23 went from the corrected plan (`e579514`, 00:40) to its combined, locally verified candidate with the act held on `eye_demo` in about **3 hours of wall-clock on ONE account** — because that account ran its own mapping, five implementers in isolated worktrees, an act-writer and the verifier as parallel subagents under the two-slot limiter. The unit (a B21/B22-sized batch worked sequentially) therefore overstates the wall-clock of a stage built this way, by several times; it does not measure review latency, the hosted run or the owner's merge word, which are unchanged. The re-fit waits for two more stages (the recalibration rule above), since one observation on a stage of well-mapped interface work does not transfer to lanes with unknown ground (P7-D, P7-E).
 
 ## 10. Correction record (the bounded review of `5da4799`, applied 2026-09-25)
 

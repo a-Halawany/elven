@@ -29,17 +29,27 @@
  * is published on a FAILED and CHANGED check; the gates are the opening port's
  * (a branch of a failed scenario is not simulated) and the raise's (a warning on
  * one is raised and marked input_unverified).
+ *
+ * BRANCHING (CP-6 B23, 0084; L7-I02 BranchScenario). A declared scenario takes a
+ * new upside, downside, disruption or user-defined branch as a NEW VERSION: the SCN
+ * object v(n+1) is admitted (the previous branches plus the new one, superseding
+ * v(n), which stays as it was), idempotent on the requester's key under the
+ * request's digest, refused on a stale expected version, a different request
+ * under the key or a duplicate branch; the coherence check re-runs on the new
+ * version (trigger `branch`) and ScenarioBranched@v1 is published. A run whose
+ * record cut-off binds an earlier version does not see a later branch.
  */
 import { HttpException, Injectable } from '@nestjs/common';
-import { canonicalHeaderDigest, errorBody, validateHeader, type CanonicalHeader } from '@eye/contracts';
+import { createHash } from 'node:crypto';
+import { canonicalHeaderDigest, errorBody, jcsCanonicalize, validateHeader, type CanonicalHeader } from '@eye/contracts';
 import { newId } from '../../shared/ids.js';
 import type { ScopeContext } from '../../shared/scope.js';
 import type { OutboxRow } from '../../graph/subscriptions/change-events.js';
-import type { PredictionReads, ScenarioWrites, IndicatorWrites, EvaluationWrites, WarningWrites,
+import type { PredictionReads, ScenarioWrites, BranchWrites, IndicatorWrites, EvaluationWrites, WarningWrites,
   AcknowledgeWrites } from '../prediction.capabilities.js';
 import { SeriesService, dayOf, type AssembledSeries, type Reader } from '../series/series.service.js';
 import { foldControls, controlsOf, type Controls } from '../controls.js';
-import { scenarioCoherenceFailedEvent, type ScenarioCoherenceTrigger } from './scenario-events.js';
+import { scenarioBranchedEvent, scenarioCoherenceFailedEvent, type ScenarioCoherenceTrigger } from './scenario-events.js';
 
 /** B21 (0081, D9): the event of a check — ScenarioCoherenceFailed@v1 on a FAILED and CHANGED check, else nothing (a pass rides the check row). */
 function coherenceEventOf(check: Record<string, unknown>, trigger: ScenarioCoherenceTrigger, actor: string, occurredAt: string): OutboxRow | null {
@@ -112,55 +122,126 @@ export function validateScenario(m: Partial<ScenarioIntake>, correlationId: stri
   const branches = Array.isArray(m.branches) ? m.branches : [];
   if (branches.length === 0) bad('a scenario tree needs at least one branch');
   if (!branches.some((b) => b.kind === 'baseline')) bad('a scenario tree needs a baseline branch');
-  for (const b of branches) {
-    if (typeof b.name !== 'string' || b.name.trim().length < 2) bad('every branch needs a name');
-    if (!(SCENARIO_KINDS_V1 as readonly string[]).includes(b.kind)) bad(`branch kind must be one of scenario kind vocabulary v${SCENARIO_KIND_VOCABULARY_VERSION}: ${SCENARIO_KINDS_V1.join(', ')}`);
-    if (b.kind === 'user-defined' && (typeof b.kindLabel !== 'string' || b.kindLabel.trim().length < 2 || b.kindLabel.length > 64)) {
-      bad(`branch "${b.name}" is user-defined and must name its kind (kindLabel, 2-64 characters)`);
-    }
-    if (b.kind !== 'user-defined' && b.kindLabel != null) bad(`branch "${b.name}": kindLabel belongs to a user-defined kind only`);
-    // Upside and downside diverge by the indicator that flips them (0029's rule, below); the
-    // five kinds added by 0058 state their divergence from the baseline in prose.
-    const prose = !['baseline', 'upside', 'downside'].includes(b.kind);
-    if (prose && (typeof b.divergence !== 'string' || b.divergence.trim().length < 8)) {
-      bad(`branch "${b.name}" (${b.kind}) must say how it diverges from the baseline (divergence, at least 8 characters)`);
-    }
-    if (b.divergence != null && (typeof b.divergence !== 'string' || b.divergence.trim().length < 8)) bad(`branch "${b.name}": divergence, when given, is at least 8 characters`);
-    const assumptions = b.assumptions ?? [];
-    if (!Array.isArray(assumptions)) bad(`branch "${b.name}": assumptions must be a list`);
-    for (const a of assumptions) {
-      if (a === null || typeof a !== 'object' || typeof (a as BranchAssumption).statement !== 'string' || (a as BranchAssumption).statement.trim().length < 2) {
-        bad(`branch "${b.name}": every assumption is an object with a statement of at least 2 characters`);
-      }
-    }
-    if (typeof b.statement !== 'string' || b.statement.trim().length < 2) bad('every branch needs a statement');
-    if (b.kind !== 'baseline' && (typeof b.indicatorId !== 'string' || !UUID.test(b.indicatorId))) {
-      bad(`branch "${b.name}" can flip and must name the indicator that flips it`);
-    }
-    if (typeof b.owner !== 'string' || !UUID.test(b.owner)) bad(`branch "${b.name}" needs a named owner`);
-    if (typeof b.consequence !== 'string' || b.consequence.trim().length < 8) bad(`branch "${b.name}" needs a consequence of at least 8 characters`);
-    if (b.consequenceClass != null && !(CONSEQUENCE_CLASSES_V1 as readonly string[]).includes(b.consequenceClass as string)) {
-      bad(`branch "${b.name}": consequenceClass must be one of C0–C4 (Volume 5 ch. 58) or omitted`);
-    }
-    if (typeof b.responseWindowHours !== 'number' || b.responseWindowHours < 1) bad(`branch "${b.name}" needs a response window in hours`);
-    if (b.decisionDeadline != null && (typeof b.decisionDeadline !== 'string' || Number.isNaN(Date.parse(b.decisionDeadline)))) {
-      bad(`branch "${b.name}": decisionDeadline must be an instant`);
-    }
-  }
+  // B23 (0084): one branch's rules live in validateBranch — the branching command validates its one branch by the same rules.
+  const valid = branches.map((b) => validateBranch(b, correlationId, m.reviewCadence as string));
   return {
     title: m.title as string, statement: m.statement as string, forecastId: m.forecastId ?? null,
     subjectEntityId: m.subjectEntityId ?? null, owner: m.owner as string, reviewCadence: m.reviewCadence as string,
-    branches: branches.map((b) => ({
-      name: b.name, kind: b.kind, statement: b.statement, indicatorId: b.indicatorId ?? null, signpost: b.signpost ?? null,
-      kindLabel: b.kind === 'user-defined' ? (b.kindLabel as string).trim() : null,
-      divergence: b.divergence == null ? null : b.divergence,
-      assumptions: (b.assumptions ?? []).map((a) => ({ statement: a.statement, basis: a.basis ?? null })),
-      owner: b.owner, reviewCadence: b.reviewCadence ?? (m.reviewCadence as string),
-      responseWindowHours: b.responseWindowHours, consequence: b.consequence,
-      consequenceClass: b.consequenceClass == null ? null : b.consequenceClass,
-      decisionDeadline: b.decisionDeadline == null ? null : new Date(b.decisionDeadline).toISOString() })),
+    branches: valid,
   };
 }
+
+/**
+ * ONE BRANCH's rules (the declaration's, unchanged since 0058/0061) and its normal form: the declaring write validates each of its
+ * branches with it, and the branching command (B23, 0084) its one branch. `reviewCadence` is the cadence a branch without its own
+ * takes (the scenario's).
+ */
+export function validateBranch(b: Partial<BranchIntake>, correlationId: string, reviewCadence: string): BranchIntake {
+  const bad = (msg: string): never => { throw new HttpException(errorBody('EYE_REQ_001', correlationId, msg), 422); };
+  if (b === null || typeof b !== 'object') bad('a branch is an object');
+  if (typeof b.name !== 'string' || b.name.trim().length < 2) bad('every branch needs a name');
+  if (!(SCENARIO_KINDS_V1 as readonly string[]).includes(b.kind as string)) bad(`branch kind must be one of scenario kind vocabulary v${SCENARIO_KIND_VOCABULARY_VERSION}: ${SCENARIO_KINDS_V1.join(', ')}`);
+  if (b.kind === 'user-defined' && (typeof b.kindLabel !== 'string' || b.kindLabel.trim().length < 2 || b.kindLabel.length > 64)) {
+    bad(`branch "${String(b.name)}" is user-defined and must name its kind (kindLabel, 2-64 characters)`);
+  }
+  if (b.kind !== 'user-defined' && b.kindLabel != null) bad(`branch "${String(b.name)}": kindLabel belongs to a user-defined kind only`);
+  // Upside and downside diverge by the indicator that flips them (0029's rule, below); the
+  // five kinds added by 0058 state their divergence from the baseline in prose.
+  const prose = !['baseline', 'upside', 'downside'].includes(b.kind as string);
+  if (prose && (typeof b.divergence !== 'string' || b.divergence.trim().length < 8)) {
+    bad(`branch "${String(b.name)}" (${String(b.kind)}) must say how it diverges from the baseline (divergence, at least 8 characters)`);
+  }
+  if (b.divergence != null && (typeof b.divergence !== 'string' || b.divergence.trim().length < 8)) bad(`branch "${String(b.name)}": divergence, when given, is at least 8 characters`);
+  const assumptions = b.assumptions ?? [];
+  if (!Array.isArray(assumptions)) bad(`branch "${String(b.name)}": assumptions must be a list`);
+  for (const a of assumptions) {
+    if (a === null || typeof a !== 'object' || typeof (a as BranchAssumption).statement !== 'string' || (a as BranchAssumption).statement.trim().length < 2) {
+      bad(`branch "${String(b.name)}": every assumption is an object with a statement of at least 2 characters`);
+    }
+  }
+  if (typeof b.statement !== 'string' || b.statement.trim().length < 2) bad('every branch needs a statement');
+  if (b.kind !== 'baseline' && (typeof b.indicatorId !== 'string' || !UUID.test(b.indicatorId))) {
+    bad(`branch "${String(b.name)}" can flip and must name the indicator that flips it`);
+  }
+  if (typeof b.owner !== 'string' || !UUID.test(b.owner)) bad(`branch "${String(b.name)}" needs a named owner`);
+  if (typeof b.consequence !== 'string' || b.consequence.trim().length < 8) bad(`branch "${String(b.name)}" needs a consequence of at least 8 characters`);
+  if (b.consequenceClass != null && !(CONSEQUENCE_CLASSES_V1 as readonly string[]).includes(b.consequenceClass as string)) {
+    bad(`branch "${String(b.name)}": consequenceClass must be one of C0–C4 (Volume 5 ch. 58) or omitted`);
+  }
+  if (typeof b.responseWindowHours !== 'number' || b.responseWindowHours < 1) bad(`branch "${String(b.name)}" needs a response window in hours`);
+  if (b.decisionDeadline != null && (typeof b.decisionDeadline !== 'string' || Number.isNaN(Date.parse(b.decisionDeadline)))) {
+    bad(`branch "${String(b.name)}": decisionDeadline must be an instant`);
+  }
+  return {
+    name: b.name as string, kind: b.kind as ScenarioKind, statement: b.statement as string, indicatorId: b.indicatorId ?? null, signpost: b.signpost ?? null,
+    kindLabel: b.kind === 'user-defined' ? (b.kindLabel as string).trim() : null,
+    divergence: b.divergence == null ? null : b.divergence,
+    assumptions: (b.assumptions ?? []).map((a) => ({ statement: a.statement, basis: a.basis ?? null })),
+    owner: b.owner as string, reviewCadence: b.reviewCadence ?? reviewCadence,
+    responseWindowHours: b.responseWindowHours as number, consequence: b.consequence as string,
+    consequenceClass: b.consequenceClass == null ? null : b.consequenceClass,
+    decisionDeadline: b.decisionDeadline == null ? null : new Date(b.decisionDeadline).toISOString(),
+  };
+}
+
+/**
+ * B23 (0084, L7-I02 BranchScenario): the kinds the contract names — "a versioned upside, downside, disruption, or user-defined
+ * alternative" — as the vocabulary v1 codes. A baseline is declared with the tree; stress, adversarial and counterfactual branches are
+ * declared with it too (the declaration takes all eight).
+ */
+export const BRANCHABLE_KINDS = ['upside', 'downside', 'disruption', 'user-defined'] as const;
+
+export interface BranchCommand { scenarioId: string; expectedVersion: number; idempotencyKey: string; branch: BranchIntake; offeredCadence: string | null }
+
+/**
+ * B23: the branching command's intake — the scenario, the version the requester read, the idempotency key (1-200 characters) and ONE
+ * branch of the four kinds (`user_defined` is accepted as the vocabulary's `user-defined`), validated by the declaration's rules. A
+ * branch without its own cadence takes the scenario's (filled by the write); the digest binds the branch AS OFFERED.
+ */
+export function validateBranchCommand(scenarioId: string, p: Record<string, unknown>, correlationId: string): BranchCommand {
+  const bad = (msg: string): never => { throw new HttpException(errorBody('EYE_REQ_001', correlationId, msg), 422); };
+  if (!UUID.test(scenarioId)) bad('scenarioId must be a scenario id');
+  const expected = p['expected_version'];
+  if (typeof expected !== 'number' || !Number.isInteger(expected) || expected < 1) bad('payload.expected_version is the scenario version the branch was read from (a positive integer: the get\'s current_version)');
+  const key = p['idempotency_key'];
+  if (typeof key !== 'string' || key.trim().length < 1 || key.length > 200) bad('payload.idempotency_key is 1-200 characters (a retry sends the same key with the same branch)');
+  const raw = p['branch'];
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) bad('payload.branch is the branch to add');
+  const b = { ...(raw as Record<string, unknown>) } as Partial<BranchIntake> & Record<string, unknown>;
+  if ((b.kind as string) === 'user_defined') b.kind = 'user-defined';
+  if (!(BRANCHABLE_KINDS as readonly string[]).includes(String(b.kind))) {
+    bad(`BranchScenario adds an upside, downside, disruption or user-defined branch; kind "${String(b.kind)}" is not one of them`
+      + (b.kind === 'baseline' ? ' (a scenario has one baseline, declared with the tree)' : (SCENARIO_KINDS_V1 as readonly string[]).includes(String(b.kind)) ? ' (declare it with the scenario tree)' : ''));
+  }
+  if (typeof b.name === 'string' && b.name.trim().length > 128) bad('the branch name is at most 128 characters');
+  const offeredCadence = typeof b.reviewCadence === 'string' && b.reviewCadence.trim().length > 0 ? b.reviewCadence : null;
+  return { scenarioId, expectedVersion: expected as number, idempotencyKey: key as string, branch: validateBranch(b, correlationId, offeredCadence ?? ''), offeredCadence };
+}
+
+/** The canonical SCN payload form of one branch (the declaring write's, unchanged). */
+function branchPayload(b: BranchIntake & { branchId: string }): Record<string, unknown> {
+  return {
+    branch_id: b.branchId, name: b.name, kind: b.kind, kind_label: b.kindLabel ?? null, divergence: b.divergence ?? null,
+    assumptions: b.assumptions ?? [], statement: b.statement,
+    indicator: b.indicatorId === null ? null : { indicator_id: b.indicatorId }, signpost: b.signpost,
+    owner: `principal:${b.owner}`, review_cadence: b.reviewCadence, response_window_hours: b.responseWindowHours,
+    consequence: b.consequence, consequence_class: b.consequenceClass ?? null, decision_deadline: b.decisionDeadline,
+  };
+}
+
+/** B23: the request's content digest — what the idempotency key is bound to: the scenario, the version read, the branch as offered (JCS, SHA-256; the executive.requests idiom). */
+export function branchRequestDigest(c: BranchCommand): string {
+  const b = c.branch;
+  return createHash('sha256').update(jcsCanonicalize({
+    scenario_id: c.scenarioId, expected_version: c.expectedVersion,
+    branch: { name: b.name, kind: b.kind, kind_label: b.kindLabel ?? null, statement: b.statement, indicator_id: b.indicatorId, signpost: b.signpost,
+              owner: b.owner, review_cadence: c.offeredCadence, response_window_hours: b.responseWindowHours, consequence: b.consequence,
+              consequence_class: b.consequenceClass ?? null, decision_deadline: b.decisionDeadline, divergence: b.divergence ?? null, assumptions: b.assumptions ?? [] },
+  })).digest('hex');
+}
+
+const arr = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : []);
+const strOrNull = (v: unknown): string | null => (v === null || v === undefined ? null : String(v));
 
 @Injectable()
 export class ScenariosService {
@@ -190,12 +271,7 @@ export class ScenariosService {
       title: intake.title, statement: intake.statement, forecast_id: intake.forecastId,
       subject_entity_id: intake.subjectEntityId, owner: `principal:${intake.owner}`, review_cadence: intake.reviewCadence,
       kind_vocabulary_version: SCENARIO_KIND_VOCABULARY_VERSION,
-      branches: branches.map((b) => ({
-        branch_id: b.branchId, name: b.name, kind: b.kind, kind_label: b.kindLabel ?? null, divergence: b.divergence ?? null,
-        assumptions: b.assumptions ?? [], statement: b.statement,
-        indicator: b.indicatorId === null ? null : { indicator_id: b.indicatorId }, signpost: b.signpost,
-        owner: `principal:${b.owner}`, review_cadence: b.reviewCadence, response_window_hours: b.responseWindowHours,
-        consequence: b.consequence, consequence_class: b.consequenceClass ?? null, decision_deadline: b.decisionDeadline })),
+      branches: branches.map((b) => branchPayload(b)),
       controls,
     };
     const header: CanonicalHeader = {
@@ -240,6 +316,85 @@ export class ScenariosService {
   async checkCoherence(cap: ScenarioWrites, ctx: ScopeContext, scenarioId: string, actor: string, correlationId: string): Promise<{ coherence: Record<string, unknown>; event: OutboxRow | null }> {
     const coherence = await cap.checkScenarioCoherence({ checkId: newId(), scenarioId, tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, trigger: 'operator', actor, eventId: newId(), correlationId });
     return { coherence, event: coherenceEventOf(coherence, 'operator', actor, new Date().toISOString()) };
+  }
+
+  /**
+   * B23 (0084, L7-I02 BranchScenario): ADD one branch to a declared scenario as a NEW VERSION (governed write:
+   * `prediction.scenario.branch`). In order: the key (a repeat, or a different request under the key, is the PORT's answer —
+   * nothing is admitted); the scenario and the STALE check (409 before anything is admitted); the SCN version n+1 admitted — the
+   * previous branches plus this one, superseding n (v n unchanged); the port (the one effect: the kind, the conflicts, the branch,
+   * the versions, the request row); the coherence check on the new version (trigger `branch`). A concurrent writer that admitted
+   * the same next version first fails this admission on the canonical key (23505) — answered as stale_version.
+   */
+  async branch(
+    cap: BranchWrites, ctx: ScopeContext, c: BranchCommand, actor: string, correlationId: string, purposeId: string,
+    requestId: string = newId(), branchId: string = newId(),
+  ): Promise<{ result: Record<string, unknown>; version: number; events: OutboxRow[] }> {
+    const tenantId = ctx.tenantId as string; const domainId = ctx.domainId as string;
+    const digest = branchRequestDigest(c);
+    const conflict = (msg: string): never => { throw new HttpException(errorBody('EYE_STA_002', correlationId, msg), 409); };
+    const portArgs = (branch: Record<string, unknown>) => ({ requestId, tenantId, domainId, scenarioId: c.scenarioId, expectedVersion: c.expectedVersion, branch, branchId,
+      idempotencyKey: c.idempotencyKey, requestDigest: digest, actor, eventId: newId(), correlationId });
+    const b = c.branch;
+    const offered = { name: b.name, kind: b.kind, kind_label: b.kindLabel ?? null, statement: b.statement, indicator_id: b.indicatorId, signpost: b.signpost,
+      owner: b.owner, review_cadence: c.offeredCadence, response_window_hours: b.responseWindowHours, consequence: b.consequence,
+      consequence_class: b.consequenceClass ?? null, decision_deadline: b.decisionDeadline, divergence: b.divergence ?? null, assumptions: b.assumptions ?? [] };
+    // 1. THE KEY: a request already recorded under it is answered by the port (the recorded result, or the idempotency conflict).
+    const prior = (await cap.readBranchRequests().selectAll().where('requester_principal_id' as never, '=', actor as never)
+      .where('idempotency_key' as never, '=', c.idempotencyKey as never).executeTakeFirst()) as Record<string, unknown> | undefined;
+    if (prior !== undefined) {
+      const answer = await cap.branchScenario(portArgs(offered));
+      return { result: { ...answer, request_digest: digest, coherence: null }, version: Number(answer['version']), events: [] };
+    }
+    // 2. THE SCENARIO AND THE STALE CHECK — before anything is admitted (the port checks both again under its lock).
+    const s = (await cap.readScenarios().selectAll().where('scenario_id' as never, '=', c.scenarioId as never).executeTakeFirst()) as Record<string, unknown> | undefined;
+    if (s === undefined) throw new HttpException(errorBody('EYE_STA_001', correlationId, 'no authorized scenario matches'), 404);
+    if (String(s['state']) !== 'active') conflict(`branch rejected: scenario ${c.scenarioId} is ${String(s['state'])}; only an active scenario takes a new branch (declare a successor)`);
+    const current = Number(s['current_version'] ?? 1);
+    if (current !== c.expectedVersion) {
+      conflict(`branch rejected (stale_version): scenario ${c.scenarioId} stands at version ${current}, the request names version ${c.expectedVersion}; reload the scenario and branch its current version`);
+    }
+    const prev = await cap.scenarioObject({ scenarioId: c.scenarioId, tenantId, domainId, version: current });
+    if (prev === undefined) conflict(`branch rejected: scenario ${c.scenarioId} has no canonical version ${current} readable here`);
+    const p = prev as Record<string, unknown>;
+    // 3. THE NEXT VERSION: the previous payload whole, its branches plus this one; the header's controls carried from the version it supersedes.
+    const next = current + 1;
+    const full: BranchIntake = { ...b, reviewCadence: c.offeredCadence ?? String(s['review_cadence']) };
+    const prevPayload = (p['payload'] ?? {}) as Record<string, unknown>;
+    const payload = { ...prevPayload, branches: [...(Array.isArray(prevPayload['branches']) ? prevPayload['branches'] : []), branchPayload({ ...full, branchId })] };
+    const now = new Date().toISOString();
+    const header: CanonicalHeader = {
+      object_id: c.scenarioId, object_type: 'SCN', tenant_id: ctx.tenantId, domain_id: ctx.domainId, scope: 'DOMAIN',
+      object_version: String(next), lifecycle_state: 'active', owning_component: String(p['owning_component'] ?? 'CP-PRD-01'), accountable_owner: String(p['accountable_owner']),
+      source_object_ids: arr(p['source_object_ids']), event_time: null, observation_time: now, valid_from: null, valid_to: null, recorded_at: now,
+      time_precision: 'exact', source_clock_quality: 'trusted', truth_state: 'asserted', synthetic_state: p['synthetic_state'] === true,
+      confidence: null, uncertainty: null, evidence_refs: arr(p['evidence_refs']), provenance_ref: `principal:${actor}`, method_ref: 'human-declaration@1.0.0',
+      contradiction_refs: [], corroboration_refs: [], human_refs: [...new Set([...arr(p['human_refs']), `principal:${actor}`])], classification: String(p['classification']),
+      purpose_scope: purposeId, rights_profile: strOrNull(p['rights_profile']), residency_profile: strOrNull(p['residency_profile']),
+      retention_profile: strOrNull(p['retention_profile']), access_policy_ref: strOrNull(p['access_policy_ref']),
+      quality_profile: null, quality_state: null, freshness_state: null, schema_ref: 'SCN@v3', ontology_ref: null,
+      correction_of: null, supersedes: `${c.scenarioId}@${current}`, withdrawal_reason: null, audit_correlation_id: correlationId, content_ref: null,
+    };
+    const v = validateHeader(header);
+    if (!v.ok) throw new HttpException(errorBody('EYE_REQ_001', correlationId, `scenario header invalid: ${(v.errors ?? []).join('; ')}`), 422);
+    try {
+      await cap.admitObject(header, payload, canonicalHeaderDigest(header, payload));
+    } catch (e) {
+      // A concurrent branching admitted version `next` first (the canonical key): this request read a version that no longer stands.
+      if ((e as { code?: string }).code === '23505') {
+        conflict(`branch rejected (stale_version): scenario ${c.scenarioId} moved past version ${current} while this request was being written; reload the scenario and branch its current version`);
+      }
+      throw e;
+    }
+    // 4. THE ONE EFFECT (the port's kind, conflict and version checks; a refusal rolls the admission back).
+    const answer = await cap.branchScenario(portArgs({ ...offered, review_cadence: full.reviewCadence }));
+    // 5. THE CHECK on the new version (trigger `branch`): a failed scenario is admitted failed, never refused (the declaration's rule).
+    const coherence = await cap.checkScenarioCoherence({ checkId: newId(), scenarioId: c.scenarioId, tenantId, domainId, trigger: 'branch', actor, eventId: newId(), correlationId });
+    const occurredAt = new Date().toISOString();
+    const branched = scenarioBranchedEvent({ answer, branch: { indicator_id: b.indicatorId, owner: b.owner, consequence_class: b.consequenceClass ?? null, statement: b.statement },
+      idempotencyKey: c.idempotencyKey, requestDigest: digest, coherence, actor, occurredAt });
+    const failed = coherenceEventOf(coherence, 'branch', actor, occurredAt);
+    return { result: { ...answer, request_digest: digest, coherence }, version: next, events: failed === null ? [branched] : [branched, failed] };
   }
 
   async defineIndicator(
@@ -445,7 +600,8 @@ export class ScenariosService {
     const header: CanonicalHeader = {
       object_id: warningId, object_type: 'WRN', tenant_id: ctx.tenantId, domain_id: ctx.domainId, scope: 'DOMAIN',
       object_version: '1', lifecycle_state: 'active', owning_component: 'CP-PRD-01', accountable_owner: `principal:${routedTo}`,
-      source_object_ids: [`EVD:${flip.evidenceObjectId}@${flip.evidenceVersion}`, `SCN:${String(branch['scenario_id'])}@1`],
+      // B23 (0084): the scenario VERSION the warning rests on is the tree's current one (a branched scenario stands above v1).
+      source_object_ids: [`EVD:${flip.evidenceObjectId}@${flip.evidenceVersion}`, `SCN:${String(branch['scenario_id'])}@${Number(scenario?.['current_version'] ?? 1)}`],
       event_time: `${flip.observationAt}T00:00:00.000Z`, observation_time: raisedAsOf, valid_from: raisedAsOf, valid_to: closesAt,
       recorded_at: recordedAt, time_precision: 'exact', source_clock_quality: 'trusted', truth_state: 'inferred',
       synthetic_state: controls.synthetic_state, confidence: { value: confidence }, uncertainty: null,
@@ -536,7 +692,11 @@ export class ScenariosService {
       ? { state: String(s['coherence_state'] ?? 'unchecked') }
       : { state: String(s['coherence_state'] ?? check['outcome']), check_id: check['check_id'], findings: Array.isArray(check['findings']) ? check['findings'] : [],
           rule_version: check['rule_version'] ?? null, checked_at: check['checked_at'] ?? null, trigger: check['trigger'] ?? null };
-    return { ...s, branches: branches.map((b) => ({ ...b, indicator: indicators.find((i) => String(i['indicator_id']) === String(b['indicator_id'])) ?? null })), events, coherence };
+    // B23 (0084, L7-I02): the version the tree stands at (current_version, on the row) and its HISTORY — every SCN version, what it
+    // supersedes and the branches its payload names (a version is never rewritten; a branching admits the next one).
+    const versions = (await cap.scenarioVersions({ scenarioId })).map((x) => ({ version: Number(x.object_version), recorded_at: x.recorded_at, supersedes: x.supersedes, branch_ids: x.branch_ids }));
+    return { ...s, current_version: Number(s['current_version'] ?? 1), versions,
+             branches: branches.map((b) => ({ ...b, indicator: indicators.find((i) => String(i['indicator_id']) === String(b['indicator_id'])) ?? null })), events, coherence };
   }
 
   async listIndicators(cap: PredictionReads): Promise<Array<Record<string, unknown>>> {

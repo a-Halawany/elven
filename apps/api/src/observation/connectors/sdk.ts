@@ -259,7 +259,79 @@ export interface Connector {
   /** Stable digest of the connector's own framing behaviour, recorded on every run. */
   readonly codeDigest: string;
   acquire(ctx: AcquisitionContext): Promise<AcquisitionOutput>;
+  /* B23 (0084) stream */
+  /**
+   * THE STREAM FORM of Acquire (L1-I02), OPTIONAL. A connector that has one plans a partition's range and then yields its
+   * pages ONE SEGMENT AT A TIME, from a cursor, as the lifecycle pulls them — the lifecycle never pulls more than the stream's
+   * credit ahead of what it has acknowledged. `acquire()` above is the command form and is untouched by this.
+   */
+  planStream?(ctx: AcquisitionContext, req: StreamPlanRequest): Promise<StreamPlan>;
+  acquireStream?(ctx: AcquisitionContext, req: StreamPullRequest): AsyncIterable<AcquiredSegment>;
+  /* end B23 stream */
 }
+
+/* B23 (0084) stream */
+/**
+ * What a stream is asked for: the partition (the part of '<source_key>:<partition>' after the colon) and, optionally, a range
+ * narrower than the partition's declared one. The plan resolves the range and the cursor a new stream starts from.
+ */
+export interface StreamPlanRequest {
+  partition: string;
+  range: { from: string; to: string } | null;
+}
+export interface StreamPlan {
+  partition: string;
+  rangeFrom: string;
+  rangeTo: string;
+  /** Where a NEW stream starts. A resumed stream starts from its own stored cursor instead. */
+  initialCursor: StreamCursor;
+}
+/**
+ * The connector's own resume point, carried on the stream row and never interpreted by the lifecycle: `position` is what the
+ * connector continues from (a page index of a replay page set, the traversal cursor of a closed-range walk), `through` the
+ * position in the partition's order the stream has covered so far.
+ */
+export interface StreamCursor {
+  position: string | number;
+  through: string;
+  [k: string]: unknown;
+}
+export interface StreamPullRequest {
+  partition: string;
+  rangeFrom: string;
+  rangeTo: string;
+  cursor: StreamCursor;
+}
+/** An incomplete page: the stream moves past it and the range is declared explicitly incomplete — never silently skipped. */
+export interface SegmentGap {
+  reasonClass: 'publisher_gap' | 'refused';
+  detail: string;
+}
+/**
+ * ONE SEGMENT: one page of the partition, its items framed exactly as `acquire()` frames them (the same method refs; every
+ * item DETERMINISTIC — keyed by the page it came from — so a redelivered segment admits nothing twice), the cursor before and
+ * after it, and whether it is the partition's LAST page (so the lifecycle knows the range is exhausted without pulling again).
+ */
+export interface AcquiredSegment {
+  partition: string;
+  rangeFrom: string;
+  rangeTo: string;
+  cursorBefore: StreamCursor;
+  cursorAfter: StreamCursor;
+  items: AcquiredItem[];
+  gap: SegmentGap | null;
+  last: boolean;
+  requests: number;
+  bytes: number;
+}
+/** A stream the connector cannot plan — an unknown partition, a range outside the declared one, no stream declaration. */
+export class StreamPlanRefused extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'StreamPlanRefused';
+  }
+}
+/* end B23 stream */
 
 /**
  * Schema-drift check against the contract's declared expectations (§7). Drift

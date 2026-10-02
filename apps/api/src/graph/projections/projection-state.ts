@@ -43,6 +43,15 @@ export const ROUTE_PARTITIONS = Object.freeze({
   memoryList: ['memory_items_current'], memoryGet: ['memory_items_current'], memoryRetrieve: ['memory_items_current'],
 } as const satisfies Record<string, readonly ProjectionName[]>);
 
+/* B23 (0084) context */
+/**
+ * The partitions the CONTEXT query (L3-I02, POST …/graph/memory/context) depends on: the memory items it serves and the entity
+ * and edge rows its explanation links resolve against. Kept OUTSIDE ROUTE_PARTITIONS on purpose: that object is the TWELVE B20
+ * routes (its keys are iterated as the twelve by the B20 harness and the unit test), and B23 changes none of them.
+ */
+export const CONTEXT_PARTITIONS = Object.freeze(['memory_items_current', 'edges_current', 'entities_current'] as const satisfies readonly ProjectionName[]);
+/* end B23 context */
+
 /** The way back to service, named in every withdrawn label (a literal the harness regexes — copy, never retype). */
 export const REBUILD_ROUTE = (projection: ProjectionName): string => `POST …/graph/projections/${projection}/rebuild (graph.projection.rebuild)`;
 

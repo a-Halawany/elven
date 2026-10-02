@@ -695,3 +695,80 @@ export const SOURCE_CONTRACTS = [
     lifecycle: { contract_version: 1, effective_from: '2024-01-01T00:00:00Z', effective_to: null },
   },
 ];
+
+/* B23 (0084) stream */
+/**
+ * THE STREAM SOURCE — L1-I02's stream form over replay (CP-6 B23). NOT part of SOURCE_CONTRACTS, so the demonstration seed
+ * (scripts/phase1/seed-demo.mjs) and everything counting the ten Phase 1 contracts are unchanged; it is registered through
+ * the governed register route when the stream form is shown. Every row it reads is SYNTHETIC (data_origin 'synthetic'; the
+ * set is written by scripts/phase1/build-stream-fixtures.mjs and says so at row level), which is also why its reuse rights
+ * can be confirmed: no publisher's terms are exercised by reading it. The stream partition is `chokepoint4`, so its stable
+ * partition key is 'red-sea-corridor-stream:chokepoint4'; the third page is a planted publisher gap (DEF-S1).
+ */
+export const STREAM_SOURCE_CONTRACTS = [
+  {
+    source_key: 'red-sea-corridor-stream',
+    name: 'Red Sea corridor feed — Bab el-Mandeb daily transits (SYNTHETIC stream fixture)',
+    publisher: 'Synthetic corridor publisher (does not exist)',
+    authority_class: 'observational',
+    connector_kind: 'rest',
+    acquisition_mode: 'replay',
+    data_origin: 'synthetic',
+    identity: {
+      source_identity: 'red-sea-corridor-stream',
+      publisher_identity: 'synthetic corridor publisher — a fixture; no such publisher exists',
+      endpoints: ['https://corridor-stream.synthetic.example/red-sea/chokepoint4'],
+      scheme_allowlist: HTTPS,
+      cadence_seconds: 86_400,
+      jitter_seconds: 300,
+      collection_window: null,
+    },
+    authority_and_rights: {
+      owner: 'observation.operations',
+      steward: 'a.hoffmann',
+      authority: 'Synthetic fixture for the stream form of Acquire — not a real indicator',
+      legal_basis: 'Internal synthetic data created for the demonstration',
+      rights_state: 'confirmed',
+      licence: 'internal (synthetic)',
+      permitted_use: ['internal analysis'],
+      robots_policy: 'not applicable — replay of a synthetic fixture set',
+      purposes: ['observation', 'corridor monitoring'],
+      classification_ceiling: 'internal',
+      residency: 'EU',
+      retention: '24 months',
+      deletion_obligation: 'none',
+    },
+    security_and_operations: {
+      credential_ref: null,
+      authentication_method: 'anonymous (no credential required)',
+      authenticity_method: {
+        transport_endpoint: 'not applicable — replay of a synthetic fixture set; no transport was performed',
+        byte_integrity: 'SHA-256 digest verified pre-store, post-store and on every read',
+        source_origin: 'not applicable — the set is synthetic and says so at row level',
+        content_authenticity: 'not applicable — the records are synthetic and marked as such',
+      },
+      budgets: BUDGETS,
+      expected_schema: {
+        media_types: ['application/json'],
+        required_fields: ['features.[].attributes.date', 'features.[].attributes.n_total'],
+        drift_tolerance: 0,
+        max_bytes: 8_388_608,
+        item_path: 'features',
+        item_key_field: 'attributes.date',
+        item_time_field: 'attributes.date',
+      },
+      freshness_expectation: { threshold_seconds: 259_200, expected_interval: 'daily' },
+      coverage_expectations: {
+        universe_version: 'v1',
+        denominator_derivation: 'one framed row per day across the partition range (30 days, five-day pages)',
+        expected_items_per_window: 30,
+        not_applicable_dimensions: [],
+        not_applicable_reason: null,
+      },
+      correction_channel: 'none — a synthetic fixture set is re-generated, never corrected',
+      replay_set: 'red-sea-corridor-stream',
+    },
+    lifecycle: { contract_version: 1, effective_from: '2024-01-01T00:00:00Z', effective_to: null },
+  },
+];
+/* end B23 stream */

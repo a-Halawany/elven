@@ -25,6 +25,10 @@
  * records a coherence check; the declare route checks at the end of its write and
  * the review route publishes the check its port ran — each publishing
  * ScenarioCoherenceFailed@v1 on a failed and changed check.
+ *
+ * CP-6 B23 (0084): POST …/scenarios/:scenarioId/branches (L7-I02 BranchScenario,
+ * `prediction.scenario.branch`) adds a branch to a declared scenario as a new,
+ * idempotent version and publishes ScenarioBranched@v1.
  */
 import { Body, Controller, HttpException, Param, Post, Req } from '@nestjs/common';
 import { errorBody, type Envelope } from '@eye/contracts';
@@ -37,7 +41,7 @@ import { PredictionCapability } from './prediction.capabilities.js';
 import { SeriesService, type Reader } from './series/series.service.js';
 import { ForecastingService, HORIZONS } from './forecasting/forecasting.service.js';
 import { forecastIssuedEvent } from './forecasting/forecast-events.js';
-import { ScenariosService, validateScenario } from './scenarios/scenarios.service.js';
+import { ScenariosService, validateBranchCommand, validateScenario } from './scenarios/scenarios.service.js';
 import { PARSERS } from './series/parsers.js';
 
 function ctx(req: EyeRequest) {
@@ -561,9 +565,35 @@ export class PredictionController {
       PredictionCapability.check,
       async (cap, scope) => {
         const r = await this.scenarios.checkCoherence(cap, scope, scenarioId, principal.principalId, envelope.correlation_id);
-        return { result: r.coherence, targetType: 'SCN', targetId: scenarioId, targetVersion: '1', outboxEvent: r.event };
+        // B23 (0084): the version checked is the tree's current one (the port's scenario_version), no longer always 1.
+        return { result: r.coherence, targetType: 'SCN', targetId: scenarioId, targetVersion: String(r.coherence['scenario_version'] ?? '1'), outboxEvent: r.event };
       });
     return { coherence: out.result, receipt: receipt(out) };
+  }
+
+  /**
+   * B23 (0084, L7-I02 BranchScenario): ADD an upside, downside, disruption or user-defined branch to a declared scenario as a NEW
+   * VERSION (`prediction.scenario.branch`; the declaring roles; not human-gated — the declaration is not). The body names the version
+   * read (`expected_version`, the get's current_version), an `idempotency_key` (a retry sends the same key with the same branch and
+   * is answered the first result: `repeated: true`, no second effect) and the `branch` (the declaration's branch fields). A stale
+   * version, a different request under the key and a duplicate branch are refused 409; baseline and the other kinds 422.
+   * ScenarioBranched@v1 (and ScenarioCoherenceFailed@v1 when the check on the new version failed and changed) from the write.
+   */
+  @Post('/scenarios/:scenarioId/branches')
+  async branchScenario(
+    @Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string,
+    @Param('scenarioId') scenarioId: string, @Body() body: { payload?: Record<string, unknown> },
+  ) {
+    const { envelope, principal } = ctx(req);
+    const command = validateBranchCommand(scenarioId, body.payload ?? {}, envelope.correlation_id);
+    const out = await this.pipeline.write(
+      envelope, principal, this.route(tenantId, domainId, 'prediction.scenario.branch', 'SCN', scenarioId),
+      PredictionCapability.branch,
+      async (cap, scope) => {
+        const r = await this.scenarios.branch(cap, scope, command, principal.principalId, envelope.correlation_id, envelope.purpose_id ?? 'prediction');
+        return { result: r.result, targetType: 'SCN', targetId: scenarioId, targetVersion: String(r.version), outboxEvents: r.events };
+      });
+    return { branching: out.result, receipt: receipt(out) };
   }
 
   @Post('/scenarios/list')

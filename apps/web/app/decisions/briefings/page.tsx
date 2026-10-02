@@ -10,10 +10,53 @@ import { useShell } from '../layout';
 import { decisions as api, type Room, type Briefing } from '../../../lib/decisions';
 import { Empty, LiveStatus, Mono, cardStyle, DefinitionRow, UnknownNote, fmtInstant } from '../../../components/observation';
 import { tableStyle, Th, Td, buttonStyle, Receipt as ReceiptNote, ErrorNote } from '../../../components/ui';
+/* B23 (0084) attention */
+import { bandMark } from '../../../lib/attention';
+import type { BriefingAttention, BriefingAttentionItem } from '../../../lib/decisions';
+/* end B23 attention */
 
 const short = (v: unknown): string => (typeof v === 'string' ? `${v.slice(0, 8)}…` : '—');
 const SOURCE_TEXT: Record<string, string> = { live: '● live', replayed: '◍ REPLAYED', degraded: '◍ DEGRADED', blocked: '✕ BLOCKED', 'operator-upload': '⇧ operator upload', internal: '◦ internal record' };
 const left = (s: number): string => (s < 0 ? `overdue by ${Math.round(-s / 3600)} h` : s < 86_400 ? `${Math.round(s / 3600)} h left` : `${Math.round(s / 86_400)} d left`);
+
+/* B23 (0084) attention: BRF@v2's ATTENTION SECTION — the routed items as of the edition's known_at (their state THEN, the policy version THEN,
+   the confidence band in three channels), every state counted, the material changes since the prior edition. A v1 edition says it has none. */
+function Band({ band }: { band: string }) {
+  const m = bandMark(band);
+  return <span style={{ color: `var(${m.token})`, fontWeight: 650, fontSize: 'var(--eye-type-label-sm)', whiteSpace: 'nowrap' }}><span aria-hidden="true">{m.glyph}</span> {m.text}</span>;
+}
+function AttentionRows({ rows, caption }: { rows: BriefingAttentionItem[]; caption: string }) {
+  return (
+    <table className="eye-table" style={tableStyle}>
+      <caption style={{ captionSide: 'top', textAlign: 'start', color: 'var(--eye-color-ink-muted)' }}>{caption}</caption>
+      <thead><tr><Th>Class</Th><Th>What</Th><Th>State then</Th><Th>Consequence</Th><Th>Confidence</Th><Th>Hours to window</Th><Th>Policy then</Th><Th>Owner</Th></tr></thead>
+      <tbody>{rows.map((x) => (
+        <tr key={x.item_id}>
+          <Td mono>{x.signal_class}</Td><Td>{x.title}</Td><Td>{x.state.toUpperCase()}</Td><Td mono>{x.consequence ?? '—'}</Td>
+          <Td><Band band={x.confidence_band} />{x.confidence === null ? null : <> <Mono>{x.confidence}</Mono></>}</Td>
+          <Td mono>{x.hours_to_window === null ? '—' : x.hours_to_window}</Td><Td mono>{x.policy_version === null ? 'none' : `v${x.policy_version}`}</Td><Td mono>{short(x.owner)}</Td>
+        </tr>
+      ))}</tbody>
+    </table>
+  );
+}
+function AttentionSection({ version, attention }: { version: string | undefined; attention: BriefingAttention | null | undefined }) {
+  if (version !== 'v2' || attention === null || attention === undefined) {
+    return <p style={{ fontSize: 'var(--eye-type-label-sm)', color: 'var(--eye-color-ink-muted)' }}>No attention section (v1 edition): this briefing was composed before the attention section existed; its content and digest are what they were.</p>;
+  }
+  const counted = Object.entries(attention.counts).filter(([, n]) => n > 0).map(([k, n]) => `${k} ${n}`).join(' · ');
+  return (
+    <>
+      <p style={{ fontSize: 'var(--eye-type-label-sm)' }}>
+        as of <Mono>{fmtInstant(attention.as_of)}</Mono> (the edition's known_at — a later acknowledgement or closure does not rewrite it) · policy {attention.policy_version === null ? 'none in force' : <Mono>v{attention.policy_version}</Mono>} · {counted === '' ? 'no item in the queue then' : counted}
+      </p>
+      {attention.items.length === 0 ? <Empty>No item was routed at known_at.</Empty> : <AttentionRows rows={attention.items} caption={`${attention.items.length} routed item(s) at known_at`} />}
+      <h5 style={{ fontSize: 'var(--eye-type-label-md)', marginBlockEnd: 0 }}>Material changes {attention.since === null ? '(no prior edition — every one up to known_at)' : <>since the prior edition (<Mono>{fmtInstant(attention.since)}</Mono>)</>}</h5>
+      {attention.material_changes_since_prior.length === 0 ? <Empty>No material change on a decision in the interval.</Empty> : <AttentionRows rows={attention.material_changes_since_prior} caption={`${attention.material_changes_since_prior.length} material change(s)`} />}
+    </>
+  );
+}
+/* end B23 attention */
 
 export default function BriefingsPage() {
   const { scope, isExecutive, isDecisionOwner, isApprover, isAuthority } = useShell();
@@ -100,6 +143,10 @@ export default function BriefingsPage() {
               {briefing.windows.length === 0 ? <Empty>No window is closing.</Empty> : (
                 <ol>{briefing.windows.map((w) => <li key={`${w.kind}:${w.id}`} style={{ fontSize: 'var(--eye-type-label-sm)' }}>{w.overdue ? <strong style={{ color: 'var(--eye-color-critical)' }}>OVERDUE </strong> : null}{w.title} — closes <Mono>{fmtInstant(w.closes_at)}</Mono> ({left(w.time_left_seconds)}) · owner <Mono>{short(w.owner)}</Mono></li>)}</ol>
               )}
+              {/* B23 (0084) attention */}
+              <h4 style={{ fontSize: 'var(--eye-type-heading-3)' }}>What needs attention (BRF@{briefing.schema_version ?? 'v1'})</h4>
+              <AttentionSection version={briefing.schema_version} attention={briefing.attention} />
+              {/* end B23 attention */}
               <h4 style={{ fontSize: 'var(--eye-type-heading-3)' }}>What changed · why it matters · who owns it</h4>
               {(briefing.items_withheld ?? 0) > 0 ? <UnknownNote><strong>{briefing.items_withheld} item(s) withheld from you</strong> — outside the audience of the memory version cited; the snapshot and its digest are unchanged.</UnknownNote> : null}
               {briefing.availability !== undefined && (briefing.availability.unavailable.length > 0 || briefing.availability.corrected.length > 0) ? (

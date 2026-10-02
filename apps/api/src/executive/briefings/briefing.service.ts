@@ -54,6 +54,12 @@
  * on_degraded agent stops naming the reason; nothing is refused and nothing raw
  * escapes. The composer's OWN read of the candidates' versions stays outside the
  * boundary: no metadata-only briefing exists.
+ *
+ * B23 (0084): BRF@v2 — every new edition carries an ATTENTION SECTION (attention-section.ts): the routed attention items AS OF
+ * known_at (their state reconstructed from the item log by the same rule as every other mutable state here), each with its
+ * confidence band, and the material changes since the prior edition; the section is `content.attention`, so the content digest
+ * covers it, and the header names BRF@v2 (0084's schema row: v1's with the section required). A v1 edition stays what it was
+ * (schema_version 'v1', no section): get() and list() name each edition's version.
  */
 import { HttpException, Injectable } from '@nestjs/common';
 import { canonicalHeaderDigest, contentDigest, errorBody, validateHeader, type CanonicalHeader } from '@eye/contracts';
@@ -67,6 +73,9 @@ import { basisStateOf } from '../../graph/memory/memory.service.js';
 import { blockOf, type ProjectionBlock } from '../../graph/projections/projection-state.js';
 import { ContentTierUnavailable } from '../../graph/projections/content-tier.js';
 import { memoryItemsFromLog } from '../../graph/projections/fallback.js';
+/* B23 (0084) attention */
+import { attentionSection } from './attention-section.js';
+/* end B23 attention */
 
 const iso = (v: unknown): string => (v instanceof Date ? v.toISOString() : new Date(String(v)).toISOString());
 const isoOrNull = (v: unknown): string | null => (v === null || v === undefined ? null : iso(v));
@@ -475,7 +484,17 @@ export class BriefingService {
     if (lim.reserve === undefined && lim.maxReads !== null && sourceList.length > lim.maxReads) throw new BudgetExceeded(`the briefing would read ${sourceList.length} source records; the agent's remaining budget is ${lim.maxReads}`);
     if (lim.maxItems !== null && items.length > lim.maxItems) throw new StopCondition(`stop condition max_items: the briefing would carry ${items.length} items, the agent stops at ${lim.maxItems}`);
     if (lim.stopOnDegraded && degraded) throw new StopCondition(`stop condition on_degraded: ${memoryContentUnavailable !== null ? `the memory projection of this domain is withdrawn and its memory items could not be read from the log (the content tier did not answer at ${memoryContentUnavailable.statement}); the briefing would omit every memory item` : memoryWithdrawn ? 'the memory projection of this domain is withdrawn (the memory items are served from their log, labelled)' : 'a source the briefing rests on is degraded or blocked'}`);
-    const content = { room_id: a.roomId, package_id: pkg === null ? null : String(pkg['package_id']), watermark, sources: sourceList, items, windows, source_states: sourceStates, degraded };
+    /* B23 (0084) attention: the attention section AS OF known_at — the queue's rows, their log up to known_at, the policy versions. */
+    reserve('the attention queue');
+    const attnItems = (await cap.readAttentionItems().select(['item_id', 'signal_class', 'subject_kind', 'subject_id', 'title', 'owner_principal_id', 'evaluation', 'created_at', 'cause_event_id'] as never)
+      .where('created_at' as never, '<=', knownAt as never).orderBy('created_at' as never).orderBy('item_id' as never).limit(1000).execute()) as Array<Record<string, unknown>>;
+    const attnEvents = attnItems.length === 0 ? [] : (await cap.readAttentionItemEvents().select(['event_id', 'item_id', 'event', 'details', 'occurred_at'] as never)
+      .where('item_id' as never, 'in', attnItems.map((x) => String(x['item_id'])) as never).where('occurred_at' as never, '<=', knownAt as never).orderBy('occurred_at' as never).orderBy('event_id' as never).execute()) as Array<Record<string, unknown> & { item_id: unknown; event: string; details: Record<string, unknown> | null; occurred_at: unknown }>;
+    const attnPolicies = (await cap.readAttentionPolicies().select(['version', 'effective_at', 'superseded_at'] as never).execute()) as Array<{ version: unknown; effective_at: unknown; superseded_at: unknown }>;
+    const attention = attentionSection({ items: attnItems, events: attnEvents, policies: attnPolicies, knownAt, since });
+    /* end B23 attention */
+    const content = { room_id: a.roomId, package_id: pkg === null ? null : String(pkg['package_id']), watermark, sources: sourceList, items, windows, source_states: sourceStates, degraded,
+                      /* B23 (0084) attention: BRF@v2 */ attention /* end B23 attention */ };
     const digest = contentDigest(content);
     // the narrative: labelled, cites only included items, outside the content digest
     const narrative = a.narrative === null || a.narrative.trim().length === 0 ? null : a.narrative;
@@ -507,7 +526,8 @@ export class BriefingService {
       provenance_ref: `principal:${composer}`, method_ref: `briefing-composer@1.1.0${via === 'agent' ? `/agent:${agentId}` : ''}`, contradiction_refs: [], corroboration_refs: [],
       human_refs: via === 'human' ? [`principal:${composer}`] : [`principal:${room === null ? composer : String(room['owner_principal_id'])}`],
       classification: controls.classification, purpose_scope: purposeId, rights_profile: controls.rights_profile, residency_profile: controls.residency_profile, retention_profile: controls.retention_profile, access_policy_ref: controls.access_policy_ref,
-      quality_profile: null, quality_state: { degraded, items: items.length, windows: windows.length, narrative: narrative === null ? 'none' : 'labelled', controls_inputs: controls.inputs }, freshness_state: null, schema_ref: 'BRF@v1', ontology_ref: null,
+      quality_profile: null, quality_state: { degraded, items: items.length, windows: windows.length, narrative: narrative === null ? 'none' : 'labelled', controls_inputs: controls.inputs }, freshness_state: null,
+      /* B23 (0084) attention: BRF@v2 */ schema_ref: 'BRF@v2' /* end B23 attention */, ontology_ref: null,
       correction_of: null, supersedes: prior === null ? null : `BRF:${String(prior['briefing_id'])}@1`, withdrawal_reason: null, audit_correlation_id: correlationId, content_ref: null,
     };
     const check = validateHeader(header);
@@ -516,7 +536,8 @@ export class BriefingService {
     if (lim.deadline !== undefined && Date.now() >= lim.deadline) throw new BudgetExceeded('the elapsed budget ran out before admission; the composition is abandoned');
     await cap.admitObject(header, payload, headerDigest);
     await cap.composeBriefing({ briefingId, tenantId, domainId, roomId: a.roomId, packageId: pkg === null ? null : String(pkg['package_id']), composer, via, agentId, knownAt, prior: watermark.prior_briefing_id,
-      watermark, sources: sourceList, items, windows, sourceStates, degraded, narrative, narrativeCites: cites, contentDigest: digest, headerDigest, controls, eventId: newId(), correlationId, memoryAccesses });
+      watermark, sources: sourceList, items, windows, sourceStates, degraded, narrative, narrativeCites: cites, contentDigest: digest, headerDigest, controls, eventId: newId(), correlationId, memoryAccesses,
+      /* B23 (0084) attention */ schemaVersion: 'v2', attention: attention as unknown as Record<string, unknown> /* end B23 attention */ });
     // B20: the compose answer carries the full projection block of the memory partition (the watermark included — the answer, not the content) beside `degraded`.
     const projection: ProjectionBlock = memBlock;
     // B21 (D1.6): the memory source's state in the answer — served / withdrawn (from the log, labelled) / unavailable (omitted, the reason named).
@@ -526,7 +547,8 @@ export class BriefingService {
           reason: `the memory_items_current projection of this domain is withdrawn (since ${String(mem?.withdrawn_since ?? 'an unknown instant')}: ${String(mem?.reason ?? 'no reason recorded')}) and the content tier did not answer at ${memoryContentUnavailable.statement} (${memoryContentUnavailable.detail}); the memory items are omitted from this briefing — nothing verified remains to compose them from; retry when the content tier answers, or after the rebuild (graph.projection.rebuild)` }
       : memoryWithdrawn ? { state: 'withdrawn' as const, code: 'EYE-DEG-001' as const, statement: null, detail: null, items: memoryAccesses.length, reason: 'the memory items are composed from their log (the memory projection is withdrawn), labelled' }
       : { state: 'served' as const, code: null, statement: null, detail: null, items: memoryAccesses.length, reason: null };
-    return { briefingId, roomId: a.roomId, packageId: pkg === null ? null : String(pkg['package_id']), knownAt, watermark, contentDigest: digest, headerDigest, items, windows, sourceStates, sources: sourceList, degraded, narrative, narrativeCites: cites, composedVia: via, agentId, controls, memoryAccesses, projection, memorySource };
+    return { briefingId, roomId: a.roomId, packageId: pkg === null ? null : String(pkg['package_id']), knownAt, watermark, contentDigest: digest, headerDigest, items, windows, sourceStates, sources: sourceList, degraded, narrative, narrativeCites: cites, composedVia: via, agentId, controls, memoryAccesses, projection, memorySource,
+             /* B23 (0084) attention */ schemaVersion: 'v2' as const, attention /* end B23 attention */ };
   }
 
   /**
@@ -675,6 +697,7 @@ export class BriefingService {
     // 0065 §8: what reached the briefing after its composition (re-flagged by an assessment) — the snapshot itself unchanged.
     const reFlagged = (await cap.readBriefingEvents().selectAll().where('briefing_id' as never, '=', briefingId as never).orderBy('occurred_at' as never).execute()) as Array<Record<string, unknown>>;
     return { ...b, items: served, items_withheld: withheld, narrative: narrativeWithheld ? null : (b['narrative'] ?? null), narrative_withheld: narrativeWithheld,
+             /* B23 (0084) attention: the edition's version; a v1 edition carries no attention section */ schema_version: b['schema_version'] ?? 'v1', attention: b['attention'] ?? null, /* end B23 attention */
              composed_at: iso(b['composed_at']), known_at: iso(b['known_at']), admitted_for: admitted.purpose_scope, classification: admitted.classification, availability,
              memory_accesses: Array.isArray(b['memory_accesses']) ? b['memory_accesses'] : [],
              re_flagged: reFlagged.map((e) => ({ event: e['event'], occurred_at: iso(e['occurred_at']), details: e['details'] })) };
@@ -683,7 +706,8 @@ export class BriefingService {
   async list(cap: ExecutiveReads, reader: AuthenticatedPrincipal | string, roomId: string | null, purpose: string | null = null, target: { tenantId: string | null; domainId: string | null } | null = null): Promise<Array<Record<string, unknown>>> {
     const readerId = typeof reader === 'string' ? reader : reader.principalId;
     const clearance = typeof reader === 'string' ? 'restricted' : (target === null ? 'internal' : clearanceOf(reader, target));
-    let q = cap.readBriefings().select(['briefing_id', 'room_id', 'package_id', 'composed_by', 'composed_via', 'agent_id', 'known_at', 'prior_briefing_id', 'content_digest', 'degraded', 'composed_at', 'controls'] as never).orderBy('composed_at' as never, 'desc').limit(200);
+    let q = cap.readBriefings().select(['briefing_id', 'room_id', 'package_id', 'composed_by', 'composed_via', 'agent_id', 'known_at', 'prior_briefing_id', 'content_digest', 'degraded', 'composed_at', 'controls',
+      /* B23 (0084) attention */ 'schema_version' /* end B23 attention */] as never).orderBy('composed_at' as never, 'desc').limit(200);
     if (roomId !== null) q = q.where('room_id' as never, '=', roomId as never);
     const rows = (await q.execute()) as Array<Record<string, unknown>>;
     const out: Array<Record<string, unknown>> = [];

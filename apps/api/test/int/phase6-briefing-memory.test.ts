@@ -152,12 +152,13 @@ describe('B10-F1 · a stored briefing serves a memory version within the cited v
     await expect(obs.getEvidence(h.req(analyst, 'observation.read.evidence', 'EVD', restricted, 'observation'), T(), D(), restricted, { payload: {} })).rejects.toMatchObject({ status: 404 });
     await expect(obs.getEvidence(h.req(analyst, 'observation.read.evidence', 'EVD', briefingId, 'observation'), T(), D(), briefingId, { payload: {} })).rejects.toMatchObject({ status: 404 });
     // the generic WRITE does not admit a port-owned type (0069 §2): the analyst's objects.correct of the memory item and of the briefing refused at the port
-    const correctIt = (id: string, objectType: string, payload: Row) => oc.correct(h.req(analyst, 'objects.correct', objectType, id, 'observation'), T(), D(), id, { payload: { expectedVersion: 1, correction: { objectType, truthState: 'asserted', classification: 'internal', purposeScope: 'memory', humanRefs: [`principal:${analyst.principalId}`], payload } } }) as Promise<Row>;
+    // B23 (0084): a briefing composed now is BRF@v2 (its attention section) — the correction names the schema of the payload it carries, so the refusal is the port's (not a schema violation)
+    const correctIt = (id: string, objectType: string, payload: Row, schemaVersion?: string) => oc.correct(h.req(analyst, 'objects.correct', objectType, id, 'observation'), T(), D(), id, { payload: { expectedVersion: 1, correction: { objectType, truthState: 'asserted', classification: 'internal', purposeScope: 'memory', humanRefs: [`principal:${analyst.principalId}`], payload, ...(schemaVersion === undefined ? {} : { schemaVersion }) } } }) as Promise<Row>;
     const storedPayload = async (id: string) => (await sql<{ payload: Row }>`select payload from objects.canonical_objects where object_id = ${id}::uuid order by object_version desc limit 1`.execute(h.su)).rows[0]!.payload;
     const memPayload = { ...(await storedPayload(restricted)), statement: 'REWRITTEN BY THE ANALYST', audience: { ...((await storedPayload(restricted))['audience'] as Row), roles: [] } };
     await expect(correctIt(restricted, 'MEM', memPayload)).rejects.toThrow(/may not admit a MEM object — it is written through its own port/);
     expect((await sql<{ n: number }>`select count(*)::int n from objects.canonical_objects where object_id = ${restricted}::uuid`.execute(h.su)).rows[0]!.n).toBe(1);
-    await expect(correctIt(briefingId, 'BRF', await storedPayload(briefingId))).rejects.toThrow(/may not admit a BRF object — it is written through its own port/);
+    await expect(correctIt(briefingId, 'BRF', await storedPayload(briefingId), 'v2')).rejects.toThrow(/may not admit a BRF object — it is written through its own port/);
     expect((await sql<{ n: number }>`select count(*)::int n from objects.canonical_objects where object_id = ${briefingId}::uuid`.execute(h.su)).rows[0]!.n).toBe(1);
   }, 60_000);
 });

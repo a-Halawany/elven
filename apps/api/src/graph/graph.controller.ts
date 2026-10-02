@@ -36,10 +36,14 @@ import { ResolutionService } from './entities/resolution.service.js';
 import { EdgesService, MAX_DEPTH, MAX_EDGES, nowAsOf, type AsOf } from './edges/edges.service.js';
 import { StrategyService, validateStrategy } from './strategy/strategy.service.js';
 import { MemoryService, validateDeriveIntake, validateMemoryItem, type DeriveAnswer } from './memory/memory.service.js';
+import { CONTEXT_LIMIT_MAX } from './memory/context.js';
 import { ImpactService } from './strategy/impact.service.js';
 import { SearchService } from './search/search.service.js';
 import { PropagationAgentsService } from './propagation/propagation-agents.service.js';
-import { graphChangedEvent } from './subscriptions/change-events.js';
+import { graphChangedEvent, revisionCommittedEvent } from './subscriptions/change-events.js';
+/* B23 (0084) revision */
+import { revisionHead, validateRevisionIntake } from './revisions/revision.service.js';
+/* end B23 revision */
 import { SubscriptionsService, flowTelemetry, type RegisterSubscriptionIntake } from './subscriptions/subscriptions.service.js';
 import { EMPTY_REACH, type ReachedObjects } from './subscriptions/graph-change.js';
 import { ROUTE_PARTITIONS, VERIFY_NOTE, projectionStateOf } from './projections/projection-state.js';
@@ -724,6 +728,45 @@ export class GraphController {
     return { ...out.result, receipt: receipt(out) };
   }
 
+  /* B23 (0084) revision */
+  // ───────────────────────── graph revisions (0084, L4-I02 CommitGraphRevision) ─────────────────────────
+
+  /**
+   * ONE CHANGE SET, ONE REVISION (graph.revision.commit → graph.commit_revision): the nodes, identifiers and edges of `change_set`,
+   * with the domain's active ontology version named and every fact's provenance (its claim version), validated and applied by the
+   * port in ONE transaction against `expected_revision` — or refused, and nothing applied. IDEMPOTENT: the same
+   * `idempotency_key` with the same change set answers the first result (`repeated: true`, no second effect, no event); the same
+   * key with another change set is refused (409), as is a head that is not the expected one (409 conflict: read the head again).
+   * The accepted revision publishes ONE GraphChanged/revision.committed, built from the port's answer without reads.
+   */
+  @Post('/revisions')
+  async commitRevision(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: Record<string, unknown> }) {
+    const { envelope, principal } = ctx(req);
+    const intake = validateRevisionIntake(body.payload ?? {}, envelope.correlation_id);
+    const revisionId = newId();
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'graph.revision.commit', 'GRV', revisionId), GraphCapability.revisions,
+      async (cap) => {
+        const r = await cap.commitRevision({ revisionId, tenantId, domainId, changeSet: intake.changeSet, expectedRevision: intake.expectedRevision, idempotencyKey: intake.idempotencyKey,
+          actor: principal.principalId, correlationId: envelope.correlation_id });
+        // A REPEAT is the first answer: the recorded revision is the target, nothing is announced (one authoritative effect).
+        if (r.repeated) return { result: r, targetType: 'GRV', targetId: r.revision_id, targetVersion: String(r.revision), outboxEvent: null };
+        const subscriptions = await cap.subscriptionsMatching({ tenantId, domainId, eventType: 'GraphChanged', changeKind: 'revision.committed' });
+        return { result: r, targetType: 'GRV', targetId: r.revision_id, targetVersion: String(r.revision),
+                 outboxEvent: revisionCommittedEvent({ revision: r as unknown as Record<string, unknown>, subscriptions, actor: principal.principalId }) };
+      });
+    return { revision: out.result, receipt: receipt(out) };
+  }
+
+  /** The domain's revision head (graph.read): the `expected_revision` a change set names, the active ontology version(s) it names, the latest revisions. */
+  @Post('/revisions/head')
+  async revisionHead(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'graph.read', 'GRV', null), GraphCapability.read,
+      async (cap) => revisionHead(cap, { tenantId, domainId }));
+    return { head: out.result, receipt: receipt(out) };
+  }
+  /* end B23 revision */
+
   // ───────────────────────── Enterprise Memory workspace (0066 §3, AU-MEM-0065; B19: /memory/derive and the re-derivation) ─────────────────────────
 
   /** OBJ-14 RECORD: the knowledge owner records a memory item — a person's own record (source kind human): its first canonical version, its projection, its cites as dependencies. */
@@ -896,6 +939,41 @@ export class GraphController {
     if (out.result === null) throw new HttpException(errorBody('EYE_STA_001', envelope.correlation_id, 'no authorized memory item matches'), 404);
     return { memory: out.result, receipt: receipt(out) };
   }
+
+  /* B23 (0084) context */
+  /**
+   * L3-I02 RETRIEVE CONTEXT: ONE query for an EXPLICIT purpose (envelope.purpose_id) about a SUBJECT ({ kind, id } — an entity, a
+   * claim, an edge, a strategy object, an evidence object, a warning or a forecast), optionally AS OF an instant: the memory items
+   * whose served version names the subject and admits the purpose, filtered by the reader's clearance and audience roles, each with
+   * its explanation links; the revision, the verified sequence, the lag and the condition of the context's partitions read FIRST;
+   * the PRODUCT STATE (complete | stale | partial — what was left out named). The query writes nothing (memory.retrieve_context is
+   * STABLE); the access row of each served item version, the POL and the AUD rows are the governance record of the read. The audit
+   * row's result code is OK, or EYE-DEG-001 for a stale or partial answer (declared, not a refusal). The subject's shape and an
+   * empty purpose are the port's refusals (22023 → 422); the limit and the instant the route's.
+   */
+  @Post('/memory/context')
+  async memoryContext(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: { subject?: unknown; asOf?: string | null; limit?: number } }) {
+    const { envelope, principal } = ctx(req);
+    const purpose = envelope.purpose_id ?? '';
+    const asOfRaw = body.payload?.asOf === undefined || body.payload.asOf === null || body.payload.asOf === '' ? null : String(body.payload.asOf);
+    if (asOfRaw !== null && Number.isNaN(Date.parse(asOfRaw))) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'payload.asOf must be an instant (ISO 8601)'), 422);
+    const asOf = asOfRaw === null ? null : new Date(asOfRaw).toISOString();
+    const limit = body.payload?.limit === undefined || body.payload.limit === null ? 50 : Number(body.payload.limit);
+    if (!Number.isInteger(limit) || limit < 1 || limit > CONTEXT_LIMIT_MAX) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, `payload.limit is 1..${CONTEXT_LIMIT_MAX}`), 422);
+    const out = await this.pipeline.consequentialReadEvidenced(
+      envelope, principal,
+      this.route(tenantId, domainId, 'memory.context.retrieve', 'MEM', null),
+      GraphCapability.memoryContext,
+      async (cap, scope) => this.memory.context(cap, principal, scope, { purpose, subject: body.payload?.subject, asOf, limit, correlationId: envelope.correlation_id }),
+      (r) => ({
+        outcome: 'success', resultCode: r.product_state === 'complete' ? 'OK' : 'EYE-DEG-001',
+        metadata: { purpose, subject: r.subject, as_of: asOf, product_state: r.product_state, revision: r.revision, verified_seq: r.verified_seq, condition: r.condition,
+                    versions_served: r.items.map((it) => ({ item_id: it['item_id'], version: it['version'], access_id: it['access_id'] })),
+                    omitted: r.omitted.map((o) => ({ projection: o.projection, rows: o.rows })), result_code: r.product_state === 'complete' ? 'OK' : 'EYE-DEG-001' },
+      }));
+    return { context: out.result, receipt: receipt(out) };
+  }
+  /* end B23 context */
 
   @Post('/memory/list')
   async listMemoryItems(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: { limit?: number } }) {

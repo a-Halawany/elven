@@ -222,6 +222,18 @@ export class SweeperService {
               details: { reason: 'interrupted', reconciled_by: 'sweeper' },
               correlationId,
             });
+            /* B23 (0084) stream: a stream the reconciled run was driving is recorded INTERRUPTED at its cursor, in the same
+               transaction — a resume then continues from there. A command run drives no stream and this finds nothing. */
+            const driven = (await cap.readAcquisitionStreams().select(['stream_id' as never])
+              .where('current_run_id' as never, '=', r.run_id as never).execute()) as Array<{ stream_id: string }>;
+            for (const s of driven) {
+              await cap.interruptStream({
+                streamId: s.stream_id, tenantId, domainId, runId: r.run_id, reasonClass: 'sweeper',
+                reason: 'the run driving the stream stopped reporting and was reconciled failed by the sweeper',
+                inFlight: [], rangeClass: null, correlationId,
+              });
+            }
+            /* end B23 stream */
           });
         report.failedRuns += 1;
       } catch (e) {

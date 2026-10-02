@@ -197,6 +197,15 @@ export interface GraphReads {
   readProjectionEvents(): any;
   /** B20: the ONE derivation, read as the CALLER under the event tables' forced RLS — the fallback readers' source while a partition is withdrawn. */
   expected(projection: ProjectionName, a: { tenantId: string; domainId: string }): Promise<Array<Record<string, unknown>>>;
+  /* B23 (0084) revision */
+  /** B23 (0084 §1, §2): the domain's revision head (one row per domain once it has a graph write since 0084), the revision ledger and its items (FORCE RLS by tenant/domain). */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readRevisionHeads(): any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readRevisions(): any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readRevisionItems(): any;
+  /* end B23 revision */
 }
 
 // ───────────────────────── resolver ─────────────────────────
@@ -415,11 +424,59 @@ export interface ProjectionWrites extends GraphReads {
   rebuildProjection(a: { rebuildId: string; tenantId: string; domainId: string; projection: ProjectionName; reason: string; actor: string; correlationId: string }): Promise<Record<string, unknown>>;
 }
 
+/* B23 (0084) context */
+// ───────────────────────── the context query (CP-6 B23, L3-I02) ─────────────────────────
+
+/**
+ * L3-I02 RetrieveContext (0084 §2): ONE purpose-bound query — memory.retrieve_context, STABLE (it cannot write) and SECURITY
+ * INVOKER (the caller's RLS) — and the access ledger of each item it serves (memory.record_access under memory.context.retrieve).
+ * Nothing else: the query's handler cannot record, supersede or withdraw an item, and cannot touch a partition.
+ */
+export interface MemoryContextReads extends GraphReads {
+  /**
+   * The query's one jsonb answer (0084 §2; B23-F1, 0085): items (filtered by the purpose AND the reader's policy — its clearance, its
+   * roles, whether it administers — with explanation links and withheld-link counts), content_absent_rows and bounded, both over the
+   * same AUTHORIZED set (no unverified_rows: rows the log cannot vouch for are neither counted nor mentioned).
+   */
+  retrieveContext(a: { tenantId: string; domainId: string; purpose: string; subject: unknown; asOf: string | null; scanBound: number; withdrawn: readonly ProjectionName[];
+    clearance: string; roles: readonly string[]; admin: boolean }): Promise<Record<string, unknown>>;
+  /** OBJ-15's access row for each SERVED item version, inside the read's own transaction (the governance record of the read). */
+  recordMemoryAccess(a: { itemId: string; tenantId: string; domainId: string; version: number; purpose: string; reader: string; asOf: string | null; correlationId: string }): Promise<string>;
+}
+/* end B23 context */
+/* B23 (0084) revision */
+// ───────────────────────── graph revisions (CP-6 B23, L4-I02) ─────────────────────────
+
+/** What graph.commit_revision answers (0084 §3): the revision, the head it was made against, the ids it wrote — or, for a repeat, the first answer with `repeated: true` and the head now. */
+export interface RevisionAnswer {
+  revision_id: string; revision: number; expected: number; idempotency_key: string; request_digest: string; ontology_version_id: string | null;
+  counts: Record<string, number>;
+  node_ids: Array<{ ordinal: number; ref: string; entity_id: string; entity_type: string; canonical_name: string; claim_object_id: string; claim_version: number }>;
+  identifier_ids: Array<Record<string, unknown>>;
+  edge_ids: Array<{ ordinal: number; edge_id: string; predicate: string; subject_entity_id: string; object_entity_id: string; subject_ref: string | null; object_ref: string | null;
+                    valid_from: string; valid_to: string | null; claim_object_id: string; claim_version: number; evidence_object_id: string }>;
+  superseded_edges: Array<{ edge_id: string; superseded_by: string; claim_object_id: string }>;
+  committed_at: string; committed_by: string; repeated: boolean;
+  /** On a repeat only: the domain's head when the retry was answered. */
+  head?: number;
+}
+
+/**
+ * The ONE write a change set is (graph.revision.commit): the port validates every item and applies them in order, or refuses
+ * and nothing is applied. The capability reads what every graph capability reads (the subscriptions matching at publication).
+ */
+export interface RevisionWrites extends GraphReads {
+  commitRevision(a: { revisionId: string; tenantId: string; domainId: string; changeSet: Record<string, unknown>; expectedRevision: number; idempotencyKey: string; actor: string; correlationId: string }): Promise<RevisionAnswer>;
+}
+/* end B23 revision */
+
 // ───────────────────────── implementation ─────────────────────────
 
 class GraphCapabilityImpl extends GraphCore
   implements ResolverWrites, ResolutionDecisionWrites, SplitWrites, EdgeWrites,
-             EdgeRetractionWrites, StrategyWrites, MemoryWrites, OntologyWrites, ImpactWrites, PropagationAgentWrites, SubscriptionWrites, GraphSubscriberWrites, ProjectionWrites {
+             EdgeRetractionWrites, StrategyWrites, MemoryWrites, OntologyWrites, ImpactWrites, PropagationAgentWrites, SubscriptionWrites, GraphSubscriberWrites, ProjectionWrites,
+             MemoryContextReads,
+             RevisionWrites {
   constructor(tx: Tx, action: string) { super(tx, action); }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -494,6 +551,11 @@ class GraphCapabilityImpl extends GraphCore
   // B20 (0080): the partition rows and their append-only ledger (FORCE RLS by tenant/domain; a DOMAIN context reads its own six).
   readProjectionPartitions(): any { return this.from('graph.projection_partitions'); }
   readProjectionEvents(): any { return this.from('graph.projection_events'); }
+  /* B23 (0084) revision */
+  readRevisionHeads(): any { return this.from('graph.revision_heads'); }
+  readRevisions(): any { return this.from('graph.revisions'); }
+  readRevisionItems(): any { return this.from('graph.revision_items'); }
+  /* end B23 revision */
   /* eslint-enable @typescript-eslint/no-explicit-any */
   async projectionState(): Promise<Array<Record<string, unknown>>> { return this.call<Record<string, unknown>>(sql`select * from graph.projection_state()`); }
   /**
@@ -622,6 +684,17 @@ class GraphCapabilityImpl extends GraphCore
     const rows = await this.call<{ r: Record<string, unknown> }>(sql`select graph.rebuild_projection(${a.rebuildId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.projection}, ${a.reason}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
     return rows[0]?.r ?? {};
   }
+  /* B23 (0084) context */
+  // The subject is passed as the caller sent it (the port validates its shape: 22023 'memory context rejected: …'); the withdrawn
+  // partitions are the ones the route read FIRST in its transaction (the source decision is the route's, the B20 idiom).
+  async retrieveContext(a: Parameters<MemoryContextReads['retrieveContext']>[0]): Promise<Record<string, unknown>> {
+    const subject = a.subject === undefined ? null : JSON.stringify(a.subject);
+    // B23-F1 (0085): the reader's policy is the query's own argument, so every aggregate it answers is over the authorized set.
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select memory.retrieve_context(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.purpose}, ${subject}::jsonb, ${a.asOf}::timestamptz, ${a.scanBound}::int, ${[...a.withdrawn]}::text[],
+      ${a.clearance}, ${[...a.roles]}::text[], ${a.admin}::boolean) as r`);
+    return rows[0]?.r ?? {};
+  }
+  /* end B23 context */
   async admitObject(header: unknown, payload: unknown, digest: string): Promise<{ contentDigest: string }> {
     const rows = await this.call<{ content_digest: string }>(
       sql`select content_digest from objects.admit_version(
@@ -858,6 +931,15 @@ class GraphCapabilityImpl extends GraphCore
   async decideMappingReconciliation(a: { reconciliationId: string; tenantId: string; domainId: string; state: 'accepted' | 'rejected'; reason: string; actor: string; correlationId: string }): Promise<void> {
     await this.call(sql`select graph.decide_mapping_reconciliation(${a.reconciliationId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.state}, ${a.reason}, ${a.actor}::uuid, ${a.correlationId}::uuid)`);
   }
+  /* B23 (0084) revision */
+  async commitRevision(a: Parameters<RevisionWrites['commitRevision']>[0]): Promise<RevisionAnswer> {
+    const rows = await this.call<{ r: RevisionAnswer }>(sql`select graph.commit_revision(${a.revisionId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${JSON.stringify(a.changeSet)}::jsonb,
+      ${a.expectedRevision}::bigint, ${a.idempotencyKey}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
+    const r = rows[0]?.r;
+    if (r === undefined) throw new Error('graph revision returned no answer');
+    return r;
+  }
+  /* end B23 revision */
   async keepEdgeUnderReassessment(a: { edgeId: string; tenantId: string; domainId: string; reason: string; actor: string; correlationId: string }): Promise<void> {
     await this.call(sql`select graph.keep_edge_under_reassessment(${a.edgeId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}, ${a.actor}::uuid, ${a.correlationId}::uuid)`);
   }
@@ -911,4 +993,16 @@ export const GraphCapability = {
   projections(tx: Tx, action: string): ProjectionWrites {
     return new GraphCapabilityImpl(tx, action);
   },
+  /* B23 (0084) context */
+  /** B23 (0084): the context query (memory.context.retrieve) — the STABLE query and the access rows of what it serves. */
+  memoryContext(tx: Tx, action: string): MemoryContextReads {
+    return new GraphCapabilityImpl(tx, action);
+  },
+  /* end B23 context */
+  /* B23 (0084) revision */
+  /** B23 (0084): the change-set commit (graph.revision.commit) — one validated, atomic, idempotent graph revision. */
+  revisions(tx: Tx, action: string): RevisionWrites {
+    return new GraphCapabilityImpl(tx, action);
+  },
+  /* end B23 revision */
 };

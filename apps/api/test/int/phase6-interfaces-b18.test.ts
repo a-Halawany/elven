@@ -119,7 +119,9 @@ const BOUND_IN_0078: ReadonlyArray<[string, string, string]> = [
 ];
 // B21 (0081; Nit 3): L5-I05, L6-I03, L7-I04 and L8-I04 bound — the ten that stay partial.
 // B22 (0083): L1-I03, L1-I04, L2-I02 and L10-I05 bound — the six that stay partial.
-const STILL_PARTIAL = ['L1-I02', 'L3-I02', 'L4-I02', 'L7-I02', 'L10-I02', 'L10-I03'];
+// B23 (0084): the six bound — L1-I02, L3-I02, L4-I02, L7-I02, L10-I02, L10-I03; none stays partial (50/0/0).
+const STILL_PARTIAL: string[] = [];
+const BOUND_IN_0084 = ['L1-I02', 'L3-I02', 'L4-I02', 'L7-I02', 'L10-I02', 'L10-I03'];
 /** The four foresight rows 0081 binds (B21.3), each to its event and schema version. */
 const BOUND_IN_0081: ReadonlyArray<[string, string, string]> = [['L5-I05', 'ValidateTwin', 'v1'], ['L6-I03', 'ForecastFitnessChanged', 'v1'], ['L7-I04', 'ScenarioCoherenceFailed', 'v1'], ['L8-I04', 'ChallengeSimulation', 'v1']];
 /** The four rows 0083 binds (B22), each to what its bound_to names: the attention policy's own event, and the three events whose registered consumer B22 delivers. */
@@ -943,13 +945,14 @@ describe('S3 · the refusals, by family and status (0078 §1–§3, §3.3; D5, D
 });
 
 describe('S4 · the register through the route (0078 §4; AU-DP-0071, V04-T-005)', () => {
-  it('S4 · 50 rows: 44 bound, 6 partial, 0 unbound (B22, 0083; 40/10/0 at 0081) — the ten rows bound in 0078, the four bound in 0081 and the four bound in 0083 with their event and schema version, the six that stay partial listed exactly, L9-I05\'s package-cause clause delivered; the same counts by SQL', async () => {
+  it('S4 · 50 rows: 50 bound, 0 partial, 0 unbound (B23, 0084; 44/6/0 at 0083, 40/10/0 at 0081) — the ten rows bound in 0078, the four bound in 0081 and the four bound in 0083 with their event and schema version, the six that stay partial listed exactly, L9-I05\'s package-cause clause delivered; the same counts by SQL', async () => {
     const r = await interfaces();
     expect(r.interfaces).toHaveLength(50);
     const byState = (s: string) => r.interfaces.filter((i) => i['binding_state'] === s).map((i) => String(i['interface_id']));
-    expect(byState('bound')).toHaveLength(44);
+    expect(byState('bound')).toHaveLength(50);
     expect(byState('partial').sort()).toEqual([...STILL_PARTIAL].sort());
     expect(byState('unbound')).toEqual([]);
+    for (const id of BOUND_IN_0084) expect(r.interfaces.find((i) => i['interface_id'] === id), id).toMatchObject({ binding_state: 'bound', bound_in: '0084', schema_version: 'v1' });
     for (const [id, event, schemaVersion] of BOUND_IN_0078) {
       const row = r.interfaces.find((i) => i['interface_id'] === id);
       expect(row, id).toMatchObject({ binding_state: 'bound', bound_in: '0078', schema_version: schemaVersion });
@@ -973,7 +976,7 @@ describe('S4 · the register through the route (0078 §4; AU-DP-0071, V04-T-005)
     const l9 = String(r.interfaces.find((i) => i['interface_id'] === 'L9-I05')!['bound_to']);
     expect(l9).toMatch(/B22 \(0083\): a POLICY CHANGE is a recorded cause/);
     expect(l9).not.toMatch(/a policy change has no recorded cause/);
-    expect(await registerCounts()).toEqual({ bound: 44, partial: 6, unbound: 0 });
+    expect(await registerCounts()).toEqual({ bound: 50, partial: 0, unbound: 0 });
     expect(subs['twins']!.subscriptionId).toMatch(UUID);
   }, 60_000);
 });

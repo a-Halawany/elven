@@ -30,6 +30,8 @@ import { memoryCorrectedEvent } from '../../graph/subscriptions/change-events.js
 import { PrincipalsCapability } from '../../shared/capabilities.js';
 import { ObservationCapability, type AcquisitionWrites, type ObservationReads, type RegistryWrites } from '../observation.capabilities.js';
 import { AcquisitionLifecycle, type RunOutcome } from './lifecycle.service.js';
+// B23 (0084) stream
+import { StreamRefused, type StreamRunOutcome, type StreamRunRequest } from './lifecycle.service.js';
 import { AgentGrantRefused, AgentSessionService } from '../agents/agent-session.service.js';
 import { AgentsService, agentDisplayName, agentLoginName } from '../agents/agents.service.js';
 import { SchedulerService, queueNameFor, schedulerIdFor, type CollectionJobPayload } from '../scheduling/scheduler.service.js';
@@ -255,6 +257,92 @@ export class CollectionOrchestrator {
       }),
     });
   }
+
+  /* B23 (0084) stream */
+  // ───────────────────────── the stream form (L1-I02) ─────────────────────────
+
+  /**
+   * Open — or resume — a partition's STREAM. The same shape as `collectNow`: the pre-flight reads run under the trigger's own
+   * authority; the RUN acts as the agent (its session minted from the registry, the grant re-verified in the run.start
+   * transaction) because the evidence has to say which agent instance produced it; the trigger is recorded on run.started.
+   * The command form above is untouched.
+   */
+  async streamNow(a: {
+    tenantId: string; domainId: string; sourceId: string; contractVersion: number;
+    correlationId: string; purposeId: string; triggeredBy: string; triggerPrincipal: AuthenticatedPrincipal;
+    stream: StreamRunRequest['stream'];
+  }): Promise<StreamRunOutcome & { triggeredBy: string }> {
+    const none = { streamId: null, stream: null, segments: 0, redelivered: 0, backpressureSignals: 0, incompleteRanges: 0 };
+    const read = {
+      principal: a.triggerPrincipal, tenantId: a.tenantId, domainId: a.domainId,
+      correlationId: a.correlationId, purposeId: a.purposeId,
+    };
+    const contract = await this.contract(read, a.sourceId, a.contractVersion);
+    if (contract === null) {
+      return { runId: 'none', state: 'failed', admitted: 0, quarantined: 0, noop: 0, ...none,
+               reason: 'no authorized source contract matches', triggeredBy: a.triggeredBy };
+    }
+    const connector = this.connectorFor(contract.connector_kind);
+    if (connector.acquireStream === undefined) {
+      throw new StreamRefused(422, `a ${contract.connector_kind} source has no stream form; its command form (collect now) is unchanged`);
+    }
+    const agent = await this.agentRowFor(read, a.sourceId, connector);
+    if (agent === null) {
+      return { runId: 'none', state: 'failed', admitted: 0, quarantined: 0, noop: 0, ...none,
+               reason: 'no active agent is registered for this source and connector version', triggeredBy: a.triggeredBy };
+    }
+    if (connector.codeDigest !== agent.code_digest || connector.version !== agent.agent_version) {
+      return { runId: 'none', state: 'failed', admitted: 0, quarantined: 0, noop: 0, ...none,
+               reason: 'the registered agent instance does not match the connector this process would run', triggeredBy: a.triggeredBy };
+    }
+    let principal: AuthenticatedPrincipal;
+    try {
+      principal = await this.agentSessions.openRunSession({
+        agentId: agent.agent_id, tenantId: a.tenantId, domainId: a.domainId,
+        agentVersion: agent.agent_version, codeDigest: agent.code_digest, correlationId: a.correlationId,
+      });
+    } catch (e) {
+      if (e instanceof AgentGrantRefused) {
+        return { runId: 'none', state: 'failed', admitted: 0, quarantined: 0, noop: 0, ...none, reason: e.message, opened: false, triggeredBy: a.triggeredBy };
+      }
+      throw e;
+    }
+    const outcome = await this.lifecycle.runStream({
+      sourceId: a.sourceId, contractVersion: a.contractVersion,
+      agentId: agent.agent_id, agentVersion: agent.agent_version,
+      connector, principal, correlationId: a.correlationId, purposeId: a.purposeId,
+      trigger: { kind: 'operator', by: a.triggeredBy },
+      stream: a.stream,
+      // A stream's authority follows its progress (0057), as a command run's does: each acknowledged segment extends it.
+      extendAuthority: () => this.agentSessions.extendRunSession({
+        sessionId: principal.sessionId, principalId: principal.principalId,
+        agentId: agent.agent_id, tenantId: a.tenantId, domainId: a.domainId,
+        agentVersion: agent.agent_version, codeDigest: agent.code_digest, correlationId: a.correlationId,
+      }),
+    });
+    return { ...outcome, triggeredBy: a.triggeredBy };
+  }
+
+  /** A stream as it stands, with its segments, its ledger and its explicit incomplete ranges — read under RLS. */
+  async streamDetail(cap: ObservationReads, streamId: string): Promise<Record<string, unknown> | null> {
+    const stream = (await cap.readAcquisitionStreams().selectAll()
+      .where('stream_id' as never, '=', streamId as never).executeTakeFirst()) as Record<string, unknown> | undefined;
+    if (stream === undefined) return null;
+    const segments = (await cap.readAcquisitionSegments().selectAll()
+      .where('stream_id' as never, '=', streamId as never).orderBy('seq' as never, 'asc').execute()) as Array<Record<string, unknown>>;
+    const events = (await cap.readAcquisitionStreamEvents().selectAll()
+      .where('stream_id' as never, '=', streamId as never).orderBy('ledger_seq' as never, 'asc').limit(500).execute()) as Array<Record<string, unknown>>;
+    const incompleteRanges = (await cap.readAcquisitionIncompleteRanges().selectAll()
+      .where('stream_id' as never, '=', streamId as never).orderBy('declared_at' as never, 'asc').execute()) as Array<Record<string, unknown>>;
+    return { stream, segments, events, incompleteRanges };
+  }
+
+  async listStreams(cap: ObservationReads, sourceId: string | null, limit: number): Promise<Array<Record<string, unknown>>> {
+    let q = cap.readAcquisitionStreams().selectAll();
+    if (sourceId !== null) q = q.where('source_id' as never, '=', sourceId as never);
+    return (await q.orderBy('opened_at' as never, 'desc').limit(Math.max(1, Math.min(limit, 200))).execute()) as Array<Record<string, unknown>>;
+  }
+  /* end B23 stream */
 
   // ───────────────────────── agents ─────────────────────────
 

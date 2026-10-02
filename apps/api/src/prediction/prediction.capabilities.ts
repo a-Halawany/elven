@@ -18,8 +18,8 @@ import type { Tx } from '../shared/db.js';
 
 /** B21 (0081): who assesses — the outcome write (`prediction.outcome.record`), the forecast subscriber (`…subscription.apply`) or a person (`prediction.forecast.assess`). */
 export type FitnessTrigger = 'outcome' | 'subscription' | 'operator';
-/** B21 (0081): who checks — the declaring write, the review, the scenario subscriber or a person (`prediction.scenario.check`). */
-export type CoherenceTrigger = 'declare' | 'review' | 'subscription' | 'operator';
+/** B21 (0081): who checks — the declaring write, the review, the scenario subscriber or a person (`prediction.scenario.check`); B23 (0084): the branching write (`prediction.scenario.branch`). */
+export type CoherenceTrigger = 'declare' | 'review' | 'subscription' | 'operator' | 'branch';
 export interface AssessForecastFitnessArgs { assessmentId: string; forecastId: string; tenantId: string; domainId: string; trigger: FitnessTrigger; actor: string; eventId: string; correlationId: string }
 export interface CheckScenarioCoherenceArgs { checkId: string; scenarioId: string; tenantId: string; domainId: string; trigger: CoherenceTrigger; actor: string; eventId: string; correlationId: string }
 
@@ -70,6 +70,10 @@ export interface PredictionReads {
   /** B21 (0081): the fitness assessment ledger (prediction.forecast_fitness_assessments) and the coherence check ledger (prediction.scenario_coherence_checks). */
   readFitnessAssessments(): any;
   readCoherenceChecks(): any;
+  /** B23 (0084, L7-I02): the branching requests (prediction.scenario_branch_requests) — the key each requester used, the digest, the version read and made. */
+  readBranchRequests(): any;
+  /** B23 (0084): the SCN canonical versions of one scenario (version, recorded_at, supersedes, the branch ids its payload names), oldest first — the version history the get serves. */
+  scenarioVersions(a: { scenarioId: string }): Promise<Array<{ object_version: number; recorded_at: string; supersedes: string | null; branch_ids: string[] }>>;
   /**
    * The evidence VERSIONS a series can read at an instant: for every evidence
    * object of the source, the highest version recorded at or before `knownAt`.
@@ -190,6 +194,19 @@ export interface ScenarioWrites extends PredictionReads {
   checkScenarioCoherence(a: CheckScenarioCoherenceArgs): Promise<Record<string, unknown>>;
 }
 
+/**
+ * B23 (0084, L7-I02 BranchScenario): the branching write (`prediction.scenario.branch`) — the full SCN canonical row it builds the next
+ * version from (the B18 forecastObject idiom), the admission, the port (prediction.branch_scenario: the key, the stale check, the kind,
+ * the conflicts, the one effect) and the coherence re-check on the new version (trigger `branch`).
+ */
+export interface BranchWrites extends ScenarioWrites {
+  scenarioObject(a: { scenarioId: string; tenantId: string; domainId: string; version: number }): Promise<Record<string, unknown> | undefined>;
+  branchScenario(a: {
+    requestId: string; tenantId: string; domainId: string; scenarioId: string; expectedVersion: number; branch: Record<string, unknown>; branchId: string;
+    idempotencyKey: string; requestDigest: string; actor: string; eventId: string; correlationId: string;
+  }): Promise<Record<string, unknown>>;
+}
+
 export interface IndicatorWrites extends PredictionReads {
   defineIndicator(a: {
     indicatorId: string; tenantId: string; domainId: string; seriesKey: string; description: string;
@@ -247,7 +264,7 @@ export interface PredictionSubscriberWrites extends PredictionReads {
 }
 
 class PredictionCapabilityImpl extends PredictionCore
-  implements SeriesWrites, ForecastWrites, BacktestWrites, OutcomeWrites, AssessWrites, ScenarioWrites,
+  implements SeriesWrites, ForecastWrites, BacktestWrites, OutcomeWrites, AssessWrites, ScenarioWrites, BranchWrites,
              IndicatorWrites, EvaluationWrites, WarningWrites, AcknowledgeWrites, PredictionSubscriberWrites {
   constructor(tx: Tx, action: string) { super(tx, action); }
 
@@ -268,6 +285,27 @@ class PredictionCapabilityImpl extends PredictionCore
   readDependencies(): any { return this.from('graph.dependencies'); }
   readFitnessAssessments(): any { return this.from('prediction.forecast_fitness_assessments'); }
   readCoherenceChecks(): any { return this.from('prediction.scenario_coherence_checks'); }
+  readBranchRequests(): any { return this.from('prediction.scenario_branch_requests'); }
+
+  async scenarioVersions(a: { scenarioId: string }): Promise<Array<{ object_version: number; recorded_at: string; supersedes: string | null; branch_ids: string[] }>> {
+    return this.call(sql`select o.object_version::int as object_version, o.recorded_at::text as recorded_at, o.supersedes,
+                                coalesce((select jsonb_agg(e ->> 'branch_id') from jsonb_array_elements(o.payload -> 'branches') e), '[]'::jsonb) as branch_ids
+                           from objects.canonical_objects o where o.object_type = 'SCN' and o.object_id = ${a.scenarioId}::uuid order by o.object_version`);
+  }
+  async scenarioObject(a: { scenarioId: string; tenantId: string; domainId: string; version: number }): Promise<Record<string, unknown> | undefined> {
+    return (await this.from('objects.canonical_objects').selectAll()
+      .where('object_type' as never, '=', 'SCN' as never).where('object_id' as never, '=', a.scenarioId as never)
+      .where('tenant_id' as never, '=', a.tenantId as never).where('domain_id' as never, '=', a.domainId as never)
+      .where('object_version' as never, '=', a.version as never).executeTakeFirst()) as Record<string, unknown> | undefined;
+  }
+  /** B23 (0084): prediction.branch_scenario(uuid,uuid,uuid,uuid,int,jsonb,uuid,text,text,uuid,uuid,uuid) — the port's jsonb answer, whole (the ScenarioBranched@v1 material). */
+  async branchScenario(a: Parameters<BranchWrites['branchScenario']>[0]): Promise<Record<string, unknown>> {
+    const rows = await this.call<{ r: Record<string, unknown> }>(sql`select prediction.branch_scenario(
+      ${a.requestId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.scenarioId}::uuid, ${a.expectedVersion}::int,
+      ${JSON.stringify(a.branch)}::jsonb, ${a.branchId}::uuid, ${a.idempotencyKey}, ${a.requestDigest},
+      ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`);
+    return rows[0]?.r ?? {};
+  }
 
   /** B21 (0081): prediction.assess_forecast_fitness(uuid,uuid,uuid,uuid,text,uuid,uuid,uuid) — the port's jsonb answer, whole (the ForecastFitnessChanged@v1 material). */
   async assessForecastFitness(a: AssessForecastFitnessArgs): Promise<Record<string, unknown>> {
@@ -507,6 +545,8 @@ export const PredictionCapability = {
   scenario(tx: Tx, action: string): ScenarioWrites { return new PredictionCapabilityImpl(tx, action); },
   /** B21 (0081): the check-coherence route's capability (prediction.scenario.check) — the check port and the reads (the ScenarioWrites shape reused). */
   check(tx: Tx, action: string): ScenarioWrites { return new PredictionCapabilityImpl(tx, action); },
+  /** B23 (0084): the branch route's capability (prediction.scenario.branch) — the SCN row, the admission, the branching port and the check. */
+  branch(tx: Tx, action: string): BranchWrites { return new PredictionCapabilityImpl(tx, action); },
   indicator(tx: Tx, action: string): IndicatorWrites { return new PredictionCapabilityImpl(tx, action); },
   evaluation(tx: Tx, action: string): EvaluationWrites { return new PredictionCapabilityImpl(tx, action); },
   warning(tx: Tx, action: string): WarningWrites { return new PredictionCapabilityImpl(tx, action); },

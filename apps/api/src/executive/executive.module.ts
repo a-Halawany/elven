@@ -19,12 +19,16 @@ import { RequestsService } from './requests/requests.service.js';
 import { GraphModule } from '../graph/graph.module.js';
 import { AttentionService } from './attention/attention.service.js';
 import { AttentionConsumer, ObservationsConsumer, ProposalsConsumer, SourceHealthConsumer } from './attention/attention.consumers.js';
+/* B23 (0084) attention */
+import { ReviewsService } from './reviews/reviews.service.js';
+/* end B23 attention */
 @Module({
   imports: [PipelineModule, IdentityModule, ObservationModule, DecisionModule, GraphModule],
   controllers: [ExecutiveController],
   providers: [RoomService, BriefingService, AgentsService, AgentWorkerService, DecisionAgentSessionService, RequestsService, AttentionService,
     // B22 (0083): the four consumers of L1-I03, L1-I04, L2-I02 and the attention router (the graph module's dispatcher registers them).
-    ObservationsConsumer, SourceHealthConsumer, ProposalsConsumer, AttentionConsumer],
+    ObservationsConsumer, SourceHealthConsumer, ProposalsConsumer, AttentionConsumer,
+    /* B23 (0084) attention: the governed review (L10-I03) */ ReviewsService /* end B23 attention */],
   exports: [RoomService, BriefingService, AgentsService, AgentWorkerService, RequestsService, AttentionService],
 })
 export class ExecutiveModule {}

@@ -1000,9 +1000,10 @@ describe('B20 · the index tier: the watermark, the symmetric check that withdra
     const count = (s: string) => reg.filter((r) => r['binding_state'] === s).length;
     // B21 (0081 §10): L5-I05, L6-I03, L7-I04 and L8-I04 bound → 40/10/0 (this file runs on the same tree; the B20 state was 36/14/0)
     // B22 (0083 §9): L1-I03, L1-I04, L2-I02 and L10-I05 bound → 44/6/0 (L3-I02 among the six that stay partial)
-    expect([reg.length, count('bound'), count('partial'), count('unbound')]).toEqual([50, 44, 6, 0]);
+    // B23 (0084): the six bound → 50/0/0; L3-I02 is bound as RetrieveContext, its B20 clause kept after "earlier:"
+    expect([reg.length, count('bound'), count('partial'), count('unbound')]).toEqual([50, 50, 0, 0]);
     const l3 = reg.find((r) => r['interface_id'] === 'L3-I02')!;
-    expect(l3['binding_state']).toBe('partial'); expect(String(l3['bound_to'])).toContain('B20 (0080)');
+    expect(l3['binding_state']).toBe('bound'); expect(l3['bound_in']).toBe('0084'); expect(String(l3['bound_to'])).toContain('B20 (0080)');
     const state = (await read(analyst, 'edgesList')).projection;
     sixEvidence('P9', { fault_trace: { withdrawals: [first['event_id'], second['event_id']], refusals: { serving: 409, analyst: 403, unknown: 404, short: 422, foreign: 'EYE-TEN-001' } }, watermark: { checkpoint_seq: state.checkpoint_seq, verified_seq: state.verified_seq, note: 'unchanged by the operator\'s acts (no outbox event but the rebuild\'s)' }, consumer_behaviour: '/strategy/list from the log-join (from projection on the content columns)', operator_action: { rebuild_id: report['rebuild_id'] }, recovery: { outcome: 'restored' }, reconciliation: { ledger: ['withdrawn true', 'withdrawn false', 'restored'], register: '40/10/0 (36/14/0 at B20; B21 bound four rows)' } });
   }, 300_000);

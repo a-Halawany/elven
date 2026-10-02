@@ -447,6 +447,48 @@ export interface MemoryRetrieval {
   projection: ProjectionBlock;
 }
 
+/* B23 (0084) context */
+/** L3-I02: the subject a context is asked about — an object id of one of these kinds (the server refuses any other, 422). */
+export const CONTEXT_SUBJECT_KINDS = ['entity', 'claim', 'edge', 'strategy', 'evidence', 'warning', 'forecast'] as const;
+export type ContextSubjectKind = (typeof CONTEXT_SUBJECT_KINDS)[number];
+/** Why an item is served: a link from the SERVED version — a cite (dependency), its derivation's basis or evidence, the version it supersedes, a related decision/objective. */
+export interface ContextLink {
+  kind: string; id: string; via: 'dependency' | 'derivation' | 'supersedes' | 'related'; rationale?: string;
+  version?: number; digest?: string; object_type?: string; state?: string; label?: string;
+  subject_entity_id?: string; object_entity_id?: string; names_subject?: boolean;
+}
+/** One item a context serves: the served version's content, its availability, its links and the access recorded. */
+export interface ContextItem {
+  item_id: string; version: number; recorded_at: string; title: string; statement: string; record_class: string;
+  source_kind: string; source_ref: string | null; classification: string; purpose_scope: string; truth_state: string; synthetic_state: boolean;
+  valid_from: string | null; valid_to: string | null; content_digest: string; audience: { roles: string[]; purposes: string[] };
+  state: string; current_version: number; served_is_current: boolean; attention_state: string | null; basis_state: string | null;
+  index_state: 'projected' | 'stale'; projected: boolean; drift: { projected: string; log: string } | null;
+  explanation_links: ContextLink[];
+  /** Links LEFT OUT because the partition they resolve against is withdrawn (named in `omitted`). */
+  withheld_links: { edges_current: number; entities_current: number };
+  access_id: string;
+}
+/**
+ * The context answer (POST …/graph/memory/context, memory.context.retrieve). `product_state` is the FLAG — complete | stale |
+ * partial; `label` is the wording (null when complete); `omitted` names what a partial answer left out and why. What the POLICY
+ * withholds is never in the answer (neither counted nor mentioned) — `policy` says only that it applied.
+ */
+export interface MemoryContext {
+  purpose: string; subject: { kind: string; id: string }; as_of: string | null;
+  revision: number | null; verified_seq: number | null; lag_events: number; condition: ProjectionCondition;
+  product_state: 'complete' | 'stale' | 'partial'; code: 'EYE-DEG-001' | null; label: string | null;
+  source: 'projection' | 'log';
+  items: ContextItem[];
+  omitted: Array<{ projection: string; reason: string; rows: number | null }>;
+  policy: string; consistency: string;
+  /** B23-F1 (0085): the constant note on an answer served from the event log (rows the log cannot vouch for are never served and not counted); null otherwise. */
+  log_note: string | null;
+  bound: { limit: number; scan_bound: number; truncated: boolean };
+  projection: ProjectionBlock;
+}
+/* end B23 context */
+
 /**
  * CP-6 B9 (0066 §7, L4-I05 OntologyChangeProposed): the domain's vocabulary is a VERSIONED set of entity types and
  * predicates, each predicate with the entity types it admits at either end. A change is PROPOSED as the next FULL
@@ -499,6 +541,39 @@ export interface OntologyReviews { domain?: OntologyReviewOutcome; governance?: 
 
 /** What the decision returns: `supersedes` and `version` on an approval only. */
 export interface OntologyDecided { version_id: string; state: 'active' | 'rejected'; supersedes?: string | null; version?: number }
+
+/* B23 (0084) revision */
+/**
+ * CP-6 B23 (0084, L4-I02 CommitGraphRevision): ONE change set — new NODES (entities), IDENTIFIERS and EDGES, each with its provenance
+ * (the claim version it rests on) — committed as ONE graph revision of the domain against the head the caller read, naming the domain's
+ * active ontology version. The server validates every item and applies all or nothing; the same idempotency key with the same change
+ * set answers the first result (`repeated: true`); another change set under a used key, or a head that moved, is a 409.
+ */
+export interface RevisionEnd { ref?: string; entity_id?: string }
+export interface RevisionProvenance { claim_object_id: string; claim_version: number; evidence_object_id?: string; evidence_digest?: string }
+export interface RevisionChangeSet {
+  ontology: { version_id: string | null };
+  nodes?: Array<{ ref: string; entity_type: string; canonical_name: string; normalized_name?: string; provenance: RevisionProvenance }>;
+  identifiers?: Array<{ entity: RevisionEnd; system_key: string; value: string; provenance: RevisionProvenance }>;
+  edges?: Array<{ subject: RevisionEnd; predicate: string; object: RevisionEnd; valid_from: string; valid_to?: string | null; provenance: RevisionProvenance }>;
+}
+/** What the commit answers (or, for a repeat, the first answer with `repeated: true` and the head now). */
+export interface RevisionCommitted {
+  revision_id: string; revision: number; expected: number; idempotency_key: string; request_digest: string; ontology_version_id: string | null;
+  counts: { nodes: number; identifiers: number; identifiers_already: number; edges: number; superseded: number };
+  node_ids: Array<{ ordinal: number; ref: string; entity_id: string; entity_type: string; canonical_name: string }>;
+  identifier_ids: Array<Record<string, unknown>>;
+  edge_ids: Array<{ ordinal: number; edge_id: string; predicate: string; subject_entity_id: string; object_entity_id: string }>;
+  superseded_edges: Array<{ edge_id: string; superseded_by: string; claim_object_id: string }>;
+  committed_at: string; committed_by: string; repeated: boolean; head?: number;
+}
+export interface RevisionHead {
+  revision: number; updatedAt: string | null;
+  ontology: Array<{ version_id: string; namespace: string; version: number; entity_types: string[]; predicates: Array<Record<string, unknown>> }>;
+  recent: Array<{ revision_id: string; revision: number; expected_revision: number; idempotency_key: string; request_digest: string; ontology_version_id: string | null;
+                  counts: Record<string, number>; committed_by: string; committed_at: string | null }>;
+}
+/* end B23 revision */
 
 export const graph = {
   overview: (s: Scope) =>
@@ -730,6 +805,18 @@ export const graph = {
       s, purposeId, `/memory/${itemId}/retrieve`, 'memory.item.retrieve', 'MEM',
       asOf === undefined ? {} : { asOf }, itemId, 'none'),
 
+  /* B23 (0084) context */
+  /**
+   * L3-I02: ONE purpose-bound, AUDITED query — the memory about a subject the purpose, the reader's clearance and the audience roles
+   * admit, each item with its explanation links; the revision and the staleness declared; partial or stale only with the declared
+   * product state. Every served item version is an access recorded under the purpose (as of `asOf` when given).
+   */
+  memoryContext: (s: Scope, purposeId: string, subject: { kind: ContextSubjectKind; id: string }, asOf?: string, limit?: number) =>
+    gUnder<{ context: MemoryContext; receipt: Receipt }>(
+      s, purposeId, '/memory/context', 'memory.context.retrieve', 'MEM',
+      { subject, ...(asOf === undefined ? {} : { asOf }), ...(limit === undefined ? {} : { limit }) }, null, 'none'),
+  /* end B23 context */
+
   /** A person's own record (source kind human); a document, communication or telemetry record is derived (`deriveMemory`). */
   recordMemory: (s: Scope, intake: MemoryIntake, purposeId = 'memory') =>
     gUnder<{ memory: { itemId: string; version: number; cites: number; contentDigest: string }; receipt: Receipt }>(
@@ -766,6 +853,17 @@ export const graph = {
   decideOntology: (s: Scope, versionId: string, decision: 'approve' | 'reject', reason: string, reviews: OntologyReviews) =>
     g<{ ontology: OntologyDecided; receipt: Receipt }>(
       s, `/ontology/${versionId}/decide`, 'graph.ontology.decide', 'ONT', { decision, reason, reviews }, versionId),
+
+  /* B23 (0084) revision */
+  /** B23 (0084): the domain's revision head — the expected revision a change set names, the active ontology version(s), the latest revisions (graph.read). */
+  revisionHead: (s: Scope) =>
+    g<{ head: RevisionHead; receipt: Receipt }>(s, '/revisions/head', 'graph.read', 'GRV'),
+
+  /** B23 (0084, L4-I02): ONE change set committed as ONE revision (graph.revision.commit) — all or nothing; idempotent under its key. */
+  commitRevision: (s: Scope, idempotencyKey: string, expectedRevision: number, changeSet: RevisionChangeSet) =>
+    g<{ revision: RevisionCommitted; receipt: Receipt }>(s, '/revisions', 'graph.revision.commit', 'GRV',
+      { idempotency_key: idempotencyKey, expected_revision: expectedRevision, change_set: changeSet }),
+  /* end B23 revision */
 };
 
 /* ───────────────────────── governed retention (0066 §4 / 0067 / 0068 / 0070 / 0072 / 0073 / 0076) ───────────────────────── */
