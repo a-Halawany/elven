@@ -453,6 +453,11 @@ describe('A5 — cross-tenant and cross-domain isolation', () => {
     const samples = 12;
     let foreignTotal = 0;
     let absentTotal = 0;
+    // DIAGNOSTICS ONLY (INTEGRATION_SEQUENCE §4's recorded next step after a repeat failure — #71 ci 36782666166, ratio 3.0688): every
+    // probe's sample is kept and printed, so a failing run shows whether one stall or a systematic gap drove the mean. The statistic (the
+    // 12-sample mean) and the threshold (3) are UNCHANGED; the timing item's closure stays with H1.
+    const fSamples: number[] = [];
+    const aSamples: number[] = [];
     for (let i = 0; i < samples; i += 1) {
       const a = await probe(foreign);
       const b = await probe(absent);
@@ -460,6 +465,7 @@ describe('A5 — cross-tenant and cross-domain isolation', () => {
       expect(b.rows).toBe(0);
       foreignTotal += a.ms;
       absentTotal += b.ms;
+      fSamples.push(a.ms); aSamples.push(b.ms);
     }
     const fMean = foreignTotal / samples;
     const aMean = absentTotal / samples;
@@ -467,7 +473,10 @@ describe('A5 — cross-tenant and cross-domain isolation', () => {
     // by a margin an attacker could use; a generous factor keeps this from being
     // a flaky assertion about machine load while still catching a real oracle.
     const ratio = Math.max(fMean, aMean) / Math.max(0.001, Math.min(fMean, aMean));
-    expect(ratio, `timing distinguishes a foreign row (${fMean.toFixed(2)}ms) from an absent one (${aMean.toFixed(2)}ms)`)
+    const fmt = (xs: number[]) => xs.map((x) => x.toFixed(2)).join(',');
+    // eslint-disable-next-line no-console
+    console.log(`A5 TIMING SAMPLES ratio=${ratio.toFixed(4)} foreign_ms=[${fmt(fSamples)}] absent_ms=[${fmt(aSamples)}]`);
+    expect(ratio, `timing distinguishes a foreign row (${fMean.toFixed(2)}ms) from an absent one (${aMean.toFixed(2)}ms); samples foreign=[${fmt(fSamples)}] absent=[${fmt(aSamples)}]`)
       .toBeLessThan(3);
   });
 });

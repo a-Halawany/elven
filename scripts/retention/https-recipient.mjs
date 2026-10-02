@@ -238,7 +238,13 @@ const handle = async (req, res) => {
     if (req.method === 'POST' && req.url === '/_control') { if (!authorized(req)) { answer(res, 401, { error: 'unauthorized' }); return; } await onControl(req, res); return; }
     if (req.method === 'GET' && req.url === '/_received') { if (!authorized(req)) { answer(res, 401, { error: 'unauthorized' }); return; } answer(res, 200, { mode, received: received.map(({ path, ...r }) => r), notices }); return; }
     if (req.method !== 'POST') { answer(res, 405, { error: 'POST a package or a notice' }); return; }
-    if (mode === 'unauthorized' || !authorized(req)) { say(`${req.url}: 401 (${mode === 'unauthorized' ? 'mode unauthorized' : 'the bearer is missing or wrong'})`); req.resume(); answer(res, 401, { error: 'unauthorized' }); return; }
+    if (mode === 'unauthorized' || !authorized(req)) { say(`${req.url}: 401 (${mode === 'unauthorized' ? 'mode unauthorized' : 'the bearer is missing or wrong'})`);
+      // The MODE `unauthorized` (a deterministic control for harnesses and the demonstration) reads the whole body first, as the `error`,
+      // `redirect` and `not-json` modes do. Answering early raced the sender's streamed archive: the client either read the 401 or met a broken
+      // pipe first. Main's ci 37018370741 (phase6-retention-b14 H2) recorded `transport` with no status (2026-10-02). A request that is
+      // genuinely unauthenticated (the bearer missing or wrong) is still answered at once and never read whole.
+      if (mode === 'unauthorized') await readBody(req, MAX_BODY).catch(() => null); else req.resume();
+      answer(res, 401, { error: 'unauthorized' }); return; }
     if (mode === 'error') { say(`${req.url}: mode error → 500`); await readBody(req, MAX_BODY).catch(() => null); answer(res, 500, { error: 'the recipient failed (mode error)' }); return; }
     if (mode === 'redirect') { say(`${req.url}: mode redirect → 302`); await readBody(req, MAX_BODY).catch(() => null); res.writeHead(302, { location: 'https://elsewhere.invalid/receive' }); res.end(); return; }
     if (mode === 'not-json') { say(`${req.url}: mode not-json → a text body`); await readBody(req, MAX_BODY).catch(() => null); answer(res, 200, 'received, thanks', 'text/plain'); return; }
