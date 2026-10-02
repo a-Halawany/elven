@@ -530,7 +530,9 @@ export class SimulationService {
   }
 
   /** Open a METHOD-FABRIC run (governed write: `simulation.run`) — the contract bound as supply-flow@1's is, the method's parameters validated by its adapter. */
-  async openMethod(cap: RunWrites, ctx: ScopeContext, evidence: EvidenceAvailability, intake: RunIntake, actor: string, correlationId: string, runId: string, verdict: GateVerdict | null):
+  async openMethod(cap: RunWrites, ctx: ScopeContext, evidence: EvidenceAvailability, intake: RunIntake, actor: string, correlationId: string, runId: string, verdict: GateVerdict | null,
+                   /* B30 experiments: the run of a chunked fabric EXPERIMENT carries the experiment's paths as its samples (each path one seeded execution, 0103 §EX.2) */
+                   experimentPaths: number | null = null):
     Promise<{ runId: string; opened: OpenedRun; modelRef: string; implementationDigest: string; environment: { node: string; platform: string; arch: string }; environmentDigest: string;
               inputsDigest: string; shockBasis: ShockBasis; rng: string | null; scenario: { scenario_id: string; version: number; branch_id: string; branch_state: string; flip_event_id: string | null } | null;
               twinFitness: string; envelope: EnvelopeCheck; envelopeAck: Record<string, unknown> | null; challengeId: string | null;
@@ -547,7 +549,7 @@ export class SimulationService {
     const model = (await cap.readBehaviourModels().selectAll().where('method_ref' as never, '=', modelRef as never).executeTakeFirst()) as Record<string, unknown> | undefined;
     if (model === undefined) return bad(`no behaviour model ${modelRef} is registered`);
     if (intake.runKind !== 'control') bad(`a ${modelRef} run is a control run: a method's own interventions are its parameters (counterfactual@1's do-intervention); an intervention run compares supply-flow@1 runs`);
-    if (intake.stochastic.mode === 'seeded' && intake.stochastic.samples !== 1) bad(`a ${modelRef} run draws one sample per seed (stochastic.samples 1)`);
+    if (intake.stochastic.mode === 'seeded' && intake.stochastic.samples !== 1 && !(experimentPaths !== null && intake.stochastic.samples === experimentPaths)) bad(`a ${modelRef} run draws one sample per seed (stochastic.samples 1)`); /* B30 experiments: or an experiment's paths */
     const { version, knownAt, observedThrough } = await this.admittedVersion(cap, intake, correlationId);
     const unavailable = await this.unavailableInputs(cap, evidence, intake.twinId, intake.twinVersion, intake.component, correlationId, explicit);
     if (unavailable.length > 0) {

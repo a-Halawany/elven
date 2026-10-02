@@ -16,7 +16,8 @@
 --          checkpoint is ACTED ON per the experiment's declared policy (rule sxp-unstable@1): `stop` → the experiment stops (partial,
 --          reason unstable; stopped_unstable); `pause` → it pauses (paused_unstable; an operator resumes it); a FAULT-SHAPED instability
 --          (the running mean diverging: moved more than half since a previous checkpoint of at least 30 paths) QUARANTINES a contained
---          adapter (adapter_quarantined; supply-flow@1 runs in process and is never quarantined); a review is ROUTED
+--          adapter (adapter_quarantined) and then STOPS the experiment under either policy (supply-flow@1 runs in process and is never
+--          quarantined); a review is ROUTED
 --          (simulation.checkpoint → the declarer and the method stewards; review_routed). Policy `none`: B31's behaviour, unchanged.
 --          simulation.set_unstable_policy (simulation.experiment.policy) sets the policy before approval; simulation.quarantine_adapter
 --          (simulation.adapter.quarantine) is a method steward's quarantine on demand.
@@ -853,7 +854,7 @@ BEGIN
       RAISE EXCEPTION 'benchmark validation rejected (citations): an observed sample cites the evidence or claims it was read from ({kind, id, version, digest})' USING ERRCODE = '22023';
     END IF;
     FOR c IN SELECT x FROM jsonb_array_elements(p_benchmark -> 'citations') x LOOP
-      IF NOT EXISTS (SELECT 1 FROM objects.canonical_objects o WHERE o.object_id = (c ->> 'id')::uuid AND o.object_version = (c ->> 'version') AND o.tenant_id = p_tenant) THEN
+      IF NOT EXISTS (SELECT 1 FROM objects.canonical_objects o WHERE o.object_id = (c ->> 'id')::uuid AND o.object_version = (c ->> 'version')::bigint AND o.tenant_id = p_tenant) THEN
         RAISE EXCEPTION 'benchmark validation rejected (unknown_citation): % % version % is not an object of this tenant', c ->> 'kind', c ->> 'id', c ->> 'version' USING ERRCODE = '23503';
       END IF;
     END LOOP;
