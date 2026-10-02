@@ -14,6 +14,7 @@ import { Empty, LiveStatus, Mono, cardStyle, DefinitionRow, UnknownNote, Governe
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui';
 import { MethodPanel } from './method-panel'; /* B29 (0092) §C */
 import { summaryLines } from '../../../lib/methods'; /* B29 (0092): a method run's headline results */
+import { EnvelopePanel } from './envelope-panel'; /* B30 envelope */
 
 const money = (v: unknown): string => (typeof v === 'string' ? `€${Number(v).toLocaleString('en-GB', { minimumFractionDigits: 2 })}` : '—');
 const iv = (r: Run): string => r.interventions.map((i) => (i['type'] === 'none' ? 'none' : `${String(i['type'])}${i['shipment'] ? ` ${String(i['shipment'])}` : ''}${i['weeks'] ? ` ${String(i['weeks'])}w` : ''}`)).join(' + ');
@@ -364,6 +365,7 @@ export default function SimulationsPage() {
               {prProblem !== null ? <LiveStatus assertive><span style={{ color: 'var(--eye-color-critical)' }}>not promoted — {prProblem}</span></LiveStatus> : null}
             </section>
           ) : null}
+          {/* B30 envelope */}<EnvelopePanel runId={open.run_id} envelopeState={open.envelope_state} onDone={afterAct} />{/* end B30 envelope */}
         </section>
       )}
       <MethodPanel />

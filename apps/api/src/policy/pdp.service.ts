@@ -1897,6 +1897,21 @@ const BUNDLE_V1: Rule[] = [
   { actionPrefix: 'twin.snapshot.freeze', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   { actionPrefix: 'twin.freshness.policy', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
   /* end B30 branches */
+  /* B30 envelope (0103 §EN; F-P5-04). EXACT rules — none of these names starts with an earlier PREFIX rule's (`twin.read`, `twin.declare`,
+     `twin.version.admit`, `twin.version`, `twin.ground`: 'twin.envelope', 'twin.calibration', 'twin.model' and 'twin.ai_context' are not
+     under them), so first-match reaches them here; none reaches C3. ADMIT AS EXPLORATORY — a twin owner and the domain administrator reach
+     the port, which admits a twin owner ONLY (the administrator's refusal is the port's own, in words: the raised threshold) — human-gated.
+     CONCUR — a method steward, human-gated (the port: neither the admitter nor the run's operator). CALIBRATE — a twin owner, a method
+     steward, the domain administrator, and the attention agent (the tick). THE MODEL'S LIFECYCLE and compatibility — a method steward and
+     the domain administrator reach the port, which admits a method steward only — human-gated. THE AI CONTEXT — every reader of twin state
+     (the `twin.read` set) and the agents that consume it (decision, briefing, supply chain, reconciliation, attention). No new role. */
+  { actionPrefix: 'twin.envelope.admit', exact: true, requiredAnyRole: [{ role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'domain_admin', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'twin.envelope.concur', exact: true, requiredAnyRole: [{ role: 'method_steward', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'twin.calibration.run', exact: true, requiredAnyRole: [{ role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'method_steward', atScope: 'DOMAIN' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'attention_agent', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'twin.model.lifecycle', exact: true, requiredAnyRole: [{ role: 'method_steward', atScope: 'DOMAIN' }, { role: 'domain_admin', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'twin.ai_context.read', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }, { role: 'method_steward', atScope: 'DOMAIN' }, { role: 'constraint_steward', atScope: 'DOMAIN' },
+    { role: 'decision_agent', atScope: 'DOMAIN' }, { role: 'briefing_agent', atScope: 'DOMAIN' }, { role: 'supply_chain_agent', atScope: 'DOMAIN' }, { role: 'reconciliation_agent', atScope: 'DOMAIN' }, { role: 'attention_agent', atScope: 'DOMAIN' }], obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B30 envelope */
   /* B36 home */
   /* THE EXECUTIVE HOME, THE CADENCE, THE COMMAND VIEWS, THE SEARCH, THE METRICS (0094 §H; F-P6-11: WS-01, JRN-19, PER-03, CAP-EO-01/-02/-04).
      EXACT rules — no `executive` prefix rule exists and none of these names is a prefix of another rule's. THE READS (executive.home.read
