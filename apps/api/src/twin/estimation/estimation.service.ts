@@ -47,12 +47,18 @@ type Row = Record<string, unknown>;
 export const ESTIMATION_HOOK = 'twin-estimation';
 const READ = 'twin.estimation.read';
 
+/** A DATE as the day it names (the driver reads a DATE as the local midnight: its local components are the day — twin.service.ts dayOf). */
 const day = (v: unknown): string | null => {
   if (v === null || v === undefined) return null;
-  if (v instanceof Date) return v.toISOString().slice(0, 10);
+  if (v instanceof Date) return `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, '0')}-${String(v.getDate()).padStart(2, '0')}`;
   const s = String(v);
   return /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0, 10) : null;
 };
+/** The row with its DATE columns rendered as the days they name. */
+const days = (r: Row, cols: readonly string[]): Row => { const o = { ...r }; for (const c of cols) if (c in o) o[c] = day(o[c]); return o; };
+const ESTIMATE_DAYS = ['as_of'] as const;
+const VERSION_DAYS = ['observed_through'] as const;
+const ELEMENT_DAYS = ['valid_from', 'valid_to'] as const;
 const textOf = (e: unknown): string => (e instanceof HttpException ? String((e.getResponse() as { message?: string }).message ?? e.message) : (e instanceof Error ? e.message : String(e)));
 
 export interface Computed {
@@ -110,7 +116,7 @@ export class EstimationService implements OnModuleInit {
     if (f.twinId !== null) q = q.where('twin_id' as never, '=', f.twinId as never);
     if (f.key !== null) q = q.where('key' as never, '=', f.key as never);
     if (f.state !== null) q = q.where('state' as never, '=', f.state as never);
-    return (await q.orderBy('proposed_at' as never, 'desc').orderBy('estimate_id' as never).limit(f.limit).execute()) as Row[];
+    return ((await q.orderBy('proposed_at' as never, 'desc').orderBy('estimate_id' as never).limit(f.limit).execute()) as Row[]).map((r) => days(r, ESTIMATE_DAYS));
   }
   async getEstimate(cap: EstimationReads, estimateId: string): Promise<Row | null> {
     const e = (await cap.readEstimates().selectAll().where('estimate_id' as never, '=', estimateId as never).executeTakeFirst()) as Row | undefined;
@@ -120,7 +126,7 @@ export class EstimationService implements OnModuleInit {
     const events = (await cap.readEvents().selectAll().where('estimate_id' as never, '=', estimateId as never).orderBy('occurred_at' as never).execute()) as Row[];
     const item = e['attention_item_id'] === null ? null : ((await cap.readAttention().select(['item_id', 'signal_class', 'state', 'owner_principal_id', 'title', 'due_at'] as never)
       .where('item_id' as never, '=', e['attention_item_id'] as never).executeTakeFirst()) as Row | undefined) ?? null;
-    return { ...e, qualifications, events, attention_item: item };
+    return { ...days(e, ESTIMATE_DAYS), qualifications, events, attention_item: item };
   }
   async listRequests(cap: EstimationReads, twinId: string | null, state: string | null): Promise<Row[]> {
     let q = cap.readRequests().selectAll();
@@ -146,7 +152,7 @@ export class EstimationService implements OnModuleInit {
     const estimates = await this.listEstimates(cap, { twinId, key: null, state: null, limit: 20 });
     const requests = await this.listRequests(cap, twinId, null);
     const pending = (await cap.pending()).filter((p) => p['twin_id'] === twinId);
-    return { twin, head: head ?? null, head_elements: headElements, estimators, estimates, requests, pending };
+    return { twin, head: head === undefined ? null : days(head, VERSION_DAYS), head_elements: headElements.map((e) => days(e, ELEMENT_DAYS)), estimators, estimates, requests, pending };
   }
 
   // ───────────────────────── compute (reads only) ─────────────────────────
