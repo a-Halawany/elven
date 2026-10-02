@@ -1,7 +1,17 @@
-# Integration sequence and the #62 merge decision (prepared 2026-09-25; no merge is authorized by this file)
+# Integration sequence (prepared 2026-09-25; reconciled 2026-10-02 to the owner's standing merge authorization)
 
 Prepared under the owner's instruction of 2026-09-25 ("Prepare its separate merge decision and the stack integration sequence").
-**Every merge below is a separate decision of the owner.** The bounded review of 2026-09-25
+**Current instruction (the owner, 2026-10-02):** "Routine merge approval is already granted for genuinely ready work."
+- **How a merge proceeds now.** Each PR below merges in order once EVERY required check has completed successfully on its exact head. That head must be the one produced by merging the merged base in.
+- **What comes before each next merge.** The complete `main` chain — CI, the C17 finalize and C19 — completes successfully.
+- **Never done:**
+  - a failed-check waiver;
+  - a stale-head substitution;
+  - a failed-job-only re-run on `main`;
+  - merging #70's standalone migration-gap head.
+- **What remains the owner's.** Credential rotation, a purchase, an account change or a live-system operation remain the owner's own word; this authorization grants none of them.
+
+The text below keeps the 2026-09-25 history. Where a step reads "→ the owner's decision", it now means "→ merged under the standing authorization when its checks pass". (Originally: every merge below was a separate decision of the owner.) The bounded review of 2026-09-25
 (`audit/reviews/The_Eye_B23_Plan_and_Redis_Review_2026-09-25.md`) advises against approving #60, #61 and #63 as a group.
 
 ## The heads (verified 2026-09-25)
@@ -22,8 +32,10 @@ Prepared under the owner's instruction of 2026-09-25 ("Prepare its separate merg
 | #71 B90 + B27 (consolidated) | `phase6-b27` → **`phase6-b36`** (retargeted 2026-10-01) | the records commit above `aa45ac1` (contains #70's head `c5dd168`; migrations 0095, 0096, 0097, 0098 in order) | the complete B90 + B27 candidate. Hosted on `aa45ac1` while based on `phase6-b90` (ci 36865283539): build-test green — integration 1583/1583, unit 2942 + 9, web 187, acceptance 58/58, upgrade PASS, **C18 all four stages passed** — browser green, C19 36865283730 green; supply-chain the Redis recheck only. Its checks against the new base run on this head |
 | #72 B31 | `phase6-b31` → `phase6-b27` | `1dbb93d` (0099, 0100; the records, `audit/CP6_BATCHES.md` §B31, §B31.9 and its addendum) | stacked on #71. Hosted on `2b591de` (ci 36909407667) FAILED build-test on `phase6-orchestration-b31` O1 (a database-wide count meeting B31-F's own experiments in the shared integration database; upgrade and C18 not run) — scoped to the harness's tenant at `1dbb93d`; on `1dbb93d` (ci 36921570491) build-test (integration, upgrade, C18) and browser green, C19 36921570496 green, supply-chain the Redis recheck only |
 | #73 B35 | `phase6-b35` → `phase6-b31` | the records commit above `fd6ec64` (0101; the records, `audit/CP6_BATCHES.md` §B35) | stacked on #72. Local gates at `5ee776b`: integration 1716/1716, unit 3099 + 9, web 225, acceptance 58/58, upgrade PASS (80), browser 93/93; the act HELD on `eye_demo`; the hosted run is the PR's first |
+| N-01 (0102) | `phase6-n01` → `phase6-b35` | the N-01 commit above `8dbc79f` | the corrective candidate: later-schema definer reads bound to the caller's scope, the constraint-gate capability narrowed, PUBLIC EXECUTE revoked, the creator's default function privileges (`audit/CP6_BATCHES.md` §N-01). Local: the N-01 harness 58/58 each way, integration 1774/1774, acceptance 58/58, upgrade PASS (81); the hosted run is the PR's first |
+| #62 refreshed (2026-10-02) | `maintenance/c15-redis-index-2026-09-25` → `main` | `cd8428f` (was `17f0236`) | the exact-head refresh of `17f0236` (ci 36129773111 attempt 2) failed `supply-chain`: the scanners' data had moved, not #62. Carried: the reviewed pins (fast-uri 3.1.7 / multer 2.4.0 — `1bd2bce`; next 16.3.6 — `da19ef9`'s pin), the stack's `.gitleaks.toml` (`c385d02` + `cdd61b4`; the all-refs history scan reaches the stack's commits), and one NEW pin under the same rule: fast-uri 3.1.8 (GHSA-hrr3-gc8f-f4qj, MODERATE; the final-manifest assertion accepts only a clean receipt). On `d65eaf7` (ci 37005512372) every C15 step passed |
 
-## 1. The #62 decision (ready for the owner's word)
+## 1. #62 (the 2026-09-25 decision record; merged under the standing authorization once its refreshed head passes)
 
 - **What it changes:** the redis pin in `docker-compose.yml`, `apps/api/test/gate/docker-compose.yml` and `conformance.manifest.json` (index `ba6e394f…` → `38117873…`; the linux/amd64 and linux/arm64 children unchanged — only the upstream linux/riscv64 child and its attestation were rebuilt), the C15 trace fixture and `real-image-results.json` re-recorded from a passing real local gate run with the pinned scanners, the recheck control's per-service `pinned_at`, the evidence under `infra/images/official/20260925/`, `docs/SUPPLY_CHAIN_MAINTENANCE_2026-09.md` §7 row and §8.5.
 - **What it does not change:** no disposition record (no SCX names the redis pin), no budget, cadence, source or C19 anchor; nothing purchased.
@@ -57,6 +69,26 @@ Older heads' green checks never stand for a new combination: every step below pr
 12. **#71 (B27).** Stacks on #70 (base `phase6-b90`); the records are on it (`audit/CP6_BATCHES.md` §B27 — the three features' B27 clauses built and harness-proven, 72/72 on a fresh database; the residuals assigned to B26, B31, B35, B73, B74, B78, B83 and R2); its hosted checks — build-test with the upgrade proof (migrations 76) and the C18 steps, browser-regression, C19 — must complete on its head; after #70 merges, retarget to `main`, merge `main` in, checks on the new head → the owner's decision. On 2026-10-01 its run at `21ee226` (36782666166) failed; the corrections (§B90.13) and the completion bookkeeping (§B27.10) are above it, and its next hosted run is on the new head. **Retargeted on 2026-10-01 to `phase6-b36`:** #71 is now the complete B90 + B27 candidate (it contains #70's head and migrations 0095–0098 in order, so C18's contiguity holds); after #69 merges, retarget to `main`, merge `main` in, checks on the new head → the owner's decision. #72 (B31) stays stacked on it. Merging or closing #70 and #71 remains the owner's decision; #62 is separate.
 13. **#72 (B31).** Stacks on #71 (base `phase6-b27`); the records are on it (`audit/CP6_BATCHES.md` §B31 — F-P5-09 complete by the rows, F-P5-06 and F-P5-07 partial with their residuals named, the unplaced ones for the owner); its hosted checks run on the PR's head; after #71 merges, retarget to `main`, merge `main` in, checks on the new head → the owner's decision.
 14. **#73 (B35).** Stacks on #72 (base `phase6-b31`); the records are on it (`audit/CP6_BATCHES.md` §B35 — the four features advanced, each completing after its remaining construction); its hosted checks run on the PR's head; after #72 merges, retarget, merge the base in, checks on the new head → the owner's decision.
+15. **N-01 (0102).** Stacks on #73 (base `phase6-b35`), where the complete history 0001–0101 exists. The bounded correction is not a new audit; it merges last in this sequence. After #73 merges: retarget, merge the base in, checks on the new head, then merge under the standing authorization. B30 (0103) stacks on it.
+
+**Diagnostics rules carried with the sequence (2026-10-02).**
+- **#61's A5.** The threshold and the statistic are preserved. If it fails again, its existing per-probe samples (`da19ef9`) are read first; nothing else changes before that.
+- **#65.** If `phase6-review-corrections` again reports "expected 'stopped', received 'finished'", the actual stop-condition failure is diagnosed on that run. It is not relabelled as A5 or as the older C18 timing failure.
+
+**Completion assignments (unchanged, recorded once).**
+- F-P5-06 → B73
+- F-P5-07 → B26
+- F-P5-09 → B31, complete by rows only
+- F-P6-01 → B73
+- F-P6-02 and F-P6-03 → B26
+- F-P6-06 → B100
+
+**What these assignments do not establish.**
+- Construction effort and the actual dependencies are retained.
+- Passing the 58-case acceptance harness is not full-product acceptance.
+- The three-account schedule is a scenario, not an authorization for additional accounts.
+- The B103, R2 and H1 residuals stay assigned.
+- The Decision Agent demo substitution stays B73's: it is not completed agent-runtime integration.
 
 Between two merges the first merge's `main` chain completes before the next merge (the B18 rule: the C17 finalize of a merge overtaken by another merge refuses).
 

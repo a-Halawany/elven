@@ -237,7 +237,11 @@ describe('D3 · conservation and topology, through the route and §C\'s gate', (
     const input = { kind: 'run_input' as const, ref: uuidv7(), quantities: [{ key: 'supply.capacity_per_day', date: null, value: 620, unit: 'units/day' }] };
     expect(await engine.check({ tenantId: T, domainId: D }, input)).toMatchObject({ outcome: 'satisfied', setId: null, violations: [] });
     // another domain of the tenant declares nothing — this domain's sets are not its sets (row security under the gate's capability)
-    expect(await engine.check({ tenantId: T, domainId: uuidv7() }, { ...broken() })).toMatchObject({ outcome: 'satisfied', setId: null, violations: [] });
+    const other = uuidv7();
+    await sql`insert into tenancy.domains (id, tenant_id, name, status) values (${other}::uuid, ${T}::uuid, ${`b29-other-${other.slice(-8)}`}, 'active')`.execute(h.su);
+    expect(await engine.check({ tenantId: T, domainId: other }, { ...broken() })).toMatchObject({ outcome: 'satisfied', setId: null, violations: [] });
+    // N-01 (0102): the gate's capability is minted only for an active domain of the tenant — an unknown domain is INDETERMINATE, never a pass
+    expect(await engine.check({ tenantId: T, domainId: uuidv7() }, { ...broken() })).toMatchObject({ outcome: 'indeterminate', checkId: null });
     const named = await engine.check({ tenantId: T, domainId: D }, input, ['regensburg-capacity']);
     expect(named).toMatchObject({ outcome: 'indeterminate', indeterminateReason: expect.stringMatching(/no declared constraint applies to a run_input subject/) });
     const malformed = await engine.check({ tenantId: T, domainId: D }, { kind: 'run_output', ref: '', quantities: [] });

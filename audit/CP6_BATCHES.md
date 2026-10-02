@@ -5637,6 +5637,97 @@ Pieces first placed on B82, B84, B74 and B64 — stages scheduled before B35 and
 - **Rows:** implemented 1288 → **1333**, partial 2608 → **2570**, missing 2342 → **2335**. The tracker: F-P6-01 8/16/0 → **17/7/0**, F-P6-02 2/19/2 → **17/6/0**, F-P6-03 0/15/3 → **10/8/0**, F-P6-06 5/8/2 → **12/3/0** (all partial — completing later), F-P4-08 → 18/11/0, F-P4-09 → 10/5/0, F-P5-07 → 9/3/0. The acceptance split is unchanged (3,555 = 3,179 + 339 + 37); the tracker, schedule, summaries and controls pass.
 - The ledger: 0101 final. `PHASE6_REPORT.md` §47; `docs/ops/DEMONSTRATION_RUNBOOK.md` §19; `audit/delivery/INTEGRATION_SEQUENCE.md` #73 and step 14; `audit/DELIVERY_PLAN.md` §10; the register's CP-6 row. The candidate is PR #73 (`phase6-b35` → `phase6-b31`). The next A1 stage in the schedule is **B30** (twin state, reconciliation, envelope and calibration).
 
+## N-01 — later-schema SECURITY DEFINER reads bound to the caller's scope; the constraint-gate capability narrowed (0102)
+
+The owner's instruction of 2026-10-02: N-01 was still OPEN. Its corrections were not on the pushed tip, and calling the earlier bounded pass complete was premature. This is the known database defense-in-depth finding: a runtime role reading across tenants through a definer function. It is not an established anonymous HTTP exploit, and this is not a whole-project audit. **The supplied handoff and reproduction bundle was not found on this host** (the repository, the Codex folders and the attachments were searched). The reproduction was therefore rebuilt from the owner's named inventory, and that is said here.
+
+### N-01.1 — the defect
+
+- **The cause.** The migration role that owns these functions is a superuser. A SECURITY DEFINER function owned by a superuser bypasses RLS, even on FORCE RLS tables.
+- **The seven reproduced reads.** Each takes the tenant and domain (or an object id) from its arguments and never compares them with the caller's bound context:
+  - `observation.replay_health`
+  - `graph.strategy_plan_links` (also PUBLIC EXECUTE)
+  - `executive.publication_controls` (object id only)
+  - `executive.publication_source`
+  - `executive.publication_recipients`
+  - `executive.role_holder_ids`
+  - `decision.commitment_item_signal`
+- **The two cases given explicit behaviour here** (not counted as already reproduced by the supplied matrix):
+  - `executive.health_input_owner` — a definer function with tenant and domain arguments.
+  - `executive.publication_archive_record` — an INVOKER function with PUBLIC EXECUTE that reaches the definer `publication_controls` by object id.
+- **`replay_health` on `main`** is the same function's baseline (0022), not another unique function.
+- **The separate minter path.** `simulation.issue_constraint_gate_capability` let `eye_commit` mint a DOMAIN context for any caller-selected tenant and domain. Under it, every RLS-protected table of that domain was readable — publications, legal holds and commitment items included — not only the constraint sets the gate needs.
+- **Grants.** PUBLIC EXECUTE sat on 11 later-schema definer functions: `strategy_plan_links` and ten trigger functions. The INVOKER `publication_archive_record` also had it. `pg_default_acl` had no row, so every new function was PUBLIC-executable by default.
+
+### N-01.2 — the correction (0102, forward; 0001–0101 untouched)
+
+- **The read-scope check.** `observation.read_scope_ok` and `assert_read_scope` require the caller's bound tenant. They also require its bound domain, unless the binding is TENANT-wide. An unbound caller is refused with `read rejected (scope): …` (42501).
+  - **The one exemption:** a session whose own login role (`session_user`) is a superuser or BYPASSRLS — the migration/operator role. That role reads the tables directly anyway, so narrowing it protects nothing. The full suite found it: `phase1-acceptance` A6 replays health as that role.
+- **Guarding by argument.** The tenant/domain functions check their ARGUMENTS. Each is re-declared, copied whole from its live definition, with the one guard line marked.
+- **Guarding by object.** `publication_controls` looks up the publication's ACTUAL tenant and domain and checks those.
+- **`publication_archive_record` stays INVOKER.** It answers NULL for a publication outside the caller's scope and never reaches the definer controls for it.
+- **The constraint gate is narrowed.**
+  - The minter issues a context of its own scope `CONSTRAINT_GATE`, with no tenant or domain field, so every tenant/domain RLS policy admits nothing under it.
+  - The gate's tenant and domain ride in the signed target. `simulation.gate_tenant()` and `gate_domain()` (INVOKER) read them back only for that scope, mode, operation class and action.
+  - Two permissive SELECT policies admit the gate to `simulation.constraint_sets` and `constraint_set_versions`.
+  - `simulation.record_plan_check` (copied whole) checks the gate's bound tenant and domain in place of the context's. Its route branch is unchanged.
+  - The minter refuses an unknown, mismatched or inactive domain.
+- **Grants, as two separate steps.**
+  - (a) PUBLIC EXECUTE is revoked on `strategy_plan_links`, `publication_archive_record` and the ten trigger functions. Firing a trigger needs no EXECUTE. The explicit `eye_app`/`eye_commit` grants are preserved.
+  - (b) The migration role's GLOBAL default function privileges no longer grant EXECUTE to PUBLIC: `ALTER DEFAULT PRIVILEGES FOR ROLE <current_user>`.
+- **Untouched.** The foundation schemas and the frozen foundation authority matrix (`gate22-authority-matrix`, C14) are not changed.
+
+### N-01.3 — the proof (local, disposable PostgreSQL 18.6 databases)
+
+`apps/api/test/int/phase6-n01-definer-scope.test.ts` is a bounded later-schema proof, separate from the foundation matrix.
+
+- **Behaviour.** Each of the nine functions is called on the same seeded A/A1 rows along five paths:
+  - unbound;
+  - wrong tenant;
+  - wrong domain;
+  - authorized;
+  - PUBLIC — `eye_identity`, which holds USAGE on graph and executive and no explicit grant.
+- **RLS controls.** The same rows are read directly under the same bindings.
+- **Minter controls.**
+  - The gate reads its set and version, and records a pinned plan check for its own tenant and domain.
+  - Under the gate, publications, legal holds and commitment items are not readable.
+  - It records nothing for another tenant and reads nothing of another tenant.
+  - A cross-tenant domain and a suspended domain are refused.
+  - A plan check outside schedule mode still needs the route authority.
+- **Catalog**, kept separate from behaviour: the explicit runtime grants are preserved; PUBLIC EXECUTE is absent on the twelve; no later-schema definer function is executable by PUBLIC (11 → 0); the creator's default ACL row carries no `=X`.
+
+| Run | Database | Result |
+|---|---|---|
+| Baseline expectations (`EYE_N01_BASELINE=1`) | through 0101 | **58/58** — every defect reproduced |
+| Corrected expectations | through 0102 | **58/58** |
+| Cross-check: corrected expectations | through 0101 | 35 failed / 23 passed |
+| Cross-check: baseline expectations | through 0102 | 35 failed / 23 passed |
+
+**35 cases discriminate; 23 are invariant controls:** the authorized paths, the RLS controls, the operator session, the gate's intended operations, the existing denials and the explicit grants. Evidence: `evidence/cp6/n01-definer-scope.txt`.
+
+### N-01.4 — the gates and the records
+
+| Gate (local, this host) | Result |
+|---|---|
+| N-01 harness | **58/58** reproducing through 0101 and **58/58** corrected through 0102; the cross-checks 35 failed / 23 passed each way |
+| Full integration (fresh database through 0102) | **1774/1774** in 128 files |
+| Unit (API) | **3099/3099**, the C16 hermetic-isolation case on the committed tree (first run on the uncommitted tree: `tree clean: false`) |
+| Acceptance | **58/58** |
+| Upgrade proof | PASS — migrations **81**, 276/276 on upgraded data |
+| Browser gate | not run locally: N-01 changes no page or route; the hosted `browser-regression` runs on the PR |
+
+- **The first full run found two harness defects, and one real interaction; each was traced before changing anything** (4 failures in 1773):
+  - `phase1-acceptance` A6: `replay_health` was called as the migration role with no context. That was the real interaction, and it gave the BYPASSRLS exemption above.
+  - `phase6-impact-b31` o and v: two database-wide counts met other files' rows. They are now scoped to the harness's tenant (the #72 lesson again).
+  - `phase6-constraints-b29` D3: it checked a random, nonexistent "domain". The narrowed minter refuses one, so the gate answers INDETERMINATE, never a pass. The case now uses a real second domain of the tenant, and the unknown domain is asserted INDETERMINATE.
+- **Evidence:** `evidence/cp6/n01-definer-scope.txt` holds the four runs and the catalog before and after.
+
+- **The ledger:** 0102 final, stacked on B35 where the complete history 0001–0101 exists. It is the next free forward number; 9001 and 9002 are prepared and not issued.
+- **The upgrade proof:** migrations 80 → **81**.
+- **The candidate:** PR → `phase6-b35`.
+- **`eye_demo`:** it stays at 0101 at this candidate. It reaches 0102 with B30's staging, through the normal backup + `db:migrate` path.
+- **`apply-pending.sh`** was not run against `eye_demo` or anything live.
+
 ## Order and the next implementation batch
 
 B3, B1 and B2 are done in code, B4/B5 applied to the audit (the 2026-09-11 checkpoints), B6 done in
