@@ -161,13 +161,14 @@ The sourcegraph-access-token rule keys on a bare 40-hex run after the letters
 They are public upstream commit identifiers published by https://vuln.go.dev; no
 credential is involved.
 
-Scope: the rule, the one file, and only a match that sits inside a
-`go.googlesource.com/<repo>/+/<40 hex>` URL (regexTarget = line). The same hex anywhere
-else, any other file, and every other rule remain fully in scope. All three
-conditions must hold (condition = AND).
+Scope: the rule (targetRules — the key gitleaks 8.30.1 reads; B36-F1 found the earlier
+spelling `rules` was not read, so the block was path-and-match only), the one file, and
+only a match that sits inside a `go.googlesource.com/<repo>/+/<40 hex>` URL
+(regexTarget = line). The same hex anywhere else, any other file, and every other rule
+remain fully in scope. All three conditions must hold (condition = AND).
 """
 condition = "AND"
-rules = ['''sourcegraph-access-token''']
+targetRules = ['''sourcegraph-access-token''']
 paths = ['''(^|/)infra/images/published/20260910/gosu-arm64-3a8ef022\.govulncheck\.json$''']
 regexTarget = "line"
 regexes = ['''go\.googlesource\.com/[a-z]+/\+/[0-9a-f]{40}''']
@@ -187,11 +188,88 @@ decomposable score, not a secret. The migration is applied (its digest is locked
 on the demonstration) and migrations are forward-only, so the text cannot be
 reworded; the exclusion is recorded here instead.
 
-Scope: the rule, the one migration, and only the literal match
-`key', 'weight_plus_10pct'`. All three conditions must hold (condition = AND).
+Scope: the rule (targetRules — see block 6), the one migration, and only the literal
+match `key', 'weight_plus_10pct'`. All three conditions must hold (condition = AND).
 """
 condition = "AND"
-rules = ['''generic-api-key''']
+targetRules = ['''generic-api-key''']
 paths = ['''(^|/)apps/api/migrations/0089_b32_strategy_exposures_health\.sql$''']
 regexTarget = "match"
 regexes = ['''^key', 'weight_plus_10pct'$''']
+
+# ── 8–11. B36 HISTORY: key-shaped RECORD KEYS in four historical commits, not credentials
+#
+# Four commits of the B36 stage carry literals that the generic-api-key rule reads as
+# secrets: a command view's key (`viewKey: 'executive/morning'`), a SYNTHETIC execution
+# target's key (`targetKey: 'nordwerk-erp-synthetic-b36'`) and a fixed Ed25519 key ID in a
+# web unit fixture (`key ed25519:0123456789abcdef`). None is a credential — each names a
+# record by a human-readable key — and the WORKING TREE was corrected (each literal split
+# as the repository's rule says) before the stage's candidate, so these exclusions exist
+# solely so the FULL-HISTORY scan does not fail on the commits that carried the unsplit
+# forms. Each block is ONE tuple: ONE rule, the commit that carries the finding, the exact
+# file(s) and the exact anchored match (regexTarget = match — the rule's whole match, which
+# for generic-api-key is `<keyword>: '<value>'` plus the closing delimiter). All four
+# conditions must hold (condition = AND): the same literal in any other commit or file, any
+# other value in these files (even in these commits), and every other rule remain fully in
+# scope.
+#
+# B36-F1 (2026-09-30): the first form of this exception listed the commits, paths and
+# regexes in ONE block without `condition = "AND"`, so gitleaks 8.30.1 — whose default is
+# OR and whose commit/path check runs before any rule — skipped every listed file in every
+# commit and every file in the four listed commits. Corrected here; the negative controls
+# that prove the narrowing are in evidence/cp6/b36-f1-gitleaks-controls.txt.
+
+[[allowlists]]
+description = """
+B36 history 1/4 — the records commit e0b8820 quoted the command view key `viewKey:
+'executive/morning'` in PHASE6_REPORT.md and audit/CP6_BATCHES.md (one finding each).
+ONE rule, ONE commit, TWO files, ONE exact match. condition = AND.
+"""
+condition = "AND"
+targetRules = ['''generic-api-key''']
+commits = ['''e0b8820dfe7f6661cb897653619f6befcbeeb76c''']
+paths = ['''^PHASE6_REPORT\.md$''', '''^audit/CP6_BATCHES\.md$''']
+regexTarget = "match"
+regexes = ['''^viewKey: 'executive/morning'$''']
+
+[[allowlists]]
+description = """
+B36 history 2/4 — the act commit 595c652 carried `viewKey: 'executive/morning'` in
+scripts/phase6/act-b36.mjs (one finding). ONE rule, ONE commit, ONE file, ONE exact match.
+condition = AND.
+"""
+condition = "AND"
+targetRules = ['''generic-api-key''']
+commits = ['''595c652def0dc7ee47cd41f7103428340df4f492''']
+paths = ['''^scripts/phase6/act-b36\.mjs$''']
+regexTarget = "match"
+regexes = ['''^viewKey: 'executive/morning'$''']
+
+[[allowlists]]
+description = """
+B36 history 3/4 — the collaboration harness commit 442d891 carried the synthetic
+execution target's key `targetKey: 'nordwerk-erp-synthetic-b36'` twice in
+apps/api/test/int/phase6-collab-b36.test.ts. ONE rule, ONE commit, ONE file, ONE exact
+match. condition = AND.
+"""
+condition = "AND"
+targetRules = ['''generic-api-key''']
+commits = ['''442d891a81e2e21ba5a2b55c7a0bfe37b6beee0d''']
+paths = ['''^apps/api/test/int/phase6-collab-b36\.test\.ts$''']
+regexTarget = "match"
+regexes = ['''^targetKey: 'nordwerk-erp-synthetic-b36'$''']
+
+[[allowlists]]
+description = """
+B36 history 4/4 — the strategy commit a272fb7 carried the fixed key ID
+`ed25519:0123456789abcdef` in the web unit fixture apps/web/lib/health.test.ts; the rule
+keyed on the word `key` in the expected sentence "signed Ed25519 with key ed25519:…" and
+its match is `key ed25519:0123456789abcdef` plus the following space. ONE rule, ONE
+commit, ONE file, ONE exact match. condition = AND.
+"""
+condition = "AND"
+targetRules = ['''generic-api-key''']
+commits = ['''a272fb7b1db47190b9d30f1f4429a76061c5312a''']
+paths = ['''^apps/web/lib/health\.test\.ts$''']
+regexTarget = "match"
+regexes = ['''^key ed25519:0123456789abcdef[ ]$''']
