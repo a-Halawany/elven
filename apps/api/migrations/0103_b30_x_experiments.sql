@@ -2,7 +2,7 @@
 -- section `experiments` (§EX) — CP-6 B30 part `experiments` (2026-10-02): the B30 carryovers of F-P5-06 and F-P5-07.
 --
 --   §EX.1  THE VOCABULARY: experiments.state gains `retired`; experiment_events gains `retired`, `stopped_unstable`, `paused_unstable`,
---          `adapter_quarantined`, `review_routed` and `policy_set`; the experiment's ON-UNSTABLE policy (stop | pause | none, DEFAULT none —
+--          `adapter_quarantined`, `review_routed`, `policy_set` and `stopped_quarantined`; the experiment's ON-UNSTABLE policy (stop | pause | none, DEFAULT none —
 --          every B31 experiment and fixture keeps its ledger) and its retirement record.
 --   §EX.2  CHUNKED METHOD-FABRIC EXPERIMENTS (L8-C06, PR-35-001): simulation.sio_chunkable_methods() re-declared (0099:971, copied whole) —
 --          discrete-event@1, counterfactual@1 and war-gaming@1 join supply-flow@1. A chunk of a fabric method runs path s of the run's
@@ -20,7 +20,8 @@
 --          quarantined); a review is ROUTED
 --          (simulation.checkpoint → the declarer and the method stewards; review_routed). Policy `none`: B31's behaviour, unchanged.
 --          simulation.set_unstable_policy (simulation.experiment.policy) sets the policy before approval; simulation.quarantine_adapter
---          (simulation.adapter.quarantine) is a method steward's quarantine on demand.
+--          (simulation.adapter.quarantine) is a method steward's quarantine on demand. A fabric experiment whose adapter stands quarantined
+--          (on demand, by another experiment's divergence, by B29's fault streak) stops between chunks (stopped_quarantined).
 --   §EX.4  RETIREMENT (PR-35-001): simulation.retire_run (simulation.retirement.run) writes the prelude's runs_current.retired_* columns,
 --          simulation.retire_experiment (simulation.retirement.experiment) retires a finished experiment and its run; each with its REASON
 --          and its REACH (the packages whose options cite the run, the dependent analyses, sweeps and validations, the runs that name it
@@ -60,7 +61,7 @@ ALTER TABLE simulation.experiment_events DROP CONSTRAINT experiment_events_event
 ALTER TABLE simulation.experiment_events ADD CONSTRAINT experiment_events_event_check
   CHECK (event IN ('declared', 'approved', 'admission_refused', 'started', 'run_opened', 'checkpointed', 'chunk_failed', 'chunk_reclaimed',
                    'paused', 'resumed', 'budget_exceeded', 'converged', 'completed', 'partial', 'failed', 'cancelled',
-                   /* B30 experiments */ 'retired', 'stopped_unstable', 'paused_unstable', 'adapter_quarantined', 'review_routed', 'policy_set'));
+                   /* B30 experiments */ 'retired', 'stopped_unstable', 'paused_unstable', 'adapter_quarantined', 'review_routed', 'policy_set', 'stopped_quarantined'));
 
 -- §EX.2 THE CHUNKABLE METHODS ───────────────────────────────────────────
 /* 0099:971, copied whole — B30 experiments: the method fabric's seeded methods whose chunks are deterministic per seed offset (a seeded
@@ -230,6 +231,14 @@ BEGIN
       PERFORM simulation.sio_event(e, 'converged', p_actor, jsonb_build_object('measure', v_conv ->> 'measure', 'stability', v_stab -> (v_conv ->> 'measure'), 'condition', v_conv,
                                                                                'paths_done', (e.progress ->> 'paths_done')::int), p_correlation);
     END IF;
+  END IF;
+  -- B30 experiments: a FABRIC experiment whose adapter stands QUARANTINED in this domain (a steward's quarantine on demand, another
+  -- experiment's divergence, B29's fault streak) executes no further chunk of it: it stops between chunks (supply-flow@1 is never quarantined)
+  IF v_stop IS NULL AND v_left > 0 AND e.state = 'running' AND e.method_ref <> 'supply-flow@1'
+     AND EXISTS (SELECT 1 FROM simulation.adapter_health hq WHERE hq.tenant_id = p_tenant AND hq.domain_id = p_domain AND hq.model_ref = e.method_ref AND hq.state = 'quarantined') THEN
+    v_stop := jsonb_build_object('outcome', CASE WHEN (e.progress ->> 'chunks_done')::int > 0 THEN 'partial' ELSE 'failed' END, 'reason', 'adapter_quarantined');
+    PERFORM simulation.sio_event(e, 'stopped_quarantined', p_actor, jsonb_build_object('model_ref', e.method_ref, 'chunks_left', v_left, 'paths_done', (e.progress ->> 'paths_done')::int,
+              'quarantined_at', (SELECT hq.quarantined_at FROM simulation.adapter_health hq WHERE hq.tenant_id = p_tenant AND hq.domain_id = p_domain AND hq.model_ref = e.method_ref)), p_correlation);
   END IF;
   -- B30 experiments: THE CHECKPOINT READ AND ACTED ON (rule sxp-unstable@1) — only under a declared policy (stop | pause); none is B31's
   IF p_outcome = 'done' AND e.on_unstable IN ('stop', 'pause') THEN
@@ -946,7 +955,7 @@ LANGUAGE sql STABLE SET search_path = simulation, twin, pg_catalog, pg_temp AS $
                                                 'chunk_size', e.chunk_size, 'progress', e.progress, 'run_id', e.run_id, 'retirement', e.retirement, 'outcome', e.outcome,
                                                 'actions', (SELECT coalesce(jsonb_agg(jsonb_build_object('event', v.event, 'details', v.details, 'occurred_at', v.occurred_at) ORDER BY v.occurred_at, v.event_id), '[]'::jsonb)
                                                               FROM simulation.experiment_events v WHERE v.experiment_id = e.experiment_id
-                                                               AND v.event IN ('policy_set', 'stopped_unstable', 'paused_unstable', 'adapter_quarantined', 'review_routed', 'retired')),
+                                                               AND v.event IN ('policy_set', 'stopped_unstable', 'paused_unstable', 'adapter_quarantined', 'review_routed', 'retired', 'stopped_quarantined')),
                                                 'last_indicators', e.indicators, 'synthetic', true) AS j, e.declared_at
                         FROM simulation.experiments e ORDER BY e.declared_at DESC LIMIT greatest(1, least(coalesce(p_limit, 50), 200))) x),
     'retirements', (SELECT coalesce(jsonb_agg(to_jsonb(t) - 'scope' - 'correlation_id' ORDER BY t.retired_at DESC), '[]'::jsonb)

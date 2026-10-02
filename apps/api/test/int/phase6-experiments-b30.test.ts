@@ -7,7 +7,8 @@
  *
  *   X1 · CHUNKED METHOD-FABRIC EXPERIMENTS (L8-C06, PR-35-001): a discrete-event@1 experiment in chunks, each path one execution of the
  *        adapter with its per-path seed, executed out of process and COMPLETED; each chunk's paths recomputed in this process from the
- *        stored contract and its seed offset — the same digest (deterministic per seed offset). REFUSALS: a measure the method does not
+ *        stored contract and its seed offset — the same digest (deterministic per seed offset); the run reproduces cold through the
+ *        existing route (every path re-executed in one separate process). REFUSALS: a measure the method does not
  *        project, a method that is not chunkable, a contract its adapter refuses (the experiment fails at start — fail-closed).
  *        RECOVERY: a war-gaming@1 experiment (a random adversary) whose first chunk attempt crashes is retried and completes.
  *   X2 · THE CHECKPOINT INDICATORS ACTED ON (V03-T-354, ES-38-007/-009, V04-T-034): under `stop` an unstable checkpoint STOPS the experiment
@@ -15,7 +16,8 @@
  *        QUARANTINES the contained adapter and stops; every one a review ROUTED (simulation.checkpoint → the declarer, the method stewards).
  *        Under the default `none` nothing is acted on — B31's ledger. REFUSALS: the policy after approval, an unknown policy, an unrelated
  *        operator; the steward's quarantine of an in-process method, of a quarantined adapter, of an unknown model, by a non-steward.
- *        RECOVERY: a probe and a steward's reinstatement; a steward's on-demand quarantine recovered the same way.
+ *        RECOVERY: a probe and a steward's reinstatement; a steward's on-demand quarantine — which STOPS a war game running on that
+ *        adapter between chunks (stopped_quarantined) — recovered the same way.
  *   X3 · RETIREMENT (PR-35-001): a run retired with its REASON, its superseding run and its REACH (the package citing it, the intervention
  *        runs comparing against it, the sensitivity analysis resting on it), the package's owner told; an experiment retired with its run.
  *        REFUSALS: twice, unknown, an unrelated operator, a short reason, superseded by itself, an unfinished run or experiment; the retired
@@ -393,8 +395,17 @@ describe('B30 experiments · X2 the checkpoint indicators acted on (V03-T-354, E
     const ok = await run({ twinId: plantId, twinVersion: pv1, runKind: 'control', controlRunId: null, shock: false, component: BEARING, interventions: [{ type: 'none' }], horizonDays: 7,
                            stochastic: { mode: 'seeded', seed: 3, samples: 1, jitter: {} }, modelRef: 'discrete-event@1', params: { start_date: '2026-10-05' } });
     expect(ok.run['state']).toBe('completed');
-    // ON DEMAND: the steward quarantines war-gaming@1 naming the run that showed it; a run is refused; probe and reinstatement recover it
+    // ON DEMAND: a war game runs in the background (one chunk per tick); the steward quarantines war-gaming@1 naming the run that showed it —
+    // the experiment STOPS between chunks (no further chunk of a quarantined adapter); a new run is refused; probe and reinstatement recover it
+    svc.useExecutorForTests(null);
+    const live = await declared(wgDeclaration({ title: 'Corridor war game — quarantined midway (SYNTHETIC)', paths: 60, pace: { chunks_per_tick: 1 } }));
+    await start(live);
+    await tick();
     const q = (await quarantine('war-gaming@1', steward, WG_RUN)).adapter;
+    await tick();
+    expect((await readExp(live))['state']).toBe('partial');
+    expect(await events(live)).toEqual(['declared', 'approved', 'started', 'run_opened', 'checkpointed', 'checkpointed', 'stopped_quarantined', 'partial']);
+    expect(obj((await readExp(live))['outcome'])).toMatchObject({ reason: 'adapter_quarantined', completed_paths: 40, declared_paths: 60 });
     expect(q).toMatchObject({ quarantined: true, model_ref: 'war-gaming@1', cause: 'steward', run_id: WG_RUN });
     const wg = { twinId: plantId, twinVersion: pv1, runKind: 'control', controlRunId: null, shock: false, component: BEARING, interventions: [{ type: 'none' }], horizonDays: 6,
                  stochastic: { mode: 'seeded', seed: 5, samples: 1, jitter: {} }, modelRef: 'war-gaming@1', params: { turns: 6, adversary: 'random', tolerance: 900 } };

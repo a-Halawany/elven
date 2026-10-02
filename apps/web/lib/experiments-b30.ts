@@ -87,6 +87,7 @@ export function actionLine(a: { event: string; details: Row }): string {
     case 'paused_unstable': return `PAUSED at checkpoint ${String(d['seq'])} — ${why}`;
     case 'adapter_quarantined': return `ADAPTER QUARANTINED: ${String(d['model_ref'])} — its running mean diverged at checkpoint ${String(d['seq'])}`;
     case 'review_routed': return `review routed at checkpoint ${String(d['seq'])} to the declarer and the method stewards${((d['actions'] ?? []) as string[]).length > 0 ? ` (${((d['actions'] ?? []) as string[]).join(', ')})` : ''}`;
+    case 'stopped_quarantined': return `STOPPED — its adapter ${String(d['model_ref'])} stands quarantined in this domain; no further chunk of it runs`;
     case 'retired': return `RETIRED — ${String(d['reason'] ?? '')}${d['run_retired'] === true ? ' (its run retired with it)' : ''}`;
     default: return a.event.replace(/_/g, ' ');
   }
