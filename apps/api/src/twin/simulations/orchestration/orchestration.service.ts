@@ -49,6 +49,11 @@ import { SimulationService, contractOf, environmentOf, sensitivityOf, validateRu
 import { simulationCompletedEvent, simulationStartedEvent } from '../simulation-events.js';
 import { OrchestrationCapability, type ExperimentExecuteWrites, type ExperimentWrites } from './orchestration.capabilities.js';
 import { CHUNK_CONTAINMENT, assembleOutputs, digestOfJson, pathsInOrder, runIntakeOf, type ExperimentIntake } from './experiment-plan.js';
+/* B30 experiments */
+import { builtinMethod } from '../../methods/builtin.js';
+import { assembleFabricOutputs, fabricPathsInOrder, isFabricChunkable, type Measure } from '../fabric/fabric-plan.js';
+import { fabricProcessExecutor } from '../fabric/fabric-executor.js';
+/* end B30 experiments */
 
 type Row = Record<string, unknown>;
 export const EXPERIMENT_OBJECT_TYPE = 'SXP';
@@ -108,6 +113,17 @@ export const processExecutor: ChunkExecutor = async (claimed) => {
   });
 };
 
+/* B30 experiments: THE PRODUCT'S DISPATCH — a chunk of a chunkable fabric method runs in the fabric chunk worker (its adapter, a seeded
+   per-path stream, 0103 §EX.2); supply-flow@1's in B31's. */
+export const productExecutor: ChunkExecutor = async (claimed) => {
+  const run = (claimed['run'] ?? {}) as Row;
+  return isFabricChunkable(run['model_ref']) ? (fabricProcessExecutor(claimed) as unknown as Promise<ChunkExecution>) : processExecutor(claimed);
+};
+/** The implementation an experiment's executor runs for its method: supply-flow@1's pinned digest, or the fabric adapter's. */
+export const experimentImplementationDigest = (methodRef: string): string =>
+  isFabricChunkable(methodRef) ? (builtinMethod(methodRef)?.adapter.digest ?? '') : SUPPLY_FLOW_IMPLEMENTATION_DIGEST;
+/* end B30 experiments */
+
 const bad = (correlationId: string, msg: string, status = 422): never => { throw new HttpException(errorBody(status === 409 ? 'EYE_STA_002' : 'EYE_REQ_001', correlationId, msg), status); };
 /** The predicted inputs' inherited validation, by name (complete()'s rule). */
 const inheritedOf = (r: Row): Row[] => (((r['initial_state'] ?? []) as Row[]).filter((e) => e['kind'] === 'predicted' && e['inherited_validation']).map((e) => ({
@@ -117,7 +133,7 @@ const textOf = (e: unknown): string => (e instanceof HttpException ? String((e.g
 @Injectable()
 export class OrchestrationService implements OnModuleInit {
   private readonly log = new Logger('simulation.orchestration');
-  private executor: ChunkExecutor = processExecutor;
+  private executor: ChunkExecutor = productExecutor; /* B30 experiments: the dispatch (supply-flow@1 → processExecutor, a fabric method → its chunk worker) */
 
   constructor(private readonly moduleRef: ModuleRef, private readonly pipeline: PipelineService, private readonly simulations: SimulationService,
               @Inject(EYE_CONFIG) private readonly cfg: EyeConfig) {}
@@ -133,7 +149,7 @@ export class OrchestrationService implements OnModuleInit {
   /** TEST CONTROL ONLY: replace the chunk executor with a double (a fault, a slow chunk), or restore the product's with null. */
   useExecutorForTests(executor: ChunkExecutor | null): void {
     if (this.cfg['eye.runtime.env'] !== 'test') throw new Error('useExecutorForTests is available only in the test runtime');
-    this.executor = executor ?? processExecutor;
+    this.executor = executor ?? productExecutor; /* B30 experiments */
   }
 
   // ───────────────────────── the routes ─────────────────────────
@@ -157,8 +173,13 @@ export class OrchestrationService implements OnModuleInit {
     const corr = envelope.correlation_id;
     const route = (action: string, type: string, id: string | null) => ({ scope: 'DOMAIN' as const, tenantId, domainId, action, objectType: type, objectId: id });
     const admitted = await this.pipeline.write(envelope, principal, route('simulation.experiment.start', EXPERIMENT_OBJECT_TYPE, experimentId), OrchestrationCapability.write,
-      async (cap) => ({ result: await cap.start({ experimentId, tenantId, domainId, implementationDigest: SUPPLY_FLOW_IMPLEMENTATION_DIGEST, actor: principal.principalId, eventId: newId(), correlationId: corr }),
-                        targetType: EXPERIMENT_OBJECT_TYPE, targetId: experimentId, targetVersion: null, outboxEvent: null }));
+      async (cap) => {
+        /* B30 experiments: the executor's implementation is the experiment's method's (supply-flow@1's pinned digest, or the fabric adapter's) */
+        const declared = await cap.experiment(experimentId);
+        const implementationDigest = experimentImplementationDigest(String(declared?.['method_ref'] ?? 'supply-flow@1'));
+        return { result: await cap.start({ experimentId, tenantId, domainId, implementationDigest, actor: principal.principalId, eventId: newId(), correlationId: corr }),
+                 targetType: EXPERIMENT_OBJECT_TYPE, targetId: experimentId, targetVersion: null, outboxEvent: null };
+      });
     const e = admitted.result;
     if (e['admitted'] !== true) {
       const reasons = (((e['admission'] ?? {}) as Row)['reasons'] ?? []) as string[];
@@ -170,14 +191,18 @@ export class OrchestrationService implements OnModuleInit {
       const reader: Reader = { principal, tenantId, domainId, correlationId: corr, purposeId: envelope.purpose_id ?? 'simulation' };
       const prepared = (await this.pipeline.consequentialRead({ ...envelope, action: 'simulation.read', side_effect_class: 'none', message_id: newId() } as Envelope, principal,
         route('simulation.read', 'SIM', null), SimulationCapability.read, async (cap) => this.simulations.prepareRun(cap, intake, runId))).result;
-      if (prepared.path !== 'supply-flow') bad(corr, `experiment rejected (method): the run of experiment ${experimentId} is not a supply-flow@1 run`);
+      /* B30 experiments: a chunkable fabric method opens through the method path (openMethod), its samples the experiment's paths */
+      const fabric = prepared.path === 'method' && isFabricChunkable(prepared.modelRef);
+      if (prepared.path !== 'supply-flow' && !fabric) bad(corr, `experiment rejected (method): the run of experiment ${experimentId} is neither a supply-flow@1 run nor a chunkable fabric run`);
       const evidence = await this.simulations.retrieveEvidence(reader, prepared.citations, 'simulation.run', { twin_id: intake.twinId, version: String(intake.twinVersion), component: intake.component });
       const verdict = prepared.subject === null ? null : await this.simulations.checkGate({ tenantId, domainId }, prepared.subject);
       if (verdict !== null) this.simulations.refuseViolation(verdict, corr);
       const opened = await this.pipeline.write({ ...envelope, action: 'simulation.run', message_id: newId() } as Envelope, principal, route('simulation.run', 'SIM', runId),
         (tx, action) => ({ run: SimulationCapability.run(tx, action), bind: OrchestrationCapability.bind(tx, action) }),
         async (c, scope) => {
-          const r = await this.simulations.open(c.run, scope, evidence, intake, principal.principalId, corr, runId, verdict);
+          const r = fabric /* B30 experiments */
+            ? await this.simulations.openMethod(c.run, scope, evidence, intake, principal.principalId, corr, runId, verdict, Number(e['paths']))
+            : await this.simulations.open(c.run, scope, evidence, intake, principal.principalId, corr, runId, verdict);
           const bound = await c.bind.bindRun({ experimentId, runId, tenantId, domainId, actor: principal.principalId, eventId: newId(), correlationId: corr });
           return { result: bound, targetType: 'SIM', targetId: runId, targetVersion: '0',
                    outboxEvent: simulationStartedEvent({ runId, opened: r.opened, intake, scenario: r.scenario, shockBasis: r.shockBasis, modelRef: r.modelRef, implementationDigest: r.implementationDigest,
@@ -207,11 +232,18 @@ export class OrchestrationService implements OnModuleInit {
       if (chunks.length > 0) {
         const run = await cap.run(runId);
         if (run === null) bad(correlationId, `experiment rejected (unknown_run): run ${runId} is not readable`, 404);
+        if (isFabricChunkable((run as Row)['model_ref'])) { /* B30 experiments: a fabric experiment's paths */
+          const { paths, indexes } = fabricPathsInOrder(chunks);
+          const o = assembleFabricOutputs(String((run as Row)['model_ref']), String((run as Row)['component']), Number((run as Row)['seed']), paths, ((e as Row)['measures'] ?? []) as Measure[]);
+          outputs = o; digest = digestOfJson(o); done = indexes;
+          resource = this.resourceOf(chunks.reduce((s, x) => s + Number(x.wall_ms ?? 0), 0), paths.length);
+        } else { /* end B30 experiments */
         const c = contractOf(run as Row);
         const { totals, indexes } = pathsInOrder(chunks);
         const o = assembleOutputs(c.params, c.options, c.interventions, totals);
         outputs = o; digest = digestOfJson(o); done = indexes;
         resource = this.resourceOf(chunks.reduce((s, x) => s + Number(x.wall_ms ?? 0), 0), totals.length);
+        } /* B30 experiments */
       }
     }
     return cap.cancel({ experimentId, tenantId: scope.tenantId as string, domainId: scope.domainId as string, reason, doneChunks: done, outputs, outputsDigest: digest, resource, actor, eventId: newId(), correlationId });
@@ -298,6 +330,33 @@ export class OrchestrationService implements OnModuleInit {
         const run = await cap.run(runId);
         if (run === null) throw new Error(`the run ${runId} of experiment ${experimentId} is not readable`);
         const chunks = await cap.chunkPaths(experimentId);
+        /* B30 experiments: a FABRIC experiment's outputs are its paths' projection (fabric-plan.ts); its sensitivity is not swept (the method
+           fabric runs no one-at-a-time sweep, as completeMethod says); its SIM object admitted as a supply-flow experiment's is */
+        if (isFabricChunkable(run['model_ref'])) {
+          const ex = await cap.experiment(experimentId);
+          const { paths } = fabricPathsInOrder(chunks);
+          const outputs = assembleFabricOutputs(String(run['model_ref']), String(run['component']), Number(run['seed']), paths, ((ex?.['measures'] ?? []) as Measure[]));
+          const outputsDigest = digestOfJson(outputs);
+          const resource = this.resourceOf(chunks.reduce((s, x) => s + Number(x.wall_ms ?? 0), 0), paths.length);
+          if (outcome !== 'completed') {
+            return { result: await cap.finish({ experimentId, tenantId: a.tenantId, domainId: a.domainId, outcome, reason, outputs, outputsDigest, sensitivity: null, headerDigest: null, resource,
+                                                actor: a.principal.principalId, eventId: newId(), correlationId: a.correlationId }) };
+          }
+          const outside = run['envelope_state'] === 'outside';
+          const sensitivity = { relative: 0, method: String(run['model_ref']), factors: [] as Array<Record<string, unknown>>, outside_envelope: outside,
+                                note: 'the method fabric runs no one-at-a-time sweep; the experiment\'s spread is its paths\' (the per-measure summary)' };
+          const sim = this.simObjectOf(run, scope, experimentId, outputs['totals'], outputsDigest, sensitivity, a.correlationId);
+          await cap.admitObject(sim.header, sim.payload, sim.headerDigest);
+          const finished = await cap.finish({ experimentId, tenantId: a.tenantId, domainId: a.domainId, outcome, reason, outputs, outputsDigest, sensitivity, headerDigest: sim.headerDigest, resource,
+                                              actor: a.principal.principalId, eventId: newId(), correlationId: a.correlationId });
+          const event = simulationCompletedEvent({ runId, state: 'completed', run, outputsDigest, totals: outputs['totals'], impacts: { control_run_id: null, deltas: null },
+            sensitivity: { relative: 0, outside_envelope: outside, factors: [] },
+            validation: { validation_status: run['validation_status'] === null || run['validation_status'] === undefined ? null : String(run['validation_status']), inherited_validation: [], outside_envelope: outside },
+            resource, simObject: { object_id: runId, version: 1, header_digest: sim.headerDigest }, failure: null, actor: a.principal.principalId, occurredAt: new Date().toISOString() });
+          const payload = event.payload as Row;
+          return { result: finished, outboxEvent: { eventType: event.eventType, payload: { ...payload, cause: { ...(payload['cause'] as Row), action: 'simulation.experiment.execute', experiment_id: experimentId } } } };
+        }
+        /* end B30 experiments */
         const c = contractOf(run);
         const { totals } = pathsInOrder(chunks);
         const outputs = assembleOutputs(c.params, c.options, c.interventions, totals);
