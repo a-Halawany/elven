@@ -186,9 +186,9 @@ export default function SimulationsPage() {
               {scenarios.flatMap((sc) => sc.branches.map((b) => <option key={b.branch_id} value={`${sc.scenario_id}|${b.branch_id}`}>{sc.title} · {b.name} ({b.state}{b.state === 'flipped' ? ': the shock applies' : ': no shock'})</option>))}
             </select></label>
             {branchKey === '' ? <label><input type="checkbox" checked={hypothetical} onChange={(e) => setHypothetical(e.target.checked)} /> apply a HYPOTHETICAL corridor delay (no scenario branch supports it; the run says so)</label> : null}
-            {/* B21 (D3 b): a run whose OWN contract lies outside the behaviour model's operating envelope is admitted only under a twin owner's or the
-                domain administrator's acknowledgement, recorded on the run; the server refuses everyone else and every run without one. */}
-            <label><input type="checkbox" checked={ackEnvelope} onChange={(e) => setAckEnvelope(e.target.checked)} /> acknowledge an envelope breach (a twin owner’s or the domain administrator’s; recorded on the run)</label>
+            {/* B21 (D3 b): a run whose OWN contract lies outside the behaviour model's operating envelope is admitted only under an acknowledgement,
+                recorded on the run; B30 (0103 §EN) narrowed it to a TWIN OWNER (twin.envelope_ack_holder) and such a run is disabled for decision use. */}
+            <label><input type="checkbox" checked={ackEnvelope} onChange={(e) => setAckEnvelope(e.target.checked)} /> acknowledge an envelope breach (a twin owner’s only; recorded on the run; the run is not decision-grade)</label>
             {ackEnvelope ? <label>Reason for the acknowledgement (8+ characters)<input type="text" style={inputStyle} value={ackReason} onChange={(e) => setAckReason(e.target.value)} /></label> : null}
             {/* B21 (L8-I04): a re-run answering a challenge names it; the challenged run becomes the one this run corrects. */}
             <label>Challenge to answer<select style={inputStyle} value={answerChallenge} onChange={(e) => setAnswerChallenge(e.target.value)}>
