@@ -18,8 +18,21 @@ import { sql } from 'kysely';
 import { Phase4Harness } from './phase4-helpers.js';
 import { bootDecisionWorld, decisionCalls, message, status, type DecisionWorld } from './phase6-fixtures.js';
 import type { ObservationController } from '../../src/observation/observation.controller.js';
+import type { CommitmentController } from '../../src/decision/commitments/commitment.controller.js';
 
-let h: Phase4Harness; let w: DecisionWorld; let c: ReturnType<typeof decisionCalls>; let observation: ObservationController;
+let h: Phase4Harness; let w: DecisionWorld; let c: ReturnType<typeof decisionCalls>; let observation: ObservationController; let cm: CommitmentController;
+/** B34 (0090): a package closes only after its commitment's tracker is closed — the owner proposes the closure, its reviewer co-signs. */
+async function closeCommitment(commitmentId: string): Promise<void> {
+  const root = (await sql<{ item: string; owner: string; reviewer: string }>`select item_id::text item, owner_principal_id::text owner, reviewer_principal_id::text reviewer from decision.commitment_items
+                                                               where commitment_id = ${commitmentId}::uuid and parent_item_id is null`.execute(h.su)).rows[0]!;
+  const who = (id: string) => Object.values(w).find((x) => typeof x === 'object' && x !== null && (x as { principalId?: string }).principalId === id) as Parameters<typeof h.req>[0];
+  const T = h.fx.tenantId; const D = h.fx.domainId;   await cm.accept(h.req(who(root.owner), 'decision.commitment.item.accept', 'CMI', root.item, 'decision'), T, D, root.item, { payload: {} });
+  const pc = (await cm.proposeClosure(h.req(who(root.owner), 'decision.commitment.closure.propose', 'CMT', commitmentId, 'decision'), T, D, commitmentId,
+    { payload: { deliverables: [{ title: 'The reroute executed', evidence: 'the shipment record (harness)' }], statement: 'the commitment is delivered (harness)' } }) as { closure: Record<string, unknown> }).closure;
+  const reviewer = who(root.reviewer);
+  // the reviewer is the objective's owner — a fixture principal acting on the manager's session (principalWith): it opens its own to co-sign
+  await cm.cosignClosure(h.req(await h.openSession(reviewer), 'decision.commitment.close', 'CMT', commitmentId, 'decision'), T, D, String(pc['closure_id']), { payload: { commitmentId } });
+}
 let P: { pkg: string; v: number; digest: string; approvalId: string; commitmentId: string };
 let roomId = '';
 let warningId = '';
@@ -38,6 +51,8 @@ beforeAll(async () => {
   c = decisionCalls(h, w);
   const { ObservationController: O } = await import('../../src/observation/observation.controller.js');
   observation = h.app.get(O);
+  const { CommitmentController: Cc } = await import('../../src/decision/commitments/commitment.controller.js');
+  cm = h.app.get(Cc);
   P = await c.committed({ terms: { monitoringConditions: [
     { kind: 'indicator', indicator_id: w.indicatorId, owner: w.owner.principalId, note: 'corridor transits below 40 for five days' },
     { kind: 'warning', branch_id: w.branchId, owner: w.owner.principalId, note: 'the corridor-collapse branch' },
@@ -174,7 +189,9 @@ describe('P6-M5 · F6 — the outcome, reconciled against the approved choice; c
     expect(await status(c.close(P.pkg, 'The reroute held the line but cost three days; next time reroute a week earlier.', w.executive))).toBe(403);
     expect(await status(c.close(P.pkg, 'short'))).toBe(422);
     const other = await c.committed();
+    await closeCommitment(other.commitmentId);
     expect(await message(c.close(other.pkg, 'Closing without any outcome recorded.'))).toMatch(/no outcome is recorded/);
+    await closeCommitment(P.commitmentId);
     const r = (await c.close(P.pkg, 'The reroute held the line but cost three days; next time reroute a week earlier.')).closure;
     expect(r).toMatchObject({ state: 'closed', outcomesRecorded: 1, criteria: 1 });
     expect(await packageState(P.pkg)).toBe('closed');

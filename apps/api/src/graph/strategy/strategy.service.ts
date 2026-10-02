@@ -52,6 +52,8 @@ export interface StrategyIntake {
   parentObjectiveId: string | null;
   restsOn: RestsOn[];
   metrics: Record<string, unknown>;
+  /** B34 (0090) exposures: an RSK's polarity on its canonical object (RSK@v1's validated optional property); null when not stated. */
+  polarity?: 'risk' | 'opportunity' | null;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -94,12 +96,18 @@ export function validateStrategy(
   }
   const parent = m.parentObjectiveId ?? null;
   if (parent !== null && !UUID.test(parent)) bad('parent_objective_id must be a uuid');
+  /* B34 (0090) exposures: the polarity is an RSK's alone, risk or opportunity */
+  const polarity = m.polarity ?? null;
+  if (polarity !== null && m.objectType !== 'RSK') bad('polarity is stated on an RSK only');
+  if (polarity !== null && polarity !== 'risk' && polarity !== 'opportunity') bad("polarity must be 'risk' or 'opportunity'");
+  /* end B34 exposures */
   return {
     objectType: m.objectType as StrategyType,
     title: m.title as string, statement: m.statement as string,
     status: status as StrategyIntake['status'],
     horizon: m.horizon ?? null, parentObjectiveId: parent,
     restsOn: rests, metrics: m.metrics ?? {},
+    ...(polarity === null ? {} : { polarity }),
   };
 }
 
@@ -142,6 +150,8 @@ export class StrategyService {
       },
       rests_on: m.restsOn.map((r) => ({ kind: r.kind, id: r.id, rationale: r.rationale })),
       metrics: m.metrics,
+      // B34 (0090) exposures: written only when stated (the schema's enum admits no null)
+      ...(m.polarity === undefined || m.polarity === null ? {} : { polarity: m.polarity }),
     };
 
     const header: CanonicalHeader = {

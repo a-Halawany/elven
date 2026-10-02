@@ -632,6 +632,10 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
      caller's own malformed candidate (22023) → 422; no earlier row starts with the phrase. */
   { match: /^warning candidate rejected/i, status: 422, code: 'EYE_REQ_001' },
   /* end B28 integrator */
+  /* B34 (0090 §I): the assumption verified by a person — `assumption verification rejected` (anchored; no earlier row reads it) */
+  { match: /^assumption verification rejected: (recorded by the acting principal|a named, active member)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^assumption verification rejected/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B34 §I */
   /* B32 (0089) graph — the Strategy Graph's alignment, measure, authority and owner ports (0089 §G): `strategy alignment rejected`, `strategy
      measure rejected`, `strategy authority rejected`, `strategy owner rejected` — anchored phrases no earlier row matches, and their texts carry
      no phrase an unanchored earlier row matches (the refusal unit test runs every text through the mapper). Every refusal carries a CLASS IN
@@ -669,6 +673,66 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   { match: /^exposure rejected \((duplicate|not_active|no_taxonomy)\)|^exposure (assessment|acceptance|control|routing|hypothesis|sponsorship|response|closure) rejected \((stale_version|stale_digest|closed|state|already_accepted|superseded|already_sponsored|agent_estimate|no_breach)\)|^exposure assessment rejected: (version .* (is immutable|does not move)|an assessment version is never deleted)|^exposure aggregation rejected \(invalid_members\)|^risk (taxonomy|appetite) rejected \((stale_version|no_taxonomy)\)/i, status: 409, code: 'EYE_STA_002' },
   { match: /^(exposure|exposure (assessment|acceptance|control|routing|hypothesis|sponsorship|response|closure|correlation|aggregation|estimate)|risk (taxonomy|appetite)) rejected/i, status: 422, code: 'EYE_REQ_001' },
   /* end B32 exposures */
+  /* B34 (0090) workflow — the durable workflow engine, the human tasks (the prelude's service core included: its `human task rejected (…)` and
+     `workflow timer rejected` texts are mapped here too) and collaboration (0090 §W): `workflow definition rejected`, `workflow rejected`,
+     `workflow drill rejected`, `workflow timer rejected`, `human task rejected`, `collaboration rejected`, `collaboration grant rejected` —
+     anchored phrases no earlier row starts with (no earlier row reads `^workflow`, `^human task` or `^collaboration`; the texts carry no phrase an
+     unanchored earlier row matches — the unit test runs every text through the mapper). B9's order: the standing 403 (the acting principal;
+     `(not_assignee)`; a collaboration's standing — not a participant, not the owner, an observer, no live grant, the purpose, the invitee, the
+     token; a timer or an instance is never deleted); the absences 404 (`(unknown_*)`); the record's state 409 (a lease held, a stale seq, a
+     stopped instance, a transition the pinned definition does not permit, a changed pin, an unchanged definition, a timer already fired or
+     cancelled or not yet due, a closed task, a task completed through its OWNING action, a closed workspace, a duplicate, a grant's state);
+     the caller's own request 422 (everything else). B34-F1 (0091): the provisioning's `(separation)` (the requester provisioning its own
+     request) and `(provisioner)` answer 403; `(not_reserved)` and `(identity)` (what the identity authority wrote does not verify) 409. */
+  { match: /^(workflow definition|workflow|workflow drill|workflow timer|human task|collaboration|collaboration grant) rejected: recorded by the acting principal|^(workflow|workflow timer) rejected: an? (instance|timer) is never deleted|^human task rejected \(not_assignee\)|^collaboration rejected \((not_participant|not_owner|not_member|observer|no_grant|grant_revoked|grant_lapsed|grant_expired|grant_not_accepted|purpose|not_assignee)\)|^collaboration grant rejected \((not_owner|not_invitee|token|purpose|separation|provisioner)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^(workflow|workflow drill|workflow timer|human task|collaboration|collaboration grant) rejected \(unknown_(instance|definition|timer|task|workspace|thread|artifact|grant)\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^workflow rejected \((leased|stale_seq|not_running|no_transition|pinned)\)|^workflow definition rejected \(unchanged\)|^workflow timer rejected(: timer \S+ already (fired|cancelled)| \((fired|cancelled|not_due)\))|^human task rejected \((closed|owning_action)\)|^collaboration rejected \((closed|task_closed|duplicate)\)|^collaboration grant rejected \((state|duplicate|not_reserved|identity)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^(workflow definition|workflow|workflow drill|workflow timer|human task|collaboration|collaboration grant) rejected/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B34 workflow */
+  /* B34 (0090) exposures — the remainder's ports: `risk taxonomy activation rejected`, `exposure (scenario link|outcome review|owner
+     resolution) rejected` — anchored phrases no earlier row matches (B32's rows need `exposure rejected`, `exposure <one of their nouns>
+     rejected` or `risk (taxonomy|appetite) rejected` directly; none of these texts carries them). The B32 ports this part re-declares keep
+     B32's phrases: a HELD exposure answers `exposure (acceptance|sponsorship) rejected (state)` (409 by B32's row) and a contradicted
+     canonical polarity `exposure rejected (polarity)` (422 by B32's row). B9's order: 403, 404, 409, 422. */
+  { match: /^(risk taxonomy activation|exposure (scenario link|outcome review|owner resolution)) rejected: recorded by the acting principal|^risk taxonomy activation rejected: a taxonomy is activated by a named|^risk taxonomy activation rejected \(separation\)|^exposure scenario link rejected: a link is a named|^exposure outcome review rejected: an outcome is reviewed by|^exposure owner resolution rejected: an owner is resolved by/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^risk taxonomy activation rejected: no such taxonomy version|^exposure (scenario link|outcome review|owner resolution) rejected: no such (exposure|scenario|response)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^risk taxonomy activation rejected \((already_active|superseded)\)|^exposure (scenario link|outcome review|owner resolution) rejected \((closed|state|duplicate|no_outcome|already_reviewed|not_needed)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^(risk taxonomy activation|exposure (scenario link|outcome review|owner resolution)) rejected/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B34 exposures */
+  /* B34 (0090) attention — the act transition's ports (0090 §A4): `attention act rejected`, anchored — no earlier row starts with it (B22's rows
+     read `^attention (policy|item) rejected`, B24's `^attention (tick|delivery|rebalance|suppression|delegation|disposition|queue evaluation)
+     rejected`; the unanchored TWIN/INTELLIGENCE rows name phrases these texts do not carry). B9's order: the standing 403 (the acting
+     principal, a member, the item's people, the launcher settles), the absences 404, the record's state 409, the caller's own request 422. */
+  { match: /^attention act rejected: (launched|settled) by the acting principal|^attention act rejected: an act is a named, active member|^attention act rejected: item .* is routed to|^attention act rejected: an act is settled by the member who launched it/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^attention act rejected: no such (item|act) in this domain/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^attention act rejected \((not_live|in_flight|already_acted|settled|act_id_reused)\)|^attention act rejected: act .* is \w+ and settles once/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^attention act rejected/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B34 attention */
+  /* B34 (0090) gates — the human gate's ports (0090 §G): `gate rejected`, `override rejected`, `override review rejected`, `delegation (end )?rejected`,
+     `board reservation rejected`, `preview rejected`, `control rejected`, the typed conditions of `approval rejected (conditions|condition_ref|delegation|board)`,
+     and the commitment's new classes `commitment rejected (conditions_hold|not_ready|no_preview|override_self|board_quorum)` — anchored phrases no earlier
+     row matches (B24's `^commitment rejected \(source_impact\)` names its own class; no earlier row starts with these families). B9's order: the standing
+     403 (the acting principal, a named member, the authority, the independence, the separation, the board), the absences 404, the record's state 409 (a
+     version not open for the act, a stale information package or digest, nothing to override, a reviewed override, a duplicate or ended delegation, a
+     reserved board, the held conditions, no fresh decision-ready, no preview), the caller's own request 422. */
+  { match: /^(gate|override|override review|delegation|delegation end|board reservation|preview|control) rejected \((authority|independence|separation)\)|^(override|delegation) rejected \(board\)|^(gate|override|override review|delegation|delegation end|board reservation|preview|control) rejected: (a gate act is the acting|only a named, active member|an override is the acting|the review is the acting|a delegation is the delegator|the end is the delegator|only the delegator|the reservation is the acting|a preview is the committing|a control decision is the acting)|^approval rejected \(board\)|^commitment rejected \((override_self|board_quorum)\)|^(approval conditions|information package|gate status|controls) rejected: outside/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^(gate|override|override review|delegation|delegation end|board reservation|preview|control) rejected: no such|^approval rejected \(condition_ref\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^gate rejected \((state|stale_package)\)|^override rejected \((state|nothing_to_override)\)|^override review rejected \((reviewed|normal)\)|^delegation rejected \((state|duplicate)\)|^delegation end rejected \(ended\)|^board reservation rejected \((reserved|state)\)|^preview rejected \(state\)|^preview rejected: the digest previewed|^commitment rejected \((conditions_hold|not_ready|no_preview)\)|^approval rejected \(delegation\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^(gate|override|override review|delegation|delegation end|board reservation|preview|control) rejected|^approval rejected \(conditions\)/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B34 gates */
+  /* B34 (0090) commitments — the tracker's and the execution gateway's ports (0090 §C): `commitment (item|exception|closure) rejected`,
+     `execution (target|handoff|issue|attempt|compensation|reconcile) rejected`, `objective revision rejected` and the package closure's
+     `closure rejected (commitment_open)` — anchored phrases no earlier row matches (no earlier row starts with `commitment item`,
+     `commitment exception`, `commitment closure`, `execution ` or `objective revision`; B24's `^commitment rejected \(source_impact\)` needs
+     `commitment rejected`; no earlier row names `closure rejected (`), and every text carries a CLASS IN PARENTHESES. B9's order: the
+     standing 403 (the acting principal, not the owner / party / reviewer / compensation owner, a self co-sign, the issuer's authority, class,
+     bound action and separation, not the objective's authority), the absences 404 (`unknown_*`), the record's state 409, the caller's own
+     request 422 (everything else — the not_synthetic target among them: an owner decision, never an administrator's). */
+  { match: /^(commitment (item|exception|closure)|execution (target|handoff|issue|attempt|compensation|reconcile)|objective revision) rejected \((actor|not_owner|not_party|not_reviewer|self_cosign|not_compensation_owner|authority|class|bound_action|separation|not_authority)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^(commitment (item|exception|closure)|execution (target|handoff|issue|attempt|compensation|reconcile)|objective revision) rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^(commitment (item|exception|closure)|execution (target|handoff|issue|attempt|compensation|reconcile)|objective revision) rejected \((state|closed|root|duplicate|retired|target_retired|stale_digest|stale_version|open_exception|unreconciled_handoff|residual_undisposed|not_ready|live_compensation|compensation_state|inactive|unchanged|no_reviewer|attempt|canonical|commitment)\)|^closure rejected \(commitment_open\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^(commitment (item|exception|closure)|execution (target|handoff|issue|attempt|compensation|reconcile)|objective revision) rejected/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B34 commitments */
 ];
 
 export function asObservationRefusal(e: unknown, correlationId: string): HttpException | null {

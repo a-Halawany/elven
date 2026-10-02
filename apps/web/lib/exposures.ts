@@ -32,6 +32,7 @@ export interface ExposureRow {
   review_every_days: number | null; state: ExposureState; current_version: number; accepted_version: number | null; accepted_at: string | null; routed_candidate_id: string | null;
   title: string | null; statement: string | null; residual?: Residual | null; breach: boolean | null; gaps: string[]; has_agent_proposal: boolean;
   dims?: Record<string, unknown>; priority?: { key: unknown[]; explanation: string; rule: string } | null; closure?: Record<string, unknown> | null;
+  /* B34 (0090) */ detections?: Detection[];
 }
 export interface VersionRow {
   version: number; mechanism: string; probability_low: string | number | null; probability_high: string | number | null; plausibility: 'low' | 'medium' | 'high' | null;
@@ -44,6 +45,7 @@ export interface Register {
   risks: ExposureRow[]; opportunities: ExposureRow[]; taxonomy: { version: number; categories: Array<{ key: string; label: string; polarity: string; parent?: string }> } | null;
   appetites: Array<{ category_key: string; version: number; threshold: string | number; unit: string; statement: string; approved_by: string; approved_at: string }>;
   aggregations: Aggregation[]; counts: { risks: number; opportunities: number; with_gaps: number; outside_appetite: number }; rule: string; at: string;
+  /* B34 (0090) */ concentration?: Array<{ polarity: Polarity; unit: string; dimension: 'category' | 'driver'; key: string; share: number | string; members: number; of: number; concentrated: boolean; rule: string }>;
 }
 export interface Aggregation {
   aggregation_id: string; polarity: Polarity; unit: string; method: (typeof AGGREGATION_METHODS)[number]; total_low?: string | number; total_high?: string | number;
@@ -57,9 +59,31 @@ export interface ExposureDetail {
   controls: Array<{ control_id: string; title: string; control_kind: string; effectiveness_low: string | number; effectiveness_high: string | number; owner_principal_id: string }>;
   residuals: Residual[]; hypotheses: Array<{ version: number; statement: string; falsifier: string; value_low: string | number; value_high: string | number; unit: string; timing: Record<string, unknown>; required_capabilities: string[] }>;
   correlations: { declared: Array<Record<string, unknown>>; estimated: Array<Record<string, unknown>> };
-  responses: Array<{ response_id: string; response_kind: ResponseKind; decision_object_id: string; package_id: string; package: Record<string, unknown> | null; outcomes: Array<Record<string, unknown>> }>;
+  responses: Array<{ response_id: string; response_kind: ResponseKind; decision_object_id: string; package_id: string; package: Record<string, unknown> | null; outcomes: Array<Record<string, unknown>>;
+    /* B34 (0090) */ monitor?: { state: string; owed: string | null }; reviews?: OutcomeReview[] }>;
   candidate: Record<string, unknown> | null; warning: Record<string, unknown> | null; at: string;
+  /* B34 (0090) */
+  scenarios?: Array<{ link_id: string; scenario_id: string; relation: string; rationale: string; scenario_title: string | null; scenario_state: string | null }>;
+  detections?: Detection[]; reviews?: OutcomeReview[]; signatures?: { accepted: Signature | null; sponsored: Signature | null }; canonical_polarity?: Polarity | null;
 }
+/* ───────────── B34 (0090) exposures: the detections, the outcome loop, the signatures ───────────── */
+export interface Detection { kind: string; detail: string; resolvers?: Array<{ principal_id: string; name: string | null }>; [k: string]: unknown }
+export interface OutcomeReview { review_id: string; response_id: string; package_id: string; effect: string; residual_verdict: string; lesson: string; reviewed_by: string; reviewed_at: string; outcomes: Array<Record<string, unknown>> }
+export interface Signature { act: 'accept' | 'sponsor'; version: number; digest: string | null; signer: string; at: string | null }
+export const OUTCOME_EFFECTS = ['effective', 'partly_effective', 'ineffective', 'inconclusive'] as const;
+export const RESIDUAL_VERDICTS = ['stands', 'reassess', 'close'] as const;
+export const SCENARIO_RELATIONS = ['materializes_in', 'stresses', 'relieves'] as const;
+/** A signature in words: the act, the exact digest (abbreviated, the full one in the title), the named signer, the instant. */
+export function signatureLine(sig: Signature | null | undefined, name: (id: string) => string = (id) => id): string {
+  if (sig === null || sig === undefined) return 'not signed';
+  return `✍ ${sig.act === 'accept' ? 'accepted' : 'sponsored'} version ${sig.version} · digest ${String(sig.digest ?? '').slice(0, 12)}… · by ${name(sig.signer)}${sig.at ? ` · ${sig.at}` : ''}`;
+}
+/** A detection in words (glyph + text): the rule's own words, never a score. */
+export function detectionLine(d: Detection): string {
+  const glyph: Record<string, string> = { false_precision: '≈', held: '⛔', possible_duplicate: '⧉', time_expired: '⌛', outcome_unreviewed: '↺', owner_unresolved: '⚑', options_unclassified: '?' };
+  return `${glyph[d.kind] ?? '•'} ${d.kind.replace(/_/g, ' ')} — ${d.detail}`;
+}
+/* end B34 */
 export interface Preview {
   version: number; digest: string; state: string; assessed_kind: 'human' | 'agent'; acceptable: boolean; would_supersede: number[]; residual: Residual & { appetite: Record<string, unknown> | null };
   consequence: string; eligible: { owner: string; rule: string };
@@ -122,7 +146,8 @@ export const exposures = {
   list: (s: Scope) => p<Register & { receipt: Receipt }>(s, '/exposures/list', 'prediction.exposure.read'),
   get: (s: Scope, id: string) => p<ExposureDetail & { receipt: Receipt }>(s, `/exposures/${id}/get`, 'prediction.exposure.read', {}, id),
   priority: (s: Scope) => p<{ priority: { rule: string; groups: Array<{ group: string; items: Array<ExposureRow & { position: number }> }> }; receipt: Receipt }>(s, '/exposures/priority', 'prediction.exposure.read'),
-  taxonomy: (s: Scope) => p<{ taxonomy: { current: Register['taxonomy']; versions: unknown[]; appetites: Register['appetites'] }; receipt: Receipt }>(s, '/exposures/taxonomy/get', 'prediction.exposure.read'),
+  taxonomy: (s: Scope) => p<{ taxonomy: { current: Register['taxonomy']; versions: unknown[]; appetites: Register['appetites'];
+    /* B34 (0090) */ pending: Register['taxonomy'] | null; activation: Record<string, unknown> | null; rule: string }; receipt: Receipt }>(s, '/exposures/taxonomy/get', 'prediction.exposure.read'),
   register: (s: Scope, payload: { strategyObjectId: string; polarity: Polarity; category: string; owner: string; reviewEveryDays?: number }) =>
     p<{ exposure: Record<string, unknown>; receipt: Receipt }>(s, '/exposures/register', 'prediction.exposure.register', payload, payload.strategyObjectId),
   assess: (s: Scope, id: string, expectedVersion: number, assessment: Record<string, unknown>) =>
@@ -143,4 +168,14 @@ export const exposures = {
   close: (s: Scope, id: string, criterion: string, reason: string) =>
     p<{ closure: Record<string, unknown>; receipt: Receipt }>(s, `/exposures/${id}/close`, 'prediction.exposure.close', { criterion, reason }, id),
   aggregate: (s: Scope, members: string[]) => p<{ aggregation: Aggregation; receipt: Receipt }>(s, '/exposures/aggregate', 'prediction.exposure.aggregate', { members }),
+  /* B34 (0090) exposures */
+  activateTaxonomy: (s: Scope, version: number, reason: string) =>
+    p<{ activation: Record<string, unknown>; receipt: Receipt }>(s, '/exposures/taxonomy/activate', 'prediction.exposure.taxonomy.activate', { version, reason }),
+  linkScenario: (s: Scope, id: string, payload: { scenarioId: string; relation: (typeof SCENARIO_RELATIONS)[number]; rationale: string }) =>
+    p<{ link: Record<string, unknown>; receipt: Receipt }>(s, `/exposures/${id}/scenarios/link`, 'prediction.exposure.scenario.link', payload, id),
+  reviewOutcome: (s: Scope, id: string, payload: { responseId: string; effect: (typeof OUTCOME_EFFECTS)[number]; residualVerdict: (typeof RESIDUAL_VERDICTS)[number]; lesson: string }) =>
+    p<{ review: Record<string, unknown>; routing: Record<string, unknown>; receipt: Receipt }>(s, `/exposures/${id}/outcomes/review`, 'prediction.exposure.outcome.review', payload, id),
+  resolveOwner: (s: Scope, id: string, owner: string, reason: string) =>
+    p<{ resolution: Record<string, unknown>; receipt: Receipt }>(s, `/exposures/${id}/owner/resolve`, 'prediction.exposure.owner.resolve', { owner, reason }, id),
+  /* end B34 */
 };

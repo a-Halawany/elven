@@ -59,6 +59,7 @@ type Row = Record<string, unknown>;
 let h: Phase4Harness; let su: AnyDb; let w: DecisionWorld;
 let ex: ExposuresController; let exec: ExecutiveController; let prediction: PredictionController;
 let regOwner: AuthenticatedPrincipal; let otherOwner: AuthenticatedPrincipal; let sourcingOwner: AuthenticatedPrincipal; let brandt: AuthenticatedPrincipal;
+let domainAdmin: AuthenticatedPrincipal; /* B34 (0090): the taxonomy's activation */
 let analyst: AuthenticatedPrincipal; let executive: AuthenticatedPrincipal; let forecastOwner: AuthenticatedPrincipal; let tenantAdmin: AuthenticatedPrincipal; let outsider: AuthenticatedPrincipal;
 const T = () => h.fx.tenantId; const D = () => h.fx.domainId;
 const arr = (v: unknown): Row[] => (Array.isArray(v) ? (v as Row[]) : []);
@@ -148,6 +149,7 @@ beforeAll(async () => {
   brandt = await h.humanWithSession(['opportunity_sponsor', 'strategy_owner', 'decision_owner'], 'b32-l-brandt');
   analyst = await h.humanWithSession(['domain_analyst'], 'b32-analyst');
   executive = await h.humanWithSession(['executive'], 'b32-executive');
+  domainAdmin = await h.humanWithSession(['domain_admin'], 'b32-domain-admin');
   forecastOwner = await h.humanWithSession(['forecast_owner'], 'b32-forecast-owner');
   tenantAdmin = await h.humanWithSession(['tenant_admin'], 'b32-tenant-admin', 'TENANT');
   outsider = await h.humanWithSession(['collection_manager'], 'b32-collector');
@@ -165,6 +167,8 @@ describe('B32 · risk and opportunity intelligence (0089 §R; F-P4-13)', () => {
     await refused(publishTaxonomy(executive, { expectedVersion: 0, categories: [...categories, { key: 'market', label: 'Market again', polarity: 'risk' }], reason: 'the first taxonomy of the domain' }), /risk taxonomy rejected: the category key market is named twice/, 422);
     const t = (await publishTaxonomy(executive, { expectedVersion: 0, categories, reason: 'the first taxonomy of the domain (B32 fixture)' })).taxonomy;
     expect(t).toMatchObject({ version: 1, supersedes: null });
+    // B34 (0090): a published version is in force once a second named member activates it
+    await ex.activateTaxonomy(h.req(domainAdmin, 'prediction.exposure.taxonomy.activate', 'RSK', null, 'prediction'), T(), D(), { payload: { version: 1, reason: 'the first taxonomy reviewed (B34 activation step)' } });
     await refused(publishTaxonomy(executive, { expectedVersion: 0, categories, reason: 'a second publication on a stale read' }), /risk taxonomy rejected \(stale_version\)/, 409);
     await refused(approveAppetite(executive, { category: 'unknown', expectedVersion: 0, threshold: 1, unit: 'EUR', statement: 'no such category exists', reason: 'the first appetite' }), /no category unknown/, 404);
     await refused(approveAppetite(executive, { category: 'sourcing', expectedVersion: 0, threshold: 1, unit: 'EUR', statement: 'an opportunity category', reason: 'the first appetite' }), /files opportunities/, 422);

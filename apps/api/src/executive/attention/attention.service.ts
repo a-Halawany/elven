@@ -21,7 +21,8 @@ import type { OutboxRow } from '../../graph/subscriptions/change-events.js';
 
 type Row = Record<string, unknown>;
 export const SIGNAL_CLASSES = ['forecast.unfit', 'scenario.incoherent', 'warning.raised', 'source.coverage_loss', 'proposal.review',
-  /* B23 (0084) attention: L10-I02 (MaterialChangeRaised) and L10-I03 (ReviewConvened) */ 'decision.material_change', 'review.convened' /* end B23 attention */] as const;
+  /* B23 (0084) attention: L10-I02 (MaterialChangeRaised) and L10-I03 (ReviewConvened) */ 'decision.material_change', 'review.convened' /* end B23 attention */,
+  /* B34 (0090 §0) */ 'opportunity.raised', 'health.change', 'commitment.due', 'commitment.breach' /* end B34 */] as const;
 export type SignalClass = (typeof SIGNAL_CLASSES)[number];
 export const ITEM_STATES = ['open', 'escalated', 'unrouted', 'acknowledged', 'suppressed', 'deprioritized', 'closed'] as const;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

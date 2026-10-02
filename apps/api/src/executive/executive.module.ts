@@ -40,9 +40,24 @@ import { AttentionGovernanceService } from './attention/governance.service.js';
 /* B32 (0089) health */
 import { HealthService } from './health/health.service.js';
 /* end B32 health */
+/* B34 (0090) workflow: the durable workflow engine, the human tasks' routes, the collaboration workspaces and their external collaborators,
+   and the workflow timers' firing (the attention tick's steps workflow-timers 20 and collab-grant-expiry 22) */
+import { WorkflowController } from './workflow/workflow.controller.js';
+import { WorkflowService } from './workflow/workflow.service.js';
+import { CollabService } from './workflow/collab.service.js';
+import { WorkflowTimerRegistry, WorkflowTimerSteps } from './workflow/timers.js';
+/* end B34 workflow */
+/* B34-F1 (0091): the external collaborator's identity, on the identity authority */
+import { CollabIdentityService } from './workflow/collab-identity.service.js';
+/* end B34-F1 */
+/* B34 (0090) attention: the act transition and the SYNTHETIC email / sms / teams adapters (local sinks only) */
+import { AttentionActService } from './attention/act.service.js';
+import { EmailChannel } from './attention/delivery/email.channel.js';
+import { SmsChannel, TeamsChannel } from './attention/delivery/webhook.channel.js';
+/* end B34 attention */
 @Module({
   imports: [PipelineModule, IdentityModule, ObservationModule, DecisionModule, GraphModule],
-  controllers: [ExecutiveController],
+  controllers: [ExecutiveController, /* B34 (0090) workflow */ WorkflowController /* end B34 workflow */],
   providers: [RoomService, BriefingService, AgentsService, AgentWorkerService, DecisionAgentSessionService, RequestsService, AttentionService,
     // B22 (0083): the four consumers of L1-I03, L1-I04, L2-I02 and the attention router (the graph module's dispatcher registers them).
     ObservationsConsumer, SourceHealthConsumer, ProposalsConsumer, AttentionConsumer,
@@ -51,8 +66,12 @@ import { HealthService } from './health/health.service.js';
     /* B24 (0086) timer */ AttentionTimerService, DeliveryService, InAppChannel, DemoMailboxChannel /* end B24 timer */,
     /* B24 (0086) materiality */ AttentionMaterialityService, AttentionRebalanceStep /* end B24 materiality */,
     /* B24 (0086) governance: suppression approval, item delegation, disposition, queue evaluation (0086 §G) */ AttentionGovernanceService /* end B24 governance */,
-    /* B32 (0089) health: the decomposable Strategic Health Score (0089 §H) */ HealthService /* end B32 health */],
+    /* B32 (0089) health: the decomposable Strategic Health Score (0089 §H) */ HealthService /* end B32 health */,
+    /* B34 (0090) workflow */ WorkflowService, CollabService, WorkflowTimerRegistry, WorkflowTimerSteps /* end B34 workflow */,
+    /* B34-F1 (0091) */ CollabIdentityService /* end B34-F1 */,
+    /* B34 (0090) attention */ AttentionActService, EmailChannel, SmsChannel, TeamsChannel /* end B34 attention */],
   exports: [RoomService, BriefingService, AgentsService, AgentWorkerService, RequestsService, AttentionService, AttentionTickRegistry,
-    /* B24 (0086) timer */ AttentionTimerService, DeliveryService /* end B24 timer */],
+    /* B24 (0086) timer */ AttentionTimerService, DeliveryService /* end B24 timer */,
+    /* B34 (0090) workflow: the timer registry (the commitments and gates parts register their kinds' handlers) */ WorkflowTimerRegistry, CollabService /* end B34 workflow */],
 })
 export class ExecutiveModule {}

@@ -9,11 +9,19 @@
  * (the owner — the exact version by its digest), add a control, sponsor (an opportunity sponsor — the evaluation it opens), open a response
  * decision, close. An AGENT's version is shown as an estimate, never as an input. What a control offers is courtesy; what the server refuses
  * is shown verbatim.
+ *
+ * B34 (0090 part exposures): the ACTIVE CONTEXT (tenant, domain, purpose, who is signed in) above everything; the TAXONOMY in force and the
+ * one pending its activation by a second named member; the SIGNATURES of the acceptance and the sponsorship (the exact digest and the
+ * signer); the DETECTIONS in words (false precision, a hold, a duplicate, an expired window, an unreviewed outcome, an unresolved owner,
+ * unclassified options); the OWNER RESOLUTION route (the named resolvers, the domain administrator's re-owning act); the SCENARIOS linked;
+ * the OUTCOME LOOP (each response monitored, its outcome reviewed against the exposure — effect, residual verdict, lesson); the
+ * portfolio's CONCENTRATION.
  */
 import { useEffect, useState } from 'react';
 import { useShell } from '../layout';
 import { exposures, POLARITY_LABEL, STATE_LABEL, assessorLine, gapLine, likelihoodLine, methodLine, rangeLine, residualLine,
-         type Aggregation, type ExposureDetail, type ExposureRow, type Polarity, type Preview, type Register, type ResponseKind } from '../../../lib/exposures';
+         type Aggregation, type ExposureDetail, type ExposureRow, type Polarity, type Preview, type Register, type ResponseKind,
+         /* B34 (0090) */ OUTCOME_EFFECTS, RESIDUAL_VERDICTS, SCENARIO_RELATIONS, detectionLine, signatureLine } from '../../../lib/exposures';
 import { Empty, LiveStatus, Mono, cardStyle, DefinitionRow, UnknownNote, GovernedButton, fmtInstant } from '../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui';
 
@@ -41,11 +49,22 @@ export default function ExposuresPage() {
   const [problem, setProblem] = useState<string | null>(null);
   const [last, setLast] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<R>(null);
+  /* B34 (0090) */
+  type Tax = { current: { version: number } | null; pending: { version: number; published_by?: string } | null; activation: Record<string, unknown> | null; rule: string };
+  const [tax, setTax] = useState<Tax | null>(null);
+  const [taxReason, setTaxReason] = useState('');
+  const [reown, setReown] = useState({ owner: '', reason: '' });
+  const [scn, setScn] = useState({ id: '', relation: 'materializes_in' as (typeof SCENARIO_RELATIONS)[number], rationale: '' });
+  const [rv, setRv] = useState({ effect: 'effective' as (typeof OUTCOME_EFFECTS)[number], verdict: 'stands' as (typeof RESIDUAL_VERDICTS)[number], lesson: '' });
+  const mayActivate = holds('executive') || holds('domain_admin') || holds('platform_admin');
+  const mayResolve = holds('domain_admin') || holds('platform_admin');
+  /* end B34 */
 
   const load = async () => {
-    const [l, p] = await Promise.all([exposures.list(scope), exposures.priority(scope)]);
+    const [l, p, t] = await Promise.all([exposures.list(scope), exposures.priority(scope), exposures.taxonomy(scope)]);
     if (!l.ok || l.data === undefined) { setProblem(l.error?.message ?? 'the register could not be read'); return; }
     setReg(l.data);
+    if (t.ok && t.data !== undefined) setTax(t.data.taxonomy as unknown as Tax);   // B34 (0090): in force and pending
     if (p.ok && p.data !== undefined) setPrio(p.data.priority.groups);
   };
   const reopen = async (id: string) => {
@@ -101,8 +120,33 @@ export default function ExposuresPage() {
         {reg.counts.risks} risk(s) · {reg.counts.opportunities} opportunity(ies) · {reg.counts.with_gaps} incomplete · {reg.counts.outside_appetite} outside appetite ·
         taxonomy {reg.taxonomy === null ? 'none published' : `v${reg.taxonomy.version}`} · as of {fmtInstant(reg.at)}
       </p>
+      {/* B34 (0090): THE ACTIVE CONTEXT — where every act on this page is recorded, under which purpose, by whom */}
+      <p aria-label="active context" style={{ fontSize: 'var(--eye-type-label-sm)' }}>
+        Active context — tenant <Mono>{scope.tenantId}</Mono> · domain <Mono>{scope.domainId}</Mono> · purpose <Mono>prediction</Mono> · signed in as <Mono>{me.principalId}</Mono>
+      </p>
       {problem === null ? null : <LiveStatus assertive>{problem}</LiveStatus>}
       <UnknownNote>{reg.rule}</UnknownNote>
+
+      {/* B34 (0090): THE TAXONOMY in force and the one pending its activation by a second named member */}
+      <section aria-labelledby="tax-h" style={{ ...cardStyle, marginBlockEnd: 'var(--eye-space-16)' }}>
+        <h2 id="tax-h" style={{ fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 }}>Taxonomy</h2>
+        <p>{tax?.current ? `in force: version ${tax.current.version}` : 'no taxonomy in force — nothing can be registered'}
+          {tax?.activation ? <> · activated by <Mono>{short(tax.activation['activated_by'])}</Mono>{tax.activation['grandfathered'] === true ? ' (carried from before the activation step)' : ''}</> : null}</p>
+        {tax?.pending ? (
+          <>
+            <p>version {tax.pending.version} is PUBLISHED and PENDING its activation — a second named member activates it; its publisher never does.</p>
+            {mayActivate ? (
+              <>
+                <label htmlFor="tax-reason">Activation reason (8..2000 characters)</label>
+                <input id="tax-reason" style={inputStyle} value={taxReason} onChange={(e) => setTaxReason(e.target.value)} />
+                <GovernedButton label={`Activate version ${tax.pending.version}`} pendingLabel="activating" variant="critical"
+                  onRun={() => act(`taxonomy version ${tax.pending!.version} is in force`, () => exposures.activateTaxonomy(scope, tax.pending!.version, taxReason))} />
+              </>
+            ) : null}
+          </>
+        ) : null}
+        {tax ? <UnknownNote>{tax.rule}</UnknownNote> : null}
+      </section>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--eye-space-16)' }}>
         {column('risk', reg.risks)}
@@ -123,6 +167,17 @@ export default function ExposuresPage() {
           </>
         )}
       </section>
+
+      {/* B34 (0090): THE CONCENTRATION — which category or shared driver carries the accepted residual (within polarity and unit) */}
+      {(reg.concentration ?? []).length === 0 ? null : (
+        <section aria-labelledby="conc-h" style={{ ...cardStyle, marginBlockStart: 'var(--eye-space-16)' }}>
+          <h2 id="conc-h" style={{ fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 }}>Concentration — where the accepted residual sits</h2>
+          <ul>{(reg.concentration ?? []).map((k, i) => (
+            <li key={i}>{k.concentrated ? '⚠ CONCENTRATED — ' : ''}{k.polarity} · {k.unit} · {k.dimension} <Mono>{k.dimension === 'driver' ? short(k.key) : k.key}</Mono> carries {Math.round(Number(k.share) * 1000) / 10}% over {k.members} of {k.of} exposure(s)</li>
+          ))}</ul>
+          <UnknownNote>{reg.concentration?.[0]?.rule ?? ''}</UnknownNote>
+        </section>
+      )}
 
       {prio === null ? null : (
         <section aria-labelledby="prio-h" style={{ ...cardStyle, marginBlockStart: 'var(--eye-space-16)' }}>
@@ -172,7 +227,55 @@ export default function ExposuresPage() {
             {open.residuals.length === 0 ? null : <DefinitionRow term="Computation">{open.residuals[open.residuals.length - 1]!.computation}</DefinitionRow>}
             {open.candidate ? <DefinitionRow term="Warning">candidate <Mono>{short(open.candidate['candidate_id'])}</Mono> — {String(open.candidate['state'])}{open.warning ? <> → warning <Mono>{short(open.warning['warning_id'])}</Mono>, routed to <Mono>{short(open.warning['routed_to'])}</Mono></> : null}</DefinitionRow> : null}
             {x.sponsor_principal_id ? <DefinitionRow term="Sponsor"><Mono>{x.sponsor_principal_id}</Mono></DefinitionRow> : null}
+            {/* B34 (0090): the polarity on the canonical RSK and the SIGNATURES */}
+            <DefinitionRow term="Polarity on the RSK">{open.canonical_polarity ?? 'not stated on the RSK — registered as ' + x.polarity}</DefinitionRow>
+            <DefinitionRow term="Acceptance signature"><span title={String(open.signatures?.accepted?.digest ?? '')}>{signatureLine(open.signatures?.accepted, (id) => (id === me.principalId ? 'you' : id))}</span></DefinitionRow>
+            {x.polarity === 'opportunity' ? <DefinitionRow term="Sponsorship signature"><span title={String(open.signatures?.sponsored?.digest ?? '')}>{signatureLine(open.signatures?.sponsored, (id) => (id === me.principalId ? 'you' : id))}</span></DefinitionRow> : null}
           </dl>
+
+          {/* B34 (0090): THE DETECTIONS, each in the rule's own words */}
+          <h3>Detections</h3>
+          {(open.detections ?? []).length === 0 ? <Empty>No detection: no false precision, hold, duplicate, expired window, unreviewed outcome or unresolved owner.</Empty> : (
+            <ul aria-label="detections">{(open.detections ?? []).map((d, i) => <li key={i}>{detectionLine(d)}</li>)}</ul>
+          )}
+
+          {/* B34 (0090): THE OWNER RESOLUTION — a missing or inactive owner is routed to the named resolvers, who re-own the exposure */}
+          <section aria-labelledby="owner-h">
+            <h3 id="owner-h">Owner resolution</h3>
+            {(() => {
+              const u = (open.detections ?? []).find((d) => d.kind === 'owner_unresolved');
+              return u === undefined
+                ? <p>The owner is a named, active risk owner: nothing to resolve (an owner is never re-owned around them).</p>
+                : <p>⚑ The owner is no longer an active risk owner — routed to {(u.resolvers ?? []).length === 0 ? 'no active domain administrator (none is named in this domain)' : (u.resolvers ?? []).map((r) => r.name ?? r.principal_id).join(', ')} (domain administrators).</p>;
+            })()}
+            {mayResolve && x.state !== 'closed' ? (
+              <>
+                <label htmlFor="reown-owner">New owner (a risk owner&apos;s principal id)</label>
+                <input id="reown-owner" style={inputStyle} value={reown.owner} onChange={(e) => setReown({ ...reown, owner: e.target.value })} />
+                <label htmlFor="reown-reason">Reason (8..2000 characters)</label>
+                <input id="reown-reason" style={inputStyle} value={reown.reason} onChange={(e) => setReown({ ...reown, reason: e.target.value })} />
+                <GovernedButton label="Re-own the exposure" pendingLabel="re-owning" variant="critical"
+                  onRun={() => act('the exposure was re-owned', () => exposures.resolveOwner(scope, x.exposure_id, reown.owner, reown.reason), () => reopen(x.exposure_id))} />
+              </>
+            ) : null}
+          </section>
+
+          {/* B34 (0090): THE SCENARIOS linked to the exposure */}
+          <h3>Scenarios</h3>
+          {(open.scenarios ?? []).length === 0 ? <Empty>No scenario is linked.</Empty> : (
+            <ul>{(open.scenarios ?? []).map((k) => <li key={k.link_id}>{k.relation.replace(/_/g, ' ')} — {k.scenario_title ?? short(k.scenario_id)} ({k.scenario_state ?? 'state unknown'}): {k.rationale}</li>)}</ul>
+          )}
+          {mayIdentify && x.state !== 'closed' ? (
+            <>
+              <input aria-label="scenario id" placeholder="scenario id" style={inputStyle} value={scn.id} onChange={(e) => setScn({ ...scn, id: e.target.value })} />
+              <select aria-label="scenario relation" style={inputStyle} value={scn.relation} onChange={(e) => setScn({ ...scn, relation: e.target.value as (typeof SCENARIO_RELATIONS)[number] })}>
+                {SCENARIO_RELATIONS.map((k) => <option key={k}>{k}</option>)}
+              </select>
+              <input aria-label="scenario rationale" placeholder="rationale" style={inputStyle} value={scn.rationale} onChange={(e) => setScn({ ...scn, rationale: e.target.value })} />
+              <GovernedButton label="Link the scenario" pendingLabel="linking" variant="quiet"
+                onRun={() => act('the scenario was linked', () => exposures.linkScenario(scope, x.exposure_id, { scenarioId: scn.id, relation: scn.relation, rationale: scn.rationale }), () => reopen(x.exposure_id))} />
+            </>
+          ) : null}
 
           <h3>Assessments — the evidence and the model</h3>
           <table className="eye-table" style={tableStyle}>
@@ -274,6 +377,22 @@ export default function ExposuresPage() {
           {open.responses.length === 0 ? <Empty>No response decision is open.</Empty> : (
             <ul>{open.responses.map((r) => <li key={r.response_id}><strong>{r.response_kind}</strong> — decision <Mono>{short(r.decision_object_id)}</Mono>, package <Mono>{short(r.package_id)}</Mono> {String(r.package?.['state'] ?? '')} · {r.outcomes.length === 0 ? 'no outcome recorded yet' : r.outcomes.map((o) => `${String(o['criterion_key'])}: ${o['met'] === true ? 'met' : 'not met'}`).join(', ')}</li>)}</ul>
           )}
+          {/* B34 (0090): THE OUTCOME LOOP — each response monitored against the exposure; its outcome reviewed (effect, residual verdict, lesson) */}
+          {open.responses.length === 0 ? null : (
+            <ul aria-label="responses monitored">{open.responses.map((r) => (
+              <li key={`m-${r.response_id}`}>{r.response_kind} · monitor: <strong>{r.monitor?.state ?? 'unknown'}</strong>{r.monitor?.owed ? <> — owed: {r.monitor.owed}</> : null}
+                {(r.reviews ?? []).map((k) => <div key={k.review_id}>reviewed: {k.effect.replace(/_/g, ' ')} · residual {k.residual_verdict} · lesson: {k.lesson}</div>)}
+                {r.monitor?.state === 'outcome_recorded' && (x.owner_principal_id === me.principalId || x.sponsor_principal_id === me.principalId) ? (
+                  <div>
+                    <select aria-label="outcome effect" style={inputStyle} value={rv.effect} onChange={(e) => setRv({ ...rv, effect: e.target.value as (typeof OUTCOME_EFFECTS)[number] })}>{OUTCOME_EFFECTS.map((k) => <option key={k}>{k}</option>)}</select>
+                    <select aria-label="residual verdict" style={inputStyle} value={rv.verdict} onChange={(e) => setRv({ ...rv, verdict: e.target.value as (typeof RESIDUAL_VERDICTS)[number] })}>{RESIDUAL_VERDICTS.map((k) => <option key={k}>{k}</option>)}</select>
+                    <input aria-label="lesson" placeholder="the lesson (16..4000)" style={inputStyle} value={rv.lesson} onChange={(e) => setRv({ ...rv, lesson: e.target.value })} />
+                    <GovernedButton label="Review the outcome" pendingLabel="reviewing the residual"
+                      onRun={() => act('the outcome was reviewed against the exposure', () => exposures.reviewOutcome(scope, x.exposure_id, { responseId: r.response_id, effect: rv.effect, residualVerdict: rv.verdict, lesson: rv.lesson }), () => reopen(x.exposure_id))} />
+                  </div>
+                ) : null}
+              </li>))}</ul>
+          )}
           {(x.owner_principal_id === me.principalId || x.sponsor_principal_id === me.principalId) && x.state !== 'closed' ? (
             <>
               <select aria-label="response kind" style={inputStyle} value={resp} onChange={(e) => setResp(e.target.value as ResponseKind)}>
@@ -294,10 +413,11 @@ export default function ExposuresPage() {
 
           <h3>The exposure&apos;s record</h3>
           <ol>{open.events.map((e, i) => <li key={i}><Mono>{e.event}</Mono> · {fmtInstant(e.occurred_at)} · <Mono>{short(e.actor_principal_id)}</Mono></li>)}</ol>
-          <Receipt receipt={receipt} />
         </section>
       )}
       {last === null ? null : <LiveStatus>{last}</LiveStatus>}
+      {/* B34 (0090) integrator: the receipt of EVERY governed act on the page (a taxonomy activation too — not only an opened exposure's) */}
+      <Receipt receipt={receipt} />
     </>
   );
 }

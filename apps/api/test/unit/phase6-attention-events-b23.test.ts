@@ -152,15 +152,19 @@ describe('B23 · the review ports\' refusals through the mapper (anchored; 403 �
 
 describe('B23 · the vocabularies, the PDP rules and the consumer identities', () => {
   it('twelve subscribable types; the attention kind selects its six; seven signal classes', () => {
-    expect(FLAT_EVENT_TYPES.slice(-2)).toEqual(['MaterialChangeRaised', 'ReviewConvened']);
-    expect([...CONSUMER_EVENT_TYPES.attention]).toEqual(['ForecastFitnessChanged', 'ScenarioCoherenceFailed', 'EarlyWarningRaised', 'AttentionPolicyChanged', 'MaterialChangeRaised', 'ReviewConvened']);
+    // B34 (0090 part attention) appended its three types after B23's two — the B23 pair is read at its own place
+    expect(FLAT_EVENT_TYPES.slice(8, 10)).toEqual(['MaterialChangeRaised', 'ReviewConvened']);
+    expect([...CONSUMER_EVENT_TYPES.attention].slice(0, 6)).toEqual(['ForecastFitnessChanged', 'ScenarioCoherenceFailed', 'EarlyWarningRaised', 'AttentionPolicyChanged', 'MaterialChangeRaised', 'ReviewConvened']);
+    expect([...CONSUMER_EVENT_TYPES.attention].slice(6)).toEqual(['ExposureChanged', 'HealthScoreChanged', 'CommitmentChanged']);
     expect([...CONSUMER_EVENT_TYPES.decisions]).toEqual(['GraphChanged', 'MemoryCorrected']);
-    expect([...SIGNAL_CLASSES]).toEqual(['forecast.unfit', 'scenario.incoherent', 'warning.raised', 'source.coverage_loss', 'proposal.review', 'decision.material_change', 'review.convened']);
+    expect([...SIGNAL_CLASSES].slice(0, 7)).toEqual(['forecast.unfit', 'scenario.incoherent', 'warning.raised', 'source.coverage_loss', 'proposal.review', 'decision.material_change', 'review.convened']);
+    // B34 (0090 §0) added four after B23's seven — opportunity, health change, commitment due / breach
+    expect([...SIGNAL_CLASSES].slice(7)).toEqual(['opportunity.raised', 'health.change', 'commitment.due', 'commitment.breach']);
   });
   it('the decisions and attention identities changed with their methods; all eleven distinct', () => {
     // the digests main (5165a97) serves — the B21/B22 unit file's pins (phase6-fitness-events-b21.test.ts DIGESTS_A2303FF.decisions)
     expect(consumerCodeDigest('decisions')).not.toBe('6e283700b3b7d74c0699e6c565a4da6c0558b015d749e6f8a6d56426b07b6e5f');
-    expect(new Set(CONSUMER_KINDS.map((k) => consumerCodeDigest(k))).size).toBe(13); // 0088 (B28): + warnings, stream-rules
+    expect(new Set(CONSUMER_KINDS.map((k) => consumerCodeDigest(k))).size).toBe(14); // 0088 (B28): + warnings, stream-rules; 0090 (B34): + commitments
   });
   it('the PDP: exact rules — convening human-gated for the six roles, an analyst refused, closing and reading open wider', () => {
     const pdp = new PdpService();

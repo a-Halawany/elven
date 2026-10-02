@@ -88,6 +88,9 @@ export class ReplayService {
     await cap.admitObject(header, payload, headerDigest);
     await cap.recordReplay({ replayId, tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, packageId, version, asOf: String(cutoffs['as_of']), contentDigest, headerDigest, reader: reader.principalId, purpose, unavailable, summary, eventId: newId(), correlationId });
     return { replayId, packageId, version, contentDigest, headerDigest, asOf: cutoffs['as_of'], cutoffs, layers: { known: content['known'], believed: content['believed'], tested: content['tested'], decided: content['decided'], observed: content['observed'] },
-             excluded: content['excluded'], unavailable, summary, invocation, contributors, controls };
+             excluded: content['excluded'], unavailable, summary, invocation, contributors, controls,
+             /* B34 (0090) gates: the policy revisions and control decisions IN FORCE at the decision instant — beside the content, never inside
+                its digest (record_replay is not re-declared); a control recorded or effective after the decision is not among them */
+             controlsInForce: { at: cutoffs['decided_at'], controls: await cap.controlsAsOf({ tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, at: String(cutoffs['decided_at']) }) } };
   }
 }

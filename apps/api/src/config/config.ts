@@ -8,6 +8,16 @@ import { existsSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { z } from 'zod';
 
+/* B34 (0090) attention: loopback only (the attention sinks; delivery/local-sink.ts re-checks at every attempt) */
+function loopbackHost(h: string): boolean {
+  const x = h.replace(/^\[|\]$/g, '').toLowerCase();
+  return x === 'localhost' || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(x) || x === '::1';
+}
+function loopbackUrl(v: string): boolean {
+  try { const u = new URL(v); return (u.protocol === 'http:' || u.protocol === 'https:') && u.username === '' && u.password === '' && loopbackHost(u.hostname); } catch { return false; }
+}
+/* end B34 attention */
+
 const schema = z.object({
   'eye.runtime.env': z.enum(['local', 'test']).default('local'),
   'eye.runtime.port': z.coerce.number().int().min(1).max(65535).default(3401),
@@ -87,6 +97,19 @@ const schema = z.object({
   // ── Phase 1: quarantine case time-to-live before the sweeper expires it ──
   'eye.quarantine.ttl_seconds': z.coerce.number().int().min(60).default(7 * 24 * 3600),
   'eye.sweeper.run_timeout_seconds': z.coerce.number().int().min(60).default(3600),
+  /* B34 (0090) attention: the LOCAL SINKS of the SYNTHETIC email / sms / teams adapters — loopback ONLY (a real provider is owner decision D6);
+     a non-loopback host or URL fails the startup closed. Unset (port 0, empty URL): the channel is not served in this runtime. */
+  'eye.attention.sink_host': z.string().default('127.0.0.1').refine(loopbackHost, 'eye.attention.sink_host must be a loopback host (127.0.0.0/8, ::1, localhost)'),
+  'eye.attention.smtp_port': z.coerce.number().int().min(0).max(65535).default(0),
+  'eye.attention.sms_webhook_url': z.string().default('').refine((v) => v === '' || loopbackUrl(v), 'eye.attention.sms_webhook_url must be an http(s) URL on a loopback host'),
+  'eye.attention.teams_webhook_url': z.string().default('').refine((v) => v === '' || loopbackUrl(v), 'eye.attention.teams_webhook_url must be an http(s) URL on a loopback host'),
+  /* end B34 attention */
+  /* B34-F2 (0091) execution: THE SYNTHETIC LOOPBACK PATH of the execution egress — an explicit deployment switch, OFF unless set to `on`.
+     ON, a handoff to a target recorded SYNTHETIC whose endpoint host is an IPv4 loopback LITERAL (127.0.0.0/8) and whose trust anchor is
+     declared is carried over the pinned transport to that literal (the anchor still verified, the bearer still by reference); every other
+     target — and every target with the switch OFF — goes through the unchanged production vetting. No real ERP; no provider. */
+  'eye.execution.synthetic_loopback': z.enum(['on', 'off']).default('off'),
+  /* end B34-F2 execution */
 });
 
 export type EyeConfig = z.infer<typeof schema>;
@@ -142,6 +165,15 @@ const ENV_MAP: Record<string, keyof EyeConfig> = {
   EYE_SCHEDULER_ENABLED: 'eye.scheduler.enabled',
   EYE_QUARANTINE_TTL_SECONDS: 'eye.quarantine.ttl_seconds',
   EYE_SWEEPER_RUN_TIMEOUT_SECONDS: 'eye.sweeper.run_timeout_seconds',
+  /* B34 (0090) attention */
+  EYE_ATTENTION_SINK_HOST: 'eye.attention.sink_host',
+  EYE_ATTENTION_SMTP_PORT: 'eye.attention.smtp_port',
+  EYE_ATTENTION_SMS_WEBHOOK_URL: 'eye.attention.sms_webhook_url',
+  EYE_ATTENTION_TEAMS_WEBHOOK_URL: 'eye.attention.teams_webhook_url',
+  /* end B34 attention */
+  /* B34-F2 (0091) execution */
+  EYE_EXECUTION_SYNTHETIC_LOOPBACK: 'eye.execution.synthetic_loopback',
+  /* end B34-F2 execution */
 };
 
 /**

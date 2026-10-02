@@ -85,6 +85,6 @@ describe('B24 · the PDP rule, the tick step, the consumer identities', () => {
     expect(() => step.onModuleInit()).toThrow(/registered twice/);
   });
   it('eleven distinct consumer identities (attention, source-health and proposals changed with their methods — re-registered on the demo)', () => {
-    expect(new Set(CONSUMER_KINDS.map((k) => consumerCodeDigest(k))).size).toBe(13); // 0088 (B28): + warnings, stream-rules
+    expect(new Set(CONSUMER_KINDS.map((k) => consumerCodeDigest(k))).size).toBe(14); // 0088 (B28): + warnings, stream-rules; 0090 (B34): + commitments
   });
 });

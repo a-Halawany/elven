@@ -135,6 +135,27 @@ export function validateAggregate(p: Row, c: string): { members: string[] } {
   return { members: (p['members'] as unknown[]).map((x, i) => uuid(x, `members[${i}]`, c)) };
 }
 
+/* B34 (0090) exposures: the intakes of the activation, the scenario link, the outcome review and the owner resolution */
+export const SCENARIO_RELATIONS = ['materializes_in', 'stresses', 'relieves'] as const;
+export const OUTCOME_EFFECTS = ['effective', 'partly_effective', 'ineffective', 'inconclusive'] as const;
+export const RESIDUAL_VERDICTS = ['stands', 'reassess', 'close'] as const;
+export function validateActivate(p: Row, c: string): { version: number; reason: string } {
+  return { version: int(p['version'], 'version', c, 1, 1_000_000), reason: str(p['reason'], 'reason', c, 8, 2000) };
+}
+export function validateScenarioLink(p: Row, c: string): { scenarioId: string; relation: string; rationale: string } {
+  if (!(SCENARIO_RELATIONS as readonly unknown[]).includes(p['relation'])) bad(c, `relation is ${SCENARIO_RELATIONS.join(', ')}`);
+  return { scenarioId: uuid(p['scenarioId'], 'scenarioId', c), relation: String(p['relation']), rationale: str(p['rationale'], 'rationale', c, 8, 2000) };
+}
+export function validateOutcomeReview(p: Row, c: string): { responseId: string; effect: string; residualVerdict: string; lesson: string } {
+  if (!(OUTCOME_EFFECTS as readonly unknown[]).includes(p['effect'])) bad(c, `effect is ${OUTCOME_EFFECTS.join(', ')}`);
+  if (!(RESIDUAL_VERDICTS as readonly unknown[]).includes(p['residualVerdict'])) bad(c, `residualVerdict is ${RESIDUAL_VERDICTS.join(', ')}`);
+  return { responseId: uuid(p['responseId'], 'responseId', c), effect: String(p['effect']), residualVerdict: String(p['residualVerdict']), lesson: str(p['lesson'], 'lesson', c, 16, 4000) };
+}
+export function validateOwnerResolve(p: Row, c: string): { newOwner: string; reason: string } {
+  return { newOwner: uuid(p['owner'], 'owner', c), reason: str(p['reason'], 'reason', c, 8, 2000) };
+}
+/* end B34 exposures */
+
 /* ───────────── the gaps (what keeps an exposure out of a roll-up — the port's own rules, read for the screen) ───────────── */
 export function gapsOf(x: Row, now: Date = new Date()): string[] {
   const g: string[] = [];
@@ -149,7 +170,21 @@ export function gapsOf(x: Row, now: Date = new Date()): string[] {
     if (due < now) g.push(`stale (review due ${due.toISOString().slice(0, 10)})`);
   }
   if (x['breach'] === true && (x['routed_candidate_id'] === null || x['routed_candidate_id'] === undefined)) g.push('outside appetite — not yet routed');
+  /* B34 (0090): the detections that need a person's act before the exposure is whole again */
+  const det = Array.isArray(x['detections']) ? (x['detections'] as Row[]) : [];
+  if (det.some((d) => d['kind'] === 'held')) g.push('held (an invalidated dependency)');
+  if (det.some((d) => d['kind'] === 'owner_unresolved')) g.push('owner unresolved (routed to a domain administrator)');
+  if (det.some((d) => d['kind'] === 'outcome_unreviewed')) g.push('an outcome recorded, not yet reviewed');
   return g;
+}
+
+/** B34 (0090): a response MONITORED against its exposure (JRN-08 monitor → outcome → learn): where its decision stands and what is owed. */
+export function responseMonitor(pkgState: unknown, outcomes: number, reviewedOutcomes: number): { state: string; owed: string | null } {
+  if (outcomes > 0 && reviewedOutcomes >= outcomes) return { state: 'reviewed', owed: null };
+  if (outcomes > 0) return { state: 'outcome_recorded', owed: 'the owner reviews the outcome against the exposure (effect, residual, lesson)' };
+  if (pkgState === 'committed' || pkgState === 'monitoring') return { state: 'monitoring', owed: 'the decision\'s outcome is recorded when observed (decision.outcome)' };
+  if (pkgState === 'closed') return { state: 'closed_without_outcome', owed: null };
+  return { state: 'decision_open', owed: 'the response\'s decision is committed first' };
 }
 
 @Injectable()
@@ -168,20 +203,26 @@ export class ExposuresService {
     const latest = new Map<string, Row>();
     for (const r of residuals) if (!latest.has(String(r['exposure_id']))) latest.set(String(r['exposure_id']), r);
     const proposing = new Set(agentProposals.map((r) => String(r['exposure_id'])));
+    /* B34 (0090): the detections of each exposure, and the portfolio's concentration */
+    const det = new Map<string, Row[]>();
+    for (const id of ids) det.set(id, await cap.detections(id));
+    const concentration = exposures.length === 0 ? [] : await cap.concentration(String(exposures[0]!['tenant_id']), String(exposures[0]!['domain_id']));
     const rows: Row[] = exposures.map((x) => {
       const id = String(x['exposure_id']); const r = latest.get(id) ?? null;
       const row: Row = { ...x, title: s.get(id)?.['title'] ?? null, statement: s.get(id)?.['statement'] ?? null, residual: r, breach: r?.['breach'] ?? null, has_agent_proposal: proposing.has(id),
-                    dims: p.get(id)?.dims ?? {}, priority: p.get(id)?.priority ?? null };
+                    dims: p.get(id)?.dims ?? {}, priority: p.get(id)?.priority ?? null, /* B34 (0090) */ detections: det.get(id) ?? [] };
       return { ...row, gaps: gapsOf(row) };
     });
-    const taxonomy = (await cap.readTaxonomy().selectAll().orderBy('version' as never, 'desc').limit(1).executeTakeFirst()) as Row | undefined;
+    /* B34 (0090): the taxonomy IN FORCE (the latest activated version), not the latest published */
+    const active = (await cap.readActivations().select(['version'] as never).orderBy('version' as never, 'desc').limit(1).executeTakeFirst()) as Row | undefined;
+    const taxonomy = active === undefined ? undefined : (await cap.readTaxonomy().selectAll().where('version' as never, '=', active['version'] as never).executeTakeFirst()) as Row | undefined;
     const appetites = (await cap.readAppetites().selectAll().orderBy('category_key' as never).orderBy('version' as never, 'desc').execute()) as Row[];
     const current = new Map<string, Row>();
     for (const a of appetites) if (!current.has(String(a['category_key']))) current.set(String(a['category_key']), a);
     const aggregations = (await cap.readAggregations().selectAll().orderBy('computed_at' as never, 'desc').limit(20).execute()) as Row[];
     return {
       risks: rows.filter((x) => x['polarity'] === 'risk'), opportunities: rows.filter((x) => x['polarity'] === 'opportunity'),
-      taxonomy: taxonomy ?? null, appetites: [...current.values()], aggregations,
+      taxonomy: taxonomy ?? null, appetites: [...current.values()], aggregations, /* B34 (0090) */ concentration,
       counts: { risks: rows.filter((x) => x['polarity'] === 'risk').length, opportunities: rows.filter((x) => x['polarity'] === 'opportunity').length,
                 with_gaps: rows.filter((x) => (x['gaps'] as string[]).length > 0).length, outside_appetite: rows.filter((x) => x['breach'] === true).length },
       rule: 'an exposure with a gap is shown incomplete and is refused by an aggregation until its owner resolves it (PR-27-005, UX-35-005)',
@@ -193,6 +234,9 @@ export class ExposuresService {
     const x = (await cap.readExposures().selectAll().where('exposure_id' as never, '=', exposureId as never).executeTakeFirst()) as Row | undefined;
     if (x === undefined) throw new HttpException(errorBody('EYE_STA_001', correlationId, 'no such exposure in this domain'), 404);
     const strategy = (await cap.readStrategy().selectAll().where('strategy_object_id' as never, '=', exposureId as never).executeTakeFirst()) as Row | undefined;
+    /* B34 (0090): the polarity on the canonical RSK (its latest version), null when it states none */
+    const canon = (await cap.readCanonical().select(['payload'] as never).where('object_id' as never, '=', exposureId as never).orderBy('object_version' as never, 'desc').limit(1).executeTakeFirst()) as Row | undefined;
+    const canonPolarity = ((canon?.['payload'] ?? {}) as Row)['polarity'] ?? null;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const q = async (rel: any, order: string): Promise<Row[]> => (await rel.selectAll().where('exposure_id', '=', exposureId).orderBy(order).execute()) as Row[];
     const versions = (await cap.readVersions().selectAll().where('exposure_id' as never, '=', exposureId as never).orderBy('version' as never).execute()) as Row[];
@@ -215,14 +259,36 @@ export class ExposuresService {
     const warning = candidate === null || candidate['warning_id'] === null ? null : ((await cap.readWarnings().select(['warning_id', 'state', 'routed_to', 'origin_kind', 'raised_at', 'title'] as never)
       .where('warning_id' as never, '=', String(candidate['warning_id']) as never).executeTakeFirst()) as Row | undefined) ?? null;
     const objectives = await cap.objectives(exposureId);
+    /* B34 (0090): the linked scenarios (with the scenario's title and state), read under the reader's RLS */
+    const links = (await cap.readScenarioLinks().selectAll().where('exposure_id' as never, '=', exposureId as never).orderBy('linked_at' as never).execute()) as Row[];
+    const scn = links.length === 0 ? [] : (await cap.readScenarios().select(['scenario_id', 'title', 'state'] as never).where('scenario_id' as never, 'in', links.map((k) => String(k['scenario_id'])) as never).execute()) as Row[];
+    const scenarios = links.map((k) => { const c = scn.find((x) => x['scenario_id'] === k['scenario_id']); return { ...k, scenario_title: c?.['title'] ?? null, scenario_state: c?.['state'] ?? null }; });
+    /* end B34 */
     const latest = residuals.length === 0 ? null : residuals[residuals.length - 1]!;
+    /* B34 (0090): the detections, the outcome reviews, the canonical polarity */
+    const detections = await cap.detections(exposureId);
+    const reviews = (await cap.readOutcomeReviews().selectAll().where('exposure_id' as never, '=', exposureId as never).orderBy('reviewed_at' as never).execute()) as Row[];
     const row = { ...x, title: strategy?.['title'] ?? null, statement: strategy?.['statement'] ?? null, breach: latest?.['breach'] ?? null,
-                  has_agent_proposal: versions.some((v) => v['assessed_kind'] === 'agent' && v['state'] === 'proposed') };
+                  has_agent_proposal: versions.some((v) => v['assessed_kind'] === 'agent' && v['state'] === 'proposed'), detections };
     return {
       exposure: { ...row, gaps: gapsOf(row) }, strategy: strategy ?? null, objectives, versions, events, drivers, controls, residuals, hypotheses,
       correlations: { declared: correlations.filter((k) => k['estimated_kind'] === 'human'), estimated: correlations.filter((k) => k['estimated_kind'] === 'agent') },
-      responses: responses.map((r) => ({ ...r, package: packages.find((pk) => pk['package_id'] === r['package_id']) ?? null, outcomes: outcomes.filter((o) => o['package_id'] === r['package_id']) })),
+      responses: responses.map((r) => {
+        const pkg = packages.find((pk) => pk['package_id'] === r['package_id']) ?? null;
+        const outs = outcomes.filter((o) => o['package_id'] === r['package_id']);
+        const rv = reviews.filter((k) => k['response_id'] === r['response_id']);
+        const covered = new Set(rv.flatMap((k) => (k['outcome_ids'] as string[] | null) ?? []));
+        return { ...r, package: pkg, outcomes: outs, reviews: rv, /* B34 (0090) */ monitor: responseMonitor(pkg?.['state'], outs.length, outs.filter((o) => covered.has(String(o['outcome_id']))).length) };
+      }),
       candidate, warning,
+      /* B34 (0090) */ scenarios, detections, reviews,
+      signatures: {
+        accepted: x['accepted_version'] === null ? null : { act: 'accept', version: x['accepted_version'], digest: versions.find((v) => v['version'] === x['accepted_version'])?.['digest'] ?? null,
+                                                             signer: x['accepted_by'], at: x['accepted_at'] },
+        sponsored: x['sponsor_principal_id'] === null ? null : { act: 'sponsor', version: x['sponsored_version'], digest: (x['sponsorship'] as Row | null)?.['digest'] ?? null,
+                                                                 signer: x['sponsor_principal_id'], at: x['sponsored_at'] },
+      },
+      canonical_polarity: canonPolarity,
     };
   }
 
@@ -269,7 +335,13 @@ export class ExposuresService {
   async taxonomy(cap: ExposureReads): Promise<Row> {
     const versions = (await cap.readTaxonomy().selectAll().orderBy('version' as never, 'desc').execute()) as Row[];
     const appetites = (await cap.readAppetites().selectAll().orderBy('category_key' as never).orderBy('version' as never, 'desc').execute()) as Row[];
-    return { current: versions[0] ?? null, versions, appetites };
+    /* B34 (0090): the version IN FORCE is the latest ACTIVATED one; a later published version is PENDING its activation by a second member */
+    const activations = (await cap.readActivations().selectAll().orderBy('version' as never, 'desc').execute()) as Row[];
+    const inForce = activations[0] ?? null;
+    const current = inForce === null ? null : versions.find((v) => v['version'] === inForce['version']) ?? null;
+    const pending = versions.find((v) => inForce === null || Number(v['version']) > Number(inForce['version'])) ?? null;
+    return { current, pending, activation: inForce, activations, versions, appetites,
+             rule: 'a published version is in force once a second named member activates it; the publisher never does (B34)' };
   }
 
   async health(cap: ExposureReads, tenantId: string, domainId: string, at: string): Promise<Row> {

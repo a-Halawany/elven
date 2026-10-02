@@ -224,9 +224,10 @@ describe('B23 · material changes and governed reviews as events; the briefing\'
   it('E1 · VOCABULARY + POLICY: the attention kind selects its six types; twelve subscribable types; a policy with the two new classes admitted, an unknown class refused (422); L10-I02 and L10-I03 bound in 0084', async () => {
     const rows = (await sql<{ consumer_kind: string; event_types: string[] }>`select consumer_kind, event_types from graph.subscriptions where tenant_id = ${T()}::uuid and domain_id = ${D()}::uuid and status = 'active' order by consumer_kind`.execute(su)).rows;
     expect(rows.find((r) => r.consumer_kind === 'attention')!.event_types).toEqual([...CONSUMER_EVENT_TYPES.attention]);
-    expect(rows.find((r) => r.consumer_kind === 'attention')!.event_types.slice(-2)).toEqual(['MaterialChangeRaised', 'ReviewConvened']);
+    // B34 (0090 part attention): the attention kind's three new types follow B23's pair — the pair read at its own place
+    expect(rows.find((r) => r.consumer_kind === 'attention')!.event_types.slice(4, 6)).toEqual(['MaterialChangeRaised', 'ReviewConvened']);
     const vocab = (await sql<{ event_type: string; interface: string; since: string }>`select event_type, interface, since from graph.subscribable_event_types order by event_type`.execute(su)).rows;
-    expect(vocab).toHaveLength(12);
+    expect(vocab).toHaveLength(15); // B34 (0090 §0, the prelude): + ExposureChanged, HealthScoreChanged, CommitmentChanged
     expect(vocab.filter((v) => v.since === '0084')).toEqual([{ event_type: 'MaterialChangeRaised', interface: 'L10-I02', since: '0084' }, { event_type: 'ReviewConvened', interface: 'L10-I03', since: '0084' }]);
     const kindTypes = (await sql<{ event_type: string }>`select event_type from graph.subscription_consumer_events where consumer_kind = 'attention' order by event_type`.execute(su)).rows.map((r) => r.event_type);
     expect(kindTypes).toEqual(expect.arrayContaining(['MaterialChangeRaised', 'ReviewConvened']));
@@ -234,7 +235,7 @@ describe('B23 · material changes and governed reviews as events; the briefing\'
     expect((await sql<{ n: number }>`select count(*)::int n from graph.subscription_consumer_events where consumer_kind = 'decisions' and event_type in ('MaterialChangeRaised', 'ReviewConvened')`.execute(su)).rows[0]!.n).toBe(0);
     /* THE POLICY: the two classes are real classes to the port; an unknown one is not. */
     const bad = { classes: { ...(RULES()['classes'] as Row), 'decision.bogus': (RULES()['classes'] as Row)['decision.material_change'] } };
-    await refused(publish(executive, bad, 'an unknown class beside the two new ones (harness)'), /^attention policy rejected: decision\.bogus is not a signal class \(.*decision\.material_change, review\.convened\)/, 422, 'EYE-REQ-001');
+    await refused(publish(executive, bad, 'an unknown class beside the two new ones (harness)'), /^attention policy rejected: decision\.bogus is not a signal class \(.*decision\.material_change, review\.convened(, opportunity\.raised, health\.change, commitment\.due, commitment\.breach)?\)/, 422, 'EYE-REQ-001'); // B34 (0090 §0): the prelude's four classes follow
     const p1 = (await publish(executive, RULES(), 'the material-change and review classes of the corridor domain (harness)')).policy;
     expect(p1).toMatchObject({ version: 1, changed_classes: ['decision.material_change', 'review.convened'] });
     /* THE REGISTER: this part's two rows only. */

@@ -14,8 +14,12 @@ import { Empty, LiveStatus, Mono, cardStyle, DefinitionRow, UnknownNote, fmtInst
 import { tableStyle, Th, Td, buttonStyle, Receipt as ReceiptNote, ErrorNote } from '../../components/ui';
 // B24 (0086) markers
 import { SourceImpactControl } from './source-impact-control';
+// B34 (0090) gates
+import { GateControl } from './gate-control';
+import { CONDITION_KINDS, buildCondition, type TypedCondition } from '../../lib/gates';
 
-const STATE_TEXT: Record<string, string> = { draft: '◌ DRAFT', proposed: '◍ PROPOSED', under_review: '◍ UNDER REVIEW', approved: '● APPROVED', committed: '■ COMMITTED', monitoring: '◉ MONITORING', closed: '□ CLOSED', rejected: '✕ REJECTED', withdrawn: '✕ WITHDRAWN' };
+const STATE_TEXT: Record<string, string> = { draft: '◌ DRAFT', proposed: '◍ PROPOSED', under_review: '◍ UNDER REVIEW', approved: '● APPROVED', committed: '■ COMMITTED', monitoring: '◉ MONITORING', closed: '□ CLOSED', rejected: '✕ REJECTED', withdrawn: '✕ WITHDRAWN',
+  /* B34 (0090) gates */ deferred: '◷ DEFERRED', information_requested: '? INFORMATION REQUESTED' };
 const day = (v: unknown): string => (typeof v === 'string' ? v.slice(0, 10) : v === null || v === undefined ? '—' : String(v).slice(0, 10));
 const short = (v: unknown): string => (typeof v === 'string' ? `${v.slice(0, 8)}…` : '—');
 type Err = { code: string; message: string; correlationId: string } | null;
@@ -44,6 +48,10 @@ export default function DecisionsPage() {
   const [monitoring, setMonitoring] = useState<{ outcomes: Array<Record<string, unknown>>; breaches: Array<Record<string, unknown>> } | null>(null);
   const [rationale, setRationale] = useState('');
   const [busy, setBusy] = useState(false);
+  /* B34 (0090) gates: the condition builder on the approval */
+  const [conditions, setConditions] = useState<TypedCondition[]>([]);
+  const [cond, setCond] = useState<{ kind: string; ref: string; expected: string; label: string }>({ kind: 'assumption_holds', ref: '', expected: '', label: '' });
+  const [condProblem, setCondProblem] = useState<string | null>(null);
 
   const load = async () => {
     const r = await api.list(scope);
@@ -102,7 +110,7 @@ export default function DecisionsPage() {
           <p>{open.statement}</p>
           <p style={{ fontSize: 'var(--eye-type-label-sm)' }}>
             {open.synthetic_state ? <strong style={{ color: 'var(--eye-color-critical)' }}>SYNTHETIC DECISION — </strong> : null}
-            state <strong>{STATE_TEXT[open.state] ?? open.state}</strong> · decides <strong>{open.decision?.title ?? short(open.decision_object_id)}</strong> · owner <Mono>{short(open.owner_principal_id)}</Mono>
+            state <strong>{STATE_TEXT[open.state] ?? open.state}</strong>{open.decision_class === 'board' ? <strong> · ▣ BOARD DECISION</strong> : null} · decides <strong>{open.decision?.title ?? short(open.decision_object_id)}</strong> · owner <Mono>{short(open.owner_principal_id)}</Mono>
             {open.decided_at ? <> · decided at <Mono>{fmtInstant(open.decided_at)}</Mono></> : null}
           </p>
           <dl>
@@ -184,16 +192,29 @@ export default function DecisionsPage() {
               {/* B24 (0086) markers: the source impact on this version and its acknowledgement (the commitment is refused while one is outstanding) */}
               <SourceImpactControl scope={scope} packageId={open.package_id} version={v.version} versionState={v.state} isAuthority={isAuthority} />
               {/* end B24 markers */}
+              {/* B34 (0090) gates: the authority banner, the distinct acts, the override, the delegation, the preview and the commit */}
+              <GateControl scope={scope} packageId={open.package_id} version={v.version} versionState={v.state} versionDigest={v.version_digest}
+                roles={{ isApprover, isAuthority, isDecisionOwner, isExecutive }} onChange={() => void openPackage(open.package_id)} />
+              {/* end B34 gates */}
               <div style={{ display: 'flex', gap: 'var(--eye-space-8)', flexWrap: 'wrap', marginBlockStart: 'var(--eye-space-16)' }}>
                 {isApprover && ['proposed', 'under_review', 'approved'].includes(v.state) && v.version_digest !== null ? (
                   <>
                     <input aria-label="Approval rationale" value={rationale} onChange={(e) => setRationale(e.target.value)} placeholder="your rationale, in your own words" style={{ minInlineSize: 'min(28rem, 100%)' }} />
-                    <button type="button" style={buttonStyle} disabled={busy || rationale.trim().length < 8} onClick={() => void act(() => api.approve(scope, open.package_id, v.version, { decision: 'approve', versionDigest: v.version_digest as string, rationale })).then((ok) => { if (ok) void openPackage(open.package_id); })}>Approve this digest</button>
+                    {/* B34 (0090) gates: the condition builder — typed conditions evaluated at commitment and in monitoring */}
+                    <fieldset style={{ border: '1px solid var(--eye-color-border-default)', borderRadius: 6, padding: 8 }}>
+                      <legend style={{ fontSize: 'var(--eye-type-label-sm)' }}>Approve only if… ({conditions.length} condition(s))</legend>
+                      <select aria-label="Condition kind" value={cond.kind} onChange={(e) => setCond({ ...cond, kind: e.target.value })}>{CONDITION_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}</select>
+                      <input aria-label="Condition reference id" value={cond.ref} onChange={(e) => setCond({ ...cond, ref: e.target.value })} placeholder="the assumption / indicator / claim / branch id" />
+                      <input aria-label="Condition expected" value={cond.expected} onChange={(e) => setCond({ ...cond, expected: e.target.value })} placeholder="expected (clear | breached, a truth state, an instant)" />
+                      <input aria-label="Condition label" value={cond.label} onChange={(e) => setCond({ ...cond, label: e.target.value })} placeholder="e.g. only if customs pre-clearance holds" />
+                      <button type="button" style={buttonStyle} onClick={() => { const c = buildCondition({ kind: cond.kind, ref: cond.ref, expected: cond.expected || undefined, label: cond.label }); if (typeof c === 'string') { setCondProblem(c); return; } setCondProblem(null); setConditions([...conditions, c]); }}>Add condition</button>
+                      {condProblem === null ? null : <span role="alert" style={{ color: 'var(--eye-color-critical)' }}> {condProblem}</span>}
+                      {conditions.map((c, i) => <div key={i} style={{ fontSize: 'var(--eye-type-label-sm)' }}>“{c.label}” — {c.kind} {c.ref ? `${c.ref.slice(0, 8)}…` : c.expected}</div>)}
+                    </fieldset>
+                    <button type="button" style={buttonStyle} disabled={busy || rationale.trim().length < 8} onClick={() => void act(() => api.approve(scope, open.package_id, v.version, { decision: 'approve', versionDigest: v.version_digest as string, rationale, conditions })).then((ok) => { if (ok) { setConditions([]); void openPackage(open.package_id); } })}>Approve this digest</button>
                   </>
                 ) : null}
-                {isAuthority && v.state === 'approved' && v.version_digest !== null ? (
-                  <button type="button" style={buttonStyle} disabled={busy} onClick={() => void act(() => api.commit(scope, open.package_id, v.version, v.version_digest as string)).then((ok) => { if (ok) void openPackage(open.package_id); })}>Commit (decision.commit, C3)</button>
-                ) : null}
+                {/* B34 (0090) gates: the Commit lives in the gate below — Preview first; the commit carries its digest */}
                 {(isExecutive || isDecisionOwner || isApprover || isAuthority) && open.committed_version === v.version ? (
                   <button type="button" style={buttonStyle} disabled={busy} onClick={() => void (async () => { setBusy(true); const r = await api.replay(scope, open.package_id, v.version, null); setBusy(false); if (!r.ok || r.data === undefined) { setError(r.error ?? null); return; } setReplay(r.data.replay); setReceipt(r.data.receipt); })()}>Replay what we knew</button>
                 ) : null}
@@ -218,6 +239,8 @@ export default function DecisionsPage() {
                     </DefinitionRow>
                     <DefinitionRow term="Tested">{(replay.layers.tested['runs'] ?? []).length} run(s) with their digests · {(replay.layers.tested['reproductions'] ?? []).length} reproduction verdict(s) before the decision · twin version(s) {(replay.layers.tested['twin_versions'] ?? []).map((t) => `${String(t['twin_id']).slice(0, 8)}…@${String(t['version'])} (${String(t['verification_at_decided_at'])})`).join(', ')}</DefinitionRow>
                     <DefinitionRow term="Decided">version digest <Mono>{String((replay.layers.decided['version'] as Record<string, unknown>)?.['version_digest'] ?? '').slice(0, 16)}…</Mono> · {((replay.layers.decided['dissent'] as unknown[]) ?? []).length} dissent on this version, {((replay.layers.decided['prior_dissent'] as unknown[]) ?? []).length} on earlier versions · {((replay.layers.decided['approvals'] as unknown[]) ?? []).length} approval(s) · commitment at class <Mono>{String((replay.layers.decided['commitment'] as Record<string, unknown>)?.['op_class'])}</Mono> · policy decision <Mono>{short((replay.layers.decided['policy'] as Record<string, unknown> | null)?.['policy_decision_id'])}</Mono> · audit seq <Mono>{String((replay.layers.decided['audit'] as Record<string, unknown> | null)?.['audit_seq'] ?? '—')}</Mono></DefinitionRow>
+                    {/* B34 (0090) gates: the controls in force at the decision instant */}
+                    <DefinitionRow term="Controls in force when decided">{(replay.controlsInForce?.controls ?? []).length === 0 ? 'no policy revision or control decision recorded by then' : (replay.controlsInForce?.controls ?? []).map((c) => `${String(c['control_key'])} v${String(c['version'])} (${String(c['kind'])})`).join(' · ')}</DefinitionRow>
                     <DefinitionRow term="Observed (after the decision)">{Object.entries(replay.layers.observed).filter(([, arr]) => arr.length > 0).map(([k, arr]) => `${k}: ${arr.length}`).join(' · ') || 'nothing yet'}</DefinitionRow>
                   </dl>
                 </section>

@@ -23,6 +23,11 @@
  *   CloseWrites              prediction.close_exposure                   (prediction.exposure.close)
  *   CorrelationWrites        prediction.declare_exposure_correlation     (prediction.exposure.correlation.declare — a named human)
  *   AggregateWrites          prediction.aggregate_exposures              (prediction.exposure.aggregate)
+ * B34 (0090 part exposures):
+ *   ActivateWrites           prediction.activate_risk_taxonomy           (prediction.exposure.taxonomy.activate — a second named member)
+ *   ScenarioLinkWrites       prediction.link_exposure_scenario           (prediction.exposure.scenario.link)
+ *   OutcomeReviewWrites      prediction.review_exposure_outcome          (prediction.exposure.outcome.review — the owner or the sponsor)
+ *   OwnerResolveWrites       prediction.reassign_exposure_owner          (prediction.exposure.owner.resolve — a named resolver)
  */
 import { sql } from 'kysely';
 import type { Tx } from '../../shared/db.js';
@@ -66,6 +71,13 @@ export interface ExposureReads {
   readStrategy(): any;
   readPackages(): any;
   readOutcomes(): any;
+  /* B34 (0090) */
+  readActivations(): any;
+  readScenarioLinks(): any;
+  readScenarios(): any;
+  readOutcomeReviews(): any;
+  readCanonical(): any;
+  /* end B34 */
   readCandidates(): any;
   readWarnings(): any;
   /** prediction.preview_exposure_acceptance: what accepting the version would do now — nothing written. */
@@ -76,8 +88,14 @@ export interface ExposureReads {
   objectives(exposureId: string): Promise<string[]>;
   /** prediction.health_inputs (0089 §0's contract, this part's branch). */
   healthInputs(tenantId: string, domainId: string, at: string): Promise<Row[]>;
-  /** B34 (0090 §I), carried to B32: the database's instant ("as of now" when no instant is named). */
+  /** B34 (0090 §I): the database's instant ("as of now" when no instant is named). */
   dbNow(): Promise<string>;
+  /* B34 (0090) */
+  /** prediction.exposure_detections: false precision, an invalidated dependency (the hold), a duplicate or time-expired opportunity, an unreviewed outcome, an unresolved owner. */
+  detections(exposureId: string): Promise<Row[]>;
+  /** prediction.exposure_concentration: the portfolio's concentration of accepted residual by category and by driver, within polarity and unit. */
+  concentration(tenantId: string, domainId: string): Promise<Row[]>;
+  /* end B34 */
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
@@ -126,9 +144,23 @@ export interface CorrelationWrites extends ExposureReads {
 export interface AggregateWrites extends ExposureReads {
   aggregate(a: { aggregationId: string; tenantId: string; domainId: string; members: string[]; actor: string; correlationId: string }): Promise<Row>;
 }
+/* B34 (0090) exposures */
+export interface ActivateWrites extends ExposureReads {
+  activateTaxonomy(a: { activationId: string; tenantId: string; domainId: string; version: number; reason: string; actor: string; correlationId: string }): Promise<Row>;
+}
+export interface ScenarioLinkWrites extends ExposureReads {
+  linkScenario(a: { linkId: string; exposureId: string; tenantId: string; domainId: string; scenarioId: string; relation: string; rationale: string; actor: string; correlationId: string }): Promise<Row>;
+}
+export interface OutcomeReviewWrites extends ExposureReads {
+  reviewOutcome(a: { reviewId: string; exposureId: string; tenantId: string; domainId: string; responseId: string; effect: string; residualVerdict: string; lesson: string; actor: string; correlationId: string }): Promise<Row>;
+}
+export interface OwnerResolveWrites extends ExposureReads {
+  resolveOwner(a: { exposureId: string; tenantId: string; domainId: string; newOwner: string; reason: string; actor: string; correlationId: string }): Promise<Row>;
+}
+/* end B34 exposures */
 
 class ExposuresImpl extends ExposuresCore implements TaxonomyWrites, AppetiteWrites, RegisterWrites, AssessWrites, EstimateWrites, ContestWrites, AcceptWrites, ControlWrites, RouteWrites,
-  HypothesisWrites, SponsorWrites, RespondWrites, CloseWrites, CorrelationWrites, AggregateWrites {
+  HypothesisWrites, SponsorWrites, RespondWrites, CloseWrites, CorrelationWrites, AggregateWrites, /* B34 (0090) */ ActivateWrites, ScenarioLinkWrites, OutcomeReviewWrites, OwnerResolveWrites {
   constructor(tx: Tx, action: string) { super(tx, action); }
 
   /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -149,6 +181,13 @@ class ExposuresImpl extends ExposuresCore implements TaxonomyWrites, AppetiteWri
   readOutcomes(): any { return this.from('decision.outcomes'); }
   readCandidates(): any { return this.from('prediction.warning_candidates'); }
   readWarnings(): any { return this.from('prediction.warnings_current'); }
+  /* B34 (0090) */
+  readActivations(): any { return this.from('prediction.risk_taxonomy_activations'); }
+  readScenarioLinks(): any { return this.from('prediction.exposure_scenarios'); }
+  readScenarios(): any { return this.from('prediction.scenarios_current'); }
+  readOutcomeReviews(): any { return this.from('prediction.exposure_outcome_reviews'); }
+  readCanonical(): any { return this.from('objects.canonical_objects'); }
+  /* end B34 */
   /* eslint-enable @typescript-eslint/no-explicit-any */
 
   async preview(exposureId: string, version: number): Promise<Row | null> {
@@ -166,12 +205,37 @@ class ExposuresImpl extends ExposuresCore implements TaxonomyWrites, AppetiteWri
   async healthInputs(tenantId: string, domainId: string, at: string): Promise<Row[]> {
     return this.rows(sql`select * from prediction.health_inputs(${tenantId}::uuid, ${domainId}::uuid, ${at}::timestamptz)`);
   }
-  /** B34 (0090 §I), carried to B32: the DATABASE's instant, microseconds kept — "as of now" when the caller names no instant (a host clock may lag the database's, so
+  /** B34 (0090 §I): the DATABASE's instant, microseconds kept — "as of now" when the caller names no instant (a host clock may lag the database's, so
    *  a JavaScript `new Date()` could precede a write already committed and hide it — the B32-F1 class). */
   async dbNow(): Promise<string> {
     const r = await this.rows(sql`select to_char(clock_timestamp() at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as t`);
     return String(r[0]!['t']);
   }
+
+  /* B34 (0090) */
+  async detections(exposureId: string): Promise<Row[]> {
+    const r = await this.rows<{ d: Row[] | null }>(sql`select prediction.exposure_detections(${exposureId}::uuid) as d`);
+    return r[0]?.d ?? [];
+  }
+  async concentration(tenantId: string, domainId: string): Promise<Row[]> {
+    const r = await this.rows<{ c: Row[] | null }>(sql`select prediction.exposure_concentration(${tenantId}::uuid, ${domainId}::uuid) as c`);
+    return r[0]?.c ?? [];
+  }
+  async activateTaxonomy(a: Parameters<ActivateWrites['activateTaxonomy']>[0]): Promise<Row> {
+    return this.one(sql`select prediction.activate_risk_taxonomy(${a.activationId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.version}::int, ${a.reason}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'activate_risk_taxonomy');
+  }
+  async linkScenario(a: Parameters<ScenarioLinkWrites['linkScenario']>[0]): Promise<Row> {
+    return this.one(sql`select prediction.link_exposure_scenario(${a.linkId}::uuid, ${a.exposureId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.scenarioId}::uuid, ${a.relation}, ${a.rationale},
+      ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'link_exposure_scenario');
+  }
+  async reviewOutcome(a: Parameters<OutcomeReviewWrites['reviewOutcome']>[0]): Promise<Row> {
+    return this.one(sql`select prediction.review_exposure_outcome(${a.reviewId}::uuid, ${a.exposureId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.responseId}::uuid, ${a.effect}, ${a.residualVerdict},
+      ${a.lesson}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'review_exposure_outcome');
+  }
+  async resolveOwner(a: Parameters<OwnerResolveWrites['resolveOwner']>[0]): Promise<Row> {
+    return this.one(sql`select prediction.reassign_exposure_owner(${a.exposureId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.newOwner}::uuid, ${a.reason}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'reassign_exposure_owner');
+  }
+  /* end B34 */
 
   async publishTaxonomy(a: Parameters<TaxonomyWrites['publishTaxonomy']>[0]): Promise<Row> {
     return this.one(sql`select prediction.publish_risk_taxonomy(${a.taxonomyId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.expectedVersion}::int, ${JSON.stringify(a.categories)}::jsonb,
@@ -247,4 +311,9 @@ export const ExposuresCapability = {
   close(tx: Tx, action: string): CloseWrites { return new ExposuresImpl(tx, action); },
   correlation(tx: Tx, action: string): CorrelationWrites { return new ExposuresImpl(tx, action); },
   aggregate(tx: Tx, action: string): AggregateWrites { return new ExposuresImpl(tx, action); },
+  /* B34 (0090) */
+  activate(tx: Tx, action: string): ActivateWrites { return new ExposuresImpl(tx, action); },
+  scenarioLink(tx: Tx, action: string): ScenarioLinkWrites { return new ExposuresImpl(tx, action); },
+  outcomeReview(tx: Tx, action: string): OutcomeReviewWrites { return new ExposuresImpl(tx, action); },
+  ownerResolve(tx: Tx, action: string): OwnerResolveWrites { return new ExposuresImpl(tx, action); },
 };

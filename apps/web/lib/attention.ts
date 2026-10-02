@@ -16,7 +16,8 @@ import type { Scope } from './observation';
 type Receipt = { policyDecisionId: string; auditSeq: number };
 
 export const SIGNAL_CLASSES = ['forecast.unfit', 'scenario.incoherent', 'warning.raised', 'source.coverage_loss', 'proposal.review',
-  /* B23 (0084) attention: L10-I02 MaterialChangeRaised, L10-I03 ReviewConvened */ 'decision.material_change', 'review.convened' /* end B23 attention */] as const;
+  /* B23 (0084) attention: L10-I02 MaterialChangeRaised, L10-I03 ReviewConvened */ 'decision.material_change', 'review.convened' /* end B23 attention */,
+  /* B34 (0090 §0) */ 'opportunity.raised', 'health.change', 'commitment.due', 'commitment.breach' /* end B34 */] as const;
 export type SignalClass = (typeof SIGNAL_CLASSES)[number];
 export const ITEM_STATES = ['open', 'escalated', 'unrouted', 'acknowledged', 'suppressed', 'deprioritized', 'closed'] as const;
 export type ItemState = (typeof ITEM_STATES)[number];
@@ -274,6 +275,9 @@ export interface MailMessage { message_id: string; delivery_id: string; recipien
 
 /** The words a delivery's channel is shown with: the demo mailbox is always labelled SYNTHETIC. */
 export function channelLabel(channel: string): string {
+  /* B34 (0090) attention: the email / sms / teams adapters reach LOCAL sinks only — labelled SYNTHETIC like the demo mailbox */
+  if (SYNTHETIC_SINK_CHANNELS.includes(channel)) return `${channel} — SYNTHETIC (local sink; nothing left this machine)`;
+  /* end B34 attention */
   return channel === 'demo-mailbox' ? 'demo-mailbox — SYNTHETIC (no email sent)' : channel;
 }
 /** A class rule's notify in words (the policy table's Channel column): 'in_app', or the channels and the attempt bound — the demo mailbox marked SYNTHETIC. */
@@ -283,7 +287,7 @@ export function channelLine(r: { notify?: unknown } | null | undefined): string 
   const o = n as { channels?: unknown; max_attempts?: unknown };
   const channels = Array.isArray(o.channels) ? o.channels.map(String) : ['in_app'];
   const max = typeof o.max_attempts === 'number' ? o.max_attempts : 3;
-  return `${channels.map((c) => (c === 'demo-mailbox' ? 'demo-mailbox (SYNTHETIC)' : c)).join(', ')} · up to ${max} attempt(s)`;
+  return `${channels.map((c) => (c === 'demo-mailbox' || /* B34 (0090) attention */ SYNTHETIC_SINK_CHANNELS.includes(c) ? `${c} (SYNTHETIC)` : c)).join(', ')} · up to ${max} attempt(s)`;
 }
 /** A delivery state, three channels: glyph, uppercase word, colour token. */
 export function deliveryStateMark(state: string): { glyph: string; token: string; text: string } {
@@ -303,6 +307,9 @@ export function receiptLine(d: Pick<DeliveryRow, 'channel' | 'state' | 'receipt'
   if (r === null) return 'no receipt recorded';
   if (d.channel === 'in_app') return r['placed'] === true ? 'placed in the recipient\'s attention queue' : 'not placed';
   if (d.channel === 'demo-mailbox') return `SYNTHETIC — message ${String(r['message_id'] ?? '—').slice(0, 8)}… placed in the demo mailbox (digest ${String(r['body_digest'] ?? '—').slice(0, 12)}…); no email was sent`;
+  /* B34 (0090) attention: the local sinks' receipts */
+  if (SYNTHETIC_SINK_CHANNELS.includes(d.channel)) return `SYNTHETIC — ${d.channel} accepted by the local sink ${String(r['sink'] ?? '—')} as ${String(r['sink_message_id'] ?? '—').slice(0, 8)}… (digest ${String(r['body_digest'] ?? '—').slice(0, 12)}…); closes no real-provider clause`;
+  /* end B34 attention */
   return JSON.stringify(r);
 }
 
@@ -387,3 +394,54 @@ export function furtherLine(dims: Record<string, unknown>): string {
   return parts.length === 0 ? 'judged before 0086: no further dimension recorded' : parts.join(' · ');
 }
 /* end B24 materiality */
+
+/* B34 (0090) attention ───────────────────────── THE NEW CLASSES, THE ACT, THE SYNTHETIC CHANNELS ────────────────────────
+ * Four classes join the queue, each read from its record by the server: opportunity.raised (an opportunity whose assessment its owner
+ * accepted — the risk-and-opportunity register), health.change (a Strategic Health Score change — review, never action), commitment.due
+ * and commitment.breach (a commitment item, read through the commitment tracker's signal contract). The ACT launches a REGISTERED governed
+ * action from an item (the act registry: opportunity.raised → sponsor, warning.raised → acknowledge the warning; health.change has none):
+ * a named member's act under the human gate; the governed action is its own write with its own rule, and a refusal is RECORDED on the
+ * item (item.act_refused). The email, sms and teams channels are SYNTHETIC adapters to local sinks (a real provider is owner decision D6).
+ */
+export const SYNTHETIC_SINK_CHANNELS: readonly string[] = ['email', 'sms', 'teams'];
+/** The four new classes in words — what each item is and what may follow it (the server's rule, restated). */
+export const B34_CLASS_WORDS: Record<string, string> = {
+  'opportunity.raised': 'an opportunity whose assessment its owner accepted — an opportunity sponsor may sponsor it from here',
+  'health.change': 'a Strategic Health Score change — it triggers review, never action (no act)',
+  'commitment.due': 'a commitment item nearing its deadline (read through the tracker\'s signal contract)',
+  'commitment.breach': 'a commitment item overdue or in exception (read through the tracker\'s signal contract)',
+};
+export interface ActRegistryRow { signal_class: string; action_key: string; governed_action: string; gate: string; target_kind: string; description: string; since: string; performable: boolean }
+export interface AttentionAct {
+  act_id: string; item_id: string; signal_class: string; action_key: string; governed_action: string; target_kind: string; target_id: string; rationale: string;
+  state: 'launched' | 'acted' | 'refused' | string; launched_by: string; launched_at: string; effect_ref: string | null; effect: Record<string, unknown> | null; refusal: string | null; settled_at: string | null;
+}
+/** The acts an item of this class may launch (from the registry the server served), or why there are none. */
+export function actOptions(signalClass: string, registry: ActRegistryRow[], noAct: Record<string, string> = {}): { acts: ActRegistryRow[]; none: string | null } {
+  const why = noAct[signalClass];
+  if (why !== undefined) return { acts: [], none: why };
+  const found = registry.filter((r) => r.signal_class === signalClass && r.performable);
+  return { acts: found, none: found.length === 0 ? `no act is registered for ${signalClass}` : null };
+}
+/** Whether the item's state admits an act (the server decides who; a closed, suppressed or deprioritized item launches nothing). */
+export const canAct = (state: string) => ['open', 'escalated', 'unrouted', 'acknowledged'].includes(state);
+/** The sponsorship's params from the form: the exact version and its digest, the option, the rationale and the conditions (one per line). */
+export function sponsorParams(f: { version: string; digest: string; optionKey: string; rationale: string; conditions: string }): Record<string, unknown> {
+  return { version: Number(f.version), digest: f.digest.trim(),
+           terms: { option_key: f.optionKey.trim(), rationale: f.rationale.trim(), conditions: f.conditions.split('\n').map((x) => x.trim()).filter((x) => x !== '') } };
+}
+/** An act's outcome in words. */
+export function actLine(a: Pick<AttentionAct, 'state' | 'governed_action' | 'effect_ref' | 'refusal'>): string {
+  if (a.state === 'acted') return `acted — ${a.governed_action} → ${a.effect_ref ?? '—'}`;
+  if (a.state === 'refused') return `refused — ${a.refusal ?? 'no reason recorded'}`;
+  return `launched — ${a.governed_action} not yet settled`;
+}
+export const acts = {
+  /** The registry (what each class may launch; health.change has none) and the acts (of one item when named), newest first. */
+  list: (s: Scope, itemId: string | null = null) =>
+    p<{ acts: ActRegistryRow[]; no_act: Record<string, string>; items: AttentionAct[]; receipt: Receipt }>(s, '/executive/attention/acts/list', 'executive.attention.read', 'ATI', itemId === null ? {} : { itemId }, itemId),
+  /** Human-gated; launch → the governed action (its own write) → settled. A refused governed action is recorded, then answered with its status. */
+  act: (s: Scope, itemId: string, actionKey: string, rationale: string, params: Record<string, unknown>) =>
+    p<{ act: AttentionAct; receipts: Record<string, unknown> }>(s, `/executive/attention/items/${itemId}/act`, 'executive.attention.item.act', 'ATI', { action_key: actionKey, rationale: rationale.trim(), params }, itemId),
+};
+/* end B34 attention */

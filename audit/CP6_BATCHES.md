@@ -4601,6 +4601,224 @@ The UI is `/prediction/signals`.
 
 **Carried back from B34 (2026-09-29, the same class):** two more reads named the API HOST's `new Date()` as "now" right after a write stamped by the DATABASE's clock — the exposures' `health-inputs` route (its default instant; phase6-exposures-b32 X13 failed once on it in B34's full run) and a Phase 3 test's `knownAt` (phase3-corrections H1, twice). Both now read at the database's instant (`45ff10b`, `e1926dd`); the two files pass on this branch. The remaining routes that default "as of now" to the host clock are one named sweep, assigned to H1 in B34's records.
 
+## B34 — durable workflow, collaboration and human tasks; the human gates completed; the commitment tracker and the governed execution handoff; the attention classes, the act and the channel adapters; risk and opportunity continued (0090); the owner's bounded review corrected forward (0091, §B34.10): F-P6-05, F-P6-14, F-P6-04, F-P6-07 and F-P4-13 advanced (implemented) — F-P6-05 ADVANCED in B34 and COMPLETES in B36 (the review of 2026-09-29)
+
+**Where it stands.**
+- `phase6-b34` is stacked on B32 (#66); its base is `phase6-b32`. No PR is opened by these records.
+- It is the plan's next A1 stage (`audit/delivery/STAGES.csv` B34).
+- It has ONE migration, `0090_b34_workflow_gates_commitments.sql`, in seven sections (§0, §A, §C, §X, §G, §W, §I). It is forward-only: 0084–0089 are untouched. The interface register stays **50/0/0** (B34 adds no interface).
+- **The hosted run: pending at the candidate; reported to the owner, not re-recorded.**
+
+**How it was built.**
+- The integrator (A1) wrote the §0 PRELUDE first:
+  - the roles `execution_authority`, `external_collaborator` and `commitment_subscriber`;
+  - the external collaborator's marker in `executive.external_principals` and `executive.principal_affiliation`, and `decision.is_active_human` for members only. The FROZEN Phase 0 identity schema is untouched: the upgrade proof refused a first design that added `identity.principals.affiliation` (§B34.6);
+  - the decision states `deferred` and `information_requested`, the package event union, `decision_class` / board;
+  - **the human-task service core** (`human_tasks`, assignments, events, `workflow_timers`; the internal ports `_open_human_task`, `_resolve_human_tasks`, `_cancel_human_tasks`, `_schedule_timer`), which the gates and commitments parts use;
+  - the attention classes `opportunity.raised`, `health.change`, `commitment.due`, `commitment.breach`, their subject kinds, `item.acted` / `item.act_refused`, and the channels `email`, `sms`, `teams` (SYNTHETIC);
+  - the outbox events `ExposureChanged`, `HealthScoreChanged`, `CommitmentChanged` and the consumer kind `commitments`;
+  - **the commitment item's signal contract** (`decision.commitment_item_signal`) — the commitments part owns the record, the attention part reads the signal.
+- Five implementers built the parts in parallel worktrees on their own disposable databases (workflow, gates, commitments, attention, exposures), each under a part-local `0090_b34_x_<part>.sql`.
+- The implementers STALLED repeatedly: the stream watchdog stopped an agent that made no progress for 600 s. Four of the five stalled at least once, the exposures part twice, and two design agents stalled too. Each was resumed or relaunched, one or two at a time (§B34.8, the calibration).
+- The integrator merged the parts, wrote §I and combined the one migration before candidate verification.
+- **B34 advances F-P6-05** (the records first said it completed here; the review of 2026-09-29 moved its completion to **B36**, which owns (u) the enforced activation of a future authorized real execution target — §B34.10). F-P6-14, F-P6-04, F-P6-07 and F-P4-13 are advanced and complete in **B36**; the governed identity route for external principals is **B61**'s; the as-of-now sweep is **H1**'s; real providers are **R2**'s under D6 (§B34.9).
+
+### B34.1 — §W durable workflow, human tasks and collaboration (F-P6-14)
+
+- **The engine:** versioned definitions pinned by digest; the transition log (actor, event, seq, lease); a duplicate start or advance answers `repeated`, another worker 409, a stale seq 409, an unpermitted event 409.
+- **Timers** fired exactly once by the attention tick's step `workflow-timers` (order 20). **Compensation** with a confirm task completed through the task route. **Resumption:** a crashed worker's lease expires and the next worker resumes from the committed seq. **Irreconcilable** instances are escalated.
+- **Drills** recorded as objects with verdicts: `restart_replay`, `duplicate_task`, `duplicate_timer`, `definition_change` (a running instance stays pinned to v1; a new one pins v2).
+- **Human tasks:** reassignment moves work, never authority (eligibility re-checked, 422); gate and commitment tasks complete only through their owning action (409); a failing handler is retried, then abandoned and recovered. The task routes; `/decisions/tasks`, `/decisions/workflow`.
+- **Collaboration workspaces** (`/decisions/workspaces`): participants, threads, messages with mentions, artifacts under a classification ceiling, reviews. Participation is NEVER room membership or approver standing — no approval, commit or room port reads it.
+- **External collaborators:** invited through the SYNTHETIC mailbox with a grant bounded by purpose, audience ceiling and a ≤ 30-day expiry; marked external, `is_active_human` false. The grant lapses at its expiry (tick step 22, or the sweep), the session and the sign-in are refused, and their tasks are reassigned with reason `access_lost`.
+- **The Phase 0 identity service** now refuses an active credential past its expiry (only an external's carries one). The upgrade proof's Phase 0 authority suite passes 297/297 with the refusal.
+
+### B34.2 — §G the human gates completed (F-P6-04)
+
+- **Typed approval conditions** (`assumption_holds`, `indicator_state`, `claim_truth`, `warning_absent`, `date_before`), evaluated at commitment and in monitoring. An unmet condition HOLDS the commit: the hold is recorded (`commit.held`) and re-checked by `commit_package`.
+- **Defer** (with a next review), **reject** and **request-for-information**, then **resume**, each with its rationale and a `gate.review` task. **Review** and **acknowledge** are distinct acts that record a reading (HX-12).
+- **Overrides** as recorded objects: normal, and emergency (covering a quorum shortfall, with a 72-hour review task reviewed by another). Never by the committer; never on a board decision.
+- **Delegation** of approval authority ≤ 30 days: the delegate approves under `delegation:<id>`; the approval stops counting at the end or the expiry; reassignment.
+- **Decision-ready** marked by an independent reviewer on the **information package**'s digest (options, dissent, live approvals, conditions, source-impact markers); a change makes the digest stale.
+- **The consequence preview** (HX-13): the intended effect, the affected objects, the reversibility, the residual risk, the audit scope and what would hold or refuse. The commit carries its digest within 30 minutes; `no_preview`, a stale preview or another person's is refused.
+- **The reserved board class** (PER-01): reserved by an executive with a charter and a quorum ≥ 2; never overridden or delegated; it needs decision-ready and the board's quorum.
+- **Control decisions and policy revisions** versioned per key (a back-dated control refused) and shown in force at the decision instant in the replay.
+- The gate panel on `/decisions` (the condition builder, the authority banner, the distinct acts, the preview).
+
+### B34.3 — §C the commitment tracker and the governed execution handoff (F-P6-05)
+
+- **The tracker** is seeded by a trigger on `decision.commitments` (`commit_package` untouched): the root obligation, owner the action owner, reviewer the objective's owner, the accept task. Items (obligation, milestone, deliverable, handoff) carry owners, deadlines and resources mirrored into the dependencies.
+- **The deadline sweep** (tick step 45): `due_soon` once, `overdue` once with `deadline_missed`, and `CommitmentChanged` after the tick. **Exceptions:** an extension proposed by the owner and co-signed by the reviewer; `accept_residual` with the proposer's co-sign refused.
+- **The governed execution gateway:**
+  - targets declared with their trust anchor and a bearer bound by reference; a non-synthetic target is refused (the owner decision);
+  - handoffs drafted from an item and issued at C3 by an `execution_authority` who is neither the drafter nor the committer;
+  - attempts with receipts (tick step 50), retries on a transport fault, a stale receipt unbound (never an effect), the ERP idempotent on the handoff id;
+  - effects, residuals, compensations co-signed by the reviewer, reconciliation (FEX-18).
+- **The five-lane timeline** (governance, commitment, resource, operational, deviation).
+- **Closure** proposed by the owner with deliverables and co-signed by the reviewer (CMT version 2 closed). `close_package` is refused while the tracker is unclosed.
+- **Re-tasking** (V02-T-117): `graph.revise_objective` publishes `objective.changed`; the `commitments` consumer re-tasks the items and reassigns their reviewers. `CommitmentChanged` is emitted. `/decisions/commitments`.
+- **The production egress refuses a loopback execution target by design** (the B14 precedent). The positive exchange, the partial effect, compensation and closure are therefore proven by the harness (E2–E4, Z1) against the synthetic ERP; the act shows the issuance and the refusal. **Superseded by B34-F2 (0091 §F2, §B34.10):** under the deployment switch `EYE_EXECUTION_SYNTHETIC_LOOPBACK=on` the positive scene runs through the product on the synthetic-loopback path; the refusal stays the production default.
+
+### B34.4 — §A attention: the new classes, the act, ranking fairness, the adapters (F-P6-07)
+
+- **The new classes' dimensions** read from their records: `opportunity.raised` from `ExposureChanged` (an accepted version only), `health.change` from `HealthScoreChanged@v1` — emitted by the compute route in its own write, one per raised change, none on an as-of replay — and `commitment.due` / `commitment.breach` from `CommitmentChanged` read through the signal contract (a payload not of the contract is quarantined).
+- **The act** (`§A4`): a consequential action launched from an item under the human gate, through the act registry and the launch/settle ports — `propose_extension` on a commitment breach (§I), `sponsor` on an opportunity. It is refused at the gate, at the PDP and at the port; a governed action refused at ITS PDP is recorded. **`health.change` has no act by design**: a score change triggers review, never action.
+- **Ranking fairness** in the queue evaluation, per class and consequence tier. It is reported and gates nothing.
+- **The channel adapters** (email over SMTP, SMS and Teams webhooks) with receipts and bounded retries, against the LOCAL SINKS on loopback (`scripts/attention/local-sinks.mjs`) — SYNTHETIC, closing no real-provider clause. The validator and the delivery plan admit them; `push` is refused as D6.
+- The act panel and the fairness pane on `/decisions/attention`.
+
+### B34.5 — §X risk and opportunity continued (F-P4-13; B32's residuals 2, 3, 4, 8 and the row-level list)
+
+- **`ExposureChanged@v1`** from the exposure routes' own writes (accept, route, contest, hypothesis, sponsor, close); none on a refusal or a repeat.
+- **The taxonomy's activation:** a published version is not in force until a SECOND named member activates it.
+- **The canonical RSK polarity** (`register_exposure` re-declared with one change); **scenarios linked** to an exposure.
+- **The outcome loop** against `decision.outcomes` (read, never written): the effect, the residual reviewed again (cause `outcome_review`), the lesson.
+- **Holds:** an invalidated ASU or a withdrawn claim holds accept and sponsor. **Detections:** false precision, held, possible duplicate, time expired (detected, not refused), outcome unreviewed, owner unresolved, options unclassified.
+- **The further dimensions** inside the version's digest: persistence, option and information value, the likelihood as a distribution beside the bracket, indicators, second-order effects, the mitigation-versus-capture trade-off, each option's class (no_regret | reversible | contingent with its trigger | irreversible). **Portfolio concentration** (a read).
+- **Owner resolution** by a named resolver. **The signature** (the exact digest and the named signer) and **the active context** on `/prediction/exposures`, with **four hosted browser cases** (`e2e/phase6-exposures-b34.spec.ts`).
+
+### B34.6 — §I the integrator, and what integration found
+
+- **§I:** the commitment breach's act (the registry row and the `propose_extension` performer); **the assumption verified (or invalidated) by a person** — `graph.assumption.verify`, human-gated, with the planning authority and a stated reason, `graph.set_assumption_state` re-declared from 0024 with one block; the tracker's root event stamped with the commitment's instant.
+- **Found and fixed:**
+  - **the frozen-schema violation:** the first prelude added `identity.principals.affiliation`; the upgrade proof refused it (C14). The marker moved to the B34 tables (`8e03d5f`);
+  - **the replay** saw the tracker's seed as "observed after the decision": the root event now carries the commitment's instant, so the replay's decided layer closes on it (`0556d0c`; phase6-replay's three cases);
+  - **the exposures page** rendered a governed act's receipt only inside an opened exposure; the hosted browser case found it (`0c3900a`; browser 55/55);
+  - **an as-of-now read at the host's clock:** the final full run at `3d630d4` failed phase6-exposures-b32 X13 once — an accepted exposure missing from the health inputs read "as of now", because the route defaulted its instant to the API host's `new Date()`, which can precede a write the database already committed (the B32-F1 class). The route now reads at the DATABASE's instant when no instant is named (`ExposureReads.dbNow()`, `62d6f02`); phase6-exposures-b32 + -b34 then 20/20, twice. The same pattern elsewhere is a named residual (§B34.9, **H1**).
+- **The pins that followed the migration:** 14 consumer kinds, 20 change kinds, the attention kind's nine event types, 15 subscribable types, `push` (not email) refused as D6, 46 roles, 69 migrations (verify-0022), 53 prediction tables (phase4-acceptance D8). Test literals were split so gitleaks raises nothing.
+
+### B34.7 — the act and what its rehearsals found
+
+- `scripts/phase6/act-b34.mjs`: scenes W (F-P6-14), G (F-P6-04), C (F-P6-05), A (F-P6-07), X (F-P4-13), on the real scheduled ticks, through the governed routes.
+- **Six rehearsals** on a restored pre-0090 copy of `eye_demo`. Rehearsals 1–4 stopped on the act's own column and route names and on its escalation scene (fixed in the act); rehearsals 5 and 6: ALL SCENES HELD.
+- **New personas:** T. Richter (`domain_admin`) and K. Lange (`execution_authority`), created through the governed principal route.
+- **Disclosed, outside the governed identity route:** the external collaborator's principal, role binding and credential are written by the collaboration port, not by `identity.create_principal` — the Phase 0 identity path is frozen (C14). The governed route is B61's, with the second-role route. **Corrected by B34-F1 (0091 §F1, §B34.10):** the identity writes now go through the identity authority, provisioned by an identity administrator. The invitation token never leaves the API process, so the external's sign-in is proven by the harness only (C1, C2).
+- **Commit now requires the preview digest**, so the older act scripts and `seed-decisions.mjs` would be refused if re-run. They are historical.
+
+### B34.8 — the evidence
+
+- **Harnesses** (each on a fresh database, the rehearsal Redis):
+
+| Harness | Result |
+|---|---|
+| `phase6-workflow-b34` | 7/7 (W1–W4, T1, C1, C2) |
+| `phase6-gates-b34` | 11/11 |
+| `phase6-commitments-b34` | 10/10 (C1, E1–E4, D1, O1, Z1, S1, and the integrator's I1: overdue → the after-tick `CommitmentChanged` → `commitment.breach` routed through the signal contract → the owner acts (`propose_extension`) → the reviewer co-signs) |
+| `phase6-attention-b34` | 7/7 (P1, O1, H1, C1, A1, F1, D1–D3) |
+| `phase6-exposures-b34` | 6/6 (E1–E6) |
+
+- **Unit tests:** `phase6-workflow-b34`, `phase6-gates-b34`, `phase6-attention-b34`, `phase6-exposures-b34`; the web's `workflow`, `gates`, `commitments`, `attention-b34` tests.
+- **Candidate verification** (local):
+  - the full integration suite at `74f711f` on a fresh database: 1279/1284. The five failures were three replay cases (the real finding in §B34.6) and two pins; all fixed and the affected files then passing;
+  - the full integration suite at `3d630d4`: 1283/1284 in 98 files. The one failure was phase6-exposures-b32 X13 (the as-of-now read, §B34.6), corrected at `62d6f02`; the two exposures files then 20/20, twice;
+  - **the last full run: at `62d6f02`: 1282/1284 in 98 files — the two failures phase3-corrections H1 (a Phase 3 test naming the HOST's `new Date()` as knownAt right after writing its chain: the same host-versus-database clock class), corrected in the test (the database's instant) and then 20/20 twice; the hosted run is the authoritative full run at the candidate**;
+  - the unit gate on a clean tree: 2581 + 9; acceptance 58/58; the upgrade proof PASS (the Phase 0 authority suite 297/297, with the identity service's credential-expiry refusal) — re-run green at `3d630d4`;
+  - the browser gate 55/55 (51 + the exposures part's 4 hosted cases).
+- **The act on `eye_demo`** (`evidence/cp6/act-b34.txt`): **ALL SCENES HELD in 352 s.**
+  - Before it: `eye_demo` backed up (`.eye-local/backups/eye_demo-pre-0090-20260928T205841Z.dump` and `eye_demo-pre-0090-20260928T213126Z.dump`), migrated to 0090, the API restarted with the attention sinks named (the runbook §13).
+  - W: L. Brandt opened the workspace on the mitigation case, added M. Dvořák as a reviewer, shared the customs brief and invited the customs expert (SYNTHETIC partner firm; 14 days; ceiling internal). The expert is external and never an active member. Their review task was escalated by the tick when its deadline passed (set short for the demonstration, and said) to **M. Dvořák**, who reviewed it (endorse with conditions).
+  - G: S. Okafor approved version 1 **"only if customs pre-clearance holds"**. L. Brandt's preview said the commit would be held, and their commitment was **HELD** (recorded). C. Brenner **deferred** with a next review on 2026-10-05; J. Weber **verified the assumption** (§I); C. Brenner resumed; L. Brandt **committed** with the preview digest.
+  - C: the tracker seeded the root item (owner L. Brandt, reviewer J. Weber). T. Richter declared the **SYNTHETIC ERP target** (`https://127.0.0.1:3444`, its certificate the trust anchor, the bearer by reference). L. Brandt's own issuance was refused (403). **K. Lange issued** the handoff, and the **production egress refused the loopback target by design** (the B14 precedent, said). The tracker showed three items; the timeline 13 entries over four lanes.
+  - A: C. Brenner accepted the Morocco opportunity's v2 → `ExposureChanged` → an **opportunity** item. The health score was computed with no change raised (nothing moved; H1 proves the routing). The customs deliverable passed its due instant → the sweep → a **commitment breach** for L. Brandt. M. Dvořák's act on L. Brandt's item was refused. **L. Brandt acted** (`propose_extension`) and **J. Weber co-signed**. The unacknowledged breach escalated, and its notice was **DELIVERED through the email adapter to the local sink** (SYNTHETIC). The queue evaluation measured ranking fairness over ten classes.
+  - X: M. Dvořák published taxonomy version 2, their own activation was refused, and **S. Okafor activated it**.
+- **The demo walk** `e2e/phase6-b34.demo.spec.ts`: 3/3 on `eye_demo` after the act (`evidence/phase6-browser/b34-01-tasks.png`, `b34-02-workspaces.png`, `b34-03-commitments.png`). It is a demo walk, not a hosted case.
+- **Not played in the act** (proven by the harnesses; said here, not claimed): the positive exchange, the partial effect, compensation and closure (the loopback refusal, above — the positive exchange, the partial effect and compensation were then PLAYED on `eye_demo` on 2026-09-29 through the product, §B34.10; closure stays harness-proven, Z1); the objective change re-tasking (O1); an exposure outcome review (E4); a routed health change (H1).
+
+### B34.9 — the residuals, each assigned (the B24-F2 lesson)
+
+| # | Residual | Owned by |
+|---|---|---|
+| 1 | The governed identity route for external principals: the collaboration port writes the external's principal, role binding and expiring credential (Phase 0 frozen, C14) — **narrowed by B34-F1 (0091 §F1):** the writes now go through the identity authority; what stays is a binding-revocation port (the external's role binding is not revoked at the grant's end; inert) and a principal disable port (a principal abandoned by a failed provisioning stays, marked external, with no credential) | **B61** (its completion conditions, with the second-role route; not a clause of a B34 feature) |
+| 2 | The external collaborator has no web shell (the external role has no `identity.self.read`); API only | **B36** (F-P6-14 completes there) |
+| 3 | Task dependencies in the collaboration record (PR-46-002); hosted browser cases for `/decisions/tasks`, `/decisions/workspaces`, `/decisions/workflow` | **B36** (F-P6-14) |
+| 4 | An act whose settle fails after its governed action committed has no resume route | **B36** (F-P6-07 completes there) |
+| 5 | `health.change` has no act | none — **a product decision**: a score change triggers review, never action |
+| 6 | The gate panel and the attention act panel are verified by the harnesses, the web unit tests and the demo walk, not by a hosted browser case | **B36** (F-P6-04, F-P6-07) |
+| 7 | F-P6-04's spec rows not implemented: a signature beyond the audit chain and its verification, the distribution after commitment (JRN-17), recusal, challenge as a transition, missing information and expected effects as first-class fields, a board role and its surface (PER-01), a PDP denial as a versioned object, one uniform human-gate state for publication, source approval and merges (ADR-003) | **B36** (F-P6-04) |
+| 8 | F-P6-07's spec rows not implemented: accept-priority as a distinct act; the digest, preview and signature on the queue's transitions; a hold or route-to-authority on bias or staleness; a recovery route per degraded state; the active objective/horizon/scenario on the queue; governance forums over the same memory | **B36** (F-P6-07, with F-P6-11's context switcher) |
+| 9 | F-P4-13: the monitor → outcome step walked in a hosted browser case and played on `eye_demo` (the four hosted cases stop at the owner resolution; no outcome was recorded in the act); the outcome loop exercised on an opportunity's response (learn) | **B36** (F-P4-13 completes there) |
+| 10 | The as-of-now sweep: 19 sites of `?? new Date().toISOString()` in `apps/api/src` at `62d6f02` default a read to the host's clock (the B32-F1 class); none fails a gate today | **H1** (a named hardening item with the carried timing items; +0.25–0.5 U) |
+| 11 | Real providers — email, SMS, Teams, a real ERP, a real invitation mailbox — and the AT-39, AT-44, AT-46, AT-27, AT-28 records | **R2** (owner decision D6 for the providers; the synthetic adapters never close them) |
+
+- **F-P6-05 is ADVANCED in B34 and COMPLETES in B36** (the records first said it completed here; corrected by the review of 2026-09-29, §B34.10), with (u) the enforced activation of a future authorized real execution target; the authorized real ERP integration stays **R2** (D6). Its demo scene's positive exchange, partial effect and compensation are now PLAYED on `eye_demo` through the product (B34-F2), no longer harness-only.
+- **Assigned by the review (2026-09-29):** (t) the local invitation pickup and delivery (the invitation token lives only in the API process) → **B36**; (u) the enforced activation of a future authorized real execution target → **B36**; the binding-revocation and principal-disable ports (row 1) → **B61**. Unchanged: the rest of B36's construction, B61's governed external identity route, H1's as-of-now sweep (row 10), R2 (row 11); #62 stays the owner's separate decision.
+- **F-P6-14, F-P6-04, F-P6-07 and F-P4-13 stay advanced by B34** and complete in **B36**, each with its residuals in B36's completion conditions (i)–(s).
+- **F-P4-12's dependency** on F-P6-04 is replaced by B74's `extra_depends_on` B34: it needs B34's delivered gates, not F-P6-04's completion (the B24-F2 precedent).
+
+### B34.10 — the owner's bounded review of 2026-09-29 (B34-F): corrections applied forward in 0091
+
+**The review.** "The Eye — B34 bounded review, 2026-09-29" (the owner's file `The_Eye_B34_Bounded_Review_2026-09-29.md`; NOT committed, cited here by name). It CLOSED B24-F1 (`16d8646`) and B32-F1 (`aa038f3`; #66 `0de436b`): those closures and their frozen criteria are preserved, nothing is reopened. It raised two findings on B34:
+- **B34-F1** — the collaboration ports' identity mutations bypassed the identity authority: 0090 §W5 `executive.invite_collaborator`, `accept_collaboration` and `_end_collab_grant` wrote `identity.principals`, `role_bindings` and `credentials` directly under the commit authority (the disclosure of §B34.7 was not a sufficient answer);
+- **B34-F2** — F-P6-05's demonstration must not be claimed on a refusal alone: the positive synthetic ERP scene is delivered through the product (receipt, partial effect, residual, compensation), with ordinary production egress restrictions and the refusal test kept, and no purchase or real-provider activation.
+
+**The correction: ONE forward migration, `0091_b34f_identity_authority_execution_path.sql`** (0090 applied and untouched; the Phase 0 schemas gain nothing), in three sections.
+
+**§F1 — the identity authority (part `b34f/identity`).**
+- **Invite = request, then provision.** The workspace owner REQUESTS: the grant is `requested`, with no principal and no identity write. An IDENTITY ADMINISTRATOR (`platform_admin` / `tenant_admin` — the roles of the Phase 0 `identity.principal.create` rule; never the requester) PROVISIONS through the new action `executive.collab.provision`:
+  1. reserve — the principal id, the `ext-` login and the external marker written FIRST, so a marker-less principal never exists;
+  2. `identity.create_principal` on the identity authority (DOMAIN `human`, the only role `external_collaborator`; the grantor is now the administrator — 0090 left it NULL);
+  3. `identity.credential_issue` under `ctx.issue_identity_op('identity.principal.create')`, expiring with the invitation window;
+  4. activate — the identity facts VERIFIED, not trusted → the grant `invited`.
+  A failure after the identity write is compensated on the identity side (credentials and sessions revoked, the epoch bumped); the grant stays `requested`, and a retry reserves a fresh principal.
+- **Accept:** recorded commit-side first; then the identity ports verify the token against the active credential, revoke it, issue the new password expiring with the grant and revoke all sessions (`credential_revoke` + `credential_issue` + `sessions_revoke_all_v2` — `credential_rotate_v2` cannot set an expiry, so the old credential shows `revoked`, not `rotated`). A retry answers `repeated`.
+- **Revoke and expiry:** the grant is ended commit-side first (owner and state checks before any identity write; no identity write inside the tick's transaction); then the identity side revokes credentials and sessions and bumps the epoch — immediately on the revoke route; for expiries through the new after-tick hook `collab-access-revocation` and the read `executive.collab_access_pending` (anything left live is revoked by the next tick).
+- `executive.invite_collaborator` and the 7-argument `accept_collaboration` are DROPPED; `_end_collab_grant` is re-declared without identity updates. The new route `POST …/executive/collab/grants/:grantId/provision`; the invitations route answers `requested`; `collab_grants` gains the state `requested` and `display_name`, `login_name`, `provisioned_by`, `provisioned_at`.
+- **Disclosed:** three earlier agent-session extensions (`graph.propagation_agent_session_extend`, `graph.subscription_session_extend`, `intelligence.extraction_agent_session_extend`) write `identity.sessions`, but they run only under an identity operation and are executable only by `eye_identity` — already on the identity authority; the harness pins exactly those three.
+
+**§F2 — the synthetic-loopback execution path (part `b34f/execution`).**
+- **The deployment switch `EYE_EXECUTION_SYNTHETIC_LOOPBACK`** (`on` | `off`, default `off`; any other value refuses startup). The synthetic-loopback path is taken ONLY when the switch is on, the target is recorded synthetic, its endpoint is https without userinfo and its host an IPv4 loopback LITERAL (`127.x`; `localhost` and `::1` go to production), and a trust anchor is declared. It is carried by the client's own pinned transport (`deliverPinned`) to that literal — the declared anchor verified, the bearer bound by reference, no redirects; the egress re-checks and refuses (`address_not_public`) otherwise. Everything else goes to the unchanged production deliver (`http-client.ts` untouched).
+- **The record:** `decision.execution_attempts.transport` (generated from `egress ->> 'transport'`; CHECK `production` | `synthetic-loopback`; NULL before 0091) and a BEFORE INSERT guard refusing a `synthetic-loopback` label unless the target is synthetic with an anchor and a `127.x` literal. `decision.due_execution_handoffs` is re-declared so the tick's retries carry the target's synthetic flag. The issue route, the get route, the tick's attempted list and the commitments page name the path.
+- `declare_execution_target` still refuses a non-synthetic target (422, unchanged). The enforced activation of a future authorized real target is **B36**'s (u); the real ERP integration stays **R2**.
+
+**§F3 — the compensation chain (the integrator; found by rehearsal 1).** 0090 marked a compensation done only when its compensating handoff was fully EFFECTED: a reissue itself partially effected kept its compensation `in_progress` forever, so the original handoff's reconcile refused (`residual_undisposed`, 1 live). `decision.reconcile_execution_handoff` is re-declared from 0090 with one addition: reconciling a compensating handoff from `partially_effected` or `failed` (its residual disposed — the check unchanged) completes the compensation it carried out (`compensation.done` by reconcile; the compensation task resolved).
+
+**The harnesses** (each on a fresh database, the rehearsal Redis):
+
+| Harness | Result |
+|---|---|
+| `phase6-collab-identity-b34f` | 5/5 — P1 request → provision → token sign-in → accept → work → revoke, and a real-tick expiry, remove credentials and sessions; P2 compensation (a fault at activation, the credential revoked, the retry succeeds); R1 the owner, a domain admin and an executive refused 403 at the provision route and at the identity route, the requester provisioning their own request 403, a second provision 409; R2 the catalog scan and 42501 on a direct insert as `eye_commit`; R3 the old functions gone (42883) |
+| `phase6-execution-b34f` | 4/4 — P1 the positive scene through the product, no substitution (the receipt bound: handoff id, attempt, payload digest; half effected, 500/1000 kg and 2/4 lots → the `partial_effect` exception; reconcile refused while the residual is open; `reissue_residual` to a named compensation owner; the compensating handoff effected; both reconciled); R1 the refusals (a non-synthetic declare 422; the switch ON with a synthetic target on `localhost` or 10.20.30.40 → the production vetting, `address_not_public`; the switch OFF → the loopback target refused the same way; nothing reached the ERP; the database refuses a forged `synthetic-loopback` attempt and an unknown transport value); T1 a 500 retried by the tick on the same path, effected at attempt 2; C1 the chain (a reissue half effected, its residual reissued again and effected, reconciled newest first, the first compensation completed by its reconcile, the original reconciles, both exceptions resolved) |
+| `phase6-workflow-b34` | 7/7 (C1/C2 moved to request → provision) |
+
+**Local gates on the integrated head:** full integration **1293/1293** in 100 files (#67's hosted 1284 + 5 + 4); API unit 2585 + 9 (the hermetic meta suite); web unit 97 (the residual-words case is an added assertion in an existing test); typecheck clean; acceptance 58/58; the upgrade proof (`verify-0022-upgrade.mjs`) PASS with the migration pin 69 → 70; the browser gate 55/55.
+
+**The rehearsals** (a rig on a restored copy: `eye_demo_b34f` from the pre-0091 dump, the API on :3411, the rehearsal Redis :6392, a rehearsal ERP on :3454, rehearsal sinks 2535/3456).
+- **Rehearsal 1 found three things:** (i) §F3 (above); (ii) that the copy's execution target could not be repointed — `execution_targets` are retire-only — and the rig did not stop. **Rehearsal 1's positive scene therefore reached the DEMONSTRATION's synthetic ERP on :3444:** two rehearsal handoffs were received into its in-memory log, and its mode was set `partial`, then `normal`. `eye_demo` itself was not touched. The demonstration ERP was not restarted, because a restart mints a new certificate and would break the demonstration target's declared anchor. The rig now repoints the COPY's target with the `retire_only` trigger disabled for that one statement on the copy and STOPS if it fails; the act refuses a rehearsal copy whose target names :3444 (`act-b34.mjs`, exit 3); (iii) the attention, escalation and taxonomy scenes are not rerun-safe, so `ACT_SCENES=b34f` replays scenes W and C only.
+- **Rehearsal 2 held.**
+
+**The demonstration.** `eye_demo` migrated to **0091** (backup `.eye-local/backups/eye_demo-pre-0091-20260929T084440Z.dump`, 65,260,677 bytes); the API restarted with `scripts/ops/demo-restart.sh`, with `EYE_EXECUTION_SYNTHETIC_LOOPBACK=on` and the four `EYE_ATTENTION_*` sink variables in the caller's environment (VERIFIED). `act-b34` with `ACT_SCENES=b34f` → `evidence/cp6/act-b34f.txt`, two runs: run 1 played scene W and stopped at scene C, because the act was started without `.eye-local/env` sourced and the ERP's bearer reference did not resolve; run 2 held every scene it played.
+- **W (B34-F1):** L. Brandt REQUESTED the invitation for R. Haddad (customs broker, partner firm, SYNTHETIC); L. Brandt's own provisioning was REFUSED (403); the administrator PROVISIONED it through the identity authority (the grant `invited`, 14 days, the principal marked external, the invitation to the SYNTHETIC mailbox). The grant INVITED UNDER 0090 (its principal written by the removed bypass port) was REVOKED by L. Brandt through the corrected path, and the identity authority revoked what it held: active credentials 1 → 0, live sessions 0 → 0, epoch 1 → 2.
+- **C (B34-F2):** the handoff refused on 2026-09-28 (production egress, failed after 5 attempts) stays the NEGATIVE evidence. Its whole residual (brg-6205 400, mag-n42 120) was assigned by L. Brandt (`reissue_residual`, owner L. Brandt). The operator set the SYNTHETIC ERP to `partial` (its control route, said). K. Lange issued the compensating handoff (C3); it was carried by the synthetic-loopback path (pinned 127.0.0.1, TLS verified against the declared anchor, the bearer by reference), the receipt bound by the database and the ERP's own log naming the same handoff → brg-6205 200/400, mag-n42 60/120, partial → the `partial_effect` exception opened; reconcile REFUSED (409 `residual_undisposed`); the remaining half (200, 60) reissued and effected in full; the compensations `reissue_residual` `in_progress` → `done`; reconciled newest first — the effected reissue, the partial reissue, the original (`failed` → `reconciled`); the purchase-request item back `in_progress`, its exceptions `blocked` and `partial_effect` resolved.
+- Scenes A, W part 2 and X HELD on 2026-09-28 (`evidence/cp6/act-b34.txt`) and were not replayed (they need a fresh state and minute-scale waits); the output says so.
+- **The demo walk** `e2e/phase6-b34.demo.spec.ts`: **4/4** (+ the execution case and the grants view; `evidence/phase6-browser/b34-04-execution.png`, `b34-05-grants.png`). The walk found the commitments page's residual line showing `undefined` for the compensation owner (the get route names `owner_principal_id`) — fixed in `apps/web/lib/commitments.ts` with a unit case; the walk asserts none.
+
+**CI and supply chain** (the review's CI items).
+- **#67's build job:** its integration passed 1284/1284, but the job ended 2.5 min into C18 on its own 30-minute bound. build-test's `timeout-minutes` 30 → **55** (built from its steps' bounds) and the integration step's own bound **28**, so it never consumes C18's window; C18's 900-second watchdog and 25-minute step bound are unchanged; the C17.2 contract test pins the new values (`a9b2e6d`).
+- **#64/#65 gitleaks-history:** the redacted findings were inspected under the existing process. The one ungoverned finding is 0089's jsonb key name on `phase6-b32` (commit `2f10189`, rule `generic-api-key`; the known false positive dispositioned in B32's `.gitleaks.toml` §7), reported because those heads' configurations lacked §7. The same scoped exclusion (rule + file + literal) was carried unchanged to #64 (`c385d02`), merged to #65 (`41cfdb0`) and #66 (`9b9bfbb`) and into #67 — no history rewrite, no broader exception. The hosted gitleaks-history is [ok] on #64/#65/#66; the failure was not the Redis pin. **#60/#61/#63's heads also lack §7** — not addressed here (noted).
+- **New advisories** found in those runs (pnpm-audit-human and trivy-fs red on #65/#66, published 2026-09-28): fast-uri GHSA-qw65-cvwx-89v3 and GHSA-58mr-gqgx-xq4g (HIGH), multer GHSA-3pph-fpjx-jg34 (MODERATE). Overrides fast-uri 3.1.6 → 3.1.7 and multer 2.3.0 → 2.4.0 on #67's head (`e483b44`; the existing exact-version rule; `pnpm audit` clean). NOT yet carried to #64–#66: their supply-chain stays red on these and on the redis recheck, which is #62's separate owner decision.
+
+**The tracker corrections** (`dc49399`): F-P6-05's stage B34 → **B36** — B34 advances it; B36 completes it with (u) the enforced activation of a future authorized real execution target. B34's stale "F-P4-13 COMPLETES HERE" condition is corrected to ADVANCED. B36 names (t) the local invitation pickup and delivery construction. STAGES and DELIVERY_PLAN re-derived (the checks PASS); the schedule moved: B34 5.25–9 U (target 2026-10-30 → 2026-11-12), B36 13.5–23.5 U (2026-11-27 → 2026-12-29); the M1 dates are unchanged. `FEATURE_TRACKER.csv` F-P6-05 and F-P6-14 record what B34-F implemented (their delivered, demo and evidence text).
+
+**The residuals of the review, each assigned:**
+
+| # | Residual | Owned by |
+|---|---|---|
+| F-a | The external's role binding is not revoked at the grant's end (no identity port revokes a binding). Inert: no credential, no session, the epoch moved, and every collaboration port refuses a non-live grant | **B61** (the binding-revocation port, with its governed external identity route) |
+| F-b | A principal abandoned by a failed provisioning stays (no identity port disables principals), marked external, with no credential | **B61** |
+| F-c | The invitation token still lives only in the API process: the local invitation pickup and delivery | **B36** (t) |
+| F-d | The enforced activation of a future authorized real execution target (a non-synthetic target stays refused, 422) | **B36** (u) |
+| F-e | The authorized real ERP integration | **R2** (D6) |
+| F-f | The fast-uri / multer overrides and B32's `.gitleaks.toml` §7 not yet on #64–#66 (overrides) and #60/#61/#63 (§7) | the stack's integration in the recorded order (INTEGRATION_SEQUENCE; each head receives them when #67's line merges upward) — the owner's merge decision, with #62 |
+
+Unchanged: the remaining B36 construction and B61's governed external identity route; the H1 as-of-now clock sweep; #62 remains the owner's separate decision. **No merge, purchase, real-provider activation or additional account.** The candidate is PR #67 (`phase6-b34` → `phase6-b32`) at the B34-F head.
+
+### B34.11 — the records
+
+- 101 requirement rows updated (implemented 1070 → 1121; missing 2411 → 2404); each partial row names its residual and its stage.
+- Sixty-seven units gain evidence and stay open (the split 3,555 = 3,179 + 339 + 37 is unchanged).
+- The tracker: F-P6-05 completes in **B34** (verification R2; corrected to **B36** by the review of 2026-09-29, `dc49399`, §B34.10); F-P6-14, F-P6-04, F-P6-07 and F-P4-13 → **B36**, each with verification in **R2**. B34 advances the four and carries its own effort (5.25–9 U). B36 gains `extra_depends_on` B34 (its carried clauses build on B34's code). The schedule was re-derived once: M1 is unchanged (three accounts 2027-07-02; two 2027-10-06; one 2028-08-02); B34's target merge moves 2026-11-19 → 2026-11-17. The next A1 stage in the re-derived schedule is B29.
+- The ledger: 0090 frozen (applied to `eye_demo`). The calibration (DELIVERY_PLAN §9, observation 5): construction ≈ 3 h 45 min active, kept apart from the wait.
+
 ## Order and the next implementation batch
 
 B3, B1 and B2 are done in code, B4/B5 applied to the audit (the 2026-09-11 checkpoints), B6 done in
@@ -4613,4 +4831,4 @@ one artefact, no deployment leg. Every leg of every unit stays unaccepted until 
 carries its own signed evidence (P7-D). The synthetic-company demonstration (`eye_demo`, NORDWERK) remains the deliverable
 every batch is exercised on: B3's kinds become visible on the demonstration when a scenario with the
 new kinds is declared there through the governed route (a scripted act, `scripts/phase4/`), which is
-the next demonstration step after the hosted run is green. B22 delivered the consumers and the attention policy (0083; the register 44/6/0) and the sweep's remedy (0082). Then B23 (the commands and the query — L1-I02, L3-I02, L4-I02, L7-I02, L10-I02/-I03). B23 bound them and the briefing's attention section (0084; the register 50/0/0). From here the order is the finite delivery plan's (`audit/DELIVERY_PLAN.md`, `audit/delivery/STAGES.csv`): B24 (the attention completion, 0086) delivered on 2026-09-25 on `phase6-b24`, stacked on #63, and B24-F1 corrected on 2026-09-26 (0087, §B24.8) with the tracker corrected (§B24.9); B28 (stream processing, the weak-signal workbench, the early-warning lifecycle, and the two B24 carryovers) delivered on 2026-09-26 (0088, `phase6-b28`, stacked on #64); B32 (the Strategy Graph's capabilities and alignment, risk and opportunity intelligence, the decomposable Strategic Health Score) delivered on 2026-09-28 (0089, `phase6-b32`, stacked on #65; §B32). The next A1 stage in the re-derived schedule is B34. The C15 return to the official images merged with #57 (`main` `870b212`); the live demonstration containers were recreated onto those images on 2026-09-24 under the owner's word (§B22.2). The `ctx.build` remedy was delivered as 0082 (§B22.1) — the owner's 2026-09-24 word made it a technical choice. AU-MEM-0067 stays OPEN without a waiver: the per-object class (a missing or corrupt object under a reachable root) keeps A7's one 409 and the specification obligation stands (§B21.2's table).
+the next demonstration step after the hosted run is green. B22 delivered the consumers and the attention policy (0083; the register 44/6/0) and the sweep's remedy (0082). Then B23 (the commands and the query — L1-I02, L3-I02, L4-I02, L7-I02, L10-I02/-I03). B23 bound them and the briefing's attention section (0084; the register 50/0/0). From here the order is the finite delivery plan's (`audit/DELIVERY_PLAN.md`, `audit/delivery/STAGES.csv`): B24 (the attention completion, 0086) delivered on 2026-09-25 on `phase6-b24`, stacked on #63, and B24-F1 corrected on 2026-09-26 (0087, §B24.8) with the tracker corrected (§B24.9); B28 (stream processing, the weak-signal workbench, the early-warning lifecycle, and the two B24 carryovers) delivered on 2026-09-26 (0088, `phase6-b28`, stacked on #64); B32 (the Strategy Graph's capabilities and alignment, risk and opportunity intelligence, the decomposable Strategic Health Score) delivered on 2026-09-28 (0089, `phase6-b32`, stacked on #65; §B32; B32-F1 corrected, §B32.10); B34 (durable workflow, collaboration and human tasks, the human gates, the commitment tracker and the governed execution handoff, the attention classes and the act, risk and opportunity continued) delivered on 2026-09-28/29 (0090, `phase6-b34`, stacked on #66; §B34) and corrected forward on the owner's bounded review of 2026-09-29 (0091, §B34.10) — it advances five features, all completing in B36. The next A1 stage in the re-derived schedule is B29. The C15 return to the official images merged with #57 (`main` `870b212`); the live demonstration containers were recreated onto those images on 2026-09-24 under the owner's word (§B22.2). The `ctx.build` remedy was delivered as 0082 (§B22.1) — the owner's 2026-09-24 word made it a technical choice. AU-MEM-0067 stays OPEN without a waiver: the per-object class (a missing or corrupt object under a reachable root) keeps A7's one 409 and the specification obligation stands (§B21.2's table).

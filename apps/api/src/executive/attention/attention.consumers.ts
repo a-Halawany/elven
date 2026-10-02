@@ -34,6 +34,9 @@ import { readPolicyChanged } from './attention.service.js';
 import { readMaterialChange, type MaterialChange } from '../../decision/subscriptions/material-change.js';
 import { readReviewConvened, type ReviewConvened } from '../reviews/reviews.service.js';
 /* end B23 attention */
+/* B34 (0090) attention */
+import { commitmentClassOf, healthConsequence, readCommitmentChanged, readExposureChanged, readHealthScoreChanged, type CommitmentSignal, type ExposureSignal, type HealthSignal } from './b34-signals.js';
+/* end B34 attention */
 
 type Row = Record<string, unknown>;
 type Scope = { tenantId: string; domainId: string };
@@ -219,7 +222,11 @@ type Signal =
   | { kind: 'policy'; policyId: string; version: number; changedSections: string[]; changedClasses: string[] }
   /* B23 (0084) attention */
   | ({ kind: 'package'; id: string } & MaterialChange)
-  | ({ kind: 'review'; id: string } & ReviewConvened) /* end B23 attention */;
+  | ({ kind: 'review'; id: string } & ReviewConvened) /* end B23 attention */
+  /* B34 (0090) attention */
+  | ({ kind: 'exposure'; id: string } & ExposureSignal)
+  | ({ kind: 'health_change'; id: string } & HealthSignal)
+  | ({ kind: 'commitment_item'; id: string } & CommitmentSignal) /* end B34 attention */;
 function readSignal(event: FlatEvent): Signal | string {
   const p = event.payload;
   switch (event.event_type) {
@@ -251,6 +258,21 @@ function readSignal(event: FlatEvent): Signal | string {
       return typeof r === 'string' ? r : { kind: 'review', id: r.reviewId, ...r };
     }
     /* end B23 attention */
+    /* B34 (0090) attention: the three new signals (the payload a hint; the record is read) */
+    case 'ExposureChanged': {
+      const x = readExposureChanged(p);
+      return typeof x === 'string' ? x : { kind: 'exposure', id: x.exposureId, ...x };
+    }
+    case 'HealthScoreChanged': {
+      const x = readHealthScoreChanged(p);
+      return typeof x === 'string' ? x : { kind: 'health_change', id: x.changeId, ...x };
+    }
+    case 'CommitmentChanged': {
+      const x = readCommitmentChanged(p);
+      // a change of the commitment itself (no item) names nothing to route: the item is the unit of the queue
+      return typeof x === 'string' ? x : { kind: 'commitment_item', id: x.itemId ?? x.commitmentId, ...x };
+    }
+    /* end B34 attention */
     default: return `the attention consumer does not read ${event.event_type}`;
   }
 }
@@ -327,6 +349,69 @@ export class AttentionConsumer extends B22Consumer implements SubscriptionConsum
       return { effect: 'attention.routed', effectRef: String(r['item_id']), details: { signal: 'review.convened', ...r, escalation: esc } };
     }
     /* end B23 attention */
+    /* B34 (0090) attention: OPPORTUNITY — an opportunity from the risk-and-opportunity register (ExposureChanged; a risk arrives as warning.raised). */
+    if (s.kind === 'exposure') {
+      const x = ((await cap.readExposures().select(['exposure_id', 'polarity', 'state', 'owner_principal_id', 'accepted_version', 'category_key', 'sponsor_principal_id'] as never)
+        .where('exposure_id' as never, '=', s.id as never).execute()) as Row[])[0] ?? null;
+      if (x !== null && x['polarity'] !== 'opportunity') {
+        return { effect: 'not_a_signal', effectRef: null, details: { exposure_id: s.id, polarity: x['polarity'], change: s.change, note: 'a risk reaches the queue as warning.raised (its appetite breach routed to the warning intake); only an opportunity is routed here', escalation: esc } };
+      }
+      // A signal that NO LONGER STANDS (the exposure closed, or unknown here) is recorded, not routed; an opportunity no owner has accepted is not yet a signal.
+      if (x === null || String(x['state']) === 'closed') return { effect: 'signal.no_longer_stands', effectRef: null, details: { exposure_id: s.id, state: x?.['state'] ?? null, change: s.change, escalation: esc } };
+      if (x['accepted_version'] === null || x['accepted_version'] === undefined) {
+        return { effect: 'not_a_signal', effectRef: null, details: { exposure_id: s.id, state: x['state'], change: s.change, note: 'an opportunity whose assessment no owner has accepted is not yet a signal (an unaccepted estimate is no input)', escalation: esc } };
+      }
+      const title = ((await cap.readStrategy().select(['title'] as never).where('strategy_object_id' as never, '=', s.id as never).execute()) as Row[])[0]?.['title'];
+      const v = ((await cap.readExposureVersions().select(['confidence'] as never).where('exposure_id' as never, '=', s.id as never).where('version' as never, '=', Number(x['accepted_version']) as never).execute()) as Row[])[0] ?? {};
+      const further = await furtherDims(cap, scope, 'opportunity.raised', s.id);
+      const hours = typeof further.hours_to_window === 'number' ? further.hours_to_window : null;
+      // CONSEQUENCE: C2 when the opportunity serves an active objective (its strategic relevance, read from the graph), C1 otherwise;
+      // CONFIDENCE: the ACCEPTED assessment's own (none stated → no input: the engine abstains, the item deprioritized and visible).
+      const r = await cap.routeItem({ itemId: newId(), ...base, signalClass: 'opportunity.raised', subjectKind: 'exposure', subjectId: s.id, owner: String(x['owner_principal_id']),
+        dims: { consequence: further.strategic_relevance === 1 ? 'C2' : 'C1', confidence: v['confidence'] === null || v['confidence'] === undefined ? null : Number(v['confidence']), hours_to_window: hours,
+                accepted_version: Number(x['accepted_version']), ...withoutWindow(further) },
+        title: `Opportunity: ${String(title ?? s.id).slice(0, 240)} (${String(x['category_key'])}; ${String(x['state'])})`,
+        details: { exposure_id: s.id, polarity: 'opportunity', change: s.change, change_event_id: s.eventId, accepted_version: x['accepted_version'], state: x['state'], sponsor: x['sponsor_principal_id'] ?? null } });
+      return { effect: 'attention.routed', effectRef: String(r['item_id']), details: { signal: 'opportunity.raised', ...r, escalation: esc } };
+    }
+    /* B34 (0090) attention: THE STRATEGIC HEALTH SCORE's change (L10-C02) — review, never action (no act is registered for health.change). */
+    if (s.kind === 'health_change') {
+      const c = ((await cap.readHealthChanges().selectAll().where('change_id' as never, '=', s.id as never).execute()) as Row[])[0] ?? null;
+      if (c === null || !['raised', 'challenged'].includes(String(c['state']))) {
+        return { effect: 'signal.no_longer_stands', effectRef: null, details: { change_id: s.id, state: c?.['state'] ?? null, escalation: esc } };
+      }
+      const snap = ((await cap.readHealthSnapshots().select(['snapshot_id', 'coverage'] as never).where('snapshot_id' as never, '=', String(c['snapshot_id']) as never).execute()) as Row[])[0] ?? null;
+      const further = await furtherDims(cap, scope, 'health.change', s.id);
+      const triggers = Array.isArray(c['triggers']) ? (c['triggers'] as unknown[]).map(String) : [];
+      const n = (v: unknown) => (v === null || v === undefined ? '—' : String(Number(v)));
+      const bands = c['from_band'] !== null && c['to_band'] !== null && c['from_band'] !== c['to_band'] ? ` (${String(c['from_band'])} → ${String(c['to_band'])})` : '';
+      const r = await cap.routeItem({ itemId: newId(), ...base, signalClass: 'health.change', subjectKind: 'health_change', subjectId: s.id, owner: null,
+        // CONSEQUENCE: C3 an unfavourable band crossing of the aggregate, C2 another unfavourable change, C1 otherwise; CONFIDENCE: the snapshot's coverage.
+        dims: { consequence: healthConsequence(c), confidence: snap === null ? null : Number(snap['coverage']), hours_to_window: null, direction: c['direction'], triggers, subject: c['subject'], ...withoutWindow(further) },
+        title: `Health score: ${String(c['subject_label'])} ${n(c['from_value'])} → ${n(c['to_value'])}${bands} — ${String(c['direction'])}; review, never action`,
+        details: { change_id: s.id, snapshot_id: c['snapshot_id'], subject: c['subject'], triggers, direction: c['direction'], gaming_flags: c['gaming_flags'] ?? [], authorizes_action: false } });
+      return { effect: 'attention.routed', effectRef: String(r['item_id']), details: { signal: 'health.change', ...r, escalation: esc } };
+    }
+    /* B34 (0090) attention: A COMMITMENT ITEM — read ONLY through decision.commitment_item_signal (the prelude's contract; the commitments part's body). */
+    if (s.kind === 'commitment_item') {
+      if (s.itemId === null) return { effect: 'not_routed', effectRef: null, details: { commitment_id: s.commitmentId, change: s.change, note: 'a change of the commitment itself names no item: the queue routes items', escalation: esc } };
+      const sig = await cap.commitmentItemSignal({ tenantId: scope.tenantId, domainId: scope.domainId, itemId: s.itemId });
+      if (sig === null) {
+        return { effect: 'not_routed', effectRef: null, details: { item_id: s.itemId, commitment_id: s.commitmentId, change: s.change, reason: 'the signal contract knows no such commitment item (decision.commitment_item_signal answered NULL)', escalation: esc } };
+      }
+      const klass = commitmentClassOf(sig);
+      if (klass === null) return { effect: 'signal.no_longer_stands', effectRef: null, details: { item_id: s.itemId, state: sig['state'] ?? null, escalation: esc } };
+      const further = await furtherDims(cap, scope, klass, s.itemId);
+      const hours = typeof further.hours_to_window === 'number' ? further.hours_to_window : null;
+      const r = await cap.routeItem({ itemId: newId(), ...base, signalClass: klass, subjectKind: 'commitment_item', subjectId: s.itemId, owner: typeof sig['owner'] === 'string' ? sig['owner'] : null,
+        // CONSEQUENCE: the item's own severity; CONFIDENCE 1: a deadline and an exception are recorded facts.
+        dims: { consequence: typeof sig['severity'] === 'string' ? sig['severity'] : null, confidence: 1, hours_to_window: hours, overdue: sig['overdue'] === true, open_exceptions: Number(sig['open_exceptions'] ?? 0), ...withoutWindow(further) },
+        title: `Commitment ${klass === 'commitment.breach' ? 'BREACH' : 'due'}: ${String(sig['title'] ?? s.itemId).slice(0, 240)}${sig['overdue'] === true ? ' — OVERDUE' : ''}`,
+        details: { item_id: s.itemId, commitment_id: sig['commitment_id'] ?? s.commitmentId, package_id: sig['package_id'] ?? null, due_at: sig['due_at'] ?? null, state: sig['state'] ?? null,
+                   reviewer: sig['reviewer'] ?? null, residual: sig['residual'] ?? null, change: s.change } });
+      return { effect: 'attention.routed', effectRef: String(r['item_id']), details: { signal: klass, ...r, escalation: esc } };
+    }
+    /* end B34 attention */
     if (s.kind === 'forecast') {
       if (!s.unfit) return { effect: 'not_a_signal', effectRef: null, details: { forecast_id: s.id, note: 'a fit or indeterminate verdict is not an attention signal', escalation: esc } };
       const f = ((await cap.readForecasts().select(['forecast_id', 'issued_by', 'series_key', 'horizon_code', 'state', 'fitness_state'] as never).where('forecast_id' as never, '=', s.id as never).execute()) as Row[])[0] ?? null;

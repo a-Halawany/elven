@@ -29,9 +29,22 @@ export function bindingReaches(b: Binding, target: TargetContext): boolean {
   return target.tenantId !== null && target.domainId !== null && b.tenantId === target.tenantId && b.domainId === target.domainId;
 }
 
+/* B34 (0090) workflow: an EXTERNAL collaborator (a partner's person, role external_collaborator) is cleared to its GRANT's audience
+   ceiling — never a member's default `internal`: the caller passes the ceiling of the live grant it checked (absent → `public`, the
+   lowest). A member's clearance is unchanged. */
+export const EXTERNAL_ROLE = 'external_collaborator';
+/** Whether the principal acts here as an external collaborator (a binding of the external role reaching the target). */
+export function isExternal(principal: Pick<AuthenticatedPrincipal, 'bindings'>, target: TargetContext): boolean {
+  return principal.bindings.some((b) => b.roleCode === EXTERNAL_ROLE && bindingReaches(b, target));
+}
+/* end B34 workflow */
+
 /** The clearance a principal's role bindings carry IN THIS CONTEXT: administrators and auditors restricted; executives, owners, authorities and domain administrators confidential; every other reader internal. */
-export function clearanceOf(principal: Pick<AuthenticatedPrincipal, 'bindings'>, target: TargetContext): string {
+export function clearanceOf(principal: Pick<AuthenticatedPrincipal, 'bindings'>, target: TargetContext, /* B34 (0090) workflow */ grantCeiling: string | null = null /* end B34 workflow */): string {
   const roles = principal.bindings.filter((b) => bindingReaches(b, target)).map((b) => b.roleCode);
+  /* B34 (0090) workflow: the external collaborator's ceiling is its grant's */
+  if (roles.includes(EXTERNAL_ROLE)) return grantCeiling !== null && CLEARANCE_RANK[grantCeiling] !== undefined ? grantCeiling : 'public';
+  /* end B34 workflow */
   if (roles.some((r) => RESTRICTED_ROLES.has(r))) return 'restricted';
   if (roles.some((r) => CONFIDENTIAL_ROLES.has(r))) return 'confidential';
   return 'internal';

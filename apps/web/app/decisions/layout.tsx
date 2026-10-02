@@ -37,6 +37,9 @@ export const NAV = [
   { href: '/decisions/attention', label: 'Attention', glyph: '⚑' },
   { href: '/decisions/requests', label: 'Requests', glyph: '✎' },
   /* B32 (0089) health */ { href: '/decisions/health', label: 'Health', glyph: '◔' }, /* end B32 health */
+  /* B34 (0090) workflow */ { href: '/decisions/tasks', label: 'Tasks', glyph: '☑' }, { href: '/decisions/workspaces', label: 'Workspaces', glyph: '⧉' },
+  { href: '/decisions/workflow', label: 'Workflow', glyph: '⇄' }, /* end B34 workflow */
+  /* B34 (0090) commitments */ { href: '/decisions/commitments', label: 'Commitments', glyph: '⇢' }, /* end B34 commitments */
   { href: '/twins', label: 'Twins', glyph: '◫' },
   { href: '/prediction', label: 'Prediction', glyph: '↗' },
   { href: '/graph', label: 'Graph', glyph: '◈' },

@@ -24,7 +24,7 @@
  * refuses a read for it.
  */
 import { Body, Controller, HttpException, Param, Post, Req } from '@nestjs/common';
-import { errorBody, type Envelope } from '@eye/contracts';
+import { canonicalHeaderDigest, errorBody, validateHeader, type Envelope } from '@eye/contracts';
 import { newId } from '../shared/ids.js';
 import { requireCorrelation } from '../shared/correlation.js';
 import { PipelineService } from '../pipeline/pipeline.service.js';
@@ -43,7 +43,8 @@ import { SUBJECT_OF, StrategyAlignmentService, atOf, validateAlignment, validate
 /* end B32 graph */
 import { SearchService } from './search/search.service.js';
 import { PropagationAgentsService } from './propagation/propagation-agents.service.js';
-import { graphChangedEvent, revisionCommittedEvent } from './subscriptions/change-events.js';
+import { graphChangedEvent, revisionCommittedEvent, /* B34 (0090) commitments */ objectiveChangedEvent } from './subscriptions/change-events.js';
+/* B34 (0090) commitments */ import { nextVersionHeader } from './strategy/next-version.js';
 /* B23 (0084) revision */
 import { revisionHead, validateRevisionIntake } from './revisions/revision.service.js';
 /* end B23 revision */
@@ -1264,17 +1265,88 @@ export class GraphController {
   }
 
   /** Transfer a strategy object's ownership to an active human with a planning role (graph.strategy.owner.assign, human-gated) — strategy.owner_assigned. */
+  /**
+   * B34 (0090 §I) the integrator: an ASSUMPTION VERIFIED — or invalidated — BY A PERSON (a named active member with a planning authority,
+   * human-gated), with a stated reason; the gates' approval conditions (assumption_holds) read this state. Impact propagation keeps its own
+   * path. Nothing is announced (the assumption's verification is its own record; the conditions are read at the commitment).
+   */
+  @Post('/strategy/:objectId/assumption/verify')
+  async verifyAssumption(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('objectId') objectId: string, @Body() body: { payload?: Record<string, unknown> }) {
+    const { envelope, principal } = ctx(req);
+    if (!UUID_RE.test(objectId)) throw new HttpException(errorBody('EYE_STA_001', envelope.correlation_id, 'no authorized strategy object matches'), 404);
+    const state = typeof body.payload?.['state'] === 'string' ? body.payload['state'] : '';
+    const reason = typeof body.payload?.['reason'] === 'string' ? body.payload['reason'].trim() : '';
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'graph.assumption.verify', 'ASU', objectId), GraphCapability.strategy,
+      async (cap, scope) => {
+        await cap.setAssumptionState({ objectId, tenantId: scope.tenantId as string, domainId: scope.domainId as string, state, reason, actor: principal.principalId, eventId: newId(), correlationId: envelope.correlation_id });
+        return { result: { assumptionId: objectId, state, reason }, targetType: 'ASU', targetId: objectId, targetVersion: null, outboxEvent: null };
+      });
+    return { assumption: out.result, receipt: receipt(out) };
+  }
+  /* end B34 §I */
+
   @Post('/strategy/:objectId/owner')
   async assignStrategyOwner(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('objectId') objectId: string, @Body() body: { payload?: Record<string, unknown> }) {
     const { envelope, principal } = ctx(req);
     const p = validateOwner(body.payload ?? {}, envelope.correlation_id);
     if (!UUID_RE.test(objectId)) throw new HttpException(errorBody('EYE_STA_001', envelope.correlation_id, 'no authorized strategy object matches'), 404);
-    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'graph.strategy.owner.assign', 'OBJ', objectId), GraphCapability.alignment,
-      async (cap, scope) => ({ result: await this.alignment.assignOwner(cap, scope, { objectId, owner: p.owner, reason: p.reason, actor: principal.principalId, correlationId: envelope.correlation_id }),
-                               targetType: 'OBJ', targetId: objectId, targetVersion: null, outboxEvent: null }));
+    /* B34 (0090) commitments: an OBJECTIVE's owner transfer is announced as GraphChanged/objective.changed (the commitments consumer
+       reassigns the reviewers whose basis is the objective's owner); another type's transfer announces nothing, as before. */
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'graph.strategy.owner.assign', 'OBJ', objectId), GraphCapability.objectiveRevision,
+      async (cap, scope) => {
+        const r = await this.alignment.assignOwner(cap, scope, { objectId, owner: p.owner, reason: p.reason, actor: principal.principalId, correlationId: envelope.correlation_id });
+        const announced = r['object_type'] === 'OBJ'
+          ? objectiveChangedEvent({ answer: r, change: 'owner_assigned', subscriptions: await cap.subscriptionsMatching({ tenantId, domainId, eventType: 'GraphChanged', changeKind: 'objective.changed' }),
+                                    actor: principal.principalId, action: 'graph.strategy.owner.assign' })
+          : null;
+        return { result: r, targetType: 'OBJ', targetId: objectId, targetVersion: null, outboxEvent: announced };
+      });
+    /* end B34 commitments */
     return { owner: out.result, receipt: receipt(out) };
   }
   /* end B32 graph */
+
+  /* B34 (0090) commitments */
+  /**
+   * V02-T-117 — an objective REVISED (graph.objective.revise, human-gated): its owner, a strategy owner or a domain administrator; the OBJ's
+   * next canonical version (the prior's header carried, the title or statement changed) admitted, graph.revise_objective re-declares the
+   * strategy row at that version, and GraphChanged/objective.changed is published — the commitments consumer re-tasks the items resting on it.
+   */
+  @Post('/strategy/:objectId/revise')
+  async reviseObjective(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('objectId') objectId: string, @Body() body: { payload?: Record<string, unknown> }) {
+    const { envelope, principal } = ctx(req);
+    const p = body.payload ?? {};
+    if (!UUID_RE.test(objectId)) throw new HttpException(errorBody('EYE_STA_001', envelope.correlation_id, 'no authorized strategy object matches'), 404);
+    const reason = typeof p['reason'] === 'string' ? p['reason'].trim() : '';
+    const title = typeof p['title'] === 'string' && p['title'].trim() !== '' ? p['title'].trim() : null;
+    const statement = typeof p['statement'] === 'string' && p['statement'].trim() !== '' ? p['statement'].trim() : null;
+    if (reason.length < 8) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'objective revision rejected (reason): a reason of 8 to 2000 characters says why the objective changes'), 422);
+    if (title === null && statement === null) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'objective revision rejected (text): a revision names a new title or statement'), 422);
+    const out = await this.pipeline.write(envelope, principal, { ...this.route(tenantId, domainId, 'graph.objective.revise', 'OBJ', objectId), writableTargets: [objectId] }, GraphCapability.objectiveRevision,
+      async (cap) => {
+        const prev = await cap.canonicalLatest({ objectType: 'OBJ', objectId });
+        if (prev === undefined) throw new HttpException(errorBody('EYE_STA_001', envelope.correlation_id, 'objective revision rejected (unknown_object): no canonical objective matches'), 404);
+        const now = new Date().toISOString();
+        const header = nextVersionHeader(prev, { actor: principal.principalId, methodRef: 'objective-revision@1.0.0', purposeId: envelope.purpose_id ?? 'graph', correlationId: envelope.correlation_id, now });
+        const prevPayload = (prev['payload'] ?? {}) as Record<string, unknown>;
+        const payload = { ...prevPayload, ...(title === null ? {} : { title }), ...(statement === null ? {} : { statement }) };
+        const check = validateHeader(header);
+        if (!check.ok) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, `objective revision rejected (header): ${(check.errors ?? []).join('; ')}`), 422);
+        try { await cap.admitObject(header, payload, canonicalHeaderDigest(header, payload)); } catch (e) {
+          if ((e as { code?: string }).code === '23505') throw new HttpException(errorBody('EYE_STA_002', envelope.correlation_id, 'objective revision rejected (stale_version): the objective moved past its version while this revision was being written'), 409);
+          throw e;
+        }
+        const r = await cap.reviseObjective({ objectId, tenantId, domainId, title, statement, reason, actor: principal.principalId, eventId: newId(), correlationId: envelope.correlation_id });
+        if (Number(r['to_version']) !== Number(header.object_version)) {
+          throw new HttpException(errorBody('EYE_STA_002', envelope.correlation_id, `objective revision rejected (stale_version): the strategy row stands at ${String(r['from_version'])}, the canonical objective at ${String(prev['object_version'])}`), 409);
+        }
+        const subscriptions = await cap.subscriptionsMatching({ tenantId, domainId, eventType: 'GraphChanged', changeKind: 'objective.changed' });
+        return { result: r, targetType: 'OBJ', targetId: objectId, targetVersion: String(r['to_version']),
+                 outboxEvent: objectiveChangedEvent({ answer: r, change: 'revised', subscriptions, actor: principal.principalId, action: 'graph.objective.revise' }) };
+      });
+    return { objective: out.result, receipt: receipt(out) };
+  }
+  /* end B34 commitments */
 
   // ───────────────────────── impact ─────────────────────────
 

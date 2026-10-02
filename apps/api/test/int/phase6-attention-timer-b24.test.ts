@@ -413,13 +413,14 @@ describe('B24 · the timer host for escalation and the delivery port (0086 §T, 
 
   it('D3 · NO REAL PROVIDER: a policy naming email, notify \'sms\' and more than five attempts refused (422) — the first two naming owner decision D6; the active version unchanged', async () => {
     const withNotify = (notify: unknown): Row => { const r = RULES(); ((r['classes'] as Record<string, Row>)['warning.raised'] as Row)['notify'] = notify; return r; };
-    await refused(publish(withNotify({ channels: ['in_app', 'email'], max_attempts: 3 }), 'email notifications for the corridor (B24 harness)'),
-      /^attention policy rejected: class warning\.raised notify\.channels are in_app and demo-mailbox \(synthetic\); email needs a delivery provider \(owner decision D6\)/, 422, 'EYE-REQ-001');
+    // B34 (0090): email, sms and teams are SYNTHETIC adapters to local sinks, named in {channels}; push (and any real provider) stays D6
+    await refused(publish(withNotify({ channels: ['in_app', 'push'], max_attempts: 3 }), 'push notifications for the corridor (B24 harness)'),
+      /^attention policy rejected: class warning\.raised notify\.channels are .*; push needs a delivery provider \(owner decision D6\)/, 422, 'EYE-REQ-001');
     await refused(publish(withNotify('sms'), 'sms notifications for the corridor (B24 harness)'), /sms needs a delivery provider \(owner decision D6\)/, 422, 'EYE-REQ-001');
     await refused(publish(withNotify({ channels: ['demo-mailbox'], max_attempts: 9 }), 'nine attempts on the demo mailbox (B24 harness)'), /notify\.max_attempts is 1\.\.5/, 422, 'EYE-REQ-001');
     const versions = (await sql<{ version: number; state: string }>`select version, state from executive.attention_policies where tenant_id = ${T()}::uuid and domain_id = ${D()}::uuid order by version`.execute(su)).rows;
     expect(versions).toEqual([{ version: 1, state: 'active' }]);
-    sixEvidence('D3', { fault_trace: { refused: ['422 email (D6)', '422 sms (D6)', '422 max_attempts 9'] }, watermark: { active_version: 1 }, consumer_behaviour: 'the port validates the channels whole (the prelude\'s validator)',
+    sixEvidence('D3', { fault_trace: { refused: ['422 push (D6)', '422 sms bare word (D6)', '422 max_attempts 9'] }, watermark: { active_version: 1 }, consumer_behaviour: 'the port validates the channels whole (the prelude\'s validator)',
       operator_action: 'the executive tries to publish a real-provider channel', recovery: 'none needed: nothing written', reconciliation: { versions } });
   }, 60_000);
 });

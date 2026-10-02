@@ -112,7 +112,10 @@ export function decisionCommittedEvent(a: {
       choice: { option_key: str(a.choice['option_key']), action_owner: str(a.choice['action_owner']), decision_deadline: str(a.choice['decision_deadline']), outcome_criteria: arr(a.choice['outcome_criteria']).length },
       commitments: [{ strategy_object_id: a.commitmentId, object_type: 'CMT', rests_on: { decision: a.decisionObjectId, objectives: cut(a.objectives), runs: cut(a.runs), baseline_run_id: a.baselineRunId } }],
       monitoring_conditions: cut(conditions),
-      execution_handoff: { bound_action: a.boundAction, op_class: a.opClass, interface: null, statement: 'the CMT is the handoff record; no execution interface exists (AU-DEC-0020: the open execution-interface unit)' },
+      /* B34 (0090) commitments: the execution interface exists — a separately governed act (V03-T-366) */
+      execution_handoff: { bound_action: a.boundAction, op_class: a.opClass, interface: 'decision.execution.issue',
+                           statement: 'the CMT is the commitment record and seeds its tracker; execution leaves the product only as a governed handoff — drafted by an item\'s owner and issued under decision.execution.issue (C3, human-gated) by a holder of execution_authority who is neither the drafter nor this committer, to a registered SYNTHETIC execution target (a real target is an owner decision)' },
+      /* end B34 commitments */
       replay_snapshot: { as_of: a.decidedAt, version_digest: a.versionDigest, cmt_header_digest: a.cmtHeaderDigest, recorded_on_demand: 'decision.replay' },
       reopened_from: a.reopenedFrom,
       truncated: over(a.approvals) || over(a.objectives) || over(a.runs) || over(conditions),
