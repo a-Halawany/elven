@@ -461,4 +461,30 @@ describe('B30 part ES · twin state estimation and continuous reconciliation (01
     expect(arr(o['requests']).map((x) => `${String(x['via'])}:${String(x['state'])}`).sort()).toEqual(['attention:cancelled', 'attention:fulfilled', 'scheduler:open']);
     evidenceLog('ES6', { series_request: r1, element_request: r2, fulfilled: t2['fulfilled'], scheduled_request: r3 });
   });
+
+  /*
+   * ES7 — the B30 act's finding (the demonstration's PortWatch series: a retention action tombstoned a superseded 2024 seed version, and EVERY
+   * estimate on the series was refused for good). An unreadable version now counts only when its day (event time, else valid-from) falls
+   * inside the widest window the estimators read, or when it states no day (estimators.ts unreadableInWindow — the window rule unit-proven in
+   * test/unit/phase6-estimation-b30.test.ts). This fixture's evidence states NO day (one document per collection, no item time), so here an
+   * unreadable version COUNTS: the conservative branch, proven through the real route and the port. LAST in the file: the tombstone degrades
+   * the series for the rest of the database's life.
+   */
+  it('ES7 · AN UNREADABLE VERSION THAT STATES NO DAY STILL DISQUALIFIES (the window rule\'s conservative branch); the preview discloses why — nothing proposed', async () => {
+    const evd = await rows(sql`select (payload ->> 'manifest_id') as manifest, to_char(coalesce(event_time, valid_from) at time zone 'UTC', 'YYYY-MM-DD') as day from objects.canonical_objects
+      where object_type = 'EVD' and tenant_id = ${T()}::uuid and provenance_ref like ${`SRC:${h.fx.sourceId}@%`} order by recorded_at`);
+    expect(evd.every((e) => e['day'] === null), JSON.stringify(evd.map((e) => e['day']))).toBe(true);
+    const qualifiedBefore = arr(arr((await preview())['qualification'])[0]?.['inputs'])[0];
+    expect(qualifiedBefore).toMatchObject({ verdict: 'qualified', cadence: expect.objectContaining({ unreadable: 0 }) });
+    await sql`insert into observation.blob_tombstones (tombstone_id, scope, tenant_id, domain_id, manifest_id, reason, actor_principal_id, correlation_id)
+      values (${uuidv7()}::uuid, 'DOMAIN', ${T()}::uuid, ${D()}::uuid, ${String((evd[0] as Row)['manifest'])}::uuid, 'ES7: superseded evidence past its retention (SYNTHETIC)', ${nakamura.principalId}::uuid, ${uuidv7()}::uuid)`.execute(h.su);
+    const pv = await preview();
+    const q = arr(arr(pv['qualification'])[0]?.['inputs'])[0];
+    expect(q, JSON.stringify(q)).toMatchObject({ verdict: 'disqualified', cadence: expect.objectContaining({ unreadable: 1 }) });
+    expect(arr(q?.['reasons']).join(' ')).toMatch(/1 evidence version\(s\) of the series could not be read/);
+    const before = (await estimateRows()).length;
+    await refused(propose(), /^estimate rejected \(unqualified\): .*evidence version\(s\) of the series could not be read/, 422);
+    expect((await estimateRows()).length).toBe(before);
+    evidenceLog('ES7', { days: evd.map((e) => e['day']), disqualified: q?.['reasons'] });
+  });
 });

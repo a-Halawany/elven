@@ -38,7 +38,7 @@ import type { Citation } from '../twin.capabilities.js';
 import { checkFamilyGround } from '../families/admission.js';
 import { ConstraintService, DEFAULT_BUDGET_MS } from '../constraints/constraint.service.js';
 import { ConstraintCapability } from '../constraints/constraint.capabilities.js';
-import { candidateOf, constraintSubjectOf, type Candidate, type EstimatorDecl, type EstimatorIntake, type Point } from './estimators.js';
+import { candidateOf, constraintSubjectOf, unreadableInWindow, type Candidate, type EstimatorDecl, type EstimatorIntake, type Point } from './estimators.js';
 import { EstimationCapability, type DecideWrites, type EstimationReads, type EstimatorWrites, type RequestWrites } from './estimation.capabilities.js';
 import { ReconciliationBridge } from './reconciliation-bridge.js';
 import { reconcileScan } from './reconciliation-agent.js';
@@ -187,8 +187,21 @@ export class EstimationService implements OnModuleInit {
         const s = await this.series.assemble(reader, inp.series_key, read.now, null);
         const points = s.points.map((x) => ({ date: x.date, value: x.value, evidence: { id: x.evidence_object_id, version: x.evidence_version } }));
         const last = s.points[s.points.length - 1];
+        // B30 act: an unreadable evidence version counts only inside the estimators' widest window, or with no day (estimators.ts unreadableInWindow)
+        let unreadable = s.unreadable.length; let outside = 0; let windowFrom: string | null = null;
+        if (unreadable > 0 && points.length > 0) {
+          const refs = s.unreadable.map((u) => ({ id: u.evidence_object_id, version: Number(u.evidence_version) }));
+          const daysOf = (await this.pipeline.consequentialRead(this.derive(base, READ, 'TWN', twinId), principal, this.route(tenantId, domainId, READ, 'TWN', twinId), EstimationCapability.read,
+            async (cap) => cap.evidenceDays(refs))).result;
+          const w = unreadableInWindow(points, estimators, inp.series_key, refs.map((u) => {
+            const d = daysOf.find((x) => x['id'] === u.id && Number(x['version']) === u.version)?.['day'];
+            return { day: typeof d === 'string' ? d : null };
+          }));
+          unreadable = w.counted; outside = w.outside; windowFrom = w.windowFrom;
+        }
         assembled.set(inp.series_key, { points, unit: s.series.unit, fact: { points: s.points.length, last_date: last?.date ?? null,
-          evidence: s.evidence.map((v) => ({ id: v.evidence_object_id, version: v.evidence_version })), unreadable: s.unreadable.length } });
+          evidence: s.evidence.map((v) => ({ id: v.evidence_object_id, version: v.evidence_version })), unreadable,
+          ...(outside > 0 ? { unreadable_outside_window: outside, window_from: windowFrom } : {}) } });
       } catch (err) {
         if (err instanceof HttpException && err.getStatus() === 403) throw err;
         assembled.set(inp.series_key, { points: [], unit: null, fact: { points: 0, last_date: null, evidence: [], unreadable: 0, note: textOf(err).slice(0, 300) } });

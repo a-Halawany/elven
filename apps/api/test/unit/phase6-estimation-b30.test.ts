@@ -9,7 +9,7 @@
 import { describe, expect, it } from 'vitest';
 import { HttpException } from '@nestjs/common';
 import {
-  candidateOf, constraintSubjectOf, dispersionConfidence, estimatorProblems, kalman1d, materialityOf, spreadOf, transform, type EstimatorDecl, type Point,
+  candidateOf, constraintSubjectOf, dispersionConfidence, estimatorProblems, kalman1d, materialityOf, spreadOf, transform, unreadableInWindow, type EstimatorDecl, type Point,
 } from '../../src/twin/estimation/estimators.js';
 import { evaluate, validateConstraints } from '../../src/twin/constraints/evaluator.js';
 import { RECONCILIATION_AGENT_DIGEST, RECONCILIATION_AGENT_METHOD, RECONCILIATION_AGENT_VERSION } from '../../src/twin/estimation/reconciliation-agent.js';
@@ -167,4 +167,25 @@ describe('the B30 estimation refusal families map by class', () => {
     ['estimate rejected (range): 120 % is outside the declared bounds', '22023', 422],
     ['observation request rejected (note): the request says what is missing', '22023', 422],
   ])('%s → %s', (message, code, status) => { expect(map(message, code)).toBe(status); });
+});
+
+describe('B30 act: unreadable evidence judged against the estimators\' window (unreadableInWindow)', () => {
+  const MONTH = Array.from({ length: 40 }, (_, i) => ({ date: new Date(Date.UTC(2026, 7, 20 + i)).toISOString().slice(0, 10), value: 27, evidence: null })) as Point[];
+  it('a version from years before (the retention of superseded seed evidence) is disclosed as outside, not counted', () => {
+    expect(unreadableInWindow(MONTH, [decl()], 'portwatch:chokepoint4:n_total', [{ day: '2024-01-17' }])).toEqual({ counted: 0, outside: 1, windowFrom: '2026-09-22' });
+  });
+  it('the widest window decides: a 30-point Kalman challenger reaches back further than the ratio\'s confidence week', () => {
+    const k = decl({ estimator_id: '00000000-0000-4000-8000-0000000000bb', name: 'portwatch-kalman', role: 'challenger', method: 'kalman_1d', parameters: { window: 30, process_variance: 4, measurement_variance: 25, baseline: 104, scale: 100 } });
+    expect(unreadableInWindow(MONTH, [decl(), k], 'portwatch:chokepoint4:n_total', [{ day: '2026-09-10' }])).toEqual({ counted: 1, outside: 0, windowFrom: '2026-08-30' });
+    expect(unreadableInWindow(MONTH, [decl()], 'portwatch:chokepoint4:n_total', [{ day: '2026-09-10' }])).toMatchObject({ counted: 0, outside: 1 });
+  });
+  it('a version inside the window, or with no day at all, counts (it might hold a point the estimators read)', () => {
+    expect(unreadableInWindow(MONTH, [decl()], 'portwatch:chokepoint4:n_total', [{ day: '2026-09-28' }, { day: null }, { day: '2023-12-31' }])).toEqual({ counted: 2, outside: 1, windowFrom: '2026-09-22' });
+  });
+  it('an estimator of another series does not widen the window; nothing unreadable counts nothing', () => {
+    const other = decl({ estimator_id: '00000000-0000-4000-8000-0000000000cc', name: 'other-kalman', role: 'challenger', method: 'kalman_1d', parameters: { window: 30, process_variance: 4, measurement_variance: 25 },
+      inputs: [{ kind: 'series', series_key: 'ecb-eurusd', unit: 'USD', cadence_days: 1 }] });
+    expect(unreadableInWindow(MONTH, [decl(), other], 'portwatch:chokepoint4:n_total', [{ day: '2026-09-10' }])).toMatchObject({ counted: 0, outside: 1 });
+    expect(unreadableInWindow(MONTH, [decl()], 'portwatch:chokepoint4:n_total', [])).toEqual({ counted: 0, outside: 0, windowFrom: null });
+  });
 });

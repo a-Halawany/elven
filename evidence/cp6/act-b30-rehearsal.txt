@@ -1,0 +1,161 @@
+# CP-6 B30 act — the rehearsal on eye_demo_b30 (restored from eye_demo-pre-0102-20261002T135254Z.dump, migrated to 0103; API :3411 from the b30-act worktree, Redis :6394, a vault copy). Two runs: the first writes, the second stands.
+
+## RUN 1
+THE B30 ACT on eye_demo_b30 (REHEARSAL) — 2026-10-02T14:47:17.963Z
+
+B30-0 THE STATE — 0102 and 0103, the casting, the attention agent, the inputs
+  ✓ migrations applied: 0102_n01_definer_read_scope_constraint_gate.sql, 0103_b30_twin_state_reconciliation_envelope_calibration.sql
+  ✓ the casting read from identity.role_bindings: a.hoffmann (domain_analyst); e.kovacs (twin_owner); h.petrovic (method_steward); j.weber (strategy_owner); m.dvorak (collection_manager, executive); s.lindqvist (constraint_steward); t.nakamura (twin_owner); t.richter (domain_admin)
+  · T. Nakamura holds twin_owner (not simulation_operator: every route the act casts him in admits twin_owner); T. Richter is the domain's administrator (the read one); the second humans for approvals are J. Weber (the fabric budget) and H. Petrović (the concurrence)
+  ✓ the attention agent 01a0…1cb088 — cadence 60 s; 1 tick run(s) in the last ten minutes (the latest at 2026-10-02T14:47:12Z) — the act waits for its ticks, it calls no tick route
+  ✓ the inputs: the corridor twin 01a0…76f525 "NORDWERK — Ningbo → Regensburg chain" (owner T. Nakamura, supply-flow@1) at actual v14 (observed through 2024-04-10); the series portwatch:chokepoint4:n_total (transits/day) of "IMF PortWatch — Chokepoints" v2 (active); the scenario "Bab el-Mandeb over the next quarter — every scenario kind (vocabulary v1)" and its "regional blockade" branch 01a0…67533e (open); E. Kovács's study twin 01a0…f22440; the risk "Corridor closure — Regensburg line"
+
+B30-S ESTIMATION AND RECONCILIATION (F-P5-02) — a PortWatch transit count, the estimator's corridor capacity, the conservation check, the Reconciliation Agent, the owner's approval into a new snapshot
+  ✓ S. Lindqvist (constraint steward) DECLARED "Corridor transit balance (SYNTHETIC)" (corridor-transit-balance) v1: CONSERVATION of corridor.capacity_share's transit balance (opening + inflow − outflow = closing within 0.5 transits/day, no negative stock) and the business rule corridor.capacity_share ≤ 100 %, both applying to run inputs
+  ✓ the administrator REGISTERED the Reconciliation Agent 01a0…81fae3 — kind reconciliation, role reconciliation_agent, 1.0.0 digest 1d6681c304a7…; accountable T. Nakamura, escalation M. Dvořák; it PROPOSES only
+  ✓ T. Nakamura READ the corridor's PortWatch series: 2827 points, the latest 27 transits on 2026-09-27 (evidence 01a0…dc1cb7 v1, recorded 2026-10-01T17:56:26Z); the corridor's baseline stated as 43.548387 transits/day (SYNTHETIC)
+  ✓ T. Nakamura (the twin's owner) DECLARED portwatch-ratio v1 — primary, ratio_to_baseline {"baseline":43.548387,"scale":100} on portwatch:chokepoint4:n_total, the constraint set corridor-transit-balance
+  ✓ T. Nakamura (the twin's owner) DECLARED portwatch-ma v1 — challenger, moving_average {"window":7,"baseline":43.548387,"scale":100} on portwatch:chokepoint4:n_total, the constraint set corridor-transit-balance
+  ✓ T. Nakamura (the twin's owner) DECLARED portwatch-kalman v1 — challenger, kalman_1d {"window":30,"process_variance":4,"measurement_variance":25,"baseline":43.548387,"scale":100} on portwatch:chokepoint4:n_total, the constraint set corridor-transit-balance
+  · M. Dvořák (collection manager) COLLECTED "IMF PortWatch — Chokepoints" now: {"runId":"01a0fd19-60d1-734e-84a2-100a3693edb6","state":"finished","admitted":0,"quarantined":0,"noop":1,"triggeredBy":"principal:01a084f5-75d2-776d-a4a1-0073ec383c43"}
+  · THE PUBLISHER RETURNED NOTHING NEW: no evidence version of "IMF PortWatch — Chokepoints" was recorded after the estimators were declared — so no telemetry trigger is queued and the agent has nothing to scan; the latest count stands as the schedule collected it. A. Hoffmann (domain analyst) PROPOSES through the route instead — SAID: the agent's proposal on a new count is harness-proven (phase6-estimation-b30 ES5) and runs here when PortWatch publishes
+  ✓ A. Hoffmann PROPOSED 01a0…d7aae5 through the route (computed server-side from the declared estimators)
+  ✓ THE ESTIMATE 01a0…d7aae5: corridor.capacity_share = 62 % as of 2026-09-27 (confidence 0.891) — proposed by A. Hoffmann on head v14
+  · every candidate kept: portwatch-ratio (primary, ratio_to_baseline) 62 % [latest 27 on 2026-09-27]; portwatch-kalman (challenger, kalman_1d) 63.565 % [latest 27 on 2026-09-27]; portwatch-ma (challenger, moving_average) 62.328 % [latest 27 on 2026-09-27]; the spread {"n":3,"abs":1.565,"max":63.565,"min":62,"relative":0.025242,"ambiguity_threshold":0.5}
+  · the inputs qualified before estimation: 3 qualification record(s) — qualified; the summary {"qualified_estimators":3,"disqualified_estimators":0}
+  ✓ THE CONSERVATION CHECK before publish: SATISFIED — sets corridor-transit-balance v1, applied corridor-transit-balance v1, vacuous false
+  ✓ MATERIAL ({"basis":"the head holds no value of this key","material":true,"delta_abs":null,"head_unit":null,"threshold":0.05,"head_value":null,"head_version":14,"delta_relative":null}) → ROUTED to T. Nakamura: twin.reconciliation "Estimate for review — corridor.capacity_share on NORDWERK — Ningbo → Regensburg chain: 62 % (head no" (open)
+  ✓ T. Nakamura (the twin's owner) APPROVED it → a NEW SNAPSHOT v15 on actual (complete, observed through 2026-09-27) in ONE transaction
+  ✓ the snapshot v15 (supersedes v14; admitted, complete, observed through 2026-09-27) carries corridor.capacity_share = 62 % ESTIMATED (confidence 0.891, citing 1 evidence version(s)); approved by T. Nakamura; proposed by A. Hoffmann; TwinStateChanged 1
+  · the routed item 3c50…2bb482 is open (the B30 estimation part leaves closing the item on decision out — its report's gap)
+
+B30-B BRANCHES, MERGE, FRESHNESS (F-P5-03) — the head 5 days stale against a 2-day SLO, the corridor twin branched for a blockade, merging it back refused until reconciliation
+  · actual's head v15 is observed through 2026-09-27 — the database's day − 5 — already (T. Nakamura's; the estimate's snapshot or an earlier run): no further version
+  ✓ E. Kovács (a peer twin owner) sets the corridor twin's SLO REFUSED — 403 EYE-AUT-001 — freshness policy rejected (ownership): a freshness policy is the act of the twin's own owner (01a084f6-404d-7380-99b0-06d2bf9f5ee5), not of another holder of the role
+  ✓ T. Nakamura SET the freshness SLO v1: the head at most 2 days old (a freeze announced 48 h before it expires)
+  ✓ A. Hoffmann READ the freshness of v15: STALE — 5 days old (observed through 2026-09-27, today 2026-10-02), the SLO 2 days (v1), stale by 3 days; dependency none
+  ✓ THE TICK RAISED twin.freshness ba7c…592a68 → T. Nakamura (open): "NORDWERK — Ningbo → Regensburg chain: the served snapshot v15 is 5 days stale (freshness SLO 2 days)"
+  ✓ J. Weber (strategy owner) DECLARED the assumption 01a0…58e323 "The corridor is blockaded for 45 days (SYNTHETIC)" in the Knowledge Graph — resting on "Corridor closure — Regensburg line"
+  ✓ J. Weber LINKED it to the "regional blockade" branch 01a0…67533e (not critical; v1)
+  ✓ T. Nakamura grounds shock.corridor_delay_days as a scenario through the generic ground route REFUSED — 422 EYE-REQ-001 — kind must be one of observed, estimated, assumed, predicted, simulated
+  · the blockade branch: the open draft v16 on blockade is resumed (left by the refused grounding above, or by an earlier run)
+  ✓ T. Nakamura BRANCHED the corridor twin: blockade v16 forked from actual v15, shock.corridor_delay_days = 45 days as a SCENARIO element (the "regional blockade" branch, citing the assumption) — admitted complete
+  ✓ the branch head v16: shock.corridor_delay_days = 45 (scenario); actual's head v15 keeps its own
+  ✓ T. Nakamura OPENED the merge 01a0…1b8bed of blockade v16 into actual v15: the server's diverging keys shock.corridor_delay_days (changed); unresolved ["shock.corridor_delay_days"]
+  ✓ T. Nakamura completes the merge of blockade with nothing reconciled REFUSED — 409 EYE-STA-002 — branch merge rejected (unreconciled): merging branch blockade back into actual is refused until reconciliation — 1 of 1 diverging key(s) unresolved: shock.corridor_delay_days
+  · the merge stays OPEN (the walk's refusal reads it); its review item ccf7…c22a07 → T. Nakamura (open): "Merge of branch blockade into actual awaits reconciliation of 1 diverging key(s) — NORDWERK — Ningbo → Regensb"
+  · the explorer (A. Hoffmann): branches actual v15, alt-30-day-delay v2 (from v1), blockade v16 (from v15); merges blockade open; served head v15; head freshness stale
+
+B30-E THE ENVELOPE (F-P5-04) — a 75-day corridor delay run outside supply-flow@1's envelope: disabled for decision use, admitted as exploratory by the twin owner only
+  ✓ T. Nakamura opened the corridor's stress state on the BRANCH stress-75 v17 (forked from actual v15; actual's head is untouched — the B30-B walks read it): shock.corridor_delay_days = 75 days ASSUMED — admitted complete
+  ✓ T. Nakamura runs the 75-day state without an acknowledgement REFUSED — 422 EYE-REQ-001 — run rejected (envelope): outside the operating envelope of supply-flow@1 (corridor_delay_days = 75 outside [0, 60]); a run outside the envelope needs a twin owner's or the domain administrator's acknowledgement (envelope.acknowledge true wi
+  ✓ T. Nakamura (a twin owner) ACKNOWLEDGED the envelope and RAN 01a0…6d45d8 → completed
+  · the run's envelope: OUTSIDE — corridor_delay_days = 75 outside [0, 60] (from shock.corridor_delay_days); acknowledged by T. Nakamura ("the 75-day corridor delay is the stress case the board asked to see (SYNTHETIC)"); line-stop days 73 (SYNTHETIC)
+  ✓ A. Hoffmann READ its decision use: REFUSED for decision use: outside_envelope — "the run lies outside the operating envelope of supply-flow@1 (corridor_delay_days = 75 outside [0, 60]): the behaviour is DISABLED for decision use; only a twin owner may"
+  ✓ T. Richter (the domain administrator) admits it as exploratory REFUSED — 403 EYE-AUT-001 — exploratory admission rejected (ownership): only a twin owner admits an outside-envelope run as exploratory — the twin's own owner or a twin owner of this domain; a domain administrator, an operator or a steward does not (the raised thresho
+  ✓ T. Nakamura (the twin's owner) ADMITTED it: EXPLORATORY ONLY — REFUSED for decision use: outside_envelope — keys [{"key":"corridor_delay_days","range":[0,60],"value":75,"source":"shock.corridor_delay_days"}]
+  ✓ H. Petrović (method steward, a second named human) CONCURRED with the exploratory admission
+  ✓ the decision use now: EXPLORATORY ONLY — REFUSED for decision use: outside_envelope (exploratory true; admitted by T. Nakamura, concurred by H. Petrović)
+
+B30-X THE FABRIC CARRYOVERS (F-P5-06/07) — a discrete-event@1 experiment in chunks, completed by the ticks; a superseded corridor control retired with its reason
+  ✓ E. Kovács (the study twin's owner) DECLARED 01a0…5669ff: discrete-event@1 on v1, 60 paths in chunks of 20, seed 31, 3 chunks a tick, measures ["line_stop_days"], the budget {"max_paths":60,"max_chunks":6,"max_wall_seconds":600}; on an unstable checkpoint: none
+  ✓ E. Kovács (the declarer) approves her own budget REFUSED — 403 EYE-AUT-001 — experiment rejected (separation_of_duties): the declarer of experiment 01a0fd1d-c9c9-7092-adac-8b68d25669ff does not approve its own budget
+  ✓ J. Weber APPROVED the budget by its digest fa3e85e47846… → approved
+  ✓ E. Kovács STARTED it: the run 01a0…fef506 opened (seeded, 60 samples) → running
+  ✓ THE FABRIC EXPERIMENT COMPLETED by the attention agent's ticks: 3 checkpoints (20 → 40 → 60 paths); the ledger declared → approved → started → run_opened → checkpointed → checkpointed → checkpointed → completed; the run 01a0…fef506 completed (discrete-event@1, 60 samples; line-stop days over the paths: median 18, p10 18, p90 18 — SYNTHETIC)
+  ✓ T. Nakamura READ the run 01a0…826bf5 (control on v5, opened 2026-09-24T08:51:55Z) through the retirement read first: 0 package(s) cite it, 0 analysis record(s) rest on it, 0 run(s) compare against it — nothing a committed package cites
+  ✓ T. Nakamura RETIRED 01a0…826bf5 — "superseded by the promoted corridor control (SYNTHETIC)", superseded by the promoted control 01a0…8b84d2; reach recorded {"analyses":0,"packages":0,"dependent_runs":0}; owners told 0
+  ✓ the retired run's decision use: REFUSED for decision use: retired
+
+B30-9 THE STATE and the LIMITS
+  · in the ledgers: 3 active estimator(s), 1 estimate(s) (0 by the agent), 0 queued trigger(s), 0 observation request(s); 1 freshness polic(ies), 1 merge(s), 3 branch event(s); 1 exploratory admission(s), 2 envelope event(s); 1 retirement(s), 1 fabric experiment(s); 4 B30 attention item(s)
+  · the corridor twin now: actual v15 observed through 2026-09-27 (complete); branches actual v15, alt-30-day-delay v2, blockade v16, stress-75 v17
+  the env lines for the walks (EYE_TEST_ADMIN_PASSWORD comes from .eye-local/env and is never printed):
+  EYE_B30_OWNER=t.nakamura
+  EYE_B30_TWIN_TITLE='NORDWERK — Ningbo → Regensburg chain'
+  EYE_B30_ESTIMATE_KEY=corridor.capacity_share
+  EYE_B30_CONSTRAINT_SET=corridor-transit-balance
+  EYE_B30_ESTIMATE_VALUE=62
+  EYE_B30_BRANCH=blockade
+  EYE_B30_AS_OF=2026-09-30T05:04
+  EYE_B30_TWIN_OWNER=t.nakamura
+  EYE_B30_DOMAIN_ADMIN=t.richter
+  EYE_B30_OUTSIDE_RUN=01a0fd1d-c933-7ab8-a10d-c3cfb46d45d8
+  EYE_B30_FABRIC_TITLE='Regensburg line — bearing shortage'
+  EYE_B30_OPERATOR=t.nakamura
+  EYE_B30_STEWARD=h.petrovic
+  EYE_B30_RETIRED_RUN=01a0d29d-3e78-73ef-96cb-7859d2826bf5
+  EYE_B30_RETIRED_REASON='superseded by the promoted corridor control (SYNTHETIC)'
+  · LIMITS said: EVERY FIGURE IS SYNTHETIC except the PortWatch transit counts — the corridor's baseline (stated so that the latest count reads 62 %), the challengers' parameters, the conservation tolerance (0.5 transits/day), the 2-day SLO, the 45-day blockade, the 75-day stress delay, the bearing shortage and the reasons are the personas' statements for the demonstration, not measurements. THE PORTWATCH COUNT: the series portwatch:chokepoint4:n_total is the IMF PortWatch publisher's (collected through the real connector — M. Dvořák's collection now, and the daily schedule); its latest point is what the estimate reads — when the publisher has nothing new since the estimators were declared (PortWatch publishes weekly), no telemetry trigger is queued and the act says so and A. Hoffmann proposes through the route; the Reconciliation Agent's proposal on a NEW count is then harness-proven (phase6-estimation-b30 ES5) — the estimation walk's "the Reconciliation Agent (run …)" line holds only on a staging where the agent proposed. THE SERIES' HISTORY: a 2024 seed evidence version of the PortWatch source was tombstoned by a B11 retention action ("superseded evidence past its retention"); before this act's estimation fix (estimators.ts unreadableInWindow) every estimate on the series was refused as unqualified for good — an unreadable version now counts only inside the estimators' widest window (or when it states no day), the rest disclosed as unreadable_outside_window. THE AGENT: the Reconciliation Agent is registered by the administrator (its principal and role come with the registration — the Supply Chain Agent's precedent); no persona is created. THE WORDING: open_run's envelope refusal (0092) still names "the domain administrator's acknowledgement" — the acknowledgement holder is a twin owner only now (0103 §EN); a re-declaration of open_run is the integrator's. THE TICK: the attention agent's real scheduled tick (60 s) raises twin.freshness, queues the estimation checks and drains the fabric experiment — waited for, never driven (the "synthetic tick" of the harnesses is NOT used here). "5 DAYS STALE" holds only on the day the head was admitted: the age is the database's day minus the head's observed_through (the act re-admits a head at the day − 5 when it runs on a later day). THE BRANCHES: the 75-day stress state lives on the branch stress-75, never on actual's head (the B30-B walks read actual); the blockade merge is LEFT OPEN (the walk's refused completion reads it); the stress run is admitted EXPLORATORY and concurred, never promoted. THE RETIREMENT: the oldest of T. Nakamura's corridor controls that no package, analysis or run rests on, superseded by the promoted control. NOT STAGED (HARNESS-PROVEN): estimation — the stale/suspended-source qualification refusals, the violated conservation and range refusals, the stale-head approval rollback, the decline, the internal-change and ontology-revision triggers, the drifted agent, observation requests and their fulfilment (phase6-estimation-b30 ES1–ES6); branches — checkpoint restore, the reconciled and completed merge, the stale merge withdrawn, per-key staleness, the dependency uncertainty, the frozen validated snapshot and its expiry, component confidence, the scenario basis rule (phase6-branches-b30 BR1–BR7); envelope — the raised promotion threshold, calibration and drift, the model lifecycle (deprecated/incompatible/retired), the AI context, the degraded modes (phase6-envelope-b30 E3–E8); fabric — the war-gaming retry, the checkpoint indicators acted on (stop/pause/quarantine), the experiment retirement, the envelope sweep, rare events and benchmark validation (phase6-experiments-b30 X1–X6). LEFT OUT (the parts' reports): closing the routed estimate item on decision; an estimate citation kind; the calibration tick hook; the scenario-element web form. Nothing is cleaned: every object stands as a demonstration fact.
+
+ALL SCENES HELD · 605.4 s
+
+## RUN 2
+THE B30 ACT on eye_demo_b30 (REHEARSAL) — 2026-10-02T14:57:23.476Z
+
+B30-0 THE STATE — 0102 and 0103, the casting, the attention agent, the inputs
+  ✓ migrations applied: 0102_n01_definer_read_scope_constraint_gate.sql, 0103_b30_twin_state_reconciliation_envelope_calibration.sql
+  ✓ the casting read from identity.role_bindings: a.hoffmann (domain_analyst); e.kovacs (twin_owner); h.petrovic (method_steward); j.weber (strategy_owner); m.dvorak (collection_manager, executive); s.lindqvist (constraint_steward); t.nakamura (twin_owner); t.richter (domain_admin)
+  · T. Nakamura holds twin_owner (not simulation_operator: every route the act casts him in admits twin_owner); T. Richter is the domain's administrator (the read one); the second humans for approvals are J. Weber (the fabric budget) and H. Petrović (the concurrence)
+  ✓ the attention agent 01a0…1cb088 — cadence 60 s; 10 tick run(s) in the last ten minutes (the latest at 2026-10-02T14:57:19Z) — the act waits for its ticks, it calls no tick route
+  ✓ the inputs: the corridor twin 01a0…76f525 "NORDWERK — Ningbo → Regensburg chain" (owner T. Nakamura, supply-flow@1) at actual v15 (observed through 2026-09-27); the series portwatch:chokepoint4:n_total (transits/day) of "IMF PortWatch — Chokepoints" v2 (active); the scenario "Bab el-Mandeb over the next quarter — every scenario kind (vocabulary v1)" and its "regional blockade" branch 01a0…67533e (open); E. Kovács's study twin 01a0…f22440; the risk "Corridor closure — Regensburg line"
+
+B30-S ESTIMATION AND RECONCILIATION (F-P5-02) — a PortWatch transit count, the estimator's corridor capacity, the conservation check, the Reconciliation Agent, the owner's approval into a new snapshot
+  · the set corridor-transit-balance stands — an earlier run (v1, live, steward S. Lindqvist)
+  · the Reconciliation Agent 01a0…81fae3 is registered — an earlier run (1.0.0, digest 1d6681c304a7…)
+  · an approved estimate of corridor.capacity_share stands — an earlier run (01a0…d7aae5)
+  ✓ the snapshot v15 (supersedes v14; admitted, complete, observed through 2026-09-27) carries corridor.capacity_share = 62 % ESTIMATED (confidence 0.891, citing 1 evidence version(s)); approved by T. Nakamura; proposed by A. Hoffmann; TwinStateChanged 1
+  · the routed item 3c50…2bb482 is open (the B30 estimation part leaves closing the item on decision out — its report's gap)
+
+B30-B BRANCHES, MERGE, FRESHNESS (F-P5-03) — the head 5 days stale against a 2-day SLO, the corridor twin branched for a blockade, merging it back refused until reconciliation
+  · actual's head v15 is observed through 2026-09-27 — the database's day − 5 — already (T. Nakamura's; the estimate's snapshot or an earlier run): no further version
+  · the freshness SLO v1 (2 days) stands — an earlier run
+  ✓ A. Hoffmann READ the freshness of v15: STALE — 5 days old (observed through 2026-09-27, today 2026-10-02), the SLO 2 days (v1), stale by 3 days; dependency none
+  · the freshness item for v15 stands — raised at 2026-10-02T14:56:19Z (an earlier run or tick)
+  ✓ THE TICK RAISED twin.freshness ba7c…592a68 → T. Nakamura (open): "NORDWERK — Ningbo → Regensburg chain: the served snapshot v15 is 5 days stale (freshness SLO 2 days)"
+  · the assumption 01a0…58e323 "The corridor is blockaded for 45 days (SYNTHETIC)" stands — an earlier run (unverified)
+  · the link 01a0…2ba74f to the "regional blockade" branch stands — an earlier run (v1)
+  · the branch blockade stands — an earlier run (head v16)
+  ✓ the branch head v16: shock.corridor_delay_days = 45 (scenario); actual's head v15 keeps its own
+  · the merge 01a0…1b8bed of blockade stands — an earlier run (open, v16 → actual v15)
+  ✓ T. Nakamura completes the merge of blockade with nothing reconciled REFUSED — 409 EYE-STA-002 — branch merge rejected (unreconciled): merging branch blockade back into actual is refused until reconciliation — 1 of 1 diverging key(s) unresolved: shock.corridor_delay_days
+  · the merge stays OPEN (the walk's refusal reads it); its review item ccf7…c22a07 → T. Nakamura (open): "Merge of branch blockade into actual awaits reconciliation of 1 diverging key(s) — NORDWERK — Ningbo → Regensb"
+  · the explorer (A. Hoffmann): branches actual v15, alt-30-day-delay v2 (from v1), blockade v16 (from v15), stress-75 v17 (from v15); merges blockade open; served head v15; head freshness stale
+
+B30-E THE ENVELOPE (F-P5-04) — a 75-day corridor delay run outside supply-flow@1's envelope: disabled for decision use, admitted as exploratory by the twin owner only
+  · the branch stress-75 stands — an earlier run (head v17)
+  · the outside-envelope run 01a0…6d45d8 on stress-75 v17 stands — an earlier run
+  · the run's envelope: OUTSIDE — corridor_delay_days = 75 outside [0, 60] (from shock.corridor_delay_days); acknowledged by T. Nakamura ("the 75-day corridor delay is the stress case the board asked to see (SYNTHETIC)"); line-stop days 73 (SYNTHETIC)
+  · the exploratory admission 01a0…8601cc by T. Nakamura stands — an earlier run
+  · H. Petrović's concurrence stands — an earlier run (H. Petrović)
+  ✓ the decision use now: EXPLORATORY ONLY — REFUSED for decision use: outside_envelope (exploratory true; admitted by T. Nakamura, concurred by H. Petrović)
+
+B30-X THE FABRIC CARRYOVERS (F-P5-06/07) — a discrete-event@1 experiment in chunks, completed by the ticks; a superseded corridor control retired with its reason
+  · the fabric experiment 01a0…5669ff "Regensburg line — bearing shortage, 60 paths (SYNTHETIC)" stands — an earlier run (completed)
+  · the budget was approved by J. Weber — an earlier run
+  ✓ THE FABRIC EXPERIMENT COMPLETED by the attention agent's ticks: 3 checkpoints (20 → 40 → 60 paths); the ledger declared → approved → started → run_opened → checkpointed → checkpointed → checkpointed → completed; the run 01a0…fef506 completed (discrete-event@1, 60 samples; line-stop days over the paths: median 18, p10 18, p90 18 — SYNTHETIC)
+  · the retirement 01a0…32c9c5 of run 01a0…826bf5 stands — an earlier run (superseded by 01a0…8b84d2)
+  ✓ the retired run's decision use: REFUSED for decision use: retired
+
+B30-9 THE STATE and the LIMITS
+  · in the ledgers: 3 active estimator(s), 1 estimate(s) (0 by the agent), 0 queued trigger(s), 0 observation request(s); 1 freshness polic(ies), 1 merge(s), 3 branch event(s); 1 exploratory admission(s), 2 envelope event(s); 1 retirement(s), 1 fabric experiment(s); 4 B30 attention item(s)
+  · the corridor twin now: actual v15 observed through 2026-09-27 (complete); branches actual v15, alt-30-day-delay v2, blockade v16, stress-75 v17
+  the env lines for the walks (EYE_TEST_ADMIN_PASSWORD comes from .eye-local/env and is never printed):
+  EYE_B30_OWNER=t.nakamura
+  EYE_B30_TWIN_TITLE='NORDWERK — Ningbo → Regensburg chain'
+  EYE_B30_ESTIMATE_KEY=corridor.capacity_share
+  EYE_B30_CONSTRAINT_SET=corridor-transit-balance
+  EYE_B30_ESTIMATE_VALUE=62
+  EYE_B30_BRANCH=blockade
+  EYE_B30_AS_OF=2026-09-30T05:04
+  EYE_B30_TWIN_OWNER=t.nakamura
+  EYE_B30_DOMAIN_ADMIN=t.richter
+  EYE_B30_OUTSIDE_RUN=01a0fd1d-c933-7ab8-a10d-c3cfb46d45d8
+  EYE_B30_FABRIC_TITLE='Regensburg line — bearing shortage'
+  EYE_B30_OPERATOR=t.nakamura
+  EYE_B30_STEWARD=h.petrovic
+  EYE_B30_RETIRED_RUN=01a0d29d-3e78-73ef-96cb-7859d2826bf5
+  EYE_B30_RETIRED_REASON='superseded by the promoted corridor control (SYNTHETIC)'
+  · LIMITS said: EVERY FIGURE IS SYNTHETIC except the PortWatch transit counts — the corridor's baseline (stated so that the latest count reads 62 %), the challengers' parameters, the conservation tolerance (0.5 transits/day), the 2-day SLO, the 45-day blockade, the 75-day stress delay, the bearing shortage and the reasons are the personas' statements for the demonstration, not measurements. THE PORTWATCH COUNT: the series portwatch:chokepoint4:n_total is the IMF PortWatch publisher's (collected through the real connector — M. Dvořák's collection now, and the daily schedule); its latest point is what the estimate reads — when the publisher has nothing new since the estimators were declared (PortWatch publishes weekly), no telemetry trigger is queued and the act says so and A. Hoffmann proposes through the route; the Reconciliation Agent's proposal on a NEW count is then harness-proven (phase6-estimation-b30 ES5) — the estimation walk's "the Reconciliation Agent (run …)" line holds only on a staging where the agent proposed. THE SERIES' HISTORY: a 2024 seed evidence version of the PortWatch source was tombstoned by a B11 retention action ("superseded evidence past its retention"); before this act's estimation fix (estimators.ts unreadableInWindow) every estimate on the series was refused as unqualified for good — an unreadable version now counts only inside the estimators' widest window (or when it states no day), the rest disclosed as unreadable_outside_window. THE AGENT: the Reconciliation Agent is registered by the administrator (its principal and role come with the registration — the Supply Chain Agent's precedent); no persona is created. THE WORDING: open_run's envelope refusal (0092) still names "the domain administrator's acknowledgement" — the acknowledgement holder is a twin owner only now (0103 §EN); a re-declaration of open_run is the integrator's. THE TICK: the attention agent's real scheduled tick (60 s) raises twin.freshness, queues the estimation checks and drains the fabric experiment — waited for, never driven (the "synthetic tick" of the harnesses is NOT used here). "5 DAYS STALE" holds only on the day the head was admitted: the age is the database's day minus the head's observed_through (the act re-admits a head at the day − 5 when it runs on a later day). THE BRANCHES: the 75-day stress state lives on the branch stress-75, never on actual's head (the B30-B walks read actual); the blockade merge is LEFT OPEN (the walk's refused completion reads it); the stress run is admitted EXPLORATORY and concurred, never promoted. THE RETIREMENT: the oldest of T. Nakamura's corridor controls that no package, analysis or run rests on, superseded by the promoted control. NOT STAGED (HARNESS-PROVEN): estimation — the stale/suspended-source qualification refusals, the violated conservation and range refusals, the stale-head approval rollback, the decline, the internal-change and ontology-revision triggers, the drifted agent, observation requests and their fulfilment (phase6-estimation-b30 ES1–ES6); branches — checkpoint restore, the reconciled and completed merge, the stale merge withdrawn, per-key staleness, the dependency uncertainty, the frozen validated snapshot and its expiry, component confidence, the scenario basis rule (phase6-branches-b30 BR1–BR7); envelope — the raised promotion threshold, calibration and drift, the model lifecycle (deprecated/incompatible/retired), the AI context, the degraded modes (phase6-envelope-b30 E3–E8); fabric — the war-gaming retry, the checkpoint indicators acted on (stop/pause/quarantine), the experiment retirement, the envelope sweep, rare events and benchmark validation (phase6-experiments-b30 X1–X6). LEFT OUT (the parts' reports): closing the routed estimate item on decision; an estimate citation kind; the calibration tick hook; the scenario-element web form. Nothing is cleaned: every object stands as a demonstration fact.
+
+ALL SCENES HELD · 0.5 s
