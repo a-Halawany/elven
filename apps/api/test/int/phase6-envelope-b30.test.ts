@@ -323,7 +323,7 @@ describe('B30 §EN E5 · THE BEHAVIOUR MODEL\'S STEWARDSHIP LIFECYCLE (retired-m
     const r = (await run(owner)).run;
     expect(r.state).toBe('completed');
     expect(classes(await decisionUse(r.runId))).not.toContain('model_lifecycle');
-    expect((await envelopeEvents({ model: MODEL })).filter((e) => e['run_id'] === null).map((e) => [e['event'], obj(e['details'])['to'] ?? obj(e['details'])['kind']])).toEqual([
+    expect((await envelopeEvents({ model: MODEL })).filter((e) => String(e['event']).startsWith('model.')).map((e) => [e['event'], obj(e['details'])['to'] ?? obj(e['details'])['kind']])).toEqual([
       ['model.state_set', 'deprecated'], ['model.compatibility_declared', 'supply-chain'], ['model.compatibility_declared', 'supply-chain'],
       ['model.state_set', 'retired'], ['model.state_set', 'proposed'], ['model.state_set', 'approved']]);
   }, 300_000);
