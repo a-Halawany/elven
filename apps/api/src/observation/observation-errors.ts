@@ -1066,6 +1066,18 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   { match: /^incomplete package rejected \((state|stale|unattested)\)/i, status: 409, code: 'EYE_STA_002' },
   { match: /^incomplete package rejected \(/i, status: 422, code: 'EYE_REQ_001' },
   /* end B35 recommendation */
+  /* B30 branches (0103 §BR) — the families `branch merge rejected (<class>)` (a merge opened, its keys reconciled, completed, closed; the
+     admission gate tbr_merge_admitted and the bypass gate tbr_merge_bypass), `snapshot rejected (<class>)` (a freeze and its lift; the run gate
+     tbr_frozen_expiry — a frozen snapshot past its expiry), `freshness policy rejected (<class>)`, `checkpoint restore rejected (<class>)` and
+     `scenario element rejected (<class>)` (the scenario element route) — every row anchored and requiring the class parenthesis; no earlier
+     row starts with these nouns (B31's `^branch binding rejected` is another noun, anchored). B9's order: the standing 403 (the acting
+     principal, the twin's own owner), the absences 404 (unknown_*), the record's state 409 (state, stale, duplicate; unreconciled — merging
+     the branch back is refused until reconciliation), the caller's own request 422 (the rest). */
+  { match: /^(branch merge|snapshot|freshness policy|checkpoint restore|scenario element) rejected \((actor|ownership|authority)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^(branch merge|snapshot|freshness policy|checkpoint restore|scenario element) rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^(branch merge|snapshot|freshness policy|checkpoint restore|scenario element) rejected \((state|stale|duplicate|unreconciled)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^(branch merge|snapshot|freshness policy|checkpoint restore|scenario element) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B30 branches */
   /* B36 home (0094 §H) — the executive home's families in the CLASS form `<noun> rejected (<class>): …`: `cadence rejected`, `executive room
      rejected` (0044's unclassed `room rejected: …` texts are the decision room's and are mapped by no row; the noun here is `executive room`
      and every row is anchored), `objective review rejected` (the SoD of §H2's re-declared convene_review and of open_subject_room — B23's
