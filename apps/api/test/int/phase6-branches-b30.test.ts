@@ -118,7 +118,7 @@ const resolve = (as: AuthenticatedPrincipal, mergeId: string, payload: Row) => b
 const complete = (as: AuthenticatedPrincipal, mergeId: string) => br.complete(R(as, 'twin.branch.merge'), T(), D(), mergeId, { payload: {} }) as Promise<{ merge: Row; admitted: Row; receipts: Row[] }>;
 const closeMerge = (as: AuthenticatedPrincipal, mergeId: string, outcome: string, reason: string) => br.close(R(as, 'twin.branch.merge'), T(), D(), mergeId, { payload: { outcome, reason } }) as Promise<{ merge: Row }>;
 const readMerge = (as: AuthenticatedPrincipal, mergeId: string) => br.readMerge(R(as, 'twin.read'), T(), D(), mergeId) as Promise<{ merge: Row }>;
-const restore = (as: AuthenticatedPrincipal, payload: Row, twinId: string = C) => br.restore(R(as, 'twin.version', twinId), T(), D(), twinId, { payload } as never) as Promise<{ restore: Row; receipts: Row[] }>;
+const restore = (as: AuthenticatedPrincipal, payload: Row, twinId: string = C) => br.restore(R(as, 'twin.branch.restore', twinId), T(), D(), twinId, { payload } as never) as Promise<{ restore: Row; receipts: Row[] }>;
 const freeze = (as: AuthenticatedPrincipal, payload: Row, twinId: string = C) => br.freeze(R(as, 'twin.snapshot.freeze', twinId), T(), D(), twinId, { payload }) as Promise<{ freeze: Row }>;
 const lift = (as: AuthenticatedPrincipal, freezeId: string, reason: string) => br.lift(R(as, 'twin.snapshot.freeze'), T(), D(), freezeId, { payload: { reason } }) as Promise<{ freeze: Row }>;
 const run = (twinId: string, twinVersion: number) => twins.run(h.req(operator, 'simulation.run', 'SIM', null, 'twin'), T(), D(), { payload: {
@@ -170,7 +170,7 @@ beforeAll(async () => {
     statement: 'no transit through Bab el-Mandeb for 45 days', restsOn: [{ kind: 'entity', id: w.entityId, rationale: 'the assumption is about this strait' }] } }) as { strategy: { objectId: string } };
   ASU_BLOCK = asu.strategy.objectId;
   await anat.link(h.req(strategist, 'prediction.scenario.anatomy.assumption', 'SCN', w.scenarioId, 'prediction'), T(), D(), w.scenarioId,
-    { payload: { assumptionId: ASU_BLOCK, branchId: w.branchId, critical: false, rationale: 'the blockade branch rests on a 45-day closure (SYNTHETIC)' } } as never);
+    { payload: { assumptionId: ASU_BLOCK, branchId: w.branchId, critical: false, condition: { kind: 'state', text: 'transits resume through the strait (SYNTHETIC)' }, rationale: 'the blockade branch rests on a 45-day closure (SYNTHETIC)' } } as never);
   // THE ATTENTION AGENT: the tick's host (its timer unscheduled; the ticks below are the harness's own)
   const r = await exec.registerAgent(h.req(tenantAdmin, 'agent.register', 'AGT', null, 'platform.administration'), T(), D(), { payload: { kind: 'attention', version: ATTENTION_TIMER_VERSION,
     codeDigest: ATTENTION_TIMER_DIGEST, ownerPrincipalId: reviewer.principalId, escalationPrincipalId: dadmin.principalId, budgets: { max_reads: 50, max_gateway_calls: 0, max_elapsed_ms: 120_000, tick_every_seconds: 86_400 } } } as never) as unknown as { agent: { agentId: string } };
@@ -233,7 +233,7 @@ describe('BR1 · the branch-aware store: a blockade branch with a SCENARIO eleme
 
   it('recovery: the strategist links the corridor assumption to the blockade branch; the scenario element grounds and the draft is admitted', async () => {
     await anat.link(h.req(strategist, 'prediction.scenario.anatomy.assumption', 'SCN', w.scenarioId, 'prediction'), T(), D(), w.scenarioId,
-      { payload: { assumptionId: w.assumptionId, branchId: w.branchId, critical: false, rationale: 'the blockade branch also rests on the corridor assumption (SYNTHETIC)' } } as never);
+      { payload: { assumptionId: w.assumptionId, branchId: w.branchId, critical: false, condition: { kind: 'state', text: 'the corridor closes for good (SYNTHETIC)' }, rationale: 'the blockade branch also rests on the corridor assumption (SYNTHETIC)' } } as never);
     const g = await scenario(owner, C, B4, [{ key: 'shock.corridor_delay_days', value: 45, unit: 'days', scenarioId: w.scenarioId, scenarioBranchId: w.branchId, assumption: { id: w.assumptionId }, confidence: 0.4 }]);
     expect(g.grounded[0]).toMatchObject({ kind: 'scenario', key: 'shock.corridor_delay_days' });
     await admit(owner, C, B4);

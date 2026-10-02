@@ -141,7 +141,7 @@ class BranchCapabilityImpl implements PolicyWrites, MergeWrites, ReconcileWrites
   }
   async resolveKey(a: Parameters<ReconcileWrites['resolveKey']>[0]) {
     return this.one(sql`select twin.resolve_merge_key(${a.mergeId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.key}, ${a.resolution}, ${a.kind},
-      ${a.value === undefined ? null : JSON.stringify(a.value)}::jsonb, ${a.unit}, ${JSON.stringify(a.citations)}::jsonb, ${a.note},
+      ${a.value === undefined || a.value === null ? null : JSON.stringify(a.value)}::jsonb, ${a.unit}, ${JSON.stringify(a.citations)}::jsonb, ${a.note},
       ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`);
   }
   async restore(a: Parameters<RestoreWrites['restore']>[0]) {

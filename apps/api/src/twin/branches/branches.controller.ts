@@ -192,7 +192,8 @@ export class BranchesController {
    *   3 twin.ground         the branch's elements and the reconciled values, through the existing grounding port (only those not grounded yet).
    *   4 twin.version.admit  the existing admit — TwinStateChanged@v1 and GraphChanged/twin.state_changed as every admission; the merge is
    *                         merged in this same transaction (tbr_merge_admitted), or the admission is refused if the draft is not the plan.
-   * A step that fails leaves the merge completing; calling complete again resumes it; closing it releases actual.
+   * A step that fails leaves the merge completing; calling complete again resumes it; closing it releases actual. The request's envelope names
+   * twin.branch.merge; each later step is a derived envelope naming its own action (the run route's precedent: simulation.run → .complete).
    */
   @Post('/merges/:mergeId/complete')
   async complete(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('mergeId') mergeId: string,
@@ -216,7 +217,7 @@ export class BranchesController {
     // 2 — the draft on actual (the existing open port)
     let draft = plan.open_draft;
     if (draft === null || draft === undefined) {
-      const w2 = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'twin.version', 'TWN', twinId), BranchCapability.draft,
+      const w2 = await this.pipeline.write(step(envelope, 'twin.version'), principal, this.route(tenantId, domainId, 'twin.version', 'TWN', twinId), BranchCapability.draft,
         async (cap, scope) => {
           const knownAt = await cap.dbNow();
           const r = await this.twins.openVersion(cap.twinVersion, scope, twinId, { branchId: 'actual', forkedFromVersion: null, knownAt,
@@ -228,7 +229,7 @@ export class BranchesController {
     }
     // 3 — the planned elements (the existing grounding port)
     if (plan.ground.length > 0) {
-      const w3 = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'twin.ground', 'TWN', twinId), BranchCapability.ground,
+      const w3 = await this.pipeline.write(step(envelope, 'twin.ground'), principal, this.route(tenantId, domainId, 'twin.ground', 'TWN', twinId), BranchCapability.ground,
         async (cap, scope) => {
           const keys = await this.branches.groundPlan(cap, scope, { twinId, sourceVersion: Number(m['source_version']), draftVersion: draft as number, ground: plan.ground }, principal.principalId, corr);
           return { result: keys, targetType: 'TWN', targetId: twinId, targetVersion: String(draft), outboxEvent: null };
@@ -236,7 +237,7 @@ export class BranchesController {
       receipts.push({ step: 'ground', ...receipt(w3) });
     }
     // 4 — the admission (the existing admit; the merge is merged in the same transaction)
-    const w4 = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'twin.version.admit', 'TWN', twinId), BranchCapability.admit,
+    const w4 = await this.pipeline.write(step(envelope, 'twin.version.admit'), principal, this.route(tenantId, domainId, 'twin.version.admit', 'TWN', twinId), BranchCapability.admit,
       async (cap, scope) => {
         const { runs, ...r } = await this.twins.admit(cap.twinAdmit, scope, twinId, draft as number, body.payload?.allowIncomplete === true, envelope.purpose_id ?? 'twin', principal.principalId, corr);
         const now = await cap.dbNow();
@@ -256,7 +257,7 @@ export class BranchesController {
         };
       });
     receipts.push({ step: 'admit', ...receipt(w4) });
-    const read = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'twin.read', 'TWN', twinId), BranchCapability.read,
+    const read = await this.pipeline.consequentialRead(step(envelope, 'twin.read'), principal, this.route(tenantId, domainId, 'twin.read', 'TWN', twinId), BranchCapability.read,
       async (cap) => this.branches.merge(cap, mergeId));
     return { merge: read.result, admitted: w4.result, receipts, receipt: receipt(read) };
   }
@@ -265,7 +266,7 @@ export class BranchesController {
    * RESTORE A CHECKPOINT — two governed writes: twin.version opens the draft on the branch carrying from the named earlier admitted version
    * (refused first, before anything is written, when the actor is not the twin's own owner or the version is not earlier than the branch's
    * head); twin.branch.restore records the restore with its reason (the port verifies the draft's facts). A recording that fails leaves an
-   * open draft its owner withdraws.
+   * open draft its owner withdraws. The request's envelope names twin.branch.restore; the draft is a derived envelope naming twin.version.
    */
   @Post('/twins/:twinId/restore')
   async restore(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('twinId') twinId: string,
@@ -278,7 +279,7 @@ export class BranchesController {
     const from = body.payload?.fromVersion;
     if (!Number.isInteger(from) || (from as number) < 1) bad(corr, 'checkpoint restore rejected (checkpoint): fromVersion is a positive integer');
     const reason = reasonOf(body.payload?.reason, corr, 'checkpoint restore');
-    const w1 = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'twin.version', 'TWN', twinId), BranchCapability.draft,
+    const w1 = await this.pipeline.write(step(envelope, 'twin.version'), principal, this.route(tenantId, domainId, 'twin.version', 'TWN', twinId), BranchCapability.draft,
       async (cap, scope) => {
         const twin = (await cap.twin.readTwins().select(['owner_principal_id'] as never).where('twin_id' as never, '=', twinId as never).executeTakeFirst()) as Row | undefined;
         if (twin === undefined) bad(corr, `checkpoint restore rejected (unknown_twin): ${twinId} is not a twin of this domain`, 404);
@@ -337,6 +338,8 @@ export class BranchesController {
   }
 }
 
+/** A later governed write of the same request: the envelope with its own action and message id (the run route's precedent). */
+function step<E extends { action: string; message_id: string }>(envelope: E, action: string): E { return { ...envelope, action, message_id: newId() }; }
 function dayOf(v: unknown): string | null {
   if (v === null || v === undefined) return null;
   if (v instanceof Date) return `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, '0')}-${String(v.getDate()).padStart(2, '0')}`;
