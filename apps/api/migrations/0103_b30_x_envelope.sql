@@ -69,6 +69,7 @@ BEGIN
   END IF;
   RETURN NEW;
 END $$ LANGUAGE plpgsql;
+REVOKE ALL ON FUNCTION simulation.ten_admission_once() FROM PUBLIC;
 CREATE TRIGGER ten_xa_once BEFORE UPDATE OR DELETE ON simulation.exploratory_admissions FOR EACH ROW EXECUTE FUNCTION simulation.ten_admission_once();
 
 CREATE TABLE twin.calibrations (
@@ -369,6 +370,7 @@ BEGIN
   END IF;
   RETURN NEW;
 END $$ LANGUAGE plpgsql;
+REVOKE ALL ON FUNCTION simulation.ten_exploratory_promotion() FROM PUBLIC;
 CREATE TRIGGER ten_exploratory_promotion BEFORE INSERT ON simulation.promotions FOR EACH ROW EXECUTE FUNCTION simulation.ten_exploratory_promotion();
 
 /* THE MODEL'S LIFECYCLE at opening: a RETIRED model (in the run's domain) or one declared INCOMPATIBLE with the twin's kind refuses the run;
@@ -393,6 +395,7 @@ BEGIN
   END IF;
   RETURN NEW;
 END $$ LANGUAGE plpgsql;
+REVOKE ALL ON FUNCTION simulation.ten_model_lifecycle() FROM PUBLIC;
 CREATE TRIGGER ten_model_lifecycle BEFORE INSERT ON simulation.runs_current FOR EACH ROW EXECUTE FUNCTION simulation.ten_model_lifecycle();
 
 -- ─────────────────────────────────────────────────────────────────────
