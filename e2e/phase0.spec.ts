@@ -222,7 +222,11 @@ test.describe.serial('Phase 0 browser regression', () => {
     // floor(tAfterV1 + 1s): strictly after v1 (proved by construction — tAfterV1 is
     // captured after the v1 response) and at least 2s before v2 (see the gap above).
     const dt = new Date(new Date(tAfterV1).getTime() + 1000);
-    const local = new Date(dt.getTime() - dt.getTimezoneOffset() * 60000).toISOString().slice(0, 19);
+    const local19 = new Date(dt.getTime() - dt.getTimezoneOffset() * 60000).toISOString().slice(0, 19);
+    // The browser serialises a datetime-local whose seconds are zero as YYYY-MM-DDTHH:mm (the valid normalised string), and Playwright's
+    // fill verifies the value it set: '…T21:59:00' reads back as '…T21:59' and is reported "Malformed value" (#71 ci 36782666166, one run
+    // in sixty). The same instant in the browser's own form is filled instead; the historical read below is unchanged.
+    const local = local19.endsWith(':00') ? local19.slice(0, 16) : local19;
     await page.locator('input[type="datetime-local"]').fill(local);
     await page.getByRole('button', { name: 'Query' }).click();
     await expect(page.getByText(/→ version/)).toBeVisible();

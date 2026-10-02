@@ -1,0 +1,169 @@
+THE B90 ACT on eye_demo — 2026-09-30T13:12:28.801Z
+
+B90-0 THE STATE — 0095, the casting, the new SYNTHETIC personas, the attention agent, the policy extended
+  ✓ migration 0095_b90_data_products_metrics_catalog.sql applied
+  ✓ the casting read from identity.role_bindings: a.hoffmann (domain_analyst); a.novak (strategy_owner); j.weber (strategy_owner); m.dvorak (collection_manager, executive); n.eriksen (forecast_owner); t.richter (domain_admin)
+  ✓ the administrator CREATED F. Aydın through the governed principal route — role data_steward at the DOMAIN
+  ✓ the administrator CREATED H. Weber through the governed principal route — role domain_analyst at the DOMAIN
+  ✓ the attention agent 01a0…1cb088 (registered in B24) — cadence 60 s; 1 tick run(s) in the last ten minutes (the latest at 2026-09-30T13:12:21Z) — the B90 steps event-products (61), subscription-lag (63), product-scorecards (64), metric-certification (65), catalog-reconcile (66) run inside it
+  ✓ M. Dvořák PUBLISHED attention policy VERSION 8: + product.degradation, subscription.lag, metric.certification, catalog.coverage → route_roles [data_steward] (every earlier class kept: 14 → 18) — changed materiality, routing, escalation, notification, classes
+  ✓ the inputs: the Regensburg objective 01a0…3d1d00 "Keep the Regensburg line supplied through Q1"; the evidence the signals cite 01a0…7342d1@1 (NORDWERK's synthetic internal records); the schemas WRN@v2, FCT@v1
+
+B90-R THE PLATFORM'S OWN PRODUCTS — scripts/phase6/b90-platform-products.mjs (the nine, by their demonstration owners; rerun-safe on its own)
+      · F. Aydın is present — an earlier run
+      ✓ F. Aydın REGISTERED platform.object-api (object) for its owner t.richter — 01a0…3b54f6
+      ✓ t.richter DECLARED platform.object-api v1 (digest 19fb170215c9…)
+      ✓ F. Aydın recorded the ACCEPTED admission review of platform.object-api v1
+      ✓ t.richter RELEASED platform.object-api v1 — the DPR admitted at object_version 1
+      ✓ availability_pct 99.9 OBSERVED on platform.object-api (SYNTHETIC; the schedule's first scorecard reads it)
+      ✓ F. Aydın REGISTERED platform.observation-evidence (evidence) for its owner a.hoffmann — 01a0…8cf772
+      ✓ a.hoffmann DECLARED platform.observation-evidence v1 (digest cb2685700577…)
+      ✓ F. Aydın recorded the ACCEPTED admission review of platform.observation-evidence v1
+      ✓ a.hoffmann RELEASED platform.observation-evidence v1 — the DPR admitted at object_version 1
+      ✓ availability_pct 99.9 OBSERVED on platform.observation-evidence (SYNTHETIC; the schedule's first scorecard reads it)
+      ✓ F. Aydın REGISTERED platform.graph-query (graph) for its owner l.brandt — 01a0…d5c0d0
+      ✓ l.brandt DECLARED platform.graph-query v1 (digest c21b7222d68e…)
+      ✓ F. Aydın recorded the ACCEPTED admission review of platform.graph-query v1
+      ✓ l.brandt RELEASED platform.graph-query v1 — the DPR admitted at object_version 1
+      ✓ availability_pct 99.9 OBSERVED on platform.graph-query (SYNTHETIC; the schedule's first scorecard reads it)
+      ✓ F. Aydın REGISTERED platform.twin-snapshot (twin_snapshot) for its owner t.nakamura — 01a0…10eb50
+      ✓ t.nakamura DECLARED platform.twin-snapshot v1 (digest 3d393f34caaa…)
+      ✓ F. Aydın recorded the ACCEPTED admission review of platform.twin-snapshot v1
+      ✓ t.nakamura RELEASED platform.twin-snapshot v1 — the DPR admitted at object_version 1
+      ✓ availability_pct 99.9 OBSERVED on platform.twin-snapshot (SYNTHETIC; the schedule's first scorecard reads it)
+      ✓ F. Aydın REGISTERED platform.forecast-package (forecast) for its owner n.eriksen — 01a0…73b64c
+      ✓ n.eriksen DECLARED platform.forecast-package v1 (digest b34ca630c00f…)
+      ✓ F. Aydın recorded the ACCEPTED admission review of platform.forecast-package v1
+      ✓ n.eriksen RELEASED platform.forecast-package v1 — the DPR admitted at object_version 1
+      ✓ availability_pct 99.9 OBSERVED on platform.forecast-package (SYNTHETIC; the schedule's first scorecard reads it)
+      ✓ F. Aydın REGISTERED platform.scenario-portfolio (scenario) for its owner c.brenner — 01a0…f012d1
+      ✓ c.brenner DECLARED platform.scenario-portfolio v1 (digest 9c1eb59e7a13…)
+      ✓ F. Aydın recorded the ACCEPTED admission review of platform.scenario-portfolio v1
+      ✓ c.brenner RELEASED platform.scenario-portfolio v1 — the DPR admitted at object_version 1
+      ✓ availability_pct 99.9 OBSERVED on platform.scenario-portfolio (SYNTHETIC; the schedule's first scorecard reads it)
+      ✓ F. Aydın REGISTERED platform.simulation-run (simulation) for its owner t.nakamura — 01a0…03f6e9
+      ✓ t.nakamura DECLARED platform.simulation-run v1 (digest 70abf9fb53c1…)
+      ✓ F. Aydın recorded the ACCEPTED admission review of platform.simulation-run v1
+      ✓ t.nakamura RELEASED platform.simulation-run v1 — the DPR admitted at object_version 1
+      ✓ availability_pct 99.9 OBSERVED on platform.simulation-run (SYNTHETIC; the schedule's first scorecard reads it)
+      ✓ F. Aydın REGISTERED platform.decision-package (decision) for its owner l.brandt — 01a0…5dbc90
+      ✓ l.brandt DECLARED platform.decision-package v1 (digest 480822303f37…)
+      ✓ F. Aydın recorded the ACCEPTED admission review of platform.decision-package v1
+      ✓ l.brandt RELEASED platform.decision-package v1 — the DPR admitted at object_version 1
+      ✓ availability_pct 99.9 OBSERVED on platform.decision-package (SYNTHETIC; the schedule's first scorecard reads it)
+      ✓ F. Aydın REGISTERED platform.briefing (briefing) for its owner m.dvorak — 01a0…1431da
+      ✓ m.dvorak DECLARED platform.briefing v1 (digest ecb453e2aa90…)
+      ✓ F. Aydın recorded the ACCEPTED admission review of platform.briefing v1
+      ✓ m.dvorak RELEASED platform.briefing v1 — the DPR admitted at object_version 1
+      ✓ availability_pct 99.9 OBSERVED on platform.briefing (SYNTHETIC; the schedule's first scorecard reads it)
+      · LIMITS said: every figure is SYNTHETIC (the availability probe is the act's own observation, not a measurement of the platform); the products DESCRIBE the platform's own surfaces and mutate nothing; the scorecards are the schedule's (the attention tick step product-scorecards), not this script's.
+  ✓ the platform's nine products stand in the registry: 9 registered, 9 released (each with an owner, an SLO and a first availability observation — SYNTHETIC)
+
+B90-E THE CORRIDOR WARNING STREAM — the event product owned by the intelligence domain; procurement subscribes, falls behind its lag policy and is flagged; the scorecard shows the attainment
+  ✓ F. Aydın REGISTERED corridor-warning-stream (event) "Corridor warning stream (SYNTHETIC)" for its owner N. Eriksen — 01a0…b2f12f
+  ✓ N. Eriksen PROCESSED the warning intake BEFORE the stream's declaration: 15 pending → 6 raised, the rest decided otherwise (the earlier batches' candidates; the stream starts after them)
+  ✓ N. Eriksen EVENT-DECLARED corridor-warning-stream: schema v1 (title, consequence_class, confidence, closes_at, routed_to), subject warning, ordering by subject, PULL, retention 30 days, replay allowed, source prediction.warning_events [warning.raised, warning.retracted] — emits corrections true
+  ✓ N. Eriksen DECLARED corridor-warning-stream v1: contract [{"object_type":"WRN","schema_version":"v2"}], serving event, SLO {"lag_events":2,"attainment_floor_pct":50,"grace_ticks":3}, purposes executive+procurement (digest 9242d4a8f18a…)
+  ✓ F. Aydın recorded the ACCEPTED admission review of corridor-warning-stream v1
+  ✓ N. Eriksen RELEASED corridor-warning-stream v1 — the DPR admitted at object_version 1
+  ✓ F. Aydın REGISTERED corridor-forecasts (forecast) "Corridor transit forecasts (SYNTHETIC)" for its owner N. Eriksen — 01a0…48b533
+  ✓ N. Eriksen DECLARED corridor-forecasts v1: contract [{"object_type":"FCT","schema_version":"v1"}], serving api, SLO {"availability_pct":99.5,"freshness_seconds":86400,"attainment_floor_pct":95,"grace_ticks":2}, purposes executive+prediction (digest 7c0628073492…)
+  ✓ F. Aydın recorded the ACCEPTED admission review of corridor-forecasts v1
+  ✓ N. Eriksen RELEASED corridor-forecasts v1 — the DPR admitted at object_version 1
+  ✓ availability_pct 99.9 OBSERVED on corridor-forecasts (SYNTHETIC; the schedule's first scorecard reads it)
+  ✓ H. Weber (procurement) REGISTERED as a consumer of corridor-warning-stream: 01a0…e0a324 registered, contract v1
+  ✓ H. Weber ACCEPTED contract v1 of corridor-warning-stream — the consumer's own act (accepted)
+  ✓ H. Weber SUBSCRIBED to corridor-warning-stream: 01a0…108deb registered — purpose procurement, fields title+consequence_class+closes_at, consequence C2, schema v1, lag policy {"max_lag_events":2,"max_lag_seconds":86400}, handles corrections and replays
+  ✓ H. Weber reading before the authorization REFUSED — 409 EYE-STA-002 — subscription rejected (state): subscription 01a0f271-f752-7bf2-8cd5-61dd59108deb is registered and not yet authorized by the product's owner
+  ✓ N. Eriksen (the owner) AUTHORIZED the subscription: active — the authority boundary: the granted fields, the purpose, the tenant, C2
+  · N. Eriksen PROCESSED the intake: 1 raised in 1 pass(es)
+  ✓ 1 SYNTHETIC corridor warning(s) RAISED through the B28 intake (nominated by N. Eriksen, escalated by A. Hoffmann, each its own cause): "attack reported near Perim" → candidate 12ad…23a869 raised → warning 01a0…06022e
+  · waiting for the attention agent's scheduled tick (event-products, order 61; every 60 s) — 0.0 min
+  ✓ H. Weber READ the stream after 0: 1 served, head 1, corrections omitted 0 — #1 signal warning.raised "Weak signal escalated: Bab el-Mandeb: SYNTHETIC attack repor" (the payload PROJECTED to title+closes_at+consequence_class)
+  ✓ H. Weber ACKNOWLEDGED through 1 (head 1, lag 0)
+  · N. Eriksen PROCESSED the intake: 3 raised in 1 pass(es)
+  ✓ 3 SYNTHETIC corridor warning(s) RAISED through the B28 intake (nominated by N. Eriksen, escalated by A. Hoffmann, each its own cause): "drone sighting north of the strait" → candidate 8cd7…34b2f1 raised → warning 01a0…ae7893; "a second attack reported by the carrier" → candidate cdd5…55a74c raised → warning 01a0…c8fd06; "insurer withdraws war-risk cover" → candidate 1819…be37c9 raised → warning 01a0…1b4385
+  · waiting for the attention agent's scheduled tick (event-products 61, then subscription-lag 63, then product-scorecards 64) — 1.1 min
+  ✓ THE TICK streamed 3 more (head 4) and FLAGGED the subscription LAGGING: 3 events behind the policy's 2 — the checkpoint 1 PRESERVED (reason lag)
+  ✓ the OWNER'S ITEM: d381…e26f59 subscription.lag "Subscription lagging beyond policy: Corridor warning stream (SYNTHETIC) (consume" → open, owner N. Eriksen (lag 3 > 2, consumer H. Weber)
+  ✓ the SLO LEDGER: lag_events 3 against 2 → met false (subscription-lag tick)
+  ✓ H. Weber reading while lagging REFUSED — 409 EYE-STA-002 — subscription rejected (state): subscription 01a0f271-f752-7bf2-8cd5-61dd59108deb is lagging (lag); delivery is paused with the checkpoint 1 preserved — the consumer's conformance and the owner's resumption are required b
+  ✓ N. Eriksen resuming before the conformance REFUSED — 409 EYE-STA-002 — subscription rejected (state): subscription 01a0f271-f752-7bf2-8cd5-61dd59108deb is lagging (lag) and its consumer has not declared conformance since the pause; conformance is required before resumption (DP-43-006)
+  ✓ H. Weber DECLARED CONFORMANCE (caught up, can process) — the row keeps the declaration; the state stays lagging until the owner resumes
+  ✓ H. Weber CAUGHT UP: acknowledged through 4 while lagging (lag 0) — not resumed on her own
+  ✓ N. Eriksen RESUMED the subscription: active, checkpoint 4
+  · waiting for the next tick's lag observation (subscription-lag 63) — 2.1 min
+  ✓ THE NEXT TICK observed lag_events 0 → met (at 2026-09-30T13:15:33.073Z) — the subscription back within its policy after the conformance and the resumption
+  ✓ THE OWNER'S READ of corridor-warning-stream: head 4, stream {"signal":4}, subscriptions 1 — H. Weber's active at checkpoint 4 (lag 0); the SLO on the product: lag_events 0 → met true (subscription-lag tick)
+  ✓ THE SCORECARD of corridor-warning-stream (the schedule's): ok, SLO attainment 66.67% against the floor 50% (3 card(s)) — lag_events observed 1 missed, 2 met: missed at the lag, attained after the conformance and the resumption
+
+B90-D THE DEGRADATION AND THE RESTORATION — the steward degrades the stream with a reason; the consumer's item; the domain review; the owner restores
+  ✓ F. Aydın DEGRADED corridor-warning-stream with a reason: degraded — every ACCEPTED consumer notified: H. Weber
+  ✓ THE CONSUMER'S ITEM: 1d27…25634e "Product corridor-warning-stream DEGRADED: The corridor warning stream is served from its l" → open, on H. Weber's queue (product.degradation)
+  ✓ N. Eriksen restoring before the domain review REFUSED — 409 EYE-STA-002 — data product rejected (review): product corridor-warning-stream stays degraded — degraded by a person ("The corridor warning stream is served from its last emission while the warning ledger is re-indexed; consumers must 
+  ✓ F. Aydın recorded the ACCEPTED domain review of v1 (newer than the degradation)
+  ✓ N. Eriksen (the owner) RESTORED corridor-warning-stream: released, restored on domain_review, released version 1 kept
+
+B90-M THE CERTIFIED METRIC — "corridor exposure (EUR at risk)" served with its grain and source revision; the uncertified variant refused in the executive view; the Strategic Health Score
+  ✓ J. Weber DECLARED and DEFINED the measure 01a0…ace1b1 "Corridor exposure (EUR at risk)": unit EUR, lower is better, target ≤ 500 000 by 2027-06-30 (the demonstration carried no measure in EUR — said)
+  ✓ A. Hoffmann OBSERVED EUR 610,000 at risk, 50 days ago (SYNTHETIC; cited on the evidence 01a0…7342d1)
+  ✓ A. Hoffmann OBSERVED EUR 550,000 at risk, 10 days ago (SYNTHETIC; cited on the evidence 01a0…7342d1)
+  ✓ F. Aydın REGISTERED the metric product corridor-exposure-eur "Corridor exposure (EUR at risk)" for its owner M. Dvořák — 01a0…831ddc
+  ✓ F. Aydın DECLARED corridor-exposure-eur v1: measure_observations · last · grain month · unit EUR · dimensions measure_id+objective_id · filters {"measure_id":"01a0…ace1b1"} · effective from 2026-07-12 (digest 91fe6106ef00…) — DECLARATIVE: a whitelisted measure, never an expression
+  ✓ F. Aydın (the steward) certifying the exposure metric REFUSED — 403 EYE-AUT-001 — metric certification rejected (authority): metric corridor-exposure-eur is certified by its owner (a steward declares, never certifies)
+  ✓ M. Dvořák (the owner) CERTIFIED corridor-exposure-eur v1 until 2026-12-29 — SIGNED (ed25519:2b6c48b937b0b8d2, 01a0…a698a4), the canonical MET@v1 admitted at object version 1 → certified
+  ✓ F. Aydın REGISTERED the metric product corridor-exposure-eur-draft "Corridor exposure (EUR at risk) — draft" for its owner M. Dvořák — 01a0…9b3390
+  ✓ F. Aydın DECLARED corridor-exposure-eur-draft v1: measure_observations · avg · grain month · unit EUR · dimensions measure_id+objective_id · filters {"measure_id":"01a0…ace1b1"} · effective from 2026-07-12 (digest 34b245d8c749…) — DECLARATIVE: a whitelisted measure, never an expression
+  ✓ F. Aydın REGISTERED the metric product strategic-health-score "Strategic Health Score" for its owner M. Dvořák — 01a0…864276
+  ✓ F. Aydın DECLARED strategic-health-score v1: health_score · last · grain component · unit points · dimensions definition_id+component_key · filters {"definition_id":"01a0…ab1efd"} (digest 9ca52af04370…) — DECLARATIVE: a whitelisted measure, never an expression
+  ✓ M. Dvořák (the owner) CERTIFIED strategic-health-score v1 until 2026-12-29 — SIGNED (ed25519:2b6c48b937b0b8d2, 01a0…698d93), the canonical MET@v1 admitted at object version 1 → certified
+  ✓ THE EXECUTIVE VIEW SERVED corridor-exposure-eur: certified, definition v1 (91fe6106ef00…), grain month, unit EUR, last — SOURCE graph.measure_observations revision 4c8f3fc19005d7fc… over 2 row(s), freshness 10 d; values 2026-08: 610,000 EUR, 2026-09: 550,000 EUR (as of 2026-09-30T13:15:36Z, the database's instant)
+  ✓ the executive view of the UNCERTIFIED draft REFUSED — 409 EYE-STA-002 — metric rejected (certification): metric corridor-exposure-eur-draft is declared — the executive view serves certified metrics only (dashboards are access modes); the analyst view serves it marked uncertified
+  ✓ THE ANALYST VIEW SERVED the draft MARKED: "UNCERTIFIED (declared) — served in the analyst view only; no" — avg per month, values 2026-08: 610,000, 2026-09: 550,000, certified false
+  ✓ M. Dvořák certifying the draft (the same measure, grain and filters under another definition) REFUSED — 409 EYE-STA-002 — metric certification rejected (conflict): metric corridor-exposure-eur-draft conflicts with the certified metric corridor-exposure-eur (the same measure, grain and filters) under a different definition — reconcile defini
+  ✓ THE STRATEGIC HEALTH SCORE SERVED in the executive view: certified, grain component — source executive.health_score_snapshots revision 4215e794b11357f8…; components corridor_risk 40.0, corridor_transits 38.3, morocco_supplier 100.0, on_time_delivery withheld
+
+B90-K THE CATALOG — the synthetic AIS source, the reconciliation, the owner, the lineage to the corridor forecasts and the warning stream, the orphaned staging asset, the search
+  ✓ A. Hoffmann REGISTERED the SYNTHETIC source red-sea-ais-positions "Red Sea AIS positions (synthetic)" (upload, replay, synthetic origin); M. Dvořák (collection manager) APPROVED and ACTIVATED contract v1 → active (01a0…4aad45) — the demonstration had no AIS source: said
+  ✓ F. Aydın RECONCILED the catalog (the registries walked: the schemas, the canonical fields, the sources, the products): 120 registry rows seen, 4 entries created, flagged {"unowned":1}, cleared 0, attention items 0
+  ✓ F. Aydın SET the owner of the catalog entry "Red Sea AIS positions (synthetic)" → A. Hoffmann (unowned cleared; recertify by 2027-03-29)
+  ✓ F. Aydın DECLARED the lineage "Red Sea AIS positions (synthetic)" → "Corridor transit forecasts (SYNTHETIC)" (feeds) — 01a0…53d119
+  ✓ F. Aydın DECLARED the lineage "Corridor transit forecasts (SYNTHETIC)" → "Corridor warning stream (SYNTHETIC)" (feeds) — 01a0…0a628f
+  ✓ F. Aydın DEFINED the glossary term "AIS position" (owner A. Hoffmann) — bound by name to 0 entr(ies)
+  ✓ F. Aydın REGISTERED the staging asset ais_staging_2025w40 "AIS staging 2025 week 40 (SYNTHETIC)" with NO owner — flags ["unowned"]
+  ✓ F. Aydın RECONCILED the catalog (the orphan detection): 120 registry rows seen, 0 entries created, flagged {"orphan":1}, cleared 0, attention items 1
+  ✓ ais_staging_2025w40 is flagged ORPHAN since 2026-09-30 ("a staging asset with no owner and no lineage") and UNDISCOVERABLE (discoverable false, trusted true)
+  ✓ THE COVERAGE ITEM: 2f6d…89d9ac "catalog coverage: staging AIS staging 2025 week 40 (SYNTHETIC) (ais_staging_2025w40) flagg" → open, routed to the role data_steward (the steward's queue: no owner to name)
+  ✓ F. Aydın SEARCHED "Red Sea AIS": 1 hit(s), 0 hidden (clearance internal) — "Red Sea AIS positions (synthetic)" owner A. Hoffmann — observation operator, trusted true, flags [], downstream feeds → "Corridor transit forecasts (SYNTHETIC)"
+  ✓ the search "ais_staging" (F. Aydın): 1 total, 1 hidden ({"clearance":0,"undiscoverable":1}) — the orphan is counted, never served
+  ✓ A. Novák (an internal-cleared reader) SEARCHED "Red Sea AIS": 1 hit(s), 0 hidden — clearance internal; no steward's controls
+  ✓ THE COVERAGE DEBT: field 43 (owned 0, discoverable 43, flagged {"unowned":43}); schema 49 (owned 0, discoverable 49, flagged {"unowned":49}); source 14 (owned 1, discoverable 14, flagged {"unowned":13}); product 14 (owned 14, discoverable 14, flagged {"lineage_missing":9}); staging 1 (owned 0, discoverable 0, flagged {"orphan":1,"unowned":1}); 1 undiscoverable, 1 open item(s); last reconciliation steward
+
+B90-9 THE STATE and the LIMITS
+  · in the ledgers: 14 products (11 released), 1 consumer rows, 1 subscriptions, 4 stream rows, 19 SLO observations, 33 scorecards, 3 semantic models (2 active certifications, 3 servings), 121 catalog entries, 2 live lineage edges, 3 B90 attention items
+  the env lines for the walks:
+  EYE_B90_STEWARD=f.aydin
+  EYE_B90_STEWARD_LOGIN=f.aydin
+  EYE_B90_PRODUCTS_OWNER=n.eriksen
+  EYE_B90_P_OBJECT=01a0f271-f4e6-7004-84a6-19ce8c3b54f6
+  EYE_B90_P_EVIDENCE=01a0f271-f520-7583-9fbb-62b5b18cf772
+  EYE_B90_P_GRAPH=01a0f271-f54b-788d-92f7-91ebbcd5c0d0
+  EYE_B90_P_TWIN_SNAPSHOT=01a0f271-f578-7708-a22b-4abb6710eb50
+  EYE_B90_P_FORECAST=01a0f271-f5a0-77fc-af0d-c7c84373b64c
+  EYE_B90_P_SCENARIO=01a0f271-f5c8-71ef-83dd-0a03e1f012d1
+  EYE_B90_P_SIMULATION=01a0f271-f5f0-758c-87e7-de160503f6e9
+  EYE_B90_P_DECISION=01a0f271-f618-771c-8c83-13010e5dbc90
+  EYE_B90_P_BRIEFING=01a0f271-f641-71ce-bba2-e557f31431da
+  EYE_B90_EVENTS_STREAM_TITLE=Corridor warning stream
+  EYE_B90_EVENTS_OWNER=n.eriksen
+  EYE_B90_EVENTS_CONSUMER=h.weber
+  EYE_B90_CONSUMER=h.weber
+  EYE_B90_EXECUTIVE_LOGIN=m.dvorak
+  EYE_B90_METRIC_TITLE=Corridor exposure \(EUR at risk\)(?! — draft)
+  EYE_B90_DRAFT_TITLE=draft
+  EYE_B90_HEALTH_TITLE=Strategic Health Score
+  EYE_B90_AIS_TITLE=Red Sea AIS
+  EYE_B90_READER=a.novak
+  · LIMITS said: EVERY FIGURE IS SYNTHETIC — the AIS source is a synthetic upload contract with no bytes behind it (no real AIS provider), the corridor warnings are synthetic reports nominated and escalated for the demonstration, the EUR readings and the availability probes are the personas' own observations, not measurements; the event product is served by PULL only (no push delivery, no webhook, no real consumer system — H. Weber reads it by hand); the consumer, the subscriber and the steward are personas of this demonstration; the ticks are the attention agent's REAL scheduled ticks (the act waits for them, drives none by hand: there is no tick route outside the test runtime); the stream's SLO floor (50 %) and grace (3 ticks) are declared by its owner so one missed lag observation does not degrade the stream by the schedule before the steward's own degradation scene — the attainment climbs with every healthy tick; the metric certifications are signed with the demonstration's own key (EYE_EXECUTIVE_SIGNING_KEY_DEMO, bound by reference); the semantic layer computes from the platform's own canonical rows (graph.measure_observations, executive.health_score_snapshots) and creates no parallel truth; the catalog DESCRIBES and INDEXES authority and mutates no source, schema, product or object. HARNESS-PROVEN and not staged: events — the breaking schema re-declaration pausing a subscription (reason schema) and its conformance to the new version, the correction row withheld from a consumer that cannot process corrections, the replay moving a checkpoint back, the revocation preserving the offsets, the authority-boundary refusals (another tenant, fields outside the schema, a purpose outside the policy), RLS isolation (phase6-events-b90 e, f, g); products — contract tests and the breaking release denied over accepted consumers without a passing test, the migration, the cost attribution, the degradation BY THE TICK after grace_ticks below-floor scorecards, the withdrawal (the DPR's withdrawn version) and the retirement (the archived version; refused over an accepted consumer or without a retirement review) (phase6-products-b90 b, c, d, e); metrics — the definition diff withdrawing a certification and exposing its servings, the reproducibility fault (a source row changed → the recalculation withdraws), the expiry sweep by the tick step metric-certification and its item, the whitelist refusals (phase6-metrics-b90 d); catalog — stale and ownership-lapsed entries (stated superuser moves on the dates), the duplicate flag, the steward's hand flag, the clearance hiding a confidential entry, the trust read as the stop of new consumption, the tick step catalog-reconcile (phase6-catalog-b90 c2, d). Nothing is cleaned: every object stands as a demonstration fact.
+
+ALL SCENES HELD · 187.8 s

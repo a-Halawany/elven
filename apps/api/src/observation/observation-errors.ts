@@ -874,6 +874,67 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   { match: /^(plan|plan baseline|initiative|milestone|plan dependency|plan measure|plan run|plan breach|initiative citation) rejected \((state|closed|duplicate|breach_open)\)|^plan commitment rejected \(breach_open\)/i, status: 409, code: 'EYE_STA_002' },
   { match: /^(plan|plan baseline|initiative|milestone|plan dependency|plan measure|plan run|plan breach|initiative citation|plan commitment) rejected/i, status: 422, code: 'EYE_REQ_001' },
   /* end B36 planning */
+  /* B90 prelude (0095 §0) — the data product registry's family `data product rejected (<class>)` (the parts' families are their own and
+     anchored distinctly: `data product consumer rejected`, `product scorecard rejected`, `event product rejected`, `subscription rejected`,
+     `metric rejected`, `metric certification rejected`, `catalog asset rejected`, `catalog rejected`, `glossary term rejected`, `lineage
+     rejected`; no earlier row starts with `data product`). B9's order: the standing 403 (the acting principal, the authority, the owner, the
+     separation of owner and reviewer), the absences 404 (`unknown_*`), the record's state 409 (state, duplicate, duplicate_authority,
+     review, canonical, meaning, consumers, contract_tests), the caller's own 422 (the contract among them: publication denied for what the
+     declaration lacks is the request's fault). */
+  { match: /^data product rejected \((actor|authority|not_owner|separation)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^data product rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^data product rejected \((state|duplicate|duplicate_authority|review|canonical|meaning|consumers|contract_tests)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^data product rejected/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B90 prelude */
+  /* B90 metrics (0095 §M) — the semantic layer's families `metric rejected (<class>)` and `metric certification rejected (<class>)` —
+     anchored phrases no earlier row matches (no earlier row starts with `metric`; `data product rejected` is another noun and `metric
+     rejected` is no suffix of an unanchored earlier row). B9's order: the standing 403 (the acting principal, the authority — a steward
+     certifying, a non-owner declaring), the absences 404 (`unknown_*`: product, metric, version, serving), the record's state 409 (state,
+     the executive view's `certification` refusal of an uncertified / withdrawn / expired model, a `conflict` with another certified model,
+     `unchanged`, no definition `effective` at the instant, the `signature` or the `canonical` object missing from the write), the caller's
+     own request 422 (the rest: a measure outside the whitelist, a grain or dimension the measure does not allow, a filter off the
+     dimensions, the aggregation, the unit, the view, the instant, the expiry, the reason). */
+  { match: /^(metric|metric certification) rejected \((actor|authority)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^(metric|metric certification) rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^(metric|metric certification) rejected \((state|certification|conflict|unchanged|effective|signature|canonical)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^(metric|metric certification) rejected/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B90 metrics */
+  /* B90 products (0095 §R) — the registry completed: `data product consumer rejected (<class>)` (the consumers), `contract test rejected
+     (<class>)`, `product scorecard rejected (<class>)`, `product cost rejected (<class>)` — anchored nouns no earlier row starts with (the
+     prelude's `^data product rejected` does not match `data product consumer rejected`; no earlier row starts with `contract test`,
+     `product scorecard` or `product cost`; no unanchored earlier row names these phrases). The lifecycle ports (degrade / restore / withdraw
+     / retire) use the prelude's `data product rejected` family with its classes (not_owner, state, review, canonical, consumers,
+     contract_tests). B9's order: the standing 403 (the acting principal, the authority, the owner, THE CONSUMER — a contract is accepted by
+     nobody else), the absences 404 (`unknown_*`), the record's state 409 (state, duplicate, contract_tests, review, canonical, consumers),
+     the caller's own 422 (a version that is not the released one, a period, an amount, a window among them). */
+  { match: /^(data product consumer|contract test|product scorecard|product cost) rejected \((actor|authority|not_owner|not_consumer|separation)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^(data product consumer|contract test|product scorecard|product cost) rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^(data product consumer|contract test|product scorecard|product cost) rejected \((state|duplicate|contract_tests|review|canonical|consumers)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^(data product consumer|contract test|product scorecard|product cost) rejected/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B90 products */
+  /* B90 catalog (0095 §K) — the metadata catalog's families `catalog asset rejected (<class>)`, `catalog rejected (<class>)`, `glossary term
+     rejected (<class>)` and `lineage rejected (<class>)` (anchored; no earlier row starts with `catalog`, `glossary` or `lineage`, and
+     `catalog rejected` is not a suffix of `catalog asset rejected`'s anchored phrase). B9's order: the standing 403 (the acting principal,
+     the authority — a steward's act or an owner's —, the owner's own recertification), the absences 404 (`unknown_*`: an asset, an owner,
+     a registry ref), the record's state 409 (state, duplicate), the caller's own 422 (the kind, the ref, the title, the classification,
+     the shape, a self edge, a term, a definition, a flag, a reason, a query). */
+  { match: /^(catalog asset|catalog|glossary term|lineage) rejected \((actor|authority|not_owner)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^(catalog asset|catalog|glossary term|lineage) rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^(catalog asset|catalog|glossary term|lineage) rejected \((state|duplicate)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^(catalog asset|catalog|glossary term|lineage) rejected/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B90 catalog */
+  /* B90 events (0095 §E) — the event product's and the subscription's families `event product rejected (<class>)` and `subscription
+     rejected (<class>)`, every row requiring the class parenthesis: 0063's graph subscriptions raise the unclassed `subscription rejected:
+     …` texts, which no row reads and none of these rows may catch. B9's order: the standing 403 (the acting principal, the authority of the
+     owner or the steward, the consumer's own act), the absences 404 (unknown_*), the record's state 409 (state; lag — the consumer still
+     behind when the owner would resume; schema_pending — the accepted version still the broken one), the caller's own 422 (the schema on
+     registration, the fields, the purpose, the window, the lag policy, the capability, the source among them). */
+  { match: /^(event product|subscription) rejected \((actor|authority|not_consumer)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^(event product|subscription) rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  /* B90-F1 (0096): `backlog` — acknowledging past what the catch-up served, conforming before the backlog is acknowledged — is the record's state (409) */
+  { match: /^(event product|subscription) rejected \((state|lag|schema_pending|backlog)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^(event product|subscription) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B90 events */
   /* B36 home (0094 §H) — the executive home's families in the CLASS form `<noun> rejected (<class>): …`: `cadence rejected`, `executive room
      rejected` (0044's unclassed `room rejected: …` texts are the decision room's and are mapped by no row; the noun here is `executive room`
      and every row is anchored), `objective review rejected` (the SoD of §H2's re-declared convene_review and of open_subject_room — B23's

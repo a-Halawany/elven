@@ -1,0 +1,66 @@
+B90-F1 — the real-database regression (apps/api/test/int/phase6-events-b90.test.ts, the lag's refusal and recovery cases rewritten around the catch-up), 2026-09-30
+BEFORE: a fresh database migrated through 0095 ONLY (0096 held aside) — the current behaviour
+AFTER: a fresh database migrated through 0096
+
+=== BEFORE (0095 only)
+     × d · REFUSAL: the read is refused while lagging (the reason named); acknowledging backwards, beyond the head, by another principal; resumption before conformance, and after conformance while still behind; conformance by the owner; a pause of a lagging subscription 45ms
+     × d · RECOVERY (B90-F1): the consumer CATCHES UP — the unread backlog 2–4 SERVED in two bounded batches (identities and projected payloads checked against the stream), each acknowledged only once served; then conformance; the owner resumes; the next tick observes lag_events met true and raises nothing twice 3ms
+     × e · POSITIVE: the owner re-declares the event product with schema v2 BREAKING; the next tick pauses the subscription (reason schema) and notifies the owner once 85ms
+     × e · REFUSAL: the read while paused; resumption before conformance; a conformance naming a version the product does not serve; a conformance without the version leaves the schema pending 9ms
+     × e · RECOVERY: conformance to v2, the owner resumes; an ADDITIVE re-declaration (v3) pauses nothing on the next tick; a new subscription must name the current version 7ms
+     × f · POSITIVE: a correction row (stated superuser move on the SOURCE ledger: warning.retracted on warning A) is emitted as kind correction with schema v3 and served to the consumer that handles corrections; a replay from 1 moves the checkpoint back and re-serves 2..5 81ms
+     × f · REFUSAL: consumer 2 (cannot process corrections) reads P2 and the correction is WITHHELD and counted; a replay by a consumer that cannot process replays, from at or beyond the checkpoint, without a reason; reading before the checkpoint 7ms
+     × f · RECOVERY: the owner revokes the subscription with a reason — the offsets preserved, every later read refused, a second revocation refused; the consumer registers anew and, once authorized, reads from a fresh checkpoint 6ms
+     × g · POSITIVE: the owner's read lists the subscriptions with their lag and the latest lag observations; the consumer's read of its subscription names the product, the head, the checkpoints and the replays 7ms
+     × g · RECOVERY: the ledgers are append-only and the rows are never deleted (superuser moves refused by the triggers) 4ms
+⎯⎯⎯⎯⎯⎯ Failed Tests 10 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  test/int/phase6-events-b90.test.ts > B90 §E · d CHECKPOINTS, LAG, PAUSE AND CONFORMANCE > d · REFUSAL: the read is refused while lagging (the reason named); acknowledging backwards, beyond the head, by another principal; resumption before conformance, and after conformance while still behind; conformance by the owner; a pause of a lagging subscription
+Error: the call should have been refused
+     65|   const e = await p.then(() => { throw new Error('the call should have…
+ ❯ test/int/phase6-events-b90.test.ts:346:5
+ FAIL  test/int/phase6-events-b90.test.ts > B90 §E · d CHECKPOINTS, LAG, PAUSE AND CONFORMANCE > d · RECOVERY (B90-F1): the consumer CATCHES UP — the unread backlog 2–4 SERVED in two bounded batches (identities and projected payloads checked against the stream), each acknowledged only once served; then conformance; the owner resumes; the next tick observes lag_events met true and raises nothing twice
+AssertionError: expected { state: 'lagging', …(7) } to match object { state: 'lagging', checkpoint: 1 }
+- Expected
++ Received
+-   "checkpoint": 1,
++   "checkpoint": 4,
+ ❯ test/int/phase6-events-b90.test.ts:359:31
+ FAIL  test/int/phase6-events-b90.test.ts > B90 §E · e SCHEMA COMPATIBILITY > e · POSITIVE: the owner re-declares the event product with schema v2 BREAKING; the next tick pauses the subscription (reason schema) and notifies the owner once
+AssertionError: expected { healthy: +0, lagging: +0, …(3) } to match object { paused_schema: 1 }
+- Expected
++ Received
+ ❯ test/int/phase6-events-b90.test.ts:397:17
+ FAIL  test/int/phase6-events-b90.test.ts > B90 §E · e SCHEMA COMPATIBILITY > e · REFUSAL: the read while paused; resumption before conformance; a conformance naming a version the product does not serve; a conformance without the version leaves the schema pending
+AssertionError: expected 'subscription rejected (state): subscr…' to match /subscription rejected \(state\): .* i…/
+- Expected:
++ Received:
+"subscription rejected (state): subscription 01a0f3f6-a9da-7626-a07d-cc6a4be4c2cc is lagging (lag); delivery is paused with the checkpoint 4 preserved — the consumer's conformance and the owner's resumption are required before reading"
+ FAIL  test/int/phase6-events-b90.test.ts > B90 §E · e SCHEMA COMPATIBILITY > e · RECOVERY: conformance to v2, the owner resumes; an ADDITIVE re-declaration (v3) pauses nothing on the next tick; a new subscription must name the current version
+AssertionError: expected { Object (state, filters, ...) } to match object { schema_version: 'v2', …(1) }
+- Expected
++ Received
+ FAIL  test/int/phase6-events-b90.test.ts > B90 §E · f REPLAY, CORRECTIONS AND REVOCATION > f · POSITIVE: a correction row (stated superuser move on the SOURCE ledger: warning.retracted on warning A) is emitted as kind correction with schema v3 and served to the consumer that handles corrections; a replay from 1 moves the checkpoint back and re-serves 2..5
+AssertionError: expected { sequence: 5, …(6) } to match object { sequence: 5, …(4) }
+- Expected
++ Received
+ FAIL  test/int/phase6-events-b90.test.ts > B90 §E · f REPLAY, CORRECTIONS AND REVOCATION > f · REFUSAL: consumer 2 (cannot process corrections) reads P2 and the correction is WITHHELD and counted; a replay by a consumer that cannot process replays, from at or beyond the checkpoint, without a reason; reading before the checkpoint
+     26|     if (row === undefined || row === null) throw new Error(`${what} re…
+ FAIL  test/int/phase6-events-b90.test.ts > B90 §E · f REPLAY, CORRECTIONS AND REVOCATION > f · RECOVERY: the owner revokes the subscription with a reason — the offsets preserved, every later read refused, a second revocation refused; the consumer registers anew and, once authorized, reads from a fresh checkpoint
+AssertionError: expected { Object (state, filters, ...) } to match object { state: 'revoked', …(2) }
+- Expected
++ Received
+-   "checkpoint_sequence": 1,
++   "checkpoint_sequence": 4,
+ FAIL  test/int/phase6-events-b90.test.ts > B90 §E · g ISOLATION AND THE READS > g · POSITIVE: the owner's read lists the subscriptions with their lag and the latest lag observations; the consumer's read of its subscription names the product, the head, the checkpoints and the replays
+AssertionError: expected 3 to be 4 // Object.is equality
+- Expected
++ Received
+ FAIL  test/int/phase6-events-b90.test.ts > B90 §E · g ISOLATION AND THE READS > g · RECOVERY: the ledgers are append-only and the rows are never deleted (superuser moves refused by the triggers)
+AssertionError: promise resolved "{ numAffectedRows: 0n, rows: [] }" instead of rejecting
+- Expected
++ Received
+- Error {
+      Tests  10 failed | 9 passed (19)
+
+=== AFTER (through 0096)
+      Tests  28 passed (28)

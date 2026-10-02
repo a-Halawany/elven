@@ -813,8 +813,19 @@ describe('S2 · import.revoked (0077 D2–D8, D12, D19; ES-08-004, ES-29-005, DP
     expect(props[0]!.basis).toMatch(/retired under the origin's revocation/);
     expect(by['retrieval']!.items_applied[0]!.effect).toBe('projections.verified');
     expect((await retrievalChecks(gr.id))[0]).toMatchObject({ mismatched: 0, touched: { change_kind: 'import.revoked' } });
+    // THE SECOND-ORDER CASCADE (traced 2026-10-01 from #70's hosted failure; B21 → B22): the forecasts consumer's re-assessment of F1 publishes
+    // ForecastFitnessChanged, the scenarios consumer's re-check of S1 publishes ScenarioCoherenceFailed, and the registered ATTENTION consumer
+    // routes each as an item — its apply lands after the six first-order deliveries, so a set read at once raced it. Awaited, then asserted:
+    // exactly the two cascade events, each routed once to an item on F1 and S1, and then exactly the seven apply actions.
+    const cascade = [...await outboxRowsIn(D2, 'ForecastFitnessChanged', t1), ...await outboxRowsIn(D2, 'ScenarioCoherenceFailed', t1)];
+    expect(cascade).toHaveLength(2); // one ForecastFitnessChanged, one ScenarioCoherenceFailed — their subjects asserted on the routed items below
+    const routed = async () => (await sql<{ signal_class: string; subject_id: string; cause_event_id: string }>`select signal_class, subject_id::text, cause_event_id::text from executive.attention_items
+      where tenant_id = ${T()}::uuid and domain_id = ${D2}::uuid and cause_event_id = any(${cascade.map((r) => r.id)}::uuid[]) order by signal_class`.execute(su)).rows;
+    let attn = await routed();
+    for (let i = 0; i < 100 && attn.length < 2; i += 1) { await new Promise((r) => setTimeout(r, 200)); attn = await routed(); }
+    expect(attn.map((x) => [x.signal_class, x.subject_id])).toEqual([['forecast.unfit', F1], ['scenario.incoherent', S1]]);
     const aud = await applyActionsSince(t1);
-    expect(new Set(aud.map((a) => a.action))).toEqual(new Set(['twin.subscription.apply', 'prediction.forecast.subscription.apply', 'prediction.scenario.subscription.apply', 'decision.subscription.apply', 'graph.retrieval.subscription.apply', 'graph.mapping.subscription.apply']));
+    expect(new Set(aud.map((a) => a.action))).toEqual(new Set(['twin.subscription.apply', 'prediction.forecast.subscription.apply', 'prediction.scenario.subscription.apply', 'decision.subscription.apply', 'graph.retrieval.subscription.apply', 'graph.mapping.subscription.apply', 'executive.attention.subscription.apply']));
     await noDrift();
     // THE RETRY (C5): a revoked import answers `retried` — no new batch, at most one further receipt, the notice count unchanged (none was pending).
     const eventsBefore = await importEvents(importId);
