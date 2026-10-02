@@ -61,6 +61,7 @@ const NAV = [
   { href: '/twins', label: 'Twins', glyph: '◫' },
   { href: '/twins/simulations', label: 'Simulations', glyph: '⟳' },
   /* B29 (0092) §D */ { href: '/twins/constraints', label: 'Constraints', glyph: '⊨' },
+  /* B30 branches */ { href: '/twins/explorer', label: 'Explorer', glyph: '⑂' }, /* end B30 branches */
   { href: '/prediction', label: 'Prediction', glyph: '↗' },
   { href: '/graph', label: 'Graph', glyph: '◈' },
   { href: '/intelligence', label: 'Intelligence', glyph: '❝' },
