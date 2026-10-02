@@ -3,8 +3,8 @@
   "Trivy": {
     "Version": "0.73.0"
   },
-  "ReportID": "01a0ce5c-9178-7785-962c-95b3c10928ce",
-  "CreatedAt": "2026-09-23T16:02:48.184494+03:00",
+  "ReportID": "01a0d585-f63f-7271-a95d-22ec2d3287f9",
+  "CreatedAt": "2026-09-25T01:25:21.471161+03:00",
   "ArtifactID": "sha256:f28033ca3f1b651dc3aae67dcb1155045b02678deeade386216e36a6bbba691b",
   "ArtifactName": "redis@sha256:41a10b18bd238fa7837b1615b2b5b113edff1654233238ac82d87e6fb5531f44",
   "ArtifactType": "container_image",
@@ -25,7 +25,8 @@
       "sha256:a4b0266282f01e21689ce50f6cad0ea0344bfed9cc3d196f9c4387e60b2de99a"
     ],
     "RepoDigests": [
-      "redis@sha256:41a10b18bd238fa7837b1615b2b5b113edff1654233238ac82d87e6fb5531f44"
+      "redis@sha256:41a10b18bd238fa7837b1615b2b5b113edff1654233238ac82d87e6fb5531f44",
+      "redis@sha256:ba6e394f6acc2a695ef1b6944f161b9ca813711739be68319fa0db3470673f1d"
     ],
     "Reference": "redis@sha256:41a10b18bd238fa7837b1615b2b5b113edff1654233238ac82d87e6fb5531f44",
     "ImageConfig": {
