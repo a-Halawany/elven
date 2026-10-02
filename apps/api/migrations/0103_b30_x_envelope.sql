@@ -483,7 +483,7 @@ CREATE OR REPLACE FUNCTION twin.calibration_rule() RETURNS jsonb LANGUAGE sql IM
   SELECT '{"version": "1", "default_min_n": 3,
            "sources": {"reconciliation": "twin.reconciliations of the key (a simulated or predicted element against a later observation)",
                        "element": "a simulated or predicted element of an admitted version against the earliest OBSERVED complete element of the same key, unit and valid_from in a version admitted later",
-                       "run": "a completed valid unretired CONTROL run of the model (outputs.totals.<q>, or the seeded summary median) against the earliest OBSERVED element outcome.<q>[:suffix] of an admitted actual version admitted after the run completed and observed through its horizon"},
+                       "run": "a completed valid unretired CONTROL run of the model INSIDE its envelope (outputs.totals.<q>, or the seeded summary median) against the earliest OBSERVED element outcome.<q>[:suffix] of an admitted actual version admitted after the run completed and observed through its horizon"},
            "metrics": {"mae": "mean |predicted - observed|", "mape": "mean |predicted - observed| / |observed| over observed <> 0", "bias": "mean (predicted - observed)"},
            "drift": "insufficient below min_n pairs (or no MAPE when the tolerance is a MAPE); drifting when the declared metric exceeds its tolerance; else stable"}'::jsonb $$;
 GRANT EXECUTE ON FUNCTION twin.calibration_rule() TO eye_app, eye_commit;
@@ -552,7 +552,7 @@ BEGIN
                                 AND ov.observed_through >= CASE WHEN (r.outputs -> 'horizon' ->> 'to') ~ '^\d{4}-\d{2}-\d{2}$' THEN (r.outputs -> 'horizon' ->> 'to')::date END
       JOIN twin.state_elements oe ON oe.twin_id = ov.twin_id AND oe.version = ov.version AND oe.kind = 'observed' AND oe.health = 'complete' AND jsonb_typeof(oe.value) = 'number'
                                   AND (oe.key = p_key OR (position(':' IN p_key) = 0 AND left(oe.key, length(p_key) + 1) = p_key || ':'))
-     WHERE v_q IS NOT NULL AND r.twin_id = p_twin_id AND r.model_ref = p_model AND r.run_kind = 'control' AND r.state = 'completed' AND r.validity = 'valid' AND r.retired_at IS NULL
+     WHERE v_q IS NOT NULL AND r.twin_id = p_twin_id AND r.model_ref = p_model AND r.run_kind = 'control' AND r.state = 'completed' AND r.validity = 'valid' AND r.retired_at IS NULL AND r.envelope_state <> 'outside'
        AND (r.outputs -> 'horizon' ->> 'to') ~ '^\d{4}-\d{2}-\d{2}$'
        AND coalesce(CASE WHEN r.outputs -> 'stochastic' ->> 'mode' = 'seeded' THEN (r.outputs -> 'stochastic' -> 'summary' -> v_q ->> 'median') END, r.outputs -> 'totals' ->> v_q) ~ '^-?[0-9]+(\.[0-9]+)?$'
      ORDER BY r.run_id, ov.admitted_at, oe.version),
