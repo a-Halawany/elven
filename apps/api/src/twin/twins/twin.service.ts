@@ -538,6 +538,24 @@ export class TwinService {
       if (!dependencies.has(k)) dependencies.set(k, { kind: DEPENDS_ON_KIND[c.kind], id: c.id, key: String(e['key']) });
     }
     const now = new Date().toISOString();
+    /* B30 branches (0103 §BR; V03-T-196): the ONTOLOGY/POLICY REVISION on the commit — the domain's active ontology version (ontology_ref) and the
+       freshness the state is admitted with, judged by the database's day under the twin's freshness policy, with the policy revisions it was
+       judged under (freshness_state). Read through the twin's own row (invoker reads); schema_ref stays TWN@v1 — only the existing fields fill. */
+    /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return */
+    const b30 = (await cap.readTwins().select((eb: any) => [eb.fn('twin.commit_revisions', [eb.ref('twin_id')]).as('revisions'),
+                                                             eb.fn('twin.version_freshness', [eb.ref('twin_id'), eb.cast(eb.val(version), 'integer')]).as('freshness')])
+      .where('twin_id' as never, '=', twinId as never).executeTakeFirst()) as { revisions: Record<string, any> | null; freshness: Record<string, any> | null } | undefined;
+    /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return */
+    const ontology = (b30?.revisions?.['ontology'] ?? null) as { version_id: string; version: number } | null;
+    const ontologyRef = ontology === null ? null : `ONT:${ontology.version_id}@${ontology.version}`;
+    const fr = b30?.freshness ?? null;
+    const freshnessState = fr === null ? null : {
+      method: 'freshness@1', state: fr['state'], basis: fr['basis'], reference_day: fr['reference_day'], today: fr['today'], age_days: fr['age_days'],
+      stale_by_days: fr['stale_by_days'] ?? null, stale_elements: fr['stale_elements'] ?? 0, dependency: fr['dependency']?.['state'] ?? 'none',
+      revisions: { ontology: ontology === null ? null : { version_id: ontology.version_id, version: ontology.version },
+                   freshness_policy: b30?.revisions?.['freshness_policy'] ?? null, decision_use_policy: b30?.revisions?.['decision_use_policy'] ?? null },
+    };
+    /* end B30 branches */
     const knownAt = instantOf(v['known_at']);
     const observedThrough = v['observed_through'] === null || v['observed_through'] === undefined ? null : dayOf(v['observed_through']);
     const supersedes = v['supersedes'] === null || v['supersedes'] === undefined ? null : Number(v['supersedes']);
@@ -568,7 +586,7 @@ export class TwinService {
       contradiction_refs: [], corroboration_refs: [], human_refs: [`principal:${String(twin['owner_principal_id'])}`],
       classification: controls.classification, purpose_scope: purposeId, rights_profile: controls.rights_profile,
       residency_profile: controls.residency_profile, retention_profile: controls.retention_profile, access_policy_ref: controls.access_policy_ref,
-      quality_profile: null, quality_state: { completeness, verification: 'verified' }, freshness_state: null, schema_ref: 'TWN@v1', ontology_ref: null,
+      quality_profile: null, quality_state: { completeness, verification: 'verified' }, /* B30 branches */ freshness_state: freshnessState, schema_ref: 'TWN@v1', ontology_ref: ontologyRef /* end B30 branches */,
       correction_of: null, supersedes: supersedes === null ? null : `TWN:${twinId}@${supersedes}`, withdrawal_reason: null,
       audit_correlation_id: correlationId, content_ref: null,
     };

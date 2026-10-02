@@ -34,6 +34,10 @@ import { OrchestrationService } from './simulations/orchestration/orchestration.
 /* B31 validity */
 import { ValidityController } from './simulations/validity/validity.controller.js';
 /* end B31 validity */
+/* B30 branches */
+import { BranchesController } from './branches/branches.controller.js';
+import { BranchService } from './branches/branch.service.js';
+/* end B30 branches */
 
 // CP-6 B6 (0063): the twin CONSUMER of GraphChanged/MemoryCorrected registers itself into the graph's
 // dispatcher at module init; the graph module imports nothing from here (the direction stays ES-04-003's).
@@ -42,11 +46,13 @@ import { ValidityController } from './simulations/validity/validity.controller.j
   controllers: [TwinController, /* B29 (0092) */ CompositionController, ConstraintsController, MethodsController, SupplyNetworkController,
     /* B31 impact */ ImpactController /* end B31 impact */,
     /* B31 orchestration */ OrchestrationController /* end B31 orchestration */,
-    /* B31 validity */ ValidityController /* end B31 validity */],
+    /* B31 validity */ ValidityController /* end B31 validity */,
+    /* B30 branches */ BranchesController /* end B30 branches */],
   providers: [TwinService, SimulationService, TwinSubscriptionConsumer,
     /* B29 (0092) */ CompositionService, SupplyNetworkService, MethodRegistry, ConstraintService, { provide: CONSTRAINT_GATE, useExisting: ConstraintService },
     /* B31 impact */ ImpactService /* end B31 impact */,
-    /* B31 orchestration */ OrchestrationService /* end B31 orchestration */],
+    /* B31 orchestration */ OrchestrationService /* end B31 orchestration */,
+    /* B30 branches */ BranchService /* end B30 branches */],
   exports: [TwinService, SimulationService, /* B29 (0092) */ SupplyNetworkService, /* B31 orchestration */ OrchestrationService],
 })
 export class TwinModule {}
