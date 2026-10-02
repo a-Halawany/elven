@@ -92,8 +92,22 @@ export const REQUIRED_FINALIZER_STEPS = Object.freeze([
  * lockfile by the integrity hash the registry serves. 312 + 8 = 320, and the count
  * has not moved since — Phase 2 (`6b4b22d6`) and PR #33 (`ea7b3089`) added no
  * dependencies and both reported 320.
+ *
+ * 320 → 313 at `1f51373` (PR #62, 2026-10-02; the C17 finalize of that merge, run
+ * 37010824759, measured 313 on both hosts). The merge carried the reviewed C15 pins.
+ * multer 2.3.0 → 2.4.0 no longer depends on `concat-stream`, and its subtree leaves
+ * the closure with it — exactly seven packages:
+ *
+ *   concat-stream@2.0.0 → buffer-from@1.1.2, typedarray@0.0.6, readable-stream@3.6.2
+ *                         (inherits@2.0.4 stays: other packages use it)
+ *   readable-stream@3.6.2 → string_decoder@1.3.0, util-deprecate@1.0.2
+ *   string_decoder@1.3.0  → safe-buffer@5.2.1
+ *
+ * The other moves are version swaps that leave the count unchanged: next 16.3.3 → 16.3.6
+ * (with @next/env and the @next/swc-* binaries), fast-uri 3.1.6 → 3.1.8 and multer itself.
+ * 320 − 7 = 313, reconciled against the pnpm-lock.yaml diff of 5165a97..1f51373.
  */
-export const DEVELOPMENT_COMPONENTS = 320;
+export const DEVELOPMENT_COMPONENTS = 313;
 export const COMPARISON_SCHEMA = '1.0.0';
 
 /**
