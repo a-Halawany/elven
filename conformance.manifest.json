@@ -157,13 +157,13 @@
     },
     "redis": {
       "human_tag": "redis:8-alpine",
-      "digest": "redis@sha256:ba6e394f6acc2a695ef1b6944f161b9ca813711739be68319fa0db3470673f1d",
+      "digest": "redis@sha256:3811787313eba226a2ef38658c6ccb91cd5e110edc89c37767de373120a0e5a0",
       "platform_children": {
         "linux/amd64": "sha256:2d3814be5e9b06a30a0be54770b7e12052e7e79ec85271aefd34875c1f393b23",
         "linux/arm64": "sha256:41a10b18bd238fa7837b1615b2b5b113edff1654233238ac82d87e6fb5531f44"
       },
-      "previous": "ghcr.io/a-halawany/elven/redis:8-alpine-maint-20260910, index digest 1ad0ff24136a22ef4b2457aa3fde26c65c51bebe6c1f719158e21219f6ae3e15 (derived, pinned 2026-09-10 to 2026-09-22; itself derived from redis:8-alpine 978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241, pinned 2026-08-05 to 2026-09-10)",
-      "pinned_at": "2026-09-22"
+      "previous": "redis@sha256:ba6e394f6acc2a695ef1b6944f161b9ca813711739be68319fa0db3470673f1d (the official redis:8-alpine index pinned 2026-09-22 to 2026-09-25 — the same linux/amd64 and linux/arm64 children; the tag moved when its linux/riscv64 child was rebuilt); before it: ghcr.io/a-halawany/elven/redis:8-alpine-maint-20260910, index digest 1ad0ff24136a22ef4b2457aa3fde26c65c51bebe6c1f719158e21219f6ae3e15 (derived, pinned 2026-09-10 to 2026-09-22; itself derived from redis:8-alpine 978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241, pinned 2026-08-05 to 2026-09-10)",
+      "pinned_at": "2026-09-25"
     }
   },
   "sbom_generator": {
