@@ -82,7 +82,33 @@ Older heads' green checks never stand for a new combination: every step below pr
 - **#76** at `59c7bb1`. The recipient's mode `unauthorized` reads the body first. Merged as `b92715b`.
   - **Main's chain completed:** ci 37024091653, C19 lifecycle 37024091441, C17 finalize 37026993556, C19 anchor 37027137960.
 - **#60** at `6d94438`, with main brought in three times. Merged as `144e1f2`.
-- **#61:** retargeted to `main`, main merged in; its checks run on the new head.
+- **#61** at `665e89b`, with main merged in. Merged as `d364591`.
+  - **A5 on the earlier head `4a0a15c`.** It failed (foreign 1.79 ms against absent 8.79 ms). Its existing per-probe diagnostics (the A5 hunk of `da19ef9`) were carried unchanged. On `665e89b` the ratio was 1.0007.
+- **#63** at `98c03cb`. Merged as `e1a090c`.
+- **#64** at `4503964`. Merged as `449fc3f`.
+  - **Conflicts with main:** the maintenance pins and `.gitleaks.toml` were taken from main (the superset). DELIVERY_PLAN keeps both main's PLAN-F4 residual and B24's B24-F2 row.
+- **#65** at `01b6620`. Merged as `b450e0c`.
+  - **The `phase6-review-corrections` `max_items` stop case** ("stopped" expected, "finished" received; ci 36632094289) did not recur. It is recorded, not relabelled.
+  - **Main's ci on `b450e0c`:** attempt 1 was CANCELLED at its 30-minute job bound with every test step passed. It was re-run in full.
+- **#66** at `3c4886d`. Merged as `ea3346f`.
+  - **Main's ci on `ea3346f`** (run 37065675852) was cancelled at the same 30-minute bound.
+- **#78** at `d1b9495`. Merged as `68fca69`.
+  - **The fix.** It carries the reviewed B34 change `a9b2e6d` to main: build-test's budget 30 → 55 minutes, and the integration step's own 28-minute bound. This corrected the cancellations forward.
+- **#67** at `709bf73`. Merged as `45c1cd3`.
+- **#68** at `6185e51`. Merged as `812f9e8`.
+  - CodeRabbit posted no status on that head. Its only status on every other head is "Review skipped". This is stated, not waived.
+- **#69** at `5775b87`. Merged as `942de35`.
+- **#71** at `f1c1e24`. Merged as `dbedf8b`.
+  - **The consolidated B90 + B27.** Migrations 0095–0098 are contiguous, and every applied filename and byte is unchanged.
+  - **#70** stays open with its history and is not merged.
+- **#72** at `604989a`. Merged as `7195aeb`.
+  - **A5 on the first run.** Its diagnostics showed ONE stalled foreign probe: 176.12 ms among 3.4–4.2 ms. The threshold and the statistic are unchanged.
+  - **A5 on the full re-run:** ratio 1.0123, with stalls on both sides. Both are recorded for H1.
+- **#73** at `4b176bc`. Merged as `41b3fe1`.
+- **#74** (N-01) at `d2b325f`. Merged as `b952b46`, after main's chain for `41b3fe1`.
+- **B30 (#77):** main merged in; this records commit; its checks run on that head.
+- **Every main chain** (ci, C19 lifecycle, C17 finalize, then the C19 anchor that follows the finalize) completed successfully before the next merge.
+
 
 **Diagnostics rules carried with the sequence (2026-10-02).**
 - **#61's A5.** The threshold and the statistic are preserved. If it fails again, its existing per-probe samples (`da19ef9`) are read first; nothing else changes before that.
