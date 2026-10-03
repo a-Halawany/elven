@@ -406,7 +406,11 @@ describe('B34 part C · the commitment tracker and the governed execution handof
     expect(ev).toHaveLength(1);
     expect(ev[0]!['payload']).toMatchObject({ objective: { objective_id: w.objectiveId, change: 'owner_assigned', owner_to: reviewer2.principalId }, objects: { objectives: [w.objectiveId], walked: false } });
     await waitFor('item.retasked and reviewer.reassigned', async () => [(await changed('item.retasked', ROOT)).length, (await changed('reviewer.reassigned', ROOT)).length], (n) => n[0] === 1 && n[1] === 1, 60_000);
-    const del = (await sql<Row>`select state, items from graph.subscription_deliveries where event_id = ${String(ev[0]!['id'])}::uuid and consumer_kind = 'commitments'`.execute(su)).rows;
+    // the delivery is marked applied after the consumer's effects land (the events above), so it is WAITED for, not read at once — #77's hosted
+    // run (2026-10-03) read it between the two ('received'); the assertion is unchanged
+    const deliveryOf = async () => (await sql<Row>`select state, items from graph.subscription_deliveries where event_id = ${String(ev[0]!['id'])}::uuid and consumer_kind = 'commitments'`.execute(su)).rows;
+    await waitFor('the commitments delivery applied', deliveryOf, (rows) => rows.length === 1 && rows[0]!['state'] === 'applied', 60_000);
+    const del = await deliveryOf();
     expect(del).toEqual([expect.objectContaining({ state: 'applied' })]);
     // the revision: a new version, a second re-task (no reassignment: the owner did not move); the non-owner refused
     await refused(revise(w.owner, w.objectiveId, { title: 'x', reason: 'not mine to revise (harness)' }), /./, 403);

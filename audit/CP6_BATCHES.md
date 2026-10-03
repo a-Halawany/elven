@@ -5728,6 +5728,149 @@ The owner's instruction of 2026-10-02: N-01 was still OPEN. Its corrections were
 - **`eye_demo`:** it stays at 0101 at this candidate. It reaches 0102 with B30's staging, through the normal backup + `db:migrate` path.
 - **`apply-pending.sh`** was not run against `eye_demo` or anything live.
 
+## B30 — twin state, reconciliation, envelope and calibration (0103): F-P5-02, F-P5-03 and F-P5-04 built, with the B30 pieces of F-P5-06 and F-P5-07. Estimation and reconciliation, the branch-aware state store with freshness and freeze, the envelope disabling decision use, calibration and the model's lifecycle, chunked method-fabric experiments, checkpoints acted on, retirement, envelope sweeps and benchmark validation. Implemented; the three features stay partial on a few rows, each residual carried.
+
+### B30.1 — how it was built
+
+**One prelude, four parts in parallel, one migration.**
+- **The prelude.** The integrator wrote §0 first (`1880592`):
+  - the attention classes `twin.reconciliation`, `twin.freshness`, `twin.envelope`, `twin.observation_request` and `simulation.checkpoint`;
+  - the subject kinds `twin`, `twin_version`, `twin_estimate`, `twin_branch` and `behaviour_model`;
+  - the role `reconciliation_agent`, with the agent kind `reconciliation` and the task `reconcile_scan`;
+  - the element kind `scenario`;
+  - run retirement: the three columns, and `simulation.runs_immutable` re-declared so that a finished run's retirement is written once.
+- **The parts.** Four agents built §BR branches, §EN envelope, §ES estimation and §EX experiments, each in its own worktree with its own Redis. They were combined into 0103 in that order, and the part files were removed, so C18 sees one contiguous 0103.
+
+**Re-declarations.** Each is copied whole, with the change marked.
+- **§EN:**
+  - `simulation.run_decision_use`: refused `outside_envelope` and `retired`; diagnostic `model_lifecycle` and `calibration_drifting`. The existing classes and their order are unchanged.
+  - `twin.envelope_ack_holder`: twin owners only.
+- **§ES:**
+  - `executive.register_agent` and `executive.open_agent_run`: the new agent kind.
+  - `twin.open_version`, `twin.ground_element` and `twin.admit_version`: each also serves `twin.estimate.decide`, the B29 `twin.coupling.apply` precedent. Plus one `canonical_write_actions` row. This lets an approval open, ground and admit the new snapshot in one transaction.
+- **§EX:**
+  - `simulation.sio_chunkable_methods`: discrete-event@1, counterfactual@1 and war-gaming@1 beside supply-flow@1.
+  - `simulation.record_experiment_chunk`: an unstable or violated checkpoint acted on under a declared `on_unstable` policy. The default is `none`, so B31's ledgers stand.
+
+**Choices recorded.**
+- **§BR's merge completion** runs as four governed writes: plan → draft → ground → admit. One pipeline transaction serves one bound action. The admission itself moves the merge to `merged`, atomically, through a trigger; a repeat call resumes, and `close` releases. Accepted.
+- **§EX touched `simulation.service.ts`.** `openMethod`'s experiment paths, and the cold reproduction of a chunked fabric run path by path. Accepted.
+
+### B30.2 — what each part delivers
+
+**§BR branches (F-P5-03)**
+- freshness SLOs (versioned);
+- a merge into actual REFUSED until every diverging key is reconciled; the diverging keys are the server's;
+- checkpoint restore;
+- the frozen last-validated snapshot, with its warning and expiry; a run on an expired freeze is refused;
+- staleness by age and by dependency;
+- component confidence;
+- the scenario element kind with its basis rule;
+- the TWN header's `ontology_ref` and `freshness_state`: the ontology/policy revision on commits;
+- the explorer `/twins/explorer` (branch tree, time travel, diff, banner);
+- the tick step `twin-freshness`.
+
+**§EN envelope (F-P5-04)**
+- an outside-envelope run DISABLED for decision use;
+- only a twin owner admits it as EXPLORATORY, and its promotion needs a method steward's concurrence (the raised threshold);
+- calibration against later observed values (MAE, MAPE, bias, drift state);
+- the behaviour model's lifecycle and compatibility (a retired model refused);
+- `twin.ai_context` for AI consumers (the envelope, stale variables, sensitivity, fitness, served state);
+- the degraded modes with fault tests;
+- the Models page.
+
+**§ES estimation (F-P5-02)**
+- declared estimators (primary and challengers);
+- input qualification (source health, cadence, unit, truth state) before any estimate;
+- candidate state that never mutates the active snapshot, with every candidate kept and the spread stated;
+- the constraint engine's check before publish;
+- materiality routed to the owner;
+- the owner's approval publishing a new snapshot;
+- the Reconciliation Agent proposing only;
+- triggers from telemetry, upstream-twin change and ontology revision;
+- requests for new observations;
+- the Reconciliation page.
+
+**§EX experiments (the B30 pieces of F-P5-06 and F-P5-07)**
+- chunked method-fabric experiments run out of process, deterministic per seed offset;
+- checkpoint indicators acted on: stop, pause, adapter quarantine, review routed;
+- retirement of runs and experiments, with reason and reach (a retired run refused downstream);
+- envelope sweeps with nonlinearity and two-factor interactions;
+- benchmark validation (discrepancy, tail coverage, convergence);
+- the Fabric experiments page.
+
+### B30.3 — the integration, and what it found
+
+- **Conflicts.** The four merges' conflicts were adjacent B30 blocks in `pdp.service.ts`, `observation-errors.ts`, `twin.module.ts` and `twins/layout.tsx`. All were kept whole, one file at a time, and no marker remains anywhere (the B35 lesson).
+- **Seams asserted on the combined 0103:**
+  - §EN's `ai_context` reads §BR's `twin.served_state(uuid,timestamptz)` and `twin.version_freshness(uuid,int)`; envelope E7 takes the present branch.
+  - §EX's retirement is read by §EN's decision-use read.
+- **Pins moved, each traced.** The first full run failed 9 of 1841:
+  - `phase6-attention-events-b23` E1's class vocabulary gained the optional B30 group (the B35 precedent; E2–E9 failed only as its cascade).
+  - `phase6-impact-b31`'s last two database-wide counts were scoped to the tenant.
+  - The unit pin `phase6-attention-timer-b24:106` moved for the agent kind `reconciliation`.
+  - The simulations page's envelope checkbox was reworded: a twin owner only, and not decision-grade.
+- **Defects the act and the walks found, fixed with tests:**
+  - **Estimation (the act).** A 2024 PortWatch seed evidence version, tombstoned by a B11 retention action, refused every estimate on the series for good. An unreadable version now counts only inside the estimators' widest window (or when it states no day); the rest are disclosed. 4 unit cases and harness ES7.
+  - **The Simulations page (a walk).** The page crashed (`TypeError` reading `total`) on a method-fabric run, whose totals carry no cost. Fixed.
+  - **Walk-only fixes.** An ambiguous label, a dashed error code, and the estimation walk now asserts the proposer the record names.
+
+### B30.4 — the evidence
+
+| Check | Result |
+|---|---|
+| Part harnesses (combined 0103, fresh databases) | branches **21/21**, envelope **22/22**, estimation **7/7**, experiments **18/18** |
+| Full integration | **1841/1841** in 132 files |
+| Unit | API **3193 + 9**; web **244** |
+| Acceptance / upgrade | **58/58** / PASS (roles **54**, migrations **82**; 276/276) |
+| Browser gate | **93/93** (fresh database, Redis :6392; the demo stopped for it and restarted) |
+| The act on `eye_demo` | **HELD**: `ALL SCENES HELD · 589.3 s` (43 ✓, no ✗); the reruns 0.6 s and 0.5 s — `evidence/cp6/act-b30.txt`. The rehearsal on a restored `eye_demo_b30`: `evidence/cp6/act-b30-rehearsal.txt` |
+| The walks | `e2e/phase6-b30-{branches,envelope,estimation,experiments}.demo.spec.ts` **13/13** twice (fourteen screenshots `evidence/phase6-browser/b30-*.png`); the B90 + B27 + B31 + B35 walks **50/50**, screenshots to the scratchpad (the screenshots of record unchanged) |
+| Hosted | pending: the PR's first run |
+
+**The demonstration.**
+- **Migration and restart.** `eye_demo` is migrated through **0103** by `db:migrate`, not `apply-pending.sh`. The backup is `.eye-local/backups/eye_demo-pre-0102-20261002T145926Z.dump` (79,965,376 bytes). The API and the web were restarted on the B30 build (VERIFIED).
+- **The estimate (S. Lindqvist's conservation set; T. Nakamura's three estimators).** PortWatch's latest count, 27 on 2026-09-27, reads **62 %**. All three candidates are kept, the conservation check is satisfied, and T. Nakamura approved it into **v15**.
+- **The branches (J. Weber's blockade assumption).**
+  - The 2-day SLO says v15 is **5 days stale**, and the tick raised the item.
+  - On the `blockade` branch (45 days, a scenario element), merging back is REFUSED 409 (unreconciled).
+  - The 75-day state on `stress-75` is outside the envelope: refused for decision. T. Richter (domain admin) was refused 403; T. Nakamura admitted it as EXPLORATORY and H. Petrović concurred.
+- **The fabric experiment.** E. Kovács's discrete-event experiment ran 60 paths in 3 chunks; J. Weber approved it, and the attention agent's real ticks completed it.
+- **The retirement.** A superseded corridor control was retired, with no reach.
+
+**Substitutions, said.**
+- PortWatch published nothing new after the estimators were declared, so **a person (A. Hoffmann) proposed** through the route. The Reconciliation Agent's proposal on a new count is HARNESS-PROVEN (ES5); the act prints `EYE_B30_PROPOSED_BY` and the walk asserts the record.
+- The PortWatch counts are the real publisher's series; every other figure is SYNTHETIC.
+
+### B30.5 — the residuals, each carried
+
+B30 builds its three features' clauses. They stay **partial** on a few rows, as B35's did.
+
+| Feature | Rows (impl/partial/missing) | The open rows and their carriers |
+|---|---|---|
+| F-P5-02 | 5/8/4 → **14/3/0** | V03-T-306, the input's confidence and usage policy → B41; V03-T-308, the cross-twin dependency check before publish (topology is unit-proven only) → B33; V03-T-315, estimator drift → B26 |
+| F-P5-03 | 7/14/0 → **18/3/0** | V03-T-196, the forecast provenance's environment → B25; PR-36-006 / AT-36, the acceptance record → R2 |
+| F-P5-04 | 5/11/2 → **14/4/0** | V00-T-061, the assumption-type taxonomy → B26; ES-35-007, the evaluation controls → B75 and the sovereignty controls → B110; ES-35-008, the indicators on the governed framework → B100; V04-T-028, the per-behaviour fault evidence → R2 |
+| F-P5-06 | 25/11/0 → 28/8/0 | completes at **B73** (unchanged) |
+| F-P5-07 | 9/3/0 → 10/2/0 | completes at **B26** (unchanged) |
+
+**The parts' left-outs:**
+- → **B33:** closing the routed estimate and exploratory items on decision; the estimate and scenario citation kinds; the scenario-element web form; merges into non-actual branches; the open_run envelope refusal's wording.
+- → **B26:** the calibration tick hook, and sweeps beyond supply-flow@1.
+- → **B54:** the egress client classing an early non-2xx answer as `transport` without a status (#76).
+
+The residual construction comes to about 0.8–1.6 U, with R2 apart. Moving the three features' completion stages to their carriers (the B31 rule) is proposed for the next bookkeeping pass; it is not applied here, and the stage efforts and dependencies are retained.
+
+**Stale rows still naming B30 for work B30 delivered.** Ten rows of F-P5-01 and F-P5-05 still name B30 as carrier for work it has now delivered (e.g. L5-C07, "disabling a behaviour outside the calibrated envelope"). They are named for the same pass.
+
+### B30.6 — the records
+
+- **Rows:** implemented 1333 → **1366**, partial 2570 → **2543**, missing 2335 → **2329**.
+- **Checks:** the tracker, the schedule check, the summaries and the controls pass. The acceptance split is unchanged (3,555 = 3,179 + 339 + 37).
+- **The schedule:** B30 is pinned in A1's delivered order, which moves no date (the three-account M1 finish stays 2027-07-14).
+- **Also updated:** the ledger's 0103 row; `PHASE6_REPORT.md` §48; `docs/ops/DEMONSTRATION_RUNBOOK.md` §20; `audit/delivery/INTEGRATION_SEQUENCE.md` (the B30 row, step 16).
+- **The candidate** is the B30 PR (`phase6-b30` → `phase6-n01`).
+
 ## Order and the next implementation batch
 
 B3, B1 and B2 are done in code, B4/B5 applied to the audit (the 2026-09-11 checkpoints), B6 done in

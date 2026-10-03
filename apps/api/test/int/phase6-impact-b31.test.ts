@@ -170,7 +170,7 @@ describe('B31 §I · s THE SENSITIVITY ANALYSIS (L8-C08, V00-T-062)', () => {
     await refused(sensitivity(operatorS, w.controlId, { metric: 'throughput' }), /^impact analysis rejected \(metric\): supply-flow@1 reads total_cost, line_stop_days, days_below_safety_stock/, 422);
     await refused(sensitivity(operatorS, uuidv7(), {}), /^impact analysis rejected \(unknown_run\):/, 404);
     await refused(sensitivity(operatorS, w.controlId, { seeds: [11, 12, 13] }), /^impact analysis rejected \(robustness\): a deterministic run declares the lead-time jitter/, 422);
-    expect((await rows(sql`select count(*)::int n from simulation.sensitivity_analyses`))[0]!['n']).toBe(0);
+    expect((await rows(sql`select count(*)::int n from simulation.sensitivity_analyses where tenant_id = ${T()}::uuid`))[0]!['n']).toBe(0);
   });
 
   it('s · POSITIVE: the operator requests the analysis of the corridor control — twelve parameters by their twin element keys, ranked by swing; each factor re-derived here from the stored contract; robust or not across three seeds, ranks per seed', async () => {
@@ -344,7 +344,7 @@ describe('B31 §I · p A SIMULATED FREQUENCY AS A PROBABILITY (AI-50-005)', () =
     MAP = String(m['map_id']);
     await refused(probability(strategist, w.controlId, { mapId: MAP, event: EVENT }), /^impact analysis rejected \(samples\): run .* is supply-flow@1 \(deterministic\)/, 422);
     await refused(probability(strategist, SEEDED, { mapId: MAP, event: { ...EVENT, op: '<' } }), /^impact analysis rejected \(event\):/, 422);
-    expect((await rows(sql`select count(*)::int n from simulation.probability_statements`))[0]!['n']).toBe(0);
+    expect((await rows(sql`select count(*)::int n from simulation.probability_statements where tenant_id = ${T()}::uuid`))[0]!['n']).toBe(0);
   });
 
   it('p · RECOVERY + POSITIVE: through the ACTIVE map the event is counted over the run\'s own 200 samples, the yearly frequency by the stated conversion, the band read from the map — re-derived here', async () => {

@@ -4517,3 +4517,42 @@ The mechanism is in `audit/CP6_BATCHES.md` §B27. There is one migration, `0097_
 - **B35 completes none of its four features** and advances them with its delivered effort: F-P6-01 completes at B73, F-P6-02 and F-P6-03 at B26, F-P6-06 at B100, each after its remaining construction (§B35.5). M1 401.85–692.85 U; the three-account finish 2027-07-14.
 - **Rows:** implemented 1288 → 1333, partial 2608 → 2570, missing 2342 → 2335; the acceptance split unchanged. The next A1 stage is **B30**.
 - **The candidate** is PR #73 (`phase6-b35` → `phase6-b31`), stacked on #72.
+
+## 48. N-01 and B30 (2026-10-02): definer reads bound to the caller's scope (0102); twin state, reconciliation, envelope and calibration (0103)
+
+### 48.1 N-01 (0102)
+
+- **What it corrects.** The known database defense-in-depth finding:
+  - Later-schema SECURITY DEFINER reads are now bound to the caller's scope: seven reproduced reads, plus `health_input_owner` and `publication_archive_record`.
+  - The constraint-gate capability is narrowed to constraint operations.
+  - Unintended PUBLIC EXECUTE is revoked.
+  - The creator's default function privileges no longer grant EXECUTE to PUBLIC.
+- **The proof.** 58/58 reproducing through 0101 and 58/58 corrected through 0102, plus the cross-checks. Integration 1774/1774. See `audit/CP6_BATCHES.md` §N-01.
+- **The candidate** is PR #74.
+
+### 48.2 What B30 implements
+
+- **State estimation and reconciliation (F-P5-02):** declared estimators, input qualification, candidate state with disagreement retained, constraint validation before publish, owner review, a Reconciliation Agent that proposes only, triggers beyond graph corrections, and observation requests.
+- **The branch-aware store (F-P5-03):** merges refused until reconciled, checkpoint restore, a frozen validated snapshot with expiry, staleness by age and dependency, component confidence, the scenario element kind, commit revisions, and the explorer.
+- **The envelope (F-P5-04):** outside runs disabled for decision use and admitted only as exploratory by a twin owner, promotion needing a steward's concurrence, calibration against observed outcomes, the model lifecycle, the AI context, and degraded modes.
+- **The F-P5-06/07 B30 pieces:** chunked fabric experiments, checkpoints acted on, retirement, envelope sweeps, and benchmark validation.
+
+### 48.3 Results
+
+| Check | Result |
+|---|---|
+| Part harnesses | 21 / 22 / 7 / 18 (combined 0103, seams asserted) |
+| Full integration | 1841/1841 |
+| Unit | API 3193 + 9; web 244 |
+| Acceptance / upgrade | 58/58 / PASS (roles 54, migrations 82) |
+| Browser | 93/93 |
+| The act on `eye_demo` | HELD (43 ✓, 589 s; reruns 0.6 s / 0.5 s) |
+| The walks | 13/13 twice; regression 50/50 |
+| Hosted | pending |
+
+- **Found and fixed:**
+  - the estimation qualification against an old tombstoned evidence version;
+  - the Simulations page crash on a fabric run;
+  - the walk selectors.
+- **The substitution:** a person proposed the 62 % estimate, because the publisher had nothing new. The agent's proposal is harness-proven (ES5).
+- **The three features stay partial on a few rows.** Each residual is carried (§B30.5): implemented 1333 → 1366. The three-account M1 finish stays 2027-07-14.

@@ -138,6 +138,9 @@ const BUNDLE_V1: Rule[] = [
       /* B36 collab (0094 §C1): the external collaborator reads its OWN identity — the route answers it BOUNDED TO ITS GRANT (F-P6-14 (q)) */
       { role: 'external_collaborator', atScope: 'DOMAIN' },
       /* end B36 collab */
+      /* B30 estimation: the Reconciliation Agent (the prelude's DOMAIN role) resolves its own scope, as every new domain role does */
+      { role: 'reconciliation_agent', atScope: 'DOMAIN' },
+      /* end B30 estimation */
       /* B90 browser (0095 §0): the data steward resolves its own scope (a PURE steward opens the shell — found by the B90 browser gate: the
          /graph/data pages answered "no qualifying role binding for action in resolved scope" to a principal holding data_steward alone) */
       { role: 'data_steward', atScope: 'DOMAIN' },
@@ -399,6 +402,9 @@ const BUNDLE_V1: Rule[] = [
       // B32 (0089 §I): the risk owner and the opportunity sponsor read the foresight their exposures rest on (the warning routed to them).
       { role: 'risk_owner', atScope: 'DOMAIN' },
       { role: 'opportunity_sponsor', atScope: 'DOMAIN' },
+      /* B30 estimation: the Reconciliation Agent reads the series its estimators declare (the forecast agent's precedent: in its own right, audited) */
+      { role: 'reconciliation_agent', atScope: 'DOMAIN' },
+      /* end B30 estimation */
     ],
     obligations: [{ type: 'audit_access' }],
     requiresPurpose: true,
@@ -693,6 +699,10 @@ const BUNDLE_V1: Rule[] = [
     requiresPurpose: true,
     maxConsequence: 'C2',
   },
+  /* B30 estimation: the Reconciliation Agent opens and closes its own runs — an EXACT `agent.run` rule inserted before B29's (the first match wins):
+     the eight agents before it and the reconciliation agent. B29's rule below is kept as it was (it now matches nothing this one does not). */
+  { actionPrefix: 'agent.run', exact: true, requiredAnyRole: [{ role: 'decision_agent', atScope: 'DOMAIN' }, { role: 'briefing_agent', atScope: 'DOMAIN' }, { role: 'reporting_agent', atScope: 'DOMAIN' }, { role: 'attention_agent', atScope: 'DOMAIN' }, { role: 'weak_signal_agent', atScope: 'DOMAIN' }, { role: 'risk_agent', atScope: 'DOMAIN' }, { role: 'opportunity_agent', atScope: 'DOMAIN' }, { role: 'supply_chain_agent', atScope: 'DOMAIN' }, { role: 'reconciliation_agent', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B30 estimation */
   /* B29 (0092): the Supply Chain Agent opens and closes its own runs — an EXACT `agent.run` rule inserted before B32's (the first match wins):
      the seven agents before it and the supply_chain agent. */
   { actionPrefix: 'agent.run', exact: true, requiredAnyRole: [{ role: 'decision_agent', atScope: 'DOMAIN' }, { role: 'briefing_agent', atScope: 'DOMAIN' }, { role: 'reporting_agent', atScope: 'DOMAIN' }, { role: 'attention_agent', atScope: 'DOMAIN' }, { role: 'weak_signal_agent', atScope: 'DOMAIN' }, { role: 'risk_agent', atScope: 'DOMAIN' }, { role: 'opportunity_agent', atScope: 'DOMAIN' }, { role: 'supply_chain_agent', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
@@ -1226,6 +1236,9 @@ const BUNDLE_V1: Rule[] = [
       // custody, with the purpose and the series named on the entry.
       { role: 'forecast_owner', atScope: 'DOMAIN' },
       { role: 'forecast_agent', atScope: 'DOMAIN' },
+      // B30 estimation, THE SAME WAY: the Reconciliation Agent reads the series its estimators declare out of the evidence bytes — manifest-resolved,
+      // digest-verified and in custody, the purpose and the series named on the entry.
+      { role: 'reconciliation_agent', atScope: 'DOMAIN' },
           { role: 'twin_owner', atScope: 'DOMAIN' },
       { role: 'simulation_operator', atScope: 'DOMAIN' },
       // B9 (0066 §3/§4): the Enterprise Memory and retention roles.
@@ -1885,6 +1898,69 @@ const BUNDLE_V1: Rule[] = [
   { actionPrefix: 'decision.recommendation.read', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_approver', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'decision_agent', atScope: 'DOMAIN' }], obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
   { actionPrefix: 'decision.incomplete.attest', exact: true, requiredAnyRole: [{ role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_approver', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   /* end B35 recommendation */
+  /* B30 branches (0103 §BR; F-P5-03). EXACT rules — none of these names starts with a twin PREFIX rule's name (twin.read, twin.declare,
+     twin.version, twin.version.admit, twin.ground), so placed here they are reached. The ports decide ownership: a twin owner OPENS a merge
+     (twin.branch.merge); the twin's OWN owner resolves its diverging keys (twin.branch.reconcile), completes or refuses it, restores a
+     checkpoint (twin.branch.restore), freezes or lifts the served snapshot (twin.snapshot.freeze) and sets the freshness SLO
+     (twin.freshness.policy). Human-gated where a named human decides the twin's state (reconcile, merge, freeze). The merge's draft, grounding
+     and admission and a checkpoint's draft go through the EXISTING actions (twin.version, twin.ground, twin.version.admit); reads are twin.read. */
+  { actionPrefix: 'twin.branch.merge', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'twin.branch.reconcile', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'twin.branch.restore', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'twin.snapshot.freeze', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'twin.freshness.policy', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B30 branches */
+  /* B30 envelope (0103 §EN; F-P5-04). EXACT rules — none of these names starts with an earlier PREFIX rule's (`twin.read`, `twin.declare`,
+     `twin.version.admit`, `twin.version`, `twin.ground`: 'twin.envelope', 'twin.calibration', 'twin.model' and 'twin.ai_context' are not
+     under them), so first-match reaches them here; none reaches C3. ADMIT AS EXPLORATORY — a twin owner and the domain administrator reach
+     the port, which admits a twin owner ONLY (the administrator's refusal is the port's own, in words: the raised threshold) — human-gated.
+     CONCUR — a method steward, human-gated (the port: neither the admitter nor the run's operator). CALIBRATE — a twin owner, a method
+     steward, the domain administrator, and the attention agent (the tick). THE MODEL'S LIFECYCLE and compatibility — a method steward and
+     the domain administrator reach the port, which admits a method steward only — human-gated. THE AI CONTEXT — every reader of twin state
+     (the `twin.read` set) and the agents that consume it (decision, briefing, supply chain, reconciliation, attention). No new role. */
+  { actionPrefix: 'twin.envelope.admit', exact: true, requiredAnyRole: [{ role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'domain_admin', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'twin.envelope.concur', exact: true, requiredAnyRole: [{ role: 'method_steward', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'twin.calibration.run', exact: true, requiredAnyRole: [{ role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'method_steward', atScope: 'DOMAIN' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'attention_agent', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'twin.model.lifecycle', exact: true, requiredAnyRole: [{ role: 'method_steward', atScope: 'DOMAIN' }, { role: 'domain_admin', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'twin.ai_context.read', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }, { role: 'method_steward', atScope: 'DOMAIN' }, { role: 'constraint_steward', atScope: 'DOMAIN' },
+    { role: 'decision_agent', atScope: 'DOMAIN' }, { role: 'briefing_agent', atScope: 'DOMAIN' }, { role: 'supply_chain_agent', atScope: 'DOMAIN' }, { role: 'reconciliation_agent', atScope: 'DOMAIN' }, { role: 'attention_agent', atScope: 'DOMAIN' }], obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B30 envelope */
+  /* B30 estimation (0103 §ES; F-P5-02). EXACT rules named `twin.estimator.*`, `twin.estimate.*`, `twin.estimation.*` and `twin.observation.*` —
+     none falls under an earlier PREFIX rule (`twin.read`, `twin.declare`, `twin.version.admit`, `twin.version`, `twin.ground` are not prefixes
+     of these names), so first-match reaches them here. READ — the twin readers, the auditor, the administrators and the Reconciliation Agent
+     (audited). DECLARE an estimator (and retire it) — a twin owner (the port: the twin's own owner). PROPOSE — a twin owner, an analyst, a
+     simulation operator and the Reconciliation Agent (no human gate: an agent proposes; the port binds an agent to its running scan). DECIDE —
+     a twin owner, human-gated (the port: the twin's own owner, never the proposer; the approval opens the snapshot through the version, ground
+     and admit ports, which serve this action). REQUEST observations — the proposers. TRIGGER — the attention agent only (after its tick). */
+  { actionPrefix: 'twin.estimation.read', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' },
+    { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' },
+    { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }, { role: 'method_steward', atScope: 'DOMAIN' }, { role: 'constraint_steward', atScope: 'DOMAIN' },
+    { role: 'reconciliation_agent', atScope: 'DOMAIN' }], obligations: [{ type: 'audit_access' }], requiresPurpose: true },
+  { actionPrefix: 'twin.estimator.declare', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'twin.estimate.propose', exact: true, requiredAnyRole: [{ role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' },
+    { role: 'reconciliation_agent', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'twin.estimate.decide', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'twin.observation.request', exact: true, requiredAnyRole: [{ role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' },
+    { role: 'reconciliation_agent', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'twin.estimation.trigger', exact: true, requiredAnyRole: [{ role: 'attention_agent', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B30 estimation */
+  /* B30 experiments (0103 §EX; F-P5-06's and F-P5-07's B30 pieces). EXACT rules — none is caught by an earlier PREFIX rule (`simulation.read`,
+     `simulation.run`, `simulation.run.complete` and `simulation.reproduce` are not prefixes of `simulation.experiment.policy`,
+     `simulation.adapter.quarantine`, `simulation.retirement.*`, `simulation.sweep.run`, `simulation.benchmark.validate` or
+     `simulation.fabric.read`), and none is a prefix of another rule's. THE POLICY of an experiment at an unstable checkpoint — the declaring
+     and operating roles (the port further requires the declarer, the starter, a twin owner or the administrator). THE QUARANTINE on demand —
+     a method steward, human-gated (B29's reinstate idiom). THE RETIREMENT of a run or an experiment — a named human, human-gated (the port
+     further requires the operator / declarer, the twin's owner, a twin owner or the administrator). THE SWEEP and THE BENCHMARK VALIDATION —
+     analysis products requested by the people who run, own, steward or decide on a run (not gated: the model executes, nothing is decided).
+     THE READ — consequential and audited: the simulation readers, the method steward, the decision owner and authority. No new role. */
+  { actionPrefix: 'simulation.experiment.policy', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }], obligations: [], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'simulation.adapter.quarantine', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'method_steward', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'simulation.retirement.run', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'simulation.retirement.experiment', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'simulation.sweep.run', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }, { role: 'method_steward', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }], obligations: [], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'simulation.benchmark.validate', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }, { role: 'method_steward', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }], obligations: [], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'simulation.fabric.read', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }, { role: 'method_steward', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }], obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B30 experiments */
   /* B36 home */
   /* THE EXECUTIVE HOME, THE CADENCE, THE COMMAND VIEWS, THE SEARCH, THE METRICS (0094 §H; F-P6-11: WS-01, JRN-19, PER-03, CAP-EO-01/-02/-04).
      EXACT rules — no `executive` prefix rule exists and none of these names is a prefix of another rule's. THE READS (executive.home.read

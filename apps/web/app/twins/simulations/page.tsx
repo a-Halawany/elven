@@ -14,6 +14,7 @@ import { Empty, LiveStatus, Mono, cardStyle, DefinitionRow, UnknownNote, Governe
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui';
 import { MethodPanel } from './method-panel'; /* B29 (0092) §C */
 import { summaryLines } from '../../../lib/methods'; /* B29 (0092): a method run's headline results */
+import { EnvelopePanel } from './envelope-panel'; /* B30 envelope */
 
 const money = (v: unknown): string => (typeof v === 'string' ? `€${Number(v).toLocaleString('en-GB', { minimumFractionDigits: 2 })}` : '—');
 const iv = (r: Run): string => r.interventions.map((i) => (i['type'] === 'none' ? 'none' : `${String(i['type'])}${i['shipment'] ? ` ${String(i['shipment'])}` : ''}${i['weeks'] ? ` ${String(i['weeks'])}w` : ''}`)).join(' + ');
@@ -185,9 +186,9 @@ export default function SimulationsPage() {
               {scenarios.flatMap((sc) => sc.branches.map((b) => <option key={b.branch_id} value={`${sc.scenario_id}|${b.branch_id}`}>{sc.title} · {b.name} ({b.state}{b.state === 'flipped' ? ': the shock applies' : ': no shock'})</option>))}
             </select></label>
             {branchKey === '' ? <label><input type="checkbox" checked={hypothetical} onChange={(e) => setHypothetical(e.target.checked)} /> apply a HYPOTHETICAL corridor delay (no scenario branch supports it; the run says so)</label> : null}
-            {/* B21 (D3 b): a run whose OWN contract lies outside the behaviour model's operating envelope is admitted only under a twin owner's or the
-                domain administrator's acknowledgement, recorded on the run; the server refuses everyone else and every run without one. */}
-            <label><input type="checkbox" checked={ackEnvelope} onChange={(e) => setAckEnvelope(e.target.checked)} /> acknowledge an envelope breach (a twin owner’s or the domain administrator’s; recorded on the run)</label>
+            {/* B21 (D3 b): a run whose OWN contract lies outside the behaviour model's operating envelope is admitted only under an acknowledgement,
+                recorded on the run; B30 (0103 §EN) narrowed it to a TWIN OWNER (twin.envelope_ack_holder) and such a run is disabled for decision use. */}
+            <label><input type="checkbox" checked={ackEnvelope} onChange={(e) => setAckEnvelope(e.target.checked)} /> acknowledge an envelope breach (a twin owner’s only; recorded on the run; the run is not decision-grade)</label>
             {ackEnvelope ? <label>Reason for the acknowledgement (8+ characters)<input type="text" style={inputStyle} value={ackReason} onChange={(e) => setAckReason(e.target.value)} /></label> : null}
             {/* B21 (L8-I04): a re-run answering a challenge names it; the challenged run becomes the one this run corrects. */}
             <label>Challenge to answer<select style={inputStyle} value={answerChallenge} onChange={(e) => setAnswerChallenge(e.target.value)}>
@@ -232,7 +233,7 @@ export default function SimulationsPage() {
                 <Td>{r.shock_basis === 'scenario-branch-flipped' ? 'corridor delay — flipped branch' : r.shock_basis === 'hypothetical' ? <strong>corridor delay — HYPOTHETICAL</strong> : r.shock ? 'corridor delay (basis unrecorded)' : 'none'}</Td>
                 <Td>{iv(r)}</Td>
                 <Td mono>{r.outputs?.totals?.line_stop_days ?? (r.outputs?.summary?.['line_stop_days'] as number | undefined) ?? '—'}</Td>
-                <Td mono>{money(r.outputs?.totals?.cost.total)}</Td>
+                <Td mono>{money(r.outputs?.totals?.cost?.total)}</Td>{/* B30 (0103 §EX): a method-fabric run's totals carry no cost */}
                 <Td>{r.state === 'failed' ? <strong style={{ color: 'var(--eye-color-critical)' }}>FAILED — {r.failure}</strong> : r.state}{r.validation_status.includes('UNVERIFIED') ? <div style={{ color: 'var(--eye-color-critical)', fontSize: 'var(--eye-type-label-sm)' }}>twin version UNVERIFIED</div> : null}{r.validity === 'invalidated' ? <div style={{ color: 'var(--eye-color-critical)', fontSize: 'var(--eye-type-label-sm)' }}>INVALIDATED ({r.invalidation?.trigger ?? 'trigger unrecorded'})</div> : null}</Td>
                 {/* B21: the run's fitness (a promotion's use / an invalidation), its own envelope state when outside, the live challenges. */}
                 <Td><RunFitness r={r} />
@@ -278,7 +279,8 @@ export default function SimulationsPage() {
             <DefinitionRow term="Digests">initial state <Mono>{open.initial_state_digest.slice(0, 16)}…</Mono> · inputs <Mono>{open.inputs_digest.slice(0, 16)}…</Mono> · outputs <Mono>{String(open.outputs_digest ?? '').slice(0, 16)}…</Mono></DefinitionRow>
             {/* B29 (0092): a method-fabric run carries its own headline results instead of supply-flow's totals */}
             {open.outputs?.summary !== undefined && <DefinitionRow term="Method results">{summaryLines(open.outputs.summary).map(([k, v]) => `${k} ${v}`).join(' · ')}</DefinitionRow>}
-            <DefinitionRow term="Totals">{open.outputs?.totals ? <>{open.outputs.totals.line_stop_days} line-stop day(s) from {open.outputs.totals.first_line_stop_date ?? 'never'} · {open.outputs.totals.days_below_safety_stock} day(s) below safety stock · min on-hand {open.outputs.totals.min_on_hand} · cost {money(open.outputs.totals.cost.total)} (reroute {money(open.outputs.totals.cost.reroute)}, air {money(open.outputs.totals.cost.air)}, line stop {money(open.outputs.totals.cost.line_stop)})</> : '—'}</DefinitionRow>
+            <DefinitionRow term="Totals">{open.outputs?.totals?.cost !== undefined ? <>{open.outputs.totals.line_stop_days} line-stop day(s) from {open.outputs.totals.first_line_stop_date ?? 'never'} · {open.outputs.totals.days_below_safety_stock} day(s) below safety stock · min on-hand {open.outputs.totals.min_on_hand} · cost {money(open.outputs.totals.cost.total)} (reroute {money(open.outputs.totals.cost.reroute)}, air {money(open.outputs.totals.cost.air)}, line stop {money(open.outputs.totals.cost.line_stop)})</>
+              : open.outputs?.totals ? <>{/* B30 (0103 §EX): a method-fabric run's totals — the measures its method reports, no cost */}{Object.entries(open.outputs.totals as unknown as Record<string, unknown>).map(([k, v]) => `${k} ${typeof v === 'object' ? JSON.stringify(v) : String(v)}`).join(' · ')}</> : '—'}</DefinitionRow>
             <DefinitionRow term="Assumptions carrying the result">{(open.sensitivity?.factors ?? []).slice(0, 4).map((f) => <div key={f.key}><Mono>{f.key}</Mono> — cost spread {money(f.cost_spread)}</div>)}{open.sensitivity?.outside_envelope ? <strong style={{ color: 'var(--eye-color-critical)' }}>a perturbation left the envelope (a sensitivity fact; the run’s own contract is the Envelope row)</strong> : null}</DefinitionRow>
             <DefinitionRow term="Validation">{open.validation_status}</DefinitionRow>
             {/* B21 (0081): the run's fitness and the promotion or invalidation it rests on; the twin version's fitness COPIED at opening; the run's OWN envelope state. */}
@@ -364,6 +366,7 @@ export default function SimulationsPage() {
               {prProblem !== null ? <LiveStatus assertive><span style={{ color: 'var(--eye-color-critical)' }}>not promoted — {prProblem}</span></LiveStatus> : null}
             </section>
           ) : null}
+          {/* B30 envelope */}<EnvelopePanel runId={open.run_id} envelopeState={open.envelope_state} onDone={afterAct} />{/* end B30 envelope */}
         </section>
       )}
       <MethodPanel />

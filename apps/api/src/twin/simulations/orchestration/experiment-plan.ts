@@ -14,11 +14,14 @@ import { createHash } from 'node:crypto';
 import { HttpException } from '@nestjs/common';
 import { errorBody, jcsCanonicalize } from '@eye/contracts';
 import { simulateSupplyFlow, roundHalfEven, RNG_ALGORITHM, type SupplyFlowOptions, type SupplyFlowOutputs, type SupplyFlowParams, type Intervention, type Totals } from '../../models/supply-flow.js';
+/* B30 experiments */
+import { FABRIC_CHUNKABLE, fabricMeasures, isFabricChunkable } from '../fabric/fabric-plan.js';
+/* end B30 experiments */
 
 type Row = Record<string, unknown>;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const MEASURES = ['total_cost', 'line_stop_days', 'days_below_safety_stock'] as const;
-export const CHUNKABLE_METHODS: readonly string[] = Object.freeze(['supply-flow@1']);
+export const CHUNKABLE_METHODS: readonly string[] = Object.freeze(['supply-flow@1', /* B30 experiments: the method fabric's seeded methods (simulation.sio_chunkable_methods, 0103 §EX.2) */ ...FABRIC_CHUNKABLE]);
 /** The chunk executor's containment (the method fabric's defaults for an isolated adapter; recorded on the manifest). */
 export const CHUNK_CONTAINMENT = Object.freeze({ isolated: true, timeout_ms: 60_000, max_old_space_mb: 256 });
 
@@ -54,6 +57,16 @@ export function validateExperimentIntake(m: Row, correlationId: string): Experim
   const chunkSize = m['chunkSize'];
   if (!int(chunkSize) || chunkSize < 1 || chunkSize > (paths as number)) bad(correlationId, 'chunkSize is an integer in [1, paths]');
   if (!int(m['seed'])) bad(correlationId, 'seed is an integer: an experiment is seeded (determinism)');
+  /* B30 experiments: a FABRIC experiment (its run names a chunkable fabric method) draws its paths from the adapter's own stream — no
+     lead-time jitter: absent, it is the degenerate { "0": 1 } the run records; its measures default to those the method projects. */
+  const fabricRef = typeof r['modelRef'] === 'string' && isFabricChunkable(r['modelRef']) ? (r['modelRef'] as string) : null;
+  if (fabricRef !== null && m['jitter'] === undefined) m = { ...m, jitter: { '0': 1 } };
+  if (fabricRef !== null && m['measures'] === undefined) m = { ...m, measures: fabricMeasures(fabricRef) };
+  if (fabricRef !== null && (m['measures'] as unknown[] | undefined)?.some((x) => !fabricMeasures(fabricRef).includes(String(x) as never))) {
+    bad(correlationId, `the measures of a ${fabricRef} experiment are among those it projects (${fabricMeasures(fabricRef).join(', ')}; rule fabric-measures@1)`);
+  }
+  if (fabricRef !== null && (r['params'] === undefined || r['params'] === null || typeof r['params'] !== 'object' || Array.isArray(r['params']))) bad(correlationId, `run.params is the ${fabricRef} contract's parameters`);
+  /* end B30 experiments */
   const jitter = m['jitter'];
   if (jitter === null || typeof jitter !== 'object' || Array.isArray(jitter) || Object.keys(jitter).length === 0) bad(correlationId, 'jitter is the lead-time jitter distribution { days: probability }');
   const j = jitter as Record<string, unknown>;
@@ -80,7 +93,7 @@ export function validateExperimentIntake(m: Row, correlationId: string): Experim
   const perTick = pace['chunks_per_tick'] === undefined ? 1 : pace['chunks_per_tick'];
   if (!int(perTick) || perTick < 1 || perTick > 50) bad(correlationId, 'pace.chunks_per_tick is an integer in [1, 50]');
   const methodRef = typeof r['modelRef'] === 'string' ? r['modelRef'] : null;
-  if (r['params'] !== undefined && r['params'] !== null) bad(correlationId, 'a method-fabric run (params) is not chunkable: the experiment runs supply-flow@1 from the twin\'s snapshot');
+  if (r['params'] !== undefined && r['params'] !== null && !isFabricChunkable(methodRef)) bad(correlationId, `a method-fabric run (params) is chunkable only for ${FABRIC_CHUNKABLE.join(', ')} (it names ${methodRef ?? 'no modelRef'}): supply-flow@1 runs from the twin's snapshot`); /* B30 experiments */
   return {
     title, question, run: r, twinId: r['twinId'] as string, twinVersion: r['twinVersion'] as number,
     scenarioId: typeof r['scenarioId'] === 'string' ? r['scenarioId'] : null, scenarioBranchId: typeof r['scenarioBranchId'] === 'string' ? r['scenarioBranchId'] : null, methodRef,

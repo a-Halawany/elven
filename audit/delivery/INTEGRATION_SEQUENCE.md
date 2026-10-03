@@ -33,6 +33,7 @@ The text below keeps the 2026-09-25 history. Where a step reads "→ the owner's
 | #72 B31 | `phase6-b31` → `phase6-b27` | `1dbb93d` (0099, 0100; the records, `audit/CP6_BATCHES.md` §B31, §B31.9 and its addendum) | stacked on #71. Hosted on `2b591de` (ci 36909407667) FAILED build-test on `phase6-orchestration-b31` O1 (a database-wide count meeting B31-F's own experiments in the shared integration database; upgrade and C18 not run) — scoped to the harness's tenant at `1dbb93d`; on `1dbb93d` (ci 36921570491) build-test (integration, upgrade, C18) and browser green, C19 36921570496 green, supply-chain the Redis recheck only |
 | #73 B35 | `phase6-b35` → `phase6-b31` | the records commit above `fd6ec64` (0101; the records, `audit/CP6_BATCHES.md` §B35) | stacked on #72. Local gates at `5ee776b`: integration 1716/1716, unit 3099 + 9, web 225, acceptance 58/58, upgrade PASS (80), browser 93/93; the act HELD on `eye_demo`; the hosted run is the PR's first |
 | N-01 (0102) | `phase6-n01` → `phase6-b35` | the N-01 commit above `8dbc79f` | the corrective candidate: later-schema definer reads bound to the caller's scope, the constraint-gate capability narrowed, PUBLIC EXECUTE revoked, the creator's default function privileges (`audit/CP6_BATCHES.md` §N-01). Local: the N-01 harness 58/58 each way, integration 1774/1774, acceptance 58/58, upgrade PASS (81); the hosted run is the PR's first |
+| B30 (0103) | `phase6-b30` → `phase6-n01` | the B30 records commit | twin state, reconciliation, envelope and calibration (`audit/CP6_BATCHES.md` §B30). Local: part harnesses 21/22/7/18, integration 1841/1841, unit 3193 + 9, web 244, acceptance 58/58, upgrade PASS (roles 54, migrations 82), browser 93/93; the act HELD on `eye_demo` (through 0103); the walks 13/13 twice. The hosted run is the PR's first |
 | #62 refreshed (2026-10-02) | `maintenance/c15-redis-index-2026-09-25` → `main` | `cd8428f` (was `17f0236`) | the exact-head refresh of `17f0236` (ci 36129773111 attempt 2) failed `supply-chain`: the scanners' data had moved, not #62. Carried: the reviewed pins (fast-uri 3.1.7 / multer 2.4.0 — `1bd2bce`; next 16.3.6 — `da19ef9`'s pin), the stack's `.gitleaks.toml` (`c385d02` + `cdd61b4`; the all-refs history scan reaches the stack's commits), and one NEW pin under the same rule: fast-uri 3.1.8 (GHSA-hrr3-gc8f-f4qj, MODERATE; the final-manifest assertion accepts only a clean receipt). On `d65eaf7` (ci 37005512372) every C15 step passed |
 
 ## 1. #62 (the 2026-09-25 decision record; merged under the standing authorization once its refreshed head passes)
@@ -70,6 +71,44 @@ Older heads' green checks never stand for a new combination: every step below pr
 13. **#72 (B31).** Stacks on #71 (base `phase6-b27`); the records are on it (`audit/CP6_BATCHES.md` §B31 — F-P5-09 complete by the rows, F-P5-06 and F-P5-07 partial with their residuals named, the unplaced ones for the owner); its hosted checks run on the PR's head; after #71 merges, retarget to `main`, merge `main` in, checks on the new head → the owner's decision.
 14. **#73 (B35).** Stacks on #72 (base `phase6-b31`); the records are on it (`audit/CP6_BATCHES.md` §B35 — the four features advanced, each completing after its remaining construction); its hosted checks run on the PR's head; after #72 merges, retarget, merge the base in, checks on the new head → the owner's decision.
 15. **N-01 (0102).** Stacks on #73 (base `phase6-b35`), where the complete history 0001–0101 exists. The bounded correction is not a new audit; it merges last in this sequence. After #73 merges: retarget, merge the base in, checks on the new head, then merge under the standing authorization. B30 (0103) stacks on it.
+
+16. **B30 (0103).** Stacks on N-01 (base `phase6-n01`). After N-01 merges: retarget, merge the base in, checks on the new head, then merge under the standing authorization.
+
+**Progress, 2026-10-02.** Each merge was made on its verified exact head; each main chain is recorded. Main's two red runs were corrected FORWARD, never re-run on their own.
+- **#62** at `cd8428f`. Its refreshed run first failed supply-chain, because the scanners' data had moved. The reviewed pins were carried, plus fast-uri 3.1.8 and the stack's gitleaks exceptions (see the heads table). Merged as `1f51373`.
+  - **The red run.** Main's C17 finalize 37010824759 refused the recorded development closure: 320 expected, 313 measured. multer 2.4.0 drops `concat-stream` and its six-package subtree.
+- **#75** at `58caf9b`. It moves the measured closure to 313, reconciled package by package. The verifier now expects the closure the VERIFIED SOURCE declares; the first head's C19 dry-run had refused the last real publication, measured 320. Merged as `045a1a9`.
+  - **The red run.** Main's ci 37018370741 failed `phase6-retention-b14` H2: the demonstration https recipient's early 401 raced the streamed archive. It did not reproduce locally (5/5).
+- **#76** at `59c7bb1`. The recipient's mode `unauthorized` reads the body first. Merged as `b92715b`.
+  - **Main's chain completed:** ci 37024091653, C19 lifecycle 37024091441, C17 finalize 37026993556, C19 anchor 37027137960.
+- **#60** at `6d94438`, with main brought in three times. Merged as `144e1f2`.
+- **#61** at `665e89b`, with main merged in. Merged as `d364591`.
+  - **A5 on the earlier head `4a0a15c`.** It failed (foreign 1.79 ms against absent 8.79 ms). Its existing per-probe diagnostics (the A5 hunk of `da19ef9`) were carried unchanged. On `665e89b` the ratio was 1.0007.
+- **#63** at `98c03cb`. Merged as `e1a090c`.
+- **#64** at `4503964`. Merged as `449fc3f`.
+  - **Conflicts with main:** the maintenance pins and `.gitleaks.toml` were taken from main (the superset). DELIVERY_PLAN keeps both main's PLAN-F4 residual and B24's B24-F2 row.
+- **#65** at `01b6620`. Merged as `b450e0c`.
+  - **The `phase6-review-corrections` `max_items` stop case** ("stopped" expected, "finished" received; ci 36632094289) did not recur. It is recorded, not relabelled.
+  - **Main's ci on `b450e0c`:** attempt 1 was CANCELLED at its 30-minute job bound with every test step passed. It was re-run in full.
+- **#66** at `3c4886d`. Merged as `ea3346f`.
+  - **Main's ci on `ea3346f`** (run 37065675852) was cancelled at the same 30-minute bound.
+- **#78** at `d1b9495`. Merged as `68fca69`.
+  - **The fix.** It carries the reviewed B34 change `a9b2e6d` to main: build-test's budget 30 → 55 minutes, and the integration step's own 28-minute bound. This corrected the cancellations forward.
+- **#67** at `709bf73`. Merged as `45c1cd3`.
+- **#68** at `6185e51`. Merged as `812f9e8`.
+  - CodeRabbit posted no status on that head. Its only status on every other head is "Review skipped". This is stated, not waived.
+- **#69** at `5775b87`. Merged as `942de35`.
+- **#71** at `f1c1e24`. Merged as `dbedf8b`.
+  - **The consolidated B90 + B27.** Migrations 0095–0098 are contiguous, and every applied filename and byte is unchanged.
+  - **#70** stays open with its history and is not merged.
+- **#72** at `604989a`. Merged as `7195aeb`.
+  - **A5 on the first run.** Its diagnostics showed ONE stalled foreign probe: 176.12 ms among 3.4–4.2 ms. The threshold and the statistic are unchanged.
+  - **A5 on the full re-run:** ratio 1.0123, with stalls on both sides. Both are recorded for H1.
+- **#73** at `4b176bc`. Merged as `41b3fe1`.
+- **#74** (N-01) at `d2b325f`. Merged as `b952b46`, after main's chain for `41b3fe1`.
+- **B30 (#77):** main merged in; this records commit; its checks run on that head.
+- **Every main chain** (ci, C19 lifecycle, C17 finalize, then the C19 anchor that follows the finalize) completed successfully before the next merge.
+
 
 **Diagnostics rules carried with the sequence (2026-10-02).**
 - **#61's A5.** The threshold and the statistic are preserved. If it fails again, its existing per-probe samples (`da19ef9`) are read first; nothing else changes before that.

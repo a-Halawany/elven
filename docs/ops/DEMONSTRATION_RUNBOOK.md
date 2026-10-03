@@ -617,3 +617,26 @@ so its queues must never share the demonstration's Redis — and an APFS clone o
 - **The rehearsal rig.** Restore the newest `eye_demo-pre-0101-*.dump` into **`eye_demo_b35`** and migrate; the rehearsal API on **:3411** with **`EYE_REDIS_PORT=6392`**, a vault copy and its own degraded directory (as §17); run `EYE_DB_NAME=eye_demo_b35 EYE_API=http://localhost:3411 node scripts/phase6/act-b35.mjs` twice (the second "stands" everywhere).
 - **The walks.** Export the act's `EYE_B35_*` lines (the reopen decider and owner must be set: c.brenner, n.eriksen) and run `e2e/phase6-b35-{analysis,explanation,reopen,recommendation}.demo.spec.ts` through `playwright.demo.config.ts`; a regression run of earlier walks points `EYE_SHOTS` at a scratch directory.
 - **The restart** is unchanged from §15.
+
+## 20. N-01 and B30 on the demonstration (2026-10-02): what changed, the operator preparation, and how to rehearse
+
+- **The state.**
+  - `eye_demo` is migrated through **0103** (0102 N-01, then 0103 B30) by `pnpm db:migrate`. NEVER use `scripts/ops/apply-pending.sh` against `eye_demo`.
+  - The backup taken immediately before is `.eye-local/backups/eye_demo-pre-0102-20261002T145926Z.dump`.
+  - The API and the web were restarted on the B30 build (the restart line of §15, unchanged).
+- **The personas** (existing; none created):
+  - T. Nakamura: twin owner; owns the estimators, approves, sets the SLO, opens the merge, admits the exploratory run, retires.
+  - T. Richter: domain administrator; their exploratory admission is refused.
+  - S. Lindqvist: declares the conservation set `corridor-transit-balance`.
+  - H. Petrović: method steward; concurs.
+  - J. Weber: the blockade assumption; approves the fabric budget.
+  - E. Kovács: the fabric experiment.
+  - A. Hoffmann: proposes the estimate when PortWatch has nothing new.
+- **The Reconciliation Agent** is registered by the administrator (kind `reconciliation`). It proposes only when the PortWatch publisher records a NEW count after the estimators' declaration, and the tick queues the check. Otherwise the act says so and a person proposes.
+- **"5 days stale" holds on the staging day only.** The age counts from the database's day; on a later day the act re-admits a head at day − 5. The blockade merge is left OPEN; the walk's completion is refused. The 75-day state lives on the branch `stress-75`, never on actual's head.
+- **The rehearsal rig.** It is the same as §19, with these differences:
+  - Restore the newest `eye_demo-pre-0102-*.dump` into **`eye_demo_b30`** and migrate it.
+  - Run the rehearsal API on **:3411** with **`EYE_REDIS_PORT=6394`**.
+  - Run `EYE_DB_NAME=eye_demo_b30 EYE_API=http://localhost:3411 node scripts/phase6/act-b30.mjs`.
+  - The first run takes about 10 minutes: an estimate reads the whole series through governed retrievals, and the tick waits are real.
+- **The walks.** Export the act's `EYE_B30_*` lines, including `EYE_B30_PROPOSED_BY`, and run `e2e/phase6-b30-{branches,envelope,estimation,experiments}.demo.spec.ts` through `playwright.demo.config.ts`. For a regression run, set `EYE_SHOTS` to a scratch directory so the screenshots of record are not overwritten. Older acts printed some env values unquoted: load them with a parser, not `source`.

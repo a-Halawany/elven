@@ -1066,6 +1066,57 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   { match: /^incomplete package rejected \((state|stale|unattested)\)/i, status: 409, code: 'EYE_STA_002' },
   { match: /^incomplete package rejected \(/i, status: 422, code: 'EYE_REQ_001' },
   /* end B35 recommendation */
+  /* B30 branches (0103 §BR) — the families `branch merge rejected (<class>)` (a merge opened, its keys reconciled, completed, closed; the
+     admission gate tbr_merge_admitted and the bypass gate tbr_merge_bypass), `snapshot rejected (<class>)` (a freeze and its lift; the run gate
+     tbr_frozen_expiry — a frozen snapshot past its expiry), `freshness policy rejected (<class>)`, `checkpoint restore rejected (<class>)` and
+     `scenario element rejected (<class>)` (the scenario element route) — every row anchored and requiring the class parenthesis; no earlier
+     row starts with these nouns (B31's `^branch binding rejected` is another noun, anchored). B9's order: the standing 403 (the acting
+     principal, the twin's own owner), the absences 404 (unknown_*), the record's state 409 (state, stale, duplicate; unreconciled — merging
+     the branch back is refused until reconciliation), the caller's own request 422 (the rest). */
+  { match: /^(branch merge|snapshot|freshness policy|checkpoint restore|scenario element) rejected \((actor|ownership|authority)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^(branch merge|snapshot|freshness policy|checkpoint restore|scenario element) rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^(branch merge|snapshot|freshness policy|checkpoint restore|scenario element) rejected \((state|stale|duplicate|unreconciled)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^(branch merge|snapshot|freshness policy|checkpoint restore|scenario element) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B30 branches */
+  /* B30 envelope (0103 §EN) — the families `exploratory admission rejected (<class>)` (the twin owner's exploratory admission of an
+     outside-envelope run, the method steward's concurrence, the promotion gate ten_exploratory_promotion), `calibration rejected (<class>)`
+     (twin.calibrate) and `behaviour model rejected (<class>)` (the stewardship lifecycle, the compatibility declarations, the run gate
+     ten_model_lifecycle). No earlier row starts with these nouns (TWIN_RULES' unanchored `admission rejected: ` needs the colon; these carry
+     the class parenthesis) and every row is anchored. B9's order: the standing 403 (the acting principal, the twin owner's ownership, the
+     steward's authority, the separation of duties), the absences 404 (unknown_*), the record's state 409 (state, stale, duplicate,
+     unconcurred), the caller's own request 422 (the rest: reason, note, model, key, tolerance, kind, compatible, incompatible, lifecycle_state). */
+  { match: /^(exploratory admission|calibration|behaviour model) rejected \((actor|ownership|authority|separation_of_duties)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^(exploratory admission|calibration|behaviour model) rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^(exploratory admission|calibration|behaviour model) rejected \((state|stale|duplicate|unconcurred)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^(exploratory admission|calibration|behaviour model) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B30 envelope */
+  /* B30 estimation (0103 §ES) — the families `estimator rejected (<class>)`, `estimate rejected (<class>)`, `observation request rejected (<class>)`
+     and `estimation trigger rejected (<class>)`, every row anchored and requiring the class parenthesis (no earlier row starts with these
+     nouns: `^exposure estimate rejected` is another noun; the unanchored TWIN_RULES phrases `version rejected: `, `grounding rejected: `,
+     `admission rejected: ` and `reconciliation rejected: ` are not substrings of them). B9's order: the standing 403 (the acting principal,
+     the twin's ownership, the proposer who would decide its own estimate, the attention agent's authority), the absences 404 (unknown_*), the
+     record's state 409 (state, stale, duplicate), the caller's own request 422 (the rest: unqualified inputs, the constraint check, the range,
+     the snapshot, the candidates, the parameters, the note …). */
+  { match: /^(estimator|estimate|observation request|estimation trigger) rejected \((actor|ownership|authority|separation_of_duties)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^(estimator|estimate|observation request|estimation trigger) rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^(estimator|estimate|observation request|estimation trigger) rejected \((state|stale|duplicate)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^(estimator|estimate|observation request|estimation trigger) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B30 estimation */
+  /* B30 experiments (0103 §EX) — the families `retirement rejected (<class>)` (a run's or an experiment's retirement), `adapter quarantine
+     rejected (<class>)` (a method steward's quarantine on demand), `envelope sweep rejected (<class>)` and `benchmark validation rejected
+     (<class>)` (the two analyses; their run's absence and state come from B31's shared sii_run_for_analysis in the same class form), and
+     the run gate `run rejected (retired_control)` (the generic `run rejected: ` row needs the colon). The experiment's own policy refusals
+     are B31's `experiment rejected (<class>)` family (its rows above). Every row anchored and requiring the class parenthesis; no earlier
+     row starts with `retirement`, `adapter quarantine` (B29's anchored `^adapter (fault|probe|reinstatement) rejected` reads other nouns),
+     `envelope sweep` or `benchmark validation`. B9's order: the standing 403 (actor, authority), the absences 404 (unknown_*), the record's
+     state 409 (state; the retired control), the caller's own request 422 (the rest: reason, superseded_by, not_contained, model, run,
+     method, metric, grid, factors, interactions, digest, measure, kind, benchmark, basis, citations, tolerance, discrepancy, tail,
+     convergence). */
+  { match: /^(retirement|adapter quarantine|envelope sweep|benchmark validation) rejected \((actor|authority)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^(retirement|adapter quarantine|envelope sweep|benchmark validation) rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^(retirement|adapter quarantine|envelope sweep|benchmark validation) rejected \((state|stale)\)|^run rejected \(retired_control\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^(retirement|adapter quarantine|envelope sweep|benchmark validation) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B30 experiments */
   /* B36 home (0094 §H) — the executive home's families in the CLASS form `<noun> rejected (<class>): …`: `cadence rejected`, `executive room
      rejected` (0044's unclassed `room rejected: …` texts are the decision room's and are mapped by no row; the noun here is `executive room`
      and every row is anchored), `objective review rejected` (the SoD of §H2's re-declared convene_review and of open_subject_room — B23's
