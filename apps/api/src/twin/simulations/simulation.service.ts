@@ -1195,6 +1195,7 @@ export class SimulationService {
     const digests = new Set(rows.map((r) => String(r['initial_state_digest'])));
     if (digests.size !== 1) throw new HttpException(errorBody('EYE_REQ_001', correlationId, 'runs on different initial states are not comparable'), 422);
     const control = rows.find((r) => r['run_kind'] === 'control') ?? rows[0] as Record<string, unknown>;
+    const uses = await cap.decisionUseOf(rows.map((r) => String(r['run_id']))); // B31 validity (0099 §V1): each compared run labelled
     return {
       control_run_id: [...controls][0], initial_state_digest: [...digests][0],
       shock: control['shock'], shock_basis: control['shock_basis'] ?? 'unrecorded',
@@ -1202,7 +1203,8 @@ export class SimulationService {
         : { scenario_id: control['scenario_id'], version: control['scenario_version'] ?? null, branch_id: control['scenario_branch_id'], branch_state: control['scenario_branch_state'] ?? null },
       runs: rows.map((r) => ({ run_id: r['run_id'], run_kind: r['run_kind'], interventions: r['interventions'], totals: (r['outputs'] as Record<string, unknown>)['totals'],
         outputs_digest: r['outputs_digest'], carrying: (r['sensitivity'] as Record<string, unknown>)['factors'] instanceof Array
-          ? ((r['sensitivity'] as Record<string, unknown>)['factors'] as Array<Record<string, unknown>>).slice(0, 2).map((f) => f['key']) : [] })),
+          ? ((r['sensitivity'] as Record<string, unknown>)['factors'] as Array<Record<string, unknown>>).slice(0, 2).map((f) => f['key']) : [],
+        decision_use: uses.get(String(r['run_id'])) ?? null })),
       synthetic: true,
     };
   }
@@ -1300,9 +1302,11 @@ export class SimulationService {
     const promotion = ((await cap.readPromotions().selectAll().where('run_id' as never, '=', runId as never).executeTakeFirst()) as Record<string, unknown> | undefined) ?? null;
     // B29 (0092) §C: §D's verdicts recorded on the run (opening, completion) — an indeterminate one says why and is never read as satisfied.
     const constraintChecks = (await cap.readRunConstraintChecks().selectAll().where('run_id' as never, '=', runId as never).orderBy('checked_at' as never).execute()) as unknown[];
+    // B31 validity (0099 §V1): the run's DECISION USE labelled on the read that serves it (FEX-13, L8-I05) — decision | diagnostic | refused.
+    const decisionUse = (await cap.decisionUseOf([runId])).get(runId) ?? null;
     return { ...withDays(r), events, reproductions,
              challenges: challenges.map((c) => ({ ...c, events: challengeEvents.filter((e) => String(e['challenge_id']) === String(c['challenge_id'])) })), promotion,
-             constraint_checks: constraintChecks };
+             constraint_checks: constraintChecks, decision_use: decisionUse };
   }
 
   async list(cap: SimulationReads, twinId: string | null): Promise<unknown[]> {
@@ -1314,7 +1318,8 @@ export class SimulationService {
       .where('run_id' as never, 'in', rows.map((r) => String(r['run_id'])) as never).where('state' as never, 'in', ['open', 'rerun_requested'] as never).execute()) as Array<Record<string, unknown>>;
     const counts = new Map<string, number>();
     for (const c of live) { const id = String(c['run_id']); counts.set(id, (counts.get(id) ?? 0) + 1); }
-    return rows.map((r) => ({ ...r, live_challenges: counts.get(String(r['run_id'])) ?? 0 }));
+    const uses = await cap.decisionUseOf(rows.map((r) => String(r['run_id']))); // B31 validity (0099 §V1): each run labelled
+    return rows.map((r) => ({ ...r, live_challenges: counts.get(String(r['run_id'])) ?? 0, decision_use: uses.get(String(r['run_id'])) ?? null }));
   }
 }
 

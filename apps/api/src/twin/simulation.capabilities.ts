@@ -67,6 +67,8 @@ export interface SimulationReads {
   readAdapterEvents(): any;
   readAdapterProbes(): any;
   readRunConstraintChecks(): any;
+  /** B31 (0099 §V1): each run's DECISION USE — decision | diagnostic | refused with the reasons and the label (simulation.run_decision_use, an invoker read under the caller's RLS); a run the caller cannot see is absent. */
+  decisionUseOf(runIds: string[]): Promise<Map<string, Record<string, unknown>>>;
   rebuildProjections(): Promise<Array<{ projection: string; live_rows: string; rebuilt_rows: string; mismatched: string }>>;
   /** B18 (0078): what is subscribed to a GraphChanged of this kind at publication — evidence for the event, never authority (the 0065 shape). */
   changeSubscriptions(a: { tenantId: string; domainId: string; changeKind: string }): Promise<Array<{ subscription_id: string; consumer_kind: string }>>;
@@ -209,6 +211,15 @@ class SimulationCapabilityImpl implements RunWrites, CompleteWrites, InvalidateW
   readAdapterEvents(): any { return this.from('simulation.adapter_events'); }
   readAdapterProbes(): any { return this.from('simulation.adapter_probes'); }
   readRunConstraintChecks(): any { return this.from('simulation.run_constraint_checks'); }
+  /* B31 validity (0099 §V1) */
+  async decisionUseOf(runIds: string[]): Promise<Map<string, Record<string, unknown>>> {
+    const out = new Map<string, Record<string, unknown>>();
+    if (runIds.length === 0) return out;
+    const rows = await this.call<{ id: string; u: Record<string, unknown> | null }>(sql`select r.run_id::text as id, simulation.run_decision_use(r.run_id) as u from unnest(${runIds}::uuid[]) as r(run_id)`);
+    for (const r of rows) if (r.u !== null) out.set(r.id, r.u);
+    return out;
+  }
+  /* end B31 validity */
 
   async versionAsOf(a: { objectType: string; id: string; at: string }): Promise<number | null> {
     const rows = await this.call<{ v: number | null }>(sql`select max(o.object_version)::int as v from objects.canonical_objects o

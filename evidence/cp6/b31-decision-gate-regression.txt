@@ -1,0 +1,12 @@
+B31 integration correction — the decision-use gate refuses an INVALIDATED cited run with or without a policy (V03-T-156, FEX-13)
+Found by the B31 records pass: decision.commit_package (0090) does not re-check citations, and 0099's gate checked only under a domain policy.
+Case: phase6-validity-b31 P2b — the domain's policy set to require nothing; the version proposed before its run was invalidated is committed.
+
+== BEFORE (0099 as integrated at 5a6a086), fresh database:
+     × P2b · REFUSAL WITHOUT A POLICY (the B31 integration's correction; V03-T-156, FEX-13): the domain's policy set to require nothing — the version proposed BEFORE its run was invalidated still cannot be committed (refused, with or without a policy); the policy restored for P3
+     × R1 · POSITIVE: version 1 UNVERIFIED — the runs, the packages citing them, the commitment and the evaluation results are identified and recorded; the package owner is tasked (simulation.validity)
+      Tests  2 failed | 25 passed (27)
+Error: the call should have been refused (P2b: the commitment was ACCEPTED without a policy — the defect). R1 fails after it because it counts the commitments on the run, and the defect added one.
+
+== AFTER (the gate corrected), fresh database:
+      Tests  27 passed (27)

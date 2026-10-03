@@ -970,6 +970,45 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   { match: /^(scenario set|portfolio review|scenario proposal) rejected \((state|duplicate|bound|empty)\)|^recommendation rejected \(plurality\)/i, status: 409, code: 'EYE_STA_002' },
   { match: /^(scenario set|portfolio review|scenario proposal|recommendation) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
   /* end B27 sets */
+  /* B31 impact (0099 §I) — the families `impact analysis rejected (<class>)` (the sensitivity analysis, the second-order derivation, the
+     probability statement) and `value of information rejected (<class>)`, every row anchored and requiring the class parenthesis (no
+     earlier row starts with either noun; the unanchored `impact rejected: no such invalidation` row reads another text, which these never
+     contain). B9's order: the standing 403 (the acting principal; the authority — a named human), the absences 404 (unknown_*: the run, the
+     link, the map, the scenario, the package, the branch, the review, the option), the record's state 409 (state — a run not completed or
+     invalidated, a superseded map, an inactive scenario, a closed package, a branch not live; stale — outputs that changed under the
+     analysis; execution — a perturbed fabric execution that did not complete), the caller's own 422 (the rest: the metric, the step, the
+     factors, the robustness, the timing, the links, the reach, the effects, the samples, the event, the frequency map, the branches, the
+     probability, the options, the payoffs, the unit, the basis, the information, the likelihood). */
+  { match: /^(impact analysis|value of information) rejected \((actor|authority)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^(impact analysis|value of information) rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^(impact analysis|value of information) rejected \((state|stale|execution)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^(impact analysis|value of information) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B31 impact */
+  /* B31 orchestration (0099 §O) — the experiment's family in the CLASS form `experiment rejected (<class>): …`, every row anchored and
+     requiring the class parenthesis (no earlier row starts with `experiment`; 0033's `the experiment contract of run … is immutable` is
+     another sentence). B9's order: the standing 403 (the acting principal; the authority — the approver a named human, the executor an
+     active attention agent, an operator's act its declarer's, starter's, a twin owner's or the administrator's; the separation of duties —
+     the declarer never approves its own budget), the absences 404 (unknown_*), the record's state 409 (state; stale — a budget digest not
+     the declared one, a chunk's attempt fenced, a stop no longer pending, a chunk set that moved; admission — the refusal recorded), the
+     caller's own request 422 (the rest: declaration, method, paths, chunk_size, budget, measures, stop_conditions, pace, determinism, note,
+     reason, contract, outputs, chunk, outcome). */
+  { match: /^experiment rejected \((actor|authority|separation_of_duties)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^experiment rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^experiment rejected \((state|stale|admission)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^experiment rejected \(/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B31 orchestration */
+  /* B31 validity (0099 §V) — the families `run use rejected (<class>)` (the decision-use policy, the gate on a package's proposal and commitment,
+     the twin-correction reach) and `branch binding rejected (<class>)` (a branch bound to its twin state), the run gates in the CLASS form
+     `run rejected (scenario_quality|branch_binding)` (the generic `run rejected: ` row needs the colon) and the promotion gate `promotion to
+     simulation rejected (branch_suspended|scenario_quality)` (the older `^promotion to simulation names the branch` row reads another
+     sentence). Every row anchored and requiring the class parenthesis; no earlier row starts with `run use` or `branch binding`. B9's order:
+     the standing 403 (the acting principal, the owners), the absences 404 (unknown_*), the record's state 409 (state, stale, duplicate; the
+     gate's diagnostic_only and refused; the run and promotion gates), the caller's own request 422 (the rest). */
+  { match: /^(run use|branch binding) rejected \((actor|ownership|authority)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^(run use|branch binding) rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^(run use|branch binding) rejected \((state|stale|duplicate|diagnostic_only|refused)\)|^run rejected \((scenario_quality|branch_binding)\)|^promotion to simulation rejected \((branch_suspended|scenario_quality)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^(run use|branch binding) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B31 validity */
   /* B36 home (0094 §H) — the executive home's families in the CLASS form `<noun> rejected (<class>): …`: `cadence rejected`, `executive room
      rejected` (0044's unclassed `room rejected: …` texts are the decision room's and are mapped by no row; the noun here is `executive room`
      and every row is anchored), `objective review rejected` (the SoD of §H2's re-declared convene_review and of open_subject_room — B23's
