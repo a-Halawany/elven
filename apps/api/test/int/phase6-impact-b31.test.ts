@@ -257,7 +257,7 @@ describe('B31 §I · o SECOND-ORDER, DISTRIBUTIONAL AND TIMING EFFECTS (L8-C07, 
     await refused(secondOrder(operatorS, SEEDED), /^impact analysis rejected \(links\): twin .* feeds no live twin link; a run has no second-order reach until a downstream twin declares a link/, 422);
     await refused(secondOrder(outsider, SEEDED), /./, 403);
     await refused(secondOrder(operatorS, w.control2Id), /^impact analysis rejected \(state\):/, 409);
-    expect((await rows(sql`select count(*)::int n from simulation.second_order_effects`))[0]!['n']).toBe(0);
+    expect((await rows(sql`select count(*)::int n from simulation.second_order_effects where tenant_id = ${T()}::uuid`))[0]!['n']).toBe(0);
   });
 
   it('o · RECOVERY + POSITIVE: the Regensburg plant and the enterprise link in (their owners\' acts); the seeded corridor run\'s lost days per percentile and the delivery-date shift at Regensburg and at the enterprise, with the recovery the enterprise\'s headroom allows', async () => {
@@ -384,7 +384,7 @@ describe('B31 §I · v THE VALUE OF INFORMATION (V01-T-016, V02-T-167)', () => {
   it('v · REFUSAL: a branch with no governed probability (narrative never), the PDP (an analyst), likelihoods that do not sum to 1, an option outside the package — nothing recorded', async () => {
     await refused(assess(w.owner, entered(40)), /^value of information rejected \(no_probability\): branch ".*" has no governed probability — set one by a frequency map, an elicitation or a model run/, 422);
     await refused(assess(analyst, entered(40)), /./, 403);
-    expect((await rows(sql`select count(*)::int n from simulation.voi_assessments`))[0]!['n']).toBe(0);
+    expect((await rows(sql`select count(*)::int n from simulation.voi_assessments where tenant_id = ${T()}::uuid`))[0]!['n']).toBe(0);
   });
 
   it('v · RECOVERY + POSITIVE (wait): the scenario owner sets both bands by elicitation; "one more week of transit data" is worth WAITING for — EVPI, EVSI and the net re-derived here; the package owner is routed the item', async () => {

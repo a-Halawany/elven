@@ -1,0 +1,296 @@
+N-01 (migration 0102) — the bounded later-schema proof: apps/api/test/int/phase6-n01-definer-scope.test.ts
+Recorded 2026-10-02T12:38Z on this host; PostgreSQL 18.6, disposable databases created and dropped by this pass.
+The supplied N-01 handoff/reproduction bundle was not found on this host; the reproduction is rebuilt from the owner's named inventory (seven reads, the two explicit cases, the minter, the grants).
+Modes: EYE_N01_BASELINE=1 asserts the DEFECT (expected on a database through 0101); unset asserts the CORRECTION (expected through 0102).
+
+════ RUN: eye_verify_a1_n01_base, through 0101 — baseline expectations (the defect reproduced)
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > observation.replay_health > AUTHORIZED (bound to A/A1): discloses A/A1 — unchanged by the correction
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > observation.replay_health > UNBOUND (eye_app, no context): DISCLOSES A/A1 (the defect)
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > observation.replay_health > WRONG TENANT (bound to B/B1): DISCLOSES A/A1 (the defect)
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > observation.replay_health > WRONG DOMAIN (bound to A/A2): DISCLOSES A/A1 (the defect)
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > observation.replay_health > PUBLIC (eye_identity: USAGE on graph and executive, no explicit grant): permission denied
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > graph.strategy_plan_links > AUTHORIZED (bound to A/A1): discloses A/A1 — unchanged by the correction
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > graph.strategy_plan_links > UNBOUND (eye_app, no context): DISCLOSES A/A1 (the defect)
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > graph.strategy_plan_links > WRONG TENANT (bound to B/B1): DISCLOSES A/A1 (the defect)
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > graph.strategy_plan_links > WRONG DOMAIN (bound to A/A2): DISCLOSES A/A1 (the defect)
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > graph.strategy_plan_links > PUBLIC (eye_identity: USAGE on graph and executive, no explicit grant): EXECUTES (the defect)
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.publication_controls > AUTHORIZED (bound to A/A1): discloses A/A1 — unchanged by the correction
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.publication_controls > UNBOUND (eye_app, no context): DISCLOSES A/A1 (the defect)
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.publication_controls > WRONG TENANT (bound to B/B1): DISCLOSES A/A1 (the defect)
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.publication_controls > WRONG DOMAIN (bound to A/A2): DISCLOSES A/A1 (the defect)
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.publication_controls > PUBLIC (eye_identity: USAGE on graph and executive, no explicit grant): permission denied
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.publication_source > AUTHORIZED (bound to A/A1): discloses A/A1 — unchanged by the correction
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.publication_source > UNBOUND (eye_app, no context): DISCLOSES A/A1 (the defect)
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.publication_source > WRONG TENANT (bound to B/B1): DISCLOSES A/A1 (the defect)
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.publication_source > WRONG DOMAIN (bound to A/A2): DISCLOSES A/A1 (the defect)
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.publication_source > PUBLIC (eye_identity: USAGE on graph and executive, no explicit grant): permission denied
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.publication_recipients > AUTHORIZED (bound to A/A1): discloses A/A1 — unchanged by the correction
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.publication_recipients > UNBOUND (eye_app, no context): DISCLOSES A/A1 (the defect)
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.publication_recipients > WRONG TENANT (bound to B/B1): DISCLOSES A/A1 (the defect)
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.publication_recipients > WRONG DOMAIN (bound to A/A2): DISCLOSES A/A1 (the defect)
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.publication_recipients > PUBLIC (eye_identity: USAGE on graph and executive, no explicit grant): permission denied
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.role_holder_ids > AUTHORIZED (bound to A/A1): discloses A/A1 — unchanged by the correction
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.role_holder_ids > UNBOUND (eye_app, no context): DISCLOSES A/A1 (the defect)
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.role_holder_ids > WRONG TENANT (bound to B/B1): DISCLOSES A/A1 (the defect)
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.role_holder_ids > WRONG DOMAIN (bound to A/A2): DISCLOSES A/A1 (the defect)
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.role_holder_ids > PUBLIC (eye_identity: USAGE on graph and executive, no explicit grant): permission denied
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > decision.commitment_item_signal > AUTHORIZED (bound to A/A1): discloses A/A1 — unchanged by the correction
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > decision.commitment_item_signal > UNBOUND (eye_app, no context): DISCLOSES A/A1 (the defect)
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > decision.commitment_item_signal > WRONG TENANT (bound to B/B1): DISCLOSES A/A1 (the defect)
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > decision.commitment_item_signal > WRONG DOMAIN (bound to A/A2): DISCLOSES A/A1 (the defect)
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > decision.commitment_item_signal > PUBLIC (eye_identity: USAGE on graph and executive, no explicit grant): permission denied
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.health_input_owner > AUTHORIZED (bound to A/A1): discloses A/A1 — unchanged by the correction
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.health_input_owner > UNBOUND (eye_app, no context): DISCLOSES A/A1 (the defect)
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.health_input_owner > WRONG TENANT (bound to B/B1): DISCLOSES A/A1 (the defect)
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.health_input_owner > WRONG DOMAIN (bound to A/A2): DISCLOSES A/A1 (the defect)
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.health_input_owner > PUBLIC (eye_identity: USAGE on graph and executive, no explicit grant): permission denied
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.publication_archive_record > AUTHORIZED (bound to A/A1): discloses A/A1 — unchanged by the correction
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.publication_archive_record > UNBOUND (eye_app, no context): DISCLOSES A/A1 (the defect)
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.publication_archive_record > WRONG TENANT (bound to B/B1): DISCLOSES A/A1 (the defect)
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.publication_archive_record > WRONG DOMAIN (bound to A/A2): DISCLOSES A/A1 (the defect)
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.publication_archive_record > PUBLIC (eye_identity: USAGE on graph and executive, no explicit grant): EXECUTES (the defect)
+ ✓ N-01 RLS controls — the same rows read directly (identical before and after) > bound to A/A1: every row visible
+ ✓ N-01 RLS controls — the same rows read directly (identical before and after) > the migration/operator session (its login role bypasses RLS and reads the tables directly) is not narrowed by the read check
+ ✓ N-01 RLS controls — the same rows read directly (identical before and after) > bound to B/B1, bound to A/A2, unbound: nothing visible
+ ✓ N-01 minter controls — simulation.issue_constraint_gate_capability (BASELINE) > the intended operations work: the gate reads the constraint set and its version, and records a check pinned to them, for its tenant and domain
+ ✓ N-01 minter controls — simulation.issue_constraint_gate_capability (BASELINE) > unrelated reads under the gate: publications and legal holds READABLE (the defect)
+ ✓ N-01 minter controls — simulation.issue_constraint_gate_capability (BASELINE) > the gate for A/A1 records nothing for B/B1
+ ✓ N-01 minter controls — simulation.issue_constraint_gate_capability (BASELINE) > the gate for B/B1 reads none of A/A1's constraint sets
+ ✓ N-01 minter controls — simulation.issue_constraint_gate_capability (BASELINE) > a domain of another tenant, and a suspended domain: MINTED (the defect)
+ ✓ N-01 minter controls — simulation.issue_constraint_gate_capability (BASELINE) > the gate capability serves no other capability: a plan check outside schedule mode still needs the route authority
+ ✓ N-01 catalog — effective EXECUTE and default privileges (BASELINE; separate from the behaviour above) > the explicit runtime grants are preserved on every guarded read
+ ✓ N-01 catalog — effective EXECUTE and default privileges (BASELINE; separate from the behaviour above) > PUBLIC EXECUTE on the two reads and the ten trigger functions: PRESENT (the defect)
+ ✓ N-01 catalog — effective EXECUTE and default privileges (BASELINE; separate from the behaviour above) > no later-schema SECURITY DEFINER function is executable by PUBLIC (11 before)
+ ✓ N-01 catalog — effective EXECUTE and default privileges (BASELINE; separate from the behaviour above) > the migration role's global default function privileges: PUBLIC EXECUTE by default (no row)
+      Tests  58 passed (58)
+
+════ RUN: eye_verify_a1_n01_fix, through 0102 — corrected expectations
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > observation.replay_health > AUTHORIZED (bound to A/A1): discloses A/A1 — unchanged by the correction
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > observation.replay_health > UNBOUND (eye_app, no context): discloses nothing
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > observation.replay_health > WRONG TENANT (bound to B/B1): discloses nothing
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > observation.replay_health > WRONG DOMAIN (bound to A/A2): discloses nothing
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > observation.replay_health > PUBLIC (eye_identity: USAGE on graph and executive, no explicit grant): permission denied
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > graph.strategy_plan_links > AUTHORIZED (bound to A/A1): discloses A/A1 — unchanged by the correction
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > graph.strategy_plan_links > UNBOUND (eye_app, no context): discloses nothing
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > graph.strategy_plan_links > WRONG TENANT (bound to B/B1): discloses nothing
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > graph.strategy_plan_links > WRONG DOMAIN (bound to A/A2): discloses nothing
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > graph.strategy_plan_links > PUBLIC (eye_identity: USAGE on graph and executive, no explicit grant): permission denied
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > executive.publication_controls > AUTHORIZED (bound to A/A1): discloses A/A1 — unchanged by the correction
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > executive.publication_controls > UNBOUND (eye_app, no context): discloses nothing
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > executive.publication_controls > WRONG TENANT (bound to B/B1): discloses nothing
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > executive.publication_controls > WRONG DOMAIN (bound to A/A2): discloses nothing
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > executive.publication_controls > PUBLIC (eye_identity: USAGE on graph and executive, no explicit grant): permission denied
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > executive.publication_source > AUTHORIZED (bound to A/A1): discloses A/A1 — unchanged by the correction
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > executive.publication_source > UNBOUND (eye_app, no context): discloses nothing
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > executive.publication_source > WRONG TENANT (bound to B/B1): discloses nothing
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > executive.publication_source > WRONG DOMAIN (bound to A/A2): discloses nothing
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > executive.publication_source > PUBLIC (eye_identity: USAGE on graph and executive, no explicit grant): permission denied
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > executive.publication_recipients > AUTHORIZED (bound to A/A1): discloses A/A1 — unchanged by the correction
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > executive.publication_recipients > UNBOUND (eye_app, no context): discloses nothing
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > executive.publication_recipients > WRONG TENANT (bound to B/B1): discloses nothing
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > executive.publication_recipients > WRONG DOMAIN (bound to A/A2): discloses nothing
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > executive.publication_recipients > PUBLIC (eye_identity: USAGE on graph and executive, no explicit grant): permission denied
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > executive.role_holder_ids > AUTHORIZED (bound to A/A1): discloses A/A1 — unchanged by the correction
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > executive.role_holder_ids > UNBOUND (eye_app, no context): discloses nothing
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > executive.role_holder_ids > WRONG TENANT (bound to B/B1): discloses nothing
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > executive.role_holder_ids > WRONG DOMAIN (bound to A/A2): discloses nothing
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > executive.role_holder_ids > PUBLIC (eye_identity: USAGE on graph and executive, no explicit grant): permission denied
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > decision.commitment_item_signal > AUTHORIZED (bound to A/A1): discloses A/A1 — unchanged by the correction
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > decision.commitment_item_signal > UNBOUND (eye_app, no context): discloses nothing
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > decision.commitment_item_signal > WRONG TENANT (bound to B/B1): discloses nothing
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > decision.commitment_item_signal > WRONG DOMAIN (bound to A/A2): discloses nothing
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > decision.commitment_item_signal > PUBLIC (eye_identity: USAGE on graph and executive, no explicit grant): permission denied
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > executive.health_input_owner > AUTHORIZED (bound to A/A1): discloses A/A1 — unchanged by the correction
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > executive.health_input_owner > UNBOUND (eye_app, no context): discloses nothing
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > executive.health_input_owner > WRONG TENANT (bound to B/B1): discloses nothing
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > executive.health_input_owner > WRONG DOMAIN (bound to A/A2): discloses nothing
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > executive.health_input_owner > PUBLIC (eye_identity: USAGE on graph and executive, no explicit grant): permission denied
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > executive.publication_archive_record > AUTHORIZED (bound to A/A1): discloses A/A1 — unchanged by the correction
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > executive.publication_archive_record > UNBOUND (eye_app, no context): discloses nothing
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > executive.publication_archive_record > WRONG TENANT (bound to B/B1): discloses nothing
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > executive.publication_archive_record > WRONG DOMAIN (bound to A/A2): discloses nothing
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > executive.publication_archive_record > PUBLIC (eye_identity: USAGE on graph and executive, no explicit grant): permission denied
+ ✓ N-01 RLS controls — the same rows read directly (identical before and after) > bound to A/A1: every row visible
+ ✓ N-01 RLS controls — the same rows read directly (identical before and after) > the migration/operator session (its login role bypasses RLS and reads the tables directly) is not narrowed by the read check
+ ✓ N-01 RLS controls — the same rows read directly (identical before and after) > bound to B/B1, bound to A/A2, unbound: nothing visible
+ ✓ N-01 minter controls — simulation.issue_constraint_gate_capability (CORRECTED) > the intended operations work: the gate reads the constraint set and its version, and records a check pinned to them, for its tenant and domain
+ ✓ N-01 minter controls — simulation.issue_constraint_gate_capability (CORRECTED) > unrelated reads under the gate: publications and legal holds not readable
+ ✓ N-01 minter controls — simulation.issue_constraint_gate_capability (CORRECTED) > the gate for A/A1 records nothing for B/B1
+ ✓ N-01 minter controls — simulation.issue_constraint_gate_capability (CORRECTED) > the gate for B/B1 reads none of A/A1's constraint sets
+ ✓ N-01 minter controls — simulation.issue_constraint_gate_capability (CORRECTED) > a domain of another tenant, and a suspended domain: refused
+ ✓ N-01 minter controls — simulation.issue_constraint_gate_capability (CORRECTED) > the gate capability serves no other capability: a plan check outside schedule mode still needs the route authority
+ ✓ N-01 catalog — effective EXECUTE and default privileges (CORRECTED; separate from the behaviour above) > the explicit runtime grants are preserved on every guarded read
+ ✓ N-01 catalog — effective EXECUTE and default privileges (CORRECTED; separate from the behaviour above) > PUBLIC EXECUTE on the two reads and the ten trigger functions: revoked
+ ✓ N-01 catalog — effective EXECUTE and default privileges (CORRECTED; separate from the behaviour above) > no later-schema SECURITY DEFINER function is executable by PUBLIC (0 after)
+ ✓ N-01 catalog — effective EXECUTE and default privileges (CORRECTED; separate from the behaviour above) > the migration role's global default function privileges: no EXECUTE to PUBLIC
+      Tests  58 passed (58)
+
+════ RUN: eye_verify_a1_n01_base, CROSS-CHECK through 0101 — corrected expectations (must fail)
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > observation.replay_health > AUTHORIZED (bound to A/A1): discloses A/A1 — unchanged by the correction
+ × N-01 behaviour — the guarded reads (CORRECTED) > observation.replay_health > UNBOUND (eye_app, no context): discloses nothing
+ × N-01 behaviour — the guarded reads (CORRECTED) > observation.replay_health > WRONG TENANT (bound to B/B1): discloses nothing
+ × N-01 behaviour — the guarded reads (CORRECTED) > observation.replay_health > WRONG DOMAIN (bound to A/A2): discloses nothing
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > observation.replay_health > PUBLIC (eye_identity: USAGE on graph and executive, no explicit grant): permission denied
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > graph.strategy_plan_links > AUTHORIZED (bound to A/A1): discloses A/A1 — unchanged by the correction
+ × N-01 behaviour — the guarded reads (CORRECTED) > graph.strategy_plan_links > UNBOUND (eye_app, no context): discloses nothing
+ × N-01 behaviour — the guarded reads (CORRECTED) > graph.strategy_plan_links > WRONG TENANT (bound to B/B1): discloses nothing
+ × N-01 behaviour — the guarded reads (CORRECTED) > graph.strategy_plan_links > WRONG DOMAIN (bound to A/A2): discloses nothing
+ × N-01 behaviour — the guarded reads (CORRECTED) > graph.strategy_plan_links > PUBLIC (eye_identity: USAGE on graph and executive, no explicit grant): permission denied
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > executive.publication_controls > AUTHORIZED (bound to A/A1): discloses A/A1 — unchanged by the correction
+ × N-01 behaviour — the guarded reads (CORRECTED) > executive.publication_controls > UNBOUND (eye_app, no context): discloses nothing
+ × N-01 behaviour — the guarded reads (CORRECTED) > executive.publication_controls > WRONG TENANT (bound to B/B1): discloses nothing
+ × N-01 behaviour — the guarded reads (CORRECTED) > executive.publication_controls > WRONG DOMAIN (bound to A/A2): discloses nothing
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > executive.publication_controls > PUBLIC (eye_identity: USAGE on graph and executive, no explicit grant): permission denied
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > executive.publication_source > AUTHORIZED (bound to A/A1): discloses A/A1 — unchanged by the correction
+ × N-01 behaviour — the guarded reads (CORRECTED) > executive.publication_source > UNBOUND (eye_app, no context): discloses nothing
+ × N-01 behaviour — the guarded reads (CORRECTED) > executive.publication_source > WRONG TENANT (bound to B/B1): discloses nothing
+ × N-01 behaviour — the guarded reads (CORRECTED) > executive.publication_source > WRONG DOMAIN (bound to A/A2): discloses nothing
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > executive.publication_source > PUBLIC (eye_identity: USAGE on graph and executive, no explicit grant): permission denied
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > executive.publication_recipients > AUTHORIZED (bound to A/A1): discloses A/A1 — unchanged by the correction
+ × N-01 behaviour — the guarded reads (CORRECTED) > executive.publication_recipients > UNBOUND (eye_app, no context): discloses nothing
+ × N-01 behaviour — the guarded reads (CORRECTED) > executive.publication_recipients > WRONG TENANT (bound to B/B1): discloses nothing
+ × N-01 behaviour — the guarded reads (CORRECTED) > executive.publication_recipients > WRONG DOMAIN (bound to A/A2): discloses nothing
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > executive.publication_recipients > PUBLIC (eye_identity: USAGE on graph and executive, no explicit grant): permission denied
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > executive.role_holder_ids > AUTHORIZED (bound to A/A1): discloses A/A1 — unchanged by the correction
+ × N-01 behaviour — the guarded reads (CORRECTED) > executive.role_holder_ids > UNBOUND (eye_app, no context): discloses nothing
+ × N-01 behaviour — the guarded reads (CORRECTED) > executive.role_holder_ids > WRONG TENANT (bound to B/B1): discloses nothing
+ × N-01 behaviour — the guarded reads (CORRECTED) > executive.role_holder_ids > WRONG DOMAIN (bound to A/A2): discloses nothing
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > executive.role_holder_ids > PUBLIC (eye_identity: USAGE on graph and executive, no explicit grant): permission denied
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > decision.commitment_item_signal > AUTHORIZED (bound to A/A1): discloses A/A1 — unchanged by the correction
+ × N-01 behaviour — the guarded reads (CORRECTED) > decision.commitment_item_signal > UNBOUND (eye_app, no context): discloses nothing
+ × N-01 behaviour — the guarded reads (CORRECTED) > decision.commitment_item_signal > WRONG TENANT (bound to B/B1): discloses nothing
+ × N-01 behaviour — the guarded reads (CORRECTED) > decision.commitment_item_signal > WRONG DOMAIN (bound to A/A2): discloses nothing
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > decision.commitment_item_signal > PUBLIC (eye_identity: USAGE on graph and executive, no explicit grant): permission denied
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > executive.health_input_owner > AUTHORIZED (bound to A/A1): discloses A/A1 — unchanged by the correction
+ × N-01 behaviour — the guarded reads (CORRECTED) > executive.health_input_owner > UNBOUND (eye_app, no context): discloses nothing
+ × N-01 behaviour — the guarded reads (CORRECTED) > executive.health_input_owner > WRONG TENANT (bound to B/B1): discloses nothing
+ × N-01 behaviour — the guarded reads (CORRECTED) > executive.health_input_owner > WRONG DOMAIN (bound to A/A2): discloses nothing
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > executive.health_input_owner > PUBLIC (eye_identity: USAGE on graph and executive, no explicit grant): permission denied
+ ✓ N-01 behaviour — the guarded reads (CORRECTED) > executive.publication_archive_record > AUTHORIZED (bound to A/A1): discloses A/A1 — unchanged by the correction
+ × N-01 behaviour — the guarded reads (CORRECTED) > executive.publication_archive_record > UNBOUND (eye_app, no context): discloses nothing
+ × N-01 behaviour — the guarded reads (CORRECTED) > executive.publication_archive_record > WRONG TENANT (bound to B/B1): discloses nothing
+ × N-01 behaviour — the guarded reads (CORRECTED) > executive.publication_archive_record > WRONG DOMAIN (bound to A/A2): discloses nothing
+ × N-01 behaviour — the guarded reads (CORRECTED) > executive.publication_archive_record > PUBLIC (eye_identity: USAGE on graph and executive, no explicit grant): permission denied
+ ✓ N-01 RLS controls — the same rows read directly (identical before and after) > bound to A/A1: every row visible
+ ✓ N-01 RLS controls — the same rows read directly (identical before and after) > the migration/operator session (its login role bypasses RLS and reads the tables directly) is not narrowed by the read check
+ ✓ N-01 RLS controls — the same rows read directly (identical before and after) > bound to B/B1, bound to A/A2, unbound: nothing visible
+ ✓ N-01 minter controls — simulation.issue_constraint_gate_capability (CORRECTED) > the intended operations work: the gate reads the constraint set and its version, and records a check pinned to them, for its tenant and domain
+ × N-01 minter controls — simulation.issue_constraint_gate_capability (CORRECTED) > unrelated reads under the gate: publications and legal holds not readable
+ × N-01 minter controls — simulation.issue_constraint_gate_capability (CORRECTED) > the gate for A/A1 records nothing for B/B1
+ ✓ N-01 minter controls — simulation.issue_constraint_gate_capability (CORRECTED) > the gate for B/B1 reads none of A/A1's constraint sets
+ × N-01 minter controls — simulation.issue_constraint_gate_capability (CORRECTED) > a domain of another tenant, and a suspended domain: refused
+ ✓ N-01 minter controls — simulation.issue_constraint_gate_capability (CORRECTED) > the gate capability serves no other capability: a plan check outside schedule mode still needs the route authority
+ ✓ N-01 catalog — effective EXECUTE and default privileges (CORRECTED; separate from the behaviour above) > the explicit runtime grants are preserved on every guarded read
+ × N-01 catalog — effective EXECUTE and default privileges (CORRECTED; separate from the behaviour above) > PUBLIC EXECUTE on the two reads and the ten trigger functions: revoked
+ × N-01 catalog — effective EXECUTE and default privileges (CORRECTED; separate from the behaviour above) > no later-schema SECURITY DEFINER function is executable by PUBLIC (0 after)
+ × N-01 catalog — effective EXECUTE and default privileges (CORRECTED; separate from the behaviour above) > the migration role's global default function privileges: no EXECUTE to PUBLIC
+      Tests  35 failed | 23 passed (58)
+
+════ RUN: eye_verify_a1_n01_fix, CROSS-CHECK through 0102 — baseline expectations (must fail)
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > observation.replay_health > AUTHORIZED (bound to A/A1): discloses A/A1 — unchanged by the correction
+ × N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > observation.replay_health > UNBOUND (eye_app, no context): DISCLOSES A/A1 (the defect)
+ × N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > observation.replay_health > WRONG TENANT (bound to B/B1): DISCLOSES A/A1 (the defect)
+ × N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > observation.replay_health > WRONG DOMAIN (bound to A/A2): DISCLOSES A/A1 (the defect)
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > observation.replay_health > PUBLIC (eye_identity: USAGE on graph and executive, no explicit grant): permission denied
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > graph.strategy_plan_links > AUTHORIZED (bound to A/A1): discloses A/A1 — unchanged by the correction
+ × N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > graph.strategy_plan_links > UNBOUND (eye_app, no context): DISCLOSES A/A1 (the defect)
+ × N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > graph.strategy_plan_links > WRONG TENANT (bound to B/B1): DISCLOSES A/A1 (the defect)
+ × N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > graph.strategy_plan_links > WRONG DOMAIN (bound to A/A2): DISCLOSES A/A1 (the defect)
+ × N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > graph.strategy_plan_links > PUBLIC (eye_identity: USAGE on graph and executive, no explicit grant): EXECUTES (the defect)
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.publication_controls > AUTHORIZED (bound to A/A1): discloses A/A1 — unchanged by the correction
+ × N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.publication_controls > UNBOUND (eye_app, no context): DISCLOSES A/A1 (the defect)
+ × N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.publication_controls > WRONG TENANT (bound to B/B1): DISCLOSES A/A1 (the defect)
+ × N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.publication_controls > WRONG DOMAIN (bound to A/A2): DISCLOSES A/A1 (the defect)
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.publication_controls > PUBLIC (eye_identity: USAGE on graph and executive, no explicit grant): permission denied
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.publication_source > AUTHORIZED (bound to A/A1): discloses A/A1 — unchanged by the correction
+ × N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.publication_source > UNBOUND (eye_app, no context): DISCLOSES A/A1 (the defect)
+ × N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.publication_source > WRONG TENANT (bound to B/B1): DISCLOSES A/A1 (the defect)
+ × N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.publication_source > WRONG DOMAIN (bound to A/A2): DISCLOSES A/A1 (the defect)
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.publication_source > PUBLIC (eye_identity: USAGE on graph and executive, no explicit grant): permission denied
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.publication_recipients > AUTHORIZED (bound to A/A1): discloses A/A1 — unchanged by the correction
+ × N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.publication_recipients > UNBOUND (eye_app, no context): DISCLOSES A/A1 (the defect)
+ × N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.publication_recipients > WRONG TENANT (bound to B/B1): DISCLOSES A/A1 (the defect)
+ × N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.publication_recipients > WRONG DOMAIN (bound to A/A2): DISCLOSES A/A1 (the defect)
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.publication_recipients > PUBLIC (eye_identity: USAGE on graph and executive, no explicit grant): permission denied
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.role_holder_ids > AUTHORIZED (bound to A/A1): discloses A/A1 — unchanged by the correction
+ × N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.role_holder_ids > UNBOUND (eye_app, no context): DISCLOSES A/A1 (the defect)
+ × N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.role_holder_ids > WRONG TENANT (bound to B/B1): DISCLOSES A/A1 (the defect)
+ × N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.role_holder_ids > WRONG DOMAIN (bound to A/A2): DISCLOSES A/A1 (the defect)
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.role_holder_ids > PUBLIC (eye_identity: USAGE on graph and executive, no explicit grant): permission denied
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > decision.commitment_item_signal > AUTHORIZED (bound to A/A1): discloses A/A1 — unchanged by the correction
+ × N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > decision.commitment_item_signal > UNBOUND (eye_app, no context): DISCLOSES A/A1 (the defect)
+ × N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > decision.commitment_item_signal > WRONG TENANT (bound to B/B1): DISCLOSES A/A1 (the defect)
+ × N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > decision.commitment_item_signal > WRONG DOMAIN (bound to A/A2): DISCLOSES A/A1 (the defect)
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > decision.commitment_item_signal > PUBLIC (eye_identity: USAGE on graph and executive, no explicit grant): permission denied
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.health_input_owner > AUTHORIZED (bound to A/A1): discloses A/A1 — unchanged by the correction
+ × N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.health_input_owner > UNBOUND (eye_app, no context): DISCLOSES A/A1 (the defect)
+ × N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.health_input_owner > WRONG TENANT (bound to B/B1): DISCLOSES A/A1 (the defect)
+ × N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.health_input_owner > WRONG DOMAIN (bound to A/A2): DISCLOSES A/A1 (the defect)
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.health_input_owner > PUBLIC (eye_identity: USAGE on graph and executive, no explicit grant): permission denied
+ ✓ N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.publication_archive_record > AUTHORIZED (bound to A/A1): discloses A/A1 — unchanged by the correction
+ × N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.publication_archive_record > UNBOUND (eye_app, no context): DISCLOSES A/A1 (the defect)
+ × N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.publication_archive_record > WRONG TENANT (bound to B/B1): DISCLOSES A/A1 (the defect)
+ × N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.publication_archive_record > WRONG DOMAIN (bound to A/A2): DISCLOSES A/A1 (the defect)
+ × N-01 behaviour — the guarded reads (BASELINE: the defect reproduced) > executive.publication_archive_record > PUBLIC (eye_identity: USAGE on graph and executive, no explicit grant): EXECUTES (the defect)
+ ✓ N-01 RLS controls — the same rows read directly (identical before and after) > bound to A/A1: every row visible
+ ✓ N-01 RLS controls — the same rows read directly (identical before and after) > the migration/operator session (its login role bypasses RLS and reads the tables directly) is not narrowed by the read check
+ ✓ N-01 RLS controls — the same rows read directly (identical before and after) > bound to B/B1, bound to A/A2, unbound: nothing visible
+ ✓ N-01 minter controls — simulation.issue_constraint_gate_capability (BASELINE) > the intended operations work: the gate reads the constraint set and its version, and records a check pinned to them, for its tenant and domain
+ × N-01 minter controls — simulation.issue_constraint_gate_capability (BASELINE) > unrelated reads under the gate: publications and legal holds READABLE (the defect)
+ × N-01 minter controls — simulation.issue_constraint_gate_capability (BASELINE) > the gate for A/A1 records nothing for B/B1
+ ✓ N-01 minter controls — simulation.issue_constraint_gate_capability (BASELINE) > the gate for B/B1 reads none of A/A1's constraint sets
+ × N-01 minter controls — simulation.issue_constraint_gate_capability (BASELINE) > a domain of another tenant, and a suspended domain: MINTED (the defect)
+ ✓ N-01 minter controls — simulation.issue_constraint_gate_capability (BASELINE) > the gate capability serves no other capability: a plan check outside schedule mode still needs the route authority
+ ✓ N-01 catalog — effective EXECUTE and default privileges (BASELINE; separate from the behaviour above) > the explicit runtime grants are preserved on every guarded read
+ × N-01 catalog — effective EXECUTE and default privileges (BASELINE; separate from the behaviour above) > PUBLIC EXECUTE on the two reads and the ten trigger functions: PRESENT (the defect)
+ × N-01 catalog — effective EXECUTE and default privileges (BASELINE; separate from the behaviour above) > no later-schema SECURITY DEFINER function is executable by PUBLIC (11 before)
+ × N-01 catalog — effective EXECUTE and default privileges (BASELINE; separate from the behaviour above) > the migration role's global default function privileges: PUBLIC EXECUTE by default (no row)
+      Tests  35 failed | 23 passed (58)
+
+════ CATALOG: eye_verify_a1_n01_base
+                                 fn                                  |   sec   | public_exec |      runtime       
+---------------------------------------------------------------------+---------+-------------+--------------------
+ observation.replay_health(uuid,uuid,uuid)                           | definer | f           | eye_app+eye_commit
+ executive.role_holder_ids(uuid,uuid,text[])                         | definer | f           | eye_app+eye_commit
+ decision.commitment_item_signal(uuid,uuid,uuid)                     | definer | f           | eye_app+eye_commit
+ decision.seed_commitment_tracker()                                  | definer | t           | eye_app+eye_commit
+ twin.propose_couplings()                                            | definer | t           | eye_app+eye_commit
+ simulation.issue_constraint_gate_capability(uuid,uuid,text,integer) | definer | f           | eye_commit
+ executive.publication_source(uuid,uuid,text,uuid,integer)           | definer | f           | eye_app+eye_commit
+ executive.publication_controls(uuid)                                | definer | f           | eye_app+eye_commit
+ executive.publication_recipients(uuid,uuid,jsonb)                   | definer | f           | eye_app+eye_commit
+ executive.publication_archive_record(uuid)                          | invoker | t           | eye_app+eye_commit
+ executive.health_input_owner(uuid,uuid,text,uuid)                   | definer | f           | eye_app+eye_commit
+ graph.strategy_plan_links(uuid,uuid,uuid)                           | definer | t           | eye_app+eye_commit
+(12 rows)
+
+ creator | defaclobjtype | defaclacl 
+---------+---------------+-----------
+(0 rows)
+
+later-schema definer functions executable by PUBLIC: 11
+
+════ CATALOG: eye_verify_a1_n01_fix
+                                 fn                                  |   sec   | public_exec |      runtime       
+---------------------------------------------------------------------+---------+-------------+--------------------
+ observation.replay_health(uuid,uuid,uuid)                           | definer | f           | eye_app+eye_commit
+ executive.role_holder_ids(uuid,uuid,text[])                         | definer | f           | eye_app+eye_commit
+ decision.commitment_item_signal(uuid,uuid,uuid)                     | definer | f           | eye_app+eye_commit
+ decision.seed_commitment_tracker()                                  | definer | f           | 
+ twin.propose_couplings()                                            | definer | f           | 
+ simulation.issue_constraint_gate_capability(uuid,uuid,text,integer) | definer | f           | eye_commit
+ executive.publication_source(uuid,uuid,text,uuid,integer)           | definer | f           | eye_app+eye_commit
+ executive.publication_controls(uuid)                                | definer | f           | eye_app+eye_commit
+ executive.publication_recipients(uuid,uuid,jsonb)                   | definer | f           | eye_app+eye_commit
+ executive.publication_archive_record(uuid)                          | invoker | f           | eye_app+eye_commit
+ executive.health_input_owner(uuid,uuid,text,uuid)                   | definer | f           | eye_app+eye_commit
+ graph.strategy_plan_links(uuid,uuid,uuid)                           | definer | f           | eye_app+eye_commit
+(12 rows)
+
+ creator | defaclobjtype |  defaclacl  
+---------+---------------+-------------
+ eye     | f             | {eye=X/eye}
+(1 row)
+
+later-schema definer functions executable by PUBLIC: 0
+
