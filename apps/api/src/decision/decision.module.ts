@@ -25,15 +25,34 @@ import { SignatureService } from '../executive/signatures/signature.service.js';
 import { EmailChannel } from '../executive/attention/delivery/email.channel.js';
 import { SmsChannel, TeamsChannel } from '../executive/attention/delivery/webhook.channel.js';
 /* end B36 gates */
+/* B35 analysis (0101 §A): decision option analysis — its own controller under /decisions/analysis */
+import { AnalysisController } from './analysis/analysis.controller.js';
+import { AnalysisService } from './analysis/analysis.service.js';
+/* end B35 analysis */
+/* B35 explanation (0101 §E): the governed explanation, its renderings, contest and appeal cases — two controllers of its own, the tick step appeal-deadlines (71) */
+import { ExplanationController, AppealController } from './explanation/explanation.controller.js';
+import { AppealDeadlinesService } from './explanation/explanation.service.js';
+/* end B35 explanation */
+/* B35 reopen */ import { DecisionReviewController } from './review/review.controller.js'; import { DecisionReviewService } from './review/review.service.js'; /* end B35 reopen */
+/* B35 recommendation (0101 §R): the recommendation object, its review, the human-led incomplete-package mode */
+import { RecommendationController } from './recommendation/recommendation.controller.js';
+/* end B35 recommendation */
 
 // CP-6 B6 (0063): the decision CONSUMER registers itself into the graph's dispatcher; the graph module
 // imports nothing from here.
 @Module({
   imports: [PipelineModule, GraphModule],
-  controllers: [DecisionController, /* B34 (0090) commitments */ CommitmentController /* end B34 commitments */, /* B36 (0094 §C4) collab */ ExecutionActivationController /* end B36 collab */],
+  controllers: [DecisionController, /* B34 (0090) commitments */ CommitmentController /* end B34 commitments */, /* B36 (0094 §C4) collab */ ExecutionActivationController /* end B36 collab */,
+    /* B35 analysis */ AnalysisController /* end B35 analysis */,
+    /* B35 explanation */ ExplanationController, AppealController /* end B35 explanation */,
+    /* B35 reopen */ DecisionReviewController /* end B35 reopen */,
+    /* B35 recommendation */ RecommendationController /* end B35 recommendation */],
   providers: [PackageService, ApprovalService, ReplayService, MonitoringService, DecisionSubscriptionConsumer,
     /* B34 (0090) commitments */ CommitmentService, ExecutionEgress, CommitmentsSubscriptionConsumer /* end B34 commitments */,
-    /* B36 (0094) gates */ GateCompletionService, SignatureService, EmailChannel, SmsChannel, TeamsChannel /* end B36 gates */],
+    /* B36 (0094) gates */ GateCompletionService, SignatureService, EmailChannel, SmsChannel, TeamsChannel /* end B36 gates */,
+    /* B35 analysis */ AnalysisService /* end B35 analysis */,
+    /* B35 explanation */ AppealDeadlinesService /* end B35 explanation */,
+    /* B35 reopen */ DecisionReviewService /* end B35 reopen */],
   exports: [PackageService, ApprovalService, ReplayService, MonitoringService, /* B34 (0090) commitments */ CommitmentService, ExecutionEgress /* end B34 commitments */],
 })
 export class DecisionModule {}
