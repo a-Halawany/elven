@@ -442,6 +442,7 @@ export default function ScenariosPage() {
   return (
     <>
       <h1 style={{ fontSize: 'var(--eye-type-heading-1)', marginBlockStart: 0 }}>Scenarios</h1>
+      {/* B27 sets */}<p><a href="/prediction/scenarios/sets">Scenario sets — plurality, side-by-side comparison, portfolio review, proposals</a></p>{/* end B27 sets */}
       {rows.length === 0 ? <Empty>No scenario tree has been declared yet.</Empty> : rows.map((s) => (
         <section key={s.scenario_id} aria-labelledby={`scn-${s.scenario_id}`} style={{ ...cardStyle, marginBlockStart: 'var(--eye-space-16)' }}>
           <h2 id={`scn-${s.scenario_id}`} style={{ fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 }}>{s.title}</h2>
@@ -450,8 +451,10 @@ export default function ScenariosPage() {
             owner <Mono>{s.owner_principal_id.slice(0, 8)}…</Mono> · review {s.review_cadence} · declared {fmtInstant(s.declared_at)} · version <Mono>{String(s.current_version ?? 1)}</Mono>
             {s.forecast_id === null ? null : <> · built on forecast <Mono>{s.forecast_id.slice(0, 8)}…</Mono></>}
           </p>
+          {/* B27 anatomy */}<p style={{ fontSize: 'var(--eye-type-label-sm)' }}><a href={`/prediction/scenarios/anatomy?scenario=${s.scenario_id}`}>Anatomy of “{s.title}”: drivers, actors, mechanisms, the assumption register, suspensions and records →</a></p>{/* end B27 anatomy */}
           <ReviewState s={s} />
           <CoherencePanel s={s} scope={scope} canCheck={isForecastOwner || isStrategyOwner} onChanged={load} />
+          {/* B27 quality */}<p style={{ fontSize: 'var(--eye-type-label-sm)' }}><a href={`/prediction/scenarios/quality?scenario=${s.scenario_id}`}>Quality, indicator freshness and probabilities of {s.title}</a></p>{/* end B27 quality */}
           <ScrollBox label={`branches of ${s.title}`}>
           <table className="eye-table" style={tableStyle}>
             <thead><tr><Th>Branch</Th><Th>Kind</Th><Th>Divergence · assumptions</Th><Th>State</Th><Th>Indicator</Th><Th>Signpost</Th><Th>Owner</Th><Th>Window · deadline</Th><Th>Consequence</Th><Th>Simulation candidate</Th></tr></thead>

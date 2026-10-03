@@ -10,7 +10,7 @@ harness → web → act → records → hosted run — the unit the characterisa
 account WORKING day; it is calibrated in DELIVERY_PLAN.md §5.1 from B18–B22.
 
 WHAT IS SIMULATED (explicit resources, not constants):
-  - accounts working their lanes (DELIVERY_PLAN.md §8); first assignments PINNED (A1: B23 then B24; A2: B50;
+  - accounts working their lanes (DELIVERY_PLAN.md §8); first assignments PINNED (A1: its delivered order B23 … B27 (A1_DELIVERED); A2: B50;
     A3: B80 — per allocation); an idle account takes the highest-priority ready stage of any lane (priority =
     the remaining precedence-chain length);
   - stacking: a stage may start once its dependencies are IMPLEMENTED;
@@ -39,8 +39,11 @@ CONTINGENCY = 1.25
 EFFICIENCY = {1: 1.0, 2: 0.9, 3: 0.8, 4: 0.7}
 INTEG, HV, SLOTS, APPROVAL, STEP = 0.5, 0.15, 2, 1.0, 0.05
 ALLOC = {1: {0: 'BADCEF'}, 2: {0: 'BDF', 1: 'ACE'}, 3: {0: 'BF', 1: 'AC', 2: 'DE'}, 4: {0: 'B', 1: 'AF', 2: 'DC', 3: 'E'}}
-PIN = {1: {0: ['B23', 'B24']}, 2: {0: ['B23', 'B24'], 1: ['B50']}, 3: {0: ['B23', 'B24'], 1: ['B50'], 2: ['B80']},
-       4: {0: ['B23', 'B24'], 1: ['B50'], 2: ['B70'], 3: ['B80']}}
+# A1's DELIVERED order is pinned (2026-10-01): B23 → B24 → B28 → B32 → B34 → B29 → B36 → B90 → B27 are done, in that order; the
+# simulation may not reorder the past when a later plan change moves priorities (B27's completion bookkeeping, the owner's review).
+A1_DELIVERED = ['B23', 'B24', 'B28', 'B32', 'B34', 'B29', 'B36', 'B90', 'B27']
+PIN = {1: {0: list(A1_DELIVERED)}, 2: {0: list(A1_DELIVERED), 1: ['B50']}, 3: {0: list(A1_DELIVERED), 1: ['B50'], 2: ['B80']},
+       4: {0: list(A1_DELIVERED), 1: ['B50'], 2: ['B70'], 3: ['B80']}}
 
 rows = list(csv.DictReader(open(os.path.join(HERE, 'STAGES.csv'), newline='')))
 by = {r['stage']: r for r in rows}

@@ -14,10 +14,10 @@
     "V10": 441
   },
   "impl": {
-    "implemented": 1215,
-    "missing": 2381,
+    "implemented": 1268,
+    "missing": 2344,
     "not-applicable": 26,
-    "partial": 2642
+    "partial": 2626
   },
   "verif": {
     "not-applicable": 422,
@@ -50,7 +50,7 @@
     "P1": 217,
     "P2": 229,
     "P3": 327,
-    "P4": 203,
+    "P4": 191,
     "P5": 113,
     "P6": 151,
     "P7-A": 315,
@@ -58,7 +58,7 @@
     "P7-C": 97,
     "P7-D": 1679,
     "P7-E": 897,
-    "P7-F": 642,
+    "P7-F": 641,
     "R0": 40
   },
   "families": 220,

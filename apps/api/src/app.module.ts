@@ -15,6 +15,9 @@ import { PredictionModule } from './prediction/prediction.module.js';
 import { TwinModule } from './twin/twin.module.js';
 import { DecisionModule } from './decision/decision.module.js';
 import { ExecutiveModule } from './executive/executive.module.js';
+/* B90 (0095): the data product registry, event products, the semantic layer, the catalog */
+import { ProductsModule } from './products/products.module.js';
+/* end B90 */
 import { RetentionModule } from './retention/retention.module.js';
 
 @Module({
@@ -35,6 +38,7 @@ import { RetentionModule } from './retention/retention.module.js';
     TwinModule,
     DecisionModule,
     ExecutiveModule,
+    /* B90 (0095) */ ProductsModule /* end B90 */,
     RetentionModule,
   ],
 })

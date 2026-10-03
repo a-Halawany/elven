@@ -19,7 +19,8 @@ import { newId } from '../../shared/ids.js';
 
 export const EXECUTIVE_SIGNING_KEY_REF = /^EYE_EXECUTIVE_SIGNING_KEY_[A-Z0-9_]{1,64}$/;
 export const DEFAULT_EXECUTIVE_SIGNING_KEY_REF = 'EYE_EXECUTIVE_SIGNING_KEY_DEMO';
-export type SignatureSubjectKind = 'approval' | 'decision' | 'publication' | 'queue_transition' | 'plan_baseline' | 'briefing' | 'health_snapshot';
+export type SignatureSubjectKind = 'approval' | 'decision' | 'publication' | 'queue_transition' | 'plan_baseline' | 'briefing' | 'health_snapshot'
+  /* B90 (0095 §0): a product release, a metric certification */ | 'product_release' | 'metric_certification' /* end B90 */;
 export interface SignatureRow {
   signature_id: string; signer: string; key_id: string; algorithm: string; signature: string; subject_digest: string; bound_action: string; signed_at: string;
 }
