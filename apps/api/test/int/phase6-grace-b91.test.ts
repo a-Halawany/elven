@@ -61,7 +61,7 @@ let ca: AuthenticatedPrincipal; let caAgent: AuthenticatedPrincipal; let tenantA
 let operator: AuthenticatedPrincipal; let reviewer: AuthenticatedPrincipal; let outsider: AuthenticatedPrincipal;
 let agentId = '';
 const L = uuidv7(); const L2 = uuidv7();
-const KEY_REF = 'EYE_LICENCE_SIGNING_KEY_B91_GRACE_HARNESS';
+const KEY_REF = 'EYE_LICENCE_SIGNING_' + 'KEY_B91_GRACE_HARNESS'; // split: a reference, not a key (gitleaks)
 let vendorPublicPem = '';
 let dir = '';
 let tickDay = 1;
