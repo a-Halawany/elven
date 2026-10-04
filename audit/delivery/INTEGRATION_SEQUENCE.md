@@ -114,7 +114,11 @@ Older heads' green checks never stand for a new combination: every step below pr
   - **C19 lifecycle 37096472256:** attempt 1 FAILED. Its `lifecycle (macos-14)` job failed the C19 "DELIBERATE EVASION" control: the evader was not alive at 300 ms. Attempt 2, a FULL re-run of every job, succeeded.
     - **What is known:** the merge changed no gate, workflow or lifecycle file. The control passed 5/5 locally on macOS, and passed on #77's own head and on every earlier main chain.
     - **What is not known:** a passing retry does not prove the first failure's cause. It is recorded as unexplained, a hosted macOS runner effect suspected; the boundary is unchanged.
-- **The sequence is complete.** Main is `3779079`. #70 is open and not merged.
+- **The sequence is complete.** Main was `3779079`. #70 is open and not merged.
+- **After the sequence: #79** (B30-F, migration 0104, the bounded publication concern of §B30.8) at its verified head `de9db6a`, after main's chain for `3779079` had completed.
+  - Hosted on `de9db6a`: ci 37192237056 succeeded. build-test ran integration 1843/1843, API unit 3199 plus 9, web 244 and acceptance 58; supply-chain and browser-regression also passed. C19 lifecycle 37192237062 succeeded (ubuntu, macos, delivery-chain-dry, foreign-checkout-pinning). CodeRabbit: "Review skipped".
+  - Merged as `97d87ed` (2026-10-04) under the owner's standing merge authorization.
+  - Main's chain for `97d87ed`: ci 37194638684 → C19 lifecycle 37194638669 → C17 finalize 37196895886 → C19 anchor 37196965854 (created after the finalize), all succeeded on their first attempt.
 - **Every main chain** (ci, C19 lifecycle, C17 finalize, then the C19 anchor that follows the finalize) completed successfully before the next merge.
 
 

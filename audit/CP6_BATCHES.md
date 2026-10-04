@@ -5941,6 +5941,27 @@ The residual construction comes to about 0.8–1.6 U, with R2 apart. Moving the 
   - the longest precedence chain B80 … B26 → **B100**, 87.15 → **92.17 U**;
   - the acceptance split unchanged (3,555 = 3,179 + 339 + 37); the tracker, the schedule, the summaries and the controls pass.
 
+
+**Hosted, merged and on the demonstration (2026-10-04).**
+- **Local, on `de9db6a`:**
+
+  | Suite | Result |
+  |---|---|
+  | API unit | 3199 |
+  | Full integration (fresh database) | 1843/1843 |
+  | Acceptance | 58 |
+  | Upgrade proof | pass |
+
+- **Hosted, PR #79 at `de9db6a`:**
+  - ci 37192237056 (build-test): integration 1843/1843, API unit 3199 plus 9, web 244, acceptance 58;
+  - C19 lifecycle 37192237062: succeeded.
+- **The merge:** `97d87ed`, under the standing authorization. Main's chain: ci 37194638684 → C19 lifecycle 37194638669 → C17 finalize 37196895886 → C19 anchor 37196965854, all succeeded.
+- **The demonstration:**
+  - backup `.eye-local/backups/eye_demo-pre-0104-20261004T111119Z.dump` (pg_dump -Fc, 7,103 TOC entries);
+  - 0104 applied to eye_demo by `db:migrate` from the main checkout at `de9db6a` (never apply-pending);
+  - no API restart was needed (the migration re-declares one SQL function);
+  - `scripts/phase6/act-b30.mjs` re-run on eye_demo: ALL SCENES HELD (39.9 s; evidence in the scratchpad) — the act is rerun-safe under the live-contract approval rule.
+
 ## Order and the next implementation batch
 
 B3, B1 and B2 are done in code, B4/B5 applied to the audit (the 2026-09-11 checkpoints), B6 done in
