@@ -305,7 +305,7 @@ describe('B91 meters · M2 caps (tenant/domain × dimension × period, stop|warn
     expect(String(big['licence_bound'])).toMatch(/^uncontracted: no licence limit applies; the cap is bounded by nothing but itself/);
     // THE LICENCE (a stated superuser move — §EN's issue_licence is another part's port): 1,000 calls of inference, 100,000,000 ms of compute
     await sql`insert into commercial.licences (licence_id, version, tenant_id, package_key, capabilities, limits, effective_from, provenance, digest, issued_by, correlation_id)
-      values (${uuidv7()}::uuid, 1, ${T()}::uuid, 'b91-harness-package', array['foresight', 'decision', 'simulation'], ${JSON.stringify({ model_inference: 1000, simulation_compute: { wall_ms: 100_000_000 } })}::jsonb,
+      values (${uuidv7()}::uuid, 1, ${T()}::uuid, 'b91-harness-package', array['foresight', 'decision', 'simulation', 'observation', 'knowledge_memory', 'model_portfolio', 'agent_platform', 'advanced_integration'] /* integration: a licence turns §EN's gate on — the fixture licenses what this harness's later steps write */, ${JSON.stringify({ model_inference: 1000, simulation_compute: { wall_ms: 100_000_000 } })}::jsonb,
               clock_timestamp() - interval '1 day', '{"synthetic": true, "planted_by": "the B91 meters harness"}'::jsonb, ${sha('b91-licence')}, ${tenantAdmin.principalId}::uuid, ${uuidv7()}::uuid)`.execute(h.su);
     const used = await usedToday('model_inference', 'calls');
     expect(used).toBe(1);

@@ -394,7 +394,7 @@ LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, pg_temp AS $$
     WHEN split_part(p_action, '.', 1) IN ('identity', 'tenancy', 'audit', 'policy', 'retention', 'objects', 'commercial') THEN 'mandatory_control'
     WHEN left(p_action, 19) = 'prediction.warning.' OR left(p_action, 20) = 'executive.attention.' THEN 'warning_control'
     WHEN p_action ~ '(^|\.)(correct|withdraw)[a-z_]*(\.|$)' THEN 'correction_withdrawal'
-    WHEN p_action ~ '(^|\.)(read|list|search|export|download|verify)(\.|$)' THEN 'read_existing'
+    WHEN p_action ~ '(^|\.)(read|list|search|export|download|verify|retrieve)(\.|$)' THEN 'read_existing'  -- retrieve: an existing evidence object read under custody
     ELSE NULL END $$;
 REVOKE ALL ON FUNCTION commercial.cen_exemption(text, boolean) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION commercial.cen_exemption(text, boolean) TO eye_app, eye_commit;
@@ -934,20 +934,23 @@ BEGIN
           v_rules := NULL; v_rules_source := 'commercial.grace_rules unreadable — default: read and preserve only';
         END;
       END IF;
-      -- integration seam: §GR's grace_rules answers {state, policy, rules {new_work, finish_running_work, finish_running_actions,
-      -- capabilities (the last valid entitlement)}, explanation}; read as this gate's {mode, allow_actions, capabilities}:
-      -- new work allowed → full; running work may finish → only the finishing actions; otherwise read and preserve only.
+      -- integration seam: §GR's grace_rules answers {state, policy {allows}, rules {new_work, finish_running_work, finish_running_actions,
+      -- capabilities (the last valid entitlement)}, explanation}; read as this gate's {mode, allow_actions, capabilities}. The mode comes
+      -- from the grace POLICY's allows (as §GR computes it for a version in grace) — also when this gate reads grace before §GR's tick has
+      -- moved the version (an active licence past its term reads as active to §GR until the lapse step runs): new work allowed → full;
+      -- running work may finish → only the finishing actions; otherwise read and preserve only. The last valid entitlement narrows the
+      -- capabilities only once §GR holds the version in grace.
       IF v_rules IS NOT NULL AND jsonb_typeof(v_rules -> 'rules') = 'object' THEN
         v_rules := jsonb_build_object(
-          'mode', CASE WHEN coalesce((v_rules -> 'rules' ->> 'new_work')::boolean, false) THEN 'full'
-                       WHEN coalesce((v_rules -> 'rules' ->> 'finish_running_work')::boolean, false) THEN 'finish_running'
+          'mode', CASE WHEN coalesce(v_rules -> 'policy' -> 'allows', '[]'::jsonb) ? 'new_work' THEN 'full'
+                       WHEN coalesce(v_rules -> 'policy' -> 'allows', '[]'::jsonb) ? 'finish_running_work' THEN 'finish_running'
                        ELSE 'read_preserve' END,
-          'allow_actions', CASE WHEN NOT coalesce((v_rules -> 'rules' ->> 'new_work')::boolean, false)
-                                 AND coalesce((v_rules -> 'rules' ->> 'finish_running_work')::boolean, false)
+          'allow_actions', CASE WHEN NOT coalesce(v_rules -> 'policy' -> 'allows', '[]'::jsonb) ? 'new_work'
+                                 AND coalesce(v_rules -> 'policy' -> 'allows', '[]'::jsonb) ? 'finish_running_work'
                                  AND jsonb_typeof(v_rules -> 'rules' -> 'finish_running_actions') = 'array'
                                 THEN v_rules -> 'rules' -> 'finish_running_actions' ELSE '[]'::jsonb END,
-          'capabilities', v_rules -> 'rules' -> 'capabilities',
-          'explanation', v_rules -> 'explanation', 'policy', v_rules -> 'policy');
+          'capabilities', CASE WHEN v_rules ->> 'state' = 'grace' AND jsonb_typeof(v_rules -> 'last_valid') = 'object' THEN v_rules -> 'rules' -> 'capabilities' END,
+          'grace_state', v_rules ->> 'state', 'explanation', v_rules -> 'explanation', 'policy', v_rules -> 'policy');
       END IF;
       IF v_rules IS NULL OR jsonb_typeof(v_rules) <> 'object' THEN
         v_rules := jsonb_build_object('mode', 'read_preserve', 'allow_actions', '[]'::jsonb);

@@ -577,12 +577,25 @@ describe('B91 §LE · L7 INVOICE RECONCILIATION — SYNTHETIC invoices (V10-T-01
     expect(t).toMatchObject({ priced_usage: 1, unpriced: {} });
     expect(num((await expectPricedAsMath(uid['u6']!))[0]!['amount'])).toBeCloseTo(TOKENS_AMOUNT, 9);
     const r = (await reconcile(vendor, INV3)).reconciliation;
-    expect(r).toMatchObject({ version: 2, outcome: 'matched' });
+    // integrated (§ME): the attention tick's REAL storage sampler records this domain's evidence bytes (unit bytes) — this harness sets
+    // no rate card for bytes (rate cards are platform-wide; its units are its own), so those samples stay UNPRICED and, by the rule,
+    // unpriced usage is never matched. The tokens' recovery is proven per dimension; the whole invoice matches only when nothing else
+    // in the period is unpriced (POSITIVE proves a whole MATCHED reconciliation).
+    const sampled = Number((await one(sql`select count(*)::int as n from commercial.usage_records u where u.tenant_id = ${T()}::uuid and u.dimension = 'storage'
+      and u.source_kind = 'storage_sample' and (u.occurred_at at time zone 'UTC')::date = ${await day0(0)}::date and not exists (select 1 from commercial.cost_entries c where c.usage_id = u.usage_id)`))['n']);
+    const unpricedAll = Number((await one(sql`select count(*)::int as n from commercial.usage_records u where u.tenant_id = ${T()}::uuid
+      and not exists (select 1 from commercial.cost_entries c where c.usage_id = u.usage_id)`))['n']);
+    const lines = r['lines'] as Row[];
+    expect(lines.find((l) => l['dimension'] === 'model_inference'), JSON.stringify(lines)).toMatchObject({ unpriced_usage: 0, within_tolerance: true, quantity_difference: 0 });
+    for (const l of lines.filter((x) => x['dimension'] !== 'storage')) expect(l, JSON.stringify(l)).toMatchObject({ unpriced_usage: 0, within_tolerance: true });
+    expect(lines.find((l) => l['dimension'] === 'storage')?.['unpriced_usage'] ?? 0).toBe(sampled);
+    const outcome = sampled > 0 ? 'differences' : 'matched';
+    expect(r).toMatchObject({ version: 2, outcome });
     const view = (await tenantRead(auditor)).ledger;
     const inv = (view['invoices'] as Row[]).find((i) => i['invoice_id'] === INV3)!;
-    expect((inv['reconciliations'] as Row[]).map((x) => [x['version'], x['outcome']])).toEqual([[2, 'matched'], [1, 'differences']]);
+    expect((inv['reconciliations'] as Row[]).map((x) => [x['version'], x['outcome']])).toEqual([[2, outcome], [1, 'differences']]);
     expect(inv).toMatchObject({ synthetic: true });
-    expect(view['complete']).toBe(true);
+    expect(view['complete']).toBe(unpricedAll === 0);
     expect(RATE_SIM_V2).toMatch(/^[0-9a-f-]{36}$/);
   });
 });

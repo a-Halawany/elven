@@ -54,6 +54,11 @@ export interface RouteInfo {
    * The POLICY and AUDIT target stays `objectId` — one uuid, unchanged.
    */
   writableTargets?: string[];
+  /* B91 entitlements: declared by SERVER code only (never from a request) when this write IS a mandatory control the entitlement gate must
+     never refuse though its action belongs to a licensable capability — the attention agent's tick (agent.run, task attention_tick, kind
+     attention), which carries warnings and attention to named people and runs the licence lapse itself. */
+  mandatoryControl?: 'attention_tick';
+  /* end B91 entitlements */
 }
 
 export interface PipelineOutcome<T> {
@@ -383,7 +388,7 @@ export class PipelineService {
        version and what stays available. A refusal performs no business effect and destroys nothing. */
     if ((policyResult.decision === 'allow' || policyResult.decision === 'allow_with_obligations') && res.context.tenantId !== null) {
       const humanGated = policyResult.obligations.some((o) => o.type === 'human_gate');
-      if (entitlementExemption(route.action, humanGated) === null) {
+      if (route.mandatoryControl === undefined && entitlementExemption(route.action, humanGated) === null) {
         let availability: Availability;
         try {
           availability = await this.commitDb.transaction().execute(async (tx) => {

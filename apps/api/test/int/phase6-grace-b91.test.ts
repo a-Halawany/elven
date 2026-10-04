@@ -491,8 +491,9 @@ describe('B91 §GR · i THE SURFACE (UX-67-001) and the banner', () => {
     const mi = (lu['usage'] as Row[]).find((u) => u['dimension'] === 'model_inference')!;
     expect(mi).toMatchObject({ unit: 'calls', quantity: '1500', records: 2, limit: 5000 });
     expect(mi['share']).toBeCloseTo(0.3, 6);
-    expect(obj(lu['caps'])).toMatchObject({ available: false });
-    expect(obj(lu['budgets'])).toMatchObject({ available: false });
+    // integrated: §ME's caps and §LE's budgets exist — the surface reads them (this tenant has set none)
+    expect(obj(lu['caps'])).toMatchObject({ available: true, rows: [] });
+    expect(obj(lu['budgets'])).toMatchObject({ available: true });
     const rc = obj(s['renewal_and_continuity']);
     expect((rc['versions'] as Row[]).map((v) => [v['version'], v['state']]).filter(([, st]) => st !== undefined).length).toBeGreaterThanOrEqual(6);
     expect((rc['transitions'] as Row[]).length).toBeGreaterThanOrEqual(10);
@@ -500,8 +501,8 @@ describe('B91 §GR · i THE SURFACE (UX-67-001) and the banner', () => {
     expect(JSON.stringify(rc['tokens'])).not.toContain('payload_text');
     expect(obj(obj(s['grace'])['policy'])).toMatchObject({ version: 3, grace_days: 10 });
     const e = (await explain(operator)).explanation;
-    expect(e).toMatchObject({ capability: 'simulation', action: 'simulation.run', source: 'licence', contracted: true, licensed: false, available: false, licence: { version: 5, package_key: 'foresight-decision' } });
-    expect(String(e['reason'])).toBe('capability unavailable (entitlement): simulation is not licensed for this tenant (active; licence v5)');
+    expect(e).toMatchObject({ capability: 'simulation', action: 'simulation.run', source: 'gate' /* integrated: the banner answers §EN's gate verbatim */, contracted: true, licensed: false, available: false, licence: { version: 5, package_key: 'foresight-decision' } });
+    expect(String(e['reason'])).toMatch(/^capability unavailable \(entitlement\): simulation is not licensed for this tenant \(active; licence v5\)/);
     expect(e['always_available']).toEqual(expect.arrayContaining(['warnings and their acknowledgement', 'the audit read and verification']));
     expect((await explain(operator, 'foresight')).explanation).toMatchObject({ licensed: true, available: true, reason: null });
   });

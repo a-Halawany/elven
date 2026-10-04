@@ -16,7 +16,7 @@ export type Exemption = 'human_gate' | 'mandatory_control' | 'warning_control' |
 
 const MANDATORY_TOP = new Set(['identity', 'tenancy', 'audit', 'policy', 'retention', 'objects', 'commercial']);
 const CORRECTION = /(^|\.)(correct|withdraw)[a-z_]*(\.|$)/;
-const READ = /(^|\.)(read|list|search|export|download|verify)(\.|$)/;
+const READ = /(^|\.)(read|list|search|export|download|verify|retrieve)(\.|$)/;
 
 export function entitlementExemption(action: string, humanGated = false): Exemption | null {
   if (humanGated) return 'human_gate';

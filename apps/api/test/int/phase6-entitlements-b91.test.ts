@@ -133,6 +133,7 @@ const CONSTRAINT = { key: 'regensburg-pallets', kind: 'business_rule', title: 'R
 let setSeq = 0;
 const declareSet = () => capi.declare(dreq(steward, 'simulation.constraint.declare', T, D, 'twin'), T, D,
   { payload: { setKey: `b91-capacity-${RUN}-${++setSeq}`, title: 'Regensburg capacity (SYNTHETIC)', constraints: [CONSTRAINT], note: 'declared under the entitlement harness' } }) as Promise<{ set: Row }>;
+let READABLE = 0;  // EN3: the sets readable before the fall-back to core
 const listSets = () => capi.listSets(dreq(steward, 'simulation.constraint.read', T, D, 'twin'), T, D, { payload: {} }) as Promise<{ sets: Row[] }>;
 const setCount = () => n(sql`select count(*)::int n from simulation.constraint_sets where tenant_id = ${T}::uuid`);
 
@@ -380,8 +381,13 @@ describe('EN2 · the entitlement matrix through the pipeline\'s gate', () => {
   it('GRACE through §GR\'s seam — commercial.grace_rules(tenant) allows finishing declared work; recovery: the rule removed, read-and-preserve again', async () => {
     const seam = (await one(sql`select to_regprocedure('commercial.grace_rules(uuid)') is not null as s`))['s'] === true;
     if (seam) {
-      // the integrated migration carries §GR's grace_rules: the gate consults it (whatever it allows is §GR's harness to prove)
-      expect((await gate(T, 'simulation.experiment.declare'))['grace']).toMatchObject({ rules_source: 'commercial.grace_rules' });
+      // the integrated migration carries §GR's grace_rules: the gate consults it and reads its answer through the seam — under §GR's
+      // stated default policy (read and preserve + finish running work) a declaration (new work) is refused and a FINISHING action of
+      // running work is available; the declared constraint work itself still runs while the licence is active (recovery)
+      const g = await gate(T, 'simulation.constraint.declare');
+      expect(g).toMatchObject({ available: false, state: 'grace', grace: { rules_source: 'commercial.grace_rules', rules: { mode: 'finish_running' } } });
+      expect(await gate(T, 'simulation.experiment.execute')).toMatchObject({ available: true, state: 'grace', grace: { rules: { mode: 'finish_running' } } });
+      expect(await refusal(declareSet())).toMatchObject({ status: 403, code: 'EYE-ENT-001' });
       return;
     }
     // THE STAND-IN for §GR's function (absent from this worktree), created and dropped here: grace lets declared constraint work continue
@@ -457,6 +463,8 @@ describe('EN3 · the boundary: no mandatory control is ever refused on a tenant 
     'simulation.read', 'simulation.fabric.read', 'twin.read', 'decision.read',                               // reads of existing records
   ];
   it('positive: v5 (core only) — every mandatory control reaches its handler; the audit read, identity and the simulation reads answer', async () => {
+    READABLE = (await listSets()).sets.length;  // every constraint set the customer holds before the fall-back — all stay readable
+    expect(READABLE).toBeGreaterThanOrEqual(1);
     const r = await issue(T, { skuCode: SKU.core, orderRef: order('5'), reason: 'the tenant falls back to core only' });
     expect(r.licence).toMatchObject({ version: 5, capabilities: ['attention_controls', 'core'] });
     for (const a of MANDATORY) expect(await reach(omni, a), a).toBe('reached');
@@ -468,7 +476,7 @@ describe('EN3 · the boundary: no mandatory control is ever refused on a tenant 
     // identity: the caller's own identity (/me, the identity authority)
     const me = await admin.me({ eyeEnvelope: env(tadmin, 'identity.self.read', 'TENANT', T, null), eyePrincipal: tadmin } as never);
     expect(me).toMatchObject({ me: { principalId: tadmin.principalId } });
-    expect((await listSets()).sets.length).toBeGreaterThanOrEqual(2);
+    expect((await listSets()).sets.length).toBe(READABLE);
     // and the writes of the unlicensed capabilities ARE refused — availability, not control
     expect(await reach(omni, 'simulation.experiment.declare')).toMatchObject({ status: 403, code: 'EYE-ENT-001' });
     expect(await reach(omni, 'prediction.forecast.issue')).toMatchObject({ status: 403, code: 'EYE-ENT-001' });
@@ -478,7 +486,7 @@ describe('EN3 · the boundary: no mandatory control is ever refused on a tenant 
     it(`refusal-proof: ${state} — the licence state never reaches a mandatory control (every one still reaches its handler)`, async () => {
       await setState(T, state);
       for (const a of MANDATORY) expect(await reach(omni, a), `${state}: ${a}`).toBe('reached');
-      expect((await listSets()).sets.length).toBeGreaterThanOrEqual(2);
+      expect((await listSets()).sets.length).toBe(READABLE);
       expect(await reach(omni, 'simulation.experiment.declare')).toMatchObject({ status: 403, code: 'EYE-ENT-001' });
     });
   }
@@ -486,7 +494,7 @@ describe('EN3 · the boundary: no mandatory control is ever refused on a tenant 
   it('recovery: the licence back to active (core only) — the controls unchanged, the customer\'s records intact', async () => {
     await setState(T, 'active');
     for (const a of MANDATORY.slice(0, 4)) expect(await reach(omni, a), a).toBe('reached');
-    expect(await setCount()).toBeGreaterThanOrEqual(2);
+    expect(await setCount()).toBeGreaterThanOrEqual(READABLE);  // nothing the customer held was lost
   });
 });
 
