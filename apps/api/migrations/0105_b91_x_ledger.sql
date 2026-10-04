@@ -916,3 +916,20 @@ LANGUAGE sql STABLE SET search_path = commercial, pg_catalog, pg_temp AS $$
 $$;
 REVOKE ALL ON FUNCTION commercial.energy_estimate(uuid, timestamptz, timestamptz) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION commercial.energy_estimate(uuid, timestamptz, timestamptz) TO eye_app, eye_commit;
+
+/* THE UNPRICED USAGE COUNTS for the commercial authority (a guarded definer, PLATFORM only): the prelude's usage isolation gives the vendor no
+   row of a tenant's usage, so its view of a tenant's ledger could not otherwise say what is still UNPRICED — and a view that cannot see the
+   gap must not claim completeness. Counts per dimension × unit only; no usage row leaves. The tenant's own contexts read the rows under RLS. */
+CREATE OR REPLACE FUNCTION commercial.unpriced_usage_counts(p_tenant uuid, p_from timestamptz, p_to timestamptz)
+RETURNS TABLE (dimension text, unit text, usage_records int)
+STABLE SECURITY DEFINER SET search_path = commercial, public, pg_catalog, pg_temp AS $$
+BEGIN
+  IF public.eye_scope() IS DISTINCT FROM 'PLATFORM' THEN
+    RAISE EXCEPTION 'read rejected (scope): the unpriced usage counts are the commercial authority''s (platform scope); a tenant reads its own usage' USING ERRCODE = '42501';
+  END IF;
+  RETURN QUERY SELECT u.dimension, u.unit, count(*)::int FROM commercial.usage_records u
+    WHERE u.tenant_id = p_tenant AND u.occurred_at >= p_from AND u.occurred_at < p_to AND NOT EXISTS (SELECT 1 FROM commercial.cost_entries c WHERE c.usage_id = u.usage_id)
+    GROUP BY u.dimension, u.unit ORDER BY u.dimension, u.unit;
+END $$ LANGUAGE plpgsql;
+REVOKE ALL ON FUNCTION commercial.unpriced_usage_counts(uuid, timestamptz, timestamptz) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION commercial.unpriced_usage_counts(uuid, timestamptz, timestamptz) TO eye_app, eye_commit;

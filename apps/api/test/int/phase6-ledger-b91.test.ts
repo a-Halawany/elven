@@ -272,6 +272,10 @@ describe('B91 §LE · L2 PRICING BY THE TICK: the rate in force at occurred_at, 
     const v = (await tenantRead(tadmin)).ledger;
     expect(v['complete']).toBe(false);
     expect(v['unpriced']).toEqual(expect.arrayContaining([{ dimension: 'model_inference', unit: U.tokens, usage_records: 1 }]));
+    // the commercial authority's view of the tenant says the same — through the guarded counts (the usage rows are not the vendor's to read)
+    const pv = (await platformRead(vendor, { tenantId: T() })).ledger['tenant'] as Row;
+    expect(pv['complete']).toBe(false);
+    expect(pv['unpriced']).toEqual(expect.arrayContaining([{ dimension: 'model_inference', unit: U.tokens, usage_records: 1 }]));
     await refused(setRate(vendor, { dimension: 'storage', unit: U.gb, pricePerUnit: '0.002', currency: 'EUR', effectiveFrom: await dbAgo(3 * DAY), synthetic: true, reason: 'B91 ledger harness — a retroactive price' }),
       /^rate card rejected \(priced\): usage of storage:.* is already priced; a price never changes under a priced entry/, 409);
     await refused(setKey(vendor, { tenantId: T(), dimension: 'storage', basis: 'SYNTHETIC: a retroactive re-split', shares: [{ domainId: D(), weight: 1 }], effectiveFrom: await dbAgo(2.5 * DAY), reason: 'B91 ledger harness — refused' }),

@@ -28,6 +28,8 @@ export interface LedgerReads {
   variance(tenantId: string, budgetId: string): Promise<Row | null>;
   totals(tenantId: string, from: string, to: string): Promise<Row[]>;
   unpriced(tenantId: string, from: string, to: string): Promise<Row[]>;
+  /** The commercial authority's view: the counts through the guarded definer (the usage rows are not the vendor's to read). */
+  unpricedForVendor(tenantId: string, from: string, to: string): Promise<Row[]>;
   entries(tenantId: string, f: { from: string; to: string; dimension: string | null; limit: number }): Promise<Row[]>;
   unitCost(tenantId: string, from: string, to: string): Promise<Row[]>;
   energy(tenantId: string, from: string, to: string): Promise<Row[]>;
@@ -92,6 +94,8 @@ class LedgerCapabilityImpl implements RateWrites, BudgetWrites, InvoiceWrites, O
   unpriced(tenantId: string, from: string, to: string) { return this.rows(sql`select u.dimension, u.unit, count(*)::int as usage_records from commercial.usage_records u
     where u.tenant_id = ${tenantId}::uuid and u.occurred_at >= ${from}::timestamptz and u.occurred_at < ${to}::timestamptz
       and not exists (select 1 from commercial.cost_entries c where c.usage_id = u.usage_id) group by u.dimension, u.unit order by u.dimension, u.unit`); }
+  unpricedForVendor(tenantId: string, from: string, to: string) { return this.rows(sql`select u.dimension, u.unit, u.usage_records
+    from commercial.unpriced_usage_counts(${tenantId}::uuid, ${from}::timestamptz, ${to}::timestamptz) u`); }
   entries(tenantId: string, f: { from: string; to: string; dimension: string | null; limit: number }) { return this.rows(sql`select c.entry_id::text, c.usage_id::text, c.line, c.scope, c.domain_id::text,
     c.product_id::text, c.consumer_principal_id::text, c.capability_key, c.dimension, c.unit, c.asset_ref, c.profile, c.quantity::text, c.share::text, c.allocation, c.allocation_version,
     c.rate_key, c.rate_version, c.price_per_unit::text, c.currency, c.amount::text, c.energy_kwh::text, c.energy_label, c.occurred_at, c.priced_at

@@ -150,7 +150,7 @@ export class LedgerService {
   }
 
   /** THE LEDGER VIEW of a tenant, under the reader's row security, at the database's instant. */
-  async view(cap: LedgerReads, tenantId: string, m: Row, cid: string) {
+  async view(cap: LedgerReads, tenantId: string, m: Row, cid: string, vendor = false) {
     const now = await cap.now();
     const w = windowOf(m, now, cid);
     const budgets = await cap.budgets(tenantId);
@@ -158,7 +158,7 @@ export class LedgerService {
     for (const b of budgets) withVariance.push({ ...b, variance: await cap.variance(tenantId, String(b['budget_id'])), events: await cap.budgetEvents(String(b['budget_id']), 10) });
     const invoices = [];
     for (const i of await cap.invoices(tenantId)) invoices.push({ ...i, lines: await cap.invoiceLines(String(i['invoice_id'])), reconciliations: await cap.reconciliations(String(i['invoice_id'])) });
-    const unpriced = await cap.unpriced(tenantId, w.from, w.to);
+    const unpriced = vendor ? await cap.unpricedForVendor(tenantId, w.from, w.to) : await cap.unpriced(tenantId, w.from, w.to);
     return {
       tenant_id: tenantId, as_of: now, window: w,
       rate_cards: await this.rateCards(cap, now),
@@ -180,7 +180,7 @@ export class LedgerService {
     const tenantId = typeof m['tenantId'] === 'string' && UUID.test(m['tenantId']) ? m['tenantId'] : null;
     if (m['tenantId'] !== undefined && m['tenantId'] !== null && tenantId === null) no(cid, 'tenantId is a tenant id');
     return { as_of: now, rate_cards: await this.rateCards(cap, now), tenants: await cap.tenants(), optimisations: await cap.optimisations(tenantId),
-      tenant: tenantId === null ? null : await this.view(cap, tenantId, m, cid) };
+      tenant: tenantId === null ? null : await this.view(cap, tenantId, m, cid, true) };
   }
 
   async entries(cap: LedgerReads, tenantId: string, m: Row, cid: string) {
