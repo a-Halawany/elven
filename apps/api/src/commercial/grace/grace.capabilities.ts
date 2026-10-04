@@ -97,7 +97,7 @@ class GraceCapabilityImpl implements TransitionWrites, PolicyWrites, TokenWrites
     return r.rows;
   }
   async gate(tenantId: string, action: string) {
-    const exists = await sql<{ ok: boolean }>`select to_regprocedure('commercial.capability_available(uuid,text)') is not null as ok`.execute(this.#tx);
+    const exists = await sql<{ ok: boolean }>`select to_regprocedure('commercial.capability_available(uuid,text,boolean)') is not null as ok`.execute(this.#tx);
     if (exists.rows[0]?.ok !== true) return null;
     const r = await sql<{ r: Record<string, unknown> | null }>`select to_jsonb(commercial.capability_available(${tenantId}::uuid, ${action})) as r`.execute(this.#tx);
     return r.rows[0]?.r ?? null;

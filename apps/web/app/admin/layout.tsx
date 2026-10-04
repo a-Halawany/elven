@@ -17,8 +17,8 @@ const NAV = [
   { href: '/admin/objects', key: 'nav.objects' },
   { href: '/admin/audit', key: 'nav.audit' },
   /* B91 entitlements */ { href: '/admin/commercial/catalog', key: 'nav.commercial.catalog' }, /* end B91 entitlements */
-  /* B91 grace */ { href: '/admin/commercial', key: 'Entitlement' }, /* end B91 grace */
-  /* B91 ledger */ { href: '/admin/commercial/ledger', key: 'Cost ledger' }, /* end B91 ledger */
+  /* B91 grace */ { href: '/admin/commercial', key: 'nav.commercial.entitlement' }, /* end B91 grace */
+  /* B91 ledger */ { href: '/admin/commercial/ledger', key: 'nav.commercial.ledger' }, /* end B91 ledger */
   /* B91 meters */ { href: '/admin/commercial/usage', key: 'nav.commercial.usage' }, /* end B91 meters */
 ];
 

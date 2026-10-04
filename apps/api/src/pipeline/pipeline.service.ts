@@ -393,7 +393,9 @@ export class PipelineService {
           });
         } catch (e) {
           if (e instanceof CapabilityDeniedError) throw await this.denyCapability(envelope, principal, route, e);
-          throw e;
+          // fail closed, governed: an availability that cannot be read admits nothing (no business effect) and answers 503, not a raw 500
+          throw new HttpException(errorBody('EYE_DEP_001', envelope.correlation_id,
+            'the availability of this capability could not be determined (the entitlement read failed); nothing was done — retry'), 503);
         }
         if (!availability.available) {
           const refused: PolicyResult = { ...policyResult, decision: 'deny', obligations: [], reason: availability.reason };

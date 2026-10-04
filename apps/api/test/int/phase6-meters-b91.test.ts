@@ -254,7 +254,7 @@ describe('B91 meters · M1 the recording points (usage_records only; idempotent)
     const callId = await gatewayCall(140);
     const mi = await usage('model_inference');
     expect(mi).toHaveLength(1);
-    expect(mi[0]).toMatchObject({ source_kind: 'gateway_call', source_ref: callId, unit: 'calls', capability_key: 'intelligence' });
+    expect(mi[0]).toMatchObject({ source_kind: 'gateway_call', source_ref: callId, unit: 'calls', capability_key: 'model_portfolio' });
     expect(Number(mi[0]!['quantity'])).toBe(1);
     expect(obj(mi[0]!['details'])).toMatchObject({ latency_ms: 140, mode: 'replay', outcome: 'completed', tokens: null, tokens_note: 'the gateway records no token counts; inference is metered in calls' });
     // storage: the tick step samples the domain's evidence bytes (the port measures; hot + archive of the evidence vault, no tombstones)
@@ -377,7 +377,7 @@ describe('B91 meters · M4 B90\'s carryover: the consumer register\'s usage coun
     expect(u1).toMatchObject({ metric_servings: 1, metered_by: 'B91 §ME (0105)' });
     const pc = await usage('product_consumption', 'metric_serving');
     expect(pc).toHaveLength(1);
-    expect(pc[0]).toMatchObject({ unit: 'servings', source_ref: String(s1['serving_id']), capability_key: 'data_products' });
+    expect(pc[0]).toMatchObject({ unit: 'servings', source_ref: String(s1['serving_id']), capability_key: 'advanced_integration' });
     expect(obj(pc[0]!['details'])).toMatchObject({ product_id: P_MET, consumer_principal_id: analyst.principalId, view: 'analyst' });
     // THE EVENT PRODUCT: the corridor warning stream, the analyst subscribed (authorized by the owner) and registered as its consumer
     await w.exec.publishAttentionPolicy(h.req(execOwner, 'executive.attention.policy.publish', 'ATP', null, 'executive'), T(), D(), { payload: { reason: 'the corridor warnings routed to the forecast owner (B91 meters harness)', rules: { classes: {
@@ -519,7 +519,7 @@ describe('B91 meters · M5 the reads and the boundary', () => {
     const u = await tenantRead();
     const dims = new Set(arr(u['meters']).map((m) => `${String(m['dimension'])}/${String(m['unit'])}`));
     for (const k of ['model_inference/calls', 'source_consumption/requests', 'source_consumption/bytes', 'simulation_compute/wall_ms', 'storage/bytes', 'product_consumption/servings', 'product_consumption/events']) expect(dims.has(k), k).toBe(true);
-    expect(arr(u['meters']).find((m) => m['dimension'] === 'model_inference')).toMatchObject({ today: 3, capability: 'intelligence' });
+    expect(arr(u['meters']).find((m) => m['dimension'] === 'model_inference')).toMatchObject({ today: 3, capability: 'model_portfolio' });
     expect(arr(u['caps']).map((c) => c['dimension']).sort()).toEqual(['model_inference', 'simulation_compute', 'source_consumption']);
     expect(arr(u['breaches']).map((b) => b['kind']).sort()).toEqual(['crossed', 'refused', 'refused']);
     expect(obj(u['licence'])).toMatchObject({ contracted: true, version: 1, package_key: 'b91-harness-package' });

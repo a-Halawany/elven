@@ -2,7 +2,7 @@
  * CP-6 B91 part `meters` (0105 §ME; F-P7-F-02's meters and caps, B90's usage counters) — THE METER SERVICE: the cap intake, the storage
  * tick step and the envelope sweep's admission check.
  *
- * THE TICK STEP `commercial-storage-sample` (order 80): on every attention tick the domain's EVIDENCE bytes are sampled by the port
+ * THE TICK STEP `commercial-storage-sample` (order 81, after the licence lapse 80 and before the ledger 82 prices it): on every attention tick the domain's EVIDENCE bytes are sampled by the port
  * (commercial.record_usage, source kind storage_sample — the port measures; the step names no figure), once per domain per hour of the
  * database's clock (a second tick in the hour records nothing). It writes commercial.usage_records only. The §LE ledger's pricing step
  * should run after it (a higher order) so a sample is priced in the tick that took it.
@@ -19,7 +19,7 @@ import { MeterCapability } from './meters.capabilities.js';
 
 type Row = Record<string, unknown>;
 export const STORAGE_SAMPLE_STEP = 'commercial-storage-sample';
-export const STORAGE_SAMPLE_ORDER = 80;
+export const STORAGE_SAMPLE_ORDER = 81;
 export const DIMENSIONS = ['model_inference', 'source_consumption', 'storage', 'simulation_compute', 'product_consumption'] as const;
 export type Dimension = (typeof DIMENSIONS)[number];
 export const UNITS: Record<Dimension, readonly string[]> = {

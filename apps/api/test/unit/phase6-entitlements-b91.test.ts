@@ -37,7 +37,7 @@ describe('B91 §EN · the exemption list (ADR-022: what no licence state can mak
 });
 
 describe('B91 §EN · the refusal family maps per class (every text the migration raises)', () => {
-  const sqlText = readFileSync(join(__dirname, '../../migrations/0105_b91_x_entitlements.sql'), 'utf8');
+  const sqlText = readFileSync(join(__dirname, '../../migrations/0105_b91_metering_ledger_entitlements_licensing.sql'), 'utf8');
   const texts = [...sqlText.matchAll(/RAISE EXCEPTION '((capability|offer|licence|contract) rejected \(([a-z_]+)\)[^']*)'/g)].map((m) => ({ text: m[1]!, cls: m[3]! }));
   const want = (cls: string): number => (['actor', 'ownership', 'authority'].includes(cls) ? 403 : cls.startsWith('unknown_') ? 404 : ['state', 'stale', 'duplicate'].includes(cls) ? 409 : 422);
   it('the migration raises the four families (and nothing else in the class form)', () => {
