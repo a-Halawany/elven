@@ -650,7 +650,7 @@ so its queues must never share the demonstration's Redis — and an APFS clone o
   - **Created by the act**, through governed routes:
     - **C. Marchetti** (`c.marchetti`, `commercial_authority` at PLATFORM — the vendor; created on `POST /v1/platform/principals` by the platform administrator);
     - **N. Vogel** (`n.vogel`, `tenant_admin` of NORDWERK; the tenant route).
-  - **Existing personas used:** T. Nakamura (the sweep), E. Kovács (the experiment), M. Dvořák (the budget owner and the attention policy), A. Hoffmann and F. Ferreira (the extraction whose gateway call is metered), E. Lindqvist (the auditor), T. Richter.
+  - **Existing personas used:** T. Nakamura (the sweep), E. Kovács (the experiment), M. Dvořák (the budget owner and the attention policy), A. Hoffmann and L. Ferreira (the extraction whose gateway call is metered), E. Lindqvist (the auditor), T. Richter.
 - **The order is fixed:**
   1. `node scripts/phase6/act-b91.mjs` (the scenes, about 7 minutes of real ticks);
   2. the four walks `e2e/phase6-b91-{entitlements,grace,ledger,meters}.demo.spec.ts` with the act's `EYE_B91_*` lines;
