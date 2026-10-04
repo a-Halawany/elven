@@ -18,6 +18,7 @@
  *   EYE_B91_READER            a domain reader of the simulation workspace (default t.richter — domain_admin)
  *   EYE_B91_LICENCE_VERSION   the licence version the act left current (required)
  *   EYE_B91_GRACE             '1' when the act staged the grace scene (the default), '0' when the licence was left ACTIVE
+ *   EYE_B91_LICENSED          the licence's capability list exactly as the record holds it (the act's line: the package's ∪ core, sorted, ', ')
  */
 import { expect as baseExpect, test, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
@@ -36,6 +37,9 @@ mkdirSync(SHOTS, { recursive: true });
 const shot = (page: Page, name: string) => page.screenshot({ path: join(SHOTS, `${name}.png`), fullPage: true });
 const READER = process.env['EYE_B91_READER'] ?? 't.richter';
 const GRACE = (process.env['EYE_B91_GRACE'] ?? '1') === '1';
+const esc = (v: string) => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** The licensed capability list the act printed (never a list of this walk's own). */
+const licensed = () => esc(required('EYE_B91_LICENSED'));
 
 async function uiLogin(page: Page, username: string, password: string): Promise<void> {
   await page.goto('/login');
@@ -80,7 +84,7 @@ test.describe.serial('CP-6 B91 §GR — the entitlement surface and grace on the
     await expect(page.getByRole('heading', { name: 'Entitlement and licence continuity', level: 1 })).toBeVisible();
     const headings = page.getByRole('heading', { level: 2 });
     await expect(headings).toHaveText(['Current entitlement', 'Included capabilities', 'Limits and usage', 'Renewal and continuity', 'Grace']);
-    await expect(page.getByText(/^Licensed: decision, foresight/)).toBeVisible();
+    await expect(page.getByText(new RegExp(`^Licensed: ${licensed()} ·`))).toBeVisible();
     await expect(page.getByText(/Always available, in every state:/)).toContainText('warnings and their acknowledgement');
     await expect(page.getByRole('list', { name: 'licence transitions' })).toBeVisible();
     // the tenant administrator acts on nothing here: no act panel for a TENANT session
@@ -93,8 +97,8 @@ test.describe.serial('CP-6 B91 §GR — the entitlement surface and grace on the
     await uiLogin(page, required('EYE_B91_TENANT_ADMIN'), required('EYE_TEST_ADMIN_PASSWORD'));
     await page.goto('/admin/commercial');
     await expect(page.getByText('GRACE', { exact: true })).toBeVisible();
-    await expect(page.getByTestId('standing-explanation')).toContainText(/^GRACE until .*: the last valid entitlement \(decision, foresight\) stays available as the grace policy allows — running work may finish, no new work starts; every record stays readable and exportable\./);
-    await expect(page.getByTestId('last-valid')).toContainText(/^Last valid entitlement: licence v\d+ · decision, foresight · limits /);
+    await expect(page.getByTestId('standing-explanation')).toContainText(new RegExp(`^GRACE until .*: the last valid entitlement \\(${licensed()}\\) stays available as the grace policy allows — running work may finish, no new work starts; every record stays readable and exportable\\.`));
+    await expect(page.getByTestId('last-valid')).toContainText(new RegExp(`^Last valid entitlement: licence v\\d+ · ${licensed()} · limits `));
     await expect(page.getByRole('list', { name: 'licence transitions' })).toContainText(/grace entered \(active → grace; term ended\) by the attention tick/);
     await shot(page, 'b91-grace-5-grace');
     // the simulation workspace says the same grace, from the server
@@ -102,7 +106,7 @@ test.describe.serial('CP-6 B91 §GR — the entitlement surface and grace on the
     await page.goto('/twins/simulations');
     const banner = page.getByRole('note', { name: 'entitlement' });
     await expect(banner).toContainText('GRACE');
-    await expect(banner).toContainText(/Last valid entitlement: licence v\d+ · decision, foresight/);
+    await expect(banner).toContainText(new RegExp(`Last valid entitlement: licence v\\d+ · ${licensed()}`));
     await shot(page, 'b91-grace-6-banner-grace');
   });
 

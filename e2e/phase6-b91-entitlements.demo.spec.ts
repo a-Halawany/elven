@@ -14,7 +14,8 @@
  * What is asserted is what the record says on screen — never a state derived here. Screenshots go to EYE_SHOTS
  * (evidence/phase6-browser/b91-entitlements-*.png). Personas: the vendor (EYE_B91_VENDOR — created by the act as the commercial authority),
  * the run operator T. Nakamura (EYE_B91_OPERATOR, default `t.nakamura`), the executive M. Dvořák (EYE_B91_EXECUTIVE, default `m.dvorak`).
- * The corridor run: EYE_B91_CORRIDOR_RUN (a completed run id the act prints). Every figure is SYNTHETIC.
+ * The corridor run: EYE_B91_CORRIDOR_RUN (a completed run id the act prints). EYE_B91_GRACE (the act's line): '1' when the licence the act left
+ * is in GRACE — the licensed cells then read the grace state, the refusal names grace. Every figure is SYNTHETIC.
  */
 import { expect as baseExpect, test, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
@@ -34,7 +35,10 @@ const shot = (page: Page, name: string) => page.screenshot({ path: join(SHOTS, `
 const OPERATOR = process.env['EYE_B91_OPERATOR'] ?? 't.nakamura';
 const EXECUTIVE = process.env['EYE_B91_EXECUTIVE'] ?? 'm.dvorak';
 const TENANT = process.env['EYE_B91_TENANT_NAME'] ?? 'NORDWERK ANTRIEBSTECHNIK GmbH (SYNTHETIC)';
-const REFUSAL = /capability unavailable \(entitlement\): simulation is not licensed for this tenant \(active; licence v\d+\)/;
+// the state the act LEFT: active while the licence's term runs, grace once the attention agent's tick moved it (EYE_B91_GRACE = '1', the act's line)
+const GRACE = (process.env['EYE_B91_GRACE'] ?? '0') === '1';
+const REFUSAL = /capability unavailable \(entitlement\): simulation is not licensed for this tenant \((active|grace); licence v\d+\)/;
+const LICENSED_CELL = GRACE ? '◐ grace — read and preserve' : '● licensed';
 
 async function uiLogin(page: Page, username: string, password: string): Promise<void> {
   await page.goto('/login');
@@ -50,8 +54,8 @@ test.describe.serial('CP-6 B91 §EN — the entitlement on the demonstration', (
     await page.goto('/admin/commercial/catalog');
     await expect(page.getByRole('heading', { name: 'Commercial catalogue', level: 1 })).toBeVisible();
     const matrix = page.getByRole('table', { name: 'entitlement matrix' });
-    await expect(matrix.getByLabel(`${TENANT} foresight`)).toHaveText('● licensed');
-    await expect(matrix.getByLabel(`${TENANT} decision`)).toHaveText('● licensed');
+    await expect(matrix.getByLabel(`${TENANT} foresight`)).toHaveText(LICENSED_CELL);
+    await expect(matrix.getByLabel(`${TENANT} decision`)).toHaveText(LICENSED_CELL);
     await expect(matrix.getByLabel(`${TENANT} simulation`)).toHaveText('○ not licensed');
     await expect(matrix.getByLabel(`${TENANT} core`)).toHaveText('● core — cannot be removed');
     await expect(matrix.getByLabel(`${TENANT} attention_controls`)).toHaveText('● core — cannot be removed');
