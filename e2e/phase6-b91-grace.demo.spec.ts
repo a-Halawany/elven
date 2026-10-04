@@ -58,7 +58,8 @@ test.describe.serial('CP-6 B91 §GR — the entitlement surface and grace on the
     await expect(banner).toBeVisible();
     await expect(banner).toContainText('simulation is not available');
     await expect(banner).toContainText(`v${version}`);
-    await expect(banner.getByTestId('entitlement-reason')).toContainText(/^capability unavailable \(entitlement\): simulation is not licensed for this tenant \((active|grace); licence v\d+\)$/);
+    // the gate's reason verbatim: the capability, the state the act left, the licence version — and its tail, what stays available
+    await expect(banner.getByTestId('entitlement-reason')).toContainText(/^capability unavailable \(entitlement\): simulation is not licensed for this tenant \((active|grace); licence v\d+\) — reads of existing records, corrections and withdrawals, export, audit, identity, warnings and their acknowledgement, and every human decision stay available$/);
     await expect(banner).toContainText('warnings and their acknowledgement');
     await expect(banner).toContainText('the audit read and verification');
     await shot(page, 'b91-grace-1-simulation-banner');
