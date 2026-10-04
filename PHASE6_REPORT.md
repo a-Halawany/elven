@@ -4556,3 +4556,19 @@ The mechanism is in `audit/CP6_BATCHES.md` §B27. There is one migration, `0097_
   - the walk selectors.
 - **The substitution:** a person proposed the 62 % estimate, because the publisher had nothing new. The agent's proposal is harness-proven (ES5).
 - **The three features stay partial on a few rows.** Each residual is carried (§B30.5): implemented 1333 → 1366. The three-account M1 finish stays 2027-07-14.
+
+### 48.4 Hosted, merged, and the 2026-10-04 follow-up
+
+- **N-01:**
+  - hosted on `d2b325f` (ci 37090122211): integration 1774/1774;
+  - merged `b952b46`;
+  - the harness is 58 cases (35 discriminating, 23 invariant).
+- **B30:**
+  - hosted on `2c04441` (ci 37094792063): integration 1842/1842, API unit 3199 + 9, web 244;
+  - merged `3779079`, chain ci 37096472221 → C17 finalize 37098742587 → C19 anchor 37098830166;
+  - C19 lifecycle 37096472256 attempt 1 failed a macOS control and the full attempt 2 passed. The cause is unexplained, and a retry proves none.
+- **0104:** the estimate's approval requires the live constraint contract, so the re-versioned and retired-set bypasses are closed. ES8 is 8/8 each way (§B30.8).
+- **The B30 bookkeeping applied:**
+  - completions F-P5-02 at B26, F-P5-03 at B33, F-P5-04 at B100;
+  - M1 402.5–694.2 U;
+  - three accounts 2027-07-12.

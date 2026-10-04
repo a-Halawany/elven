@@ -106,7 +106,15 @@ Older heads' green checks never stand for a new combination: every step below pr
   - **A5 on the full re-run:** ratio 1.0123, with stalls on both sides. Both are recorded for H1.
 - **#73** at `4b176bc`. Merged as `41b3fe1`.
 - **#74** (N-01) at `d2b325f`. Merged as `b952b46`, after main's chain for `41b3fe1`.
-- **B30 (#77):** main merged in; this records commit; its checks run on that head.
+- **#77** (B30) at its verified head `2c04441`. Merged as `3779079`.
+  - **Two corrections on the way, each found by its own hosted run:**
+    - `pnpm boundaries` found a circular import (fixed in `e0bcaa3`);
+    - the `phase6-commitments-b34` O1 read-before-applied race (fixed in `2c04441`; the assertion is unchanged).
+  - **Main's chain for `3779079`:** ci 37096472221 → C17 finalize 37098742587 → C19 anchor 37098830166, all succeeded.
+  - **C19 lifecycle 37096472256:** attempt 1 FAILED. Its `lifecycle (macos-14)` job failed the C19 "DELIBERATE EVASION" control: the evader was not alive at 300 ms. Attempt 2, a FULL re-run of every job, succeeded.
+    - **What is known:** the merge changed no gate, workflow or lifecycle file. The control passed 5/5 locally on macOS, and passed on #77's own head and on every earlier main chain.
+    - **What is not known:** a passing retry does not prove the first failure's cause. It is recorded as unexplained, a hosted macOS runner effect suspected; the boundary is unchanged.
+- **The sequence is complete.** Main is `3779079`. #70 is open and not merged.
 - **Every main chain** (ci, C19 lifecycle, C17 finalize, then the C19 anchor that follows the finalize) completed successfully before the next merge.
 
 

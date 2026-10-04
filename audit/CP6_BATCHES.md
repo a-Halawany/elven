@@ -5728,6 +5728,13 @@ The owner's instruction of 2026-10-02: N-01 was still OPEN. Its corrections were
 - **`eye_demo`:** it stays at 0101 at this candidate. It reaches 0102 with B30's staging, through the normal backup + `db:migrate` path.
 - **`apply-pending.sh`** was not run against `eye_demo` or anything live.
 
+### N-01.5 — hosted, the merge, and the counts (recorded 2026-10-04)
+
+- **The harness count.** It is 58 cases: 35 discriminating and 23 invariant (the operator-session control is the 58th). The ledger's earlier "57/57, 22 invariant" is corrected.
+- **Local evidence** (this host, disposable PostgreSQL 18.6): 58/58 each way and the cross-checks; integration 1774/1774; unit 3099/3099; acceptance 58/58; upgrade PASS.
+- **Hosted, on #74's final head `d2b325f`** (ci 37090122211): integration **1774/1774**, API unit 3101 + 9, web 225, acceptance 58/58, and every other check green. The PR's first head `407875e` had passed build-test too.
+- **The merge.** Merged as **`b952b46`**. Main's chain: ci 37092820059, C19 lifecycle 37092820071, C17 finalize 37095031824, C19 anchor 37095087054.
+
 ## B30 — twin state, reconciliation, envelope and calibration (0103): F-P5-02, F-P5-03 and F-P5-04 built, with the B30 pieces of F-P5-06 and F-P5-07. Estimation and reconciliation, the branch-aware state store with freshness and freeze, the envelope disabling decision use, calibration and the model's lifecycle, chunked method-fabric experiments, checkpoints acted on, retirement, envelope sweeps and benchmark validation. Implemented; the three features stay partial on a few rows, each residual carried.
 
 ### B30.1 — how it was built
@@ -5859,7 +5866,7 @@ B30 builds its three features' clauses. They stay **partial** on a few rows, as 
 - → **B26:** the calibration tick hook, and sweeps beyond supply-flow@1.
 - → **B54:** the egress client classing an early non-2xx answer as `transport` without a status (#76).
 
-The residual construction comes to about 0.8–1.6 U, with R2 apart. Moving the three features' completion stages to their carriers (the B31 rule) is proposed for the next bookkeeping pass; it is not applied here, and the stage efforts and dependencies are retained.
+The residual construction comes to about 0.8–1.6 U, with R2 apart. Moving the three features' completion stages to their carriers (the B31 rule) was proposed here; it was APPLIED on 2026-10-04 (§B30.8), with the remaining construction counted at 0.65–1.35 U.
 
 **Stale rows still naming B30 for work B30 delivered.** Ten rows of F-P5-01 and F-P5-05 still name B30 as carrier for work it has now delivered (e.g. L5-C07, "disabling a behaviour outside the calibrated envelope"). They are named for the same pass.
 
@@ -5870,6 +5877,69 @@ The residual construction comes to about 0.8–1.6 U, with R2 apart. Moving the 
 - **The schedule:** B30 is pinned in A1's delivered order, which moves no date (the three-account M1 finish stays 2027-07-14).
 - **Also updated:** the ledger's 0103 row; `PHASE6_REPORT.md` §48; `docs/ops/DEMONSTRATION_RUNBOOK.md` §20; `audit/delivery/INTEGRATION_SEQUENCE.md` (the B30 row, step 16).
 - **The candidate** is the B30 PR (`phase6-b30` → `phase6-n01`).
+
+### B30.7 — hosted, the merge, the demonstration's operations (recorded 2026-10-04)
+
+**Hosted, on #77's final head `2c04441`** (ci 37094792063): integration **1842/1842**, API unit 3199 + 9, web 244, acceptance 58/58, and every check green.
+- **The difference from local.** The local figures in §B30.4 are from the integration head before the hosted corrections. The hosted runs found two defects, both corrected:
+  - the boundaries cycle (`e0bcaa3`);
+  - the commitments-b34 O1 race (`2c04441`).
+
+**The merge.** Merged as **`3779079`**. Main's chain: ci 37096472221 → C17 finalize 37098742587 → C19 anchor 37098830166.
+- **C19 lifecycle 37096472256:** attempt 1 failed one macOS control, "DELIBERATE EVASION"; attempt 2, a full re-run of all jobs, succeeded.
+- **Not explained.** A passing retry does not prove the cause. The merge changed no gate file, and the control passes locally on macOS.
+
+**The demonstration's operations** (all within the standing demo permissions; `apply-pending.sh` never used):
+- **Backups.**
+  - `eye_demo-pre-0102-20261002T135254Z.dump` — the source of the rehearsal copy `eye_demo_b30`, since dropped.
+  - `eye_demo-pre-0102-20261002T145926Z.dump` — taken immediately before the migration.
+- **The migration.** `eye_demo` was migrated through 0102 and 0103 by `db:migrate` on 2026-10-02.
+- **The API on :3401** was restarted twice with `demo-restart.sh` (VERIFIED each time): onto the B30 build after the migration, and again after the browser gate, which had stopped it.
+- **The web on :3000** (the preview server) was started on the B30 build, restarted after the Simulations page fix, stopped for the browser gate, and started again.
+
+**Substitutions, as before.** On the demonstration a person (A. Hoffmann) proposed the 62 % estimate; the Reconciliation Agent's proposal is harness-proven only (ES5). The Decision Agent's run session in act-b35 stays B73's substitution, not runtime integration.
+
+### B30.8 — the publication concern (0104), and the bookkeeping applied (2026-10-04)
+
+**The finding** (source inspection, then a real-path reproduction):
+- `EstimationService.decide` publishes the snapshot and then calls `twin.decide_estimate` (0103), which checked only the STORED `constraint_outcome`.
+- On a disposable database, through the governed routes, phase6-estimation-b30 ES8 showed the bypass on two paths:
+  - a proposal checked against `corridor-transit-balance` v(n) was APPROVED after the steward published v(n+1), which it violates;
+  - another proposal was APPROVED after the steward retired the set.
+- Each approval admitted a snapshot, wrote an approval event and the outbox. The twin head was unchanged throughout.
+
+**The correction: 0104, forward; 0100–0103 untouched.**
+- `twin.decide_estimate` is re-declared, copied whole, with one marked block. An approval requires every pinned set to be live at the pinned version and digest. It also requires that no live set the primary estimator selects was declared or versioned after the proposal unpinned.
+- Otherwise the approval is refused with `estimate rejected (contract)`, mapped to 409 with stale. The whole approval rolls back: the draft, the grounding, the admission, the approval event and the outbox.
+- The proposal's own check is its history and is not rewritten. A decline is unaffected.
+
+**Proof (local):**
+
+| Run | Database | Result |
+|---|---|---|
+| Baseline expectations (`EYE_ES8_BASELINE=1`) | through 0103 | **8/8**: both bypasses reproduced |
+| Corrected expectations | through 0104 | **8/8**: both refused with nothing admitted, no approval event, no outbox; the proposals stay `proposed` with their historical pins; recovered by fresh proposals; the unchanged contract approves |
+| Cross-check: corrected expectations | through 0103 | 1 failed |
+| Cross-check: baseline expectations | through 0104 | 1 failed |
+
+**The bookkeeping (the B27/B31/B35 rule).** B30 completes none of F-P5-02/-03/-04 and keeps its delivered effort, 7.5–13.5 U.
+- **F-P5-02 completes at B26** (estimator drift), after B41 (input confidence and policy) and B33 (topology harness, cross-twin check, the estimate item closed, the citation kind).
+- **F-P5-03 completes at B33** (non-actual merges, the scenario citation kind, the scenario form), after B25 (provenance environment).
+- **F-P5-04 completes at B100** (the indicators), after B26 (assumption taxonomy, calibration hook), B75 (evaluation), B110 (sovereignty) and B33.
+- **The remaining construction** is 0.65–1.35 U, each piece counted once.
+- **Dependencies.**
+  - On B30's delivered work: F-P5-03's and F-P5-04's (feature to feature), and F-P5-08's on F-P5-03. These are now stage extra-dependencies on B30, not on a later completion.
+  - On completion: the completing stages after their carriers.
+- **R2 paperwork stays R2:** AT-36 / PR-36-006 and V04-T-028.
+- **The ten rows that named delivered B30 work,** clause by clause:
+  - implemented: V00-T-048, V01-T-013, L5-C07, ES-35-001, PR-36-002;
+  - partial, the unfinished part named: C-018 (R2, external), V02-T-121 (B33), V03-T-473 (B78/B51), PR-36-001 (B33), CAP-DS-06 (B33).
+- **Re-derived once:**
+  - rows implemented 1366 → **1370**, partial 2543 → **2539**;
+  - M1 effort 401.85–692.85 → **402.5–694.2 U**;
+  - the three-account M1 finish 2027-07-14 → **2027-07-12** (finishing stage B72, now A2);
+  - the longest precedence chain B80 … B26 → **B100**, 87.15 → **92.17 U**;
+  - the acceptance split unchanged (3,555 = 3,179 + 339 + 37); the tracker, the schedule, the summaries and the controls pass.
 
 ## Order and the next implementation batch
 

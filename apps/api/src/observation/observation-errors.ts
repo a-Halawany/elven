@@ -1099,7 +1099,8 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
      the snapshot, the candidates, the parameters, the note …). */
   { match: /^(estimator|estimate|observation request|estimation trigger) rejected \((actor|ownership|authority|separation_of_duties)\)/i, status: 403, code: 'EYE_AUT_001' },
   { match: /^(estimator|estimate|observation request|estimation trigger) rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
-  { match: /^(estimator|estimate|observation request|estimation trigger) rejected \((state|stale|duplicate)\)/i, status: 409, code: 'EYE_STA_002' },
+  /* 0104: `estimate rejected (contract)` — the constraint contract changed under a proposal (a set re-versioned, retired or come to apply) — 409 with stale */
+  { match: /^(estimator|estimate|observation request|estimation trigger) rejected \((state|stale|duplicate|contract)\)/i, status: 409, code: 'EYE_STA_002' },
   { match: /^(estimator|estimate|observation request|estimation trigger) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
   /* end B30 estimation */
   /* B30 experiments (0103 §EX) — the families `retirement rejected (<class>)` (a run's or an experiment's retirement), `adapter quarantine

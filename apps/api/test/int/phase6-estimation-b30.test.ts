@@ -68,6 +68,8 @@ let twinId = ''; let v1 = 0; let seriesKey = ''; let attentionAgent = ''; let en
 let day = 0;
 const T = () => h.fx.tenantId; const D = () => h.fx.domainId;
 const KEY = 'corridor.capacity_share';
+/** ES8's BEFORE mode (EYE_ES8_BASELINE=1, on a database through 0103 only): the approvals under a changed contract SUCCEED — the bypass reproduced. */
+const ES8_BASELINE = process.env['EYE_ES8_BASELINE'] === '1';
 /** The corridor's baseline transit count (SYNTHETIC): the capacity share is the latest count against it, in per cent. */
 const BASELINE = 104;
 const obj = (v: unknown): Row => (v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Row) : {});
@@ -470,6 +472,73 @@ describe('B30 part ES · twin state estimation and continuous reconciliation (01
    * unreadable version COUNTS: the conservative branch, proven through the real route and the port. LAST in the file: the tombstone degrades
    * the series for the rest of the database's life.
    */
+  it('ES8 · THE CONSTRAINT CONTRACT AT PUBLICATION: an approval re-checks that the set versions the proposal was checked against are still the live ones — a set re-versioned (v2 the proposal violates) or retired between proposal and approval REFUSES the approval with nothing admitted, no approval event, no outbox; the proposal keeps its historical check; recovered by a fresh proposal; the unchanged contract approves', async () => {
+    const setRow = (await rows(sql`select set_id::text as set_id, current_version, state from simulation.constraint_sets where tenant_id = ${T()}::uuid and set_key = 'corridor-transit-balance'`))[0] as Row;
+    const SET = String(setRow['set_id']);
+    const versionSet = (expectedVersion: number, constraints: Row[], note: string) =>
+      cons.version(h.req(steward, 'simulation.constraint.version', 'CST', SET, 'twin'), T(), D(), SET, { payload: { expectedVersion, constraints, note } }) as Promise<{ set: Row }>;
+    const CONSERVED = { key: 'transits-conserved', kind: 'conservation', stocks: [KEY], tolerance: 0.5, unit: 'transits/day', applies_to: ['run_input'], title: 'the proposal accounts for the observed count' };
+    const effects = async () => ({
+      admitted: (await rows(sql`select 1 from twin.twin_versions where twin_id = ${twinId}::uuid and state = 'admitted'`)).length,
+      drafts: (await rows(sql`select 1 from twin.twin_versions where twin_id = ${twinId}::uuid and state = 'draft'`)).length,
+      approvals: (await ledger('estimate.approved')).length,
+      outbox: (await rows(sql`select 1 from objects.object_outbox where tenant_id = ${T()}::uuid and event_type in ('TwinStateChanged', 'GraphChanged') and payload::text like ${'%' + twinId + '%'}`)).length,
+    });
+    // POSITIVE (the contract unchanged): proposed against the live set version, approved
+    const v0 = Number(setRow['current_version']);
+    const p0 = await propose();
+    expect(p0).toMatchObject({ constraint: 'satisfied', state: 'proposed' });
+    expect((await readEstimate(String(p0['estimate_id'])))['constraint_check']).toMatchObject({ pins: [expect.objectContaining({ set_key: 'corridor-transit-balance', version: v0 })] });
+    const ok0 = await decide(String(p0['estimate_id']), 'approved', 'the contract is unchanged since the proposal (SYNTHETIC)');
+    expect(ok0.decision).toMatchObject({ state: 'approved' });
+    // RE-VERSIONED: a proposal checked against v(n); the steward publishes v(n+1) the proposal violates (the share capped at 10 %), the head untouched
+    const p1 = await propose();
+    expect(p1).toMatchObject({ constraint: 'satisfied' });
+    const vio = await versionSet(v0, [CONSERVED, { key: 'share-at-most-10', kind: 'business_rule', quantity: KEY, op: '<=', value: 10, unit: '%', per: 'day', applies_to: ['run_input'] }],
+      'the corridor share capped at ten per cent for the audit (SYNTHETIC)');
+    expect(vio.set).toBeTruthy();
+    expect(Number(((await rows(sql`select current_version from simulation.constraint_sets where set_id = ${SET}::uuid`))[0] as Row)['current_version'])).toBe(v0 + 1);
+    const before1 = await effects();
+    if (ES8_BASELINE) {   // BEFORE 0104: approved under the changed contract — a new snapshot admitted, an approval event, the outbox
+      expect((await decide(String(p1['estimate_id']), 'approved', 'approving under a contract that changed')).decision).toMatchObject({ state: 'approved' });
+      const after1 = await effects();
+      expect([after1.admitted - before1.admitted, after1.approvals - before1.approvals, after1.outbox > before1.outbox]).toEqual([1, 1, true]);
+    } else {
+      await refused(decide(String(p1['estimate_id']), 'approved', 'approving under a contract that changed'), /^estimate rejected \(contract\): .*corridor-transit-balance.*v\d+.*v\d+/, 409);
+      expect(await effects()).toEqual(before1);   // nothing admitted, no draft, no approval event, no outbox
+    }
+    const kept1 = await readEstimate(String(p1['estimate_id']));
+    expect(kept1).toMatchObject({ state: ES8_BASELINE ? 'approved' : 'proposed', constraint_check: expect.objectContaining({ outcome: 'satisfied', pins: [expect.objectContaining({ version: v0 })] }) });   // its history kept
+    // RECOVERED: a fresh proposal under v(n+1) is checked against it (violated — not approvable); the steward restores a satisfiable v(n+2); a fresh proposal approves
+    const p1b = await propose();
+    expect(p1b).toMatchObject({ constraint: 'violated' });
+    await versionSet(v0 + 1, [CONSERVED, { key: 'share-at-most-100', kind: 'business_rule', quantity: KEY, op: '<=', value: 100, unit: '%', per: 'day', applies_to: ['run_input'] }],
+      'the cap restored to one hundred per cent (SYNTHETIC)');
+    const p1c = await propose();
+    expect(p1c).toMatchObject({ constraint: 'satisfied' });
+    expect((await decide(String(p1c['estimate_id']), 'approved', 'proposed again under the live contract (SYNTHETIC)')).decision).toMatchObject({ state: 'approved' });
+    // RETIRED: a proposal checked against the live set; the steward retires the set before the approval
+    const p2 = await propose();
+    expect(p2).toMatchObject({ constraint: 'satisfied' });
+    await cons.retire(h.req(steward, 'simulation.constraint.retire', 'CST', SET, 'twin'), T(), D(), SET, { payload: { reason: 'the corridor balance is checked elsewhere now (SYNTHETIC)' } });
+    const before2 = await effects();
+    if (ES8_BASELINE) {   // BEFORE 0104: approved under the retired contract
+      expect((await decide(String(p2['estimate_id']), 'approved', 'approving under a retired contract')).decision).toMatchObject({ state: 'approved' });
+      const after2 = await effects();
+      expect([after2.admitted - before2.admitted, after2.approvals - before2.approvals, after2.outbox > before2.outbox]).toEqual([1, 1, true]);
+    } else {
+      await refused(decide(String(p2['estimate_id']), 'approved', 'approving under a retired contract'), /^estimate rejected \(contract\): .*corridor-transit-balance.*retired/, 409);
+      expect(await effects()).toEqual(before2);
+      expect((await readEstimate(String(p2['estimate_id'])))['state']).toBe('proposed');
+    }
+    // RECOVERED: a fresh proposal checked against what is live now (no set applies — stated vacuous), approved
+    const p2b = await propose();
+    expect(p2b).toMatchObject({ constraint: 'satisfied' });
+    expect((await readEstimate(String(p2b['estimate_id'])))['constraint_check']).toMatchObject({ vacuous: true, pins: [] });
+    expect((await decide(String(p2b['estimate_id']), 'approved', 'proposed again after the retirement (SYNTHETIC)')).decision).toMatchObject({ state: 'approved' });
+    evidenceLog('ES8', { revisioned_refused: true, retired_refused: true, recovered: true });
+  });
+
   it('ES7 · AN UNREADABLE VERSION THAT STATES NO DAY STILL DISQUALIFIES (the window rule\'s conservative branch); the preview discloses why — nothing proposed', async () => {
     const evd = await rows(sql`select (payload ->> 'manifest_id') as manifest, to_char(coalesce(event_time, valid_from) at time zone 'UTC', 'YYYY-MM-DD') as day from objects.canonical_objects
       where object_type = 'EVD' and tenant_id = ${T()}::uuid and provenance_ref like ${`SRC:${h.fx.sourceId}@%`} order by recorded_at`);
