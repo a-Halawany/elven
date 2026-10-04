@@ -155,10 +155,12 @@ export class GraceService implements OnModuleInit {
     };
   }
 
-  /** THE EXPLANATION (the simulations banner): the server's reason, the licence version, what stays available. §EN's gate answers the
-   *  availability of an action when it exists (commercial.capability_available — the integrator's seam); this part states the licence. */
-  async explanation(cap: GraceReads, tenantId: string, capabilityKey: string): Promise<Row> {
+  /** THE EXPLANATION (the simulations banner): the server's reason, the licence version, what stays available. When §EN's gate exists in the
+   *  build (commercial.capability_available, found by to_regprocedure — the integrator's seam) ITS availability and reason for the action are
+   *  answered verbatim (source 'gate'); without it, this part states the licence (source 'licence'). */
+  async explanation(cap: GraceReads, tenantId: string, capabilityKey: string, action: string): Promise<Row> {
     const rules = await cap.graceRules(tenantId);
+    const gate = await cap.gate(tenantId, action);
     const licence = (rules['licence'] ?? null) as Row | null;
     const r = (rules['rules'] ?? {}) as Row;
     const contracted = rules['contracted'] === true;
@@ -167,8 +169,12 @@ export class GraceService implements OnModuleInit {
     const reason = !contracted ? null
       : licensed ? (state === 'grace' ? `in grace: ${capabilityKey} stays available as the grace policy allows — ${r['new_work'] === true ? 'new work may start' : r['finish_running_work'] === true ? 'running work may finish; no new work starts' : 'no work runs'}` : null)
       : `capability unavailable (entitlement): ${capabilityKey} is not licensed for this tenant (${state}; licence v${String(licence?.['version'] ?? '?')})`;
+    // §EN's gate, when this build has it, is the SERVER's answer for the action: its availability and its reason are shown verbatim
+    const gateAvailable = gate === null ? null : gate['available'] === true;
+    const gateReason = gate === null || gateAvailable === true ? null : (typeof gate['reason'] === 'string' ? gate['reason'] : null);
     return {
-      capability: capabilityKey, contracted, state, licensed, available: !contracted || licensed, reason,
+      capability: capabilityKey, action, source: gate === null ? 'licence' : 'gate', contracted, state, licensed,
+      available: gateAvailable ?? (!contracted || licensed), reason: gate === null ? reason : gateReason,
       licence: licence === null ? null : { licence_id: licence['licence_id'], version: licence['version'], package_key: licence['package_key'], capabilities: licence['capabilities'], term_end: licence['term_end'], grace_until: licence['grace_until'] },
       last_valid: rules['last_valid'] ?? null, explanation: rules['explanation'], always_available: ALWAYS_AVAILABLE, as_of: rules['as_of'],
     };

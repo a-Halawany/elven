@@ -32,6 +32,8 @@ export interface GraceReads {
   readable(relation: string): Promise<boolean>;
   /** The tenant's metered usage this calendar month (the database's month), per dimension and unit — §ME's records, read under their row security. */
   usageThisMonth(tenantId: string): Promise<Array<{ dimension: string; unit: string; quantity: string; records: number; first_at: string | null; last_at: string | null }>>;
+  /** §EN's availability gate, when it exists in this build (the integrator's seam): commercial.capability_available(tenant, action) as jsonb; null when absent. */
+  gate(tenantId: string, action: string): Promise<Record<string, unknown> | null>;
   /** The tenant's rows of a seam relation (fixed identifiers only). */
   seamRows(relation: 'commercial.caps' | 'commercial.budgets', tenantId: string): Promise<Array<Record<string, unknown>>>;
 }
@@ -93,6 +95,12 @@ class GraceCapabilityImpl implements TransitionWrites, PolicyWrites, TokenWrites
        where u.tenant_id = ${tenantId}::uuid and u.occurred_at >= date_trunc('month', clock_timestamp())
        group by u.dimension, u.unit order by u.dimension, u.unit`.execute(this.#tx);
     return r.rows;
+  }
+  async gate(tenantId: string, action: string) {
+    const exists = await sql<{ ok: boolean }>`select to_regprocedure('commercial.capability_available(uuid,text)') is not null as ok`.execute(this.#tx);
+    if (exists.rows[0]?.ok !== true) return null;
+    const r = await sql<{ r: Record<string, unknown> | null }>`select to_jsonb(commercial.capability_available(${tenantId}::uuid, ${action})) as r`.execute(this.#tx);
+    return r.rows[0]?.r ?? null;
   }
   async seamRows(relation: 'commercial.caps' | 'commercial.budgets', tenantId: string) {
     return (await this.from(relation).selectAll().where('tenant_id' as never, '=', tenantId as never).limit(200).execute()) as Array<Record<string, unknown>>;

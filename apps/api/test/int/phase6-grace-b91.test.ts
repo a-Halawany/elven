@@ -500,7 +500,7 @@ describe('B91 §GR · i THE SURFACE (UX-67-001) and the banner', () => {
     expect(JSON.stringify(rc['tokens'])).not.toContain('payload_text');
     expect(obj(obj(s['grace'])['policy'])).toMatchObject({ version: 3, grace_days: 10 });
     const e = (await explain(operator)).explanation;
-    expect(e).toMatchObject({ capability: 'simulation', contracted: true, licensed: false, available: false, licence: { version: 5, package_key: 'foresight-decision' } });
+    expect(e).toMatchObject({ capability: 'simulation', action: 'simulation.run', source: 'licence', contracted: true, licensed: false, available: false, licence: { version: 5, package_key: 'foresight-decision' } });
     expect(String(e['reason'])).toBe('capability unavailable (entitlement): simulation is not licensed for this tenant (active; licence v5)');
     expect(e['always_available']).toEqual(expect.arrayContaining(['warnings and their acknowledgement', 'the audit read and verification']));
     expect((await explain(operator, 'foresight')).explanation).toMatchObject({ licensed: true, available: true, reason: null });

@@ -15,7 +15,8 @@
  *   POST /v1/tenants/:tenantId/commercial/grace/standing          commercial.grace.read          (the /admin/commercial surface)
  *   POST /v1/tenants/:tenantId/commercial/grace/rules             commercial.grace.read          (commercial.grace_rules: what §EN's gate reads)
  * THE DOMAIN (the simulation workspace's readers):
- *   POST /v1/tenants/:tenantId/domains/:domainId/commercial/grace/explanation   commercial.grace.read  (payload capability, default 'simulation')
+ *   POST /v1/tenants/:tenantId/domains/:domainId/commercial/grace/explanation   commercial.grace.read  (payload capability, default 'simulation';
+ *                                                                     action, default '<capability>.run' — §EN's gate's answer for it when present)
  */
 import { Body, Controller, HttpException, Param, Post, Req } from '@nestjs/common';
 import { errorBody } from '@eye/contracts';
@@ -28,6 +29,7 @@ import { GraceService, validatePolicy, validateRenewal, validateToken, validateT
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CAPABILITY_KEY = /^[a-z][a-z0-9_]{1,40}$/;
+const ACTION = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*){1,6}$/;
 
 function ctx(req: EyeRequest) {
   const envelope = req.eyeEnvelope;
@@ -151,14 +153,16 @@ export class GraceController {
 
   // ── the domain (the simulation workspace's banner) ───────────────────────────────
   @Post('/v1/tenants/:tenantId/domains/:domainId/commercial/grace/explanation')
-  async explanation(@Req() req: EyeRequest, @Param('tenantId') tenantIdRaw: string, @Param('domainId') domainIdRaw: string, @Body() body: { payload?: { capability?: string } }) {
+  async explanation(@Req() req: EyeRequest, @Param('tenantId') tenantIdRaw: string, @Param('domainId') domainIdRaw: string, @Body() body: { payload?: { capability?: string; action?: string } }) {
     const { envelope, principal } = ctx(req);
     const tenantId = id(tenantIdRaw, 'tenantId', envelope.correlation_id);
     const domainId = id(domainIdRaw, 'domainId', envelope.correlation_id);
     const c = body?.payload?.capability ?? 'simulation';
     if (typeof c !== 'string' || !CAPABILITY_KEY.test(c)) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'capability must be a capability key'), 422);
+    const a = body?.payload?.action ?? `${c}.run`;
+    if (typeof a !== 'string' || !ACTION.test(a)) throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, 'action must be an action name'), 422);
     const out = await this.pipeline.consequentialRead(envelope, principal, { scope: 'DOMAIN', tenantId, domainId, action: 'commercial.grace.read', objectType: 'LIC', objectId: null },
-      GraceCapability.read, async (cap) => this.grace.explanation(cap, tenantId, c));
+      GraceCapability.read, async (cap) => this.grace.explanation(cap, tenantId, c, a));
     return { explanation: out.result, receipt: receipt(out) };
   }
 }

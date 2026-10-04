@@ -34,7 +34,7 @@ export interface Standing {
   as_of: string;
 }
 export interface Explanation {
-  capability: string; contracted: boolean; state: LicenceState; licensed: boolean; available: boolean; reason: string | null;
+  capability: string; action: string; source: 'gate' | 'licence'; contracted: boolean; state: LicenceState; licensed: boolean; available: boolean; reason: string | null;
   licence: { licence_id: string; version: number; package_key: string; capabilities: string[]; term_end: string | null; grace_until: string | null } | null;
   last_valid: Snapshot | null; explanation: string; always_available: string[]; as_of: string;
 }
