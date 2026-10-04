@@ -26,6 +26,9 @@ import { PdpService, type Obligation, type PolicyInput, type PolicyResult } from
 import { newId } from '../shared/ids.js';
 import { degradedAudit } from '../shared/degraded-store.js';
 import { OutboxCapability, type CapabilityFactory } from '../shared/capabilities.js';
+/* B91 entitlements */
+import { entitlementExemption, ENTITLEMENT_RESULT_CODE, type Availability } from '../commercial/entitlements/entitlement-gate.js';
+/* end B91 entitlements */
 
 export interface RouteInfo {
   scope: Scope;
@@ -369,6 +372,42 @@ export class PipelineService {
       environment: { deployment: 'local-dev', clockQuality: envelope.clock_quality },
     };
     const policyResult = this.pdp.evaluate(policyInput);
+    /* B91 entitlements (0105 §EN; ADR-022, PR-66-003, UX-67-004) — THE AVAILABILITY GATE, after the PDP's allow (the PDP stays pure: no
+       database in pdp.service.ts). Only an ALLOWED request on a TENANT- or DOMAIN-scoped route is asked; an EXEMPT action never is (the
+       pure list in entitlement-gate.ts, mirrored by commercial.cen_exemption: every human-gated rule, identity, tenancy, audit, policy,
+       retention/export, objects, commercial, warnings and attention, corrections and withdrawals, reads of existing records). The rest is
+       asked of commercial.capability_available(tenant, action, human_gated) under a capability-free EVIDENCE context of this very route
+       (its N-01 guard reads the bound tenant; nothing else is written). An UNCONTRACTED tenant (no licence row) is always available, so
+       every deployment without a licence behaves exactly as before. A refusal is a DENY recorded through recordDenial (POL + AUD) with the
+       result code EYE-ENT-001 and answered 403 EYE_ENT_001 with the database's explanation: the capability, the state, the licence
+       version and what stays available. A refusal performs no business effect and destroys nothing. */
+    if ((policyResult.decision === 'allow' || policyResult.decision === 'allow_with_obligations') && res.context.tenantId !== null) {
+      const humanGated = policyResult.obligations.some((o) => o.type === 'human_gate');
+      if (entitlementExemption(route.action, humanGated) === null) {
+        let availability: Availability;
+        try {
+          availability = await this.commitDb.transaction().execute(async (tx) => {
+            await this.establishEvidenceContext(tx, principal, res.context, envelope, route);
+            const r = await sql<{ a: Availability }>`select commercial.capability_available(${res.context.tenantId}::uuid, ${route.action}, ${humanGated}) as a`.execute(tx);
+            return r.rows[0]!.a;
+          });
+        } catch (e) {
+          if (e instanceof CapabilityDeniedError) throw await this.denyCapability(envelope, principal, route, e);
+          throw e;
+        }
+        if (!availability.available) {
+          const refused: PolicyResult = { ...policyResult, decision: 'deny', obligations: [], reason: availability.reason };
+          await this.recordDenial(envelope, principal, route, res.context, policyInput, refused, ENTITLEMENT_RESULT_CODE);
+          throw new HttpException({
+            ...errorBody('EYE_ENT_001', envelope.correlation_id, availability.reason),
+            entitlement: { capability: availability.capability?.key ?? availability.capability_name, state: availability.state,
+                           licence_version: availability.licence?.version ?? null, stays_available: availability.stays_available,
+                           grace: availability.grace },
+          }, 403);
+        }
+      }
+    }
+    /* end B91 entitlements */
     return { ctx: res.context, policyInput, policyResult };
   }
 
@@ -521,6 +560,7 @@ export class PipelineService {
     ctx: ScopeContext,
     policyInput: PolicyInput,
     policyResult: PolicyResult,
+    resultCode?: string, /* B91 entitlements: the entitlement refusal's EYE-ENT-001 (absent → the PDP's codes, as before) */
   ): Promise<void> {
     const polId = newId();
     try {
@@ -529,7 +569,7 @@ export class PipelineService {
         await this.commitPolicy(tx, envelope, route, policyInput, policyResult, polId);
         await this.commitAudit(tx, envelope, route, {
           outcome: policyResult.decision === 'deny' ? 'denied' : 'indeterminate',
-          resultCode: policyResult.decision === 'deny' ? 'EYE-AUT-001' : 'EYE-AUT-002',
+          resultCode: resultCode ?? (policyResult.decision === 'deny' ? 'EYE-AUT-001' : 'EYE-AUT-002'),
           policyDecisionId: polId,
           policyVersion: policyResult.bundleVersion,
           target: { type: route.objectType, id: route.objectId, version: null },

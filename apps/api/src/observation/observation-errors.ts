@@ -1118,6 +1118,18 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   { match: /^(retirement|adapter quarantine|envelope sweep|benchmark validation) rejected \((state|stale)\)|^run rejected \(retired_control\)/i, status: 409, code: 'EYE_STA_002' },
   { match: /^(retirement|adapter quarantine|envelope sweep|benchmark validation) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
   /* end B30 experiments */
+  /* B91 entitlements (0105 §EN) — the families `capability rejected (<class>)` (the catalogue, and the gate's read), `offer rejected
+     (<class>)` (offers, packages and SKUs), `licence rejected (<class>)` (an issuance) and `contract rejected (<class>)` (the contract scope),
+     every row anchored and requiring the class parenthesis (no earlier row starts with these nouns; the unanchored TWIN_RULES phrases are
+     not substrings of them). B9's order: the standing 403 (actor, authority), the absences 404 (unknown_*), the record's state 409 (state,
+     stale, duplicate), the caller's own request 422 (the rest: core, boundary, key, reason, status, prefixes, limits, term, window, order,
+     scope, decision_cells, sources, twins, authorities, environments, support_boundary, action …). The gate's own refusal is not a port
+     refusal: the pipeline answers it 403 EYE_ENT_001. */
+  { match: /^(capability|offer|licence|contract) rejected \((actor|authority)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^(capability|offer|licence|contract) rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^(capability|offer|licence|contract) rejected \((state|stale|duplicate)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^(capability|offer|licence|contract) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B91 entitlements */
   /* B36 home (0094 §H) — the executive home's families in the CLASS form `<noun> rejected (<class>): …`: `cadence rejected`, `executive room
      rejected` (0044's unclassed `room rejected: …` texts are the decision room's and are mapped by no row; the noun here is `executive room`
      and every row is anchored), `objective review rejected` (the SoD of §H2's re-declared convene_review and of open_subject_room — B23's

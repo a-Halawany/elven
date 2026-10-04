@@ -7,10 +7,18 @@
 import { Module } from '@nestjs/common';
 import { PipelineModule } from '../pipeline/pipeline.module.js';
 import { ExecutiveModule } from '../executive/executive.module.js';
+/* B91 entitlements */
+import { EntitlementsTenantController, EntitlementsVendorController } from './entitlements/entitlements.controller.js';
+import { EntitlementService } from './entitlements/entitlement.service.js';
+/* end B91 entitlements */
 
 @Module({
   imports: [PipelineModule, ExecutiveModule],
-  controllers: [],
-  providers: [],
+  controllers: [
+    /* B91 entitlements */ EntitlementsVendorController, EntitlementsTenantController, /* end B91 entitlements */
+  ],
+  providers: [
+    /* B91 entitlements */ EntitlementService, /* end B91 entitlements */
+  ],
 })
 export class CommercialModule {}

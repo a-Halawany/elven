@@ -42,6 +42,8 @@ export const ERROR_CATALOG = {
   EYE_EXT_001: { code: 'EYE-EXT-001', machineName: 'external_effect_unknown', condition: 'Dispatch occurred but external completion cannot be proven', retry: 'no', httpStatus: 502 },
   EYE_RCV_001: { code: 'EYE-RCV-001', machineName: 'reconciliation_required', condition: 'Recovery/failover left state requiring deterministic reconciliation', retry: 'no', httpStatus: 503 },
   EYE_GOV_001: { code: 'EYE-GOV-001', machineName: 'conformance_blocked', condition: 'Artifact or operation lacks current governing evidence', retry: 'no', httpStatus: 403 },
+  /* B91 entitlements (0105 §EN, ADR-022): a capability the tenant's licence does not make available — availability only, never a mandatory control */
+  EYE_ENT_001: { code: 'EYE-ENT-001', machineName: 'capability_unavailable', condition: 'The capability is not available under the tenant\'s entitlement (availability only; mandatory controls stay available)', retry: 'no', httpStatus: 403 },
 } as const satisfies Record<string, ErrorSpec>;
 
 export type ErrorKey = keyof typeof ERROR_CATALOG;
