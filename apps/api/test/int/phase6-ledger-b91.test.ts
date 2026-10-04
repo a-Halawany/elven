@@ -91,6 +91,7 @@ const platformRead = (as: AuthenticatedPrincipal, payload: Row = {}) => platform
 const setBudget = (as: AuthenticatedPrincipal, payload: Row) => tenantApi.setBudget(E(as, 'commercial.budget.set', 'CBG', (payload['budgetId'] as string | undefined) ?? null, 'TENANT'), T(), { payload }) as Promise<{ budget: Row }>;
 const setBudgetD = (as: AuthenticatedPrincipal, payload: Row) => domainApi.setBudget(E(as, 'commercial.budget.set', 'CBG', (payload['budgetId'] as string | undefined) ?? null, 'DOMAIN'), T(), D(), { payload }) as Promise<{ budget: Row }>;
 const readBudget = (as: AuthenticatedPrincipal, budgetId: string) => tenantApi.readBudget(E(as, 'commercial.ledger.read', 'CBG', budgetId, 'TENANT'), T(), budgetId) as Promise<{ budget: Row }>;
+const readBudgetD = (as: AuthenticatedPrincipal, budgetId: string) => domainApi.readBudget(E(as, 'commercial.ledger.read', 'CBG', budgetId, 'DOMAIN'), T(), D(), budgetId) as Promise<{ budget: Row }>;
 const tenantRead = (as: AuthenticatedPrincipal, payload: Row = {}) => tenantApi.read(E(as, 'commercial.ledger.read', 'CLG', null, 'TENANT'), T(), { payload }) as Promise<{ ledger: Row }>;
 const tenantEntries = (as: AuthenticatedPrincipal, payload: Row = {}) => tenantApi.entries(E(as, 'commercial.ledger.read', 'CLG', null, 'TENANT'), T(), { payload }) as Promise<{ entries: Row[] }>;
 const domainEntries = (as: AuthenticatedPrincipal, payload: Row = {}) => domainApi.entries(E(as, 'commercial.ledger.read', 'CLG', null, 'DOMAIN'), T(), D(), { payload }) as Promise<{ entries: Row[] }>;
@@ -172,8 +173,8 @@ beforeAll(async () => {
   vendor = await platformHuman('commercial_authority', 'b91l-vendor');
   platformAdmin = await platformHuman('platform_admin', 'b91l-padmin');
   tadmin = await h.humanWithSession(['tenant_admin'], 'b91l-tadmin', 'TENANT');
-  owner = await h.humanWithSession(['executive'], 'b91l-owner', 'TENANT');          // the budget's named owner (a TENANT executive)
-  exec2 = await h.humanWithSession(['executive'], 'b91l-exec2', 'TENANT');          // another executive: not the owner
+  owner = await h.humanWithSession(['executive'], 'b91l-owner');                    // the budget's named owner (the corridor domain's executive)
+  exec2 = await h.humanWithSession(['executive'], 'b91l-exec2');                    // another executive of the domain: not the owner
   dadmin = await h.humanWithSession(['domain_admin'], 'b91l-dadmin');
   analyst = await h.humanWithSession(['domain_analyst'], 'b91l-analyst');
   auditor = await h.humanWithSession(['auditor'], 'b91l-auditor', 'TENANT');
@@ -328,23 +329,28 @@ describe('B91 §LE · L3 BUDGETS: owner, variance, run-rate forecast, thresholds
     expect(await items(BUDGET)).toHaveLength(1);   // once per budget version, period and threshold
   });
 
-  it('REFUSAL: an executive who is not the administrator declares (authority 403); an analyst (the PDP); an AGENT (the human gate); an agent as owner (422); a duplicate (409); a stale revision (409); another executive revising (ownership 403); the owner revising a TENANT budget from a DOMAIN context (403)', async () => {
+  it('REFUSAL: an executive who is not the administrator declares (authority 403); an analyst (the PDP); an AGENT (the human gate); an agent as owner (422); a duplicate (409); a stale revision (409); another executive revising (ownership 403); a domain context revising ANOTHER domain\'s budget (403); a domain reader of the tenant route (the PDP)', async () => {
     const decl = { label: 'Another simulation budget', capabilityKey: 'simulation', periodKind: 'month', amount: '50', currency: 'EUR', ownerPrincipalId: owner.principalId, reason: 'B91 ledger harness — refused' };
-    await refused(setBudget(exec2, { ...decl, capabilityKey: 'twins' }), /^budget rejected \(authority\): a budget is declared by the tenant administrator/, 403);
+    await refused(setBudgetD(exec2, { ...decl, capabilityKey: 'twins' }), /^budget rejected \(authority\): a budget is declared by the tenant administrator/, 403);
     await refused(setBudgetD(analyst, decl), /no qualifying role binding/, 403);
     await refused(setBudget({ ...tadmin, kind: 'agent' }, decl), /human gate/, 403);
     await refused(setBudget(tadmin, { ...decl, capabilityKey: 'twins', ownerPrincipalId: agentPrincipalId }), /^budget rejected \(owner\): the owner is a named, active human/, 422);
     await refused(setBudget(tadmin, decl), /^budget rejected \(duplicate\)/, 409);
-    await refused(setBudget(owner, { budgetId: BUDGET, expectedVersion: 2, label: 'x-revised', amount: '999', currency: 'EUR', ownerPrincipalId: owner.principalId, reason: 'B91 ledger harness — stale' }), /^budget rejected \(stale\)/, 409);
-    await refused(setBudget(exec2, { budgetId: BUDGET, expectedVersion: 1, label: 'Corridor simulation compute — monthly', amount: '999', currency: 'EUR', ownerPrincipalId: exec2.principalId, reason: 'B91 ledger harness — not the owner' }),
+    await refused(setBudgetD(owner, { budgetId: BUDGET, expectedVersion: 2, label: 'x-revised', amount: '999', currency: 'EUR', ownerPrincipalId: owner.principalId, reason: 'B91 ledger harness — stale' }), /^budget rejected \(stale\)/, 409);
+    await refused(setBudgetD(exec2, { budgetId: BUDGET, expectedVersion: 1, label: 'Corridor simulation compute — monthly', amount: '999', currency: 'EUR', ownerPrincipalId: exec2.principalId, reason: 'B91 ledger harness — not the owner' }),
       /^budget rejected \(ownership\)/, 403);
-    await refused(setBudgetD(owner, { budgetId: BUDGET, expectedVersion: 1, label: 'Corridor simulation compute — monthly', amount: '999', currency: 'EUR', ownerPrincipalId: owner.principalId, reason: 'B91 ledger harness — from a domain' }),
+    // the second domain's budget (the administrator's, on the tenant route) is not revised from the corridor domain's context — not even by its owner
+    const d2b = (await setBudget(tadmin, { ...decl, domainId: D2, label: 'Second domain simulation — monthly', capabilityKey: 'simulation' })).budget;
+    expect(d2b).toMatchObject({ scope: 'DOMAIN', domain_id: D2 });
+    await refused(setBudgetD(owner, { budgetId: String(d2b['budget_id']), expectedVersion: 1, label: 'Second domain simulation — monthly', amount: '1', currency: 'EUR', ownerPrincipalId: owner.principalId, reason: 'B91 ledger harness — another domain' }),
       /^budget rejected \(authority\): a domain context sets its own domain's record only/, 403);
+    await refused(readBudget(owner, BUDGET), /no qualifying role binding|binding for this tenant/, 403);
     expect((await budgetEvents(BUDGET)).filter((e) => e['event'] !== 'threshold').map((e) => e['event'])).toEqual(['declared']);
   });
 
   it('RECOVERY: the OWNER revises the budget (v2); 100 % is reached by further usage — raised ONCE more; a budget raises and NEVER stops work: the usage after it is still priced, nothing deleted', async () => {
-    const v2 = (await setBudget(owner, { budgetId: BUDGET, expectedVersion: 1, label: 'Corridor simulation compute — monthly (SYNTHETIC)', amount: BUDGET_AMOUNT.toFixed(2), currency: 'EUR',
+    // the owner (a domain executive) revises the TENANT-level budget it owns from its own domain's context
+    const v2 = (await setBudgetD(owner, { budgetId: BUDGET, expectedVersion: 1, label: 'Corridor simulation compute — monthly (SYNTHETIC)', amount: BUDGET_AMOUNT.toFixed(2), currency: 'EUR',
       ownerPrincipalId: owner.principalId, thresholds: [80, 100], anomaly: { k: 100, window_days: 7 }, reason: 'B91 ledger harness — the owner confirms the month\'s amount' })).budget;
     expect(v2).toMatchObject({ version: 2, set_by: owner.principalId });
     // v2's thresholds are evaluated afresh: 80 % is raised again for the NEW version, once
@@ -361,7 +367,7 @@ describe('B91 §LE · L3 BUDGETS: owner, variance, run-rate forecast, thresholds
     // NEVER STOPS WORK: usage after the 100 % breach is priced like any other
     uid['u10'] = await usage({ domain: D(), cap: 'simulation', dim: 'simulation_compute', unit: U.wall, qty: 10, at: await dbAgo(1) });
     expect(await tick()).toMatchObject({ priced_usage: 1, thresholds: [] });
-    const v = (await readBudget(owner, BUDGET)).budget['variance'] as Row;
+    const v = (await readBudgetD(owner, BUDGET)).budget['variance'] as Row;
     expect(num(v['pct'])).toBeGreaterThan(100);
     expect(num(v['variance'])).toBeGreaterThan(0);
   });

@@ -507,7 +507,9 @@ GRANT EXECUTE ON FUNCTION commercial.set_allocation_key(uuid, uuid, text, text, 
 
 /* SET A BUDGET (commercial.budget.set — human-gated): the FIRST version by the tenant administrator (a named, active human holding
    tenant_admin in the tenant); a REVISION (p_expected_version = the current) by the administrator or the budget's current owner. The owner
-   is a named, active human of the tenant — never an agent. The key (tenant, domain, capability, period) is fixed by the first version. */
+   is a named, active human of the tenant — never an agent. The key (tenant, domain, capability, period) is fixed by the first version. The
+   scope: the tenant's context for a tenant-level budget, a domain's for its own; the OWNER of a tenant-level budget may revise it from its
+   own domain's context (the owner's roles — executive, strategy owner … — are domain roles). */
 CREATE OR REPLACE FUNCTION commercial.set_budget(p_budget_id uuid, p_tenant uuid, p_domain uuid, p_label text, p_capability_key text, p_period_kind text, p_amount numeric,
                                                  p_currency text, p_owner uuid, p_thresholds int[], p_anomaly jsonb, p_expected_version int, p_reason text, p_actor uuid,
                                                  p_event_id uuid, p_correlation uuid) RETURNS jsonb
@@ -524,7 +526,11 @@ BEGIN
     IF cur.budget_id IS NULL OR cur.tenant_id <> p_tenant THEN RAISE EXCEPTION 'budget rejected (unknown_budget): % is not a budget of this tenant', p_budget_id USING ERRCODE = '23503'; END IF;
     v_domain := cur.domain_id; v_cap := cur.capability_key; v_kind := cur.period_kind;
   END IF;
-  PERFORM commercial.cle_assert_tenant_scope('budget', p_tenant, v_domain);
+  IF p_expected_version IS NOT NULL AND v_domain IS NULL AND public.eye_scope() = 'DOMAIN' AND public.eye_tenant() = p_tenant AND p_actor = cur.owner_principal_id THEN
+    NULL;  -- the OWNER of a tenant-level budget revises it from its own domain's context (an owner's roles are domain roles)
+  ELSE
+    PERFORM commercial.cle_assert_tenant_scope('budget', p_tenant, v_domain);
+  END IF;
   IF p_expected_version IS NULL THEN
     IF NOT v_admin THEN RAISE EXCEPTION 'budget rejected (authority): a budget is declared by the tenant administrator' USING ERRCODE = '42501'; END IF;
   ELSE

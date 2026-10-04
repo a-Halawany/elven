@@ -1975,10 +1975,10 @@ const BUNDLE_V1: Rule[] = [
   { actionPrefix: 'commercial.invoice.import', exact: true, requiredAnyRole: [{ role: 'commercial_authority', atScope: 'PLATFORM' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   { actionPrefix: 'commercial.invoice.reconcile', exact: true, requiredAnyRole: [{ role: 'commercial_authority', atScope: 'PLATFORM' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   { actionPrefix: 'commercial.optimisation.record', exact: true, requiredAnyRole: [{ role: 'commercial_authority', atScope: 'PLATFORM' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
-  { actionPrefix: 'commercial.budget.set', exact: true, requiredAnyRole: [{ role: 'tenant_admin', atScope: 'TENANT' }, { role: 'executive', atScope: 'TENANT' }, { role: 'executive', atScope: 'DOMAIN' },
+  { actionPrefix: 'commercial.budget.set', exact: true, requiredAnyRole: [{ role: 'tenant_admin', atScope: 'TENANT' }, { role: 'executive', atScope: 'DOMAIN' },
     { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   { actionPrefix: 'commercial.ledger.read', exact: true, requiredAnyRole: [{ role: 'commercial_authority', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' },
-    { role: 'executive', atScope: 'TENANT' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' },
+    { role: 'executive', atScope: 'DOMAIN' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' },
     { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }], obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
   /* end B91 ledger */
   /* B36 home */
