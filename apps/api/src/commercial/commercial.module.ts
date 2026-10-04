@@ -7,10 +7,19 @@
 import { Module } from '@nestjs/common';
 import { PipelineModule } from '../pipeline/pipeline.module.js';
 import { ExecutiveModule } from '../executive/executive.module.js';
+/* B91 grace */
+import { GraceController } from './grace/grace.controller.js';
+import { GraceService } from './grace/grace.service.js';
+import { LicenceSigningKeyStore } from './grace/licence-token.js';
+/* end B91 grace */
 
 @Module({
   imports: [PipelineModule, ExecutiveModule],
-  controllers: [],
-  providers: [],
+  controllers: [
+    /* B91 grace */ GraceController, /* end B91 grace */
+  ],
+  providers: [
+    /* B91 grace */ GraceService, LicenceSigningKeyStore, /* end B91 grace */
+  ],
 })
 export class CommercialModule {}
