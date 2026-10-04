@@ -1,0 +1,125 @@
+CP-6 B91 — the act scripts/phase6/act-b91.mjs rehearsed on eye_demo_b91 (API :3411, Redis 6395) — 2026-10-04T11:50Z
+No credential is printed by the act; this file holds its output only.
+
+RESULT: STOPPED at B91-P on every run — the vendor's commercial authority (commercial_authority, PLATFORM) cannot be created through a
+governed route (POST /v1/platform/principals: 404; the only principal route, POST /v1/tenants/:tenantId/principals, makes TENANT or DOMAIN
+principals). As the brief requires, the act plants no identity row and creates neither persona; the scenes after B91-P were not rehearsed;
+--restore and the third scene run were not run (they need the vendor). Verified after each run: no principal c.marchetti or n.vogel, no licence.
+
+════ run 1 (scenes) ════
+THE B91 ACT on eye_demo_b91 (REHEARSAL) — 2026-10-04T11:47:26.412Z
+
+B91-0 THE STATE — 0104 and 0105, the casting, the attention agent, the corridor run
+  ✓ migrations applied: 0104_b30_estimate_contract_at_publication.sql, 0105_b91_metering_ledger_entitlements_licensing.sql
+  ✓ the casting read from identity.role_bindings: a.hoffmann (domain_analyst); l.ferreira (extraction_manager); m.dvorak (collection_manager, executive); t.nakamura (twin_owner); t.richter (domain_admin)
+  ✓ the tenant's auditor: e.lindqvist (auditor, TENANT) — the audit read of B91-L
+  ✓ the attention agent 01a0…1cb088 — cadence 60 s; 10 tick run(s) in the last ten minutes (the latest at 2026-10-04T11:47:15Z) — the act waits for its ticks, it calls no tick route
+  ✓ the extraction agent 01a0…f32d2d is active — the plan worker runs an upload's extraction under it (the inference path)
+  ✓ the corridor run 01a0…8b84d2: a completed supply-flow@1 control of "NORDWERK — Ningbo → Regensburg chain" on actual v14 (opened 2026-10-01T14:30:36Z) — the envelope sweep's input
+
+B91-P THE TWO NEW PERSONAS — the vendor's commercial authority (PLATFORM) and NORDWERK's tenant administrator (TENANT), through the governed principal routes
+  ✗ THE VENDOR CANNOT BE CREATED THROUGH A GOVERNED ROUTE: POST /v1/platform/principals answered 404  — Cannot POST /v1/platform/principals. The only principal route the platform administrator has is POST /v1/tenants/:tenantId/principals, which creates a TENANT or DOMAIN principal (its scope is the request's tenant); a commercial_authority binding must be PLATFORM-scoped (the PDP's commercial.* rules and commercial.cgr_assert_commercial require it, and identity.enforce_binding_authority refuses a PLATFORM binding to a tenant principal). The database port identity.create_principal already admits a PLATFORM principal in a PLATFORM context; no HTTP route reaches it. STOPPED as the brief requires — no identity row is planted, the tenant administrator is NOT created either (nothing half-made).
+
+1 FAILURE(S) · STOPPED at B91-P · 0.2 s
+
+════ run 2 (scenes) ════
+THE B91 ACT on eye_demo_b91 (REHEARSAL) — 2026-10-04T11:47:41.433Z
+
+B91-0 THE STATE — 0104 and 0105, the casting, the attention agent, the corridor run
+  ✓ migrations applied: 0104_b30_estimate_contract_at_publication.sql, 0105_b91_metering_ledger_entitlements_licensing.sql
+  ✓ the casting read from identity.role_bindings: a.hoffmann (domain_analyst); l.ferreira (extraction_manager); m.dvorak (collection_manager, executive); t.nakamura (twin_owner); t.richter (domain_admin)
+  ✓ the tenant's auditor: e.lindqvist (auditor, TENANT) — the audit read of B91-L
+  ✓ the attention agent 01a0…1cb088 — cadence 60 s; 10 tick run(s) in the last ten minutes (the latest at 2026-10-04T11:47:15Z) — the act waits for its ticks, it calls no tick route
+  ✓ the extraction agent 01a0…f32d2d is active — the plan worker runs an upload's extraction under it (the inference path)
+  ✓ the corridor run 01a0…8b84d2: a completed supply-flow@1 control of "NORDWERK — Ningbo → Regensburg chain" on actual v14 (opened 2026-10-01T14:30:36Z) — the envelope sweep's input
+
+B91-P THE TWO NEW PERSONAS — the vendor's commercial authority (PLATFORM) and NORDWERK's tenant administrator (TENANT), through the governed principal routes
+  ✗ THE VENDOR CANNOT BE CREATED THROUGH A GOVERNED ROUTE: POST /v1/platform/principals answered 404  — Cannot POST /v1/platform/principals. The only principal route the platform administrator has is POST /v1/tenants/:tenantId/principals, which creates a TENANT or DOMAIN principal (its scope is the request's tenant); a commercial_authority binding must be PLATFORM-scoped (the PDP's commercial.* rules and commercial.cgr_assert_commercial require it, and identity.enforce_binding_authority refuses a PLATFORM binding to a tenant principal). The database port identity.create_principal already admits a PLATFORM principal in a PLATFORM context; no HTTP route reaches it. STOPPED as the brief requires — no identity row is planted, the tenant administrator is NOT created either (nothing half-made).
+
+1 FAILURE(S) · STOPPED at B91-P · 0.3 s
+
+════ run 3 (scenes, after the act's controls-scene edit) ════
+THE B91 ACT on eye_demo_b91 (REHEARSAL) — 2026-10-04T11:50:04.859Z
+
+B91-0 THE STATE — 0104 and 0105, the casting, the attention agent, the corridor run
+  ✓ migrations applied: 0104_b30_estimate_contract_at_publication.sql, 0105_b91_metering_ledger_entitlements_licensing.sql
+  ✓ the casting read from identity.role_bindings: a.hoffmann (domain_analyst); l.ferreira (extraction_manager); m.dvorak (collection_manager, executive); t.nakamura (twin_owner); t.richter (domain_admin)
+  ✓ the tenant's auditor: e.lindqvist (auditor, TENANT) — the audit read of B91-L
+  ✓ the attention agent 01a0…1cb088 — cadence 60 s; 10 tick run(s) in the last ten minutes (the latest at 2026-10-04T11:49:15Z) — the act waits for its ticks, it calls no tick route
+  ✓ the extraction agent 01a0…f32d2d is active — the plan worker runs an upload's extraction under it (the inference path)
+  ✓ the corridor run 01a0…8b84d2: a completed supply-flow@1 control of "NORDWERK — Ningbo → Regensburg chain" on actual v14 (opened 2026-10-01T14:30:36Z) — the envelope sweep's input
+
+B91-P THE TWO NEW PERSONAS — the vendor's commercial authority (PLATFORM) and NORDWERK's tenant administrator (TENANT), through the governed principal routes
+  ✗ THE VENDOR CANNOT BE CREATED THROUGH A GOVERNED ROUTE: POST /v1/platform/principals answered 404  — Cannot POST /v1/platform/principals. The only principal route the platform administrator has is POST /v1/tenants/:tenantId/principals, which creates a TENANT or DOMAIN principal (its scope is the request's tenant); a commercial_authority binding must be PLATFORM-scoped (the PDP's commercial.* rules and commercial.cgr_assert_commercial require it, and identity.enforce_binding_authority refuses a PLATFORM binding to a tenant principal). The database port identity.create_principal already admits a PLATFORM principal in a PLATFORM context; no HTTP route reaches it. STOPPED as the brief requires — no identity row is planted, the tenant administrator is NOT created either (nothing half-made).
+
+1 FAILURE(S) · STOPPED at B91-P · 0.3 s
+
+════ act-b30 on the rehearsal (EYE_DB_NAME=eye_demo_b91 EYE_API=http://localhost:3411) — a BASELINE before any B91 scene (no --restore ran) ════
+THE B30 ACT on eye_demo_b91 (REHEARSAL) — 2026-10-04T11:48:04.121Z
+
+B30-0 THE STATE — 0102 and 0103, the casting, the attention agent, the inputs
+  ✓ migrations applied: 0102_n01_definer_read_scope_constraint_gate.sql, 0103_b30_twin_state_reconciliation_envelope_calibration.sql
+  ✓ the casting read from identity.role_bindings: a.hoffmann (domain_analyst); e.kovacs (twin_owner); h.petrovic (method_steward); j.weber (strategy_owner); m.dvorak (collection_manager, executive); s.lindqvist (constraint_steward); t.nakamura (twin_owner); t.richter (domain_admin)
+  · T. Nakamura holds twin_owner (not simulation_operator: every route the act casts him in admits twin_owner); T. Richter is the domain's administrator (the read one); the second humans for approvals are J. Weber (the fabric budget) and H. Petrović (the concurrence)
+  ✓ the attention agent 01a0…1cb088 — cadence 60 s; 10 tick run(s) in the last ten minutes (the latest at 2026-10-04T11:47:15Z) — the act waits for its ticks, it calls no tick route
+  ✓ the inputs: the corridor twin 01a0…76f525 "NORDWERK — Ningbo → Regensburg chain" (owner T. Nakamura, supply-flow@1) at actual v15 (observed through 2026-09-27); the series portwatch:chokepoint4:n_total (transits/day) of "IMF PortWatch — Chokepoints" v2 (active); the scenario "Bab el-Mandeb over the next quarter — every scenario kind (vocabulary v1)" and its "regional blockade" branch 01a0…67533e (open); E. Kovács's study twin 01a0…f22440; the risk "Corridor closure — Regensburg line"
+
+B30-S ESTIMATION AND RECONCILIATION (F-P5-02) — a PortWatch transit count, the estimator's corridor capacity, the conservation check, the Reconciliation Agent, the owner's approval into a new snapshot
+  · the set corridor-transit-balance stands — an earlier run (v1, live, steward S. Lindqvist)
+  · the Reconciliation Agent 01a0…5844f1 is registered — an earlier run (1.0.0, digest 1d6681c304a7…)
+  · an approved estimate of corridor.capacity_share stands — an earlier run (01a0…3d63a5)
+  ✓ the snapshot v15 (supersedes v14; admitted, complete, observed through 2026-09-27) carries corridor.capacity_share = 62 % ESTIMATED (confidence 0.891, citing 1 evidence version(s)); approved by T. Nakamura; proposed by A. Hoffmann; TwinStateChanged 1
+  · the routed item 9d48…6b81bd is open (the B30 estimation part leaves closing the item on decision out — its report's gap)
+
+B30-B BRANCHES, MERGE, FRESHNESS (F-P5-03) — the head 5 days stale against a 2-day SLO, the corridor twin branched for a blockade, merging it back refused until reconciliation
+  ✓ T. Nakamura ADMITTED actual v18 carrying v15, observed through 2026-09-29 (the database's day − 5) — complete
+  · the freshness SLO v1 (2 days) stands — an earlier run
+  ✓ A. Hoffmann READ the freshness of v18: STALE — 5 days old (observed through 2026-09-29, today 2026-10-04), the SLO 2 days (v1), stale by 3 days; dependency none
+  ✓ THE TICK RAISED twin.freshness 8c4c…f9c66d → T. Nakamura (open): "NORDWERK — Ningbo → Regensburg chain: the served snapshot v18 is 5 days stale (freshness SLO 2 days)"
+  · the assumption 01a0…1d1ec6 "The corridor is blockaded for 45 days (SYNTHETIC)" stands — an earlier run (unverified)
+  · the link 01a0…d61ed1 to the "regional blockade" branch stands — an earlier run (v1)
+  · the branch blockade stands — an earlier run (head v16)
+  ✓ the branch head v16: shock.corridor_delay_days = 45 (scenario); actual's head v18 keeps its own
+  · the merge 01a0…de4bdc of blockade stands — an earlier run (open, v16 → actual v15)
+  ✓ T. Nakamura completes the merge of blockade with nothing reconciled REFUSED — 409 EYE-STA-002 — branch merge rejected (unreconciled): merging branch blockade back into actual is refused until reconciliation — 1 of 1 diverging key(s) unresolved: shock.corridor_delay_days
+  · the merge stays OPEN (the walk's refusal reads it); its review item 9364…a3f5aa → T. Nakamura (open): "Merge of branch blockade into actual awaits reconciliation of 1 diverging key(s) — NORDWERK — Ningbo → Regensb"
+  · the explorer (A. Hoffmann): branches actual v18, alt-30-day-delay v2 (from v1), blockade v16 (from v15), stress-75 v17 (from v15); merges blockade open; served head v18; head freshness stale
+
+B30-E THE ENVELOPE (F-P5-04) — a 75-day corridor delay run outside supply-flow@1's envelope: disabled for decision use, admitted as exploratory by the twin owner only
+  · the branch stress-75 stands — an earlier run (head v17)
+  · the outside-envelope run 01a0…38d521 on stress-75 v17 stands — an earlier run
+  · the run's envelope: OUTSIDE — corridor_delay_days = 75 outside [0, 60] (from shock.corridor_delay_days); acknowledged by T. Nakamura ("the 75-day corridor delay is the stress case the board asked to see (SYNTHETIC)"); line-stop days 73 (SYNTHETIC)
+  · the exploratory admission 01a0…df9354 by T. Nakamura stands — an earlier run
+  · H. Petrović's concurrence stands — an earlier run (H. Petrović)
+  ✓ the decision use now: EXPLORATORY ONLY — REFUSED for decision use: outside_envelope (exploratory true; admitted by T. Nakamura, concurred by H. Petrović)
+
+B30-X THE FABRIC CARRYOVERS (F-P5-06/07) — a discrete-event@1 experiment in chunks, completed by the ticks; a superseded corridor control retired with its reason
+  · the fabric experiment 01a0…157a7a "Regensburg line — bearing shortage, 60 paths (SYNTHETIC)" stands — an earlier run (completed)
+  · the budget was approved by J. Weber — an earlier run
+  ✓ THE FABRIC EXPERIMENT COMPLETED by the attention agent's ticks: 3 checkpoints (20 → 40 → 60 paths); the ledger declared → approved → started → run_opened → checkpointed → checkpointed → checkpointed → completed; the run 01a0…ac5cb2 completed (discrete-event@1, 60 samples; line-stop days over the paths: median 18, p10 18, p90 18 — SYNTHETIC)
+  · the retirement 01a0…715980 of run 01a0…826bf5 stands — an earlier run (superseded by 01a0…8b84d2)
+  ✓ the retired run's decision use: REFUSED for decision use: retired
+
+B30-9 THE STATE and the LIMITS
+  · in the ledgers: 3 active estimator(s), 1 estimate(s) (0 by the agent), 0 queued trigger(s), 0 observation request(s); 1 freshness polic(ies), 1 merge(s), 4 branch event(s); 1 exploratory admission(s), 2 envelope event(s); 1 retirement(s), 1 fabric experiment(s); 5 B30 attention item(s)
+  · the corridor twin now: actual v18 observed through 2026-09-29 (complete); branches actual v18, alt-30-day-delay v2, blockade v16, stress-75 v17
+  the env lines for the walks (EYE_TEST_ADMIN_PASSWORD comes from .eye-local/env and is never printed):
+  EYE_B30_PROPOSED_BY=person
+  EYE_B30_OWNER=t.nakamura
+  EYE_B30_TWIN_TITLE='NORDWERK — Ningbo → Regensburg chain'
+  EYE_B30_ESTIMATE_KEY=corridor.capacity_share
+  EYE_B30_CONSTRAINT_SET=corridor-transit-balance
+  EYE_B30_ESTIMATE_VALUE=62
+  EYE_B30_BRANCH=blockade
+  EYE_B30_AS_OF=2026-10-02T18:09
+  EYE_B30_TWIN_OWNER=t.nakamura
+  EYE_B30_DOMAIN_ADMIN=t.richter
+  EYE_B30_OUTSIDE_RUN=01a0fd28-f9f4-7a8e-b3b1-2e854638d521
+  EYE_B30_FABRIC_TITLE='Regensburg line — bearing shortage'
+  EYE_B30_OPERATOR=t.nakamura
+  EYE_B30_STEWARD=h.petrovic
+  EYE_B30_RETIRED_RUN=01a0d29d-3e78-73ef-96cb-7859d2826bf5
+  EYE_B30_RETIRED_REASON='superseded by the promoted corridor control (SYNTHETIC)'
+  · LIMITS said: EVERY FIGURE IS SYNTHETIC except the PortWatch transit counts — the corridor's baseline (stated so that the latest count reads 62 %), the challengers' parameters, the conservation tolerance (0.5 transits/day), the 2-day SLO, the 45-day blockade, the 75-day stress delay, the bearing shortage and the reasons are the personas' statements for the demonstration, not measurements. THE PORTWATCH COUNT: the series portwatch:chokepoint4:n_total is the IMF PortWatch publisher's (collected through the real connector — M. Dvořák's collection now, and the daily schedule); its latest point is what the estimate reads — when the publisher has nothing new since the estimators were declared (PortWatch publishes weekly), no telemetry trigger is queued and the act says so and A. Hoffmann proposes through the route; the Reconciliation Agent's proposal on a NEW count is then harness-proven (phase6-estimation-b30 ES5) — the estimation walk's "the Reconciliation Agent (run …)" line holds only on a staging where the agent proposed. THE SERIES' HISTORY: a 2024 seed evidence version of the PortWatch source was tombstoned by a B11 retention action ("superseded evidence past its retention"); before this act's estimation fix (estimators.ts unreadableInWindow) every estimate on the series was refused as unqualified for good — an unreadable version now counts only inside the estimators' widest window (or when it states no day), the rest disclosed as unreadable_outside_window. THE AGENT: the Reconciliation Agent is registered by the administrator (its principal and role come with the registration — the Supply Chain Agent's precedent); no persona is created. THE WORDING: open_run's envelope refusal (0092) still names "the domain administrator's acknowledgement" — the acknowledgement holder is a twin owner only now (0103 §EN); a re-declaration of open_run is the integrator's. THE TICK: the attention agent's real scheduled tick (60 s) raises twin.freshness, queues the estimation checks and drains the fabric experiment — waited for, never driven (the "synthetic tick" of the harnesses is NOT used here). "5 DAYS STALE" holds only on the day the head was admitted: the age is the database's day minus the head's observed_through (the act re-admits a head at the day − 5 when it runs on a later day). THE BRANCHES: the 75-day stress state lives on the branch stress-75, never on actual's head (the B30-B walks read actual); the blockade merge is LEFT OPEN (the walk's refused completion reads it); the stress run is admitted EXPLORATORY and concurred, never promoted. THE RETIREMENT: the oldest of T. Nakamura's corridor controls that no package, analysis or run rests on, superseded by the promoted control. NOT STAGED (HARNESS-PROVEN): estimation — the stale/suspended-source qualification refusals, the violated conservation and range refusals, the stale-head approval rollback, the decline, the internal-change and ontology-revision triggers, the drifted agent, observation requests and their fulfilment (phase6-estimation-b30 ES1–ES6); branches — checkpoint restore, the reconciled and completed merge, the stale merge withdrawn, per-key staleness, the dependency uncertainty, the frozen validated snapshot and its expiry, component confidence, the scenario basis rule (phase6-branches-b30 BR1–BR7); envelope — the raised promotion threshold, calibration and drift, the model lifecycle (deprecated/incompatible/retired), the AI context, the degraded modes (phase6-envelope-b30 E3–E8); fabric — the war-gaming retry, the checkpoint indicators acted on (stop/pause/quarantine), the experiment retirement, the envelope sweep, rare events and benchmark validation (phase6-experiments-b30 X1–X6). LEFT OUT (the parts' reports): closing the routed estimate item on decision; an estimate citation kind; the calibration tick hook; the scenario-element web form. Nothing is cleaned: every object stands as a demonstration fact.
+
+ALL SCENES HELD · 12.9 s
