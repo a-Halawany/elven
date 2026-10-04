@@ -16,6 +16,7 @@ const NAV = [
   { href: '/admin/principals', key: 'nav.principals' },
   { href: '/admin/objects', key: 'nav.objects' },
   { href: '/admin/audit', key: 'nav.audit' },
+  /* B91 meters */ { href: '/admin/commercial/usage', key: 'nav.commercial.usage' }, /* end B91 meters */
 ];
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
