@@ -1961,6 +1961,17 @@ const BUNDLE_V1: Rule[] = [
   { actionPrefix: 'simulation.benchmark.validate', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }, { role: 'method_steward', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }], obligations: [], requiresPurpose: true, maxConsequence: 'C2' },
   { actionPrefix: 'simulation.fabric.read', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }, { role: 'method_steward', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }], obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
   /* end B30 experiments */
+  /* B91 meters (0105 §ME; F-P7-F-02's meters and caps). EXACT rules — no earlier rule starts with `commercial` and neither name is a prefix of
+     another rule's. THE READ of the meters and caps (commercial.usage.read) — consequential and audited: the tenant's administrator and
+     auditor, the vendor's commercial authority (PLATFORM: the meters it reconciles; availability, never business authority), the domain's
+     administrator and executive, and the people whose work a cap can stop (twin owner, simulation operator, strategy owner). THE CAP
+     (commercial.cap.set) — the tenant's administrator only, human-gated (an agent never sets, raises or lifts a cap); the port further
+     requires a named human tenant administrator acting at the tenant's own scope and bounds the cap by the licence's limit. */
+  { actionPrefix: 'commercial.usage.read', exact: true, requiredAnyRole: [{ role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' }, { role: 'commercial_authority', atScope: 'PLATFORM' },
+    { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'commercial.cap.set', exact: true, requiredAnyRole: [{ role: 'tenant_admin', atScope: 'TENANT' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B91 meters */
   /* B36 home */
   /* THE EXECUTIVE HOME, THE CADENCE, THE COMMAND VIEWS, THE SEARCH, THE METRICS (0094 §H; F-P6-11: WS-01, JRN-19, PER-03, CAP-EO-01/-02/-04).
      EXACT rules — no `executive` prefix rule exists and none of these names is a prefix of another rule's. THE READS (executive.home.read

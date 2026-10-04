@@ -7,10 +7,18 @@
 import { Module } from '@nestjs/common';
 import { PipelineModule } from '../pipeline/pipeline.module.js';
 import { ExecutiveModule } from '../executive/executive.module.js';
+/* B91 meters */
+import { MetersController } from './meters/meters.controller.js';
+import { MetersService } from './meters/meters.service.js';
+/* end B91 meters */
 
 @Module({
   imports: [PipelineModule, ExecutiveModule],
-  controllers: [],
-  providers: [],
+  controllers: [
+    /* B91 meters */ MetersController, /* end B91 meters */
+  ],
+  providers: [
+    /* B91 meters */ MetersService, /* end B91 meters */
+  ],
 })
 export class CommercialModule {}

@@ -23,6 +23,10 @@ import { PipelineService } from '../../../pipeline/pipeline.service.js';
 import type { EyeRequest } from '../../../pipeline/http.js';
 import { FabricCapability } from './fabric.capabilities.js';
 import { FabricService, uuidOrNull, validateBenchmarkIntake, validateSweepIntake } from './fabric.service.js';
+/* B91 meters */
+import { withMeterReads, withMeterUsage } from '../../../commercial/meters/meters.capabilities.js';
+import { capRefusal } from '../../../commercial/meters/meters.service.js';
+/* end B91 meters */
 
 type Row = Record<string, unknown>;
 type Payload = { payload?: Row };
@@ -130,16 +134,38 @@ export class FabricController {
     const { envelope, principal } = ctx(req);
     idOf(runId, 'envelope sweep', 'run', envelope.correlation_id);
     const intake = validateSweepIntake(body.payload ?? {}, envelope.correlation_id);
-    const read = await this.pipeline.consequentialRead(this.readStep(envelope), principal, this.route(tenantId, domainId, READ, 'SIM', runId), FabricCapability.read, async (cap) => {
+    /* B91 meters: the read also answers the tenant's simulation_compute cap (the first reached STOP cap, or none) */
+    const read = await this.pipeline.consequentialRead(this.readStep(envelope), principal, this.route(tenantId, domainId, READ, 'SIM', runId), withMeterReads(FabricCapability.read), async (cap) => {
       const run = await cap.run(runId);
-      return { run, model: run === null ? null : await cap.model(String(run['model_ref'])) };
+      const stop = run === null ? null : (((await cap.meters.capStatus({ tenantId, domainId, dimension: 'simulation_compute' }))['stop'] ?? null) as Record<string, unknown> | null);
+      return { run, model: run === null ? null : await cap.model(String(run['model_ref'])), stop };
     });
+    /* end B91 meters */
     if (read.result.run === null) throw new HttpException(errorBody('EYE_STA_001', envelope.correlation_id, `envelope sweep rejected (unknown_run): ${runId} is not a simulation run of this domain`), 404);
+    /* B91 meters: a reached STOP cap refuses the sweep BEFORE it runs — the breach recorded in the route's own write, then 409 */
+    if (read.result.stop !== null) {
+      const stop = read.result.stop;
+      await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'simulation.sweep.run', 'SIM', runId), withMeterUsage(FabricCapability.sweep),
+        async (cap) => ({ result: await cap.meters.recordCapBreach({ tenantId, domainId, dimension: 'simulation_compute', subjectKind: 'envelope_sweep', subjectId: null,
+                                                                     details: { run_id: runId, metric: intake.metric, grid_points: intake.gridPoints }, actor: principal.principalId, correlationId: envelope.correlation_id }),
+                          targetType: 'SIM', targetId: runId, targetVersion: null, outboxEvent: null }));
+      throw new HttpException(errorBody('EYE_STA_002', envelope.correlation_id, capRefusal(stop)), 409);
+    }
+    const t0 = performance.now();
+    /* end B91 meters */
     const c = this.fabric.sweep(read.result.run, read.result.model, intake, envelope.correlation_id);
-    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'simulation.sweep.run', 'SIM', runId), FabricCapability.sweep,
-      async (cap) => ({ result: await cap.sweep({ sweepId: newId(), tenantId, domainId, runId, outputsDigest: c.outputsDigest, metric: intake.metric, gridPoints: intake.gridPoints, base: c.base,
-                                                   factors: c.factors, interactions: c.interactions, digest: c.digest, actor: principal.principalId, correlationId: envelope.correlation_id }),
-                        targetType: 'SIM', targetId: runId, targetVersion: null, outboxEvent: null }));
+    const wallMs = Math.max(0, Math.round(performance.now() - t0)); /* B91 meters: the sweep's measured wall time */
+    const sweepId = newId(); /* B91 meters: named before the write so its usage record names it */
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'simulation.sweep.run', 'SIM', runId), withMeterUsage(FabricCapability.sweep),
+      async (cap) => {
+        const sweep = await cap.sweep({ sweepId, tenantId, domainId, runId, outputsDigest: c.outputsDigest, metric: intake.metric, gridPoints: intake.gridPoints, base: c.base,
+                                        factors: c.factors, interactions: c.interactions, digest: c.digest, actor: principal.principalId, correlationId: envelope.correlation_id });
+        /* B91 meters: the sweep's compute metered (simulation_compute, wall_ms) in the sweep's own write */
+        await cap.meters.recordUsage({ tenantId, domainId, sourceKind: 'envelope_sweep', sourceRef: sweepId, quantity: wallMs, details: { run_id: runId, metric: intake.metric, grid_points: intake.gridPoints, factors: c.factors.length },
+                                       actor: principal.principalId, correlationId: envelope.correlation_id });
+        /* end B91 meters */
+        return { result: sweep, targetType: 'SIM', targetId: runId, targetVersion: null, outboxEvent: null };
+      });
     return { sweep: out.result, receipt: receipt(out) };
   }
 

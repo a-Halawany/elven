@@ -251,16 +251,20 @@ CREATE OR REPLACE FUNCTION commercial.cme_usage_crossing() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = commercial, pg_catalog, pg_temp AS $$
 DECLARE c commercial.caps%ROWTYPE; v_used numeric; v_start timestamptz;
 BEGIN
-  FOR c IN SELECT * FROM commercial.caps x WHERE x.tenant_id = NEW.tenant_id AND x.state = 'active' AND x.dimension = NEW.dimension AND x.unit = NEW.unit
-                                            AND (x.domain_id IS NULL OR x.domain_id = NEW.domain_id) ORDER BY x.domain_id NULLS FIRST, x.cap_id LOOP
-    v_start := commercial.cme_period_start(c.period, clock_timestamp());
-    CONTINUE WHEN NEW.occurred_at < v_start;
-    v_used := commercial.cme_used(c.tenant_id, c.domain_id, c.dimension, c.unit, v_start);
-    IF v_used >= c.cap_limit THEN
-      PERFORM commercial.cme_breach(c, 'crossed', v_used, coalesce(NEW.domain_id, c.domain_id), 'meter', c.cap_id, NEW.source_kind || ':' || NEW.source_ref,
-                                    jsonb_build_object('usage_id', NEW.usage_id, 'source_kind', NEW.source_kind, 'source_ref', NEW.source_ref, 'quantity', NEW.quantity), NULL, NEW.correlation_id);
-    END IF;
-  END LOOP;
+  BEGIN   -- a meter never fails the act it meters: an error is a WARNING, the act goes on (the record is missing, never the act)
+    FOR c IN SELECT * FROM commercial.caps x WHERE x.tenant_id = NEW.tenant_id AND x.state = 'active' AND x.dimension = NEW.dimension AND x.unit = NEW.unit
+                                              AND (x.domain_id IS NULL OR x.domain_id = NEW.domain_id) ORDER BY x.domain_id NULLS FIRST, x.cap_id LOOP
+      v_start := commercial.cme_period_start(c.period, clock_timestamp());
+      CONTINUE WHEN NEW.occurred_at < v_start;
+      v_used := commercial.cme_used(c.tenant_id, c.domain_id, c.dimension, c.unit, v_start);
+      IF v_used >= c.cap_limit THEN
+        PERFORM commercial.cme_breach(c, 'crossed', v_used, coalesce(NEW.domain_id, c.domain_id), 'meter', c.cap_id, NEW.source_kind || ':' || NEW.source_ref,
+                                      jsonb_build_object('usage_id', NEW.usage_id, 'source_kind', NEW.source_kind, 'source_ref', NEW.source_ref, 'quantity', NEW.quantity), NULL, NEW.correlation_id);
+      END IF;
+    END LOOP;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'B91 meters: % not recorded: %', TG_NAME, SQLERRM;
+  END;
   RETURN NULL;
 END $$;
 CREATE TRIGGER cme_usage_crossing AFTER INSERT ON commercial.usage_records FOR EACH ROW EXECUTE FUNCTION commercial.cme_usage_crossing();
@@ -270,9 +274,13 @@ CREATE TRIGGER cme_usage_crossing AFTER INSERT ON commercial.usage_records FOR E
 CREATE OR REPLACE FUNCTION commercial.cme_gateway_call_usage() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = commercial, pg_catalog, pg_temp AS $$
 BEGIN
-  PERFORM commercial.cme_record(NEW.tenant_id, NEW.domain_id, 'model_inference', 'calls', 1, 'gateway_call', NEW.call_id::text,
-            jsonb_build_object('latency_ms', NEW.latency_ms, 'mode', NEW.mode, 'model_id', NEW.model_id, 'outcome', NEW.outcome, 'run_id', NEW.run_id, 'method_id', NEW.method_id,
-                               'tokens', NULL, 'tokens_note', 'the gateway records no token counts; inference is metered in calls'), NEW.occurred_at, NEW.correlation_id);
+  BEGIN   -- a meter never fails the act it meters: an error is a WARNING, the act goes on (the record is missing, never the act)
+    PERFORM commercial.cme_record(NEW.tenant_id, NEW.domain_id, 'model_inference', 'calls', 1, 'gateway_call', NEW.call_id::text,
+              jsonb_build_object('latency_ms', NEW.latency_ms, 'mode', NEW.mode, 'model_id', NEW.model_id, 'outcome', NEW.outcome, 'run_id', NEW.run_id, 'method_id', NEW.method_id,
+                                 'tokens', NULL, 'tokens_note', 'the gateway records no token counts; inference is metered in calls'), NEW.occurred_at, NEW.correlation_id);
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'B91 meters: % not recorded: %', TG_NAME, SQLERRM;
+  END;
   RETURN NULL;
 END $$;
 CREATE TRIGGER cme_gateway_call_usage AFTER INSERT ON intelligence.gateway_calls FOR EACH ROW EXECUTE FUNCTION commercial.cme_gateway_call_usage();
@@ -282,13 +290,17 @@ CREATE OR REPLACE FUNCTION commercial.cme_collection_run_usage() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = commercial, pg_catalog, pg_temp AS $$
 DECLARE v_spent jsonb := NEW.details -> 'budget_spent'; v_det jsonb;
 BEGIN
-  IF jsonb_typeof(v_spent) <> 'object' THEN RETURN NULL; END IF;
-  v_det := jsonb_build_object('run_id', NEW.run_id, 'source_id', NEW.source_id, 'event', NEW.event, 'connector', NEW.connector, 'acquisition_mode', NEW.acquisition_mode,
-                              'elapsed_ms', v_spent -> 'elapsedMs', 'admitted', NEW.details -> 'admitted', 'bytes_stored', NEW.details -> 'bytes_stored');
-  PERFORM commercial.cme_record(NEW.tenant_id, NEW.domain_id, 'source_consumption', 'requests', coalesce((v_spent ->> 'requests')::numeric, 0), 'collection_run', NEW.run_id::text,
-            v_det, NEW.occurred_at, NEW.correlation_id);
-  PERFORM commercial.cme_record(NEW.tenant_id, NEW.domain_id, 'source_consumption', 'bytes', coalesce((v_spent ->> 'bytes')::numeric, 0), 'collection_run_bytes', NEW.run_id::text,
-            v_det, NEW.occurred_at, NEW.correlation_id);
+  BEGIN   -- a meter never fails the act it meters: an error is a WARNING, the act goes on (the record is missing, never the act)
+    IF jsonb_typeof(v_spent) <> 'object' THEN RETURN NULL; END IF;
+    v_det := jsonb_build_object('run_id', NEW.run_id, 'source_id', NEW.source_id, 'event', NEW.event, 'connector', NEW.connector, 'acquisition_mode', NEW.acquisition_mode,
+                                'elapsed_ms', v_spent -> 'elapsedMs', 'admitted', NEW.details -> 'admitted', 'bytes_stored', NEW.details -> 'bytes_stored');
+    PERFORM commercial.cme_record(NEW.tenant_id, NEW.domain_id, 'source_consumption', 'requests', coalesce((v_spent ->> 'requests')::numeric, 0), 'collection_run', NEW.run_id::text,
+              v_det, NEW.occurred_at, NEW.correlation_id);
+    PERFORM commercial.cme_record(NEW.tenant_id, NEW.domain_id, 'source_consumption', 'bytes', coalesce((v_spent ->> 'bytes')::numeric, 0), 'collection_run_bytes', NEW.run_id::text,
+              v_det, NEW.occurred_at, NEW.correlation_id);
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'B91 meters: % not recorded: %', TG_NAME, SQLERRM;
+  END;
   RETURN NULL;
 END $$;
 CREATE TRIGGER cme_collection_run_usage AFTER INSERT ON observation.collection_run_events FOR EACH ROW
@@ -298,9 +310,13 @@ CREATE TRIGGER cme_collection_run_usage AFTER INSERT ON observation.collection_r
 CREATE OR REPLACE FUNCTION commercial.cme_chunk_usage() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = commercial, pg_catalog, pg_temp AS $$
 BEGIN
-  PERFORM commercial.cme_record(NEW.tenant_id, NEW.domain_id, 'simulation_compute', 'wall_ms', greatest(NEW.wall_ms, 0), 'experiment_chunk',
-            NEW.experiment_id::text || ':' || NEW.chunk_index || ':' || NEW.attempts,
-            jsonb_build_object('experiment_id', NEW.experiment_id, 'chunk_index', NEW.chunk_index, 'attempt', NEW.attempts, 'paths', NEW.paths, 'outcome', NEW.state), NEW.finished_at, NULL);
+  BEGIN   -- a meter never fails the act it meters: an error is a WARNING, the act goes on (the record is missing, never the act)
+    PERFORM commercial.cme_record(NEW.tenant_id, NEW.domain_id, 'simulation_compute', 'wall_ms', greatest(NEW.wall_ms, 0), 'experiment_chunk',
+              NEW.experiment_id::text || ':' || NEW.chunk_index || ':' || NEW.attempts,
+              jsonb_build_object('experiment_id', NEW.experiment_id, 'chunk_index', NEW.chunk_index, 'attempt', NEW.attempts, 'paths', NEW.paths, 'outcome', NEW.state), NEW.finished_at, NULL);
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'B91 meters: % not recorded: %', TG_NAME, SQLERRM;
+  END;
   RETURN NULL;
 END $$;
 CREATE TRIGGER cme_chunk_usage AFTER UPDATE ON simulation.experiment_chunks FOR EACH ROW
@@ -310,9 +326,13 @@ CREATE TRIGGER cme_chunk_usage AFTER UPDATE ON simulation.experiment_chunks FOR 
 CREATE OR REPLACE FUNCTION commercial.cme_run_usage() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = commercial, pg_catalog, pg_temp AS $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM simulation.experiments e WHERE e.run_id = NEW.run_id) THEN RETURN NULL; END IF;
-  PERFORM commercial.cme_record(NEW.tenant_id, NEW.domain_id, 'simulation_compute', 'wall_ms', round(coalesce((NEW.resource ->> 'elapsed_ms')::numeric, 0)), 'simulation_run', NEW.run_id::text,
-            jsonb_build_object('run_id', NEW.run_id, 'model_ref', NEW.model_ref, 'samples_run', NEW.resource -> 'samples_run', 'samples', NEW.samples), coalesce(NEW.completed_at, clock_timestamp()), NULL);
+  BEGIN   -- a meter never fails the act it meters: an error is a WARNING, the act goes on (the record is missing, never the act)
+    IF EXISTS (SELECT 1 FROM simulation.experiments e WHERE e.run_id = NEW.run_id) THEN RETURN NULL; END IF;
+    PERFORM commercial.cme_record(NEW.tenant_id, NEW.domain_id, 'simulation_compute', 'wall_ms', round(coalesce((NEW.resource ->> 'elapsed_ms')::numeric, 0)), 'simulation_run', NEW.run_id::text,
+              jsonb_build_object('run_id', NEW.run_id, 'model_ref', NEW.model_ref, 'samples_run', NEW.resource -> 'samples_run', 'samples', NEW.samples), coalesce(NEW.completed_at, clock_timestamp()), NULL);
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'B91 meters: % not recorded: %', TG_NAME, SQLERRM;
+  END;
   RETURN NULL;
 END $$;
 CREATE TRIGGER cme_run_usage AFTER UPDATE OF state ON simulation.runs_current FOR EACH ROW
@@ -324,25 +344,34 @@ CREATE OR REPLACE FUNCTION commercial.cme_product_consumption(p_tenant uuid, p_d
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = commercial, products, pg_catalog, pg_temp AS $$
 DECLARE v_unit text := CASE p_kind WHEN 'metric_serving' THEN 'servings' ELSE 'events' END; v_usage uuid; v_consumer uuid; v_counter text;
 BEGIN
-  v_usage := commercial.cme_record(p_tenant, p_domain, 'product_consumption', v_unit, CASE p_kind WHEN 'metric_serving' THEN 1 ELSE greatest(coalesce(p_quantity, 0), 0) END, p_kind, p_source_ref,
-               coalesce(p_details, '{}'::jsonb) || jsonb_build_object('product_id', p_product, 'consumer_principal_id', p_consumer), clock_timestamp(), p_correlation);
-  IF v_usage IS NULL THEN RETURN jsonb_build_object('recorded', false); END IF;   -- recorded once: never counted twice
-  v_counter := CASE p_kind WHEN 'metric_serving' THEN 'metric_servings' WHEN 'subscription_read' THEN 'subscription_reads' ELSE 'catch_ups' END;
-  UPDATE products.product_consumers pc
-     SET usage = pc.usage || jsonb_build_object(v_counter, coalesce((pc.usage ->> v_counter)::bigint, 0) + 1)
-                          || CASE WHEN p_kind <> 'metric_serving' THEN jsonb_build_object('events_served', coalesce((pc.usage ->> 'events_served')::bigint, 0) + greatest(coalesce(p_quantity, 0), 0)::bigint) ELSE '{}'::jsonb END
-                          || jsonb_build_object('last_consumed_at', clock_timestamp(), 'metered_by', 'B91 §ME (0105)')
-   WHERE pc.product_id = p_product AND pc.consumer_principal_id = p_consumer AND pc.state IN ('registered', 'accepted')
-  RETURNING pc.consumer_id INTO v_consumer;
-  RETURN jsonb_build_object('recorded', true, 'usage_id', v_usage, 'consumer_id', v_consumer);
+  BEGIN   -- a meter never fails the read or the serving it meters
+    v_usage := commercial.cme_record(p_tenant, p_domain, 'product_consumption', v_unit, CASE p_kind WHEN 'metric_serving' THEN 1 ELSE greatest(coalesce(p_quantity, 0), 0) END, p_kind, p_source_ref,
+                 coalesce(p_details, '{}'::jsonb) || jsonb_build_object('product_id', p_product, 'consumer_principal_id', p_consumer), clock_timestamp(), p_correlation);
+    IF v_usage IS NULL THEN RETURN jsonb_build_object('recorded', false); END IF;   -- recorded once: never counted twice
+    v_counter := CASE p_kind WHEN 'metric_serving' THEN 'metric_servings' WHEN 'subscription_read' THEN 'subscription_reads' ELSE 'catch_ups' END;
+    UPDATE products.product_consumers pc
+       SET usage = pc.usage || jsonb_build_object(v_counter, coalesce((pc.usage ->> v_counter)::bigint, 0) + 1)
+                            || CASE WHEN p_kind <> 'metric_serving' THEN jsonb_build_object('events_served', coalesce((pc.usage ->> 'events_served')::bigint, 0) + greatest(coalesce(p_quantity, 0), 0)::bigint) ELSE '{}'::jsonb END
+                            || jsonb_build_object('last_consumed_at', clock_timestamp(), 'metered_by', 'B91 §ME (0105)')
+     WHERE pc.product_id = p_product AND pc.consumer_principal_id = p_consumer AND pc.state IN ('registered', 'accepted')
+    RETURNING pc.consumer_id INTO v_consumer;
+    RETURN jsonb_build_object('recorded', true, 'usage_id', v_usage, 'consumer_id', v_consumer);
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'B91 meters: product consumption not recorded: %', SQLERRM;
+    RETURN jsonb_build_object('recorded', false, 'error', SQLERRM);
+  END;
 END $$;
 REVOKE ALL ON FUNCTION commercial.cme_product_consumption(uuid, uuid, uuid, uuid, text, numeric, text, jsonb, uuid) FROM PUBLIC;
 
 CREATE OR REPLACE FUNCTION commercial.cme_metric_serving_usage() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = commercial, pg_catalog, pg_temp AS $$
 BEGIN
-  PERFORM commercial.cme_product_consumption(NEW.tenant_id, NEW.domain_id, NEW.model_id, NEW.served_to, 'metric_serving', 1, NEW.serving_id::text,
-            jsonb_build_object('serving_id', NEW.serving_id, 'view', NEW.view, 'grain', NEW.grain, 'version', NEW.version, 'certified', NEW.certified, 'source_rows', NEW.source_rows), NEW.correlation_id);
+  BEGIN   -- a meter never fails the act it meters: an error is a WARNING, the act goes on (the record is missing, never the act)
+    PERFORM commercial.cme_product_consumption(NEW.tenant_id, NEW.domain_id, NEW.model_id, NEW.served_to, 'metric_serving', 1, NEW.serving_id::text,
+              jsonb_build_object('serving_id', NEW.serving_id, 'view', NEW.view, 'grain', NEW.grain, 'version', NEW.version, 'certified', NEW.certified, 'source_rows', NEW.source_rows), NEW.correlation_id);
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'B91 meters: % not recorded: %', TG_NAME, SQLERRM;
+  END;
   RETURN NULL;
 END $$;
 CREATE TRIGGER cme_metric_serving_usage AFTER INSERT ON products.metric_servings FOR EACH ROW EXECUTE FUNCTION commercial.cme_metric_serving_usage();
@@ -351,9 +380,13 @@ CREATE OR REPLACE FUNCTION commercial.cme_catchup_usage() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = commercial, products, pg_catalog, pg_temp AS $$
 DECLARE v_product uuid;
 BEGIN
-  SELECT s.product_id INTO v_product FROM products.event_subscriptions s WHERE s.subscription_id = NEW.subscription_id;
-  PERFORM commercial.cme_product_consumption(NEW.tenant_id, NEW.domain_id, v_product, NEW.served_to, 'catch_up', NEW.served, NEW.catchup_id::text,
-            jsonb_build_object('subscription_id', NEW.subscription_id, 'catchup_id', NEW.catchup_id, 'after', NEW.after_sequence, 'through', NEW.through_sequence), NEW.correlation_id);
+  BEGIN   -- a meter never fails the act it meters: an error is a WARNING, the act goes on (the record is missing, never the act)
+    SELECT s.product_id INTO v_product FROM products.event_subscriptions s WHERE s.subscription_id = NEW.subscription_id;
+    PERFORM commercial.cme_product_consumption(NEW.tenant_id, NEW.domain_id, v_product, NEW.served_to, 'catch_up', NEW.served, NEW.catchup_id::text,
+              jsonb_build_object('subscription_id', NEW.subscription_id, 'catchup_id', NEW.catchup_id, 'after', NEW.after_sequence, 'through', NEW.through_sequence), NEW.correlation_id);
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'B91 meters: % not recorded: %', TG_NAME, SQLERRM;
+  END;
   RETURN NULL;
 END $$;
 CREATE TRIGGER cme_catchup_usage AFTER INSERT ON products.subscription_catchups FOR EACH ROW EXECUTE FUNCTION commercial.cme_catchup_usage();
