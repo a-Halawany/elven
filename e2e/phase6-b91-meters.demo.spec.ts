@@ -86,11 +86,16 @@ test.describe.serial('CP-6 B91 §ME — usage meters and caps on the demonstrati
     await uiLogin(page, OPERATOR, required('EYE_TEST_ADMIN_PASSWORD'));
     await page.goto('/twins/simulations');
     await page.getByRole('link', { name: /Simulation center/ }).click();
-    await page.getByRole('table', { name: 'experiments' }).getByRole('button', { name: new RegExp(title) }).first().click();
-    const panel = page.getByRole('region', { name: new RegExp(`^${title}`) });
+    const t = title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');   // the title is literal text — '(SYNTHETIC)' is not a regex group
+    await page.getByRole('table', { name: 'experiments' }).getByRole('button', { name: new RegExp(t) }).first().click();
+    const panel = page.getByRole('region', { name: new RegExp(`^${t}`) });
     await expect(panel.getByLabel('experiment state')).toContainText('PARTIAL');
     await expect(page.getByRole('list', { name: 'ledger' })).toContainText(/budget/i);
-    await expect(page.getByRole('list', { name: 'ledger' })).toContainText(/tenant_cap/);
+    // the experiment's ledger as the page renders it (event names, not their details): the stop and the partial end. The reason
+    // `tenant_cap` lives in the events' details, which this page does not render — the act asserts it on the record, and the cap's
+    // breach (experiment …) is read on the usage page above.
+    await expect(page.getByRole('list', { name: 'ledger' })).toContainText(/budget exceeded — the experiment stops/);
+    await expect(page.getByRole('list', { name: 'ledger' })).toContainText(/partial/);
     await shot(page, 'b91-meters-04-experiment-partial');
   });
 });

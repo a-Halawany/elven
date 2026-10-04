@@ -92,7 +92,8 @@ test.describe.serial('CP-6 B91 §LE — the cost and resource ledger on the demo
     await opt.getByLabel('Rationale').fill('the demo walk proves the boundary refusal');
     await opt.getByRole('button', { name: 'Record the decision' }).click();
     await page.getByRole('dialog', { name: 'review' }).getByRole('button', { name: 'Confirm' }).click();
-    await expect(page.getByRole('alert')).toContainText(/optimisation rejected \(boundary\): .* would change residency — economic optimisation never weakens residency, isolation, retention or recovery/);
+    // the page's own alert (Next's route announcer is a second, empty role=alert)
+    await expect(page.getByRole('alert').filter({ hasText: /optimisation rejected/ })).toContainText(/optimisation rejected \(boundary\): .* would change residency — economic optimisation never weakens residency, isolation, retention or recovery/);
     await expect(opt.getByRole('listitem')).toHaveCount(before);
     await shot(page, 'b91-ledger-03-boundary-refused');
   });
