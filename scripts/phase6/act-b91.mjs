@@ -194,6 +194,8 @@ const FD_PKG = 'foresight-decision'; const FULL_PKG = 'full-platform';
 const FD_SKU = 'EYE-FD-12M'; const FULL_SKU = 'EYE-FULL-12M';
 const versionOf = async (pkg) => (await q(`select licence_id::text, version, state, issued_at, effective_to, grace_until, last_valid from commercial.licences where tenant_id = $1 and package_key = $2 order by version desc limit 1`, [T, pkg]))[0] ?? null;
 
+// T. Nakamura's simulation write: the envelope sweep of the corridor control (the scenes and --restore)
+const sweepOf = (s, payload = { gridPoints: 5 }) => call(`${FB}/runs/${CORRIDOR.id}/sweep`, dom(s, 'simulation', { action: 'simulation.sweep.run', objectType: 'SIM', objectId: CORRIDOR.id }), payload, s.token);
 if (!RESTORE) {
 /* ── B91-A THE ROUTING ───────────────────────────────────────────────────────────────── */
 console.log('\nB91-A THE ROUTING — the corridor domain\'s attention policy routes commercial.usage and commercial.entitlement; every other class kept');
@@ -229,7 +231,6 @@ const OR = `${S}/orchestration`;
 const EXP_TITLE = 'Regensburg line — bearing shortage at the tenant cap (SYNTHETIC)';
 const DES_TITLE = 'Regensburg plant — line 1 and its bearing supply (discrete-event study)';
 const expRow = async () => (await q(`select experiment_id::text id, state, run_id::text run, progress, approved_by::text approved_by from simulation.experiments where tenant_id = $1 and domain_id = $2 and title = $3 order by declared_at desc limit 1`, [T, D, EXP_TITLE]))[0] ?? null;
-const sweepOf = (s, payload = { gridPoints: 5 }) => call(`${FB}/runs/${CORRIDOR.id}/sweep`, dom(s, 'simulation', { action: 'simulation.sweep.run', objectType: 'SIM', objectId: CORRIDOR.id }), payload, s.token);
 const refusedSweep = async () => (await q(`select breach_id::text, cap_id::text, cap_version, kind, cap_limit, used, period_start, subject_kind, details, attention_item_id, occurred_at, correlation_id::text
                                             from commercial.cap_breaches where tenant_id = $1 and dimension = 'simulation_compute' and kind = 'refused' and subject_kind = 'envelope_sweep' order by occurred_at limit 1`, [T]))[0] ?? null;
 let REFUSED = await refusedSweep();
