@@ -16,6 +16,10 @@ import { GraceController } from './grace/grace.controller.js';
 import { GraceService } from './grace/grace.service.js';
 import { LicenceSigningKeyStore } from './grace/licence-token.js';
 /* end B91 grace */
+/* B91 meters */
+import { MetersController } from './meters/meters.controller.js';
+import { MetersService } from './meters/meters.service.js';
+/* end B91 meters */
 
 @Module({
   imports: [PipelineModule, ExecutiveModule],
@@ -38,6 +42,11 @@ import { LedgerStepService } from './ledger/ledger-step.js';
 @Module({
   imports: [PipelineModule, ExecutiveModule],
   controllers: [/* B91 ledger */ LedgerPlatformController, LedgerTenantController, LedgerDomainController /* end B91 ledger */],
-  providers: [/* B91 ledger */ LedgerService, LedgerStepService /* end B91 ledger */],
+  providers: [/* B91 ledger */ LedgerService, LedgerStepService /* end B91 ledger */,
+    /* B91 meters */ MetersController, /* end B91 meters */
+  ],
+  providers: [
+    /* B91 meters */ MetersService, /* end B91 meters */
+  ],
 })
 export class CommercialModule {}
