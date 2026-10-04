@@ -295,6 +295,14 @@ describe('B91 §GR · c THE ROUTING of commercial.entitlement (an unrouted class
     expect(all).toContain('Licence RENEWED');
     expect(all).toContain('Licence renewal due');
   });
+  it('RECOVERY (integration): the tenant administrator ACKNOWLEDGES a routed commercial.entitlement item — the addressee holds executive.attention.item.acknowledge at TENANT', async () => {
+    const items = ((await queue(tenantAdmin))['items'] as Row[]).filter((i) => i['state'] === 'open');
+    expect(items.length).toBeGreaterThanOrEqual(1);
+    const itemId = String(items[0]!['item_id']);
+    const ack = (await exec.acknowledgeAttentionItem(h.req(tenantAdmin, 'executive.attention.item.acknowledge', 'ATI', itemId, 'executive'), T(), D(), itemId,
+      { payload: { note: 'seen by the tenant administrator (B91 harness)' } }) as unknown as { item: Row }).item;
+    expect(ack).toMatchObject({ item_id: itemId, state: 'acknowledged', from_state: 'open', acknowledged_by: tenantAdmin.principalId });
+  });
 });
 
 describe('B91 §GR · d RENEWAL', () => {
