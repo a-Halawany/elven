@@ -329,7 +329,7 @@ describe('B91 §LE · L3 BUDGETS: owner, variance, run-rate forecast, thresholds
     expect(await items(BUDGET)).toHaveLength(1);   // once per budget version, period and threshold
   });
 
-  it('REFUSAL: an executive who is not the administrator declares (authority 403); an analyst (the PDP); an AGENT (the human gate); an agent as owner (422); a duplicate (409); a stale revision (409); another executive revising (ownership 403); a domain context revising ANOTHER domain\'s budget (403); a domain reader of the tenant route (the PDP)', async () => {
+  it('REFUSAL: an executive who is not the administrator declares (authority 403); an analyst (the PDP); an AGENT (the human gate); an agent as owner (422); a duplicate (409); a stale revision (409); another executive revising (403); a domain context revising ANOTHER domain\'s budget (403); a domain reader of the tenant route (the PDP)', async () => {
     const decl = { label: 'Another simulation budget', capabilityKey: 'simulation', periodKind: 'month', amount: '50', currency: 'EUR', ownerPrincipalId: owner.principalId, reason: 'B91 ledger harness — refused' };
     await refused(setBudgetD(exec2, { ...decl, capabilityKey: 'twins' }), /^budget rejected \(authority\): a budget is declared by the tenant administrator/, 403);
     await refused(setBudgetD(analyst, decl), /no qualifying role binding/, 403);
@@ -337,8 +337,9 @@ describe('B91 §LE · L3 BUDGETS: owner, variance, run-rate forecast, thresholds
     await refused(setBudget(tadmin, { ...decl, capabilityKey: 'twins', ownerPrincipalId: agentPrincipalId }), /^budget rejected \(owner\): the owner is a named, active human/, 422);
     await refused(setBudget(tadmin, decl), /^budget rejected \(duplicate\)/, 409);
     await refused(setBudgetD(owner, { budgetId: BUDGET, expectedVersion: 2, label: 'x-revised', amount: '999', currency: 'EUR', ownerPrincipalId: owner.principalId, reason: 'B91 ledger harness — stale' }), /^budget rejected \(stale\)/, 409);
+    // another executive of the domain: the tenant-level budget is not its to revise from a domain context (only its owner's)
     await refused(setBudgetD(exec2, { budgetId: BUDGET, expectedVersion: 1, label: 'Corridor simulation compute — monthly', amount: '999', currency: 'EUR', ownerPrincipalId: exec2.principalId, reason: 'B91 ledger harness — not the owner' }),
-      /^budget rejected \(ownership\)/, 403);
+      /^budget rejected \(authority\): a domain context sets its own domain's record only/, 403);
     // the second domain's budget (the administrator's, on the tenant route) is not revised from the corridor domain's context — not even by its owner
     const d2b = (await setBudget(tadmin, { ...decl, domainId: D2, label: 'Second domain simulation — monthly', capabilityKey: 'simulation' })).budget;
     expect(d2b).toMatchObject({ scope: 'DOMAIN', domain_id: D2 });
@@ -379,6 +380,9 @@ describe('B91 §LE · L4 ANOMALY: cle-anomaly@1 on a domain budget (IA-70-002 an
       ownerPrincipalId: owner.principalId, anomaly: { k: 3, window_days: 3 }, reason: 'B91 ledger harness — the corridor\'s inference' })).budget;
     INFER_BUDGET = String(b['budget_id']);
     expect(b).toMatchObject({ scope: 'DOMAIN', domain_id: D(), anomaly_rule: { k: 3, window_days: 3 } });
+    // the domain's own budget, revised by an executive of the domain who is NOT its owner: ownership (403)
+    await refused(setBudgetD(exec2, { budgetId: INFER_BUDGET, expectedVersion: 1, label: 'Corridor model inference — monthly (SYNTHETIC)', amount: '1', currency: 'EUR', ownerPrincipalId: exec2.principalId,
+      reason: 'B91 ledger harness — not the owner' }), /^budget rejected \(ownership\): a budget is revised by the tenant administrator or its owner/, 403);
     for (const d of [3, 2, 1]) await usage({ domain: D(), cap: 'inference', dim: 'model_inference', unit: U.calls, qty: 10, at: await dbDayNoon(d) });   // 0.20 EUR a day
     await usage({ domain: D(), cap: 'inference', dim: 'model_inference', unit: U.calls, qty: 100, at: await dbAgo(1) });                                   // 2.00 EUR today
     const t = await tick();
