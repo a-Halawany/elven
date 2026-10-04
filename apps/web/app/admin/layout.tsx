@@ -16,6 +16,7 @@ const NAV = [
   { href: '/admin/principals', key: 'nav.principals' },
   { href: '/admin/objects', key: 'nav.objects' },
   { href: '/admin/audit', key: 'nav.audit' },
+  /* B91 ledger */ { href: '/admin/commercial/ledger', key: 'Cost ledger' }, /* end B91 ledger */
 ];
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
