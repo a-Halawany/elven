@@ -28,6 +28,8 @@ const shot = (page: Page, name: string) => page.screenshot({ path: join(SHOTS, `
 const OPERATOR = process.env['EYE_B30_OPERATOR'] ?? 't.nakamura';
 const STEWARD = process.env['EYE_B30_STEWARD'] ?? 'h.petrovic';
 const TITLE = process.env['EYE_B30_FABRIC_TITLE'] ?? 'Regensburg line — bearing shortage';
+// the title EXACTLY (B91's experiment on the same line, 'Regensburg line — bearing shortage at the tenant cap (SYNTHETIC)', contains it)
+const TITLE_RE = new RegExp(`^${TITLE.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?! at )`);
 
 async function uiLogin(page: Page, username: string, password: string): Promise<void> {
   await page.goto('/login');
@@ -58,14 +60,14 @@ test.describe.serial('CP-6 B30 §EX — the method-fabric experiments on the dem
     await uiLogin(page, OPERATOR, required('EYE_TEST_ADMIN_PASSWORD'));
     await openFabric(page);
     const list = page.getByRole('list', { name: 'experiments' });
-    const row = list.getByRole('listitem').filter({ hasText: TITLE }).first();
+    const row = list.getByRole('listitem').filter({ hasText: TITLE_RE }).first();
     await expect(row).toContainText('discrete-event@1');
     await expect(row).toContainText(/COMPLETED|RETIRED/);
     await expect(row).toContainText(/On an unstable checkpoint: (STOP|PAUSE|NONE) —/);
     await shot(page, 'b30-experiments-02-fabric-experiment');
     // the experiment's chunks, checkpoints and run through the simulation center (B31's panel)
     await page.getByRole('link', { name: /Simulation center/ }).click();
-    await page.getByRole('table', { name: 'experiments' }).getByRole('button', { name: new RegExp(TITLE) }).first().click();
+    await page.getByRole('table', { name: 'experiments' }).getByRole('button', { name: TITLE_RE }).first().click();
     await expect(page.getByRole('region', { name: new RegExp(`^${TITLE}`) }).getByLabel('produced run', { exact: true })).toContainText(/COMPLETED — \d+ paths/);
     await shot(page, 'b30-experiments-03-chunks');
   });
