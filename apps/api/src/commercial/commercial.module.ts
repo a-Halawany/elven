@@ -11,6 +11,11 @@ import { ExecutiveModule } from '../executive/executive.module.js';
 import { EntitlementsTenantController, EntitlementsVendorController } from './entitlements/entitlements.controller.js';
 import { EntitlementService } from './entitlements/entitlement.service.js';
 /* end B91 entitlements */
+/* B91 grace */
+import { GraceController } from './grace/grace.controller.js';
+import { GraceService } from './grace/grace.service.js';
+import { LicenceSigningKeyStore } from './grace/licence-token.js';
+/* end B91 grace */
 
 @Module({
   imports: [PipelineModule, ExecutiveModule],
@@ -19,6 +24,10 @@ import { EntitlementService } from './entitlements/entitlement.service.js';
   ],
   providers: [
     /* B91 entitlements */ EntitlementService, /* end B91 entitlements */
+    /* B91 grace */ GraceController, /* end B91 grace */
+  ],
+  providers: [
+    /* B91 grace */ GraceService, LicenceSigningKeyStore, /* end B91 grace */
   ],
 })
 export class CommercialModule {}

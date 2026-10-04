@@ -1976,6 +1976,24 @@ const BUNDLE_V1: Rule[] = [
   { actionPrefix: 'commercial.contract.declare', exact: true, requiredAnyRole: [{ role: 'commercial_authority', atScope: 'PLATFORM' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   { actionPrefix: 'commercial.read', exact: true, requiredAnyRole: [{ role: 'commercial_authority', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'method_steward', atScope: 'DOMAIN' }], obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
   /* end B91 entitlements */
+  /* B91 grace (0105 §GR; F-P7-F-01 clauses 4–5: FEX-30, PR-66-005/006, AT-66, UX-67). EXACT rules — no earlier rule starts with `commercial`
+     (checked) and none of these names is a prefix of another rule's. THE TRANSITIONS of a licence version's state (renew, suspend, reinstate),
+     THE GRACE POLICY and THE OFFLINE TOKEN are the vendor's COMMERCIAL AUTHORITY's (PLATFORM; the prelude's role — availability only, never
+     business authority), human-gated: an agent never renews, lifts or raises an entitlement (the tick's lapse runs under the attention agent's
+     executive.attention.tick, which moves a licence only towards LESS availability and lifts nothing). THE READ — consequential and audited:
+     the commercial authority (every tenant), the tenant administrator and the auditor (the tenant's standing), and the domain roles that read
+     the simulation and decision workspaces (the entitlement explanation banner). The platform administrator is not named: technical access
+     only. No new role. */
+  { actionPrefix: 'commercial.licence.renew', exact: true, requiredAnyRole: [{ role: 'commercial_authority', atScope: 'PLATFORM' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'commercial.licence.suspend', exact: true, requiredAnyRole: [{ role: 'commercial_authority', atScope: 'PLATFORM' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'commercial.licence.reinstate', exact: true, requiredAnyRole: [{ role: 'commercial_authority', atScope: 'PLATFORM' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'commercial.grace.set', exact: true, requiredAnyRole: [{ role: 'commercial_authority', atScope: 'PLATFORM' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'commercial.offline_token.issue', exact: true, requiredAnyRole: [{ role: 'commercial_authority', atScope: 'PLATFORM' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'commercial.grace.read', exact: true, requiredAnyRole: [{ role: 'commercial_authority', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' },
+    { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' },
+    { role: 'simulation_operator', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' },
+    { role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'method_steward', atScope: 'DOMAIN' }], obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B91 grace */
   /* B36 home */
   /* THE EXECUTIVE HOME, THE CADENCE, THE COMMAND VIEWS, THE SEARCH, THE METRICS (0094 §H; F-P6-11: WS-01, JRN-19, PER-03, CAP-EO-01/-02/-04).
      EXACT rules — no `executive` prefix rule exists and none of these names is a prefix of another rule's. THE READS (executive.home.read
