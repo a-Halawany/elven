@@ -15,19 +15,23 @@
  *         TENANT). A persona that cannot be created through a governed route STOPS the act — no identity row is ever planted.
  *   B91-A THE ROUTING: M. Dvořák publishes the next version of the corridor domain's attention policy — commercial.usage → the tenant
  *         administrator and the budget owner's role (executive), commercial.entitlement → the tenant administrator; every other class kept.
+ *         Only the commercial.entitlement notices are evaluated against it; the commercial.usage notices are routed by their ports.
  *   B91-M F-P7-F-02, while NORDWERK is still UNCONTRACTED (no licence: the availability gate does not apply): the vendor's SYNTHETIC rate
  *         cards (simulation_compute wall_ms, model_inference calls, storage bytes); N. Vogel's month budget (all capabilities, owner
  *         M. Dvořák); MODEL INFERENCE through a real governed path (A. Hoffmann uploads a SYNTHETIC shipment record to the NORDWERK internal
  *         source → the plan → the extraction agent's run → the model gateway, replay mode, its fixture recorded by L. Ferreira); T. Nakamura's
- *         envelope sweep of the corridor control (metered); N. Vogel's simulation_compute STOP cap (day) at the day's usage and a
- *         model_inference WARN cap; T. Nakamura's next sweep REFUSED 409 `usage cap rejected (cap)` — the breach recorded and explained; the
- *         tick prices the usage; the budget's variance; the commercial.usage item routed.
+ *         E. Kovács's discrete-event experiment (J. Weber approves its budget; one chunk a tick — its first chunk run by the tick, metered);
+ *         T. Nakamura's envelope sweep of the corridor control (metered); N. Vogel's simulation_compute STOP cap (day) at the day's usage and
+ *         a model_inference WARN cap; the attention agent's next claim stops the experiment PARTIAL (tenant_cap, the chunk kept); T. Nakamura's
+ *         next sweep REFUSED 409 `usage cap rejected (cap)` — the breach recorded and explained; the tick prices the usage; the budget
+ *         (sized from the month's priced spend) shows its variance and raises its threshold to M. Dvořák; the commercial.usage item routed by
+ *         its port; the vendor's SYNTHETIC invoice of the day's ledger totals imported and reconciled.
  *   B91-L F-P7-F-01: the vendor's package foresight-decision (Foresight, Decision and every non-simulation capability the demonstration uses —
  *         NOT Simulation), its SKU, the licence issued to NORDWERK with a term that ENDS WITHIN THE ACT; T. Nakamura's simulation write REFUSED
  *         403 EYE_ENT_001 (Simulation named, the licence version, what stays available); the controls that stay (M. Dvořák reads the
  *         commercial.usage item, the auditor reads the refusal in the audit ledger, the corridor run reads); the term ends and the tick moves
  *         the licence to GRACE with the last valid entitlement and grace_until; the commercial.entitlement item routed to the tenant
- *         administrator; the licence standing shows grace and the last valid entitlement. The offline token is SKIPPED unless an
+ *         administrator, who ACKNOWLEDGES it; the licence standing shows grace and the last valid entitlement. The offline token is SKIPPED unless an
  *         EYE_LICENCE_SIGNING_KEY_* reference is in the environment (never written).
  *   B91-9 THE STATE, the env lines for the four walks, the LIMITS said.
  *
@@ -98,7 +102,8 @@ console.log('\nB91-0 THE STATE — 0104 and 0105, the casting, the attention age
   const m = await q(`select filename from public.schema_migrations where filename like '0104%' or filename like '0105%' order by 1`);
   if (m.length === 2) ok(`migrations applied: ${m.map((x) => x.filename).join(', ')}`); else { bad(`0104 and 0105 are not both applied (${m.map((x) => x.filename).join(', ') || 'neither'})`); process.exit(1); }
 }
-const CAST = { 't.nakamura': ['twin_owner'], 'm.dvorak': ['executive'], 't.richter': ['domain_admin'], 'a.hoffmann': ['domain_analyst'], 'l.ferreira': ['extraction_manager'] };
+const CAST = { 't.nakamura': ['twin_owner'], 'm.dvorak': ['executive'], 't.richter': ['domain_admin'], 'a.hoffmann': ['domain_analyst'], 'l.ferreira': ['extraction_manager'],
+  'e.kovacs': ['twin_owner'], 'j.weber': ['strategy_owner'] };
 const AUDITOR_LOGIN = 'e.lindqvist';
 {
   const rows = await q(`select p.login_name, array_agg(b.role_code order by b.role_code) roles from identity.principals p join identity.role_bindings b on b.principal_id = p.id
@@ -112,8 +117,9 @@ const AUDITOR_LOGIN = 'e.lindqvist';
 }
 const who = async (l) => { const s = await login(l, PW); if (s === null) { bad(`${l} could not authenticate`); process.exit(1); } return s; };
 const nakamura = await who('t.nakamura'); const dvorak = await who('m.dvorak'); const richter = await who('t.richter'); const hoffmann = await who('a.hoffmann'); const ferreira = await who('l.ferreira');
+const kovacs = await who('e.kovacs'); const weber = await who('j.weber');
 const auditor = await login(AUDITOR_LOGIN, PW);
-const NAME = { [nakamura.principalId]: 'T. Nakamura', [dvorak.principalId]: 'M. Dvořák', [richter.principalId]: 'T. Richter', [hoffmann.principalId]: 'A. Hoffmann', [ferreira.principalId]: 'L. Ferreira', [admin.principalId]: 'the administrator' };
+const NAME = { [nakamura.principalId]: 'T. Nakamura', [dvorak.principalId]: 'M. Dvořák', [richter.principalId]: 'T. Richter', [hoffmann.principalId]: 'A. Hoffmann', [ferreira.principalId]: 'L. Ferreira', [kovacs.principalId]: 'E. Kovács', [weber.principalId]: 'J. Weber', [admin.principalId]: 'the administrator' };
 if (auditor) NAME[auditor.principalId] = 'E. Lindqvist';
 const nm = (id) => NAME[id] ?? short(id);
 // THE ATTENTION AGENT: the tick's host — its scheduled ticks run the licence lapse, the storage sample and the ledger
@@ -203,6 +209,8 @@ console.log('\nB91-A THE ROUTING — the corridor domain\'s attention policy rou
     rules.classes['commercial.entitlement'] = { materiality: { min_consequence: 'C2', min_confidence: 0.5 }, route_roles: ROUTES['commercial.entitlement'], ack_within_minutes: 1440, notify: 'in_app' };
     const r = await call(`${E}/policy/publish`, dom(dvorak, 'executive', { action: 'executive.attention.policy.publish', objectType: 'ATP' }), { rules,
       reason: 'B91: the commercial classes — commercial.usage to the tenant administrator and the budget owner (executive), commercial.entitlement to the tenant administrator; every earlier class unchanged (SYNTHETIC).' }, dvorak.token);
+    // the published route matters for commercial.entitlement (§GR's notices are evaluated against the policy); the commercial.usage notices
+    // of the meters and the ledger are routed by their ports (the named owner and tenant_admin) whatever the policy says — published for the class
     if (!r.ok) fail('M. Dvořák publishes the attention policy', r);
     else {
       const pub = (await q(`select version, rules from executive.attention_policies where tenant_id = $1 and domain_id = $2 and state = 'active'`, [T, D]))[0];
@@ -217,6 +225,10 @@ console.log('\nB91-A THE ROUTING — the corridor domain\'s attention policy rou
 console.log('\nB91-M (F-P7-F-02) — the corridor sweep\'s metered compute and model inference against the tenant budget; the cap stops the sweep with a recorded, explained breach');
 const RATE_KEYS = { simulation_compute: 'wall_ms', model_inference: 'calls', storage: 'bytes' };
 const BUDGET_LABEL = 'NORDWERK — every metered capability, monthly (SYNTHETIC)';
+const OR = `${S}/orchestration`;
+const EXP_TITLE = 'Regensburg line — bearing shortage at the tenant cap (SYNTHETIC)';
+const DES_TITLE = 'Regensburg plant — line 1 and its bearing supply (discrete-event study)';
+const expRow = async () => (await q(`select experiment_id::text id, state, run_id::text run, progress, approved_by::text approved_by from simulation.experiments where tenant_id = $1 and domain_id = $2 and title = $3 order by declared_at desc limit 1`, [T, D, EXP_TITLE]))[0] ?? null;
 const sweepOf = (s, payload = { gridPoints: 5 }) => call(`${FB}/runs/${CORRIDOR.id}/sweep`, dom(s, 'simulation', { action: 'simulation.sweep.run', objectType: 'SIM', objectId: CORRIDOR.id }), payload, s.token);
 const refusedSweep = async () => (await q(`select breach_id::text, cap_id::text, cap_version, kind, cap_limit, used, period_start, subject_kind, details, attention_item_id, occurred_at, correlation_id::text
                                             from commercial.cap_breaches where tenant_id = $1 and dimension = 'simulation_compute' and kind = 'refused' and subject_kind = 'envelope_sweep' order by occurred_at limit 1`, [T]))[0] ?? null;
@@ -239,14 +251,20 @@ else {
     if (!r.ok) fail(`C. Marchetti sets the ${rc.dimension} rate card`, r);
     else ok(`C. Marchetti (commercial authority) SET the rate card ${r.body.rateCard.rate_key} v${r.body.rateCard.version}: ${r.body.rateCard.price_per_unit} ${r.body.rateCard.currency} per ${rc.unit} from ${iso(r.body.rateCard.effective_from)}${r.body.rateCard.energy_label ? ` (energy ${r.body.rateCard.energy_kwh_per_unit} kWh per unit, an ${r.body.rateCard.energy_label})` : ''} — SYNTHETIC ${r.body.rateCard.synthetic}`);
   }
-  // 2. THE BUDGET (the tenant administrator): the month, every capability, owned by M. Dvořák
+  // 2. THE BUDGET (the tenant administrator): the month, every capability, owned by M. Dvořák. Its amount is set from what the ledger holds
+  // once the attention agent's tick has priced the month's usage so far (the storage samples) — so that its 80 % threshold is reached by
+  // the scene's own usage (the phase6-ledger-b91 L3 rule: amount = spent / 0.9). SYNTHETIC.
   const cur = (await q(`select budget_id::text, version, amount from commercial.budgets where tenant_id = $1 and domain_id is null and capability_key = 'all' and period_kind = 'month' order by version desc limit 1`, [T]))[0] ?? null;
   if (cur) note(`the month budget ${short(cur.budget_id)} v${cur.version} (${cur.amount} EUR) stands — an earlier run`);
   else {
-    const r = await call(`${TC}/ledger/budgets/set`, ten(tadmin, { action: 'commercial.budget.set', objectType: 'CBG' }), { label: BUDGET_LABEL, capabilityKey: 'all', periodKind: 'month', amount: '25.00', currency: 'EUR',
-      ownerPrincipalId: dvorak.principalId, reason: 'the tenant\'s monthly budget for metered compute, inference and storage (SYNTHETIC)' }, tadmin.token);
+    const spentNow = async () => num((await q(`select coalesce(sum(amount), 0) s from commercial.cost_entries where tenant_id = $1 and currency = 'EUR' and occurred_at >= (date_trunc('month', clock_timestamp() at time zone 'UTC') at time zone 'UTC')`, [T]))[0].s);
+    let spent = await spentNow();
+    if (spent === 0) { note(`waiting for the attention agent's tick to price the month's usage under the new rate cards (the ledger step, every ${ATT.budgets?.tick_every_seconds ?? 60} s)`); spent = await waitFor('the first pricing', spentNow, (x) => x > 0, 180_000, 5000); }
+    const amount = spent > 0 ? Math.max(0.01, Math.ceil((spent / 0.9) * 100) / 100) : 1;
+    const r = await call(`${TC}/ledger/budgets/set`, ten(tadmin, { action: 'commercial.budget.set', objectType: 'CBG' }), { label: BUDGET_LABEL, capabilityKey: 'all', periodKind: 'month', amount: amount.toFixed(2), currency: 'EUR',
+      ownerPrincipalId: dvorak.principalId, reason: 'the tenant\'s monthly budget for metered compute, inference and storage — sized so the demonstration reaches its threshold (SYNTHETIC)' }, tadmin.token);
     if (!r.ok) fail('N. Vogel sets the month budget', r);
-    else ok(`N. Vogel (tenant administrator) SET the budget "${r.body.budget.label}" v${r.body.budget.version}: ${r.body.budget.amount} ${r.body.budget.currency} a ${r.body.budget.period_kind}, capability ${r.body.budget.capability_key}, owner ${nm(r.body.budget.owner_principal_id)}, thresholds ${JSON.stringify(r.body.budget.thresholds)} — SYNTHETIC`);
+    else ok(`N. Vogel (tenant administrator) SET the budget "${r.body.budget.label}" v${r.body.budget.version}: ${r.body.budget.amount} ${r.body.budget.currency} a ${r.body.budget.period_kind} (the month's priced spend ${Number(spent).toFixed(4)} EUR is ${(100 * spent / amount).toFixed(1)} % of it), capability ${r.body.budget.capability_key}, owner ${nm(r.body.budget.owner_principal_id)}, thresholds ${JSON.stringify(r.body.budget.thresholds)} — SYNTHETIC`);
   }
   // 3. MODEL INFERENCE: a real governed path that calls the model gateway — an upload → the plan → the extraction agent's run (replay mode)
   if (XAGENT === null) note('no extraction agent: model inference is not exercised here (said in the LIMITS)');
@@ -282,6 +300,41 @@ else {
       }
     }
   }
+  // 3b. THE EXPERIMENT (E. Kovács's discrete-event study, act-b30's fabric precedent): declared, J. Weber approves its budget, started; one
+  // chunk a tick — the act waits for its FIRST chunk (metered), so the cap set below stops the next claim PARTIAL with the chunk kept
+  {
+    let e = await expRow();
+    if (e) note(`the experiment ${short(e.id)} "${EXP_TITLE}" stands (${e.state}) — an earlier run`);
+    else {
+      const dsv = (await q(`select t.twin_id::text id, (select max(v.version) from twin.twin_versions v where v.twin_id = t.twin_id and v.branch_id = 'actual' and v.state = 'admitted') v from twin.twins_current t where t.tenant_id = $1 and t.domain_id = $2 and t.title = $3 limit 1`, [T, D, DES_TITLE]))[0] ?? null;
+      if (dsv === null) bad(`the study twin "${DES_TITLE}" is absent`);
+      else {
+        const r = await call(`${OR}/declare`, dom(kovacs, 'simulation', { action: 'simulation.experiment.declare', objectType: 'SXP' }), { title: EXP_TITLE, question: 'How many line-stop days does a 21-day bearing shortage cost the Regensburg line — run under the tenant\'s compute cap?',
+          run: { twinId: dsv.id, twinVersion: dsv.v, runKind: 'control', controlRunId: null, shock: false, component: 'bearing', interventions: [{ type: 'none' }], horizonDays: 42,
+                 modelRef: 'discrete-event@1', params: { start_date: '2026-10-05', shortage: { start_day: 7, days: 21, fraction: 0.4 } } },
+          paths: 60, chunkSize: 20, seed: 91, pace: { chunks_per_tick: 1 }, measures: ['line_stop_days'], budget: { max_paths: 60, max_wall_seconds: 600, max_chunks: 6 } }, kovacs.token);
+        if (!r.ok) fail(`E. Kovács declares "${EXP_TITLE}"`, r); else ok(`E. Kovács (the study twin's owner) DECLARED ${short(r.body.experiment.experiment_id)} "${EXP_TITLE}": discrete-event@1, 60 paths in chunks of 20, ONE chunk a tick, the budget ${JSON.stringify(r.body.experiment.budget)}`);
+        e = await expRow();
+      }
+    }
+    if (e?.state === 'declared') {
+      const x = (await call(`${OR}/${e.id}/read`, dom(kovacs, 'simulation', { action: 'simulation.experiment.read', objectType: 'SXP', objectId: e.id, ...READ }), {}, kovacs.token)).body.experiment;
+      const r = await call(`${OR}/${e.id}/approve`, dom(weber, 'simulation', { action: 'simulation.experiment.approve', objectType: 'SXP', objectId: e.id }), { budgetDigest: x.budget_digest, note: 'sixty paths answer the line question; the budget is approved as read (SYNTHETIC)' }, weber.token);
+      if (!r.ok) fail('J. Weber approves the budget', r); else ok(`J. Weber APPROVED its budget by the digest ${String(r.body.experiment.approved_budget_digest).slice(0, 12)}… → ${r.body.experiment.state}`);
+      e = await expRow();
+    }
+    if (e?.state === 'approved') {
+      const r = await call(`${OR}/${e.id}/start`, dom(kovacs, 'simulation', { action: 'simulation.experiment.start', objectType: 'SXP', objectId: e.id }), {}, kovacs.token);
+      if (!r.ok) fail('E. Kovács starts the experiment', r); else ok(`E. Kovács STARTED it: the run ${short(r.body.experiment.run_id)} opened → ${r.body.experiment.state}`);
+      e = await expRow();
+    }
+    if (e?.state === 'running') {
+      note('waiting for the attention agent\'s tick to run the experiment\'s FIRST chunk (its after-tick hook; one chunk a tick)');
+      e = await waitFor('the first chunk', expRow, (x) => Number(x?.progress?.chunks_done ?? 0) >= 1 || x?.state !== 'running', 240_000, 2000);
+      const u = await q(`select quantity from commercial.usage_records where tenant_id = $1 and source_kind = 'experiment_chunk' and details ->> 'experiment_id' = $2`, [T, e.id]);
+      (Number(e?.progress?.chunks_done ?? 0) >= 1 ? ok : bad)(`THE FIRST CHUNK RAN under the tick: ${e?.progress?.chunks_done} chunk(s), ${e?.progress?.paths_done} paths, ${e?.progress?.wall_ms} wall ms — metered ${u.length} chunk usage record(s) (${u.map((x) => `${x.quantity} wall_ms`).join(', ')})`);
+    }
+  }
   // 4. THE SWEEP (T. Nakamura): runs and is metered
   const s1 = await sweepOf(nakamura);
   if (!s1.ok) fail('T. Nakamura sweeps the corridor control', s1);
@@ -298,6 +351,12 @@ else {
       reason: action === 'stop' ? 'the day\'s simulation compute is capped at what it has used so far (SYNTHETIC — the demonstration reaches the cap)' : 'model inference warns at the day\'s calls so far (SYNTHETIC)' }, tadmin.token);
     if (!r.ok) fail(`N. Vogel sets the ${dim} cap`, r);
     else ok(`N. Vogel SET the ${dim} cap v${r.body.cap.version}: ${r.body.cap.limit} ${r.body.cap.unit} per ${r.body.cap.period}, ${r.body.cap.action} — the day's usage ${used} ${unit}; reached ${r.body.cap.reached}; ${r.body.cap.licence_bound}`);
+  }
+  // 5b. THE ATTENTION AGENT'S NEXT CLAIM STOPS THE EXPERIMENT PARTIAL at the tenant cap — the completed chunk kept
+  {
+    let e = await expRow();
+    if (e?.state === 'running') e = await waitFor('the tick that stops the experiment at the cap', expRow, (x) => x?.state !== 'running', 240_000, 3000);
+    note(`the experiment ${short(e?.id)} now ${String(e?.state).toUpperCase()}`);
   }
   // 6. THE NEXT SWEEP: refused at admission, the breach recorded and explained. A sweep measured at 0 ms leaves a 1 ms cap unreached: the
   // sweep then runs (metered) and the next one meets the cap — at most three attempts, each said.
@@ -338,6 +397,52 @@ else {
       ENV_OUT.EYE_B91_BUDGET_LABEL = r.body.budget.label ?? BUDGET_LABEL; }
   }
   ENV_OUT.EYE_B91_RATE_KEY = 'simulation_compute:wall_ms';
+  // the experiment stopped PARTIAL at the tenant cap (the record)
+  {
+    const e = await expRow();
+    if (e === null) bad(`no experiment "${EXP_TITLE}"`);
+    else {
+      const ev = await q(`select event, details from simulation.experiment_events where experiment_id = $1 order by occurred_at, event_id`, [e.id]);
+      const be = ev.find((x) => x.event === 'budget_exceeded');
+      const br = (await q(`select breach_id::text, kind, used, cap_limit from commercial.cap_breaches where tenant_id = $1 and subject_kind = 'experiment' and subject_id = $2`, [T, e.id]))[0] ?? null;
+      (e.state === 'partial' && /tenant_cap/.test(JSON.stringify(be?.details ?? {})) && br ? ok : bad)(`THE EXPERIMENT STOPPED ${String(e.state).toUpperCase()} at the tenant cap: ${e.progress?.chunks_done} chunk(s) kept (${e.progress?.paths_done} paths); the ledger ${ev.map((x) => x.event).join(' → ')}; budget_exceeded ${JSON.stringify(be?.details ?? {}).slice(0, 160)}; the breach ${short(br?.breach_id)} (${br?.kind}, used ${br?.used} of ${br?.cap_limit} wall_ms)`);
+      ENV_OUT.EYE_B91_EXPERIMENT_TITLE = EXP_TITLE;
+    }
+  }
+  // the budget's thresholds raised to its owner (the ledger tick)
+  {
+    const ev = await q(`select e.threshold, e.attention_item_id::text item, i.state, i.owner_principal_id::text owner, i.title from commercial.budget_events e left join executive.attention_items i on i.item_id = e.attention_item_id
+                         where e.tenant_id = $1 and e.event = 'threshold' order by e.threshold`, [T]);
+    (ev.length > 0 && ev.every((x) => x.owner === dvorak.principalId) ? ok : bad)(`THE BUDGET'S THRESHOLDS raised by the tick to its owner: ${ev.map((x) => `${x.threshold} % → ${nm(x.owner)} (${x.state}): "${String(x.title).slice(0, 120)}"`).join('; ') || 'none'} — a budget raises; it never stops work`);
+  }
+  // THE SYNTHETIC INVOICE (the vendor): today's ledger totals as an imported invoice, reconciled — a real billing account closes no clause
+  {
+    const INV_REF = 'SYN-NORDWERK-B91-1';
+    let inv = (await q(`select invoice_id::text, invoice_ref, total, period_start from commercial.invoices where tenant_id = $1 and invoice_ref = $2`, [T, INV_REF]))[0] ?? null;
+    if (inv) note(`the SYNTHETIC invoice ${INV_REF} (${inv.total} EUR) stands — an earlier run`);
+    else {
+      const day = (await q(`select ((clock_timestamp() at time zone 'UTC')::date)::text d`))[0].d;
+      const lines = (await q(`select dimension, min(unit) unit, sum(quantity)::float8 quantity, round(sum(amount), 2)::float8 amount from commercial.cost_entries
+                               where tenant_id = $1 and currency = 'EUR' and occurred_at >= ($2::date)::timestamp at time zone 'UTC' and occurred_at < (($2::date) + 1)::timestamp at time zone 'UTC'
+                               group by dimension order by dimension`, [T, day])).map((l) => ({ dimension: l.dimension, unit: l.unit, quantity: Number(l.quantity), amount: Number(l.amount), description: 'SYNTHETIC invoice line' }));
+      const total = (Math.round(lines.reduce((a, l) => a + l.amount * 100, 0)) / 100).toFixed(2);
+      const r = await call('/v1/commercial/ledger/invoices/import', plat(vendor, { action: 'commercial.invoice.import', objectType: 'CIN' }), { tenantId: T, invoiceRef: INV_REF, periodStart: day, periodEnd: day, currency: 'EUR', total,
+        issuer: 'THE EYE vendor (SYNTHETIC)', synthetic: true, lines }, vendor.token);
+      if (!r.ok) fail('C. Marchetti imports the SYNTHETIC invoice', r);
+      else ok(`C. Marchetti IMPORTED the SYNTHETIC invoice ${INV_REF} for ${day}: ${total} EUR in ${lines.length} line(s) — ${lines.map((l) => `${l.dimension} ${l.quantity} ${l.unit} ${l.amount.toFixed(2)}`).join('; ')} (the ledger's own totals: no billing account exists)`);
+      inv = (await q(`select invoice_id::text, invoice_ref, total from commercial.invoices where tenant_id = $1 and invoice_ref = $2`, [T, INV_REF]))[0] ?? null;
+    }
+    if (inv) {
+      let rec = (await q(`select version, outcome, lines from commercial.reconciliations where invoice_id = $1 order by version desc limit 1`, [inv.invoice_id]))[0] ?? null;
+      if (rec) note(`its reconciliation v${rec.version} (${rec.outcome}) stands — an earlier run`);
+      else {
+        const r = await call(`/v1/commercial/ledger/invoices/${inv.invoice_id}/reconcile`, plat(vendor, { action: 'commercial.invoice.reconcile', objectType: 'CIN', objectId: inv.invoice_id }), { tolerance: '0.01' }, vendor.token);
+        if (!r.ok) fail('C. Marchetti reconciles the invoice', r);
+        else { rec = r.body.reconciliation; ok(`C. Marchetti RECONCILED it against the ledger: v${rec.version} ${String(rec.outcome).toUpperCase()} (tolerance 0.01) — ${(rec.lines ?? []).map((l) => `${l.dimension}: invoice ${l.invoice_amount ?? l.on_invoice} vs ledger ${l.ledger_amount ?? l.in_ledger}${l.within_tolerance ? ' ✓' : ` Δ ${l.amount_difference ?? '?'}${l.unpriced_usage ? `, ${l.unpriced_usage} unpriced` : ''}`}`).join('; ')} — usage priced after the import shows as a difference, never hidden`); }
+      }
+      ENV_OUT.EYE_B91_INVOICE_REF = INV_REF;
+    }
+  }
   // the cap breach and the commercial.usage item routed
   if (REFUSED === null) bad('no refused-sweep breach recorded');
   else {
@@ -401,8 +506,8 @@ if (fdLive) {
 // 3. THE CONTROLS THAT STAY AVAILABLE
 {
   // (a) the attention layer (executive.attention.* — never gated): M. Dvořák reads the commercial.usage item of the refused sweep. Its
-  // acknowledgement is NOT staged: the item is routed to the cap's setter and the tenant_admin role, and the PDP's acknowledge rule
-  // (executive.attention.item.acknowledge) admits no tenant_admin — the read is the control shown (said in the LIMITS).
+  // item is routed to the cap's setter (N. Vogel) and the tenant_admin role — not to the executive — so M. Dvořák READS it; the tenant
+  // administrator's ACKNOWLEDGEMENT is shown on the commercial.entitlement item in grace (step 4).
   const item = REFUSED === null ? null : (await q(`select item_id::text, state from executive.attention_items where tenant_id = $1 and signal_class = 'commercial.usage' and cause_event_id = $2`, [T, REFUSED.breach_id]))[0] ?? null;
   if (item) {
     const g = await call(`${E}/items/${item.item_id}/get`, dom(dvorak, 'executive', { action: 'executive.attention.read', objectType: 'ATI', objectId: item.item_id, ...READ }), {}, dvorak.token);
@@ -439,6 +544,16 @@ if (FD) {
     (here && here.state === 'open' && (here.route_roles ?? []).includes('tenant_admin') ? ok : bad)(`commercial.entitlement ROUTED in the corridor domain: item ${short(here?.item_id)} — ${here?.state}, roles [${(here?.route_roles ?? []).join(', ')}] under policy v${here?.policy_version}, owner ${nm(here?.owner)}: "${String(here?.title ?? '—').slice(0, 170)}"${items.length > 1 ? `; ${items.length - 1} more in the tenant's other domain(s): ${items.filter((x) => x !== here).map((x) => x.state).join(', ')}` : ''}`);
     const holders = (await q(`select count(*)::int n from identity.role_bindings b where b.role_code = 'tenant_admin' and b.scope = 'TENANT' and b.tenant_id = $1 and b.revoked_at is null and b.principal_id = $2`, [T, tadmin.principalId]))[0].n;
     note(`the tenant administrator N. Vogel holds the routed role (${holders > 0 ? 'yes' : 'NO'}) — the item reaches him by role`);
+    // the tenant administrator ACKNOWLEDGES the routed item (a mandatory control: executive.attention.* is never gated)
+    if (here) {
+      const acked = (await q(`select count(*)::int n from executive.attention_item_events where item_id = $1 and event = 'item.acknowledged'`, [here.item_id]))[0].n;
+      if (acked > 0) note(`N. Vogel's acknowledgement of ${short(here.item_id)} stands — an earlier run`);
+      else {
+        const a = await call(`${E}/items/${here.item_id}/acknowledge`, dom(tadmin, 'executive', { action: 'executive.attention.item.acknowledge', objectType: 'ATI', objectId: here.item_id }), { note: 'seen: the licence is in grace; renewal is with the vendor (SYNTHETIC)' }, tadmin.token);
+        const ev = (await q(`select count(*)::int n from executive.attention_item_events where item_id = $1 and event = 'item.acknowledged' and actor_principal_id = $2`, [here.item_id, tadmin.principalId]))[0].n;
+        (a.ok && ev === 1 ? ok : bad)(`N. Vogel (tenant administrator) ACKNOWLEDGED the commercial.entitlement item ${short(here.item_id)} in grace — ${a.ok ? `item.acknowledged recorded by him (receipt, never agreement)` : refusalLine(a)}`);
+      }
+    }
   }
   // the licence standing (N. Vogel's surface)
   const st = await call(`${TC}/grace/standing`, ten(tadmin, { action: 'commercial.grace.read', objectType: 'LIC', ...READ }), {}, tadmin.token);
@@ -451,6 +566,9 @@ if (FD) {
   ENV_OUT.EYE_B91_LICENCE_VERSION = String((await liveLicence())?.version ?? FD.version);
   ENV_OUT.EYE_B91_GRACE = (await liveLicence())?.state === 'grace' ? '1' : '0';
   ENV_OUT.EYE_B91_LICENCE_COMPUTE_LIMIT_MS = String(FD_LIMITS.simulation_compute.quantity);
+  // the licensed capability list exactly as the record holds it (the package's ∪ core, sorted) — the walks read it, never a list of their own
+  const fdRow = (await q(`select capabilities from commercial.licences where licence_id = $1 and version = $2`, [FD.licence_id, FD.version]))[0];
+  ENV_OUT.EYE_B91_LICENSED = (fdRow?.capabilities ?? []).join(', ');
 }
 // 5. THE OFFLINE TOKEN — only with a signing key reference in the environment (never written)
 {
@@ -523,7 +641,7 @@ console.log('\nB91-9 THE STATE and the LIMITS');
   note(`NORDWERK's licence now: ${live ? `v${live.version} ${live.package_key} — ${String(live.state).toUpperCase()}${live.grace_until ? ` until ${iso(live.grace_until)}` : ''}` : 'UNCONTRACTED'}`);
   console.log('  the env lines for the walks (EYE_TEST_ADMIN_PASSWORD comes from .eye-local/env and is never printed):');
   for (const [k, v] of Object.entries(ENV_OUT)) console.log(`  ${k}=${/\s/.test(v) ? `'${v}'` : v}`);
-  note('LIMITS said: EVERY FIGURE IS SYNTHETIC — the rate cards (0.05 EUR per compute second, 0.02 EUR per inference call, 1 EUR per GB-sample of evidence storage, the energy coefficient an ESTIMATE), the 25 EUR month budget, the caps (set at the day\'s usage so the demonstration reaches them), the licence limits, the order references and the shipment record. NO REAL BILLING ACCOUNT: no invoice is imported here (the synthetic invoice and its reconciliation are harness-proven, phase6-ledger-b91). MODEL INFERENCE: the extraction agent\'s run calls the model gateway in REPLAY mode on this local deployment — the recorded response is the method\'s fixture (recorded_from fixture), no external provider is called; inference is metered in CALLS (the gateway records no tokens). THE CAPS: the stop cap is enforced at admission for simulation_compute (the sweep and the experiment chunk claim — the experiment\'s PARTIAL stop at the tenant cap is harness-proven, phase6-meters-b91 M3, not staged here); model inference warns only. THE ROUTING: commercial.entitlement items follow the published policy (routed to the tenant administrator); the commercial.usage items of a cap or a budget are routed by their ports (the cap\'s setter or the budget\'s owner and the tenant_admin role) — the policy\'s commercial.usage route is published for the class but those ports do not consult it. THE LICENCE: a version takes effect when issued (§EN refuses a future start), so the term is set to end within the act and the attention agent\'s real tick moves it to GRACE (14 days, the DEFAULT grace policy: read and preserve, finish running work, no new work); the offline token is not issued (no signing key reference in the environment). THE ACKNOWLEDGEMENT: the commercial.usage and commercial.entitlement items are routed to the tenant_admin role, which the PDP\'s executive.attention.item.acknowledge rule does not admit — the act shows the attention READ, not an acknowledgement. HARNESS-PROVEN ONLY: the entitlement matrix\'s suspended and lapsed cells, the indeterminate entitlement, renewal/suspension/reinstatement, the contract scope, the offline token and its verifier, allocation keys, the invoice reconciliation, the optimisation boundary, the anomaly rule, B90\'s product-consumption counters. Nothing is cleaned: every record stands as a demonstration fact.');
+  note('LIMITS said: EVERY FIGURE IS SYNTHETIC — the rate cards (0.05 EUR per compute second, 0.02 EUR per inference call, 1 EUR per GB-sample of evidence storage, the energy coefficient an ESTIMATE), the 25 EUR month budget, the caps (set at the day\'s usage so the demonstration reaches them), the licence limits, the order references and the shipment record. NO REAL BILLING ACCOUNT: the invoice C. Marchetti imports is SYNTHETIC — the ledger\'s own totals for the day, reconciled against the ledger; a real billing account closes the clause and none exists (a reconciliation shows usage priced after the import as a difference). THE BUDGET: its amount is sized from the month\'s priced spend when it is set (spent / 0.9) so the demonstration reaches its 80 % threshold. MODEL INFERENCE: the extraction agent\'s run calls the model gateway in REPLAY mode on this local deployment — the recorded response is the method\'s fixture (recorded_from fixture), no external provider is called; inference is metered in CALLS (the gateway records no tokens). THE CAPS: the stop cap is enforced at admission for simulation_compute (the sweep and the experiment chunk claim — E. Kovács\'s discrete-event experiment is stopped PARTIAL at the cap by the attention agent\'s next claim, its first chunk kept); model inference warns only. THE ROUTING: commercial.entitlement items are evaluated against the published policy (routed to the tenant administrator); the commercial.usage items of a cap or a budget are NOT policy-routed — their ports route them, material, to the named owner (the cap\'s setter, the budget\'s owner) and the tenant_admin role whatever the policy says; the policy\'s commercial.usage route is published for the class only. THE LICENCE: a version takes effect when issued (§EN refuses a future start), so the term is set to end within the act and the attention agent\'s real tick moves it to GRACE (14 days, the DEFAULT grace policy: read and preserve, finish running work, no new work); the offline token is not issued (no signing key reference in the environment). THE ACKNOWLEDGEMENT: the tenant administrator acknowledges the routed commercial.entitlement item (tenant_admin was admitted to executive.attention.item.acknowledge by the integrator after the first rehearsal); M. Dvořák reads the cap\'s commercial.usage item. HARNESS-PROVEN ONLY: the entitlement matrix\'s suspended and lapsed cells, the indeterminate entitlement, renewal/suspension/reinstatement, the contract scope, the offline token and its verifier, allocation keys, the matched/differences reconciliation cases, the optimisation boundary, the anomaly rule, B90\'s product-consumption counters. Nothing is cleaned: every record stands as a demonstration fact.');
 }
 
 /* ── THE END ── */
