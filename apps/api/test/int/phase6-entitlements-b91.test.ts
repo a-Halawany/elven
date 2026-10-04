@@ -570,3 +570,39 @@ describe('EN5 · the reads: the tenant\'s entitlement, the explained availabilit
     expect(e.entitlement).toMatchObject({ contracted: false, state: 'uncontracted', licence: null });
   });
 });
+
+/* Integration (the act's finding): commercial_authority binds at PLATFORM only, and no tenant route can create a PLATFORM principal —
+   the vendor could not exist except as a planted row. POST /v1/platform/principals (identity.principal.create at PLATFORM, the platform
+   administrator; the identity port's binding authority unchanged). */
+describe('EN9 · the platform principal route: the vendor\'s commercial authority created through the governed path', () => {
+  type Created = { principal: { principalId: string } };
+  const create = async (as: AuthenticatedPrincipal, payload: Row) => {
+    const { AdminControllers } = await import('../../src/pipeline/admin.controllers.js');
+    return h.app.get(AdminControllers).createPlatformPrincipal({ eyeEnvelope: env(as, 'identity.principal.create', 'PLATFORM', null, null, 'identity'), eyePrincipal: as } as never,
+      { payload } as never) as Promise<Created>;
+  };
+  let vendorId = '';
+  it('POSITIVE: the platform administrator creates a PLATFORM principal bound commercial_authority at PLATFORM (POL + AUD)', async () => {
+    const r = await create(platformAdmin, { displayName: `B91 vendor (harness ${RUN})`, kind: 'human', roleCode: 'commercial_authority' });
+    vendorId = r.principal.principalId;
+    expect(await one(sql`select scope, tenant_id, domain_id from identity.principals where id = ${vendorId}::uuid`)).toMatchObject({ scope: 'PLATFORM', tenant_id: null, domain_id: null });
+    const b = (await sql`select role_code, scope, tenant_id from identity.role_bindings where principal_id = ${vendorId}::uuid and revoked_at is null`.execute(h.su)).rows;
+    expect(b).toEqual([{ role_code: 'commercial_authority', scope: 'PLATFORM', tenant_id: null }]);
+  });
+  it('REFUSAL: the tenant administrator (no platform authority); the vendor itself (commercial authority is availability, never identity administration); a tenant role on a platform principal; a domain', async () => {
+    expect(await refusal(create(tadmin, { displayName: 'a tenant makes a vendor', roleCode: 'commercial_authority' }))).toMatchObject({ status: 403 });
+    expect(await refusal(create(vendor, { displayName: 'a vendor makes a vendor', roleCode: 'commercial_authority' }))).toMatchObject({ status: 403 });
+    const before = await n(sql`select count(*)::int n from identity.principals where display_name = 'B91 tenant role on a platform principal'`);
+    const r = await refusal(create(platformAdmin, { displayName: 'B91 tenant role on a platform principal', roleCode: 'tenant_admin' }));
+    expect(r).toMatchObject({ status: 400 }); expect(r.message).toMatch(/does not bind at PLATFORM/);
+    expect(await n(sql`select count(*)::int n from identity.principals where display_name = 'B91 tenant role on a platform principal'`)).toBe(before);
+    expect(await refusal(create(platformAdmin, { displayName: 'B91 platform principal with a domain', roleCode: 'commercial_authority', domainId: D }))).toMatchObject({ status: 400 });
+  });
+  it('RECOVERY: the created principal stands; a commercial authority reads its OWN identity (identity.self.read now admits commercial_authority at PLATFORM — the vendor\'s web shell resolves its scope)', async () => {
+    const created = await one(sql`select id from identity.principals where id = ${vendorId}::uuid`);
+    expect(created['id']).toBe(vendorId);
+    const { AdminControllers } = await import('../../src/pipeline/admin.controllers.js');
+    const me = await h.app.get(AdminControllers).me({ eyeEnvelope: env(vendor, 'identity.self.read', 'PLATFORM', null, null, 'identity'), eyePrincipal: vendor } as never);
+    expect(me).toMatchObject({ me: { principalId: vendor.principalId, homeScope: 'PLATFORM' } });
+  });
+});
