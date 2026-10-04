@@ -101,11 +101,11 @@ const setState = (t: string, state: string, extra: { graceDays?: number } = {}) 
       where tenant_id = ${t}::uuid and state <> 'superseded'`.execute(h.su);
 
 // ── principals ─────────────────────────────────────────────────────────────────────────
-async function person(label: string, kind: 'human' | 'agent', scope: Scope, t: string | null, d: string | null, roles: Array<{ role: string; scope: Scope }>): Promise<AuthenticatedPrincipal> {
+async function person(label: string, kind: 'human' | 'agent', scope: Scope, t: string | null, d: string | null, roles: Array<{ role: string; scope: Scope }>, bindDomain: string | null = d): Promise<AuthenticatedPrincipal> {
   const id = uuidv7();
   await sql`insert into identity.principals (id, kind, scope, tenant_id, domain_id, display_name, login_name, status)
             values (${id}::uuid, ${kind}, ${scope}, ${t}::uuid, ${d}::uuid, ${`b91-${label}-${RUN}`}, ${`b91-${label.slice(0, 6)}-${id.slice(-8)}`}, 'active')`.execute(h.su);
-  const bindings = roles.map((r) => ({ roleCode: r.role, scope: r.scope, tenantId: r.scope === 'PLATFORM' ? null : t, domainId: r.scope === 'DOMAIN' ? d : null }));
+  const bindings = roles.map((r) => ({ roleCode: r.role, scope: r.scope, tenantId: r.scope === 'PLATFORM' ? null : t, domainId: r.scope === 'DOMAIN' ? bindDomain : null }));
   for (const b of bindings) {
     await sql`insert into identity.role_bindings (id, principal_id, role_code, scope, tenant_id, domain_id)
               values (${uuidv7()}::uuid, ${id}::uuid, ${b.roleCode}, ${b.scope}, ${b.tenantId}::uuid, ${b.domainId}::uuid)`.execute(h.su);
@@ -154,11 +154,11 @@ beforeAll(async () => {
   dadmin = await person('dadmin', 'human', 'DOMAIN', T, D, [{ role: 'domain_admin', scope: 'DOMAIN' }]);
   steward = await person('steward', 'human', 'DOMAIN', T, D, [{ role: 'constraint_steward', scope: 'DOMAIN' }]);
   uAdmin = await person('uadmin', 'human', 'TENANT', U, null, [{ role: 'tenant_admin', scope: 'TENANT' }]);
-  // OMNI: a named human holding every customer role (DOMAIN roles in D, TENANT roles in T), so the PDP allows each action of the matrix and
+  // OMNI: a named human of the tenant holding every customer role (DOMAIN roles in D, TENANT roles in T), so the PDP allows each action of the matrix and
   // the GATE is what is under test
   const roles = (await sql<{ code: string; scope: Scope }>`select code, scope from identity.roles where scope in ('DOMAIN', 'TENANT') order by code`.execute(h.su)).rows;
-  omni = await person('omni', 'human', 'DOMAIN', T, D, roles.map((r) => ({ role: r.code, scope: r.scope })));
-  uOmni = await person('uomni', 'human', 'DOMAIN', U, DU, roles.map((r) => ({ role: r.code, scope: r.scope })));
+  omni = await person('omni', 'human', 'TENANT', T, null, roles.map((r) => ({ role: r.code, scope: r.scope })), D);
+  uOmni = await person('uomni', 'human', 'TENANT', U, null, roles.map((r) => ({ role: r.code, scope: r.scope })), DU);
 }, 600_000);
 
 afterAll(async () => { await h?.close(); });
@@ -357,7 +357,7 @@ describe('EN2 · the entitlement matrix through the pipeline\'s gate', () => {
     expect(r.licence).toMatchObject({ version: 3, limits: { users: 25 } });
     const before = await setCount();
     const s = await declareSet();
-    expect(s.set).toMatchObject({ tenant_id: T, version: 1 });
+    expect(s.set).toMatchObject({ state: 'live', version: 1 });
     expect(await setCount()).toBe(before + 1);
     expect(await reach(omni, 'simulation.experiment.declare')).toBe('reached');
   });
@@ -390,7 +390,7 @@ describe('EN2 · the entitlement matrix through the pipeline\'s gate', () => {
     try {
       const g = await gate(T, 'simulation.constraint.declare');
       expect(g).toMatchObject({ available: true, state: 'grace', grace: { rules_source: 'commercial.grace_rules', rules: { mode: 'finish_running' } } });
-      expect((await declareSet()).set).toMatchObject({ tenant_id: T });
+      expect((await declareSet()).set).toMatchObject({ state: 'live' });
       expect(await reach(omni, 'simulation.experiment.declare')).toMatchObject({ status: 403, code: 'EYE-ENT-001' });
     } finally {
       await sql`drop function commercial.grace_rules(uuid)`.execute(h.su);
@@ -467,7 +467,7 @@ describe('EN3 · the boundary: no mandatory control is ever refused on a tenant 
     expect((audit.events as Row[]).some((x) => (x['result_code'] ?? (x['event'] as Row | undefined)?.['result_code']) === 'EYE-ENT-001')).toBe(true);
     // identity: the caller's own identity (/me, the identity authority)
     const me = await admin.me({ eyeEnvelope: env(tadmin, 'identity.self.read', 'TENANT', T, null), eyePrincipal: tadmin } as never);
-    expect(me).toMatchObject({ principalId: tadmin.principalId });
+    expect(me).toMatchObject({ me: { principalId: tadmin.principalId } });
     expect((await listSets()).sets.length).toBeGreaterThanOrEqual(2);
     // and the writes of the unlicensed capabilities ARE refused — availability, not control
     expect(await reach(omni, 'simulation.experiment.declare')).toMatchObject({ status: 403, code: 'EYE-ENT-001' });
@@ -506,15 +506,15 @@ describe('EN4 · the contract scope (V10-T-015)', () => {
     expect(r.contract['provenance']).toMatchObject({ environments_available: ['local-dev'] });
   });
   it('refusal: another tenant\'s domain, the vendor\'s role as an authority, an unknown twin, a tenant with no licence, a stale version', async () => {
-    let r = await refusal(contract(T, { contractRef: 'X', scope: { ...scope(), decision_cells: [DU] }, reason: 'a cell of another tenant' }));
+    let r = await refusal(contract(T, { contractRef: 'XX', scope: { ...scope(), decision_cells: [DU] }, reason: 'a cell of another tenant' }));
     expect(r).toMatchObject({ status: 422 }); expect(r.message).toMatch(/^contract rejected \(decision_cells\)/);
-    r = await refusal(contract(T, { contractRef: 'X', scope: { ...scope(), authorities: [{ role: 'commercial_authority' }] }, reason: 'the vendor as authority' }));
+    r = await refusal(contract(T, { contractRef: 'XX', scope: { ...scope(), authorities: [{ role: 'commercial_authority' }] }, reason: 'the vendor as authority' }));
     expect(r).toMatchObject({ status: 422 }); expect(r.message).toMatch(/^contract rejected \(authorities\): commercial_authority is the vendor's role/);
-    r = await refusal(contract(T, { contractRef: 'X', scope: { ...scope(), twins: [uuidv7()] }, reason: 'an unknown twin' }));
+    r = await refusal(contract(T, { contractRef: 'XX', scope: { ...scope(), twins: [uuidv7()] }, reason: 'an unknown twin' }));
     expect(r).toMatchObject({ status: 422 }); expect(r.message).toMatch(/^contract rejected \(twins\)/);
-    r = await refusal(contract(U, { contractRef: 'X', scope: { ...scope(), decision_cells: [DU], sources: [], authorities: [{ role: 'tenant_admin' }] }, reason: 'no licence to scope' }));
+    r = await refusal(contract(U, { contractRef: 'XX', scope: { ...scope(), decision_cells: [DU], sources: [], authorities: [{ role: 'tenant_admin' }] }, reason: 'no licence to scope' }));
     expect(r).toMatchObject({ status: 404 }); expect(r.message).toMatch(/^contract rejected \(unknown_licence\)/);
-    r = await refusal(contract(T, { contractId, expectedVersion: 0, contractRef: 'X', scope: scope(), reason: 'a stale version' }));
+    r = await refusal(contract(T, { contractId, expectedVersion: 0, contractRef: 'XX', scope: scope(), reason: 'a stale version' }));
     expect(r).toMatchObject({ status: 409 }); expect(r.message).toMatch(/^contract rejected \(stale\)/);
   });
   it('recovery: v2 on the current version supersedes v1 (no environment added that does not exist is claimed as available)', async () => {
@@ -529,7 +529,8 @@ describe('EN5 · the reads: the tenant\'s entitlement, the explained availabilit
   it('positive: the tenant administrator reads its entitlement; a domain administrator reads the availability explained; the vendor reads the matrix', async () => {
     const e = await tapi.read(treq(tadmin, 'commercial.read', T), T);
     expect(e.entitlement).toMatchObject({ contracted: true, state: 'active', licence: { version: 5 }, contract: { version: 2 } });
-    expect((e.entitlement['history'] as Row[]).length).toBe(5);
+    // five issued versions + EN2's unreconciled stand-in row (superseded when the conflict was resolved)
+    expect((e.entitlement['history'] as Row[]).length).toBe(6);
     const m = Object.fromEntries((e.entitlement['matrix'] as Row[]).map((x) => [x['key'], x]));
     expect(m['core']).toMatchObject({ licensed: true, available: true });
     expect(m['simulation']).toMatchObject({ licensed: false, available: false });

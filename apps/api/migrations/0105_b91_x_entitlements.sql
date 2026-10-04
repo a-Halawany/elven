@@ -398,7 +398,7 @@ BEGIN
     RAISE EXCEPTION 'capability rejected (prefixes): a capability folded into % gates nothing of its own (no prefixes)', p_included_in USING ERRCODE = '22023';
   END IF;
   FOREACH p IN ARRAY v_prefixes LOOP
-    IF p IS NULL OR p !~ '^[a-z][a-z_]*(\.[a-z_]+)*\.$' THEN
+    IF p IS NULL OR p !~ '^[a-z][a-z0-9_]*(\.[a-z0-9_]+)*\.$' THEN
       RAISE EXCEPTION 'capability rejected (prefixes): % is not an action prefix (dotted lower-case segments ending with a dot)', coalesce(p, '<null>') USING ERRCODE = '22023';
     END IF;
     IF commercial.cen_protected_prefix(p) THEN
@@ -767,7 +767,9 @@ BEGIN
     v_capj := jsonb_build_object('key', cap.capability_key, 'label', cap.label, 'core', cap.core, 'built', cap.built, 'version', cap.version);
   END IF;
   SELECT count(DISTINCT l.licence_id) INTO v_live FROM commercial.licences l WHERE l.tenant_id = p_tenant AND l.state <> 'superseded';
-  SELECT * INTO lic FROM commercial.licences l WHERE l.tenant_id = p_tenant AND l.state <> 'superseded' ORDER BY l.issued_at DESC, l.version DESC LIMIT 1;
+  SELECT * INTO lic FROM commercial.licences l WHERE l.tenant_id = p_tenant AND l.state <> 'superseded'
+   ORDER BY EXISTS (SELECT 1 FROM commercial.entitlement_events e WHERE e.subject_kind = 'licence' AND e.subject_key = l.licence_id::text
+                                    AND e.version = l.version AND e.event = 'licence.issued') DESC, l.issued_at DESC, l.version DESC LIMIT 1;
   IF lic.licence_id IS NOT NULL THEN
     v_licj := jsonb_build_object('licence_id', lic.licence_id, 'version', lic.version, 'state', lic.state, 'package_key', lic.package_key,
                                  'effective_from', lic.effective_from, 'effective_to', lic.effective_to, 'digest', lic.digest, 'capabilities', to_jsonb(lic.capabilities));
@@ -782,16 +784,7 @@ BEGIN
     v_state := lic.state;
     IF v_live > 1 THEN v_indeterminate := true; v_state := 'grace'; END IF;
     IF v_state = 'active' AND lic.effective_to IS NOT NULL AND lic.effective_to <= v_now THEN v_state := 'grace'; END IF;
-    IF cap.capability_key IS NULL THEN
-      v_avail := true; v_reason := 'uncatalogued: no capability of the catalogue covers ' || p_action || ', so no licence can make it unavailable';
-    ELSIF cap.core THEN
-      v_avail := true; v_reason := 'core: ' || cap.capability_key || ' is a core capability (it cannot be removed)';
-    ELSIF NOT (cap.capability_key = ANY (lic.capabilities)) THEN
-      v_avail := false;
-      v_reason := format('capability unavailable (entitlement): %s is not licensed for this tenant (%s; licence v%s) — %s', cap.capability_key, v_state, lic.version, commercial.cen_stays_available());
-    ELSIF v_state = 'active' THEN
-      v_avail := true; v_reason := format('licensed: %s under licence v%s (active)', cap.capability_key, lic.version);
-    ELSIF v_state = 'grace' THEN
+    IF v_state = 'grace' THEN
       IF to_regprocedure('commercial.grace_rules(uuid)') IS NOT NULL THEN
         BEGIN
           EXECUTE 'SELECT to_jsonb(commercial.grace_rules($1))' INTO v_rules USING p_tenant;
@@ -804,6 +797,19 @@ BEGIN
         v_rules := jsonb_build_object('mode', 'read_preserve', 'allow_actions', '[]'::jsonb);
         v_rules_source := coalesce(v_rules_source, 'default: read and preserve only (no grace rules declared)');
       END IF;
+      v_grace := jsonb_build_object('in_grace', true, 'grace_until', lic.grace_until, 'last_valid', lic.last_valid, 'rules', v_rules, 'rules_source', v_rules_source,
+                                    'indeterminate', v_indeterminate, 'expired_pending_transition', lic.state = 'active', 'last_valid_licence_version', lic.version);
+    END IF;
+    IF cap.capability_key IS NULL THEN
+      v_avail := true; v_reason := 'uncatalogued: no capability of the catalogue covers ' || p_action || ', so no licence can make it unavailable';
+    ELSIF cap.core THEN
+      v_avail := true; v_reason := 'core: ' || cap.capability_key || ' is a core capability (it cannot be removed)';
+    ELSIF NOT (cap.capability_key = ANY (lic.capabilities)) THEN
+      v_avail := false;
+      v_reason := format('capability unavailable (entitlement): %s is not licensed for this tenant (%s; licence v%s) — %s', cap.capability_key, v_state, lic.version, commercial.cen_stays_available());
+    ELSIF v_state = 'active' THEN
+      v_avail := true; v_reason := format('licensed: %s under licence v%s (active)', cap.capability_key, lic.version);
+    ELSIF v_state = 'grace' THEN
       v_avail := coalesce(v_rules ->> 'mode', '') = 'full'
               OR EXISTS (SELECT 1 FROM jsonb_array_elements_text(CASE WHEN jsonb_typeof(v_rules -> 'allow_actions') = 'array' THEN v_rules -> 'allow_actions' ELSE '[]'::jsonb END) e
                           WHERE e <> '' AND left(p_action, length(e)) = e);
@@ -812,8 +818,6 @@ BEGIN
         ELSE format('capability unavailable (entitlement): %s is in grace for this tenant (grace%s; licence v%s) — grace allows reading and preserving work only%s; %s',
                     cap.capability_key, coalesce(' until ' || to_char(lic.grace_until AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI "UTC"'), ''), lic.version,
                     CASE WHEN v_indeterminate THEN ' (the entitlement is indeterminate: more than one live licence)' ELSE '' END, commercial.cen_stays_available()) END;
-      v_grace := jsonb_build_object('in_grace', true, 'grace_until', lic.grace_until, 'last_valid', lic.last_valid, 'rules', v_rules, 'rules_source', v_rules_source,
-                                    'indeterminate', v_indeterminate, 'expired_pending_transition', lic.state = 'active');
     ELSE  -- suspended, lapsed
       v_avail := false;
       v_reason := format('capability unavailable (entitlement): %s is not available for this tenant (%s; licence v%s) — %s', cap.capability_key, v_state, lic.version, commercial.cen_stays_available());
@@ -834,7 +838,9 @@ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = commercial, public, p
 DECLARE lic commercial.licences%ROWTYPE; v_matrix jsonb; v_hist jsonb; v_contract jsonb; v_state text;
 BEGIN
   PERFORM commercial.cen_assert_read(p_tenant, 'the entitlement of a tenant');
-  SELECT * INTO lic FROM commercial.licences l WHERE l.tenant_id = p_tenant AND l.state <> 'superseded' ORDER BY l.issued_at DESC, l.version DESC LIMIT 1;
+  SELECT * INTO lic FROM commercial.licences l WHERE l.tenant_id = p_tenant AND l.state <> 'superseded'
+   ORDER BY EXISTS (SELECT 1 FROM commercial.entitlement_events e WHERE e.subject_kind = 'licence' AND e.subject_key = l.licence_id::text
+                                    AND e.version = l.version AND e.event = 'licence.issued') DESC, l.issued_at DESC, l.version DESC LIMIT 1;
   v_state := CASE WHEN lic.licence_id IS NULL THEN 'uncontracted'
                   WHEN lic.state = 'active' AND lic.effective_to IS NOT NULL AND lic.effective_to <= clock_timestamp() THEN 'grace' ELSE lic.state END;
   SELECT coalesce(jsonb_agg(jsonb_build_object(
