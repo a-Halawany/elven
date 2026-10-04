@@ -1994,6 +1994,26 @@ const BUNDLE_V1: Rule[] = [
     { role: 'simulation_operator', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' },
     { role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'method_steward', atScope: 'DOMAIN' }], obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
   /* end B91 grace */
+  /* B91 ledger (0105 §LE; F-P7-F-02: the cost ledger, budgets, reconciliation, optimisation). EXACT rules — no earlier rule starts with
+     `commercial`, and none of these names is a prefix of another rule's (the other B91 parts' `commercial.*` actions are their own exact
+     names). THE VENDOR'S RECORDS — the rate cards, a tenant's allocation key, the invoices (SYNTHETIC only here), their reconciliation and
+     the optimisation decisions — are the commercial authority's (PLATFORM), human-gated; the port further requires a named, active human
+     holding commercial_authority, and refuses an optimisation that touches a protected control. THE BUDGET — the tenant administrator
+     declares it; a revision by the administrator or the budget's owner (the port decides which), so the owner's usual roles reach the
+     port; human-gated (an agent never sets, lifts or raises a budget). THE READ — consequential and audited: the commercial authority, the
+     tenant administrator, the auditor, the executive and the domain's budget-holding roles. No platform_admin row: cost governance is not
+     technical access. No new role. */
+  { actionPrefix: 'commercial.rate.set', exact: true, requiredAnyRole: [{ role: 'commercial_authority', atScope: 'PLATFORM' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'commercial.allocation.set', exact: true, requiredAnyRole: [{ role: 'commercial_authority', atScope: 'PLATFORM' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'commercial.invoice.import', exact: true, requiredAnyRole: [{ role: 'commercial_authority', atScope: 'PLATFORM' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'commercial.invoice.reconcile', exact: true, requiredAnyRole: [{ role: 'commercial_authority', atScope: 'PLATFORM' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'commercial.optimisation.record', exact: true, requiredAnyRole: [{ role: 'commercial_authority', atScope: 'PLATFORM' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'commercial.budget.set', exact: true, requiredAnyRole: [{ role: 'tenant_admin', atScope: 'TENANT' }, { role: 'executive', atScope: 'DOMAIN' },
+    { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'commercial.ledger.read', exact: true, requiredAnyRole: [{ role: 'commercial_authority', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' },
+    { role: 'executive', atScope: 'DOMAIN' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' },
+    { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }], obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B91 ledger */
   /* B36 home */
   /* THE EXECUTIVE HOME, THE CADENCE, THE COMMAND VIEWS, THE SEARCH, THE METRICS (0094 §H; F-P6-11: WS-01, JRN-19, PER-03, CAP-EO-01/-02/-04).
      EXACT rules — no `executive` prefix rule exists and none of these names is a prefix of another rule's. THE READS (executive.home.read
