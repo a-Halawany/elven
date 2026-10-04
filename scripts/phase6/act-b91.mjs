@@ -24,7 +24,7 @@
  *         tick prices the usage; the budget's variance; the commercial.usage item routed.
  *   B91-L F-P7-F-01: the vendor's package foresight-decision (Foresight, Decision and every non-simulation capability the demonstration uses —
  *         NOT Simulation), its SKU, the licence issued to NORDWERK with a term that ENDS WITHIN THE ACT; T. Nakamura's simulation write REFUSED
- *         403 EYE_ENT_001 (Simulation named, the licence version, what stays available); the controls that stay (M. Dvořák acknowledges the
+ *         403 EYE_ENT_001 (Simulation named, the licence version, what stays available); the controls that stay (M. Dvořák reads the
  *         commercial.usage item, the auditor reads the refusal in the audit ledger, the corridor run reads); the term ends and the tick moves
  *         the licence to GRACE with the last valid entitlement and grace_until; the commercial.entitlement item routed to the tenant
  *         administrator; the licence standing shows grace and the last valid entitlement. The offline token is SKIPPED unless an
@@ -299,9 +299,14 @@ else {
     if (!r.ok) fail(`N. Vogel sets the ${dim} cap`, r);
     else ok(`N. Vogel SET the ${dim} cap v${r.body.cap.version}: ${r.body.cap.limit} ${r.body.cap.unit} per ${r.body.cap.period}, ${r.body.cap.action} — the day's usage ${used} ${unit}; reached ${r.body.cap.reached}; ${r.body.cap.licence_bound}`);
   }
-  // 6. THE NEXT SWEEP: refused at admission, the breach recorded and explained
-  const s2 = await sweepOf(nakamura);
-  expectRefused('T. Nakamura\'s next sweep', s2, 409, /^usage cap rejected \(cap\): /);
+  // 6. THE NEXT SWEEP: refused at admission, the breach recorded and explained. A sweep measured at 0 ms leaves a 1 ms cap unreached: the
+  // sweep then runs (metered) and the next one meets the cap — at most three attempts, each said.
+  for (let i = 0; i < 3; i += 1) {
+    const s2 = await sweepOf(nakamura);
+    if (s2.ok) { note(`T. Nakamura's sweep ${short(s2.body.sweep.sweep_id)} RAN — the stop cap was not yet reached (the day's compute below the 1 ms floor); metered, and the next sweep meets the cap`); continue; }
+    expectRefused('T. Nakamura\'s next sweep', s2, 409, /^usage cap rejected \(cap\): the tenant's simulation_compute cap \(.+ wall_ms per day, stop\) is reached — .+ used since .+; the sweep did not run and nothing was deleted/);
+    break;
+  }
   REFUSED = await refusedSweep();
 }
 // 7-8. THE TICK PRICES THE USAGE; THE ASSERTIONS (every run: the records)
@@ -337,8 +342,7 @@ else {
   if (REFUSED === null) bad('no refused-sweep breach recorded');
   else {
     const item = (await q(`select item_id::text, state, owner_principal_id::text owner, route_roles, title, cause_event_type from executive.attention_items where tenant_id = $1 and signal_class = 'commercial.usage' and cause_event_id = $2`, [T, REFUSED.breach_id]))[0] ?? null;
-    const explained = `the tenant's simulation_compute cap (${REFUSED.cap_limit} wall_ms per day, stop) is reached — ${REFUSED.used} used since ${iso(REFUSED.period_start)}; the sweep did not run and nothing was deleted`;
-    ok(`THE BREACH ${short(REFUSED.breach_id)}: ${REFUSED.kind} — ${REFUSED.subject_kind} on cap v${REFUSED.cap_version} (${REFUSED.cap_limit} wall_ms, used ${REFUSED.used}); explained: "${explained}"`);
+    ok(`THE BREACH ${short(REFUSED.breach_id)} (the record): ${REFUSED.kind} — ${REFUSED.subject_kind} of run ${short(REFUSED.details?.run_id)} on cap v${REFUSED.cap_version} (${REFUSED.cap_limit} wall_ms per day, used ${REFUSED.used} since ${iso(REFUSED.period_start)}), at ${iso(REFUSED.occurred_at)}`);
     (item && item.state === 'open' && item.owner === tadmin.principalId && (item.route_roles ?? []).includes('tenant_admin') ? ok : bad)(`commercial.usage ROUTED: item ${short(item?.id ?? item?.item_id)} → ${nm(item?.owner)} + roles [${(item?.route_roles ?? []).join(', ')}] (${item?.state}; cause ${item?.cause_event_type}): "${String(item?.title ?? '—').slice(0, 150)}"`);
     const bItems = await q(`select state, owner_principal_id::text owner, title from executive.attention_items where tenant_id = $1 and signal_class = 'commercial.usage' and subject_kind = 'budget' order by created_at`, [T]);
     if (bItems.length > 0) note(`the budget's own commercial.usage item(s) → ${bItems.map((x) => `${nm(x.owner)} (${x.state}): "${String(x.title).slice(0, 110)}"`).join('; ')}`);
@@ -396,17 +400,13 @@ if (fdLive) {
 }
 // 3. THE CONTROLS THAT STAY AVAILABLE
 {
-  // (a) M. Dvořák (executive — a routed role) reads and acknowledges the commercial.usage item of the refused sweep
+  // (a) the attention layer (executive.attention.* — never gated): M. Dvořák reads the commercial.usage item of the refused sweep. Its
+  // acknowledgement is NOT staged: the item is routed to the cap's setter and the tenant_admin role, and the PDP's acknowledge rule
+  // (executive.attention.item.acknowledge) admits no tenant_admin — the read is the control shown (said in the LIMITS).
   const item = REFUSED === null ? null : (await q(`select item_id::text, state from executive.attention_items where tenant_id = $1 and signal_class = 'commercial.usage' and cause_event_id = $2`, [T, REFUSED.breach_id]))[0] ?? null;
   if (item) {
     const g = await call(`${E}/items/${item.item_id}/get`, dom(dvorak, 'executive', { action: 'executive.attention.read', objectType: 'ATI', objectId: item.item_id, ...READ }), {}, dvorak.token);
-    (g.ok ? ok : bad)(`M. Dvořák READ the commercial.usage item ${short(item.item_id)} under the licence: ${g.ok ? `${g.body.item?.state ?? '—'} — "${String(g.body.item?.title ?? '').slice(0, 100)}"` : refusalLine(g)}`);
-    const acked = (await q(`select count(*)::int n from executive.attention_item_events where item_id = $1 and event = 'item.acknowledged'`, [item.item_id]))[0]?.n ?? 0;
-    if (acked > 0) note(`the item's acknowledgement stands — an earlier run`);
-    else {
-      const a = await call(`${E}/items/${item.item_id}/acknowledge`, dom(dvorak, 'executive', { action: 'executive.attention.item.acknowledge', objectType: 'ATI', objectId: item.item_id }), { note: 'seen: the corridor sweep stopped at the tenant cap (SYNTHETIC)' }, dvorak.token);
-      (a.ok ? ok : bad)(`M. Dvořák ACKNOWLEDGED it — a mandatory control the licence never removes: ${a.ok ? a.body.item?.state ?? 'acknowledged' : refusalLine(a)}`);
-    }
+    (g.ok ? ok : bad)(`M. Dvořák READ the commercial.usage item ${short(item.item_id)} under the licence (executive.attention.read — never gated): ${g.ok ? `${g.body.item?.state ?? '—'} — "${String(g.body.item?.title ?? '').slice(0, 120)}"` : refusalLine(g)}`);
   } else note('no commercial.usage item of the refused sweep to read');
   // (b) the audit read by the tenant's auditor (or the tenant administrator), by the refusal's correlation
   const reader = auditor ?? tadmin;
@@ -523,7 +523,7 @@ console.log('\nB91-9 THE STATE and the LIMITS');
   note(`NORDWERK's licence now: ${live ? `v${live.version} ${live.package_key} — ${String(live.state).toUpperCase()}${live.grace_until ? ` until ${iso(live.grace_until)}` : ''}` : 'UNCONTRACTED'}`);
   console.log('  the env lines for the walks (EYE_TEST_ADMIN_PASSWORD comes from .eye-local/env and is never printed):');
   for (const [k, v] of Object.entries(ENV_OUT)) console.log(`  ${k}=${/\s/.test(v) ? `'${v}'` : v}`);
-  note('LIMITS said: EVERY FIGURE IS SYNTHETIC — the rate cards (0.05 EUR per compute second, 0.02 EUR per inference call, 1 EUR per GB-sample of evidence storage, the energy coefficient an ESTIMATE), the 25 EUR month budget, the caps (set at the day\'s usage so the demonstration reaches them), the licence limits, the order references and the shipment record. NO REAL BILLING ACCOUNT: no invoice is imported here (the synthetic invoice and its reconciliation are harness-proven, phase6-ledger-b91). MODEL INFERENCE: the extraction agent\'s run calls the model gateway in REPLAY mode on this local deployment — the recorded response is the method\'s fixture (recorded_from fixture), no external provider is called; inference is metered in CALLS (the gateway records no tokens). THE CAPS: the stop cap is enforced at admission for simulation_compute (the sweep and the experiment chunk claim — the experiment\'s PARTIAL stop at the tenant cap is harness-proven, phase6-meters-b91 M3, not staged here); model inference warns only. THE ROUTING: commercial.entitlement items follow the published policy (routed to the tenant administrator); the commercial.usage items of a cap or a budget are routed by their ports (the cap\'s setter or the budget\'s owner and the tenant_admin role) — the policy\'s commercial.usage route is published for the class but those ports do not consult it. THE LICENCE: a version takes effect when issued (§EN refuses a future start), so the term is set to end within the act and the attention agent\'s real tick moves it to GRACE (14 days, the DEFAULT grace policy: read and preserve, finish running work, no new work); the offline token is not issued (no signing key reference in the environment). HARNESS-PROVEN ONLY: the entitlement matrix\'s suspended and lapsed cells, the indeterminate entitlement, renewal/suspension/reinstatement, the contract scope, the offline token and its verifier, allocation keys, the invoice reconciliation, the optimisation boundary, the anomaly rule, B90\'s product-consumption counters. Nothing is cleaned: every record stands as a demonstration fact.');
+  note('LIMITS said: EVERY FIGURE IS SYNTHETIC — the rate cards (0.05 EUR per compute second, 0.02 EUR per inference call, 1 EUR per GB-sample of evidence storage, the energy coefficient an ESTIMATE), the 25 EUR month budget, the caps (set at the day\'s usage so the demonstration reaches them), the licence limits, the order references and the shipment record. NO REAL BILLING ACCOUNT: no invoice is imported here (the synthetic invoice and its reconciliation are harness-proven, phase6-ledger-b91). MODEL INFERENCE: the extraction agent\'s run calls the model gateway in REPLAY mode on this local deployment — the recorded response is the method\'s fixture (recorded_from fixture), no external provider is called; inference is metered in CALLS (the gateway records no tokens). THE CAPS: the stop cap is enforced at admission for simulation_compute (the sweep and the experiment chunk claim — the experiment\'s PARTIAL stop at the tenant cap is harness-proven, phase6-meters-b91 M3, not staged here); model inference warns only. THE ROUTING: commercial.entitlement items follow the published policy (routed to the tenant administrator); the commercial.usage items of a cap or a budget are routed by their ports (the cap\'s setter or the budget\'s owner and the tenant_admin role) — the policy\'s commercial.usage route is published for the class but those ports do not consult it. THE LICENCE: a version takes effect when issued (§EN refuses a future start), so the term is set to end within the act and the attention agent\'s real tick moves it to GRACE (14 days, the DEFAULT grace policy: read and preserve, finish running work, no new work); the offline token is not issued (no signing key reference in the environment). THE ACKNOWLEDGEMENT: the commercial.usage and commercial.entitlement items are routed to the tenant_admin role, which the PDP\'s executive.attention.item.acknowledge rule does not admit — the act shows the attention READ, not an acknowledgement. HARNESS-PROVEN ONLY: the entitlement matrix\'s suspended and lapsed cells, the indeterminate entitlement, renewal/suspension/reinstatement, the contract scope, the offline token and its verifier, allocation keys, the invoice reconciliation, the optimisation boundary, the anomaly rule, B90\'s product-consumption counters. Nothing is cleaned: every record stands as a demonstration fact.');
 }
 
 /* ── THE END ── */
