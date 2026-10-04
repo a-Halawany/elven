@@ -603,7 +603,8 @@ GRANT EXECUTE ON FUNCTION commercial.issue_offline_token(uuid, uuid, int, text, 
      · a grace whose end has passed → LAPSED (grace_ended);
      · live versions that CONFLICT → each active one enters GRACE (indeterminate_conflict) with the last valid entitlement = the oldest
        readable of them (the one in force when another appeared beside it), the grace from now;
-     · the newest live version UNREADABLE → GRACE (indeterminate_unreadable) with the last valid = the newest readable earlier version;
+     · the newest live version UNREADABLE → GRACE (indeterminate_unreadable) with the last valid = the newest readable earlier version of the
+       same licence (else of another licence of the tenant);
      · an active version past its term end → GRACE (term_ended; grace_until = the term end + the policy's days; the last valid = itself),
        and LAPSED at once when that grace has also passed;
      · an active version within the policy's renewal notice → one renewal notice per term end.
@@ -654,9 +655,9 @@ BEGIN
   l := v_newest;
   v_bad := commercial.cgr_unreadable(l);
   IF l.state = 'active' AND v_bad IS NOT NULL THEN
-    -- 3. UNREADABLE: the last valid = the newest readable earlier version of the tenant (superseded or not)
+    -- 3. UNREADABLE: the last valid = the newest readable earlier version of the SAME licence (superseded or not), else of another of the tenant's
     SELECT x.* INTO v_prev FROM commercial.licences x WHERE x.tenant_id = p_tenant AND NOT (x.licence_id = l.licence_id AND x.version = l.version)
-      AND commercial.cgr_unreadable(x) IS NULL AND x.issued_at <= l.issued_at ORDER BY x.issued_at DESC, x.version DESC LIMIT 1;
+      AND commercial.cgr_unreadable(x) IS NULL AND x.issued_at <= l.issued_at ORDER BY (x.licence_id = l.licence_id) DESC, x.issued_at DESC, x.version DESC LIMIT 1;
     v_last := CASE WHEN v_prev.licence_id IS NULL THEN jsonb_build_object('none', true, 'note', 'no earlier version reads as an entitlement')
                    ELSE commercial.cgr_snapshot(v_prev, 'the last valid entitlement: the newest readable earlier version') END;
     v_r := commercial.cgr_transition(l, gen_random_uuid(), 'grace_entered', 'indeterminate_unreadable', 'grace', format('the entitlement is indeterminate: %s', v_bad),

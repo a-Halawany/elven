@@ -86,6 +86,8 @@ const refused = async (p: Promise<unknown>, re: RegExp, status: number) => {
 };
 const rows = async (q: ReturnType<typeof sql>) => (await q.execute(su)).rows as Row[];
 const obj = (v: unknown): Row => (v ?? {}) as Row;
+/** An instant in ms, from a pg Date or a jsonb text (microseconds truncated to the ms). */
+const ms = (v: unknown): number => (v instanceof Date ? v.getTime() : Math.floor(Date.parse(String(v))));
 
 /* ───────────── envelopes ───────────── */
 function envelopeOf(as: AuthenticatedPrincipal, action: string, scope: 'PLATFORM' | 'TENANT', type: string, id: string | null): Envelope {
@@ -300,11 +302,11 @@ describe('B91 §GR · d RENEWAL', () => {
     const tr = await transitions(L, 1);
     const renewed = tr.find((x) => x['kind'] === 'renewed')!;
     expect(renewed).toMatchObject({ actor_kind: 'human', actor: ca.principalId, from_state: 'active', to_state: 'active' });
-    expect(new Date(String(renewed['term_end_after'])).getTime()).toBeGreaterThan(new Date(String(renewed['term_end_before'])).getTime());
+    expect(ms(renewed['term_end_after'])).toBeGreaterThan(ms(renewed['term_end_before']));
     const row = await licenceRow(L, 1);
-    expect(String(row['effective_to'])).toBe(String(V1_CONTENT['effective_to']));
+    expect(ms(row['effective_to'])).toBe(ms(V1_CONTENT['effective_to']));
     const r = await rulesOf();
-    expect(new Date(String(obj(r['licence'])['term_end'])).getTime()).toBe(new Date(String(renewed['renewed_until'])).getTime());
+    expect(ms(obj(r['licence'])['term_end'])).toBe(ms(renewed['renewed_until']));
   });
   it('REFUSAL: the tenant administrator (the policy); an AGENT holding the commercial authority (the human gate); a term in the past; an unknown version', async () => {
     const until = await dbPlusDays(400);
@@ -358,8 +360,7 @@ describe('B91 §GR · f THE LAPSE: the term ends → GRACE with the last valid e
     const row = await licenceRow(L, 2);
     expect(row['state']).toBe('grace');
     expect(obj(row['last_valid'])).toMatchObject({ licence_id: L, version: 2, capabilities: ['decision', 'foresight'], limits: { model_inference: 5000, simulation_compute: 0 } });
-    const graceUntil = new Date(String(row['grace_until'])).getTime();
-    expect(graceUntil - new Date(String(row['effective_to'])).getTime()).toBe(10 * 86_400_000);
+    expect(ms(row['grace_until']) - ms(row['effective_to'])).toBe(10 * 86_400_000);
     const r = await rulesOf();
     expect(r).toMatchObject({ state: 'grace', rules: { capabilities: ['decision', 'foresight'], finish_running_work: true, new_work: false, read_and_preserve: true } });
     expect(String(r['explanation'])).toMatch(/^GRACE until .*: the last valid entitlement \(decision, foresight\) stays available .* running work may finish, no new work starts/);
