@@ -1,60 +1,421 @@
-CP-6 B91 — the act scripts/phase6/act-b91.mjs rehearsed on eye_demo_b91 (API :3411, Redis 6395) — 2026-10-04T11:50Z
-No credential is printed by the act; this file holds its output only.
+CP-6 B91 — the act scripts/phase6/act-b91.mjs rehearsed on eye_demo_b91 (API :3411, Redis 6395) — 2026-10-04T12:15Z
+No credential is printed by the act or the walks; this file holds their output only.
 
-RESULT: STOPPED at B91-P on every run — the vendor's commercial authority (commercial_authority, PLATFORM) cannot be created through a
-governed route (POST /v1/platform/principals: 404; the only principal route, POST /v1/tenants/:tenantId/principals, makes TENANT or DOMAIN
-principals). As the brief requires, the act plants no identity row and creates neither persona; the scenes after B91-P were not rehearsed;
---restore and the third scene run were not run (they need the vendor). Verified after each run: no principal c.marchetti or n.vogel, no licence.
+FIRST ATTEMPT (before 6e6c399): STOPPED at B91-P three times — no governed route created a PLATFORM principal (POST /v1/platform/principals 404); nothing planted.
+After the integrator's 6e6c399 (the PLATFORM principal route; tenant_admin may acknowledge), merged at 26713d9:
+  run 1 (scenes): 2 FAILURE(S) — both the ACT's own assertion texts, the product answered correctly: the cap refusal's sentence continues
+    '(the breach is recorded; nothing was deleted; the tenant administrator may raise the cap)', and the error body's code is dashed
+    (EYE-ENT-001). Corrected in 91f5578; run 2 then re-asserted the entitlement refusal in full (grace). The cap refusal is not repeated
+    on a rerun (the breach stands); its corrected pattern was checked against the route's own builder (meters.service.ts capRefusal).
+  run 2 (scenes): first attempt 1 failure — the routed entitlement item reads 'acknowledged' on a rerun (the act acknowledged it in run 1);
+    the check accepts open|acknowledged (b04e13d); run 2 again: ALL SCENES HELD.
+  walks (pre-restore, the grace state): 15/15 after the walk fixes (web :3413 built with NEXT_PUBLIC_EYE_API=:3412, a rehearsal-only CORS shim → :3411).
+  --restore: first attempt crashed after issuing the full licence and raising the cap (an act bug: the sweep helper was block-scoped);
+    fixed; --restore again HELD (every earlier write 'stands'), and a third --restore HELD.
+  act-b30 on :3411 after --restore: ALL SCENES HELD.
+  run 3 (scenes after --restore): ALL SCENES HELD.
 
-════ run 1 (scenes) ════
-THE B91 ACT on eye_demo_b91 (REHEARSAL) — 2026-10-04T11:47:26.412Z
+════ r1 ════
+THE B91 ACT on eye_demo_b91 (REHEARSAL) — 2026-10-04T12:03:46.825Z
 
 B91-0 THE STATE — 0104 and 0105, the casting, the attention agent, the corridor run
   ✓ migrations applied: 0104_b30_estimate_contract_at_publication.sql, 0105_b91_metering_ledger_entitlements_licensing.sql
-  ✓ the casting read from identity.role_bindings: a.hoffmann (domain_analyst); l.ferreira (extraction_manager); m.dvorak (collection_manager, executive); t.nakamura (twin_owner); t.richter (domain_admin)
+  ✓ the casting read from identity.role_bindings: a.hoffmann (domain_analyst); e.kovacs (twin_owner); j.weber (strategy_owner); l.ferreira (extraction_manager); m.dvorak (collection_manager, executive); t.nakamura (twin_owner); t.richter (domain_admin)
   ✓ the tenant's auditor: e.lindqvist (auditor, TENANT) — the audit read of B91-L
-  ✓ the attention agent 01a0…1cb088 — cadence 60 s; 10 tick run(s) in the last ten minutes (the latest at 2026-10-04T11:47:15Z) — the act waits for its ticks, it calls no tick route
+  ✓ the attention agent 01a0…1cb088 — cadence 60 s; 10 tick run(s) in the last ten minutes (the latest at 2026-10-04T12:03:15Z) — the act waits for its ticks, it calls no tick route
   ✓ the extraction agent 01a0…f32d2d is active — the plan worker runs an upload's extraction under it (the inference path)
   ✓ the corridor run 01a0…8b84d2: a completed supply-flow@1 control of "NORDWERK — Ningbo → Regensburg chain" on actual v14 (opened 2026-10-01T14:30:36Z) — the envelope sweep's input
 
 B91-P THE TWO NEW PERSONAS — the vendor's commercial authority (PLATFORM) and NORDWERK's tenant administrator (TENANT), through the governed principal routes
-  ✗ THE VENDOR CANNOT BE CREATED THROUGH A GOVERNED ROUTE: POST /v1/platform/principals answered 404  — Cannot POST /v1/platform/principals. The only principal route the platform administrator has is POST /v1/tenants/:tenantId/principals, which creates a TENANT or DOMAIN principal (its scope is the request's tenant); a commercial_authority binding must be PLATFORM-scoped (the PDP's commercial.* rules and commercial.cgr_assert_commercial require it, and identity.enforce_binding_authority refuses a PLATFORM binding to a tenant principal). The database port identity.create_principal already admits a PLATFORM principal in a PLATFORM context; no HTTP route reaches it. STOPPED as the brief requires — no identity row is planted, the tenant administrator is NOT created either (nothing half-made).
+  ✓ the administrator CREATED C. Marchetti through the governed PLATFORM principal route — role commercial_authority at the PLATFORM
+  ✓ the administrator CREATED N. Vogel through the governed principal route — role tenant_admin at the TENANT
 
-1 FAILURE(S) · STOPPED at B91-P · 0.2 s
+B91-A THE ROUTING — the corridor domain's attention policy routes commercial.usage and commercial.entitlement; every other class kept
+  ✓ M. Dvořák PUBLISHED attention policy VERSION 9 (supersedes 8): + commercial.usage → [tenant_admin, executive], commercial.entitlement → [tenant_admin]; 18 of 18 earlier classes byte-identical, the other sections unchanged
 
-════ run 2 (scenes) ════
-THE B91 ACT on eye_demo_b91 (REHEARSAL) — 2026-10-04T11:47:41.433Z
+B91-M (F-P7-F-02) — the corridor sweep's metered compute and model inference against the tenant budget; the cap stops the sweep with a recorded, explained breach
+  ✓ C. Marchetti (commercial authority) SET the rate card simulation_compute:wall_ms v1: 0.00005 EUR per wall_ms from 2026-10-01T00:00:00Z (energy 8.33e-8 kWh per unit, an ESTIMATE) — SYNTHETIC true
+  ✓ C. Marchetti (commercial authority) SET the rate card model_inference:calls v1: 0.02 EUR per calls from 2026-10-01T00:00:00Z — SYNTHETIC true
+  ✓ C. Marchetti (commercial authority) SET the rate card storage:bytes v1: 1e-9 EUR per bytes from 2026-10-01T00:00:00Z — SYNTHETIC true
+  · waiting for the attention agent's tick to price the month's usage under the new rate cards (the ledger step, every 60 s)
+  ✓ N. Vogel (tenant administrator) SET the budget "NORDWERK — every metered capability, monthly (SYNTHETIC)" v1: 0.15 EUR a month (the month's priced spend 0.1341 EUR is 89.4 % of it), capability all, owner M. Dvořák, thresholds [80,100] — SYNTHETIC
+  · A. Hoffmann UPLOADED "shipments-2024Q1-b91-metering.csv" (a SYNTHETIC shipment record, 256 bytes) to the NORDWERK internal source: run 01a1…e07757 finished — 1 admitted, 0 unchanged
+  · L. Ferreira (extraction manager) RECORDED the replay fixture for evidence 01a1…2b3e86@1 (1 stored, 0 already present) — written by the method's fixture builder: the gateway answers in REPLAY mode, no external model
+  ✓ THE MODEL GATEWAY WAS CALLED by the extraction agent's run 01a1…dc0d9d on that evidence: call 01a1…972b3f (replay, abstained, 4 ms) — a real gateway call on this deployment (REPLAY: the recorded response, no external provider)
+  ✓ E. Kovács (the study twin's owner) DECLARED 01a1…1ff5f9 "Regensburg line — bearing shortage at the tenant cap (SYNTHETIC)": discrete-event@1, 60 paths in chunks of 20, ONE chunk a tick, the budget {"max_paths":60,"max_chunks":6,"max_wall_seconds":600}
+  ✓ J. Weber APPROVED its budget by the digest fa3e85e47846… → approved
+  ✓ E. Kovács STARTED it: the run 01a1…c01ccf opened → running
+  · waiting for the attention agent's tick to run the experiment's FIRST chunk (its after-tick hook; one chunk a tick)
+  ✓ THE FIRST CHUNK RAN under the tick: 1 chunk(s), 20 paths, 473 wall ms — metered 1 chunk usage record(s) (473 wall_ms)
+  ✓ T. Nakamura (twin owner) SWEPT the corridor control 01a0…8b84d2: sweep 01a1…077384 — 5 grid points, 3 factor(s), rule sxp-sweep@1
+  ✓ N. Vogel SET the simulation_compute cap v1: 484 wall_ms per day, stop — the day's usage 484 wall_ms; reached true; uncontracted: no licence limit applies; the cap is bounded by nothing but itself
+  ✓ N. Vogel SET the model_inference cap v1: 1 calls per day, warn — the day's usage 1 calls; reached true; uncontracted: no licence limit applies; the cap is bounded by nothing but itself
+  · the experiment 01a1…1ff5f9 now PARTIAL
+  ✗ T. Nakamura's next sweep: expected a 409 refusal matching /^usage cap rejected \(cap\): the tenant's simulation_compute cap \(.+ wall_ms per day, stop\) is reached — .+ used since .+; the sweep did not run and nothing was deleted/, got 409 EYE-STA-002 — usage cap rejected (cap): the tenant's simulation_compute cap (484 wall_ms per day, stop) is reached — 484 used since 2026-10-04T00:00:00+00:00; the sweep did not run (the breach is recorded; nothing was deleted; the tenant administrator may raise the cap)
+  ✓ THE SWEEP METERED: usage fc4a…38cc2b — simulation_compute 11 wall_ms (measured by the sweep route), sweep 01a1…077384
+  ✓ MODEL INFERENCE METERED: 1 usage record(s), 1 call(s) — replay abstained, 4 ms; tokens NOT RECORDED (the gateway records none)
+  ✓ THE TICK PRICED the usage: 2 of 2 sweep/inference record(s) carry a cost entry; the tenant's ledger model_inference 1 calls → 0.020000 EUR (1 line(s), model_inference:calls v1); simulation_compute 484 wall_ms → 0.024200 EUR (2 line(s), simulation_compute:wall_ms v1, energy ESTIMATE); storage 134075720 bytes → 0.134076 EUR (2 line(s), storage:bytes v1) — SYNTHETIC rates
+  ✓ THE BUDGET'S VARIANCE (N. Vogel's read): "NORDWERK — every metered capability, monthly (SYNTHETIC)" — spent 0.178276 of 0.15 EUR (118.85 %), variance 0.028276, forecast 1.5767 by 2026-11-01; complete false (unpriced 2); rule cle-variance@1 — the metered compute and inference against the budget (SYNTHETIC)
+  ✓ THE EXPERIMENT STOPPED PARTIAL at the tenant cap: 1 chunk(s) kept (20 paths); the ledger declared → approved → started → run_opened → checkpointed → budget_exceeded → partial; budget_exceeded {"cap":{"unit":"wall_ms","used":484,"limit":484,"scope":"TENANT","state":"active","action":"stop","cap_id":"d8df5b5b-32aa-4672-a884-fc8e1be63027","period":"day"; the breach f0aa…8b9511 (refused, used 484 of 484 wall_ms)
+  ✓ THE BUDGET'S THRESHOLDS raised by the tick to its owner: 80 % → M. Dvořák (open): "Budget 80% reached: NORDWERK — every metered capability, monthly (SYNTHETIC) — 0.15 of 0.15 EUR spent this month (foreca"; 100 % → M. Dvořák (open): "Budget 100% reached: NORDWERK — every metered capability, monthly (SYNTHETIC) — 0.15 of 0.15 EUR spent this month (forec" — a budget raises; it never stops work
+  ✓ C. Marchetti IMPORTED the SYNTHETIC invoice SYN-NORDWERK-B91-1 for 2026-10-04: 0.17 EUR in 3 line(s) — model_inference 1 calls 0.02; simulation_compute 484 wall_ms 0.02; storage 134075720 bytes 0.13 (the ledger's own totals: no billing account exists)
+  ✓ C. Marchetti RECONCILED it against the ledger: v1 DIFFERENCES (tolerance 0.01) — model_inference: invoice 0.02 vs ledger 0.02 ✓; simulation_compute: invoice 0.02 vs ledger 0.0242 ✓; source_consumption: invoice 0 vs ledger 0 Δ 0, 2 unpriced; storage: invoice 0.13 vs ledger 0.134076 ✓ — usage priced after the import shows as a difference, never hidden
+  ✓ THE BREACH 5840…f1e92f (the record): refused — envelope_sweep of run 01a0…8b84d2 on cap v1 (484 wall_ms per day, used 484 since 2026-10-04T00:00:00Z), at 2026-10-04T12:07:18Z
+  ✓ commercial.usage ROUTED: item b0cb…56e0d1 → N. Vogel + roles [tenant_admin] (open; cause usage.cap_refused): "Usage cap stopped new work: simulation_compute 484 of 484 wall_ms this day — the envelope sweep was not continued"
+  · the budget's own commercial.usage item(s) → M. Dvořák (open): "Budget 80% reached: NORDWERK — every metered capability, monthly (SYNTHETIC) — 0.15 of 0.15 EUR spent this mon"; M. Dvořák (open): "Budget 100% reached: NORDWERK — every metered capability, monthly (SYNTHETIC) — 0.15 of 0.15 EUR spent this mo"
+
+B91-L (F-P7-F-01) — the licence covers Foresight and Decision, not Simulation: the refusal explained, the controls that stay, grace with the last valid entitlement
+  ✓ C. Marchetti DECLARED the package foresight-decision v1: advanced_integration, agent_platform, decision, foresight, knowledge_memory, model_portfolio, observation — NOT simulation; limits {"model_inference":{"unit":"calls","period":"month","quantity":10000},"simulation_compute":{"unit":"wall_ms","period":"month","quantity":3600000}} (SYNTHETIC)
+  ✓ C. Marchetti DECLARED the SKU EYE-FD-12M v1: foresight-decision v1, 12 months
+  ✓ C. Marchetti ISSUED NORDWERK licence 01a1…6b960c v1: foresight-decision — advanced_integration, agent_platform, attention_controls, core, decision, foresight, knowledge_memory, model_portfolio, observation; from 2026-10-04T12:07:18Z to 2026-10-04T12:09:48Z (the term ends within the act); provenance EYE-FD-12M v1, order SYNTH-ORDER-NORDWERK-B91-FD; digest c39e1e61f542…
+  ✗ T. Nakamura's simulation write (the envelope sweep): expected a 403 EYE_ENT_001 refusal matching /^capability unavailable \(entitlement\): simulation is not licensed for this tenant \((active|grace); licence v\d+\) — reads of existing records, corrections and withdrawals, export, audit, identity, warnings and their acknowledgement, and every human decision stay available$/, got 403 EYE-ENT-001 — capability unavailable (entitlement): simulation is not licensed for this tenant (active; licence v1) — reads of existing records, corrections and withdrawals, export, audit, identity, warnings and their acknowledgement, and every human decision stay available
+  ✓ the entitlement refusal is IN THE AUDIT LEDGER: simulation.sweep.run → EYE-ENT-001 at 2026-10-04T12:07:18Z (correlation 7252…3caf83)
+  ✓ M. Dvořák READ the commercial.usage item b0cb…56e0d1 under the licence (executive.attention.read — never gated): open — "Usage cap stopped new work: simulation_compute 484 of 484 wall_ms this day — the envelope sweep was not continued"
+  ✓ E. Lindqvist READ THE AUDIT LEDGER under the licence (audit.read — never gated): 2 event(s) of the refusal's correlation — simulation.sweep.run → EYE-ENT-001
+  ✓ T. Nakamura READ the corridor run 01a0…8b84d2 under the licence (a read of an existing record — never gated): its sweeps 1, reach {"analyses":1,"packages":2,"dependent_runs":1}
+  · the term ends 2026-10-04T12:09:48Z (150 s from the database's now); the attention agent's tick moves it — waited for, never driven
+  ✓ THE TICK MOVED THE LICENCE TO GRACE: active → grace (term_ended) by the attention agent at 2026-10-04T12:10:16Z; grace until 2026-10-18T12:09:48Z; the LAST VALID ENTITLEMENT v1 — advanced_integration, agent_platform, attention_controls, core, decision, foresight, knowledge_memory, model_portfolio, observation; limits {"model_inference":{"unit":"calls","period":"month","quantity":10000},"simulation_compute":{"unit":"wall_ms","period":"month","quantity":3600000}}; term end 2026-10-04T12:09:48.707000Z
+  ✓ commercial.entitlement ROUTED in the corridor domain: item 5c67…5409ec — open, roles [tenant_admin] under policy v9, owner C. Marchetti: "Licence in GRACE: foresight-decision v1 — the term ended; grace until 2026-10-18 12:09 UTC (the last valid entitlement kept: advanced_integration, agent_platform, attenti"; 1 more in the tenant's other domain(s): deprioritized
+  · the tenant administrator N. Vogel holds the routed role (yes) — the item reaches him by role
+  ✓ N. Vogel (tenant administrator) ACKNOWLEDGED the commercial.entitlement item 5c67…5409ec in grace — item.acknowledged recorded by him (receipt, never agreement)
+  ✓ THE STANDING (N. Vogel): GRACE — "GRACE until 2026-10-18 12:09 UTC: the last valid entitlement (advanced_integration, agent_platform, attention_controls, core, decision, foresight, knowledge_memory, model_portfolio, observation) stays available as the grace policy allows — running work may fin"; last valid v1 (advanced_integration, agent_platform, attention_controls, core, decision, foresight, knowledge_memory, model_portfolio, observation); grace until 2026-10-18T12:09:48Z; 2 transition(s)
+  · the offline licence token is NOT issued: no EYE_LICENCE_SIGNING_KEY_* reference in the environment (.eye-local/env has none; the act never writes it) — the token and scripts/commercial/verify-licence.mjs are harness-proven (phase6-grace-b91)
+
+B91-9 THE STATE and the LIMITS
+  · in the ledgers: 7 usage record(s), 5 cost entr(ies), 3 rate card version(s), 1 budget version(s), 2 cap version(s), 2 breach(es), 1 licence version(s), 2 transition(s), 8 commercial attention item(s)
+  · NORDWERK's licence now: v1 foresight-decision — GRACE until 2026-10-18T12:09:48Z
+  the env lines for the walks (EYE_TEST_ADMIN_PASSWORD comes from .eye-local/env and is never printed):
+  EYE_B91_CORRIDOR_RUN=01a0f7df-d634-7a05-a033-a479a78b84d2
+  EYE_B91_VENDOR=c.marchetti
+  EYE_B91_COMMERCIAL=c.marchetti
+  EYE_B91_TENANT_ADMIN=n.vogel
+  EYE_B91_OPERATOR=t.nakamura
+  EYE_B91_EXECUTIVE=m.dvorak
+  EYE_B91_READER=t.richter
+  EYE_B91_BUDGET_LABEL='NORDWERK — every metered capability, monthly (SYNTHETIC)'
+  EYE_B91_RATE_KEY=simulation_compute:wall_ms
+  EYE_B91_EXPERIMENT_TITLE='Regensburg line — bearing shortage at the tenant cap (SYNTHETIC)'
+  EYE_B91_INVOICE_REF=SYN-NORDWERK-B91-1
+  EYE_B91_LICENCE_VERSION=1
+  EYE_B91_GRACE=1
+  EYE_B91_LICENCE_COMPUTE_LIMIT_MS=3600000
+  EYE_B91_LICENSED='advanced_integration, agent_platform, attention_controls, core, decision, foresight, knowledge_memory, model_portfolio, observation'
+  · LIMITS said: EVERY FIGURE IS SYNTHETIC — the rate cards (0.05 EUR per compute second, 0.02 EUR per inference call, 1 EUR per GB-sample of evidence storage, the energy coefficient an ESTIMATE), the 25 EUR month budget, the caps (set at the day's usage so the demonstration reaches them), the licence limits, the order references and the shipment record. NO REAL BILLING ACCOUNT: the invoice C. Marchetti imports is SYNTHETIC — the ledger's own totals for the day, reconciled against the ledger; a real billing account closes the clause and none exists (a reconciliation shows usage priced after the import as a difference). THE BUDGET: its amount is sized from the month's priced spend when it is set (spent / 0.9) so the demonstration reaches its 80 % threshold. MODEL INFERENCE: the extraction agent's run calls the model gateway in REPLAY mode on this local deployment — the recorded response is the method's fixture (recorded_from fixture), no external provider is called; inference is metered in CALLS (the gateway records no tokens). THE CAPS: the stop cap is enforced at admission for simulation_compute (the sweep and the experiment chunk claim — E. Kovács's discrete-event experiment is stopped PARTIAL at the cap by the attention agent's next claim, its first chunk kept); model inference warns only. THE ROUTING: commercial.entitlement items are evaluated against the published policy (routed to the tenant administrator); the commercial.usage items of a cap or a budget are NOT policy-routed — their ports route them, material, to the named owner (the cap's setter, the budget's owner) and the tenant_admin role whatever the policy says; the policy's commercial.usage route is published for the class only. THE LICENCE: a version takes effect when issued (§EN refuses a future start), so the term is set to end within the act and the attention agent's real tick moves it to GRACE (14 days, the DEFAULT grace policy: read and preserve, finish running work, no new work); the offline token is not issued (no signing key reference in the environment). THE ACKNOWLEDGEMENT: the tenant administrator acknowledges the routed commercial.entitlement item (tenant_admin was admitted to executive.attention.item.acknowledge by the integrator after the first rehearsal); M. Dvořák reads the cap's commercial.usage item. HARNESS-PROVEN ONLY: the entitlement matrix's suspended and lapsed cells, the indeterminate entitlement, renewal/suspension/reinstatement, the contract scope, the offline token and its verifier, allocation keys, the matched/differences reconciliation cases, the optimisation boundary, the anomaly rule, B90's product-consumption counters. Nothing is cleaned: every record stands as a demonstration fact.
+
+2 FAILURE(S) · 392.4 s
+
+════ r2 ════
+THE B91 ACT on eye_demo_b91 (REHEARSAL) — 2026-10-04T12:11:15.138Z
 
 B91-0 THE STATE — 0104 and 0105, the casting, the attention agent, the corridor run
   ✓ migrations applied: 0104_b30_estimate_contract_at_publication.sql, 0105_b91_metering_ledger_entitlements_licensing.sql
-  ✓ the casting read from identity.role_bindings: a.hoffmann (domain_analyst); l.ferreira (extraction_manager); m.dvorak (collection_manager, executive); t.nakamura (twin_owner); t.richter (domain_admin)
+  ✓ the casting read from identity.role_bindings: a.hoffmann (domain_analyst); e.kovacs (twin_owner); j.weber (strategy_owner); l.ferreira (extraction_manager); m.dvorak (collection_manager, executive); t.nakamura (twin_owner); t.richter (domain_admin)
   ✓ the tenant's auditor: e.lindqvist (auditor, TENANT) — the audit read of B91-L
-  ✓ the attention agent 01a0…1cb088 — cadence 60 s; 10 tick run(s) in the last ten minutes (the latest at 2026-10-04T11:47:15Z) — the act waits for its ticks, it calls no tick route
+  ✓ the attention agent 01a0…1cb088 — cadence 60 s; 10 tick run(s) in the last ten minutes (the latest at 2026-10-04T12:10:15Z) — the act waits for its ticks, it calls no tick route
   ✓ the extraction agent 01a0…f32d2d is active — the plan worker runs an upload's extraction under it (the inference path)
   ✓ the corridor run 01a0…8b84d2: a completed supply-flow@1 control of "NORDWERK — Ningbo → Regensburg chain" on actual v14 (opened 2026-10-01T14:30:36Z) — the envelope sweep's input
 
 B91-P THE TWO NEW PERSONAS — the vendor's commercial authority (PLATFORM) and NORDWERK's tenant administrator (TENANT), through the governed principal routes
-  ✗ THE VENDOR CANNOT BE CREATED THROUGH A GOVERNED ROUTE: POST /v1/platform/principals answered 404  — Cannot POST /v1/platform/principals. The only principal route the platform administrator has is POST /v1/tenants/:tenantId/principals, which creates a TENANT or DOMAIN principal (its scope is the request's tenant); a commercial_authority binding must be PLATFORM-scoped (the PDP's commercial.* rules and commercial.cgr_assert_commercial require it, and identity.enforce_binding_authority refuses a PLATFORM binding to a tenant principal). The database port identity.create_principal already admits a PLATFORM principal in a PLATFORM context; no HTTP route reaches it. STOPPED as the brief requires — no identity row is planted, the tenant administrator is NOT created either (nothing half-made).
+  · C. Marchetti (commercial_authority, PLATFORM) is present — an earlier run
+  · N. Vogel (tenant_admin, TENANT) is present — an earlier run
 
-1 FAILURE(S) · STOPPED at B91-P · 0.3 s
+B91-A THE ROUTING — the corridor domain's attention policy routes commercial.usage and commercial.entitlement; every other class kept
+  · attention policy version 9 routes commercial.usage → [tenant_admin, executive] and commercial.entitlement → [tenant_admin] — an earlier run
 
-════ run 3 (scenes, after the act's controls-scene edit) ════
-THE B91 ACT on eye_demo_b91 (REHEARSAL) — 2026-10-04T11:50:04.859Z
+B91-M (F-P7-F-02) — the corridor sweep's metered compute and model inference against the tenant budget; the cap stops the sweep with a recorded, explained breach
+  · the refused sweep's breach 5840…f1e92f stands — an earlier run (2026-10-04T12:07:18Z): the scene's writes are not repeated; its records are asserted below
+  ✓ THE SWEEP METERED: usage fc4a…38cc2b — simulation_compute 11 wall_ms (measured by the sweep route), sweep 01a1…077384
+  ✓ MODEL INFERENCE METERED: 1 usage record(s), 1 call(s) — replay abstained, 4 ms; tokens NOT RECORDED (the gateway records none)
+  ✓ THE TICK PRICED the usage: 2 of 2 sweep/inference record(s) carry a cost entry; the tenant's ledger model_inference 1 calls → 0.020000 EUR (1 line(s), model_inference:calls v1); simulation_compute 484 wall_ms → 0.024200 EUR (2 line(s), simulation_compute:wall_ms v1, energy ESTIMATE); storage 134075720 bytes → 0.134076 EUR (2 line(s), storage:bytes v1) — SYNTHETIC rates
+  ✓ THE BUDGET'S VARIANCE (N. Vogel's read): "NORDWERK — every metered capability, monthly (SYNTHETIC)" — spent 0.178276 of 0.15 EUR (118.85 %), variance 0.028276, forecast 1.5755 by 2026-11-01; complete false (unpriced 2); rule cle-variance@1 — the metered compute and inference against the budget (SYNTHETIC)
+  ✓ THE EXPERIMENT STOPPED PARTIAL at the tenant cap: 1 chunk(s) kept (20 paths); the ledger declared → approved → started → run_opened → checkpointed → budget_exceeded → partial; budget_exceeded {"cap":{"unit":"wall_ms","used":484,"limit":484,"scope":"TENANT","state":"active","action":"stop","cap_id":"d8df5b5b-32aa-4672-a884-fc8e1be63027","period":"day"; the breach f0aa…8b9511 (refused, used 484 of 484 wall_ms)
+  ✓ THE BUDGET'S THRESHOLDS raised by the tick to its owner: 80 % → M. Dvořák (open): "Budget 80% reached: NORDWERK — every metered capability, monthly (SYNTHETIC) — 0.15 of 0.15 EUR spent this month (foreca"; 100 % → M. Dvořák (open): "Budget 100% reached: NORDWERK — every metered capability, monthly (SYNTHETIC) — 0.15 of 0.15 EUR spent this month (forec" — a budget raises; it never stops work
+  · the SYNTHETIC invoice SYN-NORDWERK-B91-1 (0.17 EUR) stands — an earlier run
+  · its reconciliation v1 (differences) stands — an earlier run
+  ✓ THE BREACH 5840…f1e92f (the record): refused — envelope_sweep of run 01a0…8b84d2 on cap v1 (484 wall_ms per day, used 484 since 2026-10-04T00:00:00Z), at 2026-10-04T12:07:18Z
+  ✓ commercial.usage ROUTED: item b0cb…56e0d1 → N. Vogel + roles [tenant_admin] (open; cause usage.cap_refused): "Usage cap stopped new work: simulation_compute 484 of 484 wall_ms this day — the envelope sweep was not continued"
+  · the budget's own commercial.usage item(s) → M. Dvořák (open): "Budget 80% reached: NORDWERK — every metered capability, monthly (SYNTHETIC) — 0.15 of 0.15 EUR spent this mon"; M. Dvořák (open): "Budget 100% reached: NORDWERK — every metered capability, monthly (SYNTHETIC) — 0.15 of 0.15 EUR spent this mo"
+
+B91-L (F-P7-F-01) — the licence covers Foresight and Decision, not Simulation: the refusal explained, the controls that stay, grace with the last valid entitlement
+  · the foresight-decision licence v1 (grace) stands — an earlier run
+  ✓ T. Nakamura's simulation write (the envelope sweep) REFUSED — 403 EYE-ENT-001 — capability unavailable (entitlement): simulation is not licensed for this tenant (grace; licence v1) — reads of existing records, corrections and withdrawals, export, audit, identity, warnings and their acknowledgement, and every human decision stay available
+  · the refusal's entitlement block: capability simulation, state grace, licence v1 — nothing ran, nothing was written but the denial (POL + AUD)
+  ✓ the entitlement refusal is IN THE AUDIT LEDGER: simulation.sweep.run → EYE-ENT-001 at 2026-10-04T12:11:15Z (correlation 28a8…5e99ee)
+  ✓ M. Dvořák READ the commercial.usage item b0cb…56e0d1 under the licence (executive.attention.read — never gated): open — "Usage cap stopped new work: simulation_compute 484 of 484 wall_ms this day — the envelope sweep was not continued"
+  ✓ E. Lindqvist READ THE AUDIT LEDGER under the licence (audit.read — never gated): 2 event(s) of the refusal's correlation — simulation.sweep.run → EYE-ENT-001
+  ✓ T. Nakamura READ the corridor run 01a0…8b84d2 under the licence (a read of an existing record — never gated): its sweeps 1, reach {"analyses":1,"packages":2,"dependent_runs":1}
+  · the grace transition 91f4…33b841 stands — 2026-10-04T12:10:16Z (an earlier run)
+  ✓ THE TICK MOVED THE LICENCE TO GRACE: active → grace (term_ended) by the attention agent at 2026-10-04T12:10:16Z; grace until 2026-10-18T12:09:48Z; the LAST VALID ENTITLEMENT v1 — advanced_integration, agent_platform, attention_controls, core, decision, foresight, knowledge_memory, model_portfolio, observation; limits {"model_inference":{"unit":"calls","period":"month","quantity":10000},"simulation_compute":{"unit":"wall_ms","period":"month","quantity":3600000}}; term end 2026-10-04T12:09:48.707000Z
+  ✓ commercial.entitlement ROUTED in the corridor domain: item 5c67…5409ec — acknowledged, roles [tenant_admin] under policy v9, owner C. Marchetti: "Licence in GRACE: foresight-decision v1 — the term ended; grace until 2026-10-18 12:09 UTC (the last valid entitlement kept: advanced_integration, agent_platform, attenti"; 1 more in the tenant's other domain(s): deprioritized
+  · the tenant administrator N. Vogel holds the routed role (yes) — the item reaches him by role
+  · N. Vogel's acknowledgement of 5c67…5409ec stands — an earlier run
+  ✓ THE STANDING (N. Vogel): GRACE — "GRACE until 2026-10-18 12:09 UTC: the last valid entitlement (advanced_integration, agent_platform, attention_controls, core, decision, foresight, knowledge_memory, model_portfolio, observation) stays available as the grace policy allows — running work may fin"; last valid v1 (advanced_integration, agent_platform, attention_controls, core, decision, foresight, knowledge_memory, model_portfolio, observation); grace until 2026-10-18T12:09:48Z; 2 transition(s)
+  · the offline licence token is NOT issued: no EYE_LICENCE_SIGNING_KEY_* reference in the environment (.eye-local/env has none; the act never writes it) — the token and scripts/commercial/verify-licence.mjs are harness-proven (phase6-grace-b91)
+
+B91-9 THE STATE and the LIMITS
+  · in the ledgers: 7 usage record(s), 5 cost entr(ies), 3 rate card version(s), 1 budget version(s), 2 cap version(s), 2 breach(es), 1 licence version(s), 2 transition(s), 8 commercial attention item(s)
+  · NORDWERK's licence now: v1 foresight-decision — GRACE until 2026-10-18T12:09:48Z
+  the env lines for the walks (EYE_TEST_ADMIN_PASSWORD comes from .eye-local/env and is never printed):
+  EYE_B91_CORRIDOR_RUN=01a0f7df-d634-7a05-a033-a479a78b84d2
+  EYE_B91_VENDOR=c.marchetti
+  EYE_B91_COMMERCIAL=c.marchetti
+  EYE_B91_TENANT_ADMIN=n.vogel
+  EYE_B91_OPERATOR=t.nakamura
+  EYE_B91_EXECUTIVE=m.dvorak
+  EYE_B91_READER=t.richter
+  EYE_B91_BUDGET_LABEL='NORDWERK — every metered capability, monthly (SYNTHETIC)'
+  EYE_B91_RATE_KEY=simulation_compute:wall_ms
+  EYE_B91_EXPERIMENT_TITLE='Regensburg line — bearing shortage at the tenant cap (SYNTHETIC)'
+  EYE_B91_INVOICE_REF=SYN-NORDWERK-B91-1
+  EYE_B91_LICENCE_VERSION=1
+  EYE_B91_GRACE=1
+  EYE_B91_LICENCE_COMPUTE_LIMIT_MS=3600000
+  EYE_B91_LICENSED='advanced_integration, agent_platform, attention_controls, core, decision, foresight, knowledge_memory, model_portfolio, observation'
+  · LIMITS said: EVERY FIGURE IS SYNTHETIC — the rate cards (0.05 EUR per compute second, 0.02 EUR per inference call, 1 EUR per GB-sample of evidence storage, the energy coefficient an ESTIMATE), the month budget (sized from the month's priced spend), the caps (set at the day's usage so the demonstration reaches them), the licence limits, the order references and the shipment record. NO REAL BILLING ACCOUNT: the invoice C. Marchetti imports is SYNTHETIC — the ledger's own totals for the day, reconciled against the ledger; a real billing account closes the clause and none exists (a reconciliation shows usage priced after the import as a difference). THE BUDGET: its amount is sized from the month's priced spend when it is set (spent / 0.9) so the demonstration reaches its 80 % threshold. MODEL INFERENCE: the extraction agent's run calls the model gateway in REPLAY mode on this local deployment — the recorded response is the method's fixture (recorded_from fixture), no external provider is called; inference is metered in CALLS (the gateway records no tokens). THE CAPS: the stop cap is enforced at admission for simulation_compute (the sweep and the experiment chunk claim — E. Kovács's discrete-event experiment is stopped PARTIAL at the cap by the attention agent's next claim, its first chunk kept); model inference warns only. THE ROUTING: commercial.entitlement items are evaluated against the published policy (routed to the tenant administrator); the commercial.usage items of a cap or a budget are NOT policy-routed — their ports route them, material, to the named owner (the cap's setter, the budget's owner) and the tenant_admin role whatever the policy says; the policy's commercial.usage route is published for the class only. THE LICENCE: a version takes effect when issued (§EN refuses a future start), so the term is set to end within the act and the attention agent's real tick moves it to GRACE (14 days, the DEFAULT grace policy: read and preserve, finish running work, no new work); the offline token is not issued (no signing key reference in the environment). THE ACKNOWLEDGEMENT: the tenant administrator acknowledges the routed commercial.entitlement item (tenant_admin was admitted to executive.attention.item.acknowledge by the integrator after the first rehearsal); M. Dvořák reads the cap's commercial.usage item. HARNESS-PROVEN ONLY: the entitlement matrix's suspended and lapsed cells, the indeterminate entitlement, renewal/suspension/reinstatement, the contract scope, the offline token and its verifier, allocation keys, the matched/differences reconciliation cases, the optimisation boundary, the anomaly rule, B90's product-consumption counters. Nothing is cleaned: every record stands as a demonstration fact.
+
+ALL SCENES HELD · 0.6 s
+
+════ walks3 ════
+
+Running 15 tests using 1 worker
+
+  ✓   1 e2e/phase6-b91-entitlements.demo.spec.ts:52:7 › CP-6 B91 §EN — the entitlement on the demonstration › THE MATRIX: the vendor's catalogue — NORDWERK licensed for foresight and decision, simulation not licensed, core always (611ms)
+  ✓   2 e2e/phase6-b91-entitlements.demo.spec.ts:65:7 › CP-6 B91 §EN — the entitlement on the demonstration › THE REFUSAL, EXPLAINED: the corridor run reads; its envelope sweep is refused — the capability, the licence version and what stays available (692ms)
+  ✓   3 e2e/phase6-b91-entitlements.demo.spec.ts:78:7 › CP-6 B91 §EN — the entitlement on the demonstration › THE CONTROLS STAY: the warnings workspace and the audit ledger answer — nothing refused for entitlement (607ms)
+  ✓   4 e2e/phase6-b91-grace.demo.spec.ts:53:7 › CP-6 B91 §GR — the entitlement surface and grace on the demonstration › THE SIMULATION WORKSPACE explains the entitlement: Simulation is not licensed (the server's reason, the licence version), and what stays available is named (648ms)
+  ✓   5 e2e/phase6-b91-grace.demo.spec.ts:68:7 › CP-6 B91 §GR — the entitlement surface and grace on the demonstration › THE CONTROLS STAY AVAILABLE: the warnings and the audit read open for their readers whatever the licence says (708ms)
+  ✓   6 e2e/phase6-b91-grace.demo.spec.ts:81:7 › CP-6 B91 §GR — the entitlement surface and grace on the demonstration › THE ENTITLEMENT SURFACE (UX-67-001), the tenant administrator: current, included, limits and usage, renewal and continuity, grace — in that order (511ms)
+  ✓   7 e2e/phase6-b91-grace.demo.spec.ts:96:7 › CP-6 B91 §GR — the entitlement surface and grace on the demonstration › GRACE: the lapsed term entered GRACE with the LAST VALID entitlement shown — its version, capabilities, limits and term; running work may finish, no new work starts (951ms)
+  ✓   8 e2e/phase6-b91-grace.demo.spec.ts:114:7 › CP-6 B91 §GR — the entitlement surface and grace on the demonstration › THE COMMERCIAL AUTHORITY sees the tenant's standing from the PLATFORM — the acts offered, none taken by this walk (495ms)
+  ✓   9 e2e/phase6-b91-ledger.demo.spec.ts:51:7 › CP-6 B91 §LE — the cost and resource ledger on the demonstration › THE BUDGET: the tenant administrator reads NORDWERK's budget — spent of amount, the run-rate forecast, the thresholds raised to its owner — and the energy ESTIMATE (505ms)
+  ✓  10 e2e/phase6-b91-ledger.demo.spec.ts:67:7 › CP-6 B91 §LE — the cost and resource ledger on the demonstration › THE VENDOR'S RECORDS: the commercial authority reads the rate card in force (with its ESTIMATE coefficient) and NORDWERK's SYNTHETIC invoice with its reconciliation (555ms)
+  ✓  11 e2e/phase6-b91-ledger.demo.spec.ts:81:7 › CP-6 B91 §LE — the cost and resource ledger on the demonstration › THE BOUNDARY (the only write, REFUSED): an optimisation that would move NORDWERK's residency is refused by the server — nothing recorded (617ms)
+  ✓  12 e2e/phase6-b91-meters.demo.spec.ts:45:7 › CP-6 B91 §ME — usage meters and caps on the demonstration › THE METERS: the tenant administrator reads NORDWERK's meters — simulation compute and model inference metered (inference in calls: no tokens exist), the licence that bounds the caps (502ms)
+  ✓  13 e2e/phase6-b91-meters.demo.spec.ts:57:7 › CP-6 B91 §ME — usage meters and caps on the demonstration › THE CAP AND ITS BREACH: the simulation compute STOP cap REACHED; the breach says new work stopped and nothing was deleted; the inference cap warns only (460ms)
+  ✓  14 e2e/phase6-b91-meters.demo.spec.ts:69:7 › CP-6 B91 §ME — usage meters and caps on the demonstration › THE REFUSED WRITE: a cap above the licence's limit is refused by the server, explained; model inference offers no stop (584ms)
+  ✓  15 e2e/phase6-b91-meters.demo.spec.ts:84:7 › CP-6 B91 §ME — usage meters and caps on the demonstration › THE STOPPED EXPERIMENT: in the simulation center the corridor experiment is PARTIAL — stopped at the tenant cap, its completed chunks kept (770ms)
+
+  15 passed (9.9s)
+
+════ restore ════
+THE B91 ACT --restore on eye_demo_b91 (REHEARSAL) — 2026-10-04T12:14:52.128Z
 
 B91-0 THE STATE — 0104 and 0105, the casting, the attention agent, the corridor run
   ✓ migrations applied: 0104_b30_estimate_contract_at_publication.sql, 0105_b91_metering_ledger_entitlements_licensing.sql
-  ✓ the casting read from identity.role_bindings: a.hoffmann (domain_analyst); l.ferreira (extraction_manager); m.dvorak (collection_manager, executive); t.nakamura (twin_owner); t.richter (domain_admin)
+  ✓ the casting read from identity.role_bindings: a.hoffmann (domain_analyst); e.kovacs (twin_owner); j.weber (strategy_owner); l.ferreira (extraction_manager); m.dvorak (collection_manager, executive); t.nakamura (twin_owner); t.richter (domain_admin)
   ✓ the tenant's auditor: e.lindqvist (auditor, TENANT) — the audit read of B91-L
-  ✓ the attention agent 01a0…1cb088 — cadence 60 s; 10 tick run(s) in the last ten minutes (the latest at 2026-10-04T11:49:15Z) — the act waits for its ticks, it calls no tick route
+  ✓ the attention agent 01a0…1cb088 — cadence 60 s; 10 tick run(s) in the last ten minutes (the latest at 2026-10-04T12:14:15Z) — the act waits for its ticks, it calls no tick route
   ✓ the extraction agent 01a0…f32d2d is active — the plan worker runs an upload's extraction under it (the inference path)
   ✓ the corridor run 01a0…8b84d2: a completed supply-flow@1 control of "NORDWERK — Ningbo → Regensburg chain" on actual v14 (opened 2026-10-01T14:30:36Z) — the envelope sweep's input
 
 B91-P THE TWO NEW PERSONAS — the vendor's commercial authority (PLATFORM) and NORDWERK's tenant administrator (TENANT), through the governed principal routes
-  ✗ THE VENDOR CANNOT BE CREATED THROUGH A GOVERNED ROUTE: POST /v1/platform/principals answered 404  — Cannot POST /v1/platform/principals. The only principal route the platform administrator has is POST /v1/tenants/:tenantId/principals, which creates a TENANT or DOMAIN principal (its scope is the request's tenant); a commercial_authority binding must be PLATFORM-scoped (the PDP's commercial.* rules and commercial.cgr_assert_commercial require it, and identity.enforce_binding_authority refuses a PLATFORM binding to a tenant principal). The database port identity.create_principal already admits a PLATFORM principal in a PLATFORM context; no HTTP route reaches it. STOPPED as the brief requires — no identity row is planted, the tenant administrator is NOT created either (nothing half-made).
+  · C. Marchetti (commercial_authority, PLATFORM) is present — an earlier run
+  · N. Vogel (tenant_admin, TENANT) is present — an earlier run
 
-1 FAILURE(S) · STOPPED at B91-P · 0.3 s
+B91-R --restore — the full licence (every built capability, Simulation included, no term end); the simulation_compute cap raised; Simulation available again
+  · the package full-platform v1 (12 capabilities) stands — an earlier run
+  · the SKU EYE-FULL-12M v1 stands — an earlier run
+  · the full licence v2 is live — an earlier run
+  · the simulation_compute cap v2 (3600000 wall_ms per day, warn) stands — an earlier run
+  ✓ T. Nakamura's simulation write is AVAILABLE AGAIN: sweep 01a1…d86045 ran and was metered
+  · the gate now (T. Nakamura's read): [{"grace":{"in_grace":false,"last_valid":null,"grace_until":null},"state":"active","action":"simulation.sweep.run","reason":"licensed: simulation under licence v2 (active)","licence":{"state":"active","digest":"5faf86e900e6bd55ea1660d472ba615ae657ac49cde16529252c540fa4cede3d","version":2,"licence_id
+  · the licence history is kept: v1 foresight-decision (superseded), v2 full-platform (active)
 
-════ act-b30 on the rehearsal (EYE_DB_NAME=eye_demo_b91 EYE_API=http://localhost:3411) — a BASELINE before any B91 scene (no --restore ran) ════
+B91-9 THE STATE and the LIMITS
+  · in the ledgers: 8 usage record(s), 5 cost entr(ies), 3 rate card version(s), 1 budget version(s), 3 cap version(s), 2 breach(es), 2 licence version(s), 2 transition(s), 8 commercial attention item(s)
+  · NORDWERK's licence now: v2 full-platform — ACTIVE
+  the env lines for the walks (EYE_TEST_ADMIN_PASSWORD comes from .eye-local/env and is never printed):
+  EYE_B91_CORRIDOR_RUN=01a0f7df-d634-7a05-a033-a479a78b84d2
+  EYE_B91_VENDOR=c.marchetti
+  EYE_B91_COMMERCIAL=c.marchetti
+  EYE_B91_TENANT_ADMIN=n.vogel
+  EYE_B91_OPERATOR=t.nakamura
+  EYE_B91_EXECUTIVE=m.dvorak
+  EYE_B91_READER=t.richter
+  · LIMITS said: EVERY FIGURE IS SYNTHETIC — the rate cards (0.05 EUR per compute second, 0.02 EUR per inference call, 1 EUR per GB-sample of evidence storage, the energy coefficient an ESTIMATE), the month budget (sized from the month's priced spend), the caps (set at the day's usage so the demonstration reaches them), the licence limits, the order references and the shipment record. NO REAL BILLING ACCOUNT: the invoice C. Marchetti imports is SYNTHETIC — the ledger's own totals for the day, reconciled against the ledger; a real billing account closes the clause and none exists (a reconciliation shows usage priced after the import as a difference). THE BUDGET: its amount is sized from the month's priced spend when it is set (spent / 0.9) so the demonstration reaches its 80 % threshold. MODEL INFERENCE: the extraction agent's run calls the model gateway in REPLAY mode on this local deployment — the recorded response is the method's fixture (recorded_from fixture), no external provider is called; inference is metered in CALLS (the gateway records no tokens). THE CAPS: the stop cap is enforced at admission for simulation_compute (the sweep and the experiment chunk claim — E. Kovács's discrete-event experiment is stopped PARTIAL at the cap by the attention agent's next claim, its first chunk kept); model inference warns only. THE ROUTING: commercial.entitlement items are evaluated against the published policy (routed to the tenant administrator); the commercial.usage items of a cap or a budget are NOT policy-routed — their ports route them, material, to the named owner (the cap's setter, the budget's owner) and the tenant_admin role whatever the policy says; the policy's commercial.usage route is published for the class only. THE LICENCE: a version takes effect when issued (§EN refuses a future start), so the term is set to end within the act and the attention agent's real tick moves it to GRACE (14 days, the DEFAULT grace policy: read and preserve, finish running work, no new work); the offline token is not issued (no signing key reference in the environment). THE ACKNOWLEDGEMENT: the tenant administrator acknowledges the routed commercial.entitlement item (tenant_admin was admitted to executive.attention.item.acknowledge by the integrator after the first rehearsal); M. Dvořák reads the cap's commercial.usage item. HARNESS-PROVEN ONLY: the entitlement matrix's suspended and lapsed cells, the indeterminate entitlement, renewal/suspension/reinstatement, the contract scope, the offline token and its verifier, allocation keys, the matched/differences reconciliation cases, the optimisation boundary, the anomaly rule, B90's product-consumption counters. Nothing is cleaned: every record stands as a demonstration fact.
+
+ALL SCENES HELD · 0.5 s
+
+════ restore2 ════
+THE B91 ACT --restore on eye_demo_b91 (REHEARSAL) — 2026-10-04T12:15:02.912Z
+
+B91-0 THE STATE — 0104 and 0105, the casting, the attention agent, the corridor run
+  ✓ migrations applied: 0104_b30_estimate_contract_at_publication.sql, 0105_b91_metering_ledger_entitlements_licensing.sql
+  ✓ the casting read from identity.role_bindings: a.hoffmann (domain_analyst); e.kovacs (twin_owner); j.weber (strategy_owner); l.ferreira (extraction_manager); m.dvorak (collection_manager, executive); t.nakamura (twin_owner); t.richter (domain_admin)
+  ✓ the tenant's auditor: e.lindqvist (auditor, TENANT) — the audit read of B91-L
+  ✓ the attention agent 01a0…1cb088 — cadence 60 s; 10 tick run(s) in the last ten minutes (the latest at 2026-10-04T12:14:15Z) — the act waits for its ticks, it calls no tick route
+  ✓ the extraction agent 01a0…f32d2d is active — the plan worker runs an upload's extraction under it (the inference path)
+  ✓ the corridor run 01a0…8b84d2: a completed supply-flow@1 control of "NORDWERK — Ningbo → Regensburg chain" on actual v14 (opened 2026-10-01T14:30:36Z) — the envelope sweep's input
+
+B91-P THE TWO NEW PERSONAS — the vendor's commercial authority (PLATFORM) and NORDWERK's tenant administrator (TENANT), through the governed principal routes
+  · C. Marchetti (commercial_authority, PLATFORM) is present — an earlier run
+  · N. Vogel (tenant_admin, TENANT) is present — an earlier run
+
+B91-R --restore — the full licence (every built capability, Simulation included, no term end); the simulation_compute cap raised; Simulation available again
+  · the package full-platform v1 (12 capabilities) stands — an earlier run
+  · the SKU EYE-FULL-12M v1 stands — an earlier run
+  · the full licence v2 is live — an earlier run
+  · the simulation_compute cap v2 (3600000 wall_ms per day, warn) stands — an earlier run
+  ✓ T. Nakamura's simulation write stands available — his sweep 01a1…d86045 at 2026-10-04T12:14:52Z under the full licence (an earlier run)
+  · the gate now (T. Nakamura's read): [{"grace":{"in_grace":false,"last_valid":null,"grace_until":null},"state":"active","action":"simulation.sweep.run","reason":"licensed: simulation under licence v2 (active)","licence":{"state":"active","digest":"5faf86e900e6bd55ea1660d472ba615ae657ac49cde16529252c540fa4cede3d","version":2,"licence_id
+  · the licence history is kept: v1 foresight-decision (superseded), v2 full-platform (active)
+
+B91-9 THE STATE and the LIMITS
+  · in the ledgers: 8 usage record(s), 5 cost entr(ies), 3 rate card version(s), 1 budget version(s), 3 cap version(s), 2 breach(es), 2 licence version(s), 2 transition(s), 8 commercial attention item(s)
+  · NORDWERK's licence now: v2 full-platform — ACTIVE
+  the env lines for the walks (EYE_TEST_ADMIN_PASSWORD comes from .eye-local/env and is never printed):
+  EYE_B91_CORRIDOR_RUN=01a0f7df-d634-7a05-a033-a479a78b84d2
+  EYE_B91_VENDOR=c.marchetti
+  EYE_B91_COMMERCIAL=c.marchetti
+  EYE_B91_TENANT_ADMIN=n.vogel
+  EYE_B91_OPERATOR=t.nakamura
+  EYE_B91_EXECUTIVE=m.dvorak
+  EYE_B91_READER=t.richter
+  · LIMITS said: EVERY FIGURE IS SYNTHETIC — the rate cards (0.05 EUR per compute second, 0.02 EUR per inference call, 1 EUR per GB-sample of evidence storage, the energy coefficient an ESTIMATE), the month budget (sized from the month's priced spend), the caps (set at the day's usage so the demonstration reaches them), the licence limits, the order references and the shipment record. NO REAL BILLING ACCOUNT: the invoice C. Marchetti imports is SYNTHETIC — the ledger's own totals for the day, reconciled against the ledger; a real billing account closes the clause and none exists (a reconciliation shows usage priced after the import as a difference). THE BUDGET: its amount is sized from the month's priced spend when it is set (spent / 0.9) so the demonstration reaches its 80 % threshold. MODEL INFERENCE: the extraction agent's run calls the model gateway in REPLAY mode on this local deployment — the recorded response is the method's fixture (recorded_from fixture), no external provider is called; inference is metered in CALLS (the gateway records no tokens). THE CAPS: the stop cap is enforced at admission for simulation_compute (the sweep and the experiment chunk claim — E. Kovács's discrete-event experiment is stopped PARTIAL at the cap by the attention agent's next claim, its first chunk kept); model inference warns only. THE ROUTING: commercial.entitlement items are evaluated against the published policy (routed to the tenant administrator); the commercial.usage items of a cap or a budget are NOT policy-routed — their ports route them, material, to the named owner (the cap's setter, the budget's owner) and the tenant_admin role whatever the policy says; the policy's commercial.usage route is published for the class only. THE LICENCE: a version takes effect when issued (§EN refuses a future start), so the term is set to end within the act and the attention agent's real tick moves it to GRACE (14 days, the DEFAULT grace policy: read and preserve, finish running work, no new work); the offline token is not issued (no signing key reference in the environment). THE ACKNOWLEDGEMENT: the tenant administrator acknowledges the routed commercial.entitlement item (tenant_admin was admitted to executive.attention.item.acknowledge by the integrator after the first rehearsal); M. Dvořák reads the cap's commercial.usage item. HARNESS-PROVEN ONLY: the entitlement matrix's suspended and lapsed cells, the indeterminate entitlement, renewal/suspension/reinstatement, the contract scope, the offline token and its verifier, allocation keys, the matched/differences reconciliation cases, the optimisation boundary, the anomaly rule, B90's product-consumption counters. Nothing is cleaned: every record stands as a demonstration fact.
+
+ALL SCENES HELD · 0.4 s
+
+════ act-b30-after-restore ════
+THE B30 ACT on eye_demo_b91 (REHEARSAL) — 2026-10-04T12:15:03.432Z
+
+B30-0 THE STATE — 0102 and 0103, the casting, the attention agent, the inputs
+  ✓ migrations applied: 0102_n01_definer_read_scope_constraint_gate.sql, 0103_b30_twin_state_reconciliation_envelope_calibration.sql
+  ✓ the casting read from identity.role_bindings: a.hoffmann (domain_analyst); e.kovacs (twin_owner); h.petrovic (method_steward); j.weber (strategy_owner); m.dvorak (collection_manager, executive); s.lindqvist (constraint_steward); t.nakamura (twin_owner); t.richter (domain_admin)
+  · T. Nakamura holds twin_owner (not simulation_operator: every route the act casts him in admits twin_owner); T. Richter is the domain's administrator (the read one); the second humans for approvals are J. Weber (the fabric budget) and H. Petrović (the concurrence)
+  ✓ the attention agent 01a0…1cb088 — cadence 60 s; 10 tick run(s) in the last ten minutes (the latest at 2026-10-04T12:14:15Z) — the act waits for its ticks, it calls no tick route
+  ✓ the inputs: the corridor twin 01a0…76f525 "NORDWERK — Ningbo → Regensburg chain" (owner T. Nakamura, supply-flow@1) at actual v18 (observed through 2026-09-29); the series portwatch:chokepoint4:n_total (transits/day) of "IMF PortWatch — Chokepoints" v2 (active); the scenario "Bab el-Mandeb over the next quarter — every scenario kind (vocabulary v1)" and its "regional blockade" branch 01a0…67533e (open); E. Kovács's study twin 01a0…f22440; the risk "Corridor closure — Regensburg line"
+
+B30-S ESTIMATION AND RECONCILIATION (F-P5-02) — a PortWatch transit count, the estimator's corridor capacity, the conservation check, the Reconciliation Agent, the owner's approval into a new snapshot
+  · the set corridor-transit-balance stands — an earlier run (v1, live, steward S. Lindqvist)
+  · the Reconciliation Agent 01a0…5844f1 is registered — an earlier run (1.0.0, digest 1d6681c304a7…)
+  · an approved estimate of corridor.capacity_share stands — an earlier run (01a0…3d63a5)
+  ✓ the snapshot v15 (supersedes v14; admitted, complete, observed through 2026-09-27) carries corridor.capacity_share = 62 % ESTIMATED (confidence 0.891, citing 1 evidence version(s)); approved by T. Nakamura; proposed by A. Hoffmann; TwinStateChanged 1
+  · the routed item 9d48…6b81bd is deprioritized (the B30 estimation part leaves closing the item on decision out — its report's gap)
+
+B30-B BRANCHES, MERGE, FRESHNESS (F-P5-03) — the head 5 days stale against a 2-day SLO, the corridor twin branched for a blockade, merging it back refused until reconciliation
+  · actual's head v18 is observed through 2026-09-29 — the database's day − 5 — already (T. Nakamura's; the estimate's snapshot or an earlier run): no further version
+  · the freshness SLO v1 (2 days) stands — an earlier run
+  ✓ A. Hoffmann READ the freshness of v18: STALE — 5 days old (observed through 2026-09-29, today 2026-10-04), the SLO 2 days (v1), stale by 3 days; dependency none
+  · the freshness item for v18 stands — raised at 2026-10-04T11:48:16Z (an earlier run or tick)
+  ✓ THE TICK RAISED twin.freshness 8c4c…f9c66d → T. Nakamura (deprioritized): "NORDWERK — Ningbo → Regensburg chain: the served snapshot v18 is 5 days stale (freshness SLO 2 days)"
+  · the assumption 01a0…1d1ec6 "The corridor is blockaded for 45 days (SYNTHETIC)" stands — an earlier run (unverified)
+  · the link 01a0…d61ed1 to the "regional blockade" branch stands — an earlier run (v1)
+  · the branch blockade stands — an earlier run (head v16)
+  ✓ the branch head v16: shock.corridor_delay_days = 45 (scenario); actual's head v18 keeps its own
+  · the merge 01a0…de4bdc of blockade stands — an earlier run (open, v16 → actual v15)
+  ✓ T. Nakamura completes the merge of blockade with nothing reconciled REFUSED — 409 EYE-STA-002 — branch merge rejected (unreconciled): merging branch blockade back into actual is refused until reconciliation — 1 of 1 diverging key(s) unresolved: shock.corridor_delay_days
+  · the merge stays OPEN (the walk's refusal reads it); its review item 9364…a3f5aa → T. Nakamura (deprioritized): "Merge of branch blockade into actual awaits reconciliation of 1 diverging key(s) — NORDWERK — Ningbo → Regensb"
+  · the explorer (A. Hoffmann): branches actual v18, alt-30-day-delay v2 (from v1), blockade v16 (from v15), stress-75 v17 (from v15); merges blockade open; served head v18; head freshness stale
+
+B30-E THE ENVELOPE (F-P5-04) — a 75-day corridor delay run outside supply-flow@1's envelope: disabled for decision use, admitted as exploratory by the twin owner only
+  · the branch stress-75 stands — an earlier run (head v17)
+  · the outside-envelope run 01a0…38d521 on stress-75 v17 stands — an earlier run
+  · the run's envelope: OUTSIDE — corridor_delay_days = 75 outside [0, 60] (from shock.corridor_delay_days); acknowledged by T. Nakamura ("the 75-day corridor delay is the stress case the board asked to see (SYNTHETIC)"); line-stop days 73 (SYNTHETIC)
+  · the exploratory admission 01a0…df9354 by T. Nakamura stands — an earlier run
+  · H. Petrović's concurrence stands — an earlier run (H. Petrović)
+  ✓ the decision use now: EXPLORATORY ONLY — REFUSED for decision use: outside_envelope (exploratory true; admitted by T. Nakamura, concurred by H. Petrović)
+
+B30-X THE FABRIC CARRYOVERS (F-P5-06/07) — a discrete-event@1 experiment in chunks, completed by the ticks; a superseded corridor control retired with its reason
+  · the fabric experiment 01a0…157a7a "Regensburg line — bearing shortage, 60 paths (SYNTHETIC)" stands — an earlier run (completed)
+  · the budget was approved by J. Weber — an earlier run
+  ✓ THE FABRIC EXPERIMENT COMPLETED by the attention agent's ticks: 3 checkpoints (20 → 40 → 60 paths); the ledger declared → approved → started → run_opened → checkpointed → checkpointed → checkpointed → completed; the run 01a0…ac5cb2 completed (discrete-event@1, 60 samples; line-stop days over the paths: median 18, p10 18, p90 18 — SYNTHETIC)
+  · the retirement 01a0…715980 of run 01a0…826bf5 stands — an earlier run (superseded by 01a0…8b84d2)
+  ✓ the retired run's decision use: REFUSED for decision use: retired
+
+B30-9 THE STATE and the LIMITS
+  · in the ledgers: 3 active estimator(s), 1 estimate(s) (0 by the agent), 0 queued trigger(s), 0 observation request(s); 1 freshness polic(ies), 1 merge(s), 4 branch event(s); 1 exploratory admission(s), 2 envelope event(s); 1 retirement(s), 2 fabric experiment(s); 5 B30 attention item(s)
+  · the corridor twin now: actual v18 observed through 2026-09-29 (complete); branches actual v18, alt-30-day-delay v2, blockade v16, stress-75 v17
+  the env lines for the walks (EYE_TEST_ADMIN_PASSWORD comes from .eye-local/env and is never printed):
+  EYE_B30_PROPOSED_BY=person
+  EYE_B30_OWNER=t.nakamura
+  EYE_B30_TWIN_TITLE='NORDWERK — Ningbo → Regensburg chain'
+  EYE_B30_ESTIMATE_KEY=corridor.capacity_share
+  EYE_B30_CONSTRAINT_SET=corridor-transit-balance
+  EYE_B30_ESTIMATE_VALUE=62
+  EYE_B30_BRANCH=blockade
+  EYE_B30_AS_OF=2026-10-02T18:09
+  EYE_B30_TWIN_OWNER=t.nakamura
+  EYE_B30_DOMAIN_ADMIN=t.richter
+  EYE_B30_OUTSIDE_RUN=01a0fd28-f9f4-7a8e-b3b1-2e854638d521
+  EYE_B30_FABRIC_TITLE='Regensburg line — bearing shortage'
+  EYE_B30_OPERATOR=t.nakamura
+  EYE_B30_STEWARD=h.petrovic
+  EYE_B30_RETIRED_RUN=01a0d29d-3e78-73ef-96cb-7859d2826bf5
+  EYE_B30_RETIRED_REASON='superseded by the promoted corridor control (SYNTHETIC)'
+  · LIMITS said: EVERY FIGURE IS SYNTHETIC except the PortWatch transit counts — the corridor's baseline (stated so that the latest count reads 62 %), the challengers' parameters, the conservation tolerance (0.5 transits/day), the 2-day SLO, the 45-day blockade, the 75-day stress delay, the bearing shortage and the reasons are the personas' statements for the demonstration, not measurements. THE PORTWATCH COUNT: the series portwatch:chokepoint4:n_total is the IMF PortWatch publisher's (collected through the real connector — M. Dvořák's collection now, and the daily schedule); its latest point is what the estimate reads — when the publisher has nothing new since the estimators were declared (PortWatch publishes weekly), no telemetry trigger is queued and the act says so and A. Hoffmann proposes through the route; the Reconciliation Agent's proposal on a NEW count is then harness-proven (phase6-estimation-b30 ES5) — the estimation walk's "the Reconciliation Agent (run …)" line holds only on a staging where the agent proposed. THE SERIES' HISTORY: a 2024 seed evidence version of the PortWatch source was tombstoned by a B11 retention action ("superseded evidence past its retention"); before this act's estimation fix (estimators.ts unreadableInWindow) every estimate on the series was refused as unqualified for good — an unreadable version now counts only inside the estimators' widest window (or when it states no day), the rest disclosed as unreadable_outside_window. THE AGENT: the Reconciliation Agent is registered by the administrator (its principal and role come with the registration — the Supply Chain Agent's precedent); no persona is created. THE WORDING: open_run's envelope refusal (0092) still names "the domain administrator's acknowledgement" — the acknowledgement holder is a twin owner only now (0103 §EN); a re-declaration of open_run is the integrator's. THE TICK: the attention agent's real scheduled tick (60 s) raises twin.freshness, queues the estimation checks and drains the fabric experiment — waited for, never driven (the "synthetic tick" of the harnesses is NOT used here). "5 DAYS STALE" holds only on the day the head was admitted: the age is the database's day minus the head's observed_through (the act re-admits a head at the day − 5 when it runs on a later day). THE BRANCHES: the 75-day stress state lives on the branch stress-75, never on actual's head (the B30-B walks read actual); the blockade merge is LEFT OPEN (the walk's refused completion reads it); the stress run is admitted EXPLORATORY and concurred, never promoted. THE RETIREMENT: the oldest of T. Nakamura's corridor controls that no package, analysis or run rests on, superseded by the promoted control. NOT STAGED (HARNESS-PROVEN): estimation — the stale/suspended-source qualification refusals, the violated conservation and range refusals, the stale-head approval rollback, the decline, the internal-change and ontology-revision triggers, the drifted agent, observation requests and their fulfilment (phase6-estimation-b30 ES1–ES6); branches — checkpoint restore, the reconciled and completed merge, the stale merge withdrawn, per-key staleness, the dependency uncertainty, the frozen validated snapshot and its expiry, component confidence, the scenario basis rule (phase6-branches-b30 BR1–BR7); envelope — the raised promotion threshold, calibration and drift, the model lifecycle (deprecated/incompatible/retired), the AI context, the degraded modes (phase6-envelope-b30 E3–E8); fabric — the war-gaming retry, the checkpoint indicators acted on (stop/pause/quarantine), the experiment retirement, the envelope sweep, rare events and benchmark validation (phase6-experiments-b30 X1–X6). LEFT OUT (the parts' reports): closing the routed estimate item on decision; an estimate citation kind; the calibration tick hook; the scenario-element web form. Nothing is cleaned: every object stands as a demonstration fact.
+
+ALL SCENES HELD · 0.5 s
+
+════ r3 ════
+THE B91 ACT on eye_demo_b91 (REHEARSAL) — 2026-10-04T12:15:11.483Z
+
+B91-0 THE STATE — 0104 and 0105, the casting, the attention agent, the corridor run
+  ✓ migrations applied: 0104_b30_estimate_contract_at_publication.sql, 0105_b91_metering_ledger_entitlements_licensing.sql
+  ✓ the casting read from identity.role_bindings: a.hoffmann (domain_analyst); e.kovacs (twin_owner); j.weber (strategy_owner); l.ferreira (extraction_manager); m.dvorak (collection_manager, executive); t.nakamura (twin_owner); t.richter (domain_admin)
+  ✓ the tenant's auditor: e.lindqvist (auditor, TENANT) — the audit read of B91-L
+  ✓ the attention agent 01a0…1cb088 — cadence 60 s; 10 tick run(s) in the last ten minutes (the latest at 2026-10-04T12:14:15Z) — the act waits for its ticks, it calls no tick route
+  ✓ the extraction agent 01a0…f32d2d is active — the plan worker runs an upload's extraction under it (the inference path)
+  ✓ the corridor run 01a0…8b84d2: a completed supply-flow@1 control of "NORDWERK — Ningbo → Regensburg chain" on actual v14 (opened 2026-10-01T14:30:36Z) — the envelope sweep's input
+
+B91-P THE TWO NEW PERSONAS — the vendor's commercial authority (PLATFORM) and NORDWERK's tenant administrator (TENANT), through the governed principal routes
+  · C. Marchetti (commercial_authority, PLATFORM) is present — an earlier run
+  · N. Vogel (tenant_admin, TENANT) is present — an earlier run
+
+B91-A THE ROUTING — the corridor domain's attention policy routes commercial.usage and commercial.entitlement; every other class kept
+  · attention policy version 9 routes commercial.usage → [tenant_admin, executive] and commercial.entitlement → [tenant_admin] — an earlier run
+
+B91-M (F-P7-F-02) — the corridor sweep's metered compute and model inference against the tenant budget; the cap stops the sweep with a recorded, explained breach
+  · the refused sweep's breach 5840…f1e92f stands — an earlier run (2026-10-04T12:07:18Z): the scene's writes are not repeated; its records are asserted below
+  ✓ THE SWEEP METERED: usage fc4a…38cc2b — simulation_compute 11 wall_ms (measured by the sweep route), sweep 01a1…077384
+  ✓ MODEL INFERENCE METERED: 1 usage record(s), 1 call(s) — replay abstained, 4 ms; tokens NOT RECORDED (the gateway records none)
+  ✓ THE TICK PRICED the usage: 2 of 2 sweep/inference record(s) carry a cost entry; the tenant's ledger model_inference 1 calls → 0.020000 EUR (1 line(s), model_inference:calls v1); simulation_compute 484 wall_ms → 0.024200 EUR (2 line(s), simulation_compute:wall_ms v1, energy ESTIMATE); storage 134075720 bytes → 0.134076 EUR (2 line(s), storage:bytes v1) — SYNTHETIC rates
+  ✓ THE BUDGET'S VARIANCE (N. Vogel's read): "NORDWERK — every metered capability, monthly (SYNTHETIC)" — spent 0.178276 of 0.15 EUR (118.85 %), variance 0.028276, forecast 1.5743 by 2026-11-01; complete false (unpriced 3); rule cle-variance@1 — the metered compute and inference against the budget (SYNTHETIC)
+  ✓ THE EXPERIMENT STOPPED PARTIAL at the tenant cap: 1 chunk(s) kept (20 paths); the ledger declared → approved → started → run_opened → checkpointed → budget_exceeded → partial; budget_exceeded {"cap":{"unit":"wall_ms","used":484,"limit":484,"scope":"TENANT","state":"active","action":"stop","cap_id":"d8df5b5b-32aa-4672-a884-fc8e1be63027","period":"day"; the breach f0aa…8b9511 (refused, used 484 of 484 wall_ms)
+  ✓ THE BUDGET'S THRESHOLDS raised by the tick to its owner: 80 % → M. Dvořák (open): "Budget 80% reached: NORDWERK — every metered capability, monthly (SYNTHETIC) — 0.15 of 0.15 EUR spent this month (foreca"; 100 % → M. Dvořák (open): "Budget 100% reached: NORDWERK — every metered capability, monthly (SYNTHETIC) — 0.15 of 0.15 EUR spent this month (forec" — a budget raises; it never stops work
+  · the SYNTHETIC invoice SYN-NORDWERK-B91-1 (0.17 EUR) stands — an earlier run
+  · its reconciliation v1 (differences) stands — an earlier run
+  ✓ THE BREACH 5840…f1e92f (the record): refused — envelope_sweep of run 01a0…8b84d2 on cap v1 (484 wall_ms per day, used 484 since 2026-10-04T00:00:00Z), at 2026-10-04T12:07:18Z
+  ✓ commercial.usage ROUTED: item b0cb…56e0d1 → N. Vogel + roles [tenant_admin] (open; cause usage.cap_refused): "Usage cap stopped new work: simulation_compute 484 of 484 wall_ms this day — the envelope sweep was not continued"
+  · the budget's own commercial.usage item(s) → M. Dvořák (open): "Budget 80% reached: NORDWERK — every metered capability, monthly (SYNTHETIC) — 0.15 of 0.15 EUR spent this mon"; M. Dvořák (open): "Budget 100% reached: NORDWERK — every metered capability, monthly (SYNTHETIC) — 0.15 of 0.15 EUR spent this mo"
+
+B91-L (F-P7-F-01) — the licence covers Foresight and Decision, not Simulation: the refusal explained, the controls that stay, grace with the last valid entitlement
+  · the foresight-decision licence v1 (superseded) stands — an earlier run; the live licence is the restored full-platform v2 (--restore)
+  ✓ the entitlement refusal is IN THE AUDIT LEDGER: simulation.sweep.run → EYE-ENT-001 at 2026-10-04T12:14:26Z (correlation 0bec…114753)
+  ✓ M. Dvořák READ the commercial.usage item b0cb…56e0d1 under the licence (executive.attention.read — never gated): open — "Usage cap stopped new work: simulation_compute 484 of 484 wall_ms this day — the envelope sweep was not continued"
+  ✓ E. Lindqvist READ THE AUDIT LEDGER under the licence (audit.read — never gated): 2 event(s) of the refusal's correlation — simulation.sweep.run → EYE-ENT-001
+  ✓ T. Nakamura READ the corridor run 01a0…8b84d2 under the licence (a read of an existing record — never gated): its sweeps 2, reach {"analyses":2,"packages":2,"dependent_runs":1}
+  · the grace transition 91f4…33b841 stands — 2026-10-04T12:10:16Z (an earlier run)
+  ✓ THE TICK MOVED THE LICENCE TO GRACE: active → grace (term_ended) by the attention agent at 2026-10-04T12:10:16Z; grace until 2026-10-18T12:09:48Z; the LAST VALID ENTITLEMENT v1 — advanced_integration, agent_platform, attention_controls, core, decision, foresight, knowledge_memory, model_portfolio, observation; limits {"model_inference":{"unit":"calls","period":"month","quantity":10000},"simulation_compute":{"unit":"wall_ms","period":"month","quantity":3600000}}; term end 2026-10-04T12:09:48.707000Z
+  ✓ commercial.entitlement ROUTED in the corridor domain: item 5c67…5409ec — acknowledged, roles [tenant_admin] under policy v9, owner C. Marchetti: "Licence in GRACE: foresight-decision v1 — the term ended; grace until 2026-10-18 12:09 UTC (the last valid entitlement kept: advanced_integration, agent_platform, attenti"; 1 more in the tenant's other domain(s): deprioritized
+  · the tenant administrator N. Vogel holds the routed role (yes) — the item reaches him by role
+  · N. Vogel's acknowledgement of 5c67…5409ec stands — an earlier run
+  · THE STANDING (N. Vogel) now: ACTIVE — "ACTIVE: licence full-platform v2 (advanced_integration, agent_platform, attention_controls, capacity, core, decision, digital_twin, executive_os, foresight, knowledge_memory, model_portfolio, observat" (the foresight-decision grace stands in the history: 1 grace transition(s))
+  · the offline licence token is NOT issued: no EYE_LICENCE_SIGNING_KEY_* reference in the environment (.eye-local/env has none; the act never writes it) — the token and scripts/commercial/verify-licence.mjs are harness-proven (phase6-grace-b91)
+
+B91-9 THE STATE and the LIMITS
+  · in the ledgers: 8 usage record(s), 5 cost entr(ies), 3 rate card version(s), 1 budget version(s), 3 cap version(s), 2 breach(es), 2 licence version(s), 2 transition(s), 8 commercial attention item(s)
+  · NORDWERK's licence now: v2 full-platform — ACTIVE
+  the env lines for the walks (EYE_TEST_ADMIN_PASSWORD comes from .eye-local/env and is never printed):
+  EYE_B91_CORRIDOR_RUN=01a0f7df-d634-7a05-a033-a479a78b84d2
+  EYE_B91_VENDOR=c.marchetti
+  EYE_B91_COMMERCIAL=c.marchetti
+  EYE_B91_TENANT_ADMIN=n.vogel
+  EYE_B91_OPERATOR=t.nakamura
+  EYE_B91_EXECUTIVE=m.dvorak
+  EYE_B91_READER=t.richter
+  EYE_B91_BUDGET_LABEL='NORDWERK — every metered capability, monthly (SYNTHETIC)'
+  EYE_B91_RATE_KEY=simulation_compute:wall_ms
+  EYE_B91_EXPERIMENT_TITLE='Regensburg line — bearing shortage at the tenant cap (SYNTHETIC)'
+  EYE_B91_INVOICE_REF=SYN-NORDWERK-B91-1
+  EYE_B91_LICENCE_VERSION=2
+  EYE_B91_GRACE=0
+  EYE_B91_LICENCE_COMPUTE_LIMIT_MS=3600000
+  EYE_B91_LICENSED='advanced_integration, agent_platform, attention_controls, core, decision, foresight, knowledge_memory, model_portfolio, observation'
+  · LIMITS said: EVERY FIGURE IS SYNTHETIC — the rate cards (0.05 EUR per compute second, 0.02 EUR per inference call, 1 EUR per GB-sample of evidence storage, the energy coefficient an ESTIMATE), the month budget (sized from the month's priced spend), the caps (set at the day's usage so the demonstration reaches them), the licence limits, the order references and the shipment record. NO REAL BILLING ACCOUNT: the invoice C. Marchetti imports is SYNTHETIC — the ledger's own totals for the day, reconciled against the ledger; a real billing account closes the clause and none exists (a reconciliation shows usage priced after the import as a difference). THE BUDGET: its amount is sized from the month's priced spend when it is set (spent / 0.9) so the demonstration reaches its 80 % threshold. MODEL INFERENCE: the extraction agent's run calls the model gateway in REPLAY mode on this local deployment — the recorded response is the method's fixture (recorded_from fixture), no external provider is called; inference is metered in CALLS (the gateway records no tokens). THE CAPS: the stop cap is enforced at admission for simulation_compute (the sweep and the experiment chunk claim — E. Kovács's discrete-event experiment is stopped PARTIAL at the cap by the attention agent's next claim, its first chunk kept); model inference warns only. THE ROUTING: commercial.entitlement items are evaluated against the published policy (routed to the tenant administrator); the commercial.usage items of a cap or a budget are NOT policy-routed — their ports route them, material, to the named owner (the cap's setter, the budget's owner) and the tenant_admin role whatever the policy says; the policy's commercial.usage route is published for the class only. THE LICENCE: a version takes effect when issued (§EN refuses a future start), so the term is set to end within the act and the attention agent's real tick moves it to GRACE (14 days, the DEFAULT grace policy: read and preserve, finish running work, no new work); the offline token is not issued (no signing key reference in the environment). THE ACKNOWLEDGEMENT: the tenant administrator acknowledges the routed commercial.entitlement item (tenant_admin was admitted to executive.attention.item.acknowledge by the integrator after the first rehearsal); M. Dvořák reads the cap's commercial.usage item. HARNESS-PROVEN ONLY: the entitlement matrix's suspended and lapsed cells, the indeterminate entitlement, renewal/suspension/reinstatement, the contract scope, the offline token and its verifier, allocation keys, the matched/differences reconciliation cases, the optimisation boundary, the anomaly rule, B90's product-consumption counters. Nothing is cleaned: every record stands as a demonstration fact.
+
+ALL SCENES HELD · 0.6 s
+
+════ act-b30 BASELINE before any B91 scene ════
 THE B30 ACT on eye_demo_b91 (REHEARSAL) — 2026-10-04T11:48:04.121Z
 
 B30-0 THE STATE — 0102 and 0103, the casting, the attention agent, the inputs
