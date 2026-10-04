@@ -1118,6 +1118,19 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   { match: /^(retirement|adapter quarantine|envelope sweep|benchmark validation) rejected \((state|stale)\)|^run rejected \(retired_control\)/i, status: 409, code: 'EYE_STA_002' },
   { match: /^(retirement|adapter quarantine|envelope sweep|benchmark validation) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
   /* end B30 experiments */
+  /* B91 ledger (0105 §LE) — the families `rate card rejected (<class>)`, `allocation key rejected (<class>)`, `budget rejected (<class>)`,
+     `invoice rejected (<class>)`, `reconciliation rejected (<class>)`, `optimisation rejected (<class>)` and `ledger tick rejected (<class>)`,
+     every row anchored and requiring the class parenthesis (the older unanchored `reconciliation rejected: ` row needs the colon and is not a
+     substring of the class form; no earlier row starts with these nouns). B9's order: the standing 403 (the acting principal, the commercial
+     authority, the budget's ownership), the absences 404 (unknown_*), the record's state 409 (stale, duplicate, and `priced` — a rate or an
+     allocation that would take effect under an already-priced entry), the caller's own request 422 (the rest — the dimension, the price,
+     the energy coefficient, the weights, the owner, the thresholds, the anomaly rule, a non-synthetic invoice, the total, the tolerance, the
+     trade-offs, an unknown control, and `boundary`: an optimisation that would change a protected control). */
+  { match: /^(rate card|allocation key|budget|invoice|reconciliation|optimisation|ledger tick) rejected \((actor|authority|ownership)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^(rate card|allocation key|budget|invoice|reconciliation|optimisation) rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^(rate card|allocation key|budget|invoice|reconciliation|optimisation) rejected \((stale|duplicate|priced)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^(rate card|allocation key|budget|invoice|reconciliation|optimisation) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B91 ledger */
   /* B36 home (0094 §H) — the executive home's families in the CLASS form `<noun> rejected (<class>): …`: `cadence rejected`, `executive room
      rejected` (0044's unclassed `room rejected: …` texts are the decision room's and are mapped by no row; the noun here is `executive room`
      and every row is anchored), `objective review rejected` (the SoD of §H2's re-declared convene_review and of open_subject_room — B23's

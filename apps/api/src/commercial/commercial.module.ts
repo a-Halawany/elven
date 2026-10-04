@@ -7,10 +7,15 @@
 import { Module } from '@nestjs/common';
 import { PipelineModule } from '../pipeline/pipeline.module.js';
 import { ExecutiveModule } from '../executive/executive.module.js';
+/* B91 ledger */
+import { LedgerDomainController, LedgerPlatformController, LedgerTenantController } from './ledger/ledger.controller.js';
+import { LedgerService } from './ledger/ledger.service.js';
+import { LedgerStepService } from './ledger/ledger-step.js';
+/* end B91 ledger */
 
 @Module({
   imports: [PipelineModule, ExecutiveModule],
-  controllers: [],
-  providers: [],
+  controllers: [/* B91 ledger */ LedgerPlatformController, LedgerTenantController, LedgerDomainController /* end B91 ledger */],
+  providers: [/* B91 ledger */ LedgerService, LedgerStepService /* end B91 ledger */],
 })
 export class CommercialModule {}
