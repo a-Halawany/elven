@@ -640,3 +640,28 @@ so its queues must never share the demonstration's Redis — and an APFS clone o
   - Run `EYE_DB_NAME=eye_demo_b30 EYE_API=http://localhost:3411 node scripts/phase6/act-b30.mjs`.
   - The first run takes about 10 minutes: an estimate reads the whole series through governed retrievals, and the tick waits are real.
 - **The walks.** Export the act's `EYE_B30_*` lines, including `EYE_B30_PROPOSED_BY`, and run `e2e/phase6-b30-{branches,envelope,estimation,experiments}.demo.spec.ts` through `playwright.demo.config.ts`. For a regression run, set `EYE_SHOTS` to a scratch directory so the screenshots of record are not overwritten. Older acts printed some env values unquoted: load them with a parser, not `source`.
+
+## 21. B91 on the demonstration (2026-10-04): what changed, the operator preparation, and how to rehearse
+
+- **The state.**
+  - `eye_demo` is migrated through **0105** (0104 B30-F on 2026-10-04, backup `eye_demo-pre-0104-20261004T111119Z.dump`; then 0105 B91, backup `eye_demo-pre-0105-20261004T121709Z.dump`), both by `pnpm db:migrate`. NEVER use `scripts/ops/apply-pending.sh` against `eye_demo`.
+  - The API was restarted on the B91 build in §13's form: the switch and the sinks in the caller's environment, never in `.eye-local/env`.
+- **The personas.**
+  - **Created by the act**, through governed routes:
+    - **C. Marchetti** (`c.marchetti`, `commercial_authority` at PLATFORM — the vendor; created on `POST /v1/platform/principals` by the platform administrator);
+    - **N. Vogel** (`n.vogel`, `tenant_admin` of NORDWERK; the tenant route).
+  - **Existing personas used:** T. Nakamura (the sweep), E. Kovács (the experiment), M. Dvořák (the budget owner and the attention policy), A. Hoffmann and F. Ferreira (the extraction whose gateway call is metered), E. Lindqvist (the auditor), T. Richter.
+- **The order is fixed:**
+  1. `node scripts/phase6/act-b91.mjs` (the scenes, about 7 minutes of real ticks);
+  2. the four walks `e2e/phase6-b91-{entitlements,grace,ledger,meters}.demo.spec.ts` with the act's `EYE_B91_*` lines;
+  3. **`node scripts/phase6/act-b91.mjs --restore`**.
+- **Why the order matters:**
+  - B91-M stages only while NORDWERK is uncontracted, so it can be staged ONCE per database.
+  - While the licence is in GRACE, new work in every licensed capability is refused (only running work may finish; only the attention tick is exempt). `--restore` issues the full licence (v2, no term end) and raises the compute cap to warn.
+  - After `--restore`, every later act on NORDWERK works as before; act-b30 holds after it.
+  - Re-running the scenes after `--restore` holds: they read their records.
+- **NORDWERK is CONTRACTED from now on.** A licence row turns the gate on for good. A later stage that adds a licensable capability must add it to the licence (a new version through the vendor's issue route), or its writes are refused with `EYE-ENT-001`.
+- **The rehearsal rig.**
+  - Restore the newest `eye_demo-pre-0105-*.dump` (or `-pre-0104-*`) into **`eye_demo_b91`** and migrate it.
+  - Run the API on **:3411** with **`EYE_REDIS_PORT=6395`**, then `EYE_DB_NAME=eye_demo_b91 EYE_API=http://localhost:3411 node scripts/phase6/act-b91.mjs`.
+  - The rig scripts were the session's (reset, start, stop, run); they follow §20's.

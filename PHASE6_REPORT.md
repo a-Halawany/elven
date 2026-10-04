@@ -4572,3 +4572,59 @@ The mechanism is in `audit/CP6_BATCHES.md` §B27. There is one migration, `0097_
   - completions F-P5-02 at B26, F-P5-03 at B33, F-P5-04 at B100;
   - M1 402.5–694.2 U;
   - three accounts 2027-07-12.
+
+## 49. B91 (2026-10-04): usage metering, the cost ledger, entitlements and licensing (0105)
+
+### 49.1 What B91 implements
+- **Entitlements (F-P7-F-01):**
+  - the capability catalogue, offers, packages and SKUs;
+  - versioned licences with provenance and digest;
+  - the contract scope object;
+  - THE AVAILABILITY GATE, after the PDP's allow. It makes a licensable capability unavailable with an explanation (403 `EYE-ENT-001`). It never touches a mandatory control or a human decision: audit, identity, policy, retention and export, warnings and attention (including the attention agent's tick), corrections and withdrawals, reads of existing records, and every human-gated rule.
+  - An uncontracted tenant is never gated.
+- **Grace:**
+  - grace policies;
+  - renewal, suspension and reinstatement (the commercial authority, human-gated);
+  - the lapse tick into GRACE with the last valid entitlement, and on to LAPSED;
+  - the indeterminate case (FEX-30);
+  - the offline licence token, with an offline verifier;
+  - the entitlement page and the Simulations banner.
+- **Metering and the ledger (F-P7-F-02):**
+  - meters on the model gateway, collection runs, compute (experiment chunks, runs, the envelope sweep), product consumption and storage;
+  - B90's per-consumer usage counters, now written;
+  - versioned caps within the licence. A STOP cap is enforced at admission on compute; the others warn.
+  - rate cards with an energy ESTIMATE, allocation keys, idempotent cost entries, and budgets with named owners, thresholds, an anomaly rule and a forecast;
+  - unit data cost;
+  - SYNTHETIC invoices and their reconciliation;
+  - optimisation decisions refused at the residency, isolation, retention and recovery boundary.
+- **The vendor:** a PLATFORM principal created through a new platform-admin-only route.
+
+### 49.2 Results
+- **Harnesses:** entitlements 34/34, grace 34/34, ledger 21/21, meters 15/15.
+- **Local gates:** «GATES».
+- **Browser gate:** 93/93.
+- **The demonstration:**
+  - the act HELD (44 ✓);
+  - the four walks 15/15, with eighteen screenshots;
+  - `--restore` HELD, act-b30 after it HELD, and the earlier walks 63/63.
+- **Hosted:** «HOSTED».
+
+### 49.3 What it found, and what it does not close
+**Found by the integration and corrected before 0105 was frozen:**
+- the attention tick refused for a tenant without agent_platform;
+- an evidence retrieval not treated as a read;
+- the gate and grace disagreeing on an expired-but-active licence.
+
+**Found by the rehearsal:** no governed path for a PLATFORM principal.
+
+**Not closed:**
+- a real billing account;
+- customer acceptance (R2);
+- profile parity;
+- the disconnected profile itself;
+- purchase and marketplace rights;
+- contract-scope enforcement;
+- carbon;
+- token counts.
+
+**Inference on this deployment** is a real gateway call in replay mode, with no external provider. Both features complete later: F-P7-F-01 at B112, F-P7-F-02 at B104 (§B91.5).
