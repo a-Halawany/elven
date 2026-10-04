@@ -4601,7 +4601,7 @@ The mechanism is in `audit/CP6_BATCHES.md` §B27. There is one migration, `0097_
 
 ### 49.2 Results
 - **Harnesses:** entitlements 34/34, grace 34/34, ledger 21/21, meters 15/15.
-- **Local gates:** «GATES».
+- **Local gates:** at `b7b1d71` (the final code but this test fix): integration 1947/1947, API unit 3252 + 9, web 259, acceptance 58, boundaries clean; the upgrade proof FAILED once — 1/276 of the Phase 1/2 suites on upgraded data, phase3-corrections G5 ("the pre-correction view lost the edge"): the test took its "before the correction" instant from the HOST clock while the edge's knowledge time is the DATABASE's, and the local container VM's clock measured ~28–35 ms ahead of the host — a latent test defect against the DB-instant rule, not a B91 regression (it passed inside the full integration run on the same head). Corrected: both instants from `dbNow()`; the upgrade proof then PASSED and phase3-corrections 20/20 three times.
 - **Browser gate:** 93/93.
 - **The demonstration:**
   - the act HELD (44 ✓);

@@ -6019,7 +6019,7 @@ The residual construction comes to about 0.8–1.6 U, with R2 apart. Moving the 
   - Each part also passed its pinning harnesses (16–18 each) alone.
 - **Local gates:**
   - at `82203fb`: integration 1943/1943, API unit 3252 + 9, web 259, acceptance 58, upgrade PASS, boundaries clean;
-  - at the final head: «GATES»;
+  - at the final head: at `b7b1d71` (the final code but this test fix): integration 1947/1947, API unit 3252 + 9, web 259, acceptance 58, boundaries clean; the upgrade proof FAILED once — 1/276 of the Phase 1/2 suites on upgraded data, phase3-corrections G5 ("the pre-correction view lost the edge"): the test took its "before the correction" instant from the HOST clock while the edge's knowledge time is the DATABASE's, and the local container VM's clock measured ~28–35 ms ahead of the host — a latent test defect against the DB-instant rule, not a B91 regression (it passed inside the full integration run on the same head). Corrected: both instants from `dbNow()`; the upgrade proof then PASSED and phase3-corrections 20/20 three times;
   - browser gate: 93/93 on a fresh database.
 - **The demonstration** (eye_demo; `evidence/cp6/act-b91.txt`):
   - backup `eye_demo-pre-0105-20261004T121709Z.dump`, then `db:migrate`;
