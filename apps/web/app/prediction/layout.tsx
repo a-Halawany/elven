@@ -59,6 +59,7 @@ const NAV = [
   { href: '/prediction/warnings', label: 'Warnings', glyph: '⚑' },
   /* B28 (0088) warnings */ { href: '/prediction/warnings/evaluations', label: 'Warning evaluation', glyph: '◑' }, /* end B28 warnings */
   { href: '/prediction/calibration', label: 'Calibration', glyph: '◐' },
+  /* B25 ensembles */ { href: '/prediction/ensembles', label: 'Ensembles', glyph: '⧉' }, /* end B25 ensembles */
   /* B28 (0088) signals: the weak-signal workbench */ { href: '/prediction/signals', label: 'Weak signals', glyph: '≈' }, /* end B28 signals */
   /* B28 (0088) streams */ { href: '/prediction/streams', label: 'Streams', glyph: '≋' }, /* end B28 streams */
   /* B32 (0089) exposures: the risk and opportunity workspace (WS-09) */ { href: '/prediction/exposures', label: 'Risk & opportunity', glyph: '⇅' }, /* end B32 exposures */
