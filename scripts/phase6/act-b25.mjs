@@ -267,7 +267,7 @@ let PW_DAYS = null;
   // the ledger's count (read-only): the chokepoint4 rows the live PortWatch contract has framed, by their stated day
   const pw = (await q(`with src as (select distinct source_id from observation.source_contracts_current where tenant_id = $1 and domain_id = $2 and source_key = $3)
      select count(distinct (e.event_time at time zone 'UTC')::date)::int days, min((e.event_time at time zone 'UTC')::date)::text first, max((e.event_time at time zone 'UTC')::date)::text last, count(*)::int frags
-       from objects.canonical_objects e join objects.canonical_objects o on o.object_type = 'OBS' and o.object_id::text = e.payload ->> 'obs_object_id' and o.object_version = 1
+       from objects.canonical_objects e join objects.canonical_objects o on o.object_id = (e.payload ->> 'obs_object_id')::uuid and o.object_type = 'OBS' and o.object_version = 1
       where e.object_type = 'EVD' and exists (select 1 from src where e.provenance_ref like 'SRC:' || src.source_id::text || '@%') and jsonb_typeof(e.payload -> 'fragment') = 'object'
         and o.payload ->> 'item_key' like '%chokepoint4%'`, [T, D, SERIES[CORRIDOR].source_key]))[0];
   PW_DAYS = pw;
@@ -290,7 +290,7 @@ const ecbContract = () => ({
   security_and_operations: { credential_ref: null, authentication_method: 'anonymous (no credential required)',
     authenticity_method: { transport_endpoint: 'TLS certificate verification of the connected endpoint', byte_integrity: 'SHA-256 digest verified pre-store, post-store and on every read',
       source_origin: 'publisher host allowlisted from the contract and pinned at connect time', content_authenticity: 'unknown — this publisher offers no signature mechanism. TLS and digests establish transport and byte integrity, not that the content genuinely originates from the claimed source.' },
-    budgets: { max_requests_per_run: 2, max_bytes_per_run: 33_554_432, max_concurrency: 1, timeout_ms: 120_000, max_retries: 2 },
+    budgets: { max_requests_per_run: 2, max_bytes_per_run: 33_554_432, max_concurrency: 1, timeout_ms: 300_000, max_retries: 2 },
     expected_schema: { media_types: ['application/json'], required_fields: ['dataSets'], drift_tolerance: 0, max_bytes: 16_777_216 },
     freshness_expectation: { threshold_seconds: 31_536_000, expected_interval: 'none — a bounded history collected once (1999-01-04 → 2026-09-30)' },
     coverage_expectations: { universe_version: 'v1', denominator_derivation: 'one observation per TARGET business day in [1999-01-04, 2026-09-30]', expected_items_per_window: 1, not_applicable_dimensions: [], not_applicable_reason: null },
@@ -337,9 +337,13 @@ let ECB = await ecbSrc();
     // a minute for the schedule's first iteration to open its run; then as long as a run is still running (ten minutes at most)
     for (let i = 0; i < 30 && runs.length === 0; i += 1) { await sleep(2000); runs = await ecbRuns(ECB.source_id); }
     for (let i = 0; i < 300 && runs.some((x) => x.state === 'running'); i += 1) { await sleep(2000); runs = await ecbRuns(ECB.source_id); }
-    if (!runs.some((x) => x.state === 'finished')) {
+    // the command form when nothing collected it: the ECB portal answers a COLD full-range query with a 504 from its gateway (~10 s) while
+    // its backend computes, and serves it once warm — so M. Dvořák retries, a minute apart, at most six times; every attempt is a recorded run
+    for (let attempt = 1; attempt <= 6 && !runs.some((x) => x.state === 'finished' && Number(x.items_admitted) > 0); attempt += 1) {
+      if (attempt > 1) await sleep(60_000);
       const c = await call(`${O}/sources/${ECB.source_id}/collect`, ob(dvorak, { action: 'observation.run.trigger', objectType: 'RUN', consequence: 'C1' }), { contractVersion: Number(ECB.contract_version) }, dvorak.token);
-      if (c.ok) ok(`M. Dvořák COLLECTED it (the command form): run ${short(c.body.run.runId)} ${c.body.run.state} — ${c.body.run.admitted} admitted, ${c.body.run.noop} unchanged${c.body.run.reason ? ` (${c.body.run.reason})` : ''}`); else fail('M. Dvořák collects', c);
+      if (c.ok) (c.body.run.state === 'finished' ? ok : note)(`M. Dvořák COLLECTED it (the command form, attempt ${attempt}): run ${short(c.body.run.runId)} ${c.body.run.state} — ${c.body.run.admitted} admitted, ${c.body.run.noop} unchanged${c.body.run.reason ? ` (${c.body.run.reason})` : ''}`);
+      else fail(`M. Dvořák collects (attempt ${attempt})`, c);
       runs = await ecbRuns(ECB.source_id);
     }
     note(`the collection runs of ${ECB_KEY}: ${runs.map((x) => `${short(x.run_id)} ${x.state}${x.failure_reason ? ` [${String(x.failure_reason).slice(0, 120)}]` : ''} (${x.items_admitted} admitted, ${x.items_noop} unchanged) at ${iso(x.started_at)}`).join('; ')}`);
@@ -370,7 +374,9 @@ const VAL = { '3y': { origins: 100, stride: 83 }, '5y': { origins: 100, stride: 
 const validationRow = async (methodRef, series, h, kind) => (await q(`select validation_id::text, backtest_id::text, kind, mode, origins, passed, verdict, metrics, window_from::text, window_to::text, synthetic, observations, computed_at
    from prediction.method_validations where tenant_id = $1 and domain_id = $2 and method_ref = $3 and series_key = $4 and horizon_code = $5 and kind = $6 and computed_by = $7 order by computed_at desc limit 1`, [T, D, methodRef, series, h, kind, eriksen.principalId]))[0] ?? null;
 const ECB_VAL = {};
-for (const h of ['3y', '5y']) {
+const ECB_HELD = ECB === null ? 0 : Number((await q(`select count(*)::int n from objects.canonical_objects where object_type = 'EVD' and provenance_ref like $1`, [`SRC:${ECB.source_id}@%`]))[0].n);
+if (ECB_HELD === 0) bad(`the bounded ECB history holds no evidence: the 3y/5y validation and the ECB quantity forecasts are NOT staged (nothing is recorded on an empty history)`);
+for (const h of ECB_HELD === 0 ? [] : ['3y', '5y']) {
   let v = await validationRow('bayes_level@1', ECB_KEY, h, 'quantity_rolling_origin');
   if (v) note(`the ${h} validation of bayes_level@1 on ${ECB_KEY} stands (${iso(v.computed_at)}) — an earlier run`);
   else {
@@ -387,7 +393,7 @@ for (const h of ['3y', '5y']) {
 const FX_ASU = (await q(`select strategy_object_id::text id, title from graph.strategy_current where tenant_id = $1 and domain_id = $2 and object_type = 'ASU' and status = 'active' and title ilike '%EUR/USD%' order by 1 limit 1`, [T, D]))[0] ?? null;
 const routeRow = async (series, h, outcome) => (await q(`select route_id::text, outcome, refusal, refusal_class, forecast_id::text, method_ref, requested_at from prediction.forecast_routes where tenant_id = $1 and domain_id = $2 and series_key = $3 and horizon_code = $4 and outcome = $5 and requested_by = $6 and target_key is null order by requested_at desc limit 1`,
   [T, D, series, h, outcome, eriksen.principalId]))[0] ?? null;
-for (const h of ['5y', '3y']) {
+for (const h of ECB_HELD === 0 ? [] : ['5y', '3y']) {
   const issued = await routeRow(ECB_KEY, h, 'issued'); const refused = await routeRow(ECB_KEY, h, 'refused');
   const v = ECB_VAL[h];
   if (issued || refused) {
