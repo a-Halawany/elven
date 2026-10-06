@@ -66,7 +66,7 @@ let h: Phase4Harness; let su: AnyDb; let ens: EnsemblesController; let svc: Ense
 let prediction: import('../../src/prediction/prediction.controller.js').PredictionController;
 let graph: import('../../src/graph/graph.controller.js').GraphController;
 let eriksen: AuthenticatedPrincipal; let weber: AuthenticatedPrincipal; let analyst: AuthenticatedPrincipal; let dadmin: AuthenticatedPrincipal;
-let agent: AuthenticatedPrincipal; let machine: AuthenticatedPrincipal; let otherOwner: AuthenticatedPrincipal;
+let agent: AuthenticatedPrincipal; let agentOwner: AuthenticatedPrincipal; let machine: AuthenticatedPrincipal; let otherOwner: AuthenticatedPrincipal;
 let seriesKey = ''; let entityId = ''; let evdId = '';
 let asuShared = ''; let asuPersist = ''; let asuRevert = '';
 /** What the cases leave one another. */
@@ -151,6 +151,9 @@ beforeAll(async () => {
   // THE FORECAST AGENT: an agent principal (AI may run an ensemble; it never authors a judgement)
   const fa = await h.humanWithSession(['forecast_agent'], 'fc-agent');
   agent = { ...fa, kind: 'agent', assurance: 'agent_grant' };
+  // an agent that even holds forecast_owner: the PDP's role passes, the PEP's human gate refuses it
+  const fo = await h.humanWithSession(['forecast_owner'], 'agent-fo');
+  agentOwner = { ...fo, kind: 'agent', assurance: 'agent_grant' };
   // A MACHINE principal of kind 'agent' in the database holding forecast_owner, whose session claims a human: the PEP's gate passes, the PORT refuses
   const mid = uuidv7();
   await sql`insert into identity.principals (id, kind, scope, tenant_id, domain_id, display_name, login_name, status)
@@ -332,8 +335,11 @@ describe('EN5 · the judgement overlay: labelled, versioned separately, human-on
 
   it('REFUSAL · an agent (at the PEP and at the port), the analyst, a member, a duplicate, an unordered band, unknown evidence', async () => {
     const p = { adjustment: adj(), rationale: 'an agent drafting a judgement on its own', evidence: evidence() };
-    const pep = await refusal(overlayAdd(agent, ensembleId(), p));
+    const pep = await refusal(overlayAdd(agentOwner, ensembleId(), p));
     expect(pep.status).toBe(403); expect(pep.code).toBe('EYE-WFL-002');
+    expect(pep.message).toMatch(/human gate: prediction.overlay.add requires a named human principal/);
+    const pdp = await refusal(overlayAdd(agent, ensembleId(), p));
+    expect(pdp.status).toBe(403); expect(pdp.code).toBe('EYE-AUT-001');
     await refused(overlayAdd(machine, ensembleId(), p), /^judgement overlay rejected \(actor\): a judgement overlay is a named human's act; an agent or a system principal never authors or withdraws one/, 403);
     await refused(overlayAdd(analyst, ensembleId(), p), /.*/, 403);
     await refused(overlayAdd(eriksen, String(arr(S['members'])[0]?.['forecast_id']), p), /^judgement overlay rejected \(target\): forecast .* is an ensemble member/, 422);
@@ -498,6 +504,24 @@ describe('EN4 · model-path availability: excluded and DISCLOSED (a SYNTHETIC pl
 });
 
 describe('EN2 · RECOVERY: a later ensemble supersedes the earlier one with its members (the prelude\'s lineage rule); AI may run an ensemble', () => {
+  it('POSITIVE · SKILL weights from the applicable backtest: each member weighs the inverse of its own pinball on the record (SYNTHETIC history; retrospective)', async () => {
+    const bt = (await prediction.runBacktest(h.req(eriksen, 'prediction.backtest.record', 'BKT', null), T(), D(),
+      { payload: { seriesKey, horizon: '90d', observedThrough: CUT, mode: 'retrospective', origins: 40, stride: 14 } }) as { backtest: Row }).backtest;
+    expect(Number(bt['origins'])).toBeGreaterThanOrEqual(20);
+    const out = (await issue(eriksen, scenePayload({ horizon: '90d', weighting: 'skill' }))).ensemble;
+    const run = rec(out['run']);
+    expect(run['state']).toBe('completed');
+    expect(rec(run['outcome'])['weighting_used']).toBe('skill');
+    const snP = Number(bt['baseline_pinball_mean']); const hwP = Number(bt['pinball_mean']);
+    const expected = [1 / snP / (1 / snP + 1 / hwP), 1 / hwP / (1 / snP + 1 / hwP)];
+    const w = arr(out['members']).map((m) => Number(m['weight']));
+    expect(Math.abs((w[0] as number) - (expected[0] as number))).toBeLessThan(2e-6); expect(Math.abs((w[1] as number) - (expected[1] as number))).toBeLessThan(2e-6);
+    expect(String(rec(out['ensemble'])['statement'])).toMatch(/under linear_pool@1, skill weights/);
+    // each member's validation is what the record earns ITS method (never the ensemble's): validated_retrospective only with its own T1 met
+    for (const m of arr(out['members'])) expect(['validated_retrospective', 'unvalidated']).toContain(m['validation_state']);
+    expect(['unvalidated']).toContain(rec(out['ensemble'])['validation_state']);
+  });
+
   it('the forecast agent issues the next ensemble at 30d (skill weighting falls back to equal, said); the scene\'s ensemble and members are superseded; then linear_pool recovers PER-07', async () => {
     const out = (await issue(agent, scenePayload({ weighting: 'skill', owner: eriksen.principalId }))).ensemble;
     const run = rec(out['run']);
@@ -511,6 +535,10 @@ describe('EN2 · RECOVERY: a later ensemble supersedes the earlier one with its 
     // the new members and ensemble stand side by side
     const now = (await sql<{ n: number }>`select count(*)::int n from prediction.forecasts_current where ensemble_id = ${String(rec(out['ensemble'])['forecast_id'])}::uuid and state = 'issued'`.execute(su)).rows[0]?.n;
     expect(now).toBe(3);
+    // PER-07's RECOVERY: the question refused under quantile_average@1 (its run failed) is answered under linear_pool@1
+    const failed = (await sql<Row>`select state_reason from prediction.ensemble_runs where tenant_id = ${T()}::uuid and horizon_code = '30d' and combination_rule = 'quantile_average@1'`.execute(su)).rows;
+    expect(failed.map((f) => String(f['state_reason']).slice(0, 10))).toEqual(['precision:']);
+    expect(run['combination_rule']).toBe('linear_pool@1');
   });
 });
 

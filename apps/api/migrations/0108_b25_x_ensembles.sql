@@ -464,6 +464,11 @@ BEGIN
   IF NOT (r.assumptions <@ NEW.assumptions) THEN
     RAISE EXCEPTION 'ensemble rejected (mismatch): forecast % does not rest on run %''s assumptions', NEW.forecast_id, r.run_id USING ERRCODE = '22023';
   END IF;
+  IF r.state = 'admitted' AND NEW.ensemble_role = 'member' THEN
+    UPDATE prediction.ensemble_runs SET state = 'running', started_at = clock_timestamp() WHERE run_id = r.run_id;
+    INSERT INTO prediction.ensemble_events (event_id, scope, tenant_id, domain_id, run_id, event, actor_principal_id, details, correlation_id)
+    VALUES (gen_random_uuid(), 'DOMAIN', r.tenant_id, r.domain_id, r.run_id, 'ensemble.started', NEW.issued_by, jsonb_build_object('first_forecast_id', NEW.forecast_id), NEW.correlation_id);
+  END IF;
   IF NEW.ensemble_role = 'member' THEN
     SELECT * INTO m FROM prediction.ensemble_members x WHERE x.run_id = r.run_id AND x.method_ref = NEW.method_ref FOR UPDATE;
     IF NOT FOUND THEN
@@ -484,11 +489,6 @@ BEGIN
     IF v_issued < 2 THEN
       RAISE EXCEPTION 'ensemble rejected (insufficient): run % has % member(s) issued; an ensemble combines at least two', r.run_id, v_issued USING ERRCODE = '22023';
     END IF;
-  END IF;
-  IF r.state = 'admitted' THEN
-    UPDATE prediction.ensemble_runs SET state = 'running', started_at = clock_timestamp() WHERE run_id = r.run_id;
-    INSERT INTO prediction.ensemble_events (event_id, scope, tenant_id, domain_id, run_id, event, actor_principal_id, details, correlation_id)
-    VALUES (gen_random_uuid(), 'DOMAIN', r.tenant_id, r.domain_id, r.run_id, 'ensemble.started', NEW.issued_by, jsonb_build_object('first_forecast_id', NEW.forecast_id), NEW.correlation_id);
   END IF;
   RETURN NEW;
 END $$ LANGUAGE plpgsql;
