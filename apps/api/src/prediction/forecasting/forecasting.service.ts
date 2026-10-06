@@ -95,6 +95,9 @@ export interface IssueArgs {
   seriesKey: string; horizonCode: string; knownAt: string; observedThrough: string | null;
   assumptions: string[]; refreshCadence: string; label: 'replay demonstration' | 'live';
   method?: string;
+  /** B25 (0108 §0): a part's additions — `columns` go to prediction.issue_forecast's p_extras (§0.1); `payload` sections join the FCT
+   *  payload, which is then admitted as FCT@v2. Absent: exactly the forecast issued before B25. */
+  b25?: { columns?: Record<string, unknown>; payload?: Record<string, unknown> };
 }
 
 export type BacktestMode = 'retrospective' | 'historical';
@@ -262,6 +265,7 @@ export class ForecastingService {
       label: a.label, statement,
       narrative: null,
       controls,
+      ...(a.b25?.payload ?? {}),   // B25 (0108 §0)
     };
     const header: CanonicalHeader = {
       object_id: forecastId, object_type: 'FCT', tenant_id: ctx.tenantId, domain_id: ctx.domainId, scope: 'DOMAIN',
@@ -281,7 +285,7 @@ export class ForecastingService {
       residency_profile: controls.residency_profile, retention_profile: controls.retention_profile,
       access_policy_ref: controls.access_policy_ref, quality_profile: null, quality_state: { validation: validationState },
       freshness_state: { freshest_evidence_recorded_at: assembled.freshestRecordedAt, origin_at: originAt },
-      schema_ref: 'FCT@v1', ontology_ref: null, correction_of: null, supersedes: null, withdrawal_reason: null,
+      schema_ref: a.b25?.payload !== undefined && Object.keys(a.b25.payload).length > 0 ? 'FCT@v2' : 'FCT@v1' /* B25 (0108 §0) */, ontology_ref: null, correction_of: null, supersedes: null, withdrawal_reason: null,
       audit_correlation_id: correlationId, content_ref: null,
     };
     const v = validateHeader(header);
@@ -297,6 +301,7 @@ export class ForecastingService {
       validationState, validationNote, label: a.label, skill, statement,
       backtestId: validationState.startsWith('validated') ? String(bt?.['backtest_id']) : null, controls,
       actor, eventId: newId(), correlationId,
+      ...(a.b25?.columns === undefined ? {} : { extras: a.b25.columns }),   // B25 (0108 §0)
     });
     return { forecastId, method, validationState, validationNote, backtestId: validationState.startsWith('validated') ? String(bt?.['backtest_id']) : null,
              controls, quantiles: { q10: round(out.quantiles.q10), q50: round(out.quantiles.q50), q90: round(out.quantiles.q90) }, statement, targetAt,

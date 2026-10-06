@@ -117,6 +117,9 @@ export interface ForecastWrites extends PredictionReads {
     refreshCadence: string; validationState: string; validationNote: string; label: string;
     skill: unknown | null; statement: string; backtestId: string | null; controls: unknown;
     actor: string; eventId: string; correlationId: string;
+    /** B25 (0108 §0): the columns of §0.1 — forecast_kind, target_key, method_ref, ensemble_id, ensemble_role, information_set_id,
+     *  environment {digest, …}, horizon_policy, outcome_spec. Absent: a single quantity forecast, as before. */
+    extras?: Record<string, unknown>;
   }): Promise<void>;
   /** 0065: the forecast this issue superseded (the previous issued one for the same question), if any. */
   supersededBy(a: { forecastId: string }): Promise<{ forecast_id: string; quantiles: Record<string, number>; subject_entity_id: string | null } | null>;
@@ -395,7 +398,7 @@ class PredictionCapabilityImpl extends PredictionCore
       ${JSON.stringify(a.evidenceRefs)}::jsonb, ${a.refreshCadence}, ${a.validationState}, ${a.validationNote},
       ${a.label}, ${a.skill === null ? null : JSON.stringify(a.skill)}::jsonb, ${a.statement},
       ${a.backtestId}::uuid, ${JSON.stringify(a.controls ?? {})}::jsonb,
-      ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid)`);
+      ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid, ${JSON.stringify(a.extras ?? {})}::jsonb)`);   /* B25 (0108 §0) the extras */
   }
 
   async supersededBy(a: { forecastId: string }): Promise<{ forecast_id: string; quantiles: Record<string, number>; subject_entity_id: string | null } | null> {
