@@ -314,7 +314,7 @@ describe('B25 §MR · c THE VERSIONED HORIZON POLICY (V00-T-051, V02-T-153, V03-
     expect(legacy['refusal']).toMatch(/^forecast rejected \(horizon\): corridor\.bab-el-mandeb\.transit-delay at 30d is unsupported — no horizon policy is published in this domain/);
     const q = await planOf({ seriesKey: CORRIDOR, horizon: '3y' });
     expect(q['refusal']).toBeNull();
-    expect((q['methods'] as Row[]).map((m) => [m['method_ref'], m['available']])).toEqual([['holt_winters@1', true], ['seasonal_naive@1', true]]);
+    expect((q['methods'] as Row[]).map((m) => [m['method_ref'], m['available']])).toEqual([['seasonal_naive@1', true], ['holt_winters@1', true]]);   // integration: the seasonal baseline first in its family (the legacy order)
     const v1 = await publish({ riskClass: 'standard', statement: 'the corridor\'s horizon treatment, v1 (SYNTHETIC)', steward: petrovic.principalId, rules: policyRules() });
     POLICY_V1 = String(v1['policy_id']);
     expect(v1).toMatchObject({ state: 'proposed', version: 1 });
@@ -379,8 +379,8 @@ describe('B25 §MR · d THE SCENE (F-P4-01): 30d EVENT and 5y REGIME on the corr
     expect(obj(obj(pay['outcome'])['judgement'])['judged_by']).toBe(eriksen.principalId);
     expect((obj(pay['distribution'])['categories'] as Row[]).map((c) => c['key'])).toEqual(['closed', 'disrupted', 'open']);
     expect(obj(pay['validation'])['state']).toBe('scenario_language');
-    expect(await forecastEvents(F30)).toEqual(['forecast.issued', 'forecast.routed']);
-    expect(await forecastEvents(F5Y)).toEqual(['forecast.issued', 'forecast.routed']);
+    expect(await forecastEvents(F30)).toEqual(['forecast.information_set_frozen', 'forecast.issued', 'forecast.routed']);   // integrated: §CX grounds the routed issue
+    expect(await forecastEvents(F5Y)).toEqual(['forecast.information_set_frozen', 'forecast.issued', 'forecast.routed']);   // integrated: §CX grounds the routed issue
     const routes = await rows(sql`select outcome, method_ref, horizon_code from prediction.forecast_routes where tenant_id = ${T()}::uuid and forecast_id in (${F30}::uuid, ${F5Y}::uuid) order by horizon_code`);
     expect(routes).toEqual([{ outcome: 'issued', method_ref: 'event_rate@1', horizon_code: '30d' }, { outcome: 'issued', method_ref: 'regime_judgement@1', horizon_code: '5y' }]);
     evidence('d', `30d event P=${String(obj(a.forecast['distribution'])['probability'])} (validated_retrospective on SYNTHETIC history) and 5y regime in scenario language; methods per horizon`, 'synthetic demonstration');
@@ -596,5 +596,27 @@ describe('B25 §MR · i ENFORCEMENT ON THE FORECAST ROW (pmr_fct_routed) — def
     const byOutcome = await rows(sql`select outcome, count(*)::int n from prediction.forecast_routes where tenant_id = ${T()}::uuid group by outcome order by outcome`);
     expect(byOutcome.map((x) => x['outcome'])).toEqual(['issued', 'planned', 'refused']);
     evidence('i', 'legacy untouched; statistical routed via ForecastingService (FCT@v2)', 'software capability');
+  });
+});
+
+/* j — INTEGRATION (the B25 fold): §EN's ensemble manager over §MR's router — a MULTI-FAMILY ensemble. The real METHOD_ROUTER plans the
+   registry's methods for the horizon under the active policy, and RUNS a planned quantity family for a member (the same runFamily the routed
+   issue uses): seasonal_naive@1 (statistical) and bayes_level@1 (bayesian, explicit priors) stand side by side as members, each tied to its
+   assumption, the ensemble combining them; each member row passes §MR's routed-row check (approved, the family allowed at 1y). SYNTHETIC. */
+describe('B25 §MR · j INTEGRATION: a multi-family ensemble through the registry router (§EN × §MR)', () => {
+  it('j · POSITIVE: a multi-family ensemble at 1y — the builtins and the approved Bayesian entries planned by the router, each run and issued as a member, the ensemble beside them', async () => {
+    const { EnsemblesController: Ec } = await import('../../src/prediction/ensembles/ensembles.controller.js');
+    const ens = h.app.get(Ec);
+    const out = (await ens.issue(req(eriksen, 'prediction.ensemble.issue', 'ENS'), T(), D(), { payload: {
+      seriesKey: CORRIDOR, horizon: '1y', observedThrough: '2023-05-31', assumptions: [asuOpen],
+      members: [{ methodRef: 'seasonal_naive@1', assumptions: [asuOpen] }, { methodRef: 'bayes_level@1', assumptions: [asuEscort] }] } }) as { ensemble: Row }).ensemble;
+    // the manager takes EVERY method the router plans for the horizon (the plan's order; the requested members tie their assumptions): at 1y
+    // the policy allows statistical and bayesian — the two builtins and the two approved Bayesian entries, each run and issued as a member
+    const members = (out['members'] as Row[]).map((m) => [m['method_ref'], m['state']]);
+    expect(members, JSON.stringify(out['excluded_models'] ?? null)).toEqual([['seasonal_naive@1', 'issued'], ['holt_winters@1', 'issued'], ['bayes_level@1', 'issued'], ['bayes_tight@1', 'issued']]);
+    const rows = (await sql<{ method_ref: string; ensemble_role: string }>`select method_ref, ensemble_role from prediction.forecasts_current
+      where ensemble_id = ${String((out['run'] as Row)['ensemble_forecast_id'])}::uuid order by ensemble_role, method_ref`.execute(su)).rows;
+    expect(rows.map((r) => [r.ensemble_role, r.method_ref])).toEqual([['ensemble', 'ensemble:linear_pool@1'], ['member', 'bayes_level@1'], ['member', 'bayes_tight@1'],
+      ['member', 'holt_winters@1'], ['member', 'seasonal_naive@1']]);
   });
 });

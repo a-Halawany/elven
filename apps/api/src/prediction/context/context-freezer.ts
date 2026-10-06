@@ -13,6 +13,7 @@
  * `tx` is the Kysely transaction of the write — passed as is, or as an object carrying it in `tx` (a capability wrapper). The freeze port
  * serves the issuing actions (prediction.forecast.issue / .portfolio.issue / .ensemble.issue) and prediction.information_set.freeze.
  */
+import { sql } from 'kysely';
 import { HttpException, Injectable } from '@nestjs/common';
 import { errorBody } from '@eye/contracts';
 import { newId } from '../../shared/ids.js';
@@ -78,8 +79,17 @@ export class GroundedContextFreezer implements ContextFreezer {
   constructor() { registerLegacyMethods(); }
 
   async freeze(tx: unknown, req: FreezeRequest): Promise<FrozenInformationSet | null> {
-    const cap = ContextCapability.freeze(resolveTx(tx), 'prediction.information_set.freeze');
-    const { manifest: _m, ...frozen } = await freezeWith(cap, req);
+    const t = resolveTx(tx);
+    const cap = ContextCapability.freeze(t, 'prediction.information_set.freeze');
+    /* integration (B25 fold): a request that STATES no subject (a routed target that declares none) takes the SERIES' subject — the
+       forecast's own subject is the series' (issue_forecast writes it); a request that states a DIFFERENT subject is still refused (mismatch). */
+    let request = req;
+    if (req.subjectEntityId === null) {
+      const r = await sql<{ s: string | null }>`select subject_entity_id::text as s from prediction.series_registry
+        where tenant_id = ${req.tenantId}::uuid and domain_id = ${req.domainId}::uuid and series_key = ${req.seriesKey}`.execute(t);
+      request = { ...req, subjectEntityId: r.rows[0]?.s ?? null };
+    }
+    const { manifest: _m, ...frozen } = await freezeWith(cap, request);
     return frozen;
   }
 

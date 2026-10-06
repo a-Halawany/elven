@@ -148,6 +148,11 @@ beforeAll(async () => {
   weber = await h.principalWith(['strategy_owner'], 'j-weber');
   analyst = await h.principalWith(['domain_analyst'], 'a-hoffmann');
   dadmin = await h.humanWithSession(['domain_admin'], 'domain-admin');
+  // integrated (0108 §0.4b): forecast.disagreement is routed under the domain's published attention policy — the administrator publishes it
+  { const { ExecutiveController: Ex } = await import('../../src/executive/executive.controller.js');
+    await h.app.get(Ex).publishAttentionPolicy(h.req(dadmin, 'executive.attention.policy.publish', 'ATP', null, 'executive'), T(), D(), { payload: {
+      reason: 'ensemble disagreements routed to the forecast owner (B25 ensembles harness)',
+      rules: { classes: { 'forecast.disagreement': { materiality: { min_consequence: 'C2', min_confidence: 0.5 }, route_roles: ['forecast_owner'], ack_within_minutes: 4320 } } } } } as never); }
   // THE FORECAST AGENT: an agent principal (AI may run an ensemble; it never authors a judgement)
   const fa = await h.humanWithSession(['forecast_agent'], 'fc-agent');
   agent = { ...fa, kind: 'agent', assurance: 'agent_grant' };
@@ -252,8 +257,9 @@ describe('EN1–EN3 · the scene: two methods disagree on the corridor forecast'
     expect(rec(obj.payload['disagreement'])['level']).toBe(div.level);
     // the forecast's own events: issued, ensembled (members, weights, level)
     const fev = (await sql<{ event: string; details: Row }>`select event, details from prediction.forecast_events where forecast_id = ${String(e['forecast_id'])}::uuid order by occurred_at`.execute(su)).rows;
-    expect(fev.map((x) => x.event)).toEqual(['forecast.issued', 'forecast.ensembled']);
-    expect(rec(fev[1]?.details)['disagreement']).toBe(div.level);
+    // integrated: §CX's freezer grounds the ensemble (its information set frozen and pinned) before the issue
+    expect(fev.map((x) => x.event)).toEqual(['forecast.information_set_frozen', 'forecast.issued', 'forecast.ensembled']);
+    expect(rec(fev.find((x) => x.event === 'forecast.ensembled')?.details)['disagreement']).toBe(div.level);
     // material disagreement is ESCALATED to the forecast owner (the attention item when the vocabulary carries forecast.disagreement; the ledger always)
     if (div.level === 'material') {
       expect(ev).toContain('ensemble.escalated');
@@ -262,6 +268,11 @@ describe('EN1–EN3 · the scene: two methods disagree on the corridor forecast'
       const cls = await classAvailable();
       expect(esc['channel']).toBe(cls ? 'attention_item' : 'event');
       expect(run['attention_item_id'] === null).toBe(!cls);
+      if (cls) {   // integrated: the escalation item is ROUTED UNDER THE PUBLISHED POLICY (the harness's policy names forecast.disagreement → forecast_owner)
+        const item = (await sql<Row>`select state, outcome, owner_principal_id::text as owner, route_roles, policy_version from executive.attention_items where item_id = ${String(run['attention_item_id'])}::uuid`.execute(su)).rows[0] ?? {};
+        expect(item).toMatchObject({ state: 'open', outcome: 'material', owner: eriksen.principalId, route_roles: ['forecast_owner'] });
+        expect(item['policy_version']).not.toBeNull();
+      }
     }
   });
 
@@ -381,8 +392,8 @@ describe('EN1 · the manager: admission, retries, budgets, failure, escalation, 
     await refused(issue(eriksen, scenePayload({ horizon: '90d', budget: { members: 20 } })), /^ensemble rejected \(budget\): members 2–12/, 422);
     await refused(issue(eriksen, scenePayload({ horizon: '90d', owner: analyst.principalId })), /^ensemble rejected \(owner\): the run's owner .* is a named, active human holding forecast_owner/, 422);
     await refused(issue(eriksen, scenePayload({ horizon: '90d', members: [{ methodRef: 'causal_its@1', assumptions: [] }] })), /^ensemble rejected \(plan\): causal_its@1 is not in the router's plan/, 422);
-    await refused(issue(eriksen, scenePayload({ horizon: '90d', seriesKey: 'fixture:no-such:series' })), /^ensemble rejected \(unknown_series\)/, 404);
-    await refused(issue(eriksen, scenePayload({ horizon: '90d', assumptions: [uuidv7()] })), /^ensemble rejected \(unknown_assumption\)/, 404);
+    await refused(issue(eriksen, scenePayload({ horizon: '90d', seriesKey: 'fixture:no-such:series' })), /^(ensemble|forecast) rejected \(unknown_series\)/, 404);   // integrated: §MR's router refuses the unknown series first (its governed 404)
+    await refused(issue(eriksen, scenePayload({ horizon: '90d', assumptions: [uuidv7()] })), /^(ensemble|information set) rejected \(unknown_assumption\)/, 404);
     expect(await liveRun('90d')).toBeUndefined();
   });
 
@@ -473,10 +484,12 @@ describe('EN4 · model-path availability: excluded and DISCLOSED (a SYNTHETIC pl
     expect(arr(out['members']).map((m) => [m['method_ref'], m['state'], m['exclusion_class']])).toEqual([
       ['seasonal_naive@1', 'issued', null], ['holt_winters@1', 'issued', null], ['causal_its@1', 'excluded', 'budget']]);
     expect(String(arr(out['excluded_models'])[0]?.['reason'])).toMatch(/member budget \(2\) is reached/);
-    // with the budget open, the router's run makes the registry method a third member
-    const three = (await withRouter(stubRouter(extra, runner as never), () => issue(eriksen, scenePayload({ horizon: '180d', budget: { members: 3 } })))).ensemble;
-    expect(arr(three['members']).map((m) => m['state'])).toEqual(['issued', 'issued', 'issued']);
-    expect(arr(three['members']).map((m) => Number(m['weight']))).toEqual([0.333333, 0.333333, 0.333334]);
+    // integrated: a member is issued only as an APPROVED method of the domain's registry (§MR's pmr_fct_routed) — a stub plan that invents
+    // `causal_its@1` is refused at issue with the budget open, nothing issued; the real router plans registry methods only (EN7 runs one)
+    await expect(withRouter(stubRouter(extra, runner as never), () => issue(eriksen, scenePayload({ horizon: '180d', budget: { members: 3 } }))))
+      .rejects.toThrow(/forecast rejected \(method\): causal_its@1 is not a method of this domain's registry/);
+    const stopped = await liveRun('180d');
+    if (stopped !== undefined) await resume(eriksen, String(stopped['run_id'])).catch(() => undefined);
   });
 
   it('REFUSAL + RECOVERY · a stopped completion: a completion hiding a lost path, or claiming another disagreement level, is refused by the port; resume completes from the ensemble\'s payload', async () => {

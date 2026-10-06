@@ -1735,7 +1735,7 @@ BEGIN
   IF v_refusal IS NULL THEN
     FOR m IN SELECT e.* FROM prediction.effective_forecast_methods(p_tenant, p_domain) e
               WHERE v_kind = ANY (e.forecast_kinds) AND p_horizon = ANY (e.horizons) AND e.family = ANY (v_families)
-              ORDER BY array_position(v_families, e.family), e.method_key, e.version DESC LOOP
+              ORDER BY array_position(v_families, e.family), (e.method_key = 'seasonal_naive') DESC, e.method_key, e.version DESC LOOP   -- integration: the seasonal baseline first in its family (the legacy order, the reference)
       v_avail := m.state = 'approved'; v_reason := NULL; v_val := NULL;
       IF m.state <> 'approved' THEN
         v_reason := m.state || coalesce(': ' || m.state_reason, ''); v_only_validation := false;
@@ -1896,7 +1896,9 @@ BEGIN
   IF NEW.validation_state = 'scenario_language' AND NEW.forecast_kind NOT IN ('state', 'regime') THEN
     RAISE EXCEPTION 'forecast rejected (validation): scenario language is a state or regime forecast''s; a % forecast states a distribution or a probability with its validation', NEW.forecast_kind USING ERRCODE = '23514';
   END IF;
-  IF NEW.method_ref IS NULL THEN RETURN NEW; END IF;
+  -- integration (B25 fold): an ENSEMBLE's own row names its combination rule (ensemble:<rule>), not a registry method — §EN's trigger
+  -- (pen_fct_ensemble) governs it; its MEMBERS are registry methods and are checked here like any routed forecast
+  IF NEW.method_ref IS NULL OR NEW.ensemble_role = 'ensemble' THEN RETURN NEW; END IF;
   SELECT * INTO m FROM prediction.effective_forecast_methods(NEW.tenant_id, NEW.domain_id) e WHERE e.method_ref = NEW.method_ref;
   IF NOT FOUND THEN RAISE EXCEPTION 'forecast rejected (method): % is not a method of this domain''s registry', NEW.method_ref USING ERRCODE = '23514'; END IF;
   IF m.state <> 'approved' THEN RAISE EXCEPTION 'forecast rejected (method): % is %, not approved', NEW.method_ref, m.state USING ERRCODE = '23514'; END IF;
