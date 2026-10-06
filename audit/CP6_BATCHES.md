@@ -6166,6 +6166,11 @@ No row makes a budget, cap or usage notice a mandatory bypass. ADR-022's mandato
 - **The stand-in:** the unrouted and deprioritized ledger cases, and the meters' unrouted case, call the notice port directly as the superuser with a harness budget or cap row. A threshold and a crossing raise once per version and period, so they cannot be raised again on demand.
 - **Before and after:** through 0107 (fresh database), meters **18/18** and ledger **24/24**. Without 0107, on a database through 0106, the routing assertions fail: meters 6 (M2's policy assertions and M6, with cascades) and ledger 4 (L3's policy assertions and L8).
 - The act's wording is corrected: every commercial notice is policy-evaluated.
+- **On the demonstration (2026-10-06):**
+  - eye_demo was backed up (`.eye-local/backups/eye_demo-pre-0106-20261006T092044Z.dump`, 7,499 TOC entries) and migrated through 0107 by `db:migrate` (never apply-pending).
+  - No API restart was needed: both migrations re-declare SQL functions only.
+  - act-b30 HELD (36.9 s; its estimate approval runs under 0106's lock) and act-b91 HELD (0.7 s).
+  - NORDWERK's policy v9 already names `commercial.usage` (tenant_admin, executive), so its next usage notices are routed by it.
 
 ## Order and the next implementation batch
 
