@@ -5962,6 +5962,42 @@ The residual construction comes to about 0.8–1.6 U, with R2 apart. Moving the 
   - no API restart was needed (the migration re-declares one SQL function);
   - `scripts/phase6/act-b30.mjs` re-run on eye_demo: ALL SCENES HELD (39.9 s; evidence in the scratchpad) — the act is rerun-safe under the live-contract approval rule.
 
+### B30.9 — the contract under concurrency (0106; the bounded review of 2026-10-06)
+
+**The finding** (source inspection, then a two-session reproduction):
+- 0104's re-checks in `twin.decide_estimate` read `simulation.constraint_sets` / `constraint_set_versions` without any lock shared with the mutations.
+- Version and retirement lock the set ROW (`constraint_set_for_change … FOR UPDATE`). A declaration inserts a NEW row, which no read can lock.
+- All three take their recorded instant (`v_at := clock_timestamp()`) at function START, before any lock. The database runs READ COMMITTED.
+- So an approval running while a mutation was in flight read the old contract and COMMITTED; the mutation then committed with an instant BEFORE the approval. Each check statement also read with its own snapshot, so a torn view was possible.
+- ES8 had proved only sequential changes.
+
+**The correction: 0106**, the next free identity; 0104 and 0105 are applied and frozen and untouched.
+- ONE transaction-scoped advisory lock per (tenant, domain) contract, `simulation.constraint_contract_key` — the 0071 `retention.lock_key_domain` idiom.
+- The approval takes it **shared** before its first contract read, so approvals never wait on each other.
+- `declare_constraint_set`, `version_constraint_set` and `retire_constraint_set` take it **exclusive** before any read, and take their instant AFTER it.
+- Each of the four functions is re-declared, copied whole from its live definition with the change marked `-- 0106`.
+- The lock order is one-way (advisory, then the set row); an approval takes no set-row lock, so no deadlock cycle exists.
+- A refusal stays governed: `estimate rejected (contract)`, 409, nothing admitted, and the proposal and its historical pins are kept.
+
+**The proof** (`phase6-estimation-b30` ES9).
+- **How the race is driven:** two sessions, interleaved deterministically. A REAL governed mutation (pipeline, PDP, signed context, port) is held open after its port ran; the owner's REAL approval runs meanwhile. Every wait is observed in `pg_stat_activity` (an advisory lock wait in `decide_estimate` / `version_constraint_set`), never slept for.
+- **The stand-in:** the reverse order (c) holds the approval's SHARED lock in a raw superuser session, because the approval's own transaction cannot be paused from a harness.
+
+| Run | Database | Result |
+|---|---|---|
+| Before expectations (`EYE_ES9_BASELINE=1`) | through 0105 | **9/9** — the race reproduced: (a1) approved on the old contract with the version recorded 48 ms earlier; (b) approved without a set declared 29 ms earlier; (a2) approved on a set retired 30 ms earlier; (c) the version recorded inside the approval's window |
+| Corrected expectations | through 0106 | **9/9** — each approval WAITED, was REFUSED (contract, 409) with nothing admitted, no approval event and no outbox; recovered by a fresh proposal; (c) the version waited and recorded its instant after the approval's hold |
+| Corrected on 0105 / before on 0106 (cross-checks) | — | 1 failed each way (ES9 only) |
+
+- An earlier run's ES8 timed out behind a hold that ES9 left open on failure. ES9 now releases every hold in `finally`.
+
+**Limits.**
+- The interleavings are at statement granularity: a mutation is held before its commit, and an approval before its contract read.
+- Interleavings inside a single statement are not driven; the lock makes them moot, because the reads follow the lock.
+- Only READ COMMITTED (the database's setting) is proven.
+- The estimator's selection is read by its PINNED (immutable) version, so it needs no lock.
+- Proposal-time checks are not serialized, by design: a proposal pinned during a mutation is re-checked at approval.
+
 ## B91 — usage metering, the cost ledger, entitlements and licensing (0105): F-P7-F-01 and F-P7-F-02 advanced, B90's usage-counter carryover delivered. Implemented and demonstrated on NORDWERK; both features complete at later stages (B112 and B104), each residual carried.
 
 ### B91.1 — how it was built
@@ -6001,9 +6037,7 @@ The residual construction comes to about 0.8–1.6 U, with R2 apart. Moving the 
   - `identity.self.read` admits the vendor.
 - **tenant_admin could not acknowledge** the items routed to it. It now holds `executive.attention.item.acknowledge` at TENANT.
 
-**Recorded, not changed:**
-- §ME's and §LE's usage notices follow the `sio_notify` idiom: material, routed to the named owner and tenant_admin whatever the policy says.
-- §GR's entitlement notices are evaluated against the published policy.
+**Corrected by B91-F (0107, §B91.7):** §ME's and §LE's usage notices followed the `sio_notify` idiom — material, open to the named owner and tenant_admin whatever the policy said — while §GR's entitlement notices were evaluated against the published policy. Since 0107 both are evaluated against the published policy.
 
 ### B91.3 — the evidence
 - **Harnesses (fresh database):**
@@ -6097,12 +6131,41 @@ Carrier: B102 (token counts at the gateway). Rows: 1/2/12 → 2/12/1.
 **A correction to §B30.8.** Its line "the tracker, the schedule, the summaries and the controls pass" was not true at `de9db6a`. The schedule write had moved 96 features' target dates and owners, and the tracker was not written again after it, so `feature-tracker.mjs` reported them out of step. B91's re-derivation (write → schedule write → write) corrected them forward. No figure §B30.8 states changed.
 
 ### B91.6 — the records
-- MIGRATION_LEDGER: the 0105 row.
+- MIGRATION_LEDGER: the 0105, 0106 and 0107 rows.
 - PHASE6_REPORT §49.
 - The runbook §21.
 - DELIVERY_PLAN's residual table.
 - INTEGRATION_SEQUENCE (#79 and this candidate).
 - The tracker, STAGES, the schedule and the summaries.
+
+### B91.7 — the usage notices routed by the policy (0107, B91-F; the bounded review of 2026-10-06)
+
+**The finding.** 0105 raised the meters' cap notices (`cme_notify`) and the ledger's budget notices (`cle_notify`) as `material` with `policy_version` NULL, open to the named owner and tenant_admin whatever the published policy said. The governing rows route a change to accountable roles:
+- "based on consequence, confidence, urgency, and attention policy" (L10-I02);
+- "respecting relevance, authority, attention, and notification policy" (C-032);
+- enforcing "materiality and notification policy" (V04-T-037).
+
+No row makes a budget, cap or usage notice a mandatory bypass. ADR-022's mandatory controls are the warnings and their acknowledgement, not commercial notices.
+
+**The correction: 0107.**
+- Both functions are re-declared, copied from 0105 with the routing lines replaced and marked `-- 0107`.
+- Each notice is evaluated by `executive.evaluate_attention` against the domain's ACTIVE policy (C2, confidence 1, a 24-hour window) and routed by `executive.attention_route` — the B22 contract (0083) every routed class uses.
+- The named owner is kept; the route roles are the policy's.
+- A class the policy does not name ABSTAINS and the item is DEPRIORITIZED (listed, never hidden).
+- A material item with no active owner and no role holder is UNROUTED (or ESCALATED where the policy escalates).
+- The policy id and version and the raising part's reasons are recorded.
+- 0105 is untouched. Items raised before 0107, including the demonstration's, keep their recorded routing.
+
+**The proof:**
+- **Meters (M2 and M6):**
+  - routed open under the published policy, with its version;
+  - deprioritized (`abstained`, no roles, `item.deprioritized`) under a policy without the class;
+  - unrouted with roles nobody holds and no active owner;
+  - recovered.
+- **Ledger (L3 and L8):** the real threshold item routed under the policy; the deprioritized, unrouted and recovered outcomes.
+- **The stand-in:** the unrouted and deprioritized ledger cases, and the meters' unrouted case, call the notice port directly as the superuser with a harness budget or cap row. A threshold and a crossing raise once per version and period, so they cannot be raised again on demand.
+- **Before and after:** through 0107 (fresh database), meters **18/18** and ledger **24/24**. Without 0107, on a database through 0106, the routing assertions fail: meters 6 (M2's policy assertions and M6, with cascades) and ledger 4 (L3's policy assertions and L8).
+- The act's wording is corrected: every commercial notice is policy-evaluated.
 
 ## Order and the next implementation batch
 

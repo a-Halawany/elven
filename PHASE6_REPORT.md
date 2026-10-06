@@ -4628,3 +4628,14 @@ The mechanism is in `audit/CP6_BATCHES.md` §B27. There is one migration, `0097_
 - token counts.
 
 **Inference on this deployment** is a real gateway call in replay mode, with no external provider. Both features complete later: F-P7-F-01 at B112, F-P7-F-02 at B104 (§B91.5).
+
+### 49.4 The bounded review of 2026-10-06: two forward corrections on #80 (0106, 0107)
+- **0106 (B30-F concurrency).** 0104's approval re-checks read the constraint contract without any lock shared with its mutations. An approval racing an in-flight version, declaration or retirement committed on the old contract: the race was reproduced through 0105 by `phase6-estimation-b30` ES9, at 9/9. One advisory lock per (tenant, domain) contract now serializes them:
+  - the approval takes it shared, the mutations exclusive, before any read;
+  - a mutation's instant is taken after the lock;
+  - the approval waits and is refused (contract, 409) with nothing admitted, then recovered by a fresh proposal: 9/9 through 0106.
+  - The cross-checks fail each way. The reverse order uses one stated stand-in: a raw session holding the approval's shared lock. §B30.9 records the full proof and its limits.
+- **0107 (B91-F).** The meters' and the ledger's `commercial.usage` notices had bypassed the published attention policy (the sio_notify idiom). The governing rows (L10-I02, C-032, V04-T-037) route by the policy, and none makes these notices mandatory, so they are now evaluated and routed by the policy:
+  - routed under it, deprioritized when it does not name the class, unrouted with nobody to route to;
+  - meters 18/18 and ledger 24/24 through 0107, against 6 and 4 failures without it (§B91.7).
+- 0104 and 0105 are applied and frozen and are not edited. Items raised before 0107 keep their recorded routing.

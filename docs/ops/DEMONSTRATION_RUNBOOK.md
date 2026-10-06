@@ -660,6 +660,10 @@ so its queues must never share the demonstration's Redis — and an APFS clone o
   - While the licence is in GRACE, new work in every licensed capability is refused (only running work may finish; only the attention tick is exempt). `--restore` issues the full licence (v2, no term end) and raises the compute cap to warn.
   - After `--restore`, every later act on NORDWERK works as before; act-b30 holds after it.
   - Re-running the scenes after `--restore` holds: they read their records.
+- **0106 and 0107 (2026-10-06).**
+  - An estimate's approval and the constraint contract's mutations now serialize on one lock (0106).
+  - The `commercial.usage` notices are routed by the domain's PUBLISHED attention policy (0107). NORDWERK's policy v9 (B91-A) already names the class: tenant_admin and executive.
+  - The usage items staged before 0107 keep their recorded routing.
 - **NORDWERK is CONTRACTED from now on.** A licence row turns the gate on for good. A later stage that adds a licensable capability must add it to the licence (a new version through the vendor's issue route), or its writes are refused with `EYE-ENT-001`.
 - **The rehearsal rig.**
   - Restore the newest `eye_demo-pre-0105-*.dump` (or `-pre-0104-*`) into **`eye_demo_b91`** and migrate it.
