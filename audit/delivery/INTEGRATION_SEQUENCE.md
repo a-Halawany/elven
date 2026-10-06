@@ -161,7 +161,10 @@ Between two merges the first merge's `main` chain completes before the next merg
 - **#80** (B91 0105, with the bounded review's 0106 and 0107, the C15 pins and the planner-case binding).
   - Code-final head `6899418`: ci 37460948062 and C19 lifecycle 37460948264, every check green (§B91.3).
   - Earlier failed attempts are kept in §B91.3: `baf7a30` supply-chain, `8b478fc` build-test.
-  - Merged on its verified records head after main's chain for `97d87ed` had completed. The merge and its main chain are recorded with B25.
+  - Merged on its verified records head after main's chain for `97d87ed` had completed.
+  - **Records head `30123d4`:** ci 37466491775 and C19 lifecycle 37466491772, every check green.
+  - **Merged as `f110f73`** (2026-10-06) under the standing authorization.
+  - **Main's chain for `f110f73`:** ci 37474894526 → C19 lifecycle 37474894370 → C17 finalize 37481319926 → C19 anchor 37481467169 (created after the finalize), all succeeded.
 
 ## 3. What is never done in this sequence
 
