@@ -4608,7 +4608,17 @@ The mechanism is in `audit/CP6_BATCHES.md` §B27. There is one migration, `0097_
   - the four walks 15/15, with eighteen screenshots;
   - `--restore` HELD, act-b30 after it HELD, and the earlier walks 63/63.
 - **Local gates at `0b7695b`** (with 0106 and 0107; the bounded review of 2026-10-06): integration 1954/1954 (fresh database), API unit 3252 + 9, web 259, acceptance 58, upgrade PASS, boundaries clean, browser 93/93.
-- **Hosted:** «HOSTED».
+- **Hosted:** **Hosted, on the code-final head `6899418`** — the B91 code, 0106, 0107, the C15 pins and the planner-case binding; every later commit on #80 is records only:
+  - **ci 37460948062: success.**
+    - build-test job 112260067526: integration **1954/1954**, API unit **3252** + **9**, web **259**, acceptance **58**, contracts 203, tokens 3; its later steps passed 623 and 44.
+    - supply-chain job 112260067289: `pnpm-audit-human` ok, `trivy-fs` ok; the development closure stays 313.
+    - browser-regression job 112260067393.
+  - **C19 lifecycle 37460948264: success:** lifecycle (ubuntu-latest) 112260068186, lifecycle (macos-14) 112260068342, delivery-chain-dry 112260068137, foreign-checkout-pinning 112260067970.
+  - **The earlier attempts, kept:**
+    - `c97d3c9`: ci 37205396680 and C19 37205396678 green, before the review's corrections;
+    - `baf7a30`: ci 37446394135 supply-chain FAILED on the two new advisories;
+    - `8b478fc`: ci 37449116459 build-test FAILED at 1953/1954, the planner case (above).
+  - The records-only head that carries this text is verified by its own required checks before the merge. Its results, the merge and main's chain are recorded in the next delivery record (B25), not here, so there is no records-only commit loop..
 
 ### 49.3 What it found, and what it does not close
 **Found by the integration and corrected before 0105 was frozen:**

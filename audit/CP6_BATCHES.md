@@ -6073,7 +6073,17 @@ The residual construction comes to about 0.8–1.6 U, with R2 apart. Moving the 
   - **The cause** (source inspection): the case waited on a COUNT of terminal scheduler runs, then asserted on the NEWEST scheduler run. The first tick of an `every` scheduler and the promoted delayed tick can overlap — the case's own comment anticipates it — so the newest run could be the overlapping one, still running. A test defect, not a runtime one: overlapping ticks of a room are the scheduler's anticipated behaviour.
   - **The correction:** the wait and every assertion bind to ONE identified run — the first scheduler-triggered run of the agent that STARTED after the schedule was created (the database's instant) and reached a terminal outcome — re-read by its `run_id`. The case still requires that the run `finished`, carries the scheduler trigger (no principal, a trigger ref) and produced a briefing. Cleanup (unschedule, and a bounded drain of any overlapping tick) runs in `finally`.
   - **Local:** `phase6-agents` 9/9, five times, each on a fresh database. Limit: the overlap did not occur locally (one scheduler run each time), so the binding covers it by construction, not by a local reproduction.
-- **Hosted:** «HOSTED».
+- **Hosted:** **Hosted, on the code-final head `6899418`** — the B91 code, 0106, 0107, the C15 pins and the planner-case binding; every later commit on #80 is records only:
+  - **ci 37460948062: success.**
+    - build-test job 112260067526: integration **1954/1954**, API unit **3252** + **9**, web **259**, acceptance **58**, contracts 203, tokens 3; its later steps passed 623 and 44.
+    - supply-chain job 112260067289: `pnpm-audit-human` ok, `trivy-fs` ok; the development closure stays 313.
+    - browser-regression job 112260067393.
+  - **C19 lifecycle 37460948264: success:** lifecycle (ubuntu-latest) 112260068186, lifecycle (macos-14) 112260068342, delivery-chain-dry 112260068137, foreign-checkout-pinning 112260067970.
+  - **The earlier attempts, kept:**
+    - `c97d3c9`: ci 37205396680 and C19 37205396678 green, before the review's corrections;
+    - `baf7a30`: ci 37446394135 supply-chain FAILED on the two new advisories;
+    - `8b478fc`: ci 37449116459 build-test FAILED at 1953/1954, the planner case (above).
+  - The records-only head that carries this text is verified by its own required checks before the merge. Its results, the merge and main's chain are recorded in the next delivery record (B25), not here, so there is no records-only commit loop..
 
 ### B91.4 — the scenes as staged
 **F-P7-F-02.** While NORDWERK was still uncontracted:
