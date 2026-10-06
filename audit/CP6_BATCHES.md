@@ -6064,6 +6064,11 @@ The residual construction comes to about 0.8–1.6 U, with R2 apart. Moving the 
   - the earlier walks (B90, B27, B31, B35, B30) 63/63 against the restored demonstration. One walk-only collision was fixed: B91's experiment title on the same line contains B30's.
 - **The rehearsal** (eye_demo_b91 on :3411; `evidence/cp6/act-b91-rehearsal.txt`) preceded the demonstration.
 - **Local gates at `0b7695b`** (with 0106 and 0107; the bounded review of 2026-10-06): integration 1954/1954 (fresh database), API unit 3252 + 9, web 259, acceptance 58, upgrade PASS, boundaries clean, browser 93/93.
+- **C15 on #80 at `baf7a30`** (ci 37446394135, 2026-10-06): `pnpm-audit-human` and `trivy-fs` FAILED on two advisories published after #80's 2026-10-04 green run; the lockfile was unchanged and main carries the same versions.
+  - proxy-addr <2.0.8: GHSA-jqcg-44mw-7w3h, CRITICAL, reached through express under @nestjs/platform-express.
+  - source-map-js <1.2.2: GHSA-68fv-2mgg-jv7q, HIGH, reached through postcss (vite, next).
+  - **Corrected forward** by two EXACT reviewed overrides in `pnpm-workspace.yaml` (`proxy-addr: 2.0.8`, `source-map-js: 1.2.2`; the first patched versions, on their consumers' lines). Both have the same dependencies as the versions they replace, so C17's measured development closure stays 313 — version swaps, like the next 16.3.3 → 16.3.6 precedent.
+  - **Local, after the pins:** `pnpm audit` reports no known vulnerabilities; build ok; API unit 3252 + 9; web 259. trivy-fs is confirmed by the hosted run, since no pinned trivy is on this host.
 - **Hosted:** «HOSTED».
 
 ### B91.4 — the scenes as staged
