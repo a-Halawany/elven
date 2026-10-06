@@ -13,8 +13,8 @@
 --   §MR.3  the builtins (the two legacy methods, approved, read THROUGH the registry) and the effective registry read.
 --   §MR.4  the ports: propose / decide / retire / quarantine / reinstate a method; declare / decide a target; publish / concur a horizon
 --          policy; record a validation (and its prediction.backtests row — the record a validation claim names).
---   §MR.5  ROUTING: the plan (an invoker read) and the two ports of the routed issue (record the route — the governed refusal ledgered as
---          forecast.horizon_refused —, bind the issued forecast — forecast.routed).
+--   §MR.5  ROUTING: the plan (an invoker read) and the three ports of the routed issue (record the route — the governed refusal ledgered as
+--          forecast.horizon_refused —, refuse it after planning — a failed or data-refused method —, bind the issued forecast — forecast.routed).
 --   §MR.6  ENFORCEMENT on the forecast row: pmr_fct_routed (BEFORE INSERT) — a forecast that names a method_ref names an APPROVED method of
 --          the domain's registry for its kind and horizon; one that names a horizon policy obeys it (family allowed, scenario language where
 --          the policy says so, a passed validation where the policy requires one). DEFAULT-OFF: a legacy issue names no method_ref.
@@ -301,8 +301,8 @@ CREATE INDEX pmr_mv_lookup ON prediction.method_validations (tenant_id, domain_i
 CREATE TRIGGER append_only BEFORE UPDATE OR DELETE ON prediction.method_validations FOR EACH ROW EXECUTE FUNCTION public.raise_append_only();
 
 /* THE ROUTES: every routed request's plan as the policy and the registry resolved it at the time — planned, then issued (bound to the
-   forecast), or REFUSED with the governed refusal. The plan is recomputed by the port, never taken from the caller. Only the ports write;
-   the one transition is planned → issued. */
+   forecast), or REFUSED with the governed refusal (at planning; or after it, when the planned method failed or the data refused it). The
+   plan is recomputed by the port, never taken from the caller. Only the ports write; the one transition is planned → issued | refused. */
 CREATE TABLE prediction.forecast_routes (
   route_id          uuid PRIMARY KEY,
   scope             text NOT NULL,
@@ -335,9 +335,9 @@ CREATE OR REPLACE FUNCTION prediction.pmr_routes_guard() RETURNS trigger
 SET search_path = prediction, public, pg_catalog, pg_temp AS $$
 BEGIN
   IF TG_OP = 'DELETE' THEN RAISE EXCEPTION 'forecast route rejected (state): a route is never deleted' USING ERRCODE = '2F002'; END IF;
-  IF OLD.outcome <> 'planned' OR NEW.outcome <> 'issued' OR NEW.route_id <> OLD.route_id OR NEW.plan <> OLD.plan OR NEW.forecast_id <> OLD.forecast_id
+  IF OLD.outcome <> 'planned' OR NEW.outcome NOT IN ('issued', 'refused') OR NEW.route_id <> OLD.route_id OR NEW.plan <> OLD.plan OR NEW.forecast_id <> OLD.forecast_id
      OR NEW.tenant_id <> OLD.tenant_id OR NEW.domain_id <> OLD.domain_id OR NEW.horizon_code <> OLD.horizon_code THEN
-    RAISE EXCEPTION 'forecast route rejected (state): a route moves once, planned → issued, and nothing else of it changes' USING ERRCODE = '2F002';
+    RAISE EXCEPTION 'forecast route rejected (state): a route moves once, planned → issued or refused, and nothing else of it changes' USING ERRCODE = '2F002';
   END IF;
   RETURN NEW;
 END $$ LANGUAGE plpgsql;
@@ -1014,15 +1014,18 @@ BEGIN
         v_reason := m.state || coalesce(': ' || m.state_reason, ''); v_only_validation := false;
       ELSIF EXISTS (SELECT 1 FROM prediction.effective_forecast_methods(p_tenant, p_domain) h WHERE h.method_key = m.method_key AND h.version > m.version AND h.state = 'approved') THEN
         v_avail := false; v_reason := 'superseded by a later approved version of ' || m.method_key; v_only_validation := false;
-      ELSIF v_req THEN
+      ELSE
+        -- the latest PASSED validation that applies (this method, series, horizon and kind; known by the cut-off; history ending by it) — the
+        -- policy's minimum and modes when it requires one, any otherwise (a validation earned is claimed even where none is required)
         SELECT * INTO v_found FROM prediction.method_validations x
          WHERE x.tenant_id = p_tenant AND x.domain_id = p_domain AND x.method_ref = m.method_ref AND x.series_key = v_series AND x.horizon_code = p_horizon
-           AND x.kind = v_vkind AND x.mode = ANY (v_modes) AND x.passed AND x.origins >= v_min AND x.known_at <= p_known_at AND x.window_to <= coalesce(p_cutoff, p_known_at::date)
+           AND x.kind = coalesce(v_vkind, CASE v_kind WHEN 'event' THEN 'event_backtest' ELSE 'quantity_rolling_origin' END)
+           AND (NOT v_req OR (x.mode = ANY (v_modes) AND x.origins >= v_min)) AND x.passed AND x.known_at <= p_known_at AND x.window_to <= coalesce(p_cutoff, p_known_at::date)
          ORDER BY x.computed_at DESC LIMIT 1;
         IF FOUND THEN
-          v_val := jsonb_build_object('required', true, 'validation_id', v_found.validation_id, 'backtest_id', v_found.backtest_id, 'mode', v_found.mode, 'origins', v_found.origins,
+          v_val := jsonb_build_object('required', v_req, 'validation_id', v_found.validation_id, 'backtest_id', v_found.backtest_id, 'mode', v_found.mode, 'origins', v_found.origins,
                                       'passed', true, 'synthetic', v_found.synthetic, 'verdict', v_found.verdict, 'window_from', v_found.window_from, 'window_to', v_found.window_to);
-        ELSE
+        ELSIF v_req THEN
           SELECT * INTO v_last FROM prediction.method_validations x
            WHERE x.tenant_id = p_tenant AND x.domain_id = p_domain AND x.method_ref = m.method_ref AND x.series_key = v_series AND x.horizon_code = p_horizon AND x.kind = v_vkind
            ORDER BY x.computed_at DESC LIMIT 1;
@@ -1095,6 +1098,35 @@ BEGIN
 END $$ LANGUAGE plpgsql;
 REVOKE ALL ON FUNCTION prediction.record_forecast_route(uuid,uuid,uuid,text,text,text,timestamptz,date,uuid,uuid,uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION prediction.record_forecast_route(uuid,uuid,uuid,text,text,text,timestamptz,date,uuid,uuid,uuid) TO eye_commit;
+
+/* REFUSE A PLANNED ROUTE after planning: the planned method FAILED (the issue quarantined it) or the history refused it (too short, an
+   intervention outside it, infeasible constraints) — route.refused in the registry ledger; `forecast.horizon_refused` on the would-be
+   forecast's id when the refusal is the horizon's. */
+CREATE OR REPLACE FUNCTION prediction.refuse_forecast_route(p_route_id uuid, p_tenant uuid, p_domain uuid, p_refusal text, p_class text, p_actor uuid, p_correlation uuid) RETURNS jsonb
+SECURITY DEFINER SET search_path = prediction, identity, observation, ctx, public, pg_catalog, pg_temp AS $$
+DECLARE r prediction.forecast_routes%ROWTYPE;
+BEGIN
+  PERFORM observation.assert_authority(ARRAY['prediction.portfolio.issue', 'prediction.ensemble.issue']);
+  PERFORM observation.assert_scope(p_tenant, p_domain);
+  IF p_actor IS DISTINCT FROM public.eye_principal() THEN RAISE EXCEPTION 'forecast rejected (actor): a route is refused by the acting principal' USING ERRCODE = '42501'; END IF;
+  IF p_refusal IS NULL OR p_refusal !~ '^forecast rejected \([a-z_]+\): ' OR p_class IS NULL THEN
+    RAISE EXCEPTION 'forecast rejected (request): a route''s refusal is a governed refusal text (forecast rejected (<class>): …) with its class' USING ERRCODE = '22023';
+  END IF;
+  SELECT * INTO r FROM prediction.forecast_routes x WHERE x.route_id = p_route_id AND x.tenant_id = p_tenant AND x.domain_id = p_domain FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'forecast rejected (unknown_route): % is not a route of this domain', p_route_id USING ERRCODE = '23503'; END IF;
+  IF r.outcome <> 'planned' THEN RAISE EXCEPTION 'forecast rejected (state): route % is %, not planned', p_route_id, r.outcome USING ERRCODE = '23514'; END IF;
+  UPDATE prediction.forecast_routes SET outcome = 'refused', refusal = p_refusal, refusal_class = p_class WHERE route_id = r.route_id RETURNING * INTO r;
+  PERFORM prediction.pmr_event(p_tenant, p_domain, 'route', r.route_id, coalesce(r.target_key, r.series_key) || ' ' || r.horizon_code, 'route.refused', p_actor,
+    jsonb_build_object('refusal', p_refusal, 'class', p_class, 'after_planning', true), p_correlation);
+  IF p_class = 'horizon' THEN
+    INSERT INTO prediction.forecast_events (event_id, scope, tenant_id, domain_id, forecast_id, event, actor_principal_id, details, correlation_id)
+    VALUES (gen_random_uuid(), 'DOMAIN', p_tenant, p_domain, r.forecast_id, 'forecast.horizon_refused', p_actor,
+      jsonb_build_object('route_id', r.route_id, 'refusal', p_refusal, 'class', p_class, 'target_key', r.target_key, 'series_key', r.series_key, 'horizon', r.horizon_code, 'issued', false), p_correlation);
+  END IF;
+  RETURN to_jsonb(r) - 'tenant_id' - 'domain_id' - 'scope' - 'correlation_id';
+END $$ LANGUAGE plpgsql;
+REVOKE ALL ON FUNCTION prediction.refuse_forecast_route(uuid,uuid,uuid,text,text,uuid,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION prediction.refuse_forecast_route(uuid,uuid,uuid,text,text,uuid,uuid) TO eye_commit;
 
 /* BIND THE ROUTE to the forecast it issued: the forecast exists, is the route's minted id and names an AVAILABLE method of the plan;
    route.issued in the registry ledger and `forecast.routed` on the forecast (the policy, the method chosen, the plan's other methods). */
