@@ -1085,14 +1085,14 @@ BEGIN
   IF v_plan ->> 'refusal' IS NULL THEN
     PERFORM prediction.pmr_event(p_tenant, p_domain, 'route', p_route_id, coalesce(p_target_key, v_plan ->> 'series_key') || ' ' || p_horizon, 'route.planned', p_actor,
       jsonb_build_object('methods', (SELECT jsonb_agg(jsonb_build_object('method_ref', x ->> 'method_ref', 'available', x -> 'available')) FROM jsonb_array_elements(v_plan -> 'methods') x),
-                         'policy', v_plan -> 'policy' - 'rule' - 'kind_rule'), p_correlation);
+                         'policy', (v_plan -> 'policy') - 'rule' - 'kind_rule'), p_correlation);
   ELSE
     PERFORM prediction.pmr_event(p_tenant, p_domain, 'route', p_route_id, coalesce(p_target_key, v_plan ->> 'series_key') || ' ' || p_horizon, 'route.refused', p_actor,
       jsonb_build_object('refusal', v_plan ->> 'refusal', 'class', v_plan ->> 'refusal_class'), p_correlation);
     INSERT INTO prediction.forecast_events (event_id, scope, tenant_id, domain_id, forecast_id, event, actor_principal_id, details, correlation_id)
     VALUES (gen_random_uuid(), 'DOMAIN', p_tenant, p_domain, p_forecast_id, 'forecast.horizon_refused', p_actor,
       jsonb_build_object('route_id', p_route_id, 'refusal', v_plan ->> 'refusal', 'class', v_plan ->> 'refusal_class', 'target_key', p_target_key, 'series_key', v_plan ->> 'series_key',
-                         'horizon', p_horizon, 'forecast_kind', v_plan ->> 'forecast_kind', 'policy', v_plan -> 'policy' - 'rule' - 'kind_rule', 'issued', false), p_correlation);
+                         'horizon', p_horizon, 'forecast_kind', v_plan ->> 'forecast_kind', 'policy', (v_plan -> 'policy') - 'rule' - 'kind_rule', 'issued', false), p_correlation);
   END IF;
   RETURN v_plan || jsonb_build_object('route_id', p_route_id);
 END $$ LANGUAGE plpgsql;
@@ -1151,7 +1151,7 @@ BEGIN
   INSERT INTO prediction.forecast_events (event_id, scope, tenant_id, domain_id, forecast_id, event, actor_principal_id, details, correlation_id)
   VALUES (gen_random_uuid(), 'DOMAIN', p_tenant, p_domain, r.forecast_id, 'forecast.routed', p_actor,
     jsonb_build_object('route_id', r.route_id, 'method_ref', f.method_ref, 'forecast_kind', f.forecast_kind, 'validation_state', f.validation_state, 'confidence_language', r.plan ->> 'confidence_language',
-                       'policy', r.plan -> 'policy' - 'rule' - 'kind_rule',
+                       'policy', (r.plan -> 'policy') - 'rule' - 'kind_rule',
                        'planned', (SELECT jsonb_agg(jsonb_build_object('method_ref', x ->> 'method_ref', 'family', x ->> 'family', 'available', x -> 'available', 'reason', x -> 'unavailable_reason')) FROM jsonb_array_elements(r.plan -> 'methods') x)),
     p_correlation);
   RETURN to_jsonb(r) - 'tenant_id' - 'domain_id' - 'scope' - 'correlation_id';
