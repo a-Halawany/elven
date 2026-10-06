@@ -178,6 +178,7 @@ export class PredictionController {
       total: assembled.points.length, points: assembled.points.slice(-limit),
       evidence: assembled.evidence.length, freshestRecordedAt: assembled.freshestRecordedAt,
       complete: assembled.complete, unreadable: assembled.unreadable, controls: assembled.controls,
+      supersededUnreadable: assembled.supersededUnreadable,   // B25 act-found: unreadable fragments a later version serves on their day (disclosed, not counted)
       note: (assembled.attribution === null ? '' : `${assembled.attribution} Shown as published; the statistics are not modified.`) + unreadableNote || null,
     };
   }
