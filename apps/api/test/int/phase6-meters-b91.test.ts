@@ -131,9 +131,14 @@ const catchUp = (as: AuthenticatedPrincipal, id: string, payload: Row = {}) => e
 const usage = async (dimension: string, sourceKind: string | null = null) => rows(sql`select usage_id::text, domain_id::text, capability_key, unit, quantity::numeric as quantity, profile, source_kind, source_ref, details
   from commercial.usage_records where tenant_id = ${T()}::uuid and dimension = ${dimension} and (${sourceKind}::text is null or source_kind = ${sourceKind}) order by occurred_at, recorded_at, usage_id`);
 const usedToday = async (dimension: string, unit: string): Promise<number> => Number((await rows(sql`select commercial.cme_used(${T()}::uuid, null, ${dimension}, ${unit}, commercial.cme_period_start('day', clock_timestamp())) as n`))[0]!['n']);
+/** 0107: commercial.usage is routed under the domain's PUBLISHED attention policy — the harness's executive publishes it (the class to the tenant administrator). */
+const USAGE_RULE = { materiality: { min_consequence: 'C2', min_confidence: 0.5 }, route_roles: ['tenant_admin'], ack_within_minutes: 1440 };
+const WARNING_RULE = { materiality: { min_consequence: 'C2', min_confidence: 0.4 }, route_roles: ['forecast_owner'], ack_within_minutes: 60, escalate_to_roles: ['executive'], max_escalations: 2, suppression: { allowed: true, max_hours: 12 }, notify: 'in_app' };
+const publishPolicy = async (reason: string, classes: Row) => w.exec.publishAttentionPolicy(h.req(execOwner, 'executive.attention.policy.publish', 'ATP', null, 'executive'), T(), D(), { payload: { reason, rules: { classes } } } as never);
+const activePolicyVersion = async () => Number(((await rows(sql`select version from executive.attention_policies where tenant_id = ${T()}::uuid and domain_id = ${D()}::uuid and state = 'active'`))[0] as Row | undefined)?.['version'] ?? 0);
 const breaches = async (capId: string) => rows(sql`select breach_id::text, kind, action, subject_kind, subject_id::text, used::numeric as used, cap_limit::numeric as cap_limit, cap_version, details
   from commercial.cap_breaches where tenant_id = ${T()}::uuid and cap_id = ${capId}::uuid order by occurred_at, breach_id`);
-const meterItems = async (capId: string) => rows(sql`select item_id::text, signal_class, subject_kind, owner_principal_id::text as owner, route_roles, state, title, cause_event_type, details
+const meterItems = async (capId: string) => rows(sql`select item_id::text, signal_class, subject_kind, owner_principal_id::text as owner, route_roles, state, outcome, policy_version, title, cause_event_type, details
   from executive.attention_items where tenant_id = ${T()}::uuid and signal_class = 'commercial.usage' and subject_id = ${capId}::uuid order by created_at`);
 const expEvents = async (id: string) => rows(sql`select event, details from simulation.experiment_events where experiment_id = ${id}::uuid order by occurred_at, event_id`);
 const consumerUsage = async (productId: string, principalId: string) => obj((await rows(sql`select usage from products.product_consumers where product_id = ${productId}::uuid and consumer_principal_id = ${principalId}::uuid and state in ('registered', 'accepted')`))[0]?.['usage']);
@@ -300,6 +305,7 @@ describe('B91 meters · M1 the recording points (usage_records only; idempotent)
 
 describe('B91 meters · M2 caps (tenant/domain × dimension × period, stop|warn, within the licence)', () => {
   it('M2 · POSITIVE: UNCONTRACTED — a cap bounded by nothing but itself; a licence bounds the next; the model_inference WARN cap crossed once per period (commercial.usage to the administrator)', async () => {
+    await publishPolicy('the commercial usage notices routed to the tenant administrator (B91 meters harness; 0107)', { 'commercial.usage': USAGE_RULE });
     const big = await setCap({ dimension: 'source_consumption', unit: 'bytes', period: 'month', limit: 1e15, action: 'warn', reason: 'the source egress watched for the month (SYNTHETIC)' });
     expect(big).toMatchObject({ version: 1, scope: 'TENANT', dimension: 'source_consumption', unit: 'bytes', action: 'warn', state: 'active', licence: null, reached: false });
     expect(String(big['licence_bound'])).toMatch(/^uncontracted: no licence limit applies; the cap is bounded by nothing but itself/);
@@ -321,7 +327,7 @@ describe('B91 meters · M2 caps (tenant/domain × dimension × period, stop|warn
     expect(Number(b[0]!['used'])).toBe(2);
     const it1 = await meterItems(MI_CAP);
     expect(it1).toHaveLength(1);
-    expect(it1[0]).toMatchObject({ signal_class: 'commercial.usage', subject_kind: 'meter', owner: tenantAdmin.principalId, route_roles: ['tenant_admin'], state: 'open', cause_event_type: 'usage.cap_crossed' });
+    expect(it1[0]).toMatchObject({ signal_class: 'commercial.usage', subject_kind: 'meter', owner: tenantAdmin.principalId, route_roles: ['tenant_admin'], state: 'open', outcome: 'material', policy_version: await activePolicyVersion(), cause_event_type: 'usage.cap_crossed' });
     expect(String(it1[0]!['title'])).toMatch(/^Usage cap reached: model_inference 2 calls of 2 this day \(a warning; nothing is stopped\)/);
     // a third call: metered (a warn cap stops nothing), no second crossing in the period
     await gatewayCall(70);
@@ -380,8 +386,7 @@ describe('B91 meters · M4 B90\'s carryover: the consumer register\'s usage coun
     expect(pc[0]).toMatchObject({ unit: 'servings', source_ref: String(s1['serving_id']), capability_key: 'advanced_integration' });
     expect(obj(pc[0]!['details'])).toMatchObject({ product_id: P_MET, consumer_principal_id: analyst.principalId, view: 'analyst' });
     // THE EVENT PRODUCT: the corridor warning stream, the analyst subscribed (authorized by the owner) and registered as its consumer
-    await w.exec.publishAttentionPolicy(h.req(execOwner, 'executive.attention.policy.publish', 'ATP', null, 'executive'), T(), D(), { payload: { reason: 'the corridor warnings routed to the forecast owner (B91 meters harness)', rules: { classes: {
-      'warning.raised': { materiality: { min_consequence: 'C2', min_confidence: 0.4 }, route_roles: ['forecast_owner'], ack_within_minutes: 60, escalate_to_roles: ['executive'], max_escalations: 2, suppression: { allowed: true, max_hours: 12 }, notify: 'in_app' } } } } as never });
+    await publishPolicy('the corridor warnings routed to the forecast owner, the commercial usage notices kept (B91 meters harness)', { 'warning.raised': WARNING_RULE, 'commercial.usage': USAGE_RULE });
     P_EVT = await releasedProduct('b91-corridor-' + 'warnings', 'Corridor warnings (SYNTHETIC)', 'event', async (id) => declareEvent(owner, id, EVENT_DECL), ['event']);
     const ec = (await regConsumer(analyst, P_EVT, { purpose: 'procurement reads the corridor warnings to re-route orders', impact: 'purchase orders are not re-routed when the stream breaks' })).consumer;
     await acceptConsumer(analyst, P_EVT, String(ec['consumer_id']), 1);
@@ -546,4 +551,39 @@ describe('B91 meters · M5 the reads and the boundary', () => {
     expect((await rows(sql`select count(*)::int n from simulation.experiments where tenant_id = ${T()}::uuid`))[0]!['n']).toBe(1);
     expect((await rows(sql`select count(*)::int n from products.event_subscriptions where tenant_id = ${T()}::uuid`))[0]!['n']).toBe(1);
   }, 120_000);
+});
+
+/* 0107 (B91-F): the commercial.usage notice is ROUTED UNDER THE PUBLISHED POLICY (L10-I02, C-032, V04-T-037) — not open "whatever the
+   policy says" (0105's sio_notify idiom). Last in the file: it changes the domain's policy and restores it. */
+describe('B91 meters · M6 THE NOTICE UNDER THE PUBLISHED POLICY (0107)', () => {
+  it('M6 · REFUSAL of the bypass: a policy that does not name commercial.usage — the next crossing ABSTAINS and the item is DEPRIORITIZED (listed, routed to nobody), the policy version recorded', async () => {
+    await publishPolicy('the commercial usage class left out (B91 meters harness, 0107)', { 'warning.raised': WARNING_RULE });
+    const pv = await activePolicyVersion();
+    const used = await usedToday('model_inference', 'calls');
+    const c = await setCap({ dimension: 'model_inference', period: 'month', limit: used + 1, action: 'warn', reason: 'inference watched for the month under a policy without the class (SYNTHETIC)' });
+    await gatewayCall(40);
+    const it = await meterItems(String(c['cap_id']));
+    expect(it).toHaveLength(1);
+    expect(it[0]).toMatchObject({ state: 'deprioritized', outcome: 'abstained', route_roles: [], policy_version: pv, owner: tenantAdmin.principalId });
+    const ev = await rows(sql`select event from executive.attention_item_events where item_id = ${String(it[0]!['item_id'])}::uuid order by occurred_at`);
+    expect(ev.map((e) => e['event'])).toEqual(['item.deprioritized']);
+  });
+  it('M6 · UNROUTED: the class named with roles nobody holds and no active owner — the item is UNROUTED, never issued as actionable to nobody (the cap row\'s setter replaced by an unknown principal, a stated superuser call of the notice port)', async () => {
+    await publishPolicy('the commercial usage class routed to a role nobody holds (B91 meters harness, 0107)', { 'warning.raised': WARNING_RULE, 'commercial.usage': { ...USAGE_RULE, route_roles: ['board_member'] } });
+    const cap = String((await rows(sql`select cap_id::text from commercial.caps where tenant_id = ${T()}::uuid and dimension = 'model_inference' and period = 'month' and state = 'active'`))[0]!['cap_id']);
+    const nobody = uuidv7(); const corr = uuidv7();
+    await sql.raw(`DO $do$ DECLARE c commercial.caps; BEGIN SELECT * INTO c FROM commercial.caps WHERE cap_id = '${cap}' AND state = 'active'; c.set_by := '${nobody}';
+      PERFORM commercial.cme_notify(c, '${D()}'::uuid, gen_random_uuid(), 'usage.cap_crossed', 'M6 unrouted probe (SYNTHETIC)', '["probe"]'::jsonb, '{}'::jsonb, '${tenantAdmin.principalId}'::uuid, '${corr}'::uuid); END $do$`).execute(h.su);
+    const it = await rows(sql`select state, outcome, owner_principal_id::text as owner, route_roles from executive.attention_items where correlation_id = ${corr}::uuid`);
+    expect(it).toEqual([{ state: 'unrouted', outcome: 'material', owner: null, route_roles: ['board_member'] }]);
+  });
+  it('M6 · RECOVERY: the class routed again to the tenant administrator — a crossing is OPEN, owned by the cap\'s setter, under the new policy version', async () => {
+    await publishPolicy('the commercial usage notices routed to the tenant administrator again (B91 meters harness, 0107)', { 'warning.raised': WARNING_RULE, 'commercial.usage': USAGE_RULE });
+    const pv = await activePolicyVersion();
+    const used = await usedToday('model_inference', 'calls');
+    const c = await setCap({ dimension: 'model_inference', period: 'day', limit: used + 1, action: 'warn', reason: 'inference watched for the day under the restored policy (SYNTHETIC)' });
+    await gatewayCall(40);
+    const all = await meterItems(String(c['cap_id']));   // the day cap's new version: its crossing is the newest item of the cap
+    expect(all[all.length - 1]).toMatchObject({ state: 'open', outcome: 'material', route_roles: ['tenant_admin'], policy_version: pv, owner: tenantAdmin.principalId });
+  });
 });

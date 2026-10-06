@@ -145,8 +145,11 @@ const expectPricedAsMath = async (usageId: string) => {
   });
   return db;
 };
-const items = (budgetId: string) => rows(sql`select item_id::text, signal_class, subject_kind, subject_id::text, cause_event_type, owner_principal_id::text as owner, state, title, details, domain_id::text
+const items = (budgetId: string) => rows(sql`select item_id::text, signal_class, subject_kind, subject_id::text, cause_event_type, owner_principal_id::text as owner, state, outcome, policy_version, route_roles, title, details, domain_id::text
   from executive.attention_items where tenant_id = ${T()}::uuid and signal_class = 'commercial.usage' and subject_id = ${budgetId}::uuid order by created_at`);
+const USAGE_RULE = { materiality: { min_consequence: 'C2', min_confidence: 0.5 }, route_roles: ['tenant_admin'], ack_within_minutes: 1440 };
+const publishPolicy = async (reason: string, classes: Row) => exec.publishAttentionPolicy(h.req(owner, 'executive.attention.policy.publish', 'ATP', null, 'executive'), T(), D(), { payload: { reason, rules: { classes } } } as never);
+const activePolicyVersion = async () => Number(((await rows(sql`select version from executive.attention_policies where tenant_id = ${T()}::uuid and domain_id = ${D()}::uuid and state = 'active'`))[0] as Row | undefined)?.['version'] ?? 0);
 const budgetEvents = (budgetId: string) => rows(sql`select event, budget_version, threshold, period_start, day, attention_item_id::text, details from commercial.budget_events where budget_id = ${budgetId}::uuid order by recorded_at, event_id`);
 
 /** A PLATFORM principal (fixture scaffolding) with a session of its own, holding `role`. */
@@ -186,6 +189,8 @@ beforeAll(async () => {
   const r = await exec.registerAgent(h.req(tadmin, 'agent.register', 'AGT', null, 'platform.administration'), T(), D(), { payload: { kind: 'attention', version: ATTENTION_TIMER_VERSION,
     codeDigest: ATTENTION_TIMER_DIGEST, ownerPrincipalId: owner.principalId, escalationPrincipalId: dadmin.principalId, budgets: { max_reads: 50, max_gateway_calls: 0, max_elapsed_ms: 120_000, tick_every_seconds: 86_400 } } }) as unknown as { agent: { agentId: string; principalId: string } };
   agentId = r.agent.agentId; agentPrincipalId = r.agent.principalId;
+  // 0107: commercial.usage is routed under the domain's PUBLISHED attention policy — the budget owner (an executive) publishes it
+  await publishPolicy('the commercial usage notices routed to the tenant administrator (B91 ledger harness; 0107)', { 'commercial.usage': USAGE_RULE });
   await sleep(1500);
   await scheduler.unscheduleAttentionTick(T(), D());
 }, 400_000);
@@ -327,7 +332,7 @@ describe('B91 §LE · L3 BUDGETS: owner, variance, run-rate forecast, thresholds
     expect((t['thresholds'] as Row[]).map((x) => [x['budget_id'], x['threshold']])).toEqual([[BUDGET, 80]]);
     const it1 = await items(BUDGET);
     expect(it1).toHaveLength(1);
-    expect(it1[0]).toMatchObject({ signal_class: 'commercial.usage', subject_kind: 'budget', cause_event_type: 'budget.threshold', owner: owner.principalId, state: 'open', domain_id: D() });
+    expect(it1[0]).toMatchObject({ signal_class: 'commercial.usage', subject_kind: 'budget', cause_event_type: 'budget.threshold', owner: owner.principalId, state: 'open', outcome: 'material', route_roles: ['tenant_admin'], policy_version: await activePolicyVersion(), domain_id: D() });
     expect(String(it1[0]!['title'])).toMatch(/^Budget 80% reached: Corridor simulation compute — monthly \(SYNTHETIC\) — /);
     await tick();
     expect(await items(BUDGET)).toHaveLength(1);   // once per budget version, period and threshold
@@ -597,5 +602,31 @@ describe('B91 §LE · L7 INVOICE RECONCILIATION — SYNTHETIC invoices (V10-T-01
     expect(inv).toMatchObject({ synthetic: true });
     expect(view['complete']).toBe(unpricedAll === 0);
     expect(RATE_SIM_V2).toMatch(/^[0-9a-f-]{36}$/);
+  });
+});
+
+/* 0107 (B91-F): the budget notice is ROUTED UNDER THE PUBLISHED POLICY (L10-I02, C-032, V04-T-037) — the routed case is L3's real
+   threshold item above (open, the policy's roles, its version); here the policy's other outcomes, through the notice port itself (a
+   stated superuser call with a budget row of this harness — the tick's threshold raises once per budget version and period, so it cannot
+   be raised again on demand). Last in the file: it changes the domain's policy and restores it. */
+describe('B91 §LE · L8 THE BUDGET NOTICE UNDER THE PUBLISHED POLICY (0107)', () => {
+  const notify = async (ownerOverride: string | null, corr: string) => {
+    const b = String((await rows(sql`select budget_id::text from commercial.budgets where tenant_id = ${T()}::uuid order by set_at limit 1`))[0]!['budget_id']);
+    const set = ownerOverride === null ? '' : `b.owner_principal_id := '${ownerOverride}';`;
+    await sql.raw(`DO $do$ DECLARE b commercial.budgets; BEGIN SELECT * INTO b FROM commercial.budgets WHERE budget_id = '${b}' ORDER BY version DESC LIMIT 1; ${set}
+      PERFORM commercial.cle_notify(gen_random_uuid(), b, '${D()}'::uuid, 'L8 routing probe (SYNTHETIC)', '["probe"]'::jsonb, gen_random_uuid(), 'budget.threshold', '{}'::jsonb, '${owner.principalId}'::uuid, '${corr}'::uuid); END $do$`).execute(h.su);
+    return (await rows(sql`select state, outcome, owner_principal_id::text as owner, route_roles, policy_version from executive.attention_items where correlation_id = ${corr}::uuid`))[0] as Row;
+  };
+  it('L8 · REFUSAL of the bypass: a policy that does not name commercial.usage — the notice ABSTAINS and is DEPRIORITIZED (listed, routed to nobody)', async () => {
+    await publishPolicy('the commercial usage class left out (B91 ledger harness, 0107)', { 'warning.raised': { materiality: { min_consequence: 'C2', min_confidence: 0.4 }, route_roles: ['forecast_owner'], ack_within_minutes: 60 } });
+    expect(await notify(null, uuidv7())).toMatchObject({ state: 'deprioritized', outcome: 'abstained', route_roles: [], policy_version: await activePolicyVersion() });
+  });
+  it('L8 · UNROUTED: the class named with roles nobody holds and no active owner — UNROUTED, never issued as actionable to nobody', async () => {
+    await publishPolicy('the commercial usage class routed to a role nobody holds (B91 ledger harness, 0107)', { 'commercial.usage': { ...USAGE_RULE, route_roles: ['board_member'] } });
+    expect(await notify(uuidv7(), uuidv7())).toMatchObject({ state: 'unrouted', outcome: 'material', owner: null, route_roles: ['board_member'] });
+  });
+  it('L8 · RECOVERY: the class routed to the tenant administrator again — the notice is OPEN, owned by the budget\'s owner, under the new version', async () => {
+    await publishPolicy('the commercial usage notices routed to the tenant administrator again (B91 ledger harness, 0107)', { 'commercial.usage': USAGE_RULE });
+    expect(await notify(null, uuidv7())).toMatchObject({ state: 'open', outcome: 'material', owner: owner.principalId, route_roles: ['tenant_admin'], policy_version: await activePolicyVersion() });
   });
 });
