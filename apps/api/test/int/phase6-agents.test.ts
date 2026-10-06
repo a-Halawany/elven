@@ -176,27 +176,41 @@ describe('P6-M6 · F7 — the briefing agent composes within its budget; a budge
   it('the planner: the room\'s cadence becomes a briefing job on its own queue; a promoted tick runs the agent as a scheduler-triggered run', async () => {
     const scheduler = h.app.get(SchedulerService);
     expect(scheduler.enabled).toBe(true);
-    const s = (await c.scheduleRoom({ roomId, agentId: briefingAgent.agentId, cadenceSeconds: 60 })).schedule;
-    expect(String(s['queueName'])).toBe(`exec:${T()}:${D()}:briefing`);
-    expect(String(s['schedulerId'])).toBe(`exec:${T()}:${D()}:room:${roomId}`);
-    expect(Number(s['cadenceSeconds'])).toBe(60);
-    expect(scheduler.runningWorkers()).toContain(`exec.${T()}.${D()}.briefing`);
-    const runsBefore = (await sql<{ n: string }>`select count(*)::text n from executive.agent_runs where agent_id = ${briefingAgent.agentId}::uuid and trigger_kind = 'scheduler'`.execute(h.su)).rows[0]?.n;
-    // the first tick of an `every` scheduler may already be running; the promotion covers the delayed one, if any
-    const promoted = await scheduler.promoteDelayedBriefingsForTests(T(), D());
-    expect(promoted).toBeGreaterThanOrEqual(0);
-    let seen = 0;
-    for (let i = 0; i < 60 && seen === 0; i += 1) {
-      await new Promise((res) => setTimeout(res, 500));
-      seen = Number((await sql<{ n: string }>`select count(*)::text n from executive.agent_runs where agent_id = ${briefingAgent.agentId}::uuid and trigger_kind = 'scheduler' and outcome <> 'running'`.execute(h.su)).rows[0]?.n) - Number(runsBefore);
+    /* THE RUN UNDER TEST is identified, never inferred: the first scheduler-triggered run of this agent that STARTED after this schedule
+       was created (the database's instant, taken before scheduling) and reached a terminal outcome. The first tick of an `every` scheduler
+       and the promoted delayed tick may OVERLAP (two runs of the same room); waiting on a count of terminal runs and then reading "the
+       newest" selected the overlapping one, still running (ci 37449116459, build-test job 112221058738, 1953/1954). The wait and every
+       assertion now bind to that one run's id. */
+    const since = String((await sql<{ t: string }>`select to_char(clock_timestamp() at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') t`.execute(h.su)).rows[0]?.t);
+    const freshRuns = async () => (await sql<Record<string, unknown>>`select * from executive.agent_runs where agent_id = ${briefingAgent.agentId}::uuid and trigger_kind = 'scheduler'
+      and started_at >= ${since}::timestamptz order by started_at, run_id`.execute(h.su)).rows as Array<Record<string, unknown>>;
+    try {
+      const s = (await c.scheduleRoom({ roomId, agentId: briefingAgent.agentId, cadenceSeconds: 60 })).schedule;
+      expect(String(s['queueName'])).toBe(`exec:${T()}:${D()}:briefing`);
+      expect(String(s['schedulerId'])).toBe(`exec:${T()}:${D()}:room:${roomId}`);
+      expect(Number(s['cadenceSeconds'])).toBe(60);
+      expect(scheduler.runningWorkers()).toContain(`exec.${T()}.${D()}.briefing`);
+      // the first tick of an `every` scheduler may already be running; the promotion covers the delayed one, if any
+      const promoted = await scheduler.promoteDelayedBriefingsForTests(T(), D());
+      expect(promoted).toBeGreaterThanOrEqual(0);
+      let run: Record<string, unknown> | undefined;
+      for (let i = 0; i < 120 && run === undefined; i += 1) {
+        run = (await freshRuns()).find((r) => r['outcome'] !== 'running');
+        if (run === undefined) await new Promise((res) => setTimeout(res, 500));
+      }
+      expect(run, 'a fresh scheduler-triggered run reached a terminal outcome').toBeDefined();
+      // re-read THAT run by its id: the assertions are about the run whose completion satisfied the wait
+      const same = (await sql<Record<string, unknown>>`select * from executive.agent_runs where run_id = ${String(run!['run_id'])}::uuid`.execute(h.su)).rows[0] as Record<string, unknown>;
+      expect(same['outcome'], `run ${String(run!['run_id'])}: ${String(same['stop_reason'] ?? '')}`).toBe('finished');
+      expect(same['trigger_kind']).toBe('scheduler');
+      expect(same['trigger_principal_id']).toBeNull();
+      expect(String(same['trigger_ref']).length).toBeGreaterThan(0);
+      expect(typeof (same['outputs'] as Record<string, unknown>)['briefing_id']).toBe('string');
+    } finally {
+      await scheduler.unscheduleBriefing(T(), D(), roomId);
+      // an overlapping tick still running is let finish (bounded) so it cannot leak into the next case
+      for (let i = 0; i < 60 && (await freshRuns()).some((r) => r['outcome'] === 'running'); i += 1) await new Promise((res) => setTimeout(res, 500));
     }
-    expect(seen).toBeGreaterThanOrEqual(1);
-    const run = (await sql<Record<string, unknown>>`select * from executive.agent_runs where agent_id = ${briefingAgent.agentId}::uuid and trigger_kind = 'scheduler' order by started_at desc limit 1`.execute(h.su)).rows[0] as Record<string, unknown>;
-    expect(run['outcome']).toBe('finished');
-    expect(run['trigger_principal_id']).toBeNull();
-    expect(String(run['trigger_ref']).length).toBeGreaterThan(0);
-    expect(typeof (run['outputs'] as Record<string, unknown>)['briefing_id']).toBe('string');
-    await scheduler.unscheduleBriefing(T(), D(), roomId);
   }, 90_000);
 });
 

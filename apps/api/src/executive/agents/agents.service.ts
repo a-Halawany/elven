@@ -277,7 +277,12 @@ export class AgentsService {
       throw e;
     }
     const runId = newId();
-    const opened = await this.pipeline.write(this.env(principal, T, D, 'agent.run', 'RUN', runId, a.correlationId), principal, this.route(T, D, 'agent.run', 'RUN', runId), ExecutiveCapability.agent,
+    /* B91 entitlements: the attention agent's tick is a mandatory control — the entitlement gate never refuses it (the kind is the
+       registration's, from the session port; the task alone is not trusted) */
+    const runRoute = registration.agent_kind === 'attention' && a.task === 'attention_tick'
+      ? { ...this.route(T, D, 'agent.run', 'RUN', runId), mandatoryControl: 'attention_tick' as const } : this.route(T, D, 'agent.run', 'RUN', runId);
+    /* end B91 entitlements */
+    const opened = await this.pipeline.write(this.env(principal, T, D, 'agent.run', 'RUN', runId, a.correlationId), principal, runRoute, ExecutiveCapability.agent,
       async (cap) => {
         const r = await cap.openAgentRun({ runId, tenantId: T, domainId: D, agentId: a.agentId, task: a.task, triggerKind: a.trigger.kind, triggerPrincipal: a.trigger.principalId, triggerRef: a.trigger.ref, roomId: a.roomId, packageId: a.packageId, correlationId: a.correlationId });
         return { result: r, targetType: 'RUN', targetId: runId, targetVersion: '1', outboxEvent: null };
@@ -327,7 +332,7 @@ export class AgentsService {
     // completed its last unit legitimately; a stopped label after a committed write would misdescribe it (residual review
     // R7b), so the overrun is recorded on the spend and the outcome stays what it was.
     if (outcome === 'finished' && Number(spent['elapsed_ms']) > Number(budget['max_elapsed_ms'])) spent['over_budget'] = 1;
-    const closed = await this.pipeline.write(this.env(principal, T, D, 'agent.run', 'RUN', runId, a.correlationId), principal, this.route(T, D, 'agent.run', 'RUN', runId), ExecutiveCapability.agent,
+    const closed = await this.pipeline.write(this.env(principal, T, D, 'agent.run', 'RUN', runId, a.correlationId), principal, runRoute /* B91 entitlements */, ExecutiveCapability.agent,
       async (cap) => {
         const r = await cap.closeAgentRun({ runId, tenantId: T, domainId: D, outcome, spent, stopReason, refusals, outputs: { ...outputs, agent: identity }, correlationId: a.correlationId });
         return { result: r, targetType: 'RUN', targetId: runId, targetVersion: '1', outboxEvent: null };

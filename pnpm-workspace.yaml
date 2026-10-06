@@ -30,6 +30,14 @@ overrides:
   # 2.4.0 is the first patched version, on the same 2.x line (Nest 12.1.1 itself now declares 2.4.0).
   multer: 2.4.0
   postcss: '>=8.5.23'
+  # C15 on #80 (ci 37446394135 at baf7a30, 2026-10-06 — advisories published after #80's 2026-10-04 green run; the lockfile unchanged):
+  # proxy-addr <2.0.8 carries GHSA-jqcg-44mw-7w3h (CRITICAL — IP spoofing via an IPv4-mapped IPv6 trust subnet), reached through
+  # express under @nestjs/platform-express; source-map-js <1.2.2 carries GHSA-68fv-2mgg-jv7q (HIGH — event-loop denial of service
+  # through indexed source-map section offsets), reached through postcss (vite, next). EXACT REVIEWED VERSIONS: 2.0.8 and 1.2.2
+  # are the first patched versions, on the lines their consumers declare (express ~2.0.7, postcss ^1.x); both carry the same
+  # dependencies as the versions they replace, so the development closure (C17's DEVELOPMENT_COMPONENTS) is unchanged.
+  proxy-addr: 2.0.8
+  source-map-js: 1.2.2
   # Gate-2.2 C15/C16: nanoid <3.3.17 is CVE-2026-67213 (HIGH — denial of service via
   # an infinite loop when a custom generator is called with size 0). Reached only
   # through build/test tooling (vite/postcss, next/postcss), but a HIGH advisory in

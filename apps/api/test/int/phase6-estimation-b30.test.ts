@@ -49,6 +49,9 @@ import { RestConnector } from '../../src/observation/connectors/rest.connector.j
 import { asObservationRefusal } from '../../src/observation/observation-errors.js';
 import { ObservationCapability } from '../../src/observation/observation.capabilities.js';
 import { Phase4Harness, SERIES_START, syntheticEgress, syntheticValue } from './phase4-helpers.js';
+import { PipelineService } from '../../src/pipeline/pipeline.service.js';
+import { ConstraintService } from '../../src/twin/constraints/constraint.service.js';
+import { ConstraintCapability, type SetWrites } from '../../src/twin/constraints/constraint.capabilities.js';
 import { RECORD_FILES, completeElements } from './phase5-fixtures.js';
 
 // this file's own vault roots (the records and the series evidence are written through the governed paths).
@@ -70,6 +73,8 @@ const T = () => h.fx.tenantId; const D = () => h.fx.domainId;
 const KEY = 'corridor.capacity_share';
 /** ES8's BEFORE mode (EYE_ES8_BASELINE=1, on a database through 0103 only): the approvals under a changed contract SUCCEED — the bypass reproduced. */
 const ES8_BASELINE = process.env['EYE_ES8_BASELINE'] === '1';
+/** ES9's BEFORE mode (EYE_ES9_BASELINE=1, on a database through 0105 only — no 0106): an approval racing an in-flight contract mutation COMMITS on the old contract. */
+const ES9_BASELINE = process.env['EYE_ES9_BASELINE'] === '1';
 /** The corridor's baseline transit count (SYNTHETIC): the capacity share is the latest count against it, in per cent. */
 const BASELINE = 104;
 const obj = (v: unknown): Row => (v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Row) : {});
@@ -472,6 +477,173 @@ describe('B30 part ES · twin state estimation and continuous reconciliation (01
    * unreadable version COUNTS: the conservative branch, proven through the real route and the port. LAST in the file: the tombstone degrades
    * the series for the rest of the database's life.
    */
+  /**
+   * ES9 · THE CONTRACT UNDER CONCURRENCY (0106): two sessions, interleaved deterministically. A REAL governed constraint mutation (the
+   * pipeline, the PDP, the signed context, the port) is HELD OPEN after its port ran and before its commit (a test gate in the handler);
+   * meanwhile the owner's REAL approval runs. Before 0106 (EYE_ES9_BASELINE=1) the approval commits on the contract it could see and
+   * the mutation then commits with an instant BEFORE the approval — the record shows a contract change preceding an approval that never
+   * saw it. With 0106 the approval WAITS on the contract's lock (seen in pg_stat_activity: an advisory lock wait in twin.decide_estimate),
+   * reads the mutated contract once the mutation commits, and is REFUSED (contract, 409) with nothing admitted; recovered by a fresh
+   * proposal. The reverse order (c): a mutation started while an approval's SHARED hold is in flight waits for it and records its instant
+   * after it (the hold is a raw superuser session taking the same shared lock — the approval's own transaction cannot be paused from a
+   * harness; this is the one stand-in, stated). Deterministic: every wait is observed, never slept for. Placed before ES8: it leaves only
+   * `corridor-transit-balance` live (its declared set retired, governed).
+   */
+  it('ES9 · THE CONTRACT UNDER CONCURRENCY: an approval racing an in-flight version, declaration or retirement waits on the contract lock and is refused on the mutated contract (before 0106 it committed on the old one); a mutation racing an in-flight approval waits and records its instant after it', async () => {
+    const pipeline = h.app.get(PipelineService); const svc = h.app.get(ConstraintService);
+    /** Every held transaction, released in `finally` — a failing case never leaves a lock behind for the cases after it. */
+    const holds: Array<{ release: () => void; done: Promise<unknown> }> = [];
+    let releaseShared: () => void = () => undefined;
+    try {
+    const setRow = (await rows(sql`select set_id::text as set_id, current_version from simulation.constraint_sets where tenant_id = ${T()}::uuid and set_key = 'corridor-transit-balance' and state = 'live'`))[0] as Row;
+    const SET = String(setRow['set_id']);
+    const CONSERVED = { key: 'transits-conserved', kind: 'conservation', stocks: [KEY], tolerance: 0.5, unit: 'transits/day', applies_to: ['run_input'], title: 'the proposal accounts for the observed count' };
+    const effects = async () => ({
+      admitted: (await rows(sql`select 1 from twin.twin_versions where twin_id = ${twinId}::uuid and state = 'admitted'`)).length,
+      approvals: (await ledger('estimate.approved')).length,
+      outbox: (await rows(sql`select 1 from objects.object_outbox where tenant_id = ${T()}::uuid and event_type in ('TwinStateChanged', 'GraphChanged') and payload::text like ${'%' + twinId + '%'}`)).length,
+    });
+    /** A governed constraint mutation held open after its port ran: `at` resolves with the port's answer, `release()` lets it commit, `done` is the route's result. */
+    const hold = (action: string, objectId: string, run: (cap: SetWrites, scope: Parameters<Parameters<PipelineService['write']>[4]>[1]) => Promise<Row>) => {
+      let release!: () => void; const gate = new Promise<void>((r) => { release = r; });
+      let reached!: (v: Row) => void; const at = new Promise<Row>((r) => { reached = r; });
+      const done = pipeline.write(h.env(steward, action, 'CST', objectId, 'twin'), steward, { scope: 'DOMAIN', tenantId: T(), domainId: D(), action, objectType: 'CST', objectId },
+        ConstraintCapability.set, async (cap, scope) => {
+          const r = await run(cap, scope); reached(r); await gate;
+          return { result: r, targetType: 'CST', targetId: objectId, targetVersion: String(r['version'] ?? 1), outboxEvent: null };
+        });
+      const held = { at, release, done }; holds.push(held);
+      return held;
+    };
+    /** Whether a backend is waiting on an ADVISORY lock while running `fn` — polled (up to 10 s), never slept for. */
+    const waitingIn = async (fn: string): Promise<boolean> => {
+      for (let i = 0; i < 100; i += 1) {
+        const n = (await rows(sql`select count(*)::int as n from pg_stat_activity where wait_event_type = 'Lock' and wait_event = 'advisory' and query ilike ${'%' + fn + '%'}`))[0] as Row;
+        if (Number(n['n']) > 0) return true;
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      return false;
+    };
+    const settledWithin = async (p: Promise<unknown>, ms: number) => Promise.race([p.then(() => true, () => true), new Promise<boolean>((r) => setTimeout(() => r(false), ms))]);
+    const ctx = (scope: { tenantId: string | null; domainId: string | null }) => ({ tenantId: scope.tenantId as string, domainId: scope.domainId as string });
+    const decidedAt = async (id: string) => String(((await rows(sql`select to_char(decided_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as t from twin.estimates where estimate_id = ${id}::uuid`))[0] as Row)['t']);
+    const verAt = async (set: string, version: number) => String(((await rows(sql`select to_char(declared_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as t from simulation.constraint_set_versions where set_id = ${set}::uuid and version = ${version}`))[0] as Row)['t']);
+    const out: Row = {};
+
+    // (a1) A VERSION of the pinned set in flight while the owner approves.
+    const vA = Number(setRow['current_version']);
+    const pA = await propose(); expect(pA).toMatchObject({ constraint: 'satisfied', state: 'proposed' });
+    const beforeA = await effects();
+    const hv = hold('simulation.constraint.version', SET, async (cap, scope) => svc.version(cap, { ...scope, ...ctx(scope) } as never, SET,
+      { expectedVersion: vA, constraints: [CONSERVED, { key: 'share-at-most-99', kind: 'business_rule', quantity: KEY, op: '<=', value: 99, unit: '%', per: 'day', applies_to: ['run_input'] }], note: 'the ES9 race: a version in flight (SYNTHETIC)' },
+      steward.principalId, uuidv7()));
+    expect(await hv.at).toMatchObject({ version: vA + 1 });
+    const apA = decide(String(pA['estimate_id']), 'approved', 'approving while the steward versions the set (ES9)');
+    if (ES9_BASELINE) {
+      expect(await settledWithin(apA, 10_000), 'before 0106 the approval does not wait for the in-flight version').toBe(true);
+      expect((await apA).decision).toMatchObject({ state: 'approved' });
+      hv.release(); await hv.done;
+      const [d, v] = [await decidedAt(String(pA['estimate_id'])), await verAt(SET, vA + 1)];
+      expect(v < d, `the version (${v}) precedes the approval (${d}) the approval never saw`).toBe(true);
+      out['a1'] = { approved_on_old_contract: true, version_declared_at: v, approved_at: d };
+    } else {
+      expect(await waitingIn('decide_estimate'), 'the approval waits on the contract lock while the version is in flight').toBe(true);
+      hv.release(); await hv.done;
+      await refused(apA, /^estimate rejected \(contract\): .*corridor-transit-balance.*v\d+.*v\d+/, 409);
+      expect(await effects()).toEqual(beforeA);
+      expect(await readEstimate(String(pA['estimate_id']))).toMatchObject({ state: 'proposed', constraint_check: expect.objectContaining({ pins: [expect.objectContaining({ version: vA })] }) });
+      const pA2 = await propose(); expect(pA2).toMatchObject({ constraint: 'satisfied' });
+      expect((await decide(String(pA2['estimate_id']), 'approved', 'proposed again after the raced version (ES9)')).decision).toMatchObject({ state: 'approved' });
+      out['a1'] = { waited: true, refused: true, recovered: true };
+    }
+
+    // (b) A DECLARATION of a newly applicable set in flight while the owner approves (a row no read could lock).
+    const pB = await propose(); expect(pB).toMatchObject({ constraint: 'satisfied' });
+    const beforeB = await effects();
+    const LATE = uuidv7();
+    const hd = hold('simulation.constraint.declare', LATE, async (cap, scope) => svc.declare(cap, { ...scope, ...ctx(scope) } as never,
+      { setKey: `corridor-es9-late-${LATE.slice(-6)}`, title: 'ES9 — a rule declared during an approval (SYNTHETIC)', steward: null,
+        constraints: [{ key: 'share-at-most-100', kind: 'business_rule', quantity: KEY, op: '<=', value: 100, unit: '%', per: 'day', applies_to: ['run_input'] }], note: 'the ES9 race: a declaration in flight' } as never,
+      steward.principalId, uuidv7(), LATE));
+    expect(await hd.at).toMatchObject({ set_id: LATE, version: 1 });
+    const apB = decide(String(pB['estimate_id']), 'approved', 'approving while the steward declares a new set (ES9)');
+    if (ES9_BASELINE) {
+      expect(await settledWithin(apB, 10_000), 'before 0106 the approval does not wait for the in-flight declaration').toBe(true);
+      expect((await apB).decision).toMatchObject({ state: 'approved' });
+      hd.release(); await hd.done;
+      const [d, v] = [await decidedAt(String(pB['estimate_id'])), await verAt(LATE, 1)];
+      expect(v < d, `the applicable set (${v}) was declared before the approval (${d}) that never checked it`).toBe(true);
+      out['b'] = { approved_without_the_new_set: true, set_declared_at: v, approved_at: d };
+    } else {
+      expect(await waitingIn('decide_estimate'), 'the approval waits on the contract lock while the declaration is in flight').toBe(true);
+      hd.release(); await hd.done;
+      await refused(apB, /^estimate rejected \(contract\): constraint set corridor-es9-late-.* came to apply after estimate/, 409);
+      expect(await effects()).toEqual(beforeB);
+      expect((await readEstimate(String(pB['estimate_id'])))['state']).toBe('proposed');
+      const pB2 = await propose(); expect(pB2).toMatchObject({ constraint: 'satisfied' });
+      expect((await readEstimate(String(pB2['estimate_id'])))['constraint_check']).toMatchObject({ pins: expect.arrayContaining([expect.objectContaining({ set_id: LATE })]) });
+      expect((await decide(String(pB2['estimate_id']), 'approved', 'proposed again under the declared set (ES9)')).decision).toMatchObject({ state: 'approved' });
+      out['b'] = { waited: true, refused: true, recovered: true };
+    }
+
+    // (a2) A RETIREMENT of a pinned set (the one (b) declared) in flight while the owner approves.
+    const pC = await propose(); expect(pC).toMatchObject({ constraint: 'satisfied' });
+    expect((await readEstimate(String(pC['estimate_id'])))['constraint_check']).toMatchObject({ pins: expect.arrayContaining([expect.objectContaining({ set_id: LATE })]) });
+    const beforeC = await effects();
+    const hr = hold('simulation.constraint.retire', LATE, async (cap, scope) => svc.retire(cap, { ...scope, ...ctx(scope) } as never, LATE, 'the ES9 race: a retirement in flight (SYNTHETIC)', steward.principalId, uuidv7()));
+    expect(await hr.at).toMatchObject({ state: 'retired' });
+    const apC = decide(String(pC['estimate_id']), 'approved', 'approving while the steward retires a pinned set (ES9)');
+    if (ES9_BASELINE) {
+      expect(await settledWithin(apC, 10_000), 'before 0106 the approval does not wait for the in-flight retirement').toBe(true);
+      expect((await apC).decision).toMatchObject({ state: 'approved' });
+      hr.release(); await hr.done;
+      const d = await decidedAt(String(pC['estimate_id']));
+      const r = String(((await rows(sql`select to_char(retired_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as t from simulation.constraint_sets where set_id = ${LATE}::uuid`))[0] as Row)['t']);
+      expect(r < d, `the pinned set was retired (${r}) before the approval (${d}) that relied on it`).toBe(true);
+      out['a2'] = { approved_on_a_retired_set: true, retired_at: r, approved_at: d };
+    } else {
+      expect(await waitingIn('decide_estimate'), 'the approval waits on the contract lock while the retirement is in flight').toBe(true);
+      hr.release(); await hr.done;
+      await refused(apC, /^estimate rejected \(contract\): constraint set corridor-es9-late-.* is retired/, 409);
+      expect(await effects()).toEqual(beforeC);
+      expect((await readEstimate(String(pC['estimate_id'])))['state']).toBe('proposed');
+      out['a2'] = { waited: true, refused: true };
+    }
+
+    // (c) THE REVERSE ORDER: an approval's SHARED hold in flight (the stand-in session) while the steward versions the set.
+    const vC = Number(((await rows(sql`select current_version from simulation.constraint_sets where set_id = ${SET}::uuid`))[0] as Row)['current_version']);
+    const sharedGate = new Promise<void>((r) => { releaseShared = r; });
+    let heldAt!: (t: string) => void; const sharedHeld = new Promise<string>((r) => { heldAt = r; });
+    let releasedAt = '';
+    const sharedTx = h.su.transaction().execute(async (tx) => {
+      await sql`select pg_advisory_xact_lock_shared(hashtextextended(${'simulation.constraint_contract:' + T() + ':' + D()}, 0))`.execute(tx);
+      heldAt('held'); await sharedGate;
+      releasedAt = String(((await sql<{ t: string }>`select to_char(clock_timestamp() at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as t`.execute(tx)).rows[0])!.t);
+    });
+    await sharedHeld;
+    const verC = cons.version(h.req(steward, 'simulation.constraint.version', 'CST', SET, 'twin'), T(), D(), SET,
+      { payload: { expectedVersion: vC, constraints: [CONSERVED, { key: 'share-at-most-100', kind: 'business_rule', quantity: KEY, op: '<=', value: 100, unit: '%', per: 'day', applies_to: ['run_input'] }], note: 'the ES9 reverse race: a version during an approval (SYNTHETIC)' } }) as Promise<{ set: Row }>;
+    if (ES9_BASELINE) {
+      expect(await settledWithin(verC, 10_000), 'before 0106 the version does not wait for an approval in flight').toBe(true);
+      releaseShared(); await sharedTx;
+      const v = await verAt(SET, vC + 1);
+      expect(v < releasedAt, 'the version is recorded inside the approval\'s window').toBe(true);
+      out['c'] = { version_inside_the_approval_window: true };
+    } else {
+      expect(await waitingIn('version_constraint_set'), 'the version waits on the contract lock while an approval holds it').toBe(true);
+      releaseShared(); await sharedTx;
+      expect((await verC).set).toMatchObject({ version: vC + 1 });
+      const v = await verAt(SET, vC + 1);
+      expect(v > releasedAt, `the version's instant (${v}) follows the approval's hold (${releasedAt})`).toBe(true);
+      out['c'] = { waited: true, recorded_after: true };
+    }
+    evidenceLog('ES9', { baseline: ES9_BASELINE, ...out });
+    } finally {
+      releaseShared();
+      for (const x of holds) { x.release(); await x.done.catch(() => undefined); }
+    }
+  });
+
   it('ES8 · THE CONSTRAINT CONTRACT AT PUBLICATION: an approval re-checks that the set versions the proposal was checked against are still the live ones — a set re-versioned (v2 the proposal violates) or retired between proposal and approval REFUSES the approval with nothing admitted, no approval event, no outbox; the proposal keeps its historical check; recovered by a fresh proposal; the unchanged contract approves', async () => {
     const setRow = (await rows(sql`select set_id::text as set_id, current_version, state from simulation.constraint_sets where tenant_id = ${T()}::uuid and set_key = 'corridor-transit-balance'`))[0] as Row;
     const SET = String(setRow['set_id']);

@@ -15,6 +15,7 @@ import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui'
 import { MethodPanel } from './method-panel'; /* B29 (0092) §C */
 import { summaryLines } from '../../../lib/methods'; /* B29 (0092): a method run's headline results */
 import { EnvelopePanel } from './envelope-panel'; /* B30 envelope */
+import { EntitlementBanner } from './entitlement-banner'; /* B91 grace */
 
 const money = (v: unknown): string => (typeof v === 'string' ? `€${Number(v).toLocaleString('en-GB', { minimumFractionDigits: 2 })}` : '—');
 const iv = (r: Run): string => r.interventions.map((i) => (i['type'] === 'none' ? 'none' : `${String(i['type'])}${i['shipment'] ? ` ${String(i['shipment'])}` : ''}${i['weeks'] ? ` ${String(i['weeks'])}w` : ''}`)).join(' + ');
@@ -159,6 +160,7 @@ export default function SimulationsPage() {
   return (
     <>
       <h1 style={{ fontSize: 'var(--eye-type-heading-1)', marginBlockStart: 0 }}>Simulations</h1>
+      {/* B91 grace */}<EntitlementBanner scope={scope} />{/* end B91 grace */}
       {/* B31 orchestration */}<p style={{ fontSize: 'var(--eye-type-label-sm)' }}><a href="/twins/simulations/orchestration">Simulation center — background experiments under an approved budget: checkpoints, pause and resume, partial runs →</a></p>{/* end B31 orchestration */}
       {/* B31 validity */}<p><a href="/twins/simulations/validity">Validity — each run's decision use, the reach of an invalidation, the branch's twin binding</a></p>{/* end B31 validity */}
       <UnknownNote><strong>Every number on this screen is SYNTHETIC</strong> — the output of a declared model on a declared state, reproducible from its stored contract. It is not an observation and not a forecast. Interventions are compared only against a compatible control on the same initial state.</UnknownNote>

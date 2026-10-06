@@ -143,6 +143,52 @@ export class AdminControllers {
     return { principal: out.result, receipt: { policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq } };
   }
 
+  /* B91 (0105): a PLATFORM-scoped principal — the vendor's commercial authority (`commercial_authority` binds at PLATFORM only, so no
+     tenant route can create it). The platform administrator only (the Phase 0 `identity.` rule at PLATFORM); the identity port
+     (identity.create_principal, the binding authority) refuses a PLATFORM principal outside a PLATFORM context and a role whose scope is
+     not PLATFORM. Nothing else changes: tenant and domain principals are still created on the tenant route. */
+  @Post('/platform/principals')
+  async createPlatformPrincipal(@Req() req: EyeRequest, @Body() body: { payload?: CreatePrincipalPayload }) {
+    const { envelope, principal } = ctx(req);
+    const p = body.payload ?? {};
+    const principalIdToCreate = newId();
+    const route = {
+      scope: 'PLATFORM' as const, tenantId: null, domainId: null,
+      action: 'identity.principal.create', objectType: 'PRN', objectId: principalIdToCreate,
+      authority: 'identity' as const,
+    };
+    if (typeof p.displayName !== 'string' || p.displayName.length < 2) {
+      await this.pipeline.rejectAuthenticatedRequest(envelope, principal, route, 'EYE-REQ-001', 'displayName required', 400);
+    }
+    if (p.domainId !== undefined) {
+      await this.pipeline.rejectAuthenticatedRequest(envelope, principal, route, 'EYE-REQ-001', 'a platform principal has no domain', 400);
+    }
+    const out = await this.pipeline.write(envelope, principal, route, PrincipalsCapability.write, async (tx) => {
+      const created = await this.principals.createPrincipal(tx, {
+        principalId: principalIdToCreate,
+        correlationId: envelope.correlation_id,
+        kind: p.kind ?? 'human',
+        scope: 'PLATFORM',
+        tenantId: null,
+        domainId: null,
+        displayName: p.displayName as string,
+        ...(p.loginName !== undefined ? { loginName: p.loginName } : {}),
+        ...(p.password !== undefined ? { password: p.password } : {}),
+        ...(p.roleCode !== undefined ? { roleCode: p.roleCode } : {}),
+      }).catch((e: unknown) => {
+        // the binding's role must bind at PLATFORM (identity.role_bindings' role-scope key) — a tenant or domain role is the caller's
+        // error (400), never a raw 500; the write rolls back whole (no principal without its binding)
+        if ((e as { code?: string; constraint?: string }).code === '23503' && (e as { constraint?: string }).constraint === 'role_bindings_role_scope_fk') {
+          throw new HttpException(errorBody('EYE_REQ_001', envelope.correlation_id, `role ${String(p.roleCode)} does not bind at PLATFORM; a tenant or domain principal is created on the tenant route`), 400);
+        }
+        throw e;
+      });
+      return { result: created, targetType: 'PRN', targetId: created.principalId, targetVersion: '1', outboxEvent: null };
+    });
+    return { principal: out.result, receipt: { policyDecisionId: out.policyDecisionId, auditSeq: out.auditSeq } };
+  }
+  /* end B91 */
+
   @Post('/tenants/:tenantId/principals/list')
   async listTenantPrincipals(@Req() req: EyeRequest, @Param('tenantId') tenantId: string) {
     const { envelope, principal } = ctx(req);

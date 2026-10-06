@@ -273,3 +273,19 @@ commits = ['''a272fb7b1db47190b9d30f1f4429a76061c5312a''']
 paths = ['''^apps/web/lib/health\.test\.ts$''']
 regexTarget = "match"
 regexes = ['''^key ed25519:0123456789abcdef[ ]$''']
+
+[[allowlists]]
+description = """
+B91 history 1/1 — the grace part's WIP commit 76a3104 carried the NAME of an environment
+reference, `KEY_REF = 'EYE_LICENCE_SIGNING_KEY_B91_GRACE_HARNESS'`, in
+apps/api/test/int/phase6-grace-b91.test.ts: the harness generates its Ed25519 key in-process
+and stores it under that variable name; the literal is the reference, never the key. The
+working tree splits the literal. ONE rule, ONE commit, ONE file, ONE exact match.
+condition = AND.
+"""
+condition = "AND"
+targetRules = ['''generic-api-key''']
+commits = ['''76a3104b1f6cf7b4ed35f45cfbf313cf99ef2ae4''']
+paths = ['''^apps/api/test/int/phase6-grace-b91\.test\.ts$''']
+regexTarget = "match"
+regexes = ['''^KEY_REF = 'EYE_LICENCE_SIGNING_KEY_B91_GRACE_HARNESS'$''']

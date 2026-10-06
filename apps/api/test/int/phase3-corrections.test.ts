@@ -611,12 +611,14 @@ describe('G5 (database) — a corrected relationship retires the edge it replace
 
     const v1 = uuidv7();
     await assertEdge(v1, entB, 1);
-    const beforeCorrection = new Date().toISOString();
+    // the DATABASE's instant (the DB-instant rule): the edge's knowledge time is the database clock's, and a host clock behind it by
+    // tens of ms (a container VM's skew) made the edge read as recorded AFTER `beforeCorrection` — found by B91's upgrade proof locally
+    const beforeCorrection = await dbNow();
     await new Promise((r) => setTimeout(r, 25));
 
     // The claim is corrected: the relationship now points somewhere else.
     await seedClaim({ id: claimId, version: 2, type: 'REL', reviewState: 'not_required',
-                      recordedAt: new Date().toISOString(), subject: 'Acme' });
+                      recordedAt: await dbNow(), subject: 'Acme' });
     const v2 = uuidv7();
     await assertEdge(v2, entC, 2);
 

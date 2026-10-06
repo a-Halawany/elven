@@ -4572,3 +4572,81 @@ The mechanism is in `audit/CP6_BATCHES.md` §B27. There is one migration, `0097_
   - completions F-P5-02 at B26, F-P5-03 at B33, F-P5-04 at B100;
   - M1 402.5–694.2 U;
   - three accounts 2027-07-12.
+
+## 49. B91 (2026-10-04): usage metering, the cost ledger, entitlements and licensing (0105)
+
+### 49.1 What B91 implements
+- **Entitlements (F-P7-F-01):**
+  - the capability catalogue, offers, packages and SKUs;
+  - versioned licences with provenance and digest;
+  - the contract scope object;
+  - THE AVAILABILITY GATE, after the PDP's allow. It makes a licensable capability unavailable with an explanation (403 `EYE-ENT-001`). It never touches a mandatory control or a human decision: audit, identity, policy, retention and export, warnings and attention (including the attention agent's tick), corrections and withdrawals, reads of existing records, and every human-gated rule.
+  - An uncontracted tenant is never gated.
+- **Grace:**
+  - grace policies;
+  - renewal, suspension and reinstatement (the commercial authority, human-gated);
+  - the lapse tick into GRACE with the last valid entitlement, and on to LAPSED;
+  - the indeterminate case (FEX-30);
+  - the offline licence token, with an offline verifier;
+  - the entitlement page and the Simulations banner.
+- **Metering and the ledger (F-P7-F-02):**
+  - meters on the model gateway, collection runs, compute (experiment chunks, runs, the envelope sweep), product consumption and storage;
+  - B90's per-consumer usage counters, now written;
+  - versioned caps within the licence. A STOP cap is enforced at admission on compute; the others warn.
+  - rate cards with an energy ESTIMATE, allocation keys, idempotent cost entries, and budgets with named owners, thresholds, an anomaly rule and a forecast;
+  - unit data cost;
+  - SYNTHETIC invoices and their reconciliation;
+  - optimisation decisions refused at the residency, isolation, retention and recovery boundary.
+- **The vendor:** a PLATFORM principal created through a new platform-admin-only route.
+
+### 49.2 Results
+- **Harnesses:** entitlements 34/34, grace 34/34, ledger 21/21, meters 15/15.
+- **Local gates:** at `b7b1d71` (the final code but this test fix): integration 1947/1947, API unit 3252 + 9, web 259, acceptance 58, boundaries clean; the upgrade proof FAILED once — 1/276 of the Phase 1/2 suites on upgraded data, phase3-corrections G5 ("the pre-correction view lost the edge"): the test took its "before the correction" instant from the HOST clock while the edge's knowledge time is the DATABASE's, and the local container VM's clock measured ~28–35 ms ahead of the host — a latent test defect against the DB-instant rule, not a B91 regression (it passed inside the full integration run on the same head). Corrected: both instants from `dbNow()`; the upgrade proof then PASSED and phase3-corrections 20/20 three times.
+- **Browser gate:** 93/93.
+- **The demonstration:**
+  - the act HELD (44 ✓);
+  - the four walks 15/15, with eighteen screenshots;
+  - `--restore` HELD, act-b30 after it HELD, and the earlier walks 63/63.
+- **Local gates at `0b7695b`** (with 0106 and 0107; the bounded review of 2026-10-06): integration 1954/1954 (fresh database), API unit 3252 + 9, web 259, acceptance 58, upgrade PASS, boundaries clean, browser 93/93.
+- **Hosted:** **Hosted, on the code-final head `6899418`** — the B91 code, 0106, 0107, the C15 pins and the planner-case binding; every later commit on #80 is records only:
+  - **ci 37460948062: success.**
+    - build-test job 112260067526: integration **1954/1954**, API unit **3252** + **9**, web **259**, acceptance **58**, contracts 203, tokens 3; its later steps passed 623 and 44.
+    - supply-chain job 112260067289: `pnpm-audit-human` ok, `trivy-fs` ok; the development closure stays 313.
+    - browser-regression job 112260067393.
+  - **C19 lifecycle 37460948264: success:** lifecycle (ubuntu-latest) 112260068186, lifecycle (macos-14) 112260068342, delivery-chain-dry 112260068137, foreign-checkout-pinning 112260067970.
+  - **The earlier attempts, kept:**
+    - `c97d3c9`: ci 37205396680 and C19 37205396678 green, before the review's corrections;
+    - `baf7a30`: ci 37446394135 supply-chain FAILED on the two new advisories;
+    - `8b478fc`: ci 37449116459 build-test FAILED at 1953/1954, the planner case (above).
+  - The records-only head that carries this text is verified by its own required checks before the merge. Its results, the merge and main's chain are recorded in the next delivery record (B25), not here, so there is no records-only commit loop..
+
+### 49.3 What it found, and what it does not close
+**Found by the integration and corrected before 0105 was frozen:**
+- the attention tick refused for a tenant without agent_platform;
+- an evidence retrieval not treated as a read;
+- the gate and grace disagreeing on an expired-but-active licence.
+
+**Found by the rehearsal:** no governed path for a PLATFORM principal.
+
+**Not closed:**
+- a real billing account;
+- customer acceptance (R2);
+- profile parity;
+- the disconnected profile itself;
+- purchase and marketplace rights;
+- contract-scope enforcement;
+- carbon;
+- token counts.
+
+**Inference on this deployment** is a real gateway call in replay mode, with no external provider. Both features complete later: F-P7-F-01 at B112, F-P7-F-02 at B104 (§B91.5).
+
+### 49.4 The bounded review of 2026-10-06: two forward corrections on #80 (0106, 0107)
+- **0106 (B30-F concurrency).** 0104's approval re-checks read the constraint contract without any lock shared with its mutations. An approval racing an in-flight version, declaration or retirement committed on the old contract: the race was reproduced through 0105 by `phase6-estimation-b30` ES9, at 9/9. One advisory lock per (tenant, domain) contract now serializes them:
+  - the approval takes it shared, the mutations exclusive, before any read;
+  - a mutation's instant is taken after the lock;
+  - the approval waits and is refused (contract, 409) with nothing admitted, then recovered by a fresh proposal: 9/9 through 0106.
+  - The cross-checks fail each way. The reverse order uses one stated stand-in: a raw session holding the approval's shared lock. §B30.9 records the full proof and its limits.
+- **0107 (B91-F).** The meters' and the ledger's `commercial.usage` notices had bypassed the published attention policy (the sio_notify idiom). The governing rows (L10-I02, C-032, V04-T-037) route by the policy, and none makes these notices mandatory, so they are now evaluated and routed by the policy:
+  - routed under it, deprioritized when it does not name the class, unrouted with nobody to route to;
+  - meters 18/18 and ledger 24/24 through 0107, against 6 and 4 failures without it (§B91.7).
+- 0104 and 0105 are applied and frozen and are not edited. Items raised before 0107 keep their recorded routing.

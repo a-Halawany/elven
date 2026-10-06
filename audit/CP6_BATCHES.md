@@ -5939,7 +5939,258 @@ The residual construction comes to about 0.8–1.6 U, with R2 apart. Moving the 
   - M1 effort 401.85–692.85 → **402.5–694.2 U**;
   - the three-account M1 finish 2027-07-14 → **2027-07-12** (finishing stage B72, now A2);
   - the longest precedence chain B80 … B26 → **B100**, 87.15 → **92.17 U**;
-  - the acceptance split unchanged (3,555 = 3,179 + 339 + 37); the tracker, the schedule, the summaries and the controls pass.
+  - the acceptance split unchanged (3,555 = 3,179 + 339 + 37); the schedule, the summaries and the controls pass. **Corrected 2026-10-04 (§B91.5):** the tracker check did NOT pass at `de9db6a` — 96 features' derived target dates and owners were left out of step because the tracker was not written again after the schedule write; corrected forward by B91's re-derivation, no stated figure changed.
+
+
+**Hosted, merged and on the demonstration (2026-10-04).**
+- **Local, on `de9db6a`:**
+
+  | Suite | Result |
+  |---|---|
+  | API unit | 3199 |
+  | Full integration (fresh database) | 1843/1843 |
+  | Acceptance | 58 |
+  | Upgrade proof | pass |
+
+- **Hosted, PR #79 at `de9db6a`:**
+  - ci 37192237056 (build-test): integration 1843/1843, API unit 3199 plus 9, web 244, acceptance 58;
+  - C19 lifecycle 37192237062: succeeded.
+- **The merge:** `97d87ed`, under the standing authorization. Main's chain: ci 37194638684 → C19 lifecycle 37194638669 → C17 finalize 37196895886 → C19 anchor 37196965854, all succeeded.
+- **The demonstration:**
+  - backup `.eye-local/backups/eye_demo-pre-0104-20261004T111119Z.dump` (pg_dump -Fc, 7,103 TOC entries);
+  - 0104 applied to eye_demo by `db:migrate` from the main checkout at `de9db6a` (never apply-pending);
+  - no API restart was needed (the migration re-declares one SQL function);
+  - `scripts/phase6/act-b30.mjs` re-run on eye_demo: ALL SCENES HELD (39.9 s; evidence in the scratchpad) — the act is rerun-safe under the live-contract approval rule.
+
+### B30.9 — the contract under concurrency (0106; the bounded review of 2026-10-06)
+
+**The finding** (source inspection, then a two-session reproduction):
+- 0104's re-checks in `twin.decide_estimate` read `simulation.constraint_sets` / `constraint_set_versions` without any lock shared with the mutations.
+- Version and retirement lock the set ROW (`constraint_set_for_change … FOR UPDATE`). A declaration inserts a NEW row, which no read can lock.
+- All three take their recorded instant (`v_at := clock_timestamp()`) at function START, before any lock. The database runs READ COMMITTED.
+- So an approval running while a mutation was in flight read the old contract and COMMITTED; the mutation then committed with an instant BEFORE the approval. Each check statement also read with its own snapshot, so a torn view was possible.
+- ES8 had proved only sequential changes.
+
+**The correction: 0106**, the next free identity; 0104 and 0105 are applied and frozen and untouched.
+- ONE transaction-scoped advisory lock per (tenant, domain) contract, `simulation.constraint_contract_key` — the 0071 `retention.lock_key_domain` idiom.
+- The approval takes it **shared** before its first contract read, so approvals never wait on each other.
+- `declare_constraint_set`, `version_constraint_set` and `retire_constraint_set` take it **exclusive** before any read, and take their instant AFTER it.
+- Each of the four functions is re-declared, copied whole from its live definition with the change marked `-- 0106`.
+- The lock order is one-way (advisory, then the set row); an approval takes no set-row lock, so no deadlock cycle exists.
+- A refusal stays governed: `estimate rejected (contract)`, 409, nothing admitted, and the proposal and its historical pins are kept.
+
+**The proof** (`phase6-estimation-b30` ES9).
+- **How the race is driven:** two sessions, interleaved deterministically. A REAL governed mutation (pipeline, PDP, signed context, port) is held open after its port ran; the owner's REAL approval runs meanwhile. Every wait is observed in `pg_stat_activity` (an advisory lock wait in `decide_estimate` / `version_constraint_set`), never slept for.
+- **The stand-in:** the reverse order (c) holds the approval's SHARED lock in a raw superuser session, because the approval's own transaction cannot be paused from a harness.
+
+| Run | Database | Result |
+|---|---|---|
+| Before expectations (`EYE_ES9_BASELINE=1`) | through 0105 | **9/9** — the race reproduced: (a1) approved on the old contract with the version recorded 48 ms earlier; (b) approved without a set declared 29 ms earlier; (a2) approved on a set retired 30 ms earlier; (c) the version recorded inside the approval's window |
+| Corrected expectations | through 0106 | **9/9** — each approval WAITED, was REFUSED (contract, 409) with nothing admitted, no approval event and no outbox; recovered by a fresh proposal; (c) the version waited and recorded its instant after the approval's hold |
+| Corrected on 0105 / before on 0106 (cross-checks) | — | 1 failed each way (ES9 only) |
+
+- An earlier run's ES8 timed out behind a hold that ES9 left open on failure. ES9 now releases every hold in `finally`.
+
+**Limits.**
+- The interleavings are at statement granularity: a mutation is held before its commit, and an approval before its contract read.
+- Interleavings inside a single statement are not driven; the lock makes them moot, because the reads follow the lock.
+- Only READ COMMITTED (the database's setting) is proven.
+- The estimator's selection is read by its PINNED (immutable) version, so it needs no lock.
+- Proposal-time checks are not serialized, by design: a proposal pinned during a mutation is re-checked at approval.
+
+## B91 — usage metering, the cost ledger, entitlements and licensing (0105): F-P7-F-01 and F-P7-F-02 advanced, B90's usage-counter carryover delivered. Implemented and demonstrated on NORDWERK; both features complete at later stages (B112 and B104), each residual carried.
+
+### B91.1 — how it was built
+- **The prelude** (§0, `e82bac2`, by the integrator):
+  - the schema `commercial`;
+  - the attention classes `commercial.usage` and `commercial.entitlement`, with the subject kinds meter, budget, entitlement and contract;
+  - the role `commercial_authority` (PLATFORM: availability only, never business authority);
+  - the two shared tables `commercial.licences` (versioned per tenant; a tenant with no licence is UNCONTRACTED and the gate never applies) and `commercial.usage_records` (append-only).
+- **Four parts in parallel worktrees, each with its own Redis (6394–6397):**
+  - §EN entitlements: the catalogue (23 capability rows, core immutable), offers, packages, SKUs, licence issuance, the contract scope object (V10-T-015) and THE AVAILABILITY GATE in the pipeline, after the PDP's allow;
+  - §GR grace: grace policies, renew/suspend/reinstate, the lapse tick, `grace_rules`, the offline licence token (Ed25519) and `scripts/commercial/verify-licence.mjs`, the entitlement page and the Simulations banner;
+  - §LE ledger: rate cards with an energy ESTIMATE, allocation keys, idempotent cost entries, budgets with owners, thresholds, anomaly and forecast, unit data cost (DQM-040), SYNTHETIC invoices and reconciliation, and optimisation decisions refused at the boundary;
+  - §ME meters: recording triggers for inference, collection, compute, products and storage; B90's per-consumer usage counters; versioned caps within the licence; enforcement at admission (a reached compute cap stops an experiment PARTIAL, keeping its work, and refuses the envelope sweep 409).
+- **The fold:** all four parts in one migration, applied in the order §EN, §GR, §LE, §ME. It re-declares, each copied whole with its change marked:
+  - `simulation.claim_experiment_chunk` (0099), for the tenant cap;
+  - `products.read_subscription_events` (0096), for the usage counter.
+- 0001–0104 are untouched.
+
+### B91.2 — what the integration found
+**Seams between the parts, joined at the fold:**
+- §GR's `grace_rules` answer is read by the gate.
+- §ME's capability keys are the catalogue's, and its licence-limit read accepts §EN's `{quantity, unit, period}`.
+- The banner finds the gate by its real signature: as written it was never found.
+- A failed availability read answers a governed 503 `EYE_DEP_001` (fail closed, nothing done), not a raw 500.
+- Tick order: lapse 80 → storage sample 81 → ledger 82.
+
+**Three boundary defects, visible only when the four parts ran together** (each part's harness had passed alone):
+1. **The attention tick was refused** for a contracted tenant whose licence omits agent_platform. That stops warnings to named people, and stops the licence lapse itself. The fix:
+   - the route carries a SERVER-declared `mandatoryControl: 'attention_tick'`, set only when the session port's registration is kind `attention` and the task is `attention_tick`;
+   - every other agent run stays gated.
+2. **A read of existing evidence was refused** (`observation.evidence.retrieve`). It joins the read exemption in both mirrors.
+3. **The gate and §GR disagreed** on an active licence past its term. The gate now takes the grace mode from the grace policy's `allows`.
+
+**Two gaps found by the act's rehearsal:**
+- **No governed path could create the vendor.** `commercial_authority` binds at PLATFORM, and no route created a PLATFORM principal. The fix:
+  - `POST /v1/platform/principals` (the platform administrator only; the identity port unchanged; a non-PLATFORM role is refused 400);
+  - `identity.self.read` admits the vendor.
+- **tenant_admin could not acknowledge** the items routed to it. It now holds `executive.attention.item.acknowledge` at TENANT.
+
+**Corrected by B91-F (0107, §B91.7):** §ME's and §LE's usage notices followed the `sio_notify` idiom — material, open to the named owner and tenant_admin whatever the policy said — while §GR's entitlement notices were evaluated against the published policy. Since 0107 both are evaluated against the published policy.
+
+### B91.3 — the evidence
+- **Harnesses (fresh database):**
+
+  | Harness | Result |
+  |---|---|
+  | `phase6-entitlements-b91` | 34/34 |
+  | `phase6-grace-b91` | 34/34 |
+  | `phase6-ledger-b91` | 21/21 |
+  | `phase6-meters-b91` | 15/15 |
+
+  - The entitlements harness's boundary case (EN3): on a tenant licensed for core only — active, grace, suspended and lapsed — 18 mandatory controls stay reachable: audit, identity, warnings and attention, corrections and withdrawals, export, human-gated decisions in an unlicensed capability, and reads of existing records.
+  - Each part also passed its pinning harnesses (16–18 each) alone.
+- **Local gates:**
+  - at `82203fb`: integration 1943/1943, API unit 3252 + 9, web 259, acceptance 58, upgrade PASS, boundaries clean;
+  - at the final head: at `b7b1d71` (the final code but this test fix): integration 1947/1947, API unit 3252 + 9, web 259, acceptance 58, boundaries clean; the upgrade proof FAILED once — 1/276 of the Phase 1/2 suites on upgraded data, phase3-corrections G5 ("the pre-correction view lost the edge"): the test took its "before the correction" instant from the HOST clock while the edge's knowledge time is the DATABASE's, and the local container VM's clock measured ~28–35 ms ahead of the host — a latent test defect against the DB-instant rule, not a B91 regression (it passed inside the full integration run on the same head). Corrected: both instants from `dbNow()`; the upgrade proof then PASSED and phase3-corrections 20/20 three times;
+  - browser gate: 93/93 on a fresh database.
+- **The demonstration** (eye_demo; `evidence/cp6/act-b91.txt`):
+  - backup `eye_demo-pre-0105-20261004T121709Z.dump`, then `db:migrate`;
+  - the API restarted on the B91 build with the switch and the sinks in the caller's environment (VERIFIED);
+  - the act HELD: 44 ✓, 409.2 s;
+  - the four walks 15/15, with eighteen screenshots of record (`evidence/phase6-browser/b91-*.png`);
+  - `--restore` HELD; act-b30 after it HELD; the scenes re-run HELD;
+  - the earlier walks (B90, B27, B31, B35, B30) 63/63 against the restored demonstration. One walk-only collision was fixed: B91's experiment title on the same line contains B30's.
+- **The rehearsal** (eye_demo_b91 on :3411; `evidence/cp6/act-b91-rehearsal.txt`) preceded the demonstration.
+- **Local gates at `0b7695b`** (with 0106 and 0107; the bounded review of 2026-10-06): integration 1954/1954 (fresh database), API unit 3252 + 9, web 259, acceptance 58, upgrade PASS, boundaries clean, browser 93/93.
+- **C15 on #80 at `baf7a30`** (ci 37446394135, 2026-10-06): `pnpm-audit-human` and `trivy-fs` FAILED on two advisories published after #80's 2026-10-04 green run; the lockfile was unchanged and main carries the same versions.
+  - proxy-addr <2.0.8: GHSA-jqcg-44mw-7w3h, CRITICAL, reached through express under @nestjs/platform-express.
+  - source-map-js <1.2.2: GHSA-68fv-2mgg-jv7q, HIGH, reached through postcss (vite, next).
+  - **Corrected forward** by two EXACT reviewed overrides in `pnpm-workspace.yaml` (`proxy-addr: 2.0.8`, `source-map-js: 1.2.2`; the first patched versions, on their consumers' lines). Both have the same dependencies as the versions they replace, so C17's measured development closure stays 313 — version swaps, like the next 16.3.3 → 16.3.6 precedent.
+  - **Local, after the pins:** `pnpm audit` reports no known vulnerabilities; build ok; API unit 3252 + 9; web 259. trivy-fs is confirmed by the hosted run, since no pinned trivy is on this host.
+- **#80 at `8b478fc`** (ci 37449116459). Supply-chain PASSED, with 313 development components: the pins cleared that blocker. Browser-regression and the four C19 lifecycle checks passed. **build-test FAILED** in job 112221058738: integration 1953/1954, at `phase6-agents.test.ts:195`, where the planner case expected `finished` and read `running`.
+  - **The cause** (source inspection): the case waited on a COUNT of terminal scheduler runs, then asserted on the NEWEST scheduler run. The first tick of an `every` scheduler and the promoted delayed tick can overlap — the case's own comment anticipates it — so the newest run could be the overlapping one, still running. A test defect, not a runtime one: overlapping ticks of a room are the scheduler's anticipated behaviour.
+  - **The correction:** the wait and every assertion bind to ONE identified run — the first scheduler-triggered run of the agent that STARTED after the schedule was created (the database's instant) and reached a terminal outcome — re-read by its `run_id`. The case still requires that the run `finished`, carries the scheduler trigger (no principal, a trigger ref) and produced a briefing. Cleanup (unschedule, and a bounded drain of any overlapping tick) runs in `finally`.
+  - **Local:** `phase6-agents` 9/9, five times, each on a fresh database. Limit: the overlap did not occur locally (one scheduler run each time), so the binding covers it by construction, not by a local reproduction.
+- **Hosted:** **Hosted, on the code-final head `6899418`** — the B91 code, 0106, 0107, the C15 pins and the planner-case binding; every later commit on #80 is records only:
+  - **ci 37460948062: success.**
+    - build-test job 112260067526: integration **1954/1954**, API unit **3252** + **9**, web **259**, acceptance **58**, contracts 203, tokens 3; its later steps passed 623 and 44.
+    - supply-chain job 112260067289: `pnpm-audit-human` ok, `trivy-fs` ok; the development closure stays 313.
+    - browser-regression job 112260067393.
+  - **C19 lifecycle 37460948264: success:** lifecycle (ubuntu-latest) 112260068186, lifecycle (macos-14) 112260068342, delivery-chain-dry 112260068137, foreign-checkout-pinning 112260067970.
+  - **The earlier attempts, kept:**
+    - `c97d3c9`: ci 37205396680 and C19 37205396678 green, before the review's corrections;
+    - `baf7a30`: ci 37446394135 supply-chain FAILED on the two new advisories;
+    - `8b478fc`: ci 37449116459 build-test FAILED at 1953/1954, the planner case (above).
+  - The records-only head that carries this text is verified by its own required checks before the merge. Its results, the merge and main's chain are recorded in the next delivery record (B25), not here, so there is no records-only commit loop..
+
+### B91.4 — the scenes as staged
+**F-P7-F-02.** While NORDWERK was still uncontracted:
+- C. Marchetti (the vendor) set SYNTHETIC rate cards.
+- N. Vogel (the tenant administrator) set the month budget, owned by M. Dvořák.
+- **Inference** ran through a REAL gateway call in replay mode: the extraction agent's run on a record A. Hoffmann uploaded. No external provider is connected on this deployment.
+- E. Kovács's experiment and T. Nakamura's envelope sweep were metered.
+- **The caps:** a STOP cap on compute was set at the day's usage. The next tick stopped the experiment PARTIAL (`tenant_cap`, the completed chunk kept), and the next sweep was refused 409 with the breach recorded and explained.
+- The tick priced the usage; the budget's variance, its 80 % and 100 % items to M. Dvořák, and the breach all show.
+- A SYNTHETIC invoice reconciles to "differences" while source consumption has no rate card.
+
+**F-P7-F-01.**
+- The licence `foresight-decision` v1 covers foresight, decision and the platform capabilities NORDWERK uses, but not Simulation. Its term was 150 s.
+- T. Nakamura's sweep was refused 403 `EYE-ENT-001`, with the explanation.
+- The warning read and the auditor's audit read stay available.
+- The real tick moved the licence to GRACE, with the last valid entitlement. The `commercial.entitlement` item was routed to N. Vogel, who acknowledged it.
+- **`--restore`, after the walks:** licence v2 `full-platform`, with no term end, and the compute cap raised to warn. The integrated NORDWERK demonstration keeps working for later stages, and v1's history is kept.
+
+**The two new personas** were created through governed routes: C. Marchetti (commercial_authority, PLATFORM) and N. Vogel (tenant_admin, TENANT).
+
+### B91.5 — the residuals and the bookkeeping (the B27/B31/B35 rule, as applied to B30)
+B91 completes neither feature and keeps its delivered effort, 5–9 U, as its own. The 73 judged rows moved clause by clause; CAP-PD-02 follows its chapter rows.
+
+**F-P7-F-01** completes at **B112** (0.75–1.5 U):
+- the purchase path and marketplace rights;
+- contract-scope enforcement by the gate;
+- per-unit limits;
+- gating of background work outside the pipeline;
+- emergency-operation mode;
+- the commercial acts' digest and consequence preview.
+
+Carriers: B67 (the offline token verified inside the disconnected profile), B77, B78, B94 and B111. Rows: 0/17/42 → 5/54/0.
+
+**F-P7-F-02** completes at **B104** (0.5–1 U):
+- carbon (an external grid-intensity source);
+- reservations;
+- storage beyond the evidence vault;
+- transfer, retrieval and operations cost;
+- energy budgets;
+- per-tenant contract rates;
+- retention and workload sensitivity;
+- the admission review.
+
+Carrier: B102 (token counts at the gateway). Rows: 1/2/12 → 2/12/1.
+
+**External and acceptance work stays apart:**
+- a real billing account (the invoices are SYNTHETIC and close no clause);
+- customer acceptance (PR-66-006, AT-66, UX-67-006 — R2);
+- profile parity (B111, R1);
+- unit-cost benchmarks (R1).
+
+**Dependencies:**
+- on B91's DELIVERED work (stage extra-dependencies): B94 (F-P7-F-04/-06 rest on the gate and licence), B104, B112 and each carrier;
+- F-P7-F-01 no longer waits for F-P7-F-02's completion.
+
+**Re-derived once:**
+- rows implemented 1370 → **1376**, partial 2539 → **2586**, missing 2329 → **2276**;
+- M1 402.5–694.2 → **404.2–697.65 U**;
+- the three-account finish 2027-07-12 → **2027-07-13** (B100);
+- the longest chain 92.17 → **92.42 U**;
+- the acceptance split unchanged (3,555 = 3,179 + 339 + 37);
+- the tracker check, `schedule-model.py --check` and the controls pass;
+- B91 is pinned in A1's delivered order.
+
+**A correction to §B30.8.** Its line "the tracker, the schedule, the summaries and the controls pass" was not true at `de9db6a`. The schedule write had moved 96 features' target dates and owners, and the tracker was not written again after it, so `feature-tracker.mjs` reported them out of step. B91's re-derivation (write → schedule write → write) corrected them forward. No figure §B30.8 states changed.
+
+### B91.6 — the records
+- MIGRATION_LEDGER: the 0105, 0106 and 0107 rows.
+- PHASE6_REPORT §49.
+- The runbook §21.
+- DELIVERY_PLAN's residual table.
+- INTEGRATION_SEQUENCE (#79 and this candidate).
+- The tracker, STAGES, the schedule and the summaries.
+
+### B91.7 — the usage notices routed by the policy (0107, B91-F; the bounded review of 2026-10-06)
+
+**The finding.** 0105 raised the meters' cap notices (`cme_notify`) and the ledger's budget notices (`cle_notify`) as `material` with `policy_version` NULL, open to the named owner and tenant_admin whatever the published policy said. The governing rows route a change to accountable roles:
+- "based on consequence, confidence, urgency, and attention policy" (L10-I02);
+- "respecting relevance, authority, attention, and notification policy" (C-032);
+- enforcing "materiality and notification policy" (V04-T-037).
+
+No row makes a budget, cap or usage notice a mandatory bypass. ADR-022's mandatory controls are the warnings and their acknowledgement, not commercial notices.
+
+**The correction: 0107.**
+- Both functions are re-declared, copied from 0105 with the routing lines replaced and marked `-- 0107`.
+- Each notice is evaluated by `executive.evaluate_attention` against the domain's ACTIVE policy (C2, confidence 1, a 24-hour window) and routed by `executive.attention_route` — the B22 contract (0083) every routed class uses.
+- The named owner is kept; the route roles are the policy's.
+- A class the policy does not name ABSTAINS and the item is DEPRIORITIZED (listed, never hidden).
+- A material item with no active owner and no role holder is UNROUTED (or ESCALATED where the policy escalates).
+- The policy id and version and the raising part's reasons are recorded.
+- 0105 is untouched. Items raised before 0107, including the demonstration's, keep their recorded routing.
+
+**The proof:**
+- **Meters (M2 and M6):**
+  - routed open under the published policy, with its version;
+  - deprioritized (`abstained`, no roles, `item.deprioritized`) under a policy without the class;
+  - unrouted with roles nobody holds and no active owner;
+  - recovered.
+- **Ledger (L3 and L8):** the real threshold item routed under the policy; the deprioritized, unrouted and recovered outcomes.
+- **The stand-in:** the unrouted and deprioritized ledger cases, and the meters' unrouted case, call the notice port directly as the superuser with a harness budget or cap row. A threshold and a crossing raise once per version and period, so they cannot be raised again on demand.
+- **Before and after:** through 0107 (fresh database), meters **18/18** and ledger **24/24**. Without 0107, on a database through 0106, the routing assertions fail: meters 6 (M2's policy assertions and M6, with cascades) and ledger 4 (L3's policy assertions and L8).
+- The act's wording is corrected: every commercial notice is policy-evaluated.
+- **On the demonstration (2026-10-06):**
+  - eye_demo was backed up (`.eye-local/backups/eye_demo-pre-0106-20261006T092044Z.dump`, 7,499 TOC entries) and migrated through 0107 by `db:migrate` (never apply-pending).
+  - No API restart was needed: both migrations re-declare SQL functions only.
+  - act-b30 HELD (36.9 s; its estimate approval runs under 0106's lock) and act-b91 HELD (0.7 s).
+  - NORDWERK's policy v9 already names `commercial.usage` (tenant_admin, executive), so its next usage notices are routed by it.
 
 ## Order and the next implementation batch
 
@@ -5953,4 +6204,4 @@ one artefact, no deployment leg. Every leg of every unit stays unaccepted until 
 carries its own signed evidence (P7-D). The synthetic-company demonstration (`eye_demo`, NORDWERK) remains the deliverable
 every batch is exercised on: B3's kinds become visible on the demonstration when a scenario with the
 new kinds is declared there through the governed route (a scripted act, `scripts/phase4/`), which is
-the next demonstration step after the hosted run is green. B22 delivered the consumers and the attention policy (0083; the register 44/6/0) and the sweep's remedy (0082). Then B23 (the commands and the query — L1-I02, L3-I02, L4-I02, L7-I02, L10-I02/-I03). B23 bound them and the briefing's attention section (0084; the register 50/0/0). From here the order is the finite delivery plan's (`audit/DELIVERY_PLAN.md`, `audit/delivery/STAGES.csv`): B24 (the attention completion, 0086) delivered on 2026-09-25 on `phase6-b24`, stacked on #63, and B24-F1 corrected on 2026-09-26 (0087, §B24.8) with the tracker corrected (§B24.9); B28 (stream processing, the weak-signal workbench, the early-warning lifecycle, and the two B24 carryovers) delivered on 2026-09-26 (0088, `phase6-b28`, stacked on #64); B32 (the Strategy Graph's capabilities and alignment, risk and opportunity intelligence, the decomposable Strategic Health Score) delivered on 2026-09-28 (0089, `phase6-b32`, stacked on #65; §B32; B32-F1 corrected, §B32.10); B34 (durable workflow, collaboration and human tasks, the human gates, the commitment tracker and the governed execution handoff, the attention classes and the act, risk and opportunity continued) delivered on 2026-09-28/29 (0090, `phase6-b34`, stacked on #66; §B34) and corrected forward on the owner's bounded review of 2026-09-29 (0091, §B34.10) — it advances five features, all completing in B36. B29 (twin families and composition, the simulation method fabric and the constraint runtime) delivered on 2026-09-29 (0092, `phase6-b29`, stacked on #67; §B29): the tracker's clauses of F-P5-01 and F-P5-05 closed, their rows' residuals assigned to B30, B31, B33, B78 and R2. B36 (strategic planning, the executive home, the briefing studio v3, the publishing center, and the carried completions of F-P6-04, F-P6-07, F-P6-08, F-P6-09, F-P6-14, F-P6-05 (u) and F-P4-13 (i)(j)) delivered on 2026-09-30 (0094, `phase6-b36`, stacked on #68; §B36): the eleven features' B36 clauses built and harness-proven by eight parts in parallel behind one prelude, the hosted browser cases of conditions (e), (h), (i), (m), (p) and (s) open at `fd47d1c`, the residuals assigned to B35, B45, B54, B55, B61, B83, B84, B85, B86, B92, B103 and R2. B90 (data products, semantic metrics, the metadata catalog) delivered on 2026-09-30 (0095, `phase6-b90`, stacked on #69; §B90): the three features' B90 clauses (F-P7-F-09, F-P7-F-10, F-P7-F-11) built and harness-proven by four parts in parallel behind one prelude (76/76 on a fresh database), the three features `partial` by the tracker's rule, the residuals assigned to B31, B45, B91, B92, B93, B106/R1 and B107 (B36's B103 and R2 residuals preserved); the act, the browser gate and the hosted run pending at the candidate (PR #70), then corrected forward for B90-F1 (0096, §B90.11). B27 (scenario anatomy, sets and coherence) delivered on 2026-10-01 (0097, `phase6-b27`, stacked on #70; §B27): the three features' B27 clauses (F-P4-07, F-P4-08, F-P4-09) built and harness-proven by three parts behind one prelude (72/72 on a fresh database) — the anatomy with the assumption register and the suspended branch, the sets with the plurality gate before a recommendation, the comparator and the portfolio review, the quality evaluation beyond coherence v1 and the governed branch probabilities with the frequency-to-probability map —, the three features `partial` by the tracker's rule, the residuals assigned to B26, B31, B35, B73, B74, B78, B83 and R2 (B90's and B36's residuals preserved); the act, the browser gate and the hosted run pending at the candidate (PR #71). B31 (simulation orchestration, impact analysis, validity) delivered on 2026-10-01 (0099, `phase6-b31`, stacked on #71; §B31: F-P5-09 complete by the rows, F-P5-06 and F-P5-07 partial with their residuals named). B31's bounded review of 2026-10-01 added 0100 (B31-F1, B31-F2) and owned every B31 residual (§B31.9); B90 and B27 travel as one candidate, #71. B35 (decision analysis, recommendation, explanation and appeal, reopen and replay) delivered on 2026-10-01/02 (0101, `phase6-b35`, stacked on #72; §B35: the four features advanced, each completing after its remaining construction). The next A1 stage in the schedule is B30. The C15 return to the official images merged with #57 (`main` `870b212`); the live demonstration containers were recreated onto those images on 2026-09-24 under the owner's word (§B22.2). The `ctx.build` remedy was delivered as 0082 (§B22.1) — the owner's 2026-09-24 word made it a technical choice. AU-MEM-0067 stays OPEN without a waiver: the per-object class (a missing or corrupt object under a reachable root) keeps A7's one 409 and the specification obligation stands (§B21.2's table).
+the next demonstration step after the hosted run is green. B22 delivered the consumers and the attention policy (0083; the register 44/6/0) and the sweep's remedy (0082). Then B23 (the commands and the query — L1-I02, L3-I02, L4-I02, L7-I02, L10-I02/-I03). B23 bound them and the briefing's attention section (0084; the register 50/0/0). From here the order is the finite delivery plan's (`audit/DELIVERY_PLAN.md`, `audit/delivery/STAGES.csv`): B24 (the attention completion, 0086) delivered on 2026-09-25 on `phase6-b24`, stacked on #63, and B24-F1 corrected on 2026-09-26 (0087, §B24.8) with the tracker corrected (§B24.9); B28 (stream processing, the weak-signal workbench, the early-warning lifecycle, and the two B24 carryovers) delivered on 2026-09-26 (0088, `phase6-b28`, stacked on #64); B32 (the Strategy Graph's capabilities and alignment, risk and opportunity intelligence, the decomposable Strategic Health Score) delivered on 2026-09-28 (0089, `phase6-b32`, stacked on #65; §B32; B32-F1 corrected, §B32.10); B34 (durable workflow, collaboration and human tasks, the human gates, the commitment tracker and the governed execution handoff, the attention classes and the act, risk and opportunity continued) delivered on 2026-09-28/29 (0090, `phase6-b34`, stacked on #66; §B34) and corrected forward on the owner's bounded review of 2026-09-29 (0091, §B34.10) — it advances five features, all completing in B36. B29 (twin families and composition, the simulation method fabric and the constraint runtime) delivered on 2026-09-29 (0092, `phase6-b29`, stacked on #67; §B29): the tracker's clauses of F-P5-01 and F-P5-05 closed, their rows' residuals assigned to B30, B31, B33, B78 and R2. B36 (strategic planning, the executive home, the briefing studio v3, the publishing center, and the carried completions of F-P6-04, F-P6-07, F-P6-08, F-P6-09, F-P6-14, F-P6-05 (u) and F-P4-13 (i)(j)) delivered on 2026-09-30 (0094, `phase6-b36`, stacked on #68; §B36): the eleven features' B36 clauses built and harness-proven by eight parts in parallel behind one prelude, the hosted browser cases of conditions (e), (h), (i), (m), (p) and (s) open at `fd47d1c`, the residuals assigned to B35, B45, B54, B55, B61, B83, B84, B85, B86, B92, B103 and R2. B90 (data products, semantic metrics, the metadata catalog) delivered on 2026-09-30 (0095, `phase6-b90`, stacked on #69; §B90): the three features' B90 clauses (F-P7-F-09, F-P7-F-10, F-P7-F-11) built and harness-proven by four parts in parallel behind one prelude (76/76 on a fresh database), the three features `partial` by the tracker's rule, the residuals assigned to B31, B45, B91, B92, B93, B106/R1 and B107 (B36's B103 and R2 residuals preserved); the act, the browser gate and the hosted run pending at the candidate (PR #70), then corrected forward for B90-F1 (0096, §B90.11). B27 (scenario anatomy, sets and coherence) delivered on 2026-10-01 (0097, `phase6-b27`, stacked on #70; §B27): the three features' B27 clauses (F-P4-07, F-P4-08, F-P4-09) built and harness-proven by three parts behind one prelude (72/72 on a fresh database) — the anatomy with the assumption register and the suspended branch, the sets with the plurality gate before a recommendation, the comparator and the portfolio review, the quality evaluation beyond coherence v1 and the governed branch probabilities with the frequency-to-probability map —, the three features `partial` by the tracker's rule, the residuals assigned to B26, B31, B35, B73, B74, B78, B83 and R2 (B90's and B36's residuals preserved); the act, the browser gate and the hosted run pending at the candidate (PR #71). B31 (simulation orchestration, impact analysis, validity) delivered on 2026-10-01 (0099, `phase6-b31`, stacked on #71; §B31: F-P5-09 complete by the rows, F-P5-06 and F-P5-07 partial with their residuals named). B31's bounded review of 2026-10-01 added 0100 (B31-F1, B31-F2) and owned every B31 residual (§B31.9); B90 and B27 travel as one candidate, #71. B35 (decision analysis, recommendation, explanation and appeal, reopen and replay) delivered on 2026-10-01/02 (0101, `phase6-b35`, stacked on #72; §B35: the four features advanced, each completing after its remaining construction). B30 (twin state, reconciliation, envelope and calibration) delivered on 2026-10-02 (0103; §B30), corrected forward on 2026-10-04 (0104, §B30.8), merged with #77 and #79. B91 (usage metering, the cost ledger, entitlements and licensing) delivered on 2026-10-04 (0105; §B91). The next A1 stage in the schedule is B25. The C15 return to the official images merged with #57 (`main` `870b212`); the live demonstration containers were recreated onto those images on 2026-09-24 under the owner's word (§B22.2). The `ctx.build` remedy was delivered as 0082 (§B22.1) — the owner's 2026-09-24 word made it a technical choice. AU-MEM-0067 stays OPEN without a waiver: the per-object class (a missing or corrupt object under a reachable root) keeps A7's one 409 and the specification obligation stands (§B21.2's table).
