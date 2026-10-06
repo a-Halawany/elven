@@ -1186,6 +1186,17 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   { match: /^(forecast method|forecast target|horizon policy|forecast route|forecast) rejected \((state|stale|duplicate)\)/i, status: 409, code: 'EYE_STA_002' },
   { match: /^(forecast method|forecast target|horizon policy|forecast route|forecast) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
   /* end B25 registry */
+  /* B25 ensembles (0108 §EN) — the families `ensemble rejected (<class>)` (the manager's ports, the issue check on the forecast row, the
+     guards, the route) and `judgement overlay rejected (<class>)` (the overlay ports and guard). Anchored, the class parenthesis required;
+     no earlier row starts with `ensemble` or `judgement overlay`. B9's order: the standing 403 (actor, authority, ownership), the absences
+     404 (unknown_*), the record's state 409 (state, stale, duplicate), the caller's own request 422 (the rest: request, horizon, cutoff,
+     assumptions, rule, budget, owner, plan, member, mismatch, insufficient, outcome, disagreement, precision, adjustment, rationale,
+     evidence, reason, target). */
+  { match: /^(ensemble|judgement overlay) rejected \((actor|authority|ownership)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^(ensemble|judgement overlay) rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^(ensemble|judgement overlay) rejected \((state|stale|duplicate)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^(ensemble|judgement overlay) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B25 ensembles */
   /* B36 home (0094 §H) — the executive home's families in the CLASS form `<noun> rejected (<class>): …`: `cadence rejected`, `executive room
      rejected` (0044's unclassed `room rejected: …` texts are the decision room's and are mapped by no row; the noun here is `executive room`
      and every row is anchored), `objective review rejected` (the SoD of §H2's re-declared convene_review and of open_subject_room — B23's

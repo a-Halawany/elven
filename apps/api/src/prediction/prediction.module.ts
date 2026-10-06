@@ -62,6 +62,7 @@ import { RegistryService } from './registry/registry.service.js';
 import { RegistryMethodRouter } from './registry/method-router.js';
 /* end B25 registry */
 /* B25 ensembles */ /* end B25 ensembles */
+/* B25 ensembles */ import { EnsemblesController } from './ensembles/ensembles.controller.js'; import { EnsemblesService } from './ensembles/ensembles.service.js'; /* end B25 ensembles */
 
 @Module({
   imports: [PipelineModule, ObservationModule, GraphModule, /* B28 (0088) warnings: the attention tick's registry */ ExecutiveModule /* end B28 warnings */,
@@ -73,7 +74,8 @@ import { RegistryMethodRouter } from './registry/method-router.js';
                 /* B25 registry */ /* end B25 registry */
                 /* B25 context */ /* end B25 context */
                 /* B25 registry */ RegistryController, /* end B25 registry */
-                /* B25 ensembles */ /* end B25 ensembles */],
+                /* B25 ensembles */ /* end B25 ensembles */,
+                /* B25 ensembles */ EnsemblesController, /* end B25 ensembles */],
   providers: [
     SeriesService,
     ForecastingService,
@@ -101,6 +103,8 @@ import { RegistryMethodRouter } from './registry/method-router.js';
     /* B25 context */ /* end B25 context */
     /* B25 registry */ RegistryService, /* end B25 registry */
     /* B25 ensembles */ /* end B25 ensembles */
+    /* B25 registry */ /* end B25 registry */
+    /* B25 ensembles */ EnsemblesService, /* end B25 ensembles */
     { provide: APP_FILTER, useClass: ObservationExceptionFilter },
   ],
   exports: [SeriesService, ForecastingService, ScenariosService, /* B25 seams */ CONTEXT_FREEZER, METHOD_ROUTER /* end B25 seams */],

@@ -2077,6 +2077,23 @@ const BUNDLE_V1: Rule[] = [
   { actionPrefix: 'prediction.portfolio.issue', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'forecast_agent', atScope: 'DOMAIN' }],
     requiresPurpose: true, maxConsequence: 'C2' },
   /* end B25 registry */
+  /* B25 ensembles (0108 §EN; F-P4-02: the Ensemble and Disagreement Manager, the judgement overlay). EXACT rules — no earlier rule is a
+     prefix of these names (`prediction.forecast.issue` is a prefix rule but `prediction.ensemble.*` / `prediction.overlay.*` are not under
+     it; `prediction.read` is the forecast readers' and is not a prefix of `prediction.ensemble.read`). THE ISSUE — the forecasters who issue
+     forecasts (the owner, the forecast agent: AI may run an ensemble; the route's issuance step is ALSO authorized under
+     prediction.forecast.issue, the prelude port's own action). THE READ — the forecast's readers, audited. THE OVERLAY — a named human
+     forecast owner only, human-gated (an agent never authors a judgement); its WITHDRAWAL the owner or the domain's administrator,
+     human-gated. The ports re-check the human and the role. */
+  { actionPrefix: 'prediction.ensemble.issue', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'forecast_agent', atScope: 'DOMAIN' }],
+    requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'prediction.ensemble.read', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' },
+    { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' },
+    { role: 'forecast_agent', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }, { role: 'method_steward', atScope: 'DOMAIN' },
+    { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'prediction.overlay.add', exact: true, requiredAnyRole: [{ role: 'forecast_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'prediction.overlay.withdraw', exact: true, requiredAnyRole: [{ role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'domain_admin', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B25 ensembles */
   /* B36 home */
   /* THE EXECUTIVE HOME, THE CADENCE, THE COMMAND VIEWS, THE SEARCH, THE METRICS (0094 §H; F-P6-11: WS-01, JRN-19, PER-03, CAP-EO-01/-02/-04).
      EXACT rules — no `executive` prefix rule exists and none of these names is a prefix of another rule's. THE READS (executive.home.read
