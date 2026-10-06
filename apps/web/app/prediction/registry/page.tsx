@@ -115,7 +115,7 @@ export default function RegistryPage() {
 
       <section aria-labelledby="m-h" style={section}>
         <h2 id="m-h" style={h2}>The registry</h2>
-        <table className="eye-table" style={tableStyle}>
+        <table className="eye-table" style={tableStyle} aria-label="registry">
           <thead><tr><Th>Method</Th><Th>Family</Th><Th>Kinds</Th><Th>Horizons</Th><Th>State</Th><Th>Steward</Th><Th>Entry</Th></tr></thead>
           <tbody>
             {view.methods.map((m) => (
@@ -156,7 +156,7 @@ export default function RegistryPage() {
         {active.length === 0 ? <Empty>No horizon policy is active: the legacy rule applies (the statistical methods at every horizon, quantity forecasts only).</Empty> : active.map((p) => (
           <div key={p.policy_id}>
             <p><strong>{p.risk_class} v{p.version}</strong> — {p.statement}</p>
-            <table className="eye-table" style={tableStyle}>
+            <table className="eye-table" style={tableStyle} aria-label="horizon policy">
               <thead><tr><Th>Horizon</Th><Th>Treatment</Th><Th>Families</Th><Th>By kind: language · validation</Th></tr></thead>
               <tbody>{HORIZONS.map((h) => {
                 const r = (p.rules[h] ?? null) as Record<string, unknown> | null;
@@ -176,7 +176,7 @@ export default function RegistryPage() {
       <section aria-labelledby="v-h" style={section}>
         <h2 id="v-h" style={h2}>Validations — per target and horizon</h2>
         {view.validations.length === 0 ? <Empty>No validation is recorded.</Empty> : (
-          <table className="eye-table" style={tableStyle}>
+          <table className="eye-table" style={tableStyle} aria-label="validations">
             <thead><tr><Th>Method</Th><Th>Series</Th><Th>Horizon</Th><Th>Kind</Th><Th>Mode</Th><Th>Origins</Th><Th>Passed</Th><Th>Claim</Th><Th>Recorded</Th></tr></thead>
             <tbody>{view.validations.map((v) => <tr key={v.validation_id}><Td mono>{v.method_ref}</Td><Td>{v.series_key}</Td><Td mono>{v.horizon_code}</Td><Td>{v.kind}</Td><Td>{v.mode}</Td><Td mono>{v.origins} / {v.min_origins}</Td>
               <Td>{v.passed ? 'PASSED' : 'not passed'}</Td><Td>{v.synthetic ? 'synthetic demonstration' : v.passed ? 'empirical validation' : '—'}</Td><Td mono>{fmtInstant(v.computed_at)}</Td></tr>)}</tbody>
@@ -187,7 +187,7 @@ export default function RegistryPage() {
       <section aria-labelledby="r-h" style={section}>
         <h2 id="r-h" style={h2}>Routes — planned, issued, refused</h2>
         {view.routes.length === 0 ? <Empty>No routed request yet.</Empty> : (
-          <ul>{view.routes.map((r) => <li key={r.route_id}><Mono>{fmtInstant(r.requested_at)}</Mono> {r.target_key ?? r.series_key} at <Mono>{r.horizon_code}</Mono> — <strong>{r.outcome}</strong>{r.method_ref === null ? '' : ` by ${r.method_ref}`}{r.refusal === null ? '' : `: ${r.refusal}`}</li>)}</ul>
+          <ul aria-label="routes">{view.routes.map((r) => <li key={r.route_id}><Mono>{fmtInstant(r.requested_at)}</Mono> {r.target_key ?? r.series_key} at <Mono>{r.horizon_code}</Mono> — <strong>{r.outcome}</strong>{r.method_ref === null ? '' : ` by ${r.method_ref}`}{r.refusal === null ? '' : `: ${r.refusal}`}</li>)}</ul>
         )}
       </section>
     </>
