@@ -54,7 +54,7 @@ import { ScenarioSetsService } from './scenarios/sets/sets.service.js';
 /* B25 (0108 §0) the seams and their defaults */ import { CONTEXT_FREEZER, METHOD_ROUTER, NullContextFreezer, LegacyMethodRouter } from './portfolio/seams.js'; /* end B25 seams */
 /* B25 context */ /* end B25 context */
 /* B25 registry */ /* end B25 registry */
-/* B25 ensembles */ /* end B25 ensembles */
+/* B25 ensembles */ import { EnsemblesController } from './ensembles/ensembles.controller.js'; import { EnsemblesService } from './ensembles/ensembles.service.js'; /* end B25 ensembles */
 
 @Module({
   imports: [PipelineModule, ObservationModule, GraphModule, /* B28 (0088) warnings: the attention tick's registry */ ExecutiveModule /* end B28 warnings */,
@@ -64,7 +64,7 @@ import { ScenarioSetsService } from './scenarios/sets/sets.service.js';
                 /* B27 sets */ ScenarioSetsController /* end B27 sets */,
                 /* B25 context */ /* end B25 context */
                 /* B25 registry */ /* end B25 registry */
-                /* B25 ensembles */ /* end B25 ensembles */],
+                /* B25 ensembles */ EnsemblesController, /* end B25 ensembles */],
   providers: [
     SeriesService,
     ForecastingService,
@@ -87,7 +87,7 @@ import { ScenarioSetsService } from './scenarios/sets/sets.service.js';
     /* end B25 seams */
     /* B25 context */ /* end B25 context */
     /* B25 registry */ /* end B25 registry */
-    /* B25 ensembles */ /* end B25 ensembles */
+    /* B25 ensembles */ EnsemblesService, /* end B25 ensembles */
     { provide: APP_FILTER, useClass: ObservationExceptionFilter },
   ],
   exports: [SeriesService, ForecastingService, ScenariosService, /* B25 seams */ CONTEXT_FREEZER, METHOD_ROUTER /* end B25 seams */],

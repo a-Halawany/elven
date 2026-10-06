@@ -143,7 +143,7 @@ CREATE TABLE prediction.ensemble_members (
   tied_assumptions    uuid[] NOT NULL DEFAULT ARRAY[]::uuid[],
   state               text NOT NULL CHECK (state IN ('planned', 'issued', 'excluded')),
   forecast_id         uuid UNIQUE,
-  exclusion_class     text CHECK (exclusion_class IS NULL OR exclusion_class IN ('unavailable', 'unimplemented', 'kind', 'failed', 'budget')),
+  exclusion_class     text CHECK (exclusion_class IS NULL OR exclusion_class IN ('unavailable', 'unimplemented', 'kind', 'failed', 'budget', 'not_combined', 'not_run')),
   exclusion_reason    text,
   attempts            int NOT NULL DEFAULT 0 CHECK (attempts >= 0),
   weight              numeric CHECK (weight IS NULL OR (weight >= 0 AND weight <= 1)),
@@ -373,10 +373,11 @@ REVOKE ALL ON FUNCTION prediction.pen_escalate(prediction.ensemble_runs, text, j
 
 /* The attempts and the exclusions a completion or a failure records (private): attempts = [{ordinal, attempt, outcome, error, duration_ms}],
    excluded = [{ordinal, class, reason}]. Each excluded member is disclosed on the ledger, and — when the ensemble forecast exists — on the
-   forecast's own events (forecast.member_excluded). */
+   forecast's own events (forecast.member_excluded). A completion (p_on_forecast) excludes paths that were lost; a FAILED run also excludes
+   what it computed but could not combine (not_combined: a succeeded attempt on record) and what it never reached (not_run: no attempt). */
 CREATE OR REPLACE FUNCTION prediction.pen_record_attempts_and_exclusions(p_run prediction.ensemble_runs, p_attempts jsonb, p_excluded jsonb, p_on_forecast boolean, p_actor uuid, p_correlation uuid)
 RETURNS jsonb SET search_path = prediction, pg_catalog, pg_temp AS $$
-DECLARE x jsonb; m prediction.ensemble_members%ROWTYPE; v_out jsonb := '[]'::jsonb; v_cls text; v_n int;
+DECLARE x jsonb; m prediction.ensemble_members%ROWTYPE; v_out jsonb := '[]'::jsonb; v_cls text; v_n int; p_run_failing boolean := NOT p_on_forecast;
 BEGIN
   IF jsonb_typeof(coalesce(p_attempts, '[]'::jsonb)) <> 'array' OR jsonb_typeof(coalesce(p_excluded, '[]'::jsonb)) <> 'array' THEN
     RAISE EXCEPTION 'ensemble rejected (outcome): attempts and excluded are lists' USING ERRCODE = '22023';
@@ -396,12 +397,21 @@ BEGIN
     IF NOT FOUND THEN RAISE EXCEPTION 'ensemble rejected (outcome): exclusion names member % — not a member of run %', x ->> 'ordinal', p_run.run_id USING ERRCODE = '22023'; END IF;
     IF m.state <> 'planned' THEN RAISE EXCEPTION 'ensemble rejected (outcome): member % of run % is %, not excludable', m.ordinal, p_run.run_id, m.state USING ERRCODE = '22023'; END IF;
     v_cls := x ->> 'class';
-    IF v_cls IS NULL OR v_cls NOT IN ('unavailable', 'unimplemented', 'kind', 'failed', 'budget') OR coalesce(length(btrim(x ->> 'reason')), 0) < 8 THEN
-      RAISE EXCEPTION 'ensemble rejected (outcome): an exclusion names its class (unavailable | unimplemented | kind | failed | budget) and its reason' USING ERRCODE = '22023';
+    IF v_cls IS NULL OR v_cls NOT IN ('unavailable', 'unimplemented', 'kind', 'failed', 'budget', 'not_combined', 'not_run') OR coalesce(length(btrim(x ->> 'reason')), 0) < 8 THEN
+      RAISE EXCEPTION 'ensemble rejected (outcome): an exclusion names its class (unavailable | unimplemented | kind | failed | budget | not_combined | not_run) and its reason' USING ERRCODE = '22023';
     END IF;
     IF v_cls = 'unavailable' AND m.available THEN RAISE EXCEPTION 'ensemble rejected (outcome): member % was planned available; it is not excluded as unavailable', m.ordinal USING ERRCODE = '22023'; END IF;
     IF NOT m.available AND v_cls <> 'unavailable' THEN RAISE EXCEPTION 'ensemble rejected (outcome): member % was planned unavailable (%); it is excluded as unavailable', m.ordinal, m.unavailable_reason USING ERRCODE = '22023'; END IF;
     SELECT count(*) INTO v_n FROM prediction.ensemble_attempts a WHERE a.run_id = p_run.run_id AND a.ordinal = m.ordinal;
+    IF v_cls IN ('not_combined', 'not_run') AND NOT p_run_failing THEN
+      RAISE EXCEPTION 'ensemble rejected (outcome): member % — not_combined and not_run are a FAILED run''s classes', m.ordinal USING ERRCODE = '22023';
+    END IF;
+    IF v_cls = 'not_combined' AND NOT EXISTS (SELECT 1 FROM prediction.ensemble_attempts a WHERE a.run_id = p_run.run_id AND a.ordinal = m.ordinal AND a.outcome = 'succeeded') THEN
+      RAISE EXCEPTION 'ensemble rejected (outcome): member % is excluded as computed-but-not-combined with no succeeded attempt recorded', m.ordinal USING ERRCODE = '22023';
+    END IF;
+    IF v_cls = 'not_run' AND v_n > 0 THEN
+      RAISE EXCEPTION 'ensemble rejected (outcome): member % was attempted; it is not excluded as not run', m.ordinal USING ERRCODE = '22023';
+    END IF;
     IF v_cls = 'failed' AND NOT EXISTS (SELECT 1 FROM prediction.ensemble_attempts a WHERE a.run_id = p_run.run_id AND a.ordinal = m.ordinal AND a.outcome = 'failed') THEN
       RAISE EXCEPTION 'ensemble rejected (outcome): member % is excluded as failed with no failed attempt recorded', m.ordinal USING ERRCODE = '22023';
     END IF;
