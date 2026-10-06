@@ -135,7 +135,7 @@ function Ensembles() {
           <section aria-labelledby="en-members" style={{ ...cardStyle, marginBlockStart: 'var(--eye-space-16)' }}>
             <h2 id="en-members" style={h2}>Members</h2>
             <ScrollBox label="the ensemble's members">
-              <table className="eye-table" style={tableStyle}>
+              <table className="eye-table" style={tableStyle} aria-label="the ensemble's members">
                 <thead><tr><Th>#</Th><Th>Method</Th><Th>Distribution</Th><Th>Weight</Th><Th>Tied to</Th><Th>Validation</Th><Th>State</Th></tr></thead>
                 <tbody>
                   {pkg.members.map((m) => (
