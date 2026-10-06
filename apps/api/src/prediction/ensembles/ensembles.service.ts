@@ -232,11 +232,15 @@ export class EnsemblesService {
   private async execute(envelope: Envelope, principal: AuthenticatedPrincipal, tenantId: string, domainId: string, run: RunSnapshot): Promise<Row> {
     const cid = envelope.correlation_id;
     const reader: Reader = { principal, tenantId, domainId, correlationId: cid, purposeId: envelope.purpose_id ?? 'prediction' };
-    const started = Date.now();
+    // B25 act-found: the compute budget is the MEMBERS' compute. The clock starts AFTER the history is read (below) — a long real history
+    // (the corridor's ~8,900 PortWatch evidence versions, each a governed retrieval) took minutes to assemble and, charged to the budget,
+    // excluded every member as `budget` before any was run.
+    let started = Date.now();
     const attempts: Attempt[] = []; const excluded: Excluded[] = []; const included: Included[] = [];
     let assembled: AssembledSeries;
     try {
       assembled = await this.series.assemble(reader, run.seriesKey, run.knownAt, run.observedThrough);
+      started = Date.now();
     } catch (e) {
       return this.failRun(envelope, principal, tenantId, domainId, run, `the history of ${run.seriesKey} could not be assembled: ${e instanceof Error ? e.message.slice(0, 200) : String(e)}`, attempts, this.excludeAll(run, 'the run\'s history could not be read'));
     }

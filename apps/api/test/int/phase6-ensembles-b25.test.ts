@@ -555,6 +555,23 @@ describe('EN2 · RECOVERY: a later ensemble supersedes the earlier one with its 
   });
 });
 
+/* B25 act-found (the rehearsal on eye_demo_b25): the corridor's real PortWatch history is ~8,900 evidence versions, each a governed retrieval —
+   its assembly takes minutes. The compute budget (≤ 120 s) was charged from BEFORE the history was read, so every member of a run on a
+   long real history was excluded as `budget` and the run failed. The budget is the MEMBERS' compute: the clock starts after the read. */
+describe('EN1 · the compute budget charges the members\' compute, not the history read (act-found)', () => {
+  it('RECOVERY · a slow history read (longer than the whole compute budget) leaves both members run and the run COMPLETED; compute_ms is the members\' compute', async () => {
+    const series = (svc as unknown as { series: { assemble: (...a: unknown[]) => Promise<unknown> } }).series;
+    const original = series.assemble.bind(series);
+    const spy = vi.spyOn(series, 'assemble').mockImplementation(async (...a: unknown[]) => { await new Promise((r) => setTimeout(r, 700)); return original(...a); });
+    let out: Row;
+    try { out = (await issue(eriksen, scenePayload({ horizon: '1y', budget: { computeMs: 300 } }))).ensemble; } finally { spy.mockRestore(); }
+    const run = rec(out['run']);
+    expect(run['state'], String(run['state_reason'])).toBe('completed');
+    expect(arr(out['members']).map((m) => [m['method_ref'], m['state']])).toEqual([['seasonal_naive@1', 'issued'], ['holt_winters@1', 'issued']]);
+    expect(Number(rec(run['outcome'])['compute_ms'] ?? 0)).toBeLessThan(700);
+  });
+});
+
 describe('EN6 · the boundary', () => {
   it('the declared rules: prediction.ensemble_rules() is ENSEMBLE_RULES, key for key', async () => {
     const r = (await sql<{ r: Row }>`select prediction.ensemble_rules() as r`.execute(su)).rows[0]!.r;
