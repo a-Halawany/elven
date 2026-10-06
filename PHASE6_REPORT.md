@@ -4607,6 +4607,7 @@ The mechanism is in `audit/CP6_BATCHES.md` §B27. There is one migration, `0097_
   - the act HELD (44 ✓);
   - the four walks 15/15, with eighteen screenshots;
   - `--restore` HELD, act-b30 after it HELD, and the earlier walks 63/63.
+- **Local gates at `0b7695b`** (with 0106 and 0107; the bounded review of 2026-10-06): integration 1954/1954 (fresh database), API unit 3252 + 9, web 259, acceptance 58, upgrade PASS, boundaries clean, browser 93/93.
 - **Hosted:** «HOSTED».
 
 ### 49.3 What it found, and what it does not close

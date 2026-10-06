@@ -6063,6 +6063,7 @@ The residual construction comes to about 0.8–1.6 U, with R2 apart. Moving the 
   - `--restore` HELD; act-b30 after it HELD; the scenes re-run HELD;
   - the earlier walks (B90, B27, B31, B35, B30) 63/63 against the restored demonstration. One walk-only collision was fixed: B91's experiment title on the same line contains B30's.
 - **The rehearsal** (eye_demo_b91 on :3411; `evidence/cp6/act-b91-rehearsal.txt`) preceded the demonstration.
+- **Local gates at `0b7695b`** (with 0106 and 0107; the bounded review of 2026-10-06): integration 1954/1954 (fresh database), API unit 3252 + 9, web 259, acceptance 58, upgrade PASS, boundaries clean, browser 93/93.
 - **Hosted:** «HOSTED».
 
 ### B91.4 — the scenes as staged
