@@ -129,7 +129,13 @@ const CAST = { 'n.eriksen': ['forecast_owner'], 'h.petrovic': ['method_steward']
   if (missing.length === 0) ok(`the casting read from identity.role_bindings: ${rows.map((r) => `${r.login_name} (${r.roles.join(', ')})`).join('; ')} — no persona or role is created`);
   else { bad(`a persona does not hold the role the act casts it in: ${missing.map(([l, mm]) => `${l} lacks ${mm.join(', ')}`).join('; ')}`); process.exit(1); }
 }
-const who = async (l) => { const s = await login(l, PW); if (s === null) { bad(`${l} could not authenticate`); process.exit(1); } return s; };
+const who = async (l) => { const s = await login(l, PW); if (s === null) { bad(`${l} could not authenticate`); process.exit(1); } return { ...s, login: l, at: Date.now() }; };
+/** A session lives 15 minutes and a PortWatch read takes minutes: each persona's session is renewed (a fresh login) before a long call and at
+ *  each scene — the persona object keeps its identity, its token is replaced. */
+const renew = async (s) => { const n = await login(s.login, PW); if (n === null) { bad(`${s.login} could not authenticate again`); return s; } Object.assign(s, n, { at: Date.now() }); return s; };
+const renewAll = async () => { for (const s of [eriksen, petrovic, richter, weber, mueller, hoffmann, dvorak]) await renew(s); };
+/** A long route as a persona: the session renewed first, then the call without a client timeout. */
+const longAs = async (s, path, over, payload) => { await renew(s); return callLong(path, over, payload, s.token); };
 const eriksen = await who('n.eriksen'); const petrovic = await who('h.petrovic'); const richter = await who('t.richter'); const weber = await who('j.weber');
 const mueller = await who('k.mueller'); const hoffmann = await who('a.hoffmann'); const dvorak = await who('m.dvorak');
 const NAME = { [eriksen.principalId]: 'N. Eriksen', [petrovic.principalId]: 'H. Petrović', [richter.principalId]: 'T. Richter', [weber.principalId]: 'J. Weber',
@@ -261,6 +267,7 @@ async function weberAsu(title, statement) {
 }
 
 /* ── B25-H THE EVIDENCE FOR THE HORIZONS ─────────────────────────────────────────────── */
+await renewAll();
 console.log('\nB25-H THE EVIDENCE FOR THE HORIZONS — the corridor\'s real PortWatch history; the ECB reference rate as a bounded history source, collected once; the 3y/5y validation on it');
 let PW_DAYS = null;
 {
@@ -273,9 +280,9 @@ let PW_DAYS = null;
   PW_DAYS = pw;
   const windows = pw.first && pw.last ? Math.floor((Date.parse(pw.last) - Date.parse(pw.first)) / 86_400_000 / 30) : 0;
   (pw.days >= 12 * 30 ? ok : bad)(`THE CORRIDOR'S REAL HISTORY (the ledger, read-only): ${pw.days} distinct daily observations of chokepoint4 framed from the IMF PortWatch chokepoints source, ${pw.first} → ${pw.last} (${pw.frags} framed rows) — about ${windows} non-overlapping 30-day windows for the 30d event (event_rate@1 needs 12): NO extension was needed, no history source was added for PortWatch`);
-  const del = await q(`select count(*)::int n from observation.blob_tombstones t join objects.canonical_objects e on e.object_type = 'EVD' and e.payload ->> 'manifest_id' = t.manifest_id::text
+  const del = await q(`select count(distinct t.manifest_id)::int n from observation.blob_tombstones t join objects.canonical_objects e on e.object_type = 'EVD' and e.payload ->> 'manifest_id' = t.manifest_id::text
                         where t.tenant_id = $1 and t.domain_id = $2 and exists (select 1 from observation.source_contracts_current c where c.source_key = $3 and e.provenance_ref like 'SRC:' || c.source_id::text || '@%')`, [T, D, SERIES[CORRIDOR].source_key]);
-  note(`the PortWatch source carries ${del[0].n} governed-deleted evidence version(s) (a 2024 replay-set fragment tombstoned by a retention action as superseded evidence): read through the act-found correction (series.service.ts — a fragment a later version serves on its day is disclosed, not counted), the corridor's history is COMPLETE`);
+  note(`the PortWatch source carries ${del[0].n} governed-deleted evidence manifest(s) (a 2024 replay-set fragment tombstoned by a retention action as superseded evidence; its two object versions share it): without the act-found correction (series.service.ts — a fragment a later version serves on its day is disclosed, not counted) every forecast on a PortWatch series is refused as an incomplete history; the routed issues below prove it complete`);
 }
 // THE ECB BOUNDED HISTORY SOURCE
 const ecbContract = () => ({
@@ -381,6 +388,7 @@ for (const h of ECB_HELD === 0 ? [] : ['3y', '5y']) {
   if (v) note(`the ${h} validation of bayes_level@1 on ${ECB_KEY} stands (${iso(v.computed_at)}) — an earlier run`);
   else {
     const t0 = Date.now();
+    await renew(eriksen);
     const r = await callLong(`${P}/registry/validations/run`, pe(eriksen, { action: 'prediction.registry.validation.record', objectType: 'MVL' }),
       { methodRef: 'bayes_level@1', seriesKey: ECB_KEY, horizon: h, origins: VAL[h].origins, stride: VAL[h].stride, minOrigins: 20, mode: 'retrospective' }, eriksen.token);
     if (!r.ok) fail(`N. Eriksen runs the ${h} validation on ${ECB_KEY}`, r); else note(`N. Eriksen RAN the ${h} rolling-origin validation (${mins(t0)})`);
@@ -404,7 +412,7 @@ for (const h of ECB_HELD === 0 ? [] : ['5y', '3y']) {
   }
   if (FX_ASU === null) { bad('no active EUR/USD assumption to rest the ECB forecasts on'); continue; }
   const t0 = Date.now();
-  const r = await callLong(`${P}/portfolio/issue`, pe(eriksen, { action: 'prediction.portfolio.issue', objectType: 'FCT' }), { seriesKey: ECB_KEY, horizon: h, assumptions: [FX_ASU.id], label: 'replay demonstration' }, eriksen.token);
+  const r = await longAs(eriksen, `${P}/portfolio/issue`, pe(eriksen, { action: 'prediction.portfolio.issue', objectType: 'FCT' }), { seriesKey: ECB_KEY, horizon: h, assumptions: [FX_ASU.id], label: 'replay demonstration' });
   if (v?.passed) {
     if (r.ok && r.body.forecast?.validation_state === 'validated_retrospective') ok(`THE ${h} QUANTITY FORECAST on ${ECB_KEY} ISSUED ${short(r.body.forecast.forecastId)} by ${r.body.forecast.method_ref} — validated_retrospective (EMPIRICAL, retrospective: one vintage) (${mins(t0)}): "${String(r.body.forecast.statement).slice(0, 300)}"; note "${String(r.body.forecast.validation_note).slice(0, 300)}"`);
     else fail(`the ${h} quantity forecast on ${ECB_KEY} after a PASSED validation`, r);
@@ -416,6 +424,7 @@ for (const h of ECB_HELD === 0 ? [] : ['5y', '3y']) {
 }
 
 /* ── B25-F1 (F-P4-01) ────────────────────────────────────────────────────────────────── */
+await renewAll();
 console.log('\nB25-F1 (F-P4-01) — the corridor at 30d by the EVENT method (intervention window) and at 5y in REGIME language: different methods per horizon; the 3y quantity refused');
 const ASU_SHARED = await weberAsu(sharedAsuTitle, 'the daily transit counts of the strait are taken as IMF PortWatch publishes them (satellite AIS estimates), revisions included');
 {
@@ -424,6 +433,7 @@ const ASU_SHARED = await weberAsu(sharedAsuTitle, 'the daily transit counts of t
   else {
     const t0 = Date.now();
     note('N. Eriksen runs the 30d EVENT backtest on the real history (the series read takes minutes)');
+    await renew(eriksen);
     const r = await callLong(`${P}/registry/validations/run`, pe(eriksen, { action: 'prediction.registry.validation.record', objectType: 'MVL' }),
       { methodRef: 'event_rate@1', targetKey: TARGET_KEY, horizon: '30d', origins: 60, stride: 30, minOrigins: 20, mode: 'retrospective' }, eriksen.token);
     if (!r.ok) fail('N. Eriksen runs the 30d event backtest', r); else note(`the event backtest recorded (${mins(t0)})`);
@@ -440,7 +450,7 @@ for (const [h, methodRef] of [['30d', 'event_rate@1'], ['5y', 'regime_judgement@
   else if (ASU_SHARED) {
     const t0 = Date.now();
     note(`N. Eriksen issues ${TARGET_KEY} at ${h} through portfolio/issue (the series read takes minutes)`);
-    const r = await callLong(`${P}/portfolio/issue`, pe(eriksen, { action: 'prediction.portfolio.issue', objectType: 'FCT' }), { targetKey: TARGET_KEY, horizon: h, assumptions: [ASU_SHARED], label: 'live', refreshCadence: 'weekly' }, eriksen.token);
+    const r = await longAs(eriksen, `${P}/portfolio/issue`, pe(eriksen, { action: 'prediction.portfolio.issue', objectType: 'FCT' }), { targetKey: TARGET_KEY, horizon: h, assumptions: [ASU_SHARED], label: 'live', refreshCadence: 'weekly' });
     if (!r.ok) fail(`N. Eriksen issues ${TARGET_KEY} at ${h}`, r); else ok(`N. Eriksen ISSUED ${TARGET_KEY} at ${h} through the portfolio (${mins(t0)}): ${short(r.body.forecast.forecastId)} by ${r.body.forecast.method_ref} (${r.body.forecast.family})`);
     f = await routedRow(h, methodRef);
   }
@@ -466,7 +476,7 @@ for (const [h, methodRef] of [['30d', 'event_rate@1'], ['5y', 'regime_judgement@
   const RE = /^forecast rejected \(horizon\): portwatch:chokepoint4:n_total at 3y is unsupported — no passed quantity-rolling-origin validation of bayes_level@1 at 3y with at least 20 origins/;
   if (prior) (RE.test(prior.refusal) ? ok : bad)(`the 3y QUANTITY request on ${CORRIDOR} stands REFUSED (${prior.refusal_class}, route ${short(prior.route_id)}, ${iso(prior.requested_at)}) — an earlier run: "${prior.refusal.slice(0, 300)}"`);
   else if (ASU_SHARED) {
-    const r = await callLong(`${P}/portfolio/issue`, pe(eriksen, { action: 'prediction.portfolio.issue', objectType: 'FCT' }), { seriesKey: CORRIDOR, horizon: '3y', assumptions: [ASU_SHARED], label: 'live' }, eriksen.token);
+    const r = await longAs(eriksen, `${P}/portfolio/issue`, pe(eriksen, { action: 'prediction.portfolio.issue', objectType: 'FCT' }), { seriesKey: CORRIDOR, horizon: '3y', assumptions: [ASU_SHARED], label: 'live' });
     expectRefused(`N. Eriksen's 3y QUANTITY forecast on the corridor series ${CORRIDOR}`, r, 422, RE);
     const ledg = r.body?.route_id ? await q(`select r.outcome, r.refusal_class, (select string_agg(event, ',') from prediction.forecast_events e where e.forecast_id = r.forecast_id) events,
       (select count(*)::int from prediction.forecasts_current f where f.forecast_id = r.forecast_id) rows from prediction.forecast_routes r where r.route_id = $1`, [r.body.route_id]) : [];
@@ -476,6 +486,7 @@ for (const [h, methodRef] of [['30d', 'event_rate@1'], ['5y', 'regime_judgement@
 }
 
 /* ── B25-F3 (F-P4-03) ────────────────────────────────────────────────────────────────── */
+await renewAll();
 console.log('\nB25-F3 (F-P4-03) — a corridor forecast pins the twin snapshot and graph revision it used; a later graph change leaves the replayed package unchanged');
 const groundedRow = async () => (await q(`select f.forecast_id::text, f.information_set_id::text, f.environment_digest, f.environment, f.issued_at, s.revision_head, s.twin_id::text, s.twin_version, s.manifest_digest, s.known_at
    from prediction.forecasts_current f join prediction.information_sets s on s.information_set_id = f.information_set_id
@@ -485,7 +496,7 @@ if (GF === null) {
   const t0 = Date.now();
   // the method named (seasonal naive — the leash's own choice where no backtest record exists): the route then reads the series once, not twice
   note(`N. Eriksen issues the GROUNDED 30d forecast on ${GROUNDED} by seasonal naive (the series read takes minutes)`);
-  const r = await callLong(`${P}/forecasts/issue-grounded`, pe(eriksen, { action: 'prediction.forecast.issue', objectType: 'FCT' }), { seriesKey: GROUNDED, horizon: '30d', assumptions: [ASU_SHARED], label: 'live', refreshCadence: 'weekly', method: 'seasonal-naive' }, eriksen.token);
+  const r = await longAs(eriksen, `${P}/forecasts/issue-grounded`, pe(eriksen, { action: 'prediction.forecast.issue', objectType: 'FCT' }), { seriesKey: GROUNDED, horizon: '30d', assumptions: [ASU_SHARED], label: 'live', refreshCadence: 'weekly', method: 'seasonal-naive' });
   if (!r.ok) fail('N. Eriksen issues the grounded forecast', r); else ok(`N. Eriksen ISSUED the GROUNDED forecast ${short(r.body.forecast.forecastId)} on ${GROUNDED} at 30d (${mins(t0)})`);
   GF = await groundedRow();
 } else {
@@ -504,7 +515,7 @@ if (GF) {
   ENV_OUT.EYE_B25_GROUNDED_FORECAST = GF.forecast_id;
 }
 const replays = async (id) => q(`select replay_id::text, outcome, environment_match, fresh, diverged, replayed_at, original_manifest_digest = replayed_manifest_digest same_manifest, original_output_digest = replayed_output_digest same_output from prediction.forecast_replays where forecast_id = $1 order by replayed_at`, [id]);
-const replay = async () => { const t0 = Date.now(); const r = await callLong(`${P}/forecasts/${GF.forecast_id}/replay`, pe(eriksen, { action: 'prediction.forecast.replay', objectType: 'FCT', objectId: GF.forecast_id }), {}, eriksen.token); return { r, took: mins(t0) }; };
+const replay = async () => { const t0 = Date.now(); const r = await longAs(eriksen, `${P}/forecasts/${GF.forecast_id}/replay`, pe(eriksen, { action: 'prediction.forecast.replay', objectType: 'FCT', objectId: GF.forecast_id }), {}); return { r, took: mins(t0) }; };
 const REV_KEY = 'b25-act:suez-canal-transit';
 const revRow = async () => (await q(`select revision_id::text, revision::int, committed_by::text, committed_at, result from graph.revisions where tenant_id = $1 and domain_id = $2 and idempotency_key = $3`, [T, D, REV_KEY]))[0] ?? null;
 if (GF) {
@@ -554,6 +565,7 @@ if (GF) {
 }
 
 /* ── B25-F2 (F-P4-02) ────────────────────────────────────────────────────────────────── */
+await renewAll();
 console.log('\nB25-F2 (F-P4-02) — two methods disagree on the corridor forecast; both distributions, the ensemble and the assumption that splits them; a labelled judgement overlay');
 {
   // 1. THE ROUTING: forecast.disagreement → the forecast owner, as B91-A published its classes
@@ -586,6 +598,7 @@ if (RUN) note(`the ensemble run ${short(RUN.run_id)} (${CORRIDOR} at ${ENS_HORIZ
 else if (ASU_SHARED && ASU_PERSIST && ASU_REVERT) {
   const t0 = Date.now();
   note(`N. Eriksen issues the ENSEMBLE on ${CORRIDOR} at ${ENS_HORIZON}, observed through ${ENS_CUT} (the series read takes minutes; the compute budget is the members')`);
+  await renew(eriksen);
   const r = await callLong(`${P}/ensembles/issue`, pe(eriksen, { action: 'prediction.ensemble.issue', objectType: 'ENS' }), { seriesKey: CORRIDOR, horizon: ENS_HORIZON, observedThrough: ENS_CUT, assumptions: [ASU_SHARED],
     members: [{ methodRef: 'seasonal_naive@1', assumptions: [ASU_PERSIST] }, { methodRef: 'holt_winters@1', assumptions: [ASU_REVERT] }], label: 'replay demonstration' }, eriksen.token);
   if (!r.ok) fail('N. Eriksen issues the ensemble', r); else ok(`N. Eriksen ISSUED the ensemble run ${short(r.body.ensemble.run.run_id)} → ${r.body.ensemble.run.state} (${mins(t0)})`);
@@ -636,6 +649,7 @@ if (ENS?.ensemble?.forecast_id) {
 }
 
 /* ── B25-9 THE STATE, THE ENV LINES, THE LIMITS ──────────────────────────────────────── */
+await renewAll();
 console.log('\nB25-9 THE STATE and the LIMITS');
 {
   const n = (await q(`select (select count(*) from prediction.forecast_methods where tenant_id = $1 and domain_id = $2)::int methods, (select count(*) from prediction.forecast_targets where tenant_id = $1 and domain_id = $2)::int targets,

@@ -3,8 +3,10 @@
  * exercised in a browser against the seeded DEMONSTRATION after the B25 act ran (the rehearsal copy first, then eye_demo). A DEMO WALK, not a
  * hosted gate case: what it reads is what the act left — N. Eriksen's corridor target "Bab el-Mandeb transit delay" (EYE_B25_TARGET_KEY),
  * its 30d EVENT forecast and its 5y REGIME forecast in scenario language (different methods per horizon), the active horizon policy concurred
- * by H. Petrović, and the refused 3y horizon on the (SYNTHETIC) line-demand series naming the missing validation — so this file runs
- * through playwright.demo.config.ts only (the hosted config ignores *.demo.spec.ts). WRITTEN, NOT YET RUN: the integrator's act stages it.
+ * by H. Petrović, the refused 3y QUANTITY horizon on the corridor's real transit series (EYE_B25_REFUSED_SERIES — the tracker's "Regensburg
+ * line demand series" does not exist) naming the missing validation, and the EMPIRICAL rolling-origin validations at 3y and 5y on the real
+ * ECB history (EYE_B25_ECB_SERIES) with the 5y outcome the act recorded (EYE_B25_ECB_5Y) — so this file runs through
+ * playwright.demo.config.ts only (the hosted config ignores *.demo.spec.ts).
  *
  * What is asserted is what the record says on screen — never a state derived here. Screenshots go to EYE_SHOTS (evidence/phase6-browser/b25-registry-*.png).
  * Personas: the forecast owner N. Eriksen (EYE_B25_FORECASTER, default `n.eriksen`), the analyst A. Hoffmann (EYE_B25_ANALYST, default `a.hoffmann`).
@@ -30,6 +32,10 @@ const ANALYST = process.env['EYE_B25_ANALYST'] ?? 'a.hoffmann';
 const TARGET = process.env['EYE_B25_TARGET_KEY'] ?? 'corridor.bab-el-mandeb.transit-delay';
 const EVENT_METHOD = process.env['EYE_B25_EVENT_METHOD'] ?? 'event_rate@1';
 const REGIME_METHOD = process.env['EYE_B25_REGIME_METHOD'] ?? 'regime_judgement@1';
+const REFUSED_SERIES = process.env['EYE_B25_REFUSED_SERIES'] ?? 'portwatch:chokepoint4:n_total';
+const ECB_SERIES = process.env['EYE_B25_ECB_SERIES'] ?? 'ecb-eurusd-history';
+/** The act's outcome of the 5y quantity forecast on the real ECB history: validated_retrospective (issued) or refused (the validation did not pass). */
+const ECB_5Y = process.env['EYE_B25_ECB_5Y'] ?? '';
 
 async function uiLogin(page: Page, username: string, password: string): Promise<void> {
   await page.goto('/login');
@@ -83,7 +89,17 @@ test.describe.serial('CP-6 B25 §MR — the forecasting portfolio on the demonst
     const routes = page.getByRole('list', { name: 'routes' });
     await expect(routes).toContainText(new RegExp(`${TARGET} at 30d — issued by ${EVENT_METHOD}`));
     await expect(routes).toContainText(new RegExp(`${TARGET} at 5y — issued by ${REGIME_METHOD}`));
-    await expect(routes).toContainText(/at 3y — refused: forecast rejected \(horizon\): .* at 3y is unsupported — no passed quantity-rolling-origin validation/);
+    await expect(routes).toContainText(new RegExp(`${REFUSED_SERIES.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} at 3y — refused: forecast rejected \\(horizon\\): .* at 3y is unsupported — no passed quantity-rolling-origin validation`));
+    // the EMPIRICAL validations on the real ECB history: both horizons recorded, the claim as the record states it
+    const validations = page.getByRole('table', { name: 'validations' });
+    for (const h of ['3y', '5y']) await expect(validations.getByRole('row').filter({ hasText: ECB_SERIES }).filter({ hasText: h })).toHaveCount(1);
+    if (ECB_5Y === 'validated_retrospective') {
+      await expect(validations.getByRole('row').filter({ hasText: ECB_SERIES }).filter({ hasText: '5y' })).toContainText(/PASSED\s*empirical validation/);
+      await expect(routes).toContainText(`${ECB_SERIES} at 5y — issued by bayes_level@1`);
+    } else if (ECB_5Y === 'refused') {
+      await expect(validations.getByRole('row').filter({ hasText: ECB_SERIES }).filter({ hasText: '5y' })).toContainText('not passed');
+      await expect(routes).toContainText(new RegExp(`${ECB_SERIES} at 5y — refused: forecast rejected \\(horizon\\)`));
+    }
     // the analyst reads; the issue control is a forecast owner's
     await expect(page.getByRole('button', { name: 'Issue through the portfolio' })).toHaveCount(0);
     await shot(page, 'b25-registry-03-routes');
