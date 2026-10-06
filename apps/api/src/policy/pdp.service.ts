@@ -2043,6 +2043,40 @@ const BUNDLE_V1: Rule[] = [
       { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }, { role: 'knowledge_owner', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' }],
     obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
   /* end B25 context */
+  /* B25 registry (0108 §MR; F-P4-01: L6-C03, V03-T-125, V03-T-320, MC-012/-013/-015). EXACT rules. Checked against every earlier rule a
+     `prediction.` name could fall under: the prefix rules are prediction.read, .series.register, .forecast.issue, .backtest.record,
+     .outcome.record, .scenario.declare, .indicator.define, .indicator.evaluate, .warning.raise, .warning.acknowledge — none is a prefix of
+     a `prediction.registry.*` or `prediction.portfolio.issue` name (prediction.read is not a prefix of prediction.registry.read), so these
+     rules are reached here, after the B91 blocks. THE READS (registry, plan) — consequential and audited: the forecasting and steering
+     roles and the analysts. PROPOSE (an entry) and DECLARE (a target) — a forecast owner, a steward, an administrator, or the forecast
+     AGENT (AI drafts and proposes); not gated. APPROVE an entry, RETIRE / QUARANTINE / REINSTATE one, APPROVE a target, PUBLISH a horizon
+     policy and CONCUR with it — named humans only (human_gate): the method steward approves and reinstates entries and concurs with
+     policies; a forecast owner or administrator approves targets and publishes policies; the ports add the named steward, the separation of
+     duties and the acting principal. RECORD A VALIDATION — the forecast owner, the agent, the steward, an administrator. THE ROUTED ISSUE
+     (prediction.portfolio.issue, NOT under the issue prefix) — the roles of prediction.forecast.issue (an agent may issue; the policy and
+     the registry decide what it may claim). Every action is under the `foresight` capability prefix (B91's gate on a contracted tenant). */
+  { actionPrefix: 'prediction.registry.read', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' },
+    { role: 'forecast_agent', atScope: 'DOMAIN' }, { role: 'method_steward', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' },
+    { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'prediction.registry.plan.read', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' },
+    { role: 'forecast_agent', atScope: 'DOMAIN' }, { role: 'method_steward', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' },
+    { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'prediction.registry.method.propose', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' },
+    { role: 'forecast_agent', atScope: 'DOMAIN' }, { role: 'method_steward', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'prediction.registry.method.approve', exact: true, requiredAnyRole: [{ role: 'method_steward', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'prediction.registry.method.retire', exact: true, requiredAnyRole: [{ role: 'method_steward', atScope: 'DOMAIN' }, { role: 'domain_admin', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'prediction.registry.method.quarantine', exact: true, requiredAnyRole: [{ role: 'method_steward', atScope: 'DOMAIN' }, { role: 'domain_admin', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'prediction.registry.method.reinstate', exact: true, requiredAnyRole: [{ role: 'method_steward', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'prediction.registry.target.declare', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' },
+    { role: 'forecast_agent', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'prediction.registry.target.approve', exact: true, requiredAnyRole: [{ role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'prediction.registry.policy.publish', exact: true, requiredAnyRole: [{ role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'prediction.registry.policy.concur', exact: true, requiredAnyRole: [{ role: 'method_steward', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'prediction.registry.validation.record', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' },
+    { role: 'forecast_agent', atScope: 'DOMAIN' }, { role: 'method_steward', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'prediction.portfolio.issue', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'forecast_agent', atScope: 'DOMAIN' }],
+    requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B25 registry */
   /* B36 home */
   /* THE EXECUTIVE HOME, THE CADENCE, THE COMMAND VIEWS, THE SEARCH, THE METRICS (0094 §H; F-P6-11: WS-01, JRN-19, PER-03, CAP-EO-01/-02/-04).
      EXACT rules — no `executive` prefix rule exists and none of these names is a prefix of another rule's. THE READS (executive.home.read

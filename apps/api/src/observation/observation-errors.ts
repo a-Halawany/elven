@@ -1174,6 +1174,18 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   { match: /^(information set|forecast replay) rejected \((state|stale|duplicate)\)/i, status: 409, code: 'EYE_STA_002' },
   { match: /^(information set|forecast replay) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
   /* end B25 context */
+  /* B25 registry (0108 §MR) — the families in the CLASS form: `forecast method rejected (<class>)`, `forecast target rejected (<class>)`,
+     `horizon policy rejected (<class>)`, `forecast route rejected (<class>)` (the routes' guard) and the ROUTED refusals `forecast rejected
+     (<class>)` — the class parenthesis is required, so the legacy colon texts of prediction.issue_forecast (`forecast rejected: series …`)
+     are NOT matched here (they keep the behaviour they had); no earlier row starts with these nouns (`forecast withdrawal rejected` and
+     `forecast assessment rejected` are other nouns, anchored). B9's order: the standing 403 (actor, authority, ownership, separation of
+     duties), the absences 404 (unknown_*), the record's state 409 (state, stale, duplicate), the caller's own request 422 (the rest: horizon,
+     method, no_method, unavailable, history, target, intervention, infeasible, kinds, declarations, validation, family, language, rules …). */
+  { match: /^(forecast method|forecast target|horizon policy|forecast route|forecast) rejected \((actor|authority|ownership|separation_of_duties)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^(forecast method|forecast target|horizon policy|forecast route|forecast) rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^(forecast method|forecast target|horizon policy|forecast route|forecast) rejected \((state|stale|duplicate)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^(forecast method|forecast target|horizon policy|forecast route|forecast) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B25 registry */
   /* B36 home (0094 §H) — the executive home's families in the CLASS form `<noun> rejected (<class>): …`: `cadence rejected`, `executive room
      rejected` (0044's unclassed `room rejected: …` texts are the decision room's and are mapped by no row; the noun here is `executive room`
      and every row is anchored), `objective review rejected` (the SoD of §H2's re-declared convene_review and of open_subject_room — B23's

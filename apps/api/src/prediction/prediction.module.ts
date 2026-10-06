@@ -54,6 +54,13 @@ import { ScenarioSetsService } from './scenarios/sets/sets.service.js';
 /* B25 (0108 §0) the seams and their defaults */ import { CONTEXT_FREEZER, METHOD_ROUTER, NullContextFreezer, LegacyMethodRouter } from './portfolio/seams.js'; /* end B25 seams */
 /* B25 context */ import { ContextController } from './context/context.controller.js'; import { ContextService } from './context/context.service.js'; import { GroundedContextFreezer } from './context/context-freezer.js'; /* end B25 context */
 /* B25 registry */ /* end B25 registry */
+/* B25 context */ /* end B25 context */
+/* B25 registry (0108 §MR): the governed model registry, routing and the method families — its own controller under …/prediction/registry and
+   …/prediction/portfolio/issue, its service, and METHOD_ROUTER's implementation (it REPLACES the seam's default below) */
+import { RegistryController } from './registry/registry.controller.js';
+import { RegistryService } from './registry/registry.service.js';
+import { RegistryMethodRouter } from './registry/method-router.js';
+/* end B25 registry */
 /* B25 ensembles */ /* end B25 ensembles */
 
 @Module({
@@ -64,6 +71,8 @@ import { ScenarioSetsService } from './scenarios/sets/sets.service.js';
                 /* B27 sets */ ScenarioSetsController /* end B27 sets */,
                 /* B25 context */ ContextController, /* end B25 context */
                 /* B25 registry */ /* end B25 registry */
+                /* B25 context */ /* end B25 context */
+                /* B25 registry */ RegistryController, /* end B25 registry */
                 /* B25 ensembles */ /* end B25 ensembles */],
   providers: [
     SeriesService,
@@ -87,6 +96,10 @@ import { ScenarioSetsService } from './scenarios/sets/sets.service.js';
     /* end B25 seams */
     /* B25 context */ ContextService, /* end B25 context */
     /* B25 registry */ /* end B25 registry */
+    { provide: CONTEXT_FREEZER, useClass: NullContextFreezer }, /* B25 registry: §MR's router replaces LegacyMethodRouter */ { provide: METHOD_ROUTER, useClass: RegistryMethodRouter },
+    /* end B25 seams */
+    /* B25 context */ /* end B25 context */
+    /* B25 registry */ RegistryService, /* end B25 registry */
     /* B25 ensembles */ /* end B25 ensembles */
     { provide: APP_FILTER, useClass: ObservationExceptionFilter },
   ],
