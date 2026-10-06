@@ -23,6 +23,7 @@ import { newId } from '../../shared/ids.js';
 import type { AuthenticatedPrincipal } from '../../shared/auth-types.js';
 import { errorBody, type Envelope } from '@eye/contracts';
 import { PipelineService } from '../../pipeline/pipeline.service.js';
+import type { CapabilityFactory } from '../../shared/capabilities.js';
 import { ObservationCapability, type AcquisitionWrites } from '../../observation/observation.capabilities.js';
 import { EvidenceService, INTEGRITY_REFUSED_MESSAGE } from '../../observation/vault/evidence.service.js';
 import { PredictionCapability, type PredictionReads, type EvidenceVersionRow } from '../prediction.capabilities.js';
@@ -257,6 +258,17 @@ export class SeriesService {
       const msg = e instanceof HttpException ? String((e.getResponse() as { message?: string })?.message ?? e.message) : (e instanceof Error ? e.message : 'unknown');
       return { refused: `${status === null ? 'read failed' : `refused (${status})`}: ${msg.slice(0, 160)}`, status, error: e };
     }
+  }
+
+  /**
+   * B25 act-found: ONE consequential read under the reader's own envelope — what a write route needs to know BEFORE its write opens (the
+   * series it will read, the cut-off). A governed write's commit capability lives 60 s; a real history (the corridor's ~8,900 PortWatch
+   * evidence versions, each a governed retrieval) takes minutes to assemble, so the routes assemble first and write after.
+   */
+  async readAs<T, C>(r: Reader, action: string, objectType: string, objectId: string | null, capability: CapabilityFactory<C>, fn: (cap: C) => Promise<T>): Promise<T> {
+    const out = await this.pipeline.consequentialRead(this.envelope(r, action, objectType, objectId), r.principal,
+      { scope: 'DOMAIN', tenantId: r.tenantId, domainId: r.domainId, action, objectType, objectId }, capability, (cap) => fn(cap));
+    return out.result;
   }
 
   private envelope(r: Reader, action: string, objectType: string, objectId: string | null): Envelope {

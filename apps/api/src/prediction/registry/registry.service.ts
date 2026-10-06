@@ -32,11 +32,11 @@ import { canonicalHeaderDigest, errorBody, validateHeader, type CanonicalHeader 
 import { newId } from '../../shared/ids.js';
 import type { ScopeContext } from '../../shared/scope.js';
 import type { ForecastWrites } from '../prediction.capabilities.js';
-import { SeriesService, type Reader } from '../series/series.service.js';
+import { SeriesService, type AssembledSeries, type Reader } from '../series/series.service.js';
 import { ForecastingService, HORIZONS, MIN_HISTORY_FOR_BACKTEST } from '../forecasting/forecasting.service.js';
 import { HOLT_WINTERS, SEASONAL_NAIVE } from '../models/models.js';
 import { CONTEXT_FREEZER, type ContextFreezer } from '../portfolio/seams.js';
-import type { RouteWrites, ValidationWrites } from './registry.capabilities.js';
+import { RegistryCapability, type RouteWrites, type ValidationWrites } from './registry.capabilities.js';
 import {
   FAMILIES, FAMILY_IMPLEMENTATION, FamilyRefusal, HORIZON_CODES, checkDeclarations, codeDigestOf, eventConditionOf, runFamily,
   type Family, type FamilyResult, type ForecastKind, type PlannedEntry, type TargetRow,
@@ -199,6 +199,9 @@ export interface Plan {
 }
 export const planOf = (r: Row): Plan => r as unknown as Plan;
 
+/** B25 act-found: what a routed issue or a validation read BEFORE its write opened — the cut-off instant and the series (null: nothing to read). */
+export interface PreAssembly { knownAt: string; assembled: AssembledSeries | null }
+
 /** The issue's capability: the forecast writes (admission, the issue port), the route's ports, and the transaction the seams are handed. */
 export interface PortfolioIssueCap { forecast: ForecastWrites; route: RouteWrites; seamTx: unknown }
 
@@ -211,13 +214,47 @@ export class RegistryService {
   ) {}
 
   /**
+   * B25 act-found: BEFORE THE WRITE OPENS — the cut-off and the series the routed issue (or the validation) will read, assembled outside the
+   * write. A governed write's commit capability lives 60 s; the corridor's real PortWatch history (~8,900 evidence versions, each a governed
+   * retrieval) takes minutes to assemble, and inside the write it lapsed the capability (the route answered 500 after the history was read).
+   * The plan is READ first (prediction.registry.plan.read): a refused plan assembles nothing. The write uses the assembly only when it
+   * matches exactly (series, known-at, observed-through); otherwise it assembles itself, as before.
+   */
+  async preAssembleRouted(reader: Reader, a: RoutedIssueRequest): Promise<PreAssembly> {
+    const r = await this.series.readAs(reader, 'prediction.registry.plan.read', 'FMR', null, RegistryCapability.read, async (cap) => {
+      const knownAt = a.knownAt ?? await cap.now();
+      return { knownAt, plan: planOf(await cap.plan({ tenantId: reader.tenantId, domainId: reader.domainId, targetKey: a.targetKey, seriesKey: a.seriesKey, horizonCode: a.horizonCode, knownAt, cutoff: a.observedThrough })) };
+    });
+    if (r.plan.refusal !== null || !r.plan.methods.some((m) => m.available)) return { knownAt: r.knownAt, assembled: null };
+    return { knownAt: r.knownAt, assembled: await this.series.assemble(reader, r.plan.series_key, r.knownAt, a.observedThrough) };
+  }
+  async preAssembleValidation(reader: Reader, a: ValidationRequest): Promise<PreAssembly> {
+    const r = await this.series.readAs(reader, 'prediction.registry.read', 'FMR', null, RegistryCapability.read, async (cap) => {
+      const knownAt = a.knownAt ?? await cap.now();
+      let seriesKey = a.seriesKey;
+      if (seriesKey === null && a.targetKey !== null) {
+        const t = (await cap.targets()).filter((x) => x['target_key'] === a.targetKey && x['state'] === 'approved').sort((x, y) => Number(y['version']) - Number(x['version']))[0];
+        seriesKey = str(rec(t?.['definition'])['series_key']);
+      }
+      return { knownAt, seriesKey };
+    });
+    if (r.seriesKey === null) return { knownAt: r.knownAt, assembled: null };
+    return { knownAt: r.knownAt, assembled: await this.series.assemble(reader, r.seriesKey, r.knownAt, a.observedThrough) };
+  }
+  private preFor(pre: PreAssembly | null, seriesKey: string, knownAt: string, observedThrough: string | null): AssembledSeries | undefined {
+    const x = pre?.assembled ?? null;
+    return x !== null && x.series.series_key === seriesKey && x.knownAt === knownAt && x.observedThrough === observedThrough ? x : undefined;
+  }
+
+  /**
    * THE ROUTED ISSUE. Answers the issued forecast, or `refused` (the route and the ledger committed by the caller's write, the refusal then
    * answered). Never issues a method the plan did not make available, never at a horizon the policy does not support.
    */
-  async issueRouted(cap: PortfolioIssueCap, ctx: ScopeContext, reader: Reader, a: RoutedIssueRequest, actor: string, correlationId: string, purposeId: string, forecastId: string):
+  async issueRouted(cap: PortfolioIssueCap, ctx: ScopeContext, reader: Reader, a: RoutedIssueRequest, actor: string, correlationId: string, purposeId: string, forecastId: string,
+    pre: PreAssembly | null = null):
     Promise<{ refused: { route_id: string; refusal: string; refusal_class: string; quarantined: string | null; plan: Plan } | null; forecast: Row | null; plan: Plan }> {
     const tenantId = ctx.tenantId as string; const domainId = ctx.domainId as string;
-    const knownAt = a.knownAt ?? await cap.route.now();
+    const knownAt = a.knownAt ?? pre?.knownAt ?? await cap.route.now();   // B25 act-found: the instant the pre-assembly read at
     const routeId = newId();
     const plan = planOf(await cap.route.recordRoute({ routeId, tenantId, domainId, targetKey: a.targetKey, seriesKey: a.seriesKey, horizonCode: a.horizonCode, knownAt, cutoff: a.observedThrough,
       forecastId, actor, correlationId }));
@@ -256,8 +293,9 @@ export class RegistryService {
       // THE LEGACY PATH, UNCHANGED: ForecastingService.issue with its leash and its validation; the B25 columns and sections ride along.
       const method = entry.method_key === 'holt_winters' ? HOLT_WINTERS : SEASONAL_NAIVE;
       const outcomeSpec = { type: 'quantity', series_key: plan.series_key, aggregation: 'value', target_key: plan.target_key };
+      const assembledPre = this.preFor(pre, plan.series_key, knownAt, a.observedThrough);
       const r = await this.forecasting.issue(cap.forecast, ctx, reader, { seriesKey: plan.series_key, horizonCode: a.horizonCode, knownAt, observedThrough: a.observedThrough,
-        assumptions: a.assumptions, refreshCadence: a.refreshCadence, label: a.label, method,
+        assumptions: a.assumptions, refreshCadence: a.refreshCadence, label: a.label, method, ...(assembledPre === undefined ? {} : { assembled: assembledPre }),
         b25: { columns: { ...columns, outcome_spec: outcomeSpec }, payload: { ...sections, outcome: { ...outcomeSpec, family: 'statistical', language: plan.confidence_language } } } },
         actor, correlationId, purposeId, forecastId);
       const bound = await cap.route.bindRoute({ routeId, tenantId, domainId, actor, correlationId });
@@ -274,7 +312,7 @@ export class RegistryService {
 
     const series = await cap.route.series(plan.series_key);
     if (series === null) refuse('forecast', 'unknown_series', `${plan.series_key} is not a series registered in this domain`, correlationId, 404);
-    const assembled = await this.series.assemble(reader, plan.series_key, knownAt, a.observedThrough);
+    const assembled = this.preFor(pre, plan.series_key, knownAt, a.observedThrough) ?? await this.series.assemble(reader, plan.series_key, knownAt, a.observedThrough);   // B25 act-found
     if (!assembled.complete) {
       throw new HttpException(errorBody('EYE_STA_001', correlationId, `${assembled.unreadable.length} evidence version(s) of ${plan.series_key} could not be read by this reader; a forecast on an incomplete history is refused`), 409);
     }
@@ -388,9 +426,9 @@ export class RegistryService {
    * checks are the identification, feasibility and scenario-language disclosures each forecast carries); the statistical builtins by the
    * legacy backtest route.
    */
-  async runValidation(cap: ValidationWrites, ctx: ScopeContext, reader: Reader, a: ValidationRequest, actor: string, correlationId: string): Promise<Row> {
+  async runValidation(cap: ValidationWrites, ctx: ScopeContext, reader: Reader, a: ValidationRequest, actor: string, correlationId: string, pre: PreAssembly | null = null): Promise<Row> {
     const tenantId = ctx.tenantId as string; const domainId = ctx.domainId as string;
-    const knownAt = a.knownAt ?? await cap.now();
+    const knownAt = a.knownAt ?? pre?.knownAt ?? await cap.now();   // B25 act-found: the instant the pre-assembly read at
     const entry = (await cap.effective(tenantId, domainId)).find((m) => m['method_ref'] === a.methodRef);
     if (entry === undefined) refuse('forecast method', 'unknown_method', `${a.methodRef} is not a method of this domain's registry`, correlationId, 404);
     const e = entry as Row;
@@ -409,7 +447,7 @@ export class RegistryService {
     const seriesKey = a.seriesKey ?? str(rec(target?.definition)['series_key']);
     if (seriesKey === null) refuse('forecast method', 'request', 'a validation names a series or a target', correlationId);
     const horizonDays = HORIZONS[a.horizonCode] as number;
-    const assembled = await this.series.assemble(reader, seriesKey as string, knownAt, a.observedThrough);
+    const assembled = this.preFor(pre, seriesKey as string, knownAt, a.observedThrough) ?? await this.series.assemble(reader, seriesKey as string, knownAt, a.observedThrough);   // B25 act-found
     if (!assembled.complete) throw new HttpException(errorBody('EYE_STA_001', correlationId, `${assembled.unreadable.length} evidence version(s) could not be read; a validation on an incomplete history is refused`), 409);
     const points: Point[] = assembled.points.map((p) => ({ date: p.date, value: p.value }));
     if (points.length < 2) refuse('forecast method', 'history', `${seriesKey} has ${points.length} observation(s) known at ${knownAt}`, correlationId);
