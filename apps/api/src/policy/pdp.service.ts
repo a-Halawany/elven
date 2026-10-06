@@ -2026,6 +2026,23 @@ const BUNDLE_V1: Rule[] = [
     obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
   { actionPrefix: 'commercial.cap.set', exact: true, requiredAnyRole: [{ role: 'tenant_admin', atScope: 'TENANT' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   /* end B91 meters */
+  /* B25 context (0108 §CX; F-P4-03, V03-T-196). EXACT rules — no prefix rule is a prefix of these names (`prediction.read`,
+     `prediction.forecast.issue` and the other prediction prefixes read other words; `prediction.forecast.replay` does not start with
+     `prediction.forecast.issue`). FREEZING an information set is the issuing roles' act (the forecast owner, the forecast agent — a job may
+     ground what it issues — and the platform administrator): no human gate, the set is evidence of what was known, not a judgement. The
+     grounded issue itself is `prediction.forecast.issue` (the existing prefix rule). REPLAYING a grounded forecast records a ledger row and
+     an event: the forecast owner, the forecast agent, the domain's administrator and the platform administrator. READING sets, groundings
+     and replays is consequential and audited: the prediction.read roles. */
+  { actionPrefix: 'prediction.information_set.freeze', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'forecast_agent', atScope: 'DOMAIN' }],
+    requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'prediction.forecast.replay', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'forecast_agent', atScope: 'DOMAIN' }],
+    requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'prediction.information_set.read', exact: true, requiredAnyRole: [
+      { role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' },
+      { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'forecast_agent', atScope: 'DOMAIN' },
+      { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }, { role: 'knowledge_owner', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B25 context */
   /* B36 home */
   /* THE EXECUTIVE HOME, THE CADENCE, THE COMMAND VIEWS, THE SEARCH, THE METRICS (0094 §H; F-P6-11: WS-01, JRN-19, PER-03, CAP-EO-01/-02/-04).
      EXACT rules — no `executive` prefix rule exists and none of these names is a prefix of another rule's. THE READS (executive.home.read
