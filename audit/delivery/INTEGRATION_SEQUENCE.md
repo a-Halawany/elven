@@ -158,6 +158,11 @@ Between two merges the first merge's `main` chain completes before the next merg
 - **It failed again** on #71 (ci 36782666166 at `21ee226`, 2026-10-01): ratio 3.0688, foreign mean 4.93 ms, absent mean 15.12 ms — the absent path again the slow one. The recorded next step is taken (`da19ef9`): A5 records and prints its per-probe samples (`A5 TIMING SAMPLES …`) and puts them in the assertion's message. The threshold, the statistic and the gate are unchanged, and the item stays H1's. The next failing run's samples decide what follows; nothing else changes before then.
   - Redis explains only the `supply-chain` red, not this one.
 
+- **#80** (B91 0105, with the bounded review's 0106 and 0107, the C15 pins and the planner-case binding).
+  - Code-final head `6899418`: ci 37460948062 and C19 lifecycle 37460948264, every check green (§B91.3).
+  - Earlier failed attempts are kept in §B91.3: `baf7a30` supply-chain, `8b478fc` build-test.
+  - Merged on its verified records head after main's chain for `97d87ed` had completed. The merge and its main chain are recorded with B25.
+
 ## 3. What is never done in this sequence
 
 No blanket approval; no merge on a pending or timed-out check; no `--failed` re-run on `main`; no waiver of C15–C19; no rewrite of an applied migration (0084 stays as applied; its correction is 0085); no live recreation without its own word.
