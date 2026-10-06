@@ -263,7 +263,13 @@ export class RegistryService {
       const bound = await cap.route.bindRoute({ routeId, tenantId, domainId, actor, correlationId });
       return { refused: null, plan, forecast: { forecastId, method_ref: entry.method_ref, family: entry.family, forecast_kind: plan.forecast_kind, validation_state: r.validationState,
         validation_note: r.validationNote, backtest_id: r.backtestId, statement: r.statement, quantiles: r.quantiles, target_at: r.targetAt, origin_at: r.originAt, route: bound,
-        information_set_id: frozen?.informationSetId ?? null, environment_digest: environment?.digest ?? null } };
+        information_set_id: frozen?.informationSetId ?? null, environment_digest: environment?.digest ?? null,
+        /* integration (B25 fold): what ForecastIssued@v2 announces (a QUANTITY forecast; built from the issue's own answer) */
+        announce: { seriesKey: plan.series_key, subjectEntityId: r.subjectEntityId, horizon: a.horizonCode, horizonDays: r.horizonDays, method: r.method, methodVersion: r.methodVersion,
+                    baselineMethod: r.baselineMethod, validationState: r.validationState, validationNote: r.validationNote, backtestId: r.backtestId, skill: r.skill, label: a.label,
+                    originAt: r.originAt, knownAt, targetAt: r.targetAt, observedThrough: r.observedThrough, issuedAt: r.issuedAt, refreshCadence: a.refreshCadence,
+                    quantiles: r.quantiles, unit: r.unit, drivers: r.drivers, assumptions: r.assumptions, evidenceRefs: r.evidenceRefs,
+                    controls: { synthetic_state: r.controls.synthetic_state, classification: r.controls.classification } } } };
     }
 
     const series = await cap.route.series(plan.series_key);
@@ -362,7 +368,14 @@ export class RegistryService {
     return { refused: null, plan, forecast: { forecastId, method_ref: entry.method_ref, family: entry.family, forecast_kind: plan.forecast_kind, validation_state: validationState,
       validation_note: validationNote, backtest_id: backtestId, statement, quantiles, distribution: result.distribution, outcome: outcomeSpec, target_at: targetAt, origin_at: originAt,
       confidence_language: plan.confidence_language, horizon_policy: horizonPolicy, route: bound, synthetic, information_set_id: frozen?.informationSetId ?? null,
-      environment_digest: environment?.digest ?? null } };
+      environment_digest: environment?.digest ?? null,
+      /* integration (B25 fold): ForecastIssued@v2 carries a quantity distribution — announced for a QUANTITY forecast only; an event's probability
+         or a state/regime's categories never travel as one (the interface's consumers compare quantiles with series thresholds) */
+      ...(plan.forecast_kind !== 'quantity' ? {} : { announce: { seriesKey: plan.series_key, subjectEntityId: assembled.series.subject_entity_id, horizon: a.horizonCode, horizonDays,
+        method: entry.method_key, methodVersion: entry.method_ref, baselineMethod: result.baselineMethod, validationState, validationNote, backtestId, skill: null, label: a.label,
+        originAt, knownAt, targetAt, observedThrough: a.observedThrough, issuedAt: new Date().toISOString(), refreshCadence: a.refreshCadence,
+        quantiles: quantiles as Record<string, number>, unit: assembled.series.unit, drivers, assumptions: a.assumptions, evidenceRefs: evidence,
+        controls: { synthetic_state: assembled.controls.synthetic_state, classification: assembled.controls.classification } } }) } };
   }
 
   private async refuseRoute(cap: PortfolioIssueCap, routeId: string, tenantId: string, domainId: string, refusal: string, cls: string, actor: string, correlationId: string): Promise<void> {

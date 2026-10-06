@@ -260,7 +260,7 @@ describe('B25 §MR · the pinned implementation digests and the refusal families
       const bytes = Buffer.concat(files.map((f) => readFileSync(join(src, f))));
       expect(createHash('sha256').update(bytes).digest('hex'), ref).toBe(IMPLEMENTATION_DIGESTS[ref]);
     }
-    const migration = readFileSync(join(__dirname, '../../../migrations/0108_b25_x_registry.sql'), 'utf8');
+    const migration = readFileSync(join(__dirname, '../../../migrations/0108_b25_forecasting_portfolio.sql'), 'utf8');
     expect(migration.match(/'legacy-models',\s*'([0-9a-f]{64})'/g)?.length).toBe(2);
     expect(migration).toContain(`'${IMPLEMENTATION_DIGESTS['legacy-models']}'`);
   });

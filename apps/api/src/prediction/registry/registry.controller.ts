@@ -8,6 +8,7 @@
  * THE ROUTED ISSUE answers a governed refusal AFTER its write commits: the route row, the registry ledger and `forecast.horizon_refused`
  * (or the quarantine of a failed method) are durable beside the audit row; the request is then refused with the refusal's text and class.
  */
+import { forecastIssuedEvent } from '../forecasting/forecast-events.js';   // integration (B25 fold)
 import { Body, Controller, HttpException, Inject, Param, Post, Req } from '@nestjs/common';
 import { errorBody } from '@eye/contracts';
 import { newId } from '../../shared/ids.js';
@@ -229,7 +230,12 @@ export class RegistryController {
           return { result: r, targetType: 'FCT', targetId: forecastId, targetVersion: null, outboxEvent: null,
                    evidence: { outcome: 'success' as const, resultCode: statusCode(routedRefusalStatus(r.refused.refusal_class)), metadata: { refused: r.refused.refusal_class, route_id: r.refused.route_id } } };
         }
-        return { result: r, targetType: 'FCT', targetId: forecastId, targetVersion: '1', outboxEvent: null };
+        /* integration (B25 fold): a routed QUANTITY forecast is announced as ForecastIssued@v2 (L6-I02), like every issued forecast */
+        const announce = (r.forecast as { announce?: Parameters<typeof forecastIssuedEvent>[0] } | null)?.announce;
+        if (announce === undefined) return { result: r, targetType: 'FCT', targetId: forecastId, targetVersion: '1', outboxEvent: null };
+        const superseded = await cap.forecast.supersededBy({ forecastId });
+        return { result: r, targetType: 'FCT', targetId: forecastId, targetVersion: '1',
+                 outboxEvent: forecastIssuedEvent({ ...announce, forecastId, supersededForecastId: superseded?.forecast_id ?? null, actor: principal.principalId }) };
       });
     if (out.result.refused !== null) {
       const s = routedRefusalStatus(out.result.refused.refusal_class);

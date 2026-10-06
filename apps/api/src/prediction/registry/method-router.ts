@@ -19,7 +19,12 @@ import { newId } from '../../shared/ids.js';
 import type { Tx } from '../../shared/db.js';
 import type { MethodPlan, MethodRouter, PlannedMethod } from '../portfolio/seams.js';
 import { RegistryCapability } from './registry.capabilities.js';
-import { planOf, routedRefusalStatus, type Plan } from './registry.service.js';
+import { planOf, routedRefusalStatus, type Plan, type PlanMethod } from './registry.service.js';
+/* integration (B25 fold): the router RUNS a planned quantity family for §EN's ensemble members */
+import { runFamily, type TargetRow } from './families.js';
+import { addDays } from './methods/stats.js';
+import { HORIZONS } from '../forecasting/forecasting.service.js';
+import type { ForecastOutput, Point } from '../models/models.js';
 
 export class RoutedRefusal extends HttpException {
   constructor(readonly plan: Plan, correlationId: string) {
@@ -50,6 +55,25 @@ export class RegistryMethodRouter implements MethodRouter {
     const plan = planOf(await cap.recordRoute({ routeId: newId(), tenantId: a.tenantId, domainId: a.domainId, targetKey: a.targetKey, seriesKey: a.targetKey === null ? a.seriesKey : (a.seriesKey || null),
       horizonCode: a.horizonCode, knownAt, cutoff: extra.observedThrough ?? null, forecastId: extra.forecastId ?? newId(), actor, correlationId: a.correlationId }));
     if (plan.refusal !== null) throw new RoutedRefusal(plan, a.correlationId);
+    for (const m of plan.methods) this.planned.set(RegistryMethodRouter.key(a.tenantId, a.domainId, m.method_ref), { entry: m, target: plan.target });
     return methodPlanOf(plan);
+  }
+
+  /* integration (B25 fold): RUN one planned QUANTITY member for §EN's ensemble manager — the registry entry and target of the domain's
+     latest plan IN THIS PROCESS (each plan records its entries); the same runFamily the routed issue uses, so a Bayesian member is the
+     registry's Bayesian computation. A member with no plan cached (a run resumed in another process) FAILS with that reason, never runs blind. */
+  private readonly planned = new Map<string, { entry: PlanMethod; target: TargetRow | null }>();
+  private static key(t: string, d: string, ref: string): string { return `${t}:${d}:${ref}`; }
+  run(a: { methodRef: string; points: Point[]; steps: number; season: number; tenantId?: string; domainId?: string; horizonCode?: string; seriesKey?: string }): ForecastOutput {
+    const c = a.tenantId === undefined || a.domainId === undefined ? undefined : this.planned.get(RegistryMethodRouter.key(a.tenantId, a.domainId, a.methodRef));
+    if (c === undefined) throw new Error(`${a.methodRef}: no plan of this domain in this process carries its registry entry; the member is not run blind`);
+    const horizonDays = HORIZONS[a.horizonCode ?? ''];
+    const origin = a.points[a.points.length - 1]?.date;
+    if (horizonDays === undefined || origin === undefined) throw new Error(`${a.methodRef}: the horizon or the history's origin is unknown`);
+    const r = runFamily(c.entry, { points: a.points, seriesKey: a.seriesKey ?? '', seriesUnit: c.target?.unit ?? '', seasonality: a.season, horizonCode: a.horizonCode as string,
+      horizonDays, originAt: origin, targetAt: addDays(origin, horizonDays), kind: 'quantity', target: c.target });
+    if (r.kind !== 'quantity' || !('q50' in r.quantiles)) throw new Error(`${a.methodRef} produced a ${r.kind} result; a quantity ensemble combines quantity distributions only`);
+    const q = r.quantiles as { q10: number; q50: number; q90: number };
+    return { method: c.entry.method_ref, version: String(c.entry.version), quantiles: { q10: q.q10, q50: q.q50, q90: q.q90 }, path: [], parameters: {}, errorsUsed: 0 };
   }
 }

@@ -26,6 +26,7 @@ import { PipelineService } from '../../pipeline/pipeline.service.js';
 import { PredictionCapability, type ForecastWrites } from '../prediction.capabilities.js';
 import { SeriesService, cadenceOf, stepsFor, type AssembledSeries, type Reader } from '../series/series.service.js';
 import { ForecastingService, HORIZONS, MIN_HISTORY_FOR_BACKTEST } from '../forecasting/forecasting.service.js';
+import { forecastIssuedEvent } from '../forecasting/forecast-events.js';   // integration (B25 fold)
 import { forecastWith, SEASONAL_NAIVE, T1_LOW, T1_HIGH, type ForecastOutput, type Point } from '../models/models.js';
 import { CONTEXT_FREEZER, METHOD_ROUTER, type ContextFreezer, type MethodRouter, type FrozenInformationSet } from '../portfolio/seams.js';
 import { EnsembleCapability, type EnsembleReads } from './ensembles.capabilities.js';
@@ -113,7 +114,7 @@ export function validateOverlay(p: Row, cid: string, revising: boolean): Overlay
 /* ───────────────────────── the member computation ───────────────────────── */
 
 /** What the router may additionally offer at integration (§MR): running a registry method. The prelude's legacy router does not. */
-type RunnableRouter = MethodRouter & { run?: (a: { methodRef: string; points: Point[]; steps: number; season: number }) => Promise<ForecastOutput> | ForecastOutput };
+type RunnableRouter = MethodRouter & { run?: (a: { methodRef: string; points: Point[]; steps: number; season: number; tenantId?: string; domainId?: string; horizonCode?: string; seriesKey?: string }) => Promise<ForecastOutput> | ForecastOutput };
 
 export interface PlannedMember {
   ordinal: number; methodRef: string; family: string; forecastKind: string; available: boolean; unavailableReason: string | null;
@@ -259,7 +260,7 @@ export class EnsemblesService {
       for (let attempt = 1; attempt <= run.budget.attempts; attempt += 1) {
         const t0 = Date.now();
         try {
-          const out = await this.computeMember(m.methodRef, assembled.points, steps, season);
+          const out = await this.computeMember(m.methodRef, assembled.points, steps, season, { tenantId, domainId, horizonCode: run.horizon, seriesKey: run.seriesKey });   // integration: the run's context for the router
           const qs = [out.quantiles.q10, out.quantiles.q50, out.quantiles.q90];
           if (!qs.every(Number.isFinite) || !(qs[0]! <= qs[1]! && qs[1]! <= qs[2]!) || !out.path.every((p) => [p.q10, p.q50, p.q90].every(Number.isFinite))) {
             throw new Error(`${m.methodRef} returned a distribution that is not finite and ordered`);
@@ -303,12 +304,12 @@ export class EnsemblesService {
   }
 
   /** ONE attempt at a member (deterministic for the legacy models; the router's `run` for a registry method). Overridable in harnesses only through the instance. */
-  async computeMember(methodRef: string, points: Point[], steps: number, season: number): Promise<ForecastOutput> {
+  async computeMember(methodRef: string, points: Point[], steps: number, season: number, ctx: { tenantId?: string; domainId?: string; horizonCode?: string; seriesKey?: string } = {}): Promise<ForecastOutput> {
     const legacy = legacyMethodOf(methodRef);
     if (legacy !== null) return forecastWith(legacy, points, steps, season);
     const run = (this.router as RunnableRouter).run;
     if (typeof run !== 'function') throw new Error(`no runner implements ${methodRef}`);
-    return await run.call(this.router, { methodRef, points, steps, season });
+    return await run.call(this.router, { methodRef, points, steps, season, ...ctx });
   }
 
   private excludeAll(run: RunSnapshot, why: string): Excluded[] {
@@ -436,13 +437,25 @@ export class EnsemblesService {
                                                assumption_titles: m.tied.map((t) => titles[t] ?? null), distribution: m.quantiles, validation_state: m.validationState, weight: outcome.weights[k]?.weight })),
           budget: run.budget, outcome,
         };
-        await this.admitAndIssue(cap, scope, run, assembled, {
+        const issued = await this.admitAndIssue(cap, scope, run, assembled, {
           forecastId: run.ensembleForecastId, method: `ensemble-${run.combination.split('@')[0]!.replace(/_/g, '-')}`, methodVersion: run.combination.split('@')[1] ?? '1',
           methodRef: `ensemble:${run.combination}`, parameters: { members: memberRows.length },
           quantiles: cq, path: cpath, assumptions: run.assumptions, validation, statement, originAt, targetAt, horizonDays, role: 'ensemble',
           payloadExtra: { ensemble: ensembleSection, disagreement: analysis, excluded_models: excludedModels }, columnsExtra: {},
         }, principal.principalId, cid);
-        return { result: outcome, targetType: 'FCT', targetId: run.ensembleForecastId, targetVersion: '1', outboxEvent: null };
+        /* integration (B25 fold): the ENSEMBLE forecast is published as ForecastIssued@v2 (L6-I02, the interface every issued forecast
+           announces) — built from the issue's own answer; its members are internal to the ensemble and announce nothing on their own. */
+        const superseded = await cap.supersededBy({ forecastId: run.ensembleForecastId });
+        const ensembleMethod = `ensemble-${run.combination.split('@')[0]!.replace(/_/g, '-')}`;
+        return { result: outcome, targetType: 'FCT', targetId: run.ensembleForecastId, targetVersion: '1',
+                 outboxEvent: forecastIssuedEvent({
+                   forecastId: run.ensembleForecastId, seriesKey: run.seriesKey, subjectEntityId: assembled.series.subject_entity_id, horizon: run.horizon, horizonDays,
+                   method: ensembleMethod, methodVersion: run.combination.split('@')[1] ?? '1', baselineMethod: SEASONAL_NAIVE, validationState: validation.state,
+                   validationNote: validation.note, backtestId: validation.backtest_id, skill: validation.skill ?? null, label: run.label, supersededForecastId: superseded?.forecast_id ?? null,
+                   originAt, knownAt: run.knownAt, targetAt, observedThrough: run.observedThrough, issuedAt: issued.issuedAt, refreshCadence: run.refreshCadence,
+                   quantiles: { q10: cq.q10, q50: cq.q50, q90: cq.q90 }, unit, drivers: issued.drivers, assumptions: run.assumptions, evidenceRefs: issued.evidence,
+                   controls: { synthetic_state: issued.controls.synthetic_state, classification: issued.controls.classification }, actor: principal.principalId,
+                 }) };
       });
     return out.result;
   }
@@ -452,7 +465,7 @@ export class EnsemblesService {
     forecastId: string; method: string; methodVersion: string; methodRef: string; parameters: Record<string, number>; quantiles: Quantiles; path: unknown[];
     assumptions: string[]; validation: { state: string; note: string; backtest_id: string | null; skill: unknown }; statement: string; originAt: string; targetAt: string;
     horizonDays: number; role: 'member' | 'ensemble'; payloadExtra: Row; columnsExtra: Row;
-  }, actor: string, correlationId: string): Promise<void> {
+  }, actor: string, correlationId: string): Promise<{ drivers: unknown[]; evidence: unknown[]; issuedAt: string; controls: AssembledSeries['controls'] }> {
     const controls = assembled.controls;
     const now = new Date().toISOString();
     const last = assembled.points[assembled.points.length - 1];
@@ -502,6 +515,7 @@ export class EnsemblesService {
       extras: { forecast_kind: 'quantity', target_key: run.targetKey, method_ref: f.methodRef, ensemble_id: run.ensembleForecastId, ensemble_role: f.role,
                 ...(run.informationSetId === null ? {} : { information_set_id: run.informationSetId }), ...(horizonPolicy === null ? {} : { horizon_policy: horizonPolicy }), ...f.columnsExtra },
     });
+    return { drivers, evidence, issuedAt: now, controls };   // integration: the ensemble's ForecastIssued@v2 is built from this answer
   }
 
   /* ───────────── THE READS ───────────── */
