@@ -1164,6 +1164,16 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   { match: /^(usage cap|usage record) rejected \((state|stale|duplicate|unchanged|cap)\)/i, status: 409, code: 'EYE_STA_002' },
   { match: /^(usage cap|usage record) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
   /* end B91 meters */
+  /* B25 context (0108 §CX) — the families `information set rejected (<class>)` (the freeze port, the pin trigger on forecasts_current) and
+     `forecast replay rejected (<class>)` (the replay port), in the CLASS form, every row anchored and requiring the class parenthesis (no
+     earlier row starts with `information set` or `forecast replay`; the port's legacy `forecast rejected: …` is another noun). B9's order:
+     the standing 403 (actor), the absences 404 (unknown_*), the record's state 409 (state — a pin never changes —, stale, duplicate), the
+     caller's own request 422 (the rest: contract, mismatch, incomplete, ungrounded). */
+  { match: /^(information set|forecast replay) rejected \(actor\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^(information set|forecast replay) rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^(information set|forecast replay) rejected \((state|stale|duplicate)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^(information set|forecast replay) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B25 context */
   /* B36 home (0094 §H) — the executive home's families in the CLASS form `<noun> rejected (<class>): …`: `cadence rejected`, `executive room
      rejected` (0044's unclassed `room rejected: …` texts are the decision room's and are mapped by no row; the noun here is `executive room`
      and every row is anchored), `objective review rejected` (the SoD of §H2's re-declared convene_review and of open_subject_room — B23's

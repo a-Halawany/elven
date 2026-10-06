@@ -52,7 +52,7 @@ import { ScenarioSetsController } from './scenarios/sets/sets.controller.js';
 import { ScenarioSetsService } from './scenarios/sets/sets.service.js';
 /* end B27 sets */
 /* B25 (0108 §0) the seams and their defaults */ import { CONTEXT_FREEZER, METHOD_ROUTER, NullContextFreezer, LegacyMethodRouter } from './portfolio/seams.js'; /* end B25 seams */
-/* B25 context */ /* end B25 context */
+/* B25 context */ import { ContextController } from './context/context.controller.js'; import { ContextService } from './context/context.service.js'; import { GroundedContextFreezer } from './context/context-freezer.js'; /* end B25 context */
 /* B25 registry */ /* end B25 registry */
 /* B25 ensembles */ /* end B25 ensembles */
 
@@ -62,7 +62,7 @@ import { ScenarioSetsService } from './scenarios/sets/sets.service.js';
   controllers: [PredictionController, /* B28 (0088) signals */ SignalsController /* end B28 signals */, /* B32 (0089) exposures */ ExposuresController /* end B32 exposures */, /* B36 (0094 §C5) collab */ ExposureLearningController /* end B36 collab */, /* B27 quality */ ScenarioQualityController /* end B27 quality */,
                 /* B27 anatomy */ AnatomyController /* end B27 anatomy */,
                 /* B27 sets */ ScenarioSetsController /* end B27 sets */,
-                /* B25 context */ /* end B25 context */
+                /* B25 context */ ContextController, /* end B25 context */
                 /* B25 registry */ /* end B25 registry */
                 /* B25 ensembles */ /* end B25 ensembles */],
   providers: [
@@ -83,9 +83,9 @@ import { ScenarioSetsService } from './scenarios/sets/sets.service.js';
     /* B27 quality */ ScenarioQualityService, /* end B27 quality */
     /* B27 sets */ ScenarioSetsService, /* end B27 sets */
     /* B25 seams — a part REPLACES its default here at integration: CONTEXT_FREEZER (§CX), METHOD_ROUTER (§MR) */
-    { provide: CONTEXT_FREEZER, useClass: NullContextFreezer }, { provide: METHOD_ROUTER, useClass: LegacyMethodRouter },
+    { provide: CONTEXT_FREEZER, useClass: GroundedContextFreezer /* B25 context: replaces NullContextFreezer */ }, { provide: METHOD_ROUTER, useClass: LegacyMethodRouter },
     /* end B25 seams */
-    /* B25 context */ /* end B25 context */
+    /* B25 context */ ContextService, /* end B25 context */
     /* B25 registry */ /* end B25 registry */
     /* B25 ensembles */ /* end B25 ensembles */
     { provide: APP_FILTER, useClass: ObservationExceptionFilter },
