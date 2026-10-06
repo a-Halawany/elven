@@ -89,7 +89,7 @@ async function refused(p: Promise<unknown>): Promise<{ status: number; message: 
   try { await p; } catch (e) {
     if (e instanceof HttpException) return { status: e.getStatus(), message: String((e.getResponse() as { message?: string }).message ?? e.message) };
     const mapped = asObservationRefusal(e, 'c');
-    if (mapped !== null) return { status: mapped.getStatus(), message: String((mapped.getResponse() as { message?: string }).message ?? (e as Error).message) };
+    if (mapped !== null) return { status: mapped.getStatus(), message: String((mapped.getResponse() as { message?: string }).message ?? (e as Error).message), raw: (e as Error).message } as { status: number; message: string };
     return { status: 500, message: e instanceof Error ? e.message : String(e) };
   }
   throw new Error('expected a refusal, the call succeeded');
@@ -244,13 +244,13 @@ describe('B25 §CX · grounded context, the frozen information set, the replay, 
     const subjectless = (await freeze(eriksen, { seriesKey: w.seriesKey, knownAt: now, observedThrough: OBSERVED_THROUGH, assumptions: [w.assumptionId] })).informationSet.informationSetId;
     const fs = h.app.get(ForecastingService);
     const issueWith = (columns: Row) => {
-      const id = uuidv7();
-      return h.pipeline.write(h.env(eriksen, 'prediction.forecast.issue', 'FCT', id, 'prediction'), eriksen,
+      const id = uuidv7(); const env = h.env(eriksen, 'prediction.forecast.issue', 'FCT', id, 'prediction');
+      return h.pipeline.write(env, eriksen,
         { scope: 'DOMAIN', tenantId: T(), domainId: D(), action: 'prediction.forecast.issue', objectType: 'FCT', objectId: id }, PredictionCapability.forecast,
         async (cap, scope) => {
-          await fs.issue(cap, scope, { principal: eriksen, tenantId: T(), domainId: D(), correlationId: uuidv7(), purposeId: 'prediction' }, {
+          await fs.issue(cap, scope, { principal: eriksen, tenantId: T(), domainId: D(), correlationId: env.correlation_id, purposeId: 'prediction' }, {
             seriesKey: CORRIDOR, horizonCode: '90d', knownAt: now, observedThrough: OBSERVED_THROUGH, assumptions: [w.assumptionId], refreshCadence: 'daily', label: 'replay demonstration',
-            b25: { columns } }, eriksen.principalId, uuidv7(), 'prediction', id);
+            b25: { columns } }, eriksen.principalId, env.correlation_id, 'prediction', id);
           return { result: id, targetType: 'FCT', targetId: id, targetVersion: '1', outboxEvent: null };
         });
     };
@@ -285,7 +285,7 @@ describe('B25 §CX · grounded context, the frozen information set, the replay, 
     expect(twinPin).toMatchObject({ status: 422 }); expect(twinPin.message).toMatch(/^information set rejected \(mismatch\): the twin pin/);
     const evidence = await refused(portFreeze((m) => { ((m['evidence'] as Row[])[0] as Row)['evidence_digest'] = 'e'.repeat(64); }));
     expect(evidence).toMatchObject({ status: 422 }); expect(evidence.message).toMatch(/^information set rejected \(mismatch\): evidence /);
-    const req = await refused(portFreeze((m) => { (m['request'] as Row)['observed_through'] = null; }));
+    const req = await refused(portFreeze((m) => { m['request'] = { ...(m['request'] as Row), observed_through: null }; }));
     expect(req).toMatchObject({ status: 422 }); expect(req.message).toMatch(/^information set rejected \(mismatch\): the manifest's request/);
     expect(await count('prediction.information_sets')).toBe(sBefore);
     // RECOVERY — the same 90-day issue with its OWN set: the port answers, the pin binds.
@@ -402,16 +402,16 @@ describe('B25 §CX · grounded context, the frozen information set, the replay, 
     const { digest: _d, ...facts } = env;
     expect(canonicalDigest(facts)).toBe(fr['environment_digest']);
     // REFUSAL — an environment recorded without its digest (the prelude's pair constraint), through the one issue path.
-    const fs = h.app.get(ForecastingService); const now = await dbNow(); const id = uuidv7();
-    const bad = await refused(h.pipeline.write(h.env(eriksen, 'prediction.forecast.issue', 'FCT', id, 'prediction'), eriksen,
+    const fs = h.app.get(ForecastingService); const now = await dbNow(); const id = uuidv7(); const env6 = h.env(eriksen, 'prediction.forecast.issue', 'FCT', id, 'prediction');
+    const bad = await refused(h.pipeline.write(env6, eriksen,
       { scope: 'DOMAIN', tenantId: T(), domainId: D(), action: 'prediction.forecast.issue', objectType: 'FCT', objectId: id }, PredictionCapability.forecast,
       async (cap, scope) => {
-        await fs.issue(cap, scope, { principal: eriksen, tenantId: T(), domainId: D(), correlationId: uuidv7(), purposeId: 'prediction' }, {
+        await fs.issue(cap, scope, { principal: eriksen, tenantId: T(), domainId: D(), correlationId: env6.correlation_id, purposeId: 'prediction' }, {
           seriesKey: CORRIDOR, horizonCode: '1y', knownAt: now, observedThrough: OBSERVED_THROUGH, assumptions: [w.assumptionId], refreshCadence: 'daily', label: 'replay demonstration',
-          b25: { columns: { environment: { node: process.version } } } }, eriksen.principalId, uuidv7(), 'prediction', id);
+          b25: { columns: { environment: { node: process.version } } } }, eriksen.principalId, env6.correlation_id, 'prediction', id);
         return { result: id, targetType: 'FCT', targetId: id, targetVersion: '1', outboxEvent: null };
       }));
-    expect(bad.status).toBe(409);
+    expect(bad.status).toBe(409); expect(String((bad as { raw?: string }).raw)).toMatch(/fct_environment_pair/);
     expect((await sql<{ n: string }>`select count(*)::text n from prediction.forecasts_current where forecast_id = ${id}::uuid`.execute(su)).rows[0]!.n).toBe('0');
     // RECOVERY — the grounded issue at the same horizon records the pair.
     const ok = (await issueGrounded(eriksen, { seriesKey: CORRIDOR, horizon: '1y', knownAt: now, observedThrough: OBSERVED_THROUGH, assumptions: [w.assumptionId] })).forecast;
