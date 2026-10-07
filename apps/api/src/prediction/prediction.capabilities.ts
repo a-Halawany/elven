@@ -42,6 +42,8 @@ abstract class PredictionCore {
 export interface EvidenceVersionRow {
   object_id: string; object_version: number; recorded_at: string; content_digest: string;
   lifecycle_state: string; is_fragment: boolean; source_key: string;
+  /** B25 act-found: the evidence's event time (a framed fragment's row day), read to tell an unreadable fragment superseded on its day. */
+  event_time?: string | null;
   /** The controls the evidence carries, inherited by whatever is derived from it. */
   synthetic_state: boolean; classification: string; rights_profile: string | null;
   residency_profile: string | null; retention_profile: string | null; access_policy_ref: string | null;
@@ -333,6 +335,7 @@ class PredictionCapabilityImpl extends PredictionCore
         select distinct on (e.object_id) e.object_id::text as object_id, e.object_version::int as object_version,
                e.recorded_at::text as recorded_at, e.payload ->> 'content_digest' as content_digest,
                e.lifecycle_state, (e.payload -> 'fragment') is not null and jsonb_typeof(e.payload -> 'fragment') = 'object' as is_fragment,
+               to_char(e.event_time at time zone 'UTC', 'YYYY-MM-DD') as event_time,   -- B25 act-found (the row day of a framed fragment)
                e.synthetic_state, e.classification, e.rights_profile, e.residency_profile, e.retention_profile, e.access_policy_ref
           from objects.canonical_objects e
          where e.object_type = 'EVD'

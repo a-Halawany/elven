@@ -23,6 +23,7 @@ import { newId } from '../../shared/ids.js';
 import type { AuthenticatedPrincipal } from '../../shared/auth-types.js';
 import { errorBody, type Envelope } from '@eye/contracts';
 import { PipelineService } from '../../pipeline/pipeline.service.js';
+import type { CapabilityFactory } from '../../shared/capabilities.js';
 import { ObservationCapability, type AcquisitionWrites } from '../../observation/observation.capabilities.js';
 import { EvidenceService, INTEGRITY_REFUSED_MESSAGE } from '../../observation/vault/evidence.service.js';
 import { PredictionCapability, type PredictionReads, type EvidenceVersionRow } from '../prediction.capabilities.js';
@@ -61,6 +62,12 @@ export interface AssembledSeries {
    * not the series.
    */
   unreadable: Array<{ evidence_object_id: string; evidence_version: number; reason: string }>;
+  /**
+   * B25 act-found: unreadable FRAMED FRAGMENTS (one row each, their day stated by the event time) whose day a LATER-recorded readable
+   * version of this series serves — the later version wins the day whatever the lost row held, so the history is not incomplete for
+   * them. Disclosed here, never hidden; not counted against `complete`.
+   */
+  supersededUnreadable: Array<{ evidence_object_id: string; evidence_version: number; reason: string; day: string; served_by: string }>;
   complete: boolean;
   /** The controls folded from every evidence version that contributed a point. */
   controls: Controls;
@@ -136,6 +143,28 @@ export class SeriesService {
         if (newer) byDate.set(obs.date, { obs, v });
       }
     }
+    /*
+     * B25 act-found (the rehearsal of the B25 act on eye_demo_b25): the routine retention of SUPERSEDED evidence (a 2024 PortWatch replay-set
+     * fragment, tombstoned by a retention action) left every PortWatch series INCOMPLETE for good, so every forecast on the corridor was
+     * refused — the B30 act found the same for the twin's estimators (estimators.ts unreadableInWindow). An unreadable version is set aside
+     * — disclosed, not counted — only when it is a FRAMED FRAGMENT (one row of its parent) whose stated day (its event time) this series
+     * holds a point for from a version recorded LATER: by the rule above the later version wins that day whatever the lost row held, so
+     * nothing the lost bytes could say reaches the series. Anything else unreadable (a window, a parent, a fragment with no day or whose
+     * day nothing later serves) still makes the history incomplete.
+     */
+    const supersededUnreadable: AssembledSeries['supersededUnreadable'] = [];
+    const rowOf = new Map(versions.result.map((v) => [`${v.object_id}@${v.object_version}`, v]));
+    for (let i = unreadable.length - 1; i >= 0; i -= 1) {
+      const u = unreadable[i]!; const v = rowOf.get(`${u.evidence_object_id}@${u.evidence_version}`);
+      const dayOf = v?.event_time ?? null;
+      if (v === undefined || !v.is_fragment || dayOf === null) continue;
+      if (observedThrough !== null && dayOf > observedThrough) { supersededUnreadable.push({ ...u, day: dayOf, served_by: 'outside the cut-off (observed through)' }); unreadable.splice(i, 1); continue; }
+      const served = byDate.get(dayOf);
+      if (served !== undefined && Date.parse(served.v.recorded_at) > Date.parse(v.recorded_at)) {
+        supersededUnreadable.push({ ...u, day: dayOf, served_by: `${served.v.object_id}@${served.v.object_version}` });
+        unreadable.splice(i, 1);
+      }
+    }
     const points: SeriesPoint[] = [...byDate.values()]
       .sort((a, b) => a.obs.date.localeCompare(b.obs.date))
       .map(({ obs, v }) => {
@@ -150,7 +179,7 @@ export class SeriesService {
     return {
       series, knownAt, observedThrough, points, evidence: [...used.values()],
       versionsRead: versions.result.length, freshestRecordedAt: freshest, attribution: series.attribution,
-      unreadable, complete: unreadable.length === 0,
+      unreadable, supersededUnreadable, complete: unreadable.length === 0,
       controls: foldControls([...usedRows.values()]),
       evidenceRows: [...usedRows.values()],
     };
@@ -229,6 +258,17 @@ export class SeriesService {
       const msg = e instanceof HttpException ? String((e.getResponse() as { message?: string })?.message ?? e.message) : (e instanceof Error ? e.message : 'unknown');
       return { refused: `${status === null ? 'read failed' : `refused (${status})`}: ${msg.slice(0, 160)}`, status, error: e };
     }
+  }
+
+  /**
+   * B25 act-found: ONE consequential read under the reader's own envelope — what a write route needs to know BEFORE its write opens (the
+   * series it will read, the cut-off). A governed write's commit capability lives 60 s; a real history (the corridor's ~8,900 PortWatch
+   * evidence versions, each a governed retrieval) takes minutes to assemble, so the routes assemble first and write after.
+   */
+  async readAs<T, C>(r: Reader, action: string, objectType: string, objectId: string | null, capability: CapabilityFactory<C>, fn: (cap: C) => Promise<T>): Promise<T> {
+    const out = await this.pipeline.consequentialRead(this.envelope(r, action, objectType, objectId), r.principal,
+      { scope: 'DOMAIN', tenantId: r.tenantId, domainId: r.domainId, action, objectType, objectId }, capability, (cap) => fn(cap));
+    return out.result;
   }
 
   private envelope(r: Reader, action: string, objectType: string, objectId: string | null): Envelope {

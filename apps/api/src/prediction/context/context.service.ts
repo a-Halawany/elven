@@ -25,11 +25,11 @@ import type { ScopeContext } from '../../shared/scope.js';
 import { environmentDifferences, forecastEnvironment, registeredForecastMethod } from '../../shared/forecast-environment.js';
 import type { ForecastWrites } from '../prediction.capabilities.js';
 import { ForecastingService, HORIZONS, type IssueArgs } from '../forecasting/forecasting.service.js';
-import { SeriesService, cadenceOf, stepsFor, dayOf, type Reader } from '../series/series.service.js';
+import { SeriesService, cadenceOf, stepsFor, dayOf, type AssembledSeries, type Reader } from '../series/series.service.js';
 import { HOLT_WINTERS, MODEL_VERSION, SEASONAL_NAIVE } from '../models/models.js';
 import { ASSEMBLER_VERSION, assembleManifest, compareManifests, outputDigest, pinsOf, type Divergence, type Manifest } from './assembler.js';
 import { PDP_BUNDLE_VERSION, freezeWith } from './context-freezer.js';
-import type { ContextReads, FreezeWrites, ReplayWrites } from './context.capabilities.js';
+import { ContextCapability, type ContextReads, type FreezeWrites, type ReplayWrites } from './context.capabilities.js';
 import { registerLegacyMethods } from './legacy-methods.js';
 
 type Row = Record<string, unknown>;
@@ -44,9 +44,9 @@ export class ContextService {
   constructor(private readonly series: SeriesService, private readonly forecasting: ForecastingService) { registerLegacyMethods(); }
 
   /** The method the issue's leash will choose for this request — computed exactly as ForecastingService.issue chooses it. */
-  private async leashMethod(cap: ForecastWrites, reader: Reader, a: { seriesKey: string; horizonCode: string; knownAt: string; observedThrough: string | null; method?: string }): Promise<string> {
+  private async leashMethod(cap: ForecastWrites, reader: Reader, a: { seriesKey: string; horizonCode: string; knownAt: string; observedThrough: string | null; method?: string; assembled?: AssembledSeries }): Promise<string> {
     if (a.method !== undefined) return a.method;
-    const assembled = await this.series.assemble(reader, a.seriesKey, a.knownAt, a.observedThrough);
+    const assembled = a.assembled ?? await this.series.assemble(reader, a.seriesKey, a.knownAt, a.observedThrough);   // B25 act-found: the route's pre-assembly
     const originAt = assembled.points[assembled.points.length - 1]?.date;
     if (originAt === undefined) return SEASONAL_NAIVE;
     const applicable = await this.forecasting.applicableBacktests(cap, { seriesKey: a.seriesKey, horizonCode: a.horizonCode, knownAt: a.knownAt, originAt });
@@ -75,8 +75,30 @@ export class ContextService {
     return { ...r, informationSet: frozen.summary, environment };
   }
 
+  /**
+   * B25 act-found: THE SERIES A WRITE WILL READ, assembled BEFORE the write opens. A governed write's commit capability lives 60 s; the
+   * corridor's real PortWatch history (~8,900 evidence versions, each a governed retrieval) takes minutes, and assembled inside the write it
+   * lapsed the capability (the route answered 500). The grounded issue assembles its request; the replay its frozen set's request (read
+   * first, under prediction.information_set.read). The write then uses the assembly when it matches exactly (series, known-at, observed-
+   * through) and assembles itself otherwise, as before.
+   */
+  async preAssemble(reader: Reader, seriesKey: string, knownAt: string, observedThrough: string | null): Promise<AssembledSeries> {
+    return this.series.assemble(reader, seriesKey, knownAt, observedThrough);
+  }
+  async preAssembleReplay(reader: Reader, forecastId: string): Promise<AssembledSeries | null> {
+    const request = await this.series.readAs(reader, 'prediction.information_set.read', 'FCT', forecastId, ContextCapability.read, async (cap) => {
+      const f = (await cap.readForecasts().select(['information_set_id']).where('forecast_id' as never, '=', forecastId as never).executeTakeFirst()) as Row | undefined;
+      const setId = (f?.['information_set_id'] as string | null | undefined) ?? null;
+      if (setId === null) return null;
+      const set = (await cap.readSets().select(['manifest']).where('information_set_id' as never, '=', setId as never).executeTakeFirst()) as Row | undefined;
+      return set === undefined ? null : ((set['manifest'] as unknown as Manifest).request ?? null);
+    });
+    if (request === null) return null;
+    return this.series.assemble(reader, request.series_key, request.known_at, request.observed_through);
+  }
+
   /** THE REPLAY of a grounded forecast from its frozen set (inside the route's write; the port records it and derives the outcome). */
-  async replay(cap: ReplayWrites, scope: ScopeContext, reader: Reader, forecastId: string, actor: string, correlationId: string): Promise<Row> {
+  async replay(cap: ReplayWrites, scope: ScopeContext, reader: Reader, forecastId: string, actor: string, correlationId: string, pre: AssembledSeries | null = null): Promise<Row> {
     const tenantId = scope.tenantId as string; const domainId = scope.domainId as string;
     const ids = { tenantId, domainId, actor, eventId: newId(), correlationId };
     const f = (await cap.readForecasts().selectAll().where('forecast_id' as never, '=', forecastId as never).executeTakeFirst()) as Row | undefined;
@@ -101,7 +123,8 @@ export class ContextService {
     const methodRef = `${String(f['method'])}@${String(f['method_version'])}`;
     const originalOutput = outputDigest(f['quantiles'], f['path']);
     let replayedOutput: string | null = null; let replayedQuantiles: unknown = null;
-    const assembled = await this.series.assemble(reader, frozen.request.series_key, frozen.request.known_at, frozen.request.observed_through);
+    const usePre = pre !== null && pre.series.series_key === frozen.request.series_key && pre.knownAt === frozen.request.known_at && pre.observedThrough === frozen.request.observed_through;
+    const assembled = usePre ? pre : await this.series.assemble(reader, frozen.request.series_key, frozen.request.known_at, frozen.request.observed_through);   // B25 act-found
     const pinned = new Set(frozen.evidence.map((e) => `${String(e['evidence_object_id'])}@${String(e['evidence_version'])}:${String(e['evidence_digest'])}`));
     const strays = assembled.evidence.filter((e) => !pinned.has(`${e.evidence_object_id}@${e.evidence_version}:${e.evidence_digest}`));
     if (!assembled.complete) diverged.push({ what: 'evidence.readable', note: `${assembled.unreadable.length} pinned evidence version(s) could not be read by this reader now`, replayed: assembled.unreadable.slice(0, 5) });

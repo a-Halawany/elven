@@ -116,11 +116,14 @@ export class ContextController {
     const knownAt = instant(p['knownAt'], new Date().toISOString());
     const refreshCadence = typeof p['refreshCadence'] === 'string' ? p['refreshCadence'] : 'daily';
     const forecastId = newId();
+    // B25 act-found: the series is assembled BEFORE the write opens (a long real history outlives the write's 60-second commit capability)
+    // (any refusal of the read is left to the write, which answers it exactly as before)
+    const assembled = await this.context.preAssemble(reader, p['seriesKey'] as string, knownAt, day(p['observedThrough'])).catch(() => undefined);
     const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'prediction.forecast.issue', 'FCT', forecastId), groundedIssueCapability,
       async (caps, scope) => {
         const r = await this.context.issueGrounded(caps, scope, reader, {
           seriesKey: p['seriesKey'] as string, horizonCode: p['horizon'] as string, knownAt, observedThrough: day(p['observedThrough']),
-          assumptions: strings(p['assumptions']), refreshCadence, label, ...(typeof p['method'] === 'string' ? { method: p['method'] } : {}),
+          assumptions: strings(p['assumptions']), refreshCadence, label, ...(typeof p['method'] === 'string' ? { method: p['method'] } : {}), ...(assembled === undefined ? {} : { assembled }),
         }, principal.principalId, envelope.correlation_id, envelope.purpose_id ?? 'prediction', forecastId);
         const superseded = await caps.forecast.supersededBy({ forecastId: r.forecastId });
         const events = superseded === null ? [] : [forecastSupersededEvent({ supersededForecastId: superseded.forecast_id, newForecastId: r.forecastId, subjectEntityId: superseded.subject_entity_id,
@@ -145,9 +148,12 @@ export class ContextController {
     const { envelope, principal } = ctx(req);
     this.uuid(forecastId, 'forecastId', envelope.correlation_id);
     const reader = this.reader(req, tenantId, domainId);
+    // B25 act-found: the pinned series is assembled BEFORE the write opens (read under prediction.information_set.read; null: ungrounded or unknown — the port answers)
+    let pre: Awaited<ReturnType<ContextService['preAssembleReplay']>> = null;
+    try { pre = await this.context.preAssembleReplay(reader, forecastId); } catch { pre = null; }
     const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'prediction.forecast.replay', 'FCT', forecastId), ContextCapability.replay,
       async (cap, scope) => {
-        const r = await this.context.replay(cap, scope, reader, forecastId, principal.principalId, envelope.correlation_id);
+        const r = await this.context.replay(cap, scope, reader, forecastId, principal.principalId, envelope.correlation_id, pre);
         return { result: r, targetType: 'FCT', targetId: forecastId, targetVersion: null, outboxEvent: null };
       });
     return { replay: out.result, receipt: receipt(out) };

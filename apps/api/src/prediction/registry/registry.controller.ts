@@ -202,9 +202,11 @@ export class RegistryController {
     const { envelope, principal } = ctx(req);
     const v = validateValidationRun(body.payload ?? {}, envelope.correlation_id);
     const reader = this.reader(req, tenantId, domainId);
+    // B25 act-found: the series read BEFORE the write opens; any refusal is left to the write, which answers it exactly as before
+    const pre = await this.registry.preAssembleValidation(reader, v).catch(() => null);
     const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'prediction.registry.validation.record', 'MVL', null), RegistryCapability.validation,
       async (cap, scope) => {
-        const r = await this.registry.runValidation(cap, scope, reader, v, principal.principalId, envelope.correlation_id);
+        const r = await this.registry.runValidation(cap, scope, reader, v, principal.principalId, envelope.correlation_id, pre);
         return { result: r, targetType: 'MVL', targetId: String(r['validation_id']), targetVersion: null, outboxEvent: null };
       });
     return { validation: out.result, receipt: receipt(out) };
@@ -223,9 +225,11 @@ export class RegistryController {
     const a = validateRoutedIssue(body.payload ?? {}, envelope.correlation_id);
     const reader = this.reader(req, tenantId, domainId);
     const forecastId = newId();
+    // B25 act-found: the plan read and the series assembled BEFORE the write opens; any refusal is left to the write, which ledgers and answers it as before
+    const pre = await this.registry.preAssembleRouted(reader, a).catch(() => null);
     const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'prediction.portfolio.issue', 'FCT', forecastId), portfolioCapability,
       async (cap, scope) => {
-        const r = await this.registry.issueRouted(cap, scope, reader, a, principal.principalId, envelope.correlation_id, envelope.purpose_id ?? 'prediction', forecastId);
+        const r = await this.registry.issueRouted(cap, scope, reader, a, principal.principalId, envelope.correlation_id, envelope.purpose_id ?? 'prediction', forecastId, pre);
         if (r.refused !== null) {
           return { result: r, targetType: 'FCT', targetId: forecastId, targetVersion: null, outboxEvent: null,
                    evidence: { outcome: 'success' as const, resultCode: statusCode(routedRefusalStatus(r.refused.refusal_class)), metadata: { refused: r.refused.refusal_class, route_id: r.refused.route_id } } };

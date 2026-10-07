@@ -98,6 +98,9 @@ export interface IssueArgs {
   /** B25 (0108 §0): a part's additions — `columns` go to prediction.issue_forecast's p_extras (§0.1); `payload` sections join the FCT
    *  payload, which is then admitted as FCT@v2. Absent: exactly the forecast issued before B25. */
   b25?: { columns?: Record<string, unknown>; payload?: Record<string, unknown> };
+  /** B25 act-found: the series as the route assembled it BEFORE its write opened (same series, knownAt and observedThrough) — a long real
+   *  history outlives the write's 60-second commit capability when it is assembled inside the write. Absent: assembled here, as before. */
+  assembled?: AssembledSeries;
 }
 
 export type BacktestMode = 'retrospective' | 'historical';
@@ -105,6 +108,15 @@ export type BacktestMode = 'retrospective' | 'historical';
 @Injectable()
 export class ForecastingService {
   constructor(private readonly series: SeriesService) {}
+
+  /**
+   * B25 act-found (the legacy route too): the series as a write route assembles it BEFORE its write opens — a long real history outlives the
+   * write's 60-second commit capability when assembled inside it. Pass the result to issue() as `assembled`; issue() uses it only when it
+   * matches (series, knownAt, observedThrough), otherwise it assembles as before.
+   */
+  async preAssemble(reader: Reader, seriesKey: string, knownAt: string, observedThrough: string | null): Promise<AssembledSeries> {
+    return this.series.assemble(reader, seriesKey, knownAt, observedThrough);
+  }
 
   /**
    * The backtest that APPLIES to a forecast: same series, horizon and method
@@ -156,7 +168,8 @@ export class ForecastingService {
       throw new HttpException(errorBody('EYE_REQ_001', correlationId,
         'a forecast must name at least one assumption it rests on; one that rests on nothing can never be reached by a correction'), 422);
     }
-    const assembled = await this.series.assemble(reader, a.seriesKey, a.knownAt, a.observedThrough);
+    const pre = a.assembled !== undefined && a.assembled.series.series_key === a.seriesKey && a.assembled.knownAt === a.knownAt && a.assembled.observedThrough === a.observedThrough ? a.assembled : undefined;
+    const assembled = pre ?? await this.series.assemble(reader, a.seriesKey, a.knownAt, a.observedThrough);   // B25 act-found: the route's pre-assembly when it matches
     if (!assembled.complete) {
       throw new HttpException(errorBody('EYE_STA_001', correlationId,
         `${assembled.unreadable.length} evidence version(s) of ${a.seriesKey} could not be read by this reader `
