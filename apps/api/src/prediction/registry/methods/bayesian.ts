@@ -13,6 +13,11 @@
  *
  *   PRIOR SENSITIVITY: the same fit under each declared alternative prior; the shift of the predictive median in predictive standard
  *   deviations; SENSITIVE when the largest shift exceeds the declared threshold (default 0.25) — the forecast then says the prior moves it.
+ *
+ *   B25 completion (G3, MC-012) — IDENTIFIABILITY: per parameter, the posterior-to-prior variance CONTRACTION 1 − Var_post / Var_prior (how
+ *   much the data informed it), and the design's CONDITIONING (normal_linear: the condition number of X'X and the posterior correlation of
+ *   intercept and slope). A parameter whose contraction is below the declared threshold (declarations.identifiability_threshold, default
+ *   0.1) is WEAKLY IDENTIFIED — the data barely inform it, its value is mostly the prior's — and the forecast says so.
  */
 import { addDays, between, daysBetween, inverse, lgamma, mean, ols, round, Z10, Z90, type Band, type Point } from './stats.js';
 
@@ -21,7 +26,39 @@ export const BAYESIAN_CONJUGATE_REF = 'bayesian-conjugate';
 export interface NormalLinearPrior { model: 'normal_linear'; window_days: number; intercept: { mean: number; sd: number }; slope_per_year: { mean: number; sd: number } }
 export interface GammaPoissonPrior { model: 'gamma_poisson'; shape: number; rate: number }
 export type BayesPrior = NormalLinearPrior | GammaPoissonPrior;
-export interface BayesDeclarations { prior: BayesPrior; alternatives: Array<{ label: string; prior: BayesPrior }>; sensitivity_threshold?: number }
+export interface BayesDeclarations { prior: BayesPrior; alternatives: Array<{ label: string; prior: BayesPrior }>; sensitivity_threshold?: number; identifiability_threshold?: number }
+
+/** B25 completion (G3): the identifiability of each parameter and the design's conditioning. */
+export interface Identifiability {
+  threshold: number;
+  parameters: Array<{ name: string; prior_variance: number; posterior_variance: number; contraction: number; weakly_identified: boolean }>;
+  conditioning: { xtx_condition_number: number | null; posterior_correlation: number } | null;
+  weakly_identified: string[];
+}
+
+/** The eigenvalue ratio of a symmetric 2×2 matrix (its condition number; Infinity when singular). */
+function condition2(a: number, b: number, d: number): number {
+  const m = (a + d) / 2; const r = Math.sqrt(((a - d) / 2) ** 2 + b * b);
+  const lo = m - r; const hi = m + r;
+  return lo <= 0 ? Infinity : hi / lo;
+}
+
+export function identifiabilityOf(prior: BayesPrior, posterior: { S?: number[][]; xtx?: number[][]; shape?: number; rate?: number }, threshold: number): Identifiability {
+  const param = (name: string, pv: number, qv: number) => {
+    const contraction = round(1 - qv / pv, 4);
+    return { name, prior_variance: round(pv, 8), posterior_variance: round(qv, 8), contraction, weakly_identified: contraction < threshold };
+  };
+  let parameters: Identifiability['parameters']; let conditioning: Identifiability['conditioning'] = null;
+  if (prior.model === 'normal_linear') {
+    const S = posterior.S as number[][]; const X = posterior.xtx as number[][];
+    parameters = [param('intercept', prior.intercept.sd ** 2, S[0]![0]!), param('slope_per_year', prior.slope_per_year.sd ** 2, S[1]![1]!)];
+    const k = condition2(X[0]![0]!, X[0]![1]!, X[1]![1]!);
+    conditioning = { xtx_condition_number: Number.isFinite(k) ? round(k, 4) : null, posterior_correlation: round(S[0]![1]! / Math.sqrt(S[0]![0]! * S[1]![1]!), 4) };
+  } else {
+    parameters = [param('rate_lambda', prior.shape / prior.rate ** 2, (posterior.shape as number) / (posterior.rate as number) ** 2)];
+  }
+  return { threshold, parameters, conditioning, weakly_identified: parameters.filter((x) => x.weakly_identified).map((x) => x.name) };
+}
 
 export interface WindowMean { end: string; t: number; mean: number; n: number }
 
@@ -42,7 +79,7 @@ export function windowMeans(points: readonly Point[], windowDays: number): Windo
   return out.map((w) => ({ ...w, t: daysBetween(t0, w.end) / 365.25 }));
 }
 
-export interface NormalLinearFit { m: [number, number]; S: number[][]; sigma2: number; t0: string; windows: number; lastEnd: string }
+export interface NormalLinearFit { m: [number, number]; S: number[][]; sigma2: number; t0: string; windows: number; lastEnd: string; xtx: number[][] }
 
 export function normalLinearFit(points: readonly Point[], prior: NormalLinearPrior): NormalLinearFit {
   if (!(prior.intercept.sd > 0 && prior.slope_per_year.sd > 0)) throw new Error('bayesian-conjugate: prior standard deviations must be positive');
@@ -60,7 +97,7 @@ export function normalLinearFit(points: readonly Point[], prior: NormalLinearPri
   if (S === null) throw new Error('bayesian-conjugate: the posterior precision is singular');
   const rhs = [prior.intercept.mean / prior.intercept.sd ** 2 + xty[0]! / sigma2, prior.slope_per_year.mean / prior.slope_per_year.sd ** 2 + xty[1]! / sigma2];
   const m: [number, number] = [S[0]![0]! * rhs[0]! + S[0]![1]! * rhs[1]!, S[1]![0]! * rhs[0]! + S[1]![1]! * rhs[1]!];
-  return { m, S, sigma2, t0: w[0]!.end, windows: w.length, lastEnd: w[w.length - 1]!.end };
+  return { m, S, sigma2, t0: w[0]!.end, windows: w.length, lastEnd: w[w.length - 1]!.end, xtx };
 }
 
 export function normalLinearPredict(fit: NormalLinearFit, targetDay: string): Band & { mean: number; sd: number } {
@@ -91,18 +128,20 @@ export function gammaPoissonPredict(shape: number, rate: number): Band & { mean:
 export interface BayesForecast {
   model: string; quantity: string; band: Band; mean: number; sd: number; posterior: Record<string, unknown>;
   sensitivity: { alternatives: Array<{ label: string; q50: number; shift_sd: number }>; maxShiftSd: number; threshold: number; sensitive: boolean };
+  identifiability: Identifiability;
 }
 
-function predictWith(points: readonly Point[], prior: BayesPrior, targetDay: string): { band: Band & { mean: number; sd: number }; posterior: Record<string, unknown> } {
+function predictWith(points: readonly Point[], prior: BayesPrior, targetDay: string): { band: Band & { mean: number; sd: number }; posterior: Record<string, unknown>; fit: { S?: number[][]; xtx?: number[][]; shape?: number; rate?: number } } {
   if (prior.model === 'normal_linear') {
     const fit = normalLinearFit(points, prior);
-    return { band: normalLinearPredict(fit, targetDay), posterior: { intercept: round(fit.m[0]), slope_per_year: round(fit.m[1]), cov: fit.S.map((r) => r.map((x) => round(x, 8))), sigma: round(Math.sqrt(fit.sigma2)), windows: fit.windows, t0: fit.t0 } };
+    return { band: normalLinearPredict(fit, targetDay), posterior: { intercept: round(fit.m[0]), slope_per_year: round(fit.m[1]), cov: fit.S.map((r) => r.map((x) => round(x, 8))), sigma: round(Math.sqrt(fit.sigma2)), windows: fit.windows, t0: fit.t0 },
+             fit: { S: fit.S, xtx: fit.xtx } };
   }
   if (!(prior.shape > 0 && prior.rate > 0)) throw new Error('bayesian-conjugate: the Gamma prior needs shape > 0 and rate > 0');
   const ys = points.map((p) => p.value);
   if (ys.some((y) => y < 0 || !Number.isInteger(y))) throw new Error('bayesian-conjugate: gamma_poisson needs non-negative integer counts');
   const shape = prior.shape + ys.reduce((s, y) => s + y, 0); const rate = prior.rate + ys.length;
-  return { band: gammaPoissonPredict(shape, rate), posterior: { shape: round(shape), rate: round(rate), observations: ys.length } };
+  return { band: gammaPoissonPredict(shape, rate), posterior: { shape: round(shape), rate: round(rate), observations: ys.length }, fit: { shape, rate } };
 }
 
 export function bayesForecast(points: readonly Point[], d: BayesDeclarations, targetDay: string): BayesForecast {
@@ -118,6 +157,7 @@ export function bayesForecast(points: readonly Point[], d: BayesDeclarations, ta
     quantity: d.prior.model === 'normal_linear' ? `the ${d.prior.window_days}-day mean ending at the target day` : 'the count on the target day',
     band: { q10: round(base.band.q10, 4), q50: round(base.band.q50, 4), q90: round(base.band.q90, 4) }, mean: round(base.band.mean, 4), sd: round(base.band.sd, 4),
     posterior: base.posterior, sensitivity: { alternatives, maxShiftSd: round(maxShiftSd, 4), threshold, sensitive: maxShiftSd > threshold },
+    identifiability: identifiabilityOf(d.prior, base.fit, d.identifiability_threshold ?? 0.1),
   };
 }
 

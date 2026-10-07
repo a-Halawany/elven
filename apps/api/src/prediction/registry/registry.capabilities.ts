@@ -47,6 +47,8 @@ export interface RegistryReads {
   plan(a: PlanArgs): Promise<Row>;
   /** the series' declared seasonality and unit */
   series(seriesKey: string): Promise<Row | null>;
+  /** B25 completion (G4): which of these ids are assumptions (ASU) of the Strategy Graph this caller reads (RLS-scoped) */
+  knownAssumptions(ids: string[]): Promise<string[]>;
 }
 
 export interface MethodWrites extends RegistryReads {
@@ -125,6 +127,11 @@ class RegistryCapabilityImpl extends RegistryCore implements MethodWrites, Targe
     return (await this.rows(sql`select series_key, unit, seasonality_days, subject_entity_id::text from prediction.series_registry where series_key = ${seriesKey}`))[0] ?? null;
   }
 
+  async knownAssumptions(ids: string[]): Promise<string[]> {
+    if (ids.length === 0) return [];
+    const rows = await this.rows(sql`select strategy_object_id::text as id from graph.strategy_current where object_type = 'ASU' and strategy_object_id = any(${`{${ids.join(',')}}`}::uuid[])`);
+    return rows.map((r) => String(r['id']));
+  }
   async propose(a: Parameters<MethodWrites['propose']>[0]): Promise<Row> {
     return this.one(sql`select prediction.propose_forecast_method(${a.methodId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.key}, ${a.version}::int, ${a.family}, ${a.kinds}::text[],
       ${a.horizons}::text[], ${a.implementationRef}, ${a.implementationDigest}, ${JSON.stringify(a.parameters)}::jsonb, ${JSON.stringify(a.declarations)}::jsonb, ${JSON.stringify(a.validation)}::jsonb,

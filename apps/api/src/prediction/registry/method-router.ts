@@ -64,14 +64,15 @@ export class RegistryMethodRouter implements MethodRouter {
      registry's Bayesian computation. A member with no plan cached (a run resumed in another process) FAILS with that reason, never runs blind. */
   private readonly planned = new Map<string, { entry: PlanMethod; target: TargetRow | null }>();
   private static key(t: string, d: string, ref: string): string { return `${t}:${d}:${ref}`; }
-  run(a: { methodRef: string; points: Point[]; steps: number; season: number; tenantId?: string; domainId?: string; horizonCode?: string; seriesKey?: string }): ForecastOutput {
+  run(a: { methodRef: string; points: Point[]; steps: number; season: number; tenantId?: string; domainId?: string; horizonCode?: string; seriesKey?: string;
+            /* B25 completion (G1, G4): the ensemble's frozen features and the series' subject */ features?: Array<{ key: string; source: string; digest: string; value?: unknown }> | null; subjectEntityId?: string | null }): ForecastOutput {
     const c = a.tenantId === undefined || a.domainId === undefined ? undefined : this.planned.get(RegistryMethodRouter.key(a.tenantId, a.domainId, a.methodRef));
     if (c === undefined) throw new Error(`${a.methodRef}: no plan of this domain in this process carries its registry entry; the member is not run blind`);
     const horizonDays = HORIZONS[a.horizonCode ?? ''];
     const origin = a.points[a.points.length - 1]?.date;
     if (horizonDays === undefined || origin === undefined) throw new Error(`${a.methodRef}: the horizon or the history's origin is unknown`);
     const r = runFamily(c.entry, { points: a.points, seriesKey: a.seriesKey ?? '', seriesUnit: c.target?.unit ?? '', seasonality: a.season, horizonCode: a.horizonCode as string,
-      horizonDays, originAt: origin, targetAt: addDays(origin, horizonDays), kind: 'quantity', target: c.target });
+      horizonDays, originAt: origin, targetAt: addDays(origin, horizonDays), kind: 'quantity', target: c.target, features: a.features ?? null, subjectEntityId: a.subjectEntityId ?? null });
     if (r.kind !== 'quantity' || !('q50' in r.quantiles)) throw new Error(`${a.methodRef} produced a ${r.kind} result; a quantity ensemble combines quantity distributions only`);
     const q = r.quantiles as { q10: number; q50: number; q90: number };
     return { method: c.entry.method_ref, version: String(c.entry.version), quantiles: { q10: q.q10, q50: q.q50, q90: q.q90 }, path: [], parameters: {}, errorsUsed: 0 };

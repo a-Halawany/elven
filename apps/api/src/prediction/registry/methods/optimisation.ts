@@ -12,6 +12,10 @@
  *   step (a share in steps of 5%, say); the OPTIMALITY GAP is its objective's distance from the LP optimum, relative to |LP optimum|.
  *   The forecast it issues: the objective's value at the implementable plan under the parameter's low, mid and high (sorted into the 10/50/90
  *   slots) — a SCENARIO BAND over the declared parameter band, not a statistical interval, and the forecast says so.
+ *   B25 completion (G5, MC-015) — ROBUSTNESS: the implementable plan (chosen at the parameters' mid) is checked under EACH parameter scenario
+ *   (low, mid, high): its FEASIBILITY (every constraint with its slack; an infeasible scenario is NAMED with the constraints it breaks), its
+ *   objective there, that scenario's OWN implementable optimum (the best feasible grid point under the scenario's parameters) and the plan's
+ *   REGRET against it; the WORST-CASE objective over the scenarios. ROBUST means feasible in every scenario — nothing less is called robust.
  */
 import { mean, round, solve, type Band, type Point } from './stats.js';
 
@@ -132,7 +136,14 @@ export function solveGrid(d: OptimisationDeclarations, env: Env): { x: number[] 
   return { ...best, points: count };
 }
 
+export interface ScenarioCheck {
+  scenario: 'low' | 'mid' | 'high'; parameters: Record<string, number>; feasible: boolean; broken: string[]; objective: number;
+  scenario_optimum: { x: number[] | null; value: number | null }; regret: number | null;
+}
+export interface Robustness { scenarios: ScenarioCheck[]; robust: boolean; infeasible_scenarios: string[]; worst_case: { scenario: string; objective: number }; max_regret: number | null; statement: string }
+
 export interface OptimisationOutput {
+  robustness: Robustness | null;
   status: 'optimal' | 'infeasible';
   lp: LpSolution; implementable: { x: number[] | null; value: number | null; grid_points: number };
   gap: number | null; feasibility: Array<{ label: string; lhs: number; comparator: string; rhs: number; slack: number; satisfied: boolean }>;
@@ -149,7 +160,7 @@ export function optimise(points: readonly Point[], d: OptimisationDeclarations):
   const base = { inputs, parameters: d.parameters, variables: d.variables.map((v) => v.name), objective: { sense: d.objective.sense, unit: d.objective.unit, statement: d.objective.statement } };
   if (lp.status === 'infeasible' || grid.x === null) {
     const probe = lp.x ?? d.variables.map((v) => v.lo);
-    return { status: 'infeasible', lp, implementable: { x: null, value: null, grid_points: grid.points }, gap: null, feasibility: report(d, env, probe), band: null, ...base };
+    return { status: 'infeasible', lp, implementable: { x: null, value: null, grid_points: grid.points }, gap: null, feasibility: report(d, env, probe), band: null, robustness: null, ...base };
   }
   const gap = lp.value === null || grid.value === null ? null : round(Math.abs(grid.value - lp.value) / Math.max(Math.abs(lp.value), 1e-9), 6);
   const valueAt = (params: Record<string, number>): number => {
@@ -158,7 +169,34 @@ export function optimise(points: readonly Point[], d: OptimisationDeclarations):
   };
   const scen = ['low', 'mid', 'high'].map((which) => valueAt(Object.fromEntries(Object.entries(d.parameters).map(([k, v]) => [k, v[which as 'low' | 'mid' | 'high']])))).sort((a, b) => a - b);
   return { status: 'optimal', lp, implementable: { x: grid.x, value: grid.value, grid_points: grid.points }, gap, feasibility: report(d, env, grid.x),
-           band: { q10: round(scen[0]!, 4), q50: round(scen[1]!, 4), q90: round(scen[2]!, 4) }, ...base };
+           band: { q10: round(scen[0]!, 4), q50: round(scen[1]!, 4), q90: round(scen[2]!, 4) }, robustness: robustness(d, inputs, grid.x), ...base };
+}
+
+/** B25 completion (G5): the implementable plan under each declared parameter scenario — feasibility, objective, the scenario's own optimum, regret. */
+export function robustness(d: OptimisationDeclarations, inputs: Record<string, number>, plan: number[]): Robustness {
+  const sign = d.objective.sense === 'minimise' ? 1 : -1;
+  const scenarios = (['low', 'mid', 'high'] as const).map((which): ScenarioCheck => {
+    const params = Object.fromEntries(Object.entries(d.parameters).map(([k, v]) => [k, v[which]]));
+    const env: Env = { params, inputs };
+    const checks = report(d, env, plan);
+    const broken = checks.filter((c) => !c.satisfied).map((c) => `${c.label} (${c.lhs} ${c.comparator} ${c.rhs})`);
+    const { le, eq } = rowsOf(d, env);
+    const boundsOk = feasible(plan, le, eq);
+    const objective = round(d.objective.coefficients.reduce<number>((s, c, i) => s + coefficient(c, env) * plan[i]!, 0) + coefficient(d.objective.constant, env), 6);
+    const own = solveGrid(d, env);
+    const regret = own.value === null ? null : round(Math.max(0, sign * (objective - own.value)), 6);
+    return { scenario: which, parameters: params, feasible: broken.length === 0 && boundsOk, broken, objective, scenario_optimum: { x: own.x, value: own.value }, regret };
+  });
+  const infeasible = scenarios.filter((s) => !s.feasible).map((s) => s.scenario);
+  const worst = [...scenarios].sort((a, b) => sign * (b.objective - a.objective))[0]!;
+  const regrets = scenarios.map((s) => s.regret).filter((r): r is number => r !== null);
+  const maxRegret = regrets.length === 0 ? null : round(Math.max(...regrets), 6);
+  const statement = infeasible.length === 0
+    ? `ROBUST: the plan is feasible under every declared parameter scenario (low, mid, high); worst-case objective ${round(worst.objective, 4)} ${d.objective.unit} (${worst.scenario}); `
+      + `regret against each scenario's own optimum ${scenarios.map((s) => `${s.scenario} ${s.regret === null ? 'n/a' : round(s.regret, 4)}`).join(', ')}.`
+    : `NOT ROBUST: the plan is INFEASIBLE under the ${infeasible.join(' and ')} scenario${infeasible.length === 1 ? '' : 's'} (${scenarios.filter((s) => !s.feasible).map((s) => `${s.scenario}: ${s.broken.join('; ') || 'a bound'}`).join(' | ')}); `
+      + `worst-case objective ${round(worst.objective, 4)} ${d.objective.unit} (${worst.scenario}).`;
+  return { scenarios, robust: infeasible.length === 0, infeasible_scenarios: infeasible, worst_case: { scenario: worst.scenario, objective: worst.objective }, max_regret: maxRegret, statement };
 }
 
 function report(d: OptimisationDeclarations, env: Env, x: number[]): OptimisationOutput['feasibility'] {

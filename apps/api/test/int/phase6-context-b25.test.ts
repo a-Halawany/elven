@@ -32,6 +32,21 @@
  *         assembler, digested (sha-256 / JCS) on the row and in the FCT payload; REFUSAL: an environment without its digest (the pair
  *         constraint, 409); RECOVERY: the grounded issue records both.
  *
+ *   B25 completion (the gaps the bookkeeping review found; registry entries proposed by N. Eriksen, approved by H. Petrović, the target by
+ *   T. Richter, the horizon policy concurred by H. Petrović — all SYNTHETIC declarations):
+ *   CX7 · G1 FEATURES AS MODEL INPUTS (V00-T-009, L6-C02) — POSITIVE: a routed 5y regime forecast whose entry declares conditions on a TWIN
+ *         feature (shock.corridor_delay_days) and a GRAPH feature (graph.edges.ships_through) of the frozen set: each read with its value and
+ *         digest, held, its pseudo-count added; REFUSAL: a condition on a feature the frozen set lacks, and on one with no scalar value —
+ *         `forecast rejected (context)` (422, ledgered, nothing issued); RECOVERY: the steward's corrected version issues.
+ *   CX8 · G2 THE REPLAY OF ROUTED FORECASTS (F-P4-03) — POSITIVE: the routed regime (twin-conditioned), event and bayesian forecasts replay
+ *         REPRODUCED; after a later TWIN version (the corridor delay 14 → 21 days) and a later graph change the regime replay is still
+ *         REPRODUCED while the fresh grounding differs; REFUSAL: the entry pinned to other bytes (a stated superuser move) → DIVERGED
+ *         (implementation), not re-run; RECOVERY: the pin restored → REPRODUCED.
+ *   CX9 · G7 THE PINS (AI-48-002) — POSITIVE: the routed forecast's row and package pin the TARGET VERSION with its definition digest and the
+ *         EVALUATION PROFILE (policy and version, validation requirement, the applicable record); the manifest pins the target key and the
+ *         horizon policy version; the grounded legacy issue pins its profile (the legacy rule, the backtest read); REFUSAL: a target definition
+ *         edited after issue (a stated superuser move) → the replay DIVERGES on target.definition; RECOVERY: restored → REPRODUCED.
+ *
  * SOFTWARE CAPABILITY on a SYNTHETIC world: every figure here is synthetic (the fixture series, the twin's records, the claims). No external
  * integration is exercised or claimed. Every count is scoped to this harness's tenant.
  */
@@ -56,6 +71,8 @@ import { assembleManifest, canonicalRequest } from '../../src/prediction/context
 import { MODELS_IMPLEMENTATION_DIGEST, legacyOutput } from '../../src/prediction/context/legacy-methods.js';
 import { canonicalDigest, registerForecastMethod, restoreForecastMethod } from '../../src/shared/forecast-environment.js';
 import { SEASONAL_NAIVE } from '../../src/prediction/models/models.js';
+import type { RegistryController } from '../../src/prediction/registry/registry.controller.js';
+import { completeElements } from './phase5-fixtures.js';
 import { Phase4Harness } from './phase4-helpers.js';
 import { bootDecisionWorld, type DecisionWorld } from './phase6-fixtures.js';
 
@@ -74,6 +91,7 @@ let h: Phase4Harness; let w: DecisionWorld; let su: Phase4Harness['su'];
 let graph: GraphController; let C: ContextController;
 let eriksen: AuthenticatedPrincipal; let kMueller: AuthenticatedPrincipal; let analyst: AuthenticatedPrincipal; let steward: AuthenticatedPrincipal; let outsider: AuthenticatedPrincipal;
 let CORRIDOR: string; let ONT: string; let B: Evd;
+let CX2_FORECAST = '';   // B25 completion (G7): the grounded legacy forecast CX2 issues, read again by CX9
 const T = () => h.fx.tenantId; const D = () => h.fx.domainId;
 const OBSERVED_THROUGH = '2023-12-31';
 
@@ -216,7 +234,7 @@ describe('B25 §CX · grounded context, the frozen information set, the replay, 
     const now = await dbNow();
     // POSITIVE — the grounded issue.
     const g = (await issueGrounded(eriksen, { seriesKey: CORRIDOR, horizon: '30d', knownAt: now, observedThrough: OBSERVED_THROUGH, assumptions: [w.assumptionId], label: 'replay demonstration' })).forecast;
-    corridorForecast = g.forecastId; corridorSet = String(g.informationSet['id']); pinnedHead = Number((g.informationSet['graph'] as Row)['revision_head']);
+    corridorForecast = g.forecastId; CX2_FORECAST = g.forecastId; corridorSet = String(g.informationSet['id']); pinnedHead = Number((g.informationSet['graph'] as Row)['revision_head']);
     const fr = (await sql<Row>`select information_set_id::text, environment_digest, environment, known_at, series_key, method, method_version from prediction.forecasts_current where forecast_id = ${corridorForecast}::uuid`.execute(su)).rows[0]!;
     expect(fr).toMatchObject({ information_set_id: corridorSet, series_key: CORRIDOR, method: SEASONAL_NAIVE, method_version: '1' });
     expect(pinnedHead).toBe(await head());
@@ -418,5 +436,172 @@ describe('B25 §CX · grounded context, the frozen information set, the replay, 
     expect(ok.environment).toMatchObject({ method_ref: `${SEASONAL_NAIVE}@1`, digest: expect.stringMatching(/^[0-9a-f]{64}$/) });
     expect((await sql<{ d: string }>`select environment_digest d from prediction.forecasts_current where forecast_id = ${ok.forecastId}::uuid`.execute(su)).rows[0]!.d).toBe(ok.environment['digest']);
     console.log(`B25 CX6 EVIDENCE · environment ${String(fr['environment_digest']).slice(0, 12)} = sha256(JCS(${Object.keys(facts).sort().join(',')})) · pair refused 409 · grounded 1y records it`);
+  });
+});
+
+/* ═════════════════════════ B25 completion — G1 features as model inputs, G2 the replay of routed forecasts, G7 the pins ═════════════════════════ */
+describe('B25 completion · the routed families grounded: features as inputs (G1), their replay (G2), the target version and evaluation profile pinned (G7)', () => {
+  let rg: RegistryController; let petrovic: AuthenticatedPrincipal; let richter: AuthenticatedPrincipal;
+  let F5Y = ''; let F30 = ''; let F1Y = ''; let BAYES_METHOD_ID = '';
+  const TARGET = 'corridor.cx.transit-regime';
+  const r = (as: AuthenticatedPrincipal, action: string, type: string, id: string | null = null) => h.req(as, action, type, id, 'prediction');
+  const approve = async (payload: Row): Promise<Row> => {
+    const m = (await rg.propose(r(eriksen, 'prediction.registry.method.propose', 'FMR'), T(), D(), { payload }) as { method: Row }).method;
+    return (await rg.decide(r(petrovic, 'prediction.registry.method.approve', 'FMR', String(m['method_id'])), T(), D(), String(m['method_id']),
+      { payload: { decision: 'approve', note: 'the declarations and the conditions were reviewed (SYNTHETIC)' } }) as { method: Row }).method;
+  };
+  const issue = (payload: Row) => rg.issue(r(eriksen, 'prediction.portfolio.issue', 'FCT'), T(), D(), { payload }) as Promise<{ forecast: Row }>;
+  const CATS = [{ key: 'closed', label: 'closed', rule: { comparator: '<', threshold: 45 } }, { key: 'disrupted', label: 'disrupted', rule: { comparator: '<', threshold: 58 } }, { key: 'open', label: 'open', rule: null }];
+  const JUDGEMENT = () => ({ pseudo_counts: { closed: 2, disrupted: 6, open: 12 }, rationale: 'escalation risk in the strait over five years (SYNTHETIC judgement)', judged_by: eriksen.principalId });
+  const TWIN_CONDITION = { feature: 'twin.shock.corridor_delay_days', comparator: '>=', threshold: 10, regime: 'disrupted', pseudo_count: 4, rationale: 'the twin\'s two-week corridor delay weighs towards disruption (SYNTHETIC)' };
+  const GRAPH_CONDITION = { feature: 'graph.edges.ships_through', comparator: '>=', threshold: 1, regime: 'closed', pseudo_count: 1, rationale: 'an operator routed through the strait is exposed to its closure (SYNTHETIC)' };
+  const OPTIONS = [{ key: 'hold', label: 'hold safety stock', cost: 2, payoff: { closed: 8, disrupted: 6, open: 3 } }, { key: 'reroute', label: 'reroute via the Cape', cost: 4, payoff: { closed: 10, disrupted: 7, open: 1 } }];
+  const NL = { model: 'normal_linear', window_days: 60, intercept: { mean: 60, sd: 20 }, slope_per_year: { mean: 0, sd: 2 } };
+  const rules = (): Row => ({
+    '30d': { treatment: 'intervention windows and freshness', allowed_families: ['event', 'statistical', 'bayesian'], kinds: { event: { confidence_language: 'probability', validation: { required: false } }, quantity: { confidence_language: 'distribution', validation: { required: false } } } },
+    '90d': { treatment: 'operational planning', allowed_families: ['statistical', 'bayesian'], kinds: { quantity: { confidence_language: 'distribution', validation: { required: false } } } },
+    '180d': { treatment: 'budget and capacity', allowed_families: ['statistical', 'bayesian'], kinds: { quantity: { confidence_language: 'distribution_with_scenarios', validation: { required: false } } } },
+    '1y': { treatment: 'annual planning', allowed_families: ['statistical', 'bayesian'], kinds: { quantity: { confidence_language: 'distribution_with_scenarios', validation: { required: false } } } },
+    '3y': { treatment: 'regimes and path dependence', allowed_families: ['structural_judgmental', 'bayesian'], kinds: { regime: { confidence_language: 'scenario_language', validation: { required: false } },
+            quantity: { confidence_language: 'distribution_with_scenarios', validation: { required: true, kind: 'quantity_rolling_origin', min_origins: 20, modes: ['historical', 'retrospective'] } } } },
+    '5y': { treatment: 'regimes, path dependence, option value and resilience: scenario language', allowed_families: ['structural_judgmental', 'bayesian'], kinds: { regime: { confidence_language: 'scenario_language', validation: { required: false } },
+            quantity: { confidence_language: 'distribution_with_scenarios', validation: { required: true, kind: 'quantity_rolling_origin', min_origins: 20, modes: ['historical', 'retrospective'] } } } },
+  });
+  const routeOf = async (routeId: string) => (await sql<Row>`select outcome, refusal_class, forecast_id::text from prediction.forecast_routes where route_id = ${routeId}::uuid`.execute(su)).rows[0];
+
+  it('CX7 · G1 FEATURES AS MODEL INPUTS — a routed 5y regime conditioned on the TWIN\'s corridor delay and the GRAPH\'s strait edges reads both from the frozen set; a condition on an absent or non-scalar feature is refused (context); the corrected version issues', async () => {
+    const { RegistryController: Rc } = await import('../../src/prediction/registry/registry.controller.js');
+    rg = h.app.get(Rc);
+    petrovic = await h.humanWithSession(['method_steward'], 'b25-h-petrovic');
+    richter = await h.humanWithSession(['domain_admin'], 'b25-t-richter');
+    // the registry the act stages, SYNTHETIC: the entries (N. Eriksen proposes, H. Petrović approves), the target with the strait as subject
+    // (T. Richter approves), the horizon policy (H. Petrović concurs)
+    await approve({ methodKey: 'event_rate', family: 'event', horizons: ['30d'], steward: petrovic.principalId, description: 'P(event within the window), Beta prior (SYNTHETIC)', declarations: { prior: { alpha: 1, beta: 1 } }, parameters: { min_windows: 6 } });
+    await approve({ methodKey: 'regime_judgement', family: 'structural_judgmental', forecastKinds: ['regime'], horizons: ['5y'], steward: petrovic.principalId,
+      description: 'Regime probabilities from the structural judgement and counted windows (SYNTHETIC) — version 1, before the conditions', declarations: { judgement: JUDGEMENT() } });
+    await approve({ methodKey: 'regime_judgement', version: 2, family: 'structural_judgmental', forecastKinds: ['regime'], horizons: ['5y'], steward: petrovic.principalId,
+      description: 'Regime probabilities from the structural judgement, counted windows and conditions on the frozen twin and graph features (SYNTHETIC)',
+      declarations: { judgement: JUDGEMENT(), conditions: [TWIN_CONDITION, GRAPH_CONDITION], options: OPTIONS } });
+    BAYES_METHOD_ID = String((await approve({ methodKey: 'bayes_level', family: 'bayesian', horizons: ['1y'], steward: petrovic.principalId, description: 'Normal–linear level, explicit priors (SYNTHETIC)',
+      declarations: { prior: NL, alternatives: [{ label: 'a wider prior', prior: { ...NL, intercept: { mean: 60, sd: 40 } } }] } }))['method_id']);
+    const t = (await rg.declareTarget(r(eriksen, 'prediction.registry.target.declare', 'FTG'), T(), D(), { payload: { targetKey: TARGET, kind: 'event', unit: 'probability', title: 'Strait transit regime (SYNTHETIC corridor)',
+      subjectEntityId: w.entityId, definition: { series_key: CORRIDOR, event: { comparator: '<', threshold: 41, consecutive: 5 }, horizon_kinds: { '5y': 'regime' }, regime: { classification_window_days: 90, categories: CATS } },
+      sources: { series: [CORRIDOR], twin_elements: ['shock.corridor_delay_days'], graph: ['graph.edges.ships_through'] } } }) as { target: Row }).target;
+    await rg.decideTarget(r(richter, 'prediction.registry.target.approve', 'FTG', String(t['target_id'])), T(), D(), String(t['target_id']), { payload: { decision: 'approve', note: 'the definition is the indicator\'s (SYNTHETIC)' } });
+    const pol = (await rg.publishPolicy(r(eriksen, 'prediction.registry.policy.publish', 'HZP'), T(), D(), { payload: { riskClass: 'standard', statement: 'the corridor\'s horizon treatment (SYNTHETIC)', steward: petrovic.principalId, rules: rules() } }) as { policy: Row }).policy;
+    await rg.concurPolicy(r(petrovic, 'prediction.registry.policy.concur', 'HZP', String(pol['policy_id'])), T(), D(), String(pol['policy_id']), { payload: { decision: 'concur', note: 'the treatment table is right (SYNTHETIC)' } });
+
+    // POSITIVE — the routed 5y regime, grounded: the twin and graph features read from the frozen set
+    const now = await dbNow();
+    const a = await issue({ targetKey: TARGET, horizon: '5y', knownAt: now, observedThrough: OBSERVED_THROUGH, assumptions: [w.assumptionId], methodRef: 'regime_judgement@2' });
+    F5Y = String(a.forecast['forecastId']);
+    expect(a.forecast).toMatchObject({ method_ref: 'regime_judgement@2', forecast_kind: 'regime', validation_state: 'scenario_language' });
+    const o = a.forecast['outcome'] as Row;
+    const used = o['features_used'] as Row[];
+    expect(used.map((x) => [x['key'], x['value'], x['held']])).toEqual([['twin.shock.corridor_delay_days', 14, true], ['graph.edges.ships_through', 2, true]]);
+    const set = (await sql<Row>`select manifest from prediction.information_sets where information_set_id = ${String(a.forecast['information_set_id'])}::uuid`.execute(su)).rows[0]!['manifest'] as Row;
+    const frozen = Object.fromEntries((set['features'] as Row[]).map((x) => [String(x['key']), x]));
+    for (const u of used) expect(u['digest']).toBe(frozen[String(u['key'])]!['digest']);
+    expect((o['judgement'] as Row)['conditioned_pseudo_counts']).toEqual({ closed: 3, disrupted: 10, open: 12 });
+    expect(String(a.forecast['statement'])).toMatch(/Conditions on the frozen features: twin\.shock\.corridor_delay_days = 14 >= 10 HELD \(\+4 to disrupted\); graph\.edges\.ships_through = 2 >= 1 HELD \(\+1 to closed\)/);
+    // G6 rides beside it: the path-dependent view and the declared options' value and resilience
+    expect((o['path_dependence'] as Row)['current']).toBe('open');
+    expect((o['options'] as Row)['option_value'] as number).toBeGreaterThanOrEqual(0);
+    expect(String(a.forecast['statement'])).toMatch(/THE PATH-DEPENDENT VIEW .* OPTION VALUE AND RESILIENCE/);
+
+    // REFUSAL — a condition on a feature the frozen set does not carry; one on a feature with no scalar value: refused, ledgered, nothing issued
+    await approve({ methodKey: 'regime_toll', family: 'structural_judgmental', forecastKinds: ['regime'], horizons: ['5y'], steward: petrovic.principalId, description: 'conditioned on a canal toll the twin does not carry (SYNTHETIC)',
+      declarations: { judgement: JUDGEMENT(), conditions: [{ ...TWIN_CONDITION, feature: 'twin.route.canal_toll' }] } });
+    await approve({ methodKey: 'regime_shipment', family: 'structural_judgmental', forecastKinds: ['regime'], horizons: ['5y'], steward: petrovic.principalId, description: 'conditioned on a shipment row, not a scalar (SYNTHETIC)',
+      declarations: { judgement: JUDGEMENT(), conditions: [{ ...TWIN_CONDITION, feature: 'twin.shipment:SYN-SHIP-4472', comparator: '=', threshold: 'x' }] } });
+    const fBefore = await count('prediction.forecasts_current');
+    const absent = await refused(issue({ targetKey: TARGET, horizon: '5y', knownAt: now, observedThrough: OBSERVED_THROUGH, assumptions: [w.assumptionId], methodRef: 'regime_toll@1' }));
+    expect(absent.status).toBe(422); expect(absent.message).toMatch(/^forecast rejected \(context\): regime_toll@1's condition\(s\) cannot be read from the frozen information set — twin\.route\.canal_toll is not a feature of the frozen information set/);
+    const shipment = await refused(issue({ targetKey: TARGET, horizon: '5y', knownAt: now, observedThrough: OBSERVED_THROUGH, assumptions: [w.assumptionId], methodRef: 'regime_shipment@1' }));
+    expect(shipment.status).toBe(422); expect(shipment.message).toMatch(/^forecast rejected \(context\): .*twin\.shipment:SYN-SHIP-4472 has no scalar value/);
+    expect(await count('prediction.forecasts_current')).toBe(fBefore);
+    const refusedRoutes = (await sql<Row>`select outcome, refusal_class from prediction.forecast_routes where tenant_id = ${T()}::uuid and refusal_class = 'context'
+      and (refusal like 'forecast rejected (context): regime_toll@1%' or refusal like 'forecast rejected (context): regime_shipment@1%')`.execute(su)).rows;
+    expect(refusedRoutes).toEqual([{ outcome: 'refused', refusal_class: 'context' }, { outcome: 'refused', refusal_class: 'context' }]);
+    expect((await sql<Row>`select state from prediction.forecast_methods where tenant_id = ${T()}::uuid and method_ref = 'regime_toll@1'`.execute(su)).rows[0]).toEqual({ state: 'approved' });
+    // RECOVERY — the steward's corrected version (the condition on the twin's corridor delay) issues
+    await approve({ methodKey: 'regime_toll', version: 2, family: 'structural_judgmental', forecastKinds: ['regime'], horizons: ['5y'], steward: petrovic.principalId, description: 'the condition corrected to the twin\'s corridor delay (SYNTHETIC)',
+      declarations: { judgement: JUDGEMENT(), conditions: [TWIN_CONDITION] } });
+    const ok = await issue({ targetKey: TARGET, horizon: '5y', knownAt: now, observedThrough: OBSERVED_THROUGH, assumptions: [w.assumptionId], methodRef: 'regime_toll@2' });
+    expect(((ok.forecast['outcome'] as Row)['features_used'] as Row[]).map((x) => x['key'])).toEqual(['twin.shock.corridor_delay_days']);
+    console.log(`B25 CX7 EVIDENCE · G1 · ${F5Y} regime_judgement@2: twin.shock.corridor_delay_days = 14 held, graph.edges.ships_through = 2 held → conditioned pseudo-counts 3/10/12 · absent and non-scalar features refused (context) · regime_toll@2 issued`);
+  });
+
+  it('CX8 · G2 THE REPLAY OF ROUTED FORECASTS — the twin-conditioned regime, the event and the bayesian forecasts REPRODUCED; after a later TWIN version and graph change the regime still REPRODUCED while a fresh grounding differs; the entry pinned to other bytes DIVERGES (implementation); restored, it reproduces', async () => {
+    const now = await dbNow();
+    F30 = String((await issue({ targetKey: TARGET, horizon: '30d', knownAt: now, observedThrough: OBSERVED_THROUGH, assumptions: [w.assumptionId], methodRef: 'event_rate@1' })).forecast['forecastId']);
+    F1Y = String((await issue({ seriesKey: CORRIDOR, horizon: '1y', knownAt: now, observedThrough: OBSERVED_THROUGH, assumptions: [w.assumptionId], methodRef: 'bayes_level@1' })).forecast['forecastId']);
+    // POSITIVE — each routed family recomputed from the frozen set (the registry's replayer, through the shared register)
+    for (const id of [F5Y, F30, F1Y]) {
+      const x = (await replay(eriksen, id)).replay;
+      expect(x, JSON.stringify(x.diverged)).toMatchObject({ outcome: 'REPRODUCED', diverged: [], environment: { match: true } });
+      expect((x['replayer'] as Row)['replayer']).toBe('registry-family@1');
+      expect(((x['replayer'] as Row)['implementation'] as Row)['match']).toBe(true);
+    }
+    const rr = (await replay(eriksen, F5Y)).replay;
+    expect(((rr['replayer'] as Row)['target'] as Row)).toMatchObject({ target_key: TARGET, version: 1, resolved_by: expect.stringMatching(/outcome_spec\.target/) });
+    expect((((rr['replayer'] as Row)['features'] as Row)['used'] as Row[]).map((x) => [x['key'], x['value']])).toEqual([['twin.shock.corridor_delay_days', 14], ['graph.edges.ships_through', 2]]);
+    // THE LATER TWIN VERSION (the corridor delay 14 → 21 days, admitted on actual) and a later graph change
+    const tw = w.twinOwner;
+    const o = await w.twins.openVersion(h.req(tw, 'twin.version', 'TWN', w.twinId), T(), D(), w.twinId, { payload: { branchId: 'actual', knownAt: await dbNow(), observedThrough: '2024-01-24' } }) as { version: { version: number } };
+    const elements = (completeElements(w.records) as Row[]).map((e) => (e['key'] === 'shock.corridor_delay_days' ? { ...e, value: 21 } : e));
+    await w.twins.ground(h.req(tw, 'twin.ground', 'TWN', w.twinId), T(), D(), w.twinId, String(o.version.version), { payload: { elements } });
+    await w.twins.admit(h.req(tw, 'twin.version.admit', 'TWN', w.twinId), T(), D(), w.twinId, String(o.version.version), { payload: {} });
+    const commit = await operatorShipsThroughStrait('Rotterdam Feeder Lines (SYNTHETIC)');
+    const after = (await replay(eriksen, F5Y)).replay;
+    expect(after, JSON.stringify(after.diverged)).toMatchObject({ outcome: 'REPRODUCED', diverged: [] });
+    expect(after.fresh).toMatchObject({ differs: true, revision_head: commit.revision, twin: { twin_id: w.twinId, version: o.version.version } });
+    expect(after.fresh.what).toEqual(expect.arrayContaining(['graph.revision_head', 'twin', 'feature:twin.shock.corridor_delay_days', 'feature:graph.edges.ships_through']));
+    // REFUSAL — the entry pinned to other bytes (STATED SUPERUSER MOVE, as if approved for a build that is no longer this one): not re-run, DIVERGED
+    const pinned = (await sql<{ d: string }>`select implementation_digest d from prediction.forecast_methods where method_id = ${BAYES_METHOD_ID}::uuid`.execute(su)).rows[0]!.d;
+    await sql`update prediction.forecast_methods set implementation_digest = ${'0'.repeat(64)} where method_id = ${BAYES_METHOD_ID}::uuid`.execute(su);
+    let mismatch: Awaited<ReturnType<typeof replay>>['replay'];
+    try { mismatch = (await replay(eriksen, F1Y)).replay; } finally { await sql`update prediction.forecast_methods set implementation_digest = ${pinned} where method_id = ${BAYES_METHOD_ID}::uuid`.execute(su); }
+    expect(mismatch.outcome).toBe('DIVERGED');
+    expect(mismatch.diverged.map((d) => d.what)).toEqual(['implementation']);
+    expect(mismatch.diverged[0]).toMatchObject({ original: '0'.repeat(64), replayed: pinned });
+    expect((mismatch['output'] as Row)['replayed']).toBeNull();
+    // RECOVERY — the pin restored: reproduced again
+    expect((await replay(eriksen, F1Y)).replay.outcome).toBe('REPRODUCED');
+    const outcomes = (await sql<{ outcome: string }>`select outcome from prediction.forecast_replays where forecast_id = ${F1Y}::uuid order by replayed_at`.execute(su)).rows.map((x) => x.outcome);
+    expect(outcomes).toEqual(['REPRODUCED', 'DIVERGED', 'REPRODUCED']);
+    console.log(`B25 CX8 EVIDENCE · G2 · regime ${F5Y}, event ${F30}, bayesian ${F1Y} REPRODUCED by registry-family@1 · twin v${o.version.version} (delay 21) + head ${commit.revision}: the regime still REPRODUCED, the fresh grounding differs in ${after.fresh.what.length} section(s) · digest mismatch → DIVERGED (implementation) · restored → REPRODUCED`);
+  });
+
+  it('CX9 · G7 THE PINS — the routed forecast pins the target version with its definition digest and the evaluation profile (row, package); the manifest pins the target key and the horizon policy; the grounded legacy issue pins its profile; an edited definition DIVERGES its replay; restored, it reproduces', async () => {
+    const row = (await sql<Row>`select outcome_spec, horizon_policy, information_set_id::text from prediction.forecasts_current where forecast_id = ${F30}::uuid`.execute(su)).rows[0]!;
+    const def = (await sql<Row>`select definition, target_id::text from prediction.forecast_targets where tenant_id = ${T()}::uuid and target_key = ${TARGET} and version = 1`.execute(su)).rows[0]!;
+    const pin = { target_key: TARGET, version: 1, kind: 'event', unit: 'probability', definition_digest: canonicalDigest(def['definition']) };
+    expect((row['outcome_spec'] as Row)['target']).toEqual(pin);
+    const hp = row['horizon_policy'] as Row; const profile = hp['evaluation_profile'] as Row;
+    expect(profile).toMatchObject({ policy: { version: 1, legacy: false }, horizon: '30d', forecast_kind: 'event', confidence_language: 'probability', validation_requirement: { required: false }, validation_ref: null });
+    expect((profile['policy'] as Row)['policy_id']).toBe(hp['policy_id']);
+    const pay = (await sql<{ p: Row }>`select payload p from objects.canonical_objects where object_id = ${F30}::uuid and object_type = 'FCT'`.execute(su)).rows[0]!.p;
+    expect((pay['outcome'] as Row)['target']).toEqual(pin);
+    expect((pay['horizon_policy'] as Row)['evaluation_profile']).toEqual(profile);
+    const m = (await sql<{ m: Row }>`select manifest m from prediction.information_sets where information_set_id = ${String(row['information_set_id'])}::uuid`.execute(su)).rows[0]!.m;
+    expect((m['request'] as Row)['target_key']).toBe(TARGET);
+    expect(((m['policy'] as Row)['horizon_policy'] as Row)).toMatchObject({ version: 1 });
+    // the grounded legacy issue (CX2) pins its evaluation profile: the legacy rule, no target
+    const g = (await sql<{ hp: Row; p: Row }>`select f.horizon_policy hp, o.payload p from prediction.forecasts_current f join objects.canonical_objects o on o.object_id = f.forecast_id and o.object_type = 'FCT'
+      where f.forecast_id = ${CX2_FORECAST}::uuid`.execute(su)).rows[0]!;
+    expect(g.hp).toMatchObject({ legacy: true, target: null, evaluation_profile: { policy: { legacy: true }, target: null, validation_requirement: { required: false } } });
+    expect((g.p['horizon_policy'] as Row)['evaluation_profile']).toEqual(g.hp['evaluation_profile']);
+    // REFUSAL — the target's definition edited AFTER the forecast was issued (STATED SUPERUSER MOVE): the pin detects it, the replay DIVERGES
+    const edited = { ...(def['definition'] as Row), event: { comparator: '<', threshold: 50, consecutive: 5 } };
+    await sql`update prediction.forecast_targets set definition = ${JSON.stringify(edited)}::jsonb where target_id = ${String(def['target_id'])}::uuid`.execute(su);
+    let d: Awaited<ReturnType<typeof replay>>['replay'];
+    try { d = (await replay(eriksen, F30)).replay; } finally { await sql`update prediction.forecast_targets set definition = ${JSON.stringify(def['definition'])}::jsonb where target_id = ${String(def['target_id'])}::uuid`.execute(su); }
+    expect(d.outcome).toBe('DIVERGED');
+    expect(d.diverged.map((x) => x.what)).toContain('target.definition');
+    expect(d.diverged.find((x) => x.what === 'target.definition')).toMatchObject({ original: pin.definition_digest });
+    // RECOVERY — restored: REPRODUCED
+    expect((await replay(eriksen, F30)).replay.outcome).toBe('REPRODUCED');
+    console.log(`B25 CX9 EVIDENCE · G7 · ${F30} pins ${TARGET} v1 (definition ${pin.definition_digest.slice(0, 12)}) and the evaluation profile (policy v1, requirement none at 30d) on its row and package; the manifest pins the target key and policy v1; the grounded legacy issue pins its legacy profile · edited definition → DIVERGED (${d.diverged.map((x) => x.what).join(', ')}) · restored → REPRODUCED`);
   });
 });

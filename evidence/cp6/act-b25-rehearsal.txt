@@ -304,3 +304,271 @@ exit 0
   ✓  8 e2e/phase6-b25-registry.demo.spec.ts:74:7 › CP-6 B25 §MR — the forecasting portfolio on the demonstration › THE PLAN BY HORIZON: the corridor target is an EVENT at 30d (a probability) and a REGIME at 5y (scenario language) — different methods (816ms)
   ✓  9 e2e/phase6-b25-registry.demo.spec.ts:86:7 › CP-6 B25 §MR — the forecasting portfolio on the demonstration › THE ROUTES: the 30d event and the 5y regime ISSUED by their methods; the 3y horizon on the line-demand series REFUSED naming the missing validation (541ms)
   9 passed (14.5s)
+
+========== B25 COMPLETION (the bookkeeping review's gaps G1–G7) — 2026-10-07 ==========
+The build: the b25/act worktree with the completion commits (the families G1/G3–G6, the replay of routed forecasts G2, the pins G7, the act's
+B25-F3b, the grounding page's routed-model section). apps/api rebuilt; :3411 restarted on it (new process; the old one waited out). NO reset:
+the act ran against the rehearsal state its earlier runs left (their writes stand). No SQL: no migration was added (0108 untouched).
+The moved implementation digests (regime-judgement, bayesian-conjugate, causal-its, optimisation-lp): regime_judgement@1 and bayes_level@1 on
+this rehearsal were approved for the earlier bytes — their standing forecasts are untouched; regime_judgement@2 is approved for this build's.
+event-rate and legacy-models did NOT move, so the F1 30d event replays REPRODUCED. Timings were longer than before: the API unit suite and the web
+build ran on the host during run 1 (load average ~6).
+
+========== COMPLETION RUN 1 (no reset) ==========
+THE B25 ACT on eye_demo_b25 (REHEARSAL) — 2026-10-07T11:47:35.498Z — API http://localhost:3411
+
+B25-0 THE STATE — 0108, the casting, the corridor series and twin, what the graph holds
+  ✓ migration applied: 0108_b25_forecasting_portfolio.sql
+  ✓ the casting read from identity.role_bindings: a.hoffmann (domain_analyst); h.petrovic (method_steward); j.weber (strategy_owner); k.mueller (knowledge_owner); m.dvorak (collection_manager, executive); n.eriksen (forecast_owner); t.richter (domain_admin) — no persona or role is created
+  · the corridor series portwatch:chokepoint4:n_total (transits/day, source imf-portwatch-chokepoints) names NO subject entity; the graph holds NO Bab el-Mandeb Strait entity (its extracted ENT claim "Bab el-Mandeb" is still queued for review)
+  ✓ the corridor twin 01a0…76f525 "NORDWERK — Ningbo → Regensburg chain" — its boundary holds Suez Canal (place 01a0…895bd7), the subject of portwatch:chokepoint1:n_total: the corridor series a forecast can be GROUNDED on (graph context and the twin snapshot)
+
+B25-R §MR THE REGISTRY — N. Eriksen proposes the corridor's methods, H. Petrović approves; the target (T. Richter approves); the horizon policy (H. Petrović concurs)
+  · event_rate@1 stands approved (proposed by N. Eriksen, decided by H. Petrović) — an earlier run
+  ✓ event_rate@1 — event, approved
+  · regime_judgement@1 stands approved (proposed by N. Eriksen, decided by H. Petrović) — an earlier run
+  ✓ regime_judgement@1 — structural_judgmental, approved
+  · bayes_level@1 stands approved (proposed by N. Eriksen, decided by H. Petrović) — an earlier run
+  ✓ bayes_level@1 — bayesian, approved
+  · the corridor indicator the event reads (B27/B28): "Bab el-Mandeb Strait transits below 41 per day for five consecutive published observations" — < 41 on 5 consecutive observations
+  · the target corridor.bab-el-mandeb.transit-delay v1 stands approved (declared by N. Eriksen, decided by T. Richter) — an earlier run
+  ✓ the target corridor.bab-el-mandeb.transit-delay v1 is APPROVED by a named human who did not declare it
+  · horizon policy v1 stands active (published by N. Eriksen, concurred by H. Petrović) — an earlier run
+  ✓ the ACTIVE horizon policy v1: 30d event/statistical (event → probability) · 5y structural_judgmental/bayesian (regime → scenario language) · 3y/5y quantity requires quantity_rolling_origin ≥ 20 origins
+  ✓ THE PLAN BY HORIZON (read only): corridor.bab-el-mandeb.transit-delay at 30d is a event in probability by [event_rate@1]; at 5y a regime in scenario_language by [regime_judgement@1]
+
+B25-H THE EVIDENCE FOR THE HORIZONS — the corridor's real PortWatch history; the ECB reference rate as a bounded history source, collected once; the 3y/5y validation on it
+  ✓ THE CORRIDOR'S REAL HISTORY (the ledger, read-only): 2834 distinct daily observations of chokepoint4 framed from the IMF PortWatch chokepoints source, 2019-01-01 → 2026-10-04 (2956 framed rows) — about 94 non-overlapping 30-day windows for the 30d event (event_rate@1 needs 12): NO extension was needed, no history source was added for PortWatch
+  · the PortWatch source carries 1 governed-deleted evidence manifest(s) (a 2024 replay-set fragment tombstoned by a retention action as superseded evidence; its two object versions share it): without the act-found correction (series.service.ts — a fragment a later version serves on its day is disclosed, not counted) every forecast on a PortWatch series is refused as an incomplete history; the routed issues below prove it complete
+  · the bounded history source ecb-eurusd-history stands (01a1…113494 v1, retired) — an earlier run
+  ✓ ecb-eurusd-history: retired, live, real, rights confirmed; scheduler entry removed; 3 collection run(s); 56 evidence object(s), 1,224,913 bytes, recorded 2026-10-07T09:04:53Z — through the real REST connector
+  · the series ecb-eurusd-history is registered — an earlier run
+  · the 3y validation of bayes_level@1 on ecb-eurusd-history stands (2026-10-07T09:04:59Z) — an earlier run
+  ✓ THE 3Y VALIDATION on the real ECB history (retrospective, 7104 observations): 100 origins, history 2001-04-02 → 2026-09-30; 80% coverage 0.27 (T1 75–85%: NOT met), pinball 0.1051 vs climatology 0.0608 (skill -0.7288, climatology coverage 0.67) — NOT PASSED: "100 origins at 1095 days: 80% band coverage 27.0% (T1 NOT met, band 75–85%), pinball 0.105144 vs climatology 0.06082 (skill -0.7288) — NOT passed. not passed: no validation is claimed."
+  · the 5y validation of bayes_level@1 on ecb-eurusd-history stands (2026-10-07T09:05:01Z) — an earlier run
+  ✓ THE 5Y VALIDATION on the real ECB history (retrospective, 7104 observations): 100 origins, history 2001-02-24 → 2026-09-30; 80% coverage 0.18 (T1 75–85%: NOT met), pinball 0.163 vs climatology 0.0685 (skill -1.3785, climatology coverage 0.7) — NOT PASSED: "100 origins at 1825 days: 80% band coverage 18.0% (T1 NOT met, band 75–85%), pinball 0.16298 vs climatology 0.068522 (skill -1.3785) — NOT passed. not passed: no validation is claimed."
+  · the 5y quantity route on ecb-eurusd-history stands — REFUSED (horizon): "forecast rejected (horizon): ecb-eurusd-history at 5y is unsupported — no passed quantity-rolling-origin validation of bayes_level@1 at 5y with at least 20 origins (historical or retrospective) on ecb-eurusd-history, known by 2026-10-07T09:05:01Z on history ending by 2026-10-07 (the latest, recorded" — an earlier run
+  · the 3y quantity route on ecb-eurusd-history stands — REFUSED (horizon): "forecast rejected (horizon): ecb-eurusd-history at 3y is unsupported — no passed quantity-rolling-origin validation of bayes_level@1 at 3y with at least 20 origins (historical or retrospective) on ecb-eurusd-history, known by 2026-10-07T09:05:01Z on history ending by 2026-10-07 (the latest, recorded" — an earlier run
+
+B25-F1 (F-P4-01) — the corridor at 30d by the EVENT method (intervention window) and at 5y in REGIME language: different methods per horizon; the 3y quantity refused
+  · J. Weber's assumption "The PortWatch transit counts are read as published (the IMF / Oxford daily estimates)" stands (active) — an earlier run
+  · the 30d event backtest of event_rate@1 on portwatch:chokepoint4:n_total stands (2026-10-07T09:09:17Z) — an earlier run
+  ✓ THE 30d EVENT BACKTEST on the real corridor history (retrospective): 60 origins 2021-10-23 → 2026-09-27; Brier 0.3439 vs the prior-mean reference 0.25 (skill -0.3754), log score 0.9693, mean probability 0.118 vs observed frequency 0.5167 (gap -0.3986) — NOT PASSED
+  · the 30d routed forecast 01a1…d63361 (event_rate@1) stands — an earlier run
+  · the 5y routed forecast 01a1…c8f215 (regime_judgement@1) stands — an earlier run
+  ✓ THE 30d PACKAGE 01a1…d63361 [FCT@v2]: EVENT by event_rate@1 in probability (intervention windows and freshness: what can still be acted on inside the month) — "P(portwatch:chokepoint4:n_total < 41 on 5 consecutive published observation(s) within the 30d window to 2026-10-27) = 0.3333 (80% credible band 0.2726–0.3956); event_rate@1 on 94 non-overlapping 30-day windows of history (31 with the event) under the declared Beta(1, 1) prior; unvalidated."; evidence: 94 windows (31 with the event, 0 coverage gaps skipped); unvalidated
+  ✓ THE 5y PACKAGE 01a1…c8f215 [FCT@v2]: REGIME by regime_judgement@1 in scenario_language — "SCENARIO LANGUAGE, NOT A VALIDATED FORECAST — the regimes of Bab el-Mandeb transit delay — the corridor's transits collapse (the B27/B28 indicator's event) at 5y (2031-09-26): closed 0.04, disrupted 0.33, open 0.63; from the structural judgement declared by principal 01a084f5-af3e-71f6-bc3e-bddb9cd461ba (39% of the weight) and 3"; modal open; the judgement's share 0.3922 (judged by N. Eriksen)
+  ✓ DIFFERENT METHODS PER HORIZON on one target: 30d event_rate@1 (event, probability) · 5y regime_judgement@1 (regime, scenario language) — the horizon policy v1 chose them
+  · their ledger: 01a1…d63361 forecast.information_set_frozen → forecast.issued → forecast.routed → forecast.attention → forecast.fitness_assessed; 01a1…c8f215 forecast.information_set_frozen → forecast.issued → forecast.routed → forecast.attention → forecast.fitness_assessed
+  ✓ the 3y QUANTITY request on portwatch:chokepoint4:n_total stands REFUSED (horizon, route 01a1…eea8dc, 2026-10-07T09:18:02Z) — an earlier run: "forecast rejected (horizon): portwatch:chokepoint4:n_total at 3y is unsupported — no passed quantity-rolling-origin validation of bayes_level@1 at 3y with at least 20 origins (historical or retrospective) on portwatch:chokepoint4:n_total, known by 2026-10-07T09:18:02Z on history ending by 2026-10-07"
+
+B25-F3 (F-P4-03) — a corridor forecast pins the twin snapshot and graph revision it used; a later graph change leaves the replayed package unchanged
+  · the grounded forecast 01a1…3d301e stands (issued 2026-10-07T10:27:53Z) — an earlier run
+  ✓ THE PINS (the grounding read): set 01a1…6ab294 — graph revision 42 as of 2026-10-07T09:18:03Z, subject Suez Canal (0 edge(s), 2 event(s)); the twin "NORDWERK — Ningbo → Regensburg chain" v18 (actual, served as head; state set 372d99bbb7e6…); 8918 evidence versions; features twin.consumption.weekly:SYN-PART-MAG, twin.context.fx_forecast, twin.corridor.capacity_share, twin.inventory.on_hand:SYN-PART-MAG…; gaps none; manifest 63c0d2ae56dfb26e…
+  ✓ THE ENVIRONMENT (V03-T-196): node v24.11.1, darwin/arm64, seasonal-naive@1 implementation 7da8dc6d0864…, assembler@1 → digest 46d636844c857827…
+  · the replay before the graph change stands: REPRODUCED at 2026-10-07T10:32:46Z — an earlier run
+  · K. Müller's change set stands: revision 43 (b25-act:suez-canal-transit) at 2026-10-07T10:32:46Z — an earlier run
+  · the replay after the graph change stands (2026-10-07T10:37:20Z) — an earlier run
+  ✓ AFTER THE LATER GRAPH CHANGE the replay is REPRODUCED — the same manifest (true) and the same output (true), environment the same; a FRESH grounding now differs (revision 43 against the pinned 42): graph.revision_head, graph.edges, graph.events, feature:graph.edges, feature:graph.edges.transits, feature:graph.events
+
+B25-F3b (B25 completion) — the twin's and the graph's features as MODEL INPUTS of a routed, grounded 5y regime; the path-dependent view, option value and resilience; the replays of routed forecasts
+  ✓ THE CORRIDOR TWIN'S PINNED VERSION v18 (head) carries 17 SCALAR feature(s): twin.consumption.weekly:SYN-PART-MAG = 9200, twin.corridor.capacity_share = 62, twin.inventory.on_hand:SYN-PART-MAG = 63400, twin.inventory.safety_stock:SYN-PART-MAG = 40000, twin.outcome.line_stop_days:SYN-LINE-A1 = 3, twin.outcome.qualification_weeks:SYN-SUP-MA = 9, twin.production.policy:SYN-PART-MAG = hold_safety_stock, twin.route.inland_days = 14, twin.route.reroute_delay_days = 11, twin.shock.corridor_delay_days = 14, twin.supply.capacity_per_day = 620, twin.terms.air_cost_per_kg = 19.4, twin.terms.air_lead_days = 7, twin.terms.kg_per_unit:SYN-PART-MAG = 0.445652, twin.terms.line_stop_cost_per_day:SYN-LINE-A1 = 142000, twin.terms.reroute_cost_per_container = 1850, twin.terms.units_per_container:SYN-PART-MAG = 1600; 5 without a scalar value (twin.context.fx_forecast, twin.series.transits:chokepoint4, twin.shipment:SYN-SHIP-4471, twin.shipment:SYN-SHIP-4472, twin.shipment:SYN-SHIP-4475) — a condition may read only the former
+  ✓ N. Eriksen PROPOSED regime_judgement@2 (implementation regime-judgement d5fdd2d93218…): conditions twin.shock.corridor_delay_days ≥ 10 → +4 disrupted, graph.edges ≥ 1 → +1 closed; options hold_stock · reroute_cape · keep_routing (SYNTHETIC payoffs, €m avoided line-stop cost) — steward H. Petrović
+  ✓ H. Petrović APPROVED regime_judgement@2 → approved (the objective of the options and the conditions approved with the entry)
+  ✓ regime_judgement@2 — structural_judgmental, approved; regime_judgement@1 is now superseded in the plan (the later approved version)
+  ✓ N. Eriksen DECLARED corridor.suez-canal.transit-regime v1: a REGIME (closed < 10 · disrupted < 45 · open; 90-day windows) on portwatch:chokepoint1:n_total, subject Suez Canal — so the grounding resolves the corridor twin
+  ✓ T. Richter APPROVED corridor.suez-canal.transit-regime → approved
+  ✓ the target corridor.suez-canal.transit-regime v1 — subject Suez Canal, APPROVED by a named human who did not declare it
+  · N. Eriksen issues corridor.suez-canal.transit-regime at 5y through portfolio/issue with regime_judgement@2 (grounded; the series read takes minutes)
+  ✓ N. Eriksen ISSUED corridor.suez-canal.transit-regime at 5y (8.7 min): 01a1…775ad3 by regime_judgement@2 — scenario_language
+  ✓ THE FEATURES AS MODEL INPUTS (G1), read from the frozen set 01a1…dc9702 (twin v18, graph revision 45): twin.shock.corridor_delay_days = 14 (digest 5cf9dcb229bd…, HELD); graph.edges = 1 (digest e0d54d488431…, HELD) → the conditioned pseudo-counts {"open":12,"closed":3,"disrupted":10} (declared {"open":12,"closed":2,"disrupted":6})
+  ✓ THE 5y PACKAGE 01a1…775ad3: the ISSUED probabilities closed 0.0536, disrupted 0.375, open 0.5714 (scenario language); THE PATH-DEPENDENT VIEW from the current regime "disrupted" (the window ending 2026-10-04; 30 counted transitions, 21 steps): open 0.47, closed 0.0824, disrupted 0.4476; persistence open 0.8696, closed 0.3333, disrupted 0.8462
+  · THE OPTIONS (declared, SYNTHETIC payoffs): hold safety stock at Regensburg: expected 2.3929 (under the path view 2.7548), resilience 1 (worst: open) · reroute via the Cape of Good Hope: expected -0.2679 (under the path view 0.4272), resilience -3 (worst: open) · keep the booked routing through Suez: expected 4.5536 (under the path view 4.1628), resilience 0 (worst: closed); the best single commitment keep_routing (4.5536); the OPTION VALUE of flexibility 0.6964; the most resilient hold_stock
+  ✓ THE PINS (G7): target corridor.suez-canal.transit-regime v1 (definition 8e1d44854217…); evaluation profile — horizon policy standard v1, regime in scenario_language, validation requirement {"required":false}, applicable record none
+  · the statement: "SCENARIO LANGUAGE, NOT A VALIDATED FORECAST — the regimes of Suez Canal transit regime — the corridor's Red Sea leg (the Suez Canal series, the corridor twin's boundary place) at 5y (2031-10-03): closed 0.05, disrupted 0.38, open 0.57; from the structural judgement declared by principal 01a084f5-af3e-71f6-bc3e-bddb9cd461ba (45% of the weight) and 31 counted 90-day windows of portwatch:chokepoint1:n_total; judgement held half as firmly or twice as firmly moves a category by up to 0.03. Conditions on the frozen features: twin.shock.corridor_delay_days = 14 >= 10 HELD (+4 to disrupted); graph.edges = 1 >= 1 HELD (+1 to closed). THE PATH-DEPENDENT VIEW (scenario language, not a validated forecast): starting from the current regime "disrupted" (the window ending 2026-10-04), 30 counted window-to-window transition(s) (Dirichlet-smoothed, 1 per cell) carried over 21 step(s) of 90 days give clos"
+  · N. Eriksen REPLAYS the conditioned 5y regime 01a1…775ad3 from its frozen set (it re-reads exactly the pinned evidence versions: minutes)
+  · replayed (18.9 min)
+  ✓ THE REPLAY of the conditioned 5y regime 01a1…775ad3 (regime_judgement@2): REPRODUCED by registry-family@1 — the pinned entry's implementation d5fdd2d93218… = this build's (true), target corridor.suez-canal.transit-regime v1 (the forecast's own pin (outcome_spec.target)), the family re-run with 28 frozen feature(s) (used: twin.shock.corridor_delay_days = 14, graph.edges = 1); the same output (true), the same manifest (true), environment the same; 0 divergence(s)
+  · N. Eriksen REPLAYS the F1 30d EVENT 01a1…d63361 from its frozen set (it re-reads exactly the pinned evidence versions: minutes)
+  · replayed (19.1 min)
+  ✓ THE REPLAY of the F1 30d EVENT 01a1…d63361 (event_rate@1): REPRODUCED by registry-family@1 — the pinned entry's implementation f20a3a404641… = this build's (true), target corridor.bab-el-mandeb.transit-delay v1 (the route the forecast was bound to (its plan's target)), the family re-run with 2 frozen feature(s); the same output (true), the same manifest (true), environment the same; 0 divergence(s)
+
+B25-F2 (F-P4-02) — two methods disagree on the corridor forecast; both distributions, the ensemble and the assumption that splits them; a labelled judgement overlay
+  · attention policy version 10 routes forecast.disagreement → [forecast_owner] — an earlier run
+  · J. Weber's assumption "The Red Sea diversions have run their course: last week's transits repeat" stands (active) — an earlier run
+  · J. Weber's assumption "Carriers keep diverting at the pace of the last weeks" stands (active) — an earlier run
+  · the ensemble run 01a1…c3b993 (portwatch:chokepoint4:n_total at 30d cut at 2024-01-11) stands completed — an earlier run
+  ✓ BOTH DISTRIBUTIONS (members issued, each tied to its assumption): seasonal_naive@1 median 46 (10–90: 31–59) — tied to "the diversions have run their course" · holt_winters@1 median 22.5739 (10–90: 9.8394–35.0082) — tied to "carriers keep diverting" transits/day at 2024-02-10
+  ✓ THE ENSEMBLE 01a1…c1a710 (MODEL OUTPUT): ensemble:linear_pool@1 median 33.1915 (10–90: 13.023–55.75) — "ENSEMBLE of 2 member(s) (seasonal_naive@1, holt_winters@1) under linear_pool@1, equal weights — portwatch:chokepoint4:n_total at 30d (2024-02-10): median 33.1915 transits/day, 10–90 band 13.023–55.75. The members DISAGREE MATERIALLY under disagreement@1 (max gap ratio 0.8812, min overlap 0.1593): seasonal_naive@1 median 46 vs holt_winters@1 median 22.5739 transits/day; the split rests on "The Red Sea diversions have "
+  ✓ THE DISAGREEMENT (measured by the port): MATERIAL — max gap ratio 0.8812, min overlap 0.1593; THE ASSUMPTION THAT SPLITS THEM: "The Red Sea diversions have run their course: last week's transits repeat" (held by seasonal_naive@1) vs "Carriers keep diverting at the pace of the last weeks" (held by holt_winters@1)
+  · excluded method paths: NONE — the horizon policy plans exactly the two statistical methods for a 30d quantity; no planned path was lost (said on the package)
+  ✓ THE ESCALATION: the material disagreement escalated to N. Eriksen by attention_item; attention item fc18…793810 open/material, owner N. Eriksen, roles forecast_owner, policy version 10
+  · N. Eriksen's JUDGEMENT overlay 01a1…b33216 v1 stands (active) — an earlier run
+  ✓ A. Hoffmann READS the overlays: the standing JUDGEMENT v1 by N. Eriksen beside the MODEL OUTPUT (median 33.1915)
+  ✓ A. Hoffmann's judgement overlay REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ A. Hoffmann's ensemble issue REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+
+B25-9 THE STATE and the LIMITS
+  · in the ledgers: 4 registry entr(ies), 2 target version(s), 1 horizon polic(ies), 3 validation(s), 7 route(s), 5 information set(s), 4 replay(s), 1 ensemble run(s), 1 overlay version(s)
+  the env lines for the walks (EYE_TEST_ADMIN_PASSWORD comes from .eye-local/env and is never printed):
+  EYE_B25_FORECASTER=n.eriksen
+  EYE_B25_READER=a.hoffmann
+  EYE_B25_ANALYST=a.hoffmann
+  EYE_B25_EVENT_METHOD=event_rate@1
+  EYE_B25_REGIME_METHOD=regime_judgement@1
+  EYE_B25_TARGET_KEY=corridor.bab-el-mandeb.transit-delay
+  EYE_B25_ECB_SERIES=ecb-eurusd-history
+  EYE_B25_ECB_5Y=refused
+  EYE_B25_ECB_3Y=refused
+  EYE_B25_REFUSED_SERIES=portwatch:chokepoint4:n_total
+  EYE_B25_GROUNDED_SERIES=portwatch:chokepoint1:n_total
+  EYE_B25_GROUNDED_FORECAST=01a115a7-d598-7e94-aeab-f224353d301e
+  EYE_B25_GROUNDED_SET=01a115e7-c70e-703b-9dd8-2f934f6ab294
+  EYE_B25_PINNED_REVISION=42
+  EYE_B25_SUEZ_TARGET=corridor.suez-canal.transit-regime
+  EYE_B25_CONDITIONED_METHOD=regime_judgement@2
+  EYE_B25_CONDITIONED_FORECAST=01a11630-c47e-79d4-aad3-ecb7f8775ad3
+  EYE_B25_CONDITIONED_SET=01a11638-bf0a-7a52-a80d-a0c906dc9702
+  EYE_B25_EVENT_FORECAST=01a1159f-d055-7365-bdfa-6a8865d63361
+  EYE_B25_EVENT_SET=01a115a3-b706-757a-8eb8-454a77be9212
+  EYE_B25_SERIES=portwatch:chokepoint4:n_total
+  EYE_B25_HORIZON=30d
+  EYE_B25_ENSEMBLE_RUN=01a115f0-6e09-7ebf-9afe-8bd10dc3b993
+  · LIMITS said. THREE CLAIMS KEPT APART: (1) SOFTWARE CAPABILITY — the registry, the routing, the horizon policy, the refusal, the grounding, the replay, the ensemble manager and the overlay all ran on this deployment through their governed routes; (2) SYNTHETIC DEMONSTRATION — N. Eriksen's structural judgement (the regime pseudo-counts), J. Weber's assumptions, the overlay's rationale, the regime thresholds and the target's wording are declared, not measured; the harnesses' validations run on SYNTHETIC histories; (3) EMPIRICAL VALIDATION — only bayes_level@1 on the REAL ECB EUR/USD history (retrospective, ONE vintage: the 2026 publication cut by date at each origin, not historical-knowledge validation; overlapping 3y/5y targets, so the origins are not independent): 3y NOT PASSED (coverage 0.27, 100 origins), 5y NOT PASSED (coverage 0.18, 100 origins); and the 30d event backtest on the REAL PortWatch history (retrospective, one vintage). It is NEVER claimed for the corridor's 3y/5y: the corridor's 5y stays SCENARIO LANGUAGE, its 3y quantity is refused. SUBSTITUTIONS: "Bab el-Mandeb transit delay" is the governed target on the REAL transit COUNT series (no delay series exists; the twin's corridor-delay element is a declared feature only); the demonstration's graph holds NO Bab el-Mandeb Strait entity (its extracted ENT claim is queued for review — not decided by this act), so portwatch:chokepoint4:n_total names no subject and the GROUNDED forecast of F-P4-03 runs on portwatch:chokepoint1:n_total (the Suez Canal — the corridor twin's boundary place); K. Müller's change set touches that subject (the claim "MV Hanse Trader transits Suez", its object resolved by him to the Suez Canal) instead of the strait; the tracker's "Regensburg line demand series" does not exist — the 3y refusal is shown on the corridor's own real transit series (≈7.8 years: no quantity validation at 3y was run or recorded on it); the bounded ECB history is a separate source (the live ecb-eurusd and PortWatch contracts untouched) and was scheduled only between its agent's provisioning and its retirement (the platform schedules every active collected source) — collected once. HARNESS-PROVEN ONLY: the Bayesian prior-sensitivity refusal, the causal (MC-013) and optimisation (MC-015) families, quarantine/reinstatement and the digest pin, the ensemble's retries/budget/resume/PER-07 precision refusal and the model-path exclusions, the overlay's revision/withdrawal, the context refusals (future cut-off, stale head, twin/evidence mismatch) and a DIVERGED replay; and (B25 completion) the Bayesian IDENTIFIABILITY flag (MC-012), the causal TRANSPORT scope and its refusal (MC-013), the optimisation ROBUSTNESS under the parameter scenarios (MC-015), a condition on an absent / non-scalar feature or an ungrounded issue refused (context), a digest-mismatch replay DIVERGED (implementation) and an edited target definition DIVERGED (target.definition), and the ENSEMBLE replay (the combination from the members' stored distributions). B25-F3b SAYS: the conditioned 5y regime runs on portwatch:chokepoint1:n_total (the Suez Canal — the only corridor series with a subject, so the twin is resolved) with the Suez target corridor.suez-canal.transit-regime; its conditions' thresholds and pseudo-counts and the OPTIONS with their payoffs are N. Eriksen's DECLARATIONS (SYNTHETIC), the twin's element values are the twin's synthetic grounding, the path-dependent view is counted from the REAL series' windows but is scenario language, never validated; the replays are SOFTWARE CAPABILITY on this deployment. TIMING: each read of a PortWatch series is ~8,900 governed retrievals — 15–20 minutes here; the act waits, the walks read what it recorded.
+
+ALL SCENES HELD · 46.8 min
+exit 0
+
+========== COMPLETION RUN 2 (no reset) ==========
+THE B25 ACT on eye_demo_b25 (REHEARSAL) — 2026-10-07T12:34:31.273Z — API http://localhost:3411
+
+B25-0 THE STATE — 0108, the casting, the corridor series and twin, what the graph holds
+  ✓ migration applied: 0108_b25_forecasting_portfolio.sql
+  ✓ the casting read from identity.role_bindings: a.hoffmann (domain_analyst); h.petrovic (method_steward); j.weber (strategy_owner); k.mueller (knowledge_owner); m.dvorak (collection_manager, executive); n.eriksen (forecast_owner); t.richter (domain_admin) — no persona or role is created
+  · the corridor series portwatch:chokepoint4:n_total (transits/day, source imf-portwatch-chokepoints) names NO subject entity; the graph holds NO Bab el-Mandeb Strait entity (its extracted ENT claim "Bab el-Mandeb" is still queued for review)
+  ✓ the corridor twin 01a0…76f525 "NORDWERK — Ningbo → Regensburg chain" — its boundary holds Suez Canal (place 01a0…895bd7), the subject of portwatch:chokepoint1:n_total: the corridor series a forecast can be GROUNDED on (graph context and the twin snapshot)
+
+B25-R §MR THE REGISTRY — N. Eriksen proposes the corridor's methods, H. Petrović approves; the target (T. Richter approves); the horizon policy (H. Petrović concurs)
+  · event_rate@1 stands approved (proposed by N. Eriksen, decided by H. Petrović) — an earlier run
+  ✓ event_rate@1 — event, approved
+  · regime_judgement@1 stands approved (proposed by N. Eriksen, decided by H. Petrović) — an earlier run
+  ✓ regime_judgement@1 — structural_judgmental, approved
+  · bayes_level@1 stands approved (proposed by N. Eriksen, decided by H. Petrović) — an earlier run
+  ✓ bayes_level@1 — bayesian, approved
+  · the corridor indicator the event reads (B27/B28): "Bab el-Mandeb Strait transits below 41 per day for five consecutive published observations" — < 41 on 5 consecutive observations
+  · the target corridor.bab-el-mandeb.transit-delay v1 stands approved (declared by N. Eriksen, decided by T. Richter) — an earlier run
+  ✓ the target corridor.bab-el-mandeb.transit-delay v1 is APPROVED by a named human who did not declare it
+  · horizon policy v1 stands active (published by N. Eriksen, concurred by H. Petrović) — an earlier run
+  ✓ the ACTIVE horizon policy v1: 30d event/statistical (event → probability) · 5y structural_judgmental/bayesian (regime → scenario language) · 3y/5y quantity requires quantity_rolling_origin ≥ 20 origins
+  ✓ THE PLAN BY HORIZON (read only): corridor.bab-el-mandeb.transit-delay at 30d is a event in probability by [event_rate@1]; at 5y a regime in scenario_language by [regime_judgement@2]
+
+B25-H THE EVIDENCE FOR THE HORIZONS — the corridor's real PortWatch history; the ECB reference rate as a bounded history source, collected once; the 3y/5y validation on it
+  ✓ THE CORRIDOR'S REAL HISTORY (the ledger, read-only): 2834 distinct daily observations of chokepoint4 framed from the IMF PortWatch chokepoints source, 2019-01-01 → 2026-10-04 (2956 framed rows) — about 94 non-overlapping 30-day windows for the 30d event (event_rate@1 needs 12): NO extension was needed, no history source was added for PortWatch
+  · the PortWatch source carries 1 governed-deleted evidence manifest(s) (a 2024 replay-set fragment tombstoned by a retention action as superseded evidence; its two object versions share it): without the act-found correction (series.service.ts — a fragment a later version serves on its day is disclosed, not counted) every forecast on a PortWatch series is refused as an incomplete history; the routed issues below prove it complete
+  · the bounded history source ecb-eurusd-history stands (01a1…113494 v1, retired) — an earlier run
+  ✓ ecb-eurusd-history: retired, live, real, rights confirmed; scheduler entry removed; 3 collection run(s); 56 evidence object(s), 1,224,913 bytes, recorded 2026-10-07T09:04:53Z — through the real REST connector
+  · the series ecb-eurusd-history is registered — an earlier run
+  · the 3y validation of bayes_level@1 on ecb-eurusd-history stands (2026-10-07T09:04:59Z) — an earlier run
+  ✓ THE 3Y VALIDATION on the real ECB history (retrospective, 7104 observations): 100 origins, history 2001-04-02 → 2026-09-30; 80% coverage 0.27 (T1 75–85%: NOT met), pinball 0.1051 vs climatology 0.0608 (skill -0.7288, climatology coverage 0.67) — NOT PASSED: "100 origins at 1095 days: 80% band coverage 27.0% (T1 NOT met, band 75–85%), pinball 0.105144 vs climatology 0.06082 (skill -0.7288) — NOT passed. not passed: no validation is claimed."
+  · the 5y validation of bayes_level@1 on ecb-eurusd-history stands (2026-10-07T09:05:01Z) — an earlier run
+  ✓ THE 5Y VALIDATION on the real ECB history (retrospective, 7104 observations): 100 origins, history 2001-02-24 → 2026-09-30; 80% coverage 0.18 (T1 75–85%: NOT met), pinball 0.163 vs climatology 0.0685 (skill -1.3785, climatology coverage 0.7) — NOT PASSED: "100 origins at 1825 days: 80% band coverage 18.0% (T1 NOT met, band 75–85%), pinball 0.16298 vs climatology 0.068522 (skill -1.3785) — NOT passed. not passed: no validation is claimed."
+  · the 5y quantity route on ecb-eurusd-history stands — REFUSED (horizon): "forecast rejected (horizon): ecb-eurusd-history at 5y is unsupported — no passed quantity-rolling-origin validation of bayes_level@1 at 5y with at least 20 origins (historical or retrospective) on ecb-eurusd-history, known by 2026-10-07T09:05:01Z on history ending by 2026-10-07 (the latest, recorded" — an earlier run
+  · the 3y quantity route on ecb-eurusd-history stands — REFUSED (horizon): "forecast rejected (horizon): ecb-eurusd-history at 3y is unsupported — no passed quantity-rolling-origin validation of bayes_level@1 at 3y with at least 20 origins (historical or retrospective) on ecb-eurusd-history, known by 2026-10-07T09:05:01Z on history ending by 2026-10-07 (the latest, recorded" — an earlier run
+
+B25-F1 (F-P4-01) — the corridor at 30d by the EVENT method (intervention window) and at 5y in REGIME language: different methods per horizon; the 3y quantity refused
+  · J. Weber's assumption "The PortWatch transit counts are read as published (the IMF / Oxford daily estimates)" stands (active) — an earlier run
+  · the 30d event backtest of event_rate@1 on portwatch:chokepoint4:n_total stands (2026-10-07T09:09:17Z) — an earlier run
+  ✓ THE 30d EVENT BACKTEST on the real corridor history (retrospective): 60 origins 2021-10-23 → 2026-09-27; Brier 0.3439 vs the prior-mean reference 0.25 (skill -0.3754), log score 0.9693, mean probability 0.118 vs observed frequency 0.5167 (gap -0.3986) — NOT PASSED
+  · the 30d routed forecast 01a1…d63361 (event_rate@1) stands — an earlier run
+  · the 5y routed forecast 01a1…c8f215 (regime_judgement@1) stands — an earlier run
+  ✓ THE 30d PACKAGE 01a1…d63361 [FCT@v2]: EVENT by event_rate@1 in probability (intervention windows and freshness: what can still be acted on inside the month) — "P(portwatch:chokepoint4:n_total < 41 on 5 consecutive published observation(s) within the 30d window to 2026-10-27) = 0.3333 (80% credible band 0.2726–0.3956); event_rate@1 on 94 non-overlapping 30-day windows of history (31 with the event) under the declared Beta(1, 1) prior; unvalidated."; evidence: 94 windows (31 with the event, 0 coverage gaps skipped); unvalidated
+  ✓ THE 5y PACKAGE 01a1…c8f215 [FCT@v2]: REGIME by regime_judgement@1 in scenario_language — "SCENARIO LANGUAGE, NOT A VALIDATED FORECAST — the regimes of Bab el-Mandeb transit delay — the corridor's transits collapse (the B27/B28 indicator's event) at 5y (2031-09-26): closed 0.04, disrupted 0.33, open 0.63; from the structural judgement declared by principal 01a084f5-af3e-71f6-bc3e-bddb9cd461ba (39% of the weight) and 3"; modal open; the judgement's share 0.3922 (judged by N. Eriksen)
+  ✓ DIFFERENT METHODS PER HORIZON on one target: 30d event_rate@1 (event, probability) · 5y regime_judgement@1 (regime, scenario language) — the horizon policy v1 chose them
+  · their ledger: 01a1…d63361 forecast.information_set_frozen → forecast.issued → forecast.routed → forecast.attention → forecast.fitness_assessed → forecast.replayed; 01a1…c8f215 forecast.information_set_frozen → forecast.issued → forecast.routed → forecast.attention → forecast.fitness_assessed
+  ✓ the 3y QUANTITY request on portwatch:chokepoint4:n_total stands REFUSED (horizon, route 01a1…eea8dc, 2026-10-07T09:18:02Z) — an earlier run: "forecast rejected (horizon): portwatch:chokepoint4:n_total at 3y is unsupported — no passed quantity-rolling-origin validation of bayes_level@1 at 3y with at least 20 origins (historical or retrospective) on portwatch:chokepoint4:n_total, known by 2026-10-07T09:18:02Z on history ending by 2026-10-07"
+
+B25-F3 (F-P4-03) — a corridor forecast pins the twin snapshot and graph revision it used; a later graph change leaves the replayed package unchanged
+  · the grounded forecast 01a1…3d301e stands (issued 2026-10-07T10:27:53Z) — an earlier run
+  ✓ THE PINS (the grounding read): set 01a1…6ab294 — graph revision 42 as of 2026-10-07T09:18:03Z, subject Suez Canal (0 edge(s), 2 event(s)); the twin "NORDWERK — Ningbo → Regensburg chain" v18 (actual, served as head; state set 372d99bbb7e6…); 8918 evidence versions; features twin.consumption.weekly:SYN-PART-MAG, twin.context.fx_forecast, twin.corridor.capacity_share, twin.inventory.on_hand:SYN-PART-MAG…; gaps none; manifest 63c0d2ae56dfb26e…
+  ✓ THE ENVIRONMENT (V03-T-196): node v24.11.1, darwin/arm64, seasonal-naive@1 implementation 7da8dc6d0864…, assembler@1 → digest 46d636844c857827…
+  · the replay before the graph change stands: REPRODUCED at 2026-10-07T10:32:46Z — an earlier run
+  · K. Müller's change set stands: revision 43 (b25-act:suez-canal-transit) at 2026-10-07T10:32:46Z — an earlier run
+  · the replay after the graph change stands (2026-10-07T10:37:20Z) — an earlier run
+  ✓ AFTER THE LATER GRAPH CHANGE the replay is REPRODUCED — the same manifest (true) and the same output (true), environment the same; a FRESH grounding now differs (revision 43 against the pinned 42): graph.revision_head, graph.edges, graph.events, feature:graph.edges, feature:graph.edges.transits, feature:graph.events
+
+B25-F3b (B25 completion) — the twin's and the graph's features as MODEL INPUTS of a routed, grounded 5y regime; the path-dependent view, option value and resilience; the replays of routed forecasts
+  ✓ THE CORRIDOR TWIN'S PINNED VERSION v18 (head) carries 17 SCALAR feature(s): twin.consumption.weekly:SYN-PART-MAG = 9200, twin.corridor.capacity_share = 62, twin.inventory.on_hand:SYN-PART-MAG = 63400, twin.inventory.safety_stock:SYN-PART-MAG = 40000, twin.outcome.line_stop_days:SYN-LINE-A1 = 3, twin.outcome.qualification_weeks:SYN-SUP-MA = 9, twin.production.policy:SYN-PART-MAG = hold_safety_stock, twin.route.inland_days = 14, twin.route.reroute_delay_days = 11, twin.shock.corridor_delay_days = 14, twin.supply.capacity_per_day = 620, twin.terms.air_cost_per_kg = 19.4, twin.terms.air_lead_days = 7, twin.terms.kg_per_unit:SYN-PART-MAG = 0.445652, twin.terms.line_stop_cost_per_day:SYN-LINE-A1 = 142000, twin.terms.reroute_cost_per_container = 1850, twin.terms.units_per_container:SYN-PART-MAG = 1600; 5 without a scalar value (twin.context.fx_forecast, twin.series.transits:chokepoint4, twin.shipment:SYN-SHIP-4471, twin.shipment:SYN-SHIP-4472, twin.shipment:SYN-SHIP-4475) — a condition may read only the former
+  · regime_judgement@2 stands approved (proposed by N. Eriksen, decided by H. Petrović) — an earlier run
+  ✓ regime_judgement@2 — structural_judgmental, approved; regime_judgement@1 is now superseded in the plan (the later approved version)
+  · the target corridor.suez-canal.transit-regime v1 stands approved (declared by N. Eriksen, decided by T. Richter) — an earlier run
+  ✓ the target corridor.suez-canal.transit-regime v1 — subject Suez Canal, APPROVED by a named human who did not declare it
+  · the conditioned 5y regime 01a1…775ad3 (regime_judgement@2) stands (issued 2026-10-07T11:56:20Z) — an earlier run
+  ✓ THE FEATURES AS MODEL INPUTS (G1), read from the frozen set 01a1…dc9702 (twin v18, graph revision 45): twin.shock.corridor_delay_days = 14 (digest 5cf9dcb229bd…, HELD); graph.edges = 1 (digest e0d54d488431…, HELD) → the conditioned pseudo-counts {"open":12,"closed":3,"disrupted":10} (declared {"open":12,"closed":2,"disrupted":6})
+  ✓ THE 5y PACKAGE 01a1…775ad3: the ISSUED probabilities closed 0.0536, disrupted 0.375, open 0.5714 (scenario language); THE PATH-DEPENDENT VIEW from the current regime "disrupted" (the window ending 2026-10-04; 30 counted transitions, 21 steps): open 0.47, closed 0.0824, disrupted 0.4476; persistence open 0.8696, closed 0.3333, disrupted 0.8462
+  · THE OPTIONS (declared, SYNTHETIC payoffs): hold safety stock at Regensburg: expected 2.3929 (under the path view 2.7548), resilience 1 (worst: open) · reroute via the Cape of Good Hope: expected -0.2679 (under the path view 0.4272), resilience -3 (worst: open) · keep the booked routing through Suez: expected 4.5536 (under the path view 4.1628), resilience 0 (worst: closed); the best single commitment keep_routing (4.5536); the OPTION VALUE of flexibility 0.6964; the most resilient hold_stock
+  ✓ THE PINS (G7): target corridor.suez-canal.transit-regime v1 (definition 8e1d44854217…); evaluation profile — horizon policy standard v1, regime in scenario_language, validation requirement {"required":false}, applicable record none
+  · the statement: "SCENARIO LANGUAGE, NOT A VALIDATED FORECAST — the regimes of Suez Canal transit regime — the corridor's Red Sea leg (the Suez Canal series, the corridor twin's boundary place) at 5y (2031-10-03): closed 0.05, disrupted 0.38, open 0.57; from the structural judgement declared by principal 01a084f5-af3e-71f6-bc3e-bddb9cd461ba (45% of the weight) and 31 counted 90-day windows of portwatch:chokepoint1:n_total; judgement held half as firmly or twice as firmly moves a category by up to 0.03. Conditions on the frozen features: twin.shock.corridor_delay_days = 14 >= 10 HELD (+4 to disrupted); graph.edges = 1 >= 1 HELD (+1 to closed). THE PATH-DEPENDENT VIEW (scenario language, not a validated forecast): starting from the current regime "disrupted" (the window ending 2026-10-04), 30 counted window-to-window transition(s) (Dirichlet-smoothed, 1 per cell) carried over 21 step(s) of 90 days give clos"
+  · the replay of the conditioned 5y regime 01a1…775ad3 stands: REPRODUCED at 2026-10-07T12:15:15Z — an earlier run
+  ✓ THE REPLAY of the conditioned 5y regime 01a1…775ad3 (regime_judgement@2): REPRODUCED by registry-family@1 — the pinned entry's implementation d5fdd2d93218… = this build's (true), target corridor.suez-canal.transit-regime v1 (the forecast's own pin (outcome_spec.target)), the family re-run with 28 frozen feature(s) (used: twin.shock.corridor_delay_days = 14, graph.edges = 1); the same output (true), the same manifest (true), environment the same; 0 divergence(s)
+  · the replay of the F1 30d EVENT 01a1…d63361 stands: REPRODUCED at 2026-10-07T12:34:20Z — an earlier run
+  ✓ THE REPLAY of the F1 30d EVENT 01a1…d63361 (event_rate@1): REPRODUCED by registry-family@1 — the pinned entry's implementation f20a3a404641… = this build's (true), target corridor.bab-el-mandeb.transit-delay v1 (the route the forecast was bound to (its plan's target)), the family re-run with 2 frozen feature(s); the same output (true), the same manifest (true), environment the same; 0 divergence(s)
+
+B25-F2 (F-P4-02) — two methods disagree on the corridor forecast; both distributions, the ensemble and the assumption that splits them; a labelled judgement overlay
+  · attention policy version 10 routes forecast.disagreement → [forecast_owner] — an earlier run
+  · J. Weber's assumption "The Red Sea diversions have run their course: last week's transits repeat" stands (active) — an earlier run
+  · J. Weber's assumption "Carriers keep diverting at the pace of the last weeks" stands (active) — an earlier run
+  · the ensemble run 01a1…c3b993 (portwatch:chokepoint4:n_total at 30d cut at 2024-01-11) stands completed — an earlier run
+  ✓ BOTH DISTRIBUTIONS (members issued, each tied to its assumption): seasonal_naive@1 median 46 (10–90: 31–59) — tied to "the diversions have run their course" · holt_winters@1 median 22.5739 (10–90: 9.8394–35.0082) — tied to "carriers keep diverting" transits/day at 2024-02-10
+  ✓ THE ENSEMBLE 01a1…c1a710 (MODEL OUTPUT): ensemble:linear_pool@1 median 33.1915 (10–90: 13.023–55.75) — "ENSEMBLE of 2 member(s) (seasonal_naive@1, holt_winters@1) under linear_pool@1, equal weights — portwatch:chokepoint4:n_total at 30d (2024-02-10): median 33.1915 transits/day, 10–90 band 13.023–55.75. The members DISAGREE MATERIALLY under disagreement@1 (max gap ratio 0.8812, min overlap 0.1593): seasonal_naive@1 median 46 vs holt_winters@1 median 22.5739 transits/day; the split rests on "The Red Sea diversions have "
+  ✓ THE DISAGREEMENT (measured by the port): MATERIAL — max gap ratio 0.8812, min overlap 0.1593; THE ASSUMPTION THAT SPLITS THEM: "The Red Sea diversions have run their course: last week's transits repeat" (held by seasonal_naive@1) vs "Carriers keep diverting at the pace of the last weeks" (held by holt_winters@1)
+  · excluded method paths: NONE — the horizon policy plans exactly the two statistical methods for a 30d quantity; no planned path was lost (said on the package)
+  ✓ THE ESCALATION: the material disagreement escalated to N. Eriksen by attention_item; attention item fc18…793810 open/material, owner N. Eriksen, roles forecast_owner, policy version 10
+  · N. Eriksen's JUDGEMENT overlay 01a1…b33216 v1 stands (active) — an earlier run
+  ✓ A. Hoffmann READS the overlays: the standing JUDGEMENT v1 by N. Eriksen beside the MODEL OUTPUT (median 33.1915)
+  ✓ A. Hoffmann's judgement overlay REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ A. Hoffmann's ensemble issue REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+
+B25-9 THE STATE and the LIMITS
+  · in the ledgers: 4 registry entr(ies), 2 target version(s), 1 horizon polic(ies), 3 validation(s), 7 route(s), 5 information set(s), 4 replay(s), 1 ensemble run(s), 1 overlay version(s)
+  the env lines for the walks (EYE_TEST_ADMIN_PASSWORD comes from .eye-local/env and is never printed):
+  EYE_B25_FORECASTER=n.eriksen
+  EYE_B25_READER=a.hoffmann
+  EYE_B25_ANALYST=a.hoffmann
+  EYE_B25_EVENT_METHOD=event_rate@1
+  EYE_B25_REGIME_METHOD=regime_judgement@1
+  EYE_B25_TARGET_KEY=corridor.bab-el-mandeb.transit-delay
+  EYE_B25_ECB_SERIES=ecb-eurusd-history
+  EYE_B25_ECB_5Y=refused
+  EYE_B25_ECB_3Y=refused
+  EYE_B25_REFUSED_SERIES=portwatch:chokepoint4:n_total
+  EYE_B25_GROUNDED_SERIES=portwatch:chokepoint1:n_total
+  EYE_B25_GROUNDED_FORECAST=01a115a7-d598-7e94-aeab-f224353d301e
+  EYE_B25_GROUNDED_SET=01a115e7-c70e-703b-9dd8-2f934f6ab294
+  EYE_B25_PINNED_REVISION=42
+  EYE_B25_SUEZ_TARGET=corridor.suez-canal.transit-regime
+  EYE_B25_CONDITIONED_METHOD=regime_judgement@2
+  EYE_B25_CONDITIONED_FORECAST=01a11630-c47e-79d4-aad3-ecb7f8775ad3
+  EYE_B25_CONDITIONED_SET=01a11638-bf0a-7a52-a80d-a0c906dc9702
+  EYE_B25_EVENT_FORECAST=01a1159f-d055-7365-bdfa-6a8865d63361
+  EYE_B25_EVENT_SET=01a115a3-b706-757a-8eb8-454a77be9212
+  EYE_B25_SERIES=portwatch:chokepoint4:n_total
+  EYE_B25_HORIZON=30d
+  EYE_B25_ENSEMBLE_RUN=01a115f0-6e09-7ebf-9afe-8bd10dc3b993
+  · LIMITS said. THREE CLAIMS KEPT APART: (1) SOFTWARE CAPABILITY — the registry, the routing, the horizon policy, the refusal, the grounding, the replay, the ensemble manager and the overlay all ran on this deployment through their governed routes; (2) SYNTHETIC DEMONSTRATION — N. Eriksen's structural judgement (the regime pseudo-counts), J. Weber's assumptions, the overlay's rationale, the regime thresholds and the target's wording are declared, not measured; the harnesses' validations run on SYNTHETIC histories; (3) EMPIRICAL VALIDATION — only bayes_level@1 on the REAL ECB EUR/USD history (retrospective, ONE vintage: the 2026 publication cut by date at each origin, not historical-knowledge validation; overlapping 3y/5y targets, so the origins are not independent): 3y NOT PASSED (coverage 0.27, 100 origins), 5y NOT PASSED (coverage 0.18, 100 origins); and the 30d event backtest on the REAL PortWatch history (retrospective, one vintage). It is NEVER claimed for the corridor's 3y/5y: the corridor's 5y stays SCENARIO LANGUAGE, its 3y quantity is refused. SUBSTITUTIONS: "Bab el-Mandeb transit delay" is the governed target on the REAL transit COUNT series (no delay series exists; the twin's corridor-delay element is a declared feature only); the demonstration's graph holds NO Bab el-Mandeb Strait entity (its extracted ENT claim is queued for review — not decided by this act), so portwatch:chokepoint4:n_total names no subject and the GROUNDED forecast of F-P4-03 runs on portwatch:chokepoint1:n_total (the Suez Canal — the corridor twin's boundary place); K. Müller's change set touches that subject (the claim "MV Hanse Trader transits Suez", its object resolved by him to the Suez Canal) instead of the strait; the tracker's "Regensburg line demand series" does not exist — the 3y refusal is shown on the corridor's own real transit series (≈7.8 years: no quantity validation at 3y was run or recorded on it); the bounded ECB history is a separate source (the live ecb-eurusd and PortWatch contracts untouched) and was scheduled only between its agent's provisioning and its retirement (the platform schedules every active collected source) — collected once. HARNESS-PROVEN ONLY: the Bayesian prior-sensitivity refusal, the causal (MC-013) and optimisation (MC-015) families, quarantine/reinstatement and the digest pin, the ensemble's retries/budget/resume/PER-07 precision refusal and the model-path exclusions, the overlay's revision/withdrawal, the context refusals (future cut-off, stale head, twin/evidence mismatch) and a DIVERGED replay; and (B25 completion) the Bayesian IDENTIFIABILITY flag (MC-012), the causal TRANSPORT scope and its refusal (MC-013), the optimisation ROBUSTNESS under the parameter scenarios (MC-015), a condition on an absent / non-scalar feature or an ungrounded issue refused (context), a digest-mismatch replay DIVERGED (implementation) and an edited target definition DIVERGED (target.definition), and the ENSEMBLE replay (the combination from the members' stored distributions). B25-F3b SAYS: the conditioned 5y regime runs on portwatch:chokepoint1:n_total (the Suez Canal — the only corridor series with a subject, so the twin is resolved) with the Suez target corridor.suez-canal.transit-regime; its conditions' thresholds and pseudo-counts and the OPTIONS with their payoffs are N. Eriksen's DECLARATIONS (SYNTHETIC), the twin's element values are the twin's synthetic grounding, the path-dependent view is counted from the REAL series' windows but is scenario language, never validated; the replays are SOFTWARE CAPABILITY on this deployment. TIMING: each read of a PortWatch series is ~8,900 governed retrievals — 15–20 minutes here; the act waits, the walks read what it recorded.
+
+ALL SCENES HELD · 0.1 min
+exit 0
+
+========== THE WALKS after the completion (playwright.demo.config.ts; web :3413 production build, NEXT_PUBLIC_EYE_API=:3412 → the rehearsal-only CORS shim → :3411; EYE_SHOTS=scratchpad; the env lines of run 2) ==========
+  ✓   1 e2e/phase6-b25-context.demo.spec.ts:70:7 › CP-6 B25 §CX — grounded context and the replay on the demonstration › THE PINS: the corridor forecast names the graph revision and cut-off, the strait, the corridor twin's snapshot, its features and its environment (1.9s)
+  ✓   2 e2e/phase6-b25-context.demo.spec.ts:84:7 › CP-6 B25 §CX — grounded context and the replay on the demonstration › THE REPLAY after the later graph change: the act's replays are REPRODUCED from the frozen set, the environment the same, while a grounding now would differ (1.1s)
+  ✓   3 e2e/phase6-b25-context.demo.spec.ts:96:7 › CP-6 B25 §CX — grounded context and the replay on the demonstration › THE READER: A. Hoffmann reads the grounding and its replays; the replay is the forecast owner's act (1.1s)
+  ✓   4 e2e/phase6-b25-context.demo.spec.ts:105:7 › CP-6 B25 §CX — grounded context and the replay on the demonstration › B25 COMPLETION — THE ROUTED REGIME: the twin's and the graph's frozen features it used, the path-dependent view, the declared options, the pins; its replay REPRODUCED by the registry's replayer; scenario language, never validated (1.2s)
+  ✓   5 e2e/phase6-b25-context.demo.spec.ts:127:7 › CP-6 B25 §CX — grounded context and the replay on the demonstration › B25 COMPLETION — THE F1 30d EVENT's replay: REPRODUCED by the registry's replayer from its frozen set (1.1s)
+  ✓   6 e2e/phase6-b25-ensembles.demo.spec.ts:52:7 › CP-6 B25 §EN — ensembles on the demonstration › THE PACKAGE: both members' distributions, the ensemble (MODEL OUTPUT), the disagreement and the assumption that splits them (1.5s)
+  ✓   7 e2e/phase6-b25-ensembles.demo.spec.ts:70:7 › CP-6 B25 §EN — ensembles on the demonstration › THE JUDGEMENT: N. Eriksen's overlay is labelled JUDGEMENT, versioned, beside the model's unchanged distribution (1.4s)
+  ✓   8 e2e/phase6-b25-ensembles.demo.spec.ts:79:7 › CP-6 B25 §EN — ensembles on the demonstration › THE READER: A. Hoffmann reads the package; no judgement and no issue form is offered (the server refuses her anyway) (1.5s)
+  ✓   9 e2e/phase6-b25-registry.demo.spec.ts:66:7 › CP-6 B25 §MR — the forecasting portfolio on the demonstration › THE REGISTRY: the legacy methods are approved builtins beside the act's governed entries; the horizon policy names a language and a validation bar per horizon (943ms)
+  ✓  10 e2e/phase6-b25-registry.demo.spec.ts:81:7 › CP-6 B25 §MR — the forecasting portfolio on the demonstration › THE PLAN BY HORIZON: the corridor target is an EVENT at 30d (a probability) and a REGIME at 5y (scenario language) — different methods (1.0s)
+  ✓  11 e2e/phase6-b25-registry.demo.spec.ts:98:7 › CP-6 B25 §MR — the forecasting portfolio on the demonstration › THE ROUTES: the 30d event and the 5y regime ISSUED by their methods; the 3y horizon on the line-demand series REFUSED naming the missing validation (762ms)
+  11 passed (18.9s)

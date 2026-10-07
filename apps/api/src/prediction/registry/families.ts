@@ -5,12 +5,25 @@
  * its statement makes. A DATA refusal (too little history, an intervention the history does not straddle, an infeasible optimisation) is a
  * FamilyRefusal — the request is refused and the method stays approved; any other throw is a FAILURE of the method — the routed issue
  * quarantines the entry.
+ *
+ * B25 completion — the gaps the bookkeeping review found, each an ADDITION that leaves every earlier entry's numbers as they were:
+ *   G1 (V00-T-009, L6-C02) FEATURES AS MODEL INPUTS: FamilyInput carries the frozen information set's features (null when ungrounded); a
+ *      structural-judgmental entry may declare CONDITIONS on them (each adds its pseudo-count to a regime when it holds); a condition on a
+ *      feature the frozen set lacks, or holds no scalar for, or an ungrounded issue of such an entry, is refused `forecast rejected (context)`.
+ *   G3 (MC-012) the Bayesian IDENTIFIABILITY (per-parameter variance contraction, the design's conditioning; WEAKLY IDENTIFIED said).
+ *   G4 (MC-013) the causal TRANSPORT scope (outside it `forecast rejected (transport)`; inside it the transport assumptions are carried).
+ *   G5 (MC-015) the optimisation ROBUSTNESS (feasibility, worst case and regret under each parameter scenario).
+ *   G6 (V00-T-051) the regime family's PATH-DEPENDENT VIEW and, when declared, the OPTIONS' value and resilience — beside the issued
+ *      probabilities, which are computed exactly as before.
  */
 import { IMPLEMENTATION_DIGESTS } from './methods/digests.js';
 import { EVENT_RATE_REF, eventProbability, type BetaPrior, type EventCondition } from './methods/event.js';
-import { REGIME_JUDGEMENT_REF, regimeProbabilities, type RegimeCategory, type RegimeJudgement } from './methods/regime.js';
+import {
+  REGIME_JUDGEMENT_REF, evaluateConditions, optionAnalysis, regimePaths, regimeProbabilities,
+  type ConditionResult, type FrozenFeature, type RegimeCategory, type RegimeCondition, type RegimeJudgement, type RegimeOption,
+} from './methods/regime.js';
 import { BAYESIAN_CONJUGATE_REF, bayesForecast, type BayesDeclarations } from './methods/bayesian.js';
-import { CAUSAL_ITS_REF, interruptedTimeSeries, type CausalDeclarations } from './methods/causal.js';
+import { CAUSAL_ITS_REF, interruptedTimeSeries, transportOf, type CausalDeclarations } from './methods/causal.js';
 import { OPTIMISATION_LP_REF, optimise, type OptimisationDeclarations } from './methods/optimisation.js';
 import { round, type Band, type Point } from './methods/stats.js';
 
@@ -46,6 +59,10 @@ export interface TargetRow { target_key: string; version: number; kind: Forecast
 export interface FamilyInput {
   points: readonly Point[]; seriesKey: string; seriesUnit: string; seasonality: number; horizonCode: string; horizonDays: number;
   originAt: string; targetAt: string; kind: ForecastKind; target: TargetRow | null;
+  /** B25 completion (G1): the FROZEN information set's features (key, source, digest, value) — null (or absent) when the issue is ungrounded */
+  features?: readonly FrozenFeature[] | null;
+  /** B25 completion (G4): the series' own subject entity (the transport scope may name a subject instead of a series) */
+  subjectEntityId?: string | null;
 }
 export interface FamilyResult {
   kind: ForecastKind; quantiles: Band | Record<string, never>; distribution: Record<string, unknown>; outcome: Record<string, unknown>;
@@ -110,19 +127,48 @@ export function runFamily(entry: PlannedEntry, a: FamilyInput): FamilyResult {
       if (missing.length > 0) {
         throw new FamilyRefusal('target', `forecast rejected (target): ${entry.method_ref}'s judgement declares no pseudo-count for the target's categor${missing.length === 1 ? 'y' : 'ies'} ${missing.join(', ')}; the judgement and the target are revised together`);
       }
-      const r = regimeProbabilities(a.points, categories, windowDays, j);
+      // B25 completion (G1): the declared CONDITIONS on the frozen features, read before anything is computed — never skipped.
+      const conditions = Array.isArray(d['conditions']) ? (d['conditions'] as RegimeCondition[]) : [];
+      let judgement: RegimeJudgement = j; let conditionResults: ConditionResult[] | null = null;
+      if (conditions.length > 0) {
+        if (a.features === null || a.features === undefined) {
+          throw new FamilyRefusal('context', `forecast rejected (context): ${entry.method_ref} declares ${conditions.length} condition(s) on the frozen features; an UNGROUNDED issue has no frozen information set to read them from — issue it grounded`);
+        }
+        const strange = conditions.filter((c) => !categories.some((x) => x.key === c.regime)).map((c) => c.regime);
+        if (strange.length > 0) throw new FamilyRefusal('target', `forecast rejected (target): ${entry.method_ref}'s condition(s) name regime(s) ${[...new Set(strange)].join(', ')} the target does not declare`);
+        const ev = evaluateConditions(conditions, a.features);
+        if (ev.problems.length > 0) throw new FamilyRefusal('context', `forecast rejected (context): ${entry.method_ref}'s condition(s) cannot be read from the frozen information set — ${ev.problems.join('; ')}`);
+        conditionResults = ev.results;
+        judgement = { ...j, pseudo_counts: Object.fromEntries(categories.map((c) => [c.key, Number(rec(j.pseudo_counts)[c.key]) + (ev.added[c.key] ?? 0)])) };
+      }
+      // B25 completion (G6): the declared OPTIONS must price every regime of the target (refused, never guessed)
+      const options = Array.isArray(d['options']) ? (d['options'] as RegimeOption[]) : [];
+      const unpriced = options.flatMap((o) => categories.filter((c) => typeof rec(o.payoff)[c.key] !== 'number').map((c) => `${o.key}:${c.key}`));
+      if (unpriced.length > 0) throw new FamilyRefusal('target', `forecast rejected (target): ${entry.method_ref}'s option(s) declare no payoff for ${unpriced.join(', ')}; every option prices every regime of the target`);
+      const r = regimeProbabilities(a.points, categories, windowDays, judgement);
       if (r.windows === 0) throw new FamilyRefusal('history', `forecast rejected (history): no complete ${windowDays}-day classification window of ${a.seriesKey} is known; the evidence summary would be empty`);
       const words = r.categories.map((x) => `${x.label} ${fmt(x.probability, 2)}`).join(', ');
+      // G6: the PATH-DEPENDENT VIEW and the OPTION analysis — additional output beside the issued probabilities (computed exactly as before)
+      const paths = regimePaths(a.points, categories, windowDays, a.horizonDays, num(rec(d['path'])['smoothing']) ?? 1);
+      const issued = Object.fromEntries(r.categories.map((x) => [x.key, x.probability]));
+      const opts = options.length === 0 ? null : optionAnalysis(options, categories, issued, paths.horizon_distribution);
+      const held = conditionResults === null ? '' : ` Conditions on the frozen features: ${conditionResults.map((c) => `${c.feature} = ${String(c.value)} ${c.comparator} ${String(c.threshold)} ${c.held ? `HELD (+${fmt(c.pseudo_count, 2)} to ${c.regime})` : 'did not hold'}`).join('; ')}.`;
       return {
         kind: a.kind, quantiles: {},
         distribution: { unit: 'probability', categories: r.categories.map((x) => ({ key: x.key, label: x.label, probability: x.probability })) },
-        outcome: { type: a.kind, categories: r.categories, modal: r.modal, judgement: { judged_by: j.judged_by, rationale: j.rationale, pseudo_counts: j.pseudo_counts, share: r.judgementShare },
+        outcome: { type: a.kind, categories: r.categories, modal: r.modal,
+                   judgement: { judged_by: j.judged_by, rationale: j.rationale, pseudo_counts: j.pseudo_counts, share: r.judgementShare,
+                                ...(conditionResults === null ? {} : { conditioned_pseudo_counts: judgement.pseudo_counts }) },
                    evidence: { classification_window_days: windowDays, windows: r.windows, skipped_coverage_gaps: r.skipped, share: r.evidenceShare },
-                   sensitivity_to_judgement: r.sensitivity, language: 'scenario_language', validation: 'none claimed — scenario language at a long horizon, never presented as validated' },
+                   sensitivity_to_judgement: r.sensitivity, language: 'scenario_language', validation: 'none claimed — scenario language at a long horizon, never presented as validated',
+                   ...(conditionResults === null ? {} : { conditions: conditionResults, features_used: conditionResults.map((c) => ({ key: c.feature, source: c.source, digest: c.digest, value: c.value, held: c.held })) }),
+                   path_dependence: paths,
+                   ...(opts === null ? {} : { options: opts }) },
         parameters: { classification_window_days: windowDays }, baselineMethod: 'the declared judgement alone', unit: 'probability',
         claim: `SCENARIO LANGUAGE, NOT A VALIDATED FORECAST — the ${a.kind}s of ${a.target?.title ?? a.seriesKey} at ${a.horizonCode} (${a.targetAt}): ${words}; `
           + `from the structural judgement declared by principal ${j.judged_by} (${Math.round(r.judgementShare * 100)}% of the weight) and ${r.windows} counted ${windowDays}-day windows of ${a.seriesKey}; `
-          + `judgement held half as firmly or twice as firmly moves a category by up to ${fmt(r.sensitivity.maxShift, 2)}`,
+          + `judgement held half as firmly or twice as firmly moves a category by up to ${fmt(r.sensitivity.maxShift, 2)}`
+          + (`.${held} ${paths.statement}` + (opts === null ? '' : ` ${opts.statement} The options and their payoffs are DECLARED with the entry (approved by its steward), not measured.`)).replace(/\.\s*$/, ''),
         scenarioLanguage: true,
       };
     }
@@ -132,19 +178,31 @@ export function runFamily(entry: PlannedEntry, a: FamilyInput): FamilyResult {
       const sens = f.sensitivity.sensitive
         ? ` PRIOR-SENSITIVE: a declared alternative prior moves the median by ${fmt(f.sensitivity.maxShiftSd, 2)} predictive sd (threshold ${f.sensitivity.threshold}).`
         : ` Prior sensitivity: the declared alternatives move the median by at most ${fmt(f.sensitivity.maxShiftSd, 2)} predictive sd (threshold ${f.sensitivity.threshold}).`;
+      // B25 completion (G3, MC-012): identifiability — a parameter the data barely inform is said to be WEAKLY IDENTIFIED
+      const idf = f.identifiability;
+      const contraction = idf.parameters.map((x) => `${x.name} ${fmt(x.contraction, 3)}`).join(', ');
+      const ident = idf.weakly_identified.length > 0
+        ? ` WEAKLY IDENTIFIED: ${idf.weakly_identified.join(', ')} — posterior/prior variance contraction ${contraction} (threshold ${idf.threshold}); the data barely inform ${idf.weakly_identified.length === 1 ? 'it' : 'them'}, the value is mostly the prior's.`
+        : ` Identifiability: posterior/prior variance contraction ${contraction} (threshold ${idf.threshold}).`;
       return {
         kind: 'quantity', quantiles: f.band,
         distribution: { ...f.band, unit: a.seriesUnit, quantity: f.quantity, path: [] },
         outcome: { type: 'quantity', quantity: f.quantity, model: f.model, prior: decl.prior, alternatives: decl.alternatives, posterior: f.posterior, predictive: { mean: f.mean, sd: f.sd },
-                   prior_sensitivity: f.sensitivity },
+                   prior_sensitivity: f.sensitivity, identifiability: idf },
         parameters: { model: f.model }, baselineMethod: 'climatology', unit: a.seriesUnit,
         claim: `${f.quantity} of ${a.seriesKey} at ${a.horizonCode} (${a.targetAt}): posterior predictive median ${fmt(f.band.q50)} ${a.seriesUnit}, 80% band ${fmt(f.band.q10)}–${fmt(f.band.q90)}; `
-          + `${entry.method_ref} (${f.model}) under its declared, explicit prior.${sens}`,
+          + `${entry.method_ref} (${f.model}) under its declared, explicit prior.${sens}${ident}`,
         scenarioLanguage: false,
       };
     }
     case 'causal': {
       const decl = d as unknown as CausalDeclarations;
+      // B25 completion (G4, MC-013): the effect is applied only inside its declared transport scope
+      const transport = transportOf(decl, { seriesKey: a.seriesKey, subjects: [a.subjectEntityId ?? null, a.target?.subject_entity_id ?? null] });
+      if (!transport.in_scope) {
+        throw new FamilyRefusal('transport', `forecast rejected (transport): ${entry.method_ref}'s effect is declared transportable to ${transport.scope.join(', ')}; `
+          + `${a.seriesKey}${transport.applied_to.subjects.length === 0 ? '' : ` (subject ${transport.applied_to.subjects.join(', ')})`} is outside that scope — the effect is not carried there; a steward widens the scope with its assumptions in a new version`);
+      }
       if (decl.intervention.date > a.originAt) {
         throw new FamilyRefusal('intervention', `forecast rejected (intervention): the declared intervention (${decl.intervention.date}) is after the last known observation (${a.originAt}); its effect cannot be estimated from this history`);
       }
@@ -157,11 +215,13 @@ export function runFamily(entry: PlannedEntry, a: FamilyInput): FamilyResult {
         kind: 'quantity', quantiles: { q10: e.q10, q50: e.q50, q90: e.q90 },
         distribution: { q10: e.q10, q50: e.q50, q90: e.q90, unit: `${a.seriesUnit} (effect)`, path: [] },
         outcome: { type: 'effect', estimand: `the mean effect of "${decl.intervention.description}" on ${a.seriesKey} over the ${decl.post_days} days from ${decl.intervention.date}`,
-                   ...out },
+                   ...out, transport },
         parameters: { pre_days: decl.pre_days, post_days: decl.post_days, season: decl.season ?? a.seasonality }, baselineMethod: 'pre-period trend and season (the counterfactual)', unit: `${a.seriesUnit} (effect)`,
         claim: `the effect of "${decl.intervention.description}" (${decl.intervention.date}) on ${a.seriesKey}: ${fmt(e.estimate)} ${a.seriesUnit} (80% band ${fmt(e.q10)}–${fmt(e.q90)}, se ${fmt(e.se)}); `
           + `interrupted time series under ${decl.identification.assumptions.length} declared identification assumption(s); placebo p ${out.placebo.p_value ?? 'n/a'} over ${out.placebo.effects.length} fake date(s); `
-          + `pre-fit balance SMD ${fmt(out.balance.smd, 3)} (${out.balance.balanced ? 'balanced' : 'NOT balanced'}); pre-window sensitivity ${fmt(out.sensitivity.range[0])}…${fmt(out.sensitivity.range[1])} (sign ${out.sensitivity.sign_stable ? 'stable' : 'NOT stable'})`,
+          + `pre-fit balance SMD ${fmt(out.balance.smd, 3)} (${out.balance.balanced ? 'balanced' : 'NOT balanced'}); pre-window sensitivity ${fmt(out.sensitivity.range[0])}…${fmt(out.sensitivity.range[1])} (sign ${out.sensitivity.sign_stable ? 'stable' : 'NOT stable'})`
+          + (transport.declared ? `; transported within its declared scope (${transport.matched}) under ${transport.assumptions.length} transport assumption(s)` : '; no transport scope declared — claimed for this series alone')
+          + (transport.consistency !== null && transport.declared ? `; ${transport.consistency.note}` : ''),
         scenarioLanguage: false,
       };
     }
@@ -179,7 +239,8 @@ export function runFamily(entry: PlannedEntry, a: FamilyInput): FamilyResult {
         outcome: { type: 'objective', ...o, approval: 'the objective and the constraints are the registry entry\'s, approved by its method steward' },
         parameters: { grid: decl.variables.map((v) => ({ name: v.name, step: v.step })) }, baselineMethod: 'the LP relaxation (optimality gap)', unit: decl.objective.unit,
         claim: `${decl.objective.statement} at ${a.horizonCode}: ${fmt(o.band.q50)} ${decl.objective.unit} at the implementable plan ${plan} (scenario band ${fmt(o.band.q10)}–${fmt(o.band.q90)} over the declared parameter band); `
-          + `feasible; optimality gap ${o.gap === null ? 'n/a' : `${fmt(o.gap * 100, 2)}%`} against the LP optimum ${fmt(o.lp.value ?? NaN)}`,
+          + `feasible; optimality gap ${o.gap === null ? 'n/a' : `${fmt(o.gap * 100, 2)}%`} against the LP optimum ${fmt(o.lp.value ?? NaN)}`
+          + (o.robustness === null ? '' : `. ${o.robustness.statement}`),
         scenarioLanguage: false,
       };
     }
@@ -215,6 +276,10 @@ export function checkDeclarations(family: Family, kinds: readonly string[], decl
     if (!okPrior(d['prior'])) refuse('declarations', 'a bayesian method declares its prior EXPLICITLY: normal_linear {window_days, intercept {mean, sd > 0}, slope_per_year {mean, sd > 0}} or gamma_poisson {shape > 0, rate > 0}');
     const alts = Array.isArray(d['alternatives']) ? (d['alternatives'] as unknown[]) : [];
     if (alts.length === 0) refuse('declarations', 'a bayesian method declares the alternative priors its sensitivity runs under (declarations.alternatives, at least one)');
+    // B25 completion (G3): the identifiability threshold, when declared, is a contraction in (0, 1)
+    if (d['identifiability_threshold'] !== undefined && !(num(d['identifiability_threshold']) !== null && Number(d['identifiability_threshold']) > 0 && Number(d['identifiability_threshold']) < 1)) {
+      refuse('declarations', 'declarations.identifiability_threshold is a variance contraction in (0, 1) (default 0.1)');
+    }
     for (const a of alts) {
       const r = rec(a);
       if (typeof r['label'] !== 'string' || !okPrior(r['prior']) || rec(r['prior'])['model'] !== rec(d['prior'])['model']) refuse('declarations', 'each alternative prior has a label and a prior of the same model, explicit');
@@ -225,6 +290,14 @@ export function checkDeclarations(family: Family, kinds: readonly string[], decl
     if (typeof iv['date'] !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(iv['date']) || typeof iv['description'] !== 'string' || iv['description'].trim().length < 8) refuse('declarations', 'a causal method declares its intervention (declarations.intervention {date YYYY-MM-DD, description})');
     if (!Array.isArray(id['assumptions']) || id['assumptions'].length === 0 || typeof id['statement'] !== 'string' || id['statement'].trim().length < 8) refuse('declarations', 'a causal method declares its identification assumptions (declarations.identification {assumptions: [ASU ids], statement})');
     if (!(num(d['pre_days']) !== null && Number(d['pre_days']) >= 28) || !(num(d['post_days']) !== null && Number(d['post_days']) >= 3)) refuse('declarations', 'a causal method declares its windows (declarations.pre_days ≥ 28, post_days ≥ 3)');
+    // B25 completion (G4, MC-013): where the effect may be carried — the scope, the transport assumptions (ASUs), the statement
+    const t = rec(d['transport']);
+    const scope = Array.isArray(t['scope']) ? (t['scope'] as unknown[]) : [];
+    const tas = Array.isArray(t['assumptions']) ? (t['assumptions'] as unknown[]) : [];
+    if (scope.length === 0 || !scope.every((x) => typeof x === 'string' && x.trim().length >= 2) || tas.length === 0
+        || !tas.every((x) => typeof x === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(x)) || typeof t['statement'] !== 'string' || t['statement'].trim().length < 8) {
+      refuse('declarations', 'a causal method declares where its effect is transportable (declarations.transport {scope: [series keys and/or subject entity ids], assumptions: [ASU ids], statement})');
+    }
   }
   if (family === 'optimisation') {
     const o = rec(d['objective']);
@@ -252,6 +325,36 @@ export function checkDeclarations(family: Family, kinds: readonly string[], decl
     if (Object.keys(pc).length < 2 || !Object.values(pc).every((v) => num(v) !== null && Number(v) > 0) || typeof j['rationale'] !== 'string' || j['rationale'].trim().length < 8 || typeof j['judged_by'] !== 'string') {
       refuse('declarations', 'a structural-judgmental method declares its judgement (declarations.judgement {pseudo_counts per category > 0, rationale, judged_by: the named human})');
     }
+    // B25 completion (G1): the declared CONDITIONS on frozen features — each {feature, comparator, threshold, regime, pseudo_count, rationale}
+    const conds = d['conditions'];
+    if (conds !== undefined) {
+      if (!Array.isArray(conds) || conds.length === 0 || conds.length > 12) refuse('declarations', 'declarations.conditions is a list of one to twelve conditions');
+      for (const c of conds as unknown[]) {
+        const r = rec(c); const cmp = r['comparator']; const thr = r['threshold'];
+        const numeric = cmp === '<' || cmp === '<=' || cmp === '>' || cmp === '>=';
+        if (typeof r['feature'] !== 'string' || !/^(graph|twin|evidence|assumption)\./.test(r['feature'])
+            || !(numeric || cmp === '=' || cmp === '!=') || (numeric ? num(thr) === null : !(typeof thr === 'number' || typeof thr === 'string' || typeof thr === 'boolean'))
+            || typeof r['regime'] !== 'string' || !(r['regime'] in pc) || !(num(r['pseudo_count']) !== null && Number(r['pseudo_count']) > 0)
+            || typeof r['rationale'] !== 'string' || r['rationale'].trim().length < 8) {
+          refuse('declarations', 'each condition is {feature: a frozen feature key (graph.* | twin.* | evidence.* | assumption.*), comparator (<, <=, >, >= on a number; = or != on a scalar), threshold, regime: a category of the judgement, pseudo_count > 0, rationale}');
+        }
+      }
+    }
+    // B25 completion (G6): the declared OPTIONS (human-approved with the entry) — each prices every regime of the judgement
+    const options = d['options'];
+    if (options !== undefined) {
+      if (!Array.isArray(options) || options.length === 0 || options.length > 12) refuse('declarations', 'declarations.options is a list of one to twelve options');
+      const keys = new Set<string>();
+      for (const o of options as unknown[]) {
+        const r = rec(o); const pay = rec(r['payoff']);
+        if (typeof r['key'] !== 'string' || !/^[a-z][a-z0-9_.-]{0,62}$/.test(r['key']) || keys.has(r['key']) || typeof r['label'] !== 'string' || r['label'].trim().length < 2
+            || !(num(r['cost']) !== null && Number(r['cost']) >= 0) || !Object.keys(pc).every((k) => num(pay[k]) !== null)) {
+          refuse('declarations', 'each option is {key (unique, lower-case), label, cost ≥ 0, payoff: a number for every regime of the judgement}');
+        }
+        keys.add(String(r['key']));
+      }
+    }
+    if (d['path'] !== undefined && !(num(rec(d['path'])['smoothing']) !== null && Number(rec(d['path'])['smoothing']) > 0)) refuse('declarations', 'declarations.path.smoothing is a positive pseudo-count (default 1)');
   }
 }
 

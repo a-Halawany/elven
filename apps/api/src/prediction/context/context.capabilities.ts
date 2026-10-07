@@ -31,6 +31,8 @@ export interface FreezeWrites extends ContextReads {
   freezeSet(a: Ids & { setId: string; request: Record<string, unknown>; manifest: Record<string, unknown>; manifestDigest: string; assemblerVersion: string }): Promise<Record<string, unknown>>;
 }
 export interface ReplayWrites extends ContextReads {
+  /** B25 completion (G2): the write's transaction, handed to a registered replayer (it reads its own pinned records under the caller's RLS) */
+  seamTx(): unknown;
   recordReplay(a: Ids & {
     replayId: string; forecastId: string; informationSetId: string | null;
     originalManifestDigest: string | null; replayedManifestDigest: string | null; originalOutputDigest: string | null; replayedOutputDigest: string | null;
@@ -45,6 +47,7 @@ class ContextCapabilityImpl implements FreezeWrites, ReplayWrites {
   readonly #action: string;
   constructor(tx: Tx, action: string) { this.#tx = tx; this.#action = action; }
   get action(): string { return this.#action; }
+  seamTx(): unknown { return this.#tx; }
   private from(relation: string): any { return this.#tx.selectFrom(relation as never); }
   private async one(q: ReturnType<typeof sql>): Promise<Record<string, unknown>> {
     const r = await q.execute(this.#tx);

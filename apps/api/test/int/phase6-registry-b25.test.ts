@@ -32,6 +32,12 @@
  *     by the named steward; METHOD_ROUTER (the seam §EN plans with) answers the registry's plan and throws the governed refusal.
  *   i ENFORCEMENT ON THE ROW (pmr_fct_routed) — an unapproved method_ref, a family the policy does not allow, scenario language on a quantity —
  *     refused at the port; the legacy issue (no method_ref) unchanged (default-off); a statistical builtin routed through ForecastingService.
+ *   k B25 completion (the gaps the bookkeeping review found) — G3 MC-012 IDENTIFIABILITY (the variance contraction per parameter on the
+ *     forecast; a parameter the data barely inform flagged WEAKLY IDENTIFIED); G4 MC-013 TRANSPORTABILITY (the declared scope: inside it
+ *     the transport assumptions are carried and a multi-series scope's consistency is said NOT ASSESSED; outside it `forecast rejected
+ *     (transport)`; an unknown transport ASU refused at proposal); G5 MC-015 ROBUSTNESS (the plan's feasibility, worst case and regret under
+ *     each parameter scenario; an infeasible scenario named, NOT ROBUST); G6 V00-T-051 (the 5y regime's path-dependent view and the declared
+ *     options' value and resilience, beside the issued probabilities). Each POSITIVE, REFUSAL and RECOVERY; SYNTHETIC declarations.
  *
  * THREE CLAIMS KEPT APART: every proof here is SOFTWARE CAPABILITY on a SYNTHETIC series (the fixture source's contract says
  * data_origin synthetic); the validations are SYNTHETIC DEMONSTRATIONS of the machinery. No EMPIRICAL validation is claimed: the real history
@@ -255,7 +261,8 @@ describe('B25 §MR · a THE GOVERNED REGISTRY (L6-C03): builtins, proposals, the
         description: 'past the validator (SYNTHETIC)', steward: petrovic.principalId, actor: eriksen.principalId, correlationId: uuidv7() }), targetType: 'FMR', targetId: null, targetVersion: null, outboxEvent: null }));
     await refused(viaPort, /^forecast method rejected \(declarations\): a bayesian method declares the alternative priors/, 422);
     await refused(propose({ methodKey: 'its_unknown', family: 'causal', horizons: ['90d'], description: 'an identification assumption that is not an ASU (SYNTHETIC)', steward: petrovic.principalId,
-      declarations: { intervention: { date: '2023-06-01', description: 'escort convoys begin (SYNTHETIC)' }, identification: { assumptions: [uuidv7()], statement: 'nothing else changed then' }, pre_days: 365, post_days: 90 } }),
+      declarations: { intervention: { date: '2023-06-01', description: 'escort convoys begin (SYNTHETIC)' }, identification: { assumptions: [uuidv7()], statement: 'nothing else changed then' }, pre_days: 365, post_days: 90,
+        transport: { scope: [CORRIDOR], assumptions: [asuOpen], statement: 'the corridor series alone (SYNTHETIC)' } } }),   // B25 completion (G4): a valid transport, so the port's identification check is reached
       /^forecast method rejected \(unknown_assumption\)/, 404);
     await refused(propose({ methodKey: 'seasonal_naive', family: 'event', horizons: ['30d'], description: 'shadowing a builtin (SYNTHETIC)', steward: petrovic.principalId, declarations: { prior: { alpha: 1, beta: 1 } } }),
       /^forecast method rejected \(duplicate\): seasonal_naive is a builtin/, 409);
@@ -454,7 +461,8 @@ describe('B25 §MR · e BAYESIAN (MC-012): explicit priors, posterior predictive
 describe('B25 §MR · f CAUSAL (MC-013): identification declared, effect with interval, placebo, balance, sensitivity', () => {
   it('f · POSITIVE: the escort programme\'s effect on transits, under J. Weber\'s declared assumptions', async () => {
     await approved({ methodKey: 'its_escorts', family: 'causal', horizons: ['90d'], steward: petrovic.principalId, description: 'interrupted time series of the escort programme (SYNTHETIC)',
-      declarations: { intervention: { date: '2023-06-01', description: 'escort convoys begin (SYNTHETIC)' }, identification: { assumptions: [asuEscort, asuNoAnticipation], statement: 'the pre-trend and season would have continued; nothing else broke then' }, pre_days: 365, post_days: 90 } });
+      declarations: { intervention: { date: '2023-06-01', description: 'escort convoys begin (SYNTHETIC)' }, identification: { assumptions: [asuEscort, asuNoAnticipation], statement: 'the pre-trend and season would have continued; nothing else broke then' }, pre_days: 365, post_days: 90,
+        transport: { scope: [CORRIDOR], assumptions: [asuNoAnticipation], statement: 'the effect is claimed for the corridor series it was estimated on (SYNTHETIC)' } } });   // B25 completion (G4): the transport scope
     const f = await issue({ seriesKey: CORRIDOR, horizon: '90d', observedThrough: '2023-12-31', assumptions: [asuEscort], methodRef: 'its_escorts@1' });
     const o = obj(f.forecast['outcome']);
     expect(o['type']).toBe('effect');
@@ -618,5 +626,100 @@ describe('B25 §MR · j INTEGRATION: a multi-family ensemble through the registr
       where ensemble_id = ${String((out['run'] as Row)['ensemble_forecast_id'])}::uuid order by ensemble_role, method_ref`.execute(su)).rows;
     expect(rows.map((r) => [r.ensemble_role, r.method_ref])).toEqual([['ensemble', 'ensemble:linear_pool@1'], ['member', 'bayes_level@1'], ['member', 'bayes_tight@1'],
       ['member', 'holt_winters@1'], ['member', 'seasonal_naive@1']]);
+  });
+});
+
+/* ═══════════════════════════════════════ k · B25 completion: G3 identifiability, G4 transport, G5 robustness, G6 paths and options ═══════════════════════════════════════ */
+describe('B25 completion · k G3 IDENTIFIABILITY (MC-012), G4 TRANSPORTABILITY (MC-013), G5 ROBUSTNESS (MC-015), G6 PATH DEPENDENCE / OPTION VALUE (V00-T-051)', () => {
+  const ITS = (scope: string[], transportAsus: string[]) => ({ intervention: { date: '2023-06-01', description: 'escort convoys begin (SYNTHETIC)' },
+    identification: { assumptions: [asuEscort, asuNoAnticipation], statement: 'the pre-trend and season would have continued; nothing else broke then' }, pre_days: 365, post_days: 90,
+    transport: { scope, assumptions: transportAsus, statement: 'the escorts act alike wherever the declared scope reaches (SYNTHETIC)' } });
+
+  it('k · G3 POSITIVE / REFUSAL / RECOVERY: the 1y Bayesian forecast carries each parameter\'s contraction (identified); a slope prior the data cannot move is WEAKLY IDENTIFIED on the forecast; an invalid threshold is refused at proposal', async () => {
+    const calm = await issue({ seriesKey: CORRIDOR, horizon: '1y', observedThrough: '2023-05-31', assumptions: [asuOpen], methodRef: 'bayes_level@1' });
+    const idf = obj(obj(calm.forecast['outcome'])['identifiability']);
+    expect((idf['parameters'] as Row[]).map((x) => [x['name'], x['weakly_identified']])).toEqual([['intercept', false], ['slope_per_year', false]]);
+    expect(idf['weakly_identified']).toEqual([]); expect(obj(idf['conditioning'])['xtx_condition_number'] as number).toBeGreaterThan(1);
+    expect(String(calm.forecast['statement'])).toMatch(/Identifiability: posterior\/prior variance contraction intercept [\d.]+, slope_per_year [\d.]+ \(threshold 0\.1\)/);
+    await approved({ methodKey: 'bayes_pinned_slope', family: 'bayesian', horizons: ['1y'], steward: petrovic.principalId, description: 'a slope prior so tight the data cannot move it (SYNTHETIC)',
+      declarations: { prior: { ...NL, slope_per_year: { mean: 0, sd: 0.0001 } }, alternatives: [{ label: 'the calm prior', prior: NL }] } });
+    const weak = await issue({ seriesKey: CORRIDOR, horizon: '1y', observedThrough: '2023-05-31', assumptions: [asuOpen], methodRef: 'bayes_pinned_slope@1' });
+    expect(obj(obj(weak.forecast['outcome'])['identifiability'])['weakly_identified']).toEqual(['slope_per_year']);
+    expect(String(weak.forecast['statement'])).toMatch(/WEAKLY IDENTIFIED: slope_per_year — posterior\/prior variance contraction .* the data barely inform it, the value is mostly the prior's/);
+    await refused(propose({ methodKey: 'bayes_bad_bar', family: 'bayesian', horizons: ['1y'], steward: petrovic.principalId, description: 'a contraction bar of 1.5 (SYNTHETIC)',
+      declarations: { prior: NL, alternatives: [{ label: 'x', prior: NL }], identifiability_threshold: 1.5 } }), /^forecast method rejected \(declarations\): declarations\.identifiability_threshold is a variance contraction in \(0, 1\)/, 422);
+    const strict = await approved({ methodKey: 'bayes_strict_bar', family: 'bayesian', horizons: ['1y'], steward: petrovic.principalId, description: 'the calm prior under a stricter bar (SYNTHETIC)',
+      declarations: { prior: NL, alternatives: [{ label: 'x', prior: NL }], identifiability_threshold: 0.5 } });
+    expect(strict['state']).toBe('approved');
+    evidence('k', `G3 identifiability: contraction ${(idf['parameters'] as Row[]).map((x) => `${String(x['name'])} ${String(x['contraction'])}`).join(', ')}; pinned slope WEAKLY IDENTIFIED`, 'software capability');
+  });
+
+  it('k · G4 POSITIVE / REFUSAL / RECOVERY: inside its scope the effect carries its transport assumptions (two series in scope: consistency NOT ASSESSED); outside it, refused (transport) and ledgered; an unknown transport ASU refused; the widened version issues by the subject', async () => {
+    await approved({ methodKey: 'its_scoped', family: 'causal', horizons: ['90d'], steward: petrovic.principalId, description: 'the escort effect, transportable to two corridor series (SYNTHETIC)',
+      declarations: ITS([CORRIDOR, 'syn-red-sea:transits'], [asuNoAnticipation]) });
+    const f = await issue({ seriesKey: CORRIDOR, horizon: '90d', observedThrough: '2023-12-31', assumptions: [asuEscort], methodRef: 'its_scoped@1' });
+    const t = obj(obj(f.forecast['outcome'])['transport']);
+    expect(t).toMatchObject({ declared: true, in_scope: true, matched: CORRIDOR, assumptions: [asuNoAnticipation], consistency: { series_in_scope: 2, assessed: false } });
+    expect(String(f.forecast['statement'])).toMatch(/transported within its declared scope .* under 1 transport assumption\(s\); the declared scope names 2 series; this routed issue reads only .* NOT ASSESSED/);
+    // REFUSAL — outside the scope: refused, ledgered, the entry stays approved; an unknown transport ASU at proposal
+    await approved({ methodKey: 'its_elsewhere', family: 'causal', horizons: ['90d'], steward: petrovic.principalId, description: 'the escort effect declared for another strait only (SYNTHETIC)',
+      declarations: ITS(['syn-red-sea:transits'], [asuNoAnticipation]) });
+    const r = await refused(issue({ seriesKey: CORRIDOR, horizon: '90d', observedThrough: '2023-12-31', assumptions: [asuEscort], methodRef: 'its_elsewhere@1' }),
+      /^forecast rejected \(transport\): its_elsewhere@1's effect is declared transportable to syn-red-sea:transits; syn-corridor:.* \(subject .*\) is outside that scope/, 422);
+    expect((await rows(sql`select outcome, refusal_class from prediction.forecast_routes where route_id = ${String(r.body['route_id'])}::uuid`))[0]).toEqual({ outcome: 'refused', refusal_class: 'transport' });
+    expect((await read()).methods.find((m) => m['method_ref'] === 'its_elsewhere@1')!['state']).toBe('approved');
+    await refused(propose({ methodKey: 'its_unknown_transport', family: 'causal', horizons: ['90d'], steward: petrovic.principalId, description: 'a transport assumption that is no ASU (SYNTHETIC)',
+      declarations: ITS([CORRIDOR], [uuidv7()]) }), /^forecast method rejected \(unknown_assumption\): .* a transport assumption is declared in the Strategy Graph first/, 404);
+    await refused(propose({ methodKey: 'its_no_transport', family: 'causal', horizons: ['90d'], steward: petrovic.principalId, description: 'no transport scope declared (SYNTHETIC)',
+      declarations: { ...ITS([CORRIDOR], [asuNoAnticipation]), transport: undefined } }), /^forecast method rejected \(declarations\): a causal method declares where its effect is transportable/, 422);
+    // RECOVERY — the steward's version 2 widens the scope to the strait (the series' subject entity): issued, matched by the subject
+    await approved({ methodKey: 'its_elsewhere', version: 2, family: 'causal', horizons: ['90d'], steward: petrovic.principalId, description: 'the scope widened to the strait itself (SYNTHETIC)',
+      declarations: ITS(['syn-red-sea:transits', entity], [asuNoAnticipation]) });
+    const ok = await issue({ seriesKey: CORRIDOR, horizon: '90d', observedThrough: '2023-12-31', assumptions: [asuEscort], methodRef: 'its_elsewhere@2' });
+    expect(obj(obj(ok.forecast['outcome'])['transport'])).toMatchObject({ in_scope: true, matched: entity });
+    evidence('k', 'G4 transport: in scope (consistency not assessed), outside refused (transport), widened by subject', 'software capability');
+  });
+
+  it('k · G5 POSITIVE / REFUSAL / RECOVERY: the capacity plan is ROBUST (feasible low/mid/high, worst case, regret); a slot bound that tightens under the low scenario is NOT ROBUST, the scenario named; the corrected band is robust', async () => {
+    const f = await issue({ seriesKey: CORRIDOR, horizon: '30d', observedThrough: '2023-05-31', assumptions: [asuOpen], methodRef: 'reroute_lp@1' });
+    const rb = obj(obj(f.forecast['outcome'])['robustness']);
+    expect(rb).toMatchObject({ robust: true, infeasible_scenarios: [] });
+    expect((rb['scenarios'] as Row[]).map((x) => [x['scenario'], x['feasible']])).toEqual([['low', true], ['mid', true], ['high', true]]);
+    for (const x of rb['scenarios'] as Row[]) expect(x['regret'] as number).toBeGreaterThanOrEqual(0);
+    expect(String(f.forecast['statement'])).toMatch(/ROBUST: the plan is feasible under every declared parameter scenario \(low, mid, high\); worst-case objective/);
+    const slots = (low: number) => ({ ...lp(0.1), constraints: [...lp(0.1).constraints, { label: 'escort slots (share)', coefficients: [1], comparator: '<=', rhs: { param: 'slots' } }],
+      parameters: { ...lp(0.1).parameters, slots: { low, mid: 0.5, high: 0.8, source: 'the escort slot band (SYNTHETIC)' } } });
+    await approved({ methodKey: 'reroute_slots', family: 'optimisation', horizons: ['30d'], steward: petrovic.principalId, description: 'reroute share under escort slots (SYNTHETIC)', declarations: slots(0.2) });
+    const nr = await issue({ seriesKey: CORRIDOR, horizon: '30d', observedThrough: '2023-05-31', assumptions: [asuOpen], methodRef: 'reroute_slots@1' });
+    const rb2 = obj(obj(nr.forecast['outcome'])['robustness']);
+    expect(rb2).toMatchObject({ robust: false, infeasible_scenarios: ['low'] });
+    expect(String(nr.forecast['statement'])).toMatch(/NOT ROBUST: the plan is INFEASIBLE under the low scenario \(low: escort slots \(share\)/);
+    await approved({ methodKey: 'reroute_slots', version: 2, family: 'optimisation', horizons: ['30d'], steward: petrovic.principalId, description: 'the escort slot band corrected (SYNTHETIC)', declarations: slots(0.5) });
+    const ok = await issue({ seriesKey: CORRIDOR, horizon: '30d', observedThrough: '2023-05-31', assumptions: [asuOpen], methodRef: 'reroute_slots@2' });
+    expect(obj(obj(ok.forecast['outcome'])['robustness'])['robust']).toBe(true);
+    evidence('k', `G5 robustness: worst case ${String(obj(rb['worst_case'])['objective'])} (${String(obj(rb['worst_case'])['scenario'])}); slots low 0.2 NOT ROBUST; 0.5 robust`, 'software capability');
+  });
+
+  it('k · G6 POSITIVE / REFUSAL / RECOVERY: the 5y regime shows the path-dependent view and the declared options\' value and resilience beside the issued probabilities; options that do not price every regime are refused at proposal', async () => {
+    const options = [{ key: 'hold', label: 'hold safety stock', cost: 2, payoff: { closed: 8, disrupted: 6, open: 3 } }, { key: 'reroute', label: 'reroute via the Cape', cost: 4, payoff: { closed: 10, disrupted: 7, open: 1 } }];
+    const judgement = { pseudo_counts: { closed: 2, disrupted: 6, open: 12 }, rationale: 'escalation risk in the strait over five years (SYNTHETIC judgement)', judged_by: eriksen.principalId };
+    await refused(propose({ methodKey: 'regime_options', family: 'structural_judgmental', forecastKinds: ['regime'], horizons: ['5y'], steward: petrovic.principalId, description: 'options that price two regimes of three (SYNTHETIC)',
+      declarations: { judgement, options: [{ ...options[0], payoff: { closed: 8, open: 3 } }] } }), /^forecast method rejected \(declarations\): each option is \{key/, 422);
+    await approved({ methodKey: 'regime_options', family: 'structural_judgmental', forecastKinds: ['regime'], horizons: ['5y'], steward: petrovic.principalId,
+      description: 'the regime judgement with the declared options (SYNTHETIC options and payoffs)', declarations: { judgement, options } });
+    const f = await issue({ targetKey: 'corridor.bab-el-mandeb.transit-delay', horizon: '5y', assumptions: [asuOpen], label: 'replay demonstration', methodRef: 'regime_options@1' });
+    const o = obj(f.forecast['outcome']);
+    // the issued probabilities are the SAME judgement-and-counts posterior regime_judgement@1 issued (d) — the additions ride beside them
+    const d5 = obj((await fctPayload(F5Y))['payload']);
+    expect(obj(f.forecast['distribution'])['categories']).toEqual(obj(d5['distribution'])['categories']);
+    const pd = obj(o['path_dependence']);
+    expect(pd['current']).toBeDefined(); expect(pd['steps']).toBe(Math.ceil(1825 / 90));
+    expect(Object.values(obj(pd['horizon_distribution'])).reduce((a: number, b) => a + Number(b), 0)).toBeCloseTo(1, 3);
+    const opts = obj(o['options']);
+    expect((opts['options'] as Row[]).map((x) => x['key'])).toEqual(['hold', 'reroute']);
+    expect(opts['option_value'] as number).toBeGreaterThanOrEqual(0);
+    expect(String(f.forecast['statement'])).toMatch(/THE PATH-DEPENDENT VIEW \(scenario language, not a validated forecast\).* OPTION VALUE AND RESILIENCE .* not measured/);
+    expect(f.forecast['validation_state']).toBe('scenario_language');
+    evidence('k', `G6: path view from ${String(pd['current'])} over ${String(pd['steps'])} steps; option value ${String(opts['option_value'])}, most resilient ${String(obj(opts['most_resilient'])['key'])}`, 'synthetic demonstration');
   });
 });

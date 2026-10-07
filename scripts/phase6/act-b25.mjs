@@ -31,6 +31,14 @@
  *         twin's boundary place, the only corridor series with a subject on this demonstration) pinning the twin snapshot and the graph
  *         revision; he REPLAYS it (REPRODUCED); K. Müller commits a change set through the B23 route touching that subject (MV Hanse Trader
  *         transits the Suez Canal, resting on the extracted claim); the replay is REPRODUCED again while a fresh grounding differs.
+ *   B25-F3b (B25 completion — G1 features as model inputs, G6 the 5y treatment, G2 the replay of routed forecasts, G7 the pins): N. Eriksen
+ *         PROPOSES regime_judgement@2 — his judgement with declared CONDITIONS on a TWIN feature of the corridor twin's pinned version
+ *         (twin.shock.corridor_delay_days) and a GRAPH feature (graph.edges, the Suez Canal's relationships as of the cut-off), and the
+ *         declared OPTIONS (SYNTHETIC payoffs); H. Petrović APPROVES. The target needs a subject so the twin is resolved: N. Eriksen DECLARES
+ *         corridor.suez-canal.transit-regime on portwatch:chokepoint1:n_total with the Suez Canal as its subject (T. Richter approves). He issues
+ *         the routed GROUNDED 5y regime with it — the package shows the features used (value, digest, held), the path-dependent view, the
+ *         option value and resilience, the target version and the evaluation profile — and REPLAYS it (REPRODUCED); he replays the F1 30d
+ *         EVENT forecast too (REPRODUCED).
  *   B25-F2 (F-P4-02): M. Dvořák publishes the next attention-policy version with forecast.disagreement → the forecast owner (every existing
  *         class byte-identical); J. Weber declares the shared assumption and one tied to each method; N. Eriksen issues the ENSEMBLE on the
  *         corridor series at 30d cut at 2024-01-11 (the week the strait emptied — where the two methods genuinely disagree on the real data);
@@ -172,7 +180,8 @@ const METHODS = [
     description: 'Normal–linear level of the 60-day mean with EXPLICIT weakly-informative priors (intercept N(0, 1000²), slope N(0, 100²) per year) — the data decide level and trend; a no-drift alternative tests the trend',
     declarations: { prior: NL(1000, 100), alternatives: [{ label: 'no drift (slope N(0, 0.001²) per year)', prior: NL(1000, 0.001) }] } },
 ];
-const methodRow = async (key) => (await q(`select method_id::text, method_ref, version, state, family, proposed_by::text, decided_by::text from prediction.forecast_methods where tenant_id = $1 and domain_id = $2 and method_key = $3 order by version desc limit 1`, [T, D, key]))[0] ?? null;
+// B25 completion: a key's VERSION is named (regime_judgement@2 joins @1 in B25-F3b; the latest version is not the one this scene proposed)
+const methodRow = async (key, version = 1) => (await q(`select method_id::text, method_ref, version, state, family, proposed_by::text, decided_by::text, implementation_digest, declarations from prediction.forecast_methods where tenant_id = $1 and domain_id = $2 and method_key = $3 and version = $4`, [T, D, key, version]))[0] ?? null;
 for (const m of METHODS) {
   let row = await methodRow(m.methodKey);
   if (row === null) {
@@ -515,6 +524,7 @@ if (GF === null) {
   note(`the grounded forecast ${short(GF.forecast_id)} stands (issued ${iso(GF.issued_at)}) — an earlier run`);
 }
 if (GF) {
+  await renew(eriksen);   // the grounded issue took minutes (32.6 on eye_demo): the session it began with may have lapsed
   const g = await call(`${P}/forecasts/${GF.forecast_id}/grounding`, pe(eriksen, { action: 'prediction.information_set.read', objectType: 'FCT', objectId: GF.forecast_id, ...READ }), {}, eriksen.token);
   const m = g.body?.grounding?.set?.manifest ?? null;
   const tw = m?.twin ?? null; const feats = (m?.features ?? []).map((x) => x.key);
@@ -523,7 +533,7 @@ if (GF) {
   const env = GF.environment ?? {};
   (GF.environment_digest ? ok : bad)(`THE ENVIRONMENT (V03-T-196): node ${env.node}, ${env.platform}/${env.arch}, ${env.method_ref} implementation ${String(env.implementation_digest).slice(0, 12)}…, ${env.assembler_version} → digest ${String(GF.environment_digest).slice(0, 16)}…`);
   ENV_OUT.EYE_B25_GROUNDED_SERIES = GROUNDED;
-  ENV_OUT.EYE_B25_GROUNDED_FORECAST = GF.forecast_id;
+  ENV_OUT.EYE_B25_GROUNDED_FORECAST = GF.forecast_id; ENV_OUT.EYE_B25_GROUNDED_SET = GF.information_set_id;   // B25 completion: the walks open the set by its id
 }
 const replays = async (id) => q(`select replay_id::text, outcome, environment_match, fresh, diverged, replayed_at, original_manifest_digest = replayed_manifest_digest same_manifest, original_output_digest = replayed_output_digest same_output from prediction.forecast_replays where forecast_id = $1 order by replayed_at`, [id]);
 const replay = async () => { const t0 = Date.now(); const r = await longAs(eriksen, `${P}/forecasts/${GF.forecast_id}/replay`, pe(eriksen, { action: 'prediction.forecast.replay', objectType: 'FCT', objectId: GF.forecast_id }), {}); return { r, took: mins(t0) }; };
@@ -546,6 +556,7 @@ if (GF) {
     const claim = (await q(`select c.object_id::text id, c.object_version::int v from objects.canonical_objects c where c.tenant_id = $1 and c.domain_id = $2 and c.object_type = 'REL' and c.payload ->> 'subject' = 'MV Hanse Trader' and c.payload ->> 'predicate' = 'transits' and c.payload ->> 'object_value' = 'Suez' and c.lifecycle_state = 'active' order by c.object_version desc limit 1`, [T, D]))[0] ?? null;
     const vessel = (await q(`select e.entity_id::text from graph.edges_current g join graph.entities_current e on e.entity_id = g.subject_entity_id where g.tenant_id = $1 and g.domain_id = $2 and g.claim_object_id = $3 and e.lifecycle_state = 'active' order by g.asserted_at desc limit 1`, [T, D, claim?.id]))[0] ?? null;
     const ont = (await q(`select version_id::text from graph.ontology_versions where tenant_id = $1 and domain_id = $2 and state = 'active' order by version desc limit 1`, [T, D]))[0] ?? null;
+    await renew(mueller);   // the grounded issue and its replay took minutes before this: the session may have lapsed
     const head = await call(`${G}/revisions/head`, dom(mueller, 'graph', { action: 'graph.read', objectType: 'GRV', ...READ }), {}, mueller.token);
     if (claim === null || vessel === null || !head.ok) bad(`the change set cannot be built (claim ${claim ? 'found' : 'absent'}, vessel ${vessel ? 'found' : 'absent'}, head ${head.status})`);
     else {
@@ -573,6 +584,119 @@ if (GF) {
       `AFTER THE LATER GRAPH CHANGE the replay is ${a?.outcome} — the same manifest (${a?.same_manifest}) and the same output (${a?.same_output}), environment ${a?.environment_match ? 'the same' : 'DIFFERENT'}; a FRESH grounding now differs (revision ${a?.fresh?.revision_head} against the pinned ${GF.revision_head}): ${what.join(', ')}`);
     ENV_OUT.EYE_B25_PINNED_REVISION = String(GF.revision_head);
   }
+}
+
+
+/* ── B25-F3b (B25 completion: G1, G6, G2, G7) ───────────────────────────────────────── */
+await renewAll();
+console.log('\nB25-F3b (B25 completion) — the twin\'s and the graph\'s features as MODEL INPUTS of a routed, grounded 5y regime; the path-dependent view, option value and resilience; the replays of routed forecasts');
+const SUEZ_TARGET_KEY = 'corridor.suez-canal.transit-regime';
+const CATEGORIES = [{ key: 'closed', label: 'closed', rule: { comparator: '<', threshold: 10 } }, { key: 'disrupted', label: 'disrupted', rule: { comparator: '<', threshold: 45 } }, { key: 'open', label: 'open', rule: null }];
+const TWIN_FEATURE = 'twin.shock.corridor_delay_days'; const GRAPH_FEATURE = 'graph.edges';
+const CONDITIONED = 'regime_judgement@2';
+let CF = null;
+{
+  // 1. WHAT THE PINNED TWIN VERSION CARRIES — read from the grounded forecast's frozen set (never assumed)
+  const gm = GF ? (await q(`select manifest from prediction.information_sets where information_set_id = $1`, [GF.information_set_id]))[0]?.manifest ?? null : null;
+  const scalars = (gm?.features ?? []).filter((x) => x.key.startsWith('twin.') && (typeof x.value === 'number' || typeof x.value === 'string' || typeof x.value === 'boolean'));
+  const none = (gm?.features ?? []).filter((x) => x.key.startsWith('twin.') && x.value === undefined).map((x) => x.key);
+  (scalars.some((x) => x.key === TWIN_FEATURE) ? ok : bad)(`THE CORRIDOR TWIN'S PINNED VERSION v${gm?.twin?.version} (${gm?.twin?.mode}) carries ${scalars.length} SCALAR feature(s): ${scalars.map((x) => `${x.key} = ${x.value}`).join(', ')}; ${none.length} without a scalar value (${none.join(', ')}) — a condition may read only the former`);
+  // 2. regime_judgement@2: the judgement of @1 with CONDITIONS on a twin and a graph feature and the declared OPTIONS (all SYNTHETIC declarations)
+  const j1 = (await methodRow('regime_judgement', 1))?.declarations?.judgement ?? null;
+  const M2 = { methodKey: 'regime_judgement', version: 2, family: 'structural_judgmental', forecastKinds: ['regime'], horizons: ['3y', '5y'], steward: petrovic.principalId,
+    description: 'Regime probabilities from N. Eriksen\'s structural judgement, counted 90-day windows AND declared conditions on the frozen twin and graph features; the path-dependent view and the declared options\' value and resilience beside them — scenario language, never validated',
+    declarations: { judgement: j1,
+      conditions: [
+        { feature: TWIN_FEATURE, comparator: '>=', threshold: 10, regime: 'disrupted', pseudo_count: 4, rationale: 'N. Eriksen: the corridor twin\'s declared corridor delay of two weeks or more weighs the Red Sea leg towards a disrupted regime (a SYNTHETIC judgement)' },
+        { feature: GRAPH_FEATURE, comparator: '>=', threshold: 1, regime: 'closed', pseudo_count: 1, rationale: 'N. Eriksen: a vessel of the chain recorded transiting the canal in the graph exposes the chain to a closure (a SYNTHETIC judgement)' }],
+      options: [
+        { key: 'hold_stock', label: 'hold safety stock at Regensburg', cost: 2, payoff: { closed: 8, disrupted: 6, open: 3 } },
+        { key: 'reroute_cape', label: 'reroute via the Cape of Good Hope', cost: 4, payoff: { closed: 10, disrupted: 7, open: 1 } },
+        { key: 'keep_routing', label: 'keep the booked routing through Suez', cost: 0, payoff: { closed: 0, disrupted: 3, open: 6 } }],
+      path: { smoothing: 1 } } };
+  let row = await methodRow('regime_judgement', 2);
+  if (row === null && j1 !== null) {
+    const r = await call(`${P}/registry/methods/propose`, pe(eriksen, { action: 'prediction.registry.method.propose', objectType: 'FMR' }), M2, eriksen.token);
+    if (!r.ok) fail('N. Eriksen proposes regime_judgement@2', r);
+    else ok(`N. Eriksen PROPOSED ${r.body.method.method_ref} (implementation ${r.body.method.implementation_ref} ${String(r.body.method.implementation_digest).slice(0, 12)}…): conditions ${TWIN_FEATURE} ≥ 10 → +4 disrupted, ${GRAPH_FEATURE} ≥ 1 → +1 closed; options hold_stock · reroute_cape · keep_routing (SYNTHETIC payoffs, €m avoided line-stop cost) — steward H. Petrović`);
+    row = await methodRow('regime_judgement', 2);
+  }
+  if (row?.state === 'proposed') {
+    const r = await call(`${P}/registry/methods/${row.method_id}/decide`, pe(petrovic, { action: 'prediction.registry.method.approve', objectType: 'FMR', objectId: row.method_id }),
+      { decision: 'approve', note: 'the conditions read frozen features the corridor twin and the graph carry; the options and their payoffs reviewed as declared (SYNTHETIC)' }, petrovic.token);
+    if (!r.ok) fail('H. Petrović approves regime_judgement@2', r); else ok(`H. Petrović APPROVED ${r.body.method.method_ref} → ${r.body.method.state} (the objective of the options and the conditions approved with the entry)`);
+    row = await methodRow('regime_judgement', 2);
+  } else if (row) note(`${row.method_ref} stands ${row.state} (proposed by ${nm(row.proposed_by)}, decided by ${nm(row.decided_by)}) — an earlier run`);
+  (row?.state === 'approved' && row.decided_by === petrovic.principalId ? ok : bad)(`${CONDITIONED} — ${row?.family}, ${row?.state}; regime_judgement@1 is now superseded in the plan (the later approved version)`);
+  // 3. THE TARGET WITH A SUBJECT: the chokepoint4 series names none on this demonstration; the Suez Canal series does — chosen and said
+  const sRow = async () => (await q(`select target_id::text, version, state, declared_by::text, decided_by::text, definition from prediction.forecast_targets where tenant_id = $1 and domain_id = $2 and target_key = $3 order by version desc limit 1`, [T, D, SUEZ_TARGET_KEY]))[0] ?? null;
+  let t = await sRow();
+  if (t === null && SUEZ) {
+    const r = await call(`${P}/registry/targets/declare`, pe(eriksen, { action: 'prediction.registry.target.declare', objectType: 'FTG' }), {
+      targetKey: SUEZ_TARGET_KEY, kind: 'regime', unit: 'probability', title: 'Suez Canal transit regime — the corridor\'s Red Sea leg (the Suez Canal series, the corridor twin\'s boundary place)', subjectEntityId: SUEZ.entity_id,
+      definition: { series_key: GROUNDED, regime: { classification_window_days: 90, categories: CATEGORIES } },
+      sources: { series: [GROUNDED], twin_elements: ['shock.corridor_delay_days'], graph: [GRAPH_FEATURE],
+        note: 'the corridor\'s regime read on the REAL Suez Canal transit COUNT series — the only corridor series with a subject on this demonstration (the Bab el-Mandeb series names none), so the twin is resolved through its boundary place; the thresholds are N. Eriksen\'s (SYNTHETIC)' } }, eriksen.token);
+    if (!r.ok) fail('N. Eriksen declares the Suez target', r); else ok(`N. Eriksen DECLARED ${SUEZ_TARGET_KEY} v${r.body.target.version}: a REGIME (closed < 10 · disrupted < 45 · open; 90-day windows) on ${GROUNDED}, subject ${SUEZ.canonical_name} — so the grounding resolves the corridor twin`);
+    t = await sRow();
+  }
+  if (t?.state === 'proposed') {
+    const r = await call(`${P}/registry/targets/${t.target_id}/decide`, pe(richter, { action: 'prediction.registry.target.approve', objectType: 'FTG', objectId: t.target_id }),
+      { decision: 'approve', note: 'the canal series carries the subject the twin is resolved by; the thresholds are read against its published levels' }, richter.token);
+    if (!r.ok) fail('T. Richter approves the Suez target', r); else ok(`T. Richter APPROVED ${SUEZ_TARGET_KEY} → ${r.body.target.state}`);
+    t = await sRow();
+  } else if (t) note(`the target ${SUEZ_TARGET_KEY} v${t.version} stands ${t.state} (declared by ${nm(t.declared_by)}, decided by ${nm(t.decided_by)}) — an earlier run`);
+  (t?.state === 'approved' && t.decided_by === richter.principalId ? ok : bad)(`the target ${SUEZ_TARGET_KEY} v${t?.version} — subject ${SUEZ?.canonical_name}, APPROVED by a named human who did not declare it`);
+  // 4. THE ROUTED, GROUNDED 5y REGIME with the twin- and graph-conditioned entry
+  const cRow = async () => (await q(`select f.forecast_id::text, f.method_ref, f.forecast_kind, f.validation_state, f.statement, f.horizon_policy, f.outcome_spec, f.information_set_id::text, f.environment_digest, f.issued_at
+     from prediction.forecasts_current f where f.tenant_id = $1 and f.domain_id = $2 and f.target_key = $3 and f.horizon_code = '5y' and f.method_ref = $4 and f.issued_by = $5 and f.state = 'issued' order by f.issued_at desc limit 1`, [T, D, SUEZ_TARGET_KEY, CONDITIONED, eriksen.principalId]))[0] ?? null;
+  CF = await cRow();
+  if (CF) note(`the conditioned 5y regime ${short(CF.forecast_id)} (${CF.method_ref}) stands (issued ${iso(CF.issued_at)}) — an earlier run`);
+  else if (ASU_SHARED && t?.state === 'approved' && row?.state === 'approved') {
+    const t0 = Date.now();
+    note(`N. Eriksen issues ${SUEZ_TARGET_KEY} at 5y through portfolio/issue with ${CONDITIONED} (grounded; the series read takes minutes)`);
+    const r = await longAs(eriksen, `${P}/portfolio/issue`, pe(eriksen, { action: 'prediction.portfolio.issue', objectType: 'FCT' }), { targetKey: SUEZ_TARGET_KEY, horizon: '5y', assumptions: [ASU_SHARED], label: 'live', refreshCadence: 'weekly', methodRef: CONDITIONED });
+    if (!r.ok) fail(`N. Eriksen issues ${SUEZ_TARGET_KEY} at 5y`, r); else ok(`N. Eriksen ISSUED ${SUEZ_TARGET_KEY} at 5y (${mins(t0)}): ${short(r.body.forecast.forecastId)} by ${r.body.forecast.method_ref} — ${r.body.forecast.validation_state}`);
+    CF = await cRow();
+  }
+  if (CF) {
+    const o = CF.outcome_spec ?? {}; const used = o.features_used ?? [];
+    const set = (await q(`select manifest, twin_id::text, twin_version, revision_head from prediction.information_sets where information_set_id = $1`, [CF.information_set_id]))[0] ?? null;
+    const frozen = Object.fromEntries((set?.manifest?.features ?? []).map((x) => [x.key, x]));
+    const twinUse = used.find((x) => x.key === TWIN_FEATURE); const graphUse = used.find((x) => x.key === GRAPH_FEATURE);
+    (twinUse && graphUse && used.every((x) => frozen[x.key]?.digest === x.digest && frozen[x.key]?.value === x.value) && set?.twin_id === TWIN.twin_id ? ok : bad)(
+      `THE FEATURES AS MODEL INPUTS (G1), read from the frozen set ${short(CF.information_set_id)} (twin v${set?.twin_version}, graph revision ${set?.revision_head}): ${used.map((x) => `${x.key} = ${x.value} (digest ${String(x.digest).slice(0, 12)}…, ${x.held ? 'HELD' : 'did not hold'})`).join('; ')} → the conditioned pseudo-counts ${JSON.stringify(o.judgement?.conditioned_pseudo_counts ?? null)} (declared ${JSON.stringify(o.judgement?.pseudo_counts ?? null)})`);
+    const pd = o.path_dependence ?? {}; const op = o.options ?? {};
+    const cats = (o.categories ?? []).map((c) => `${c.label} ${f4(c.probability)}`).join(', ');
+    (CF.validation_state === 'scenario_language' && /^SCENARIO LANGUAGE, NOT A VALIDATED FORECAST/.test(CF.statement) && pd.horizon_distribution && op.option_value !== undefined ? ok : bad)(
+      `THE 5y PACKAGE ${short(CF.forecast_id)}: the ISSUED probabilities ${cats} (scenario language); THE PATH-DEPENDENT VIEW from the current regime "${pd.current}" (the window ending ${pd.current_window_end}; ${pd.transitions_counted} counted transitions, ${pd.steps} steps): ${Object.entries(pd.horizon_distribution ?? {}).map(([k, v]) => `${k} ${f4(v)}`).join(', ')}; persistence ${Object.entries(pd.persistence ?? {}).map(([k, v]) => `${k} ${f4(v)}`).join(', ')}`);
+    note(`THE OPTIONS (declared, SYNTHETIC payoffs): ${(op.options ?? []).map((x) => `${x.label}: expected ${f4(x.expected)} (under the path view ${f4(x.expected_under_path_view)}), resilience ${f4(x.resilience)} (worst: ${x.worst_regime})`).join(' · ')}; the best single commitment ${op.best_commitment?.key} (${f4(op.best_commitment?.expected)}); the OPTION VALUE of flexibility ${f4(op.option_value)}; the most resilient ${op.most_resilient?.key}`);
+    const pin = o.target ?? {}; const prof = CF.horizon_policy?.evaluation_profile ?? {};
+    (pin.target_key === SUEZ_TARGET_KEY && /^[0-9a-f]{64}$/.test(String(pin.definition_digest)) && prof.policy?.version !== undefined ? ok : bad)(
+      `THE PINS (G7): target ${pin.target_key} v${pin.version} (definition ${String(pin.definition_digest).slice(0, 12)}…); evaluation profile — horizon policy ${prof.policy?.risk_class} v${prof.policy?.version}, ${prof.forecast_kind} in ${prof.confidence_language}, validation requirement ${JSON.stringify(prof.validation_requirement)}, applicable record ${prof.validation_ref === null ? 'none' : JSON.stringify(prof.validation_ref)}`);
+    note(`the statement: "${CF.statement.slice(0, 900)}"`);
+    ENV_OUT.EYE_B25_SUEZ_TARGET = SUEZ_TARGET_KEY; ENV_OUT.EYE_B25_CONDITIONED_METHOD = CONDITIONED; ENV_OUT.EYE_B25_CONDITIONED_FORECAST = CF.forecast_id; ENV_OUT.EYE_B25_CONDITIONED_SET = CF.information_set_id;
+  }
+}
+// 5. THE REPLAYS OF ROUTED FORECASTS (G2): the conditioned regime and the F1 30d event — each recomputed from its frozen set by the registry's replayer
+for (const [label, f] of [['the conditioned 5y regime', CF], ['the F1 30d EVENT', ROUTED['30d']]]) {
+  if (!f) { bad(`${label}: no forecast to replay`); continue; }
+  const prior = (await q(`select outcome, diverged, environment_match, detail, replayed_at, original_output_digest = replayed_output_digest same_output, original_manifest_digest = replayed_manifest_digest same_manifest
+     from prediction.forecast_replays where forecast_id = $1 and detail ? 'replayer' order by replayed_at desc limit 1`, [f.forecast_id]))[0] ?? null;
+  let x = prior;
+  if (prior) note(`the replay of ${label} ${short(f.forecast_id)} stands: ${prior.outcome} at ${iso(prior.replayed_at)} — an earlier run`);
+  else {
+    const t0 = Date.now();
+    note(`N. Eriksen REPLAYS ${label} ${short(f.forecast_id)} from its frozen set (it re-reads exactly the pinned evidence versions: minutes)`);
+    const r = await longAs(eriksen, `${P}/forecasts/${f.forecast_id}/replay`, pe(eriksen, { action: 'prediction.forecast.replay', objectType: 'FCT', objectId: f.forecast_id }), {});
+    if (!r.ok) fail(`N. Eriksen replays ${label}`, r); else note(`replayed (${mins(t0)})`);
+    x = (await q(`select outcome, diverged, environment_match, detail, replayed_at, original_output_digest = replayed_output_digest same_output, original_manifest_digest = replayed_manifest_digest same_manifest
+       from prediction.forecast_replays where forecast_id = $1 and detail ? 'replayer' order by replayed_at desc limit 1`, [f.forecast_id]))[0] ?? null;
+  }
+  const rp = x?.detail?.replayer ?? {};
+  (x?.outcome === 'REPRODUCED' && x.same_output && x.same_manifest && rp.implementation?.match === true ? ok : bad)(
+    `THE REPLAY of ${label} ${short(f.forecast_id)} (${f.method_ref}): ${x?.outcome} by ${rp.replayer} — the pinned entry's implementation ${String(rp.implementation?.pinned).slice(0, 12)}… = this build's (${rp.implementation?.match}), target ${rp.target?.target_key} v${rp.target?.version} (${rp.target?.resolved_by}), the family re-run with ${rp.features?.frozen} frozen feature(s)${(rp.features?.used ?? []).length > 0 ? ` (used: ${(rp.features.used).map((u) => `${u.key} = ${u.value}`).join(', ')})` : ''}; the same output (${x?.same_output}), the same manifest (${x?.same_manifest}), environment ${x?.environment_match ? 'the same' : 'DIFFERENT'}; ${(x?.diverged ?? []).length} divergence(s)`);
+  if (label.startsWith('the F1')) { ENV_OUT.EYE_B25_EVENT_FORECAST = f.forecast_id; ENV_OUT.EYE_B25_EVENT_SET = f.information_set_id; }
 }
 
 /* ── B25-F2 (F-P4-02) ────────────────────────────────────────────────────────────────── */
@@ -617,6 +741,7 @@ else if (ASU_SHARED && ASU_PERSIST && ASU_REVERT) {
 }
 let ENS = null;
 if (RUN) {
+  await renew(eriksen);   // the ensemble's series read took minutes
   const rd = await call(`${P}/ensembles/${RUN.run_id}/read`, pe(eriksen, { action: 'prediction.ensemble.read', objectType: 'ENS', objectId: RUN.run_id, ...READ }), {}, eriksen.token);
   ENS = rd.ok ? rd.body.ensemble : null;
   if (!rd.ok) fail('the ensemble read', rd);
@@ -672,7 +797,7 @@ console.log('\nB25-9 THE STATE and the LIMITS');
   console.log('  the env lines for the walks (EYE_TEST_ADMIN_PASSWORD comes from .eye-local/env and is never printed):');
   for (const [k, v] of Object.entries(ENV_OUT)) console.log(`  ${k}=${/\s/.test(String(v)) ? `'${v}'` : v}`);
   const v3 = ECB_VAL['3y']; const v5 = ECB_VAL['5y'];
-  note(`LIMITS said. THREE CLAIMS KEPT APART: (1) SOFTWARE CAPABILITY — the registry, the routing, the horizon policy, the refusal, the grounding, the replay, the ensemble manager and the overlay all ran on this deployment through their governed routes; (2) SYNTHETIC DEMONSTRATION — N. Eriksen's structural judgement (the regime pseudo-counts), J. Weber's assumptions, the overlay's rationale, the regime thresholds and the target's wording are declared, not measured; the harnesses' validations run on SYNTHETIC histories; (3) EMPIRICAL VALIDATION — only bayes_level@1 on the REAL ECB EUR/USD history (retrospective, ONE vintage: the 2026 publication cut by date at each origin, not historical-knowledge validation; overlapping 3y/5y targets, so the origins are not independent): 3y ${v3 ? `${v3.passed ? 'PASSED' : 'NOT PASSED'} (coverage ${f4(v3.metrics?.coverage)}, ${v3.origins} origins)` : 'not run'}, 5y ${v5 ? `${v5.passed ? 'PASSED' : 'NOT PASSED'} (coverage ${f4(v5.metrics?.coverage)}, ${v5.origins} origins)` : 'not run'}; and the 30d event backtest on the REAL PortWatch history (retrospective, one vintage). It is NEVER claimed for the corridor's 3y/5y: the corridor's 5y stays SCENARIO LANGUAGE, its 3y quantity is refused. SUBSTITUTIONS: "Bab el-Mandeb transit delay" is the governed target on the REAL transit COUNT series (no delay series exists; the twin's corridor-delay element is a declared feature only); the demonstration's graph holds NO Bab el-Mandeb Strait entity (its extracted ENT claim is queued for review — not decided by this act), so ${CORRIDOR} names no subject and the GROUNDED forecast of F-P4-03 runs on ${GROUNDED} (the Suez Canal — the corridor twin's boundary place); K. Müller's change set touches that subject (the claim "MV Hanse Trader transits Suez", its object resolved by him to the Suez Canal) instead of the strait; the tracker's "Regensburg line demand series" does not exist — the 3y refusal is shown on the corridor's own real transit series (≈7.8 years: no quantity validation at 3y was run or recorded on it); the bounded ECB history is a separate source (the live ecb-eurusd and PortWatch contracts untouched) and was scheduled only between its agent's provisioning and its retirement (the platform schedules every active collected source) — collected once. HARNESS-PROVEN ONLY: the Bayesian prior-sensitivity refusal, the causal (MC-013) and optimisation (MC-015) families, quarantine/reinstatement and the digest pin, the ensemble's retries/budget/resume/PER-07 precision refusal and the model-path exclusions, the overlay's revision/withdrawal, the context refusals (future cut-off, stale head, twin/evidence mismatch) and a DIVERGED replay. TIMING: each read of a PortWatch series is ~8,900 governed retrievals — 15–20 minutes here; the act waits, the walks read what it recorded.`);
+  note(`LIMITS said. THREE CLAIMS KEPT APART: (1) SOFTWARE CAPABILITY — the registry, the routing, the horizon policy, the refusal, the grounding, the replay, the ensemble manager and the overlay all ran on this deployment through their governed routes; (2) SYNTHETIC DEMONSTRATION — N. Eriksen's structural judgement (the regime pseudo-counts), J. Weber's assumptions, the overlay's rationale, the regime thresholds and the target's wording are declared, not measured; the harnesses' validations run on SYNTHETIC histories; (3) EMPIRICAL VALIDATION — only bayes_level@1 on the REAL ECB EUR/USD history (retrospective, ONE vintage: the 2026 publication cut by date at each origin, not historical-knowledge validation; overlapping 3y/5y targets, so the origins are not independent): 3y ${v3 ? `${v3.passed ? 'PASSED' : 'NOT PASSED'} (coverage ${f4(v3.metrics?.coverage)}, ${v3.origins} origins)` : 'not run'}, 5y ${v5 ? `${v5.passed ? 'PASSED' : 'NOT PASSED'} (coverage ${f4(v5.metrics?.coverage)}, ${v5.origins} origins)` : 'not run'}; and the 30d event backtest on the REAL PortWatch history (retrospective, one vintage). It is NEVER claimed for the corridor's 3y/5y: the corridor's 5y stays SCENARIO LANGUAGE, its 3y quantity is refused. SUBSTITUTIONS: "Bab el-Mandeb transit delay" is the governed target on the REAL transit COUNT series (no delay series exists; the twin's corridor-delay element is a declared feature only); the demonstration's graph holds NO Bab el-Mandeb Strait entity (its extracted ENT claim is queued for review — not decided by this act), so ${CORRIDOR} names no subject and the GROUNDED forecast of F-P4-03 runs on ${GROUNDED} (the Suez Canal — the corridor twin's boundary place); K. Müller's change set touches that subject (the claim "MV Hanse Trader transits Suez", its object resolved by him to the Suez Canal) instead of the strait; the tracker's "Regensburg line demand series" does not exist — the 3y refusal is shown on the corridor's own real transit series (≈7.8 years: no quantity validation at 3y was run or recorded on it); the bounded ECB history is a separate source (the live ecb-eurusd and PortWatch contracts untouched) and was scheduled only between its agent's provisioning and its retirement (the platform schedules every active collected source) — collected once. HARNESS-PROVEN ONLY: the Bayesian prior-sensitivity refusal, the causal (MC-013) and optimisation (MC-015) families, quarantine/reinstatement and the digest pin, the ensemble's retries/budget/resume/PER-07 precision refusal and the model-path exclusions, the overlay's revision/withdrawal, the context refusals (future cut-off, stale head, twin/evidence mismatch) and a DIVERGED replay; and (B25 completion) the Bayesian IDENTIFIABILITY flag (MC-012), the causal TRANSPORT scope and its refusal (MC-013), the optimisation ROBUSTNESS under the parameter scenarios (MC-015), a condition on an absent / non-scalar feature or an ungrounded issue refused (context), a digest-mismatch replay DIVERGED (implementation) and an edited target definition DIVERGED (target.definition), and the ENSEMBLE replay (the combination from the members' stored distributions). B25-F3b SAYS: the conditioned 5y regime runs on ${GROUNDED} (the Suez Canal — the only corridor series with a subject, so the twin is resolved) with the Suez target ${'corridor.suez-canal.transit-regime'}; its conditions' thresholds and pseudo-counts and the OPTIONS with their payoffs are N. Eriksen's DECLARATIONS (SYNTHETIC), the twin's element values are the twin's synthetic grounding, the path-dependent view is counted from the REAL series' windows but is scenario language, never validated; the replays are SOFTWARE CAPABILITY on this deployment. TIMING: each read of a PortWatch series is ~8,900 governed retrievals — 15–20 minutes here; the act waits, the walks read what it recorded.`);
 }
 await su.end();
 console.log(`\n${failureCount() === 0 ? 'ALL SCENES HELD' : `${failureCount()} FAILURE(S)`} · ${((Date.now() - tStart) / 60000).toFixed(1)} min`);

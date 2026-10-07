@@ -89,6 +89,15 @@ export class RegistryController {
     const methodId = newId();
     const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'prediction.registry.method.propose', 'FMR', methodId), RegistryCapability.method,
       async (cap) => {
+        // B25 completion (G4): a causal entry's TRANSPORT assumptions are ASUs of this domain's Strategy Graph, like its identification assumptions
+        if (p.family === 'causal') {
+          const ids = (((p.declarations['transport'] ?? {}) as Record<string, unknown>)['assumptions'] as string[] | undefined) ?? [];
+          const known = new Set(await cap.knownAssumptions(ids));
+          const unknown = ids.find((x) => !known.has(x));
+          if (unknown !== undefined) {
+            throw new HttpException(errorBody('EYE_STA_001', envelope.correlation_id, `forecast method rejected (unknown_assumption): ${unknown} is not an assumption (ASU) of this domain; a transport assumption is declared in the Strategy Graph first`), 404);
+          }
+        }
         const r = await cap.propose({ methodId, tenantId, domainId, key: p.key, version, family: p.family, kinds: p.kinds, horizons: p.horizons, implementationRef: p.implementationRef,
           implementationDigest: p.implementationDigest, parameters: p.parameters, declarations: p.declarations, validation: p.validation, description: p.description, steward: p.steward,
           actor: principal.principalId, correlationId: envelope.correlation_id });

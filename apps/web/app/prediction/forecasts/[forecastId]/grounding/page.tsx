@@ -8,13 +8,16 @@
  * forecast owner replays the forecast from its frozen set; the outcome (REPRODUCED | DIVERGED) is the server's derivation, what diverged is
  * named, a differing environment is SAID, and the fresh grounding is reported beside it — never substituted for it. An ungrounded forecast
  * says so. Every instant through fmtInstant; a DATE as the day it names.
+ * B25 completion: a ROUTED forecast also shows what its method computed with — the frozen features it USED (value, digest, whether the
+ * condition held; G1) — its long-horizon view (the path-dependent view, the declared options' value and resilience; G6) and its PINS (the
+ * target version with its definition digest, the evaluation profile; G7); each replay names the replayer that recomputed it (G2).
  */
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useShell } from '../../../layout';
-import { context, divergedLine, environmentFacts, environmentLine, featureGroup, featureValue, freshLine, gapLine, outcomeMark, short,
-  type GroundingView, type ReplayAnswer } from '../../../../../lib/context-b25';
+import { context, divergedLine, environmentFacts, environmentLine, featureGroup, featureValue, freshLine, gapLine, optionLines, outcomeMark, pathViewLine, pinLines, short,
+  usedFeatureLines, type GroundingView, type ReplayAnswer } from '../../../../../lib/context-b25';
 import { Empty, LiveStatus, Mono, cardStyle, DefinitionRow, UnknownNote, GovernedButton, ScrollBox, fmtInstant } from '../../../../../components/observation';
 import { tableStyle, Th, Td, Receipt } from '../../../../../components/ui';
 
@@ -53,9 +56,20 @@ export default function GroundingPage() {
       <p><Link href="/prediction/forecasts">← Forecasts</Link> · <Link href="/prediction/information-sets">Information sets</Link></p>
       <h1 style={{ fontSize: 'var(--eye-type-heading-1)' }}>Grounding — {f.series_key} · {f.horizon_code}</h1>
       <p style={{ fontSize: 'var(--eye-type-label-sm)' }}>
-        forecast <Mono>{f.forecast_id}</Mono> · <Mono>{f.method}@{f.method_version}</Mono> · {f.state} · validation <strong>{f.validation_state.replace(/_/g, ' ')}</strong> · {f.label === 'live' ? 'live' : 'REPLAY DEMONSTRATION'}
+        forecast <Mono>{f.forecast_id}</Mono> · <Mono>{f.method_ref ?? `${f.method}@${f.method_version}`}</Mono> · {f.state} · validation <strong>{f.validation_state.replace(/_/g, ' ')}</strong> · {f.label === 'live' ? 'live' : 'REPLAY DEMONSTRATION'}
       </p>
       <p>{f.statement}</p>
+
+      {/* B25 completion (G1, G6, G7): the routed model's inputs used, its long-horizon view, its pins */}
+      <section aria-labelledby="routed-h" style={cardStyle}>
+        <h2 id="routed-h" style={h2}>The routed model</h2>
+        <dl>
+          <DefinitionRow term="Pins">{pinLines(f).length === 0 ? 'none recorded' : pinLines(f).join(' · ')}</DefinitionRow>
+          <DefinitionRow term="Features used">{usedFeatureLines(f.outcome).length === 0 ? 'no feature condition — the method read the series alone' : <ul style={{ margin: 0, paddingInlineStart: '1.2rem' }}>{usedFeatureLines(f.outcome).map((l) => <li key={l}>{l}</li>)}</ul>}</DefinitionRow>
+          {pathViewLine(f.outcome) === null ? null : <DefinitionRow term="Path-dependent view">{pathViewLine(f.outcome)}</DefinitionRow>}
+          {optionLines(f.outcome).length === 0 ? null : <DefinitionRow term="Options (declared)"><ul style={{ margin: 0, paddingInlineStart: '1.2rem' }}>{optionLines(f.outcome).map((l) => <li key={l}>{l}</li>)}</ul></DefinitionRow>}
+        </dl>
+      </section>
 
       <section aria-labelledby="env-h" style={cardStyle}>
         <h2 id="env-h" style={h2}>Environment</h2>
@@ -122,11 +136,12 @@ export default function GroundingPage() {
             {view.replays.length === 0 ? <Empty>no replay recorded</Empty> : (
               <ScrollBox label="Replays">
                 <table style={tableStyle} aria-label="Replays">
-                  <thead><tr><Th>Replayed</Th><Th>Outcome</Th><Th>Diverged</Th><Th>Environment</Th><Th>Fresh grounding</Th></tr></thead>
+                  <thead><tr><Th>Replayed</Th><Th>Outcome</Th><Th>Recomputed by</Th><Th>Diverged</Th><Th>Environment</Th><Th>Fresh grounding</Th></tr></thead>
                   <tbody>{view.replays.map((r) => (
                     <tr key={r.replay_id}>
                       <Td>{fmtInstant(r.replayed_at)}</Td>
                       <Td><span style={{ color: `var(${outcomeMark(r.outcome).token})` }}><span aria-hidden="true">{outcomeMark(r.outcome).glyph}</span> {r.outcome}</span></Td>
+                      <Td mono>{String(((r.detail['replayer'] ?? null) as Row | null)?.['replayer'] ?? 'the method register')}</Td>
                       <Td>{divergedLine(r.diverged)}</Td>
                       <Td>{r.environment_match ? 'same' : `different (${((r.detail['environment_differences'] as string[] | undefined) ?? []).join(', ') || 'environment'})`}</Td>
                       <Td>{freshLine(r.fresh, m.graph.revision_head)}</Td>

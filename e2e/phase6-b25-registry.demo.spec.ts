@@ -11,6 +11,10 @@
  * What is asserted is what the record says on screen — never a state derived here. Screenshots go to EYE_SHOTS (evidence/phase6-browser/b25-registry-*.png).
  * Personas: the forecast owner N. Eriksen (EYE_B25_FORECASTER, default `n.eriksen`), the analyst A. Hoffmann (EYE_B25_ANALYST, default `a.hoffmann`).
  * Every figure is SYNTHETIC; no claim of empirical validation is made on screen unless the act validated on real history.
+ *
+ * B25 completion (the act's B25-F3b): regime_judgement@2 (EYE_B25_CONDITIONED_METHOD) — conditions on the frozen twin and graph features,
+ * the declared options — approved beside @1, which the plan now lists SUPERSEDED; the Suez Canal target (EYE_B25_SUEZ_TARGET) and its 5y
+ * route ISSUED by @2.
  */
 import { expect as baseExpect, test, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
@@ -36,6 +40,8 @@ const REFUSED_SERIES = process.env['EYE_B25_REFUSED_SERIES'] ?? 'portwatch:choke
 const ECB_SERIES = process.env['EYE_B25_ECB_SERIES'] ?? 'ecb-eurusd-history';
 /** The act's outcome of the 5y quantity forecast on the real ECB history: validated_retrospective (issued) or refused (the validation did not pass). */
 const ECB_5Y = process.env['EYE_B25_ECB_5Y'] ?? '';
+const CONDITIONED_METHOD = process.env['EYE_B25_CONDITIONED_METHOD'] ?? '';
+const SUEZ_TARGET = process.env['EYE_B25_SUEZ_TARGET'] ?? '';
 
 async function uiLogin(page: Page, username: string, password: string): Promise<void> {
   await page.goto('/login');
@@ -65,6 +71,7 @@ test.describe.serial('CP-6 B25 §MR — the forecasting portfolio on the demonst
     await expect(registry).toContainText('holt_winters@1 (builtin)');
     await expect(registry.getByRole('row', { name: new RegExp(EVENT_METHOD) })).toContainText('approved');
     await expect(registry.getByRole('row', { name: new RegExp(REGIME_METHOD) })).toContainText('approved');
+    if (CONDITIONED_METHOD !== '') await expect(registry.getByRole('row', { name: new RegExp(CONDITIONED_METHOD) })).toContainText('approved');   // B25 completion
     const policy = page.getByRole('table', { name: 'horizon policy' });
     await expect(policy.getByRole('row', { name: /^5y/ })).toContainText('scenario_language');
     await expect(policy.getByRole('row', { name: /^3y/ })).toContainText(/requires quantity_rolling_origin ≥ \d+ origins/);
@@ -79,7 +86,12 @@ test.describe.serial('CP-6 B25 §MR — the forecasting portfolio on the demonst
     await expect(page.getByLabel('the plan')).toContainText(new RegExp(`${EVENT_METHOD} \\(event\\) — available, a probability within the window`));
     await plan(page, '5y');
     await expect(page.getByLabel('the plan')).toContainText('Kind regime');
-    await expect(page.getByLabel('the plan')).toContainText(new RegExp(`${REGIME_METHOD} \\(structural_judgmental\\) — available, scenario / regime language — never presented as validated`));
+    if (CONDITIONED_METHOD === '') {
+      await expect(page.getByLabel('the plan')).toContainText(new RegExp(`${REGIME_METHOD} \\(structural_judgmental\\) — available, scenario / regime language — never presented as validated`));
+    } else {   // B25 completion: the later approved version is the one the plan offers; the earlier is listed, unavailable, with its reason
+      await expect(page.getByLabel('the plan')).toContainText(new RegExp(`${CONDITIONED_METHOD} \\(structural_judgmental\\) — available, scenario / regime language — never presented as validated`));
+      await expect(page.getByLabel('the plan')).toContainText(new RegExp(`${REGIME_METHOD} \\(structural_judgmental\\) — UNAVAILABLE: superseded by a later approved version of regime_judgement`));
+    }
     await shot(page, 'b25-registry-02-plan-by-horizon');
   });
 
@@ -89,6 +101,7 @@ test.describe.serial('CP-6 B25 §MR — the forecasting portfolio on the demonst
     const routes = page.getByRole('list', { name: 'routes' });
     await expect(routes).toContainText(new RegExp(`${TARGET} at 30d — issued by ${EVENT_METHOD}`));
     await expect(routes).toContainText(new RegExp(`${TARGET} at 5y — issued by ${REGIME_METHOD}`));
+    if (SUEZ_TARGET !== '') await expect(routes).toContainText(`${SUEZ_TARGET} at 5y — issued by ${CONDITIONED_METHOD}`);   // B25 completion: the grounded, twin-conditioned regime
     await expect(routes).toContainText(new RegExp(`${REFUSED_SERIES.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} at 3y — refused: forecast rejected \\(horizon\\): .* at 3y is unsupported — no passed quantity-rolling-origin validation`));
     // the EMPIRICAL validations on the real ECB history: both horizons recorded, the claim as the record states it
     const validations = page.getByRole('table', { name: 'validations' });

@@ -17,12 +17,19 @@
  *   REPRODUCED | DIVERGED; what diverged is named; an environment that differs is REPORTED (environment_match, and which facts), never
  *   hidden. Beside it, the FRESH grounding — what a grounding at the database's instant would pin (its revision head, its digest, what it
  *   differs in) — reported, never substituted: after a later graph commit the replay is unchanged while a fresh grounding differs.
+ *
+ *   B25 completion (G2): a forecast whose output the per-method compute cannot recompute — a ROUTED registry family (event, regime,
+ *   bayesian, causal, optimisation, or a registry member of an ensemble) or an ENSEMBLE row — is replayed by the REPLAYER its issuing part
+ *   registered in the shared register (forecast-environment.ts): handed the pinned evidence re-read here and the FROZEN features of the set,
+ *   it re-reads its own pinned records (the entry and the target by version; the members' stored rows), checks the implementation digest
+ *   (a mismatch is the named divergence `implementation`), recomputes, and answers both output digests by its one canonical rule.
+ *   (G7) A grounded legacy issue pins its EVALUATION PROFILE beside the set: the backtest the leash and the validation read, the legacy rule.
  */
 import { HttpException, Injectable } from '@nestjs/common';
 import { errorBody } from '@eye/contracts';
 import { newId } from '../../shared/ids.js';
 import type { ScopeContext } from '../../shared/scope.js';
-import { environmentDifferences, forecastEnvironment, registeredForecastMethod } from '../../shared/forecast-environment.js';
+import { environmentDifferences, forecastEnvironment, forecastReplayerFor, registeredForecastMethod } from '../../shared/forecast-environment.js';
 import type { ForecastWrites } from '../prediction.capabilities.js';
 import { ForecastingService, HORIZONS, type IssueArgs } from '../forecasting/forecasting.service.js';
 import { SeriesService, cadenceOf, stepsFor, dayOf, type AssembledSeries, type Reader } from '../series/series.service.js';
@@ -43,15 +50,15 @@ export interface GroundedIssueCaps { forecast: ForecastWrites; context: FreezeWr
 export class ContextService {
   constructor(private readonly series: SeriesService, private readonly forecasting: ForecastingService) { registerLegacyMethods(); }
 
-  /** The method the issue's leash will choose for this request — computed exactly as ForecastingService.issue chooses it. */
-  private async leashMethod(cap: ForecastWrites, reader: Reader, a: { seriesKey: string; horizonCode: string; knownAt: string; observedThrough: string | null; method?: string; assembled?: AssembledSeries }): Promise<string> {
-    if (a.method !== undefined) return a.method;
+  /** The method the issue's leash will choose for this request — computed exactly as ForecastingService.issue chooses it — and the backtest
+   *  record it (and the issue's validation) reads (B25 completion, G7: the evaluation profile the grounded forecast pins). */
+  private async leashMethod(cap: ForecastWrites, reader: Reader, a: { seriesKey: string; horizonCode: string; knownAt: string; observedThrough: string | null; method?: string; assembled?: AssembledSeries }): Promise<{ method: string; backtest: Row | null }> {
     const assembled = a.assembled ?? await this.series.assemble(reader, a.seriesKey, a.knownAt, a.observedThrough);   // B25 act-found: the route's pre-assembly
     const originAt = assembled.points[assembled.points.length - 1]?.date;
-    if (originAt === undefined) return SEASONAL_NAIVE;
+    if (originAt === undefined) return { method: a.method ?? SEASONAL_NAIVE, backtest: null };
     const applicable = await this.forecasting.applicableBacktests(cap, { seriesKey: a.seriesKey, horizonCode: a.horizonCode, knownAt: a.knownAt, originAt });
     const bt = applicable.historical ?? applicable.retrospective;
-    return bt !== undefined && bt['t2_met'] === true ? HOLT_WINTERS : SEASONAL_NAIVE;
+    return { method: a.method ?? (bt !== undefined && bt['t2_met'] === true ? HOLT_WINTERS : SEASONAL_NAIVE), backtest: bt ?? null };
   }
 
   /**
@@ -65,14 +72,23 @@ export class ContextService {
       tenantId, domainId, seriesKey: a.seriesKey, subjectEntityId: series?.subject_entity_id ?? null, targetKey: null,
       knownAt: a.knownAt, observedThrough: a.observedThrough, assumptions: a.assumptions, actor, correlationId,
     });
-    const method = await this.leashMethod(caps.forecast, reader, a);
+    const { method, backtest } = await this.leashMethod(caps.forecast, reader, a);
     const env = forecastEnvironment(`${method}@${MODEL_VERSION}`, ASSEMBLER_VERSION);
     const environment = { ...env.facts, digest: env.digest };
+    // B25 completion (G7, AI-48-002): the EVALUATION PROFILE pinned beside the set — no target (a series forecast, said so), the legacy rule
+    // (no horizon policy routes this issue), the backtest record the leash and the validation read (or none)
+    const horizonPolicy = { policy_id: null, version: null, legacy: true, horizon: a.horizonCode, target: null,
+      evaluation_profile: { policy: { policy_id: null, version: null, legacy: true }, horizon: a.horizonCode, forecast_kind: 'quantity', target: null,
+        validation_requirement: { required: false, rule: 'the legacy leash: the learned model only when an applicable backtest met T2; validated only when the issued method met T1 (75–85% coverage)' },
+        validation_ref: backtest === null ? null : { backtest_id: backtest['backtest_id'] ?? null, mode: backtest['mode'] ?? 'retrospective', origins: backtest['origins'] ?? null,
+          t1_met: backtest['t1_met'] ?? null, t2_met: backtest['t2_met'] ?? null, window_to: dayOf(backtest['window_to']) },
+        statement: backtest === null ? 'no backtest applies to this series, horizon, cut-off and history; the forecast\'s validation state says what is (not) claimed'
+          : `evaluated against backtest ${String(backtest['backtest_id'])} (${String(backtest['mode'] ?? 'retrospective')}, ${String(backtest['origins'])} origins)` } };
     const r = await this.forecasting.issue(caps.forecast, scope, reader, {
       ...a, method,
-      b25: { columns: { information_set_id: frozen.informationSetId, environment }, payload: { information_set: frozen.summary, environment } },
+      b25: { columns: { information_set_id: frozen.informationSetId, environment, horizon_policy: horizonPolicy }, payload: { information_set: frozen.summary, environment, horizon_policy: horizonPolicy } },
     }, actor, correlationId, purposeId, forecastId);
-    return { ...r, informationSet: frozen.summary, environment };
+    return { ...r, informationSet: frozen.summary, environment, horizonPolicy };
   }
 
   /**
@@ -120,18 +136,31 @@ export class ContextService {
     diverged.push(...compareManifests(frozen, replayed.manifest));
 
     // 2. THE METHOD, re-run on exactly the pinned evidence.
-    const methodRef = `${String(f['method'])}@${String(f['method_version'])}`;
-    const originalOutput = outputDigest(f['quantiles'], f['path']);
-    let replayedOutput: string | null = null; let replayedQuantiles: unknown = null;
+    const computeRef = `${String(f['method'])}@${String(f['method_version'])}`;
+    // B25 completion (G2): the environment a routed (or member) forecast recorded names its registry reference — compare the same one
+    const methodRef = typeof f['method_ref'] === 'string' && f['ensemble_role'] !== 'ensemble' ? String(f['method_ref']) : computeRef;
+    let originalOutput = outputDigest(f['quantiles'], f['path']);
+    let replayedOutput: string | null = null; let replayedQuantiles: unknown = null; let replayerDetail: Row | null = null;
     const usePre = pre !== null && pre.series.series_key === frozen.request.series_key && pre.knownAt === frozen.request.known_at && pre.observedThrough === frozen.request.observed_through;
     const assembled = usePre ? pre : await this.series.assemble(reader, frozen.request.series_key, frozen.request.known_at, frozen.request.observed_through);   // B25 act-found
     const pinned = new Set(frozen.evidence.map((e) => `${String(e['evidence_object_id'])}@${String(e['evidence_version'])}:${String(e['evidence_digest'])}`));
     const strays = assembled.evidence.filter((e) => !pinned.has(`${e.evidence_object_id}@${e.evidence_version}:${e.evidence_digest}`));
     if (!assembled.complete) diverged.push({ what: 'evidence.readable', note: `${assembled.unreadable.length} pinned evidence version(s) could not be read by this reader now`, replayed: assembled.unreadable.slice(0, 5) });
     if (strays.length > 0) diverged.push({ what: 'evidence.pinned', note: 'the series read evidence the set did not pin', replayed: strays.slice(0, 5) });
-    const reg = registeredForecastMethod(methodRef);
-    if (reg?.compute === null || reg?.compute === undefined) {
-      diverged.push({ what: 'output', note: `method ${methodRef} has no registered deterministic compute in this process; its output is not recomputed` });
+    const reg = registeredForecastMethod(computeRef);
+    const replayer = forecastReplayerFor(f);
+    if (replayer !== undefined) {
+      // B25 completion (G2): the issuing part's replayer — the frozen features, never re-read
+      const ans = await replayer.replay({ tx: cap.seamTx(), forecast: f, points: assembled.points.map((p) => ({ date: p.date, value: p.value })),
+        series: { series_key: assembled.series.series_key, unit: assembled.series.unit, seasonality_days: Number(assembled.series.seasonality_days), subject_entity_id: assembled.series.subject_entity_id ?? null },
+        features: frozen.features.map((x) => ({ key: x.key, source: x.source, digest: x.digest, ...(x.value === undefined ? {} : { value: x.value }) })) });
+      originalOutput = ans.originalOutputDigest; replayedOutput = ans.replayedOutputDigest; replayerDetail = ans.detail;
+      replayedQuantiles = ans.detail['replayed_quantiles'] ?? null;
+      diverged.push(...ans.divergences);
+      const origin = assembled.points[assembled.points.length - 1]?.date ?? null;
+      if (ans.replayedOutputDigest !== null && origin !== dayOf(f['origin_at'])) diverged.push({ what: 'origin', original: dayOf(f['origin_at']), replayed: origin });
+    } else if (reg?.compute === null || reg?.compute === undefined) {
+      diverged.push({ what: 'output', note: `method ${computeRef} has no registered deterministic compute in this process; its output is not recomputed` });
     } else if (assembled.points.length >= 8) {
       const cadence = cadenceOf(assembled.points);
       const steps = stepsFor(Number(f['horizon_days'] ?? HORIZONS[String(f['horizon_code'])]), cadence);
@@ -167,13 +196,13 @@ export class ContextService {
       diverged, fresh: freshReport,
       detail: { method_ref: methodRef, assembler_version: ASSEMBLER_VERSION, environment_differences: envDiff, pinned: { revision_head: frozen.graph.revision_head,
                 twin: frozen.twin === null ? null : { twin_id: frozen.twin.twin_id, version: frozen.twin.version }, known_at: frozen.request.known_at },
-                replayed_quantiles: replayedQuantiles },
+                replayed_quantiles: replayedQuantiles, ...(replayerDetail === null ? {} : { replayer: replayerDetail }) },
     });
     return {
       ...row, forecastId, informationSetId: setId, outcome: row['outcome'], diverged,
       manifest: { original: s['manifest_digest'], replayed: replayed.digest }, output: { original: originalOutput, replayed: replayedOutput },
       environment: { original: f['environment_digest'] ?? null, replayed: env.digest, match: envDiff.length === 0, differences: envDiff },
-      fresh: freshReport,
+      fresh: freshReport, ...(replayerDetail === null ? {} : { replayer: replayerDetail }),
     };
   }
 
@@ -191,7 +220,7 @@ export class ContextService {
     const s = (await cap.readSets().selectAll().where('information_set_id' as never, '=', setId as never).executeTakeFirst()) as Row | undefined;
     if (s === undefined) throw new HttpException(errorBody('EYE_STA_001', correlationId, 'no authorized information set matches'), 404);
     const events = (await cap.readSetEvents().selectAll().where('information_set_id' as never, '=', setId as never).orderBy('occurred_at' as never).execute()) as Row[];
-    const forecasts = (await cap.readForecasts().select(['forecast_id', 'horizon_code', 'method', 'method_version', 'state', 'validation_state', 'label', 'environment_digest', 'known_at'])
+    const forecasts = (await cap.readForecasts().select(['forecast_id', 'horizon_code', 'method', 'method_version', 'method_ref', 'state', 'validation_state', 'label', 'environment_digest', 'known_at'])
       .where('information_set_id' as never, '=', setId as never).orderBy('forecast_id' as never).execute()) as Row[];
     const replays = (await cap.readReplays().selectAll().where('information_set_id' as never, '=', setId as never).orderBy('replayed_at' as never, 'desc').execute()) as Row[];
     return { ...s, known_at: iso(s['known_at']), frozen_at: iso(s['frozen_at']), observed_through: dayOf(s['observed_through']),
@@ -210,6 +239,10 @@ export class ContextService {
       label: f['label'], statement: f['statement'], quantiles: f['quantiles'], known_at: iso(f['known_at']), origin_at: dayOf(f['origin_at']),
       target_at: dayOf(f['target_at']), environment: f['environment'] ?? null, environment_digest: f['environment_digest'] ?? null,
       information_set_id: f['information_set_id'] ?? null,
+      /* B25 completion (G1, G6, G7): a routed forecast's registry reference, kind and target, its outcome (the features it used, the
+         path-dependent view, the options) and its horizon policy with the evaluation profile — what the grounding page shows beside the set */
+      method_ref: f['method_ref'] ?? null, forecast_kind: f['forecast_kind'] ?? null, target_key: f['target_key'] ?? null,
+      outcome: f['outcome_spec'] ?? null, horizon_policy: f['horizon_policy'] ?? null,
     };
     if (f['information_set_id'] === null || f['information_set_id'] === undefined) {
       return { grounded: false, forecast, set: null, replays: [], note: 'this forecast was issued without a frozen information set: nothing pins the graph revision, the twin snapshot or the features it used, and it cannot be replayed' };
