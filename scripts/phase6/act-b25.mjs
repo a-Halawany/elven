@@ -524,6 +524,7 @@ if (GF === null) {
   note(`the grounded forecast ${short(GF.forecast_id)} stands (issued ${iso(GF.issued_at)}) — an earlier run`);
 }
 if (GF) {
+  await renew(eriksen);   // the grounded issue took minutes (32.6 on eye_demo): the session it began with may have lapsed
   const g = await call(`${P}/forecasts/${GF.forecast_id}/grounding`, pe(eriksen, { action: 'prediction.information_set.read', objectType: 'FCT', objectId: GF.forecast_id, ...READ }), {}, eriksen.token);
   const m = g.body?.grounding?.set?.manifest ?? null;
   const tw = m?.twin ?? null; const feats = (m?.features ?? []).map((x) => x.key);
@@ -555,6 +556,7 @@ if (GF) {
     const claim = (await q(`select c.object_id::text id, c.object_version::int v from objects.canonical_objects c where c.tenant_id = $1 and c.domain_id = $2 and c.object_type = 'REL' and c.payload ->> 'subject' = 'MV Hanse Trader' and c.payload ->> 'predicate' = 'transits' and c.payload ->> 'object_value' = 'Suez' and c.lifecycle_state = 'active' order by c.object_version desc limit 1`, [T, D]))[0] ?? null;
     const vessel = (await q(`select e.entity_id::text from graph.edges_current g join graph.entities_current e on e.entity_id = g.subject_entity_id where g.tenant_id = $1 and g.domain_id = $2 and g.claim_object_id = $3 and e.lifecycle_state = 'active' order by g.asserted_at desc limit 1`, [T, D, claim?.id]))[0] ?? null;
     const ont = (await q(`select version_id::text from graph.ontology_versions where tenant_id = $1 and domain_id = $2 and state = 'active' order by version desc limit 1`, [T, D]))[0] ?? null;
+    await renew(mueller);   // the grounded issue and its replay took minutes before this: the session may have lapsed
     const head = await call(`${G}/revisions/head`, dom(mueller, 'graph', { action: 'graph.read', objectType: 'GRV', ...READ }), {}, mueller.token);
     if (claim === null || vessel === null || !head.ok) bad(`the change set cannot be built (claim ${claim ? 'found' : 'absent'}, vessel ${vessel ? 'found' : 'absent'}, head ${head.status})`);
     else {
@@ -739,6 +741,7 @@ else if (ASU_SHARED && ASU_PERSIST && ASU_REVERT) {
 }
 let ENS = null;
 if (RUN) {
+  await renew(eriksen);   // the ensemble's series read took minutes
   const rd = await call(`${P}/ensembles/${RUN.run_id}/read`, pe(eriksen, { action: 'prediction.ensemble.read', objectType: 'ENS', objectId: RUN.run_id, ...READ }), {}, eriksen.token);
   ENS = rd.ok ? rd.body.ensemble : null;
   if (!rd.ok) fail('the ensemble read', rd);
