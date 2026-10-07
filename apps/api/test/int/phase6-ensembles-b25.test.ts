@@ -621,7 +621,7 @@ describe('EN7 · B25 completion G2: the replay of an ensemble (the combination f
     expect(rm['replayer']).toBeUndefined();   // a builtin member: the legacy compute of the register
     // REFUSAL — a member's stored distribution edited after issue (STATED SUPERUSER MOVE): the combination no longer reproduces
     const before = (await sql<{ q: Row }>`select quantiles q from prediction.forecasts_current where forecast_id = ${memberId}::uuid`.execute(su)).rows[0]!.q;
-    await sql`update prediction.forecasts_current set quantiles = ${JSON.stringify({ ...before, q50: Number(before['q50']) + 5 })}::jsonb where forecast_id = ${memberId}::uuid`.execute(su);
+    await sql`update prediction.forecasts_current set quantiles = ${JSON.stringify({ ...before, q10: Number(before['q10']) + 5, q50: Number(before['q50']) + 5, q90: Number(before['q90']) + 5 })}::jsonb where forecast_id = ${memberId}::uuid`.execute(su);
     let d: Row & { outcome: string; diverged: Row[] };
     try { d = (await replay(ensembleId)).replay; } finally { await sql`update prediction.forecasts_current set quantiles = ${JSON.stringify(before)}::jsonb where forecast_id = ${memberId}::uuid`.execute(su); }
     expect(d.outcome).toBe('DIVERGED');

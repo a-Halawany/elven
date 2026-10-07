@@ -261,7 +261,8 @@ describe('B25 §MR · a THE GOVERNED REGISTRY (L6-C03): builtins, proposals, the
         description: 'past the validator (SYNTHETIC)', steward: petrovic.principalId, actor: eriksen.principalId, correlationId: uuidv7() }), targetType: 'FMR', targetId: null, targetVersion: null, outboxEvent: null }));
     await refused(viaPort, /^forecast method rejected \(declarations\): a bayesian method declares the alternative priors/, 422);
     await refused(propose({ methodKey: 'its_unknown', family: 'causal', horizons: ['90d'], description: 'an identification assumption that is not an ASU (SYNTHETIC)', steward: petrovic.principalId,
-      declarations: { intervention: { date: '2023-06-01', description: 'escort convoys begin (SYNTHETIC)' }, identification: { assumptions: [uuidv7()], statement: 'nothing else changed then' }, pre_days: 365, post_days: 90 } }),
+      declarations: { intervention: { date: '2023-06-01', description: 'escort convoys begin (SYNTHETIC)' }, identification: { assumptions: [uuidv7()], statement: 'nothing else changed then' }, pre_days: 365, post_days: 90,
+        transport: { scope: [CORRIDOR], assumptions: [asuOpen], statement: 'the corridor series alone (SYNTHETIC)' } } }),   // B25 completion (G4): a valid transport, so the port's identification check is reached
       /^forecast method rejected \(unknown_assumption\)/, 404);
     await refused(propose({ methodKey: 'seasonal_naive', family: 'event', horizons: ['30d'], description: 'shadowing a builtin (SYNTHETIC)', steward: petrovic.principalId, declarations: { prior: { alpha: 1, beta: 1 } } }),
       /^forecast method rejected \(duplicate\): seasonal_naive is a builtin/, 409);
