@@ -297,7 +297,7 @@ const ecbContract = () => ({
   security_and_operations: { credential_ref: null, authentication_method: 'anonymous (no credential required)',
     authenticity_method: { transport_endpoint: 'TLS certificate verification of the connected endpoint', byte_integrity: 'SHA-256 digest verified pre-store, post-store and on every read',
       source_origin: 'publisher host allowlisted from the contract and pinned at connect time', content_authenticity: 'unknown — this publisher offers no signature mechanism. TLS and digests establish transport and byte integrity, not that the content genuinely originates from the claimed source.' },
-    budgets: { max_requests_per_run: 64, max_bytes_per_run: 33_554_432, max_concurrency: 1, timeout_ms: 60_000, max_retries: 2 },
+    budgets: { max_requests_per_run: 64, max_bytes_per_run: 33_554_432, max_concurrency: 1, timeout_ms: 300_000, max_retries: 2 },   // the run's wall budget: 56 cold windows exceeded 60 s on the rehearsal
     expected_schema: { media_types: ['application/json'], required_fields: ['dataSets'], drift_tolerance: 0, max_bytes: 16_777_216 },
     freshness_expectation: { threshold_seconds: 31_536_000, expected_interval: 'none — a bounded history collected once (1999-01-04 → 2026-09-30)' },
     coverage_expectations: { universe_version: 'v1', denominator_derivation: 'one observation per TARGET business day in [1999-01-04, 2026-09-30]', expected_items_per_window: 1, not_applicable_dimensions: [], not_applicable_reason: null },
@@ -365,7 +365,7 @@ let ECB = await ecbSrc();
     if ((await walked())?.done === 'true') {
       const t = await call(`${O}/sources/${ECB.source_id}/transition`, ob(dvorak, { action: 'observation.source.transition', objectType: 'SRC', objectId: ECB.source_id }),
         { contractVersion: ECB.contract_version, target: 'retired', reason: 'the bounded history is collected (its closed-range walk is done); retired so that nothing is scheduled to collect it again — its evidence stays' }, dvorak.token);
-      if (t.ok) ok('M. Dvořák RETIRED the contract after its one collection — the schedule removed; the evidence stands'); else fail('M. Dvořák retires the contract', t);
+      if (t.ok) ok('M. Dvořák RETIRED the contract once its closed-range walk was done — the schedule removed; the evidence stands'); else fail('M. Dvořák retires the contract', t);
       ECB = await ecbSrc();
     } else bad(`the bounded ECB history's walk is not done — not retired (the runs: ${runs.map((x) => `${x.state} ${x.items_admitted}`).join(', ') || 'none'})`);
   }
