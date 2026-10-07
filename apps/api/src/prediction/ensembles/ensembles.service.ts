@@ -27,6 +27,8 @@ import { PredictionCapability, type ForecastWrites } from '../prediction.capabil
 import { SeriesService, cadenceOf, stepsFor, type AssembledSeries, type Reader } from '../series/series.service.js';
 import { ForecastingService, HORIZONS, MIN_HISTORY_FOR_BACKTEST } from '../forecasting/forecasting.service.js';
 import { forecastIssuedEvent } from '../forecasting/forecast-events.js';   // integration (B25 fold)
+import { registerForecastReplayer } from '../../shared/forecast-environment.js';
+import { ENSEMBLE_COMBINATION_REPLAYER } from './ensemble-replay.js';
 import { forecastWith, SEASONAL_NAIVE, T1_LOW, T1_HIGH, type ForecastOutput, type Point } from '../models/models.js';
 import { CONTEXT_FREEZER, METHOD_ROUTER, type ContextFreezer, type MethodRouter, type FrozenInformationSet } from '../portfolio/seams.js';
 import { EnsembleCapability, type EnsembleReads } from './ensembles.capabilities.js';
@@ -161,7 +163,7 @@ export class EnsemblesService {
     private readonly forecasting: ForecastingService,
     @Inject(METHOD_ROUTER) private readonly router: MethodRouter,
     @Inject(CONTEXT_FREEZER) private readonly freezer: ContextFreezer,
-  ) {}
+  ) { registerForecastReplayer(ENSEMBLE_COMBINATION_REPLAYER); }   // B25 completion (G2): an ensemble row's replay, reached by §CX through the shared register
 
   private env(envelope: Envelope, action: string, objectType: string, objectId: string | null): Envelope {
     return { ...envelope, action, message_id: newId(), object_type: objectType, object_id: objectId,

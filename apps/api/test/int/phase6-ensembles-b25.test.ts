@@ -27,6 +27,10 @@
  *         untouched and restated beside it), revised (v2; v1 superseded), withdrawn, added afresh; an agent refused at the PEP and at the
  *         port, the analyst refused, a member refused, a duplicate, a stale revision, an unordered band, unknown evidence refused.
  *   EN6 · THE BOUNDARY: FORCE RLS on the five tables, the error families mapped, PUBLIC executes no §EN definer function.
+ *   EN7 · B25 completion (G2, F-P4-03) THE REPLAY OF AN ENSEMBLE — the choice: its COMBINATION is recomputed from the members' STORED
+ *         distributions under the declared rule (ensemble-combination@1); each member is replayed on its own. POSITIVE: the scene's ensemble and
+ *         a member REPRODUCED; REFUSAL: a member row edited after issue (a stated superuser move) → the ensemble DIVERGES (member, output);
+ *         RECOVERY: restored → REPRODUCED.
  *
  * Every count is scoped to this harness's tenant (the hosted run shares one database across files).
  */
@@ -595,5 +599,35 @@ describe('EN6 · the boundary', () => {
   it('the runs of this tenant are all finished (no run left live by the harness)', async () => {
     const n = (await sql<{ n: number }>`select count(*)::int n from prediction.ensemble_runs where tenant_id = ${T()}::uuid and state in ('admitted', 'running')`.execute(su)).rows[0]?.n;
     expect(n).toBe(0);
+  });
+});
+
+/* B25 completion (G2): THE REPLAY OF AN ENSEMBLE ROW — the combination recomputed from the members' STORED distributions under the declared
+   rule (ensemble-combination@1, registered by this part in the shared replayer register and reached by §CX's replay route); each member is
+   replayed on its own (here the seasonal-naive member by the legacy compute). SYNTHETIC history. */
+describe('EN7 · B25 completion G2: the replay of an ensemble (the combination from its members\' stored distributions)', () => {
+  it('POSITIVE / REFUSAL / RECOVERY · the scene\'s ensemble and its member REPRODUCED; a member edited after issue DIVERGES the ensemble; restored, REPRODUCED', async () => {
+    const { ContextController: Cc } = await import('../../src/prediction/context/context.controller.js');
+    const C = h.app.get(Cc);
+    const replay = (id: string) => C.replay(h.req(eriksen, 'prediction.forecast.replay', 'FCT', id), T(), D(), id) as unknown as Promise<{ replay: Row & { outcome: string; diverged: Row[] } }>;
+    const e = rec(S['ensemble']); const ensembleId = String(e['forecast_id']);
+    const member = arr(S['members'])[0]!; const memberId = String(member['forecast_id']);
+    const r0 = (await replay(ensembleId)).replay;
+    expect(r0, JSON.stringify(r0.diverged)).toMatchObject({ outcome: 'REPRODUCED', diverged: [] });
+    expect(rec(r0['replayer'])).toMatchObject({ replayer: 'ensemble-combination@1', rule: 'linear_pool@1', weighting_used: 'equal', weights: 'recomputed (1/n)' });
+    expect(arr(rec(r0['replayer'])['members']).map((m) => m['method_ref'])).toEqual(['seasonal_naive@1', 'holt_winters@1']);
+    const rm = (await replay(memberId)).replay;
+    expect(rm, JSON.stringify(rm.diverged)).toMatchObject({ outcome: 'REPRODUCED', diverged: [] });
+    expect(rm['replayer']).toBeUndefined();   // a builtin member: the legacy compute of the register
+    // REFUSAL — a member's stored distribution edited after issue (STATED SUPERUSER MOVE): the combination no longer reproduces
+    const before = (await sql<{ q: Row }>`select quantiles q from prediction.forecasts_current where forecast_id = ${memberId}::uuid`.execute(su)).rows[0]!.q;
+    await sql`update prediction.forecasts_current set quantiles = ${JSON.stringify({ ...before, q50: Number(before['q50']) + 5 })}::jsonb where forecast_id = ${memberId}::uuid`.execute(su);
+    let d: Row & { outcome: string; diverged: Row[] };
+    try { d = (await replay(ensembleId)).replay; } finally { await sql`update prediction.forecasts_current set quantiles = ${JSON.stringify(before)}::jsonb where forecast_id = ${memberId}::uuid`.execute(su); }
+    expect(d.outcome).toBe('DIVERGED');
+    expect(d.diverged.map((x) => x['what'])).toEqual(expect.arrayContaining(['member', 'output']));
+    // RECOVERY — restored: reproduced
+    expect((await replay(ensembleId)).replay.outcome).toBe('REPRODUCED');
+    console.log(`B25 EN7 EVIDENCE · G2 · ensemble ${ensembleId} REPRODUCED by ensemble-combination@1 (linear_pool@1, equal weights recomputed) · member ${memberId} REPRODUCED by the legacy compute · an edited member → DIVERGED (${d.diverged.map((x) => x['what']).join(', ')}) · restored → REPRODUCED`);
   });
 });

@@ -30,7 +30,8 @@
 import { HttpException, Inject, Injectable } from '@nestjs/common';
 import { canonicalHeaderDigest, errorBody, validateHeader, type CanonicalHeader } from '@eye/contracts';
 import { newId } from '../../shared/ids.js';
-import { canonicalDigest } from '../../shared/forecast-environment.js';
+import { canonicalDigest, registerForecastReplayer } from '../../shared/forecast-environment.js';
+import { ROUTED_FAMILY_REPLAYER } from './routed-replay.js';
 import type { ScopeContext } from '../../shared/scope.js';
 import type { ForecastWrites } from '../prediction.capabilities.js';
 import { SeriesService, type AssembledSeries, type Reader } from '../series/series.service.js';
@@ -212,7 +213,7 @@ export class RegistryService {
     private readonly series: SeriesService,
     private readonly forecasting: ForecastingService,
     @Inject(CONTEXT_FREEZER) private readonly freezer: ContextFreezer,
-  ) {}
+  ) { registerForecastReplayer(ROUTED_FAMILY_REPLAYER); }   // B25 completion (G2): the routed families' replay, reached by §CX through the shared register
 
   /**
    * B25 act-found: BEFORE THE WRITE OPENS — the cut-off and the series the routed issue (or the validation) will read, assembled outside the

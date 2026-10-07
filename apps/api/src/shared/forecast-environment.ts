@@ -74,3 +74,49 @@ export function environmentDifferences(a: Record<string, unknown> | null, b: Rec
   const keys = [...new Set([...Object.keys(a), ...Object.keys(b)])].filter((k) => k !== 'digest').sort();
   return keys.filter((k) => JSON.stringify(a[k] ?? null) !== JSON.stringify(b[k] ?? null));
 }
+
+/* ───────────── B25 completion (G2, F-P4-03 "replay of the frozen set") — THE REPLAYER REGISTER ───────────── */
+
+/**
+ * A forecast whose output the register's per-method compute cannot recompute — a ROUTED registry family (§MR: event, regime, bayesian,
+ * causal, optimisation; and a registry method run as an ensemble member) or an ENSEMBLE's combination (§EN) — is replayed by a REPLAYER
+ * its issuing part registers here, so the context part's replay (§CX) reaches it without importing another part's files. The replay hands
+ * the replayer what IT re-read exactly as pinned — the series at the pinned cut-offs and the FROZEN features of the information set — and
+ * the write's transaction (the replayer reads its own pinned records under the caller's row security: the registry entry by version, the
+ * target by version, the members' stored rows). The replayer answers both output digests (the stored output and the recomputed one, by
+ * ONE canonical rule of its own) and what diverged — a mismatch it can name (`implementation`, `target`, `output`, …) is a divergence,
+ * never a crash.
+ */
+export interface ReplayRequest {
+  /** the replay write's transaction (a Kysely transaction) */
+  tx: unknown;
+  /** the forecast row as stored (prediction.forecasts_current) */
+  forecast: Record<string, unknown>;
+  /** the series re-read EXACTLY at the pinned cut-offs (the pinned evidence versions) */
+  points: Array<{ date: string; value: number }>;
+  series: { series_key: string; unit: string; seasonality_days: number; subject_entity_id: string | null };
+  /** the FROZEN features of the forecast's information set (its manifest's), never re-read */
+  features: Array<{ key: string; source: string; digest: string; value?: unknown }>;
+}
+export interface ReplayAnswer {
+  replayer: string;
+  originalOutputDigest: string;
+  /** null: the output was not recomputed (the divergences say why) */
+  replayedOutputDigest: string | null;
+  divergences: Array<{ what: string; original?: unknown; replayed?: unknown; note?: string }>;
+  detail: Record<string, unknown>;
+}
+export interface ForecastReplayer {
+  name: string;
+  /** whether this replayer owns the forecast's output (asked in registration order; the first that answers yes replays it) */
+  handles(forecast: Record<string, unknown>): boolean;
+  replay(r: ReplayRequest): Promise<ReplayAnswer>;
+}
+const REPLAYERS = new Map<string, ForecastReplayer>();
+/** Register (or replace, by name) a replayer; idempotent — each part's providers call it at construction. */
+export function registerForecastReplayer(r: ForecastReplayer): void { REPLAYERS.set(r.name, r); }
+/** The replayer that owns a forecast row's output (undefined: the per-method compute of the register above). */
+export function forecastReplayerFor(forecast: Record<string, unknown>): ForecastReplayer | undefined {
+  for (const r of REPLAYERS.values()) if (r.handles(forecast)) return r;
+  return undefined;
+}
