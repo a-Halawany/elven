@@ -114,7 +114,8 @@ export function validateOverlay(p: Row, cid: string, revising: boolean): Overlay
 /* ───────────────────────── the member computation ───────────────────────── */
 
 /** What the router may additionally offer at integration (§MR): running a registry method. The prelude's legacy router does not. */
-type RunnableRouter = MethodRouter & { run?: (a: { methodRef: string; points: Point[]; steps: number; season: number; tenantId?: string; domainId?: string; horizonCode?: string; seriesKey?: string }) => Promise<ForecastOutput> | ForecastOutput };
+type MemberContext = { tenantId?: string; domainId?: string; horizonCode?: string; seriesKey?: string; features?: Array<{ key: string; source: string; digest: string; value?: unknown }> | null; subjectEntityId?: string | null };
+type RunnableRouter = MethodRouter & { run?: (a: { methodRef: string; points: Point[]; steps: number; season: number } & MemberContext) => Promise<ForecastOutput> | ForecastOutput };
 
 export interface PlannedMember {
   ordinal: number; methodRef: string; family: string; forecastKind: string; available: boolean; unavailableReason: string | null;
@@ -250,6 +251,9 @@ export class EnsemblesService {
       return this.failRun(envelope, principal, tenantId, domainId, run, why, attempts, this.excludeAll(run, why));
     }
     const horizonDays = HORIZONS[run.horizon] as number;
+    // B25 completion (G1): the members compute with the FEATURES of the ensemble's frozen information set (null when ungrounded)
+    const features = run.informationSetId === null ? null : await this.readOne(envelope, principal, tenantId, domainId, (cap) => cap.informationSetFeatures(run.informationSetId as string));
+    started = Date.now();
     const cadence = cadenceOf(assembled.points);
     const steps = stepsFor(horizonDays, cadence);
     const season = cadence === 'daily' ? assembled.series.seasonality_days : 1;
@@ -264,7 +268,8 @@ export class EnsemblesService {
       for (let attempt = 1; attempt <= run.budget.attempts; attempt += 1) {
         const t0 = Date.now();
         try {
-          const out = await this.computeMember(m.methodRef, assembled.points, steps, season, { tenantId, domainId, horizonCode: run.horizon, seriesKey: run.seriesKey });   // integration: the run's context for the router
+          const out = await this.computeMember(m.methodRef, assembled.points, steps, season, { tenantId, domainId, horizonCode: run.horizon, seriesKey: run.seriesKey,
+            features, subjectEntityId: assembled.series.subject_entity_id });   // integration: the run's context for the router (B25 completion: + the frozen features)
           const qs = [out.quantiles.q10, out.quantiles.q50, out.quantiles.q90];
           if (!qs.every(Number.isFinite) || !(qs[0]! <= qs[1]! && qs[1]! <= qs[2]!) || !out.path.every((p) => [p.q10, p.q50, p.q90].every(Number.isFinite))) {
             throw new Error(`${m.methodRef} returned a distribution that is not finite and ordered`);
@@ -308,7 +313,7 @@ export class EnsemblesService {
   }
 
   /** ONE attempt at a member (deterministic for the legacy models; the router's `run` for a registry method). Overridable in harnesses only through the instance. */
-  async computeMember(methodRef: string, points: Point[], steps: number, season: number, ctx: { tenantId?: string; domainId?: string; horizonCode?: string; seriesKey?: string } = {}): Promise<ForecastOutput> {
+  async computeMember(methodRef: string, points: Point[], steps: number, season: number, ctx: MemberContext = {}): Promise<ForecastOutput> {
     const legacy = legacyMethodOf(methodRef);
     if (legacy !== null) return forecastWith(legacy, points, steps, season);
     const run = (this.router as RunnableRouter).run;

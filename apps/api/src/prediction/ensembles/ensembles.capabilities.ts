@@ -50,6 +50,8 @@ export interface EnsembleReads {
   forecast(forecastId: string): Promise<Row | null>;
   /** The FCT canonical payload of a forecast (its latest version) — the ensemble's `ensemble`, `disagreement` and `excluded_models`. */
   forecastPayload(forecastId: string): Promise<Row | null>;
+  /** B25 completion (G1): the FROZEN features of an information set (its manifest's), which the members compute with (null: no such set). */
+  informationSetFeatures(setId: string): Promise<Array<{ key: string; source: string; digest: string; value?: unknown }> | null>;
   /** Every version of every judgement overlay on a forecast, newest first. */
   overlays(forecastId: string): Promise<Row[]>;
   /** The Strategy Graph titles of assumptions (ASU ids → title). */
@@ -105,6 +107,10 @@ class EnsembleCapabilityImpl extends EnsembleCore implements EnsembleWrites, Ove
   async forecast(forecastId: string): Promise<Row | null> {
     const r = await this.rows(sql`select to_jsonb(f) as r from prediction.forecasts_current f where f.forecast_id = ${forecastId}::uuid`);
     return (r[0]?.['r'] as Row | undefined) ?? null;
+  }
+  async informationSetFeatures(setId: string): Promise<Array<{ key: string; source: string; digest: string; value?: unknown }> | null> {
+    const r = await this.rows(sql`select manifest -> 'features' as r from prediction.information_sets where information_set_id = ${setId}::uuid`);
+    return (r[0]?.['r'] as Array<{ key: string; source: string; digest: string; value?: unknown }> | undefined) ?? null;
   }
   async forecastPayload(forecastId: string): Promise<Row | null> {
     const r = await this.rows(sql`select payload as r from objects.canonical_objects where object_type = 'FCT' and object_id = ${forecastId}::uuid order by object_version desc limit 1`);

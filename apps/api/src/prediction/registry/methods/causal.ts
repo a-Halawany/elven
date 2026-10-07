@@ -16,13 +16,45 @@
  *   the fit just before the break (|SMD| < 0.25 is balanced).
  *   SENSITIVITY: the estimate re-computed with pre windows of 0.5×, 0.75×, 1× and 1.25× (what the history allows); the range, and whether
  *   the sign is stable.
+ *   B25 completion (G4, MC-013) — TRANSPORTABILITY: the entry declares where its effect may be carried (declarations.transport {scope: series
+ *   keys and/or subject entity ids, assumptions: ASU ids, statement}). Applied to a series (or a subject) outside that scope it is REFUSED —
+ *   an effect is never transported silently; inside it, the forecast carries the transport assumptions. When the scope names more than
+ *   one series, the effect's consistency across them is reported only when the route read them — a routed issue reads ONE series, so it
+ *   says NOT ASSESSED rather than implying it.
  */
 import { addDays, between, lag1, mean, ols, round, Z90, type Point } from './stats.js';
 
 export const CAUSAL_ITS_REF = 'causal-its';
 
 export interface Intervention { date: string; description: string }
-export interface CausalDeclarations { intervention: Intervention; identification: { assumptions: string[]; statement: string }; pre_days: number; post_days: number; season?: number }
+export interface Transport { scope: string[]; assumptions: string[]; statement: string }
+export interface CausalDeclarations { intervention: Intervention; identification: { assumptions: string[]; statement: string }; pre_days: number; post_days: number; season?: number; transport?: Transport }
+
+const ENTITY_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export interface TransportReport {
+  declared: boolean; in_scope: boolean; applied_to: { series_key: string; subjects: string[] }; matched: string | null;
+  scope: string[]; assumptions: string[]; statement: string | null;
+  consistency: { series_in_scope: number; assessed: false; note: string } | null;
+}
+
+/** Where the entry is applied against where it declared its effect transportable (pure; the routed issue refuses `in_scope: false`). */
+export function transportOf(d: CausalDeclarations, applied: { seriesKey: string; subjects: Array<string | null> }): TransportReport {
+  const subjects = applied.subjects.filter((x): x is string => typeof x === 'string');
+  const t = d.transport;
+  if (t === undefined) {
+    return { declared: false, in_scope: true, applied_to: { series_key: applied.seriesKey, subjects }, matched: null, scope: [], assumptions: [], statement: null,
+             consistency: { series_in_scope: 1, assessed: false, note: 'no transport scope is declared (an entry approved before transport was declared): the effect is claimed for this series alone' } };
+  }
+  const matched = t.scope.find((s) => s === applied.seriesKey) ?? t.scope.find((s) => subjects.some((x) => x.toLowerCase() === s.toLowerCase())) ?? null;
+  const seriesInScope = t.scope.filter((s) => !ENTITY_ID.test(s)).length;
+  return {
+    declared: true, in_scope: matched !== null, applied_to: { series_key: applied.seriesKey, subjects }, matched, scope: [...t.scope], assumptions: [...t.assumptions], statement: t.statement,
+    consistency: seriesInScope > 1
+      ? { series_in_scope: seriesInScope, assessed: false, note: `the declared scope names ${seriesInScope} series; this routed issue reads only ${applied.seriesKey}, so the effect's consistency (sign and magnitude) across them is NOT ASSESSED` }
+      : null,
+  };
+}
 
 interface Estimate { effect: number; se: number; preN: number; postN: number; residualSd: number; rho: number; slope: number; counterfactualMean: number; actualMean: number; residuals: number[] }
 

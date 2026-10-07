@@ -30,6 +30,7 @@
 import { HttpException, Inject, Injectable } from '@nestjs/common';
 import { canonicalHeaderDigest, errorBody, validateHeader, type CanonicalHeader } from '@eye/contracts';
 import { newId } from '../../shared/ids.js';
+import { canonicalDigest } from '../../shared/forecast-environment.js';
 import type { ScopeContext } from '../../shared/scope.js';
 import type { ForecastWrites } from '../prediction.capabilities.js';
 import { SeriesService, type AssembledSeries, type Reader } from '../series/series.service.js';
@@ -279,8 +280,13 @@ export class RegistryService {
     const frozen = await this.freezer.freeze(cap.seamTx, { tenantId, domainId, seriesKey: plan.series_key, subjectEntityId: plan.target?.subject_entity_id ?? null, targetKey: plan.target_key,
       knownAt, observedThrough: a.observedThrough, assumptions: a.assumptions, actor, correlationId });
     const environment = this.freezer.environment(entry.method_ref);
+    /* B25 completion (G7, AI-48-002): the EVALUATION PROFILE the forecast is issued under (the policy and version, the horizon, the validation
+       requirement of the policy's kind rule, the applicable validation record the plan found) and the TARGET VERSION with its definition's
+       digest — pinned on the row (horizon_policy, outcome_spec) and in the FCT@v2 package (horizon_policy, outcome). */
+    const evaluationProfile = evaluationProfileOf(plan, entry, a.horizonCode);
+    const targetPin = targetPinOf(plan.target);
     const horizonPolicy = { policy_id: plan.policy.policy_id, version: plan.policy.version, risk_class: plan.policy.risk_class, horizon: a.horizonCode,
-      confidence_language: plan.confidence_language, treatment: plan.treatment, legacy: plan.policy.legacy === true, route_id: routeId };
+      confidence_language: plan.confidence_language, treatment: plan.treatment, legacy: plan.policy.legacy === true, route_id: routeId, evaluation_profile: evaluationProfile };
     const columns: Row = { forecast_kind: plan.forecast_kind, target_key: plan.target_key, method_ref: entry.method_ref, horizon_policy: horizonPolicy,
       ...(frozen === null ? {} : { information_set_id: frozen.informationSetId }), ...(environment === null ? {} : { environment: { digest: environment.digest, ...environment.facts } }) };
     const planned = plan.methods.map((m) => ({ method_ref: m.method_ref, family: m.family, available: m.available, reason: m.unavailable_reason }));
@@ -292,7 +298,7 @@ export class RegistryService {
     if (entry.family === 'statistical') {
       // THE LEGACY PATH, UNCHANGED: ForecastingService.issue with its leash and its validation; the B25 columns and sections ride along.
       const method = entry.method_key === 'holt_winters' ? HOLT_WINTERS : SEASONAL_NAIVE;
-      const outcomeSpec = { type: 'quantity', series_key: plan.series_key, aggregation: 'value', target_key: plan.target_key };
+      const outcomeSpec = { type: 'quantity', series_key: plan.series_key, aggregation: 'value', target_key: plan.target_key, target: targetPin };
       const assembledPre = this.preFor(pre, plan.series_key, knownAt, a.observedThrough);
       const r = await this.forecasting.issue(cap.forecast, ctx, reader, { seriesKey: plan.series_key, horizonCode: a.horizonCode, knownAt, observedThrough: a.observedThrough,
         assumptions: a.assumptions, refreshCadence: a.refreshCadence, label: a.label, method, ...(assembledPre === undefined ? {} : { assembled: assembledPre }),
@@ -324,7 +330,8 @@ export class RegistryService {
     let result: FamilyResult;
     try {
       result = runFamily(entry, { points, seriesKey: plan.series_key, seriesUnit: assembled.series.unit, seasonality: assembled.series.seasonality_days, horizonCode: a.horizonCode,
-        horizonDays, originAt, targetAt, kind: plan.forecast_kind, target: plan.target });
+        horizonDays, originAt, targetAt, kind: plan.forecast_kind, target: plan.target,
+        features: frozen?.features ?? null, subjectEntityId: assembled.series.subject_entity_id });   // B25 completion (G1, G4): the frozen features; the series' subject
     } catch (e) {
       if (e instanceof FamilyRefusal) {
         await this.refuseRoute(cap, routeId, tenantId, domainId, e.message, e.refusalClass, actor, correlationId);
@@ -367,7 +374,7 @@ export class RegistryService {
     const statement = `${result.claim}; ${validationState.replace(/_/g, ' ')}.`
       + (a.label === 'replay demonstration' ? ' REPLAY DEMONSTRATION — not a live forecast.' : '')
       + (synthetic ? ' SYNTHETIC: at least one evidence version it rests on is synthetic.' : '');
-    const outcomeSpec = { ...result.outcome, target_key: plan.target_key, family: entry.family, language: plan.confidence_language };
+    const outcomeSpec = { ...result.outcome, target_key: plan.target_key, family: entry.family, language: plan.confidence_language, target: targetPin };
     const quantiles = result.quantiles as Row;
     const hasBand = typeof quantiles['q50'] === 'number';
     const now = new Date().toISOString();
@@ -500,6 +507,25 @@ export class RegistryService {
       observations: points.length, synthetic, discipline, details, actor, correlationId });
     return { ...recorded, claim, discipline };
   }
+}
+
+/** B25 completion (G7): the target version a forecast is OF, with the digest of the definition it was computed against (null: no target). */
+export function targetPinOf(t: TargetRow | null): Row | null {
+  return t === null ? null : { target_key: t.target_key, version: Number(t.version), kind: t.kind, unit: t.unit, definition_digest: canonicalDigest(t.definition ?? {}) };
+}
+/** B25 completion (G7): the evaluation profile — the horizon policy and its version, the validation requirement, the applicable record. */
+export function evaluationProfileOf(plan: Plan, entry: PlanMethod, horizon: string): Row {
+  const v = entry.validation;
+  return {
+    policy: { policy_id: plan.policy.policy_id, version: plan.policy.version, risk_class: plan.policy.risk_class, legacy: plan.policy.legacy === true },
+    horizon, forecast_kind: plan.forecast_kind, confidence_language: plan.confidence_language,
+    validation_requirement: rec(plan.policy.kind_rule)['validation'] ?? { required: false },
+    validation_ref: v.validation_id === undefined && v.backtest_id === undefined ? null
+      : { validation_id: v.validation_id ?? null, backtest_id: v.backtest_id ?? null, mode: v.mode ?? null, origins: v.origins ?? null, passed: v.passed ?? null, synthetic: v.synthetic ?? null, window_to: v.window_to ?? null },
+    statement: v.validation_id === undefined && v.backtest_id === undefined
+      ? `no validation record applies to ${entry.method_ref} at ${horizon}; the forecast's validation state says what is (not) claimed`
+      : `${entry.method_ref} at ${horizon} is evaluated against validation ${v.validation_id ?? v.backtest_id} (${v.mode ?? 'retrospective'}, ${v.origins ?? '?'} origins, ${v.passed === true ? 'passed' : 'not passed'})`,
+  };
 }
 
 function addDays(day: string, n: number): string {
