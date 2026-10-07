@@ -12,6 +12,7 @@
  *   L3 · THE GROUNDED ISSUE (forecasts/issue-grounded): issued and pinned.
  *   L4 · THE REPLAY of it: REPRODUCED.
  *   L5 · REFUSALS UNCHANGED: a refused plan reads no series (fast) and is ledgered as before; an unknown series is refused as before.
+ *   L6 · THE LEGACY ISSUE (forecasts/issue, the route the scheduler-era callers use): issued (found after the act: the same read inside its write).
  *
  * SYNTHETIC history (the phase-4 fixture). The slow read is a spy delaying SeriesService.assemble by 61 s (fixture, said): ~5 minutes.
  */
@@ -38,6 +39,7 @@ process.env['EYE_VAULT_EXPORT_ROOT'] = join(VAULT_DIR, 'export');
 type Row = Record<string, unknown>;
 const SLOW_MS = 61_000;
 let h: Phase4Harness; let series: SeriesService; let C: ContextController;
+let P: import('../../src/prediction/prediction.controller.js').PredictionController;
 let rg: import('../../src/prediction/registry/registry.controller.js').RegistryController;
 let eriksen: AuthenticatedPrincipal; let petrovic: AuthenticatedPrincipal; let weber: AuthenticatedPrincipal;
 let SERIES = ''; let ASU = ''; let GROUNDED = '';
@@ -64,7 +66,7 @@ beforeAll(async () => {
   const { RegistryController: Rc } = await import('../../src/prediction/registry/registry.controller.js');
   const { PredictionController: Pc } = await import('../../src/prediction/prediction.controller.js');
   const { GraphController: Gc } = await import('../../src/graph/graph.controller.js');
-  rg = h.app.get(Rc); const prediction = h.app.get(Pc); const graph = h.app.get(Gc);
+  rg = h.app.get(Rc); const prediction = h.app.get(Pc); P = prediction; const graph = h.app.get(Gc);
   eriksen = await h.humanWithSession(['forecast_owner'], 'b25l-n-eriksen');
   petrovic = await h.humanWithSession(['method_steward'], 'b25l-h-petrovic');
   weber = await h.humanWithSession(['strategy_owner'], 'b25l-j-weber');
@@ -113,6 +115,11 @@ describe('B25 act-found · the series is read before the write opens (a long his
     const r = await slowly(() => C.replay(h.req(eriksen, 'prediction.forecast.replay', 'FCT', GROUNDED, 'prediction'), T(), D(), GROUNDED) as unknown as Promise<{ replay: Row }>);
     expect(r.replay['outcome']).toBe('REPRODUCED');
   }, 400_000);
+
+  it('L6 · the LEGACY ISSUE (forecasts/issue) on a slow history is ISSUED', async () => {
+    const out = await slowly(() => P.issueForecast(h.req(eriksen, 'prediction.forecast.issue', 'FCT', null, 'prediction'), T(), D(), { payload: { seriesKey: SERIES, horizon: '180d', assumptions: [ASU], method: 'seasonal-naive' } }) as Promise<{ forecast: Row }>);
+    expect(out.forecast['forecastId']).toBeDefined();
+  }, 300_000);
 
   it('L5 · REFUSALS UNCHANGED: a refused plan reads no series and is ledgered; an unknown series is refused as before', async () => {
     const spy = vi.spyOn(series, 'assemble');

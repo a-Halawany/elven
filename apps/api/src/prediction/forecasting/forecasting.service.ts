@@ -110,6 +110,15 @@ export class ForecastingService {
   constructor(private readonly series: SeriesService) {}
 
   /**
+   * B25 act-found (the legacy route too): the series as a write route assembles it BEFORE its write opens — a long real history outlives the
+   * write's 60-second commit capability when assembled inside it. Pass the result to issue() as `assembled`; issue() uses it only when it
+   * matches (series, knownAt, observedThrough), otherwise it assembles as before.
+   */
+  async preAssemble(reader: Reader, seriesKey: string, knownAt: string, observedThrough: string | null): Promise<AssembledSeries> {
+    return this.series.assemble(reader, seriesKey, knownAt, observedThrough);
+  }
+
+  /**
    * The backtest that APPLIES to a forecast: same series, horizon and method
    * version; computed on evidence known no later than the forecast's own cut-off;
    * over history that ends no later than the forecast's origin; with enough
