@@ -96,7 +96,10 @@ function callLong(path, over, payload = {}, token = null) {
       let data = ''; res.setEncoding('utf8'); res.on('data', (c) => { data += c; });
       res.on('end', () => { let b = {}; try { b = JSON.parse(data); } catch { b = { raw: data.slice(0, 300) }; } resolve({ ok: res.statusCode >= 200 && res.statusCode < 300, status: res.statusCode, body: b }); });
     });
-    req.setTimeout(0); req.on('error', reject); req.end(body);
+    // keep the idle socket alive while the server reads for minutes; a transport error is an answer (status 0), not a crash — the
+    // act is rerun-safe: whatever the server completed is found and stands on the next run
+    req.on('socket', (sock) => sock.setKeepAlive(true, 30_000));
+    req.setTimeout(0); req.on('error', (e) => resolve({ ok: false, status: 0, body: { code: e.code ?? 'TRANSPORT', message: `the connection failed before an answer: ${e.message}` } })); req.end(body);
   });
 }
 const ENV_OUT = {};
