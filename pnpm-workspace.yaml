@@ -19,7 +19,11 @@ overrides:
   # EXACT REVIEWED VERSION, not a range, for the reason recorded below for nanoid: 0.35.4 is the
   # first version carrying the fix (the advisory states "patched >=0.35.4") and stays on the 0.35
   # line next declares (^0.35.3), so nothing is forced across a semver minor.
-  sharp: 0.35.4
+  # C15 on #81 (ci 37633376331 at 62ff011, 2026-10-07): sharp <0.35.5 carries GHSA-wq5f-xc86-pv6w (HIGH), published after
+  # #80's green run (the lockfile unchanged since). EXACT REVIEWED VERSION: 0.35.5 is the first patched version, on the 0.35
+  # line next declares; it carries the same dependencies and the same 25 optional platform packages (their versions moved
+  # with it: @img/sharp-* 0.35.5, @img/sharp-libvips-* 1.3.4), so the development closure's component count is unchanged.
+  sharp: 0.35.5
   # C15 at 9aaf0311: multer <2.3.0 carries CVE-2026-77037, CVE-2026-77078 and CVE-2026-82333 (HIGH —
   # denial of service via a file-descriptor leak on aborted requests, crafted multipart field names
   # and an oversized array index). Reached transitively through @nestjs/platform-express, which
