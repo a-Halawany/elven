@@ -297,11 +297,15 @@ const ecbContract = () => ({
   security_and_operations: { credential_ref: null, authentication_method: 'anonymous (no credential required)',
     authenticity_method: { transport_endpoint: 'TLS certificate verification of the connected endpoint', byte_integrity: 'SHA-256 digest verified pre-store, post-store and on every read',
       source_origin: 'publisher host allowlisted from the contract and pinned at connect time', content_authenticity: 'unknown — this publisher offers no signature mechanism. TLS and digests establish transport and byte integrity, not that the content genuinely originates from the claimed source.' },
-    budgets: { max_requests_per_run: 2, max_bytes_per_run: 33_554_432, max_concurrency: 1, timeout_ms: 300_000, max_retries: 2 },
+    budgets: { max_requests_per_run: 64, max_bytes_per_run: 33_554_432, max_concurrency: 1, timeout_ms: 60_000, max_retries: 2 },
     expected_schema: { media_types: ['application/json'], required_fields: ['dataSets'], drift_tolerance: 0, max_bytes: 16_777_216 },
     freshness_expectation: { threshold_seconds: 31_536_000, expected_interval: 'none — a bounded history collected once (1999-01-04 → 2026-09-30)' },
     coverage_expectations: { universe_version: 'v1', denominator_derivation: 'one observation per TARGET business day in [1999-01-04, 2026-09-30]', expected_items_per_window: 1, not_applicable_dimensions: [], not_applicable_reason: null },
-    correction_channel: 'none: a bounded history; a restatement is a new source version' },
+    correction_channel: 'none: a bounded history; a restatement is a new source version',
+    // THE BOUNDED QUERY, WALKED: the platform's egress timeout (eye.connector.request_timeout_ms, 20 s by default, 120 s at most) is shorter
+    // than the ECB portal's answer to the whole range on a cold cache (~250 s, a gateway 504 after ~10 s) — so the same bounded range
+    // 1999-01-04 → 2026-09-30 is collected by the closed-range backfill in half-year windows (each a date-bounded query of the same endpoint)
+    backfill: { strategy: 'period-range', endpoint: `${ECB_BASE}?format=jsondata`, from: '1999-01-04', to: '2026-10-01', window_days: 183, start_param: 'startPeriod', end_param: 'endPeriod' } },
   lifecycle: { contract_version: 1, effective_from: '2026-10-06T00:00:00Z', effective_to: null, supersedes_version: null },
 });
 const ecbSrc = async () => (await q(`select source_id::text, contract_version, lifecycle_state, rights_state, acquisition_mode, data_origin, endpoints from observation.source_contracts_current where tenant_id = $1 and domain_id = $2 and source_key = $3 order by contract_version desc limit 1`, [T, D, ECB_KEY]))[0] ?? null;
@@ -311,7 +315,7 @@ let ECB = await ecbSrc();
   const ob = (s, over) => dom(s, 'observation', over);
   if (ECB === null) {
     const r = await call(`${O}/sources/register`, ob(hoffmann, { action: 'observation.source.register', objectType: 'SRC' }), { contract: ecbContract() }, hoffmann.token);
-    if (!r.ok) fail('A. Hoffmann registers ecb-eurusd-history', r); else ok(`A. Hoffmann REGISTERED "${ecbContract().name}" (source ${short(r.body.source.sourceId)}, contract v${r.body.source.contractVersion}, ${r.body.source.lifecycleState}): live, REAL, ONE date-bounded endpoint ${ECB_ENDPOINT.replace(ECB_BASE, '…/EXR/D.USD.EUR.SP00.A')}, no backfill`);
+    if (!r.ok) fail('A. Hoffmann registers ecb-eurusd-history', r); else ok(`A. Hoffmann REGISTERED "${ecbContract().name}" (source ${short(r.body.source.sourceId)}, contract v${r.body.source.contractVersion}, ${r.body.source.lifecycleState}): live, REAL, the date-bounded query ${ECB_ENDPOINT.replace(ECB_BASE, '…/EXR/D.USD.EUR.SP00.A')} walked as a closed-range backfill in 183-day windows (1999-01-04 → 2026-09-30)`);
     ECB = await ecbSrc();
   } else note(`the bounded history source ${ECB_KEY} stands (${short(ECB.source_id)} v${ECB.contract_version}, ${ECB.lifecycle_state}) — an earlier run`);
   if (ECB?.lifecycle_state === 'draft') {
@@ -346,20 +350,24 @@ let ECB = await ecbSrc();
     for (let i = 0; i < 300 && runs.some((x) => x.state === 'running'); i += 1) { await sleep(2000); runs = await ecbRuns(ECB.source_id); }
     // the command form when nothing collected it: the ECB portal answers a COLD full-range query with a 504 from its gateway (~10 s) while
     // its backend computes, and serves it once warm — so M. Dvořák retries, a minute apart, at most six times; every attempt is a recorded run
-    for (let attempt = 1; attempt <= 6 && !runs.some((x) => x.state === 'finished' && Number(x.items_admitted) > 0); attempt += 1) {
-      if (attempt > 1) await sleep(60_000);
+    const walked = async () => (await q(`select e.details -> 'checkpoint' -> 'backfill' ->> 'done' done, e.details -> 'checkpoint' -> 'backfill' ->> 'cursor' cursor from observation.collection_run_events e
+      join observation.collection_runs_current r on r.run_id = e.run_id where r.source_id = $1 and e.event = 'run.checkpointed' order by e.occurred_at desc limit 1`, [ECB.source_id]))[0] ?? null;
+    // the walk: as many runs as it takes (each inside the contract's budget), a failed attempt retried after half a minute — twelve attempts at most
+    for (let attempt = 1; attempt <= 12 && (await walked())?.done !== 'true'; attempt += 1) {
+      if (attempt > 1 && runs.length > 0 && runs[runs.length - 1].state !== 'finished') await sleep(30_000);
       const c = await call(`${O}/sources/${ECB.source_id}/collect`, ob(dvorak, { action: 'observation.run.trigger', objectType: 'RUN', consequence: 'C1' }), { contractVersion: Number(ECB.contract_version) }, dvorak.token);
-      if (c.ok) (c.body.run.state === 'finished' ? ok : note)(`M. Dvořák COLLECTED it (the command form, attempt ${attempt}): run ${short(c.body.run.runId)} ${c.body.run.state} — ${c.body.run.admitted} admitted, ${c.body.run.noop} unchanged${c.body.run.reason ? ` (${c.body.run.reason})` : ''}`);
+      if (c.ok) { const w = await walked(); (c.body.run.state === 'finished' ? ok : note)(`M. Dvořák COLLECTED it (the command form, attempt ${attempt}): run ${short(c.body.run.runId)} ${c.body.run.state} — ${c.body.run.admitted} admitted, ${c.body.run.noop} unchanged${c.body.run.reason ? ` (${c.body.run.reason})` : ''}; the walk ${w?.done === 'true' ? 'DONE' : `at ${w?.cursor ?? 'its start'}`}`); }
+      else if (c.status === 409) { note(`M. Dvořák's collection (attempt ${attempt}) waits: ${String(c.body?.message ?? '').slice(0, 160)}`); for (let i = 0; i < 300 && (await ecbRuns(ECB.source_id)).some((x) => x.state === 'running'); i += 1) await sleep(2000); }
       else fail(`M. Dvořák collects (attempt ${attempt})`, c);
       runs = await ecbRuns(ECB.source_id);
     }
     note(`the collection runs of ${ECB_KEY}: ${runs.map((x) => `${short(x.run_id)} ${x.state}${x.failure_reason ? ` [${String(x.failure_reason).slice(0, 120)}]` : ''} (${x.items_admitted} admitted, ${x.items_noop} unchanged) at ${iso(x.started_at)}`).join('; ')}`);
-    if (runs.some((x) => x.state === 'finished' && Number(x.items_admitted) > 0)) {
+    if ((await walked())?.done === 'true') {
       const t = await call(`${O}/sources/${ECB.source_id}/transition`, ob(dvorak, { action: 'observation.source.transition', objectType: 'SRC', objectId: ECB.source_id }),
-        { contractVersion: ECB.contract_version, target: 'retired', reason: 'the bounded history is collected (one run); retired so that nothing is scheduled to collect it again — its evidence stays' }, dvorak.token);
+        { contractVersion: ECB.contract_version, target: 'retired', reason: 'the bounded history is collected (its closed-range walk is done); retired so that nothing is scheduled to collect it again — its evidence stays' }, dvorak.token);
       if (t.ok) ok('M. Dvořák RETIRED the contract after its one collection — the schedule removed; the evidence stands'); else fail('M. Dvořák retires the contract', t);
       ECB = await ecbSrc();
-    } else bad(`no finished collection admitted the bounded ECB history — not retired (the runs: ${runs.map((x) => x.state).join(', ') || 'none'})`);
+    } else bad(`the bounded ECB history's walk is not done — not retired (the runs: ${runs.map((x) => `${x.state} ${x.items_admitted}`).join(', ') || 'none'})`);
   }
   const sched = ECB === null ? [] : await q(`select status, cadence_seconds from observation.scheduler_entries where source_id = $1`, [ECB.source_id]);
   const evd = ECB === null ? [] : await q(`select count(*)::int n, sum((payload ->> 'byte_length')::bigint)::bigint bytes, min(recorded_at) at from objects.canonical_objects where object_type = 'EVD' and provenance_ref like $1`, [`SRC:${ECB.source_id}@%`]);
