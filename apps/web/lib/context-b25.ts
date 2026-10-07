@@ -33,7 +33,9 @@ export interface ReplayRow {
 export interface GroundingView {
   grounded: boolean; note?: string;
   forecast: { forecast_id: string; series_key: string; horizon_code: string; method: string; method_version: string; state: string; validation_state: string; label: string; statement: string;
-              known_at: string; origin_at: string | null; target_at: string | null; environment: Row | null; environment_digest: string | null; information_set_id: string | null };
+              known_at: string; origin_at: string | null; target_at: string | null; environment: Row | null; environment_digest: string | null; information_set_id: string | null;
+              /* B25 completion: a routed forecast's reference, kind, target, outcome and horizon policy (absent on a legacy forecast) */
+              method_ref?: string | null; forecast_kind?: string | null; target_key?: string | null; outcome?: Row | null; horizon_policy?: Row | null };
   set: SetView | null; replays: ReplayRow[];
 }
 export type SetListRow = Row & { information_set_id: string; series_key: string; known_at: string; manifest_digest: string; revision_head: number; twin_id: string | null; twin_version: number | null; frozen_at: string; coverage_gaps: Gap[] };
@@ -121,4 +123,39 @@ export function environmentFacts(env: Row | null): string {
   if (env === null) return 'no environment recorded (an ungrounded forecast)';
   const impl = env['implementation_digest'] === null || env['implementation_digest'] === undefined ? 'implementation unregistered' : `implementation ${short(env['implementation_digest'], 12)}`;
   return `node ${String(env['node'])} · ${String(env['platform'])}/${String(env['arch'])} · ${String(env['method_ref'])} · ${impl} · ${String(env['assembler_version'])}`;
+}
+
+/* ───────────── B25 completion — a ROUTED forecast's inputs used (G1), its long-horizon view (G6) and its pins (G7), as the server sent them ───────────── */
+
+/** Each frozen feature the routed method computed with: its value, its digest, whether its condition held. */
+export function usedFeatureLines(outcome: Row | null | undefined): string[] {
+  const used = Array.isArray(outcome?.['features_used']) ? (outcome['features_used'] as Row[]) : [];
+  return used.map((u) => `${String(u['key'])} = ${String(u['value'])} · digest ${short(u['digest'], 12)} · ${u['held'] === true ? 'condition HELD' : 'condition did not hold'}`);
+}
+/** The path-dependent view's own statement (scenario language), or null when the forecast carries none. */
+export function pathViewLine(outcome: Row | null | undefined): string | null {
+  const p = outcome?.['path_dependence'];
+  return p !== null && typeof p === 'object' && typeof (p as Row)['statement'] === 'string' ? String((p as Row)['statement']) : null;
+}
+/** The declared options: each one's expected payoff and resilience, then the option value — or [] when none is declared. */
+export function optionLines(outcome: Row | null | undefined): string[] {
+  const o = outcome?.['options'];
+  if (o === null || typeof o !== 'object') return [];
+  const r = o as Row;
+  const rows = (Array.isArray(r['options']) ? (r['options'] as Row[]) : []).map((x) => `${String(x['label'])}: expected ${String(x['expected'])}, resilience ${String(x['resilience'])} (worst regime ${String(x['worst_regime'])})`);
+  return [...rows, `option value of flexibility ${String(r['option_value'])} · best single commitment ${String((r['best_commitment'] as Row | undefined)?.['key'] ?? '—')} · most resilient ${String((r['most_resilient'] as Row | undefined)?.['key'] ?? '—')}`];
+}
+/** The target version and the evaluation profile the forecast pins (G7). */
+export function pinLines(f: { target_key?: string | null; outcome?: Row | null; horizon_policy?: Row | null }): string[] {
+  const out: string[] = [];
+  const t = f.outcome?.['target'];
+  if (t !== null && typeof t === 'object') out.push(`target ${String((t as Row)['target_key'])} v${String((t as Row)['version'])} · definition ${short((t as Row)['definition_digest'], 12)}`);
+  else if (f.target_key === null || f.target_key === undefined) out.push('no target — a series forecast');
+  const p = f.horizon_policy?.['evaluation_profile'];
+  if (p !== null && typeof p === 'object') {
+    const e = p as Row; const pol = (e['policy'] ?? {}) as Row; const req = (e['validation_requirement'] ?? {}) as Row;
+    out.push(`evaluation profile · ${pol['legacy'] === true || pol['policy_id'] === null ? 'the legacy rule' : `horizon policy ${String(pol['risk_class'] ?? '')} v${String(pol['version'])}`} · `
+      + `${req['required'] === true ? `requires ${String(req['kind'])} ≥ ${String(req['min_origins'])} origins` : 'no validation required'} · ${e['validation_ref'] === null || e['validation_ref'] === undefined ? 'no applicable record' : `record ${short(((e['validation_ref'] as Row)['validation_id'] ?? (e['validation_ref'] as Row)['backtest_id']), 8)}`}`);
+  }
+  return out;
 }

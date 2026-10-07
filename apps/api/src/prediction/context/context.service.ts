@@ -220,7 +220,7 @@ export class ContextService {
     const s = (await cap.readSets().selectAll().where('information_set_id' as never, '=', setId as never).executeTakeFirst()) as Row | undefined;
     if (s === undefined) throw new HttpException(errorBody('EYE_STA_001', correlationId, 'no authorized information set matches'), 404);
     const events = (await cap.readSetEvents().selectAll().where('information_set_id' as never, '=', setId as never).orderBy('occurred_at' as never).execute()) as Row[];
-    const forecasts = (await cap.readForecasts().select(['forecast_id', 'horizon_code', 'method', 'method_version', 'state', 'validation_state', 'label', 'environment_digest', 'known_at'])
+    const forecasts = (await cap.readForecasts().select(['forecast_id', 'horizon_code', 'method', 'method_version', 'method_ref', 'state', 'validation_state', 'label', 'environment_digest', 'known_at'])
       .where('information_set_id' as never, '=', setId as never).orderBy('forecast_id' as never).execute()) as Row[];
     const replays = (await cap.readReplays().selectAll().where('information_set_id' as never, '=', setId as never).orderBy('replayed_at' as never, 'desc').execute()) as Row[];
     return { ...s, known_at: iso(s['known_at']), frozen_at: iso(s['frozen_at']), observed_through: dayOf(s['observed_through']),
@@ -239,6 +239,10 @@ export class ContextService {
       label: f['label'], statement: f['statement'], quantiles: f['quantiles'], known_at: iso(f['known_at']), origin_at: dayOf(f['origin_at']),
       target_at: dayOf(f['target_at']), environment: f['environment'] ?? null, environment_digest: f['environment_digest'] ?? null,
       information_set_id: f['information_set_id'] ?? null,
+      /* B25 completion (G1, G6, G7): a routed forecast's registry reference, kind and target, its outcome (the features it used, the
+         path-dependent view, the options) and its horizon policy with the evaluation profile — what the grounding page shows beside the set */
+      method_ref: f['method_ref'] ?? null, forecast_kind: f['forecast_kind'] ?? null, target_key: f['target_key'] ?? null,
+      outcome: f['outcome_spec'] ?? null, horizon_policy: f['horizon_policy'] ?? null,
     };
     if (f['information_set_id'] === null || f['information_set_id'] === undefined) {
       return { grounded: false, forecast, set: null, replays: [], note: 'this forecast was issued without a frozen information set: nothing pins the graph revision, the twin snapshot or the features it used, and it cannot be replayed' };

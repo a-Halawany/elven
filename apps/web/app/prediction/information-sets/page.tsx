@@ -66,7 +66,7 @@ export default function InformationSetsPage() {
           {open.forecasts.length === 0 ? <Empty>no forecast pins this set</Empty> : (
             <ul>{open.forecasts.map((x) => (
               <li key={String(x['forecast_id'])}>
-                <Link href={`/prediction/forecasts/${String(x['forecast_id'])}/grounding`}>{String(x['horizon_code'])} · {String(x['method'])}@{String(x['method_version'])} · {String(x['state'])}</Link>
+                <Link href={`/prediction/forecasts/${String(x['forecast_id'])}/grounding`}>{String(x['horizon_code'])} · {x['method_ref'] === null || x['method_ref'] === undefined ? `${String(x['method'])}@${String(x['method_version'])}` : String(x['method_ref'])} · {String(x['state'])}</Link>
               </li>
             ))}</ul>
           )}

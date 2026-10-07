@@ -12,6 +12,12 @@
  * What is asserted is what the record says on screen — never a state derived here. Screenshots go to EYE_SHOTS (evidence/phase6-browser/b25-context-*.png).
  * Personas: the forecaster N. Eriksen (EYE_B25_FORECASTER, default `n.eriksen`), the reader A. Hoffmann (EYE_B25_READER, default `a.hoffmann`).
  * Every figure is SYNTHETIC.
+ *
+ * B25 completion (the act's B25-F3b): the ROUTED, GROUNDED 5y regime on the Suez Canal series by regime_judgement@2 (EYE_B25_CONDITIONED_SET)
+ * — the twin's and the graph's frozen features it USED (value, digest, held), the path-dependent view, the declared options' value and
+ * resilience, the target version and the evaluation profile it pins, its replay REPRODUCED by the registry's replayer — and the F1 30d EVENT
+ * forecast's replay REPRODUCED the same way (EYE_B25_EVENT_SET). THE LIMITS ON SCREEN: scenario language, never validated; the options
+ * DECLARED, not measured. Each set is opened by its id (the act's env lines): a series carries several sets.
  */
 import { expect as baseExpect, test, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
@@ -31,6 +37,13 @@ const shot = (page: Page, name: string) => page.screenshot({ path: join(SHOTS, `
 const FORECASTER = process.env['EYE_B25_FORECASTER'] ?? 'n.eriksen';
 const READER = process.env['EYE_B25_READER'] ?? 'a.hoffmann';
 const SERIES = process.env['EYE_B25_GROUNDED_SERIES'] ?? 'portwatch:chokepoint1:n_total';
+const GROUNDED_SET = process.env['EYE_B25_GROUNDED_SET'] ?? '';
+const CONDITIONED_SET = process.env['EYE_B25_CONDITIONED_SET'] ?? '';
+const CONDITIONED_METHOD = process.env['EYE_B25_CONDITIONED_METHOD'] ?? 'regime_judgement@2';
+const SUEZ_TARGET = process.env['EYE_B25_SUEZ_TARGET'] ?? 'corridor.suez-canal.transit-regime';
+const EVENT_SET = process.env['EYE_B25_EVENT_SET'] ?? '';
+const EVENT_SERIES = process.env['EYE_B25_SERIES'] ?? 'portwatch:chokepoint4:n_total';
+const esc = (t: string): string => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 async function uiLogin(page: Page, username: string, password: string): Promise<void> {
   await page.goto('/login');
@@ -39,16 +52,18 @@ async function uiLogin(page: Page, username: string, password: string): Promise<
   await page.getByRole('button', { name: 'Sign in' }).click();
   await page.waitForURL((u) => !u.pathname.startsWith('/login'));
 }
-/** From the prediction nav to the newest set of the corridor series, then to the grounding of the forecast that pins it. */
-async function openGrounding(page: Page): Promise<void> {
+/** From the prediction nav to a set (by the id the act recorded; else the newest set of the series), then to the grounding of the forecast
+ *  that pins it — the link named by its horizon (and method). */
+async function openGrounding(page: Page, o: { setId?: string; series?: string; horizon?: string; link?: RegExp } = {}): Promise<void> {
+  const series = o.series ?? SERIES; const horizon = o.horizon ?? '30d'; const setId = o.setId ?? GROUNDED_SET;
   await page.goto('/prediction');
   await page.getByRole('navigation', { name: 'Prediction' }).getByRole('link', { name: /Information sets/ }).click();
   await expect(page.getByRole('heading', { name: 'Information sets', level: 1 })).toBeVisible();
   const sets = page.getByRole('table', { name: 'Information sets' });
-  const row = sets.getByRole('row').filter({ hasText: SERIES }).first();
-  await row.getByRole('button', { name: /^Open / }).click();
-  await page.getByRole('link', { name: /^30d · / }).first().click();
-  await expect(page.getByRole('heading', { name: `Grounding — ${SERIES} · 30d`, level: 1 })).toBeVisible();
+  if (setId !== '') await sets.getByRole('button', { name: `Open ${setId.slice(0, 8)}…` }).click();
+  else await sets.getByRole('row').filter({ hasText: series }).first().getByRole('button', { name: /^Open / }).click();
+  await page.getByRole('link', { name: o.link ?? new RegExp(`^${horizon} · `) }).first().click();
+  await expect(page.getByRole('heading', { name: `Grounding — ${series} · ${horizon}`, level: 1 })).toBeVisible();
 }
 
 test.describe.serial('CP-6 B25 §CX — grounded context and the replay on the demonstration', () => {
@@ -85,5 +100,37 @@ test.describe.serial('CP-6 B25 §CX — grounded context and the replay on the d
     await expect(page.getByText('a replay is recorded by the forecast owner')).toBeVisible();
     await expect(page.getByRole('table', { name: 'Replays' })).toContainText('REPRODUCED');
     await shot(page, 'b25-context-03-reader');
+  });
+
+  test('B25 COMPLETION — THE ROUTED REGIME: the twin\'s and the graph\'s frozen features it used, the path-dependent view, the declared options, the pins; its replay REPRODUCED by the registry\'s replayer; scenario language, never validated', async ({ page }) => {
+    test.skip(CONDITIONED_SET === '', 'EYE_B25_CONDITIONED_SET is not set (the act\'s B25-F3b did not run)');
+    await uiLogin(page, FORECASTER, required('EYE_TEST_ADMIN_PASSWORD'));
+    await openGrounding(page, { setId: CONDITIONED_SET, horizon: '5y', link: new RegExp(`^5y · ${esc(CONDITIONED_METHOD)}`) });
+    const routed = page.getByRole('region', { name: 'The routed model' });
+    await expect(routed).toContainText(/twin\.shock\.corridor_delay_days = \d+ · digest [0-9a-f]{12}… · condition HELD/);
+    await expect(routed).toContainText(/graph\.edges = \d+ · digest [0-9a-f]{12}… · condition (HELD|did not hold)/);
+    await expect(routed).toContainText('THE PATH-DEPENDENT VIEW (scenario language, not a validated forecast)');
+    await expect(routed).toContainText(/option value of flexibility [\d.]+ · best single commitment \w+ · most resilient \w+/);
+    await expect(routed).toContainText(new RegExp(`target ${esc(SUEZ_TARGET)} v\\d+ · definition [0-9a-f]{12}…`));
+    await expect(routed).toContainText(/evaluation profile · horizon policy standard v\d+ · no validation required/);
+    // the twin feature the condition read is the pinned twin version's own
+    await expect(page.getByRole('table', { name: 'Twin snapshot' })).toContainText('twin.shock.corridor_delay_days');
+    // THE LIMITS on screen: scenario language, never validated; the options declared, not measured
+    await expect(page.getByText(/^SCENARIO LANGUAGE, NOT A VALIDATED FORECAST/)).toBeVisible();
+    await expect(page.getByText(/DECLARED with the entry \(approved by its steward\), not measured/)).toBeVisible();
+    const replays = page.getByRole('table', { name: 'Replays' });
+    await expect(replays.getByRole('row').filter({ hasText: 'REPRODUCED' }).filter({ hasText: 'registry-family@1' })).toHaveCount(1);
+    await expect(replays).not.toContainText('DIVERGED');
+    await shot(page, 'b25-context-04-routed-regime');
+  });
+
+  test('B25 COMPLETION — THE F1 30d EVENT\'s replay: REPRODUCED by the registry\'s replayer from its frozen set', async ({ page }) => {
+    test.skip(EVENT_SET === '', 'EYE_B25_EVENT_SET is not set');
+    await uiLogin(page, READER, required('EYE_TEST_ADMIN_PASSWORD'));
+    await openGrounding(page, { setId: EVENT_SET, series: EVENT_SERIES, horizon: '30d', link: /^30d · event_rate@1/ });
+    const replays = page.getByRole('table', { name: 'Replays' });
+    await expect(replays.getByRole('row').filter({ hasText: 'REPRODUCED' }).filter({ hasText: 'registry-family@1' })).toHaveCount(1);
+    await expect(replays).toContainText('nothing diverged');
+    await shot(page, 'b25-context-05-event-replay');
   });
 });
