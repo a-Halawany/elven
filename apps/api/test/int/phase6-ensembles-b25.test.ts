@@ -262,7 +262,14 @@ describe('EN1–EN3 · the scene: two methods disagree on the corridor forecast'
     // the forecast's own events: issued, ensembled (members, weights, level)
     const fev = (await sql<{ event: string; details: Row }>`select event, details from prediction.forecast_events where forecast_id = ${String(e['forecast_id'])}::uuid order by occurred_at`.execute(su)).rows;
     // integrated: §CX's freezer grounds the ensemble (its information set frozen and pinned) before the issue
-    expect(fev.map((x) => x.event)).toEqual(['forecast.information_set_frozen', 'forecast.issued', 'forecast.ensembled']);
+    // B25-F1: the run's ROUTE is bound to the ensemble forecast at completion (forecast.routed) — never left planned
+    expect(fev.map((x) => x.event)).toEqual(['forecast.information_set_frozen', 'forecast.issued', 'forecast.ensembled', 'forecast.routed']);
+    expect(arr(rec(fev.find((x) => x.event === 'forecast.routed')?.details)['ensemble_members'])).toEqual(['holt_winters@1', 'seasonal_naive@1']);
+    const rt = (await sql<Row>`select outcome, method_ref, forecast_id::text from prediction.forecast_routes where route_id = ${String(rec(run['plan'])['route_id'])}::uuid`.execute(su)).rows[0];
+    expect(rt).toEqual({ outcome: 'issued', method_ref: 'ensemble:linear_pool@1', forecast_id: e['forecast_id'] });
+    // B25-F1: the PERSISTED plan pins each member's entry (the builtins' implementation digest) — the run executes from it, not from a cache
+    expect(arr(rec(run['plan'])['methods']).map((m) => [m['methodRef'], rec(m['pin'])['implementation_ref'], rec(m['pin'])['implementation_digest']]))
+      .toEqual([['seasonal_naive@1', 'legacy-models', expect.stringMatching(/^[0-9a-f]{64}$/)], ['holt_winters@1', 'legacy-models', expect.stringMatching(/^[0-9a-f]{64}$/)]]);
     expect(rec(fev.find((x) => x.event === 'forecast.ensembled')?.details)['disagreement']).toBe(div.level);
     // material disagreement is ESCALATED to the forecast owner (the attention item when the vocabulary carries forecast.disagreement; the ledger always)
     if (div.level === 'material') {
@@ -298,6 +305,10 @@ describe('EN1–EN3 · the scene: two methods disagree on the corridor forecast'
     const runId = /run ([0-9a-f-]{36}) FAILED/.exec(msg)?.[1] as string;
     const r = await runRow(runId);
     expect(r['state']).toBe('failed'); expect(String(r['state_reason'])).toMatch(/^precision: /);
+    // B25-F1: the failed run's route is REFUSED with it (never left planned)
+    const rt = (await sql<Row>`select outcome, refusal_class, refusal from prediction.forecast_routes where route_id = ${String(rec(r['plan'])['route_id'])}::uuid`.execute(su)).rows[0] ?? {};
+    expect([rt['outcome'], rt['refusal_class']]).toEqual(['refused', 'ensemble']);
+    expect(String(rt['refusal'])).toMatch(/^forecast rejected \(ensemble\): run .* FAILED — precision: /);
     expect(await runEvents(runId)).toEqual(expect.arrayContaining(['ensemble.admitted', 'ensemble.member_excluded', 'ensemble.escalated', 'ensemble.failed']));
     // nothing was issued under it; both members disclosed as computed but not combined
     expect((await sql`select 1 from prediction.forecasts_current where ensemble_id = ${String(r['ensemble_forecast_id'])}::uuid`.execute(su)).rows).toHaveLength(0);
@@ -483,7 +494,10 @@ describe('EN4 · model-path availability: excluded and DISCLOSED (a SYNTHETIC pl
 
   it('POSITIVE · the member BUDGET: a third runnable member beyond the budget is excluded as budget (the router runs a registry method)', async () => {
     const extra: MethodPlan['methods'] = [{ methodRef: 'causal_its@1', family: 'causal', forecastKind: 'quantity', available: true, confidenceLanguage: 'distribution' }];
-    const runner = (a: { points: Array<{ date: string; value: number }>; steps: number; season: number }) => seasonalNaive(a.points, a.steps, a.season);
+    // B25-F2: the stub DECLARES what its output means (a future level, the day's value, in the series' unit, a predictive distribution) —
+    // an output declaring nothing is never assumed compatible and would be excluded as `incompatible`
+    const runner = (a: { points: Array<{ date: string; value: number }>; steps: number; season: number }) => ({ ...seasonalNaive(a.points, a.steps, a.season),
+      semantics: { meaning: 'future_level', aggregation: 'value', unit: 'transits/day', uncertainty: 'predictive_distribution', statement: 'the value on the target day (stub)' } });
     const out = (await withRouter(stubRouter(extra, runner as never), () => issue(eriksen, scenePayload({ horizon: '180d', budget: { members: 2 } })))).ensemble;
     expect(arr(out['members']).map((m) => [m['method_ref'], m['state'], m['exclusion_class']])).toEqual([
       ['seasonal_naive@1', 'issued', null], ['holt_winters@1', 'issued', null], ['causal_its@1', 'excluded', 'budget']]);

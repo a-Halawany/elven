@@ -15,7 +15,7 @@ type Row = Record<string, unknown>;
 export interface Quantiles { q10: number; q50: number; q90: number }
 export type RunState = 'admitted' | 'running' | 'completed' | 'failed';
 export type DisagreementLevel = 'agree' | 'notable' | 'material';
-export type ExclusionClass = 'unavailable' | 'unimplemented' | 'kind' | 'failed' | 'budget' | 'not_combined' | 'not_run';
+export type ExclusionClass = 'unavailable' | 'unimplemented' | 'kind' | 'failed' | 'budget' | 'not_combined' | 'not_run' | 'incompatible';   // B25-F2: + incompatible
 
 export interface EnsembleRun {
   run_id: string; ensemble_forecast_id: string; series_key: string; target_key: string | null; horizon_code: string; known_at: string; observed_through: string | null;
@@ -86,6 +86,7 @@ export function disagreementMark(level: string | null | undefined): { glyph: str
 const CLASS_WORDS: Readonly<Record<string, string>> = Object.freeze({
   unavailable: 'unavailable in the registry', unimplemented: 'no runner implements it', kind: 'a different forecast kind', failed: 'failed after its retries',
   budget: 'over the run\'s budget', not_combined: 'computed, not combined (the run failed)', not_run: 'not run (the run failed first)',
+  incompatible: 'computed, but it forecasts another quantity (meaning, aggregation, unit or uncertainty) — never combined',   // B25-F2
 });
 /** An excluded path: the method, why in words, and the server's own reason. */
 export function exclusionLine(x: { method_ref: string; class: string; reason: string; attempts?: number }): string {
