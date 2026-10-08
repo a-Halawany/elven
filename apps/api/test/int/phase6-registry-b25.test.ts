@@ -38,13 +38,20 @@
  *     (transport)`; an unknown transport ASU refused at proposal); G5 MC-015 ROBUSTNESS (the plan's feasibility, worst case and regret under
  *     each parameter scenario; an infeasible scenario named, NOT ROBUST); G6 V00-T-051 (the 5y regime's path-dependent view and the declared
  *     options' value and resilience, beside the issued probabilities). Each POSITIVE, REFUSAL and RECOVERY; SYNTHETIC declarations.
+ *   l B25-F1 DURABLE ENSEMBLE PLANS — an admitted run executes and resumes from its own PERSISTED plan: run A's causal transport refusal
+ *     stays a refusal after run B (another target, in scope) is planned and run; a run resumed under a FRESH router (a restart) runs its
+ *     registry member from the pins; a target version approved after admission never replaces the pinned one (issued with v1; the replay
+ *     uses v1; the pinned definition edited → DIVERGED target.definition); each run's route is bound (or refused) with it.
+ *   m B25-F2 OUTPUT COMPATIBILITY — the reviewer's probe (an EUR optimisation scenario band beside transit levels) EXCLUDED and DISCLOSED as
+ *     incompatible, with the objective bands and the 60-day mean; a question no member answers (a level in EUR) REFUSED `ensemble rejected
+ *     (incompatible)` (the run failed, its route refused); a target declaring an objective refused at admission; the levels recovered.
  *
  * THREE CLAIMS KEPT APART: every proof here is SOFTWARE CAPABILITY on a SYNTHETIC series (the fixture source's contract says
  * data_origin synthetic); the validations are SYNTHETIC DEMONSTRATIONS of the machinery. No EMPIRICAL validation is claimed: the real history
  * a 3y/5y validation needs (e.g. the ECB EUR/USD reference rate since 1999) is the act's to collect. The "Regensburg line demand" series of the
  * tracker's scene does not exist; the refusal is proven on a registered SYNTHETIC short series. Every count is scoped to this file's tenant.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { sql } from 'kysely';
 import { uuidv7 } from 'uuidv7';
 import { mkdtempSync, realpathSync } from 'node:fs';
@@ -61,6 +68,9 @@ import { METHOD_ROUTER, type MethodRouter } from '../../src/prediction/portfolio
 import { RegistryMethodRouter, RoutedRefusal } from '../../src/prediction/registry/method-router.js';
 import { asObservationRefusal } from '../../src/observation/observation-errors.js';
 import { IMPLEMENTATION_DIGESTS } from '../../src/prediction/registry/methods/digests.js';
+import { canonicalDigest } from '../../src/shared/forecast-environment.js';   // B25-F1: the target definition's digest a member pins
+import type { EnsemblesController } from '../../src/prediction/ensembles/ensembles.controller.js';
+import type { EnsemblesService } from '../../src/prediction/ensembles/ensembles.service.js';
 import { Phase4Harness, fakeEgress } from './phase4-helpers.js';
 import { SYN_END, SYN_START, synValue } from '../unit/prediction/b25-synthetic.js';
 import type { AnyDb } from './helpers.js';
@@ -609,23 +619,38 @@ describe('B25 §MR · i ENFORCEMENT ON THE FORECAST ROW (pmr_fct_routed) — def
 
 /* j — INTEGRATION (the B25 fold): §EN's ensemble manager over §MR's router — a MULTI-FAMILY ensemble. The real METHOD_ROUTER plans the
    registry's methods for the horizon under the active policy, and RUNS a planned quantity family for a member (the same runFamily the routed
-   issue uses): seasonal_naive@1 (statistical) and bayes_level@1 (bayesian, explicit priors) stand side by side as members, each tied to its
-   assumption, the ensemble combining them; each member row passes §MR's routed-row check (approved, the family allowed at 1y). SYNTHETIC. */
+   issue uses), each member row passing §MR's routed-row check (approved, the family allowed at 1y). SYNTHETIC.
+   B25-F2: only COMPATIBLE outputs are combined — the same meaning (a future level), the same temporal aggregation (the value on the target
+   day), the same unit and a predictive distribution. bayes_daily@1 (a Normal–linear level of the ONE-day window: the value on the target day)
+   stands beside the two builtins; bayes_level@1 and bayes_tight@1 forecast the 60-DAY MEAN ending at the target day — a different quantity —
+   and are EXCLUDED and DISCLOSED as incompatible (before B25-F2 they were combined with the daily values, labelled in the series' unit). */
 describe('B25 §MR · j INTEGRATION: a multi-family ensemble through the registry router (§EN × §MR)', () => {
-  it('j · POSITIVE: a multi-family ensemble at 1y — the builtins and the approved Bayesian entries planned by the router, each run and issued as a member, the ensemble beside them', async () => {
+  it('j · POSITIVE: a multi-family ensemble at 1y — the builtins and the compatible approved Bayesian entry planned by the router, each run and issued as a member, the 60-day-mean entries excluded as incompatible, the ensemble beside them', async () => {
     const { EnsemblesController: Ec } = await import('../../src/prediction/ensembles/ensembles.controller.js');
     const ens = h.app.get(Ec);
+    await approved({ methodKey: 'bayes_daily', family: 'bayesian', horizons: ['30d', '1y'], steward: petrovic.principalId, description: 'Normal–linear level of the daily value (a one-day window), explicit priors (SYNTHETIC)',
+      declarations: { prior: { ...NL, window_days: 1 }, alternatives: [{ label: 'a wider level prior', prior: { ...NL, window_days: 1, intercept: { mean: 60, sd: 40 } } }] } });
     const out = (await ens.issue(req(eriksen, 'prediction.ensemble.issue', 'ENS'), T(), D(), { payload: {
       seriesKey: CORRIDOR, horizon: '1y', observedThrough: '2023-05-31', assumptions: [asuOpen],
-      members: [{ methodRef: 'seasonal_naive@1', assumptions: [asuOpen] }, { methodRef: 'bayes_level@1', assumptions: [asuEscort] }] } }) as { ensemble: Row }).ensemble;
+      members: [{ methodRef: 'seasonal_naive@1', assumptions: [asuOpen] }, { methodRef: 'bayes_daily@1', assumptions: [asuEscort] }] } }) as { ensemble: Row }).ensemble;
     // the manager takes EVERY method the router plans for the horizon (the plan's order; the requested members tie their assumptions): at 1y
-    // the policy allows statistical and bayesian — the two builtins and the two approved Bayesian entries, each run and issued as a member
-    const members = (out['members'] as Row[]).map((m) => [m['method_ref'], m['state']]);
-    expect(members, JSON.stringify(out['excluded_models'] ?? null)).toEqual([['seasonal_naive@1', 'issued'], ['holt_winters@1', 'issued'], ['bayes_level@1', 'issued'], ['bayes_tight@1', 'issued']]);
+    // the policy allows statistical and bayesian — the two builtins and the three approved Bayesian entries, each RUN; the compatible ones issued
+    const members = (out['members'] as Row[]).map((m) => [m['method_ref'], m['state'], m['exclusion_class']]);
+    expect(members, JSON.stringify(out['excluded_models'] ?? null)).toEqual([['seasonal_naive@1', 'issued', null], ['holt_winters@1', 'issued', null], ['bayes_daily@1', 'issued', null],
+      ['bayes_level@1', 'excluded', 'incompatible'], ['bayes_tight@1', 'excluded', 'incompatible']]);
+    expect(obj(out['run'])['state']).toBe('completed');
+    const ex = out['excluded_models'] as Row[];
+    for (const x of ex) expect(String(x['reason'])).toMatch(/aggregation window_mean:60d ≠ value .* the 60-day mean ending at the target day/);
     const rows = (await sql<{ method_ref: string; ensemble_role: string }>`select method_ref, ensemble_role from prediction.forecasts_current
       where ensemble_id = ${String((out['run'] as Row)['ensemble_forecast_id'])}::uuid order by ensemble_role, method_ref`.execute(su)).rows;
-    expect(rows.map((r) => [r.ensemble_role, r.method_ref])).toEqual([['ensemble', 'ensemble:linear_pool@1'], ['member', 'bayes_level@1'], ['member', 'bayes_tight@1'],
-      ['member', 'holt_winters@1'], ['member', 'seasonal_naive@1']]);
+    expect(rows.map((r) => [r.ensemble_role, r.method_ref])).toEqual([['ensemble', 'ensemble:linear_pool@1'], ['member', 'bayes_daily@1'], ['member', 'holt_winters@1'], ['member', 'seasonal_naive@1']]);
+    // each member DISCLOSES what it forecast (the outcome spec): the meaning, the aggregation, the unit, the uncertainty
+    const spec = (await sql<{ method_ref: string; outcome_spec: Row }>`select method_ref, outcome_spec from prediction.forecasts_current
+      where ensemble_id = ${String((out['run'] as Row)['ensemble_forecast_id'])}::uuid and ensemble_role = 'member' order by method_ref`.execute(su)).rows;
+    expect(spec.map((r) => [r.method_ref, obj(r.outcome_spec['semantics'])['meaning'], obj(r.outcome_spec['semantics'])['aggregation'], obj(r.outcome_spec['semantics'])['unit'], obj(r.outcome_spec['semantics'])['uncertainty']]))
+      .toEqual([['bayes_daily@1', 'future_level', 'value', 'transits/day', 'predictive_distribution'], ['holt_winters@1', 'future_level', 'value', 'transits/day', 'predictive_distribution'],
+                ['seasonal_naive@1', 'future_level', 'value', 'transits/day', 'predictive_distribution']]);
+    evidence('j', 'multi-family ensemble of compatible future levels; 60-day-mean entries excluded as incompatible and disclosed', 'software capability');
   });
 });
 
@@ -721,5 +746,181 @@ describe('B25 completion · k G3 IDENTIFIABILITY (MC-012), G4 TRANSPORTABILITY (
     expect(String(f.forecast['statement'])).toMatch(/THE PATH-DEPENDENT VIEW \(scenario language, not a validated forecast\).* OPTION VALUE AND RESILIENCE .* not measured/);
     expect(f.forecast['validation_state']).toBe('scenario_language');
     evidence('k', `G6: path view from ${String(pd['current'])} over ${String(pd['steps'])} steps; option value ${String(opts['option_value'])}, most resilient ${String(obj(opts['most_resilient'])['key'])}`, 'synthetic demonstration');
+  });
+});
+
+/* ═══════════════════════════════════════ l · B25-F1: DURABLE ENSEMBLE EXECUTION PLANS ═══════════════════════════════════════
+   The review's finding B25-F1: the router CACHED each planned entry and target in process memory under tenant:domain:method_ref, so the
+   latest plan of a domain decided what an earlier admitted run executed (the reviewer's probe: A's causal TRANSPORT refusal became an
+   ACCEPTANCE once B's target replaced A's cached target), a restart lost the members, and a later target version could silently stand in
+   for the one planned. An admitted run now EXECUTES and RESUMES from its own PERSISTED plan (ensemble_runs.plan: each member's registry
+   entry — method ref, implementation digest, parameters, declarations, validation and evaluation pins — and the TARGET VERSION with its
+   definition digest); the members carry the pins (outcome_spec, horizon_policy) and the replay reads them; the run's ROUTE is closed with
+   it (issued on completion, refused on failure). Every case goes through the controllers; SYNTHETIC. */
+describe('B25-F1 · l DURABLE ENSEMBLE PLANS: interleaving, restart, the pinned target version, the route closed', () => {
+  let ens: EnsemblesController; let svc: EnsemblesService; let HORMUZ = '';
+  const TA = 'corridor.transits.level'; const TB = 'corridor.transits.level-hormuz';
+  const levelTarget = (key: string, subject: string | null, over: Row = {}): Row => ({ targetKey: key, kind: 'quantity', unit: 'transits/day', title: `Corridor transits, the daily level (${key}; SYNTHETIC)`,
+    subjectEntityId: subject, definition: { series_key: CORRIDOR, quantity: { aggregation: 'value' } }, sources: { series: [CORRIDOR] }, ...over });
+  const ensIssue = (payload: Row) => ens.issue(req(eriksen, 'prediction.ensemble.issue', 'ENS'), T(), D(), { payload }) as Promise<{ ensemble: Row }>;
+  const ensResume = (runId: string) => ens.resume(req(eriksen, 'prediction.ensemble.issue', 'ENS', runId), T(), D(), runId) as Promise<{ ensemble: Row }>;
+  const ensRead = (runId: string) => ens.read(req(eriksen, 'prediction.ensemble.read', 'ENS', runId), T(), D(), runId) as Promise<{ ensemble: Row }>;
+  /** ADMITTED, then the process stops before it executes (the run stays admitted — what a crash between the governed writes leaves). */
+  const admitOnly = async (payload: Row): Promise<string> => {
+    const spy = vi.spyOn(svc as unknown as { execute: () => Promise<Row> }, 'execute').mockRejectedValueOnce(new Error('the process stopped after the admission (harness)'));
+    try { await expect(ensIssue(payload)).rejects.toThrow(/stopped after the admission/); } finally { spy.mockRestore(); }
+    const live = (await rows(sql`select run_id::text from prediction.ensemble_runs where tenant_id = ${T()}::uuid and state = 'admitted' order by admitted_at desc limit 1`))[0];
+    return String(live?.['run_id']);
+  };
+  const route = async (runId: string): Promise<Row | undefined> => (await rows(sql`select r.outcome, r.method_ref, r.refusal_class, r.forecast_id::text from prediction.forecast_routes r
+    join prediction.ensemble_runs e on e.ensemble_forecast_id = r.forecast_id where e.run_id = ${runId}::uuid`))[0];
+
+  beforeAll(async () => {
+    const { EnsemblesController: Ec } = await import('../../src/prediction/ensembles/ensembles.controller.js');
+    const { EnsemblesService: Es } = await import('../../src/prediction/ensembles/ensembles.service.js');
+    ens = h.app.get(Ec); svc = h.app.get(Es);
+    // ANOTHER strait the causal entry is declared transportable to (SYNTHETIC) — the subject of target B, not of the corridor series
+    HORMUZ = uuidv7(); const ec = uuidv7();
+    await sql`insert into graph.entities_current (entity_id, scope, tenant_id, domain_id, entity_type, canonical_name, normalized_name, lifecycle_state, created_by, correlation_id)
+      values (${HORMUZ}::uuid, 'DOMAIN', ${T()}::uuid, ${D()}::uuid, 'place', 'Strait of Hormuz', 'strait of hormuz', 'active', ${weber.principalId}::uuid, ${ec}::uuid)`.execute(su);
+    for (const [key, subject] of [[TA, null], [TB, HORMUZ]] as const) await decideTarget(String((await declareTarget(levelTarget(key, subject)))['target_id']));
+    await approved({ methodKey: 'its_hormuz', family: 'causal', horizons: ['90d'], steward: petrovic.principalId, description: 'the escort effect, declared transportable to the Strait of Hormuz only (SYNTHETIC)',
+      declarations: { intervention: { date: '2023-06-01', description: 'escort convoys begin (SYNTHETIC)' }, identification: { assumptions: [asuEscort, asuNoAnticipation], statement: 'the pre-trend and season would have continued; nothing else broke then' },
+        pre_days: 365, post_days: 90, transport: { scope: [HORMUZ], assumptions: [asuNoAnticipation], statement: 'the escorts act alike in the Strait of Hormuz (SYNTHETIC)' } } });
+  });
+
+  it('l · REFUSAL stays REFUSAL: run A (target A, no subject in the causal entry\'s scope) is admitted; run B (target B, the in-scope strait) is planned and runs; A resumed — its causal member is still refused (transport), never run under B\'s target', async () => {
+    const A = await admitOnly({ targetKey: TA, seriesKey: CORRIDOR, horizon: '90d', observedThrough: '2023-12-31', assumptions: [asuEscort], budget: { members: 12, computeMs: 120000 } });
+    const b = await ensIssue({ targetKey: TB, seriesKey: CORRIDOR, horizon: '90d', observedThrough: '2023-12-31', assumptions: [asuEscort], budget: { members: 12, computeMs: 120000 } }).then((r) => r.ensemble, (e: unknown) => e);
+    const bRun = (await rows(sql`select run_id::text from prediction.ensemble_runs where tenant_id = ${T()}::uuid and target_key = ${TB} order by admitted_at desc limit 1`))[0]!;
+    const bAttempts = (await rows(sql`select outcome, error from prediction.ensemble_attempts where run_id = ${String(bRun['run_id'])}::uuid and method_ref = 'its_hormuz@1'`));
+    expect(bAttempts.length, JSON.stringify(b instanceof Error ? b.message : null)).toBeGreaterThan(0);
+    expect(bAttempts.every((x) => x['outcome'] === 'succeeded'), JSON.stringify(bAttempts)).toBe(true);   // in B the strait is in scope: the effect is computed
+    await ensResume(A).catch(() => undefined);
+    const a = (await ensRead(A)).ensemble;
+    const m = (a['members'] as Row[]).find((x) => x['method_ref'] === 'its_hormuz@1')!;
+    const aAttempts = (a['attempts'] as Row[]).filter((x) => x['method_ref'] === 'its_hormuz@1');
+    expect([m['state'], m['exclusion_class']], JSON.stringify(aAttempts)).toEqual(['excluded', 'failed']);
+    expect(aAttempts.length).toBeGreaterThan(0);
+    for (const x of aAttempts) expect(String(x['error'])).toMatch(/^forecast rejected \(transport\): its_hormuz@1's effect is declared transportable to .*; syn-corridor:.* is outside that scope/);
+    expect(obj(a['run'])['state'], String(obj(a['run'])['state_reason'])).toBe('completed');
+    // the persisted plan: A's target version and its definition digest, each member's entry pins
+    const plan = obj(obj(a['run'])['plan']);
+    expect(obj(plan['target'])).toMatchObject({ target_key: TA, version: 1, subject_entity_id: null });
+    const pin = obj(((plan['methods'] as Row[]).find((x) => x['methodRef'] === 'its_hormuz@1'))!['pin']);
+    expect(pin).toMatchObject({ method_ref: 'its_hormuz@1', family: 'causal', implementation_ref: 'causal-its', implementation_digest: IMPLEMENTATION_DIGESTS['causal-its'] });
+    // the routes closed: each run's route bound to its ensemble forecast (never left planned)
+    expect(await route(A)).toMatchObject({ outcome: 'issued', method_ref: 'ensemble:linear_pool@1' });
+    expect(await route(String(bRun['run_id']))).toMatchObject({ outcome: 'issued', method_ref: 'ensemble:linear_pool@1' });
+    evidence('l', 'B25-F1 interleaving: A\'s transport refusal stands after B is planned and run; both routes bound', 'software capability');
+  });
+
+  it('l · RECOVERY across a RESTART: a run admitted, the process gone (a FRESH router holding nothing), resumed — its registry member runs from the persisted plan and is issued with its pins', async () => {
+    const C = await admitOnly({ seriesKey: CORRIDOR, horizon: '1y', observedThrough: '2023-05-31', assumptions: [asuOpen] });
+    const holder = svc as unknown as { router: MethodRouter };
+    const prior = holder.router; holder.router = new RegistryMethodRouter();   // a new process: no in-memory state of any earlier plan
+    let c: Row;
+    try { c = (await ensResume(C)).ensemble; } finally { holder.router = prior; }
+    expect(obj(c['run'])['state'], String(obj(c['run'])['state_reason'])).toBe('completed');
+    const daily = (c['members'] as Row[]).find((x) => x['method_ref'] === 'bayes_daily@1')!;
+    expect([daily['state'], daily['exclusion_class']], JSON.stringify(c['attempts'])).toEqual(['issued', null]);
+    const f = (await forecastRow(String(daily['forecast_id'])))!;
+    expect(obj(obj(f['outcome_spec'])['method'])).toMatchObject({ method_ref: 'bayes_daily@1', implementation_digest: IMPLEMENTATION_DIGESTS['bayesian-conjugate'] });
+    expect(obj(f['horizon_policy'])).toMatchObject({ policy_id: POLICY_V2, version: 3, route_id: expect.any(String) });
+    expect(obj(obj(f['horizon_policy'])['evaluation_profile'])).toMatchObject({ horizon: '1y', forecast_kind: 'quantity' });
+    expect(await route(C)).toMatchObject({ outcome: 'issued' });
+    evidence('l', 'B25-F1 restart: the admitted registry member ran from the persisted plan under a fresh router', 'software capability');
+  });
+
+  it('l · the PINNED TARGET VERSION: admitted on target A v1, v2 approved before it executes — issued with v1 (version and definition digest); the replay uses v1; the pinned definition edited → DIVERGED target.definition; restored → REPRODUCED', async () => {
+    const v1 = (await rows(sql`select definition from prediction.forecast_targets where tenant_id = ${T()}::uuid and target_key = ${TA} and version = 1`))[0]!;
+    const D1 = await admitOnly({ targetKey: TA, seriesKey: CORRIDOR, horizon: '1y', observedThrough: '2023-05-31', assumptions: [asuOpen] });
+    const v2 = await declareTarget(levelTarget(TA, null, { title: 'Corridor transits, the daily level — v2 (SYNTHETIC)', definition: { series_key: CORRIDOR, quantity: { aggregation: 'value' }, note: 'v2: the definition revised after the run was admitted' } }));
+    expect(v2['version']).toBe(2);
+    await decideTarget(String(v2['target_id']));
+    const d = (await ensResume(D1)).ensemble;
+    expect(obj(d['run'])['state'], String(obj(d['run'])['state_reason'])).toBe('completed');
+    const daily = (d['members'] as Row[]).find((x) => x['method_ref'] === 'bayes_daily@1')!;
+    const f = (await forecastRow(String(daily['forecast_id'])))!;
+    expect(obj(obj(f['outcome_spec'])['target'])).toEqual({ target_key: TA, version: 1, kind: 'quantity', unit: 'transits/day', definition_digest: canonicalDigest(obj(v1['definition'])) });
+    // the replay of the member: the pinned version, by the pin
+    const { ContextController: Cc } = await import('../../src/prediction/context/context.controller.js');
+    const C = h.app.get(Cc);
+    const replay = (id: string) => C.replay(h.req(eriksen, 'prediction.forecast.replay', 'FCT', id, 'prediction'), T(), D(), id) as unknown as Promise<{ replay: Row & { outcome: string; diverged: Row[] } }>;
+    const r0 = (await replay(String(daily['forecast_id']))).replay;
+    expect(r0, JSON.stringify(r0.diverged)).toMatchObject({ outcome: 'REPRODUCED', diverged: [] });
+    expect(obj(obj(r0['replayer'])['target'])).toMatchObject({ version: 1, resolved_by: 'the forecast\'s own pin (outcome_spec.target)' });
+    // STATED SUPERUSER MOVE: the pinned version's definition edited after issue → the replay DIVERGES on target.definition
+    await sql`update prediction.forecast_targets set definition = ${JSON.stringify({ ...obj(v1['definition']), note: 'edited after issue (harness)' })}::jsonb where tenant_id = ${T()}::uuid and target_key = ${TA} and version = 1`.execute(su);
+    let dv: Row & { outcome: string; diverged: Row[] };
+    try { dv = (await replay(String(daily['forecast_id']))).replay; } finally {
+      await sql`update prediction.forecast_targets set definition = ${JSON.stringify(v1['definition'])}::jsonb where tenant_id = ${T()}::uuid and target_key = ${TA} and version = 1`.execute(su);
+    }
+    expect(dv.outcome).toBe('DIVERGED');
+    expect(dv.diverged.map((x) => x['what'])).toContain('target.definition');
+    expect((await replay(String(daily['forecast_id']))).replay.outcome).toBe('REPRODUCED');
+    evidence('l', 'B25-F1 target pin: v1 issued and replayed after v2 approved; an edited pinned definition DIVERGED (target.definition)', 'software capability');
+  });
+});
+
+/* ═══════════════════════════════════════ m · B25-F2: ENSEMBLE OUTPUT COMPATIBILITY ═══════════════════════════════════════
+   The review's finding B25-F2: the router's run DROPPED each family's unit, meaning and uncertainty, and the manager labelled every member in
+   the series' unit — an EUR optimisation SCENARIO BAND was combined with a transit-level DISTRIBUTION and passed the precision check. Now each
+   member carries its OUTPUT SEMANTICS (meaning, temporal aggregation, unit, uncertainty) and only members COMPATIBLE with the run's question
+   (a future level of the series in its unit, the target's declared aggregation, a predictive distribution) are combined; an incompatible
+   member is EXCLUDED and DISCLOSED (excluded_models, forecast.member_excluded); nothing compatible left → `ensemble rejected (incompatible)`. */
+describe('B25-F2 · m ENSEMBLE OUTPUT COMPATIBILITY: an effect, a level and a scenario band are never interchangeable', () => {
+  let ens: EnsemblesController;
+  const ensIssue = (payload: Row) => ens.issue(req(eriksen, 'prediction.ensemble.issue', 'ENS'), T(), D(), { payload }) as Promise<{ ensemble: Row }>;
+  const EUR_LP = { ...lp(0.1), objective: { ...lp(0.1).objective, unit: 'EUR', statement: 'expected rerouting cost per shipment (SYNTHETIC)' } };
+  beforeAll(async () => {
+    const { EnsemblesController: Ec } = await import('../../src/prediction/ensembles/ensembles.controller.js');
+    ens = h.app.get(Ec);
+    await approved({ methodKey: 'reroute_cost_eur', family: 'optimisation', horizons: ['30d'], steward: petrovic.principalId, description: 'the reroute share minimising cost in EUR (SYNTHETIC)', declarations: EUR_LP });
+  });
+
+  it('m · REFUSAL (excluded, disclosed): the reviewer\'s probe — at 30d the EUR optimisation scenario band, the other objective bands and the 60-day mean are EXCLUDED as incompatible; the levels are combined', async () => {
+    const out = (await ensIssue({ seriesKey: CORRIDOR, horizon: '30d', observedThrough: '2023-05-31', assumptions: [asuOpen], budget: { members: 12, computeMs: 120000 } })).ensemble;
+    expect(obj(out['run'])['state'], String(obj(out['run'])['state_reason'])).toBe('completed');
+    const byRef = Object.fromEntries((out['members'] as Row[]).map((m) => [String(m['method_ref']), [m['state'], m['exclusion_class']]]));
+    expect(byRef['seasonal_naive@1']).toEqual(['issued', null]); expect(byRef['holt_winters@1']).toEqual(['issued', null]); expect(byRef['bayes_daily@1']).toEqual(['issued', null]);
+    expect(byRef['reroute_cost_eur@1']).toEqual(['excluded', 'incompatible']);
+    expect(byRef['reroute_lp@1']).toEqual(['excluded', 'incompatible']);
+    expect(byRef['bayes_level@1']).toEqual(['excluded', 'incompatible']);
+    const ex = Object.fromEntries((out['excluded_models'] as Row[]).map((x) => [String(x['method_ref']), String(x['reason'])]));
+    expect(ex['reroute_cost_eur@1']).toMatch(/meaning objective_value ≠ future_level; .*unit EUR ≠ transits\/day; .*uncertainty scenario_band ≠ predictive_distribution/);
+    const fev = (await rows(sql`select details from prediction.forecast_events where forecast_id = ${String(obj(out['ensemble'])['forecast_id'])}::uuid and event = 'forecast.member_excluded'`))
+      .map((x) => [obj(x['details'])['method_ref'], obj(x['details'])['class']]);
+    expect(fev).toEqual(expect.arrayContaining([['reroute_cost_eur@1', 'incompatible'], ['bayes_level@1', 'incompatible']]));
+    expect(String(obj(out['ensemble'])['statement'])).toMatch(/reroute_cost_eur@1 \(incompatible: /);
+    const issued = (await rows(sql`select method_ref from prediction.forecasts_current where ensemble_id = ${String(obj(out['ensemble'])['forecast_id'])}::uuid and ensemble_role = 'member' order by method_ref`)).map((x) => x['method_ref']);
+    expect(issued).toEqual(['bayes_daily@1', 'holt_winters@1', 'seasonal_naive@1']);
+    evidence('m', 'B25-F2: the EUR scenario band, the objective bands and the 60-day mean excluded as incompatible and disclosed; the levels combined', 'software capability');
+  });
+
+  it('m · REFUSAL (refused): a target whose question no member answers (a level in EUR) — nothing compatible remains: `ensemble rejected (incompatible)`, the run FAILED, its route refused; a target declaring an objective is refused at admission', async () => {
+    await decideTarget(String((await declareTarget({ targetKey: 'corridor.transits.eur', kind: 'quantity', unit: 'EUR', title: 'Corridor value in EUR — a question no member answers (SYNTHETIC)',
+      subjectEntityId: null, definition: { series_key: CORRIDOR, quantity: { aggregation: 'value' } }, sources: { series: [CORRIDOR] } }))['target_id']));
+    await refused(ensIssue({ targetKey: 'corridor.transits.eur', seriesKey: CORRIDOR, horizon: '30d', observedThrough: '2023-05-31', assumptions: [asuOpen], budget: { members: 12, computeMs: 120000 } }),
+      /^ensemble rejected \(incompatible\): 0 of \d+ planned member\(s\) of run .* forecast the run's question \(a future level \(value\) in EUR, a predictive distribution\); an ensemble combines at least 2 — \d+ computed member\(s\) EXCLUDED as incompatible/, 422);
+    const run = (await rows(sql`select run_id::text, state, state_reason from prediction.ensemble_runs where tenant_id = ${T()}::uuid and target_key = 'corridor.transits.eur' order by admitted_at desc limit 1`))[0]!;
+    expect(run['state']).toBe('failed'); expect(String(run['state_reason'])).toMatch(/^incompatible: /);
+    const r = (await rows(sql`select r.outcome, r.refusal_class, r.refusal from prediction.forecast_routes r join prediction.ensemble_runs e on e.ensemble_forecast_id = r.forecast_id where e.run_id = ${String(run['run_id'])}::uuid`))[0]!;
+    expect([r['outcome'], r['refusal_class']]).toEqual(['refused', 'ensemble']);
+    expect(String(r['refusal'])).toMatch(/^forecast rejected \(ensemble\): run .* FAILED — incompatible: /);
+    await decideTarget(String((await declareTarget({ targetKey: 'corridor.reroute.cost', kind: 'quantity', unit: 'EUR', title: 'The rerouting cost objective (SYNTHETIC)',
+      subjectEntityId: null, definition: { series_key: CORRIDOR, quantity: { aggregation: 'objective' } }, sources: { series: [CORRIDOR] } }))['target_id']));
+    await refused(ensIssue({ targetKey: 'corridor.reroute.cost', seriesKey: CORRIDOR, horizon: '30d', observedThrough: '2023-05-31', assumptions: [asuOpen] }),
+      /^ensemble rejected \(incompatible\): target corridor\.reroute\.cost v1 declares its quantity as "objective"; the ensemble manager combines predictive distributions of a future level only/, 422);
+    expect((await rows(sql`select count(*)::int n from prediction.ensemble_runs where tenant_id = ${T()}::uuid and target_key = 'corridor.reroute.cost'`))[0]!['n']).toBe(0);
+    evidence('m', 'B25-F2: nothing compatible → ensemble rejected (incompatible), run FAILED, route refused; an objective target refused at admission', 'software capability');
+  });
+
+  it('m · RECOVERY: the same question in the series\' own unit is answered — the compatible levels combined, every exclusion disclosed', async () => {
+    await decideTarget(String((await declareTarget({ targetKey: 'corridor.transits.daily', kind: 'quantity', unit: 'transits/day', title: 'Corridor transits, the daily value (SYNTHETIC)',
+      subjectEntityId: null, definition: { series_key: CORRIDOR, quantity: { aggregation: 'value' } }, sources: { series: [CORRIDOR] } }))['target_id']));
+    const out = (await ensIssue({ targetKey: 'corridor.transits.daily', seriesKey: CORRIDOR, horizon: '30d', observedThrough: '2023-05-31', assumptions: [asuOpen], budget: { members: 12, computeMs: 120000 } })).ensemble;
+    expect(obj(out['run'])['state']).toBe('completed');
+    expect((out['members'] as Row[]).filter((m) => m['state'] === 'issued').map((m) => m['method_ref'])).toEqual(['seasonal_naive@1', 'holt_winters@1', 'bayes_daily@1']);
   });
 });

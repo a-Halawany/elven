@@ -54,17 +54,42 @@ export interface PlannedMethod {
   available: boolean;           // false: the method path is unavailable (retired, quarantined, failed) — §EN excludes and DISCLOSES it
   unavailableReason?: string;
   confidenceLanguage: string;   // the horizon policy's language for this horizon
+  /** B25-F1: the registry entry AS PLANNED — {method_ref, family, implementation_ref, implementation_digest, parameters, declarations,
+   *  validation, evaluation_profile, …}. A caller that executes later PERSISTS it with its run and executes from it (never from a process
+   *  cache); absent in the prelude's default (the legacy methods need no entry). Opaque to every part but the router's. */
+  pin?: Record<string, unknown>;
 }
 
 export interface MethodPlan {
   targetKey: string | null; horizonCode: string;
   policy: { policyId: string | null; version: number | null; horizonRule: Record<string, unknown> | null };
   methods: PlannedMethod[];
+  /** B25-F1: the route the plan was recorded as (null in the default: nothing recorded) — closed by closeRoute when the caller finishes */
+  routeId?: string | null;
+  /** B25-F1: the TARGET VERSION planned — the target row (definition included) and its definition_digest (null: no target) */
+  target?: Record<string, unknown> | null;
+}
+
+/** B25-F2: what a member's output MEANS — carried through the router so an ensemble never combines outputs that only look alike. */
+export interface OutputSemantics {
+  /** future_level (the series' value or window mean ahead) | effect (a causal effect) | objective_value (an optimisation's objective) |
+   *  event_probability | state_probabilities | regime_probabilities */
+  meaning: string;
+  /** the temporal aggregation: `value` (the series' value on the target day), `window_mean:<n>d`, `effect:<n>d`, `objective`, `window:<n>d`, `categorical` */
+  aggregation: string;
+  unit: string;
+  /** predictive_distribution | effect_interval | scenario_band | credible_band | categorical */
+  uncertainty: string;
+  /** the quantity in words (e.g. "the 60-day mean ending at the target day") */
+  statement: string;
 }
 
 export interface MethodRouter {
   /** the plan, or throws a governed refusal (`forecast rejected (horizon): …`) when the policy does not support the horizon */
   plan(tx: unknown, a: { tenantId: string; domainId: string; targetKey: string | null; seriesKey: string; horizonCode: string; correlationId: string }): Promise<MethodPlan>;
+  /** B25-F1: close the plan's ROUTE when the caller is done with it — `issued` (bound to the forecast it issued) or `refused` (with the
+   *  governed refusal text) — in the caller's transaction. A route already closed is left as it is. Absent in the default (no routes). */
+  closeRoute?(tx: unknown, a: { routeId: string; tenantId: string; domainId: string; outcome: 'issued' | 'refused'; refusal?: string; refusalClass?: string; correlationId: string }): Promise<Record<string, unknown> | null>;
 }
 
 /** The prelude's defaults: nothing grounded, the legacy two quantity methods (seasonal naive, Holt-Winters) at every horizon. */

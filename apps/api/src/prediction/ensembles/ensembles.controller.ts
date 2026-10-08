@@ -8,6 +8,8 @@
  *   …/prediction/ensembles/:runId/members        prediction.ensemble.read — every member's distribution, inspectable
  *   …/prediction/ensembles/:runId/disagreement   prediction.ensemble.read — the port's measure and the analysis (what splits the members)
  *   …/prediction/ensembles/:runId/resume         prediction.ensemble.issue — a run left admitted or running continues from what stands
+ *   …/prediction/ensembles/:runId/reconcile-route prediction.ensemble.route.reconcile (human-gated; B25-F1, 0109) — a FINISHED run's route left
+ *                                                `planned` before 0109 is refused with its reason disclosed; a second call: already reconciled
  *   …/prediction/forecasts/:forecastId/overlays/add                   prediction.overlay.add (human-gated) — the first version
  *   …/prediction/forecasts/:forecastId/overlays/:overlayId/revise     prediction.overlay.add (human-gated) — the next version
  *   …/prediction/forecasts/:forecastId/overlays/:overlayId/withdraw   prediction.overlay.withdraw (human-gated)
@@ -90,6 +92,15 @@ export class EnsemblesController {
     const { envelope, principal } = ctx(req);
     this.id(runId, 'runId', envelope.correlation_id);
     return { ensemble: await this.ensembles.resume(envelope, principal, tenantId, domainId, runId) };
+  }
+
+  /** B25-F1 (0109): reconcile a finished run's route (a named human forecast owner or the domain's administrator). */
+  @Post('/ensembles/:runId/reconcile-route')
+  async reconcileRoute(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('runId') runId: string) {
+    const { envelope, principal } = ctx(req);
+    this.id(runId, 'runId', envelope.correlation_id);
+    const out = await this.ensembles.reconcileRoute(envelope, principal, tenantId, domainId, runId);
+    return { reconciliation: out.result, receipt: receipt(out) };
   }
 
   /* ───────────── the judgement overlay ───────────── */

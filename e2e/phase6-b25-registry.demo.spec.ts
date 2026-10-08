@@ -42,6 +42,8 @@ const ECB_SERIES = process.env['EYE_B25_ECB_SERIES'] ?? 'ecb-eurusd-history';
 const ECB_5Y = process.env['EYE_B25_ECB_5Y'] ?? '';
 const CONDITIONED_METHOD = process.env['EYE_B25_CONDITIONED_METHOD'] ?? '';
 const SUEZ_TARGET = process.env['EYE_B25_SUEZ_TARGET'] ?? '';
+const ENSEMBLE_SERIES = process.env['EYE_B25_SERIES'] ?? 'portwatch:chokepoint4:n_total';
+const REISSUED_RUN = process.env['EYE_B25_REISSUED_RUN'] ?? '';
 
 async function uiLogin(page: Page, username: string, password: string): Promise<void> {
   await page.goto('/login');
@@ -103,6 +105,14 @@ test.describe.serial('CP-6 B25 §MR — the forecasting portfolio on the demonst
     await expect(routes).toContainText(new RegExp(`${TARGET} at 5y — issued by ${REGIME_METHOD}`));
     if (SUEZ_TARGET !== '') await expect(routes).toContainText(`${SUEZ_TARGET} at 5y — issued by ${CONDITIONED_METHOD}`);   // B25 completion: the grounded, twin-conditioned regime
     await expect(routes).toContainText(new RegExp(`${REFUSED_SERIES.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} at 3y — refused: forecast rejected \\(horizon\\): .* at 3y is unsupported — no passed quantity-rolling-origin validation`));
+    // B25-F (0109): the ensembles' routes are never left planned — the scene's (finished before 0109) REFUSED `unbound` by the governed
+    // reconciliation, the re-issue's ISSUED by its combination rule
+    if (REISSUED_RUN !== '') {
+      const esc = ENSEMBLE_SERIES.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      await expect(routes).toContainText(new RegExp(`${esc} at 30d — refused: forecast rejected \\(unbound\\): route of ensemble run .* recorded before 0109 against an unissued forecast id`));
+      await expect(routes).toContainText(`${ENSEMBLE_SERIES} at 30d — issued by ensemble:linear_pool@1`);
+      await expect(routes.getByRole('listitem').filter({ hasText: /— planned/ })).toHaveCount(0);
+    }
     // the EMPIRICAL validations on the real ECB history: both horizons recorded, the claim as the record states it
     const validations = page.getByRole('table', { name: 'validations' });
     for (const h of ['3y', '5y']) await expect(validations.getByRole('row').filter({ hasText: ECB_SERIES }).filter({ hasText: h })).toHaveCount(1);

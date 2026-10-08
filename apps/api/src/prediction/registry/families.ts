@@ -26,6 +26,7 @@ import { BAYESIAN_CONJUGATE_REF, bayesForecast, type BayesDeclarations } from '.
 import { CAUSAL_ITS_REF, interruptedTimeSeries, transportOf, type CausalDeclarations } from './methods/causal.js';
 import { OPTIMISATION_LP_REF, optimise, type OptimisationDeclarations } from './methods/optimisation.js';
 import { round, type Band, type Point } from './methods/stats.js';
+import type { OutputSemantics } from '../portfolio/seams.js';   // B25-F2
 
 export type ForecastKind = 'quantity' | 'event' | 'state' | 'regime';
 export const FAMILIES = ['statistical', 'event', 'state', 'bayesian', 'causal', 'structural_judgmental', 'optimisation'] as const;
@@ -67,6 +68,9 @@ export interface FamilyInput {
 export interface FamilyResult {
   kind: ForecastKind; quantiles: Band | Record<string, never>; distribution: Record<string, unknown>; outcome: Record<string, unknown>;
   parameters: Record<string, unknown>; baselineMethod: string; unit: string; claim: string; scenarioLanguage: boolean;
+  /** B25-F2: what the output MEANS (meaning, temporal aggregation, unit, uncertainty) — carried beside the numbers, never inside the outcome
+   *  the replay digests, so a routed forecast's stored output is unchanged; the ensemble manager combines only compatible members by it. */
+  semantics: OutputSemantics;
 }
 
 const rec = (v: unknown): Record<string, unknown> => (v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
@@ -116,6 +120,7 @@ export function runFamily(entry: PlannedEntry, a: FamilyInput): FamilyResult {
         claim: `P(${condition} within the ${a.horizonCode} window to ${a.targetAt}) = ${fmt(p.probability)} (80% credible band ${fmt(p.q10)}–${fmt(p.q90)}); `
           + `${entry.method_ref} on ${p.windows} non-overlapping ${p.windowDays}-day windows of history (${p.hits} with the event) under the declared Beta(${p.prior.alpha}, ${p.prior.beta}) prior`,
         scenarioLanguage: false,
+        semantics: { meaning: 'event_probability', aggregation: `window:${a.horizonDays}d`, unit: 'probability', uncertainty: 'credible_band', statement: `the probability that ${condition} within the ${a.horizonDays}-day window` },
       };
     }
     case 'state':
@@ -170,6 +175,7 @@ export function runFamily(entry: PlannedEntry, a: FamilyInput): FamilyResult {
           + `judgement held half as firmly or twice as firmly moves a category by up to ${fmt(r.sensitivity.maxShift, 2)}`
           + (`.${held} ${paths.statement}` + (opts === null ? '' : ` ${opts.statement} The options and their payoffs are DECLARED with the entry (approved by its steward), not measured.`)).replace(/\.\s*$/, ''),
         scenarioLanguage: true,
+        semantics: { meaning: `${a.kind}_probabilities`, aggregation: 'categorical', unit: 'probability', uncertainty: 'categorical', statement: `the probabilities of the target's ${a.kind}s over ${windowDays}-day classification windows` },
       };
     }
     case 'bayesian': {
@@ -193,6 +199,10 @@ export function runFamily(entry: PlannedEntry, a: FamilyInput): FamilyResult {
         claim: `${f.quantity} of ${a.seriesKey} at ${a.horizonCode} (${a.targetAt}): posterior predictive median ${fmt(f.band.q50)} ${a.seriesUnit}, 80% band ${fmt(f.band.q10)}–${fmt(f.band.q90)}; `
           + `${entry.method_ref} (${f.model}) under its declared, explicit prior.${sens}${ident}`,
         scenarioLanguage: false,
+        // B25-F2: normal_linear forecasts the MEAN over its declared window ending at the target day (a one-day window: the day's value);
+        // gamma_poisson the count on the target day — a posterior PREDICTIVE distribution either way
+        semantics: { meaning: 'future_level', aggregation: decl.prior.model === 'normal_linear' && decl.prior.window_days !== 1 ? `window_mean:${decl.prior.window_days}d` : 'value',
+                     unit: a.seriesUnit, uncertainty: 'predictive_distribution', statement: f.quantity },
       };
     }
     case 'causal': {
@@ -223,6 +233,8 @@ export function runFamily(entry: PlannedEntry, a: FamilyInput): FamilyResult {
           + (transport.declared ? `; transported within its declared scope (${transport.matched}) under ${transport.assumptions.length} transport assumption(s)` : '; no transport scope declared — claimed for this series alone')
           + (transport.consistency !== null && transport.declared ? `; ${transport.consistency.note}` : ''),
         scenarioLanguage: false,
+        semantics: { meaning: 'effect', aggregation: `effect:${decl.post_days}d`, unit: a.seriesUnit, uncertainty: 'effect_interval',
+                     statement: `the mean effect of "${decl.intervention.description}" on ${a.seriesKey} over the ${decl.post_days} days from ${decl.intervention.date}` },
       };
     }
     case 'optimisation': {
@@ -242,6 +254,7 @@ export function runFamily(entry: PlannedEntry, a: FamilyInput): FamilyResult {
           + `feasible; optimality gap ${o.gap === null ? 'n/a' : `${fmt(o.gap * 100, 2)}%`} against the LP optimum ${fmt(o.lp.value ?? NaN)}`
           + (o.robustness === null ? '' : `. ${o.robustness.statement}`),
         scenarioLanguage: false,
+        semantics: { meaning: 'objective_value', aggregation: 'objective', unit: decl.objective.unit, uncertainty: 'scenario_band', statement: decl.objective.statement },
       };
     }
     default:

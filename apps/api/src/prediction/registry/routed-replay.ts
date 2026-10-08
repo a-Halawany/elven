@@ -9,7 +9,10 @@
  *      bytes is a named divergence `implementation` and is not re-run (the build cannot reproduce what it does not carry).
  *   2. THE PINNED TARGET — by version: the forecast's own pin (outcome_spec.target, G7), else the route the forecast was bound to (its plan's
  *      target), else the highest version approved by the time it was issued (said so). A pinned definition digest that no longer matches is
- *      a named divergence `target.definition`.
+ *      a named divergence `target.definition` — and so is a pinned version that can no longer be read (B25-F1: never a later version instead).
+ *      B25-F1: an ensemble MEMBER pins its target version too (outcome_spec.target, from its run's persisted plan) and the method entry it ran
+ *      (outcome_spec.method: the implementation digest, the parameters' and declarations' digests) — a registry row that no longer matches
+ *      them is a named divergence (`implementation`, `method.parameters`, `method.declarations`).
  *   3. THE FAMILY RE-RUN — runFamily on the replayed points (the pinned evidence versions, re-read by the context replay) with the FROZEN
  *      features of the information set (never re-read: a later twin version or graph change does not reach the replay).
  *   4. THE COMPARISON — one canonical digest (sha-256 over JCS) of the stored output and of the recomputed one: for a routed forecast its
@@ -92,6 +95,14 @@ export const ROUTED_FAMILY_REPLAYER: ForecastReplayer = {
         note: `${methodRef} was approved for ${String(e['implementation_ref'])} ${String(e['implementation_digest']).slice(0, 12)}…; this build carries ${code === undefined ? 'no such implementation' : `${code.slice(0, 12)}…`} — not re-run (a steward approves a version for this build)` });
       return answer(null, { implementation });
     }
+    // B25-F1: the method as the forecast PINNED it (a member's outcome_spec.method) must be the registry entry read now
+    const mpin = rec(rec(f['outcome_spec'])['method']);
+    if (mpin['pinned'] === true) {
+      const checks: Array<[string, unknown, string]> = [['implementation', mpin['implementation_digest'], String(e['implementation_digest'])],
+        ['method.parameters', mpin['parameters_digest'], canonicalDigest(rec(e['parameters']))], ['method.declarations', mpin['declarations_digest'], canonicalDigest(rec(e['declarations']))]];
+      for (const [what, pinned, now] of checks) if (pinned !== now) divergences.push({ what, original: pinned, replayed: now, note: `${methodRef}'s registry row no longer matches what the forecast pinned (${what})` });
+      if (divergences.length > 0) return answer(null, { implementation });
+    }
     const entry: PlannedEntry = { method_ref: methodRef, method_key: String(e['method_key']), version: Number(e['version']), family: String(e['family']) as Family,
       implementation_ref: String(e['implementation_ref']), implementation_digest: String(e['implementation_digest']), parameters: rec(e['parameters']), declarations: rec(e['declarations']),
       confidence_language: String(rec(f['horizon_policy'])['confidence_language'] ?? '') };
@@ -100,7 +111,9 @@ export const ROUTED_FAMILY_REPLAYER: ForecastReplayer = {
     const t = await pinnedTarget(tx, f);
     const targetDetail = { target_key: f['target_key'] ?? null, version: t.version, resolved_by: t.resolvedBy, definition_digest: t.target === null ? null : canonicalDigest(t.target.definition ?? {}) };
     if (f['target_key'] !== null && f['target_key'] !== undefined && t.target === null) {
-      divergences.push({ what: 'target', note: `target ${String(f['target_key'])} version ${t.version ?? '?'} could not be read (${t.resolvedBy})` });
+      // B25-F1: a PINNED definition that cannot be read is the pinned definition diverging — never replaced by another version
+      divergences.push({ what: t.pinnedDigest !== null ? 'target.definition' : 'target', ...(t.pinnedDigest !== null ? { original: t.pinnedDigest, replayed: null } : {}),
+                         note: `target ${String(f['target_key'])} version ${t.version ?? '?'} could not be read (${t.resolvedBy})` });
       return answer(null, { implementation, target: targetDetail });
     }
     if (t.pinnedDigest !== null && t.pinnedDigest !== targetDetail.definition_digest) {

@@ -15,7 +15,7 @@ import { useSearchParams } from 'next/navigation';
 import { useShell } from '../layout';
 import { prediction, type SeriesRow } from '../../../lib/prediction';
 import { graph, type StrategyRow } from '../../../lib/graph';
-import { ensembles, disagreementMark, exclusionLine, overlayLine, quantileLine, runStateMark, splitLine, weightLine, type EnsemblePackage, type Quantiles, type RunSummary } from '../../../lib/ensembles-b25';
+import { ensembles, disagreementMark, exclusionLine, overlayLine, pinLine, quantileLine, routeLine, runStateMark, semanticsLine, splitLine, weightLine, type EnsemblePackage, type Quantiles, type RunSummary } from '../../../lib/ensembles-b25';
 import { Empty, LiveStatus, Mono, ScrollBox, cardStyle, DefinitionRow, GovernedButton, UnknownNote, fmtInstant, textareaStyle } from '../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui';
 
@@ -127,7 +127,7 @@ function Ensembles() {
                 <p style={{ fontWeight: 650 }}>{quantileLine(pkg.ensemble.quantiles, unit)}</p>
                 <p>{pkg.ensemble.statement}</p>
                 <DefinitionRow term="Validation">{pkg.ensemble.validation_state.replace(/_/g, ' ')}</DefinitionRow>
-                <DefinitionRow term="Forecast">{pkg.ensemble.state} · <Mono>{pkg.ensemble.forecast_id.slice(0, 8)}…</Mono></DefinitionRow>
+                <DefinitionRow term="Forecast">{pkg.ensemble.state} · <Mono>{pkg.ensemble.forecast_id.slice(0, 8)}…</Mono>{typeof pkg.ensemble['superseded_by'] === 'string' ? <> — superseded by <Mono>{String(pkg.ensemble['superseded_by']).slice(0, 8)}…</Mono></> : null}</DefinitionRow>
               </>
             )}
           </section>
@@ -136,7 +136,7 @@ function Ensembles() {
             <h2 id="en-members" style={h2}>Members</h2>
             <ScrollBox label="the ensemble's members">
               <table className="eye-table" style={tableStyle} aria-label="the ensemble's members">
-                <thead><tr><Th>#</Th><Th>Method</Th><Th>Distribution</Th><Th>Weight</Th><Th>Tied to</Th><Th>Validation</Th><Th>State</Th></tr></thead>
+                <thead><tr><Th>#</Th><Th>Method</Th><Th>Distribution</Th><Th>Weight</Th><Th>Tied to</Th><Th>Validation</Th><Th>What it forecasts</Th><Th>Pins</Th><Th>State</Th></tr></thead>
                 <tbody>
                   {pkg.members.map((m) => (
                     <tr key={m.ordinal}>
@@ -146,12 +146,27 @@ function Ensembles() {
                       <Td>{weightLine(m.weight)}</Td>
                       <Td>{m.tied_assumptions.length === 0 ? <span style={muted}>the shared assumptions only</span> : m.tied_assumptions.map(title).join('; ')}</Td>
                       <Td>{m.validation_state === null ? '—' : m.validation_state.replace(/_/g, ' ')}</Td>
+                      <Td>{m.state === 'issued' ? semanticsLine(m.outcome_spec?.semantics) : <span style={muted}>—</span>}</Td>
+                      <Td>{m.state === 'issued' ? <span style={small}>{pinLine(m)}</span> : <span style={muted}>—</span>}</Td>
                       <Td>{m.state === 'excluded' ? <strong>EXCLUDED</strong> : m.state}{m.attempts > 1 ? <span style={muted}> ({m.attempts} attempts)</span> : null}</Td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </ScrollBox>
+          </section>
+
+          <section aria-labelledby="en-route" style={{ ...cardStyle, marginBlockStart: 'var(--eye-space-16)' }}>
+            <h2 id="en-route" style={h2}>The route</h2>
+            {(pkg.routes ?? []).length === 0 ? <p style={muted}>No route was recorded for this run (planned without the registry router).</p>
+              : <ul aria-label="the run's routes">{(pkg.routes ?? []).map((r) => <li key={r.route_id}>{routeLine(r)}</li>)}</ul>}
+            {isForecastOwner && (pkg.run.state === 'completed' || pkg.run.state === 'failed') && (pkg.routes ?? []).some((r) => r.outcome === 'planned') ? (
+              <GovernedButton label="Reconcile the route" pendingLabel="reconciling…" onRun={async () => {
+                const r = await ensembles.reconcileRoute(scope, pkg.run.run_id);
+                if (!r.ok || r.data === undefined) fail(r, 'the reconciliation was refused');
+                setReceipt(r.data!.receipt); await loadRun();
+              }} />
+            ) : null}
           </section>
 
           <section aria-labelledby="en-disagreement" style={{ ...cardStyle, marginBlockStart: 'var(--eye-space-16)' }}>
