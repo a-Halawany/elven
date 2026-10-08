@@ -138,6 +138,13 @@
       "sha256": "b05785f9f18e6716bab63424b11454513b9943a222595b70411009202fc592b5"
     },
     {
+      "file": "MPL-1.1.txt",
+      "spdx_id": "MPL-1.1",
+      "url": "https://raw.githubusercontent.com/spdx/license-list-data/c4a7237ec8f4654e867546f9f409749300f1bf4c/text/MPL-1.1.txt",
+      "bytes": 23669,
+      "sha256": "6214f8b1300bb9f37b16ebc146f8f61af0187e0025042ff95c8b3030744a8795"
+    },
+    {
       "file": "MPL-2.0.txt",
       "spdx_id": "MPL-2.0",
       "url": "https://raw.githubusercontent.com/spdx/license-list-data/c4a7237ec8f4654e867546f9f409749300f1bf4c/text/MPL-2.0.txt",

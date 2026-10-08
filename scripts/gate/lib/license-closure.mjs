@@ -54,6 +54,14 @@ export const OBLIGATION_TABLE = Object.freeze({
   'LGPL-2.1-or-later': { category: 'weak-copyleft', notice: true, source_offer: true, modification_notice: true },
   'LGPL-3.0-or-later': { category: 'weak-copyleft', notice: true, source_offer: true, modification_notice: true },
   'MPL-2.0': { category: 'weak-copyleft-file', notice: true, source_offer: true, modification_notice: true },
+  // Added deliberately for cairo in the bundled native stack, which sharp-libvips 1.3.4 states it uses
+  // under MPL 1.1 (no npm package in the declared targets declares MPL-1.1). MPL-1.1 is a file-level
+  // copyleft: §3.1 the licence must accompany the Covered Code and §3.5 its notices be kept (notice);
+  // §3.2 the Source Code of any Modification must be made available (source offer); §3.3 changes must
+  // be documented (modification notice); and §3.6 lets the Executable form be distributed only with
+  // a notice that the Source Code is available under MPL-1.1 and of how and where — which the bundled
+  // stack's cairo source-offer record states and THIRD_PARTY_NOTICES reproduces.
+  'MPL-1.1': { category: 'weak-copyleft-file', notice: true, source_offer: true, modification_notice: true },
   FTL: { category: 'permissive-notice', notice: true, source_offer: false, modification_notice: false },
   IJG: { category: 'permissive-notice', notice: true, source_offer: false, modification_notice: false },
   Libpng: { category: 'permissive-notice', notice: true, source_offer: false, modification_notice: false },
