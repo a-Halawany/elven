@@ -38,7 +38,7 @@ import type { Citation } from '../twin.capabilities.js';
 import { checkFamilyGround } from '../families/admission.js';
 import { ConstraintService, DEFAULT_BUDGET_MS } from '../constraints/constraint.service.js';
 import { ConstraintCapability } from '../constraints/constraint.capabilities.js';
-import { candidateOf, constraintSubjectOf, unreadableInWindow, type Candidate, type EstimatorDecl, type EstimatorIntake, type Point } from './estimators.js';
+import { candidateOf, constraintSubjectOf, unreadableInWindow, widestWindow, type Candidate, type EstimatorDecl, type EstimatorIntake, type Point, type SeriesInput } from './estimators.js';
 import { EstimationCapability, type DecideWrites, type EstimationReads, type EstimatorWrites, type RequestWrites } from './estimation.capabilities.js';
 import { ReconciliationBridge } from './reconciliation-bridge.js';
 import { reconcileScan } from './reconciliation-agent.js';
@@ -46,6 +46,12 @@ import { reconcileScan } from './reconciliation-agent.js';
 type Row = Record<string, unknown>;
 export const ESTIMATION_HOOK = 'twin-estimation';
 const READ = 'twin.estimation.read';
+/* B25-R (the demo regression of 2026-10-07): how long the attention tick waits on the reconcile scan it started before it returns — the scan
+   goes on, detached, and closes its own run. The tick ran it INLINE: on eye_demo a 15-minute scan held the tick (the queue runs one job at
+   a time), both sessions lapsed and neither run could close. A harness may shorten it (EstimationService.scanAwaitMs). */
+export const SCAN_AWAIT_MS = 30_000;
+/* B25-R: the days a series tail spans beyond its points × cadence — the publisher's lag (PortWatch's counts arrive ~4 days late), gaps */
+const TAIL_SLACK_DAYS = 14;
 
 /** A DATE as the day it names (the driver reads a DATE as the local midnight: its local components are the day — twin.service.ts dayOf). */
 const day = (v: unknown): string | null => {
@@ -71,6 +77,10 @@ export interface DecisionIntake { decision: 'approved' | 'declined'; note: strin
 @Injectable()
 export class EstimationService implements OnModuleInit {
   private readonly log = new Logger('twin.estimation');
+  /* B25-R: the reconcile scan in flight per agent (one process runs a domain's timer): a tick never starts a second scan of an agent whose
+     scan is live — it says so and the pending checks wait for it — and never waits on one longer than `scanAwaitMs` */
+  private readonly inFlight = new Map<string, { since: string; done: Promise<Row> }>();
+  scanAwaitMs = SCAN_AWAIT_MS;
   constructor(private readonly moduleRef: ModuleRef, private readonly pipeline: PipelineService, private readonly twins: TwinService, private readonly series: SeriesService,
               private readonly constraints: ConstraintService, @Inject(COMMIT_DB) private readonly commitDb: Db) {}
 
@@ -179,7 +189,12 @@ export class EstimationService implements OnModuleInit {
     for (const e of estimators) for (const inp of e.inputs) {
       if (inp.kind !== 'series' || assembled.has(inp.series_key)) continue;
       try {
-        const s = await this.series.assemble(reader, inp.series_key, read.now, null);
+        /* B25-R: the TAIL the estimators read — the widest window over this series, at its slowest declared cadence — never the whole history
+           (the demo's corridor: ~9,000 governed retrievals per read; the tail, a few hundred). The facts state the points, evidence and
+           unreadable versions of what was read, and where the read began (`read_from`). */
+        const widest = widestWindow(estimators, inp.series_key);
+        const cadence = Math.max(1, ...estimators.flatMap((x) => x.inputs).filter((x): x is SeriesInput => x.kind === 'series' && x.series_key === inp.series_key).map((x) => Number(x.cadence_days) || 1));
+        const s = await this.series.assemble(reader, inp.series_key, read.now, null, { points: widest, spanDays: Math.ceil(widest * cadence) + TAIL_SLACK_DAYS });
         const points = s.points.map((x) => ({ date: x.date, value: x.value, evidence: { id: x.evidence_object_id, version: x.evidence_version } }));
         const last = s.points[s.points.length - 1];
         // B30 act: an unreadable evidence version counts only inside the estimators' widest window, or with no day (estimators.ts unreadableInWindow)
@@ -196,7 +211,8 @@ export class EstimationService implements OnModuleInit {
         }
         assembled.set(inp.series_key, { points, unit: s.series.unit, fact: { points: s.points.length, last_date: last?.date ?? null,
           evidence: s.evidence.map((v) => ({ id: v.evidence_object_id, version: v.evidence_version })), unreadable,
-          ...(outside > 0 ? { unreadable_outside_window: outside, window_from: windowFrom } : {}) } });
+          ...(outside > 0 ? { unreadable_outside_window: outside, window_from: windowFrom } : {}),
+          ...(s.readFrom === null || s.readFrom === undefined ? {} : { read_from: s.readFrom, versions_left_out: s.versionsLeftOut ?? 0 }) } });
       } catch (err) {
         if (err instanceof HttpException && err.getStatus() === 403) throw err;
         assembled.set(inp.series_key, { points: [], unit: null, fact: { points: 0, last_date: null, evidence: [], unreadable: 0, note: textOf(err).slice(0, 300) } });
@@ -265,8 +281,10 @@ export class EstimationService implements OnModuleInit {
 
   /** PROPOSE: compute (reads), then the one governed write. `agent` names the Reconciliation Agent's run when the agent proposes. */
   async propose(base: Envelope, principal: AuthenticatedPrincipal, tenantId: string, domainId: string, twinId: string, key: string,
-                agent: { agentId: string; runId: string } | null, trigger: Row): Promise<{ estimate: Row; computed: Computed; receipt: { policyDecisionId: string; auditSeq: number } }> {
-    const computed = await this.compute(base, principal, tenantId, domainId, twinId, key);
+                agent: { agentId: string; runId: string } | null, trigger: Row,
+                /* B25-R: the scan's own computation, read ONCE per twin × key — it computed and then proposed, reading the series twice */
+                precomputed?: Computed): Promise<{ estimate: Row; computed: Computed; receipt: { policyDecisionId: string; auditSeq: number } }> {
+    const computed = precomputed ?? await this.compute(base, principal, tenantId, domainId, twinId, key);
     const estimateId = newId();
     const constraint = { outcome: computed.constraint.outcome, pins: computed.constraint.pins, violations: computed.constraint.violations, applied: computed.constraint.applied,
                          vacuous: computed.constraint.vacuous, reason: computed.constraint.reason, subject_kind: 'run_input', engine: 'B29 constraint engine (the gate path)' };
@@ -376,13 +394,28 @@ export class EstimationService implements OnModuleInit {
     let scan: Row | null = null;
     if (pending.length > 0 && agents.length > 0) {
       const runner = ReconciliationBridge.runner();
+      const agentId = agents[0] as string;
+      const live = this.inFlight.get(agentId);
       if (runner === null) scan = { skipped: 'no agent runner in this application' };
+      // B25-R: one scan per agent at a time — the checks stay pending for the scan in flight (or the next tick's)
+      else if (live !== undefined) scan = { skipped: `a reconcile scan of agent ${agentId} is in flight since ${live.since}; the pending checks wait for it`, agent_id: agentId, in_flight_since: live.since };
       else {
-        try {
-          const r = await runner({ agentId: agents[0] as string, tenantId: a.tenantId, domainId: a.domainId, task: 'reconcile_scan',
-                                   trigger: { kind: 'scheduler', principalId: a.principal.principalId, ref: ESTIMATION_HOOK }, roomId: null, packageId: null, version: null, correlationId: a.correlationId });
-          scan = { run_id: r.runId, agent_id: r.agentId, outcome: r.outcome, stop_reason: r.stopReason };
-        } catch (err) { scan = { error: textOf(err).slice(0, 500) }; }
+        // B25-R: the scan is STARTED, not awaited past `scanAwaitMs` — its run opens, works and closes under the agent's own session whatever
+        // the tick does; a scan done within the bound is reported as before
+        const since = new Date().toISOString();
+        const done: Promise<Row> = runner({ agentId, tenantId: a.tenantId, domainId: a.domainId, task: 'reconcile_scan',
+                                            trigger: { kind: 'scheduler', principalId: a.principal.principalId, ref: ESTIMATION_HOOK }, roomId: null, packageId: null, version: null, correlationId: a.correlationId })
+          .then((r): Row => ({ run_id: r.runId, agent_id: r.agentId, outcome: r.outcome, stop_reason: r.stopReason }), (err: unknown): Row => ({ error: textOf(err).slice(0, 500) }))
+          .finally(() => { this.inFlight.delete(agentId); });
+        this.inFlight.set(agentId, { since, done });
+        let timer: NodeJS.Timeout | undefined;
+        const first = await Promise.race([done, new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), this.scanAwaitMs); })]);
+        clearTimeout(timer);
+        if (first !== null) scan = first;
+        else {
+          scan = { in_flight: true, agent_id: agentId, since, note: `the scan goes on after the tick (waited ${this.scanAwaitMs} ms); its run closes itself` };
+          void done.then((r) => { this.log.log(`reconcile scan of agent ${agentId} (started ${since}) ended after the tick: ${JSON.stringify(r).slice(0, 300)}`); });
+        }
       }
     }
     return { queued: q['queued'] ?? [], fulfilled: q['fulfilled'] ?? [], pending, scan };

@@ -42,6 +42,7 @@ import type { ConstraintsController } from '../../src/twin/constraints/constrain
 import type { CompositionController } from '../../src/twin/composition/composition.controller.js';
 import type { GraphController } from '../../src/graph/graph.controller.js';
 import { EstimationController } from '../../src/twin/estimation/estimation.controller.js';
+import { EstimationService, SCAN_AWAIT_MS } from '../../src/twin/estimation/estimation.service.js';
 import { RECONCILIATION_AGENT_DIGEST, RECONCILIATION_AGENT_VERSION } from '../../src/twin/estimation/reconciliation-agent.js';
 import { AttentionTimerService } from '../../src/executive/attention/attention-timer.service.js';
 import { ATTENTION_TIMER_DIGEST, ATTENTION_TIMER_VERSION } from '../../src/executive/attention/timer-identity.js';
@@ -715,62 +716,106 @@ describe('B30 part ES · twin state estimation and continuous reconciliation (01
   /*
    * ES10 · THE LIVE-DEMO REGRESSION OF 2026-10-07 — A SCAN THAT OUTLIVES ITS SESSION. On eye_demo a new PortWatch count queued a telemetry
    * check; the after-tick hook ran the Reconciliation Agent's reconcile_scan INLINE (the tick awaited it) and the scan read the corridor's
-   * whole history — ~9,000 governed retrievals per read, read twice (compute, then propose) — under sessions that live 15 minutes. Here the
-   * series read is HELD (a spy on SeriesService.assemble waits on a gate — fixture, said) and both agents' sessions are lapsed while it is
-   * held (fixture scaffolding on identity.sessions, as the scheduled-collection harness does): the 15 minutes the real read outlived, without
-   * the wait. Placed before ES7 (whose tombstone degrades the series for good).
+   * whole history — ~9,000 governed retrievals per read, read twice (compute, then propose) — under sessions that live 15 minutes: the tick
+   * was held (the queue runs one job at a time), both sessions lapsed, neither run could close, and the tick's lapsed close was recorded as a
+   * refusal "before any session". Here the series read is HELD (a spy on SeriesService.assemble waits on a gate — fixture, said) and the
+   * agent's session is lapsed while it is held (fixture scaffolding on identity.sessions, as the scheduled-collection harness does): the
+   * 15 minutes the real read outlived, without the wait. Before the fix (b70a434) the same case asserted (a) the tick held, (b) both runs
+   * left running, (c) the tick misrecorded, (d) both closes refused. Placed before ES7 (whose tombstone degrades the series for good).
    */
-  it('ES10 · A SCAN THAT OUTLIVES ITS SESSION (the demo regression): BEFORE — the tick blocks on the inline scan, both runs are left running, the tick is misrecorded as refused before any session, the terminal close is refused', async () => {
-    const series = h.app.get(SeriesService);
-    const recon = String((await rows(sql`select agent_id::text a from executive.agents where tenant_id = ${T()}::uuid and agent_kind = 'reconciliation' and status = 'active' order by created_at desc limit 1`))[0]?.['a']);
-    const principalOf = async (agentId: string) => String((await rows(sql`select principal_id::text p from executive.agents where agent_id = ${agentId}::uuid`))[0]?.['p']);
-    const reconP = await principalOf(recon); const attP = await principalOf(attentionAgent);
-    const runsOf = async (agentId: string) => rows(sql`select run_id::text, outcome, spent, stop_reason, trigger_ref, finished_at, correlation_id::text from executive.agent_runs where agent_id = ${agentId}::uuid order by started_at`);
+  const reconAgent = async () => String((await rows(sql`select agent_id::text a from executive.agents where tenant_id = ${T()}::uuid and agent_kind = 'reconciliation' and status = 'active' order by created_at desc limit 1`))[0]?.['a']);
+  const principalOf = async (agentId: string) => String((await rows(sql`select principal_id::text p from executive.agents where agent_id = ${agentId}::uuid`))[0]?.['p']);
+  const runsOf = async (agentId: string) => rows(sql`select run_id::text, outcome, spent, stop_reason, trigger_ref, finished_at, escalated_to::text, outputs, correlation_id::text from executive.agent_runs where agent_id = ${agentId}::uuid order by started_at`);
+
+  it('ES10 · A SCAN THAT OUTLIVES ITS SESSION (the demo regression): the tick returns while the scan goes on; a tick meanwhile starts no second scan; the lapsed scan ENDS stopped with the reason, closed under a new session; the next tick completes and the scan reads the series once', async () => {
+    const series = h.app.get(SeriesService); const estimation = h.app.get(EstimationService);
+    const recon = await reconAgent(); const reconP = await principalOf(recon);
     const reconBefore = (await runsOf(recon)).map((r) => r['run_id']);
-    // TELEMETRY: a new count (2024-02-16 … 2024-02-20) — the next tick queues a check and the hook runs the scan
+    // TELEMETRY: a new count (2024-02-16 … 2024-02-20) — the next tick queues a check and the hook starts the scan
     await collect('2024-02-16', '2024-02-21');
     let release: () => void = () => undefined; const gate = new Promise<void>((r) => { release = r; });
     let entered: () => void = () => undefined; const inRead = new Promise<void>((r) => { entered = r; });
     const original = series.assemble.bind(series);
     const spy = vi.spyOn(series, 'assemble').mockImplementation(async (...a: Parameters<SeriesService['assemble']>) => { entered(); await gate; return original(...a); });
-    let t!: Awaited<ReturnType<AttentionTimerService['tickNow']>>;
+    estimation.scanAwaitMs = 1_000;   // the tick's wait on the scan, shortened (30 s in the field)
+    let reconRun: Row | undefined;
     try {
       day += 1;
       const tickP = timer.tickNow({ tenantId: T(), domainId: D(), agentId: attentionAgent, scheduledAt: new Date(Date.UTC(2038, 0, day)) });
       await inRead;   // the scan is inside its series read
-      // (a) THE TICK IS HELD BY THE SCAN: five seconds on, the tick has not returned
-      const raced = await Promise.race([tickP.then(() => 'returned'), new Promise<string>((r) => { setTimeout(() => r('blocked'), 5_000); })]);
-      expect(raced, 'the attention tick did not wait on the inline scan').toBe('blocked');
-      // the sessions lapse while the read is held (the real read outlived its 15 minutes)
+      // (a) THE TICK IS NOT HELD: it returns with the scan in flight, its own run FINISHED (one run of the job, no refusal recorded beside it)
+      const raced = await Promise.race([tickP.then(() => 'returned'), new Promise<string>((r) => { setTimeout(() => r('blocked'), 15_000); })]);
+      expect(raced, 'the attention tick waited on the scan').toBe('returned');
+      const t = await tickP;
+      expect(t.outcome, String(t.stopReason)).toBe('finished');
+      expect(obj(obj(obj(t.run?.outputs)['after'])['twin-estimation'])['scan']).toMatchObject({ in_flight: true, agent_id: recon });
+      expect((await runsOf(attentionAgent)).filter((r) => r['trigger_ref'] === t.jobId).map((r) => r['outcome'])).toEqual(['finished']);
+      // (c) A TICK WHILE THE SCAN IS LIVE completes and starts NO second scan of the agent; the check waits for the scan in flight
+      const t2 = await tick();
+      expect(String(obj(t2['scan'])['skipped'])).toMatch(/^a reconcile scan of agent .* is in flight since /);
+      expect((await runsOf(recon)).filter((r) => !reconBefore.includes(r['run_id']))).toHaveLength(1);
+      // the agent's session lapses while its read is held (the real read outlived its 15 minutes)
       await sql`update identity.sessions set expires_at = clock_timestamp() - interval '1 second'
-        where principal_id in (${reconP}::uuid, ${attP}::uuid) and assurance = 'agent_grant' and expires_at > clock_timestamp()`.execute(h.su);
+        where principal_id = ${reconP}::uuid and assurance = 'agent_grant' and expires_at > clock_timestamp()`.execute(h.su);
       release();
-      t = await tickP;
-    } finally { release(); spy.mockRestore(); }
-    // (b) THE RUNS ARE LEFT RUNNING: the scan's run never closes (spent {}), nor does the tick's own run
-    const reconRun = (await runsOf(recon)).find((r) => !reconBefore.includes(r['run_id'])) as Row;
-    expect(reconRun, 'no reconcile run was opened').toBeDefined();
-    expect(reconRun).toMatchObject({ outcome: 'running', spent: {}, finished_at: null });
-    const tickRuns = (await runsOf(attentionAgent)).filter((r) => r['trigger_ref'] === t.jobId);
-    // (c) THE TICK IS MISRECORDED: the 403 of its own lapsed close is taken for a refusal "before any session" — a second, refused run of the
-    //     SAME job beside the running one (on eye_demo: the "second agent's" refusal, every tick since 11:15)
-    expect(t.outcome).toBe('refused');
-    expect(String(t.stopReason)).toMatch(/^attention tick refused before any session: authority insufficient for this operation/);
-    expect(tickRuns.map((r) => r['outcome']).sort()).toEqual(['refused', 'running']);
-    // (d) THE TERMINAL EVENT CANNOT BE WRITTEN: both closes (agent.run) were refused at the write boundary, session_not_active
-    const denied = (await rows(sql`select event -> 'metadata' as m from audit.audit_events where correlation_id = ${String(reconRun['correlation_id'])}::uuid and event_type = 'request.capability_denied'`))
-      .map((r) => obj(r['m'])).map((m) => `${String(m['subject'])}:${String(m['route_action'])}:${String(m['denial_class'])}`);
-    expect(denied, 'the scan\'s next read was not refused for the lapsed session').toContainEqual(expect.stringMatching(new RegExp(`^principal:${reconP}:(prediction\\.read|observation\\.evidence\\.retrieve):session_not_active$`)));
-    expect(denied).toEqual(expect.arrayContaining([`principal:${reconP}:agent.run:session_not_active`, `principal:${attP}:agent.run:session_not_active`]));
-    // THE NEXT TICK: nothing refuses it for the stale run — it runs the scan again for the SAME check, never consumed (on eye_demo it waited
-    // behind the held job — the queue runs one job at a time — and lapsed again: one cycle every 15 minutes)
+      // (b) THE RUN ENDS: its next read is refused for the lapse; the agent closes the run under a new session — STOPPED, with the reason
+      for (let i = 0; i < 300; i += 1) {
+        reconRun = (await runsOf(recon)).find((r) => !reconBefore.includes(r['run_id']));
+        if (reconRun !== undefined && reconRun['outcome'] !== 'running') break;
+        await new Promise((r) => setTimeout(r, 200));
+      }
+    } finally { release(); spy.mockRestore(); estimation.scanAwaitMs = SCAN_AWAIT_MS; }
+    expect(reconRun).toMatchObject({ outcome: 'stopped', escalated_to: execOwner.principalId });
+    expect(String(reconRun?.['stop_reason'])).toMatch(/^session lapsed: the run's session ended at .* before the run did; its next effect was refused \(authority insufficient for this operation\)/);
+    expect(reconRun?.['finished_at']).not.toBeNull();
+    expect(obj(reconRun?.['spent'])['elapsed_ms']).toEqual(expect.any(Number));
+    expect(obj(obj(reconRun?.['outputs'])['closed_under_new_session'])['reason']).toMatch(/refused under its own session/);
+    // (d) THE TERMINAL EVENT IS WRITTEN: the refused close is evidenced (capability denied, session_not_active) and the close under the new
+    //     session committed (agent.run on the run: the open and the close)
+    const audit = await rows(sql`select event_type, outcome, event -> 'metadata' as m from audit.audit_events where correlation_id = ${String(reconRun?.['correlation_id'])}::uuid
+      and (event_type = 'request.capability_denied' or (action = 'agent.run' and event ->> 'target_id' = ${String(reconRun?.['run_id'])}))`);
+    expect(audit.filter((x) => x['event_type'] === 'request.capability_denied').map((x) => `${String(obj(x['m'])['route_action'])}:${String(obj(x['m'])['denial_class'])}`)).toContain('agent.run:session_not_active');
+    expect(audit.filter((x) => x['event_type'] !== 'request.capability_denied' && x['outcome'] === 'success')).toHaveLength(2);
+    // THE NEXT TICK completes; its scan answers the check, reading the series ONCE (compute's read is the proposal's)
     const reads = vi.spyOn(series, 'assemble');
     let next!: Row; let assembled = -1;
     try { next = await tick(); assembled = reads.mock.calls.length; } finally { reads.mockRestore(); }
-    expect(arr(next['pending']).length, 'the check the lapsed scan never answered is still pending').toBeGreaterThanOrEqual(1);
-    // THE READ: the one twin x key's series is assembled TWICE by one scan (compute, then propose computes again) — the whole history each time
-    expect(assembled).toBe(2);
-    evidenceLog('ES10', { raced: 'blocked', recon_run: reconRun, tick_runs: tickRuns.map((r) => ({ outcome: r['outcome'], stop_reason: r['stop_reason'] })), denied, next_scan: next['scan'], assembled });
+    expect(obj(next['scan'])).toMatchObject({ outcome: 'finished' });
+    expect(assembled).toBe(1);
+    expect((await tick())['pending']).toEqual([]);
+    evidenceLog('ES10', { recon_run: { outcome: reconRun?.['outcome'], stop_reason: reconRun?.['stop_reason'] }, skipped: 'second scan', next_scan: next['scan'], assembled });
+  }, 240_000);
+
+  it('ES11 · RUNS LEFT RUNNING ON A DATABASE (eye_demo: 64 + 64 since 2026-10-07): the next tick closes the attention agent\'s, its scan the reconciliation agent\'s — stopped with the reason, each by the agent under its new session — and the tick completes; a run inside its session\'s lifetime is left alone', async () => {
+    const recon = await reconAgent();
+    // fixture scaffolding: two runs per agent left `running` two hours ago with nothing spent — the shape eye_demo carries (no governed path
+    // leaves one now) — and one attention run started a minute ago (inside its session's lifetime)
+    const stale: string[] = [];
+    const leave = async (agentId: string, ago: string): Promise<string> => {
+      const id = uuidv7();
+      await sql`insert into executive.agent_runs (run_id, scope, tenant_id, domain_id, agent_id, principal_id, agent_kind, agent_version, code_digest, task, trigger_kind, trigger_ref, budget, started_at, correlation_id)
+        select ${id}::uuid, 'DOMAIN', tenant_id, domain_id, agent_id, principal_id, agent_kind, agent_version, code_digest, case agent_kind when 'attention' then 'attention_tick' else 'reconcile_scan' end,
+               'scheduler', 'es11-fixture', budgets, clock_timestamp() - ${ago}::interval, ${uuidv7()}::uuid from executive.agents where agent_id = ${agentId}::uuid`.execute(h.su);
+      return id;
+    };
+    for (const agentId of [attentionAgent, attentionAgent, recon, recon]) stale.push(await leave(agentId, '2 hours'));
+    const recent = await leave(attentionAgent, '1 minute');
+    // a new count, so the tick's scan runs
+    await collect('2024-02-21', '2024-02-24');
+    const t = await tick();
+    expect(obj(t['scan'])).toMatchObject({ outcome: 'finished' });
+    const closed = await rows(sql`select run_id::text, agent_id::text, outcome, stop_reason, finished_at, escalated_to::text, outputs from executive.agent_runs where run_id = any(${stale}::uuid[]) order by agent_id, started_at`);
+    expect(closed.map((r) => r['outcome'])).toEqual(['stopped', 'stopped', 'stopped', 'stopped']);
+    for (const r of closed) {
+      expect(String(r['stop_reason'])).toMatch(/^session lapsed: the run started at .* and was still running a session's lifetime \(900 s\) later .* closed by the agent at the start of its run /);
+      expect(r['finished_at']).not.toBeNull();
+      expect(r['escalated_to']).not.toBeNull();
+    }
+    // the runs that closed them say so (outputs.lapsed_closed): the attention tick's own run, and its scan's
+    const closers = await rows(sql`select agent_id::text, outcome, outputs -> 'lapsed_closed' as l from executive.agent_runs where tenant_id = ${T()}::uuid and outputs ? 'lapsed_closed'`);
+    expect(closers.map((r) => `${String(r['agent_id'])}:${String(r['outcome'])}:${arr(r['l']).length}`).sort()).toEqual([`${attentionAgent}:finished:2`, `${recon}:finished:2`].sort());
+    expect((await rows(sql`select outcome from executive.agent_runs where run_id = ${recent}::uuid`))[0]).toMatchObject({ outcome: 'running' });
+    evidenceLog('ES11', { closed: closed.map((r) => ({ agent: r['agent_id'], outcome: r['outcome'] })), closers: closers.map((r) => r['agent_id']) });
   }, 240_000);
 
   it('ES7 · AN UNREADABLE VERSION THAT STATES NO DAY STILL DISQUALIFIES (the window rule\'s conservative branch); the preview discloses why — nothing proposed', async () => {

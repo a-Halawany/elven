@@ -28,7 +28,7 @@ import type { ScanArgs, ScanEnv } from './reconciliation-bridge.js';
 interface EstimationSurface {
   compute(base: Envelope, principal: AuthenticatedPrincipal, tenantId: string, domainId: string, twinId: string, key: string): Promise<Computed>;
   propose(base: Envelope, principal: AuthenticatedPrincipal, tenantId: string, domainId: string, twinId: string, key: string,
-          agent: { agentId: string; runId: string } | null, trigger: Record<string, unknown>): Promise<{ estimate: Record<string, unknown>; computed: Computed; receipt: { policyDecisionId: string; auditSeq: number } }>;
+          agent: { agentId: string; runId: string } | null, trigger: Record<string, unknown>, precomputed?: Computed): Promise<{ estimate: Record<string, unknown>; computed: Computed; receipt: { policyDecisionId: string; auditSeq: number } }>;
   request(cap: RequestWrites, scope: ScopeContext, intake: RequestIntake, agent: { agentId: string; runId: string } | null, actor: string, correlationId: string): Promise<Record<string, unknown>>;
 }
 
@@ -85,7 +85,8 @@ export async function reconcileScan(d: ReconcileDeps, p: AuthenticatedPrincipal,
         remaining -= 1;
         continue;
       }
-      const r = await d.estimation.propose(base, p, a.tenantId, a.domainId, twinId, key, { agentId: a.agentId, runId: a.runId }, trigger);
+      // B25-R: the computation above is the proposal's — the series is read ONCE per twin × key (propose computed it again)
+      const r = await d.estimation.propose(base, p, a.tenantId, a.domainId, twinId, key, { agentId: a.agentId, runId: a.runId }, trigger, computed);
       proposed.push({ twin_id: twinId, key, estimate_id: r.estimate['estimate_id'], value: r.estimate['value'], unit: r.estimate['unit'], material: r.estimate['material'],
                       ambiguous: r.estimate['ambiguous'], routed: r.estimate['routed'], constraint: r.estimate['constraint'], receipt: r.receipt });
       remaining -= 1;

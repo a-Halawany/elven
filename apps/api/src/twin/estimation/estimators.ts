@@ -130,13 +130,22 @@ export function candidateOf(d: EstimatorDecl, points: Point[] | null, element: {
  */
 export function unreadableInWindow(points: Point[], decls: EstimatorDecl[], seriesKey: string, unreadable: Array<{ day: string | null }>): { counted: number; outside: number; windowFrom: string | null } {
   if (unreadable.length === 0 || points.length === 0) return { counted: unreadable.length, outside: 0, windowFrom: null };
-  const reads = decls.filter((d) => d.inputs[0]?.kind === 'series' && (d.inputs[0] as SeriesInput).series_key === seriesKey);
-  const widest = Math.max(7, ...reads.map((d) => (d.method === 'kalman_1d' ? (d.parameters.window ?? 30) : d.method === 'moving_average' ? (d.parameters.window ?? 2)
-    : d.method === 'ratio_to_baseline' ? (d.parameters.window ?? 1) : 1)));
+  const widest = widestWindow(decls, seriesKey);
   const sorted = [...points].sort((a, b) => a.date.localeCompare(b.date));
   const windowFrom = (sorted[Math.max(0, sorted.length - widest)] as Point).date;
   const counted = unreadable.filter((u) => u.day === null || u.day >= windowFrom).length;
   return { counted, outside: unreadable.length - counted, windowFrom };
+}
+
+/**
+ * The WIDEST window the estimators read over one series: each method's window and the 7-point confidence window, over the estimators whose
+ * first input is that series (the window rule above). B25-R: also how many latest points the scan's series read must hold — the TAIL it
+ * reads instead of the whole history (estimation.service.ts compute; series.service.ts SeriesTail).
+ */
+export function widestWindow(decls: EstimatorDecl[], seriesKey: string): number {
+  const reads = decls.filter((d) => d.inputs[0]?.kind === 'series' && (d.inputs[0] as SeriesInput).series_key === seriesKey);
+  return Math.max(7, ...reads.map((d) => (d.method === 'kalman_1d' ? (d.parameters.window ?? 30) : d.method === 'moving_average' ? (d.parameters.window ?? 2)
+    : d.method === 'ratio_to_baseline' ? (d.parameters.window ?? 1) : 1)));
 }
 
 /** The spread among the stated candidates — the disagreement, kept and stated (relative to the proposal). */

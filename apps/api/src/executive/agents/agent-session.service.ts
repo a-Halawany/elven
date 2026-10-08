@@ -32,11 +32,15 @@ export interface AgentRegistration {
 export class DecisionAgentSessionService {
   constructor(@Inject(EYE_CONFIG) private readonly cfg: EyeConfig, @Inject(IDENTITY_DB) private readonly identityDb: Db, private readonly identity: IdentityService) {}
 
-  async openRunSession(a: { agentId: string; tenantId: string; domainId: string; correlationId: string }): Promise<{ principal: AuthenticatedPrincipal; registration: AgentRegistration }> {
+  /* B25-R (the demo regression of 2026-10-07): the lifetime of a run's session. No executive run extends its session (unlike the collection
+     runs of 0057), so a run still `running` this long after it started has lost the authority to close itself (agents.service.ts). */
+  sessionLifetimeSeconds(): number { return Math.max(this.cfg['eye.identity.access_ttl_seconds'], 900); }
+
+  async openRunSession(a: { agentId: string; tenantId: string; domainId: string; correlationId: string }): Promise<{ principal: AuthenticatedPrincipal; registration: AgentRegistration; expiresAt: Date }> {
     const sessionId = newId(); const familyId = newId();
     const refreshToken = `${newId()}.${randomBytes(24).toString('base64url')}`;
     const contextKey = randomBytes(32).toString('base64url');
-    const expiresAt = new Date(Date.now() + Math.max(this.cfg['eye.identity.access_ttl_seconds'], 900) * 1000);
+    const expiresAt = new Date(Date.now() + this.sessionLifetimeSeconds() * 1000);
     let registration: AgentRegistration;
     try {
       registration = await this.identityDb.transaction().execute(async (tx) => {
@@ -56,6 +60,6 @@ export class DecisionAgentSessionService {
     const token = await this.identity.signAccess(registration.principal_id, sessionId, 'agent_grant', contextKey);
     const verified = await this.identity.verifyAccess(token);
     if (verified === null) throw new DecisionAgentGrantRefused('agent session could not be verified after issuance');
-    return { principal: verified, registration };
+    return { principal: verified, registration, /* B25-R: the run bounds its work by it */ expiresAt };
   }
 }
