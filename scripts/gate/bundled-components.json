@@ -19,38 +19,38 @@
   ],
   "schema_version": "1.0.0",
   "package": {
-    "purl": "pkg:npm/%40img/sharp-libvips-linux-x64@1.3.3",
+    "purl": "pkg:npm/%40img/sharp-libvips-linux-x64@1.3.4",
     "name": "@img/sharp-libvips-linux-x64",
-    "version": "1.3.3",
+    "version": "1.3.4",
     "declared_license": "LGPL-3.0-or-later",
     "author": "Lovell Fuller <npm@lovell.info>"
   },
   "build_recipe": {
     "repository": "https://github.com/lovell/sharp-libvips",
     "directory": "npm/linux-x64",
-    "tag": "v1.3.3",
+    "tag": "v1.3.4",
     "note": "The immutable commit for this tag is recorded in commit_binding below and is what the source offer resolves to; a tag alone is mutable.",
     "commit_binding": {
-      "commit": "6e5971d333377743163edc3ad9e5d0b897abcbc9",
-      "resolved_from": "https://api.github.com/repos/lovell/sharp-libvips/commits/v1.3.3",
+      "commit": "ebb95f8add54eee8bed840e3fb587e4cbec857d7",
+      "resolved_from": "https://api.github.com/repos/lovell/sharp-libvips/commits/v1.3.4",
       "why": "A tag is mutable; the commit is not. The source offer resolves to this commit, so a recipient obtains the exact recipe this binary was built from even if the tag moves."
     }
   },
   "shipped_evidence": {
-    "versions_json_sha256": "adddf5e76ac1cc03b503a17c488b8591dd9eb5ec3faf689a3852d02d1b5fbb10",
-    "readme_sha256": "4f87b4934d26d52ed65a42e96bfe88e75ac98dbd3bc302b50fe6c07d22e42630",
+    "versions_json_sha256": "e2611d5d854815a8b33c8a3d2ec649511a9596ccf16844e8eae7cf81e79881c4",
+    "readme_sha256": "b4fb1a9f5909cfd58edb4177c2028ce3033cf8651aef740a554c1dc58b3c5ee3",
     "shared_libraries": [
       {
-        "path": "lib/libvips-cpp.so.8.18.6",
-        "bytes": 18621496,
-        "sha256": "536cee19ab906cb5185ad519bf87647693f5d7b55e608c92eb28607f89ca5125"
+        "path": "lib/libvips-cpp.so.8.18.7",
+        "bytes": 18699288,
+        "sha256": "4aa73553408c3964071728f4a231a8e86918e39bc49f1fbae75355f7ea933ea9"
       }
     ]
   },
   "legal_files": [
     {
       "component": "aom",
-      "path": "vendor/sharp-libvips/1.3.3/legal/aom/LICENSE",
+      "path": "vendor/sharp-libvips/1.3.4/legal/aom/LICENSE",
       "bytes": 1316,
       "sha256": "4764a286d8b2faeaf42f4418e7d7a28d58fc8fd4d00a3d0a7f44b0a4099de7f2",
       "source_url": "https://aomedia.googlesource.com/aom/+/refs/tags/v3.15.0/LICENSE",
@@ -58,7 +58,7 @@
     },
     {
       "component": "aom",
-      "path": "vendor/sharp-libvips/1.3.3/legal/aom/PATENTS",
+      "path": "vendor/sharp-libvips/1.3.4/legal/aom/PATENTS",
       "bytes": 5701,
       "sha256": "661fb8e504744e95587b556b94a58343448300606a41bea8c7a9b97125696e61",
       "source_url": "https://aomedia.googlesource.com/aom/+/refs/tags/v3.15.0/PATENTS",
@@ -66,7 +66,7 @@
     },
     {
       "component": "cairo",
-      "path": "vendor/sharp-libvips/1.3.3/legal/cairo/COPYING",
+      "path": "vendor/sharp-libvips/1.3.4/legal/cairo/COPYING",
       "bytes": 1576,
       "sha256": "67228a9f7c5f9b67c58f556f1be178f62da4d9e2e6285318d8c74d567255abdf",
       "source_url": "https://gitlab.freedesktop.org/cairo/cairo/-/blob/1.18.4/COPYING",
@@ -74,7 +74,7 @@
     },
     {
       "component": "cairo",
-      "path": "vendor/sharp-libvips/1.3.3/legal/cairo/COPYING-LGPL-2.1",
+      "path": "vendor/sharp-libvips/1.3.4/legal/cairo/COPYING-LGPL-2.1",
       "bytes": 26533,
       "sha256": "9e9e8608c4cdda51a78cc3a385f4ec9a2e4c96d5ecad74ac8bca5fca3e563b7d",
       "source_url": "https://gitlab.freedesktop.org/cairo/cairo/-/blob/1.18.4/COPYING-LGPL-2.1",
@@ -82,7 +82,7 @@
     },
     {
       "component": "cairo",
-      "path": "vendor/sharp-libvips/1.3.3/legal/cairo/COPYING-MPL-1.1",
+      "path": "vendor/sharp-libvips/1.3.4/legal/cairo/COPYING-MPL-1.1",
       "bytes": 25755,
       "sha256": "53692a2ed6c6a2c6ec9b32dd0b820dfae91e0a1fcdf625ca9ed0bdf8705fcc4f",
       "source_url": "https://gitlab.freedesktop.org/cairo/cairo/-/blob/1.18.4/COPYING-MPL-1.1",
@@ -90,23 +90,23 @@
     },
     {
       "component": "cgif",
-      "path": "vendor/sharp-libvips/1.3.3/legal/cgif/LICENSE",
+      "path": "vendor/sharp-libvips/1.3.4/legal/cgif/LICENSE",
       "bytes": 1099,
       "sha256": "7264dede477abab4ac3fe8236beb8153845c04ccd33b18f281085087e219fc6d",
-      "source_url": "https://github.com/dloebl/cgif/blob/v0.5.3/LICENSE",
+      "source_url": "https://github.com/dloebl/cgif/blob/v0.5.4/LICENSE",
       "role": "licence-and-attribution"
     },
     {
       "component": "expat",
-      "path": "vendor/sharp-libvips/1.3.3/legal/expat/COPYING",
+      "path": "vendor/sharp-libvips/1.3.4/legal/expat/COPYING",
       "bytes": 1144,
       "sha256": "31b15de82aa19a845156169a17a5488bf597e561b2c318d159ed583139b25e87",
-      "source_url": "https://github.com/libexpat/libexpat/blob/R_2_8_3/expat/COPYING",
+      "source_url": "https://github.com/libexpat/libexpat/blob/R_2_8_5/expat/COPYING",
       "role": "licence-and-attribution"
     },
     {
       "component": "fontconfig",
-      "path": "vendor/sharp-libvips/1.3.3/legal/fontconfig/COPYING",
+      "path": "vendor/sharp-libvips/1.3.4/legal/fontconfig/COPYING",
       "bytes": 8616,
       "sha256": "51a51aa9823704fd90bccc616cdd17ebabb5b2b3e9cbde886ca02c7002288067",
       "source_url": "https://gitlab.freedesktop.org/fontconfig/fontconfig/-/blob/2.18.3/COPYING",
@@ -114,7 +114,7 @@
     },
     {
       "component": "freetype",
-      "path": "vendor/sharp-libvips/1.3.3/legal/freetype/FTL.TXT",
+      "path": "vendor/sharp-libvips/1.3.4/legal/freetype/FTL.TXT",
       "bytes": 6743,
       "sha256": "5a5ee54c5001bbad1cdc1a57cc3dd4c42199b2da09d39c7ee41fab002d02967f",
       "source_url": "https://github.com/freetype/freetype/blob/VER-2-14-3/docs/FTL.TXT",
@@ -122,31 +122,31 @@
     },
     {
       "component": "fribidi",
-      "path": "vendor/sharp-libvips/1.3.3/legal/fribidi/COPYING",
-      "bytes": 26440,
-      "sha256": "32434afcc8666ba060e111d715bfdb6c2d5dd8a35fa4d3ab8ad67d8f850d2f2b",
-      "source_url": "https://github.com/fribidi/fribidi/blob/v1.0.16/COPYING",
+      "path": "vendor/sharp-libvips/1.3.4/legal/fribidi/COPYING",
+      "bytes": 26419,
+      "sha256": "20e50fe7aae3e56378ebf0417d9de904f55a0e61e4df315333e632a4d3555d95",
+      "source_url": "https://github.com/fribidi/fribidi/blob/v1.0.17/COPYING",
       "role": "licence-and-attribution"
     },
     {
       "component": "glib",
-      "path": "vendor/sharp-libvips/1.3.3/legal/glib/LGPL-2.1-or-later.txt",
+      "path": "vendor/sharp-libvips/1.3.4/legal/glib/LGPL-2.1-or-later.txt",
       "bytes": 25967,
       "sha256": "fa6f36630bb1e0c571d34b2bbdf188d08495c9dbf58f28cac112f303fc1f58fb",
-      "source_url": "https://gitlab.gnome.org/GNOME/glib/-/blob/2.89.4/LICENSES/LGPL-2.1-or-later.txt",
+      "source_url": "https://gitlab.gnome.org/GNOME/glib/-/blob/2.90.0/LICENSES/LGPL-2.1-or-later.txt",
       "role": "licence-and-attribution"
     },
     {
       "component": "harfbuzz",
-      "path": "vendor/sharp-libvips/1.3.3/legal/harfbuzz/COPYING",
+      "path": "vendor/sharp-libvips/1.3.4/legal/harfbuzz/COPYING",
       "bytes": 1971,
       "sha256": "ba8f810f2455c2f08e2d56bb49b72f37fcf68f1f4fade38977cfd7372050ad64",
-      "source_url": "https://github.com/harfbuzz/harfbuzz/blob/14.3.1/COPYING",
+      "source_url": "https://github.com/harfbuzz/harfbuzz/blob/14.5.0/COPYING",
       "role": "licence-and-attribution"
     },
     {
       "component": "highway",
-      "path": "vendor/sharp-libvips/1.3.3/legal/highway/LICENSE",
+      "path": "vendor/sharp-libvips/1.3.4/legal/highway/LICENSE",
       "bytes": 20785,
       "sha256": "e340270d4f64384569a91d546acb5b094d69ce47f0c015db77abb74dc6f815af",
       "source_url": "https://github.com/google/highway/blob/1.4.0/LICENSE",
@@ -154,7 +154,7 @@
     },
     {
       "component": "lcms",
-      "path": "vendor/sharp-libvips/1.3.3/legal/lcms/LICENSE",
+      "path": "vendor/sharp-libvips/1.3.4/legal/lcms/LICENSE",
       "bytes": 1080,
       "sha256": "6dbd60437f8ef91d8de1f08ad75882547fd4931bfcc3566a0735f28db1484d31",
       "source_url": "https://github.com/mm2/Little-CMS/blob/lcms2.19.1/LICENSE",
@@ -162,7 +162,7 @@
     },
     {
       "component": "libarchive",
-      "path": "vendor/sharp-libvips/1.3.3/legal/libarchive/COPYING",
+      "path": "vendor/sharp-libvips/1.3.4/legal/libarchive/COPYING",
       "bytes": 3089,
       "sha256": "30e556b3959e3985d66efefec5eaac51d4995053caa1d3cffe6eb916f146f229",
       "source_url": "https://github.com/libarchive/libarchive/blob/v3.8.9/COPYING",
@@ -170,7 +170,7 @@
     },
     {
       "component": "libexif",
-      "path": "vendor/sharp-libvips/1.3.3/legal/libexif/COPYING",
+      "path": "vendor/sharp-libvips/1.3.4/legal/libexif/COPYING",
       "bytes": 26434,
       "sha256": "36b6d3fa47916943fd5fec313c584784946047ec1337a78b440e5992cb595f89",
       "source_url": "https://github.com/libexif/libexif/blob/v0.6.26/COPYING",
@@ -178,7 +178,7 @@
     },
     {
       "component": "libffi",
-      "path": "vendor/sharp-libvips/1.3.3/legal/libffi/LICENSE",
+      "path": "vendor/sharp-libvips/1.3.4/legal/libffi/LICENSE",
       "bytes": 1132,
       "sha256": "17b64dc60f3b6897a60f971e288b973f655c2edcdf08b25f3c3dd5549857881c",
       "source_url": "https://github.com/libffi/libffi/blob/v3.8.0/LICENSE",
@@ -186,15 +186,15 @@
     },
     {
       "component": "libheif",
-      "path": "vendor/sharp-libvips/1.3.3/legal/libheif/COPYING",
+      "path": "vendor/sharp-libvips/1.3.4/legal/libheif/COPYING",
       "bytes": 44366,
       "sha256": "fa81ce652315b013359d6e8e4744335f31a50c7c192907176d3632f78a3b4596",
-      "source_url": "https://github.com/strukturag/libheif/blob/v1.23.2/COPYING",
+      "source_url": "https://github.com/strukturag/libheif/blob/v1.23.5/COPYING",
       "role": "licence-and-attribution"
     },
     {
       "component": "libimagequant",
-      "path": "vendor/sharp-libvips/1.3.3/legal/libimagequant/COPYRIGHT",
+      "path": "vendor/sharp-libvips/1.3.4/legal/libimagequant/COPYRIGHT",
       "bytes": 1851,
       "sha256": "7391bfbcde4404cefb9849553362c3ab436f929f5cc1abb57071ec045590ee99",
       "source_url": "https://github.com/lovell/libimagequant/blob/v2.4.1/COPYRIGHT",
@@ -202,15 +202,15 @@
     },
     {
       "component": "libnsgif",
-      "path": "vendor/sharp-libvips/1.3.3/legal/libnsgif/COPYING",
+      "path": "vendor/sharp-libvips/1.3.4/legal/libnsgif/COPYING",
       "bytes": 1133,
       "sha256": "1469b759cf18e43c6e1b4ff892307d3962cbbb337ac497620d6690a219fad10c",
-      "source_url": "https://github.com/libvips/libvips/blob/v8.18.6/libvips/foreign/libnsgif/COPYING",
+      "source_url": "https://github.com/libvips/libvips/blob/v8.18.7/libvips/foreign/libnsgif/COPYING",
       "role": "licence-and-attribution"
     },
     {
       "component": "libpng",
-      "path": "vendor/sharp-libvips/1.3.3/legal/libpng/LICENSE",
+      "path": "vendor/sharp-libvips/1.3.4/legal/libpng/LICENSE",
       "bytes": 5345,
       "sha256": "bdb0a645ea18c60507d0368379b1ac5474b92255fcc2d115e07486a7672ba526",
       "source_url": "https://github.com/pnggroup/libpng/blob/v1.6.58/LICENSE",
@@ -218,15 +218,15 @@
     },
     {
       "component": "librsvg",
-      "path": "vendor/sharp-libvips/1.3.3/legal/librsvg/COPYING.LIB",
+      "path": "vendor/sharp-libvips/1.3.4/legal/librsvg/COPYING.LIB",
       "bytes": 26530,
       "sha256": "dc626520dcd53a22f727af3ee42c770e56c97a64fe3adb063799d8ab032fe551",
-      "source_url": "https://gitlab.gnome.org/GNOME/librsvg/-/blob/2.62.91/COPYING.LIB",
+      "source_url": "https://gitlab.gnome.org/GNOME/librsvg/-/blob/2.63.2/COPYING.LIB",
       "role": "licence-and-attribution"
     },
     {
       "component": "libtiff",
-      "path": "vendor/sharp-libvips/1.3.3/legal/libtiff/LICENSE.md",
+      "path": "vendor/sharp-libvips/1.3.4/legal/libtiff/LICENSE.md",
       "bytes": 2416,
       "sha256": "0e27c2382d7b8147972bbb746e04059a1152c8d0fda9d03ef1399d1a433c4ade",
       "source_url": "https://gitlab.com/libtiff/libtiff/-/blob/v4.7.2/LICENSE.md",
@@ -234,7 +234,7 @@
     },
     {
       "component": "libultrahdr",
-      "path": "vendor/sharp-libvips/1.3.3/legal/libultrahdr/LICENSE",
+      "path": "vendor/sharp-libvips/1.3.4/legal/libultrahdr/LICENSE",
       "bytes": 12566,
       "sha256": "c9247b5cb07866938643cc238292434e6f2af8642e1fce10771c0e4cc7909316",
       "source_url": "https://github.com/google/libultrahdr/blob/v2.0.2/LICENSE",
@@ -242,15 +242,15 @@
     },
     {
       "component": "libvips",
-      "path": "vendor/sharp-libvips/1.3.3/legal/libvips/LICENSE",
+      "path": "vendor/sharp-libvips/1.3.4/legal/libvips/LICENSE",
       "bytes": 26530,
       "sha256": "dc626520dcd53a22f727af3ee42c770e56c97a64fe3adb063799d8ab032fe551",
-      "source_url": "https://github.com/libvips/libvips/blob/v8.18.6/LICENSE",
+      "source_url": "https://github.com/libvips/libvips/blob/v8.18.7/LICENSE",
       "role": "licence-and-attribution"
     },
     {
       "component": "libwebp",
-      "path": "vendor/sharp-libvips/1.3.3/legal/libwebp/COPYING",
+      "path": "vendor/sharp-libvips/1.3.4/legal/libwebp/COPYING",
       "bytes": 1496,
       "sha256": "5aec868f669e384a22372a4e8a1a6cd7d44c64cd451f960ca69cc170d1e13acf",
       "source_url": "https://github.com/webmproject/libwebp/blob/v1.6.0/COPYING",
@@ -258,15 +258,15 @@
     },
     {
       "component": "libxml2",
-      "path": "vendor/sharp-libvips/1.3.3/legal/libxml2/Copyright",
+      "path": "vendor/sharp-libvips/1.3.4/legal/libxml2/Copyright",
       "bytes": 1314,
       "sha256": "5d4873884a890122a4b9b20ad56ac6f7da1d796a5bfcf04a427970ac96217626",
-      "source_url": "https://gitlab.gnome.org/GNOME/libxml2/-/blob/v2.15.3/Copyright",
+      "source_url": "https://gitlab.gnome.org/GNOME/libxml2/-/blob/v2.15.4/Copyright",
       "role": "licence-and-attribution"
     },
     {
       "component": "mozjpeg",
-      "path": "vendor/sharp-libvips/1.3.3/legal/mozjpeg/LICENSE.md",
+      "path": "vendor/sharp-libvips/1.3.4/legal/mozjpeg/LICENSE.md",
       "bytes": 5620,
       "sha256": "96f5b328adbb78eeaaec6980d73fd558cb1e4d62560ed615646bc3cf5e532430",
       "source_url": "https://github.com/mozilla/mozjpeg/blob/08265790774cd0714832c9e675522acbe5581437/LICENSE.md",
@@ -274,15 +274,15 @@
     },
     {
       "component": "pango",
-      "path": "vendor/sharp-libvips/1.3.3/legal/pango/COPYING",
+      "path": "vendor/sharp-libvips/1.3.4/legal/pango/COPYING",
       "bytes": 25292,
       "sha256": "d245807f90032872d1438d741ed21e2490e1175dc8aa3afa5ddb6c8e529b58e5",
-      "source_url": "https://gitlab.gnome.org/GNOME/pango/-/blob/1.58.0/COPYING",
+      "source_url": "https://gitlab.gnome.org/GNOME/pango/-/blob/1.58.2/COPYING",
       "role": "licence-and-attribution"
     },
     {
       "component": "pixman",
-      "path": "vendor/sharp-libvips/1.3.3/legal/pixman/COPYING",
+      "path": "vendor/sharp-libvips/1.3.4/legal/pixman/COPYING",
       "bytes": 2087,
       "sha256": "fac9270f0987b96ff4533fca3548c633e02083cbba4a0172a3b149b2e4019793",
       "source_url": "https://gitlab.freedesktop.org/pixman/pixman/-/blob/pixman-0.46.4/COPYING",
@@ -290,7 +290,7 @@
     },
     {
       "component": "proxy-libintl",
-      "path": "vendor/sharp-libvips/1.3.3/legal/proxy-libintl/COPYING",
+      "path": "vendor/sharp-libvips/1.3.4/legal/proxy-libintl/COPYING",
       "bytes": 25292,
       "sha256": "d245807f90032872d1438d741ed21e2490e1175dc8aa3afa5ddb6c8e529b58e5",
       "source_url": "https://github.com/frida/proxy-libintl/blob/0.5/COPYING",
@@ -298,7 +298,7 @@
     },
     {
       "component": "zlib-ng",
-      "path": "vendor/sharp-libvips/1.3.3/legal/zlib-ng/LICENSE.md",
+      "path": "vendor/sharp-libvips/1.3.4/legal/zlib-ng/LICENSE.md",
       "bytes": 867,
       "sha256": "6c9f0d975b41afaa34d22f55bb8986ce69e5cb7ad327cb2b28820cd425edf5ee",
       "source_url": "https://github.com/zlib-ng/zlib-ng/blob/2.3.3/LICENSE.md",
@@ -308,7 +308,7 @@
   "bundled_components": [
     {
       "name": "aom",
-      "version": "3.15.0",
+      "version": "3.15.1",
       "version_source": "versions.json:aom",
       "declared_terms_upstream": "BSD 2-Clause + [Alliance for Open Media Patent License 1.0](https://aomedia.org/license/patent-license/)",
       "spdx_expression": "BSD-2-Clause",
@@ -316,15 +316,15 @@
     },
     {
       "name": "cairo",
-      "version": "1.18.4",
+      "version": "1.18.6",
       "version_source": "versions.json:cairo",
-      "declared_terms_upstream": "Mozilla Public License 2.0",
-      "spdx_expression": "MPL-2.0",
-      "licence_note": null
+      "declared_terms_upstream": "Mozilla Public License 1.1",
+      "spdx_expression": "MPL-1.1",
+      "licence_note": "cairo offers every implementation file under LGPL-2.1 OR MPL-1.1 (its COPYING); sharp-libvips states it is used under MPL 1.1, so that is the licence applied"
     },
     {
       "name": "cgif",
-      "version": "0.5.3",
+      "version": "0.5.4",
       "version_source": "versions.json:cgif",
       "declared_terms_upstream": "MIT License",
       "spdx_expression": "MIT",
@@ -332,7 +332,7 @@
     },
     {
       "name": "expat",
-      "version": "2.8.3",
+      "version": "2.8.5",
       "version_source": "versions.json:expat",
       "declared_terms_upstream": "MIT License",
       "spdx_expression": "MIT",
@@ -356,7 +356,7 @@
     },
     {
       "name": "fribidi",
-      "version": "1.0.16",
+      "version": "1.0.17",
       "version_source": "versions.json:fribidi",
       "declared_terms_upstream": "LGPLv3",
       "spdx_expression": "LGPL-3.0-or-later",
@@ -364,7 +364,7 @@
     },
     {
       "name": "glib",
-      "version": "2.89.4",
+      "version": "2.90.0",
       "version_source": "versions.json:glib",
       "declared_terms_upstream": "LGPLv3",
       "spdx_expression": "LGPL-3.0-or-later",
@@ -372,7 +372,7 @@
     },
     {
       "name": "harfbuzz",
-      "version": "14.3.1",
+      "version": "14.5.0",
       "version_source": "versions.json:harfbuzz",
       "declared_terms_upstream": "MIT License",
       "spdx_expression": "MIT",
@@ -420,7 +420,7 @@
     },
     {
       "name": "libheif",
-      "version": "1.23.2",
+      "version": "1.23.5",
       "version_source": "versions.json:heif",
       "declared_terms_upstream": "LGPLv3",
       "spdx_expression": "LGPL-3.0-or-later",
@@ -452,7 +452,7 @@
     },
     {
       "name": "librsvg",
-      "version": "2.62.91",
+      "version": "2.63.2",
       "version_source": "versions.json:rsvg",
       "declared_terms_upstream": "LGPLv3",
       "spdx_expression": "LGPL-3.0-or-later",
@@ -476,7 +476,7 @@
     },
     {
       "name": "libvips",
-      "version": "8.18.6",
+      "version": "8.18.7",
       "version_source": "versions.json:vips",
       "declared_terms_upstream": "LGPLv3",
       "spdx_expression": "LGPL-3.0-or-later",
@@ -492,7 +492,7 @@
     },
     {
       "name": "libxml2",
-      "version": "2.15.3",
+      "version": "2.15.4",
       "version_source": "versions.json:xml2",
       "declared_terms_upstream": "MIT License",
       "spdx_expression": "MIT",
@@ -547,42 +547,42 @@
   "source_offers": [
     {
       "component": "cairo",
-      "version": "1.18.4",
-      "spdx_expression": "MPL-2.0",
+      "version": "1.18.6",
+      "spdx_expression": "MPL-1.1",
       "obligation": "weak-copyleft source offer (LGPL relinking / MPL per-file source)",
       "upstream_source": "https://gitlab.freedesktop.org/cairo/cairo",
       "obtain": [
-        "The exact version bundled is recorded as 1.18.4 in the shipped versions.json.",
+        "The exact version bundled is recorded as 1.18.6 in the shipped versions.json.",
         "Upstream source: https://gitlab.freedesktop.org/cairo/cairo",
-        "The build recipe that pins and compiles it is sharp-libvips at commit 6e5971d333377743163edc3ad9e5d0b897abcbc9, directory npm/linux-x64."
+        "The build recipe that pins and compiles it is sharp-libvips at commit ebb95f8add54eee8bed840e3fb587e4cbec857d7, directory npm/linux-x64."
       ],
-      "relinking": "MPL-2.0 obliges source only for MODIFIED files; nothing here is modified, so the upstream source above satisfies it."
+      "relinking": "MPL-1.1 obliges source for MODIFIED files (\u00a73.2): the recipe above builds cairo 1.18.6 from its unmodified release with build options only, so no Covered Code file is modified and the upstream source above satisfies it. Under \u00a73.6 the Executable form may be distributed only with a notice that the Source Code is available under MPL-1.1 and of how and where: this is that notice. The Source Code of cairo 1.18.6, the Covered Code in this binary, is available under the terms of the Mozilla Public License 1.1 from the upstream named above, and is reproduced exactly by the recipe at the commit above."
     },
     {
       "component": "fribidi",
-      "version": "1.0.16",
+      "version": "1.0.17",
       "spdx_expression": "LGPL-3.0-or-later",
       "obligation": "weak-copyleft source offer (LGPL relinking / MPL per-file source)",
       "upstream_source": "https://github.com/fribidi/fribidi",
       "obtain": [
-        "The exact version bundled is recorded as 1.0.16 in the shipped versions.json.",
+        "The exact version bundled is recorded as 1.0.17 in the shipped versions.json.",
         "Upstream source: https://github.com/fribidi/fribidi",
-        "The build recipe that pins and compiles it is sharp-libvips at commit 6e5971d333377743163edc3ad9e5d0b897abcbc9, directory npm/linux-x64."
+        "The build recipe that pins and compiles it is sharp-libvips at commit ebb95f8add54eee8bed840e3fb587e4cbec857d7, directory npm/linux-x64."
       ],
-      "relinking": "The bundled stack is linked into libvips-cpp.so.8.18.3, a single shared object shipped under lib/. A recipient may rebuild that object from the recipe above with a modified version of this component and replace it, which is what the LGPL relinking right requires."
+      "relinking": "The bundled stack is linked into libvips-cpp.so.8.18.7, a single shared object shipped under lib/. A recipient may rebuild that object from the recipe above with a modified version of this component and replace it, which is what the LGPL relinking right requires."
     },
     {
       "component": "glib",
-      "version": "2.89.4",
+      "version": "2.90.0",
       "spdx_expression": "LGPL-3.0-or-later",
       "obligation": "weak-copyleft source offer (LGPL relinking / MPL per-file source)",
       "upstream_source": "https://gitlab.gnome.org/GNOME/glib",
       "obtain": [
-        "The exact version bundled is recorded as 2.89.4 in the shipped versions.json.",
+        "The exact version bundled is recorded as 2.90.0 in the shipped versions.json.",
         "Upstream source: https://gitlab.gnome.org/GNOME/glib",
-        "The build recipe that pins and compiles it is sharp-libvips at commit 6e5971d333377743163edc3ad9e5d0b897abcbc9, directory npm/linux-x64."
+        "The build recipe that pins and compiles it is sharp-libvips at commit ebb95f8add54eee8bed840e3fb587e4cbec857d7, directory npm/linux-x64."
       ],
-      "relinking": "The bundled stack is linked into libvips-cpp.so.8.18.3, a single shared object shipped under lib/. A recipient may rebuild that object from the recipe above with a modified version of this component and replace it, which is what the LGPL relinking right requires."
+      "relinking": "The bundled stack is linked into libvips-cpp.so.8.18.7, a single shared object shipped under lib/. A recipient may rebuild that object from the recipe above with a modified version of this component and replace it, which is what the LGPL relinking right requires."
     },
     {
       "component": "libexif",
@@ -593,48 +593,49 @@
       "obtain": [
         "The exact version bundled is recorded as 0.6.26 in the shipped versions.json.",
         "Upstream source: https://github.com/libexif/libexif",
-        "The build recipe that pins and compiles it is sharp-libvips at commit 6e5971d333377743163edc3ad9e5d0b897abcbc9, directory npm/linux-x64."
+        "The build recipe that pins and compiles it is sharp-libvips at commit ebb95f8add54eee8bed840e3fb587e4cbec857d7, directory npm/linux-x64."
       ],
-      "relinking": "The bundled stack is linked into libvips-cpp.so.8.18.3, a single shared object shipped under lib/. A recipient may rebuild that object from the recipe above with a modified version of this component and replace it, which is what the LGPL relinking right requires."
+      "relinking": "The bundled stack is linked into libvips-cpp.so.8.18.7, a single shared object shipped under lib/. A recipient may rebuild that object from the recipe above with a modified version of this component and replace it, which is what the LGPL relinking right requires."
     },
     {
       "component": "libheif",
-      "version": "1.23.2",
+      "version": "1.23.5",
       "spdx_expression": "LGPL-3.0-or-later",
       "obligation": "weak-copyleft source offer (LGPL relinking / MPL per-file source)",
       "upstream_source": "https://github.com/strukturag/libheif",
       "obtain": [
-        "The exact version bundled is recorded as 1.23.2 in the shipped versions.json.",
+        "The exact version bundled is recorded as 1.23.5 in the shipped versions.json.",
         "Upstream source: https://github.com/strukturag/libheif",
-        "The build recipe that pins and compiles it is sharp-libvips at commit 6e5971d333377743163edc3ad9e5d0b897abcbc9, directory npm/linux-x64."
+        "The build recipe that pins and compiles it is sharp-libvips at commit ebb95f8add54eee8bed840e3fb587e4cbec857d7, directory npm/linux-x64."
       ],
-      "relinking": "The bundled stack is linked into libvips-cpp.so.8.18.3, a single shared object shipped under lib/. A recipient may rebuild that object from the recipe above with a modified version of this component and replace it, which is what the LGPL relinking right requires."
+      "relinking": "The bundled stack is linked into libvips-cpp.so.8.18.7, a single shared object shipped under lib/. A recipient may rebuild that object from the recipe above with a modified version of this component and replace it, which is what the LGPL relinking right requires."
     },
     {
       "component": "librsvg",
-      "version": "2.62.91",
+      "version": "2.63.2",
       "spdx_expression": "LGPL-3.0-or-later",
       "obligation": "weak-copyleft source offer (LGPL relinking / MPL per-file source)",
       "upstream_source": "https://gitlab.gnome.org/GNOME/librsvg",
       "obtain": [
-        "The exact version bundled is recorded as 2.62.91 in the shipped versions.json.",
+        "The exact version bundled is recorded as 2.63.2 in the shipped versions.json.",
         "Upstream source: https://gitlab.gnome.org/GNOME/librsvg",
-        "The build recipe that pins and compiles it is sharp-libvips at commit 6e5971d333377743163edc3ad9e5d0b897abcbc9, directory npm/linux-x64."
+        "The build recipe that pins and compiles it is sharp-libvips at commit ebb95f8add54eee8bed840e3fb587e4cbec857d7, directory npm/linux-x64.",
+        "The recipe changes this component before compiling it: it applies upstream commit GNOME/librsvg@9106011db93d701728ac2c9da50c9ab2c1bb5dc6 (\"Ensure embedded image memory limits are enforced\", new in 1.3.4) as a patch and edits its Cargo.toml and meson.build files; the corresponding source is the 2.63.2 release with exactly those changes, all of them in build/posix.sh at that commit."
       ],
-      "relinking": "The bundled stack is linked into libvips-cpp.so.8.18.3, a single shared object shipped under lib/. A recipient may rebuild that object from the recipe above with a modified version of this component and replace it, which is what the LGPL relinking right requires."
+      "relinking": "The bundled stack is linked into libvips-cpp.so.8.18.7, a single shared object shipped under lib/. A recipient may rebuild that object from the recipe above with a modified version of this component and replace it, which is what the LGPL relinking right requires."
     },
     {
       "component": "libvips",
-      "version": "8.18.6",
+      "version": "8.18.7",
       "spdx_expression": "LGPL-3.0-or-later",
       "obligation": "weak-copyleft source offer (LGPL relinking / MPL per-file source)",
       "upstream_source": "https://github.com/libvips/libvips",
       "obtain": [
-        "The exact version bundled is recorded as 8.18.6 in the shipped versions.json.",
+        "The exact version bundled is recorded as 8.18.7 in the shipped versions.json.",
         "Upstream source: https://github.com/libvips/libvips",
-        "The build recipe that pins and compiles it is sharp-libvips at commit 6e5971d333377743163edc3ad9e5d0b897abcbc9, directory npm/linux-x64."
+        "The build recipe that pins and compiles it is sharp-libvips at commit ebb95f8add54eee8bed840e3fb587e4cbec857d7, directory npm/linux-x64."
       ],
-      "relinking": "The bundled stack is linked into libvips-cpp.so.8.18.6, a single shared object shipped under lib/. A recipient may rebuild that object from the recipe above with a modified version of this component and replace it, which is what the LGPL relinking right requires."
+      "relinking": "The bundled stack is linked into libvips-cpp.so.8.18.7, a single shared object shipped under lib/. A recipient may rebuild that object from the recipe above with a modified version of this component and replace it, which is what the LGPL relinking right requires."
     },
     {
       "component": "pango",
@@ -645,9 +646,9 @@
       "obtain": [
         "The exact version bundled is recorded as 1.58.2 in the shipped versions.json.",
         "Upstream source: https://gitlab.gnome.org/GNOME/pango",
-        "The build recipe that pins and compiles it is sharp-libvips at commit 6e5971d333377743163edc3ad9e5d0b897abcbc9, directory npm/linux-x64."
+        "The build recipe that pins and compiles it is sharp-libvips at commit ebb95f8add54eee8bed840e3fb587e4cbec857d7, directory npm/linux-x64."
       ],
-      "relinking": "The bundled stack is linked into libvips-cpp.so.8.18.3, a single shared object shipped under lib/. A recipient may rebuild that object from the recipe above with a modified version of this component and replace it, which is what the LGPL relinking right requires."
+      "relinking": "The bundled stack is linked into libvips-cpp.so.8.18.7, a single shared object shipped under lib/. A recipient may rebuild that object from the recipe above with a modified version of this component and replace it, which is what the LGPL relinking right requires."
     },
     {
       "component": "proxy-libintl",
@@ -658,9 +659,9 @@
       "obtain": [
         "The exact version bundled is recorded as 0.5 in the shipped versions.json.",
         "Upstream source: https://github.com/frida/proxy-libintl",
-        "The build recipe that pins and compiles it is sharp-libvips at commit 6e5971d333377743163edc3ad9e5d0b897abcbc9, directory npm/linux-x64."
+        "The build recipe that pins and compiles it is sharp-libvips at commit ebb95f8add54eee8bed840e3fb587e4cbec857d7, directory npm/linux-x64."
       ],
-      "relinking": "The bundled stack is linked into libvips-cpp.so.8.18.3, a single shared object shipped under lib/. A recipient may rebuild that object from the recipe above with a modified version of this component and replace it, which is what the LGPL relinking right requires."
+      "relinking": "The bundled stack is linked into libvips-cpp.so.8.18.7, a single shared object shipped under lib/. A recipient may rebuild that object from the recipe above with a modified version of this component and replace it, which is what the LGPL relinking right requires."
     }
   ],
   "aom_patent_grant": {

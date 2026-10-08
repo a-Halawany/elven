@@ -49,6 +49,7 @@ export const SPDX_TEXTS = Object.freeze({
   'Libpng': Object.freeze({ file: 'Libpng.txt', bytes: 4218, sha256: '7667a8c88c7a63690244988d626bcddd27ed895526e2c3ab1a9adb463a5fa287' }),
   'MIT-0': Object.freeze({ file: 'MIT-0.txt', bytes: 915, sha256: '59746d6285ffa44bfc7ecada352aa5d6a20dc8eab418a60ce091cc739012c135' }),
   'MIT': Object.freeze({ file: 'MIT.txt', bytes: 1078, sha256: 'b05785f9f18e6716bab63424b11454513b9943a222595b70411009202fc592b5' }),
+  'MPL-1.1': Object.freeze({ file: 'MPL-1.1.txt', bytes: 23669, sha256: '6214f8b1300bb9f37b16ebc146f8f61af0187e0025042ff95c8b3030744a8795' }),
   'MPL-2.0': Object.freeze({ file: 'MPL-2.0.txt', bytes: 16727, sha256: '66a3107d5ad6a058aab753eaac2047ccb2ed0e39465dd0fe5844da3e300d5172' }),
   'Python-2.0': Object.freeze({ file: 'Python-2.0.txt', bytes: 9411, sha256: '893c2bafbb8133f7aa97e1f79a3ee3241ebca7025f56278e9e1f72bb98592f9d' }),
   'Unlicense': Object.freeze({ file: 'Unlicense.txt', bytes: 1211, sha256: '0bdebfeda07d45dada625ae1317c6f833186e798b171d0db640bcf32e92a8240' }),
