@@ -113,24 +113,22 @@ export const BUNDLED_AOM_PATENT_GRANT = Object.freeze({
  * URLs, the whitespace re-indented; still LGPL-2.1), so its bytes, length and digest moved; pango's
  * record now names 1.58.2, the version bundled since 1.3.3, its bytes unchanged. Every other
  * re-fetched file is byte-identical. fontconfig, libtiff and pixman did not change version and were
- * already cited at their bundled tags. Two records keep the tag they were authenticated at, because the hosts that serve
- * the bundled versions (gitlab.freedesktop.org / cairographics.org for cairo 1.18.6,
- * aomedia.googlesource.com for aom 3.15.1) were outside this correction's permitted fetches: cairo's
- * three files remain cited at 1.18.4 and aom's two at v3.15.0. Their re-verification at the bundled
- * tags is an open item, not an assertion that the bytes are unchanged.
+ * already cited at their bundled tags. cairo's three files (at 1.18.6, from gitlab.freedesktop.org's raw
+ * endpoint) and aom's two (at v3.15.1, from aomedia.googlesource.com) were fetched from their official upstream
+ * hosts on 2026-10-08 and are byte-identical to the vendored texts; their records now name those tags.
  */
 const legal = (path, bytes, sha256, source_url, role = 'licence-and-attribution') =>
   Object.freeze({ path, bytes, sha256, source_url, role });
 
 export const BUNDLED_LEGAL_FILES = Object.freeze({
   aom: Object.freeze([
-    legal('vendor/sharp-libvips/1.3.4/legal/aom/LICENSE', 1316, '4764a286d8b2faeaf42f4418e7d7a28d58fc8fd4d00a3d0a7f44b0a4099de7f2', 'https://aomedia.googlesource.com/aom/+/refs/tags/v3.15.0/LICENSE'),
-    legal('vendor/sharp-libvips/1.3.4/legal/aom/PATENTS', 5701, '661fb8e504744e95587b556b94a58343448300606a41bea8c7a9b97125696e61', 'https://aomedia.googlesource.com/aom/+/refs/tags/v3.15.0/PATENTS', 'patent-grant'),
+    legal('vendor/sharp-libvips/1.3.4/legal/aom/LICENSE', 1316, '4764a286d8b2faeaf42f4418e7d7a28d58fc8fd4d00a3d0a7f44b0a4099de7f2', 'https://aomedia.googlesource.com/aom/+/refs/tags/v3.15.1/LICENSE'),
+    legal('vendor/sharp-libvips/1.3.4/legal/aom/PATENTS', 5701, '661fb8e504744e95587b556b94a58343448300606a41bea8c7a9b97125696e61', 'https://aomedia.googlesource.com/aom/+/refs/tags/v3.15.1/PATENTS', 'patent-grant'),
   ]),
   cairo: Object.freeze([
-    legal('vendor/sharp-libvips/1.3.4/legal/cairo/COPYING', 1576, '67228a9f7c5f9b67c58f556f1be178f62da4d9e2e6285318d8c74d567255abdf', 'https://gitlab.freedesktop.org/cairo/cairo/-/blob/1.18.4/COPYING'),
-    legal('vendor/sharp-libvips/1.3.4/legal/cairo/COPYING-LGPL-2.1', 26533, '9e9e8608c4cdda51a78cc3a385f4ec9a2e4c96d5ecad74ac8bca5fca3e563b7d', 'https://gitlab.freedesktop.org/cairo/cairo/-/blob/1.18.4/COPYING-LGPL-2.1'),
-    legal('vendor/sharp-libvips/1.3.4/legal/cairo/COPYING-MPL-1.1', 25755, '53692a2ed6c6a2c6ec9b32dd0b820dfae91e0a1fcdf625ca9ed0bdf8705fcc4f', 'https://gitlab.freedesktop.org/cairo/cairo/-/blob/1.18.4/COPYING-MPL-1.1'),
+    legal('vendor/sharp-libvips/1.3.4/legal/cairo/COPYING', 1576, '67228a9f7c5f9b67c58f556f1be178f62da4d9e2e6285318d8c74d567255abdf', 'https://gitlab.freedesktop.org/cairo/cairo/-/blob/1.18.6/COPYING'),
+    legal('vendor/sharp-libvips/1.3.4/legal/cairo/COPYING-LGPL-2.1', 26533, '9e9e8608c4cdda51a78cc3a385f4ec9a2e4c96d5ecad74ac8bca5fca3e563b7d', 'https://gitlab.freedesktop.org/cairo/cairo/-/blob/1.18.6/COPYING-LGPL-2.1'),
+    legal('vendor/sharp-libvips/1.3.4/legal/cairo/COPYING-MPL-1.1', 25755, '53692a2ed6c6a2c6ec9b32dd0b820dfae91e0a1fcdf625ca9ed0bdf8705fcc4f', 'https://gitlab.freedesktop.org/cairo/cairo/-/blob/1.18.6/COPYING-MPL-1.1'),
   ]),
   cgif: Object.freeze([legal('vendor/sharp-libvips/1.3.4/legal/cgif/LICENSE', 1099, '7264dede477abab4ac3fe8236beb8153845c04ccd33b18f281085087e219fc6d', 'https://github.com/dloebl/cgif/blob/v0.5.4/LICENSE')]),
   expat: Object.freeze([legal('vendor/sharp-libvips/1.3.4/legal/expat/COPYING', 1144, '31b15de82aa19a845156169a17a5488bf597e561b2c318d159ed583139b25e87', 'https://github.com/libexpat/libexpat/blob/R_2_8_5/expat/COPYING')]),
