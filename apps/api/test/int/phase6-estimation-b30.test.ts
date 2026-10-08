@@ -27,7 +27,7 @@
  *         source is scheduled, else an attention item; the agent requests when its primary is stale; refused: an unknown series (404), a
  *         person without the role (PDP), a stranger cancelling (403); recovered: a new evidence version fulfils it after the tick.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { sql } from 'kysely';
 import { uuidv7 } from 'uuidv7';
 import { mkdtempSync, realpathSync } from 'node:fs';
@@ -50,6 +50,7 @@ import { asObservationRefusal } from '../../src/observation/observation-errors.j
 import { ObservationCapability } from '../../src/observation/observation.capabilities.js';
 import { Phase4Harness, SERIES_START, syntheticEgress, syntheticValue } from './phase4-helpers.js';
 import { PipelineService } from '../../src/pipeline/pipeline.service.js';
+import { SeriesService } from '../../src/prediction/series/series.service.js';
 import { ConstraintService } from '../../src/twin/constraints/constraint.service.js';
 import { ConstraintCapability, type SetWrites } from '../../src/twin/constraints/constraint.capabilities.js';
 import { RECORD_FILES, completeElements } from './phase5-fixtures.js';
@@ -710,6 +711,67 @@ describe('B30 part ES · twin state estimation and continuous reconciliation (01
     expect((await decide(String(p2b['estimate_id']), 'approved', 'proposed again after the retirement (SYNTHETIC)')).decision).toMatchObject({ state: 'approved' });
     evidenceLog('ES8', { revisioned_refused: true, retired_refused: true, recovered: true });
   });
+
+  /*
+   * ES10 · THE LIVE-DEMO REGRESSION OF 2026-10-07 — A SCAN THAT OUTLIVES ITS SESSION. On eye_demo a new PortWatch count queued a telemetry
+   * check; the after-tick hook ran the Reconciliation Agent's reconcile_scan INLINE (the tick awaited it) and the scan read the corridor's
+   * whole history — ~9,000 governed retrievals per read, read twice (compute, then propose) — under sessions that live 15 minutes. Here the
+   * series read is HELD (a spy on SeriesService.assemble waits on a gate — fixture, said) and both agents' sessions are lapsed while it is
+   * held (fixture scaffolding on identity.sessions, as the scheduled-collection harness does): the 15 minutes the real read outlived, without
+   * the wait. Placed before ES7 (whose tombstone degrades the series for good).
+   */
+  it('ES10 · A SCAN THAT OUTLIVES ITS SESSION (the demo regression): BEFORE — the tick blocks on the inline scan, both runs are left running, the tick is misrecorded as refused before any session, the terminal close is refused', async () => {
+    const series = h.app.get(SeriesService);
+    const recon = String((await rows(sql`select agent_id::text a from executive.agents where tenant_id = ${T()}::uuid and agent_kind = 'reconciliation' and status = 'active' order by created_at desc limit 1`))[0]?.['a']);
+    const principalOf = async (agentId: string) => String((await rows(sql`select principal_id::text p from executive.agents where agent_id = ${agentId}::uuid`))[0]?.['p']);
+    const reconP = await principalOf(recon); const attP = await principalOf(attentionAgent);
+    const runsOf = async (agentId: string) => rows(sql`select run_id::text, outcome, spent, stop_reason, trigger_ref, finished_at, correlation_id::text from executive.agent_runs where agent_id = ${agentId}::uuid order by started_at`);
+    const reconBefore = (await runsOf(recon)).map((r) => r['run_id']);
+    // TELEMETRY: a new count (2024-02-16 … 2024-02-20) — the next tick queues a check and the hook runs the scan
+    await collect('2024-02-16', '2024-02-21');
+    let release: () => void = () => undefined; const gate = new Promise<void>((r) => { release = r; });
+    let entered: () => void = () => undefined; const inRead = new Promise<void>((r) => { entered = r; });
+    const original = series.assemble.bind(series);
+    const spy = vi.spyOn(series, 'assemble').mockImplementation(async (...a: Parameters<SeriesService['assemble']>) => { entered(); await gate; return original(...a); });
+    let t!: Awaited<ReturnType<AttentionTimerService['tickNow']>>;
+    try {
+      day += 1;
+      const tickP = timer.tickNow({ tenantId: T(), domainId: D(), agentId: attentionAgent, scheduledAt: new Date(Date.UTC(2038, 0, day)) });
+      await inRead;   // the scan is inside its series read
+      // (a) THE TICK IS HELD BY THE SCAN: five seconds on, the tick has not returned
+      const raced = await Promise.race([tickP.then(() => 'returned'), new Promise<string>((r) => { setTimeout(() => r('blocked'), 5_000); })]);
+      expect(raced, 'the attention tick did not wait on the inline scan').toBe('blocked');
+      // the sessions lapse while the read is held (the real read outlived its 15 minutes)
+      await sql`update identity.sessions set expires_at = clock_timestamp() - interval '1 second'
+        where principal_id in (${reconP}::uuid, ${attP}::uuid) and assurance = 'agent_grant' and expires_at > clock_timestamp()`.execute(h.su);
+      release();
+      t = await tickP;
+    } finally { release(); spy.mockRestore(); }
+    // (b) THE RUNS ARE LEFT RUNNING: the scan's run never closes (spent {}), nor does the tick's own run
+    const reconRun = (await runsOf(recon)).find((r) => !reconBefore.includes(r['run_id'])) as Row;
+    expect(reconRun, 'no reconcile run was opened').toBeDefined();
+    expect(reconRun).toMatchObject({ outcome: 'running', spent: {}, finished_at: null });
+    const tickRuns = (await runsOf(attentionAgent)).filter((r) => r['trigger_ref'] === t.jobId);
+    // (c) THE TICK IS MISRECORDED: the 403 of its own lapsed close is taken for a refusal "before any session" — a second, refused run of the
+    //     SAME job beside the running one (on eye_demo: the "second agent's" refusal, every tick since 11:15)
+    expect(t.outcome).toBe('refused');
+    expect(String(t.stopReason)).toMatch(/^attention tick refused before any session: authority insufficient for this operation/);
+    expect(tickRuns.map((r) => r['outcome']).sort()).toEqual(['refused', 'running']);
+    // (d) THE TERMINAL EVENT CANNOT BE WRITTEN: both closes (agent.run) were refused at the write boundary, session_not_active
+    const denied = (await rows(sql`select event -> 'metadata' as m from audit.audit_events where correlation_id = ${String(reconRun['correlation_id'])}::uuid and event_type = 'request.capability_denied'`))
+      .map((r) => obj(r['m'])).map((m) => `${String(m['subject'])}:${String(m['route_action'])}:${String(m['denial_class'])}`);
+    expect(denied, 'the scan\'s next read was not refused for the lapsed session').toContainEqual(expect.stringMatching(new RegExp(`^principal:${reconP}:(prediction\\.read|observation\\.evidence\\.retrieve):session_not_active$`)));
+    expect(denied).toEqual(expect.arrayContaining([`principal:${reconP}:agent.run:session_not_active`, `principal:${attP}:agent.run:session_not_active`]));
+    // THE NEXT TICK: nothing refuses it for the stale run — it runs the scan again for the SAME check, never consumed (on eye_demo it waited
+    // behind the held job — the queue runs one job at a time — and lapsed again: one cycle every 15 minutes)
+    const reads = vi.spyOn(series, 'assemble');
+    let next!: Row; let assembled = -1;
+    try { next = await tick(); assembled = reads.mock.calls.length; } finally { reads.mockRestore(); }
+    expect(arr(next['pending']).length, 'the check the lapsed scan never answered is still pending').toBeGreaterThanOrEqual(1);
+    // THE READ: the one twin x key's series is assembled TWICE by one scan (compute, then propose computes again) — the whole history each time
+    expect(assembled).toBe(2);
+    evidenceLog('ES10', { raced: 'blocked', recon_run: reconRun, tick_runs: tickRuns.map((r) => ({ outcome: r['outcome'], stop_reason: r['stop_reason'] })), denied, next_scan: next['scan'], assembled });
+  }, 240_000);
 
   it('ES7 · AN UNREADABLE VERSION THAT STATES NO DAY STILL DISQUALIFIES (the window rule\'s conservative branch); the preview discloses why — nothing proposed', async () => {
     const evd = await rows(sql`select (payload ->> 'manifest_id') as manifest, to_char(coalesce(event_time, valid_from) at time zone 'UTC', 'YYYY-MM-DD') as day from objects.canonical_objects
