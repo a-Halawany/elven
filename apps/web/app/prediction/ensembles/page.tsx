@@ -10,7 +10,7 @@
  * THE JUDGEMENT: a named forecast owner's overlay, labelled JUDGEMENT, versioned apart from the model's distribution which stays beside it.
  * Nothing here combines, measures or judges: every value is the server's.
  */
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useShell } from '../layout';
 import { prediction, type SeriesRow } from '../../../lib/prediction';
@@ -63,9 +63,15 @@ function Ensembles() {
     setRuns(r.data.runs);
     setRunId((prev) => (prev === '' ? (r.data?.runs[0]?.run_id ?? '') : prev));
   };
+  // B25 (eye_demo walk): the run chosen LAST wins. The list's first run is loaded on arrival; a run chosen before that read answers must not
+  // be overwritten by it (the stale answer showed the newest ensemble under the chosen run's heading).
+  const wanted = useRef<string>('');
   const loadRun = async () => {
+    wanted.current = runId;
     if (runId === '') { setPkg(null); return; }
-    const r = await ensembles.read(scope, runId);
+    const asked = runId;
+    const r = await ensembles.read(scope, asked);
+    if (wanted.current !== asked) return;
     if (!r.ok || r.data === undefined) { setProblem(r.error?.message ?? 'the ensemble could not be read'); return; }
     setProblem(null); setPkg(r.data.ensemble);
   };
