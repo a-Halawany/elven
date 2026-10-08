@@ -14,6 +14,16 @@
 -- unit, another temporal aggregation) is EXCLUDED and DISCLOSED as `incompatible`: the exclusion class joins the members' vocabulary (the
 -- table's check and prediction.pen_record_attempts_and_exclusions), and — like `not_combined` — it requires a SUCCEEDED attempt (the
 -- semantics are read from what the member computed).
+-- B25-F1 (THE ROUTES OF RUNS FINISHED BEFORE 0109). Before 0109 the router recorded an ensemble run's route against a FRESHLY MINTED
+-- forecast id that was never issued, so no completion could bind it: it stays `planned`. No migration backfill closes it (a migration
+-- does not act as a principal, and a closure is an act on the record). A GOVERNED port does, on request: prediction.reconcile_ensemble_route
+-- under the action `prediction.ensemble.route.reconcile` (a named human forecast owner or the domain's administrator, human-gated), for a
+-- FINISHED run of the caller's domain. The run's route is identified DETERMINISTICALLY: since 0109 by the run's ensemble forecast id; before
+-- it by what the admission's own transaction recorded — the action prediction.ensemble.issue, the admission's correlation id, the run's
+-- admitter as requester, the run's series, horizon and target, a request no later than the admission, and a forecast id never issued;
+-- exactly ONE such route or the port refuses (none: unknown_route; more: ambiguous) and touches nothing. The route is REFUSED through
+-- prediction.refuse_forecast_route (class `unbound`, the reason disclosed); a second call answers `already reconciled`. A route that is
+-- not the run's is never read for update. prediction.refuse_forecast_route and prediction.bind_forecast_route admit the new action.
 -- Signatures, owners, grants and every other rule are unchanged (CREATE OR REPLACE keeps the grants; the REVOKEs are restated).
 
 ALTER TABLE prediction.ensemble_members DROP CONSTRAINT ensemble_members_exclusion_class_check;
@@ -24,7 +34,7 @@ CREATE OR REPLACE FUNCTION prediction.bind_forecast_route(p_route_id uuid, p_ten
 SECURITY DEFINER SET search_path = prediction, identity, observation, ctx, public, pg_catalog, pg_temp AS $$
 DECLARE r prediction.forecast_routes%ROWTYPE; f record; v_members text[];   -- 0109
 BEGIN
-  PERFORM observation.assert_authority(ARRAY['prediction.portfolio.issue', 'prediction.ensemble.issue']);
+  PERFORM observation.assert_authority(ARRAY['prediction.portfolio.issue', 'prediction.ensemble.issue', 'prediction.ensemble.route.reconcile']);   -- 0109: + the reconciliation (B25-F1)
   PERFORM observation.assert_scope(p_tenant, p_domain);
   IF p_actor IS DISTINCT FROM public.eye_principal() THEN RAISE EXCEPTION 'forecast rejected (actor): a route is bound by the acting principal' USING ERRCODE = '42501'; END IF;
   SELECT * INTO r FROM prediction.forecast_routes x WHERE x.route_id = p_route_id AND x.tenant_id = p_tenant AND x.domain_id = p_domain FOR UPDATE;
@@ -125,3 +135,89 @@ BEGIN
   RETURN v_out;
 END $$ LANGUAGE plpgsql;
 REVOKE ALL ON FUNCTION prediction.pen_record_attempts_and_exclusions(prediction.ensemble_runs, jsonb, jsonb, boolean, uuid, uuid) FROM PUBLIC;
+
+CREATE OR REPLACE FUNCTION prediction.refuse_forecast_route(p_route_id uuid, p_tenant uuid, p_domain uuid, p_refusal text, p_class text, p_actor uuid, p_correlation uuid) RETURNS jsonb
+SECURITY DEFINER SET search_path = prediction, identity, observation, ctx, public, pg_catalog, pg_temp AS $$
+DECLARE r prediction.forecast_routes%ROWTYPE;
+BEGIN
+  PERFORM observation.assert_authority(ARRAY['prediction.portfolio.issue', 'prediction.ensemble.issue', 'prediction.ensemble.route.reconcile']);   -- 0109: + the reconciliation (B25-F1)
+  PERFORM observation.assert_scope(p_tenant, p_domain);
+  IF p_actor IS DISTINCT FROM public.eye_principal() THEN RAISE EXCEPTION 'forecast rejected (actor): a route is refused by the acting principal' USING ERRCODE = '42501'; END IF;
+  IF p_refusal IS NULL OR p_refusal !~ '^forecast rejected \([a-z_]+\): ' OR p_class IS NULL THEN
+    RAISE EXCEPTION 'forecast rejected (request): a route''s refusal is a governed refusal text (forecast rejected (<class>): …) with its class' USING ERRCODE = '22023';
+  END IF;
+  SELECT * INTO r FROM prediction.forecast_routes x WHERE x.route_id = p_route_id AND x.tenant_id = p_tenant AND x.domain_id = p_domain FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'forecast rejected (unknown_route): % is not a route of this domain', p_route_id USING ERRCODE = '23503'; END IF;
+  IF r.outcome <> 'planned' THEN RAISE EXCEPTION 'forecast rejected (state): route % is %, not planned', p_route_id, r.outcome USING ERRCODE = '23514'; END IF;
+  UPDATE prediction.forecast_routes SET outcome = 'refused', refusal = p_refusal, refusal_class = p_class WHERE route_id = r.route_id RETURNING * INTO r;
+  PERFORM prediction.pmr_event(p_tenant, p_domain, 'route', r.route_id, coalesce(r.target_key, r.series_key) || ' ' || r.horizon_code, 'route.refused', p_actor,
+    jsonb_build_object('refusal', p_refusal, 'class', p_class, 'after_planning', true), p_correlation);
+  IF p_class = 'horizon' THEN
+    INSERT INTO prediction.forecast_events (event_id, scope, tenant_id, domain_id, forecast_id, event, actor_principal_id, details, correlation_id)
+    VALUES (gen_random_uuid(), 'DOMAIN', p_tenant, p_domain, r.forecast_id, 'forecast.horizon_refused', p_actor,
+      jsonb_build_object('route_id', r.route_id, 'refusal', p_refusal, 'class', p_class, 'target_key', r.target_key, 'series_key', r.series_key, 'horizon', r.horizon_code, 'issued', false), p_correlation);
+  END IF;
+  RETURN to_jsonb(r) - 'tenant_id' - 'domain_id' - 'scope' - 'correlation_id';
+END $$ LANGUAGE plpgsql;
+REVOKE ALL ON FUNCTION prediction.refuse_forecast_route(uuid,uuid,uuid,text,text,uuid,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION prediction.refuse_forecast_route(uuid,uuid,uuid,text,text,uuid,uuid) TO eye_commit;
+
+/* 0109 (B25-F1): RECONCILE a finished ensemble run's ROUTE — see the header. Answers {run_id, route_id, reconciled, already_reconciled,
+   identified_by, statement, route}. */
+CREATE OR REPLACE FUNCTION prediction.reconcile_ensemble_route(p_run_id uuid, p_tenant uuid, p_domain uuid, p_actor uuid, p_correlation uuid) RETURNS jsonb
+SECURITY DEFINER SET search_path = prediction, identity, observation, ctx, public, pg_catalog, pg_temp AS $$
+DECLARE e prediction.ensemble_runs%ROWTYPE; r prediction.forecast_routes%ROWTYPE; v_n int; v_by text; v_text text; v_route jsonb;
+BEGIN
+  PERFORM observation.assert_authority(ARRAY['prediction.ensemble.route.reconcile']);
+  PERFORM observation.assert_scope(p_tenant, p_domain);
+  PERFORM prediction.pen_assert_actor('ensemble', p_actor);
+  IF NOT prediction.pen_is_human_with(p_actor, p_tenant, p_domain, ARRAY['forecast_owner', 'domain_admin']) THEN
+    RAISE EXCEPTION 'ensemble rejected (authority): a run''s route is reconciled by a named, active human forecast owner or the domain''s administrator' USING ERRCODE = '42501';
+  END IF;
+  SELECT * INTO e FROM prediction.ensemble_runs x WHERE x.run_id = p_run_id AND x.tenant_id = p_tenant AND x.domain_id = p_domain;
+  IF NOT FOUND THEN RAISE EXCEPTION 'ensemble rejected (unknown_run): no ensemble run % in this domain', p_run_id USING ERRCODE = '23503'; END IF;
+  IF e.state NOT IN ('completed', 'failed') THEN
+    RAISE EXCEPTION 'ensemble rejected (state): run % is %; only a FINISHED run''s route is reconciled (a live run closes its own route when it completes or fails)', p_run_id, e.state USING ERRCODE = '22023';
+  END IF;
+  -- since 0109: the route recorded against the run's own ensemble forecast
+  SELECT * INTO r FROM prediction.forecast_routes x WHERE x.tenant_id = p_tenant AND x.domain_id = p_domain AND x.requested_action = 'prediction.ensemble.issue'
+     AND x.forecast_id = e.ensemble_forecast_id;
+  IF FOUND THEN
+    v_by := 'the run''s ensemble forecast id (recorded since 0109)';
+  ELSE
+    -- before 0109: the route the admission's own transaction recorded against a minted, never-issued forecast id
+    SELECT count(*) INTO v_n FROM prediction.forecast_routes x
+     WHERE x.tenant_id = p_tenant AND x.domain_id = p_domain AND x.requested_action = 'prediction.ensemble.issue' AND x.correlation_id = e.correlation_id
+       AND x.requested_by = e.admitted_by AND x.series_key = e.series_key AND x.horizon_code = e.horizon_code AND x.target_key IS NOT DISTINCT FROM e.target_key
+       AND x.requested_at <= e.admitted_at AND NOT EXISTS (SELECT 1 FROM prediction.forecasts_current f WHERE f.forecast_id = x.forecast_id);
+    IF v_n = 0 THEN
+      RAISE EXCEPTION 'ensemble rejected (unknown_route): no route recorded by run %''s admission can be identified (its correlation id, requester, question and an unissued forecast id); nothing is reconciled', p_run_id USING ERRCODE = '23503';
+    ELSIF v_n > 1 THEN
+      RAISE EXCEPTION 'ensemble rejected (ambiguous): % routes match run %''s admission; none is reconciled', v_n, p_run_id USING ERRCODE = '22023';
+    END IF;
+    SELECT * INTO r FROM prediction.forecast_routes x
+     WHERE x.tenant_id = p_tenant AND x.domain_id = p_domain AND x.requested_action = 'prediction.ensemble.issue' AND x.correlation_id = e.correlation_id
+       AND x.requested_by = e.admitted_by AND x.series_key = e.series_key AND x.horizon_code = e.horizon_code AND x.target_key IS NOT DISTINCT FROM e.target_key
+       AND x.requested_at <= e.admitted_at AND NOT EXISTS (SELECT 1 FROM prediction.forecasts_current f WHERE f.forecast_id = x.forecast_id);
+    v_by := 'the admission''s correlation id, requester and question (recorded before 0109 against an unissued forecast id)';
+  END IF;
+  IF r.outcome <> 'planned' THEN
+    RETURN jsonb_build_object('run_id', e.run_id, 'route_id', r.route_id, 'reconciled', false, 'already_reconciled', true, 'identified_by', v_by,
+      'statement', format('already reconciled: route %s of ensemble run %s is %s', r.route_id, e.run_id, r.outcome),
+      'route', to_jsonb(r) - 'tenant_id' - 'domain_id' - 'scope' - 'correlation_id');
+  END IF;
+  IF r.forecast_id = e.ensemble_forecast_id AND e.state = 'completed' THEN
+    -- a route of this build left planned (the completion did not close it): bound to the ensemble forecast the run issued
+    v_route := prediction.bind_forecast_route(r.route_id, p_tenant, p_domain, p_actor, p_correlation);
+    v_text := format('route %s of ensemble run %s bound to its ensemble forecast %s', r.route_id, e.run_id, e.ensemble_forecast_id);
+  ELSE
+    v_text := CASE WHEN r.forecast_id = e.ensemble_forecast_id
+      THEN format('forecast rejected (ensemble): run %s FAILED — %s', e.run_id, left(coalesce(e.state_reason, 'failed'), 600))
+      ELSE format('forecast rejected (unbound): route of ensemble run %s, recorded before 0109 against an unissued forecast id (%s); the run %s', e.run_id, r.forecast_id,
+                  CASE WHEN e.state = 'completed' THEN format('completed as ensemble forecast %s', e.ensemble_forecast_id) ELSE format('failed — %s', left(coalesce(e.state_reason, 'failed'), 600)) END) END;
+    v_route := prediction.refuse_forecast_route(r.route_id, p_tenant, p_domain, v_text, CASE WHEN r.forecast_id = e.ensemble_forecast_id THEN 'ensemble' ELSE 'unbound' END, p_actor, p_correlation);
+  END IF;
+  RETURN jsonb_build_object('run_id', e.run_id, 'route_id', r.route_id, 'reconciled', true, 'already_reconciled', false, 'identified_by', v_by, 'statement', v_text, 'route', v_route);
+END $$ LANGUAGE plpgsql;
+REVOKE ALL ON FUNCTION prediction.reconcile_ensemble_route(uuid,uuid,uuid,uuid,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION prediction.reconcile_ensemble_route(uuid,uuid,uuid,uuid,uuid) TO eye_commit;

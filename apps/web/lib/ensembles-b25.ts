@@ -29,6 +29,18 @@ export interface Member {
   assumptions: string[]; tied_assumptions: string[]; state: 'planned' | 'issued' | 'excluded'; forecast_id: string | null; exclusion_class: ExclusionClass | null;
   exclusion_reason: string | null; attempts: number; weight: number | null; quantiles: Quantiles | null; method: string | null; validation_state: string | null;
   validation_note: string | null; statement: string | null; forecast_state: string | null;
+  /** B25-F1/F2: what the member forecast and against what — its target version, method entry digests and output semantics (null before 0109) */
+  outcome_spec?: (Row & { semantics?: Semantics; target?: (Row & { target_key: string; version: number; definition_digest: string }) | null;
+                   method?: Row & { method_ref: string; implementation_digest?: string; pinned: boolean } }) | null;
+  horizon_policy?: (Row & { route_id?: string; evaluation_profile?: Row & { horizon: string; policy: Row; validation_requirement: unknown } }) | null;
+  superseded_by?: string | null;
+}
+/** B25-F2: what an output MEANS — the meaning, the temporal aggregation, the unit, the uncertainty. */
+export interface Semantics { meaning: string; aggregation: string; unit: string; uncertainty: string; statement: string }
+/** B25-F1: a run's route as it stands (since 0109 recorded against the run's ensemble forecast; before it against a minted id). */
+export interface RunRoute {
+  route_id: string; outcome: 'planned' | 'issued' | 'refused'; refusal: string | null; refusal_class: string | null; method_ref: string | null; forecast_id: string;
+  requested_at: string; issued_at: string | null; recorded_against_ensemble: boolean;
 }
 export interface SplittingAssumption { assumption_id: string; title: string | null; held_by: string[]; not_held_by: string[] }
 export interface Disagreement {
@@ -50,6 +62,7 @@ export interface EnsemblePackage {
   attempts: Array<{ ordinal: number; method_ref: string; attempt: number; outcome: 'succeeded' | 'failed'; error: string | null; duration_ms: number; recorded_at: string }>;
   events: Array<{ event_id: string; event: string; actor_principal_id: string; details: Row; occurred_at: string }>;
   overlays: Overlay[]; standing_overlay: Overlay | null; rules: Row;
+  /** B25-F1: the run's route(s) */ routes?: RunRoute[];
 }
 export interface RunSummary {
   run_id: string; ensemble_forecast_id: string; series_key: string; target_key: string | null; horizon_code: string; state: RunState; state_reason: string | null;
@@ -92,6 +105,24 @@ const CLASS_WORDS: Readonly<Record<string, string>> = Object.freeze({
 export function exclusionLine(x: { method_ref: string; class: string; reason: string; attempts?: number }): string {
   return `${x.method_ref} — ${CLASS_WORDS[x.class] ?? x.class}${x.attempts !== undefined && x.attempts > 0 ? ` (${x.attempts} attempt${x.attempts === 1 ? '' : 's'})` : ''}: ${x.reason}`;
 }
+/** B25-F1: a route in words — never a bare state. */
+export function routeLine(r: RunRoute): string {
+  if (r.outcome === 'issued') return `ROUTE ISSUED — bound to the ensemble forecast ${r.forecast_id.slice(0, 8)}… (${r.method_ref ?? '—'})`;
+  if (r.outcome === 'refused') return `ROUTE REFUSED (${r.refusal_class ?? '—'}): ${r.refusal ?? ''}`;
+  return r.recorded_against_ensemble ? 'ROUTE PLANNED — the run has not finished' : `ROUTE LEFT PLANNED — recorded before 0109 against an unissued forecast id (${r.forecast_id.slice(0, 8)}…); a forecast owner reconciles it`;
+}
+/** B25-F2: an output's meaning in one line. */
+export function semanticsLine(s: Semantics | null | undefined): string {
+  return s === null || s === undefined ? 'not declared (issued before 0109)' : `${s.meaning} · ${s.aggregation} · ${s.unit} · ${s.uncertainty}`;
+}
+/** B25-F1: a member's pins in one line — the target version, the method's implementation, the evaluation profile. */
+export function pinLine(m: Pick<Member, 'outcome_spec' | 'horizon_policy'>): string {
+  const o = m.outcome_spec; if (o === null || o === undefined) return 'no pins (issued before 0109)';
+  const t = o.target; const me = o.method; const ev = m.horizon_policy?.evaluation_profile;
+  return [t === null || t === undefined ? 'no target' : `target ${t.target_key} v${t.version} (definition ${String(t.definition_digest).slice(0, 12)}…)`,
+          me === undefined ? 'method —' : me.pinned ? `method ${me.method_ref} (implementation ${String(me.implementation_digest).slice(0, 12)}…)` : `method ${me.method_ref} (not pinned)`,
+          ev === undefined ? 'evaluation profile —' : `evaluation profile ${ev.horizon}${ev.policy?.['policy_id'] === null || ev.policy?.['policy_id'] === undefined ? ' (the legacy rule)' : ` (policy v${String(ev.policy['version'])})`}`].join(' · ');
+}
 /** A distribution as its median and 10–90 band. */
 export function quantileLine(q: Quantiles | null | undefined, unit = ''): string {
   if (q === null || q === undefined || !Number.isFinite(Number(q.q50))) return '—';
@@ -129,6 +160,8 @@ export const ensembles = {
   read: (s: Scope, runId: string) => p<{ ensemble: EnsemblePackage }>(s, `/ensembles/${runId}/read`, 'prediction.ensemble.read', 'ENS', {}, runId),
   issue: (s: Scope, payload: IssueEnsemble) => p<{ ensemble: EnsemblePackage }>(s, '/ensembles/issue', 'prediction.ensemble.issue', 'ENS', payload as unknown as Row),
   resume: (s: Scope, runId: string) => p<{ ensemble: EnsemblePackage }>(s, `/ensembles/${runId}/resume`, 'prediction.ensemble.issue', 'ENS', {}, runId),
+  /** B25-F1 (0109): reconcile a finished run's route left planned before 0109 (a named human forecast owner; human-gated) */
+  reconcileRoute: (s: Scope, runId: string) => p<{ reconciliation: Row; receipt: Receipt }>(s, `/ensembles/${runId}/reconcile-route`, 'prediction.ensemble.route.reconcile', 'ENS', {}, runId),
   overlays: (s: Scope, forecastId: string) => p<{ forecast_id: string; model: Row; standing: Overlay | null; overlays: Overlay[] }>(s, `/forecasts/${forecastId}/overlays/list`, 'prediction.read', 'FCT', {}, forecastId),
   addOverlay: (s: Scope, forecastId: string, o: OverlayInput) => p<{ overlay: Overlay; receipt: Receipt }>(s, `/forecasts/${forecastId}/overlays/add`, 'prediction.overlay.add', 'FCT', o as unknown as Row, forecastId),
   reviseOverlay: (s: Scope, forecastId: string, overlayId: string, o: OverlayInput) =>

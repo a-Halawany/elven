@@ -58,6 +58,9 @@ export interface EnsembleReads {
   assumptionTitles(ids: string[]): Promise<Record<string, string>>;
   /** The subject entity a registered series is about (null: none, or no such series — the admission port refuses the latter). */
   seriesSubject(seriesKey: string): Promise<string | null>;
+  /** B25-F1: the run's ROUTE(S) — since 0109 the one recorded against its ensemble forecast; before it, the one its admission recorded (the
+   *  port's deterministic match, read here for display: the correlation id, the requester, the question, an unissued forecast id). */
+  routes(runId: string): Promise<Row[]>;
 }
 
 export interface EnsembleWrites extends EnsembleReads {
@@ -68,13 +71,18 @@ export interface EnsembleWrites extends EnsembleReads {
   resume(a: { runId: string; tenantId: string; domainId: string; actor: string; eventId: string; correlationId: string }): Promise<Row>;
 }
 
+/** B25-F1 (0109): prediction.ensemble.route.reconcile — close a finished run's route left planned before 0109. */
+export interface RouteReconciliation extends EnsembleReads {
+  reconcileRoute(a: { runId: string; tenantId: string; domainId: string; actor: string; correlationId: string }): Promise<Row>;
+}
+
 export interface OverlayWrites extends EnsembleReads {
   add(a: { overlayId: string; tenantId: string; domainId: string; forecastId: string; adjustment: Row; rationale: string; evidence: Row[]; actor: string; eventId: string; correlationId: string }): Promise<Row>;
   revise(a: { overlayId: string; tenantId: string; domainId: string; forecastId: string; expectedVersion: number; adjustment: Row; rationale: string; evidence: Row[]; actor: string; eventId: string; correlationId: string }): Promise<Row>;
   withdraw(a: { overlayId: string; tenantId: string; domainId: string; forecastId: string; reason: string; actor: string; eventId: string; correlationId: string }): Promise<Row>;
 }
 
-class EnsembleCapabilityImpl extends EnsembleCore implements EnsembleWrites, OverlayWrites {
+class EnsembleCapabilityImpl extends EnsembleCore implements EnsembleWrites, OverlayWrites, RouteReconciliation {
   constructor(tx: Tx, action: string) { super(tx, action); }
 
   async rules(): Promise<Row> { return this.one(sql`select prediction.ensemble_rules() as r`, 'ensemble_rules'); }
@@ -94,7 +102,8 @@ class EnsembleCapabilityImpl extends EnsembleCore implements EnsembleWrites, Ove
     return this.rows(sql`select m.ordinal, m.method_ref, m.family, m.forecast_kind, m.confidence_language, m.available, m.unavailable_reason,
                                 m.assumptions::text[] as assumptions, m.tied_assumptions::text[] as tied_assumptions, m.state, m.forecast_id::text,
                                 m.exclusion_class, m.exclusion_reason, m.attempts, m.weight::float8 as weight,
-                                f.quantiles, f.path, f.method, f.method_version, f.validation_state, f.validation_note, f.statement, f.state as forecast_state
+                                f.quantiles, f.path, f.method, f.method_version, f.validation_state, f.validation_note, f.statement, f.state as forecast_state,
+                                f.outcome_spec, f.horizon_policy, f.superseded_by::text as superseded_by   -- B25-F1/F2: the member's pins and output semantics
                            from prediction.ensemble_members m left join prediction.forecasts_current f on f.forecast_id = m.forecast_id
                           where m.run_id = ${runId}::uuid order by m.ordinal`);
   }
@@ -134,6 +143,21 @@ class EnsembleCapabilityImpl extends EnsembleCore implements EnsembleWrites, Ove
     return r[0]?.s ?? null;
   }
 
+  async routes(runId: string): Promise<Row[]> {
+    return this.rows(sql`select r.route_id::text, r.outcome, r.refusal, r.refusal_class, r.method_ref, r.forecast_id::text, r.requested_at, r.issued_at,
+                                (r.forecast_id = e.ensemble_forecast_id) as recorded_against_ensemble
+                           from prediction.ensemble_runs e join prediction.forecast_routes r on r.tenant_id = e.tenant_id and r.domain_id = e.domain_id
+                                and r.requested_action = 'prediction.ensemble.issue'
+                                and (r.forecast_id = e.ensemble_forecast_id
+                                     or (r.correlation_id = e.correlation_id and r.requested_by = e.admitted_by and r.series_key = e.series_key and r.horizon_code = e.horizon_code
+                                         and r.target_key is not distinct from e.target_key and r.requested_at <= e.admitted_at
+                                         and not exists (select 1 from prediction.forecasts_current f where f.forecast_id = r.forecast_id)))
+                          where e.run_id = ${runId}::uuid order by r.requested_at`);
+  }
+  async reconcileRoute(a: Parameters<RouteReconciliation['reconcileRoute']>[0]): Promise<Row> {
+    return this.one(sql`select prediction.reconcile_ensemble_route(${a.runId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'reconcile_ensemble_route');
+  }
+
   async admit(a: Parameters<EnsembleWrites['admit']>[0]): Promise<Row> {
     return this.one(sql`select prediction.admit_ensemble_run(${a.runId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.ensembleForecastId}::uuid,
       ${JSON.stringify(a.request)}::jsonb, ${JSON.stringify(a.plan)}::jsonb, ${JSON.stringify(a.members)}::jsonb, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`, 'admit_ensemble_run');
@@ -169,6 +193,8 @@ export const EnsembleCapability = {
   read(tx: Tx, action: string): EnsembleReads { return new EnsembleCapabilityImpl(tx, action); },
   /** prediction.ensemble.issue: the manager's admission, completion, failure and resumption (and the seams' transaction). */
   manage(tx: Tx, action: string): EnsembleWrites { return new EnsembleCapabilityImpl(tx, action); },
+  /** B25-F1 (0109) prediction.ensemble.route.reconcile: close a finished run's route left planned before 0109. */
+  reconcile(tx: Tx, action: string): RouteReconciliation { return new EnsembleCapabilityImpl(tx, action); },
   /** prediction.overlay.add / prediction.overlay.withdraw: the judgement overlay's ports. */
   overlay(tx: Tx, action: string): OverlayWrites { return new EnsembleCapabilityImpl(tx, action); },
 };

@@ -638,10 +638,21 @@ export class EnsemblesService {
         disagreement: run['disagreement'] ?? rec(payload)['disagreement'] ?? null,
         excluded_models: rec(payload)['excluded_models'] ?? members.filter((m) => m['state'] === 'excluded').map((m) => ({ ordinal: m['ordinal'], method_ref: m['method_ref'], class: m['exclusion_class'], reason: m['exclusion_reason'], attempts: m['attempts'] })),
         attempts: await cap.attempts(runId), events: await cap.events(runId),
+        routes: await cap.routes(runId),   // B25-F1: the run's route(s) and how each stands (issued, refused, planned)
         overlays, standing_overlay: overlays.find((o) => o['state'] === 'active') ?? null,
         rules: await cap.rules(),
       };
     });
+  }
+
+  /** B25-F1 (0109): RECONCILE a finished run's route left planned before 0109 (prediction.ensemble.route.reconcile; human-gated) — the
+   *  port identifies the run's route deterministically and refuses it with the reason disclosed; a second call answers `already reconciled`. */
+  async reconcileRoute(envelope: Envelope, principal: AuthenticatedPrincipal, tenantId: string, domainId: string, runId: string): Promise<{ result: Row; policyDecisionId: string; auditSeq: number }> {
+    const out = await this.pipeline.write(this.env(envelope, 'prediction.ensemble.route.reconcile', 'ENS', runId), principal,
+      this.route(tenantId, domainId, 'prediction.ensemble.route.reconcile', 'ENS', runId), EnsembleCapability.reconcile,
+      async (cap) => ({ result: await cap.reconcileRoute({ runId, tenantId, domainId, actor: principal.principalId, correlationId: envelope.correlation_id }),
+                        targetType: 'ENS', targetId: runId, targetVersion: null, outboxEvent: null }));
+    return out;
   }
 
   async list(envelope: Envelope, principal: AuthenticatedPrincipal, tenantId: string, domainId: string, limit: number): Promise<Row> {

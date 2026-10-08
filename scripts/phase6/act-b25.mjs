@@ -44,6 +44,12 @@
  *         corridor series at 30d cut at 2024-01-11 (the week the strait emptied — where the two methods genuinely disagree on the real data);
  *         both distributions, the ensemble, the disagreement and the SPLITTING assumption; the escalation routed to him; he adds a labelled
  *         JUDGEMENT overlay; A. Hoffmann's writes are refused.
+ *   B25-F2b (B25-F, migration 0109 — the review's B25-F1 and B25-F2 corrected): the scene's run finished BEFORE 0109 left its route
+ *         `planned` (recorded against a minted, never-issued forecast id); N. Eriksen RECONCILES it through the governed, human-gated route
+ *         (refused `unbound`, the reason disclosed; a second call answers already reconciled). He RE-ISSUES the same question on the corrected
+ *         build (same series, horizon, cut, assumptions): the new ensemble SUPERSEDES the prior ensemble and its members by lineage, its route
+ *         ends ISSUED, its members carry their pins (the target version, the method entry's implementation digest, the evaluation profile)
+ *         and their OUTPUT SEMANTICS, nothing incompatible is combined (what was excluded is said); he REPLAYS the new ensemble (REPRODUCED).
  *   B25-9 THE STATE, the env lines for the three walks, the LIMITS said.
  *
  * Real public collections go through the governed routes and the real connector; everything else is SYNTHETIC and said so. Nothing prints a
@@ -727,7 +733,7 @@ const ASU_PERSIST = await weberAsu('The Red Sea diversions have run their course
 const ASU_REVERT = await weberAsu('Carriers keep diverting at the pace of the last weeks', 'the decline of transits through the strait continues at its recent pace through the month');
 // 3. THE ENSEMBLE
 const ensRow = async () => (await q(`select run_id::text, ensemble_forecast_id::text, state, disagreement, escalation, attention_item_id::text, admitted_at, finished_at, information_set_id::text from prediction.ensemble_runs
-   where tenant_id = $1 and domain_id = $2 and series_key = $3 and horizon_code = $4 and observed_through = $5 and owner_principal_id = $6 and state = 'completed' order by admitted_at desc limit 1`, [T, D, CORRIDOR, ENS_HORIZON, ENS_CUT, eriksen.principalId]))[0] ?? null;
+   where tenant_id = $1 and domain_id = $2 and series_key = $3 and horizon_code = $4 and observed_through = $5 and owner_principal_id = $6 and state = 'completed' order by admitted_at asc limit 1`, [T, D, CORRIDOR, ENS_HORIZON, ENS_CUT, eriksen.principalId]))[0] ?? null;   // B25-F: the scene's run is the FIRST completed run of the question (B25-F2b re-issues it later)
 let RUN = await ensRow();
 if (RUN) note(`the ensemble run ${short(RUN.run_id)} (${CORRIDOR} at ${ENS_HORIZON} cut at ${ENS_CUT}) stands ${RUN.state} — an earlier run`);
 else if (ASU_SHARED && ASU_PERSIST && ASU_REVERT) {
@@ -782,6 +788,72 @@ if (ENS?.ensemble?.forecast_id) {
   expectRefused('A. Hoffmann\'s judgement overlay', w1, 403);
   const w2 = await call(`${P}/ensembles/issue`, pe(hoffmann, { action: 'prediction.ensemble.issue', objectType: 'ENS' }), { seriesKey: CORRIDOR, horizon: '90d', assumptions: [ASU_SHARED] }, hoffmann.token);
   expectRefused('A. Hoffmann\'s ensemble issue', w2, 403);
+}
+
+/* ── B25-F2b (B25-F, 0109): the scene's route reconciled; the question re-issued on the corrected build ────────────────── */
+await renewAll();
+console.log('\nB25-F2b (B25-F, migration 0109) — the scene\'s route reconciled; the same ensemble question re-issued on the corrected build');
+if ((await q(`select filename from public.schema_migrations where filename like '0109%'`)).length !== 1) bad('0109 is not applied: the corrected build\'s scene cannot run');
+else if (RUN && ENS) {
+  const pkgOf = async (runId) => { const r = await call(`${P}/ensembles/${runId}/read`, pe(eriksen, { action: 'prediction.ensemble.read', objectType: 'ENS', objectId: runId, ...READ }), {}, eriksen.token); return r.ok ? r.body.ensemble : null; };
+  // 1. THE SCENE'S ROUTE: reconciled through the governed route (or found reconciled — an earlier run, or a run of this build closed it itself)
+  const routeOf = (pkg) => (pkg?.routes ?? []);
+  const before = routeOf(await pkgOf(RUN.run_id));
+  const rc = async () => call(`${P}/ensembles/${RUN.run_id}/reconcile-route`, pe(eriksen, { action: 'prediction.ensemble.route.reconcile', objectType: 'ENS', objectId: RUN.run_id }), {}, eriksen.token);
+  if (before.some((x) => x.outcome === 'planned')) {
+    note(`the scene's run ${short(RUN.run_id)} finished before 0109: its route ${short(before[0].route_id)} is PLANNED against forecast id ${short(before[0].forecast_id)}, which was never issued (the ensemble is ${short(RUN.ensemble_forecast_id)})`);
+    const r = await rc();
+    if (!r.ok) fail('N. Eriksen reconciles the scene\'s route', r);
+    else (r.body.reconciliation.reconciled === true ? ok : bad)(`N. Eriksen RECONCILED the route (identified by ${r.body.reconciliation.identified_by}): "${String(r.body.reconciliation.statement).slice(0, 360)}"`);
+  } else note(`the scene's route stands ${before.map((x) => `${x.outcome.toUpperCase()}${x.refusal_class ? ` (${x.refusal_class})` : ''}`).join(', ') || 'NONE'} — an earlier run, or closed with its run`);
+  const again = await rc();
+  (again.ok && again.body.reconciliation.already_reconciled === true ? ok : bad)(`a second reconciliation answers ALREADY RECONCILED: "${String(again.body?.reconciliation?.statement ?? again.body?.message).slice(0, 200)}"`);
+  const after = routeOf(await pkgOf(RUN.run_id));
+  (after.length === 1 && after[0].outcome !== 'planned' ? ok : bad)(`the scene's route now: ${after.map((x) => `${x.outcome.toUpperCase()} (${x.refusal_class ?? x.method_ref}) — ${String(x.refusal ?? '').slice(0, 240)}`).join('; ')}`);
+  // 2. THE RE-ISSUE on the corrected build: the same question (series, horizon, cut, assumptions, the same ties)
+  const reRow = async () => (await q(`select run_id::text, ensemble_forecast_id::text, state, admitted_at from prediction.ensemble_runs where tenant_id = $1 and domain_id = $2 and series_key = $3 and horizon_code = $4
+     and observed_through = $5 and owner_principal_id = $6 and state = 'completed' and admitted_at > $7 and plan ->> 'route_id' is not null order by admitted_at desc limit 1`,
+     [T, D, CORRIDOR, ENS_HORIZON, ENS_CUT, eriksen.principalId, RUN.admitted_at]))[0] ?? null;
+  let RE = await reRow();
+  if (RE) note(`the re-issued run ${short(RE.run_id)} stands (completed ${iso(RE.admitted_at)}) — an earlier run`);
+  else {
+    const t0 = Date.now();
+    note(`N. Eriksen RE-ISSUES the ensemble on ${CORRIDOR} at ${ENS_HORIZON}, observed through ${ENS_CUT} (the series read takes minutes)`);
+    const r = await longAs(eriksen, `${P}/ensembles/issue`, pe(eriksen, { action: 'prediction.ensemble.issue', objectType: 'ENS' }), { seriesKey: CORRIDOR, horizon: ENS_HORIZON, observedThrough: ENS_CUT, assumptions: [ASU_SHARED],
+      members: [{ methodRef: 'seasonal_naive@1', assumptions: [ASU_PERSIST] }, { methodRef: 'holt_winters@1', assumptions: [ASU_REVERT] }], label: 'replay demonstration' });
+    if (!r.ok) fail('N. Eriksen re-issues the ensemble', r); else ok(`N. Eriksen RE-ISSUED the ensemble: run ${short(r.body.ensemble.run.run_id)} → ${r.body.ensemble.run.state} (${mins(t0)})`);
+    RE = await reRow();
+  }
+  if (RE) {
+    await renew(eriksen);
+    const NP = await pkgOf(RE.run_id);
+    const ne = NP?.ensemble ?? {}; const mem = NP?.members ?? [];
+    // SUPERSESSION BY LINEAGE: the prior ensemble and its members superseded by the new ensemble
+    const prior = await q(`select ensemble_role, method_ref, state, superseded_by::text from prediction.forecasts_current where ensemble_id = $1 order by ensemble_role, method_ref`, [RUN.ensemble_forecast_id]);
+    (prior.length >= 3 && prior.every((x) => x.state === 'superseded' && x.superseded_by === RE.ensemble_forecast_id) ? ok : bad)(`SUPERSEDED BY LINEAGE: the prior ensemble ${short(RUN.ensemble_forecast_id)} and its members — ${prior.map((x) => `${x.ensemble_role === 'ensemble' ? 'the ensemble' : x.method_ref} ${x.state} by ${short(x.superseded_by)}`).join('; ')}`);
+    // THE ROUTE: ISSUED, bound to the new ensemble
+    const nr = routeOf(NP);
+    (nr.length === 1 && nr[0].outcome === 'issued' && nr[0].recorded_against_ensemble && nr[0].forecast_id === RE.ensemble_forecast_id ? ok : bad)(`THE ROUTE of the re-issued run: ${nr.map((x) => `${x.outcome.toUpperCase()} — bound to the ensemble forecast ${short(x.forecast_id)} (${x.method_ref})`).join('; ') || 'NONE'}`);
+    // THE MEMBERS' PINS AND OUTPUT SEMANTICS
+    const issued = mem.filter((m) => m.state === 'issued');
+    const pinsOk = issued.length >= 2 && issued.every((m) => m.outcome_spec?.method?.pinned === true && /^[0-9a-f]{64}$/.test(String(m.outcome_spec?.method?.implementation_digest)) && typeof m.horizon_policy?.route_id === 'string'
+      && m.horizon_policy?.evaluation_profile?.horizon === ENS_HORIZON && 'target' in (m.outcome_spec ?? {}));
+    (pinsOk ? ok : bad)(`THE MEMBERS' PINS: ${issued.map((m) => `${m.method_ref} — method ${m.outcome_spec?.method?.implementation_ref} ${String(m.outcome_spec?.method?.implementation_digest).slice(0, 12)}…, target ${m.outcome_spec?.target === null ? 'none (a series question)' : `${m.outcome_spec?.target?.target_key} v${m.outcome_spec?.target?.version}`}, evaluation profile ${m.horizon_policy?.evaluation_profile?.horizon} (${m.horizon_policy?.evaluation_profile?.policy?.policy_id ? `policy v${m.horizon_policy.evaluation_profile.policy.version}` : 'the legacy rule'}), route ${short(m.horizon_policy?.route_id)}`).join(' · ')}`);
+    const sem = issued.map((m) => m.outcome_spec?.semantics ?? null);
+    const same = sem.every((x) => x !== null && JSON.stringify([x.meaning, x.aggregation, x.unit, x.uncertainty]) === JSON.stringify([sem[0].meaning, sem[0].aggregation, sem[0].unit, sem[0].uncertainty]));
+    (same && sem[0]?.meaning === 'future_level' ? ok : bad)(`THE OUTPUT SEMANTICS: every combined member forecasts ${sem[0] ? `${sem[0].meaning} · ${sem[0].aggregation} · ${sem[0].unit} · ${sem[0].uncertainty} ("${sem[0].statement}")` : '—'} — NOTHING INCOMPATIBLE WAS COMBINED; excluded: ${(NP?.excluded_models ?? []).length === 0 ? 'NONE (the horizon policy plans exactly the two statistical methods for a 30d quantity)' : NP.excluded_models.map((x) => `${x.method_ref} (${x.class}: ${String(x.reason).slice(0, 160)})`).join('; ')}`);
+    note(`the re-issued ensemble ${short(RE.ensemble_forecast_id)} (${ne.method_ref}): ${String(ne.statement ?? '').slice(0, 300)}`);
+    // THE REPLAY of the new ensemble: REPRODUCED
+    const prev = (await q(`select outcome, replayed_at from prediction.forecast_replays where forecast_id = $1 order by replayed_at desc limit 1`, [RE.ensemble_forecast_id]))[0] ?? null;
+    if (prev?.outcome === 'REPRODUCED') note(`the re-issued ensemble's replay stands REPRODUCED (${iso(prev.replayed_at)}) — an earlier run`);
+    else {
+      const t0 = Date.now();
+      const r = await longAs(eriksen, `${P}/forecasts/${RE.ensemble_forecast_id}/replay`, pe(eriksen, { action: 'prediction.forecast.replay', objectType: 'FCT', objectId: RE.ensemble_forecast_id }), {});
+      if (!r.ok) fail('N. Eriksen replays the re-issued ensemble', r);
+      else (r.body.replay.outcome === 'REPRODUCED' ? ok : bad)(`N. Eriksen REPLAYED the re-issued ensemble (${mins(t0)}): ${r.body.replay.outcome} by ${r.body.replay.replayer?.replayer ?? '—'} — ${r.body.replay.diverged.length} divergence(s)`);
+    }
+    ENV_OUT.EYE_B25_REISSUED_RUN = RE.run_id; ENV_OUT.EYE_B25_REISSUED_ENSEMBLE = RE.ensemble_forecast_id; ENV_OUT.EYE_B25_PRIOR_ENSEMBLE = RUN.ensemble_forecast_id;
+  }
 }
 
 /* ── B25-9 THE STATE, THE ENV LINES, THE LIMITS ──────────────────────────────────────── */

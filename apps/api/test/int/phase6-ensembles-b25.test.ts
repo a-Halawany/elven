@@ -31,6 +31,11 @@
  *         distributions under the declared rule (ensemble-combination@1); each member is replayed on its own. POSITIVE: the scene's ensemble and
  *         a member REPRODUCED; REFUSAL: a member row edited after issue (a stated superuser move) → the ensemble DIVERGES (member, output);
  *         RECOVERY: restored → REPRODUCED.
+ *   EN8 · B25-F1 (0109) THE ROUTE OF A RUN FINISHED BEFORE 0109, RECONCILED through the governed, human-gated port: the pre-0109 recording
+ *         reproduced (the route recorded against a minted, never-issued forecast id, left planned); POSITIVE: N. Eriksen reconciles it —
+ *         refused `unbound` with the reason disclosed, no other route touched; IDEMPOTENT: a second call answers already reconciled; REFUSALS:
+ *         a live run, another domain's run (unknown there; and a forecast owner of another domain at the PDP), an agent (human gate); a run of
+ *         this build answers already reconciled (its route was closed with it).
  *
  * Every count is scoped to this harness's tenant (the hosted run shares one database across files).
  */
@@ -52,7 +57,8 @@ import { ENSEMBLE_RULES, combine, divergence, type Quantiles } from '../../src/p
 import { seasonalNaive } from '../../src/prediction/models/models.js';
 import type { MethodPlan, MethodRouter } from '../../src/prediction/portfolio/seams.js';
 import { Phase4Harness, SERIES_START, SERIES_END, syntheticEgress } from './phase4-helpers.js';
-import type { AnyDb } from './helpers.js';
+import { seedDomain, type AnyDb } from './helpers.js';
+import { RegistryMethodRouter } from '../../src/prediction/registry/method-router.js';   // B25-F1: the pre-0109 recording, reproduced
 
 const VAULT_DIR = realpathSync(mkdtempSync(join(tmpdir(), 'eye-b25-ensembles-vault-')));
 process.env['EYE_VAULT_QUARANTINE_ROOT'] = join(VAULT_DIR, 'quarantine');
@@ -645,3 +651,79 @@ describe('EN7 · B25 completion G2: the replay of an ensemble (the combination f
     console.log(`B25 EN7 EVIDENCE · G2 · ensemble ${ensembleId} REPRODUCED by ensemble-combination@1 (linear_pool@1, equal weights recomputed) · member ${memberId} REPRODUCED by the legacy compute · an edited member → DIVERGED (${d.diverged.map((x) => x['what']).join(', ')}) · restored → REPRODUCED`);
   });
 });
+
+/* B25-F1 (0109): THE ROUTE OF A RUN FINISHED BEFORE 0109. The pre-0109 router recorded the run's route against a MINTED forecast id that was
+   never issued (and nothing closed it); the router below reproduces exactly that recording (the real RegistryMethodRouter's plan under a
+   fresh forecast id, no route id handed back, no pins), so the run completes leaving its route planned — the state eye_demo holds. */
+describe('EN8 · B25-F1: a pre-0109 run\'s planned route, reconciled through the governed port', () => {
+  const preRouter = (): MethodRouter => {
+    const real = new RegistryMethodRouter();
+    return { async plan(tx, a) {
+      const p = await real.plan(tx, { ...a, forecastId: uuidv7() } as never);
+      return { targetKey: p.targetKey, horizonCode: p.horizonCode, policy: p.policy, methods: p.methods.map(({ pin: _pin, ...m }) => m) };
+    } };
+  };
+  const reconcile = (p: AuthenticatedPrincipal, runId: string, domainId = D()) => {
+    const r = h.req(p, 'prediction.ensemble.route.reconcile', 'ENS', runId) as { eyeEnvelope: Row; eyePrincipal: AuthenticatedPrincipal };
+    return ens.reconcileRoute({ ...r, eyeEnvelope: { ...r.eyeEnvelope, domain_id: domainId } } as never, T(), domainId, runId) as Promise<{ reconciliation: Row }>;
+  };
+  const routesOf = async (runId: string) => (await sql<Row>`select r.route_id::text, r.outcome, r.refusal_class, r.refusal, r.forecast_id::text from prediction.forecast_routes r
+    join prediction.ensemble_runs e on e.correlation_id = r.correlation_id and e.tenant_id = r.tenant_id where e.run_id = ${runId}::uuid and r.requested_action = 'prediction.ensemble.issue'`.execute(su)).rows;
+  let PRE = ''; let PRE_ENS = '';
+
+  it('POSITIVE · the pre-0109 run completes leaving its route planned; N. Eriksen reconciles it: refused `unbound`, the reason disclosed, nothing else touched', async () => {
+    const out = (await withRouter(preRouter(), () => issue(eriksen, scenePayload({ horizon: '3y', observedThrough: CUT })))).ensemble;
+    const run = rec(out['run']); PRE = String(run['run_id']); PRE_ENS = String(run['ensemble_forecast_id']);
+    expect(run['state'], String(run['state_reason'])).toBe('completed');
+    const before = await routesOf(PRE);
+    expect(before.map((r) => r['outcome'])).toEqual(['planned']);
+    expect(before[0]!['forecast_id']).not.toBe(PRE_ENS);   // the minted id, never issued
+    const others = (await sql<Row>`select route_id::text, outcome from prediction.forecast_routes where tenant_id = ${T()}::uuid and route_id <> ${String(before[0]!['route_id'])}::uuid order by route_id`.execute(su)).rows;
+    const r = (await reconcile(eriksen, PRE)).reconciliation;
+    expect(r).toMatchObject({ run_id: PRE, route_id: before[0]!['route_id'], reconciled: true, already_reconciled: false });
+    expect(String(r['identified_by'])).toMatch(/the admission's correlation id, requester and question \(recorded before 0109 against an unissued forecast id\)/);
+    const after = await routesOf(PRE);
+    expect([after[0]!['outcome'], after[0]!['refusal_class']]).toEqual(['refused', 'unbound']);
+    expect(String(after[0]!['refusal'])).toBe(`forecast rejected (unbound): route of ensemble run ${PRE}, recorded before 0109 against an unissued forecast id (${String(before[0]!['forecast_id'])}); the run completed as ensemble forecast ${PRE_ENS}`);
+    // NO OTHER ROUTE TOUCHED; the ledger says who closed it
+    expect((await sql<Row>`select route_id::text, outcome from prediction.forecast_routes where tenant_id = ${T()}::uuid and route_id <> ${String(before[0]!['route_id'])}::uuid order by route_id`.execute(su)).rows).toEqual(others);
+    const ledger = (await sql<Row>`select event, actor_principal_id::text actor, details from prediction.forecast_registry_events where subject_id = ${String(before[0]!['route_id'])}::uuid order by occurred_at`.execute(su)).rows;
+    expect(ledger.map((x) => [x['event'], x['actor']])).toEqual([['route.planned', eriksen.principalId], ['route.refused', eriksen.principalId]]);
+    // the package shows the route as it now stands
+    const pkg = (await read(eriksen, PRE)).ensemble as Row;
+    expect(arr(pkg['routes']).map((x) => [x['outcome'], x['refusal_class'], x['recorded_against_ensemble']])).toEqual([['refused', 'unbound', false]]);
+  });
+
+  it('IDEMPOTENT · a second call answers already reconciled and changes nothing', async () => {
+    const before = await routesOf(PRE);
+    const r = (await reconcile(eriksen, PRE)).reconciliation;
+    expect(r).toMatchObject({ run_id: PRE, reconciled: false, already_reconciled: true });
+    expect(String(r['statement'])).toMatch(/^already reconciled: route .* of ensemble run .* is refused$/);
+    expect(await routesOf(PRE)).toEqual(before);
+  });
+
+  it('REFUSAL · a live run, another domain\'s run, a forecast owner of another domain, an agent; a run of this build answers already reconciled', async () => {
+    // a LIVE run (admitted; the process stopped before it executed) is refused — it closes its own route when it finishes
+    const spy = vi.spyOn(svc as unknown as { execute: () => Promise<Row> }, 'execute').mockRejectedValueOnce(new Error('the process stopped after the admission (harness)'));
+    try { await expect(issue(eriksen, scenePayload({ horizon: '5y' }))).rejects.toThrow(/stopped after the admission/); } finally { spy.mockRestore(); }
+    const live = String((await liveRun('5y'))?.['run_id']);
+    await refused(reconcile(eriksen, live), /^ensemble rejected \(state\): run .* is admitted; only a FINISHED run's route is reconciled/, 409);
+    // ANOTHER DOMAIN: its forecast owner is refused here at the PDP; and in its own domain this run is unknown
+    const B = await seedDomain(su, T(), 'b25-en8');
+    const ownerB = await h.humanWithSession(['forecast_owner'], 'owner-b', 'DOMAIN', { domainId: B });
+    await refused(reconcile(ownerB, PRE), /.*/, 403);
+    await refused(reconcile(ownerB, PRE, B), /^ensemble rejected \(unknown_run\): no ensemble run .* in this domain/, 404);   // passes the PDP in B; the port finds no such run there
+    // an AGENT never closes the ledger (the PEP's human gate)
+    await refused(reconcile(agentOwner, PRE), /.*/, 403);
+    // a run of THIS build closed its own route with it: already reconciled
+    const own = (await reconcile(eriksen, String(rec(S['run'])['run_id']))).reconciliation;
+    expect(own).toMatchObject({ reconciled: false, already_reconciled: true });
+    expect(String(own['identified_by'])).toMatch(/the run's ensemble forecast id \(recorded since 0109\)/);
+    expect(String(own['statement'])).toMatch(/ is issued$/);
+    // the live run finishes (and closes its route itself)
+    const done = (await resume(eriksen, live)).ensemble;
+    expect(rec(done['run'])['state']).toBe('completed');
+    expect(arr(done['routes']).map((x) => [x['outcome'], x['recorded_against_ensemble']])).toEqual([['issued', true]]);
+  });
+});
+

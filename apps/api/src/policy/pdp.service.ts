@@ -2093,6 +2093,9 @@ const BUNDLE_V1: Rule[] = [
     obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
   { actionPrefix: 'prediction.overlay.add', exact: true, requiredAnyRole: [{ role: 'forecast_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   { actionPrefix: 'prediction.overlay.withdraw', exact: true, requiredAnyRole: [{ role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'domain_admin', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* B25-F1 (0109): RECONCILE a finished run's route left `planned` before 0109 — a named human forecast owner or the domain's administrator,
+     human-gated (an agent runs ensembles, it does not close their ledger); EXACT, under no prefix rule. The port re-checks the human and the role. */
+  { actionPrefix: 'prediction.ensemble.route.reconcile', exact: true, requiredAnyRole: [{ role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'domain_admin', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   /* end B25 ensembles */
   /* B36 home */
   /* THE EXECUTIVE HOME, THE CADENCE, THE COMMAND VIEWS, THE SEARCH, THE METRICS (0094 §H; F-P6-11: WS-01, JRN-19, PER-03, CAP-EO-01/-02/-04).
