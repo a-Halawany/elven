@@ -572,3 +572,89 @@ exit 0
   ✓  10 e2e/phase6-b25-registry.demo.spec.ts:81:7 › CP-6 B25 §MR — the forecasting portfolio on the demonstration › THE PLAN BY HORIZON: the corridor target is an EVENT at 30d (a probability) and a REGIME at 5y (scenario language) — different methods (1.0s)
   ✓  11 e2e/phase6-b25-registry.demo.spec.ts:98:7 › CP-6 B25 §MR — the forecasting portfolio on the demonstration › THE ROUTES: the 30d event and the 5y regime ISSUED by their methods; the 3y horizon on the line-demand series REFUSED naming the missing validation (762ms)
   11 passed (18.9s)
+
+========== B25-F (the review's B25-F1 / B25-F2 corrected; migration 0109) — 2026-10-08 ==========
+eye_demo_b25 migrated to 0109 from the b25-fix worktree (EYE_DB_NAME=eye_demo_b25 pnpm db:migrate: "applying 0109_b25f_durable_plans_and_compatibility.sql ... ok");
+:3411 restarted from the b25-fix worktree's apps/api build (Redis 6395, the rehearsal vault copy, the main tree's .eye-local/env sourced — start-3411.sh adapted).
+
+========== B25-F RUN 1 (no reset) ==========
+B25-F2b (B25-F, migration 0109) — the scene's route reconciled; the same ensemble question re-issued on the corrected build
+  · the scene's run 01a1…c3b993 finished before 0109: its route 01a1…bcdd98 is PLANNED against forecast id 01a1…1f065d, which was never issued (the ensemble is 01a1…c1a710)
+  ✓ N. Eriksen RECONCILED the route (identified by the admission's correlation id, requester and question (recorded before 0109 against an unissued forecast id)): "forecast rejected (unbound): route of ensemble run 01a115f0-6e09-7ebf-9afe-8bd10dc3b993, recorded before 0109 against an unissued forecast id (01a115f0-6e10-740d-adda-1dcdd71f065d); the run completed as ensemble forecast 01a115f0-6e09-7ebf-9afe-8bd25fc1a710"
+  ✓ a second reconciliation answers ALREADY RECONCILED: "already reconciled: route 01a115f0-6e10-740d-adda-1dccc9bcdd98 of ensemble run 01a115f0-6e09-7ebf-9afe-8bd10dc3b993 is refused"
+  ✓ the scene's route now: REFUSED (unbound) — forecast rejected (unbound): route of ensemble run 01a115f0-6e09-7ebf-9afe-8bd10dc3b993, recorded before 0109 against an unissued forecast id (01a115f0-6e10-740d-adda-1dcdd71f065d); the run completed as ensemble forecast 01a115f0-6e09-7ebf-
+  · N. Eriksen RE-ISSUES the ensemble on portwatch:chokepoint4:n_total at 30d, observed through 2024-01-11 (the series read takes minutes)
+  ✓ N. Eriksen RE-ISSUED the ensemble: run 01a1…27cc8e → completed (45.5 min)
+  ✓ SUPERSEDED BY LINEAGE: the prior ensemble 01a1…c1a710 and its members — the ensemble superseded by 01a1…79def9; holt_winters@1 superseded by 01a1…79def9; seasonal_naive@1 superseded by 01a1…79def9
+  ✓ THE ROUTE of the re-issued run: ISSUED — bound to the ensemble forecast 01a1…79def9 (ensemble:linear_pool@1)
+  ✓ THE MEMBERS' PINS: seasonal_naive@1 — method legacy-models 7da8dc6d0864…, target none (a series question), evaluation profile 30d (policy v1), route 01a1…be3153 · holt_winters@1 — method legacy-models 7da8dc6d0864…, target none (a series question), evaluation profile 30d (policy v1), route 01a1…be3153
+  ✓ THE OUTPUT SEMANTICS: every combined member forecasts future_level · value · transits/day · predictive_distribution ("the series' value on the target day") — NOTHING INCOMPATIBLE WAS COMBINED; excluded: NONE (the horizon policy plans exactly the two statistical methods for a 30d quantity)
+  · the re-issued ensemble 01a1…79def9 (ensemble:linear_pool@1): ENSEMBLE of 2 member(s) (seasonal_naive@1, holt_winters@1) under linear_pool@1, equal weights — portwatch:chokepoint4:n_total at 30d (2024-02-10): median 33.1915 transits/day, 10–90 band 13.023–55.75. The members DISAGREE MATERIALLY under disagreement@1 (max gap ratio 0.8812, min overlap 0.1593): se
+  ✓ N. Eriksen REPLAYED the re-issued ensemble (9.0 min): REPRODUCED by ensemble-combination@1 — 0 divergence(s)
+
+B25-9 THE STATE and the LIMITS
+  · in the ledgers: 4 registry entr(ies), 2 target version(s), 1 horizon polic(ies), 3 validation(s), 8 route(s), 6 information set(s), 5 replay(s), 2 ensemble run(s), 1 overlay version(s)
+  the env lines for the walks (EYE_TEST_ADMIN_PASSWORD comes from .eye-local/env and is never printed):
+  EYE_B25_FORECASTER=n.eriksen
+  EYE_B25_READER=a.hoffmann
+  EYE_B25_ANALYST=a.hoffmann
+  EYE_B25_EVENT_METHOD=event_rate@1
+  EYE_B25_REGIME_METHOD=regime_judgement@1
+  EYE_B25_TARGET_KEY=corridor.bab-el-mandeb.transit-delay
+  EYE_B25_ECB_SERIES=ecb-eurusd-history
+  EYE_B25_ECB_5Y=refused
+  EYE_B25_ECB_3Y=refused
+  EYE_B25_REFUSED_SERIES=portwatch:chokepoint4:n_total
+  EYE_B25_GROUNDED_SERIES=portwatch:chokepoint1:n_total
+  EYE_B25_GROUNDED_FORECAST=01a115a7-d598-7e94-aeab-f224353d301e
+  EYE_B25_GROUNDED_SET=01a115e7-c70e-703b-9dd8-2f934f6ab294
+  EYE_B25_PINNED_REVISION=42
+  EYE_B25_SUEZ_TARGET=corridor.suez-canal.transit-regime
+  EYE_B25_CONDITIONED_METHOD=regime_judgement@2
+  EYE_B25_CONDITIONED_FORECAST=01a11630-c47e-79d4-aad3-ecb7f8775ad3
+  EYE_B25_CONDITIONED_SET=01a11638-bf0a-7a52-a80d-a0c906dc9702
+  EYE_B25_EVENT_FORECAST=01a1159f-d055-7365-bdfa-6a8865d63361
+  EYE_B25_EVENT_SET=01a115a3-b706-757a-8eb8-454a77be9212
+  EYE_B25_SERIES=portwatch:chokepoint4:n_total
+  EYE_B25_HORIZON=30d
+  EYE_B25_ENSEMBLE_RUN=01a115f0-6e09-7ebf-9afe-8bd10dc3b993
+  EYE_B25_REISSUED_RUN=01a11be1-ff09-78d3-a484-03c79d27cc8e
+  EYE_B25_REISSUED_ENSEMBLE=01a11be1-ff09-78d3-a484-03c8f979def9
+  EYE_B25_PRIOR_ENSEMBLE=01a115f0-6e09-7ebf-9afe-8bd25fc1a710
+  · LIMITS said. THREE CLAIMS KEPT APART: (1) SOFTWARE CAPABILITY — the registry, the routing, the horizon policy, the refusal, the grounding, the replay, the ensemble manager and the overlay all ran on this deployment through their governed routes; (2) SYNTHETIC DEMONSTRATION — N. Eriksen's structural judgement (the regime pseudo-counts), J. Weber's assumptions, the overlay's rationale, the regime thresholds and the target's wording are declared, not measured; the harnesses' validations run on SYNTHETIC histories; (3) EMPIRICAL VALIDATION — only bayes_level@1 on the REAL ECB EUR/USD history (retrospective, ONE vintage: the 2026 publication cut by date at each origin, not historical-knowledge validation; overlapping 3y/5y targets, so the origins are not independent): 3y NOT PASSED (coverage 0.27, 100 origins), 5y NOT PASSED (coverage 0.18, 100 origins); and the 30d event backtest on the REAL PortWatch history (retrospective, one vintage). It is NEVER claimed for the corridor's 3y/5y: the corridor's 5y stays SCENARIO LANGUAGE, its 3y quantity is refused. SUBSTITUTIONS: "Bab el-Mandeb transit delay" is the governed target on the REAL transit COUNT series (no delay series exists; the twin's corridor-delay element is a declared feature only); the demonstration's graph holds NO Bab el-Mandeb Strait entity (its extracted ENT claim is queued for review — not decided by this act), so portwatch:chokepoint4:n_total names no subject and the GROUNDED forecast of F-P4-03 runs on portwatch:chokepoint1:n_total (the Suez Canal — the corridor twin's boundary place); K. Müller's change set touches that subject (the claim "MV Hanse Trader transits Suez", its object resolved by him to the Suez Canal) instead of the strait; the tracker's "Regensburg line demand series" does not exist — the 3y refusal is shown on the corridor's own real transit series (≈7.8 years: no quantity validation at 3y was run or recorded on it); the bounded ECB history is a separate source (the live ecb-eurusd and PortWatch contracts untouched) and was scheduled only between its agent's provisioning and its retirement (the platform schedules every active collected source) — collected once. HARNESS-PROVEN ONLY: the Bayesian prior-sensitivity refusal, the causal (MC-013) and optimisation (MC-015) families, quarantine/reinstatement and the digest pin, the ensemble's retries/budget/resume/PER-07 precision refusal and the model-path exclusions, the overlay's revision/withdrawal, the context refusals (future cut-off, stale head, twin/evidence mismatch) and a DIVERGED replay; and (B25 completion) the Bayesian IDENTIFIABILITY flag (MC-012), the causal TRANSPORT scope and its refusal (MC-013), the optimisation ROBUSTNESS under the parameter scenarios (MC-015), a condition on an absent / non-scalar feature or an ungrounded issue refused (context), a digest-mismatch replay DIVERGED (implementation) and an edited target definition DIVERGED (target.definition), and the ENSEMBLE replay (the combination from the members' stored distributions). B25-F3b SAYS: the conditioned 5y regime runs on portwatch:chokepoint1:n_total (the Suez Canal — the only corridor series with a subject, so the twin is resolved) with the Suez target corridor.suez-canal.transit-regime; its conditions' thresholds and pseudo-counts and the OPTIONS with their payoffs are N. Eriksen's DECLARATIONS (SYNTHETIC), the twin's element values are the twin's synthetic grounding, the path-dependent view is counted from the REAL series' windows but is scenario language, never validated; the replays are SOFTWARE CAPABILITY on this deployment. TIMING: each read of a PortWatch series is ~8,900 governed retrievals — 15–20 minutes here; the act waits, the walks read what it recorded.
+
+ALL SCENES HELD · 54.6 min
+EXIT 0
+
+========== B25-F RUN 2 (no reset) ==========
+B25-F2b (B25-F, migration 0109) — the scene's route reconciled; the same ensemble question re-issued on the corrected build
+  · the scene's route stands REFUSED (unbound) — an earlier run, or closed with its run
+  ✓ a second reconciliation answers ALREADY RECONCILED: "already reconciled: route 01a115f0-6e10-740d-adda-1dccc9bcdd98 of ensemble run 01a115f0-6e09-7ebf-9afe-8bd10dc3b993 is refused"
+  ✓ the scene's route now: REFUSED (unbound) — forecast rejected (unbound): route of ensemble run 01a115f0-6e09-7ebf-9afe-8bd10dc3b993, recorded before 0109 against an unissued forecast id (01a115f0-6e10-740d-adda-1dcdd71f065d); the run completed as ensemble forecast 01a115f0-6e09-7ebf-
+  · the re-issued run 01a1…27cc8e stands (completed 2026-10-08T14:19:19Z) — an earlier run
+  ✓ SUPERSEDED BY LINEAGE: the prior ensemble 01a1…c1a710 and its members — the ensemble superseded by 01a1…79def9; holt_winters@1 superseded by 01a1…79def9; seasonal_naive@1 superseded by 01a1…79def9
+  ✓ THE ROUTE of the re-issued run: ISSUED — bound to the ensemble forecast 01a1…79def9 (ensemble:linear_pool@1)
+  ✓ THE MEMBERS' PINS: seasonal_naive@1 — method legacy-models 7da8dc6d0864…, target none (a series question), evaluation profile 30d (policy v1), route 01a1…be3153 · holt_winters@1 — method legacy-models 7da8dc6d0864…, target none (a series question), evaluation profile 30d (policy v1), route 01a1…be3153
+  ✓ THE OUTPUT SEMANTICS: every combined member forecasts future_level · value · transits/day · predictive_distribution ("the series' value on the target day") — NOTHING INCOMPATIBLE WAS COMBINED; excluded: NONE (the horizon policy plans exactly the two statistical methods for a 30d quantity)
+  · the re-issued ensemble 01a1…79def9 (ensemble:linear_pool@1): ENSEMBLE of 2 member(s) (seasonal_naive@1, holt_winters@1) under linear_pool@1, equal weights — portwatch:chokepoint4:n_total at 30d (2024-02-10): median 33.1915 transits/day, 10–90 band 13.023–55.75. The members DISAGREE MATERIALLY under disagreement@1 (max gap ratio 0.8812, min overlap 0.1593): se
+  · the re-issued ensemble's replay stands REPRODUCED (2026-10-08T15:13:48Z) — an earlier run
+
+B25-9 THE STATE and the LIMITS
+
+ALL SCENES HELD · 0.0 min
+EXIT 0
+
+========== THE WALKS after B25-F (playwright.demo.config.ts; web :3413 production build, NEXT_PUBLIC_EYE_API=:3412 → the rehearsal-only CORS shim → :3411; EYE_SHOTS=scratchpad; the env lines of run 2) ==========
+  ✓   1 e2e/phase6-b25-context.demo.spec.ts:70:7 › CP-6 B25 §CX — grounded context and the replay on the demonstration › THE PINS: the corridor forecast names the graph revision and cut-off, the strait, the corridor twin's snapshot, its features and its environment (1.7s)
+  ✓   2 e2e/phase6-b25-context.demo.spec.ts:84:7 › CP-6 B25 §CX — grounded context and the replay on the demonstration › THE REPLAY after the later graph change: the act's replays are REPRODUCED from the frozen set, the environment the same, while a grounding now would differ (1.1s)
+  ✓   3 e2e/phase6-b25-context.demo.spec.ts:96:7 › CP-6 B25 §CX — grounded context and the replay on the demonstration › THE READER: A. Hoffmann reads the grounding and its replays; the replay is the forecast owner's act (1.1s)
+  ✓   4 e2e/phase6-b25-context.demo.spec.ts:105:7 › CP-6 B25 §CX — grounded context and the replay on the demonstration › B25 COMPLETION — THE ROUTED REGIME: the twin's and the graph's frozen features it used, the path-dependent view, the declared options, the pins; its replay REPRODUCED by the registry's replayer; scenario language, never validated (1.1s)
+  ✓   5 e2e/phase6-b25-context.demo.spec.ts:127:7 › CP-6 B25 §CX — grounded context and the replay on the demonstration › B25 COMPLETION — THE F1 30d EVENT's replay: REPRODUCED by the registry's replayer from its frozen set (957ms)
+  ✓   6 e2e/phase6-b25-ensembles.demo.spec.ts:61:7 › CP-6 B25 §EN — ensembles on the demonstration › THE PACKAGE: both members' distributions, the ensemble (MODEL OUTPUT), the disagreement and the assumption that splits them (1.4s)
+  ✓   7 e2e/phase6-b25-ensembles.demo.spec.ts:83:7 › CP-6 B25 §EN — ensembles on the demonstration › THE JUDGEMENT: N. Eriksen's overlay is labelled JUDGEMENT, versioned, beside the model's unchanged distribution (1.4s)
+  ✓   8 e2e/phase6-b25-ensembles.demo.spec.ts:92:7 › CP-6 B25 §EN — ensembles on the demonstration › THE READER: A. Hoffmann reads the package; no judgement and no issue form is offered (the server refuses her anyway) (1.3s)
+  ✓   9 e2e/phase6-b25-ensembles.demo.spec.ts:101:7 › CP-6 B25 §EN — ensembles on the demonstration › B25-F THE RE-ISSUE on the corrected build: the prior ensemble superseded by lineage, the route ISSUED, the members' meaning and pins, nothing incompatible combined (3.0s)
+  ✓  10 e2e/phase6-b25-registry.demo.spec.ts:68:7 › CP-6 B25 §MR — the forecasting portfolio on the demonstration › THE REGISTRY: the legacy methods are approved builtins beside the act's governed entries; the horizon policy names a language and a validation bar per horizon (785ms)
+  ✓  11 e2e/phase6-b25-registry.demo.spec.ts:83:7 › CP-6 B25 §MR — the forecasting portfolio on the demonstration › THE PLAN BY HORIZON: the corridor target is an EVENT at 30d (a probability) and a REGIME at 5y (scenario language) — different methods (922ms)
+  ✓  12 e2e/phase6-b25-registry.demo.spec.ts:100:7 › CP-6 B25 §MR — the forecasting portfolio on the demonstration › THE ROUTES: the 30d event and the 5y regime ISSUED by their methods; the 3y horizon on the line-demand series REFUSED naming the missing validation (585ms)
+  12 passed (20.6s)
