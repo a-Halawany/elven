@@ -670,3 +670,32 @@ so its queues must never share the demonstration's Redis — and an APFS clone o
   - Restore the newest `eye_demo-pre-0105-*.dump` (or `-pre-0104-*`) into **`eye_demo_b91`** and migrate it.
   - Run the API on **:3411** with **`EYE_REDIS_PORT=6395`**, then `EYE_DB_NAME=eye_demo_b91 EYE_API=http://localhost:3411 node scripts/phase6/act-b91.mjs`.
   - The rig scripts were the session's (reset, start, stop, run); they follow §20's.
+
+## 22. B25 on the demonstration (2026-10-07/09): what changed, the operator preparation, and how to rehearse
+
+- **The state.**
+  - `eye_demo` is migrated through **0109**: 0108 on 2026-10-07 (backup `eye_demo-pre-0108-20261007T105816Z.dump`) and 0109 on 2026-10-08 (backup `eye_demo-pre-0109-20261008T162646Z.dump`), both by `pnpm db:migrate`. NEVER use `apply-pending.sh`.
+  - The API runs the B25 build in §13's form: the switch and the sinks in the caller's environment.
+- **The personas** (existing; none created): N. Eriksen (forecast owner), H. Petrović (method steward), T. Richter (domain administrator), J. Weber (assumptions), K. Müller (the graph change set), A. Hoffmann (the refused reader; registered the ECB history source), M. Dvořák (approved, activated and retired that source; published attention policy v10).
+- **New on eye_demo:**
+  - the bounded source `ecb-eurusd-history`, collected once and RETIRED (nothing scheduled). The live `ecb-eurusd` and PortWatch contracts are untouched.
+  - the registry entries, two targets, horizon policy v1, the validations, the routes, the information sets, two ensemble runs (the first's pre-0109 route reconciled `unbound`), overlay v1, attention policy v10, and graph revision +1.
+- **Timing.**
+  - A full read of a PortWatch series is ~8,900 governed retrievals: 4–5 min alone, 30+ min under load.
+  - Run the act ALONE: never beside the integration gate. It renews its sessions around long calls.
+  - Keep the host awake: a host sleep stalls Docker and jumps its clock.
+  - Allow an hour for a first run. A rerun stands in seconds.
+- **The order:** `node scripts/phase6/act-b25.mjs`, then its rerun, then the walks `e2e/phase6-b25-{context,registry,ensembles}.demo.spec.ts` with the act's `EYE_B25_*` lines.
+  - Older acts print some env values unquoted: load them with a parser, never `source`.
+  - The B91 walks assert the pre-`--restore` state and are not re-run after `--restore` (§21).
+- **The attention tick and the Reconciliation Agent** (fixed in this stage):
+  - when a real PortWatch count arrives, the tick starts the agent's scan and waits at most 30 s;
+  - the scan reads its estimators' window (~465 retrievals);
+  - a run whose session lapses ends `stopped`.
+  - The 63 older reconciliation runs left `running` before the fix close at that agent's next run.
+- **`/readyz` reads `degraded`** on 4 journal-only `evidence_write_failed` records from 2026-10-07/08. They are real lost failure evidence; the governed entrypoint `reconcile-degraded.js` has nothing in the ledger to reconcile. `demo-restart.sh` therefore prints VERIFY FAILED on readiness while the API serves `eye_demo` with the switch and sinks set: check those with `ps -wwE`. Do not edit the journal; the governed path for journal-only records is a separate follow-up.
+- **The rehearsal rig:**
+  - restore the newest `eye_demo-pre-0108-*` dump into **`eye_demo_b25`**, then migrate;
+  - run the API on **:3411** with Redis **6395** and a copy of the vault;
+  - run `EYE_DB_NAME=eye_demo_b25 EYE_API=http://localhost:3411 node scripts/phase6/act-b25.mjs`;
+  - for the walks: web on :3413 through the rehearsal-only CORS shim, `EYE_SHOTS` to a scratch directory.
