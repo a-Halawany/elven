@@ -29,7 +29,7 @@ export const BUNDLED_PACKAGE = '@img/sharp-libvips-linux-x64';
  * inventory, patent record, build recipe and source offers were the reviewed ones.  Without it,
  * changing LGPL to MIT or replacing an upstream with attacker.example was self-consistent.
  */
-export const BUNDLED_MANIFEST_SHA256 = '09aab15514432a35051344bf29cf97b195f9cf1ca8bf5b8c96bb9eb68979b92f';
+export const BUNDLED_MANIFEST_SHA256 = 'f16b362076667b3f9228a50ac670ddf05801f1e0c0d1373b70a75d9027bc20a2';
 /** README name -> versions.json key, where they differ. `null` = not independently versioned. */
 export const KEY_ALIASES = Object.freeze({
   libarchive: 'archive', libexif: 'exif', libffi: 'ffi', libheif: 'heif',
