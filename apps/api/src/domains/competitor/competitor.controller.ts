@@ -13,7 +13,7 @@
  *   POST /proposals/propose                      propose    a person's proposal (the agent proposes inside its scan)
  *   POST /proposals/:id/read                     read
  *   POST /proposals/:id/withdraw                 propose    the proposer
- *   POST /proposals/:id/decide                   assessment.approve   the named analyst: approved | declined, digest-bound (human-gated)
+ *   POST /proposals/:id/decide                   assessment.approve   the named analyst: approved | declined, digest-bound (human-gated); names its competitor
  *   POST /comparisons/list                       read
  *   POST /comparisons/basis                      compare    declare / re-declare a versioned comparison basis
  *   POST /comparisons/run                        compare    compare competitors on the active basis
@@ -173,9 +173,11 @@ export class CompetitorController {
     if (p['decision'] !== 'approved' && p['decision'] !== 'declined') bad(envelope.correlation_id, 'decision is approved or declined');
     const digest = typeof p['digest'] === 'string' && /^[0-9a-f]{64}$/.test(p['digest']) ? p['digest'] : bad(envelope.correlation_id, 'digest names the proposal content the decision is bound to');
     const reason = text(p['reason'], 1, 2000);
-    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'domain.competitor.assessment.approve', 'DCP', proposalId), CompetitorCapability.write,
+    // the write is bound to the COMPETITOR (its new profile version's CPF object is admitted under this capability); the port's proposal must be of it
+    const competitorId = id(p['competitorId'], 'competitorId', envelope.correlation_id);
+    const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'domain.competitor.assessment.approve', 'DCI', competitorId), CompetitorCapability.write,
       async (cap, scope) => {
-        const r = await this.competitors.decide(cap, scope, principal, proposalId, p['decision'] as 'approved' | 'declined', digest, reason, envelope.correlation_id);
+        const r = await this.competitors.decide(cap, scope, principal, proposalId, competitorId, p['decision'] as 'approved' | 'declined', digest, reason, envelope.correlation_id);
         return { result: r, targetType: 'DCP', targetId: proposalId, targetVersion: r['version'] === undefined ? null : String(r['version']), outboxEvent: null };
       });
     return { decision: out.result, receipt: receipt(out) };

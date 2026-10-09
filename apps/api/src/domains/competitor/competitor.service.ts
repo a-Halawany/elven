@@ -195,7 +195,12 @@ export class CompetitorService implements OnModuleInit {
 
   // ───────────────────────── writes ─────────────────────────
   /** THE MATERIAL ASSESSMENT APPROVAL (or the decline): the port decides; an approval's new profile version is admitted as CPF in the same transaction. */
-  async decide(cap: CompetitorWrites, scope: ScopeContext, principal: AuthenticatedPrincipal, proposalId: string, decision: 'approved' | 'declined', digest: string, reason: string | null, correlationId: string): Promise<Row> {
+  async decide(cap: CompetitorWrites, scope: ScopeContext, principal: AuthenticatedPrincipal, proposalId: string, competitorId: string, decision: 'approved' | 'declined', digest: string, reason: string | null,
+               correlationId: string): Promise<Row> {
+    const p = (await cap.from('domain.competitor_proposals').select(['competitor_id'] as never).where('proposal_id' as never, '=', proposalId as never).executeTakeFirst()) as Row | undefined;
+    if (p !== undefined && String(p['competitor_id']) !== competitorId) {
+      throw new HttpException(errorBody('EYE_REQ_001', correlationId, `competitor assessment rejected (request): proposal ${proposalId} is of competitor ${String(p['competitor_id'])}, not ${competitorId}`), 422);
+    }
     const r = await cap.decide({ tenantId: scope.tenantId as string, domainId: scope.domainId as string, actor: principal.principalId, correlationId, proposalId, decision, digest, reason });
     if (r['state'] !== 'approved') return r;
     const owner = (await cap.from('domain.competitors').select(['owner_principal_id'] as never).where('competitor_id' as never, '=', String(r['competitor_id']) as never).executeTakeFirst()) as Row;

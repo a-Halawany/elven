@@ -4,8 +4,8 @@
  *   0. DRIFT: a registration whose version/digest is not this runtime's is refused (recorded, escalated) — registered anew before it scans;
  *   1. ONE READ (domain.competitor.read): the backlog (claims on WATCHED competitors, resolved through the graph, after each one's scan mark),
  *      the package manifests, the head facts, and what needs revalidation — every read reserved on the run's meter first;
- *   2. per evidence item (at most the registered max_items; the rest wait and the competitor's scan mark stops before them): the deterministic
- *      reading (competitor-logic.ts) and ONE governed write — the PROPOSAL (domain.competitor.propose, the agent's own run);
+ *   2. per competitor (at most the registered max_items; the rest wait and their scan marks do not move): the deterministic reading
+ *      (competitor-logic.ts) of every claim read and ONE governed write — the PROPOSAL (domain.competitor.propose, the agent's own run);
  *   3. the scan marks (domain.competitor.propose): the watermark each competitor was read to;
  *   4. revalidation where the read found a mistaken identity, open conflict or stale coverage (domain.competitor.revalidate) — only then;
  *   5. the BOUNDARY exercised: its attempt to APPROVE the first proposal it made is refused at the PDP (no rule for its role) and recorded.
@@ -19,7 +19,7 @@ import { newId } from '../../shared/ids.js';
 import type { DomainScanArgs, DomainScanEnv } from '../seams.js';
 import { DOMAIN_INTELLIGENCE_AGENT_DIGEST, DOMAIN_INTELLIGENCE_AGENT_VERSION } from '../domain-intelligence-agent.js';
 import { CompetitorCapability } from './competitor.capabilities.js';
-import { DEFAULT_PREDICATE_MAP, draftFromEvidence, groupBacklog, watermarkOf, type BacklogClaim, type PredicateRule } from './competitor-logic.js';
+import { DEFAULT_PREDICATE_MAP, draftFromClaims, groupBacklog, type PredicateRule } from './competitor-logic.js';
 
 type Row = Record<string, unknown>;
 /** the backlog's bound per run (one read) */
@@ -58,40 +58,38 @@ export async function domainScan(d: ScanDeps, p: AuthenticatedPrincipal, a: Doma
     })).result;
   let remaining = maxItems ?? Number.POSITIVE_INFINITY;
   const proposed: Row[] = []; const waiting: Row[] = []; const failed: Row[] = []; const skipped: Row[] = []; const marks: Row[] = []; const revalidated: Row[] = [];
-  // 2. per competitor and evidence item — the deterministic reading and one proposal each
+  // 2. per competitor — the deterministic reading and ONE proposal each (at most max_items; the rest wait, their scan marks unmoved)
   for (const comp of groupBacklog(read.backlog)) {
     const manifest = read.manifests[comp.packageKey] ?? {};
     const pmap = ({ ...DEFAULT_PREDICATE_MAP, ...((manifest['predicate_map'] ?? {}) as Record<string, PredicateRule>) });
-    const done: BacklogClaim[][] = []; const held: BacklogClaim[][] = []; let made = 0;
-    for (const group of comp.groups) {
-      const draft = draftFromEvidence({ name: comp.name }, read.heads.get(comp.competitorId) ?? [], group, pmap, read.today);
-      if (draft === null) { skipped.push({ competitor_id: comp.competitorId, evidence_id: group[0]!.evidence_id, reason: 'nothing the predicate map reads, or nothing that would change the profile' }); done.push(group); continue; }
-      if (remaining <= 0) { waiting.push({ competitor_id: comp.competitorId, evidence_id: draft.evidenceId, reason: 'max_items reached: waits for the next run' }); held.push(group); continue; }
-      a.meter.tick(`the proposal for ${comp.name} (evidence ${draft.evidenceId})`);
+    const draft = draftFromClaims({ name: comp.name }, read.heads.get(comp.competitorId) ?? [], comp.claims, pmap, read.today);
+    let made = 0;
+    if (draft === null) skipped.push({ competitor_id: comp.competitorId, claims: comp.claims.length, reason: 'nothing the predicate map reads, or nothing that would change the profile' });
+    else if (remaining <= 0) { waiting.push({ competitor_id: comp.competitorId, name: comp.name, claims: comp.claims.length, reason: 'max_items reached: waits for the next run' }); continue; }
+    else {
+      a.meter.tick(`the proposal for ${comp.name}`);
       const proposalId = newId();
       try {
         const w = await d.pipeline.write(d.env('domain.competitor.propose', 'DCP', proposalId), p, d.route('domain.competitor.propose', 'DCP', proposalId), CompetitorCapability.write,
           async (cap, scope) => ({ result: await cap.propose({ tenantId: scope.tenantId as string, domainId: scope.domainId as string, actor: p.principalId, correlationId: a.correlationId,
             proposalId, competitorId: comp.competitorId, content: draft.content, agentId: a.agentId, runId: a.runId }), targetType: 'DCP', targetId: proposalId, targetVersion: '1', outboxEvent: null }));
-        proposed.push({ competitor_id: comp.competitorId, name: comp.name, proposal_id: proposalId, evidence_id: draft.evidenceId, claims: draft.claims, material: w.result['material'],
-                        content_digest: w.result['content_digest'], unmapped: draft.unmapped, receipt: { policyDecisionId: w.policyDecisionId, auditSeq: w.auditSeq } });
-        made += 1; remaining -= 1; done.push(group);
+        proposed.push({ competitor_id: comp.competitorId, name: comp.name, proposal_id: proposalId, evidence: draft.evidence, claims: draft.claims, material: w.result['material'],
+                        content_digest: w.result['content_digest'], source_diversity: w.result['source_diversity'], unmapped: draft.unmapped,
+                        receipt: { policyDecisionId: w.policyDecisionId, auditSeq: w.auditSeq } });
+        made = 1; remaining -= 1;
       } catch (e) {
         if (e instanceof HttpException && e.getStatus() === 403) throw e;
         if (e instanceof Error && e.constructor.name === 'BudgetExceeded') throw e;
-        failed.push({ competitor_id: comp.competitorId, evidence_id: draft.evidenceId, reason: textOf(e).slice(0, 500) });
-        done.push(group); // a refused proposal (a duplicate, a refused identity) is not read again; its refusal is on the run
+        // a refused proposal (a duplicate, an identity the graph does not resolve) is recorded on the run and not read again
+        failed.push({ competitor_id: comp.competitorId, evidence: draft.evidence, reason: textOf(e).slice(0, 500) });
       }
     }
-    // 3. the scan mark: the watermark stops before the first evidence item left waiting
-    const watermark = watermarkOf(done, held);
-    if (watermark !== null) {
-      a.meter.tick(`the scan mark of ${comp.name}`);
-      await d.pipeline.write(d.env('domain.competitor.propose', 'DCI', comp.competitorId), p, d.route('domain.competitor.propose', 'DCI', comp.competitorId), CompetitorCapability.write,
-        async (cap, scope) => ({ result: await cap.recordScan({ tenantId: scope.tenantId as string, domainId: scope.domainId as string, actor: p.principalId, correlationId: a.correlationId,
-          competitorId: comp.competitorId, agentId: a.agentId, runId: a.runId, watermark, seen: done.flat().length, proposed: made }), targetType: 'DCI', targetId: comp.competitorId, targetVersion: null, outboxEvent: null }));
-      marks.push({ competitor_id: comp.competitorId, watermark, seen: done.flat().length, proposed: made, waiting: held.length });
-    }
+    // 3. the scan mark: everything read for this competitor
+    a.meter.tick(`the scan mark of ${comp.name}`);
+    await d.pipeline.write(d.env('domain.competitor.propose', 'DCI', comp.competitorId), p, d.route('domain.competitor.propose', 'DCI', comp.competitorId), CompetitorCapability.write,
+      async (cap, scope) => ({ result: await cap.recordScan({ tenantId: scope.tenantId as string, domainId: scope.domainId as string, actor: p.principalId, correlationId: a.correlationId,
+        competitorId: comp.competitorId, agentId: a.agentId, runId: a.runId, watermark: comp.recordedThrough, seen: comp.claims.length, proposed: made }), targetType: 'DCI', targetId: comp.competitorId, targetVersion: null, outboxEvent: null }));
+    marks.push({ competitor_id: comp.competitorId, watermark: comp.recordedThrough, seen: comp.claims.length, proposed: made });
   }
   // 4. revalidation where the read found something (a write only then)
   for (const n of read.needs) {

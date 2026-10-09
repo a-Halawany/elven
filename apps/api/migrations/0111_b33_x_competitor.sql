@@ -445,11 +445,11 @@ BEGIN
     END IF;
   END LOOP;
   -- a write-once binding stays as written; a terminal state is kept as it was
-  IF TG_TABLE_NAME = 'competitor_profile_versions' AND OLD.cpf_digest IS NOT NULL AND NEW.cpf_digest IS DISTINCT FROM OLD.cpf_digest THEN
-    RAISE EXCEPTION 'competitor profile rejected (state): version % carries its CPF object already', OLD.version USING ERRCODE = '2F002';
+  IF TG_TABLE_NAME = 'competitor_profile_versions' AND (o ->> 'cpf_digest') IS NOT NULL AND (n ->> 'cpf_digest') IS DISTINCT FROM (o ->> 'cpf_digest') THEN
+    RAISE EXCEPTION 'competitor profile rejected (state): version % carries its CPF object already', o ->> 'version' USING ERRCODE = '2F002';
   END IF;
-  IF TG_TABLE_NAME = 'competitors' AND OLD.twin_id IS NOT NULL AND NEW.twin_id IS DISTINCT FROM OLD.twin_id THEN
-    RAISE EXCEPTION 'competitor profile rejected (state): the competitor is bound to twin % already', OLD.twin_id USING ERRCODE = '2F002';
+  IF TG_TABLE_NAME = 'competitors' AND (o ->> 'twin_id') IS NOT NULL AND (n ->> 'twin_id') IS DISTINCT FROM (o ->> 'twin_id') THEN
+    RAISE EXCEPTION 'competitor profile rejected (state): the competitor is bound to twin % already', o ->> 'twin_id' USING ERRCODE = '2F002';
   END IF;
   IF (o ->> 'state') IN ('retired', 'superseded', 'declined', 'withdrawn', 'resolved', 'upheld', 'dismissed', 'applied')
      AND (o ->> 'state') IS DISTINCT FROM (n ->> 'state') THEN
@@ -547,8 +547,8 @@ LANGUAGE sql STABLE SET search_path = domain, objects, observation, pg_catalog, 
                             AND y.object_id = (SELECT substr(s, 5)::uuid FROM jsonb_array_elements_text(coalesce(d.source_object_ids, '[]'::jsonb)) s WHERE s LIKE 'OBS:%' LIMIT 1)
                           ORDER BY y.object_version DESC LIMIT 1) obs ON true
   ), agg AS (
-    SELECT count(*)::int AS evidence, count(DISTINCT coalesce(publisher, 'unknown:' || evidence_id::text))::int AS publishers,
-           count(DISTINCT coalesce(source_key, 'unknown:' || evidence_id::text))::int AS contracts,
+    SELECT count(*)::int AS evidence, count(DISTINCT publisher)::int AS publishers,
+           count(DISTINCT source_key)::int AS contracts,
            coalesce(jsonb_agg(DISTINCT publisher) FILTER (WHERE publisher IS NOT NULL), '[]'::jsonb) AS publisher_list,
            coalesce(jsonb_agg(DISTINCT source_key) FILTER (WHERE source_key IS NOT NULL), '[]'::jsonb) AS contract_list,
            coalesce(jsonb_agg(DISTINCT data_origin) FILTER (WHERE data_origin IS NOT NULL), '[]'::jsonb) AS origins,
@@ -562,9 +562,10 @@ LANGUAGE sql STABLE SET search_path = domain, objects, observation, pg_catalog, 
       SELECT jsonb_build_object('kind', 'same_bytes', 'content_digest', bytes, 'evidence', jsonb_agg(evidence_id ORDER BY evidence_id), 'sources', jsonb_agg(DISTINCT source_key))
         FROM rec WHERE bytes IS NOT NULL GROUP BY bytes HAVING count(DISTINCT coalesce(source_key, '')) > 1) q
   ), indep AS (
-    -- the INDEPENDENT origins: publishers, after the same-bytes republications are folded onto the first publisher that carried them
+    -- the INDEPENDENT origins: known publishers, after the same-bytes republications are folded onto the first publisher that carried them;
+    -- evidence of unknown origin counts toward none (it is listed as unknown_origin)
     SELECT count(DISTINCT first_pub)::int AS independent FROM (
-      SELECT coalesce((SELECT min(r2.publisher) FROM rec r2 WHERE r2.bytes = r.bytes), r.publisher, 'unknown:' || r.evidence_id::text) AS first_pub FROM rec r) z
+      SELECT coalesce((SELECT min(r2.publisher) FROM rec r2 WHERE r2.bytes = r.bytes), r.publisher) AS first_pub FROM rec r) z
   )
   SELECT jsonb_build_object('evidence', agg.evidence, 'publishers', agg.publishers, 'contracts', agg.contracts, 'independent_publishers', indep.independent,
                             'publisher_list', agg.publisher_list, 'contract_list', agg.contract_list, 'data_origins', agg.origins, 'unknown_origin', agg.unknown_origin,
@@ -972,7 +973,7 @@ GRANT EXECUTE ON FUNCTION domain.dci_merge_facts(jsonb, jsonb, uuid, jsonb) TO e
 CREATE OR REPLACE FUNCTION domain.dci_decide_proposal(p_proposal uuid, p_tenant uuid, p_domain uuid, p_decision text, p_digest text, p_reason text, p_actor uuid, p_correlation uuid) RETURNS jsonb
 SECURITY DEFINER LANGUAGE plpgsql SET search_path = domain, executive, twin, graph, objects, observation, identity, ctx, public, pg_catalog, pg_temp AS $$
 DECLARE p domain.competitor_proposals%ROWTYPE; c domain.competitors%ROWTYPE; h domain.competitor_profile_versions%ROWTYPE; g jsonb; m jsonb; v_version int; v_limits jsonb := '[]'::jsonb;
-        v_ident jsonb; v_div jsonb; v_contra jsonb; v_facts jsonb; v_state text; x jsonb; w record; rl jsonb; v_alerts jsonb := '[]'::jsonb; v_item jsonb; v_assessment uuid;
+        v_ident jsonb; v_div jsonb; v_plimits jsonb; v_pstate text; v_contra jsonb; v_facts jsonb; v_state text; x jsonb; w record; rl jsonb; v_alerts jsonb := '[]'::jsonb; v_item jsonb; v_assessment uuid;
         v_events jsonb := '[]'::jsonb; v_event uuid; v_match boolean; v_twin jsonb := NULL; v_cap numeric; v_cur numeric; v_tp uuid; v_resolved jsonb := '[]'::jsonb; rv record;
         v_place text; v_closed jsonb;
 BEGIN
@@ -1013,9 +1014,15 @@ BEGIN
        'reason', format('%s independent publisher(s), below the package''s threshold of %s (correlated: %s)', v_div ->> 'independent_publishers', v_div ->> 'threshold', jsonb_array_length(v_div -> 'correlated')))); END IF;
   IF jsonb_array_length(v_contra) > 0 THEN v_limits := v_limits || jsonb_build_array(jsonb_build_object('class', 'contradiction',
        'reason', format('%s open contradiction(s) on the cited claims — the conflicting evidence is preserved', jsonb_array_length(v_contra)), 'contradictions', v_contra)); END IF;
-  v_state := CASE WHEN jsonb_array_length(v_limits) > 0 THEN 'limited' ELSE 'approved' END;
+  v_plimits := v_limits; v_pstate := CASE WHEN jsonb_array_length(v_plimits) > 0 THEN 'limited' ELSE 'approved' END;
   v_version := coalesce(h.version, 0) + 1;
-  v_facts := domain.dci_merge_facts(h.facts, p.content -> 'changes', p_proposal, CASE WHEN v_state = 'limited' THEN v_limits ELSE '[]'::jsonb END);
+  v_facts := domain.dci_merge_facts(h.facts, p.content -> 'changes', p_proposal, v_plimits);
+  -- a version is approved IN FULL only when none of its facts (the carried ones included) is limited: a carried limit stays a limit until a
+  -- change replaces or ends the fact it is on
+  v_limits := v_limits || coalesce((SELECT jsonb_agg(DISTINCT jsonb_build_object('class', 'carried', 'fact', f ->> 'key', 'reason', format('fact %s is limited (%s)', f ->> 'key',
+                (SELECT string_agg(DISTINCT l ->> 'class', ', ') FROM jsonb_array_elements(coalesce(f -> 'limited_reasons', '[]'::jsonb)) l))))
+                FROM jsonb_array_elements(v_facts) f WHERE coalesce((f ->> 'limited')::boolean, false) AND (f ->> 'from_proposal') IS DISTINCT FROM p_proposal::text), '[]'::jsonb);
+  v_state := CASE WHEN jsonb_array_length(v_limits) > 0 THEN 'limited' ELSE 'approved' END;
   IF h.version IS NOT NULL THEN
     UPDATE domain.competitor_profile_versions SET state = 'superseded', superseded_at = clock_timestamp() WHERE competitor_id = c.competitor_id AND version = h.version;
   END IF;
@@ -1030,8 +1037,8 @@ BEGIN
                                           state, limited_reason, approved_by, correlation_id)
     VALUES (v_event, 'DOMAIN', p_tenant, p_domain, c.competitor_id, x ->> 'kind', NULLIF(x ->> 'place_entity_id', '')::uuid, (x ->> 'effective_date')::date,
             coalesce(x -> 'details', '{}'::jsonb) || jsonb_strip_nulls(jsonb_build_object('place', x ->> 'place', 'market', x ->> 'market')), x -> 'citations', p_proposal, v_version,
-            CASE WHEN v_state = 'limited' THEN 'limited' ELSE 'recorded' END,
-            CASE WHEN v_state = 'limited' THEN (SELECT string_agg(l ->> 'reason', '; ') FROM jsonb_array_elements(v_limits) l) END, p_actor, p_correlation);
+            CASE WHEN v_pstate = 'limited' THEN 'limited' ELSE 'recorded' END,
+            CASE WHEN v_pstate = 'limited' THEN (SELECT string_agg(l ->> 'reason', '; ') FROM jsonb_array_elements(v_plimits) l) END, p_actor, p_correlation);
     v_events := v_events || jsonb_build_array(jsonb_build_object('event_id', v_event, 'kind', x ->> 'kind', 'effective_date', x ->> 'effective_date', 'place', x ->> 'place', 'market', x ->> 'market',
                                                                  'capacity', x -> 'details' -> (m -> 'twin' ->> 'capacity_detail'), 'place_entity_id', x ->> 'place_entity_id'));
   END LOOP;
@@ -1041,9 +1048,9 @@ BEGIN
     INSERT INTO domain.competitor_assessments (assessment_id, version, scope, tenant_id, domain_id, competitor_id, kind, statement, confidence, material, evidence, source_diversity,
                                                state, limited_reasons, proposal_id, profile_version, approved_by, correlation_id)
     VALUES (v_assessment, 1, 'DOMAIN', p_tenant, p_domain, c.competitor_id, 'interpretation', btrim(p.content -> 'interpretation' ->> 'statement'),
-            (p.content -> 'interpretation' ->> 'confidence')::numeric, p.material, p.content -> 'interpretation' -> 'citations', v_div, v_state, v_limits, p_proposal, v_version, p_actor, p_correlation);
-    PERFORM domain.dci_log(p_tenant, p_domain, c.competitor_id, 'assessment', v_assessment, CASE WHEN v_state = 'limited' THEN 'assessment.limited' ELSE 'assessment.approved' END, p_actor,
-                           jsonb_build_object('version', 1, 'profile_version', v_version, 'limited_reasons', v_limits), p_correlation);
+            (p.content -> 'interpretation' ->> 'confidence')::numeric, p.material, p.content -> 'interpretation' -> 'citations', v_div, v_pstate, v_plimits, p_proposal, v_version, p_actor, p_correlation);
+    PERFORM domain.dci_log(p_tenant, p_domain, c.competitor_id, 'assessment', v_assessment, CASE WHEN v_pstate = 'limited' THEN 'assessment.limited' ELSE 'assessment.approved' END, p_actor,
+                           jsonb_build_object('version', 1, 'profile_version', v_version, 'limited_reasons', v_plimits), p_correlation);
   END IF;
   UPDATE domain.competitor_proposals SET state = 'approved', decided_by = p_actor, decided_at = clock_timestamp(), decision_reason = NULLIF(btrim(coalesce(p_reason, '')), ''), result_version = v_version
    WHERE proposal_id = p_proposal;
@@ -1615,7 +1622,7 @@ GRANT EXECUTE ON FUNCTION domain.dci_record_scan(uuid, uuid, uuid, uuid, uuid, t
    after the competitor's last scan mark — oldest first; and the place entities resolved from the same evidence. The read is bounded (p_limit). */
 CREATE OR REPLACE FUNCTION domain.dci_scan_backlog(p_tenant uuid, p_domain uuid, p_limit int) RETURNS TABLE (competitor_id uuid, package_key text, entity_id uuid, name text, watermark timestamptz,
   claim_id uuid, claim_version bigint, claim_type text, claim_digest text, payload jsonb, recorded_at timestamptz, evidence_id uuid, evidence_version bigint, evidence_digest text, places jsonb)
-LANGUAGE sql STABLE SET search_path = domain, graph, objects, pg_catalog, pg_temp AS $$
+LANGUAGE sql STABLE SET search_path = domain, graph, objects, intelligence, pg_catalog, pg_temp AS $$
   WITH watched AS (
     SELECT c.* FROM domain.competitors c
      WHERE c.tenant_id = p_tenant AND c.domain_id = p_domain AND c.state = 'active'
@@ -1642,6 +1649,9 @@ LANGUAGE sql STABLE SET search_path = domain, graph, objects, pg_catalog, pg_tem
     LEFT JOIN LATERAL (SELECT x.object_version, x.content_digest FROM objects.canonical_objects x WHERE x.object_id = cl.evidence_object_id AND x.object_type = 'EVD' AND x.tenant_id = p_tenant
                         ORDER BY x.object_version DESC LIMIT 1) d ON true
    WHERE cl.recorded_at > mk.watermark AND cl.lifecycle_state NOT IN ('withdrawn', 'retracted')
+     -- the losing side of an ADJUDICATED contradiction is not read again (both sides stay preserved where they were cited)
+     AND NOT EXISTS (SELECT 1 FROM intelligence.contradictions x WHERE x.tenant_id = p_tenant AND x.domain_id = p_domain AND x.state = 'adjudicated'
+                       AND ((x.adjudication = 'a_withdrawn' AND x.a_object_id = cl.object_id) OR (x.adjudication = 'b_withdrawn' AND x.b_object_id = cl.object_id)))
    ORDER BY cl.recorded_at, cl.object_id
    LIMIT greatest(coalesce(p_limit, 200), 1)
 $$;

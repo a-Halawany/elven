@@ -71,25 +71,30 @@ export interface BacklogClaim {
   evidence_id: string; evidence_version: number | null; evidence_digest: string | null; places: Array<{ entity_id: string; name: string }>;
 }
 export interface ProposalDraft {
-  evidenceId: string; content: Row; claims: string[]; recordedThrough: string; unmapped: Array<{ claim_id: string; predicate: string }>;
+  content: Row; claims: string[]; evidence: string[]; recordedThrough: string; unmapped: Array<{ claim_id: string; predicate: string }>;
 }
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : (typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v)) ? Number(v) : null));
+const evidenceCite = (c: BacklogClaim): Row[] => (c.evidence_version !== null && c.evidence_digest !== null ? [{ kind: 'evidence', id: c.evidence_id, version: c.evidence_version, digest: c.evidence_digest }] : []);
+const claimCite = (c: BacklogClaim): Row => ({ kind: 'claim', id: c.claim_id, version: c.claim_version, digest: c.claim_digest });
+/** citations merged without repeats (kind + id + version) */
+const mergeCites = (a: Row[], b: Row[]): Row[] => {
+  const seen = new Set(a.map((x) => `${String(x['kind'])}:${String(x['id'])}@${String(x['version'])}`));
+  return [...a, ...b.filter((x) => { const k = `${String(x['kind'])}:${String(x['id'])}@${String(x['version'])}`; if (seen.has(k)) return false; seen.add(k); return true; })];
+};
 
 /**
- * THE AGENT'S READING (deterministic): the claims of ONE evidence item about ONE competitor → one proposal (events, changes, interpretation),
- * or null when nothing maps or nothing would change. A fact whose value the head already holds is not proposed again.
+ * THE AGENT'S READING (deterministic): the claims read for ONE competitor in one run → ONE proposal (events, changes, interpretation), or
+ * null when nothing maps or nothing would change. The same movement reported by several evidence items (the release and the trade press)
+ * is ONE event and ONE fact citing all of them — so the source diversity is measured over what corroborates it. A fact whose value the head
+ * already holds is not proposed again. The interpretation's confidence is the LOWEST extraction confidence cited (never from narrative).
  */
-export function draftFromEvidence(competitor: { name: string }, headFacts: Row[], claims: BacklogClaim[], predicateMap: Record<string, PredicateRule>, todayDay: string): ProposalDraft | null {
+export function draftFromClaims(competitor: { name: string }, headFacts: Row[], claims: BacklogClaim[], predicateMap: Record<string, PredicateRule>, todayDay: string): ProposalDraft | null {
   if (claims.length === 0) return null;
-  const evidenceId = claims[0]!.evidence_id;
-  const evCite = claims[0]!.evidence_version !== null && claims[0]!.evidence_digest !== null
-    ? [{ kind: 'evidence', id: evidenceId, version: claims[0]!.evidence_version, digest: claims[0]!.evidence_digest }] : [];
-  const events: Row[] = []; const changes: Row[] = []; const unmapped: Array<{ claim_id: string; predicate: string }> = []; const used: BacklogClaim[] = [];
-  const statements: string[] = [];
+  const events = new Map<string, Row>(); const facts = new Map<string, Row>(); const unmapped: Array<{ claim_id: string; predicate: string }> = [];
+  const used: BacklogClaim[] = []; const statements = new Map<string, string>();
   const held = new Map(headFacts.map((f) => [String(f['key']), f]));
-  const seenKeys = new Set<string>();
   for (const c of [...claims].sort((a, b) => a.recorded_at.localeCompare(b.recorded_at) || a.claim_id.localeCompare(b.claim_id))) {
     const predicate = String(c.payload['predicate'] ?? '');
     const rule = predicateMap[predicate];
@@ -97,57 +102,65 @@ export function draftFromEvidence(competitor: { name: string }, headFacts: Row[]
     const q = (c.payload['qualifiers'] ?? {}) as Row;
     const object = String(c.payload['object_value'] ?? '').trim();
     const confidence = num(c.payload['confidence']) ?? 0;
-    const cite = [{ kind: 'claim', id: c.claim_id, version: c.claim_version, digest: c.claim_digest }, ...evCite];
+    const cite = [claimCite(c), ...evidenceCite(c)];
     const place = c.places[0] ?? null;
+    const where = place?.name ?? object;
     const effective = typeof q['effective_date'] === 'string' && DAY.test(q['effective_date']) ? q['effective_date'] : todayDay;
     const capacity = num(q['capacity_per_month']);
     if (rule.event !== null) {
-      events.push({ kind: rule.event, effective_date: effective, place_entity_id: place?.entity_id ?? null, place: place?.name ?? (object || null),
-                    market: typeof q['market'] === 'string' ? q['market'] : null,
-                    details: { claim: c.claim_id, predicate, object_value: object, ...(capacity === null ? {} : { capacity_per_month: capacity }),
-                               ...(typeof q['product'] === 'string' ? { product: q['product'] } : {}) },
-                    citations: cite });
+      const k = `${rule.event}|${slug(where)}|${effective}`;
+      const prior = events.get(k);
+      if (prior === undefined) {
+        events.set(k, { kind: rule.event, effective_date: effective, place_entity_id: place?.entity_id ?? null, place: where || null,
+                        market: typeof q['market'] === 'string' ? q['market'] : null,
+                        details: { predicate, object_value: object, ...(capacity === null ? {} : { capacity_per_month: capacity }), ...(typeof q['product'] === 'string' ? { product: q['product'] } : {}) },
+                        citations: cite });
+      } else prior['citations'] = mergeCites(prior['citations'] as Row[], cite);
     }
     if (rule.fact !== null) {
-      const name = rule.fact === 'capability' ? 'capacity' : slug(place?.name ?? object);
+      const name = rule.fact === 'capability' ? 'capacity' : slug(where);
       const key = `${rule.fact}:${name}`;
       let value: Row;
       if (rule.fact === 'capability') value = { amount: capacity ?? num(object), unit: typeof q['unit'] === 'string' ? q['unit'] : 'units/month', period: typeof q['period'] === 'string' ? q['period'] : 'month',
                                                 population: typeof q['population'] === 'string' ? q['population'] : 'all products' };
-      else if (rule.fact === 'facility') value = { place: place?.name ?? object, status: rule.event === 'plant_closed' ? 'closed' : 'operating', since: effective,
+      else if (rule.fact === 'facility') value = { place: where, status: rule.event === 'plant_closed' ? 'closed' : 'operating', since: effective,
                                                    ...(capacity === null ? {} : { capacity_per_month: capacity }), ...(typeof q['product'] === 'string' ? { product: q['product'] } : {}) };
       else value = { name: object, since: effective, ...(typeof q['market'] === 'string' ? { market: q['market'] } : {}) };
-      if (!seenKeys.has(key)) {
-        const prior = held.get(key);
-        if (prior === undefined || JSON.stringify(prior['value']) !== JSON.stringify(value)) {
-          changes.push({ op: prior === undefined ? 'add' : 'replace', fact: { key, kind: rule.fact, value, citations: cite, confidence } });
-          seenKeys.add(key);
-        }
+      const prior = facts.get(key);
+      if (prior !== undefined) {
+        const f = prior['fact'] as Row;
+        f['citations'] = mergeCites(f['citations'] as Row[], cite);
+        f['confidence'] = Math.min(Number(f['confidence']), confidence);
+      } else {
+        const h = held.get(key);
+        if (h === undefined || JSON.stringify(h['value']) !== JSON.stringify(value)) facts.set(key, { op: h === undefined ? 'add' : 'replace', fact: { key, kind: rule.fact, value, citations: cite, confidence } });
       }
     }
-    statements.push(`${competitor.name} ${rule.label} ${place?.name ?? object}${rule.event === null ? '' : ` effective ${effective}`}${capacity === null ? '' : ` (capacity ${capacity} units/month)`}`);
+    statements.set(`${rule.label}|${slug(where)}`, `${competitor.name} ${rule.label} ${where}${rule.event === null ? '' : ` effective ${effective}`}${capacity === null ? '' : ` (capacity ${capacity} units/month)`}`);
     used.push(c);
   }
-  if (events.length === 0 && changes.length === 0) return null;
-  const effectiveFrom = events.map((e) => String(e['effective_date'])).sort()[0] ?? todayDay;
+  if (events.size === 0 && facts.size === 0) return null;
+  const evs = [...events.values()];
+  const effectiveFrom = evs.map((e) => String(e['effective_date'])).sort()[0] ?? todayDay;
   const confidence = Math.min(...used.map((c) => num(c.payload['confidence']) ?? 0));
+  const evidence = [...new Set(used.map((c) => c.evidence_id))];
   const interpretation = {
-    statement: `${statements.join('; ')} — read from ${used.length} extracted claim(s) of one evidence item; the agent proposes, a named analyst approves`,
+    statement: `${[...statements.values()].join('; ')} — read from ${used.length} extracted claim(s) of ${evidence.length} evidence item(s); the agent proposes, a named analyst approves`,
     confidence: Math.round(confidence * 1000) / 1000,
     confidence_basis: 'the lowest extraction confidence of the claims cited (never derived from narrative)',
-    citations: [...used.map((c) => ({ kind: 'claim', id: c.claim_id, version: c.claim_version, digest: c.claim_digest })), ...evCite],
+    citations: used.reduce<Row[]>((acc, c) => mergeCites(acc, [claimCite(c), ...evidenceCite(c)]), []),
   };
-  return { evidenceId, content: { effective_from: effectiveFrom, events, changes, interpretation }, claims: used.map((c) => c.claim_id),
+  return { content: { effective_from: effectiveFrom, events: evs, changes: [...facts.values()], interpretation }, claims: used.map((c) => c.claim_id), evidence,
            recordedThrough: claims.map((c) => c.recorded_at).sort().at(-1)!, unmapped };
 }
 
-/** Group the backlog by competitor and evidence, oldest first (the scan's order). */
-export function groupBacklog(rows: Row[]): Array<{ competitorId: string; name: string; packageKey: string; groups: BacklogClaim[][]; recordedThrough: string }> {
-  const byCompetitor = new Map<string, { competitorId: string; name: string; packageKey: string; byEvidence: Map<string, BacklogClaim[]>; recordedThrough: string }>();
+/** The backlog by competitor, oldest first (the scan's order). */
+export function groupBacklog(rows: Row[]): Array<{ competitorId: string; name: string; packageKey: string; claims: BacklogClaim[]; recordedThrough: string }> {
+  const byCompetitor = new Map<string, { competitorId: string; name: string; packageKey: string; claims: BacklogClaim[]; recordedThrough: string }>();
   for (const r of rows) {
     const id = String(r['competitor_id']);
     let c = byCompetitor.get(id);
-    if (c === undefined) { c = { competitorId: id, name: String(r['name']), packageKey: String(r['package_key']), byEvidence: new Map(), recordedThrough: '' }; byCompetitor.set(id, c); }
+    if (c === undefined) { c = { competitorId: id, name: String(r['name']), packageKey: String(r['package_key']), claims: [], recordedThrough: '' }; byCompetitor.set(id, c); }
     const claim: BacklogClaim = {
       claim_id: String(r['claim_id']), claim_version: Number(r['claim_version']), claim_type: String(r['claim_type']), claim_digest: String(r['claim_digest']),
       payload: (r['payload'] ?? {}) as Row, recorded_at: String(r['recorded_at']), evidence_id: String(r['evidence_id']),
@@ -155,24 +168,10 @@ export function groupBacklog(rows: Row[]): Array<{ competitorId: string; name: s
       evidence_digest: r['evidence_digest'] === null || r['evidence_digest'] === undefined ? null : String(r['evidence_digest']),
       places: Array.isArray(r['places']) ? (r['places'] as Array<{ entity_id: string; name: string }>) : [],
     };
-    const list = c.byEvidence.get(claim.evidence_id) ?? [];
-    list.push(claim);
-    c.byEvidence.set(claim.evidence_id, list);
+    c.claims.push(claim);
     if (claim.recorded_at > c.recordedThrough) c.recordedThrough = claim.recorded_at;
   }
-  return [...byCompetitor.values()].map((c) => ({
-    competitorId: c.competitorId, name: c.name, packageKey: c.packageKey, recordedThrough: c.recordedThrough,
-    groups: [...c.byEvidence.values()].sort((a, b) => (a.map((x) => x.recorded_at).sort()[0] ?? '').localeCompare(b.map((x) => x.recorded_at).sort()[0] ?? '')),
-  }));
-}
-
-/** The watermark a competitor's scan may advance to: everything read when nothing waits, else just before the first group left waiting. */
-export function watermarkOf(processed: BacklogClaim[][], waiting: BacklogClaim[][]): string | null {
-  const all = processed.flat().map((c) => c.recorded_at).sort();
-  if (waiting.length === 0) return all.at(-1) ?? null;
-  const firstWaiting = waiting.flat().map((c) => c.recorded_at).sort()[0]!;
-  const before = all.filter((t) => t < firstWaiting);
-  return before.at(-1) ?? null;
+  return [...byCompetitor.values()].sort((a, b) => (a.claims.map((x) => x.recorded_at).sort()[0] ?? '').localeCompare(b.claims.map((x) => x.recorded_at).sort()[0] ?? ''));
 }
 
 /** A DATE as the day it names (the driver reads a DATE as the local midnight: its local components are the day). */
