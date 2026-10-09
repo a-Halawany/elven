@@ -306,6 +306,18 @@ describe('PK1 · declare and version: the manifest, the DPG object, the certific
     expect((await one(sql`select count(*)::int as n from domain.package_versions where package_id = ${geo}::uuid`))['n']).toBe(1);
   });
 
+  it('refusal (B33 act-found): a manifest MISSING a required key is refused, not let through — jsonb_typeof of a missing key is NULL', async () => {
+    // before the fix, `jsonb_typeof(<missing>) <> 'array'` was NULL and the CASE/IF fell through: a manifest without
+    // ontology_extension.mappings, or a source entry without purposes, was accepted
+    const noMappings = structuredClone(GEO.manifest) as Record<string, any>; delete noMappings.ontology_extension.mappings;
+    await refused(propose(owner, geo, '1.0.0', noMappings), /^domain package rejected \(manifest\): ontology_extension\.mappings lists the package's types/, 422);
+    const noPurposes = structuredClone(GEO.manifest) as Record<string, any>; delete noPurposes.source_set[0].purposes;
+    await refused(propose(owner, geo, '1.0.0', noPurposes), /^domain package rejected \(manifest\)/, 422);
+    const noControls = structuredClone(GEO.manifest) as Record<string, any>; delete noControls.controls;
+    await refused(propose(owner, geo, '1.0.0', noControls), /^domain package rejected \(manifest\): controls is an object/, 422);
+    expect((await one(sql`select count(*)::int as n from domain.package_versions where package_id = ${geo}::uuid`))['n']).toBe(1);
+  });
+
   it('recovery: the ledger records the declaration and the proposal; the package reads as declared with its open version', async () => {
     const vw = await view(geo);
     expect(vw.package).toMatchObject({ package_key: GEO.key, state: 'declared' });

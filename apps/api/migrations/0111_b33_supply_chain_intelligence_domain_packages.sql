@@ -3099,45 +3099,45 @@ REVOKE ALL ON FUNCTION domain.dpk_active(uuid, uuid, text) FROM PUBLIC;
 /* THE MANIFEST'S FORM (PK1). A well-formed manifest is ADMITTED as a proposal; what it CLAIMS (that its types map onto the core, that its
    sources and models are approved, that its release is compatible …) is the conformance suite's to measure, so a non-conforming but
    well-formed manifest can be proposed and its findings shown. Refused `domain package rejected (manifest)`. */
-CREATE OR REPLACE FUNCTION domain.dpk_assert_manifest(p_key text, p_semver text, m jsonb) RETURNS void
+CREATE OR REPLACE FUNCTION domain.dpk_assert_manifest(p_key text, p_semver text, m jsonb) RETURNS void   -- B33 act-found: jsonb_typeof(<missing key>) is NULL and `<>` let it through; every type test is IS DISTINCT FROM
 LANGUAGE plpgsql IMMUTABLE SET search_path = pg_catalog, pg_temp AS $$
 DECLARE e jsonb; bad text;
 BEGIN
   bad := CASE
-    WHEN m IS NULL OR jsonb_typeof(m) <> 'object' THEN 'the manifest is an object'
-    WHEN jsonb_typeof(m -> 'release') <> 'object' OR (m #>> '{release,semver}') IS DISTINCT FROM p_semver THEN format('release.semver names the version''s semver (%s)', p_semver)
-    WHEN jsonb_typeof(m -> 'ontology_extension') <> 'object' THEN 'ontology_extension is an object'
+    WHEN m IS NULL OR jsonb_typeof(m) IS DISTINCT FROM 'object' THEN 'the manifest is an object'
+    WHEN jsonb_typeof(m -> 'release') IS DISTINCT FROM 'object' OR (m #>> '{release,semver}') IS DISTINCT FROM p_semver THEN format('release.semver names the version''s semver (%s)', p_semver)
+    WHEN jsonb_typeof(m -> 'ontology_extension') IS DISTINCT FROM 'object' THEN 'ontology_extension is an object'
     WHEN (m #>> '{ontology_extension,namespace}') IS DISTINCT FROM ('pkg:' || p_key) THEN format('ontology_extension.namespace is pkg:%s (a package extends its own namespace)', p_key)
-    WHEN jsonb_typeof(m #> '{ontology_extension,mappings}') <> 'array' OR jsonb_array_length(m #> '{ontology_extension,mappings}') = 0 THEN 'ontology_extension.mappings lists the package''s types and the core types they map onto'
+    WHEN jsonb_typeof(m #> '{ontology_extension,mappings}') IS DISTINCT FROM 'array' OR jsonb_array_length(m #> '{ontology_extension,mappings}') = 0 THEN 'ontology_extension.mappings lists the package''s types and the core types they map onto'
     WHEN jsonb_typeof(m #> '{ontology_extension,predicates}') IS DISTINCT FROM 'array' THEN 'ontology_extension.predicates is a list'
-    WHEN jsonb_typeof(m -> 'source_set') <> 'array' OR jsonb_array_length(m -> 'source_set') = 0 THEN 'source_set names at least one source'
+    WHEN jsonb_typeof(m -> 'source_set') IS DISTINCT FROM 'array' OR jsonb_array_length(m -> 'source_set') = 0 THEN 'source_set names at least one source'
     WHEN jsonb_typeof(m -> 'indicators') IS DISTINCT FROM 'array' THEN 'indicators is a list'
     WHEN jsonb_typeof(m -> 'models') IS DISTINCT FROM 'array' THEN 'models is a list'
-    WHEN jsonb_typeof(m -> 'assessment_templates') <> 'array' OR jsonb_array_length(m -> 'assessment_templates') = 0 THEN 'assessment_templates names at least one template'
+    WHEN jsonb_typeof(m -> 'assessment_templates') IS DISTINCT FROM 'array' OR jsonb_array_length(m -> 'assessment_templates') = 0 THEN 'assessment_templates names at least one template'
     WHEN jsonb_typeof(m -> 'watchlist_templates') IS DISTINCT FROM 'array' THEN 'watchlist_templates is a list'
-    WHEN jsonb_typeof(m -> 'controls') <> 'object' THEN 'controls is an object'
-    WHEN jsonb_typeof(m #> '{controls,purposes}') <> 'array' OR jsonb_array_length(m #> '{controls,purposes}') = 0 THEN 'controls.purposes names the package''s use boundary'
+    WHEN jsonb_typeof(m -> 'controls') IS DISTINCT FROM 'object' THEN 'controls is an object'
+    WHEN jsonb_typeof(m #> '{controls,purposes}') IS DISTINCT FROM 'array' OR jsonb_array_length(m #> '{controls,purposes}') = 0 THEN 'controls.purposes names the package''s use boundary'
     WHEN coalesce(m #>> '{controls,classification_ceiling}', '') NOT IN ('public', 'internal', 'confidential', 'restricted') THEN 'controls.classification_ceiling is public, internal, confidential or restricted'
     WHEN jsonb_typeof(m -> 'risk_meaning') IS DISTINCT FROM 'array' THEN 'risk_meaning is a list (category mappings onto the domain''s risk taxonomy)'
   END;
   IF bad IS NOT NULL THEN RAISE EXCEPTION 'domain package rejected (manifest): %', bad USING ERRCODE = '22023'; END IF;
   FOR e IN SELECT * FROM jsonb_array_elements(m #> '{ontology_extension,mappings}') LOOP
-    IF jsonb_typeof(e) <> 'object' OR coalesce(e ->> 'type', '') !~ '^[a-z][a-z0-9_]{1,40}$' OR coalesce(e ->> 'maps_to', '') = '' THEN
+    IF jsonb_typeof(e) IS DISTINCT FROM 'object' OR coalesce(e ->> 'type', '') !~ '^[a-z][a-z0-9_]{1,40}$' OR coalesce(e ->> 'maps_to', '') = '' THEN
       RAISE EXCEPTION 'domain package rejected (manifest): every mapping is {type, maps_to} (got %)', left(e::text, 200) USING ERRCODE = '22023';
     END IF;
   END LOOP;
   FOR e IN SELECT * FROM jsonb_array_elements(m -> 'source_set') LOOP
-    IF jsonb_typeof(e) <> 'object' OR coalesce(e ->> 'source_key', '') = '' OR jsonb_typeof(e -> 'purposes') <> 'array' OR jsonb_array_length(e -> 'purposes') = 0 THEN
+    IF jsonb_typeof(e) IS DISTINCT FROM 'object' OR coalesce(e ->> 'source_key', '') = '' OR jsonb_typeof(e -> 'purposes') IS DISTINCT FROM 'array' OR jsonb_array_length(e -> 'purposes') = 0 THEN
       RAISE EXCEPTION 'domain package rejected (manifest): every source names its source_key and the purposes it is used for (got %)', left(e::text, 200) USING ERRCODE = '22023';
     END IF;
   END LOOP;
   FOR e IN SELECT * FROM jsonb_array_elements(m -> 'models') LOOP
-    IF jsonb_typeof(e) <> 'object' OR coalesce(e ->> 'kind', '') NOT IN ('forecast', 'behaviour') OR coalesce(e ->> 'ref', '') = '' THEN
+    IF jsonb_typeof(e) IS DISTINCT FROM 'object' OR coalesce(e ->> 'kind', '') NOT IN ('forecast', 'behaviour') OR coalesce(e ->> 'ref', '') = '' THEN
       RAISE EXCEPTION 'domain package rejected (manifest): every model is {kind: forecast|behaviour, ref} (got %)', left(e::text, 200) USING ERRCODE = '22023';
     END IF;
   END LOOP;
   FOR e IN SELECT * FROM jsonb_array_elements(m -> 'assessment_templates') LOOP
-    IF jsonb_typeof(e) <> 'object' OR coalesce(e ->> 'key', '') !~ '^[a-z][a-z0-9_.-]{1,62}$' THEN
+    IF jsonb_typeof(e) IS DISTINCT FROM 'object' OR coalesce(e ->> 'key', '') !~ '^[a-z][a-z0-9_.-]{1,62}$' THEN
       RAISE EXCEPTION 'domain package rejected (manifest): every assessment template has a key (got %)', left(e::text, 200) USING ERRCODE = '22023';
     END IF;
   END LOOP;
