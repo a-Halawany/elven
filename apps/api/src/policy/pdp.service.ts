@@ -2111,7 +2111,8 @@ const BUNDLE_V1: Rule[] = [
      prefix is NEVER reached: put an exact rule in a `B33 <part>` marked mini-block BEFORE that prefix line instead. No `domain.` rule exists
      before B33: §PK's and §CI's `domain.*` rules go in their blocks below. Every non-exempt `domain.*` write is gated by the `domain_package`
      capability on a contracted tenant (0111 §0.7); a human-gated rule (obligations: [{ type: 'human_gate' }]) is exempt. */
-  /* B33 twin */
+  /* B33 twin — no rule: §TW adds no action (it extends twin.branch.merge, twin.ground, twin.estimate.decide, twin.coupling.apply and
+     simulation.run under their existing rules). */
   /* end B33 twin */
   /* B33 supply */
   /* end B33 supply */

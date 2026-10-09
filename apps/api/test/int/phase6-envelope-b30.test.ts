@@ -185,8 +185,12 @@ describe('B30 §EN E2 · ONLY A TWIN OWNER ADMITS IT AS EXPLORATORY (the domain 
     expect(use['label']).toBe('EXPLORATORY ONLY — REFUSED for decision use: outside_envelope');
     expect(String((use['reasons'] as Row[])[0]!['detail'])).toMatch(/admitted as EXPLORATORY by .*; awaiting a method steward's concurrence — exploratory only, never decision-grade$/);
     const items = await attention(R_OUT);
-    expect(items).toHaveLength(1);
-    expect(items[0]).toMatchObject({ signal_class: 'twin.envelope', subject_kind: 'run', state: 'open', route_roles: ['method_steward'] });
+    /* B33 twin (0111 §TW7) — the pin moves: the run's completion OUTSIDE raised the NEW awaiting-admission item (the twin's owner named),
+       which this admission CLOSED; the admission's own item (the method stewards) follows it, open */
+    expect(items).toHaveLength(2);
+    expect(items[0]).toMatchObject({ signal_class: 'twin.envelope', subject_kind: 'run', state: 'closed', title: expect.stringMatching(/awaiting a twin owner's exploratory admission$/) });
+    expect(items[1]).toMatchObject({ signal_class: 'twin.envelope', subject_kind: 'run', state: 'open', route_roles: ['method_steward'] });
+    /* end B33 twin */
     expect((await envelopeEvents({ runId: R_OUT })).map((e) => e['event'])).toEqual(['exploratory.admitted']);
   }, 120_000);
 
