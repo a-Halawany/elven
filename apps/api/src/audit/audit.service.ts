@@ -23,7 +23,8 @@ import { APP_DB, IDENTITY_DB, VERIFIER_DB } from '../shared/shared.module.js';
 import type { Db, Tx as KyselyTx } from '../shared/db.js';
 import type { AuditReads } from '../shared/capabilities.js';
 import { newId } from '../shared/ids.js';
-import { degradedAudit } from '../shared/degraded-store.js';
+import { degradedAudit, type DegradedAuditStore } from '../shared/degraded-store.js';
+import { fileJournalIncident, journalIncidents } from '../shared/journal-incident.js';
 
 export const SYSTEM_PIPELINE_PRINCIPAL = 'workload:system.commit-pipeline';
 
@@ -342,9 +343,21 @@ export class AuditService {
    * unreconciled incidents is the local degraded flag cleared — and it is cleared
    * by presenting that governed proof, so no local action can clear it alone.
    */
-  async reconcileDegraded(reconciledBy: string, note: string): Promise<{
+  async reconcileDegraded(reconciledBy: string, note: string, store: DegradedAuditStore = degradedAudit): Promise<{
     reconciled: string[]; remainingUnreconciled: number; healthy: boolean;
+    /** B33-J: the journal records since the last recovery, and how many of their ledger counterparts this run filed. */
+    journalPending: number; journalFiled: number; journalCovered: number;
   }> {
+    // B33-J (0110): every journal record since the last recovery gets its ledger counterpart FIRST (idempotent on journal_ref — a record
+    // filed at failure time, at boot or by an earlier run is not filed again). A record that cannot be filed fails the run: it stays
+    // degraded and the entrypoint exits non-zero. The counterparts are then reconciled below like any other incident — only through the
+    // governed port, under a recovery capability bound to each one.
+    const pending = store.pendingRecords();
+    let journalFiled = 0;
+    for (const rec of pending) {
+      const r = await fileJournalIncident(this.verifierDb, rec, 'journal_backfill:recovery');
+      if (r.filed) journalFiled += 1;
+    }
     const open = (
       await sql<{ id: string }>`select id from audit.unreconciled_incidents()`.execute(this.verifierDb)
     ).rows;
@@ -364,14 +377,24 @@ export class AuditService {
         remaining = Number(r.remaining_unreconciled);
       }
     }
-    // The local flag clears ONLY on governed proof that the ledger agrees.
-    if (reconciled.length > 0 && remaining === 0) {
-      degradedAudit.markRecovered({
-        reconciledIncidentIds: reconciled,
+    // B33-J: the proof for the journal — each pending record's ledger counterpart, read back from the ledger, must be RECONCILED.
+    const counterparts = await journalIncidents(this.verifierDb, pending.map((r) => r.id));
+    const covered = pending.filter((r) => counterparts.get(r.id)?.reconciled === true);
+    const coveredIncidents = covered.map((r) => counterparts.get(r.id)!.incidentId);
+    // The local flag clears ONLY on governed proof that the ledger agrees: none open, and every journal record since the last recovery
+    // reconciled (by this run or an earlier, interrupted one).
+    const proofIds = [...new Set([...reconciled, ...coveredIncidents])];
+    if (proofIds.length > 0 && remaining === 0 && covered.length === pending.length) {
+      store.markRecovered({
+        reconciledIncidentIds: proofIds,
         remainingUnreconciled: remaining,
         detail: `governed reconciliation by ${reconciledBy}`,
+        journalCovered: covered.map((r) => r.id),
       });
     }
-    return { reconciled, remainingUnreconciled: remaining, healthy: remaining === 0 };
+    return {
+      reconciled, remainingUnreconciled: remaining, healthy: remaining === 0 && !store.state().degraded,
+      journalPending: pending.length, journalFiled, journalCovered: covered.length,
+    };
   }
 }

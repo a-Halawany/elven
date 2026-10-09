@@ -13,6 +13,12 @@
  * the durable journal. If the ledger still shows an unreconciled incident, the
  * flag stays set and this exits non-zero.
  *
+ * B33-J (0110): a journal record written by a fail-closed path that filed no ledger
+ * incident is first FILED as its ledger counterpart (journal_ref = the record's id;
+ * idempotent — never twice), then reconciled like every other incident. The flag
+ * clears only when every journal record since the last recovery maps to a
+ * reconciled incident and the ledger has none open; the journal is only appended to.
+ *
  * Exit codes:
  *   0 — nothing to reconcile, or reconciliation complete and the ledger agrees
  *   1 — reconciliation incomplete (still degraded) or a real failure
@@ -50,6 +56,8 @@ async function main(): Promise<void> {
     console.log('==============================================================');
     console.log('  THE EYE — GOVERNED DEGRADED RECOVERY');
     console.log(`  journal state on entry:  ${restored.degraded ? `degraded (${restored.unreconciled} unreconciled)` : 'not degraded'}`);
+    console.log(`  journal records filed:   ${out.journalFiled} new of ${out.journalPending} pending (the rest already had a ledger incident)`);
+    console.log(`  journal records covered: ${out.journalCovered} of ${out.journalPending} (reconciled ledger incident by journal_ref)`);
     console.log(`  incidents reconciled:    ${out.reconciled.length === 0 ? 'none' : out.reconciled.join(', ')}`);
     console.log(`  remaining unreconciled:  ${out.remainingUnreconciled}`);
     console.log(`  readiness after:         ${degradedAudit.state().degraded ? 'DEGRADED' : 'healthy'}`);

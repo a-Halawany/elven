@@ -26,7 +26,7 @@ import { Public, recordSecurityFailure, type EyeRequest } from './http.js';
 import { IDENTITY_DB } from '../shared/shared.module.js';
 import type { Db, Tx } from '../shared/db.js';
 import { degradedAudit } from '../shared/degraded-store.js';
-import { newId } from '../shared/ids.js';
+import { fileJournalIncident } from '../shared/journal-incident.js';
 
 interface LoginPayload {
   username?: string;
@@ -58,7 +58,7 @@ export class AuthController {
   /** Fail closed when authoritative audit persistence is unavailable. */
   private auditUnavailable(correlationId: string, e: unknown): HttpException {
     const detail = e instanceof Error ? e.message.slice(0, 300) : String(e).slice(0, 300);
-    degradedAudit.record({
+    const rec = degradedAudit.record({
       kind: 'audit_unavailable',
       correlationId,
       route: 'identity.auth',
@@ -75,9 +75,8 @@ export class AuthController {
       .execute(async (tx) => {
         await sql`select ctx.issue_identity_op('identity.security.intake', null::uuid,
           ${correlationId}::uuid, 60)`.execute(tx);
-        await sql`select audit.record_availability_incident(
-          ${newId()}::uuid, 'audit_unavailable', 'PLATFORM', ${correlationId}::uuid,
-          ${JSON.stringify({ route: 'identity.auth', detail })}::jsonb)`.execute(tx);
+        // B33-J (0110): filed with the journal record's id (journal_ref), so recovery maps the record to it and never files it twice.
+        await fileJournalIncident(tx, rec, 'failure_time');
       })
       .catch(() => undefined); // the journal already holds it; never mask the 503
     return new HttpException(
