@@ -1197,6 +1197,24 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   { match: /^(ensemble|judgement overlay) rejected \((state|stale|duplicate)\)/i, status: 409, code: 'EYE_STA_002' },
   { match: /^(ensemble|judgement overlay) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
   /* end B25 ensembles */
+  /* B33 (0111 §0.10) — THE PARTS' ERROR ROWS, each part's nouns in the CLASS form `<noun> rejected (<class>): …`, anchored (`^…`), in B9's order:
+     403 actor|ownership|authority|separation_of_duties · 404 unknown_* · 409 state|stale|duplicate · 422 the rest (`package` — the
+     PACKAGE_GATE refusal `<noun> rejected (package): <reason>` — falls to 422). Nouns: §TW extends B30's families (an EXACT row placed in its
+     block, never an edit of B30's rows); §SC `supply inference|supply disruption|supply alternative rejected`, `twin proposal rejected
+     (duplicate)`; §PK `domain package|package conformance|domain assessment|watchlist rejected`; §CI `competitor profile|competitor
+     comparison|competitor assessment rejected`. The prelude's own refusals: `domain package rejected (state)` (the version guards, 0111 §0.5)
+     → 409 below; the helpers' `attention item rejected: …` texts are internal (a part's port validates first). */
+  /* B33 §0 */
+  { match: /^domain package rejected \(state\)/i, status: 409, code: 'EYE_STA_002' },
+  /* end B33 §0 */
+  /* B33 twin */
+  /* end B33 twin */
+  /* B33 supply */
+  /* end B33 supply */
+  /* B33 packages */
+  /* end B33 packages */
+  /* B33 competitor */
+  /* end B33 competitor */
   /* B36 home (0094 §H) — the executive home's families in the CLASS form `<noun> rejected (<class>): …`: `cadence rejected`, `executive room
      rejected` (0044's unclassed `room rejected: …` texts are the decision room's and are mapped by no row; the noun here is `executive room`
      and every row is anchored), `objective review rejected` (the SoD of §H2's re-declared convene_review and of open_subject_room — B23's

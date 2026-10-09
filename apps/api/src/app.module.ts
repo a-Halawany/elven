@@ -20,6 +20,9 @@ import { ProductsModule } from './products/products.module.js';
 import { CommercialModule } from './commercial/commercial.module.js';
 /* end B90 */
 import { RetentionModule } from './retention/retention.module.js';
+/* B33 (0111 §0.8): the domain-package framework and competitor intelligence (§PK, §CI) */
+import { DomainsModule } from './domains/domains.module.js';
+/* end B33 */
 
 @Module({
   imports: [
@@ -41,6 +44,7 @@ import { RetentionModule } from './retention/retention.module.js';
     ExecutiveModule,
     /* B90 (0095) */ ProductsModule /* end B90 */,
     /* B91 (0105) */ CommercialModule /* end B91 */,
+    /* B33 (0111) */ DomainsModule /* end B33 */,
     RetentionModule,
   ],
 })

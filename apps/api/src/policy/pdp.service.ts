@@ -146,6 +146,10 @@ const BUNDLE_V1: Rule[] = [
          /graph/data pages answered "no qualifying role binding for action in resolved scope" to a principal holding data_steward alone) */
       { role: 'data_steward', atScope: 'DOMAIN' },
       /* end B90 browser */
+      /* B33 §0 (0111 §0.1): the domain specialist and the Domain Intelligence Agent (the prelude's DOMAIN roles) resolve their own scope, as every new domain role does */
+      { role: 'domain_specialist', atScope: 'DOMAIN' },
+      { role: 'domain_intelligence_agent', atScope: 'DOMAIN' },
+      /* end B33 §0 */
     ],
     obligations: [{ type: 'audit_access' }],
     requiresPurpose: true,
@@ -700,6 +704,10 @@ const BUNDLE_V1: Rule[] = [
     requiresPurpose: true,
     maxConsequence: 'C2',
   },
+  /* B33 §0 (0111 §0.3): the Domain Intelligence Agent opens and closes its own runs — an EXACT `agent.run` rule inserted before B30's (the first
+     match wins): the nine agents before it and the domain_intelligence agent. B30's rule below is kept as it was (it now matches nothing this one does not). */
+  { actionPrefix: 'agent.run', exact: true, requiredAnyRole: [{ role: 'decision_agent', atScope: 'DOMAIN' }, { role: 'briefing_agent', atScope: 'DOMAIN' }, { role: 'reporting_agent', atScope: 'DOMAIN' }, { role: 'attention_agent', atScope: 'DOMAIN' }, { role: 'weak_signal_agent', atScope: 'DOMAIN' }, { role: 'risk_agent', atScope: 'DOMAIN' }, { role: 'opportunity_agent', atScope: 'DOMAIN' }, { role: 'supply_chain_agent', atScope: 'DOMAIN' }, { role: 'reconciliation_agent', atScope: 'DOMAIN' }, { role: 'domain_intelligence_agent', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B33 §0 */
   /* B30 estimation: the Reconciliation Agent opens and closes its own runs — an EXACT `agent.run` rule inserted before B29's (the first match wins):
      the eight agents before it and the reconciliation agent. B29's rule below is kept as it was (it now matches nothing this one does not). */
   { actionPrefix: 'agent.run', exact: true, requiredAnyRole: [{ role: 'decision_agent', atScope: 'DOMAIN' }, { role: 'briefing_agent', atScope: 'DOMAIN' }, { role: 'reporting_agent', atScope: 'DOMAIN' }, { role: 'attention_agent', atScope: 'DOMAIN' }, { role: 'weak_signal_agent', atScope: 'DOMAIN' }, { role: 'risk_agent', atScope: 'DOMAIN' }, { role: 'opportunity_agent', atScope: 'DOMAIN' }, { role: 'supply_chain_agent', atScope: 'DOMAIN' }, { role: 'reconciliation_agent', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
@@ -2097,6 +2105,20 @@ const BUNDLE_V1: Rule[] = [
      human-gated (an agent runs ensembles, it does not close their ledger); EXACT, under no prefix rule. The port re-checks the human and the role. */
   { actionPrefix: 'prediction.ensemble.route.reconcile', exact: true, requiredAnyRole: [{ role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'domain_admin', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   /* end B25 ensembles */
+  /* B33 (0111 §0.10) — THE PARTS' BLOCKS, filled by each part with EXACT rules (first match wins at BUNDLE_V1.find). Grep every prefix rule a name
+     falls under before placing it: `twin.read`, `twin.declare`, `twin.version.admit`, `twin.version`, `twin.ground`, `twin.proposal.draft` (exact),
+     `agent.*`, `simulation.read`, `simulation.run`, `graph.read`, `graph.entity.create`, `graph.edge.assert` … — a rule placed here under such a
+     prefix is NEVER reached: put an exact rule in a `B33 <part>` marked mini-block BEFORE that prefix line instead. No `domain.` rule exists
+     before B33: §PK's and §CI's `domain.*` rules go in their blocks below. Every non-exempt `domain.*` write is gated by the `domain_package`
+     capability on a contracted tenant (0111 §0.7); a human-gated rule (obligations: [{ type: 'human_gate' }]) is exempt. */
+  /* B33 twin */
+  /* end B33 twin */
+  /* B33 supply */
+  /* end B33 supply */
+  /* B33 packages */
+  /* end B33 packages */
+  /* B33 competitor */
+  /* end B33 competitor */
   /* B36 home */
   /* THE EXECUTIVE HOME, THE CADENCE, THE COMMAND VIEWS, THE SEARCH, THE METRICS (0094 §H; F-P6-11: WS-01, JRN-19, PER-03, CAP-EO-01/-02/-04).
      EXACT rules — no `executive` prefix rule exists and none of these names is a prefix of another rule's. THE READS (executive.home.read

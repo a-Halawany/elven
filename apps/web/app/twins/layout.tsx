@@ -65,6 +65,7 @@ const NAV = [
   /* B30 envelope */ { href: '/twins/models', label: 'Models', glyph: '⚖' }, /* end B30 envelope */
   /* B30 estimation */ { href: '/twins/reconciliation', label: 'Reconciliation', glyph: '⇄' }, /* end B30 estimation */
   /* B30 experiments */ { href: '/twins/simulations/fabric', label: 'Fabric experiments', glyph: '⧉' }, /* end B30 experiments */
+  /* B33 (0111 §0.9): the supply-chain intelligence workspace (§SC's page) */ { href: '/twins/supply', label: 'Supply network', glyph: '⋔' }, /* end B33 */
   { href: '/prediction', label: 'Prediction', glyph: '↗' },
   { href: '/graph', label: 'Graph', glyph: '◈' },
   { href: '/intelligence', label: 'Intelligence', glyph: '❝' },
