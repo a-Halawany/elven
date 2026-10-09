@@ -138,6 +138,10 @@ export function networkRules(elements: readonly FamilyElement[]): string[] {
   // no cycle: the network flows toward the terminal
   const cycle = findCycle(n);
   if (cycle !== null) errors.push(`route: the routes form a cycle (${cycle.join(' → ')}); a supply network flows toward its terminal site`);
+  /* B33 supply (0111 §SC1): the OPTIONAL fields of a site and a route, and the inventory / obligation elements — an element without them
+     validates exactly as before (every v1 network stays valid) */
+  errors.push(...extraRules(elements, n));
+  /* end B33 supply */
   return errors;
 }
 
@@ -312,3 +316,180 @@ export const SUPPLY_NETWORK_SCHEMA: ElementSchema = {
   route: { unit: null, description: 'a route (route:<id>); value { from: <site>, to: <site>, material }', required: true },
   capacity: { unit: 'units/day', unit_pattern: '^[A-Za-z][A-Za-z0-9_.-]{0,19}/day$', description: 'a site\'s capacity for a material per day (capacity:<site>.<material>), in the material\'s unit per day', required: true },
 };
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+ * B33 supply (0111 §SC1; AI-53-003, PR-30-002) — THE NETWORK'S UNCERTAINTY: optional fields on a site and a route, and two optional
+ * element prefixes (the kind row's element schema gains them by a forward UPDATE in 0111 §SC — SUPPLY_NETWORK_SCHEMA_B33 is that object,
+ * byte-equal; SUPPLY_NETWORK_SCHEMA above stays 0092's). Every field is OPTIONAL: a v1 element validates unchanged.
+ *   site:<id>      { tier, name, bom?, country? (ISO 3166 alpha-2), city?, entity_id? (a graph organization/place), ownership? {parent | null,
+ *                    share?, confidence}, contract? {ref, until?, confidence}, geo? {confidence}, provenance? {basis: declared | inferred |
+ *                    validated, inference_id? (required unless declared), confidence?} }
+ *   route:<id>     { from, to, material, mode? (sea | air | rail | road | multimodal), via? [chokepoint or place keys], lead_days?, confidence? }
+ *   inventory:<site>.<material>   the quantity on hand at a site, in the material's unit (never per day)
+ *   obligation:<id>               { kind: contract | delivery | service_level, counterparty, material?, quantity_per_day?, until? }
+ * Nothing is imputed: a missing field is UNKNOWN and counted as such by the uncertainty roll-up (supply-intel/intel.ts), never filled in.
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════ */
+export type ProvenanceBasis = 'declared' | 'inferred' | 'validated';
+export interface SiteExtras {
+  country: string | null; city: string | null; entity_id: string | null;
+  ownership: { parent: string | null; share: number | null; confidence: number } | null;
+  contract: { ref: string; until: string | null; confidence: number } | null;
+  geo: { confidence: number } | null;
+  provenance: { basis: ProvenanceBasis; inference_id: string | null; confidence: number | null };
+}
+export interface RouteExtras { mode: string | null; via: string[]; lead_days: number | null; confidence: number | null }
+export interface NetworkExtras {
+  sites: Map<string, SiteExtras>; routes: Map<string, RouteExtras>;
+  /** on hand per `${site}.${material}` */
+  inventory: Map<string, { site: string; material: string; value: number; unit: string | null }>;
+  obligations: Map<string, Record<string, unknown>>;
+  errors: string[];
+}
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const VIA_RE = /^[a-z0-9][a-z0-9-]{0,60}$/;
+const ROUTE_MODES = ['sea', 'air', 'rail', 'road', 'multimodal'];
+const OBLIGATION_KINDS = ['contract', 'delivery', 'service_level'];
+const conf = (v: unknown): v is number => finite(v) && v >= 0 && v <= 1;
+
+/** The optional fields of a version's sites and routes, the inventory and the obligations, with what cannot be read as errors. */
+export function readExtras(elements: readonly FamilyElement[]): NetworkExtras {
+  const out: NetworkExtras = { sites: new Map(), routes: new Map(), inventory: new Map(), obligations: new Map(), errors: [] };
+  const bad = (m: string) => out.errors.push(m);
+  for (const e of elements) {
+    const p = prefixOf(e.key); const s = suffixOf(e.key); const v = e.value;
+    if (p === 'site' && isObj(v)) {
+      const x: SiteExtras = { country: null, city: null, entity_id: null, ownership: null, contract: null, geo: null, provenance: { basis: 'declared', inference_id: null, confidence: null } };
+      if (v['country'] !== undefined && v['country'] !== null) { if (typeof v['country'] === 'string' && /^[A-Z]{2}$/.test(v['country'])) x.country = v['country']; else bad(`${e.key}: country is an ISO 3166 alpha-2 code (SE, CN, …)`); }
+      if (v['city'] !== undefined && v['city'] !== null) { if (typeof v['city'] === 'string' && v['city'].trim().length >= 1 && v['city'].length <= 80) x.city = v['city'].trim(); else bad(`${e.key}: city is a name of 1–80 characters`); }
+      if (v['entity_id'] !== undefined && v['entity_id'] !== null) { if (typeof v['entity_id'] === 'string' && UUID_RE.test(v['entity_id'])) x.entity_id = v['entity_id'].toLowerCase(); else bad(`${e.key}: entity_id is the id of a graph entity`); }
+      if (v['ownership'] !== undefined && v['ownership'] !== null) {
+        const o = v['ownership'];
+        if (!isObj(o) || !conf(o['confidence']) || !(o['parent'] === null || o['parent'] === undefined || (typeof o['parent'] === 'string' && o['parent'].trim().length >= 1 && o['parent'].length <= 200))
+            || !(o['share'] === undefined || o['share'] === null || conf(o['share']))) bad(`${e.key}: ownership is { parent (a name, or null when unknown), share? (0–1), confidence (0–1) }`);
+        else x.ownership = { parent: typeof o['parent'] === 'string' ? o['parent'].trim() : null, share: conf(o['share']) ? o['share'] : null, confidence: o['confidence'] as number };
+      }
+      if (v['contract'] !== undefined && v['contract'] !== null) {
+        const c = v['contract'];
+        if (!isObj(c) || typeof c['ref'] !== 'string' || c['ref'].trim().length < 1 || c['ref'].length > 120 || !conf(c['confidence'])
+            || !(c['until'] === undefined || c['until'] === null || (typeof c['until'] === 'string' && DAY_RE.test(c['until'])))) bad(`${e.key}: contract is { ref, until? (YYYY-MM-DD), confidence (0–1) }`);
+        else x.contract = { ref: c['ref'].trim(), until: typeof c['until'] === 'string' ? c['until'] : null, confidence: c['confidence'] as number };
+      }
+      if (v['geo'] !== undefined && v['geo'] !== null) { const g = v['geo']; if (!isObj(g) || !conf(g['confidence'])) bad(`${e.key}: geo is { confidence (0–1) }`); else x.geo = { confidence: g['confidence'] as number }; }
+      if (v['provenance'] !== undefined && v['provenance'] !== null) {
+        const pr = v['provenance'];
+        if (!isObj(pr) || !['declared', 'inferred', 'validated'].includes(String(pr['basis']))) bad(`${e.key}: provenance is { basis: declared | inferred | validated, inference_id?, confidence? }`);
+        else {
+          const basis = pr['basis'] as ProvenanceBasis;
+          const iid = typeof pr['inference_id'] === 'string' && UUID_RE.test(pr['inference_id']) ? pr['inference_id'].toLowerCase() : null;
+          if (basis !== 'declared' && iid === null) bad(`${e.key}: an ${basis} site names the inference it rests on (provenance.inference_id)`);
+          if (!(pr['confidence'] === undefined || pr['confidence'] === null || conf(pr['confidence']))) bad(`${e.key}: provenance.confidence lies in 0–1`);
+          x.provenance = { basis, inference_id: iid, confidence: conf(pr['confidence']) ? pr['confidence'] : null };
+        }
+      }
+      out.sites.set(s, x);
+    } else if (p === 'route' && isObj(v)) {
+      const x: RouteExtras = { mode: null, via: [], lead_days: null, confidence: null };
+      if (v['mode'] !== undefined && v['mode'] !== null) { if (ROUTE_MODES.includes(String(v['mode']))) x.mode = String(v['mode']); else bad(`${e.key}: mode is ${ROUTE_MODES.join(', ')}`); }
+      if (v['via'] !== undefined && v['via'] !== null) {
+        if (!Array.isArray(v['via']) || v['via'].length > 20 || !v['via'].every((k) => typeof k === 'string' && VIA_RE.test(k))) bad(`${e.key}: via lists chokepoint or place keys (lower-case, digits, '-'; at most 20)`);
+        else x.via = [...new Set(v['via'] as string[])];
+      }
+      if (v['lead_days'] !== undefined && v['lead_days'] !== null) { if (finite(v['lead_days']) && v['lead_days'] >= 0 && v['lead_days'] <= 365) x.lead_days = v['lead_days']; else bad(`${e.key}: lead_days is a number of days in [0, 365]`); }
+      if (v['confidence'] !== undefined && v['confidence'] !== null) { if (conf(v['confidence'])) x.confidence = v['confidence']; else bad(`${e.key}: confidence lies in 0–1`); }
+      out.routes.set(s, x);
+    } else if (p === 'inventory') {
+      const dot = s.indexOf('.');
+      if (dot <= 0 || dot === s.length - 1 || s.indexOf('.', dot + 1) !== -1) { bad(`${e.key}: an inventory is keyed inventory:<site>.<material>`); continue; }
+      if (!finite(v) || v < 0) { bad(`${e.key}: an inventory is a finite quantity on hand, never negative`); continue; }
+      out.inventory.set(s, { site: s.slice(0, dot), material: s.slice(dot + 1), value: v, unit: e.unit ?? null });
+    } else if (p === 'obligation') {
+      if (!ID.test(s)) { bad(`${e.key}: an obligation id is letters, digits, _ or -`); continue; }
+      if (!isObj(v) || !OBLIGATION_KINDS.includes(String(v['kind'])) || typeof v['counterparty'] !== 'string' || v['counterparty'].trim().length === 0
+          || !(v['quantity_per_day'] === undefined || v['quantity_per_day'] === null || (finite(v['quantity_per_day']) && v['quantity_per_day'] >= 0))
+          || !(v['until'] === undefined || v['until'] === null || (typeof v['until'] === 'string' && DAY_RE.test(v['until'])))) {
+        bad(`${e.key}: an obligation is { kind: ${OBLIGATION_KINDS.join(' | ')}, counterparty, material?, quantity_per_day?, until? (YYYY-MM-DD) }`); continue;
+      }
+      out.obligations.set(s, v);
+    }
+  }
+  return out;
+}
+
+/** The B33 rules on a whole version (beside B29's): the optional fields well formed; an inventory on a declared site and material in the
+ *  material's unit; an obligation's material declared. */
+export function extraRules(elements: readonly FamilyElement[], n: Network): string[] {
+  const x = readExtras(elements);
+  const errors = [...x.errors];
+  for (const [k, inv] of x.inventory) {
+    if (!n.sites.has(inv.site)) errors.push(`inventory:${k}: site ${inv.site} is not declared`);
+    const m = n.materials.get(inv.material);
+    if (m === undefined) errors.push(`inventory:${k}: material ${inv.material} is not declared`);
+    else if (inv.unit !== m.unit) errors.push(`inventory:${k}: unit ${inv.unit ?? '(none)'} — ${inv.material} is counted in ${m.unit}`);
+  }
+  for (const [k, o] of x.obligations) {
+    if (typeof o['material'] === 'string' && !n.materials.has(o['material'])) errors.push(`obligation:${k}: material ${String(o['material'])} is not declared`);
+  }
+  return errors;
+}
+
+/** The kind row's element schema after 0111 §SC (the forward UPDATE writes this object — the B33 unit test holds the two equal). */
+export const SUPPLY_NETWORK_SCHEMA_B33: ElementSchema = {
+  ...SUPPLY_NETWORK_SCHEMA,
+  site: { unit: null, description: 'a site (site:<id>); value { tier (0 = the terminal site), name, bom?, country?, city?, entity_id?, ownership?, contract?, geo?, provenance? }', required: true },
+  route: { unit: null, description: 'a route (route:<id>); value { from: <site>, to: <site>, material, mode?, via?, lead_days?, confidence? }', required: true },
+  inventory: { unit: 'units', unit_pattern: '^[A-Za-z][A-Za-z0-9_.-]{0,19}$', description: 'the quantity on hand at a site (inventory:<site>.<material>), in the material\'s unit', required: false },
+  obligation: { unit: null, description: 'an obligation (obligation:<id>); value { kind: contract | delivery | service_level, counterparty, material?, quantity_per_day?, until? }', required: false },
+};
+
+/** A network with some sites EXCLUDED (their routes dropped) — an unvalidated inference or an identity conflict is never mapped. */
+export function withoutSites(n: Network, exclude: ReadonlySet<string>): Network {
+  if (exclude.size === 0) return n;
+  const sites = new Map([...n.sites].filter(([id]) => !exclude.has(id)));
+  const capacity = new Map([...n.capacity].filter(([, c]) => !exclude.has(c.site)));
+  return { tiers: n.tiers, sites, materials: n.materials, routes: n.routes.filter((r) => !exclude.has(r.from) && !exclude.has(r.to)), capacity };
+}
+
+/**
+ * The throughput to the terminal per day with some ROUTES DERATED (route id → the share of its flow that still passes, 0–1) — B29's
+ * algorithm (throughput above) with the derating applied to each route's flow. null when nothing reaches the terminal.
+ */
+export function deratedThroughput(n: Network, derate: ReadonlyMap<string, number> = new Map()): number | null {
+  const terminal = [...n.sites.values()].find((s) => s.tier === 0);
+  if (terminal === undefined) return null;
+  const cap = (site: string, material: string): number => n.capacity.get(`${site}.${material}`)?.value ?? Infinity;
+  const outDegree = (site: string, material: string): number => n.routes.filter((r) => r.from === site && r.material === material).length;
+  const memo = new Map<string, number>(); const visiting = new Set<string>();
+  const inputBound = (s: Site): number => {
+    const inbound = n.routes.filter((r) => r.to === s.id);
+    if (inbound.length === 0) return Infinity;
+    const shipped = new Set(n.routes.filter((r) => r.from === s.id).map((r) => r.material));
+    let bound = Infinity;
+    for (const m of new Set(inbound.map((r) => r.material))) {
+      const arriving = inbound.filter((r) => r.material === m).reduce((acc, r) => acc + flow(r), 0);
+      const per = s.bom[m] ?? (shipped.has(m) || s.tier === 0 ? 1 : NaN);
+      bound = Math.min(bound, arriving / per);
+    }
+    return bound;
+  };
+  const out = (site: string, material: string): number => {
+    const k = `${site}.${material}`;
+    const m = memo.get(k); if (m !== undefined) return m;
+    const s = n.sites.get(site);
+    if (s === undefined || visiting.has(k)) return NaN;
+    visiting.add(k);
+    const v = Math.min(cap(site, material), inputBound(s));
+    visiting.delete(k); memo.set(k, v);
+    return v;
+  };
+  const flow = (r: Route): number => (out(r.from, r.material) / Math.max(1, outDegree(r.from, r.material))) * (derate.get(r.id) ?? 1);
+  const inbound = n.routes.filter((r) => r.to === terminal.id);
+  if (inbound.length === 0) return null;
+  let t = Infinity;
+  for (const m of new Set(inbound.map((r) => r.material))) {
+    const arriving = Math.min(inbound.filter((r) => r.material === m).reduce((acc, r) => acc + flow(r), 0), cap(terminal.id, m));
+    t = Math.min(t, arriving / (terminal.bom[m] ?? 1));
+  }
+  return Number.isNaN(t) ? null : t;
+}
+/* end B33 supply */
