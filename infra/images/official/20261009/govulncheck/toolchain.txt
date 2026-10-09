@@ -1,0 +1,7 @@
+go version go1.25.14 linux/arm64
+aarch64
+/go/bin/govulncheck: go1.25.14
+	path	golang.org/x/vuln/cmd/govulncheck
+	mod	golang.org/x/vuln	v1.7.0	h1:4MQBuhmXbz2uepNJrf3v+aaZLGDqw1JluwYboegA1qg=
+52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0  /work/gosu-amd64.bin
+3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44  /work/gosu-arm64.bin

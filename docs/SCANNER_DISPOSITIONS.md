@@ -29,7 +29,8 @@ it, and the gate recomputes the digest from these bytes on every run.
 > (**§3.9**), approved by the owner that day with their scope, classifications and 2026-11-05 expiry
 > unchanged; the 2026-09-10 versions are listed by identity under `superseded_records` in
 > `scripts/gate/scanner-exclusions.json`, their full text kept in git history and in §§3–3.8 here. Nothing
-> is deleted. From 2026-09-23 the records in force are the six of §3.9.
+> is deleted. From 2026-09-23 the records in force are the six of §3.9; from 2026-10-09 they are joined by
+> SCX-0012 and SCX-0013 (§3.10: two Go advisories of 2026-10-08 in the same `gosu`, approved by the owner that day).
 
 **Re-pin of 2026-09-10 (TEMPORARY, owner-approved — `docs/images/DERIVED_IMAGES_APPROVAL.md`).**
 The two configured references are the derived maintenance images published by
@@ -794,6 +795,206 @@ decision of 2026-09-23 (`docs/SUPPLY_CHAIN_MAINTENANCE_2026-09.md` §8.4; `infra
 both platforms, PASSES; a NEWER official build of the tag that also carries every watched fix FAILS, to
 trigger the governed re-pin under which these six records are re-reviewed; a check that cannot be completed
 on both platforms FAILS visibly. It re-pins nothing and deletes no evidence.
+
+### 3.10 Two Go standard-library advisories of 2026-10-08 — SCX-0012 / SCX-0013, drafted and APPROVED BY THE OWNER on 2026-10-09
+
+**What this section is.** On 2026-10-08 the Go vulnerability database published a batch of standard-library
+advisories, and on 2026-10-09 the hosted `supply-chain` job (ci run `37930914426`, PR #82) reported two of them
+as UNGOVERNED HIGH findings on BOTH children of the pinned official index:
+
+```
+UNGOVERNED image finding: CVE-2026-78667 HIGH stdlib pkg:golang/stdlib@v1.24.6 on linux/amd64 and linux/arm64 in postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+UNGOVERNED image finding: CVE-2026-97031 HIGH stdlib pkg:golang/stdlib@v1.24.6 (same image, both platforms)
+```
+
+Both are rows of `usr/local/bin/gosu`. The preferred remedy — a patched official image — does not exist (below), so
+this section was written on 2026-10-09 as a DRAFT of two new records for the owner, exactly as the 2026-09-22 drafts
+of §3.9 were prepared (a `Status: DRAFT` row, the approval and review dates PENDING, the records under
+`pending_records` in `scripts/gate/scanner-exclusions.json`, outside `records`; commit `b90751d`). **The owner
+approved both the same day, on conditions** quoted at the end of this section, after those conditions were checked
+against the committed evidence for each architecture separately. From 2026-10-09 SCX-0012 and SCX-0013 are IN
+FORCE, in `records`, and govern these two advisories only.
+
+**The advisories (`infra/images/official/20261009/advisories/`).**
+
+| CVE | Go advisory | Package and vulnerable symbols | Affected (Go vulndb, OSV `SEMVER`) | Rated HIGH by |
+|---|---|---|---|---|
+| `CVE-2026-78667` | `GO-2026-6609` (GHSA-f4xw-m386-m277) | `net/http`: `parseRange`, `ServeContent`, `ServeFile`, `ServeFileFS`, `fileHandler.ServeHTTP`, `fileTransport.RoundTrip` — CPU exhaustion on a Range header with many small ranges | introduced `0`, fixed `1.26.9`; introduced `1.27.0-0`, fixed `1.27.2` | Red Hat (CVSS 3.1 `AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H`, 7.5) — the scanner's only rating; NVD unscored (`Received`), GHSA unreviewed |
+| `CVE-2026-97031` | `GO-2026-6607` (GHSA-hq7w-2xrq-wp2j) | `crypto/tls`: `decodeInnerClientHello`, `Conn.Handshake`/`HandshakeContext`/`Read`/`Write`, `Dial`, `DialWithDialer`, `Dialer.Dial`/`DialContext`, `QUICConn.Start` — server memory exhaustion via repeated ECH outer-extension references | the same | the same |
+
+So a Go toolchain is outside both ranges at `go1.26.9`+ on the 1.26 line or `go1.27.2`+; `gosu` 1.19 is built with
+`go1.24.6`, inside both.
+
+**Is there a patched official image? No** (`infra/images/official/20261009/registry/RESOLUTION.txt`, read from
+Docker Hub on 2026-10-09). `postgres:18-alpine` (and `18-alpine3.24`, `18.6-alpine`) still resolves to the pinned
+index `77f58511…` (built 2026-09-17; the raw bytes hash to the pin); there is no `18.7` tag. Every official
+postgres 18 variant — `alpine3.24`, `alpine3.23` (`885cf05d…`), `trixie` = `18` = `latest` (`74935e72…`, built
+2026-10-06), `bookworm` (`afc7e2d4…`, built 2026-10-06) — sets `GOSU_VERSION=1.19` on both platforms, and every
+build predates the advisories. There is nothing to re-pin to, and a re-pin to another variant would not change
+the `gosu` bytes. (The recheck, `scripts/gate/check-patched-images.mjs`, watches the OS-package fixes and not
+`gosu`, so it is silent on these two by design.)
+
+**What was analysed, on each platform's own artifact.** `/usr/local/bin/gosu` was extracted from each pinned child
+by digest straight from the registry — the manifest bytes and every layer verified against their digests, the one
+member extracted, no container (`…/20261009/gosu/IDENTITY.txt`): `linux/amd64` `52c8749d…` (1,769,900 bytes) and
+`linux/arm64` `3a8ef022…` (1,830,424 bytes), `go1.24.6`, `github.com/tianon/gosu` `v1.19.0` — byte for byte the
+binaries analysed since 2026-08 (§3.9). Each binary was then analysed exactly as before (`…/20261009/govulncheck/RUN.txt`):
+`govulncheck` **v1.7.0** `-mode binary`, inside `golang@sha256:1ae0735f…` (`golang:1.25-alpine`, the image of the
+2026-09-11 arm64 analysis; `go1.25.14`), Go vulnerability database `https://vuln.go.dev` as of
+**2026-10-08T22:31:09Z** — the update that published both advisories.
+
+| Result | `linux/amd64` (`52c8749d…`) | `linux/arm64` (`3a8ef022…`) |
+|---|---|---|
+| Verdict | "Your code is affected by 0 vulnerabilities." — 0 called vulnerable symbols | the same |
+| Considered | 181 OSV entries; 65 findings over 57 advisories (3 package-level, 54 module-level, none called) | the same |
+| `GO-2026-6609` / `CVE-2026-78667` | present, **module level only** (trace `stdlib v1.24.6`, no package, no function) | the same |
+| `GO-2026-6607` / `CVE-2026-97031` | present, **module level only** | the same |
+| Linked packages (`go tool nm`, `gosu-symbol-inventory.txt`) | 0 symbols under `net/http.`, `crypto/tls.`, `net/textproto.`, `mime/multipart.`, `net.` — the binary links `fmt`, `os`, `os/exec`, `syscall`, `golang.org/x/sys/unix`, `github.com/moby/sys/user`, runtime and internals; no network or TLS stack | the same, with `GOARCH=arm64` build info and its own symbol table |
+
+The claim is therefore the strongest of its kind: the vulnerable **packages** are not in either binary, so there
+is no code to call. The two platforms' govulncheck reports are byte-identical to each other — expected, since the
+report carries toolchain, modules and per-advisory reachability, not the input path or architecture (the
+2026-08/2026-09 reports agreed byte for byte too); each binary was analysed in its own invocation, and the
+per-binary build info and symbol tables are recorded separately.
+
+**The scan (`…/20261009/scans/`, trivy 0.73.0 Homebrew build — evidence; the gate's verdict is CI's).** Each child
+reports 24 HIGH/CRITICAL rows, all `stdlib` `v1.24.6` in `usr/local/bin/gosu`, identical between the platforms: the
+22 the six records in force govern (SCX-0002 14, SCX-0003 1, SCX-0004 1, SCX-0005 6 on `linux/amd64`; SCX-0010 21,
+SCX-0011 1 on `linux/arm64`) and exactly the two rows above, ungoverned — what the hosted run reported. OS packages:
+0 at HIGH/CRITICAL. Recorded, not governed: below the filter each child now has 26 MEDIUM (24 `gosu`, 2 OS:
+`nghttp2-libs` CVE-2026-58055, `zlib` CVE-2026-85091), 2 LOW and 10 UNKNOWN rows; nine of the UNKNOWN `gosu` rows
+are other advisories of the same 2026-10-08 Go release (CVE-2026-56857, -56866, -78659, -78660, -78663, -78669,
+-94440, -94448, -97030): in the govulncheck result eight are module-level only and CVE-2026-56857
+(`GO-2026-6604`, Windows-only) yields no finding at all. A vendor rating of HIGH for any
+of them will make it a new ungoverned row; SCX-0012/0013 deliberately do not cover them, because a record for a row
+the scanner does not report fails the gate as UNUSED.
+
+**Why new records, and why NOT_AFFECTED on both platforms.** The six records in force were approved on 2026-09-23
+for advisory sets that did not contain these two; an approval date is a claim about the reviewed scope and cannot
+precede what it approves, so the advisories are not added to SCX-0004/0005 or SCX-0010/0011 (the SCX-0005
+precedent). They are new records, one per platform (a record governs one platform, §5). Both were drafted
+`NOT_AFFECTED — vulnerable_code_not_present`, because the analysis that supports that classification was performed
+on **each** platform's own binary — on `linux/arm64` this is the path §5 reserves ("recorded as new evidence in a
+new record"), not a reclassification of SCX-0010/0011, which keep theirs. The draft named `RISK_ACCEPTED` (the
+arm64 precedent of 2026-09-11, Option A) as the owner's alternative; the owner chose `NOT_AFFECTED` on the
+condition that the evidence shows the affected packages absent from each exact pinned binary independently, and
+ruled out substituting `RISK_ACCEPTED` silently where it did not. The expiry is **2026-11-05**, the date of the rest
+of the set, deliberately not later.
+
+#### SCX-0012 — approved 2026-10-09 for the official `linux/amd64` child, NOT_AFFECTED by symbol analysis
+
+| Field | Value |
+|---|---|
+| Status | **APPROVED 2026-10-09 — in force** (`records` of `scripts/gate/scanner-exclusions.json`; drafted 2026-10-09 in `b90751d`, a new record with no predecessor) |
+| Advisories | `CVE-2026-78667`, `CVE-2026-97031` (2) |
+| Severity | HIGH |
+| Classification | **NOT_AFFECTED — vulnerable_code_not_present** (version-only match; the vulnerable packages are not linked) |
+| Package / PURL / version | `stdlib` / `pkg:golang/stdlib@v1.24.6` / `v1.24.6` |
+| Result target | `usr/local/bin/gosu` |
+| Image (index) | `postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873` |
+| Scan platform / scanned child | `linux/amd64` / `sha256:d8703cd7fba306b9fec9268ecedfa8a966846c053036a60e3635791957eb2f66` |
+| Analysed binary | `52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0` (x86-64, 1,769,900 bytes) |
+| Analysis | `govulncheck` v1.7.0 `-mode binary`, vuln.go.dev as of 2026-10-08T22:31:09Z: 0 called; both advisories module-level only |
+| Per-architecture evidence | `…/20261009/gosu/IDENTITY.txt` (index → child `d8703cd7…` → layer `d8f47ca7…` → binary `52c8749d…`, GOARCH=amd64); `…/govulncheck/gosu-amd64.govulncheck.json` (GO-2026-6609 and GO-2026-6607 at module level only); `…/govulncheck/gosu-symbol-inventory.txt` (`== gosu-amd64`: 0 `net/http.`, 0 `crypto/tls.` symbols); `…/govulncheck/BINDING.txt` (re-run on input `52c8749d…`: the same finding set) |
+| Owner | founding-engineer |
+| Approver | product-owner (the owner's approval of 2026-10-09, given in the coordinator's session and relayed to the session that applied it; quoted at the end of this section) |
+| Approved / reviewed | **2026-10-09 / 2026-10-09** — the day of the owner's approval, quoted at the end of this section |
+| Expires | 2026-11-05 (the date of the rest of the set) |
+
+#### SCX-0013 — approved 2026-10-09 for the official `linux/arm64` child, NOT_AFFECTED by symbol analysis of THIS binary
+
+| Field | Value |
+|---|---|
+| Status | **APPROVED 2026-10-09 — in force** (`records` of `scripts/gate/scanner-exclusions.json`; drafted 2026-10-09 in `b90751d`, a new record with no predecessor) |
+| Advisories | `CVE-2026-78667`, `CVE-2026-97031` (2) |
+| Severity | HIGH |
+| Classification | **NOT_AFFECTED — vulnerable_code_not_present**, on the analysis of the arm64 binary itself (not carried across from amd64) |
+| Package / PURL / version | `stdlib` / `pkg:golang/stdlib@v1.24.6` / `v1.24.6` |
+| Result target | `usr/local/bin/gosu` |
+| Image (index) | `postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873` |
+| Scan platform / scanned child | `linux/arm64` / `sha256:89f747171c4b0af0eacf5984550060be79786dbe286eb60cfa691d79d1e8b23f` |
+| Analysed binary | `3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44` (aarch64, 1,830,424 bytes) |
+| Analysis | as SCX-0012, run on this binary |
+| Per-architecture evidence | `…/20261009/gosu/IDENTITY.txt` (index → child `89f74717…` → layer `c9878fa5…` → binary `3a8ef022…`, GOARCH=arm64); `…/govulncheck/gosu-arm64.govulncheck.json` (GO-2026-6609 and GO-2026-6607 at module level only); `…/govulncheck/gosu-symbol-inventory.txt` (`== gosu-arm64`: 0 `net/http.`, 0 `crypto/tls.` symbols); `…/govulncheck/BINDING.txt` (re-run on input `3a8ef022…`: the same finding set) |
+| Owner | founding-engineer |
+| Approver | product-owner (the owner's approval of 2026-10-09, given in the coordinator's session and relayed to the session that applied it; quoted at the end of this section) |
+| Approved / reviewed | **2026-10-09 / 2026-10-09** — the day of the owner's approval, quoted at the end of this section |
+| Expires | 2026-11-05 |
+
+**Compensating controls (both records).** The NOT_AFFECTED classification is the basis; as SCX-0004/0005, the
+operational controls apply as defence in depth: `gosu` runs once at container start, drops privileges and exits —
+it serves no HTTP and terminates no TLS; PostgreSQL is loopback-bound; Phase 0 is LOCAL-ONLY under `EXC-P0-004`;
+ADR-P0-01 re-pins and re-scans monthly, and the first official postgres build whose `gosu` is built with
+`go1.26.9`+ is re-reviewed through the governed re-pin. §4's prohibited exposure applies while any record here is
+in force. **Limits:** govulncheck reflects the database as of 2026-10-08T22:31:09Z and is a static analysis; here the
+vulnerable packages are absent from the binary, which no reflection can reach.
+
+**Evidence the two records bind** (tracked; `infra/images/official/20261009/SHA256SUMS` covers the directory; each
+record binds its own platform's files plus the shared ones, the 2026-09-22 inventory and scan summary of the same
+children, the byte-identity record of the binaries, and — SCX-0013 — the arm64 decision document whose Option B
+described exactly this kind of record).
+
+| Artifact | sha256 |
+|---|---|
+| `infra/images/official/20261009/govulncheck/gosu-amd64.govulncheck.json` / `gosu-arm64.govulncheck.json` | `36f7429b19deef69b33732bd1762f7a2911461ecf13d6d47be7d8297d9d58f10` (both) |
+| `infra/images/official/20261009/govulncheck/gosu-amd64.govulncheck.txt` / `gosu-arm64.govulncheck.txt` | `946cecf53b370f947b14aad0d2955e98160a2e7772dcf207cdf9e65061669eb5` (both) |
+| `infra/images/official/20261009/govulncheck/gosu-symbol-inventory.txt` | `30d2505d07a3ead6bd4a04af1f03ea6b94e81f58be140ab22dcdb7832e83599c` |
+| `infra/images/official/20261009/govulncheck/toolchain.txt` | `34f2fc6179aa58669ade8753b7c7435870d137005d33020bb7a6f73aa5108411` |
+| `infra/images/official/20261009/govulncheck/RUN.txt` | `4482a1607adacb5075ad0f87f7d44fc24bb2d1b638fd8a141b0237d67dbee61f` |
+| `infra/images/official/20261009/gosu/IDENTITY.txt` | `b82da54791d6a4e39f233ddb6dc8935ad6daf14c964a890837d4bdb9f778353a` |
+| `infra/images/official/20261009/advisories/GO-2026-6609.json` / `GO-2026-6607.json` | `3a47edb3f881a474a00b696392923a6f97a8b84fb8ca90cf440c1b2b32366ea7` / `f4bf7540a2b1f5671a55ab2445ed6071036a699dcd9ec215ac73f7a57aadc8d6` |
+| `infra/images/official/20261009/scans/official-postgres-{amd64,arm64}.high-critical.tsv` | `068f10f52cc754d3b0beda50fb21ef791a6fd49d2579be02db31a52c9cf35d45` (both) |
+| `infra/images/official/20261009/scans/scan-summary.txt` | `f5e489ca8a89ed010dc18ae47cefc1fdcadcf8f7abdf710c444c3dcb62193321` |
+| `infra/images/official/20261009/registry/RESOLUTION.txt` | `3bf61ecdcfff8bac5aca021e57dbfbfdd21a3c86abb1e8cfd055b9ee8202306b` |
+| `infra/images/official/20261009/govulncheck/BINDING.txt` (the per-architecture re-run, before applying) | `12d5840377f4ac0e837ccb9891adca4bcb2babcf877efb714b3a2a66ff3202c2` |
+| `infra/images/candidates/evidence/v2/gosu-verification.txt` (the byte-identity record) | `e0f901da541867530146e9869337d17b1ac880c0d2f2312240f9d857bc830359` |
+| `infra/images/official/20260922/scans/scan-summary.txt` (the same children, before these advisories) | `939d2f54536fd6fcf328a4f38236c57eae18ac93ee0173b285e313bda7965fb9` |
+| `docs/images/ARM64_RISK_DECISION.md` (SCX-0013) | `6b6518d03ddc01c86deb7644fa638a6a2cea149bcba6987f14352e18ae513aca` |
+
+**The approval (2026-10-09).** The owner's decision was given in the coordinator's session on 2026-10-09 and
+relayed to the session that applied it as "verbatim in substance":
+
+> Approve SCX-0012 and SCX-0013 as NOT_AFFECTED for these two advisories only, provided the recorded evidence
+> confirms the affected packages are absent from each exact pinned gosu binary, independently for amd64 and arm64.
+> Commit the architecture-specific binary/image digests, fresh govulncheck outputs covering both advisories, and the
+> justification. If either architecture lacks that evidence, do not classify it as NOT_AFFECTED or silently
+> substitute RISK_ACCEPTED; report the precise gap. Keep the 2026-11-05 expiry. Re-bind the six existing records to
+> the updated document hash without changing their classifications, scope or expiry. Record this approval
+> accurately. Keep all gates unchanged.
+
+**The conditions, checked per architecture before applying** (by the coordinator on `b90751d`, and again in the
+applying session):
+
+| Condition | `linux/amd64` | `linux/arm64` |
+|---|---|---|
+| The exact pinned binary, with its image digests | `IDENTITY.txt`: index `77f58511…`, child `d8703cd7…` (the manifest bytes hash to it), layer `d8f47ca7…` (verified), `gosu` `52c8749d…`, 1,769,900 bytes, GOARCH=amd64 | child `89f74717…`, layer `c9878fa5…`, `gosu` `3a8ef022…`, 1,830,424 bytes, GOARCH=arm64 |
+| Fresh govulncheck output covering both advisories | `gosu-amd64.govulncheck.json`, db 2026-10-08T22:31:09Z: GO-2026-6609 and GO-2026-6607 present, MODULE level only (no package, no symbol); 0 called | `gosu-arm64.govulncheck.json`: the same |
+| The affected packages absent from the binary | `gosu-symbol-inventory.txt`, `== gosu-amd64`: 0 `net/http.`, 0 `crypto/tls.`, 0 `net.` symbols | `== gosu-arm64`: the same |
+| The two analyses independent | `BINDING.txt`: a separate invocation on input `52c8749d…` reproduces the committed amd64 finding set exactly (compared as sets: govulncheck emits its findings in map order) | a separate invocation on input `3a8ef022…` reproduces the committed arm64 finding set exactly |
+
+No gap on either architecture, so both records are `NOT_AFFECTED`; nothing was substituted.
+
+**What applying the approval consisted of (2026-10-09).** In `scripts/gate/scanner-exclusions.json` both drafts moved
+from `pending_records` into `records` after SCX-0011, and the `pending_records` block was deleted: each `status` key
+removed; `approved_on` and `reviewed_on` set to 2026-10-09; `approver` set in the form the arm64 records use for the
+owner (`product-owner (…)`); the draft wording of `reason` made true (approved, with the conditions); the bound
+evidence extended by `BINDING.txt`, the byte-identity record and the 2026-09-22 scan summary (and, for SCX-0013, the
+arm64 decision document). Advisories, platform, image, package, PURL, version, severity, target, classification and
+expiry are the drafts' unchanged. This document's SHA-256 was then recomputed into the `evidence_sha256` and the
+`docs/SCANNER_DISPOSITIONS.md` entry of `evidence_files` of all eight records — for SCX-0002…0005 and SCX-0010/0011 that
+is the ONLY change (their classifications, scope, advisory sets, dates and the 2026-11-05 expiry stay as approved on
+2026-09-23). The recheck's list of the records that name the configured postgres pin (`SERVICES.postgres.records` in
+`scripts/gate/lib/c19-patched-images.mjs`, which a control holds equal to the tracked records naming the pin) gains the
+two ids, so a governed re-pin re-reviews them with the rest; the recheck's decision logic is unchanged. The controls
+that pin the record list, the record count and the newest approval date were updated in their expected values only.
+The C15 trace fixture and `real-image-results.json` are re-recorded from a real run of the gate with the pinned
+scanners, as on every previous change to the governed findings.
+
+**What the gate says with the eight in force.** Eight records, 0 rejected; 48 findings — the 24 `gosu` rows on each
+official postgres child — governed by the records naming that child's platform (SCX-0002 14, SCX-0003 1, SCX-0004 1,
+SCX-0005 6, SCX-0012 2 on `d8703cd7…`; SCX-0010 21, SCX-0011 1, SCX-0013 2 on `89f74717…`); 0 unmatched, 0 unused, 0
+out of scope; redis 0 on both children. Nine further Go advisories of the same release sit in the same binary below
+the gate's filter today (above); none is governed, and one rated HIGH later will fail the gate as a new row.
 
 ## 4. Prohibited exposure
 
