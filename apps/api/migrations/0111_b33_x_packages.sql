@@ -1092,6 +1092,10 @@ LANGUAGE sql STABLE SET search_path = domain, prediction, pg_catalog, pg_temp AS
      WHERE m ->> 'kind' = 'forecast'
   )
   SELECT jsonb_build_object(
+    'series', coalesce((SELECT jsonb_agg(DISTINCT r.series_key) FROM prediction.series_registry r, k
+                         WHERE r.tenant_id = k.tenant_id AND r.domain_id = k.domain_id
+                           AND r.series_key IN (SELECT i ->> 'series_key' FROM v, jsonb_array_elements(v.manifest -> 'indicators') i
+                                                UNION SELECT x FROM v, jsonb_array_elements(v.manifest -> 'indicators') i, jsonb_array_elements_text(coalesce(i #> '{calculation,inputs}', '[]'::jsonb)) x)), '[]'::jsonb),
     'indicators', coalesce((SELECT jsonb_agg(jsonb_build_object('key', i.key, 'series_key', i.series_key, 'registered', i.unit IS NOT NULL, 'source_key', i.source_key,
                                                                 'last_observation_at', i.last_observation_at, 'breached', i.breached) ORDER BY i.key) FROM ind i), '[]'::jsonb),
     'validations', coalesce((SELECT jsonb_agg(jsonb_build_object('ref', x.ref, 'series_key', x.series_key, 'horizon', x.horizon, 'validated', x.validated, 'records', x.records)) FROM val x), '[]'::jsonb),

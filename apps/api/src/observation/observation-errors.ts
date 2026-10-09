@@ -1212,6 +1212,14 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   /* B33 supply */
   /* end B33 supply */
   /* B33 packages */
+  /* B33 packages (0111 §PK) — the families `domain package`, `package conformance`, `domain assessment`, `watchlist`, `domain event` in the CLASS
+     form, anchored (no older row starts with these nouns; the prelude's `^domain package rejected \(state\)` row above answers 409 first). B9's
+     order: 403 actor|ownership|authority|separation_of_duties · 404 unknown_* · 409 state|stale|duplicate · 422 the rest (package — the
+     PACKAGE_GATE refusal —, manifest, section, ontology, sections, conformance, health, evidence, subjects, template, rules, risk, target …). */
+  { match: /^(domain package|package conformance|domain assessment|watchlist|domain event) rejected \((actor|ownership|authority|separation_of_duties)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^(domain package|package conformance|domain assessment|watchlist|domain event) rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^(domain package|package conformance|domain assessment|watchlist|domain event) rejected \((state|stale|duplicate)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^(domain package|package conformance|domain assessment|watchlist|domain event) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
   /* end B33 packages */
   /* B33 competitor */
   /* end B33 competitor */
