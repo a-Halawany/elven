@@ -245,7 +245,7 @@ describe('C15 — a service is FIXED only when every fix is present on both plat
     expect(v.tag).toBe('postgres:18-alpine');
     // Every record scoped to the configured postgres image, on BOTH scanned platforms — a re-pin
     // re-scopes all of them, or the ones left behind fail as unused.
-    expect(v.records).toEqual(['SCX-0002', 'SCX-0003', 'SCX-0004', 'SCX-0005', 'SCX-0010', 'SCX-0011']);
+    expect(v.records).toEqual(['SCX-0002', 'SCX-0003', 'SCX-0004', 'SCX-0005', 'SCX-0010', 'SCX-0011', 'SCX-0012', 'SCX-0013']);
     for (const p of ['linux/amd64', 'linux/arm64']) {
       expect(Object.values(v.platforms[p].fixes).map((f: { state: string }) => f.state)).toEqual(['patched', 'patched', 'patched']);
     }
@@ -336,7 +336,7 @@ describe('C15 — after the return, the recheck decides against the CONFIGURED p
     expect(text).toMatch(/a COMPATIBLE FIXED OFFICIAL image now exists for postgres: postgres:18-alpine -> sha256:1{64}/);
     expect(text).toMatch(/NEWER than the configured pin sha256:f{64}/);
     expect(text).toMatch(/This is a REPORT: nothing was re-pinned and no evidence was deleted/);
-    expect(text).toMatch(/re-issue or retire SCX-0002, SCX-0003, SCX-0004, SCX-0005, SCX-0010, SCX-0011 \(they name the configured pin\)/);
+    expect(text).toMatch(/re-issue or retire SCX-0002, SCX-0003, SCX-0004, SCX-0005, SCX-0010, SCX-0011, SCX-0012, SCX-0013 \(they name the configured pin\)/);
     expect(text).toMatch(/run the FINAL chain/);
   });
 
@@ -356,7 +356,7 @@ describe('C15 — after the return, the recheck decides against the CONFIGURED p
     const text = d.lines.join('\n');
     expect(text).toMatch(/the CONFIGURED pin sha256:f{64} \(postgres:18-alpine\) does NOT carry every watched fix/);
     expect(text).toMatch(/linux\/arm64 \[c-ares\]: c-ares 1\.34\.6-r0 falls inside an affected range/);
-    expect(text).toMatch(/SCX-0002, SCX-0003, SCX-0004, SCX-0005, SCX-0010, SCX-0011/);
+    expect(text).toMatch(/SCX-0002, SCX-0003, SCX-0004, SCX-0005, SCX-0010, SCX-0011, SCX-0012, SCX-0013/);
   });
 
   it("the manifest's platform_children disagreeing with the pinned index — FAIL, the record of the return is wrong", async () => {
@@ -488,10 +488,10 @@ describe('C15 — a disposition is rejected ON its stated expiry date', () => {
     const m = await import(/* @vite-ignore */ join(LIB, 'scanner-exclusions.mjs'));
     const doc = readExclusions();
     const run = (d: unknown) => m.validateRecords(d, {
-      // 2026-09-23: the day the owner approved the six re-issues for the official postgres index
-      // (docs/SCANNER_DISPOSITIONS.md §3.9); a record approved after the run date is correctly
-      // refused, so the run date is the newest approval.
-      runDate: '2026-09-23', root: REPO, isTracked: () => true,
+      // 2026-10-09: the day the owner approved SCX-0012/0013 (docs/SCANNER_DISPOSITIONS.md §3.10),
+      // the newest approval (the six re-issues were approved 2026-09-23, §3.9); a record approved
+      // after the run date is correctly refused, so the run date is the newest approval.
+      runDate: '2026-10-09', root: REPO, isTracked: () => true,
       readEvidence: (rel: string) => { try { return readFileSync(join(REPO, rel)); } catch { return null; } },
     }).problems;
     expect(run(doc)).toEqual([]);
@@ -518,9 +518,9 @@ describe('C15 — a disposition is rejected ON its stated expiry date', () => {
     // six name the same configured index reference — a record is separated from its twin by
     // `scan_platform`, not by a different image.
     expect(doc.records.map((r: { id: string }) => r.id))
-      .toEqual(['SCX-0002', 'SCX-0003', 'SCX-0004', 'SCX-0005', 'SCX-0010', 'SCX-0011']);
+      .toEqual(['SCX-0002', 'SCX-0003', 'SCX-0004', 'SCX-0005', 'SCX-0010', 'SCX-0011', 'SCX-0012', 'SCX-0013']);
     expect(doc.records.filter((r: { scan_platform: string }) => r.scan_platform === 'linux/arm64')
-      .map((r: { id: string }) => r.id)).toEqual(['SCX-0010', 'SCX-0011']);
+      .map((r: { id: string }) => r.id)).toEqual(['SCX-0010', 'SCX-0011', 'SCX-0013']);
     for (const r of doc.records) {
       expect(pinned, `${r.id} must name a pinned image`).toContain(r.image);
       // The OFFICIAL index the compose file returned to on 2026-09-22, not the derived image.
@@ -530,8 +530,10 @@ describe('C15 — a disposition is rejected ON its stated expiry date', () => {
       // Re-issued for the official index under the owner's approval of 2026-09-23 — the day the
       // approval was given, not the day the re-issues were drafted (2026-09-22) and not the dates
       // of the previous approvals (2026-09-10 amd64, 2026-09-11 arm64).
-      expect(r.approved_on, `${r.id} approved_on`).toBe('2026-09-23');
-      expect(r.reviewed_on, `${r.id} reviewed_on`).toBe('2026-09-23');
+      // SCX-0012/0013 are new records, approved by the owner on 2026-10-09 (§3.10).
+      const approved = r.id === 'SCX-0012' || r.id === 'SCX-0013' ? '2026-10-09' : '2026-09-23';
+      expect(r.approved_on, `${r.id} approved_on`).toBe(approved);
+      expect(r.reviewed_on, `${r.id} reviewed_on`).toBe(approved);
       expect(r.status, `${r.id} must carry no draft marker`).toBeUndefined();
       const paths = r.evidence_files.map((e: { path: string }) => e.path);
       if (r.scan_platform === 'linux/arm64') {
@@ -551,7 +553,7 @@ describe('C15 — a disposition is rejected ON its stated expiry date', () => {
     // The 2026-09-10 versions were SUPERSEDED, not deleted: listed by identity, naming the derived
     // image, and no draft block remains — a draft that governs nothing must not linger beside the
     // records that do.
-    expect(doc.superseded_records.ids).toEqual(doc.records.map((r: { id: string }) => r.id));
+    expect(doc.superseded_records.ids).toEqual(['SCX-0002', 'SCX-0003', 'SCX-0004', 'SCX-0005', 'SCX-0010', 'SCX-0011']);
     expect(doc.superseded_records.superseded_on).toBe('2026-09-23');
     for (const s of doc.superseded_records.records) {
       expect(s.image).toMatch(/^ghcr\.io\/a-halawany\/elven\/postgres@sha256:/);
@@ -677,7 +679,7 @@ describe('C15 — the recheck CLI, executed as a subprocess', () => {
     expect(r.out).toContain(`linux/amd64 child ${PG_INDEX.children[AMD]}`);
     expect(r.out).toContain(`linux/arm64 child ${PG_INDEX.children[ARM]}`);
     expect(r.out).toMatch(/This is a REPORT: nothing was re-pinned and no evidence was deleted/);
-    expect(r.out).toMatch(/re-issue or retire SCX-0002, SCX-0003, SCX-0004, SCX-0005, SCX-0010, SCX-0011 \(they name the configured pin\)/);
+    expect(r.out).toMatch(/re-issue or retire SCX-0002, SCX-0003, SCX-0004, SCX-0005, SCX-0010, SCX-0011, SCX-0012, SCX-0013 \(they name the configured pin\)/);
     expect(r.out).not.toMatch(/exists for redis/);
     expect(r.out).toMatch(/redis: AFFECTED/);
     expect(r.out).not.toMatch(/c15-recheck: PASS/);

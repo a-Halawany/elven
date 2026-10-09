@@ -762,7 +762,9 @@ describe('C16-R3.1 — scanner dispositions: types, digests and unconditional ma
     // 2026-09-23, under the owner's approval, for the OFFICIAL postgres:18-alpine index the compose
     // file returned to on 2026-09-22 (the same 22 gosu rows per child). The literal is deliberate:
     // a record appearing or vanishing must fail here until someone changes this number on purpose.
-    expect(m.scanner_exclusions.declared).toBe(6);
+    // Eight since 2026-10-09: SCX-0012 (linux/amd64) and SCX-0013 (linux/arm64), approved by the
+    // owner, govern two Go advisories of 2026-10-08 in the same gosu (docs/SCANNER_DISPOSITIONS.md §3.10).
+    expect(m.scanner_exclusions.declared).toBe(8);
     expect(m.image_finding_reconciliation.unmatched).toEqual([]);
     expect(m.image_finding_reconciliation.unused_records).toEqual([]);
   }, GATE_TEST_TIMEOUT_MS);

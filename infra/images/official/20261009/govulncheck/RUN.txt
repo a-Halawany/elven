@@ -1,0 +1,56 @@
+govulncheck binary-mode reachability analysis of the two pinned gosu binaries — 2026-10-09
+
+Why: the hosted supply-chain job of ci run 37930914426 (PR #82, 2026-10-09) reported two HIGH findings that
+no record governs, on BOTH children of the pinned official index postgres@sha256:77f58511…:
+  CVE-2026-78667 HIGH stdlib pkg:golang/stdlib@v1.24.6 usr/local/bin/gosu  (Go: GO-2026-6609, net/http)
+  CVE-2026-97031 HIGH stdlib pkg:golang/stdlib@v1.24.6 usr/local/bin/gosu  (Go: GO-2026-6607, crypto/tls)
+The method is the one of the earlier gosu analyses (docs/evidence/govulncheck-gosu-b6a16ed0.*, amd64,
+govulncheck v1.7.0 / Go go1.25.13; infra/images/published/20260910/gosu-arm64-3a8ef022.govulncheck.*, arm64,
+inside golang:1.25-alpine golang@sha256:1ae0735f…): `govulncheck -mode binary` on the exact binary.
+
+Inputs: ../gosu/IDENTITY.txt — /usr/local/bin/gosu extracted from each pinned child by digest:
+  gosu-amd64.bin  sha256 52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0  (linux/amd64 child d8703cd7…)
+  gosu-arm64.bin  sha256 3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44  (linux/arm64 child 89f74717…)
+mounted read-only at /work; toolchain.txt records the sha256 of exactly what was mounted.
+
+Toolchain (toolchain.txt):
+  image   golang@sha256:1ae0735f00daffa3aaf1363a5184c0d2dc55c78e3db4ec70241cdac97bf84b59 (golang:1.25-alpine,
+          the SAME image digest as the 2026-09-11 arm64 analysis), native linux/arm64 (aarch64), GOTOOLCHAIN=local
+  go      go1.25.14
+  tool    golang.org/x/vuln/cmd/govulncheck v1.7.0 (h1:4MQBuhmXbz2uepNJrf3v+aaZLGDqw1JluwYboegA1qg=),
+          `go install` through the Go module proxy (v1.8.0 requires go >= 1.26 and was not used)
+  db      https://vuln.go.dev, db_last_modified 2026-10-08T22:31:09Z — the update that published both advisories
+
+Commands, per binary (a ∈ {amd64, arm64}):
+  govulncheck -mode binary               /work/gosu-$a.bin > gosu-$a.govulncheck.txt
+  govulncheck -mode binary -show verbose /work/gosu-$a.bin > gosu-$a.govulncheck.verbose.txt
+  govulncheck -mode binary -json         /work/gosu-$a.bin > gosu-$a.govulncheck.json
+plus, in the same image, `go version -m` and `go tool nm` over each binary -> gosu-symbol-inventory.txt.
+
+Results (both binaries):
+  "Your code is affected by 0 vulnerabilities." — 0 called vulnerable symbols; 181 OSV entries considered,
+  65 findings over 57 advisories: 3 at package level, none called — GO-2026-4970 (CVE-2026-39822, os; HIGH,
+  already governed by SCX-0002 / SCX-0010), GO-2026-4602 (CVE-2026-27139, os) and GO-2026-4864
+  (CVE-2026-32282, internal/syscall/unix), the last two not reported at HIGH/CRITICAL by the gate's scanner —
+  and 54 at module level only.
+  GO-2026-6609 (CVE-2026-78667): finding at MODULE level only — trace [{module: stdlib, version: v1.24.6}],
+    no package, no function. The vulnerable package net/http is not in the binary.
+  GO-2026-6607 (CVE-2026-97031): finding at MODULE level only — the same. The vulnerable package
+    crypto/tls is not in the binary.
+  gosu-symbol-inventory.txt: 0 symbols with prefix net/http., crypto/tls., net/textproto., mime/multipart.
+    or net. in either binary; the full list of linked package prefixes is recorded (fmt, os, os/exec,
+    syscall, golang.org/x/sys/unix, github.com/moby/sys/user, runtime and internal packages — no network
+    or TLS stack).
+
+The two binaries' govulncheck outputs (.txt, .verbose.txt, .json) are byte-identical to each other. That is
+expected and is not a copy: govulncheck's binary-mode report carries the toolchain version, the module list
+and the per-advisory reachability, not the input path or GOARCH, and both binaries are the same gosu v1.19.0
+source built with go1.24.6 against the same modules, with the same linked packages. Each was analysed in its
+own invocation (toolchain.txt lists both inputs; gosu-symbol-inventory.txt shows the per-binary
+GOARCH=amd64 / GOARCH=arm64 build info and symbol tables, which differ). The earlier analyses showed the same
+agreement (their .txt files are byte-identical too).
+
+Limits: govulncheck reachability is a static over-approximation and does not model reflection or dynamic
+dispatch; here the stronger statement holds — the vulnerable PACKAGES are not linked into either binary at all,
+so there is no code to reach. The result reflects the Go vulnerability database as of 2026-10-08T22:31:09Z.
+Network used: Docker Hub (official image), the Go module proxy (to install govulncheck), vuln.go.dev.
