@@ -106,6 +106,9 @@ const LATER_SCENARIO_COVERAGE: Record<string, string> = {
   'objects.outbox_release_untried_as_publisher': 'phase6-repro-event-delivery.test.ts', // 0065
   // 0066 §4: the log's retained floor moved by an executing retention action (the governed act 0065 §6 declared); covered where the act is proved.
   'objects.outbox_declare_floor': 'phase6-graph-subscriptions-4.test.ts', // 0066
+  // 0110 (B33-J): a durable-journal record's ledger counterpart, filed idempotently by journal_ref — the failure-path class of
+  // audit.record_availability_incident (it only ADDS an open incident; reconciliation stays capability-bound); covered where recovery is proved.
+  'audit.file_journal_incident': 'phase6-journal-recovery-b33.test.ts', // 0110
 };
 
 /**

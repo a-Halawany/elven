@@ -30,6 +30,12 @@ export interface DegradedRecord {
   detail: string;
   /** Drops coalesced by rate limiting that had not yet been reported. */
   suppressedCarried: number;
+  /**
+   * B33-J (0110): on a `degraded_recovered` record, the ids of the journal records this governed recovery COVERED — each mapped to a
+   * reconciled ledger incident. Replay clears exactly those; a record it does not name (one appended while recovery ran) stays degraded.
+   * A recovery record written before B33 carries no list and closes everything before it, as it always did.
+   */
+  covers?: string[];
 }
 
 /**
@@ -46,7 +52,7 @@ export interface DegradedRecord {
 const APP_ROOT = join(__dirname, '..', '..');
 const DEFAULT_DIR = process.env['EYE_DEGRADED_DIR'] ?? join(APP_ROOT, '.eye-local', 'degraded');
 
-class DegradedAuditStore {
+export class DegradedAuditStore {
   private degradedSince: string | null = null;
   private lastError: string | null = null;
   private count = 0;
@@ -107,7 +113,11 @@ class DegradedAuditStore {
    * ledger that still shows degradation, is refused — so no local action, and no
    * ungoverned code path, can clear it.
    */
-  markRecovered(proof: { reconciledIncidentIds: string[]; remainingUnreconciled: number; detail: string }): void {
+  markRecovered(proof: {
+    reconciledIncidentIds: string[]; remainingUnreconciled: number; detail: string;
+    /** B33-J: the journal records whose ledger counterparts (by journal_ref) the ledger shows RECONCILED. */
+    journalCovered?: string[];
+  }): void {
     if (proof.reconciledIncidentIds.length === 0) {
       throw new Error('degraded recovery refused: no governed reconciliation was presented');
     }
@@ -116,13 +126,56 @@ class DegradedAuditStore {
         `degraded recovery refused: the ledger still shows ${proof.remainingUnreconciled} unreconciled incident(s)`,
       );
     }
-    if (this.degradedSince === null) return;
+    // B33-J: every journal record since the last recovery must map to a reconciled ledger incident. Reconciling UNRELATED ledger
+    // incidents never clears a journal record the ledger has not reconciled (a new failure, or one not yet filed).
+    const pending = this.replay();
+    const covered = new Set(proof.journalCovered ?? []);
+    const uncovered = pending.filter((r) => !covered.has(r.id));
+    if (uncovered.length > 0) {
+      throw new Error(
+        `degraded recovery refused: ${uncovered.length} journal record(s) have no reconciled ledger incident ` +
+        `(${uncovered.slice(0, 5).map((r) => r.id).join(', ')}${uncovered.length > 5 ? ', …' : ''})`,
+      );
+    }
+    if (this.degradedSince === null && pending.length === 0) return;
     this.record({
       kind: 'degraded_recovered',
       correlationId: null, route: null, failureClass: null, scope: null,
       detail: `${proof.detail} [governed: ${proof.reconciledIncidentIds.join(',')}]`,
       suppressedCarried: 0,
+      covers: pending.map((r) => r.id),
     });
+    // A record appended while recovery ran is not covered: replay keeps it, and so does this process.
+    const after = this.replay();
+    if (after.length > 0) {
+      this.degradedSince = after[0]!.at;
+      this.lastError = `${after.length} journal record(s) appended during recovery remain unreconciled`;
+    }
+  }
+
+  /**
+   * B33-J: the journal records not yet covered by a governed recovery, in journal order. A `degraded_recovered` record with a `covers`
+   * list clears exactly those records; one without (written before B33) clears everything before it. The journal is never rewritten.
+   */
+  pendingRecords(): DegradedRecord[] {
+    return this.replay();
+  }
+
+  private replay(): DegradedRecord[] {
+    let pending: DegradedRecord[] = [];
+    for (const rec of this.readAll()) {
+      if (rec.kind === 'degraded_recovered') {
+        if (Array.isArray(rec.covers)) {
+          const covered = new Set(rec.covers);
+          pending = pending.filter((r) => !covered.has(r.id));
+        } else {
+          pending = [];
+        }
+      } else {
+        pending.push(rec);
+      }
+    }
+    return pending;
   }
 
   /**
@@ -133,17 +186,9 @@ class DegradedAuditStore {
    * has to be RECORDED, not something a restart grants for free.
    */
   reloadFromJournal(): { degraded: boolean; unreconciled: number; since: string | null } {
-    let since: string | null = null;
-    let count = 0;
-    for (const rec of this.readAll()) {
-      if (rec.kind === 'degraded_recovered') {
-        since = null;
-        count = 0;
-      } else {
-        since ??= rec.at;
-        count += 1;
-      }
-    }
+    const pending = this.replay();   // B33-J: a recovery clears the records it covers (all of them, for a pre-B33 recovery record)
+    const since: string | null = pending[0]?.at ?? null;
+    const count = pending.length;
     if (since !== null) {
       this.degradedSince = since;
       this.count = count;
