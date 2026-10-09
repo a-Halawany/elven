@@ -1,0 +1,50 @@
+== gosu-amd64
+/work/gosu-amd64.bin: go1.24.6
+	path	github.com/tianon/gosu
+	mod	github.com/tianon/gosu	v1.19.0	
+	dep	github.com/moby/sys/user	v0.1.0	h1:WmZ93f5Ux6het5iituh9x2zAG7NFY9Aqi49jjE1PaQg=
+	dep	golang.org/x/sys	v0.1.0	h1:kunALQeHf1/185U1i0GOB/fy1IPRDDpuoOOqRReG57U=
+	build	-buildmode=exe
+	build	-compiler=gc
+	build	-trimpath=true
+	build	DefaultGODEBUG=asynctimerchan=1,gotestjsonbuildtext=1,gotypesalias=0,httplaxcontentlength=1,httpmuxgo121=1,httpservecontentkeepheaders=1,multipathtcp=0,panicnil=1,randseednop=0,rsa1024min=0,tls10server=1,tls3des=1,tlsmlkem=0,tlsrsakex=1,tlsunsafeekm=1,winreadlinkvolume=0,winsymlink=0,x509keypairleaf=0,x509negativeserial=1,x509rsacrt=0,x509usepolicies=0
+	build	CGO_ENABLED=0
+	build	GOARCH=amd64
+	build	GOOS=linux
+	build	GOAMD64=v1
+	build	vcs=git
+	build	vcs.revision=1.19
+	build	vcs.time=1970-01-01T00:00:00Z
+	build	vcs.modified=false
+symbols with prefix net/http.: 0
+symbols with prefix crypto/tls.: 0
+symbols with prefix net/textproto.: 0
+symbols with prefix mime/multipart.: 0
+symbols with prefix net.: 0
+all package prefixes:
+bufio bytes cmp..dict context context. context.init errors errors. fmt fmt. fmt.init github.com/moby/sys/user github.com/moby/sys/user. go golang.org/x/sys/unix golang.org/x/sys/unix. internal/abi internal/bisect internal/bytealg internal/bytealg. internal/bytealg..dict internal/bytealg.init internal/chacha8rand internal/cpu internal/cpu.cpuid internal/cpu.xgetbv internal/filepathlite internal/fmtsort internal/godebug internal/godebug. internal/godebug.init internal/godebug.update internal/godebugs internal/itoa internal/oserror internal/poll internal/poll. internal/poll.init internal/reflectlite internal/reflectlite.rtype internal/runtime/atomic internal/runtime/exithook internal/runtime/maps internal/runtime/sys internal/runtime/syscall internal/stringslite internal/sync internal/syscall/unix internal/testlog io io/fs io/fs. iter iter. main main. main.init math math. os os. os.init os/exec path/filepath path/filepath. reflect reflect. reflect.flag runtime runtime. runtime..gobytes runtime.abort runtime.allocm runtime.allocmcache runtime.args runtime.asmcgocall runtime.asmcgocall_landingpad runtime.asminit runtime.badmcall runtime.badmcall2 runtime.badmorestackg0 runtime.badmorestackgsignal runtime.badreflectcall runtime.badsystemstack runtime.call1024 runtime.call1048576 runtime.call1073741824 runtime.call128 runtime.call131072 runtime.call134217728 runtime.call16 runtime.call16384 runtime.call16777216 runtime.call2048 runtime.call2097152 runtime.call256 runtime.call262144 runtime.call268435456 runtime.call32 runtime.call32768 runtime.call33554432 runtime.call4096 runtime.call4194304 runtime.call512 runtime.call524288 runtime.call536870912 runtime.call64 runtime.call65536 runtime.call67108864 runtime.call8192 runtime.call8388608 runtime.callers runtime.casgstatus runtime.chanrecv runtime.chansend runtime.check runtime.checkdead runtime.clone runtime.closechan.goready runtime.closefd runtime.cputicks runtime.entersyscallblock runtime.exit runtime.exitsyscall runtime.exitsyscallfast runtime.exitsyscallfast_reacquired runtime.fatal runtime.fatalpanic runtime.fatalthrow runtime.futex runtime.futexwakeup runtime.gcbits runtime.gcenable runtime.getempty runtime.getpid runtime.gettid runtime.gfget runtime.goexit runtime.goexit1 runtime.gogo runtime.init runtime.init.6 runtime.injectglist runtime.madvise runtime.main runtime.malg runtime.markroot runtime.mincore runtime.mmap runtime.modinfo runtime.morestack runtime.morestack_noctxt runtime.morestackc runtime.mstart runtime.mstart0 runtime.munmap runtime.nanotime1 runtime.netpollgoready.goready runtime.newosproc runtime.newproc runtime.newstack runtime.open runtime.osinit runtime.osyield runtime.persistentalloc runtime.preprintpanics runtime.procyield runtime.raise runtime.raiseproc runtime.read runtime.recv.goready runtime.reentersyscall runtime.reflectcall runtime.reflectcallmove runtime.return0 runtime.rt0_go runtime.rt_sigaction runtime.rtsigprocmask runtime.rtype runtime.sched_getaffinity runtime.schedinit runtime.schedtrace runtime.send.goready runtime.setg runtime.settls runtime.sigaction runtime.sigaltstack runtime.sigfwd runtime.sigpanic0 runtime.sigreturn__sigaction runtime.sigtramp runtime.stackcheck runtime.sweepone runtime.systemstack runtime.systemstack_switch runtime.tgkill runtime.throw runtime.timer_create runtime.timer_delete runtime.timer_settime runtime.traceback1 runtime.traceback2 runtime.tracebackothers runtime.usleep runtime.wirep runtime.write runtime.write1 runtime/debug slices slices..dict strconv strings sync sync. sync..dict sync.init sync/atomic syscall syscall. syscall.init time time. unicode unicode. unicode/utf8 
+== gosu-arm64
+/work/gosu-arm64.bin: go1.24.6
+	path	github.com/tianon/gosu
+	mod	github.com/tianon/gosu	v1.19.0	
+	dep	github.com/moby/sys/user	v0.1.0	h1:WmZ93f5Ux6het5iituh9x2zAG7NFY9Aqi49jjE1PaQg=
+	dep	golang.org/x/sys	v0.1.0	h1:kunALQeHf1/185U1i0GOB/fy1IPRDDpuoOOqRReG57U=
+	build	-buildmode=exe
+	build	-compiler=gc
+	build	-trimpath=true
+	build	DefaultGODEBUG=asynctimerchan=1,gotestjsonbuildtext=1,gotypesalias=0,httplaxcontentlength=1,httpmuxgo121=1,httpservecontentkeepheaders=1,multipathtcp=0,panicnil=1,randseednop=0,rsa1024min=0,tls10server=1,tls3des=1,tlsmlkem=0,tlsrsakex=1,tlsunsafeekm=1,winreadlinkvolume=0,winsymlink=0,x509keypairleaf=0,x509negativeserial=1,x509rsacrt=0,x509usepolicies=0
+	build	CGO_ENABLED=0
+	build	GOARCH=arm64
+	build	GOOS=linux
+	build	GOARM64=v8.0
+	build	vcs=git
+	build	vcs.revision=1.19
+	build	vcs.time=1970-01-01T00:00:00Z
+	build	vcs.modified=false
+symbols with prefix net/http.: 0
+symbols with prefix crypto/tls.: 0
+symbols with prefix net/textproto.: 0
+symbols with prefix mime/multipart.: 0
+symbols with prefix net.: 0
+all package prefixes:
+bufio bytes cmp..dict context context. context.init errors errors. fmt fmt. fmt.init github.com/moby/sys/user github.com/moby/sys/user. go golang.org/x/sys/unix golang.org/x/sys/unix. internal/abi internal/bisect internal/bytealg internal/bytealg. internal/bytealg..dict internal/bytealg.init internal/chacha8rand internal/cpu internal/filepathlite internal/fmtsort internal/godebug internal/godebug. internal/godebug.init internal/godebug.update internal/godebugs internal/itoa internal/oserror internal/poll internal/poll. internal/poll.init internal/reflectlite internal/reflectlite.rtype internal/runtime/atomic internal/runtime/exithook internal/runtime/maps internal/runtime/sys internal/runtime/sys. internal/runtime/syscall internal/stringslite internal/sync internal/syscall/unix internal/testlog io io/fs io/fs. iter iter. main main. main.init os os. os.init os/exec path/filepath path/filepath. reflect reflect. reflect.flag runtime runtime. runtime..gobytes runtime.abort runtime.allocm runtime.allocmcache runtime.args runtime.asmcgocall runtime.asminit runtime.badmcall runtime.badmcall2 runtime.badmorestackg0 runtime.badmorestackgsignal runtime.badreflectcall runtime.badsystemstack runtime.call1024 runtime.call1048576 runtime.call1073741824 runtime.call128 runtime.call131072 runtime.call134217728 runtime.call16 runtime.call16384 runtime.call16777216 runtime.call2048 runtime.call2097152 runtime.call256 runtime.call262144 runtime.call268435456 runtime.call32 runtime.call32768 runtime.call33554432 runtime.call4096 runtime.call4194304 runtime.call512 runtime.call524288 runtime.call536870912 runtime.call64 runtime.call65536 runtime.call67108864 runtime.call8192 runtime.call8388608 runtime.callers runtime.casgstatus runtime.chanrecv runtime.chansend runtime.check runtime.checkdead runtime.clone runtime.closechan.goready runtime.closefd runtime.entersyscallblock runtime.exit runtime.exitsyscall runtime.exitsyscallfast runtime.exitsyscallfast_reacquired runtime.fatal runtime.fatalpanic runtime.fatalthrow runtime.futex runtime.futexwakeup runtime.gcbits runtime.gcenable runtime.getempty runtime.getpid runtime.gettid runtime.gfget runtime.goexit runtime.goexit1 runtime.gogo runtime.init runtime.init.6 runtime.injectglist runtime.load_g runtime.madvise runtime.main runtime.malg runtime.markroot runtime.mincore runtime.mmap runtime.modinfo runtime.morestack runtime.morestack_noctxt runtime.morestackc runtime.mstart runtime.mstart0 runtime.munmap runtime.nanotime1 runtime.netpollgoready.goready runtime.newosproc runtime.newproc runtime.newstack runtime.open runtime.osinit runtime.osyield runtime.persistentalloc runtime.preprintpanics runtime.procyield runtime.raise runtime.raiseproc runtime.read runtime.recv.goready runtime.reentersyscall runtime.reflectcall runtime.reflectcallmove runtime.return0 runtime.rt0_go runtime.rt_sigaction runtime.rtsigprocmask runtime.rtype runtime.save_g runtime.sched_getaffinity runtime.schedinit runtime.schedtrace runtime.send.goready runtime.setg runtime.sigaction runtime.sigaltstack runtime.sigfwd runtime.sigtramp runtime.sweepone runtime.systemstack runtime.systemstack_switch runtime.tgkill runtime.throw runtime.timer_create runtime.timer_delete runtime.timer_settime runtime.traceback1 runtime.traceback2 runtime.tracebackothers runtime.usleep runtime.walltime runtime.wirep runtime.write1 runtime/debug slices slices..dict strconv strings sync sync. sync..dict sync.init sync/atomic syscall syscall. syscall.init time time. unicode unicode. unicode/utf8 

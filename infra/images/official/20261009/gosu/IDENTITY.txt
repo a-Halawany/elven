@@ -1,0 +1,22 @@
+/usr/local/bin/gosu in the two pinned children of postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873 — extracted and measured 2026-10-09
+
+Method (no container, no Docker daemon): for each child, the image manifest was fetched from
+registry-1.docker.io by digest and the sha256 of its bytes compared to the child digest; every layer blob
+was fetched by digest and its sha256 compared to the layer digest (no mismatch); the layer whose tar lists
+`usr/local/bin/gosu` was extracted for that one member only.
+
+| Platform | Child manifest (bytes hash to it) | Layer carrying gosu | gosu sha256 | Bytes | ELF |
+|---|---|---|---|---|---|
+| linux/amd64 | sha256:d8703cd7fba306b9fec9268ecedfa8a966846c053036a60e3635791957eb2f66 | sha256:d8f47ca787e9d08adaacc8d2a9d91e78e65e37706ef159ee52daae848c58bdd9 | 52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0 | 1769900 | ELF 64-bit LSB executable, x86-64, statically linked, not stripped |
+| linux/arm64 | sha256:89f747171c4b0af0eacf5984550060be79786dbe286eb60cfa691d79d1e8b23f | sha256:c9878fa518440e68f156e85c856f4edf422239d0e22fa68dbec3d36d79a75507 | 3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44 | 1830424 | ELF 64-bit LSB executable, ARM aarch64, statically linked, not stripped |
+
+Build info (`go version -m`, recorded in full in ../govulncheck/gosu-symbol-inventory.txt):
+  go1.24.6; path github.com/tianon/gosu; mod github.com/tianon/gosu v1.19.0; deps github.com/moby/sys/user
+  v0.1.0, golang.org/x/sys v0.1.0; -buildmode=exe, -compiler=gc, -trimpath=true, CGO_ENABLED=0,
+  GOARCH=amd64 (GOAMD64=v1) / GOARCH=arm64 (GOARM64=v8.0), GOOS=linux.
+
+These are byte for byte the binaries recorded on 2026-09-22 (../../20260922/inventory/official-postgres-{amd64,arm64}.txt)
+and since 2026-08-05 (infra/images/candidates/evidence/v2/gosu-verification.txt). The analysed binaries in
+../govulncheck/ are these files (toolchain.txt there lists their sha256 as mounted into the analysis container).
+
+go1.24.6 is inside the affected ranges of both new advisories (every toolchain before 1.26.9; 1.27.0–1.27.1).
