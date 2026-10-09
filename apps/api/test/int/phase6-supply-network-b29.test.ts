@@ -136,7 +136,8 @@ describe('C1 · the multi-tier supply network: tier, site, material, route, capa
     const kinds = ((await comp.listKinds(req(netOwner, 'twin.read', 'TWN', null), T, D)) as { kinds: Row[] }).kinds;
     const k = kinds.find((x) => x['kind'] === 'supply-network');
     expect(k).toMatchObject({ family: 'supply-network', scope: 'product', material_keys: ['capacity', 'material', 'route', 'site', 'tier'], default_methods: ['discrete-event', 'optimisation'] });
-    expect(Object.keys(k?.['element_schema'] as Row).sort()).toEqual(['capacity', 'material', 'route', 'site', 'tier']);
+    // B33 supply (0111 §SC.1): the kind's element schema gains the optional inventory: and obligation: prefixes (pin moved)
+    expect(Object.keys(k?.['element_schema'] as Row).sort()).toEqual(['capacity', 'inventory', 'material', 'obligation', 'route', 'site', 'tier']);
     expect(kinds.find((x) => x['kind'] === 'supply-chain')?.['material_keys']).toContain('inventory.on_hand');   // the supply-chain kind untouched
     N = await declare(netOwner, 'NORDWERK — Regensburg hub-module network (3 tiers)');
     expect(await version(netOwner, N, threeTier())).toBe(1);
