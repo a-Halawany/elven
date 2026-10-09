@@ -26,10 +26,13 @@ describe('the competitor package manifest (§CI owns its content)', () => {
     expect(c['diversity']).toEqual({ min_publishers: 2 });
     expect(c['coverage']).toEqual({ default_freshness_days: 30 });
     expect(c['twin']).toMatchObject({ key: 'capacity.per_month', families: { competitor: 'competitor', market: 'market' }, link: { from: 'market', to: 'competitor' } });
-    expect((m['ontology_extension'] as Record<string, unknown>)['entity_types']).toEqual(expect.arrayContaining([{ type: 'competitor', maps_to: 'organization' }, { type: 'plant_site', maps_to: 'place' }]));
+    expect((m['ontology_extension'] as Record<string, unknown>)['mappings']).toEqual(expect.arrayContaining([{ type: 'competitor', maps_to: 'organization' }, { type: 'plant_site', maps_to: 'place' }]));
     expect(m['release']).toMatchObject({ semver: '1.2.0' });
     expect(m['source_set']).toEqual([{ source_key: 'src-a', purposes: ['intelligence'], required: false }]);
     expect(String(c['boundary'])).toMatch(/B77.*B78.*B112.*B111.*R2/);
+    // B33 act-found: §PK's form — risk_meaning a list on the taxonomy in force; the purposes per source given
+    expect(m['risk_meaning']).toEqual([expect.objectContaining({ category_key: 'market' })]);
+    expect(competitorManifest('1.0.0', ['s'], { purposes: ['observation'] })['source_set']).toEqual([{ source_key: 's', purposes: ['observation'], required: false }]);
   });
   it('the agent identity: version 1.0.0 and a digest over the method text (a changed text is a new digest)', () => {
     expect(DOMAIN_INTELLIGENCE_AGENT_VERSION).toBe('1.0.0');

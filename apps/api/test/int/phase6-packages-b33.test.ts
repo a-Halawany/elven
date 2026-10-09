@@ -40,6 +40,7 @@ import { UploadConnector } from '../../src/observation/connectors/upload.connect
 import { PackagesController } from '../../src/domains/packages/packages.controller.js';
 import { PackagesService } from '../../src/domains/packages/packages.service.js';
 import { CHOKEPOINT_INDICATOR, cyberPackage, financialPackage, geopoliticalPackage, technologyPackage, type PackageDefinition } from '../../src/domains/packages/definitions.js';
+import { competitorManifest } from '../../src/domains/competitor/competitor-logic.js';   // B33 act-found (PKC)
 import type { Manifest } from '../../src/domains/packages/manifest.js';
 import type { EntitlementsVendorController } from '../../src/commercial/entitlements/entitlements.controller.js';
 import { Phase4Harness, uploadContract } from './phase4-helpers.js';
@@ -746,6 +747,31 @@ describe('PKJ · the cross-domain journey: competitor + supply_chain + geopoliti
     await certifyCycle(next, supply, { ontology: false });
     expect((await gate(SUP, 'watch')).gate).toMatchObject({ state: 'active', semver: '1.1.0' });
     expect(arr((await view(supply)).migrations).every((m) => m['state'] === 'completed')).toBe(true);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+/* B33 act-found (the eye_demo staging, act-b33 §CI): the competitor package — §CI's competitorManifest() — is declared, certified and
+   activated through §PK's OWN ports (the §CI harness planted its rows). Before the fix its form was refused by domain.dpk_assert_manifest
+   (`risk_meaning` an object) and could not pass the suite (no `mappings`). */
+describe('PKC · the competitor package (§CI\'s competitorManifest) through §PK\'s ports', () => {
+  const def = (): PackageDefinition => ({ key: 'competitor', kind: 'competitor' as never, title: 'Competitor intelligence (SYNTHETIC)', semver: '1.0.0',
+    clause: 'CAP-FW-06', focus: 'Competitor profiles', manifest: competitorManifest('1.0.0', [SRC['discovery']!.key, SRC['filings']!.key], { purposes: ['observation'] }) as unknown as Manifest });
+  let comp = '';
+  it('refusal: the pre-fix form (`risk_meaning` an object, not a list) is refused at the port — nothing proposed', async () => {
+    comp = String((await declare(owner, def())).package['package_id']);
+    const m2 = structuredClone(def().manifest) as unknown as Record<string, unknown>; m2['risk_meaning'] = { maps_to: 'prediction.risk_taxonomy', categories: ['competitive'] };
+    await refused(propose(owner, comp, '1.0.0', m2), /^domain package rejected \(manifest\): risk_meaning is a list/, 422);
+    // NOTE (reported, not fixed here): the pre-fix `entity_types` without `mappings` is NOT refused by domain.dpk_assert_manifest — its
+    // `jsonb_typeof(...) <> 'array'` tests are NULL for a missing key; the conformance suite's canonical_mapping / namespace checks catch it later
+    expect((await one(sql`select count(*)::int as n from domain.package_versions where package_id = ${comp}::uuid`))['n']).toBe(0);
+  });
+  it('positive + recovery: competitorManifest() proposed, its namespace decided by the steward, the five sections approved, the suite PASSES, certified, activated — the §CI gate answers active', async () => {
+    const r = await certifyCycle(def(), comp);
+    expect(r.version).toBe(1);
+    expect((await gate('competitor', 'assess')).gate).toMatchObject({ state: 'active', semver: '1.0.0' });
+    const st = await one(sql`select (domain.package_function_state(${T()}::uuid, ${D()}::uuid, 'competitor', 'profile')) ->> 'state' as s, domain.dci_manifest(${T()}::uuid, ${D()}::uuid, 'competitor') -> 'diversity' as d`);
+    expect(st).toMatchObject({ s: 'active', d: { min_publishers: 2 } });
   });
 });
 

@@ -14,7 +14,7 @@
  *
  * What is asserted is what the record says on screen — never a state derived here. Screenshots go to EYE_SHOTS (evidence/phase6-browser/
  * b33-twin-*.png). Personas: the twin owner T. Nakamura (EYE_B33_OWNER, default `t.nakamura`), the attention reader M. Dvořák
- * (EYE_B33_READER, default `m.dvorak`). Every figure is SYNTHETIC except the PortWatch transit count the 78.074 % rests on (the real publisher's).
+ * (EYE_B33_READER, default `m.dvorak`). The outside-envelope version: EYE_B33_OUTSIDE_VERSION on the branch EYE_B33_OUTSIDE_BRANCH (default `actual`). Every figure is SYNTHETIC except the PortWatch transit count the 78.074 % rests on (the real publisher's).
  */
 import { expect as baseExpect, test, type Locator, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
@@ -137,7 +137,8 @@ test.describe.serial('CP-6 B33 §TW — the twin pieces on the demonstration', (
     await expect(page.getByRole('heading', { name: 'Simulations', level: 1 })).toBeVisible();
     const run = page.locator('section[aria-labelledby="run-h"]');
     await run.getByRole('combobox', { name: /^Twin/ }).selectOption({ label: TWIN });
-    await selectByText(run.getByRole('combobox', { name: /^Admitted, complete version/ }), new RegExp(`^v${required('EYE_B33_OUTSIDE_VERSION')} · actual`));
+    // the 75-day state lives on the BRANCH stress-75 on the demonstration (B30 never put it on actual's head): the act names the version and its branch
+    await selectByText(run.getByRole('combobox', { name: /^Admitted, complete version/ }), new RegExp(`^v${required('EYE_B33_OUTSIDE_VERSION')} · ${process.env['EYE_B33_OUTSIDE_BRANCH'] ?? 'actual'}`));
     await run.getByRole('button', { name: 'Run control' }).click();
     await expect(page.getByText(/run rejected \(envelope\): outside the operating envelope of supply-flow@1 .* needs a twin owner's acknowledgement \(envelope\.acknowledge true with a reason of 8\+ characters\)/)).toBeVisible();
     await expect(page.getByText(/domain administrator's acknowledgement/)).toHaveCount(0);

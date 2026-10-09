@@ -34,20 +34,30 @@ export const DEFAULT_PREDICATE_MAP: Record<string, PredicateRule> = {
  * discovery only (GDELT cannot contain a fictional competitor); a real competitor-intelligence acceptance needs licensed registries, filings
  * and newswires (external). Signing/publisher (B77), all-layer namespaces (B78), marketplace (B112) are not built here.
  */
-export function competitorManifest(semver = '1.0.0', sources: string[] = []): Row {
+export function competitorManifest(semver = '1.0.0', sources: string[] = [], opts: { purposes?: string[]; riskCategory?: string } = {}): Row {
+  /* B33 act-found (the eye_demo staging): the manifest is declared, certified and activated through §PK's ports (domain.dpk_assert_manifest,
+     the conformance suite), so it takes §PK's FORM — the ontology extension's `mappings` (it was `entity_types`, refused "ontology_extension.mappings
+     lists the package's types…"), the material event kinds, a watchlist template with rules, `risk_meaning` as a list of {category_key, meaning}
+     on the taxonomy in force (it was an object, refused "risk_meaning is a list"), and the purposes each source is used for (a contract that does not
+     permit them fails the suite's purpose check). The `competitor` block §CI reads (domain.dci_manifest) is unchanged. */
+  const purposes = opts.purposes ?? ['intelligence'];
   return {
     ontology_extension: {
       namespace: 'pkg:competitor',
-      entity_types: [{ type: 'competitor', maps_to: 'organization' }, { type: 'plant_site', maps_to: 'place' }, { type: 'gear_motor_line', maps_to: 'product' }],
+      mappings: [{ type: 'competitor', maps_to: 'organization' }, { type: 'plant_site', maps_to: 'place' }, { type: 'gear_motor_line', maps_to: 'product' }],
       predicates: Object.keys(DEFAULT_PREDICATE_MAP).map((p) => ({ predicate: p, domain: 'organization' })),
+      event_kinds: ['plant_opened', 'plant_closed', 'capacity_change', 'market_entry', 'market_exit', 'acquisition'],
     },
-    source_set: sources.map((s) => ({ source_key: s, purposes: ['intelligence'], required: false })),
+    source_set: sources.map((s) => ({ source_key: s, purposes, required: false })),
     indicators: [],
     models: [],
     assessment_templates: [{ key: 'competitor-movement', statement: '<competitor> <movement> <place> effective <date>', material: true }],
-    watchlist_templates: [{ key: 'new-capacity-in-our-markets', event_kinds: ['plant_opened', 'capacity_change'], fact_kinds: ['facility', 'capability'] }],
-    controls: { classification_ceiling: 'internal', purposes: ['intelligence'], retention: '24 months' },
-    risk_meaning: { maps_to: 'prediction.risk_taxonomy', categories: ['competitive'] },
+    watchlist_templates: [{ key: 'new-capacity-in-our-markets', title: 'New capacity in our markets', event_kinds: ['plant_opened', 'capacity_change'], fact_kinds: ['facility', 'capability'],
+                            rules: [{ rule_key: 'new-capacity', on: 'event', kinds: ['plant_opened', 'capacity_change'] }] }],
+    controls: { classification_ceiling: 'internal', purposes, retention: '24 months',
+                inputs: { real_public: [], synthetic: [...sources],
+                          licensed_for_acceptance: ['company registries and filings (e.g. Orbis, OpenCorporates — licensed)', 'licensed newswires and trade press'] } },
+    risk_meaning: [{ category_key: opts.riskCategory ?? 'market', meaning: 'a competitor\'s new capacity or market move is a market risk (or an opportunity) for NORDWERK\'s gear-motor line' }],
     release: { semver, core_compatibility: '>=0111', requires: [], conflicts: [] },
     competitor: {
       functions: [...COMPETITOR_FUNCTIONS],
