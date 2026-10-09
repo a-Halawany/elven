@@ -19,7 +19,7 @@
  */
 import { createHash } from 'node:crypto';
 import {
-  readNetwork, readExtras, withoutSites, deratedThroughput, analyseNetwork,
+  readNetwork, readExtras, withoutSites, deratedFlows, analyseNetwork,
   type FamilyElement, type Network, type NetworkExtras, type ProvenanceBasis,
 } from '../supply-network/network.js';
 
@@ -302,6 +302,36 @@ function excludedOf(n: Network, x: NetworkExtras): { exclude: Set<string>; exclu
   return { exclude, excluded, isolated };
 }
 
+/** The terminal's inbound materials the full network brings but the reduced one (sites excluded or isolated) no longer does. */
+export function lostInputs(full: Network, reduced: Network): string[] {
+  const inbound = (n: Network) => { const t = [...n.sites.values()].find((s) => s.tier === 0); return new Set(t === undefined ? [] : n.routes.filter((r) => r.to === t.id).map((r) => r.material)); };
+  const after = inbound(reduced);
+  return [...inbound(full)].filter((m) => !after.has(m)).sort();
+}
+
+/**
+ * THE COVER: at the run rate the line ran at before, each inbound material of the terminal is demanded at rate × its bill-of-materials quantity;
+ * what still ARRIVES under the disruption leaves a deficit; the terminal's inventory of that material bridges deficit ÷ on-hand days. The cover
+ * is the least of them; a material in deficit without an inventory element makes the cover UNKNOWN (never assumed).
+ */
+export function coverOf(n: Network, x: NetworkExtras, arriving: ReadonlyMap<string, number>, rate: number): { cover_days: number | null; basis: Row[]; unknown: boolean } {
+  const terminal = [...n.sites.values()].find((s) => s.tier === 0);
+  if (terminal === undefined) return { cover_days: null, basis: [], unknown: true };
+  const basis: Row[] = []; let least = Infinity; let unknown = false; let deficit = false;
+  for (const m of [...new Set(n.routes.filter((r) => r.to === terminal.id).map((r) => r.material))].sort()) {
+    const per = terminal.bom[m] ?? 1; const demand = rate * per; const arr = arriving.get(m) ?? 0; const def = Math.max(0, demand - arr);
+    const row: Row = { material: m, demand_per_day: round(demand, 4), arriving_per_day: round(arr, 4), deficit_per_day: round(def, 4) };
+    if (def <= 1e-9) { basis.push(row); continue; }
+    deficit = true;
+    const inv = x.inventory.get(`${terminal.id}.${m}`);
+    if (inv === undefined) { unknown = true; basis.push({ ...row, on_hand: null, note: 'no inventory element: the cover of this input is unknown' }); continue; }
+    const days = inv.value / def;
+    basis.push({ ...row, on_hand: inv.value, unit: inv.unit, days: round(days, 2) });
+    least = Math.min(least, days);
+  }
+  return { cover_days: !deficit || unknown || !Number.isFinite(least) ? null : round(least, 2), basis, unknown };
+}
+
 export function mapDisruption(spec: DisruptionSpec, networks: readonly NetworkInput[], telemetry: { twin_id: string; version: number | null; freshness: string | null } | null): DisruptionMap {
   const choke = new Set(spec.chokepoints);
   const places = spec.places.map((p) => ({ country: p.country ?? null, city: p.city === null || p.city === undefined ? null : norm(p.city) }));
@@ -329,7 +359,10 @@ export function mapDisruption(spec: DisruptionSpec, networks: readonly NetworkIn
       }
       if (why.length > 0) { derate.set(r.id, passes); affected.push({ route: r.id, from: r.from, to: r.to, material: r.material, via, passes, why }); }
     }
-    const before = deratedThroughput(n); const after = deratedThroughput(n, derate);
+    const fb = deratedFlows(n); const fa = deratedFlows(n, derate);
+    // an input of the terminal that reaches it only through excluded or isolated sites: the throughput cannot be judged (never shown as complete)
+    const lost = lostInputs(full, n);
+    const before = lost.length > 0 ? null : fb.throughput; const after = lost.length > 0 ? null : fa.throughput;
     const terminal = [...n.sites.values()].find((s) => s.tier === 0) ?? null;
     const inbound = terminal === null ? [] : [...new Set(n.routes.filter((r) => r.to === terminal.id).map((r) => r.material))].sort();
     const unit = terminal === null ? null : Object.keys(terminal.bom).length === 0 && inbound.length === 1 ? `${n.materials.get(inbound[0] as string)?.unit ?? 'units'}/day` : 'units/day';
@@ -343,28 +376,14 @@ export function mapDisruption(spec: DisruptionSpec, networks: readonly NetworkIn
       const supA = after === null || !Number.isFinite(after) ? null : round(after, 4);
       const rateB = supB === null ? null : round(Math.min(lineCap, supB), 4); const rateA = supA === null ? null : round(Math.min(lineCap, supA), 4);
       const shortfall = rateB === null || rateA === null ? null : round(Math.max(0, rateB - rateA), 4);
-      // cover: the terminal's inventory of each inbound material against the shortfall it must bridge
-      const basis: Row[] = []; let cover: number | null = null;
-      if (shortfall !== null && shortfall > 0 && terminal !== null) {
-        let least = Infinity; let unknown = false;
-        for (const m of inbound) {
-          const inv = x.inventory.get(`${terminal.id}.${m}`);
-          const per = terminal.bom[m] ?? 1;
-          if (inv === undefined) { basis.push({ material: m, on_hand: null, note: 'no inventory element: the cover of this input is unknown' }); unknown = true; continue; }
-          const days = inv.value / (per * shortfall);
-          basis.push({ material: m, on_hand: inv.value, unit: inv.unit, per_unit: per, days: round(days, 2) });
-          least = Math.min(least, days);
-        }
-        cover = unknown && !Number.isFinite(least) ? null : Number.isFinite(least) ? round(least, 2) : null;
-        if (unknown) basis.push({ note: 'an inbound material without an inventory element bounds the cover at what is known — the least known cover is stated' });
-      }
-      const stopDays = spec.duration_days === null || shortfall === null || shortfall === 0 ? (shortfall === 0 ? 0 : null) : cover === null ? null : round(Math.max(0, spec.duration_days - cover), 2);
+      const cv = shortfall === null || shortfall === 0 || rateB === null ? { cover_days: null, basis: [] as Row[], unknown: false } : coverOf(n, x, fa.arriving, rateB);
+      const stopDays = shortfall === 0 ? 0 : spec.duration_days === null || shortfall === null || cv.cover_days === null ? null : round(Math.max(0, spec.duration_days - cv.cover_days), 2);
       const lStale = l.freshness === 'stale';
       if (lStale) netStale.push(`the linked twin ${l.title} (v${String(l.version)}) is stale by its freshness policy`);
       if (caps.length === 0) continue;
       lines.push({ twin_id: l.twin_id, title: l.title, version: l.version, owner: l.owner, lines: caps.sort((a, b) => (a.line < b.line ? -1 : 1)), line_capacity_per_day: round(lineCap, 4),
-                   supply_before_per_day: supB, supply_after_per_day: supA, run_rate_before_per_day: rateB, run_rate_after_per_day: rateA, shortfall_per_day: shortfall, cover_days: cover,
-                   cover_basis: basis, line_stop_days: stopDays, utilisation_before: rateB === null || lineCap === 0 ? null : round(rateB / lineCap, 4),
+                   supply_before_per_day: supB, supply_after_per_day: supA, run_rate_before_per_day: rateB, run_rate_after_per_day: rateA, shortfall_per_day: shortfall, cover_days: cv.cover_days,
+                   cover_basis: cv.basis, line_stop_days: stopDays, utilisation_before: rateB === null || lineCap === 0 ? null : round(rateB / lineCap, 4),
                    utilisation_after: rateA === null || lineCap === 0 ? null : round(rateA / lineCap, 4), stale: lStale });
     }
     const confs = affected.map((a) => x.routes.get(a.route)?.confidence).filter((c): c is number => finite(c));
@@ -375,6 +394,7 @@ export function mapDisruption(spec: DisruptionSpec, networks: readonly NetworkIn
       throughput_after_per_day: after === null || !Number.isFinite(after) ? null : round(after, 4), excluded, isolated, lines,
       coverage: { tiers: u.tiers.map((t) => ({ tier: t.tier, covered: t.covered, declared: t.declared, validated: t.validated, inferred: t.inferred })), unsourced: u.unsourced,
                   excluded: excluded.length, isolated: isolated.length, routes_with_unknown_via: u.routes.filter((r) => r.unknown.includes('via')).length,
+                  incomplete: lost.map((m) => `the terminal's ${m} reaches it only through excluded or isolated sites: the throughput is not computed`),
                   note: u.routes.some((r) => r.unknown.includes('via')) ? 'a route without a declared via cannot be judged against a chokepoint: it is counted unaffected and listed here' : null },
       confidence: confs.length === 0 ? null : Math.min(...confs), stale: netStale.length > 0, stale_reasons: netStale,
     });
@@ -447,29 +467,18 @@ export function evaluateAlternative(a: AlternativeInput): AlternativeEvaluation 
     const hit = via.some((v) => choke.has(v)) || a.spec.places.some((p) => origin !== undefined && ((p.city ?? null) !== null && origin.city !== null ? norm(origin.city) === norm(p.city as string) : (p.country ?? null) !== null && origin.country === p.country));
     if (hit) derate.set(r.id, passes);
   }
-  const t = deratedThroughput(n, derate);
+  const fo = deratedFlows(n, derate);
+  const t = lostInputs(brN, n).length > 0 ? null : fo.throughput;
   const onBranch = t === null || !Number.isFinite(t) ? null : round(t, 4);
   const line = a.line;
   const before = line?.run_rate_before_per_day ?? a.network.throughput_before_per_day;
   const withOpt = onBranch === null ? null : line === null ? onBranch : round(Math.min(line.line_capacity_per_day, onBranch), 4);
   const restored = before === null || before === 0 || withOpt === null ? null : round(withOpt / before, 4);
   const cover = line?.cover_days ?? null; const duration = a.spec.duration_days;
-  // the inventory option: the cover the branch's inventory gives against the shortfall it still faces
-  let coverWith: number | null = cover;
-  const term = [...n.sites.values()].find((s) => s.tier === 0);
-  if (term !== undefined && withOpt !== null && before !== null) {
-    const shortfall = Math.max(0, before - withOpt);
-    if (shortfall === 0) coverWith = null;
-    else {
-      let least = Infinity; let known = true;
-      for (const m of [...new Set(n.routes.filter((r) => r.to === term.id).map((r) => r.material))]) {
-        const inv = brX.inventory.get(`${term.id}.${m}`);
-        if (inv === undefined) { known = false; continue; }
-        least = Math.min(least, inv.value / ((term.bom[m] ?? 1) * shortfall));
-      }
-      coverWith = known && Number.isFinite(least) ? round(least, 2) : (Number.isFinite(least) ? round(least, 2) : null);
-    }
-  }
+  // the cover the BRANCH gives (its inventory, against what still arrives with the option, at the pre-disruption run rate)
+  const shortfallWith = before === null || withOpt === null ? null : Math.max(0, before - withOpt);
+  const cvWith = before === null || shortfallWith === null || shortfallWith <= 1e-9 ? null : coverOf(n, brX, fo.arriving, before);
+  const coverWith: number | null = cvWith === null ? null : cvWith.cover_days;
   if (a.network.stale || (line?.stale ?? false)) { indeterminate = true; reasons.push(`inputs are stale: ${a.network.stale_reasons.join('; ') || 'the linked line is stale'} — the option cannot be judged current`); }
   if (reliesOn.length > 0) { indeterminate = true; reasons.push(`the option rests on unvalidated inferred site(s) ${reliesOn.join(', ')}: a coverage gap, never recommended until validated`); }
   if (unvalidated.length > 0) limits.push(`unvalidated inferred site(s) excluded from the evaluation: ${unvalidated.join(', ')}`);
@@ -479,7 +488,7 @@ export function evaluateAlternative(a: AlternativeInput): AlternativeEvaluation 
   if (a.network.isolated.length > 0) limits.push(`${a.network.isolated.length} identity conflict(s) isolated`);
   if (a.kind === 'inventory') {
     if (duration === null) { indeterminate = true; reasons.push('the disruption states no duration: whether the stock bridges it cannot be judged'); }
-    else if (coverWith === null && withOpt !== null && before !== null && withOpt >= before * restoreShare) reasons.push('with the option the line runs at its pre-disruption rate');
+    else if (cvWith === null && withOpt !== null && before !== null && withOpt >= before * restoreShare) reasons.push('with the option the line runs at its pre-disruption rate');
     else if (coverWith === null) { indeterminate = true; reasons.push('the cover with the option is unknown (an inbound material without an inventory element)'); }
     else if (coverWith < duration) { infeasible = true; reasons.push(`the stock covers ${coverWith} day(s) of a ${duration}-day disruption: the line stops before it ends`); }
     else reasons.push(`the stock covers ${coverWith} day(s), the disruption's ${duration} day(s) included`);

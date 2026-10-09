@@ -455,8 +455,13 @@ export function withoutSites(n: Network, exclude: ReadonlySet<string>): Network 
  * algorithm (throughput above) with the derating applied to each route's flow. null when nothing reaches the terminal.
  */
 export function deratedThroughput(n: Network, derate: ReadonlyMap<string, number> = new Map()): number | null {
+  return deratedFlows(n, derate).throughput;
+}
+/** The same, with what ARRIVES at the terminal per inbound material per day (each capped by the terminal's capacity for it). */
+export function deratedFlows(n: Network, derate: ReadonlyMap<string, number> = new Map()): { throughput: number | null; arriving: Map<string, number> } {
+  const arrivingOut = new Map<string, number>();
   const terminal = [...n.sites.values()].find((s) => s.tier === 0);
-  if (terminal === undefined) return null;
+  if (terminal === undefined) return { throughput: null, arriving: arrivingOut };
   const cap = (site: string, material: string): number => n.capacity.get(`${site}.${material}`)?.value ?? Infinity;
   const outDegree = (site: string, material: string): number => n.routes.filter((r) => r.from === site && r.material === material).length;
   const memo = new Map<string, number>(); const visiting = new Set<string>();
@@ -484,12 +489,13 @@ export function deratedThroughput(n: Network, derate: ReadonlyMap<string, number
   };
   const flow = (r: Route): number => (out(r.from, r.material) / Math.max(1, outDegree(r.from, r.material))) * (derate.get(r.id) ?? 1);
   const inbound = n.routes.filter((r) => r.to === terminal.id);
-  if (inbound.length === 0) return null;
+  if (inbound.length === 0) return { throughput: null, arriving: arrivingOut };
   let t = Infinity;
   for (const m of new Set(inbound.map((r) => r.material))) {
     const arriving = Math.min(inbound.filter((r) => r.material === m).reduce((acc, r) => acc + flow(r), 0), cap(terminal.id, m));
+    arrivingOut.set(m, arriving);
     t = Math.min(t, arriving / (terminal.bom[m] ?? 1));
   }
-  return Number.isNaN(t) ? null : t;
+  return { throughput: Number.isNaN(t) ? null : t, arriving: arrivingOut };
 }
 /* end B33 supply */
