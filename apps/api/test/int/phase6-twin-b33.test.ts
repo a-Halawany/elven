@@ -642,6 +642,16 @@ describe('TW7 · the routed items CLOSED on decision; the outside run\'s awaitin
     expect(obj((await closure(String(i[0]?.['item_id'])))?.['details'])).toMatchObject({ reason: expect.stringMatching(/retired: the stress run is superseded/) });
     await concur(methodSteward, R_OUT2, 'the second stress case may be explored');
     expect((await items('twin.envelope', R_OUT2)).map((x) => x['state'])).toEqual(['closed', 'closed']);
+    // THE BACKFILL (0111 §TW7, run once by the migration): an item a decision taken BEFORE B33 left open — eye_demo's approved 62 % estimate's —
+    // closed with the reason that says so; nothing else is left (idempotent). Fixture: E4a's item put back as a pre-B33 database holds it.
+    const it4 = String((await items('twin.reconciliation', E4a))[0]?.['item_id']);
+    await sql`update executive.attention_items set state = 'deprioritized', closed_at = null, closed_by = null where item_id = ${it4}::uuid`.execute(su);
+    expect(Number((await one(sql`select twin.twx_close_decided_items() as n`))['n'])).toBe(1);
+    const back = await items('twin.reconciliation', E4a);
+    expect(back).toEqual([expect.objectContaining({ state: 'closed', closed_by: owner.principalId })]);
+    const ev = await rows(sql`select details from executive.attention_item_events where item_id = ${it4}::uuid and event = 'item.closed' order by occurred_at desc limit 1`);
+    expect(obj(ev[0]?.['details'])).toMatchObject({ reason: expect.stringMatching(/^estimate .* was approved before B33 — its review item closed by 0111 §TW7$/) });
+    expect(Number((await one(sql`select twin.twx_close_decided_items() as n`))['n'])).toBe(0);
   });
 });
 

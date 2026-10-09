@@ -30,6 +30,8 @@
 --         (twin.envelope / run) closed by the method steward's concurrence; a NEW twin.envelope item raised when a run FINISHES OUTSIDE its
 --         envelope — "awaiting a twin owner's exploratory admission", named owner the twin's owner, routed under the domain's published
 --         policy — closed by the exploratory admission or by the run's retirement.
+--         The items such decisions left open BEFORE B33 are closed once by the migration (twin.twx_close_decided_items — eye_demo's
+--         approved 62 % estimate's item among them), each with a reason that says so.
 --         INTERPRETATION (confirmed by the coordinator, B33): F-P5-04's "an item on the completion of an OUTSIDE run" is this NEW item — 0103
 --         §0.1 names "an outside-envelope run awaiting exploratory admission" for twin.envelope, and nothing raised it before B33.
 --   §TW8  simulation.open_run RE-DECLARED (LAST 0092:1888-2131, copied whole): the two envelope refusal texts name the holder B30 made it —
@@ -748,6 +750,38 @@ END $$;
 REVOKE ALL ON FUNCTION simulation.twx_admission_item_closes() FROM PUBLIC;
 CREATE TRIGGER twx_admission_item_closes AFTER UPDATE OF concurred_at ON simulation.exploratory_admissions
   FOR EACH ROW WHEN (OLD.concurred_at IS NULL AND NEW.concurred_at IS NOT NULL) EXECUTE FUNCTION simulation.twx_admission_item_closes();
+
+/* THE ITEMS LEFT OPEN BY DECISIONS TAKEN BEFORE B33 (the backfill — data, once, then idempotent): an estimate already approved, declined or
+   superseded, a merge already merged, refused or withdrawn, an exploratory admission already concurred — each decision's item is closed
+   now with a reason that says so (eye_demo: the approved 62 % estimate's item and the earlier ones, "deprioritized" and never closed). The
+   closer named is the decision's own maker (decided_by / closed_by / concurred_by, else the proposer / opener / admitter). Internal (no
+   grant): the migration calls it once; a harness may call it again (nothing left: 0). Returns the number of items closed. */
+CREATE OR REPLACE FUNCTION twin.twx_close_decided_items() RETURNS int
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = twin, simulation, executive, public, pg_catalog, pg_temp AS $$
+DECLARE r record; v_n int := 0;
+BEGIN
+  FOR r IN SELECT e.tenant_id, e.domain_id, e.estimate_id AS id, e.state, coalesce(e.decided_by, e.proposed_by) AS actor FROM twin.estimates e
+            WHERE e.state <> 'proposed' AND EXISTS (SELECT 1 FROM executive.attention_items i WHERE i.tenant_id = e.tenant_id AND i.domain_id = e.domain_id AND i.subject_id = e.estimate_id
+                                                      AND i.signal_class = 'twin.reconciliation' AND i.subject_kind = 'twin_estimate' AND i.state <> 'closed') LOOP
+    v_n := v_n + jsonb_array_length(executive.b33_close_items(r.tenant_id, r.domain_id, 'twin.reconciliation', 'twin_estimate', r.id,
+             format('estimate %s was %s before B33 — its review item closed by 0111 §TW7', r.id, r.state), r.actor, NULL));
+  END LOOP;
+  FOR r IN SELECT m.tenant_id, m.domain_id, m.merge_id AS id, m.state, coalesce(m.closed_by, m.completing_by, m.opened_by) AS actor FROM twin.branch_merges m
+            WHERE m.state IN ('merged', 'refused', 'withdrawn') AND EXISTS (SELECT 1 FROM executive.attention_items i WHERE i.tenant_id = m.tenant_id AND i.domain_id = m.domain_id
+                                                      AND i.subject_id = m.merge_id AND i.signal_class = 'twin.reconciliation' AND i.subject_kind = 'twin_branch' AND i.state <> 'closed') LOOP
+    v_n := v_n + jsonb_array_length(executive.b33_close_items(r.tenant_id, r.domain_id, 'twin.reconciliation', 'twin_branch', r.id,
+             format('merge %s was %s before B33 — its item closed by 0111 §TW7', r.id, r.state), r.actor, NULL));
+  END LOOP;
+  FOR r IN SELECT a.tenant_id, a.domain_id, a.run_id AS id, coalesce(a.concurred_by, a.admitted_by) AS actor FROM simulation.exploratory_admissions a
+            WHERE a.concurred_at IS NOT NULL AND EXISTS (SELECT 1 FROM executive.attention_items i WHERE i.tenant_id = a.tenant_id AND i.domain_id = a.domain_id
+                                                      AND i.subject_id = a.run_id AND i.signal_class = 'twin.envelope' AND i.subject_kind = 'run' AND i.state <> 'closed') LOOP
+    v_n := v_n + jsonb_array_length(executive.b33_close_items(r.tenant_id, r.domain_id, 'twin.envelope', 'run', r.id,
+             format('the exploratory admission of run %s was concurred before B33 — its item closed by 0111 §TW7', r.id), r.actor, NULL));
+  END LOOP;
+  RETURN v_n;
+END $$;
+REVOKE ALL ON FUNCTION twin.twx_close_decided_items() FROM PUBLIC;
+SELECT twin.twx_close_decided_items();
 
 -- ─────────────────────────────────────────────────────────────────────
 -- §TW8 simulation.open_run's ENVELOPE REFUSAL WORDING
