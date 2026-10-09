@@ -852,6 +852,32 @@ END $$ LANGUAGE plpgsql;
 REVOKE ALL ON FUNCTION domain.retire_package(uuid,uuid,uuid,text,uuid,uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION domain.retire_package(uuid,uuid,uuid,text,uuid,uuid) TO eye_commit;
 
+/* WITHDRAW an open version (domain.package.withdraw): the owner withdraws a PROPOSED or CERTIFIED version (never the active one — the package
+   is retired, or a later version supersedes it) with a reason; it is kept, retired; the certification-pending item is closed. The next
+   version may then be proposed. */
+CREATE OR REPLACE FUNCTION domain.withdraw_package_version(p_package uuid, p_tenant uuid, p_domain uuid, p_version int, p_reason text, p_actor uuid, p_correlation uuid)
+RETURNS jsonb SECURITY DEFINER SET search_path = domain, executive, observation, identity, ctx, public, pg_catalog, pg_temp AS $$
+DECLARE k domain.packages%ROWTYPE; v domain.package_versions%ROWTYPE; v_closed jsonb;
+BEGIN
+  PERFORM observation.assert_authority(ARRAY['domain.package.withdraw']);
+  PERFORM observation.assert_scope(p_tenant, p_domain);
+  PERFORM domain.dpk_assert_actor('domain package', p_actor);
+  k := domain.dpk_package(p_tenant, p_domain, p_package, 'domain package');
+  IF p_actor <> k.owner_principal_id THEN RAISE EXCEPTION 'domain package rejected (ownership): a version of % is withdrawn by its owner', k.package_key USING ERRCODE = '42501'; END IF;
+  IF length(btrim(coalesce(p_reason, ''))) < 8 THEN RAISE EXCEPTION 'domain package rejected (reason): a withdrawal states its reason (8+ characters)' USING ERRCODE = '22023'; END IF;
+  SELECT * INTO v FROM domain.package_versions x WHERE x.package_id = p_package AND x.version = p_version FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'domain package rejected (unknown_version): % has no version %', k.package_key, p_version USING ERRCODE = '23503'; END IF;
+  IF v.state NOT IN ('proposed', 'certified') THEN
+    RAISE EXCEPTION 'domain package rejected (state): version % is %; a proposed or certified version is withdrawn (the active one is superseded or the package retired)', p_version, v.state USING ERRCODE = '22023';
+  END IF;
+  UPDATE domain.package_versions SET state = 'retired', retired_at = clock_timestamp() WHERE package_id = p_package AND version = p_version;
+  v_closed := executive.b33_close_items(p_tenant, p_domain, 'domain.package', 'domain_package', p_package, format('version %s withdrawn by the owner: %s', p_version, btrim(p_reason)), p_actor, p_correlation);
+  PERFORM domain.dpk_event(p_tenant, p_domain, p_package, 'version', p_package, p_version, 'version.withdrawn', p_actor, jsonb_build_object('reason', btrim(p_reason), 'was', v.state, 'closed_items', v_closed), p_correlation);
+  RETURN (SELECT to_jsonb(x) - 'manifest' || jsonb_build_object('closed_items', v_closed) FROM domain.package_versions x WHERE x.package_id = p_package AND x.version = p_version);
+END $$ LANGUAGE plpgsql;
+REVOKE ALL ON FUNCTION domain.withdraw_package_version(uuid,uuid,uuid,int,text,uuid,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION domain.withdraw_package_version(uuid,uuid,uuid,int,text,uuid,uuid) TO eye_commit;
+
 -- §PK.5 HEALTH (PK4: PR-31-005, UX-36-005, WS-10 "disable incompatible domain packages") ───────────────────────────────────────
 /* RECORD a health re-check of the ACTIVE version (domain.package.health — the owner, the specialists, the administrator, or the attention
    agent's after-tick hook `domain-package-health`): the faults the TS service evaluated from the facts it read. Each INCOMPATIBLE FUNCTION is
@@ -880,7 +906,7 @@ BEGIN
     END IF;
   END LOOP;
   IF p_disable IS NULL OR jsonb_typeof(p_disable) <> 'object' THEN RAISE EXCEPTION 'domain package rejected (checks): the disabled functions are an object {function: {reason, cause}}' USING ERRCODE = '22023'; END IF;
-  FOR fn IN SELECT jsonb_object_keys(p_disable) LOOP
+  FOR fn IN SELECT fk FROM jsonb_object_keys(p_disable) fk ORDER BY fk LOOP
     IF NOT (fn = ANY (domain.dpk_functions())) OR length(btrim(coalesce(p_disable -> fn ->> 'reason', ''))) < 8 THEN
       RAISE EXCEPTION 'domain package rejected (checks): % is not a package function, or its reason is missing (functions: %)', fn, array_to_string(domain.dpk_functions(), ', ') USING ERRCODE = '22023';
     END IF;
@@ -892,7 +918,7 @@ BEGIN
   SELECT coalesce(bool_and((x ->> 'passed')::boolean), true) INTO v_passed FROM jsonb_array_elements(p_checks) x WHERE x ->> 'severity' = 'blocking';
   -- the disablements and the conflict this run adds (nothing is removed here)
   v_disabled := v.disabled_functions;
-  FOR fn IN SELECT jsonb_object_keys(p_disable) LOOP
+  FOR fn IN SELECT fk FROM jsonb_object_keys(p_disable) fk ORDER BY fk LOOP
     IF NOT (v_disabled ? fn) THEN
       v_disabled := v_disabled || jsonb_build_object(fn, (p_disable -> fn) || jsonb_build_object('disabled_at', clock_timestamp(), 'disabled_by', p_actor, 'run_id', p_run));
       v_new_fns := v_new_fns || fn;
@@ -1015,13 +1041,15 @@ LANGUAGE sql STABLE SET search_path = domain, graph, observation, objects, predi
            c.classification_ceiling, c.acquisition_mode, c.authority_class,
            (SELECT max(o.recorded_at) FROM objects.canonical_objects o, k WHERE o.tenant_id = k.tenant_id AND o.domain_id = k.domain_id AND o.object_type = 'EVD'
                AND c.source_id IS NOT NULL AND o.provenance_ref LIKE 'SRC:' || c.source_id::text || '@%') AS last_evidence_at,
-           (SELECT max(o.observation_time) FROM objects.canonical_objects o, k WHERE o.tenant_id = k.tenant_id AND o.domain_id = k.domain_id AND o.object_type = 'OBS'
-               AND c.source_id IS NOT NULL AND o.provenance_ref LIKE 'SRC:' || c.source_id::text || '@%') AS last_observation_time,
-           (SELECT max(o.recorded_at) FROM objects.canonical_objects o, k WHERE o.tenant_id = k.tenant_id AND o.domain_id = k.domain_id AND o.object_type = 'OBS'
-               AND c.source_id IS NOT NULL AND o.provenance_ref LIKE 'SRC:' || c.source_id::text || '@%') AS last_observation_recorded_at
+           lo.as_of AS last_observation_time, lo.recorded_at AS last_observation_recorded_at
       FROM srcs sk CROSS JOIN k
       LEFT JOIN LATERAL (SELECT x.* FROM observation.source_contracts_current x WHERE x.tenant_id = k.tenant_id AND x.domain_id = k.domain_id AND x.source_key = sk.source_key
                           ORDER BY x.contract_version DESC LIMIT 1) c ON true
+      -- the LATEST observation of the source (by when it was recorded): the publisher's own instant for it (event_time; the observation time when
+      -- the publisher states none) = its AS-OF, and when it was recorded — the publication lag is the difference (CAP-FW-11 timing)
+      LEFT JOIN LATERAL (SELECT coalesce(o.event_time, o.observation_time) AS as_of, o.recorded_at FROM objects.canonical_objects o
+                          WHERE o.tenant_id = k.tenant_id AND o.domain_id = k.domain_id AND o.object_type = 'OBS' AND c.source_id IS NOT NULL
+                            AND o.provenance_ref LIKE 'SRC:' || c.source_id::text || '@%' ORDER BY o.recorded_at DESC LIMIT 1) lo ON true
   ),
   meth AS (
     SELECT m ->> 'ref' AS ref, e.state, e.state_reason, e.horizons, e.builtin
@@ -1036,7 +1064,7 @@ LANGUAGE sql STABLE SET search_path = domain, graph, observation, objects, predi
   ),
   ont AS (SELECT o.* FROM graph.ontology_versions o, k, v WHERE o.tenant_id = k.tenant_id AND o.domain_id = k.domain_id AND o.namespace = v.manifest #>> '{ontology_extension,namespace}' AND o.state = 'active'),
   core AS (SELECT o.* FROM graph.ontology_versions o, k WHERE o.tenant_id = k.tenant_id AND o.domain_id = k.domain_id AND o.namespace = 'domain' AND o.state = 'active'),
-  tax AS (SELECT t.* FROM k, LATERAL (SELECT * FROM prediction.risk_taxonomy t WHERE t.tenant_id = k.tenant_id AND t.domain_id = k.domain_id ORDER BY t.version DESC LIMIT 1) t),
+  tax AS (SELECT t.* FROM k, LATERAL prediction.risk_taxonomy_current(k.tenant_id, k.domain_id) t WHERE t.taxonomy_id IS NOT NULL),   -- the taxonomy IN FORCE (B34: the latest activated)
   others AS (
     SELECT jsonb_agg(jsonb_build_object('package_key', ok.package_key, 'domain_kind', ok.domain_kind, 'version', ov.version, 'semver', ov.semver,
                                         'requires', coalesce(ov.manifest #> '{release,requires}', '[]'::jsonb), 'conflicts', coalesce(ov.manifest #> '{release,conflicts}', '[]'::jsonb)) ORDER BY ok.package_key) AS j
@@ -1200,8 +1228,8 @@ GRANT EXECUTE ON FUNCTION domain.propose_assessment(uuid,uuid,uuid,text,text,uui
 /* DECIDE a proposed version (domain.assessment.approve, human-gated): a named HUMAN — for a MATERIAL assessment a domain analyst or a domain
    specialist of the domain; for an immaterial one also the package's owner — never the proposer, never an agent. APPROVED when its source
    diversity meets the template's threshold, LIMITED (with the reason) when not; the prior standing version superseded; the DAS object of the
-   standing version admitted in the same write (p_object_version, its state checked). An approved MATERIAL assessment is matched against the
-   package's watchlists (alerts). */
+   standing version admitted in the same write (p_object_version, its state checked). An approved MATERIAL assessment (not a limited one) is matched
+   against the package's watchlists (alerts). */
 CREATE OR REPLACE FUNCTION domain.decide_assessment(p_assessment uuid, p_tenant uuid, p_domain uuid, p_version int, p_decision text, p_note text, p_object_version int, p_actor uuid, p_correlation uuid)
 RETURNS jsonb SECURITY DEFINER SET search_path = domain, objects, observation, identity, ctx, public, pg_catalog, pg_temp AS $$
 DECLARE x domain.assessments%ROWTYPE; k domain.packages%ROWTYPE; a domain.package_versions%ROWTYPE; t jsonb; v_div jsonb; v_state text; v_alerts jsonb := '[]'::jsonb; prior domain.assessments%ROWTYPE;
@@ -1248,7 +1276,8 @@ BEGIN
                                                                     CASE WHEN (v_div ->> 'unattributed')::int > 0 THEN format(', %s evidence object(s) without a source contract', v_div ->> 'unattributed') ELSE '' END) END,
          limited_at = CASE WHEN v_state = 'limited' THEN clock_timestamp() END
    WHERE assessment_id = p_assessment AND version = p_version;
-  IF x.material THEN
+  -- a LIMITED assessment is never presented as complete: it raises no alert (the watchlist sees approved material assessments only)
+  IF x.material AND v_state = 'approved' THEN
     v_alerts := domain.dpk_raise_watchlist_alerts(p_tenant, p_domain, x.package_id, x.package_key, 'assessment', p_assessment, p_version, x.subject_entities, x.template,
                                                   left(x.statement, 200), p_actor, p_correlation);
   END IF;

@@ -39,6 +39,8 @@ const CODE = (s: number) => (s === 403 ? 'EYE_AUT_001' : s === 404 ? 'EYE_STA_00
 export function refuse(noun: Noun, cls: string, message: string, correlationId: string, status = 422): HttpException {
   return new HttpException(errorBody(CODE(status) as never, correlationId, `${noun} rejected (${cls}): ${message}`), status);
 }
+/** A canonical payload carries plain values only: an instant the driver answered as a Date is its ISO text. */
+const iso = (v: unknown): string | null => (v === null || v === undefined ? null : v instanceof Date ? v.toISOString() : String(v));
 const textOf = (e: unknown): string => (e instanceof HttpException ? String((e.getResponse() as { message?: string }).message ?? e.message) : (e instanceof Error ? e.message : String(e)));
 
 @Injectable()
@@ -231,9 +233,9 @@ export class PackagesService implements OnModuleInit {
       const payload: Row = {
         package_id: packageId, package_key: String(k['package_key']), domain_kind: String(k['domain_kind']), title: String(k['title']), version, semver: String(v['semver']), state: 'active',
         owner_principal_id: String(k['owner_principal_id']), manifest: v['manifest'], manifest_digest: String(v['manifest_digest']),
-        sections: SECTIONS.map((s) => { const x = (sections[s] ?? {}) as Row; return { section: s, digest: String(x['digest'] ?? ''), state: x['state'] ?? 'open', approver: x['approver'] ?? null, decided_at: x['decided_at'] ?? null, expires_at: x['expires_at'] ?? null, ontology_version_id: x['ontology_version_id'] ?? null }; }),
-        conformance: run === null ? null : { run_id: run['run_id'], passed: run['passed'], ran_at: run['ran_at'], suite_version: run['suite_version'] },
-        certified_by: v['certified_by'] ?? null, certified_at: v['certified_at'] ?? null, disabled_functions: {}, conflict: null, boundary: BOUNDARY,
+        sections: SECTIONS.map((s) => { const x = (sections[s] ?? {}) as Row; return { section: s, digest: String(x['digest'] ?? ''), state: x['state'] ?? 'open', approver: x['approver'] ?? null, decided_at: iso(x['decided_at']), expires_at: iso(x['expires_at']), ontology_version_id: x['ontology_version_id'] ?? null }; }),
+        conformance: run === null ? null : { run_id: String(run['run_id']), passed: run['passed'] === true, ran_at: iso(run['ran_at']), suite_version: String(run['suite_version']) },
+        certified_by: v['certified_by'] ?? null, certified_at: iso(v['certified_at']), disabled_functions: {}, conflict: null, boundary: BOUNDARY,
       };
       await this.admit(cap, this.dpgHeader(t, d, packageId, objectVersion, String(k['owner_principal_id']), p.principalId, env.purpose_id ?? 'intelligence', env.correlation_id, await cap.now()), payload, 'domain package', env.correlation_id);
       const r = await cap.activate({ packageId, tenantId: t, domainId: d, version, objectVersion, actor: p.principalId, correlationId: env.correlation_id });
@@ -247,6 +249,14 @@ export class PackagesService implements OnModuleInit {
       result: await cap.retire({ packageId, tenantId: t, domainId: d, reason, actor: p.principalId, correlationId: env.correlation_id }),
     }));
     return { package: out.result, receipt: PackagesService.receipt(out) };
+  }
+
+  /** WITHDRAW an open (proposed or certified) version: the owner; the next version may then be proposed. */
+  async withdrawVersion(env: Envelope, p: AuthenticatedPrincipal, t: string, d: string, packageId: string, version: number, reason: string) {
+    const out = await this.write(env, p, t, d, 'domain.package.withdraw', 'DPG', packageId, async (cap) => ({
+      result: await cap.withdrawVersion({ packageId, tenantId: t, domainId: d, version, reason, actor: p.principalId, correlationId: env.correlation_id }),
+    }));
+    return { version: out.result, receipt: PackagesService.receipt(out) };
   }
 
   // ───────────────────────── PK4: health and re-enablement ─────────────────────────
@@ -289,6 +299,8 @@ export class PackagesService implements OnModuleInit {
     void done.then((r) => { this.log.log(`package health re-check (started ${since}) ended after the tick: ${JSON.stringify(r).slice(0, 300)}`); });
     return { in_flight: true, since, note: `the re-check goes on after the tick (waited ${this.healthAwaitMs} ms)` };
   }
+  /** Every re-check started by the hook, settled (a harness waits on it; a shutdown may). */
+  async settled(): Promise<void> { await Promise.allSettled([...this.inFlight.values()].map((x) => x.done)); }
   async recheckDomain(a: { principal: AuthenticatedPrincipal; tenantId: string; domainId: string; correlationId: string }): Promise<Row> {
     const env = this.envelopeFor(a.principal, a.tenantId, a.domainId, READ, 'DPG', null, a.correlationId);
     const active = (await this.read(env, a.principal, a.tenantId, a.domainId, 'DPG', null, (cap) => cap.activeVersions())).result;

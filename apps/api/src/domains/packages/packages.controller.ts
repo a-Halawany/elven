@@ -10,6 +10,7 @@
  *   :id/versions/:v/certify                    domain.package.certify (human-gated)
  *   :id/versions/:v/activate                   domain.package.activate (human-gated; the owner) (+ its DPG object)
  *   :id/retire                                 domain.package.retire (human-gated)
+ *   :id/versions/:v/withdraw                   domain.package.withdraw — the owner withdraws an open (proposed or certified) version
  *   :id/health/run                             domain.package.health — the re-check (also the after-tick hook `domain-package-health`)
  *   :id/versions/:v/enable                     domain.package.enable (human-gated; a specialist after a passing re-run)
  *   :id/acceptance/run                         domain.package.acceptance — the kind's acceptance focus, MEASURED
@@ -155,6 +156,12 @@ export class PackagesController {
   async retire(@Req() req: EyeRequest, @Param('tenantId') t: string, @Param('domainId') d: string, @Param('packageId') packageId: string, @Body() body: Payload) {
     const { envelope, principal } = ctx(req); const cid = envelope.correlation_id;
     return this.svc.retire(envelope, principal, t, d, id(packageId, 'packageId', 'domain package', cid), reason(body.payload ?? {}, 'domain package', cid));
+  }
+
+  @Post('/:packageId/versions/:version/withdraw')
+  async withdrawVersion(@Req() req: EyeRequest, @Param('tenantId') t: string, @Param('domainId') d: string, @Param('packageId') packageId: string, @Param('version') version: string, @Body() body: Payload) {
+    const { envelope, principal } = ctx(req); const cid = envelope.correlation_id;
+    return this.svc.withdrawVersion(envelope, principal, t, d, id(packageId, 'packageId', 'domain package', cid), int(Number(version), 'version', 'domain package', cid), reason(body.payload ?? {}, 'domain package', cid));
   }
 
   /* ───────────── PK4: health ───────────── */

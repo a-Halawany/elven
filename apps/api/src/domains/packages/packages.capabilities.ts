@@ -62,6 +62,7 @@ export interface PackageWrites extends PackageReads {
   certify(a: { packageId: string; tenantId: string; domainId: string; version: number; reason: string; actor: string; correlationId: string }): Promise<Row>;
   activate(a: { packageId: string; tenantId: string; domainId: string; version: number; objectVersion: number; actor: string; correlationId: string }): Promise<Row>;
   retire(a: { packageId: string; tenantId: string; domainId: string; reason: string; actor: string; correlationId: string }): Promise<Row>;
+  withdrawVersion(a: { packageId: string; tenantId: string; domainId: string; version: number; reason: string; actor: string; correlationId: string }): Promise<Row>;
   recordHealth(a: { runId: string; packageId: string; tenantId: string; domainId: string; version: number; checks: unknown[]; disable: Row; conflict: Row | null; factsDigest: string; factsReadAt: string; actor: string; correlationId: string }): Promise<Row>;
   enable(a: { packageId: string; tenantId: string; domainId: string; version: number; functions: string[]; clearConflict: boolean; reason: string; actor: string; correlationId: string }): Promise<Row>;
   proposeAssessment(a: { assessmentId: string; tenantId: string; domainId: string; key: string; template: string; subjects: string[]; statement: string; confidence: number; evidence: unknown[]; material: boolean | null; actor: string; correlationId: string }): Promise<Row>;
@@ -232,6 +233,9 @@ class PackagesCapabilityImpl extends PackagesCore implements PackageWrites {
   }
   async retire(a: Parameters<PackageWrites['retire']>[0]): Promise<Row> {
     return this.one(sql`select domain.retire_package(${a.packageId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.reason}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'retire_package');
+  }
+  async withdrawVersion(a: Parameters<PackageWrites['withdrawVersion']>[0]): Promise<Row> {
+    return this.one(sql`select domain.withdraw_package_version(${a.packageId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.version}::int, ${a.reason}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'withdraw_package_version');
   }
   async recordHealth(a: Parameters<PackageWrites['recordHealth']>[0]): Promise<Row> {
     return this.one(sql`select domain.record_package_health(${a.runId}::uuid, ${a.packageId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.version}::int, ${j(a.checks)}::jsonb, ${j(a.disable)}::jsonb,
