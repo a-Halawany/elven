@@ -23,6 +23,27 @@
  *
  * A part never imports another part's files — only this file (and the prelude's domain-intelligence-agent.ts, which §CI owns).
  * BOUNDARY (R7): package signing / publisher identity → B77; all-layer namespaces → B78; marketplace and purchase → B112; parity → B111.
+ *
+ * THE SEAMS AS RECONCILED AT INTEGRATION (B33):
+ *   WATCHLISTS — two records, deliberately. §PK's `domain.watchlists` is the GENERAL package watchlist (entities and indicators, alert rules
+ *     matched on an approved assessment or a domain event; its alert's item is `domain.alert` / subject `watchlist` = the watchlist id).
+ *     §CI's `domain.competitor_watchlists` is the COMPETITOR package's SPECIALISED watchlist (competitor ids, rules on an approved material
+ *     profile change, a coverage freshness that marks stale coverage LIMITED; its item is `domain.alert` / subject `competitor_profile` = the
+ *     competitor). Both raise through the ONE helper executive.b33_raise_routed under the domain's published policy, so the attention queue
+ *     sees one class (`domain.alert`) routed one way; the subjects never collide. Routing §CI's alerts through §PK's alert record would have
+ *     meant widening `domain.dpk_raise_watchlist_alerts`' cause kinds (assessment|event) and rewriting §CI's approval path after both harnesses
+ *     passed — the riskier change for no gain the queue can see. A later batch may fold them (a competitor watchlist as a §PK watchlist
+ *     template); until then the competitor page and the domains page each show their own.
+ *   PACKAGE_GATE's TS refusal — PackageUnavailable carries SQLSTATE 22023 and is mapped CENTRALLY (observation-errors §0 row → 422).
+ *   THE AGENT RUNNER — one runtime (AgentsService.run), two doors: §SC's `twin-supply-scan` hook calls ReconciliationBridge.runner() (the B30
+ *     bridge, its task type widened to reconcile_scan | supply_scan | domain_scan — the twin side imports nothing of the executive); §CI's
+ *     `domain-competitor-scan` hook resolves AgentsService through ModuleRef (the domains module imports no executive module). Both start the
+ *     scan, await it only up to a bound and keep one scan in flight per agent (B25-R). No third door is needed.
+ *   CITATION KINDS — the table CHECK (tse_material_substantiated, §0.4) lets a material complete element rest on a scenario or an estimate
+ *     alone, but the PORTS (twin.ground_element / admit_version, 0103) still count evidence, claims, forecasts, assumptions and runs only. Kept
+ *     so (MAP §0.4: the basis rules stay): a scenario element on a material key keeps its branch's assumption beside the scenario citation
+ *     (§TW's TS refuses it in words first); an estimated element cites the estimate AND its evidence (§TW's decide_estimate). Neither port is
+ *     re-declared.
  */
 import { Injectable } from '@nestjs/common';
 import { sql } from 'kysely';
@@ -56,9 +77,13 @@ export interface PackageFunctionState {
 export interface PackageGateQuery { tenantId: string; domainId: string; packageKey: string; fn: string | null }
 
 /** The governed refusal a package-bound write answers when its function is not active: `<noun> rejected (package): <reason>` (422 by the
- *  parts' class rows — `package` is "the rest"). Thrown as a plain Error so the observation-errors mapping answers it like a port's text. */
+ *  parts' class rows — `package` is "the rest"). Thrown as a plain Error so the observation-errors mapping answers it like a port's text.
+ *  B33 integration: it carries the SQLSTATE the SQL seam's refusals raise (22023, `dpk_gate` / `dci_gate`), so `asObservationRefusal` maps it
+ *  CENTRALLY — the noun's class rows first, then the §0 row `^<noun> rejected (package): ` → 422 for any noun — and a caller that does not
+ *  catch it still answers a governed 422, never a 500. */
 export class PackageUnavailable extends Error {
-  constructor(readonly noun: string, readonly answer: PackageFunctionState) { super(`${noun} rejected (package): ${answer.reason}`); }
+  readonly code = '22023';
+  constructor(readonly noun: string, readonly answer: PackageFunctionState) { super(`${noun} rejected (package): ${answer.reason}`); this.name = 'PackageUnavailable'; }
 }
 
 export interface PackageGate {

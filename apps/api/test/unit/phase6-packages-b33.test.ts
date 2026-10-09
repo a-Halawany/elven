@@ -236,7 +236,8 @@ describe('the four definitions: real public feeds, synthetic inputs, the license
 });
 
 describe('every refusal of the part\'s migration answers by its class (403 → 404 → 409 → 422) with its own sentence', () => {
-  const file = readFileSync(fileURLToPath(new URL('../../migrations/0111_b33_x_packages.sql', import.meta.url)), 'utf8');
+  // the part-local file was folded into 0111 at integration: §PK is its own section of the one file
+  const file = ((readFileSync(fileURLToPath(new URL('../../migrations/0111_b33_supply_chain_intelligence_domain_packages.sql', import.meta.url)), 'utf8')) as string).split('\n-- §PK — ')[1]!.split('-- ── end of the folded §PK ──')[0]!;
   const raised = [...file.matchAll(/RAISE EXCEPTION '((?:[^']|'')*)'[^;]*?USING ERRCODE = '([0-9A-Z]{5})'/g)].map((m) => ({ text: m[1]!.replace(/''/g, "'"), code: m[2]! }));
   const pg = (code: string, message: string) => Object.assign(new Error(message), { code });
   const statusOf = (cls: string) => (['actor', 'ownership', 'authority', 'separation_of_duties'].includes(cls) ? 403 : cls.startsWith('unknown_') ? 404 : ['state', 'stale', 'duplicate'].includes(cls) ? 409 : 422);

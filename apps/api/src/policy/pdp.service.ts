@@ -2169,7 +2169,7 @@ const BUNDLE_V1: Rule[] = [
   { actionPrefix: 'domain.link.withdraw', exact: true, requiredAnyRole: [{ role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'domain_specialist', atScope: 'DOMAIN' }, { role: 'domain_admin', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
   /* end B33 packages */
   /* B33 competitor */
-  /* B33 competitor (0111_b33_x_competitor.sql; F-P4-15 ch.29, JRN-10, CAP-FW-06). EXACT rules — no earlier rule is a prefix of `domain.competitor.*`
+  /* B33 competitor (0111 §CI; F-P4-15 ch.29, JRN-10, CAP-FW-06). EXACT rules — no earlier rule is a prefix of `domain.competitor.*`
      (no `domain.` rule exists before B33; §PK's are exact too). THE READ (domain.competitor.read) — audited: the analysts, the strategy lead, the
      executives, the decision roles, the twin owners, the domain specialists, the Domain Intelligence Agent (its scan's one read) and the
      attention agent (the after-tick hook's pending check). DECLARE — an analyst, a strategy owner, the domain's administrator. PROPOSE —

@@ -1,5 +1,5 @@
 /**
- * The competitor intelligence client — CP-6 B33 §CI (0111_b33_x_competitor.sql; F-P4-15 ch.29, JRN-10, CAP-FW-06).
+ * The competitor intelligence client — CP-6 B33 §CI (0111 §CI; F-P4-15 ch.29, JRN-10, CAP-FW-06).
  *
  * Every response is returned VERBATIM: the competitor bound to its graph organization, its TEMPORAL profile versions (effective from a day,
  * recorded at an instant; approved | limited | superseded), the events and the interpretation an analyst approved, the proposals (the agent's

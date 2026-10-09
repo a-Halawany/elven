@@ -25,7 +25,7 @@ const RED_SEA = { chokepoints: ['bab-el-mandeb'], places: [], derating: 0.75, du
 
 describe('SC1 · the kind and the network\'s uncertainty (AI-53-003)', () => {
   it('the kind\'s element schema after 0111 §SC is the forward UPDATE\'s object, byte-equal; 0092\'s stays the B29 pin', () => {
-    const sqlText = readFileSync(join(__dirname, '../../migrations/0111_b33_x_supply.sql'), 'utf8');
+    const sqlText = ((readFileSync(join(__dirname, '../../migrations/0111_b33_supply_chain_intelligence_domain_packages.sql'), 'utf8')) as string).split('\n-- §SC — ')[1]!.split('-- ── end of the folded §SC ──')[0]!;   // §SC, folded into 0111 at integration
     const m = /UPDATE twin\.twin_kind_schemas SET element_schema = '(.*?)'::jsonb\s+WHERE kind = 'supply-network'/s.exec(sqlText);
     expect(m).not.toBeNull();
     expect(JSON.parse(((m as RegExpExecArray)[1] as string).replace(/''/g, "'"))).toEqual(SUPPLY_NETWORK_SCHEMA_B33);

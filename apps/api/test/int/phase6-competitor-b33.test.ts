@@ -1,5 +1,5 @@
 /**
- * CP-6 B33 §CI (0111_b33_x_competitor.sql) — COMPETITOR INTELLIGENCE (F-P4-15 ch.29: PR-29-001/-002/-003/-005/-006, CAP-FW-06, AT-29, JRN-10;
+ * CP-6 B33 §CI (0111 §CI) — COMPETITOR INTELLIGENCE (F-P4-15 ch.29: PR-29-001/-002/-003/-005/-006, CAP-FW-06, AT-29, JRN-10;
  * F-P5-01's "families populated": the competitor and market twins), on a real database through the real pipeline, routes and ports, with
  * named humans holding sessions of their own (the ports compare the acting principal). Every figure is SYNTHETIC (NORDWERK's world; the
  * competitors "Atlas Getriebemotoren AG", "Kessler Antriebe GmbH", "Lindqvist Motoren AB" are fictional). What this harness proves is the

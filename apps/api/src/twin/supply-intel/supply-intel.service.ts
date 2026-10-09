@@ -667,8 +667,8 @@ export class SupplyIntelService implements OnModuleInit {
                ...(pend.drifted.length === 0 ? {} : { drifted: pend.drifted, note: 'a Supply Chain Agent registered with another code digest is not started by the schedule: register it anew with this runtime\'s digest' }) };
     }
     const agentId = pend.agents[0] as string;
-    // the executive's runner (AgentsService.run) runs any task of the agent's kind; its bridge type names B30's task — the supply scan is the same call
-    const runner = ReconciliationBridge.runner() as unknown as ((x: Row) => Promise<{ runId: string; agentId: string; outcome: string; stopReason: string | null }>) | null;
+    // the executive's runner (AgentsService.run) runs any task of the agent's kind — the bridge's generic runner (B33 integration: typed for supply_scan)
+    const runner = ReconciliationBridge.runner();
     const live = this.inFlight.get(agentId);
     let scan: Row;
     if (runner === null) scan = { skipped: 'no agent runner in this application' };

@@ -1216,6 +1216,10 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
      → 409 below; the helpers' `attention item rejected: …` texts are internal (a part's port validates first). */
   /* B33 §0 */
   { match: /^domain package rejected \(state\)/i, status: 409, code: 'EYE_STA_002' },
+  /* B33 integration: THE PACKAGE_GATE REFUSAL, centrally — `<noun> rejected (package): <reason>` (the SQL seam's 22023, or the TS seam's
+     PackageUnavailable, which carries the same SQLSTATE) answers 422 for ANY noun, so a part's write that reaches the gate without its own
+     class rows still answers governed. Every existing `(package)` text was already 422 (B31's `value of information rejected (package)`). */
+  { match: /^[a-z][a-z ]{1,60} rejected \(package\): /i, status: 422, code: 'EYE_REQ_001' },
   /* end B33 §0 */
   /* B33 twin — §TW's two rows (`estimate rejected (dependency)` 409, `(citation)` 422) are the `B33 twin` mini-block placed BEFORE B30's
      estimation rows (a row here would never be reached: B30's `^estimate rejected \(` 422 matches first). No other row: §TW's merge,
@@ -1243,7 +1247,7 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   { match: /^(domain package|package conformance|domain assessment|watchlist|domain event) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
   /* end B33 packages */
   /* B33 competitor */
-  /* B33 competitor (0111_b33_x_competitor.sql) — the families `competitor profile|competitor comparison|competitor assessment|competitor watchlist
+  /* B33 competitor (0111 §CI) — the families `competitor profile|competitor comparison|competitor assessment|competitor watchlist
      rejected (<class>)` (§CI's ports, guards and the package gate). Anchored, the class parenthesis required; no earlier row starts with
      `competitor`. B9's order: 403 actor|ownership|authority|separation_of_duties · 404 unknown_* · 409 state|stale|duplicate · 422 the rest
      (request, package, identity, citation, basis, owner, reason, digest, twin). `competitor watchlist` is a fourth noun beside MAP's three

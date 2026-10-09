@@ -1,6 +1,6 @@
 'use client';
 /**
- * Competitor intelligence — CP-6 B33 §CI (0111_b33_x_competitor.sql; F-P4-15 ch.29: PR-29-001..006, CAP-FW-06, JRN-10, WS-10's competitor domain).
+ * Competitor intelligence — CP-6 B33 §CI (0111 §CI; F-P4-15 ch.29: PR-29-001..006, CAP-FW-06, JRN-10, WS-10's competitor domain).
  *
  * JRN-10 — RESOLVE (a competitor is a graph ORGANIZATION; its identity is the graph's resolution) → COLLECT (the Domain Intelligence Agent's
  * and the analysts' proposals) → COMPARE (on a declared, versioned basis) → ASSESS (a named analyst approves, digest-bound) → REVIEW (an

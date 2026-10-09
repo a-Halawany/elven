@@ -1,6 +1,6 @@
 /**
  * B33 §CI — COMPETITOR INTELLIGENCE: the service behind /v1/tenants/:t/domains/:d/domain-competitors (JRN-10: resolve → collect → compare →
- * assess → review → alert → update → replay; CAP-FW-06; PR-29-001..006). The ports decide (0111_b33_x_competitor.sql); this service composes
+ * assess → review → alert → update → replay; CAP-FW-06; PR-29-001..006). The ports decide (0111 §CI); this service composes
  * the reads, admits the CPF object of every profile version a write creates (in the SAME transaction, then binds it), offers the Domain
  * Intelligence Agent's scan through DomainScanBridge, and registers the after-tick hook `domain-competitor-scan` (B25-R: STARTED, never awaited
  * past `scanAwaitMs`; one scan per agent in flight; only when the backlog or a revalidation is pending).

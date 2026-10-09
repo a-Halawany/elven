@@ -1,5 +1,5 @@
 /**
- * B33 §CI (0111_b33_x_competitor.sql) — THE COMPETITOR CAPABILITIES: one implementation, narrow interfaces (the twin capability's shape); every
+ * B33 §CI (0111 §CI) — THE COMPETITOR CAPABILITIES: one implementation, narrow interfaces (the twin capability's shape); every
  * write is a SECURITY DEFINER port that asserts the caller's own bound action; reads go through the tables' row security and the INVOKER reads.
  *
  *   domain.competitor.read                  reads (the analysts, the strategy lead, the executives, the agent — audited)
