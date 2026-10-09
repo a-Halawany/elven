@@ -405,6 +405,12 @@ const SOURCE_BR = 'stress-75'; const TARGET_BR = 'blockade';
   const d2 = (await q(`select version from twin.twin_versions where twin_id = $1 and branch_id = $2 and state = 'draft' order by version desc limit 1`, [CORRIDOR.id, TARGET_BR]))[0] ?? null;
   (d2 ? ok : bad)(`the open draft for the form: ${TARGET_BR} · draft v${d2?.version ?? '—'}`);
   ENV_OUT.EYE_B33_DRAFT_BRANCH = TARGET_BR; ENV_OUT.EYE_B33_MERGE_SOURCE = SOURCE_BR; ENV_OUT.EYE_B33_MERGE_TARGET = TARGET_BR;
+  // the walk's scenario-element form picks a scenario and its branch: the EARLIEST active scenario with an active branch named as the draft's
+  // twin branch (eye_demo holds two "Blockade" branches, one per vocabulary-v1 scenario) — printed so the walk never falls back to defaults
+  const sb = (await q(`select s.title, b.name from prediction.branches_current b join prediction.scenarios_current s on s.scenario_id = b.scenario_id
+                        where lower(b.name) = lower($1) and s.state = 'active' and s.tenant_id = $2 and s.domain_id = $3 order by s.scenario_id limit 1`, [TARGET_BR, T, D]))[0] ?? null;
+  if (sb) { ENV_OUT.EYE_B33_SCENARIO_TITLE = String(sb.title).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); ENV_OUT.EYE_B33_SCENARIO_BRANCH = sb.name; }
+  else bad(`no active scenario carries a branch named ${TARGET_BR} — the walk's scenario-element form has nothing to cite`);
 }
 // TW3 — THE 78.074 % ESTIMATE: the Reconciliation Agent's proposal of 2026-10-08 was computed on v19 and the head moved to v20 — its approval is
 // REFUSED stale (the product's rule, shown); A. Hoffmann proposes it again on the current head through the governed route (the same real PortWatch
