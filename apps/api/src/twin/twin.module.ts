@@ -50,7 +50,10 @@ import { FabricController } from './simulations/fabric/fabric.controller.js';
 import { FabricService } from './simulations/fabric/fabric.service.js';
 /* end B30 experiments */
 /* B33 twin */ /* end B33 twin */
-/* B33 supply */ /* end B33 supply */
+/* B33 supply */
+import { SupplyIntelController } from './supply-intel/supply-intel.controller.js';
+import { SupplyIntelService } from './supply-intel/supply-intel.service.js';
+/* end B33 supply */
 
 // CP-6 B6 (0063): the twin CONSUMER of GraphChanged/MemoryCorrected registers itself into the graph's
 // dispatcher at module init; the graph module imports nothing from here (the direction stays ES-04-003's).
@@ -65,7 +68,7 @@ import { FabricService } from './simulations/fabric/fabric.service.js';
     /* B30 estimation */ EstimationController /* end B30 estimation */,
     /* B30 experiments */ FabricController /* end B30 experiments */,
     /* B33 twin */ /* end B33 twin */
-    /* B33 supply */ /* end B33 supply */],
+    /* B33 supply */ SupplyIntelController /* end B33 supply */],
   providers: [TwinService, SimulationService, TwinSubscriptionConsumer,
     /* B29 (0092) */ CompositionService, SupplyNetworkService, MethodRegistry, ConstraintService, { provide: CONSTRAINT_GATE, useExisting: ConstraintService },
     /* B31 impact */ ImpactService /* end B31 impact */,
@@ -74,7 +77,7 @@ import { FabricService } from './simulations/fabric/fabric.service.js';
     /* B30 estimation */ EstimationService /* end B30 estimation */,
     /* B30 experiments */ FabricService /* end B30 experiments */,
     /* B33 twin */ /* end B33 twin */
-    /* B33 supply */ /* end B33 supply */],
+    /* B33 supply */ SupplyIntelService /* end B33 supply */],
   exports: [TwinService, SimulationService, /* B29 (0092) */ SupplyNetworkService, /* B31 orchestration */ OrchestrationService],
 })
 export class TwinModule {}

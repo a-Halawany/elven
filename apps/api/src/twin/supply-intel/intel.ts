@@ -368,7 +368,7 @@ export function mapDisruption(spec: DisruptionSpec, networks: readonly NetworkIn
                    utilisation_after: rateA === null || lineCap === 0 ? null : round(rateA / lineCap, 4), stale: lStale });
     }
     const confs = affected.map((a) => x.routes.get(a.route)?.confidence).filter((c): c is number => finite(c));
-    const u = uncertaintyOf(els.filter((e) => !exclude.has(e.key.startsWith('site:') ? e.key.slice(5) : '')));
+    const u = uncertaintyOf(els);
     maps.push({
       twin_id: net.twin_id, title: net.title, version: net.version, owner: net.owner, terminal: terminal?.id ?? null, unit,
       affected_routes: affected, throughput_before_per_day: before === null || !Number.isFinite(before) ? null : round(before, 4),

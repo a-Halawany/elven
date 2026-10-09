@@ -827,6 +827,9 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
      version that is not admitted on actual), the caller's own 422 (a malformed finding, a twin of another family, a decision without reason). */
   { match: /^twin proposal rejected \((actor|not_agent|run|ownership)\)|^twin write rejected \(agent\)/i, status: 403, code: 'EYE_AUT_001' },
   { match: /^twin proposal rejected: no such /i, status: 404, code: 'EYE_STA_001' },
+  /* B33 supply (0111 §SC.4, AG-026): the concurrent-draft race answered in the family's words — placed before the family's 422 catch-all */
+  { match: /^twin proposal rejected \(duplicate\)/i, status: 409, code: 'EYE_STA_002' },
+  /* end B33 supply */
   { match: /^twin proposal rejected \((state|version)\)/i, status: 409, code: 'EYE_STA_002' },
   { match: /^twin proposal rejected/i, status: 422, code: 'EYE_REQ_001' },
   /* end B29 §B */
@@ -1209,7 +1212,16 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   /* end B33 §0 */
   /* B33 twin */
   /* end B33 twin */
-  /* B33 supply */
+  /* B33 supply (0111 §SC) — `supply inference | supply disruption | supply alternative rejected (<class>)`, B9's order: 403 the acting principal,
+     the authority (an agent validating, a person drafting, a role the port re-checks), the ownership (not the twin's owner), the separation of
+     duties (the scan's requester validating); 404 the unknown_* absences; 409 the record's state (a decided inference, a mapped disruption,
+     a lifecycle move), stale (a changed proposal digest, an expired validation, a map read before a newer head, an evaluation of an older map),
+     duplicate (a live record source, a live disruption of the same footprint); 422 the rest (shape, evidence, isolated, sensitive, expiry,
+     application, capacity, family, signal, map, branch, …). */
+  { match: /^supply (inference|disruption|alternative) rejected \((actor|authority|ownership|separation_of_duties)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^supply (inference|disruption|alternative) rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^supply (inference|disruption|alternative) rejected \((state|stale|duplicate)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^supply (inference|disruption|alternative) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
   /* end B33 supply */
   /* B33 packages */
   /* end B33 packages */

@@ -1248,6 +1248,10 @@ const BUNDLE_V1: Rule[] = [
       // B30 estimation, THE SAME WAY: the Reconciliation Agent reads the series its estimators declare out of the evidence bytes — manifest-resolved,
       // digest-verified and in custody, the purpose and the series named on the entry.
       { role: 'reconciliation_agent', atScope: 'DOMAIN' },
+      // B33 supply (0111 §SC2), THE SAME WAY: the Supply Chain Agent reads the shipment / customs / supplier records of a network's declared record
+      // sources out of the evidence bytes — manifest-resolved, digest-verified and in custody, the purpose and the network named on the entry.
+      { role: 'supply_chain_agent', atScope: 'DOMAIN' },
+      // end B33 supply
           { role: 'twin_owner', atScope: 'DOMAIN' },
       { role: 'simulation_operator', atScope: 'DOMAIN' },
       // B9 (0066 §3/§4): the Enterprise Memory and retention roles.
@@ -2113,7 +2117,22 @@ const BUNDLE_V1: Rule[] = [
      capability on a contracted tenant (0111 §0.7); a human-gated rule (obligations: [{ type: 'human_gate' }]) is exempt. */
   /* B33 twin */
   /* end B33 twin */
-  /* B33 supply */
+  /* B33 supply (0111 §SC) — supply-chain intelligence, every name EXACT under `twin.supply.` (no `twin.` prefix rule covers it: the prefixes are
+     twin.read, twin.declare, twin.version.admit, twin.version, twin.ground). The READ (the workspace, the network's uncertainty, the inferences,
+     disruptions, maps, alternatives) to the twin's readers, the risk and decision owners, the Supply Chain Agent (its scan) and the attention
+     agent (the after-tick hook's pending check). The AGENT drafts inferences, proposes disruptions and re-maps them; a NAMED DOMAIN ANALYST
+     validates (human-gated; the port re-checks the role, the human, the separation from the scan's requester); the twin's OWNER names record
+     sources and applies (human-gated); a PERSON confirms, closes and maps a disruption and evaluates an option — never the agent (the ports). */
+  { actionPrefix: 'twin.supply.read', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'supply_chain_agent', atScope: 'DOMAIN' }, { role: 'attention_agent', atScope: 'DOMAIN' }], obligations: [{ type: 'audit_access' }], requiresPurpose: true },
+  { actionPrefix: 'twin.supply.records.declare', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'twin.supply.inference.draft', exact: true, requiredAnyRole: [{ role: 'supply_chain_agent', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'twin.supply.inference.validate', exact: true, requiredAnyRole: [{ role: 'domain_analyst', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'twin.supply.inference.apply', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'twin.supply.disruption.open', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'supply_chain_agent', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'twin.supply.disruption.confirm', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'twin.supply.disruption.close', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'twin.supply.disruption.map', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'supply_chain_agent', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'twin.supply.alternative.evaluate', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   /* end B33 supply */
   /* B33 packages */
   /* end B33 packages */
