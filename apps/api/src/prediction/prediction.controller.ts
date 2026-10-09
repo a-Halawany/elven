@@ -178,6 +178,7 @@ export class PredictionController {
       total: assembled.points.length, points: assembled.points.slice(-limit),
       evidence: assembled.evidence.length, freshestRecordedAt: assembled.freshestRecordedAt,
       complete: assembled.complete, unreadable: assembled.unreadable, controls: assembled.controls,
+      supersededUnreadable: assembled.supersededUnreadable,   // B25 act-found: unreadable fragments a later version serves on their day (disclosed, not counted)
       note: (assembled.attribution === null ? '' : `${assembled.attribution} Shown as published; the statistics are not modified.`) + unreadableNote || null,
     };
   }
@@ -207,6 +208,9 @@ export class PredictionController {
     // The object id is minted HERE so the capability is bound to exactly the
     // forecast that will be admitted, before the transaction opens.
     const forecastId = newId();
+    // B25 act-found: the series is assembled BEFORE the write opens (a long real history outlives the write's 60-second commit capability);
+    // any refusal of the read is left to the write, which answers it exactly as before
+    const assembled = await this.forecasting.preAssemble(reader, p.seriesKey, knownAt, day(p.observedThrough)).catch(() => undefined);
     const out = await this.pipeline.write(
       envelope, principal, this.route(tenantId, domainId, 'prediction.forecast.issue', 'FCT', forecastId),
       PredictionCapability.forecast,
@@ -215,7 +219,7 @@ export class PredictionController {
           seriesKey: p.seriesKey as string, horizonCode: p.horizon as string,
           knownAt, observedThrough: day(p.observedThrough),
           assumptions: Array.isArray(p.assumptions) ? p.assumptions.filter((x): x is string => typeof x === 'string') : [],
-          refreshCadence: p.refreshCadence ?? 'daily', label, ...(typeof p.method === 'string' ? { method: p.method } : {}),
+          refreshCadence: p.refreshCadence ?? 'daily', label, ...(typeof p.method === 'string' ? { method: p.method } : {}), ...(assembled === undefined ? {} : { assembled }),
         }, principal.principalId, envelope.correlation_id, envelope.purpose_id ?? 'prediction', forecastId);
         // 0065: a re-issue that superseded the previous forecast for the same question publishes GraphChanged/forecast.superseded
         // beside ForecastIssued, in the same transaction — the consumers resting on the old forecast learn of the recomputation.

@@ -6192,6 +6192,265 @@ No row makes a budget, cap or usage notice a mandatory bypass. ADR-022's mandato
   - act-b30 HELD (36.9 s; its estimate approval runs under 0106's lock) and act-b91 HELD (0.7 s).
   - NORDWERK's policy v9 already names `commercial.usage` (tenant_admin, executive), so its next usage notices are routed by it.
 
+## B25 — forecasting portfolio I: grounded context, multi-method horizons, ensembles (0108, with the bounded review's 0109). F-P4-01, F-P4-02 and F-P4-03 complete by their rows; F-P5-03's forecast environment delivered. Software capability complete; the empirical 3y/5y validation ran on real public history and failed, so nothing at 3y/5y is presented as validated.
+
+### B25.1 — how it was built
+- **Prelude (§0):** forecasts_current gained the B25 columns (forecast_kind, target_key, method_ref, ensemble_id/ensemble_role, information_set_id, environment and its digest, horizon_policy, outcome_spec) with their checks. Also:
+  - the quantile check became kind-aware;
+  - the validation state `scenario_language`;
+  - the forecast_events vocabulary;
+  - the attention class `forecast.disagreement` and the subject kind `ensemble_run`;
+  - FCT@v2;
+  - the seams `CONTEXT_FREEZER` and `METHOD_ROUTER` with null defaults.
+- **`prediction.issue_forecast`** was re-declared with `p_extras` and the authority list (issue, portfolio, ensemble). It applies **supersession by lineage**:
+  - an ensemble member supersedes nothing;
+  - an ensemble supersedes prior ensembles of its question and their members;
+  - a single forecast keeps the legacy rule.
+  - This fixes the cross-method supersession problem: before 0108 a member of one method superseded another method's forecast of the same question.
+- **Three parts**, built in parallel worktrees and folded in apply order:
+  - **§CX:** context, the frozen information set, replay, the environment;
+  - **§MR:** registry, targets, horizon policies, routing, families, validation;
+  - **§EN:** ensembles, disagreement, exclusions, judgement overlays.
+- **The fold's integration fixes:**
+  - the authority list replaced §MR's own;
+  - an unstated subject resolves to the series' subject;
+  - `pmr_fct_routed` skips the ensemble rows;
+  - the plan orders the seasonal baseline first;
+  - the ensemble escalation is routed through the PUBLISHED attention policy, not around it.
+- The three part harnesses passed together on one fresh database (27/21/6) before the act.
+
+### B25.2 — what the act and the bookkeeping review found
+**The act's rehearsal on `eye_demo_b25`.** It found four product defects. Each was reproduced failing before its fix, and each fix has a harness:
+1. **The ensemble's compute budget** was charged for the history read. A long real history excluded every member as `budget`. The clock now starts after the read (EN1 act-found).
+2. **A governed-deleted 2024 PortWatch replay fragment** (superseded evidence, retained-out) left every PortWatch series INCOMPLETE, so every corridor forecast was refused. An unreadable FRAMED FRAGMENT whose day a later-recorded version serves is disclosed (`supersededUnreadable`) and not counted. Anything else unreadable still makes the history incomplete (`phase6-series-unreadable-b25` S1–S3).
+3. **Long series reads inside the governed write.** The routed issue, validation, grounded issue and replay read the series inside the write, whose commit capability lives 60 s. The real history (~8,900 governed evidence retrievals) takes minutes, so these routes answered 500, or a misleading 409. They now read the series before the write opens; a refused plan reads nothing (`phase6-long-history-b25` L1–L5).
+4. **The legacy `POST …/forecasts/issue`** had the same defect: "admission rejected: authority mode required (context is none)" reproduced. It is fixed the same way (L6).
+
+**The bookkeeping review** judged the 28 open rows clause by clause against the integrated code. It found seven clauses the parts had not built; they were built as B25 construction, never deferred:
+- **G1:** frozen features as MODEL INPUTS, through regime conditions on twin and graph features.
+- **G2:** REPLAY of every routed family (`registry-family@1`) and of ensembles (`ensemble-combination@1`). Before this, only the two legacy methods recomputed.
+- **G3:** Bayesian IDENTIFIABILITY (posterior/prior contraction; WEAKLY IDENTIFIED flagged).
+- **G4:** causal TRANSPORTABILITY (a declared scope and assumptions; outside it refused).
+- **G5:** optimisation ROBUSTNESS (feasibility, worst case and regret per scenario).
+- **G6:** 5y PATH DEPENDENCE (regime transitions, persistence, the distribution propagated from the current regime) and OPTION VALUE and RESILIENCE over declared options.
+- **G7:** the target VERSION with its definition digest, and the EVALUATION PROFILE, pinned on the forecast.
+
+No SQL was needed. The implementation digests of the regime, bayesian, causal and optimisation families moved, so an entry approved for the earlier bytes is quarantined at its next run and replays as a named `implementation` divergence. Its forecasts stand.
+
+### B25.3 — the evidence
+Kept apart: LOCAL tests, HOSTED logs, the REHEARSAL, and the DEMONSTRATION.
+
+**Local** (each database-heavy run ALONE on the host; fresh databases, dropped afterwards):
+- **Harnesses on the final code:**
+
+  | Harness | Result |
+  |---|---|
+  | `phase6-registry-b25` | 37/37 |
+  | `phase6-ensembles-b25` | 26/26 |
+  | `phase6-context-b25` | 9/9 |
+  | `phase6-long-history-b25` | 5/5 |
+  | `phase6-series-unreadable-b25` | 3/3 |
+  | `phase6-estimation-b30` | 11/11 (ES10 reproduction then the fixed behaviour; ES11 the stale-run recovery) |
+
+  - The reconciliation fix's attention, agents and B30 harnesses were each run alone: agents 9, attention-timer 5, governance 6, markers 4, materiality 5, plan 8, attention-b22 11, events-b23 9, attention-b34 7, attention-b36 6, experiments 18, branches 21, envelope 22, signals 10, exposures 14, supply-network 6, briefing 19, review-corrections 25.
+- **The full gates at `4ac494f`** (the final API code; `f002b2c`/`091b624` change only the ensembles page and a demo walk):
+  - integration **2036/2036** (27.1 min, a fresh database, Redis flushed);
+  - API unit **3349 + 9**; web **274**; acceptance **58**;
+  - upgrade **PASS** (88 migrations);
+  - `pnpm boundaries` clean.
+- **Browser gate:** **93/93** at `091b624` (fresh database, Redis 6392). Web 274 at `091b624`.
+- **Earlier attempts, kept:**
+  - at `6747530`: integration 2034/2034, unit 3344 + 9 after a stale libvips 1.3.3 install was removed from the worktree, browser 93/93;
+  - at `62ff011`: integration 2025/2025, unit 3339 + 9;
+  - the failed runs listed in §B25.8: under load, during a host sleep, and with a stale Redis.
+- **gitleaks** (pinned 8.30.1): no leaks over every pushed range, and over copies of the changed files.
+
+**Hosted** — **on the code-final head `091b624`** (every later commit on #81 is records only): **ci 37856333888: success** — build-test job 113581285676: integration **2036/2036**, API unit **3349** + **9**, web **274**, acceptance **58**, contracts 203, tokens 3, the upgrade proof PASS, its later steps 623 and 44; supply-chain job 113581285642: pnpm-audit (human and JSON), gitleaks (worktree and history), trivy-fs and the three pinned images all ok; browser-regression job 113581285432: success. **C19 lifecycle 37856334169: success.** Earlier attempts, kept: `62ff011` — ci 37633376331 FAILED (supply-chain: sharp GHSA-wq5f-xc86-pv6w; build-test: the integration step past its 38-minute bound), C19 success; `a4a1930` — ci 37702446651 FAILED (build-test: C17 against libvips 1.3.4; supply-chain: next GHSA-cjq9-62q9-8jv4), browser and C19 37702446628 success — not merged; `6747530` — ci 37801331070 attempt 1 supply-chain FAILED on a 31.9-hour-old Trivy database (the mirror's; refused by the gate as designed), attempt 2 success, C19 37801331084 success; `4ac494f` — ci 37814717122 and C19 37814717287 success. The records head's own checks, the merge and main's chain are recorded in the next delivery record (no records-only commit chasing its own run).
+
+**The rehearsal** (`eye_demo_b25`, :3411, Redis 6395; `evidence/cp6/act-b25-rehearsal.txt`):
+- the act held through runs 1–2, the completion runs 1–2 and the B25-F runs 1–2;
+- the walks passed 9/9, then 11/11, then 12/12.
+
+**The demonstration** (`eye_demo`; `evidence/cp6/act-b25.txt`):
+- **Migrations:** 0108 on 2026-10-07 and 0109 on 2026-10-08, both by `db:migrate` after a backup each.
+- **Runs:**
+  - run 1 (`f49b705`): 3 lapsed persona sessions, fixed in the act;
+  - run 2 (`62ff011`): its first attempt was stopped by the owner while it ran beside the integration gate; alone it HELD (66.3 min);
+  - run 3 (`4ac494f`): **HELD** (8.5 min), with the pre-0109 route reconciled and the ensemble re-issued;
+  - run 4, the rerun: **HELD**, 33 writes standing, no new write.
+- **Walks:** **12/12** (context 5, ensembles 4, registry 3); 13 screenshots of record, `evidence/phase6-browser/b25-*.png`.
+- **The earlier acts on the final build:** act-b30 **HELD** (60.8 s), act-b91 **HELD** (0.8 s). The earlier walks (scratch shots): B30's four plus B36 attention **19/19**.
+- **The B91 walks** assert the pre-`--restore` state and cannot pass after `--restore`, by §21's fixed order.
+
+### B25.4 — the scenes as staged
+On eye_demo; real public data where named, everything else SYNTHETIC.
+
+- **B25-0.** 0108 and 0109 are applied. The cast is read from the role bindings; none was created. The demo graph holds NO Bab el-Mandeb Strait entity (its extracted claim waits in review). The corridor twin's boundary holds the Suez Canal, the subject of `portwatch:chokepoint1:n_total`.
+- **B25-R.**
+  - N. Eriksen proposed `event_rate@1`, `regime_judgement@1` (his declared structural judgement) and `bayes_level@1` (explicit weakly-informative priors with a no-drift alternative). H. Petrović approved each.
+  - The target `corridor.bab-el-mandeb.transit-delay` uses the B27/B28 indicator's event (< 41 transits a day on 5 consecutive published observations) and the regime categories. T. Richter approved it.
+  - The horizon policy v1: 30d event/statistical → probability; 5y regime → scenario language; a 3y/5y quantity needs a rolling-origin validation with ≥ 20 origins. H. Petrović concurred.
+- **B25-H.**
+  - The corridor's real history: 2,834 daily chokepoint4 observations, 2019-01-01 → 2026-10-04, about 94 thirty-day windows.
+  - `ecb-eurusd-history` was collected once: 56 evidence objects, 7,104 observations from 1999-01-04 → 2026-09-30, and then RETIRED.
+  - The 3y/5y validations ran on it and FAILED (§B25.5).
+- **B25-F1.**
+  - The 30d event backtest on the real corridor history: 60 origins, Brier 0.3338 against the reference 0.25. It FAILED, so the 30d event is issued unvalidated, said so.
+  - The 30d EVENT package by `event_rate@1` (probability, the intervention-window treatment) and the 5y REGIME package by `regime_judgement@1` (scenario language) show different methods per horizon on one target.
+  - The 3y quantity on `chokepoint4` was REFUSED (`forecast.horizon_refused`), naming the missing validation.
+- **B25-F3.**
+  - The grounded 30d forecast on `chokepoint1` pins graph revision 42 and the twin's head version, with the environment (V03-T-196).
+  - Replayed: REPRODUCED.
+  - K. Müller committed a change set through the B23 route (MV Hanse Trader transits the Suez Canal, resting on the extracted claim). The replay is still REPRODUCED, while a fresh grounding differs (revision 45 against 42).
+- **B25-F3b.**
+  - `regime_judgement@2` (approved) is conditioned on the frozen features `twin.shock.corridor_delay_days` (14; held) and `graph.edges` (1; held), with SYNTHETIC options. It was issued on the target `corridor.suez-canal.transit-regime` (subject Suez Canal; approved).
+  - The 5y package: closed 0.0536, disrupted 0.375, open 0.5714, in scenario language. It also carries the path-dependent view from the current regime, the option value and resilience, and its pins (target version and definition digest, the evaluation profile).
+  - Its replay and the F1 event's replay were REPRODUCED by `registry-family@1`.
+- **B25-F2.**
+  - Attention policy v10 adds `forecast.disagreement` → the forecast owner; 20 of 20 earlier classes are byte-identical.
+  - J. Weber's shared assumption plus one tied to each method.
+  - The ensemble on `chokepoint4` at 30d, cut at 2024-01-11 (where the real data make the methods disagree):
+    - seasonal naive: median 46 (31–59);
+    - Holt-Winters: median 22.57 (9.84–35.01);
+    - the linear pool: median 33.19.
+  - The disagreement is MATERIAL (gap ratio 0.8812, overlap 0.1593), and the splitting assumption is named. It was escalated to N. Eriksen through the published policy.
+  - N. Eriksen's JUDGEMENT overlay v1: median 28.43, beside the unchanged model output.
+  - A. Hoffmann's overlay and ensemble writes were refused (403).
+- **B25-F2b.**
+  - The scene's pre-0109 route was RECONCILED (refused `unbound`, the reason disclosed); a second call answered "already reconciled".
+  - The same question was RE-ISSUED on the corrected build: the prior ensemble and both its members are superseded by lineage, and its route is ISSUED.
+  - Both members carry their pins and the same output semantics (future level · the day's value · transits/day · predictive distribution). Nothing was excluded and nothing incompatible was combined.
+  - Its replay was REPRODUCED by `ensemble-combination@1`.
+- **B25-9.** The env lines for the walks and the LIMITS, each claim kept in its class:
+  - **Software capability:** the routes, refusals, grounding, replay, the ensemble manager and the overlay.
+  - **Synthetic demonstration:** the judgement pseudo-counts, conditions, options, assumptions and the overlay's rationale.
+  - **Empirical:** the ECB 3y/5y validation and the PortWatch 30d backtest, both FAILED.
+  - **Harness-proven only:** the Bayesian prior sensitivity and identifiability, the causal and optimisation families, transport, robustness, quarantine, the ensemble's retries/budget/exclusions/incompatibility, overlay revision and withdrawal, the context refusals, and a DIVERGED replay.
+
+### B25.5 — the 3y/5y question: software capability, synthetic demonstration, empirical validation
+- **Software capability.** A 3y/5y QUANTITY forecast issues only where a rolling-origin validation of that method, at that horizon, on that series has passed, with at least the policy's origins. Otherwise it is REFUSED, naming the missing or failed validation, and ledgered as `forecast.horizon_refused`. At 3y/5y, regimes are issued in scenario language and never validated.
+- **The authorized public history was checked first:**
+  - **PortWatch `chokepoint4`:** 2,827 daily observations, 2019-01-01 → 2026-09-27, about 94 complete 30-day windows. That is enough for the 30d event, too short for 3y/5y.
+  - **ECB EUR/USD reference rate:** registered as a SEPARATE BOUNDED HISTORY SOURCE, `ecb-eurusd-history`. It was registered by A. Hoffmann; approved, rights-confirmed and activated by M. Dvořák; collected through the real REST connector in 183-day windows (the portal answers the whole range cold in ~250 s, beyond the platform's egress bound); and then RETIRED, so nothing stays scheduled. Result: 7,104 observations, 1999-01-04 → 2026-09-30. The live `ecb-eurusd` and PortWatch contracts were not touched.
+- **Empirical validation** (retrospective, one vintage, 100 origins each). `bayes_level@1` has explicit weakly-informative priors with a no-drift alternative, declared before the run and not tuned after it.
+
+  | Horizon | 80% coverage (target 75–85%) | Pinball | Climatology pinball | Skill |
+  |---|---|---|---|---|
+  | 3y | 27.0% | 0.105144 | 0.06082 | −0.7288 |
+  | 5y | 18.0% | 0.16298 | 0.068522 | −1.3785 |
+
+  It **FAILED** at both horizons, so both quantity forecasts on that series are REFUSED, naming the failed validation.
+- **The PortWatch 30d event backtest** also failed (Brier 0.3439 against the reference 0.25; calibration gap −0.3986, the 2024 regime shift). The 30d event is issued UNVALIDATED, and says so.
+- **Claimed:** nothing at 3y/5y on the corridor. Its 5y is scenario language, and the regime judgement's pseudo-counts, conditions and options are SYNTHETIC declarations.
+- **Not an external block.** Better long-horizon models are model work, not missing data. They belong to F-P4-05's fitness and re-issue at B26, and no carrier is invented here.
+
+### B25.6 — the bookkeeping (the B27/B31/B35 rule: a feature completes after all its remaining construction)
+B25 **COMPLETES F-P4-01, F-P4-02 and F-P4-03 by their rows**. Every remaining clause is built and harness-proven, and the act held on the rehearsal copy and on eye_demo.
+
+| Feature | Rows (implemented / partial / missing) | Notes |
+|---|---|---|
+| F-P4-01 | 1/10/3 → **14/0/0** | The external prerequisite "multi-year outcome history" was checked against the authorized public history (the ECB, above) and cleared. The empirical result is stated on the row, not hidden. |
+| F-P4-02 | 0/4/5 → **9/0/0** | — |
+| F-P4-03 | 1/4/0 → **5/0/0** | — |
+| F-P5-03 | 18/3/0 → **19/2/0** | Advanced by V03-T-196, the forecast ENVIRONMENT. It still completes at **B33**; its remaining rows are R2's acceptance record, plus B33's merges between non-actual branches, the scenario citation kind and the web form. |
+
+- **Rows moved:** 27, with evidence on each.
+- **Rows that also name clauses of other features are stated, not claimed:**
+  - **V04-T-029:** F-P4-04's declared failure conditions with abstention stay at B26.
+  - **AI-48-002:** sensitivity, subgroup and out-of-distribution exposure, and drift-driven withdrawal, stay F-P4-04/-05 at B26.
+- **Stated on the tracker rows:**
+  - the information-set manifest pins the target key; the target VERSION is pinned on the forecast and its route (a manifest change would be a new assembler version);
+  - on the demonstration no ensemble member was excluded (the exclusion, retries, budget, overlay revision and withdrawal are harness-proven).
+- **Re-derived once:**
+  - rows implemented 1376 → 1403, partial 2586 → 2567, missing 2276 → 2268;
+  - the stage, effort and dates are unchanged (B25 6.05–10.1 U);
+  - M1's three-account finish stays 2027-07-13 (B100);
+  - B25 is pinned in A1_DELIVERED;
+  - the tracker, the schedule `--check`, the summaries and the controls pass;
+  - the acceptance split is unchanged (3,555 = 3,179 + 339 + 37).
+- **Verification class:** the rows' verification stays `unverified`/local until the hosted run (below). Acceptance legs stay unaccepted (P7-D, R2).
+
+### B25.7 — the records
+- the migration ledger's 0108 row;
+- STAGES B25's note;
+- the tracker's four rows;
+- PHASE6 §50;
+- the runbook §22;
+- DELIVERY_PLAN's B25 row;
+- INTEGRATION_SEQUENCE #81.
+
+### B25.8 — the bounded correction pass of 2026-10-08 (Codex at a4a1930; main f110f73)
+**The hosted failures at a4a1930** (ci 37702446651: build-test and supply-chain failed; browser and C19 passed). That head was not merged.
+- **C17 (build-test).** sharp 0.35.5 brought `@img/sharp-libvips-linux-x64` 1.3.4; the bundled inventory described 1.3.3. Reconciled through the existing C17 process on `b25/supply`:
+  - **Package and recipe:** 1.3.4; the recipe's tag v1.3.4 resolves to ebb95f8; the shared object is `libvips-cpp.so.8.18.7`.
+  - **Versions:** 11 of 28 component versions moved (aom, cairo, cgif, expat, fribidi, glib, harfbuzz, libheif, librsvg, libvips, libxml2). The versions.json and README digests moved.
+  - **Terms:** cairo's README term moved from MPL 2.0 to **MPL 1.1** (sharp-libvips b2a873e — what cairo's own COPYING offers). This direction is the opposite of what the review's logs suggested. MPL-1.1 was added deliberately to the code-owned term table, with an obligation rule and the canonical SPDX text (license-list-data c4a7237); the 2.0 row was removed.
+  - **Source offers:** all nine now name 1.3.4 and the new recipe. Eight still named 8.18.3, stale since 1.3.2. librsvg's records the recipe's upstream backport.
+  - **Licence texts:** re-fetched at the bundled versions and compared byte for byte. fribidi 1.0.17's COPYING changed and is re-vendored. cairo 1.18.6 (gitlab.freedesktop.org) and aom v3.15.1 (aomedia.googlesource.com) were fetched from their official hosts on 2026-10-08 and are identical, so their records cite those tags. `vendor/sharp-libvips/1.3.3` was replaced by 1.3.4.
+  - **Unchanged:** the development closure stays 313; the C16 closure gate passes; the C17 licence gate passes (production 196, development 313, 0 unresolved, 29/29 bundled components, 9 source offers).
+  - An unchanged component count was not taken as unchanged obligations: every component's terms, notices and offers were checked.
+- **Supply chain.** next 16.3.6 carried GHSA-cjq9-62q9-8jv4 (HIGH, SSRF in Image Optimization, patched ≥ 16.3.8). The minimal correction is `next` **16.3.8**; only next, @next/env and the eight @next/swc-* packages moved. `pnpm audit` is clean at every level; the five lower-severity next advisories closed with it. R2 stays assigned.
+- **An external stale database, not a finding.** The supply-chain job on 6747530 (ci 37801331070, attempt 1) refused a Trivy vulnerability database 31.9 h old against its 24 h limit; the mirror had not refreshed. The gate failed closed as designed. The mirror republished at 15:41:58Z, and the job's re-run (attempt 2) passed. Nothing was relaxed.
+
+**B25-F1: durable ensemble execution plans.**
+- **Reproduced** (registry harness cases j/l/m before the fix: 7 of 37 failed):
+  - admitted run A's causal member, which the transport rule refuses, was ISSUED after run B's target replaced the router's cached target;
+  - a run resumed under a fresh router lost its registry members;
+  - a member issued after target v2 carried no target pin.
+- **Corrected** (0109 and code):
+  - the router's per-process cache is gone. An admitted run stores its plan — each member's method ref, implementation digest, parameters, declarations, validation and evaluation profile, the route, the target version and its definition digest — in `ensemble_runs.plan`, and executes, resumes and replays only from it;
+  - a member whose saved entry is missing, whose implementation this build lacks, or whose target definition no longer matches its digest is refused;
+  - members carry the pins in `outcome_spec` and `horizon_policy`, and replay checks them (`target.definition` diverges when the pinned definition is unreadable);
+  - the run's route is bound to the run's ensemble forecast on completion (`bind_forecast_route` re-declared) and refused on failure;
+  - pre-0109 runs' routes, which could never be bound, are closed through a governed, human-gated port, `prediction.reconcile_ensemble_route`. Only a forecast owner or the domain administrator may call it, and only on a terminal run. The route is identified exactly: after 0109 by the ensemble forecast, before it by what the admission recorded. Ambiguity is refused; the route is refused `unbound` with the reason; the port is idempotent (harness EN8).
+- **Proven:**
+  - interleaved plans for different targets do not affect each other (A's transport refusal stays a refusal);
+  - restart and resume keep the admitted members;
+  - a later target version does not replace the definition used by issuance or replay.
+
+**B25-F2: ensemble output compatibility.**
+- **Reproduced:**
+  - an EUR optimisation scenario band was combined with transit-level distributions and passed the precision check;
+  - a question no member answers was answered;
+  - 60-day-mean Bayesian members were combined with daily values.
+- **Corrected:**
+  - every family's output states its meaning (future level, causal effect, objective value, …), temporal aggregation, unit and uncertainty type (predictive distribution, credible band, scenario band, effect interval);
+  - a member is combined only if it answers the run's question in the same unit, aggregation and uncertainty type. Otherwise it is EXCLUDED and DISCLOSED as `incompatible` (0109 widens the class). Fewer than two compatible members refuse the run: `ensemble rejected (incompatible): …`;
+  - a target declared as an effect or objective is refused at admission;
+  - planning stays shared with the single-method issue, so exclusion happens on the computed output, with every dropped path visible;
+  - the multi-family ensemble still works: statistical builtins plus a one-day Bayesian entry are combined, and the 60-day-mean entries are excluded (registry case j).
+- No method implementation file changed, so no implementation digest moved for F2.
+
+**The eye_demo staging's own finding: B30's reconciliation scan held the attention tick.**
+- **What happened:**
+  - at 11:00 UTC on 2026-10-07 the live PortWatch collection recorded a new count (`trigger.telemetry`), the condition B30's Reconciliation Agent waits for;
+  - the attention tick's after-tick hook ran the agent's `reconcile_scan` inline;
+  - the scan computed the corridor's estimators from the full real history twice, about 18,000 governed retrievals, under a 15-minute agent session;
+  - the session lapsed mid-read; neither the scan's run nor the tick's could record its close (their closes were refused `session_not_active`);
+  - the timer host recorded the tick's own lapsed close as a second "refused" run;
+  - every 15 minutes the cycle repeated, because the check was never consumed: 64 + 64 runs stuck `running`, and 4 `evidence_write_failed` records in the degraded journal.
+- Coinciding with the staging, this looked like a B25 regression; it is a B30 defect exposed by the same long real history B25's act exposed.
+- **Corrected on `b25/recon`, no migration** (estimation harness ES10 reproduced it first; ES11 covers the recovery):
+  - the tick waits at most 30 s for the scan, and only one scan per agent is in flight;
+  - the scan reads only its estimators' window (the widest is 30 points), once per twin and key, about 465 retrievals on eye_demo instead of about 18,000;
+  - the meter stops new work 60 s before the session ends;
+  - a run whose session lapses ends `stopped` with the reason, under a fresh session of the same agent;
+  - an agent's own stale `running` runs are closed when it next opens a run.
+- **On eye_demo after the restart on 4ac494f:**
+  - the attention ticks returned to every minute, about 0.5 s each;
+  - the attention agent's 64 stuck runs closed `stopped`;
+  - the pending check was processed by a scan that finished in 14 min 42 s on 6747530, just inside its session, and proposed to the twin's owner.
+- **Disclosed:**
+  - the reconciliation agent's 63 older runs stay `running` until that agent's next run closes them; they block nothing;
+  - `/readyz` stays **audit degraded**: the 4 journal records are journal-only. `recordEvidenceFailure` files no ledger incident, so the governed recovery entrypoint (run on 2026-10-08 by "B25 staging (Claude Code, for the owner)") found nothing to reconcile and correctly left the flag set. The missing governed path for journal-only records is a separate follow-up, not changed in this bounded pass, and the journal was not edited.
+
+**Local work runs sequentially** (the lessons of this pass):
+- the integration gate run beside a demo act produced 69 load failures and lapsed a user session;
+- a run during a host sleep produced 182 failures (timeouts, "recorded_at is in the future");
+- a gate Redis holding 51,120 stale keys from earlier runs produced 5 more. Both of those files passed alone on fresh databases (long-history 5/5, memory-derived 6/6), and the gate Redis was flushed.
+
+Every recorded result below is from a run with nothing else heavy on the host.
+
 ## Order and the next implementation batch
 
 B3, B1 and B2 are done in code, B4/B5 applied to the audit (the 2026-09-11 checkpoints), B6 done in
@@ -6204,4 +6463,4 @@ one artefact, no deployment leg. Every leg of every unit stays unaccepted until 
 carries its own signed evidence (P7-D). The synthetic-company demonstration (`eye_demo`, NORDWERK) remains the deliverable
 every batch is exercised on: B3's kinds become visible on the demonstration when a scenario with the
 new kinds is declared there through the governed route (a scripted act, `scripts/phase4/`), which is
-the next demonstration step after the hosted run is green. B22 delivered the consumers and the attention policy (0083; the register 44/6/0) and the sweep's remedy (0082). Then B23 (the commands and the query — L1-I02, L3-I02, L4-I02, L7-I02, L10-I02/-I03). B23 bound them and the briefing's attention section (0084; the register 50/0/0). From here the order is the finite delivery plan's (`audit/DELIVERY_PLAN.md`, `audit/delivery/STAGES.csv`): B24 (the attention completion, 0086) delivered on 2026-09-25 on `phase6-b24`, stacked on #63, and B24-F1 corrected on 2026-09-26 (0087, §B24.8) with the tracker corrected (§B24.9); B28 (stream processing, the weak-signal workbench, the early-warning lifecycle, and the two B24 carryovers) delivered on 2026-09-26 (0088, `phase6-b28`, stacked on #64); B32 (the Strategy Graph's capabilities and alignment, risk and opportunity intelligence, the decomposable Strategic Health Score) delivered on 2026-09-28 (0089, `phase6-b32`, stacked on #65; §B32; B32-F1 corrected, §B32.10); B34 (durable workflow, collaboration and human tasks, the human gates, the commitment tracker and the governed execution handoff, the attention classes and the act, risk and opportunity continued) delivered on 2026-09-28/29 (0090, `phase6-b34`, stacked on #66; §B34) and corrected forward on the owner's bounded review of 2026-09-29 (0091, §B34.10) — it advances five features, all completing in B36. B29 (twin families and composition, the simulation method fabric and the constraint runtime) delivered on 2026-09-29 (0092, `phase6-b29`, stacked on #67; §B29): the tracker's clauses of F-P5-01 and F-P5-05 closed, their rows' residuals assigned to B30, B31, B33, B78 and R2. B36 (strategic planning, the executive home, the briefing studio v3, the publishing center, and the carried completions of F-P6-04, F-P6-07, F-P6-08, F-P6-09, F-P6-14, F-P6-05 (u) and F-P4-13 (i)(j)) delivered on 2026-09-30 (0094, `phase6-b36`, stacked on #68; §B36): the eleven features' B36 clauses built and harness-proven by eight parts in parallel behind one prelude, the hosted browser cases of conditions (e), (h), (i), (m), (p) and (s) open at `fd47d1c`, the residuals assigned to B35, B45, B54, B55, B61, B83, B84, B85, B86, B92, B103 and R2. B90 (data products, semantic metrics, the metadata catalog) delivered on 2026-09-30 (0095, `phase6-b90`, stacked on #69; §B90): the three features' B90 clauses (F-P7-F-09, F-P7-F-10, F-P7-F-11) built and harness-proven by four parts in parallel behind one prelude (76/76 on a fresh database), the three features `partial` by the tracker's rule, the residuals assigned to B31, B45, B91, B92, B93, B106/R1 and B107 (B36's B103 and R2 residuals preserved); the act, the browser gate and the hosted run pending at the candidate (PR #70), then corrected forward for B90-F1 (0096, §B90.11). B27 (scenario anatomy, sets and coherence) delivered on 2026-10-01 (0097, `phase6-b27`, stacked on #70; §B27): the three features' B27 clauses (F-P4-07, F-P4-08, F-P4-09) built and harness-proven by three parts behind one prelude (72/72 on a fresh database) — the anatomy with the assumption register and the suspended branch, the sets with the plurality gate before a recommendation, the comparator and the portfolio review, the quality evaluation beyond coherence v1 and the governed branch probabilities with the frequency-to-probability map —, the three features `partial` by the tracker's rule, the residuals assigned to B26, B31, B35, B73, B74, B78, B83 and R2 (B90's and B36's residuals preserved); the act, the browser gate and the hosted run pending at the candidate (PR #71). B31 (simulation orchestration, impact analysis, validity) delivered on 2026-10-01 (0099, `phase6-b31`, stacked on #71; §B31: F-P5-09 complete by the rows, F-P5-06 and F-P5-07 partial with their residuals named). B31's bounded review of 2026-10-01 added 0100 (B31-F1, B31-F2) and owned every B31 residual (§B31.9); B90 and B27 travel as one candidate, #71. B35 (decision analysis, recommendation, explanation and appeal, reopen and replay) delivered on 2026-10-01/02 (0101, `phase6-b35`, stacked on #72; §B35: the four features advanced, each completing after its remaining construction). B30 (twin state, reconciliation, envelope and calibration) delivered on 2026-10-02 (0103; §B30), corrected forward on 2026-10-04 (0104, §B30.8), merged with #77 and #79. B91 (usage metering, the cost ledger, entitlements and licensing) delivered on 2026-10-04 (0105; §B91). The next A1 stage in the schedule is B25. The C15 return to the official images merged with #57 (`main` `870b212`); the live demonstration containers were recreated onto those images on 2026-09-24 under the owner's word (§B22.2). The `ctx.build` remedy was delivered as 0082 (§B22.1) — the owner's 2026-09-24 word made it a technical choice. AU-MEM-0067 stays OPEN without a waiver: the per-object class (a missing or corrupt object under a reachable root) keeps A7's one 409 and the specification obligation stands (§B21.2's table).
+the next demonstration step after the hosted run is green. B22 delivered the consumers and the attention policy (0083; the register 44/6/0) and the sweep's remedy (0082). Then B23 (the commands and the query — L1-I02, L3-I02, L4-I02, L7-I02, L10-I02/-I03). B23 bound them and the briefing's attention section (0084; the register 50/0/0). From here the order is the finite delivery plan's (`audit/DELIVERY_PLAN.md`, `audit/delivery/STAGES.csv`): B24 (the attention completion, 0086) delivered on 2026-09-25 on `phase6-b24`, stacked on #63, and B24-F1 corrected on 2026-09-26 (0087, §B24.8) with the tracker corrected (§B24.9); B28 (stream processing, the weak-signal workbench, the early-warning lifecycle, and the two B24 carryovers) delivered on 2026-09-26 (0088, `phase6-b28`, stacked on #64); B32 (the Strategy Graph's capabilities and alignment, risk and opportunity intelligence, the decomposable Strategic Health Score) delivered on 2026-09-28 (0089, `phase6-b32`, stacked on #65; §B32; B32-F1 corrected, §B32.10); B34 (durable workflow, collaboration and human tasks, the human gates, the commitment tracker and the governed execution handoff, the attention classes and the act, risk and opportunity continued) delivered on 2026-09-28/29 (0090, `phase6-b34`, stacked on #66; §B34) and corrected forward on the owner's bounded review of 2026-09-29 (0091, §B34.10) — it advances five features, all completing in B36. B29 (twin families and composition, the simulation method fabric and the constraint runtime) delivered on 2026-09-29 (0092, `phase6-b29`, stacked on #67; §B29): the tracker's clauses of F-P5-01 and F-P5-05 closed, their rows' residuals assigned to B30, B31, B33, B78 and R2. B36 (strategic planning, the executive home, the briefing studio v3, the publishing center, and the carried completions of F-P6-04, F-P6-07, F-P6-08, F-P6-09, F-P6-14, F-P6-05 (u) and F-P4-13 (i)(j)) delivered on 2026-09-30 (0094, `phase6-b36`, stacked on #68; §B36): the eleven features' B36 clauses built and harness-proven by eight parts in parallel behind one prelude, the hosted browser cases of conditions (e), (h), (i), (m), (p) and (s) open at `fd47d1c`, the residuals assigned to B35, B45, B54, B55, B61, B83, B84, B85, B86, B92, B103 and R2. B90 (data products, semantic metrics, the metadata catalog) delivered on 2026-09-30 (0095, `phase6-b90`, stacked on #69; §B90): the three features' B90 clauses (F-P7-F-09, F-P7-F-10, F-P7-F-11) built and harness-proven by four parts in parallel behind one prelude (76/76 on a fresh database), the three features `partial` by the tracker's rule, the residuals assigned to B31, B45, B91, B92, B93, B106/R1 and B107 (B36's B103 and R2 residuals preserved); the act, the browser gate and the hosted run pending at the candidate (PR #70), then corrected forward for B90-F1 (0096, §B90.11). B27 (scenario anatomy, sets and coherence) delivered on 2026-10-01 (0097, `phase6-b27`, stacked on #70; §B27): the three features' B27 clauses (F-P4-07, F-P4-08, F-P4-09) built and harness-proven by three parts behind one prelude (72/72 on a fresh database) — the anatomy with the assumption register and the suspended branch, the sets with the plurality gate before a recommendation, the comparator and the portfolio review, the quality evaluation beyond coherence v1 and the governed branch probabilities with the frequency-to-probability map —, the three features `partial` by the tracker's rule, the residuals assigned to B26, B31, B35, B73, B74, B78, B83 and R2 (B90's and B36's residuals preserved); the act, the browser gate and the hosted run pending at the candidate (PR #71). B31 (simulation orchestration, impact analysis, validity) delivered on 2026-10-01 (0099, `phase6-b31`, stacked on #71; §B31: F-P5-09 complete by the rows, F-P5-06 and F-P5-07 partial with their residuals named). B31's bounded review of 2026-10-01 added 0100 (B31-F1, B31-F2) and owned every B31 residual (§B31.9); B90 and B27 travel as one candidate, #71. B35 (decision analysis, recommendation, explanation and appeal, reopen and replay) delivered on 2026-10-01/02 (0101, `phase6-b35`, stacked on #72; §B35: the four features advanced, each completing after its remaining construction). B30 (twin state, reconciliation, envelope and calibration) delivered on 2026-10-02 (0103; §B30), corrected forward on 2026-10-04 (0104, §B30.8), merged with #77 and #79. B91 (usage metering, the cost ledger, entitlements and licensing) delivered on 2026-10-04 (0105; §B91). B25 (the forecasting portfolio I) delivered on 2026-10-07/09 (0108, with the bounded review's 0109; §B25: F-P4-01, F-P4-02 and F-P4-03 complete by their rows). The next A1 stage in the schedule is B33. The C15 return to the official images merged with #57 (`main` `870b212`); the live demonstration containers were recreated onto those images on 2026-09-24 under the owner's word (§B22.2). The `ctx.build` remedy was delivered as 0082 (§B22.1) — the owner's 2026-09-24 word made it a technical choice. AU-MEM-0067 stays OPEN without a waiver: the per-object class (a missing or corrupt object under a reachable root) keeps A7's one 409 and the specification obligation stands (§B21.2's table).

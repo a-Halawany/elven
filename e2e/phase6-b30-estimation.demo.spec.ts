@@ -87,7 +87,9 @@ test.describe.serial('CP-6 B30 §ES — reconciliation on the demonstration', ()
   test('THE TRIGGERS AND THE REQUESTS: nothing pending after the proposal; the requests for new observations listed with how they travel', async ({ page }) => {
     await uiLogin(page, OWNER, required('EYE_TEST_ADMIN_PASSWORD'));
     await openReconciliation(page);
-    await expect(page.getByText(/Nothing pending|trigger\(s\)/)).toBeVisible();
+    // B25 staging: once the Reconciliation Agent has processed a real trigger, the page shows BOTH "Nothing pending" and that run's
+    // "… trigger(s)" line — either answers the question; the first is asserted (strict mode refuses two)
+    await expect(page.getByText(/Nothing pending|trigger\(s\)/).first()).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Requests for new observations', level: 2 })).toBeVisible();
     await shot(page, 'b30-estimation-03-requests');
   });

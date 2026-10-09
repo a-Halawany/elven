@@ -1,3 +1,4 @@
 # Exact upstream legal bytes include their original trailing whitespace and newline posture.
 # Treat them as opaque vendored evidence so Git never normalizes or "fixes" those bytes.
-vendor/sharp-libvips/1.3.2/legal/** binary
+# Version-agnostic: the pattern named 1.3.2 only, so the 1.3.3 tree (fd00dfe) was not covered.
+vendor/sharp-libvips/*/legal/** binary

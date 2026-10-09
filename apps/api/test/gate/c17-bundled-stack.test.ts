@@ -88,7 +88,7 @@ describe('C17.2 F — bundled native stack', () => {
 
   it('the build recipe is pinned to an immutable commit, not just a tag', () => {
     const m = loadBundledManifest(REPO);
-    expect(m.build_recipe.tag).toBe('v1.3.3');
+    expect(m.build_recipe.tag).toBe('v1.3.4');
     expect(m.build_recipe.commit_binding.commit).toMatch(/^[0-9a-f]{40}$/);
     // The reason is recorded, because a tag alone would look equally pinned.
     expect(m.build_recipe.commit_binding.why).toMatch(/tag is mutable/i);
@@ -248,7 +248,7 @@ describe('C17.2 F — bundled native stack', () => {
     withManifest((m) => {
       m.source_offers.push({ ...m.source_offers[0] });
       m.source_offers.push({
-        component: 'cgif', version: '0.5.3', spdx_expression: 'MIT',
+        component: 'cgif', version: '0.5.4', spdx_expression: 'MIT',
         obligation: 'invented', upstream_source: 'https://attacker.example/cgif',
         obtain: ['invented'], relinking: 'invented',
       });
@@ -280,7 +280,7 @@ describe('C17.2 F — bundled native stack', () => {
   it.each([
     ['path', (m: any) => {
       m.legal_files.find((r: any) => r.component === 'cgif').path =
-        'vendor/sharp-libvips/1.3.3/legal/cgif/ATTACKER-LICENSE';
+        'vendor/sharp-libvips/1.3.4/legal/cgif/ATTACKER-LICENSE';
     }, /surplus legal-file record .*ATTACKER-LICENSE.*not code-owned.*code-owned legal-file record .*cgif.*LICENSE.*missing/s],
     ['sha256', (m: any) => {
       m.legal_files.find((r: any) => r.component === 'cgif').sha256 = 'f'.repeat(64);
@@ -294,7 +294,7 @@ describe('C17.2 F — bundled native stack', () => {
     ['surplus record', (m: any) => {
       m.legal_files.push({
         component: 'cgif',
-        path: 'vendor/sharp-libvips/1.3.3/legal/cgif/SURPLUS',
+        path: 'vendor/sharp-libvips/1.3.4/legal/cgif/SURPLUS',
         bytes: 1,
         sha256: 'f'.repeat(64),
         source_url: 'https://attacker.example/SURPLUS',
@@ -312,10 +312,11 @@ describe('C17.2 F — bundled native stack', () => {
 
   it('rejects a missing canonical text through the obligation-derived coverage check', () => {
     const incomplete = new Map(texts);
-    incomplete.delete('MPL-2.0');
+    // cairo is MPL-1.1 since sharp-libvips 1.3.4 corrected its README row; the control follows it.
+    incomplete.delete('MPL-1.1');
     const r = verifyBundledComponents(REPO, { texts: incomplete });
     expect(r.ok).toBe(false);
-    expect(r.problems.join('\n')).toMatch(/bundled component 'cairo' names MPL-2\.0, for which no canonical text is available/);
+    expect(r.problems.join('\n')).toMatch(/bundled component 'cairo' names MPL-1\.1, for which no canonical text is available/);
   }, TIMEOUT);
 
   it('and the UNMUTATED manifest still reconciles through the same harness', () => {

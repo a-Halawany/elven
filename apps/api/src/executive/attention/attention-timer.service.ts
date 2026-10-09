@@ -110,6 +110,8 @@ export class AttentionTimerService implements OnModuleInit, OnApplicationBootstr
       outcome = { jobId, agentId: payload.agentId, outcome: run.outcome, runId: run.runId, repeated: run.outputs['repeated'] === true, stopReason: run.stopReason, recordedRefusal: null, run };
     } catch (e) {
       // The session port refused the agent (revoked, inactive, unknown): the tick is RECORDED as a refused run of the scheduler, never skipped.
+      // B25-R: only a refusal BEFORE the run opened reaches here as a 403 — a run that opened and then lost its session closes itself under a
+      // new one, or fails as a fault (agents.service.ts); its lapsed close was once recorded here as a second, refused run of the same tick.
       if (!(e instanceof HttpException && e.getStatus() === 403)) {
         this.note(T, D, jobId, payload.agentId, `fault: ${(e as Error).message.slice(0, 120)}`);
         throw e;

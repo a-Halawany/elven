@@ -74,7 +74,11 @@ jobs:
     # B36 (2026-09-30): the integration suite is 1451 tests (B34's 1293 + B29's 51 + B36's 107) and ran past its 28-minute
     # step bound on the hosted runner (locally 15.5 min): the step bound moves to 38 and the job budget to 65 by the same
     # arithmetic; C18's 900-second watchdog and its 25-minute step bound are unchanged.
-    timeout-minutes: 65
+    # B25 (2026-10-07): the integration suite ran 26.3 min at #80 (1954 tests) and past its 38-minute step bound at #81
+    # (ci 37633376331, ~2025 tests: B25's five harnesses, among them the long-history cases that each hold a series read
+    # past the 60-second commit capability on purpose): the step bound moves to 55 and the job budget to 82 by the same
+    # arithmetic; C18's watchdog and step bound, and every assertion, are unchanged.
+    timeout-minutes: 82
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -144,8 +148,8 @@ jobs:
       # input, and the A1/A2/A3/A5/A6/A7/A9/A11 acceptance matrix.
       - name: Integration tests (isolation, privileges, audit concurrency, refresh, Phase 1 acceptance)
         # B34 (2026-09-29): the suite's own bound inside the job budget above, so a slow suite fails here and
-        # never consumes C18's window. B36: 28 → 38 (the suite outgrew 28 on the hosted runner).
-        timeout-minutes: 38
+        # never consumes C18's window. B36: 28 → 38 (the suite outgrew 28 on the hosted runner). B25: 38 → 55 (likewise).
+        timeout-minutes: 55
         env:
           EYE_DB_HOST: localhost
           EYE_DB_MIGRATE_PASSWORD: ${{ env.EYE_DB_PASSWORD }}

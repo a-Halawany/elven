@@ -51,13 +51,25 @@ import { ScenarioQualityService } from './scenarios/quality/quality.service.js';
 import { ScenarioSetsController } from './scenarios/sets/sets.controller.js';
 import { ScenarioSetsService } from './scenarios/sets/sets.service.js';
 /* end B27 sets */
+/* B25 (0108 §0) the seams */ import { CONTEXT_FREEZER, METHOD_ROUTER } from './portfolio/seams.js'; /* end B25 seams */
+/* B25 context */ import { ContextController } from './context/context.controller.js'; import { ContextService } from './context/context.service.js'; import { GroundedContextFreezer } from './context/context-freezer.js'; /* end B25 context */
+/* B25 registry (0108 §MR): the governed model registry, routing and the method families — its own controller under …/prediction/registry and
+   …/prediction/portfolio/issue, its service, and METHOD_ROUTER's implementation (it REPLACES the seam's default below) */
+import { RegistryController } from './registry/registry.controller.js';
+import { RegistryService } from './registry/registry.service.js';
+import { RegistryMethodRouter } from './registry/method-router.js';
+/* end B25 registry */
+/* B25 ensembles */ import { EnsemblesController } from './ensembles/ensembles.controller.js'; import { EnsemblesService } from './ensembles/ensembles.service.js'; /* end B25 ensembles */
 
 @Module({
   imports: [PipelineModule, ObservationModule, GraphModule, /* B28 (0088) warnings: the attention tick's registry */ ExecutiveModule /* end B28 warnings */,
             /* B32 (0089) exposures */ DecisionModule /* end B32 exposures */],
   controllers: [PredictionController, /* B28 (0088) signals */ SignalsController /* end B28 signals */, /* B32 (0089) exposures */ ExposuresController /* end B32 exposures */, /* B36 (0094 §C5) collab */ ExposureLearningController /* end B36 collab */, /* B27 quality */ ScenarioQualityController /* end B27 quality */,
                 /* B27 anatomy */ AnatomyController /* end B27 anatomy */,
-                /* B27 sets */ ScenarioSetsController /* end B27 sets */],
+                /* B27 sets */ ScenarioSetsController /* end B27 sets */,
+                /* B25 context */ ContextController, /* end B25 context */
+                /* B25 registry */ RegistryController, /* end B25 registry */
+                /* B25 ensembles */ EnsemblesController /* end B25 ensembles */],
   providers: [
     SeriesService,
     ForecastingService,
@@ -75,8 +87,14 @@ import { ScenarioSetsService } from './scenarios/sets/sets.service.js';
     /* B27 anatomy */ AnatomyService, /* end B27 anatomy */
     /* B27 quality */ ScenarioQualityService, /* end B27 quality */
     /* B27 sets */ ScenarioSetsService, /* end B27 sets */
+    /* B25 seams — the parts' implementations (the prelude's null defaults NullContextFreezer / LegacyMethodRouter stay in seams.ts for a part built alone) */
+    { provide: CONTEXT_FREEZER, useClass: GroundedContextFreezer }, { provide: METHOD_ROUTER, useClass: RegistryMethodRouter },
+    /* end B25 seams */
+    /* B25 context */ ContextService, /* end B25 context */
+    /* B25 registry */ RegistryService, /* end B25 registry */
+    /* B25 ensembles */ EnsemblesService, /* end B25 ensembles */
     { provide: APP_FILTER, useClass: ObservationExceptionFilter },
   ],
-  exports: [SeriesService, ForecastingService, ScenariosService],
+  exports: [SeriesService, ForecastingService, ScenariosService, /* B25 seams */ CONTEXT_FREEZER, METHOD_ROUTER /* end B25 seams */],
 })
 export class PredictionModule {}

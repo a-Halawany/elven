@@ -95,6 +95,12 @@ export interface IssueArgs {
   seriesKey: string; horizonCode: string; knownAt: string; observedThrough: string | null;
   assumptions: string[]; refreshCadence: string; label: 'replay demonstration' | 'live';
   method?: string;
+  /** B25 (0108 §0): a part's additions — `columns` go to prediction.issue_forecast's p_extras (§0.1); `payload` sections join the FCT
+   *  payload, which is then admitted as FCT@v2. Absent: exactly the forecast issued before B25. */
+  b25?: { columns?: Record<string, unknown>; payload?: Record<string, unknown> };
+  /** B25 act-found: the series as the route assembled it BEFORE its write opened (same series, knownAt and observedThrough) — a long real
+   *  history outlives the write's 60-second commit capability when it is assembled inside the write. Absent: assembled here, as before. */
+  assembled?: AssembledSeries;
 }
 
 export type BacktestMode = 'retrospective' | 'historical';
@@ -102,6 +108,15 @@ export type BacktestMode = 'retrospective' | 'historical';
 @Injectable()
 export class ForecastingService {
   constructor(private readonly series: SeriesService) {}
+
+  /**
+   * B25 act-found (the legacy route too): the series as a write route assembles it BEFORE its write opens — a long real history outlives the
+   * write's 60-second commit capability when assembled inside it. Pass the result to issue() as `assembled`; issue() uses it only when it
+   * matches (series, knownAt, observedThrough), otherwise it assembles as before.
+   */
+  async preAssemble(reader: Reader, seriesKey: string, knownAt: string, observedThrough: string | null): Promise<AssembledSeries> {
+    return this.series.assemble(reader, seriesKey, knownAt, observedThrough);
+  }
 
   /**
    * The backtest that APPLIES to a forecast: same series, horizon and method
@@ -153,7 +168,8 @@ export class ForecastingService {
       throw new HttpException(errorBody('EYE_REQ_001', correlationId,
         'a forecast must name at least one assumption it rests on; one that rests on nothing can never be reached by a correction'), 422);
     }
-    const assembled = await this.series.assemble(reader, a.seriesKey, a.knownAt, a.observedThrough);
+    const pre = a.assembled !== undefined && a.assembled.series.series_key === a.seriesKey && a.assembled.knownAt === a.knownAt && a.assembled.observedThrough === a.observedThrough ? a.assembled : undefined;
+    const assembled = pre ?? await this.series.assemble(reader, a.seriesKey, a.knownAt, a.observedThrough);   // B25 act-found: the route's pre-assembly when it matches
     if (!assembled.complete) {
       throw new HttpException(errorBody('EYE_STA_001', correlationId,
         `${assembled.unreadable.length} evidence version(s) of ${a.seriesKey} could not be read by this reader `
@@ -262,6 +278,7 @@ export class ForecastingService {
       label: a.label, statement,
       narrative: null,
       controls,
+      ...(a.b25?.payload ?? {}),   // B25 (0108 §0)
     };
     const header: CanonicalHeader = {
       object_id: forecastId, object_type: 'FCT', tenant_id: ctx.tenantId, domain_id: ctx.domainId, scope: 'DOMAIN',
@@ -281,7 +298,7 @@ export class ForecastingService {
       residency_profile: controls.residency_profile, retention_profile: controls.retention_profile,
       access_policy_ref: controls.access_policy_ref, quality_profile: null, quality_state: { validation: validationState },
       freshness_state: { freshest_evidence_recorded_at: assembled.freshestRecordedAt, origin_at: originAt },
-      schema_ref: 'FCT@v1', ontology_ref: null, correction_of: null, supersedes: null, withdrawal_reason: null,
+      schema_ref: a.b25?.payload !== undefined && Object.keys(a.b25.payload).length > 0 ? 'FCT@v2' : 'FCT@v1' /* B25 (0108 §0) */, ontology_ref: null, correction_of: null, supersedes: null, withdrawal_reason: null,
       audit_correlation_id: correlationId, content_ref: null,
     };
     const v = validateHeader(header);
@@ -297,6 +314,7 @@ export class ForecastingService {
       validationState, validationNote, label: a.label, skill, statement,
       backtestId: validationState.startsWith('validated') ? String(bt?.['backtest_id']) : null, controls,
       actor, eventId: newId(), correlationId,
+      ...(a.b25?.columns === undefined ? {} : { extras: a.b25.columns }),   // B25 (0108 §0)
     });
     return { forecastId, method, validationState, validationNote, backtestId: validationState.startsWith('validated') ? String(bt?.['backtest_id']) : null,
              controls, quantiles: { q10: round(out.quantiles.q10), q50: round(out.quantiles.q50), q90: round(out.quantiles.q90) }, statement, targetAt,

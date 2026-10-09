@@ -150,15 +150,15 @@ const deliverAttempt2 = (artifacts: Array<Record<string, unknown>>) => verifyHos
 );
 
 describe('C17.2 — workflow structure', () => {
-  it('declares the exact job-level timeouts: 65 (B34: the steps outgrew 30; B36: the integration suite outgrew 28), 30 and 120 minutes, read from PARSED YAML', () => {
+  it('declares the exact job-level timeouts: 82 (B34: the steps outgrew 30; B36: the integration suite outgrew 28; B25: it outgrew 38), 30 and 120 minutes, read from PARSED YAML', () => {
     // Parsed, not regex-matched: a regex over the file text matches the step-level
     // `timeout-minutes` nested inside supply-chain and would report a job bound that is absent.
     const jobs = CI.jobs as Record<string, any>;
     expect(Object.keys(jobs).sort()).toEqual(['browser-regression', 'build-test', 'supply-chain']);
-    expect(jobs['build-test']['timeout-minutes']).toBe(65);
+    expect(jobs['build-test']['timeout-minutes']).toBe(82);
     // B34: the integration suite carries its own step bound inside the job budget (C18's window is never consumed by it)
     const integration = (jobs['build-test']['steps'] as Array<Record<string, unknown>>).find((s) => String(s['name'] ?? '').startsWith('Integration tests'));
-    expect(integration?.['timeout-minutes']).toBe(38);
+    expect(integration?.['timeout-minutes']).toBe(55);
     expect(jobs['browser-regression']['timeout-minutes']).toBe(30);
     expect(jobs['supply-chain']['timeout-minutes']).toBe(120);
   });

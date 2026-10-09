@@ -13,13 +13,27 @@ allowBuilds:
   sharp: true
 # Security remediation of pnpm-audit findings (gate instruction 4; ADR-P0-01
 # patching policy): force patched transitive versions under next.
+#
+# DIRECT PIN, recorded here because package.json carries no comments — apps/web `next` 16.3.6 → 16.3.8.
+# C15 on #81 (ci 37702446651 at a4a1930, 2026-10-08): next >=16.0.0 <16.3.8 carries GHSA-cjq9-62q9-8jv4
+# (HIGH — server-side request forgery in Image Optimization; path apps__web>next), and the same tree's
+# audit counted five more next advisories below the blocking level, all patched >=16.3.8 (MODERATE
+# GHSA-3w37-wq28-93x7, GHSA-4jqv-mc3x-m676, GHSA-f87g-xv8r-7p7x, GHSA-mcj8-r9mp-w47p; LOW GHSA-39w2-rjm5-chcv).
+# EXACT REVIEWED VERSION, not a range, for the reason recorded below for nanoid: 16.3.8 is the first patched
+# version, a patch release on the 16.3 line; it declares the same dependencies as 16.3.6 (only @next/env and
+# the eight @next/swc-* binaries move with it, at 16.3.8), so the development closure (C17's
+# DEVELOPMENT_COMPONENTS, 313) is unchanged. No eslint-config-next or other @next/* pin exists to move.
 overrides:
   # C15 at 9aaf0311 (run 34343317671): sharp <0.35.4 carries GHSA-rgj7-g3m4-5g8c (HIGH — libheif
   # GHSA-g89c-p67h-r497 / GHSA-2jg2-4ch7-h545), reached only as next's optional image dependency.
   # EXACT REVIEWED VERSION, not a range, for the reason recorded below for nanoid: 0.35.4 is the
   # first version carrying the fix (the advisory states "patched >=0.35.4") and stays on the 0.35
   # line next declares (^0.35.3), so nothing is forced across a semver minor.
-  sharp: 0.35.4
+  # C15 on #81 (ci 37633376331 at 62ff011, 2026-10-07): sharp <0.35.5 carries GHSA-wq5f-xc86-pv6w (HIGH), published after
+  # #80's green run (the lockfile unchanged since). EXACT REVIEWED VERSION: 0.35.5 is the first patched version, on the 0.35
+  # line next declares; it carries the same dependencies and the same 25 optional platform packages (their versions moved
+  # with it: @img/sharp-* 0.35.5, @img/sharp-libvips-* 1.3.4), so the development closure's component count is unchanged.
+  sharp: 0.35.5
   # C15 at 9aaf0311: multer <2.3.0 carries CVE-2026-77037, CVE-2026-77078 and CVE-2026-82333 (HIGH —
   # denial of service via a file-descriptor leak on aborted requests, crafted multipart field names
   # and an oversized array index). Reached transitively through @nestjs/platform-express, which

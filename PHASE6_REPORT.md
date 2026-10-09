@@ -4650,3 +4650,62 @@ The mechanism is in `audit/CP6_BATCHES.md` §B27. There is one migration, `0097_
   - routed under it, deprioritized when it does not name the class, unrouted with nobody to route to;
   - meters 18/18 and ledger 24/24 through 0107, against 6 and 4 failures without it (§B91.7).
 - 0104 and 0105 are applied and frozen and are not edited. Items raised before 0107 keep their recorded routing.
+
+## 50. B25 (2026-10-07/09): the forecasting portfolio I — grounded context, multi-method horizons, ensembles (0108, 0109)
+
+### 50.1 What B25 implements
+- **The registry and routing (F-P4-01):**
+  - governed method entries with implementation digests and steward approval, quarantined on a failed run or a digest mismatch;
+  - governed targets (quantity, event, state, regime);
+  - versioned HORIZON POLICIES choosing families, confidence language, treatment and the validation requirement per horizon;
+  - the routed issue, with its governed refusal `forecast.horizon_refused`;
+  - the families: event-rate; regime-judgement (scenario language; path dependence, option value and resilience at 5y); bayesian-conjugate (explicit priors, prior sensitivity, calibration, identifiability); causal-its (identification, placebo, balance, sensitivity, transportability); optimisation-lp (feasibility, optimality gap, sensitivity, robustness);
+  - rolling-origin validation per method, target and horizon.
+- **Grounded context (F-P4-03):**
+  - the feature and context assembler and the frozen information-set manifest;
+  - grounded forecasts pinning the graph revision, the twin snapshot, the target version and the evaluation profile;
+  - frozen features as MODEL INPUTS;
+  - REPLAY for every method (legacy, registry families, ensembles), REPRODUCED or DIVERGED with what diverged;
+  - the forecast ENVIRONMENT (F-P5-03's V03-T-196).
+- **Ensembles (F-P4-02):**
+  - the Ensemble and Disagreement Manager, with durable per-run plans (0109);
+  - member distributions inspectable;
+  - disagreement tied to assumptions and escalated through the published policy;
+  - unavailable or incompatible members excluded and disclosed;
+  - precision beyond agreement refused;
+  - the human JUDGEMENT OVERLAY versioned separately.
+- **Supersession by lineage** fixes the cross-method supersession.
+- **The completion** is software capability. The EMPIRICAL 3y/5y validation on the real ECB history (1999–2026) ran and FAILED (80% coverage 27% at 3y, 18% at 5y), so no long-horizon quantity is validated or issued, and the corridor's 5y is scenario language.
+
+### 50.2 Results
+- **Local** (each run alone):
+  - integration 2036/2036, API unit 3349 + 9, web 274, acceptance 58, upgrade PASS (88 migrations), boundaries clean, browser 93/93;
+  - harnesses: registry 37, ensembles 26, context 9, long-history 5, series-unreadable 3, estimation-b30 11.
+- **Hosted:** **on the code-final head `091b624`** (every later commit on #81 is records only): **ci 37856333888: success** — build-test job 113581285676: integration **2036/2036**, API unit **3349** + **9**, web **274**, acceptance **58**, contracts 203, tokens 3, the upgrade proof PASS, its later steps 623 and 44; supply-chain job 113581285642: pnpm-audit (human and JSON), gitleaks (worktree and history), trivy-fs and the three pinned images all ok; browser-regression job 113581285432: success. **C19 lifecycle 37856334169: success.** Earlier attempts, kept: `62ff011` — ci 37633376331 FAILED (supply-chain: sharp GHSA-wq5f-xc86-pv6w; build-test: the integration step past its 38-minute bound), C19 success; `a4a1930` — ci 37702446651 FAILED (build-test: C17 against libvips 1.3.4; supply-chain: next GHSA-cjq9-62q9-8jv4), browser and C19 37702446628 success — not merged; `6747530` — ci 37801331070 attempt 1 supply-chain FAILED on a 31.9-hour-old Trivy database (the mirror's; refused by the gate as designed), attempt 2 success, C19 37801331084 success; `4ac494f` — ci 37814717122 and C19 37814717287 success. The records head's own checks, the merge and main's chain are recorded in the next delivery record (no records-only commit chasing its own run).
+- **Demonstration:**
+  - the act HELD on the final build, and its rerun stood;
+  - the walks passed 12/12, with 13 screenshots;
+  - act-b30 and act-b91 held after it;
+  - B30's and B36's attention walks passed 19/19.
+
+### 50.3 What the delivery found and corrected
+- **Act-found (the rehearsal):**
+  - the ensemble budget charged the history read;
+  - a superseded unreadable fragment failed every PortWatch series;
+  - long series reads inside the 60-second commit capability, on all write routes including the legacy issue.
+- **The bookkeeping review's seven clause gaps (G1–G7)** were built as B25 construction.
+- **The bounded review of 2026-10-08:**
+  - C17 reconciled to sharp-libvips 1.3.4 (cairo MPL-1.1);
+  - next 16.3.8;
+  - B25-F1 durable ensemble plans;
+  - B25-F2 output compatibility.
+- **The demo staging's finding:** B30's reconciliation scan held the attention tick and outlived its agent session on the real PortWatch history, so the demo's attention agent was stuck from 2026-10-07 11:00 UTC. It was fixed at the root and the ticks recovered.
+- **Disclosed and open:**
+  - `/readyz` stays audit-degraded on 4 journal-only records, which no governed path can clear (a separate follow-up);
+  - 63 older reconciliation runs close at that agent's next run.
+
+### 50.4 Bookkeeping
+B25 COMPLETES F-P4-01 (14/0/0), F-P4-02 (9/0/0) and F-P4-03 (5/0/0) by their rows, and advances F-P5-03 (19/2/0; completes at B33).
+- Construction completion is not acceptance: verification stays local, then hosted; the acceptance legs remain P7-D and R2.
+- Stated on the rows: the failed empirical 3y/5y validation; the target version pinned on the forecast rather than in the manifest; the harness-only ensemble exclusions.
+- Rows implemented 1376 → 1403. M1's finish is unchanged (2027-07-13). The next A1 stage is B33.

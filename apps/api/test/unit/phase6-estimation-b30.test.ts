@@ -9,8 +9,13 @@
 import { describe, expect, it } from 'vitest';
 import { HttpException } from '@nestjs/common';
 import {
-  candidateOf, constraintSubjectOf, dispersionConfidence, estimatorProblems, kalman1d, materialityOf, spreadOf, transform, unreadableInWindow, type EstimatorDecl, type Point,
+  candidateOf, constraintSubjectOf, dispersionConfidence, estimatorProblems, kalman1d, materialityOf, spreadOf, transform, unreadableInWindow, widestWindow, type EstimatorDecl, type Point,
 } from '../../src/twin/estimation/estimators.js';
+import { SeriesService, readsInTail, tailFromDay } from '../../src/prediction/series/series.service.js';
+import type { EvidenceVersionRow } from '../../src/prediction/prediction.capabilities.js';
+import type { PipelineService } from '../../src/pipeline/pipeline.service.js';
+import type { EvidenceService } from '../../src/observation/vault/evidence.service.js';
+import type { AuthenticatedPrincipal } from '../../src/shared/auth-types.js';
 import { evaluate, validateConstraints } from '../../src/twin/constraints/evaluator.js';
 import { RECONCILIATION_AGENT_DIGEST, RECONCILIATION_AGENT_METHOD, RECONCILIATION_AGENT_VERSION } from '../../src/twin/estimation/reconciliation-agent.js';
 import { asObservationRefusal } from '../../src/observation/observation-errors.js';
@@ -187,5 +192,91 @@ describe('B30 act: unreadable evidence judged against the estimators\' window (u
       inputs: [{ kind: 'series', series_key: 'ecb-eurusd', unit: 'USD', cadence_days: 1 }] });
     expect(unreadableInWindow(MONTH, [decl(), other], 'portwatch:chokepoint4:n_total', [{ day: '2026-09-10' }])).toMatchObject({ counted: 0, outside: 1 });
     expect(unreadableInWindow(MONTH, [decl()], 'portwatch:chokepoint4:n_total', [])).toEqual({ counted: 0, outside: 0, windowFrom: null });
+  });
+});
+
+/*
+ * B25-R (the demo regression of 2026-10-07): the reconcile scan read the corridor's WHOLE history — ~9,000 framed PortWatch fragments, each a
+ * governed retrieval — twice per scan, and outlived its agent's session. The estimators read their declared windows; the series is now read
+ * as a TAIL holding at least the widest of them. What a tail leaves out is only what cannot touch its rows: a framed fragment (one row of
+ * its parent) dated before the tail. Every figure is SYNTHETIC.
+ */
+describe('B25-R: the scan reads the tail its estimators need (widestWindow, tailFromDay, readsInTail, SeriesService.assemble)', () => {
+  const kalman = decl({ estimator_id: '00000000-0000-4000-8000-0000000000bb', name: 'portwatch-kalman', role: 'challenger', method: 'kalman_1d', parameters: { window: 30, process_variance: 4, measurement_variance: 25, baseline: 104, scale: 100 } });
+  const ma = decl({ estimator_id: '00000000-0000-4000-8000-0000000000cc', name: 'portwatch-ma', role: 'challenger', method: 'moving_average', parameters: { window: 7, baseline: 104, scale: 100 } });
+  it('the widest window over a series: the demo corridor\'s three estimators read at most 30 points; the ratio alone, the 7-point confidence week', () => {
+    expect(widestWindow([decl(), ma, kalman], 'portwatch:chokepoint4:n_total')).toBe(30);
+    expect(widestWindow([decl()], 'portwatch:chokepoint4:n_total')).toBe(7);
+    expect(widestWindow([decl(), kalman], 'another:series')).toBe(7);
+  });
+
+  const row = (over: Partial<EvidenceVersionRow>): EvidenceVersionRow => ({ object_id: '', object_version: 1, recorded_at: '', content_digest: 'd', lifecycle_state: 'admitted', is_fragment: true, source_key: 'pw',
+    event_time: null, synthetic_state: true, classification: 'internal', rights_profile: null, residency_profile: null, retention_profile: null, access_policy_ref: null, ...over });
+  it('the tail starts its span before the newest dated fragment (or the observed-through cut-off); nothing dated, or a span reaching the oldest, reads everything', () => {
+    const vs = [row({ event_time: '2026-01-01' }), row({ event_time: '2026-10-04' }), row({ is_fragment: false, event_time: null })];
+    expect(tailFromDay(vs, 44, null)).toBe('2026-08-21');
+    expect(tailFromDay(vs, 44, '2026-09-30')).toBe('2026-08-17');
+    expect(tailFromDay(vs, 400, null)).toBeNull();
+    expect(tailFromDay([row({ is_fragment: false, event_time: '2026-10-04' })], 44, null)).toBeNull();
+  });
+  it('a tail reads every version but a framed fragment dated before it (a day\'s margin for the event time\'s zone)', () => {
+    expect(readsInTail(row({ event_time: '2026-08-20' }), '2026-08-21')).toBe(true);
+    expect(readsInTail(row({ event_time: '2026-08-19' }), '2026-08-21')).toBe(false);
+    expect(readsInTail(row({ is_fragment: false, event_time: '2019-01-01' }), '2026-08-21')).toBe(true);
+    expect(readsInTail(row({ event_time: null }), '2026-08-21')).toBe(true);
+    expect(readsInTail(row({ event_time: '2019-01-01' }), null)).toBe(true);
+  });
+
+  /*
+   * The assembly through fakes of the two governed paths it uses (the versions read, one retrieval per version): 200 days of three ports'
+   * daily counts as framed fragments, a parent window (no day) holding early and late rows, and a later correction of a recent day. The
+   * tail's latest points ARE the whole history's — newest version wins its day either way — at a fraction of the retrievals.
+   */
+  const DAYS = 200;
+  const dayN = (i: number) => new Date(Date.UTC(2026, 2, 19 + i)).toISOString().slice(0, 10);
+  const versions: EvidenceVersionRow[] = []; const bytes = new Map<string, string>();
+  const add = (id: string, recorded: string, isFragment: boolean, eventTime: string | null, features: Array<{ portid: string; date: string; n_total: number }>) => {
+    versions.push(row({ object_id: id, recorded_at: recorded, is_fragment: isFragment, event_time: eventTime }));
+    bytes.set(id, JSON.stringify({ features: features.map((a) => ({ attributes: a })) }));
+  };
+  add('parent-0', '2026-03-01T00:00:00Z', false, null, [{ portid: 'chokepoint4', date: dayN(0), n_total: 1 }, { portid: 'chokepoint4', date: dayN(DAYS - 2), n_total: 999 }]);
+  for (let i = 0; i < DAYS; i += 1) for (const port of ['chokepoint1', 'chokepoint4', 'chokepoint6']) {
+    add(`f-${port}-${i}`, `${dayN(i)}T12:00:00Z`, true, dayN(i), [{ portid: port, date: dayN(i), n_total: 20 + (i % 9) + (port === 'chokepoint4' ? 7 : 0) }]);
+  }
+  add('fix-1', `${dayN(DAYS - 1)}T18:00:00Z`, true, dayN(DAYS - 5), [{ portid: 'chokepoint4', date: dayN(DAYS - 5), n_total: 55 }]);
+  const service = (retrieved: string[]) => {
+    const series = { series_key: 'pw:4', source_key: 'pw', parser_ref: 'arcgis-feature-attribute@1', value_field: 'n_total', selector: 'chokepoint4', unit: 'transits/day', seasonality_days: 7,
+                     subject_entity_id: null, attribution: null, description: 'synthetic' };
+    const cap = { readSeries: () => ({ selectAll: () => ({ where: () => ({ executeTakeFirst: async () => series }) }) }), evidenceVersionsKnownAt: async () => versions };
+    const pipeline = {
+      consequentialRead: async (_e: unknown, _p: unknown, _r: unknown, _c: unknown, fn: (c: unknown) => Promise<unknown>) => ({ result: await fn(cap) }),
+      write: async (_e: unknown, _p: unknown, route: { objectId: string }) => { retrieved.push(route.objectId); return { result: { integrity: 'verified', base64: Buffer.from(bytes.get(route.objectId) ?? '{}').toString('base64'), label: null, message: null } }; },
+    } as unknown as PipelineService;
+    return new SeriesService(pipeline, {} as EvidenceService);
+  };
+  const reader = { principal: { principalId: 'p' } as AuthenticatedPrincipal, tenantId: 't', domainId: 'd', correlationId: 'c', purposeId: 'twin' };
+  it('the tail\'s latest 30 points are the whole history\'s — the parent read, the correction winning its day — at about a quarter of the retrievals', async () => {
+    const full: string[] = []; const tail: string[] = [];
+    const a = await service(full).assemble(reader, 'pw:4', '2027-01-01T00:00:00Z', null);
+    const b = await service(tail).assemble(reader, 'pw:4', '2027-01-01T00:00:00Z', null, { points: 30, spanDays: 30 + 14 });
+    expect(a.points).toHaveLength(DAYS);
+    expect(b.points.slice(-30)).toEqual(a.points.slice(-30));
+    expect(b.points.find((p) => p.date === dayN(DAYS - 5))).toMatchObject({ value: 55, evidence_object_id: 'fix-1' });
+    expect(b.points.find((p) => p.date === dayN(DAYS - 2))).toMatchObject({ evidence_object_id: 'f-chokepoint4-198' });   // the later fragment wins over the parent
+    expect(b.readFrom).toBe(tailFromDay(versions, 44, null));
+    expect(full).toHaveLength(versions.length);
+    expect(tail.length).toBeLessThan(versions.length / 4);
+    expect(tail).toContain('parent-0');
+    expect(b.versionsLeftOut).toBe(versions.length - tail.length);
+  });
+  it('a tail too short for its points widens (each version still retrieved once); a span past the oldest fragment reads the whole history', async () => {
+    const seen: string[] = [];
+    const b = await service(seen).assemble(reader, 'pw:4', '2027-01-01T00:00:00Z', null, { points: 60, spanDays: 20 });
+    expect(b.points.length).toBeGreaterThanOrEqual(60);
+    expect(new Set(seen).size).toBe(seen.length);
+    const all: string[] = [];
+    const c = await service(all).assemble(reader, 'pw:4', '2027-01-01T00:00:00Z', null, { points: 30, spanDays: 400 });
+    expect(c.readFrom).toBeNull();
+    expect(all).toHaveLength(versions.length);
   });
 });

@@ -23,6 +23,7 @@ import { newId } from '../../shared/ids.js';
 import type { AuthenticatedPrincipal } from '../../shared/auth-types.js';
 import { errorBody, type Envelope } from '@eye/contracts';
 import { PipelineService } from '../../pipeline/pipeline.service.js';
+import type { CapabilityFactory } from '../../shared/capabilities.js';
 import { ObservationCapability, type AcquisitionWrites } from '../../observation/observation.capabilities.js';
 import { EvidenceService, INTEGRITY_REFUSED_MESSAGE } from '../../observation/vault/evidence.service.js';
 import { PredictionCapability, type PredictionReads, type EvidenceVersionRow } from '../prediction.capabilities.js';
@@ -61,6 +62,12 @@ export interface AssembledSeries {
    * not the series.
    */
   unreadable: Array<{ evidence_object_id: string; evidence_version: number; reason: string }>;
+  /**
+   * B25 act-found: unreadable FRAMED FRAGMENTS (one row each, their day stated by the event time) whose day a LATER-recorded readable
+   * version of this series serves — the later version wins the day whatever the lost row held, so the history is not incomplete for
+   * them. Disclosed here, never hidden; not counted against `complete`.
+   */
+  supersededUnreadable: Array<{ evidence_object_id: string; evidence_version: number; reason: string; day: string; served_by: string }>;
   complete: boolean;
   /** The controls folded from every evidence version that contributed a point. */
   controls: Controls;
@@ -69,6 +76,39 @@ export interface AssembledSeries {
   /** The instant the newest evidence used was recorded: the honest freshness. */
   freshestRecordedAt: string | null;
   attribution: string | null;
+  /** B25-R: a TAIL read's first day (the rows before it were not read), null when the whole history was read. */
+  readFrom?: string | null;
+  /** B25-R: the framed fragments dated before `readFrom`, left unretrieved. */
+  versionsLeftOut?: number;
+}
+
+/**
+ * B25-R (the demo regression of 2026-10-07): a TAIL read — the caller needs only the latest `points` points (the twin's estimators read
+ * their declared windows: at most 30 of the corridor's daily counts) and names the span of days that should hold them. The whole history
+ * was read per estimate — the corridor's ~9,000 framed PortWatch fragments, each a governed retrieval, twice per scan — and the scan
+ * outlived its agent's session. What a tail read leaves out is exactly what cannot touch its rows: a FRAMED FRAGMENT is one row of its
+ * parent, dated by its event time, so a fragment dated before the tail holds no row of it; every other version (a parent, a window, a
+ * fragment that states no day) is read as before. The tail widens (×4) until it holds `points` days, else the whole history is read.
+ */
+export interface SeriesTail { points: number; spanDays: number }
+
+const dayMinus = (day: string, days: number): string => new Date(Date.parse(`${day}T00:00:00Z`) - days * 86_400_000).toISOString().slice(0, 10);
+
+/** B25-R: the first day of a tail of `spanDays` before the newest dated fragment (or the observed-through cut-off); null — read everything. */
+export function tailFromDay(versions: readonly EvidenceVersionRow[], spanDays: number, observedThrough: string | null): string | null {
+  const days = versions.filter((v) => v.is_fragment && typeof v.event_time === 'string' && v.event_time !== '').map((v) => v.event_time as string);
+  if (days.length === 0) return null;   // nothing dated: nothing can be left out
+  let anchor = days.reduce((a, b) => (b > a ? b : a));
+  if (observedThrough !== null && observedThrough < anchor) anchor = observedThrough;
+  const oldest = days.reduce((a, b) => (b < a ? b : a));
+  const from = dayMinus(anchor, spanDays);
+  return from <= oldest ? null : from;
+}
+
+/** B25-R: whether a tail from `fromDay` reads this version — every version but a framed fragment dated before the tail (a day's margin
+ *  for the event time's zone against the row's own date). */
+export function readsInTail(v: Pick<EvidenceVersionRow, 'is_fragment' | 'event_time'>, fromDay: string | null): boolean {
+  return fromDay === null || !v.is_fragment || typeof v.event_time !== 'string' || v.event_time === '' || v.event_time >= dayMinus(fromDay, 1);
 }
 
 export interface Reader {
@@ -99,6 +139,8 @@ export class SeriesService {
    */
   async assemble(
     r: Reader, seriesKey: string, knownAt: string, observedThrough: string | null,
+    /* B25-R: only the latest points (null: the whole history, as every caller but the twin's estimation reads) */
+    tail: SeriesTail | null = null,
   ): Promise<AssembledSeries> {
     const reg = await this.pipeline.consequentialRead(
       this.envelope(r, 'prediction.read', 'SER', null), r.principal,
@@ -121,19 +163,61 @@ export class SeriesService {
     const usedRows = new Map<string, EvidenceVersionRow>();
     const unreadable: AssembledSeries['unreadable'] = [];
     let freshest: string | null = null;
-    for (const v of versions.result) {
-      const cached = await this.load(r, v, parse, series);
+    /* B25-R: the TAIL — retrieved once each (a widened tail reads only the versions it adds), then assembled as before over what it reads */
+    const loaded = new Map<string, LoadedVersion | string>();
+    const keyOf = (v: EvidenceVersionRow) => `${v.object_id}@${v.object_version}`;
+    let span = tail?.spanDays ?? 0;
+    let fromDay = tail === null ? null : tailFromDay(versions.result, span, observedThrough);
+    let wanted = versions.result;
+    for (;;) {
+      wanted = versions.result.filter((v) => readsInTail(v, fromDay));
+      for (const v of wanted) if (!loaded.has(keyOf(v))) loaded.set(keyOf(v), await this.load(r, v, parse, series));
+      if (tail === null || fromDay === null) break;
+      const days = new Set<string>();
+      for (const v of wanted) {
+        const c = loaded.get(keyOf(v));
+        if (typeof c !== 'string' && c !== undefined) for (const o of c.rows) if (o.date >= fromDay && (observedThrough === null || o.date <= observedThrough)) days.add(o.date);
+      }
+      if (days.size >= tail.points) break;
+      span *= 4;
+      fromDay = tailFromDay(versions.result, span, observedThrough);
+    }
+    for (const v of wanted) {
+      const cached = loaded.get(keyOf(v)) as LoadedVersion | string;
       if (typeof cached === 'string') {
         unreadable.push({ evidence_object_id: v.object_id, evidence_version: v.object_version, reason: cached });
         continue;
       }
       for (const obs of cached.rows) {
         if (observedThrough !== null && obs.date > observedThrough) continue;
+        if (fromDay !== null && obs.date < fromDay) continue;   // B25-R: before the tail (its days are not all read)
         const prev = byDate.get(obs.date);
         const newer = prev === undefined
           || v.recorded_at > prev.v.recorded_at
           || (v.recorded_at === prev.v.recorded_at && v.is_fragment && !prev.v.is_fragment);
         if (newer) byDate.set(obs.date, { obs, v });
+      }
+    }
+    /*
+     * B25 act-found (the rehearsal of the B25 act on eye_demo_b25): the routine retention of SUPERSEDED evidence (a 2024 PortWatch replay-set
+     * fragment, tombstoned by a retention action) left every PortWatch series INCOMPLETE for good, so every forecast on the corridor was
+     * refused — the B30 act found the same for the twin's estimators (estimators.ts unreadableInWindow). An unreadable version is set aside
+     * — disclosed, not counted — only when it is a FRAMED FRAGMENT (one row of its parent) whose stated day (its event time) this series
+     * holds a point for from a version recorded LATER: by the rule above the later version wins that day whatever the lost row held, so
+     * nothing the lost bytes could say reaches the series. Anything else unreadable (a window, a parent, a fragment with no day or whose
+     * day nothing later serves) still makes the history incomplete.
+     */
+    const supersededUnreadable: AssembledSeries['supersededUnreadable'] = [];
+    const rowOf = new Map(versions.result.map((v) => [`${v.object_id}@${v.object_version}`, v]));
+    for (let i = unreadable.length - 1; i >= 0; i -= 1) {
+      const u = unreadable[i]!; const v = rowOf.get(`${u.evidence_object_id}@${u.evidence_version}`);
+      const dayOf = v?.event_time ?? null;
+      if (v === undefined || !v.is_fragment || dayOf === null) continue;
+      if (observedThrough !== null && dayOf > observedThrough) { supersededUnreadable.push({ ...u, day: dayOf, served_by: 'outside the cut-off (observed through)' }); unreadable.splice(i, 1); continue; }
+      const served = byDate.get(dayOf);
+      if (served !== undefined && Date.parse(served.v.recorded_at) > Date.parse(v.recorded_at)) {
+        supersededUnreadable.push({ ...u, day: dayOf, served_by: `${served.v.object_id}@${served.v.object_version}` });
+        unreadable.splice(i, 1);
       }
     }
     const points: SeriesPoint[] = [...byDate.values()]
@@ -149,8 +233,9 @@ export class SeriesService {
       });
     return {
       series, knownAt, observedThrough, points, evidence: [...used.values()],
-      versionsRead: versions.result.length, freshestRecordedAt: freshest, attribution: series.attribution,
-      unreadable, complete: unreadable.length === 0,
+      versionsRead: wanted.length, freshestRecordedAt: freshest, attribution: series.attribution,
+      /* B25-R */ readFrom: fromDay, versionsLeftOut: versions.result.length - wanted.length,
+      unreadable, supersededUnreadable, complete: unreadable.length === 0,
       controls: foldControls([...usedRows.values()]),
       evidenceRows: [...usedRows.values()],
     };
@@ -229,6 +314,17 @@ export class SeriesService {
       const msg = e instanceof HttpException ? String((e.getResponse() as { message?: string })?.message ?? e.message) : (e instanceof Error ? e.message : 'unknown');
       return { refused: `${status === null ? 'read failed' : `refused (${status})`}: ${msg.slice(0, 160)}`, status, error: e };
     }
+  }
+
+  /**
+   * B25 act-found: ONE consequential read under the reader's own envelope — what a write route needs to know BEFORE its write opens (the
+   * series it will read, the cut-off). A governed write's commit capability lives 60 s; a real history (the corridor's ~8,900 PortWatch
+   * evidence versions, each a governed retrieval) takes minutes to assemble, so the routes assemble first and write after.
+   */
+  async readAs<T, C>(r: Reader, action: string, objectType: string, objectId: string | null, capability: CapabilityFactory<C>, fn: (cap: C) => Promise<T>): Promise<T> {
+    const out = await this.pipeline.consequentialRead(this.envelope(r, action, objectType, objectId), r.principal,
+      { scope: 'DOMAIN', tenantId: r.tenantId, domainId: r.domainId, action, objectType, objectId }, capability, (cap) => fn(cap));
+    return out.result;
   }
 
   private envelope(r: Reader, action: string, objectType: string, objectId: string | null): Envelope {

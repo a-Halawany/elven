@@ -159,6 +159,7 @@ export default function ForecastsPage() {
           )}
           <dl>
             <DefinitionRow term="Statement">{open.statement}</DefinitionRow>
+            {/* B25 context */}<DefinitionRow term="Grounding"><a href={`/prediction/forecasts/${open.forecast_id}/grounding`}>the information set it pins, its environment and its replay</a></DefinitionRow>{/* end B25 context */}
             <DefinitionRow term="Distribution">
               q10 <Mono>{num(open.quantiles.q10)}</Mono> · q50 <Mono>{num(open.quantiles.q50)}</Mono> · q90 <Mono>{num(open.quantiles.q90)}</Mono> {open.unit ?? ''}
             </DefinitionRow>

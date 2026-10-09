@@ -30,6 +30,7 @@
  * evaluated before anything is admitted, and every stop is recorded and escalated.
  */
 import { HttpException, Injectable } from '@nestjs/common';
+import { sql } from 'kysely';
 import { errorBody, type Envelope } from '@eye/contracts';
 import { newId } from '../../shared/ids.js';
 import type { AuthenticatedPrincipal } from '../../shared/auth-types.js';
@@ -142,15 +143,26 @@ export function validateRegisterAgent(m: Partial<RegisterAgentIntake>, correlati
 export interface Refusal { action: string; code: string; reason: string; at: string }
 export interface RunOutcome { runId: string; agentId: string; outcome: string; spent: Record<string, unknown>; stopReason: string | null; refusals: Refusal[]; outputs: Record<string, unknown>; escalatedTo: string | null }
 
+/* B25-R (the demo regression of 2026-10-07): how long before its session ends a run stops starting new work — a governed write's commit
+   capability lives 60 s, so a unit started inside this margin could commit after the session has lapsed and leave the run unable to close. */
+const SESSION_MARGIN_MS = 60_000;
+/* B25-R: at most this many lapsed runs are closed at one run's start (the rest at the next) — the demo carried 64 per agent. */
+const LAPSED_CLOSE_LIMIT = 200;
+
 /** The run's meter: every budget is checked BEFORE the unit of work it bounds, never after. */
 class Meter {
   readonly spent: Record<string, number> = { reads: 0, gateway_calls: 0, elapsed_ms: 0 };
-  constructor(private readonly budget: Record<string, number>, private readonly started: number) {}
+  /* B25-R: `sessionEnds` (epoch ms) — the run's own session bounds its elapsed time as the budget does: the reconcile scan's budget (20 min
+     on eye_demo) outlived its 15-minute session, every effect after the lapse was refused and the run could not close. */
+  constructor(private readonly budget: Record<string, number>, private readonly started: number, private readonly sessionEnds = Number.POSITIVE_INFINITY) {}
   private elapsed(): number { return Date.now() - this.started; }
-  /** Refuse further work when the elapsed budget is exhausted. */
+  /** Refuse further work when the elapsed budget is exhausted, or when the run's session ends within the margin (B25-R). */
   tick(what = 'further work'): void {
     this.spent['elapsed_ms'] = this.elapsed();
     if (this.elapsed() >= Number(this.budget['max_elapsed_ms'] ?? 0)) throw new BudgetExceeded(`elapsed ${this.elapsed()} ms reaches the budget of ${String(this.budget['max_elapsed_ms'])} ms; the run stops before ${what}`);
+    if (Date.now() >= this.sessionEnds - SESSION_MARGIN_MS) {
+      throw new BudgetExceeded(`the run's session ends at ${new Date(this.sessionEnds).toISOString()}; the run stops before ${what} while it can still close itself`);
+    }
   }
   /** Reserve one read: refused before the read happens when the budget would be exceeded. */
   read(what: string): void {
@@ -160,12 +172,14 @@ class Meter {
   }
   remainingReads(): number { return Math.max(0, Number(this.budget['max_reads'] ?? 0) - (this.spent['reads'] as number)); }
   /** The instant the elapsed budget runs out (epoch ms): propagated into nested work so it is checked before reads and before admission. */
-  deadline(): number { return this.started + Number(this.budget['max_elapsed_ms'] ?? 0); }
+  deadline(): number { return Math.min(this.started + Number(this.budget['max_elapsed_ms'] ?? 0), /* B25-R */ this.sessionEnds - SESSION_MARGIN_MS); }
   close(): Record<string, number> { this.spent['elapsed_ms'] = this.elapsed(); return { ...this.spent }; }
 }
 
 @Injectable()
 export class AgentsService {
+  /* B25-R: the runs this process is executing — never taken for lapsed by another run of the same agent (they close themselves) */
+  private readonly live = new Set<string>();
   constructor(
     private readonly pipeline: PipelineService, private readonly principals: PrincipalsService, private readonly sessions: DecisionAgentSessionService,
     private readonly packages: PackageService, private readonly briefings: BriefingService,
@@ -270,8 +284,9 @@ export class AgentsService {
                  scan?: { asOf: string | null } /* end B28 signals */ }): Promise<RunOutcome> {
     const T = a.tenantId; const D = a.domainId;
     let principal: AuthenticatedPrincipal; let registration: Awaited<ReturnType<DecisionAgentSessionService['openRunSession']>>['registration'];
+    let expiresAt: Date; /* B25-R: the session's end bounds the run */
     try {
-      ({ principal, registration } = await this.sessions.openRunSession({ agentId: a.agentId, tenantId: T, domainId: D, correlationId: a.correlationId }));
+      ({ principal, registration, expiresAt } = await this.sessions.openRunSession({ agentId: a.agentId, tenantId: T, domainId: D, correlationId: a.correlationId }));
     } catch (e) {
       if (e instanceof DecisionAgentGrantRefused) throw new HttpException(errorBody('EYE_AUT_001', a.correlationId, e.message), 403);
       throw e;
@@ -282,17 +297,36 @@ export class AgentsService {
     const runRoute = registration.agent_kind === 'attention' && a.task === 'attention_tick'
       ? { ...this.route(T, D, 'agent.run', 'RUN', runId), mandatoryControl: 'attention_tick' as const } : this.route(T, D, 'agent.run', 'RUN', runId);
     /* end B91 entitlements */
+    /* B25-R: a run still `running` a session's lifetime after it started can no longer close itself (its session lapsed: on eye_demo 64
+       attention and 64 reconcile runs since 2026-10-07 11:00). Read in the open's own transaction (the database's clock), they are closed
+       below by the agent itself under this new session — the port's rule (a run is closed by the agent that opened it) unchanged. */
+    const lifetime = this.sessions.sessionLifetimeSeconds();
     const opened = await this.pipeline.write(this.env(principal, T, D, 'agent.run', 'RUN', runId, a.correlationId), principal, runRoute, ExecutiveCapability.agent,
       async (cap) => {
+        const lapsed = (await cap.readAgentRuns().select(['run_id', 'started_at'] as never).where('agent_id' as never, '=', a.agentId as never).where('outcome' as never, '=', 'running' as never)
+          .where('started_at' as never, '<', sql`clock_timestamp() - make_interval(secs => ${lifetime})` as never).orderBy('started_at' as never).limit(LAPSED_CLOSE_LIMIT).execute()) as Array<{ run_id: string; started_at: unknown }>;
         const r = await cap.openAgentRun({ runId, tenantId: T, domainId: D, agentId: a.agentId, task: a.task, triggerKind: a.trigger.kind, triggerPrincipal: a.trigger.principalId, triggerRef: a.trigger.ref, roomId: a.roomId, packageId: a.packageId, correlationId: a.correlationId });
-        return { result: r, targetType: 'RUN', targetId: runId, targetVersion: '1', outboxEvent: null };
+        return { result: { ...r, lapsed: lapsed.filter((x) => !this.live.has(x.run_id)) }, targetType: 'RUN', targetId: runId, targetVersion: '1', outboxEvent: null };
       });
+    this.live.add(runId);
     const budget = opened.result.budget as Record<string, number>;
     const stops = (opened.result.stop_conditions ?? []) as Array<Record<string, unknown>>;
-    const meter = new Meter(budget, Date.now());
     const refusals: Refusal[] = [];
     let outcome: 'finished' | 'stopped' | 'refused' | 'faulted' = 'finished'; let stopReason: string | null = null; let outputs: Record<string, unknown> = {};
     const identity = { agent_id: a.agentId, agent_kind: registration.agent_kind, agent_version: registration.agent_version, code_digest: registration.code_digest, method: METHOD_OF[registration.agent_kind as AgentKind], principal_id: principal.principalId };
+    /* B25-R: the lapsed runs closed, STOPPED with the reason — each its own governed write (agent.run on that run), escalated as every stop is */
+    const lapsedClosed: Array<Record<string, unknown>> = [];
+    for (const l of opened.result.lapsed) {
+      const startedAt = l.started_at instanceof Date ? l.started_at.toISOString() : String(l.started_at);
+      const reason = `session lapsed: the run started at ${startedAt} and was still running a session's lifetime (${lifetime} s) later — its session ended before it could close `
+        + `(no terminal event was recorded; what it committed before the lapse stands); closed by the agent at the start of its run ${runId}`;
+      try {
+        await this.closeRun(principal, T, D, l.run_id, runRoute, a.correlationId, { outcome: 'stopped', spent: {}, stopReason: reason, refusals: [],
+          outputs: { lapsed: { started_at: startedAt, session_lifetime_seconds: lifetime, closed_by_run: runId }, agent: identity } });
+        lapsedClosed.push({ run_id: l.run_id, started_at: startedAt, outcome: 'stopped' });
+      } catch (e) { lapsedClosed.push({ run_id: l.run_id, started_at: startedAt, error: String((e as Error)?.message ?? e).slice(0, 200) }); }
+    }
+    const meter = new Meter(budget, Date.now(), /* B25-R */ expiresAt.getTime());
     try {
       if (a.task === 'draft') outputs = await this.draft(principal, T, D, a.packageId, a.version, meter, stops, refusals, a.correlationId, identity);
       else if (a.task === 'briefing' || a.task === 'monitor') outputs = await this.brief(principal, T, D, a.roomId, a.task, meter, stops, a.correlationId, identity);
@@ -332,12 +366,45 @@ export class AgentsService {
     // completed its last unit legitimately; a stopped label after a committed write would misdescribe it (residual review
     // R7b), so the overrun is recorded on the spend and the outcome stays what it was.
     if (outcome === 'finished' && Number(spent['elapsed_ms']) > Number(budget['max_elapsed_ms'])) spent['over_budget'] = 1;
-    const closed = await this.pipeline.write(this.env(principal, T, D, 'agent.run', 'RUN', runId, a.correlationId), principal, runRoute /* B91 entitlements */, ExecutiveCapability.agent,
+    /* B25-R: a run whose session lapsed under it (its next effect refused for the lapse) is STOPPED with that reason — nothing refused the
+       agent's contract; the session's lifetime ran out as a budget does */
+    const lapsedReason = (why: string | null) => `session lapsed: the run's session ended at ${expiresAt.toISOString()} before the run did; its next effect was refused (${why ?? 'authority insufficient'})`;
+    if (outcome === 'refused' && Date.now() >= expiresAt.getTime()) { outcome = 'stopped'; stopReason = lapsedReason(stopReason); }
+    if (lapsedClosed.length > 0) outputs = { ...outputs, lapsed_closed: lapsedClosed };
+    let closed: { escalated_to: string | null };
+    try {
+      closed = await this.closeRun(principal, T, D, runId, runRoute /* B91 entitlements */, a.correlationId, { outcome, spent, stopReason, refusals, outputs: { ...outputs, agent: identity } });
+    } catch (e) {
+      if (!(e instanceof HttpException && e.getStatus() === 403)) { this.live.delete(runId); throw e; }
+      /* B25-R: the CLOSE itself was refused — the session lapsed under the run (on eye_demo: every reconcile scan, and the attention tick that
+         waited on it). The agent opens a NEW session and closes its run under it: the run ENDS, with the reason. When no session can be
+         opened (the agent revoked meanwhile) the failure is this run's FAULT, never a 403 — the timer host took a 403 here for a refusal
+         "before any session" and recorded a second, refused run of the same tick (the demo's "authority insufficient" ticks); the run is
+         then left for the agent's next run to close as lapsed. */
+      if (outcome === 'refused') { outcome = 'stopped'; stopReason = lapsedReason(stopReason); }
+      let renewed: AuthenticatedPrincipal;
+      try { renewed = (await this.sessions.openRunSession({ agentId: a.agentId, tenantId: T, domainId: D, correlationId: a.correlationId })).principal; }
+      catch (e2) {
+        this.live.delete(runId);
+        throw new Error(`run ${runId} could not be closed: its close was refused (${String((e.getResponse() as { message?: string }).message ?? 'refused')}) and no new session could be opened (${String((e2 as Error)?.message ?? e2).slice(0, 200)})`);
+      }
+      outputs = { ...outputs, closed_under_new_session: { reason: 'the run\'s close was refused under its own session (lapsed)', session_ended_at: expiresAt.toISOString() } };
+      try { closed = await this.closeRun(renewed, T, D, runId, runRoute, a.correlationId, { outcome, spent, stopReason, refusals, outputs: { ...outputs, agent: identity } }); }
+      catch (e3) { this.live.delete(runId); throw new Error(`run ${runId} could not be closed under a new session: ${String((e3 as Error)?.message ?? e3).slice(0, 300)}`); }
+    }
+    this.live.delete(runId);
+    return { runId, agentId: a.agentId, outcome, spent, stopReason, refusals, outputs: { ...outputs, agent: identity }, escalatedTo: closed.escalated_to ?? null };
+  }
+
+  /** B25-R: one run's close — the agent's governed write (agent.run on the run), by the principal of the session given. */
+  private async closeRun(p: AuthenticatedPrincipal, T: string, D: string, runId: string, route: ReturnType<AgentsService['route']>, correlationId: string,
+                         c: { outcome: string; spent: Record<string, unknown>; stopReason: string | null; refusals: Refusal[]; outputs: Record<string, unknown> }): Promise<{ escalated_to: string | null }> {
+    const closed = await this.pipeline.write(this.env(p, T, D, 'agent.run', 'RUN', runId, correlationId), p, { ...route, objectId: runId }, ExecutiveCapability.agent,
       async (cap) => {
-        const r = await cap.closeAgentRun({ runId, tenantId: T, domainId: D, outcome, spent, stopReason, refusals, outputs: { ...outputs, agent: identity }, correlationId: a.correlationId });
+        const r = await cap.closeAgentRun({ runId, tenantId: T, domainId: D, outcome: c.outcome, spent: c.spent, stopReason: c.stopReason, refusals: c.refusals, outputs: c.outputs, correlationId });
         return { result: r, targetType: 'RUN', targetId: runId, targetVersion: '1', outboxEvent: null };
       });
-    return { runId, agentId: a.agentId, outcome, spent, stopReason, refusals, outputs: { ...outputs, agent: identity }, escalatedTo: closed.result.escalated_to ?? null };
+    return { escalated_to: closed.result.escalated_to ?? null };
   }
 
   // ───────────────────────── the decision agent ─────────────────────────

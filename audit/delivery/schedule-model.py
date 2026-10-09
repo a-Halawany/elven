@@ -41,7 +41,7 @@ INTEG, HV, SLOTS, APPROVAL, STEP = 0.5, 0.15, 2, 1.0, 0.05
 ALLOC = {1: {0: 'BADCEF'}, 2: {0: 'BDF', 1: 'ACE'}, 3: {0: 'BF', 1: 'AC', 2: 'DE'}, 4: {0: 'B', 1: 'AF', 2: 'DC', 3: 'E'}}
 # A1's DELIVERED order is pinned (2026-10-01): B23 → B24 → B28 → B32 → B34 → B29 → B36 → B90 → B27 are done, in that order; the
 # simulation may not reorder the past when a later plan change moves priorities (B27's completion bookkeeping, the owner's review).
-A1_DELIVERED = ['B23', 'B24', 'B28', 'B32', 'B34', 'B29', 'B36', 'B90', 'B27', 'B31', 'B35', 'B30', 'B91']
+A1_DELIVERED = ['B23', 'B24', 'B28', 'B32', 'B34', 'B29', 'B36', 'B90', 'B27', 'B31', 'B35', 'B30', 'B91', 'B25']
 PIN = {1: {0: list(A1_DELIVERED)}, 2: {0: list(A1_DELIVERED), 1: ['B50']}, 3: {0: list(A1_DELIVERED), 1: ['B50'], 2: ['B80']},
        4: {0: list(A1_DELIVERED), 1: ['B50'], 2: ['B70'], 3: ['B80']}}
 
