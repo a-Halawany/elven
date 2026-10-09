@@ -48,6 +48,9 @@ const METHOD_TEXT = 'one run under the Supply Chain Agent\'s own session, task s
   + 'the write, at most 3 per run)';
 /* end B33 supply */
 export const SUPPLY_CHAIN_AGENT_DIGEST = createHash('sha256').update(`twin.supply_chain.agent@${SUPPLY_CHAIN_AGENT_VERSION}:${METHOD_TEXT}`, 'utf8').digest('hex');
+/* B33 supply: the runtime identity offered to the schedule (a drifted registration is never started by the hook — it is registered anew) */
+SupplyIntelBridge.setIdentity({ version: SUPPLY_CHAIN_AGENT_VERSION, digest: SUPPLY_CHAIN_AGENT_DIGEST });
+/* end B33 supply */
 
 type Row = Record<string, unknown>;
 interface Refusal { action: string; code: string; reason: string; at: string }

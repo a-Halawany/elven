@@ -401,6 +401,15 @@ describe('AG-026 · the schedule (started, never awaited past its bound; one in 
     svc.scanAwaitMs = 30_000;
     const t3 = await svc.afterTick({ principal: attention, tenantId: T, domainId: D, correlationId: uuidv7() });
     expect(t3).toMatchObject({ scan: null, pending: { backlog: 0, unread: [], remaps: [] } });
+    // R2: a DRIFTED registration (another code digest) is never started by the schedule — listed, the run count unchanged
+    await sql`update executive.agents set code_digest = ${'b'.repeat(64)} where agent_id = ${A}::uuid`.execute(h.su);
+    await version(netOwner, N, [{ key: 'capacity:regensburg.module', value: 1150, unit: 'pcs/day' }], { carryFrom: await head(N), except: ['capacity:regensburg.module'] });
+    const n0 = Number((await one(sql`select count(*)::int n from executive.agent_runs where agent_id = ${A}::uuid`))['n']);
+    const t4 = await svc.afterTick({ principal: attention, tenantId: T, domainId: D, correlationId: uuidv7() });
+    expect(t4).toMatchObject({ scan: null, agents: 0, drifted: [A] });
+    expect(Number((await one(sql`select count(*)::int n from executive.agent_runs where agent_id = ${A}::uuid`))['n'])).toBe(n0);
+    await sql`update executive.agents set code_digest = ${SUPPLY_CHAIN_AGENT_DIGEST} where agent_id = ${A}::uuid`.execute(h.su);
+    expect((await runAgent(A)).run.outcome).toBe('finished');
   }, 120_000);
 
   it('refusal → recovery: two concurrent scans of a changed network draft each finding ONCE (the advisory lock); the duplicate answered 409 in the family\'s words', async () => {

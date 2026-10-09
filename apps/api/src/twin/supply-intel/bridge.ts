@@ -24,7 +24,11 @@ export interface SupplyIntelScanEnv {
 export type SupplyIntelScanner = (d: SupplyIntelScanEnv, p: AuthenticatedPrincipal, a: SupplyIntelScanArgs) => Promise<Row>;
 
 let scanner: SupplyIntelScanner | null = null;
+let identity: { version: string; digest: string } | null = null;
 export const SupplyIntelBridge = {
   setScanner(s: SupplyIntelScanner | null): void { scanner = s; },
   scanner(): SupplyIntelScanner | null { return scanner; },
+  /** the Supply Chain Agent's runtime identity (supply-chain-agent.ts offers it at import): the hook never starts a DRIFTED agent's scan (R2) */
+  setIdentity(i: { version: string; digest: string }): void { identity = i; },
+  identity(): { version: string; digest: string } | null { return identity; },
 };

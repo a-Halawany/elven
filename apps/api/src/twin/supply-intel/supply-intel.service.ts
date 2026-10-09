@@ -534,9 +534,14 @@ export class SupplyIntelService implements OnModuleInit {
 
   // ───────────────────────── the agent's B33 steps (SC2, SC3) ─────────────────────────
   /** What is pending for the domain's Supply Chain Agent (the hook's read and the scan's plan). */
-  async pending(cap: SupplyIntelReads, agentId: string | null): Promise<{ agents: string[]; backlog: number; unread: Array<{ twin_id: string; source_key: string; count: number }>; remaps: string[] }> {
-    const agents = ((await cap.readAgents().select(['agent_id'] as never).where('agent_kind' as never, '=', 'supply_chain' as never).where('status' as never, '=', 'active' as never)
-      .orderBy('created_at' as never).orderBy('agent_id' as never).execute()) as Array<{ agent_id: string }>).map((a) => String(a.agent_id));
+  async pending(cap: SupplyIntelReads, agentId: string | null): Promise<{ agents: string[]; drifted: string[]; backlog: number; unread: Array<{ twin_id: string; source_key: string; count: number }>; remaps: string[] }> {
+    const registered = (await cap.readAgents().select(['agent_id', 'agent_version', 'code_digest'] as never).where('agent_kind' as never, '=', 'supply_chain' as never).where('status' as never, '=', 'active' as never)
+      .orderBy('created_at' as never).orderBy('agent_id' as never).execute()) as Array<{ agent_id: string; agent_version: string; code_digest: string }>;
+    // R2: an agent registered with another digest than this runtime's is DRIFTED — never started by the schedule (its own trigger is refused and escalated)
+    const runtime = SupplyIntelBridge.identity();
+    const current = (r: { agent_version: string; code_digest: string }) => runtime === null || (r.agent_version === runtime.version && r.code_digest === runtime.digest);
+    const agents = registered.filter(current).map((a) => String(a.agent_id));
+    const drifted = registered.filter((r) => !current(r)).map((a) => String(a.agent_id));
     const agent = agentId ?? agents[0] ?? null;
     let backlog = 0;
     const nets = await this.networks(cap);
@@ -564,7 +569,7 @@ export class SupplyIntelService implements OnModuleInit {
         if (h !== null && h > Number(c['version']) && nets.some((n) => n.twin_id === c['id'])) { remaps.push(String(d['disruption_id'])); break; }
       }
     }
-    return { agents, backlog, unread, remaps };
+    return { agents, drifted, backlog, unread, remaps };
   }
 
   /**
@@ -657,7 +662,10 @@ export class SupplyIntelService implements OnModuleInit {
     const pend = (await this.pipeline.consequentialRead(this.envelopeFor(a.principal, a.tenantId, a.domainId, SUPPLY_READ, 'TWS', null, a.correlationId), a.principal,
       this.route(a.tenantId, a.domainId, SUPPLY_READ, 'TWS', null), SupplyIntelCapability.read, async (cap) => this.pending(cap, null))).result;
     const work = pend.backlog > 0 || pend.unread.length > 0 || pend.remaps.length > 0;
-    if (pend.agents.length === 0 || !work) return { pending: { backlog: pend.backlog, unread: pend.unread, remaps: pend.remaps }, agents: pend.agents.length, scan: null };
+    if (pend.agents.length === 0 || !work) {
+      return { pending: { backlog: pend.backlog, unread: pend.unread, remaps: pend.remaps }, agents: pend.agents.length, scan: null,
+               ...(pend.drifted.length === 0 ? {} : { drifted: pend.drifted, note: 'a Supply Chain Agent registered with another code digest is not started by the schedule: register it anew with this runtime\'s digest' }) };
+    }
     const agentId = pend.agents[0] as string;
     // the executive's runner (AgentsService.run) runs any task of the agent's kind; its bridge type names B30's task — the supply scan is the same call
     const runner = ReconciliationBridge.runner() as unknown as ((x: Row) => Promise<{ runId: string; agentId: string; outcome: string; stopReason: string | null }>) | null;
