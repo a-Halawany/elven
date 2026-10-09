@@ -421,8 +421,8 @@ const SOURCE_BR = 'stress-75'; const TARGET_BR = 'blockade';
     const t0 = Date.now();
     note(`A. Hoffmann PROPOSES the corridor's ${KEY} again on the current head v${head.version} (the estimators read the real PortWatch series — minutes)`);
     const r = await longAs(hoffmann, `${ES}/estimates/propose`, dom(hoffmann, 'twin', { action: 'twin.estimate.propose', objectType: 'TWE' }), { twinId: CORRIDOR.id, key: KEY, note: 'the corridor capacity on the latest PortWatch count, on the current head (SYNTHETIC baseline)' });
-    if (!r.ok) fail('A. Hoffmann proposes the estimate again', r); else ok(`A. Hoffmann PROPOSED ${short(r.body.estimate?.estimate_id)}: ${f3(r.body.estimate?.proposed_value)} % on v${r.body.estimate?.head_version} (${mins(t0)}) — ${r.body.estimate?.ambiguous ? 'ambiguous' : 'unambiguous'}, ${r.body.estimate?.constraint_outcome ?? '—'}`);
     e = await latest();
+    if (!r.ok) fail('A. Hoffmann proposes the estimate again', r); else ok(`A. Hoffmann PROPOSED ${short(e?.id)}: ${f3(e?.v)} % on v${e?.head_version} (${mins(t0)}) — the stale proposal ${short(OPEN78?.id)} superseded`);
   }
   if (e && e.state === 'proposed') {
     let d = await decideAs(e.id, false);
