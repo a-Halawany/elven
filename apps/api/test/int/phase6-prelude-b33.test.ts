@@ -309,7 +309,9 @@ describe('P4 · the agent kind domain_intelligence (task domain_scan)', () => {
     expect(out.run).toMatchObject({ outcome: 'finished' });
     const r = await one(sql`select task, outcome, agent_kind, principal_id::text as p, outputs from executive.agent_runs where agent_id = ${agentId}::uuid`);
     expect(r).toMatchObject({ task: 'domain_scan', outcome: 'finished', agent_kind: 'domain_intelligence', p: reg.principalId });
-    expect(r['outputs']).toMatchObject({ scanned: 0, proposed: [], note: expect.stringMatching(/no domain scan is installed in this build/), agent: expect.objectContaining({ agent_kind: 'domain_intelligence' }) });
+    /* B33 §CI moved this pin: §CI's real domain scan is installed (DomainScanBridge) — with nothing watched it reads nothing and proposes nothing,
+       and says so as an agent-produced output (the null scan's `note` is the prelude-only build's) */
+    expect(r['outputs']).toMatchObject({ scanned: 0, proposed: [], marked: expect.stringMatching(/^agent-produced/), agent: expect.objectContaining({ agent_kind: 'domain_intelligence' }) });
   });
 
   it('refusal: a foreign digest at registration; an unknown kind; the kind asked to run another kind\'s task', async () => {
