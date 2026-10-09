@@ -48,12 +48,12 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-09-23",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "acf3a9984f40f6b4fa4ccf7626ca91dfdc75e76c46900b968b80a7e94d2bf046",
+      "evidence_sha256": "3dbb85de2e62e1504a9333edf5abb79fa120909d9ee401b0f8dbf3a547a40f7c",
       "classification": "RISK_ACCEPTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "acf3a9984f40f6b4fa4ccf7626ca91dfdc75e76c46900b968b80a7e94d2bf046"
+          "sha256": "3dbb85de2e62e1504a9333edf5abb79fa120909d9ee401b0f8dbf3a547a40f7c"
         },
         {
           "path": "infra/images/candidates/evidence/v2/gosu-verification.txt",
@@ -105,12 +105,12 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-09-23",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "acf3a9984f40f6b4fa4ccf7626ca91dfdc75e76c46900b968b80a7e94d2bf046",
+      "evidence_sha256": "3dbb85de2e62e1504a9333edf5abb79fa120909d9ee401b0f8dbf3a547a40f7c",
       "classification": "RISK_ACCEPTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "acf3a9984f40f6b4fa4ccf7626ca91dfdc75e76c46900b968b80a7e94d2bf046"
+          "sha256": "3dbb85de2e62e1504a9333edf5abb79fa120909d9ee401b0f8dbf3a547a40f7c"
         },
         {
           "path": "infra/images/candidates/evidence/v2/gosu-verification.txt",
@@ -159,12 +159,12 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-09-23",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "acf3a9984f40f6b4fa4ccf7626ca91dfdc75e76c46900b968b80a7e94d2bf046",
+      "evidence_sha256": "3dbb85de2e62e1504a9333edf5abb79fa120909d9ee401b0f8dbf3a547a40f7c",
       "classification": "NOT_AFFECTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "acf3a9984f40f6b4fa4ccf7626ca91dfdc75e76c46900b968b80a7e94d2bf046"
+          "sha256": "3dbb85de2e62e1504a9333edf5abb79fa120909d9ee401b0f8dbf3a547a40f7c"
         },
         {
           "path": "docs/evidence/govulncheck-gosu-b6a16ed0.json",
@@ -226,12 +226,12 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-09-23",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "acf3a9984f40f6b4fa4ccf7626ca91dfdc75e76c46900b968b80a7e94d2bf046",
+      "evidence_sha256": "3dbb85de2e62e1504a9333edf5abb79fa120909d9ee401b0f8dbf3a547a40f7c",
       "classification": "NOT_AFFECTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "acf3a9984f40f6b4fa4ccf7626ca91dfdc75e76c46900b968b80a7e94d2bf046"
+          "sha256": "3dbb85de2e62e1504a9333edf5abb79fa120909d9ee401b0f8dbf3a547a40f7c"
         },
         {
           "path": "docs/evidence/govulncheck-gosu-b6a16ed0.json",
@@ -313,12 +313,12 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-09-23",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "acf3a9984f40f6b4fa4ccf7626ca91dfdc75e76c46900b968b80a7e94d2bf046",
+      "evidence_sha256": "3dbb85de2e62e1504a9333edf5abb79fa120909d9ee401b0f8dbf3a547a40f7c",
       "classification": "RISK_ACCEPTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "acf3a9984f40f6b4fa4ccf7626ca91dfdc75e76c46900b968b80a7e94d2bf046"
+          "sha256": "3dbb85de2e62e1504a9333edf5abb79fa120909d9ee401b0f8dbf3a547a40f7c"
         },
         {
           "path": "infra/images/published/20260910/postgres-arm64.trivy.txt",
@@ -384,12 +384,12 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-09-23",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "acf3a9984f40f6b4fa4ccf7626ca91dfdc75e76c46900b968b80a7e94d2bf046",
+      "evidence_sha256": "3dbb85de2e62e1504a9333edf5abb79fa120909d9ee401b0f8dbf3a547a40f7c",
       "classification": "RISK_ACCEPTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "acf3a9984f40f6b4fa4ccf7626ca91dfdc75e76c46900b968b80a7e94d2bf046"
+          "sha256": "3dbb85de2e62e1504a9333edf5abb79fa120909d9ee401b0f8dbf3a547a40f7c"
         },
         {
           "path": "infra/images/published/20260910/postgres-arm64.trivy.txt",
@@ -451,12 +451,12 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-10-09",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "acf3a9984f40f6b4fa4ccf7626ca91dfdc75e76c46900b968b80a7e94d2bf046",
+      "evidence_sha256": "3dbb85de2e62e1504a9333edf5abb79fa120909d9ee401b0f8dbf3a547a40f7c",
       "classification": "NOT_AFFECTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "acf3a9984f40f6b4fa4ccf7626ca91dfdc75e76c46900b968b80a7e94d2bf046"
+          "sha256": "3dbb85de2e62e1504a9333edf5abb79fa120909d9ee401b0f8dbf3a547a40f7c"
         },
         {
           "path": "infra/images/official/20261009/govulncheck/gosu-amd64.govulncheck.json",
@@ -550,12 +550,12 @@
       "evidence": "docs/SCANNER_DISPOSITIONS.md",
       "approved_on": "2026-10-09",
       "expires_on": "2026-11-05",
-      "evidence_sha256": "acf3a9984f40f6b4fa4ccf7626ca91dfdc75e76c46900b968b80a7e94d2bf046",
+      "evidence_sha256": "3dbb85de2e62e1504a9333edf5abb79fa120909d9ee401b0f8dbf3a547a40f7c",
       "classification": "NOT_AFFECTED",
       "evidence_files": [
         {
           "path": "docs/SCANNER_DISPOSITIONS.md",
-          "sha256": "acf3a9984f40f6b4fa4ccf7626ca91dfdc75e76c46900b968b80a7e94d2bf046"
+          "sha256": "3dbb85de2e62e1504a9333edf5abb79fa120909d9ee401b0f8dbf3a547a40f7c"
         },
         {
           "path": "infra/images/official/20261009/govulncheck/gosu-arm64.govulncheck.json",
@@ -623,6 +623,174 @@
         }
       ],
       "reviewed_on": "2026-10-09"
+    },
+    {
+      "id": "SCX-0014",
+      "advisory_ids": [
+        "CVE-2026-78669"
+      ],
+      "image": "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873",
+      "scan_platform": "linux/amd64",
+      "package_name": "stdlib",
+      "package_purl": "pkg:golang/stdlib@v1.24.6",
+      "installed_version": "v1.24.6",
+      "severities": [
+        "HIGH"
+      ],
+      "result_target": "usr/local/bin/gosu",
+      "reason": "NEW RECORD, APPROVED BY THE OWNER ON 2026-10-10 (given in the coordinator's session and relayed to the session that applied it; quoted in docs/SCANNER_DISPOSITIONS.md §3.11) — application 1 of the owner's STANDING AUTHORIZATION of 2026-10-10 for the 2026-10-08 Go release in these exact pinned children and gosu digests (module-level only, every applicable affected package absent from each architecture's binary independently; never a silent RISK_ACCEPTED). NOT_AFFECTED (vulnerable_code_not_present). CVE-2026-78669 = GO-2026-6611 (Excessive CPU consumption from repeated initial window changes in net/http; affected: stdlib net/http < 1.26.9, stdlib net/http/internal/http2 1.27.0-0 <= v < 1.27.2, golang.org/x/net/http2 < 0.60.0), matched by trivy by toolchain version (pkg:golang/stdlib@v1.24.6) against usr/local/bin/gosu in the linux/amd64 child sha256:d8703cd7fba306b9fec9268ecedfa8a966846c053036a60e3635791957eb2f66 of the pinned OFFICIAL index postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873. First reported UNGOVERNED HIGH on 2026-10-10 (PR #84, ci run 37988719052, job 114017128886; and a local FINAL gate run on 1974624 with the pinned scanners). WHY A NEW RECORD: SCX-0012/0013 were approved on 2026-10-09 for two other advisories; an approval cannot precede what it approves. THE CONDITION, ON THIS ARCHITECTURE: the binary is gosu sha256 52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0 (x86-64, GOARCH=amd64, go1.24.6, github.com/tianon/gosu v1.19.0; identity chain index -> child -> layer -> binary in infra/images/official/20261009/gosu/IDENTITY.txt, re-hashed in infra/images/official/20261010/qualification/input-amd64.txt); govulncheck v1.7.0 -mode binary (golang@sha256:1ae0735f…, go1.25.14, vuln.go.dev 2026-10-08T22:31:09Z, unchanged on 2026-10-10; infra/images/official/20261009/govulncheck/gosu-amd64.govulncheck.json, equal as sets to a 2026-10-10 re-run) covers GO-2026-6611 and reports it at MODULE level only, 0 called; the symbol table (infra/images/official/20261010/qualification/nm-amd64.txt) links none of net/http, net/http/internal/http2, golang.org/x/net/http2, and the module list (infra/images/official/20261010/qualification/modules-amd64.txt: stdlib go1.24.6, gosu v1.19.0, github.com/moby/sys/user v0.1.0, golang.org/x/sys v0.1.0) has no golang.org/x/net; the detector finds the packages the binary does link (positive control, infra/images/official/20261010/qualification/QUALIFICATION.txt). The finding is a version-only match with no corresponding code. The expiry is 2026-11-05, the date of the rest of the set; §4's prohibited exposure applies.",
+      "compensating_controls": [
+        "govulncheck v1.7.0 (Go go1.25.14, vuln.go.dev as of 2026-10-08T22:31:09Z) covers GO-2026-6611 and reports it at module level only, 0 called, in the exact scanned binary; none of net/http, net/http/internal/http2 or golang.org/x/net/http2 is linked into it and golang.org/x/net is not among its modules.",
+        "Reachability analysis is a static over-approximation; here the vulnerable packages are absent from the binary, which is stronger than unreachability, and the operational controls below still apply.",
+        "gosu runs once at container start and is neither a long-lived process nor a network listener; it serves no HTTP and speaks no HTTP/2.",
+        "PostgreSQL itself is loopback-bound (127.0.0.1:5432 only).",
+        "Phase 0 is a LOCAL-ONLY development profile under EXC-P0-004.",
+        "ADR-P0-01 monthly patch cadence re-pins and re-scans as a blocking release gate. No official postgres 18 build carries a gosu built with go >= 1.26.9 as of 2026-10-10; any re-pin changes the image/binary digests and ends the standing authorization for the new artefacts, and this record is re-reviewed through the governed re-pin."
+      ],
+      "owner": "founding-engineer",
+      "approver": "product-owner (the owner's approval of 2026-10-10, given in the coordinator's session and relayed to the session that applied it: SCX-0014/0015 approved, and the standing authorization for the 2026-10-08 Go release in these exact binaries, quoted in docs/SCANNER_DISPOSITIONS.md §3.11)",
+      "evidence": "docs/SCANNER_DISPOSITIONS.md",
+      "approved_on": "2026-10-10",
+      "expires_on": "2026-11-05",
+      "evidence_sha256": "3dbb85de2e62e1504a9333edf5abb79fa120909d9ee401b0f8dbf3a547a40f7c",
+      "classification": "NOT_AFFECTED",
+      "evidence_files": [
+        {
+          "path": "docs/SCANNER_DISPOSITIONS.md",
+          "sha256": "3dbb85de2e62e1504a9333edf5abb79fa120909d9ee401b0f8dbf3a547a40f7c"
+        },
+        {
+          "path": "infra/images/official/20261010/RUN.txt",
+          "sha256": "4cdb85f91e5163298c3145b30755eba91b0e151a081fa39e2a0a1d606ec6acb2"
+        },
+        {
+          "path": "infra/images/official/20261010/advisories/GO-2026-6611.json",
+          "sha256": "5e89ac4314a24eac41111b71ef4544f22836c7b1baf48747e31c5c1d8282c3de"
+        },
+        {
+          "path": "infra/images/official/20261010/qualification/QUALIFICATION.txt",
+          "sha256": "94b4813ffeb98be29a68792eba7b3476c6f781efa04b0a62eec1a94f65adfa49"
+        },
+        {
+          "path": "infra/images/official/20261010/qualification/input-amd64.txt",
+          "sha256": "8e83a1c8b4c03f59befadaed1cf5da2434f64e609aa70cda6c71563a34344943"
+        },
+        {
+          "path": "infra/images/official/20261010/qualification/modules-amd64.txt",
+          "sha256": "88cae636607f3aa4c27bf86f7919c5b686590d49234565e042cd41a0fa2ca25f"
+        },
+        {
+          "path": "infra/images/official/20261010/qualification/nm-amd64.txt",
+          "sha256": "5178bf56d45e755e1247e296c91ff83436230d7d4ff9f15c87c93e890eb35114"
+        },
+        {
+          "path": "infra/images/official/20261009/govulncheck/gosu-amd64.govulncheck.json",
+          "sha256": "36f7429b19deef69b33732bd1762f7a2911461ecf13d6d47be7d8297d9d58f10"
+        },
+        {
+          "path": "infra/images/official/20261009/gosu/IDENTITY.txt",
+          "sha256": "b82da54791d6a4e39f233ddb6dc8935ad6daf14c964a890837d4bdb9f778353a"
+        },
+        {
+          "path": "infra/images/official/20260922/inventory/official-postgres-amd64.txt",
+          "sha256": "143d02e50a77e35806f4259d8e49b24c655eeb6b7c84ae169c4b61b771d3c942"
+        },
+        {
+          "path": "infra/images/candidates/evidence/v2/gosu-verification.txt",
+          "sha256": "e0f901da541867530146e9869337d17b1ac880c0d2f2312240f9d857bc830359"
+        },
+        {
+          "path": "infra/images/official/20260922/scans/scan-summary.txt",
+          "sha256": "939d2f54536fd6fcf328a4f38236c57eae18ac93ee0173b285e313bda7965fb9"
+        }
+      ],
+      "reviewed_on": "2026-10-10"
+    },
+    {
+      "id": "SCX-0015",
+      "advisory_ids": [
+        "CVE-2026-78669"
+      ],
+      "image": "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873",
+      "scan_platform": "linux/arm64",
+      "package_name": "stdlib",
+      "package_purl": "pkg:golang/stdlib@v1.24.6",
+      "installed_version": "v1.24.6",
+      "severities": [
+        "HIGH"
+      ],
+      "result_target": "usr/local/bin/gosu",
+      "reason": "NEW RECORD, APPROVED BY THE OWNER ON 2026-10-10 (given in the coordinator's session and relayed to the session that applied it; quoted in docs/SCANNER_DISPOSITIONS.md §3.11) — application 1 of the owner's STANDING AUTHORIZATION of 2026-10-10 for the 2026-10-08 Go release in these exact pinned children and gosu digests (module-level only, every applicable affected package absent from each architecture's binary independently; never a silent RISK_ACCEPTED). NOT_AFFECTED (vulnerable_code_not_present). CVE-2026-78669 = GO-2026-6611 (Excessive CPU consumption from repeated initial window changes in net/http; affected: stdlib net/http < 1.26.9, stdlib net/http/internal/http2 1.27.0-0 <= v < 1.27.2, golang.org/x/net/http2 < 0.60.0), matched by trivy by toolchain version (pkg:golang/stdlib@v1.24.6) against usr/local/bin/gosu in the linux/arm64 child sha256:89f747171c4b0af0eacf5984550060be79786dbe286eb60cfa691d79d1e8b23f of the pinned OFFICIAL index postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873. First reported UNGOVERNED HIGH on 2026-10-10 (PR #84, ci run 37988719052, job 114017128886; and a local FINAL gate run on 1974624 with the pinned scanners). WHY A NEW RECORD: SCX-0012/0013 were approved on 2026-10-09 for two other advisories; an approval cannot precede what it approves. THE CONDITION, ON THIS ARCHITECTURE: the binary is gosu sha256 3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44 (aarch64, GOARCH=arm64, go1.24.6, github.com/tianon/gosu v1.19.0; identity chain index -> child -> layer -> binary in infra/images/official/20261009/gosu/IDENTITY.txt, re-hashed in infra/images/official/20261010/qualification/input-arm64.txt); govulncheck v1.7.0 -mode binary (golang@sha256:1ae0735f…, go1.25.14, vuln.go.dev 2026-10-08T22:31:09Z, unchanged on 2026-10-10; infra/images/official/20261009/govulncheck/gosu-arm64.govulncheck.json, equal as sets to a 2026-10-10 re-run) covers GO-2026-6611 and reports it at MODULE level only, 0 called; the symbol table (infra/images/official/20261010/qualification/nm-arm64.txt) links none of net/http, net/http/internal/http2, golang.org/x/net/http2, and the module list (infra/images/official/20261010/qualification/modules-arm64.txt: stdlib go1.24.6, gosu v1.19.0, github.com/moby/sys/user v0.1.0, golang.org/x/sys v0.1.0) has no golang.org/x/net; the detector finds the packages the binary does link (positive control, infra/images/official/20261010/qualification/QUALIFICATION.txt). The finding is a version-only match with no corresponding code. The expiry is 2026-11-05, the date of the rest of the set; §4's prohibited exposure applies.",
+      "compensating_controls": [
+        "govulncheck v1.7.0 (Go go1.25.14, vuln.go.dev as of 2026-10-08T22:31:09Z) covers GO-2026-6611 and reports it at module level only, 0 called, in the exact scanned binary; none of net/http, net/http/internal/http2 or golang.org/x/net/http2 is linked into it and golang.org/x/net is not among its modules.",
+        "Reachability analysis is a static over-approximation; here the vulnerable packages are absent from the binary, which is stronger than unreachability, and the operational controls below still apply.",
+        "gosu runs once at container start and is neither a long-lived process nor a network listener; it serves no HTTP and speaks no HTTP/2.",
+        "PostgreSQL itself is loopback-bound (127.0.0.1:5432 only).",
+        "Phase 0 is a LOCAL-ONLY development profile under EXC-P0-004.",
+        "ADR-P0-01 monthly patch cadence re-pins and re-scans as a blocking release gate. No official postgres 18 build carries a gosu built with go >= 1.26.9 as of 2026-10-10; any re-pin changes the image/binary digests and ends the standing authorization for the new artefacts, and this record is re-reviewed through the governed re-pin."
+      ],
+      "owner": "founding-engineer",
+      "approver": "product-owner (the owner's approval of 2026-10-10, given in the coordinator's session and relayed to the session that applied it: SCX-0014/0015 approved, and the standing authorization for the 2026-10-08 Go release in these exact binaries, quoted in docs/SCANNER_DISPOSITIONS.md §3.11)",
+      "evidence": "docs/SCANNER_DISPOSITIONS.md",
+      "approved_on": "2026-10-10",
+      "expires_on": "2026-11-05",
+      "evidence_sha256": "3dbb85de2e62e1504a9333edf5abb79fa120909d9ee401b0f8dbf3a547a40f7c",
+      "classification": "NOT_AFFECTED",
+      "evidence_files": [
+        {
+          "path": "docs/SCANNER_DISPOSITIONS.md",
+          "sha256": "3dbb85de2e62e1504a9333edf5abb79fa120909d9ee401b0f8dbf3a547a40f7c"
+        },
+        {
+          "path": "infra/images/official/20261010/RUN.txt",
+          "sha256": "4cdb85f91e5163298c3145b30755eba91b0e151a081fa39e2a0a1d606ec6acb2"
+        },
+        {
+          "path": "infra/images/official/20261010/advisories/GO-2026-6611.json",
+          "sha256": "5e89ac4314a24eac41111b71ef4544f22836c7b1baf48747e31c5c1d8282c3de"
+        },
+        {
+          "path": "infra/images/official/20261010/qualification/QUALIFICATION.txt",
+          "sha256": "94b4813ffeb98be29a68792eba7b3476c6f781efa04b0a62eec1a94f65adfa49"
+        },
+        {
+          "path": "infra/images/official/20261010/qualification/input-arm64.txt",
+          "sha256": "132d9dc3cc759e1a328201e3f481c72e8becc44cd353cb5afb367f959c115a5a"
+        },
+        {
+          "path": "infra/images/official/20261010/qualification/modules-arm64.txt",
+          "sha256": "d54fa6f960e7d5a6aff58cc635e04e2fd374eb63f13a025227bbcd7525623c14"
+        },
+        {
+          "path": "infra/images/official/20261010/qualification/nm-arm64.txt",
+          "sha256": "9c9160a614546cf8be50eb30c8cd3b546fdeae8199d66879ed239bf551f111e3"
+        },
+        {
+          "path": "infra/images/official/20261009/govulncheck/gosu-arm64.govulncheck.json",
+          "sha256": "36f7429b19deef69b33732bd1762f7a2911461ecf13d6d47be7d8297d9d58f10"
+        },
+        {
+          "path": "infra/images/official/20261009/gosu/IDENTITY.txt",
+          "sha256": "b82da54791d6a4e39f233ddb6dc8935ad6daf14c964a890837d4bdb9f778353a"
+        },
+        {
+          "path": "infra/images/official/20260922/inventory/official-postgres-arm64.txt",
+          "sha256": "9762a9301c23bfc75894afbe859f5cf5a8f5e782d5638fa3e762e9c510e60733"
+        },
+        {
+          "path": "infra/images/candidates/evidence/v2/gosu-verification.txt",
+          "sha256": "e0f901da541867530146e9869337d17b1ac880c0d2f2312240f9d857bc830359"
+        },
+        {
+          "path": "infra/images/official/20260922/scans/scan-summary.txt",
+          "sha256": "939d2f54536fd6fcf328a4f38236c57eae18ac93ee0173b285e313bda7965fb9"
+        },
+        {
+          "path": "docs/images/ARM64_RISK_DECISION.md",
+          "sha256": "6b6518d03ddc01c86deb7644fa638a6a2cea149bcba6987f14352e18ae513aca"
+        }
+      ],
+      "reviewed_on": "2026-10-10"
     }
   ],
   "evidence_binding": "Every record cites docs/SCANNER_DISPOSITIONS.md and binds it by exact SHA-256. The gate recomputes the digest from the tracked bytes on every run, so a one-byte edit invalidates the records until re-approved. The previous references to PHASE0_EVIDENCE.md were a general gate summary that did not identify these findings, digests, platform or scanner identity, and so could not be reviewed as the basis for these decisions.",
