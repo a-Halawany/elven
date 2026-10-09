@@ -1,0 +1,30 @@
+Per-architecture binding re-run, 2026-10-09 — before the owner's approval was applied
+
+Each pinned gosu binary (../gosu/IDENTITY.txt) analysed again, one invocation each, in the same image and with the same
+govulncheck as RUN.txt (golang@sha256:1ae0735f00daffa3aaf1363a5184c0d2dc55c78e3db4ec70241cdac97bf84b59, go1.25.14,
+govulncheck v1.7.0; vuln.go.dev index modified 2026-10-08T22:31:09Z, unchanged since the first run), recording the
+input digest, the build's GOARCH, the digest of the output, the two advisories' trace levels and the symbol counts.
+
+go: go version go1.25.14 linux/arm64
+govulncheck:  mod golang.org/x/vuln v1.7.0 h1:4MQBuhmXbz2uepNJrf3v+aaZLGDqw1JluwYboegA1qg=
+run (UTC): 2026-10-09T14:51:43Z
+
+== amd64
+input:  52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0  /work/gosu-amd64.bin
+build:  buildGOARCH=amd64
+output: 09ff3363573dc76f919ad3398efc2a66d8ef21bf1a4de0519c5569e58e49ac57  (govulncheck -mode binary -json /work/gosu-amd64.bin)
+symbols with prefix net/http.: 0
+symbols with prefix crypto/tls.: 0
+
+== arm64
+input:  3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44  /work/gosu-arm64.bin
+build:  buildGOARCH=arm64
+output: 09ff3363573dc76f919ad3398efc2a66d8ef21bf1a4de0519c5569e58e49ac57  (govulncheck -mode binary -json /work/gosu-arm64.bin)
+symbols with prefix net/http.: 0
+symbols with prefix crypto/tls.: 0
+
+== canonical comparison with the committed reports (host, python): govulncheck emits its finding records in
+   map order, so two runs over the same binary can differ in byte order only. Compared as SETS: config,
+   SBOM, the OSV ids, and every finding record (osv, fixed_version, full trace) serialised with sorted keys.
+   amd64: fresh run == committed gosu-amd64.govulncheck.json as sets: True; canonical digest b2f5641848ddffac5c4f99313ea26476972057a7b31550350baec25a82a5721c; 188 OSV records (181 distinct ids), 65 findings, called 0; GO-2026-6609 levels ['module'], GO-2026-6607 levels ['module']; sbom go1.24.6
+   arm64: fresh run == committed gosu-arm64.govulncheck.json as sets: True; canonical digest b2f5641848ddffac5c4f99313ea26476972057a7b31550350baec25a82a5721c; 188 OSV records (181 distinct ids), 65 findings, called 0; GO-2026-6609 levels ['module'], GO-2026-6607 levels ['module']; sbom go1.24.6

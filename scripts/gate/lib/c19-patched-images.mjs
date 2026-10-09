@@ -140,11 +140,13 @@ export const SERVICES = Object.freeze({
      * SCX-0002..0005 govern its linux/amd64 child; SCX-0010 and SCX-0011 govern the linux/arm64
      * child, which the gate began scanning on 2026-09-10. Re-issued on 2026-09-10 for the derived
      * image and on 2026-09-23 for the official index the compose file returned to on 2026-09-22
-     * (docs/SCANNER_DISPOSITIONS.md §3.9). A re-pin to a NEWER build re-scopes ALL of them, on both
-     * platforms, or the ones left behind fail as unused. A control holds this list equal to the
-     * tracked records that name the configured pin.
+     * (docs/SCANNER_DISPOSITIONS.md §3.9). SCX-0012 (linux/amd64) and SCX-0013 (linux/arm64) joined
+     * them on 2026-10-09, approved by the owner, for two Go advisories of 2026-10-08 in the same gosu
+     * (§3.10). A re-pin to a NEWER build re-scopes ALL of them, on both platforms, or the ones left
+     * behind fail as unused. A control holds this list equal to the tracked records that name the
+     * configured pin.
      */
-    records: Object.freeze(['SCX-0002', 'SCX-0003', 'SCX-0004', 'SCX-0005', 'SCX-0010', 'SCX-0011']),
+    records: Object.freeze(['SCX-0002', 'SCX-0003', 'SCX-0004', 'SCX-0005', 'SCX-0010', 'SCX-0011', 'SCX-0012', 'SCX-0013']),
   }),
   redis: Object.freeze({
     tag: 'redis:8-alpine',
