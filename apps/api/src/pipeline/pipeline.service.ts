@@ -25,6 +25,7 @@ import { envelopeScopeMatches, resolveScope, type ScopeContext } from '../shared
 import { PdpService, type Obligation, type PolicyInput, type PolicyResult } from '../policy/pdp.service.js';
 import { newId } from '../shared/ids.js';
 import { degradedAudit } from '../shared/degraded-store.js';
+import { fileJournalIncident } from '../shared/journal-incident.js';
 import { OutboxCapability, type CapabilityFactory } from '../shared/capabilities.js';
 /* B91 entitlements */
 import { entitlementExemption, ENTITLEMENT_RESULT_CODE, type Availability } from '../commercial/entitlements/entitlement-gate.js';
@@ -535,7 +536,7 @@ export class PipelineService {
   }
 
   private failClosed(envelope: Envelope, route: RouteInfo, e: AuditUnavailableError): HttpException {
-    degradedAudit.record({
+    const rec = degradedAudit.record({
       kind: 'audit_unavailable',
       correlationId: envelope.correlation_id,
       route: route.action,
@@ -544,14 +545,11 @@ export class PipelineService {
       detail: e.reason instanceof Error ? e.reason.message.slice(0, 300) : String(e.reason).slice(0, 300),
       suppressedCarried: 0,
     });
+    // B33-J (0110): the ledger incident carries the journal record's id (journal_ref), so recovery maps the record to it and never
+    // files it a second time.
     void this.commitDb
       .transaction()
-      .execute(async (tx) => {
-        await sql`select audit.record_availability_incident(
-          ${newId()}::uuid, 'audit_unavailable', ${route.scope}, ${envelope.correlation_id}::uuid,
-          ${JSON.stringify({ action: route.action })}::jsonb
-        )`.execute(tx);
-      })
+      .execute(async (tx) => fileJournalIncident(tx, rec, 'failure_time'))
       .catch(() => undefined);
     return new HttpException(
       errorBody('EYE_INT_001', envelope.correlation_id, 'authoritative audit unavailable — request refused'),
@@ -761,7 +759,7 @@ export class PipelineService {
   }
 
   private recordEvidenceFailure(envelope: Envelope, route: RouteInfo, stage: string, e: unknown): void {
-    degradedAudit.record({
+    const rec = degradedAudit.record({
       kind: 'evidence_write_failed',
       correlationId: envelope.correlation_id,
       route: route.action,
@@ -770,5 +768,12 @@ export class PipelineService {
       detail: e instanceof Error ? e.message.slice(0, 300) : String(e).slice(0, 300),
       suppressedCarried: 0,
     });
+    // B33-J (0110): the lost evidence is also filed as a GOVERNED ledger incident (journal_ref = the record's id), best effort exactly as
+    // failClosed files its own — so the governed entrypoint can reconcile it. If filing fails, the journal record stays the durable trace
+    // and boot or recovery files it from the journal.
+    void this.commitDb
+      .transaction()
+      .execute(async (tx) => fileJournalIncident(tx, rec, 'failure_time'))
+      .catch(() => undefined);
   }
 }
