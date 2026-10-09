@@ -25,6 +25,7 @@ import { PipelineService } from '../../pipeline/pipeline.service.js';
 import type { EyeRequest } from '../../pipeline/http.js';
 import { CompositionCapability } from './composition.capabilities.js';
 import { CompositionService, validateContractIntake, validateKindIntake, validateLinkIntake, validateReason } from './composition.service.js';
+/* B33 twin */ import { assertCouplingDependency } from '../estimation/dependency-b33.js'; /* end B33 twin */
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const LINK_STATES = ['live', 'retired'] as const;
@@ -182,6 +183,9 @@ export class CompositionController {
     const proposalId = id(proposalIdRaw, 'proposalId', envelope.correlation_id);
     const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'twin.coupling.apply', 'CPL', proposalId), CompositionCapability.coupling,
       async (cap, scope) => {
+        /* B33 twin (0111 §TW5): the cross-twin dependency read guards the apply — a TS pre-check in this write, before the port */
+        await assertCouplingDependency(cap, proposalId, envelope.correlation_id);
+        /* end B33 twin */
         const r = await this.composition.applyCoupling(cap, scope, proposalId, principal.principalId, envelope.correlation_id);
         return { result: r, targetType: 'CPL', targetId: proposalId, targetVersion: String(r['version']), outboxEvent: null };
       });

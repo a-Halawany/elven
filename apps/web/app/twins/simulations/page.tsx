@@ -6,7 +6,7 @@
  */
 import { useEffect, useState } from 'react';
 import { useShell } from '../layout';
-import { twins as api, type Run, type Twin, type Challenge, type ChallengeKind } from '../../../lib/twins';
+import { twins as api, runRefusalLine, type Run, type Twin, type Challenge, type ChallengeKind } from '../../../lib/twins';
 import { prediction, type ScenarioRow } from '../../../lib/prediction';
 import type { Scope } from '../../../lib/observation';
 import { envelopeKeyLines, envelopeLine, fitnessLabel } from '../../../lib/fitness';
@@ -111,6 +111,9 @@ export default function SimulationsPage() {
   const [problem, setProblem] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<{ policyDecisionId: string; auditSeq: number } | null>(null);
   const [last, setLast] = useState<string | null>(null);
+  /* B33 act-found (the b33 twin walk): a refused run's reason in the server's words — GovernedButton shows only FAILED, so the envelope refusal
+     ("needs a twin owner's acknowledgement") never reached the operator */
+  const [runProblem, setRunProblem] = useState<string | null>(null);
   const [twinId, setTwinId] = useState('');
   const [twinVersion, setTwinVersion] = useState('');
   const [runKind, setRunKind] = useState<'control' | 'intervention'>('control');
@@ -213,12 +216,14 @@ export default function SimulationsPage() {
               interventions, horizonDays: 90, stochastic: { mode: 'deterministic' },
               ...(ackEnvelope ? { envelope: { acknowledge: true, reason: ackReason.trim() } } : {}),
               ...(answered !== undefined ? { challengeId: answered.challenge_id, correctsRunId: answered.run_id } : {}) });
-            if (!r.ok || r.data === undefined) throw new Error(`${r.error?.code ?? ''} ${r.error?.message ?? 'the run was refused'}`.trim());
+            if (!r.ok || r.data === undefined) { const m = runRefusalLine(r.error); setRunProblem(m); throw new Error(m); }
+            setRunProblem(null);
             setReceipt(r.data.receipt);
             setLast(`run ${r.data.run.runId.slice(0, 8)}… ${r.data.run.state}: ${r.data.run.totals.line_stop_days} line-stop day(s), total ${money(r.data.run.totals.cost.total)} — SYNTHETIC`
               + `${r.data.run.twinFitness !== undefined ? ` · twin fitness at opening ${r.data.run.twinFitness}` : ''}${r.data.run.envelope !== undefined ? ` · envelope ${r.data.run.envelope.state}${r.data.run.envelopeAck ? ' (acknowledged)' : ''}` : ''}${r.data.run.challengeId ? ` · answers challenge ${r.data.run.challengeId.slice(0, 8)}…` : ''}`);
             setAnswerChallenge(''); await load();
           }} />
+          {runProblem !== null ? <LiveStatus assertive><span style={{ color: 'var(--eye-color-critical)' }}>refused — {runProblem}</span></LiveStatus> : null}
         </section>
       ) : null}
       {runs.length === 0 ? <Empty>No run has been made.</Empty> : (

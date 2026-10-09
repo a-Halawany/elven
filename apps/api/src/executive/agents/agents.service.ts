@@ -64,29 +64,33 @@ import { SUPPLY_CHAIN_AGENT_DIGEST, SUPPLY_CHAIN_AGENT_METHOD, SUPPLY_CHAIN_AGEN
 import { RECONCILIATION_AGENT_DIGEST, RECONCILIATION_AGENT_METHOD, RECONCILIATION_AGENT_VERSION } from '../../twin/estimation/reconciliation-agent.js';
 import { ReconciliationBridge } from '../../twin/estimation/reconciliation-bridge.js';
 /* end B30 estimation */
+/* B33 §0: the Domain Intelligence Agent — its identity (domains/domain-intelligence-agent.ts, §CI's) and the bridge its scan is offered through (domains/seams.ts) */
+import { DOMAIN_INTELLIGENCE_AGENT_DIGEST, DOMAIN_INTELLIGENCE_AGENT_METHOD, DOMAIN_INTELLIGENCE_AGENT_VERSION } from '../../domains/domain-intelligence-agent.js';
+import { DomainScanBridge } from '../../domains/seams.js';
+/* end B33 §0 */
 
 export type AgentKind = 'decision' | 'briefing' | 'reporting' | /* B24 (0086) timer */ 'attention' /* end B24 timer */ | /* B28 (0088) signals */ 'weak_signal' /* end B28 signals */
-  | /* B32 (0089) exposures */ 'risk' | 'opportunity' /* end B32 exposures */ | /* B29 (0092) */ 'supply_chain' | /* B30 estimation */ 'reconciliation';
+  | /* B32 (0089) exposures */ 'risk' | 'opportunity' /* end B32 exposures */ | /* B29 (0092) */ 'supply_chain' | /* B30 estimation */ 'reconciliation' | /* B33 §0 */ 'domain_intelligence';
 export type AgentTask = 'draft' | 'briefing' | 'report' | 'monitor' | /* B24 (0086) timer */ 'attention_tick' /* end B24 timer */ | /* B28 (0088) signals */ 'signal_scan' /* end B28 signals */
-  | /* B32 (0089) exposures */ 'risk_assess' | 'opportunity_assess' /* end B32 exposures */ | /* B29 (0092) */ 'supply_scan' | /* B30 estimation */ 'reconcile_scan';
+  | /* B32 (0089) exposures */ 'risk_assess' | 'opportunity_assess' /* end B32 exposures */ | /* B29 (0092) */ 'supply_scan' | /* B30 estimation */ 'reconcile_scan' | /* B33 §0 */ 'domain_scan';
 const ROLE_OF: Record<AgentKind, string> = { decision: 'decision_agent', briefing: 'briefing_agent', reporting: 'reporting_agent', /* B24 (0086) timer */ attention: 'attention_agent' /* end B24 timer */,
-  /* B28 (0088) signals */ weak_signal: 'weak_signal_agent' /* end B28 signals */, /* B32 (0089) exposures */ risk: 'risk_agent', opportunity: 'opportunity_agent' /* end B32 exposures */, /* B29 (0092) */ supply_chain: 'supply_chain_agent', /* B30 estimation */ reconciliation: 'reconciliation_agent' };
+  /* B28 (0088) signals */ weak_signal: 'weak_signal_agent' /* end B28 signals */, /* B32 (0089) exposures */ risk: 'risk_agent', opportunity: 'opportunity_agent' /* end B32 exposures */, /* B29 (0092) */ supply_chain: 'supply_chain_agent', /* B30 estimation */ reconciliation: 'reconciliation_agent', /* B33 §0 */ domain_intelligence: 'domain_intelligence_agent' };
 const METHOD_OF: Record<AgentKind, string> = { decision: 'decision-agent-option-cards@1.0.0', briefing: 'briefing-agent@1.0.0', reporting: 'reporting-agent@1.0.0', /* B24 (0086) timer */ attention: ATTENTION_TIMER_METHOD /* end B24 timer */,
-  /* B28 (0088) signals */ weak_signal: WEAK_SIGNAL_AGENT_METHOD /* end B28 signals */, /* B32 (0089) exposures */ risk: RISK_AGENT_METHOD, opportunity: OPPORTUNITY_AGENT_METHOD /* end B32 exposures */, /* B29 (0092) */ supply_chain: SUPPLY_CHAIN_AGENT_METHOD, /* B30 estimation */ reconciliation: RECONCILIATION_AGENT_METHOD };
+  /* B28 (0088) signals */ weak_signal: WEAK_SIGNAL_AGENT_METHOD /* end B28 signals */, /* B32 (0089) exposures */ risk: RISK_AGENT_METHOD, opportunity: OPPORTUNITY_AGENT_METHOD /* end B32 exposures */, /* B29 (0092) */ supply_chain: SUPPLY_CHAIN_AGENT_METHOD, /* B30 estimation */ reconciliation: RECONCILIATION_AGENT_METHOD, /* B33 §0 */ domain_intelligence: DOMAIN_INTELLIGENCE_AGENT_METHOD };
 const CLEARANCE_RANK: Record<string, number> = { public: 0, internal: 1, confidential: 2, restricted: 3 };
 /** The stop conditions this runtime implements; any other kind is refused at registration (here and at the port). */
 export const SUPPORTED_STOP_CONDITIONS = ['max_items', 'on_degraded'] as const;
 /** Which agent kinds enforce each condition in their task (registration refuses any other pairing, here and at the port). */
 export const STOP_CONDITION_KINDS: Readonly<Record<string, readonly AgentKind[]>> = Object.freeze({ max_items: ['decision', 'briefing', /* B28 (0088) signals: the scan's nominations */ 'weak_signal' /* end B28 signals */,
-  /* B32 (0089) exposures: the exposures one estimate re-estimates */ 'risk', 'opportunity' /* end B32 exposures */, /* B29 (0092) §B: the findings one supply scan drafts */ 'supply_chain', /* B30 estimation: the estimates one reconcile scan proposes */ 'reconciliation'], on_degraded: ['briefing'] });
+  /* B32 (0089) exposures: the exposures one estimate re-estimates */ 'risk', 'opportunity' /* end B32 exposures */, /* B29 (0092) §B: the findings one supply scan drafts */ 'supply_chain', /* B30 estimation: the estimates one reconcile scan proposes */ 'reconciliation', /* B33 §0: the proposals one domain scan makes */ 'domain_intelligence'], on_degraded: ['briefing'] });
 
 export interface RegisterAgentIntake { kind: AgentKind; version: string; codeDigest: string; ownerPrincipalId: string; escalationPrincipalId: string; budgets: Record<string, unknown>; stopConditions: unknown[] }
 export function validateRegisterAgent(m: Partial<RegisterAgentIntake>, correlationId: string): RegisterAgentIntake {
   const bad = (msg: string): never => { throw new HttpException(errorBody('EYE_REQ_001', correlationId, msg), 422); };
   if (m.kind !== 'decision' && m.kind !== 'briefing' && m.kind !== 'reporting' && /* B24 (0086) timer */ m.kind !== 'attention' /* end B24 timer */
       && /* B28 (0088) signals */ m.kind !== 'weak_signal' /* end B28 signals */ && /* B32 (0089) exposures */ m.kind !== 'risk' && m.kind !== 'opportunity' /* end B32 exposures */
-      && /* B29 (0092) §B */ m.kind !== 'supply_chain' && /* B30 estimation */ m.kind !== 'reconciliation') {
-    bad('kind is decision, briefing, reporting, attention, weak_signal, risk, opportunity, supply_chain or reconciliation');
+      && /* B29 (0092) §B */ m.kind !== 'supply_chain' && /* B30 estimation */ m.kind !== 'reconciliation' && /* B33 §0 */ m.kind !== 'domain_intelligence') {
+    bad('kind is decision, briefing, reporting, attention, weak_signal, risk, opportunity, supply_chain, reconciliation or domain_intelligence');
   }
   if (typeof m.version !== 'string' || !/^[0-9]+\.[0-9]+\.[0-9]+$/.test(m.version)) bad('version must be semver');
   if (typeof m.codeDigest !== 'string' || !/^[0-9a-f]{64}$/.test(m.codeDigest)) bad('codeDigest must be 64 hex');
@@ -123,6 +127,11 @@ export function validateRegisterAgent(m: Partial<RegisterAgentIntake>, correlati
     bad(`a reconciliation agent is registered with this runtime's scan: version ${RECONCILIATION_AGENT_VERSION}, codeDigest ${RECONCILIATION_AGENT_DIGEST} (${RECONCILIATION_AGENT_METHOD})`);
   }
   /* end B30 estimation */
+  /* B33 §0: the Domain Intelligence Agent is registered with THIS runtime's scan (a changed method is a new digest — register anew) */
+  if (m.kind === 'domain_intelligence' && (m.version !== DOMAIN_INTELLIGENCE_AGENT_VERSION || m.codeDigest !== DOMAIN_INTELLIGENCE_AGENT_DIGEST)) {
+    bad(`a domain_intelligence agent is registered with this runtime's scan: version ${DOMAIN_INTELLIGENCE_AGENT_VERSION}, codeDigest ${DOMAIN_INTELLIGENCE_AGENT_DIGEST} (${DOMAIN_INTELLIGENCE_AGENT_METHOD})`);
+  }
+  /* end B33 §0 */
   if (typeof m.ownerPrincipalId !== 'string' || typeof m.escalationPrincipalId !== 'string') bad('ownerPrincipalId and escalationPrincipalId name humans');
   const b = m.budgets ?? {};
   if (typeof b !== 'object' || b === null || !Number.isInteger(b['max_reads']) || !Number.isInteger(b['max_gateway_calls']) || !Number.isInteger(b['max_elapsed_ms'])) bad('budgets name integer max_reads, max_gateway_calls and max_elapsed_ms');
@@ -353,6 +362,12 @@ export class AgentsService {
           principal, { tenantId: T, domainId: D, agentId: a.agentId, runId, registration, meter, stops, refusals, correlationId: a.correlationId, identity });
       }
       /* end B30 estimation */
+      /* B33 §0: the domain scan (§CI offers it through the bridge; the prelude's default is the null scan, which reads and proposes nothing and says so) */
+      else if (a.task === 'domain_scan') {
+        outputs = await DomainScanBridge.scanner()({ env: (action, type, id) => this.env(principal, T, D, action, type, id, a.correlationId, 'intelligence'), route: (action, type, id) => this.route(T, D, action, type, id) },
+          principal, { tenantId: T, domainId: D, agentId: a.agentId, runId, registration, meter, stops, refusals, correlationId: a.correlationId, identity });
+      }
+      /* end B33 §0 */
       else outputs = await this.report(principal, T, D, a.packageId, budget, meter, a.correlationId, identity);
       if (outputs['refused'] === true) { outcome = 'refused'; stopReason = String(outputs['reason']); }
     } catch (e) {

@@ -51,8 +51,10 @@ async function openReconciliation(page: Page): Promise<void> {
   await expect(page.getByRole('table', { name: 'estimators' })).toContainText(KEY);
 }
 /** The newest estimate of the key in the given state, opened from the list. */
-async function openEstimate(page: Page, state: string): Promise<void> {
-  const row = page.getByRole('table', { name: 'estimates' }).getByRole('row').filter({ hasText: KEY }).filter({ hasText: state }).first();
+async function openEstimate(page: Page, state: string, value: string | null = null): Promise<void> {
+  // B33 staging: after B33 the corridor holds a later approved estimate (78.074 %) — B30's row is chosen by its value too
+  const rows = page.getByRole('table', { name: 'estimates' }).getByRole('row').filter({ hasText: KEY }).filter({ hasText: state });
+  const row = (value === null ? rows : rows.filter({ hasText: `${value} %` })).first();
   await row.getByRole('button').click();
   await expect(page.getByLabel('estimate state')).toContainText(state.toUpperCase());
 }
@@ -70,7 +72,7 @@ test.describe.serial('CP-6 B30 §ES — reconciliation on the demonstration', ()
   test('THE PROPOSAL AND THE APPROVAL: 62 % proposed on the count (by the Reconciliation Agent on a new count, or by a person when the publisher had nothing new — EYE_B30_PROPOSED_BY, as the act records it) — every candidate kept, the inputs qualified, the conservation check SATISFIED — and T. Nakamura approved it into a new snapshot', async ({ page }) => {
     await uiLogin(page, OWNER, required('EYE_TEST_ADMIN_PASSWORD'));
     await openReconciliation(page);
-    await openEstimate(page, 'approved');
+    await openEstimate(page, 'approved', VALUE);
     await expect(page.getByLabel('proposal', { exact: true })).toContainText(new RegExp(`^${KEY.replace(/\./g, '\\.')} = ${VALUE} % \\(confidence`));
     if (BY_AGENT) await expect(page.getByText(/the Reconciliation Agent \(run .*\) — it proposes only/)).toBeVisible();
     await expect(page.getByLabel('constraint check', { exact: true })).toContainText(new RegExp(`^SATISFIED — ${SET} v\\d+`));

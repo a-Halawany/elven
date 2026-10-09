@@ -15,8 +15,9 @@
 import { sql } from 'kysely';
 import type { Tx } from '../shared/db.js';
 
-export type CitationKind = 'evidence' | 'claim' | 'entity' | 'forecast' | 'assumption' | 'run' | /* B29 (0092): a coupled element's upstream twin version */ 'twin';
-export interface Citation { kind: CitationKind; id: string; version: number; digest: string }
+export type CitationKind = 'evidence' | 'claim' | 'entity' | 'forecast' | 'assumption' | 'run' | /* B29 (0092): a coupled element's upstream twin version */ 'twin'
+  | /* B33 §0 (0111 §0.4): a scenario element's SCN object (+ optional branch); an estimated element's twin.estimates row */ 'scenario' | 'estimate';
+export interface Citation { kind: CitationKind; id: string; version: number; digest: string; /* B33 §0: a scenario citation's branch */ branch?: string }
 
 /**
  * B21 (0081, D4): the ENVELOPE CHECK as `twin.envelope_check` computes it — every key of the behaviour model's

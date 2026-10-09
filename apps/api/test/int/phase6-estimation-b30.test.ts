@@ -314,7 +314,10 @@ describe('B30 part ES · twin state estimation and continuous reconciliation (01
     const el = (await rows(sql`select kind, value::text as value, unit, citations, confidence::float8 as confidence from twin.state_elements where twin_id = ${twinId}::uuid and version = ${v2} and key = ${KEY}`))[0] as Row;
     expect(el).toMatchObject({ kind: 'estimated', unit: '%' });
     expect(Number(el['value'])).toBe(Number(e['value']));
-    expect(arr(el['citations']).every((x) => x['kind'] === 'evidence')).toBe(true);
+    /* B33 twin (0111 §TW4) — the pin moves: the estimated element cites its evidence AND exactly this estimate (the estimate citation kind) */
+    expect(arr(el['citations']).filter((x) => x['kind'] !== 'evidence')).toEqual([{ kind: 'estimate', id: String(e['estimate_id']), version: 1, digest: expect.stringMatching(/^[0-9a-f]{64}$/) }]);
+    expect(arr(el['citations']).some((x) => x['kind'] === 'evidence')).toBe(true);
+    /* end B33 twin */
     expect((await rows(sql`select 1 from twin.state_elements where twin_id = ${twinId}::uuid and version = ${v2}`)).length)
       .toBe((await rows(sql`select 1 from twin.state_elements where twin_id = ${twinId}::uuid and version = ${v1}`)).length + 1);
     const announced = await rows(sql`select payload from objects.object_outbox where tenant_id = ${T()}::uuid and event_type = 'TwinStateChanged' and payload ->> 'twin_id' = ${twinId} order by created_at`);

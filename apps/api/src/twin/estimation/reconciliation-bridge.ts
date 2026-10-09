@@ -24,7 +24,10 @@ export interface ScanEnv {
 }
 export type ReconcileScanner = (deps: ScanEnv, p: AuthenticatedPrincipal, a: ScanArgs) => Promise<Row>;
 export interface AgentRunArgs {
-  agentId: string; tenantId: string; domainId: string; task: 'reconcile_scan'; trigger: { kind: 'operator' | 'scheduler' | 'request'; principalId: string | null; ref: string | null };
+  /* B33 integration: THE GENERIC RUNNER — AgentsService.run runs any task of the agent's kind; the after-tick hooks that start an agent's scan
+     (B30's twin-estimation: reconcile_scan; B33 §SC's twin-supply-scan: supply_scan) name their task here. B33 §CI reaches the same
+     AgentsService.run through ModuleRef (the domains module); both are the one runtime — one seam, two doors, documented in domains/seams.ts. */
+  agentId: string; tenantId: string; domainId: string; task: 'reconcile_scan' | 'supply_scan' | 'domain_scan'; trigger: { kind: 'operator' | 'scheduler' | 'request'; principalId: string | null; ref: string | null };
   roomId: null; packageId: null; version: null; correlationId: string;
 }
 export type AgentRunner = (a: AgentRunArgs) => Promise<{ runId: string; agentId: string; outcome: string; stopReason: string | null }>;
