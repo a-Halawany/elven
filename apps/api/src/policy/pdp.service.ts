@@ -2118,6 +2118,30 @@ const BUNDLE_V1: Rule[] = [
   /* B33 packages */
   /* end B33 packages */
   /* B33 competitor */
+  /* B33 competitor (0111_b33_x_competitor.sql; F-P4-15 ch.29, JRN-10, CAP-FW-06). EXACT rules — no earlier rule is a prefix of `domain.competitor.*`
+     (no `domain.` rule exists before B33; §PK's are exact too). THE READ (domain.competitor.read) — audited: the analysts, the strategy lead, the
+     executives, the decision roles, the twin owners, the domain specialists, the Domain Intelligence Agent (its scan's one read) and the
+     attention agent (the after-tick hook's pending check). DECLARE — an analyst, a strategy owner, the domain's administrator. PROPOSE —
+     AI proposes: the agent (the port admits it only inside its own running domain_scan) and the analysts / strategy owners. THE MATERIAL
+     ASSESSMENT APPROVAL — a NAMED ANALYST only, human-gated (the port re-checks the human, the role, the separation from the proposer and the
+     digest; an agent holds no rule here and its attempt is refused and recorded on its run). REVALIDATE — an analyst or the agent. COMPARE —
+     the analysts, strategy owners and the agent (AI may compare). WATCHLIST — a strategy owner or an analyst. CHALLENGE and its DECISION —
+     named humans, human-gated (another analyst decides). DECISION USE — the decision roles, human-gated (the response is the decision
+     layer's). THE TWIN (CI8) — the twin's owner binds and decides (the port re-checks ownership). Every non-exempt `domain.*` write is gated
+     by `domain_package` on a contracted tenant (0111 §0.7); the human-gated rules and the read are exempt. */
+  { actionPrefix: 'domain.competitor.read', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'domain_specialist', atScope: 'DOMAIN' }, { role: 'domain_intelligence_agent', atScope: 'DOMAIN' }, { role: 'attention_agent', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'domain.competitor.declare', exact: true, requiredAnyRole: [{ role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'domain_admin', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'domain.competitor.propose', exact: true, requiredAnyRole: [{ role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'domain_intelligence_agent', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'domain.competitor.assessment.approve', exact: true, requiredAnyRole: [{ role: 'domain_analyst', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'domain.competitor.revalidate', exact: true, requiredAnyRole: [{ role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'domain_intelligence_agent', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'domain.competitor.compare', exact: true, requiredAnyRole: [{ role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'domain_intelligence_agent', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'domain.competitor.watchlist', exact: true, requiredAnyRole: [{ role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'domain.competitor.challenge', exact: true, requiredAnyRole: [{ role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'domain.competitor.challenge.decide', exact: true, requiredAnyRole: [{ role: 'domain_analyst', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'domain.competitor.decision.cite', exact: true, requiredAnyRole: [{ role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'domain.competitor.twin.bind', exact: true, requiredAnyRole: [{ role: 'twin_owner', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'domain.competitor.twin.decide', exact: true, requiredAnyRole: [{ role: 'twin_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   /* end B33 competitor */
   /* B36 home */
   /* THE EXECUTIVE HOME, THE CADENCE, THE COMMAND VIEWS, THE SEARCH, THE METRICS (0094 §H; F-P6-11: WS-01, JRN-19, PER-03, CAP-EO-01/-02/-04).

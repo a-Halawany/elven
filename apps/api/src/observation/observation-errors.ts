@@ -1214,6 +1214,15 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   /* B33 packages */
   /* end B33 packages */
   /* B33 competitor */
+  /* B33 competitor (0111_b33_x_competitor.sql) — the families `competitor profile|competitor comparison|competitor assessment|competitor watchlist
+     rejected (<class>)` (§CI's ports, guards and the package gate). Anchored, the class parenthesis required; no earlier row starts with
+     `competitor`. B9's order: 403 actor|ownership|authority|separation_of_duties · 404 unknown_* · 409 state|stale|duplicate · 422 the rest
+     (request, package, identity, citation, basis, owner, reason, digest, twin). `competitor watchlist` is a fourth noun beside MAP's three
+     (§CI keeps its own watchlist — CI5's choice). */
+  { match: /^competitor (profile|comparison|assessment|watchlist) rejected \((actor|ownership|authority|separation_of_duties)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^competitor (profile|comparison|assessment|watchlist) rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^competitor (profile|comparison|assessment|watchlist) rejected \((state|stale|duplicate)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^competitor (profile|comparison|assessment|watchlist) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
   /* end B33 competitor */
   /* B36 home (0094 §H) — the executive home's families in the CLASS form `<noun> rejected (<class>): …`: `cadence rejected`, `executive room
      rejected` (0044's unclassed `room rejected: …` texts are the decision room's and are mapped by no row; the noun here is `executive room`
