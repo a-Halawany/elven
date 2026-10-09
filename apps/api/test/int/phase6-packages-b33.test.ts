@@ -39,7 +39,7 @@ import { ObservationCapability } from '../../src/observation/observation.capabil
 import { UploadConnector } from '../../src/observation/connectors/upload.connector.js';
 import { PackagesController } from '../../src/domains/packages/packages.controller.js';
 import { PackagesService } from '../../src/domains/packages/packages.service.js';
-import { cyberPackage, financialPackage, geopoliticalPackage, technologyPackage, type PackageDefinition } from '../../src/domains/packages/definitions.js';
+import { CHOKEPOINT_INDICATOR, cyberPackage, financialPackage, geopoliticalPackage, technologyPackage, type PackageDefinition } from '../../src/domains/packages/definitions.js';
 import type { Manifest } from '../../src/domains/packages/manifest.js';
 import type { EntitlementsVendorController } from '../../src/commercial/entitlements/entitlements.controller.js';
 import { Phase4Harness, uploadContract } from './phase4-helpers.js';
@@ -542,7 +542,7 @@ describe('PK6 · the four packages, each with its acceptance focus MEASURED', ()
     const run = (await acceptance(owner, geo)).run;
     expect(run).toMatchObject({ mode: 'acceptance', suite_version: 'acceptance/1:geopolitical', passed: true });
     const ind = arr(run['checks']).find((c) => c['check'] === 'indicator_set') as Row;
-    expect(ind['measured']).toMatchObject({ fresh: 1, total: 1, indicators: [expect.objectContaining({ key: 'chokepoint4_transits', registered: true, fresh: true, data_origin: 'synthetic', age_days: 0 })] });
+    expect(ind['measured']).toMatchObject({ fresh: 1, total: 1, indicators: [expect.objectContaining({ key: CHOKEPOINT_INDICATOR, registered: true, fresh: true, data_origin: 'synthetic', age_days: 0 })] });
     expect(arr(run['checks']).find((c) => c['check'] === 'authority')!['measured']).toMatchObject({ note: expect.stringMatching(/SIGNED acceptance record .* is R2/) });
     await refused(acceptance(owner, uuidv7()), /^package conformance rejected \(unknown_package\)/, 404);
   });

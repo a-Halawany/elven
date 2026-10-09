@@ -15,7 +15,7 @@ import {
   runConformance, sourceApproval, sourceCoverage, technologyFocus, verdict, type AcceptanceFacts, type PackageFacts, type SourceFact,
 } from '../../src/domains/packages/conformance.js';
 import { calculationDigest, digestOf, stableStringify } from '../../src/domains/packages/manifest.js';
-import { cyberPackage, financialPackage, geopoliticalPackage, packageDefinitions, technologyPackage } from '../../src/domains/packages/definitions.js';
+import { CHOKEPOINT_INDICATOR, cyberPackage, financialPackage, geopoliticalPackage, packageDefinitions, technologyPackage } from '../../src/domains/packages/definitions.js';
 
 const NOW = '2026-10-09T12:00:00.000Z';
 const src = (key: string, over: Partial<SourceFact> = {}): SourceFact => ({
@@ -159,10 +159,10 @@ describe('the acceptance focus of each kind (PK6), MEASURED', () => {
   it('geopolitical: the indicator set fresh / stale / unregistered; the scenario link; authority and conformance', () => {
     const geo = geopoliticalPackage({ chokepointSeries: 'pw:c4' });
     const f = factsFor(geo);
-    const fresh = geopoliticalFocus(f, acc({ indicators: [{ key: 'chokepoint4_transits', series_key: 'pw:c4', registered: true, source_key: 'imf-portwatch-chokepoints', last_observation_at: '2026-09-06', breached: false }], links: [{ link_kind: 'scenario', target_id: 's' }] }));
+    const fresh = geopoliticalFocus(f, acc({ indicators: [{ key: CHOKEPOINT_INDICATOR, series_key: 'pw:c4', registered: true, source_key: 'imf-portwatch-chokepoints', last_observation_at: '2026-09-06', breached: false }], links: [{ link_kind: 'scenario', target_id: 's' }] }));
     expect(verdict(fresh)).toBe(true);
     expect(byName(fresh, 'indicator_set').measured).toMatchObject({ fresh: 1, total: 1, indicators: [expect.objectContaining({ age_days: 33, freshness_days: 45, data_origin: 'synthetic' })] });
-    const stale = geopoliticalFocus(f, acc({ indicators: [{ key: 'chokepoint4_transits', series_key: 'pw:c4', registered: true, source_key: null, last_observation_at: '2026-07-01', breached: null }] }));
+    const stale = geopoliticalFocus(f, acc({ indicators: [{ key: CHOKEPOINT_INDICATOR, series_key: 'pw:c4', registered: true, source_key: null, last_observation_at: '2026-07-01', breached: null }] }));
     expect(byName(stale, 'indicator_set').findings).toEqual([expect.stringMatching(/the last observation \(2026-07-01\) is older than 45 days/)]);
     expect(byName(stale, 'scenario_link').passed).toBe(false);
     const noRun = geopoliticalFocus({ ...f, sections: { ...f.sections, ontology: { state: 'expired', digest: 'x' } } }, acc({ certification: null }));
