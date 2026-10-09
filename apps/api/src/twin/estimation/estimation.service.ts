@@ -60,6 +60,10 @@ const day = (v: unknown): string | null => {
   const s = String(v);
   return /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0, 10) : null;
 };
+/* B33 twin (0111 §TW4): the estimate's own citation — what the approved, estimated element cites beside its evidence */
+export const estimateCitation = (est: Record<string, unknown>): Citation =>
+  ({ kind: 'estimate', id: String(est['estimate_id']), version: 1, digest: String(est['inputs_digest']) });
+/* end B33 twin */
 /** The row with its DATE columns rendered as the days they name. */
 const days = (r: Row, cols: readonly string[]): Row => { const o = { ...r }; for (const c of cols) if (c in o) o[c] = day(o[c]); return o; };
 const ESTIMATE_DAYS = ['as_of'] as const;
@@ -362,6 +366,10 @@ export class EstimationService implements OnModuleInit {
                       retention_profile: row.retention_profile, access_policy_ref: row.access_policy_ref } as ControlInput);
       synthetic = synthetic || row.synthetic_state;
     }
+    /* B33 twin (0111 §TW4): the ESTIMATE CITATION KIND — the estimated element cites the estimate itself {kind: estimate, id, version 1, digest:
+       its inputs_digest} beside the evidence; the decision's port (twin.decide_estimate, re-declared) refuses an element without exactly it */
+    citations.push(estimateCitation(est));
+    /* end B33 twin */
     const value = Number(est['proposed_value']);
     await checkFamilyGround(cap.ground, twinId, version, [{ key, value, unit: String(est['unit']) }], corr);
     await cap.ground.groundElement({

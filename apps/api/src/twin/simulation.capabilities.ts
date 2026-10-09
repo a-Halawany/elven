@@ -11,7 +11,7 @@
  * the subscriptions matching the GraphChanged the service writes beside the event (`changeSubscriptions`).
  *
  * CP-6 B21 (0081, L8-I04, OBJ-29): `simulation.open_run` gains two arguments — the ACKNOWLEDGEMENT of a run whose own
- * contract lies outside the operating envelope (`p_envelope_ack`, a twin owner's or the domain administrator's) and the
+ * contract lies outside the operating envelope (`p_envelope_ack`, a twin owner's — B30's holder; the refusal says so since B33 §TW8) and the
  * CHALLENGE a re-run answers (`p_challenge_id`) — and answers the run's `twin_fitness`, `envelope`, `envelope_ack` and
  * `challenge_id`; the CHALLENGE ports (open, request a re-run, withdraw, decide — the upheld path invalidating under the
  * decide route's own action, trigger `challenge`) and the PROMOTION (`simulation.promote_result`) are the writes of
@@ -87,7 +87,7 @@ export interface OpenRunArgs {
   interventions: unknown[]; constraints: Record<string, unknown>; assumptions: Record<string, unknown>; inputsDigest: string; validationStatus: string;
   /** Folded by the service from the twin version and the scenario; the port refuses anything less restricted than the twin's. */
   controls: unknown;
-  /** B21 (0081, D3 b): the acknowledgement of a run whose own contract lies OUTSIDE the envelope — `{ acknowledge: true, reason }` by a twin owner or the domain administrator (the port checks the holder); null otherwise. */
+  /** B21 (0081, D3 b): the acknowledgement of a run whose own contract lies OUTSIDE the envelope — `{ acknowledge: true, reason }` by a twin owner of the domain (the port checks the holder — B30's twin.envelope_ack_holder; B33 §TW8's wording); null otherwise. */
   envelopeAck: { acknowledge: boolean; reason: string } | null;
   /** B21 (0081, D11): the challenge this run is the RE-RUN of (`rerun_requested`, on the run `correctsRunId` names); null for an ordinary run. */
   challengeId: string | null;

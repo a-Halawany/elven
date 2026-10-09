@@ -112,7 +112,7 @@ export const twins = {
   run: (s: Scope, id: string) => p<{ run: Run; receipt: Receipt }>(s, `/simulations/${id}/get`, 'simulation.read', 'SIM', {}, id),
   /**
    * B21: the intake may carry `envelope: { acknowledge: true, reason }` (a run whose own contract lies outside the envelope is admitted
-   * only under a twin owner's or the domain administrator's acknowledgement — the server refuses the rest) and `challengeId` beside
+   * only under a twin owner's acknowledgement (B33: the server's words since 0111 §TW8) — the server refuses the rest) and `challengeId` beside
    * `correctsRunId` (a re-run answering a challenge). The answer names the twin's fitness at opening, the envelope check and the acknowledgement.
    */
   simulate: (s: Scope, payload: Record<string, unknown>) => p<{ run: { runId: string; outputsDigest: string; totals: Totals; state: string; twinFitness?: string; envelope?: EnvelopeCheck; envelopeAck?: Record<string, unknown> | null; challengeId?: string | null }; receipt: Receipt }>(s, '/simulations/run', 'simulation.run', 'SIM', payload),

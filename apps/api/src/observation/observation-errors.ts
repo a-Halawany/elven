@@ -1097,6 +1097,13 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
      the twin's ownership, the proposer who would decide its own estimate, the attention agent's authority), the absences 404 (unknown_*), the
      record's state 409 (state, stale, duplicate), the caller's own request 422 (the rest: unqualified inputs, the constraint check, the range,
      the snapshot, the candidates, the parameters, the note …). */
+  /* B33 twin (0111 §TW4/§TW5) — the two new classes of B30's `estimate rejected` family, EXACT rows placed before B30's (first match wins; B30's
+     rows are not edited): `(dependency)` — the cross-twin dependency unavailable at publication (an upstream with no admitted head or
+     unverified) — the record's state, 409 with stale; `(citation)` — the admitted element does not carry exactly this estimate's citation —
+     the caller's own request, 422. */
+  { match: /^estimate rejected \(dependency\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^estimate rejected \(citation\)/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B33 twin */
   { match: /^(estimator|estimate|observation request|estimation trigger) rejected \((actor|ownership|authority|separation_of_duties)\)/i, status: 403, code: 'EYE_AUT_001' },
   { match: /^(estimator|estimate|observation request|estimation trigger) rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
   /* 0104: `estimate rejected (contract)` — the constraint contract changed under a proposal (a set re-versioned, retired or come to apply) — 409 with stale */
@@ -1207,7 +1214,9 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   /* B33 §0 */
   { match: /^domain package rejected \(state\)/i, status: 409, code: 'EYE_STA_002' },
   /* end B33 §0 */
-  /* B33 twin */
+  /* B33 twin — §TW's two rows (`estimate rejected (dependency)` 409, `(citation)` 422) are the `B33 twin` mini-block placed BEFORE B30's
+     estimation rows (a row here would never be reached: B30's `^estimate rejected \(` 422 matches first). No other row: §TW's merge,
+     scenario-element and envelope refusals stay in B30's classes; the coupling's `(dependency)` is the route's own 409. */
   /* end B33 twin */
   /* B33 supply */
   /* end B33 supply */
