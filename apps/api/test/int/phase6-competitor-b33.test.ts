@@ -795,7 +795,7 @@ describe('CI-P · every competitor write consults the PACKAGE_GATE (fixture: the
   const setDisabled = (fns: Row) => sql`update domain.package_versions set disabled_functions = ${JSON.stringify(fns)}::jsonb where package_id = ${W['pkg']!}::uuid and version = 1`.execute(h.su);
   it('refusal: the `assess` function disabled → an approval refused in the class form with the package\'s reason; `compare` disabled → a comparison refused; `collect` disabled → the agent\'s backlog empty', async () => {
     const p = (await propose(hweber, W['kessler']!, { effective_from: '2026-12-15', events: [], changes: [
-      { op: 'add', fact: { key: 'market:austria', kind: 'market', value: { name: 'Austria' }, citations: [evidenceCite(E['kessler']!), evidenceCite(E['kesslerTrade']!)], confidence: 0.8 } }] })).proposal;
+      { op: 'add', fact: { key: 'market:germany', kind: 'market', value: { name: 'Germany' }, citations: [evidenceCite(E['kessler']!), evidenceCite(E['kesslerTrade']!)], confidence: 0.8 } }] })).proposal;
     W['gateProposal'] = String(p['proposal_id']); W['gateDigest'] = String(p['content_digest']);
     await setDisabled({ assess: { reason: 'the source contract kessler-press lost its rights (B33 fixture)' }, compare: { reason: 'the basis registry is migrating (B33 fixture)' }, collect: { reason: 'collection paused (B33 fixture)' } });
     await refused(decide(hoffmann, W['gateProposal'], 'approved', W['gateDigest']), /^competitor assessment rejected \(package\): function assess of package competitor v1 is disabled: the source contract kessler-press lost its rights/, 422);
@@ -805,10 +805,15 @@ describe('CI-P · every competitor write consults the PACKAGE_GATE (fixture: the
     expect(((shown['packages'] as Row)[PKG] as Row)['assess']).toMatchObject({ state: 'disabled' });
     expect((await proposalOf(W['gateProposal']))['state']).toBe('proposed');   // nothing decided, the proposal waits
   });
-  it('recovery: the functions re-enabled → the same approval passes and the comparison runs', async () => {
-    await setDisabled({});
-    expect((await decide(hoffmann, W['gateProposal']!, 'approved', W['gateDigest']!)).decision).toMatchObject({ state: 'approved', profile_state: 'approved' });
+  it('recovery: `assess` and `compare` re-enabled (`alert` still disabled) → the approval passes and its alert is WITHHELD with the package\'s reason (never raised around the gate); the comparison runs; `alert` re-enabled', async () => {
+    await setDisabled({ alert: { reason: 'the escalation rules are under re-certification (B33 fixture)' } });
+    const items = async () => (await rows(sql`select item_id from executive.attention_items where tenant_id = ${T}::uuid and subject_id = ${W['kessler']!}::uuid and signal_class = 'domain.alert'`)).length;
+    const before = await items();
+    expect((await decide(hoffmann, W['gateProposal']!, 'approved', W['gateDigest']!)).decision).toMatchObject({ state: 'approved', profile_state: 'approved',
+      alerts: [{ withheld: true, reason: expect.stringMatching(/^function alert of package competitor v1 is disabled: the escalation rules are under re-certification/) }] });
+    expect(await items()).toBe(before);
     expect(await compare(hoffmann, 'gear-motor-capacity', [W['atlas']!, W['kessler']!])).toMatchObject({ state: 'current' });
+    await setDisabled({});
   });
 });
 
@@ -847,5 +852,17 @@ describe('CI-X · max_items enforced by the scan; another tenant sees nothing (A
     const ov = (await cc.overview(req('domain.competitor.read'), U, DU) as { overview: Row }).overview;
     expect(ov['competitors']).toEqual([]);
     await refused(cc.read(r(other, 'domain.competitor.read', 'DCI', W['atlas']!), T, D, W['atlas']!), /./, 403);
+  });
+});
+
+describe('CI-W · a proposal withdrawn by its proposer only', () => {
+  it('refusal then recovery: another analyst cannot withdraw it; the proposer withdraws it with a reason; a withdrawn proposal is not decided', async () => {
+    const p = (await propose(hweber, W['lindqvist']!, { effective_from: '2026-12-31', events: [], changes: [
+      { op: 'add', fact: { key: 'market:sweden', kind: 'market', value: { name: 'Sweden' }, citations: [evidenceCite(E['lindqvist']!)], confidence: 0.6 } }] })).proposal;
+    const id = String(p['proposal_id']);
+    const withdraw = (as: AuthenticatedPrincipal, reason: string) => cc.withdraw(r(as, 'domain.competitor.propose', 'DCP', id), T, D, id, { payload: { reason } });
+    await refused(withdraw(hoffmann, 'not mine to withdraw'), /^competitor profile rejected \(ownership\)/, 403);
+    expect(((await withdraw(hweber, 'the Swedish market report was a misreading')) as { proposal: Row }).proposal).toMatchObject({ state: 'withdrawn' });
+    await refused(decide(hoffmann, id, 'approved', String(p['content_digest'])), /^competitor assessment rejected \(state\): proposal .* is withdrawn/, 409);
   });
 });

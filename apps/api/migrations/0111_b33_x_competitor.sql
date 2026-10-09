@@ -975,7 +975,7 @@ SECURITY DEFINER LANGUAGE plpgsql SET search_path = domain, executive, twin, gra
 DECLARE p domain.competitor_proposals%ROWTYPE; c domain.competitors%ROWTYPE; h domain.competitor_profile_versions%ROWTYPE; g jsonb; m jsonb; v_version int; v_limits jsonb := '[]'::jsonb;
         v_ident jsonb; v_div jsonb; v_plimits jsonb; v_pstate text; v_contra jsonb; v_facts jsonb; v_state text; x jsonb; w record; rl jsonb; v_alerts jsonb := '[]'::jsonb; v_item jsonb; v_assessment uuid;
         v_events jsonb := '[]'::jsonb; v_event uuid; v_match boolean; v_twin jsonb := NULL; v_cap numeric; v_cur numeric; v_tp uuid; v_resolved jsonb := '[]'::jsonb; rv record;
-        v_place text; v_closed jsonb;
+        v_place text; v_closed jsonb; v_alert_state jsonb;
 BEGIN
   PERFORM observation.assert_authority(ARRAY['domain.competitor.assessment.approve']);
   PERFORM observation.assert_scope(p_tenant, p_domain);
@@ -1075,8 +1075,13 @@ BEGIN
     END LOOP;
   END IF;
   -- THE WATCHLISTS: an approved MATERIAL change matching a rule raises `domain.alert` under the published policy, the watchlist's owner named
-  IF p.material THEN
-    g := domain.dci_gate('competitor assessment', p_tenant, p_domain, c.package_key, 'alert');
+  -- (the `alert` function disabled: the approval stands and the alerts are WITHHELD with the package's reason — the incompatible function
+  --  disabled, the accessible state preserved, PR-31-005)
+  v_alert_state := domain.package_function_state(p_tenant, p_domain, c.package_key, 'alert');
+  IF p.material AND v_alert_state ->> 'state' <> 'active' THEN
+    v_alerts := jsonb_build_array(jsonb_build_object('withheld', true, 'reason', v_alert_state ->> 'reason'));
+  END IF;
+  IF p.material AND v_alert_state ->> 'state' = 'active' THEN
     FOR w IN SELECT * FROM domain.competitor_watchlists x WHERE x.tenant_id = p_tenant AND x.domain_id = p_domain AND x.state = 'active' AND x.package_key = c.package_key
                AND (cardinality(x.competitor_ids) = 0 OR c.competitor_id = ANY (x.competitor_ids)) ORDER BY x.created_at LOOP
       FOR rl IN SELECT * FROM jsonb_array_elements(w.rules) LOOP
