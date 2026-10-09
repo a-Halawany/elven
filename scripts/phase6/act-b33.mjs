@@ -420,7 +420,7 @@ const SOURCE_BR = 'stress-75'; const TARGET_BR = 'blockade';
   const ours = (await q(`select ${estCols} from twin.estimates where twin_id = $1 and key = $2 and state = 'approved' and round(proposed_value::numeric, 3) = 78.074 and attention_item_id is not null order by decided_at desc limit 1`, [CORRIDOR.id, KEY]))[0] ?? null;
   let e = ours ?? await latest();
   if (ours) {
-    const later = await q(`select estimate_id::text id, state, proposed_value::float8 v, head_version, proposer_kind, material from twin.estimates where twin_id = $1 and key = $2 and proposed_at > $3 order by proposed_at`, [CORRIDOR.id, KEY, ours.proposed_at]);
+    const later = await q(`select estimate_id::text id, state, proposed_value::float8 v, head_version, proposer_kind, material from twin.estimates where twin_id = $1 and key = $2 and proposed_at >= $3 and estimate_id <> $4 order by proposed_at`, [CORRIDOR.id, KEY, ours.proposed_at, ours.id]);
     note(`the scene's estimate ${short(ours.id)} (${f3(ours.v)} %) stands APPROVED (decided by ${nm(ours.decided_by)}, applied as v${ours.applied_version}) — an earlier run${later.length ? `; later proposals left to the owner: ${later.map((x) => `${short(x.id)} ${f3(x.v)} % on v${x.head_version} by the ${x.proposer_kind} (${x.state}, ${x.material ? 'material' : 'not material'})`).join('; ')}` : ''}`);
   }
   if (!ours && e && e.state === 'proposed' && Number(e.head_version) !== head.version) {

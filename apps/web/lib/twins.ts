@@ -148,3 +148,8 @@ export const twins = {
   reproduce: (s: Scope, id: string) => p<{ reproduction: { verdict: string; expected: string; actual: string | null; reason: string; environmentMatches: boolean; coldProcess: boolean; unavailable: string[] }; receipt: Receipt }>(s, `/simulations/${id}/reproduce`, 'simulation.reproduce', 'SIM', {}, id),
   compareRuns: (s: Scope, runIds: string[]) => p<{ comparison: { control_run_id: string; runs: Array<{ run_id: string; run_kind: string; interventions: Array<Record<string, unknown>>; totals: Totals; carrying: string[] }>; synthetic: boolean }; receipt: Receipt }>(s, '/simulations/compare', 'simulation.read', 'SIM', { runIds }),
 };
+
+/** B33 act-found: a refused run's line — the server's code and its own words (the envelope refusal names the twin owner's acknowledgement). */
+export function runRefusalLine(error: { code?: string; message?: string } | null | undefined): string {
+  return `${error?.code ?? ''} ${error?.message ?? 'the run was refused'}`.trim();
+}

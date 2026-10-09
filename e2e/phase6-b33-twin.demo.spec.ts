@@ -110,7 +110,7 @@ test.describe.serial('CP-6 B33 §TW — the twin pieces on the demonstration', (
     await page.getByRole('link', { name: /Reconciliation/ }).click();
     await expect(page.getByRole('heading', { name: 'Reconciliation', level: 1 })).toBeVisible();
     await page.getByRole('combobox', { name: 'Twin', exact: true }).selectOption({ label: TWIN });
-    const row = page.getByRole('table', { name: 'estimates' }).getByRole('row').filter({ hasText: KEY }).filter({ hasText: /78\.074/ }).first();
+    const row = page.getByRole('table', { name: 'estimates' }).getByRole('row').filter({ hasText: KEY }).filter({ hasText: /78\.074/ }).filter({ hasText: /approved/ }).first();   // the DECIDED one (the Reconciliation Agent may propose again on the new head)
     await row.getByRole('button').click();
     await expect(page.getByLabel('estimate state')).toContainText('APPROVED');
     await expect(page.getByLabel('snapshot', { exact: true })).toContainText(/^published as v\d+$/);
@@ -122,10 +122,10 @@ test.describe.serial('CP-6 B33 §TW — the twin pieces on the demonstration', (
     await uiLogin(page, READER, required('EYE_TEST_ADMIN_PASSWORD'));
     await page.goto('/decisions/attention');
     await expect(page.getByRole('heading', { name: /^Queue \(\d+ in the domain\)$/ })).toBeVisible({ timeout: 20_000 });
-    await page.getByLabel('State', { exact: true }).selectOption('closed');
+    await page.getByRole('region', { name: /^Queue \(/ }).getByLabel('State', { exact: true }).selectOption('closed');   // the queue's filter (the reviews and suppression panels carry a State too)
     const awaiting = page.getByRole('row').filter({ hasText: 'twin.envelope' }).filter({ hasText: /awaiting a twin owner's exploratory admission/ }).first();
     await expect(awaiting).toBeVisible({ timeout: 20_000 });
-    await expect(awaiting).toContainText('closed');
+    await expect(awaiting).toContainText(/closed/i);   // the queue renders the state as a mark: "■ CLOSED"
     const admitted = page.getByRole('row').filter({ hasText: 'twin.envelope' }).filter({ hasText: /admitted as exploratory — awaiting a method steward's concurrence/ }).first();
     await expect(admitted).toBeVisible();
     await shot(page, 'b33-twin-05-outside-run-items-closed');

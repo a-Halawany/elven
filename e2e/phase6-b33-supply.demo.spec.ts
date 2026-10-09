@@ -76,7 +76,7 @@ test.describe.serial('CP-6 B33 §SC — the supply network workspace on the demo
     await expect(ledger).toContainText('drafted by the agent');
     await expect(ledger).toContainText(/validated until .* — “/);
     await expect(ledger).toContainText(/applied in version \d+/);
-    await expect(page.getByLabel('inference')).toContainText(/SENSITIVE \(a named counterparty\)/);
+    await expect(list).toContainText(/SENSITIVE \(a named counterparty\)/);   // the inferences table's line names the sensitivity (the detail panel asks for the reason)
     await shot(page, 'b33-supply-02-inference');
   });
 
@@ -88,7 +88,7 @@ test.describe.serial('CP-6 B33 §SC — the supply network workspace on the demo
     await expect(page.getByLabel('disruption state')).toContainText('MAPPED');
     await expect(page.getByLabel('map freshness')).toContainText('the inputs are current by their freshness policies');
     await expect(page.getByLabel('line impact').first()).toContainText(new RegExp(`${LINE} .* runs at [\\d.]+ of [\\d.]+ per day — [\\d.]+ day\\(s\\) of cover`));
-    const routes = page.getByRole('list', { name: new RegExp(`^affected routes of ${NETWORK}`) });
+    const routes = page.getByRole('list', { name: new RegExp(`^affected routes of ${NETWORK.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`) });   // the title carries "(3 tiers)": escaped
     await expect(routes).toContainText(/via bab-el-mandeb/);
     await expect(routes).toContainText(/shenzhen-/);
     await page.getByRole('button', { name: 'Replay the map on its pinned versions' }).click();

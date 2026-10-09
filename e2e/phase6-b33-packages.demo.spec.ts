@@ -8,7 +8,7 @@
  * playwright.demo.config.ts only (the hosted config ignores *.demo.spec.ts).
  *
  * What is asserted is what the record says on screen — never a state derived here. Screenshots go to EYE_SHOTS (b33-packages-*.png).
- * Personas: the owner J. Weber (EYE_B33_OWNER, default `j.weber`), the specialist (EYE_B33_SPECIALIST, default `d.ivanova`). Every figure is
+ * Personas: the owner J. Weber (EYE_B33_PKG_OWNER, default `j.weber`), the specialist (EYE_B33_SPECIALIST, default `d.ivanova`). Every figure is
  * SYNTHETIC unless its source contract says real.
  */
 import { expect as baseExpect, test, type Page } from '@playwright/test';
@@ -26,7 +26,8 @@ function required(name: string): string {
 const SHOTS = process.env['EYE_SHOTS'] ?? join(process.cwd(), 'evidence', 'phase6-browser');
 mkdirSync(SHOTS, { recursive: true });
 const shot = (page: Page, name: string) => page.screenshot({ path: join(SHOTS, `${name}.png`), fullPage: true });
-const OWNER = process.env['EYE_B33_OWNER'] ?? 'j.weber';
+// EYE_B33_PKG_OWNER, not EYE_B33_OWNER: the twin and supply walks read EYE_B33_OWNER as the twin owner (t.nakamura) — one env file serves all four
+const OWNER = process.env['EYE_B33_PKG_OWNER'] ?? 'j.weber';
 const SPECIALIST = process.env['EYE_B33_SPECIALIST'] ?? 'd.ivanova';
 const TITLE = process.env['EYE_B33_GEO_TITLE'] ?? 'Geopolitical intelligence — Red Sea security situation';
 
