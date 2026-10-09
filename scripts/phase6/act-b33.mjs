@@ -414,8 +414,16 @@ const SOURCE_BR = 'stress-75'; const TARGET_BR = 'blockade';
   const latest = async () => (await q(`select ${estCols} from twin.estimates where twin_id = $1 and key = $2 order by proposed_at desc limit 1`, [CORRIDOR.id, KEY]))[0] ?? null;
   const decideAs = (id, allowIncomplete) => longAs(nakamura, `${ES}/estimates/${id}/decide`, dom(nakamura, 'twin', { action: 'twin.estimate.decide', objectType: 'TWE', objectId: id }), { decision: 'approved', note: 'the corridor capacity on the real PortWatch count is accepted (the baseline SYNTHETIC)', allowIncomplete });
   const head = await headOf(CORRIDOR.id);
-  let e = await latest();
-  if (e && e.state === 'proposed' && Number(e.head_version) !== head.version) {
+  // RERUN-SAFE: the scene's estimate is the APPROVED, ROUTED 78.074 % one (its item closed by the decision). Once it stands, a later proposal —
+  // the Reconciliation Agent re-estimates on the new head (rehearsal-found: a non-material, unrouted 78.074 % on the head the approval made) — is
+  // the owner's to decide, never the act's
+  const ours = (await q(`select ${estCols} from twin.estimates where twin_id = $1 and key = $2 and state = 'approved' and round(proposed_value::numeric, 3) = 78.074 and attention_item_id is not null order by decided_at desc limit 1`, [CORRIDOR.id, KEY]))[0] ?? null;
+  let e = ours ?? await latest();
+  if (ours) {
+    const later = await q(`select estimate_id::text id, state, proposed_value::float8 v, head_version, proposer_kind, material from twin.estimates where twin_id = $1 and key = $2 and proposed_at > $3 order by proposed_at`, [CORRIDOR.id, KEY, ours.proposed_at]);
+    note(`the scene's estimate ${short(ours.id)} (${f3(ours.v)} %) stands APPROVED (decided by ${nm(ours.decided_by)}, applied as v${ours.applied_version}) — an earlier run${later.length ? `; later proposals left to the owner: ${later.map((x) => `${short(x.id)} ${f3(x.v)} % on v${x.head_version} by the ${x.proposer_kind} (${x.state}, ${x.material ? 'material' : 'not material'})`).join('; ')}` : ''}`);
+  }
+  if (!ours && e && e.state === 'proposed' && Number(e.head_version) !== head.version) {
     const d = await decideAs(e.id, false);
     expectRefused(`T. Nakamura approves the ${f3(e.v)} % estimate ${short(e.id)} (computed on v${e.head_version}; the head is v${head.version})`, d, 409, /^estimate rejected \(stale\): estimate .* was computed against v\d+ of the twin; the head moved to v\d+ — propose again on the current head/);
     const t0 = Date.now();
@@ -424,12 +432,12 @@ const SOURCE_BR = 'stress-75'; const TARGET_BR = 'blockade';
     e = await latest();
     if (!r.ok) fail('A. Hoffmann proposes the estimate again', r); else ok(`A. Hoffmann PROPOSED ${short(e?.id)}: ${f3(e?.v)} % on v${e?.head_version} (${mins(t0)}) — the stale proposal ${short(OPEN78?.id)} superseded`);
   }
-  if (e && e.state === 'proposed') {
+  if (!ours && e && e.state === 'proposed') {
     let d = await decideAs(e.id, false);
     if (!d.ok && /incomplete/.test(String(d.body?.message ?? ''))) d = await decideAs(e.id, true);
     if (!d.ok) fail(`T. Nakamura approves the ${f3(e.v)} % estimate`, d); else ok(`T. Nakamura (the twin's owner) APPROVED the ${f3(e.v)} % estimate ${short(e.id)} → the snapshot published as v${d.body.snapshot?.version ?? d.body.decision?.applied_version ?? '—'}`);
     e = await latest();
-  } else if (e) note(`the latest ${KEY} estimate ${short(e.id)} (${f3(e.v)} %) stands ${String(e.state).toUpperCase()} (decided by ${nm(e.decided_by)}, applied as v${e.applied_version}) — an earlier run`);
+  }
   if (e) {
     const it = e.item ? (await q(`select state, closed_by::text closed_by from executive.attention_items where item_id = $1`, [e.item]))[0] : null;
     (e.state === 'approved' && Math.abs(e.v - 78.074) < 0.0005 && it?.state === 'closed' ? ok : bad)(`THE ESTIMATE ${short(e.id)}: ${f3(e.v)} % ${String(e.state).toUpperCase()}, applied as v${e.applied_version}; its twin.reconciliation item ${it ? `${it.state.toUpperCase()} by ${nm(it.closed_by)}` : 'NONE'}`);
@@ -722,7 +730,7 @@ let REC = null; let REC_EVD = null; let SZ_ENTITY = null;
     const mention = cl.find((c) => c.object_type === 'ENT') ?? null;
     let ent = mention ? await entityOfClaim(mention.id) : null;
     if (mention && ent === null) { await resolve(richter, [REC_EVD.id]); ent = await entityOfClaim(mention.id); }
-    (ent?.entity_type === 'organization' ? ok : bad)(`T. Richter CREATED the graph organization through the graph's own path: "${ent?.canonical_name}" (${ent?.entity_type} ${short(ent?.entity_id)}, ${ent?.method} ${ent?.state}) — from the extracted mention on the customs register's id, never planted`);
+    (ent?.entity_type === 'organization' ? ok : bad)(`THE GRAPH ORGANIZATION (T. Richter's register and resolver run — the graph's own path): "${ent?.canonical_name}" (${ent?.entity_type} ${short(ent?.entity_id)}, ${ent?.method} ${ent?.state}) — from the extracted mention on the customs register's id, never planted`);
     SZ_ENTITY = ent?.entity_id ?? null;
   }
 }
