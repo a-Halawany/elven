@@ -298,7 +298,9 @@ BEGIN
   UPDATE twin.branch_merges SET state = 'merged', merged_version = NEW.version, merged_at = clock_timestamp() WHERE merge_id = m.merge_id;
   PERFORM twin.tbr_event(m.tenant_id, m.domain_id, m.twin_id, m.merge_id, 'merge.merged', public.eye_principal(),
     jsonb_build_object('merged_version', NEW.version, 'source_branch', m.source_branch, 'source_version', m.source_version, 'target_version', m.target_version,
-                       'state_set_digest', NEW.state_set_digest), m.correlation_id);
+                       'state_set_digest', NEW.state_set_digest)
+    || CASE WHEN m.target_branch = 'actual' THEN '{}'::jsonb ELSE jsonb_build_object('target_branch', m.target_branch) END,   -- B33 twin: the target named (B30's details unchanged for actual)
+    m.correlation_id);
   RETURN NEW;
 END $$ LANGUAGE plpgsql;
 DROP TRIGGER tbr_merge_admitted ON twin.twin_versions;
