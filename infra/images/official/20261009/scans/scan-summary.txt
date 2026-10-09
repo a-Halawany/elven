@@ -1,0 +1,34 @@
+Evidence scans, 2026-10-09 — trivy 0.73.0 (Homebrew build at /opt/homebrew/bin/trivy; NOT the pinned release
+binary the gate authenticates by executable digest — these are evidence, the gate's own verdict is CI's run
+37930914426), --scanners vuln,secret --ignorefile /dev/null --image-src remote, one scan per platform child of
+postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873, all severities captured;
+the HIGH/CRITICAL subset is what the gate governs.
+Vulnerability DB: mirror.gcr.io/aquasec/trivy-db:2, UpdatedAt 2026-10-09T13:10:00.476847953Z, DownloadedAt 2026-10-09T13:58:09.00915Z.
+
+| Child | OS | ALL rows | HIGH/CRITICAL rows | of which OS-package rows | of which usr/local/bin/gosu | secrets |
+|---|---|---|---|---|---|---|
+| official-postgres-amd64 | 3.24.2 | 62 | 24 | 0 | 24 | 0 |
+   governed by the records in force (by platform/advisory/severity): SCX-0002 14, SCX-0003 1, SCX-0004 1, SCX-0005 6; UNGOVERNED: 2
+   UNGOVERNED CVE-2026-78667 HIGH stdlib pkg:golang/stdlib@v1.24.6 usr/local/bin/gosu (fixed 1.26.9, 1.27.2; severity source )
+   UNGOVERNED CVE-2026-97031 HIGH stdlib pkg:golang/stdlib@v1.24.6 usr/local/bin/gosu (fixed 1.26.9, 1.27.2; severity source )
+| official-postgres-arm64 | 3.24.2 | 62 | 24 | 0 | 24 | 0 |
+   governed by the records in force (by platform/advisory/severity): SCX-0010 21, SCX-0011 1; UNGOVERNED: 2
+   UNGOVERNED CVE-2026-78667 HIGH stdlib pkg:golang/stdlib@v1.24.6 usr/local/bin/gosu (fixed 1.26.9, 1.27.2; severity source )
+   UNGOVERNED CVE-2026-97031 HIGH stdlib pkg:golang/stdlib@v1.24.6 usr/local/bin/gosu (fixed 1.26.9, 1.27.2; severity source )
+
+== amd64 vs arm64 (HIGH/CRITICAL, advisory/severity/package/PURL/installed/fixed/target): identical=True
+== the two new advisories on amd64: CVE-2026-78667 HIGH stdlib pkg:golang/stdlib@v1.24.6 v1.24.6 -> fixed 1.26.9, 1.27.2 @ usr/local/bin/gosu; CVE-2026-97031 HIGH stdlib pkg:golang/stdlib@v1.24.6 v1.24.6 -> fixed 1.26.9, 1.27.2 @ usr/local/bin/gosu
+== the two new advisories on arm64: CVE-2026-78667 HIGH stdlib pkg:golang/stdlib@v1.24.6 v1.24.6 -> fixed 1.26.9, 1.27.2 @ usr/local/bin/gosu; CVE-2026-97031 HIGH stdlib pkg:golang/stdlib@v1.24.6 v1.24.6 -> fixed 1.26.9, 1.27.2 @ usr/local/bin/gosu
+== against the 2026-09-22 scan of the same children (../../20260922/scans/): the 22 governed rows remain on
+   each platform; the rows not in that scan are listed as UNGOVERNED above.
+== severity of the two new rows: trivy's Severity HIGH comes from the Red Hat vendor rating (VendorSeverity redhat=3,
+   CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H = 7.5); NVD has not scored them (vulnStatus Received) and GitHub's
+   advisories are unreviewed with severity unknown (../advisories/).
+== below the gate's filter on amd64 (recorded, not governed): LOW@usr/local/bin/gosu 2, MEDIUM@os 2, MEDIUM@usr/local/bin/gosu 24, UNKNOWN@usr/local/bin/gosu 10 (2026-09-22: 21 MEDIUM, 2 LOW, 1 UNKNOWN, all gosu)
+== below the gate's filter on arm64 (recorded, not governed): LOW@usr/local/bin/gosu 2, MEDIUM@os 2, MEDIUM@usr/local/bin/gosu 24, UNKNOWN@usr/local/bin/gosu 10 (2026-09-22: 21 MEDIUM, 2 LOW, 1 UNKNOWN, all gosu)
+== the other Go advisories of 2026-10-08 in the same gosu (all stdlib v1.24.6 -> fixed 1.26.9, 1.27.2), UNKNOWN severity in
+   this DB and therefore below the gate's filter today: CVE-2026-56857, -56866, -78659, -78660, -78663, -78669, -94440,
+   -94448, -97030. A vendor rating of HIGH for any of them makes it a NEW ungoverned row on both platforms. govulncheck
+   (../govulncheck/) reports every one of them at module level only (GO-2026-6604 = CVE-2026-56857 is Windows-only and
+   yields no finding); they are NOT governed by the drafts — a record for a row the scanner does not report would fail
+   the gate as UNUSED.

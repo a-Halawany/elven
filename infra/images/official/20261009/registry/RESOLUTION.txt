@@ -1,0 +1,38 @@
+Official postgres 18 images on Docker Hub, resolved 2026-10-09 (~13:30 UTC) — is there a PATCHED official image?
+
+Method: anonymous pull token from auth.docker.io (scope repository:library/postgres:pull), then
+GET https://registry-1.docker.io/v2/library/postgres/manifests/<tag> (OCI index accept headers); the
+Docker-Content-Digest header AND the sha256 of the returned bytes were compared; for each linux/amd64 and
+linux/arm64 child the image manifest and its config blob were fetched and the config's `created` and the
+GOSU_VERSION / PG_VERSION environment read. Read-only; nothing pulled into the Docker daemon, no container.
+
+The question: does any official postgres 18 build carry a gosu built with a Go toolchain outside the
+affected ranges of GO-2026-6609 (CVE-2026-78667) and GO-2026-6607 (CVE-2026-97031)? Both advisories
+(advisories/GO-2026-6609.json, advisories/GO-2026-6607.json; Go vulndb, published 2026-10-08T22:31:09Z):
+  stdlib: introduced 0, fixed 1.26.9; introduced 1.27.0-0, fixed 1.27.2
+i.e. every Go toolchain before 1.26.9, and 1.27.0 / 1.27.1. A gosu built with go1.26.9+ (1.26 line) or
+go1.27.2+ would be outside both ranges.
+
+| Tag | Index digest | linux/amd64 child | linux/arm64 child | config created (amd64) | GOSU_VERSION | PG_VERSION |
+|---|---|---|---|---|---|---|
+| 18-alpine | sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873 (= THE CONFIGURED PIN; the bytes hash to it and are byte-identical to ../20260922/index/postgres.index.raw.json) | d8703cd7fba306b9fec9268ecedfa8a966846c053036a60e3635791957eb2f66 | 89f747171c4b0af0eacf5984550060be79786dbe286eb60cfa691d79d1e8b23f | 2026-09-17T21:29:50Z | 1.19 | 18.6 |
+| 18-alpine3.24 | same index as 18-alpine | | | | | |
+| 18.6-alpine | same index as 18-alpine | | | | | |
+| 18.7-alpine | MANIFEST_UNKNOWN (no such tag) | | | | | |
+| 18-alpine3.23 | sha256:885cf05d376c7cf27afef02073e6bdac3841252537f16e244fd1c1e6a7c99fb1 | 3928680cee9028902891672c0a6ce84de58ed3eb1b987588e7c9424d8f08d21d | 1d70b0960b2d1c39a0a82cda0d19d78b9b676d64b2120efe82631cd9768d1814 | 2026-09-17T21:29:54Z | 1.19 | 18.6 |
+| 18-trixie (= 18 = latest) | sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336 | 885953109528ad3dfc90362b1a6f50a78620b5315be19f187753d267e484dc5b | a63b24165ea0eacced7585766d790ac08bbaefe10a1841f87783a4505d29a69c | 2026-10-06T01:33:04Z | 1.19 | 18.6-1.pgdg13+2 |
+| 18-bookworm | sha256:afc7e2d441324c0388fa80c3d24f733b4194a4eb7f47dd8ee2b08eb1a24a647c | 9551dd5bf356409a21b31248f49b33bba9bb1877365f3a7e933aecd9af3cf52d | 67ba68a22dc7d5af3627b7e0f33d10bbefad07562ff9703b3a6c2de247649129 | 2026-10-06T01:33:02Z | 1.19 | 18.6-1.pgdg12+2 |
+
+(arm64 children were read the same way; their configs carry the same GOSU_VERSION=1.19.)
+
+Finding: NO patched official image exists.
+  * postgres:18-alpine (the pinned variant and tag family) has NOT moved since the pin: it still resolves
+    to 77f58511…, built 2026-09-17, whose gosu is 1.19 built with go1.24.6 on both platforms
+    (../gosu/IDENTITY.txt: the same bytes as 2026-09-22).
+  * Every official postgres 18 variant (alpine3.24, alpine3.23, trixie, bookworm) installs gosu 1.19; the
+    newest builds (2026-10-06, Debian variants) predate the advisories (2026-10-08). gosu 1.19 is built
+    with go1.24.6, inside both affected ranges.
+  * There is therefore nothing to re-pin to; a re-pin to another variant would not change the gosu bytes.
+    The recheck (scripts/gate/check-patched-images.mjs) watches the OS-package fixes, not gosu; it would
+    report postgres as "the configured pin is the compatible official image" — correct for what it
+    watches, and silent on these two advisories by design.

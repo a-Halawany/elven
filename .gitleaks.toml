@@ -173,6 +173,30 @@ paths = ['''(^|/)infra/images/published/20260910/gosu-arm64-3a8ef022\.govulnchec
 regexTarget = "line"
 regexes = ['''go\.googlesource\.com/[a-z]+/\+/[0-9a-f]{40}''']
 
+# ── 6b. The same FALSE POSITIVE in the 2026-10-09 govulncheck reports ─────────
+[[allowlists]]
+description = """
+FALSE POSITIVE, the same one as §6 and scoped the same way — ONE rule, the TWO named
+files, ONE URL shape (condition = AND).
+
+`infra/images/official/20261009/govulncheck/gosu-{amd64,arm64}.govulncheck.json` are the
+`-json` output of govulncheck v1.7.0 on the two pinned gosu binaries (2026-10-09, the
+analysis behind the DRAFTED SCX-0012/0013, docs/SCANNER_DISPOSITIONS.md §3.10), kept whole.
+Like the §6 file they carry the Go vulnerability database's reference URLs to FIX commits
+(`https://go.googlesource.com/go/+/<40 hex>`), and the sourcegraph-access-token rule keys on
+the 40-hex run after `source` in the hostname: 58 matches per file, every one inside such a
+URL. Public upstream commit identifiers; no credential is involved.
+
+Scope: the rule, the two files, and only a match inside a `go.googlesource.com/<repo>/+/<40 hex>`
+URL (regexTarget = line). Every other rule, file and hex string stays in scope. The §6 block
+is left exactly as it was.
+"""
+condition = "AND"
+targetRules = ['''sourcegraph-access-token''']
+paths = ['''(^|/)infra/images/official/20261009/govulncheck/gosu-(amd64|arm64)\.govulncheck\.json$''']
+regexTarget = "line"
+regexes = ['''go\.googlesource\.com/[a-z]+/\+/[0-9a-f]{40}''']
+
 # ── 7. A JSON KEY NAME in the health-score migration, not a credential ───────
 [[allowlists]]
 description = """

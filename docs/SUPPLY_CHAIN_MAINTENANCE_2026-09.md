@@ -104,6 +104,7 @@ change. C15 stays blocking; no waiver is added.
 | **2026-09-22 12:41** | scheduled run **35728647457** on `main` (the pinned trivy 0.73.0) + local `check-patched-images.mjs` (Homebrew trivy 0.73.0, evidence only) | the derived images above | `postgres:18-alpine` → **`77f58511…`** (children `d8703cd7…` amd64, `89f74717…` arm64; 18.6-alpine3.24, Alpine 3.24.2), `redis:8-alpine` → **`ba6e394f…`** (children `2d3814be…` amd64, `41a10b18…` arm64; 8.10.2-alpine, Alpine 3.23.6) | **none of the watched ones**: `libuuid` 2.42.3-r1, `setpriv` 2.41.6-r1, `libcrypto3`/`libssl3` 3.5.8-r0, `c-ares` 1.34.8-r0 on both platforms; the official postgres children carry the same 22 `gosu` stdlib rows as the derived image and nothing else at HIGH/CRITICAL; redis 0 at every severity | **COMPATIBLE FIXED OFFICIAL IMAGE for both services** — the recheck FAILED on purpose; the return begins (§8): re-pinned 2026-09-22, provenance and compatibility verified, SCX re-issues DRAFTED for the owner |
 | **2026-09-23** | the owner’s approval applied (the six re-issues in force, §3.9 of the dispositions document); local `check-patched-images.mjs` under its completed return transition (§8.4; the pinned trivy 0.73.0 authenticated by `install-scanners.sh`, live registry, both platforms) | `postgres@sha256:77f58511…`, `redis@sha256:ba6e394f…` (the official indexes, since 2026-09-22) | unchanged: `postgres:18-alpine` → `77f58511…`, `redis:8-alpine` → `ba6e394f…` — THE SAME indexes as the pins | none of the watched ones on any child (`libuuid` 2.42.3-r1 / `setpriv` 2.41.6-r1, `libcrypto3`/`libssl3` 3.5.8-r0, `c-ares` 1.34.8-r0) | **PASS** — "the configured pin is the compatible official image" for both services; no NEWER compatible official build; the C15 gate on the same pins with the six records: 44 findings, 6 records, 0 unmatched, 0 unused |
 | **2026-09-24 21:42** | required `supply-chain` job of ci run **36063029682** (PR #61, the pinned trivy 0.73.0) + local `docker buildx imagetools inspect` of both indexes (`infra/images/official/20260925/`) | `postgres@sha256:77f58511…`, `redis@sha256:ba6e394f…` | `postgres:18-alpine` → `77f58511…` (THE SAME index); `redis:8-alpine` → **`38117873…`** — a DIFFERENT index whose **linux/amd64 and linux/arm64 children are the pinned ones** (`2d3814be…`, `41a10b18…`); only its `linux/riscv64` child (and that child's attestation) was rebuilt | none of the watched ones on any scanned child | **FAIL on purpose** for redis ("a COMPATIBLE FIXED OFFICIAL image now exists … NEWER than the configured pin"): the update process ran (§8.5) — re-pinned to `38117873…` on 2026-09-25; no SCX record names the redis pin; nothing we run changed |
+| **2026-10-09** | required `supply-chain` job of ci run **37930914426** (PR #82, the pinned trivy 0.73.0) + read-only registry reads of every official postgres 18 variant (`infra/images/official/20261009/registry/RESOLUTION.txt`) + govulncheck on both `gosu` binaries | `postgres@sha256:77f58511…`, `redis@sha256:38117873…` | `postgres:18-alpine` → `77f58511…` (THE SAME index, built 2026-09-17); every postgres 18 variant (alpine3.24, alpine3.23, trixie, bookworm; newest 2026-10-06) ships `gosu` 1.19 built with `go1.24.6` | none of the watched OS ones; **two new HIGH Go stdlib rows in `gosu`** on both platforms — CVE-2026-78667 (GO-2026-6609, `net/http`) and CVE-2026-97031 (GO-2026-6607, `crypto/tls`), affected `< 1.26.9` and `1.27.0`–`1.27.1`, published 2026-10-08 | C15 **FAILS** on 2 UNGOVERNED findings × 2 platforms; **no patched official image exists**, so no re-pin; govulncheck: both module-level only, `net/http` and `crypto/tls` not linked; SCX-0012/0013 **DRAFTED** for the owner (§8.6; dispositions §3.10), not in force |
 
 ## 8. The return to the official images (2026-09-22)
 
@@ -294,3 +295,34 @@ severity) and compatibility passes apply to them unchanged: they are the same im
 
 Nothing here changes a budget, a cadence, a source, a disposition record or the C19 anchor, and nothing was purchased.
 
+### 8.6 Two Go stdlib advisories in `gosu`, no patched official image (2026-10-09)
+
+**What fired.** The required `supply-chain` job of ci run 37930914426 (PR #82, 2026-10-09) failed the C15 gate on two
+UNGOVERNED HIGH rows on both children of the pinned `postgres:18-alpine` index `77f58511…`: CVE-2026-78667 and
+CVE-2026-97031, `stdlib` `pkg:golang/stdlib@v1.24.6` in `usr/local/bin/gosu`. Everything else in the job passed
+(pnpm audit, gitleaks, trivy-fs, the redis image). These are not watched OS packages, so the recheck is unaffected:
+postgres still resolves to the configured pin.
+
+**The governed order, step by step.**
+1. *A patched official image?* No. The advisories (Go vulndb GO-2026-6609 / GO-2026-6607, published 2026-10-08) affect
+   every Go toolchain before 1.26.9 and 1.27.0–1.27.1. `postgres:18-alpine` has not moved since 2026-09-17, and every
+   official postgres 18 variant — including the Debian builds of 2026-10-06 — installs `gosu` 1.19, built with
+   `go1.24.6` (`infra/images/official/20261009/registry/RESOLUTION.txt`). Nothing was re-pinned; `docker-compose.yml`,
+   `conformance.manifest.json` and the recheck are unchanged.
+2. *Reachability, as the earlier gosu dispositions did it.* Both `gosu` binaries were extracted from the pinned
+   children by digest (byte-identical to those analysed since 2026-08) and analysed with `govulncheck` v1.7.0
+   `-mode binary` in `golang:1.25-alpine` against vuln.go.dev as of 2026-10-08T22:31:09Z: 0 called; both advisories
+   module-level only; `net/http` and `crypto/tls` are not linked into either binary
+   (`infra/images/official/20261009/govulncheck/`).
+3. *Dispositions — the owner's.* SCX-0012 (`linux/amd64`) and SCX-0013 (`linux/arm64`) are DRAFTED as NOT_AFFECTED,
+   expiring 2026-11-05, in `docs/SCANNER_DISPOSITIONS.md` §3.10 and under `pending_records` in
+   `scripts/gate/scanner-exclusions.json`, outside `records`. Nothing is approved. Writing §3.10 changed the
+   dispositions document, so until the owner's approval re-binds its digest the six records in force are rejected too
+   and the gate reports all 48 `gosu` rows; that is the documented consequence of drafting in the controlled document
+   (it was the same on 2026-09-22) and it is not hidden.
+
+**What awaits the owner** is listed in §3.10 ("What the owner is asked to approve"). The live `eye-postgres` container
+is untouched: it runs `postgres@sha256:77f58511…`, the configured pin, and no re-pin is pending. Nine further Go
+advisories of the same 2026-10-08 release sit in the same `gosu` at UNKNOWN severity in today's scanner database; a
+vendor rating of HIGH for any of them will fail the gate again with a new ungoverned row (all module-level only in the
+govulncheck result; recorded in `infra/images/official/20261009/scans/scan-summary.txt`).

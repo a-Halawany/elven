@@ -1,0 +1,9 @@
+os: alpine 3.24.2
+arch: amd64
+image_id: sha256:c293117fcecda7344b5480222e813b9f673d7abd69b1dd95eff239b768b04f59
+repo_digests: ['postgres@sha256:d8703cd7fba306b9fec9268ecedfa8a966846c053036a60e3635791957eb2f66']
+artifact_name: postgres@sha256:d8703cd7fba306b9fec9268ecedfa8a966846c053036a60e3635791957eb2f66
+created_at: 2026-10-09T16:58:54.076006+03:00
+all_rows: 62
+high_critical_rows: 24
+secrets: 0
