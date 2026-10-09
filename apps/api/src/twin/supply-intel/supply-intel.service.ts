@@ -19,6 +19,7 @@
  */
 import { HttpException, Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
+import { sql } from 'kysely';
 import { errorBody, type Envelope } from '@eye/contracts';
 import { newId } from '../../shared/ids.js';
 import type { AuthenticatedPrincipal } from '../../shared/auth-types.js';
@@ -279,11 +280,14 @@ export class SupplyIntelService implements OnModuleInit {
       const els = head === null ? [] : await this.elements(cap, twinId, head);
       const entity = intake.entityId === null ? null : ((await cap.readEntities().select(['entity_id', 'entity_type', 'lifecycle_state'] as never)
         .where('entity_id' as never, '=', intake.entityId as never).executeTakeFirst()) as Row | undefined) ?? undefined;
-      return { i, twinId, head, els, entity };
+      const lapsed = i['valid_until'] === null || i['valid_until'] === undefined ? false
+        : ((await cap.readInferences().select(sql<boolean>`valid_until <= clock_timestamp()`.as('lapsed') as never).where('inference_id' as never, '=', inferenceId as never).executeTakeFirst()) as { lapsed: boolean }).lapsed;
+      return { i, twinId, head, els, entity, lapsed };
     });
     if (pre === null) throw new HttpException(errorBody('EYE_STA_001', corr, `supply inference rejected (unknown_inference): ${inferenceId} is not an inference of this domain`), 404);
     const { i, twinId, head, els } = pre;
     if (i['state'] !== 'validated') throw new HttpException(errorBody('EYE_STA_002', corr, `supply inference rejected (state): inference ${inferenceId} is ${String(i['state'])}; only a validated inference is applied`), 409);
+    if (pre.lapsed) throw new HttpException(errorBody('EYE_STA_002', corr, `supply inference rejected (stale): the validation of inference ${inferenceId} expired at ${String(i['valid_until'] instanceof Date ? (i['valid_until'] as Date).toISOString() : i['valid_until'])} — a named analyst validates it again before it is applied`), 409);
     if (head === null) throw new HttpException(errorBody('EYE_STA_002', corr, `supply inference rejected (state): twin ${twinId} has no admitted head on actual`), 409);
     if (intake.entityId !== null && (pre.entity === undefined || pre.entity === null || !['organization', 'place'].includes(String(pre.entity['entity_type'])))) {
       throw new HttpException(errorBody('EYE_REQ_001', corr, `supply inference rejected (entity): ${intake.entityId} is not a graph organization or place of this domain (create it through the graph's own port first)`), 422);
@@ -320,7 +324,13 @@ export class SupplyIntelService implements OnModuleInit {
       await this.withdrawDraft(base, principal, T_, D, twinId, version, `the application of inference ${inferenceId} failed: ${textOf(e)}`.slice(0, 900));
       throw e;
     }
-    const rec = await this.recordApplication(base, principal, T_, D, inferenceId, 'apply', version);
+    let rec: Awaited<ReturnType<SupplyIntelService['recordApplication']>>;
+    try { rec = await this.recordApplication(base, principal, T_, D, inferenceId, 'apply', version); }
+    catch (e) {
+      // the version is admitted (immutable) and carries the site: the application is recorded once the refusal is resolved (the record route)
+      const status = e instanceof HttpException ? e.getStatus() : 409;
+      throw new HttpException(errorBody(status === 403 ? 'EYE_AUT_001' : 'EYE_STA_002', corr, `${textOf(e)} — version v${version} is admitted and carries site:${site}; record the application with POST /inferences/${inferenceId}/record {mode: apply, version: ${version}} once that is resolved`), status);
+    }
     return { applied: rec.recorded, version, admitted, capacity: { value: capacity, unit: `${mat.unit}/day`, basis: intake.capacityPerDay === null ? 'the records\' observed flow — a lower bound of the capacity' : 'stated by the twin\'s owner' }, receipt: rec.receipt };
   }
 

@@ -274,6 +274,13 @@ SET search_path = twin, pg_catalog, pg_temp AS $$
 DECLARE ok boolean;
 BEGIN
   IF TG_OP = 'DELETE' THEN RAISE EXCEPTION 'supply inference rejected (state): an inference is never deleted' USING ERRCODE = '2F002'; END IF;
+  -- the port's own bookkeeping in the same state: the routed item it raised is recorded on the row, nothing else changes
+  IF OLD.state = NEW.state AND OLD.state <> 'validated' THEN
+    IF (to_jsonb(NEW) - 'item_id') <> (to_jsonb(OLD) - 'item_id') THEN
+      RAISE EXCEPTION 'supply inference rejected (state): inference % is %; only its routed item is recorded in place', OLD.inference_id, OLD.state USING ERRCODE = '2F002';
+    END IF;
+    RETURN NEW;
+  END IF;
   ok := (OLD.state, NEW.state) IN (('proposed', 'validated'), ('proposed', 'rejected'), ('proposed', 'superseded'), ('proposed', 'withdrawn'),
                                    ('validated', 'applied'), ('validated', 'rejected'), ('validated', 'superseded'), ('validated', 'withdrawn'), ('validated', 'validated'),
                                    ('applied', 'revoked'), ('revoked', 'reverted'));
@@ -293,6 +300,8 @@ CREATE OR REPLACE FUNCTION twin.tsc_disruption_forward() RETURNS trigger
 SET search_path = twin, pg_catalog, pg_temp AS $$
 BEGIN
   IF TG_OP = 'DELETE' THEN RAISE EXCEPTION 'supply disruption rejected (state): a disruption is never deleted' USING ERRCODE = '2F002'; END IF;
+  -- the port's own bookkeeping in the same state: the routed item it raised is recorded on the row, nothing else changes
+  IF OLD.state = NEW.state AND OLD.state IN ('proposed', 'open') AND (to_jsonb(NEW) - 'item_id') = (to_jsonb(OLD) - 'item_id') THEN RETURN NEW; END IF;
   IF OLD.state IN ('closed', 'withdrawn') OR NOT ((OLD.state, NEW.state) IN (('proposed', 'open'), ('proposed', 'withdrawn'), ('open', 'mapped'), ('open', 'closed'), ('open', 'withdrawn'),
                                                                         ('mapped', 'mapped'), ('mapped', 'closed'), ('mapped', 'withdrawn'))) THEN
     RAISE EXCEPTION 'supply disruption rejected (state): disruption % moves % → %, which its lifecycle does not allow', OLD.disruption_id, OLD.state, NEW.state USING ERRCODE = '2F002';
