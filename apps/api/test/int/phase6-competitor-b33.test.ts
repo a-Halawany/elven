@@ -811,3 +811,41 @@ describe('CI-P · every competitor write consults the PACKAGE_GATE (fixture: the
     expect(await compare(hoffmann, 'gear-motor-capacity', [W['atlas']!, W['kessler']!])).toMatchObject({ state: 'current' });
   });
 });
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+describe('CI-X · max_items enforced by the scan; another tenant sees nothing (AT-29 control fixtures: cross-tenant, unauthorized role)', () => {
+  it('max_items: an agent registered with max_items 0 proposes nothing — the competitor WAITS, its scan mark unmoved; the regular agent then proposes it', async () => {
+    const ev = await evidence('kessler-press', 'kessler-austria', ['Kessler Antriebe GmbH (SYNTHETIC) enters the Austrian market.']);
+    const ev2 = await evidence('trade-press', 'trade-kessler-austria', ['Trade press: Kessler (SYNTHETIC) now sells in Austria.']);
+    for (const e of [ev, ev2]) {
+      await mention(e, 'Kessler Antriebe GmbH (SYNTHETIC)', 'organization', 'SYN-KESSLER-001');
+      await plantClaim('EVT', e, { subject: 'Kessler Antriebe GmbH (SYNTHETIC)', predicate: 'enters_market', object_value: 'Austria (retail)', confidence: 0.7, qualifiers: { effective_date: '2026-12-20', market: 'Austria' } });
+    }
+    await resolveRun();
+    const zero = String((await registerAgent({ stopConditions: [{ kind: 'max_items', value: 0 }] })).agent['agentId']);
+    const marksBefore = (await one(sql`select count(*)::int n from domain.competitor_scan_marks where competitor_id = ${W['kessler']!}::uuid`))['n'];
+    const held = (await runScan(zero)).run;
+    expect(held).toMatchObject({ outcome: 'finished' });
+    expect((held['outputs'] as Row)).toMatchObject({ proposed: [], max_items: 0, waiting: [expect.objectContaining({ competitor_id: W['kessler'], reason: expect.stringMatching(/^max_items reached/) })] });
+    expect((await one(sql`select count(*)::int n from domain.competitor_scan_marks where competitor_id = ${W['kessler']!}::uuid`))['n']).toBe(marksBefore);
+    const go = (await runScan(W['agent']!)).run;
+    expect((go['outputs'] as Row)['proposed']).toEqual([expect.objectContaining({ competitor_id: W['kessler'] })]);
+  });
+
+  it('cross-tenant: a principal of another tenant reads no competitor of this one (its RLS answers nothing: 404), and its own context cannot name this one\'s', async () => {
+    const U = uuidv7(); const DU = uuidv7();
+    await sql`insert into tenancy.tenants (id, name, status, residency_profile, retention_profile, activated_at) values (${U}::uuid, ${'b33ci-other-' + RUN}, 'active', 'EU', 'default', clock_timestamp())`.execute(h.su);
+    await sql`insert into tenancy.domains (id, tenant_id, name, status, activated_at) values (${DU}::uuid, ${U}::uuid, ${'b33ci-other-domain-' + RUN}, 'active', clock_timestamp())`.execute(h.su);
+    const id = uuidv7();
+    await sql`insert into identity.principals (id, kind, scope, tenant_id, domain_id, display_name, login_name, status)
+              values (${id}::uuid, 'human', 'DOMAIN', ${U}::uuid, ${DU}::uuid, ${`b33ci-other-analyst-${RUN} (SYNTHETIC)`}, ${`b33ci-oa-${id.slice(-8)}`}, 'active')`.execute(h.su);
+    await sql`insert into identity.role_bindings (id, principal_id, role_code, scope, tenant_id, domain_id) values (${uuidv7()}::uuid, ${id}::uuid, 'domain_analyst', 'DOMAIN', ${U}::uuid, ${DU}::uuid)`.execute(h.su);
+    const other = await h.openSession({ ...h.manager, principalId: id, kind: 'human', homeScope: 'DOMAIN', homeTenantId: U, homeDomainId: DU,
+      bindings: [{ roleCode: 'domain_analyst', scope: 'DOMAIN', tenantId: U, domainId: DU }] } as AuthenticatedPrincipal);
+    const req = (action: string) => ({ eyeEnvelope: { ...(h.env(other, action, 'DCI', W['atlas']!, 'intelligence') as unknown as Row), tenant_id: U, domain_id: DU }, eyePrincipal: other }) as never;
+    await refused(cc.read(req('domain.competitor.read'), U, DU, W['atlas']!), /no authorized competitor matches/, 404);
+    const ov = (await cc.overview(req('domain.competitor.read'), U, DU) as { overview: Row }).overview;
+    expect(ov['competitors']).toEqual([]);
+    await refused(cc.read(r(other, 'domain.competitor.read', 'DCI', W['atlas']!), T, D, W['atlas']!), /./, 403);
+  });
+});
