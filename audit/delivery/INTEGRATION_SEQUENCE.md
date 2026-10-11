@@ -172,6 +172,20 @@ Between two merges the first merge's `main` chain completes before the next merg
   - Main before the merge: `f110f73`, its chain complete (ci 37474894526 → C19 lifecycle 37474894370 → C17 finalize 37481319926 → C19 anchor 37481467169).
   - The records head's checks, the merge and main's chain for it are recorded in the next delivery record (B33's).
 
+- **#81** merged as `dfcac8d` (2026-10-09) on its verified records head `2f91627` (ci 37862439387, C19 lifecycle 37862439383).
+  - Main's chain for `dfcac8d`: ci 37866574251 → C19 lifecycle 37866574195 → C17 finalize 37870902444 → C19 anchor 37870990851 (created after the finalize).
+- **#83** (C15: SCX-0012/0013, the owner's approval of 2026-10-09) merged as `a47232a` on `2420257` (ci 37955280229, C19 lifecycle 37955279967).
+  - Chain: ci 37960365672 → C19 lifecycle 37960365612 → C17 finalize 37966579956 → C19 anchor 37966698333.
+- **#82** (the journal-only recovery, 0110) merged as `1974624` on `3653466` (ci 37960412752, C19 lifecycle 37960412743), after #83's chain.
+  - Earlier attempt kept: `5c9c206`, ci 37930914426, supply-chain FAILED on the then-ungoverned gosu advisories.
+  - Chain: ci 37967372498 → C19 lifecycle 37967372473 → C17 finalize 37973093534 → C19 anchor 37973224447.
+- **#85** (C15: SCX-0014/0015 and the owner's standing authorization) merged as `77b8349` on `60dda4f` (ci 38150957845, C19 lifecycle 38150957847).
+  - Earlier attempt kept: `82a3966`, ci 38147201727, gitleaks-history FAILED on B33's WIP commits on origin; corrected by carrying B33's exact-tuple allowlist.
+  - Chain: ci 38153825711 → C19 lifecycle 38153825720 → C17 finalize 38157461680 → C19 anchor 38157507208.
+- **#84** (B33, 0111): the code-final head `e73d605` has ci 38154675842 and C19 lifecycle 38154675875, every check green.
+  - Earlier attempt kept: `17795a9`, ci 37988719052, supply-chain FAILED on CVE-2026-78669 until #85.
+  - The records head's checks, the merge and main's chain are recorded in the next delivery record (B92's).
+
 ## 3. What is never done in this sequence
 
 No blanket approval; no merge on a pending or timed-out check; no `--failed` re-run on `main`; no waiver of C15–C19; no rewrite of an applied migration (0084 stays as applied; its correction is 0085); no live recreation without its own word.

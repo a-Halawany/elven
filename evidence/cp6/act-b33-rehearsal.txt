@@ -1,0 +1,463 @@
+CP-6 B33 — THE ACT (scripts/phase6/act-b33.mjs) REHEARSED on eye_demo_b33 — never eye_demo
+Rehearsed 2026-10-09 from the b33-act worktree (branch b33/act; code at b764d30 plus this evidence).
+
+THE RIG
+  restore   .eye-local/backups/eye_demo-pre-b33-20261009T112306Z.dump → eye_demo_b33 (compose superuser, owners kept), through scripts/dev/heavy-slot.sh (EYE_HEAVY_SLOTS=1)
+  migrate   EYE_DB_NAME=eye_demo_b33 pnpm db:migrate from this worktree (0110, 0111 applied), .eye-local/env sourced read-only; the vault copied
+  API       :3411 from this worktree's dist, Redis 6395, EYE_SCHEDULER_ENABLED=true, EYE_EXECUTION_SYNTHETIC_LOOPBACK=on, the rehearsal vault and degraded dir
+  web       :3413 production build (NEXT_PUBLIC_EYE_API=http://localhost:3412) behind the CORS shim :3412 → :3411; EYE_SHOTS to the scratchpad
+  serialized: the restore, the migrate, both act runs, the walks and every harness run (heavy-slot b33-act / b33-act-walks / b33-act-verify)
+  Credentials come only from .eye-local/env; nothing below prints one.
+
+════════ RUN 1 (fresh restore) ════════
+THE B33 ACT on eye_demo_b33 (REHEARSAL) — 2026-10-09T16:13:25.253Z — API http://localhost:3411
+
+B33-0 THE STATE — 0111, the casting, the attention agent, the inputs
+  ✓ migration applied: 0111_b33_supply_chain_intelligence_domain_packages.sql
+  ✓ the casting read from identity.role_bindings: a.hoffmann (domain_analyst); a.novak (strategy_owner); c.brenner (decision_owner, risk_owner, strategy_owner); e.kovacs (twin_owner); h.petrovic (method_steward); h.weber (domain_analyst); j.weber (strategy_owner); l.ferreira (extraction_manager); m.dvorak (collection_manager, executive); o.steiner (ontology_steward); s.larsen (resolution_manager); t.nakamura (twin_owner); t.richter (domain_admin)
+  ✓ n.vogel holds tenant_admin at the TENANT (act-b91 created it)
+  ✓ c.marchetti holds commercial_authority at the PLATFORM (act-b91 created it)
+  ✓ the attention agent 01a0…1cb088 — cadence 60 s; 1 tick run(s) in the last ten minutes (the latest at 2026-10-09T16:13:25Z) — the act waits for its ticks, it calls no tick route
+  ✓ the corridor twin 01a0…76f525 "NORDWERK — Ningbo → Regensburg chain" (supply-chain) — owner T. Nakamura, actual head v20
+  ✓ the supply network 01a0…aeaa71 "Hub-module supply network — NORDWERK Regensburg (3 tiers)" (supply-network) — owner T. Nakamura, actual head v1
+  ✓ the Regensburg line 01a0…629c00 "Regensburg plant — assembly line (process twin)" (process) — owner E. Kovács, actual head v3
+  · the corridor's corridor.capacity_share estimate of 78.074 %: 01a1…246b83 PROPOSED (proposed 2026-10-08T16:41:48Z by the agent, item c054…686c7b)
+  · NORDWERK's live licence: v2 full-platform (active) — lacks domain_package; the catalogue: domain_package v2 domain.
+
+B33-P1 THE LICENCE — a domain.* write refused EYE-ENT-001; the domain administrator cannot reissue a licence; C. Marchetti reissues v3 (+ domain_package)
+  ✓ J. Weber declares the package geopolitical-red-sea under licence v2 (no domain_package) REFUSED — 403 EYE-ENT-001 — capability unavailable (entitlement): domain_package is not licensed for this tenant (active; licence v2) — reads of existing records, corrections and withdrawals, export, audit, identity, warnings and their acknowledgement, and every human decision stay available
+  ✓ T. Richter (domain administrator) reissues the licence REFUSED — 403 EYE-TEN-001 — no platform authority binding
+  ✓ C. Marchetti DECLARED the package full-platform v2: advanced_integration, agent_platform, capacity, decision, digital_twin, domain_package, executive_os, foresight, knowledge_memory, model_portfolio, observation, scenario, simulation (SYNTHETIC)
+  ✓ C. Marchetti DECLARED the SKU EYE-FULL-12M v2: full-platform v2, 12 months
+  ✓ C. Marchetti ISSUED NORDWERK licence v3: full-platform — 15 capabilities incl. domain_package; supersedes v2 (kept in the history); order SYNTH-ORDER-NORDWERK-B33-DOMAIN
+  ✓ NORDWERK's licence v3 (full-platform, active) carries domain_package: advanced_integration, agent_platform, attention_controls, capacity, core, decision, digital_twin, domain_package, executive_os, foresight, knowledge_memory, model_portfolio, observation, scenario, simulation
+
+B33-P2 THE ROUTING — T. Richter publishes attention policy v11: the B33 classes routed; every existing class byte-identical
+  ✓ T. Richter PUBLISHED attention policy VERSION 11 (supersedes 10): domain.alert → [strategy_owner]; supply.dependency → [domain_analyst]; supply.disruption → [risk_owner, twin_owner]; domain.package → [domain_specialist, domain_admin]; twin.reconciliation → [twin_owner]; twin.envelope → [twin_owner]; 21 of 21 earlier classes byte-identical, the other sections unchanged
+
+B33-P3 THE PERSONAS (SYNTHETIC) — N. Vogel provisions the two domain specialists through the governed principal route
+  ✓ N. Vogel (tenant administrator) CREATED D. Ivanova through the governed principal route — "D. Ivanova — geopolitical domain specialist (SYNTHETIC)", domain_specialist at the DOMAIN (the corridor domain)
+  ✓ N. Vogel (tenant administrator) CREATED P. Lindgren through the governed principal route — "P. Lindgren — competitive-intelligence specialist (SYNTHETIC)", domain_specialist at the DOMAIN (the corridor domain)
+
+B33-P4 THE AGENTS — the drifted Supply Chain Agent refused once, registered anew; the Domain Intelligence Agent registered
+  ✓ this runtime's Supply Chain Agent: 1.0.0, digest 45166e81a0b7… (B33's scan)
+  ✓ this runtime's Domain Intelligence Agent: 1.0.0, digest 4cb4aca3bd2b…
+  ✓ T. Richter TRIGGERED the drifted Supply Chain Agent 01a0…416428 (digest 06da2e9120cb…): 201 — run 01a1…8cd075 refused: "supply scan refused (drift): the agent is registered as 1.0.0 with code digest 06da2e9120cb…; this runtime's scan is 1.0.0 with 45166e81a0b7… — the agent is registered anew before it scans again"
+  · the run's record: outcome refused, escalated to M. Dvořák
+  ✓ N. Vogel REGISTERED the Supply Chain Agent anew 01a1…05fc9f — the SAME version 1.0.0 with this runtime's digest 45166e81a0b7… (accepted: a new registration, not an edit); accountable T. Nakamura, escalation T. Richter; max_reads 50, max_items 10
+  ✓ N. Vogel REVOKED the drifted registration 01a0…416428 (digest 06da2e9120cb…) — superseded by 01a1…05fc9f
+  ✓ N. Vogel REGISTERED the Domain Intelligence Agent 01a1…64ee12 — kind domain_intelligence (task domain_scan), role domain_intelligence_agent, 1.0.0 digest 4cb4aca3bd2b…; accountable J. Weber, escalation T. Richter; it PROPOSES only
+  ✓ the agents: the Supply Chain Agent 01a1…05fc9f (current digest) and the Domain Intelligence Agent 01a1…64ee12 — active
+
+§TW THE TWIN PIECES — a merge between two non-actual branches; an open draft for the scenario-element form; the 78.074 % estimate decided; an outside run's items closed; open_run's wording
+  ✓ T. Nakamura OPENED the merge 01a1…5263a5 of stress-75 v17 INTO blockade v16 (two non-actual branches; the base their common version v15): diverging shock.corridor_delay_days (changed, conflict)
+  · its item: "Merge of branch stress-75 into blockade awaits reconciliation of 1 diverging key(s) — NORDWERK — Ningbo → Regensburg chain" open (material; routed [], policy vnull)
+  ✓ T. Nakamura completes the merge with nothing reconciled REFUSED — 409 EYE-STA-002 — branch merge rejected (unreconciled): merging branch stress-75 into blockade is refused until reconciliation — 1 of 1 diverging key(s) unresolved: shock.corridor_delay_days
+  ✓ T. Nakamura RESOLVED shock.corridor_delay_days keep_target (the blockade's 45 kept; the stress branch's 75 not taken)
+  ✓ T. Nakamura COMPLETED the merge: plan → draft → admit — merged on blockade as v21
+  ✓ THE MERGE: stress-75 v17 → blockade v16, base v15, MERGED as blockade v21; its twin.reconciliation item CLOSED; actual's head untouched (v20)
+  ✓ T. Nakamura OPENED a draft on blockade: v22 (carrying v21) — left OPEN for the scenario-element form (the walk's one write)
+  ✓ the open draft for the form: blockade · draft v22
+  ✓ T. Nakamura approves the 78.074 % estimate 01a1…246b83 (computed on v19; the head is v20) REFUSED — 409 EYE-STA-002 — estimate rejected (stale): estimate 01a11c64-7691-7dbe-ace8-94fa35246b83 was computed against v19 of the twin; the head moved to v20 — propose again on the current head
+  · A. Hoffmann PROPOSES the corridor's corridor.capacity_share again on the current head v20 (the estimators read the real PortWatch series — minutes)
+  ✓ A. Hoffmann PROPOSED 01a1…c6b3bb: 78.074 % on v20 (0.1 min) — the stale proposal 01a1…246b83 superseded
+  ✓ T. Nakamura (the twin's owner) APPROVED the 78.074 % estimate 01a1…c6b3bb → the snapshot published as v23
+  ✓ THE ESTIMATE 01a1…c6b3bb: 78.074 % APPROVED, applied as v23; its twin.reconciliation item CLOSED by T. Nakamura
+  ✓ the Reconciliation Agent's stale 78.074 % proposal 01a1…246b83: SUPERSEDED by 01a1…c6b3bb — its item CLOSED
+  ✓ the approved element corridor.capacity_share = 78.074 % (estimated) on v23 CITES the estimate {kind: estimate, id 01a1…c6b3bb, version 1, digest 7c1ede97e867…} beside evidence
+  · the corridor head is now v23 (observed through 2026-10-04) — THE HEAD MOVED: the B30/B25 walks that pin the head or EYE_B30_AS_OF read the new head
+  ✓ open_run's envelope refusal — T. Nakamura runs stress-75 v17 (75 days) without an acknowledgement REFUSED — 422 EYE-REQ-001 — run rejected (envelope): outside the operating envelope of supply-flow@1 (corridor_delay_days = 75 outside [0, 60]); a run outside the envelope needs a twin owner's acknowledgement (envelope.acknowledge true with a reason of 8+ characters)
+  ✓ the refusal no longer names "the domain administrator's acknowledgement" (0111 §TW8: the holder is a twin owner)
+  ✓ T. Nakamura ACKNOWLEDGED the envelope and RAN 01a1…c2ba91 on stress-75 v17 → completed
+  · the run's item: "Outside-envelope run on NORDWERK — Ningbo → Regensburg chain (completed) — awaiting a twin owner's exploratory admission" — raised material, routed [twin_owner] under policy v11, owner T. Nakamura
+  ✓ T. Nakamura ADMITTED it as EXPLORATORY: EXPLORATORY ONLY — REFUSED for decision use: outside_envelope
+  ✓ H. Petrović (method steward) CONCURRED with the exploratory admission
+  ✓ THE OUTSIDE RUN'S ITEMS: "awaiting a twin owner's exploratory admission" CLOSED by T. Nakamura (the admission); "admitted as exploratory — awaiting a method steward's concurrence" CLOSED by H. Petrović (the concurrence)
+
+§SC F-P4-14 (verbatim): "a tier-2 bearing supplier in Shenzhen is inferred behind a tier-1 vendor; the analyst validates it and the corridor disruption is mapped to the Regensburg line with two alternatives"
+  ✓ T. Nakamura (the network's owner) ADMITTED v2 of "Hub-module supply network — NORDWERK Regensburg (3 tiers)" (allowIncomplete: the head carries structure, not every input supply-flow@1 names): 18 element(s) — Nordbearing AB (SYN-SUP-SE, tier 1, SE) with its bill of materials (bearing blank ×1) and its road route r6 to Regensburg, r2/r3 via malacca → bab-el-mandeb → suez (34 days), Regensburg's BOM {module 1, bearing 1}, inventory:regensburg.module 6000 pcs — SYNTHETIC, citing the network's v1 evidence
+  · the network view v2: throughput 450 /day to regensburg; coverage {"sites":5,"declared":5,"validated":0,"inferred":0,"declared_share":1,"validated_share":0,"inferred_share":0}; unsourced [{"site":"nordbearing","tier":1,"material":"bearing-blank"}]
+  ✓ A. Hoffmann REGISTERED the SYNTHETIC upload source nordwerk-inbound-records "Inbound shipping and customs records (SYNTHETIC)" (publisher "NORDWERK inbound logistics (synthetic)", purposes observation) — the bills of lading and customs entries of NORDWERK's tier-1 vendors (a licensed bill-of-lading / customs source is what a real acceptance needs)
+  ✓ M. Dvořák APPROVED nordwerk-inbound-records, recorded its rights (confirmed) and ACTIVATED it (a different operator from the registrar)
+  ✓ the administrator PROVISIONED the upload agent of nordwerk-inbound-records (owner A. Hoffmann)
+  ✓ A. Hoffmann REGISTERED the extraction method inbound-records-parties on 01a1…b41e5a (ENT; REPLAY mode — the model qwen2.5:3b-instruct is pinned, never called)
+  ✓ L. Ferreira (extraction manager) APPROVED and ACTIVATED inbound-records-parties
+  ✓ A. Hoffmann UPLOADED "inbound-records-nordbearing-2026-08.csv" (SYNTHETIC, 674 bytes) → evidence 01a1…ca6500@1 (locator 01a084f5-757f-7f03-9cf5-315d74426481/01a084f5-759a-751f-a1dd-38fbd7933057/67f17e38-8b97-4a2a-93b3-1076495f7f6a)
+  · L. Ferreira RECORDED the replay fixture for evidence 01a1…ca6500@1 (1 claim(s); 1 stored, 0 already present) — hand-written, recorded_from fixture: no model runs
+  ✓ the claims extracted from 01a1…ca6500 (REPLAY): ENT Shenzhen precision bearing maker (SYNTHETIC) is_a supplier
+  ✓ T. Richter REGISTERED the identifier system syn-cn-company-register — "Synthetic Chinese company register (SYNTHETIC)" (authoritative: an exact match on it is the only automatic resolution)
+  · T. Richter RAN the graph's resolver over the act's 1 new mention(s) (bounded to them): 1 read, 1 resolved on an authoritative identifier, 1 entit(ies) created, 0 sent to a person, 0 unresolved
+  ✓ THE GRAPH ORGANIZATION (T. Richter's register and resolver run — the graph's own path): "Shenzhen precision bearing maker (SYNTHETIC)" (organization 01a1…622bd8, deterministic_identifier accepted) — from the extracted mention on the customs register's id, never planted
+  ✓ T. Nakamura NAMED nordwerk-inbound-records the network's record source: live
+  · waiting for the attention tick's after-tick hook twin-supply-scan to start the Supply Chain Agent's scan (pending: the record source's unread evidence)
+  ✓ the Supply Chain Agent (01a1…05fc9f) INFERRED the hidden tier-2 supplier behind Nordbearing AB: shenzhen-bearing-blank (bearing-blank, confidence 0.875, SENSITIVE — a named counterparty) — run 01a1…1897e2 (scheduler, finished, 2026-10-09T16:15:22Z)
+  · its items: supply.dependency open (material; [domain_analyst] policy v11)
+  ✓ T. Richter (domain administrator, not an analyst) validates it REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ A. Hoffmann validates a SENSITIVE relationship with no reason REFUSED — 422 EYE-REQ-001 — supply inference rejected (sensitive): 08739c1d-eac0-499e-987e-00d27b3cccac names ["a named counterparty"]; its validation states the validator's reason (at least 8 characters)
+  ✓ A. Hoffmann (domain analyst) VALIDATED it — the reason stated, the proposal digest 7f48072eda3e…, valid until 2026-11-08 → validated
+  ✓ T. Nakamura (the network's owner) APPLIED it: v3 — site shenzhen-bearing-blank at tier 2, provenance VALIDATED, entity 01a1…622bd8; capacity 3000 pcs/day (the records' observed flow — a lower bound of the capacity)
+  ✓ THE INFERENCE 0873…3cccac: APPLIED — ledger inference.drafted → inference.validated → inference.applied
+  ✓ the network v3: coverage {"sites":6,"declared":5,"validated":1,"inferred":0,"declared_share":0.8333,"validated_share":0.1667,"inferred_share":0}; unsourced []; shenzhen-bearing-blank: {"id":"shenzhen-bearing-blank","tier":2,"name":"Shenzhen precision bearing maker (SYNTHETIC)","basis":"validated","inference_id":"08739c1d-eac0-499e-987e-00d27b3cccac","country":"CN","city":"Shenzhen"
+  ✓ T. Nakamura PUBLISHED the network's contract: capacity:regensburg.module (units/day, on admission) for capacity planning
+  ✓ E. Kovács (the line's owner) LINKED the network into "Regensburg plant — assembly line (process twin)": capacity:regensburg.module → supply.capacity_per_day — beside the corridor's live link into the same key (the second upstream of one key, rehearsed here)
+  ✓ the line's live upstream links: NORDWERK — Ningbo → Regensburg chain (supply.capacity_per_day → supply.capacity_per_day); Hub-module supply network — NORDWERK Regensburg (3 tiers) (capacity:regensburg.module → supply.capacity_per_day)
+  · THE TELEMETRY CHOICE: the corridor twin's head v23 is STALE by its 2-day freshness SLO (observed through 2026-10-04; PortWatch publishes weekly with a lag) — as the map's TELEMETRY twin it would mark the map stale and every option INDETERMINATE (harness-proven, SC5); the act LEAVES TELEMETRY OUT and opens the disruption from the corridor's REAL signal, the indicator "Bab el-Mandeb Strait transits below 41 per day for five consecutive published observations"
+  ✓ C. Brenner (supply risk owner) OPENED "Red Sea corridor disruption — Bab el-Mandeb (SYNTHETIC derating)" 01a1…df72dd from the indicator 01a0…543a25: chokepoint bab-el-mandeb, derating 0.75 (her SYNTHETIC statement), 60 days, no telemetry twin → open
+  ✓ C. Brenner MAPPED it: map 1 — affected true, stale false
+  ✓ THE MAP (map 1): routes derated inf-shenzhen-bearing-blank (shenzhen-bearing-blank→nordbearing), r2 (bearing-maker→module-a), r3 (bearing-maker→module-b); Regensburg 450 → 112.5 /day; line SYN-LINE-A1 1000/day runs at 112.5 of 450 — 17.78 day(s) of cover, 42.22 line-stop day(s); stale false
+  ✓ A. Hoffmann REPLAYED map 1 on its pinned versions: IDENTICAL (01a0…aeaa71 v3, 01a0…629c00 v3)
+  · the disruption's item: open (material; routed [risk_owner, twin_owner] under policy v11, owner T. Nakamura)
+  ✓ S. Lindqvist (constraint steward) DECLARED supply-response-lead-time: alternative.effect_after_days ≤ 14 days (SYNTHETIC)
+  ✓ T. Nakamura BRANCHED alt-cape-reroute v4 from the network's head v3 (a scenario branch in the explorer; SYNTHETIC)
+  ✓ T. Nakamura BRANCHED alt-dual-source v5 from the network's head v3 (a scenario branch in the explorer; SYNTHETIC)
+  ✓ T. Nakamura BRANCHED alt-safety-stock v6 from the network's head v3 (a scenario branch in the explorer; SYNTHETIC)
+  ✓ C. Brenner EVALUATED alt-cape-reroute (routing): FEASIBLE — restores 1, effect after 11 day(s), constraint satisfied, cost {"amount":1850,"currency":"EUR","basis":"terms.reroute_cost_per_container = 1850 on twin 01a084f6-411e-7559-afab-1fdf6c76f525 v23"}; the option restores 100 % of the pre-disruption run rate (450 of 450 per day) · the option takes effect after 11 day(s), within the 17.78 day(s) of cover · the named business rules are satisfied; coverage limits: []
+  ✓ C. Brenner EVALUATED alt-dual-source (sourcing): FEASIBLE — restores 1.0833, effect after 5 day(s), constraint satisfied, cost {"amount":0.4,"currency":"EUR","basis":"unit price premium per bearing (SYNTHETIC)"}; the option restores 108.33 % of the pre-disruption run rate (487.5 of 450 per day) · the option takes effect after 5 day(s), within the 17.78 day(s) of cover · the named business rules are satisfied; coverage limits: []
+  ✓ C. Brenner EVALUATED alt-safety-stock (inventory): INFEASIBLE, never recommended — restores 0.25, effect after 0 day(s), constraint —, cost null; the stock covers 26.67 day(s) of a 60-day disruption: the line stops before it ends; coverage limits: []
+  ✓ THE ALTERNATIVES: the Cape reroute feasible, the dual source feasible — TWO FEASIBLE; the safety-stock draw-down infeasible (constrained); the response is decided in the decision layer, NOT here
+
+§CI F-P4-15 (verbatim): "a competitor gear-motor maker opens a Moroccan plant; the competitor profile updates and an alert reaches the strategy lead"
+  ✓ A. Hoffmann REGISTERED the SYNTHETIC upload source atlas-press-releases "Atlas Getriebemotoren AG press releases (SYNTHETIC)" (publisher "Atlas Getriebemotoren AG press office (SYNTHETIC)", purposes observation, intelligence) — the competitor's own press office (a licensed newswire is what a real acceptance needs)
+  ✓ M. Dvořák APPROVED atlas-press-releases, recorded its rights (confirmed) and ACTIVATED it (a different operator from the registrar)
+  ✓ the administrator PROVISIONED the upload agent of atlas-press-releases (owner A. Hoffmann)
+  ✓ A. Hoffmann REGISTERED the SYNTHETIC upload source antriebstechnik-trade-press "Antriebstechnik trade press reports (SYNTHETIC)" (publisher "Antriebstechnik trade press (SYNTHETIC)", purposes observation, intelligence) — an independent trade publisher (a licensed trade-press feed is what a real acceptance needs)
+  ✓ M. Dvořák APPROVED antriebstechnik-trade-press, recorded its rights (confirmed) and ACTIVATED it (a different operator from the registrar)
+  ✓ the administrator PROVISIONED the upload agent of antriebstechnik-trade-press (owner A. Hoffmann)
+  ✓ A. Hoffmann REGISTERED the extraction method atlas-press-releases-competitor-movements on 01a1…c2c22c (ENT, EVT; REPLAY mode — the model qwen2.5:3b-instruct is pinned, never called)
+  ✓ L. Ferreira (extraction manager) APPROVED and ACTIVATED atlas-press-releases-competitor-movements
+  ✓ A. Hoffmann REGISTERED the extraction method antriebstechnik-trade-press-competitor-movements on 01a1…4205e1 (ENT, EVT; REPLAY mode — the model qwen2.5:3b-instruct is pinned, never called)
+  ✓ L. Ferreira (extraction manager) APPROVED and ACTIVATED antriebstechnik-trade-press-competitor-movements
+  ✓ J. Weber (strategy owner) DECLARED the competitor package competitor "Competitor intelligence — gear-motor makers (SYNTHETIC)" → declared
+  ✓ J. Weber PROPOSED competitor v1 (1.0.0): DPG object v1, manifest 42f9e2c1622c…; its certification item open → [domain_specialist, domain_admin]
+  ✓ J. Weber PROPOSED the ontology of pkg:competitor: types organization, place, product; predicates opens_plant, closes_plant, expands_capacity, launches_product, enters_market, exits_market, acquires, partners_with, reports_capacity
+  ✓ O. Steiner (ontology steward) APPROVED the ontology of pkg:competitor → active
+  ✓ J. Weber (the proposer, no specialist) approves the ontology section of competitor REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ P. Lindgren (domain specialist) APPROVED the five sections of competitor v1: assessment, escalation, methodology, ontology, use_boundary
+  ✓ J. Weber RAN the conformance suite (certification) on competitor v1: PASSED — canonical_mapping ✓, namespace_ontology ✓, contract_compatibility ✓, source_approval ✓, model_approval ✓, risk_meaning ✓, purpose ✓, source_coverage ✓, source_coverage_optional ✗ (advisory), inputs_statement ✓ (advisory)
+  ·   source_coverage_optional (advisory): source atlas-press-releases has no evidence in this domain | source antriebstechnik-trade-press has no evidence in this domain
+  ✓ P. Lindgren (domain specialist, not the proposer) CERTIFIED competitor v1 → certified
+  ✓ J. Weber (the owner) ACTIVATED competitor v1 → active
+  ✓ THE PACKAGE competitor v1 (1.0.0) is ACTIVE — certified by P. Lindgren, activated by J. Weber, DPG object v2 (§CI's competitorManifest(), two SYNTHETIC publishers)
+  ✓ S. Larsen REGISTERED the identifier system syn-company-register — "Synthetic company register (SYNTHETIC)" (authoritative: an exact match on it is the only automatic resolution)
+  ✓ S. Larsen REGISTERED the identifier system syn-place-gazetteer — "Synthetic place gazetteer (SYNTHETIC)" (authoritative: an exact match on it is the only automatic resolution)
+  ✓ A. Hoffmann UPLOADED "atlas-company-profile-2026.csv" (SYNTHETIC, 201 bytes) → evidence 01a1…de36cb@1 (locator 01a084f5-757f-7f03-9cf5-315d74426481/01a084f5-759a-751f-a1dd-38fbd7933057/e3fd6d6a-ae88-4ae8-9041-329e4e298a94)
+  · L. Ferreira RECORDED the replay fixture for evidence 01a1…de36cb@1 (1 claim(s); 1 stored, 0 already present) — hand-written, recorded_from fixture: no model runs
+  ✓ the claims extracted from 01a1…de36cb (REPLAY): ENT Atlas Getriebemotoren AG (SYNTHETIC) is_a gear-motor maker
+  ✓ A. Hoffmann UPLOADED "trade-atlas-portrait-2026.csv" (SYNTHETIC, 180 bytes) → evidence 01a1…2c1a0b@1 (locator 01a084f5-757f-7f03-9cf5-315d74426481/01a084f5-759a-751f-a1dd-38fbd7933057/27da1027-b8b0-42c4-9780-82e87f29cb71)
+  · L. Ferreira RECORDED the replay fixture for evidence 01a1…2c1a0b@1 (1 claim(s); 1 stored, 0 already present) — hand-written, recorded_from fixture: no model runs
+  ✓ the claims extracted from 01a1…2c1a0b (REPLAY): ENT Atlas Getriebemotoren AG (SYNTHETIC) is_a gear-motor maker
+  · S. Larsen RAN the graph's resolver over the act's 2 new mention(s) (bounded to them): 2 read, 2 resolved on an authoritative identifier, 1 entit(ies) created, 0 sent to a person, 0 unresolved
+  ✓ the graph organization "Atlas Getriebemotoren AG (SYNTHETIC)" 01a1…4a7290 — resolved on the register's identifier (deterministic_identifier, accepted)
+  ✓ H. Weber (domain analyst, procurement lead) DECLARED the competitor Atlas Getriebemotoren AG (SYNTHETIC) on the graph organization 01a1…4a7290 under package competitor v1
+  ✓ H. Weber (the proposer) approves her own proposal REFUSED — 403 EYE-AUT-001 — competitor assessment rejected (separation_of_duties): the analyst who proposed a change does not approve it
+  ✓ H. Weber PROPOSED and A. Hoffmann APPROVED profile v1 (effective 2026-01-01; products, Germany, the Izmir plant, 40 000 units/month — SYNTHETIC; 2 independent publishers)
+  ✓ J. Weber DECLARED the watchlist "New capacity in our markets" on Atlas Getriebemotoren AG (SYNTHETIC): plant_opened / capacity_change in Morocco, Germany, Poland — its OWNER A. Novák, the strategy lead of the 2027 plan (her recorded title; the alert's named owner is the watchlist's)
+  ✓ A. Hoffmann UPLOADED "atlas-tangier-plant-release.csv" (SYNTHETIC, 250 bytes) → evidence 01a1…cfe5c3@1 (locator 01a084f5-757f-7f03-9cf5-315d74426481/01a084f5-759a-751f-a1dd-38fbd7933057/1d40b18a-71cf-44c2-976c-f3e49ef155e2)
+  · L. Ferreira RECORDED the replay fixture for evidence 01a1…cfe5c3@1 (3 claim(s); 1 stored, 0 already present) — hand-written, recorded_from fixture: no model runs
+  ✓ the claims extracted from 01a1…cfe5c3 (REPLAY): ENT Atlas Getriebemotoren AG (SYNTHETIC) is_a gear-motor maker · ENT Tangier, Morocco (SYNTHETIC) is_a plant site · EVT Atlas Getriebemotoren AG (SYNTHETIC) opens_plant Tangier, Morocco
+  ✓ A. Hoffmann UPLOADED "trade-tangier-plant-report.csv" (SYNTHETIC, 241 bytes) → evidence 01a1…ff2fbc@1 (locator 01a084f5-757f-7f03-9cf5-315d74426481/01a084f5-759a-751f-a1dd-38fbd7933057/87896600-5e23-4d57-aec1-9177566f986f)
+  · L. Ferreira RECORDED the replay fixture for evidence 01a1…ff2fbc@1 (3 claim(s); 1 stored, 0 already present) — hand-written, recorded_from fixture: no model runs
+  ✓ the claims extracted from 01a1…ff2fbc (REPLAY): ENT Atlas Getriebemotoren AG (SYNTHETIC) is_a gear-motor maker · ENT Tangier, Morocco (SYNTHETIC) is_a plant site · EVT Atlas Getriebemotoren AG (SYNTHETIC) opens_plant Tangier, Morocco
+  · S. Larsen RAN the graph's resolver over the act's 4 new mention(s) (bounded to them): 4 read, 4 resolved on an authoritative identifier, 1 entit(ies) created, 0 sent to a person, 0 unresolved
+  ✓ the place "Tangier, Morocco (SYNTHETIC)" 01a1…f2528d — resolved on the gazetteer's identifier (deterministic_identifier, accepted)
+  · waiting for the attention tick's after-tick hook domain-competitor-scan to start the Domain Intelligence Agent's scan (pending: the event claims on the watched competitor)
+  ✓ the Domain Intelligence Agent PROPOSED 01a1…f9fa2c (run 01a1…4fc131, scheduler, finished): the event plant_opened effective 2026-10-01 at 01a1…f2528d (Morocco; capacity 12000/month) and add facility:tangier-morocco-synthetic — MATERIAL; 2 independent publisher(s); identity resolved (2 resolved)
+  ✓ the agent's boundary, exercised on its run: its attempt to APPROVE its own proposal REFUSED at the PDP — "no qualifying role binding for action in resolved scope"
+  ✓ A. Novák (the strategy lead) approves the agent's proposal REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ A. Hoffmann (a named analyst, not the proposer) APPROVED the material assessment on the content digest → profile v2 effective 2026-10-01; alerts new-capacity → open (owner A. Novák, [strategy_owner], policy v11)
+  ✓ THE PROFILE: v2 APPROVED, effective 2026-10-01 — facts capability:capacity, facility:izmir, facility:tangier-morocco-synthetic, market:germany, product:gear-motors
+  ✓ THE ALERT reaches the strategy lead: domain.alert "Atlas Getriebemotoren AG (SYNTHETIC): new capacity in our markets (Tangier, Morocco (SYNTHETIC)) — profile v2" — open (material), named owner A. Novák, routed [strategy_owner] under policy v11; the response: "the response is the executives' decision in the decision layer" — the decision is the decision layer's, NOT taken here
+
+§PK F-P4-15 (the tracker's second scene): the geopolitical "Red Sea security situation" indicator set certified — a PUBLIC-FEED demonstration
+  · the definition geopolitical-red-sea "Geopolitical intelligence — Red Sea security situation" (CAP-FW-08 Extend sources, ontology, indicators, assessments, and scenarios): sources imf-portwatch-chokepoints, eu-sanctions-rss, gdelt-discovery, red-sea-ais-positions (optional); indicator chokepoint4_transits on portwatch:chokepoint4:n_total (fresh within 45 days); inputs: real imf-portwatch-chokepoints, eu-sanctions-rss, gdelt-discovery · SYNTHETIC red-sea-ais-positions · licensed for acceptance: ACLED conflict event data (licensed); a commercial geopolitical risk feed (e.g. Dragonfly, Control Risks — licensed); licensed AIS (e.g. Spire Maritime)
+  · gdelt-discovery's last evidence 2026-09-24T14:18:03Z (362 h ago) is older than its 1-day freshness — M. Dvořák collects it now (the real GDELT DOC 2.0 feed)
+  ✓ M. Dvořák COLLECTED gdelt-discovery (the REAL public feed, the governed manual collection): run 01a1…a24c28 finished — 1 admitted, 0 unchanged
+  ✓ J. Weber (strategy owner) DECLARED the geopolitical package geopolitical-red-sea "Geopolitical intelligence — Red Sea security situation" → declared
+  ✓ J. Weber PROPOSED geopolitical-red-sea v1 (1.0.0): DPG object v1, manifest ff866d360e11…; its certification item open → [domain_specialist, domain_admin]
+  ✓ J. Weber PROPOSED the ontology of pkg:geopolitical-red-sea: types organization, other, place, route; predicates threatens, sanctioned_under
+  ✓ O. Steiner (ontology steward) APPROVED the ontology of pkg:geopolitical-red-sea → active
+  ✓ J. Weber (the proposer, no specialist) approves the ontology section of geopolitical-red-sea REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ D. Ivanova (domain specialist) APPROVED the five sections of geopolitical-red-sea v1: assessment, escalation, methodology, ontology, use_boundary
+  ✓ J. Weber RAN the conformance suite (certification) on geopolitical-red-sea v1: PASSED — canonical_mapping ✓, namespace_ontology ✓, contract_compatibility ✓, source_approval ✓, model_approval ✓, risk_meaning ✓, purpose ✓, source_coverage ✓, source_coverage_optional ✗ (advisory), inputs_statement ✓ (advisory)
+  ·   source_coverage_optional (advisory): source red-sea-ais-positions has no evidence in this domain
+  ✓ D. Ivanova (domain specialist, not the proposer) CERTIFIED geopolitical-red-sea v1 → certified
+  ✓ J. Weber (the owner) ACTIVATED geopolitical-red-sea v1 → active
+  ✓ THE PACKAGE geopolitical-red-sea v1 (1.0.0) is ACTIVE — certified by D. Ivanova, activated by J. Weber, DPG object v2 (the real PortWatch, EU sanctions and GDELT feeds; the SYNTHETIC AIS positions)
+  ✓ J. Weber LINKED the B27 scenario "Bab el-Mandeb closure — Houthi activity and insurer withdrawal (SYNTHETIC)" to geopolitical-red-sea
+  ✓ THE ACCEPTANCE FOCUS MEASURED (domain conformance and authority acceptance): PASSED — indicator_set ✓, scenario_link ✓, assessment_template ✓, conformance ✓, authority ✓, inputs_statement ✓; the indicator set chokepoint4_transits on portwatch:chokepoint4:n_total: FRESH (age 33 days of 45; real)
+
+B33-9 THE STATE and the LIMITS
+  · in the ledgers: 1 supply inference(s), 1 disruption(s) with 1 map(s), 3 alternative evaluation(s); 2 domain package(s) (2 active version(s)), 5 conformance/acceptance run(s); 1 competitor(s) with 2 profile version(s); 6 B33 attention item(s)
+  the env lines for the walks (EYE_TEST_ADMIN_PASSWORD comes from .eye-local/env and is never printed):
+  EYE_B33_LICENCE_VERSION=3
+  EYE_B33_POLICY_VERSION=11
+  EYE_B33_SPECIALIST=d.ivanova
+  EYE_B33_CI_SPECIALIST=p.lindgren
+  EYE_B33_DRAFT_BRANCH=blockade
+  EYE_B33_MERGE_SOURCE=stress-75
+  EYE_B33_MERGE_TARGET=blockade
+  EYE_B33_CORRIDOR_HEAD=23
+  EYE_B33_OUTSIDE_RUN=01a12170-fcae-742c-893d-e4c226c2ba91
+  EYE_B33_OUTSIDE_VERSION=17
+  EYE_B33_OUTSIDE_BRANCH=stress-75
+  EYE_B33_OWNER=t.nakamura
+  EYE_B33_READER=m.dvorak
+  EYE_B33_TWIN_TITLE='NORDWERK — Ningbo → Regensburg chain'
+  EYE_B33_ANALYST=a.hoffmann
+  EYE_B33_NETWORK_TITLE='Hub-module supply network — NORDWERK Regensburg (3 tiers)'
+  EYE_B33_RISK_OWNER=c.brenner
+  EYE_B33_DISRUPTION_TITLE='Red Sea corridor disruption'
+  EYE_B33_LINE=SYN-LINE-A1
+  EYE_B33_COMPETITOR='Atlas Getriebemotoren AG (SYNTHETIC)'
+  EYE_B33_PLANT_DAY=2026-10-01
+  EYE_B33_STRATEGY_LEAD=a.novak
+  EYE_B33_GEO_TITLE='Geopolitical intelligence — Red Sea security situation'
+  EYE_B33_PKG_OWNER=j.weber
+  · LIMITS said — THREE CLAIMS KEPT APART. (1) SOFTWARE CAPABILITY: the licence gate on domain.*, the routed B33 classes, the merge between two non-actual branches, the estimate citation and the items closed on decision, the hidden-tier inference with its validation and application, the disruption map and its replay, the alternatives on scenario branches with their constraint check, the domain-package framework (declare, the namespace through the graph's own gate, the five specialist-approved sections, the conformance suite, certification, activation, the acceptance focus), the competitor profile, the Domain Intelligence Agent's proposal, the material assessment and the routed alert all RAN on this deployment through their governed routes. (2) SYNTHETIC DEMONSTRATION: NORDWERK, the supply network's figures (capacities, bills of material, lead days, inventories, the contract), Nordbearing AB (the synthetic spec's SYN-SUP-SE), the Shenzhen maker and its customs registry id, the shipping and customs records, the derating 0.75 and the 60-day duration C. Brenner states, the three options and their costs (the Cape reroute cost is the corridor twin's SYNTHETIC term, 1 850 EUR a container), the Moravian supplier, Atlas Getriebemotoren AG, its press office and the trade press, the Tangier plant, its capacity and every identifier (SYN-ATLAS-001, SYN-GEO-TNG, SYN-CN-SZ-7001); the personas D. Ivanova and P. Lindgren (SYNTHETIC specialists, created by the tenant administrator); the extraction fixtures are WRITTEN BY HAND (recorded_from fixture, REPLAY mode: no model ran). REAL COLLECTED PUBLIC OBSERVATIONS: only the IMF PortWatch transit counts (the 78.074 % estimate rests on the latest; the chokepoint4 indicator the disruption is opened from), the EU sanctions listings and the GDELT discovery feed (collected through the real connectors). (3) REAL-PROVIDER / LICENSED-SOURCE ACCEPTANCE — EXTERNAL, never closed by a substitute: supply chain (F-P4-14) needs licensed bill-of-lading / customs data (Panjiva, ImportGenius, S&P) and supplier-network graphs (Sayari, Everstream, Interos) plus the customer's ERP; competitor intelligence needs licensed registries and filings (Orbis, OpenCorporates) and licensed newswires — the fictional competitor never appears in GDELT; the geopolitical package is a PUBLIC-FEED demonstration — ACLED, a commercial geopolitical risk feed and licensed AIS are what an acceptance needs; technology (EPO OPS / PatentsView / Derwent; OpenAlex / Scopus), cyber (Recorded Future, Mandiant; NVD / CISA KEV; the customer's CMDB) and financial (Refinitiv / Bloomberg; EDGAR / ESEF; ratings) likewise. The SIGNED acceptance records (product owner, independent assurance, customer authority — AT-29/30/31) are R2's; named specialists approving inside the product are not that record. HARNESS-PROVEN ONLY (not staged here): the agent's OWN attempt to validate an inference (phase6-supply-b33 SC2 — the act holds no agent credential; its refused ADMIT is shown on its run), the scan's requester validating, the isolated identity conflict, the expired validation and re-validation, the revert; the disruption's stale pin, the agent's proposed disruption and its confirmation, the agent's re-map; the stale telemetry/line making every option INDETERMINATE and the "no feasible alternative" item (SC5); the twin pieces TW1 refusals (the target the source, actual as the source, a scenario value into actual), TW2 suspended/unknown branches, TW4 forged digests, TW5 the cross-twin dependency check, TW6 the topology rule on a route-bearing head; the package health fault exercise (PK4), migrations, conflicts across packages (PKJ), the TECHNOLOGY, CYBER and FINANCIAL packages and their acceptance focus (PK6: evidence diversity and horizon evaluation, security scope and false positives, entitlement, timing and calculation) — NOT staged on this demonstration; the competitor comparisons, challenges, the continuity contract and the twin binding (phase6-competitor-b33 CI4, CI6–CI8). THE CHOICES SAID: the corridor twin is STALE by its 2-day SLO (PortWatch lags 2–4 weeks) — deciding the 78.074 % estimate moves its head but does not make it fresh, so the map runs WITHOUT a telemetry twin (the disruption opened from the REAL chokepoint4 indicator, the derating stated); the open_run walk reads the 75-day state on the BRANCH stress-75 (never on actual's head, B30's rule), its version given as EYE_B33_OUTSIDE_VERSION with EYE_B33_OUTSIDE_BRANCH; the merge resolved keep_target (the blockade keeps its 45-day scenario); the alert's named owner is A. Novák, "strategy lead of the 2027 plan" (the scene's strategy lead), the watchlist declared by J. Weber; the drifted Supply Chain Agent registration is revoked once the new one is registered. The ECB 3y/5y rolling-origin validation stays FAILED (B25) and the corridor's 3y/5y stays SCENARIO LANGUAGE — nothing here changes either. Nothing is cleaned: every record stands as a demonstration fact.
+
+ALL SCENES HELD · 7.1 min
+EXIT=0
+
+════════ RUN 2 (the same database: every write stands) ════════
+THE B33 ACT on eye_demo_b33 (REHEARSAL) — 2026-10-09T16:20:32.978Z — API http://localhost:3411
+
+B33-0 THE STATE — 0111, the casting, the attention agent, the inputs
+  ✓ migration applied: 0111_b33_supply_chain_intelligence_domain_packages.sql
+  ✓ the casting read from identity.role_bindings: a.hoffmann (domain_analyst); a.novak (strategy_owner); c.brenner (decision_owner, risk_owner, strategy_owner); e.kovacs (twin_owner); h.petrovic (method_steward); h.weber (domain_analyst); j.weber (strategy_owner); l.ferreira (extraction_manager); m.dvorak (collection_manager, executive); o.steiner (ontology_steward); s.larsen (resolution_manager); t.nakamura (twin_owner); t.richter (domain_admin)
+  ✓ n.vogel holds tenant_admin at the TENANT (act-b91 created it)
+  ✓ c.marchetti holds commercial_authority at the PLATFORM (act-b91 created it)
+  ✓ the attention agent 01a0…1cb088 — cadence 60 s; 8 tick run(s) in the last ten minutes (the latest at 2026-10-09T16:20:20Z) — the act waits for its ticks, it calls no tick route
+  ✓ the corridor twin 01a0…76f525 "NORDWERK — Ningbo → Regensburg chain" (supply-chain) — owner T. Nakamura, actual head v23
+  ✓ the supply network 01a0…aeaa71 "Hub-module supply network — NORDWERK Regensburg (3 tiers)" (supply-network) — owner T. Nakamura, actual head v3
+  ✓ the Regensburg line 01a0…629c00 "Regensburg plant — assembly line (process twin)" (process) — owner E. Kovács, actual head v3
+  · the corridor's corridor.capacity_share estimate of 78.074 %: 01a1…246b83 SUPERSEDED (proposed 2026-10-08T16:41:48Z by the agent, item c054…686c7b)
+  · NORDWERK's live licence: v3 full-platform (active) — CARRIES domain_package; the catalogue: domain_package v2 domain.
+
+B33-P1 THE LICENCE — a domain.* write refused EYE-ENT-001; the domain administrator cannot reissue a licence; C. Marchetti reissues v3 (+ domain_package)
+  · licence v3 (full-platform) carries domain_package — an earlier run; the refusal it answered stands in the policy ledger (2026-10-09T16:13:25Z: "capability unavailable (entitlement): domain_package is not licensed for this tenant (active; licence v2) — reads of existing records, corrections and withdrawa")
+  ✓ NORDWERK's licence v3 (full-platform, active) carries domain_package: advanced_integration, agent_platform, attention_controls, capacity, core, decision, digital_twin, domain_package, executive_os, foresight, knowledge_memory, model_portfolio, observation, scenario, simulation
+
+B33-P2 THE ROUTING — T. Richter publishes attention policy v11: the B33 classes routed; every existing class byte-identical
+  · attention policy version 11 routes domain.alert → [strategy_owner]; supply.dependency → [domain_analyst]; supply.disruption → [risk_owner, twin_owner]; domain.package → [domain_specialist, domain_admin]; twin.reconciliation → [twin_owner]; twin.envelope → [twin_owner] — an earlier run
+
+B33-P3 THE PERSONAS (SYNTHETIC) — N. Vogel provisions the two domain specialists through the governed principal route
+  · D. Ivanova (domain_specialist, the corridor domain) is present — an earlier run
+  · P. Lindgren (domain_specialist, the corridor domain) is present — an earlier run
+
+B33-P4 THE AGENTS — the drifted Supply Chain Agent refused once, registered anew; the Domain Intelligence Agent registered
+  ✓ this runtime's Supply Chain Agent: 1.0.0, digest 45166e81a0b7… (B33's scan)
+  ✓ this runtime's Domain Intelligence Agent: 1.0.0, digest 4cb4aca3bd2b…
+  · the drifted agent's refused scan stands — an earlier run (run 01a1…8cd075 refused, 2026-10-09T16:13:27Z): "supply scan refused (drift): the agent is registered as 1.0.0 with code digest 06da2e9120cb…; this runtime's scan is 1.0.0 with 45166e81a0b7… — the agent is registered anew before it scans again"
+  · the Supply Chain Agent 01a1…05fc9f is registered with this runtime's digest — an earlier run (max_reads 50, [{"kind":"max_items","value":10}])
+  · the Domain Intelligence Agent 01a1…64ee12 is registered — an earlier run (1.0.0, digest 4cb4aca3bd2b…)
+  ✓ the agents: the Supply Chain Agent 01a1…05fc9f (current digest) and the Domain Intelligence Agent 01a1…64ee12 — active
+
+§TW THE TWIN PIECES — a merge between two non-actual branches; an open draft for the scenario-element form; the 78.074 % estimate decided; an outside run's items closed; open_run's wording
+  · the merge 01a1…5263a5 of stress-75 v17 into blockade v16 stands MERGED as blockade v21 — an earlier run
+  ✓ THE MERGE: stress-75 v17 → blockade v16, base v15, MERGED as blockade v21; its twin.reconciliation item CLOSED; actual's head untouched (v23)
+  · an open draft blockade v22 stands — an earlier run (the walk grounds its scenario element there)
+  ✓ the open draft for the form: blockade · draft v22
+  · the scene's estimate 01a1…c6b3bb (78.074 %) stands APPROVED (decided by T. Nakamura, applied as v23) — an earlier run; later proposals left to the owner: 01a1…b0ac7e 78.074 % on v23 by the agent (proposed, not material)
+  ✓ THE ESTIMATE 01a1…c6b3bb: 78.074 % APPROVED, applied as v23; its twin.reconciliation item CLOSED by T. Nakamura
+  ✓ the Reconciliation Agent's stale 78.074 % proposal 01a1…246b83: SUPERSEDED by 01a1…c6b3bb — its item CLOSED
+  ✓ the approved element corridor.capacity_share = 78.074 % (estimated) on v23 CITES the estimate {kind: estimate, id 01a1…c6b3bb, version 1, digest 7c1ede97e867…} beside evidence
+  · the corridor head is now v23 (observed through 2026-10-04) — THE HEAD MOVED: the B30/B25 walks that pin the head or EYE_B30_AS_OF read the new head
+  ✓ open_run's envelope refusal — T. Nakamura runs stress-75 v17 (75 days) without an acknowledgement REFUSED — 422 EYE-REQ-001 — run rejected (envelope): outside the operating envelope of supply-flow@1 (corridor_delay_days = 75 outside [0, 60]); a run outside the envelope needs a twin owner's acknowledgement (envelope.acknowledge true with a reason of 8+ characters)
+  ✓ the refusal no longer names "the domain administrator's acknowledgement" (0111 §TW8: the holder is a twin owner)
+  · the outside run 01a1…c2ba91 on stress-75 v17 stands — an earlier run
+  · the run's item: "Outside-envelope run on NORDWERK — Ningbo → Regensburg chain (completed) — awaiting a twin owner's exploratory admission" — raised material, routed [twin_owner] under policy v11, owner T. Nakamura
+  · the exploratory admission 01a1…faf0d6 by T. Nakamura stands — an earlier run
+  · H. Petrović's concurrence stands — an earlier run
+  ✓ THE OUTSIDE RUN'S ITEMS: "awaiting a twin owner's exploratory admission" CLOSED by T. Nakamura (the admission); "admitted as exploratory — awaiting a method steward's concurrence" CLOSED by H. Petrović (the concurrence)
+
+§SC F-P4-14 (verbatim): "a tier-2 bearing supplier in Shenzhen is inferred behind a tier-1 vendor; the analyst validates it and the corridor disruption is mapped to the Regensburg line with two alternatives"
+  · the supply network's head v3 already carries the applied Shenzhen site — an earlier run
+  · the network view v3: throughput 450 /day to regensburg; coverage {"sites":6,"declared":5,"validated":1,"inferred":0,"declared_share":0.8333,"validated_share":0.1667,"inferred_share":0}; unsourced []
+  · the source nordwerk-inbound-records stands (active, publisher "NORDWERK inbound logistics (synthetic)") — an earlier run
+  · the extraction method inbound-records-parties stands (active) — an earlier run
+  ✓ the claims extracted from 01a1…ca6500 (REPLAY): ENT Shenzhen precision bearing maker (SYNTHETIC) is_a supplier
+  · the identifier system syn-cn-company-register stands — an earlier run
+  ✓ THE GRAPH ORGANIZATION (T. Richter's register and resolver run — the graph's own path): "Shenzhen precision bearing maker (SYNTHETIC)" (organization 01a1…622bd8, deterministic_identifier accepted) — from the extracted mention on the customs register's id, never planted
+  · the network's record source nordwerk-inbound-records stands live — an earlier run
+  · the inference 0873…3cccac stands applied — an earlier run
+  ✓ the Supply Chain Agent (01a1…05fc9f) INFERRED the hidden tier-2 supplier behind Nordbearing AB: shenzhen-bearing-blank (bearing-blank, confidence 0.875, SENSITIVE — a named counterparty) — run 01a1…1897e2 (scheduler, finished, 2026-10-09T16:15:22Z)
+  · its items: supply.dependency closed (material; [domain_analyst] policy v11); supply.dependency closed (material; [domain_analyst] policy v11, owner T. Nakamura)
+  ✓ THE INFERENCE 0873…3cccac: APPLIED — ledger inference.drafted → inference.validated → inference.applied
+  ✓ the network v3: coverage {"sites":6,"declared":5,"validated":1,"inferred":0,"declared_share":0.8333,"validated_share":0.1667,"inferred_share":0}; unsourced []; shenzhen-bearing-blank: {"id":"shenzhen-bearing-blank","tier":2,"name":"Shenzhen precision bearing maker (SYNTHETIC)","basis":"validated","inference_id":"08739c1d-eac0-499e-987e-00d27b3cccac","country":"CN","city":"Shenzhen"
+  · the network's contract exposes capacity:regensburg.module — an earlier run
+  · the link network → line 01a1…7a6aaa stands live — an earlier run
+  ✓ the line's live upstream links: NORDWERK — Ningbo → Regensburg chain (supply.capacity_per_day → supply.capacity_per_day); Hub-module supply network — NORDWERK Regensburg (3 tiers) (capacity:regensburg.module → supply.capacity_per_day)
+  · THE TELEMETRY CHOICE: the corridor twin's head v23 is STALE by its 2-day freshness SLO (observed through 2026-10-04; PortWatch publishes weekly with a lag) — as the map's TELEMETRY twin it would mark the map stale and every option INDETERMINATE (harness-proven, SC5); the act LEAVES TELEMETRY OUT and opens the disruption from the corridor's REAL signal, the indicator "Bab el-Mandeb Strait transits below 41 per day for five consecutive published observations"
+  · the disruption 01a1…df72dd "Red Sea corridor disruption — Bab el-Mandeb (SYNTHETIC derating)" stands mapped — an earlier run
+  · map 1 stands on the network's head v3 — an earlier run
+  ✓ THE MAP (map 1): routes derated inf-shenzhen-bearing-blank (shenzhen-bearing-blank→nordbearing), r2 (bearing-maker→module-a), r3 (bearing-maker→module-b); Regensburg 450 → 112.5 /day; line SYN-LINE-A1 1000/day runs at 112.5 of 450 — 17.78 day(s) of cover, 42.22 line-stop day(s); stale false
+  ✓ A. Hoffmann REPLAYED map 1 on its pinned versions: IDENTICAL (01a0…aeaa71 v3, 01a0…629c00 v3)
+  · the disruption's item: open (material; routed [risk_owner, twin_owner] under policy v11, owner T. Nakamura)
+  · S. Lindqvist's constraint set supply-response-lead-time stands — an earlier run
+  · the branch alt-cape-reroute v4 (forked from v3) stands — an earlier run
+  · the branch alt-dual-source v5 (forked from v3) stands — an earlier run
+  · the branch alt-safety-stock v6 (forked from v3) stands — an earlier run
+  · the evaluation of alt-cape-reroute stands FEASIBLE — an earlier run
+  · the evaluation of alt-dual-source stands FEASIBLE — an earlier run
+  · the evaluation of alt-safety-stock stands INFEASIBLE — an earlier run
+  ✓ THE ALTERNATIVES: the Cape reroute feasible, the dual source feasible — TWO FEASIBLE; the safety-stock draw-down infeasible (constrained); the response is decided in the decision layer, NOT here
+
+§CI F-P4-15 (verbatim): "a competitor gear-motor maker opens a Moroccan plant; the competitor profile updates and an alert reaches the strategy lead"
+  · the source atlas-press-releases stands (active, publisher "Atlas Getriebemotoren AG press office (SYNTHETIC)") — an earlier run
+  · the source antriebstechnik-trade-press stands (active, publisher "Antriebstechnik trade press (SYNTHETIC)") — an earlier run
+  · the extraction method atlas-press-releases-competitor-movements stands (active) — an earlier run
+  · the extraction method antriebstechnik-trade-press-competitor-movements stands (active) — an earlier run
+  · the package competitor stands (declared) — an earlier run
+  ✓ THE PACKAGE competitor v1 (1.0.0) is ACTIVE — certified by P. Lindgren, activated by J. Weber, DPG object v2 (§CI's competitorManifest(), two SYNTHETIC publishers)
+  · the identifier system syn-company-register stands — an earlier run
+  · the identifier system syn-place-gazetteer stands — an earlier run
+  ✓ the claims extracted from 01a1…de36cb (REPLAY): ENT Atlas Getriebemotoren AG (SYNTHETIC) is_a gear-motor maker
+  ✓ the claims extracted from 01a1…2c1a0b (REPLAY): ENT Atlas Getriebemotoren AG (SYNTHETIC) is_a gear-motor maker
+  ✓ the graph organization "Atlas Getriebemotoren AG (SYNTHETIC)" 01a1…4a7290 — resolved on the register's identifier (deterministic_identifier, accepted)
+  · the competitor Atlas Getriebemotoren AG (SYNTHETIC) 01a1…c6c539 stands — an earlier run
+  · profile v2 stands — an earlier run
+  · the competitor watchlist 01a1…8c12cc (owner A. Novák) stands — an earlier run
+  ✓ the claims extracted from 01a1…cfe5c3 (REPLAY): ENT Atlas Getriebemotoren AG (SYNTHETIC) is_a gear-motor maker · ENT Tangier, Morocco (SYNTHETIC) is_a plant site · EVT Atlas Getriebemotoren AG (SYNTHETIC) opens_plant Tangier, Morocco
+  ✓ the claims extracted from 01a1…ff2fbc (REPLAY): ENT Atlas Getriebemotoren AG (SYNTHETIC) is_a gear-motor maker · ENT Tangier, Morocco (SYNTHETIC) is_a plant site · EVT Atlas Getriebemotoren AG (SYNTHETIC) opens_plant Tangier, Morocco
+  ✓ the place "Tangier, Morocco (SYNTHETIC)" 01a1…f2528d — resolved on the gazetteer's identifier (deterministic_identifier, accepted)
+  ✓ the Domain Intelligence Agent PROPOSED 01a1…f9fa2c (run 01a1…4fc131, scheduler, finished): the event plant_opened effective 2026-10-01 at 01a1…f2528d (Morocco; capacity 12000/month) and add facility:tangier-morocco-synthetic — MATERIAL; 2 independent publisher(s); identity resolved (2 resolved)
+  ✓ the agent's boundary, exercised on its run: its attempt to APPROVE its own proposal REFUSED at the PDP — "no qualifying role binding for action in resolved scope"
+  · the agent's proposal stands approved → profile v2 — an earlier run
+  ✓ THE PROFILE: v2 APPROVED, effective 2026-10-01 — facts capability:capacity, facility:izmir, facility:tangier-morocco-synthetic, market:germany, product:gear-motors
+  ✓ THE ALERT reaches the strategy lead: domain.alert "Atlas Getriebemotoren AG (SYNTHETIC): new capacity in our markets (Tangier, Morocco (SYNTHETIC)) — profile v2" — open (material), named owner A. Novák, routed [strategy_owner] under policy v11; the response: "the response is the executives' decision in the decision layer" — the decision is the decision layer's, NOT taken here
+
+§PK F-P4-15 (the tracker's second scene): the geopolitical "Red Sea security situation" indicator set certified — a PUBLIC-FEED demonstration
+  · the definition geopolitical-red-sea "Geopolitical intelligence — Red Sea security situation" (CAP-FW-08 Extend sources, ontology, indicators, assessments, and scenarios): sources imf-portwatch-chokepoints, eu-sanctions-rss, gdelt-discovery, red-sea-ais-positions (optional); indicator chokepoint4_transits on portwatch:chokepoint4:n_total (fresh within 45 days); inputs: real imf-portwatch-chokepoints, eu-sanctions-rss, gdelt-discovery · SYNTHETIC red-sea-ais-positions · licensed for acceptance: ACLED conflict event data (licensed); a commercial geopolitical risk feed (e.g. Dragonfly, Control Risks — licensed); licensed AIS (e.g. Spire Maritime)
+  · gdelt-discovery's last evidence 2026-10-09T16:20:24Z — the package is active (an earlier run)
+  · the package geopolitical-red-sea stands (declared) — an earlier run
+  ✓ THE PACKAGE geopolitical-red-sea v1 (1.0.0) is ACTIVE — certified by D. Ivanova, activated by J. Weber, DPG object v2 (the real PortWatch, EU sanctions and GDELT feeds; the SYNTHETIC AIS positions)
+  · the B27 scenario link stands — an earlier run
+  · the acceptance run 01a1…24ad44 stands (PASSED, 2026-10-09T16:20:32Z) — an earlier run
+  ✓ THE ACCEPTANCE FOCUS MEASURED (domain conformance and authority acceptance): PASSED — indicator_set ✓, scenario_link ✓, assessment_template ✓, conformance ✓, authority ✓, inputs_statement ✓; the indicator set chokepoint4_transits on portwatch:chokepoint4:n_total: FRESH (age 33 days of 45; real)
+
+B33-9 THE STATE and the LIMITS
+  · in the ledgers: 1 supply inference(s), 1 disruption(s) with 1 map(s), 3 alternative evaluation(s); 2 domain package(s) (2 active version(s)), 5 conformance/acceptance run(s); 1 competitor(s) with 2 profile version(s); 6 B33 attention item(s)
+  the env lines for the walks (EYE_TEST_ADMIN_PASSWORD comes from .eye-local/env and is never printed):
+  EYE_B33_LICENCE_VERSION=3
+  EYE_B33_POLICY_VERSION=11
+  EYE_B33_SPECIALIST=d.ivanova
+  EYE_B33_CI_SPECIALIST=p.lindgren
+  EYE_B33_DRAFT_BRANCH=blockade
+  EYE_B33_MERGE_SOURCE=stress-75
+  EYE_B33_MERGE_TARGET=blockade
+  EYE_B33_CORRIDOR_HEAD=23
+  EYE_B33_OUTSIDE_RUN=01a12170-fcae-742c-893d-e4c226c2ba91
+  EYE_B33_OUTSIDE_VERSION=17
+  EYE_B33_OUTSIDE_BRANCH=stress-75
+  EYE_B33_OWNER=t.nakamura
+  EYE_B33_READER=m.dvorak
+  EYE_B33_TWIN_TITLE='NORDWERK — Ningbo → Regensburg chain'
+  EYE_B33_ANALYST=a.hoffmann
+  EYE_B33_NETWORK_TITLE='Hub-module supply network — NORDWERK Regensburg (3 tiers)'
+  EYE_B33_RISK_OWNER=c.brenner
+  EYE_B33_DISRUPTION_TITLE='Red Sea corridor disruption'
+  EYE_B33_LINE=SYN-LINE-A1
+  EYE_B33_COMPETITOR='Atlas Getriebemotoren AG (SYNTHETIC)'
+  EYE_B33_PLANT_DAY=2026-10-01
+  EYE_B33_STRATEGY_LEAD=a.novak
+  EYE_B33_GEO_TITLE='Geopolitical intelligence — Red Sea security situation'
+  EYE_B33_PKG_OWNER=j.weber
+  · LIMITS said — THREE CLAIMS KEPT APART. (1) SOFTWARE CAPABILITY: the licence gate on domain.*, the routed B33 classes, the merge between two non-actual branches, the estimate citation and the items closed on decision, the hidden-tier inference with its validation and application, the disruption map and its replay, the alternatives on scenario branches with their constraint check, the domain-package framework (declare, the namespace through the graph's own gate, the five specialist-approved sections, the conformance suite, certification, activation, the acceptance focus), the competitor profile, the Domain Intelligence Agent's proposal, the material assessment and the routed alert all RAN on this deployment through their governed routes. (2) SYNTHETIC DEMONSTRATION: NORDWERK, the supply network's figures (capacities, bills of material, lead days, inventories, the contract), Nordbearing AB (the synthetic spec's SYN-SUP-SE), the Shenzhen maker and its customs registry id, the shipping and customs records, the derating 0.75 and the 60-day duration C. Brenner states, the three options and their costs (the Cape reroute cost is the corridor twin's SYNTHETIC term, 1 850 EUR a container), the Moravian supplier, Atlas Getriebemotoren AG, its press office and the trade press, the Tangier plant, its capacity and every identifier (SYN-ATLAS-001, SYN-GEO-TNG, SYN-CN-SZ-7001); the personas D. Ivanova and P. Lindgren (SYNTHETIC specialists, created by the tenant administrator); the extraction fixtures are WRITTEN BY HAND (recorded_from fixture, REPLAY mode: no model ran). REAL COLLECTED PUBLIC OBSERVATIONS: only the IMF PortWatch transit counts (the 78.074 % estimate rests on the latest; the chokepoint4 indicator the disruption is opened from), the EU sanctions listings and the GDELT discovery feed (collected through the real connectors). (3) REAL-PROVIDER / LICENSED-SOURCE ACCEPTANCE — EXTERNAL, never closed by a substitute: supply chain (F-P4-14) needs licensed bill-of-lading / customs data (Panjiva, ImportGenius, S&P) and supplier-network graphs (Sayari, Everstream, Interos) plus the customer's ERP; competitor intelligence needs licensed registries and filings (Orbis, OpenCorporates) and licensed newswires — the fictional competitor never appears in GDELT; the geopolitical package is a PUBLIC-FEED demonstration — ACLED, a commercial geopolitical risk feed and licensed AIS are what an acceptance needs; technology (EPO OPS / PatentsView / Derwent; OpenAlex / Scopus), cyber (Recorded Future, Mandiant; NVD / CISA KEV; the customer's CMDB) and financial (Refinitiv / Bloomberg; EDGAR / ESEF; ratings) likewise. The SIGNED acceptance records (product owner, independent assurance, customer authority — AT-29/30/31) are R2's; named specialists approving inside the product are not that record. HARNESS-PROVEN ONLY (not staged here): the agent's OWN attempt to validate an inference (phase6-supply-b33 SC2 — the act holds no agent credential; its refused ADMIT is shown on its run), the scan's requester validating, the isolated identity conflict, the expired validation and re-validation, the revert; the disruption's stale pin, the agent's proposed disruption and its confirmation, the agent's re-map; the stale telemetry/line making every option INDETERMINATE and the "no feasible alternative" item (SC5); the twin pieces TW1 refusals (the target the source, actual as the source, a scenario value into actual), TW2 suspended/unknown branches, TW4 forged digests, TW5 the cross-twin dependency check, TW6 the topology rule on a route-bearing head; the package health fault exercise (PK4), migrations, conflicts across packages (PKJ), the TECHNOLOGY, CYBER and FINANCIAL packages and their acceptance focus (PK6: evidence diversity and horizon evaluation, security scope and false positives, entitlement, timing and calculation) — NOT staged on this demonstration; the competitor comparisons, challenges, the continuity contract and the twin binding (phase6-competitor-b33 CI4, CI6–CI8). THE CHOICES SAID: the corridor twin is STALE by its 2-day SLO (PortWatch lags 2–4 weeks) — deciding the 78.074 % estimate moves its head but does not make it fresh, so the map runs WITHOUT a telemetry twin (the disruption opened from the REAL chokepoint4 indicator, the derating stated); the open_run walk reads the 75-day state on the BRANCH stress-75 (never on actual's head, B30's rule), its version given as EYE_B33_OUTSIDE_VERSION with EYE_B33_OUTSIDE_BRANCH; the merge resolved keep_target (the blockade keeps its 45-day scenario); the alert's named owner is A. Novák, "strategy lead of the 2027 plan" (the scene's strategy lead), the watchlist declared by J. Weber; the drifted Supply Chain Agent registration is revoked once the new one is registered. The ECB 3y/5y rolling-origin validation stays FAILED (B25) and the corridor's 3y/5y stays SCENARIO LANGUAGE — nothing here changes either. Nothing is cleaned: every record stands as a demonstration fact.
+
+ALL SCENES HELD · 0.1 min
+EXIT=0
+
+════════ THE FOUR B33 WALKS (playwright.demo.config.ts; web :3413 → shim → :3411) ════════
+  ✓   1 e2e/phase6-b33-competitor.demo.spec.ts:49:7 › CP-6 B33 §CI — the Moroccan plant scene on the demonstration › RESOLVE + UPDATE: the competitor on its graph organization; the profile updated with the Tangier plant, effective on the day it names; shown CURRENT (916ms)
+  ✓   2 e2e/phase6-b33-competitor.demo.spec.ts:61:7 › CP-6 B33 §CI — the Moroccan plant scene on the demonstration › COLLECT + ASSESS: the agent's proposal APPROVED by the named analyst — both sources cited (two independent publishers), its identity resolved through the graph (607ms)
+  ✓   3 e2e/phase6-b33-competitor.demo.spec.ts:73:7 › CP-6 B33 §CI — the Moroccan plant scene on the demonstration › ALERT: the routed domain.alert on the competitor, under the published policy to the strategy owner; the strategy lead sees it on the attention queue (2.4s)
+  ✓   4 e2e/phase6-b33-competitor.demo.spec.ts:86:7 › CP-6 B33 §CI — the Moroccan plant scene on the demonstration › REPLAY: on the day before the plant, the profile held no Tangier plant; the response is linked to the decision layer, never decided here (688ms)
+  -   5 e2e/phase6-b33-competitor.demo.spec.ts:98:7 › CP-6 B33 §CI — the Moroccan plant scene on the demonstration › a refusal is shown in the server's words: the strategy lead's attempt to approve a proposal (not the analyst)
+  ✓   6 e2e/phase6-b33-packages.demo.spec.ts:53:7 › CP-6 B33 §PK — the Domain Intelligence workspace on the demonstration › THE PACKAGE: the Red Sea security situation is ACTIVE — scope explicit (purpose, geography, horizon, classification, effective time, provenance), its inputs stated real, SYNTHETIC and licensed-for-acceptance (652ms)
+  ✓   7 e2e/phase6-b33-packages.demo.spec.ts:66:7 › CP-6 B33 §PK — the Domain Intelligence workspace on the demonstration › THE PORTFOLIO: every section approved by the named specialist, the certification run passed, the acceptance focus MEASURED — the indicator set fresh on the real PortWatch counts (619ms)
+  ✓   8 e2e/phase6-b33-packages.demo.spec.ts:78:7 › CP-6 B33 §PK — the Domain Intelligence workspace on the demonstration › THE GATE AND THE COMMANDS: each function answered by the gate (a disabled one would be shown DISABLED with its reason); the eight commands each lead to their governed route (672ms)
+  ✓   9 e2e/phase6-b33-packages.demo.spec.ts:88:7 › CP-6 B33 §PK — the Domain Intelligence workspace on the demonstration › THE KEYBOARD WALK: the package is chosen from the keyboard; the replay form is reachable and labelled (a datetime-local instant) (448ms)
+  ✓  10 e2e/phase6-b33-packages.demo.spec.ts:100:7 › CP-6 B33 §PK — the Domain Intelligence workspace on the demonstration › THE ROLE WALK: the specialist is offered no activation (the owner's act); the owner is offered no section approval (the specialist's) (929ms)
+  ✓  11 e2e/phase6-b33-supply.demo.spec.ts:56:7 › CP-6 B33 §SC — the supply network workspace on the demonstration (scene F-P4-14) › THE NETWORK: Nordbearing AB at tier 1 and the Shenzhen maker VALIDATED at tier 2 — the coverage and the unknowns stated, never imputed (565ms)
+  ✓  12 e2e/phase6-b33-supply.demo.spec.ts:69:7 › CP-6 B33 §SC — the supply network workspace on the demonstration (scene F-P4-14) › THE INFERENCE: proposed by the Supply Chain Agent, VALIDATED by A. Hoffmann (reason, digest, expiry), APPLIED by T. Nakamura — the ledger in order (613ms)
+  ✓  13 e2e/phase6-b33-supply.demo.spec.ts:83:7 › CP-6 B33 §SC — the supply network workspace on the demonstration (scene F-P4-14) › THE MAP: the corridor disruption reaches line SYN-LINE-A1 — its run rate, its cover, the routes derated (Ningbo and Shenzhen); the replay identical (698ms)
+  ✓  14 e2e/phase6-b33-supply.demo.spec.ts:99:7 › CP-6 B33 §SC — the supply network workspace on the demonstration (scene F-P4-14) › THE ALTERNATIVES: two FEASIBLE (the Cape reroute, the dual source) and the safety-stock draw-down INFEASIBLE — with coverage limits; the decision is the decision layer's (645ms)
+  ✓  15 e2e/phase6-b33-twin.demo.spec.ts:66:7 › CP-6 B33 §TW — the twin pieces on the demonstration › THE MERGE BETWEEN TWO NON-ACTUAL BRANCHES: stress-75 merged into blockade — the target named, the base their common version, merged on the target (643ms)
+  ✓  16 e2e/phase6-b33-twin.demo.spec.ts:80:7 › CP-6 B33 §TW — the twin pieces on the demonstration › THE SCENARIO-ELEMENT FORM: refused in the server's words (the scenario alone on a material key), then grounded citing the scenario and its branch (931ms)
+  ✓  17 e2e/phase6-b33-twin.demo.spec.ts:107:7 › CP-6 B33 §TW — the twin pieces on the demonstration › THE ESTIMATE DECIDED: the 78.074 % estimate approved by T. Nakamura — its review item CLOSED; the snapshot published (641ms)
+  ✓  18 e2e/phase6-b33-twin.demo.spec.ts:121:7 › CP-6 B33 §TW — the twin pieces on the demonstration › THE OUTSIDE RUN'S ITEMS: the awaiting-admission item and the admission's item, each CLOSED by the decision (the attention queue) (1.2s)
+  ✓  19 e2e/phase6-b33-twin.demo.spec.ts:134:7 › CP-6 B33 §TW — the twin pieces on the demonstration › open_run'S WORDING: a run outside the envelope with no acknowledgement is refused — "needs a twin owner's acknowledgement"; nothing opened (910ms)
+  1 skipped
+  18 passed (16.5s)
+  (test 5 skips by design: the act decided every proposal — no open one is left for the strategy lead's refused approval)
+
+════════ THE B30 WALKS RE-CHECKED after the corridor head moved (v20 → v23) ════════
+  ✓   1 e2e/phase6-b30-branches.demo.spec.ts:49:7 › CP-6 B30 §BR — the twin state and branch explorer on the demonstration › THE FRESHNESS BANNER: the served snapshot is 5 days stale against the owner's 2-day SLO (1.0s)
+  ✓   2 e2e/phase6-b30-branches.demo.spec.ts:58:7 › CP-6 B30 §BR — the twin state and branch explorer on the demonstration › THE BRANCH: the corridor twin branched for a blockade — forked from actual, its head admitted (612ms)
+  ✓   3 e2e/phase6-b30-branches.demo.spec.ts:67:7 › CP-6 B30 §BR — the twin state and branch explorer on the demonstration › THE MERGE: merging the blockade back is refused until reconciliation — the diverging keys unresolved, the completion refused
+  ✓   4 e2e/phase6-b30-branches.demo.spec.ts:79:7 › CP-6 B30 §BR — the twin state and branch explorer on the demonstration › TIME TRAVEL: actual as it stood before the stale head, through the existing as-of route, with its diff against the head (680ms
+  ✓   5 e2e/phase6-b30-envelope.demo.spec.ts:49:7 › CP-6 B30 §EN — the envelope on the demonstration › DISABLED FOR DECISION USE: the 75-day run lies outside supply-flow@1's envelope, its decision use is REFUSED, and T. Nakamura's admission makes it E
+  ✓   6 e2e/phase6-b30-envelope.demo.spec.ts:60:7 › CP-6 B30 §EN — the envelope on the demonstration › THE DOMAIN ADMINISTRATOR: sees the run disabled and is offered no admission (the server refused the administrator's admission — the act's 403) (83
+  ✓   7 e2e/phase6-b30-envelope.demo.spec.ts:69:7 › CP-6 B30 §EN — the envelope on the demonstration › THE MODELS PAGE: supply-flow@1's envelope, the run outside it, and the AI context of the 75-day version reading OUTSIDE (731ms)
+  ✓   8 e2e/phase6-b30-estimation.demo.spec.ts:61:7 › CP-6 B30 §ES — reconciliation on the demonstration › THE ESTIMATORS: the primary on the PortWatch transit count and its challengers, declared by the twin owner (566ms)
+  ✘   9 e2e/phase6-b30-estimation.demo.spec.ts:70:7 › CP-6 B30 §ES — reconciliation on the demonstration › THE PROPOSAL AND THE APPROVAL: 62 % proposed on the count (by the Reconciliation Agent on a new count, or by a person when the publisher had not
+  -  10 e2e/phase6-b30-estimation.demo.spec.ts:87:7 › CP-6 B30 §ES — reconciliation on the demonstration › THE TRIGGERS AND THE REQUESTS: nothing pending after the proposal; the requests for new observations listed with how they travel
+    Error: expect(locator).toContainText(expected) failed
+    Expected pattern: /^corridor\.capacity_share = 62 % \(confidence/
+    Received string:  "corridor.capacity_share = 78.074 % (confidence 0.832; as of 2026-10-04) — head v20: 62 %"
+    test-results/phase6-b30-estimation.demo-4af3d-oved-it-into-a-new-snapshot/test-failed-1.png
+  1 failed
+  1 did not run
+  8 passed (27.7s)
+  → the estimation walk opened the NEWEST approved estimate (B33's 78.074 %); it now chooses B30's row by its value (EYE_B30_ESTIMATE_VALUE):
+  ✓   1 e2e/phase6-b30-branches.demo.spec.ts:49:7 › CP-6 B30 §BR — the twin state and branch explorer on the demonstration › THE FRESHNESS BANNER: the served snapshot is 5 days stale against the owner's 2-day SLO (746ms)
+  ✓   2 e2e/phase6-b30-branches.demo.spec.ts:58:7 › CP-6 B30 §BR — the twin state and branch explorer on the demonstration › THE BRANCH: the corridor twin branched for a blockade — forked from actual, its head admitted (611ms)
+  ✓   3 e2e/phase6-b30-branches.demo.spec.ts:67:7 › CP-6 B30 §BR — the twin state and branch explorer on the demonstration › THE MERGE: merging the blockade back is refused until reconciliation — the diverging keys unresolved, the completion refused by the server (679ms)
+  ✓   4 e2e/phase6-b30-branches.demo.spec.ts:79:7 › CP-6 B30 §BR — the twin state and branch explorer on the demonstration › TIME TRAVEL: actual as it stood before the stale head, through the existing as-of route, with its diff against the head (673ms)
+  ✓   5 e2e/phase6-b30-envelope.demo.spec.ts:49:7 › CP-6 B30 §EN — the envelope on the demonstration › DISABLED FOR DECISION USE: the 75-day run lies outside supply-flow@1's envelope, its decision use is REFUSED, and T. Nakamura's admission makes it EXPLORATORY only (916ms)
+  ✓   6 e2e/phase6-b30-envelope.demo.spec.ts:60:7 › CP-6 B30 §EN — the envelope on the demonstration › THE DOMAIN ADMINISTRATOR: sees the run disabled and is offered no admission (the server refused the administrator's admission — the act's 403) (823ms)
+  ✓   7 e2e/phase6-b30-envelope.demo.spec.ts:69:7 › CP-6 B30 §EN — the envelope on the demonstration › THE MODELS PAGE: supply-flow@1's envelope, the run outside it, and the AI context of the 75-day version reading OUTSIDE (691ms)
+  ✓   8 e2e/phase6-b30-estimation.demo.spec.ts:63:7 › CP-6 B30 §ES — reconciliation on the demonstration › THE ESTIMATORS: the primary on the PortWatch transit count and its challengers, declared by the twin owner (560ms)
+  ✓   9 e2e/phase6-b30-estimation.demo.spec.ts:72:7 › CP-6 B30 §ES — reconciliation on the demonstration › THE PROPOSAL AND THE APPROVAL: 62 % proposed on the count (by the Reconciliation Agent on a new count, or by a person when the publisher had nothing new — EYE_B30_PROPOSED_BY, as the act records it) — every candidate kept, the inputs qualified, the conservation check SATISFIED — and T. Nakamura approved it into a new snapshot (649ms)
+  ✓  10 e2e/phase6-b30-estimation.demo.spec.ts:89:7 › CP-6 B30 §ES — reconciliation on the demonstration › THE TRIGGERS AND THE REQUESTS: nothing pending after the proposal; the requests for new observations listed with how they travel (570ms)
+  10 passed (7.6s)
+
+════════ THE HARNESSES (fresh eye_verify_a1_b33_act_<n>, Redis 6396, each dropped after) ════════
+  n=2 phase6-packages-b33 -t PKC (act-found: the competitor package through §PK's ports): Tests 2 passed | 31 skipped (33)
+  n=3 phase6-competitor-b33 (full):                                                 Tests 29 passed (29)
+  n=4 phase6-packages-b33 (full, PKC before PKE):                                    Tests 33 passed (33)
+  (n=1, the first PKC draft, failed on its own refusal case — see FINDINGS 3; corrected in n=2)
+  web unit lib/twins-run-refusal-b33.test.ts: 2 passed; api unit phase6-competitor-b33: 7 passed
+
+════════ FINDINGS ════════
+PRODUCT DEFECTS FOUND AND FIXED (each a small commented change + a case)
+ 1. §CI's competitorManifest() was not in §PK's manifest form (ontology `entity_types` for `mappings`; `risk_meaning` an object) — the competitor
+    package could only exist as planted rows (the §CI harness's fixture); through §PK's ports it was refused (risk_meaning) and could not pass
+    the suite (no mappings). Fixed in apps/api/src/domains/competitor/competitor-logic.ts (mappings, event kinds, a watchlist template with
+    rules, risk_meaning a list on the taxonomy in force, the purposes per source, the inputs statement); the `competitor` block §CI reads is
+    unchanged. Case: phase6-packages-b33 PKC (refused pre-fix form; declared → namespace → five sections → suite PASS → certified → activated;
+    the §CI gate active) + the unit pin in test/unit/phase6-competitor-b33.
+ 2. The Simulations page dropped a refused run's reason (GovernedButton shows only FAILED): open_run's envelope refusal — "needs a twin
+    owner's acknowledgement" — never reached the operator (the B33 twin walk found it; the API answered in the new wording). Fixed in
+    apps/web/app/twins/simulations/page.tsx ("refused — <the server's words>", as the page's other forms) via lib/twins.ts runRefusalLine;
+    case: lib/twins-run-refusal-b33.test.ts and the twin walk's open_run test.
+REPORTED, NOT FIXED (outside the act; for the integrator)
+ 3. domain.dpk_assert_manifest (0111 §PK.3) lets a manifest with NO ontology_extension.mappings through: `jsonb_typeof(m #> '{…,mappings}')
+    <> 'array'` is NULL for a missing key, so the CASE arm never fires (the same shape on ontology_extension, source_set, assessment_templates,
+    controls, controls.purposes). The suite's canonical_mapping / namespace checks catch it later; the port should use IS DISTINCT FROM.
+ 4. The graph's resolver has no scope: /entities/resolve reads the NEWEST unsettled mentions of the whole domain (its methodId is a RANKING
+    pin, not a filter). A first, unbounded run on the rehearsal settled four long-pending demo mentions (Bab el-Mandeb, MV Hanse Meridian,
+    SYN-SHIP-4481, SYN-PART-BRG — new ACTIVE entities, resolutions proposed). The act now bounds each run to the count of its OWN unsettled
+    mentions and refuses to run when any other unsettled mention is newer; the clean rehearsals above show 0 foreign mentions touched.
+THE ACT CORRECTED ON THE REHEARSAL
+ 5. The open 78.074 % estimate was computed on v19 and the head is v20: its approval is REFUSED stale (correct). The act shows the refusal and
+    A. Hoffmann proposes again on the head through the governed route (the same real count → 78.074 %), the stale one superseded (its item closed).
+ 6. After that approval moved the head, the Reconciliation Agent proposed 78.074 % again on v23 (non-material, unrouted) — run 2 must not decide
+    it: the act recognises its own approved, routed estimate and leaves later proposals to the owner.
+THE WALKS CORRECTED (never run before): exact labels (inference, the queue's State filter), escaped titles in RegExp (the network's "(3 tiers)"),
+    the decided estimate's row (approved), the CLOSED mark (case), the SENSITIVE line read from the inferences table, the outside version's
+    branch (EYE_B33_OUTSIDE_BRANCH: the 75-day state lives on stress-75), the packages owner's own env line (EYE_B33_PKG_OWNER — EYE_B33_OWNER
+    is the twin owner). The scenario-element form is a ONE-SHOT write: a second walk on the same draft is refused 409 (the key grounded).
+
+════════ CLEANUP ════════
+  :3411 stopped; :3412 and :3413 stopped; eye_demo_b33 dropped; eye_verify_a1_b33_act_1…4 dropped by their runs.

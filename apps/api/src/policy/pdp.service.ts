@@ -146,6 +146,10 @@ const BUNDLE_V1: Rule[] = [
          /graph/data pages answered "no qualifying role binding for action in resolved scope" to a principal holding data_steward alone) */
       { role: 'data_steward', atScope: 'DOMAIN' },
       /* end B90 browser */
+      /* B33 §0 (0111 §0.1): the domain specialist and the Domain Intelligence Agent (the prelude's DOMAIN roles) resolve their own scope, as every new domain role does */
+      { role: 'domain_specialist', atScope: 'DOMAIN' },
+      { role: 'domain_intelligence_agent', atScope: 'DOMAIN' },
+      /* end B33 §0 */
     ],
     obligations: [{ type: 'audit_access' }],
     requiresPurpose: true,
@@ -700,6 +704,10 @@ const BUNDLE_V1: Rule[] = [
     requiresPurpose: true,
     maxConsequence: 'C2',
   },
+  /* B33 §0 (0111 §0.3): the Domain Intelligence Agent opens and closes its own runs — an EXACT `agent.run` rule inserted before B30's (the first
+     match wins): the nine agents before it and the domain_intelligence agent. B30's rule below is kept as it was (it now matches nothing this one does not). */
+  { actionPrefix: 'agent.run', exact: true, requiredAnyRole: [{ role: 'decision_agent', atScope: 'DOMAIN' }, { role: 'briefing_agent', atScope: 'DOMAIN' }, { role: 'reporting_agent', atScope: 'DOMAIN' }, { role: 'attention_agent', atScope: 'DOMAIN' }, { role: 'weak_signal_agent', atScope: 'DOMAIN' }, { role: 'risk_agent', atScope: 'DOMAIN' }, { role: 'opportunity_agent', atScope: 'DOMAIN' }, { role: 'supply_chain_agent', atScope: 'DOMAIN' }, { role: 'reconciliation_agent', atScope: 'DOMAIN' }, { role: 'domain_intelligence_agent', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B33 §0 */
   /* B30 estimation: the Reconciliation Agent opens and closes its own runs — an EXACT `agent.run` rule inserted before B29's (the first match wins):
      the eight agents before it and the reconciliation agent. B29's rule below is kept as it was (it now matches nothing this one does not). */
   { actionPrefix: 'agent.run', exact: true, requiredAnyRole: [{ role: 'decision_agent', atScope: 'DOMAIN' }, { role: 'briefing_agent', atScope: 'DOMAIN' }, { role: 'reporting_agent', atScope: 'DOMAIN' }, { role: 'attention_agent', atScope: 'DOMAIN' }, { role: 'weak_signal_agent', atScope: 'DOMAIN' }, { role: 'risk_agent', atScope: 'DOMAIN' }, { role: 'opportunity_agent', atScope: 'DOMAIN' }, { role: 'supply_chain_agent', atScope: 'DOMAIN' }, { role: 'reconciliation_agent', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
@@ -1240,6 +1248,10 @@ const BUNDLE_V1: Rule[] = [
       // B30 estimation, THE SAME WAY: the Reconciliation Agent reads the series its estimators declare out of the evidence bytes — manifest-resolved,
       // digest-verified and in custody, the purpose and the series named on the entry.
       { role: 'reconciliation_agent', atScope: 'DOMAIN' },
+      // B33 supply (0111 §SC2), THE SAME WAY: the Supply Chain Agent reads the shipment / customs / supplier records of a network's declared record
+      // sources out of the evidence bytes — manifest-resolved, digest-verified and in custody, the purpose and the network named on the entry.
+      { role: 'supply_chain_agent', atScope: 'DOMAIN' },
+      // end B33 supply
           { role: 'twin_owner', atScope: 'DOMAIN' },
       { role: 'simulation_operator', atScope: 'DOMAIN' },
       // B9 (0066 §3/§4): the Enterprise Memory and retention roles.
@@ -2097,6 +2109,91 @@ const BUNDLE_V1: Rule[] = [
      human-gated (an agent runs ensembles, it does not close their ledger); EXACT, under no prefix rule. The port re-checks the human and the role. */
   { actionPrefix: 'prediction.ensemble.route.reconcile', exact: true, requiredAnyRole: [{ role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'domain_admin', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   /* end B25 ensembles */
+  /* B33 (0111 §0.10) — THE PARTS' BLOCKS, filled by each part with EXACT rules (first match wins at BUNDLE_V1.find). Grep every prefix rule a name
+     falls under before placing it: `twin.read`, `twin.declare`, `twin.version.admit`, `twin.version`, `twin.ground`, `twin.proposal.draft` (exact),
+     `agent.*`, `simulation.read`, `simulation.run`, `graph.read`, `graph.entity.create`, `graph.edge.assert` … — a rule placed here under such a
+     prefix is NEVER reached: put an exact rule in a `B33 <part>` marked mini-block BEFORE that prefix line instead. No `domain.` rule exists
+     before B33: §PK's and §CI's `domain.*` rules go in their blocks below. Every non-exempt `domain.*` write is gated by the `domain_package`
+     capability on a contracted tenant (0111 §0.7); a human-gated rule (obligations: [{ type: 'human_gate' }]) is exempt. */
+  /* B33 twin — no rule: §TW adds no action (it extends twin.branch.merge, twin.ground, twin.estimate.decide, twin.coupling.apply and
+     simulation.run under their existing rules). */
+  /* end B33 twin */
+  /* B33 supply (0111 §SC) — supply-chain intelligence, every name EXACT under `twin.supply.` (no `twin.` prefix rule covers it: the prefixes are
+     twin.read, twin.declare, twin.version.admit, twin.version, twin.ground). The READ (the workspace, the network's uncertainty, the inferences,
+     disruptions, maps, alternatives) to the twin's readers, the risk and decision owners, the Supply Chain Agent (its scan) and the attention
+     agent (the after-tick hook's pending check). The AGENT drafts inferences, proposes disruptions and re-maps them; a NAMED DOMAIN ANALYST
+     validates (human-gated; the port re-checks the role, the human, the separation from the scan's requester); the twin's OWNER names record
+     sources and applies (human-gated); a PERSON confirms, closes and maps a disruption and evaluates an option — never the agent (the ports). */
+  { actionPrefix: 'twin.supply.read', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'simulation_operator', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'supply_chain_agent', atScope: 'DOMAIN' }, { role: 'attention_agent', atScope: 'DOMAIN' }], obligations: [{ type: 'audit_access' }], requiresPurpose: true },
+  { actionPrefix: 'twin.supply.records.declare', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'twin.supply.inference.draft', exact: true, requiredAnyRole: [{ role: 'supply_chain_agent', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'twin.supply.inference.validate', exact: true, requiredAnyRole: [{ role: 'domain_analyst', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'twin.supply.inference.apply', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'twin.supply.disruption.open', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'supply_chain_agent', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'twin.supply.disruption.confirm', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'twin.supply.disruption.close', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'twin.supply.disruption.map', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'supply_chain_agent', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'twin.supply.alternative.evaluate', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B33 supply */
+  /* B33 packages */
+  /* B33 packages (0111 §PK; F-P4-15 ch.31/36, WS-10): EXACT rules — no `domain.` prefix rule exists, and none of these names is a prefix of
+     §CI's `domain.competitor.*`. THE READ (domain.package.read: packages, facts, assessments, watchlists, alerts, the gate) is audited, open to
+     the domain's readers, the Domain Intelligence Agent and the attention agent (the health hook). THE OWNER'S acts (declare, version) and the
+     run of the suite (conformance — the agent's run is diagnostic, the port says so; acceptance), the health re-check (the attention agent's
+     hook too). HUMAN-GATED (a named human; exempt from the entitlement gate by design): a section's approval, the certification and the
+     re-enablement (domain_specialist only), the activation and retirement (the owner — the port re-checks), an assessment's approval and
+     limitation, an event's confirmation, an alert's adjudication and resolution. The agent PROPOSES assessments and events; it never approves,
+     certifies, confirms or adjudicates. Every non-exempt domain.* write is gated by the domain_package capability on a contracted tenant. */
+  { actionPrefix: 'domain.package.read', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'domain_specialist', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'method_steward', atScope: 'DOMAIN' }, { role: 'ontology_steward', atScope: 'DOMAIN' }, { role: 'opportunity_sponsor', atScope: 'DOMAIN' }, { role: 'collection_manager', atScope: 'DOMAIN' }, { role: 'domain_intelligence_agent', atScope: 'DOMAIN' }, { role: 'attention_agent', atScope: 'DOMAIN' }], obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'domain.package.declare', exact: true, requiredAnyRole: [{ role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'domain.package.version', exact: true, requiredAnyRole: [{ role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'domain.package.approve', exact: true, requiredAnyRole: [{ role: 'domain_specialist', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'domain.package.certify', exact: true, requiredAnyRole: [{ role: 'domain_specialist', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'domain.package.activate', exact: true, requiredAnyRole: [{ role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'domain.package.retire', exact: true, requiredAnyRole: [{ role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'domain.package.withdraw', exact: true, requiredAnyRole: [{ role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'domain.package.conformance', exact: true, requiredAnyRole: [{ role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' }, { role: 'domain_specialist', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'domain_intelligence_agent', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'domain.package.acceptance', exact: true, requiredAnyRole: [{ role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' }, { role: 'domain_specialist', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'domain.package.health', exact: true, requiredAnyRole: [{ role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' }, { role: 'domain_specialist', atScope: 'DOMAIN' }, { role: 'attention_agent', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'domain.package.enable', exact: true, requiredAnyRole: [{ role: 'domain_specialist', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'domain.assessment.propose', exact: true, requiredAnyRole: [{ role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'domain_specialist', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' }, { role: 'domain_intelligence_agent', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'domain.assessment.approve', exact: true, requiredAnyRole: [{ role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'domain_specialist', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'domain.assessment.limit', exact: true, requiredAnyRole: [{ role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'domain_specialist', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'domain.watchlist.declare', exact: true, requiredAnyRole: [{ role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'domain_admin', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'domain.watchlist.retire', exact: true, requiredAnyRole: [{ role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'domain_admin', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'domain.event.record', exact: true, requiredAnyRole: [{ role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'domain_specialist', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' }, { role: 'domain_intelligence_agent', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'domain.event.confirm', exact: true, requiredAnyRole: [{ role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'domain_specialist', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'domain.alert.adjudicate', exact: true, requiredAnyRole: [{ role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'domain_specialist', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'domain.alert.resolve', exact: true, requiredAnyRole: [{ role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'domain_admin', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'domain.link.declare', exact: true, requiredAnyRole: [{ role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'domain_specialist', atScope: 'DOMAIN' }, { role: 'domain_admin', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'domain.link.withdraw', exact: true, requiredAnyRole: [{ role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'domain_specialist', atScope: 'DOMAIN' }, { role: 'domain_admin', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B33 packages */
+  /* B33 competitor */
+  /* B33 competitor (0111 §CI; F-P4-15 ch.29, JRN-10, CAP-FW-06). EXACT rules — no earlier rule is a prefix of `domain.competitor.*`
+     (no `domain.` rule exists before B33; §PK's are exact too). THE READ (domain.competitor.read) — audited: the analysts, the strategy lead, the
+     executives, the decision roles, the twin owners, the domain specialists, the Domain Intelligence Agent (its scan's one read) and the
+     attention agent (the after-tick hook's pending check). DECLARE — an analyst, a strategy owner, the domain's administrator. PROPOSE —
+     AI proposes: the agent (the port admits it only inside its own running domain_scan) and the analysts / strategy owners. THE MATERIAL
+     ASSESSMENT APPROVAL — a NAMED ANALYST only, human-gated (the port re-checks the human, the role, the separation from the proposer and the
+     digest; an agent holds no rule here and its attempt is refused and recorded on its run). REVALIDATE — an analyst or the agent. COMPARE —
+     the analysts, strategy owners and the agent (AI may compare). WATCHLIST — a strategy owner or an analyst. CHALLENGE and its DECISION —
+     named humans, human-gated (another analyst decides). DECISION USE — the decision roles, human-gated (the response is the decision
+     layer's). THE TWIN (CI8) — the twin's owner binds and decides (the port re-checks ownership). Every non-exempt `domain.*` write is gated
+     by `domain_package` on a contracted tenant (0111 §0.7); the human-gated rules and the read are exempt. */
+  { actionPrefix: 'domain.competitor.read', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' }, { role: 'twin_owner', atScope: 'DOMAIN' }, { role: 'domain_specialist', atScope: 'DOMAIN' }, { role: 'domain_intelligence_agent', atScope: 'DOMAIN' }, { role: 'attention_agent', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'domain.competitor.declare', exact: true, requiredAnyRole: [{ role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'domain_admin', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'domain.competitor.propose', exact: true, requiredAnyRole: [{ role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'domain_intelligence_agent', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'domain.competitor.assessment.approve', exact: true, requiredAnyRole: [{ role: 'domain_analyst', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'domain.competitor.revalidate', exact: true, requiredAnyRole: [{ role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'domain_intelligence_agent', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'domain.competitor.compare', exact: true, requiredAnyRole: [{ role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'domain_intelligence_agent', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'domain.competitor.watchlist', exact: true, requiredAnyRole: [{ role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'domain.competitor.challenge', exact: true, requiredAnyRole: [{ role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'domain.competitor.challenge.decide', exact: true, requiredAnyRole: [{ role: 'domain_analyst', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'domain.competitor.decision.cite', exact: true, requiredAnyRole: [{ role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'domain.competitor.twin.bind', exact: true, requiredAnyRole: [{ role: 'twin_owner', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'domain.competitor.twin.decide', exact: true, requiredAnyRole: [{ role: 'twin_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B33 competitor */
   /* B36 home */
   /* THE EXECUTIVE HOME, THE CADENCE, THE COMMAND VIEWS, THE SEARCH, THE METRICS (0094 §H; F-P6-11: WS-01, JRN-19, PER-03, CAP-EO-01/-02/-04).
      EXACT rules — no `executive` prefix rule exists and none of these names is a prefix of another rule's. THE READS (executive.home.read

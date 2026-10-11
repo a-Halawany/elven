@@ -46,7 +46,7 @@ describe('B21 · the standing (403): the acting principal, the owner\'s SoD, the
       `simulation challenge rejected: the decider operated the challenged run ${RUN}; someone else decides challenge ${CHL}`,
       'simulation challenge rejected: a challenge is withdrawn by its opener',
       `run promotion rejected: the reviewer operated run ${RUN}; a result is promoted by someone else (OBJ-29)`,
-      'run rejected (envelope_ack): the acknowledgement of an envelope breach is a twin owner\'s or the domain administrator\'s; the acting principal holds neither role in this domain (corridor_delay_days = 75 outside [0, 60])',
+      'run rejected (envelope_ack): the acknowledgement of an envelope breach is a twin owner\'s of this domain; the acting principal is not one (corridor_delay_days = 75 outside [0, 60])',
       // B18's row, unchanged: the widened context text of run invalidation (an upheld challenge under simulation.challenge.decide)
       `run invalidation rejected: a reproduction invalidates under simulation.reproduce with trigger reproduction; an upheld challenge under simulation.challenge.decide with trigger challenge; a person under simulation.run.invalidate with trigger operator (context simulation.run.invalidate, trigger challenge)`,
     ]) expectAnswer('42501', m, 403, 'EYE-AUT-001');
@@ -112,7 +112,7 @@ describe('B21 · the caller\'s own request (422)', () => {
       'simulation challenge rejected: a decision states its note (at least 8 characters)',
       'run promotion rejected: a promotion states the use the result is fit for (at least 8 characters)',
       'run promotion rejected: a promotion states its note (at least 8 characters)',
-      'run rejected (envelope): outside the operating envelope of supply-flow@1 (corridor_delay_days = 75 outside [0, 60]); a run outside the envelope needs a twin owner\'s or the domain administrator\'s acknowledgement (envelope.acknowledge true with a reason of 8+ characters)',
+      'run rejected (envelope): outside the operating envelope of supply-flow@1 (corridor_delay_days = 75 outside [0, 60]); a run outside the envelope needs a twin owner\'s acknowledgement (envelope.acknowledge true with a reason of 8+ characters)',
       `run rejected (challenge): challenge ${CHL} disputes run ${RUN}; a re-run names it as the run it corrects (correctsRunId)`,
       // B18's row, unchanged: the widened trigger vocabulary of run invalidation
       'run invalidation rejected: the trigger is operator (a person\'s act), reproduction (an unreproducible verdict) or challenge (an upheld challenge)',
@@ -127,12 +127,12 @@ describe('B21 · the ORDER (C1): the run gates\' classes land by B9\'s rows with
     expect(a?.status).toBe(422); expect(a?.body.code).toBe('EYE-REQ-001'); expect(a?.body.message).toBe(m);
   });
   it('`run rejected (envelope_ack): …` is the standing (403), never the 422 row\'s `\\((envelope|challenge)\\)`', () => {
-    const m = 'run rejected (envelope_ack): the acknowledgement of an envelope breach is a twin owner\'s or the domain administrator\'s; the acting principal holds neither role in this domain (corridor_delay_days = 75 outside [0, 60])';
+    const m = 'run rejected (envelope_ack): the acknowledgement of an envelope breach is a twin owner\'s of this domain; the acting principal is not one (corridor_delay_days = 75 outside [0, 60])';
     const a = answer('42501', m);
     expect(a?.status).toBe(403); expect(a?.body.code).toBe('EYE-AUT-001'); expect(a?.body.message).toBe(m);
   });
   it('`run rejected (envelope): …` is the caller\'s request (422) with the port\'s sentence — not the named generic row\'s fixed sentence', () => {
-    const m = 'run rejected (envelope): outside the operating envelope of supply-flow@1 (corridor_delay_days = 75 outside [0, 60]); a run outside the envelope needs a twin owner\'s or the domain administrator\'s acknowledgement (envelope.acknowledge true with a reason of 8+ characters)';
+    const m = 'run rejected (envelope): outside the operating envelope of supply-flow@1 (corridor_delay_days = 75 outside [0, 60]); a run outside the envelope needs a twin owner\'s acknowledgement (envelope.acknowledge true with a reason of 8+ characters)';
     const a = answer('22023', m);
     expect(a?.status).toBe(422); expect(a?.body.message).toBe(m);
     expect(a?.body.message).not.toMatch(/^a run needs an admitted twin version/);

@@ -18,6 +18,9 @@
  *                 expiry, after which a run on it is refused. The tick step `twin-freshness` (order 70) raises twin.freshness.
  *   CONFIDENCE    is rolled up per component and per kind (weakest link and mean of the stated confidences; nothing imputed).
  *   A SCENARIO    element (ADR-0011 V4) cites the scenario branch's assumption — an ASU linked to that branch — never evidence of the world.
+ *   B33 twin (0111 §TW1/§TW2): a merge may target ANOTHER non-actual branch (open with `targetBranch`; the plan's draft opens on the target);
+ *                 a scenario element may cite the SCENARIO itself (the SCN object exact in this domain, with the scenario branch — a branch of
+ *                 that scenario, open) beside or instead of the branch's assumption.
  *
  * This service validates what a route hands in and assembles reads; the ports decide every rule. Every figure is SYNTHETIC.
  */
@@ -125,7 +128,10 @@ export function validateFreeze(p: Row, correlationId: string): FreezeIntake {
 
 export interface ScenarioElementIntake {
   key: string; value: unknown; unit: string | null; scenarioId: string; scenarioBranchId: string;
-  assumption: { id: string; version: number | null }; validFrom: string | null; validTo: string | null; confidence: number | null;
+  /* B33 twin: null when the element cites the scenario alone */
+  assumption: { id: string; version: number | null } | null; validFrom: string | null; validTo: string | null; confidence: number | null;
+  /* B33 twin (0111 §TW2): present when the element cites the SCENARIO (the SCN object; version null = the scenario's current version) */
+  scenario?: { version: number | null };
 }
 export function validateScenarioElements(p: Row, correlationId: string): ScenarioElementIntake[] {
   const els = p['elements'];
@@ -138,15 +144,28 @@ export function validateScenarioElements(p: Row, correlationId: string): Scenari
     const scenarioId = assertUuid(x['scenarioId'], 'scenario', correlationId, 'scenario element');
     const scenarioBranchId = assertUuid(x['scenarioBranchId'], 'scenario_branch', correlationId, 'scenario element');
     const a = x['assumption'];
-    if (!isObject(a) || typeof a['id'] !== 'string' || !UUID.test(a['id']) || (a['version'] != null && (!Number.isInteger(a['version']) || (a['version'] as number) < 1))) {
+    /* B33 twin (0111 §TW2): the basis is the branch's assumption, the SCENARIO citation (citeScenario, optionally scenarioVersion), or both */
+    const cs = x['citeScenario'];
+    if (cs !== undefined && cs !== null && typeof cs !== 'boolean') refuse(correlationId, 'scenario element rejected (basis): citeScenario is true or false');
+    const sv = x['scenarioVersion'];
+    if (sv !== undefined && sv !== null && (!Number.isInteger(sv) || (sv as number) < 1)) refuse(correlationId, 'scenario element rejected (scenario_version): scenarioVersion is a positive integer (an SCN version)');
+    const citeScenario = cs === true;
+    if (sv !== undefined && sv !== null && !citeScenario) refuse(correlationId, 'scenario element rejected (basis): scenarioVersion names the cited SCN version — set citeScenario');
+    const hasAssumption = a !== undefined && a !== null;
+    if (hasAssumption && (!isObject(a) || typeof a['id'] !== 'string' || !UUID.test(a['id']) || (a['version'] != null && (!Number.isInteger(a['version']) || (a['version'] as number) < 1)))) {
       refuse(correlationId, `scenario element rejected (basis): ${String(key)} cites the scenario branch's assumption { id, version? } — a scenario value rests on its scenario, not on the world`);
     }
+    if (!hasAssumption && !citeScenario) {
+      refuse(correlationId, `scenario element rejected (basis): ${String(key)} cites the scenario branch's assumption { id, version? } or the scenario itself (citeScenario) — a scenario value rests on its scenario, not on the world`);
+    }
+    /* end B33 twin */
     const c = x['confidence'];
     if (c !== undefined && c !== null && (typeof c !== 'number' || c < 0 || c > 1)) refuse(correlationId, 'scenario element rejected (confidence): a confidence is in [0, 1]');
     return {
       key: key as string, value: x['value'], unit: typeof x['unit'] === 'string' ? x['unit'] : null, scenarioId, scenarioBranchId,
-      assumption: { id: (a as Row)['id'] as string, version: ((a as Row)['version'] ?? null) as number | null },
+      assumption: hasAssumption ? { id: (a as Row)['id'] as string, version: ((a as Row)['version'] ?? null) as number | null } : null,
       validFrom: day(x['validFrom']), validTo: day(x['validTo']), confidence: (c ?? null) as number | null,
+      ...(citeScenario ? { scenario: { version: (sv ?? null) as number | null } } : {}),   // B33 twin
     };
   });
 }
@@ -241,8 +260,9 @@ export class BranchService implements OnModuleInit {
   async setPolicy(cap: PolicyWrites, ctx: ScopeContext, twinId: string, p: PolicyIntake, actor: string, correlationId: string): Promise<Row> {
     return cap.setPolicy({ twinId, ...scope(ctx), ...p, actor, eventId: newId(), correlationId });
   }
-  async openMerge(cap: MergeWrites, ctx: ScopeContext, twinId: string, sourceBranch: string, reason: string, actor: string, correlationId: string): Promise<Row> {
-    return cap.openMerge({ mergeId: newId(), twinId, sourceBranch, reason, ...scope(ctx), actor, eventId: newId(), correlationId });
+  async openMerge(cap: MergeWrites, ctx: ScopeContext, twinId: string, sourceBranch: string, reason: string, actor: string, correlationId: string,
+                  /* B33 twin (0111 §TW1): the target — actual (B30's merge) or another non-actual branch */ targetBranch = 'actual'): Promise<Row> {
+    return cap.openMerge({ mergeId: newId(), twinId, sourceBranch, targetBranch, reason, ...scope(ctx), actor, eventId: newId(), correlationId });
   }
   async resolve(cap: ReconcileWrites, ctx: ScopeContext, mergeId: string, r: ResolutionIntake, actor: string, correlationId: string): Promise<Row> {
     const citations: Citation[] = [];
@@ -307,22 +327,66 @@ export class BranchService implements OnModuleInit {
     if ((v as Row)['state'] !== 'draft') refuse(correlationId, `scenario element rejected (state): version ${version} is ${String((v as Row)['state'])}; a scenario element goes into an open draft`, 409);
     const out: Row[] = [];
     for (const e of els) {
-      const link = (await cap.readScenarioAssumptions().select(['link_id', 'branch_id', 'state', 'critical'] as never)
-        .where('scenario_id' as never, '=', e.scenarioId as never).where('assumption_id' as never, '=', e.assumption.id as never)
-        .where('state' as never, '=', 'linked' as never).execute()) as Row[];
-      const bound = link.find((l) => l['branch_id'] === null || l['branch_id'] === e.scenarioBranchId);
-      if (bound === undefined) {
-        refuse(correlationId, `scenario element rejected (basis): assumption ${e.assumption.id} is not linked to scenario ${e.scenarioId} branch ${e.scenarioBranchId}; a scenario element cites its scenario branch's assumption`);
+      const citations: Citation[] = [];
+      let bound: Row | undefined;
+      if (e.assumption !== null) {   // B33 twin: the assumption is optional when the scenario itself is cited
+        const link = (await cap.readScenarioAssumptions().select(['link_id', 'branch_id', 'state', 'critical'] as never)
+          .where('scenario_id' as never, '=', e.scenarioId as never).where('assumption_id' as never, '=', e.assumption.id as never)
+          .where('state' as never, '=', 'linked' as never).execute()) as Row[];
+        bound = link.find((l) => l['branch_id'] === null || l['branch_id'] === e.scenarioBranchId);
+        if (bound === undefined) {
+          refuse(correlationId, `scenario element rejected (basis): assumption ${e.assumption.id} is not linked to scenario ${e.scenarioId} branch ${e.scenarioBranchId}; a scenario element cites its scenario branch's assumption`);
+        }
+        citations.push(await this.cite(cap, { kind: 'assumption', id: e.assumption.id, version: e.assumption.version }, correlationId, 'scenario element'));
       }
-      const citation = await this.cite(cap, { kind: 'assumption', id: e.assumption.id, version: e.assumption.version }, correlationId, 'scenario element');
-      const controls = await this.controlsOf(cap, [citation]);
+      /* B33 twin (0111 §TW2): THE SCENARIO CITATION — the SCN object exact in this domain (the named version, else the current one), with the
+         scenario branch: a branch OF THAT SCENARIO, OPEN, added by the cited version. A scenario citation alone does not substantiate a
+         MATERIAL key at admission (twin.ground_element / admit_version count evidence, claims, forecasts, assumptions and runs), so a material
+         key keeps the branch's assumption beside it — refused here in words, before the port's generic text. */
+      if (e.scenario !== undefined) {
+        citations.push(await this.citeScenario(cap, e, correlationId));
+        if (e.assumption === null && await cap.keyIsMaterial(twinId, e.key)) {
+          refuse(correlationId, `scenario element rejected (basis): ${e.key} is material for this twin — the scenario citation alone does not substantiate it at admission; cite the scenario branch's assumption beside it`);
+        }
+      }
+      /* end B33 twin */
+      const controls = await this.controlsOf(cap, citations);
       const material = await cap.groundElement({ elementId: newId(), ...scope(ctx), twinId, version, key: e.key, kind: 'scenario', basisTruthState: null, value: e.value, unit: e.unit,
-        citations: [citation], health: 'complete', validFrom: e.validFrom, validTo: e.validTo, confidence: e.confidence, syntheticState: controls.synthetic_state, controls,
+        citations, health: 'complete', validFrom: e.validFrom, validTo: e.validTo, confidence: e.confidence, syntheticState: controls.synthetic_state, controls,
         inheritedValidation: null, actor, eventId: newId(), correlationId });
-      out.push({ key: e.key, kind: 'scenario', material, scenario_id: e.scenarioId, scenario_branch_id: e.scenarioBranchId, assumption: citation, link_id: (bound as Row)['link_id'] });
+      out.push({ key: e.key, kind: 'scenario', material, scenario_id: e.scenarioId, scenario_branch_id: e.scenarioBranchId,
+                 assumption: citations.find((c) => c.kind === 'assumption') ?? null, link_id: bound === undefined ? null : bound['link_id'],
+                 ...(e.scenario === undefined ? {} : { scenario: citations.find((c) => c.kind === 'scenario') }) });
     }
     return out;
   }
+
+  /* B33 twin (0111 §TW2) */
+  /** The SCENARIO citation {kind: scenario, id: scenario_id, version, digest, branch}: the SCN object of this domain at the named (else current)
+   *  version, under row security; the branch a branch of that scenario, open, and added by that version (branches_current.added_in_version). */
+  private async citeScenario(cap: BranchReads, e: ScenarioElementIntake, correlationId: string): Promise<Citation> {
+    const want = e.scenario?.version ?? null;
+    const row = await cap.twin.citedObject({ objectType: 'SCN', id: e.scenarioId, version: want });
+    if (row === undefined) {
+      refuse(correlationId, `scenario element rejected (unknown_scenario): scenario ${e.scenarioId}${want === null ? '' : `@${want}`} is not an authorized SCN object of this domain`, 404);
+    }
+    const scn = row as NonNullable<typeof row>;
+    const b = (await cap.readScenarioBranches().select(['branch_id', 'scenario_id', 'state', 'name', 'added_in_version'] as never)
+      .where('branch_id' as never, '=', e.scenarioBranchId as never).executeTakeFirst()) as Row | undefined;
+    if (b === undefined) refuse(correlationId, `scenario element rejected (unknown_scenario_branch): ${e.scenarioBranchId} is not a scenario branch of this domain`, 404);
+    const br = b as Row;
+    if (String(br['scenario_id']) !== e.scenarioId) {
+      refuse(correlationId, `scenario element rejected (basis): branch ${e.scenarioBranchId} (${String(br['name'])}) is a branch of scenario ${String(br['scenario_id'])}, not of ${e.scenarioId}`);
+    }
+    if (br['state'] !== 'open') {
+      refuse(correlationId, `scenario element rejected (state): scenario branch ${String(br['name'])} is ${String(br['state'])}; a scenario element cites an OPEN branch of its scenario`, 409);
+    }
+    if (br['added_in_version'] !== null && br['added_in_version'] !== undefined && Number(br['added_in_version']) > scn.object_version) {
+      refuse(correlationId, `scenario element rejected (basis): branch ${String(br['name'])} was added in scenario version ${String(br['added_in_version'])}, after the cited version ${scn.object_version}`);
+    }
+    return { kind: 'scenario', id: scn.object_id, version: scn.object_version, digest: scn.content_digest, branch: e.scenarioBranchId };
+  }
+  /* end B33 twin */
 
   /** A citation bound to the exact object it names (id, version, digest) — the twin capability's own resolution, under row security. */
   private async cite(cap: BranchReads, c: { kind: string; id: string; version: number | null }, correlationId: string, noun: string): Promise<Citation> {
@@ -335,7 +399,7 @@ export class BranchService implements OnModuleInit {
     const inputs: ControlInput[] = [];
     for (const c of citations) {
       if (c.kind === 'entity') continue;
-      const row = await cap.twin.citedObject({ objectType: c.kind === 'evidence' ? 'EVD' : c.kind === 'assumption' ? 'ASU' : 'EVD', id: c.id, version: c.version });
+      const row = await cap.twin.citedObject({ objectType: c.kind === 'evidence' ? 'EVD' : c.kind === 'assumption' ? 'ASU' : /* B33 twin */ c.kind === 'scenario' ? 'SCN' : 'EVD', id: c.id, version: c.version });
       if (row !== undefined) inputs.push({ synthetic_state: row.synthetic_state, classification: row.classification, rights_profile: row.rights_profile,
                                            residency_profile: row.residency_profile, retention_profile: row.retention_profile, access_policy_ref: row.access_policy_ref });
     }

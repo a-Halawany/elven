@@ -827,6 +827,9 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
      version that is not admitted on actual), the caller's own 422 (a malformed finding, a twin of another family, a decision without reason). */
   { match: /^twin proposal rejected \((actor|not_agent|run|ownership)\)|^twin write rejected \(agent\)/i, status: 403, code: 'EYE_AUT_001' },
   { match: /^twin proposal rejected: no such /i, status: 404, code: 'EYE_STA_001' },
+  /* B33 supply (0111 §SC.4, AG-026): the concurrent-draft race answered in the family's words — placed before the family's 422 catch-all */
+  { match: /^twin proposal rejected \(duplicate\)/i, status: 409, code: 'EYE_STA_002' },
+  /* end B33 supply */
   { match: /^twin proposal rejected \((state|version)\)/i, status: 409, code: 'EYE_STA_002' },
   { match: /^twin proposal rejected/i, status: 422, code: 'EYE_REQ_001' },
   /* end B29 §B */
@@ -1097,6 +1100,13 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
      the twin's ownership, the proposer who would decide its own estimate, the attention agent's authority), the absences 404 (unknown_*), the
      record's state 409 (state, stale, duplicate), the caller's own request 422 (the rest: unqualified inputs, the constraint check, the range,
      the snapshot, the candidates, the parameters, the note …). */
+  /* B33 twin (0111 §TW4/§TW5) — the two new classes of B30's `estimate rejected` family, EXACT rows placed before B30's (first match wins; B30's
+     rows are not edited): `(dependency)` — the cross-twin dependency unavailable at publication (an upstream with no admitted head or
+     unverified) — the record's state, 409 with stale; `(citation)` — the admitted element does not carry exactly this estimate's citation —
+     the caller's own request, 422. */
+  { match: /^estimate rejected \(dependency\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^estimate rejected \(citation\)/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B33 twin */
   { match: /^(estimator|estimate|observation request|estimation trigger) rejected \((actor|ownership|authority|separation_of_duties)\)/i, status: 403, code: 'EYE_AUT_001' },
   { match: /^(estimator|estimate|observation request|estimation trigger) rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
   /* 0104: `estimate rejected (contract)` — the constraint contract changed under a proposal (a set re-versioned, retired or come to apply) — 409 with stale */
@@ -1197,6 +1207,56 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   { match: /^(ensemble|judgement overlay) rejected \((state|stale|duplicate)\)/i, status: 409, code: 'EYE_STA_002' },
   { match: /^(ensemble|judgement overlay) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
   /* end B25 ensembles */
+  /* B33 (0111 §0.10) — THE PARTS' ERROR ROWS, each part's nouns in the CLASS form `<noun> rejected (<class>): …`, anchored (`^…`), in B9's order:
+     403 actor|ownership|authority|separation_of_duties · 404 unknown_* · 409 state|stale|duplicate · 422 the rest (`package` — the
+     PACKAGE_GATE refusal `<noun> rejected (package): <reason>` — falls to 422). Nouns: §TW extends B30's families (an EXACT row placed in its
+     block, never an edit of B30's rows); §SC `supply inference|supply disruption|supply alternative rejected`, `twin proposal rejected
+     (duplicate)`; §PK `domain package|package conformance|domain assessment|watchlist rejected`; §CI `competitor profile|competitor
+     comparison|competitor assessment rejected`. The prelude's own refusals: `domain package rejected (state)` (the version guards, 0111 §0.5)
+     → 409 below; the helpers' `attention item rejected: …` texts are internal (a part's port validates first). */
+  /* B33 §0 */
+  { match: /^domain package rejected \(state\)/i, status: 409, code: 'EYE_STA_002' },
+  /* B33 integration: THE PACKAGE_GATE REFUSAL, centrally — `<noun> rejected (package): <reason>` (the SQL seam's 22023, or the TS seam's
+     PackageUnavailable, which carries the same SQLSTATE) answers 422 for ANY noun, so a part's write that reaches the gate without its own
+     class rows still answers governed. Every existing `(package)` text was already 422 (B31's `value of information rejected (package)`). */
+  { match: /^[a-z][a-z ]{1,60} rejected \(package\): /i, status: 422, code: 'EYE_REQ_001' },
+  /* end B33 §0 */
+  /* B33 twin — §TW's two rows (`estimate rejected (dependency)` 409, `(citation)` 422) are the `B33 twin` mini-block placed BEFORE B30's
+     estimation rows (a row here would never be reached: B30's `^estimate rejected \(` 422 matches first). No other row: §TW's merge,
+     scenario-element and envelope refusals stay in B30's classes; the coupling's `(dependency)` is the route's own 409. */
+  /* end B33 twin */
+  /* B33 supply (0111 §SC) — `supply inference | supply disruption | supply alternative rejected (<class>)`, B9's order: 403 the acting principal,
+     the authority (an agent validating, a person drafting, a role the port re-checks), the ownership (not the twin's owner), the separation of
+     duties (the scan's requester validating); 404 the unknown_* absences; 409 the record's state (a decided inference, a mapped disruption,
+     a lifecycle move), stale (a changed proposal digest, an expired validation, a map read before a newer head, an evaluation of an older map),
+     duplicate (a live record source, a live disruption of the same footprint); 422 the rest (shape, evidence, isolated, sensitive, expiry,
+     application, capacity, family, signal, map, branch, …). */
+  { match: /^supply (inference|disruption|alternative) rejected \((actor|authority|ownership|separation_of_duties)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^supply (inference|disruption|alternative) rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^supply (inference|disruption|alternative) rejected \((state|stale|duplicate)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^supply (inference|disruption|alternative) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B33 supply */
+  /* B33 packages */
+  /* B33 packages (0111 §PK) — the families `domain package`, `package conformance`, `domain assessment`, `watchlist`, `domain event` in the CLASS
+     form, anchored (no older row starts with these nouns; the prelude's `^domain package rejected \(state\)` row above answers 409 first). B9's
+     order: 403 actor|ownership|authority|separation_of_duties · 404 unknown_* · 409 state|stale|duplicate · 422 the rest (package — the
+     PACKAGE_GATE refusal —, manifest, section, ontology, sections, conformance, health, evidence, subjects, template, rules, risk, target …). */
+  { match: /^(domain package|package conformance|domain assessment|watchlist|domain event) rejected \((actor|ownership|authority|separation_of_duties)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^(domain package|package conformance|domain assessment|watchlist|domain event) rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^(domain package|package conformance|domain assessment|watchlist|domain event) rejected \((state|stale|duplicate)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^(domain package|package conformance|domain assessment|watchlist|domain event) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B33 packages */
+  /* B33 competitor */
+  /* B33 competitor (0111 §CI) — the families `competitor profile|competitor comparison|competitor assessment|competitor watchlist
+     rejected (<class>)` (§CI's ports, guards and the package gate). Anchored, the class parenthesis required; no earlier row starts with
+     `competitor`. B9's order: 403 actor|ownership|authority|separation_of_duties · 404 unknown_* · 409 state|stale|duplicate · 422 the rest
+     (request, package, identity, citation, basis, owner, reason, digest, twin). `competitor watchlist` is a fourth noun beside MAP's three
+     (§CI keeps its own watchlist — CI5's choice). */
+  { match: /^competitor (profile|comparison|assessment|watchlist) rejected \((actor|ownership|authority|separation_of_duties)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^competitor (profile|comparison|assessment|watchlist) rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^competitor (profile|comparison|assessment|watchlist) rejected \((state|stale|duplicate)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^competitor (profile|comparison|assessment|watchlist) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B33 competitor */
   /* B36 home (0094 §H) — the executive home's families in the CLASS form `<noun> rejected (<class>): …`: `cadence rejected`, `executive room
      rejected` (0044's unclassed `room rejected: …` texts are the decision room's and are mapped by no row; the noun here is `executive room`
      and every row is anchored), `objective review rejected` (the SoD of §H2's re-declared convene_review and of open_subject_room — B23's

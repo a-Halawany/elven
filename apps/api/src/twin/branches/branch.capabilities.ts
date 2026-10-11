@@ -39,6 +39,14 @@ export interface BranchReads {
   currentResolutions(mergeId: string): Promise<Row[]>;
   unresolved(mergeId: string): Promise<string[]>;
   mergeExpected(mergeId: string): Promise<Row | null>;
+  /* B33 twin (0111 §TW1/§TW2) */
+  /** the scenario branches (prediction.branches_current, under row security): a scenario citation's branch is a branch of that scenario, open */
+  readScenarioBranches(): any;
+  /** twin.key_is_material — a material key needs a substantiating citation at admission (a scenario citation alone is not one there) */
+  keyIsMaterial(twinId: string, key: string): Promise<boolean>;
+  /** twin.twx_common_base — the nearest common version of two branches' heads (a merge's base between two non-actual branches) */
+  commonBase(twinId: string, a: string, b: string): Promise<number | null>;
+  /* end B33 twin */
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
@@ -47,7 +55,7 @@ export interface PolicyWrites extends BranchReads {
   setPolicy(a: Ids & { twinId: string; maxAgeDays: number; keyMaxAge: Record<string, number>; nearExpiryHours: number | null; note: string }): Promise<Row>;
 }
 export interface MergeWrites extends BranchReads {
-  openMerge(a: Ids & { mergeId: string; twinId: string; sourceBranch: string; reason: string }): Promise<Row>;
+  openMerge(a: Ids & { mergeId: string; twinId: string; sourceBranch: string; reason: string; /* B33 twin: actual (B30) or another branch */ targetBranch?: string }): Promise<Row>;
   completeMerge(a: Ids & { mergeId: string }): Promise<Row>;
   closeMerge(a: Ids & { mergeId: string; outcome: 'refused' | 'withdrawn'; reason: string }): Promise<Row>;
 }
@@ -124,13 +132,26 @@ class BranchCapabilityImpl implements PolicyWrites, MergeWrites, ReconcileWrites
     return (r.rows[0]?.u ?? []) as string[];
   }
   async mergeExpected(mergeId: string) { return this.maybe(sql`select twin.tbr_merge_expected(${mergeId}::uuid) as r`); }
+  /* B33 twin */
+  readScenarioBranches(): any { return this.from('prediction.branches_current'); }
+  async keyIsMaterial(twinId: string, key: string): Promise<boolean> {
+    const r = await sql<{ m: boolean }>`select twin.key_is_material(${twinId}::uuid, ${key}) as m`.execute(this.#tx);
+    return r.rows[0]?.m === true;
+  }
+  async commonBase(twinId: string, a: string, b: string): Promise<number | null> {
+    const r = await sql<{ v: number | null }>`select twin.twx_common_base(${twinId}::uuid, ${a}, ${b}) as v`.execute(this.#tx);
+    const v = r.rows[0]?.v;
+    return v === null || v === undefined ? null : Number(v);
+  }
+  /* end B33 twin */
 
   async setPolicy(a: Parameters<PolicyWrites['setPolicy']>[0]) {
     return this.one(sql`select twin.set_freshness_policy(${a.twinId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.maxAgeDays}::int, ${JSON.stringify(a.keyMaxAge)}::jsonb,
       ${a.nearExpiryHours}::int, ${a.note}, ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`);
   }
   async openMerge(a: Parameters<MergeWrites['openMerge']>[0]) {
-    return this.one(sql`select twin.open_merge(${a.mergeId}::uuid, ${a.twinId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.sourceBranch}, ${a.reason},
+    /* B33 twin (0111 §TW1): the overload naming the target (actual unless the caller names another branch) */
+    return this.one(sql`select twin.open_merge(${a.mergeId}::uuid, ${a.twinId}::uuid, ${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.sourceBranch}::text, ${a.targetBranch ?? 'actual'}::text, ${a.reason}::text,
       ${a.actor}::uuid, ${a.eventId}::uuid, ${a.correlationId}::uuid) as r`);
   }
   async completeMerge(a: Parameters<MergeWrites['completeMerge']>[0]) {

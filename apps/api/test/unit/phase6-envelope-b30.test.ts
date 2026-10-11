@@ -75,8 +75,8 @@ describe('B30 §EN · the refusal family by class (the port\'s sentence, verbati
     ]) expectAnswer('22023', m, 422, 'EYE-REQ-001');
   });
   it('the older families are untouched: the unanchored `admission rejected: ` (colon) and `run rejected (envelope_ack)` answer as before', () => {
-    expect(answer('42501', 'run rejected (envelope_ack): the acknowledgement of an envelope breach is a twin owner\'s or the domain administrator\'s; the acting principal holds neither role in this domain (corridor_delay_days = 75 outside [0, 60])')?.status).toBe(403);
-    expect(answer('22023', 'run rejected (envelope): outside the operating envelope of supply-flow@1 (corridor_delay_days = 75 outside [0, 60]); a run outside the envelope needs a twin owner\'s or the domain administrator\'s acknowledgement (envelope.acknowledge true with a reason of 8+ characters)')?.status).toBe(422);
+    expect(answer('42501', 'run rejected (envelope_ack): the acknowledgement of an envelope breach is a twin owner\'s of this domain; the acting principal is not one (corridor_delay_days = 75 outside [0, 60])')?.status).toBe(403);
+    expect(answer('22023', 'run rejected (envelope): outside the operating envelope of supply-flow@1 (corridor_delay_days = 75 outside [0, 60]); a run outside the envelope needs a twin owner\'s acknowledgement (envelope.acknowledge true with a reason of 8+ characters)')?.status).toBe(422);
   });
 });
 

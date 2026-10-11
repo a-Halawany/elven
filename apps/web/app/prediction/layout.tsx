@@ -65,6 +65,7 @@ const NAV = [
   /* B32 (0089) exposures: the risk and opportunity workspace (WS-09) */ { href: '/prediction/exposures', label: 'Risk & opportunity', glyph: '⇅' }, /* end B32 exposures */
   /* B25 context: the frozen information sets (each forecast's grounding and replay) */ { href: '/prediction/information-sets', label: 'Information sets', glyph: '⧉' }, /* end B25 context */
   /* B25 registry */ { href: '/prediction/registry', label: 'Forecasting portfolio', glyph: '⊞' }, /* end B25 registry */
+  /* B33 (0111 §0.9): the domain intelligence workspace (WS-10; §PK's page, §CI's competitors beneath it) */ { href: '/prediction/domains', label: 'Domains', glyph: '◇' }, /* end B33 */
   { href: '/decisions', label: 'Decisions', glyph: '◆' },
   { href: '/decisions/briefings', label: 'Briefings', glyph: '☰' },
   { href: '/decisions/attention', label: 'Attention', glyph: '⚑' },

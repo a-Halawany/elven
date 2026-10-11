@@ -6451,6 +6451,196 @@ B25 **COMPLETES F-P4-01, F-P4-02 and F-P4-03 by their rows**. Every remaining cl
 
 Every recorded result below is from a run with nothing else heavy on the host.
 
+## B33 — supply-chain intelligence and domain packages (0111, with the operational follow-ups 0110 and the C15 dispositions). F-P4-14 and F-P4-15 construction complete; F-P5-03's B33 pieces built; F-P5-02, F-P5-04 and F-P5-01 advanced. Construction completion is not acceptance.
+
+### B33.0 — the operational follow-ups, completed before B33's live demonstration
+1. **#81's merge recorded.**
+   - #81 (B25) merged as `dfcac8d` on 2026-10-09.
+   - Main's chain: ci 37866574251 → C19 lifecycle 37866574195 → C17 finalize 37870902444 → C19 anchor 37870990851, created after the finalize.
+   - Recorded here, not in a records-only commit.
+2. **The 63 stale reconciliation runs closed through the existing governed path.**
+   - T. Richter (domain administrator; `agent.trigger`) ran the domain's Reconciliation Agent with task `reconcile_scan` through `POST …/agents/decision/:agentId/run`.
+   - The run FINISHED with no refusals. As B25's fix intends, the agent closed its own 63 stale `running` runs as `stopped`, each with its truthful reason: "session lapsed: the run started at <its start> and was still running a session's lifetime (900 s) later".
+   - No telemetry was fabricated and no run row was touched directly.
+   - Attention ticks continued every minute (~0.4 s), and no run is left `running` on eye_demo.
+3. **The journal-only recovery path** (0110; #82, merged as `1974624`). This was B25's disclosed open item.
+   - Reproduced first (`137b115`), then corrected (`5c9c206`):
+     - an `evidence_write_failed` journal record now files a ledger incident carrying its `journal_ref` (at failure time; boot files any unfiled record idempotently);
+     - recovery reconciles only through the existing entrypoint and recovery capability;
+     - the flag clears only when every journal record since the last recovery maps to a reconciled incident and none remain open;
+     - a new or unfiled record is never cleared by reconciling unrelated incidents;
+     - the journal is only appended to, and the recovery line lists the records it covers.
+   - Harness `phase6-journal-recovery-b33` 11/11 covers journal-only, mixed, retry/idempotence, restart, crash-before-proof, unauthorized refusal, a new record during recovery, and an unfileable record.
+   - Rehearsed on a restored copy first (degraded → ok).
+   - **On eye_demo (2026-10-09)**, after the backup `eye_demo-pre-0110-20261009T173602Z.dump` and a journal copy:
+     - 0110 applied by `db:migrate`;
+     - boot filed the 4 records;
+     - the governed entrypoint covered 4 of 4 and reconciled the 4 incidents;
+     - after a restart, `/readyz` read `{"status":"ok","audit":"ok","auditIncidents":0,"degradedSince":null}`.
+   - The four lost failure-evidence records, identified honestly: journal ids `1de44fb8…`, `f5d18a28…`, `aa17c72a…`, `98c5730f…`. Routes `observation.evidence.retrieve` ×3 and `prediction.portfolio.issue`, 2026-10-07 14:15 → 2026-10-08 13:24 UTC, `session_not_active`. Their evidence was never written and is NOT reconstructed (`evidence_written: false`; "Evidence lost: …").
+   - The original journal lines are byte-identical (`49f31e1a…`), with one recovery proof appended.
+4. **C15 (#83, merged as `a47232a`).** The supply-chain gate found two new HIGH advisories in the pinned postgres image's gosu: CVE-2026-78667 (GO-2026-6609, `net/http`) and CVE-2026-97031 (GO-2026-6607, `crypto/tls`), in Go 1.24.6.
+   - No patched official image exists.
+   - The owner approved SCX-0012 (amd64) and SCX-0013 (arm64) as NOT_AFFECTED for these two advisories only, expiring 2026-11-05. The condition was the per-architecture evidence that the affected packages are absent from each exact pinned binary: the image, child, layer and binary digests; fresh govulncheck v1.7.0 (vulndb 2026-10-08T22:31:09Z) at module level only; 0 `net/http.` and 0 `crypto/tls.` symbols.
+   - The coordinator verified the condition on both architectures before applying.
+   - The six existing records were re-bound to the document's new hash with nothing else changed. No gate was changed.
+   - **Merge chains:**
+     - #83 `a47232a`: ci 37960365672 → C19 lifecycle 37960365612 → C17 finalize 37966579956 → C19 anchor 37966698333.
+     - #82 `1974624`: ci 37967372498 → C19 lifecycle 37967372473 → C17 finalize 37973093534 → C19 anchor 37973224447.
+5. **C15, a third advisory (#85, merged as `77b8349`).** **CVE-2026-78669** (GO-2026-6611, `net/http` / HTTP/2) blocked #84.
+   - The owner approved SCX-0014 / SCX-0015 as NOT_AFFECTED on the same per-architecture conditions.
+   - The owner also gave a STANDING AUTHORIZATION (`SCANNER_DISPOSITIONS.md` §3.11): further advisories of the 2026-10-08 Go release only, on these exact image children and gosu digests only, only when the analysis covers the advisory, it is module-level only, and every affected package is absent from each architecture's binary independently. Each application gets its own records, evidence and report, and the application log starts with SCX-0014/0015. Anything else comes back to the owner; RISK_ACCEPTED is never substituted.
+   - CI's history scan reads every ref on origin, phase6-b33 included, so #85 carried B33's three exact-tuple gitleaks allowlist entries (c55ddce). A negative control is still flagged.
+   - **Merge chain:** #85 `77b8349`: ci 38153825711 → C19 lifecycle 38153825720 → C17 finalize 38157461680 → C19 anchor 38157507208 (created after the finalize).
+
+### B33.1 — how it was built
+- **The map first.** 98 mapped rows were judged clause by clause before construction: `scratchpad/b33/MAP.md`.
+- **The prelude §0** (`2c6a6ca`):
+  - roles, attention vocabulary, the agent kind, the citation kinds;
+  - the `domain` package core and its PACKAGE_GATE seam;
+  - the routed raise/close helpers under the published policy;
+  - object types DPG/CPF/DAS;
+  - the `domain_package` entitlement claiming `domain.`.
+- **Four parts built in parallel worktrees:** §TW `0be3231`, §SC `2770c0f`, §PK `9582d26`, §CI `178e6f7`.
+- **Folded into ONE migration 0111** in apply order §0, §TW, §SC, §PK, §CI (`80e5ae4`). 0111 was confirmed unused at fold.
+- **Every database-heavy run went through a one-slot host-wide serializer** (`scripts/dev/heavy-slot.sh`), with the host kept awake. This avoided the B25 lessons: load-induced false failures, a host sleep, a stale Redis.
+- **The combined run:** the six B33 harnesses together on one fresh database, 128/128. No new seam defect.
+- **The seams reconciled:**
+  - `PackageUnavailable` mapped centrally to 422;
+  - the agent-runner bridge widened;
+  - §CI's specialised competitor watchlist kept beside §PK's general one;
+  - the basis rules kept: a scenario or estimate citation alone never substantiates a material key.
+
+### B33.2 — what the act found
+1. **Fixed — the competitor package's manifest** was not in the package framework's form (PKC).
+2. **Fixed — the Simulations page** swallowed a refused run's reason (`runRefusalLine`).
+3. **Fixed — `domain.dpk_assert_manifest`** let a manifest MISSING a required key through: `jsonb_typeof(<missing>)` is NULL, and `<>` fell through. Every type test is now `IS DISTINCT FROM`; PK1's case reproduced failing before the fix.
+4. **Fixed — the act's env lines** for the walk's scenario form (`17795a9`).
+5. **Reported, carried — the graph resolver has no scope filter.** Its method is a ranking pin, so an unbounded run settles every pending mention; the act bounds itself. Carried to **B52** (entity resolution, F-P3-10), 0.05–0.1 U.
+
+### B33.3 — the evidence
+Kept apart: LOCAL tests, HOSTED logs, the REHEARSAL, and the DEMONSTRATION. Every database-heavy local run went through the one-slot host-wide serializer, with the host kept awake.
+
+**Local:**
+- **The part and prelude harnesses on the folded candidate** (one fresh database each):
+
+  | Harness | Result |
+  |---|---|
+  | `phase6-prelude-b33` | 15/15 |
+  | `phase6-twin-b33` | 24/24 |
+  | `phase6-supply-b33` | 18/18 |
+  | `phase6-packages-b33` | 34 (33 + the act-found PK1 case) |
+  | `phase6-competitor-b33` | 29/29 |
+  | `phase6-journal-recovery-b33` | 11/11 |
+  | **all six together** on ONE fresh database | **128/128** |
+
+- **33 pinning harnesses, each alone:**
+
+  | Harness | Result | Harness | Result |
+  |---|---|---|---|
+  | branches-b30 | 21 | envelope-b30 | 22 |
+  | estimation-b30 | 11 | fitness-b21 | 6 |
+  | validity-b31 | 31 | experiments-b30 | 18 |
+  | composition-b29 | 14 | methods-b29 | 16 |
+  | impact-b31 | 22 | interfaces-b18 | 14 |
+  | recommendation-b35 | 20 | constraints-b29 | 15 |
+  | supply-network-b29 | 6 | orchestration-b31 | 8 |
+  | n01-definer-scope | 58 | gate22-authority-matrix | 17 |
+  | adversarial | 49 | entitlements-b91 | 34 |
+  | attention-events-b23 | 9 | attention-timer-b24 | 5 |
+  | agents | 9 | phase3-acceptance | 43 |
+  | phase4-acceptance | 16 | phase5-simulations | 9 |
+  | phase5-twins | 15 | context-b25 | 9 |
+  | registry-b25 | 37 | ensembles-b25 | 26 |
+  | long-history-b25 | 5 | series-unreadable-b25 | 3 |
+
+- **The full gates at `17795a9`** (the B33 code; `e73d605` adds only main's C15 data, docs and test fixtures, with no source, migration or web change):
+  - integration **2167/2167** (28.1 min, fresh database);
+  - web **297**; acceptance **58**; upgrade **PASS** (migrations 90, roles 57, schema_registry 52); boundaries clean; build clean;
+  - API unit 3411/3412 in the full run. The one failure is `c15-runner-behaviour`'s DETECTED-SECRET child timing out (`spawnSync ETIMEDOUT`) under host load; the file passes alone, 45/45. It fails the same way on main under the same load (recorded on #85); hosted build-test passes it.
+- **At `e73d605`:** the C15 suites 115/115 (runner, hermetic isolation, scanner provenance). `hermetic-suite-meta` exceeds its local 15-minute bound on this Mac (recorded on #85; on CI it takes ~63 s); the bound is unchanged.
+- **gitleaks 8.30.1:** origin's refs plus the branch scan clean.
+
+**Hosted** — **on the code-final head `e73d605`** (the B33 code, with main merged: #82, #83 and #85; every later commit on #84 is records only): **ci 38154675842: success** — build-test job 114515086394: integration **2167/2167**, API unit **3412** + **9**, web **297**, acceptance **58**, contracts 203, tokens 3, the upgrade proof PASS, its later steps 623 and 44; supply-chain job 114515086693: every step ok (10 dispositions in force, 0 ungoverned); browser-regression job 114515086505: success. **C19 lifecycle 38154675875: success.** Earlier attempts, kept: `17795a9` — ci 37988719052 FAILED (supply-chain: CVE-2026-78669 ungoverned until #85), the other jobs success. The records head's own checks, the merge and main's chain for it are recorded in the next delivery record (no records-only loop).
+
+**The rehearsal** (`eye_demo_b33`, restored from `eye_demo-pre-b33-20261009T112306Z.dump`; :3411, Redis 6395; `evidence/cp6/act-b33-rehearsal.txt`):
+- run 1 HELD (7.1 min); run 2 HELD with no new writes;
+- the four B33 walks: 18 passed, 1 skipped by design;
+- the B30 walks after the head moved: 10/10.
+
+**The demonstration** (`eye_demo`; `evidence/cp6/act-b33.txt`; 19 screenshots of record `evidence/phase6-browser/b33-*.png`):
+- 0111 applied 2026-10-09 by `db:migrate` (backup `eye_demo-pre-0111-20261009T173732Z.dump`);
+- run 1 **HELD** (131 ✓, 6.7 min); run 2 **HELD** (45 writes standing, 0.1 min); run 3 (`17795a9`'s act) **HELD**;
+- the four B33 walks: **18 passed, 1 skipped by design**. The twin walk's form test first fell back to its defaults because the act did not yet print the scenario env lines; it wrote nothing, was fixed in `17795a9`, and passed 5/5 on the rerun;
+- **rerun safety:** act-b30, act-b91 and act-b25 each **HELD**;
+- **the earlier walks** (B30 ×4, B25 ×3, B36 attention): **31/31**;
+- `/readyz` **ok** throughout, after the §B33.0 recovery.
+
+### B33.4 — the scenes as staged (eye_demo; `evidence/cp6/act-b33.txt`)
+- **Licence.** A `domain.*` write is refused EYE-ENT-001; T. Richter's licence change is refused. C. Marchetti, the vendor, reissues NORDWERK's licence **v3** with `domain_package`.
+- **Policy v11** routes the six B33 classes; all earlier classes are byte-identical.
+- **Personas.** D. Ivanova and P. Lindgren are created through the governed route (SYNTHETIC domain specialists).
+- **Agents.**
+  - The drifted Supply Chain Agent's trigger is refused (drift, escalated), then it is re-registered with the new digest and the old registration revoked.
+  - The Domain Intelligence Agent is registered.
+- **§TW.**
+  - `stress-75` is merged into `blockade`: refused while its key was unresolved, then merged, with its item closed.
+  - A draft is left open for the scenario-element form, which the walk grounds citing the scenario.
+  - The **78.074 %** estimate's approval is refused as stale (it was computed on v19 and the head moved). A. Hoffmann re-proposes it on the head, T. Nakamura approves (the corridor head moves), the items close, and the element cites the estimate.
+  - `open_run`'s new wording.
+  - An outside run raises the awaiting-admission item, the admission closes it, and the concurrence closes the admission's.
+- **§SC (F-P4-14):** "a tier-2 bearing supplier in Shenzhen is inferred behind a tier-1 vendor; the analyst validates it and the corridor disruption is mapped to the Regensburg line with two alternatives".
+  - Network v2 with Nordbearing AB (SYNTHETIC). SYNTHETIC shipping/customs records.
+  - The agent's after-tick scan infers the Shenzhen tier-2 site (confidence 0.875, sensitive). A non-analyst's validation and a reason-less one are refused; A. Hoffmann validates and T. Nakamura applies.
+  - E. Kovács links the network into the Regensburg line.
+  - C. Brenner opens the disruption from the REAL chokepoint4 indicator. The map shows Regensburg 450 → 112.5 units/day and SYN-LINE-A1 with 17.78 days of cover; the replay is identical.
+  - The Cape reroute and the dual source are FEASIBLE; safety stock is INFEASIBLE and constrained. No decision is taken.
+- **§CI (F-P4-15):** "a competitor gear-motor maker opens a Moroccan plant; the competitor profile updates and an alert reaches the strategy lead".
+  - Two SYNTHETIC sources with different publishers.
+  - The competitor package is certified by P. Lindgren; the owner's own approval is refused.
+  - Atlas Getriebemotoren AG (SYNTHETIC) profile v1.
+  - The agent proposes the plant event. Its own approval and A. Novák's are refused. A. Hoffmann approves **v2** (effective 2026-10-01).
+  - `domain.alert` is routed under v11 to `strategy_owner`, named owner A. Novák ("strategy lead of the 2027 plan"). The response is not decided.
+- **§PK.**
+  - M. Dvořák collects GDELT live (it was 361 h stale).
+  - `geopolitical-red-sea` is declared from the product's definition; O. Steiner decides its ontology; D. Ivanova approves and certifies.
+  - Conformance PASSED, the package is activated, the B27 scenario is linked, and the acceptance focus is MEASURED as PASSED (the chokepoint4 indicator is fresh at 33 of its 45 days; real data).
+  - The technology, cyber and financial packages are harness-proven only.
+
+### B33.5 — the bookkeeping (the B27/B31/B35 rule; construction completion separate from acceptance)
+| Feature | Rows I/P/M before → after | Verdict |
+|---|---|---|
+| F-P4-14 | 0/8/2 → **8/2/0** | Construction complete; partial on AT-30 / PR-30-006 (R2) |
+| F-P4-15 | 0/0/32 → **24/8/0** | Construction complete; partial on AT-29 / PR-29-006, AT-31 / PR-31-006, UX-36-006 (R2) and CAP-FW-09/-10/-11 (v08) — they need REAL providers (patents/research, threat intelligence and assets, licensed market data); synthetic or public data never closes them |
+| F-P5-03 | 19/2/0 → 19/2/0 | Construction complete; partial on PR-36-006 / AT-36 alone (R2) |
+| F-P5-02 | 14/3/0 → **15/2/0** | V03-T-308 now implemented; still completes at B26, after B41 |
+| F-P5-04 | 14/4/0 (unchanged) | Its B33 pieces are built; still completes at B100 |
+| F-P5-01 | 9/8/0 → **10/7/0** | AI-53-003 implemented; still at B29 |
+
+- **JRN-11 "detect" is judged met.** Opening from signals the product already detected and recorded (a B28 warning, an indicator, an admitted twin change; the reference is checked against the domain) satisfies the clause. It is stated that the agent's scan never raises a disruption on its own; it can only propose one.
+- **Carriers:**
+  - **B52**, the resolver's scope filter (+0.05–0.1 U own effort);
+  - the real-provider connectors stay **B42** (F-P1-05/-06) and **B44** (F-P1-08);
+  - unchanged: **B41**, **B26**, **B75/B110**, **B100**, **B77**, **B78**, **B111**, **B112**.
+- **External prerequisites:** the licensed providers per package; real domain specialists; a customer's supplier, shipment and customs records.
+- **R2:** the signed acceptance records listed above.
+- **Two older tracker inconsistencies, flagged for the owner, not moved:**
+  - V01-T-024's consequence estimation still names B31, which is delivered;
+  - V03-T-473 still has a remainder at B78 while F-P5-01's stage is B29.
+- **Re-derived:**
+  - rows implemented 1403 → 1437, missing 2268 → 2234;
+  - M1 2027-07-13 unchanged; the longest chain is unchanged, 92.42 U;
+  - B33 is pinned in A1_DELIVERED; the next A1 stage is **B92**.
+  - The tracker, schedule, summaries and controls passed, in their order.
+
+### B33.6 — the records
+- the migration ledger's 0111 row;
+- the tracker and STAGES;
+- PHASE6 §51;
+- the runbook §23;
+- DELIVERY_PLAN's B33 row;
+- INTEGRATION_SEQUENCE: #81, #82, #83, #84.
+
 ## Order and the next implementation batch
 
 B3, B1 and B2 are done in code, B4/B5 applied to the audit (the 2026-09-11 checkpoints), B6 done in
@@ -6463,4 +6653,4 @@ one artefact, no deployment leg. Every leg of every unit stays unaccepted until 
 carries its own signed evidence (P7-D). The synthetic-company demonstration (`eye_demo`, NORDWERK) remains the deliverable
 every batch is exercised on: B3's kinds become visible on the demonstration when a scenario with the
 new kinds is declared there through the governed route (a scripted act, `scripts/phase4/`), which is
-the next demonstration step after the hosted run is green. B22 delivered the consumers and the attention policy (0083; the register 44/6/0) and the sweep's remedy (0082). Then B23 (the commands and the query — L1-I02, L3-I02, L4-I02, L7-I02, L10-I02/-I03). B23 bound them and the briefing's attention section (0084; the register 50/0/0). From here the order is the finite delivery plan's (`audit/DELIVERY_PLAN.md`, `audit/delivery/STAGES.csv`): B24 (the attention completion, 0086) delivered on 2026-09-25 on `phase6-b24`, stacked on #63, and B24-F1 corrected on 2026-09-26 (0087, §B24.8) with the tracker corrected (§B24.9); B28 (stream processing, the weak-signal workbench, the early-warning lifecycle, and the two B24 carryovers) delivered on 2026-09-26 (0088, `phase6-b28`, stacked on #64); B32 (the Strategy Graph's capabilities and alignment, risk and opportunity intelligence, the decomposable Strategic Health Score) delivered on 2026-09-28 (0089, `phase6-b32`, stacked on #65; §B32; B32-F1 corrected, §B32.10); B34 (durable workflow, collaboration and human tasks, the human gates, the commitment tracker and the governed execution handoff, the attention classes and the act, risk and opportunity continued) delivered on 2026-09-28/29 (0090, `phase6-b34`, stacked on #66; §B34) and corrected forward on the owner's bounded review of 2026-09-29 (0091, §B34.10) — it advances five features, all completing in B36. B29 (twin families and composition, the simulation method fabric and the constraint runtime) delivered on 2026-09-29 (0092, `phase6-b29`, stacked on #67; §B29): the tracker's clauses of F-P5-01 and F-P5-05 closed, their rows' residuals assigned to B30, B31, B33, B78 and R2. B36 (strategic planning, the executive home, the briefing studio v3, the publishing center, and the carried completions of F-P6-04, F-P6-07, F-P6-08, F-P6-09, F-P6-14, F-P6-05 (u) and F-P4-13 (i)(j)) delivered on 2026-09-30 (0094, `phase6-b36`, stacked on #68; §B36): the eleven features' B36 clauses built and harness-proven by eight parts in parallel behind one prelude, the hosted browser cases of conditions (e), (h), (i), (m), (p) and (s) open at `fd47d1c`, the residuals assigned to B35, B45, B54, B55, B61, B83, B84, B85, B86, B92, B103 and R2. B90 (data products, semantic metrics, the metadata catalog) delivered on 2026-09-30 (0095, `phase6-b90`, stacked on #69; §B90): the three features' B90 clauses (F-P7-F-09, F-P7-F-10, F-P7-F-11) built and harness-proven by four parts in parallel behind one prelude (76/76 on a fresh database), the three features `partial` by the tracker's rule, the residuals assigned to B31, B45, B91, B92, B93, B106/R1 and B107 (B36's B103 and R2 residuals preserved); the act, the browser gate and the hosted run pending at the candidate (PR #70), then corrected forward for B90-F1 (0096, §B90.11). B27 (scenario anatomy, sets and coherence) delivered on 2026-10-01 (0097, `phase6-b27`, stacked on #70; §B27): the three features' B27 clauses (F-P4-07, F-P4-08, F-P4-09) built and harness-proven by three parts behind one prelude (72/72 on a fresh database) — the anatomy with the assumption register and the suspended branch, the sets with the plurality gate before a recommendation, the comparator and the portfolio review, the quality evaluation beyond coherence v1 and the governed branch probabilities with the frequency-to-probability map —, the three features `partial` by the tracker's rule, the residuals assigned to B26, B31, B35, B73, B74, B78, B83 and R2 (B90's and B36's residuals preserved); the act, the browser gate and the hosted run pending at the candidate (PR #71). B31 (simulation orchestration, impact analysis, validity) delivered on 2026-10-01 (0099, `phase6-b31`, stacked on #71; §B31: F-P5-09 complete by the rows, F-P5-06 and F-P5-07 partial with their residuals named). B31's bounded review of 2026-10-01 added 0100 (B31-F1, B31-F2) and owned every B31 residual (§B31.9); B90 and B27 travel as one candidate, #71. B35 (decision analysis, recommendation, explanation and appeal, reopen and replay) delivered on 2026-10-01/02 (0101, `phase6-b35`, stacked on #72; §B35: the four features advanced, each completing after its remaining construction). B30 (twin state, reconciliation, envelope and calibration) delivered on 2026-10-02 (0103; §B30), corrected forward on 2026-10-04 (0104, §B30.8), merged with #77 and #79. B91 (usage metering, the cost ledger, entitlements and licensing) delivered on 2026-10-04 (0105; §B91). B25 (the forecasting portfolio I) delivered on 2026-10-07/09 (0108, with the bounded review's 0109; §B25: F-P4-01, F-P4-02 and F-P4-03 complete by their rows). The next A1 stage in the schedule is B33. The C15 return to the official images merged with #57 (`main` `870b212`); the live demonstration containers were recreated onto those images on 2026-09-24 under the owner's word (§B22.2). The `ctx.build` remedy was delivered as 0082 (§B22.1) — the owner's 2026-09-24 word made it a technical choice. AU-MEM-0067 stays OPEN without a waiver: the per-object class (a missing or corrupt object under a reachable root) keeps A7's one 409 and the specification obligation stands (§B21.2's table).
+the next demonstration step after the hosted run is green. B22 delivered the consumers and the attention policy (0083; the register 44/6/0) and the sweep's remedy (0082). Then B23 (the commands and the query — L1-I02, L3-I02, L4-I02, L7-I02, L10-I02/-I03). B23 bound them and the briefing's attention section (0084; the register 50/0/0). From here the order is the finite delivery plan's (`audit/DELIVERY_PLAN.md`, `audit/delivery/STAGES.csv`): B24 (the attention completion, 0086) delivered on 2026-09-25 on `phase6-b24`, stacked on #63, and B24-F1 corrected on 2026-09-26 (0087, §B24.8) with the tracker corrected (§B24.9); B28 (stream processing, the weak-signal workbench, the early-warning lifecycle, and the two B24 carryovers) delivered on 2026-09-26 (0088, `phase6-b28`, stacked on #64); B32 (the Strategy Graph's capabilities and alignment, risk and opportunity intelligence, the decomposable Strategic Health Score) delivered on 2026-09-28 (0089, `phase6-b32`, stacked on #65; §B32; B32-F1 corrected, §B32.10); B34 (durable workflow, collaboration and human tasks, the human gates, the commitment tracker and the governed execution handoff, the attention classes and the act, risk and opportunity continued) delivered on 2026-09-28/29 (0090, `phase6-b34`, stacked on #66; §B34) and corrected forward on the owner's bounded review of 2026-09-29 (0091, §B34.10) — it advances five features, all completing in B36. B29 (twin families and composition, the simulation method fabric and the constraint runtime) delivered on 2026-09-29 (0092, `phase6-b29`, stacked on #67; §B29): the tracker's clauses of F-P5-01 and F-P5-05 closed, their rows' residuals assigned to B30, B31, B33, B78 and R2. B36 (strategic planning, the executive home, the briefing studio v3, the publishing center, and the carried completions of F-P6-04, F-P6-07, F-P6-08, F-P6-09, F-P6-14, F-P6-05 (u) and F-P4-13 (i)(j)) delivered on 2026-09-30 (0094, `phase6-b36`, stacked on #68; §B36): the eleven features' B36 clauses built and harness-proven by eight parts in parallel behind one prelude, the hosted browser cases of conditions (e), (h), (i), (m), (p) and (s) open at `fd47d1c`, the residuals assigned to B35, B45, B54, B55, B61, B83, B84, B85, B86, B92, B103 and R2. B90 (data products, semantic metrics, the metadata catalog) delivered on 2026-09-30 (0095, `phase6-b90`, stacked on #69; §B90): the three features' B90 clauses (F-P7-F-09, F-P7-F-10, F-P7-F-11) built and harness-proven by four parts in parallel behind one prelude (76/76 on a fresh database), the three features `partial` by the tracker's rule, the residuals assigned to B31, B45, B91, B92, B93, B106/R1 and B107 (B36's B103 and R2 residuals preserved); the act, the browser gate and the hosted run pending at the candidate (PR #70), then corrected forward for B90-F1 (0096, §B90.11). B27 (scenario anatomy, sets and coherence) delivered on 2026-10-01 (0097, `phase6-b27`, stacked on #70; §B27): the three features' B27 clauses (F-P4-07, F-P4-08, F-P4-09) built and harness-proven by three parts behind one prelude (72/72 on a fresh database) — the anatomy with the assumption register and the suspended branch, the sets with the plurality gate before a recommendation, the comparator and the portfolio review, the quality evaluation beyond coherence v1 and the governed branch probabilities with the frequency-to-probability map —, the three features `partial` by the tracker's rule, the residuals assigned to B26, B31, B35, B73, B74, B78, B83 and R2 (B90's and B36's residuals preserved); the act, the browser gate and the hosted run pending at the candidate (PR #71). B31 (simulation orchestration, impact analysis, validity) delivered on 2026-10-01 (0099, `phase6-b31`, stacked on #71; §B31: F-P5-09 complete by the rows, F-P5-06 and F-P5-07 partial with their residuals named). B31's bounded review of 2026-10-01 added 0100 (B31-F1, B31-F2) and owned every B31 residual (§B31.9); B90 and B27 travel as one candidate, #71. B35 (decision analysis, recommendation, explanation and appeal, reopen and replay) delivered on 2026-10-01/02 (0101, `phase6-b35`, stacked on #72; §B35: the four features advanced, each completing after its remaining construction). B30 (twin state, reconciliation, envelope and calibration) delivered on 2026-10-02 (0103; §B30), corrected forward on 2026-10-04 (0104, §B30.8), merged with #77 and #79. B91 (usage metering, the cost ledger, entitlements and licensing) delivered on 2026-10-04 (0105; §B91). B25 (the forecasting portfolio I) delivered on 2026-10-07/09 (0108, with the bounded review's 0109; §B25: F-P4-01, F-P4-02 and F-P4-03 complete by their rows). B33 (supply-chain intelligence and domain packages) delivered on 2026-10-09/11 (0111, with the journal recovery 0110 and the C15 dispositions; §B33: F-P4-14 and F-P4-15 construction complete). The next A1 stage in the schedule is B92. The C15 return to the official images merged with #57 (`main` `870b212`); the live demonstration containers were recreated onto those images on 2026-09-24 under the owner's word (§B22.2). The `ctx.build` remedy was delivered as 0082 (§B22.1) — the owner's 2026-09-24 word made it a technical choice. AU-MEM-0067 stays OPEN without a waiver: the per-object class (a missing or corrupt object under a reachable root) keeps A7's one 409 and the specification obligation stands (§B21.2's table).

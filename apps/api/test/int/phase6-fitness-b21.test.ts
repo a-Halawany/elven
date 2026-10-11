@@ -452,7 +452,7 @@ describe('B21.3 · fitness, coherence and challenge (0081; L5-I05, L6-I03, L7-I0
     expect(await runRow(R3)).toMatchObject({ envelope_state: 'inside', envelope_ack: null, twin_fitness: 'fit', fitness_state: 'none' });
     /* T1.6 THE ENVELOPE AT OPEN: 422 without an acknowledgement; 403 for a simulation operator's acknowledgement; a twin owner's admitted and recorded. */
     await refused(run(runOwner, { twinVersion: v2 }), /^run rejected \(envelope\): outside the operating envelope of supply-flow@1 \(corridor_delay_days = 75 outside \[0, 60\]\); a run outside the envelope needs/, 422, 'EYE-REQ-001');
-    await refused(run(operator2, { twinVersion: v2, envelope: { acknowledge: true, reason: 'the 75-day delay is the stress case (harness)' } }), /^run rejected \(envelope_ack\): the acknowledgement of an envelope breach is a twin owner's or the domain administrator's/, 403, 'EYE-AUT-001');
+    await refused(run(operator2, { twinVersion: v2, envelope: { acknowledge: true, reason: 'the 75-day delay is the stress case (harness)' } }), /^run rejected \(envelope_ack\): the acknowledgement of an envelope breach is a twin owner's of this domain; the acting principal is not one/, 403, 'EYE-AUT-001');   // B33 twin (0111 §TW8): the pin moves with the wording
     expect((await failure(run(runOwner, { twinVersion: v2, envelope: { acknowledge: 'yes', reason: 'malformed (harness)' } }))).status, 'the intake: a malformed acknowledgement').toBe(422);
     const t6 = await mark();
     const outside = (await run(runOwner, { twinVersion: v2, envelope: { acknowledge: true, reason: 'the 75-day delay is the stress case (harness)' } })).run;

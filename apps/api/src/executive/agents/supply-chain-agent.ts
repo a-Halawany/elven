@@ -26,6 +26,7 @@ import type { PipelineService } from '../../pipeline/pipeline.service.js';
 import { SupplyNetworkCapability } from '../../twin/supply-network/supply-network.capabilities.js';
 import { backlogOf, elementsOf, newFindings } from '../../twin/supply-network/supply-network.service.js';
 import { analyseNetwork, findingsOf } from '../../twin/supply-network/network.js';
+/* B33 supply */ import { SupplyIntelBridge } from '../../twin/supply-intel/bridge.js'; /* end B33 supply */
 
 export const SUPPLY_CHAIN_AGENT_VERSION = '1.0.0';
 export const SUPPLY_CHAIN_AGENT_METHOD = `supply-chain-agent@${SUPPLY_CHAIN_AGENT_VERSION}`;
@@ -36,8 +37,20 @@ const METHOD_TEXT = 'one run under the Supply Chain Agent\'s own session, task s
   + '(tier coverage; the capacity bottleneck — the one capacity whose relief raises the throughput to the terminal site the most; single-source '
   + 'exposure) and its findings drafted to the twin\'s owner under twin.proposal.draft (bottleneck, coverage_gap, single_source — the same measure '
   + 'never twice; at most the registered max_items; the rest wait); the agent admits no version and writes no element (its attempt is refused at '
-  + 'the PDP and recorded on the run)';
+  + 'the PDP and recorded on the run)'
+  /* B33 supply (0111 §SC2/§SC3): the scan's B33 steps — a NEW method text, a new digest: a registered agent of the B29 digest is DRIFTED (its scan
+     refused and escalated) until it is registered anew with this runtime's digest */
+  + '; then (B33) per supply network with a live record source declared by its owner: the unread evidence of those sources retrieved under '
+  + 'observation.evidence.retrieve (custody, at most 10 per source per run), the shipment / customs / supplier records parsed, the hidden tiers '
+  + 'inferred by hidden-tier@1 (a vendor input no declared route brings, a shipper named by the records; confidence from the records\' count and '
+  + 'agreement) and drafted with what was read under twin.supply.inference.draft for a named analyst to validate (the agent never validates, '
+  + 'never applies); and each mapped disruption whose network moved re-mapped under twin.supply.disruption.map (supply-map@1, the read before '
+  + 'the write, at most 3 per run)';
+/* end B33 supply */
 export const SUPPLY_CHAIN_AGENT_DIGEST = createHash('sha256').update(`twin.supply_chain.agent@${SUPPLY_CHAIN_AGENT_VERSION}:${METHOD_TEXT}`, 'utf8').digest('hex');
+/* B33 supply: the runtime identity offered to the schedule (a drifted registration is never started by the hook — it is registered anew) */
+SupplyIntelBridge.setIdentity({ version: SUPPLY_CHAIN_AGENT_VERSION, digest: SUPPLY_CHAIN_AGENT_DIGEST });
+/* end B33 supply */
 
 type Row = Record<string, unknown>;
 interface Refusal { action: string; code: string; reason: string; at: string }
@@ -102,7 +115,11 @@ export async function supplyScan(d: ScanDeps, p: AuthenticatedPrincipal, a: {
       else throw e;
     }
   }
-  return { backlog: backlog.length, scanned, drafted, unchanged, waiting, max_items: maxItems, receipts,
+  /* B33 supply (0111 §SC2/§SC3): the B33 steps — inference from the declared record sources, re-maps of moved disruptions (twin/supply-intel) */
+  const intel = SupplyIntelBridge.scanner();
+  const supply = intel === null ? { skipped: 'no supply-intelligence steps in this application' } : await intel(d, p, a);
+  /* end B33 supply */
+  return { backlog: backlog.length, scanned, drafted, unchanged, waiting, max_items: maxItems, receipts, /* B33 supply */ supply, /* end B33 supply */
            marked: 'agent-produced: proposed to the twin\'s owner, never admitted by the agent', agent: a.identity,
            provenance: { ...provenance, contributors: scanned.map((s) => `TWN:${String(s['twin_id'])}@${String(s['version'])}`) } };
 }

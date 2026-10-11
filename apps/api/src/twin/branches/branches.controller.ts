@@ -8,7 +8,7 @@
  *   POST …/twin-branches/twins/:twinId/versions/:v/diff         twin.read            the version against actual's head (or `against`)
  *   POST …/twin-branches/twins/:twinId/served                   twin.read            twin.served_state (asOf: an instant)
  *   POST …/twin-branches/twins/:twinId/freshness-policy         twin.freshness.policy
- *   POST …/twin-branches/twins/:twinId/merges/open              twin.branch.merge    (→ twin.reconciliation to the owner)
+ *   POST …/twin-branches/twins/:twinId/merges/open              twin.branch.merge    (→ twin.reconciliation to the owner; B33 twin: `targetBranch` — actual by default, or another non-actual branch)
  *   POST …/twin-branches/merges/:mergeId/read                   twin.read
  *   POST …/twin-branches/merges/:mergeId/resolve                twin.branch.reconcile
  *   POST …/twin-branches/merges/:mergeId/complete               twin.branch.merge, then twin.version, twin.ground, twin.version.admit (four governed writes)
@@ -144,15 +144,19 @@ export class BranchesController {
 
   @Post('/twins/:twinId/merges/open')
   async openMerge(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Param('twinId') twinId: string,
-                  @Body() body: { payload?: { sourceBranch?: string; reason?: string } }) {
+                  @Body() body: { payload?: { sourceBranch?: string; reason?: string; /* B33 twin */ targetBranch?: string } }) {
     const { envelope, principal } = ctx(req);
     assertUuid(twinId, 'unknown_twin', envelope.correlation_id);
     const src = body.payload?.sourceBranch;
     if (typeof src !== 'string' || !BRANCH.test(src) || src === 'actual') bad(envelope.correlation_id, 'branch merge rejected (branch): sourceBranch names a branch other than actual');
+    /* B33 twin (0111 §TW1): the target — actual unless named; another branch than the source */
+    const tgt = body.payload?.targetBranch ?? 'actual';
+    if (typeof tgt !== 'string' || !BRANCH.test(tgt) || tgt === src) bad(envelope.correlation_id, 'branch merge rejected (branch): targetBranch names actual or another branch of the twin than the source');
+    /* end B33 twin */
     const reason = reasonOf(body.payload?.reason, envelope.correlation_id, 'branch merge');
     const out = await this.pipeline.write(envelope, principal, this.route(tenantId, domainId, 'twin.branch.merge', 'TWN', twinId), BranchCapability.merge,
       async (cap, scope) => {
-        const r = await this.branches.openMerge(cap, scope, twinId, src as string, reason, principal.principalId, envelope.correlation_id);
+        const r = await this.branches.openMerge(cap, scope, twinId, src as string, reason, principal.principalId, envelope.correlation_id, tgt);
         return { result: r, targetType: 'TWN', targetId: twinId, targetVersion: null, outboxEvent: null };
       });
     return { merge: out.result, receipt: receipt(out) };
@@ -213,14 +217,16 @@ export class BranchesController {
     receipts.push({ step: 'plan', ...receipt(w1) });
     const m = w1.result as Row;
     const twinId = String(m['twin_id']);
-    const plan = m['plan'] as { carry_from: number; except: string[]; ground: Row[]; open_draft: number | null };
-    // 2 — the draft on actual (the existing open port)
+    const plan = m['plan'] as { carry_from: number; except: string[]; ground: Row[]; open_draft: number | null; /* B33 twin */ branch_id?: string };
+    /* B33 twin (0111 §TW1): the draft opens on the merge's TARGET (actual for B30's merges) */
+    const target = String(plan.branch_id ?? m['target_branch'] ?? 'actual');
+    // 2 — the draft on the target (the existing open port)
     let draft = plan.open_draft;
     if (draft === null || draft === undefined) {
       const w2 = await this.pipeline.write(step(envelope, 'twin.version'), principal, this.route(tenantId, domainId, 'twin.version', 'TWN', twinId), BranchCapability.draft,
         async (cap, scope) => {
           const knownAt = await cap.dbNow();
-          const r = await this.twins.openVersion(cap.twinVersion, scope, twinId, { branchId: 'actual', forkedFromVersion: null, knownAt,
+          const r = await this.twins.openVersion(cap.twinVersion, scope, twinId, { branchId: target /* B33 twin (was: 'actual') */, forkedFromVersion: null, knownAt,
             observedThrough: (m['target_observed_through'] ?? null) as string | null, carryFrom: plan.carry_from, except: plan.except }, principal.principalId, corr);
           return { result: r, targetType: 'TWN', targetId: twinId, targetVersion: String(r.version), outboxEvent: null };
         });

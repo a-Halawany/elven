@@ -103,7 +103,7 @@ describe('B24 timer · the queue, the identity, the intake, the message', () => 
     expect(status(() => validateRegisterAgent({ kind: 'attention', ...base, codeDigest: 'a'.repeat(64) }, 'c'))).toMatchObject({ status: 422, message: expect.stringMatching(/registered with this runtime's timer/) });
     expect(status(() => validateRegisterAgent({ kind: 'attention', ...base, budgets: { ...base.budgets, tick_every_seconds: 30 } }, 'c'))).toMatchObject({ status: 422 });
     expect(status(() => validateRegisterAgent({ kind: 'briefing', ...base, codeDigest: 'a'.repeat(64) }, 'c'))).toMatchObject({ status: 422, message: expect.stringMatching(/only an attention agent carries it/) });
-    expect(status(() => validateRegisterAgent({ kind: 'oracle' as never, ...base }, 'c'))).toMatchObject({ status: 422, message: 'kind is decision, briefing, reporting, attention, weak_signal, risk, opportunity, supply_chain or reconciliation' }); // B28 (0088): the weak_signal kind; B32 (0089): risk, opportunity; B29 (0092) §B: supply_chain
+    expect(status(() => validateRegisterAgent({ kind: 'oracle' as never, ...base }, 'c'))).toMatchObject({ status: 422, message: 'kind is decision, briefing, reporting, attention, weak_signal, risk, opportunity, supply_chain, reconciliation or domain_intelligence' }); // B28 (0088): the weak_signal kind; B32 (0089): risk, opportunity; B29 (0092) §B: supply_chain; B30: reconciliation; B33 (0111 §0.3): domain_intelligence
   });
   it('the message a delivery carries is deterministic; the demo mailbox\'s says SYNTHETIC and that no email was sent', () => {
     const c = { item_id: DEL, signal_class: 'warning.raised', title: 'Bab el-Mandeb transits fell', item_event: 'item.escalated', item_state: 'escalated', due_at: '2026-09-25T10:00:00Z',

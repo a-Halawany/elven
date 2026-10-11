@@ -33,11 +33,14 @@ import { checkFamilyAdmission, checkFamilyGround } from '../families/admission.j
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const KINDS = ['observed', 'estimated', 'assumed', 'predicted', 'simulated'] as const;
 export type ElementKind = typeof KINDS[number];
-const OBJECT_TYPE_OF: Readonly<Record<Exclude<CitationKind, 'entity'>, string>> = Object.freeze({
+const OBJECT_TYPE_OF: Readonly<Record<Exclude<CitationKind, 'entity' | /* B33 §0: not a canonical object */ 'estimate'>, string>> = Object.freeze({
   evidence: 'EVD', claim: 'CLM', forecast: 'FCT', assumption: 'ASU', run: 'SIM', /* B29 (0092): a coupled element cites the upstream twin version */ twin: 'TWN',
+  /* B33 §0 (0111 §0.4): a scenario element cites the SCN object */ scenario: 'SCN',
 });
 const DEPENDS_ON_KIND: Readonly<Record<CitationKind, string>> = Object.freeze({
   evidence: 'evidence', claim: 'claim', entity: 'entity', forecast: 'forecast', assumption: 'strategy', run: 'run', /* B29 (0092) */ twin: 'twin',
+  /* B33 §0: a scenario is reached as `strategy` (the 0065 reach convention: depends_on_kind 'strategy' on the scenario id); an estimate as `estimate` (0111 §0.4 widens the CHECK) */
+  scenario: 'strategy', estimate: 'estimate',
 });
 const VALIDATION_STATES = ['validated', 'validated_retrospective', 'unvalidated', 'validation_impossible'] as const;
 /** The dependency walk's bound, applied to the pending-closure read as well. */
@@ -310,6 +313,11 @@ export class TwinService {
       return { citation: { kind: 'entity', id: e.entity_id, version: 1, digest: entityDigest(e) }, controls: null, truthState: null,
                lifecycle: e.lifecycle_state, synthetic: false, recordedAt: null, eventTime: null, validation: null, payload: null };
     }
+    /* B33 §0: an ESTIMATE citation names a twin.estimates row, not a canonical object — the generic grounding refuses it; the estimate's own
+       decision grounds it (§TW's re-declared twin.decide_estimate) */
+    if (c.kind === 'estimate') {
+      throw new HttpException(errorBody('EYE_REQ_001', correlationId, `estimate ${c.id} is cited only by the estimate's own decision (twin.estimate.decide), never grounded directly`), 422);
+    }
     const row: CitedObjectRow | undefined = await cap.citedObject({ objectType: OBJECT_TYPE_OF[c.kind], id: c.id, version: c.version });
     if (row === undefined) {
       throw new HttpException(errorBody('EYE_STA_001', correlationId,
@@ -577,7 +585,7 @@ export class TwinService {
       object_id: twinId, object_type: 'TWN', tenant_id: ctx.tenantId, domain_id: ctx.domainId, scope: 'DOMAIN',
       object_version: String(version), lifecycle_state: 'active', owning_component: 'CP-TWN-01',
       accountable_owner: `principal:${String(twin['owner_principal_id'])}`,
-      source_object_ids: [...new Set(citations.filter((c) => c.kind !== 'entity').map((c) => `${OBJECT_TYPE_OF[c.kind as Exclude<CitationKind, 'entity'>]}:${c.id}@${c.version}`))],
+      source_object_ids: [...new Set(citations.filter((c) => c.kind !== 'entity').map((c) => `${c.kind === 'estimate' ? 'estimate' /* B33 §0 */ : OBJECT_TYPE_OF[c.kind as Exclude<CitationKind, 'entity' | 'estimate'>]}:${c.id}@${c.version}`))],
       event_time: null, observation_time: observedThrough === null ? null : `${observedThrough}T00:00:00.000Z`,
       valid_from: null, valid_to: null, recorded_at: now, time_precision: observedThrough === null ? 'exact' : 'day',
       source_clock_quality: 'trusted', truth_state: 'asserted', synthetic_state: syntheticState, confidence: null, uncertainty: null,

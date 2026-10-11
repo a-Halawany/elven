@@ -81,13 +81,14 @@ export function servedLine(s: Served | null | undefined): string {
   return `FROZEN — the validated snapshot v${s.version} is served instead of the head v${s.head_version ?? '?'}: “${s.warning ?? ''}” · ${exp}`;
 }
 
-/** A merge's state, in words. */
-export function mergeStateMark(m: Pick<Merge, 'state' | 'unresolved' | 'diverging' | 'merged_version'>): { glyph: string; token: string; text: string } {
+/** A merge's state, in words. B33 twin (0111 §TW1): the TARGET named (actual's words unchanged when the target is actual). */
+export function mergeStateMark(m: Pick<Merge, 'state' | 'unresolved' | 'diverging' | 'merged_version'> & { target_branch?: string }): { glyph: string; token: string; text: string } {
+  const into = m.target_branch === undefined || m.target_branch === 'actual' ? 'actual' : m.target_branch;   // B33 twin
   switch (m.state) {
-    case 'open': return { glyph: '◌', token: '--eye-color-warning', text: `OPEN — merging back is refused until reconciliation: ${m.unresolved.length} of ${m.diverging.length} diverging key(s) unresolved` };
+    case 'open': return { glyph: '◌', token: '--eye-color-warning', text: `OPEN — merging ${into === 'actual' ? 'back' : `into ${into}`} is refused until reconciliation: ${m.unresolved.length} of ${m.diverging.length} diverging key(s) unresolved` };
     case 'reconciled': return { glyph: '◍', token: '--eye-color-accent-default', text: 'RECONCILED — every diverging key is resolved; the twin\'s owner may complete it' };
-    case 'completing': return { glyph: '▶', token: '--eye-color-accent-default', text: 'COMPLETING — the plan is fixed and actual is held until its admission' };
-    case 'merged': return { glyph: '●', token: '--eye-color-success', text: `MERGED — admitted on actual as v${m.merged_version ?? '?'}` };
+    case 'completing': return { glyph: '▶', token: '--eye-color-accent-default', text: `COMPLETING — the plan is fixed and ${into} is held until its admission` };
+    case 'merged': return { glyph: '●', token: '--eye-color-success', text: `MERGED — admitted on ${into} as v${m.merged_version ?? '?'}` };
     case 'refused': return { glyph: '✕', token: '--eye-color-critical', text: 'REFUSED by the twin\'s owner' };
     case 'withdrawn': return { glyph: '—', token: '--eye-color-ink-muted', text: 'WITHDRAWN' };
     default: return { glyph: '○', token: '--eye-color-ink-muted', text: String(m.state).toUpperCase() };
@@ -95,8 +96,12 @@ export function mergeStateMark(m: Pick<Merge, 'state' | 'unresolved' | 'divergin
 }
 
 const side = (s: ElementSide | null): string => (s === null ? 'absent' : `${JSON.stringify(s.value)}${s.unit ? ` ${s.unit}` : ''} (${s.kind})`);
-/** One diverging key: the branch's value against actual's (and the fork point's), as the server computed it. */
-export function divergingLine(d: Diverging): string {
+/** One diverging key: the branch's value against actual's (and the fork point's), as the server computed it. B33 twin: against the merge's
+ *  TARGET and its BASE (the common version) when the target is another branch — actual's words unchanged. */
+export function divergingLine(d: Diverging, target = 'actual'): string {
+  if (target !== 'actual') {   // B33 twin
+    return `${d.key}: source ${side(d.source)} · ${target} ${side(d.target)}${d.base === null ? '' : ` · common version ${side(d.base)}`}${d.conflict ? ` · CONFLICT (${target} changed it too)` : ''}`;
+  }
   return `${d.key}: branch ${side(d.source)} · actual ${side(d.target)}${d.base === null ? '' : ` · fork point ${side(d.base)}`}${d.conflict ? ' · CONFLICT (actual changed it too)' : ''}`;
 }
 /** A resolution, in words. */
@@ -121,9 +126,9 @@ export function dependencyLine(d: Freshness['dependency'] | undefined): string {
 export function branchEventLine(e: { event: string; details: Row }): string {
   const d = e.details;
   switch (e.event) {
-    case 'merge.opened': return `merge of ${String(d['source_branch'])} v${String(d['source_version'])} into actual v${String(d['target_version'])} opened — ${((d['diverging_keys'] ?? []) as string[]).length} diverging key(s)`;
+    case 'merge.opened': return `merge of ${String(d['source_branch'])} v${String(d['source_version'])} into ${String(d['target_branch'] ?? 'actual') /* B33 twin */} v${String(d['target_version'])} opened — ${((d['diverging_keys'] ?? []) as string[]).length} diverging key(s)`;
     case 'merge.key_resolved': return `${String(d['key'])} resolved ${String(d['resolution'])}`;
-    case 'merge.merged': return `merged as actual v${String(d['merged_version'])}`;
+    case 'merge.merged': return `merged as ${String(d['target_branch'] ?? 'actual') /* B33 twin */} v${String(d['merged_version'])}`;
     case 'checkpoint.restored': return `checkpoint v${String(d['from_version'])} restored on ${String(d['branch_id'])} as draft v${String(d['draft_version'])} — ${String(d['reason'] ?? '')}`;
     case 'snapshot.frozen': return `v${String(d['version'])} frozen until ${String(d['expires_at'])}`;
     case 'snapshot.lifted': return `freeze of v${String(d['version'])} lifted — ${String(d['reason'] ?? '')}`;
@@ -174,3 +179,68 @@ export const branches = {
     p<{ freeze: Freeze; receipt: Receipt }>(s, `/twins/${twinId}/freeze`, 'twin.snapshot.freeze', payload, twinId),
   lift: (s: Scope, freezeId: string, reason: string) => p<{ freeze: Freeze; receipt: Receipt }>(s, `/freezes/${freezeId}/lift`, 'twin.snapshot.freeze', { reason }),
 };
+
+/* B33 twin (0111 §TW1/§TW2/§TW3) — the merge between two non-actual branches and the SCENARIO-ELEMENT form ────────────────────────────── */
+/** The scenario-element form as the owner fills it (strings, as the inputs hold them). */
+export interface ScenarioElementForm {
+  key: string; value: string; unit: string; scenarioId: string; scenarioBranchId: string;
+  /** what the element rests on: the scenario branch's assumption, the scenario itself (the SCN object), or both */
+  basis: 'assumption' | 'scenario' | 'both'; assumptionId: string;
+  /** DATEs as the inputs give them (YYYY-MM-DD): sent as the days they name, never shifted */
+  validFrom: string; validTo: string; confidence: string;
+}
+export interface ScenarioElementPayload {
+  key: string; value: unknown; unit: string | null; scenarioId: string; scenarioBranchId: string; assumption?: { id: string }; citeScenario?: true;
+  validFrom?: string; validTo?: string; confidence?: number;
+}
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+/** The form's payload — the shape only (the SERVER judges the scenario, the branch, the assumption's link and materiality, and its refusal is
+ *  shown in its own words). A number-looking value is sent as a number; a DATE is sent as the day it names. */
+export function scenarioElementPayload(f: ScenarioElementForm): { ok: true; payload: ScenarioElementPayload } | { ok: false; why: string } {
+  const key = f.key.trim();
+  if (!/^[a-z][a-z0-9_.-]*(:[A-Za-z0-9_.-]+)?$/.test(key)) return { ok: false, why: 'a key like shock.corridor_delay_days' };
+  if (f.value.trim() === '') return { ok: false, why: 'the scenario value' };
+  if (!UUID.test(f.scenarioId)) return { ok: false, why: 'the scenario' };
+  if (!UUID.test(f.scenarioBranchId)) return { ok: false, why: 'the scenario branch' };
+  const wantsAssumption = f.basis === 'assumption' || f.basis === 'both';
+  if (wantsAssumption && !UUID.test(f.assumptionId.trim())) return { ok: false, why: 'the assumption id (an ASU linked to the scenario branch)' };
+  if (f.validFrom !== '' && !DAY.test(f.validFrom)) return { ok: false, why: 'valid from is a day' };
+  if (f.validTo !== '' && !DAY.test(f.validTo)) return { ok: false, why: 'valid to is a day' };
+  if (f.validFrom !== '' && f.validTo !== '' && f.validTo < f.validFrom) return { ok: false, why: 'valid to is not before valid from' };
+  let confidence: number | undefined;
+  if (f.confidence.trim() !== '') {
+    const c = Number(f.confidence);
+    if (Number.isNaN(c) || c < 0 || c > 1) return { ok: false, why: 'a confidence in [0, 1]' };
+    confidence = c;
+  }
+  const raw = f.value.trim();
+  const value: unknown = raw !== '' && !Number.isNaN(Number(raw)) ? Number(raw) : raw;
+  return { ok: true, payload: {
+    key, value, unit: f.unit.trim() === '' ? null : f.unit.trim(), scenarioId: f.scenarioId, scenarioBranchId: f.scenarioBranchId,
+    ...(wantsAssumption ? { assumption: { id: f.assumptionId.trim() } } : {}),
+    ...(f.basis === 'scenario' || f.basis === 'both' ? { citeScenario: true as const } : {}),
+    ...(f.validFrom === '' ? {} : { validFrom: f.validFrom }), ...(f.validTo === '' ? {} : { validTo: f.validTo }),
+    ...(confidence === undefined ? {} : { confidence }),
+  } };
+}
+/** A grounded scenario element as the server answered it, in words (its citations named). */
+export function groundedScenarioLine(g: { key: string; material?: boolean; scenario?: { id: string; version: number; branch?: string } | null; assumption?: { id: string; version: number } | null }): string {
+  const cites = [g.scenario ? `scenario ${g.scenario.id.slice(0, 8)}… v${g.scenario.version}${g.scenario.branch ? ` (branch ${g.scenario.branch.slice(0, 8)}…)` : ''}` : null,
+                 g.assumption ? `assumption ${g.assumption.id.slice(0, 8)}… v${g.assumption.version}` : null].filter((x) => x !== null);
+  return `${g.key} grounded as a SCENARIO element citing ${cites.join(' and ')}${g.material === true ? ' (a material key)' : ''}`;
+}
+/** The merge targets a branch may be merged into: actual and every OTHER branch with an admitted head (never itself). */
+export function mergeTargets(tree: BranchNode[], source: string): string[] {
+  if (source === '') return [];
+  return ['actual', ...tree.filter((b) => b.branch_id !== 'actual' && b.branch_id !== source && b.head !== null).map((b) => b.branch_id)];
+}
+export const branchesB33 = {
+  /** open a merge of `source` into `target` (actual or another non-actual branch) */
+  openMerge: (s: Scope, twinId: string, sourceBranch: string, targetBranch: string, reason: string) =>
+    p<{ merge: Merge; receipt: Receipt }>(s, `/twins/${twinId}/merges/open`, 'twin.branch.merge', { sourceBranch, targetBranch, reason }, twinId),
+  /** ground scenario elements into an open draft (the existing grounding port, kind `scenario`) */
+  groundScenario: (s: Scope, twinId: string, version: number, elements: ScenarioElementPayload[]) =>
+    p<{ grounded: Row[]; receipt: Receipt }>(s, `/twins/${twinId}/versions/${version}/scenario-elements`, 'twin.ground', { elements }, twinId),
+};
+/* end B33 twin */
