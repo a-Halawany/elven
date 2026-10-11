@@ -11,7 +11,7 @@ import { PipelineModule } from '../pipeline/pipeline.module.js';
 /* B92 computations-b */ /* end B92 computations-b */
 /* B92 comparability */ /* end B92 comparability */
 /* B92 experience */ /* end B92 experience */
-/* B92 review */ /* end B92 review */
+/* B92 review */ import { AnalyticsReviewController } from './review/review.controller.js'; import { AnalyticsReviewService } from './review/review.service.js'; /* end B92 review */
 
 @Module({
   imports: [PipelineModule],
@@ -22,7 +22,7 @@ import { PipelineModule } from '../pipeline/pipeline.module.js';
     /* B92 computations-b */ /* end B92 computations-b */
     /* B92 comparability */ /* end B92 comparability */
     /* B92 experience */ /* end B92 experience */
-    /* B92 review */ /* end B92 review */
+    /* B92 review */ AnalyticsReviewController, /* end B92 review */
   ],
   providers: [
     /* B92 §0 */ AnalyticsComputeService, /* end B92 §0 */
@@ -31,7 +31,7 @@ import { PipelineModule } from '../pipeline/pipeline.module.js';
     /* B92 computations-b */ /* end B92 computations-b */
     /* B92 comparability */ /* end B92 comparability */
     /* B92 experience */ /* end B92 experience */
-    /* B92 review */ /* end B92 review */
+    /* B92 review */ AnalyticsReviewService, /* end B92 review */
   ],
   exports: [/* B92 §0 */ AnalyticsComputeService /* end B92 §0 */],
 })

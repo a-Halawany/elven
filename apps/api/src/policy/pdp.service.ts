@@ -2227,6 +2227,26 @@ const BUNDLE_V1: Rule[] = [
   /* B92 experience */
   /* end B92 experience */
   /* B92 review */
+  /* B92 §OR (0113_b92_x_or; PR-70-001 — the operating review). EXACT rules — no `analytics` prefix rule exists. OPEN and ASSEMBLE — an
+     analyst, the product analytics owner, an executive, a strategy owner (assembling CITES results; it computes nothing). NOTE — the review's
+     participants by role (the analytics roles, the executives, the strategy, risk, decision and forecast owners, the decision authority); the
+     port admits the chair or a holder of one of the review's participant roles, a named human. HOLD, DECIDE (the follow-through) and CLOSE (the
+     signed, digest-bound close) — the chair roles (executive, strategy owner, product analytics owner), HUMAN-GATED; the port re-checks that the
+     actor IS the review's chair and a human. No agent holds a rule here. The reads (the list, the review, the series) are analytics.read. On a
+     contracted tenant open / assemble / note are gated by `product_analytics`; the human-gated acts and the reads are exempt. */
+  { actionPrefix: 'analytics.review.open', exact: true, requiredAnyRole: [{ role: 'product_analyst', atScope: 'DOMAIN' }, { role: 'product_analytics_owner', atScope: 'DOMAIN' },
+    { role: 'executive', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'analytics.review.assemble', exact: true, requiredAnyRole: [{ role: 'product_analyst', atScope: 'DOMAIN' }, { role: 'product_analytics_owner', atScope: 'DOMAIN' },
+    { role: 'executive', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'analytics.review.note', exact: true, requiredAnyRole: [{ role: 'product_analyst', atScope: 'DOMAIN' }, { role: 'product_analytics_owner', atScope: 'DOMAIN' },
+    { role: 'privacy_officer', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' },
+    { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'analytics.review.hold', exact: true, requiredAnyRole: [{ role: 'executive', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' },
+    { role: 'product_analytics_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'analytics.review.decide', exact: true, requiredAnyRole: [{ role: 'executive', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' },
+    { role: 'product_analytics_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'analytics.review.close', exact: true, requiredAnyRole: [{ role: 'executive', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' },
+    { role: 'product_analytics_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   /* end B92 review */
   /* B36 home */
   /* THE EXECUTIVE HOME, THE CADENCE, THE COMMAND VIEWS, THE SEARCH, THE METRICS (0094 §H; F-P6-11: WS-01, JRN-19, PER-03, CAP-EO-01/-02/-04).
