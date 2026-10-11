@@ -1257,6 +1257,15 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   { match: /^competitor (profile|comparison|assessment|watchlist) rejected \((state|stale|duplicate)\)/i, status: 409, code: 'EYE_STA_002' },
   { match: /^competitor (profile|comparison|assessment|watchlist) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
   /* end B33 competitor */
+  /* B92 §0 (0113) — EVERY B92 noun's rows, centrally (the B33 integration lesson: no part ships a port without its rows). The class form
+     `<noun> rejected (<class>): …`, anchored, B9's order: 403 actor|ownership|authority|separation_of_duties|person (a person-grained metric or
+     cohort — no employee-performance inference) · 404 unknown_* · 409 state|stale|duplicate · 422 the rest (`package` and the entitlement are
+     answered by their own rows). `ux experiment` (not `experiment`: B31's family). The nouns are apps/api/src/analytics/seams.ts AnalyticsNoun. */
+  { match: /^(metric computation|metric definition|analytics purpose|analytics scope|metric use|semantic object|cohort comparison|cost reconciliation|telemetry definition|telemetry event|consent|ux experiment|experience finding|experience action|experience journey|experience segment|experience baseline|analytics export|operating review) rejected \((actor|ownership|authority|separation_of_duties|person)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^(metric computation|metric definition|analytics purpose|analytics scope|metric use|semantic object|cohort comparison|cost reconciliation|telemetry definition|telemetry event|consent|ux experiment|experience finding|experience action|experience journey|experience segment|experience baseline|analytics export|operating review) rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^(metric computation|metric definition|analytics purpose|analytics scope|metric use|semantic object|cohort comparison|cost reconciliation|telemetry definition|telemetry event|consent|ux experiment|experience finding|experience action|experience journey|experience segment|experience baseline|analytics export|operating review) rejected \((state|stale|duplicate)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^(metric computation|metric definition|analytics purpose|analytics scope|metric use|semantic object|cohort comparison|cost reconciliation|telemetry definition|telemetry event|consent|ux experiment|experience finding|experience action|experience journey|experience segment|experience baseline|analytics export|operating review) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B92 §0 */
   /* B36 home (0094 §H) — the executive home's families in the CLASS form `<noun> rejected (<class>): …`: `cadence rejected`, `executive room
      rejected` (0044's unclassed `room rejected: …` texts are the decision room's and are mapped by no row; the noun here is `executive room`
      and every row is anchored), `objective review rejected` (the SoD of §H2's re-declared convene_review and of open_subject_room — B23's

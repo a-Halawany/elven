@@ -150,6 +150,11 @@ const BUNDLE_V1: Rule[] = [
       { role: 'domain_specialist', atScope: 'DOMAIN' },
       { role: 'domain_intelligence_agent', atScope: 'DOMAIN' },
       /* end B33 §0 */
+      /* B92 §0 (0113 §0.2): the product analytics owner, the privacy officer and the product analyst resolve their own scope, as every new domain role does */
+      { role: 'product_analytics_owner', atScope: 'DOMAIN' },
+      { role: 'privacy_officer', atScope: 'DOMAIN' },
+      { role: 'product_analyst', atScope: 'DOMAIN' },
+      /* end B92 §0 */
     ],
     obligations: [{ type: 'audit_access' }],
     requiresPurpose: true,
@@ -2194,6 +2199,35 @@ const BUNDLE_V1: Rule[] = [
   { actionPrefix: 'domain.competitor.twin.bind', exact: true, requiredAnyRole: [{ role: 'twin_owner', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
   { actionPrefix: 'domain.competitor.twin.decide', exact: true, requiredAnyRole: [{ role: 'twin_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   /* end B33 competitor */
+  /* B92 §0 */
+  /* B92 §0 (0113 §0.7–§0.9; F-P7-F-03). EXACT rules — no `analytics` prefix rule exists. THE READ (analytics.read: definitions, purposes,
+     scopes, results with their records, the registry, comparisons, the experience workspace, the operating review) is consequential and
+     audited: the analytics roles, the executives and the decision, strategy, risk and forecast owners an operating review serves, the data
+     steward, the auditor and the attention agent. COMPUTE — an analyst, the owner, or the attention agent (AI may compute; it never approves).
+     REPLAY — an analyst, the owner, the auditor. Every non-exempt `analytics.*` write is gated by `product_analytics` on a contracted tenant
+     (0113 §0.4); the human-gated rules and the read are exempt. The parts' rules follow in their blocks. */
+  { actionPrefix: 'analytics.read', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' },
+    { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'product_analytics_owner', atScope: 'DOMAIN' }, { role: 'privacy_officer', atScope: 'DOMAIN' }, { role: 'product_analyst', atScope: 'DOMAIN' },
+    { role: 'executive', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' },
+    { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'data_steward', atScope: 'DOMAIN' }, { role: 'attention_agent', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'analytics.metric.compute', exact: true, requiredAnyRole: [{ role: 'product_analyst', atScope: 'DOMAIN' }, { role: 'product_analytics_owner', atScope: 'DOMAIN' },
+    { role: 'attention_agent', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'analytics.metric.replay', exact: true, requiredAnyRole: [{ role: 'product_analyst', atScope: 'DOMAIN' }, { role: 'product_analytics_owner', atScope: 'DOMAIN' },
+    { role: 'auditor', atScope: 'TENANT' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B92 §0 */
+  /* B92 definitions */
+  /* end B92 definitions */
+  /* B92 computations-a */
+  /* end B92 computations-a */
+  /* B92 computations-b */
+  /* end B92 computations-b */
+  /* B92 comparability */
+  /* end B92 comparability */
+  /* B92 experience */
+  /* end B92 experience */
+  /* B92 review */
+  /* end B92 review */
   /* B36 home */
   /* THE EXECUTIVE HOME, THE CADENCE, THE COMMAND VIEWS, THE SEARCH, THE METRICS (0094 §H; F-P6-11: WS-01, JRN-19, PER-03, CAP-EO-01/-02/-04).
      EXACT rules — no `executive` prefix rule exists and none of these names is a prefix of another rule's. THE READS (executive.home.read
