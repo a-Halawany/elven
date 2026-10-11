@@ -1,0 +1,89 @@
+Qualification of the Go release of 2026-10-08 against the pinned gosu binaries, per architecture
+  amd64: input sha256 52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0, GOARCH=amd64, govulncheck v1.7.0, db_last_modified 2026-10-08T22:31:09Z; 73 linked packages; modules ['github.com/moby/sys/user', 'github.com/tianon/gosu', 'golang.org/x/sys', 'stdlib']
+  arm64: input sha256 3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44, GOARCH=arm64, govulncheck v1.7.0, db_last_modified 2026-10-08T22:31:09Z; 72 linked packages; modules ['github.com/moby/sys/user', 'github.com/tianon/gosu', 'golang.org/x/sys', 'stdlib']
+
+GO-2026-6599 CVE-2026-94448 — Reset context tracking on consecutive template expressions in html/template
+   affected packages: html/template (stdlib)
+   amd64: govulncheck level ['module']; packages absent: html/template=yes; non-stdlib modules in binary: none; scanner severity (2026-10-09 evidence scan) UNKNOWN
+   arm64: govulncheck level ['module']; packages absent: html/template=yes; non-stdlib modules in binary: none; scanner severity (2026-10-09 evidence scan) UNKNOWN
+   => QUALIFIES
+GO-2026-6600 CVE-2026-97030 — Recognize yield as regexp preceder keyword in html/template
+   affected packages: html/template (stdlib)
+   amd64: govulncheck level ['module']; packages absent: html/template=yes; non-stdlib modules in binary: none; scanner severity (2026-10-09 evidence scan) UNKNOWN
+   arm64: govulncheck level ['module']; packages absent: html/template=yes; non-stdlib modules in binary: none; scanner severity (2026-10-09 evidence scan) UNKNOWN
+   => QUALIFIES
+GO-2026-6603 CVE-2026-78659 — HTTP/2 server memory exhaustion due to Trailer headers in net/http
+   affected packages: net/http (stdlib); net/http/internal/http2 (stdlib); golang.org/x/net/http2 (golang.org/x/net)
+   amd64: govulncheck level ['module']; packages absent: net/http=yes, net/http/internal/http2=yes, golang.org/x/net/http2=yes; non-stdlib modules in binary: none; scanner severity (2026-10-09 evidence scan) UNKNOWN
+   arm64: govulncheck level ['module']; packages absent: net/http=yes, net/http/internal/http2=yes, golang.org/x/net/http2=yes; non-stdlib modules in binary: none; scanner severity (2026-10-09 evidence scan) UNKNOWN
+   => QUALIFIES
+GO-2026-6604 CVE-2026-56857 — Root.Mkdir(All) can follow junctions out of the root on Windows in os
+   affected packages: os (stdlib, goos windows); internal/syscall/windows (stdlib, goos windows)
+   amd64: govulncheck level ['none']; packages absent: os=NO, internal/syscall/windows=yes; non-stdlib modules in binary: none; scanner severity (2026-10-09 evidence scan) UNKNOWN
+   arm64: govulncheck level ['none']; packages absent: os=NO, internal/syscall/windows=yes; non-stdlib modules in binary: none; scanner severity (2026-10-09 evidence scan) UNKNOWN
+   => DOES NOT QUALIFY
+GO-2026-6605 CVE-2026-56866 — HTTP/1 client connection desynchronization after CONNECT rejection in net/http
+   affected packages: net/http (stdlib); net/http/httputil (stdlib)
+   amd64: govulncheck level ['module']; packages absent: net/http=yes, net/http/httputil=yes; non-stdlib modules in binary: none; scanner severity (2026-10-09 evidence scan) UNKNOWN
+   arm64: govulncheck level ['module']; packages absent: net/http=yes, net/http/httputil=yes; non-stdlib modules in binary: none; scanner severity (2026-10-09 evidence scan) UNKNOWN
+   => QUALIFIES
+GO-2026-6607 CVE-2026-97031 — Reject malformed ECH outer extension references in crypto/tls
+   affected packages: crypto/tls (stdlib)
+   amd64: govulncheck level ['module']; packages absent: crypto/tls=yes; non-stdlib modules in binary: none; scanner severity (2026-10-09 evidence scan) HIGH
+   arm64: govulncheck level ['module']; packages absent: crypto/tls=yes; non-stdlib modules in binary: none; scanner severity (2026-10-09 evidence scan) HIGH
+   => QUALIFIES
+GO-2026-6608 CVE-2026-94440 — Memory limit bypass when parsing MIME headers in net/textproto, mime/multipart
+   affected packages: net/textproto (stdlib); mime/multipart (stdlib)
+   amd64: govulncheck level ['module']; packages absent: net/textproto=yes, mime/multipart=yes; non-stdlib modules in binary: none; scanner severity (2026-10-09 evidence scan) UNKNOWN
+   arm64: govulncheck level ['module']; packages absent: net/textproto=yes, mime/multipart=yes; non-stdlib modules in binary: none; scanner severity (2026-10-09 evidence scan) UNKNOWN
+   => QUALIFIES
+GO-2026-6609 CVE-2026-78667 — Lack of limit on size of parsed Range headers in net/http
+   affected packages: net/http (stdlib)
+   amd64: govulncheck level ['module']; packages absent: net/http=yes; non-stdlib modules in binary: none; scanner severity (2026-10-09 evidence scan) HIGH
+   arm64: govulncheck level ['module']; packages absent: net/http=yes; non-stdlib modules in binary: none; scanner severity (2026-10-09 evidence scan) HIGH
+   => QUALIFIES
+GO-2026-6610 CVE-2026-78660 — HTTP/2 transport accepts malformed framing-related headers in net/http
+   affected packages: net/http (stdlib); net/http/internal/http2 (stdlib); golang.org/x/net/http2 (golang.org/x/net)
+   amd64: govulncheck level ['module']; packages absent: net/http=yes, net/http/internal/http2=yes, golang.org/x/net/http2=yes; non-stdlib modules in binary: none; scanner severity (2026-10-09 evidence scan) UNKNOWN
+   arm64: govulncheck level ['module']; packages absent: net/http=yes, net/http/internal/http2=yes, golang.org/x/net/http2=yes; non-stdlib modules in binary: none; scanner severity (2026-10-09 evidence scan) UNKNOWN
+   => QUALIFIES
+GO-2026-6611 CVE-2026-78669 — Excessive CPU consumption from repeated initial window changes in net/http
+   affected packages: net/http (stdlib); net/http/internal/http2 (stdlib); golang.org/x/net/http2 (golang.org/x/net)
+   amd64: govulncheck level ['module']; packages absent: net/http=yes, net/http/internal/http2=yes, golang.org/x/net/http2=yes; non-stdlib modules in binary: none; scanner severity (2026-10-09 evidence scan) UNKNOWN
+   arm64: govulncheck level ['module']; packages absent: net/http=yes, net/http/internal/http2=yes, golang.org/x/net/http2=yes; non-stdlib modules in binary: none; scanner severity (2026-10-09 evidence scan) UNKNOWN
+   => QUALIFIES
+GO-2026-6612 CVE-2026-78663 — Double flow control refund on HTTP/2 server streams in net/http
+   affected packages: net/http (stdlib); net/http/internal/http2 (stdlib); golang.org/x/net/http2 (golang.org/x/net)
+   amd64: govulncheck level ['module']; packages absent: net/http=yes, net/http/internal/http2=yes, golang.org/x/net/http2=yes; non-stdlib modules in binary: none; scanner severity (2026-10-09 evidence scan) UNKNOWN
+   arm64: govulncheck level ['module']; packages absent: net/http=yes, net/http/internal/http2=yes, golang.org/x/net/http2=yes; non-stdlib modules in binary: none; scanner severity (2026-10-09 evidence scan) UNKNOWN
+   => QUALIFIES
+GO-2026-6613 CVE-2026-94439 — HTTP/1 server connection desynchronization after 2xx CONNECT response in net/http
+   affected packages: net/http (stdlib)
+   amd64: govulncheck level ['module']; packages absent: net/http=yes; non-stdlib modules in binary: none; scanner severity (2026-10-09 evidence scan) MEDIUM
+   arm64: govulncheck level ['module']; packages absent: net/http=yes; non-stdlib modules in binary: none; scanner severity (2026-10-09 evidence scan) MEDIUM
+   => QUALIFIES
+GO-2026-6617 CVE-2026-97032 — HTTP/2 server crash due to HPACK encoder race in net/http
+   affected packages: net/http (stdlib); net/http/internal/http2 (stdlib); golang.org/x/net/http2 (golang.org/x/net)
+   amd64: govulncheck level ['module']; packages absent: net/http=yes, net/http/internal/http2=yes, golang.org/x/net/http2=yes; non-stdlib modules in binary: none; scanner severity (2026-10-09 evidence scan) MEDIUM
+   arm64: govulncheck level ['module']; packages absent: net/http=yes, net/http/internal/http2=yes, golang.org/x/net/http2=yes; non-stdlib modules in binary: none; scanner severity (2026-10-09 evidence scan) MEDIUM
+   => QUALIFIES
+
+Summary: GO-2026-6599 (CVE-2026-94448): QUALIFIES; GO-2026-6600 (CVE-2026-97030): QUALIFIES; GO-2026-6603 (CVE-2026-78659): QUALIFIES; GO-2026-6604 (CVE-2026-56857): DOES NOT QUALIFY; GO-2026-6605 (CVE-2026-56866): QUALIFIES; GO-2026-6607 (CVE-2026-97031): QUALIFIES; GO-2026-6608 (CVE-2026-94440): QUALIFIES; GO-2026-6609 (CVE-2026-78667): QUALIFIES; GO-2026-6610 (CVE-2026-78660): QUALIFIES; GO-2026-6611 (CVE-2026-78669): QUALIFIES; GO-2026-6612 (CVE-2026-78663): QUALIFIES; GO-2026-6613 (CVE-2026-94439): QUALIFIES; GO-2026-6617 (CVE-2026-97032): QUALIFIES
+
+Positive control (the detector is not vacuous): packages the binaries DO link are detected as linked on both
+  amd64: os=linked, os/exec=linked, syscall=linked, golang.org/x/sys/unix=linked, github.com/moby/sys/user=linked, fmt=linked
+  arm64: os=linked, os/exec=linked, syscall=linked, golang.org/x/sys/unix=linked, github.com/moby/sys/user=linked, fmt=linked
+
+Same finding set as the committed 2026-10-09 reports (infra/images/official/20261009/govulncheck/gosu-<arch>.govulncheck.json),
+compared as sets (config, SBOM, OSV ids, every finding record with sorted keys):
+  amd64: equal=True
+  arm64: equal=True
+
+Gate-blocking today: the real FINAL gate run of 2026-10-10 on 1974624 (pinned trivy 0.73.0, vulnerability DB built
+2026-10-09T19:06:47Z; the gate scans at HIGH,CRITICAL) reports these advisories of the release in gosu, on both children:
+  amd64: CVE-2026-78667 HIGH, CVE-2026-78669 HIGH, CVE-2026-97031 HIGH
+  arm64: CVE-2026-78667 HIGH, CVE-2026-78669 HIGH, CVE-2026-97031 HIGH
+  CVE-2026-78667 and CVE-2026-97031 are governed by SCX-0012/0013; CVE-2026-78669 was UNGOVERNED on both platforms
+  (gate FAIL, 50 findings, 8 records, 2 unmatched) and is the first application of the standing authorization
+  (SCX-0014/0015). Every other advisory above is below the gate's severity filter today and is NOT given a record:
+  a record for a row the scanner does not report fails the gate as UNUSED.
