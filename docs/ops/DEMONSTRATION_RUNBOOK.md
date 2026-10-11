@@ -699,3 +699,29 @@ so its queues must never share the demonstration's Redis — and an APFS clone o
   - run the API on **:3411** with Redis **6395** and a copy of the vault;
   - run `EYE_DB_NAME=eye_demo_b25 EYE_API=http://localhost:3411 node scripts/phase6/act-b25.mjs`;
   - for the walks: web on :3413 through the rehearsal-only CORS shim, `EYE_SHOTS` to a scratch directory.
+
+## 23. B33 on the demonstration (2026-10-09): what changed, the operator preparation, and how to rehearse
+
+- **The state.**
+  - eye_demo is migrated through **0111**. 0110 (the journal recovery) came first, with backup `eye_demo-pre-0110-20261009T173602Z.dump`. Then 0111, with backup `eye_demo-pre-0111-20261009T173732Z.dump`. Both were applied by `pnpm db:migrate`; never apply-pending.
+  - The API and web run the B33 build in §13's form.
+  - `/readyz` reads **ok** again: the journal-only degradation was recovered through the governed entrypoint (CP6 §B33.0).
+- **The order of the act** (`node scripts/phase6/act-b33.mjs`; about 7 minutes; rerun-safe):
+  1. The licence: NORDWERK's licence v3 adds `domain_package`. Every `domain.*` write is refused EYE-ENT-001 before it.
+  2. Policy v11.
+  3. The synthetic specialists D. Ivanova and P. Lindgren.
+  4. The agents: the Supply Chain Agent re-registered with its new digest, the drifted registration revoked; the Domain Intelligence Agent registered.
+  5. The scenes §TW, §SC, §CI, §PK.
+- **Real data and timing.**
+  - GDELT is collected live when its last evidence is more than 20 h old; the conformance run must follow within its 1-day freshness.
+  - The PortWatch chokepoint4 indicator must be at most 45 days old.
+  - The 78.074 % estimate assertion holds only while PortWatch has not published a new count.
+  - The corridor twin stays stale by its 2-day SLO, so the disruption map runs without a telemetry twin; this is said in the LIMITS.
+  - Approving the estimate moves the corridor head; the B30 estimation walk selects its 62 % row by value.
+- **The walks.**
+  - `e2e/phase6-b33-{twin,supply,packages,competitor}.demo.spec.ts` with the act's `EYE_B33_*` lines, loaded with a parser.
+  - The twin walk's scenario-element form is a one-shot write: run it once per draft.
+- **The rehearsal rig.**
+  - Restore the newest `eye_demo-pre-b33-*` / `pre-0111-*` dump into `eye_demo_b33` as the superuser, then migrate it.
+  - Run the API on :3411 with Redis 6395 and a copy of the vault.
+  - Run every heavy step through `EYE_HEAVY_SLOTS=1 scripts/dev/heavy-slot.sh`.

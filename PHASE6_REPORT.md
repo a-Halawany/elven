@@ -4709,3 +4709,46 @@ B25 COMPLETES F-P4-01 (14/0/0), F-P4-02 (9/0/0) and F-P4-03 (5/0/0) by their row
 - Construction completion is not acceptance: verification stays local, then hosted; the acceptance legs remain P7-D and R2.
 - Stated on the rows: the failed empirical 3y/5y validation; the target version pinned on the forecast rather than in the manifest; the harness-only ensemble exclusions.
 - Rows implemented 1376 → 1403. M1's finish is unchanged (2027-07-13). The next A1 stage is B33.
+
+## 51. B33 (2026-10-09): supply-chain intelligence and domain packages (0111), with the journal recovery (0110) and the C15 dispositions
+
+### 51.1 What B33 implements
+- **Supply-chain intelligence (F-P4-14):**
+  - network uncertainty and tier coverage;
+  - hidden-tier inference: the Supply Chain Agent drafts, a named analyst validates, the twin owner applies;
+  - disruption mapping through live twin links to the affected line, with cover and line-stop, replayable;
+  - alternatives evaluated on scenario branches, feasibility through the B29 constraint engine, coverage limits;
+  - the continuity contract;
+  - `/twins/supply`.
+- **Domain packages (F-P4-15):**
+  - the framework: manifests, per-section specialist certification (the ontology through the graph's own gate), conformance, health that disables an incompatible function and routes migration, assessments with source diversity, watchlists, events, alerts;
+  - geopolitical, technology, cyber and financial packages, each with a measured acceptance focus;
+  - competitor intelligence: temporal profiles, graph identity, the Domain Intelligence Agent proposing and a named analyst approving, comparisons on a declared basis, alerts routed under the published policy;
+  - `/prediction/domains`, `/prediction/domains/competitors`;
+  - the `domain_package` entitlement over `domain.*`.
+- **Twin pieces (F-P5-03/-02/-04):**
+  - merges between non-actual branches; the scenario citation and its web form;
+  - the estimate citation; the cross-twin dependency check before publication;
+  - a topology harness proof;
+  - items closed on decision, plus the outside-run awaiting-admission item;
+  - `open_run`'s wording.
+- **Before the demonstration:**
+  - the 63 stale reconciliation runs closed through the governed agent route;
+  - eye_demo's audit readiness recovered through the new governed journal-only path (0110), with the four lost records identified honestly;
+  - C15: the owner's NOT_AFFECTED approval for two new gosu advisories, applied on per-architecture evidence.
+
+### 51.2 Results
+- **Local** (each heavy run alone):
+  - the six B33 harnesses together 128/128;
+  - 33 pinning harnesses;
+  - integration 2167/2167, API unit 3411 + 9 (the one known load timeout passes alone), web 297, acceptance 58, upgrade PASS, boundaries clean.
+- **Hosted:** **on the code-final head `e73d605`** (the B33 code, with main merged: #82, #83 and #85; every later commit on #84 is records only): **ci 38154675842: success** — build-test job 114515086394: integration **2167/2167**, API unit **3412** + **9**, web **297**, acceptance **58**, contracts 203, tokens 3, the upgrade proof PASS, its later steps 623 and 44; supply-chain job 114515086693: every step ok (10 dispositions in force, 0 ungoverned); browser-regression job 114515086505: success. **C19 lifecycle 38154675875: success.** Earlier attempts, kept: `17795a9` — ci 37988719052 FAILED (supply-chain: CVE-2026-78669 ungoverned until #85), the other jobs success. The records head's own checks, the merge and main's chain for it are recorded in the next delivery record (no records-only loop).
+- **Demonstration:**
+  - the act HELD three times on eye_demo;
+  - the B33 walks 18 passed + 1 skipped by design;
+  - act-b30 / b91 / b25 held; the earlier walks 31/31.
+
+### 51.3 Bookkeeping
+- **F-P4-14:** 8/2/0. **F-P4-15:** 24/8/0. Construction is complete. Both read partial only on the R2 signed acceptance records and on three packages that need licensed real providers (external).
+- **F-P5-03:** construction complete; partial on R2 alone. **F-P5-02**, **F-P5-04** and **F-P5-01** are advanced.
+- **Counts:** rows implemented 1403 → 1437. M1 is unchanged (2027-07-13). The next A1 stage is B92.
