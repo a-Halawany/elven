@@ -1,0 +1,44 @@
+CVE-2026-78669 (GO-2026-6611) in the pinned gosu binaries — evidence of 2026-10-10 for SCX-0014 / SCX-0015
+
+Why: the hosted supply-chain job on PR #84 (ci run 37988719052, job 114017128886) and a local FINAL run of the gate on
+1974624 with the pinned scanners (trivy 0.73.0, DB built 2026-10-09T19:06:47Z) report one new UNGOVERNED row on both
+children of postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873:
+  CVE-2026-78669 HIGH stdlib pkg:golang/stdlib@v1.24.6 usr/local/bin/gosu   (linux/amd64 and linux/arm64)
+
+The advisory (advisories/GO-2026-6611.json, Go vulndb, published 2026-10-08T22:31:09Z, unchanged since; NVD record
+"Awaiting Analysis", secondary CVSS 3.1 7.5 AV:N/A:H; GitHub's advisory API returns no entry for this CVE today):
+  "Excessive CPU consumption from repeated initial window changes in net/http" — affected:
+    stdlib  net/http                 introduced 0,        fixed 1.26.9
+    stdlib  net/http/internal/http2  introduced 1.27.0-0, fixed 1.27.2
+    golang.org/x/net  golang.org/x/net/http2  introduced 0, fixed 0.60.0
+  gosu is go1.24.6 (inside the stdlib range); it has no golang.org/x/net dependency at all.
+
+The binaries: the same two files as 2026-10-09 (../20261009/gosu/IDENTITY.txt: index -> child -> layer -> binary),
+re-hashed as mounted (qualification/input-<arch>.txt):
+  amd64 52c8749d0142edd234e9d6bd5237dff2d81e71f43537e2f4f66f75dd4b243dd0 (child d8703cd7…)
+  arm64 3a8ef022d82c0bc4a98bcb144e77da714c25fcfa64dccc57f6aba7ae47ff1a44 (child 89f74717…)
+
+Method (one container run, golang@sha256:1ae0735f00daffa3aaf1363a5184c0d2dc55c78e3db4ec70241cdac97bf84b59 =
+golang:1.25-alpine, go1.25.14, GOTOOLCHAIN=local, govulncheck v1.7.0 — the toolchain of every earlier gosu analysis),
+per binary, each in its own invocation:
+  sha256sum <bin>                      -> qualification/input-<arch>.txt
+  go version -m <bin>                  -> qualification/modules-<arch>.txt   (the module list: stdlib go1.24.6,
+                                          github.com/tianon/gosu v1.19.0, github.com/moby/sys/user v0.1.0,
+                                          golang.org/x/sys v0.1.0 — NO golang.org/x/net)
+  go tool nm <bin>                     -> qualification/nm-<arch>.txt        (the full symbol table)
+  govulncheck -mode binary -json <bin> -> compared, as sets, with the committed 2026-10-09 report of that architecture
+                                          (../20261009/govulncheck/gosu-<arch>.govulncheck.json): EQUAL on both — the
+                                          database has not moved (2026-10-08T22:31:09Z), so that committed report is
+                                          the fresh analysis and is the one bound; the re-run is not committed again.
+Then, on the host, qualification/QUALIFICATION.txt (python over those files): for EVERY advisory of the 2026-10-08
+release present in the analysis, per architecture: the govulncheck level of its finding, and for every affected
+import path whether any symbol of that package is linked (the package set derived from the symbol table, plus a raw
+"<path>." search), and whether its module is in the binary's module list; a positive control shows the detector finds
+the packages the binaries do link (os, os/exec, syscall, golang.org/x/sys/unix, github.com/moby/sys/user, fmt).
+
+Result for GO-2026-6611 / CVE-2026-78669, independently on each architecture:
+  amd64: finding at MODULE level only; net/http, net/http/internal/http2 and golang.org/x/net/http2 ABSENT; the
+         golang.org/x/net module is not in the binary.                                            -> QUALIFIES
+  arm64: the same, on its own binary and symbol table.                                            -> QUALIFIES
+Network used: Docker Hub (the golang image is local already), the Go module proxy (govulncheck), vuln.go.dev, NVD and
+the GitHub advisory API.
