@@ -2217,6 +2217,28 @@ const BUNDLE_V1: Rule[] = [
     { role: 'auditor', atScope: 'TENANT' }], requiresPurpose: true, maxConsequence: 'C2' },
   /* end B92 §0 */
   /* B92 definitions */
+  /* B92 §MD (0113_b92_x_md; PR-70-002/-003, CAP-DL-11, V01-T-040, DP-44-005). EXACT rules. PROPOSALS (purpose, scope, definition) — a product analyst or
+     the product analytics owner; the PORT also requires a named HUMAN (an agent holding the role is refused there: a definition is a human's proposal).
+     DECISIONS and RETIREMENTS are human-gated: a purpose by the PRIVACY OFFICER (the privacy and minimisation review), a scope and a definition by the
+     PRODUCT ANALYTICS OWNER — the port re-checks the role, the human and that the decider is not the proposer. USES — those who cite a result in a review,
+     a package, a briefing, a publication, an export or a finding (the port re-checks; ES-40-008's qualification is the port's). products.metric.use —
+     those who cite a B90 serving (DP-44-005; the readers of B90's serve rule who author packages, briefings and publications). */
+  { actionPrefix: 'analytics.purpose.propose', exact: true, requiredAnyRole: [{ role: 'product_analyst', atScope: 'DOMAIN' }, { role: 'product_analytics_owner', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'analytics.purpose.decide', exact: true, requiredAnyRole: [{ role: 'privacy_officer', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'analytics.purpose.retire', exact: true, requiredAnyRole: [{ role: 'privacy_officer', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'analytics.scope.propose', exact: true, requiredAnyRole: [{ role: 'product_analyst', atScope: 'DOMAIN' }, { role: 'product_analytics_owner', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'analytics.scope.decide', exact: true, requiredAnyRole: [{ role: 'product_analytics_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'analytics.scope.retire', exact: true, requiredAnyRole: [{ role: 'product_analytics_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'analytics.definition.propose', exact: true, requiredAnyRole: [{ role: 'product_analyst', atScope: 'DOMAIN' }, { role: 'product_analytics_owner', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'analytics.definition.decide', exact: true, requiredAnyRole: [{ role: 'product_analytics_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'analytics.definition.retire', exact: true, requiredAnyRole: [{ role: 'product_analytics_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'analytics.use.record', exact: true, requiredAnyRole: [{ role: 'product_analyst', atScope: 'DOMAIN' }, { role: 'product_analytics_owner', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' },
+    { role: 'executive_operator', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' },
+    { role: 'forecast_owner', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'products.metric.use', exact: true, requiredAnyRole: [{ role: 'executive', atScope: 'DOMAIN' }, { role: 'executive_operator', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' },
+    { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' },
+    { role: 'data_steward', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'product_analyst', atScope: 'DOMAIN' }, { role: 'product_analytics_owner', atScope: 'DOMAIN' }],
+    requiresPurpose: true, maxConsequence: 'C2' },
   /* end B92 definitions */
   /* B92 computations-a */
   /* end B92 computations-a */
