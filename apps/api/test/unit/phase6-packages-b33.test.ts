@@ -110,6 +110,17 @@ describe('the conformance suite (PK3)', () => {
       'requires supply ^2.0.0; the active version is 1.4.0', 'conflicts with cyber *, and cyber 1.0.0 is active', `the active cyber 1.0.0 declares a conflict with ${geo.key} ^1.0.0`,
     ]);
   });
+  it('contract compatibility (B33-F, F1): the REVERSE requirement — an active consumer requiring this package with a range the proposed version does not satisfy; a malformed range satisfies nothing', () => {
+    const active = geo.manifest;
+    const major = structuredClone(active); major.release = { ...major.release, semver: '2.0.0', migration: 'the 2.0 line restates the corridor extension' };
+    const consumer = (range: string) => [{ package_key: 'supply', domain_kind: 'supply_chain', version: 1, semver: '1.0.0', requires: [{ package_key: geo.key, range }], conflicts: [] }];
+    const f = (range: string) => factsFor({ ...geo, semver: '2.0.0', manifest: major }, { active: { version: 1, semver: '1.0.0', manifest: active }, packages: consumer(range) });
+    expect(contractCompatibility(f('^1.0.0')).findings).toEqual([`the active supply 1.0.0 requires ${geo.key} ^1.0.0; 2.0.0 does not satisfy it`]);
+    expect(contractCompatibility(f('^1.0.0 || ^2.0.0')).passed).toBe(true);
+    expect(contractCompatibility(f('>=1.0.0 <3.0.0')).passed).toBe(true);
+    expect(contractCompatibility(f('^1.x')).findings).toEqual([`the active supply 1.0.0 requires ${geo.key} ^1.x; 2.0.0 does not satisfy it`]);
+    expect(contractCompatibility(factsFor(geo, { packages: consumer('^1.0.0') })).passed).toBe(true);   // the same requirement met by 1.0.0
+  });
   it('sources, models, risk meaning, purpose, coverage', () => {
     const f = factsFor(geo);
     f.sources[0] = src(f.sources[0]!.source_key, { lifecycle_state: 'suspended' }); f.sources[1] = src(f.sources[1]!.source_key, { rights_state: 'withdrawn' });
@@ -152,6 +163,12 @@ describe('health (PK4): the incompatible function disabled, the conflict exposed
     const w = evaluateHealth(factsFor({ ...geo, manifest: r }));
     expect(w.conflict).toMatchObject({ reason: expect.stringMatching(/the required package competitor is no longer active/) });
     expect(w.conflict!.functions).toBeUndefined();
+  });
+  it('health (B33-F): the reverse requirement exposes the whole-package conflict, as contract compatibility words it', () => {
+    const consumer = [{ package_key: 'supply', domain_kind: 'supply_chain', version: 1, semver: '1.0.0', requires: [{ package_key: geo.key, range: '^2.0.0' }], conflicts: [] }];
+    const h = evaluateHealth(factsFor(geo, { packages: consumer }));
+    expect(h.conflict).toMatchObject({ reason: expect.stringMatching(new RegExp(`the active supply 1\\.0\\.0 requires ${geo.key} \\^2\\.0\\.0; 1\\.0\\.0 does not satisfy it`)) });
+    expect(h.conflict!.functions).toBeUndefined();
   });
 });
 

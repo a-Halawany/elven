@@ -118,7 +118,7 @@ export class PackagesService implements OnModuleInit {
     const out = await this.read(env, p, t, d, 'DPG', packageId, async (cap) => {
       const v = version ?? Number((await cap.versions(packageId))[0]?.['version'] ?? NaN);
       if (!Number.isFinite(v)) return null;
-      return { version: v, facts: await cap.facts(packageId, v), acceptance: await cap.acceptanceFacts(packageId, v) };
+      return { version: v, facts: await cap.facts(packageId, v), acceptance: await cap.acceptanceFacts(packageId, v), effect_check: await cap.effectCheck(packageId, v) };
     });
     if (out.result === null || out.result.facts === null) throw refuse('domain package', 'unknown_version', `package ${packageId} has no such version`, env.correlation_id, 404);
     return { ...out.result, receipt: PackagesService.receipt(out) };

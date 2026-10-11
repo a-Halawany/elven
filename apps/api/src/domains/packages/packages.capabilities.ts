@@ -41,6 +41,8 @@ export interface PackageReads {
   ledger(packageId: string, limit: number): Promise<Row[]>;
   facts(packageId: string, version: number): Promise<Row | null>;
   acceptanceFacts(packageId: string, version: number): Promise<Row | null>;
+  /** B33-F (0112): what certification / activation would refuse on right now — the facts of other authorities re-validated (no locks). */
+  effectCheck(packageId: string, version: number): Promise<Row[] | null>;
   latestObjectVersion(objectType: 'DPG' | 'DAS', objectId: string): Promise<number | null>;
   diversity(tenantId: string, domainId: string, evidence: unknown[], min: number): Promise<Row>;
   assessments(packageId: string | null, limit: number): Promise<Row[]>;
@@ -142,6 +144,10 @@ class PackagesCapabilityImpl extends PackagesCore implements PackageWrites {
   }
   async acceptanceFacts(packageId: string, version: number): Promise<Row | null> {
     const r = await this.rows<{ r: Row | null }>(sql`select domain.package_acceptance_facts(${packageId}::uuid, ${version}::int) as r`);
+    return r[0]?.r ?? null;
+  }
+  async effectCheck(packageId: string, version: number): Promise<Row[] | null> {
+    const r = await this.rows<{ r: Row[] | null }>(sql`select domain.package_effect_check(${packageId}::uuid, ${version}::int) as r`);
     return r[0]?.r ?? null;
   }
   async latestObjectVersion(objectType: 'DPG' | 'DAS', objectId: string): Promise<number | null> {
