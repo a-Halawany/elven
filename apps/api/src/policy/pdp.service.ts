@@ -2391,6 +2391,51 @@ const BUNDLE_V1: Rule[] = [
   /* B94 migration */
   /* end B94 migration */
   /* B94 implementation */
+  /* B94 §IM+§AD (0114 §IM; PR-68-001..006, CAP-DL-07/08, PER-21, WS-20). EXACT rules — no `implementation` prefix rule exists. TENANT acts
+     (the programme, its parts, its changes) need TENANT roles at TENANT scope; DOMAIN acts (readiness, the gate, go-live, enablement, cohorts,
+     shadow workflows) run on the programme's target domain, where a TENANT role matches too. APPROVING, ACCEPTING, ATTESTING, CONFIRMING and
+     RECORDING COMPETENCE are HUMAN-GATED and never the lead's (PER-21: the implementation lead coordinates — it appears in no approving rule;
+     the ports re-check with onboarding.assert_approver, which also refuses a lead holding an approving role). implementation.self.read: any
+     role reads its OWN training and competence records (subject-visible; the route answers the caller's own rows only). No agent role appears
+     in any act here except the gate's re-evaluation and the shadow finding (an attention agent may record what it observed). */
+  ...(() => {
+    const T = (role: string) => ({ role, atScope: 'TENANT' as Scope });
+    const D = (role: string) => ({ role, atScope: 'DOMAIN' as Scope });
+    const gate: Obligation[] = [{ type: 'human_gate' }];
+    const r = (actionPrefix: string, requiredAnyRole: Array<{ role: string; atScope: Scope }>, obligations?: Obligation[]): Rule =>
+      ({ actionPrefix, exact: true, requiredAnyRole, ...(obligations === undefined ? {} : { obligations }), requiresPurpose: true, maxConsequence: 'C2' });
+    const leadOrAdmin = [T('implementation_lead'), T('tenant_admin')];
+    const customer = [T('customer_sponsor'), T('onboarding_authority')];
+    return [
+      r('implementation.programme.open', leadOrAdmin),
+      r('implementation.programme.revise', leadOrAdmin),
+      r('implementation.programme.start', leadOrAdmin),
+      r('implementation.programme.withdraw', leadOrAdmin, gate),
+      r('implementation.programme.hold', [T('implementation_lead'), ...customer]),
+      r('implementation.programme.resume', [T('implementation_lead'), ...customer]),
+      r('implementation.item.record', [T('implementation_lead')]),
+      r('implementation.change.propose', [T('implementation_lead')]),
+      r('implementation.change.approve', customer, gate),
+      r('implementation.readiness.declare', [T('implementation_lead'), T('onboarding_authority')]),
+      r('implementation.readiness.retire', [T('onboarding_authority')], gate),
+      r('implementation.readiness.confirm', [...customer, D('domain_admin'), D('data_steward'), D('executive'), D('risk_owner'), D('decision_owner'), D('enablement_assessor')], gate),
+      r('implementation.readiness.accept_residual', [T('onboarding_authority')], gate),
+      r('implementation.gate.evaluate', [T('implementation_lead'), ...customer, D('domain_admin'), D('attention_agent')]),
+      r('implementation.golive.approve', customer, gate),
+      r('implementation.training.path.declare', [T('implementation_lead'), D('domain_admin'), D('enablement_assessor')]),
+      r('implementation.training.path.attest', [T('onboarding_authority'), D('domain_admin'), D('enablement_assessor')], gate),
+      r('implementation.training.record', [T('implementation_lead'), D('enablement_assessor')]),
+      r('implementation.competence.record', [D('enablement_assessor')], gate),
+      r('implementation.cohort.declare', [T('implementation_lead')]),
+      r('implementation.shadow.record', [T('implementation_lead'), D('domain_admin'), D('data_steward'), D('collection_manager'), D('attention_agent')]),
+      r('implementation.shadow.resolve', [T('onboarding_authority'), D('domain_admin')], gate),
+      r('implementation.shadow.review', [T('onboarding_authority'), D('domain_admin')], gate),
+      r('implementation.self.read', [T('tenant_admin'), ...customer, T('implementation_lead'),
+        ...['domain_admin', 'domain_analyst', 'collection_manager', 'decision_owner', 'decision_approver', 'decision_authority', 'executive', 'risk_owner', 'strategy_owner',
+            'forecast_owner', 'data_steward', 'enablement_assessor', 'executive_operator', 'board_member', 'product_analyst', 'product_analytics_owner', 'opportunity_sponsor',
+            'knowledge_owner', 'domain_specialist', 'privacy_officer'].map(D)], [{ type: 'audit_access' }]),
+    ];
+  })(),
   /* end B94 implementation */
   /* B94 service */
   /* end B94 service */
