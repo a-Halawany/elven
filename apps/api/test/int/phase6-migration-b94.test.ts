@@ -18,6 +18,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sql } from 'kysely';
 import { uuidv7 } from 'uuidv7';
 import { createHash, generateKeyPairSync } from 'node:crypto';
+import { crc32 } from 'node:zlib';
 import { mkdtempSync, readFileSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -159,16 +160,28 @@ async function target(label: string): Promise<Target> {
             values (${uuidv7()}::uuid, 'DOMAIN', ${T()}::uuid, ${domainId}::uuid, ${matchEntity}::uuid, 'entity.created', ${lead.principalId}::uuid, '{"fixture": true}'::jsonb, ${uuidv7()}::uuid)`.execute(h.su);
   return { domainId, programmeId, sourceId, registrar, manager, dadmin, matchEntity };
 }
-async function upload(tg: Target, filename: string, text: string): Promise<{ id: string; bytesDigest: string }> {
+async function upload(tg: Target, filename: string, text: string | Buffer, mediaType = 'text/csv'): Promise<{ id: string; bytesDigest: string }> {
   const { UploadController } = await import('../../src/observation/sources/upload.controller.js');
+  const bytes = typeof text === 'string' ? Buffer.from(text, 'utf8') : text;
   const res = await h.app.get(UploadController).upload(rq(tg.registrar, 'observation.run.trigger', 'RUN', null, tg.domainId, T(), 'observation') as never, T(), tg.domainId,
-    { payload: { sourceId: tg.sourceId, contractVersion: 1, files: [{ filename, mediaType: 'text/csv', base64: Buffer.from(text, 'utf8').toString('base64'), documentTime: null }] } });
-  const itemKey = `upload:${filename}@${createHash('sha256').update(Buffer.from(text, 'utf8')).digest('hex').slice(0, 16)}`;
+    { payload: { sourceId: tg.sourceId, contractVersion: 1, files: [{ filename, mediaType, base64: bytes.toString('base64'), documentTime: null }] } });
+  const itemKey = `upload:${filename}@${createHash('sha256').update(bytes).digest('hex').slice(0, 16)}`;
   const r = (await rows(sql`select e.object_id::text id, (e.payload ->> 'content_digest') bytes_digest from objects.canonical_objects e
       join objects.canonical_objects o on o.object_type = 'OBS' and e.source_object_ids @> to_jsonb(array['OBS:' || o.object_id::text])
      where e.object_type = 'EVD' and e.tenant_id = ${T()}::uuid and e.domain_id = ${tg.domainId}::uuid and o.payload ->> 'item_key' = ${itemKey} order by e.recorded_at desc limit 1`))[0];
   if (r === undefined) throw new Error(`upload of ${filename} admitted no evidence: ${JSON.stringify(res).slice(0, 1500)}`);
   return { id: String(r['id']), bytesDigest: String(r['bytes_digest']) };
+}
+
+/** A minimal STORED zip (an .xlsx container's shape: one entry) — the workbook a customer might send instead of a CSV export. */
+function workbook(): Buffer {
+  const name = Buffer.from('[Content_Types].xml'); const data = Buffer.from('<?xml version="1.0"?><Types/>'); const crc = crc32(data);
+  const local = Buffer.alloc(30); local.writeUInt32LE(0x04034b50, 0); local.writeUInt16LE(20, 4); local.writeUInt32LE(crc, 14); local.writeUInt32LE(data.length, 18); local.writeUInt32LE(data.length, 22); local.writeUInt16LE(name.length, 26);
+  const central = Buffer.alloc(46); central.writeUInt32LE(0x02014b50, 0); central.writeUInt16LE(20, 4); central.writeUInt16LE(20, 6); central.writeUInt32LE(crc, 16); central.writeUInt32LE(data.length, 20); central.writeUInt32LE(data.length, 24);
+  central.writeUInt16LE(name.length, 28); central.writeUInt32LE(0, 42);
+  const cdOffset = local.length + name.length + data.length; const cdSize = central.length + name.length;
+  const eocd = Buffer.alloc(22); eocd.writeUInt32LE(0x06054b50, 0); eocd.writeUInt16LE(1, 8); eocd.writeUInt16LE(1, 10); eocd.writeUInt32LE(cdSize, 12); eocd.writeUInt32LE(cdOffset, 16);
+  return Buffer.concat([local, name, data, central, name, eocd]);
 }
 
 // ── the mapping versions (the lead's) ────────────────────────────────────────────────────────────
@@ -289,6 +302,11 @@ describe('AT-67 · the JRN-23 journey on wave A (SYNTHETIC): open → map → re
     const sig = await one(sql`select subject_digest, key_id, signature, signer from executive.signatures where signature_id = ${String(m['signature_id'])}::uuid`);
     expect(sig).toMatchObject({ subject_digest: v1, signer: authority.principalId });
     expect(new SignatureService().verify(sig as never)).toBe(true);
+  });
+  it('negative · CSV ONLY — an xlsx workbook collected as evidence is refused by the rehearsal with the residual (no spreadsheet parser in B94)', async () => {
+    const x = await upload(A, `nordwerk-polska-legacy-${RUN}.xlsx`, workbook(), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    await refused(rehearse(lead, A, wave, x.id, 1), /^migration rehearsal rejected \(format\): the legacy file is an xlsx workbook: B94 migrates CSV only .*residual: xlsx intake/, 422);
+    await refused(rehearse(lead, A, wave, uuidv7(), 1), /^migration rehearsal rejected \(unknown_evidence\)/, 404);
   });
   it('positive · REHEARSAL 1 (the legacy file, mapping v1): the reconciliation report — 48 rows: 43 would_create, 1 would_match, 2 rejected (missing key, formula cell), 2 ambiguous (one duplicate supplier), 1 unmapped column', async () => {
     r1 = (await rehearse(lead, A, wave, evA.id, 1)).rehearsal;
