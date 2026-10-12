@@ -13,7 +13,8 @@ import { PdpService, type PolicyInput } from '../../src/policy/pdp.service.js';
 import { entitlementExemption } from '../../src/commercial/entitlements/entitlement-gate.js';
 import { ACTION_KINDS, MEASURES, OUTCOMES, VARIANT_KINDS, eventFieldProblems, personFields, variantShapeOk } from '../../src/analytics/experience/experience-logic.js';
 
-const SQL = readFileSync(fileURLToPath(new URL('../../migrations/0113_b92_x_ux.sql', import.meta.url)), 'utf8');
+// B92 integration: the part-local file is folded into the one 0113 — its §UX section is read
+const SQL = (() => { const all = readFileSync(fileURLToPath(new URL('../../migrations/0113_b92_product_analytics_metric_catalog_ux_telemetry.sql', import.meta.url)), 'utf8'); const a = all.indexOf('-- §UX — the experience-quality workflow'); const b = all.indexOf('-- §OR — the operating review', a + 1); if (a < 0 || b < 0) throw new Error('the folded 0113 lost its section banners'); return all.slice(a, b); })();
 const NOUNS = ['telemetry definition', 'telemetry event', 'consent', 'ux experiment', 'experience finding', 'experience action', 'experience journey', 'experience segment', 'experience baseline', 'analytics export'];
 const statusOf = (cls: string) => (['actor', 'ownership', 'authority', 'separation_of_duties', 'person'].includes(cls) ? 403 : cls.startsWith('unknown_') ? 404 : ['state', 'stale', 'duplicate'].includes(cls) ? 409 : 422);
 const codeOf = (status: number) => (status === 403 ? '42501' : status === 404 ? '23503' : '22023');

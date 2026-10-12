@@ -95,7 +95,7 @@ describe('the route parsers (the ports re-check every rule)', () => {
 });
 
 describe('every refusal text of 0113_b92_x_mcb.sql through the central mapper', () => {
-  const sqlText = readFileSync(fileURLToPath(new URL('../../migrations/0113_b92_x_mcb.sql', import.meta.url)), 'utf8');
+  const sqlText = (() => { const all = readFileSync(fileURLToPath(new URL('../../migrations/0113_b92_product_analytics_metric_catalog_ux_telemetry.sql', import.meta.url)), 'utf8'); const a = all.indexOf('-- §MCB — computations B'); const b = all.indexOf('-- §CO — the standing evaluation', a + 1); if (a < 0 || b < 0) throw new Error('the folded 0113 lost its section banners'); return all.slice(a, b); })();
   const raises = [...sqlText.matchAll(/RAISE EXCEPTION '((?:metric definition|metric computation) rejected \(([a-z_]+)\):[^']*(?:''[^']*)*)'[^;]*?USING ERRCODE = '([0-9A-Z]{5})'/g)]
     .map((m) => ({ text: m[1]!.replace(/''/g, '\''), cls: m[2]!, code: m[3]! }));
   it('the part raises its refusals in the class form (the nouns of seams.ts)', () => {

@@ -167,7 +167,7 @@ afterAll(async () => { await h?.close(); });
 describe('EN0 · the capability catalogue (seeded by 0105 §EN)', () => {
   it('positive: every ENT row of V8 App L and V10 App E is mapped; two core rows; the MAP enforcement mapping', async () => {
     const rows = (await sql<Row>`select * from commercial.capabilities where declared_by = '00000000-0000-0000-0000-000000000000'::uuid and version = 1 order by capability_key`.execute(h.su)).rows;
-    expect(rows.length).toBe(23);
+    expect(rows.length).toBe(24);   // + product_analytics v1 (0113 §0.4, B92: built, prefixes analytics.)
     expect(rows.filter((r) => r['core'] === true).map((r) => r['capability_key']).sort()).toEqual(['attention_controls', 'core']);
     const refs = new Set(rows.flatMap((r) => r['spec_refs'] as string[]));
     for (let i = 1; i <= 20; i++) {
