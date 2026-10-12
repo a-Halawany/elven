@@ -165,7 +165,7 @@ function OperatingReview() {
             </div>
           </section>
 
-          {v.metrics.map((m) => <MetricCard key={m.metric_key} m={m} drill={drill} setDrill={setDrill} scope={scope} />)}
+          {v.metrics.map((m) => <MetricCard key={m.metric_key} m={m} drill={drill} setDrill={(x) => { if (x === null) journey.end('drill_down', 'success'); else journey.start('drill_down'); setDrill(x); }} scope={scope} />)}
 
           <section aria-labelledby="or-notes" style={section}>
             <h2 id="or-notes" style={h2}>Notes</h2>
@@ -268,7 +268,7 @@ function MetricCard({ m, drill, setDrill, scope }: { m: MetricBlock; drill: stri
           <DefinitionRow term="Window">{r.period_key} {windowLine(r.window_from, r.window_to)} · clock {r.clock} · scope {r.scope_key ?? 'the whole domain'} · as of {fmtInstant(r.as_of)}{m.citation?.pinned ? ' · PINNED' : ''}</DefinitionRow>
           {r.threshold_eval !== null ? <DefinitionRow term="Threshold">{r.threshold_eval.breach === true ? `BREACHED — opens a review: ${r.threshold_eval.action}` : r.threshold_eval.breach === false ? 'within' : 'not evaluated'}</DefinitionRow> : null}
           <GovernedButton label={drill === r.result_id ? 'Hide the records' : 'Drill down: definition → result → records'} pendingLabel="Reading" variant="quiet"
-            onRun={async () => { if (drill === r.result_id) { setDrill(null); journey.end('drill_down', 'success'); } else { setDrill(r.result_id); journey.start('drill_down'); } }} />
+            onRun={async () => setDrill(drill === r.result_id ? null : r.result_id)} />
           {drill === r.result_id ? <ResultDrilldown scope={scope} resultId={r.result_id} /> : null}
         </>
       ) : null}
