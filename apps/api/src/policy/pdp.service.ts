@@ -2243,6 +2243,14 @@ const BUNDLE_V1: Rule[] = [
   /* B92 computations-a */
   /* end B92 computations-a */
   /* B92 computations-b */
+  /* B92 §MCB (0113_b92_x_mcb.sql §MCB.1–§MCB.2; MET-009, MET-014). EXACT rules — no `analytics` prefix rule exists. TEMPORAL DECLARE — the
+     domain's product analytics owner declares which time fields a record of an object type must carry (MET-009's requirement): a named
+     human, human-gated (the port re-checks the human and the role). SEARCH REVIEW — a product analyst or the owner reviews a recorded
+     search's results (MET-014): a named human, human-gated; the port re-checks the human, the role and that the reviewer is NOT the
+     searcher. An agent holds neither rule. Both are human-gated — exempt from the product_analytics entitlement gate (0113 §0.4). The reads
+     are the prelude's analytics.read. */
+  { actionPrefix: 'analytics.temporal.declare', exact: true, requiredAnyRole: [{ role: 'product_analytics_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'analytics.search.review', exact: true, requiredAnyRole: [{ role: 'product_analyst', atScope: 'DOMAIN' }, { role: 'product_analytics_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   /* end B92 computations-b */
   /* B92 comparability */
   /* B92 comparability (0113 §CO; PR-70-005, PR-70-006, AT-70, DP-44-001). EXACT rules — no `analytics` or `products` prefix rule exists. THE
