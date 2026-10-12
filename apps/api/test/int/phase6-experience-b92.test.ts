@@ -19,6 +19,8 @@
  *   UX7 · findings → actions: the agent proposes; the agent is refused deciding at the PEP and at the port; the owner decides against the
  *         consequence preview (stale → 409); hold_collection, retire_measure, backlog_item, dismissal; the finding's proposer never decides.
  *   UX8 · the governed purge (counts per definition, never silent) and the export (aggregates only, k suppression, the digest verified).
+ *   UXE · the `product_analytics` licence on a CONTRACTED tenant (runs LAST: it contracts the harness tenant): recording is gated (EYE-ENT-001);
+ *         a consent withdrawal, the person's own read, the workspace and a human-gated act stay available; reissued, recording passes.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sql } from 'kysely';
@@ -26,6 +28,7 @@ import { uuidv7 } from 'uuidv7';
 import { createHash } from 'node:crypto';
 import { HttpException } from '@nestjs/common';
 import type { AuthenticatedPrincipal } from '../../src/shared/auth-types.js';
+import type { EntitlementsVendorController } from '../../src/commercial/entitlements/entitlements.controller.js';
 import { asObservationRefusal } from '../../src/observation/observation-errors.js';
 import { ExperienceController } from '../../src/analytics/experience/experience.controller.js';
 import { ExecutiveController } from '../../src/executive/executive.controller.js';
@@ -51,12 +54,12 @@ let machineOwner: AuthenticatedPrincipal; // an AGENT in the database holding th
 let otherDomain = '';
 
 // ── refusals ─────────────────────────────────────────────────────────────────────────────────────
-const refusal = async (p: Promise<unknown>): Promise<{ status: number | null; message: string }> => {
+const refusal = async (p: Promise<unknown>): Promise<{ status: number | null; code: string | null; message: string }> => {
   const e = await p.then(() => { throw new Error('the call should have been refused'); }, (err: unknown) => err);
   const mapped = e instanceof HttpException ? e : asObservationRefusal(e, 'harness');
-  if (mapped === null) return { status: null, message: e instanceof Error ? e.message : String(e) };
-  const r = mapped.getResponse() as { message?: string };
-  return { status: mapped.getStatus(), message: String(r.message ?? (e instanceof Error ? e.message : '')) };
+  if (mapped === null) return { status: null, code: null, message: e instanceof Error ? e.message : String(e) };
+  const r = mapped.getResponse() as { code?: string; message?: string };
+  return { status: mapped.getStatus(), code: r.code ?? null, message: String(r.message ?? (e instanceof Error ? e.message : '')) };
 };
 const refused = async (p: Promise<unknown>, re: RegExp, status: number) => { const r = await refusal(p); expect(r.message).toMatch(re); expect(r.status, r.message).toBe(status); return r; };
 const one = async (q: ReturnType<typeof sql>) => ((await q.execute(h.su)).rows[0] ?? {}) as Row;
@@ -660,5 +663,43 @@ describe('UX8 · the governed purge and the export', () => {
     expect(arr(ws['items']).length).toBeGreaterThan(0);
     expect(arr(ws['ledger']).length).toBeGreaterThan(0);
     await refused(workspace(outsider), /./, 403);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+describe('UXE · the product_analytics licence on a CONTRACTED tenant (runs LAST: it contracts the harness tenant)', () => {
+  const PK = { core: `b92ux-core-${RUN}`, pa: `b92ux-pa-${RUN}` };
+  const SKU = { core: `EYE-B92UX-CORE-${RUN}`.toUpperCase(), pa: `EYE-B92UX-PA-${RUN}`.toUpperCase() };
+  let vapi: EntitlementsVendorController; let vendor: AuthenticatedPrincipal;
+  const vreq = (p: AuthenticatedPrincipal, action: string) => ({ eyeEnvelope: { ...h.env(p, action, 'LIC', null, 'commercial'), scope: 'PLATFORM', tenant_id: null, domain_id: null }, eyePrincipal: p }) as never;
+  const OPEN = 'review-drilldown.open';
+  it('positive: uncontracted, a consented person\'s event is collected; the catalogue claims analytics.telemetry.record under product_analytics', async () => {
+    const { EntitlementsVendorController: V } = await import('../../src/commercial/entitlements/entitlements.controller.js');
+    vapi = h.app.get(V);
+    const id = uuidv7();
+    await sql`insert into identity.principals (id, kind, scope, tenant_id, domain_id, display_name, login_name, status) values (${id}::uuid, 'human', 'PLATFORM', null, null, ${`b92ux-vendor-${RUN} (SYNTHETIC)`}, ${`b92ux-vendor-${id.slice(-8)}`}, 'active')`.execute(h.su);
+    await sql`insert into identity.role_bindings (id, principal_id, role_code, scope, tenant_id, domain_id) values (${uuidv7()}::uuid, ${id}::uuid, 'commercial_authority', 'PLATFORM', null, null)`.execute(h.su);
+    vendor = await h.openSession({ ...h.manager, principalId: id, homeScope: 'PLATFORM', homeTenantId: null, homeDomainId: null, bindings: [{ roleCode: 'commercial_authority', scope: 'PLATFORM', tenantId: null, domainId: null }] } as AuthenticatedPrincipal);
+    expect((await record(users[4] as AuthenticatedPrincipal, { eventKey: OPEN, outcome: 'started' })).telemetry['collected']).toBe(true);
+    expect(await one(sql`select (commercial.cen_action_capability('analytics.telemetry.record')).capability_key as k`)).toMatchObject({ k: 'product_analytics' });
+  });
+  it('refusal: contracted without product_analytics — recording answers EYE-ENT-001 / 403; a withdrawal, the person\'s own read, the workspace and a human-gated export pass the gate', async () => {
+    await vapi.declarePackage(vreq(vendor, 'commercial.offer.package'), { payload: { key: PK.core, expectedVersion: 0, title: 'Core only (SYNTHETIC)', capabilities: [], tier: 'foundation', reason: 'the core package of the B92 §UX harness' } });
+    await vapi.declarePackage(vreq(vendor, 'commercial.offer.package'), { payload: { key: PK.pa, expectedVersion: 0, title: 'Product analytics (SYNTHETIC)', capabilities: ['product_analytics'], tier: 'strategic_cell', reason: 'the product analytics capability for the B92 §UX harness' } });
+    for (const [code, pkg] of [[SKU.core, PK.core], [SKU.pa, PK.pa]] as const) {
+      await vapi.declareSku(vreq(vendor, 'commercial.offer.sku'), { payload: { code, expectedVersion: 0, title: `${pkg} 12 months`, packageKey: pkg, termMonths: 12, reason: 'a twelve-month synthetic term' } });
+    }
+    await vapi.issueLicence(vreq(vendor, 'commercial.licence.issue'), T(), { payload: { skuCode: SKU.core, orderRef: `SYNTH-B92UX-${RUN}-1`, reason: 'the core licence of the harness tenant' } });
+    const r = await refused(record(users[4] as AuthenticatedPrincipal, { eventKey: OPEN, outcome: 'started' }), /^capability unavailable \(entitlement\): product_analytics is not licensed/, 403);
+    expect(r.code).toBe('EYE-ENT-001');
+    expect((await withdraw(users[4] as AuthenticatedPrincipal, PURPOSE)).consent).toMatchObject({ decision: 'withdrawn' });
+    expect(arr((await self(users[4] as AuthenticatedPrincipal))['purposes']).length).toBeGreaterThan(0);
+    expect(arr((await workspace(owner))['journeys']).length).toBeGreaterThan(0);
+    expect((await exportCreate(owner, 'Exported under a lapsed entitlement (SYNTHETIC)')).export['digest']).toMatch(/^[0-9a-f]{64}$/);
+  });
+  it('recovery: the licence reissued with product_analytics — the person consents again and the same event is collected', async () => {
+    await vapi.issueLicence(vreq(vendor, 'commercial.licence.issue'), T(), { payload: { skuCode: SKU.pa, orderRef: `SYNTH-B92UX-${RUN}-2`, reason: 'the tenant adds the product analytics capability' } });
+    await grant(users[4] as AuthenticatedPrincipal, PURPOSE);
+    expect((await record(users[4] as AuthenticatedPrincipal, { eventKey: OPEN, outcome: 'started' })).telemetry['collected']).toBe(true);
   });
 });
