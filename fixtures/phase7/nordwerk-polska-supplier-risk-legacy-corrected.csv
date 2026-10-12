@@ -1,0 +1,49 @@
+Supplier No,Supplier Name,Country,Risk Rating,Category,Annual Spend (EUR),Last Review,Buyer Note
+NWP-S-1001,Odlewnia Opole Sp. z o.o. (SYNTHETIC),PL,1,castings,"61,000.00",2025-01-01,buyer A. reviewed on site
+NWP-S-1002,Zaklady Kuzni Tarnow Sp. z o.o. (SYNTHETIC),PL,2,forgings,"98,271.07",02.02.2026,
+NWP-S-1003,Precyzja Bielsko Sp. z o.o. (SYNTHETIC),PL,3,machining,"135,542.14",2025-03-03,
+NWP-S-1004,Hydraulika Slask Sp. z o.o. (SYNTHETIC),DE,4,hydraulics,"172,813.21",04.04.2026,buyer D. reviewed on site
+NWP-S-1005,Elektro-Mazowsze Sp. z o.o. (SYNTHETIC),CZ,Low,electrical,"209,084.28",2025-05-05,
+NWP-S-1006,Metalpol Radom Sp. z o.o. (SYNTHETIC),PL,Medium,fasteners,"246,355.35",06.06.2026,
+NWP-S-1007,Lozyska Krakow Sp. z o.o. (SYNTHETIC),PL,High,bearings,"283,626.42",2025-07-07,buyer G. reviewed on site
+NWP-S-1008,Tworzywa Plock Sp. z o.o. (SYNTHETIC),PL,hoch,plastics,"320,897.49",08.08.2026,
+NWP-S-1009,Uszczelki Gdansk Sp. z o.o. (SYNTHETIC),DE,niski,seals,"357,168.56",2025-09-09,
+NWP-S-1010,Sruby Kielce Sp. z o.o. (SYNTHETIC),CZ,wysoki,gears,"394,439.63",10.10.2026,buyer J. reviewed on site
+NWP-S-0500,Huta Gliwice Stal Sp. z o.o. (SYNTHETIC),PL,3,castings,"2,400,000.00",2026-02-11,long-standing supplier; already in the register
+NWP-S-1011,Przekladnie Lodz Sp. z o.o. (SYNTHETIC),PL,1,castings,"431,710.70",2025-11-11,
+NWP-S-1012,Kable Torun Sp. z o.o. (SYNTHETIC),PL,2,forgings,"468,981.77",12.12.2026,
+NWP-S-1013,Stalbud Katowice Sp. z o.o. (SYNTHETIC),PL,3,machining,"505,252.84",2025-01-13,buyer M. reviewed on site
+NWP-S-1014,Narzedzia Rzeszow Sp. z o.o. (SYNTHETIC),DE,4,hydraulics,"542,523.91",14.02.2026,
+NWP-S-0700,Stalmet Zielona Gora Sp. z o.o. (SYNTHETIC),PL,2,fasteners,"120,000.00",2026-04-01,
+NWP-S-1015,Odkuwki Mielec Sp. z o.o. (SYNTHETIC),CZ,Low,electrical,"579,794.98",2025-03-15,
+NWP-S-1016,Lakiernia Poznan Sp. z o.o. (SYNTHETIC),PL,Medium,fasteners,"616,065.05",16.04.2026,buyer P. reviewed on site
+NWP-S-1017,Galwanika Wroclaw Sp. z o.o. (SYNTHETIC),PL,High,bearings,"653,336.12",2025-05-17,
+NWP-S-1018,Sprezyny Bydgoszcz Sp. z o.o. (SYNTHETIC),PL,hoch,plastics,"690,607.19",18.06.2026,
+NWP-S-1019,Formy Lublin Sp. z o.o. (SYNTHETIC),DE,niski,seals,"727,878.26",2025-07-19,buyer S. reviewed on site
+NWP-S-0602,Wiertla Opole Sp. z o.o. (SYNTHETIC),PL,2,machining,"85,000.00",2026-01-15,number assigned by the register owner
+NWP-S-1020,Hartownia Czestochowa Sp. z o.o. (SYNTHETIC),CZ,wysoki,gears,"764,149.33",20.08.2026,
+NWP-S-1021,Blachy Zabrze Sp. z o.o. (SYNTHETIC),PL,1,castings,"801,420.40",2025-09-21,
+NWP-S-1022,Aluminium Konin Sp. z o.o. (SYNTHETIC),PL,2,forgings,"838,691.47",22.10.2026,buyer V. reviewed on site
+NWP-S-1023,Magnesy Szczecin Sp. z o.o. (SYNTHETIC),PL,3,machining,"875,962.54",2025-11-23,
+NWP-S-1024,Wały Gorzow Sp. z o.o. (SYNTHETIC),DE,4,hydraulics,"912,233.61",24.12.2026,
+NWP-S-1025,Lancuchy Olsztyn Sp. z o.o. (SYNTHETIC),CZ,Low,electrical,"949,504.68",2025-01-25,buyer Y. reviewed on site
+NWP-S-1026,Pompy Tychy Sp. z o.o. (SYNTHETIC),PL,Medium,fasteners,"86,775.75",26.02.2026,
+NWP-S-1027,Silniki Legnica Sp. z o.o. (SYNTHETIC),PL,High,bearings,"123,046.82",2025-03-27,
+NWP-S-1028,Zawory Siedlce Sp. z o.o. (SYNTHETIC),PL,hoch,plastics,"160,317.89",01.04.2026,buyer B. reviewed on site
+NWP-S-0601,Kowalski Metal Sp. z o.o. (SYNTHETIC),PL,4,forgings,"310,000.00",2025-11-03,name corrected from the portal link
+NWP-S-1029,Profile Elblag Sp. z o.o. (SYNTHETIC),DE,niski,seals,"197,588.96",2025-05-02,
+NWP-S-1030,Tuleje Kalisz Sp. z o.o. (SYNTHETIC),CZ,wysoki,gears,"234,859.03",03.06.2026,
+NWP-S-1031,Obrobka Nowy Sacz Sp. z o.o. (SYNTHETIC),PL,1,castings,"271,130.10",2025-07-04,buyer E. reviewed on site
+NWP-S-1032,Rury Walbrzych Sp. z o.o. (SYNTHETIC),PL,2,forgings,"308,401.17",05.08.2026,
+NWP-S-1033,Prasy Pila Sp. z o.o. (SYNTHETIC),PL,3,machining,"345,672.24",2025-09-06,
+NWP-S-1034,Spawalnia Koszalin Sp. z o.o. (SYNTHETIC),DE,4,hydraulics,"382,943.31",07.10.2026,buyer H. reviewed on site
+NWP-S-1035,Kolka Zebate Plock Sp. z o.o. (SYNTHETIC),CZ,Low,electrical,"419,214.38",2025-11-08,
+NWP-S-1036,Czujniki Gliwice Sp. z o.o. (SYNTHETIC),PL,Medium,fasteners,"456,485.45",09.12.2026,
+NWP-S-0701,Stalmet Zielona Gora Oddzial Nysa (SYNTHETIC),PL,3,fasteners,"45,000.00",2026-04-02,branch given its own register number
+NWP-S-1037,Obudowy Rybnik Sp. z o.o. (SYNTHETIC),PL,High,bearings,"493,756.52",2025-01-10,buyer K. reviewed on site
+NWP-S-1038,Wkrety Leszno Sp. z o.o. (SYNTHETIC),PL,hoch,plastics,"530,027.59",11.02.2026,
+NWP-S-1039,Odlewy Starachowice Sp. z o.o. (SYNTHETIC),DE,niski,seals,"567,298.66",2025-03-12,
+NWP-S-1040,Matryce Jaslo Sp. z o.o. (SYNTHETIC),CZ,wysoki,gears,"604,569.73",13.04.2026,buyer N. reviewed on site
+NWP-S-1041,Napedy Krosno Sp. z o.o. (SYNTHETIC),PL,1,castings,"641,840.80",2025-05-14,
+NWP-S-1042,Pierscienie Tarnobrzeg Sp. z o.o. (SYNTHETIC),PL,2,forgings,"678,111.87",15.06.2026,
+NWP-S-1043,Uchwyty Sanok Sp. z o.o. (SYNTHETIC),PL,3,machining,"715,382.94",2025-07-16,buyer Q. reviewed on site

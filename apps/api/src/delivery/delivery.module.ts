@@ -7,7 +7,7 @@
 import { Module } from '@nestjs/common';
 import { PipelineModule } from '../pipeline/pipeline.module.js';
 /* B94 onboarding */ /* end B94 onboarding */
-/* B94 migration */ /* end B94 migration */
+/* B94 migration */ import { MigrationController, MigrationTenantController } from './migration/migration.controller.js'; import { MigrationService } from './migration/migration.service.js'; /* end B94 migration */
 /* B94 implementation */ /* end B94 implementation */
 /* B94 service */ /* end B94 service */
 /* B94 support */ /* end B94 support */
@@ -16,14 +16,14 @@ import { PipelineModule } from '../pipeline/pipeline.module.js';
   imports: [PipelineModule],
   controllers: [
     /* B94 onboarding */ /* end B94 onboarding */
-    /* B94 migration */ /* end B94 migration */
+    /* B94 migration */ MigrationController, MigrationTenantController, /* end B94 migration */
     /* B94 implementation */ /* end B94 implementation */
     /* B94 service */ /* end B94 service */
     /* B94 support */ /* end B94 support */
   ],
   providers: [
     /* B94 onboarding */ /* end B94 onboarding */
-    /* B94 migration */ /* end B94 migration */
+    /* B94 migration */ MigrationService, /* end B94 migration */
     /* B94 implementation */ /* end B94 implementation */
     /* B94 service */ /* end B94 service */
     /* B94 support */ /* end B94 support */
