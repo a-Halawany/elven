@@ -220,6 +220,9 @@ describe('MCB1 · MET-006 evidence citation resolution (2026-01)', () => {
     expect(r['uncertainty']).toMatchObject({ method: 'wilson' });
     expect((r['quality'] as Row)['register_references']).toEqual({ call: 4 });
     expect((r['quality'] as Row)['pinning']).toMatchObject({ explicit: 14, lineage_digest: 4 });
+    expect((r['quality'] as Row)['composition']).toEqual({ by: 'object_type', counts: { EVD: 7, OBS: 14, CLM: 4 } });   // the integrator's quality keys
+    expect((r['quality'] as Row)['excluded_count']).toBe(0);
+    expect(new Date(String((r['quality'] as Row)['newest_record_at'])).toISOString()).toBe(new Date(at(1, 27, 12)).toISOString());
     const rd = await readResult(resultId);
     expect(roles(rd)).toEqual({ numerator: 21, denominator: 4 });
     const failed = records(rd).filter((x) => x['role'] === 'denominator').map((x) => String(x['reason']));
@@ -240,6 +243,7 @@ describe('MCB1 · MET-006 evidence citation resolution (2026-01)', () => {
     await plantDef(contract('MET-006'), { key: 'MET-006.cap', params: { max_records: 5 } });
     const capped = await compute({ metricKey: 'MET-006.cap', period: '2026-01' });
     expect(capped).toMatchObject({ state: 'indeterminate', value: null, records_count: 0 });
+    expect(capped['quality']).toMatchObject({ newest_record_at: null, excluded_count: 0, composition: { counts: {} } });
     expect(reasons(capped)).toMatch(/holds 33 records, above the traceable bound 5/);
     await plantDef(contract('MET-006'), { key: 'MET-006.world', clock: 'world' });
     const world = await compute({ metricKey: 'MET-006.world', period: '2026-01' });
@@ -410,6 +414,8 @@ describe('MCB5 · MET-010 correction propagation time (2026-05, 2026-06)', () =>
     const rd = await readResult(String(r['result_id']));
     expect(roles(rd)).toEqual({ included: 3, excluded: 1 });
     expect(records(rd).map((x) => (x['detail'] as Row)['closure']).filter(Boolean)).toContain('propagation walk complete');
+    expect((r['quality'] as Row)).toMatchObject({ excluded_count: 1, composition: { by: 'closure', counts: { 'propagation walk complete': 2, 'dependency assessment': 1, censored: 1 } } });
+    expect(new Date(String((r['quality'] as Row)['newest_record_at'])).toISOString()).toBe(new Date(at(5, 5)).toISOString());
   });
   it('the scope applied: for the corridor only s1\'s corrections (2 closed — below the floor 3, said)', async () => {
     const r = await compute({ metricKey: 'MET-010', period: '2026-05', scopeKey: SCOPE });

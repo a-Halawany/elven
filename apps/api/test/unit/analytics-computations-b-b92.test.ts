@@ -13,6 +13,8 @@ import { definitionsB, MCB_METRIC_KEYS } from '../../src/analytics/computations-
 import { parseSearchReview, parseTemporalDeclaration, QUERY_CLASSES, TIME_FIELDS } from '../../src/analytics/computations-b/computations-b.controller.js';
 import { PERSON_DIMENSIONS } from '../../src/analytics/seams.js';
 
+/** Existing domain role codes (identity.roles) an owner may be — the named human the act binds holds it. */
+const ROLE_CODES = ['data_steward', 'auditor', 'knowledge_owner', 'ontology_steward', 'collection_manager', 'record_authority', 'domain_admin', 'product_analytics_owner', 'commercial_authority', 'executive'];
 const PURPOSES = ['product-quality', 'mission-outcomes', 'governance-assurance', 'service-reliability', 'analytics-cost', 'experience-telemetry'];
 const COMPUTED = ['MET-006', 'MET-007', 'MET-008', 'MET-009', 'MET-010', 'MET-011', 'MET-012', 'MET-013', 'MET-014', 'MET-017', 'MET-018', 'MET-031', 'MET-033', 'MET-036', 'MET-037'];
 const UNSUPPORTED: Record<string, RegExp> = { 'MET-015': /\bB55\b/, 'MET-016': /\bB52\b.*\bH1\b/, 'MET-032': /\bH2\b/, 'MET-034': /\bB108\b.*\bB107\/H3\b/, 'MET-035': /\bB106\b/,
@@ -46,6 +48,15 @@ describe('definitionsB — the contracts admit the definition table and §MD\'s 
       expect(c.action.trim().length).toBeGreaterThanOrEqual(8); expect(c.action).toMatch(/never an automatic or punitive decision/);
       expect(c.retirement.trim().length).toBeGreaterThanOrEqual(8);
       expect(c.sourceRefs).toContain(c.metricKey);
+      // §MD's contract validator (the integrator's notes)
+      expect(String(c.population['subject'] ?? '').trim().length).toBeGreaterThanOrEqual(3);
+      expect(c.population['app_m_owner']).toBeTruthy();
+      expect(c.exclusions.every((x) => typeof x.rule === 'string' && x.rule.length > 0 && typeof x.reason === 'string' && x.reason.length > 0)).toBe(true);
+      expect(c.action).toMatch(/review|investigation/);
+      if ('target' in c.threshold) { expect(['higher', 'lower']).toContain(c.direction); if (c.kind === 'rate') { expect(c.threshold.target).toBeGreaterThanOrEqual(0); expect(c.threshold.target).toBeLessThanOrEqual(1); } }
+      if ('band' in c.threshold) { expect(['band', 'track']).toContain(c.direction); if (c.kind === 'rate') expect(c.threshold.band!.every((v) => v >= 0 && v <= 1)).toBe(true); }
+      expect(ROLE_CODES).toContain(c.ownerRole);
+      if (c.computationKey === null) expect(c.dimensions).toEqual([]);
       if (c.computationKey === null) {
         expect(c.unsupportedReason?.trim().length ?? 0).toBeGreaterThanOrEqual(8);
         expect(c.unsupportedReason).toMatch(UNSUPPORTED[c.metricKey]!);
