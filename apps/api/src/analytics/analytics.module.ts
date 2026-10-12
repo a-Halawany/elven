@@ -11,6 +11,7 @@ import { PipelineModule } from '../pipeline/pipeline.module.js';
 /* B92 computations-b */ import { AnalyticsComputationsBController } from './computations-b/computations-b.controller.js'; import { AnalyticsComputationsBService } from './computations-b/computations-b.service.js'; /* end B92 computations-b */
 /* B92 comparability */ import { ComparabilityController } from './comparability/comparability.controller.js'; import { ComparabilityService } from './comparability/comparability.service.js'; /* end B92 comparability */
 /* B92 experience */ import { ExperienceController } from './experience/experience.controller.js'; import { ExperienceService } from './experience/experience.service.js'; /* end B92 experience */
+/* B92 integration */ import { AnalyticsExceptionsController } from './integration/exceptions.controller.js'; /* end B92 integration */
 /* B92 review */ import { AnalyticsReviewController } from './review/review.controller.js'; import { AnalyticsReviewService } from './review/review.service.js'; /* end B92 review */
 
 @Module({
@@ -22,6 +23,7 @@ import { PipelineModule } from '../pipeline/pipeline.module.js';
     /* B92 computations-b */ AnalyticsComputationsBController, /* end B92 computations-b */
     /* B92 comparability */ ComparabilityController, /* end B92 comparability */
     /* B92 experience */ ExperienceController, /* end B92 experience */
+    /* B92 integration */ AnalyticsExceptionsController, /* end B92 integration */
     /* B92 review */ AnalyticsReviewController, /* end B92 review */
   ],
   providers: [

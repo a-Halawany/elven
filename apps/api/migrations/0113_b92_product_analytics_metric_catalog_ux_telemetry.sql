@@ -611,7 +611,8 @@ BEGIN
   END IF;
   v_eval := analytics.evaluate_result(jsonb_build_object('metric_key', d.metric_key, 'definition_id', d.definition_id, 'definition_version', d.version, 'period', p_period,
               'window_from', w.window_from, 'window_to', w.window_to, 'as_of', p_as_of, 'scope', v_scope, 'cohort', coalesce(p_cohort, '{}'::jsonb), 'n', v_n, 'value', v_value,
-              'quality', coalesce(out -> 'quality', '{}'::jsonb), 'records_count', coalesce(jsonb_array_length(out -> 'records'), 0), 'tenant_id', d.tenant_id, 'domain_id', d.domain_id));
+              'quality', coalesce(out -> 'quality', '{}'::jsonb), 'records_count', coalesce(jsonb_array_length(out -> 'records'), 0), 'tenant_id', d.tenant_id, 'domain_id', d.domain_id,
+              'records', coalesce(out -> 'records', '[]'::jsonb), 'distinct_actors', out -> 'distinct_actors', 'kind', d.kind, 'numerator', v_num, 'denominator', v_den));
   v_reasons := v_reasons || coalesce(v_eval -> 'reasons', '[]'::jsonb);
   IF v_state IS NULL THEN v_state := CASE WHEN jsonb_array_length(v_reasons) = 0 AND v_value IS NOT NULL THEN 'determinate' ELSE 'indeterminate' END; END IF;
   IF v_state <> 'determinate' THEN v_value := NULL; END IF;

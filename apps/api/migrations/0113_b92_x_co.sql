@@ -601,7 +601,11 @@ BEGIN
     END LOOP;
   END IF;
   -- (2c) a determinate BREACH: a review, never an automatic decision
-  IF r.state = 'determinate' AND (r.threshold_eval ->> 'breach') = 'true' THEN
+  IF r.state = 'determinate' AND (r.threshold_eval ->> 'breach') = 'true'
+     AND analytics.exemption_for(r.tenant_id, r.domain_id, r.metric_key, r.period_key, r.scope_key, r.cohort) IS NOT NULL THEN   -- B92 integration (§I): an approved, unexpired threshold exemption
+    v_routed := v_routed || jsonb_build_object('class', 'analytics.metric', 'origin', 'threshold_breach', 'exempted_by',
+                  analytics.exemption_for(r.tenant_id, r.domain_id, r.metric_key, r.period_key, r.scope_key, r.cohort), 'note', 'the breach is not raised: an approved threshold exemption is in force (said, never hidden)');
+  ELSIF r.state = 'determinate' AND (r.threshold_eval ->> 'breach') = 'true' THEN
     SELECT it.item_id INTO v_open FROM executive.attention_items it
      WHERE it.tenant_id = r.tenant_id AND it.domain_id = r.domain_id AND it.signal_class = 'analytics.metric' AND it.subject_kind = 'metric_result' AND it.state <> 'closed'
        AND it.details ->> 'origin' = 'threshold_breach' AND it.details ->> 'metric_key' = r.metric_key AND it.details ->> 'period' = r.period_key

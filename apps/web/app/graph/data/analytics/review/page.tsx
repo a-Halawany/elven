@@ -22,7 +22,8 @@ import {
 } from '../../../../../lib/analytics-or-b92';
 import { Empty, LiveStatus, Mono, ScrollBox, cardStyle, DefinitionRow, GovernedButton, fmtInstant, textareaStyle } from '../../../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../../../components/ui';
-import { ResultDrilldown } from './result-drilldown';
+import { ResultDrilldown } from '../_catalog/result-drilldown';
+import { OPERATING_REVIEW, useJourney } from '../../../../../lib/telemetry-b92';   // B92 integration: §UX's journey (durations and outcomes only, under consent)   // B92 integration: the one drill-down (§MD's), shared with the catalog
 
 type ReceiptT = { policyDecisionId: string; auditSeq: number } | null;
 const muted = { color: 'var(--eye-color-ink-muted)' } as const;
@@ -50,6 +51,7 @@ function OperatingReview() {
   const [problem, setProblem] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<ReceiptT>(null);
   const [drill, setDrill] = useState<string | null>(null);
+  const journey = useJourney(scope, OPERATING_REVIEW);   // B92 integration: open → drill_down → done (the server decides whether it is collected)
   // open form
   const [title, setTitle] = useState(''); const [period, setPeriod] = useState(''); const [scopeKey, setScopeKey] = useState('');
   const [metricText, setMetricText] = useState(''); const [chairId, setChairId] = useState(''); const [rolesText, setRolesText] = useState('product_analyst, executive, risk_owner, forecast_owner');
@@ -74,7 +76,7 @@ function OperatingReview() {
     const r = await reviews.read(scope, asked);
     if (wanted.current !== asked) return;
     if (!r.ok || r.data === undefined) { setProblem(`HTTP ${r.status}${r.error?.code ? ` ${r.error.code}` : ''} — ${r.error?.message ?? 'the review could not be read'}`); setView(null); return; }
-    setProblem(null); setView(r.data.review);
+    setProblem(null); setView(r.data.review); journey.end('open', 'success');
   };
   useEffect(() => { void loadList(); }, [scope]);
   useEffect(() => { setDrill(null); void loadReview(); }, [scope, reviewId]);
@@ -223,7 +225,7 @@ function OperatingReview() {
                   <div>
                     <label>Statement <input style={inputStyle} value={statement} onChange={(e) => setStatement(e.target.value)} /></label>{' '}
                     <GovernedButton label="Sign and close" pendingLabel="Closing" variant="critical" disabled={statement.trim().length < 8 || missing.length > 0}
-                      onRun={() => act(() => reviews.close(scope, v.review_id, { digest: v.digest_now, statement: statement.trim() }), 'the review could not be closed')} />
+                      onRun={async () => { try { await act(() => reviews.close(scope, v.review_id, { digest: v.digest_now, statement: statement.trim() }), 'the review could not be closed'); journey.end('done', 'success'); } catch (e) { journey.end('done', 'failure'); throw e; } }} />
                   </div>
                 ) : <Empty>{v.state === 'draft' ? 'The review is a draft: it is assembled and held before the chair closes it.' : 'Only the chair closes the review.'}</Empty>}
               </>
@@ -266,7 +268,7 @@ function MetricCard({ m, drill, setDrill, scope }: { m: MetricBlock; drill: stri
           <DefinitionRow term="Window">{r.period_key} {windowLine(r.window_from, r.window_to)} · clock {r.clock} · scope {r.scope_key ?? 'the whole domain'} · as of {fmtInstant(r.as_of)}{m.citation?.pinned ? ' · PINNED' : ''}</DefinitionRow>
           {r.threshold_eval !== null ? <DefinitionRow term="Threshold">{r.threshold_eval.breach === true ? `BREACHED — opens a review: ${r.threshold_eval.action}` : r.threshold_eval.breach === false ? 'within' : 'not evaluated'}</DefinitionRow> : null}
           <GovernedButton label={drill === r.result_id ? 'Hide the records' : 'Drill down: definition → result → records'} pendingLabel="Reading" variant="quiet"
-            onRun={async () => setDrill(drill === r.result_id ? null : r.result_id)} />
+            onRun={async () => { if (drill === r.result_id) { setDrill(null); journey.end('drill_down', 'success'); } else { setDrill(r.result_id); journey.start('drill_down'); } }} />
           {drill === r.result_id ? <ResultDrilldown scope={scope} resultId={r.result_id} /> : null}
         </>
       ) : null}

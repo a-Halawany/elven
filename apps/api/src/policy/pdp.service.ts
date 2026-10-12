@@ -2327,6 +2327,13 @@ const BUNDLE_V1: Rule[] = [
     ];
   })(),
   /* end B92 experience */
+  /* B92 integration (0113 §I): exceptions and manual adjustments — proposed by an analyst or the owner; DECIDED by a named product analytics owner
+     (human-gated; the port re-checks the role and that the decider is not the proposer). */
+  { actionPrefix: 'analytics.exception.propose', exact: true, requiredAnyRole: [{ role: 'product_analyst', atScope: 'DOMAIN' }, { role: 'product_analytics_owner', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'analytics.exception.decide', exact: true, requiredAnyRole: [{ role: 'product_analytics_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'analytics.adjustment.propose', exact: true, requiredAnyRole: [{ role: 'product_analyst', atScope: 'DOMAIN' }, { role: 'product_analytics_owner', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'analytics.adjustment.decide', exact: true, requiredAnyRole: [{ role: 'product_analytics_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B92 integration */
   /* B92 review */
   /* B92 §OR (0113_b92_x_or; PR-70-001 — the operating review). EXACT rules — no `analytics` prefix rule exists. OPEN and ASSEMBLE — an
      analyst, the product analytics owner, an executive, a strategy owner (assembling CITES results; it computes nothing). NOTE — the review's
