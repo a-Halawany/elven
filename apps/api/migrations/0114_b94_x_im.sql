@@ -1558,7 +1558,7 @@ BEGIN
   SELECT * INTO s FROM executive.signatures x WHERE x.signature_id = p_signature;
   IF s.signature_id IS NULL OR s.subject_kind <> 'readiness' OR s.subject_id <> p_subject OR s.subject_version <> 1 OR s.subject_digest <> v_digest OR s.signer <> p_actor OR s.signer <> v_by
      OR s.bound_action <> v_action THEN
-    RAISE EXCEPTION 'go-live gate rejected (signature): the signature is not the acting principal''s over this act''s digest under this action' USING ERRCODE = '42501';
+    RAISE EXCEPTION 'go-live gate rejected (actor): the signature is not the acting principal''s over this act''s digest under this action' USING ERRCODE = '42501';
   END IF;
   IF p_kind = 'golive' THEN
     UPDATE implementation.golive_decisions SET signature_id = p_signature WHERE decision_id = p_subject;
