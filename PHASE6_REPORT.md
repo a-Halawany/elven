@@ -4752,3 +4752,11 @@ B25 COMPLETES F-P4-01 (14/0/0), F-P4-02 (9/0/0) and F-P4-03 (5/0/0) by their row
 - **F-P4-14:** 8/2/0. **F-P4-15:** 24/8/0. Construction is complete. Both read partial only on the R2 signed acceptance records and on three packages that need licensed real providers (external).
 - **F-P5-03:** construction complete; partial on R2 alone. **F-P5-02**, **F-P5-04** and **F-P5-01** are advanced.
 - **Counts:** rows implemented 1403 → 1437. M1 is unchanged (2027-07-13). The next A1 stage is B92.
+
+## 52. B92 (2026-10-12): product analytics, the metric catalog and UX telemetry (0113), after B33-F (0112, #86)
+
+- **B33-F (0112, merged `9aeeac6`)**: the package validation-to-effect boundary — certification, activation and re-enablement re-validate the facts other authorities own under row locks; the reverse requirement; the per-domain lifecycle lock (audit/CP6_BATCHES.md §B33-F). The tracker inconsistencies resolved (F-P5-01 completes at B26).
+- **B92**: the governed metric catalog (versioned contracts approved by named owners; purposes, scopes, uses, exceptions, manual adjustments), 38 of 52 App M / V1 / ES contracts computed with traceable records, replay and uncertainty, 14 unsupported with carriers; the standing evaluation (explained indeterminate, never an invented zero); cohort comparison; cost reconciliation; the experience-quality workflow under purpose, consent and pseudonymity; the operating review. No employee-performance inference anywhere (§B92.2).
+- **Proof**: 193/193 B92 harness cases on one fresh database; the complete integration green after one pin (§B92.4); the act held and stood on eye_demo, the walk 6/6 (§B92.5).
+- **The NORDWERK scene, honestly**: MET-001 a measured 0 of 7 (every loop's missing links named), MET-022 and MET-024 explained indeterminate (thin acknowledgements; an empty outcome ledger); three quarters named "no history".
+- **Bookkeeping**: F-P7-F-03 41/15/0, completing at B52; F-P7-F-10 functioning by its rows; rows implemented 1481; the next A1 stage B94.
