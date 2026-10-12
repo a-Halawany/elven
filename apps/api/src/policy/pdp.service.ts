@@ -2387,6 +2387,41 @@ const BUNDLE_V1: Rule[] = [
     obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
   /* end B94 §0 */
   /* B94 onboarding */
+  /* B94 §ON (0114_b94_x_on; PR-67-001/-002, CAP-DL-04/-05, PER-21, JRN-01). EXACT rules (TENANT roles at TENANT — they also qualify on a
+     DOMAIN route of the tenant). THE PROGRAMME: opened, revised and its steps planned / recorded / reverted by the IMPLEMENTATION LEAD or the
+     tenant administrator; held (and resumed) by any accountable party (the lead, the tenant admin, the customer sponsor, the onboarding
+     authority — the port keeps a hold placed by the sponsor or authority for the sponsor or authority to release); WITHDRAWN by the customer
+     sponsor or the tenant admin (human-gated). THE SPONSOR INTENT: the CUSTOMER SPONSOR only (human-gated; the port refuses a lead and an
+     agent). THE BASELINES: captured, promoted and proposed by the implementation lead; DECIDED by the ONBOARDING AUTHORITY (human-gated; the
+     port re-checks the approver — never the proposer or capturer, never a lead, never an agent — and the signature); drift recorded by the
+     attention agent (the after-tick hook `onboarding-drift`) or a person accountable for the domain. The draft domain (tenancy.domain.draft)
+     is answered by the earlier `tenancy.domain.` PREFIX rule (platform admin or tenant admin — first match wins); its port refuses PLATFORM
+     and requires the tenant administrator. The reads are §0's onboarding.read. */
+  ...((): Rule[] => {
+    const T = (role: string) => ({ role, atScope: 'TENANT' as Scope });
+    const lead = [T('implementation_lead'), T('tenant_admin')];
+    const accountable = [...lead, T('customer_sponsor'), T('onboarding_authority')];
+    const gate: Obligation[] = [{ type: 'human_gate' }];
+    const r = (actionPrefix: string, requiredAnyRole: Array<{ role: string; atScope: Scope }>, obligations?: Obligation[]): Rule =>
+      ({ actionPrefix, exact: true, requiredAnyRole, ...(obligations === undefined ? {} : { obligations }), requiresPurpose: true, maxConsequence: 'C2' });
+    return [
+      r('onboarding.programme.open', lead),
+      r('onboarding.programme.revise', lead),
+      r('onboarding.programme.hold', accountable),
+      r('onboarding.programme.resume', accountable),
+      r('onboarding.programme.withdraw', [T('customer_sponsor'), T('tenant_admin')], gate),
+      r('onboarding.intent.record', [T('customer_sponsor')], gate),
+      r('onboarding.step.plan', lead),
+      r('onboarding.step.record', lead),
+      r('onboarding.step.hold', accountable),
+      r('onboarding.step.revert', lead),
+      r('onboarding.baseline.capture', [T('implementation_lead')]),
+      r('onboarding.baseline.promote', [T('implementation_lead')]),
+      r('onboarding.baseline.propose', [T('implementation_lead')]),
+      r('onboarding.baseline.decide', [T('onboarding_authority')], gate),
+      r('onboarding.baseline.drift', [{ role: 'attention_agent', atScope: 'DOMAIN' }, { role: 'domain_admin', atScope: 'DOMAIN' }, T('implementation_lead'), T('onboarding_authority'), T('tenant_admin')]),
+    ];
+  })(),
   /* end B94 onboarding */
   /* B94 migration */
   /* end B94 migration */
