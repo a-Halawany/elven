@@ -223,6 +223,8 @@ const candidate = (as: AuthenticatedPrincipal, tg: Target, wave: string, journey
   { payload: { journeys, roles: ROLES } }) as Promise<{ candidate: Row; digest: string; claim: string }>;
 const accept = (as: AuthenticatedPrincipal, tg: Target, wave: string, digest: string, decision = 'accept', journeys = JOURNEYS) => mg.accept(rq(as, 'onboarding.acceptance.decide', 'migration_wave', wave, W(tg)), T(), W(tg), wave,
   { payload: { decision, journeys, roles: ROLES, digest, reason: `the migration ${decision === 'accept' ? 'is accepted' : 'is withheld'} by the customer authority (SYNTHETIC persona — a demonstration)` } }) as Promise<{ acceptance: Row }>;
+const tasks = async (id: string, what: string) => rows(sql`select state, outcome, candidate_roles, eligibility ->> 'proposer' proposer from executive.human_tasks
+  where kind = 'onboarding.approve' and subject @> ${JSON.stringify({ id, what })}::jsonb order by opened_at`);
 const items = async (subject: string, cls?: string) => rows(sql`select signal_class, state, title from executive.attention_items where subject_id = ${subject}::uuid ${cls === undefined ? sql`` : sql`and signal_class = ${cls}`} order by created_at`);
 
 let A: Target; let B: Target;
@@ -285,6 +287,8 @@ describe('AT-67 · the JRN-23 journey on wave A (SYNTHETIC): open → map → re
     const m = (await propose(lead, A, wave, V1, 'adopted_suggestions')).mapping;
     expect(m).toMatchObject({ version: 1, state: 'proposed', basis: 'adopted_suggestions', proposed_by_kind: 'human' });
     v1 = String(m['digest']);
+    // the customer authority's approval TASK (onboarding.approve), for the role — never assigned to the proposer
+    expect(await tasks(wave, 'mapping')).toEqual([{ state: 'open', outcome: null, candidate_roles: ['onboarding_authority'], proposer: lead.principalId }]);
   });
   it('unauthorized role · the lead (PDP), a lead holding the authority role (separation_of_duties), an agent (the PEP\'s human gate), an agent claiming a human (the PORT: actor) never approve', async () => {
     await refused(decide(lead, A, wave, 1, v1), /no qualifying role binding/, 403);
@@ -302,6 +306,7 @@ describe('AT-67 · the JRN-23 journey on wave A (SYNTHETIC): open → map → re
     const sig = await one(sql`select subject_digest, key_id, signature, signer from executive.signatures where signature_id = ${String(m['signature_id'])}::uuid`);
     expect(sig).toMatchObject({ subject_digest: v1, signer: authority.principalId });
     expect(new SignatureService().verify(sig as never)).toBe(true);
+    expect((await tasks(wave, 'mapping')).map((t) => `${String(t['state'])}:${String(t['outcome'])}`)).toEqual(['completed:approved']);
   });
   it('negative · CSV ONLY — an xlsx workbook collected as evidence is refused by the rehearsal with the residual (no spreadsheet parser in B94)', async () => {
     const x = await upload(A, `nordwerk-polska-legacy-${RUN}.xlsx`, workbook(), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -395,6 +400,7 @@ describe('AT-67 · the JRN-23 journey on wave A (SYNTHETIC): open → map → re
     expect(sig).toMatchObject({ subject_kind: 'cutover', subject_digest: cutDigest });
     expect(new SignatureService().verify(sig as never)).toBe(true);
     expect((await detail(lead, A, wave)).wave['state']).toBe('cutover_approved');
+    expect((await tasks(cut, 'cutover')).map((t) => `${String(t['state'])}:${String(t['outcome'])}`)).toEqual(['completed:approved']);
   });
   it('fault · EXECUTION OUTSIDE THE APPROVED MAPPING is refused (contract_changed): a field the mapping does not map, an extra column, a row the plan does not migrate — nothing written', async () => {
     const parsed = parseLegacy(Buffer.from(CORRECTED, 'utf8'), V2);
@@ -435,6 +441,7 @@ describe('AT-67 · the JRN-23 journey on wave A (SYNTHETIC): open → map → re
     expect(dom['status']).toBe('active');
     expect(arr(dom['events']).map((e) => e['event'])).toEqual(['domain.drafted', 'domain.activated']);
     await refused(activate(tenantAdmin, A, cut), /^migration cutover rejected \(state\): domain .* is active, not draft/, 409);
+    expect((await tasks(wave, 'acceptance')).map((t) => t['state'])).toEqual(['open']);   // the acceptance awaits the customer authority
   });
   it('JRN-23 rollback proof · the lead REHEARSES the rollback (the plan and its digest recorded — nothing retired)', async () => {
     const b = (await rehearseRollback(lead, A, cut)).rollback;
@@ -467,6 +474,7 @@ describe('AT-67 · the JRN-23 journey on wave A (SYNTHETIC): open → map → re
     expect(sig['subject_kind']).toBe('acceptance'); expect(new SignatureService().verify(sig as never)).toBe(true);
     const p = await rows(sql`select version, state, superseded_at is null cur from onboarding.programmes where programme_id = ${A.programmeId}::uuid order by version`);
     expect(p).toEqual([{ version: 1, state: 'in_progress', cur: false }, { version: 2, state: 'accepted', cur: true }]);
+    expect((await tasks(wave, 'acceptance')).map((t) => `${String(t['state'])}:${String(t['outcome'])}`)).toEqual(['completed:accepted']);
     expect(await one(sql`select claim from onboarding.migration_acceptances where acceptance_id = ${String(a['acceptance_id'])}::uuid`)).toEqual({ claim: 'demonstration' });
     // `customer` is never written by this product: the record is append-only and its claim is `demonstration` by constraint
     expect((await refusal(sql`update onboarding.migration_acceptances set claim = 'customer' where acceptance_id = ${String(a['acceptance_id'])}::uuid`.execute(h.su))).message).toMatch(/append-only|append only/i);

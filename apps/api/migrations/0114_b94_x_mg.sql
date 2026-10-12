@@ -347,12 +347,27 @@ BEGIN
   FOR v IN SELECT x.cutover_id FROM onboarding.migration_cutovers x WHERE x.wave_id = p_wave AND x.state = 'requested' FOR UPDATE LOOP
     UPDATE onboarding.migration_cutovers SET state = 'superseded', held_reasons = '[]'::jsonb, updated_at = clock_timestamp() WHERE cutover_id = v;
     PERFORM executive.b33_close_items(p_tenant, p_domain, NULL, 'cutover', v, p_reason, p_actor, p_correlation);
+    PERFORM executive._cancel_human_tasks(p_tenant, p_domain, jsonb_build_object('kind', 'cutover', 'id', v, 'what', 'cutover'), ARRAY['onboarding.approve'], p_reason, p_actor, p_correlation);
     PERFORM onboarding.ledger('onboarding', p_tenant, p_domain, 'cutover', v, 1, 'cutover.superseded', p_actor, jsonb_build_object('wave_id', p_wave, 'reason', p_reason), p_correlation);
   END LOOP;
   UPDATE onboarding.migration_waves SET held_reasons = coalesce((SELECT jsonb_agg(h) FROM jsonb_array_elements(held_reasons) h WHERE h ->> 'kind' <> 'cutover'), '[]'::jsonb)
    WHERE wave_id = p_wave;
 END $$;
 REVOKE ALL ON FUNCTION onboarding.mg_supersede_requested(uuid, uuid, uuid, text, uuid, uuid) FROM PUBLIC;
+
+/* THE APPROVAL TASK (the prelude's human task kind `onboarding.approve`): every act that awaits the customer authority opens one for the
+   onboarding_authority role (idempotent on its dedupe key); the deciding act resolves it, a superseding act cancels it. subject.what names
+   the decision (mapping | cutover | rollback | acceptance). */
+CREATE OR REPLACE FUNCTION onboarding.mg_open_task(p_tenant uuid, p_domain uuid, p_kind text, p_id uuid, p_what text, p_dedupe text, p_title text, p_details jsonb, p_proposer uuid,
+                                                   p_actor uuid, p_correlation uuid) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = executive, pg_catalog, pg_temp AS $$
+BEGIN
+  RETURN executive._open_human_task(gen_random_uuid(), p_tenant, p_domain, 'onboarding.approve', p_dedupe,
+    jsonb_build_object('kind', p_kind, 'id', p_id, 'what', p_what) || coalesce(p_details, '{}'::jsonb), p_title, NULL, ARRAY['onboarding_authority'],
+    jsonb_build_object('rule', 'a named human holding onboarding_authority, on the exact digest — never the proposer, never an implementation lead, never an agent', 'proposer', p_proposer),
+    NULL, '{}'::jsonb, NULL, NULL, p_actor, p_correlation);
+END $$;
+REVOKE ALL ON FUNCTION onboarding.mg_open_task(uuid, uuid, text, uuid, text, text, text, jsonb, uuid, uuid, uuid) FROM PUBLIC;
 
 /* Validate a mapping spec against the closed lists; returns it normalised (the canonical form the digest covers). */
 CREATE OR REPLACE FUNCTION onboarding.mg_validate_spec(p_spec jsonb, p_identifier_system text) RETURNS jsonb
@@ -714,11 +729,15 @@ BEGIN
   END IF;
   v_spec := onboarding.mg_validate_spec(p_spec, w.identifier_system);
   v_digest := onboarding.digest(jsonb_build_object('wave_id', p_wave, 'version', v_next, 'spec', v_spec));
-  -- an undecided earlier proposal is WITHDRAWN by the newer one (never decided on anyone's behalf)
+  -- an undecided earlier proposal is WITHDRAWN by the newer one (never decided on anyone's behalf); its approval task cancelled
   UPDATE onboarding.migration_mappings SET state = 'withdrawn', decision_reason = format('withdrawn: v%s proposed before a decision', v_next)
    WHERE wave_id = p_wave AND state = 'proposed';
+  PERFORM executive._cancel_human_tasks(p_tenant, p_domain, jsonb_build_object('kind', 'migration_wave', 'id', p_wave, 'what', 'mapping'), ARRAY['onboarding.approve'],
+                                        format('withdrawn: v%s proposed before a decision', v_next), p_actor, p_correlation);
   INSERT INTO onboarding.migration_mappings (wave_id, version, tenant_id, domain_id, spec, digest, basis, rationale, proposed_by, proposed_by_kind, correlation_id)
   VALUES (p_wave, v_next, p_tenant, p_domain, v_spec, v_digest, coalesce(p_basis, 'manual'), btrim(p_rationale), p_actor, coalesce(onboarding.principal_kind(p_actor), 'unknown'), p_correlation);
+  PERFORM onboarding.mg_open_task(p_tenant, p_domain, 'migration_wave', p_wave, 'mapping', format('mg-mapping-%s-v%s', p_wave, v_next),
+    format('Approve or reject mapping v%s of migration wave %s (SYNTHETIC)', v_next, w.wave_key), jsonb_build_object('version', v_next, 'digest', v_digest), p_actor, p_actor, p_correlation);
   PERFORM onboarding.ledger('onboarding', p_tenant, p_domain, 'migration_mapping', p_wave, v_next, 'mapping.proposed', p_actor,
     jsonb_build_object('digest', v_digest, 'basis', coalesce(p_basis, 'manual'), 'columns', jsonb_array_length(v_spec -> 'columns')), p_correlation);
   UPDATE onboarding.migration_waves SET updated_at = clock_timestamp() WHERE wave_id = p_wave;
@@ -758,6 +777,8 @@ BEGIN
   UPDATE onboarding.migration_mappings SET state = CASE WHEN p_decision = 'approve' THEN 'approved' ELSE 'rejected' END, decided_by = p_actor, decided_at = clock_timestamp(),
          decision_reason = btrim(p_reason), signature_id = CASE WHEN p_decision = 'approve' THEN p_signature END
    WHERE wave_id = p_wave AND version = p_version;
+  PERFORM executive._resolve_human_tasks(p_tenant, p_domain, jsonb_build_object('kind', 'migration_wave', 'id', p_wave, 'what', 'mapping', 'version', p_version), ARRAY['onboarding.approve'],
+                                         CASE WHEN p_decision = 'approve' THEN 'approved' ELSE 'rejected' END, p_signature, p_actor, p_correlation);
   PERFORM onboarding.ledger('onboarding', p_tenant, p_domain, 'migration_mapping', p_wave, p_version, CASE WHEN p_decision = 'approve' THEN 'mapping.approved' ELSE 'mapping.rejected' END, p_actor,
     jsonb_build_object('digest', m.digest, 'reason', btrim(p_reason), 'signature_id', p_signature, 'proposed_by', m.proposed_by), p_correlation);
   UPDATE onboarding.migration_waves SET updated_at = clock_timestamp() WHERE wave_id = p_wave;
@@ -887,6 +908,8 @@ BEGIN
   VALUES (p_cutover, p_tenant, p_domain, p_wave, p_rehearsal, r.plan_digest, r.mapping_version, p_actor, p_correlation);
   SELECT * INTO c FROM onboarding.migration_cutovers x WHERE x.cutover_id = p_cutover;
   v_block := onboarding.mg_evaluate_cutover(c, p_actor, p_correlation);
+  PERFORM onboarding.mg_open_task(p_tenant, p_domain, 'cutover', p_cutover, 'cutover', format('mg-cutover-%s', p_cutover),
+    format('Approve the cutover of migration wave %s on rehearsal %s (SYNTHETIC)', w.wave_key, r.seq), jsonb_build_object('plan_digest', r.plan_digest, 'wave_id', p_wave), p_actor, p_actor, p_correlation);
   PERFORM onboarding.ledger('onboarding', p_tenant, p_domain, 'cutover', p_cutover, 1, CASE WHEN jsonb_array_length(v_block) > 0 THEN 'cutover.held' ELSE 'cutover.requested' END, p_actor,
     jsonb_build_object('wave_id', p_wave, 'rehearsal_id', p_rehearsal, 'plan_digest', r.plan_digest, 'blocking', v_block), p_correlation);
   RETURN (SELECT to_jsonb(x) FROM onboarding.migration_cutovers x WHERE x.cutover_id = p_cutover);
@@ -947,6 +970,7 @@ BEGIN
          held_reasons = '[]'::jsonb, updated_at = clock_timestamp()
    WHERE cutover_id = p_cutover;
   UPDATE onboarding.migration_waves SET state = 'cutover_approved', updated_at = clock_timestamp() WHERE wave_id = c.wave_id;
+  PERFORM executive._resolve_human_tasks(p_tenant, p_domain, jsonb_build_object('kind', 'cutover', 'id', p_cutover, 'what', 'cutover'), ARRAY['onboarding.approve'], 'approved', p_signature, p_actor, p_correlation);
   PERFORM onboarding.ledger('onboarding', p_tenant, p_domain, 'cutover', p_cutover, 1, 'cutover.approved', p_actor,
     jsonb_build_object('plan_digest', c.plan_digest, 'rehearsal_id', c.rehearsal_id, 'signature_id', p_signature, 'reason', btrim(p_reason), 'requested_by', c.requested_by), p_correlation);
   RETURN jsonb_build_object('held', false, 'blocking', '[]'::jsonb, 'cutover', (SELECT to_jsonb(x) FROM onboarding.migration_cutovers x WHERE x.cutover_id = p_cutover));
@@ -1183,6 +1207,9 @@ BEGIN
           jsonb_build_object('name', d.name, 'cutover_id', p_cutover, 'wave_id', c.wave_id, 'plan_digest', c.plan_digest, 'post_rehearsal_id', c.post_rehearsal_id, 'observed', v_obs, 'by', 'B94 §MG'));
   UPDATE onboarding.migration_cutovers SET state = 'activated', activated_at = clock_timestamp(), updated_at = clock_timestamp() WHERE cutover_id = p_cutover;
   UPDATE onboarding.migration_waves SET state = 'activated', updated_at = clock_timestamp() WHERE wave_id = c.wave_id;
+  PERFORM onboarding.mg_open_task(p_tenant, p_domain, 'migration_wave', c.wave_id, 'acceptance', format('mg-acceptance-%s', c.wave_id),
+    format('Accept or withhold the migration into %s (SYNTHETIC — an acceptance demonstrates the software; real acceptance is R2)', d.name), jsonb_build_object('cutover_id', p_cutover),
+    c.executed_by, p_actor, p_correlation);
   PERFORM onboarding.ledger('onboarding', p_tenant, p_domain, 'domain', p_domain, NULL, 'domain.activated', p_actor,
     jsonb_build_object('cutover_id', p_cutover, 'wave_id', c.wave_id, 'plan_digest', c.plan_digest, 'observed', v_obs), p_correlation);
   RETURN jsonb_build_object('domain_id', p_domain, 'status', 'active', 'cutover_id', p_cutover, 'observed', v_obs);
@@ -1205,6 +1232,8 @@ BEGIN
   v_digest := onboarding.digest(v_plan);
   INSERT INTO onboarding.migration_rollbacks (rollback_id, tenant_id, domain_id, cutover_id, kind, plan, digest, recorded_by, correlation_id)
   VALUES (p_rollback, p_tenant, p_domain, p_cutover, 'rehearsal', v_plan, v_digest, p_actor, p_correlation);
+  PERFORM onboarding.mg_open_task(p_tenant, p_domain, 'cutover', p_cutover, 'rollback', format('mg-rollback-%s', p_rollback),
+    format('Decide on executing the rehearsed rollback of cutover %s (SYNTHETIC)', left(p_cutover::text, 8)), jsonb_build_object('rollback_id', p_rollback, 'digest', v_digest), p_actor, p_actor, p_correlation);
   PERFORM onboarding.ledger('onboarding', p_tenant, p_domain, 'rollback', p_rollback, 1, 'rollback.rehearsed', p_actor,
     jsonb_build_object('cutover_id', p_cutover, 'digest', v_digest, 'retire', jsonb_array_length(v_plan -> 'retire'), 'keep_identifiers', jsonb_array_length(v_plan -> 'keep_identifiers')), p_correlation);
   RETURN (SELECT to_jsonb(x) FROM onboarding.migration_rollbacks x WHERE x.rollback_id = p_rollback);
@@ -1254,6 +1283,8 @@ BEGIN
   UPDATE onboarding.migration_cutovers SET state = 'rolled_back', rolled_back_at = clock_timestamp(), held_reasons = '[]'::jsonb, updated_at = clock_timestamp() WHERE cutover_id = p_cutover;
   UPDATE onboarding.migration_waves SET state = 'rolled_back', held_reasons = '[]'::jsonb, updated_at = clock_timestamp() WHERE wave_id = c.wave_id;
   PERFORM executive.b33_close_items(p_tenant, p_domain, NULL, 'cutover', p_cutover, 'the cutover is rolled back by plan', p_actor, p_correlation);
+  PERFORM executive._resolve_human_tasks(p_tenant, p_domain, jsonb_build_object('kind', 'cutover', 'id', p_cutover, 'what', 'rollback'), ARRAY['onboarding.approve'], 'executed', p_rollback, p_actor, p_correlation);
+  PERFORM executive._cancel_human_tasks(p_tenant, p_domain, jsonb_build_object('kind', 'migration_wave', 'id', c.wave_id), ARRAY['onboarding.approve'], 'the wave is rolled back', p_actor, p_correlation);
   PERFORM executive.b33_close_items(p_tenant, p_domain, NULL, 'migration_wave', c.wave_id, 'the wave is rolled back by plan', p_actor, p_correlation);
   PERFORM onboarding.ledger('onboarding', p_tenant, p_domain, 'rollback', p_rollback, 1, 'rollback.executed', p_actor,
     jsonb_build_object('cutover_id', p_cutover, 'rehearsal_of', p_rehearsal, 'digest', v_digest, 'retired', v_n, 'domain_reverted', v_status = 'active', 'reason', btrim(p_reason)), p_correlation);
@@ -1326,6 +1357,9 @@ BEGIN
         jsonb_build_object('acceptance_id', p_acceptance, 'wave_id', p_wave, 'domain_id', p_domain, 'claim', 'demonstration'), p_correlation);
     END IF;
   END IF;
+  IF p_decision = 'accept' THEN
+    PERFORM executive._resolve_human_tasks(p_tenant, p_domain, jsonb_build_object('kind', 'migration_wave', 'id', p_wave, 'what', 'acceptance'), ARRAY['onboarding.approve'], 'accepted', p_acceptance, p_actor, p_correlation);
+  END IF;
   PERFORM onboarding.ledger('onboarding', p_tenant, p_domain, 'acceptance', p_acceptance, 1, CASE WHEN p_decision = 'accept' THEN 'acceptance.recorded' ELSE 'acceptance.withheld' END, p_actor,
     jsonb_build_object('wave_id', p_wave, 'digest', v_digest, 'claim', 'demonstration', 'reason', btrim(p_reason), 'signature_id', p_signature), p_correlation);
   RETURN (SELECT to_jsonb(x) FROM onboarding.migration_acceptances x WHERE x.acceptance_id = p_acceptance);
@@ -1347,6 +1381,7 @@ BEGIN
   PERFORM onboarding.mg_supersede_requested(p_tenant, p_domain, p_wave, 'the wave is withdrawn', p_actor, p_correlation);
   UPDATE onboarding.migration_waves SET state = 'withdrawn', held_reasons = '[]'::jsonb, updated_at = clock_timestamp() WHERE wave_id = p_wave;
   PERFORM executive.b33_close_items(p_tenant, p_domain, NULL, 'migration_wave', p_wave, 'the wave is withdrawn', p_actor, p_correlation);
+  PERFORM executive._cancel_human_tasks(p_tenant, p_domain, jsonb_build_object('kind', 'migration_wave', 'id', p_wave), ARRAY['onboarding.approve'], 'the wave is withdrawn', p_actor, p_correlation);
   PERFORM onboarding.ledger('onboarding', p_tenant, p_domain, 'migration_wave', p_wave, 1, 'wave.withdrawn', p_actor, jsonb_build_object('reason', btrim(p_reason)), p_correlation);
   RETURN (SELECT to_jsonb(x) FROM onboarding.migration_waves x WHERE x.wave_id = p_wave);
 END $$;
