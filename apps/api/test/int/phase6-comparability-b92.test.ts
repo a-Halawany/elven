@@ -485,6 +485,33 @@ describe('CO2 · the cohort comparison: a difference WITH its uncertainty, or an
   });
 });
 
+
+describe('CO2-X · cross-tenant (AT-70): another tenant\'s analyst sees and compares nothing of this tenant', () => {
+  it('its own context answers 404 for this tenant\'s results and comparisons and an empty list; naming this tenant\'s context is refused (PDP 403)', async () => {
+    const key = `CO-xt${RUN}`; await plant(key);
+    await items(key, spread(3, 6, () => ({})));
+    const a = String((await compute(analyst, { metricKey: key, period: Q3 })).result['result_id']);
+    const b = String((await compute(analyst, { metricKey: key, period: Q2 })).result['result_id']);
+    const cmp = String((await compare(analyst, { a: { resultId: a }, b: { resultId: b } })).comparison['comparison_id']);
+    const U = uuidv7(); const DU = uuidv7(); const id = uuidv7();
+    await sql`insert into tenancy.tenants (id, name, status, residency_profile, retention_profile, activated_at) values (${U}::uuid, ${'b92co-other-' + RUN}, 'active', 'EU', 'default', clock_timestamp())`.execute(h.su);
+    await sql`insert into tenancy.domains (id, tenant_id, name, status, activated_at) values (${DU}::uuid, ${U}::uuid, ${'b92co-other-domain-' + RUN}, 'active', clock_timestamp())`.execute(h.su);
+    await sql`insert into identity.principals (id, kind, scope, tenant_id, domain_id, display_name, login_name, status)
+              values (${id}::uuid, 'human', 'DOMAIN', ${U}::uuid, ${DU}::uuid, ${`b92co-other-analyst-${RUN} (SYNTHETIC)`}, ${`b92co-oa-${id.slice(-8)}`}, 'active')`.execute(h.su);
+    for (const role of ['product_analyst', 'product_analytics_owner']) {
+      await sql`insert into identity.role_bindings (id, principal_id, role_code, scope, tenant_id, domain_id) values (${uuidv7()}::uuid, ${id}::uuid, ${role}, 'DOMAIN', ${U}::uuid, ${DU}::uuid)`.execute(h.su);
+    }
+    const other = await h.openSession({ ...h.manager, principalId: id, kind: 'human', homeScope: 'DOMAIN', homeTenantId: U, homeDomainId: DU,
+      bindings: ['product_analyst', 'product_analytics_owner'].map((roleCode) => ({ roleCode, scope: 'DOMAIN', tenantId: U, domainId: DU })) } as AuthenticatedPrincipal);
+    const req = (action: string, type: string, oid: string | null = null) => ({ eyeEnvelope: { ...(h.env(other, action, type, oid, 'intelligence') as unknown as Row), tenant_id: U, domain_id: DU }, eyePrincipal: other }) as never;
+    await refused(co.runComparison(req('analytics.comparison.run', 'ACM'), U, DU, { payload: { a: { resultId: a }, b: { resultId: b } } }), /^cohort comparison rejected \(unknown_result\)/, 404);
+    await refused(co.comparison(req('analytics.read', 'ACM', cmp), U, DU, cmp), /^cohort comparison rejected \(unknown_comparison\)/, 404);
+    expect(((await co.comparisons(req('analytics.read', 'ACM'), U, DU, { payload: {} })) as { comparisons: Row[] }).comparisons).toEqual([]);
+    expect(((await co.reconciliations(req('analytics.read', 'ARC'), U, DU, { payload: {} })) as { reconciliations: Row[] }).reconciliations).toEqual([]);
+    await refused(compare(other, { a: { resultId: a }, b: { resultId: b } }), /./, 403);
+  });
+});
+
 /* ═════════════════════════════════════════ CO3 ═════════════════════════════════════════ */
 describe('CO3 · DP-44-001: cohorts, relationships and analytical models as GOVERNED semantic objects of B90\'s layer', () => {
   let key = ''; let cohortId = ''; let cohortDigest = ''; let comparisonId = '';
@@ -548,6 +575,9 @@ describe('CO3 · DP-44-001: cohorts, relationships and analytical models as GOVE
       const cert = (await certify(owner, String(o['object_id']), { version: 1, digest: String(o['digest']), expiresAt: exp, reason: 'reviewed and adopted (SYNTHETIC)' })).object;
       expect(cert).toMatchObject({ state: 'certified', kind: o['kind'] });
     }
+    const listed = ((await co.objects(rq(owner, 'products.semantic.read', 'SOB'), T(), D(), { payload: { kind: 'relationship' } })) as { objects: Row[] }).objects;
+    expect(listed.map((x) => x['object_key'])).toEqual([`rel-${RUN.toLowerCase()}`]);
+    expect(obj(listed[0]!['definition'])).toMatchObject({ relation: 'explains', to: { kind: 'metric', key } });
   });
 
   it('a comparison asked for by PERIOD naming the certified cohort through the route (the service computes both sides first): the cohort object\'s version, digest and certification recorded on the comparison', async () => {
