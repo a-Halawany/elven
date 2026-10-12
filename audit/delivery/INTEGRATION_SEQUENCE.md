@@ -190,7 +190,10 @@ Between two merges the first merge's `main` chain completes before the next merg
   - **The anchor's attempt 1 FAILED**: its macOS verify job failed the C19 `c19-lifecycle` "DELIBERATE EVASION" control (the evader was not alive at 300 ms). The merged tree is byte-identical to `8d34c22`, whose C19 lifecycle passed on both platforms; no gate, workflow or lifecycle file changed.
   - **Attempt 2, a FULL re-run of every job** (never a failed-only re-run on `main`, the B22 #59 rule), succeeded: guard, verify on both platforms, publish.
   - **What is known and what is not:** the same control failed the same way once before on main's chain for `3779079` (#77) and passed on the full re-run. The failure is INTERMITTENT and its cause is UNRESOLVED. A passing retry does not prove runner timing; a hosted macOS runner effect remains a suspicion, not a finding. The control, its threshold and the boundary are unchanged.
-- **#86** (B33-F, 0112: the package validation-to-effect boundary; the tracker resolution of 2026-10-12): code head `5492fd2` hosted green (ci 38184638471, C19 lifecycle 38184638559); merged on its verified records head under the standing authorization after main's chain for `059a314` had completed. The records head's checks, the merge and main's chain for it are recorded in the next delivery record (B92's).
+- **#86** (B33-F, 0112: the package validation-to-effect boundary; the tracker resolution of 2026-10-12): code head `5492fd2` hosted green (ci 38184638471, C19 lifecycle 38184638559).
+  - **Merged as `9aeeac6`** (2026-10-12) on its verified records head `59db283` (ci 38187426684, C19 lifecycle 38187426683) under the standing authorization, after main's chain for `059a314` had completed.
+  - **Main's chain for `9aeeac6`:** ci 38191518257 → C19 lifecycle 38191518271 → C17 finalize 38194857493 → C19 anchor 38194928506 (created after the finalize), all succeeded on their first attempt.
+- **B92** (0113: product analytics, the metric catalog and UX telemetry), on `phase6-b92` after #86. Its PR's hosted runs, the merge and main's chain for it are recorded in the next delivery record (B94's) — no records-only commit.
 
 ## 3. What is never done in this sequence
 

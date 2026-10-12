@@ -150,6 +150,11 @@ const BUNDLE_V1: Rule[] = [
       { role: 'domain_specialist', atScope: 'DOMAIN' },
       { role: 'domain_intelligence_agent', atScope: 'DOMAIN' },
       /* end B33 §0 */
+      /* B92 §0 (0113 §0.2): the product analytics owner, the privacy officer and the product analyst resolve their own scope, as every new domain role does */
+      { role: 'product_analytics_owner', atScope: 'DOMAIN' },
+      { role: 'privacy_officer', atScope: 'DOMAIN' },
+      { role: 'product_analyst', atScope: 'DOMAIN' },
+      /* end B92 §0 */
     ],
     obligations: [{ type: 'audit_access' }],
     requiresPurpose: true,
@@ -2194,6 +2199,163 @@ const BUNDLE_V1: Rule[] = [
   { actionPrefix: 'domain.competitor.twin.bind', exact: true, requiredAnyRole: [{ role: 'twin_owner', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
   { actionPrefix: 'domain.competitor.twin.decide', exact: true, requiredAnyRole: [{ role: 'twin_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   /* end B33 competitor */
+  /* B92 §0 */
+  /* B92 §0 (0113 §0.7–§0.9; F-P7-F-03). EXACT rules — no `analytics` prefix rule exists. THE READ (analytics.read: definitions, purposes,
+     scopes, results with their records, the registry, comparisons, the experience workspace, the operating review) is consequential and
+     audited: the analytics roles, the executives and the decision, strategy, risk and forecast owners an operating review serves, the data
+     steward, the auditor and the attention agent. COMPUTE — an analyst, the owner, or the attention agent (AI may compute; it never approves).
+     REPLAY — an analyst, the owner, the auditor. Every non-exempt `analytics.*` write is gated by `product_analytics` on a contracted tenant
+     (0113 §0.4); the human-gated rules and the read are exempt. The parts' rules follow in their blocks. */
+  { actionPrefix: 'analytics.read', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' },
+    { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'product_analytics_owner', atScope: 'DOMAIN' }, { role: 'privacy_officer', atScope: 'DOMAIN' }, { role: 'product_analyst', atScope: 'DOMAIN' },
+    { role: 'executive', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' },
+    { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'data_steward', atScope: 'DOMAIN' }, { role: 'attention_agent', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'analytics.metric.compute', exact: true, requiredAnyRole: [{ role: 'product_analyst', atScope: 'DOMAIN' }, { role: 'product_analytics_owner', atScope: 'DOMAIN' },
+    { role: 'attention_agent', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'analytics.metric.replay', exact: true, requiredAnyRole: [{ role: 'product_analyst', atScope: 'DOMAIN' }, { role: 'product_analytics_owner', atScope: 'DOMAIN' },
+    { role: 'auditor', atScope: 'TENANT' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B92 §0 */
+  /* B92 definitions */
+  /* B92 §MD (0113_b92_x_md; PR-70-002/-003, CAP-DL-11, V01-T-040, DP-44-005). EXACT rules. PROPOSALS (purpose, scope, definition) — a product analyst or
+     the product analytics owner; the PORT also requires a named HUMAN (an agent holding the role is refused there: a definition is a human's proposal).
+     DECISIONS and RETIREMENTS are human-gated: a purpose by the PRIVACY OFFICER (the privacy and minimisation review), a scope and a definition by the
+     PRODUCT ANALYTICS OWNER — the port re-checks the role, the human and that the decider is not the proposer. USES — those who cite a result in a review,
+     a package, a briefing, a publication, an export or a finding (the port re-checks; ES-40-008's qualification is the port's). products.metric.use —
+     those who cite a B90 serving (DP-44-005; the readers of B90's serve rule who author packages, briefings and publications). */
+  { actionPrefix: 'analytics.purpose.propose', exact: true, requiredAnyRole: [{ role: 'product_analyst', atScope: 'DOMAIN' }, { role: 'product_analytics_owner', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'analytics.purpose.decide', exact: true, requiredAnyRole: [{ role: 'privacy_officer', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'analytics.purpose.retire', exact: true, requiredAnyRole: [{ role: 'privacy_officer', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'analytics.scope.propose', exact: true, requiredAnyRole: [{ role: 'product_analyst', atScope: 'DOMAIN' }, { role: 'product_analytics_owner', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'analytics.scope.decide', exact: true, requiredAnyRole: [{ role: 'product_analytics_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'analytics.scope.retire', exact: true, requiredAnyRole: [{ role: 'product_analytics_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'analytics.definition.propose', exact: true, requiredAnyRole: [{ role: 'product_analyst', atScope: 'DOMAIN' }, { role: 'product_analytics_owner', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'analytics.definition.decide', exact: true, requiredAnyRole: [{ role: 'product_analytics_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'analytics.definition.retire', exact: true, requiredAnyRole: [{ role: 'product_analytics_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'analytics.use.record', exact: true, requiredAnyRole: [{ role: 'product_analyst', atScope: 'DOMAIN' }, { role: 'product_analytics_owner', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' },
+    { role: 'executive_operator', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' },
+    { role: 'forecast_owner', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'products.metric.use', exact: true, requiredAnyRole: [{ role: 'executive', atScope: 'DOMAIN' }, { role: 'executive_operator', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' },
+    { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' },
+    { role: 'data_steward', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'product_analyst', atScope: 'DOMAIN' }, { role: 'product_analytics_owner', atScope: 'DOMAIN' }],
+    requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B92 definitions */
+  /* B92 computations-a */
+  /* end B92 computations-a */
+  /* B92 computations-b */
+  /* B92 §MCB (0113_b92_x_mcb.sql §MCB.1–§MCB.2; MET-009, MET-014). EXACT rules — no `analytics` prefix rule exists. TEMPORAL DECLARE — the
+     domain's product analytics owner declares which time fields a record of an object type must carry (MET-009's requirement): a named
+     human, human-gated (the port re-checks the human and the role). SEARCH REVIEW — a product analyst or the owner reviews a recorded
+     search's results (MET-014): a named human, human-gated; the port re-checks the human, the role and that the reviewer is NOT the
+     searcher. An agent holds neither rule. Both are human-gated — exempt from the product_analytics entitlement gate (0113 §0.4). The reads
+     are the prelude's analytics.read. */
+  { actionPrefix: 'analytics.temporal.declare', exact: true, requiredAnyRole: [{ role: 'product_analytics_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'analytics.search.review', exact: true, requiredAnyRole: [{ role: 'product_analyst', atScope: 'DOMAIN' }, { role: 'product_analytics_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B92 computations-b */
+  /* B92 comparability */
+  /* B92 comparability (0113 §CO; PR-70-005, PR-70-006, AT-70, DP-44-001). EXACT rules — no `analytics` or `products` prefix rule exists. THE
+     COMPARISON (analytics.comparison.run) — an analyst, the owner or the attention agent (AI may compute; the port records the comparison
+     under the acting principal and decides comparability itself). THE COST RECONCILIATION (analytics.reconciliation.run) — an analyst or the
+     owner. THE SEMANTIC OBJECTS (DP-44-001, B90's layer): DECLARE — a data steward or a product analyst, human-gated (an agent never declares
+     semantics; the port re-checks the human and the role); CERTIFY — the object's OWNER (a product analytics owner), human-gated (the port
+     re-checks the owner, the separation from the version's declarer, the digest and the expiry); WITHDRAW — the owner or a data steward,
+     human-gated; READ (products.semantic.read) audited — B90's metric readers and the analytics roles. Every non-exempt `analytics.*` write
+     is gated by `product_analytics` on a contracted tenant (0113 §0.4); the human-gated rules and the reads are exempt. */
+  { actionPrefix: 'analytics.comparison.run', exact: true, requiredAnyRole: [{ role: 'product_analyst', atScope: 'DOMAIN' }, { role: 'product_analytics_owner', atScope: 'DOMAIN' },
+    { role: 'attention_agent', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'analytics.reconciliation.run', exact: true, requiredAnyRole: [{ role: 'product_analyst', atScope: 'DOMAIN' }, { role: 'product_analytics_owner', atScope: 'DOMAIN' }],
+    requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'products.semantic.declare', exact: true, requiredAnyRole: [{ role: 'data_steward', atScope: 'DOMAIN' }, { role: 'product_analyst', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'products.semantic.certify', exact: true, requiredAnyRole: [{ role: 'product_analytics_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'products.semantic.withdraw', exact: true, requiredAnyRole: [{ role: 'product_analytics_owner', atScope: 'DOMAIN' }, { role: 'data_steward', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'products.semantic.read', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' },
+    { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'data_steward', atScope: 'DOMAIN' }, { role: 'product_analytics_owner', atScope: 'DOMAIN' }, { role: 'privacy_officer', atScope: 'DOMAIN' },
+    { role: 'product_analyst', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' },
+    { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' }, { role: 'attention_agent', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B92 comparability */
+  /* B92 experience */
+  /* B92 §UX (0113_b92_x_ux; UX-70-001..006, CAP-PD-09; D12–D14). EXACT rules. THE PERSON'S OWN acts — consent (grant, withdraw: human-gated,
+     a named human's own act; withdrawal is never licence-gated: a `withdraw` segment), the self read (their consent and the instrumentation
+     catalogue) and the assignment read (their arm, the control without consent), and the RECORDING of a telemetry event (NOT human-gated,
+     licence-gated) — are open to every HUMAN role of the domain (the identity.self.read list less its agents and the external collaborator:
+     an agent has no consent to give and no experience to measure; the ports re-check the human and the consent). DEFINE telemetry, journeys,
+     segments, baselines, thresholds and experiments: the product analyst and the owner. THE PRIVACY OFFICER (human-gated): the privacy and
+     minimisation review, hold, release, the purge; retirement also by the owner. THE OWNER (human-gated): thresholds' decision and
+     retirement, an experiment's approval (with the privacy officer — two approvals, two people), its conclusion, the action a finding leads
+     to, the export. FINDINGS are proposed by an analyst, the owner or the attention agent (AI may propose); an agent is refused deciding at
+     the PEP (no rule) AND at the port. The workspace reads, the preview and the export download are `analytics.read` (the prelude's). */
+  ...((): Rule[] => {
+    const H = ['domain_admin', 'domain_analyst', 'collection_manager', 'decision_owner', 'decision_approver', 'decision_authority', 'executive', 'extraction_manager', 'resolution_manager',
+      'strategy_owner', 'forecast_owner', 'twin_owner', 'simulation_operator', 'knowledge_owner', 'record_authority', 'retention_steward', 'ontology_steward', 'risk_owner',
+      'opportunity_sponsor', 'execution_authority', 'method_steward', 'constraint_steward', 'executive_operator', 'board_member', 'data_steward', 'domain_specialist',
+      'product_analytics_owner', 'privacy_officer', 'product_analyst'].map((role) => ({ role, atScope: 'DOMAIN' as Scope }));
+    const person = [{ role: 'tenant_admin', atScope: 'TENANT' as Scope }, { role: 'auditor', atScope: 'TENANT' as Scope }, { role: 'retention_authority', atScope: 'TENANT' as Scope }, ...H];
+    const analyst = [{ role: 'product_analyst', atScope: 'DOMAIN' as Scope }, { role: 'product_analytics_owner', atScope: 'DOMAIN' as Scope }];
+    const owner = [{ role: 'product_analytics_owner', atScope: 'DOMAIN' as Scope }];
+    const privacy = [{ role: 'privacy_officer', atScope: 'DOMAIN' as Scope }];
+    const gate: Obligation[] = [{ type: 'human_gate' }];
+    const r = (actionPrefix: string, requiredAnyRole: Array<{ role: string; atScope: Scope }>, obligations?: Obligation[]): Rule =>
+      ({ actionPrefix, exact: true, requiredAnyRole, ...(obligations === undefined ? {} : { obligations }), requiresPurpose: true, maxConsequence: 'C2' });
+    return [
+      r('analytics.consent.read', person, [{ type: 'audit_access' }]),
+      r('analytics.consent.grant', person, gate),
+      r('analytics.consent.withdraw', person, gate),
+      r('analytics.telemetry.record', person),
+      r('analytics.experiment.assignment.read', person, [{ type: 'audit_access' }]),
+      r('analytics.telemetry.define', analyst),
+      r('analytics.telemetry.review', privacy, gate),
+      r('analytics.telemetry.hold', privacy, gate),
+      r('analytics.telemetry.release', privacy, gate),
+      r('analytics.telemetry.retire', [...privacy, ...owner], gate),
+      r('analytics.telemetry.purge', privacy, gate),
+      r('analytics.experience.journey.declare', analyst),
+      r('analytics.experience.segment.declare', analyst),
+      r('analytics.experience.baseline.record', analyst),
+      r('analytics.experience.threshold.propose', analyst),
+      r('analytics.experience.threshold.decide', owner, gate),
+      r('analytics.experience.threshold.retire', owner, gate),
+      r('analytics.experiment.propose', analyst),
+      r('analytics.experiment.approve', [...owner, ...privacy], gate),
+      r('analytics.experiment.analyse', analyst),
+      r('analytics.experiment.conclude', owner, gate),
+      r('analytics.experience.finding.propose', [...analyst, { role: 'attention_agent', atScope: 'DOMAIN' as Scope }]),
+      r('analytics.experience.action.decide', owner, gate),
+      r('analytics.export.create', owner, gate),
+    ];
+  })(),
+  /* end B92 experience */
+  /* B92 integration (0113 §I): exceptions and manual adjustments — proposed by an analyst or the owner; DECIDED by a named product analytics owner
+     (human-gated; the port re-checks the role and that the decider is not the proposer). */
+  { actionPrefix: 'analytics.exception.propose', exact: true, requiredAnyRole: [{ role: 'product_analyst', atScope: 'DOMAIN' }, { role: 'product_analytics_owner', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'analytics.exception.decide', exact: true, requiredAnyRole: [{ role: 'product_analytics_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'analytics.adjustment.propose', exact: true, requiredAnyRole: [{ role: 'product_analyst', atScope: 'DOMAIN' }, { role: 'product_analytics_owner', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'analytics.adjustment.decide', exact: true, requiredAnyRole: [{ role: 'product_analytics_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B92 integration */
+  /* B92 review */
+  /* B92 §OR (0113_b92_x_or; PR-70-001 — the operating review). EXACT rules — no `analytics` prefix rule exists. OPEN and ASSEMBLE — an
+     analyst, the product analytics owner, an executive, a strategy owner (assembling CITES results; it computes nothing). NOTE — the review's
+     participants by role (the analytics roles, the executives, the strategy, risk, decision and forecast owners, the decision authority); the
+     port admits the chair or a holder of one of the review's participant roles, a named human. HOLD, DECIDE (the follow-through) and CLOSE (the
+     signed, digest-bound close) — the chair roles (executive, strategy owner, product analytics owner), HUMAN-GATED; the port re-checks that the
+     actor IS the review's chair and a human. No agent holds a rule here. The reads (the list, the review, the series) are analytics.read. On a
+     contracted tenant open / assemble / note are gated by `product_analytics`; the human-gated acts and the reads are exempt. */
+  { actionPrefix: 'analytics.review.open', exact: true, requiredAnyRole: [{ role: 'product_analyst', atScope: 'DOMAIN' }, { role: 'product_analytics_owner', atScope: 'DOMAIN' },
+    { role: 'executive', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'analytics.review.assemble', exact: true, requiredAnyRole: [{ role: 'product_analyst', atScope: 'DOMAIN' }, { role: 'product_analytics_owner', atScope: 'DOMAIN' },
+    { role: 'executive', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'analytics.review.note', exact: true, requiredAnyRole: [{ role: 'product_analyst', atScope: 'DOMAIN' }, { role: 'product_analytics_owner', atScope: 'DOMAIN' },
+    { role: 'privacy_officer', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' },
+    { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'analytics.review.hold', exact: true, requiredAnyRole: [{ role: 'executive', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' },
+    { role: 'product_analytics_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'analytics.review.decide', exact: true, requiredAnyRole: [{ role: 'executive', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' },
+    { role: 'product_analytics_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'analytics.review.close', exact: true, requiredAnyRole: [{ role: 'executive', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' },
+    { role: 'product_analytics_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B92 review */
   /* B36 home */
   /* THE EXECUTIVE HOME, THE CADENCE, THE COMMAND VIEWS, THE SEARCH, THE METRICS (0094 §H; F-P6-11: WS-01, JRN-19, PER-03, CAP-EO-01/-02/-04).
      EXACT rules — no `executive` prefix rule exists and none of these names is a prefix of another rule's. THE READS (executive.home.read

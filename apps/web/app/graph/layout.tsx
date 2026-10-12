@@ -64,6 +64,11 @@ const NAV = [
   /* B90 metrics */
   { href: '/graph/data/metrics', label: 'Metrics', glyph: '∑' },
   /* end B90 metrics */
+  /* B92 (0113 §0) product analytics — the pages are the parts' (§MD the catalog, §UX the experience workspace, §OR the operating review) */
+  { href: '/graph/data/analytics', label: 'Product analytics', glyph: '∿' },
+  { href: '/graph/data/analytics/experience', label: 'Experience quality', glyph: '◐' },
+  { href: '/graph/data/analytics/review', label: 'Operating review', glyph: '▣' },
+  /* end B92 */
   /* B90 products */
   { href: '/graph/data/products', label: 'Products', glyph: '▦' },
   /* end B90 products */
