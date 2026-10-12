@@ -1,0 +1,503 @@
+# THE B92 ACT — REHEARSAL on eye_demo_b92 (a restore of eye_demo through 0113), API :3411 (this worktree's build), Redis :6392, a vault clone, the rehearsal sinks 2535/3456, EYE_EXECUTION_SYNTHETIC_LOOPBACK=on
+# RUN 1 (first run on the restored copy)
+THE B92 ACT on eye_demo_b92 (REHEARSAL) — 2026-10-12T01:45:58.440Z — API http://localhost:3411
+
+B92-0 THE STATE — 0113, the casting, the inputs of the corridor scope
+  ✓ migration applied: 0113_b92_product_analytics_metric_catalog_ux_telemetry.sql
+  ✓ n.vogel holds tenant_admin at the TENANT
+  ✓ c.marchetti holds commercial_authority at the PLATFORM
+  ✓ t.richter holds domain_admin at the DOMAIN
+  ✓ s.okafor holds executive at the DOMAIN
+  ✓ n.eriksen holds forecast_owner at the DOMAIN
+  ✓ l.brandt holds decision_owner at the DOMAIN
+  ✓ c.brenner holds risk_owner at the DOMAIN
+  ✓ the corridor objective: "Keep the Regensburg line supplied through Q1" 01a0…3d1d00
+  ✓ the PortWatch series portwatch:chokepoint4:n_total is registered in the domain (the real IMF PortWatch daily transit counts for Bab el-Mandeb, chokepoint4)
+  · the geography token BAB-EL-MANDEB: named by 9 warning(s) of the domain (the warning rule matches it, case-insensitively)
+  · NO graph entity named Bab el-Mandeb exists in the domain (its 13 entities are the parts, the ships, the plant, Suez, the Cape…): the scope names the strait by its GEOGRAPHY token and its PortWatch series — no entity is created for the scene
+
+B92-1 THE LICENCE — an analytics.* write refused EYE-ENT-001; C. Marchetti reissues NORDWERK's licence adding product_analytics
+  · the catalogue: product_analytics v1 (active, prefixes analytics.); NORDWERK's live licence: v3 full-platform (active)
+  ✓ S. Okafor (executive) opens an operating review under licence v3 (no product_analytics) REFUSED — 403 EYE-ENT-001 — capability unavailable (entitlement): product_analytics is not licensed for this tenant (active; licence v3) — reads of existing records, corrections and withdrawals, export, audit, identity, warnings and their acknowledgement, and every human decision stay available
+  ✓ C. Marchetti DECLARED the package full-platform v3: advanced_integration, agent_platform, capacity, decision, digital_twin, domain_package, executive_os, foresight, knowledge_memory, model_portfolio, observation, product_analytics, scenario, simulation (SYNTHETIC)
+  ✓ C. Marchetti DECLARED the SKU EYE-FULL-12M v3: full-platform v3, 12 months
+  ✓ C. Marchetti ISSUED NORDWERK licence v4: full-platform — 16 capabilities incl. product_analytics; supersedes v3 (kept in the history); order SYNTH-ORDER-NORDWERK-B92-ANALYTICS
+  ✓ NORDWERK's licence v4 (full-platform, active) carries product_analytics and every capability of v3: advanced_integration, agent_platform, attention_controls, capacity, core, decision, digital_twin, domain_package, executive_os, foresight, knowledge_memory, model_portfolio, observation, product_analytics, scenario, simulation
+
+B92-2 THE PERSONAS (SYNTHETIC) — N. Vogel creates the owner, the privacy officer and the analyst; the chair; the routing of the analytics classes
+  ✓ N. Vogel (tenant administrator) CREATED M. Okonkwo through the governed principal route — "M. Okonkwo — product analytics owner (SYNTHETIC)", login m.okonkwo (no collision: the name was free tenant-wide), product_analytics_owner at the DOMAIN (the corridor domain)
+  ✓ N. Vogel (tenant administrator) CREATED L. Haas through the governed principal route — "L. Haas — privacy officer (SYNTHETIC)", login l.haas (no collision: the name was free tenant-wide), privacy_officer at the DOMAIN (the corridor domain)
+  ✓ N. Vogel (tenant administrator) CREATED J. Satō through the governed principal route — "J. Satō — product analyst (SYNTHETIC)", login j.sato (no collision: the name was free tenant-wide), product_analyst at the DOMAIN (the corridor domain)
+  ✓ three DIFFERENT people: the owner M. Okonkwo, the privacy officer L. Haas, the analyst J. Satō; the chair is the existing executive S. Okafor ("S. Okafor — executive approver")
+  ✓ T. Richter PUBLISHED attention policy VERSION 12 (supersedes 11): analytics.metric → [product_analytics_owner]; analytics.privacy → [privacy_officer]; analytics.experience → [product_analytics_owner]; 27 of 27 earlier classes byte-identical
+
+B92-3 THE PURPOSES — the analyst proposes, the privacy officer approves at the digest; the proposer approving and a performance purpose refused
+  ✓ J. Satō (analyst) PROPOSED purpose product-quality v1 (product_improvement, raw retention 365 days) — digest 51923a92f0d1…
+  ✓ J. Satō (the proposer) approves her own purpose product-quality REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ L. Haas (privacy officer, not the proposer) APPROVED product-quality v1 at digest 51923a92f0d1…
+  ✓ J. Satō (analyst) PROPOSED purpose mission-outcomes v1 (mission_outcome, raw retention 730 days) — digest 201cadcbea95…
+  ✓ L. Haas (privacy officer, not the proposer) APPROVED mission-outcomes v1 at digest 201cadcbea95…
+  ✓ J. Satō (analyst) PROPOSED purpose governance-assurance v1 (governance, raw retention 730 days) — digest e8875f8f7c81…
+  ✓ L. Haas (privacy officer, not the proposer) APPROVED governance-assurance v1 at digest e8875f8f7c81…
+  ✓ J. Satō (analyst) PROPOSED purpose service-reliability v1 (reliability, raw retention 365 days) — digest 697f5b781ae5…
+  ✓ L. Haas (privacy officer, not the proposer) APPROVED service-reliability v1 at digest 697f5b781ae5…
+  ✓ J. Satō (analyst) PROPOSED purpose analytics-cost v1 (cost, raw retention 730 days) — digest 2d6ae9eab163…
+  ✓ L. Haas (privacy officer, not the proposer) APPROVED analytics-cost v1 at digest 2d6ae9eab163…
+  ✓ J. Satō (analyst) PROPOSED purpose experience-telemetry v1 (product_improvement, raw retention 180 days) — digest 48eb9289de67…
+  ✓ L. Haas (privacy officer, not the proposer) APPROVED experience-telemetry v1 at digest 48eb9289de67…
+  ✓ J. Satō proposes "staff-acknowledgement-scoring" (employee performance) REFUSED — 403 EYE-AUT-001 — analytics purpose rejected (person): the purpose states "performance review" — product analytics never serves performance evaluation, employee scoring, ranking or surveillance of people (PR-70-003)
+  ✓ the purpose register: analytics-cost v1, experience-telemetry v1, governance-assurance v1, mission-outcomes v1, product-quality v1, service-reliability v1 APPROVED
+
+B92-4 THE SCOPE red-sea-corridor — proposed by the analyst, approved by the owner at its digest
+  ✓ J. Satō PROPOSED scope red-sea-corridor v1 — digest 9166090168dd…
+  ✓ M. Okonkwo (owner, not the proposer) APPROVED scope red-sea-corridor v1 at its digest
+  ✓ THE SCOPE red-sea-corridor v1: objectives [01a0…3d1d00] · series [portwatch:chokepoint4:n_total] · geographies [BAB-EL-MANDEB] · entities [none — no Bab el-Mandeb entity in the graph]
+
+B92-5 THE DEFINITIONS — every contract of definitionsA and definitionsB proposed by the analyst, approved by the owner at its digest
+  ✓ J. Satō (the proposer) re-decides MET-001 v1 REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ J. Satō PROPOSED 52 definition(s) through §MD's port; M. Okonkwo APPROVED 52 at their digests (the owner bound as each contract's named owner)
+  ✓ THE CATALOG: 52 approved definitions (38 computed, 14 unsupported with their carriers) of the 52 contracts (definitionsA 29, definitionsB 23)
+  · every approved definition names its owner: M. Okonkwo (CAP-DL-11 "Chief Product Officer" → product_analytics_owner)
+  ✓ J. Satō proposes MET-022 grouped by acknowledged_by (a person) REFUSED — 403 EYE-AUT-001 — metric definition rejected (person): the dimension(s) acknowledged_by name a person — a product metric is never grouped by a person (no employee-performance inference; role cohorts only, above k)
+  ✓ the contract card of MET-024 (definitions/MET-024/read): v1 approved — "Forecast calibration", rate in share of outcomes inside q10–q90, direction band, band [0.75,0.85], window calendar_quarter on the record clock, floor 8, k 5, purpose mission-outcomes, owner M. Okonkwo, digest b6fff45e35ef…
+
+B92-6 THE SCENE'S METRICS — MET-001, MET-022, MET-024 for 2026-Q3 in red-sea-corridor (and domain-wide); the series; a replay; the refusals
+  ✓ MET-001 2026-Q3 red-sea-corridor: J. Satō COMPUTED result 01a1…69cc8d on definition v1
+    MET-001 2026-Q3 red-sea-corridor — 0 share of committed decisions; n = 7 (numerator 0 / denominator 7); window 2026-07-01T00:00:00Z → 2026-10-01T00:00:00Z on the record clock, as of 2026-10-12T01:47:19Z
+      95 % Wilson [0, 0.354]
+      records by role: denominator 7 — denominator: decision_package:01a0…651748, decision_package:01a0…a72613, decision_package:01a0…0cc6b5
+      quality: {"clock":"record","links":["objective","evidence","foresight","commitment","outcome","learning"],"notes":["each link judged AS OF the result's as-of (decision_metrics' predicates, which read now, evaluated at as-of so a replay reproduces)"],"composition":{"by":"synthetic","counts":{"true":7}},"window_field":"decision.commitments.committed_at","excluded_count":0,"synthetic_share":1,"newest_record_a
+      definition v1 (digest 491d877cada4…), computation met001_loop_closure v1, source revision a8eefc7e0079…
+  ✓ MET-001 2026-Q3 red-sea-corridor: a DETERMINATE value with its n and interval
+  ✓ MET-001 2026-Q3 domain-wide: J. Satō COMPUTED result 01a1…bb9922 on definition v1
+    MET-001 2026-Q3 domain-wide — 0 share of committed decisions; n = 7 (numerator 0 / denominator 7); window 2026-07-01T00:00:00Z → 2026-10-01T00:00:00Z on the record clock, as of 2026-10-12T01:47:19Z
+      95 % Wilson [0, 0.354]
+      records by role: denominator 7 — denominator: decision_package:01a0…651748, decision_package:01a0…a72613, decision_package:01a0…0cc6b5
+      quality: {"clock":"record","links":["objective","evidence","foresight","commitment","outcome","learning"],"notes":["each link judged AS OF the result's as-of (decision_metrics' predicates, which read now, evaluated at as-of so a replay reproduces)"],"composition":{"by":"synthetic","counts":{"true":7}},"window_field":"decision.commitments.committed_at","excluded_count":0,"synthetic_share":1,"newest_record_a
+      definition v1 (digest 491d877cada4…), computation met001_loop_closure v1, source revision a8eefc7e0079…
+  ✓ MET-001 2026-Q3 domain-wide: a DETERMINATE value with its n and interval
+  ✓ MET-022 2026-Q3 red-sea-corridor: J. Satō COMPUTED result 01a1…476a3c on definition v1
+    MET-022 2026-Q3 red-sea-corridor — INDETERMINATE; n = 1; window 2026-07-01T00:00:00Z → 2026-10-01T00:00:00Z on the record clock, as of 2026-10-12T01:47:19Z
+      uncertainty {"note":"n < 6: the interval of the median is unbounded","level":0.95,"method":"order_statistics","hi_rank":null,"lo_rank":null}; distribution p50 0.013 p90 0.013 (min 0.013, max 0.013)
+      records by role: excluded 1, included 1 — excluded: warning:01a0…248b3f · included: warning:01a0…acad1a
+      reason: n = 1 is below the floor 5 the definition declares: the sample cannot carry a determinate value
+      quality: {"end":"prediction.warnings_current.acknowledged_at","unit":"seconds","clock":"record","start":"receipt (executive.attention_deliveries.receipt.at), else the declared proxy raised_at","composition":{"by":"severity","counts":{"high":1,"unclassified":1}},"proxy_share":1,"excluded_count":1,"proxy_declared":true,"admit_synthetic":false,"qualified_roles":["domain_admin","strategy_owner","forecast_owner
+      definition v1 (digest 13744e4d6f9a…), computation met022_warning_ack_latency v1, source revision e1baa3ce6619…
+  ✓ MET-022 2026-Q3 red-sea-corridor: INDETERMINATE — value withheld, 1 reason(s) stated (never an invented zero)
+  ✓ MET-022 2026-Q3 domain-wide: J. Satō COMPUTED result 01a1…db7b72 on definition v1
+    MET-022 2026-Q3 domain-wide — INDETERMINATE; n = 2; window 2026-07-01T00:00:00Z → 2026-10-01T00:00:00Z on the record clock, as of 2026-10-12T01:47:19Z
+      uncertainty {"note":"n < 6: the interval of the median is unbounded","level":0.95,"method":"order_statistics","hi_rank":null,"lo_rank":null}; distribution p50 31.691 p90 57.033 (min 0.013, max 63.369)
+      records by role: excluded 1, included 2 — excluded: warning:01a0…248b3f · included: warning:01a0…acad1a, warning:01a0…5ede80
+      reason: n = 2 is below the floor 5 the definition declares: the sample cannot carry a determinate value
+      quality: {"end":"prediction.warnings_current.acknowledged_at","unit":"seconds","clock":"record","start":"receipt (executive.attention_deliveries.receipt.at), else the declared proxy raised_at","composition":{"by":"severity","counts":{"high":1,"normal":1,"unclassified":1}},"proxy_share":0.5,"excluded_count":1,"proxy_declared":true,"admit_synthetic":false,"qualified_roles":["domain_admin","strategy_owner","f
+      definition v1 (digest 13744e4d6f9a…), computation met022_warning_ack_latency v1, source revision 993f2b9aa855…
+  ✓ MET-022 2026-Q3 domain-wide: INDETERMINATE — value withheld, 1 reason(s) stated (never an invented zero)
+  ✓ MET-024 2026-Q3 red-sea-corridor: J. Satō COMPUTED result 01a1…1dab4e on definition v1
+    MET-024 2026-Q3 red-sea-corridor — INDETERMINATE; n = 0 (numerator 0 / denominator 0); window 2026-07-01T00:00:00Z → 2026-10-01T00:00:00Z on the record clock, as of 2026-10-12T01:47:19Z
+      no interval (no value)
+      records by role: context 2 — context: backtest:01a0…e41380, backtest:01a0…c99c4b
+      reason: n = 0 is below the floor 8 the definition declares: the sample cannot carry a determinate value
+      quality: {"rule":"covered = q10 ≤ observed ≤ q90 (the outcome ledger's own flag; ForecastingService.calibration)","clock":"record","notes":["2 backtest(s) of the scope's series were computed in the window: listed as context, NOT counted — backtest coverage is a different definition labelled by its mode"],"composition":{"by":"horizon","counts":{}},"window_field":"prediction.outcome_ledger.known_at","exclude
+      definition v1 (digest b6fff45e35ef…), computation met024_forecast_calibration v1, source revision 827ad6db4394…
+  ✓ MET-024 2026-Q3 red-sea-corridor: INDETERMINATE — value withheld, 1 reason(s) stated (never an invented zero)
+  ✓ MET-024 2026-Q3 domain-wide: J. Satō COMPUTED result 01a1…a01e43 on definition v1
+    MET-024 2026-Q3 domain-wide — INDETERMINATE; n = 0 (numerator 0 / denominator 0); window 2026-07-01T00:00:00Z → 2026-10-01T00:00:00Z on the record clock, as of 2026-10-12T01:47:19Z
+      no interval (no value)
+      records by role: context 8 — context: backtest:01a0…a8804b, backtest:01a0…f6b8d1, backtest:01a0…50f95e
+      reason: n = 0 is below the floor 8 the definition declares: the sample cannot carry a determinate value
+      quality: {"rule":"covered = q10 ≤ observed ≤ q90 (the outcome ledger's own flag; ForecastingService.calibration)","clock":"record","notes":["8 backtest(s) of the scope's series were computed in the window: listed as context, NOT counted — backtest coverage is a different definition labelled by its mode"],"composition":{"by":"horizon","counts":{}},"window_field":"prediction.outcome_ledger.known_at","exclude
+      definition v1 (digest b6fff45e35ef…), computation met024_forecast_calibration v1, source revision c499cb8631e7…
+  ✓ MET-024 2026-Q3 domain-wide: INDETERMINATE — value withheld, 1 reason(s) stated (never an invented zero)
+  · MET-001's records name what keeps each loop open: evidence missing on 7, learning missing on 6, outcome missing on 6 of 7 committed package(s) — the demonstration's options cite runs, forecasts and assumptions, no evidence or claim object (decision_metrics' with_evidence kinds), so the evidence link is unmet everywhere: a MEASURED state of the records, not an invented zero
+    THE SERIES MET-001 red-sea-corridor: 2025-Q4 NO_HISTORY · 2026-Q1 NO_HISTORY · 2026-Q2 NO_HISTORY · 2026-Q3 determinate 0 (v1)
+      history origin: 2026-09-09T06:57:54Z (objects.canonical_objects.recorded_at)
+      2025-Q4: no history: the deployment holds no records before 2026-09-09 (objects.canonical_objects.recorded_at)
+      2026-Q1: no history: the deployment holds no records before 2026-09-09 (objects.canonical_objects.recorded_at)
+      2026-Q2: no history: the deployment holds no records before 2026-09-09 (objects.canonical_objects.recorded_at)
+  ✓ the series of MET-001 lists EVERY period 2025-Q4…2026-Q3 — 3 named "no history", 0 "not computed", never a zero
+    THE SERIES MET-022 red-sea-corridor: 2025-Q4 NO_HISTORY · 2026-Q1 NO_HISTORY · 2026-Q2 NO_HISTORY · 2026-Q3 indeterminate (v1)
+      history origin: 2026-09-09T06:57:54Z (identity.role_bindings.created_at)
+      2025-Q4: no history: the deployment holds no records before 2026-09-09 (identity.role_bindings.created_at)
+      2026-Q1: no history: the deployment holds no records before 2026-09-09 (identity.role_bindings.created_at)
+      2026-Q2: no history: the deployment holds no records before 2026-09-09 (identity.role_bindings.created_at)
+  ✓ the series of MET-022 lists EVERY period 2025-Q4…2026-Q3 — 3 named "no history", 0 "not computed", never a zero
+    THE SERIES MET-024 red-sea-corridor: 2025-Q4 NO_HISTORY · 2026-Q1 NO_HISTORY · 2026-Q2 NO_HISTORY · 2026-Q3 indeterminate (v1)
+      history origin: 2026-09-09T06:58:11Z (prediction.backtests.known_at)
+      2025-Q4: no history: the deployment holds no records before 2026-09-09 (prediction.backtests.known_at)
+      2026-Q1: no history: the deployment holds no records before 2026-09-09 (prediction.backtests.known_at)
+      2026-Q2: no history: the deployment holds no records before 2026-09-09 (prediction.backtests.known_at)
+  ✓ the series of MET-024 lists EVERY period 2025-Q4…2026-Q3 — 3 named "no history", 0 "not computed", never a zero
+  ✓ J. Satō REPLAYED MET-001 01a1…69cc8d at its own as-of 2026-10-12T01:47:19Z → REPRODUCED (source revision a8eefc7e0079… = the original's a8eefc7e0079…; state determinate)
+  ✓ J. Satō computes MET-022 for a cohort of one acknowledger (acknowledged_by) REFUSED — 403 EYE-AUT-001 — metric computation rejected (person): a product metric is never grouped by a person (acknowledged_by): no employee-performance inference
+  ✓ MET-022 2026-Q4 red-sea-corridor (the open quarter): J. Satō COMPUTED result 01a1…267bb2 on definition v1
+    MET-022 2026-Q4 red-sea-corridor — INDETERMINATE; n = 0; window 2026-10-01T00:00:00Z → 2027-01-01T00:00:00Z on the record clock, as of 2026-10-12T01:47:19Z
+      no interval (no value)
+      records by role: none — no record
+      reason: the period 2026-Q4 is open until 2027-01-01 00:00:00+00 (as of 2026-10-12 01:47:19.25978+00): a partial period is not presented as the period
+      reason: n = 0 is below the floor 5 the definition declares: the sample cannot carry a determinate value
+      quality: {"end":"prediction.warnings_current.acknowledged_at","unit":"seconds","clock":"record","start":"receipt (executive.attention_deliveries.receipt.at), else the declared proxy raised_at","composition":{"by":"severity","counts":{}},"proxy_share":null,"excluded_count":0,"proxy_declared":true,"admit_synthetic":false,"qualified_roles":["domain_admin","strategy_owner","forecast_owner","risk_owner"],"newes
+      definition v1 (digest 13744e4d6f9a…), computation met022_warning_ack_latency v1, source revision 4f53cda18c2b…
+  ✓ MET-022 2026-Q4 red-sea-corridor: INDETERMINATE — value withheld, 2 reason(s) stated (never an invented zero)
+  ✓ the OPEN quarter 2026-Q4 is REFUSED AS PARTIAL: indeterminate — "the period 2026-Q4 is open until 2027-01-01 00:00:00+00 (as of 2026-10-12 01:47:19.25978+00): a partial period is not presented as the period" (any governed record the product makes today lands in 2026-Q4 by the record clock)
+
+B92-7 THE CORRECTION — MET-022 v2 (strict: no raised_at proxy) approved and recomputed beside v1; an exception shown beside a result
+  ✓ J. Satō PROPOSED MET-022 v2 (strict: params.start = receipt) — digest 2a29ef161e04…
+  ✓ M. Okonkwo APPROVED MET-022 v2 at its digest — v1 SUPERSEDED (01a1…7e08fd)
+  ✓ the field-level diff v1 → v2: exclusions, params, quality
+  ✓ MET-022 2026-Q3 red-sea-corridor on v2: J. Satō COMPUTED result 01a1…b42c4d on definition v2
+    BESIDE EACH OTHER:
+    MET-022 v1 (the declared raised_at proxy) — INDETERMINATE; n = 1; window 2026-07-01T00:00:00Z → 2026-10-01T00:00:00Z on the record clock, as of 2026-10-12T01:47:19Z
+      uncertainty {"note":"n < 6: the interval of the median is unbounded","level":0.95,"method":"order_statistics","hi_rank":null,"lo_rank":null}; distribution p50 0.013 p90 0.013 (min 0.013, max 0.013)
+      records by role: excluded 1, included 1 — excluded: warning:01a0…248b3f · included: warning:01a0…acad1a
+      reason: n = 1 is below the floor 5 the definition declares: the sample cannot carry a determinate value
+      quality: {"end":"prediction.warnings_current.acknowledged_at","unit":"seconds","clock":"record","start":"receipt (executive.attention_deliveries.receipt.at), else the declared proxy raised_at","composition":{"by":"severity","counts":{"high":1,"unclassified":1}},"proxy_share":1,"excluded_count":1,"proxy_declared":true,"admit_synthetic":false,"qualified_roles":["domain_admin","strategy_owner","forecast_owner
+      definition v1 (digest 13744e4d6f9a…), computation met022_warning_ack_latency v1, source revision e1baa3ce6619…
+  ✓ MET-022 v1 (the declared raised_at proxy): INDETERMINATE — value withheld, 1 reason(s) stated (never an invented zero)
+    MET-022 v2 (strict, receipt only) — INDETERMINATE; n = 0; window 2026-07-01T00:00:00Z → 2026-10-01T00:00:00Z on the record clock, as of 2026-10-12T01:47:19Z
+      no interval (no value)
+      records by role: excluded 2 — excluded: warning:01a0…248b3f, warning:01a0…acad1a
+      reason: n = 0 is below the floor 5 the definition declares: the sample cannot carry a determinate value
+      reason: incomplete: 2 of 2 records are excluded (100.0%), above the 50.0% the definition allows (quality.max_exclusion_share): what remains does not stand for the population
+      quality: {"end":"prediction.warnings_current.acknowledged_at","unit":"seconds","clock":"record","start":"receipt (executive.attention_deliveries.receipt.at)","composition":{"by":"severity","counts":{"high":1,"unclassified":1}},"proxy_share":null,"excluded_count":2,"proxy_declared":false,"admit_synthetic":false,"qualified_roles":["domain_admin","strategy_owner","forecast_owner","risk_owner"],"newest_record_
+      definition v2 (digest 2a29ef161e04…), computation met022_warning_ack_latency v1, source revision 1b291c30dddc…
+  ✓ MET-022 v2 (strict, receipt only): INDETERMINATE — value withheld, 2 reason(s) stated (never an invented zero)
+  ✓ the recompute stands BESIDE the first: v1 indeterminate (n 1, 1 excluded) vs v2 indeterminate (n 0, 2 excluded) — the v1 result is unchanged and still readable
+  ✓ the series of MET-022 through 2026-Q4: 2025-Q4 no_history · 2026-Q1 no_history · 2026-Q2 no_history · 2026-Q3 v2 indeterminate · 2026-Q4 v1 indeterminate — versions [1, 2], comparable false: "the computed periods rest on different definition versions: they are not comparable as one series"
+  ✓ J. Satō PROPOSED a threshold EXEMPTION of MET-024 for 2026-Q3 in red-sea-corridor (expires 2027-02-09T00:00:00Z) — digest 0f6358f6912a…
+  ✓ J. Satō (the proposer) decides her own exception REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ M. Okonkwo (owner, not the proposer) APPROVED the exemption 01a1…d3f47a at its digest
+  ✓ BESIDE the MET-024 result 01a1…1dab4e (indeterminate, value —, revision 827ad6db4394…, UNCHANGED): the exemption 01a1…d3f47a approved — proposed by J. Satō, decided by M. Okonkwo: "PortWatch publishes the chokepoint4 counts two to four weeks late: the corridor forecasts of 2026-Q3 are not yet scored, so a band breach re"
+
+B92-8 THE OPERATING REVIEW — opened, assembled, held, noted, decided by the chair, closed and signed at the digest
+  ✓ J. Satō OPENED the review 01a1…2a9846 "NORDWERK corridor operating review — 2026-Q3 (SYNTHETIC)": 2026-Q3, scope red-sea-corridor, metrics MET-001, MET-022, MET-024, MET-023, chair S. Okafor (named), participants by ROLE
+  ✓ J. Satō ASSEMBLED it (round 1; it computes nothing): 3 cited; not computed: [MET-023] — MET-001 cited 01a1…69cc8d; MET-022 cited 01a1…b42c4d; MET-024 cited 01a1…1dab4e; MET-023 not_computed ("not computed: no result of MET-023 for 2026-Q3 (scope red-sea-corridor) has been computed yet")
+  ✓ S. Okafor (the chair) HELD the review — its citations frozen for the meeting
+  ✓ J. Satō NOTED on MET-022: "Two readings beside each other: v1 used the declared raised_at proxy, v2 measures receipt …"
+  ✓ J. Satō NOTED on MET-024: "No scored live outcome of the chokepoint4 series falls in the quarter: PortWatch lags, the…"
+  ✓ S. Okafor NOTED: "The quarter is thin on every metric: the review records the honest state and decides the f…"
+  ✓ S. Okafor DECIDED MET-001: ACTION "Review the corridor's committed decision packages with their owners: cite the ev…" — owner L. Brandt, due 2026-11-26, routed item f302…34a298 (open, [product_analytics_owner])
+  ✓ S. Okafor DECIDED MET-022: NO ACTION — "the strict v2 reading stands; MET-022 is indeterminate on the corridor's few acknowledged warnings — nothing to act on b"
+  ✓ S. Okafor DECIDED MET-024: ACTION "Score the corridor's chokepoint4 forecasts against the published PortWatch count…" — owner N. Eriksen, due 2026-11-26, routed item 026c…f98cb0 (open, [product_analytics_owner])
+  ✓ S. Okafor DECIDED MET-023: NO ACTION — "MET-023 was not computed for this review (not_computed); it is computed for the next quarter's review"
+  ✓ M. Okonkwo (owner, not the chair) closes the review REFUSED — 403 EYE-AUT-001 — operating review rejected (authority): only the chair of review "NORDWERK corridor operating review — 2026-Q3 (SYNTHETIC)" may close the review
+  ✓ J. Satō NOTED on MET-001 after the chair read the digest (the review changed)
+  ✓ S. Okafor closes at the digest she read before the late note (stale) REFUSED — 409 EYE-STA-002 — operating review rejected (stale): the review now digests to 38fc7025ce55…, not the one read and signed (f2743280234b…) — read it again
+  ✓ S. Okafor (the chair) CLOSED and SIGNED the review at digest 38fc7025ce55… — immutable
+  ✓ M. Okonkwo (not the chair) closes the closed review REFUSED — 403 EYE-AUT-001 — operating review rejected (authority): only the chair of review "NORDWERK corridor operating review — 2026-Q3 (SYNTHETIC)" may close the review
+  ✓ THE REVIEW READ BACK 01a1…2a9846: CLOSED, chaired by S. Okafor — executive approver; signature 38fc7025ce55… verified true (digest-bound close by the named chair (not an Ed25519 signature)); "The corridor's 2026-Q3 metrics are thin and said so; the follow-through is decided per metric (SYNTHETIC demonstration)."
+    MET-001 Strategic loop closure rate: cited — determinate 0, n 7, 0 reason(s); drill-down results/01a12dca-f885-7cf9-a8b7-d58d4e69cc8d/read
+      series: 2025-Q4 no_history · 2026-Q1 no_history · 2026-Q2 no_history · 2026-Q3 determinate
+    MET-022 Warning acknowledgment latency: cited — indeterminate, n 0, 2 reason(s); drill-down results/01a12dca-fa93-711f-ab70-175b72b42c4d/read
+      series: 2025-Q4 no_history · 2026-Q1 no_history · 2026-Q2 no_history · 2026-Q3 indeterminate
+    MET-024 Forecast calibration: cited — indeterminate, n 0, 1 reason(s); drill-down results/01a12dca-f8f7-796c-9ec0-4e1c2e1dab4e/read
+      series: 2025-Q4 no_history · 2026-Q1 no_history · 2026-Q2 no_history · 2026-Q3 indeterminate
+    MET-023 Warning action closure: not_computed — not computed: no result of MET-023 for 2026-Q3 (scope red-sea-corridor) has been computed yet; drill-down —
+      series: 2025-Q4 no_history · 2026-Q1 no_history · 2026-Q2 no_history · 2026-Q3 not_computed
+    follow-through MET-001: action "Review the corridor's committed decision packages with their owners: cite the ev" owner L. Brandt due 2026-11-26
+    follow-through MET-022: no_action — the strict v2 reading stands; MET-022 is indeterminate on the corridor's few acknowledged warnings —
+    follow-through MET-024: action "Score the corridor's chokepoint4 forecasts against the published PortWatch count" owner N. Eriksen due 2026-11-26
+    follow-through MET-023: no_action — MET-023 was not computed for this review (not_computed); it is computed for the next quarter's revie
+  ✓ the review cites 3 result(s) (MET-001, MET-022, MET-024) and lists MET-023 NOT COMPUTED — never hidden
+  ✓ the DRILL-DOWN of MET-001 (results/01a1…69cc8d/read): definition v1 "Strategic loop closure rate" → result determinate → 7 record(s) (denominator 7); uses operating_review
+
+B92-9 COMPARABILITY AND COST — a cohort comparison; the cost reconciliation of 2026-Q3
+  ✓ J. Satō RAN the comparison 01a1…2861e5: MET-022 domain-wide, 2026-Q2 vs 2026-Q3
+  ✓ THE COMPARISON 01a1…2861e5 (MET-022, duration): INDETERMINATE — side a (2026-Q2, {}) is indeterminate: ["n = 0 is below the floor 5 the definition declares: the sample cannot carry a determinate value"] | side b (2026-Q3, {}) is indeterminate: ["n = 1 is below the floor 5 the definition declares: the sample cannot carry a determinate value", "incomplete: 2 of 3 records are excluded (66.7%), above the 50.0% the definition allows (quality.max_exclusion_share): what remains does not stand for the population"] | side a: n = 0 is below the floor 5 | side b: n = 1 is below the floor 5
+      comparability: {"rule":"comparable when both results are determinate original non-preview results, their definitions' semantic projections are equal (kind, unit, direction, population, numerator, denominator, exclusions, window, dimensions, privacy class, k, floor, computation and params; title, wording, owner, cadence, action, retirement, serves, threshold, quality and cost allocation are non-semantic), the com
+  ✓ J. Satō RAN the cost reconciliation 01a1…56ba67 for 2026-Q3
+  ✓ THE COST RECONCILIATION 2026-Q3: EMPTY — counts {"units":0,"matched":0,"unpriced":0,"discrepant":0}; totals {"priced":{},"replays":0,"previews":0,"rows_read":0,"compute_ms":0,"computations":0} — nothing was metered in 2026-Q3 — every computation of this act ran in 2026-Q4 by the record clock; an EMPTY reconciliation is said, never a pass
+      reason: nothing to reconcile: no computation was metered in 2026-Q3 and B91 holds no analytics usage for it — not a pass
+  ✓ J. Satō RAN the cost reconciliation 01a1…1dd76e for 2026-Q4
+  ✓ THE COST RECONCILIATION 2026-Q4: UNPRICED — counts {"units":11,"matched":0,"unpriced":11,"discrepant":0}; totals {"priced":{},"replays":1,"previews":0,"rows_read":41,"compute_ms":56.139,"computations":11} — UNPRICED is the honest state: B91 prices no analytics dimension — the analytics cost is metered here (rows read, compute ms) and named unpriced, never silently passed
+      reason: the period 2026-Q4 is open until 2027-01-01 00:00:00+00: a partial period is reconciled as far as it goes
+      reason: 11 unit(s) unpriced: the analytics cost is measured here but not priced by B91 (no meter or no rate card)
+
+B92-10 EXPERIENCE QUALITY — journeys, event definitions and their privacy review, consent, events, hold/release, a baseline, a finding → an action, an export
+  ✓ J. Satō DECLARED the journey operating-review (open → drill_down → done) under experience-telemetry: "A chair and the analysts reach a metric's records from the operating review and close it w…"
+  ✓ J. Satō DECLARED the journey experience-page (open → act) under experience-telemetry: "The analytics team reaches the journeys, the definitions and the consent controls and acts…"
+  ✓ J. Satō DEFINED event operating-review.open v1: fields {} (outcome and duration only — no content, no identifier)
+  ✓ L. Haas (privacy officer, not the proposer) APPROVED operating-review.open v1 — retention 180 days from the purpose
+  ✓ J. Satō DEFINED event operating-review.drill_down v1: fields {} (outcome and duration only — no content, no identifier)
+  ✓ L. Haas (privacy officer, not the proposer) APPROVED operating-review.drill_down v1 — retention 180 days from the purpose
+  ✓ J. Satō DEFINED event operating-review.done v1: fields {} (outcome and duration only — no content, no identifier)
+  ✓ L. Haas (privacy officer, not the proposer) APPROVED operating-review.done v1 — retention 180 days from the purpose
+  ✓ J. Satō DEFINED event experience-page.open v1: fields {} (outcome and duration only — no content, no identifier)
+  ✓ L. Haas (privacy officer, not the proposer) APPROVED experience-page.open v1 — retention 180 days from the purpose
+  ✓ J. Satō DEFINED event experience-page.act v1: fields {"tab":{"type":"enum","values":["journeys","definitions","experiments","findings","exports"]}} (outcome and duration only — no content, no identifier)
+  ✓ L. Haas (privacy officer, not the proposer) APPROVED experience-page.act v1 — retention 180 days from the purpose
+  ✓ J. Satō GRANTED consent THEMSELVES for experience-telemetry (purpose v1)
+  ✓ M. Okonkwo GRANTED consent THEMSELVES for experience-telemetry (purpose v1)
+  ✓ L. Haas's own consent state (self/read): experience-telemetry — NOT CONSENTED (nobody grants for another)
+  ✓ J. Satō (consented) RECORDED the operating-review journey: open 20 ms, drill_down 8 ms, done — COLLECTED under a per-day pseudonym (no principal id stored)
+  ✓ M. Okonkwo (consented) RECORDED the operating-review journey: open 22 ms, drill_down 10 ms, done — COLLECTED under a per-day pseudonym (no principal id stored)
+  ✓ L. Haas (no consent) records operating-review.open → 202 {collected: false, reason: not_consented} — NOT COLLECTED, counted, never an error that nags the person (not_consented attempts 0 → 1)
+  ✓ L. Haas HELD collection of operating-review.drill_down (reason stated)
+  ✓ J. Satō records operating-review.drill_down while it is HELD REFUSED — 409 EYE-STA-002 — telemetry event rejected (state): collection of operating-review.drill_down v1 is held by the privacy review (the privacy review re-checks the drill-down step's duration field bounds before more is collected (SYNTHETIC)): the attempt is counted, its values are not kept
+  · the refused attempt is COUNTED with its shape, never its values (held attempts on the definition: 1)
+  ✓ L. Haas RELEASED collection of operating-review.drill_down
+  ✓ THE RECOVERY: J. Satō records operating-review.drill_down after the release → collected true
+  ✓ operating-review.drill_down collection OPEN; 1 refused attempt(s) while held stand in the ledger
+  ✓ J. Satō RECORDED the baseline 01a1…046e50: task_success_rate of operating-review over R7@2026-10-12
+  ✓ THE BASELINE: INDETERMINATE, n 2 — the period R7@2026-10-12 is open until 2026-10-13 00:00:00+00: a partial period is not presented as the period | n = 2 is below the journey's floor 5: the sample cannot carry a determinate value | the segment rests on at most 2 distinct pseudonyms on any day, below k = 5: it is suppressed (no person is singled out)
+  ✓ J. Satō PROPOSED the finding 01a1…70ff34 from the baseline
+  · the consequence preview (research_request): a research request is RECORDED against the finding; nothing in the product changes automatically — its follow-through is the owner's — automatic false
+  ✓ J. Satō (the proposer) decides the action on her own finding REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ M. Okonkwo DECIDED the action: act — research_request, at the finding's and the preview's digests (never automatic)
+  ✓ M. Okonkwo CREATED the export 01a1…e22a51: 6508 canonical bytes, digest e0ff757e563b…
+  ✓ the export downloaded, its digest RE-VERIFIED true (6508 bytes, e0ff757e563b…) — sections title, purges, schema, actions, boundary, contents, findings, journeys, purposes, segments, baselines, domain_id, tenant_id, thresholds, experiments, generated_at, consent_counts, telemetry_definitions; aggregates only (no pseudonym, no raw event, no principal id: true)
+  ✓ the four-part anatomy of operating-review (workspace): objective "A chair and the analysts reach a metric's records from the operating r…" → 1 metric(s) with lineage → 0 segment baseline(s) → 1 finding(s) with 1 decided action(s); consent counts [{"purpose_key":"experience-telemetry","consenting_now":2,"withdrawals_recorded":0}]
+
+B92-11 THE STATE and the LIMITS
+  · in the ledgers: 6 purpose version(s), 1 scope version(s), 53 definition version(s), 11 result(s), 3 use(s), 1 operating review(s); 5 telemetry definition version(s), 7 pseudonymous event(s), 2 consent record(s)
+  the env lines for the walk (EYE_TEST_ADMIN_PASSWORD comes from .eye-local/env and is never printed):
+  EYE_B92_LICENCE_VERSION=4
+  EYE_B92_OWNER=m.okonkwo
+  EYE_B92_PRIVACY=l.haas
+  EYE_B92_ANALYST=j.sato
+  EYE_B92_CHAIR=s.okafor
+  EYE_B92_POLICY_VERSION=12
+  EYE_B92_SCOPE=red-sea-corridor
+  EYE_B92_PERIOD=2026-Q3
+  EYE_B92_MET022_V1_RESULT=01a12dca-f8c7-7c0d-ad06-9f79e6476a3c
+  EYE_B92_MET022_V2_RESULT=01a12dca-fa93-711f-ab70-175b72b42c4d
+  EYE_B92_REVIEW_TITLE='NORDWERK corridor operating review — 2026-Q3 (SYNTHETIC)'
+  EYE_B92_REVIEW_ID=01a12dca-fbe8-72c8-92ac-be3bd32a9846
+  · LIMITS said — THREE CLAIMS KEPT APART. (1) SOFTWARE CAPABILITY — what RAN on this deployment through its governed routes: the licence gate on analytics.* and the vendor's reissue; the purpose register with the privacy officer's digest-bound approvals and the person-purpose refusal; the corridor scope; the whole catalog of App M / V1 / ES contracts proposed by a named analyst and approved by a named owner (the supported ones computed by their registered SQL computations, the unsupported ones served unsupported with their carriers); the computations of MET-001, MET-022 and MET-024 with their records, reasons, uncertainty and replay; the person-grained cohort refused; the version-2 correction and the non-comparable series; the threshold exemption beside an unchanged result; the operating review from opening to the chair's digest-bound close; the comparison and the cost reconciliation; the experience workflow from consent to export. (2) SYNTHETIC DEMONSTRATION — every NORDWERK figure is SYNTHETIC: the personas M. Okonkwo, L. Haas and J. Satō (created by the tenant administrator for this act), the chair's statement, the notes and the follow-through, the purposes' texts, the exception's reason, the experience events (two consenting personas' own reads of the review), the export. The decision packages, warnings and forecasts the metrics count are the demonstration's own records; the PortWatch chokepoint4 counts are the only REAL collected public observations in the corridor scope. The scene's metrics are THIN on this demonstration and are said so — nothing was planted to move them; whatever governed record the product makes today lands in 2026-Q4 by the record clock (the open quarter, shown partial). (3) EXTERNAL ACCEPTANCE — never closed by a substitute: the SIGNED acceptance records of the metric catalog and the experience workflow (AT-70, UX-70-006: product owner, independent assurance, customer authority) → R2; accessibility conformance (MET-034) → B107/H3; deployment parity (MET-035) → B106; customer time to operation (MET-039) and customer onboarding → B94. B91 prices no analytics dimension: the analytics cost is metered by B92 and reconciled UNPRICED, never silently passed. HARNESS-PROVEN ONLY (not staged here): the experiments (two approvals, SRM invalidation, conclusion — phase6-experience-b92 UX6), the purge (UX8), the standing evaluation's stale / biased / gamed / outcome-detached checks and the fault exercise (phase6-comparability-b92 CO1, CO6), the B90 semantic objects (CO3), DP-44-005's serving uses (phase6-definitions-b92 MD5), the uses refused for a preview and an unqualified indeterminate citation in a briefing (MD4).
+
+ALL SCENES HELD · 1.4 min
+
+# RUN 2 (the rerun: every scene stands)
+THE B92 ACT on eye_demo_b92 (REHEARSAL) — 2026-10-12T01:47:25.904Z — API http://localhost:3411
+
+B92-0 THE STATE — 0113, the casting, the inputs of the corridor scope
+  ✓ migration applied: 0113_b92_product_analytics_metric_catalog_ux_telemetry.sql
+  ✓ n.vogel holds tenant_admin at the TENANT
+  ✓ c.marchetti holds commercial_authority at the PLATFORM
+  ✓ t.richter holds domain_admin at the DOMAIN
+  ✓ s.okafor holds executive at the DOMAIN
+  ✓ n.eriksen holds forecast_owner at the DOMAIN
+  ✓ l.brandt holds decision_owner at the DOMAIN
+  ✓ c.brenner holds risk_owner at the DOMAIN
+  ✓ the corridor objective: "Keep the Regensburg line supplied through Q1" 01a0…3d1d00
+  ✓ the PortWatch series portwatch:chokepoint4:n_total is registered in the domain (the real IMF PortWatch daily transit counts for Bab el-Mandeb, chokepoint4)
+  · the geography token BAB-EL-MANDEB: named by 9 warning(s) of the domain (the warning rule matches it, case-insensitively)
+  · NO graph entity named Bab el-Mandeb exists in the domain (its 13 entities are the parts, the ships, the plant, Suez, the Cape…): the scope names the strait by its GEOGRAPHY token and its PortWatch series — no entity is created for the scene
+
+B92-1 THE LICENCE — an analytics.* write refused EYE-ENT-001; C. Marchetti reissues NORDWERK's licence adding product_analytics
+  · the catalogue: product_analytics v1 (active, prefixes analytics.); NORDWERK's live licence: v4 full-platform (active)
+  · licence v4 carries product_analytics — an earlier run; the refusal it answered stands in the policy ledger (2026-10-12T01:45:58Z: "capability unavailable (entitlement): product_analytics is not licensed for this tenant (active; licence v3) — reads of existing records, corrections and withdrawals, export, audit, identity, warnings")
+  ✓ NORDWERK's licence v4 (full-platform, active) carries product_analytics and every capability of v3: advanced_integration, agent_platform, attention_controls, capacity, core, decision, digital_twin, domain_package, executive_os, foresight, knowledge_memory, model_portfolio, observation, product_analytics, scenario, simulation
+
+B92-2 THE PERSONAS (SYNTHETIC) — N. Vogel creates the owner, the privacy officer and the analyst; the chair; the routing of the analytics classes
+  · M. Okonkwo (m.okonkwo, product_analytics_owner, the corridor domain) is present — an earlier run
+  · L. Haas (l.haas, privacy_officer, the corridor domain) is present — an earlier run
+  · J. Satō (j.sato, product_analyst, the corridor domain) is present — an earlier run
+  ✓ three DIFFERENT people: the owner M. Okonkwo, the privacy officer L. Haas, the analyst J. Satō; the chair is the existing executive S. Okafor ("S. Okafor — executive approver")
+  · attention policy version 12 routes analytics.metric → [product_analytics_owner]; analytics.privacy → [privacy_officer]; analytics.experience → [product_analytics_owner] — an earlier run
+
+B92-3 THE PURPOSES — the analyst proposes, the privacy officer approves at the digest; the proposer approving and a performance purpose refused
+  · purpose product-quality v1 APPROVED by L. Haas — stands (an earlier run)
+  · purpose mission-outcomes v1 APPROVED by L. Haas — stands (an earlier run)
+  · purpose governance-assurance v1 APPROVED by L. Haas — stands (an earlier run)
+  · purpose service-reliability v1 APPROVED by L. Haas — stands (an earlier run)
+  · purpose analytics-cost v1 APPROVED by L. Haas — stands (an earlier run)
+  · purpose experience-telemetry v1 APPROVED by L. Haas — stands (an earlier run)
+  ✓ J. Satō (the proposer) decides the purpose product-quality REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ J. Satō proposes "staff-acknowledgement-scoring" (employee performance) REFUSED — 403 EYE-AUT-001 — analytics purpose rejected (person): the purpose states "performance review" — product analytics never serves performance evaluation, employee scoring, ranking or surveillance of people (PR-70-003)
+  ✓ the purpose register: analytics-cost v1, experience-telemetry v1, governance-assurance v1, mission-outcomes v1, product-quality v1, service-reliability v1 APPROVED
+
+B92-4 THE SCOPE red-sea-corridor — proposed by the analyst, approved by the owner at its digest
+  · scope red-sea-corridor v1 APPROVED — stands (an earlier run)
+  ✓ THE SCOPE red-sea-corridor v1: objectives [01a0…3d1d00] · series [portwatch:chokepoint4:n_total] · geographies [BAB-EL-MANDEB] · entities [none — no Bab el-Mandeb entity in the graph]
+
+B92-5 THE DEFINITIONS — every contract of definitionsA and definitionsB proposed by the analyst, approved by the owner at its digest
+  · 52 definition(s) were approved by an earlier run — they stand
+  ✓ THE CATALOG: 52 approved definitions (38 computed, 14 unsupported with their carriers) of the 52 contracts (definitionsA 29, definitionsB 23)
+  · every approved definition names its owner: M. Okonkwo (CAP-DL-11 "Chief Product Officer" → product_analytics_owner)
+  ✓ J. Satō proposes MET-022 grouped by acknowledged_by (a person) REFUSED — 403 EYE-AUT-001 — metric definition rejected (person): the dimension(s) acknowledged_by name a person — a product metric is never grouped by a person (no employee-performance inference; role cohorts only, above k)
+  ✓ the contract card of MET-024 (definitions/MET-024/read): v1 approved — "Forecast calibration", rate in share of outcomes inside q10–q90, direction band, band [0.75,0.85], window calendar_quarter on the record clock, floor 8, k 5, purpose mission-outcomes, owner M. Okonkwo, digest b6fff45e35ef…
+
+B92-6 THE SCENE'S METRICS — MET-001, MET-022, MET-024 for 2026-Q3 in red-sea-corridor (and domain-wide); the series; a replay; the refusals
+  · MET-001 2026-Q3 red-sea-corridor: result 01a1…69cc8d (definition v1) stands — an earlier run
+    MET-001 2026-Q3 red-sea-corridor — 0 share of committed decisions; n = 7 (numerator 0 / denominator 7); window 2026-07-01T00:00:00Z → 2026-10-01T00:00:00Z on the record clock, as of 2026-10-12T01:47:19Z
+      95 % Wilson [0, 0.354]
+      records by role: denominator 7 — denominator: decision_package:01a0…651748, decision_package:01a0…a72613, decision_package:01a0…0cc6b5
+      quality: {"clock":"record","links":["objective","evidence","foresight","commitment","outcome","learning"],"notes":["each link judged AS OF the result's as-of (decision_metrics' predicates, which read now, evaluated at as-of so a replay reproduces)"],"composition":{"by":"synthetic","counts":{"true":7}},"window_field":"decision.commitments.committed_at","excluded_count":0,"synthetic_share":1,"newest_record_a
+      definition v1 (digest 491d877cada4…), computation met001_loop_closure v1, source revision a8eefc7e0079…
+  ✓ MET-001 2026-Q3 red-sea-corridor: a DETERMINATE value with its n and interval
+  · MET-001 2026-Q3 domain-wide: result 01a1…bb9922 (definition v1) stands — an earlier run
+    MET-001 2026-Q3 domain-wide — 0 share of committed decisions; n = 7 (numerator 0 / denominator 7); window 2026-07-01T00:00:00Z → 2026-10-01T00:00:00Z on the record clock, as of 2026-10-12T01:47:19Z
+      95 % Wilson [0, 0.354]
+      records by role: denominator 7 — denominator: decision_package:01a0…651748, decision_package:01a0…a72613, decision_package:01a0…0cc6b5
+      quality: {"clock":"record","links":["objective","evidence","foresight","commitment","outcome","learning"],"notes":["each link judged AS OF the result's as-of (decision_metrics' predicates, which read now, evaluated at as-of so a replay reproduces)"],"composition":{"by":"synthetic","counts":{"true":7}},"window_field":"decision.commitments.committed_at","excluded_count":0,"synthetic_share":1,"newest_record_a
+      definition v1 (digest 491d877cada4…), computation met001_loop_closure v1, source revision a8eefc7e0079…
+  ✓ MET-001 2026-Q3 domain-wide: a DETERMINATE value with its n and interval
+  · MET-022 2026-Q3 red-sea-corridor: result 01a1…476a3c (definition v1) stands — an earlier run
+    MET-022 2026-Q3 red-sea-corridor — INDETERMINATE; n = 1; window 2026-07-01T00:00:00Z → 2026-10-01T00:00:00Z on the record clock, as of 2026-10-12T01:47:19Z
+      uncertainty {"note":"n < 6: the interval of the median is unbounded","level":0.95,"method":"order_statistics","hi_rank":null,"lo_rank":null}; distribution p50 0.013 p90 0.013 (min 0.013, max 0.013)
+      records by role: excluded 1, included 1 — excluded: warning:01a0…248b3f · included: warning:01a0…acad1a
+      reason: n = 1 is below the floor 5 the definition declares: the sample cannot carry a determinate value
+      quality: {"end":"prediction.warnings_current.acknowledged_at","unit":"seconds","clock":"record","start":"receipt (executive.attention_deliveries.receipt.at), else the declared proxy raised_at","composition":{"by":"severity","counts":{"high":1,"unclassified":1}},"proxy_share":1,"excluded_count":1,"proxy_declared":true,"admit_synthetic":false,"qualified_roles":["domain_admin","strategy_owner","forecast_owner
+      definition v1 (digest 13744e4d6f9a…), computation met022_warning_ack_latency v1, source revision e1baa3ce6619…
+  ✓ MET-022 2026-Q3 red-sea-corridor: INDETERMINATE — value withheld, 1 reason(s) stated (never an invented zero)
+  · MET-022 2026-Q3 domain-wide: result 01a1…db7b72 (definition v1) stands — an earlier run
+    MET-022 2026-Q3 domain-wide — INDETERMINATE; n = 2; window 2026-07-01T00:00:00Z → 2026-10-01T00:00:00Z on the record clock, as of 2026-10-12T01:47:19Z
+      uncertainty {"note":"n < 6: the interval of the median is unbounded","level":0.95,"method":"order_statistics","hi_rank":null,"lo_rank":null}; distribution p50 31.691 p90 57.033 (min 0.013, max 63.369)
+      records by role: excluded 1, included 2 — excluded: warning:01a0…248b3f · included: warning:01a0…acad1a, warning:01a0…5ede80
+      reason: n = 2 is below the floor 5 the definition declares: the sample cannot carry a determinate value
+      quality: {"end":"prediction.warnings_current.acknowledged_at","unit":"seconds","clock":"record","start":"receipt (executive.attention_deliveries.receipt.at), else the declared proxy raised_at","composition":{"by":"severity","counts":{"high":1,"normal":1,"unclassified":1}},"proxy_share":0.5,"excluded_count":1,"proxy_declared":true,"admit_synthetic":false,"qualified_roles":["domain_admin","strategy_owner","f
+      definition v1 (digest 13744e4d6f9a…), computation met022_warning_ack_latency v1, source revision 993f2b9aa855…
+  ✓ MET-022 2026-Q3 domain-wide: INDETERMINATE — value withheld, 1 reason(s) stated (never an invented zero)
+  · MET-024 2026-Q3 red-sea-corridor: result 01a1…1dab4e (definition v1) stands — an earlier run
+    MET-024 2026-Q3 red-sea-corridor — INDETERMINATE; n = 0 (numerator 0 / denominator 0); window 2026-07-01T00:00:00Z → 2026-10-01T00:00:00Z on the record clock, as of 2026-10-12T01:47:19Z
+      no interval (no value)
+      records by role: context 2 — context: backtest:01a0…e41380, backtest:01a0…c99c4b
+      reason: n = 0 is below the floor 8 the definition declares: the sample cannot carry a determinate value
+      quality: {"rule":"covered = q10 ≤ observed ≤ q90 (the outcome ledger's own flag; ForecastingService.calibration)","clock":"record","notes":["2 backtest(s) of the scope's series were computed in the window: listed as context, NOT counted — backtest coverage is a different definition labelled by its mode"],"composition":{"by":"horizon","counts":{}},"window_field":"prediction.outcome_ledger.known_at","exclude
+      definition v1 (digest b6fff45e35ef…), computation met024_forecast_calibration v1, source revision 827ad6db4394…
+  ✓ MET-024 2026-Q3 red-sea-corridor: INDETERMINATE — value withheld, 1 reason(s) stated (never an invented zero)
+  · MET-024 2026-Q3 domain-wide: result 01a1…a01e43 (definition v1) stands — an earlier run
+    MET-024 2026-Q3 domain-wide — INDETERMINATE; n = 0 (numerator 0 / denominator 0); window 2026-07-01T00:00:00Z → 2026-10-01T00:00:00Z on the record clock, as of 2026-10-12T01:47:19Z
+      no interval (no value)
+      records by role: context 8 — context: backtest:01a0…a8804b, backtest:01a0…f6b8d1, backtest:01a0…50f95e
+      reason: n = 0 is below the floor 8 the definition declares: the sample cannot carry a determinate value
+      quality: {"rule":"covered = q10 ≤ observed ≤ q90 (the outcome ledger's own flag; ForecastingService.calibration)","clock":"record","notes":["8 backtest(s) of the scope's series were computed in the window: listed as context, NOT counted — backtest coverage is a different definition labelled by its mode"],"composition":{"by":"horizon","counts":{}},"window_field":"prediction.outcome_ledger.known_at","exclude
+      definition v1 (digest b6fff45e35ef…), computation met024_forecast_calibration v1, source revision c499cb8631e7…
+  ✓ MET-024 2026-Q3 domain-wide: INDETERMINATE — value withheld, 1 reason(s) stated (never an invented zero)
+  · MET-001's records name what keeps each loop open: evidence missing on 7, learning missing on 6, outcome missing on 6 of 7 committed package(s) — the demonstration's options cite runs, forecasts and assumptions, no evidence or claim object (decision_metrics' with_evidence kinds), so the evidence link is unmet everywhere: a MEASURED state of the records, not an invented zero
+    THE SERIES MET-001 red-sea-corridor: 2025-Q4 NO_HISTORY · 2026-Q1 NO_HISTORY · 2026-Q2 NO_HISTORY · 2026-Q3 determinate 0 (v1)
+      history origin: 2026-09-09T06:57:54Z (objects.canonical_objects.recorded_at)
+      2025-Q4: no history: the deployment holds no records before 2026-09-09 (objects.canonical_objects.recorded_at)
+      2026-Q1: no history: the deployment holds no records before 2026-09-09 (objects.canonical_objects.recorded_at)
+      2026-Q2: no history: the deployment holds no records before 2026-09-09 (objects.canonical_objects.recorded_at)
+  ✓ the series of MET-001 lists EVERY period 2025-Q4…2026-Q3 — 3 named "no history", 0 "not computed", never a zero
+    THE SERIES MET-022 red-sea-corridor: 2025-Q4 NO_HISTORY · 2026-Q1 NO_HISTORY · 2026-Q2 NO_HISTORY · 2026-Q3 indeterminate (v2)
+      history origin: 2026-09-09T06:57:54Z (identity.role_bindings.created_at)
+      2025-Q4: no history: the deployment holds no records before 2026-09-09 (identity.role_bindings.created_at)
+      2026-Q1: no history: the deployment holds no records before 2026-09-09 (identity.role_bindings.created_at)
+      2026-Q2: no history: the deployment holds no records before 2026-09-09 (identity.role_bindings.created_at)
+  ✓ the series of MET-022 lists EVERY period 2025-Q4…2026-Q3 — 3 named "no history", 0 "not computed", never a zero
+    THE SERIES MET-024 red-sea-corridor: 2025-Q4 NO_HISTORY · 2026-Q1 NO_HISTORY · 2026-Q2 NO_HISTORY · 2026-Q3 indeterminate (v1)
+      history origin: 2026-09-09T06:58:11Z (prediction.backtests.known_at)
+      2025-Q4: no history: the deployment holds no records before 2026-09-09 (prediction.backtests.known_at)
+      2026-Q1: no history: the deployment holds no records before 2026-09-09 (prediction.backtests.known_at)
+      2026-Q2: no history: the deployment holds no records before 2026-09-09 (prediction.backtests.known_at)
+  ✓ the series of MET-024 lists EVERY period 2025-Q4…2026-Q3 — 3 named "no history", 0 "not computed", never a zero
+  · the replay of MET-001 01a1…69cc8d stands (an earlier run): 01a1…437733 reproduced
+  ✓ J. Satō computes MET-022 for a cohort of one acknowledger (acknowledged_by) REFUSED — 403 EYE-AUT-001 — metric computation rejected (person): a product metric is never grouped by a person (acknowledged_by): no employee-performance inference
+  · MET-022 2026-Q4 red-sea-corridor (the open quarter): result 01a1…267bb2 (definition v1) stands — an earlier run
+    MET-022 2026-Q4 red-sea-corridor — INDETERMINATE; n = 0; window 2026-10-01T00:00:00Z → 2027-01-01T00:00:00Z on the record clock, as of 2026-10-12T01:47:19Z
+      no interval (no value)
+      records by role: none — no record
+      reason: the period 2026-Q4 is open until 2027-01-01 00:00:00+00 (as of 2026-10-12 01:47:19.25978+00): a partial period is not presented as the period
+      reason: n = 0 is below the floor 5 the definition declares: the sample cannot carry a determinate value
+      quality: {"end":"prediction.warnings_current.acknowledged_at","unit":"seconds","clock":"record","start":"receipt (executive.attention_deliveries.receipt.at), else the declared proxy raised_at","composition":{"by":"severity","counts":{}},"proxy_share":null,"excluded_count":0,"proxy_declared":true,"admit_synthetic":false,"qualified_roles":["domain_admin","strategy_owner","forecast_owner","risk_owner"],"newes
+      definition v1 (digest 13744e4d6f9a…), computation met022_warning_ack_latency v1, source revision 4f53cda18c2b…
+  ✓ MET-022 2026-Q4 red-sea-corridor: INDETERMINATE — value withheld, 2 reason(s) stated (never an invented zero)
+  ✓ the OPEN quarter 2026-Q4 is REFUSED AS PARTIAL: indeterminate — "the period 2026-Q4 is open until 2027-01-01 00:00:00+00 (as of 2026-10-12 01:47:19.25978+00): a partial period is not presented as the period" (any governed record the product makes today lands in 2026-Q4 by the record clock)
+
+B92-7 THE CORRECTION — MET-022 v2 (strict: no raised_at proxy) approved and recomputed beside v1; an exception shown beside a result
+  · MET-022 v2 APPROVED (effective 2026-10-12T01:47:19Z) — stands (an earlier run)
+  ✓ the field-level diff v1 → v2: exclusions, params, quality
+  · MET-022 2026-Q3 red-sea-corridor on v2: result 01a1…b42c4d (definition v2) stands — an earlier run
+    BESIDE EACH OTHER:
+    MET-022 v1 (the declared raised_at proxy) — INDETERMINATE; n = 1; window 2026-07-01T00:00:00Z → 2026-10-01T00:00:00Z on the record clock, as of 2026-10-12T01:47:19Z
+      uncertainty {"note":"n < 6: the interval of the median is unbounded","level":0.95,"method":"order_statistics","hi_rank":null,"lo_rank":null}; distribution p50 0.013 p90 0.013 (min 0.013, max 0.013)
+      records by role: excluded 1, included 1 — excluded: warning:01a0…248b3f · included: warning:01a0…acad1a
+      reason: n = 1 is below the floor 5 the definition declares: the sample cannot carry a determinate value
+      quality: {"end":"prediction.warnings_current.acknowledged_at","unit":"seconds","clock":"record","start":"receipt (executive.attention_deliveries.receipt.at), else the declared proxy raised_at","composition":{"by":"severity","counts":{"high":1,"unclassified":1}},"proxy_share":1,"excluded_count":1,"proxy_declared":true,"admit_synthetic":false,"qualified_roles":["domain_admin","strategy_owner","forecast_owner
+      definition v1 (digest 13744e4d6f9a…), computation met022_warning_ack_latency v1, source revision e1baa3ce6619…
+  ✓ MET-022 v1 (the declared raised_at proxy): INDETERMINATE — value withheld, 1 reason(s) stated (never an invented zero)
+    MET-022 v2 (strict, receipt only) — INDETERMINATE; n = 0; window 2026-07-01T00:00:00Z → 2026-10-01T00:00:00Z on the record clock, as of 2026-10-12T01:47:19Z
+      no interval (no value)
+      records by role: excluded 2 — excluded: warning:01a0…248b3f, warning:01a0…acad1a
+      reason: n = 0 is below the floor 5 the definition declares: the sample cannot carry a determinate value
+      reason: incomplete: 2 of 2 records are excluded (100.0%), above the 50.0% the definition allows (quality.max_exclusion_share): what remains does not stand for the population
+      quality: {"end":"prediction.warnings_current.acknowledged_at","unit":"seconds","clock":"record","start":"receipt (executive.attention_deliveries.receipt.at)","composition":{"by":"severity","counts":{"high":1,"unclassified":1}},"proxy_share":null,"excluded_count":2,"proxy_declared":false,"admit_synthetic":false,"qualified_roles":["domain_admin","strategy_owner","forecast_owner","risk_owner"],"newest_record_
+      definition v2 (digest 2a29ef161e04…), computation met022_warning_ack_latency v1, source revision 1b291c30dddc…
+  ✓ MET-022 v2 (strict, receipt only): INDETERMINATE — value withheld, 2 reason(s) stated (never an invented zero)
+  ✓ the recompute stands BESIDE the first: v1 indeterminate (n 1, 1 excluded) vs v2 indeterminate (n 0, 2 excluded) — the v1 result is unchanged and still readable
+  ✓ the series of MET-022 through 2026-Q4: 2025-Q4 no_history · 2026-Q1 no_history · 2026-Q2 no_history · 2026-Q3 v2 indeterminate · 2026-Q4 v1 indeterminate — versions [1, 2], comparable false: "the computed periods rest on different definition versions: they are not comparable as one series"
+  · the MET-024 threshold exemption 01a1…d3f47a APPROVED by M. Okonkwo — stands (an earlier run)
+  ✓ BESIDE the MET-024 result 01a1…1dab4e (indeterminate, value —, revision 827ad6db4394…, UNCHANGED): the exemption 01a1…d3f47a approved — proposed by J. Satō, decided by M. Okonkwo: "PortWatch publishes the chokepoint4 counts two to four weeks late: the corridor forecasts of 2026-Q3 are not yet scored, so a band breach re"
+
+B92-8 THE OPERATING REVIEW — opened, assembled, held, noted, decided by the chair, closed and signed at the digest
+  · the review "NORDWERK corridor operating review — 2026-Q3 (SYNTHETIC)" 01a1…2a9846 was CLOSED by its chair — stands (an earlier run)
+  ✓ M. Okonkwo (not the chair) closes the closed review REFUSED — 403 EYE-AUT-001 — operating review rejected (authority): only the chair of review "NORDWERK corridor operating review — 2026-Q3 (SYNTHETIC)" may close the review
+  ✓ THE REVIEW READ BACK 01a1…2a9846: CLOSED, chaired by S. Okafor — executive approver; signature 38fc7025ce55… verified true (digest-bound close by the named chair (not an Ed25519 signature)); "The corridor's 2026-Q3 metrics are thin and said so; the follow-through is decided per metric (SYNTHETIC demonstration)."
+    MET-001 Strategic loop closure rate: cited — determinate 0, n 7, 0 reason(s); drill-down results/01a12dca-f885-7cf9-a8b7-d58d4e69cc8d/read
+      series: 2025-Q4 no_history · 2026-Q1 no_history · 2026-Q2 no_history · 2026-Q3 determinate
+    MET-022 Warning acknowledgment latency: cited — indeterminate, n 0, 2 reason(s); drill-down results/01a12dca-fa93-711f-ab70-175b72b42c4d/read
+      series: 2025-Q4 no_history · 2026-Q1 no_history · 2026-Q2 no_history · 2026-Q3 indeterminate
+    MET-024 Forecast calibration: cited — indeterminate, n 0, 1 reason(s); drill-down results/01a12dca-f8f7-796c-9ec0-4e1c2e1dab4e/read
+      series: 2025-Q4 no_history · 2026-Q1 no_history · 2026-Q2 no_history · 2026-Q3 indeterminate
+    MET-023 Warning action closure: not_computed — not computed: no result of MET-023 for 2026-Q3 (scope red-sea-corridor) has been computed yet; drill-down —
+      series: 2025-Q4 no_history · 2026-Q1 no_history · 2026-Q2 no_history · 2026-Q3 not_computed
+    follow-through MET-001: action "Review the corridor's committed decision packages with their owners: cite the ev" owner L. Brandt due 2026-11-26
+    follow-through MET-022: no_action — the strict v2 reading stands; MET-022 is indeterminate on the corridor's few acknowledged warnings —
+    follow-through MET-024: action "Score the corridor's chokepoint4 forecasts against the published PortWatch count" owner N. Eriksen due 2026-11-26
+    follow-through MET-023: no_action — MET-023 was not computed for this review (not_computed); it is computed for the next quarter's revie
+  ✓ the review cites 3 result(s) (MET-001, MET-022, MET-024) and lists MET-023 NOT COMPUTED — never hidden
+  ✓ the DRILL-DOWN of MET-001 (results/01a1…69cc8d/read): definition v1 "Strategic loop closure rate" → result determinate → 7 record(s) (denominator 7); uses operating_review
+
+B92-9 COMPARABILITY AND COST — a cohort comparison; the cost reconciliation of 2026-Q3
+  · the MET-022 comparison 01a1…2861e5 stands — an earlier run
+  ✓ THE COMPARISON 01a1…2861e5 (MET-022, duration): INDETERMINATE — side a (2026-Q2, {}) is indeterminate: ["n = 0 is below the floor 5 the definition declares: the sample cannot carry a determinate value"] | side b (2026-Q3, {}) is indeterminate: ["n = 1 is below the floor 5 the definition declares: the sample cannot carry a determinate value", "incomplete: 2 of 3 records are excluded (66.7%), above the 50.0% the definition allows (quality.max_exclusion_share): what remains does not stand for the population"] | side a: n = 0 is below the floor 5 | side b: n = 1 is below the floor 5
+      comparability: {"rule":"comparable when both results are determinate original non-preview results, their definitions' semantic projections are equal (kind, unit, direction, population, numerator, denominator, exclusions, window, dimensions, privacy class, k, floor, computation and params; title, wording, owner, cadence, action, retirement, serves, threshold, quality and cost allocation are non-semantic), the com
+  · the 2026-Q3 cost reconciliation 01a1…56ba67 stands — an earlier run
+  ✓ THE COST RECONCILIATION 2026-Q3: EMPTY — counts {"units":0,"matched":0,"unpriced":0,"discrepant":0}; totals {"priced":{},"replays":0,"previews":0,"rows_read":0,"compute_ms":0,"computations":0} — nothing was metered in 2026-Q3 — every computation of this act ran in 2026-Q4 by the record clock; an EMPTY reconciliation is said, never a pass
+      reason: nothing to reconcile: no computation was metered in 2026-Q3 and B91 holds no analytics usage for it — not a pass
+  · the 2026-Q4 cost reconciliation 01a1…1dd76e stands — an earlier run
+  ✓ THE COST RECONCILIATION 2026-Q4: UNPRICED — counts {"units":11,"matched":0,"unpriced":11,"discrepant":0}; totals {"priced":{},"replays":1,"previews":0,"rows_read":41,"compute_ms":56.139,"computations":11} — UNPRICED is the honest state: B91 prices no analytics dimension — the analytics cost is metered here (rows read, compute ms) and named unpriced, never silently passed
+      reason: the period 2026-Q4 is open until 2027-01-01 00:00:00+00: a partial period is reconciled as far as it goes
+      reason: 11 unit(s) unpriced: the analytics cost is measured here but not priced by B91 (no meter or no rate card)
+
+B92-10 EXPERIENCE QUALITY — journeys, event definitions and their privacy review, consent, events, hold/release, a baseline, a finding → an action, an export
+  · journey operating-review v1 is active — stands (an earlier run)
+  · journey experience-page v1 is active — stands (an earlier run)
+  · event operating-review.open v1 approved (collection open) — stands
+  · event operating-review.drill_down v1 approved (collection open) — stands
+  · event operating-review.done v1 approved (collection open) — stands
+  · event experience-page.open v1 approved (collection open) — stands
+  · event experience-page.act v1 approved (collection open) — stands
+  · J. Satō has consented to experience-telemetry — stands (an earlier run)
+  · M. Okonkwo has consented to experience-telemetry — stands (an earlier run)
+  ✓ L. Haas's own consent state (self/read): experience-telemetry — NOT CONSENTED (nobody grants for another)
+  · 7 event(s) of the operating-review journey are collected — stands (an earlier run or the walk)
+  · L. Haas's event without consent was NOT COLLECTED and is counted — stands (an earlier run): 1 not_consented attempt(s), no event stored for it
+  · the hold → refusal → release of operating-review.drill_down stands — an earlier run (1 refused attempt(s) while held)
+  ✓ operating-review.drill_down collection OPEN; 1 refused attempt(s) while held stand in the ledger
+  · the operating-review baseline 01a1…046e50 (R7@2026-10-12) stands — an earlier run
+  ✓ THE BASELINE: INDETERMINATE, n 2 — the period R7@2026-10-12 is open until 2026-10-13 00:00:00+00: a partial period is not presented as the period | n = 2 is below the journey's floor 5: the sample cannot carry a determinate value | the segment rests on at most 2 distinct pseudonyms on any day, below k = 5: it is suppressed (no person is singled out)
+  · the finding 01a1…70ff34 is actioned — stands (an earlier run)
+  · the export 01a1…e22a51 stands — an earlier run
+  ✓ the export downloaded, its digest RE-VERIFIED true (6508 bytes, e0ff757e563b…) — sections title, purges, schema, actions, boundary, contents, findings, journeys, purposes, segments, baselines, domain_id, tenant_id, thresholds, experiments, generated_at, consent_counts, telemetry_definitions; aggregates only (no pseudonym, no raw event, no principal id: true)
+  ✓ the four-part anatomy of operating-review (workspace): objective "A chair and the analysts reach a metric's records from the operating r…" → 1 metric(s) with lineage → 0 segment baseline(s) → 1 finding(s) with 1 decided action(s); consent counts [{"purpose_key":"experience-telemetry","consenting_now":2,"withdrawals_recorded":0}]
+
+B92-11 THE STATE and the LIMITS
+  · in the ledgers: 6 purpose version(s), 1 scope version(s), 53 definition version(s), 11 result(s), 3 use(s), 1 operating review(s); 5 telemetry definition version(s), 7 pseudonymous event(s), 2 consent record(s)
+  the env lines for the walk (EYE_TEST_ADMIN_PASSWORD comes from .eye-local/env and is never printed):
+  EYE_B92_LICENCE_VERSION=4
+  EYE_B92_OWNER=m.okonkwo
+  EYE_B92_PRIVACY=l.haas
+  EYE_B92_ANALYST=j.sato
+  EYE_B92_CHAIR=s.okafor
+  EYE_B92_POLICY_VERSION=12
+  EYE_B92_SCOPE=red-sea-corridor
+  EYE_B92_PERIOD=2026-Q3
+  EYE_B92_MET022_V1_RESULT=01a12dca-f8c7-7c0d-ad06-9f79e6476a3c
+  EYE_B92_MET022_V2_RESULT=01a12dca-fa93-711f-ab70-175b72b42c4d
+  EYE_B92_REVIEW_TITLE='NORDWERK corridor operating review — 2026-Q3 (SYNTHETIC)'
+  EYE_B92_REVIEW_ID=01a12dca-fbe8-72c8-92ac-be3bd32a9846
+  · LIMITS said — THREE CLAIMS KEPT APART. (1) SOFTWARE CAPABILITY — what RAN on this deployment through its governed routes: the licence gate on analytics.* and the vendor's reissue; the purpose register with the privacy officer's digest-bound approvals and the person-purpose refusal; the corridor scope; the whole catalog of App M / V1 / ES contracts proposed by a named analyst and approved by a named owner (the supported ones computed by their registered SQL computations, the unsupported ones served unsupported with their carriers); the computations of MET-001, MET-022 and MET-024 with their records, reasons, uncertainty and replay; the person-grained cohort refused; the version-2 correction and the non-comparable series; the threshold exemption beside an unchanged result; the operating review from opening to the chair's digest-bound close; the comparison and the cost reconciliation; the experience workflow from consent to export. (2) SYNTHETIC DEMONSTRATION — every NORDWERK figure is SYNTHETIC: the personas M. Okonkwo, L. Haas and J. Satō (created by the tenant administrator for this act), the chair's statement, the notes and the follow-through, the purposes' texts, the exception's reason, the experience events (two consenting personas' own reads of the review), the export. The decision packages, warnings and forecasts the metrics count are the demonstration's own records; the PortWatch chokepoint4 counts are the only REAL collected public observations in the corridor scope. The scene's metrics are THIN on this demonstration and are said so — nothing was planted to move them; whatever governed record the product makes today lands in 2026-Q4 by the record clock (the open quarter, shown partial). (3) EXTERNAL ACCEPTANCE — never closed by a substitute: the SIGNED acceptance records of the metric catalog and the experience workflow (AT-70, UX-70-006: product owner, independent assurance, customer authority) → R2; accessibility conformance (MET-034) → B107/H3; deployment parity (MET-035) → B106; customer time to operation (MET-039) and customer onboarding → B94. B91 prices no analytics dimension: the analytics cost is metered by B92 and reconciled UNPRICED, never silently passed. HARNESS-PROVEN ONLY (not staged here): the experiments (two approvals, SRM invalidation, conclusion — phase6-experience-b92 UX6), the purge (UX8), the standing evaluation's stale / biased / gamed / outcome-detached checks and the fault exercise (phase6-comparability-b92 CO1, CO6), the B90 semantic objects (CO3), DP-44-005's serving uses (phase6-definitions-b92 MD5), the uses refused for a preview and an unqualified indeterminate citation in a briefing (MD4).
+
+ALL SCENES HELD · 0.1 min
+
+# THE WALK (e2e/phase6-b92.demo.spec.ts via playwright.demo.config.ts, web on :3010 built from this worktree)
+  ✓  1 e2e/phase6-b92.demo.spec.ts:51:7 › CP-6 B92 — the metric catalog, the operating review and experience quality on the demonstration › THE CATALOG: the approved definitions with their owner; MET-024's contract card — every field, the approved band, the window and clock, the purpose and the digest (1.1s)
+  ✓  2 e2e/phase6-b92.demo.spec.ts:71:7 › CP-6 B92 — the metric catalog, the operating review and experience quality on the demonstration › THE DRILL-DOWN from the catalog: MET-001 definition → its 2026-Q3 corridor result → the records with their link vectors (900ms)
+  ✓  3 e2e/phase6-b92.demo.spec.ts:90:7 › CP-6 B92 — the metric catalog, the operating review and experience quality on the demonstration › THE OPERATING REVIEW: the closed review — each metric with its state (an indeterminate one explained), the series with sparse history named, MET-023 not computed, the chair's signature (650ms)
+  ✓  4 e2e/phase6-b92.demo.spec.ts:114:7 › CP-6 B92 — the metric catalog, the operating review and experience quality on the demonstration › THE REVIEW'S DRILL-DOWN: MET-001 cited → definition → result → records, from the operating review (758ms)
+  ✓  5 e2e/phase6-b92.demo.spec.ts:129:7 › CP-6 B92 — the metric catalog, the operating review and experience quality on the demonstration › EXPERIENCE QUALITY: the four-part anatomy of the operating-review journey; the owner's own consent CONSENTED; the event definitions privacy-reviewed (555ms)
+  ✓  6 e2e/phase6-b92.demo.spec.ts:150:7 › CP-6 B92 — the metric catalog, the operating review and experience quality on the demonstration › CONSENT IS THE PERSON'S OWN: the privacy officer, who never consented, reads NOT CONSENTED and is offered only her own consent (520ms)
+  6 passed (5.0s)
