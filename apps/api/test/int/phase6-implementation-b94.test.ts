@@ -355,6 +355,16 @@ describe('IM2 · readiness items and the gate, evaluated LIVE (PR-68-003/-005, I
     expect(await one(sql`select version, state from implementation.programmes where programme_id = ${programmeId}::uuid and superseded_at is null`)).toEqual(before);
     expect(await one(sql`select status from tenancy.domains where id = ${D()}::uuid`)).toEqual(domainBefore);
   });
+  it('MET-039 BEFORE acceptance: the programme is excluded "not yet accepted" — the computation and the compute port say so, never a value', async () => {
+    const out = (await one(sql`select analytics.mc_met039_time_to_accepted_operation(${T()}::uuid, ${D()}::uuid, '2026-01-01T00:00:00Z', clock_timestamp() + interval '1 day', clock_timestamp(),
+      null, '{}'::jsonb, '{"clock":"record"}'::jsonb) as r`))['r'] as Row;
+    expect(arr(out['records']).filter((x) => x['role'] === 'included')).toEqual([]);
+    expect(arr(out['records']).find((x) => x['id'] === programmeId)).toMatchObject({ role: 'excluded', reason: 'not yet accepted' });
+    expect(JSON.stringify(out['reasons'])).toMatch(/not yet accepted: 2 implementation programme/);
+    const r = await compute(pao, { metricKey: 'MET-039', period: await currentQuarter() });
+    expect(r).toMatchObject({ state: 'indeterminate', value: null });
+    expect(JSON.stringify(r['reasons'])).toMatch(/not yet accepted/);
+  });
 });
 
 describe('AD2 · cohorts and adoption measures (k ≥ 5; role × wave — never a person)', () => {
