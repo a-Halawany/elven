@@ -4273,7 +4273,7 @@ GRANT EXECUTE ON FUNCTION analytics.aco_breach(jsonb, text, numeric), analytics.
      BIASED           a DECLARED bias check quality.bias {dimension, min_share, values?}: a cohort of the population (by the records' detail
                       or quality.composition) under-represented below min_share — a declared check that cannot be evaluated is itself a
                       failure; and the synthetic / replayed share (quality.synthetic_share | replay_share) above quality.max_synthetic_share
-                      | max_replay_share (default 0.5) — stated either way.
+                      | max_replay_share WHEN THE DEFINITION DECLARES ONE (B92 integration: no default cap — undeclared, the share is a label) — stated either way.
      NON-COMPARABLE   the definition changed inside the window (another version of the key effective strictly inside (from, to), at or
                       before the as-of, after an earlier effective version); or the computation's clock differs from the definition's, or it
                       reports mixed clocks.
@@ -4379,20 +4379,24 @@ BEGIN
     SELECT round(count(*) FILTER (WHERE (r -> 'detail' ->> 'synthetic') = 'true')::numeric / v_n, 6) INTO v_syn FROM jsonb_array_elements(v_recs) r WHERE r ->> 'role' IN ('numerator', 'denominator', 'included');
   END IF;
   v_rep := analytics.aco_num(q -> 'replay_share');
-  v_max := coalesce(analytics.aco_num(dq -> 'max_synthetic_share'), 0.5);
-  IF v_syn IS NOT NULL AND v_syn > v_max THEN
+  -- B92 integration: the cap applies only when the definition DECLARES it (quality.max_synthetic_share); otherwise the share is a LABEL on the result
+  -- (status `labelled`, shown with the value) — a synthetic demonstration is said to be one, never refused wholesale nor presented as real
+  v_max := analytics.aco_num(dq -> 'max_synthetic_share');
+  IF v_syn IS NOT NULL AND v_max IS NOT NULL AND v_syn > v_max THEN
     v_reasons := v_reasons || to_jsonb(format('biased: %s%% of the population is synthetic (a substitute channel or fixture), above the %s%% the definition admits (quality.max_synthetic_share): a demonstration is not presented as the measure',
                                               round(100 * v_syn, 1), round(100 * v_max, 1)));
     v_checks := v_checks || jsonb_build_object('check', 'synthetic_share', 'status', 'fail', 'detail', jsonb_build_object('share', v_syn, 'max', v_max));
   ELSE
-    v_checks := v_checks || jsonb_build_object('check', 'synthetic_share', 'status', CASE WHEN v_syn IS NULL THEN 'not_evaluable' ELSE 'pass' END, 'detail', jsonb_build_object('share', v_syn, 'max', v_max));
+    v_checks := v_checks || jsonb_build_object('check', 'synthetic_share', 'status', CASE WHEN v_syn IS NULL THEN 'not_evaluable' WHEN v_max IS NULL THEN 'labelled' ELSE 'pass' END, 'detail', jsonb_build_object('share', v_syn, 'max', v_max));
   END IF;
-  v_max := coalesce(analytics.aco_num(dq -> 'max_replay_share'), 0.5);
-  IF v_rep IS NOT NULL AND v_rep > v_max THEN
+  -- B92 integration: the cap applies only when the definition DECLARES it (quality.max_replay_share); otherwise the share is a LABEL on the result
+  -- (status `labelled`, shown with the value) — a synthetic demonstration is said to be one, never refused wholesale nor presented as real
+  v_max := analytics.aco_num(dq -> 'max_replay_share');
+  IF v_rep IS NOT NULL AND v_max IS NOT NULL AND v_rep > v_max THEN
     v_reasons := v_reasons || to_jsonb(format('biased: %s%% of the population is replayed (world-clock) records, above the %s%% the definition admits (quality.max_replay_share)', round(100 * v_rep, 1), round(100 * v_max, 1)));
     v_checks := v_checks || jsonb_build_object('check', 'replay_share', 'status', 'fail', 'detail', jsonb_build_object('share', v_rep, 'max', v_max));
   ELSE
-    v_checks := v_checks || jsonb_build_object('check', 'replay_share', 'status', CASE WHEN v_rep IS NULL THEN 'not_evaluable' ELSE 'pass' END, 'detail', jsonb_build_object('share', v_rep, 'max', v_max));
+    v_checks := v_checks || jsonb_build_object('check', 'replay_share', 'status', CASE WHEN v_rep IS NULL THEN 'not_evaluable' WHEN v_max IS NULL THEN 'labelled' ELSE 'pass' END, 'detail', jsonb_build_object('share', v_rep, 'max', v_max));
   END IF;
 
   -- NON-COMPARABLE (the definition changed inside the window; the clock)

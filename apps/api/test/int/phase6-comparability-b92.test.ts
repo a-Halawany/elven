@@ -211,7 +211,7 @@ describe('CO1 · the standing evaluation (PR-70-005): each failing check an expl
     expect(r, reasons(r)).toMatchObject({ state: 'determinate', n: 10 });
     expect(Number(r['value'])).toBeCloseTo(0.7, 6);
     const names = arr(obj(r['evaluation'])['checks']).map((x) => `${String(x['check'])}:${String(x['status'])}`);
-    expect(names).toEqual(['stale:pass', 'incomplete:pass', 'biased:pass', 'synthetic_share:pass', 'replay_share:not_evaluable', 'non_comparable:pass', 'gamed:pass', 'privacy:pass', 'outcome_detached:pass']);
+    expect(names).toEqual(['stale:pass', 'incomplete:pass', 'biased:pass', 'synthetic_share:labelled', 'replay_share:not_evaluable', 'non_comparable:pass', 'gamed:pass', 'privacy:pass', 'outcome_detached:pass']);
     expect(obj(r['evaluation'])['by']).toMatch(/B92 co standing evaluation/);
     expect(arr(obj(r['after'])['routed'])).toEqual([]);
   });
@@ -254,8 +254,10 @@ describe('CO1 · the standing evaluation (PR-70-005): each failing check an expl
     expect(check(r, 'biased')).toMatchObject({ status: 'fail', detail: { composition: { high: 9, low: 1 } } });
     const blind = `CO-biasblind${RUN}`; await plant(blind, { quality: bias, params: { bucket: key, no_composition: true } });
     const r2 = (await compute(analyst, { metricKey: blind, period: Q3 })).result;
-    expect(reasons(r2)).toMatch(/biased: the definition declares a bias check on severity, which cannot be evaluated — the computation reports no composition by severity/);
-    const syn = `CO-synthetic${RUN}`; await plant(syn);
+    // B92 integration: the hook now receives the RECORDS (the widened draft), so a computation that reports no composition is evaluated from its
+    // records' detail — the same under-representation is found; `cannot be evaluated` remains for a population whose records carry no such detail
+    expect(reasons(r2)).toMatch(/biased: on severity the cohort\(s\) low 10\.0% are under-represented|biased: the definition declares a bias check on severity, which cannot be evaluated/);
+    const syn = `CO-synthetic${RUN}`; await plant(syn, { quality: { max_synthetic_share: 0.5 } });   // B92 integration: the cap applies when DECLARED
     await items(syn, spread(3, 10, (i) => ({ synthetic: i < 8 })));
     const r3 = (await compute(analyst, { metricKey: syn, period: Q3 })).result;
     expect(r3).toMatchObject({ state: 'indeterminate' });
@@ -264,6 +266,11 @@ describe('CO1 · the standing evaluation (PR-70-005): each failing check an expl
     const r4 = (await compute(analyst, { metricKey: synOk, period: Q3 })).result;
     expect(r4, reasons(r4)).toMatchObject({ state: 'determinate' });
     expect(check(r4, 'synthetic_share')).toMatchObject({ status: 'pass', detail: { share: 0.8, max: 0.9 } });
+    // B92 integration: no cap declared → the synthetic share is a LABEL on a determinate result (a demonstration says it is one; it is not refused wholesale)
+    const synLabel = `CO-syntheticlabel${RUN}`; await plant(synLabel, { params: { bucket: syn } });
+    const r5 = (await compute(analyst, { metricKey: synLabel, period: Q3 })).result;
+    expect(r5, reasons(r5)).toMatchObject({ state: 'determinate' });
+    expect(check(r5, 'synthetic_share')).toMatchObject({ status: 'labelled', detail: { share: 0.8, max: null } });
   });
 
   it('NON-COMPARABLE: version 2 took effect on 15 August, inside 2026-Q3 → the quarter mixes two definitions; a computation reporting another clock than the definition\'s mixes clocks', async () => {
@@ -365,7 +372,7 @@ describe('CO1 · the standing evaluation (PR-70-005): each failing check an expl
     const ck = (n: string) => (arr(ev['checks']).find((x) => x['check'] === n) ?? {}) as Row;
     expect(ck('incomplete')).toMatchObject({ status: 'pass', detail: { excluded: 2, n: 7 } });
     expect(ck('biased')).toMatchObject({ status: 'fail', detail: { composition: { high: 6, low: 1 } } });
-    expect(ck('synthetic_share')).toMatchObject({ status: 'pass', detail: { share: 0.142857 } });
+    expect(ck('synthetic_share')).toMatchObject({ status: 'labelled', detail: { share: 0.142857 } });   // B92 integration: no cap declared → a label
     expect(ck('stale')).toMatchObject({ status: 'pass' });
     expect(arr(ev['failed'])).toEqual(['biased']);
   });

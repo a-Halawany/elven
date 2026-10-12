@@ -426,7 +426,11 @@ describe('MD4 · the uses ledger and ES-40-008 (an indeterminate result constrai
     expect((await uses(owner, { metricKey: K })).uses.length).toBe(4);   // the uses stay readable
     const v3 = await approved(K, { threshold: { target: 0.7 } }, analyst2, owner);
     expect(v3).toMatchObject({ version: 3, state: 'approved' });
-    expect((await compute(analyst, { metricKey: K, period: Q })).result).toMatchObject({ state: 'determinate', definition_version: 3 });
+    // B92 integration (with §CO's standing evaluation folded): version 3 LOWERS the target 0.8 → 0.7, which alone moves 0.75 from breach to pass —
+    // the anti-gaming check makes the result INDETERMINATE with the reason (the review the old threshold opened is not avoided by redrawing the line)
+    const r3 = (await compute(analyst, { metricKey: K, period: Q })).result;
+    expect(r3).toMatchObject({ state: 'indeterminate', definition_version: 3, value: null });
+    expect(JSON.stringify(r3['reasons'])).toMatch(/gamed: the threshold changed with version 3/);
   });
 });
 
@@ -481,7 +485,7 @@ describe('MD6 · the reads: the catalog (CAP-DL-11), the contract card, the list
     expect(row).toMatchObject({ version: 3, state: 'approved', supported: true, uses: 4 });
     expect(obj(row['b90_catalog_entry'])).toMatchObject({ kind: 'external', ref: `analytics:${K}` });
     const periods = arr(row['results_by_period']).map((x) => `${x['period_key']}|${x['scope_key'] ?? ''}|${x['state']}|v${x['definition_version']}`);
-    expect(periods).toEqual([`${Q}||determinate|v3`, `${Q}|red-sea-corridor|determinate|v2`, '2026-Q2||indeterminate|v2']);
+    expect(periods).toEqual([`${Q}||indeterminate|v3`, `${Q}|red-sea-corridor|determinate|v2`, '2026-Q2||indeterminate|v2']);
     const un = cg.catalog.find((x) => x['metric_key'] === `FX-unsup-${RUN}`)!;
     expect(un).toMatchObject({ supported: false });
     expect(arr(un['results_by_period'])[0]).toMatchObject({ state: 'unsupported', value: null });
