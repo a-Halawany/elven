@@ -43,7 +43,7 @@ const RUN = uuidv7().slice(-6);
 let manager: AuthenticatedPrincipal;   // the collection manager (the M. Dvorak of the scene): opens, executes the workaround, confirms closure
 let dadmin: AuthenticatedPrincipal; let dadmin2: AuthenticatedPrincipal; let executive: AuthenticatedPrincipal; let steward: AuthenticatedPrincipal;
 let tenantAdmin: AuthenticatedPrincipal; let engineer: AuthenticatedPrincipal; let engineer2: AuthenticatedPrincipal; let agentCustomer: AuthenticatedPrincipal;
-let plain: AuthenticatedPrincipal; let manager2: AuthenticatedPrincipal; let vendor: AuthenticatedPrincipal; let pManager: AuthenticatedPrincipal; let pAdmin: AuthenticatedPrincipal;
+let plain: AuthenticatedPrincipal; let manager2: AuthenticatedPrincipal; let dualRole: AuthenticatedPrincipal; let vendor: AuthenticatedPrincipal; let pManager: AuthenticatedPrincipal; let pAdmin: AuthenticatedPrincipal;
 let agentId = '';
 let SRC = ''; let SRC2 = ''; let SRCR = '';
 
@@ -160,6 +160,7 @@ beforeAll(async () => {
   engineer2 = await h.humanWithSession(['support_engineer'], 'sv-engineer-2');
   plain = await h.humanWithSession([], 'sv-plain');
   manager2 = await h.humanWithSession(['collection_manager'], 'sv-manager-2');
+  dualRole = await h.humanWithSession(['support_engineer', 'collection_manager'], 'sv-dual-role');
   agentCustomer = await person('agent', 'agent', 'DOMAIN', T, D, [{ role: 'collection_manager', scope: 'DOMAIN' }]);
   vendor = await person('vendor', 'human', 'PLATFORM', null, null, [{ role: 'commercial_authority', scope: 'PLATFORM' }]);
   SRC2 = await h.uploadSource('internal', 'sv-workaround');
@@ -223,8 +224,8 @@ describe('R · carryover a — premium support ROUTED from the live licence; cas
     const r = await openP('S2');
     expect(r.routing).toMatchObject({ tier: 'premium', licence: { version: l.licence['version'], state: 'active', premium_listed: true }, capability: { key: 'premium_support', built: true, prefixes: [] },
       objectives: { response_minutes: 30, resolution_minutes: 480 }, named_support: 'SYNTHETIC premium desk — the named support engineer of the account', contract: { support_tier: 'premium', descriptive: true } });
-    const c = await one(sql`select response_due_at - opened_at as r, resolution_due_at - opened_at as s from service.cases where case_id = ${String(r.case['case_id'])}::uuid`);
-    expect(String(c['r'])).toMatch(/00:30:00/); expect(String(c['s'])).toMatch(/08:00:00/);
+    const c = await one(sql`select extract(epoch from response_due_at - opened_at)::int as r, extract(epoch from resolution_due_at - opened_at)::int as s from service.cases where case_id = ${String(r.case['case_id'])}::uuid`);
+    expect(c).toEqual({ r: 30 * 60, s: 480 * 60 });
     const s1 = await openP('S1');
     expect(s1.routing).toMatchObject({ tier: 'premium', objectives: { response_minutes: 15, resolution_minutes: 240 } });
   });
@@ -330,7 +331,9 @@ describe('L · the case lifecycle (PR-69-001/002/005): open → triage → suppo
     await refused(propose(dadmin, C, { expectedVersion: 5, steps: 'a service act as a workaround (SYNTHETIC)', act: { action: 'service.case.close' } }), /^service case rejected \(state\)/, 409);
     const decision = await customerTransition(manager, SRC2, 'suspended');
     await customerTransition(manager, SRC2, 'active');
-    await refused(execute(engineer, C, { expectedVersion: 5, policyDecisionId: decision }), /^service case rejected \(actor\): executing a workaround is the customer's own act/, 403);
+    expect((await refusal(execute(engineer, C, { expectedVersion: 5, policyDecisionId: decision }))).status).toBe(403);   // the PDP: support holds no customer role
+    // the PORT re-checks: a support engineer who ALSO holds a customer role is still support (the stricter reading)
+    await refused(execute(dualRole, C, { expectedVersion: 5, policyDecisionId: decision }), /^service case rejected \(actor\): executing a workaround is the customer's own act/, 403);
     const other = await customerTransition(manager2, SRC2, 'suspended'); await customerTransition(manager2, SRC2, 'active');
     await refused(execute(manager, C, { expectedVersion: 5, policyDecisionId: other }), /^service case rejected \(ownership\)/, 403);
     await refused(execute(manager, C, { expectedVersion: 5, policyDecisionId: uuidv7() }), /^service case rejected \(unknown_decision\)/, 404);
@@ -579,8 +582,8 @@ describe('V · customer success and the value review (CAP-DL-10) — MET-040 sta
 describe('RLS and the append-only ledgers of §SV', () => {
   it('every §SV table forces RLS; the notes, bundles, breaches and drills are append-only', async () => {
     const forced = await rows(sql`select c.relname as t, c.relforcerowsecurity as f from pg_class c join pg_namespace n on n.oid = c.relnamespace
-      where n.nspname = 'service' and c.relkind = 'r' and c.relname in ('case_notes','evidence_bundles','problems','problem_cases','known_errors','known_error_uses','changes','commitments','sla_breaches','sla_drills','value_reviews')`);
-    expect(forced).toHaveLength(11);
+      where n.nspname = 'service' and c.relkind = 'r' and c.relname in ('sla_policies','case_notes','evidence_bundles','problems','problem_cases','known_errors','known_error_uses','changes','commitments','sla_breaches','sla_drills','value_reviews')`);
+    expect(forced).toHaveLength(12);
     expect(forced.every((r) => r['f'] === true)).toBe(true);
     const b = await one(sql`select bundle_id::text id from service.evidence_bundles limit 1`);
     const e = await refusal(sql`update service.evidence_bundles set digest = ${'c'.repeat(64)} where bundle_id = ${String(b['id'])}::uuid`.execute(h.su));

@@ -59,6 +59,10 @@ CREATE TABLE service.sla_policies (
 );
 CREATE UNIQUE INDEX ssp_one_active ON service.sla_policies (tier, severity) WHERE status = 'active';
 REVOKE ALL ON service.sla_policies FROM PUBLIC;
+-- every table of the service schema forces RLS (the prelude's invariant): vendor reference data is readable by every tenant, written by none
+ALTER TABLE service.sla_policies ENABLE ROW LEVEL SECURITY;
+ALTER TABLE service.sla_policies FORCE ROW LEVEL SECURITY;
+CREATE POLICY reference_read ON service.sla_policies FOR SELECT USING (true);
 GRANT SELECT ON service.sla_policies TO eye_app, eye_commit;
 INSERT INTO service.sla_policies (tier, severity, version, response_minutes, resolution_minutes, update_minutes, named_support, queue, reason, provenance, digest)
 SELECT x.tier, x.sev, 1, x.resp, x.reso, x.upd, x.tier = 'premium', x.queue, 'B94 (0114 §SV.1): the seeded objectives of the service portal (SYNTHETIC vendor data)',

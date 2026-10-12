@@ -147,8 +147,8 @@ class ServiceCapabilityImpl extends ServiceCore implements ServiceWrites {
       from executive.attention_items i where i.subject_id = ${subjectId}::uuid and i.signal_class = 'service.case' order by i.created_at`);
   }
   async tasks(caseId: string): Promise<Row[]> {
-    return this.rows(sql`select t.task_id::text, t.kind, t.title, t.state, t.assignee_principal_id::text, t.candidate_roles, t.outcome, t.created_at, t.completed_at
-      from executive.human_tasks t where t.subject @> ${j({ kind: 'service_case', id: caseId })}::jsonb order by t.created_at`);
+    return this.rows(sql`select t.task_id::text, t.kind, t.title, t.state, t.assignee_principal_id::text, t.candidate_roles, t.outcome, t.opened_at, t.completed_at
+      from executive.human_tasks t where t.subject @> ${j({ kind: 'service_case', id: caseId })}::jsonb order by t.opened_at`);
   }
   async grants(caseId: string): Promise<Row[]> {
     return this.rows(sql`select g.grant_id::text, g.engineer_principal_id::text, g.purpose, g.object_scope, g.action_scope, g.duration_minutes, g.state, g.requested_at, g.decided_at,
