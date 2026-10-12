@@ -1,0 +1,69 @@
+CP-6 B33-F (0112) — the package validation-to-effect boundary: reproduction and correction
+Local harness runs on fresh databases, one at a time in the heavy slot (Redis :6394). Harness: apps/api/test/int/phase6-packages-b33f.test.ts.
+Every figure, source, persona and package here is SYNTHETIC fixture data.
+
+== 1. REPRODUCTION — B33F_REPRO=1 on 059a314's own code (the phase6-b33 tree, byte-identical to main 059a314) and 0111 (eye_verify_b33f_repro3) ==
+   The nine DEFECT cases each assert the effect was ADMITTED where it must be refused; the correction-only cases (F0, the recoveries) return
+   early in this mode; the positive control passes.
+✓ F0 · the port judges requirements itself: domain.dpk_satisfies agrees with semver.ts on every case > parity over well-formed, alternative, malformed and edge ranges
+✓ F1 · contract compatibility and the requirements other active packages impose (the reviewer's reproduction) > DEFECT: a consumer active on f1geo-bd98dc ^1.0.0 — f1geo-bd98dc 2.0.0 with a migration description passes compatibility, is certified and activated
+✓ F1 · contract compatibility and the requirements other active packages impose (the reviewer's reproduction) > refusal at the port (the SQL boundary, independent of the TypeScript suite): a run recorded as passing on facts that omit the requirement is still refused at certification
+✓ F1 · contract compatibility and the requirements other active packages impose (the reviewer's reproduction) > recovery: the consumer widens its range (^1.0.0 || ^2.0.0, certified and activated against 1.0.0); the re-run of 2.0.0 passes, it is certified and activated — 1.0.0 superseded, the consumer's requirement holds
+✓ F2 · the validation-to-effect boundary at certification and activation (rights withdrawn, a model quarantined); the prior active version preserved > DEFECT: the run passes, then the sanctions source's rights are WITHDRAWN — certification admitted on the saved run
+✓ F2 · the validation-to-effect boundary at certification and activation (rights withdrawn, a model quarantined); the prior active version preserved > recovery: the rights confirmed again and the contract re-activated — the same passing run certifies
+✓ F2 · the validation-to-effect boundary at certification and activation (rights withdrawn, a model quarantined); the prior active version preserved > DEFECT: certified, then the forecast method holt_winters@1 QUARANTINED — activation admitted (DPG active, v1 superseded)
+✓ F2 · the validation-to-effect boundary at certification and activation (rights withdrawn, a model quarantined); the prior active version preserved > recovery: the method reinstated by its steward — the owner activates 2: v1 superseded, the DPG active object admitted
+✓ F3 · a REQUIRED package changed or retired between the dependent's run and its activation > DEFECT: the dependent (requires f3geo-bd98dc ^1.0.0) passes and is certified; f3geo-bd98dc 2.0.0 is activated — the dependent's activation admitted
+✓ F3 · a REQUIRED package changed or retired between the dependent's run and its activation > DEFECT: a second dependent (requires f3geo-bd98dc ^2.0.0) certified; f3geo-bd98dc RETIRED — its activation admitted
+✓ F3 · a REQUIRED package changed or retired between the dependent's run and its activation > recovery: the dependent withdraws the version and activates one without the requirement (a governed migration)
+✓ F4 · re-enablement re-validates the current facts, not only the saved passing health run > DEFECT: assess/event disabled (source suspended), repaired, the health re-run passes — the source SUSPENDED AGAIN; re-enablement admitted on the saved run
+✓ F4 · re-enablement re-validates the current facts, not only the saved passing health run > recovery: the source re-activated — the specialist re-enables on the passing run, the migration completes
+✓ F4 · re-enablement re-validates the current facts, not only the saved passing health run > DEFECT: the namespace's ontology superseded (conflict exposed), restored (the re-run passes), superseded AGAIN — clearing the conflict admitted
+✓ F5 · two sessions: the boundary holds under concurrency > DEFECT: session A activates the consumer (requires ^1.0.0) and holds its transaction; session B activates the provider 2.0.0 — B commits while A is open: both active, the requirement broken
+✓ F5 · two sessions: the boundary holds under concurrency > DEFECT: session W withdraws a source's rights and holds its transaction; session A activates the package that names the source — A commits on the old rights while W is open
+✓ F5 · two sessions: the boundary holds under concurrency > unchanged facts: the ordinary path is unaffected — a package with nothing changed certifies and activates (positive control)
+Tests  17 passed (17)
+
+== 2. CROSS-CHECK — the CORRECTED assertions on the same code and 0111 (eye_verify_b33f_cross3): they fail ==
+× F0 · the port judges requirements itself: domain.dpk_satisfies agrees with semver.ts on every case > parity over well-formed, alternative, malformed and edge ranges
+× F1 · contract compatibility and the requirements other active packages impose (the reviewer's reproduction) > refusal: a consumer active on f1geo-a77f31 ^1.0.0 — f1geo-a77f31 2.0.0 with a migration description fails contract compatibility (the consumer's requirement), its certification refused
+× F1 · contract compatibility and the requirements other active packages impose (the reviewer's reproduction) > refusal at the port (the SQL boundary, independent of the TypeScript suite): a run recorded as passing on facts that omit the requirement is still refused at certification
+× F1 · contract compatibility and the requirements other active packages impose (the reviewer's reproduction) > recovery: the consumer widens its range (^1.0.0 || ^2.0.0, certified and activated against 1.0.0); the re-run of 2.0.0 passes, it is certified and activated — 1.0.0 superseded, the consumer's requirement holds
+× F2 · the validation-to-effect boundary at certification and activation (rights withdrawn, a model quarantined); the prior active version preserved > refusal: the run passes, then the sanctions source's rights are WITHDRAWN — certification refused (stale), nothing changed
+✓ F2 · the validation-to-effect boundary at certification and activation (rights withdrawn, a model quarantined); the prior active version preserved > recovery: the rights confirmed again and the contract re-activated — the same passing run certifies
+× F2 · the validation-to-effect boundary at certification and activation (rights withdrawn, a model quarantined); the prior active version preserved > refusal: certified, then the forecast method holt_winters@1 QUARANTINED — activation refused (stale): no DPG admitted, v1 stays active, v2 stays certified, no migration or item touched
+× F2 · the validation-to-effect boundary at certification and activation (rights withdrawn, a model quarantined); the prior active version preserved > recovery: the method reinstated by its steward — the owner activates 2: v1 superseded, the DPG active object admitted
+× F3 · a REQUIRED package changed or retired between the dependent's run and its activation > refusal: the dependent (requires f3geo-a77f31 ^1.0.0) passes and is certified; f3geo-a77f31 2.0.0 is activated — the dependent's activation refused (stale)
+× F3 · a REQUIRED package changed or retired between the dependent's run and its activation > refusal: a second dependent (requires f3geo-a77f31 ^2.0.0) certified; f3geo-a77f31 RETIRED — its activation refused (stale)
+× F3 · a REQUIRED package changed or retired between the dependent's run and its activation > recovery: the dependent withdraws the version and activates one without the requirement (a governed migration)
+× F4 · re-enablement re-validates the current facts, not only the saved passing health run > refusal: assess/event disabled (source suspended), repaired, the health re-run passes — the source SUSPENDED AGAIN; re-enablement refused, the functions stay disabled, the migration stays open
+× F4 · re-enablement re-validates the current facts, not only the saved passing health run > recovery: the source re-activated — the specialist re-enables on the passing run, the migration completes
+× F4 · re-enablement re-validates the current facts, not only the saved passing health run > refusal: the namespace's ontology superseded (conflict exposed), restored (the re-run passes), superseded AGAIN — clearing the conflict refused; recovery: restored, cleared
+× F5 · two sessions: the boundary holds under concurrency > serialized: session A activates the consumer (requires ^1.0.0) and holds its transaction; session B activates the provider 2.0.0 — B waits for A, then is refused (the consumer now active requires ^1.0.0)
+× F5 · two sessions: the boundary holds under concurrency > serialized: session W withdraws a source's rights and holds its transaction; session A activates the package that names the source — A waits for W, then is refused on the withdrawn rights
+✓ F5 · two sessions: the boundary holds under concurrency > unchanged facts: the ordinary path is unaffected — a package with nothing changed certifies and activates (positive control)
+Tests  15 failed | 2 passed (17)
+
+== 3. CORRECTION — through 0112 at 5492fd2 (eye_verify_b33f_fix3) ==
+✓ F0 · the port judges requirements itself: domain.dpk_satisfies agrees with semver.ts on every case > parity over well-formed, alternative, malformed and edge ranges
+✓ F1 · contract compatibility and the requirements other active packages impose (the reviewer's reproduction) > refusal: a consumer active on f1geo-5fc0ca ^1.0.0 — f1geo-5fc0ca 2.0.0 with a migration description fails contract compatibility (the consumer's requirement), its certification refused
+✓ F1 · contract compatibility and the requirements other active packages impose (the reviewer's reproduction) > refusal at the port (the SQL boundary, independent of the TypeScript suite): a run recorded as passing on facts that omit the requirement is still refused at certification
+✓ F1 · contract compatibility and the requirements other active packages impose (the reviewer's reproduction) > recovery: the consumer widens its range (^1.0.0 || ^2.0.0, certified and activated against 1.0.0); the re-run of 2.0.0 passes, it is certified and activated — 1.0.0 superseded, the consumer's requirement holds
+✓ F2 · the validation-to-effect boundary at certification and activation (rights withdrawn, a model quarantined); the prior active version preserved > refusal: the run passes, then the sanctions source's rights are WITHDRAWN — certification refused (stale), nothing changed
+✓ F2 · the validation-to-effect boundary at certification and activation (rights withdrawn, a model quarantined); the prior active version preserved > recovery: the rights confirmed again and the contract re-activated — the same passing run certifies
+✓ F2 · the validation-to-effect boundary at certification and activation (rights withdrawn, a model quarantined); the prior active version preserved > refusal: certified, then the forecast method holt_winters@1 QUARANTINED — activation refused (stale): no DPG admitted, v1 stays active, v2 stays certified, no migration or item touched
+✓ F2 · the validation-to-effect boundary at certification and activation (rights withdrawn, a model quarantined); the prior active version preserved > recovery: the method reinstated by its steward — the owner activates 2: v1 superseded, the DPG active object admitted
+✓ F3 · a REQUIRED package changed or retired between the dependent's run and its activation > refusal: the dependent (requires f3geo-5fc0ca ^1.0.0) passes and is certified; f3geo-5fc0ca 2.0.0 is activated — the dependent's activation refused (stale)
+✓ F3 · a REQUIRED package changed or retired between the dependent's run and its activation > refusal: a second dependent (requires f3geo-5fc0ca ^2.0.0) certified; f3geo-5fc0ca RETIRED — its activation refused (stale)
+✓ F3 · a REQUIRED package changed or retired between the dependent's run and its activation > recovery: the dependent withdraws the version and activates one without the requirement (a governed migration)
+✓ F4 · re-enablement re-validates the current facts, not only the saved passing health run > refusal: assess/event disabled (source suspended), repaired, the health re-run passes — the source SUSPENDED AGAIN; re-enablement refused, the functions stay disabled, the migration stays open
+✓ F4 · re-enablement re-validates the current facts, not only the saved passing health run > recovery: the source re-activated — the specialist re-enables on the passing run, the migration completes
+✓ F4 · re-enablement re-validates the current facts, not only the saved passing health run > refusal: the namespace's ontology superseded (conflict exposed), restored (the re-run passes), superseded AGAIN — clearing the conflict refused; recovery: restored, cleared
+✓ F5 · two sessions: the boundary holds under concurrency > serialized: session A activates the consumer (requires ^1.0.0) and holds its transaction; session B activates the provider 2.0.0 — B waits for A, then is refused (the consumer now active requires ^1.0.0)
+✓ F5 · two sessions: the boundary holds under concurrency > serialized: session W withdraws a source's rights and holds its transaction; session A activates the package that names the source — A waits for W, then is refused on the withdrawn rights
+✓ F5 · two sessions: the boundary holds under concurrency > unchanged facts: the ordinary path is unaffected — a package with nothing changed certifies and activates (positive control)
+Tests  17 passed (17)
+
+== 4. NEIGHBOURING — the five B33 suites with it on one fresh database (eye_verify_b33f_fix2) ==
+Test Files  6 passed (6)
+Tests  137 passed (137)
