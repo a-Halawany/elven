@@ -8,7 +8,7 @@ import { PipelineModule } from '../pipeline/pipeline.module.js';
 /* B92 §0 */ import { AnalyticsComputeController } from './compute/compute.controller.js'; import { AnalyticsComputeService } from './compute/compute.service.js'; /* end B92 §0 */
 /* B92 definitions */ /* end B92 definitions */
 /* B92 computations-a */ /* end B92 computations-a */
-/* B92 computations-b */ /* end B92 computations-b */
+/* B92 computations-b */ import { AnalyticsComputationsBController } from './computations-b/computations-b.controller.js'; import { AnalyticsComputationsBService } from './computations-b/computations-b.service.js'; /* end B92 computations-b */
 /* B92 comparability */ /* end B92 comparability */
 /* B92 experience */ /* end B92 experience */
 /* B92 review */ /* end B92 review */
@@ -19,7 +19,7 @@ import { PipelineModule } from '../pipeline/pipeline.module.js';
     /* B92 §0 */ AnalyticsComputeController, /* end B92 §0 */
     /* B92 definitions */ /* end B92 definitions */
     /* B92 computations-a */ /* end B92 computations-a */
-    /* B92 computations-b */ /* end B92 computations-b */
+    /* B92 computations-b */ AnalyticsComputationsBController, /* end B92 computations-b */
     /* B92 comparability */ /* end B92 comparability */
     /* B92 experience */ /* end B92 experience */
     /* B92 review */ /* end B92 review */
@@ -28,7 +28,7 @@ import { PipelineModule } from '../pipeline/pipeline.module.js';
     /* B92 §0 */ AnalyticsComputeService, /* end B92 §0 */
     /* B92 definitions */ /* end B92 definitions */
     /* B92 computations-a */ /* end B92 computations-a */
-    /* B92 computations-b */ /* end B92 computations-b */
+    /* B92 computations-b */ AnalyticsComputationsBService, /* end B92 computations-b */
     /* B92 comparability */ /* end B92 comparability */
     /* B92 experience */ /* end B92 experience */
     /* B92 review */ /* end B92 review */
