@@ -9,7 +9,10 @@ import { PipelineModule } from '../pipeline/pipeline.module.js';
 /* B94 onboarding */ /* end B94 onboarding */
 /* B94 migration */ /* end B94 migration */
 /* B94 implementation */ /* end B94 implementation */
-/* B94 service */ /* end B94 service */
+/* B94 service */
+import { ServicePortalController } from './service/service.controller.js';
+import { ServicePortalService } from './service/service.service.js';
+/* end B94 service */
 /* B94 support */ /* end B94 support */
 
 @Module({
@@ -18,14 +21,14 @@ import { PipelineModule } from '../pipeline/pipeline.module.js';
     /* B94 onboarding */ /* end B94 onboarding */
     /* B94 migration */ /* end B94 migration */
     /* B94 implementation */ /* end B94 implementation */
-    /* B94 service */ /* end B94 service */
+    /* B94 service */ ServicePortalController, /* end B94 service */
     /* B94 support */ /* end B94 support */
   ],
   providers: [
     /* B94 onboarding */ /* end B94 onboarding */
     /* B94 migration */ /* end B94 migration */
     /* B94 implementation */ /* end B94 implementation */
-    /* B94 service */ /* end B94 service */
+    /* B94 service */ ServicePortalService, /* end B94 service */
     /* B94 support */ /* end B94 support */
   ],
 })

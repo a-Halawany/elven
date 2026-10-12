@@ -2393,6 +2393,54 @@ const BUNDLE_V1: Rule[] = [
   /* B94 implementation */
   /* end B94 implementation */
   /* B94 service */
+  /* B94 §SV (0114_b94_x_sv; PR-69-001/002/005/006, CAP-DL-09/10, AT-69; carryover a). EXACT rules — no `service` prefix rule exists, and
+     `service.*` is no capability's prefix (case opening is NEVER licence-gated). The ports re-check every rule here:
+       OPEN, NOTE, REOPEN, WORKAROUND EXECUTE — the customer roles of the domain (and the tenant administrator); the port refuses a support
+         engineer (403 actor) and a non-human. The workaround's execution is the customer's own act (never support's).
+       TRIAGE, PROGRESS, WORKAROUND PROPOSE, KNOWN-ERROR REUSE, COMMITMENTS — the domain admin (the customer's service owner) or a support
+         engineer; for the engineer the port checks `service.live_grant` FIRST and logs every attempt (refused AND logged without a grant).
+       NOTE — also the support engineer (under a grant); BUNDLE — the domain admin, a data steward, or the engineer under a grant.
+       THE SUPPORT READ (service.case.support_read) — the support engineer only, under a grant (customers read through service.read).
+       CLOSE (the customer's confirmation), the SLA DRILL, the change DECISION and the value-review ACKNOWLEDGEMENT — HUMAN-GATED.
+       PROBLEMS, KNOWN ERRORS, CHANGES — the domain admin; the change decision never by its proposer (port).
+       THE SWEEP (the after-tick hook `service-sla`) — the attention agent only.
+       VALUE REVIEW — recorded by a domain admin or an executive, acknowledged by another (port). */
+  ...((): Rule[] => {
+    const customer = ['domain_admin', 'collection_manager', 'data_steward', 'executive', 'risk_owner', 'decision_owner', 'domain_analyst', 'strategy_owner', 'product_analytics_owner']
+      .map((role) => ({ role, atScope: 'DOMAIN' as Scope }))
+      .concat(['tenant_admin', 'customer_sponsor', 'onboarding_authority'].map((role) => ({ role, atScope: 'TENANT' as Scope })));
+    const admin = [{ role: 'domain_admin', atScope: 'DOMAIN' as Scope }];
+    const engineer = [{ role: 'support_engineer', atScope: 'DOMAIN' as Scope }];
+    const gate: Obligation[] = [{ type: 'human_gate' }];
+    const r = (actionPrefix: string, requiredAnyRole: Array<{ role: string; atScope: Scope }>, obligations?: Obligation[]): Rule =>
+      ({ actionPrefix, exact: true, requiredAnyRole, ...(obligations === undefined ? {} : { obligations }), requiresPurpose: true, maxConsequence: 'C2' });
+    return [
+      r('service.case.open', customer),
+      r('service.case.note', [...customer, ...engineer]),
+      r('service.case.triage', [...admin, ...engineer]),
+      r('service.case.progress', [...admin, ...engineer]),
+      r('service.case.workaround.propose', [...admin, ...engineer]),
+      r('service.case.workaround.execute', customer),
+      r('service.case.known_error.reuse', [...admin, ...engineer]),
+      r('service.case.bundle', [...admin, { role: 'data_steward', atScope: 'DOMAIN' as Scope }, ...engineer]),
+      r('service.case.close', customer, gate),
+      r('service.case.reopen', customer),
+      r('service.case.support_read', engineer, [{ type: 'audit_access' }]),
+      r('service.commitment.record', [...admin, ...engineer]),
+      r('service.commitment.settle', [...admin, ...engineer]),
+      r('service.sla.drill', admin, gate),
+      r('service.sla.sweep', [{ role: 'attention_agent', atScope: 'DOMAIN' as Scope }]),
+      r('service.problem.open', admin),
+      r('service.problem.link', admin),
+      r('service.problem.known_error', admin),
+      r('service.problem.close', admin),
+      r('service.change.propose', admin),
+      r('service.change.decide', admin, gate),
+      r('service.change.record', admin),
+      r('service.value_review.record', [...admin, { role: 'executive', atScope: 'DOMAIN' as Scope }]),
+      r('service.value_review.acknowledge', [{ role: 'executive', atScope: 'DOMAIN' as Scope }, ...admin], gate),
+    ];
+  })(),
   /* end B94 service */
   /* B94 support */
   /* end B94 support */
