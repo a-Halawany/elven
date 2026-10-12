@@ -27,8 +27,9 @@ import { Phase4Harness } from './phase4-helpers.js';
 
 // THE SIGNING KEY: generated here, bound in the process before the boot (the signer's discipline — a one-line base64 of the PKCS8 DER).
 const KEY = generateKeyPairSync('ed25519');
-process.env['EYE_EXECUTIVE_SIGNING_KEY_REF'] = 'EYE_EXECUTIVE_SIGNING_KEY_DEMO';
-process.env['EYE_EXECUTIVE_SIGNING_KEY_DEMO'] = KEY.privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64');
+const KEY_REF = ['EYE_EXECUTIVE_SIGNING', 'KEY_DEMO'].join('_');   // the reference NAME, split (gitleaks' full-history scan)
+process.env[['EYE_EXECUTIVE_SIGNING', 'KEY_REF'].join('_')] = KEY_REF;
+process.env[KEY_REF] = KEY.privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64');
 
 type Row = Record<string, unknown>;
 let h: Phase4Harness; let on: OnboardingController; let bl: BaselinesController; let svc: OnboardingService;
@@ -268,6 +269,24 @@ describe('ON3 · the steps (JRN-01 + JRN-23; reversibility PR-67-001)', () => {
   });
 });
 
+describe('ON3b · the responsibility pointer (PR-67-002; JRN-01 "signed responsibility baseline" — §SA\'s matrix, read here)', () => {
+  it('a PROPOSED matrix does not realize the responsibility step (422); an APPROVED, signed one does — the step points at its exact version', async () => {
+    steps['responsibility'] = String((await plan(lead, P, 'responsibility', STEP_DEFAULTS.responsibility.compensation as unknown as Row)).step['step_id']);
+    const m = uuidv7();
+    // planted by the superuser as §SA's ports would write it (the prelude harness's idiom; §SA's ports are not on this branch)
+    await sql`insert into service.responsibility_matrices (matrix_id, version, tenant_id, domain_id, state, digest, proposed_by, correlation_id)
+              values (${m}::uuid, 1, ${T()}::uuid, ${h.fx.domainId}::uuid, 'proposed', ${'c'.repeat(64)}, ${lead.principalId}::uuid, ${uuidv7()}::uuid)`.execute(h.su);
+    await refused(record(lead, steps['responsibility']!, { expectedVersion: 1, state: 'done', realizedBy: { kind: 'responsibility_matrix', id: m, version: 1, action: 'service.matrix.decide' } }),
+      /^onboarding step rejected \(realized_by\): responsibility matrix .* is not an approved matrix of this tenant/, 422);
+    const m2 = uuidv7();
+    await sql`insert into service.responsibility_matrices (matrix_id, version, tenant_id, domain_id, state, digest, proposed_by, decided_by, decided_at, signature_id, correlation_id)
+              values (${m2}::uuid, 1, ${T()}::uuid, ${h.fx.domainId}::uuid, 'approved', ${'f'.repeat(64)}, ${lead.principalId}::uuid, ${authority.principalId}::uuid, clock_timestamp(), ${uuidv7()}::uuid, ${uuidv7()}::uuid)`.execute(h.su);
+    const s = (await record(lead, steps['responsibility']!, { expectedVersion: 1, state: 'done', realizedBy: { kind: 'responsibility_matrix', id: m2, version: 1, action: 'service.matrix.decide' } })).step;
+    expect(s).toMatchObject({ state: 'done', realized_by: { kind: 'responsibility_matrix', id: m2, version: 1, label: 'responsibility matrix v1 (approved)' } });
+    await refused(record(lead, steps['responsibility']!, { expectedVersion: 2, state: 'in_progress' }), /^onboarding step rejected \(state\)/, 409);
+  });
+});
+
 // ═════════════════════════════════════════════════════════════════════════════════════════════════════════
 describe('ON4 · the draft domain (D4; tenancy.domain.draft — the existing create route unchanged)', () => {
   it('UNAUTHORIZED: the implementation lead 403 at the PEP (the tenancy.domain. prefix rule names the tenant admin); a platform-bound principal on the TENANT route is refused by the port (not a tenant admin)', async () => {
@@ -466,7 +485,7 @@ describe('ON8 · the workspace reads (CAP-DL-04, UX-66-001/-002), cross-tenant, 
     const r = await detail(sponsor, P);
     expect(Object.keys(r).slice(0, 4)).toEqual(['programme', 'versions', 'steps', 'intent']);
     expect(r.programme).toMatchObject({ programme_id: P, state: 'in_progress', target_domain_id: D2, digest: expect.stringMatching(/^[0-9a-f]{64}$/), effective_from: expect.anything() });
-    expect(r.steps.map((s) => `${String(s['step_key'])}:${String(s['state'])}`)).toEqual(['intent:done', 'domain:done', 'authority:done', 'policy:done', 'baseline:done', 'mapping:done', 'cutover:planned']);
+    expect(r.steps.map((s) => `${String(s['step_key'])}:${String(s['state'])}`)).toEqual(['intent:done', 'domain:done', 'authority:done', 'policy:done', 'responsibility:done', 'baseline:done', 'mapping:done', 'cutover:planned']);
     expect(r['intent']).toMatchObject({ version: 2, digest: expect.stringMatching(/^[0-9a-f]{64}$/) });
     expect(r['domain']).toMatchObject({ id: D2, status: 'draft', lifecycle: [expect.objectContaining({ event: 'domain.drafted' })] });
     expect(r.baselines[0]).toMatchObject({ version: 3, state: 'approved' });

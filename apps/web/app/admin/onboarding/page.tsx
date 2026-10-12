@@ -81,7 +81,7 @@ export default function OnboardingPage() {
     <>
       <h1 style={{ fontSize: 'var(--eye-type-heading-1)', color: 'var(--eye-color-ink-strong)' }}>Customer onboarding</h1>
       <p style={{ color: 'var(--eye-color-ink-muted)', fontSize: 'var(--eye-type-body-sm)' }}>
-        Tenant <Mono>{tenantId}</Mono> · your roles: {me.bindings.filter((b) => b.tenantId === tenantId).map((b) => `${b.roleCode} (${b.scope})`).join(', ') || 'none'}. The customer&apos;s authority approves;
+        Tenant <Mono>{tenantId}</Mono> · purpose <Mono>onboarding</Mono> · deployment profile {p?.deployment_profile ?? 'local-dev'} · your roles: {me.bindings.filter((b) => b.tenantId === tenantId).map((b) => `${b.roleCode} (${b.scope})`).join(', ') || 'none'}. The customer&apos;s authority approves;
         the implementation lead coordinates and never approves; automation acts only inside the approved plan. An approval here by a SYNTHETIC persona demonstrates the software — real customer acceptance is R2.
       </p>
       <ErrorNote error={error} />
