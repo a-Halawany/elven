@@ -2225,6 +2225,55 @@ const BUNDLE_V1: Rule[] = [
   /* B92 comparability */
   /* end B92 comparability */
   /* B92 experience */
+  /* B92 §UX (0113_b92_x_ux; UX-70-001..006, CAP-PD-09; D12–D14). EXACT rules. THE PERSON'S OWN acts — consent (grant, withdraw: human-gated,
+     a named human's own act; withdrawal is never licence-gated: a `withdraw` segment), the self read (their consent and the instrumentation
+     catalogue) and the assignment read (their arm, the control without consent), and the RECORDING of a telemetry event (NOT human-gated,
+     licence-gated) — are open to every HUMAN role of the domain (the identity.self.read list less its agents and the external collaborator:
+     an agent has no consent to give and no experience to measure; the ports re-check the human and the consent). DEFINE telemetry, journeys,
+     segments, baselines, thresholds and experiments: the product analyst and the owner. THE PRIVACY OFFICER (human-gated): the privacy and
+     minimisation review, hold, release, the purge; retirement also by the owner. THE OWNER (human-gated): thresholds' decision and
+     retirement, an experiment's approval (with the privacy officer — two approvals, two people), its conclusion, the action a finding leads
+     to, the export. FINDINGS are proposed by an analyst, the owner or the attention agent (AI may propose); an agent is refused deciding at
+     the PEP (no rule) AND at the port. The workspace reads, the preview and the export download are `analytics.read` (the prelude's). */
+  ...((): Rule[] => {
+    const H = ['domain_admin', 'domain_analyst', 'collection_manager', 'decision_owner', 'decision_approver', 'decision_authority', 'executive', 'extraction_manager', 'resolution_manager',
+      'strategy_owner', 'forecast_owner', 'twin_owner', 'simulation_operator', 'knowledge_owner', 'record_authority', 'retention_steward', 'ontology_steward', 'risk_owner',
+      'opportunity_sponsor', 'execution_authority', 'method_steward', 'constraint_steward', 'executive_operator', 'board_member', 'data_steward', 'domain_specialist',
+      'product_analytics_owner', 'privacy_officer', 'product_analyst'].map((role) => ({ role, atScope: 'DOMAIN' as Scope }));
+    const person = [{ role: 'tenant_admin', atScope: 'TENANT' as Scope }, { role: 'auditor', atScope: 'TENANT' as Scope }, { role: 'retention_authority', atScope: 'TENANT' as Scope }, ...H];
+    const analyst = [{ role: 'product_analyst', atScope: 'DOMAIN' as Scope }, { role: 'product_analytics_owner', atScope: 'DOMAIN' as Scope }];
+    const owner = [{ role: 'product_analytics_owner', atScope: 'DOMAIN' as Scope }];
+    const privacy = [{ role: 'privacy_officer', atScope: 'DOMAIN' as Scope }];
+    const gate: Obligation[] = [{ type: 'human_gate' }];
+    const r = (actionPrefix: string, requiredAnyRole: Array<{ role: string; atScope: Scope }>, obligations?: Obligation[]): Rule =>
+      ({ actionPrefix, exact: true, requiredAnyRole, ...(obligations === undefined ? {} : { obligations }), requiresPurpose: true, maxConsequence: 'C2' });
+    return [
+      r('analytics.consent.read', person, [{ type: 'audit_access' }]),
+      r('analytics.consent.grant', person, gate),
+      r('analytics.consent.withdraw', person, gate),
+      r('analytics.telemetry.record', person),
+      r('analytics.experiment.assignment.read', person, [{ type: 'audit_access' }]),
+      r('analytics.telemetry.define', analyst),
+      r('analytics.telemetry.review', privacy, gate),
+      r('analytics.telemetry.hold', privacy, gate),
+      r('analytics.telemetry.release', privacy, gate),
+      r('analytics.telemetry.retire', [...privacy, ...owner], gate),
+      r('analytics.telemetry.purge', privacy, gate),
+      r('analytics.experience.journey.declare', analyst),
+      r('analytics.experience.segment.declare', analyst),
+      r('analytics.experience.baseline.record', analyst),
+      r('analytics.experience.threshold.propose', analyst),
+      r('analytics.experience.threshold.decide', owner, gate),
+      r('analytics.experience.threshold.retire', owner, gate),
+      r('analytics.experiment.propose', analyst),
+      r('analytics.experiment.approve', [...owner, ...privacy], gate),
+      r('analytics.experiment.analyse', analyst),
+      r('analytics.experiment.conclude', owner, gate),
+      r('analytics.experience.finding.propose', [...analyst, { role: 'attention_agent', atScope: 'DOMAIN' as Scope }]),
+      r('analytics.experience.action.decide', owner, gate),
+      r('analytics.export.create', owner, gate),
+    ];
+  })(),
   /* end B92 experience */
   /* B92 review */
   /* end B92 review */

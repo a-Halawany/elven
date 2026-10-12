@@ -10,7 +10,7 @@ import { PipelineModule } from '../pipeline/pipeline.module.js';
 /* B92 computations-a */ /* end B92 computations-a */
 /* B92 computations-b */ /* end B92 computations-b */
 /* B92 comparability */ /* end B92 comparability */
-/* B92 experience */ /* end B92 experience */
+/* B92 experience */ import { ExperienceController } from './experience/experience.controller.js'; import { ExperienceService } from './experience/experience.service.js'; /* end B92 experience */
 /* B92 review */ /* end B92 review */
 
 @Module({
@@ -21,7 +21,7 @@ import { PipelineModule } from '../pipeline/pipeline.module.js';
     /* B92 computations-a */ /* end B92 computations-a */
     /* B92 computations-b */ /* end B92 computations-b */
     /* B92 comparability */ /* end B92 comparability */
-    /* B92 experience */ /* end B92 experience */
+    /* B92 experience */ ExperienceController, /* end B92 experience */
     /* B92 review */ /* end B92 review */
   ],
   providers: [
@@ -30,7 +30,7 @@ import { PipelineModule } from '../pipeline/pipeline.module.js';
     /* B92 computations-a */ /* end B92 computations-a */
     /* B92 computations-b */ /* end B92 computations-b */
     /* B92 comparability */ /* end B92 comparability */
-    /* B92 experience */ /* end B92 experience */
+    /* B92 experience */ ExperienceService, /* end B92 experience */
     /* B92 review */ /* end B92 review */
   ],
   exports: [/* B92 §0 */ AnalyticsComputeService /* end B92 §0 */],
