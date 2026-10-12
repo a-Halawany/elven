@@ -247,6 +247,7 @@ export class PipelineService {
           metadata: { assurance: principal.assurance },
         });
         const result = await handler(capability(tx, route.action), ctx, policyResult.obligations);
+        await this.assertReadComplete(tx, envelope, route);
         return { result, policyDecisionId: polId, auditSeq: aud.auditSeq, obligations: policyResult.obligations };
       });
     } catch (e) {
@@ -292,6 +293,7 @@ export class PipelineService {
       return await this.writer(route).transaction().execute(async (tx) => {
         await this.establishCommitContext(tx, principal, ctx, envelope, route, polId, policyResult);
         const result = await handler(capability(tx, route.action), ctx, policyResult.obligations);
+        await this.assertReadComplete(tx, envelope, route);
         const ev = evidenceOf(result);
         await this.commitPolicy(tx, envelope, route, policyInput, policyResult, polId);
         const aud = await this.commitAudit(tx, envelope, route, {
@@ -453,6 +455,22 @@ export class PipelineService {
       if (isCapabilityRefusal(e)) throw new CapabilityDeniedError(classifyDenial(e.message));
       throw e;
     }
+  }
+
+  /**
+   * B33-H (the package-health incident of 2026-10-09/10): a commit context EXPIRES on the database's wall clock (public.eye_ctx3), and
+   * every RLS policy reads it — so a read whose handler outlives its 60-second context (a host suspended mid-statement, a stall) has
+   * rows hidden PART-WAY through, and returns them as ABSENT. That is an incomplete read, not an absence: nothing may be concluded
+   * from it. Expiry is monotonic, so a context still live AFTER the handler was live for every query inside it; one that is not
+   * fails the read closed — 503 EYE-DEP-001, recorded as a handler failure, the result discarded. The lifetime is not extended and
+   * no policy is relaxed: the read is simply not trusted past its authorization.
+   */
+  private async assertReadComplete(tx: Tx, envelope: Envelope, route: RouteInfo): Promise<void> {
+    const r = await sql<{ live: boolean }>`select public.eye_scope() <> 'NONE' as live`.execute(tx);
+    if (r.rows[0]?.live === true) return;
+    throw new HttpException(errorBody('EYE_DEP_001', envelope.correlation_id,
+      `the read (${route.action}) outlived its authorization context — the context expired while the read ran, so rows may have been hidden part-way; ` +
+      'the result is incomplete and was discarded, nothing was concluded from it — retry'), 503);
   }
 
   /** Capability-free evidence context, validated against the attempted route. */

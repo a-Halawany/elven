@@ -6723,6 +6723,32 @@ All 56 requirement rows of F-P7-F-03 (V8 ch.70 PR-70-001..006, AT-70, CAP-DL-11,
 ### B92.7 — the host incident of 2026-10-12 (~03:08 local)
 Six parallel part builders and ~51 GB of stage worktrees filled the host disk. Docker's VM returned I/O errors, `eye-postgres` crashed into recovery, the Docker CLI hung, and the demo API and web died with their database. Recovery: 29 CLEAN worktrees of merged stages removed (`git worktree remove` — every branch and commit kept), the Docker build cache pruned, Docker Desktop restarted, the eye containers started, PostgreSQL's crash recovery completed cleanly (eye_demo intact: migrations, packages, the 559,638 audit events), the demo restarted in §13's form (VERIFIED) and the web restarted; the parts re-ran their proofs on fresh databases. No data was lost; every verification database of the session was dropped afterwards.
 
+## B33-H — an incomplete read is not an absence: the package-health incident of 2026-10-09/10 (no migration; 0111 and 0112 untouched)
+
+The owner's word of 2026-10-13 routed the demo's false package conflicts (found during B92, §B92.5) as a bounded follow-up: reproduce first, preserve the October 9–10 evidence, and distinguish an unavailable or incomplete read from genuinely absent contracts or taxonomies. The owner's hypothesis (consequentialRead binds a 60-second context; `eye_ctx3` expires on the wall clock; `readFacts` never validates the context after its queries) was treated as a hypothesis until the evidence and the reproduction confirmed it.
+
+### B33-H.1 — the evidence, preserved (`evidence/cp6/b33h-package-health-incident.txt`; read-only SELECTs on eye_demo and the host's power log)
+- The four failing after-tick runs (agent:attention@1.0.0): 2026-10-09 22:43:06 (geopolitical, "no risk taxonomy in force"), 2026-10-10 11:16:22 (geopolitical, three sources "no contract in this domain" + the taxonomy), 15:34:37 and 22:50:16 (competitor, the taxonomy) UTC. Each passing run 10–17 s later read the same facts.
+- **Each failing facts read's transaction began 274–2 092 s before its facts were read** (the audit event of `domain.package.read`, created at the transaction's start, to the run's `facts_read_at`, the database clock after the facts); the passing after-tick reads took 1.8–4.7 s (median 3.7 s; one apparent outlier is a lookup artefact after the 10-12 demo restart changed the agent's correlation, said in the file). Almost no other audit activity occurred in those windows, and **every window contains host sleeps** in the power log (battery maintenance sleep, e.g. 01:33:09 local for 537 s).
+- **The mechanism:** the read's context is issued for 60 s (`ctx.issue_commit(…, 60)`); `public.eye_ctx3` returns NULL once `clock_timestamp()` passes the expiry (0011); every RLS policy reads it through `eye_tenant()`/`eye_scope()`. A read suspended mid-statement resumes after its context expired: the rest of `domain.package_facts` runs with the tenant gone, the taxonomy and the contracts read as ABSENT, and the health write that follows — a fresh, live context — recorded those absences as faults.
+- The false conflicts were recovered on 2026-10-12 through `domain.package.enable` (d.ivanova; governed); those runs and recoveries stay in the database as recorded.
+
+### B33-H.2 — reproduced first, on the actual health path
+`apps/api/test/int/phase6-package-health-read-b33h.test.ts` drives the real controllers, pipeline, ports and the after-tick hook. The suspension is CONTROLLED: a test-only wrapper delays `prediction.risk_taxonomy_current` (called inside `package_facts`) 62 s — past the context, inside the same statement, at the point where the demo's reads lost the taxonomy. The context lifetime is neither shortened nor extended; RLS is not touched.
+- **`B33H_REPRO=1` on main `0d5622f` (the tree without the guard): 8/8** — H1 the health route records the FALSE conflict ("the domain has no risk taxonomy in force", the gate reads conflicted); H2 the after-tick hook under the attention agent does the same (`evidence/cp6/b33h-harness-repro.txt`).
+
+### B33-H.3 — the correction (TypeScript; no database change)
+- **The pipeline checks completeness after the read.** `PipelineService.consequentialRead` and `consequentialReadEvidenced` ask, after the handler, whether the context is still live (`public.eye_scope() <> 'NONE'`). Expiry is monotonic, so a context live after the handler was live for every query inside it. One that is not fails the read closed: **503 `EYE-DEP-001`**, recorded as a handler failure in the audit chain, the result discarded ("the read … outlived its authorization context … the result is incomplete and was discarded, nothing was concluded from it — retry"). This covers every consequential read, not only package health — the defect class (an expired context silently filtering a read) is the pipeline's.
+- **The health hook reports it as UNAVAILABLE.** `PackagesService.recheckDomain` marks an `EYE-DEP-001` failure `{unavailable: true, recorded: false}`: no run recorded, nothing disabled or exposed, nothing declared healthy; the next tick reads again.
+- **Not changed:** the context's 60-second lifetime, every RLS policy, 0111, 0112, the health port (`record_package_health` still never clears — recovery stays the specialist's `enable` on a passing run).
+
+### B33-H.4 — proof
+- **The correction: 8/8** on a fresh database (`evidence/cp6/b33h-harness-fix.txt`): H0 baseline passes; H1 the delayed route answers 503 EYE-DEP-001, the package's footprint (versions, disabled functions, conflict, runs, events, migrations, items) unchanged, one audited `EYE-DEP-001` failure, the gate active; the same read undelayed reads sound; H2 the delayed hook reports the package unavailable, footprint unchanged, the next tick sound; H3 a GENUINE rights withdrawal (which suspends the contract) still disables assess and event, an incomplete read while it stands neither clears nor confirms it (no run of either verdict), re-enable refused before the repair, then the rights confirmed, the contract re-activated, the run passing and the specialist re-enabling; H4 a GENUINELY missing required fact (the required package retired) still exposes the dependent's conflict.
+- **Gates:** in §B33-H.5.
+
+### B33-H.5 — the gates and the hosted run
+Recorded with the gates' run below and, for the hosted runs, the merge and main's chain, in the next delivery record (B94's).
+
 ## Order and the next implementation batch
 
 B3, B1 and B2 are done in code, B4/B5 applied to the audit (the 2026-09-11 checkpoints), B6 done in

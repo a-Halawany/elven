@@ -1,0 +1,88 @@
+B33-H — the package-health incident of 2026-10-09/10 on eye_demo: the evidence, PRESERVED (read 2026-10-13; no row was changed to obtain it)
+====================================================================================================================================
+Source: eye_demo (the live demonstration database), read as the superuser through `psql` (read-only SELECTs); the host's power log
+(`pmset -g log`, local time +0300). The false conflicts were recovered on 2026-10-12 by d.ivanova through domain.package.enable
+(the governed path); those recoveries and the runs below stay in the database as recorded.
+
+Finding: the four failing after-tick health runs (agent:attention@1.0.0) each recorded a fault read from an INCOMPLETE facts read.
+Each facts read's transaction began 274–2 092 s before its facts were read (section 2) — against a 3.7 s median for the passing
+after-tick reads (section 3) — and every one of those windows contains host sleeps in the power log (section 4). The commit context
+of a read is issued for 60 s (pipeline.service.ts establishCommitContext → ctx.issue_commit(…, 60)) and expires on the database's
+wall clock (public.eye_ctx3, migration 0011: `IF parts[10]::timestamptz <= clock_timestamp() THEN RETURN NULL`); every RLS policy
+reads it through eye_tenant()/eye_scope(). A read suspended mid-statement resumes after its context expired, and the rest of
+domain.package_facts runs with the tenant gone: the taxonomy and the contracts read as ABSENT. The health write that follows runs
+under a FRESH (live) context and recorded those absences as faults. The runs 10–17 s later read the same facts completely and passed.
+
+Section 3 note: one passing run (2026-10-12 06:37:36, competitor) shows max_s 23 338 — a query artefact: after the demo restart of
+2026-10-12 the agent's correlation changed, so the lookup (keyed on the old correlation) matched an old read; 5 package reads occur
+in the 30 s before its facts_read_at. Excluding it, the eight passing reads took 1.8–4.7 s.
+
+== 1. the health runs of 2026-10-09..11 that FAILED (domain.package_conformance_runs, mode health), with the passing runs that followed within 60 s
+            ran_at             |     package_key      | passed | run_by_kind |       facts_read_at        |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                findings                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 
+-------------------------------+----------------------+--------+-------------+----------------------------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ 2026-10-09 22:43:06.492599+00 | geopolitical-red-sea | f      | agent       | 2026-10-09 22:43:06.48+00  | the package maps risk meanings, but the domain has no risk taxonomy in force | {"disable": {}, "conflict": {"causes": [{"kind": "risk_meaning", "findings": ["the package maps risk meanings, but the domain has no risk taxonomy in force"]}], "reason": "incompatible risk meaning: the package maps risk meanings, but the domain has no risk taxonomy in force", "functions": ["exposure"]}}
+ 2026-10-09 22:43:23.68796+00  | geopolitical-red-sea | t      | agent       | 2026-10-09 22:43:23.679+00 | 
+ 2026-10-10 11:16:22.457096+00 | geopolitical-red-sea | f      | agent       | 2026-10-10 11:16:22.444+00 | source gdelt-discovery has no contract in this domain | source imf-portwatch-chokepoints has no contract in this domain | source red-sea-ais-positions has no contract in this domain | the package maps risk meanings, but the domain has no risk taxonomy in force | {"disable": {"event": {"cause": {"kind": "source", "source_key": "gdelt-discovery"}, "reason": "source gdelt-discovery has no contract in this domain"}, "assess": {"cause": {"kind": "source", "source_key": "imf-portwatch-chokepoints"}, "reason": "source imf-portwatch-chokepoints has no contract in this domain"}, "indicator": {"cause": {"kind": "source", "source_key": "imf-portwatch-chokepoints"}, "reason": "source imf-portwatch-chokepoints has no contract in this domain"}}, "conflict": {"causes": [{"kind": "risk_meaning", "findings": ["the package maps risk meanings, but the domain has no risk taxonomy in force"]}], "reason": "incompatible risk meaning: the package maps risk meanings, but the domain has no risk taxonomy in force", "functions": ["exposure"]}}
+ 2026-10-10 11:16:32.716961+00 | geopolitical-red-sea | t      | agent       | 2026-10-10 11:16:32.652+00 | 
+ 2026-10-10 15:34:37.39135+00  | competitor           | f      | agent       | 2026-10-10 15:34:37.372+00 | the package maps risk meanings, but the domain has no risk taxonomy in force | {"disable": {}, "conflict": {"causes": [{"kind": "risk_meaning", "findings": ["the package maps risk meanings, but the domain has no risk taxonomy in force"]}], "reason": "incompatible risk meaning: the package maps risk meanings, but the domain has no risk taxonomy in force", "functions": ["exposure"]}}
+ 2026-10-10 15:34:49.241365+00 | competitor           | t      | agent       | 2026-10-10 15:34:49.233+00 | 
+ 2026-10-10 22:50:16.578949+00 | competitor           | f      | agent       | 2026-10-10 22:50:16.563+00 | the package maps risk meanings, but the domain has no risk taxonomy in force | {"disable": {}, "conflict": {"causes": [{"kind": "risk_meaning", "findings": ["the package maps risk meanings, but the domain has no risk taxonomy in force"]}], "reason": "incompatible risk meaning: the package maps risk meanings, but the domain has no risk taxonomy in force", "functions": ["exposure"]}}
+ 2026-10-10 22:50:34.295111+00 | competitor           | t      | agent       | 2026-10-10 22:50:34.282+00 | 
+(8 rows)
+
+== 2. each failed run: its facts read transaction (the audit event of domain.package.read, created_at = transaction start) to its facts_read_at (clock_timestamp after the facts)
+     package_key      |         read_tx_start         |       facts_read_at        | read_seconds | audit_events_meanwhile_any_correlation 
+----------------------+-------------------------------+----------------------------+--------------+----------------------------------------
+ geopolitical-red-sea | 2026-10-09 22:33:26.287239+00 | 2026-10-09 22:43:06.48+00  |        580.2 |                                      1
+ geopolitical-red-sea | 2026-10-10 10:41:30.731638+00 | 2026-10-10 11:16:22.444+00 |       2091.7 |                                      2
+ competitor           | 2026-10-10 15:30:03.425848+00 | 2026-10-10 15:34:37.372+00 |        273.9 |                                      0
+ competitor           | 2026-10-10 22:33:03.276325+00 | 2026-10-10 22:50:16.563+00 |       1033.3 |                                      0
+(4 rows)
+
+== 3. the after-tick health runs that PASSED 2026-10-08..12 (agent): read durations (median, max)
+ runs | median_s |  max_s  | over_60s 
+------+----------+---------+----------
+    9 |      3.7 | 23338.4 |        1
+(1 row)
+
+
+== 4. the host power log over the four windows (local time +0300; UTC = local − 3 h): sleep entries and dark wakes
+2026-10-10 01:32:33 +0300 DarkWake            	DarkWake from Deep Idle [CDNP] : due to smc.sysState.Wake(0x70070000) wifibt SMC.Ou
+2026-10-10 01:32:49 +0300 Sleep               	Entering Sleep state due to 'Maintenance Sleep':TCPKeepAlive=active Using Batt (Cha
+2026-10-10 01:32:51 +0300 DarkWake            	DarkWake from Deep Idle [CDNP] : due to smc.sysState.Wake(0x70070000) wifibt SMC.Ou
+2026-10-10 01:33:01 +0300 Sleep               	Entering Sleep state due to 'Maintenance Sleep':TCPKeepAlive=active Using Batt (Cha
+2026-10-10 01:33:03 +0300 DarkWake            	DarkWake from Deep Idle [CDNP] : due to smc.sysState.Wake(0x70070000) wifibt SMC.Ou
+2026-10-10 01:33:09 +0300 Sleep               	Entering Sleep state due to 'Maintenance Sleep':TCPKeepAlive=active Using Batt (Cha
+2026-10-10 01:42:06 +0300 DarkWake            	DarkWake from Deep Idle [CDNP] : due to smc.sysState.Wake(0x70070000) wifibt SMC.Ou
+2026-10-10 01:42:17 +0300 Sleep               	Entering Sleep state due to 'Maintenance Sleep':TCPKeepAlive=active Using Batt (Cha
+2026-10-10 01:42:59 +0300 DarkWake            	DarkWake from Deep Idle [CDNP] : due to smc.sysState.Wake(0x70070000) wifibt SMC.Ou
+2026-10-10 01:43:17 +0300 Sleep               	Entering Sleep state due to 'Maintenance Sleep':TCPKeepAlive=active Using Batt (Cha
+2026-10-10 13:40:39 +0300 DarkWake            	DarkWake from Deep Idle [CDNP] : due to smc.sysState.Wake(0x70070000) wifibt SMC.Ou
+2026-10-10 13:40:49 +0300 Sleep               	Entering Sleep state due to 'Maintenance Sleep':TCPKeepAlive=active Using Batt (Cha
+2026-10-10 13:40:56 +0300 DarkWake            	DarkWake from Deep Idle [CDNP] : due to smc.sysState.Wake(0x70070000) wifibt SMC.Ou
+2026-10-10 13:41:01 +0300 Sleep               	Entering Sleep state due to 'Maintenance Sleep':TCPKeepAlive=active Using Batt (Cha
+2026-10-10 13:41:04 +0300 DarkWake            	DarkWake from Deep Idle [CDNP] : due to smc.sysState.Wake(0x70070000) wifibt SMC.Ou
+2026-10-10 13:41:09 +0300 Sleep               	Entering Sleep state due to 'Maintenance Sleep':TCPKeepAlive=active Using Batt (Cha
+2026-10-10 13:48:51 +0300 DarkWake            	DarkWake from Deep Idle [CDNP] : due to NUB.SPMI0Sw3IRQ nub-spmi0.0x02 rtc/Maintena
+2026-10-10 13:48:57 +0300 Sleep               	Entering Sleep state due to 'Maintenance Sleep':TCPKeepAlive=active Using Batt (Cha
+2026-10-10 14:04:56 +0300 DarkWake            	DarkWake from Deep Idle [CDNP] : due to NUB.SPMI0Sw3IRQ nub-spmi0.0x02 rtc/SleepSer
+2026-10-10 14:04:58 +0300 Sleep               	Entering Sleep state due to 'Sleep Service Back to Sleep':TCPKeepAlive=active Using
+2026-10-10 14:16:13 +0300 DarkWake            	DarkWake from Deep Idle [CDNP] : due to smc.sysState.Wake(0x70070000) wifibt SMC.Ou
+2026-10-10 14:16:23 +0300 Sleep               	Entering Sleep state due to 'Maintenance Sleep':TCPKeepAlive=active Using Batt (Cha
+2026-10-10 18:29:22 +0300 DarkWake            	DarkWake from Deep Idle [CDNP] : due to smc.sysState.Wake(0x70070000) wifibt SMC.Ou
+2026-10-10 18:29:25 +0300 Wake                	DarkWake to FullWake from Deep Idle [CDNVAP] : due to Notification Using BATT (Char
+2026-10-10 18:29:39 +0300 Sleep               	Entering Sleep state due to 'Clamshell Sleep':TCPKeepAlive=active Using Batt (Charg
+2026-10-10 18:30:41 +0300 DarkWake            	DarkWake from Deep Idle [CDNP] : due to smc.sysState.Wake(0x70070000) wifibt SMC.Ou
+2026-10-10 18:30:54 +0300 Sleep               	Entering Sleep state due to 'Maintenance Sleep':TCPKeepAlive=active Using Batt (Cha
+2026-10-10 18:34:27 +0300 DarkWake            	DarkWake from Deep Idle [CDNP] : due to smc.sysState.Wake(0x70070000) wifibt SMC.Ou
+2026-10-10 18:34:43 +0300 Sleep               	Entering Sleep state due to 'Maintenance Sleep':TCPKeepAlive=active Using Batt (Cha
+2026-10-11 01:32:34 +0300 DarkWake            	DarkWake from Deep Idle [CDNP] : due to smc.sysState.Wake(0x70070000) wifibt SMC.Ou
+2026-10-11 01:32:40 +0300 Sleep               	Entering Sleep state due to 'Maintenance Sleep':TCPKeepAlive=active Using Batt (Cha
+2026-10-11 01:33:33 +0300 DarkWake            	DarkWake from Deep Idle [CDNP] : due to smc.sysState.Wake(0x70070000) wifibt SMC.Ou
+2026-10-11 01:33:39 +0300 Sleep               	Entering Sleep state due to 'Maintenance Sleep':TCPKeepAlive=active Using Batt (Cha
+2026-10-11 01:33:52 +0300 DarkWake            	DarkWake from Deep Idle [CDNP] : due to smc.sysState.Wake(0x70070000) wifibt SMC.Ou
+2026-10-11 01:33:58 +0300 Sleep               	Entering Sleep state due to 'Maintenance Sleep':TCPKeepAlive=active Using Batt (Cha
+2026-10-11 01:50:08 +0300 DarkWake            	DarkWake from Deep Idle [CDNP] : due to NUB.SPMI0Sw3IRQ nub-spmi0.0x02 rtc/SleepSer
+2026-10-11 01:50:10 +0300 Sleep               	Entering Sleep state due to 'Sleep Service Back to Sleep':TCPKeepAlive=active Using
+2026-10-11 01:50:14 +0300 DarkWake            	DarkWake from Deep Idle [CDNP] : due to smc.sysState.Wake(0x70070000) wifibt SMC.Ou
+2026-10-11 01:50:20 +0300 Sleep               	Entering Sleep state due to 'Maintenance Sleep':TCPKeepAlive=active Using Batt (Cha
