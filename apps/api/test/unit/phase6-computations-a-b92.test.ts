@@ -93,4 +93,19 @@ describe('B92 §MCA contractProblems — refusals of a malformed contract', () =
     expect(contractProblems({ ...base, kMin: 3 }).join()).toMatch(/k_min/);
     expect(contractProblems({ ...base, metricKey: 'met-1' }).join()).toMatch(/form MET-001/);
   });
+  it('§MD\'s rules mirrored: subject 3+, exclusions {rule, reason}, an action naming a review, a target only with higher/lower, a band only with band/track, a rate threshold in [0, 1], no dimension on an unsupported contract, a role code as owner', () => {
+    expect(contractProblems({ ...base, population: { subject: 'x' } }).join()).toMatch(/population.subject/);
+    expect(contractProblems({ ...base, exclusions: [{ rule: 'r', reason: '' }] }).join()).toMatch(/exclusion is \{rule, reason\}/);
+    expect(contractProblems({ ...base, action: 'a breach changes the plan automatically' }).join()).toMatch(/names a review/);
+    expect(contractProblems({ ...base, direction: 'band', threshold: { target: 0.5 } }).join()).toMatch(/target needs direction higher or lower/);
+    expect(contractProblems({ ...base, direction: 'higher', threshold: { band: [0.1, 0.2] } }).join()).toMatch(/band needs direction band or track/);
+    expect(contractProblems({ ...base, threshold: { target: 3 } }).join()).toMatch(/lies in \[0, 1\]/);
+    expect(contractProblems({ ...byKey('V1-resilience'), dimensions: ['severity'] }).join()).toMatch(/unsupported contract has no dimensions/);
+    expect(contractProblems({ ...base, ownerRole: 'Executive product owner' }).join()).toMatch(/role code/);
+  });
+  it('every owner is a role code, App M\'s label kept on the contract', () => {
+    expect(byKey('MET-001')).toMatchObject({ ownerRole: 'executive', quality: { app_m_owner: 'Executive product owner' } });
+    expect(byKey('MET-022')).toMatchObject({ ownerRole: 'risk_owner', quality: { app_m_owner: 'Warning owner' } });
+    expect(byKey('MET-028').ownerRole).toBe('twin_owner');
+  });
 });

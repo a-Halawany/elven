@@ -17,7 +17,7 @@ import type { MetricContract } from '../contract.js';
 import { PERSON_DIMENSIONS } from '../seams.js';
 
 const RETIRE = 'retired when the product no longer records its source, or when the owner replaces it with a successor definition (its history stays readable)';
-const REVIEW = (who: string) => `a breach opens a REVIEW by ${who} with the product analytics owner — an investigation workflow, never an automatic or punitive decision`;
+const REVIEW = (who: string) => `a breach opens a review (an investigation workflow) by ${who} with the product analytics owner — never an automatic or punitive decision`;
 const AT_AS_OF = 'every input is read as recorded at or before the result\'s as-of: a replay at the same as-of reproduces the records and the value';
 const COST = { allocation: 'analytics-cost', basis: 'rows read and compute time of each run, metered (§CO)' } as const;
 const DECISION_CLASSES = ['standard', 'board'];
@@ -26,7 +26,7 @@ const mk = (name: string): string => name;
 const ck = (name: string): string => name;
 
 /** The App M / V1 metrics this part computes (23) and the V01-T-046 measures with no source (6, unsupported). */
-export const definitionsA: MetricContract[] = [
+const contractsA: MetricContract[] = [
   // ── DECISIONS ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   {
     metricKey: mk('MET-001'), title: 'Strategic loop closure rate',
@@ -208,7 +208,7 @@ export const definitionsA: MetricContract[] = [
     threshold: { band: [0.75, 0.85] }, purposeKey: 'mission-outcomes',
     serves: { decision_classes: DECISION_CLASSES, value_measure: 'forecast calibration (V01-T-040)', note: 'the operating review\'s calibration for the corridor\'s series' },
     cadence: 'quarterly', ownerRole: 'Forecast owner',
-    action: 'outside the approved band opens a REVIEW by the forecast owner (recalibration or a method review) — never an automatic withdrawal',
+    action: 'outside the approved band opens a review (an investigation workflow) by the forecast owner: recalibration or a method review — never an automatic withdrawal',
     retirement: RETIRE,
     quality: { band: 'the T1 constant (80 % ± 5 pp) made a governed band the owner approves', long_horizons: '3y/5y outcomes are observed coverage, never a validation claim (no 3y/5y validation has passed)', as_of: AT_AS_OF },
     costAllocation: COST, computationKey: ck('met024_forecast_calibration'), params: {}, unsupportedReason: null, sourceRefs: ['MET-024', 'V01-T-040', 'V01-T-046'],
@@ -320,7 +320,7 @@ export const definitionsA: MetricContract[] = [
     threshold: {}, purposeKey: 'mission-outcomes',
     serves: { decision_classes: DECISION_CLASSES, value_measure: 'decision cycle time (V01-T-040)' },
     cadence: 'quarterly', ownerRole: 'Executive product owner',
-    action: 'tracked by the executive product owner; a shorter cycle is never a target in itself (balanced use)', retirement: RETIRE, quality: { as_of: AT_AS_OF },
+    action: 'reviewed in the quarterly operating review by the executive product owner; a shorter cycle is never a target in itself (balanced use)', retirement: RETIRE, quality: { as_of: AT_AS_OF },
     costAllocation: COST, computationKey: ck('v1_decision_cycle'), params: {}, unsupportedReason: null, sourceRefs: ['V01-T-046', 'V01-T-040', 'ES-40-008'],
   },
   {
@@ -334,7 +334,7 @@ export const definitionsA: MetricContract[] = [
     threshold: {}, purposeKey: 'mission-outcomes',
     serves: { decision_classes: DECISION_CLASSES, value_measure: 'detection/understanding latency (V01-T-040)' },
     cadence: 'quarterly', ownerRole: 'Executive product owner',
-    action: 'tracked by the executive product owner — never a per-person speed (no employee-performance inference)', retirement: RETIRE, quality: { as_of: AT_AS_OF },
+    action: 'reviewed in the quarterly operating review by the executive product owner — never a per-person speed (no employee-performance inference)', retirement: RETIRE, quality: { as_of: AT_AS_OF },
     costAllocation: COST, computationKey: ck('v1_understanding_latency'), params: {}, unsupportedReason: null, sourceRefs: ['V01-T-040', 'V01-T-046', 'ES-40-008'],
   },
   {
@@ -414,10 +414,23 @@ export const definitionsA: MetricContract[] = [
     threshold: {}, purposeKey: 'mission-outcomes',
     serves: { decision_classes: DECISION_CLASSES, value_measure: `${title.toLowerCase()} (V01-T-040)` },
     cadence: 'quarterly', ownerRole: 'Executive product owner',
-    action: 'served UNSUPPORTED with its carrier — visible beside the computed measures (balanced use), never a zero', retirement: 'retired when its carrier delivers a computed successor definition',
+    action: 'served UNSUPPORTED with its carrier — visible beside the computed measures (balanced use), never a zero; reviewed by the executive when its carrier delivers', retirement: 'retired when its carrier delivers a computed successor definition',
     quality: {}, costAllocation: COST, computationKey: null, params: {}, unsupportedReason: reason, sourceRefs: ['V01-T-046', 'V01-T-040'],
   })),
 ];
+
+/** App M's OWNER column → the domain role code that holds it (the label is kept on the contract's quality as app_m_owner). */
+export const OWNER_ROLE_CODES: Record<string, string> = {
+  'Executive product owner': 'executive', 'Decision product owner': 'decision_owner', 'Governance': 'record_authority', 'Trust authority': 'record_authority',
+  'AI governance': 'method_steward', 'Foresight owner': 'forecast_owner', 'Warning owner': 'risk_owner', 'Risk owner': 'risk_owner', 'Forecast owner': 'forecast_owner',
+  'Scenario owner': 'strategy_owner', 'Simulation owner': 'simulation_operator', 'Twin owner': 'twin_owner', 'Strategy authority': 'strategy_owner', 'Executive operator': 'executive_operator',
+};
+/** The 29 contracts: each ownerRole a role CODE (App M's label kept as quality.app_m_owner). */
+export const definitionsA: MetricContract[] = contractsA.map((c) => {
+  const code = OWNER_ROLE_CODES[c.ownerRole];
+  if (code === undefined) throw new Error(`${c.metricKey}: App M owner ${c.ownerRole} has no role code`);
+  return { ...c, ownerRole: code, quality: { ...c.quality, app_m_owner: c.ownerRole } };
+});
 
 /** The computation keys this part registers (0113 §MCA), in registry order. */
 export const COMPUTATIONS_A = definitionsA.map((d) => d.computationKey).filter((k): k is string => k !== null);
@@ -438,6 +451,14 @@ export function contractProblems(c: MetricContract): string[] {
   if (c.floorN < 1) p.push(`${c.metricKey}: the floor is at least 1`);
   if (c.threshold.band !== undefined && (c.threshold.band.length !== 2 || c.threshold.band[0] >= c.threshold.band[1])) p.push(`${c.metricKey}: a band is [lo, hi] with lo < hi`);
   if (c.direction === 'band' && c.threshold.band === undefined) p.push(`${c.metricKey}: a band direction declares its band`);
+  if (String(c.population['subject'] ?? '').trim().length < 3) p.push(`${c.metricKey}: population.subject names the subject (3+ characters)`);
+  for (const e of c.exclusions) if (typeof e?.rule !== 'string' || typeof e?.reason !== 'string' || e.rule.length < 3 || e.reason.length < 3) p.push(`${c.metricKey}: an exclusion is {rule, reason}`);
+  if (!/review|investigation/i.test(c.action)) p.push(`${c.metricKey}: the action names a review or an investigation`);
+  if (c.threshold.target !== undefined && c.direction !== 'higher' && c.direction !== 'lower') p.push(`${c.metricKey}: a target needs direction higher or lower`);
+  if (c.threshold.band !== undefined && c.direction !== 'band' && c.direction !== 'track') p.push(`${c.metricKey}: a band needs direction band or track`);
+  if (c.kind === 'rate' && [c.threshold.target, ...(c.threshold.band ?? [])].some((v) => v !== undefined && (v < 0 || v > 1))) p.push(`${c.metricKey}: a rate's threshold lies in [0, 1]`);
+  if (c.computationKey === null && c.dimensions.length > 0) p.push(`${c.metricKey}: an unsupported contract has no dimensions`);
+  if (!/^[a-z][a-z0-9_]{2,62}$/.test(c.ownerRole)) p.push(`${c.metricKey}: ownerRole is a role code`);
   const serves = c.serves;
   if ((serves.objective_ids?.length ?? 0) + (serves.decision_classes?.length ?? 0) + (serves.value_measure !== undefined ? 1 : 0) === 0) p.push(`${c.metricKey}: serves names an objective, a decision class or a value measure (V01-T-040)`);
   if (c.action.length < 8 || c.retirement.length < 8) p.push(`${c.metricKey}: action and retirement are sentences`);

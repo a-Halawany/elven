@@ -53,14 +53,26 @@ LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, pg_temp AS $$
   SELECT CASE WHEN coalesce(p_params ->> 'clock', 'record') = ANY (p_supported) THEN '[]'::jsonb
               ELSE jsonb_build_array(format('the definition''s clock is %s; this computation reads on the %s clock only — a different clock is not substituted', coalesce(p_params ->> 'clock', 'record'), array_to_string(p_supported, ' / '))) END
 $$;
-/* The §0.7 answer: the counts derived from the records themselves (the port cross-checks them). */
-CREATE OR REPLACE FUNCTION analytics.mca_out(p_kind text, p_records jsonb, p_reasons jsonb, p_quality jsonb, p_distinct_actors int DEFAULT NULL, p_value numeric DEFAULT NULL) RETURNS jsonb
+/* The §0.7 answer: the counts derived from the records themselves (the port cross-checks them); quality carries, beside the computation's
+   own notes, what the standing evaluation (§CO) reads: newest_record_at (the newest instant among the population's records — p_at_key names
+   the detail field that holds it), excluded_count, and composition (counts of the population's records by p_comp_key — a detail field, or
+   `_kind` for the record kind; by role when none is named). */
+CREATE OR REPLACE FUNCTION analytics.mca_out(p_kind text, p_records jsonb, p_reasons jsonb, p_quality jsonb, p_distinct_actors int DEFAULT NULL, p_value numeric DEFAULT NULL,
+                                             p_comp_key text DEFAULT NULL, p_at_key text DEFAULT NULL) RETURNS jsonb
 LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, pg_temp AS $$
   SELECT jsonb_build_object('kind', p_kind,
     'numerator', CASE WHEN p_kind = 'rate' THEN (SELECT count(*) FROM jsonb_array_elements(coalesce(p_records, '[]'::jsonb)) r WHERE r ->> 'role' = 'numerator') END,
     'denominator', CASE WHEN p_kind = 'rate' THEN (SELECT count(*) FROM jsonb_array_elements(coalesce(p_records, '[]'::jsonb)) r WHERE r ->> 'role' IN ('numerator', 'denominator')) END,
     'value', p_value, 'distinct_actors', p_distinct_actors,
-    'records', coalesce(p_records, '[]'::jsonb), 'reasons', coalesce(p_reasons, '[]'::jsonb), 'quality', coalesce(p_quality, '{}'::jsonb))
+    'records', coalesce(p_records, '[]'::jsonb), 'reasons', coalesce(p_reasons, '[]'::jsonb),
+    'quality', coalesce(p_quality, '{}'::jsonb) || jsonb_build_object(
+      'excluded_count', (SELECT count(*) FROM jsonb_array_elements(coalesce(p_records, '[]'::jsonb)) r WHERE r ->> 'role' = 'excluded'),
+      'newest_record_at', CASE WHEN p_at_key IS NULL THEN NULL ELSE
+        (SELECT max((r -> 'detail' ->> p_at_key)::timestamptz) FROM jsonb_array_elements(coalesce(p_records, '[]'::jsonb)) r
+          WHERE r ->> 'role' <> 'context' AND jsonb_typeof(r -> 'detail' -> p_at_key) = 'string') END,
+      'composition', jsonb_build_object('by', coalesce(p_comp_key, 'role'), 'counts', coalesce((SELECT jsonb_object_agg(k, n) FROM (
+          SELECT coalesce(CASE WHEN p_comp_key IS NULL THEN r ->> 'role' WHEN p_comp_key = '_kind' THEN r ->> 'kind' ELSE r -> 'detail' ->> p_comp_key END, 'unspecified') AS k, count(*) AS n
+            FROM jsonb_array_elements(coalesce(p_records, '[]'::jsonb)) r WHERE r ->> 'role' <> 'context' GROUP BY 1) z), '{}'::jsonb))))
 $$;
 /* A record of the §0.7 shape. */
 CREATE OR REPLACE FUNCTION analytics.mca_rec(p_kind text, p_id text, p_role text, p_reason text, p_detail jsonb) RETURNS jsonb
@@ -133,7 +145,7 @@ DO $$
 DECLARE f text;
 BEGIN
   FOREACH f IN ARRAY ARRAY['analytics.mca_txt(jsonb,text)', 'analytics.mca_lower(text[])', 'analytics.mca_jtxt(jsonb)', 'analytics.mca_scope_via(jsonb,text[],text[],text[],text[])',
-                           'analytics.mca_clock_reasons(jsonb,text[])', 'analytics.mca_out(text,jsonb,jsonb,jsonb,int,numeric)', 'analytics.mca_rec(text,text,text,text,jsonb)',
+                           'analytics.mca_clock_reasons(jsonb,text[])', 'analytics.mca_out(text,jsonb,jsonb,jsonb,int,numeric,text,text)', 'analytics.mca_rec(text,text,text,text,jsonb)',
                            'analytics.mca_is_human(uuid)', 'analytics.mca_role_at(uuid,uuid,uuid,text[],timestamptz)', 'analytics.mca_standing(text,uuid,uuid,uuid,timestamptz)',
                            'analytics.mca_package_scope(jsonb,uuid,int,jsonb)', 'analytics.mca_warning_scope(jsonb,jsonb,uuid)', 'analytics.mca_forecast_scope(jsonb,text,uuid)',
                            'analytics.mca_scope_ignored(jsonb,text)'] LOOP
@@ -202,7 +214,7 @@ BEGIN
   RETURN analytics.mca_out('rate', v_recs, analytics.mca_clock_reasons(p_params, ARRAY['record']),
     jsonb_build_object('clock', 'record', 'window_field', 'decision.commitments.committed_at', 'synthetic_share', CASE WHEN v_n = 0 THEN NULL ELSE round(v_syn::numeric / v_n, 4) END,
                        'links', jsonb_build_array('objective', 'evidence', 'foresight', 'commitment', 'outcome', 'learning'),
-                       'notes', jsonb_build_array('each link judged AS OF the result''s as-of (decision_metrics'' predicates, which read now, evaluated at as-of so a replay reproduces)')));
+                       'notes', jsonb_build_array('each link judged AS OF the result''s as-of (decision_metrics'' predicates, which read now, evaluated at as-of so a replay reproduces)')), p_comp_key => 'synthetic', p_at_key => 'committed_at');
 END $$;
 
 /* MET-002 DECISION PACKAGE COMPLETENESS (rate). POPULATION: the package versions that REACHED THE GATE in the window — p_params.gate
@@ -259,7 +271,7 @@ BEGIN
   END LOOP;
   RETURN analytics.mca_out('rate', v_recs, v_reasons, jsonb_build_object('clock', 'record', 'gate', v_gate,
     'window_field', CASE v_gate WHEN 'ready' THEN 'decision.gate_actions.at (action ready)' ELSE 'decision.package_versions.proposed_at' END,
-    'synthetic_share', CASE WHEN v_n = 0 THEN NULL ELSE round(v_syn::numeric / v_n, 4) END));
+    'synthetic_share', CASE WHEN v_n = 0 THEN NULL ELSE round(v_syn::numeric / v_n, 4) END), p_comp_key => 'decision_class', p_at_key => 'gate_at');
 END $$;
 
 /* MET-003 DECISION REPLAY SUCCESS (rate). POPULATION: the packages COMMITTED in the window (their latest commitment in it), in scope. Each
@@ -297,7 +309,7 @@ BEGIN
   IF v_total > 0 AND v_unrep * 2 > v_total THEN
     v_reasons := v_reasons || to_jsonb(format('%s of the %s committed package(s) were never replayed: more than half the cohort is unmeasured, so a rate over the replays performed would be biased (a cohort replay is run first)', v_unrep, v_total));
   END IF;
-  RETURN analytics.mca_out('rate', v_recs, v_reasons, jsonb_build_object('clock', 'record', 'window_field', 'decision.commitments.committed_at', 'cohort_size', v_total, 'not_replayed', v_unrep));
+  RETURN analytics.mca_out('rate', v_recs, v_reasons, jsonb_build_object('clock', 'record', 'window_field', 'decision.commitments.committed_at', 'cohort_size', v_total, 'not_replayed', v_unrep), p_comp_key => NULL, p_at_key => 'committed_at');
 END $$;
 
 /* MET-004 HUMAN AUTHORITY INTEGRITY (rate; dimension consequence_class). THE UNIVERSE of consequential effects (stated, a definitional
@@ -352,7 +364,7 @@ BEGIN
   END LOOP;
   RETURN analytics.mca_out('rate', v_recs, analytics.mca_clock_reasons(p_params, ARRAY['record']),
     jsonb_build_object('clock', 'record', 'universe', jsonb_build_array('decision commitments (decision.commitments)', 'signed acts (executive.signatures)'),
-                       'notes', analytics.mca_scope_ignored(p_scope, 'authority integrity is a property of every consequential effect of the domain')));
+                       'notes', analytics.mca_scope_ignored(p_scope, 'authority integrity is a property of every consequential effect of the domain')), p_comp_key => 'consequence_class', p_at_key => 'at');
 END $$;
 
 /* MET-005 RECOMMENDATION EXPLANATION CLOSURE (rate). POPULATION: the recommendations recorded in the window that are DECISION-ACTIVE at the
@@ -397,11 +409,11 @@ BEGIN
       'uncertainty', jsonb_build_object('met', v_sim OR v_xpl > 0, 'option_simulated', v_sim, 'explanations', v_xpl));
     SELECT coalesce(array_agg(k ORDER BY k), '{}') INTO v_missing FROM jsonb_each(v_el) e(k, v) WHERE NOT (v ->> 'met')::boolean;
     v_recs := v_recs || analytics.mca_rec('recommendation', r.recommendation_id::text, CASE WHEN cardinality(v_missing) = 0 THEN 'numerator' ELSE 'denominator' END, NULL,
-      jsonb_build_object('package_id', r.package_id, 'version', r.version, 'option_key', r.option_key, 'author_kind', r.author_kind, 'resolutions', v_el, 'missing', to_jsonb(v_missing),
+      jsonb_build_object('package_id', r.package_id, 'version', r.version, 'option_key', r.option_key, 'author_kind', r.author_kind, 'recorded_at', r.recorded_at, 'resolutions', v_el, 'missing', to_jsonb(v_missing),
                          'scope_via', to_jsonb(v_via)));
   END LOOP;
   RETURN analytics.mca_out('rate', v_recs, analytics.mca_clock_reasons(p_params, ARRAY['record']),
-    jsonb_build_object('clock', 'record', 'window_field', 'decision.recommendations.recorded_at', 'decision_active', 'proposed or accepted for consideration at the as-of'));
+    jsonb_build_object('clock', 'record', 'window_field', 'decision.recommendations.recorded_at', 'decision_active', 'proposed or accepted for consideration at the as-of'), p_comp_key => 'author_kind', p_at_key => 'recorded_at');
 END $$;
 
 -- §MCA.2 FORESIGHT: SIGNALS, WARNINGS, FORECASTS, SCENARIOS, RUNS, TWINS ────────────────────────────────────────────────────────────────
@@ -445,7 +457,7 @@ BEGIN
   END LOOP;
   RETURN analytics.mca_out('rate', v_recs, analytics.mca_clock_reasons(p_params, ARRAY['record']),
     jsonb_build_object('clock', 'record', 'window_field', 'prediction.signal_events.occurred_at (the latest human disposition)',
-                       'notes', jsonb_build_array('monitored, not optimized alone (App M): a precision read beside the lead time (MET-020) and the warnings that followed')));
+                       'notes', jsonb_build_array('monitored, not optimized alone (App M): a precision read beside the lead time (MET-020) and the warnings that followed')), p_comp_key => 'detector', p_at_key => 'disposed_at');
 END $$;
 
 /* MET-020 WEAK SIGNAL LEAD TIME (duration, seconds). POPULATION: the warnings RAISED FROM A SIGNAL (origin_kind weak_signal, origin_ref
@@ -475,7 +487,7 @@ BEGIN
     END IF;
   END LOOP;
   RETURN analytics.mca_out('duration', v_recs, analytics.mca_clock_reasons(p_params, ARRAY['record']),
-    jsonb_build_object('clock', 'record', 'unit', 'seconds', 'start', 'prediction.signals_current.created_at', 'end', 'prediction.warnings_current.raised_at'));
+    jsonb_build_object('clock', 'record', 'unit', 'seconds', 'start', 'prediction.signals_current.created_at', 'end', 'prediction.warnings_current.raised_at'), p_comp_key => NULL, p_at_key => 'raised_at');
 END $$;
 
 /* MET-021 WARNING DELIVERY LATENCY (duration, seconds; dimensions severity = the warning's level, channel). POPULATION: the DELIVERED
@@ -516,7 +528,7 @@ BEGIN
   IF v_syn > 0 THEN v_notes := v_notes || to_jsonb(format('%s of %s receipt(s) came through a synthetic channel the definition admits: the latency demonstrates the software, not a real delivery', v_syn, v_inc)); END IF;
   RETURN analytics.mca_out('duration', v_recs, analytics.mca_clock_reasons(p_params, ARRAY['record']),
     jsonb_build_object('clock', 'record', 'unit', 'seconds', 'start', 'prediction.warnings_current.raised_at (the trigger)', 'end', 'executive.attention_deliveries.receipt.at',
-                       'admit_synthetic', v_admit, 'synthetic_share', CASE WHEN v_inc = 0 THEN NULL ELSE round(v_syn::numeric / v_inc, 4) END, 'notes', v_notes));
+                       'admit_synthetic', v_admit, 'synthetic_share', CASE WHEN v_inc = 0 THEN NULL ELSE round(v_syn::numeric / v_inc, 4) END, 'notes', v_notes), p_comp_key => 'channel', p_at_key => 'receipt_at');
 END $$;
 
 /* MET-022 WARNING ACKNOWLEDGEMENT LATENCY (duration, seconds; the scene's metric #2; DESIGN D9; dimensions severity = the warning's level,
@@ -597,7 +609,7 @@ BEGIN
     jsonb_build_object('clock', 'record', 'unit', 'seconds', 'start', CASE WHEN v_proxy THEN 'receipt (executive.attention_deliveries.receipt.at), else the declared proxy raised_at' ELSE 'receipt (executive.attention_deliveries.receipt.at)' END,
                        'end', 'prediction.warnings_current.acknowledged_at', 'qualified_roles', to_jsonb(v_roles), 'proxy_declared', v_proxy,
                        'proxy_share', CASE WHEN v_inc = 0 THEN NULL ELSE round(v_prox::numeric / v_inc, 4) END, 'world_clock_excluded', v_world, 'admit_synthetic', v_admit),
-    CASE WHEN p_cohort ? 'role' THEN (SELECT count(DISTINCT a)::int FROM unnest(v_actors) a) END);
+    CASE WHEN p_cohort ? 'role' THEN (SELECT count(DISTINCT a)::int FROM unnest(v_actors) a) END, p_comp_key => 'severity', p_at_key => 'acknowledged_at');
 END $$;
 
 /* MET-023 WARNING ACTION CLOSURE (rate; dimension severity). POPULATION: the MATERIAL warnings raised in the window (the attention engine
@@ -639,9 +651,9 @@ BEGIN
                                'outcome', jsonb_build_object('met', v_fb > 0 OR v_closed, 'feedback', v_fb, 'closure', v_closed));
     SELECT coalesce(array_agg(k ORDER BY k), '{}') INTO v_missing FROM jsonb_each(v_el) e(k, v) WHERE NOT (v ->> 'met')::boolean;
     v_recs := v_recs || analytics.mca_rec('warning', r.warning_id::text, CASE WHEN cardinality(v_missing) = 0 THEN 'numerator' ELSE 'denominator' END, NULL,
-      jsonb_build_object('severity', r.severity, 'state_now', r.state, 'material_basis', v_basis, 'closure', v_el, 'missing', to_jsonb(v_missing), 'scope_via', to_jsonb(v_via)));
+      jsonb_build_object('severity', r.severity, 'raised_at', r.raised_at, 'state_now', r.state, 'material_basis', v_basis, 'closure', v_el, 'missing', to_jsonb(v_missing), 'scope_via', to_jsonb(v_via)));
   END LOOP;
-  RETURN analytics.mca_out('rate', v_recs, analytics.mca_clock_reasons(p_params, ARRAY['record']), jsonb_build_object('clock', 'record', 'window_field', 'prediction.warnings_current.raised_at'));
+  RETURN analytics.mca_out('rate', v_recs, analytics.mca_clock_reasons(p_params, ARRAY['record']), jsonb_build_object('clock', 'record', 'window_field', 'prediction.warnings_current.raised_at'), p_comp_key => 'severity', p_at_key => 'raised_at');
 END $$;
 
 /* MET-024 FORECAST CALIBRATION (rate against an approved BAND; the scene's metric #3; DESIGN D9; dimensions horizon, method). POPULATION:
@@ -688,7 +700,7 @@ BEGIN
   RETURN analytics.mca_out('rate', v_recs, '[]'::jsonb,
     jsonb_build_object('clock', CASE WHEN v_world THEN 'world' ELSE 'record' END, 'window_field', CASE WHEN v_world THEN 'prediction.outcome_ledger.target_at' ELSE 'prediction.outcome_ledger.known_at' END,
                        'rule', 'covered = q10 ≤ observed ≤ q90 (the outcome ledger''s own flag; ForecastingService.calibration)', 'backtests_not_counted', v_bt, 'long_horizon_outcomes', v_long,
-                       'notes', v_notes));
+                       'notes', v_notes), p_comp_key => 'horizon', p_at_key => 'known_at');
 END $$;
 
 /* MET-025 FORECAST SHARPNESS (score; dimension horizon; lower is sharper). POPULATION: the same scored live outcomes as MET-024 (known_at in
@@ -717,7 +729,7 @@ BEGIN
     ELSE
       v_w := v_w + 1; v_sum := v_sum + (r.q90 - r.q10) / abs(r.q50);
       v_recs := v_recs || analytics.mca_rec('forecast_outcome', r.outcome_id::text, 'included', NULL,
-        jsonb_build_object('value', round((r.q90 - r.q10) / abs(r.q50), 6), 'horizon', r.horizon_code, 'method', r.method, 'series_key', r.series_key, 'covered', r.covered, 'scope_via', to_jsonb(v_via)));
+        jsonb_build_object('value', round((r.q90 - r.q10) / abs(r.q50), 6), 'known_at', r.known_at, 'horizon', r.horizon_code, 'method', r.method, 'series_key', r.series_key, 'covered', r.covered, 'scope_via', to_jsonb(v_via)));
     END IF;
   END LOOP;
   v_share := CASE WHEN v_n = 0 THEN NULL ELSE round(v_cov::numeric / v_n, 6) END;
@@ -728,7 +740,7 @@ BEGIN
   END IF;
   RETURN analytics.mca_out('score', v_recs, v_reasons,
     jsonb_build_object('clock', 'record', 'measure', 'mean (q90 − q10) / |q50| over the included outcomes', 'calibration', jsonb_build_object('n', v_n, 'covered', v_cov, 'coverage', v_share, 'band', jsonb_build_array(v_lo, v_hi))),
-    NULL, CASE WHEN v_w = 0 THEN NULL ELSE round(v_sum / v_w, 6) END);
+    NULL, CASE WHEN v_w = 0 THEN NULL ELSE round(v_sum / v_w, 6) END, p_comp_key => 'horizon', p_at_key => 'known_at');
 END $$;
 
 /* MET-026 SCENARIO DISTINCTNESS (rate). POPULATION: the APPROVED (active) scenario sets live in the window (activated by its end, not
@@ -770,13 +782,13 @@ BEGIN
                                       ELSE (SELECT count(*) FROM (SELECT unnest(a.sig) INTERSECT SELECT unnest(b.sig)) i)::numeric / (SELECT count(*) FROM (SELECT unnest(a.sig) UNION SELECT unnest(b.sig)) u) END AS sim) j;
     v_pass := v_n >= 2 AND jsonb_array_length(v_empty) = 0 AND jsonb_array_length(v_pairs) = 0;
     v_recs := v_recs || analytics.mca_rec('scenario_set', s.set_id::text, CASE WHEN v_pass THEN 'numerator' ELSE 'denominator' END, NULL,
-      jsonb_build_object('title', s.title, 'live_branches', v_n, 'structureless_branches', v_empty, 'too_similar_pairs', v_pairs, 'max_similarity', v_max, 'branches', v_br,
+      jsonb_build_object('title', s.title, 'activated_at', s.activated_at, 'live_branches', v_n, 'structureless_branches', v_empty, 'too_similar_pairs', v_pairs, 'max_similarity', v_max, 'branches', v_br,
                          'fails', to_jsonb(array_remove(ARRAY[CASE WHEN v_n < 2 THEN 'fewer than two live branches' END, CASE WHEN jsonb_array_length(v_empty) > 0 THEN 'a branch declares no driver/impact structure' END,
                                                                CASE WHEN jsonb_array_length(v_pairs) > 0 THEN 'branches not materially different' END], NULL)),
                          'scope_via', to_jsonb(v_via)));
   END LOOP;
   RETURN analytics.mca_out('rate', v_recs, analytics.mca_clock_reasons(p_params, ARRAY['record']),
-    jsonb_build_object('clock', 'record', 'test', format('Jaccard similarity of the branches'' driver+impact element sets ≤ %s for every pair; ≥ 2 live branches; none structureless', v_max)));
+    jsonb_build_object('clock', 'record', 'test', format('Jaccard similarity of the branches'' driver+impact element sets ≤ %s for every pair; ≥ 2 live branches; none structureless', v_max)), p_comp_key => NULL, p_at_key => 'activated_at');
 END $$;
 
 /* MET-027 SIMULATION REPRODUCIBILITY (rate). POPULATION: the ACCEPTED runs (completed, and valid at the as-of) completed in the window. Each
@@ -805,11 +817,11 @@ BEGIN
       v_recs := v_recs || analytics.mca_rec('simulation_run', r.run_id::text, 'excluded', 'never reproduced by the as-of: unmeasured, not a failure', jsonb_build_object('model_ref', r.model_ref));
     ELSE
       v_recs := v_recs || analytics.mca_rec('simulation_run', r.run_id::text, CASE WHEN rp.verdict = 'reproduced' THEN 'numerator' ELSE 'denominator' END, NULL,
-        jsonb_build_object('model_ref', r.model_ref, 'verdict', rp.verdict, 'reproduction_id', rp.reproduction_id, 'reproduced_at', rp.reproduced_at, 'reason', rp.reason, 'scope_via', to_jsonb(v_via)));
+        jsonb_build_object('model_ref', r.model_ref, 'completed_at', r.completed_at, 'verdict', rp.verdict, 'reproduction_id', rp.reproduction_id, 'reproduced_at', rp.reproduced_at, 'reason', rp.reason, 'scope_via', to_jsonb(v_via)));
     END IF;
   END LOOP;
   RETURN analytics.mca_out('rate', v_recs, analytics.mca_clock_reasons(p_params, ARRAY['record']),
-    jsonb_build_object('clock', 'record', 'tolerance', 0, 'tolerance_basis', 'digest equality of the outputs (simulation.reproductions) — no numerical tolerance is recorded', 'never_reproduced', v_never));
+    jsonb_build_object('clock', 'record', 'tolerance', 0, 'tolerance_basis', 'digest equality of the outputs (simulation.reproductions) — no numerical tolerance is recorded', 'never_reproduced', v_never), p_comp_key => 'model_ref', p_at_key => 'completed_at');
 END $$;
 
 /* MET-028 TWIN SYNCHRONIZATION HEALTH (rate). POPULATION: the twins with an ADMITTED head on the `actual` branch at the as-of (declared, and
@@ -857,10 +869,10 @@ BEGIN
                                'validation', jsonb_build_object('met', v_val = 'fit', 'verdict', coalesce(v_val, 'never validated')));
     v_fail := array_remove(ARRAY[CASE WHEN NOT v_fresh THEN 'freshness' END, CASE WHEN v_cov IS FALSE THEN 'coverage' END, CASE WHEN v_val IS DISTINCT FROM 'fit' THEN 'validation' END], NULL);
     v_recs := v_recs || analytics.mca_rec('twin', t.twin_id::text, CASE WHEN cardinality(v_fail) = 0 THEN 'numerator' ELSE 'denominator' END, NULL,
-      jsonb_build_object('title', t.title, 'head_version', hv.version, 'contracts', v_el, 'failed', to_jsonb(v_fail), 'scope_via', to_jsonb(v_via)));
+      jsonb_build_object('title', t.title, 'head_version', hv.version, 'head_known_at', hv.known_at, 'contracts', v_el, 'failed', to_jsonb(v_fail), 'scope_via', to_jsonb(v_via)));
   END LOOP;
   RETURN analytics.mca_out('rate', v_recs, analytics.mca_clock_reasons(p_params, ARRAY['record']),
-    jsonb_build_object('clock', 'record', 'state_at', 'the as-of (a state measure: the window bounds nothing but the period it is reported for)', 'as_of_day', v_day));
+    jsonb_build_object('clock', 'record', 'state_at', 'the as-of (a state measure: the window bounds nothing but the period it is reported for)', 'as_of_day', v_day), p_comp_key => NULL, p_at_key => 'head_known_at');
 END $$;
 
 -- §MCA.3 STRATEGY AND COMMITMENTS ──────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -877,12 +889,12 @@ DECLARE r record; v_recs jsonb := '[]'::jsonb; v_via text[]; v_objs uuid[]; v_ca
 BEGIN
   PERFORM observation.assert_read_scope(p_tenant, p_domain, 'MET-029 alignment coverage: approved initiatives and live commitment obligations');
   FOR r IN
-    SELECT 'initiative'::text AS kind, i.initiative_id AS id, i.owner_principal_id AS owner, i.plan_id,
+    SELECT 'initiative'::text AS kind, i.initiative_id AS id, i.owner_principal_id AS owner, i.plan_id, i.approved_at AS at,
            ARRAY(SELECT o FROM (SELECT i.objective_id AS o UNION SELECT io.objective_id FROM executive.initiative_objectives io WHERE io.initiative_id = i.initiative_id AND io.linked_at <= p_as_of) z WHERE o IS NOT NULL) AS objs
       FROM executive.initiatives i
      WHERE i.tenant_id = p_tenant AND i.domain_id = p_domain AND i.approved_at IS NOT NULL AND i.approved_at < p_to AND i.approved_at <= p_as_of
     UNION ALL
-    SELECT 'commitment_obligation', ci.item_id, ci.owner_principal_id, NULL::uuid, coalesce(ci.objective_ids, '{}')
+    SELECT 'commitment_obligation', ci.item_id, ci.owner_principal_id, NULL::uuid, ci.created_at, coalesce(ci.objective_ids, '{}')
       FROM decision.commitment_items ci
      WHERE ci.tenant_id = p_tenant AND ci.domain_id = p_domain AND ci.parent_item_id IS NULL AND ci.created_at < p_to AND ci.created_at <= p_as_of AND ci.due_at >= p_from
      ORDER BY 1, 2
@@ -904,10 +916,10 @@ BEGIN
                                'measure', jsonb_build_object('met', v_msr > 0, 'measures', v_msr));
     SELECT coalesce(array_agg(k ORDER BY k), '{}') INTO v_missing FROM jsonb_each(v_el) e(k, v) WHERE NOT (v ->> 'met')::boolean;
     v_recs := v_recs || analytics.mca_rec(r.kind, r.id::text, CASE WHEN cardinality(v_missing) = 0 THEN 'numerator' ELSE 'denominator' END, NULL,
-      jsonb_build_object('links', v_el, 'missing', to_jsonb(v_missing), 'scope_via', to_jsonb(v_via)));
+      jsonb_build_object('at', r.at, 'links', v_el, 'missing', to_jsonb(v_missing), 'scope_via', to_jsonb(v_via)));
   END LOOP;
   RETURN analytics.mca_out('rate', v_recs, analytics.mca_clock_reasons(p_params, ARRAY['record']),
-    jsonb_build_object('clock', 'record', 'material', 'approved initiatives; root commitment obligations live in the period'));
+    jsonb_build_object('clock', 'record', 'material', 'approved initiatives; root commitment obligations live in the period'), p_comp_key => '_kind', p_at_key => 'at');
 END $$;
 
 /* MET-030 COMMITMENT OUTCOME CLOSURE (rate; dimension portfolio = the package's initiative, or `none` — PORTFOLIO LEVEL ONLY: App M's
@@ -950,7 +962,7 @@ BEGIN
       jsonb_build_object('due_at', r.due_at, 'closed_by', coalesce(v_how, 'not closed by the as-of'), 'closed_at', v_at, 'portfolio', r.portfolio, 'scope_via', to_jsonb(v_via)));
   END LOOP;
   RETURN analytics.mca_out('rate', v_recs, analytics.mca_clock_reasons(p_params, ARRAY['record']),
-    jsonb_build_object('clock', 'record', 'window_field', 'decision.commitment_items.due_at', 'grain', 'portfolio level only — never per owner (D4)'));
+    jsonb_build_object('clock', 'record', 'window_field', 'decision.commitment_items.due_at', 'grain', 'portfolio level only — never per owner (D4)'), p_comp_key => 'portfolio', p_at_key => 'due_at');
 END $$;
 
 -- §MCA.4 V01-T-046 VALUE MEASURES AND ES-40-008 INDICATORS ─────────────────────────────────────────────────────────────────────────────
@@ -980,7 +992,7 @@ BEGIN
     END IF;
   END LOOP;
   RETURN analytics.mca_out('duration', v_recs, analytics.mca_clock_reasons(p_params, ARRAY['record']),
-    jsonb_build_object('clock', 'record', 'unit', 'seconds', 'basis', 'executive.metrics decision_latency: package_versions.proposed_at → commitments.committed_at'));
+    jsonb_build_object('clock', 'record', 'unit', 'seconds', 'basis', 'executive.metrics decision_latency: package_versions.proposed_at → commitments.committed_at'), p_comp_key => NULL, p_at_key => 'committed_at');
 END $$;
 
 /* V1 UNDERSTANDING LATENCY (duration, seconds): executive.metrics' time_to_understanding — the attention items FIRST ROUTED in the window
@@ -1014,7 +1026,7 @@ BEGIN
   END LOOP;
   RETURN analytics.mca_out('duration', v_recs, analytics.mca_clock_reasons(p_params, ARRAY['record']),
     jsonb_build_object('clock', 'record', 'unit', 'seconds', 'basis', 'executive.metrics time_to_understanding: the first routing → the first human act', 'without_act', v_none,
-                       'notes', analytics.mca_scope_ignored(p_scope, 'the attention queue is the domain''s')));
+                       'notes', analytics.mca_scope_ignored(p_scope, 'the attention queue is the domain''s')), p_comp_key => 'signal_class', p_at_key => 'routed_at');
 END $$;
 
 /* V1 WARNING PRECISION (rate): prediction.evaluate_warnings' feedback — of the warnings raised in the window (in scope) that carry USEFUL or
@@ -1026,24 +1038,24 @@ DECLARE r record; v_recs jsonb := '[]'::jsonb; v_via text[];
 BEGIN
   PERFORM observation.assert_read_scope(p_tenant, p_domain, 'V1 warning precision: warnings and their useful / false feedback');
   FOR r IN
-    SELECT w.warning_id, w.affected, w.forecast_id, w.origin_kind,
+    SELECT w.warning_id, w.affected, w.forecast_id, w.origin_kind, w.raised_at,
            bool_or(f.kind = 'useful') AS useful, bool_or(f.kind = 'false') AS falsed
       FROM prediction.warnings_current w JOIN prediction.warning_feedback f ON f.warning_id = w.warning_id AND f.given_at <= p_as_of AND f.kind IN ('useful', 'false')
      WHERE w.tenant_id = p_tenant AND w.domain_id = p_domain AND w.raised_at >= p_from AND w.raised_at < p_to AND w.raised_at <= p_as_of
-     GROUP BY w.warning_id, w.affected, w.forecast_id, w.origin_kind
+     GROUP BY w.warning_id, w.affected, w.forecast_id, w.origin_kind, w.raised_at
      ORDER BY w.warning_id
   LOOP
     v_via := analytics.mca_warning_scope(p_scope, r.affected, r.forecast_id);
     CONTINUE WHEN cardinality(v_via) = 0;
     IF r.useful AND r.falsed THEN
-      v_recs := v_recs || analytics.mca_rec('warning', r.warning_id::text, 'excluded', 'contradictory feedback: marked both useful and false', jsonb_build_object('origin_kind', r.origin_kind));
+      v_recs := v_recs || analytics.mca_rec('warning', r.warning_id::text, 'excluded', 'contradictory feedback: marked both useful and false', jsonb_build_object('origin_kind', r.origin_kind, 'raised_at', r.raised_at));
     ELSE
       v_recs := v_recs || analytics.mca_rec('warning', r.warning_id::text, CASE WHEN r.useful THEN 'numerator' ELSE 'denominator' END, NULL,
-        jsonb_build_object('feedback', CASE WHEN r.useful THEN 'useful' ELSE 'false' END, 'origin_kind', r.origin_kind, 'scope_via', to_jsonb(v_via)));
+        jsonb_build_object('feedback', CASE WHEN r.useful THEN 'useful' ELSE 'false' END, 'origin_kind', r.origin_kind, 'raised_at', r.raised_at, 'scope_via', to_jsonb(v_via)));
     END IF;
   END LOOP;
   RETURN analytics.mca_out('rate', v_recs, analytics.mca_clock_reasons(p_params, ARRAY['record']),
-    jsonb_build_object('clock', 'record', 'basis', 'prediction.evaluate_warnings'' feedback: useful ÷ (useful + false), a warning counted once'));
+    jsonb_build_object('clock', 'record', 'basis', 'prediction.evaluate_warnings'' feedback: useful ÷ (useful + false), a warning counted once'), p_comp_key => 'origin_kind', p_at_key => 'raised_at');
 END $$;
 
 /* V1 ATTENTION SAVED (rate; noise reduction): executive.evaluate_attention_queue's PRECISION — over the attention items created in the window:
@@ -1056,7 +1068,7 @@ DECLARE r record; v_recs jsonb := '[]'::jsonb; v_role text; v_reason text;
 BEGIN
   PERFORM observation.assert_read_scope(p_tenant, p_domain, 'V1 attention saved: the attention queue''s precision');
   FOR r IN
-    SELECT i.item_id, i.signal_class, i.outcome,
+    SELECT i.item_id, i.signal_class, i.outcome, i.created_at,
            (CASE WHEN i.acknowledged_at IS NOT NULL AND i.acknowledged_at <= p_as_of THEN i.acknowledged_at END) AS ack_at,
            (i.state = 'closed' AND i.closed_at <= p_as_of) AS closed,
            (SELECT d.details ->> 'disposition' FROM executive.attention_item_events d WHERE d.item_id = i.item_id AND d.event = 'item.disposition' AND d.occurred_at <= p_as_of
@@ -1075,11 +1087,11 @@ BEGIN
                        WHEN r.disposition = 'late' THEN 'disposed late: counted apart' WHEN r.disposition IS NULL THEN 'not disposed by the as-of' ELSE format('disposed %s without the positive''s conditions', r.disposition) END;
     END IF;
     v_recs := v_recs || analytics.mca_rec('attention_item', r.item_id::text, coalesce(v_role, 'excluded'), v_reason,
-      jsonb_build_object('signal_class', r.signal_class, 'outcome', r.outcome, 'disposition', r.disposition, 'elevated', r.elevated));
+      jsonb_build_object('signal_class', r.signal_class, 'created_at', r.created_at, 'outcome', r.outcome, 'disposition', r.disposition, 'elevated', r.elevated));
   END LOOP;
   RETURN analytics.mca_out('rate', v_recs, analytics.mca_clock_reasons(p_params, ARRAY['record']),
     jsonb_build_object('clock', 'record', 'basis', 'executive.evaluate_attention_queue precision (B24): true positives ÷ (true positives + false alarms)',
-                       'notes', analytics.mca_scope_ignored(p_scope, 'the attention queue is the domain''s')));
+                       'notes', analytics.mca_scope_ignored(p_scope, 'the attention queue is the domain''s')), p_comp_key => 'signal_class', p_at_key => 'created_at');
 END $$;
 
 /* ES-40-008 COMMITMENT VISIBILITY (rate; residual R1 of §B36.12 row 9). POPULATION: the commitment items CREATED in the window (by the as-of),
@@ -1111,7 +1123,7 @@ BEGIN
   END LOOP;
   RETURN analytics.mca_out('rate', v_recs, analytics.mca_clock_reasons(p_params, ARRAY['record']),
     jsonb_build_object('clock', 'record', 'visibility', 'a delivered (non-synthetic) receipt to the owner, or the owner''s acceptance, within the declared days',
-                       'notes', jsonb_build_array('page reads are not recorded by the product before §UX telemetry: visibility rests on receipts and acceptances only')));
+                       'notes', jsonb_build_array('page reads are not recorded by the product before §UX telemetry: visibility rests on receipts and acceptances only')), p_comp_key => '_kind', p_at_key => 'created_at');
 END $$;
 
 /* ES-40-008 EXPLANATION USE (rate; residual R1). POPULATION: the decisions COMMITTED in the window (each commitment), in scope by the package
@@ -1141,7 +1153,7 @@ BEGIN
   END LOOP;
   RETURN analytics.mca_out('rate', v_recs, analytics.mca_clock_reasons(p_params, ARRAY['record']),
     jsonb_build_object('clock', 'record', 'use', 'a standing rendering of the committed version''s explanation at or before the commitment',
-                       'notes', jsonb_build_array('page reads are not recorded by the product before §UX telemetry: use rests on renderings only')));
+                       'notes', jsonb_build_array('page reads are not recorded by the product before §UX telemetry: use rests on renderings only')), p_comp_key => NULL, p_at_key => 'committed_at');
 END $$;
 
 -- §MCA.5 GRANTS AND REGISTRATION ────────────────────────────────────────────────────────────────────────────────────────────────────────

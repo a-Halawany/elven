@@ -172,8 +172,8 @@ beforeAll(async () => {
         approver_policy: J({ roles: ['decision_authority'] }), choice: J({ option: 'a' }), version_digest: H64(`v${k.pid}`), header_digest: H64(`h${k.pid}`), proposed_at: k.proposed, proposed_by: approver,
         author_principal_id: approver, synthetic_state: true }));
       const cons: unknown[] = [];
-      if (k.evidence !== null) cons.push({ kind: 'evidence', id: k.evidence, version: 1 });
-      if (k.run !== null) cons.push({ kind: 'run', id: k.run, version: 1 });
+      if (k.evidence !== null) cons.push({ kind: 'evidence', id: k.evidence, version: 1, digest: H64(k.evidence) });
+      if (k.run !== null) cons.push({ kind: 'run', id: k.run, version: 1, digest: H64(k.run) });
       for (const [key, kind, cs, sim] of [['sq', 'status_quo', [], false], ['a', 'intervention', cons, k.simulated], ['b', 'intervention', [], false]] as const) {
         await put('decision.options', dom({ option_id: id(), package_id: k.pid, version: 1, key, title: `option ${key}`, kind, consequences: J(cs), simulated: sim, unsimulated_reason: sim ? null : 'not simulated (fixture)',
           set_by: approver, set_at: '2026-07-10T00:00:00Z' }));
@@ -182,7 +182,7 @@ beforeAll(async () => {
       if (k.explanation) {
         const xid = id();
         await put('decision.explanations', dom({ explanation_id: xid, subject_kind: 'package_version', subject_id: k.pid, subject_version: 1, explanation_version: 1, subject_digest: H64(`s${k.pid}`), subject_title: k.title,
-          generator: 'fixture@1', conclusion: J({}), items: J([]), counter_evidence: J([]), competing_hypotheses: J([]), limitations: J([]),
+          generator: 'fixture@1', conclusion: J({}), items: J([{ id: 'I1', category: 'human_assessment', role: 'conclusion', material: true, statement: 'a conclusion (SYNTHETIC)', ref: {} }]), counter_evidence: J([]), competing_hypotheses: J([]), limitations: J([]),
           uncertainty: J({ likelihood: 'm', impact: 'm', confidence: 'm', evidence_quality: 'm', disagreement: 'm' }), contract: J({}), faithfulness_state: 'complete', integrity_digest: H64(`x${k.pid}`),
           generated_by: approver, generated_at: '2026-07-30T00:00:00Z' }));
         explanationOf[k.pid] = xid;
@@ -231,8 +231,8 @@ beforeAll(async () => {
     await put('decision.explanation_renderings', dom({ rendering_id: id(), explanation_id: explanationOf[P.p2]!, audience: J({ role: 'executive' }), sentences: J(['a sentence']), renderer_principal_id: approver,
       renderer_kind: 'human', faithfulness: 'faithful', check_result: J({}), explanation_digest: H64('e2'), state: 'standing', rendered_at: '2026-08-15T00:00:00Z' }));
     // a signed act (MET-004), audited under corr.s1
-    await put('executive.signatures', dom({ signature_id: id(), subject_kind: 'health_snapshot', subject_id: id(), subject_version: 1, subject_digest: H64('sig'), signer: approver, key_id: 'fixture-key',
-      algorithm: 'ed25519', signature: 'c2lnbmF0dXJl', bound_action: 'executive.health.snapshot.approve', signed_at: '2026-08-21T00:00:00Z', correlation_id: corr.s1 }));
+    await put('executive.signatures', dom({ signature_id: id(), subject_kind: 'health_snapshot', subject_id: id(), subject_version: 1, subject_digest: H64('sig'), signer: approver, key_id: ['ed25519', H64('k').slice(0, 16)].join(':'),
+      algorithm: 'Ed25519', signature: Buffer.alloc(64, 7).toString('base64'), bound_action: 'executive.health.snapshot.approve', signed_at: '2026-08-21T00:00:00Z', correlation_id: corr.s1 }));
     // recommendations (MET-005): R1 complete on P1; R2 on P1 option b (nothing); R3 on P2 withdrawn; R5 complete on P2; R6 out of scope (P5)
     const rec = (pid: string, option: string, o: { complete: boolean; withdrawn?: boolean }) => put('decision.recommendations', dom({ recommendation_id: id(), package_id: pid, version: 1, option_key: option,
       what: 'recommend the option (SYNTHETIC)', for_whom: 'the decision authority', by_when: '2026-09-30', what_could_make_it_wrong: J([{ what: 'the corridor reopens' }]),
@@ -376,13 +376,14 @@ beforeAll(async () => {
     const today = new Date();
     const twin = async (tid: string, boundary: string[], o: { policyDays: number | null; observedAgo: number; contract: string[] | null; elements: string[]; validation: string | null }) => {
       await put('twin.twins_current', dom({ twin_id: tid, kind: 'enterprise', title: `twin ${tid.slice(-4)} (SYNTHETIC)`, statement: 'a twin', boundary: J(boundary), owner_principal_id: approver,
-        behaviour_model_ref: 'supply-flow@1', validation: J({}), declared_by: approver, declared_at: '2026-06-01T00:00:00Z', synthetic_state: true }));
+        behaviour_model_ref: 'supply-flow@1', validation: J({ status: 'validated', limitations: [] }), declared_by: approver, declared_at: '2026-06-01T00:00:00Z', synthetic_state: true }));
       await put('twin.twin_versions', dom({ twin_id: tid, version: 1, branch_id: 'actual', state: 'admitted', known_at: '2026-07-01T00:00:00Z', observed_through: day(new Date(today.getTime() - o.observedAgo * 86400000)),
-        opened_by: approver, opened_at: '2026-07-01T00:00:00Z', admitted_at: '2026-07-01T01:00:00Z', synthetic_state: true }));
+        opened_by: approver, opened_at: '2026-07-01T00:00:00Z', admitted_at: '2026-07-01T01:00:00Z', state_set_digest: H64(`ss${tid}`), header_digest: H64(`th${tid}`), synthetic_state: true }));
       if (o.policyDays !== null) await put('twin.freshness_policies', dom({ twin_id: tid, version: 1, max_age_days: o.policyDays, note: 'the freshness contract (SYNTHETIC)', set_by: approver, set_at: '2026-07-01T00:00:00Z' }));
       if (o.contract !== null) await put('twin.twin_contracts', dom({ twin_id: tid, contract_version: 1, exposed: J(Object.fromEntries(o.contract.map((k) => [k, { unit: 'u', cadence: 'on-admission' }]))),
         approved_uses: J({ method_families: [], decision_classes: [] }), state: 'current', published_by: approver, published_at: '2026-07-01T00:00:00Z' }));
-      for (const k of o.elements) await put('twin.state_elements', dom({ element_id: id(), twin_id: tid, version: 1, key: k, kind: 'observed', value: J(1), material: true, citations: J([]), health: 'ok', grounded_by: approver }));
+      for (const k of o.elements) await put('twin.state_elements', dom({ element_id: id(), twin_id: tid, version: 1, key: k, kind: 'observed', value: J(1), material: false,
+        citations: J([{ kind: 'evidence', id: ev1, version: 1, digest: H64(ev1) }]), health: 'complete', grounded_by: approver }));
       if (o.validation !== null) await put('twin.validations', dom({ validation_id: id(), twin_id: tid, version: 1, verdict: o.validation, prior_state: 'none', envelope_check: J({}), envelope_state: 'inside',
         calibration: J({}), reason: 'a validation of the head (SYNTHETIC)', validated_by: approver, validated_at: '2026-07-02T00:00:00Z' }));
     };
@@ -510,7 +511,9 @@ describe('MCA2 · MET-022 warning acknowledgement latency (the scene\'s metric #
     expect(Number(scene['value'])).toBe(270);
     expect(scene['distribution']).toMatchObject({ p50: 270, p90: 990, min: 60, max: 1200, n: 8 });
     expect(scene['uncertainty']).toMatchObject({ method: 'order_statistics', lo_rank: 1, hi_rank: 8, lo: 60, hi: 1200 });
-    expect(scene['quality']).toMatchObject({ proxy_declared: true, proxy_share: 0.25, world_clock_excluded: 1, qualified_roles: ['domain_admin', 'strategy_owner', 'forecast_owner', 'risk_owner'] });
+    expect(scene['quality']).toMatchObject({ proxy_declared: true, proxy_share: 0.25, world_clock_excluded: 1, qualified_roles: ['domain_admin', 'strategy_owner', 'forecast_owner', 'risk_owner'],
+      excluded_count: 2, composition: { by: 'severity', counts: { high: 6, normal: 4 } } });
+    expect(Date.parse(String((scene['quality'] as Row)['newest_record_at']))).toBe(Date.parse(plus(raisedAt(10), 1200)));
     const m = await byId(scene);
     const d = (w: number) => m.get(W[w]!)!['detail'] as Row;
     expect(d(1)).toMatchObject({ value: 60, start: 'receipt', role: 'risk_owner', severity: 'high', channel: 'in_app' });
