@@ -2395,6 +2395,41 @@ const BUNDLE_V1: Rule[] = [
   /* B94 service */
   /* end B94 service */
   /* B94 support */
+  /* B94 §SA (0114_b94_x_sa; IA-04-001..006, PR-69-003, PER-20, CAP-TR-12). EXACT rules. THE MATRIX: proposed by the implementation lead
+     (TENANT) or the domain admin; DECIDED by the onboarding authority (TENANT; human-gated, signed — the port re-checks the approver test).
+     RECONCILE: the attention agent (the after-tick hook), the domain admin, the onboarding authority, the lead. SUPPORT ACCESS: REQUESTED and
+     WITHDRAWN by the support engineer; DECIDED and REVOKED by the domain admin (human-gated; the port: the accountable owner of
+     support.access, never the engineer); SWEPT by the attention agent. The ENGINEER's only other rules are its four DIAGNOSTIC READS and the
+     read of its OWN grants (support.*) — no write rule, no service.read: an engineer's write (observation.source.transition …) is refused by
+     the PDP. DRILLS: the domain admin (human-gated). JOINT EXERCISES: the domain admin or the onboarding authority (human-gated). ADMISSION:
+     assembled by the lead or the domain admin; signed by the onboarding authority (human-gated). The reads are §0's service.read. */
+  ...(() => {
+    const S = (role: string): { role: string; atScope: Scope } => ({ role, atScope: 'DOMAIN' });
+    const T = (role: string): { role: string; atScope: Scope } => ({ role, atScope: 'TENANT' });
+    const gate: Obligation[] = [{ type: 'human_gate' }];
+    const r = (actionPrefix: string, requiredAnyRole: Array<{ role: string; atScope: Scope }>, obligations?: Obligation[]): Rule =>
+      ({ actionPrefix, exact: true, requiredAnyRole, ...(obligations === undefined ? {} : { obligations }), requiresPurpose: true, maxConsequence: 'C2' });
+    const engineer = [S('support_engineer')];
+    return [
+      r('service.matrix.propose', [T('implementation_lead'), S('domain_admin')]),
+      r('service.matrix.decide', [T('onboarding_authority')], gate),
+      r('service.responsibility.reconcile', [S('attention_agent'), S('domain_admin'), T('onboarding_authority'), T('implementation_lead')]),
+      r('service.grant.request', engineer),
+      r('service.grant.withdraw', engineer),
+      r('service.grant.decide', [S('domain_admin')], gate),
+      r('service.grant.revoke', [S('domain_admin')], gate),
+      r('service.grant.sweep', [S('attention_agent')]),
+      r('support.grant.read', engineer, [{ type: 'audit_access' }]),
+      r('support.diagnose.source', engineer, [{ type: 'audit_access' }]),
+      r('support.diagnose.runs', engineer, [{ type: 'audit_access' }]),
+      r('support.diagnose.health', engineer, [{ type: 'audit_access' }]),
+      r('support.diagnose.schedule', engineer, [{ type: 'audit_access' }]),
+      r('service.drill.run', [S('domain_admin')], gate),
+      r('service.exercise.record', [S('domain_admin'), T('onboarding_authority')], gate),
+      r('service.admission.propose', [T('implementation_lead'), S('domain_admin')]),
+      r('service.admission.decide', [T('onboarding_authority')], gate),
+    ];
+  })(),
   /* end B94 support */
   /* B36 home */
   /* THE EXECUTIVE HOME, THE CADENCE, THE COMMAND VIEWS, THE SEARCH, THE METRICS (0094 §H; F-P6-11: WS-01, JRN-19, PER-03, CAP-EO-01/-02/-04).
