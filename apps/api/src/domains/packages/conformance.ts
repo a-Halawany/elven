@@ -12,7 +12,9 @@ import { changeKind, parseSemver, satisfies } from './semver.js';
 
 type Row = Record<string, unknown>;
 export interface Check { check: string; passed: boolean; severity: 'blocking' | 'advisory'; findings: string[]; measured?: Row }
-export const SUITE_VERSION = 'conformance/1';
+/** conformance/2 (B33-F, 0112): contract compatibility adds the REVERSE requirement — what other active packages require of this one. Runs
+ *  recorded as conformance/1 stay as they were; the port re-validates the facts at the effect whatever the suite version. */
+export const SUITE_VERSION = 'conformance/2';
 export const HEALTH_VERSION = 'health/1';
 export const ACCEPTANCE_VERSION = 'acceptance/1';
 
@@ -100,7 +102,8 @@ export function removedSince(active: Manifest, next: Manifest): string[] {
 }
 
 /** Contract compatibility: the semver against the active version (a breaking change is a major one and carries a migration plan), the core
- *  ontology range, and the declared requires/conflicts against every other ACTIVE package of the domain (both directions). */
+ *  ontology range, and the declared requires/conflicts against every other ACTIVE package of the domain (both directions — B33-F: what this
+ *  version requires of others AND what the others require of it). */
 export function contractCompatibility(f: PackageFacts): Check {
   const m = f.version.manifest; const out: string[] = []; const measured: Row = {};
   const sv = parseSemver(f.version.semver);
@@ -143,6 +146,11 @@ export function contractCompatibility(f: PackageFacts): Check {
   for (const o of f.packages) {
     for (const c of arr(o.conflicts)) {
       if (c.package_key === f.package.package_key && satisfies(f.version.semver, c.range) === true) out.push(`the active ${o.package_key} ${o.semver} declares a conflict with ${f.package.package_key} ${c.range}`);
+    }
+    // B33-F (F1): the REVERSE requirement — an active package requiring this one with a range this version does not satisfy (a malformed
+    // range satisfies nothing); the port re-validates it at certification and activation (domain.dpk_effect_findings, 0112)
+    for (const r of arr(o.requires)) {
+      if (r.package_key === f.package.package_key && satisfies(f.version.semver, r.range) !== true) out.push(`the active ${o.package_key} ${o.semver} requires ${f.package.package_key} ${r.range}; ${f.version.semver} does not satisfy it`);
     }
   }
   return check('contract_compatibility', 'blocking', out, measured);
@@ -280,8 +288,13 @@ export function evaluateHealth(f: PackageFacts): HealthResult {
     else if (satisfies(o.semver, r.range) !== true) compat.push(`the required ${r.package_key} ${r.range} is now ${o.semver}`);
   }
   for (const c of arr(m.release?.conflicts)) { const o = others.get(c.package_key); if (o !== undefined && satisfies(o.semver, c.range) === true) compat.push(`${c.package_key} ${o.semver} is active and conflicts (${c.range})`); }
-  for (const o of f.packages) for (const c of arr(o.conflicts)) {
-    if (c.package_key === f.package.package_key && satisfies(f.version.semver, c.range) === true) compat.push(`the active ${o.package_key} ${o.semver} declares a conflict with ${f.package.package_key} ${c.range}`);
+  for (const o of f.packages) {
+    for (const c of arr(o.conflicts)) {
+      if (c.package_key === f.package.package_key && satisfies(f.version.semver, c.range) === true) compat.push(`the active ${o.package_key} ${o.semver} declares a conflict with ${f.package.package_key} ${c.range}`);
+    }
+    for (const r of arr(o.requires)) {   // B33-F (F1): the reverse requirement, as in contractCompatibility
+      if (r.package_key === f.package.package_key && satisfies(f.version.semver, r.range) !== true) compat.push(`the active ${o.package_key} ${o.semver} requires ${f.package.package_key} ${r.range}; ${f.version.semver} does not satisfy it`);
+    }
   }
   if (compat.length > 0) { whole = true; causes.push({ kind: 'package', findings: compat }); reasons.push(`conflicting package versions: ${compat.join('; ')}`); }
   const conflict = reasons.length === 0 ? null : { reason: reasons.join(' | '), ...(whole ? {} : { functions: [...fns].sort() }), causes };

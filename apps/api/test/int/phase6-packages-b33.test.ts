@@ -363,7 +363,7 @@ describe('PK2 · per-section specialist certification (the ontology through the 
     await approve(spec, geo, 1, 'use_boundary', dg('use_boundary'), 'approved', 180);
     await refused(certify(spec2, geo, 1), /^domain package rejected \(conformance\): version 1 has no certification run/, 422);
     const run = (await conform(owner, geo, 1)).run;
-    expect(run).toMatchObject({ mode: 'certification', passed: true, suite_version: 'conformance/1', run_by_kind: 'human' });
+    expect(run).toMatchObject({ mode: 'certification', passed: true, suite_version: 'conformance/2', run_by_kind: 'human' });
     await refused(activate(owner, geo, 1), /^domain package rejected \(state\): version 1 is proposed; a certified version is activated/, 409);
     const c = (await certify(spec2, geo, 1)).version;
     expect(c).toMatchObject({ state: 'certified', certified_by: spec2.principalId, closed_items: [expect.any(String)] });
