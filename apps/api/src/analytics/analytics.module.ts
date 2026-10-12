@@ -9,7 +9,7 @@ import { PipelineModule } from '../pipeline/pipeline.module.js';
 /* B92 definitions */ import { AnalyticsDefinitionsController } from './definitions/definitions.controller.js'; import { AnalyticsDefinitionsService } from './definitions/definitions.service.js'; /* end B92 definitions */
 /* B92 computations-a */ /* end B92 computations-a */
 /* B92 computations-b */ /* end B92 computations-b */
-/* B92 comparability */ /* end B92 comparability */
+/* B92 comparability */ import { ComparabilityController } from './comparability/comparability.controller.js'; import { ComparabilityService } from './comparability/comparability.service.js'; /* end B92 comparability */
 /* B92 experience */ /* end B92 experience */
 /* B92 review */ /* end B92 review */
 
@@ -20,7 +20,7 @@ import { PipelineModule } from '../pipeline/pipeline.module.js';
     /* B92 definitions */ AnalyticsDefinitionsController, /* end B92 definitions */
     /* B92 computations-a */ /* end B92 computations-a */
     /* B92 computations-b */ /* end B92 computations-b */
-    /* B92 comparability */ /* end B92 comparability */
+    /* B92 comparability */ ComparabilityController, /* end B92 comparability */
     /* B92 experience */ /* end B92 experience */
     /* B92 review */ /* end B92 review */
   ],
@@ -29,7 +29,7 @@ import { PipelineModule } from '../pipeline/pipeline.module.js';
     /* B92 definitions */ AnalyticsDefinitionsService, /* end B92 definitions */
     /* B92 computations-a */ /* end B92 computations-a */
     /* B92 computations-b */ /* end B92 computations-b */
-    /* B92 comparability */ /* end B92 comparability */
+    /* B92 comparability */ ComparabilityService, /* end B92 comparability */
     /* B92 experience */ /* end B92 experience */
     /* B92 review */ /* end B92 review */
   ],

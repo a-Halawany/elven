@@ -2245,6 +2245,28 @@ const BUNDLE_V1: Rule[] = [
   /* B92 computations-b */
   /* end B92 computations-b */
   /* B92 comparability */
+  /* B92 comparability (0113 §CO; PR-70-005, PR-70-006, AT-70, DP-44-001). EXACT rules — no `analytics` or `products` prefix rule exists. THE
+     COMPARISON (analytics.comparison.run) — an analyst, the owner or the attention agent (AI may compute; the port records the comparison
+     under the acting principal and decides comparability itself). THE COST RECONCILIATION (analytics.reconciliation.run) — an analyst or the
+     owner. THE SEMANTIC OBJECTS (DP-44-001, B90's layer): DECLARE — a data steward or a product analyst, human-gated (an agent never declares
+     semantics; the port re-checks the human and the role); CERTIFY — the object's OWNER (a product analytics owner), human-gated (the port
+     re-checks the owner, the separation from the version's declarer, the digest and the expiry); WITHDRAW — the owner or a data steward,
+     human-gated; READ (products.semantic.read) audited — B90's metric readers and the analytics roles. Every non-exempt `analytics.*` write
+     is gated by `product_analytics` on a contracted tenant (0113 §0.4); the human-gated rules and the reads are exempt. */
+  { actionPrefix: 'analytics.comparison.run', exact: true, requiredAnyRole: [{ role: 'product_analyst', atScope: 'DOMAIN' }, { role: 'product_analytics_owner', atScope: 'DOMAIN' },
+    { role: 'attention_agent', atScope: 'DOMAIN' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'analytics.reconciliation.run', exact: true, requiredAnyRole: [{ role: 'product_analyst', atScope: 'DOMAIN' }, { role: 'product_analytics_owner', atScope: 'DOMAIN' }],
+    requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'products.semantic.declare', exact: true, requiredAnyRole: [{ role: 'data_steward', atScope: 'DOMAIN' }, { role: 'product_analyst', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'products.semantic.certify', exact: true, requiredAnyRole: [{ role: 'product_analytics_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'products.semantic.withdraw', exact: true, requiredAnyRole: [{ role: 'product_analytics_owner', atScope: 'DOMAIN' }, { role: 'data_steward', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'products.semantic.read', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' },
+    { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'data_steward', atScope: 'DOMAIN' }, { role: 'product_analytics_owner', atScope: 'DOMAIN' }, { role: 'privacy_officer', atScope: 'DOMAIN' },
+    { role: 'product_analyst', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' },
+    { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' }, { role: 'attention_agent', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
   /* end B92 comparability */
   /* B92 experience */
   /* end B92 experience */
