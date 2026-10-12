@@ -6747,7 +6747,8 @@ The owner's word of 2026-10-13 routed the demo's false package conflicts (found 
 - **Gates:** in §B33-H.5.
 
 ### B33-H.5 — the gates and the hosted run
-Recorded with the gates' run below and, for the hosted runs, the merge and main's chain, in the next delivery record (B94's).
+- **Local at `dad093e`** (one at a time, Redis :6394 flushed): build; web 329/329; `pnpm boundaries`; the complete integration **2385/2385** in 157 files on a fresh database; acceptance 58/58; the upgrade proof PASS. API unit 3484/3485: `c15-runner-behaviour` ("a DETECTED SECRET fails the gate") timed out at its 60 s limit while five B94 part builders loaded the host — the known local timing behaviour of that control (§B33-F.5); its limits are unchanged and the hosted build-test decides.
+- **Hosted**, the merge and main's chain: recorded in the next delivery record (B94's).
 
 ## Order and the next implementation batch
 
