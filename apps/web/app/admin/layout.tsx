@@ -20,6 +20,14 @@ const NAV = [
   /* B91 grace */ { href: '/admin/commercial', key: 'nav.commercial.entitlement' }, /* end B91 grace */
   /* B91 ledger */ { href: '/admin/commercial/ledger', key: 'nav.commercial.ledger' }, /* end B91 ledger */
   /* B91 meters */ { href: '/admin/commercial/usage', key: 'nav.commercial.usage' }, /* end B91 meters */
+  /* B94 §0 (WS-20: the product delivery workspace — onboarding, migration, implementation, service, customer success, the control center) */
+  { href: '/admin/onboarding', key: 'nav.delivery.onboarding' },
+  { href: '/admin/onboarding/migration', key: 'nav.delivery.migration' },
+  { href: '/admin/implementation', key: 'nav.delivery.implementation' },
+  { href: '/admin/service', key: 'nav.delivery.service' },
+  { href: '/admin/customer-success', key: 'nav.delivery.success' },
+  { href: '/admin/control-center', key: 'nav.delivery.control' },
+  /* end B94 §0 */
 ];
 
 export default function AdminLayout({ children }: { children: ReactNode }) {

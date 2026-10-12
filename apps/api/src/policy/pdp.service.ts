@@ -155,6 +155,14 @@ const BUNDLE_V1: Rule[] = [
       { role: 'privacy_officer', atScope: 'DOMAIN' },
       { role: 'product_analyst', atScope: 'DOMAIN' },
       /* end B92 §0 */
+      /* B94 §0 (0114 §0.2): the customer sponsor, the onboarding authority and the implementation lead (TENANT), the support engineer and the
+         enablement assessor (DOMAIN) resolve their own scope, as every new role does */
+      { role: 'customer_sponsor', atScope: 'TENANT' },
+      { role: 'onboarding_authority', atScope: 'TENANT' },
+      { role: 'implementation_lead', atScope: 'TENANT' },
+      { role: 'support_engineer', atScope: 'DOMAIN' },
+      { role: 'enablement_assessor', atScope: 'DOMAIN' },
+      /* end B94 §0 */
     ],
     obligations: [{ type: 'audit_access' }],
     requiresPurpose: true,
@@ -2356,6 +2364,38 @@ const BUNDLE_V1: Rule[] = [
   { actionPrefix: 'analytics.review.close', exact: true, requiredAnyRole: [{ role: 'executive', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' },
     { role: 'product_analytics_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   /* end B92 review */
+  /* B94 §0 */
+  /* B94 §0 (0114; F-P7-F-04/-05/-06). EXACT rules — no `onboarding`, `implementation` or `service` prefix rule exists. THE READS are
+     consequential and audited: onboarding.read (programmes, steps, baselines, waves, mappings, rehearsals, cutovers, acceptances),
+     implementation.read (the programme, readiness and the gate, training and competence coverage — a person's own training and competence
+     records are filtered to the subject, the assessor and the authorities by the PORT), service.read (cases, problems, bundles, matrices, the
+     owner resolution, grants and the access log, the control center). TENANT roles read at the tenant; DOMAIN roles in their domain. A
+     support engineer reads only through §SA's grant-checked routes (support.*), never these. The parts' rules follow in their blocks. */
+  { actionPrefix: 'onboarding.read', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' },
+    { role: 'customer_sponsor', atScope: 'TENANT' }, { role: 'onboarding_authority', atScope: 'TENANT' }, { role: 'implementation_lead', atScope: 'TENANT' },
+    { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'data_steward', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'attention_agent', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'implementation.read', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' },
+    { role: 'customer_sponsor', atScope: 'TENANT' }, { role: 'onboarding_authority', atScope: 'TENANT' }, { role: 'implementation_lead', atScope: 'TENANT' },
+    { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'enablement_assessor', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' },
+    { role: 'risk_owner', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'product_analytics_owner', atScope: 'DOMAIN' }, { role: 'attention_agent', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'service.read', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' },
+    { role: 'customer_sponsor', atScope: 'TENANT' }, { role: 'onboarding_authority', atScope: 'TENANT' }, { role: 'implementation_lead', atScope: 'TENANT' },
+    { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'collection_manager', atScope: 'DOMAIN' }, { role: 'data_steward', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' },
+    { role: 'risk_owner', atScope: 'DOMAIN' }, { role: 'attention_agent', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B94 §0 */
+  /* B94 onboarding */
+  /* end B94 onboarding */
+  /* B94 migration */
+  /* end B94 migration */
+  /* B94 implementation */
+  /* end B94 implementation */
+  /* B94 service */
+  /* end B94 service */
+  /* B94 support */
+  /* end B94 support */
   /* B36 home */
   /* THE EXECUTIVE HOME, THE CADENCE, THE COMMAND VIEWS, THE SEARCH, THE METRICS (0094 §H; F-P6-11: WS-01, JRN-19, PER-03, CAP-EO-01/-02/-04).
      EXACT rules — no `executive` prefix rule exists and none of these names is a prefix of another rule's. THE READS (executive.home.read
