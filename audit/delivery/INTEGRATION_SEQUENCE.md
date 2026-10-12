@@ -185,6 +185,12 @@ Between two merges the first merge's `main` chain completes before the next merg
 - **#84** (B33, 0111): the code-final head `e73d605` has ci 38154675842 and C19 lifecycle 38154675875, every check green.
   - Earlier attempt kept: `17795a9`, ci 37988719052, supply-chain FAILED on CVE-2026-78669 until #85.
   - The records head's checks, the merge and main's chain are recorded in the next delivery record (B92's).
+- **#84** merged as `059a314` (2026-10-11) on its verified records head `8d34c22` (ci 38157824564, C19 lifecycle 38157824498), after #85's chain. Recorded here, in the next delivery record (B33-F's), instead of a records-only commit.
+  - Main's chain for `059a314`: ci 38161065698 → C19 lifecycle 38161065717 → C17 finalize 38165011642 → C19 anchor 38165092501.
+  - **The anchor's attempt 1 FAILED**: its macOS verify job failed the C19 `c19-lifecycle` "DELIBERATE EVASION" control (the evader was not alive at 300 ms). The merged tree is byte-identical to `8d34c22`, whose C19 lifecycle passed on both platforms; no gate, workflow or lifecycle file changed.
+  - **Attempt 2, a FULL re-run of every job** (never a failed-only re-run on `main`, the B22 #59 rule), succeeded: guard, verify on both platforms, publish.
+  - **What is known and what is not:** the same control failed the same way once before on main's chain for `3779079` (#77) and passed on the full re-run. The failure is INTERMITTENT and its cause is UNRESOLVED. A passing retry does not prove runner timing; a hosted macOS runner effect remains a suspicion, not a finding. The control, its threshold and the boundary are unchanged.
+- **#86** (B33-F, 0112: the package validation-to-effect boundary; the tracker resolution of 2026-10-12): code head `5492fd2` hosted green (ci 38184638471, C19 lifecycle 38184638559); merged on its verified records head under the standing authorization after main's chain for `059a314` had completed. The records head's checks, the merge and main's chain for it are recorded in the next delivery record (B92's).
 
 ## 3. What is never done in this sequence
 
