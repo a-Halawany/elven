@@ -7,7 +7,7 @@ import { Module } from '@nestjs/common';
 import { PipelineModule } from '../pipeline/pipeline.module.js';
 /* B92 §0 */ import { AnalyticsComputeController } from './compute/compute.controller.js'; import { AnalyticsComputeService } from './compute/compute.service.js'; /* end B92 §0 */
 /* B92 definitions */ /* end B92 definitions */
-/* B92 computations-a */ /* end B92 computations-a */
+/* B92 computations-a */ import { AnalyticsComputationsAController } from './computations-a/computations-a.controller.js'; /* end B92 computations-a */
 /* B92 computations-b */ /* end B92 computations-b */
 /* B92 comparability */ /* end B92 comparability */
 /* B92 experience */ /* end B92 experience */
@@ -18,7 +18,7 @@ import { PipelineModule } from '../pipeline/pipeline.module.js';
   controllers: [
     /* B92 §0 */ AnalyticsComputeController, /* end B92 §0 */
     /* B92 definitions */ /* end B92 definitions */
-    /* B92 computations-a */ /* end B92 computations-a */
+    /* B92 computations-a */ AnalyticsComputationsAController, /* end B92 computations-a */
     /* B92 computations-b */ /* end B92 computations-b */
     /* B92 comparability */ /* end B92 comparability */
     /* B92 experience */ /* end B92 experience */
