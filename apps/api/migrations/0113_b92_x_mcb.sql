@@ -18,6 +18,9 @@
 --   * reads ONLY rows recorded at or before p_as_of (replay) and inside [p_from, p_to) on the RECORD clock — a world clock is refused as an
 --     explained reason where the source has no world time (never silently re-read on another clock);
 --   * returns RECORDS (the drill-down) naming records — never a person: no principal id, no person dimension (D4);
+--   * reports in its `quality` the newest record of its population (newest_record_at), how many records it excluded (excluded_count) and
+--     the population's composition (counts by a meaningful category — analytics.mcb_finish); never `distinct_actors` (no §MCB cohort is
+--     a role cohort);
 --   * where the product cannot tell an input, says so as a REASON (→ indeterminate, never 0);
 --   * where a population exceeds the traceable bound (p_params.max_records, default 50 000 records), returns NO value and says so (a result
 --     is either traceable record by record or not computed — never a silent sample);
@@ -41,7 +44,7 @@ CREATE OR REPLACE FUNCTION analytics.mcb_clock_refused(p_kind text, p_metric tex
 LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, pg_temp AS $$
   SELECT jsonb_build_object('kind', p_kind, 'records', '[]'::jsonb,
     'reasons', jsonb_build_array(format('%s is measured on the record clock only: %s; the definition names the %s clock — not computed on another clock', p_metric, p_why, coalesce(p_params ->> 'clock', 'record'))),
-    'quality', jsonb_build_object('clock', coalesce(p_params ->> 'clock', 'record')))
+    'quality', jsonb_build_object('clock', coalesce(p_params ->> 'clock', 'record'), 'newest_record_at', NULL, 'excluded_count', 0, 'composition', jsonb_build_object('by', NULL, 'counts', '{}'::jsonb)))
 $$;
 REVOKE ALL ON FUNCTION analytics.mcb_clock_refused(text, text, text, jsonb) FROM PUBLIC;
 
@@ -50,9 +53,24 @@ CREATE OR REPLACE FUNCTION analytics.mcb_over_cap(p_kind text, p_metric text, p_
 LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, pg_temp AS $$
   SELECT jsonb_build_object('kind', p_kind, 'records', '[]'::jsonb,
     'reasons', jsonb_build_array(format('%s: the population holds %s records, above the traceable bound %s (params.max_records): a result is traceable record by record or not computed — narrow the cohort or the window', p_metric, p_count, p_cap)),
-    'quality', jsonb_build_object('clock', p_clock, 'population_upper_bound', p_count, 'max_records', p_cap))
+    'quality', jsonb_build_object('clock', p_clock, 'population_upper_bound', p_count, 'max_records', p_cap, 'newest_record_at', NULL, 'excluded_count', 0,
+                                  'composition', jsonb_build_object('by', NULL, 'counts', '{}'::jsonb)))
 $$;
 REVOKE ALL ON FUNCTION analytics.mcb_over_cap(text, text, bigint, int, text) FROM PUBLIC;
+
+/* THE QUALITY EVERY COMPUTATION REPORTS (the integrator's contract, beside its own notes): the newest record of its population, how many
+   records it excluded, and the population's COMPOSITION — counts by a meaningful category of the metric (an object type, a source, a
+   class …; `role` for a metric whose records carry no finer category). Applied to every answer, including the explained refusals. */
+CREATE OR REPLACE FUNCTION analytics.mcb_finish(p_out jsonb, p_category text, p_newest timestamptz) RETURNS jsonb
+LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, pg_temp AS $$
+  SELECT p_out || jsonb_build_object('quality', coalesce(p_out -> 'quality', '{}'::jsonb) || jsonb_build_object(
+    'newest_record_at', p_newest,
+    'excluded_count', (SELECT count(*) FROM jsonb_array_elements(coalesce(p_out -> 'records', '[]'::jsonb)) x WHERE x ->> 'role' = 'excluded'),
+    'composition', jsonb_build_object('by', p_category, 'counts', coalesce((SELECT jsonb_object_agg(z.k, z.n) FROM (
+        SELECT coalesce(x -> 'detail' ->> p_category, x ->> p_category, '(none)') AS k, count(*) AS n
+          FROM jsonb_array_elements(coalesce(p_out -> 'records', '[]'::jsonb)) x GROUP BY 1) z), '{}'::jsonb))))
+$$;
+REVOKE ALL ON FUNCTION analytics.mcb_finish(jsonb, text, timestamptz) FROM PUBLIC;
 
 /* The SOURCES a scope reaches (D8's rule for source-based metrics): a source concerns the scope when it feeds a series named in
    series_keys, or a series whose subject entity is in entity_ids (prediction.series_registry.source_key → the source's contracts). NULL
@@ -405,7 +423,7 @@ GRANT EXECUTE ON FUNCTION analytics.search_reviews_read(int) TO eye_app, eye_com
    (the drill-down reads under the reader's RLS). SCOPE: ignored — citation integrity is domain-wide by nature (stated). */
 CREATE OR REPLACE FUNCTION analytics.mc_met006_citation_resolution(p_tenant uuid, p_domain uuid, p_from timestamptz, p_to timestamptz, p_as_of timestamptz, p_scope jsonb, p_cohort jsonb, p_params jsonb)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = analytics, objects, intelligence, observation, public, pg_catalog, pg_temp AS $$
-DECLARE v_type text := p_cohort ->> 'object_type'; v_cap int := analytics.mcb_cap(p_params); v_bound bigint; v_recs jsonb; v_register jsonb; v_pins jsonb;
+DECLARE v_newest timestamptz; v_type text := p_cohort ->> 'object_type'; v_cap int := analytics.mcb_cap(p_params); v_bound bigint; v_recs jsonb; v_register jsonb; v_pins jsonb;
 BEGIN
   PERFORM observation.assert_read_scope(p_tenant, p_domain, 'the evidence citations of the domain''s records (MET-006)');
   IF coalesce(p_params ->> 'clock', 'record') <> 'record' THEN RETURN analytics.mcb_clock_refused('rate', 'MET-006', 'a citation is recorded with its citing record and has no world time', p_params); END IF;
@@ -432,12 +450,14 @@ BEGIN
                                                                                               'segment', j.seg, 'tier', j.r ->> 'tier')))
                                     ORDER BY j.at, j.oid, j.over, j.ref), '[]'::jsonb) FROM judged j WHERE j.r ->> 'class' <> 'register'),
          (SELECT coalesce(jsonb_object_agg(z.prefix, z.n), '{}'::jsonb) FROM (SELECT j.r ->> 'prefix' AS prefix, count(*) AS n FROM judged j WHERE j.r ->> 'class' = 'register' GROUP BY 1) z)
-    INTO v_recs, v_register;
+,
+         (SELECT max(j.at) FROM judged j WHERE j.r ->> 'class' <> 'register')
+    INTO v_recs, v_register, v_newest;
   SELECT coalesce(jsonb_object_agg(p, n), '{}'::jsonb) INTO v_pins FROM (SELECT x -> 'detail' ->> 'pin' p, count(*) n FROM jsonb_array_elements(v_recs) x WHERE x -> 'detail' ? 'pin' GROUP BY 1) z;
-  RETURN jsonb_build_object('kind', 'rate', 'records', v_recs, 'reasons', '[]'::jsonb,
+  RETURN analytics.mcb_finish(jsonb_build_object('kind', 'rate', 'records', v_recs, 'reasons', '[]'::jsonb,
     'quality', jsonb_build_object('clock', 'record', 'register_references', v_register, 'pinning', v_pins, 'scope_rule', 'ignored: citation integrity is domain-wide by nature',
       'notes', jsonb_build_array('an unversioned reference resolves to the version current at the citing record''s own record time (pin = as_of)',
-                                 'accessibility is the record''s standing (exists, not withdrawn, bytes stored and not tombstoned) — the reader''s clearance is applied at the drill-down')));
+                                 'accessibility is the record''s standing (exists, not withdrawn, bytes stored and not tombstoned) — the reader''s clearance is applied at the drill-down'))), 'object_type', v_newest);
 END $$;
 REVOKE ALL ON FUNCTION analytics.mc_met006_citation_resolution(uuid,uuid,timestamptz,timestamptz,timestamptz,jsonb,jsonb,jsonb) FROM PUBLIC;
 SELECT analytics.register_computation('met006_citation_resolution', 'analytics.mc_met006_citation_resolution', 'rate', ARRAY['object_type'],
@@ -454,13 +474,13 @@ SELECT analytics.register_computation('met006_citation_resolution', 'analytics.m
    when its cited version's objectives intersect the scope's objective_ids (a NULL scope = the domain). */
 CREATE OR REPLACE FUNCTION analytics.mc_met007_provenance_closure(p_tenant uuid, p_domain uuid, p_from timestamptz, p_to timestamptz, p_as_of timestamptz, p_scope jsonb, p_cohort jsonb, p_params jsonb)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = analytics, decision, simulation, objects, observation, public, pg_catalog, pg_temp AS $$
-DECLARE v_type text := p_cohort ->> 'object_type'; v_cap int := analytics.mcb_cap(p_params); v_recs jsonb := '[]'::jsonb; c record; v_root text; v_lin jsonb; v_rtype text; v_n int := 0;
+DECLARE v_newest timestamptz; v_type text := p_cohort ->> 'object_type'; v_cap int := analytics.mcb_cap(p_params); v_recs jsonb := '[]'::jsonb; c record; v_root text; v_lin jsonb; v_rtype text; v_n int := 0;
         v_obj text[] := CASE WHEN p_scope IS NULL THEN NULL ELSE ARRAY(SELECT jsonb_array_elements_text(coalesce(p_scope -> 'objective_ids', '[]'::jsonb))) END;
 BEGIN
   PERFORM observation.assert_read_scope(p_tenant, p_domain, 'the lineage of the domain''s decision-active outputs (MET-007)');
   IF coalesce(p_params ->> 'clock', 'record') <> 'record' THEN RETURN analytics.mcb_clock_refused('rate', 'MET-007', 'a citation by a decision option is recorded when the option is set', p_params); END IF;
   FOR c IN
-    SELECT x.kind, x.id, x.version, array_agg(DISTINCT x.package_id::text ORDER BY x.package_id::text) AS packages, min(x.set_at) AS first_cited
+    SELECT x.kind, x.id, x.version, array_agg(DISTINCT x.package_id::text ORDER BY x.package_id::text) AS packages, min(x.set_at) AS first_cited, max(x.set_at) AS last_cited
       FROM (SELECT cc ->> 'kind' AS kind, (cc ->> 'id')::uuid AS id, CASE WHEN coalesce(cc ->> 'version', '') ~ '^[0-9]+$' THEN (cc ->> 'version')::bigint END AS version, o.package_id, o.set_at
               FROM decision.options o JOIN decision.packages_current p ON p.package_id = o.package_id
               JOIN decision.package_versions pv ON pv.package_id = o.package_id AND pv.version = o.version
@@ -471,7 +491,7 @@ BEGIN
                AND (v_obj IS NULL OR EXISTS (SELECT 1 FROM jsonb_array_elements_text(coalesce(pv.objectives, '[]'::jsonb)) ob WHERE ob = ANY (v_obj)))) x
      GROUP BY x.kind, x.id, x.version ORDER BY min(x.set_at), x.id
   LOOP
-    v_n := v_n + 1;
+    v_n := v_n + 1; v_newest := greatest(v_newest, c.last_cited);
     IF v_n > v_cap THEN RETURN analytics.mcb_over_cap('rate', 'MET-007', v_n, v_cap, 'record'); END IF;
     -- the record the citation names: its canonical record (the cited version, or the version current at the as-of); a cited run with no
     -- SIM record walks from the twin version it ran on; an id that names nothing walks from the bare id (and breaks, said)
@@ -491,10 +511,10 @@ BEGIN
       'reason', CASE WHEN NOT (v_lin ->> 'complete')::boolean THEN coalesce((v_lin -> 'broken' -> 0 ->> 'reason'), 'the lineage reaches no origin') END,
       'detail', jsonb_build_object('object_type', v_rtype, 'cited_by_packages', to_jsonb(c.packages), 'walked_from', v_root, 'lineage', v_lin));
   END LOOP;
-  RETURN jsonb_build_object('kind', 'rate', 'records', v_recs, 'reasons', '[]'::jsonb,
+  RETURN analytics.mcb_finish(jsonb_build_object('kind', 'rate', 'records', v_recs, 'reasons', '[]'::jsonb,
     'quality', jsonb_build_object('clock', 'record', 'scope_rule', CASE WHEN p_scope IS NULL THEN 'the domain' ELSE 'packages whose cited version names an objective of the scope' END,
       'notes', jsonb_build_array('decision-active = cited by an option of a package live NOW (decision.packages_current is a current-state table: a replay reports mismatch if a package''s state moved since)',
-                                 'a lineage origin is stored bytes, a registered source, or a named human''s declaration (a record whose only provenance is its human_refs)')));
+                                 'a lineage origin is stored bytes, a registered source, or a named human''s declaration (a record whose only provenance is its human_refs)'))), 'object_type', v_newest);
 END $$;
 REVOKE ALL ON FUNCTION analytics.mc_met007_provenance_closure(uuid,uuid,timestamptz,timestamptz,timestamptz,jsonb,jsonb,jsonb) FROM PUBLIC;
 SELECT analytics.register_computation('met007_provenance_closure', 'analytics.mc_met007_provenance_closure', 'rate', ARRAY['object_type'],
@@ -512,7 +532,7 @@ SELECT analytics.register_computation('met007_provenance_closure', 'analytics.mc
    SCOPE: ignored — the epistemic state is domain-wide by nature (stated). */
 CREATE OR REPLACE FUNCTION analytics.mc_met008_truth_state_completeness(p_tenant uuid, p_domain uuid, p_from timestamptz, p_to timestamptz, p_as_of timestamptz, p_scope jsonb, p_cohort jsonb, p_params jsonb)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = analytics, objects, observation, public, pg_catalog, pg_temp AS $$
-DECLARE v_type text := p_cohort ->> 'object_type'; v_cap int := analytics.mcb_cap(p_params); v_bound bigint; v_recs jsonb; v_trans int; v_reasons jsonb := '[]'::jsonb;
+DECLARE v_newest timestamptz; v_type text := p_cohort ->> 'object_type'; v_cap int := analytics.mcb_cap(p_params); v_bound bigint; v_recs jsonb; v_trans int; v_reasons jsonb := '[]'::jsonb;
 BEGIN
   PERFORM observation.assert_read_scope(p_tenant, p_domain, 'the truth states of the domain''s records (MET-008)');
   IF coalesce(p_params ->> 'clock', 'record') <> 'record' THEN RETURN analytics.mcb_clock_refused('rate', 'MET-008', 'a truth state is recorded with its version', p_params); END IF;
@@ -540,14 +560,15 @@ BEGIN
                                                'detail', jsonb_strip_nulls(jsonb_build_object('object_type', j.object_type, 'truth_state', j.truth_state, 'lifecycle', j.lifecycle_state,
                                                                                               'transition', CASE WHEN j.pv IS NOT NULL THEN format('%s/%s → %s/%s', j.pts, j.pls, j.truth_state, j.lifecycle_state) END)))
                             ORDER BY j.recorded_at, j.object_id, j.object_version), '[]'::jsonb),
-         count(*) FILTER (WHERE j.pv IS NOT NULL OR j.object_version > 1)
-    INTO v_recs, v_trans FROM judged j;
+         count(*) FILTER (WHERE j.pv IS NOT NULL OR j.object_version > 1),
+         max(j.recorded_at)
+    INTO v_recs, v_trans, v_newest FROM judged j;
   IF jsonb_array_length(v_recs) > 0 AND v_trans = 0 THEN
     v_reasons := v_reasons || to_jsonb('no record in the population changed state (every version is a first version): the explicit state is complete by construction and the transitions are unexercised — a 100 % here would be a vanity number'::text);
   END IF;
-  RETURN jsonb_build_object('kind', 'rate', 'records', v_recs, 'reasons', v_reasons,
+  RETURN analytics.mcb_finish(jsonb_build_object('kind', 'rate', 'records', v_recs, 'reasons', v_reasons,
     'quality', jsonb_build_object('clock', 'record', 'transitions_measured', v_trans, 'by_construction', jsonb_build_array('truth_state NOT NULL', 'truth_state vocabulary', 'synthetic consistency'),
-      'scope_rule', 'ignored: the epistemic state is domain-wide by nature'));
+      'scope_rule', 'ignored: the epistemic state is domain-wide by nature')), 'object_type', v_newest);
 END $$;
 REVOKE ALL ON FUNCTION analytics.mc_met008_truth_state_completeness(uuid,uuid,timestamptz,timestamptz,timestamptz,jsonb,jsonb,jsonb) FROM PUBLIC;
 SELECT analytics.register_computation('met008_truth_state_completeness', 'analytics.mc_met008_truth_state_completeness', 'rate', ARRAY['object_type'],
@@ -561,7 +582,7 @@ SELECT analytics.register_computation('met008_truth_state_completeness', 'analyt
    any type → INDETERMINATE (what "required" means is undeclared). SCOPE: ignored (domain-wide by nature, stated). */
 CREATE OR REPLACE FUNCTION analytics.mc_met009_temporal_completeness(p_tenant uuid, p_domain uuid, p_from timestamptz, p_to timestamptz, p_as_of timestamptz, p_scope jsonb, p_cohort jsonb, p_params jsonb)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = analytics, objects, observation, public, pg_catalog, pg_temp AS $$
-DECLARE v_type text := p_cohort ->> 'object_type'; v_cap int := analytics.mcb_cap(p_params); v_bound bigint; v_recs jsonb; v_req jsonb; v_without jsonb; v_reasons jsonb := '[]'::jsonb;
+DECLARE v_newest timestamptz; v_type text := p_cohort ->> 'object_type'; v_cap int := analytics.mcb_cap(p_params); v_bound bigint; v_recs jsonb; v_req jsonb; v_without jsonb; v_reasons jsonb := '[]'::jsonb;
 BEGIN
   PERFORM observation.assert_read_scope(p_tenant, p_domain, 'the time fields of the domain''s records (MET-009)');
   IF coalesce(p_params ->> 'clock', 'record') <> 'record' THEN RETURN analytics.mcb_clock_refused('rate', 'MET-009', 'a record''s time fields are judged when it is recorded', p_params); END IF;
@@ -569,12 +590,12 @@ BEGIN
     FROM (SELECT DISTINCT ON (x.object_type) x.* FROM analytics.temporal_requirements x WHERE x.tenant_id = p_tenant AND x.domain_id = p_domain AND x.declared_at <= p_as_of
            ORDER BY x.object_type, x.version DESC) r WHERE r.state = 'approved';
   IF v_req = '{}'::jsonb THEN
-    RETURN jsonb_build_object('kind', 'rate', 'records', '[]'::jsonb, 'quality', jsonb_build_object('clock', 'record'),
-      'reasons', jsonb_build_array('no temporal requirement is in force for any object type as of the as-of: what "required" means is undeclared (analytics.temporal.declare, the product analytics owner)'));
+    RETURN analytics.mcb_finish(jsonb_build_object('kind', 'rate', 'records', '[]'::jsonb, 'quality', jsonb_build_object('clock', 'record'),
+      'reasons', jsonb_build_array('no temporal requirement is in force for any object type as of the as-of: what "required" means is undeclared (analytics.temporal.declare, the product analytics owner)')), 'object_type', NULL);
   END IF;
   IF v_type IS NOT NULL AND NOT v_req ? v_type THEN
-    RETURN jsonb_build_object('kind', 'rate', 'records', '[]'::jsonb, 'quality', jsonb_build_object('clock', 'record', 'requirements', v_req),
-      'reasons', jsonb_build_array(format('no temporal requirement is in force for %s as of the as-of: its completeness is undeclared', v_type)));
+    RETURN analytics.mcb_finish(jsonb_build_object('kind', 'rate', 'records', '[]'::jsonb, 'quality', jsonb_build_object('clock', 'record', 'requirements', v_req),
+      'reasons', jsonb_build_array(format('no temporal requirement is in force for %s as of the as-of: its completeness is undeclared', v_type))), 'object_type', NULL);
   END IF;
   SELECT count(*) INTO v_bound FROM objects.canonical_objects o WHERE o.tenant_id = p_tenant AND o.domain_id = p_domain AND o.recorded_at >= p_from AND o.recorded_at < p_to AND o.recorded_at <= p_as_of
      AND v_req ? o.object_type AND (v_type IS NULL OR o.object_type = v_type);
@@ -591,12 +612,12 @@ BEGIN
                                                'role', CASE WHEN cardinality(v.missing) = 0 THEN 'numerator' ELSE 'denominator' END,
                                                'reason', CASE WHEN cardinality(v.missing) > 0 THEN 'missing ' || array_to_string(v.missing, ', ') END,
                                                'detail', jsonb_build_object('object_type', v.object_type, 'requirement_version', v_req -> v.object_type -> 'version', 'required', v_req -> v.object_type -> 'fields'))
-                            ORDER BY v.recorded_at, v.object_id, v.object_version), '[]'::jsonb) INTO v_recs FROM v;
+                            ORDER BY v.recorded_at, v.object_id, v.object_version), '[]'::jsonb), max(v.recorded_at) INTO v_recs, v_newest FROM v;
   SELECT coalesce(jsonb_object_agg(t, n), '{}'::jsonb) INTO v_without FROM (
     SELECT o.object_type t, count(*) n FROM objects.canonical_objects o WHERE o.tenant_id = p_tenant AND o.domain_id = p_domain AND o.recorded_at >= p_from AND o.recorded_at < p_to
        AND o.recorded_at <= p_as_of AND NOT v_req ? o.object_type AND v_type IS NULL GROUP BY 1) z;
-  RETURN jsonb_build_object('kind', 'rate', 'records', v_recs, 'reasons', v_reasons,
-    'quality', jsonb_build_object('clock', 'record', 'requirements', v_req, 'types_without_requirement', v_without, 'scope_rule', 'ignored: temporal completeness is domain-wide by nature'));
+  RETURN analytics.mcb_finish(jsonb_build_object('kind', 'rate', 'records', v_recs, 'reasons', v_reasons,
+    'quality', jsonb_build_object('clock', 'record', 'requirements', v_req, 'types_without_requirement', v_without, 'scope_rule', 'ignored: temporal completeness is domain-wide by nature')), 'object_type', v_newest);
 END $$;
 REVOKE ALL ON FUNCTION analytics.mc_met009_temporal_completeness(uuid,uuid,timestamptz,timestamptz,timestamptz,jsonb,jsonb,jsonb) FROM PUBLIC;
 SELECT analytics.register_computation('met009_temporal_completeness', 'analytics.mc_met009_temporal_completeness', 'rate', ARRAY['object_type'],
@@ -615,7 +636,7 @@ SELECT analytics.register_computation('met009_temporal_completeness', 'analytics
    reaches the scope (analytics.mcb_scope_sources). */
 CREATE OR REPLACE FUNCTION analytics.mc_met010_correction_propagation(p_tenant uuid, p_domain uuid, p_from timestamptz, p_to timestamptz, p_as_of timestamptz, p_scope jsonb, p_cohort jsonb, p_params jsonb)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = analytics, observation, graph, public, pg_catalog, pg_temp AS $$
-DECLARE v_src uuid[] := analytics.mcb_scope_sources(p_tenant, p_domain, p_scope); v_recs jsonb; v_cens int; v_total int; v_reasons jsonb := '[]'::jsonb;
+DECLARE v_newest timestamptz; v_src uuid[] := analytics.mcb_scope_sources(p_tenant, p_domain, p_scope); v_recs jsonb; v_cens int; v_total int; v_reasons jsonb := '[]'::jsonb;
 BEGIN
   PERFORM observation.assert_read_scope(p_tenant, p_domain, 'the propagation of the domain''s corrections (MET-010)');
   IF coalesce(p_params ->> 'clock', 'record') <> 'record' THEN RETURN analytics.mcb_clock_refused('duration', 'MET-010', 'a correction is accepted and propagated in record time', p_params); END IF;
@@ -638,19 +659,20 @@ BEGIN
                                                            'closed_at', j.closed_at, 'closure', CASE WHEN j.walked_at IS NOT NULL AND (j.assessed_at IS NULL OR j.walked_at >= j.assessed_at) THEN 'propagation walk complete' ELSE 'dependency assessment' END,
                                                            'correction_kind', j.kind)))
                             ELSE jsonb_build_object('kind', 'correction', 'id', j.case_id, 'role', 'excluded',
-                                'reason', 'censored: the propagation is not complete as of the as-of (no closure instant yet)', 'detail', jsonb_build_object('accepted_at', j.accepted_at, 'propagation_state', j.propagation_state)) END
+                                'reason', 'censored: the propagation is not complete as of the as-of (no closure instant yet)', 'detail', jsonb_build_object('accepted_at', j.accepted_at, 'propagation_state', j.propagation_state, 'closure', 'censored')) END
                             ORDER BY j.accepted_at, j.case_id), '[]'::jsonb),
-         count(*) FILTER (WHERE j.closed_at IS NULL), count(*)
-    INTO v_recs, v_cens, v_total FROM judged j;
+         count(*) FILTER (WHERE j.closed_at IS NULL), count(*),
+         max(j.accepted_at)
+    INTO v_recs, v_cens, v_total, v_newest FROM judged j;
   IF v_total > 0 AND v_cens * 2 > v_total THEN
     v_reasons := v_reasons || to_jsonb(format('%s of %s accepted corrections are still propagating (censored): a median over the closed ones alone would be survivor-biased', v_cens, v_total));
   END IF;
-  RETURN jsonb_build_object('kind', 'duration', 'records', v_recs, 'reasons', v_reasons,
+  RETURN analytics.mcb_finish(jsonb_build_object('kind', 'duration', 'records', v_recs, 'reasons', v_reasons,
     'quality', jsonb_build_object('clock', 'record', 'censored', v_cens, 'accepted', v_total, 'unit', 'seconds',
       'scope_rule', CASE WHEN p_scope IS NULL THEN 'the domain' ELSE 'corrections of sources feeding the scope''s series or entities' END,
       'notes', jsonb_build_array('the closure instant = the latest dependency assessment or the completed propagation walk of the case',
                                  'no correction-propagation contract is declared in the product: the duration is measured, its breach is the definition''s threshold',
-                                 'correction_current and propagation_attempts are current-state tables: a replay reports mismatch if a propagation moved since')));
+                                 'correction_current and propagation_attempts are current-state tables: a replay reports mismatch if a propagation moved since'))), 'closure', v_newest);
 END $$;
 REVOKE ALL ON FUNCTION analytics.mc_met010_correction_propagation(uuid,uuid,timestamptz,timestamptz,timestamptz,jsonb,jsonb,jsonb) FROM PUBLIC;
 SELECT analytics.register_computation('met010_correction_propagation', 'analytics.mc_met010_correction_propagation', 'duration', ARRAY[]::text[],
@@ -668,7 +690,7 @@ SELECT analytics.register_computation('met010_correction_propagation', 'analytic
    scope's sources (analytics.mcb_scope_sources). */
 CREATE OR REPLACE FUNCTION analytics.mc_met011_coverage_attainment(p_tenant uuid, p_domain uuid, p_from timestamptz, p_to timestamptz, p_as_of timestamptz, p_scope jsonb, p_cohort jsonb, p_params jsonb)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = analytics, observation, public, pg_catalog, pg_temp AS $$
-DECLARE v_src uuid[] := analytics.mcb_scope_sources(p_tenant, p_domain, p_scope); v_key text := p_cohort ->> 'source'; v_recs jsonb; v_reasons jsonb := '[]'::jsonb;
+DECLARE v_newest timestamptz; v_src uuid[] := analytics.mcb_scope_sources(p_tenant, p_domain, p_scope); v_key text := p_cohort ->> 'source'; v_recs jsonb; v_reasons jsonb := '[]'::jsonb;
         v_declared boolean := coalesce(p_params ->> 'expected_is_target', 'false') = 'true';
 BEGIN
   PERFORM observation.assert_read_scope(p_tenant, p_domain, 'the coverage measurements of the domain''s sources (MET-011)');
@@ -691,13 +713,13 @@ BEGIN
            ELSE jsonb_build_object('kind', 'coverage_measurement', 'id', p.measurement_id, 'role', CASE WHEN p.value_numeric >= p.e_value THEN 'numerator' ELSE 'denominator' END,
                 'detail', jsonb_build_object('source', p.source_key, 'actual', p.value_numeric, 'target', p.e_value, 'target_kind', 'coverage universe expected coverage',
                                              'window_start', p.window_start, 'window_end', p.window_end, 'expected_measurement', p.e_id)) END
-         ORDER BY p.evaluated_at, p.measurement_id), '[]'::jsonb) INTO v_recs FROM paired p;
+         ORDER BY p.evaluated_at, p.measurement_id), '[]'::jsonb), max(p.evaluated_at) INTO v_recs, v_newest FROM paired p;
   IF NOT v_declared THEN
     v_reasons := v_reasons || to_jsonb('no approved coverage target exists in the product (no plan or contract declares a dimension or priority target): the coverage universe''s expected coverage is not an approved target unless the definition declares it so (params.expected_is_target)'::text);
   END IF;
-  RETURN jsonb_build_object('kind', 'rate', 'records', v_recs, 'reasons', v_reasons,
+  RETURN analytics.mcb_finish(jsonb_build_object('kind', 'rate', 'records', v_recs, 'reasons', v_reasons,
     'quality', jsonb_build_object('clock', 'record', 'target', CASE WHEN v_declared THEN 'declared by the definition: the coverage universe''s expected coverage is the approved target' ELSE 'none approved' END,
-      'scope_rule', CASE WHEN p_scope IS NULL THEN 'the domain' ELSE 'the sources feeding the scope''s series or entities' END));
+      'scope_rule', CASE WHEN p_scope IS NULL THEN 'the domain' ELSE 'the sources feeding the scope''s series or entities' END)), 'source', v_newest);
 END $$;
 REVOKE ALL ON FUNCTION analytics.mc_met011_coverage_attainment(uuid,uuid,timestamptz,timestamptz,timestamptz,jsonb,jsonb,jsonb) FROM PUBLIC;
 SELECT analytics.register_computation('met011_coverage_attainment', 'analytics.mc_met011_coverage_attainment', 'rate', ARRAY['source'],
@@ -714,7 +736,7 @@ SELECT analytics.register_computation('met011_coverage_attainment', 'analytics.m
    excluded (no contract to attain). SCOPE: the scope's sources. */
 CREATE OR REPLACE FUNCTION analytics.mc_met012_freshness_attainment(p_tenant uuid, p_domain uuid, p_from timestamptz, p_to timestamptz, p_as_of timestamptz, p_scope jsonb, p_cohort jsonb, p_params jsonb)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = analytics, observation, public, pg_catalog, pg_temp AS $$
-DECLARE v_src uuid[] := analytics.mcb_scope_sources(p_tenant, p_domain, p_scope); v_key text := p_cohort ->> 'source'; v_cap int := analytics.mcb_cap(p_params); v_bound bigint; v_recs jsonb;
+DECLARE v_newest timestamptz; v_src uuid[] := analytics.mcb_scope_sources(p_tenant, p_domain, p_scope); v_key text := p_cohort ->> 'source'; v_cap int := analytics.mcb_cap(p_params); v_bound bigint; v_recs jsonb;
 BEGIN
   PERFORM observation.assert_read_scope(p_tenant, p_domain, 'the scheduled arrivals of the domain''s sources (MET-012)');
   IF coalesce(p_params ->> 'clock', 'record') <> 'record' THEN RETURN analytics.mcb_clock_refused('rate', 'MET-012', 'an expected arrival is a scheduler''s attempt in record time', p_params); END IF;
@@ -737,10 +759,10 @@ BEGIN
                                    'detail', jsonb_build_object('source', a.source_key, 'threshold_seconds', a.thr, 'gap_seconds', round(extract(epoch FROM (a.finished_at - a.prev_ok))::numeric, 3)))
            ELSE jsonb_build_object('kind', 'scheduled_attempt', 'id', a.attempt_id, 'role', 'numerator',
                                    'detail', jsonb_strip_nulls(jsonb_build_object('source', a.source_key, 'threshold_seconds', a.thr, 'gap_seconds', CASE WHEN a.prev_ok IS NOT NULL THEN round(extract(epoch FROM (a.finished_at - a.prev_ok))::numeric, 3) END))) END
-         ORDER BY a.started_at, a.attempt_id), '[]'::jsonb) INTO v_recs FROM att a;
-  RETURN jsonb_build_object('kind', 'rate', 'records', v_recs, 'reasons', '[]'::jsonb,
+         ORDER BY a.started_at, a.attempt_id), '[]'::jsonb), max(a.finished_at) INTO v_recs, v_newest FROM att a;
+  RETURN analytics.mcb_finish(jsonb_build_object('kind', 'rate', 'records', v_recs, 'reasons', '[]'::jsonb,
     'quality', jsonb_build_object('clock', 'record', 'scope_rule', CASE WHEN p_scope IS NULL THEN 'the domain' ELSE 'the sources feeding the scope''s series or entities' END,
-      'notes', jsonb_build_array('an expected arrival = a scheduler attempt on the approved contract''s cadence; an unscheduled (manual) collection is not an expected arrival')));
+      'notes', jsonb_build_array('an expected arrival = a scheduler attempt on the approved contract''s cadence; an unscheduled (manual) collection is not an expected arrival'))), 'source', v_newest);
 END $$;
 REVOKE ALL ON FUNCTION analytics.mc_met012_freshness_attainment(uuid,uuid,timestamptz,timestamptz,timestamptz,jsonb,jsonb,jsonb) FROM PUBLIC;
 SELECT analytics.register_computation('met012_freshness_attainment', 'analytics.mc_met012_freshness_attainment', 'rate', ARRAY['source'],
@@ -770,7 +792,7 @@ REVOKE ALL ON FUNCTION analytics.mcb_losses(uuid, uuid, timestamptz, timestamptz
    scope's sources. */
 CREATE OR REPLACE FUNCTION analytics.mc_met013_blind_spot_latency(p_tenant uuid, p_domain uuid, p_from timestamptz, p_to timestamptz, p_as_of timestamptz, p_scope jsonb, p_cohort jsonb, p_params jsonb)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = analytics, observation, executive, public, pg_catalog, pg_temp AS $$
-DECLARE v_src uuid[] := analytics.mcb_scope_sources(p_tenant, p_domain, p_scope); v_recs jsonb; v_cens int; v_reasons jsonb := '[]'::jsonb;
+DECLARE v_newest timestamptz; v_src uuid[] := analytics.mcb_scope_sources(p_tenant, p_domain, p_scope); v_recs jsonb; v_cens int; v_reasons jsonb := '[]'::jsonb;
 BEGIN
   PERFORM observation.assert_read_scope(p_tenant, p_domain, 'the coverage losses of the domain''s sources (MET-013)');
   IF coalesce(p_params ->> 'clock', 'record') <> 'record' THEN RETURN analytics.mcb_clock_refused('duration', 'MET-013', 'a coverage loss and its declaration happen in record time', p_params); END IF;
@@ -787,11 +809,12 @@ BEGIN
            ELSE jsonb_build_object('kind', 'coverage_loss', 'id', l.event_id, 'role', 'excluded', 'reason', 'censored: no declared blind spot (no coverage-loss item, no impact marker) as of the as-of',
                                    'detail', jsonb_build_object('lost_at', l.evaluated_at, 'transition', format('%s → %s', coalesce(l.prior_state, 'first evaluation'), l.new_state))) END
            ORDER BY l.evaluated_at, l.event_id), '[]'::jsonb),
-         count(*) FILTER (WHERE coalesce(l.item_at, l.marker_at) IS NULL)
-    INTO v_recs, v_cens FROM l;
+         count(*) FILTER (WHERE coalesce(l.item_at, l.marker_at) IS NULL),
+         max(l.evaluated_at)
+    INTO v_recs, v_cens, v_newest FROM l;
   IF v_cens > 0 THEN v_reasons := v_reasons || to_jsonb(format('%s coverage loss(es) were never declared as of the as-of: the latency distribution is censored (an undeclared blind spot is the worst case)', v_cens)); END IF;
-  RETURN jsonb_build_object('kind', 'duration', 'records', v_recs, 'reasons', v_reasons,
-    'quality', jsonb_build_object('clock', 'record', 'unit', 'seconds', 'censored', v_cens, 'scope_rule', CASE WHEN p_scope IS NULL THEN 'the domain' ELSE 'the sources feeding the scope''s series or entities' END));
+  RETURN analytics.mcb_finish(jsonb_build_object('kind', 'duration', 'records', v_recs, 'reasons', v_reasons,
+    'quality', jsonb_build_object('clock', 'record', 'unit', 'seconds', 'censored', v_cens, 'scope_rule', CASE WHEN p_scope IS NULL THEN 'the domain' ELSE 'the sources feeding the scope''s series or entities' END)), 'declared_by', v_newest);
 END $$;
 REVOKE ALL ON FUNCTION analytics.mc_met013_blind_spot_latency(uuid,uuid,timestamptz,timestamptz,timestamptz,jsonb,jsonb,jsonb) FROM PUBLIC;
 SELECT analytics.register_computation('met013_blind_spot_latency', 'analytics.mc_met013_blind_spot_latency', 'duration', ARRAY[]::text[],
@@ -806,21 +829,21 @@ SELECT analytics.register_computation('met013_blind_spot_latency', 'analytics.mc
    (stated). */
 CREATE OR REPLACE FUNCTION analytics.mc_met014_search_usefulness(p_tenant uuid, p_domain uuid, p_from timestamptz, p_to timestamptz, p_as_of timestamptz, p_scope jsonb, p_cohort jsonb, p_params jsonb)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = analytics, executive, observation, public, pg_catalog, pg_temp AS $$
-DECLARE v_class text := p_cohort ->> 'query_class'; v_recs jsonb; v_unrev int;
+DECLARE v_newest timestamptz; v_class text := p_cohort ->> 'query_class'; v_recs jsonb; v_unrev int;
 BEGIN
   PERFORM observation.assert_read_scope(p_tenant, p_domain, 'the reviewed searches of the domain (MET-014)');
   IF coalesce(p_params ->> 'clock', 'record') <> 'record' THEN RETURN analytics.mcb_clock_refused('rate', 'MET-014', 'a search and its review are recorded in record time', p_params); END IF;
   SELECT coalesce(jsonb_agg(jsonb_build_object('kind', 'search_review', 'id', r.review_id, 'role', CASE WHEN r.verdict = 'relevant' THEN 'numerator' ELSE 'denominator' END,
                                                'detail', jsonb_build_object('search_id', s.search_id, 'query_class', r.query_class, 'hits', s.hits, 'reviewer_role', r.reviewer_role))
-                            ORDER BY s.searched_at, r.review_id), '[]'::jsonb) INTO v_recs
+                            ORDER BY s.searched_at, r.review_id), '[]'::jsonb), max(s.searched_at) INTO v_recs, v_newest
     FROM analytics.search_reviews r JOIN executive.search_events s ON s.search_id = r.search_id
    WHERE r.tenant_id = p_tenant AND r.domain_id = p_domain AND s.searched_at >= p_from AND s.searched_at < p_to AND r.reviewed_at <= p_as_of
      AND (v_class IS NULL OR r.query_class = v_class);
   SELECT count(*) INTO v_unrev FROM executive.search_events s WHERE s.tenant_id = p_tenant AND s.domain_id = p_domain AND s.searched_at >= p_from AND s.searched_at < p_to AND s.searched_at <= p_as_of
      AND NOT EXISTS (SELECT 1 FROM analytics.search_reviews r WHERE r.search_id = s.search_id AND r.reviewed_at <= p_as_of);
-  RETURN jsonb_build_object('kind', 'rate', 'records', v_recs, 'reasons', '[]'::jsonb,
+  RETURN analytics.mcb_finish(jsonb_build_object('kind', 'rate', 'records', v_recs, 'reasons', '[]'::jsonb,
     'quality', jsonb_build_object('clock', 'record', 'unreviewed_searches', v_unrev, 'scope_rule', 'ignored: a search''s subject is free text',
-      'notes', jsonb_build_array('role-level: no searcher and no reviewer is named or grouped; the reviewer is never the searcher (separation of duties at the review port)')));
+      'notes', jsonb_build_array('role-level: no searcher and no reviewer is named or grouped; the reviewer is never the searcher (separation of duties at the review port)'))), 'query_class', v_newest);
 END $$;
 REVOKE ALL ON FUNCTION analytics.mc_met014_search_usefulness(uuid,uuid,timestamptz,timestamptz,timestamptz,jsonb,jsonb,jsonb) FROM PUBLIC;
 SELECT analytics.register_computation('met014_search_usefulness', 'analytics.mc_met014_search_usefulness', 'rate', ARRAY['query_class'],
@@ -836,7 +859,7 @@ SELECT analytics.register_computation('met014_search_usefulness', 'analytics.mc_
    unless an edge row is re-asserted in place (stated). */
 CREATE OR REPLACE FUNCTION analytics.mc_met017_edge_provenance_validity(p_tenant uuid, p_domain uuid, p_from timestamptz, p_to timestamptz, p_as_of timestamptz, p_scope jsonb, p_cohort jsonb, p_params jsonb)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = analytics, graph, objects, observation, public, pg_catalog, pg_temp AS $$
-DECLARE v_class text := p_cohort ->> 'relationship_class'; v_cap int := analytics.mcb_cap(p_params); v_bound bigint; v_recs jsonb;
+DECLARE v_newest timestamptz; v_class text := p_cohort ->> 'relationship_class'; v_cap int := analytics.mcb_cap(p_params); v_bound bigint; v_recs jsonb;
         v_ent text[] := CASE WHEN p_scope IS NULL THEN NULL ELSE ARRAY(SELECT jsonb_array_elements_text(coalesce(p_scope -> 'entity_ids', '[]'::jsonb))) END;
 BEGIN
   PERFORM observation.assert_read_scope(p_tenant, p_domain, 'the provenance of the domain''s graph relationships (MET-017)');
@@ -860,11 +883,11 @@ BEGIN
              'reason', CASE WHEN NOT (e.rc ->> 'resolved')::boolean THEN 'claim: ' || (e.rc ->> 'reason') WHEN NOT (e.re ->> 'resolved')::boolean THEN 'evidence: ' || (e.re ->> 'reason') END,
              'detail', jsonb_strip_nulls(jsonb_build_object('relationship_class', e.predicate, 'claim', format('%s@%s', e.claim_object_id, e.claim_version), 'evidence_version', e.re ->> 'version',
                                                             'mode', e.mode, 'graph_revision', e.graph_revision, 'tier', e.re ->> 'tier'))) END
-         ORDER BY e.asserted_at, e.edge_id), '[]'::jsonb) INTO v_recs FROM e;
-  RETURN jsonb_build_object('kind', 'rate', 'records', v_recs, 'reasons', '[]'::jsonb,
+         ORDER BY e.asserted_at, e.edge_id), '[]'::jsonb), max(e.asserted_at) INTO v_recs, v_newest FROM e;
+  RETURN analytics.mcb_finish(jsonb_build_object('kind', 'rate', 'records', v_recs, 'reasons', '[]'::jsonb,
     'quality', jsonb_build_object('clock', 'record', 'scope_rule', CASE WHEN p_scope IS NULL THEN 'the domain' ELSE 'edges whose subject or object entity is in the scope' END,
       'replay_share', (SELECT round(count(*) FILTER (WHERE x -> 'detail' ->> 'mode' = 'replay')::numeric / nullif(count(*), 0), 6) FROM jsonb_array_elements(v_recs) x),
-      'notes', jsonb_build_array('the revision an edge rests on = its claim''s exact version; the committing graph revision is named when the edge was committed through one')));
+      'notes', jsonb_build_array('the revision an edge rests on = its claim''s exact version; the committing graph revision is named when the edge was committed through one'))), 'relationship_class', v_newest);
 END $$;
 REVOKE ALL ON FUNCTION analytics.mc_met017_edge_provenance_validity(uuid,uuid,timestamptz,timestamptz,timestamptz,jsonb,jsonb,jsonb) FROM PUBLIC;
 SELECT analytics.register_computation('met017_edge_provenance_validity', 'analytics.mc_met017_edge_provenance_validity', 'rate', ARRAY['relationship_class'],
@@ -881,7 +904,7 @@ SELECT analytics.register_computation('met017_edge_provenance_validity', 'analyt
    CURRENT-state table (audience, retention) — stated. SCOPE: an item concerns the scope when its related objective is in objective_ids. */
 CREATE OR REPLACE FUNCTION analytics.mc_met018_memory_retrieval_validity(p_tenant uuid, p_domain uuid, p_from timestamptz, p_to timestamptz, p_as_of timestamptz, p_scope jsonb, p_cohort jsonb, p_params jsonb)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = analytics, memory, objects, observation, public, pg_catalog, pg_temp AS $$
-DECLARE v_class text := p_cohort ->> 'memory_class'; v_cap int := analytics.mcb_cap(p_params); v_bound bigint; v_recs jsonb;
+DECLARE v_newest timestamptz; v_class text := p_cohort ->> 'memory_class'; v_cap int := analytics.mcb_cap(p_params); v_bound bigint; v_recs jsonb;
         v_obj text[] := CASE WHEN p_scope IS NULL THEN NULL ELSE ARRAY(SELECT jsonb_array_elements_text(coalesce(p_scope -> 'objective_ids', '[]'::jsonb))) END;
 BEGIN
   PERFORM observation.assert_read_scope(p_tenant, p_domain, 'the memory accesses of the domain (MET-018)');
@@ -911,11 +934,11 @@ BEGIN
                                                'reason', CASE WHEN cardinality(x.v) > 0 THEN array_to_string(x.v, '; ') END,
                                                'detail', jsonb_strip_nulls(jsonb_build_object('memory_class', x.record_class, 'item_id', x.item_id, 'version_served', x.object_version,
                                                                                               'version_current', x.current_version, 'read_as_of', x.read_as_of, 'purpose', x.purpose_id)))
-                            ORDER BY x.accessed_at, x.access_id), '[]'::jsonb) INTO v_recs FROM judged x;
-  RETURN jsonb_build_object('kind', 'rate', 'records', v_recs, 'reasons', '[]'::jsonb,
+                            ORDER BY x.accessed_at, x.access_id), '[]'::jsonb), max(x.accessed_at) INTO v_recs, v_newest FROM judged x;
+  RETURN analytics.mcb_finish(jsonb_build_object('kind', 'rate', 'records', v_recs, 'reasons', '[]'::jsonb,
     'quality', jsonb_build_object('clock', 'record', 'scope_rule', CASE WHEN p_scope IS NULL THEN 'the domain' ELSE 'items whose related objective is in the scope' END,
       'notes', jsonb_build_array('the as-of is record time (the retrieval''s own rule: the version recorded at or before it)',
-                                 'memory.items_current is a current-state table (audience, retention): a replay reports mismatch if they moved since')));
+                                 'memory.items_current is a current-state table (audience, retention): a replay reports mismatch if they moved since'))), 'memory_class', v_newest);
 END $$;
 REVOKE ALL ON FUNCTION analytics.mc_met018_memory_retrieval_validity(uuid,uuid,timestamptz,timestamptz,timestamptz,jsonb,jsonb,jsonb) FROM PUBLIC;
 SELECT analytics.register_computation('met018_memory_retrieval_validity', 'analytics.mc_met018_memory_retrieval_validity', 'rate', ARRAY['memory_class'],
@@ -934,7 +957,7 @@ SELECT analytics.register_computation('met018_memory_retrieval_validity', 'analy
    operations (stated). */
 CREATE OR REPLACE FUNCTION analytics.mc_met031_agent_task_success(p_tenant uuid, p_domain uuid, p_from timestamptz, p_to timestamptz, p_as_of timestamptz, p_scope jsonb, p_cohort jsonb, p_params jsonb)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = analytics, executive, observation, public, pg_catalog, pg_temp AS $$
-DECLARE v_kind text := p_cohort ->> 'agent_kind'; v_task text := p_cohort ->> 'task'; v_cap int := analytics.mcb_cap(p_params); v_bound bigint; v_recs jsonb; v_untold int; v_tasks text;
+DECLARE v_newest timestamptz; v_kind text := p_cohort ->> 'agent_kind'; v_task text := p_cohort ->> 'task'; v_cap int := analytics.mcb_cap(p_params); v_bound bigint; v_recs jsonb; v_untold int; v_tasks text;
         v_self text[] := ARRAY(SELECT jsonb_array_elements_text(CASE WHEN jsonb_typeof(p_params -> 'self_accepting_tasks') = 'array' THEN p_params -> 'self_accepting_tasks' ELSE '[]'::jsonb END));
         v_reasons jsonb := '[]'::jsonb;
 BEGIN
@@ -959,13 +982,14 @@ BEGIN
                                    'detail', jsonb_build_object('agent_kind', r.agent_kind, 'task', r.task, 'outcome', r.outcome)) END
          ORDER BY r.finished_at, r.run_id), '[]'::jsonb),
          count(*) FILTER (WHERE r.failure IS NULL AND NOT (r.task = ANY (v_self))),
-         string_agg(DISTINCT r.task, ', ' ORDER BY r.task) FILTER (WHERE r.failure IS NULL AND NOT (r.task = ANY (v_self)))
-    INTO v_recs, v_untold, v_tasks FROM r;
+         string_agg(DISTINCT r.task, ', ' ORDER BY r.task) FILTER (WHERE r.failure IS NULL AND NOT (r.task = ANY (v_self))),
+         max(r.finished_at)
+    INTO v_recs, v_untold, v_tasks, v_newest FROM r;
   IF v_untold > 0 THEN
     v_reasons := v_reasons || to_jsonb(format('acceptance cannot be told for %s clean run(s) (tasks: %s): the product records no uniform acceptance of an agent''s outcome — a rate over failures and declared tasks alone would mislead', v_untold, v_tasks));
   END IF;
-  RETURN jsonb_build_object('kind', 'rate', 'records', v_recs, 'reasons', v_reasons,
-    'quality', jsonb_build_object('clock', 'record', 'acceptance_untold', v_untold, 'self_accepting_tasks', to_jsonb(v_self), 'scope_rule', 'ignored: agent runs are domain operations'));
+  RETURN analytics.mcb_finish(jsonb_build_object('kind', 'rate', 'records', v_recs, 'reasons', v_reasons,
+    'quality', jsonb_build_object('clock', 'record', 'acceptance_untold', v_untold, 'self_accepting_tasks', to_jsonb(v_self), 'scope_rule', 'ignored: agent runs are domain operations')), 'task', v_newest);
 END $$;
 REVOKE ALL ON FUNCTION analytics.mc_met031_agent_task_success(uuid,uuid,timestamptz,timestamptz,timestamptz,jsonb,jsonb,jsonb) FROM PUBLIC;
 SELECT analytics.register_computation('met031_agent_task_success', 'analytics.mc_met031_agent_task_success', 'rate', ARRAY['agent_kind', 'task'],
@@ -981,7 +1005,7 @@ SELECT analytics.register_computation('met031_agent_task_success', 'analytics.mc
    present). SCOPE: ignored (domain operations, stated). */
 CREATE OR REPLACE FUNCTION analytics.mc_met033_agent_trace_closure(p_tenant uuid, p_domain uuid, p_from timestamptz, p_to timestamptz, p_as_of timestamptz, p_scope jsonb, p_cohort jsonb, p_params jsonb)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = analytics, executive, observation, public, pg_catalog, pg_temp AS $$
-DECLARE v_kind text := p_cohort ->> 'agent_kind'; v_cap int := analytics.mcb_cap(p_params); v_bound bigint; v_recs jsonb;
+DECLARE v_newest timestamptz; v_kind text := p_cohort ->> 'agent_kind'; v_cap int := analytics.mcb_cap(p_params); v_bound bigint; v_recs jsonb;
 BEGIN
   PERFORM observation.assert_read_scope(p_tenant, p_domain, 'the agent run traces of the domain (MET-033)');
   IF coalesce(p_params ->> 'clock', 'record') <> 'record' THEN RETURN analytics.mcb_clock_refused('rate', 'MET-033', 'an agent run is closed in record time', p_params); END IF;
@@ -1001,11 +1025,11 @@ BEGIN
                         CASE WHEN NOT r.context THEN 'context' END, CASE WHEN NOT r.action THEN 'action' END, CASE WHEN NOT r.outcome THEN 'outcome' END], NULL), ', ') END,
              'detail', jsonb_build_object('agent_kind', r.agent_kind, 'trace', jsonb_build_object('identity', r.identity, 'context', r.context, 'action', r.action, 'outcome', r.outcome,
                                           'model', 'not recorded', 'tool', 'not recorded', 'checkpoint', 'not recorded')))
-           ORDER BY r.finished_at, r.run_id), '[]'::jsonb) INTO v_recs FROM r;
-  RETURN jsonb_build_object('kind', 'rate', 'records', v_recs,
+           ORDER BY r.finished_at, r.run_id), '[]'::jsonb), max(r.finished_at) INTO v_recs, v_newest FROM r;
+  RETURN analytics.mcb_finish(jsonb_build_object('kind', 'rate', 'records', v_recs,
     'reasons', CASE WHEN jsonb_array_length(v_recs) > 0 THEN jsonb_build_array('the product records no model, tool-call or checkpoint trace of an agent run (the tool gateway and checkpoints arrive with B70/B71): trace closure cannot be told — the recorded fields are shown per run') ELSE '[]'::jsonb END,
     'quality', jsonb_build_object('clock', 'record', 'fields_recorded', jsonb_build_array('identity', 'context', 'action', 'outcome'), 'fields_unrecorded', jsonb_build_array('model', 'tool', 'checkpoint'),
-      'scope_rule', 'ignored: agent runs are domain operations'));
+      'scope_rule', 'ignored: agent runs are domain operations')), 'agent_kind', v_newest);
 END $$;
 REVOKE ALL ON FUNCTION analytics.mc_met033_agent_trace_closure(uuid,uuid,timestamptz,timestamptz,timestamptz,jsonb,jsonb,jsonb) FROM PUBLIC;
 SELECT analytics.register_computation('met033_agent_trace_closure', 'analytics.mc_met033_agent_trace_closure', 'rate', ARRAY['agent_kind'],
@@ -1024,7 +1048,7 @@ SELECT analytics.register_computation('met033_agent_trace_closure', 'analytics.m
    and code — never the actor. SCOPE: ignored — availability is the service's (stated). */
 CREATE OR REPLACE FUNCTION analytics.mc_met036_product_availability(p_tenant uuid, p_domain uuid, p_from timestamptz, p_to timestamptz, p_as_of timestamptz, p_scope jsonb, p_cohort jsonb, p_params jsonb)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = analytics, audit, observation, public, pg_catalog, pg_temp AS $$
-DECLARE v_cap_key text := p_cohort ->> 'capability'; v_cap int := analytics.mcb_cap(p_params); v_bound bigint; v_denied bigint; v_recs jsonb;
+DECLARE v_newest timestamptz; v_cap_key text := p_cohort ->> 'capability'; v_cap int := analytics.mcb_cap(p_params); v_bound bigint; v_denied bigint; v_recs jsonb;
 BEGIN
   PERFORM observation.assert_read_scope(p_tenant, p_domain, 'the request outcomes of the domain (MET-036)');
   IF coalesce(p_params ->> 'clock', 'record') <> 'record' THEN RETURN analytics.mcb_clock_refused('rate', 'MET-036', 'a request is served in record time', p_params); END IF;
@@ -1047,12 +1071,12 @@ BEGIN
                                     WHEN 'governed_refusal' THEN format('a governed refusal (%s): the product answered an unsatisfiable request safely — not eligible demand for a successful outcome', q.result_code) END,
              'detail', jsonb_strip_nulls(jsonb_build_object('capability', q.capability, 'action', q.action, 'result_code', q.result_code,
                                                             'degraded', CASE WHEN q.class = 'safe' AND coalesce(q.result_code, '') ~ '^EYE[-_]DEG' THEN true END)))
-           ORDER BY q.created_at, q.partition_id, q.audit_seq), '[]'::jsonb) INTO v_recs FROM q;
-  RETURN jsonb_build_object('kind', 'rate', 'records', v_recs, 'reasons', '[]'::jsonb,
+           ORDER BY q.created_at, q.partition_id, q.audit_seq), '[]'::jsonb), max(q.created_at) INTO v_recs, v_newest FROM q;
+  RETURN analytics.mcb_finish(jsonb_build_object('kind', 'rate', 'records', v_recs, 'reasons', '[]'::jsonb,
     'quality', jsonb_build_object('clock', 'record', 'denied_not_eligible', v_denied, 'scope_rule', 'ignored: availability is the service''s',
       'degraded_share', (SELECT round(count(*) FILTER (WHERE (x -> 'detail' ->> 'degraded')::boolean)::numeric / nullif(count(*) FILTER (WHERE x ->> 'role' = 'numerator'), 0), 6) FROM jsonb_array_elements(v_recs) x),
       'notes', jsonb_build_array('eligible demand = requests the policy decision point admitted; a governed refusal is excluded (the product answered safely)',
-                                 'the capability is the action''s first segment')));
+                                 'the capability is the action''s first segment'))), 'capability', v_newest);
 END $$;
 REVOKE ALL ON FUNCTION analytics.mc_met036_product_availability(uuid,uuid,timestamptz,timestamptz,timestamptz,jsonb,jsonb,jsonb) FROM PUBLIC;
 SELECT analytics.register_computation('met036_product_availability', 'analytics.mc_met036_product_availability', 'rate', ARRAY['capability'],
@@ -1069,7 +1093,7 @@ SELECT analytics.register_computation('met036_product_availability', 'analytics.
    SCOPE: the scope's sources. */
 CREATE OR REPLACE FUNCTION analytics.mc_met037_degraded_declaration_latency(p_tenant uuid, p_domain uuid, p_from timestamptz, p_to timestamptz, p_as_of timestamptz, p_scope jsonb, p_cohort jsonb, p_params jsonb)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = analytics, observation, products, public, pg_catalog, pg_temp AS $$
-DECLARE v_src uuid[] := analytics.mcb_scope_sources(p_tenant, p_domain, p_scope); v_recs jsonb; v_human bigint;
+DECLARE v_newest timestamptz; v_src uuid[] := analytics.mcb_scope_sources(p_tenant, p_domain, p_scope); v_recs jsonb; v_human bigint;
 BEGIN
   PERFORM observation.assert_read_scope(p_tenant, p_domain, 'the degraded declarations of the domain''s products (MET-037)');
   IF coalesce(p_params ->> 'clock', 'record') <> 'record' THEN RETURN analytics.mcb_clock_refused('duration', 'MET-037', 'a condition and its user-visible state happen in record time', p_params); END IF;
@@ -1084,13 +1108,13 @@ BEGIN
                                             'products_marked', l.marked, 'product_kinds', l.kinds))
            ELSE jsonb_build_object('kind', 'coverage_loss', 'id', l.event_id, 'role', 'excluded', 'reason', 'the condition marked no dependent product (no product state to declare)',
                                    'detail', jsonb_build_object('condition_at', l.evaluated_at)) END
-           ORDER BY l.evaluated_at, l.event_id), '[]'::jsonb) INTO v_recs FROM l;
+           ORDER BY l.evaluated_at, l.event_id), '[]'::jsonb), max(l.evaluated_at) INTO v_recs, v_newest FROM l;
   SELECT count(*) INTO v_human FROM products.product_events e WHERE e.tenant_id = p_tenant AND e.domain_id = p_domain AND e.event = 'product.degraded' AND e.occurred_at >= p_from AND e.occurred_at < p_to AND e.occurred_at <= p_as_of;
-  RETURN jsonb_build_object('kind', 'duration', 'records', v_recs, 'reasons', '[]'::jsonb,
+  RETURN analytics.mcb_finish(jsonb_build_object('kind', 'duration', 'records', v_recs, 'reasons', '[]'::jsonb,
     'quality', jsonb_build_object('clock', 'record', 'unit', 'seconds', 'products_degraded_by_a_person', v_human,
       'scope_rule', CASE WHEN p_scope IS NULL THEN 'the domain' ELSE 'the sources feeding the scope''s series or entities' END,
       'notes', jsonb_build_array('the user-visible instant is the impact marker''s set_at; accurate = every dependent the condition marked shows it (the latest marker)',
-                                 'a product degraded by a person''s act has no recorded qualifying condition: counted, not measured')));
+                                 'a product degraded by a person''s act has no recorded qualifying condition: counted, not measured'))), 'role', v_newest);
 END $$;
 REVOKE ALL ON FUNCTION analytics.mc_met037_degraded_declaration_latency(uuid,uuid,timestamptz,timestamptz,timestamptz,jsonb,jsonb,jsonb) FROM PUBLIC;
 SELECT analytics.register_computation('met037_degraded_declaration_latency', 'analytics.mc_met037_degraded_declaration_latency', 'duration', ARRAY[]::text[],
