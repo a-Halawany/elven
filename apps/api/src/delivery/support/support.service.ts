@@ -43,6 +43,27 @@ export const EXPIRY_TIMER = 'support_access.expiry';
 export const SA_BOUNDARY = `${BOUNDARY} §SA: an admission record signed here is construction evidence, never a production admission (R1); deployment-profile parity (IA-04-004) is B111; only local-dev is a real profile.`;
 const textOf = (e: unknown): string => (e instanceof HttpException ? String((e.getResponse() as { message?: string }).message ?? e.message) : (e instanceof Error ? e.message : String(e)));
 
+/* B94 act-found (2026-10-13, on eye_demo): LAYER 1 must not end a credential another LIVE grant still stands behind. A session is not
+   bound to a grant — its power is exactly the engineer's live grants (every port asks service.live_grant FIRST) — so while the engineer holds
+   another approved, unexpired grant in the domain, the revocation of an ENDED grant's sessions is deferred (recorded as `access_kept` with
+   the live grant); once the last grant ends, its sessions issued before that end are revoked. Seen on the demo: the after-tick revoke-all of
+   a lapsed 15-minute grant ended the session the engineer had opened for his newly approved 4-hour grant. The explicit customer acts (the
+   revoke route, the revoke_live_grant drill) still revoke every session at once — the customer's own control, conservative by design. */
+async function keepLiveGrantSessions(tx: Tx, t: string, d: string, r: unknown): Promise<Record<string, unknown>> {
+  const out = { ...((r ?? {}) as Record<string, unknown>) };
+  const pending = (Array.isArray(out['access_pending']) ? out['access_pending'] : []) as Array<Record<string, unknown>>;
+  const keep: Array<Record<string, unknown>> = []; const revoke: Array<Record<string, unknown>> = [];
+  for (const x of pending) {
+    const live = (await sql<{ g: string | null }>`select (select g.grant_id::text from service.support_grants g where g.tenant_id = ${t}::uuid and g.domain_id = ${d}::uuid
+        and g.engineer_principal_id = ${String(x['principal'])}::uuid and g.state = 'approved' and g.starts_at <= clock_timestamp() and clock_timestamp() < g.expires_at
+        order by g.expires_at desc limit 1) as g`.execute(tx)).rows[0]?.g ?? null;
+    if (live !== null) keep.push({ ...x, kept_for_live_grant: live }); else revoke.push(x);
+  }
+  out['access_pending'] = revoke;
+  if (keep.length > 0) out['access_kept'] = keep;
+  return out;
+}
+
 @Injectable()
 export class SupportService implements OnModuleInit {
   private readonly log = new Logger('delivery.support');
@@ -60,7 +81,8 @@ export class SupportService implements OnModuleInit {
     } else this.log.warn('no workflow timer registry in this application: support_access.expiry timers are not fired (the sweep still lapses)');
     if (ticks === null) { this.log.warn('no attention tick registry in this application: support grants are not swept and responsibility is not reconciled after the tick'); return; }
     // LAYER 3b: the sweep, a tick STEP (B34's collab-grant-expiry idiom: inside the tick's write; nothing written when nothing expired)
-    ticks.register({ name: SWEEP_STEP, order: 23, run: async (c) => SupportCap(c.tx, 'executive.attention.tick').sweep({ t: c.tenantId, d: c.domainId, actor: c.agentPrincipalId, correlationId: c.correlationId }) });
+    ticks.register({ name: SWEEP_STEP, order: 23, run: async (c) => keepLiveGrantSessions(c.tx, c.tenantId, c.domainId,
+      await SupportCap(c.tx, 'executive.attention.tick').sweep({ t: c.tenantId, d: c.domainId, actor: c.agentPrincipalId, correlationId: c.correlationId })) });
     // the cheap look for reconciliation (a read inside the tick's write): declared? changed since the last record?
     ticks.register({ name: OBSERVE_STEP, order: 24, run: async (c) => SupportCap(c.tx, 'executive.attention.tick').reconciliationDue(c.tenantId, c.domainId, 'local-dev') });
     // LAYER 1 (after the tick committed): the identity authority revokes the sessions the sweep found still live

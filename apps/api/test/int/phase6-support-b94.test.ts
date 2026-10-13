@@ -322,6 +322,28 @@ describe('SA4 · the lapse in three layers', () => {
     expect(await one(sql`select state, end_reason from service.support_grants where grant_id = ${id}::uuid`)).toEqual({ state: 'lapsed', end_reason: 'the grant expired (support_access.expiry timer)' });
     engineer = await h.openSession(engineer);
   });
+  it('LAYER 1 deferred while ANOTHER grant is live (act-found on eye_demo): a lapsed grant\'s sessions are kept while the engineer holds a live approved grant, and revoked when the last grant ends', async () => {
+    const c1 = await plantCase('Short grant'); const c2 = await plantCase('Four-hour grant');
+    const a = (await request(engineer, { caseId: c1, purpose: 'a short look at the stalled feed', sources: [SRC], actions: ['diagnose.source'], durationMinutes: 15 })).grant;
+    await decideG(richter, String(a['grant_id']), { decision: 'approve', digest: String(a['request_digest']) });
+    const b = (await request(engineer, { caseId: c2, purpose: 'the four-hour diagnosis of the stalled feed', sources: [SRC], actions: ['diagnose.source'], durationMinutes: 240 })).grant;
+    await decideG(richter, String(b['grant_id']), { decision: 'approve', digest: String(b['request_digest']) });
+    const session = engineer.sessionId;
+    await sql`update service.support_grants set starts_at = clock_timestamp() - interval '16 minutes', expires_at = clock_timestamp() - interval '1 second' where grant_id = ${String(a['grant_id'])}::uuid`.execute(h.su);
+    const first = await tick();
+    const sweep = first.steps['support-grant-expiry'] as Row;
+    expect((sweep['lapsed'] as Row[]).map((g) => g['grant_id'])).toContain(String(a['grant_id']));
+    expect((sweep['access_kept'] as Row[]).find((k) => k['principal'] === engineer.principalId)).toMatchObject({ kept_for_live_grant: String(b['grant_id']) });
+    expect(((first.after['support-access'] as Row)['revoked'] as Row[] | undefined ?? []).map((r) => r['principal'])).not.toContain(engineer.principalId);
+    expect(await one(sql`select status from identity.sessions where id = ${session}::uuid`)).toEqual({ status: 'active' });
+    expect((await diagnose(engineer, 'source', SRC, c2)).diagnosis['refused']).toBe(false);                 // the live grant still serves the same session
+    await refused(diagnose(engineer, 'source', SRC, c1), /grant .* is lapsed/, 403);                          // the ended grant reads nothing (layer 2)
+    await sql`update service.support_grants set starts_at = clock_timestamp() - interval '241 minutes', expires_at = clock_timestamp() - interval '1 second' where grant_id = ${String(b['grant_id'])}::uuid`.execute(h.su);
+    const last = await tick();
+    expect(((last.after['support-access'] as Row)['revoked'] as Row[]).map((r) => r['principal'])).toContain(engineer.principalId);
+    expect(await one(sql`select status from identity.sessions where id = ${session}::uuid`)).toEqual({ status: 'revoked' });
+    engineer = await h.openSession(engineer);
+  });
   it('an EARLY REVOKE by the domain admin: immediate (the next read refused), the timer cancelled, the sessions revoked; the engineer cannot revoke (PDP); withdraw and deny', async () => {
     const c = await plantCase('Early revoke');
     const g = (await request(engineer, { caseId: c, purpose: 'diagnose the stalled feed, early revoke', sources: [SRC], actions: ['diagnose.source'] })).grant;
