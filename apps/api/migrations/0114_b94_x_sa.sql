@@ -427,6 +427,26 @@ END $$;
 REVOKE ALL ON FUNCTION service.observe_responsibility(uuid, uuid, text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION service.observe_responsibility(uuid, uuid, text) TO eye_app, eye_commit;
 
+/* THE TICK'S CHEAP LOOK (the step `responsibility-observe`, inside the tick's write — a read only): has the domain declared a matrix at all, and
+   did the observed state change since the last recorded reconciliation? The after-tick hook reconciles (its own read, then its own write)
+   only when both hold — a domain that never declared responsibility is not written to by the tick (its gap is the control center's
+   read and every dependent act's hold); an unchanged domain costs one read. */
+CREATE OR REPLACE FUNCTION service.reconciliation_due(p_tenant uuid, p_domain uuid, p_profile text DEFAULT 'local-dev') RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = service, onboarding, observation, ctx, public, pg_catalog, pg_temp AS $$
+DECLARE v_declared boolean; v_digest text; v_last text;
+BEGIN
+  PERFORM observation.assert_authority(ARRAY['executive.attention.tick']);
+  PERFORM observation.assert_scope(p_tenant, p_domain);
+  v_declared := EXISTS (SELECT 1 FROM service.responsibility_matrices m WHERE m.tenant_id = p_tenant AND m.domain_id = p_domain AND m.deployment_profile = coalesce(p_profile, 'local-dev'));
+  IF NOT v_declared THEN RETURN jsonb_build_object('declared', false, 'due', false); END IF;
+  v_digest := onboarding.digest(service.observe_responsibility(p_tenant, p_domain, p_profile));
+  SELECT e.observed_digest INTO v_last FROM service.reconciliation_events e WHERE e.tenant_id = p_tenant AND e.domain_id = p_domain AND e.deployment_profile = coalesce(p_profile, 'local-dev')
+   ORDER BY e.recorded_at DESC LIMIT 1;
+  RETURN jsonb_build_object('declared', true, 'due', v_last IS DISTINCT FROM v_digest, 'observed_digest', v_digest, 'last_digest', v_last);
+END $$;
+REVOKE ALL ON FUNCTION service.reconciliation_due(uuid, uuid, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION service.reconciliation_due(uuid, uuid, text) TO eye_commit;
+
 /* RECORD a reconciliation (the after-tick hook `responsibility-reconcile` or a person's "reconcile now"): the observation READ FIRST in its
    own governed read and its findings computed (support-logic.ts) are recorded ONLY WHEN THE OBSERVED DIGEST CHANGED. The gaps are decided
    HERE, live, from owner_resolution (never from the caller's findings): every declared responsibility not `resolved` — and a domain with no
@@ -661,10 +681,11 @@ END $$;
 REVOKE ALL ON FUNCTION service.withdraw_support_grant(uuid, uuid, uuid, text, uuid, uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION service.withdraw_support_grant(uuid, uuid, uuid, text, uuid, uuid) TO eye_commit;
 
-/* THE LAPSE, LAYER 3 — (a) the `support_access.expiry` timer's handler (the tick's workflow-timers step, under executive.attention.tick): the
-   grant named by the timer lapses (skipped when it already ended); (b) THE SWEEP (the after-tick hook `support-access`, its own governed
-   write service.grant.sweep): every approved grant past its expiry lapses whatever happened to its timer; then the engineers still holding a
-   session from before their grant ended are read for the identity authority. */
+/* THE LAPSE, LAYER 3 — (a) the `support_access.expiry` timer's handler (the tick's workflow-timers step 20, under executive.attention.tick):
+   the grant named by the timer lapses (skipped when it already ended); (b) THE SWEEP (the tick step `support-grant-expiry`, order 23 — B34's
+   collab-grant-expiry idiom, inside the tick's write: nothing is written when nothing expired): every approved grant past its expiry lapses
+   whatever happened to its timer; then the engineers still holding a session from before their grant ended are READ for the after-tick hook
+   `support-access`, which revokes them through the identity authority (never nested in the tick's write). */
 CREATE OR REPLACE FUNCTION service.lapse_support_grant(p_timer uuid, p_tenant uuid, p_domain uuid, p_actor uuid, p_correlation uuid) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = service, executive, observation, ctx, public, pg_catalog, pg_temp AS $$
 DECLARE t executive.workflow_timers%ROWTYPE; g service.support_grants%ROWTYPE;
@@ -689,7 +710,7 @@ CREATE OR REPLACE FUNCTION service.sweep_support_grants(p_tenant uuid, p_domain 
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = service, executive, observation, ctx, public, pg_catalog, pg_temp AS $$
 DECLARE g record; v_out jsonb := '[]'::jsonb;
 BEGIN
-  PERFORM observation.assert_authority(ARRAY['service.grant.sweep']);
+  PERFORM observation.assert_authority(ARRAY['executive.attention.tick']);
   PERFORM observation.assert_scope(p_tenant, p_domain);
   PERFORM service._sa_actor('support grant', p_actor);
   FOR g IN SELECT x.grant_id FROM service.support_grants x WHERE x.tenant_id = p_tenant AND x.domain_id = p_domain AND x.state = 'approved' AND x.expires_at <= clock_timestamp()
@@ -705,7 +726,7 @@ GRANT EXECUTE ON FUNCTION service.sweep_support_grants(uuid, uuid, uuid, uuid) T
 CREATE OR REPLACE FUNCTION service.support_access_pending(p_tenant uuid, p_domain uuid) RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = service, observation, ctx, public, pg_catalog, pg_temp AS $$
 BEGIN
-  PERFORM observation.assert_authority(ARRAY['service.grant.sweep', 'service.grant.revoke', 'service.drill.run', 'service.grant.withdraw']);
+  PERFORM observation.assert_authority(ARRAY['executive.attention.tick', 'service.grant.revoke', 'service.drill.run', 'service.grant.withdraw']);
   PERFORM observation.assert_scope(p_tenant, p_domain);
   RETURN service._support_access_pending(p_tenant, p_domain);
 END $$;

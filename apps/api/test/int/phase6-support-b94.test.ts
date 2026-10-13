@@ -13,8 +13,8 @@
  *         a stale digest; approved → the expiry timer, the task resolved, the items closed.
  *   SA3 · THE DIAGNOSTIC READS (PER-20): live grant FIRST, every attempt logged; another source, an action outside the scope refused and
  *         logged; an engineer's WRITE refused by the PDP; the engineer reads no service record.
- *   SA4 · THE LAPSE IN THREE LAYERS: expired → refused BEFORE the sweep; the sweep (after-tick hook) marks it lapsed and the identity
- *         authority revokes the engineer's session (the old session refused); the expiry TIMER lapses another; an early revoke; withdraw; deny.
+ *   SA4 · THE LAPSE IN THREE LAYERS: expired → refused BEFORE the sweep; the sweep (the tick step) marks it lapsed and the identity
+ *         authority revokes the engineer's session after the tick (the old session refused); the expiry TIMER lapses another; an early revoke; withdraw; deny.
  *   SA5 · CUSTOMER-CONTROL DRILLS (CAP-TR-12): revoke a live grant and prove the next read refused; an expired grant refused; refusals.
  *   SA6 · RECONCILIATION (IA-04-002/-005): findings recorded on change only; a responsibility gap RAISED, then CLOSED when filled; the
  *         after-tick hook; a stale observation refused.
@@ -294,10 +294,10 @@ describe('SA4 · the lapse in three layers', () => {
     await refused(diagnose(engineer, 'source', SRC, CASE1), /^support access rejected \(access\): grant .* expired at/, 403);
     expect(await one(sql`select state from service.support_grants where grant_id = ${G1}::uuid`)).toEqual({ state: 'approved' });
   });
-  it('LAYER 3b + 1 · the sweep (after-tick hook support-access) marks it lapsed; the identity authority revokes the engineer\'s session; the old session is refused', async () => {
-    const { after } = await tick();
+  it('LAYER 3b + 1 · the sweep (the tick step support-grant-expiry) marks it lapsed; the after-tick hook support-access has the identity authority revoke the engineer\'s session; the old session is refused', async () => {
+    const { steps, after } = await tick();
+    expect(((steps['support-grant-expiry'] as Row)['lapsed'] as Row[]).map((g) => [g['grant_id'], g['via']])).toEqual([[G1, 'sweep']]);
     const s = after['support-access'] as Row;
-    expect(s['lapsed']).toEqual([G1]);
     expect((s['revoked'] as Row[]).map((r) => r['principal'])).toContain(engineer.principalId);
     expect(await one(sql`select state, end_reason from service.support_grants where grant_id = ${G1}::uuid`)).toEqual({ state: 'lapsed', end_reason: 'the grant expired (sweep)' });
     expect(await one(sql`select status from identity.sessions where id = ${engineer.sessionId}::uuid`)).toEqual({ status: 'revoked' });
@@ -395,6 +395,10 @@ describe('SA6 · reconciliation and the responsibility gap (IA-04-002/-005)', ()
     const { after } = await tick();
     expect(after['responsibility-reconcile']).toMatchObject({ recorded: true, gaps: 0 });
     expect((await itemsOf('responsibility.gap', await gapSubject('risk.ownership'))).map((i) => i['state'])).toEqual(['closed']);
+    // the next tick sees nothing changed: the hook writes nothing (the step's look answered due: false)
+    const again = await tick();
+    expect(again.steps['responsibility-observe']).toMatchObject({ declared: true, due: false });
+    expect(again.after['responsibility-reconcile']).toEqual({ skipped: 'the observed state is unchanged since the last reconciliation' });
     const owners = await sc.owners(rq(richter, 'service.read', 'RSM'), T(), D(), { payload: {} }) as { owners: Row[] };
     expect(owners.owners.map((o) => [o['key'], (o['resolution'] as Row)['state']])).toEqual([['domain.operation', 'resolved'], ['evidence.custody', 'resolved'], ['risk.ownership', 'resolved'], ['support.access', 'resolved']]);
   });

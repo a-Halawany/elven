@@ -2399,7 +2399,7 @@ const BUNDLE_V1: Rule[] = [
      (TENANT) or the domain admin; DECIDED by the onboarding authority (TENANT; human-gated, signed — the port re-checks the approver test).
      RECONCILE: the attention agent (the after-tick hook), the domain admin, the onboarding authority, the lead. SUPPORT ACCESS: REQUESTED and
      WITHDRAWN by the support engineer; DECIDED and REVOKED by the domain admin (human-gated; the port: the accountable owner of
-     support.access, never the engineer); SWEPT by the attention agent. The ENGINEER's only other rules are its four DIAGNOSTIC READS and the
+     support.access, never the engineer). The lapse runs inside the attention tick (executive.attention.tick: the timer and the sweep step). The ENGINEER's only other rules are its four DIAGNOSTIC READS and the
      read of its OWN grants (support.*) — no write rule, no service.read: an engineer's write (observation.source.transition …) is refused by
      the PDP. DRILLS: the domain admin (human-gated). JOINT EXERCISES: the domain admin or the onboarding authority (human-gated). ADMISSION:
      assembled by the lead or the domain admin; signed by the onboarding authority (human-gated). The reads are §0's service.read. */
@@ -2418,7 +2418,6 @@ const BUNDLE_V1: Rule[] = [
       r('service.grant.withdraw', engineer),
       r('service.grant.decide', [S('domain_admin')], gate),
       r('service.grant.revoke', [S('domain_admin')], gate),
-      r('service.grant.sweep', [S('attention_agent')]),
       r('support.grant.read', engineer, [{ type: 'audit_access' }]),
       r('support.diagnose.source', engineer, [{ type: 'audit_access' }]),
       r('support.diagnose.runs', engineer, [{ type: 'audit_access' }]),

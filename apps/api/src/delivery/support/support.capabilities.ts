@@ -144,6 +144,9 @@ export class SupportCapability {
   sweep(a: { t: string; d: string; actor: string; correlationId: string }) {
     return this.one(sql`select service.sweep_support_grants(${a.t}::uuid, ${a.d}::uuid, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'sweep_support_grants');
   }
+  reconciliationDue(t: string, d: string, profile: string) {
+    return this.one(sql`select service.reconciliation_due(${t}::uuid, ${d}::uuid, ${profile}) as r`, 'reconciliation_due');
+  }
   async accessPending(t: string, d: string): Promise<Row[]> {
     const r = await sql<{ r: Row[] }>`select service.support_access_pending(${t}::uuid, ${d}::uuid) as r`.execute(this.#tx);
     return r.rows[0]?.r ?? [];

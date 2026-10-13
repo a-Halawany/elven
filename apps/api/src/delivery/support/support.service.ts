@@ -9,9 +9,9 @@
  *   SUPPORT ACCESS (PR-69-003, PER-20 — B34/B34-F's collaborator-grant pattern): request (the engineer) → decide (the accountable owner of
  *     support.access, a named human domain admin; HELD while that owner is not resolved — the hold's gap item commits, then 409) → the
  *     diagnostic reads (live grant FIRST, every attempt logged — a refusal's log row commits, then 403) → revoke / withdraw / the LAPSE in
- *     three layers: (1) the engineer's sessions revoked by the IDENTITY authority once the grant ended (the route, then the hook for what a
- *     failure left), (2) service.live_grant on the database clock in every port, (3) the `support_access.expiry` timer (WorkflowTimerRegistry,
- *     fired by the tick) and the sweep (the after-tick hook `support-access`);
+ *     three layers: (1) the engineer's sessions revoked by the IDENTITY authority once the grant ended (the route; the after-tick hook
+ *     `support-access` for every lapse and for what a failure left), (2) service.live_grant on the database clock in every port, (3) the
+ *     `support_access.expiry` timer (WorkflowTimerRegistry, fired by the tick's step 20) and the sweep (the tick step `support-grant-expiry`);
  *   DRILLS, the JOINT EXERCISE and the ADMISSION RECORD (IA-04-006, CAP-TR-12) — the admission record SIGNED (`admission_record`).
  *
  * THREE CLAIMS, never mixed: CONSTRUCTION (this code + phase6-support-b94); DEMONSTRATED OPERATION (the act on SYNTHETIC NORDWERK personas and a
@@ -37,6 +37,8 @@ type Row = Record<string, unknown>;
 export const READ = 'service.read';
 export const SUPPORT_ACCESS_HOOK = 'support-access';
 export const RECONCILE_HOOK = 'responsibility-reconcile';
+export const SWEEP_STEP = 'support-grant-expiry';
+export const OBSERVE_STEP = 'responsibility-observe';
 export const EXPIRY_TIMER = 'support_access.expiry';
 export const SA_BOUNDARY = `${BOUNDARY} §SA: an admission record signed here is construction evidence, never a production admission (R1); deployment-profile parity (IA-04-004) is B111; only local-dev is a real profile.`;
 const textOf = (e: unknown): string => (e instanceof HttpException ? String((e.getResponse() as { message?: string }).message ?? e.message) : (e instanceof Error ? e.message : String(e)));
@@ -57,7 +59,13 @@ export class SupportService implements OnModuleInit {
       timers.register({ kind: EXPIRY_TIMER, handle: async (c, t) => SupportCap(c.tx, 'executive.attention.tick').lapseByTimer({ timerId: t.timer_id, t: c.tenantId, d: c.domainId, actor: c.agentPrincipalId, correlationId: c.correlationId }) });
     } else this.log.warn('no workflow timer registry in this application: support_access.expiry timers are not fired (the sweep still lapses)');
     if (ticks === null) { this.log.warn('no attention tick registry in this application: support grants are not swept and responsibility is not reconciled after the tick'); return; }
-    ticks.registerAfter({ name: SUPPORT_ACCESS_HOOK, run: async (a) => this.afterTickSweep(a) });
+    // LAYER 3b: the sweep, a tick STEP (B34's collab-grant-expiry idiom: inside the tick's write; nothing written when nothing expired)
+    ticks.register({ name: SWEEP_STEP, order: 23, run: async (c) => SupportCap(c.tx, 'executive.attention.tick').sweep({ t: c.tenantId, d: c.domainId, actor: c.agentPrincipalId, correlationId: c.correlationId }) });
+    // the cheap look for reconciliation (a read inside the tick's write): declared? changed since the last record?
+    ticks.register({ name: OBSERVE_STEP, order: 24, run: async (c) => SupportCap(c.tx, 'executive.attention.tick').reconciliationDue(c.tenantId, c.domainId, 'local-dev') });
+    // LAYER 1 (after the tick committed): the identity authority revokes the sessions the sweep found still live
+    ticks.registerAfter({ name: SUPPORT_ACCESS_HOOK, run: async (a) => this.afterTickRevoke(a) });
+    // reconciliation: its own read, then its own write — only when the step saw a declared matrix and a changed observation
     ticks.registerAfter({ name: RECONCILE_HOOK, run: async (a) => this.afterTickReconcile(a) });
   }
 
@@ -159,7 +167,10 @@ export class SupportService implements OnModuleInit {
     }));
     return { reconciliation: { ...out.result, findings }, receipt: receipt(out) };
   }
-  async afterTickReconcile(a: { principal: AuthenticatedPrincipal; tenantId: string; domainId: string; correlationId: string }): Promise<Row> {
+  async afterTickReconcile(a: { principal: AuthenticatedPrincipal; tenantId: string; domainId: string; correlationId: string; steps?: Record<string, unknown> }): Promise<Row> {
+    const look = ((a.steps ?? {})[OBSERVE_STEP] ?? null) as Row | null;
+    if (look !== null && look['declared'] !== true) return { skipped: 'no responsibility matrix is declared in this domain (its gap is shown by the control center and holds every dependent act)' };
+    if (look !== null && look['due'] !== true) return { skipped: 'the observed state is unchanged since the last reconciliation' };
     const env = this.envelopeFor(a.principal, a.tenantId, a.domainId, READ, 'RSM', null, a.correlationId);
     const r = await this.reconcile(env, a.principal, a.tenantId, a.domainId, 'local-dev');
     const x = r.reconciliation as Row;
@@ -258,16 +269,15 @@ export class SupportService implements OnModuleInit {
       return { pending: true, principal: engineer, error: textOf(e).slice(0, 300), closed_by: `the next tick (${SUPPORT_ACCESS_HOOK})` };
     }
   }
-  /** The after-tick hook: the sweep (its own governed write) lapses every approved grant past its expiry, then each engineer still holding a
-   *  session from before its grant ended is revoked by the identity authority. Never nested in the tick's write. */
-  async afterTickSweep(a: { principal: AuthenticatedPrincipal; tenantId: string; domainId: string; correlationId: string }): Promise<Row> {
-    const env = this.envelopeFor(a.principal, a.tenantId, a.domainId, 'service.grant.sweep', 'SGR', null, a.correlationId);
-    const out = await this.write(env, a.principal, a.tenantId, a.domainId, 'service.grant.sweep', 'SGR', null, async (cap) => ({ result: await cap.sweep({ t: a.tenantId, d: a.domainId, actor: a.principal.principalId, correlationId: a.correlationId }) }));
-    const pending = (out.result['access_pending'] ?? []) as Row[];
+  /** The after-tick hook: each engineer the sweep step (and the timer step) left holding a session from before its grant ended is revoked by
+   *  the identity authority — never nested in the tick's write; a failure is answered and the next tick's sweep reads the principal again. */
+  async afterTickRevoke(a: { principal: AuthenticatedPrincipal; tenantId: string; domainId: string; correlationId: string; steps: Record<string, unknown> }): Promise<Row> {
+    const pending = (((a.steps[SWEEP_STEP] ?? {}) as Row)['access_pending'] ?? []) as Row[];
+    if (pending.length === 0) return { pending: 0, revoked: [] };
     const revoked: Row[] = [];
     for (const x of pending) revoked.push({ ...(await this.revokeSessions(String(x['principal']), { principalId: a.principal.principalId, sessionId: a.principal.sessionId },
       typeof x['grant_id'] === 'string' ? x['grant_id'] : null, `the support grant is ${String(x['grant_state'])} (tick)`, a.correlationId)), grant_id: x['grant_id'] ?? null });
-    return { lapsed: ((out.result['lapsed'] ?? []) as Row[]).map((g) => g['grant_id']), pending: pending.length, revoked };
+    return { pending: pending.length, revoked };
   }
 
   // ───────────────────────── DRILLS, EXERCISES, ADMISSION ─────────────────────────
