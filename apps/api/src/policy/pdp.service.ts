@@ -2424,6 +2424,26 @@ const BUNDLE_V1: Rule[] = [
   })(),
   /* end B94 onboarding */
   /* B94 migration */
+  /* B94 §MG (0114 §MG; PR-67-003, UX-66-004, CAP-DL-06): EXACT rules. The implementation lead (TENANT) opens waves, proposes mappings,
+     rehearses, requests and executes cutovers inside the approved plan and rehearses rollbacks — an AGENT holding the lead's role may rehearse
+     and execute (no human gate: automation executes only what the authority approved, and the PORT reads the approved staging rows only);
+     the onboarding authority (TENANT) approves mappings, cutovers, rollbacks and acceptance — HUMAN-GATED here and re-checked in the port
+     (onboarding.assert_approver: never the proposer, never a lead, never an agent). The reads are onboarding.read (§0). Domain ACTIVATION is
+     `tenancy.domain.activate`, governed by the earlier `tenancy.domain.` prefix rule (tenant_admin at TENANT, platform_admin) — the port
+     refuses PLATFORM authority (onboarding.assert_tenant) and anything but a verified cutover. */
+  { actionPrefix: 'onboarding.wave.open', exact: true, requiredAnyRole: [{ role: 'implementation_lead', atScope: 'TENANT' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'onboarding.wave.withdraw', exact: true, requiredAnyRole: [{ role: 'implementation_lead', atScope: 'TENANT' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'onboarding.mapping.propose', exact: true, requiredAnyRole: [{ role: 'implementation_lead', atScope: 'TENANT' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'onboarding.mapping.approve', exact: true, requiredAnyRole: [{ role: 'onboarding_authority', atScope: 'TENANT' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'onboarding.rehearsal.run', exact: true, requiredAnyRole: [{ role: 'implementation_lead', atScope: 'TENANT' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'onboarding.cutover.request', exact: true, requiredAnyRole: [{ role: 'implementation_lead', atScope: 'TENANT' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'onboarding.cutover.recheck', exact: true, requiredAnyRole: [{ role: 'implementation_lead', atScope: 'TENANT' }, { role: 'onboarding_authority', atScope: 'TENANT' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'onboarding.cutover.approve', exact: true, requiredAnyRole: [{ role: 'onboarding_authority', atScope: 'TENANT' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'onboarding.cutover.execute', exact: true, requiredAnyRole: [{ role: 'implementation_lead', atScope: 'TENANT' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'onboarding.cutover.reconcile', exact: true, requiredAnyRole: [{ role: 'implementation_lead', atScope: 'TENANT' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'onboarding.rollback.rehearse', exact: true, requiredAnyRole: [{ role: 'implementation_lead', atScope: 'TENANT' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'onboarding.rollback.execute', exact: true, requiredAnyRole: [{ role: 'onboarding_authority', atScope: 'TENANT' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'onboarding.acceptance.decide', exact: true, requiredAnyRole: [{ role: 'onboarding_authority', atScope: 'TENANT' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   /* end B94 migration */
   /* B94 implementation */
   /* end B94 implementation */
