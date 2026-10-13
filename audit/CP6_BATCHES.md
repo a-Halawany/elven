@@ -6799,7 +6799,10 @@ The owner's word of 2026-10-13: B94 (F-P7-F-04, F-P7-F-05, F-P7-F-06 — the 49 
 - **Re-derived in order** (tracker → schedule → tracker; summarise, summarise-units, controls): rows implemented 1481 → **1522**; M1 2027-07-14 unchanged; B94 pinned in A1_DELIVERED; the next A1 stage **B107**; the acceptance split unchanged (3,555 = 3,179 + 339 + 37).
 
 ### B94.7 — the gates and the hosted run
-Recorded with the gates' run and, for the hosted runs, the merge and main's chain, in the next delivery record.
+- **Local at `a1cf155`** (one at a time, Redis :6394 flushed): build; web 367/367; `pnpm boundaries`; acceptance 58/58. The complete integration **2553/2562** in 163 files on a fresh database: 9 failures in two files, both pins a new migration must move — `gate22-authority-matrix` (C14: the two new tenancy mutators `tenancy.create_domain_draft` and `tenancy.activate_domain` had no scenario coverage) and `phase6-attention-events-b23` (its pinned class list lacked B94's six; E2–E9 cascaded from E1's refused policy). The upgrade proof FAILED on its declared totals (roles 60 → 65, schema_migrations 92 → 93).
+- **Corrected** (tests and the proof's pins only): the C6 exact-target cases of the two ports in `phase6-tenancy-binding-b94.test.ts` (kept out of the gate22 file — the upgrade proof replays the Phase 0 suite at 0021, where these ports do not exist; a first placement there failed that replay) and both ports mapped in C14's coverage; the B23 class list extended; the upgrade proof's totals. **Re-run on a fresh database: 28/28** (authority matrix, the new binding file, B23); **the upgrade proof PASS**.
+- API unit 3538/3539: `c15-runner-behaviour` ("a DETECTED SECRET fails the gate") timed out at its 60 s limit under the full suite's load — the known local timing behaviour (§B33-F.5, §B33-H.5); its limits are unchanged and the hosted build-test decides.
+- **Hosted**, the merge and main's chain: recorded in the next delivery record.
 
 ## Order and the next implementation batch
 
