@@ -4,7 +4,7 @@
  * gives meaning, scope, threshold, cadence and owner; the population, numerator, denominator, exclusions and window below are THIS
  * PRODUCT'S READINGS of them (MAP.md §2), stated here for the approver and repeated in each computation's header (0113_b92_x_mcb.sql).
  *
- * Fifteen are computed (a registered computation of 0113 §0.7). Eight have NO honest source in the product: computationKey null, the
+ * Fifteen are computed (a registered computation of 0113 §0.7) — sixteen since B94 (MET-039, registered in 0114 §IM). Eight — seven since B94 — have NO honest source in the product: computationKey null, the
  * unsupported reason naming the CARRIER stage — they are served `unsupported`, visible, never silently missing (Balanced use), never a
  * fake computation. A value these contracts produce on the harness is a SYNTHETIC demonstration of the software; none is an acceptance
  * (R2 / B107 / H3).
@@ -265,14 +265,28 @@ const contracts: MetricContract[] = [
     cadence: 'quarterly', ownerRole: 'domain_admin', action: REVIEW, retirement: 'replaced by a supported version once restore verification is recorded', sourceRefs: ['MET-038', 'V01-T-040'],
     reason: 'no honest source in the product: backup and restore checks run outside the database with no ledger, and executive.workflow_drills restart_replay exercises one workflow instance\'s replay — not a restore of authoritative and derived state, so not honest coverage — carrier B64 (backup, PITR and restore verification, F-P7D-12) with B105 (failover and DR)',
   }),
-  unsupported({
+  /* B94 implementation (0114 §IM, carryover b; DESIGN.md D12) — MET-039 v2 SUPPORTED: B94 records its three sources (the contract's start,
+     the accepted priority journeys and the accepted operating cadence of a signed go-live). v1 was unsupported with the carrier B94; the act
+     proposes v2 through §MD's routes and a named product analytics owner approves it (v1 superseded). The owner role stays
+     product_analytics_owner (Q10's fallback: the definitions validator requires a DOMAIN role; App M's owner is "implementation owner"). */
+  {
     metricKey: 'MET-039', title: 'Customer time to accepted operation', meaning: 'Contract start to accepted priority journeys and operating cadence',
     kind: 'duration', unit: 'days', direction: 'lower',
-    population: { subject: 'customer implementation', inclusion: 'none: no journey acceptance is recorded' }, numerator: null, denominator: null,
-    window: QUARTER, dimensions: [], floorN: 1, threshold: {}, purposeKey: 'mission-outcomes', serves: { decision_classes: ['customer implementation'], note: 'App M threshold: plan-specific' },
-    cadence: 'per implementation', ownerRole: 'commercial_authority', action: REVIEW, retirement: 'replaced by a supported version once onboarding records acceptance', sourceRefs: ['MET-039'],
-    reason: 'no source in the product: contracts exist (commercial.contracts, SYNTHETIC) but no accepted priority journey or operating cadence acceptance is recorded — carrier B94 (onboarding, migration and adoption, F-P7-F-04/-05)',
-  }),
+    population: { subject: 'customer implementation', inclusion: 'every implementation programme of the tenant whose signed go-live (naming an accepted operating cadence and at least one accepted priority journey) falls in the window',
+                  scope_rule: 'tenant-wide: the tenant\'s implementation programmes (an implementation is a tenant fact); the definition\'s domain hosts the result',
+                  start: 'the effective_from of the tenant\'s contract current at the programme\'s opening (declared by then, not superseded by then)',
+                  end: 'the signed go-live approval (implementation.golive_decisions, decision approve)', clock_note: 'record clock only' },
+    numerator: null, denominator: null,
+    exclusions: [{ rule: 'a programme opened but not yet accepted', reason: 'not yet accepted — never a value, said as such' },
+                 { rule: 'a programme with no contract current at its opening', reason: 'no start to measure from' }],
+    window: QUARTER, dimensions: [], privacyClass: 'aggregate', kMin: 5, floorN: 1, threshold: {}, purposeKey: 'mission-outcomes',
+    serves: { decision_classes: ['customer implementation'], note: 'App M threshold: plan-specific' },
+    cadence: 'per implementation', ownerRole: 'product_analytics_owner', action: REVIEW,
+    retirement: 'replaced by a version reading a customer\'s own signed acceptance once R2 records one; its results stay readable', quality: {},
+    costAllocation: { unit: 'analytics.computation', meter: 'rows read, compute ms' }, computationKey: ck('met039', 'time_to_accepted_operation'), params: {}, unsupportedReason: null,
+    sourceRefs: ['MET-039'],
+  },
+  /* end B94 implementation */
   unsupported({
     metricKey: 'MET-040', title: 'Strategic value realization', meaning: 'Customer-approved outcome measures attributable to adopted capabilities with caveats',
     kind: 'rate', unit: 'share of approved outcome measures', direction: 'higher',

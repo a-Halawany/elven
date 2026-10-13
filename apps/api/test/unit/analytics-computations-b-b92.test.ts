@@ -16,9 +16,10 @@ import { PERSON_DIMENSIONS } from '../../src/analytics/seams.js';
 /** Existing domain role codes (identity.roles) an owner may be — the named human the act binds holds it. */
 const ROLE_CODES = ['data_steward', 'auditor', 'knowledge_owner', 'ontology_steward', 'collection_manager', 'record_authority', 'domain_admin', 'product_analytics_owner', 'commercial_authority', 'executive'];
 const PURPOSES = ['product-quality', 'mission-outcomes', 'governance-assurance', 'service-reliability', 'analytics-cost', 'experience-telemetry'];
-const COMPUTED = ['MET-006', 'MET-007', 'MET-008', 'MET-009', 'MET-010', 'MET-011', 'MET-012', 'MET-013', 'MET-014', 'MET-017', 'MET-018', 'MET-031', 'MET-033', 'MET-036', 'MET-037'];
+const COMPUTED = ['MET-006', 'MET-007', 'MET-008', 'MET-009', 'MET-010', 'MET-011', 'MET-012', 'MET-013', 'MET-014', 'MET-017', 'MET-018', 'MET-031', 'MET-033', 'MET-036', 'MET-037',
+  /* B94 implementation (0114 §IM): MET-039 v2 supported */ 'MET-039' /* end B94 implementation */];
 const UNSUPPORTED: Record<string, RegExp> = { 'MET-015': /\bB55\b/, 'MET-016': /\bB52\b.*\bH1\b/, 'MET-032': /\bH2\b/, 'MET-034': /\bB108\b.*\bB107\/H3\b/, 'MET-035': /\bB106\b/,
-  'MET-038': /\bB64\b/, 'MET-039': /\bB94\b/, 'MET-040': /\bB76\b/ };
+  'MET-038': /\bB64\b/, /* B94 implementation: MET-039 is supported since 0114 §IM */ 'MET-040': /\bB76\b/ };
 
 describe('definitionsB — the contracts admit the definition table and §MD\'s rules', () => {
   it('exactly the part\'s rows MET-006..018 and MET-031..040, each once', () => {
