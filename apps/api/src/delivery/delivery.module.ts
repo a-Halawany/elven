@@ -6,7 +6,10 @@
  */
 import { Module } from '@nestjs/common';
 import { PipelineModule } from '../pipeline/pipeline.module.js';
-/* B94 onboarding */ /* end B94 onboarding */
+/* B94 onboarding */
+import { BaselinesController, OnboardingController } from './onboarding/onboarding.controller.js';
+import { OnboardingService } from './onboarding/onboarding.service.js';
+/* end B94 onboarding */
 /* B94 migration */ /* end B94 migration */
 /* B94 implementation */ /* end B94 implementation */
 /* B94 service */ /* end B94 service */
@@ -15,14 +18,14 @@ import { PipelineModule } from '../pipeline/pipeline.module.js';
 @Module({
   imports: [PipelineModule],
   controllers: [
-    /* B94 onboarding */ /* end B94 onboarding */
+    /* B94 onboarding */ OnboardingController, BaselinesController, /* end B94 onboarding */
     /* B94 migration */ /* end B94 migration */
     /* B94 implementation */ /* end B94 implementation */
     /* B94 service */ /* end B94 service */
     /* B94 support */ /* end B94 support */
   ],
   providers: [
-    /* B94 onboarding */ /* end B94 onboarding */
+    /* B94 onboarding */ OnboardingService, /* end B94 onboarding */
     /* B94 migration */ /* end B94 migration */
     /* B94 implementation */ /* end B94 implementation */
     /* B94 service */ /* end B94 service */
