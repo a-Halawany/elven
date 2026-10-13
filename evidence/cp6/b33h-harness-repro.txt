@@ -1,0 +1,14 @@
+B33-H harness test/int/phase6-package-health-read-b33h.test.ts — B33H_REPRO=1 on main 0d5622f (the tree WITHOUT the pipeline guard): the DEFECT reproduced; fresh database eye_b33h_repro (dropped after), Redis 6394, 2026-10-13
+
+ RUN  v4.1.11 /Users/halawany/work/personal/mohammed/new_project/.claude/worktrees/b94/apps/api
+ ✓ test/int/phase6-package-health-read-b33h.test.ts > H0 · the baseline > the package is sound: health passes and records the passing run 30ms
+ ✓ test/int/phase6-package-health-read-b33h.test.ts > H1 · the health ROUTE, its facts read suspended past the context (the incident's mechanism, controlled) > DEFECT: the taxonomy reads as absent and the write records the FALSE conflict 62085ms
+ ✓ test/int/phase6-package-health-read-b33h.test.ts > H1 · the health ROUTE, its facts read suspended past the context (the incident's mechanism, controlled) > the same read, undelayed: the package reads sound (the facts were never absent) 41ms
+ ✓ test/int/phase6-package-health-read-b33h.test.ts > H2 · the AFTER-TICK hook (the incident's path) under the attention agent, suspended past the context > DEFECT: the hook records the FALSE conflict 62173ms
+ ✓ test/int/phase6-package-health-read-b33h.test.ts > H3 · a GENUINE rights withdrawal still restricts; an incomplete read neither clears nor confirms it; recovery stays governed > the sanctions source's rights WITHDRAWN (the withdrawal suspends its contract) → health disables assess and event (the gate reads disabled) 42ms
+ ✓ test/int/phase6-package-health-read-b33h.test.ts > H3 · a GENUINE rights withdrawal still restricts; an incomplete read neither clears nor confirms it; recovery stays governed > an incomplete read while the withdrawal stands: (not exercised under REPRO) 0ms
+ ✓ test/int/phase6-package-health-read-b33h.test.ts > H3 · a GENUINE rights withdrawal still restricts; an incomplete read neither clears nor confirms it; recovery stays governed > recovery: re-enable refused before the repair; the rights confirmed and the contract re-activated, the run passes, the specialist re-enables 71ms
+ ✓ test/int/phase6-package-health-read-b33h.test.ts > H4 · a GENUINELY missing required fact still exposes the conflict > a supply package requiring the geopolitical package; the geopolitical package RETIRED → the supply package's health exposes the conflict (every function) 135ms
+ Test Files  1 passed (1)
+      Tests  8 passed (8)
+   Duration  129.27s (transform 1.65s, setup 17ms, import 2.31s, tests 126.87s, environment 0ms)

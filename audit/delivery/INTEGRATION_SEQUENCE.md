@@ -194,6 +194,7 @@ Between two merges the first merge's `main` chain completes before the next merg
   - **Merged as `9aeeac6`** (2026-10-12) on its verified records head `59db283` (ci 38187426684, C19 lifecycle 38187426683) under the standing authorization, after main's chain for `059a314` had completed.
   - **Main's chain for `9aeeac6`:** ci 38191518257 → C19 lifecycle 38191518271 → C17 finalize 38194857493 → C19 anchor 38194928506 (created after the finalize), all succeeded on their first attempt.
 - **B92** (0113: product analytics, the metric catalog and UX telemetry), on `phase6-b92` after #86. Its PR's hosted runs, the merge and main's chain for it are recorded in the next delivery record (B94's) — no records-only commit.
+- **B33-H** (no migration: the pipeline's completeness check after a consequential read — the package-health incident of 2026-10-09/10), on `b33h/health-read` from main `0d5622f`, the owner's bounded follow-up of 2026-10-13. Its PR's hosted runs, the merge and main's chain are recorded in the next delivery record (B94's).
 
 ## 3. What is never done in this sequence
 
