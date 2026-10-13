@@ -132,7 +132,8 @@ describe('the PDP block (exact rules; no lead approves; the human gates)', () =>
 });
 
 describe('every refusal text of 0114_b94_x_im.sql through the central mapper', () => {
-  const sqlText = readFileSync(fileURLToPath(new URL('../../migrations/0114_b94_x_im.sql', import.meta.url)), 'utf8');
+  // the part's section of the folded 0114 (§IM+§AD, up to §SV)
+  const sqlText = (() => { const all = readFileSync(fileURLToPath(new URL('../../migrations/0114_b94_onboarding_implementation_service.sql', import.meta.url)), 'utf8'); const a = all.indexOf('-- §IM+§AD — the implementation programme'); const b = all.indexOf('-- §SV — the service portal', a + 1); if (a < 0 || b < 0) throw new Error('the folded 0114 lost its section banners'); return all.slice(a, b); })();
   const nouns = DELIVERY_NOUNS.join('|');
   const raises = [...sqlText.matchAll(new RegExp(`RAISE EXCEPTION '((${nouns}) rejected \\(([a-z_]+)\\):[^']*(?:''[^']*)*)'[^;]*?USING ERRCODE = '([0-9A-Z]{5})'`, 'g'))]
     .map((m) => ({ text: m[1]!.replace(/''/g, '\''), noun: m[2]!, cls: m[3]!, code: m[4]! }));
