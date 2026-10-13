@@ -4760,3 +4760,10 @@ B25 COMPLETES F-P4-01 (14/0/0), F-P4-02 (9/0/0) and F-P4-03 (5/0/0) by their row
 - **Proof**: 193/193 B92 harness cases on one fresh database; the complete integration green after one pin (§B92.4); the act held and stood on eye_demo, the walk 6/6 (§B92.5).
 - **The NORDWERK scene, honestly**: MET-001 a measured 0 of 7 (every loop's missing links named), MET-022 and MET-024 explained indeterminate (thin acknowledgements; an empty outcome ledger); three quarters named "no history".
 - **Bookkeeping**: F-P7-F-03 41/15/0, completing at B52; F-P7-F-10 functioning by its rows; rows implemented 1481; the next A1 stage B94.
+
+## 53. B33-H (2026-10-13): an incomplete read is not an absence — the package-health incident of 2026-10-09/10 (no migration)
+
+- **The incident, preserved**: four after-tick health runs on eye_demo recorded the geopolitical and competitor packages conflicted from facts read as absent; each facts read had begun 274–2 092 s earlier, across host sleeps, against a 60-second read context that expires on the wall clock and that every RLS policy reads (`evidence/cp6/b33h-package-health-incident.txt`; audit/CP6_BATCHES.md §B33-H).
+- **Reproduced first** on main's code through the real health route and the after-tick hook with a controlled 62-second delay inside the facts statement: the false conflict recorded (8/8 in reproduction mode).
+- **Corrected in the pipeline**: a consequential read whose context is no longer live after its handler fails closed (503 EYE-DEP-001, audited) — nothing is concluded from an incomplete read; the health hook reports the package unavailable. The context lifetime, RLS, 0111 and 0112 are unchanged.
+- **Proof**: 8/8 — the incomplete read records nothing (no disablement, no conflict, no healthy run); a genuine rights withdrawal and a genuinely missing required package still restrict; recovery stays the specialist's governed re-enablement.

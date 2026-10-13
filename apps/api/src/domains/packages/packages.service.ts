@@ -309,7 +309,12 @@ export class PackagesService implements OnModuleInit {
       try {
         const r = await this.health(env, a.principal, a.tenantId, a.domainId, v.package_id);
         out.push({ package_key: v.package_key, version: v.version, recorded: r.health['recorded'], newly_disabled: r.health['newly_disabled'] ?? [], conflict_exposed: r.health['conflict_exposed'] ?? false });
-      } catch (e) { out.push({ package_key: v.package_key, version: v.version, error: textOf(e).slice(0, 300) }); }
+      } catch (e) {
+        // B33-H: an INCOMPLETE read (its context expired mid-read — EYE-DEP-001) is reported as unavailable: no run was recorded, nothing
+        // was disabled or exposed, nothing was declared healthy; the next tick reads again. Any other failure stays an error.
+        const unavailable = e instanceof HttpException && (e.getResponse() as { code?: string }).code === 'EYE-DEP-001';
+        out.push({ package_key: v.package_key, version: v.version, ...(unavailable ? { unavailable: true, recorded: false } : {}), error: textOf(e).slice(0, 300) });
+      }
     }
     return { packages: out.length, results: out };
   }
