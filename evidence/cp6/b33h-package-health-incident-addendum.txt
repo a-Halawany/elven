@@ -1,0 +1,19 @@
+B33-H addendum (2026-10-13): two more false faults on eye_demo BEFORE the guard reached the demonstration, and their governed recovery
+=========================================================================================================================================
+The B33-H guard (main 90ffc25, #88) is in the pipeline; the demonstration API ran the B92 build (77c37a1, without the guard) until the B94
+build was deployed on 2026-10-13 ~08:40 UTC. Two after-tick health runs in that window recorded faults with the incident's signature (read-only
+SELECTs below; the audit event of `domain.package.read`, created at the read transaction's start, to the run's facts_read_at):
+
+  2026-10-12 06:37:22 UTC  competitor            FAILED  ("no risk taxonomy in force")      facts read began 05:47:18 — ~50 min (a host sleep window)
+  2026-10-13 06:22:38 UTC  geopolitical-red-sea  FAILED  (imf-portwatch-chokepoints "no contract in this domain" → assess, indicator disabled)
+                                                         facts read began 06:21:08 — 90 s, NO host sleep: the host was under heavy load (B33-H's
+                                                         gate integration run and five B94 part builders). A read can outlive its 60-second
+                                                         context under load alone — the guard, not a longer lifetime, is the remedy.
+  each followed 13–18 s later by a PASSING run of the same package.
+
+The recovery (governed, after the guarded B94 build was deployed and eye_demo migrated to 0114): D. Ivanova (domain specialist) re-ran health
+(passed on the current facts) and re-enabled through `domain.package.enable` (0112 re-validates the facts at the effect):
+competitor health 201 {"recorded":false,"passed":true}
+competitor enable 201 {"run_id":"01a12edc-beff-71f5-80d3-02b63e949e33","conflict":null,"closed_items":["083ac2db-1521-4127-a013-6b58e1343661"],"disabled_functions":{}}
+geopolitical-red-sea health 201 {"recorded":false,"passed":true}
+geopolitical-red-sea enable 201 {"run_id":"01a133ed-ac9a-7817-a77b-42a068c00f7c","conflict":null,"closed_items":["9c2431c7-08d2-4098-8169-05a635e5d1b7"],"disabled_functions":{}}
