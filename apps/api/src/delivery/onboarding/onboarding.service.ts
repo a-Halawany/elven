@@ -31,7 +31,7 @@ type Row = Record<string, unknown>;
 export const READ = 'onboarding.read';
 export const DRIFT_HOOK = 'onboarding-drift';
 /* The prelude's signature subject kind (0114 §0.3); SignatureService's TS union predates it — the port's CHECK is the authority. */
-const CONFIG_BASELINE = 'config_baseline' as unknown as SignatureSubjectKind;
+const CONFIG_BASELINE: SignatureSubjectKind = 'config_baseline';
 const textOf = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
 @Injectable()

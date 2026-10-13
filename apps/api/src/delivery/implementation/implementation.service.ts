@@ -25,7 +25,7 @@ type Row = Record<string, unknown>;
 export const READ = 'implementation.read';
 export const SELF_READ = 'implementation.self.read';
 /** The signature subject kind of a go-live and a residual-risk acceptance (0114 §0.3; the prelude's SignatureSubjectKind type does not list B94's kinds yet). */
-const READINESS_KIND = 'readiness' as unknown as SignatureSubjectKind;
+const READINESS_KIND: SignatureSubjectKind = 'readiness';
 export const IM_BOUNDARY = `${BOUNDARY} The go-live gate is released only by readiness (never by a measure, a cohort result or a percentage); an unfilled accountable role, an unresolved owner and an inaccessible path are never overridable; training and competence are complete | not_yet, subject-visible, purpose-bound (enablement readiness), cohorts only above k = 5.`;
 
 const textOf = (e: unknown): string => (e instanceof HttpException ? String((e.getResponse() as { message?: string }).message ?? e.message) : (e instanceof Error ? e.message : String(e)));
