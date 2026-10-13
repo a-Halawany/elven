@@ -3,6 +3,9 @@
  * SECURITY DEFINER port that asserts the route's own action, the scope and the acting principal (and, for a support engineer, the live grant
  * FIRST); each read is a plain select under the caller's RLS (or a guarded definer read). Nothing here decides a rule a port decides.
  */
+/* B94 act-found (2026-10-13): every actor name below is read through products.catalog_principal_name (0095 §K.3: SECURITY DEFINER, this tenant's
+   principals only). A DOMAIN-scoped read cannot see a TENANT-homed principal under identity.principals' RLS, so the implementation lead's,
+   the onboarding authority's and the sponsor's names read blank on the domain pages ("approved by  at …"). */
 import { sql } from 'kysely';
 import type { Tx } from '../../shared/db.js';
 
@@ -92,7 +95,7 @@ export interface ServiceWrites extends ServiceReads {
 const CASE_COLS = sql`c.case_id::text, c.case_ref, c.title, c.severity, c.affected_capability, c.object_refs, c.description, c.state, c.routing, c.opened_by::text, c.opened_at, c.updated_at, c.closed_at,
   c.version, c.response_due_at, c.resolution_due_at, c.responded_at, c.response_breached_at, c.resolution_breached_at, c.triaged_by::text, c.triaged_at, c.resolved_by::text, c.resolved_at,
   c.resolution, c.guidance, c.workaround, c.workaround_executed, c.problem_id::text, c.known_error_id::text, c.reopen_count, c.closed_by::text, c.closure,
-  (select p.display_name from identity.principals p where p.id = c.opened_by) as opened_by_name,
+  products.catalog_principal_name(c.opened_by) as opened_by_name,
   (select min(g.requested_at) from service.support_grants g where g.case_id = c.case_id) as first_grant_at`;
 
 class ServiceCapabilityImpl extends ServiceCore implements ServiceWrites {
@@ -109,7 +112,7 @@ class ServiceCapabilityImpl extends ServiceCore implements ServiceWrites {
   }
   async notes(caseId: string): Promise<Row[]> {
     return this.rows(sql`select n.note_id::text, n.side, n.kind, n.body, n.grant_id::text, n.at, n.author_principal_id::text,
-        (select p.display_name from identity.principals p where p.id = n.author_principal_id) as author_name
+        products.catalog_principal_name(n.author_principal_id) as author_name
       from service.case_notes n where n.case_id = ${caseId}::uuid order by n.at`);
   }
   async bundles(caseId: string): Promise<Row[]> {
@@ -139,7 +142,7 @@ class ServiceCapabilityImpl extends ServiceCore implements ServiceWrites {
   async ledger(subjectIds: string[], limit: number): Promise<Row[]> {
     if (subjectIds.length === 0) return [];
     return this.rows(sql`select e.event_id::text, e.subject_kind, e.subject_id::text, e.version, e.event, e.actor_principal_id::text, e.details, e.occurred_at,
-        (select p.display_name from identity.principals p where p.id = e.actor_principal_id) as actor_name
+        products.catalog_principal_name(e.actor_principal_id) as actor_name
       from service.events e where e.subject_id = any(${subjectIds}::uuid[]) order by e.occurred_at, e.event_id limit ${lim(limit, 1000)}`);
   }
   async items(subjectId: string): Promise<Row[]> {
@@ -218,8 +221,8 @@ class ServiceCapabilityImpl extends ServiceCore implements ServiceWrites {
   async valueReviews(): Promise<Row[]> {
     return this.rows(sql`select r.review_id::text, r.period_from::text as period_from, r.period_to::text as period_to, r.inputs_digest, r.outcomes, r.value_status, r.state, r.claim, r.digest,
         r.recorded_by::text, r.recorded_at, r.decided_by::text, r.decided_at, r.decision_note,
-        (select p.display_name from identity.principals p where p.id = r.recorded_by) as recorded_by_name,
-        (select p.display_name from identity.principals p where p.id = r.decided_by) as decided_by_name
+        products.catalog_principal_name(r.recorded_by) as recorded_by_name,
+        products.catalog_principal_name(r.decided_by) as decided_by_name
       from service.value_reviews r order by r.recorded_at desc`);
   }
   async valueReview(reviewId: string): Promise<Row | null> {

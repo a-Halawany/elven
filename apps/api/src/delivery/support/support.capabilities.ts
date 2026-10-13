@@ -4,6 +4,9 @@
  * separation-of-duties rule); each read is a plain select under the caller's RLS (or a guarded definer read). Nothing here decides a rule a
  * port decides.
  */
+/* B94 act-found (2026-10-13): every actor name below is read through products.catalog_principal_name (0095 §K.3: SECURITY DEFINER, this tenant's
+   principals only). A DOMAIN-scoped read cannot see a TENANT-homed principal under identity.principals' RLS, so the implementation lead's,
+   the onboarding authority's and the sponsor's names read blank on the domain pages ("approved by  at …"). */
 import { sql } from 'kysely';
 import type { Tx } from '../../shared/db.js';
 
@@ -30,8 +33,8 @@ export class SupportCapability {
   async matrices(profile: string | null): Promise<Row[]> {
     return this.rows(sql`select m.matrix_id::text, m.version, m.tenant_id::text, m.domain_id::text, m.programme_id::text, m.deployment_profile, m.state, m.digest, m.proposed_by::text,
         m.proposed_at, m.decided_by::text, m.decided_at, m.decision_reason, m.signature_id::text, m.support_boundary, m.row_count, m.correlation_id::text,
-        (select p.display_name from identity.principals p where p.id = m.proposed_by) as proposed_by_name,
-        (select p.display_name from identity.principals p where p.id = m.decided_by) as decided_by_name,
+        products.catalog_principal_name(m.proposed_by) as proposed_by_name,
+        products.catalog_principal_name(m.decided_by) as decided_by_name,
         (select coalesce(jsonb_agg(to_jsonb(r) - 'tenant_id' - 'domain_id' - 'matrix_id' - 'version' order by r.responsibility_key), '[]'::jsonb) from service.responsibility_rows r
           where r.matrix_id = m.matrix_id and r.version = m.version) as rows,
         executive.signature_of('responsibility_matrix', m.matrix_id, m.version) as signatures
@@ -53,8 +56,8 @@ export class SupportCapability {
   }
   async grants(limit: number, engineer: string | null): Promise<Row[]> {
     return this.rows(sql`select g.grant_id::text, g.case_id::text, c.case_ref, c.severity, c.title as case_title, c.state as case_state, g.engineer_principal_id::text,
-        (select p.display_name from identity.principals p where p.id = g.engineer_principal_id) as engineer_name, g.purpose, g.object_scope, g.action_scope, g.duration_minutes,
-        g.state, g.requested_at, g.decided_by::text, (select p.display_name from identity.principals p where p.id = g.decided_by) as decided_by_name, g.decided_at, g.decision_reason,
+        products.catalog_principal_name(g.engineer_principal_id) as engineer_name, g.purpose, g.object_scope, g.action_scope, g.duration_minutes,
+        g.state, g.requested_at, g.decided_by::text, products.catalog_principal_name(g.decided_by) as decided_by_name, g.decided_at, g.decision_reason,
         g.starts_at, g.expires_at, g.ended_at, g.ended_by::text, g.end_reason, g.request_digest, g.expiry_timer_id::text, g.review_task_id::text, g.preview,
         (select count(*)::int from service.access_log l where l.grant_id = g.grant_id and l.outcome = 'allowed') as reads_allowed,
         (select count(*)::int from service.access_log l where l.grant_id = g.grant_id and l.outcome = 'refused') as reads_refused
@@ -63,7 +66,7 @@ export class SupportCapability {
   }
   async grant(grantId: string): Promise<Row | null> {
     return (await this.rows(sql`select g.grant_id::text, g.case_id::text, c.case_ref, c.severity, c.title as case_title, c.state as case_state, g.engineer_principal_id::text,
-        (select p.display_name from identity.principals p where p.id = g.engineer_principal_id) as engineer_name, g.purpose, g.object_scope, g.action_scope, g.duration_minutes, g.state,
+        products.catalog_principal_name(g.engineer_principal_id) as engineer_name, g.purpose, g.object_scope, g.action_scope, g.duration_minutes, g.state,
         g.requested_at, g.decided_by::text, g.decided_at, g.starts_at, g.expires_at, g.ended_at, g.end_reason, g.request_digest, g.preview,
         (select coalesce(jsonb_agg(jsonb_build_object('source_id', s.source_id, 'name', s.name, 'source_key', s.source_key) order by s.name), '[]'::jsonb)
            from observation.source_contracts_current s where s.source_id in (select x::uuid from jsonb_array_elements_text(g.object_scope -> 'sources') x)) as sources
@@ -76,7 +79,7 @@ export class SupportCapability {
     return r.rows[0]?.ok === true;
   }
   async accessLog(limit: number, grantId: string | null): Promise<Row[]> {
-    return this.rows(sql`select l.log_id::text, l.grant_id::text, l.principal_id::text, (select p.display_name from identity.principals p where p.id = l.principal_id) as principal_name,
+    return this.rows(sql`select l.log_id::text, l.grant_id::text, l.principal_id::text, products.catalog_principal_name(l.principal_id) as principal_name,
         l.action, l.object_kind, l.object_id, l.outcome, l.detail, l.at from service.access_log l where (${grantId}::uuid is null or l.grant_id = ${grantId}::uuid) order by l.at desc limit ${limit}`);
   }
   async drills(limit: number): Promise<Row[]> {

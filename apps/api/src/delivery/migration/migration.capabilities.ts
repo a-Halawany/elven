@@ -3,6 +3,9 @@
  * thin binding to a SECURITY DEFINER port that asserts the route's own action, the scope and the acting principal; each read is a plain select
  * under the caller's RLS or a guarded definer read (observation.assert_read_scope). Nothing here decides a rule a port decides.
  */
+/* B94 act-found (2026-10-13): every actor name below is read through products.catalog_principal_name (0095 §K.3: SECURITY DEFINER, this tenant's
+   principals only). A DOMAIN-scoped read cannot see a TENANT-homed principal under identity.principals' RLS, so the implementation lead's,
+   the onboarding authority's and the sponsor's names read blank on the domain pages ("approved by  at …"). */
 import { sql } from 'kysely';
 import type { Tx } from '../../shared/db.js';
 
@@ -103,19 +106,19 @@ class MigrationCapabilityImpl extends MigrationCore implements MigrationWrites {
       from onboarding.migration_waves w where (${domainId}::uuid is null or w.domain_id = ${domainId}::uuid) order by w.created_at desc`);
   }
   async wave(waveId: string): Promise<Row | null> {
-    return this.value(sql`select to_jsonb(w) || jsonb_build_object('created_by_name', (select p.display_name from identity.principals p where p.id = w.created_by)) as r
+    return this.value(sql`select to_jsonb(w) || jsonb_build_object('created_by_name', products.catalog_principal_name(w.created_by)) as r
       from onboarding.migration_waves w where w.wave_id = ${waveId}::uuid`);
   }
   async mappings(waveId: string): Promise<Row[]> {
     return this.rows(sql`select m.version, m.spec, m.digest, m.basis, m.rationale, m.state, m.proposed_by::text, m.proposed_by_kind, m.proposed_at, m.decided_by::text, m.decided_at, m.decision_reason, m.signature_id::text,
-        (select p.display_name from identity.principals p where p.id = m.proposed_by) as proposed_by_name,
-        (select p.display_name from identity.principals p where p.id = m.decided_by) as decided_by_name
+        products.catalog_principal_name(m.proposed_by) as proposed_by_name,
+        products.catalog_principal_name(m.decided_by) as decided_by_name
       from onboarding.migration_mappings m where m.wave_id = ${waveId}::uuid order by m.version desc`);
   }
   async rehearsals(waveId: string): Promise<Row[]> {
     return this.rows(sql`select r.rehearsal_id::text, r.seq, r.kind, r.mapping_version, r.mapping_digest, r.mapping_state, r.input, r.columns, r.unmapped_columns, r.missing_columns, r.counts, r.blocking,
         r.input_digest, r.plan_digest, r.cutover_id::text, r.compared_to::text, r.equal, r.ran_by::text, r.ran_by_kind, r.ran_at,
-        (select p.display_name from identity.principals p where p.id = r.ran_by) as ran_by_name
+        products.catalog_principal_name(r.ran_by) as ran_by_name
       from onboarding.migration_rehearsals r where r.wave_id = ${waveId}::uuid order by r.seq desc`);
   }
   async rehearsal(rehearsalId: string): Promise<Row | null> {
@@ -129,8 +132,8 @@ class MigrationCapabilityImpl extends MigrationCore implements MigrationWrites {
   async cutovers(waveId: string): Promise<Row[]> {
     return this.rows(sql`select c.cutover_id::text, c.rehearsal_id::text, c.plan_digest, c.mapping_version, c.state, c.held, c.held_reasons, c.requested_by::text, c.requested_at, c.approved_by::text, c.approved_at,
         c.approval_reason, c.signature_id::text, c.executed_by::text, c.executed_by_kind, c.executed_at, c.execution, c.verified_at, c.post_rehearsal_id::text, c.activated_at, c.rolled_back_at, c.updated_at,
-        (select p.display_name from identity.principals p where p.id = c.requested_by) as requested_by_name,
-        (select p.display_name from identity.principals p where p.id = c.approved_by) as approved_by_name
+        products.catalog_principal_name(c.requested_by) as requested_by_name,
+        products.catalog_principal_name(c.approved_by) as approved_by_name
       from onboarding.migration_cutovers c where c.wave_id = ${waveId}::uuid order by c.requested_at desc`);
   }
   async cutover(cutoverId: string): Promise<Row | null> {
@@ -143,18 +146,18 @@ class MigrationCapabilityImpl extends MigrationCore implements MigrationWrites {
   }
   async rollbacks(waveId: string): Promise<Row[]> {
     return this.rows(sql`select b.rollback_id::text, b.cutover_id::text, b.kind, b.plan, b.digest, b.rehearsal_of::text, b.reason, b.recorded_by::text, b.recorded_at,
-        (select p.display_name from identity.principals p where p.id = b.recorded_by) as recorded_by_name
+        products.catalog_principal_name(b.recorded_by) as recorded_by_name
       from onboarding.migration_rollbacks b join onboarding.migration_cutovers c on c.cutover_id = b.cutover_id where c.wave_id = ${waveId}::uuid order by b.recorded_at desc`);
   }
   async acceptances(waveId: string): Promise<Row[]> {
     return this.rows(sql`select a.acceptance_id::text, a.cutover_id::text, a.decision, a.claim, a.bound, a.digest, a.reason, a.decided_by::text, a.decided_at, a.signature_id::text,
-        (select p.display_name from identity.principals p where p.id = a.decided_by) as decided_by_name
+        products.catalog_principal_name(a.decided_by) as decided_by_name
       from onboarding.migration_acceptances a where a.wave_id = ${waveId}::uuid order by a.decided_at desc`);
   }
   async ledger(subjectIds: string[], limit: number): Promise<Row[]> {
     if (subjectIds.length === 0) return [];
     return this.rows(sql`select e.event_id::text, e.subject_kind, e.subject_id::text, e.version, e.event, e.actor_principal_id::text, e.details, e.occurred_at, e.correlation_id::text,
-        (select p.display_name from identity.principals p where p.id = e.actor_principal_id) as actor_name
+        products.catalog_principal_name(e.actor_principal_id) as actor_name
       from onboarding.events e where e.subject_id = any(${subjectIds}::uuid[]) or (e.details ->> 'wave_id') = any(${subjectIds}::text[])
       order by e.occurred_at, e.event_id limit ${limit}::int`);
   }

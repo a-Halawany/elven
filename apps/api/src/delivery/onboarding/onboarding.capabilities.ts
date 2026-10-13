@@ -3,6 +3,9 @@
  * SECURITY DEFINER port that asserts the route's own action, the scope, the acting principal and the roles; each read is a plain select under
  * the caller's RLS, or a guarded definer read (the observed configuration, the drift). Nothing here decides a rule a port decides.
  */
+/* B94 act-found (2026-10-13): every actor name below is read through products.catalog_principal_name (0095 §K.3: SECURITY DEFINER, this tenant's
+   principals only). A DOMAIN-scoped read cannot see a TENANT-homed principal under identity.principals' RLS, so the implementation lead's,
+   the onboarding authority's and the sponsor's names read blank on the domain pages ("approved by  at …"). */
 import { sql } from 'kysely';
 import type { Tx } from '../../shared/db.js';
 
@@ -68,7 +71,7 @@ class OnboardingCapabilityImpl implements OnboardingWrites {
   async programmes(): Promise<Row[]> {
     return this.rows(sql`select p.programme_id::text, p.version, p.programme_key, p.title, p.target_domain_id::text, p.deployment_profile, p.owner_principal_id::text, p.state,
         p.held_reasons, p.plan, p.digest, p.effective_from, p.created_at,
-        (select pr.display_name from identity.principals pr where pr.id = p.owner_principal_id) as owner_name,
+        products.catalog_principal_name(p.owner_principal_id) as owner_name,
         (select d.name from tenancy.domains d where d.id = p.target_domain_id) as target_domain_name,
         (select d.status from tenancy.domains d where d.id = p.target_domain_id) as target_domain_status,
         (select i.version from onboarding.sponsor_intents i where i.programme_id = p.programme_id and i.superseded_at is null) as intent_version,
@@ -78,26 +81,26 @@ class OnboardingCapabilityImpl implements OnboardingWrites {
   async programmeVersions(programmeId: string): Promise<Row[]> {
     return this.rows(sql`select p.programme_id::text, p.version, p.programme_key, p.title, p.target_domain_id::text, p.deployment_profile, p.owner_principal_id::text, p.state,
         p.held_reasons, p.plan, p.digest, p.effective_from, p.superseded_at, p.created_by::text, p.created_at, p.correlation_id::text,
-        (select pr.display_name from identity.principals pr where pr.id = p.created_by) as created_by_name,
-        (select pr.display_name from identity.principals pr where pr.id = p.owner_principal_id) as owner_name
+        products.catalog_principal_name(p.created_by) as created_by_name,
+        products.catalog_principal_name(p.owner_principal_id) as owner_name
       from onboarding.programmes p where p.programme_id = ${programmeId}::uuid order by p.version desc`);
   }
   async intents(programmeId: string): Promise<Row[]> {
     return this.rows(sql`select i.intent_id::text, i.version, i.programme_id::text, i.sponsor_principal_id::text, i.objectives, i.scope_statement, i.success_measures, i.constraints,
         i.target_domain_name, i.deployment_profile, i.digest, i.recorded_at, i.superseded_at,
-        (select pr.display_name from identity.principals pr where pr.id = i.sponsor_principal_id) as sponsor_name
+        products.catalog_principal_name(i.sponsor_principal_id) as sponsor_name
       from onboarding.sponsor_intents i where i.programme_id = ${programmeId}::uuid order by i.version desc`);
   }
   async steps(programmeId: string): Promise<Row[]> {
     return this.rows(sql`select s.step_id::text, s.programme_id::text, s.step_key, s.ordinal, s.version, s.state, s.realized_by, s.evidence, s.compensation, s.held_reason, s.reverted_by,
         s.digest, s.created_at, s.updated_at, s.updated_by::text,
-        (select pr.display_name from identity.principals pr where pr.id = s.updated_by) as updated_by_name
+        products.catalog_principal_name(s.updated_by) as updated_by_name
       from onboarding.steps s where s.programme_id = ${programmeId}::uuid order by s.ordinal`);
   }
   async ledger(subjectIds: string[], limit: number): Promise<Row[]> {
     if (subjectIds.length === 0) return [];
     return this.rows(sql`select e.event_id::text, e.scope, e.domain_id::text, e.subject_kind, e.subject_id::text, e.version, e.event, e.actor_principal_id::text, e.details, e.occurred_at,
-        e.correlation_id::text, (select pr.display_name from identity.principals pr where pr.id = e.actor_principal_id) as actor_name
+        e.correlation_id::text, products.catalog_principal_name(e.actor_principal_id) as actor_name
       from onboarding.events e where e.subject_id = any(${subjectIds}::uuid[]) order by e.occurred_at, e.event_id limit ${Math.min(Math.max(limit, 1), 2000)}`);
   }
   async domain(domainId: string): Promise<Row | null> {
@@ -111,9 +114,9 @@ class OnboardingCapabilityImpl implements OnboardingWrites {
   async baselines(domainId: string): Promise<Row[]> {
     return this.rows(sql`select b.baseline_id::text, b.version, b.domain_id::text, b.programme_id::text, b.pointers, b.digest, b.basis, b.promoted_from, b.absorbed, b.state,
         b.captured_by::text, b.captured_at, b.proposed_by::text, b.proposed_at, b.decided_by::text, b.decided_at, b.decision_reason, b.signature_id::text, b.effective_from, b.superseded_at,
-        (select pr.display_name from identity.principals pr where pr.id = b.captured_by) as captured_by_name,
-        (select pr.display_name from identity.principals pr where pr.id = b.proposed_by) as proposed_by_name,
-        (select pr.display_name from identity.principals pr where pr.id = b.decided_by) as decided_by_name,
+        products.catalog_principal_name(b.captured_by) as captured_by_name,
+        products.catalog_principal_name(b.proposed_by) as proposed_by_name,
+        products.catalog_principal_name(b.decided_by) as decided_by_name,
         executive.signature_of('config_baseline', b.baseline_id, b.version) as signatures
       from onboarding.config_baselines b where b.domain_id = ${domainId}::uuid order by b.version desc`);
   }

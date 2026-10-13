@@ -4,6 +4,9 @@
  * plain select (or a guarded definer read) under the caller's RLS — a person's training and competence records are filtered PER PERSON by RLS
  * (the subject, the recorder, the authorities). Nothing here decides a rule a port decides.
  */
+/* B94 act-found (2026-10-13): every actor name below is read through products.catalog_principal_name (0095 §K.3: SECURITY DEFINER, this tenant's
+   principals only). A DOMAIN-scoped read cannot see a TENANT-homed principal under identity.principals' RLS, so the implementation lead's,
+   the onboarding authority's and the sponsor's names read blank on the domain pages ("approved by  at …"). */
 import { sql } from 'kysely';
 import type { Tx } from '../../shared/db.js';
 
@@ -84,7 +87,7 @@ export interface ImplementationWrites extends ImplementationReads {
   reviewShadow(a: { reviewId: string; programmeId: string; tenantId: string; domainId: string; statement: string; actor: string; correlationId: string }): Promise<Row>;
 }
 
-const NAME = (col: string) => sql.raw(`(select p.display_name from identity.principals p where p.id = ${col})`);
+const NAME = (col: string) => sql.raw(`products.catalog_principal_name(${col})`);
 
 class ImplementationCapabilityImpl extends ImplementationCore implements ImplementationWrites {
   constructor(tx: Tx, action: string) { super(tx, action); }
