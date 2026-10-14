@@ -28,6 +28,13 @@ const NAV = [
   { href: '/admin/customer-success', key: 'nav.delivery.success' },
   { href: '/admin/control-center', key: 'nav.delivery.control' },
   /* end B94 §0 */
+  /* B107 §0 (the product-governance workspace, its registries, conformance, acceptance records and design governance) */
+  { href: '/admin/governance', key: 'nav.governance.workspace' },
+  { href: '/admin/governance/registries', key: 'nav.governance.registries' },
+  { href: '/admin/governance/conformance', key: 'nav.governance.conformance' },
+  { href: '/admin/governance/acceptance', key: 'nav.governance.acceptance' },
+  { href: '/admin/governance/design', key: 'nav.governance.design' },
+  /* end B107 §0 */
 ];
 
 export default function AdminLayout({ children }: { children: ReactNode }) {

@@ -163,6 +163,13 @@ const BUNDLE_V1: Rule[] = [
       { role: 'support_engineer', atScope: 'DOMAIN' },
       { role: 'enablement_assessor', atScope: 'DOMAIN' },
       /* end B94 §0 */
+      /* B107 §0 (0115 §0.2): the five PLATFORM governance roles resolve their own scope */
+      { role: 'product_authority', atScope: 'PLATFORM' },
+      { role: 'design_system_authority', atScope: 'PLATFORM' },
+      { role: 'independent_assurance', atScope: 'PLATFORM' },
+      { role: 'operations_authority', atScope: 'PLATFORM' },
+      { role: 'conformance_steward', atScope: 'PLATFORM' },
+      /* end B107 §0 */
     ],
     obligations: [{ type: 'audit_access' }],
     requiresPurpose: true,
@@ -2578,6 +2585,30 @@ const BUNDLE_V1: Rule[] = [
     ];
   })(),
   /* end B94 support */
+  /* B107 §0 */
+  /* B107 §0 (0115; F-R0-04, F-P7D-25, F-P7-E-17, F-P7-F-12). EXACT rules — no `governance` prefix rule exists. THE READ (governance.read:
+     the registries, the trace and impact reads, manifests, release candidates, the workspace, acceptance records of a domain, the design
+     baseline) is consequential and audited: the governance roles (PLATFORM), the platform admin and auditor, and — for a domain's own
+     acceptance records — the tenant and domain administrators, the customer sponsor, executives and the attention agent. The parts' rules
+     follow in their blocks. */
+  { actionPrefix: 'governance.read', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'product_authority', atScope: 'PLATFORM' },
+    { role: 'design_system_authority', atScope: 'PLATFORM' }, { role: 'independent_assurance', atScope: 'PLATFORM' }, { role: 'operations_authority', atScope: 'PLATFORM' },
+    { role: 'conformance_steward', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' }, { role: 'customer_sponsor', atScope: 'TENANT' },
+    { role: 'onboarding_authority', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'attention_agent', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B107 §0 */
+  /* B107 registries */
+  /* end B107 registries */
+  /* B107 conformance */
+  /* end B107 conformance */
+  /* B107 ownership */
+  /* end B107 ownership */
+  /* B107 workspace */
+  /* end B107 workspace */
+  /* B107 acceptance */
+  /* end B107 acceptance */
+  /* B107 design */
+  /* end B107 design */
   /* B36 home */
   /* THE EXECUTIVE HOME, THE CADENCE, THE COMMAND VIEWS, THE SEARCH, THE METRICS (0094 §H; F-P6-11: WS-01, JRN-19, PER-03, CAP-EO-01/-02/-04).
      EXACT rules — no `executive` prefix rule exists and none of these names is a prefix of another rule's. THE READS (executive.home.read
