@@ -1,0 +1,424 @@
+THE B94 ACT on eye_demo_b94 (REHEARSAL) — 2026-10-13T08:14:03.389Z — API http://localhost:3411
+
+B94-0 THE STATE — 0114, the casting, what exists
+  ✓ migration applied: 0114_b94_onboarding_implementation_service.sql
+  ✓ n.vogel holds tenant_admin at the TENANT
+  ✓ c.marchetti holds commercial_authority at the PLATFORM
+  ✓ t.richter holds domain_admin at the DOMAIN (the corridor domain)
+  ✓ m.dvorak holds collection_manager at the DOMAIN (the corridor domain)
+  ✓ j.sato holds product_analyst at the DOMAIN (the corridor domain)
+  ✓ m.okonkwo holds product_analytics_owner at the DOMAIN (the corridor domain)
+  ✓ c.brenner holds risk_owner at the DOMAIN (the corridor domain)
+  ✓ s.okafor holds executive at the DOMAIN (the corridor domain)
+  ✓ d.ivanova holds domain_specialist at the DOMAIN (the corridor domain)
+  · no subsidiary domain exists yet ("NORDWERK Polska — Supplier Risk (SYNTHETIC)" is absent): scene 1 drafts it through the onboarding programme
+  · commercial.contracts: NO contract for NORDWERK yet (B94-1 declares the first)
+  ✓ the catalogue: premium_support v2 active, built true, gating prefixes [] — a ROUTING entitlement (service.* is never licence-gated)
+  ✓ the corridor feed red-sea-corridor-stream (rest, replay, every 86400 s): active; its last runs AS READ: 2026-10-12T23:25:40Z finished (26 admitted) · 2026-10-11T23:25:41Z finished (26 admitted) · 2026-10-10T23:25:40Z finished (26 admitted) · 2026-10-09T23:06:25Z failed (0 admitted) — header semantics: recorded_at is in the future; health no health event recorded
+
+B94-1 COMMERCIAL — C. Marchetti reissues NORDWERK's licence adding premium_support and declares NORDWERK's FIRST contract (SYNTHETIC vendor records)
+  ✓ C. Marchetti DECLARED the package full-platform v4: + premium_support (SYNTHETIC)
+  ✓ C. Marchetti DECLARED the SKU EYE-FULL-12M v4 on full-platform v4
+  ✓ C. Marchetti ISSUED NORDWERK licence v5: full-platform — 17 capabilities incl. premium_support; supersedes v4
+  ✓ NORDWERK's licence v5 (full-platform, active) carries premium_support and every capability of v4
+  ✓ C. Marchetti DECLARED contract SYNTH-CONTRACT-NORDWERK-B94 v1: decision cell the corridor domain, support_boundary premium with a named contact, effective 2026-10-13T08:14:03Z — a SYNTHETIC vendor record (no real customer signed it)
+  ✓ the contract (declared 2026-10-13T08:14:03Z) PRECEDES every onboarding and implementation programme of the tenant (none yet; none yet) — MET-039 measures from the contract current at the programme's opening
+
+CAST — N. Vogel creates the customer sponsor, the onboarding authority, the implementation lead and the vendor's support engineer (SYNTHETIC)
+  ✓ N. Vogel (tenant administrator) CREATED W. Zielińska through the governed principal route — "W. Zielińska — customer sponsor, NORDWERK Polska (SYNTHETIC)", login w.zielinska, customer_sponsor at the TENANT
+  ✓ N. Vogel (tenant administrator) CREATED J. Hartmann through the governed principal route — "J. Hartmann — onboarding authority, NORDWERK (SYNTHETIC)", login j.hartmann, onboarding_authority at the TENANT
+  ✓ N. Vogel (tenant administrator) CREATED R. Costa through the governed principal route — "R. Costa — implementation lead, the vendor (SYNTHETIC)", login r.costa, implementation_lead at the TENANT
+  ✓ N. Vogel (tenant administrator) CREATED D. Brooks through the governed principal route — "D. Brooks — vendor support engineer (SYNTHETIC)", login d.brooks, support_engineer at the DOMAIN (the corridor domain only)
+  ✓ four DIFFERENT people: the sponsor and the onboarding authority (the customer), the implementation lead and the support engineer (the vendor)
+
+B94-3 SCENE 2, PART I (F-P7-F-06 + carryover a) — the corridor's routes and responsibility matrix; the case on red-sea-corridor-stream routed premium; a drilled grant; a short grant left to lapse
+  ✓ T. Richter PUBLISHED the corridor's attention policy VERSION 13 (supersedes 12; 30 of 30 earlier classes unchanged): service.case → [domain_admin]; support.access → [domain_admin]; responsibility.gap → [domain_admin]
+  ✓ R. Costa (implementation lead) PROPOSED the corridor's responsibility matrix v1: domain.operation → domain_admin (T. Richter), risk.ownership → risk_owner, support.access → domain_admin (T. Richter), evidence.custody → data_steward — digest a9c52797891d…
+  ✓ R. Costa (the proposer, an implementation lead) approves the corridor's matrix REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ J. Hartmann (onboarding authority) APPROVED and SIGNED the corridor's responsibility matrix v1 at digest a9c52797891d… (signature 01a1…6c8710)
+  ✓ the accountable owner of support.access in the corridor: resolved — domain_admin T. Richter
+  ✓ M. Dvořák (collection manager) OPENED case CASE-0001 (S2, observation): "Corridor feed red-sea-corridor-stream: the 2026-10-09 run failed — recurrence check (SYNTHETIC case)" — the condition AS READ, never a staged stall
+  ✓ ROUTED PREMIUM from the LIVE licence v5 (premium_listed true): named support "The vendor premium desk — named support engineer of the NORDWERK account (SYNTHETIC)", objectives response 30 min / resolution 480 min; due 2026-10-13T08:44:14Z / 2026-10-13T16:14:14Z — the routing records the licence version; case opening is never licence-gated
+  ✓ the routing preview (live licence): S1 premium 15/240 min · S2 premium 30/480 min · S3 premium 120/1440 min · S4 premium 480/4320 min
+  ✓ WITHOUT premium_support the STANDARD S2 policy would apply: response 240 min / resolution 2880 min (premium S2: 30 / 480) — read from the policies, the licence never changed back; premium support changes objectives and named support only — never an approval, a grant or a gate; opening a case is never licence-gated
+  ✓ T. Richter TRIAGED CASE-0001 (v2): the response objective met by the customer's service owner
+  ✓ CASE-0001 → awaiting_access (v3)
+  ✓ D. Brooks reads the case before any grant REFUSED — 403 EYE-AUT-001 — support access rejected (access): reading a case needs a live support grant for case CASE-0001 covering case.note — no grant was ever requested for it (the attempt is logged)
+  ✓ D. Brooks (support engineer) REQUESTED the drill grant (15 min, diagnose.source): 15 min, sources [red-sea-corridor-stream], actions [diagnose.source] — digest 9a7b63749d69…; the review task and a support.access item to the domain administrator
+  · T. Richter's preview in the control center: eligible true (no reason against); the owner of support.access resolved (T. Richter)
+  ✓ T. Richter (the accountable owner of support.access; human gate) APPROVED the drill grant (15 min, diagnose.source) at the request digest: live 2026-10-13T08:14:14Z → 2026-10-13T08:29:14Z
+  · the consequence preview he approved (recorded on the grant): {"lapse":"the session revoked with the grant; every port asks live_grant on the database clock; the support_access.expiry timer and the sweep mark it lapsed","cannot":"mutate customer decisions, evidence, policy or source state; read evidence content; read another source","purpose":"Customer-control drill: a 15-minute first look at the corridor source contract, revoked by the customer","case_ref":"CASE-0001","severity":"S2","starts_at":"2026-10-13T08:14:14.392416+00:00","expires_at":"2026-10-13T08:29:14.392416+00:00","action_scope":["diagnose.source"],"object_scope":{"sources":["01a0d5bd-26d5-
+  ✓ D. Brooks READ the source contract under grant 01a1…6912f3 (logged ff38…8fd326): red-sea-corridor-stream active, rights confirmed
+  ✓ T. Richter RAN the customer-control drill revoke_live_grant on 01a1…6912f3: outcome PASSED — probes diagnose.source: refused; the engineer's sessions revoked 2
+  ✓ D. Brooks reads the source again after the drill REFUSED — 403 EYE-AUT-001 — support access rejected (access): grant 01a13453-9161-7422-9892-dcaab86912f3 is revoked — no data access without a live approved grant (the attempt is logged)
+  ✓ the drill grant 01a1…6912f3: revoked (customer-control drill: the customer exercises its own control: a live vendor grant revoked on demand (SYNTHETIC drill))
+  ✓ D. Brooks (support engineer) REQUESTED the short-window grant (15 min, diagnose.health): 15 min, sources [red-sea-corridor-stream], actions [diagnose.health] — digest a5a3a667625f…; the review task and a support.access item to the domain administrator
+  · T. Richter's preview in the control center: eligible true (no reason against); the owner of support.access resolved (T. Richter)
+  ✓ T. Richter (the accountable owner of support.access; human gate) APPROVED the short-window grant (15 min, diagnose.health) at the request digest: live 2026-10-13T08:14:14Z → 2026-10-13T08:29:14Z
+  · the consequence preview he approved (recorded on the grant): {"lapse":"the session revoked with the grant; every port asks live_grant on the database clock; the support_access.expiry timer and the sweep mark it lapsed","cannot":"mutate customer decisions, evidence, policy or source state; read evidence content; read another source","purpose":"A 15-minute look at the corridor source health (the shortest window the port admits), left to lapse by itself","case_ref":"CASE-0001","severity":"S2","starts_at":"2026-10-13T08:14:14.527826+00:00","expires_at":"2026-10-13T08:29:14.527826+00:00","action_scope":["diagnose.health"],"object_scope":{"sources":["01a0d5bd
+  ✓ D. Brooks READ the source health under grant 01a1…a1723f: 0 health event(s)
+  · the short-window grant 01a1…a1723f is approved, expires 2026-10-13T08:29:14Z on the database clock — its lapse is shown in PART II, after scenes 1 and 3
+
+B94-2 SCENE 1 (F-P7-F-04) — "NORDWERK Polska — Supplier Risk (SYNTHETIC)" onboarded from its legacy supplier-risk spreadsheet (SYNTHETIC)
+  ✓ R. Costa (implementation lead) OPENED onboarding programme nordwerk-polska-supplier-risk v1 (planned) — digest a0198225a87f…
+  ✓ R. Costa (implementation lead) records the sponsor's intent REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ W. Zielińska (customer sponsor) RECORDED her intent v1: 2 objectives, 2 success measures, target "NORDWERK Polska — Supplier Risk (SYNTHETIC)" — digest f4d572d4d7a7…
+  ✓ the programme's steps (JRN-01 then JRN-23), each naming its compensating act: intent:planned → domain:planned → authority:planned → policy:planned → sources:planned → responsibility:planned → baseline:planned → mapping:planned → rehearsal:planned → reconciliation:planned → cutover:planned
+  ✓ step intent DONE — realized by sponsor intent v1 (onboarding.intent.record); compensation: onboarding.intent.record
+  ✓ R. Costa (implementation lead) drafts the domain REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ N. Vogel (tenant administrator) DRAFTED the domain "NORDWERK Polska — Supplier Risk (SYNTHETIC)" 01a1…351b0a (status draft) through the programme — lifecycle domain.drafted; the programme's next version names it
+  · the subsidiary is DRAFT: a draft domain is never a contract decision cell (0105 refuses non-active cells) — contract versions naming it: 0
+  ✓ step domain DONE — realized by NORDWERK Polska — Supplier Risk (SYNTHETIC) (draft) (tenancy.domain.draft); compensation: onboarding.programme.withdraw
+  ✓ N. Vogel (tenant administrator) CREATED K. Nowak through the governed principal route — "K. Nowak — domain administrator, NORDWERK Polska (SYNTHETIC)", login k.nowak, domain_admin at the DOMAIN (the subsidiary)
+  ✓ N. Vogel (tenant administrator) CREATED A. Wiśniewska through the governed principal route — "A. Wiśniewska — collection manager, NORDWERK Polska (SYNTHETIC)", login a.wisniewska, collection_manager at the DOMAIN (the subsidiary)
+  ✓ N. Vogel (tenant administrator) CREATED E. Sandberg through the governed principal route — "E. Sandberg — enablement assessor, NORDWERK Polska (SYNTHETIC)", login e.sandberg, enablement_assessor at the DOMAIN (the subsidiary)
+  ✓ N. Vogel (tenant administrator) CREATED M. Kowalczyk through the governed principal route — "M. Kowalczyk — decision owner, NORDWERK Polska (SYNTHETIC)", login m.kowalczyk, decision_owner at the DOMAIN (the subsidiary)
+  ✓ N. Vogel (tenant administrator) CREATED T. Wójcik through the governed principal route — "T. Wójcik — decision owner, NORDWERK Polska (SYNTHETIC)", login t.wojcik, decision_owner at the DOMAIN (the subsidiary)
+  ✓ step authority DONE — realized by K. Nowak — domain administrator, NORDWERK Polska (SYNTHETIC) (identity.principal.create); compensation: identity.credential.revoke — the subsidiary's administrator
+  ✓ K. Nowak PUBLISHED the subsidiary's attention policy VERSION 1 (its first): onboarding.migration → [domain_admin]; onboarding.drift → [domain_admin]; responsibility.gap → [domain_admin]; implementation.readiness → [domain_admin]; support.access → [domain_admin]; service.case → [domain_admin]
+  ✓ step policy DONE — realized by attention policy v1 (executive.attention.policy.publish); compensation: executive.attention.policy.publish
+  ✓ R. Costa (implementation lead) PROPOSED the subsidiary's responsibility matrix v1: data.migration → onboarding_authority (J. Hartmann), risk.ownership → risk_owner, support.access → domain_admin (K. Nowak), domain.operation → domain_admin (K. Nowak), decision.ownership → decision_owner (M. Kowalczyk) — digest 0892a256c543…
+  ✓ R. Costa (the proposer, an implementation lead) approves the subsidiary's matrix REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ J. Hartmann (onboarding authority) APPROVED and SIGNED the subsidiary's responsibility matrix v1 at digest 0892a256c543… (signature 01a1…c8cfad)
+  ✓ step responsibility DONE — realized by responsibility matrix v1 (approved) (service.matrix.decide); compensation: service.matrix.decide
+  · the subsidiary's owner registry (read LIVE): data.migration resolved (J. Hartmann) · risk.ownership unfilled · support.access resolved (K. Nowak) · decision.ownership resolved (M. Kowalczyk, T. Wójcik)
+  ✓ K. Nowak (the subsidiary's administrator) REGISTERED the upload source nordwerk-polska-legacy-supplier-risk in the DRAFT domain
+  ✓ A. Wiśniewska (collection manager; not the registrar) APPROVED the source contract
+  ✓ A. Wiśniewska ACTIVATED the source
+  ✓ the platform administrator PROVISIONED the upload agent (an identity act — a principal is created), owned by K. Nowak
+  ✓ K. Nowak UPLOADED the legacy spreadsheet export nordwerk-polska-supplier-risk-legacy.csv (5061 bytes, 48 rows): run finished, admitted 1 → evidence 01a1…d798c7 with custody (sha-256 085b4a3d5d16…)
+  ✓ K. Nowak UPLOADED the corrected spreadsheet export nordwerk-polska-supplier-risk-legacy-corrected.csv (5052 bytes, 48 rows): run finished, admitted 1 → evidence 01a1…c026b2 with custody (sha-256 f0e745f71aaf…)
+  ✓ step sources DONE — realized by nordwerk-polska-legacy-supplier-risk v1 (observation.source.approve); compensation: observation.source.transition
+  ✓ R. Costa CAPTURED configuration baseline v1: the subsidiary's version pointers (licence, packages, role_census, attention_policy, source_contracts, analytics_purposes, workflow_definitions) — digest 61fb825c271b…
+  ✓ R. Costa PROPOSED baseline v1 at its digest
+  ✓ R. Costa (the proposer, an implementation lead) approves the baseline REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ J. Hartmann APPROVED and SIGNED configuration baseline v1 at digest 61fb825c271b… (signature 01a1…6feaa3)
+  ✓ step baseline DONE — realized by configuration baseline v1 (approved) (onboarding.baseline.decide); compensation: onboarding.baseline.decide
+  ✓ R. Costa OPENED wave polska-supplier-register into the DRAFT domain from the upload source (identifier system nwp-legacy-supplier)
+  ✓ the SUGGESTIONS from the legacy header (automation proposes, a human adopts): Supplier No → legacy_id, Supplier Name → name, Country → country, Risk Rating → risk_rating, Category → risk_category, Annual Spend (EUR) → annual_spend_eur, Last Review → last_review_on, Buyer Note → ∅ — none pre-approved
+  ✓ R. Costa PROPOSED mapping v1 (adopting the suggestions; key column "Supplier No") — digest 00a72d2bcba2…
+  ✓ R. Costa (implementation lead) approves mapping v1 REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ J. Hartmann APPROVED mapping v1 ON ITS DIGEST 00a72d2bcba2… — signed (01a1…84c6e3)
+  ✓ step mapping DONE — realized by migration_mapping · mapping.approved (onboarding.mapping.approve); compensation: onboarding.mapping.decide
+  ✓ R. Costa RAN rehearsal 1 (a deterministic dry run of the stored evidence bytes; nothing written to the graph): rows 48 · mapped 44 · would_create 44 · would_match 0 · rejected 2 (missing key 1, formula cell 1, bad value 0) · ambiguous 2 · conflict 0 · unmapped columns 1 — 5 blocking; plan digest 29e12c7da8c5…
+  · THE RECONCILIATION DIFFS of rehearsal 1: row 16 NWP-S-0700 ambiguous [duplicate_key: NWP-S-0700 names more than one legacy row] · row 22 (no key) rejected [missing_key: the key column is blank] · row 32 NWP-S-0601 rejected [formula_cell: Supplier Name (r33c2) — recorded, never evaluated] · row 41 NWP-S-0700 ambiguous [duplicate_key: NWP-S-0700 names more than one legacy row]; unmapped column(s): Buyer Note
+  ✓ rehearsal 1 BLOCKS (5 blocking rows/columns) — the wave is held on reconciliation
+  ✓ R. Costa REQUESTED a cutover on rehearsal 1: HELD — reconciliation 5; an onboarding.migration item raised to the subsidiary's administrator
+  ✓ J. Hartmann approves the held cutover REFUSED — 409 EYE-STA-002 — migration cutover rejected (held): the cutover is held — reconciliation; the hold is recorded and routed (receipt 01a13453-97e0-74c0-9fd1-6cde0ad1a1a9)
+  ✓ R. Costa executes the cutover before any approval (outside the approved plan) REFUSED — 409 EYE-STA-002 — migration cutover rejected (state): the cutover is requested, not approved — automation executes only an approved plan
+  ✓ R. Costa PROPOSED mapping v2 (the Buyer Note column declared IGNORED) — digest 33c433a260d1…
+  ✓ J. Hartmann approves mapping v2 on v1's digest (stale) REFUSED — 409 EYE-STA-002 — migration mapping rejected (stale): the digest seen (00a72d2bcba2) is not mapping v2's digest — read the mapping again
+  ✓ J. Hartmann APPROVED mapping v2 on its digest 33c433a260d1… — signed; v1 superseded
+  ✓ R. Costa RAN rehearsal 2 (the CORRECTED file, mapping v2 approved): rows 48 · mapped 48 · would_create 48 · would_match 0 · rejected 0 (missing key 0, formula cell 0, bad value 0) · ambiguous 0 · conflict 0 · unmapped columns 0 — 0 blocking; plan digest a116ce24aac6…
+  ✓ step rehearsal DONE — realized by migration_mapping · mapping.approved (onboarding.rehearsal.run); compensation: onboarding.rehearsal.run
+  ✓ step reconciliation DONE — realized by migration_mapping · mapping.approved (onboarding.rehearsal.run); compensation: onboarding.rehearsal.run
+  ✓ R. Costa REQUESTED the cutover on rehearsal 2: NOT held; plan digest a116ce24aac6… (= rehearsal 2's)
+  ✓ J. Hartmann RECHECKED the cutover: RELEASED — the owner of data.migration resolved (J. Hartmann), the mapping approved, the reconciliation clean
+  ✓ R. Costa (implementation lead) approves the cutover REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ J. Hartmann approves on rehearsal 1's digest (stale) REFUSED — 409 EYE-STA-002 — migration cutover rejected (stale): the digest seen (29e12c7da8c5) is not the rehearsal's plan digest — read the cutover again
+  ✓ J. Hartmann (onboarding authority) APPROVED the cutover ON REHEARSAL 2's DIGEST a116ce24aac6… — signed (01a1…09848d)
+  ✓ R. Costa EXECUTED the cutover INSIDE THE APPROVED PLAN (per-row savepoints): {"rows":48,"failed":0,"created":48,"matched":0}; failures 0
+  ✓ R. Costa executes the same cutover again REFUSED — 409 EYE-STA-002 — migration cutover rejected (state): the cutover is executed, not approved — automation executes only an approved plan
+  ✓ N. Vogel activates the domain BEFORE the post-cutover reconciliation REFUSED — 409 EYE-STA-002 — migration cutover rejected (held): the post-cutover reconciliation does not equal the approved rehearsal (48 of 48 observed, 0 failed, 0 unexpected) — the domain stays draft
+  ✓ the POST-CUTOVER RECONCILIATION: equal to rehearsal 2 true — {"equal":true,"failed":0,"created":48,"matched":0,"missing":[],"expected":48,"observed":48,"unexpected":0}
+  ✓ step cutover DONE — realized by cutover · cutover.reconciled (onboarding.cutover.execute); compensation: onboarding.rollback.execute
+  ✓ R. Costa (implementation lead) activates the domain REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ N. Vogel (tenant administrator) ACTIVATED "NORDWERK Polska — Supplier Risk (SYNTHETIC)": active — lifecycle domain.activated, bound to cutover 01a1…555491
+  ✓ the subsidiary domain is ACTIVE since 2026-10-13T08:14:16Z; its lifecycle: domain.drafted → domain.activated
+  ✓ R. Costa REHEARSED the rollback: the plan retires 48 migrated entities append-only, keeps 0 matched, the domain active → draft — digest b1cb876a0804…; nothing retired (a rehearsal)
+  · in the subsidiary's graph: 48 active supplier entities, 48 legacy identifiers (nwp-legacy-supplier); a provenance sample: NWP-S-1001 rating low (synthetic true)
+  ✓ RESIDUAL (said): exposures are NOT proposed at cutover — each legacy risk rating rides as PROVENANCE on its entity (exposures in the subsidiary: 0); the risk owner proposes exposures after go-live (B32's acts), never the migration
+  · the acceptance CANDIDATE (claim demonstration): mapping v2, rehearsals [1, 2], cutover activated, licence {"state":"active","version":5,"licence_id":"01a106dc-cc42-7dff-bdb8-c7c623dd92e3","package_key":"full-platform"}, journeys JRN-01, JRN-23 — digest 7c778f58f028…
+  ✓ J. Hartmann WITHHELD acceptance (withheld, claim demonstration, unsigned) — the domain keeps its prior safe operation
+  ✓ R. Costa (implementation lead) accepts REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ J. Hartmann ACCEPTED on the candidate digest 7c778f58f028…: claim DEMONSTRATION, signed (01a1…cf381d) — the exact versions and digests bound
+  ✓ the acceptance record's claim is "demonstration" — a SYNTHETIC persona's acceptance demonstrates the software; real customer acceptance (AT-67, PR-67-006, UX-66-006) is R2
+  ✓ onboarding programme nordwerk-polska-supplier-risk v4: ACCEPTED
+  · its steps: intent:done · domain:done · authority:done · policy:done · sources:done · responsibility:done · baseline:done · mapping:done · rehearsal:done · reconciliation:done · cutover:done
+
+B94-4 SCENE 3 (F-P7-F-05 + carryover b) — the implementation programme of "NORDWERK Polska — Supplier Risk (SYNTHETIC)": readiness, the gate held until the risk owner is filled, go-live signed; MET-039 v2 and the adoption measures
+  ✓ R. Costa OPENED implementation programme nordwerk-polska-golive v1 on the subsidiary (linked to onboarding programme nordwerk-polska-supplier-risk) — digest 08cc6bbf804b…
+  ✓ the programme STARTED (v2, in_progress)
+  ✓ the programme's parts (8 recorded now): dependency:d-train-golive, journey:j-archive, journey:j-supplier-review (PRIORITY), milestone:m-golive, milestone:m-train, role_requirement:rr-risk-owner, stakeholder:s-sponsor, value_measure:vm-adp001
+  ✓ C. Marchetti DECLARED contract SYNTH-CONTRACT-NORDWERK-B94 v2: decision cells the corridor + the subsidiary (active) — a SYNTHETIC vendor record
+  · the contract current at the programme's opening (2026-10-13T08:14:16Z): v1, effective 2026-10-13T08:14:03Z — MET-039's start
+  ✓ K. Nowak OPENED the subsidiary's weekly operating cadence (executive.cadences) — the cadence the go-live will name
+  ✓ R. Costa DECLARED the training path decision-owner-onboarding v1 for decision_owner — digest 4a9922529959…
+  ✓ R. Costa (the declarer, an implementation lead) attests the path REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ K. Nowak ATTESTED the path ACCESSIBLE at its digest (a named human ≠ the declarer)
+  ✓ R. Costa RECORDED M. Kowalczyk's training COMPLETE (purpose enablement_readiness; complete | not_yet — never a score)
+  ✓ R. Costa RECORDED T. Wójcik's training COMPLETE (purpose enablement_readiness; complete | not_yet — never a score)
+  ✓ SUBJECT-VISIBLE: M. Kowalczyk reads her OWN records — training complete; competence —
+  ✓ R. Costa (implementation lead) records competence REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ E. Sandberg (enablement assessor; a named human ≠ subject) RECORDED M. Kowalczyk competent in supplier-risk-review: complete
+  ✓ E. Sandberg (enablement assessor; a named human ≠ subject) RECORDED T. Wójcik competent in supplier-risk-review: complete
+  · the readiness items: role-risk-owner (role_filled, blocking), owner-risk (owner_resolved, blocking), do-training (training_coverage, blocking), do-access (accessibility_attested, blocking), do-competence (competence_coverage, blocking)
+  ✓ THE GATE is HELD (evaluated live, digest 8549ad997003…): blocking owner_resolved:owner-risk — the accountable owner of risk.ownership is unfilled: nobody holds risk_owner in the domain · role_filled:role-risk-owner — nobody holds risk_owner in the domain — an unfilled accountable role is not overridable; raised implementation.readiness (open), responsibility.gap (open)
+  ✓ W. Zielińska (customer sponsor) approves go-live while the gate is held REFUSED — 409 EYE-STA-002 — go-live gate rejected (held): the gate is held — Risk ownership resolves: the accountable owner of risk.ownership is unfilled: nobody holds risk_owner in the domain; A risk owner holds the subsidiary: nobody holds risk_owner in the domain — an unfilled accountable role is not overridable
+  ✓ R. Costa (implementation lead) approves go-live REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ N. Vogel (tenant administrator) CREATED B. Lewandowski through the governed principal route — "B. Lewandowski — risk owner, NORDWERK Polska (SYNTHETIC)", login b.lewandowski, risk_owner at the DOMAIN (the subsidiary)
+  ✓ THE GATE re-evaluated by the sponsor: READY — 0 blocking; risk.ownership resolved (B. Lewandowski); the subsidiary's readiness and gap items: implementation.readiness closed, responsibility.gap closed
+  ✓ W. Zielińska (customer sponsor) APPROVED GO-LIVE at the gate digest 48a2af21df1d… — SIGNED (01a1…0a5a64), claim demonstration; the accepted cadence weekly #1 and the priority journey j-supplier-review (JRN-01)
+  ✓ implementation programme nordwerk-polska-golive v3: ACCEPTED; go-live 01a1…679a4f signed 01a1…0a5a64, claim demonstration, 2026-10-13T08:14:18Z — boundary: an in-product go-live by a SYNTHETIC persona demonstrates the software only; the customer's own signed acceptance (AT-68, PR-68-006) is R2 and is never written 
+  · K. Nowak reads the subsidiary's baseline against the live configuration: DRIFTED — role_census.risk_owner added; the rollback plan names 1 restoring act(s) (none performed); promoting a new baseline version is the lead's proposal and the authority's signature — not done by this act
+  ✓ R. Costa DECLARED the cohort decision_owner × wave-1 (role × wave — never a person)
+  · the cohort decision_owner × wave-1: 2 holder(s) — BELOW k = 5: an adoption share of this cohort is INDETERMINATE and is never shown (the subsidiary's adoption is not computed: the B92 definitions live in the corridor domain, where the product analytics roles are)
+  · MET-039 v1: approved, supported false (its carrier was B94)
+  ✓ J. Satō (product analyst) PROPOSED MET-039 (customer time to accepted operation) v2 (computation met039_time_to_accepted_operation) — digest 0385339e6a28…
+  ✓ M. Okonkwo (product analytics owner) APPROVED MET-039 (customer time to accepted operation) v2 at its digest — v1 SUPERSEDED
+  ✓ J. Satō (product analyst) PROPOSED ADP-001 (Training completion by cohort) v1 (computation adp001_training_completion) — digest 282f09ca6c47…
+  ✓ M. Okonkwo (product analytics owner) APPROVED ADP-001 (Training completion by cohort) v1 at its digest
+  ✓ J. Satō (product analyst) PROPOSED ADP-002 (Competence completion by cohort) v1 (computation adp002_competence_completion) — digest 807d9d0e0c49…
+  ✓ M. Okonkwo (product analytics owner) APPROVED ADP-002 (Competence completion by cohort) v1 at its digest
+  ✓ MET-039 versions: v1 superseded unsupported, v2 approved supported
+  ✓ MET-039 2026-Q4 (the open quarter): J. Satō COMPUTED result 01a1…5a5330 on definition v2
+  ✓ MET-039 2026-Q4: INDETERMINATE, n 1 — the period 2026-Q4 is open until 2027-01-01 00:00:00+00 (as of 2026-10-13 08:14:18.545241+00): a partial period is not presented as the period | non-comparable: the definition changed inside the window — version 2 took effect at 2026-10-13 08:14:18.489246+00, inside [2026-10-01 00:00:00+00, 2027-01-
+  · the programme's own record in the result: included — 0 days from contract v1 effective 2026-10-13T08:14:03Z to the signed go-live 2026-10-13T08:14:18Z; included 1
+  · HONEST: 2026-Q4 is OPEN — the quarter's MET-039 is not a closed period's value; the per-programme duration above is SYNTHETIC (a demonstration contract declared minutes before the programme opened), never a customer's time to operation
+  ✓ ADP-001 2026-10 (the corridor domain): J. Satō COMPUTED result 01a1…8ed445 on definition v1
+  ✓ ADP-001 2026-10: INDETERMINATE — the period 2026-10 is open until 2026-11-01 00:00:00+00 (as of 2026-10-13 08:14:18.576265+00): a partial period is not presented as the period | no adoption cohort (role × wave) is declared in the domain: there is no population | n = 0 is below the floor 5 the (k = 5: below k or without a cohort, never a share)
+  ✓ ADP-002 2026-10 (the corridor domain): J. Satō COMPUTED result 01a1…c4125e on definition v1
+  ✓ ADP-002 2026-10: INDETERMINATE — the period 2026-10 is open until 2026-11-01 00:00:00+00 (as of 2026-10-13 08:14:18.599253+00): a partial period is not presented as the period | no adoption cohort (role × wave) is declared in the domain: there is no population | n = 0 is below the floor 5 the (k = 5: below k or without a cohort, never a share)
+
+B94-3 SCENE 2, PART II — the short grant lapses on the database clock; the 4-hour grant; the diagnosis; the customer's workaround; closure confirmed by the customer
+  · waiting 15 min for the short-window grant to reach its expiry on the database clock (2026-10-13T08:29:14Z) — no clock is moved
+  ✓ D. Brooks reads the source health after the expiry (the grant reads approved — BEFORE the sweep: the live-grant test refuses it on the database clock) REFUSED — 403 EYE-AUT-001 — support access rejected (access): grant 01a13453-91e1-7721-a85b-421f53a1723f expired at 2026-10-13 08:29:14.527826+00 — no data access without a live approved grant (the attempt is logged)
+  ✓ the short-window grant 01a1…a1723f: LAPSED at 2026-10-13T08:29:56Z — the grant expired (support_access.expiry timer) (the attention tick's sweep / support_access.expiry timer; the engineer's sessions revoked by the after-tick hook)
+  ✓ T. Richter RAN the drill expired_grant_refused on 01a1…a1723f: PASSED — probes diagnose.health: refused
+  ✓ D. Brooks (support engineer) REQUESTED the 4-hour grant (diagnose.*, case acts): 240 min, sources [red-sea-corridor-stream], actions [case.bundle, case.note, case.workaround, diagnose.health, diagnose.runs, diagnose.schedule, diagnose.source] — digest db88f7ee5b2c…; the review task and a support.access item to the domain administrator
+  · T. Richter's preview in the control center: eligible true (no reason against); the owner of support.access resolved (T. Richter)
+  ✓ T. Richter (the accountable owner of support.access; human gate) APPROVED the 4-hour grant (diagnose.*, case acts) at the request digest: live 2026-10-13T08:30:06Z → 2026-10-13T12:30:06Z
+  · the consequence preview he approved (recorded on the grant): {"lapse":"the session revoked with the grant; every port asks live_grant on the database clock; the support_access.expiry timer and the sweep mark it lapsed","cannot":"mutate customer decisions, evidence, policy or source state; read evidence content; read another source","purpose":"Diagnose the corridor feed for the case: the source contract, its runs, its health and its scheduler (4 hours)","case_ref":"CASE-0001","severity":"S2","starts_at":"2026-10-13T08:30:06.071745+00:00","expires_at":"2026-10-13T12:30:06.071745+00:00","action_scope":["case.bundle","case.note","case.workaround","diagnose.
+  ✓ D. Brooks READ the case under grant 01a1…8ab2a9: CASE-0001 awaiting_access (the opener's identity withheld from support)
+  ✓ support.diagnose.source under grant 01a1…8ab2a9 — logged e7a6…1099a5: red-sea-corridor-stream active, cadence 86400 s
+  ✓ support.diagnose.runs under grant 01a1…8ab2a9 — logged 1eb9…3cbcb2: 20 run(s): 2026-10-12T23:25 finished, 2026-10-11T23:25 finished, 2026-10-10T23:25 finished, 2026-10-09T23:06 failed (header semantics: recorded_at is in the future)
+  ✓ support.diagnose.health under grant 01a1…8ab2a9 — logged d99f…2da536: 0 health event(s)
+  ✓ support.diagnose.schedule under grant 01a1…8ab2a9 — logged 75e9…eea12e: 1 scheduler entr(ies) (scheduled), 19 attempt(s)
+  ✓ D. Brooks (support engineer) suspends the corridor source REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ CASE-0001 → diagnosing (v4), under grant 01a1…8ab2a9
+  ✓ D. Brooks NOTED the diagnosis on the case (support side, grant 01a1…8ab2a9)
+  ✓ D. Brooks ASSEMBLED the evidence bundle (side support, grant 01a1…8ab2a9): case:included, notes:included, source.contract:redacted, source.runs:redacted, source.health:included, source.evidence:withheld, source.contract:redacted, source.runs:redacted, source.health:included, source.evidence:withheld — digest 7cefb3a4945d…; {"items":10,"included":4,"redacted":4,"withheld":2} (evidence content withheld, persons and endpoints redacted)
+  ✓ D. Brooks PROPOSED the workaround (workaround_offered): the CUSTOMER's act observation.source.transition on red-sea-corridor-stream — executed by the customer's own role, never by support
+  ✓ M. Dvořák (collection manager) SUSPENDED and RE-ACTIVATED red-sea-corridor-stream through the real source route (the re-activation's policy decision 01a1…95b76d); the source is active
+  ✓ the CONFIRMING RUN after the re-activation (the scheduler entry re-registered): 01a1…c059a0 finished at 2026-10-13T08:30:07Z — 26 admitted, 0 no-op
+  ✓ M. Dvořák RECORDED the workaround EXECUTED — linked to her policy decision 01a1…95b76d (observation.source.transition)
+  ✓ CASE-0001 RESOLVED by support (v7); the closure-confirmation task opened for the customer
+  ✓ D. Brooks (support) closes the case REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ M. Dvořák CONFIRMED the CLOSURE (closed; resolution met true) — the customer's confirmation, never support's
+  ✓ THE CONTROL CENTER (T. Richter): grants 01a1…8ab2a9 approved, 01a1…a1723f lapsed, 01a1…6912f3 revoked; access-log rows 17; drills expired_grant_refused:passed, revoke_live_grant:passed
+  · the access log of D. Brooks (every act under or refused for want of a grant): 01a1…6912f3 support.diagnose.source allowed×1 · 01a1…6912f3 support.diagnose.source refused×2 · 01a1…a1723f support.diagnose.health allowed×1 · 01a1…a1723f support.diagnose.health refused×2 · 01a1…8ab2a9 case.bundle allowed×1 · 01a1…8ab2a9 case.note allowed×4 · 01a1…8ab2a9 case.workaround allowed×1 · 01a1…8ab2a9 support.diagnose.health allowed×1 · 01a1…8ab2a9 support.diagnose.runs allowed×1 · 01a1…8ab2a9 support.diagnose.schedule allowed×1 · 01a1…8ab2a9 support.diagnose.source allowed×1 · —…— case.note refused×1
+  ✓ case CASE-0001: CLOSED (v8)
+  · the 4-hour grant 01a1…8ab2a9 is approved; it stays live until 2026-10-13T12:30:06Z and then LAPSES BY ITSELF (the sweep / the support_access.expiry timer) — nothing is revoked by this act
+
+B94-5 REGRESSIONS — B92's operating review read back; the B33 package paths read (list, gate, health)
+  ✓ B92's operating review 01a1…ac6ba7: closed, closed 2026-10-12T02:28:53Z, close digest 315aed987c86…, metrics MET-001, MET-022, MET-024, MET-023
+  ✓ D. Ivanova (domain specialist) LISTED the packages: competitor declared, geopolitical-red-sea declared
+  · FOUND (a state that PRE-DATES this act, not a B94 regression): the gate of competitor: conflicted — package competitor v1 is conflicted: incompatible risk meaning: the package maps risk meanings, but the domain has no risk taxonomy in force. The conflict was exposed at 2026-10-12T06:37:22Z by a health read that saw "no risk taxonomy in force" while 2 risk-taxonomy activation(s) exist in the corridor — the known FALSE conflict of the intermittent health read (B33-H's fix, #88, landed after it). Recovery is the runbook's (§24): D. Ivanova re-runs health and re-enables through domain.package.enable — not performed by this act
+  ✓ competitor: no conflict exposed DURING this act (the after-tick health re-check raised 0)
+  · competitor: the latest health run 2026-10-12T06:37:36Z by agent — passed true; no `unavailable` finding
+  ✓ the gate of geopolitical-red-sea: active — package geopolitical-red-sea v1 (1.0.0) is active — no conflict
+  ✓ geopolitical-red-sea: no conflict exposed DURING this act (the after-tick health re-check raised 0)
+  · geopolitical-red-sea: the latest health run 2026-10-10T20:22:15Z by agent — passed true; no `unavailable` finding
+  · NOT RERUN (state, not a regression): B33's twin scenario-element walk WRITES — a rerun answers 409 on its one-shot form (grounded 2026-10-09); B33's writing walk is not repeated here
+
+B94-6 THE STATE and the LIMITS
+  · in the ledgers: ob_versions 4, steps 11, rehearsals 3, cutovers 2, acceptances 2, imp_versions 3, readiness 5, golive 1, cases 1, grants 3, access_log 17, drills 2, matrices 2, ob_events 50, im_events 28, sv_events 26
+  ✓ customer success (the corridor): MET-040 {"state":"unsupported","reason":"no source in the product: outcome assessments are recorded (decision.outcome_assessments.inferred) but no customer approval and no capability attribution — carrier B76 — unsupported (B76), never a value
+  the env lines for the walk (EYE_TEST_ADMIN_PASSWORD comes from .eye-local/env and is never printed):
+  EYE_B94_SPONSOR=w.zielinska
+  EYE_B94_AUTHORITY=j.hartmann
+  EYE_B94_LEAD=r.costa
+  EYE_B94_ENGINEER=d.brooks
+  EYE_B94_SUBSIDIARY_DOMAIN=01a13453-942e-7f5c-8d65-719e40351b0a
+  EYE_B94_SUB_ADMIN=k.nowak
+  EYE_B94_SUB_MANAGER=a.wisniewska
+  EYE_B94_ASSESSOR=e.sandberg
+  EYE_B94_DECISION_OWNER_1=m.kowalczyk
+  EYE_B94_DECISION_OWNER_2=t.wojcik
+  EYE_B94_BASELINE_DIGEST=61fb825c271b3c084b78470ffc62dcfcbda1b9fb57b15b4c3852a90b6ebb4748
+  EYE_B94_RISK_OWNER=b.lewandowski
+  EYE_B94_CASE=CASE-0001
+  EYE_B94_SUBSIDIARY='NORDWERK Polska — Supplier Risk (SYNTHETIC)'
+  EYE_B94_PROGRAMME=nordwerk-polska-supplier-risk
+  EYE_B94_IMPLEMENTATION=nordwerk-polska-golive
+  EYE_B94_WAVE=polska-supplier-register
+  EYE_B94_DOMAIN_ADMIN=t.richter
+  EYE_B94_COLLECTION_MANAGER=m.dvorak
+  · LIMITS said — THREE CLAIMS KEPT APART. (1) CONSTRUCTION — the software and its harnesses (phase6-{prelude,onboarding,migration,implementation,service,support}-b94). (2) DEMONSTRATED OPERATION — what RAN here through the governed routes: the premium-support licence and NORDWERK's first contract (SYNTHETIC vendor records by C. Marchetti); the subsidiary onboarded from a SYNTHETIC legacy spreadsheet (48 rows) through a draft domain, a signed responsibility matrix and configuration baseline, two rehearsals, a held and a released cutover, an execution inside the approved plan, the post-cutover reconciliation, the activation, a rollback rehearsal and an acceptance withheld then accepted; the implementation programme with its accessible training path, training and competence records, the gate held until the risk owner was filled, and the signed go-live naming the cadence and the priority journey; MET-039 v2 and ADP-001/-002 approved through B92's routes; the premium-routed case on the corridor feed's RECORDED condition (no stall was staged), the drilled, lapsed and 4-hour grants, the diagnosis, the refused write, the redacted bundle, the customer's workaround and confirmed closure. Every person here is SYNTHETIC — W. Zielińska, J. Hartmann, R. Costa, D. Brooks, K. Nowak, A. Wiśniewska, E. Sandberg, M. Kowalczyk, T. Wójcik and B. Lewandowski were created by the tenant administrator for this act; every approval, acceptance and go-live they gave DEMONSTRATES the software (claim: demonstration). (3) REAL CUSTOMER ACCEPTANCE — never claimed: AT-67/68/69, PR-67/68/69-006 and UX-66-006 need a real customer's signed acceptance → R2. Production admission and deployment-profile parity (IA-04-004/-006) → R1/B111 (no admission record is signed here). MET-040 stays unsupported (B76). MET-039 for the open quarter is not a closed period's value, and the duration it lists is a SYNTHETIC demonstration. ADP-001/-002 are INDETERMINATE (no cohort in the corridor; the subsidiary's cohort is below k = 5). HARNESS-PROVEN ONLY (not staged here): execution refusing a row or column outside the approved mapping (contract_changed — phase6-migration-b94; the HTTP route executes only the approved plan from the stored evidence), the xlsx refusal, the real rollback of an activated domain, the SLA breach drill and real breach escalation, known-error reuse and changes, the value review, the drift tick, the admission record (phase6-service-b94, phase6-support-b94, phase6-onboarding-b94).
+
+ALL SCENES HELD · 16.2 min
+
+════════ THE RERUN on the same database (rerun-safety: every scene stands) ════════
+
+THE B94 ACT on eye_demo_b94 (REHEARSAL) — 2026-10-13T08:30:26.764Z — API http://localhost:3411
+
+B94-0 THE STATE — 0114, the casting, what exists
+  ✓ migration applied: 0114_b94_onboarding_implementation_service.sql
+  ✓ n.vogel holds tenant_admin at the TENANT
+  ✓ c.marchetti holds commercial_authority at the PLATFORM
+  ✓ t.richter holds domain_admin at the DOMAIN (the corridor domain)
+  ✓ m.dvorak holds collection_manager at the DOMAIN (the corridor domain)
+  ✓ j.sato holds product_analyst at the DOMAIN (the corridor domain)
+  ✓ m.okonkwo holds product_analytics_owner at the DOMAIN (the corridor domain)
+  ✓ c.brenner holds risk_owner at the DOMAIN (the corridor domain)
+  ✓ s.okafor holds executive at the DOMAIN (the corridor domain)
+  ✓ d.ivanova holds domain_specialist at the DOMAIN (the corridor domain)
+  · the subsidiary domain "NORDWERK Polska — Supplier Risk (SYNTHETIC)" exists (active, activated 2026-10-13T08:14:16Z): stands — an earlier run
+  · commercial.contracts: 2 version(s), the latest v2: stands — an earlier run
+  ✓ the catalogue: premium_support v2 active, built true, gating prefixes [] — a ROUTING entitlement (service.* is never licence-gated)
+  ✓ the corridor feed red-sea-corridor-stream (rest, replay, every 86400 s): active; its last runs AS READ: 2026-10-13T08:30:07Z finished (26 admitted) · 2026-10-12T23:25:40Z finished (26 admitted) · 2026-10-11T23:25:41Z finished (26 admitted) · 2026-10-10T23:25:40Z finished (26 admitted); health no health event recorded
+
+B94-1 COMMERCIAL — C. Marchetti reissues NORDWERK's licence adding premium_support and declares NORDWERK's FIRST contract (SYNTHETIC vendor records)
+  · licence v5 (full-platform, active) carries premium_support: stands — an earlier run
+  ✓ NORDWERK's licence v5 (full-platform, active) carries premium_support and every capability of v4
+  · contract SYNTH-CONTRACT-NORDWERK-B94 v1 declared 2026-10-13T08:14:03Z (effective 2026-10-13T08:14:03Z): stands — an earlier run
+  ✓ the contract (declared 2026-10-13T08:14:03Z) PRECEDES every onboarding and implementation programme of the tenant (first onboarding 2026-10-13T08:14:14Z; first implementation 2026-10-13T08:14:16Z) — MET-039 measures from the contract current at the programme's opening
+
+CAST — N. Vogel creates the customer sponsor, the onboarding authority, the implementation lead and the vendor's support engineer (SYNTHETIC)
+  · W. Zielińska (w.zielinska, customer_sponsor) is present: stands — an earlier run
+  · J. Hartmann (j.hartmann, onboarding_authority) is present: stands — an earlier run
+  · R. Costa (r.costa, implementation_lead) is present: stands — an earlier run
+  · D. Brooks (d.brooks, support_engineer, the corridor domain only) is present: stands — an earlier run
+  ✓ four DIFFERENT people: the sponsor and the onboarding authority (the customer), the implementation lead and the support engineer (the vendor)
+
+B94-3 SCENE 2, PART I (F-P7-F-06 + carryover a) — the corridor's routes and responsibility matrix; the case on red-sea-corridor-stream routed premium; a drilled grant; a short grant left to lapse
+  · the corridor: attention policy v13 routes service.case, support.access, responsibility.gap: stands — an earlier run
+  · the corridor: responsibility matrix v1 APPROVED and signed (01a1…6c8710): stands — an earlier run
+  ✓ the accountable owner of support.access in the corridor: resolved — domain_admin T. Richter
+  · case CASE-0001 "Corridor feed red-sea-corridor-stream: the 2026-10-09 run failed — recurrence check (SYNTHETIC case)" (closed, v8): stands — an earlier run
+  ✓ ROUTED PREMIUM from the LIVE licence v5 (premium_listed true): named support "The vendor premium desk — named support engineer of the NORDWERK account (SYNTHETIC)", objectives response 30 min / resolution 480 min; due 2026-10-13T08:44:14Z / 2026-10-13T16:14:14Z — the routing records the licence version; case opening is never licence-gated
+  ✓ the routing preview (live licence): S1 premium 15/240 min · S2 premium 30/480 min · S3 premium 120/1440 min · S4 premium 480/4320 min
+  ✓ WITHOUT premium_support the STANDARD S2 policy would apply: response 240 min / resolution 2880 min (premium S2: 30 / 480) — read from the policies, the licence never changed back; premium support changes objectives and named support only — never an approval, a grant or a gate; opening a case is never licence-gated
+  · the drill grant (15 min, diagnose.source): grant 01a1…6912f3 is revoked (expires 2026-10-13T08:29:14Z): stands — an earlier run
+  ✓ the drill grant 01a1…6912f3: revoked (customer-control drill: the customer exercises its own control: a live vendor grant revoked on demand (SYNTHETIC drill))
+  · the short-window grant (15 min, diagnose.health): grant 01a1…a1723f is lapsed (expires 2026-10-13T08:29:14Z): stands — an earlier run
+  · the short-window grant 01a1…a1723f is lapsed, expires 2026-10-13T08:29:14Z on the database clock — its lapse is shown in PART II, after scenes 1 and 3
+
+B94-2 SCENE 1 (F-P7-F-04) — "NORDWERK Polska — Supplier Risk (SYNTHETIC)" onboarded from its legacy supplier-risk spreadsheet (SYNTHETIC)
+  · onboarding programme nordwerk-polska-supplier-risk v4 (accepted): stands — an earlier run
+  · the sponsor's intent v1 (target "NORDWERK Polska — Supplier Risk (SYNTHETIC)"): stands — an earlier run
+  ✓ the programme's steps (JRN-01 then JRN-23), each naming its compensating act: intent:done → domain:done → authority:done → policy:done → sources:done → responsibility:done → baseline:done → mapping:done → rehearsal:done → reconciliation:done → cutover:done
+  · step intent done (sponsor intent v1): stands — an earlier run
+  · the programme names its target domain 01a1…351b0a: stands — an earlier run
+  · the subsidiary is active (activated by an earlier run); contract versions naming it as a decision cell: 1
+  · step domain done (NORDWERK Polska — Supplier Risk (SYNTHETIC) (draft)): stands — an earlier run
+  · K. Nowak (k.nowak, domain_admin, the subsidiary) is present: stands — an earlier run
+  · A. Wiśniewska (a.wisniewska, collection_manager, the subsidiary) is present: stands — an earlier run
+  · E. Sandberg (e.sandberg, enablement_assessor, the subsidiary) is present: stands — an earlier run
+  · M. Kowalczyk (m.kowalczyk, decision_owner, the subsidiary) is present: stands — an earlier run
+  · T. Wójcik (t.wojcik, decision_owner, the subsidiary) is present: stands — an earlier run
+  · step authority done (K. Nowak — domain administrator, NORDWERK Polska (SYNTHETIC)): stands — an earlier run
+  · the subsidiary: attention policy v1 routes onboarding.migration, onboarding.drift, responsibility.gap, implementation.readiness, support.access, service.case: stands — an earlier run
+  · step policy done (attention policy v1): stands — an earlier run
+  · the subsidiary: responsibility matrix v1 APPROVED and signed (01a1…c8cfad): stands — an earlier run
+  · step responsibility done (responsibility matrix v1 (approved)): stands — an earlier run
+  · the subsidiary's owner registry (read LIVE): data.migration resolved (J. Hartmann) · risk.ownership resolved (B. Lewandowski) · support.access resolved (K. Nowak) · decision.ownership resolved (M. Kowalczyk, T. Wójcik)
+  · the subsidiary's upload source nordwerk-polska-legacy-supplier-risk (active): stands — an earlier run
+  · the source's upload agent 01a1…706141: stands — an earlier run
+  · the legacy file nordwerk-polska-supplier-risk-legacy.csv is in evidence 01a1…d798c7: stands — an earlier run
+  · the corrected file nordwerk-polska-supplier-risk-legacy-corrected.csv is in evidence 01a1…c026b2: stands — an earlier run
+  · step sources done (nordwerk-polska-legacy-supplier-risk v1): stands — an earlier run
+  · configuration baseline v1 APPROVED and signed (01a1…6feaa3): stands — an earlier run
+  · step baseline done (configuration baseline v1 (approved)): stands — an earlier run
+  · wave polska-supplier-register (accepted): stands — an earlier run
+  ✓ the SUGGESTIONS from the legacy header (automation proposes, a human adopts): Supplier No → legacy_id, Supplier Name → name, Country → country, Risk Rating → risk_rating, Category → risk_category, Annual Spend (EUR) → annual_spend_eur, Last Review → last_review_on, Buyer Note → ∅ — none pre-approved
+  · mapping v1 is superseded: stands — an earlier run
+  · step mapping done (migration_mapping · mapping.approved): stands — an earlier run
+  · rehearsal 1 (seq 1): rows 48 · mapped 44 · would_create 44 · would_match 0 · rejected 2 (missing key 1, formula cell 1, bad value 0) · ambiguous 2 · conflict 0 · unmapped columns 1: stands — an earlier run
+  · THE RECONCILIATION DIFFS of rehearsal 1: row 16 NWP-S-0700 ambiguous [duplicate_key: NWP-S-0700 names more than one legacy row] · row 22 (no key) rejected [missing_key: the key column is blank] · row 32 NWP-S-0601 rejected [formula_cell: Supplier Name (r33c2) — recorded, never evaluated] · row 41 NWP-S-0700 ambiguous [duplicate_key: NWP-S-0700 names more than one legacy row]; unmapped column(s): Buyer Note
+  ✓ rehearsal 1 BLOCKS (5 blocking rows/columns) — the wave is held on reconciliation
+  · the cutover on rehearsal 1: superseded: stands — an earlier run
+  · mapping v2 is approved: stands — an earlier run
+  · rehearsal 2 (seq 2): rows 48 · mapped 48 · would_create 48 · would_match 0 · rejected 0 (missing key 0, formula cell 0, bad value 0) · ambiguous 0 · conflict 0 · unmapped columns 0: stands — an earlier run
+  · step rehearsal done (migration_mapping · mapping.approved): stands — an earlier run
+  · step reconciliation done (migration_mapping · mapping.approved): stands — an earlier run
+  · step cutover done (cutover · cutover.reconciled): stands — an earlier run
+  ✓ the subsidiary domain is ACTIVE since 2026-10-13T08:14:16Z; its lifecycle: domain.drafted → domain.activated
+  · the rollback rehearsal 01a1…ddd126 (retire 48, keep identifiers 0): stands — an earlier run
+  · in the subsidiary's graph: 48 active supplier entities, 48 legacy identifiers (nwp-legacy-supplier); a provenance sample: NWP-S-1001 rating low (synthetic true)
+  ✓ RESIDUAL (said): exposures are NOT proposed at cutover — each legacy risk rating rides as PROVENANCE on its entity (exposures in the subsidiary: 0); the risk owner proposes exposures after go-live (B32's acts), never the migration
+  · acceptance withheld: stands — an earlier run
+  · acceptance accepted: stands — an earlier run
+  ✓ the acceptance record's claim is "demonstration" — a SYNTHETIC persona's acceptance demonstrates the software; real customer acceptance (AT-67, PR-67-006, UX-66-006) is R2
+  ✓ onboarding programme nordwerk-polska-supplier-risk v4: ACCEPTED
+  · its steps: intent:done · domain:done · authority:done · policy:done · sources:done · responsibility:done · baseline:done · mapping:done · rehearsal:done · reconciliation:done · cutover:done
+
+B94-4 SCENE 3 (F-P7-F-05 + carryover b) — the implementation programme of "NORDWERK Polska — Supplier Risk (SYNTHETIC)": readiness, the gate held until the risk owner is filled, go-live signed; MET-039 v2 and the adoption measures
+  · implementation programme nordwerk-polska-golive v3 (accepted): stands — an earlier run
+  ✓ the programme's parts (stands — an earlier run): dependency:d-train-golive, journey:j-archive, journey:j-supplier-review (PRIORITY), milestone:m-golive, milestone:m-train, role_requirement:rr-risk-owner, stakeholder:s-sponsor, value_measure:vm-adp001
+  · contract SYNTH-CONTRACT-NORDWERK-B94 v2 names the subsidiary as a decision cell: stands — an earlier run
+  · the contract current at the programme's opening (2026-10-13T08:14:16Z): v1, effective 2026-10-13T08:14:03Z — MET-039's start
+  · the subsidiary's weekly cadence #1 is open: stands — an earlier run
+  · the training path decision-owner-onboarding v1: stands — an earlier run
+  · the path is attested ACCESSIBLE by K. Nowak: stands — an earlier run
+  · M. Kowalczyk: training complete: stands — an earlier run
+  · T. Wójcik: training complete: stands — an earlier run
+  ✓ SUBJECT-VISIBLE: M. Kowalczyk reads her OWN records — training complete; competence complete
+  · M. Kowalczyk: competence complete: stands — an earlier run
+  · T. Wójcik: competence complete: stands — an earlier run
+  · the readiness items: role-risk-owner (role_filled, blocking), owner-risk (owner_resolved, blocking), do-training (training_coverage, blocking), do-access (accessibility_attested, blocking), do-competence (competence_coverage, blocking)
+  · implementation programme nordwerk-polska-golive is ACCEPTED: stands — an earlier run
+  · the subsidiary's risk owner B. Lewandowski — risk owner, NORDWERK Polska (SYNTHETIC) (b.lewandowski): stands — an earlier run
+  ✓ implementation programme nordwerk-polska-golive v3: ACCEPTED; go-live 01a1…679a4f signed 01a1…0a5a64, claim demonstration, 2026-10-13T08:14:18Z — boundary: an in-product go-live by a SYNTHETIC persona demonstrates the software only; the customer's own signed acceptance (AT-68, PR-68-006) is R2 and is never written 
+  · K. Nowak reads the subsidiary's baseline against the live configuration: DRIFTED — role_census.risk_owner added; the rollback plan names 1 restoring act(s) (none performed); promoting a new baseline version is the lead's proposal and the authority's signature — not done by this act
+  · the cohort decision_owner × wave-1: 2 holder(s) — BELOW k = 5: an adoption share of this cohort is INDETERMINATE and is never shown (the subsidiary's adoption is not computed: the B92 definitions live in the corridor domain, where the product analytics roles are)
+  · MET-039 v1: superseded, supported false (its carrier was B94)
+  · MET-039 (customer time to accepted operation): v2 APPROVED (supported true): stands — an earlier run
+  · ADP-001 (Training completion by cohort): v1 APPROVED (supported true): stands — an earlier run
+  · ADP-002 (Competence completion by cohort): v1 APPROVED (supported true): stands — an earlier run
+  ✓ MET-039 versions: v1 superseded unsupported, v2 approved supported
+  · MET-039 2026-Q4 (the open quarter): result 01a1…5a5330 stands — an earlier run
+  ✓ MET-039 2026-Q4: INDETERMINATE, n 1 — the period 2026-Q4 is open until 2027-01-01 00:00:00+00 (as of 2026-10-13 08:14:18.545241+00): a partial period is not presented as the period | non-comparable: the definition changed inside the window — version 2 took effect at 2026-10-13 08:14:18.489246+00, inside [2026-10-01 00:00:00+00, 2027-01-
+  · the programme's own record in the result: included — 0 days from contract v1 effective 2026-10-13T08:14:03Z to the signed go-live 2026-10-13T08:14:18Z; included 1
+  · HONEST: 2026-Q4 is OPEN — the quarter's MET-039 is not a closed period's value; the per-programme duration above is SYNTHETIC (a demonstration contract declared minutes before the programme opened), never a customer's time to operation
+  · ADP-001 2026-10 (the corridor domain): result 01a1…8ed445 stands — an earlier run
+  ✓ ADP-001 2026-10: INDETERMINATE — the period 2026-10 is open until 2026-11-01 00:00:00+00 (as of 2026-10-13 08:14:18.576265+00): a partial period is not presented as the period | no adoption cohort (role × wave) is declared in the domain: there is no population | n = 0 is below the floor 5 the (k = 5: below k or without a cohort, never a share)
+  · ADP-002 2026-10 (the corridor domain): result 01a1…c4125e stands — an earlier run
+  ✓ ADP-002 2026-10: INDETERMINATE — the period 2026-10 is open until 2026-11-01 00:00:00+00 (as of 2026-10-13 08:14:18.599253+00): a partial period is not presented as the period | no adoption cohort (role × wave) is declared in the domain: there is no population | n = 0 is below the floor 5 the (k = 5: below k or without a cohort, never a share)
+
+B94-3 SCENE 2, PART II — the short grant lapses on the database clock; the 4-hour grant; the diagnosis; the customer's workaround; closure confirmed by the customer
+  ✓ the short-window grant 01a1…a1723f: LAPSED at 2026-10-13T08:29:56Z — the grant expired (support_access.expiry timer) (the attention tick's sweep / support_access.expiry timer; the engineer's sessions revoked by the after-tick hook)
+  · the expired_grant_refused drill on the lapsed grant: stands — an earlier run
+  · case CASE-0001 is CLOSED (8): stands — an earlier run
+  ✓ THE CONTROL CENTER (T. Richter): grants 01a1…8ab2a9 approved, 01a1…a1723f lapsed, 01a1…6912f3 revoked; access-log rows 17; drills expired_grant_refused:passed, revoke_live_grant:passed
+  · the access log of D. Brooks (every act under or refused for want of a grant): 01a1…6912f3 support.diagnose.source allowed×1 · 01a1…6912f3 support.diagnose.source refused×2 · 01a1…a1723f support.diagnose.health allowed×1 · 01a1…a1723f support.diagnose.health refused×2 · 01a1…8ab2a9 case.bundle allowed×1 · 01a1…8ab2a9 case.note allowed×4 · 01a1…8ab2a9 case.workaround allowed×1 · 01a1…8ab2a9 support.diagnose.health allowed×1 · 01a1…8ab2a9 support.diagnose.runs allowed×1 · 01a1…8ab2a9 support.diagnose.schedule allowed×1 · 01a1…8ab2a9 support.diagnose.source allowed×1 · —…— case.note refused×1
+  ✓ case CASE-0001: CLOSED (v8)
+  · the 4-hour grant 01a1…8ab2a9 is approved; it stays live until 2026-10-13T12:30:06Z and then LAPSES BY ITSELF (the sweep / the support_access.expiry timer) — nothing is revoked by this act
+
+B94-5 REGRESSIONS — B92's operating review read back; the B33 package paths read (list, gate, health)
+  ✓ B92's operating review 01a1…ac6ba7: closed, closed 2026-10-12T02:28:53Z, close digest 315aed987c86…, metrics MET-001, MET-022, MET-024, MET-023
+  ✓ D. Ivanova (domain specialist) LISTED the packages: competitor declared, geopolitical-red-sea declared
+  · FOUND (a state that PRE-DATES this act, not a B94 regression): the gate of competitor: conflicted — package competitor v1 is conflicted: incompatible risk meaning: the package maps risk meanings, but the domain has no risk taxonomy in force. The conflict was exposed at 2026-10-12T06:37:22Z by a health read that saw "no risk taxonomy in force" while 2 risk-taxonomy activation(s) exist in the corridor — the known FALSE conflict of the intermittent health read (B33-H's fix, #88, landed after it). Recovery is the runbook's (§24): D. Ivanova re-runs health and re-enables through domain.package.enable — not performed by this act
+  ✓ competitor: no conflict exposed DURING this act (the after-tick health re-check raised 0)
+  · competitor: the latest health run 2026-10-12T06:37:36Z by agent — passed true; no `unavailable` finding
+  ✓ the gate of geopolitical-red-sea: active — package geopolitical-red-sea v1 (1.0.0) is active — no conflict
+  ✓ geopolitical-red-sea: no conflict exposed DURING this act (the after-tick health re-check raised 0)
+  · geopolitical-red-sea: the latest health run 2026-10-10T20:22:15Z by agent — passed true; no `unavailable` finding
+  · NOT RERUN (state, not a regression): B33's twin scenario-element walk WRITES — a rerun answers 409 on its one-shot form (grounded 2026-10-09); B33's writing walk is not repeated here
+
+B94-6 THE STATE and the LIMITS
+  · in the ledgers: ob_versions 4, steps 11, rehearsals 3, cutovers 2, acceptances 2, imp_versions 3, readiness 5, golive 1, cases 1, grants 3, access_log 17, drills 2, matrices 2, ob_events 50, im_events 28, sv_events 26
+  ✓ customer success (the corridor): MET-040 {"state":"unsupported","reason":"no source in the product: outcome assessments are recorded (decision.outcome_assessments.inferred) but no customer approval and no capability attribution — carrier B76 — unsupported (B76), never a value
+  the env lines for the walk (EYE_TEST_ADMIN_PASSWORD comes from .eye-local/env and is never printed):
+  EYE_B94_SPONSOR=w.zielinska
+  EYE_B94_AUTHORITY=j.hartmann
+  EYE_B94_LEAD=r.costa
+  EYE_B94_ENGINEER=d.brooks
+  EYE_B94_SUBSIDIARY_DOMAIN=01a13453-942e-7f5c-8d65-719e40351b0a
+  EYE_B94_SUB_ADMIN=k.nowak
+  EYE_B94_SUB_MANAGER=a.wisniewska
+  EYE_B94_ASSESSOR=e.sandberg
+  EYE_B94_DECISION_OWNER_1=m.kowalczyk
+  EYE_B94_DECISION_OWNER_2=t.wojcik
+  EYE_B94_BASELINE_DIGEST=61fb825c271b3c084b78470ffc62dcfcbda1b9fb57b15b4c3852a90b6ebb4748
+  EYE_B94_RISK_OWNER=b.lewandowski
+  EYE_B94_CASE=CASE-0001
+  EYE_B94_SUBSIDIARY='NORDWERK Polska — Supplier Risk (SYNTHETIC)'
+  EYE_B94_PROGRAMME=nordwerk-polska-supplier-risk
+  EYE_B94_IMPLEMENTATION=nordwerk-polska-golive
+  EYE_B94_WAVE=polska-supplier-register
+  EYE_B94_DOMAIN_ADMIN=t.richter
+  EYE_B94_COLLECTION_MANAGER=m.dvorak
+  · LIMITS said — THREE CLAIMS KEPT APART. (1) CONSTRUCTION — the software and its harnesses (phase6-{prelude,onboarding,migration,implementation,service,support}-b94). (2) DEMONSTRATED OPERATION — what RAN here through the governed routes: the premium-support licence and NORDWERK's first contract (SYNTHETIC vendor records by C. Marchetti); the subsidiary onboarded from a SYNTHETIC legacy spreadsheet (48 rows) through a draft domain, a signed responsibility matrix and configuration baseline, two rehearsals, a held and a released cutover, an execution inside the approved plan, the post-cutover reconciliation, the activation, a rollback rehearsal and an acceptance withheld then accepted; the implementation programme with its accessible training path, training and competence records, the gate held until the risk owner was filled, and the signed go-live naming the cadence and the priority journey; MET-039 v2 and ADP-001/-002 approved through B92's routes; the premium-routed case on the corridor feed's RECORDED condition (no stall was staged), the drilled, lapsed and 4-hour grants, the diagnosis, the refused write, the redacted bundle, the customer's workaround and confirmed closure. Every person here is SYNTHETIC — W. Zielińska, J. Hartmann, R. Costa, D. Brooks, K. Nowak, A. Wiśniewska, E. Sandberg, M. Kowalczyk, T. Wójcik and B. Lewandowski were created by the tenant administrator for this act; every approval, acceptance and go-live they gave DEMONSTRATES the software (claim: demonstration). (3) REAL CUSTOMER ACCEPTANCE — never claimed: AT-67/68/69, PR-67/68/69-006 and UX-66-006 need a real customer's signed acceptance → R2. Production admission and deployment-profile parity (IA-04-004/-006) → R1/B111 (no admission record is signed here). MET-040 stays unsupported (B76). MET-039 for the open quarter is not a closed period's value, and the duration it lists is a SYNTHETIC demonstration. ADP-001/-002 are INDETERMINATE (no cohort in the corridor; the subsidiary's cohort is below k = 5). HARNESS-PROVEN ONLY (not staged here): execution refusing a row or column outside the approved mapping (contract_changed — phase6-migration-b94; the HTTP route executes only the approved plan from the stored evidence), the xlsx refusal, the real rollback of an activated domain, the SLA breach drill and real breach escalation, known-error reuse and changes, the value review, the drift tick, the admission record (phase6-service-b94, phase6-support-b94, phase6-onboarding-b94).
+
+ALL SCENES HELD · 0.1 min

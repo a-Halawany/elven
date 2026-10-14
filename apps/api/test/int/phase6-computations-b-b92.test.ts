@@ -174,23 +174,28 @@ afterAll(async () => { await h?.close(); });
 describe('MCB0 · the registry and the contracts', () => {
   it('the fifteen computations are registered with their kind, dimensions, reads and scope rule — never a person dimension', async () => {
     const reg = (await c.registry(rq(analyst, 'analytics.read'), T(), D()) as { computations: Row[] }).computations;
-    const mine = reg.filter((r) => String(r['computation_key']).match(/^met0(0[6-9]|1[0-4]|1[78]|3[1367])_/));
+    const mine = reg.filter((r) => String(r['computation_key']).match(/^met0(0[6-9]|1[0-4]|1[78]|3[13679])_/));   /* B94 implementation: + met039 (0114 §IM) */
     expect(mine.map((r) => r['computation_key']).sort()).toEqual(definitionsB.filter((d) => d.computationKey !== null).map((d) => d.computationKey).sort());
     for (const r of mine) {
       const cn = definitionsB.find((d) => d.computationKey === r['computation_key'])!;
       expect(r['kind']).toBe(cn.kind); expect(r['dimensions']).toEqual(cn.dimensions); expect(String(r['scope_rule']).length).toBeGreaterThan(8);
-      expect(r['registered_in']).toBe('0113 §MCB');
+      expect(r['registered_in']).toBe(r['computation_key'] === 'met039_time_to_accepted_operation' ? '0114 §IM' : '0113 §MCB');   /* B94 implementation */
     }
   });
   it('the twenty-three contracts plant APPROVED under the table\'s own checks; the eight unsupported are served `unsupported` with their carrier — visible, never a fake value', async () => {
     expect(definitionsB.map((d) => d.metricKey)).toEqual(['MET-006', 'MET-007', 'MET-008', 'MET-009', 'MET-010', 'MET-011', 'MET-012', 'MET-013', 'MET-014', 'MET-015', 'MET-016', 'MET-017', 'MET-018',
       'MET-031', 'MET-032', 'MET-033', 'MET-034', 'MET-035', 'MET-036', 'MET-037', 'MET-038', 'MET-039', 'MET-040']);
-    const carriers: Record<string, RegExp> = { 'MET-015': /B55/, 'MET-016': /B52.*H1/, 'MET-032': /H2/, 'MET-034': /B108.*B107\/H3/, 'MET-035': /B106/, 'MET-038': /B64/, 'MET-039': /B94/, 'MET-040': /B76/ };
+    const carriers: Record<string, RegExp> = { 'MET-015': /B55/, 'MET-016': /B52.*H1/, 'MET-032': /H2/, 'MET-034': /B108.*B107\/H3/, 'MET-035': /B106/, 'MET-038': /B64/, 'MET-040': /B76/ };
     for (const [key, re] of Object.entries(carriers)) {
       const r = await compute({ metricKey: key, period: '2026-Q2' });
       expect(r, key).toMatchObject({ state: 'unsupported', value: null, n: null, records_count: 0 });
       expect(reasons(r)).toMatch(re);
     }
+    /* B94 implementation (0114 §IM): MET-039 is supported now — on a tenant with no accepted implementation it is INDETERMINATE, said, never a value */
+    const m39 = await compute({ metricKey: 'MET-039', period: '2026-Q2' });
+    expect(m39).toMatchObject({ state: 'indeterminate', value: null });
+    expect(reasons(m39)).toMatch(/no implementation programme was accepted in the window|not yet accepted/);
+    /* end B94 implementation */
   });
 });
 

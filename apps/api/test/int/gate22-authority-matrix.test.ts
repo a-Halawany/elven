@@ -109,6 +109,10 @@ const LATER_SCENARIO_COVERAGE: Record<string, string> = {
   // 0110 (B33-J): a durable-journal record's ledger counterpart, filed idempotently by journal_ref — the failure-path class of
   // audit.record_availability_incident (it only ADDS an open incident; reconciliation stays capability-bound); covered where recovery is proved.
   'audit.file_journal_incident': 'phase6-journal-recovery-b33.test.ts', // 0110
+  // 0114 (B94): the draft domain (§ON) and its activation at cutover (§MG) — exact target binding as tenancy.create_domain; the governed flows
+  // in phase6-onboarding-b94 / phase6-migration-b94.
+  'tenancy.create_domain_draft': 'phase6-tenancy-binding-b94.test.ts', // 0114
+  'tenancy.activate_domain': 'phase6-tenancy-binding-b94.test.ts', // 0114
 };
 
 /**

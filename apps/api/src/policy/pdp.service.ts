@@ -155,6 +155,14 @@ const BUNDLE_V1: Rule[] = [
       { role: 'privacy_officer', atScope: 'DOMAIN' },
       { role: 'product_analyst', atScope: 'DOMAIN' },
       /* end B92 §0 */
+      /* B94 §0 (0114 §0.2): the customer sponsor, the onboarding authority and the implementation lead (TENANT), the support engineer and the
+         enablement assessor (DOMAIN) resolve their own scope, as every new role does */
+      { role: 'customer_sponsor', atScope: 'TENANT' },
+      { role: 'onboarding_authority', atScope: 'TENANT' },
+      { role: 'implementation_lead', atScope: 'TENANT' },
+      { role: 'support_engineer', atScope: 'DOMAIN' },
+      { role: 'enablement_assessor', atScope: 'DOMAIN' },
+      /* end B94 §0 */
     ],
     obligations: [{ type: 'audit_access' }],
     requiresPurpose: true,
@@ -2356,6 +2364,220 @@ const BUNDLE_V1: Rule[] = [
   { actionPrefix: 'analytics.review.close', exact: true, requiredAnyRole: [{ role: 'executive', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' },
     { role: 'product_analytics_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   /* end B92 review */
+  /* B94 §0 */
+  /* B94 §0 (0114; F-P7-F-04/-05/-06). EXACT rules — no `onboarding`, `implementation` or `service` prefix rule exists. THE READS are
+     consequential and audited: onboarding.read (programmes, steps, baselines, waves, mappings, rehearsals, cutovers, acceptances),
+     implementation.read (the programme, readiness and the gate, training and competence coverage — a person's own training and competence
+     records are filtered to the subject, the assessor and the authorities by the PORT), service.read (cases, problems, bundles, matrices, the
+     owner resolution, grants and the access log, the control center). TENANT roles read at the tenant; DOMAIN roles in their domain. A
+     support engineer reads only through §SA's grant-checked routes (support.*), never these. The parts' rules follow in their blocks. */
+  { actionPrefix: 'onboarding.read', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' },
+    { role: 'customer_sponsor', atScope: 'TENANT' }, { role: 'onboarding_authority', atScope: 'TENANT' }, { role: 'implementation_lead', atScope: 'TENANT' },
+    { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'data_steward', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'attention_agent', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'implementation.read', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' },
+    { role: 'customer_sponsor', atScope: 'TENANT' }, { role: 'onboarding_authority', atScope: 'TENANT' }, { role: 'implementation_lead', atScope: 'TENANT' },
+    { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'enablement_assessor', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' },
+    { role: 'risk_owner', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'product_analytics_owner', atScope: 'DOMAIN' }, { role: 'attention_agent', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'service.read', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' },
+    { role: 'customer_sponsor', atScope: 'TENANT' }, { role: 'onboarding_authority', atScope: 'TENANT' }, { role: 'implementation_lead', atScope: 'TENANT' },
+    { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'collection_manager', atScope: 'DOMAIN' }, { role: 'data_steward', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' },
+    { role: 'risk_owner', atScope: 'DOMAIN' }, { role: 'attention_agent', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B94 §0 */
+  /* B94 onboarding */
+  /* B94 §ON (0114_b94_x_on; PR-67-001/-002, CAP-DL-04/-05, PER-21, JRN-01). EXACT rules (TENANT roles at TENANT — they also qualify on a
+     DOMAIN route of the tenant). THE PROGRAMME: opened, revised and its steps planned / recorded / reverted by the IMPLEMENTATION LEAD or the
+     tenant administrator; held (and resumed) by any accountable party (the lead, the tenant admin, the customer sponsor, the onboarding
+     authority — the port keeps a hold placed by the sponsor or authority for the sponsor or authority to release); WITHDRAWN by the customer
+     sponsor or the tenant admin (human-gated). THE SPONSOR INTENT: the CUSTOMER SPONSOR only (human-gated; the port refuses a lead and an
+     agent). THE BASELINES: captured, promoted and proposed by the implementation lead; DECIDED by the ONBOARDING AUTHORITY (human-gated; the
+     port re-checks the approver — never the proposer or capturer, never a lead, never an agent — and the signature); drift recorded by the
+     attention agent (the after-tick hook `onboarding-drift`) or a person accountable for the domain. The draft domain (tenancy.domain.draft)
+     is answered by the earlier `tenancy.domain.` PREFIX rule (platform admin or tenant admin — first match wins); its port refuses PLATFORM
+     and requires the tenant administrator. The reads are §0's onboarding.read. */
+  ...((): Rule[] => {
+    const T = (role: string) => ({ role, atScope: 'TENANT' as Scope });
+    const lead = [T('implementation_lead'), T('tenant_admin')];
+    const accountable = [...lead, T('customer_sponsor'), T('onboarding_authority')];
+    const gate: Obligation[] = [{ type: 'human_gate' }];
+    const r = (actionPrefix: string, requiredAnyRole: Array<{ role: string; atScope: Scope }>, obligations?: Obligation[]): Rule =>
+      ({ actionPrefix, exact: true, requiredAnyRole, ...(obligations === undefined ? {} : { obligations }), requiresPurpose: true, maxConsequence: 'C2' });
+    return [
+      r('onboarding.programme.open', lead),
+      r('onboarding.programme.revise', lead),
+      r('onboarding.programme.hold', accountable),
+      r('onboarding.programme.resume', accountable),
+      r('onboarding.programme.withdraw', [T('customer_sponsor'), T('tenant_admin')], gate),
+      r('onboarding.intent.record', [T('customer_sponsor')], gate),
+      r('onboarding.step.plan', lead),
+      r('onboarding.step.record', lead),
+      r('onboarding.step.hold', accountable),
+      r('onboarding.step.revert', lead),
+      r('onboarding.baseline.capture', [T('implementation_lead')]),
+      r('onboarding.baseline.promote', [T('implementation_lead')]),
+      r('onboarding.baseline.propose', [T('implementation_lead')]),
+      r('onboarding.baseline.decide', [T('onboarding_authority')], gate),
+      r('onboarding.baseline.drift', [{ role: 'attention_agent', atScope: 'DOMAIN' }, { role: 'domain_admin', atScope: 'DOMAIN' }, T('implementation_lead'), T('onboarding_authority'), T('tenant_admin')]),
+    ];
+  })(),
+  /* end B94 onboarding */
+  /* B94 migration */
+  /* B94 §MG (0114 §MG; PR-67-003, UX-66-004, CAP-DL-06): EXACT rules. The implementation lead (TENANT) opens waves, proposes mappings,
+     rehearses, requests and executes cutovers inside the approved plan and rehearses rollbacks — an AGENT holding the lead's role may rehearse
+     and execute (no human gate: automation executes only what the authority approved, and the PORT reads the approved staging rows only);
+     the onboarding authority (TENANT) approves mappings, cutovers, rollbacks and acceptance — HUMAN-GATED here and re-checked in the port
+     (onboarding.assert_approver: never the proposer, never a lead, never an agent). The reads are onboarding.read (§0). Domain ACTIVATION is
+     `tenancy.domain.activate`, governed by the earlier `tenancy.domain.` prefix rule (tenant_admin at TENANT, platform_admin) — the port
+     refuses PLATFORM authority (onboarding.assert_tenant) and anything but a verified cutover. */
+  { actionPrefix: 'onboarding.wave.open', exact: true, requiredAnyRole: [{ role: 'implementation_lead', atScope: 'TENANT' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'onboarding.wave.withdraw', exact: true, requiredAnyRole: [{ role: 'implementation_lead', atScope: 'TENANT' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'onboarding.mapping.propose', exact: true, requiredAnyRole: [{ role: 'implementation_lead', atScope: 'TENANT' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'onboarding.mapping.approve', exact: true, requiredAnyRole: [{ role: 'onboarding_authority', atScope: 'TENANT' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'onboarding.rehearsal.run', exact: true, requiredAnyRole: [{ role: 'implementation_lead', atScope: 'TENANT' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'onboarding.cutover.request', exact: true, requiredAnyRole: [{ role: 'implementation_lead', atScope: 'TENANT' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'onboarding.cutover.recheck', exact: true, requiredAnyRole: [{ role: 'implementation_lead', atScope: 'TENANT' }, { role: 'onboarding_authority', atScope: 'TENANT' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'onboarding.cutover.approve', exact: true, requiredAnyRole: [{ role: 'onboarding_authority', atScope: 'TENANT' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'onboarding.cutover.execute', exact: true, requiredAnyRole: [{ role: 'implementation_lead', atScope: 'TENANT' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'onboarding.cutover.reconcile', exact: true, requiredAnyRole: [{ role: 'implementation_lead', atScope: 'TENANT' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'onboarding.rollback.rehearse', exact: true, requiredAnyRole: [{ role: 'implementation_lead', atScope: 'TENANT' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'onboarding.rollback.execute', exact: true, requiredAnyRole: [{ role: 'onboarding_authority', atScope: 'TENANT' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'onboarding.acceptance.decide', exact: true, requiredAnyRole: [{ role: 'onboarding_authority', atScope: 'TENANT' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B94 migration */
+  /* B94 implementation */
+  /* B94 §IM+§AD (0114 §IM; PR-68-001..006, CAP-DL-07/08, PER-21, WS-20). EXACT rules — no `implementation` prefix rule exists. TENANT acts
+     (the programme, its parts, its changes) need TENANT roles at TENANT scope; DOMAIN acts (readiness, the gate, go-live, enablement, cohorts,
+     shadow workflows) run on the programme's target domain, where a TENANT role matches too. APPROVING, ACCEPTING, ATTESTING, CONFIRMING and
+     RECORDING COMPETENCE are HUMAN-GATED and never the lead's (PER-21: the implementation lead coordinates — it appears in no approving rule;
+     the ports re-check with onboarding.assert_approver, which also refuses a lead holding an approving role). implementation.self.read: any
+     role reads its OWN training and competence records (subject-visible; the route answers the caller's own rows only). No agent role appears
+     in any act here except the gate's re-evaluation and the shadow finding (an attention agent may record what it observed). */
+  ...(() => {
+    const T = (role: string) => ({ role, atScope: 'TENANT' as Scope });
+    const D = (role: string) => ({ role, atScope: 'DOMAIN' as Scope });
+    const gate: Obligation[] = [{ type: 'human_gate' }];
+    const r = (actionPrefix: string, requiredAnyRole: Array<{ role: string; atScope: Scope }>, obligations?: Obligation[]): Rule =>
+      ({ actionPrefix, exact: true, requiredAnyRole, ...(obligations === undefined ? {} : { obligations }), requiresPurpose: true, maxConsequence: 'C2' });
+    const leadOrAdmin = [T('implementation_lead'), T('tenant_admin')];
+    const customer = [T('customer_sponsor'), T('onboarding_authority')];
+    return [
+      r('implementation.programme.open', leadOrAdmin),
+      r('implementation.programme.revise', leadOrAdmin),
+      r('implementation.programme.start', leadOrAdmin),
+      r('implementation.programme.withdraw', leadOrAdmin, gate),
+      r('implementation.programme.hold', [T('implementation_lead'), ...customer]),
+      r('implementation.programme.resume', [T('implementation_lead'), ...customer]),
+      r('implementation.item.record', [T('implementation_lead')]),
+      r('implementation.change.propose', [T('implementation_lead')]),
+      r('implementation.change.approve', customer, gate),
+      r('implementation.readiness.declare', [T('implementation_lead'), T('onboarding_authority')]),
+      r('implementation.readiness.retire', [T('onboarding_authority')], gate),
+      r('implementation.readiness.confirm', [...customer, D('domain_admin'), D('data_steward'), D('executive'), D('risk_owner'), D('decision_owner'), D('enablement_assessor')], gate),
+      r('implementation.readiness.accept_residual', [T('onboarding_authority')], gate),
+      r('implementation.gate.evaluate', [T('implementation_lead'), ...customer, D('domain_admin'), D('attention_agent')]),
+      r('implementation.golive.approve', customer, gate),
+      r('implementation.training.path.declare', [T('implementation_lead'), D('domain_admin'), D('enablement_assessor')]),
+      r('implementation.training.path.attest', [T('onboarding_authority'), D('domain_admin'), D('enablement_assessor')], gate),
+      r('implementation.training.record', [T('implementation_lead'), D('enablement_assessor')]),
+      r('implementation.competence.record', [D('enablement_assessor')], gate),
+      r('implementation.cohort.declare', [T('implementation_lead')]),
+      r('implementation.shadow.record', [T('implementation_lead'), D('domain_admin'), D('data_steward'), D('collection_manager'), D('attention_agent')]),
+      r('implementation.shadow.resolve', [T('onboarding_authority'), D('domain_admin')], gate),
+      r('implementation.shadow.review', [T('onboarding_authority'), D('domain_admin')], gate),
+      r('implementation.self.read', [T('tenant_admin'), ...customer, T('implementation_lead'),
+        ...['domain_admin', 'domain_analyst', 'collection_manager', 'decision_owner', 'decision_approver', 'decision_authority', 'executive', 'risk_owner', 'strategy_owner',
+            'forecast_owner', 'data_steward', 'enablement_assessor', 'executive_operator', 'board_member', 'product_analyst', 'product_analytics_owner', 'opportunity_sponsor',
+            'knowledge_owner', 'domain_specialist', 'privacy_officer'].map(D)], [{ type: 'audit_access' }]),
+    ];
+  })(),
+  /* end B94 implementation */
+  /* B94 service */
+  /* B94 §SV (0114_b94_x_sv; PR-69-001/002/005/006, CAP-DL-09/10, AT-69; carryover a). EXACT rules — no `service` prefix rule exists, and
+     `service.*` is no capability's prefix (case opening is NEVER licence-gated). The ports re-check every rule here:
+       OPEN, NOTE, REOPEN, WORKAROUND EXECUTE — the customer roles of the domain (and the tenant administrator); the port refuses a support
+         engineer (403 actor) and a non-human. The workaround's execution is the customer's own act (never support's).
+       TRIAGE, PROGRESS, WORKAROUND PROPOSE, KNOWN-ERROR REUSE, COMMITMENTS — the domain admin (the customer's service owner) or a support
+         engineer; for the engineer the port checks `service.live_grant` FIRST and logs every attempt (refused AND logged without a grant).
+       NOTE — also the support engineer (under a grant); BUNDLE — the domain admin, a data steward, or the engineer under a grant.
+       THE SUPPORT READ (service.case.support_read) — the support engineer only, under a grant (customers read through service.read).
+       CLOSE (the customer's confirmation), the SLA DRILL, the change DECISION and the value-review ACKNOWLEDGEMENT — HUMAN-GATED.
+       PROBLEMS, KNOWN ERRORS, CHANGES — the domain admin; the change decision never by its proposer (port).
+       THE SWEEP (the after-tick hook `service-sla`) — the attention agent only.
+       VALUE REVIEW — recorded by a domain admin or an executive, acknowledged by another (port). */
+  ...((): Rule[] => {
+    const customer = ['domain_admin', 'collection_manager', 'data_steward', 'executive', 'risk_owner', 'decision_owner', 'domain_analyst', 'strategy_owner', 'product_analytics_owner']
+      .map((role) => ({ role, atScope: 'DOMAIN' as Scope }))
+      .concat(['tenant_admin', 'customer_sponsor', 'onboarding_authority'].map((role) => ({ role, atScope: 'TENANT' as Scope })));
+    const admin = [{ role: 'domain_admin', atScope: 'DOMAIN' as Scope }];
+    const engineer = [{ role: 'support_engineer', atScope: 'DOMAIN' as Scope }];
+    const gate: Obligation[] = [{ type: 'human_gate' }];
+    const r = (actionPrefix: string, requiredAnyRole: Array<{ role: string; atScope: Scope }>, obligations?: Obligation[]): Rule =>
+      ({ actionPrefix, exact: true, requiredAnyRole, ...(obligations === undefined ? {} : { obligations }), requiresPurpose: true, maxConsequence: 'C2' });
+    return [
+      r('service.case.open', customer),
+      r('service.case.note', [...customer, ...engineer]),
+      r('service.case.triage', [...admin, ...engineer]),
+      r('service.case.progress', [...admin, ...engineer]),
+      r('service.case.workaround.propose', [...admin, ...engineer]),
+      r('service.case.workaround.execute', customer),
+      r('service.case.known_error.reuse', [...admin, ...engineer]),
+      r('service.case.bundle', [...admin, { role: 'data_steward', atScope: 'DOMAIN' as Scope }, ...engineer]),
+      r('service.case.close', customer, gate),
+      r('service.case.reopen', customer),
+      r('service.case.support_read', engineer, [{ type: 'audit_access' }]),
+      r('service.commitment.record', [...admin, ...engineer]),
+      r('service.commitment.settle', [...admin, ...engineer]),
+      r('service.sla.drill', admin, gate),
+      r('service.sla.sweep', [{ role: 'attention_agent', atScope: 'DOMAIN' as Scope }]),
+      r('service.problem.open', admin),
+      r('service.problem.link', admin),
+      r('service.problem.known_error', admin),
+      r('service.problem.close', admin),
+      r('service.change.propose', admin),
+      r('service.change.decide', admin, gate),
+      r('service.change.record', admin),
+      r('service.value_review.record', [...admin, { role: 'executive', atScope: 'DOMAIN' as Scope }]),
+      r('service.value_review.acknowledge', [{ role: 'executive', atScope: 'DOMAIN' as Scope }, ...admin], gate),
+    ];
+  })(),
+  /* end B94 service */
+  /* B94 support */
+  /* B94 §SA (0114_b94_x_sa; IA-04-001..006, PR-69-003, PER-20, CAP-TR-12). EXACT rules. THE MATRIX: proposed by the implementation lead
+     (TENANT) or the domain admin; DECIDED by the onboarding authority (TENANT; human-gated, signed — the port re-checks the approver test).
+     RECONCILE: the attention agent (the after-tick hook), the domain admin, the onboarding authority, the lead. SUPPORT ACCESS: REQUESTED and
+     WITHDRAWN by the support engineer; DECIDED and REVOKED by the domain admin (human-gated; the port: the accountable owner of
+     support.access, never the engineer). The lapse runs inside the attention tick (executive.attention.tick: the timer and the sweep step). The ENGINEER's only other rules are its four DIAGNOSTIC READS and the
+     read of its OWN grants (support.*) — no write rule, no service.read: an engineer's write (observation.source.transition …) is refused by
+     the PDP. DRILLS: the domain admin (human-gated). JOINT EXERCISES: the domain admin or the onboarding authority (human-gated). ADMISSION:
+     assembled by the lead or the domain admin; signed by the onboarding authority (human-gated). The reads are §0's service.read. */
+  ...(() => {
+    const S = (role: string): { role: string; atScope: Scope } => ({ role, atScope: 'DOMAIN' });
+    const T = (role: string): { role: string; atScope: Scope } => ({ role, atScope: 'TENANT' });
+    const gate: Obligation[] = [{ type: 'human_gate' }];
+    const r = (actionPrefix: string, requiredAnyRole: Array<{ role: string; atScope: Scope }>, obligations?: Obligation[]): Rule =>
+      ({ actionPrefix, exact: true, requiredAnyRole, ...(obligations === undefined ? {} : { obligations }), requiresPurpose: true, maxConsequence: 'C2' });
+    const engineer = [S('support_engineer')];
+    return [
+      r('service.matrix.propose', [T('implementation_lead'), S('domain_admin')]),
+      r('service.matrix.decide', [T('onboarding_authority')], gate),
+      r('service.responsibility.reconcile', [S('attention_agent'), S('domain_admin'), T('onboarding_authority'), T('implementation_lead')]),
+      r('service.grant.request', engineer),
+      r('service.grant.withdraw', engineer),
+      r('service.grant.decide', [S('domain_admin')], gate),
+      r('service.grant.revoke', [S('domain_admin')], gate),
+      r('support.grant.read', engineer, [{ type: 'audit_access' }]),
+      r('support.diagnose.source', engineer, [{ type: 'audit_access' }]),
+      r('support.diagnose.runs', engineer, [{ type: 'audit_access' }]),
+      r('support.diagnose.health', engineer, [{ type: 'audit_access' }]),
+      r('support.diagnose.schedule', engineer, [{ type: 'audit_access' }]),
+      r('service.drill.run', [S('domain_admin')], gate),
+      r('service.exercise.record', [S('domain_admin'), T('onboarding_authority')], gate),
+      r('service.admission.propose', [T('implementation_lead'), S('domain_admin')]),
+      r('service.admission.decide', [T('onboarding_authority')], gate),
+    ];
+  })(),
+  /* end B94 support */
   /* B36 home */
   /* THE EXECUTIVE HOME, THE CADENCE, THE COMMAND VIEWS, THE SEARCH, THE METRICS (0094 §H; F-P6-11: WS-01, JRN-19, PER-03, CAP-EO-01/-02/-04).
      EXACT rules — no `executive` prefix rule exists and none of these names is a prefix of another rule's. THE READS (executive.home.read

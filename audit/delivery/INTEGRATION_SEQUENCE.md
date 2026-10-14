@@ -193,8 +193,13 @@ Between two merges the first merge's `main` chain completes before the next merg
 - **#86** (B33-F, 0112: the package validation-to-effect boundary; the tracker resolution of 2026-10-12): code head `5492fd2` hosted green (ci 38184638471, C19 lifecycle 38184638559).
   - **Merged as `9aeeac6`** (2026-10-12) on its verified records head `59db283` (ci 38187426684, C19 lifecycle 38187426683) under the standing authorization, after main's chain for `059a314` had completed.
   - **Main's chain for `9aeeac6`:** ci 38191518257 → C19 lifecycle 38191518271 → C17 finalize 38194857493 → C19 anchor 38194928506 (created after the finalize), all succeeded on their first attempt.
-- **B92** (0113: product analytics, the metric catalog and UX telemetry), on `phase6-b92` after #86. Its PR's hosted runs, the merge and main's chain for it are recorded in the next delivery record (B94's) — no records-only commit.
-- **B33-H** (no migration: the pipeline's completeness check after a consequential read — the package-health incident of 2026-10-09/10), on `b33h/health-read` from main `0d5622f`, the owner's bounded follow-up of 2026-10-13. Its PR's hosted runs, the merge and main's chain are recorded in the next delivery record (B94's).
+- **#87** (B92, 0113: product analytics, the metric catalog and UX telemetry), on `phase6-b92` after #86: its head `42a43fc` hosted green (ci 38196502437, C19 lifecycle 38196502432).
+  - **Merged as `0d5622f`** (2026-10-12) under the standing authorization, after main's chain for `9aeeac6` had completed. Recorded here, in the next delivery record (B94's), instead of a records-only commit.
+  - **Main's chain for `0d5622f`:** ci 38199528148 → C19 lifecycle 38199528149 → C17 finalize 38203316276 → C19 anchor 38203398516 (created after the finalize), all succeeded on their first attempt.
+- **#88** (B33-H, no migration: the pipeline's completeness check after a consequential read — the package-health incident of 2026-10-09/10), on `b33h/health-read` from main `0d5622f`, the owner's bounded follow-up of 2026-10-13: its head `4e9c603` hosted green (ci 38322728516, C19 lifecycle 38322728459).
+  - **Merged as `90ffc25`** (2026-10-13) under the standing authorization, after main's chain for `0d5622f` had completed. Recorded here, in B94's delivery record.
+  - **Main's chain for `90ffc25`:** ci 38355545555 → C19 lifecycle 38355545558 → C17 finalize 38360549229 → C19 anchor 38360659033 (created after the finalize), all succeeded on their first attempt.
+- **B94** (0114: customer onboarding and governed migration, the implementation programme and enablement, the service portal and governed support access; the carryovers premium-support routing and MET-039), on `phase6-b94` from main `0d5622f` with main `90ffc25` merged in. Its PR's hosted runs, the merge and main's chain are recorded in the next delivery record — no records-only commit.
 
 ## 3. What is never done in this sequence
 
