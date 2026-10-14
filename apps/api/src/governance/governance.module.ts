@@ -9,7 +9,10 @@ import { PipelineModule } from '../pipeline/pipeline.module.js';
 /* B107 registries */ /* end B107 registries */
 /* B107 conformance */ /* end B107 conformance */
 /* B107 ownership */ /* end B107 ownership */
-/* B107 workspace */ /* end B107 workspace */
+/* B107 workspace */
+import { WorkspaceController } from './workspace/workspace.controller.js';
+import { WorkspaceService } from './workspace/workspace.service.js';
+/* end B107 workspace */
 /* B107 acceptance */ /* end B107 acceptance */
 /* B107 design */ /* end B107 design */
 
@@ -19,7 +22,7 @@ import { PipelineModule } from '../pipeline/pipeline.module.js';
     /* B107 registries */ /* end B107 registries */
     /* B107 conformance */ /* end B107 conformance */
     /* B107 ownership */ /* end B107 ownership */
-    /* B107 workspace */ /* end B107 workspace */
+    /* B107 workspace */ WorkspaceController, /* end B107 workspace */
     /* B107 acceptance */ /* end B107 acceptance */
     /* B107 design */ /* end B107 design */
   ],
@@ -27,7 +30,7 @@ import { PipelineModule } from '../pipeline/pipeline.module.js';
     /* B107 registries */ /* end B107 registries */
     /* B107 conformance */ /* end B107 conformance */
     /* B107 ownership */ /* end B107 ownership */
-    /* B107 workspace */ /* end B107 workspace */
+    /* B107 workspace */ WorkspaceService, /* end B107 workspace */
     /* B107 acceptance */ /* end B107 acceptance */
     /* B107 design */ /* end B107 design */
   ],
