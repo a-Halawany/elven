@@ -2598,6 +2598,31 @@ const BUNDLE_V1: Rule[] = [
     obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
   /* end B107 §0 */
   /* B107 registries */
+  /* B107 §RG (0115_b107_x_rg; F-P7D-25, F-P7-F-12: the registries, trace links, change impact, the verification record, the fixture registry).
+     EXACT rules, PLATFORM roles only. THE CONFORMANCE STEWARD imports the repository's registers (read-only), registers normative artifacts,
+     records and retires trace links, reconciles inheritance (holds), records change impacts, ingests verification records, registers and
+     quarantines fixtures — it approves and accepts nothing. INDEPENDENT ASSURANCE reviews a verification record and approves a fixture
+     (human-gated; the ports re-check the approver test: never the ingester, the runner or a builder, never an agent). The reads are §0's
+     governance.read. */
+  ...(() => {
+    const P = (role: string): { role: string; atScope: Scope } => ({ role, atScope: 'PLATFORM' });
+    const gate: Obligation[] = [{ type: 'human_gate' }];
+    const r = (actionPrefix: string, requiredAnyRole: Array<{ role: string; atScope: Scope }>, obligations?: Obligation[]): Rule =>
+      ({ actionPrefix, exact: true, requiredAnyRole, ...(obligations === undefined ? {} : { obligations }), requiresPurpose: true, maxConsequence: 'C2' });
+    const steward = [P('conformance_steward')];
+    return [
+      r('governance.registry.import', steward),
+      r('governance.registry.register', steward),
+      r('governance.trace.link', steward),
+      r('governance.trace.check', steward),
+      r('governance.impact.record', steward),
+      r('governance.verification.ingest', steward),
+      r('governance.verification.review', [P('independent_assurance')], gate),
+      r('governance.fixture.register', steward),
+      r('governance.fixture.quarantine', steward),
+      r('governance.fixture.approve', [P('independent_assurance')], gate),
+    ];
+  })(),
   /* end B107 registries */
   /* B107 conformance */
   /* end B107 conformance */
