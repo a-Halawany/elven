@@ -35,6 +35,7 @@ const NAV = [
   { href: '/admin/governance/acceptance', key: 'nav.governance.acceptance' },
   { href: '/admin/governance/design', key: 'nav.governance.design' },
   /* end B107 §0 */
+  /* B107 ownership */ { href: '/admin/governance/ownership', key: 'nav.governance.ownership' }, /* end B107 ownership */
 ];
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
