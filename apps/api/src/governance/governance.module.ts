@@ -8,7 +8,10 @@ import { Module } from '@nestjs/common';
 import { PipelineModule } from '../pipeline/pipeline.module.js';
 /* B107 registries */ /* end B107 registries */
 /* B107 conformance */ /* end B107 conformance */
-/* B107 ownership */ /* end B107 ownership */
+/* B107 ownership */
+import { OwnershipDomainController, OwnershipPlatformController } from './ownership/ownership.controller.js';
+import { OwnershipService } from './ownership/ownership.service.js';
+/* end B107 ownership */
 /* B107 workspace */ /* end B107 workspace */
 /* B107 acceptance */ /* end B107 acceptance */
 /* B107 design */ /* end B107 design */
@@ -18,7 +21,7 @@ import { PipelineModule } from '../pipeline/pipeline.module.js';
   controllers: [
     /* B107 registries */ /* end B107 registries */
     /* B107 conformance */ /* end B107 conformance */
-    /* B107 ownership */ /* end B107 ownership */
+    /* B107 ownership */ OwnershipDomainController, OwnershipPlatformController, /* end B107 ownership */
     /* B107 workspace */ /* end B107 workspace */
     /* B107 acceptance */ /* end B107 acceptance */
     /* B107 design */ /* end B107 design */
@@ -26,7 +29,7 @@ import { PipelineModule } from '../pipeline/pipeline.module.js';
   providers: [
     /* B107 registries */ /* end B107 registries */
     /* B107 conformance */ /* end B107 conformance */
-    /* B107 ownership */ /* end B107 ownership */
+    /* B107 ownership */ OwnershipService, /* end B107 ownership */
     /* B107 workspace */ /* end B107 workspace */
     /* B107 acceptance */ /* end B107 acceptance */
     /* B107 design */ /* end B107 design */

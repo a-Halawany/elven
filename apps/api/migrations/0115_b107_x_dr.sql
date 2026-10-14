@@ -747,14 +747,15 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = governance, products, dec
          jsonb_build_object('reason', 'a duty of the ratified authority does not resolve',
                             'steward', CASE WHEN decision.is_active_human(x.steward, p_tenant) THEN 'resolved' ELSE 'lost' END,
                             'custodian', CASE WHEN x.custodian_principal_id IS NOT NULL THEN CASE WHEN x.custodian_principal_id = ANY (governance.dr_role_holders(p_tenant, p_domain, x.custodian_role)) THEN 'resolved' ELSE 'lost' END
-                                              WHEN cardinality(governance.dr_role_holders(p_tenant, p_domain, x.custodian_role)) = 0 THEN 'unfilled' ELSE 'resolved' END,
+                                              WHEN cardinality(governance.dr_role_holders(p_tenant, p_domain, x.custodian_role)) = 0 THEN 'unfilled'
+                                              WHEN cardinality(governance.dr_role_holders(p_tenant, p_domain, x.custodian_role)) > 1 THEN 'ambiguous (several hold the role and none is named)' ELSE 'resolved' END,
                             'policy_authority', CASE WHEN cardinality(governance.dr_role_holders(p_tenant, p_domain, x.policy_authority_role)) = 0 THEN 'unfilled' ELSE 'resolved' END,
                             'quality_authority', CASE WHEN cardinality(governance.dr_role_holders(p_tenant, p_domain, x.quality_authority_role)) = 0 THEN 'unfilled' ELSE 'resolved' END),
          x.escalation_path, x.owner
     FROM x WHERE x.authority_id IS NOT NULL AND decision.is_active_human(x.owner, p_tenant)
               AND (NOT decision.is_active_human(x.steward, p_tenant)
                    OR (x.custodian_principal_id IS NOT NULL AND NOT (x.custodian_principal_id = ANY (governance.dr_role_holders(p_tenant, p_domain, x.custodian_role))))
-                   OR cardinality(governance.dr_role_holders(p_tenant, p_domain, x.custodian_role)) = 0
+                   OR (x.custodian_principal_id IS NULL AND cardinality(governance.dr_role_holders(p_tenant, p_domain, x.custodian_role)) <> 1)
                    OR cardinality(governance.dr_role_holders(p_tenant, p_domain, x.policy_authority_role)) = 0
                    OR cardinality(governance.dr_role_holders(p_tenant, p_domain, x.quality_authority_role)) = 0)
 $$;
@@ -1927,11 +1928,11 @@ BEGIN
        'exception_approved_by_owner', (SELECT count(*) FROM governance.stewardship_cases c, jsonb_array_elements(c.reviews) rv WHERE c.tenant_id = p_tenant AND c.domain_id = p_domain
                                          AND c.kind IN ('access', 'data_exception') AND rv ->> 'outcome' = 'approve' AND (rv ->> 'reviewer')::uuid = c.owner_principal_id),
        'note', 'each count must be 0 — the ports refuse these acts; the test re-reads the record'),
-    'exception_ageing', coalesce((SELECT jsonb_agg(jsonb_build_object('case_ref', c.case_ref, 'state', c.state, 'approved_at', c.decided_at, 'expires_at', c.expires_at,
-                                                                     'age_days', round(extract(epoch FROM (p_to - c.decided_at)) / 86400.0, 1),
+    'exception_ageing', coalesce((SELECT jsonb_agg(jsonb_build_object('case_ref', c.case_ref, 'state', c.state, 'approved_at', c.decided_at, 'expires_at', c.expires_at, 'closed_at', c.closed_at,
+                                                                     'age_days', round(extract(epoch FROM (least(coalesce(c.closed_at, p_to), p_to) - c.decided_at)) / 86400.0, 1),
                                                                      'days_to_expiry', round(extract(epoch FROM (c.expires_at - p_to)) / 86400.0, 1)) ORDER BY c.decided_at)
                                     FROM governance.stewardship_cases c WHERE c.tenant_id = p_tenant AND c.domain_id = p_domain AND c.kind = 'data_exception' AND c.decision = 'approved' AND c.decided_at < p_to
-                                      AND c.state IN ('approved', 'expired')), '[]'::jsonb),
+                                      AND (c.closed_at IS NULL OR c.closed_at >= p_from)), '[]'::jsonb),
     'override_review', coalesce((SELECT jsonb_agg(jsonb_build_object('gap_id', g.gap_id, 'gap_kind', g.gap_kind, 'subject', g.subject_label, 'accepted_by', g.accepted_by, 'accepted_until', g.accepted_until,
                                                                     'reason', g.accept_reason) ORDER BY g.accepted_at)
                                    FROM governance.ownership_gaps g WHERE g.tenant_id = p_tenant AND g.domain_id = p_domain AND g.accepted_at >= p_from AND g.accepted_at < p_to), '[]'::jsonb),
