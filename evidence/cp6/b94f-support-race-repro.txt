@@ -1,0 +1,32 @@
+B94-F harness test/int/phase6-support-b94.test.ts — B94F_REPRO=1 on e9ee91b (the uncorrected code): the DEFECT reproduced; fresh database (dropped after), Redis 6395, 2026-10-15
+
+ ✓ SA1 · the shared-responsibility matrix (IA-04-001/-003) > refusals before any version: the vocabulary, a vendor owner, a support engineer (PDP), the shape 69ms
+ ✓ SA1 · the shared-responsibility matrix (IA-04-001/-003) > positive: the lead proposes v1 (digested, the authority's review task opened); a second open proposal and a stale version are refused 26ms
+ ✓ SA1 · the shared-responsibility matrix (IA-04-001/-003) > the decision: the lead (PDP) · a lead holding the authority (SoD) · an agent (port) · a stale digest · then the authority approves and SIGNS 38ms
+ ✓ SA2 · support access: request, the owner-gap hold, the correction (matrix v2), the approval (PR-69-003, IA-04-005) > request refusals: an agent (port) · a member engineer (access) · a closed case · a foreign source · a bad duration (route) · the PDP for a non-engineer 29ms
+ ✓ SA2 · support access: request, the owner-gap hold, the correction (matrix v2), the approval (PR-69-003, IA-04-005) > positive: the engineer requests 4 h (digest, the review task, the support.access item); a duplicate is refused 18ms
+ ✓ SA2 · support access: request, the owner-gap hold, the correction (matrix v2), the approval (PR-69-003, IA-04-005) > FAULT · the owner gap HOLDS the approval: two domain admins and v1 names none → 409 held, the gap raised and visible, the grant untouched 19ms
+ ✓ SA2 · support access: request, the owner-gap hold, the correction (matrix v2), the approval (PR-69-003, IA-04-005) > CORRECTION · matrix v2 (the domain admin proposes; another authority approves) names T. Richter the owner of support.access → v1 superseded 14ms
+ ✓ SA2 · support access: request, the owner-gap hold, the correction (matrix v2), the approval (PR-69-003, IA-04-005) > released: refusals (the engineer approving its own grant — PDP; another admin — not the owner; an agent; a stale digest), then the accountable owner approves 35ms
+ ✓ SA3 · the diagnostic reads (PER-20): live grant first, every attempt logged, read-only > positive: source, runs and health of the NAMED source — each logged with the grant id; never the contract body 26ms
+ ✓ SA3 · the diagnostic reads (PER-20): live grant first, every attempt logged, read-only > refused AND logged: another source (object scope), an action outside the scope (schedule), another case 18ms
+ ✓ SA3 · the diagnostic reads (PER-20): live grant first, every attempt logged, read-only > the engineer cannot write customer state: a source transition is refused by the PDP; it reads no service record; it reads its OWN grants 16ms
+ ✓ SA4 · the lapse in three layers > LAYER 2 · expired → the next read is refused BEFORE any sweep (the grant still reads approved) 7ms
+ ✓ SA4 · the lapse in three layers > LAYER 3b + 1 · the sweep (the tick step support-grant-expiry) marks it lapsed; the after-tick hook support-access has the identity authority revoke the engineer's session; the old session is refused 341ms
+ ✓ SA4 · the lapse in three layers > LAYER 3a · the support_access.expiry TIMER fired by the tick lapses a grant (the timer planted due now — fixture time travel) 153ms
+ ✓ SA4 · the lapse in three layers > LAYER 1 deferred while ANOTHER grant is live (act-found on eye_demo): a lapsed grant's sessions are kept while the engineer holds a live approved grant, and revoked when the last grant ends 296ms
+ ✓ SA4 · the lapse in three layers > DEFECT · B94-F · the race at the REVOCATION POINT: grant A expires, the sweep commits A's pending revocation, the after-tick callback is HELD; the customer approves grant B and the engineer opens a NEW session; the callback resumes — the new session is revoked (B unusable) 158ms
+ ✓ SA4 · the lapse in three layers > an EARLY REVOKE by the domain admin: immediate (the next read refused), the timer cancelled, the sessions revoked; the engineer cannot revoke (PDP); withdraw and deny 100ms
+ ✓ SA5 · customer-control drills (CAP-TR-12) > revoke_live_grant: the drill revokes a LIVE grant and proves every probe refused; the next real read is refused and logged; the engineer runs no drill 77ms
+ ✓ SA5 · customer-control drills (CAP-TR-12) > expired_grant_refused: a grant past its expiry (the lapsed G1) probes refused 6ms
+ ✓ SA6 · reconciliation and the responsibility gap (IA-04-002/-005) > positive: findings recorded (the risk.ownership gap, the member engineer's privilege drift); the gap item raised; unchanged → not recorded again 42ms
+ ✓ SA6 · reconciliation and the responsibility gap (IA-04-002/-005) > a stale observation (matrix v1 after v2 approved) is refused 20ms
+ ✓ SA6 · reconciliation and the responsibility gap (IA-04-002/-005) > FAULT · the gap is CLOSED when filled: a risk owner bound → the after-tick hook records the change and closes the item 260ms
+ ✓ SA7 · the joint exercise and the admission record (IA-04-006; production admission is R1) > the joint exercise: customer and vendor participants; refusals: the engineer (PDP), a vendor who is not an engineer, the lead 29ms
+ ✓ SA7 · the joint exercise and the admission record (IA-04-006; production admission is R1) > held without a signed matrix for the profile; proposed (the grant ledger, the drills, the exercise, the baseline digest bound); signed by the authority 60ms
+ ✓ SA8 · cross-tenant > another tenant's administrator cannot reach this domain (scope 403) and its own context finds no grant of this one (404) 39ms
+ ✓ SA9 · replay: the ledger reconstructs every grant and the matrix > each grant's last ledger event names its state; the matrix's history reads proposed → approved → proposed → approved 11ms
+ ✓ SA10 · the customer control center (CAP-TR-12) > the matrix and its owners (gaps visible), grants, the access log, drills, exercises, admissions, residency and the links — read by the owner 27ms
+ Test Files  1 passed (1)
+      Tests  27 passed (27)
+   Duration  4.78s (transform 1.72s, setup 17ms, import 2.44s, tests 2.26s, environment 0ms)

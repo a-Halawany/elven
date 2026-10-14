@@ -43,7 +43,8 @@ export const EXPIRY_TIMER = 'support_access.expiry';
 export const SA_BOUNDARY = `${BOUNDARY} §SA: an admission record signed here is construction evidence, never a production admission (R1); deployment-profile parity (IA-04-004) is B111; only local-dev is a real profile.`;
 const textOf = (e: unknown): string => (e instanceof HttpException ? String((e.getResponse() as { message?: string }).message ?? e.message) : (e instanceof Error ? e.message : String(e)));
 
-/* B94 act-found (2026-10-13, on eye_demo): LAYER 1 must not end a credential another LIVE grant still stands behind. A session is not
+/* B94 act-found (2026-10-13, on eye_demo) — a PRE-FILTER only since B94-F (the authoritative decision is revokeAtRevocationPoint's, under the
+   engineer's coordination lock): LAYER 1 must not end a credential another LIVE grant still stands behind. A session is not
    bound to a grant — its power is exactly the engineer's live grants (every port asks service.live_grant FIRST) — so while the engineer holds
    another approved, unexpired grant in the domain, the revocation of an ENDED grant's sessions is deferred (recorded as `access_kept` with
    the live grant); once the last grant ends, its sessions issued before that end are revoked. Seen on the demo: the after-tick revoke-all of
@@ -232,6 +233,8 @@ export class SupportService implements OnModuleInit {
    *  and is then refused 409 `held` with the blocking list. */
   async decideGrant(env: Envelope, p: AuthenticatedPrincipal, t: string, d: string, grantId: string, b: { decision: 'approve' | 'deny'; digest: string; reason: string }) {
     const out = await this.write(env, p, t, d, 'service.grant.decide', 'SGR', grantId, async (cap) => {
+      // B94-F: an approval takes the engineer's coordination lock before the port admits it (see revokeAtRevocationPoint)
+      if (b.decision === 'approve') { const engineer = await cap.engineerOfGrant(grantId); if (engineer !== null) await cap.lockEngineer(engineer); }
       const r = await cap.decideGrant({ grantId, t, d, ...b, actor: p.principalId, correlationId: env.correlation_id });
       return r['held'] === true ? { result: r, evidence: { outcome: 'failure', resultCode: 'EYE-STA-002', metadata: { held: true, blocking: r['blocking'] } } } : { result: r };
     });
@@ -291,15 +294,39 @@ export class SupportService implements OnModuleInit {
       return { pending: true, principal: engineer, error: textOf(e).slice(0, 300), closed_by: `the next tick (${SUPPORT_ACCESS_HOOK})` };
     }
   }
-  /** The after-tick hook: each engineer the sweep step (and the timer step) left holding a session from before its grant ended is revoked by
-   *  the identity authority — never nested in the tick's write; a failure is answered and the next tick's sweep reads the principal again. */
+  /** The after-tick hook: each engineer the sweep step (and the timer step) left holding a session from before its grant ended is a CANDIDATE;
+   *  the decision is taken at the REVOCATION POINT (B94-F), one engineer at a time — never nested in the tick's write; a failure is answered
+   *  and the next tick's sweep reads the principal again. */
   async afterTickRevoke(a: { principal: AuthenticatedPrincipal; tenantId: string; domainId: string; correlationId: string; steps: Record<string, unknown> }): Promise<Row> {
     const pending = (((a.steps[SWEEP_STEP] ?? {}) as Row)['access_pending'] ?? []) as Row[];
-    if (pending.length === 0) return { pending: 0, revoked: [] };
-    const revoked: Row[] = [];
-    for (const x of pending) revoked.push({ ...(await this.revokeSessions(String(x['principal']), { principalId: a.principal.principalId, sessionId: a.principal.sessionId },
-      typeof x['grant_id'] === 'string' ? x['grant_id'] : null, `the support grant is ${String(x['grant_state'])} (tick)`, a.correlationId)), grant_id: x['grant_id'] ?? null });
-    return { pending: pending.length, revoked };
+    if (pending.length === 0) return { pending: 0, revoked: [], kept: [] };
+    const revoked: Row[] = []; const kept: Row[] = [];
+    for (const x of pending) {
+      const r = await this.revokeAtRevocationPoint(a, String(x['principal']), typeof x['grant_id'] === 'string' ? x['grant_id'] : null, `the support grant is ${String(x['grant_state'])} (tick)`);
+      (r['kept_for_live_grant'] ? kept : revoked).push({ ...r, grant_id: x['grant_id'] ?? null });
+    }
+    return { pending: pending.length, revoked, kept };
+  }
+  /** B94-F (the review of e9ee91b): THE REVOCATION POINT. The sweep's list was decided when the sweep committed; between that commit and this
+   *  callback the customer may approve another grant for the engineer and the engineer may sign in for it. So the decision is taken HERE, in
+   *  one governed read under the attention agent that holds the engineer's coordination lock (cap.lockEngineer — the approval takes the same
+   *  lock): the engineer's live grant is read as it stands now; with one, the sessions are KEPT for it (a session's power is exactly the
+   *  engineer's live grants — every port asks service.live_grant first, so the ended grant reads nothing); with none, the identity authority
+   *  revokes the sessions BEFORE the lock is released — a later approval waits for that commit, and the session it serves is opened after it.
+   *  The explicit customer acts (revoke, the revoke_live_grant drill) are unchanged: they revoke every session at once. */
+  private async revokeAtRevocationPoint(a: { principal: AuthenticatedPrincipal; tenantId: string; domainId: string; correlationId: string }, engineer: string, grantId: string | null, reason: string): Promise<Row> {
+    const env = this.envelopeFor(a.principal, a.tenantId, a.domainId, READ, 'SGR', grantId, a.correlationId);
+    try {
+      const out = await this.read(env, a.principal, a.tenantId, a.domainId, READ, 'SGR', grantId, async (cap) => {
+        await cap.lockEngineer(engineer);
+        const live = await cap.liveGrantOf(a.tenantId, a.domainId, engineer);
+        if (live !== null) return { principal: engineer, kept_for_live_grant: live, sessions_revoked: 0, note: 'the engineer holds a live approved grant at the revocation point: the sessions are kept for it; the ended grant reads nothing' } as Row;
+        return await this.revokeSessions(engineer, { principalId: a.principal.principalId, sessionId: a.principal.sessionId }, grantId, reason, a.correlationId);
+      });
+      return out.result;
+    } catch (e) {
+      return { pending: true, principal: engineer, error: textOf(e).slice(0, 300), closed_by: `the next tick (${SUPPORT_ACCESS_HOOK})` };
+    }
   }
 
   // ───────────────────────── DRILLS, EXERCISES, ADMISSION ─────────────────────────

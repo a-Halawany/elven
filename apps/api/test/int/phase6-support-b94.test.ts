@@ -43,6 +43,8 @@ process.env['EYE_EXECUTIVE_SIGNING_KEY_DEMO'] = KEY.privateKey.export({ format: 
 
 type Row = Record<string, unknown>;
 let h: Phase4Harness; let sc: SupportController; let svc: SupportService;
+/** B94-F (the review of e9ee91b): `B94F_REPRO=1` asserts the DEFECT of the revocation race on the uncorrected code; without it, the correction. */
+const REPRO = process.env['B94F_REPRO'] === '1';
 const T = () => h.fx.tenantId; const D = () => h.fx.domainId;
 const RUN = uuidv7().slice(-6);
 const PURPOSE = 'service';
@@ -342,6 +344,67 @@ describe('SA4 · the lapse in three layers', () => {
     const last = await tick();
     expect(((last.after['support-access'] as Row)['revoked'] as Row[]).map((r) => r['principal'])).toContain(engineer.principalId);
     expect(await one(sql`select status from identity.sessions where id = ${session}::uuid`)).toEqual({ status: 'revoked' });
+    engineer = await h.openSession(engineer);
+  });
+  it(`${REPRO ? 'DEFECT' : 'correction'} · B94-F · the race at the REVOCATION POINT: grant A expires, the sweep commits A's pending revocation, the after-tick callback is HELD; the customer approves grant B and the engineer opens a NEW session; the callback resumes — ${REPRO ? 'the new session is revoked (B unusable)' : 'the new session stays usable under B, A grants nothing; B\'s end later revokes'}`, async () => {
+    const ca = await plantCase('Race A'); const cb = await plantCase('Race B');
+    const a = (await request(engineer, { caseId: ca, purpose: 'a short look, the race case A', sources: [SRC], actions: ['diagnose.source'], durationMinutes: 15 })).grant;
+    await decideG(richter, String(a['grant_id']), { decision: 'approve', digest: String(a['request_digest']) });
+    await sql`update service.support_grants set starts_at = clock_timestamp() - interval '16 minutes', expires_at = clock_timestamp() - interval '1 second' where grant_id = ${String(a['grant_id'])}::uuid`.execute(h.su);
+    // 1. the sweep commits A's pending revocation; the callback is HELD (its own argument captured, nothing run)
+    const real = svc.afterTickRevoke.bind(svc); let held: Parameters<SupportService['afterTickRevoke']>[0] | null = null;
+    svc.afterTickRevoke = async (x) => { held = x; return { held: true }; };
+    try { await tick(); } finally { svc.afterTickRevoke = real; }
+    expect(held).not.toBeNull();
+    const pending = ((held!.steps['support-grant-expiry'] as Row)['access_pending'] ?? []) as Row[];
+    expect(pending.map((x) => x['principal'])).toContain(engineer.principalId);          // no live grant at the sweep: A's revocation is pending
+    expect(await one(sql`select state from service.support_grants where grant_id = ${String(a['grant_id'])}::uuid`)).toEqual({ state: 'lapsed' });
+    // 2. the customer approves B; the engineer opens a NEW session
+    const b = (await request(engineer, { caseId: cb, purpose: 'the four-hour diagnosis, the race case B', sources: [SRC], actions: ['diagnose.source'], durationMinutes: 240 })).grant;
+    await decideG(richter, String(b['grant_id']), { decision: 'approve', digest: String(b['request_digest']) });
+    engineer = await h.openSession(engineer);
+    const fresh = engineer.sessionId;
+    expect((await diagnose(engineer, 'source', SRC, cb)).diagnosis['refused']).toBe(false);
+    // 3. the callback resumes with its saved argument
+    const r = await svc.afterTickRevoke(held!);
+    if (REPRO) {
+      expect(await one(sql`select status from identity.sessions where id = ${fresh}::uuid`)).toEqual({ status: 'revoked' });   // the defect: B's session revoked by A's late revocation
+      expect((await refusal(diagnose(engineer, 'source', SRC, cb))).status).toBeGreaterThanOrEqual(401);
+      engineer = await h.openSession(engineer);
+      return;
+    }
+    expect((r['revoked'] as Row[] | undefined ?? []).map((x) => x['principal'])).not.toContain(engineer.principalId);
+    expect((r['kept'] as Row[]).find((x) => x['principal'] === engineer.principalId)).toMatchObject({ kept_for_live_grant: String(b['grant_id']) });
+    expect(await one(sql`select status from identity.sessions where id = ${fresh}::uuid`)).toEqual({ status: 'active' });
+    expect((await diagnose(engineer, 'source', SRC, cb)).diagnosis['refused']).toBe(false);                 // usable under B
+    await refused(diagnose(engineer, 'source', SRC, ca), /grant .* is lapsed/, 403);                           // A grants nothing
+    // recovery: when B (the last grant) ends, the next tick revokes
+    await sql`update service.support_grants set starts_at = clock_timestamp() - interval '241 minutes', expires_at = clock_timestamp() - interval '1 second' where grant_id = ${String(b['grant_id'])}::uuid`.execute(h.su);
+    const last = await tick();
+    expect(((last.after['support-access'] as Row)['revoked'] as Row[]).map((x) => x['principal'])).toContain(engineer.principalId);
+    expect(await one(sql`select status from identity.sessions where id = ${fresh}::uuid`)).toEqual({ status: 'revoked' });
+    engineer = await h.openSession(engineer);
+  });
+  it('B94-F · the approval takes the engineer\'s coordination lock: while a revocation holds it, an approval WAITS and completes only after the lock is released', async () => {
+    if (REPRO) return;   // the uncorrected approval takes no lock
+    const c = await plantCase('Lock wait');
+    const g = (await request(engineer, { caseId: c, purpose: 'a look while the revocation holds the lock', sources: [SRC], actions: ['diagnose.source'], durationMinutes: 15 })).grant;
+    let approved: Row | null = null; let waited = false;
+    await h.su.transaction().execute(async (trx) => {
+      await sql`select pg_advisory_xact_lock(hashtextextended(${`service.support.engineer:${engineer.principalId}`}, 0))`.execute(trx);   // as revokeAtRevocationPoint does
+      const pending = decideG(richter, String(g['grant_id']), { decision: 'approve', digest: String(g['request_digest']) }).then((x) => { approved = x.grant; });
+      for (let i = 0; i < 100 && !waited; i += 1) {
+        await new Promise((r) => setTimeout(r, 100));
+        waited = Number((await sql<{ n: number }>`select count(*)::int as n from pg_stat_activity where wait_event_type = 'Lock' and wait_event = 'advisory' and datname = current_database()`.execute(h.su)).rows[0]?.n ?? 0) > 0;
+      }
+      expect(waited).toBe(true);
+      expect(approved).toBeNull();                                                        // not admitted while the lock is held
+      expect(await one(sql`select state from service.support_grants where grant_id = ${String(g['grant_id'])}::uuid`)).toEqual({ state: 'requested' });
+      void pending;
+    });
+    for (let i = 0; i < 100 && approved === null; i += 1) await new Promise((r) => setTimeout(r, 100));
+    expect(approved).toMatchObject({ state: 'approved' });                                // admitted once the lock is released
+    await revoke(richter, String(g['grant_id']));
     engineer = await h.openSession(engineer);
   });
   it('an EARLY REVOKE by the domain admin: immediate (the next read refused), the timer cancelled, the sessions revoked; the engineer cannot revoke (PDP); withdraw and deny', async () => {

@@ -29,6 +29,24 @@ export class SupportCapability {
   async call<T>(q: ReturnType<typeof sql>): Promise<T[]> { return this.rows<T>(q); }
   async now(): Promise<string> { const r = await sql<{ now: Date }>`select clock_timestamp() as now`.execute(this.#tx); return (r.rows[0]?.now ?? new Date()).toISOString(); }
 
+  // ───────────────────────── B94-F: the coordination of approval and automatic revocation ─────────────────────────
+  /** The per-engineer transaction lock (B94-F): taken by an APPROVAL before the port admits the grant, and by the AUTOMATIC revocation before
+   *  it decides — so the revocation decides on the engineer's grants as they stand when it acts: an approval that committed first is seen
+   *  (the sessions are kept for it); one that comes later waits until the revocation has committed (its sessions are opened after it). */
+  async lockEngineer(engineer: string): Promise<void> {
+    await sql`select pg_advisory_xact_lock(hashtextextended(${`service.support.engineer:${engineer}`}, 0))`.execute(this.#tx);
+  }
+  /** The engineer a grant names (RLS: this domain's grants), or null. */
+  async engineerOfGrant(grantId: string): Promise<string | null> {
+    return ((await sql<{ e: string }>`select engineer_principal_id::text as e from service.support_grants where grant_id = ${grantId}::uuid`.execute(this.#tx)).rows[0]?.e) ?? null;
+  }
+  /** The engineer's live grant in the domain (approved, started, unexpired on the database clock), or null. */
+  async liveGrantOf(t: string, d: string, engineer: string): Promise<string | null> {
+    return ((await sql<{ g: string | null }>`select (select g.grant_id::text from service.support_grants g where g.tenant_id = ${t}::uuid and g.domain_id = ${d}::uuid
+        and g.engineer_principal_id = ${engineer}::uuid and g.state = 'approved' and g.starts_at <= clock_timestamp() and clock_timestamp() < g.expires_at
+        order by g.expires_at desc limit 1) as g`.execute(this.#tx)).rows[0]?.g) ?? null;
+  }
+
   // ───────────────────────── reads (RLS) ─────────────────────────
   async matrices(profile: string | null): Promise<Row[]> {
     return this.rows(sql`select m.matrix_id::text, m.version, m.tenant_id::text, m.domain_id::text, m.programme_id::text, m.deployment_profile, m.state, m.digest, m.proposed_by::text,
