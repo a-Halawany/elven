@@ -10,7 +10,10 @@ import { PipelineModule } from '../pipeline/pipeline.module.js';
 /* B107 conformance */ /* end B107 conformance */
 /* B107 ownership */ /* end B107 ownership */
 /* B107 workspace */ /* end B107 workspace */
-/* B107 acceptance */ /* end B107 acceptance */
+/* B107 acceptance */
+import { AcceptanceController, AcceptancePlatformController } from './acceptance/acceptance.controller.js';
+import { AcceptanceService } from './acceptance/acceptance.service.js';
+/* end B107 acceptance */
 /* B107 design */ /* end B107 design */
 
 @Module({
@@ -20,7 +23,7 @@ import { PipelineModule } from '../pipeline/pipeline.module.js';
     /* B107 conformance */ /* end B107 conformance */
     /* B107 ownership */ /* end B107 ownership */
     /* B107 workspace */ /* end B107 workspace */
-    /* B107 acceptance */ /* end B107 acceptance */
+    /* B107 acceptance */ AcceptanceController, AcceptancePlatformController, /* end B107 acceptance */
     /* B107 design */ /* end B107 design */
   ],
   providers: [
@@ -28,7 +31,7 @@ import { PipelineModule } from '../pipeline/pipeline.module.js';
     /* B107 conformance */ /* end B107 conformance */
     /* B107 ownership */ /* end B107 ownership */
     /* B107 workspace */ /* end B107 workspace */
-    /* B107 acceptance */ /* end B107 acceptance */
+    /* B107 acceptance */ AcceptanceService, /* end B107 acceptance */
     /* B107 design */ /* end B107 design */
   ],
 })

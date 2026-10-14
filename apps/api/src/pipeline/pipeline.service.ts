@@ -30,6 +30,9 @@ import { OutboxCapability, type CapabilityFactory } from '../shared/capabilities
 /* B91 entitlements */
 import { entitlementExemption, ENTITLEMENT_RESULT_CODE, type Availability } from '../commercial/entitlements/entitlement-gate.js';
 /* end B91 entitlements */
+/* B107 acceptance */
+import { needsAcceptanceCheck, ACCEPTANCE_GATE_RESULT_CODE, type AcceptanceGateAnswer } from '../governance/acceptance/acceptance-gate.js';
+/* end B107 acceptance */
 
 export interface RouteInfo {
   scope: Scope;
@@ -418,6 +421,38 @@ export class PipelineService {
       }
     }
     /* end B91 entitlements */
+    /* B107 acceptance (0115_b107_x_ar; Q5, ES-71-004, FEX-31) — THE OPT-IN ACCEPTANCE GATE, after the PDP's allow and the entitlement gate: only
+       for a capability the product authority marked enforce_acceptance, only on a DOMAIN route, never for an exempt action (a human gate,
+       reads, corrections, withdrawals, attention, warnings, the mandatory controls, governance itself — acceptance-logic.ts). The request is
+       asked of governance.ar_gate under its own evidence context: the capability accepted (or constrained) HERE for the caller's roles and the
+       request's consequence class passes; not accepted, suspended, lapsed, a role or a class outside the accepted scope is a DENY recorded
+       through recordDenial and answered 403 `acceptance record rejected (access): …` in the database's words. A read failure answers 503. */
+    if ((policyResult.decision === 'allow' || policyResult.decision === 'allow_with_obligations') && res.context.scope === 'DOMAIN' && route.mandatoryControl === undefined
+        && await needsAcceptanceCheck(this.commitDb, { action: route.action, humanGated: policyResult.obligations.some((o) => o.type === 'human_gate'), scope: res.context.scope })) {
+      const roles = principal.bindings.filter((b) => b.scope === 'PLATFORM' || (b.scope === 'TENANT' && b.tenantId === res.context.tenantId)
+        || (b.scope === 'DOMAIN' && b.tenantId === res.context.tenantId && b.domainId === res.context.domainId)).map((b) => b.roleCode);
+      let gate: AcceptanceGateAnswer;
+      try {
+        gate = await this.commitDb.transaction().execute(async (tx) => {
+          await this.establishEvidenceContext(tx, principal, res.context, envelope, route);
+          const r = await sql<{ a: AcceptanceGateAnswer }>`select governance.ar_gate(${res.context.tenantId}::uuid, ${res.context.domainId}::uuid, ${route.action}, ${roles}::text[],
+            ${route.consequenceClass ?? envelope.consequence_class}) as a`.execute(tx);
+          return r.rows[0]!.a;
+        });
+      } catch (e) {
+        if (e instanceof CapabilityDeniedError) throw await this.denyCapability(envelope, principal, route, e);
+        throw new HttpException(errorBody('EYE_DEP_001', envelope.correlation_id,
+          'the acceptance of this capability could not be determined (the acceptance read failed); nothing was done — retry'), 503);
+      }
+      if (gate.gated && !gate.available) {
+        const reason = `acceptance record rejected (access): ${gate.reason ?? 'the capability is not accepted for this scope'}`;
+        const refused: PolicyResult = { ...policyResult, decision: 'deny', obligations: [], reason };
+        await this.recordDenial(envelope, principal, route, res.context, policyInput, refused, ACCEPTANCE_GATE_RESULT_CODE);
+        throw new HttpException({ ...errorBody('EYE_AUT_001', envelope.correlation_id, reason),
+          acceptance: { capability: gate.capability ?? null, state: gate.state ?? null, record_id: gate.record_id ?? null, version: gate.version ?? null } }, 403);
+      }
+    }
+    /* end B107 acceptance */
     return { ctx: res.context, policyInput, policyResult };
   }
 
