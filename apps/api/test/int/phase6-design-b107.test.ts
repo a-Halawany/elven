@@ -152,7 +152,7 @@ const approveOwned = async (assetId: string, owner: AuthenticatedPrincipal) => {
 };
 
 // shared state across the groups
-let CONFORMANT_EVAL = ''; let BUTTON = ''; let BANNER = ''; let PATTERN = ''; let BASELINE = ''; let B1DIGEST = '';
+let CONFORMANT_EVAL = ''; let NONCONF_EVAL = ''; let BUTTON = ''; let BANNER = ''; let PATTERN = ''; let BASELINE = ''; let B1DIGEST = '';
 
 beforeAll(async () => {
   h = await Phase4Harness.boot();
@@ -227,6 +227,8 @@ describe('DG1 · principles, prohibitions and the lint (UX-03-001/-002/-003, UX-
       'surface-access-mode@apps/web/app/x/page.tsx:2', 'surface-access-mode@apps/web/messages/en.json:2']);
     expect(f.every((x) => x['status'] === 'open')).toBe(true);
     expect(r['counts']).toEqual({ 'raw-colour': 1, 'optimistic-path': 2, 'surface-definition': 2 });
+    NONCONF_EVAL = String(r['evaluation_id']);
+    expect(await one(sql`select evaluated_by_kind from governance.design_evaluations where evaluation_id = ${NONCONF_EVAL}::uuid`)).toEqual({ evaluated_by_kind: 'agent' });
   });
   it('refusals: the steward declares no principle (PDP) · a machine (port: actor) · an unwaivable principle relaxed (boundary) · a stale version', async () => {
     await refused(declare(steward, { key: `dg-${RUN}-x`, expectedVersion: 0, kind: 'principle', statement: 'a statement long enough', remediation: 'remediate it now' }), DENIED, 403);
@@ -335,6 +337,11 @@ describe('DG3 · the design baseline under the Design System Authority (UX-01-00
     expect((cmp['members'] as Row)['added']).toEqual([{ key: 'web.ui.degraded-banner', version: 1 }]);
     expect(cmp['scope']).toEqual([{ dimension: 'locales', from: ['en'], to: ['en', 'de'] }]);
     expect(cmp['identical']).toBe(false);
+    const pv = await W(pc.preview(preq(steward, 'governance.read'), 'baseline', BASELINE, { payload: { version: 2 } }));
+    expect(pv['digest']).toBe(v2['digest']);
+    expect(pv['eligibility']).toEqual(['you do not hold design_system_authority', 'you proposed it — no self-acceptance']);
+    expect(((await W(pc.preview(preq(dsa, 'governance.read'), 'baseline', BASELINE, { payload: { version: 2 } })))['eligibility'])).toEqual([]);
+    await refused(W(pc.preview(preq(dsa, 'governance.read'), 'baseline', BASELINE, { payload: { version: 9 } })), /^design baseline rejected \(unknown_baseline\)/, 404);
     expect(((await decideB(dsa, BASELINE, { version: 2, decision: 'reject', digest: v2['digest'] }))['baseline'] as Row)['state']).toBe('rejected');
     expect(await rows(sql`select version, state from governance.design_baselines where baseline_id = ${BASELINE}::uuid order by version`)).toEqual([{ version: 1, state: 'attested' }, { version: 2, state: 'rejected' }]);
   });
@@ -429,6 +436,19 @@ describe('DG5 · the contribution queue (UX-72-001…005)', () => {
     expect(pub['asset_version']).toBe(Number(before['version']) + 1);
     expect(await rows(sql`select version, status, package_version from governance.design_assets where asset_id = ${BANNER}::uuid order by version`)).toEqual([
       { version: Number(before['version']), status: 'superseded', package_version: '0.0.1' }, { version: Number(before['version']) + 1, status: 'approved', package_version: '0.0.2' }]);
+  });
+  it('UX-03-005: a NON-CONFORMANT design is blocked — the review HOLDS it naming the violated principles, the evidence preserved; recovery: a conformant evaluation', async () => {
+    const plans = { compatibility: 'additive only', consumers: 'none affected', migration: 'none required', rollback: 'revert the version', tests: ['t1'] };
+    const c = (await propose(steward, { kind: 'pattern_change', targetAssetId: PATTERN, proposal: { packageVersion: '0.0.3' }, summary: 'An optimistic shortcut for the governed action (SYNTHETIC)',
+                                        plans: { ...plans, evaluationId: NONCONF_EVAL } }))['contribution'] as Row;
+    const id = String(c['contribution_id']);
+    const r = await refused(step(dsa, id, 'review', { revision: 1 }), /the design evaluation is nonconformant \(5 open finding\(s\): .*no-optimistic-path.*\) — the non-conformant pattern is blocked/, 409);
+    expect(((r.body['held'] as Row)['blocking'] as Row[]).length).toBe(1);
+    expect(await one(sql`select stage, plans ->> 'evaluationId' as e from governance.design_contributions where contribution_id = ${id}::uuid`)).toEqual({ stage: 'held', e: NONCONF_EVAL });
+    await amend(steward, id, { revision: 1, targetAssetId: PATTERN, proposal: { packageVersion: '0.0.3' }, summary: 'The governed action, receipts only (SYNTHETIC)', plans: { ...plans, evaluationId: CONFORMANT_EVAL } });
+    expect(((await step(dsa, id, 'review', { revision: 2 }))['contribution'] as Row)['stage']).toBe('in_review');
+    await step(dsa, id, 'reject', { revision: 2 });
+    expect((await asset('pattern.governed-action'))['version']).toBe(1);  // a rejected change leaves the pattern untouched
   });
   it('a constitutional AMENDMENT is ratified by the product authority only (UX-72-004); a non-amendment never claims constitutional meaning', async () => {
     await refused(propose(steward, { kind: 'component_change', targetAssetId: BUTTON, proposal: { packageVersion: '9.9.9' }, summary: 'a change claiming constitutional meaning', constitutional: true }), /^design contribution rejected \(constitutional\)/, 422);
@@ -625,6 +645,8 @@ describe('DG9 · the independent conformance package (UX-70-006, UX-66-006) — 
     expect((c['findings'] as Row[]).map((f) => f['class'])).toContain('accessibility_unsupported');
     expect(c['unsigned']).toBe(true);
     expect(await one(sql`select signed, claim from governance.design_conformance_packages where package_id = ${String(r['package_id'])}::uuid`)).toEqual({ signed: false, claim: 'demonstration' });
+    const read = (await W(dc.readPackage(dreq(auditor, 'governance.read'), T(), D(), String(r['package_id']))))['package'] as Row;
+    expect(read).toMatchObject({ digest: r['digest'], signed: false, claim: 'demonstration' });
     await expect(sql`update governance.design_conformance_packages set signed = true where package_id = ${String(r['package_id'])}::uuid`.execute(h.su)).rejects.toThrow(/append-only|append only/i);
   });
   it('positive: UX-66-006 without a record — the attested baseline, B94 evidence by reference (none here → stated), findings', async () => {
