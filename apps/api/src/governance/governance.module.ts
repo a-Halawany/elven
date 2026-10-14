@@ -11,7 +11,10 @@ import { PipelineModule } from '../pipeline/pipeline.module.js';
 /* B107 ownership */ /* end B107 ownership */
 /* B107 workspace */ /* end B107 workspace */
 /* B107 acceptance */ /* end B107 acceptance */
-/* B107 design */ /* end B107 design */
+/* B107 design */
+import { DesignDomainController, DesignPlatformController } from './design/design.controller.js';
+import { DesignGovernanceService } from './design/design.service.js';
+/* end B107 design */
 
 @Module({
   imports: [PipelineModule],
@@ -21,7 +24,7 @@ import { PipelineModule } from '../pipeline/pipeline.module.js';
     /* B107 ownership */ /* end B107 ownership */
     /* B107 workspace */ /* end B107 workspace */
     /* B107 acceptance */ /* end B107 acceptance */
-    /* B107 design */ /* end B107 design */
+    /* B107 design */ DesignPlatformController, DesignDomainController, /* end B107 design */
   ],
   providers: [
     /* B107 registries */ /* end B107 registries */
@@ -29,7 +32,7 @@ import { PipelineModule } from '../pipeline/pipeline.module.js';
     /* B107 ownership */ /* end B107 ownership */
     /* B107 workspace */ /* end B107 workspace */
     /* B107 acceptance */ /* end B107 acceptance */
-    /* B107 design */ /* end B107 design */
+    /* B107 design */ DesignGovernanceService, /* end B107 design */
   ],
 })
 export class GovernanceModule {}
