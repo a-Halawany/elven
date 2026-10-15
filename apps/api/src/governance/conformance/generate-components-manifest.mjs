@@ -276,8 +276,31 @@ export function canonical(v) {
 }
 
 // ───────────────────────────────────────── the manifest ─────────────────────────────────────────
+/** What each kind of unit is built into, and which suites exercise it (declared; the per-test evidence is §RG's verification record). */
+const ARTIFACT_OF = {
+  api_composition_root: 'the API process (tsc → apps/api/dist; one Node process: the modular monolith, ADR-P0-02)',
+  api_module: 'compiled into the API process (tsc → apps/api/dist)', worker: 'a BullMQ worker inside the API process',
+  web_app: 'the Next.js application (apps/web)', package: 'a workspace package (tsc → dist)', infrastructure_service: 'a Compose service on its pinned image (conformance.manifest.json pinned_images)',
+};
+const TESTS_OF = {
+  api_composition_root: ['apps/api/test/acceptance', 'apps/api/test/int'], api_module: ['apps/api/test/unit', 'apps/api/test/int'], worker: ['apps/api/test/int'],
+  web_app: ['apps/web/lib/*.test.ts', 'e2e'], package: ['packages/*/test'], infrastructure_service: ['apps/api/test/gate (C15–C19 supply-chain gates)'],
+};
+
+/** AI-01-004: the conditions under which an implementation may represent itself as The Eye, each with where its evidence lives (or its carrier). */
+export const REPRESENTATION_BOUNDARY = [
+  { condition: 'human final authority', evidence: 'the PDP human gates and the ports\' approver tests (apps/api/test/int)', carrier: null },
+  { condition: 'temporal truth', evidence: 'the truth-state and temporal semantics suites (apps/api/test/int, packages/contracts/test)', carrier: null },
+  { condition: 'end-to-end provenance', evidence: 'the audit chain and provenance suites (apps/api/test/int)', carrier: null },
+  { condition: 'tenant isolation', evidence: 'RLS and domain-isolation suites (apps/api/test/int)', carrier: null },
+  { condition: 'deployment semantic parity', evidence: null, carrier: 'B106 (the parity runner) / B111 (profiles)' },
+  { condition: 'governed learning', evidence: null, carrier: 'B75' },
+];
+
 export function generateManifest(root) {
   const discovered = discoverUnits(root);
+  const pkg = JSON.parse(read(root, 'package.json'));
+  const build = { environment: `node ${pkg.engines?.node ?? '?'} · ${pkg.packageManager ?? 'pnpm'} (frozen lockfile)` };
   const lcs = logicalComponents(root);
   const inf = catalogue(root, 'audit/requirements/v06.csv', 'INF');
   const dat = catalogue(root, 'audit/requirements/v07.csv', 'DAT');
@@ -309,6 +332,9 @@ export function generateManifest(root) {
       plane_boundaries: { state: u.schemas.length === 0 ? 'none owned' : u.schemas.join(', '), telemetry: 'the audit chain partition (platform | tenant) and the module logger', policy: 'PDP exact rules for its actions',
                           resource: 'its database role (eye_commit ports / eye_app reads) and its queue names', failure: (u.layers[0] !== undefined ? LAYERS[u.layers[0] - 1].failure.join('; ') : 'process:api'), audit: 'every governed act through the pipeline (POL + AUD)' },
       release_path: 'build-test → browser-regression → supply-chain (ci.yml); a release candidate record (B65 substituted) — never a release',
+      build: { environment: build.environment, artifact: ARTIFACT_OF[u.kind] ?? 'unknown', reproducible_from: u.kind === 'infrastructure_service' ? 'the pinned image digest' : 'the tracked source + pnpm-lock.yaml' },
+      tests: { suites: TESTS_OF[u.kind] ?? [], selector: u.kind === 'api_module' ? `the suites importing ${u.path}/` : 'the suites named', verification: 'H2 (independent)' },
+      deployment_targets: ['local-dev'],
     };
   });
 
@@ -355,6 +381,7 @@ export function generateManifest(root) {
     evidence_families: EVIDENCE_FAMILIES,
     generated_artifacts: GENERATED_ARTIFACTS,
     profiles: { declared: ['local-dev'], carrier: 'B106 / B111 (the profile catalogue and deployment parity); R1 (production)' },
+    representation_boundary: { requirement: 'AI-01-004', rule: 'an implementation that bypasses any condition below does not represent itself as The Eye', conditions: REPRESENTATION_BOUNDARY },
     boundary: 'CONSTRUCTION: a manifest generated from source. DEMONSTRATED OPERATION is the act on eye_demo; REAL ACCEPTANCE (R1/R2/H2/H3) is never claimed here.',
   };
 }

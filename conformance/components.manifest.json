@@ -988,6 +988,11 @@
   ],
   "deployable_units": [
     {
+      "build": {
+        "artifact": "the API process (tsc → apps/api/dist; one Node process: the modular monolith, ADR-P0-02)",
+        "environment": "node >=24.0.0 <25 · pnpm@11.9.0 (frozen lockfile)",
+        "reproducible_from": "the tracked source + pnpm-lock.yaml"
+      },
       "component_ids": [
         "CP-OPS-01"
       ],
@@ -1020,6 +1025,9 @@
         "api.tenancy",
         "api.twin"
       ],
+      "deployment_targets": [
+        "local-dev"
+      ],
       "kind": "api_composition_root",
       "layers": [],
       "mapped": true,
@@ -1047,9 +1055,22 @@
         "access": "no owned state",
         "schemas": []
       },
+      "tests": {
+        "selector": "the suites named",
+        "suites": [
+          "apps/api/test/acceptance",
+          "apps/api/test/int"
+        ],
+        "verification": "H2 (independent)"
+      },
       "unit_id": "api.composition"
     },
     {
+      "build": {
+        "artifact": "compiled into the API process (tsc → apps/api/dist)",
+        "environment": "node >=24.0.0 <25 · pnpm@11.9.0 (frozen lockfile)",
+        "reproducible_from": "the tracked source + pnpm-lock.yaml"
+      },
       "component_ids": [
         "DAT-OP-01",
         "DAT-OP-03",
@@ -1061,6 +1082,9 @@
       ],
       "dependencies": [
         "api.pipeline"
+      ],
+      "deployment_targets": [
+        "local-dev"
       ],
       "kind": "api_module",
       "layers": [],
@@ -1102,9 +1126,22 @@
           "analytics"
         ]
       },
+      "tests": {
+        "selector": "the suites importing apps/api/src/analytics/",
+        "suites": [
+          "apps/api/test/unit",
+          "apps/api/test/int"
+        ],
+        "verification": "H2 (independent)"
+      },
       "unit_id": "api.analytics"
     },
     {
+      "build": {
+        "artifact": "compiled into the API process (tsc → apps/api/dist)",
+        "environment": "node >=24.0.0 <25 · pnpm@11.9.0 (frozen lockfile)",
+        "reproducible_from": "the tracked source + pnpm-lock.yaml"
+      },
       "component_ids": [
         "CP-AUD-01",
         "DAT-TR-11",
@@ -1115,6 +1152,9 @@
         "ES-24"
       ],
       "dependencies": [],
+      "deployment_targets": [
+        "local-dev"
+      ],
       "kind": "api_module",
       "layers": [],
       "mapped": true,
@@ -1146,9 +1186,22 @@
           "audit"
         ]
       },
+      "tests": {
+        "selector": "the suites importing apps/api/src/audit/",
+        "suites": [
+          "apps/api/test/unit",
+          "apps/api/test/int"
+        ],
+        "verification": "H2 (independent)"
+      },
       "unit_id": "api.audit"
     },
     {
+      "build": {
+        "artifact": "compiled into the API process (tsc → apps/api/dist)",
+        "environment": "node >=24.0.0 <25 · pnpm@11.9.0 (frozen lockfile)",
+        "reproducible_from": "the tracked source + pnpm-lock.yaml"
+      },
       "component_ids": [
         "DAT-DL-07",
         "INF-CP-12"
@@ -1159,6 +1212,9 @@
       "dependencies": [
         "api.executive",
         "api.pipeline"
+      ],
+      "deployment_targets": [
+        "local-dev"
       ],
       "kind": "api_module",
       "layers": [],
@@ -1199,9 +1255,22 @@
           "commercial"
         ]
       },
+      "tests": {
+        "selector": "the suites importing apps/api/src/commercial/",
+        "suites": [
+          "apps/api/test/unit",
+          "apps/api/test/int"
+        ],
+        "verification": "H2 (independent)"
+      },
       "unit_id": "api.commercial"
     },
     {
+      "build": {
+        "artifact": "compiled into the API process (tsc → apps/api/dist)",
+        "environment": "node >=24.0.0 <25 · pnpm@11.9.0 (frozen lockfile)",
+        "reproducible_from": "the tracked source + pnpm-lock.yaml"
+      },
       "component_ids": [
         "CP-CFG-01"
       ],
@@ -1210,6 +1279,9 @@
         "ES-66"
       ],
       "dependencies": [],
+      "deployment_targets": [
+        "local-dev"
+      ],
       "kind": "api_module",
       "layers": [],
       "mapped": true,
@@ -1241,9 +1313,22 @@
           "config"
         ]
       },
+      "tests": {
+        "selector": "the suites importing apps/api/src/config/",
+        "suites": [
+          "apps/api/test/unit",
+          "apps/api/test/int"
+        ],
+        "verification": "H2 (independent)"
+      },
       "unit_id": "api.config"
     },
     {
+      "build": {
+        "artifact": "compiled into the API process (tsc → apps/api/dist)",
+        "environment": "node >=24.0.0 <25 · pnpm@11.9.0 (frozen lockfile)",
+        "reproducible_from": "the tracked source + pnpm-lock.yaml"
+      },
       "component_ids": [
         "L9-C01",
         "L9-C02",
@@ -1261,6 +1346,9 @@
       "dependencies": [
         "api.graph",
         "api.pipeline"
+      ],
+      "deployment_targets": [
+        "local-dev"
       ],
       "kind": "api_module",
       "layers": [
@@ -1304,9 +1392,22 @@
           "decision"
         ]
       },
+      "tests": {
+        "selector": "the suites importing apps/api/src/decision/",
+        "suites": [
+          "apps/api/test/unit",
+          "apps/api/test/int"
+        ],
+        "verification": "H2 (independent)"
+      },
       "unit_id": "api.decision"
     },
     {
+      "build": {
+        "artifact": "compiled into the API process (tsc → apps/api/dist)",
+        "environment": "node >=24.0.0 <25 · pnpm@11.9.0 (frozen lockfile)",
+        "reproducible_from": "the tracked source + pnpm-lock.yaml"
+      },
       "component_ids": [
         "DAT-DL-04",
         "DAT-DL-08",
@@ -1317,6 +1418,9 @@
       ],
       "dependencies": [
         "api.pipeline"
+      ],
+      "deployment_targets": [
+        "local-dev"
       ],
       "kind": "api_module",
       "layers": [],
@@ -1362,9 +1466,22 @@
           "service"
         ]
       },
+      "tests": {
+        "selector": "the suites importing apps/api/src/delivery/",
+        "suites": [
+          "apps/api/test/unit",
+          "apps/api/test/int"
+        ],
+        "verification": "H2 (independent)"
+      },
       "unit_id": "api.delivery"
     },
     {
+      "build": {
+        "artifact": "compiled into the API process (tsc → apps/api/dist)",
+        "environment": "node >=24.0.0 <25 · pnpm@11.9.0 (frozen lockfile)",
+        "reproducible_from": "the tracked source + pnpm-lock.yaml"
+      },
       "component_ids": [
         "DAT-KN-11",
         "L7-C09"
@@ -1372,6 +1489,9 @@
       "controls": [],
       "dependencies": [
         "api.pipeline"
+      ],
+      "deployment_targets": [
+        "local-dev"
       ],
       "kind": "api_module",
       "layers": [],
@@ -1407,9 +1527,22 @@
           "domain"
         ]
       },
+      "tests": {
+        "selector": "the suites importing apps/api/src/domains/",
+        "suites": [
+          "apps/api/test/unit",
+          "apps/api/test/int"
+        ],
+        "verification": "H2 (independent)"
+      },
       "unit_id": "api.domains"
     },
     {
+      "build": {
+        "artifact": "compiled into the API process (tsc → apps/api/dist)",
+        "environment": "node >=24.0.0 <25 · pnpm@11.9.0 (frozen lockfile)",
+        "reproducible_from": "the tracked source + pnpm-lock.yaml"
+      },
       "component_ids": [
         "L10-C01",
         "L10-C02",
@@ -1431,6 +1564,9 @@
         "api.identity",
         "api.observation",
         "api.pipeline"
+      ],
+      "deployment_targets": [
+        "local-dev"
       ],
       "kind": "api_module",
       "layers": [
@@ -1474,9 +1610,22 @@
           "executive"
         ]
       },
+      "tests": {
+        "selector": "the suites importing apps/api/src/executive/",
+        "suites": [
+          "apps/api/test/unit",
+          "apps/api/test/int"
+        ],
+        "verification": "H2 (independent)"
+      },
       "unit_id": "api.executive"
     },
     {
+      "build": {
+        "artifact": "compiled into the API process (tsc → apps/api/dist)",
+        "environment": "node >=24.0.0 <25 · pnpm@11.9.0 (frozen lockfile)",
+        "reproducible_from": "the tracked source + pnpm-lock.yaml"
+      },
       "component_ids": [
         "DAT-GV-01",
         "DAT-GV-02",
@@ -1499,6 +1648,9 @@
       ],
       "dependencies": [
         "api.pipeline"
+      ],
+      "deployment_targets": [
+        "local-dev"
       ],
       "kind": "api_module",
       "layers": [],
@@ -1533,9 +1685,22 @@
           "governance"
         ]
       },
+      "tests": {
+        "selector": "the suites importing apps/api/src/governance/",
+        "suites": [
+          "apps/api/test/unit",
+          "apps/api/test/int"
+        ],
+        "verification": "H2 (independent)"
+      },
       "unit_id": "api.governance"
     },
     {
+      "build": {
+        "artifact": "compiled into the API process (tsc → apps/api/dist)",
+        "environment": "node >=24.0.0 <25 · pnpm@11.9.0 (frozen lockfile)",
+        "reproducible_from": "the tracked source + pnpm-lock.yaml"
+      },
       "component_ids": [
         "L3-C06",
         "L3-C07",
@@ -1559,6 +1724,9 @@
         "api.intelligence",
         "api.observation",
         "api.pipeline"
+      ],
+      "deployment_targets": [
+        "local-dev"
       ],
       "kind": "api_module",
       "layers": [
@@ -1598,9 +1766,22 @@
           "memory"
         ]
       },
+      "tests": {
+        "selector": "the suites importing apps/api/src/graph/",
+        "suites": [
+          "apps/api/test/unit",
+          "apps/api/test/int"
+        ],
+        "verification": "H2 (independent)"
+      },
       "unit_id": "api.graph"
     },
     {
+      "build": {
+        "artifact": "compiled into the API process (tsc → apps/api/dist)",
+        "environment": "node >=24.0.0 <25 · pnpm@11.9.0 (frozen lockfile)",
+        "reproducible_from": "the tracked source + pnpm-lock.yaml"
+      },
       "component_ids": [
         "CP-OPS-01",
         "INF-OP-11"
@@ -1609,6 +1790,9 @@
         "ES-66"
       ],
       "dependencies": [],
+      "deployment_targets": [
+        "local-dev"
+      ],
       "kind": "api_module",
       "layers": [],
       "mapped": true,
@@ -1636,9 +1820,22 @@
         "access": "no owned state",
         "schemas": []
       },
+      "tests": {
+        "selector": "the suites importing apps/api/src/health/",
+        "suites": [
+          "apps/api/test/unit",
+          "apps/api/test/int"
+        ],
+        "verification": "H2 (independent)"
+      },
       "unit_id": "api.health"
     },
     {
+      "build": {
+        "artifact": "compiled into the API process (tsc → apps/api/dist)",
+        "environment": "node >=24.0.0 <25 · pnpm@11.9.0 (frozen lockfile)",
+        "reproducible_from": "the tracked source + pnpm-lock.yaml"
+      },
       "component_ids": [
         "CP-IAM-01",
         "INF-TR-01"
@@ -1647,6 +1844,9 @@
         "ADR-P0-17"
       ],
       "dependencies": [],
+      "deployment_targets": [
+        "local-dev"
+      ],
       "kind": "api_module",
       "layers": [],
       "mapped": true,
@@ -1678,9 +1878,22 @@
           "identity"
         ]
       },
+      "tests": {
+        "selector": "the suites importing apps/api/src/identity/",
+        "suites": [
+          "apps/api/test/unit",
+          "apps/api/test/int"
+        ],
+        "verification": "H2 (independent)"
+      },
       "unit_id": "api.identity"
     },
     {
+      "build": {
+        "artifact": "compiled into the API process (tsc → apps/api/dist)",
+        "environment": "node >=24.0.0 <25 · pnpm@11.9.0 (frozen lockfile)",
+        "reproducible_from": "the tracked source + pnpm-lock.yaml"
+      },
       "component_ids": [
         "INF-PF-08",
         "L2-C01",
@@ -1701,6 +1914,9 @@
         "api.identity",
         "api.observation",
         "api.pipeline"
+      ],
+      "deployment_targets": [
+        "local-dev"
       ],
       "kind": "api_module",
       "layers": [
@@ -1737,9 +1953,22 @@
           "intelligence"
         ]
       },
+      "tests": {
+        "selector": "the suites importing apps/api/src/intelligence/",
+        "suites": [
+          "apps/api/test/unit",
+          "apps/api/test/int"
+        ],
+        "verification": "H2 (independent)"
+      },
       "unit_id": "api.intelligence"
     },
     {
+      "build": {
+        "artifact": "compiled into the API process (tsc → apps/api/dist)",
+        "environment": "node >=24.0.0 <25 · pnpm@11.9.0 (frozen lockfile)",
+        "reproducible_from": "the tracked source + pnpm-lock.yaml"
+      },
       "component_ids": [
         "CP-OBJ-01",
         "DAT-SM-02",
@@ -1754,6 +1983,9 @@
       ],
       "dependencies": [
         "api.pipeline"
+      ],
+      "deployment_targets": [
+        "local-dev"
       ],
       "kind": "api_module",
       "layers": [],
@@ -1790,9 +2022,22 @@
           "canon"
         ]
       },
+      "tests": {
+        "selector": "the suites importing apps/api/src/objects/",
+        "suites": [
+          "apps/api/test/unit",
+          "apps/api/test/int"
+        ],
+        "verification": "H2 (independent)"
+      },
       "unit_id": "api.objects"
     },
     {
+      "build": {
+        "artifact": "compiled into the API process (tsc → apps/api/dist)",
+        "environment": "node >=24.0.0 <25 · pnpm@11.9.0 (frozen lockfile)",
+        "reproducible_from": "the tracked source + pnpm-lock.yaml"
+      },
       "component_ids": [
         "DAT-IN-01",
         "DAT-IN-02",
@@ -1813,6 +2058,9 @@
       "dependencies": [
         "api.identity",
         "api.pipeline"
+      ],
+      "deployment_targets": [
+        "local-dev"
       ],
       "kind": "api_module",
       "layers": [
@@ -1850,9 +2098,22 @@
           "observation"
         ]
       },
+      "tests": {
+        "selector": "the suites importing apps/api/src/observation/",
+        "suites": [
+          "apps/api/test/unit",
+          "apps/api/test/int"
+        ],
+        "verification": "H2 (independent)"
+      },
       "unit_id": "api.observation"
     },
     {
+      "build": {
+        "artifact": "compiled into the API process (tsc → apps/api/dist)",
+        "environment": "node >=24.0.0 <25 · pnpm@11.9.0 (frozen lockfile)",
+        "reproducible_from": "the tracked source + pnpm-lock.yaml"
+      },
       "component_ids": [
         "INF-NW-02",
         "INF-TR-05"
@@ -1865,6 +2126,9 @@
         "api.audit",
         "api.identity",
         "api.policy"
+      ],
+      "deployment_targets": [
+        "local-dev"
       ],
       "kind": "api_module",
       "layers": [],
@@ -1900,9 +2164,22 @@
           "ctx"
         ]
       },
+      "tests": {
+        "selector": "the suites importing apps/api/src/pipeline/",
+        "suites": [
+          "apps/api/test/unit",
+          "apps/api/test/int"
+        ],
+        "verification": "H2 (independent)"
+      },
       "unit_id": "api.pipeline"
     },
     {
+      "build": {
+        "artifact": "compiled into the API process (tsc → apps/api/dist)",
+        "environment": "node >=24.0.0 <25 · pnpm@11.9.0 (frozen lockfile)",
+        "reproducible_from": "the tracked source + pnpm-lock.yaml"
+      },
       "component_ids": [
         "CP-POL-01",
         "DAT-TR-02",
@@ -1912,6 +2189,9 @@
         "ADR-P0-10"
       ],
       "dependencies": [],
+      "deployment_targets": [
+        "local-dev"
+      ],
       "kind": "api_module",
       "layers": [],
       "mapped": true,
@@ -1943,9 +2223,22 @@
           "policy"
         ]
       },
+      "tests": {
+        "selector": "the suites importing apps/api/src/policy/",
+        "suites": [
+          "apps/api/test/unit",
+          "apps/api/test/int"
+        ],
+        "verification": "H2 (independent)"
+      },
       "unit_id": "api.policy"
     },
     {
+      "build": {
+        "artifact": "compiled into the API process (tsc → apps/api/dist)",
+        "environment": "node >=24.0.0 <25 · pnpm@11.9.0 (frozen lockfile)",
+        "reproducible_from": "the tracked source + pnpm-lock.yaml"
+      },
       "component_ids": [
         "L6-C01",
         "L6-C02",
@@ -1976,6 +2269,9 @@
         "api.graph",
         "api.observation",
         "api.pipeline"
+      ],
+      "deployment_targets": [
+        "local-dev"
       ],
       "kind": "api_module",
       "layers": [
@@ -2023,9 +2319,22 @@
           "prediction"
         ]
       },
+      "tests": {
+        "selector": "the suites importing apps/api/src/prediction/",
+        "suites": [
+          "apps/api/test/unit",
+          "apps/api/test/int"
+        ],
+        "verification": "H2 (independent)"
+      },
       "unit_id": "api.prediction"
     },
     {
+      "build": {
+        "artifact": "compiled into the API process (tsc → apps/api/dist)",
+        "environment": "node >=24.0.0 <25 · pnpm@11.9.0 (frozen lockfile)",
+        "reproducible_from": "the tracked source + pnpm-lock.yaml"
+      },
       "component_ids": [
         "DAT-SV-01",
         "DAT-SV-10",
@@ -2035,6 +2344,9 @@
       "dependencies": [
         "api.executive",
         "api.pipeline"
+      ],
+      "deployment_targets": [
+        "local-dev"
       ],
       "kind": "api_module",
       "layers": [],
@@ -2073,9 +2385,22 @@
           "products"
         ]
       },
+      "tests": {
+        "selector": "the suites importing apps/api/src/products/",
+        "suites": [
+          "apps/api/test/unit",
+          "apps/api/test/int"
+        ],
+        "verification": "H2 (independent)"
+      },
       "unit_id": "api.products"
     },
     {
+      "build": {
+        "artifact": "compiled into the API process (tsc → apps/api/dist)",
+        "environment": "node >=24.0.0 <25 · pnpm@11.9.0 (frozen lockfile)",
+        "reproducible_from": "the tracked source + pnpm-lock.yaml"
+      },
       "component_ids": [
         "DAT-ST-06",
         "DAT-TR-08",
@@ -2090,6 +2415,9 @@
         "api.graph",
         "api.observation",
         "api.pipeline"
+      ],
+      "deployment_targets": [
+        "local-dev"
       ],
       "kind": "api_module",
       "layers": [],
@@ -2124,9 +2452,22 @@
           "retention"
         ]
       },
+      "tests": {
+        "selector": "the suites importing apps/api/src/retention/",
+        "suites": [
+          "apps/api/test/unit",
+          "apps/api/test/int"
+        ],
+        "verification": "H2 (independent)"
+      },
       "unit_id": "api.retention"
     },
     {
+      "build": {
+        "artifact": "compiled into the API process (tsc → apps/api/dist)",
+        "environment": "node >=24.0.0 <25 · pnpm@11.9.0 (frozen lockfile)",
+        "reproducible_from": "the tracked source + pnpm-lock.yaml"
+      },
       "component_ids": [
         "CP-OPS-01"
       ],
@@ -2134,6 +2475,9 @@
         "ADR-P0-02"
       ],
       "dependencies": [],
+      "deployment_targets": [
+        "local-dev"
+      ],
       "kind": "api_module",
       "layers": [],
       "mapped": true,
@@ -2161,9 +2505,22 @@
         "access": "no owned state",
         "schemas": []
       },
+      "tests": {
+        "selector": "the suites importing apps/api/src/shared/",
+        "suites": [
+          "apps/api/test/unit",
+          "apps/api/test/int"
+        ],
+        "verification": "H2 (independent)"
+      },
       "unit_id": "api.shared"
     },
     {
+      "build": {
+        "artifact": "compiled into the API process (tsc → apps/api/dist)",
+        "environment": "node >=24.0.0 <25 · pnpm@11.9.0 (frozen lockfile)",
+        "reproducible_from": "the tracked source + pnpm-lock.yaml"
+      },
       "component_ids": [
         "CP-TEN-01",
         "DAT-GV-02"
@@ -2171,6 +2528,9 @@
       "controls": [],
       "dependencies": [
         "api.pipeline"
+      ],
+      "deployment_targets": [
+        "local-dev"
       ],
       "kind": "api_module",
       "layers": [],
@@ -2205,9 +2565,22 @@
           "tenancy"
         ]
       },
+      "tests": {
+        "selector": "the suites importing apps/api/src/tenancy/",
+        "suites": [
+          "apps/api/test/unit",
+          "apps/api/test/int"
+        ],
+        "verification": "H2 (independent)"
+      },
       "unit_id": "api.tenancy"
     },
     {
+      "build": {
+        "artifact": "compiled into the API process (tsc → apps/api/dist)",
+        "environment": "node >=24.0.0 <25 · pnpm@11.9.0 (frozen lockfile)",
+        "reproducible_from": "the tracked source + pnpm-lock.yaml"
+      },
       "component_ids": [
         "L5-C01",
         "L5-C02",
@@ -2236,6 +2609,9 @@
         "api.graph",
         "api.pipeline",
         "api.prediction"
+      ],
+      "deployment_targets": [
+        "local-dev"
       ],
       "kind": "api_module",
       "layers": [
@@ -2288,15 +2664,31 @@
           "simulation"
         ]
       },
+      "tests": {
+        "selector": "the suites importing apps/api/src/twin/",
+        "suites": [
+          "apps/api/test/unit",
+          "apps/api/test/int"
+        ],
+        "verification": "H2 (independent)"
+      },
       "unit_id": "api.twin"
     },
     {
+      "build": {
+        "artifact": "a BullMQ worker inside the API process",
+        "environment": "node >=24.0.0 <25 · pnpm@11.9.0 (frozen lockfile)",
+        "reproducible_from": "the tracked source + pnpm-lock.yaml"
+      },
       "component_ids": [
         "INF-CP-08",
         "L2-C10"
       ],
       "controls": [],
       "dependencies": [],
+      "deployment_targets": [
+        "local-dev"
+      ],
       "kind": "worker",
       "layers": [],
       "mapped": true,
@@ -2324,9 +2716,21 @@
         "access": "no owned state",
         "schemas": []
       },
+      "tests": {
+        "selector": "the suites named",
+        "suites": [
+          "apps/api/test/int"
+        ],
+        "verification": "H2 (independent)"
+      },
       "unit_id": "worker.extraction-plan"
     },
     {
+      "build": {
+        "artifact": "a BullMQ worker inside the API process",
+        "environment": "node >=24.0.0 <25 · pnpm@11.9.0 (frozen lockfile)",
+        "reproducible_from": "the tracked source + pnpm-lock.yaml"
+      },
       "component_ids": [
         "DAT-IN-03",
         "INF-CP-08",
@@ -2334,6 +2738,9 @@
       ],
       "controls": [],
       "dependencies": [],
+      "deployment_targets": [
+        "local-dev"
+      ],
       "kind": "worker",
       "layers": [],
       "mapped": true,
@@ -2361,9 +2768,21 @@
         "access": "no owned state",
         "schemas": []
       },
+      "tests": {
+        "selector": "the suites named",
+        "suites": [
+          "apps/api/test/int"
+        ],
+        "verification": "H2 (independent)"
+      },
       "unit_id": "worker.collection"
     },
     {
+      "build": {
+        "artifact": "the Next.js application (apps/web)",
+        "environment": "node >=24.0.0 <25 · pnpm@11.9.0 (frozen lockfile)",
+        "reproducible_from": "the tracked source + pnpm-lock.yaml"
+      },
       "component_ids": [
         "CP-UX-02",
         "INF-PF-11"
@@ -2372,6 +2791,9 @@
         "UX-ADR-010"
       ],
       "dependencies": [],
+      "deployment_targets": [
+        "local-dev"
+      ],
       "kind": "web_app",
       "layers": [],
       "mapped": true,
@@ -2399,9 +2821,22 @@
         "access": "no owned state",
         "schemas": []
       },
+      "tests": {
+        "selector": "the suites named",
+        "suites": [
+          "apps/web/lib/*.test.ts",
+          "e2e"
+        ],
+        "verification": "H2 (independent)"
+      },
       "unit_id": "web.app"
     },
     {
+      "build": {
+        "artifact": "a workspace package (tsc → dist)",
+        "environment": "node >=24.0.0 <25 · pnpm@11.9.0 (frozen lockfile)",
+        "reproducible_from": "the tracked source + pnpm-lock.yaml"
+      },
       "component_ids": [
         "CP-OBJ-00"
       ],
@@ -2411,6 +2846,9 @@
         "ES-24"
       ],
       "dependencies": [],
+      "deployment_targets": [
+        "local-dev"
+      ],
       "kind": "package",
       "layers": [],
       "mapped": true,
@@ -2438,9 +2876,21 @@
         "access": "no owned state",
         "schemas": []
       },
+      "tests": {
+        "selector": "the suites named",
+        "suites": [
+          "packages/*/test"
+        ],
+        "verification": "H2 (independent)"
+      },
       "unit_id": "package.contracts"
     },
     {
+      "build": {
+        "artifact": "a workspace package (tsc → dist)",
+        "environment": "node >=24.0.0 <25 · pnpm@11.9.0 (frozen lockfile)",
+        "reproducible_from": "the tracked source + pnpm-lock.yaml"
+      },
       "component_ids": [
         "CP-UX-01"
       ],
@@ -2448,6 +2898,9 @@
         "UX-ADR-010"
       ],
       "dependencies": [],
+      "deployment_targets": [
+        "local-dev"
+      ],
       "kind": "package",
       "layers": [],
       "mapped": true,
@@ -2475,9 +2928,21 @@
         "access": "no owned state",
         "schemas": []
       },
+      "tests": {
+        "selector": "the suites named",
+        "suites": [
+          "packages/*/test"
+        ],
+        "verification": "H2 (independent)"
+      },
       "unit_id": "package.tokens"
     },
     {
+      "build": {
+        "artifact": "a Compose service on its pinned image (conformance.manifest.json pinned_images)",
+        "environment": "node >=24.0.0 <25 · pnpm@11.9.0 (frozen lockfile)",
+        "reproducible_from": "the pinned image digest"
+      },
       "component_ids": [
         "DAT-ST-04",
         "INF-ST-01"
@@ -2486,6 +2951,9 @@
         "ADR-P0-09"
       ],
       "dependencies": [],
+      "deployment_targets": [
+        "local-dev"
+      ],
       "kind": "infrastructure_service",
       "layers": [],
       "mapped": true,
@@ -2513,15 +2981,30 @@
         "access": "no owned state",
         "schemas": []
       },
+      "tests": {
+        "selector": "the suites named",
+        "suites": [
+          "apps/api/test/gate (C15–C19 supply-chain gates)"
+        ],
+        "verification": "H2 (independent)"
+      },
       "unit_id": "infra.postgres"
     },
     {
+      "build": {
+        "artifact": "a Compose service on its pinned image (conformance.manifest.json pinned_images)",
+        "environment": "node >=24.0.0 <25 · pnpm@11.9.0 (frozen lockfile)",
+        "reproducible_from": "the pinned image digest"
+      },
       "component_ids": [
         "DAT-ST-08",
         "INF-ST-11"
       ],
       "controls": [],
       "dependencies": [],
+      "deployment_targets": [
+        "local-dev"
+      ],
       "kind": "infrastructure_service",
       "layers": [],
       "mapped": true,
@@ -2548,6 +3031,13 @@
       "state_boundary": {
         "access": "no owned state",
         "schemas": []
+      },
+      "tests": {
+        "selector": "the suites named",
+        "suites": [
+          "apps/api/test/gate (C15–C19 supply-chain gates)"
+        ],
+        "verification": "H2 (independent)"
       },
       "unit_id": "infra.redis"
     }
@@ -10687,6 +11177,42 @@
     "declared": [
       "local-dev"
     ]
+  },
+  "representation_boundary": {
+    "conditions": [
+      {
+        "carrier": null,
+        "condition": "human final authority",
+        "evidence": "the PDP human gates and the ports' approver tests (apps/api/test/int)"
+      },
+      {
+        "carrier": null,
+        "condition": "temporal truth",
+        "evidence": "the truth-state and temporal semantics suites (apps/api/test/int, packages/contracts/test)"
+      },
+      {
+        "carrier": null,
+        "condition": "end-to-end provenance",
+        "evidence": "the audit chain and provenance suites (apps/api/test/int)"
+      },
+      {
+        "carrier": null,
+        "condition": "tenant isolation",
+        "evidence": "RLS and domain-isolation suites (apps/api/test/int)"
+      },
+      {
+        "carrier": "B106 (the parity runner) / B111 (profiles)",
+        "condition": "deployment semantic parity",
+        "evidence": null
+      },
+      {
+        "carrier": "B75",
+        "condition": "governed learning",
+        "evidence": null
+      }
+    ],
+    "requirement": "AI-01-004",
+    "rule": "an implementation that bypasses any condition below does not represent itself as The Eye"
   },
   "schema": "eye.components-manifest/v1",
   "service_manifests": [
