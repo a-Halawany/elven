@@ -12,7 +12,8 @@ import {
   classRank, consequencePreview, effectiveScope, expansion, journeyText, matchesPrefix, matchingCapability, missingScopeKeys, nextCheck, requiredObligations,
 } from '../../src/governance/acceptance/acceptance-logic.js';
 
-const SQL = readFileSync(fileURLToPath(new URL('../../migrations/0115_b107_x_ar.sql', import.meta.url)), 'utf8');
+// the part's section of the folded 0115 (§AR, up to §DG)
+const SQL = (() => { const all = readFileSync(fileURLToPath(new URL('../../migrations/0115_b107_governance_registries_acceptance.sql', import.meta.url)), 'utf8'); const x = all.indexOf('-- §AR — scope-specific acceptance records'); const y = all.indexOf('-- §DG — design governance', x + 1); if (x < 0 || y < 0) throw new Error('the folded 0115 lost its section banners'); return all.slice(x, y); })();
 /** The ARRAY[...] literal a SQL function returns (the first one after its name). */
 function sqlArray(fn: string, after = ''): string[] {
   const at = SQL.indexOf(`FUNCTION governance.${fn}`);

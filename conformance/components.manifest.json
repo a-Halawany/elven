@@ -1667,7 +1667,16 @@
       },
       "public_contract": {
         "controllers": [
-          "ConformanceController"
+          "AcceptanceController",
+          "AcceptancePlatformController",
+          "ConformanceController",
+          "DesignDomainController",
+          "DesignPlatformController",
+          "OwnershipDomainController",
+          "OwnershipPlatformController",
+          "RegistriesController",
+          "RegistriesDomainController",
+          "WorkspaceController"
         ],
         "module": "GovernanceModule",
         "ports": [

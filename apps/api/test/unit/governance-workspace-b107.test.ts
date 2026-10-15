@@ -161,7 +161,8 @@ describe('the PDP block `workspace` (exact rules; PLATFORM roles only; every app
 });
 
 describe('every refusal text of 0115_b107_x_pg.sql through the central mapper, by its SQLSTATE', () => {
-  const sqlText = readFileSync(join(__dirname, '../../migrations/0115_b107_x_pg.sql'), 'utf8');
+  // the part's section of the folded 0115 (§PG, up to §AR)
+  const sqlText = (() => { const all = readFileSync(join(__dirname, '../../migrations/0115_b107_governance_registries_acceptance.sql'), 'utf8'); const x = all.indexOf('-- §PG — the product-governance workspace'); const y = all.indexOf('-- §AR — scope-specific acceptance records', x + 1); if (x < 0 || y < 0) throw new Error('the folded 0115 lost its section banners'); return all.slice(x, y); })();
   const raises = [...sqlText.matchAll(/RAISE EXCEPTION '((?:[^']|'')+)'[^;]*?ERRCODE = '(\d{5}|[0-9A-Z]{5})'/g)].map((m) => ({ text: (m[1] ?? '').replace(/''/g, "'"), code: m[2] ?? '' }));
   const STATUS: Record<string, number> = { '42501': 403, '23503': 404, '23505': 409, '22023': 422 };
   it('the texts are in the class form with this part\'s nouns (or the shared signature port\'s) and each maps to its SQLSTATE\'s status', () => {

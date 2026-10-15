@@ -21,7 +21,8 @@ export const EXECUTIVE_SIGNING_KEY_REF = /^EYE_EXECUTIVE_SIGNING_KEY_[A-Z0-9_]{1
 export const DEFAULT_EXECUTIVE_SIGNING_KEY_REF = 'EYE_EXECUTIVE_SIGNING_KEY_DEMO';
 export type SignatureSubjectKind = 'approval' | 'decision' | 'publication' | 'queue_transition' | 'plan_baseline' | 'briefing' | 'health_snapshot'
   /* B90 (0095 §0): a product release, a metric certification */ | 'product_release' | 'metric_certification' /* end B90 */
-  /* B94 (0114 §0.3c) */ | 'config_baseline' | 'responsibility_matrix' | 'mapping' | 'cutover' | 'readiness' | 'acceptance' | 'admission_record' /* end B94 */;
+  /* B94 (0114 §0.3c) */ | 'config_baseline' | 'responsibility_matrix' | 'mapping' | 'cutover' | 'readiness' | 'acceptance' | 'admission_record' /* end B94 */
+  /* B107 (0115 §0.3c) */ | 'acceptance_attestation' | 'design_acceptance' /* end B107 */;
 export interface SignatureRow {
   signature_id: string; signer: string; key_id: string; algorithm: string; signature: string; subject_digest: string; bound_action: string; signed_at: string;
 }

@@ -114,7 +114,7 @@ describe('§0.6 · artifacts, links, signatures, holds; the ledger; RLS', () => 
     const id = (await one(sql`select governance.ledger(null, null, 'baseline', ${uuidv7()}::uuid, 1, 'baseline.signed', ${uuidv7()}::uuid, '{}'::jsonb, ${uuidv7()}::uuid) as id`))['id'];
     expect(await failure(sql`delete from governance.events where event_id = ${String(id)}::uuid`)).toMatch(/append-only|append only/i);
     const forced = (await sql<{ t: string; f: boolean }>`select c.relname as t, c.relforcerowsecurity as f from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'governance' and c.relkind = 'r' order by 1`.execute(h.su)).rows;
-    expect(forced.map((r) => r.t)).toEqual(['artifacts', 'events', 'holds', 'links', 'signatures']);
+    expect(forced.map((r) => r.t)).toEqual(expect.arrayContaining(['artifacts', 'events', 'holds', 'links', 'signatures']));   // the parts add their tables
     expect(forced.every((r) => r.f)).toBe(true);
   });
 });
