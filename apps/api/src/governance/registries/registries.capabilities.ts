@@ -107,7 +107,7 @@ export class RegistriesCapability {
         (a.attributes->>'valid_until')::timestamptz <= clock_timestamp() as expired,
         (select count(*)::int from governance.links_live l where l.to_artifact = a.artifact_id and l.relation = 'consumes') as consumers,
         (select coalesce(jsonb_agg(jsonb_build_object('decision', d.decision, 'version', d.fixture_version, 'reason_class', d.reason_class, 'reason', d.reason,
-                  'actor', governance.rg_principal_name(d.actor), 'at', d.decided_at) order by d.decided_at), '[]'::jsonb) from governance.rg_fixture_decisions d where d.fixture_artifact = a.artifact_id) as decisions,
+                  'actor', governance.rg_principal_name(d.actor), 'actor_id', d.actor, 'at', d.decided_at) order by d.decided_at), '[]'::jsonb) from governance.rg_fixture_decisions d where d.fixture_artifact = a.artifact_id) as decisions,
         (select coalesce(jsonb_agg(distinct v.recorded_by), '[]'::jsonb) from governance.artifacts v where v.artifact_id = a.artifact_id) as registered_by
       from governance.artifacts a where a.kind = 'fixture' and a.superseded_at is null order by a.external_key`);
   }
@@ -171,6 +171,9 @@ export class RegistriesCapability {
   }
   approveFixture(a: { fixtureId: string; version: number; digest: string; reason: string; decisionId: string; actor: string; correlationId: string }) {
     return this.one(sql`select governance.rg_approve_fixture(${a.fixtureId}::uuid, ${a.version}::int, ${a.digest}, ${a.reason}, ${a.decisionId}::uuid, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'rg_approve_fixture');
+  }
+  declareProduct(a: { t: string; d: string; kind: string; objectId: string; title: string; cites: string[]; reason: string; actor: string; correlationId: string }) {
+    return this.one(sql`select governance.rg_declare_domain_product(${a.t}::uuid, ${a.d}::uuid, ${a.kind}, ${a.objectId}::uuid, ${a.title}, ${a.cites}::uuid[], ${a.reason}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'rg_declare_domain_product');
   }
   quarantineFixture(a: { fixtureId: string; reasonClass: string; reason: string; decisionId: string; actor: string; correlationId: string }) {
     return this.one(sql`select governance.rg_quarantine_fixture(${a.fixtureId}::uuid, ${a.reasonClass}, ${a.reason}, ${a.decisionId}::uuid, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`, 'rg_quarantine_fixture');

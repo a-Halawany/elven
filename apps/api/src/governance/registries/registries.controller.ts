@@ -14,6 +14,8 @@
  *   fixtures/register · fixtures/:fixtureId/quarantine · fixtures/sweep governance.fixture.register / .quarantine — the steward
  *   fixtures/:fixtureId/approve                                        governance.fixture.approve (human-gated) — independent assurance
  *
+ * And the DOMAIN route (RegistriesDomainController below): a domain's decision-active products citing the vendor's contracts.
+ *
  * Refusals in the server's words: `<noun> rejected (<class>): …`. Nothing here decides a rule a port decides.
  */
 import { Body, Controller, HttpException, Param, Post, Req } from '@nestjs/common';
@@ -244,4 +246,23 @@ export class RegistriesController {
   }
   @Post('/fixtures/sweep')
   async sweep(@Req() req: EyeRequest) { const { envelope, principal } = ctx(req); return this.svc.sweepFixtures(envelope, principal); }
+}
+
+/** A domain's decision-active products citing the vendor's contracts (DOMAIN): base `/v1/tenants/:tenantId/domains/:domainId/governance/registries`.
+ *   products/declare   governance.trace.domain_cite — the domain administrator or an executive */
+@Controller('/v1/tenants/:tenantId/domains/:domainId/governance/registries')
+export class RegistriesDomainController {
+  constructor(private readonly svc: RegistriesService) {}
+  @Post('/products/declare')
+  async declare(@Req() req: EyeRequest, @Param('tenantId') t: string, @Param('domainId') d: string, @Body() body: Payload) {
+    const { envelope, principal } = ctx(req); const p = body.payload ?? {}; const cid = envelope.correlation_id;
+    const kind = str(p, 'productKind');
+    if (!['briefing', 'decision_package', 'forecast'].includes(kind)) throw refuseGovernance('trace link', 'product_kind', 'a decision-active product is a briefing, a decision package or a forecast', cid);
+    const cites = p['cites'];
+    if (!Array.isArray(cites) || cites.length === 0 || cites.length > 50) throw refuseGovernance('trace link', 'cites', 'a product cites 1–50 registry artifacts', cid);
+    const title = str(p, 'title');
+    if (title.length < 1 || title.length > 300) throw refuseGovernance('trace link', 'title', 'a title of 1–300 characters', cid);
+    return this.svc.declareProduct(envelope, principal, id(t, 'tenantId', 'trace link', cid), id(d, 'domainId', 'trace link', cid),
+      { kind, objectId: id(p['objectId'], 'objectId', 'trace link', cid), title, cites: (cites as Row[]).map((x) => ref(x ?? {}, 'trace link', cid)), reason: reason(p, 'trace link', cid) });
+  }
 }

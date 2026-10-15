@@ -2602,8 +2602,9 @@ const BUNDLE_V1: Rule[] = [
      EXACT rules, PLATFORM roles only. THE CONFORMANCE STEWARD imports the repository's registers (read-only), registers normative artifacts,
      records and retires trace links, reconciles inheritance (holds), records change impacts, ingests verification records, registers and
      quarantines fixtures — it approves and accepts nothing. INDEPENDENT ASSURANCE reviews a verification record and approves a fixture
-     (human-gated; the ports re-check the approver test: never the ingester, the runner or a builder, never an agent). The reads are §0's
-     governance.read. */
+     (human-gated; the ports re-check the approver test: never the ingester, the runner or a builder, never an agent). A DOMAIN's
+     administrator or executive declares its decision-active products citing the vendor's contracts (governance.trace.domain_cite). The
+     reads are §0's governance.read. */
   ...(() => {
     const P = (role: string): { role: string; atScope: Scope } => ({ role, atScope: 'PLATFORM' });
     const gate: Obligation[] = [{ type: 'human_gate' }];
@@ -2621,6 +2622,8 @@ const BUNDLE_V1: Rule[] = [
       r('governance.fixture.register', steward),
       r('governance.fixture.quarantine', steward),
       r('governance.fixture.approve', [P('independent_assurance')], gate),
+      // a DOMAIN's decision-active product (briefing, decision package, forecast) declared as citing the vendor's contracts
+      r('governance.trace.domain_cite', [{ role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }]),
     ];
   })(),
   /* end B107 registries */

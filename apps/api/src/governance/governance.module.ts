@@ -7,7 +7,7 @@
 import { Module } from '@nestjs/common';
 import { PipelineModule } from '../pipeline/pipeline.module.js';
 /* B107 registries */
-import { RegistriesController } from './registries/registries.controller.js';
+import { RegistriesController, RegistriesDomainController } from './registries/registries.controller.js';
 import { RegistriesService } from './registries/registries.service.js';
 /* end B107 registries */
 /* B107 conformance */ /* end B107 conformance */
@@ -19,7 +19,7 @@ import { RegistriesService } from './registries/registries.service.js';
 @Module({
   imports: [PipelineModule],
   controllers: [
-    /* B107 registries */ RegistriesController, /* end B107 registries */
+    /* B107 registries */ RegistriesController, RegistriesDomainController, /* end B107 registries */
     /* B107 conformance */ /* end B107 conformance */
     /* B107 ownership */ /* end B107 ownership */
     /* B107 workspace */ /* end B107 workspace */

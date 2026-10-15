@@ -46,7 +46,7 @@
 
 -- §RG.1 INDEXES on the shared core (lookups the importer, the as-of reads and the citation resolution need) ──────────────────────────────────
 CREATE INDEX IF NOT EXISTS gln_source ON governance.links ((attributes->>'source')) WHERE NOT retired;
-CREATE INDEX IF NOT EXISTS gln_retires ON governance.links (retires_link) WHERE retired;
+CREATE INDEX IF NOT EXISTS gln_retires ON governance.links (retires_link);  -- every "not retired by a later row" test (links_live included) probes it
 CREATE INDEX IF NOT EXISTS gar_req_id ON governance.artifacts ((split_part(external_key, ':', 2))) WHERE kind = 'requirement' AND superseded_at IS NULL;
 
 -- §RG.2 THE VOCABULARY ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -392,7 +392,7 @@ BEGIN
     ), hits AS (
       SELECT s.link_id, s.relation, s.here, s.there, s.lattrs, (governance.rg_at(s.here, v_t)).external_key AS here_key,
              n.kind AS n_kind, n.external_key AS n_key, n.title AS n_title, n.version AS n_version, n.lifecycle AS n_lifecycle, n.authority_class AS n_class,
-             n.controlling_volume AS n_volume, n.digest AS n_digest, n.attributes->>'evidence_kind' AS n_evidence_kind,
+             n.controlling_volume AS n_volume, n.digest AS n_digest, n.attributes->>'evidence_kind' AS n_evidence_kind, n.scope AS n_scope, n.tenant_id AS n_tenant, n.domain_id AS n_domain,
              (governance.rg_at(s.from_artifact, v_t)).digest AS fd, (governance.rg_at(s.to_artifact, v_t)).digest AS td
         FROM steps s CROSS JOIN LATERAL governance.rg_at(s.there, v_t) n
        WHERE s.here = ANY (v_frontier) AND n.artifact_id IS NOT NULL
@@ -404,6 +404,7 @@ BEGIN
     SELECT (SELECT coalesce(jsonb_agg(jsonb_build_object(
                'depth', v_level, 'artifact_id', f.there, 'kind', f.n_kind, 'key', f.n_key, 'title', f.n_title, 'version', f.n_version, 'lifecycle', f.n_lifecycle,
                'authority_class', f.n_class, 'controlling_volume', f.n_volume, 'digest', f.n_digest, 'relation', f.relation, 'via', f.here, 'link_id', f.link_id,
+               'scope', f.n_scope, 'tenant_id', f.n_tenant, 'domain_id', f.n_domain,
                'stale', (f.lattrs ? 'to_digest') AND (f.lattrs->>'to_digest' IS DISTINCT FROM f.td OR f.lattrs->>'from_digest' IS DISTINCT FROM f.fd))
              ORDER BY f.n_kind, f.n_key, f.there), '[]'::jsonb) FROM firsts f),
            (SELECT coalesce(jsonb_agg(DISTINCT jsonb_build_object('root', h.there, 'from', h.here, 'relation', h.relation)), '[]'::jsonb)
@@ -446,7 +447,7 @@ GRANT EXECUTE ON FUNCTION governance.rg_trace(uuid, int, timestamptz) TO eye_app
    and ONE digest over input + dependents. The same input over the same links and versions gives the same digest. */
 CREATE OR REPLACE FUNCTION governance.rg_impact(p_changes jsonb, p_depth int) RETURNS jsonb
 LANGUAGE plpgsql STABLE SET search_path = governance, pg_catalog, pg_temp AS $$
-DECLARE v_input jsonb; v_roots uuid[]; v_walk jsonb; v_deps jsonb; v_depth int := least(greatest(coalesce(p_depth, 8), 1), 12);
+DECLARE v_input jsonb; v_roots uuid[]; v_walk jsonb; v_deps jsonb; v_reqs jsonb; v_depth int := least(greatest(coalesce(p_depth, 8), 1), 12);
 BEGIN
   IF p_changes IS NULL OR jsonb_typeof(p_changes) <> 'array' OR jsonb_array_length(p_changes) = 0 OR jsonb_array_length(p_changes) > 500 THEN
     RAISE EXCEPTION 'change impact rejected (changes): name 1–500 changed artifacts' USING ERRCODE = '22023';
@@ -465,8 +466,16 @@ BEGIN
     RAISE EXCEPTION 'change impact rejected (digest): a proposed digest is 64 hex' USING ERRCODE = '22023';
   END IF;
   v_walk := governance.rg_walk(v_roots, 'down', v_depth, NULL, 20000);
+  -- the REQUIREMENTS whose conformance is re-evaluated: those the changed artifacts and their dependent components, units, interfaces,
+  -- schemas and capabilities realise (upward, 3 steps)
+  SELECT coalesce(jsonb_agg(DISTINCT jsonb_build_object('artifact_id', n->>'artifact_id', 'key', n->>'key', 'version', (n->>'version')::int, 'digest', n->>'digest')), '[]'::jsonb)
+    INTO v_reqs FROM jsonb_array_elements((governance.rg_walk(v_roots || ARRAY(SELECT (x->>'artifact_id')::uuid FROM jsonb_array_elements(v_walk->'nodes') x
+                                                                              WHERE x->>'kind' IN ('component', 'deployable_unit', 'interface', 'schema', 'capability') ORDER BY 1),
+                                                             'up', 3, NULL, 5000))->'nodes') n WHERE n->>'kind' = 'requirement';
+  SELECT coalesce(jsonb_agg(x ORDER BY x->>'key', x->>'artifact_id'), '[]'::jsonb) INTO v_reqs FROM jsonb_array_elements(v_reqs) x;
   SELECT coalesce(jsonb_agg(jsonb_build_object('artifact_id', n->>'artifact_id', 'kind', n->>'kind', 'key', n->>'key', 'title', n->>'title', 'version', (n->>'version')::int,
-                                               'digest', n->>'digest', 'depth', (n->>'depth')::int, 'relation', n->>'relation', 'via', n->>'via', 'lifecycle', n->>'lifecycle')
+                                               'digest', n->>'digest', 'depth', (n->>'depth')::int, 'relation', n->>'relation', 'via', n->>'via', 'lifecycle', n->>'lifecycle',
+                                               'scope', n->>'scope', 'tenant_id', n->>'tenant_id', 'domain_id', n->>'domain_id')
                             ORDER BY (n->>'depth')::int, n->>'kind', n->>'key', n->>'artifact_id'), '[]'::jsonb)
     INTO v_deps FROM jsonb_array_elements(v_walk->'nodes') n;
   RETURN jsonb_build_object(
@@ -475,7 +484,8 @@ BEGIN
     'stale_verifications', (SELECT coalesce(jsonb_agg(d ORDER BY d->>'kind', d->>'key'), '[]'::jsonb) FROM jsonb_array_elements(v_deps) d WHERE d->>'kind' IN ('test', 'evidence')),
     'release_candidates', (SELECT coalesce(jsonb_agg(d ORDER BY d->>'key'), '[]'::jsonb) FROM jsonb_array_elements(v_deps) d WHERE d->>'kind' = 'release_candidate'),
     'decision_active', (SELECT coalesce(jsonb_agg(d ORDER BY d->>'key'), '[]'::jsonb) FROM jsonb_array_elements(v_deps) d WHERE d->>'kind' IN ('data_product', 'decision_record', 'acceptance_record', 'baseline')),
-    'digest', governance.digest(jsonb_build_object('input', v_input, 'depth_limit', v_depth,
+    'requirements_to_reverify', v_reqs,
+    'digest', governance.digest(jsonb_build_object('input', v_input, 'depth_limit', v_depth, 'requirements', v_reqs,
               'dependents', (SELECT coalesce(jsonb_agg(jsonb_build_array(d->>'artifact_id', d->'version', d->>'digest', d->'depth', d->>'relation', d->>'via')
                                                        ORDER BY (d->>'depth')::int, d->>'kind', d->>'key', d->>'artifact_id'), '[]'::jsonb) FROM jsonb_array_elements(v_deps) d))));
 END $$;
@@ -557,14 +567,14 @@ CREATE OR REPLACE FUNCTION governance.rg_lint(p_limit int) RETURNS jsonb
 LANGUAGE sql STABLE SET search_path = governance, pg_catalog, pg_temp AS $$
   WITH live AS (SELECT l.* FROM governance.links l WHERE NOT l.retired AND NOT EXISTS (SELECT 1 FROM governance.links x WHERE x.retires_link = l.link_id)
                   AND l.relation IN ('supersedes', 'governs', 'derives_from', 'part_of')),
-  pairs AS (SELECT l.link_id, l.relation, f.artifact_id AS from_id, f.external_key AS from_key, f.authority_class AS from_class, f.attributes AS from_attrs,
-                   t.artifact_id AS to_id, t.external_key AS to_key, t.authority_class AS to_class, t.attributes AS to_attrs
+  pairs AS (SELECT l.link_id, l.relation, f.artifact_id AS from_id, f.external_key AS from_key, f.authority_class AS from_class, f.attributes AS from_attrs, f.kind AS from_kind,
+                   t.artifact_id AS to_id, t.external_key AS to_key, t.authority_class AS to_class, t.attributes AS to_attrs, t.kind AS to_kind
               FROM live l JOIN governance.artifacts f ON f.artifact_id = l.from_artifact AND f.superseded_at IS NULL
                           JOIN governance.artifacts t ON t.artifact_id = l.to_artifact AND t.superseded_at IS NULL),
   order_v AS (SELECT p.*, CASE p.relation WHEN 'governs' THEN NOT governance.rg_controls(p.from_class, p.to_class)
                                          WHEN 'supersedes' THEN NOT governance.rg_controls(p.from_class, p.to_class)
                                          ELSE NOT governance.rg_controls(p.to_class, p.from_class) END AS bad FROM pairs p),
-  weak AS (SELECT p.*, governance.rg_weakens(p.from_attrs, p.to_attrs) AS why FROM pairs p WHERE p.relation = 'derives_from'),
+  weak AS (SELECT p.*, governance.rg_weakens(p.from_attrs, p.to_attrs) AS why FROM pairs p WHERE p.relation = 'derives_from' AND p.from_kind = 'requirement' AND p.to_kind = 'requirement'),
   compound AS (SELECT a.artifact_id, a.external_key FROM governance.artifacts a WHERE a.kind = 'requirement' AND a.superseded_at IS NULL AND coalesce((a.attributes->>'obligations')::int, 0) > 1),
   ownerless AS (SELECT a.artifact_id, a.kind, a.external_key FROM governance.artifacts a WHERE a.superseded_at IS NULL AND a.scope = 'PLATFORM' AND a.lifecycle IN ('active', 'proposed')
                   AND a.kind IN ('requirement', 'standard', 'capability', 'journey', 'policy_bundle', 'decision_record', 'component', 'interface', 'schema')
@@ -930,6 +940,7 @@ BEGIN
       RAISE EXCEPTION 'requirement registry rejected (unknown_parent): a derived requirement references a current parent (ES-03-003)' USING ERRCODE = '22023';
     END IF;
     IF par.artifact_id = v_id THEN RAISE EXCEPTION 'requirement registry rejected (circular): an artifact never derives from itself' USING ERRCODE = '22023'; END IF;
+    IF par.kind <> p_kind THEN RAISE EXCEPTION 'requirement registry rejected (unknown_parent): a derived % derives from a % (its parent is %)', p_kind, p_kind, par.kind USING ERRCODE = '22023'; END IF;
     IF NOT governance.rg_controls(par.authority_class, p_class) THEN
       RAISE EXCEPTION 'requirement registry rejected (control_order): % authority never derives from % authority (inheritance goes upward)', p_class, par.authority_class USING ERRCODE = '22023';
     END IF;
@@ -986,7 +997,7 @@ BEGIN
     RAISE EXCEPTION 'trace link rejected (control_order): % (%) % % (%) breaks the control order — a lower authority may add precision, never weaken or replace a higher one',
       f.external_key, f.authority_class, p_relation, t.external_key, t.authority_class USING ERRCODE = '22023';
   END IF;
-  IF p_relation = 'derives_from' THEN
+  IF p_relation = 'derives_from' AND f.kind = 'requirement' AND t.kind = 'requirement' THEN
     v_why := governance.rg_weakens(f.attributes, t.attributes);
     IF v_why IS NOT NULL THEN RAISE EXCEPTION 'trace link rejected (weakens): %', v_why USING ERRCODE = '22023'; END IF;
   END IF;
@@ -1313,7 +1324,8 @@ BEGIN
   PERFORM governance.assert_platform('governance.fixture.approve', p_actor, 'governance fixture');
   SELECT * INTO cur FROM governance.artifacts WHERE artifact_id = p_fixture AND superseded_at IS NULL AND kind = 'fixture' FOR UPDATE;
   IF cur.artifact_id IS NULL THEN RAISE EXCEPTION 'governance fixture rejected (unknown_fixture): no fixture %', p_fixture USING ERRCODE = '22023'; END IF;
-  SELECT array_agg(DISTINCT x) INTO v_builders FROM (SELECT v.recorded_by AS x FROM governance.artifacts v WHERE v.artifact_id = p_fixture
+  -- the builders: whoever registered or rebuilt any version (an approver or a quarantining steward did not build it), and the declared ones
+  SELECT array_agg(DISTINCT x) INTO v_builders FROM (SELECT d.actor AS x FROM governance.rg_fixture_decisions d WHERE d.fixture_artifact = p_fixture AND d.decision IN ('registered', 'rebuilt')
                                                       UNION SELECT b::uuid FROM jsonb_array_elements_text(coalesce(cur.attributes->'builders', '[]'::jsonb)) b) s;
   SELECT d.actor INTO v_proposer FROM governance.rg_fixture_decisions d WHERE d.fixture_artifact = p_fixture AND d.fixture_version = cur.version AND d.decision IN ('registered', 'rebuilt') LIMIT 1;
   PERFORM governance.assert_approver('governance fixture', p_actor, NULL, NULL, ARRAY['independent_assurance'], v_proposer, v_builders, 'approving a fixture for use');
@@ -1367,3 +1379,74 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION governance.rg_quarantine_fixture(uuid, text, text, uuid, uuid, uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION governance.rg_quarantine_fixture(uuid, text, text, uuid, uuid, uuid) TO eye_commit;
+
+/* DECLARE A DECISION-ACTIVE PRODUCT (ES-06-004 "decision-active products", DP-07-003): a domain's own briefing, decision package or forecast
+   CITES the vendor's contracts (a schema, an interface, a component, a requirement or a capability) — declared by the domain's
+   administrator or executive, in the DOMAIN (tenant/domain isolation: another tenant never sees it; the vendor's PLATFORM impact reads it), the
+   object verified to exist IN THAT DOMAIN, recorded as a DOMAIN `data_product` artifact with its `cites` links (append-only; re-declaring the
+   same citations writes nothing). A change to a cited contract then lists the product among its impact's decision-active dependents. */
+CREATE OR REPLACE FUNCTION governance.rg_declare_domain_product(p_tenant uuid, p_domain uuid, p_product_kind text, p_object uuid, p_title text, p_cites uuid[], p_reason text,
+  p_actor uuid, p_correlation uuid) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = governance, observation, public, pg_catalog, pg_temp AS $$
+DECLARE v_key text; v_id uuid; cur governance.artifacts%ROWTYPE; v_digest text; v_attrs jsonb; v_version int; v_now timestamptz := clock_timestamp(); c uuid; t governance.artifacts%ROWTYPE;
+        v_links jsonb := '[]'::jsonb; v_exists boolean; v_lid uuid; f governance.artifacts%ROWTYPE;
+BEGIN
+  PERFORM observation.assert_authority(ARRAY['governance.trace.domain_cite']);
+  PERFORM observation.assert_scope(p_tenant, p_domain);
+  IF p_actor IS NULL OR p_actor IS DISTINCT FROM public.eye_principal() THEN RAISE EXCEPTION 'trace link rejected (actor): the act is recorded under the acting principal' USING ERRCODE = '42501'; END IF;
+  IF p_product_kind IS NULL OR p_product_kind NOT IN ('briefing', 'decision_package', 'forecast') THEN
+    RAISE EXCEPTION 'trace link rejected (product_kind): a decision-active product is a briefing, a decision package or a forecast' USING ERRCODE = '22023';
+  END IF;
+  IF p_reason IS NULL OR length(btrim(p_reason)) < 8 THEN RAISE EXCEPTION 'trace link rejected (reason): a declaration states its basis (8 characters or more)' USING ERRCODE = '22023'; END IF;
+  IF p_title IS NULL OR length(btrim(p_title)) NOT BETWEEN 1 AND 300 THEN RAISE EXCEPTION 'trace link rejected (title): a title of 1–300 characters' USING ERRCODE = '22023'; END IF;
+  IF p_cites IS NULL OR cardinality(p_cites) NOT BETWEEN 1 AND 50 THEN RAISE EXCEPTION 'trace link rejected (cites): a product cites 1–50 registry artifacts' USING ERRCODE = '22023'; END IF;
+  v_exists := CASE p_product_kind
+    WHEN 'briefing' THEN EXISTS (SELECT 1 FROM executive.briefings b WHERE b.briefing_id = p_object AND b.tenant_id = p_tenant AND b.domain_id = p_domain)
+    WHEN 'decision_package' THEN EXISTS (SELECT 1 FROM decision.packages_current x WHERE x.package_id = p_object AND x.tenant_id = p_tenant AND x.domain_id = p_domain)
+    ELSE EXISTS (SELECT 1 FROM prediction.forecasts_current x WHERE x.forecast_id = p_object AND x.tenant_id = p_tenant AND x.domain_id = p_domain) END;
+  IF NOT v_exists THEN RAISE EXCEPTION 'trace link rejected (unknown_object): no % % in this domain', p_product_kind, p_object USING ERRCODE = '22023'; END IF;
+  FOREACH c IN ARRAY p_cites LOOP
+    SELECT * INTO t FROM governance.artifacts WHERE artifact_id = c AND superseded_at IS NULL;
+    IF t.artifact_id IS NULL OR t.scope <> 'PLATFORM' OR t.lifecycle IN ('retired', 'superseded') THEN
+      RAISE EXCEPTION 'trace link rejected (unknown_artifact): % is not a current registry artifact of the vendor', c USING ERRCODE = '22023';
+    END IF;
+    IF t.kind NOT IN ('schema', 'interface', 'component', 'requirement', 'capability', 'policy_bundle') THEN
+      RAISE EXCEPTION 'trace link rejected (relation): a product cites a schema, an interface, a component, a requirement, a capability or a policy bundle — not a %', t.kind USING ERRCODE = '22023';
+    END IF;
+  END LOOP;
+  v_key := p_product_kind || ':' || p_object::text;
+  v_id := governance.rg_artifact_id('data_product', p_tenant::text || ':' || p_domain::text || ':' || v_key);
+  v_attrs := jsonb_build_object('product_kind', p_product_kind, 'object_id', p_object, 'declared_reason', btrim(p_reason), 'owner_declared', 'the domain');
+  v_digest := governance.rg_content_digest('data_product', v_key, btrim(p_title), 'operational_evidence', NULL, v_attrs);
+  SELECT * INTO cur FROM governance.artifacts WHERE artifact_id = v_id AND superseded_at IS NULL FOR UPDATE;
+  IF cur.artifact_id IS NULL OR cur.digest <> v_digest THEN
+    v_version := coalesce(cur.version, 0) + 1;
+    IF cur.artifact_id IS NOT NULL THEN UPDATE governance.artifacts SET superseded_at = v_now WHERE artifact_id = v_id AND version = cur.version; END IF;
+    INSERT INTO governance.artifacts (artifact_id, version, scope, tenant_id, domain_id, kind, external_key, title, owner_principal_id, authority_class, lifecycle, attributes, source, digest,
+                                      effective_from, recorded_by, correlation_id)
+    VALUES (v_id, v_version, 'DOMAIN', p_tenant, p_domain, 'data_product', v_key, btrim(p_title), p_actor, 'operational_evidence', 'active', v_attrs,
+            jsonb_build_object('path', 'domain_declaration'), v_digest, v_now, p_actor, p_correlation);
+  END IF;
+  SELECT * INTO f FROM governance.artifacts WHERE artifact_id = v_id AND superseded_at IS NULL;
+  FOREACH c IN ARRAY (SELECT array_agg(DISTINCT x ORDER BY x) FROM unnest(p_cites) x) LOOP
+    SELECT * INTO t FROM governance.artifacts WHERE artifact_id = c AND superseded_at IS NULL;
+    IF NOT EXISTS (SELECT 1 FROM governance.links_live l WHERE l.from_artifact = v_id AND l.to_artifact = c AND l.relation = 'cites'
+                     AND l.attributes->>'to_digest' = t.digest AND l.attributes->>'from_digest' = f.digest) THEN
+      INSERT INTO governance.links (link_id, scope, tenant_id, domain_id, from_artifact, to_artifact, relation, retired, retires_link, attributes, recorded_by, correlation_id)
+      SELECT gen_random_uuid(), 'DOMAIN', p_tenant, p_domain, l.from_artifact, l.to_artifact, l.relation, true, l.link_id, jsonb_build_object('source', 'domain_declaration', 'reason', 're-declared'), p_actor, p_correlation
+        FROM governance.links_live l WHERE l.from_artifact = v_id AND l.to_artifact = c AND l.relation = 'cites';
+      v_lid := gen_random_uuid();
+      INSERT INTO governance.links (link_id, scope, tenant_id, domain_id, from_artifact, to_artifact, relation, attributes, recorded_by, correlation_id)
+      VALUES (v_lid, 'DOMAIN', p_tenant, p_domain, v_id, c, 'cites', jsonb_build_object('source', 'domain_declaration', 'reason', btrim(p_reason), 'from_version', f.version, 'to_version', t.version,
+              'from_digest', f.digest, 'to_digest', t.digest), p_actor, p_correlation);
+      v_links := v_links || jsonb_build_array(jsonb_build_object('link_id', v_lid, 'cites', t.external_key));
+    END IF;
+  END LOOP;
+  IF jsonb_array_length(v_links) > 0 OR cur.artifact_id IS NULL OR cur.digest <> v_digest THEN
+    PERFORM governance.ledger(p_tenant, p_domain, 'artifact', v_id, f.version, 'trace.product_declared', p_actor,
+      jsonb_build_object('product_kind', p_product_kind, 'object_id', p_object, 'links', v_links), p_correlation);
+  END IF;
+  RETURN jsonb_build_object('artifact_id', v_id, 'version', f.version, 'key', v_key, 'links', v_links, 'unchanged', jsonb_array_length(v_links) = 0 AND cur.artifact_id IS NOT NULL AND cur.digest = v_digest);
+END $$;
+REVOKE ALL ON FUNCTION governance.rg_declare_domain_product(uuid, uuid, text, uuid, text, uuid[], text, uuid, uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION governance.rg_declare_domain_product(uuid, uuid, text, uuid, text, uuid[], text, uuid, uuid) TO eye_commit;

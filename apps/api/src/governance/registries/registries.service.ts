@@ -27,7 +27,7 @@ import type { AuthenticatedPrincipal } from '../../shared/auth-types.js';
 import { newId } from '../../shared/ids.js';
 import { PipelineService } from '../../pipeline/pipeline.service.js';
 import { PdpService } from '../../policy/pdp.service.js';
-import { BOUNDARY, governedRead, governedWrite, platformRoute, receipt, refuseGovernance } from '../seams.js';
+import { BOUNDARY, domainRoute, governedRead, governedWrite, platformRoute, receipt, refuseGovernance } from '../seams.js';
 import { RegistriesCap, type RegistriesCapability } from './registries.capabilities.js';
 import { buildIdentity, repoRoot } from './build-identity.js';
 import {
@@ -67,11 +67,12 @@ export class RegistriesService {
   planFiles(names: readonly SourceName[], root = repoRoot()): SourcePlan[] {
     const files = this.requirementFiles(root);
     const plans: SourcePlan[] = [];
-    if (names.includes('requirements')) for (const f of files) plans.push(requirementsSource(f.path, f.text));
-    if (names.includes('rowmap')) plans.push(rowmapSource('audit/delivery/feature-rowmap.csv', readFileSync(join(root, 'audit/delivery/feature-rowmap.csv'), 'utf8'),
-                                                          readFileSync(join(root, 'audit/delivery/FEATURE_TRACKER.csv'), 'utf8')));
+    const at = <X>(path: string, fn: () => X): X => { try { return fn(); } catch (e) { throw new Error(`${path}: ${e instanceof Error ? e.message : String(e)}`); } };
+    if (names.includes('requirements')) for (const f of files) plans.push(at(f.path, () => requirementsSource(f.path, f.text)));
+    if (names.includes('rowmap')) plans.push(at('audit/delivery/feature-rowmap.csv', () => rowmapSource('audit/delivery/feature-rowmap.csv', readFileSync(join(root, 'audit/delivery/feature-rowmap.csv'), 'utf8'),
+                                                          readFileSync(join(root, 'audit/delivery/FEATURE_TRACKER.csv'), 'utf8'))));
     if (names.includes('decisions') || names.includes('exceptions')) {
-      const idx = requirementIndex(files);
+      const idx = at('audit/requirements', () => requirementIndex(files));
       if (names.includes('decisions')) plans.push(decisionsSource('DECISIONS.md', readFileSync(join(root, 'DECISIONS.md'), 'utf8'), idx));
       if (names.includes('exceptions')) plans.push(exceptionsSource('EXCEPTIONS.md', readFileSync(join(root, 'EXCEPTIONS.md'), 'utf8'), idx));
     }
@@ -119,7 +120,11 @@ export class RegistriesService {
   async importRegisters(env: Envelope, p: AuthenticatedPrincipal, names: readonly SourceName[]) {
     const root = repoRoot();
     // READ FIRST: the files (pure) and the database registers (a governed read) — the writes below are short
-    const plans = this.planFiles(names, root);
+    let plans: SourcePlan[];
+    try { plans = this.planFiles(names, root); } catch (e) {
+      // a malformed or unreadable register is refused WHOLE, before any write (nothing is guessed, nothing partial is recorded)
+      throw refuseGovernance('requirement registry', 'source', `the repository's registers could not be read: ${e instanceof Error ? e.message : String(e)}`, env.correlation_id);
+    }
     if (names.includes('interfaces') || names.includes('schemas')) {
       const rows = (await this.read(env, p, 'GRG', null, async (cap) => ({ i: await cap.interfaceRows(), s: await cap.schemaRows() }))).result;
       if (names.includes('interfaces')) plans.push(interfacesSource(rows.i));
@@ -258,6 +263,19 @@ export class RegistriesService {
     const reviewId = newId();
     const out = await this.write(env, p, 'governance.verification.review', 'VER', recordId, async (cap) => cap.review({ recordId, ...b, reviewId, actor: p.principalId, correlationId: env.correlation_id }));
     return { review: out.result, receipt: receipt(out) };
+  }
+
+  // ───────────────────────── A DOMAIN'S DECISION-ACTIVE PRODUCTS (DOMAIN) ─────────────────────────
+  /** The domain's administrator or executive declares that its briefing / decision package / forecast CITES the vendor's contracts (by kind and
+   *  key, resolved in a read first): the product then appears among a contract change's decision-active dependents. */
+  async declareProduct(env: Envelope, p: AuthenticatedPrincipal, t: string, d: string, b: { kind: string; objectId: string; title: string; cites: Array<{ artifactId: string | null; kind: string | null; key: string | null }>; reason: string }) {
+    const ids = (await governedRead(this.pipeline, env, p, domainRoute(t, d, READ, 'ART', null), RegistriesCap, async (cap) => {
+      const o: string[] = []; for (const c of b.cites) o.push(await this.idOf(cap, c, env.correlation_id)); return o;
+    })).result;
+    const out = await governedWrite(this.pipeline, env, p, domainRoute(t, d, 'governance.trace.domain_cite', 'ART', b.objectId), RegistriesCap, async (cap) => ({
+      result: await cap.declareProduct({ t, d, kind: b.kind, objectId: b.objectId, title: b.title, cites: ids, reason: b.reason, actor: p.principalId, correlationId: env.correlation_id }),
+    }));
+    return { product: out.result, receipt: receipt(out) };
   }
 
   // ───────────────────────── FIXTURES ─────────────────────────
