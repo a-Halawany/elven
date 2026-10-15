@@ -707,3 +707,17 @@ describe('AR11 · the fault exercise: the signing key unbound', () => {
     expect((await attest(product, String(r['record_id']), { version: 1, obligation: 'product', digest: String(r['digest']) })).attestation).toMatchObject({ obligation: 'product' });
   });
 });
+
+// ════════════════════════════════════════════════════════════════════════════════════════════════
+describe('AR12 · a DESIGN acceptance on the same core (§DG\'s records bind here): the design system authority and independent assurance', () => {
+  it('POSITIVE: a design component accepted for its exact scope by the design authority and assurance; REFUSAL: the product authority cannot attest the design obligation', async () => {
+    const designAuth = await person('design', 'human', 'PLATFORM', null, null, [{ role: 'design_system_authority', scope: 'PLATFORM' }]);
+    await artifact('design_component', `DS-BUTTON-${RUN}`, { package: 'packages/tokens', version: '3.2.0' });
+    const pkg = String((await evidence(steward, ext('design_package', 30 * DAY, { title: 'the design conformance package (SYNTHETIC, unsigned — R2)' }))).evidence['evidence_id']);
+    const r = (await propose(product2, { kind: 'design', title: `The governed-button pattern (SYNTHETIC ${RUN})`, subjectKey: `DS-BUTTON-${RUN}`, scope: SCOPE({ journeys: ['JRN-24'] }), evidence: [pkg] })).record;
+    expect(r['obligations']).toEqual(['design', 'independent_assurance']);
+    await refused(attest(product, String(r['record_id']), { version: 1, obligation: 'design', digest: String(r['digest']) }), /\(authority\): attesting the design obligation is the act of a design_system_authority/, 403);
+    await attest(designAuth, String(r['record_id']), { version: 1, obligation: 'design', digest: String(r['digest']) });
+    expect((await attest(assurance, String(r['record_id']), { version: 1, obligation: 'independent_assurance', digest: String(r['digest']) })).attestation).toMatchObject({ state: 'accepted' });
+  });
+});
