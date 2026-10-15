@@ -1,0 +1,359 @@
+# CP-6 B107 act — the rehearsal on eye_demo_b107 (restored from .eye-local/backups/eye_demo-pre-0115-20261015T062726Z.dump, migrated to 0115 with the act-found fixes); API :3411 (EYE_BUILD_SHA = EYE_BUILD_HEAD_SHA = 27ab3793ca13 — the code under test), Redis 6392, sinks 2535/3456
+# RUN 1 (fresh)
+THE B107 ACT on eye_demo_b107 (REHEARSAL) — 2026-10-15T07:12:03.684Z — API http://localhost:3411
+
+B107-0 THE STATE — 0115, the NORDWERK cast, the domains, the build identity
+  ✓ migration applied: 0115_b107_governance_registries_acceptance.sql
+  ✓ n.vogel holds tenant_admin at the TENANT
+  ✓ t.richter holds domain_admin at the DOMAIN (the corridor domain)
+  ✓ m.okonkwo holds product_analytics_owner at the DOMAIN (the corridor domain)
+  ✓ w.zielinska holds customer_sponsor at the TENANT
+  ✓ j.hartmann holds onboarding_authority at the TENANT
+  ✓ k.nowak holds domain_admin at the DOMAIN (NORDWERK Polska)
+  · the domains: "Supply Corridor Intelligence" (01a0…933057) STANDS FOR the Regensburg line's domain — the accepted scope; "NORDWERK Polska — Supplier Risk (SYNTHETIC)" (01a1…107fbc) is the OUT-OF-SCOPE domain. No domain named Regensburg exists and none is created (MAP Q7)
+  ✓ the API declares its build: head 27ab3793ca13… (from env — EYE_BUILD_HEAD_SHA), policy bundle bundle-v1 b96e157c3504…, the committed manifest b8045844e285…
+  · governance as read: 8 current artifacts, 0 ledger events, 0 PLATFORM signatures, 0 acceptance-record versions
+
+CAST — the platform administrator creates the vendor's PLATFORM personas (SYNTHETIC, fresh logins) through POST /v1/platform/principals
+  ✓ the platform administrator CREATED E. Lindgren — "E. Lindgren — product authority, the vendor (SYNTHETIC)", login e.lindgren, product_authority at the PLATFORM
+  ✓ the platform administrator CREATED R. Moreau — "R. Moreau — product authority, the vendor (SYNTHETIC)", login r.moreau, product_authority at the PLATFORM
+  ✓ the platform administrator CREATED H. Achterberg — "H. Achterberg — independent assurance, the vendor (SYNTHETIC)", login h.achterberg, independent_assurance at the PLATFORM
+  ✓ the platform administrator CREATED P. Castellano — "P. Castellano — conformance steward, the vendor (SYNTHETIC)", login p.castellano, conformance_steward at the PLATFORM
+  ✓ the platform administrator CREATED K. Mensah — "K. Mensah — operations authority, the vendor (SYNTHETIC)", login k.mensah, operations_authority at the PLATFORM
+  ✓ the platform administrator CREATED L. Haddad — "L. Haddad — Design System Authority, the vendor (SYNTHETIC)", login l.haddad, design_system_authority at the PLATFORM
+  ✓ the platform administrator CREATED S. Iversen — "S. Iversen — Design System Authority, owner of the governed-action assets (SYNTHETIC)", login s.iversen, design_system_authority at the PLATFORM
+  ✓ seven DIFFERENT vendor people: two product authorities, independent assurance, the conformance steward, the operations authority, two Design System Authorities
+  ✓ T. Richter PUBLISHED the corridor's attention policy v14 (supersedes v13; 33 of 33 earlier classes unchanged): governance.exception and governance.acceptance from C1, governance.ownership from C3 → the domain administrator
+
+B107-1 BASELINE (§RG, §CM, §PG) — the registers imported read-only, the manifest registered, the orphans and the lint stated, the owners, the decision rights, the product baseline
+  ✓ P. Castellano (conformance steward) IMPORTED the repository's registers READ-ONLY in 1.4 s: audit/requirements/v00-v01.csv +448, audit/requirements/v02.csv +233, audit/requirements/v03.csv +729, audit/requirements/v04.csv +623, audit/requirements/v05.csv +699, audit/requirements/v06.csv +860, audit/requirements/v07.csv +883, audit/requirements/v08.csv +1121, audit/requirements/v09.csv +1195, audit/requirements/v10.csv +521, audit/delivery/feature-rowmap.csv +216, DECISIONS.md +17, EXCEPTIONS.md +7, objects.interface_register +50, objects.schema_registry +53
+  ✓ unresolved link ends after the import: none
+  ✓ the registry holds what the files say: 6264 requirement rows, capabilities 108 (V8 App A) + 18 (V9), 24 journeys, 50 interfaces, 53 schemas, 17 decision records, 7 engineering exceptions — the CSVs stay authoritative
+  ✓ the sources reconcile against the repository: 15/15 IN SYNC
+  ✓ EXCEPTIONS.md:EXC-P0-003 is REPORTED EXPIRED (expiry 2026-09-30, status open) — read only, non-blocking: renewing or closing it is the OWNER's decision, never the product's
+  ✓ the build identity stamped on §RG's outputs: head 27ab3793ca13… (EYE_BUILD_SHA), policy bundle bundle-v1, conformance.manifest.json eb21d1a83471…
+  ✓ the ORPHANS, STATED — never hidden: 1742 in all; RG-O03 721, RG-O14 7, RG-V01 1014
+  ✓ the LINT, stated: circular 0, compound 924, ownerless 5116, weakening 0, control_order 0
+  ✓ P. Castellano REGISTERED the committed component manifest v1: 31 deployable units, 298 components (92 logical in 10 layers + the catalogued platform, infrastructure and data components); links added 1632, §RG references still unresolved {"schemas":0,"interfaces":0,"requirements":0}
+  ✓ P. Castellano PROPOSED the product baseline PBL-0001 v1 BEFORE any owner or decision right: signable false, gaps orphans, no_decision_rights
+  ✓ R. Moreau signs a baseline whose authority is unresolved REFUSED — 409 EYE-STA-002 — product baseline rejected (held): authority is unresolved — orphans, no_decision_rights — the baseline is held, the disputed state preserved; resolve through the authority chain and propose again
+  ✓ E. Lindgren (product authority, human gate) ASSIGNED the accountable owner of 126/126 capabilities — CAP-FW-07 to R. Moreau (boundary "Supply-chain intelligence"), every other to herself
+  ✓ the inventory: 126 capabilities in 12 boundaries; orphans 0, lapsed 0, duplicates 0
+  ✓ P. Castellano PROPOSED the decision-rights matrix PDR-0002 v1: 15 rows — singular approvers, separation of duties (the approving role never proposes), the exception approver NAMED (H. Achterberg)
+  ✓ P. Castellano (the proposer, a steward) approves the matrix REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ E. Lindgren (product authority, human gate) APPROVED and SIGNED the decision-rights matrix PDR-0002 v1 at digest 54dc3014aab2…
+  ✓ P. Castellano PROPOSED the product baseline v2 over 126 owned capabilities and the approved rights: signable true, gaps none
+  · R. Moreau's preview: can decide true — signing makes PBL-0001 v2 THE controlled product baseline (126 capabilities), the previous signed baseline superseded — construction / demonstration only; the real executive attestation is H3
+  ✓ P. Castellano (the proposer) signs the baseline REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ R. Moreau (product authority, human gate) SIGNED the product baseline v2 (signed, claim demonstration) at digest dfedb74051d8… — a DEMONSTRATION: the real executive attestation is H3
+  ✓ THE SIGNED BASELINE PBL-0001 v2: signature baseline_decision by R. Moreau (product_authority), key ed25519:2b6c48b937b0b8d2; posture: holds unknown, records unknown, baseline conformant, conflicts unknown, ownership conformant, exceptions unknown, decision_rights conformant
+  ✓ the workspace REPORTS EXC-P0-003 EXPIRED (2026-09-30) beside 10 C15 SCX dispositions — ENGINEERING exceptions — the owner's register, read only: an expired entry is REPORTED here and never renewed, closed or edited by the produ
+  ✓ CAP-FW-07 "CAP-FW-07 — Predict, Detect, and Warn Supply-chain intelligence workspace Map multi-tier networks, constraints…": owner R. Moreau — product authority, the vendor (SYNTHETIC) (owned), boundary Supply-chain intelligence; its trace (depth 2): 1 baseline, 2 requirement, 3 standard
+
+B107-2 CHANGE IMPACT on the forecast contract FCT@v2 (§RG, §PG) — who cites it, the real test run, the deterministic impact, the change proposal and its six plans
+  ✓ the forecast contract FCT@v2 (B25's forecast schema, imported from objects.schema_registry): consumed by 9 manifest components (L6-C01, L6-C02, L6-C03, L6-C04, L6-C05, L6-C06, L6-C07, L6-C08, L6-C09)
+  ✓ T. Richter (the corridor's administrator) DECLARED the briefing "The corridor briefing of 2026-10-01 (reads the 90-day forecasts)" (01a0…6b7b90) as CITING the vendor's contract FCT@v2 — a decision-active dependent of any change to it
+  ✓ T. Richter (the corridor's administrator) DECLARED the decision_package "B24 — second source for the magnet sets on the 90-day forecast (SYNTHETIC)" (01a0…0cc6b5) as CITING the vendor's contract FCT@v2 — a decision-active dependent of any change to it
+  ✓ P. Castellano INGESTED b107-forecast-contract.vitest.json — 100/100 passed, result passed, claim construction, source digest 76fb8fd9a1af…, head 27ab3793ca13…, valid until 2026-11-14T07:13:13Z
+  ✓ P. Castellano (the ingester) reviews its own record REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ H. Achterberg (independent assurance, human gate) REVIEWED the record on its exact digest: accepted
+  ✓ P. Castellano LINKED the verification record (evidence 2f58…466548) → L6-C01 "Forecast Registry and Horizon Service" (verifies)
+  ✓ the impact is DETERMINISTIC: the steward and the product authority are shown the same digest ade3652a4d67… — dependents 9× 1:component, 2× 1:data_product, 1× 2:deployable_unit, 1× 2:evidence, 1× 2:manifest, 2× 3:deployable_unit
+  ✓ decision-active dependents in the customer's domain: briefing:01a0f85c-ad1a-7cd7-b62d-024cf76b7b90 (DOMAIN), decision_package:01a0d96b-5251-7101-b91a-5629120cc6b5 (DOMAIN); requirements to re-verify 155 (V3:L1-C01, V3:L1-C02, V3:L1-C03, V3:L1-C04, V3:L1-C05, V3:L1-C06); stale verifications 1; release candidates 0
+  ✓ E. Lindgren (product authority) records the impact REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ P. Castellano RECORDED the impact as a PROPOSAL on the digest shown (ade3652a4d67…): it holds nothing (held 0) — a proposal is analysed, never executed
+  ✓ P. Castellano PROPOSED GCP-0003 v1 "FCT@v3 — the forecast contract gains an optional interval field (SYNTHETIC change proposal)" with ONE plan: approvable false, missing compatibility, migration, replay, rollback, evidence; required product_authority; its impact 17 dependents
+  ✓ E. Lindgren approves the change without its plans REFUSED — 422 EYE-REQ-001 — change proposal rejected (plans): compatibility, migration, replay, rollback, evidence missing — a change carries its consumer impact, compatibility, migration, replay, rollback and evidence plans before approval (ES-72-003)
+  ✓ P. Castellano COMPLETED GCP-0003 v2 with the six plans (consumer impact, compatibility, migration, replay, rollback, evidence): approvable true
+  ✓ K. Mensah (a declared builder of the change) approves it REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ E. Lindgren (product authority, human gate) APPROVED and SIGNED the change v2 (approved) — the approval of a PROPOSAL: nothing is changed in the contract by this act
+  ✓ the ADMISSION CHECK of L6-C01: admissible false — blocking orphans: {"class":"orphans","items":[{"key":"V3:chapter:14 Prediction Engine","rule_id":"RG-O03"},{"key":"L6-C01","rule_id":"RG-O09"}]}; claim construction; R1 — production admission and continued operation are external; this check is the construction half and admits nothing to production
+
+B107-3 THE EXPIRED EXCEPTION HOLDS THE RELEASE CANDIDATE — PART I (§CM, §PG): the candidate over real evidence, checked; the export-path exception with a SHORT validity, approved
+  ✓ P. Castellano INGESTED b107-contract.vitest.json (203/203 passed at head 27ab3793ca13…; evidence d05d…8e8644)
+  ✓ P. Castellano INGESTED b107-trust.vitest.json (31/31 passed at head 27ab3793ca13…; evidence 0844…269a4e)
+  ✓ P. Castellano INGESTED b107-human-authority.vitest.json (76/76 passed at head 27ab3793ca13…; evidence 2f3f…733dbf)
+  ✓ P. Castellano INGESTED b107-export-path.vitest.json (44/44 passed at head 27ab3793ca13…; evidence 04e5…e15dd1)
+  ✓ P. Castellano ASSEMBLED 70ca…d8b18c v1 "NORDWERK corridor release candidate 2026-10 (SYNTHETIC — a l…": the SERVER's identity — head 27ab3793ca13…, migration head 0115_b107_governance_registries_acceptance.sql, policy bundle bundle-v1 b96e157c3504…, manifest v1, profile local-dev; release not_a_release, claim demonstration; builder K. Mensah
+  ✓ the CHECK: CONFORMANT — the three required families present, current, verifiable and bound to this head; carried (never inferred present): quality: B64 / H1 · deployment: B106 / B111 · operations: B63 / B64 — never inferred present; a conformant candidate is a local conformance record — not a release (B65), not production admission (R1)
+  ✓ K. Mensah (operations authority, its owner) PROPOSED GEX-0004 v1 "Export path: delivery receipts for the corridor acknowledged by manual…" against V6:MS-17 on the export path (L3-C05 + api.retention), the corridor only, affecting the release candidate; a SHORT validity: expires 2026-10-15T07:17:15Z (4 min on the database clock); approver roles independent_assurance
+  ✓ E. Lindgren (product authority) approves an exception that expands a component's authority REFUSED — 403 EYE-AUT-001 — governance exception rejected (authority): approving an exception is the act of a independent_assurance
+  ✓ K. Mensah (the owner) approves his own exception REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  · H. Achterberg's preview: can decide true; approving puts GEX-0004 in force until 2026-10-15T07:17:15.367Z; at expiry every affected artifact is HELD until a renewal with current evidence
+  ✓ H. Achterberg (independent assurance — the matrix's NAMED approver, human gate) APPROVED and SIGNED GEX-0004 v1 (approved) — in force until 2026-10-15T07:17:15Z
+
+B107-4 SCOPE-SPECIFIC ACCEPTANCE — PART I (§AR): CAP-FW-07 accepted for the CORRIDOR only, over a real test report and a SHORT-LIVED journey evidence item
+  ✓ P. Castellano INGESTED b107-supply-chain.vitest.json (41/41 passed at head 27ab3793ca13…; evidence 76c2…8b381e)
+  ✓ P. Castellano RECORDED the test-report evidence 01a1…89d5a9 by REFERENCE to the §RG verification record (digest bound from the row bd403402d9ce…), covers JRN-11, valid until 2026-11-14T07:13:15Z
+  ✓ P. Castellano RECORDED the journey evidence 01a1…a0e946: evidence/phase6-browser/b33-supply-03-map.png (sha256 a7efd1f710d6…, captured 2026-10-11T16:59:27Z), covers JRN-11 — a REAL SHORT validity: until 2026-10-15T07:19:18Z (6 min on the database clock)
+  ✓ E. Lindgren (product authority) PROPOSED the acceptance 01a1…3378b3 v1 for the CORRIDOR only: the exact tuple (tenant, domain, journeys JRN-11 + JRN-24, roles domain_analyst + executive, local-dev, C2, 2026-10-15 → 2027-04-13); obligations customer, independent_assurance, product; OPEN CONDITIONS 7 (slot:security_review, slot:privacy_review, slot:accessibility, slot:resilience, slot:recovery, slot:support_readiness, slot:parity) — an absent evidence slot is an open condition, never a silent pass; claim demonstration
+  ✓ W. Zielińska attests the customer obligation BEFORE verifying REFUSED — 409 EYE-STA-002 — acceptance attestation rejected (state): the customer VERIFIES version 1 before attesting it (JRN-24: customer verify → attest)
+  ✓ E. Lindgren (the proposer) attests the product obligation — SELF-ACCEPTANCE REFUSED — 403 EYE-AUT-001 — acceptance attestation rejected (separation_of_duties): attesting the product obligation is never done by its proposer (no self-acceptance)
+  ✓ the Decision Agent (an AGENT — its own run session 90be…9db031, opened through the identity port) attests the independent-assurance obligation REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  · R. Moreau's preview (OBJ-40): When every obligation (customer, independent_assurance, product) is attested, CAP-FW-07 becomes ACCEPTED for exactly this scope — and nothing outside it: · tenant 01a084f5-757f-7f03-9cf5-315d74426481 · domain 01a084f5-759a-751f-a1dd-38fbd7933057 · deployment profile local-dev · entitlement supply_chain_intelligence … Claim: demonstration — real acceptance by named independent and customer authorities is R2 and is not made here.
+  ✓ W. Zielińska (customer sponsor, human gate) VERIFIED v1 on its digest 47d73e816c82… — the customer verifies before any attestation
+  ✓ R. Moreau ATTESTED the product obligation of v1 (signed): record proposed, unmet customer, independent_assurance
+  ✓ H. Achterberg ATTESTED the independent_assurance obligation of v1 (signed): record proposed, unmet customer
+  ✓ W. Zielińska ATTESTED the customer obligation of v1 (signed): record accepted
+  ✓ the record v1: ACCEPTED — every obligation signed by a DISTINCT named human (R. Moreau product, H. Achterberg independent assurance, W. Zielińska customer); claim demonstration — real acceptance is R2
+  ✓ the ACCEPTED SCOPE in the corridor (T. Richter): accepted — journeys JRN-11, JRN-24, roles domain_analyst, executive
+  ✓ in NORDWERK Polska (K. Nowak): NOT_ACCEPTED — no acceptance is inferred from another domain's
+
+B107-5 DESIGN GOVERNANCE (§DG) — the inventory and the lint, owned assets, the attested design baseline, B92's finding → a contribution → accepted and published, a design acceptance, the UNSIGNED conformance packages
+  ✓ P. Castellano REGISTERED the design inventory read from the repository: 30 assets; no drift
+  ✓ P. Castellano ran the design LINT over the real web source: 302 files, verdict CONFORMANT (recorded as evidence 01a1…6c5a44)
+  ✓ L. Haddad (Design System Authority, human gate) APPROVED web.observation.governed-button v1 — its ONE accountable owner S. Iversen
+  ✓ L. Haddad (Design System Authority, human gate) APPROVED pattern.governed-action v1 — its ONE accountable owner S. Iversen
+  ✓ L. Haddad (Design System Authority, human gate) APPROVED tokens.semantic v1 — its ONE accountable owner S. Iversen
+  ✓ P. Castellano PROPOSED the design baseline 01a1…90dfb8 v1: 3 members (the governed button, the governed-action pattern, the semantic tokens), scope {"capabilities":["CAP-FW-07"],"journeys":["JRN-11","JRN-24"],"profiles":["local-dev"],"themes":["light","dark"],"locales":["en"]}
+  ✓ P. Castellano (the proposer, a steward) attests the design baseline REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ L. Haddad (Design System Authority, human gate) ATTESTED and SIGNED the design baseline v1 (attested)
+  ✓ P. Castellano REQUESTED a narrow design exception 01a1…4fdf17: semantic-tokens-only on the governed button, 30 days
+  ✓ S. Iversen (the asset's OWNER) decides the exception on her own asset REFUSED — 403 EYE-AUT-001 — design principle rejected (separation_of_duties): the owner of the asset never decides an exception that expands their own authority (ES-02-004)
+  ✓ L. Haddad REJECTED the design exception (rejected) — no waiver is needed where the lint is conformant
+  ✓ J. Satō (product analyst) PROPOSED the finding 01a1…c94a5e on the operating review (B92's route) — qualitative, the baseline indeterminate
+  ✓ M. Okonkwo (product analytics owner, human gate) DECIDED the finding as a design_change_proposal (B92's route) — automatic: never
+  ✓ the INTAKE (M. Okonkwo): the action → contribution proposal cc06…59f87a (origin experience_learning) — the pattern itself is unchanged
+  ✓ L. Haddad reviews the contribution before any contributor names its target REFUSED — 409 EYE-STA-002 — design contribution rejected (held): the review step is held — the proposal names no target asset — a contributor amends it to name the component or pattern it changes; ownership is missing — the resulting version names one accountable owner, a named active human (REL-01); the compatibility plan is missing (8+ characters); the consumers plan is missing (8+ characters); the migration plan is missing (8+ characters); t
+  ✓ P. Castellano AMENDED the contribution (revision 2): target pattern.governed-action, its plans and the conformant lint evaluation 01a1…6c5a44 — blockers 0
+  ✓ L. Haddad REVIEWED it: in_review
+  ✓ P. Castellano (a builder — the amender) accepts the contribution REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ L. Haddad (Design System Authority — never the proposer, never a builder) ACCEPTED and SIGNED the contribution at its digest e4f5fd1d14e6…
+  ✓ L. Haddad PUBLISHED it: pattern.governed-action v2 (a registry version — no code is changed by the act)
+  ✓ the contribution from B92's finding: PUBLISHED (pattern v2)
+  ✓ the design baseline v2 — the published pattern v2 — ATTESTED and SIGNED by L. Haddad
+  ✓ P. Castellano PROPOSED the design acceptance 01a1…2b1389 v1 in the corridor: the exact tuple (CAP-FW-07 · JRN-11 · the corridor's supply analyst · domain_analyst · local-dev · light · en · desktop · none recorded), the attested baseline, the lint and the walk as evidence; claim demonstration
+  ✓ P. Castellano (the proposer, a steward) attests the design acceptance REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ L. Haddad ATTESTED the design acceptance's design obligation (signed): proposed, remaining assurance, customer
+  ✓ H. Achterberg ATTESTED the design acceptance's assurance obligation (signed): proposed, remaining customer
+  ✓ W. Zielińska ATTESTED the design acceptance's customer obligation (signed): accepted
+  ✓ the design acceptance: ACCEPTED (claim demonstration); accessibility unsupported (MET-034 — B108 → H3)
+  ✓ H. Achterberg (independent assurance) GENERATED the UX-70-006 conformance package for the corridor: digest e92da95f0dee…, evidence 16 item(s) with ages, findings trace, accessibility_unsupported — LEFT UNSIGNED (signed false): the signature is a real independent authority's (R2)
+  ✓ H. Achterberg (independent assurance) GENERATED the UX-66-006 conformance package for NORDWERK Polska (where B94's onboarding records are): digest 571795f7851e…, evidence 4 item(s) with ages, findings no_acceptance, trace, accessibility_unsupported — LEFT UNSIGNED (signed false): the signature is a real independent authority's (R2)
+
+B107-6 OWNERSHIP (§DR) — the corridor's domain registry entry, a data authority, a stewardship case, a component ownership transfer, the route lint
+  ✓ T. Richter (domain administrator) PROPOSED the domain registry entry v1: the accountable leader S. Okafor, the boundary, the extension contract v1 (sources, event products; backward), governance observed — a missing authority is LISTED, not held
+  ✓ T. Richter (the proposer, no ratifying role) ratifies the entry REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ W. Zielińska (customer sponsor, human gate) RATIFIED the corridor's domain registry entry v1 (ratified) — the corridor is a REGISTERED domain: the tick reconciles its ownership
+  ✓ the asset: "Corridor warning stream (SYNTHETIC)" (2062…6c2e9c) — its catalogue owner N. Eriksen
+  ✓ F. Aydın (data steward) PROPOSED the data authority v1: owner N. Eriksen, steward and custodian F. Aydın, policy authority privacy_officer, quality authority data_steward, the escalation path and the evidence obligation
+  ✓ T. Richter accepts ownership in the named owner's place REFUSED — 403 EYE-AUT-001 — data authority rejected (ownership): ownership of product 01a0f271-f672-7d48-9a7f-b7a6cbb2f12f is accepted by its named owner only
+  ✓ N. Eriksen (the NAMED owner, human gate) ACCEPTED the ownership of v1 on its digest
+  ✓ T. Richter (domain administrator — neither its proposer nor its owner) RATIFIED the data authority v1: ratified
+  ✓ the asset's authority RESOLVED live: resolved — owner N. Eriksen — forecast owner (resolved), steward F. Aydın — data steward (SYNTHETIC) (resolved), custodian data_steward (resolved), consumers domain_analyst, executive (declared), policy authority privacy_officer (resolved)
+  ✓ F. Aydın RECONCILED the corridor's ownership (observed): found 31, opened 31, resolved 0 — 31 gap(s) OPEN and LISTED (no-owner gaps are listed, not held, in an observed domain); products to degrade 0
+  ✓ F. Aydın OPENED STW-0001 (quality, C2): its owner resolved N. Eriksen, 1 reviewer, SLA 5 days with its timer
+  ✓ F. Aydın (its opener) reviews the case REFUSED — 403 EYE-AUT-001 — stewardship case rejected (separation_of_duties): deciding a quality case is never done by its proposer (no self-acceptance)
+  ✓ T. Richter (domain administrator, human gate) REVIEWED STW-0001: approved
+  ✓ N. Eriksen (the owner) CLOSED STW-0001 with evidence: closed
+  ✓ the stewardship case STW-0001: CLOSED
+  ✓ P. Castellano PROPOSED the ownership of L3-C05 "Retention, Legal Hold, and Deletion Service": accountable K. Mensah, the export and retention team, the nine-item checklist; the open exceptions handed over GEX-0004
+  ✓ R. Moreau ratifies before the receiving owner accepted REFUSED — 409 EYE-STA-002 — ownership record rejected (state): transfer 01a13e69-c099-7722-a90f-0ecd2ae85545 is proposed — the receiving owner accepts it before it is ratified
+  ✓ K. Mensah (the RECEIVING accountable owner, human gate) ACCEPTED the transfer on its digest
+  ✓ K. Mensah (a party — the receiving owner) ratifies his own transfer REFUSED — 403 EYE-AUT-001 — ownership record rejected (separation_of_duties): ratifying an ownership transfer is never done by a builder of the subject (independence)
+  ✓ R. Moreau (product authority — not a party, human gate) RATIFIED and SIGNED the ownership of L3-C05: v1, accountable K. Mensah
+  ✓ the OWNED-CONTRACT LINT over this API's routes (ES-11-002 — every unowned route LISTED, never hidden): 1219 routes, owned 42, unowned 1177
+
+B107-3 PART II — the exception EXPIRES on the database clock; the candidate is HELD; the renewal (stale evidence refused, current approved) lifts the hold; the candidate checked and ATTESTED — not a release
+  · WAITING 157 s on the database clock for the export-path exception's expiry (until 2026-10-15T07:17:15Z) — a real short validity, nothing moved
+  · the workspace reads GEX-0004 v1 as: expired (sweep pending)
+  ✓ P. Castellano's SWEEP: expired GEX-0004 v1 — every affected artifact HELD
+  ✓ the exception v1: EXPIRED at 2026-10-15T07:17:15Z
+  ✓ the release candidate is HELD: exception_expired — exception GEX-0004 v1 (export-receipt-acknowledgement) expired at 2026-10-15 07:17:15.367+00 — the affected promotion is held until a renewa
+  ✓ P. Castellano checks the held candidate REFUSED — 409 EYE-STA-002 — release candidate rejected (held): the candidate is held — held (exception_expired): exception GEX-0004 v1 (export-receipt-acknowledgement) expired at 2026-10-15 07:17:15.367+00 — the affected promotion is held until a renewal with current evidence is approved independently, or the exception is closed on its exit criteria
+  · the attention item for the expired exception in the corridor: 0 (none yet — the tick raises it)
+  ✓ K. Mensah renews with the evidence of the first approval (captured before it) REFUSED — 409 EYE-STA-002 — governance exception rejected (stale): b107-export-path.vitest.json — the export-path tests at head 27ab3793ca13 (verification record 01a1…9d42b6) is not current evidence (captured 2026-10-15 06:36:53.771+00, valid until 2026-11-14 07:13:15.249+00; current means captured within 30 days and after 2026-10-15 07:13:15.427642+00, still valid)
+  ✓ K. Mensah RE-RAN the export-path tests now (apps/api/test/unit/retention): 44/44 passed, started 2026-10-15T07:17:18Z
+  ✓ P. Castellano INGESTED the re-run (record 01a1…79bcf3, 44/44 passed)
+  ✓ K. Mensah PROPOSED the RENEWAL GEX-0004 v2 (renewal of v1) with the re-run as current evidence, 14 days — a proposal lifts nothing
+  · H. Achterberg's preview: approving renews GEX-0004: v1 superseded; every hold its expiry opened is LIFTED (the affected promotion released)
+  ✓ H. Achterberg APPROVED and SIGNED the renewal v2: holds LIFTED 70ca…d8b18c
+  ✓ the release candidate's open holds: none
+  ✓ the CHECK after the renewal: CONFORMANT
+  · H. Achterberg's preview: can attest true; attesting records independent assurance's Ed25519 signature (manifest_attestation) over digest 25b1d06c72f8e1fa… of NORDWERK corridor release candidate 2026-10 (SYNTHETIC — a local release-candidate record, B65 substituted: NOT a release) v1 and marks it attes
+  ✓ P. Castellano (the proposer, a steward) attests the candidate REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ H. Achterberg (independent assurance — never its proposer, never its builder; human gate) ATTESTED the release candidate v1 (signed manifest_attestation): attested — attested conformant on local evidence — NOT a release (B65 substituted), NOT production admission (R1), NOT real acceptance (R2)
+  ✓ the release candidate 70ca…d8b18c v1: ATTESTED — a LOCAL CONFORMANCE RECORD (B65 substituted): nothing was released anywhere
+
+B107-4 PART II — the journey evidence EXPIRES; the corridor's acceptance is CONSTRAINED; expansion to Polska HELD; re-acceptance over renewed evidence
+  · WAITING 122 s on the database clock for the journey evidence's validity (until 2026-10-15T07:19:18Z) — a real short validity, nothing moved
+  ✓ P. Castellano RECONCILED the corridor's acceptances: changed 01a1…3378b3 → constrained
+  ✓ the acceptance v1: CONSTRAINED — evidence_expired; the effective scope keeps JRN-24 and REMOVES JRN-11 (FEX-31: the previously accepted unaffected scope only)
+  ✓ the accepted scope in the corridor: constrained, expansion held true
+  ✓ the EXPANSION hold on CAP-FW-07 is open (1)
+  ✓ E. Lindgren proposes CAP-FW-07 for NORDWERK Polska while the corridor's acceptance is constrained REFUSED — 409 EYE-STA-002 — acceptance record rejected (held): CAP-FW-07 is constrained in another scope (record 01a13e68-804c-72cf-9dcd-c49d673378b3 — evidence_expired) — expansion to a new scope is held until it is re-accepted (ES-71-004)
+  ✓ P. Castellano RENEWED the journey evidence (01a1…310d2f renews 01a1…a0e946; 30 days)
+  ✓ E. Lindgren PROPOSED the RE-ACCEPTANCE v2 over the renewed evidence (the same scope) — v1 stays in force, constrained, until v2 is accepted
+  ✓ W. Zielińska (customer sponsor, human gate) VERIFIED v2 on its digest acdab66d9190… — the customer verifies before any attestation
+  ✓ R. Moreau ATTESTED the product obligation of v2 (signed): record proposed, unmet customer, independent_assurance
+  ✓ H. Achterberg ATTESTED the independent_assurance obligation of v2 (signed): record proposed, unmet customer
+  ✓ W. Zielińska ATTESTED the customer obligation of v2 (signed): record accepted
+  · v1's expiry timer (due 2026-10-15T07:19:18Z) has not fired yet — WAITING for the attention tick to fire it (real ticks, nothing moved)
+  ✓ the tick FIRED v1's expiry timer at 2026-10-15T07:19:57Z — after the re-acceptance
+  ✓ the corridor's acceptance: v1 superseded, v2 accepted
+  ✓ the expansion hold LIFTED (open holds from the record: 0)
+  ✓ the accepted scope: corridor accepted (journeys JRN-11, JRN-24), NORDWERK Polska not_accepted
+
+B107-7 THE STATE and the LIMITS
+  · in the governance ledgers: artifacts 8549, links 15542, events 261, platform_signatures 10, domain_signatures 9, verification_records 7, open_holds 0, open_gaps 31
+  ✓ no record claims more than a DEMONSTRATION (baselines 0, acceptance records 0, design acceptances 0 beyond it; signed conformance packages 0)
+  the env lines for the walk (EYE_TEST_ADMIN_PASSWORD comes from .eye-local/env and is never printed):
+  EYE_B107_PRODUCT=e.lindgren
+  EYE_B107_PRODUCT2=r.moreau
+  EYE_B107_ASSURANCE=h.achterberg
+  EYE_B107_STEWARD=p.castellano
+  EYE_B107_OPERATIONS=k.mensah
+  EYE_B107_DESIGN=l.haddad
+  EYE_B107_DESIGN_OWNER=s.iversen
+  EYE_B107_CANDIDATE=70cad8c9-9db3-4ddd-ab6a-28d694d8b18c
+  EYE_B107_ACCEPTANCE=01a13e68-804c-72cf-9dcd-c49d673378b3
+  EYE_B107_TENANT=01a084f5-757f-7f03-9cf5-315d74426481
+  EYE_B107_DOMAIN=01a084f5-759a-751f-a1dd-38fbd7933057
+  EYE_B107_POLSKA=01a13465-fb12-7c19-9853-7a2d26107fbc
+  EYE_B107_DOMAIN_ADMIN=t.richter
+  EYE_B107_SPONSOR=w.zielinska
+  EYE_B107_POLSKA_ADMIN=k.nowak
+  EYE_B107_DATA_STEWARD=f.aydin
+  · the REAL WAITS of this run (database clock): the export-path exception's expiry: 157 s; the journey evidence's validity: 122 s; v1's expiry timer fired by the tick: 40 s
+  · LIMITS said — THREE CLAIMS KEPT APART. (1) CONSTRUCTION — the software and its harnesses (phase6-{prelude,registries,conformance,workspace,acceptance,design,ownership}-b107). (2) DEMONSTRATED OPERATION — what RAN here through the governed routes: the repository's registers imported read-only (the CSVs stay authoritative; EXC-P0-003 REPORTED expired — renewing or closing it is the owner's), the committed component manifest registered, the orphans and the lint STATED; an accountable owner for every capability, the decision-rights matrix and the product baseline SIGNED; the forecast contract's deterministic impact recorded as a proposal and its change proposal approved over its six plans (nothing in the contract changed); a local release candidate over REAL test runs at the deployed head, HELD by an expired export-path exception and released by its renewal over a re-run, then ATTESTED; CAP-FW-07 accepted for the corridor domain ONLY (standing for the Regensburg line; NORDWERK Polska is the out-of-scope domain — no domain named Regensburg exists), CONSTRAINED when its short-lived journey evidence expired, expansion HELD, re-accepted over renewed evidence; the design inventory, the lint, the owned assets, the attested design baselines, B92's finding taken in as a contribution and published as a pattern version (not adopted in the source — reported as drift), a design acceptance; the corridor's domain registry entry, a data authority, a stewardship case and the export component's ratified ownership. Every vendor and customer person here is SYNTHETIC — E. Lindgren, R. Moreau, H. Achterberg, P. Castellano, K. Mensah, L. Haddad and S. Iversen were created by the platform administrator for this act; every approval, attestation, acceptance and signature they gave DEMONSTRATES the software (claim: demonstration). (3) REAL ACCEPTANCE — NEVER CLAIMED: named independent and customer authorities (R2: PR-71-006, AT-71, JRN-24, CAP-DL-12), the executive attestation and the independent release authorities (H3), production admission (R1 — the admission check is the construction half), signed releases (B65 — the release candidate is a local record, never a release), SLO computation (B64), accessibility results (B108 → H3; MET-034 unsupported). The conformance packages for UX-70-006 and UX-66-006 are generated and LEFT UNSIGNED. THE ONE SUBSTITUTION: the Decision Agent's run session was opened through the identity port (act-b35's idiom) to show an agent's attestation refused. HARNESS-PROVEN ONLY (not staged here): the fault exercises (an unbound signing key, a database refusal mid-import), the repeat-exception remediation review, conflicts, the acceptance request gate (enforce_acceptance), operational and release acceptances, the design exception expiry, component reconciliation over every manifest component, the B90 residuals (phase6-*-b107).
+
+ALL SCENES HELD · 8.0 min
+
+# RUN 2 (the same database — rerun-safety)
+THE B107 ACT on eye_demo_b107 (REHEARSAL) — 2026-10-15T07:20:10.851Z — API http://localhost:3411
+
+B107-0 THE STATE — 0115, the NORDWERK cast, the domains, the build identity
+  ✓ migration applied: 0115_b107_governance_registries_acceptance.sql
+  ✓ n.vogel holds tenant_admin at the TENANT
+  ✓ t.richter holds domain_admin at the DOMAIN (the corridor domain)
+  ✓ m.okonkwo holds product_analytics_owner at the DOMAIN (the corridor domain)
+  ✓ w.zielinska holds customer_sponsor at the TENANT
+  ✓ j.hartmann holds onboarding_authority at the TENANT
+  ✓ k.nowak holds domain_admin at the DOMAIN (NORDWERK Polska)
+  · the domains: "Supply Corridor Intelligence" (01a0…933057) STANDS FOR the Regensburg line's domain — the accepted scope; "NORDWERK Polska — Supplier Risk (SYNTHETIC)" (01a1…107fbc) is the OUT-OF-SCOPE domain. No domain named Regensburg exists and none is created (MAP Q7)
+  ✓ the API declares its build: head 27ab3793ca13… (from env — EYE_BUILD_HEAD_SHA), policy bundle bundle-v1 b96e157c3504…, the committed manifest b8045844e285…
+  · governance as read: 8549 current artifacts, 261 ledger events, 10 PLATFORM signatures, 2 acceptance-record versions — an earlier run stands
+
+CAST — the platform administrator creates the vendor's PLATFORM personas (SYNTHETIC, fresh logins) through POST /v1/platform/principals
+  · E. Lindgren (e.lindgren, product_authority) is present: stands — an earlier run
+  · R. Moreau (r.moreau, product_authority) is present: stands — an earlier run
+  · H. Achterberg (h.achterberg, independent_assurance) is present: stands — an earlier run
+  · P. Castellano (p.castellano, conformance_steward) is present: stands — an earlier run
+  · K. Mensah (k.mensah, operations_authority) is present: stands — an earlier run
+  · L. Haddad (l.haddad, design_system_authority) is present: stands — an earlier run
+  · S. Iversen (s.iversen, design_system_authority) is present: stands — an earlier run
+  ✓ seven DIFFERENT vendor people: two product authorities, independent assurance, the conformance steward, the operations authority, two Design System Authorities
+  · the corridor's attention policy v14 routes governance.exception, governance.acceptance, governance.ownership: stands — an earlier run
+
+B107-1 BASELINE (§RG, §CM, §PG) — the registers imported read-only, the manifest registered, the orphans and the lint stated, the owners, the decision rights, the product baseline
+  · P. Castellano (conformance steward) re-ran the READ-ONLY import: all 15 sources UNCHANGED (0.6 s) — nothing written twice: stands — an earlier run
+  ✓ unresolved link ends after the import: none
+  ✓ the registry holds what the files say: 6264 requirement rows, capabilities 108 (V8 App A) + 18 (V9), 24 journeys, 50 interfaces, 53 schemas, 17 decision records, 7 engineering exceptions — the CSVs stay authoritative
+  ✓ the sources reconcile against the repository: 15/15 IN SYNC
+  ✓ EXCEPTIONS.md:EXC-P0-003 is REPORTED EXPIRED (expiry 2026-09-30, status open) — read only, non-blocking: renewing or closing it is the OWNER's decision, never the product's
+  ✓ the build identity stamped on §RG's outputs: head 27ab3793ca13… (EYE_BUILD_SHA), policy bundle bundle-v1, conformance.manifest.json eb21d1a83471…
+  ✓ the ORPHANS, STATED — never hidden: 2490 in all; RG-O03 721, RG-O06 419, RG-O07 2, RG-O09 298, RG-O10 31, RG-O11 1, RG-O14 7, RG-V01 1011
+  ✓ the LINT, stated: circular 0, compound 924, ownerless 5414, weakening 0, control_order 132
+  · the committed component manifest v1 is registered at its digest: unchanged — stands — an earlier run (0 new links)
+  · the product baseline 01a1…a78d77 v1 was proposed before the owners by an earlier run (gaps orphans, no_decision_rights): stands
+  · every capability has its ONE accountable owner (126 capabilities): stands — an earlier run
+  ✓ the inventory: 126 capabilities in 12 boundaries; orphans 0, lapsed 0, duplicates 0
+  · the decision-rights matrix PDR-0002 v1 is APPROVED and signed: stands — an earlier run
+  · the product baseline PBL-0001 v2 is SIGNED: stands — an earlier run
+  ✓ THE SIGNED BASELINE PBL-0001 v2: signature baseline_decision by R. Moreau (product_authority), key ed25519:2b6c48b937b0b8d2; posture: holds conformant, records unknown, baseline conformant, conflicts unknown, ownership conformant, exceptions conformant, decision_rights conformant
+  ✓ the workspace REPORTS EXC-P0-003 EXPIRED (2026-09-30) beside 10 C15 SCX dispositions — ENGINEERING exceptions — the owner's register, read only: an expired entry is REPORTED here and never renewed, closed or edited by the produ
+  ✓ CAP-FW-07 "CAP-FW-07 — Predict, Detect, and Warn Supply-chain intelligence workspace Map multi-tier networks, constraints…": owner R. Moreau — product authority, the vendor (SYNTHETIC) (owned), boundary Supply-chain intelligence; its trace (depth 2): 1 baseline, 2 requirement, 3 standard, 1 acceptance_record, 3 evidence
+
+B107-2 CHANGE IMPACT on the forecast contract FCT@v2 (§RG, §PG) — who cites it, the real test run, the deterministic impact, the change proposal and its six plans
+  ✓ the forecast contract FCT@v2 (B25's forecast schema, imported from objects.schema_registry): consumed by 9 manifest components (L6-C01, L6-C02, L6-C03, L6-C04, L6-C05, L6-C06, L6-C07, L6-C08, L6-C09)
+  · the briefing 01a0…6b7b90 is declared as citing FCT@v2: stands — an earlier run
+  · the decision_package 01a0…0cc6b5 is declared as citing FCT@v2: stands — an earlier run
+  · b107-forecast-contract.vitest.json is already a verification record (the same report is the same record): stands — an earlier run — 100/100 passed, result passed, claim construction, source digest 76fb8fd9a1af…, head 27ab3793ca13…, valid until 2026-11-14T07:13:13Z
+  · the record 01a1…65edef was reviewed (accepted) by H. Achterberg: stands — an earlier run
+  · the record verifies L6-C01: stands — an earlier run
+  ✓ the impact is DETERMINISTIC: the steward and the product authority are shown the same digest 7eeaa577c200… — dependents 9× 1:component, 2× 1:data_product, 1× 2:deployable_unit, 1× 2:evidence, 1× 2:manifest, 2× 3:deployable_unit, 1× 3:release_candidate, 3× 4:evidence, 1× 4:exception
+  ✓ decision-active dependents in the customer's domain: briefing:01a0f85c-ad1a-7cd7-b62d-024cf76b7b90 (DOMAIN), decision_package:01a0d96b-5251-7101-b91a-5629120cc6b5 (DOMAIN); requirements to re-verify 155 (V3:L1-C01, V3:L1-C02, V3:L1-C03, V3:L1-C04, V3:L1-C05, V3:L1-C06); stale verifications 4; release candidates 1
+  · the impact of this proposal was recorded (proposal, digest ade3652a4d67…) at 2026-10-15T07:13:14Z: stands — an earlier run (the links moved since: the same input reads 7eeaa577c200… now — a stale record is never re-recorded silently)
+  · the change proposal 01a1…fd0356 v2 is APPROVED and signed: stands — an earlier run
+  ✓ the ADMISSION CHECK of L6-C01: admissible false — blocking orphans: {"class":"orphans","items":[{"key":"V3:chapter:14 Prediction Engine","rule_id":"RG-O03"},{"key":"L6-C01","rule_id":"RG-O09"}]}; claim construction; R1 — production admission and continued operation are external; this check is the construction half and admits nothing to production
+
+B107-3 THE EXPIRED EXCEPTION HOLDS THE RELEASE CANDIDATE — PART I (§CM, §PG): the candidate over real evidence, checked; the export-path exception with a SHORT validity, approved
+  · b107-contract.vitest.json: the same report is the same record — stands, an earlier run (203/203 passed at head 27ab3793ca13…; evidence d05d…8e8644)
+  · b107-trust.vitest.json: the same report is the same record — stands, an earlier run (31/31 passed at head 27ab3793ca13…; evidence 0844…269a4e)
+  · b107-human-authority.vitest.json: the same report is the same record — stands, an earlier run (76/76 passed at head 27ab3793ca13…; evidence 2f3f…733dbf)
+  · b107-export-path.vitest.json: the same report is the same record — stands, an earlier run (44/44 passed at head 27ab3793ca13…; evidence 04e5…e15dd1)
+  · the release candidate 70ca…d8b18c v1 (attested, head 27ab3793ca13…) stands — an earlier run
+  · the candidate's state: attested
+  · the export-path exception 01a1…e70ec6: v1 superseded (expires 2026-10-15T07:17:15Z), v2 approved (expires 2026-10-29T07:17:18Z): stands — an earlier run
+
+B107-4 SCOPE-SPECIFIC ACCEPTANCE — PART I (§AR): CAP-FW-07 accepted for the CORRIDOR only, over a real test report and a SHORT-LIVED journey evidence item
+  · b107-supply-chain.vitest.json: the same report is the same record — stands, an earlier run (41/41 passed at head 27ab3793ca13…; evidence 76c2…8b381e)
+  · the test-report evidence 01a1…89d5a9 stands — an earlier run
+  · the journey evidence 01a1…a0e946 (valid until 2026-10-15T07:19:18Z) stands — an earlier run
+  · the corridor's acceptance record 01a1…3378b3 v2 is ACCEPTED: stands — an earlier run
+  ✓ the record v2: ACCEPTED — every obligation signed by a DISTINCT named human (R. Moreau product, H. Achterberg independent assurance, W. Zielińska customer); claim demonstration — real acceptance is R2
+  ✓ the ACCEPTED SCOPE in the corridor (T. Richter): accepted — journeys JRN-11, JRN-24, roles domain_analyst, executive
+  ✓ in NORDWERK Polska (K. Nowak): NOT_ACCEPTED — no acceptance is inferred from another domain's
+
+B107-5 DESIGN GOVERNANCE (§DG) — the inventory and the lint, owned assets, the attested design baseline, B92's finding → a contribution → accepted and published, a design acceptance, the UNSIGNED conformance packages
+  · the design inventory was read from the repository and registered (2026-10-15T07:13:24Z): stands — an earlier run
+  · the lint evaluation 01a1…6c5a44 (conformant, 2026-10-15T07:13:25Z) stands — an earlier run
+  · web.observation.governed-button v1 is APPROVED, owned by S. Iversen: stands — an earlier run
+  · pattern.governed-action v2 is APPROVED, owned by S. Iversen: stands — an earlier run
+  · tokens.semantic v1 is APPROVED, owned by S. Iversen: stands — an earlier run
+  · the design baseline 01a1…90dfb8 v2 stands — an earlier run (attested)
+  · the design exception 01a1…4fdf17 (semantic-tokens-only on the governed button) is rejected: stands — an earlier run
+  · the finding 01a1…c94a5e was decided as design_change_proposal: stands — an earlier run
+  · the action's contribution cc06…59f87a stands — an earlier run (the tick or an earlier intake)
+  ✓ the contribution from B92's finding: PUBLISHED (pattern v2)
+  · the design baseline is v2 attested with pattern v2: stands
+  · the design acceptance 01a1…2b1389 v1 stands — an earlier run (accepted)
+  ✓ the design acceptance: ACCEPTED (claim demonstration); accessibility unsupported (MET-034 — B108 → H3)
+  · the UX-70-006 package 01a1…5d40be (the corridor) stands — an earlier run; signed false
+  · the UX-66-006 package 01a1…1d9b91 (NORDWERK Polska (where B94's onboarding records are)) stands — an earlier run; signed false
+
+B107-6 OWNERSHIP (§DR) — the corridor's domain registry entry, a data authority, a stewardship case, a component ownership transfer, the route lint
+  · the corridor's domain registry entry v1 is RATIFIED (observed): stands — an earlier run
+  ✓ the asset: "Corridor warning stream (SYNTHETIC)" (2062…6c2e9c) — its catalogue owner N. Eriksen
+  · the data authority v1 of the corridor warning stream is RATIFIED: stands — an earlier run
+  ✓ the asset's authority RESOLVED live: resolved — owner N. Eriksen — forecast owner (resolved), steward F. Aydın — data steward (SYNTHETIC) (resolved), custodian data_steward (resolved), consumers domain_analyst, executive (declared), policy authority privacy_officer (resolved)
+  ✓ F. Aydın RECONCILED the corridor's ownership (observed): found 31, opened 0, resolved 0 — 31 gap(s) OPEN and LISTED (no-owner gaps are listed, not held, in an observed domain); products to degrade 0
+  ✓ the stewardship case STW-0001: CLOSED
+  · L3-C05 "Retention, Legal Hold, and Deletion Service" has its ratified ownership v1 (accountable K. Mensah): stands — an earlier run
+  ✓ the OWNED-CONTRACT LINT over this API's routes (ES-11-002 — every unowned route LISTED, never hidden): 1219 routes, owned 42, unowned 1177
+
+B107-3 PART II — the exception EXPIRES on the database clock; the candidate is HELD; the renewal (stale evidence refused, current approved) lifts the hold; the candidate checked and ATTESTED — not a release
+  · the exception was RENEWED (v2 approved, in force until 2026-10-29T07:17:18Z): stands — an earlier run
+  ✓ the release candidate's open holds: none
+  · the release candidate v1 is ATTESTED: stands — an earlier run
+  ✓ the release candidate 70ca…d8b18c v1: ATTESTED — a LOCAL CONFORMANCE RECORD (B65 substituted): nothing was released anywhere
+
+B107-4 PART II — the journey evidence EXPIRES; the corridor's acceptance is CONSTRAINED; expansion to Polska HELD; re-acceptance over renewed evidence
+  · the corridor's acceptance was RE-ACCEPTED (v2): stands — an earlier run
+  ✓ the corridor's acceptance: v1 superseded, v2 accepted
+  ✓ the expansion hold LIFTED (open holds from the record: 0)
+  ✓ the accepted scope: corridor accepted (journeys JRN-11, JRN-24), NORDWERK Polska not_accepted
+
+B107-7 THE STATE and the LIMITS
+  · in the governance ledgers: artifacts 8549, links 15542, events 262, platform_signatures 10, domain_signatures 9, verification_records 7, open_holds 0, open_gaps 31
+  ✓ no record claims more than a DEMONSTRATION (baselines 0, acceptance records 0, design acceptances 0 beyond it; signed conformance packages 0)
+  the env lines for the walk (EYE_TEST_ADMIN_PASSWORD comes from .eye-local/env and is never printed):
+  EYE_B107_PRODUCT=e.lindgren
+  EYE_B107_PRODUCT2=r.moreau
+  EYE_B107_ASSURANCE=h.achterberg
+  EYE_B107_STEWARD=p.castellano
+  EYE_B107_OPERATIONS=k.mensah
+  EYE_B107_DESIGN=l.haddad
+  EYE_B107_DESIGN_OWNER=s.iversen
+  EYE_B107_CANDIDATE=70cad8c9-9db3-4ddd-ab6a-28d694d8b18c
+  EYE_B107_ACCEPTANCE=01a13e68-804c-72cf-9dcd-c49d673378b3
+  EYE_B107_TENANT=01a084f5-757f-7f03-9cf5-315d74426481
+  EYE_B107_DOMAIN=01a084f5-759a-751f-a1dd-38fbd7933057
+  EYE_B107_POLSKA=01a13465-fb12-7c19-9853-7a2d26107fbc
+  EYE_B107_DOMAIN_ADMIN=t.richter
+  EYE_B107_SPONSOR=w.zielinska
+  EYE_B107_POLSKA_ADMIN=k.nowak
+  EYE_B107_DATA_STEWARD=f.aydin
+  · LIMITS said — THREE CLAIMS KEPT APART. (1) CONSTRUCTION — the software and its harnesses (phase6-{prelude,registries,conformance,workspace,acceptance,design,ownership}-b107). (2) DEMONSTRATED OPERATION — what RAN here through the governed routes: the repository's registers imported read-only (the CSVs stay authoritative; EXC-P0-003 REPORTED expired — renewing or closing it is the owner's), the committed component manifest registered, the orphans and the lint STATED; an accountable owner for every capability, the decision-rights matrix and the product baseline SIGNED; the forecast contract's deterministic impact recorded as a proposal and its change proposal approved over its six plans (nothing in the contract changed); a local release candidate over REAL test runs at the deployed head, HELD by an expired export-path exception and released by its renewal over a re-run, then ATTESTED; CAP-FW-07 accepted for the corridor domain ONLY (standing for the Regensburg line; NORDWERK Polska is the out-of-scope domain — no domain named Regensburg exists), CONSTRAINED when its short-lived journey evidence expired, expansion HELD, re-accepted over renewed evidence; the design inventory, the lint, the owned assets, the attested design baselines, B92's finding taken in as a contribution and published as a pattern version (not adopted in the source — reported as drift), a design acceptance; the corridor's domain registry entry, a data authority, a stewardship case and the export component's ratified ownership. Every vendor and customer person here is SYNTHETIC — E. Lindgren, R. Moreau, H. Achterberg, P. Castellano, K. Mensah, L. Haddad and S. Iversen were created by the platform administrator for this act; every approval, attestation, acceptance and signature they gave DEMONSTRATES the software (claim: demonstration). (3) REAL ACCEPTANCE — NEVER CLAIMED: named independent and customer authorities (R2: PR-71-006, AT-71, JRN-24, CAP-DL-12), the executive attestation and the independent release authorities (H3), production admission (R1 — the admission check is the construction half), signed releases (B65 — the release candidate is a local record, never a release), SLO computation (B64), accessibility results (B108 → H3; MET-034 unsupported). The conformance packages for UX-70-006 and UX-66-006 are generated and LEFT UNSIGNED. THE ONE SUBSTITUTION: the Decision Agent's run session was opened through the identity port (act-b35's idiom) to show an agent's attestation refused. HARNESS-PROVEN ONLY (not staged here): the fault exercises (an unbound signing key, a database refusal mid-import), the repeat-exception remediation review, conflicts, the acceptance request gate (enforce_acceptance), operational and release acceptances, the design exception expiry, component reconciliation over every manifest component, the B90 residuals (phase6-*-b107).
+
+ALL SCENES HELD · 0.1 min
