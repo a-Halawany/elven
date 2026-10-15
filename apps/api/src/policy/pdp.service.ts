@@ -2650,6 +2650,59 @@ const BUNDLE_V1: Rule[] = [
   })(),
   /* end B107 conformance */
   /* B107 ownership */
+  /* B107 §DR (0115_b107_x_dr; F-P7D-25 DP-01/-04/-55, DAT-GV-01..10, ES-04/-11, PER-19; the B90 residuals DP-49-005/-006, DP-41-005). EXACT
+     rules — no `governance` prefix rule exists. THE READ governance.ownership.read (audited): the PLATFORM governance roles and the platform
+     admin (the vendor's registries; a DOMAIN route still needs a DOMAIN/TENANT role — RLS keeps customer content from a PLATFORM context),
+     the tenant's authorities, the domain's administrators, stewards, privacy officers, executives, analysts and the OWNER roles (a named owner
+     reads what it accepts). DOMAIN acts: a STEWARD or the domain admin proposes authorities, reconciles, assembles evidence; the NAMED OWNER
+     accepts and recertifies (any owner role — the port holds the "named owner" rule); a steward or the domain admin RATIFIES (human-gated; the
+     port: never the proposer, never the owner); the domain or tenant admin proposes the domain entry, the customer sponsor or the tenant admin
+     ratifies it; cases are opened by the domain's data roles and reviewed by stewards, the domain admin and the privacy officer (human-gated;
+     the port's segregation); evidence is attested by the onboarding authority or the customer sponsor (TENANT; human-gated, signed). The
+     lineage retirement (products.catalog.lineage.retire) mirrors products.catalog.lineage.declare. PLATFORM acts: the conformance steward
+     declares, imports and reconciles; the named owner accepts (any PLATFORM governance role); the product or operations authority admits and
+     ratifies transfers (human-gated, signed — never a party). The tick acts under executive.attention.tick (no rule here). */
+  ...(() => {
+    const D = (role: string): { role: string; atScope: Scope } => ({ role, atScope: 'DOMAIN' });
+    const T = (role: string): { role: string; atScope: Scope } => ({ role, atScope: 'TENANT' });
+    const P = (role: string): { role: string; atScope: Scope } => ({ role, atScope: 'PLATFORM' });
+    const gate: Obligation[] = [{ type: 'human_gate' }];
+    const r = (actionPrefix: string, requiredAnyRole: Array<{ role: string; atScope: Scope }>, obligations?: Obligation[]): Rule =>
+      ({ actionPrefix, exact: true, requiredAnyRole, ...(obligations === undefined ? {} : { obligations }), requiresPurpose: true, maxConsequence: 'C2' });
+    const govPlatform = ['product_authority', 'design_system_authority', 'independent_assurance', 'operations_authority', 'conformance_steward'].map(P);
+    const owners = ['domain_admin', 'data_steward', 'executive', 'executive_operator', 'domain_analyst', 'forecast_owner', 'strategy_owner', 'knowledge_owner', 'twin_owner',
+                    'risk_owner', 'decision_owner', 'privacy_officer', 'product_analytics_owner'].map(D);
+    const steward = [D('data_steward'), D('domain_admin')];
+    return [
+      r('governance.ownership.read', [P('platform_admin'), ...govPlatform, T('tenant_admin'), T('auditor'), T('customer_sponsor'), T('onboarding_authority'), D('attention_agent'), ...owners],
+        [{ type: 'audit_access' }]),
+      r('governance.ownership.authority.propose', steward),
+      r('governance.ownership.authority.accept', owners, gate),
+      r('governance.ownership.authority.ratify', steward, gate),
+      r('governance.ownership.authority.recertify', owners, gate),
+      r('governance.ownership.domain.propose', [D('domain_admin'), T('tenant_admin')]),
+      r('governance.ownership.domain.ratify', [T('customer_sponsor'), T('tenant_admin')], gate),
+      r('governance.ownership.reconcile', steward),
+      r('governance.ownership.gap.accept', [D('domain_admin'), T('tenant_admin')], gate),
+      r('governance.ownership.case.open', owners),
+      r('governance.ownership.case.review', [D('data_steward'), D('domain_admin'), D('privacy_officer')], gate),
+      r('governance.ownership.case.close', owners),
+      r('governance.ownership.case.withdraw', owners),
+      r('governance.ownership.evidence.assemble', steward),
+      r('governance.ownership.evidence.attest', [T('onboarding_authority'), T('customer_sponsor')], gate),
+      r('products.catalog.lineage.retire', [P('platform_admin'), ...owners], gate),
+      r('governance.ownership.capability.declare', [P('conformance_steward')]),
+      r('governance.ownership.capability.reconcile', [P('conformance_steward')]),
+      r('governance.ownership.capability.accept', govPlatform, gate),
+      r('governance.ownership.capability.admit', [P('product_authority'), P('operations_authority')], gate),
+      r('governance.ownership.component.propose', govPlatform),
+      r('governance.ownership.component.accept', govPlatform, gate),
+      r('governance.ownership.component.ratify', [P('product_authority'), P('operations_authority')], gate),
+      r('governance.ownership.component.withdraw', govPlatform),
+      r('governance.ownership.component.reconcile', [P('conformance_steward')]),
+      r('governance.ownership.platform_gap.accept', [P('product_authority'), P('operations_authority')], gate),
+    ];
+  })(),
   /* end B107 ownership */
   /* B107 workspace */
   /* end B107 workspace */
