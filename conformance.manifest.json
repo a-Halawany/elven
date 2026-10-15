@@ -205,5 +205,11 @@
   },
   "sbom": {
     "$comment": "Gate-2.1 — validated SBOM generator, pinned and tracked; CI fails when the SBOM is empty, fails CycloneDX 1.6 schema validation, or does not reconcile in BOTH directions with the dependency closure."
+  },
+  "component_manifest": {
+    "$comment": "B107 §CM (F-P7D-25: ES-02-002, ES-01-001, ES-65-001, ES-31..40-002, V04-T-004) — the GENERATED component conformance manifest: every deployable unit (API modules, workers, the web app, packages, Compose services) and the 92 logical components (L1-C01..L10-C09) as service manifests, with the CP-/INF-/DAT- catalogues. Generated from source, never edited by hand; the unit tests 'regenerated equals committed' and 'no unmapped unit' (apps/api/test/unit/governance-conformance-b107.test.ts) run inside build-test. Registered in-product by the conformance steward (governance.cm_register_manifest). A declaration (construction) — never a statement that a component is conformant, healthy or accepted.",
+    "path": "conformance/components.manifest.json",
+    "generator": "apps/api/src/governance/conformance/generate-components-manifest.mjs",
+    "schema": "eye.components-manifest/v1"
   }
 }

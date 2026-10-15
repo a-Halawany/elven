@@ -7,7 +7,8 @@
 import { Module } from '@nestjs/common';
 import { PipelineModule } from '../pipeline/pipeline.module.js';
 /* B107 registries */ /* end B107 registries */
-/* B107 conformance */ /* end B107 conformance */
+/* B107 conformance */ import { ConformanceController } from './conformance/conformance.controller.js';
+import { ConformanceService } from './conformance/conformance.service.js'; /* end B107 conformance */
 /* B107 ownership */ /* end B107 ownership */
 /* B107 workspace */ /* end B107 workspace */
 /* B107 acceptance */ /* end B107 acceptance */
@@ -17,7 +18,7 @@ import { PipelineModule } from '../pipeline/pipeline.module.js';
   imports: [PipelineModule],
   controllers: [
     /* B107 registries */ /* end B107 registries */
-    /* B107 conformance */ /* end B107 conformance */
+    /* B107 conformance */ ConformanceController, /* end B107 conformance */
     /* B107 ownership */ /* end B107 ownership */
     /* B107 workspace */ /* end B107 workspace */
     /* B107 acceptance */ /* end B107 acceptance */
@@ -25,7 +26,7 @@ import { PipelineModule } from '../pipeline/pipeline.module.js';
   ],
   providers: [
     /* B107 registries */ /* end B107 registries */
-    /* B107 conformance */ /* end B107 conformance */
+    /* B107 conformance */ ConformanceService, /* end B107 conformance */
     /* B107 ownership */ /* end B107 ownership */
     /* B107 workspace */ /* end B107 workspace */
     /* B107 acceptance */ /* end B107 acceptance */
