@@ -2735,6 +2735,39 @@ const BUNDLE_V1: Rule[] = [
   { actionPrefix: 'governance.posture.record', exact: true, requiredAnyRole: [{ role: 'conformance_steward', atScope: 'PLATFORM' }], requiresPurpose: true, maxConsequence: 'C2' },
   /* end B107 workspace */
   /* B107 acceptance */
+  /* B107 §AR (0115_b107_x_ar; F-R0-04, ES-71-*, IA/DP-71-*, PAT-48, OBJ-40, JRN-24). EXACT rules — no `governance` prefix rule exists. THE READ
+     (governance.acceptance.read: the workspace, the accepted scope, OBJ-40's preview, the replay; audited) admits every role that takes part
+     in an acceptance — the vendor's governance roles at PLATFORM, the customer's sponsor and authorities, and the domain's administrator,
+     executive, privacy officer, data steward and attention agent. EVIDENCE is recorded by the steward, the operations authority, the
+     domain admin, the lead or the onboarding authority (an agent may draft, never accept). A PROPOSAL by the product or operations authority,
+     the steward, the domain admin, the lead or the onboarding authority. The customer's VERIFICATION, every ATTESTATION, a TRIGGER, a met
+     CONDITION, a WITHDRAWAL and the ENFORCEMENT marking are HUMAN-GATED — the ports re-check the approver test (named human, the obligation's
+     role, never the proposer, never a builder, one person per obligation). The SWEEP: the steward, the operations authority, the attention
+     agent (the tick runs it under executive.attention.tick). */
+  ...((): Rule[] => {
+    const P = (role: string): { role: string; atScope: Scope } => ({ role, atScope: 'PLATFORM' });
+    const T = (role: string): { role: string; atScope: Scope } => ({ role, atScope: 'TENANT' });
+    const D = (role: string): { role: string; atScope: Scope } => ({ role, atScope: 'DOMAIN' });
+    const gate: Obligation[] = [{ type: 'human_gate' }];
+    const r = (actionPrefix: string, requiredAnyRole: Array<{ role: string; atScope: Scope }>, obligations?: Obligation[]): Rule =>
+      ({ actionPrefix, exact: true, requiredAnyRole, ...(obligations === undefined ? {} : { obligations }), requiresPurpose: true, maxConsequence: 'C2' });
+    return [
+      r('governance.acceptance.read', [P('platform_admin'), P('product_authority'), P('design_system_authority'), P('independent_assurance'), P('operations_authority'), P('conformance_steward'),
+        T('tenant_admin'), T('auditor'), T('customer_sponsor'), T('onboarding_authority'), T('implementation_lead'),
+        D('domain_admin'), D('executive'), D('privacy_officer'), D('data_steward'), D('attention_agent')], [{ type: 'audit_access' }]),
+      r('governance.acceptance.evidence.record', [P('conformance_steward'), P('operations_authority'), D('domain_admin'), T('implementation_lead'), T('onboarding_authority')]),
+      r('governance.acceptance.propose', [P('product_authority'), P('operations_authority'), P('conformance_steward'), D('domain_admin'), T('implementation_lead'), T('onboarding_authority')]),
+      r('governance.acceptance.verify', [T('customer_sponsor'), T('onboarding_authority')], gate),
+      r('governance.acceptance.attest', [P('product_authority'), P('independent_assurance'), P('operations_authority'), P('design_system_authority'), T('customer_sponsor'),
+        T('onboarding_authority'), D('privacy_officer'), D('data_steward'), D('executive')], gate),
+      r('governance.acceptance.trigger', [P('product_authority'), P('operations_authority'), P('independent_assurance'), D('domain_admin')], gate),
+      r('governance.acceptance.condition.close', [P('operations_authority'), P('independent_assurance'), P('product_authority')], gate),
+      r('governance.acceptance.withdraw', [P('product_authority'), P('operations_authority'), P('conformance_steward'), T('customer_sponsor'), T('onboarding_authority'),
+        T('implementation_lead'), D('domain_admin')], gate),
+      r('governance.acceptance.sweep', [P('conformance_steward'), P('operations_authority'), D('attention_agent')]),
+      r('governance.acceptance.enforce', [P('product_authority')], gate),
+    ];
+  })(),
   /* end B107 acceptance */
   /* B107 design */
   /* end B107 design */
