@@ -79,6 +79,13 @@ const n = async (q: ReturnType<typeof sql>) => Number(((await q.execute(h.su)).r
 const aid = async (kind: string, key: string) => String((await one(sql`select artifact_id::text as id from governance.artifacts where kind = ${kind} and external_key = ${key} and superseded_at is null`))['id']);
 /** An instant on the DATABASE's clock (as-of replays compare with clock_timestamp(); the host clock may differ by milliseconds). */
 const dbNow = async () => { await new Promise((res) => setTimeout(res, 15)); const t = String((await one(sql`select to_char(clock_timestamp() at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as t`))['t']); await new Promise((res) => setTimeout(res, 15)); return t; };
+/** B107 integration: the orphans an IMPORT of `pathLike` registered (the registry is shared — another part's planted artifact is not a register row). */
+const imported = async (orphanRows: Row[], pathLike: string): Promise<Row[]> => {
+  const ids = orphanRows.map((x) => String(x['artifact_id']));
+  const keep = new Set((await sql<{ id: string }>`select artifact_id::text as id from governance.artifacts where artifact_id = any(${ids}::uuid[]) and superseded_at is null
+                                                   and source->>'path' like ${pathLike}`.execute(h.su)).rows.map((x) => x.id));
+  return orphanRows.filter((x) => keep.has(String(x['artifact_id'])));
+};
 const cur = (kind: string, key: string) => one(sql`select artifact_id::text, version, lifecycle, digest, attributes from governance.artifacts where kind = ${kind} and external_key = ${key} and superseded_at is null`);
 
 async function person(label: string, kind: 'human' | 'agent', scope: Scope, t: string | null, d: string | null, roles: Array<{ role: string; scope: Scope }>): Promise<AuthenticatedPrincipal> {
@@ -181,17 +188,26 @@ afterAll(async () => {
 
 describe('RG1 · THE READ-ONLY IMPORT', () => {
   it('POSITIVE: the steward imports the registers — requirements, chapters, the capability and journey, the rowmap, a decision, the engineering exception, the interfaces and schemas; each source digest and the build identity recorded', async () => {
+    // B107 integration: the registry is PLATFORM-wide and shared with the other parts' harnesses — the artifacts that exist before this run's
+    // first import (another part's copies of an interface / schema / requirement under §RG's identity) are read first
+    const pre = new Set((await sql<{ id: string }>`select artifact_id::text as id from governance.artifacts where superseded_at is null`.execute(h.su)).rows.map((x) => x.id));
     const r = await importAs(steward);
     expect(r.imported.map((x) => x['source_path'])).toEqual(['audit/requirements/v00-v01.csv', 'audit/requirements/v04.csv', 'audit/requirements/v08.csv', 'audit/requirements/v09.csv',
       'audit/delivery/feature-rowmap.csv', 'DECISIONS.md', 'EXCEPTIONS.md', 'objects.interface_register', 'objects.schema_registry']);
     expect(r.imported.every((x) => x['unchanged'] === false)).toBe(true);
-    expect(r.impacts).toEqual([]); // nothing existed before: nothing changed
+    // nothing of this run's existed before: nothing of it changed — an import re-versions only a PRE-EXISTING artifact (another part's copy),
+    // and only then is an impact recorded (on a registry nobody else wrote, none)
+    const importIds = r.imported.map((x) => String(x['import_id']));
+    const changed = (await sql<{ id: string }>`select distinct unnest(changed)::text as id from governance.rg_imports where import_id = any(${importIds}::uuid[])`.execute(h.su)).rows.map((x) => x.id);
+    expect(changed.filter((id) => !pre.has(id))).toEqual([]);
+    expect(r.impacts).toHaveLength(changed.length === 0 ? 0 : 1);
     expect(await cur('requirement', `V4:${R.r2}`)).toMatchObject({ version: 1, lifecycle: 'active', attributes: { verification_method: 'executed (harness)', verification_basis: 'register_status', mandatory: true } });
     expect(await cur('requirement', `V4:${R.r4}`)).toMatchObject({ attributes: { obligations: 2 } });
     expect(await cur('capability', R.cap)).toMatchObject({ version: 1 });
     expect(await cur('journey', R.jrn)).toMatchObject({ version: 1 });
     expect(await cur('exception', `EXCEPTIONS.md:${R.exc}`)).toMatchObject({ lifecycle: 'active', attributes: { class: 'engineering', expiry_date: '2026-09-30' } });
-    expect(await n(sql`select count(*)::int as n from governance.artifacts where kind = 'interface' and superseded_at is null`)).toBe(50);
+    // the interface register's 50 rows (scoped to the register's source: another part may register an interface of its own)
+    expect(await n(sql`select count(*)::int as n from governance.artifacts where kind = 'interface' and superseded_at is null and source->>'path' = 'objects.interface_register'`)).toBe(50);
     expect(await n(sql`select count(*)::int as n from governance.links_live l where l.from_artifact = ${await aid('capability', R.cap)}::uuid and l.relation = 'maps_to'`)).toBe(3); // V8 row, V9 row, V9 chapter 36
     const imp = await one(sql`select source_digest, build_identity, counts from governance.rg_imports where source_path = 'audit/requirements/v04.csv'`);
     expect(imp['source_digest']).toBe(sha(readFileSync(join(SYN, 'audit/requirements/v04.csv'))));
@@ -337,7 +353,8 @@ describe('RG3 · TRACE LINKS — BIDIRECTIONAL, VERSIONED, APPEND-ONLY, AS OF', 
 describe('RG4 · ORPHANS — LISTED, NEVER HIDDEN', () => {
   it('the unmapped requirement (RG-O01), the method-less mandatory requirement (RG-V01), the unanchored chapters (RG-O03) — counted and listed; a recorded link clears one', async () => {
     let o = (await orphans()).orphans;
-    expect(keysOf(ruleOf(o, 'RG-O01').orphans)).toContain(`V4:${R.r3}`);
+    // (the full RG-O01 list: the other parts' requirements may precede this run's keys in the first page)
+    expect(keysOf(ruleOf((await orphans({ rule: 'RG-O01', limit: 500 })).orphans, 'RG-O01').orphans)).toContain(`V4:${R.r3}`);
     const v01 = (await orphans({ rule: 'RG-V01', limit: 500 })).orphans;
     expect(keysOf(ruleOf(v01, 'RG-V01').orphans)).toContain(`V4:${R.r3}`);
     expect(keysOf(ruleOf(v01, 'RG-V01').orphans)).not.toContain(`V4:${R.r2}`); // executed (harness): a method
@@ -588,17 +605,21 @@ describe('RG9 · THE REAL REPOSITORY REGISTERS (read-only)', () => {
     expect(r.imported.find((x) => x['source_path'] === 'objects.interface_register')).toMatchObject({ unchanged: false, counts: { links_added: 50 } });
     expect(await n(sql`select count(*)::int as n from governance.artifacts where kind = 'requirement' and superseded_at is null and lifecycle = 'active' and source->>'source_digest' is not null
                         and source->>'path' like 'audit/requirements/%'`)).toBe(6264);
-    expect(await n(sql`select count(*)::int as n from governance.artifacts where kind = 'capability' and superseded_at is null and lifecycle = 'active' and controlling_volume = 'V8'`)).toBe(108);
-    expect(await n(sql`select count(*)::int as n from governance.artifacts where kind = 'capability' and superseded_at is null and lifecycle = 'active' and controlling_volume = 'V9'`)).toBeGreaterThan(0);
+    // the capabilities the REAL registers declare (scoped to their source: the other parts plant capabilities of their own)
+    expect(await n(sql`select count(*)::int as n from governance.artifacts where kind = 'capability' and superseded_at is null and lifecycle = 'active' and controlling_volume = 'V8'
+                        and source->>'path' like 'audit/requirements/%'`)).toBe(108);
+    expect(await n(sql`select count(*)::int as n from governance.artifacts where kind = 'capability' and superseded_at is null and lifecycle = 'active' and controlling_volume = 'V9'
+                        and source->>'path' like 'audit/requirements/%'`)).toBeGreaterThan(0);
     const again = await importAs(steward, ['requirements', 'rowmap', 'decisions', 'exceptions', 'interfaces']);
     expect(again.imported.every((x) => x['unchanged'] === true)).toBe(true);
     expect(files.map((f) => sha(readFileSync(join(REPO, f))))).toEqual(before);
     const o = (await orphans({ rule: 'RG-O01', limit: 500 })).orphans;
-    expect(keysOf(ruleOf(o, 'RG-O01').orphans).filter((k) => !String(k).includes(P))).toEqual([]); // the rowmap maps every real row to a feature (only this run's registered rows remain)
+    // the rowmap maps every real row to a feature (only this run's registered rows — and the other parts' own requirements — remain)
+    expect(keysOf(await imported(ruleOf(o, 'RG-O01').orphans, 'audit/requirements/%')).filter((k) => !String(k).includes(P))).toEqual([]);
     expect(took).toBeLessThan(240_000);
     // the overview over the real registers answers inside its authorization context; the real sources read IN SYNC
     const ov = await api.read(preq(product)) as Row;
-    expect(ruleOf((await orphans({ rule: 'RG-O15', limit: 1 })).orphans, 'RG-O15').count).toBe(0); // every interface maps to its V3 row
+    expect(keysOf(await imported(ruleOf((await orphans({ rule: 'RG-O15', limit: 500 })).orphans, 'RG-O15').orphans, 'objects.interface_register'))).toEqual([]); // every REGISTER interface maps to its V3 row
     for (const f of ['audit/requirements/v04.csv', 'audit/delivery/feature-rowmap.csv', 'DECISIONS.md', 'EXCEPTIONS.md']) {
       expect((ov['reconciliation'] as Row[]).find((x) => x['source_path'] === f)).toMatchObject({ state: 'in_sync' });
     }

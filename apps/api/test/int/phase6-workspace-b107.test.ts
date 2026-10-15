@@ -328,6 +328,19 @@ describe('PG2 · decision rights: singular, separated, delegated, enforced (CAP-
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════════
 describe('PG1 (cont.) · the baseline signed, then held again by a lapsed owner', () => {
+  it('B107 integration — the baseline is over the WHOLE capability inventory (shared with §RG\'s import, §DR\'s seed and the other parts\' capabilities): every current capability without an accountable owner is ADOPTED by the product authority through the governed route, as an operator would, before the baseline is proposed again', async () => {
+    const inv = (await home())['inventory'] as Row;
+    const orphans = ((inv['capabilities'] ?? []) as Row[]).filter((c) => c['standing'] === 'orphan');
+    for (const c of orphans) {
+      // the capability's declared domain, else its controlling volume (a true duplicate — one title in one boundary — still reads as a gap)
+      const boundary = `${String(c['domain_boundary'] ?? c['controlling_volume'] ?? 'Unbounded')} (adopted)`;
+      expect((await assign(productA, String(c['capability_id']), productA.principalId, 'product_authority', boundary)).owner).toMatchObject({ version: 1, previous_owner: null });
+    }
+    const after = (await home())['inventory'] as Row;
+    expect(after['orphans']).toEqual([]);
+    expect(after['duplicates']).toEqual([]);
+    expect(after['lapsed']).toEqual([]);
+  });
   it('a STALE proposal (the owners moved since) is refused; the current proposal is SIGNED by the product authority (never its proposer)', async () => {
     const v2 = (await proposeBaseline(steward, BL, 1)).baseline;
     expect(v2).toMatchObject({ version: 2, signable: true, gaps: [] });
@@ -342,7 +355,10 @@ describe('PG1 (cont.) · the baseline signed, then held again by a lapsed owner'
       where b.baseline_id = ${BL}::uuid and b.version = 3`);
     expect(row).toMatchObject({ state: 'signed', signer: productB.principalId, bound_action: 'governance.baseline.decide' });
     expect(Object.keys(row['scope_tuple'] as Row).sort()).toEqual(['capability_version', 'configuration_digest', 'consequence_class', 'data_versions', 'deployment_profile', 'entitlement', 'journeys', 'model_versions', 'period', 'roles', 'tenant_or_domain']);
-    expect(await one(sql`select count(*)::int as n from governance.links_live where to_artifact = ${BL}::uuid and relation = 'part_of'`)).toEqual({ n: 3 });
+    // every capability of the signed inventory is part_of the baseline (this run's three and every adopted one)
+    expect(Number(v3['capabilities'])).toBeGreaterThanOrEqual(3);
+    expect(await one(sql`select count(*)::int as n from governance.links_live where to_artifact = ${BL}::uuid and relation = 'part_of'`)).toEqual({ n: Number(v3['capabilities']) });
+    expect(await one(sql`select count(*)::int as n from governance.links_live where to_artifact = ${BL}::uuid and relation = 'part_of' and from_artifact in (${A['capA']}::uuid, ${A['capB']}::uuid, ${A['capC']}::uuid)`)).toEqual({ n: 3 });
     expect((((await home())['posture'] as Row)['dimensions'] as Record<string, Row>)['baseline']?.['state']).toBe('conformant');
   });
   it('the scope tuple is exact: a proposal missing a dimension is refused', async () => {
@@ -691,7 +707,10 @@ describe('PG7 · unauthorized role, cross-tenant, replay, the fault exercise, th
   it('REPLAY: the ledger reconstructs the exception\'s life; every recorded platform signature verifies against the bound key', async () => {
     const life = await rows(sql`select version, event from governance.events where subject_id = ${EX}::uuid order by occurred_at`);
     expect(life.map((x) => `${String(x['version'])}:${String(x['event'])}`)).toEqual(['1:exception.proposed', '1:exception.approved', '1:exception.expired', '2:exception.renewal_proposed', '2:exception.renewed', '2:exception.closed']);
-    const sigs = await rows(sql`select key_id, signature, subject_digest from governance.signatures where bound_action like 'governance.%' and signer_role is not null and key_id like 'ed25519:%' and signature ~ '^[A-Za-z0-9+/]{86}==$'`);
+    // (this run's signers: the other parts' harnesses sign with keys bound in their own processes)
+    const signers = [productA, productB, assurance, assurance2, assurance3, steward, ops, compOwner].map((x) => x.principalId);
+    const sigs = await rows(sql`select key_id, signature, subject_digest from governance.signatures where bound_action like 'governance.%' and signer_role is not null and key_id like 'ed25519:%' and signature ~ '^[A-Za-z0-9+/]{86}==$'
+      and signer = any(${signers}::uuid[])`);
     expect(sigs.length).toBeGreaterThanOrEqual(6);
     for (const s of sigs) expect(svc.verifySignature(s as never)).toBe(true);
   });

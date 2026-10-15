@@ -122,14 +122,37 @@ async function viaPort<T>(as: AuthenticatedPrincipal, action: string, fn: (cap: 
 const committedIndex = () => { const m = readCommittedManifest(manifestPath()); return { m, index: m.index as unknown as Row, summary: m.summary ?? {} }; };
 
 let slot = 0;
-const tick = async () => {
+const rawTick = async () => {
   const timer = h.app.get(AttentionTimerService);
   const o = await timer.tickNow({ tenantId: T(), domainId: D(), agentId, scheduledAt: new Date(Date.UTC(2035, 0, 1) + (slot++) * 60_000) });
   expect(o.outcome, JSON.stringify(o.run?.outputs ?? o.stopReason).slice(0, 600)).toBe('finished');
   const after = (o.run?.outputs['after'] ?? {}) as Record<string, Row>;
   return after['governance-conformance'] ?? {};
 };
+/** B107 integration: the monitor is PLATFORM-wide — besides this run's candidates and manifest it REPORTS every exception artifact past its
+ *  expiry, the other parts' included (§PG's exceptions, planted ones). A foreign exception expiring while this harness runs is opened (and later
+ *  resolved) by this harness's tick; the counts this harness asserts are its own: the foreign reports are subtracted, read on the database clock. */
+const MINE = new Set<string>();   // this run's exception artifacts
+const tick = async () => {
+  const t0 = String((await one(sql`select clock_timestamp()::text as t`))['t']);
+  const a = await rawTick();
+  const foreign = await one(sql`select count(*) filter (where opened_at >= ${t0}::timestamptz)::int as o, count(*) filter (where resolved_at >= ${t0}::timestamptz)::int as r
+    from governance.cm_findings where kind = 'exception_expiry_reported' and not (subject_artifact = any(${[...MINE]}::uuid[]))`);
+  return { ...a, opened: Number(a['opened'] ?? 0) - Number(foreign['o']), resolved: Number(a['resolved'] ?? 0) - Number(foreign['r']) } as Row;
+};
 const openFindings = async (kind: string) => rows(sql`select finding_id::text, fingerprint, subject_artifact::text, summary from governance.cm_findings where kind = ${kind} and state = 'open' order by opened_at`);
+/** B107 integration: what the link pass leaves UNRESOLVED now — the committed index's requirement and interface references with no current
+ *  PLATFORM artifact of that kind and key (counted per reference, as the pass counts them). The registry is shared: another part's harness may
+ *  already have imported §RG's real registers, so the count is read, never assumed. */
+const unresolvedNow = async () => {
+  const comps = committedIndex().index['components'] as Row[];
+  const reqs = comps.map((c) => c['requirement']).filter((x): x is string => typeof x === 'string');
+  const ifs = comps.flatMap((c) => ((c['interfaces'] ?? []) as unknown[]).map(String));
+  const have = async (kind: string, keys: string[]) => new Set((await sql<{ k: string }>`select distinct external_key as k from governance.artifacts where kind = ${kind} and scope = 'PLATFORM'
+    and superseded_at is null and external_key = any(${keys}::text[])`.execute(h.su)).rows.map((x) => x.k));
+  const hr = await have('requirement', reqs); const hi = await have('interface', ifs);
+  return { referenced: { requirements: reqs.length, interfaces: ifs.length }, requirements: reqs.filter((k) => !hr.has(k)).length, interfaces: ifs.filter((k) => !hi.has(k)).length };
+};
 const holdsOn = async (id: string) => rows(sql`select hold_id::text, reason_kind, reason, source_artifact::text, lifted_at from governance.holds where subject_artifact = ${id}::uuid order by opened_at`);
 const openHoldsOn = async (id: string) => (await holdsOn(id)).filter((x) => x['lifted_at'] === null);
 
@@ -202,12 +225,14 @@ describe('CM1 · the component manifest (ES-01-001, ES-02-002, ES-31..40-002, IA
       fileDigest: 'd'.repeat(64), index, summary, actor: product.principalId, correlationId: uuidv7() })), /^conformance manifest rejected \(actor\)/, 403);
   });
   it('POSITIVE + RECOVERY: the steward registers the COMMITTED manifest — v1, every unit and component an artifact, the links derived, §RG\'s missing references COUNTED; the unmapped finding resolved', async () => {
+    const unres = await unresolvedNow();
+    expect(unres.referenced).toEqual({ requirements: 288, interfaces: 460 });   // the committed manifest's references (all unresolved on a registry §RG never filled)
     const r = (await register()).manifest;
     expect(r).toMatchObject({ version: 1, units: 31, components: 298, findings_resolved: 2 });
     MANIFEST = String(r['manifest_id']);
     const links = r['links'] as Row;
     expect(Number(links['links_added'])).toBeGreaterThan(500);
-    expect(links['unresolved']).toMatchObject({ requirements: 288, interfaces: 460 });
+    expect(links['unresolved']).toMatchObject({ requirements: unres.requirements, interfaces: unres.interfaces });
     expect(await openFindings('unmapped_unit')).toHaveLength(0);
     const counts = await rows(sql`select kind, count(*)::int n from governance.artifacts where superseded_at is null and source ->> 'part' = 'cm' group by 1 order by 1`);
     expect(counts).toEqual([{ kind: 'component', n: 298 }, { kind: 'deployable_unit', n: 31 }, { kind: 'manifest', n: 1 }]);
@@ -217,20 +242,30 @@ describe('CM1 · the component manifest (ES-01-001, ES-02-002, ES-31..40-002, IA
     expect(await one(sql`select event from governance.events where subject_id = ${MANIFEST}::uuid and event = 'manifest.registered'`)).toEqual({ event: 'manifest.registered' });
   });
   it('IDEMPOTENT + §RG\'s artifacts: the same digest is UNCHANGED; once the requirement, interface and schema artifacts exist, the re-registration links them', async () => {
-    const plant = (kind: string, key: string) => sql`insert into governance.artifacts (artifact_id, version, scope, kind, external_key, title, digest, recorded_by, correlation_id, source)
-      values (${uuidv7()}::uuid, 1, 'PLATFORM', ${kind}, ${key}, ${`${key} (SYNTHETIC — as §RG's importer registers it)`}, ${'e'.repeat(64)}, ${steward.principalId}::uuid, ${uuidv7()}::uuid, '{"part":"rg"}'::jsonb)`.execute(h.su);
-    await plant('requirement', 'V3:L1-C01'); await plant('interface', 'L1-I01'); await plant('schema', 'SRC@v2'); await plant('schema', 'SRC@v3');
+    // B107 integration: §RG's artifacts are planted ONLY where §RG has not registered them already (the registry is shared — §RG's harness may
+    // have imported the real registers), and under §RG's own deterministic identity, so a later §RG import versions them instead of refusing
+    // a second identity for one key
+    const plant = async (kind: string, key: string): Promise<boolean> => {
+      if ((await one(sql`select artifact_id from governance.artifacts where kind = ${kind} and external_key = ${key} and scope = 'PLATFORM' and superseded_at is null`))['artifact_id'] !== undefined) return false;
+      await sql`insert into governance.artifacts (artifact_id, version, scope, kind, external_key, title, digest, recorded_by, correlation_id, source)
+        values (governance.rg_artifact_id(${kind}, ${key}), 1, 'PLATFORM', ${kind}, ${key}, ${`${key} (SYNTHETIC — as §RG's importer registers it)`}, ${'e'.repeat(64)}, ${steward.principalId}::uuid, ${uuidv7()}::uuid, '{"part":"rg"}'::jsonb)`.execute(h.su);
+      return true;
+    };
+    const before = await unresolvedNow();
+    const planted = { req: await plant('requirement', 'V3:L1-C01'), iface: await plant('interface', 'L1-I01'), s2: await plant('schema', 'SRC@v2'), s3: await plant('schema', 'SRC@v3') };
     const r = (await register()).manifest;
     expect(r).toMatchObject({ unchanged: true, version: 1 });
     const links = r['links'] as Row;
-    expect(Number(links['links_added'])).toBeGreaterThanOrEqual(3);
-    expect(links['unresolved']).toMatchObject({ requirements: 287 });
+    expect(Number(links['links_added'])).toBeGreaterThanOrEqual((planted.req ? 1 : 0) + (planted.iface ? 1 : 0) + (planted.s2 || planted.s3 ? 1 : 0));
+    const after = await unresolvedNow();
+    expect(after.requirements).toBe(before.requirements - (planted.req ? 1 : 0));   // V3:L1-C01 resolved now (by the plant, or by §RG's import before it)
+    expect(links['unresolved']).toMatchObject({ requirements: after.requirements, interfaces: after.interfaces });
     const mapsTo = await one(sql`select count(*)::int n from governance.links_live l join governance.artifacts c on c.artifact_id = l.from_artifact and c.superseded_at is null
       join governance.artifacts q on q.artifact_id = l.to_artifact where c.external_key = 'L1-C01' and l.relation = 'maps_to' and q.external_key = 'V3:L1-C01'`);
     expect(mapsTo).toEqual({ n: 1 });
     const schema = await rows(sql`select q.external_key from governance.links_live l join governance.artifacts c on c.artifact_id = l.from_artifact and c.superseded_at is null
-      join governance.artifacts q on q.artifact_id = l.to_artifact where c.external_key = 'L1-C01' and l.relation = 'consumes' and q.kind = 'schema'`);
-    expect(schema).toEqual([{ external_key: 'SRC@v3' }]);   // the CURRENT version of the type
+      join governance.artifacts q on q.artifact_id = l.to_artifact where c.external_key = 'L1-C01' and l.relation = 'consumes' and q.kind = 'schema' and q.external_key like 'SRC@%'`);
+    expect(schema).toEqual([{ external_key: 'SRC@v3' }]);   // the CURRENT version of the type (B107 integration: SRC's — §RG's import may have registered L1-C01's other types too)
     expect(Number(((await register()).manifest['links'] as Row)['links_added'])).toBe(0);
   });
   it('CORRECTION: a changed manifest is a new version (a unit gone RETIRED, its links retired); the committed one is v3 and restores it', async () => {
@@ -424,15 +459,15 @@ describe('CM3 · the local conformance monitor under the attention tick (V03-T-4
     expect(await openFindings('evidence_expired')).toHaveLength(0);
   });
   it('EXCEPTIONS: an expired-exception hold on a live candidate is REPORTED (no second hold); an exception artifact past its expiry is reported', async () => {
-    const hold = uuidv7();
+    const hold = uuidv7(); const exc = uuidv7(); MINE.add(exc);
     await sql`insert into governance.holds (hold_id, scope, subject_artifact, reason_kind, reason, opened_by, correlation_id)
       values (${hold}::uuid, 'PLATFORM', ${EXPIRING}::uuid, 'exception_expired', 'EXC-SYN-02 on the export path expired (SYNTHETIC — as §PG opens it)', ${product.principalId}::uuid, ${uuidv7()}::uuid)`.execute(h.su);
     await sql`insert into governance.artifacts (artifact_id, version, scope, kind, external_key, title, digest, recorded_by, correlation_id, attributes, source)
-      values (${uuidv7()}::uuid, 1, 'PLATFORM', 'exception', ${`EXC-SYN-${RUN}`}, 'an export-path exception (SYNTHETIC — as §PG registers it)', ${'4'.repeat(64)}, ${product.principalId}::uuid, ${uuidv7()}::uuid,
+      values (${exc}::uuid, 1, 'PLATFORM', 'exception', ${`EXC-SYN-${RUN}`}, 'an export-path exception (SYNTHETIC — as §PG registers it)', ${'4'.repeat(64)}, ${product.principalId}::uuid, ${uuidv7()}::uuid,
               ${JSON.stringify({ expires_at: iso(Date.now() - DAY) })}::jsonb, '{"part":"pg"}'::jsonb)`.execute(h.su);
     expect(await tick()).toMatchObject({ opened: 2, holds_opened: 0 });
     expect((await openFindings('exception_expired')).map((f) => f['fingerprint'])).toEqual([`exception_expired:${hold}`]);
-    expect(await openFindings('exception_expiry_reported')).toHaveLength(1);
+    expect((await openFindings('exception_expiry_reported')).filter((f) => f['subject_artifact'] === exc)).toHaveLength(1);   // (the other parts' expired exceptions are reported too)
     await sql`update governance.holds set lifted_at = clock_timestamp(), lifted_by = ${product.principalId}::uuid, lift_reason = 'renewed (SYNTHETIC)' where hold_id = ${hold}::uuid`.execute(h.su);
     expect(await tick()).toMatchObject({ resolved: 1 });
   });

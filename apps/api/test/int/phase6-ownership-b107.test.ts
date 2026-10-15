@@ -45,6 +45,7 @@ import { ATTENTION_TIMER_DIGEST, ATTENTION_TIMER_VERSION } from '../../src/execu
 import { OwnershipDomainController, OwnershipPlatformController } from '../../src/governance/ownership/ownership.controller.js';
 import { OwnershipService, requirementFile } from '../../src/governance/ownership/ownership.service.js';
 import { OwnershipCap } from '../../src/governance/ownership/ownership.capabilities.js';
+import { normalisePath } from '../../src/governance/ownership/ownership-logic.js';
 import { Phase4Harness } from './phase4-helpers.js';
 
 // THE SIGNING KEY (the B36 signer's discipline): generated here, bound in the process before the boot — one key for the executive and the
@@ -595,7 +596,13 @@ describe('DR5 · component ownership and the ratified transfer (ES-04-001/-002, 
     const l = (await lint(prodAuth)).lint;
     expect(arr(l['covered']).some((x) => x['path'] === '/v1/governance/ownership/read' && x['component'] === `L3-C04-${RUN}`)).toBe(true);
     expect(Number(l['unowned_count'])).toBeGreaterThan(50);
-    expect(arr(l['unowned']).some((x) => String(x['path']).startsWith('/v1/tenants/:tenantId/domains/:domainId/governance/ownership'))).toBe(true);
+    // B107 integration: the listing carries the first 500 unowned routes (sorted by path) with their full COUNT — after the fold the API serves
+    // more unowned routes than that, so the domain ownership routes are proven unowned as the complement: served, neither covered nor ambiguous
+    const domainRoutes = svc.routes().map((x) => ({ ...x, path: normalisePath(x.path) })).filter((x) => x.path.startsWith('/v1/tenants/:tenantId/domains/:domainId/governance/ownership'));
+    expect(domainRoutes.length).toBeGreaterThan(0);
+    const listed = [...arr(l['covered']), ...arr(l['ambiguous'])].map((x) => String(x['path']));
+    expect(domainRoutes.filter((x) => listed.some((p) => p === x.path))).toEqual([]);
+    expect(Number(l['unowned_count'])).toBe(Number(l['routes']) - arr(l['covered']).length - arr(l['ambiguous']).length);
     const seen = await h.pipeline.consequentialRead(env(prodAuth, 'governance.ownership.read', 'PLATFORM', null, null), prodAuth, { scope: 'PLATFORM', tenantId: null, domainId: null, action: 'governance.ownership.read', objectType: null, objectId: null },
       OwnershipCap, async (cap) => cap.call<{ n: number }>(sql`select (select count(*)::int from governance.stewardship_cases) + (select count(*)::int from governance.data_authorities) as n`));
     expect(seen.result[0]!.n).toBe(0);
