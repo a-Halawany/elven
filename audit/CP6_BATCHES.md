@@ -6877,7 +6877,10 @@ The owner's word of 2026-10-15: before #89 merged, correct the B94-F support-ses
 - **Re-derived in order** (tracker → schedule → tracker; summarise, summarise-units, controls — all passed): rows implemented 1522 → **1708**; **M1 (3 accounts, expected) 2027-07-14 → 2027-07-27 (B100, A2)** — B107 now sits on A1 at its modeled slot; the 4-account figure moves 2027-07-21 → 2027-09-01 (a list-scheduling effect of the same reassignment, not a finding); the next A1 stage in the schedule is **B106** (which depends on B65, not delivered — the owner's sequencing call); the acceptance split unchanged (3,555 = 3,179 + 339 + 37).
 
 ### B107.7 — the gates and the hosted run
-«GATES»
+- **Local at `9c6f79e`** (one at a time, Redis :6394 flushed): build; web 413/413; `pnpm boundaries`; the complete integration **2788/2788** in 171 files on a fresh database; acceptance 58/58; **the upgrade proof PASS**.
+- API unit at `9c6f79e`: 3624/3627. Two of the three failures were MINE — the records were being edited in the worktree while the suite ran, and the C15 "no repository file" control and the C16 frozen-verifier case both require a clean tree. **Re-run on the clean committed head `5ee710c`: 3626/3627.** The one remaining failure is `c15-runner-behaviour` ("a DETECTED SECRET fails the gate … writes an auditable manifest"): its hermetic child reached the 60 s ceiling (`spawnSync ETIMEDOUT`) in BOTH full-suite runs. Unlike B94's case, no other gate job was running (load average ~3, the live demonstration's API, web and attention ticks). **Run alone, the file passed 45/45** (666 s). Contention inside the parallel unit suite is SUSPECTED; the cause is NOT independently established. The control, its 60 s ceiling and its boundary are unchanged; the hosted build-test decides.
+- The records commit after `9c6f79e` changes documentation and the ledger only (no test reads them).
+- **Hosted**, the merge and main's chain: recorded in the next delivery record.
 
 ## Order and the next implementation batch
 
