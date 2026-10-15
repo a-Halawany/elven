@@ -2628,6 +2628,26 @@ const BUNDLE_V1: Rule[] = [
   })(),
   /* end B107 registries */
   /* B107 conformance */
+  /* B107 §CM (0115_b107_x_cm; F-P7D-25: ES-01-005, ES-02-002, V03-T-479, IA-01-005/-006, DAT-GV-09). EXACT rules — no `governance` prefix rule
+     exists. REGISTER the committed component manifest, ASSEMBLE / CHECK a release candidate (B65 SUBSTITUTED — not a release): the conformance
+     steward (PLATFORM; it approves nothing). ATTEST a conformant candidate: independent assurance (PLATFORM; human-gated — the port re-checks
+     the approver test: a named human, never the proposer, never a builder, never an agent). WITHDRAW: the steward or the product authority.
+     THE MONITOR: the attention agent (DOMAIN — the after-tick hook `governance-conformance`, its own action) or the steward (PLATFORM). The
+     reads are §0's governance.read. */
+  ...((): Rule[] => {
+    const P = (role: string): { role: string; atScope: Scope } => ({ role, atScope: 'PLATFORM' });
+    const gate: Obligation[] = [{ type: 'human_gate' }];
+    const r = (actionPrefix: string, requiredAnyRole: Array<{ role: string; atScope: Scope }>, obligations?: Obligation[]): Rule =>
+      ({ actionPrefix, exact: true, requiredAnyRole, ...(obligations === undefined ? {} : { obligations }), requiresPurpose: true, maxConsequence: 'C2' });
+    return [
+      r('governance.conformance.manifest.register', [P('conformance_steward')]),
+      r('governance.conformance.candidate.assemble', [P('conformance_steward')]),
+      r('governance.conformance.candidate.check', [P('conformance_steward')]),
+      r('governance.conformance.candidate.attest', [P('independent_assurance')], gate),
+      r('governance.conformance.candidate.withdraw', [P('conformance_steward'), P('product_authority')]),
+      r('governance.conformance.monitor', [P('conformance_steward'), { role: 'attention_agent', atScope: 'DOMAIN' }]),
+    ];
+  })(),
   /* end B107 conformance */
   /* B107 ownership */
   /* end B107 ownership */
@@ -2817,6 +2837,12 @@ const BUNDLE_V1: Rule[] = [
   { actionPrefix: 'prediction.exposure.learn', exact: true, requiredAnyRole: [{ role: 'risk_owner', atScope: 'DOMAIN' }, { role: 'opportunity_sponsor', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   /* end B36 collab */
 ];
+
+/* B107 conformance */
+/** B107 §CM: the DIGEST of the policy bundle this runtime enforces (bundle-v1's rules, canonicalised) — what a release candidate binds and the
+ *  conformance monitor compares (a changed rule is a changed digest; `bundleVersion` alone does not move). */
+export function policyBundleDigest(): string { return contentDigest(BUNDLE_V1 as unknown); }
+/* end B107 conformance */
 
 const CONSEQ_ORDER: ConsequenceClass[] = ['C0', 'C1', 'C2', 'C3', 'C4'];
 
