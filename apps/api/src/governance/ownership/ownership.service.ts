@@ -304,7 +304,7 @@ export class OwnershipService implements OnModuleInit {
     const out = await this.read(env, p, null, READ, 'GCO', null, async (cap) => ({ owners: await cap.ownedContracts(), read_at: await cap.now() }));
     const routes = this.routes();
     const result = lintOwnedRoutes(routes, out.result.owners);
-    return { lint: { ...result, unowned_count: result.unowned.length, unowned: result.unowned.slice(0, 500) }, owners: out.result.owners.length, read_at: out.result.read_at, receipt: receipt(out) };
+    return { lint: { ...result, unowned_count: result.unowned.length, unowned: result.unowned /* B107 integration: every unowned route listed — ES-11-002 'never hidden'; the former 500 cap hid 706 of 1,206 */ }, owners: out.result.owners.length, read_at: out.result.read_at, receipt: receipt(out) };
   }
   /** Every HTTP route this application serves (method + path), read from the controllers' Nest metadata. */
   routes(): Route[] {
