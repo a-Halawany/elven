@@ -186,6 +186,7 @@ beforeAll(async () => {
   A['jrn'] = await plant('journey', 'JRN-24', { title: 'Release acceptance journey (SYNTHETIC)', volume: 'V8' });
   A['test'] = await plant('test', 'phase6-forecast-test', { title: 'NORDWERK forecast contract test (SYNTHETIC)' });
   A['brief'] = await plant('evidence', 'briefing-forecast', { title: 'NORDWERK briefing citing the forecast (SYNTHETIC)' });
+  A['dp'] = await plant('data_product', 'DP-export-feed', { title: 'NORDWERK export feed (SYNTHETIC data product)' });
   A['rc1'] = await plant('release_candidate', 'RC-1', { title: 'Release candidate 1 (SYNTHETIC — §CM substitute record, not a release)' });
   await sleep(20);
   A['rc2'] = await plant('release_candidate', 'RC-2', { title: 'Release candidate 2 (SYNTHETIC — §CM substitute record, not a release)' });
@@ -371,7 +372,7 @@ const EXPORT_EXCEPTION = (over: Row = {}) => ({
   evidence: [ev('vitest:phase6-export-b15')], risk: { level: 'medium', statement: 'an export delivered unsigned for a bounded window (SYNTHETIC)' },
   affectedInvariants: ['export_integrity'], compensatingControls: ['the receipt digest is verified on the recipient side', 'the export is held for manual release'],
   owner: ops.principalId, expandsAuthority: true, removesControl: false, expiresAt: inSec(12), monitoring: 'the conformance monitor reads the export receipts daily',
-  exitCriteria: 'the signing component signs every export with the bound key', remediationPlan: 'harden the signing component in the next candidate', affectedArtifacts: [A['rc2']], ...over });
+  exitCriteria: 'the signing component signs every export with the bound key', remediationPlan: 'harden the signing component in the next candidate', affectedArtifacts: [A['rc2'], A['dp']], ...over });
 
 describe('PG3 · THE ONE exception registry (V03-T-451/-453, ES-02-004, DAT-GV-08, CAP-AU-10)', () => {
   it('refusals at proposal: a constitutional boundary, "later" as an expiry, more than 366 days, an unknown artifact, a malformed scope', async () => {
@@ -427,6 +428,8 @@ describe('PG3 · THE ONE exception registry (V03-T-451/-453, ES-02-004, DAT-GV-0
     const hold = await one(sql`select reason_kind, lifted_at, reason from governance.holds where subject_artifact = ${A['rc2']}::uuid and source_artifact = ${EX}::uuid`);
     expect(hold).toMatchObject({ reason_kind: 'exception_expired', lifted_at: null });
     expect(String(hold['reason'])).toMatch(/held until a renewal with current evidence is approved independently/);
+    // DP-02-005: a data exception's expiry holds the affected data release too
+    expect(await one(sql`select reason_kind, lifted_at from governance.holds where subject_artifact = ${A['dp']}::uuid and source_artifact = ${EX}::uuid`)).toEqual({ reason_kind: 'exception_expired', lifted_at: null });
     expect((await sweep()).sweep['expired']).toEqual([]);   // idempotent: nothing written when nothing expired
     expect((await sweep(stewardAgent)).sweep['expired']).toEqual([]);   // an agent steward may run it: the sweep is not an approval
     const rc = ((await home())['release_candidates'] as Row[]).find((x) => x['artifact_id'] === A['rc2'])!;
@@ -460,7 +463,7 @@ describe('PG3 · THE ONE exception registry (V03-T-451/-453, ES-02-004, DAT-GV-0
     expect(String(pv['consequence'])).toMatch(/every hold its expiry opened is LIFTED/);
     const a = (await decideEx(assurance2, EX, { version: 2, decision: 'approve', digest: r['digest'] })).exception;
     expect(a).toMatchObject({ state: 'approved' });
-    expect((a['holds_lifted'] as Row[]).map((x) => x['subject'])).toEqual([A['rc2']]);
+    expect((a['holds_lifted'] as Row[]).map((x) => x['subject'])).toEqual([A['rc2'], A['dp']].sort());
     expect(await one(sql`select state from governance.ws_exceptions where exception_id = ${EX}::uuid and version = 1`)).toEqual({ state: 'superseded' });
     const lifted = await one(sql`select lifted_by::text as by, lift_reason from governance.holds where subject_artifact = ${A['rc2']}::uuid and source_artifact = ${EX}::uuid`);
     expect(lifted['by']).toBe(assurance2.principalId);
@@ -600,6 +603,14 @@ describe('PG5 · the conflict register (FEX-32, IA-02-005, DP-02-005, PR-01-005,
     expect((res['holds_lifted'] as Row[]).map((x) => x['subject'])).toEqual([A['rc3']]);
     expect(await rows(sql`select relation from governance.links_live where from_artifact = ${A['reqV3']}::uuid and to_artifact in (${A['jrn']}::uuid, ${A['reqV4']}::uuid) order by relation`)).toEqual([{ relation: 'governs' }, { relation: 'supersedes' }]);
     expect(await one(sql`select subject_kind, signer from governance.signatures where subject_id = ${K}::uuid`)).toEqual({ subject_kind: 'conflict_resolution', signer: productB.principalId });
+  });
+  it('PR-01-005: an UNRESOLVED AUTHORITY is routed through the chain (one artifact; the disputed state preserved until the governing authority resolves it)', async () => {
+    const k = (await raise(stewardAgent, { kind: 'authority_unresolved', title: 'Who owns the supply-chain workspace? (SYNTHETIC)', description: 'two product owners claim the capability in the planning notes (SYNTHETIC)',
+      conflicting: [A['capC']], impacted: [A['capC']] })).conflict;   // an agent may RAISE (prepare); it never resolves
+    expect(k).toMatchObject({ state: 'open', highest_authority: A['capC'], affected_releases: [] });
+    expect((((await home())['posture'] as Row)['dimensions'] as Record<string, Row>)['conflicts']?.['open']).toBeGreaterThanOrEqual(1);
+    const r = (await resolve(productB, String(k['conflict_id']), { digest: k['digest'], mode: 'closure', prevailing: A['capC'], rationale: 'the recorded accountable owner stands (SYNTHETIC)' })).conflict;
+    expect(r).toMatchObject({ state: 'resolved' });
   });
   it('AMENDMENT: another artifact prevails only through an approved change of the highest-authority artifact', async () => {
     const k = (await raise(productA, { kind: 'requirement', title: 'Field naming disagreement (SYNTHETIC)', description: 'the two requirements name the owner field differently (SYNTHETIC)',

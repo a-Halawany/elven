@@ -874,7 +874,7 @@ BEGIN
       RAISE EXCEPTION 'governance exception rejected (authority): the vendor-side sweep is the conformance steward''s' USING ERRCODE = '42501';
     END IF;
   ELSE
-    RAISE EXCEPTION 'governance exception rejected (action): the sweep runs under governance.exception.sweep or executive.attention.tick' USING ERRCODE = '42501';
+    RAISE EXCEPTION 'governance exception rejected (authority): the sweep runs under governance.exception.sweep or executive.attention.tick' USING ERRCODE = '42501';
   END IF;
   FOR e IN SELECT x.exception_id, x.version, x.ref, x.title, x.expires_at, x.affected_artifacts, x.contract_key FROM governance.ws_exceptions x
             WHERE x.state = 'approved' AND x.expires_at <= clock_timestamp() ORDER BY x.expires_at, x.exception_id FOR UPDATE SKIP LOCKED LOOP
