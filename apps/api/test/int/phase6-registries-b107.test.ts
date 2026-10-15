@@ -77,6 +77,8 @@ async function refusal(pr: Promise<unknown>): Promise<{ status: number | 'ok'; m
 const one = async (q: ReturnType<typeof sql>) => ((await q.execute(h.su)).rows[0] ?? {}) as Row;
 const n = async (q: ReturnType<typeof sql>) => Number(((await q.execute(h.su)).rows[0] as { n: number } | undefined)?.n ?? 0);
 const aid = async (kind: string, key: string) => String((await one(sql`select artifact_id::text as id from governance.artifacts where kind = ${kind} and external_key = ${key} and superseded_at is null`))['id']);
+/** An instant on the DATABASE's clock (as-of replays compare with clock_timestamp(); the host clock may differ by milliseconds). */
+const dbNow = async () => { await new Promise((res) => setTimeout(res, 15)); const t = String((await one(sql`select to_char(clock_timestamp() at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as t`))['t']); await new Promise((res) => setTimeout(res, 15)); return t; };
 const cur = (kind: string, key: string) => one(sql`select artifact_id::text, version, lifecycle, digest, attributes from governance.artifacts where kind = ${kind} and external_key = ${key} and superseded_at is null`);
 
 async function person(label: string, kind: 'human' | 'agent', scope: Scope, t: string | null, d: string | null, roles: Array<{ role: string; scope: Scope }>): Promise<AuthenticatedPrincipal> {
@@ -200,6 +202,8 @@ describe('RG1 · THE READ-ONLY IMPORT', () => {
     const before = await one(sql`select (select count(*) from governance.rg_imports)::int as i, (select count(*) from governance.artifacts)::int as a, (select count(*) from governance.links)::int as l`);
     const r = await importAs(steward);
     expect(r.imported.every((x) => x['unchanged'] === true)).toBe(true);
+    // an agent holding the steward role may run the import (it drafts nothing and approves nothing): unchanged again
+    expect((await importAs(agentSteward, ['requirements'])).imported.every((x) => x['unchanged'] === true)).toBe(true);
     expect(await one(sql`select (select count(*) from governance.rg_imports)::int as i, (select count(*) from governance.artifacts)::int as a, (select count(*) from governance.links)::int as l`)).toEqual(before);
   });
   it('UNAUTHORIZED-ROLE and NEGATIVE: a product authority (PDP 403), a tenant administrator at the PLATFORM route (refused), a malformed register (422 — nothing written)', async () => {
@@ -269,7 +273,7 @@ describe('RG2 · THE NORMATIVE-ARTIFACT REGISTRY AND THE CONTROL ORDER', () => {
   });
   it('RECOVERY + REPLAY: a supersession within its class — the superseded stays resolvable as of its time; a retired identity is never reused (ADR-004)', async () => {
     const old = await register({ kind: 'policy_bundle', key: `bundle-${P}-a`, title: 'Policy bundle A (SYNTHETIC)', authorityClass: 'implementation', ownerRole: 'conformance_steward' });
-    const t0 = new Date().toISOString();
+    const t0 = await dbNow();
     const nu = await register({ kind: 'policy_bundle', key: `bundle-${P}-b`, title: 'Policy bundle B (SYNTHETIC)', authorityClass: 'implementation', ownerRole: 'conformance_steward', supersedes: String(old.artifact['artifact_id']) });
     expect((nu.artifact['changed_artifacts'] as string[])).toContain(String(old.artifact['artifact_id']));
     const res = (await api.resolve(preq(steward), { payload: { kind: 'policy_bundle', key: `bundle-${P}-a`, asOf: t0 } }) as { resolution: Row }).resolution;
@@ -320,8 +324,7 @@ describe('RG3 · TRACE LINKS — BIDIRECTIONAL, VERSIONED, APPEND-ONLY, AS OF', 
   it('RECOVERY + REPLAY: a recorded link retired by a later row (an imported one is the source\'s — refused); the trace AS OF before the link still shows it', async () => {
     const comp = await aid('component', `CMP-${P}-forecast`); const r4 = await aid('requirement', `V4:${R.r4}`);
     const l = await link({ from: comp, to: r4, relation: 'depends_on', reason: 'a temporary dependency (SYNTHETIC)' });
-    const t1 = new Date().toISOString();
-    await new Promise((res) => setTimeout(res, 20));
+    const t1 = await dbNow();
     await api.retire(preq(steward, 'governance.trace.link'), String(l.link['link_id']), { payload: { reason: 'the dependency was declared in error (SYNTHETIC)' } });
     expect(keysOf(((await trace({ artifactId: comp, depth: 1 })).trace['up'] as Row)['nodes'])).not.toContain(`V4:${R.r4}`);
     expect(keysOf(((await trace({ artifactId: comp, depth: 1, asOf: t1 })).trace['up'] as Row)['nodes'])).toContain(`V4:${R.r4}`);
@@ -511,8 +514,7 @@ describe('RG7 · INHERITANCE AND ADMISSION', () => {
     expect((lint['compound'] as Row)['sample']).toContain(`V4:${R.r4}`);
   });
   it('STALE + CORRECTION (ES-02-005): a changed row is version 2 (version 1 resolvable as of its time), the component\'s link to it STALE, the impact recorded on the import; a removed row RETIRED; re-asserting the link closes the chain', async () => {
-    const t0 = new Date().toISOString();
-    await new Promise((res) => setTimeout(res, 20));
+    const t0 = await dbNow();
     writeRegisters({ r2Clause: 'A forecast contract change SHALL trigger deterministic, digested impact analysis (SYNTHETIC v2).', dropR5: true });
     const r = await importAs(steward, ['requirements']);
     const v04 = r.imported.find((x) => x['source_path'] === 'audit/requirements/v04.csv')!;
@@ -558,6 +560,11 @@ describe('RG8 · SNAPSHOT, BUILD IDENTITY, THE OVERVIEW, THE LEDGER', () => {
     expect(o2['build']).toMatchObject({ policy_bundle: 'bundle-v1' }); expect(String(o2['boundary'])).toMatch(/imported READ-ONLY/);
     expect(await refusal(api.read(preq(tadmin)))).not.toMatchObject({ status: 'ok' });
     writeRegisters({ r2Clause: 'A forecast contract change SHALL trigger deterministic, digested impact analysis (SYNTHETIC v2).', dropR5: true });
+    // every §RG table (and the prelude's) forces RLS; every §RG table is append-only
+    const forced = (await sql<{ t: string; f: boolean }>`select c.relname as t, c.relforcerowsecurity as f from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'governance' and c.relkind = 'r' order by 1`.execute(h.su)).rows;
+    expect(forced.map((x) => x.t)).toEqual(expect.arrayContaining(['rg_fixture_decisions', 'rg_hold_origins', 'rg_impacts', 'rg_imports', 'rg_invalidations', 'rg_verification_cases', 'rg_verification_records', 'rg_verification_reviews']));
+    expect(forced.every((x) => x.f)).toBe(true);
+    await expect(sql`delete from governance.rg_imports`.execute(h.su)).rejects.toThrow(/append-only|append only/i);
     const events = (await sql<{ event: string }>`select distinct event from governance.events where scope = 'PLATFORM' and event like any (array['registry.%','trace.%','impact.%','inheritance.%','verification.%','fixture.%'])`.execute(h.su)).rows.map((x) => x.event).sort();
     expect(events).toEqual(expect.arrayContaining(['fixture.approved', 'fixture.quarantined', 'fixture.rebuilt', 'fixture.registered', 'impact.recorded', 'inheritance.held', 'inheritance.restored',
       'registry.imported', 'registry.registered', 'trace.link_retired', 'trace.linked', 'verification.ingested', 'verification.reviewed']));
@@ -570,18 +577,33 @@ describe('RG9 · THE REAL REPOSITORY REGISTERS (read-only)', () => {
     const files = ['audit/requirements/v04.csv', 'audit/delivery/feature-rowmap.csv', 'DECISIONS.md', 'EXCEPTIONS.md'];
     const before = files.map((f) => sha(readFileSync(join(REPO, f))));
     const started = Date.now();
-    const r = await importAs(steward, ['requirements', 'rowmap', 'decisions', 'exceptions']);
+    const r = await importAs(steward, ['requirements', 'rowmap', 'decisions', 'exceptions', 'interfaces']);
     const took = Date.now() - started;
-    expect(r.imported).toHaveLength(13); // ten requirement files, the rowmap, DECISIONS.md, EXCEPTIONS.md
+    expect(r.imported).toHaveLength(14); // ten requirement files, the rowmap, DECISIONS.md, EXCEPTIONS.md, the interface register
+    // every link end resolves once its source is in: the V9 bindings (V9-only capabilities declared by V9) and the interfaces' V3 rows
+    // (left unresolved when RG1 imported the register over the synthetic rows — re-diffed now, because the last import left them open)
+    for (const src of ['audit/requirements/v09.csv', 'objects.interface_register', 'audit/delivery/feature-rowmap.csv']) {
+      expect(r.imported.find((x) => x['source_path'] === src)!['unresolved']).toEqual([]);
+    }
+    expect(r.imported.find((x) => x['source_path'] === 'objects.interface_register')).toMatchObject({ unchanged: false, counts: { links_added: 50 } });
     expect(await n(sql`select count(*)::int as n from governance.artifacts where kind = 'requirement' and superseded_at is null and lifecycle = 'active' and source->>'source_digest' is not null
                         and source->>'path' like 'audit/requirements/%'`)).toBe(6264);
-    expect(await n(sql`select count(*)::int as n from governance.artifacts where kind = 'capability' and superseded_at is null and lifecycle = 'active' and external_key like 'CAP-%' and external_key not like ${'CAP-' + P + '%'}`)).toBe(108);
-    const again = await importAs(steward, ['requirements', 'rowmap', 'decisions', 'exceptions']);
+    expect(await n(sql`select count(*)::int as n from governance.artifacts where kind = 'capability' and superseded_at is null and lifecycle = 'active' and controlling_volume = 'V8'`)).toBe(108);
+    expect(await n(sql`select count(*)::int as n from governance.artifacts where kind = 'capability' and superseded_at is null and lifecycle = 'active' and controlling_volume = 'V9'`)).toBeGreaterThan(0);
+    const again = await importAs(steward, ['requirements', 'rowmap', 'decisions', 'exceptions', 'interfaces']);
     expect(again.imported.every((x) => x['unchanged'] === true)).toBe(true);
     expect(files.map((f) => sha(readFileSync(join(REPO, f))))).toEqual(before);
-    const o = (await orphans({ rule: 'RG-O01', limit: 1 })).orphans;
-    expect(ruleOf(o, 'RG-O01').count).toBeGreaterThanOrEqual(0);
+    const o = (await orphans({ rule: 'RG-O01', limit: 500 })).orphans;
+    expect(keysOf(ruleOf(o, 'RG-O01').orphans).filter((k) => !String(k).includes(P))).toEqual([]); // the rowmap maps every real row to a feature (only this run's registered rows remain)
     expect(took).toBeLessThan(240_000);
+    // the overview over the real registers answers inside its authorization context; the real sources read IN SYNC
+    const ov = await api.read(preq(product)) as Row;
+    expect(ruleOf((await orphans({ rule: 'RG-O15', limit: 1 })).orphans, 'RG-O15').count).toBe(0); // every interface maps to its V3 row
+    for (const f of ['audit/requirements/v04.csv', 'audit/delivery/feature-rowmap.csv', 'DECISIONS.md', 'EXCEPTIONS.md']) {
+      expect((ov['reconciliation'] as Row[]).find((x) => x['source_path'] === f)).toMatchObject({ state: 'in_sync' });
+    }
+    expect((ov['engineering_exceptions'] as Row[]).find((x) => x['external_key'] === 'EXCEPTIONS.md:EXC-P0-003')).toMatchObject({ status: 'open', expired: true });
+    expect((ov['orphans'] as Row)['total']).toBeGreaterThan(0); // stated, never hidden (e.g. the unanchored chapters)
     process.env['EYE_GOVERNANCE_REPO_ROOT'] = SYN;
   }, 600_000);
 });

@@ -752,7 +752,9 @@ BEGIN
   IF p_links IS NULL OR jsonb_typeof(p_links) <> 'array' OR jsonb_array_length(p_links) > 60000 THEN RAISE EXCEPTION 'requirement registry rejected (links): at most 60000 links per source' USING ERRCODE = '22023'; END IF;
   PERFORM pg_advisory_xact_lock(hashtextextended('governance.rg_import:' || p_source_path, 0));
   SELECT * INTO prev FROM governance.rg_imports i WHERE i.source_path = p_source_path ORDER BY i.imported_at DESC, i.import_id DESC LIMIT 1;
-  IF prev.import_id IS NOT NULL AND prev.source_digest = p_source_digest AND prev.parser_version = p_parser THEN
+  -- the fast path: the same bytes and parser, and nothing the last import left unresolved (a link end that a LATER source registers is
+  -- resolved by re-diffing — which writes nothing when nothing resolves)
+  IF prev.import_id IS NOT NULL AND prev.source_digest = p_source_digest AND prev.parser_version = p_parser AND jsonb_array_length(prev.unresolved) = 0 THEN
     RETURN jsonb_build_object('unchanged', true, 'source_path', p_source_path, 'source_digest', p_source_digest, 'import', to_jsonb(prev) - 'changed');
   END IF;
 
@@ -864,7 +866,12 @@ BEGIN
     FROM pg_temp.rg_want w WHERE w.keep IS NULL;
   GET DIAGNOSTICS v_links_added = ROW_COUNT;
 
-  -- (a source whose bytes changed while nothing it declares did — a column this registry does not read — is still recorded: its digest is current)
+  -- the same bytes and parser, nothing new resolved: nothing is recorded (idempotent). A source whose bytes changed while nothing it declares
+  -- did (a column this registry does not read) is still recorded, so its digest is current.
+  IF prev.import_id IS NOT NULL AND prev.source_digest = p_source_digest AND prev.parser_version = p_parser
+     AND v_new + v_versioned + v_retired + v_links_added + v_links_retired = 0 THEN
+    RETURN jsonb_build_object('unchanged', true, 'source_path', p_source_path, 'source_digest', p_source_digest, 'import', to_jsonb(prev) - 'changed', 'unresolved_remaining', v_unres_n);
+  END IF;
   INSERT INTO governance.rg_imports (import_id, source_kind, source_path, source_digest, parser_version, detail, row_count, counts, changed, unresolved, build_identity, imported_by, correlation_id)
   VALUES (p_import_id, p_source_kind, p_source_path, p_source_digest, p_parser, coalesce(p_detail, '{}'::jsonb), jsonb_array_length(p_items),
           jsonb_build_object('registered', v_new, 'versioned', v_versioned, 'retired', v_retired, 'unchanged', v_unchanged, 'normative_changes', cardinality(v_normative),

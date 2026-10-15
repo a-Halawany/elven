@@ -93,9 +93,9 @@ export function resolveRequirementKeys(tokens: string[], idx: RequirementIndex):
 // ───────────────────────── audit/requirements/*.csv ─────────────────────────
 const chapterKey = (vol: string, chapter: string) => cut(`${vol}:chapter:${chapter}`, 200);
 /** One requirement file → its requirements, its chapters (requirement part_of chapter), the V8 App A capabilities and App D journeys (each
- *  maps_to its row), and the V9 bindings (App N: a capability maps_to its V9 row and the V9 chapters the footer names; App L: a journey
- *  maps_to its V9 row). */
-export function requirementsSource(path: string, text: string): SourcePlan {
+ *  maps_to its row), and the V9 bindings (App N: a capability maps_to its V9 row and the V9 chapters the footer names — a capability the V8
+ *  catalogue (`v8Catalogue`) does not define is declared by its V9 row; App L: a journey maps_to its V9 row). */
+export function requirementsSource(path: string, text: string, v8Catalogue: ReadonlySet<string> = new Set()): SourcePlan {
   const rows = csvObjects(text);
   const items: RegistryItem[] = []; const links: RegistryLink[] = [];
   const chapters = new Map<string, { vol: string; chapter: string }>();
@@ -132,6 +132,11 @@ export function requirementsSource(path: string, text: string): SourcePlan {
       links.push({ from_kind: 'journey', from_key: id, to_kind: 'requirement', to_key: key, relation: 'maps_to', attributes: {} });
     }
     if (vol === 'V9' && id.startsWith('CAP-')) {
+      // a capability V9 binds that the V8 catalogue does not define is an artifact of its own, defined by its V9 row (stated as such)
+      if (!v8Catalogue.has(id)) {
+        items.push({ kind: 'capability', k: id, title: cut(`${id} — bound by V9 Appendix N (not in the V8 capability catalogue)`, 500), authority_class: 'experience', controlling_volume: 'V9',
+                     lifecycle: 'active', owner_role: 'design_system_authority', attributes: { role: 'capability', id, statement: clause, defined_by: 'V9 Appendix N' } });
+      }
       links.push({ from_kind: 'capability', from_key: id, to_kind: 'requirement', to_key: key, relation: 'maps_to', attributes: {} });
       const bound = /to chapter\(s\) ([\d,\s]+)/.exec(clause);
       for (const n of (bound?.[1] ?? '').split(',').map((x) => x.trim()).filter((x) => x !== '')) {
@@ -262,4 +267,9 @@ export function schemasSource(rows: Array<Record<string, unknown>>): SourcePlan 
   }));
   return { source_kind: 'schemas', source_path: 'objects.schema_registry', source_digest: sha256(canonical(sorted.map((r) => ({ ...r, json_schema: sha256(canonical(r['json_schema'])) })))),
            parser: PARSER, detail: { schemas: items.length }, items, links: [] };
+}
+
+/** The capability ids the V8 App A catalogue defines (so the V9 import declares only the ones V8 does not). */
+export function v8CapabilityIds(v08Text: string): Set<string> {
+  return new Set(csvObjects(v08Text).filter((r) => r['volume'] === 'V8' && (r['id'] ?? '').startsWith('CAP-') && (r['chapter'] ?? '').startsWith('Appendix A')).map((r) => r['id']!.trim()));
 }

@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 import { CsvError, csvObjects, parseCsv } from '../../src/governance/registries/csv.js';
 import {
   canonical, decisionsSource, exceptionExpired, exceptionsSource, interfacesSource, obligations, parseExceptionBlock, requirementIndex, requirementTokens, requirementsSource,
-  resolveRequirementKeys, rowmapSource, schemasSource, sha256, verificationMethod, VOLUME_CLASS,
+  resolveRequirementKeys, rowmapSource, schemasSource, sha256, v8CapabilityIds, verificationMethod, VOLUME_CLASS,
 } from '../../src/governance/registries/importers.js';
 import { fromGateReceipt, fromPlaywright, fromVitest, relativeFile, testKey } from '../../src/governance/registries/reports.js';
 import { buildIdentity, repoRoot } from '../../src/governance/registries/build-identity.js';
@@ -54,7 +54,8 @@ describe('the rules the importer applies (ES-03-001 / ES-03-002)', () => {
 
 describe('THE IMPORTERS over the REAL repository registers (read-only)', () => {
   const files = reqFiles();
-  const plans = files.map((f) => requirementsSource(f.path, f.text));
+  const catalogue = v8CapabilityIds(files.find((f) => f.path.endsWith('v08.csv'))!.text);
+  const plans = files.map((f) => requirementsSource(f.path, f.text, catalogue));
   it('every requirement row of every file, each `<volume>:<id>` once, its class the volume\'s (6,264 rows)', () => {
     const reqs = plans.flatMap((p) => p.items.filter((i) => i.kind === 'requirement'));
     expect(reqs.length).toBe(6264);
@@ -71,6 +72,13 @@ describe('THE IMPORTERS over the REAL repository registers (read-only)', () => {
     expect(v8.links).toContainEqual(expect.objectContaining({ from_kind: 'capability', from_key: 'CAP-FW-07', to_key: 'V8:CAP-FW-07', relation: 'maps_to' }));
     expect(v9.links).toContainEqual(expect.objectContaining({ from_kind: 'capability', from_key: 'CAP-FW-07', to_key: 'V9:CAP-FW-07' }));
     expect(v9.links.some((l) => l.from_key === 'CAP-FW-07' && l.to_kind === 'standard' && l.to_key.startsWith('V9:chapter:36 '))).toBe(true);
+    // a capability V9 binds that V8 does not define is declared by V9 (never left unresolved, never declared twice)
+    const v9caps = v9.items.filter((i) => i.kind === 'capability').map((i) => i.k);
+    expect(v9caps.length).toBeGreaterThan(0); expect(v9caps.every((k) => !catalogue.has(k))).toBe(true);
+    const all = new Set([...v8.items, ...v9.items].filter((i) => i.kind === 'capability').map((i) => i.k));
+    expect(v9.links.filter((l) => l.from_kind === 'capability').every((l) => all.has(l.from_key))).toBe(true);
+    const keysV9 = new Set(v9.items.map((i) => `${i.kind}|${i.k}`));
+    expect(v9.links.filter((l) => l.to_kind === 'standard').every((l) => keysV9.has(`standard|${l.to_key}`))).toBe(true);
   });
   it('the register\'s delivery status is carried apart from the normative content (attributes.register)', () => {
     const r = plans[3]!.items.find((i) => i.kind === 'requirement')!;

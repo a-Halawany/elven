@@ -31,7 +31,7 @@ import { BOUNDARY, domainRoute, governedRead, governedWrite, platformRoute, rece
 import { RegistriesCap, type RegistriesCapability } from './registries.capabilities.js';
 import { buildIdentity, repoRoot } from './build-identity.js';
 import {
-  type SourcePlan, decisionsSource, exceptionExpired, exceptionsSource, interfacesSource, requirementIndex, requirementsSource, rowmapSource, schemasSource, sha256,
+  type SourcePlan, decisionsSource, exceptionExpired, exceptionsSource, interfacesSource, requirementIndex, requirementsSource, rowmapSource, schemasSource, sha256, v8CapabilityIds,
 } from './importers.js';
 import { type VerificationReport, fromGateReceipt, fromPlaywright, fromVitest } from './reports.js';
 
@@ -68,7 +68,9 @@ export class RegistriesService {
     const files = this.requirementFiles(root);
     const plans: SourcePlan[] = [];
     const at = <X>(path: string, fn: () => X): X => { try { return fn(); } catch (e) { throw new Error(`${path}: ${e instanceof Error ? e.message : String(e)}`); } };
-    if (names.includes('requirements')) for (const f of files) plans.push(at(f.path, () => requirementsSource(f.path, f.text)));
+    const v08 = files.find((f) => f.path.endsWith('/v08.csv'));
+    const catalogue = v08 === undefined ? new Set<string>() : at(v08.path, () => v8CapabilityIds(v08.text));
+    if (names.includes('requirements')) for (const f of files) plans.push(at(f.path, () => requirementsSource(f.path, f.text, catalogue)));
     if (names.includes('rowmap')) plans.push(at('audit/delivery/feature-rowmap.csv', () => rowmapSource('audit/delivery/feature-rowmap.csv', readFileSync(join(root, 'audit/delivery/feature-rowmap.csv'), 'utf8'),
                                                           readFileSync(join(root, 'audit/delivery/FEATURE_TRACKER.csv'), 'utf8'))));
     if (names.includes('decisions') || names.includes('exceptions')) {
