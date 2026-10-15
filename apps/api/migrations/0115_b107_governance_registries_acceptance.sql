@@ -7919,7 +7919,7 @@ GRANT EXECUTE ON FUNCTION governance.ar_sweep(uuid, uuid, uuid, uuid) TO eye_com
    the next instant is scheduled (the earliest remaining expiry, due day, review date or period end). */
 CREATE OR REPLACE FUNCTION governance.ar_timer(p_timer uuid, p_tenant uuid, p_domain uuid, p_actor uuid, p_correlation uuid) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = governance, observation, public, pg_catalog, pg_temp AS $$
-DECLARE t executive.workflow_timers%ROWTYPE; r governance.acceptance_records%ROWTYPE; v jsonb; v_next timestamptz; v_now timestamptz := clock_timestamp(); v_timer uuid;
+DECLARE t executive.workflow_timers%ROWTYPE; r governance.acceptance_records%ROWTYPE; v jsonb; v_next timestamptz; v_now timestamptz := clock_timestamp(); v_timer uuid; v_findings jsonb;
 BEGIN
   PERFORM observation.assert_authority(ARRAY['executive.attention.tick']);
   PERFORM observation.assert_scope(p_tenant, p_domain);
@@ -7928,7 +7928,12 @@ BEGIN
   IF NOT FOUND THEN RAISE EXCEPTION 'acceptance record rejected (unknown_timer): % is not an acceptance timer of this domain', p_timer USING ERRCODE = '23503'; END IF;
   SELECT * INTO r FROM governance.acceptance_records a WHERE a.record_id = t.owner_id AND a.state IN ('accepted', 'constrained', 'suspended', 'lapsed');
   IF NOT FOUND THEN RETURN jsonb_build_object('record_id', t.owner_id, 'skipped', 'no version of the record is in force'); END IF;
-  v := governance._ar_constrain(r.record_id, r.version, governance.ar_findings(r.record_id, r.version), 'sweep', 'review', p_actor, p_correlation);
+  /* B107 act-found: a timer scheduled for an EARLIER version fires on the version now in force (a re-acceptance) — with no finding nothing
+     is constrained (as the sweep): _ar_constrain turned an accepted record CONSTRAINED on an empty finding list */
+  v_findings := governance.ar_findings(r.record_id, r.version);
+  IF jsonb_array_length(v_findings) > 0 THEN
+    v := governance._ar_constrain(r.record_id, r.version, v_findings, 'sweep', 'review', p_actor, p_correlation);
+  END IF;
   SELECT * INTO r FROM governance.acceptance_records a WHERE a.record_id = r.record_id AND a.version = r.version;
   IF r.state = 'accepted' THEN
     SELECT min(x) INTO v_next FROM (

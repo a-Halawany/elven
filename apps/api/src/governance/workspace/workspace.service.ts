@@ -103,10 +103,11 @@ export class WorkspaceService implements OnModuleInit {
       if (kind === 'exception') {
         const e = await cap.exceptionVersion(id, version); if (e === null) return null;
         const held = e['open_review'] !== null ? [`the repeated exceptions against ${String(e['contract_key'])} are under remediation review ${String(e['open_review'])}`] : [];
-        if (Date.parse(String(e['expires_at'])) <= Date.now()) held.push(`the window ended at ${String(e['expires_at'])}`);
+        /* B107 act-found: the instants in the preview's words are ISO 8601 (String(Date) printed the server's local time zone) */
+        if (Date.parse(String(e['expires_at'])) <= Date.now()) held.push(`the window ended at ${new Date(e['expires_at'] as string).toISOString()}`);
         return { subject: e, digest: e['digest'], signature_kind: 'exception_approval',
                  consequence: e['renewal_of'] !== null ? `approving renews ${String(e['ref'])}: v${String(e['renewal_of'])} superseded; every hold its expiry opened is LIFTED (the affected promotion released)`
-                                                      : `approving puts ${String(e['ref'])} in force until ${String(e['expires_at'])}; at expiry every affected artifact is HELD until a renewal with current evidence`,
+                                                      : `approving puts ${String(e['ref'])} in force until ${new Date(e['expires_at'] as string).toISOString()}; at expiry every affected artifact is HELD until a renewal with current evidence`,
                  eligibility: eligibility({ callerKind, caller: p.principalId, callerRoles: roles, requiredRoles: e['approver_roles'] as string[], proposer: String(e['proposed_by']),
                                              owner: String(e['owner_principal_id']), componentOwners: e['component_owners'] as string[], expands: e['expands_authority'] === true || e['removes_control'] === true,
                                              state: String(e['state']), openState: 'proposed', held, rights: await cap.rightsAllows('exception', 'approve', p.principalId) }) };
