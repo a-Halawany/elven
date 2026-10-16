@@ -721,3 +721,121 @@ describe('AR12 · a DESIGN acceptance on the same core (§DG\'s records bind her
     expect((await attest(assurance, String(r['record_id']), { version: 1, obligation: 'independent_assurance', digest: String(r['digest']) })).attestation).toMatchObject({ state: 'accepted' });
   });
 });
+
+// ════════════════════════════════════════════════════════════════════════════════════════════════
+/** B107-F (the review of 8396481): `B107F_REPRO=1` asserts the DEFECT — the gate and the accepted-scope read answered from the STORED state
+ *  until a tick reconciled it — on the uncorrected code; without it, the correction (0116: the current findings decide at the request). */
+const REPRO = process.env['B107F_REPRO'] === '1';
+const GCAP = `CAP-GATE-F-${RUN}`;
+let RF = ''; let SHORTF = ''; let SHORTF_UNTIL = ''; let TF = ''; let SHORT2 = ''; let SHORT2_UNTIL = ''; let V2TIMER = '';
+/** Wait against the DATABASE's clock (never the process's) until `iso` has passed. */
+const untilDb = async (iso: string) => {
+  for (;;) {
+    if ((await one(sql`select clock_timestamp() > ${iso}::timestamptz + interval '300 milliseconds' as past`))['past'] === true) return;
+    await new Promise((r) => setTimeout(r, 400));
+  }
+};
+const stored = async (version: number) => one(sql`select state, effective_scope from governance.acceptance_records where record_id = ${RF}::uuid and version = ${version}`);
+describe(`B107-F · ${REPRO ? 'DEFECT' : 'correction'}: acceptance decided at the REQUEST — evidence expiry and the period's end before any reconciliation (FEX-31, ES-71-004, Q5)`, () => {
+  afterAll(async () => {  // the marking is PLATFORM-global: never left enforced for another file, whatever happened above
+    const cur = await one(sql`select enforced from governance.acceptance_enforcement where capability_key = ${GCAP} order by version desc limit 1`);
+    if (cur['enforced'] === true) await enforce(product, { capabilityKey: GCAP, enforced: false, prefixes: [], reason: 'the B107-F exercise ended early (SYNTHETIC)' }).catch(() => undefined);
+  });
+  it('SETUP: the capability marked enforce_acceptance; accepted for domain_analyst and domain_admin over CURRENT evidence — one item covering the domain_analyst role expires in seconds', async () => {
+    await artifact('capability', GCAP);
+    await enforce(product, { capabilityKey: GCAP, enforced: true, prefixes: ['observation.source.'] });
+    TF = String((await evidence(steward, ext('test_report', 60 * DAY))).evidence['evidence_id']);
+    const short = (await evidence(steward, ext('journey_evidence', 15_000, { covers: { roles: ['domain_analyst'] }, title: 'the analyst journey run (SYNTHETIC, short-lived)' }))).evidence;
+    SHORTF = String(short['evidence_id']); SHORTF_UNTIL = String(short['valid_until']);
+    const slots = await SLOT_ITEMS(steward, CAP_SLOTS);
+    const r = (await propose(product2, { kind: 'capability', title: `The gated capability, expiring (SYNTHETIC ${RUN})`, subjectKey: GCAP, scope: SCOPE({ roles: ['domain_analyst', 'domain_admin'] }), evidence: [TF, SHORTF, ...slots] })).record;
+    RF = String(r['record_id']);
+    expect((await acceptAll(RF, 1, String(r['digest'])))['state']).toBe('accepted');
+    expect(await reach(analyst, 'observation.source.register')).toBe('reached');
+    expect(await reach(dadmin, 'observation.source.register')).toBe('reached');
+  });
+  it(`EXPIRY BEFORE RECONCILIATION: the item expired on the database clock, NO tick ran (the timer pending, the record stored accepted) — ${REPRO ? 'the DEFECT: the gate still admits the affected role and the read still says accepted' : 'the affected role is DENIED (nothing reaches the handler), the unaffected role keeps its scope, the read says constrained'}`, async () => {
+    await untilDb(SHORTF_UNTIL);
+    expect(await stored(1)).toMatchObject({ state: 'accepted' });
+    expect(await one(sql`select count(*)::int n from executive.workflow_timers where owner_id = ${RF}::uuid and fired_at is null and cancelled_at is null`)).toEqual({ n: 1 });
+    const a = await reach(analyst, 'observation.source.register');
+    const sc = (await scopeOf(dadmin, GCAP)).scope;
+    if (REPRO) {
+      expect(a).toBe('reached');
+      expect(sc).toMatchObject({ state: 'accepted' });
+      expect((sc['effective_scope'] as Row)['roles']).toEqual(['domain_analyst', 'domain_admin']);
+      return;
+    }
+    expect(a).toMatchObject({ status: 403 });
+    expect((a as Row)['message']).toMatch(/^acceptance record rejected \(access\): CAP-GATE-F-.* is constrained here for the roles domain_admin only — the caller's roles are outside the constrained scope/);
+    expect(await reach(dadmin, 'observation.source.register')).toBe('reached');            // the unaffected scope is preserved (FEX-31)
+    expect(await reach(analyst, 'observation.source.read')).toBe('reached');               // reads are never gated
+    expect(sc).toMatchObject({ state: 'constrained', reconciled: false });
+    expect((sc['effective_scope'] as Row)['roles']).toEqual(['domain_admin']);
+    expect((sc['removed'] as Row)['roles']).toEqual(['domain_analyst']);
+    expect((sc['current_findings'] as Row[]).map((f) => f['kind'])).toEqual(['evidence_expired']);
+    // the request read changed nothing: still stored accepted, the timer still pending
+    expect(await stored(1)).toMatchObject({ state: 'accepted' });
+  });
+  it('RECONCILIATION (the timer and the sweep, unchanged): the tick constrains the stored record — the same answers; nothing written twice', async () => {
+    await tick();
+    expect(await stored(1)).toMatchObject({ state: 'constrained' });
+    expect(((await stored(1))['effective_scope'] as Row)['roles']).toEqual(['domain_admin']);
+    expect((await reach(analyst, 'observation.source.register') as Row)['status']).toBe(403);
+    expect(await reach(dadmin, 'observation.source.register')).toBe('reached');
+    const again = await tick();
+    expect(((again.steps['acceptance-evidence-expiry'] ?? {}) as Row)['changed']).toEqual([]);
+    if (!REPRO) expect((await scopeOf(dadmin, GCAP)).scope).toMatchObject({ state: 'constrained', reconciled: true });
+  });
+  it('RECOVERY: renewed evidence and RE-ACCEPTANCE (v2) — the analyst reaches the handler again; v2 carries a second short item (the old-timer probe)', async () => {
+    const renewed = String((await evidence(steward, ext('journey_evidence', 60 * DAY, { covers: { roles: ['domain_analyst'] }, renews: SHORTF }))).evidence['evidence_id']);
+    const short2 = (await evidence(steward, ext('journey_evidence', 40_000, { covers: { journeys: ['JRN-12'] }, title: 'the JRN-12 run (SYNTHETIC, short-lived)' }))).evidence;
+    SHORT2 = String(short2['evidence_id']); SHORT2_UNTIL = String(short2['valid_until']);
+    const slots = await SLOT_ITEMS(steward, CAP_SLOTS);
+    const v2 = (await propose(product2, { recordId: RF, kind: 'capability', title: `The gated capability, re-accepted (SYNTHETIC ${RUN})`, subjectKey: GCAP, expectedVersion: 1,
+      scope: SCOPE({ roles: ['domain_analyst', 'domain_admin'] }), evidence: [TF, renewed, SHORT2, ...slots] })).record;
+    await acceptAll(RF, 2, String(v2['digest']));
+    expect(await stored(2)).toMatchObject({ state: 'accepted' });
+    expect(await reach(analyst, 'observation.source.register')).toBe('reached');
+    expect((await scopeOf(dadmin, GCAP)).scope).toMatchObject({ state: 'accepted', expansion_held: false });
+    V2TIMER = String((await one(sql`select expiry_timer_id::text as t from governance.acceptance_records where record_id = ${RF}::uuid and version = 2`))['t']);
+  });
+  it('THE OLD TIMER (the act-found regression): v3 re-accepted before v2\'s item expires; v2\'s timer then fires on v3, which has no finding — v3 stays ACCEPTED', async () => {
+    const renewed = String((await evidence(steward, ext('journey_evidence', 60 * DAY, { covers: { journeys: ['JRN-12'] }, renews: SHORT2 }))).evidence['evidence_id']);
+    const slots = await SLOT_ITEMS(steward, CAP_SLOTS);
+    const renewedRole = String((await one(sql`select evidence_id::text as e from governance.acceptance_evidence where renews = ${SHORTF}::uuid`))['e']);
+    const v3 = (await propose(product2, { recordId: RF, kind: 'capability', title: `The gated capability, v3 (SYNTHETIC ${RUN})`, subjectKey: GCAP, expectedVersion: 2,
+      scope: SCOPE({ roles: ['domain_analyst', 'domain_admin'] }), evidence: [TF, renewedRole, renewed, ...slots] })).record;
+    await acceptAll(RF, 3, String(v3['digest']));
+    await untilDb(SHORT2_UNTIL);
+    expect(await one(sql`select fired_at is null and cancelled_at is null as pending from executive.workflow_timers where timer_id = ${V2TIMER}::uuid`)).toEqual({ pending: true });
+    expect(await reach(analyst, 'observation.source.register')).toBe('reached');           // v3 is in force; v2's expired item is not v3's
+    await tick();
+    expect(await one(sql`select fired_at is not null as fired from executive.workflow_timers where timer_id = ${V2TIMER}::uuid`)).toEqual({ fired: true });
+    expect(await stored(3)).toMatchObject({ state: 'accepted' });
+    expect(await reach(analyst, 'observation.source.register')).toBe('reached');
+  });
+  it(`THE PERIOD ENDED before any sweep (the clock advanced on the record: a SYNTHETIC fixture, as AR6) — ${REPRO ? 'the DEFECT: the gate still admits and the read says accepted' : 'nothing of it is in force: every role DENIED, the read says lapsed'}; the sweep then lapses the stored record`, async () => {
+    await sql`update governance.acceptance_records set scope_tuple = jsonb_set(scope_tuple, '{period,to}', to_jsonb((current_date - 1)::text)) where record_id = ${RF}::uuid and version = 3`.execute(h.su);
+    expect(await stored(3)).toMatchObject({ state: 'accepted' });
+    const a = await reach(analyst, 'observation.source.register');
+    const sc = (await scopeOf(dadmin, GCAP)).scope;
+    if (REPRO) {
+      expect(a).toBe('reached');
+      expect(sc).toMatchObject({ state: 'accepted' });
+    } else {
+      expect((a as Row)['message']).toMatch(/^acceptance record rejected \(access\): CAP-GATE-F-.* is lapsed in this domain .* nothing of it is in force until it is re-accepted/);
+      expect((await reach(dadmin, 'observation.source.register') as Row)['status']).toBe(403);
+      expect(sc).toMatchObject({ state: 'lapsed', effective_scope: null, reconciled: false });
+      expect(await stored(3)).toMatchObject({ state: 'accepted' });
+    }
+    const s = (await api.sweep(dreq(steward, 'governance.acceptance.sweep'), T, D) as { sweep: Row }).sweep;
+    expect(s['changed']).toEqual(expect.arrayContaining([expect.objectContaining({ record_id: RF, state: 'lapsed', effective_scope: null })]));
+    expect((await reach(analyst, 'observation.source.register') as Row)['status']).toBe(403);
+    expect((await scopeOf(dadmin, GCAP)).scope).toMatchObject({ state: 'lapsed' });
+  });
+  it('RECOVERY: unmarked, the action is never asked again', async () => {
+    await enforce(product, { capabilityKey: GCAP, enforced: false, prefixes: [], reason: 'the B107-F exercise is over (SYNTHETIC)' });
+    expect(await reach(analyst, 'observation.source.register')).toBe('reached');
+  });
+});

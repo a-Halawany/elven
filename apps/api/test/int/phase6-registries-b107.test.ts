@@ -29,7 +29,7 @@
  * below — and the fault exercise (RG1). Every principal, register, report, fixture and record written here is SYNTHETIC.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -211,7 +211,7 @@ describe('RG1 · THE READ-ONLY IMPORT', () => {
     expect(await n(sql`select count(*)::int as n from governance.links_live l where l.from_artifact = ${await aid('capability', R.cap)}::uuid and l.relation = 'maps_to'`)).toBe(3); // V8 row, V9 row, V9 chapter 36
     const imp = await one(sql`select source_digest, build_identity, counts from governance.rg_imports where source_path = 'audit/requirements/v04.csv'`);
     expect(imp['source_digest']).toBe(sha(readFileSync(join(SYN, 'audit/requirements/v04.csv'))));
-    expect(imp['build_identity']).toMatchObject({ migration_head: '0115_b107_governance_registries_acceptance.sql', policy_bundle: 'bundle-v1', manifest_path: 'conformance.manifest.json' });
+    expect(imp['build_identity']).toMatchObject({ migration_head: readdirSync(join(__dirname, '../../migrations')).filter((f) => /^\d{4}_.*\.sql$/.test(f)).sort().at(-1), policy_bundle: 'bundle-v1', manifest_path: 'conformance.manifest.json' });
     expect(imp['counts']).toMatchObject({ registered: 6, links_added: 5 }); // 5 rows + 1 chapter; 5 part_of
   });
   it('IDEMPOTENT: the same registers again write nothing — every source unchanged; no import, artifact or link row added', async () => {

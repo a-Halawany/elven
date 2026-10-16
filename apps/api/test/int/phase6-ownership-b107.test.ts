@@ -726,7 +726,7 @@ describe('DR7 · the responsibility evidence record (DP-01-006, DP-04-006, DP-55
     expect(r).toMatchObject({ matrix: { state: 'approved', version: 1 }, claim: 'demonstration' });
     expect(String(r['production_admission'])).toMatch(/^R1: production admission/);
     const b = obj(r['bound']);
-    expect(String(b['migration_head'])).toMatch(/^0115_b107/);
+    expect(String(b['migration_head'])).toMatch(/^01(1[5-9]|[2-9]\d)_/);  // the newest applied migration (0115 or later)
     expect(b['policy_bundle_version']).toBeTruthy();
     const st = obj(r['stewardship']);
     expect(obj(st['segregation'])).toMatchObject({ decided_by_opener: 0, reviewed_by_opener: 0, exception_approved_by_owner: 0 });
