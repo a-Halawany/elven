@@ -203,7 +203,8 @@ Between two merges the first merge's `main` chain completes before the next merg
   - **Held before merging** on the owner's bounded review of 2026-10-15 (B94-F: an automatic support-session revocation decided at the sweep could revoke a session opened for a grant approved after it). Reproduced through governed paths on `e9ee91b`, corrected in TypeScript (0114 untouched; §B94.8) at `5f983db`: hosted green on that exact head (ci 38646134402, C19 lifecycle 38646134192, both attempt 1).
   - **Merged as `eabae7b`** (2026-10-15) under the standing authorization, after main's chain for `90ffc25` had completed. Recorded here, in B107's delivery record (§B107.0), without a records-only PR.
   - **Main's chain for `eabae7b`:** ci 38651515427 → C19 lifecycle 38651515391 → C17 finalize 38657420543 → C19 anchor 38657569920 (created after the finalize), all succeeded on their first attempt.
-- **B107** (0115: governance registries, traceability and conformance manifests; the product-governance workspace; design governance; acceptance records), on `phase6-b107` from main `eabae7b`. Its PR's hosted runs, the merge and main's chain are recorded in the next delivery record — no records-only commit.
+- **#90** (B107, 0115: governance registries, traceability and conformance manifests; the product-governance workspace; design governance; acceptance records), on `phase6-b107` from main `eabae7b`: its head `8396481` hosted green (ci 38707696168, C19 lifecycle 38707695861, both attempt 1).
+  - **Held before merging** on the owner's bounded review of 2026-10-16 (B107-F: the acceptance gate and read answered from the stored state before reconciliation; the completion accounting). Reproduced on `8396481` through governed paths, corrected forward in 0116 (§B107.8). The corrected head's hosted runs, the merge and main's chain are recorded in the next delivery record (B80's) — no records-only commit.
 
 ## 3. What is never done in this sequence
 
