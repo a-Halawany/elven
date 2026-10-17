@@ -26,9 +26,6 @@ import { AnalyticsModule } from './analytics/analytics.module.js';
 import { DeliveryModule } from './delivery/delivery.module.js';
 import { GovernanceModule } from './governance/governance.module.js';
 /* end B33 */
-/* B80 cb (0118 §CB): the operating context bar — the bar's read, the impact preview, the deliberate commit */
-import { ContextBarModule } from './shell/context/context.module.js';
-/* end B80 cb */
 
 @Module({
   imports: [
@@ -54,7 +51,6 @@ import { ContextBarModule } from './shell/context/context.module.js';
     /* B92 (0113) */ AnalyticsModule /* end B92 */,
     /* B94 (0114) */ DeliveryModule /* end B94 */,
     /* B107 (0115) */ GovernanceModule /* end B107 */,
-    /* B80 cb (0118 §CB) */ ContextBarModule /* end B80 cb */,
     RetentionModule,
   ],
 })
