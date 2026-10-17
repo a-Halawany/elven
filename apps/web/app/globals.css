@@ -171,3 +171,128 @@ main { padding-block: var(--eye-space-32); padding-inline: var(--eye-space-32); 
   .eye-copy, .eye-tk-actions, .eye-tk-signout { display: none; }
 }
 /* end B80 tk */
+/* B80 clf */
+/* ── F-P7-E-05 §CL-F: forms, actions, feedback — the STATES of the library's style constants and components, in ONE place ──────────
+   lib/styles-b80.ts reads every state-bearing property through a custom property with the token as its fallback; these rules set the
+   properties, so every page using inputStyle / textareaStyle / buttonStyle inherits the states without an edit. Semantic tokens only;
+   logical properties only; forced-colors uses SYSTEM colours (never a literal); reduced motion collapses every transition (above). */
+input:hover, select:hover, textarea:hover { --eye-input-border: var(--eye-color-border-strong); }
+input[aria-invalid='true'], select[aria-invalid='true'], textarea[aria-invalid='true'] { --eye-input-border: var(--eye-color-critical); border-width: 2px; }
+input:disabled, select:disabled, textarea:disabled { --eye-input-bg: var(--eye-color-surface-secondary); --eye-input-ink: var(--eye-color-disabled-ink); cursor: not-allowed; }
+input[readonly], textarea[readonly] { --eye-input-bg: var(--eye-color-surface-secondary); }
+button:hover { --eye-button-bg: var(--eye-color-accent-strong); }
+button:disabled { --eye-button-bg: var(--eye-color-surface-secondary); --eye-button-ink: var(--eye-color-disabled-ink); --eye-button-border: var(--eye-color-border-default); --eye-button-cursor: not-allowed; }
+button[aria-busy='true'] { --eye-button-cursor: progress; }
+
+.eye-field { display: flex; flex-direction: column; gap: var(--eye-space-4); min-inline-size: 0; }
+.eye-field--wide { grid-column: 1 / -1; }
+.eye-label-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--eye-space-8); }
+.eye-label { display: block; font-size: var(--eye-type-label-sm); text-transform: uppercase; color: var(--eye-color-ink-muted); }
+.eye-required { font-size: var(--eye-type-label-sm); color: var(--eye-color-ink-muted); }
+.eye-help { color: var(--eye-color-ink-muted); font-size: var(--eye-type-body-sm); margin: 0; }
+.eye-field-error { color: var(--eye-color-critical); font-size: var(--eye-type-body-sm); font-weight: 600; margin: 0; }
+.eye-input {
+  inline-size: 100%; block-size: var(--eye-size-control-md); padding-inline: var(--eye-space-8);
+  border: 1px solid var(--eye-input-border, var(--eye-color-border-default)); border-radius: var(--eye-radius-md);
+  background: var(--eye-input-bg, var(--eye-color-surface-primary)); color: var(--eye-input-ink, var(--eye-color-ink-default));
+  font: inherit; font-size: var(--eye-type-body-md);
+}
+.eye-select { padding-inline-end: var(--eye-space-24); }
+.eye-textarea { block-size: auto; min-block-size: 4.5rem; padding-block: var(--eye-space-8); }
+.eye-count { color: var(--eye-color-ink-muted); font-size: var(--eye-type-label-sm); font-variant-numeric: tabular-nums; }
+.eye-count--over { color: var(--eye-color-critical); font-weight: 650; }
+.eye-proposed {
+  display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--eye-space-8); font-size: var(--eye-type-label-sm);
+  color: var(--eye-color-uncertain); border: 1px dashed var(--eye-color-uncertain); border-radius: var(--eye-radius-sm); padding-inline: var(--eye-space-4);
+}
+.eye-form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: var(--eye-space-12); }
+.eye-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--eye-space-8); }
+.eye-card { background: var(--eye-color-surface-primary); border: 1px solid var(--eye-color-border-default); border-radius: var(--eye-radius-lg); padding: var(--eye-space-16); }
+.eye-unit { display: grid; grid-template-columns: minmax(0, 1fr) minmax(6rem, auto); gap: var(--eye-space-4); }
+.eye-range { display: grid; grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr)); gap: var(--eye-space-8); }
+.eye-mono { font-family: var(--eye-font-mono); font-size: var(--eye-type-mono-sm); unicode-bidi: isolate; direction: ltr; }
+
+.eye-combobox { position: relative; }
+.eye-listbox {
+  position: absolute; inset-inline: 0; inset-block-start: 100%; z-index: 20; margin: 0; padding: var(--eye-space-4); list-style: none;
+  max-block-size: 16rem; overflow-y: auto; background: var(--eye-color-surface-elevated); border: 1px solid var(--eye-color-border-strong);
+  border-radius: var(--eye-radius-md); box-shadow: var(--eye-elevation-2);
+}
+.eye-option { padding: var(--eye-space-4) var(--eye-space-8); border-radius: var(--eye-radius-sm); cursor: pointer; }
+.eye-option[aria-selected='true'] { font-weight: 650; }
+.eye-option--active { background: var(--eye-color-selection); outline: 1px solid var(--eye-color-focus); }
+.eye-option[aria-disabled='true'] { color: var(--eye-color-disabled-ink); cursor: not-allowed; }
+
+.eye-error-summary { border: 2px solid var(--eye-color-critical); border-radius: var(--eye-radius-md); padding: var(--eye-space-12); margin-block: var(--eye-space-12); }
+.eye-error-summary h2 { margin-block: 0 var(--eye-space-8); font-size: var(--eye-type-heading-3); color: var(--eye-color-critical); }
+.eye-error-summary ul { margin: 0; padding-inline-start: var(--eye-space-16); }
+.eye-error-summary a { color: var(--eye-color-critical); font-weight: 600; }
+.eye-stepper { display: flex; flex-wrap: wrap; gap: var(--eye-space-12); list-style: none; margin: 0; padding: 0; }
+.eye-stepper li { font-size: var(--eye-type-label-md); color: var(--eye-color-ink-muted); }
+.eye-stepper li[aria-current='step'] { color: var(--eye-color-accent-strong); font-weight: 650; text-decoration: underline; text-underline-offset: 4px; }
+.eye-stepper .eye-step--invalid { color: var(--eye-color-critical); }
+.eye-draft { border-inline-start: 3px solid var(--eye-color-border-strong); background: var(--eye-color-surface-secondary); padding: var(--eye-space-8) var(--eye-space-12); margin-block: var(--eye-space-8); }
+
+.eye-button {
+  display: inline-flex; align-items: center; gap: var(--eye-space-4); block-size: var(--eye-size-control-md); padding-inline: var(--eye-space-12);
+  border: 1px solid var(--eye-button-border, var(--eye-color-accent-strong)); border-radius: var(--eye-radius-md);
+  background: var(--eye-button-bg, var(--eye-color-accent-default)); color: var(--eye-button-ink, var(--eye-color-surface-primary));
+  font: inherit; font-weight: 600; cursor: var(--eye-button-cursor, pointer); white-space: nowrap;
+}
+.eye-button--sm { block-size: var(--eye-size-control-sm); padding-inline: var(--eye-space-8); font-size: var(--eye-type-body-sm); }
+.eye-button--lg { block-size: var(--eye-size-control-lg); padding-inline: var(--eye-space-16); }
+.eye-button--secondary, .eye-button--quiet { --eye-button-bg: var(--eye-color-surface-primary); --eye-button-ink: var(--eye-color-ink-default); --eye-button-border: var(--eye-color-border-strong); }
+.eye-button--quiet { --eye-button-border: transparent; }
+.eye-button--critical { --eye-button-bg: var(--eye-color-surface-primary); --eye-button-ink: var(--eye-color-critical); --eye-button-border: var(--eye-color-critical); }
+.eye-button--secondary:hover, .eye-button--quiet:hover, .eye-button--critical:hover { --eye-button-bg: var(--eye-color-surface-secondary); }
+.eye-button:active { transform: translateY(1px); }
+.eye-button:disabled, .eye-button[aria-disabled='true'] { --eye-button-bg: var(--eye-color-surface-secondary); --eye-button-ink: var(--eye-color-disabled-ink); --eye-button-border: var(--eye-color-border-default); --eye-button-cursor: not-allowed; transform: none; }
+.eye-split { display: inline-flex; }
+.eye-split > .eye-button:first-child { border-start-end-radius: 0; border-end-end-radius: 0; }
+.eye-split > .eye-menu-wrap > .eye-button { border-start-start-radius: 0; border-end-start-radius: 0; border-inline-start-width: 0; }
+.eye-menu-wrap { position: relative; display: inline-block; }
+.eye-menu {
+  position: absolute; inset-inline-end: 0; inset-block-start: calc(100% + var(--eye-space-4)); z-index: 20; min-inline-size: 14rem; margin: 0;
+  padding: var(--eye-space-4); list-style: none; background: var(--eye-color-surface-elevated); border: 1px solid var(--eye-color-border-strong);
+  border-radius: var(--eye-radius-md); box-shadow: var(--eye-elevation-2);
+}
+.eye-menu-item { display: block; inline-size: 100%; text-align: start; padding: var(--eye-space-8); border: 0; border-radius: var(--eye-radius-sm); background: transparent; color: var(--eye-color-ink-default); font: inherit; cursor: pointer; }
+.eye-menu-item:focus-visible, .eye-menu-item:hover { background: var(--eye-color-selection); }
+.eye-menu-item[aria-disabled='true'] { color: var(--eye-color-disabled-ink); cursor: not-allowed; }
+.eye-menu-item small { display: block; color: var(--eye-color-ink-muted); }
+
+.eye-message { border: 1px solid var(--eye-message-tone, var(--eye-color-info)); border-inline-start-width: 4px; border-radius: var(--eye-radius-md); padding: var(--eye-space-8) var(--eye-space-12); margin-block: var(--eye-space-8); font-size: var(--eye-type-body-sm); }
+.eye-message strong:first-child { color: var(--eye-message-tone, var(--eye-color-info)); }
+.eye-message--info { --eye-message-tone: var(--eye-color-info); }
+.eye-message--success { --eye-message-tone: var(--eye-color-success); }
+.eye-message--warning { --eye-message-tone: var(--eye-color-warning); }
+.eye-message--critical { --eye-message-tone: var(--eye-color-critical); }
+.eye-message--unknown { --eye-message-tone: var(--eye-color-uncertain); }
+.eye-toast-region { position: fixed; inset-block-end: var(--eye-space-16); inset-inline-end: var(--eye-space-16); z-index: 30; display: flex; flex-direction: column; gap: var(--eye-space-8); max-inline-size: min(28rem, calc(100vw - 2 * var(--eye-space-16))); }
+.eye-toast { background: var(--eye-color-surface-elevated); border: 1px solid var(--eye-color-border-strong); border-radius: var(--eye-radius-md); box-shadow: var(--eye-elevation-2); padding: var(--eye-space-8) var(--eye-space-12); display: flex; gap: var(--eye-space-8); align-items: start; transition: opacity var(--eye-motion-standard) ease-out; }
+.eye-progress { display: flex; flex-direction: column; gap: var(--eye-space-4); font-size: var(--eye-type-body-sm); }
+.eye-progress progress { inline-size: 100%; block-size: var(--eye-space-8); accent-color: var(--eye-color-accent-default); }
+.eye-progress--stale { color: var(--eye-color-warning); }
+.eye-skeleton { display: flex; flex-direction: column; gap: var(--eye-space-8); }
+.eye-skeleton span { display: block; block-size: var(--eye-space-12); border-radius: var(--eye-radius-sm); background: var(--eye-color-surface-secondary); animation: eye-skeleton-pulse 1.4s ease-in-out infinite; }
+@keyframes eye-skeleton-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+.eye-empty { border: 1px dashed var(--eye-color-border-strong); border-radius: var(--eye-radius-md); padding: var(--eye-space-12) var(--eye-space-16); color: var(--eye-color-ink-default); }
+.eye-empty h3 { margin-block: 0 var(--eye-space-4); font-size: var(--eye-type-heading-3); }
+.eye-page-title { font-size: var(--eye-type-heading-1); margin-block-start: 0; }
+.eye-pre { background: var(--eye-color-surface-secondary); border: 1px solid var(--eye-color-border-default); border-radius: var(--eye-radius-md); padding: var(--eye-space-8); font-family: var(--eye-font-mono); font-size: var(--eye-type-mono-sm); max-block-size: 22rem; overflow: auto; }
+.eye-stack { display: flex; flex-direction: column; gap: var(--eye-space-12); }
+.eye-visually-hidden { position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+@media (forced-colors: active) {
+  input[aria-invalid='true'], select[aria-invalid='true'], textarea[aria-invalid='true'] { border-color: Mark; border-style: double; border-width: 3px; }
+  .eye-button, .eye-menu-item, .eye-option { forced-color-adjust: auto; border: 1px solid ButtonText; }
+  .eye-button:disabled, .eye-button[aria-disabled='true'], .eye-menu-item[aria-disabled='true'], .eye-option[aria-disabled='true'] { color: GrayText; border-color: GrayText; }
+  .eye-option--active, .eye-menu-item:focus-visible { outline: 2px solid Highlight; }
+  .eye-proposed, .eye-empty { border-color: CanvasText; }
+  .eye-message, .eye-error-summary { border-color: CanvasText; }
+  .eye-skeleton span { background: GrayText; animation: none; }
+}
+@media print {
+  .eye-toast-region, .eye-menu, .eye-listbox { display: none; }
+}
+/* end B80 clf */

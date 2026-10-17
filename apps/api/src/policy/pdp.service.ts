@@ -2862,6 +2862,32 @@ const BUNDLE_V1: Rule[] = [
     ];
   })(),
   /* end B80 tk */
+  /* B80 clf */
+  /* B80 §CL-F (0118_b80_x_clf; PAT-03, UX-21-002/-003). EXACT rules — no `shell` prefix rule exists. A FORM DRAFT is a person's own work in
+     progress: every HUMAN role that authors anything may keep one (the identity.self.read list less the agents and the external
+     collaborator — drafts never cross a grant boundary). SAVE and DISCARD are HUMAN-GATED (the PEP refuses an agent before any port; the
+     port re-checks the named human and the acting principal); the READ (one draft, the list) is the principal's OWN rows only — the RLS
+     policy and the guarded definer read decide that, not this rule. A draft is never a submission: these rules authorize nothing the form
+     itself does. */
+  ...((): Rule[] => {
+    const P = (role: string): { role: string; atScope: Scope } => ({ role, atScope: 'PLATFORM' });
+    const T = (role: string): { role: string; atScope: Scope } => ({ role, atScope: 'TENANT' });
+    const D = (role: string): { role: string; atScope: Scope } => ({ role, atScope: 'DOMAIN' });
+    const humans = [
+      P('platform_admin'), T('tenant_admin'), T('auditor'), T('retention_authority'), T('customer_sponsor'), T('onboarding_authority'), T('implementation_lead'),
+      T('branding_authority'),
+      ...['domain_admin', 'domain_analyst', 'collection_manager', 'decision_owner', 'decision_approver', 'decision_authority', 'executive', 'executive_operator',
+        'board_member', 'extraction_manager', 'resolution_manager', 'strategy_owner', 'forecast_owner', 'twin_owner', 'simulation_operator', 'knowledge_owner',
+        'record_authority', 'retention_steward', 'ontology_steward', 'risk_owner', 'opportunity_sponsor', 'execution_authority', 'method_steward',
+        'constraint_steward', 'data_steward', 'domain_specialist', 'product_analytics_owner', 'privacy_officer', 'product_analyst', 'support_engineer',
+        'enablement_assessor'].map(D),
+    ];
+    const gate: Obligation[] = [{ type: 'human_gate' }];
+    const r = (actionPrefix: string, obligations?: Obligation[]): Rule =>
+      ({ actionPrefix, exact: true, requiredAnyRole: humans, ...(obligations === undefined ? {} : { obligations }), requiresPurpose: true, maxConsequence: 'C2' });
+    return [r('shell.draft.read'), r('shell.draft.save', gate), r('shell.draft.discard', gate)];
+  })(),
+  /* end B80 clf */
   /* B36 home */
   /* THE EXECUTIVE HOME, THE CADENCE, THE COMMAND VIEWS, THE SEARCH, THE METRICS (0094 §H; F-P6-11: WS-01, JRN-19, PER-03, CAP-EO-01/-02/-04).
      EXACT rules — no `executive` prefix rule exists and none of these names is a prefix of another rule's. THE READS (executive.home.read
