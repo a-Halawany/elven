@@ -19,8 +19,8 @@ import { decisions } from '../../../../lib/decisions';
 import { graph } from '../../../../lib/graph';
 import { GovernedButton, LiveStatus, Mono } from '../../../../components/observation';
 import { Combobox, DateTimeInput, ErrorSummary, Field, FormDraft, Select, Stepper, TextArea } from '../../../../components/forms';
-import { Button } from '../../../../components/actions';
-import { EmptyState, InlineMessage } from '../../../../components/feedback';
+import { ActionMenu, Button } from '../../../../components/actions';
+import { EmptyState, InlineMessage, ProgressIndicator, Skeleton } from '../../../../components/feedback';
 import { confirm, confirmStepDefaults, edit, fieldId, reviewDigest, shortDigest, submitHolds, validateForm, zoneChoices, type ComboOption, type FieldValue, type Hold } from '../../../../lib/forms-b80';
 import { CITATION_KINDS, FORM_KEY, MAX_OPTIONS, SCHEMA_VERSION, SPECS, STEPS, duplicateOptionKeys, initialValues, optionKey, packageActs, requestsOf, sequenceText, type ActOutcome } from '../../../../lib/package-form-b80';
 import { jcsCanonicalize } from '../../../../lib/jcs';
@@ -44,6 +44,8 @@ export default function DeclarePackagePage() {
   const [outcomes, setOutcomes] = useState<ActOutcome[] | null>(null);
   const [packageId, setPackageId] = useState<string | null>(null);
   const [savedPayload, setSavedPayload] = useState<string | null>(null);
+  const [declaring, setDeclaring] = useState(false);
+  const [lastReceiptAt, setLastReceiptAt] = useState<string | null>(null);
 
   useEffect(() => { try { setUserZone(Intl.DateTimeFormat().resolvedOptions().timeZone); } catch { setUserZone(null); } }, []);
   useEffect(() => {
@@ -118,7 +120,7 @@ export default function DeclarePackagePage() {
       <section className="eye-card" aria-label={STEPS[step]}>
         {step === 0 && (
           <div className="eye-form-grid">
-            {decs === null ? <LiveStatus>Reading the decisions you can bind to…</LiveStatus>
+            {decs === null ? <Skeleton label="the decisions you can bind to" lines={2} />
               : decs.length === 0 ? <EmptyState context={{ what: 'DEC objects', scope: 'this domain', evidence: decsNote !== null ? 'not_permitted' : 'none_recorded', permission: 'graph.read', nextStep: 'A strategy owner declares the DEC in the strategy graph first.' }} />
               : <Combobox {...common('decision', { wide: true })} options={decs} selected={v('decision') || null} placeholder="type to find the decision"
                   onSelect={(o) => { setValues((x) => ({ ...x, decision: edit(o?.value ?? '') })); setHolds((h) => h.filter((y) => y.field !== 'decision')); }} />}
@@ -141,6 +143,13 @@ export default function DeclarePackagePage() {
             {Array.from({ length: slots }, (_, n) => (
               <fieldset key={n} className="eye-card">
                 <legend className="eye-label">Option {n + 1}</legend>
+                <ActionMenu label={`Option ${n + 1} actions`} size="sm" items={[
+                  { key: 'clear', label: `Clear option ${n + 1}`, description: 'empties its fields; nothing is sent' },
+                  { key: 'remove', label: `Remove option ${n + 1}`, disabledReason: n === slots - 1 && slots > 1 ? null : 'only the last option slot can be removed (and one always remains)' },
+                ]} onSelect={(key) => {
+                  setValues((x) => { const y = { ...x }; for (const f of ['key', 'title', 'citeKind', 'citeId', 'reason', 'risks', 'opportunities']) y[optionKey(n, f)] = edit(''); y[optionKey(n, 'kind')] = edit('intervention'); return y; });
+                  if (key === 'remove') setSlots(slots - 1);
+                }} />
                 <div className="eye-form-grid">
                   <Field {...common(optionKey(n, 'key'))} value={v(optionKey(n, 'key'))} onChange={set(optionKey(n, 'key'))} />
                   <Field {...common(optionKey(n, 'title'))} value={v(optionKey(n, 'title'))} onChange={set(optionKey(n, 'title'))} />
@@ -165,7 +174,10 @@ export default function DeclarePackagePage() {
         )}
       </section>
 
-      {outcomes !== null && (() => {
+      {outcomes !== null && declaring && (
+        <ProgressIndicator label="Declaring the package" now={Date.now()} progress={{ state: 'running', done: outcomes.filter((o) => o.ok).length, total: 2 + requests.options.length, updatedAt: lastReceiptAt }} />
+      )}
+      {outcomes !== null && !declaring && (() => {
         const t = sequenceText(outcomes, 2 + requests.options.length);
         return <InlineMessage tone={outcomes.some((o) => o.unknown) ? 'unknown' : 'critical'} title={t.title}><ul>{t.lines.map((l) => <li key={l}>{l}</li>)}</ul>
           {packageId !== null && <p>The package <Mono>{packageId}</Mono> exists; finish it on the <Link href="/decisions">Decisions</Link> page — do not declare it again.</p>}</InlineMessage>;
@@ -183,17 +195,22 @@ export default function DeclarePackagePage() {
               if (held.length + dupHolds.length > 0) { setHolds([...held, ...dupHolds]); setFocusSignal((n) => n + 1); throw new Error('held'); }
               const out: ActOutcome[] = [];
               const record = (step: ActOutcome['step'], r: { ok: boolean; status: number; data?: { receipt: { policyDecisionId: string; auditSeq: number } }; error?: { code: string; message: string; correlationId: string } }) => {
-                out.push({ step, ok: r.ok, receipt: r.data?.receipt ?? null, error: r.error ?? null, unknown: !r.ok && [0, 502, 503, 504].includes(r.status) }); setOutcomes([...out]); return r.ok;
+                out.push({ step, ok: r.ok, receipt: r.data?.receipt ?? null, error: r.error ?? null, unknown: !r.ok && [0, 502, 503, 504].includes(r.status) }); setOutcomes([...out]);
+                if (r.ok) setLastReceiptAt(new Date().toISOString());
+                return r.ok;
               };
-              const d = await packageActs.declare(scope, requests.declare);
-              if (!record('declare', d) || d.data === undefined) throw new Error('refused');
-              const pid = d.data.package.packageId; setPackageId(pid);
-              const o = await packageActs.open(scope, pid, requests.open);
-              if (!record('open', o) || o.data === undefined) throw new Error('refused');
-              for (const opt of requests.options) {
-                const r = await packageActs.option(scope, pid, o.data.version.version, opt);
-                if (!record(`option:${opt.key}`, r)) throw new Error('refused');
-              }
+              setDeclaring(true); setOutcomes([]);
+              try {
+                const d = await packageActs.declare(scope, requests.declare);
+                if (!record('declare', d) || d.data === undefined) throw new Error('refused');
+                const pid = d.data.package.packageId; setPackageId(pid);
+                const o = await packageActs.open(scope, pid, requests.open);
+                if (!record('open', o) || o.data === undefined) throw new Error('refused');
+                for (const opt of requests.options) {
+                  const r = await packageActs.option(scope, pid, o.data.version.version, opt);
+                  if (!record(`option:${opt.key}`, r)) throw new Error('refused');
+                }
+              } finally { setDeclaring(false); }
             }} />
         )}
         {ownerReason !== null && step === STEPS.length - 1 && <span className="eye-help">Unavailable: {ownerReason}</span>}

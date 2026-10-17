@@ -15,7 +15,7 @@
  *
  * States (hover, focus, disabled, invalid, forced colours) come from app/globals.css (the B80 clf block); logical properties only.
  */
-import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   COMBO_CLOSED, DRAFT_LABELS, NO_DRAFT, UNIT_DIMENSIONS, INTAKE_DISCLOSURE, UPLOAD_LIMITS, charCount, comboAnnouncement, comboKey, describedBy,
   draftStatusText, draftViewOf, errorSummary, filterOptions, instantText, instantToLocal, intakeCheck, localToInstant, sourceText, stepperState,
@@ -24,8 +24,8 @@ import {
 } from '../lib/forms-b80';
 import { drafts } from '../lib/drafts-b80';
 import type { Scope } from '../lib/observation';
-import { Button } from './actions';
-import { InlineMessage } from './feedback';
+import { Button, SplitButton } from './actions';
+import { InlineMessage, Toast, type ToastMessage } from './feedback';
 /* the library owns the style constants (lib/styles-b80.ts); ui.tsx and observation.tsx re-export them for existing pages */
 export { inputStyle, textareaStyle } from '../lib/styles-b80';
 
@@ -318,6 +318,8 @@ export function FormDraft({ scope, purpose, formKey, schemaVersion, payload, sum
   const [stored, setStored] = useState<Row | null>(null);
   const [error, setError] = useState<{ code: string; message: string; correlationId: string } | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const dismissToast = useCallback((tid: string) => setToasts((t) => t.filter((m) => m.id !== tid)), []);
   const reload = async () => {
     const r = await drafts.read(scope, purpose, formKey);
     if (!r.ok || r.data === undefined) { setView(draftViewOf(null, r.error?.message ?? 'the server did not answer')); return; }
@@ -328,34 +330,39 @@ export function FormDraft({ scope, purpose, formKey, schemaVersion, payload, sum
     <section className="eye-draft" aria-label="Your draft of this form">
       <p className="eye-help" role="status">{draftStatusText(view, dirty)}</p>
       <div className="eye-row">
-        <Button label={DRAFT_LABELS.save} pendingLabel="Saving draft" variant="secondary" size="sm" disabledReason={view.state === 'unavailable' ? 'drafts are unavailable' : null}
-          onClick={async () => {
+        <SplitButton label={DRAFT_LABELS.save} pendingLabel="Saving draft" variant="secondary" size="sm" disabledReason={view.state === 'unavailable' ? 'drafts are unavailable' : null}
+          onRun={async () => {
             setError(null); setNote(null);
             const r = await drafts.save(scope, purpose, { formKey, schemaVersion, payload, summary, step, expectedVersion: view.state === 'live' ? view.version : null });
             if (!r.ok || r.data === undefined) { setError(r.error ?? null); return; }
             const v: DraftView = { state: 'live', draftId: r.data.draft.draft_id, version: r.data.draft.version, savedAt: r.data.draft.saved_at, expiresAt: r.data.draft.expires_at, digest: r.data.draft.payload_digest, reason: null };
             setView(v); setStored(payload);
-            setNote(r.data.draft.unchanged ? `Nothing changed since draft v${v.version}; no new version was written.` : `Draft v${v.version} saved — it is yours only and has not been sent.`);
+            const text = r.data.draft.unchanged ? `Nothing changed since draft v${v.version}; no new version was written.` : `Draft v${v.version} saved — it is yours only and has not been sent.`;
+            setNote(text); setToasts((t) => [...t, { id: `${v.draftId}-${v.version}-${t.length}`, text, kind: 'status' }]);
             onSaved?.(v);
-          }} />
-        {view.state === 'live' && stored !== null && (
-          <Button label={`${DRAFT_LABELS.resume} v${view.version}`} pendingLabel="Resuming" variant="quiet" size="sm" onClick={() => { onResume(stored); setNote(`Draft v${view.version} restored into the form.`); }} />
-        )}
-        {(view.state === 'live' || view.state === 'expired') && view.draftId !== null && (
-          <Button label={DRAFT_LABELS.discard} pendingLabel="Discarding" variant="quiet" size="sm"
-            onClick={async () => {
+          }}
+          items={[
+            { key: 'resume', label: view.version !== null ? `${DRAFT_LABELS.resume} v${view.version}` : DRAFT_LABELS.resume,
+              disabledReason: view.state === 'live' && stored !== null ? null : 'there is no live draft to resume' },
+            { key: 'discard', label: DRAFT_LABELS.discard, disabledReason: (view.state === 'live' || view.state === 'expired') && view.draftId !== null ? null : 'there is no draft to discard' },
+          ]}
+          onSelect={(key) => {
+            if (key === 'resume' && stored !== null) { onResume(stored); setNote(`Draft v${view.version} restored into the form.`); return; }
+            if (key === 'discard' && view.draftId !== null && view.version !== null) {
               setError(null); setNote(null);
-              const r = await drafts.discard(scope, purpose, view.draftId!, view.version!);
-              if (!r.ok) { setError(r.error ?? null); return; }
-              setView({ ...NO_DRAFT, state: 'discarded' }); setStored(null); setNote('The draft was discarded; what is on this page is kept until you leave it.');
-            }} />
-        )}
+              void drafts.discard(scope, purpose, view.draftId, view.version).then((r) => {
+                if (!r.ok) { setError(r.error ?? null); return; }
+                setView({ ...NO_DRAFT, state: 'discarded' }); setStored(null); setNote('The draft was discarded; what is on this page is kept until you leave it.');
+              });
+            }
+          }} />
         {error !== null && /stale|expired/.test(error.message) && (
           <Button label="Read the draft again" pendingLabel="Reading" variant="quiet" size="sm" onClick={async () => { setError(null); await reload(); }} />
         )}
       </div>
       {note !== null && <p className="eye-help">{note}</p>}
       {error !== null && <InlineMessage tone="critical" title={error.code}>{error.message} <span className="eye-mono">correlation: {error.correlationId}</span></InlineMessage>}
+      <Toast messages={toasts} onDismiss={dismissToast} />
     </section>
   );
 }
