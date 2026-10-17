@@ -3005,6 +3005,31 @@ const BUNDLE_V1: Rule[] = [
   { actionPrefix: 'decision.execution.target.deactivate', exact: true, requiredAnyRole: [{ role: 'execution_authority', atScope: 'DOMAIN' }, { role: 'domain_admin', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   { actionPrefix: 'prediction.exposure.learn', exact: true, requiredAnyRole: [{ role: 'risk_owner', atScope: 'DOMAIN' }, { role: 'opportunity_sponsor', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   /* end B36 collab */
+  /* B80 sh */
+  /* B80 §SH (0118_b80_x_sh; F-P7-E-01: PR-05-002, UX-09-003, UX-11-002, UX-15-002, PAT-26). EXACT rules — no earlier rule is a prefix of
+     shell.navigation.* (no `shell` prefix rule exists). A NAVIGATION STATE is the principal's OWN presentation state: saved and read by every
+     HUMAN role of the Eye at its own scope — PLATFORM (the admin workspace: the platform and governance roles), TENANT (a tenant-homed
+     principal working in a domain) and DOMAIN (every human domain role) — and by no agent, subscriber or external collaborator (none is
+     listed; the port re-checks that the actor is the bound principal AND an active human, and refuses any other principal's state). Not
+     human-gated: saving where one stands is presentation, not a consequential act (the port's human check is the boundary). The deep
+     link's warning as-of read is `prediction.read` (the existing prefix rule — the warning readers); no rule is added for it. */
+  ...((): Rule[] => {
+    const platform = ['platform_admin', 'commercial_authority', 'product_authority', 'design_system_authority', 'independent_assurance', 'operations_authority', 'conformance_steward']
+      .map((role) => ({ role, atScope: 'PLATFORM' as Scope }));
+    const tenant = ['tenant_admin', 'auditor', 'retention_authority', 'branding_authority', 'customer_sponsor', 'implementation_lead', 'onboarding_authority']
+      .map((role) => ({ role, atScope: 'TENANT' as Scope }));
+    const domain = ['domain_admin', 'domain_analyst', 'collection_manager', 'decision_owner', 'decision_approver', 'decision_authority', 'executive', 'executive_operator',
+      'board_member', 'extraction_manager', 'resolution_manager', 'strategy_owner', 'forecast_owner', 'twin_owner', 'simulation_operator', 'knowledge_owner',
+      'record_authority', 'retention_steward', 'ontology_steward', 'risk_owner', 'opportunity_sponsor', 'execution_authority', 'method_steward', 'constraint_steward',
+      'data_steward', 'domain_specialist', 'product_analytics_owner', 'privacy_officer', 'product_analyst', 'enablement_assessor', 'support_engineer']
+      .map((role) => ({ role, atScope: 'DOMAIN' as Scope }));
+    const people = [...platform, ...tenant, ...domain];
+    return [
+      { actionPrefix: 'shell.navigation.save', exact: true, requiredAnyRole: people, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'shell.navigation.read', exact: true, requiredAnyRole: people, obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+    ];
+  })(),
+  /* end B80 sh */
 ];
 
 /* B107 conformance */
