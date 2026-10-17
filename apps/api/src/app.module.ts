@@ -24,6 +24,7 @@ import { RetentionModule } from './retention/retention.module.js';
 import { DomainsModule } from './domains/domains.module.js';
 import { AnalyticsModule } from './analytics/analytics.module.js';
 import { DeliveryModule } from './delivery/delivery.module.js';
+import { GovernanceModule } from './governance/governance.module.js';
 /* end B33 */
 
 @Module({
@@ -49,6 +50,7 @@ import { DeliveryModule } from './delivery/delivery.module.js';
     /* B33 (0111) */ DomainsModule /* end B33 */,
     /* B92 (0113) */ AnalyticsModule /* end B92 */,
     /* B94 (0114) */ DeliveryModule /* end B94 */,
+    /* B107 (0115) */ GovernanceModule /* end B107 */,
     RetentionModule,
   ],
 })
