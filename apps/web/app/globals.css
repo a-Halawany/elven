@@ -133,14 +133,14 @@ main { padding-block: var(--eye-space-32); padding-inline: var(--eye-space-32); 
 .eye-rail-link[aria-current="page"] {
   color: var(--eye-color-accent-strong); background: var(--eye-color-selection); font-weight: 650; border-inline-start-color: var(--eye-color-accent-strong);
 }
-.eye-shell-main { flex: 1; min-inline-size: 0; padding: var(--eye-space-24); background: var(--eye-color-canvas); }
-.eye-shell-main:focus { outline: none; }
-.eye-shell-main:focus-visible { outline: var(--eye-border-focus) solid var(--eye-color-focus); }
+.eye-shell-main { flex: 1; min-inline-size: 0; overflow-x: auto; padding: var(--eye-space-24); background: var(--eye-color-canvas); }  /* wide content scrolls inside main, never the page */
+.eye-shell-main:focus, .eye-shell-main:focus-visible { outline: none; }   /* the skip link's and a return's programmatic target, not a control */
 .eye-shell-gate { padding: var(--eye-space-32); }
 .eye-shell-gate h1 { font-size: var(--eye-type-heading-1); }
 .eye-shell-gate-alert { color: var(--eye-color-critical); }
 .eye-shell-wayfinding { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--eye-space-12); margin-block-end: var(--eye-space-12); font-size: var(--eye-type-label-sm); }
 .eye-shell-return { color: var(--eye-color-ink-muted); }
+.eye-shell-wayfinding a, .eye-shell-gate a, .eye-history-panel a, .eye-ws-actions a, .eye-skip-link { color: var(--eye-color-accent-default); }
 .eye-crumbs ol { display: flex; flex-wrap: wrap; list-style: none; margin: 0; padding: 0; gap: var(--eye-space-4); }
 .eye-crumbs li { display: inline-flex; gap: var(--eye-space-4); color: var(--eye-color-ink-muted); overflow-wrap: anywhere; }
 .eye-crumbs li + li::before { content: "›"; color: var(--eye-color-ink-muted); }

@@ -381,9 +381,11 @@ export function HistoryNavigator({ history, current, scope, workspace, onGo }: {
     try { await navigator.clipboard.writeText(`${window.location.origin}${current}`); setCopied('Copied. The link opens this place; it carries no command and acknowledges nothing.'); }
     catch { setCopied(`Copy this link: ${current}`); }
   };
+  const toggle = useRef<HTMLButtonElement | null>(null);
+  const onKey = (e: ReactKeyboardEvent<HTMLDivElement>) => { if (e.key === 'Escape' && open) { e.preventDefault(); setOpen(false); toggle.current?.focus(); } };
   return (
-    <div className="eye-history">
-      <button type="button" className="eye-link-button" aria-expanded={open} aria-controls="eye-history-panel" onClick={() => setOpen((o) => !o)}>History</button>
+    <div className="eye-history" onKeyDown={onKey}>
+      <button ref={toggle} type="button" className="eye-link-button" aria-expanded={open} aria-controls="eye-history-panel" onClick={() => setOpen((o) => !o)}>History</button>
       {open && (
         <div id="eye-history-panel" className="eye-history-panel">
           <p className="eye-shell-meta">This tab&apos;s own places — kept in this tab only, cleared at sign-out. Going back opens a place; it repeats nothing.</p>
@@ -415,6 +417,7 @@ export function HistoryNavigator({ history, current, scope, workspace, onGo }: {
               {pending ? 'Saving this place…' : 'Save this place'}
             </button>
             {saved === null && readErr === null && <span className="eye-shell-meta"> reading your saved place first…</span>}
+            {saved === null && readErr !== null && <span className="eye-shell-meta"> saving waits for your saved place to be read (the read above was refused)</span>}
             <ErrorNote error={saveErr} />
             <Receipt receipt={receipt} />
           </div>
