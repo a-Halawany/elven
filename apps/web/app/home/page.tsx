@@ -15,6 +15,7 @@ import { home as api, buildAgenda, contextLine, hitLine, metricLine, resetNeedsC
 import { Empty, GovernedButton, LiveStatus, Mono, cardStyle } from '../../components/observation';
 import { inputStyle, Receipt } from '../../components/ui';
 import { ContextSwitcher } from './context-switcher';
+/* B80 cb */ import { contextChannel } from '../../lib/context-b80'; /* end B80 cb */
 import { CommandViews } from './command-views';
 import { HomeSections } from './sections';
 
@@ -49,6 +50,9 @@ export default function HomePage() {
     setProblem(null); setH(r.data.home);
   };
   useEffect(() => { void load(); }, [scope]); // eslint-disable-line react-hooks/exhaustive-deps
+  /* B80 cb: a switch committed from the operating context bar (any consumer of the page) re-reads the home under the new context */
+  useEffect(() => contextChannel.subscribe((c) => { if (c.tenantId === scope.tenantId && c.domainId === scope.domainId) void load(); }), [scope]); // eslint-disable-line react-hooks/exhaustive-deps
+  /* end B80 cb */
   const done = (r: ReceiptT) => { setReceipt(r); setAct(null); void load(); };
   if (problem !== null && h === null) return <><h1 style={{ fontSize: 'var(--eye-type-heading-1)', marginBlockStart: 0 }}>Executive home</h1><LiveStatus assertive><span style={critical}>{problem}</span></LiveStatus></>;
   if (h === null) return <><h1 style={{ fontSize: 'var(--eye-type-heading-1)', marginBlockStart: 0 }}>Executive home</h1><Empty>composing the home…</Empty></>;
