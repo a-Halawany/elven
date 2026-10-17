@@ -170,6 +170,9 @@ const BUNDLE_V1: Rule[] = [
       { role: 'operations_authority', atScope: 'PLATFORM' },
       { role: 'conformance_steward', atScope: 'PLATFORM' },
       /* end B107 §0 */
+      /* B80 §0 (0118 §0.2): the customer's brand owner resolves its own scope */
+      { role: 'branding_authority', atScope: 'TENANT' },
+      /* end B80 §0 */
     ],
     obligations: [{ type: 'audit_access' }],
     requiresPurpose: true,
