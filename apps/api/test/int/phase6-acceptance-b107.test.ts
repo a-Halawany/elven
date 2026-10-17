@@ -839,3 +839,158 @@ describe(`B107-F · ${REPRO ? 'DEFECT' : 'correction'}: acceptance decided at th
     expect(await reach(analyst, 'observation.source.register')).toBe('reached');
   });
 });
+
+// ════════════════════════════════════════════════════════════════════════════════════════════════
+/** B107-G (the review of ef90bb0 — a SOURCE finding): `B107G_REPRO=1` asserts what the uncorrected code DOES when expansion meets an expiry that no
+ *  tick has reconciled; without it, the correction (0117: the expansion restriction read from what is in force NOW, at the proposal AND at the
+ *  final attestation). Two orderings: (a) propose wider AFTER the expiry; (b) propose wider while current, the expiry BEFORE the final attestation. */
+const REPRO_G = process.env['B107G_REPRO'] === '1';
+const XCAP = `CAP-GATE-X-${RUN}`; const YCAP = `CAP-GATE-Y-${RUN}`;
+const NARROW = () => SCOPE({ roles: ['domain_analyst'] });
+const WIDE = () => SCOPE({ roles: ['domain_analyst', 'domain_admin'] });
+const recordState = async (id: string) => rows(sql`select version, state, effective_scope -> 'roles' as roles from governance.acceptance_records where record_id = ${id}::uuid order by version`);
+/** Verify (the customer) and attest every obligation but the LAST — returns the last obligation, still unattested. */
+async function attestAllButLast(id: string, version: number, digest: string): Promise<string> {
+  const rec = await one(sql`select obligations from governance.acceptance_records where record_id = ${id}::uuid and version = ${version}`);
+  const obl = rec['obligations'] as string[];
+  const people: Record<string, AuthenticatedPrincipal> = { product, independent_assurance: assurance, customer: sponsor, operations: ops };
+  await verify(sponsor, id, { version, digest });
+  // the customer attests first (it verified), then every other obligation but the last of the remaining order
+  const order = ['customer', ...obl.filter((o) => o !== 'customer')];
+  for (const o of order.slice(0, -1)) await attest(people[o]!, id, { version, obligation: o, digest });
+  return order[order.length - 1]!;
+}
+describe(`B107-G · ${REPRO_G ? 'DEFECT' : 'correction'}: expansion while the record in force no longer meets its evidence, before any reconciliation (PR-71-005, ES-71-004)`, () => {
+  afterAll(async () => {
+    for (const k of [XCAP, YCAP]) {
+      const cur = await one(sql`select enforced from governance.acceptance_enforcement where capability_key = ${k} order by version desc limit 1`);
+      if (cur['enforced'] === true) await enforce(product, { capabilityKey: k, enforced: false, prefixes: [], reason: 'the B107-G exercise ended early (SYNTHETIC)' }).catch(() => undefined);
+    }
+  });
+  let XR = ''; let XSHORT = ''; let XT = '';
+  it('(a) SETUP: accepted for domain_analyst ONLY over current evidence — its analyst item expires in seconds; the domain administrator is outside the scope', async () => {
+    await artifact('capability', XCAP);
+    await enforce(product, { capabilityKey: XCAP, enforced: true, prefixes: ['observation.source.'] });
+    XT = String((await evidence(steward, ext('test_report', 60 * DAY))).evidence['evidence_id']);
+    const short = (await evidence(steward, ext('journey_evidence', 15_000, { covers: { roles: ['domain_analyst'] }, title: 'the analyst journey run (SYNTHETIC, short-lived)' }))).evidence;
+    XSHORT = String(short['evidence_id']);
+    const slots = await SLOT_ITEMS(steward, CAP_SLOTS);
+    const r = (await propose(product2, { kind: 'capability', title: `Expansion probe (a) (SYNTHETIC ${RUN})`, subjectKey: XCAP, scope: NARROW(), evidence: [XT, XSHORT, ...slots] })).record;
+    XR = String(r['record_id']);
+    expect((await acceptAll(XR, 1, String(r['digest'])))['state']).toBe('accepted');
+    expect(await reach(analyst, 'observation.source.register')).toBe('reached');
+    expect((await reach(dadmin, 'observation.source.register') as Row)['status']).toBe(403);
+    await untilDb(String(short['valid_until']));
+    expect(await recordState(XR)).toEqual([{ version: 1, state: 'accepted', roles: ['domain_analyst'] }]);   // stored: no tick ran
+    expect((await reach(analyst, 'observation.source.register') as Row)['status']).toBe(403);               // 0116: constrained at the request
+  });
+  it(`(a) a WIDER version (+ domain_admin) over FRESH evidence, proposed after the expiry with no tick — ${REPRO_G ? 'the DEFECT: proposed, every obligation completed, ACCEPTED; the administrator reaches the handler' : 'REFUSED (held): the accepted scope is re-accepted first; nothing activated, the administrator still refused'}`, async () => {
+    const renewed = String((await evidence(steward, ext('journey_evidence', 60 * DAY, { covers: { roles: ['domain_analyst'] }, renews: XSHORT }))).evidence['evidence_id']);
+    const adminRun = String((await evidence(steward, ext('journey_evidence', 60 * DAY, { covers: { roles: ['domain_admin'] }, title: 'the administrator journey run (SYNTHETIC)' }))).evidence['evidence_id']);
+    const slots = await SLOT_ITEMS(steward, CAP_SLOTS);
+    const wide = { recordId: XR, kind: 'capability', title: `Expansion probe (a) — wider (SYNTHETIC ${RUN})`, subjectKey: XCAP, expectedVersion: 1, scope: WIDE(), evidence: [XT, renewed, adminRun, ...slots] };
+    if (REPRO_G) {
+      const v2 = (await propose(product2, wide)).record;
+      expect((await acceptAll(XR, 2, String(v2['digest'])))['state']).toBe('accepted');
+      expect(await recordState(XR)).toEqual([{ version: 1, state: 'superseded', roles: ['domain_analyst'] }, { version: 2, state: 'accepted', roles: ['domain_analyst', 'domain_admin'] }]);
+      expect(await reach(dadmin, 'observation.source.register')).toBe('reached');     // the newly admitted operation
+      expect((await scopeOf(dadmin, XCAP)).scope).toMatchObject({ state: 'accepted' });
+      return;
+    }
+    await refused(propose(product2, wide), /^acceptance record rejected \(held\): the re-acceptance of CAP-GATE-X-.* expands beyond its previously accepted scope \(role domain_admin\)/, 409);
+    expect(await recordState(XR)).toEqual([{ version: 1, state: 'accepted', roles: ['domain_analyst'] }]);
+    expect((await reach(dadmin, 'observation.source.register') as Row)['status']).toBe(403);
+    expect((await scopeOf(dadmin, XCAP)).scope).toMatchObject({ state: 'constrained', reconciled: false });
+    // RECOVERY: the SAME scope re-accepted over the renewed evidence; THEN the expansion, from a current acceptance
+    const same = (await propose(product2, { ...wide, title: `Expansion probe (a) — re-accepted (SYNTHETIC ${RUN})`, scope: NARROW(), evidence: [XT, renewed, ...slots] })).record;
+    expect((await acceptAll(XR, 2, String(same['digest'])))['state']).toBe('accepted');
+    expect(await reach(analyst, 'observation.source.register')).toBe('reached');
+    expect((await reach(dadmin, 'observation.source.register') as Row)['status']).toBe(403);
+    const v3 = (await propose(product2, { ...wide, expectedVersion: 2, title: `Expansion probe (a) — expanded (SYNTHETIC ${RUN})` })).record;
+    expect((await acceptAll(XR, 3, String(v3['digest'])))['state']).toBe('accepted');
+    expect(await reach(dadmin, 'observation.source.register')).toBe('reached');      // expansion from a CURRENT acceptance is legitimate
+    await enforce(product, { capabilityKey: XCAP, enforced: false, prefixes: [], reason: 'the (a) ordering is over (SYNTHETIC)' });
+  });
+  let YR = ''; let YSHORT_UNTIL = ''; let YV2 = ''; let YV2DIGEST = ''; let YLAST = ''; let YT = ''; let YSHORT = '';
+  it('(b) SETUP: accepted for domain_analyst ONLY; a WIDER version (+ domain_admin) proposed WHILE it is current and attested by every obligation but the last', async () => {
+    if (REPRO_G) await enforce(product, { capabilityKey: XCAP, enforced: false, prefixes: [], reason: 'the (a) ordering is over (SYNTHETIC)' }).catch(() => undefined);
+    await artifact('capability', YCAP);
+    await enforce(product, { capabilityKey: YCAP, enforced: true, prefixes: ['observation.source.'] });
+    YT = String((await evidence(steward, ext('test_report', 60 * DAY))).evidence['evidence_id']);
+    const short = (await evidence(steward, ext('journey_evidence', 30_000, { covers: { roles: ['domain_analyst'] }, title: 'the analyst journey run (SYNTHETIC, short-lived)' }))).evidence;
+    YSHORT = String(short['evidence_id']); YSHORT_UNTIL = String(short['valid_until']);
+    const slots = await SLOT_ITEMS(steward, CAP_SLOTS);
+    const r = (await propose(product2, { kind: 'capability', title: `Expansion probe (b) (SYNTHETIC ${RUN})`, subjectKey: YCAP, scope: NARROW(), evidence: [YT, YSHORT, ...slots] })).record;
+    YR = String(r['record_id']);
+    expect((await acceptAll(YR, 1, String(r['digest'])))['state']).toBe('accepted');
+    const fresh = String((await evidence(steward, ext('journey_evidence', 60 * DAY, { covers: { roles: ['domain_analyst', 'domain_admin'] } }))).evidence['evidence_id']);
+    const slots2 = await SLOT_ITEMS(steward, CAP_SLOTS);
+    const v2 = (await propose(product2, { recordId: YR, kind: 'capability', title: `Expansion probe (b) — wider (SYNTHETIC ${RUN})`, subjectKey: YCAP, expectedVersion: 1, scope: WIDE(), evidence: [YT, fresh, ...slots2] })).record;
+    YV2 = String(v2['record_id']); YV2DIGEST = String(v2['digest']);
+    expect(v2).toMatchObject({ version: 2, state: 'proposed' });                      // a legitimate proposal: the original is current
+    YLAST = await attestAllButLast(YR, 2, YV2DIGEST);
+    expect(await recordState(YR)).toEqual([{ version: 1, state: 'accepted', roles: ['domain_analyst'] }, { version: 2, state: 'proposed', roles: null }]);
+  });
+  it(`(b) the original's evidence EXPIRES before the final attestation, no tick — ${REPRO_G ? 'the DEFECT: the final attestation ACCEPTS the wider version, supersedes the original; the administrator reaches the handler' : 'the final attestation is REFUSED (held): nothing recorded, nothing activated, nothing superseded; then the legitimate recovery'}`, async () => {
+    await untilDb(YSHORT_UNTIL);
+    expect((await stored1(YR))['state']).toBe('accepted');
+    const people: Record<string, AuthenticatedPrincipal> = { product, independent_assurance: assurance, customer: sponsor, operations: ops };
+    const last = () => attest(people[YLAST]!, YR, { version: 2, obligation: YLAST, digest: YV2DIGEST });
+    if (REPRO_G) {
+      expect((await last()).attestation).toMatchObject({ state: 'accepted' });
+      expect(await recordState(YR)).toEqual([{ version: 1, state: 'superseded', roles: ['domain_analyst'] }, { version: 2, state: 'accepted', roles: ['domain_analyst', 'domain_admin'] }]);
+      expect(await reach(dadmin, 'observation.source.register')).toBe('reached');
+      expect((await scopeOf(dadmin, YCAP)).scope).toMatchObject({ state: 'accepted' });
+      await enforce(product, { capabilityKey: YCAP, enforced: false, prefixes: [], reason: 'the (b) ordering is over (SYNTHETIC)' });
+      return;
+    }
+    const before = await one(sql`select count(*)::int as n from governance.acceptance_attestations where record_id = ${YR}::uuid and version = 2`);
+    await refused(last(), /^acceptance attestation rejected \(held\): CAP-GATE-Y-.* — version 2 expands beyond the scope in force \(role domain_admin\)/, 409);
+    expect(await one(sql`select count(*)::int as n from governance.acceptance_attestations where record_id = ${YR}::uuid and version = 2`)).toEqual(before);
+    expect(await recordState(YR)).toEqual([{ version: 1, state: 'accepted', roles: ['domain_analyst'] }, { version: 2, state: 'proposed', roles: null }]);
+    expect((await reach(dadmin, 'observation.source.register') as Row)['status']).toBe(403);
+    expect((await reach(analyst, 'observation.source.register') as Row)['status']).toBe(403);
+    // RECOVERY: the same scope over renewed evidence (v3 supersedes the pending v2), accepted; the analyst reaches the handler again
+    const renewed = String((await evidence(steward, ext('journey_evidence', 60 * DAY, { covers: { roles: ['domain_analyst'] }, renews: YSHORT }))).evidence['evidence_id']);
+    const slots = await SLOT_ITEMS(steward, CAP_SLOTS);
+    const v3 = (await propose(product2, { recordId: YR, kind: 'capability', title: `Expansion probe (b) — re-accepted (SYNTHETIC ${RUN})`, subjectKey: YCAP, expectedVersion: 2, scope: NARROW(), evidence: [YT, renewed, ...slots] })).record;
+    expect((await acceptAll(YR, 3, String(v3['digest'])))['state']).toBe('accepted');
+    expect(await recordState(YR)).toEqual([{ version: 1, state: 'superseded', roles: ['domain_analyst'] }, { version: 2, state: 'superseded', roles: null }, { version: 3, state: 'accepted', roles: ['domain_analyst'] }]);
+    expect(await reach(analyst, 'observation.source.register')).toBe('reached');
+    expect((await reach(dadmin, 'observation.source.register') as Row)['status']).toBe(403);
+    // the timer of v1 (and of nothing else) fires: idempotent, v3 stays accepted
+    await tick(); await tick();
+    expect((await stored1(YR, 3))['state']).toBe('accepted');
+    await enforce(product, { capabilityKey: YCAP, enforced: false, prefixes: [], reason: 'the (b) ordering is over (SYNTHETIC)' });
+    expect(await reach(dadmin, 'observation.source.register')).toBe('reached');
+  });
+  it(`(c) the same as (b) but the TICK HAS reconciled (constrained, the hold open) before the final attestation — ${REPRO_G ? 'the DEFECT: the final attestation still ACCEPTS the wider version and lifts the hold' : 'REFUSED (held); the hold stays open'}`, async () => {
+    const ZCAP = `CAP-GATE-Z-${RUN}`;
+    await artifact('capability', ZCAP);
+    const t = String((await evidence(steward, ext('test_report', 60 * DAY))).evidence['evidence_id']);
+    const short = (await evidence(steward, ext('journey_evidence', 30_000, { covers: { roles: ['domain_analyst'] } }))).evidence;
+    const slots = await SLOT_ITEMS(steward, CAP_SLOTS);
+    const r = (await propose(product2, { kind: 'capability', title: `Expansion probe (c) (SYNTHETIC ${RUN})`, subjectKey: ZCAP, scope: NARROW(), evidence: [t, String(short['evidence_id']), ...slots] })).record;
+    const ZR = String(r['record_id']);
+    await acceptAll(ZR, 1, String(r['digest']));
+    const fresh = String((await evidence(steward, ext('journey_evidence', 60 * DAY, { covers: { roles: ['domain_analyst', 'domain_admin'] } }))).evidence['evidence_id']);
+    const slots2 = await SLOT_ITEMS(steward, CAP_SLOTS);
+    const v2 = (await propose(product2, { recordId: ZR, kind: 'capability', title: `Expansion probe (c) — wider (SYNTHETIC ${RUN})`, subjectKey: ZCAP, expectedVersion: 1, scope: WIDE(), evidence: [t, fresh, ...slots2] })).record;
+    const lastO = await attestAllButLast(ZR, 2, String(v2['digest']));
+    await untilDb(String(short['valid_until']));
+    await tick();
+    expect((await stored1(ZR))['state']).toBe('constrained');
+    expect(await one(sql`select count(*)::int n from governance.holds where source_artifact = ${ZR}::uuid and reason_kind = 'acceptance_constrained' and lifted_at is null`)).toEqual({ n: 1 });
+    const people: Record<string, AuthenticatedPrincipal> = { product, independent_assurance: assurance, customer: sponsor, operations: ops };
+    const last = () => attest(people[lastO]!, ZR, { version: 2, obligation: lastO, digest: String(v2['digest']) });
+    if (REPRO_G) {
+      expect((await last()).attestation).toMatchObject({ state: 'accepted' });
+      expect(await one(sql`select count(*)::int n from governance.holds where source_artifact = ${ZR}::uuid and reason_kind = 'acceptance_constrained' and lifted_at is null`)).toEqual({ n: 0 });
+      return;
+    }
+    await refused(last(), /^acceptance attestation rejected \(held\): CAP-GATE-Z-.* — version 2 expands beyond the scope in force \(role domain_admin\)/, 409);
+    expect(await one(sql`select count(*)::int n from governance.holds where source_artifact = ${ZR}::uuid and reason_kind = 'acceptance_constrained' and lifted_at is null`)).toEqual({ n: 1 });
+    expect(await recordState(ZR)).toEqual([{ version: 1, state: 'constrained', roles: [] }, { version: 2, state: 'proposed', roles: null }]);
+  });
+});
+const stored1 = async (id: string, version = 1) => one(sql`select state from governance.acceptance_records where record_id = ${id}::uuid and version = ${version}`);
