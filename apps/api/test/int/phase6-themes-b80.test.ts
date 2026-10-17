@@ -413,8 +413,8 @@ describe('TH8 · the library: the fork lint (dg-lint-2), the inventory at 0.1.0,
     expect(keys).toEqual(expect.arrayContaining(['web.symbols.symbol', 'web.symbols.legend', 'web.theme.theme-scope', 'web.theme.theme-preview']));
     const lint = await W(pc.lint(preq(dsa, 'governance.design.evaluate'), {}));
     const c = (await W(dgc.propose(preq(steward, 'governance.design.contribution.propose'), { payload: { kind: 'component_change', targetAssetId: tokens['asset_id'],
-      proposal: { packageVersion: '0.1.0', change: 'B80 §TK: contrast matrix, themes, symbols, the extended sheet', props_contracts: (lint['contracts'] as Row[]).slice(0, 20) },
-      summary: 'B80 §TK token slice: themes, contrast, symbols, print and forced colours (SYNTHETIC harness)', plans: { compatibility: 'additive — no token removed or renamed', rollback: 'republish 0.0.1' } } })))['contribution'] as Row;
+      proposal: { packageVersion: '0.1.1', change: 'B80 §TK (a fresh database registers 0.1.0 — on a deployment holding 0.0.1 the act names 0.1.0): the next token-set version', props_contracts: (lint['contracts'] as Row[]).slice(0, 20) },
+      summary: 'B80 §TK token slice: themes, contrast, symbols, print and forced colours (SYNTHETIC harness)', plans: { compatibility: 'additive — no token removed or renamed', rollback: 'republish 0.1.0' } } })))['contribution'] as Row;
     expect(c).toMatchObject({ kind: 'component_change', stage: 'proposed' });
   });
 });
