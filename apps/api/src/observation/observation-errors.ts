@@ -1283,6 +1283,14 @@ const B9_REFUSALS: Array<{ match: RegExp; status: number; code: 'EYE_STA_002' | 
   { match: /^(requirement registry|trace link|change impact|verification record|governance fixture|conformance manifest|release candidate|conformance finding|data authority|ownership record|stewardship case|product baseline|decision rights|governance exception|conformance conflict|change proposal|governance record|acceptance record|acceptance attestation|operational acceptance|design baseline|design contribution|design acceptance|design principle|conformance package|governance hold) rejected \((state|stale|duplicate|held|expired)\)/i, status: 409, code: 'EYE_STA_002' },
   { match: /^(requirement registry|trace link|change impact|verification record|governance fixture|conformance manifest|release candidate|conformance finding|data authority|ownership record|stewardship case|product baseline|decision rights|governance exception|conformance conflict|change proposal|governance record|acceptance record|acceptance attestation|operational acceptance|design baseline|design contribution|design acceptance|design principle|conformance package|governance hold) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
   /* end B107 §0 */
+  /* B80 (0118) — B80's nouns, centrally, in the CLASS form `<noun> rejected (<class>): …` (anchored): `design theme` (§TK — a contrast failure
+     or an unbound signing key is a state the certifier can resolve: 409), `form draft` (§CL-F), `navigation state` (§SH), `warning as-of` (§SH).
+     403 actor|ownership|authority|separation_of_duties|person|access · 404 unknown_* · 409 state|stale|duplicate|held|expired · 422 the rest. */
+  { match: /^(design theme|form draft|navigation state|warning as-of) rejected \((actor|ownership|authority|separation_of_duties|person|access)\)/i, status: 403, code: 'EYE_AUT_001' },
+  { match: /^(design theme|form draft|navigation state|warning as-of) rejected \(unknown_[a-z_]+\)/i, status: 404, code: 'EYE_STA_001' },
+  { match: /^(design theme|form draft|navigation state|warning as-of) rejected \((state|stale|duplicate|held|expired)\)|^design theme rejected \((contrast|unbound)\)/i, status: 409, code: 'EYE_STA_002' },
+  { match: /^(design theme|form draft|navigation state|warning as-of) rejected \(/i, status: 422, code: 'EYE_REQ_001' },
+  /* end B80 */
   /* B36 home (0094 §H) — the executive home's families in the CLASS form `<noun> rejected (<class>): …`: `cadence rejected`, `executive room
      rejected` (0044's unclassed `room rejected: …` texts are the decision room's and are mapped by no row; the noun here is `executive room`
      and every row is anchored), `objective review rejected` (the SoD of §H2's re-declared convene_review and of open_subject_room — B23's

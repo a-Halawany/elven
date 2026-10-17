@@ -8,7 +8,7 @@
  *   set, the stated default, UNRESOLVED (reconciled on read: a context naming a subject no longer live — said with a symbol and a word, never
  *   colour alone, never shown current) or not applied (a page reading live data only declares the effective time not applied, Q11).
  *   While the scope is unresolved or unreadable the bar keeps the last valid read and says that consequential commands are held.
- * ContextSwitchDialog — on a native <dialog> (modal; the trigger gets the focus back) or inline (the home's switcher): choose → PREVIEW (the
+ * ContextSwitchDialog — on the library's Dialog (modal; the trigger gets the focus back) or inline (the home's switcher): choose → PREVIEW (the
  *   server's executive.context_impact: the changed dimensions, the affected open work, the approvals UNAFFECTED, the client-held previews
  *   this switch invalidates and the queries / selections the person keeps or discards) → the deliberate COMMIT of exactly what was previewed
  *   (executive.commit_context; GovernedButton — pending until the receipt, nothing optimistic) → the receipt. A stale choice is offered
@@ -16,7 +16,7 @@
  *
  * A context switch is PRESENTATION: it never alters an approval, never re-scopes work, never discards a draft. Native controls (the hosted
  * suites select native <select>s by label); logical properties (RTL mirrors); the classes in globals.css (the B80 cb block) carry forced
- * colours and 200% zoom (the bar wraps; nothing scrolls sideways). The library's Dialog (§CL-D) may replace the native <dialog> here at the
+ * colours and 200% zoom (the bar wraps; nothing scrolls sideways). The library's Dialog (§CL-D) carries the modal (swapped at the
  * fold — the contract is the same.
  */
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react';
@@ -30,6 +30,7 @@ import {
 import { contextApi } from '../lib/context-api-b80';
 import { GovernedButton, LiveStatus } from './observation';
 import { Receipt } from './ui';
+import { Dialog } from './layers';
 
 type ReceiptT = { policyDecisionId: string; auditSeq: number };
 const STATE_MARK: Record<string, string> = { set: '', default: '○', unresolved: '⚠', not_applied: '⊘' };
@@ -130,11 +131,10 @@ export function ContextSwitchDialog({ scope, bar, open, onClose, onCommitted, in
   open: boolean;
   onClose: () => void;
   onCommitted: (c: CommittedSwitch) => void;
-  /** render in place (the home's switcher) instead of a modal <dialog> */ inline?: boolean;
+  /** render in place (the home's switcher) instead of the library's modal Dialog */ inline?: boolean;
   intro?: ReactNode;
 }) {
   const headingId = useId(); const gateId = useId();
-  const ref = useRef<HTMLDialogElement>(null);
   const [p, setP] = useState<ProposedContext>(() => proposalFrom(bar));
   const [effLocal, setEffLocal] = useState(() => toLocalInput(proposalFrom(bar).effectiveAt));
   const [preview, setPreview] = useState<ImpactRead | null>(null);
@@ -147,13 +147,6 @@ export function ContextSwitchDialog({ scope, bar, open, onClose, onCommitted, in
   useEffect(() => { // the bar re-read under a new context: the dialog starts again from it
     setP(proposalFrom(bar)); setEffLocal(toLocalInput(proposalFrom(bar).effectiveAt)); setPreview(null); setPreviewedFor(null);
   }, [bar.current?.digest]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    if (inline) return;
-    const d = ref.current;
-    if (d === null) return;
-    if (open && !d.open) d.showModal();
-    if (!open && d.open) d.close();
-  }, [open, inline]);
 
   const onScreen: ProposedContext = { ...p, effectiveAt: localToInstant(effLocal) };
   const stale = staleChoice(bar, onScreen);
@@ -163,7 +156,7 @@ export function ContextSwitchDialog({ scope, bar, open, onClose, onCommitted, in
 
   const body = (
     <div className="eye-context-switch-body" data-testid="context-switch">
-      <h2 id={headingId} className="eye-context-switch-title">Switch the operating context</h2>
+      {inline && <h2 id={headingId} className="eye-context-switch-title">Switch the operating context</h2>}
       {intro}
       <p className="eye-context-note">The switch changes what you see and how work is ordered; it alters no approval, re-scopes no work and discards no draft. You see its impact before anything is committed.</p>
       <div className="eye-context-fields">
@@ -246,8 +239,9 @@ export function ContextSwitchDialog({ scope, bar, open, onClose, onCommitted, in
   );
   if (inline) return body;
   return (
-    <dialog ref={ref} className="eye-context-dialog" aria-labelledby={headingId} onClose={onClose}>
-      {body}
-    </dialog>
+    /* B80 integration: the library's blocking Dialog (§CL-D — one modal at a time, focus returned to the trigger, dismissal never consent) */
+    <Dialog open={open} title="Switch the operating context" onClose={() => onClose()} size="lg">
+      <div className="eye-context-dialog">{body}</div>
+    </Dialog>
   );
 }

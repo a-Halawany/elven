@@ -61,7 +61,7 @@ describe('the eight shells keep every hosted selector (UX-09-001, CMP-011)', () 
   it('every rail item is a real page; every admin label comes from the catalogue (no raw key shown)', () => {
     for (const k of SHELL_KEYS) for (const n of shellSpec(k).nav) expect(pageExists(n.href), `${k} ${n.href}`).toBe(true);
     for (const n of shellSpec('admin').nav) expect(n.label).not.toMatch(/^nav\./);
-    expect(ADMIN_NAV_KEYS).toHaveLength(21);
+    expect(ADMIN_NAV_KEYS).toHaveLength(24);   // B80 integration: + themes, tokens, catalogue (§TK, §CL-D)
   });
   it('the labels the suites click are where they were', () => {
     const labels = (k: WorkspaceKey) => shellSpec(k).nav.map((n) => n.label);
@@ -74,7 +74,7 @@ describe('the eight shells keep every hosted selector (UX-09-001, CMP-011)', () 
     expect(shellSpec('prediction').nav).toHaveLength(20);
     expect(shellSpec('twins').nav).toHaveLength(15);
     expect(shellSpec('intelligence').nav).toHaveLength(13);
-    expect(DECISIONS_NAV).toHaveLength(21);   // the seven rails are the originals item for item (compared against 54d2936 at build)
+    expect(DECISIONS_NAV).toHaveLength(22);   // B80 integration: + the new decision-package form (§CL-F);   // the seven rails are the originals item for item (compared against 54d2936 at build)
   });
 });
 
@@ -225,7 +225,7 @@ describe('the navigation guard (PR-05-003, UX-09-004, UX-11-004, UX-15-004, CMP-
     const files = ['components/shell.tsx', 'app/admin/layout.tsx', 'app/decisions/layout.tsx', 'app/graph/layout.tsx', 'app/intelligence/layout.tsx',
       'app/observation/layout.tsx', 'app/prediction/layout.tsx', 'app/twins/layout.tsx', 'app/home/layout.tsx'].map((f) => [f, readFileSync(join(WEB, f), 'utf8')] as const);
     const allowed = new Set(['react', 'next/link', 'next/navigation', '../lib/api', '../lib/observation', '../lib/working-domain', '../lib/i18n', '../lib/b80-seams', '../lib/shell-b80',
-      './ui', './working-domain', '../../lib/observation', '../../lib/b80-seams', '../../lib/shell-b80', '../../components/shell', '../../lib/workflow', '../decisions/layout']);
+      './ui', './working-domain', /* B80 integration: the slot wiring (SHELL_SLOTS) and the library's Dialog — the bar's own governed commit is the bar's, behind its preview and human gate (§CB), never the shell's */ './context-bar', './theme', './layers', '../../lib/observation', '../../lib/b80-seams', '../../lib/shell-b80', '../../components/shell', '../../lib/workflow', '../decisions/layout']);
     for (const [f, src] of files) {
       for (const m of src.matchAll(/from '([^']+)'/g)) expect(allowed.has(m[1]!), `${f} imports ${m[1]}`).toBe(true);
       expect(src, f).not.toMatch(/GovernedButton|\bcall\(|fetch\(|method:\s*'POST'/);

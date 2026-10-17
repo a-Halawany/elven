@@ -38,6 +38,9 @@ import {
 } from '../lib/shell-b80';
 import { DegradedBanner, ErrorNote, Receipt } from './ui';
 import { WorkingDomainChooser, WorkingDomainMark } from './working-domain';
+import { GlobalContextBar } from './context-bar';
+import { ThemeScope } from './theme';
+import { Dialog } from './layers';
 
 /* ── THE SLOTS (b80-seams AppShellSlots): §CB's context bar under the banner, §TK's ThemeScope around the surface ── */
 export interface ShellSlots {
@@ -45,7 +48,12 @@ export interface ShellSlots {
   themeScope?: ComponentType<{ tenantId: string | null; children: ReactNode }>;
 }
 /** THE ONE PLACE the integrator wires §CB's GlobalContextBar and §TK's ThemeScope (not seven layouts). Empty until then. */
-export const SHELL_SLOTS: ShellSlots = {};
+export const SHELL_SLOTS: ShellSlots = {
+  /* B80 integration: §CB's bar on every workspace (UX-10-001, UX-ADR-003) — the PLATFORM workspace has no domain context (scope null) */
+  contextBar: (base) => (base === null ? null : <GlobalContextBar workspace={base.workspace} me={base.me} scope={base.scope} roles={base.roles} />),
+  /* B80 integration: §TK's activated tenant theme around the surface (UX-68; the core theme when none is in force) */
+  themeScope: ThemeScope,
+};
 
 /* ── THE SHELL'S OWN CONTEXT (the per-layout `useShell()` wrappers stay the pages' API; these serve the library) ── */
 const BaseCtx = createContext<ShellBase | null>(null);
@@ -429,30 +437,23 @@ export function HistoryNavigator({ history, current, scope, workspace, onGo }: {
   );
 }
 
-/** THE COMMAND PALETTE (CMP-015 at B80): navigation only; the active option follows the arrows; Escape closes (native dialog). */
+/** THE COMMAND PALETTE (CMP-015 at B80): navigation only; the active option follows the arrows; Escape closes (the library's Dialog, §CL-D). */
 export function CommandPalette({ entries, current, onNavigate, onClose }: { entries: PaletteEntry[]; current: string; onNavigate: (e: PaletteEntry) => void; onClose: () => void }) {
   assertNavigationOnly(entries);
-  const ref = useRef<HTMLDialogElement | null>(null);
   const [q, setQ] = useState('');
   const [index, setIndex] = useState(0);
   const shown = filterPalette(entries, q);
-  useEffect(() => {
-    const d = ref.current;
-    if (d !== null && !d.open) d.showModal();
-    const closed = () => onClose();
-    d?.addEventListener('close', closed);
-    return () => d?.removeEventListener('close', closed);
-  }, [onClose]);
   const onKey = (e: ReactKeyboardEvent<HTMLInputElement>) => {
     if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) { e.preventDefault(); setIndex((i) => movePaletteIndex(i, e.key, shown.length)); }
     else if (e.key === 'Enter') { e.preventDefault(); const pick = shown[Math.min(index, shown.length - 1)]; if (pick !== undefined) onNavigate(pick); }
   };
   const activeId = shown.length > 0 ? `eye-palette-opt-${Math.min(index, shown.length - 1)}` : undefined;
   return (
-    <dialog ref={ref} aria-label="Go to a place" className="eye-palette">
+    <Dialog open title="Go to a place" onClose={() => onClose()} initialFocusId="eye-palette-input">
+      <div className="eye-palette">
       <input
         role="combobox" aria-label="Go to — type a place or a workspace" aria-expanded="true" aria-controls="eye-palette-list" aria-autocomplete="list"
-        aria-activedescendant={activeId} className="eye-palette-input" value={q} autoFocus
+        id="eye-palette-input" aria-activedescendant={activeId} className="eye-palette-input" value={q}
         onChange={(e) => { setQ(e.target.value); setIndex(0); }} onKeyDown={onKey}
       />
       <p className="eye-shell-meta">Navigation only — going to a place changes nothing; actions stay on their page, behind their own governed control.</p>
@@ -465,7 +466,7 @@ export function CommandPalette({ entries, current, onNavigate, onClose }: { entr
           </li>
         ))}
       </ul>
-      <form method="dialog"><button type="submit" className="eye-link-button">Close</button></form>
-    </dialog>
+      </div>
+    </Dialog>
   );
 }

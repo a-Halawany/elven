@@ -54,6 +54,8 @@ export type EffectiveTimeSupport = 'honoured' | 'live_only';
 /* ── THE LIBRARY'S FILES AND EXPORTS (the parts' contract; each part owns its files) ── */
 export const LIBRARY = {
   tokens:   { part: '§TK',   files: ['components/symbols.tsx', 'components/theme.tsx'], exports: ['Symbol', 'Legend', 'ThemeScope', 'ThemePreview'] },
+  /* B80 integration: §TK's text roles */
+  text:     { part: '§TK',   files: ['components/text.tsx'], exports: ['Identifier', 'Digest', 'NumberValue', 'Timestamp', 'Statement'] },
   forms:    { part: '§CL-F', files: ['components/forms.tsx'], exports: ['Field', 'TextArea', 'Select', 'Combobox', 'DateTimeInput', 'RangeInput', 'UnitInput', 'FileIntake', 'ErrorSummary', 'Stepper', 'FormDraft'] },
   actions:  { part: '§CL-F', files: ['components/actions.tsx'], exports: ['Button', 'SplitButton', 'ActionMenu'] },
   feedback: { part: '§CL-F', files: ['components/feedback.tsx'], exports: ['InlineMessage', 'Toast', 'ProgressIndicator', 'Skeleton', 'EmptyState'] },

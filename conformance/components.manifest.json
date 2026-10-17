@@ -1022,6 +1022,7 @@
         "api.products",
         "api.retention",
         "api.shared",
+        "api.shell",
         "api.tenancy",
         "api.twin"
       ],
@@ -1563,7 +1564,8 @@
         "api.graph",
         "api.identity",
         "api.observation",
-        "api.pipeline"
+        "api.pipeline",
+        "api.policy"
       ],
       "deployment_targets": [
         "local-dev"
@@ -1587,6 +1589,7 @@
         "controllers": [
           "AttentionB36Controller",
           "CollabB36Controller",
+          "ContextBarController",
           "ExecutiveController",
           "HomeController",
           "InvitationPickupController",
@@ -1676,6 +1679,9 @@
           "OwnershipPlatformController",
           "RegistriesController",
           "RegistriesDomainController",
+          "ThemesDomainController",
+          "ThemesPlatformController",
+          "ThemesTenantController",
           "WorkspaceController"
         ],
         "module": "GovernanceModule",
@@ -2523,6 +2529,64 @@
         "verification": "H2 (independent)"
       },
       "unit_id": "api.shared"
+    },
+    {
+      "build": {
+        "artifact": "compiled into the API process (tsc → apps/api/dist)",
+        "environment": "node >=24.0.0 <25 · pnpm@11.9.0 (frozen lockfile)",
+        "reproducible_from": "the tracked source + pnpm-lock.yaml"
+      },
+      "component_ids": [
+        "CP-UX-02"
+      ],
+      "controls": [
+        "PAT-03",
+        "PR-05-002"
+      ],
+      "dependencies": [],
+      "deployment_targets": [
+        "local-dev"
+      ],
+      "kind": "api_module",
+      "layers": [],
+      "mapped": true,
+      "owner": "founding-engineer",
+      "path": "apps/api/src/shell",
+      "plane_boundaries": {
+        "audit": "every governed act through the pipeline (POL + AUD)",
+        "failure": "process:api",
+        "policy": "PDP exact rules for its actions",
+        "resource": "its database role (eye_commit ports / eye_app reads) and its queue names",
+        "state": "shell",
+        "telemetry": "the audit chain partition (platform | tenant) and the module logger"
+      },
+      "public_contract": {
+        "controllers": [],
+        "module": "ShellModule",
+        "ports": [
+          "shell.* SECURITY DEFINER ports (REVOKE PUBLIC; eye_commit)"
+        ]
+      },
+      "quality_obligations": [
+        "the declared targets of its components (B64 computes)"
+      ],
+      "release_path": "build-test → browser-regression → supply-chain (ci.yml); a release candidate record (B65 substituted) — never a release",
+      "semantic_authority": "host",
+      "state_boundary": {
+        "access": "writes only through its schemas' SECURITY DEFINER ports; reads under RLS",
+        "schemas": [
+          "shell"
+        ]
+      },
+      "tests": {
+        "selector": "the suites importing apps/api/src/shell/",
+        "suites": [
+          "apps/api/test/unit",
+          "apps/api/test/int"
+        ],
+        "verification": "H2 (independent)"
+      },
+      "unit_id": "api.shell"
     },
     {
       "build": {
@@ -11174,6 +11238,7 @@
         "ADR-P0-14"
       ],
       "deployed_by": [
+        "api.shell",
         "web.app"
       ],
       "description": "WS-19 Platform and Customer Administration shell (access mode, never a truth store)",
@@ -11402,7 +11467,7 @@
   "summary": {
     "ai_planes": 5,
     "data_components": 104,
-    "deployable_units": 31,
+    "deployable_units": 32,
     "infrastructure_components": 92,
     "layers": 10,
     "logical_components": 92,

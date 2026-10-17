@@ -75,9 +75,19 @@ const contexts = async (principal: string) => (await sql<Row>`select context_id:
   from executive.contexts where principal_id = ${principal}::uuid and tenant_id = ${T()}::uuid and domain_id = ${D()}::uuid order by set_at`.execute(su)).rows;
 const shellEvents = async (principal: string, event?: string) => (await sql<Row>`select event, subject_kind, subject_id::text, version, details from shell.events
   where principal_id = ${principal}::uuid ${event === undefined ? sql`` : sql`and event = ${event}`} order by occurred_at`.execute(su)).rows;
+/* B80 integration: a draft is planted in §CL-F's authoritative shell.drafts (the superuser — §CL-F's harness proves the ports): a SAVED version,
+   optionally followed by a DISCARD, or saved with an expiry already passed. */
 const draft = async (principal: string, title: string, event = 'shell.draft.saved', id = uuidv7(), expiresAt: string | null = null) => {
-  await sql`select shell.ledger(${T()}::uuid, ${D()}::uuid, ${principal}::uuid, 'draft', ${id}::uuid, 1, ${event},
-    ${JSON.stringify({ form_key: 'decisions.package.new', title, ...(expiresAt === null ? {} : { expires_at: expiresAt }), synthetic: true })}::jsonb, ${uuidv7()}::uuid)`.execute(su);
+  const digest = 'b'.repeat(64);
+  const savedAt = expiresAt === null ? new Date() : new Date(Date.parse(expiresAt) - 60_000);
+  const expires = expiresAt ?? new Date(Date.now() + 7 * 86_400_000).toISOString();
+  await sql`insert into shell.drafts (draft_id, version, tenant_id, domain_id, principal_id, form_key, subject_key, kind, payload, payload_digest, summary, saved_at, expires_at, correlation_id)
+    values (${id}::uuid, 1, ${T()}::uuid, ${D()}::uuid, ${principal}::uuid, 'decisions.package.new', ${'new:' + id}, 'saved', ${JSON.stringify({ synthetic: true })}::jsonb, ${digest}, ${title},
+            ${savedAt.toISOString()}::timestamptz, ${expires}::timestamptz, ${uuidv7()}::uuid)`.execute(su);
+  if (event === 'shell.draft.discarded') {
+    await sql`insert into shell.drafts (draft_id, version, tenant_id, domain_id, principal_id, form_key, subject_key, kind, supersedes, reason, expires_at, correlation_id)
+      values (${id}::uuid, 2, ${T()}::uuid, ${D()}::uuid, ${principal}::uuid, 'decisions.package.new', ${'new:' + id}, 'discarded', 1, 'abandoned (SYNTHETIC)', ${expires}::timestamptz, ${uuidv7()}::uuid)`.execute(su);
+  }
   return id;
 };
 const task = async (principal: string, subjectId: string, title: string) => {

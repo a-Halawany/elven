@@ -128,6 +128,7 @@ export const DECISIONS_NAV: NavItem[] = [
   /* B36 (0094 §H) home: the executive home first (WS-01) */ { href: '/home', label: 'Home', glyph: '⌂' }, /* end B36 home */
   { href: '/decisions', label: 'Decisions', glyph: '◆' },
   { href: '/decisions/briefings', label: 'Briefings', glyph: '☰' },
+  /* B80 integration (§CL-F) */ { href: '/decisions/packages/new', label: 'New package', glyph: '✚' }, /* end B80 */
   /* B35 analysis */ { href: '/decisions/analysis', label: 'Analysis', glyph: '⚖' }, /* end B35 analysis */
   { href: '/decisions/attention', label: 'Attention', glyph: '⚑' },
   { href: '/decisions/requests', label: 'Requests', glyph: '✎' },
@@ -259,6 +260,7 @@ export const ADMIN_NAV_KEYS: ReadonlyArray<{ href: string; key: string }> = [
   { href: '/admin/governance/conformance', key: 'nav.governance.conformance' },
   { href: '/admin/governance/acceptance', key: 'nav.governance.acceptance' },
   { href: '/admin/governance/design', key: 'nav.governance.design' },
+  /* B80 integration (§TK, §CL-D) */ { href: '/admin/governance/design/themes', key: 'nav.governance.themes' }, { href: '/admin/governance/design/tokens', key: 'nav.governance.tokens' }, { href: '/admin/governance/design/catalogue', key: 'nav.governance.catalogue' }, /* end B80 */
   /* end B107 §0 */
   /* B107 ownership */ { href: '/admin/governance/ownership', key: 'nav.governance.ownership' }, /* end B107 ownership */
 ];
