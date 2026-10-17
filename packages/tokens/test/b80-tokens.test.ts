@@ -13,7 +13,7 @@ import {
 } from '../src/contrast.js';
 import {
   ALLOWED_COLOUR_KEYS, ALLOWED_KEYS, CORE_DARK, CORE_LIGHT, FORCED_COLORS_BLACK, PRINT_PALETTE, PROTECTED_KEYS, certifyTheme, forcedSystemColour, palettesFor, resolveColours,
-  themeCss, validateMapping,
+  previewCss, themeCss, validateMapping,
 } from '../src/themes.js';
 import { GENERIC_SYMBOL, SYMBOLS, glyphDigest, iconOnlyAdmitted, labelMustShow, resolveSymbol } from '../src/symbols.js';
 import { sha256Hex } from '../src/digest.js';
@@ -140,6 +140,16 @@ describe('the theme scope CSS: nothing unvalidated is emitted', () => {
     expect(css).toContain('(prefers-color-scheme: dark)');
     for (const k of PROTECTED_KEYS) expect(css).not.toContain(`${varName(k)}:`);
   });
+  it('the preview CSS carries every token per mode (light, dark, print) at the candidate\'s values, scoped to the preview', () => {
+    const css = previewCss(BRAND_V2, 'pv-1');
+    expect(css).toContain('[data-eye-preview="pv-1"][data-eye-mode="light"] {');
+    expect(css).toContain('[data-eye-preview="pv-1"][data-eye-mode="print"] {');
+    expect(css.match(/--eye-color-critical:/g)).toHaveLength(3);
+    expect(css).toContain('--eye-color-surface-primary: #F7F5F2;');
+    expect(css).toContain(`--eye-color-critical: ${CORE_DARK['color.critical']};`);
+    expect(() => previewCss({ 'color.critical': { light: '#000000', dark: '#000000' } }, 'pv-1')).toThrow(/invalid theme mapping/);
+    expect(previewCss(null, 'core')).toContain('--eye-color-surface-primary: #FFFFFF;');
+  });
   it('refuses an invalid mapping or a scope id that is not a plain key (no selector injection)', () => {
     expect(() => themeCss({ 'color.critical': { light: '#000000', dark: '#000000' } }, 'x-1')).toThrow(/invalid theme mapping/);
     expect(() => themeCss(BRAND_V2, 'x"] body { color: red } [x="')).toThrow(/not a theme scope id/);
@@ -188,6 +198,9 @@ describe('THE GENERATED SHEET (REL-16, TYP-013/014, LAY-*, SPC-*): every token e
     const fb = css.slice(css.indexOf("[data-eye-theme='fallback'] {"), css.indexOf('/* PRINT'));
     for (const k of ALLOWED_COLOUR_KEYS) { expect(fb).toContain(`${varName(k)}: ${CORE_LIGHT[k]};`); expect(fb).toContain(`${varName(k)}: ${CORE_DARK[k]};`); }
     expect(fb).not.toContain('--eye-color-critical');
+  });
+  it('the swatches paint every colour token by its variable', () => {
+    for (const t of COLOR_TOKENS) expect(css).toContain(`.eye-swatch-${t.token.replace(/\./g, '-')} { background: var(${varName(t.token)}); }`);
   });
   it('fonts: fallback stacks only — no @font-face, no font file (D4; TYP-001/002 stay partial)', () => {
     expect(css).not.toContain('@font-face');

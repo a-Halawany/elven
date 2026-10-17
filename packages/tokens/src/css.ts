@@ -7,7 +7,8 @@
  *   · THE TYPE CLASSES — one per type token, the numeric ones with `font-variant-numeric: tabular-nums` (TYP-013/014), the mono one in the
  *     mono stack; THE TEXT ROLES — label, value, number, unit, timestamp, identifier, digest, and the three DISTINCT statement roles
  *     (fact, recommendation, decision — UX-18-004: typography never collapses a recommendation into a fact or an approval);
- *   · THE USE ALIASES — the elevations by use (raised surface, overlay, blocking dialog) and the consequential control size (44px).
+ *   · THE USE ALIASES — the elevations by use (raised surface, overlay, blocking dialog) and the consequential control size (44px);
+ *   · THE SWATCHES — `.eye-swatch-<token>` paints a token by its variable (the token inspection page).
  * FONTS: fallback stacks only (DESIGN D4) — no font file and no @font-face; the vendored Inter / IBM Plex Mono are B81's, pending the
  * owner's licence decision.
  */
@@ -67,6 +68,7 @@ export function buildCss(): string {
   }).join('\n');
   const roles = (Object.keys(TEXT_ROLES) as TextRole[]).map((r) => `.eye-text-${r} { font-size: var(${varName(TEXT_ROLES[r].type)}); line-height: var(${varName(TEXT_ROLES[r].type)}-line); ${
     TEXT_ROLES[r].type.startsWith('type.numeric') ? 'font-variant-numeric: tabular-nums; ' : ''}${TEXT_ROLES[r].type.startsWith('type.mono') ? 'font-family: var(--eye-font-mono); ' : ''}${TEXT_ROLES[r].css} }`).join('\n');
+  const swatches = COLOR_TOKENS.map((t) => `.eye-swatch-${t.token.replace(/\./g, '-')} { background: var(${varName(t.token)}); }`).join('\n');
   return `/* GENERATED from @eye/tokens — Volume 9 Appendix A. Do not edit by hand. */
 :root {
 ${light}
@@ -116,5 +118,7 @@ ${indent(forced, '  ')}
 /* THE TYPE CLASSES and THE TEXT ROLES (B80 §TK) */
 ${typeClasses}
 ${roles}
+/* THE SWATCHES (B80 §TK — the token inspection paints each token by its variable, never a literal) */
+${swatches}
 `;
 }

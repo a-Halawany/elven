@@ -60,10 +60,14 @@ export function lintLibrary(files: SourceFile[]): LibraryLintResult {
       }
     }
     if (/^apps\/web\/.*\.(ts|tsx|css)$/.test(f.path)) {
-      for (const m of code.matchAll(/(?<![A-Za-z0-9_-])(--eye-[a-z0-9-]+)\s*['"]?\s*:/g)) {
-        const line = lineOf(code, m.index ?? 0);
+      // a declaration: a CSS property (`--eye-x:` after `{`, `;` or a line start), an object key (`'--eye-x':` after `{` or `,`), or a
+      // style.setProperty('--eye-x', …) — never a READ (`var(--eye-x)`) or a ternary choosing a token name (`? '--eye-a' : '--eye-b'`)
+      const decl = f.path.endsWith('.css') ? /(?:^|[;{])\s*(--eye-[a-z0-9-]+)\s*:/gm : /[{,]\s*(['"])(--eye-[a-z0-9-]+)\1\s*:|setProperty\(\s*(['"`])(--eye-[a-z0-9-]+)\3/g;
+      for (const m of code.matchAll(decl)) {
+        const name = m[1]?.startsWith('--') === true ? m[1] : (m[2] ?? m[4] ?? '');
+        const line = lineOf(code, (m.index ?? 0) + (m[0].length - m[0].trimStart().length));
         findings.push({ rule: 'token-redefinition', principle: FORK_PRINCIPLE, file: f.path, line, excerpt: excerptAt(f.text, line),
-                        note: `${m[1]} is declared outside packages/tokens — a token value is defined once; a customer theme is mapped through the governed theme ports` });
+                        note: `${name} is declared outside packages/tokens — a token value is defined once; a customer theme is mapped through the governed theme ports` });
       }
     }
   }

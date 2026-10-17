@@ -172,3 +172,14 @@ ${decl('dark', '    ')}
 }
 `;
 }
+
+/** The CSS of a side-by-side PREVIEW (PAT-41): each mode's FULL palette (every colour token — the semantic ones at their certified values,
+ *  the mapped ones at the candidate's) under `[data-eye-preview="<scopeId>"][data-eye-mode="light|dark|print"]`, independent of the page's
+ *  own mode. `mapping` null previews the core theme. Throws on an invalid mapping or scope id. */
+export function previewCss(mapping: ThemeMapping | null, scopeId: string): string {
+  if (!SCOPE_ID.test(scopeId)) throw new Error(`not a theme scope id: ${scopeId}`);
+  if (mapping !== null) { const problems = validateMapping(mapping); if (problems.length > 0) throw new Error(`invalid theme mapping: ${problems.map((p) => p.message).join('; ')}`); }
+  const p = palettesFor(mapping);
+  const block = (mode: 'light' | 'dark' | 'print') => `[data-eye-preview="${scopeId}"][data-eye-mode="${mode}"] {\n${Object.keys(p[mode]).sort().map((k) => `  ${varName(k)}: ${p[mode][k]};`).join('\n')}\n}`;
+  return `/* theme preview ${scopeId} — ${THEME_SCHEMA_VERSION} */\n${block('light')}\n${block('dark')}\n${block('print')}\n`;
+}

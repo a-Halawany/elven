@@ -93,3 +93,81 @@ main { padding-block: var(--eye-space-32); padding-inline: var(--eye-space-32); 
     text-transform: uppercase;
   }
 }
+
+/* B80 tk */
+/* ── B80 §TK: symbols, legends, text roles, theme scopes and previews, the theme and token pages (tokens only; logical properties) ── */
+.eye-visually-hidden {
+  position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+}
+.eye-symbol { display: inline-flex; align-items: center; gap: var(--eye-space-4); vertical-align: middle; }
+.eye-symbol-glyph { flex: none; }
+.eye-symbol-label { font-size: var(--eye-type-label-sm); line-height: var(--eye-type-label-sm-line); font-weight: var(--eye-type-label-sm-weight); color: var(--eye-color-ink-default); }
+/* forced colours: colour carries nothing — every symbol shows its canonical label (UX-20-005) */
+@media (forced-colors: active) {
+  .eye-symbol-label.eye-visually-hidden { position: static; inline-size: auto; block-size: auto; overflow: visible; clip-path: none; }
+  .eye-symbol-glyph { forced-color-adjust: auto; }
+}
+.eye-legend { margin: 0; padding: var(--eye-space-8); border: var(--eye-border-default) solid var(--eye-color-border-default); border-radius: var(--eye-radius-md); }
+.eye-legend-list { margin: 0; display: grid; gap: var(--eye-space-4); }
+.eye-legend-entry { display: grid; grid-template-columns: minmax(8rem, max-content) 1fr; gap: var(--eye-space-8); align-items: baseline; }
+.eye-legend-entry dd { margin: 0; }
+.eye-copy {
+  margin-inline-start: var(--eye-space-4); padding-inline: var(--eye-space-4); block-size: var(--eye-size-control-sm);
+  border: var(--eye-border-default) solid var(--eye-color-border-strong); border-radius: var(--eye-radius-sm);
+  background: var(--eye-color-surface-primary); color: var(--eye-color-ink-default); font-size: var(--eye-type-label-sm); cursor: pointer;
+}
+.eye-theme-scope { display: contents; }
+.eye-theme-note {
+  margin: 0; padding: var(--eye-space-8) var(--eye-space-16); border-block-end: var(--eye-border-default) solid var(--eye-color-degraded);
+  background: var(--eye-color-surface-secondary); color: var(--eye-color-ink-strong);
+}
+.eye-theme-preview { margin-block: var(--eye-space-16); }
+.eye-theme-preview-modes { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: var(--eye-space-16); }
+.eye-theme-specimen {
+  background: var(--eye-color-surface-primary); color: var(--eye-color-ink-default);
+  border: var(--eye-border-default) solid var(--eye-color-border-default); border-radius: var(--eye-radius-lg);
+  padding: var(--eye-space-12); box-shadow: var(--eye-elevation-raised);
+}
+.eye-theme-specimen-items { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--eye-space-8); }
+.eye-theme-specimen-item { display: flex; flex-wrap: wrap; gap: var(--eye-space-8); align-items: baseline; }
+.eye-theme-specimen-warning { color: var(--eye-color-critical); }
+.eye-theme-specimen-wordmark { font-weight: 700; color: var(--eye-color-accent-strong); }
+.eye-theme-specimen-table { background: var(--eye-color-surface-secondary); padding: var(--eye-space-4); }
+.eye-theme-specimen-action, .eye-tk-button {
+  min-block-size: var(--eye-size-control-consequential); padding-inline: var(--eye-space-12);
+  border: var(--eye-border-default) solid var(--eye-color-accent-strong); border-radius: var(--eye-radius-md);
+  background: var(--eye-color-accent-default); color: var(--eye-color-surface-primary); font-weight: 600; cursor: pointer;
+}
+.eye-tk-page { display: grid; gap: var(--eye-space-16); max-inline-size: 100%; }
+.eye-tk-card {
+  background: var(--eye-color-surface-primary); border: var(--eye-border-default) solid var(--eye-color-border-default);
+  border-radius: var(--eye-radius-lg); padding: var(--eye-space-16);
+}
+.eye-tk-proposal { border-style: dashed; border-color: var(--eye-color-border-strong); }
+.eye-tk-in-force { border-inline-start: 4px solid var(--eye-color-accent-strong); }
+.eye-tk-muted { color: var(--eye-color-ink-muted); font-size: var(--eye-type-body-sm); }
+.eye-tk-gap { color: var(--eye-color-critical); font-weight: 600; }
+.eye-tk-field { display: grid; gap: var(--eye-space-4); margin-block-end: var(--eye-space-8); }
+.eye-tk-input {
+  min-block-size: var(--eye-size-control-md); border: var(--eye-border-default) solid var(--eye-color-border-strong); border-radius: var(--eye-radius-md);
+  padding-inline: var(--eye-space-8); background: var(--eye-color-surface-primary); color: var(--eye-color-ink-default); font: inherit; max-inline-size: 100%;
+}
+.eye-tk-colours { display: grid; grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr)); gap: var(--eye-space-8); }
+.eye-tk-colour { display: grid; grid-template-columns: auto 1fr; gap: var(--eye-space-4) var(--eye-space-8); align-items: center; padding: var(--eye-space-8);
+  border: var(--eye-border-default) solid var(--eye-color-border-default); border-radius: var(--eye-radius-md); }
+.eye-tk-actions { display: flex; flex-wrap: wrap; gap: var(--eye-space-8); align-items: center; margin-block-start: var(--eye-space-8); }
+.eye-tk-swatch { display: inline-block; inline-size: var(--eye-space-24); block-size: var(--eye-space-24); border: var(--eye-border-default) solid var(--eye-color-border-strong);
+  border-radius: var(--eye-radius-sm); vertical-align: middle; }
+.eye-tk-swatch-pair { display: inline-flex; gap: var(--eye-space-4); }
+.eye-tk-scroll { overflow-x: auto; max-inline-size: 100%; }
+.eye-tk-shell-header { display: flex; flex-wrap: wrap; align-items: center; gap: var(--eye-space-16); background: var(--eye-color-surface-secondary);
+  border-block-end: var(--eye-border-default) solid var(--eye-color-border-default); padding-block: var(--eye-space-8); padding-inline: var(--eye-space-16); }
+.eye-tk-shell-body { display: flex; flex: 1; min-block-size: 100vh; flex-direction: column; }
+.eye-tk-shell-main { flex: 1; padding: var(--eye-space-24); background: var(--eye-color-canvas); }
+.eye-tk-signout { background: none; border: none; color: var(--eye-color-accent-default); cursor: pointer; margin-inline-start: auto; min-block-size: var(--eye-size-control-md); }
+.eye-tk-nav ul { list-style: none; margin: 0; padding: 0; display: flex; gap: var(--eye-space-8); }
+.eye-tk-nav a { color: var(--eye-color-ink-default); }
+@media print {
+  .eye-copy, .eye-tk-actions, .eye-tk-signout { display: none; }
+}
+/* end B80 tk */
