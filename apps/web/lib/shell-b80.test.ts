@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { WORKSPACE_NAV_NAMES, type WorkspaceKey } from './b80-seams';
 import {
   ADMIN_NAV_KEYS, DECISIONS_NAV, DEEP_LINK_KINDS, DEEP_LINK_TARGETS, EMPTY_HISTORY, HISTORY_MAX, LINK_OUTCOME_WORDS, SHELL_ACTION_SET, SHELL_KEYS, WORKSPACE_REGISTRY,
-  activeHref, assertNavigationOnly, breadcrumbOf, decodeReturnToken, decodeWarningLink, encodeDeepLink, encodeReturnToken, filterPalette, historyBack, historyForward,
+  activeHref, assertNavigationOnly, themeScopeOf, breadcrumbOf, decodeReturnToken, decodeWarningLink, encodeDeepLink, encodeReturnToken, filterPalette, historyBack, historyForward,
   historyVerify, historyVisit, lastVerifiedLocation, linkOutcome, movePaletteIndex, nextTabIndex, paletteEntries, parseHistory, registryEntryFor, safeLocation,
   shellOfPath, shellSpec, shellStateLines, shellStatus, withReturn, withoutShellParams, type HistoryEntry, type HistoryState,
 } from './shell-b80';
@@ -282,5 +282,17 @@ describe('the shell status (UX-09-005) and the explicit shell state (UX-09-002)'
     const lines = shellStateLines({ workspace: 'observation', tenantId: UUID, domainId: UUID, roles: ['collection_manager'], working: true, status: shellStatus({ session: true, verified: true, problem: null, health: 'ok' }) });
     expect(lines.map((l) => [l.label, l.value])).toEqual([['workspace', 'Observation Operations'], ['tenant', '0193a1b2…'], ['domain', '0193a1b2… (working domain)'], ['roles', 'collection_manager'], ['service', 'ready']]);
     expect(shellStateLines({ workspace: 'admin', tenantId: null, domainId: null, roles: [], working: false, status: shellStatus({ session: true, verified: true, problem: null, health: 'ok' }) })[1]!.value).toBe('PLATFORM');
+  });
+});
+
+describe('the ThemeScope slot reads the theme in force where the principal is bound (found in the B80 act rehearsal)', () => {
+  it('a domain workspace hands the slot its tenant AND its working domain; the PLATFORM workspace hands none', () => {
+    expect(themeScopeOf({ tenantId: 't-1', domainId: 'd-1' })).toEqual({ tenantId: 't-1', domainId: 'd-1' });
+    expect(themeScopeOf(null)).toEqual({ tenantId: null, domainId: null });
+  });
+  it('the shell renders its ThemeScope with themeScopeOf(scope) — never the tenant alone (a domain-bound principal holds no TENANT binding)', () => {
+    const src = readFileSync(join(__dirname, '..', 'components', 'shell.tsx'), 'utf8');
+    expect(src).toMatch(/<Theme \{\.\.\.themeScopeOf\(scope\)\}>/);
+    expect(src).not.toMatch(/<Theme tenantId=/);
   });
 });

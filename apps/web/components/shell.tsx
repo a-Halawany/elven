@@ -33,7 +33,7 @@ import type { NavItem, ShellBase, WorkspaceKey, WorkspaceSpec } from '../lib/b80
 import {
   EMPTY_HISTORY, activeHref, assertNavigationOnly, breadcrumbOf, decodeReturnToken, filterPalette, historyBack, historyForward, historyVerify,
   historyVisit, lastVerifiedLocation, movePaletteIndex, nextTabIndex, paletteEntries, parseHistory, readNavigation, safeLocation, saveNavigation,
-  shellOfPath, shellSpec, shellStatus, withReturn, withoutShellParams,
+  shellOfPath, shellSpec, shellStatus, themeScopeOf, withReturn, withoutShellParams,
   type Crumb, type HistoryEntry, type HistoryState, type NavigationRead, type PaletteEntry, type ReturnToken, type ShellStatus,
 } from '../lib/shell-b80';
 import { DegradedBanner, ErrorNote, Receipt } from './ui';
@@ -45,7 +45,7 @@ import { Dialog } from './layers';
 /* ── THE SLOTS (b80-seams AppShellSlots): §CB's context bar under the banner, §TK's ThemeScope around the surface ── */
 export interface ShellSlots {
   contextBar?: (base: ShellBase | null) => ReactNode;
-  themeScope?: ComponentType<{ tenantId: string | null; children: ReactNode }>;
+  themeScope?: ComponentType<{ tenantId: string | null; domainId: string | null; children: ReactNode }>;
 }
 /** THE ONE PLACE the integrator wires §CB's GlobalContextBar and §TK's ThemeScope (not seven layouts). Empty until then. */
 export const SHELL_SLOTS: ShellSlots = {
@@ -259,7 +259,7 @@ export function AppShell({ workspace, children, provide, adapt, slots }: AppShel
     </div>
   );
   const Theme = slotSet.themeScope;
-  const surface = Theme === undefined ? shell : <Theme tenantId={scope?.tenantId ?? null}>{shell}</Theme>;
+  const surface = Theme === undefined ? shell : <Theme {...themeScopeOf(scope)}>{shell}</Theme>;
   const inner = (
     <StatusCtx.Provider value={status}>
       <BaseCtx.Provider value={base}>{surface}</BaseCtx.Provider>

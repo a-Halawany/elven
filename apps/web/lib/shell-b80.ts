@@ -282,6 +282,14 @@ export function shellSpec(key: WorkspaceKey, locale: Locale = defaultLocale): Wo
     case 'twins': return { key, title: 'Twins', navName, homeHref: '/twins', scope: 'DOMAIN', nav: TWINS_NAV };
   }
 }
+/**
+ * What the shell hands its ThemeScope slot: the tenant AND the working domain. A domain-bound principal holds no TENANT binding, so the theme
+ * in force is read on the DOMAIN route (governance.design.theme.in_force.read is admitted there); without the domain the read is refused and
+ * every domain workspace falls back to the core theme (found in the B80 act's rehearsal walk). The PLATFORM workspace (scope null) reads none.
+ */
+export function themeScopeOf(scope: ShellScope | null): { tenantId: string | null; domainId: string | null } {
+  return { tenantId: scope?.tenantId ?? null, domainId: scope?.domainId ?? null };
+}
 export const SHELL_KEYS: readonly WorkspaceKey[] = ['admin', 'home', 'decisions', 'graph', 'intelligence', 'observation', 'prediction', 'twins'];
 /** The shell whose locations a path is (by its first segment), or null for a path no shell owns (/login, /). */
 export function shellOfPath(pathname: string): WorkspaceKey | null {
