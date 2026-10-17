@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { buildCss, COLOR_TOKENS, MOTION_TOKENS } from '../src/registry.js';
+import { COLOR_TOKENS, MOTION_TOKENS } from '../src/registry.js';
+import { buildCss } from '../src/css.js';
 
 describe('design tokens (Vol 9 Appendix A)', () => {
   it('has all 30 color tokens with light+dark values', () => {

@@ -2826,6 +2826,42 @@ const BUNDLE_V1: Rule[] = [
     ];
   })(),
   /* end B107 design */
+  /* B80 tk */
+  /* B80 §TK (0118_b80_x_tk; F-P7-E-03: UX-68-001…005, UX-ADR-022, PAT-41, REL-16). EXACT rules. THE CUSTOMER THEME is the tenant's: the
+     brand owner (branding_authority, TENANT) PROPOSES, ACTIVATES (a certified version only), ROLLS BACK and RETIRES (all human-gated; the
+     ports re-check the human and the role); the Design System Authority (PLATFORM) CERTIFIES (human-gated, signed; the port re-checks the
+     approver test — never the proposer, never an agent — and recomputes the contrast matrix from the stored mapping). The PREVIEW and the
+     READ (the tenant's themes, certifications, activations; the PLATFORM certification queue) by the brand owner, the Design System
+     Authority, the conformance steward and product authority (PLATFORM), and the tenant's administrator, auditor and customer sponsor. THE
+     THEME IN FORCE (what ThemeScope applies, on a TENANT or a DOMAIN route) by every human role of the tenant and its domains (the B92
+     list of domain roles, the tenant roles) and the Design System Authority — an agent renders no shell. The library lint (dg-lint-2) is
+     B107's governance.design.evaluate. */
+  ...(() => {
+    const P = (role: string): { role: string; atScope: Scope } => ({ role, atScope: 'PLATFORM' });
+    const T = (role: string): { role: string; atScope: Scope } => ({ role, atScope: 'TENANT' });
+    const S = (role: string): { role: string; atScope: Scope } => ({ role, atScope: 'DOMAIN' });
+    const gate: Obligation[] = [{ type: 'human_gate' }];
+    const r = (actionPrefix: string, requiredAnyRole: Array<{ role: string; atScope: Scope }>, obligations?: Obligation[]): Rule =>
+      ({ actionPrefix, exact: true, requiredAnyRole, ...(obligations === undefined ? {} : { obligations }), requiresPurpose: true, maxConsequence: 'C2' });
+    const brand = [T('branding_authority')];
+    const readers = [P('design_system_authority'), P('conformance_steward'), P('product_authority'), T('branding_authority'), T('tenant_admin'), T('auditor'), T('customer_sponsor')];
+    const humans = [P('design_system_authority'), T('branding_authority'), T('tenant_admin'), T('auditor'), T('customer_sponsor'), T('onboarding_authority'), T('implementation_lead'),
+      T('retention_authority'), ...['domain_admin', 'domain_analyst', 'collection_manager', 'decision_owner', 'decision_approver', 'decision_authority', 'executive', 'extraction_manager',
+        'resolution_manager', 'strategy_owner', 'forecast_owner', 'twin_owner', 'simulation_operator', 'knowledge_owner', 'record_authority', 'retention_steward', 'ontology_steward',
+        'risk_owner', 'opportunity_sponsor', 'execution_authority', 'method_steward', 'constraint_steward', 'executive_operator', 'board_member', 'data_steward', 'domain_specialist',
+        'product_analytics_owner', 'privacy_officer', 'product_analyst'].map(S)];
+    return [
+      r('governance.design.theme.read', readers),
+      r('governance.design.theme.in_force.read', humans),
+      r('governance.design.theme.preview', readers),
+      r('governance.design.theme.propose', brand, gate),
+      r('governance.design.theme.certify', [P('design_system_authority')], gate),
+      r('governance.design.theme.activate', brand, gate),
+      r('governance.design.theme.rollback', brand, gate),
+      r('governance.design.theme.retire', brand, gate),
+    ];
+  })(),
+  /* end B80 tk */
   /* B36 home */
   /* THE EXECUTIVE HOME, THE CADENCE, THE COMMAND VIEWS, THE SEARCH, THE METRICS (0094 §H; F-P6-11: WS-01, JRN-19, PER-03, CAP-EO-01/-02/-04).
      EXACT rules — no `executive` prefix rule exists and none of these names is a prefix of another rule's. THE READS (executive.home.read
