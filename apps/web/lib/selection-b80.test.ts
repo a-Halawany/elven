@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  acceptCurrent, actionGate, assess, assessmentText, classify, clearRows, consequenceDigest, emptySelection, headerState, isSelected, outcomeText,
+  acceptCommitted, acceptCurrent, actionGate, assess, assessmentText, classify, clearRows, consequenceDigest, emptySelection, headerState, isSelected, outcomeText,
   runPerItem, selectExactly, toggle, type Candidate,
 } from './selection-b80';
 
@@ -65,6 +65,13 @@ describe('the assessment, BEFORE the action: included / excluded with reasons / 
     expect(actionGate(a2, { requiredParams: { reason: 'drill' }, confirmedDigest: d, digest: d })).toEqual({ allowed: true, reasons: [] });
     expect(actionGate(a2, { requiredParams: { reason: 'drill' }, confirmedDigest: 'stale', digest: d }).reasons).toEqual(['the consequence changed after it was reviewed — review it again']);
     expect(actionGate(a2, { requiredParams: { reason: 'drill' }, confirmedDigest: d, digest: d, busy: true }).allowed).toBe(false);
+  });
+  it('after a run only the committed items are re-snapshotted; a concurrent change elsewhere stays reported', () => {
+    const s = selectExactly(emptySelection('s'), [cand('a', 'active'), cand('d', 'active')]);
+    const after = [cand('a', 'suspended'), cand('d', 'suspended')];
+    const s2 = acceptCommitted(s, after, ['a']);
+    expect(s2.items.map((x) => x.fingerprint)).toEqual([fp('suspended'), fp('active')]);
+    expect(assess(s2, after, new Set(['a', 'd'])).changed.map((x) => x.id)).toEqual(['d']);
   });
   it('the consequence digest binds the action, its parameters and the exact included items at their state (order-free)', () => {
     const s2 = acceptCurrent(selection, current);

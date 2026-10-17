@@ -74,6 +74,15 @@ export function acceptCurrent(s: Selection, current: readonly Candidate[]): Sele
   return { ...s, items: s.items.filter((x) => byId.has(x.id)).map((x) => ({ id: x.id, label: byId.get(x.id)!.label, fingerprint: byId.get(x.id)!.fingerprint })) };
 }
 
+/**
+ * After a run, re-snapshot ONLY the items this principal's own committed writes changed (their new state is the answer just received); any
+ * other change since selection stays reported as changed — a concurrent change is never accepted on the principal's behalf.
+ */
+export function acceptCommitted(s: Selection, current: readonly Candidate[], committedIds: readonly string[]): Selection {
+  const byId = new Map(current.map((c) => [c.id, c])); const mine = new Set(committedIds);
+  return { ...s, items: s.items.map((x) => (mine.has(x.id) && byId.has(x.id) ? { ...x, fingerprint: byId.get(x.id)!.fingerprint } : x)) };
+}
+
 /** The counts in words, before the action (PAT-18). */
 export function assessmentText(a: Assessment): string {
   const c = a.counts;
