@@ -4,8 +4,9 @@
  *
  *   library-fork        a LOCAL component (a function component defined in apps/web/app/**) that carries the NAME of a shared-library
  *                       component (apps/web/components/*.tsx exports) — a fork of the library's identity (UX-05-005: quarantine it);
- *   token-redefinition  a design-token custom property (`--eye-…:`) DECLARED outside packages/tokens — a local override of a token value
- *                       (themes are mapped through the governed theme ports and emitted by packages/tokens, never declared in a page).
+ *   token-redefinition  a design-token custom property (`--eye-<token family>-…:`, the families read from the token registry) DECLARED outside
+ *                       packages/tokens — a local override of a token value (themes are mapped through the governed theme ports and emitted
+ *                       by packages/tokens, never declared in a page). A library component's own state variable is not a token.
  *
  * Findings name the principle they evidence (FORK_PRINCIPLE — declared in B107's principle registry by the Design System Authority, a human
  * act; the lint judges nothing) and are recorded through governance.dg_record_evaluation (rules `dg-lint-2`): a finding is OPEN until a narrow,
@@ -42,10 +43,26 @@ function inputDigest(files: SourceFile[]): string {
   return h.digest('hex');
 }
 
+/**
+ * THE TOKEN FAMILIES, read from the token registry the inventory reads (packages/tokens/src/registry.ts: `export const COLOR_TOKENS`,
+ * `FONT_FAMILIES`, … → color, font, …): a design token's custom property is `--eye-<family>-…` (css.ts varName). Null when the registry is not
+ * among the files — then EVERY `--eye-` declaration counts (fail closed). A library component's own state variable (`--eye-button-bg`,
+ * `--eye-input-border`, declared once in the library's stylesheet and set to a token) is not a token: it is not a token redefinition.
+ */
+export function tokenFamilies(files: SourceFile[]): string[] | null {
+  const reg = files.find((f) => f.path === 'packages/tokens/src/registry.ts');
+  if (reg === undefined) return null;
+  const out = new Set<string>();
+  for (const m of stripComments(reg.text).matchAll(/export\s+const\s+([A-Z]+)_(?:TOKENS|FAMILIES)\b/g)) out.add(m[1]!.toLowerCase());
+  return out.size === 0 ? null : [...out].sort();
+}
+
 /** THE LIBRARY LINT. Test files and packages/tokens are not product surfaces; findings sorted (file, line, rule) — deterministic. */
 export function lintLibrary(files: SourceFile[]): LibraryLintResult {
   const library = libraryNames(files);
   const lib = new Set(library);
+  const families = tokenFamilies(files);
+  const isToken = (name: string) => families === null || families.some((f) => name.startsWith(`--eye-${f}-`));
   const findings: LibraryFinding[] = [];
   for (const f of files) {
     if (f.path.includes('packages/tokens/') || /\.(test|spec)\.(ts|tsx)$/.test(f.path)) continue;
@@ -54,7 +71,8 @@ export function lintLibrary(files: SourceFile[]): LibraryLintResult {
       for (const m of code.matchAll(/(?:^|\n)\s*(?:export\s+)?(?:default\s+)?function\s+([A-Z][A-Za-z0-9_]*)\s*\(|(?:^|\n)\s*(?:export\s+)?const\s+([A-Z][A-Za-z0-9_]*)\s*=\s*(?:\([^)]*\)|[a-z_][A-Za-z0-9_]*)\s*=>/g)) {
         const name = m[1] ?? m[2] ?? '';
         if (!lib.has(name)) continue;
-        const line = lineOf(code, (m.index ?? 0) + (m[0].startsWith('\n') ? 1 : 0));
+        // the line of the declaration itself: `\s*` may have consumed blank lines before it
+        const line = lineOf(code, (m.index ?? 0) + (m[0].length - m[0].trimStart().length));
         findings.push({ rule: 'library-fork', principle: FORK_PRINCIPLE, file: f.path, line, excerpt: excerptAt(f.text, line),
                         note: `a local ${name} duplicates the library component ${name} (apps/web/components) — migrate onto it or rename it` });
       }
@@ -65,6 +83,7 @@ export function lintLibrary(files: SourceFile[]): LibraryLintResult {
       const decl = f.path.endsWith('.css') ? /(?:^|[;{])\s*(--eye-[a-z0-9-]+)\s*:/gm : /[{,]\s*(['"])(--eye-[a-z0-9-]+)\1\s*:|setProperty\(\s*(['"`])(--eye-[a-z0-9-]+)\3/g;
       for (const m of code.matchAll(decl)) {
         const name = m[1]?.startsWith('--') === true ? m[1] : (m[2] ?? m[4] ?? '');
+        if (!isToken(name)) continue;
         const line = lineOf(code, (m.index ?? 0) + (m[0].length - m[0].trimStart().length));
         findings.push({ rule: 'token-redefinition', principle: FORK_PRINCIPLE, file: f.path, line, excerpt: excerptAt(f.text, line),
                         note: `${name} is declared outside packages/tokens — a token value is defined once; a customer theme is mapped through the governed theme ports` });

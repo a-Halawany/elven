@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { HttpException } from '@nestjs/common';
 import { readRepository } from '../../src/governance/design/design-source.js';
-import { FORK_PRINCIPLE, LIBRARY_LINT_VERSION, compatibility, libraryNames, lintLibrary, propsContract } from '../../src/governance/design/themes/library-lint.js';
+import { FORK_PRINCIPLE, LIBRARY_LINT_VERSION, compatibility, libraryNames, lintLibrary, propsContract, tokenFamilies } from '../../src/governance/design/themes/library-lint.js';
 import { proposalProblem, refuseTheme, themeAction, themeEligibility, themeRefusal } from '../../src/governance/design/themes/themes-logic.js';
 
 describe('dg-lint-2: forks of library components and token values declared outside packages/tokens (UX-05-005)', () => {
@@ -30,6 +30,34 @@ describe('dg-lint-2: forks of library components and token values declared outsi
       ['token-redefinition', 'apps/web/app/x/page.tsx', 3], ['token-redefinition', 'apps/web/app/x/page.tsx', 6]]);
     expect(r.findings.every((f) => f.principle === FORK_PRINCIPLE)).toBe(true);
     expect(r.counts).toEqual({ 'library-fork': 2, 'token-redefinition': 3 });
+  });
+  it('a token redefinition is a TOKEN family\'s property (read from the registry); a library component\'s own state variable is not', () => {
+    const registry = { path: 'packages/tokens/src/registry.ts', text: "export const COLOR_TOKENS = [];\nexport const FONT_FAMILIES = {};\n// export const GHOST_TOKENS = [];\nexport const SPACE_TOKENS = [0];\n" };
+    expect(tokenFamilies([registry])).toEqual(['color', 'font', 'space']);
+    expect(tokenFamilies([lib])).toBeNull();
+    const css = { path: 'apps/web/app/globals.css', text: [
+      'button:hover { --eye-button-bg: var(--eye-color-accent-strong); }',
+      'input:disabled { --eye-input-bg: var(--eye-color-surface-secondary); --eye-input-ink: var(--eye-color-disabled-ink); }',
+      ':root { --eye-color-canvas: #000000; }',
+      '.x { --eye-space-4: 3px; }'].join('\n') };
+    const ts = { path: 'apps/web/lib/x.ts', text: "const a = { '--eye-button-ink': 'var(--eye-color-ink-strong)' };\nconst b = { '--eye-font-ui': 'Comic' };\n" };
+    const r = lintLibrary([lib, registry, css, ts]);
+    expect(r.findings.map((f) => [f.rule, f.file, f.line])).toEqual([
+      ['token-redefinition', 'apps/web/app/globals.css', 3], ['token-redefinition', 'apps/web/app/globals.css', 4], ['token-redefinition', 'apps/web/lib/x.ts', 2]]);
+    // without the registry the lint fails closed: every --eye- declaration counts
+    expect(lintLibrary([lib, css, ts]).counts['token-redefinition']).toBe(7);
+  });
+  it('the REAL web source: every token redefinition names a token family of the registry (the library\'s state variables are not tokens)', () => {
+    const repo = readRepository();
+    expect(repo).not.toBeNull();
+    const families = tokenFamilies(repo!.files);
+    expect(families).toEqual(['border', 'color', 'elevation', 'font', 'motion', 'radius', 'size', 'space', 'type']);
+    const r = lintLibrary(repo!.files);
+    expect(r.findings.filter((f) => f.rule === 'token-redefinition'), JSON.stringify(r.findings.filter((f) => f.rule === 'token-redefinition').slice(0, 5))).toEqual([]);
+  });
+  it('a fork found after blank lines is reported on its own line, with its own text as the excerpt', () => {
+    const page = { path: 'apps/web/app/y/page.tsx', text: "import x from 'y';\n\n\n/** a helper */\nfunction Symbol() { return null; }\n" };
+    expect(lintLibrary([lib, page]).findings.map((f) => [f.rule, f.line, f.excerpt])).toEqual([['library-fork', 5, 'function Symbol() { return null; }']]);
   });
   it('packages/tokens and test files are not product surfaces; the result is deterministic', () => {
     const r1 = lintLibrary([lib, { path: 'packages/tokens/src/css.ts', text: "const x = { '--eye-a': 1 };" }, { path: 'apps/web/lib/a.test.ts', text: "const y = { '--eye-b': 1 };" }]);
