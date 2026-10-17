@@ -2,6 +2,8 @@
  * Design token registry — Volume 9 Appendix A (verbatim values).
  * Product code consumes semantic aliases only (UX-ADR-010); these tokens are
  * emitted as CSS custom properties (light + dark) and a Tailwind preset.
+ * B80 §TK: the sheet is built by css.ts (light, dark, print, forced colours, the
+ * fallback scope, the type classes with tabular numerals); this file is data only.
  */
 
 export interface ColorToken {
@@ -79,44 +81,3 @@ export const ELEVATION_TOKENS = {
 } as const;
 /** motion.instant = 0ms is REQUIRED for consequential state change (UX-ADR-017). */
 export const MOTION_TOKENS = { instant: 0, fast: 80, standard: 140, layout: 220, deliberate: 320, max: 480 } as const;
-
-function varName(token: string): string {
-  return '--eye-' + token.replace(/\./g, '-');
-}
-
-/** Emit the CSS custom-property sheet (light default + dark via data-theme + prefers-color-scheme). */
-export function buildCss(): string {
-  const light = COLOR_TOKENS.map((t) => `  ${varName(t.token)}: ${t.light};`).join('\n');
-  const dark = COLOR_TOKENS.map((t) => `  ${varName(t.token)}: ${t.dark};`).join('\n');
-  const space = SPACE_TOKENS.map((v) => `  --eye-space-${v}: ${v}px;`).join('\n');
-  const sizes = Object.entries(SIZE_TOKENS).map(([k, v]) => `  --eye-size-${k.replace('.', '-')}: ${v}px;`).join('\n');
-  const radius = Object.entries(RADIUS_TOKENS).map(([k, v]) => `  --eye-radius-${k}: ${v}px;`).join('\n');
-  const border = Object.entries(BORDER_TOKENS).map(([k, v]) => `  --eye-border-${k}: ${v}px;`).join('\n');
-  const elev = Object.entries(ELEVATION_TOKENS).map(([k, v]) => `  --eye-elevation-${k}: ${v};`).join('\n');
-  const motion = Object.entries(MOTION_TOKENS).map(([k, v]) => `  --eye-motion-${k}: ${v}ms;`).join('\n');
-  const type = TYPE_TOKENS.map(
-    (t) => `  ${varName(t.token)}: ${t.size}px; ${varName(t.token)}-line: ${t.line}px; ${varName(t.token)}-weight: ${t.weight};`,
-  ).join('\n');
-  return `/* GENERATED from @eye/tokens — Volume 9 Appendix A. Do not edit by hand. */
-:root {
-${light}
-${space}
-${sizes}
-${radius}
-${border}
-${elev}
-${motion}
-${type}
-  --eye-font-ui: ${FONT_FAMILIES.ui};
-  --eye-font-mono: ${FONT_FAMILIES.mono};
-}
-:root[data-theme='dark'] {
-${dark}
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) {
-${dark.replace(/^ {2}/gm, '    ')}
-  }
-}
-`;
-}

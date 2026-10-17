@@ -1,7 +1,7 @@
 import { writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildCss } from './registry.js';
+import { buildCss } from './css.js';
 
 const out = join(dirname(fileURLToPath(import.meta.url)), 'tokens.css');
 writeFileSync(out, buildCss());
