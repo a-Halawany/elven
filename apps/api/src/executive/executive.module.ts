@@ -81,10 +81,16 @@ import { CollabB36Controller, InvitationPickupController } from './workflow/coll
 import { AuditModule } from '../audit/audit.module.js';
 import { InvitationDeliveryService } from './workflow/invitation-delivery.service.js';
 /* end B36 collab */
+/* B80 cb (0118 §CB): the operating context bar — the bar's read, the impact preview, the deliberate commit (its code in src/shell/context; registered here,
+   in the module of executive.contexts, so no new deployable unit is discovered) */
+import { ContextBarController } from '../shell/context/context.controller.js';
+import { ContextBarService } from '../shell/context/context.service.js';
+import { PolicyModule } from '../policy/policy.module.js';
+/* end B80 cb */
 @Module({
-  imports: [PipelineModule, IdentityModule, ObservationModule, DecisionModule, GraphModule, /* B36 (0094 §C) collab: the pickup route's security intake */ AuditModule /* end B36 collab */],
+  imports: [PipelineModule, IdentityModule, ObservationModule, DecisionModule, GraphModule, /* B36 (0094 §C) collab: the pickup route's security intake */ AuditModule /* end B36 collab */, /* B80 cb: the bar's policy dimension */ PolicyModule /* end B80 cb */],
   controllers: [ExecutiveController, /* B34 (0090) workflow */ WorkflowController /* end B34 workflow */, /* B36 (0094 §A) attention */ AttentionB36Controller /* end B36 attention */, /* B36 (0094) publishing */ PublishingController /* end B36 publishing */, /* B36 planning */ PlanningController /* end B36 planning */, /* B36 home (0094 §H) */ HomeController /* end B36 home */,
-    /* B36 (0094 §C) collab */ CollabB36Controller, InvitationPickupController /* end B36 collab */],
+    /* B36 (0094 §C) collab */ CollabB36Controller, InvitationPickupController /* end B36 collab */, /* B80 cb */ ContextBarController /* end B80 cb */],
   providers: [SignatureService /* B36 §0 (0094) */, RoomService, BriefingService, AgentsService, AgentWorkerService, DecisionAgentSessionService, RequestsService, AttentionService,
     // B22 (0083): the four consumers of L1-I03, L1-I04, L2-I02 and the attention router (the graph module's dispatcher registers them).
     ObservationsConsumer, SourceHealthConsumer, ProposalsConsumer, AttentionConsumer,
@@ -103,7 +109,7 @@ import { InvitationDeliveryService } from './workflow/invitation-delivery.servic
     /* B36 (0094) publishing */ PublishingService /* end B36 publishing */,
     /* B36 planning */ PlanningService /* end B36 planning */,
     /* B36 home (0094 §H): the home's service and the tick step room-deadlines */ HomeService /* end B36 home */,
-    /* B36 (0094 §C) collab */ InvitationDeliveryService /* end B36 collab */],
+    /* B36 (0094 §C) collab */ InvitationDeliveryService /* end B36 collab */, /* B80 cb */ ContextBarService /* end B80 cb */],
   exports: [SignatureService, RoomService, BriefingService, AgentsService, AgentWorkerService, RequestsService, AttentionService, AttentionTickRegistry,
     /* B24 (0086) timer */ AttentionTimerService, DeliveryService /* end B24 timer */,
     /* B34 (0090) workflow: the timer registry (the commitments and gates parts register their kinds' handlers) */ WorkflowTimerRegistry, CollabService /* end B34 workflow */,

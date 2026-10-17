@@ -529,3 +529,62 @@ button[aria-busy='true'] { --eye-button-cursor: progress; }
   .eye-skip-link, .eye-rail, .eye-shell-end, .eye-history, .eye-palette { display: none; }
 }
 /* end B80 sh */
+/* B80 cb — THE OPERATING CONTEXT BAR (CMP-010) and the context switch (PAT-02). Tokens only; logical properties (RTL mirrors); the bar WRAPS
+   at narrow widths and at 200% zoom (nothing scrolls sideways); a dimension's state is a symbol and a word as well as a tint; under forced
+   colours every boundary is a system-colour border. */
+.eye-context-bar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--eye-space-8) var(--eye-space-16);
+  padding-block: var(--eye-space-4); padding-inline: var(--eye-space-16);
+  background: var(--eye-color-surface-primary); border-block-end: 1px solid var(--eye-color-border-default);
+  font-size: var(--eye-type-label-sm); color: var(--eye-color-ink-default);
+}
+.eye-context-dims { display: flex; flex-wrap: wrap; gap: var(--eye-space-4) var(--eye-space-16); margin: 0; min-inline-size: 0; }
+.eye-context-dim { display: flex; gap: var(--eye-space-4); min-inline-size: 0; overflow-wrap: anywhere; }
+.eye-context-dim dt { color: var(--eye-color-ink-muted); }
+.eye-context-dim dt::after { content: ':'; }
+.eye-context-dim dd { margin: 0; color: var(--eye-color-ink-strong); }
+.eye-context-dim[data-dimension='classification'] dd { color: var(--eye-color-classification); font-weight: 600; }
+.eye-context-dim[data-state='default'] dd { color: var(--eye-color-ink-muted); }
+.eye-context-dim[data-state='unresolved'] dd { color: var(--eye-color-warning); font-weight: 600; }
+.eye-context-dim[data-state='not_applied'] dd { color: var(--eye-color-uncertain); }
+.eye-context-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--eye-space-8); margin-inline-start: auto; }
+.eye-context-held { margin: 0; color: var(--eye-color-warning); }
+.eye-context-note { color: var(--eye-color-ink-muted); font-size: var(--eye-type-label-sm); }
+.eye-context-switch, .eye-context-cancel {
+  block-size: var(--eye-size-control-md); padding-inline: var(--eye-space-12); border-radius: var(--eye-radius-md);
+  border: 1px solid var(--eye-color-border-strong); background: var(--eye-color-surface-primary); color: var(--eye-color-ink-default); cursor: pointer;
+}
+.eye-context-switch:hover, .eye-context-cancel:hover { background: var(--eye-color-surface-secondary); border-color: var(--eye-color-accent-strong); }
+.eye-context-switch:active, .eye-context-cancel:active { background: var(--eye-color-selection); }
+.eye-context-switch[aria-expanded='true'] { border-color: var(--eye-color-accent-strong); }
+.eye-context-fields select:disabled, .eye-context-fields input:disabled { color: var(--eye-color-disabled-ink); cursor: not-allowed; }
+.eye-context-dialog::backdrop { background: var(--eye-color-canvas); opacity: 0.7; }
+.eye-context-dialog {
+  inline-size: min(48rem, calc(100vw - 2 * var(--eye-space-16))); max-block-size: calc(100vh - 2 * var(--eye-space-32)); overflow: auto;
+  border: 1px solid var(--eye-color-border-strong); border-radius: var(--eye-radius-md); padding: var(--eye-space-16);
+  background: var(--eye-color-surface-elevated); color: var(--eye-color-ink-default);
+}
+.eye-context-switch-title { font-size: var(--eye-type-heading-3); margin-block-start: 0; }
+.eye-context-home {
+  border: 1px solid var(--eye-color-border-default); border-radius: var(--eye-radius-md); padding: var(--eye-space-16);
+  margin-block-end: var(--eye-space-16); background: var(--eye-color-surface-primary);
+}
+.eye-context-fields { display: grid; gap: var(--eye-space-8); grid-template-columns: repeat(auto-fit, minmax(min(14rem, 100%), 1fr)); align-items: end; }
+.eye-context-fields select, .eye-context-fields input {
+  inline-size: 100%; block-size: var(--eye-size-control-md); border: 1px solid var(--eye-color-border-default); border-radius: var(--eye-radius-md);
+  padding-inline: var(--eye-space-8); font-size: var(--eye-type-body-md); background: var(--eye-color-surface-primary); color: var(--eye-color-ink-default);
+}
+.eye-context-buttons { display: flex; flex-wrap: wrap; gap: var(--eye-space-8); align-items: center; margin-block: var(--eye-space-12); }
+.eye-context-refusal { color: var(--eye-color-critical); }
+.eye-context-preview { border-block-start: 1px solid var(--eye-color-border-default); padding-block-start: var(--eye-space-8); }
+.eye-context-preview h3 { font-size: var(--eye-type-heading-3); margin-block: var(--eye-space-8); }
+.eye-context-preview h4 { font-size: var(--eye-type-label-sm); text-transform: uppercase; color: var(--eye-color-ink-muted); margin-block: var(--eye-space-8) var(--eye-space-4); }
+.eye-context-preview ul { padding-inline-start: var(--eye-space-16); margin-block: 0; }
+.eye-context-choice { border: 1px solid var(--eye-color-border-default); border-radius: var(--eye-radius-md); margin-block: var(--eye-space-4); }
+@media (forced-colors: active) {
+  .eye-context-bar { border-block-end: 1px solid CanvasText; }
+  .eye-context-dim[data-state='unresolved'] dd, .eye-context-dim[data-state='not_applied'] dd { color: Mark; }
+  .eye-context-switch, .eye-context-cancel, .eye-context-dialog, .eye-context-choice, .eye-context-home { border-color: ButtonText; }
+}
+@media print { .eye-context-actions { display: none; } }
+/* end B80 cb */
