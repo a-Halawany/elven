@@ -119,6 +119,11 @@ main { padding-block: var(--eye-space-32); padding-inline: var(--eye-space-32); 
   block-size: var(--eye-size-control-md); padding-inline: var(--eye-space-12); border-radius: var(--eye-radius-md);
   border: 1px solid var(--eye-color-border-strong); background: var(--eye-color-surface-primary); color: var(--eye-color-ink-default); cursor: pointer;
 }
+.eye-context-switch:hover, .eye-context-cancel:hover { background: var(--eye-color-surface-secondary); border-color: var(--eye-color-accent-strong); }
+.eye-context-switch:active, .eye-context-cancel:active { background: var(--eye-color-selection); }
+.eye-context-switch[aria-expanded='true'] { border-color: var(--eye-color-accent-strong); }
+.eye-context-fields select:disabled, .eye-context-fields input:disabled { color: var(--eye-color-disabled-ink); cursor: not-allowed; }
+.eye-context-dialog::backdrop { background: var(--eye-color-canvas); opacity: 0.7; }
 .eye-context-dialog {
   inline-size: min(48rem, calc(100vw - 2 * var(--eye-space-16))); max-block-size: calc(100vh - 2 * var(--eye-space-32)); overflow: auto;
   border: 1px solid var(--eye-color-border-strong); border-radius: var(--eye-radius-md); padding: var(--eye-space-16);
