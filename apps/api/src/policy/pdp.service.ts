@@ -53,6 +53,21 @@ interface Rule {
   minConsequence?: ConsequenceClass;
 }
 
+/* B80 cb (0118 §CB; DESIGN D3) — THE HUMAN DOMAIN ROLES THAT MAY SET AN OPERATING CONTEXT: every human domain role; the agents (`*_agent`), the
+   subscribers (workloads, `*_subscriber`) and the external collaborator never. The port re-checks the SAME list (executive.context_setter_roles(),
+   0118 §CB.1); the harness phase6-context-b80 proves the two equal and every DOMAIN role of identity.roles classified. */
+export const B80_CONTEXT_SETTER_ROLES: readonly string[] = [
+  'domain_admin', 'domain_analyst', 'collection_manager', 'extraction_manager', 'resolution_manager',
+  'decision_owner', 'decision_approver', 'decision_authority', 'executive', 'executive_operator', 'board_member',
+  'strategy_owner', 'forecast_owner', 'twin_owner', 'simulation_operator',
+  'knowledge_owner', 'record_authority', 'retention_steward', 'ontology_steward',
+  'risk_owner', 'opportunity_sponsor', 'execution_authority', 'method_steward', 'constraint_steward', 'data_steward',
+  'domain_specialist', 'product_analytics_owner', 'privacy_officer', 'product_analyst', 'support_engineer', 'enablement_assessor',
+];
+/** The TENANT-bound humans who READ the bar (they work in a chosen domain and see its context; they set none — D3 names the domain roles). */
+const B80_CONTEXT_TENANT_READERS: readonly string[] = ['tenant_admin', 'auditor', 'retention_authority', 'customer_sponsor', 'onboarding_authority', 'implementation_lead', 'branding_authority'];
+/* end B80 cb */
+
 /** bundle-v1 — RBAC rules in the ABAC model. Order matters: first match wins. */
 const BUNDLE_V1: Rule[] = [
   { actionPrefix: 'tenancy.tenant.', requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }], requiresPurpose: true },
@@ -2842,7 +2857,14 @@ const BUNDLE_V1: Rule[] = [
      below (executive.attention.item.delegate, executive.task.reassign — the role added there, marked). No agent role appears here. */
   { actionPrefix: 'executive.home.read', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'executive_operator', atScope: 'DOMAIN' }, { role: 'board_member', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'decision_approver', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
   { actionPrefix: 'executive.metrics.read', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'executive_operator', atScope: 'DOMAIN' }, { role: 'board_member', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
-  { actionPrefix: 'executive.context.set', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'executive_operator', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* B80 cb (0118 §CB) — B36's `executive.context.set` rule REPLACED here (it stood in this place with seven roles): WIDENED to every human DOMAIN
+     role (DESIGN D3; B80_CONTEXT_SETTER_ROLES above), human-gated, presentation-only — a context switch never alters an approval and the port
+     (executive.commit_context / 0094's set_context) re-checks the human and the role. NEW: `executive.context.read` — the operating context
+     bar's read and the impact preview (executive.context_bar / context_impact), the same humans plus the TENANT-bound readers, audited. EXACT
+     rules; no earlier rule's prefix is a prefix of `executive.context.` (the B36 rule stood here and matched first). */
+  { actionPrefix: 'executive.context.set', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, ...B80_CONTEXT_SETTER_ROLES.map((role) => ({ role, atScope: 'DOMAIN' as const }))], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'executive.context.read', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, ...B80_CONTEXT_TENANT_READERS.map((role) => ({ role, atScope: 'TENANT' as const })), ...B80_CONTEXT_SETTER_ROLES.map((role) => ({ role, atScope: 'DOMAIN' as const }))], obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B80 cb */
   { actionPrefix: 'executive.cadence.open', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'executive_operator', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   { actionPrefix: 'executive.cadence.reset', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'executive_operator', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   { actionPrefix: 'executive.room.open', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'executive_operator', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
