@@ -7,19 +7,17 @@
  * commit or a review is refused by the server from anyone else regardless.
  *
  * B18: a principal bound at TENANT scope has no home domain; the shell offers it a
- * choice of domain to WORK IN (`lib/working-domain.ts` — the tab's, the principal's,
- * shown in the header, changeable). The choice names the domain the envelopes carry;
- * the server resolves the route's scope and the policy decides what the principal may
- * do there. A home domain always wins over it.
+ * choice of domain to WORK IN (`lib/working-domain.ts`). A home domain always wins over it.
+ *
+ * B80 §SH: the shell itself is the ONE AppShell (components/shell.tsx); this layout keeps its own `useShell()`, its role flags, the
+ * exported `NAV` (lib/shell-b80.ts DECISIONS_NAV — every part's marked line kept there) and B36's external-collaborator adaptation
+ * (the gate, the one-line rail, the grant on the banner) through AppShell's `adapt`.
  */
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
-import Link from 'next/link';
-import { getSession, health, setSession } from '../../lib/api';
-import { whoAmI, type Me, type Scope } from '../../lib/observation';
-import { clearWorkingDomain, readWorkingDomain, workingDomainFor, type WorkingDomain } from '../../lib/working-domain';
-import { DegradedBanner } from '../../components/ui';
-import { WorkingDomainChooser, WorkingDomainMark } from '../../components/working-domain';
+import { createContext, useContext, type ReactNode } from 'react';
+import type { Me, Scope } from '../../lib/observation';
+import type { ShellBase } from '../../lib/b80-seams';
+import { DECISIONS_NAV } from '../../lib/shell-b80';
+import { AppShell, type AppShellAdapt } from '../../components/shell';
 /* B36 (0094 §C1): the external collaborator's bounded surface */ import { externalSurface, type GrantSurface } from '../../lib/workflow'; /* end B36 */
 
 interface ShellContext {
@@ -34,111 +32,40 @@ export function useShell(): ShellContext {
   if (v === null) throw new Error('decisions shell context is not available');
   return v;
 }
-export const NAV = [
-  /* B36 (0094 §H) home: the executive home first (WS-01) */ { href: '/home', label: 'Home', glyph: '⌂' }, /* end B36 home */
-  { href: '/decisions', label: 'Decisions', glyph: '◆' },
-  { href: '/decisions/briefings', label: 'Briefings', glyph: '☰' },
-  /* B35 analysis */ { href: '/decisions/analysis', label: 'Analysis', glyph: '⚖' }, /* end B35 analysis */
-  { href: '/decisions/attention', label: 'Attention', glyph: '⚑' },
-  { href: '/decisions/requests', label: 'Requests', glyph: '✎' },
-  /* B32 (0089) health */ { href: '/decisions/health', label: 'Health', glyph: '◔' }, /* end B32 health */
-  /* B34 (0090) workflow */ { href: '/decisions/tasks', label: 'Tasks', glyph: '☑' }, { href: '/decisions/workspaces', label: 'Workspaces', glyph: '⧉' },
-  { href: '/decisions/workflow', label: 'Workflow', glyph: '⇄' }, /* end B34 workflow */
-  /* B34 (0090) commitments */ { href: '/decisions/commitments', label: 'Commitments', glyph: '⇢' }, /* end B34 commitments */
-  /* B36 (0094) gates */ { href: '/decisions/board', label: 'Board', glyph: '▣' }, /* end B36 gates */
-  /* B36 (0094) publishing */ { href: '/decisions/publications', label: 'Publications', glyph: '⎙' }, /* end B36 publishing */
-  /* B35 explanation */ { href: '/decisions/explanations', label: 'Explanations', glyph: '¶' }, /* end B35 explanation */
-  /* B35 reopen */ { href: '/decisions/review', label: 'Review', glyph: '↺' }, /* end B35 reopen */
-  /* B35 recommendation */ { href: '/decisions/recommendations', label: 'Recommendations', glyph: '⚖' }, /* end B35 recommendation */
-  { href: '/twins', label: 'Twins', glyph: '◫' },
-  { href: '/prediction', label: 'Prediction', glyph: '↗' },
-  { href: '/graph', label: 'Graph', glyph: '◈' },
-  { href: '/intelligence', label: 'Intelligence', glyph: '❝' },
-  { href: '/observation', label: 'Observation', glyph: '⛁' },
-];
+export const NAV = DECISIONS_NAV;
 
-export default function DecisionsLayout({ children }: { children: ReactNode }) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const [me, setMe] = useState<Me | null>(null);
-  const [working, setWorking] = useState<WorkingDomain | null>(null);
-  const [degraded, setDegraded] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
-  useEffect(() => {
-    if (getSession() === null) { router.replace('/login'); return; }
-    void (async () => {
-      const r = await whoAmI();
-      if (!r.ok || r.data === undefined) { setProblem(r.error?.message ?? 'the server did not confirm this session’s scope'); return; }
-      // The stored choice is read once the server has said who this is (never in a state initialiser: the shell pre-renders on the server).
-      setWorking(readWorkingDomain());
-      setMe(r.data.me);
-    })();
-    const check = async () => { const h = await health(); setDegraded(h.status !== 'ok'); };
-    void check();
-    const id = setInterval(() => void check(), 15000);
-    return () => clearInterval(id);
-  }, [router]);
-  if (problem !== null) return <main style={{ padding: 'var(--eye-space-32)' }}><h1 style={{ fontSize: 'var(--eye-type-heading-1)' }}>Decisions</h1><p role="alert" style={{ color: 'var(--eye-color-critical)' }}>{problem}</p></main>;
-  if (me === null) return null;
-  if (me.homeTenantId === null) {
-    return <main style={{ padding: 'var(--eye-space-32)' }}><h1 style={{ fontSize: 'var(--eye-type-heading-1)' }}>Decisions</h1>
-      <p role="alert">This workspace operates inside one Intelligence Domain. The signed-in principal is bound at <strong>{me.homeScope}</strong> scope and has no home domain, so there is no domain to open.</p></main>;
-  }
-  // B18: a TENANT-homed principal chooses the domain to work in (the choice is the tab's and the principal's; the server decides what it may do there).
-  const domainId = workingDomainFor(me, working);
-  if (domainId === null) return <WorkingDomainChooser workspace="Decisions" me={me} onChosen={setWorking} />;
-  const scope: Scope = { tenantId: me.homeTenantId, domainId };
-  const holds = (role: string) => me.bindings.some((b) => b.roleCode === role && (b.scope === 'PLATFORM' || (b.scope === 'DOMAIN' && b.domainId === scope.domainId)));
-  /* B36 (0094 §C1) collab: the server's answer for an external is BOUNDED TO ITS GRANT — the shell shows the workspace surface only; an expired or ended grant signs it out of everything */
+/* B36 (0094 §C1) collab: the server's answer for an external is BOUNDED TO ITS GRANT — the shell shows the workspace surface only; an expired or ended grant signs it out of everything */
+function surfaceOf(me: Me) {
   const surface = externalSurface(me.external === undefined ? null : { grants: me.external.grants as unknown as GrantSurface[], expired: me.external.expired });
   const isExternal = me.external !== undefined;
+  return { surface, isExternal, externalGrant: isExternal && surface.kind === 'workspace' ? surface.grant : null };
+}
+function adapt(b: ShellBase, api: { signOut: () => void }): AppShellAdapt {
+  const { surface, isExternal, externalGrant } = surfaceOf(b.me);
   if (isExternal && surface.kind !== 'workspace') {
-    return <main style={{ padding: 'var(--eye-space-32)' }}><h1 style={{ fontSize: 'var(--eye-type-heading-1)' }}>Collaboration</h1>
-      <p role="alert">Your access has ended: the grant is <strong>{surface.kind === 'expired' ? surface.reason : 'not live'}</strong>. Nothing of this tenant is shown to you beyond it.</p>
-      <button type="button" style={{ background: 'none', border: 'none', color: 'var(--eye-color-accent-default)', cursor: 'pointer' }} onClick={() => { clearWorkingDomain(); setSession(null); router.replace('/login'); }}>Sign out</button></main>;
+    return { gate: (
+      <main className="eye-shell-gate"><h1>Collaboration</h1>
+        <p role="alert">Your access has ended: the grant is <strong>{surface.kind === 'expired' ? surface.reason : 'not live'}</strong>. Nothing of this tenant is shown to you beyond it.</p>
+        <button type="button" className="eye-link-button" onClick={api.signOut}>Sign out</button></main>) };
   }
-  const externalGrant = isExternal && surface.kind === 'workspace' ? surface.grant : null;
-  const nav = isExternal ? NAV.filter((n) => n.href === '/decisions/workspaces') : NAV;
-  /* end B36 collab */
-  const value: ShellContext = { scope, me, isDecisionOwner: holds('decision_owner') || holds('platform_admin'), isApprover: holds('decision_approver'), isAuthority: holds('decision_authority'), isExecutive: holds('executive'),
-    /* B36 (0094) gates */ isBoardMember: holds('board_member'), isAuditor: me.bindings.some((b) => b.roleCode === 'auditor' && b.scope === 'TENANT' && b.tenantId === scope.tenantId) /* end B36 gates */,
+  return {
+    nav: isExternal ? NAV.filter((n) => n.href === '/decisions/workspaces') : NAV,
+    /* B36 (0094 §C1) collab: the external's grant on the banner — what bounds this surface */
+    banner: externalGrant !== null ? <span aria-label="your grant" className="eye-shell-grant">
+      external collaborator · {externalGrant.workspace_title} · purpose {externalGrant.purpose} · audience {externalGrant.audience_ceiling} · access ends {String(externalGrant.expires_at ?? '').slice(0, 10)}</span> : undefined,
+  };
+}
+/* end B36 collab */
+
+function flags(b: ShellBase): ShellContext {
+  const me = b.me; const scope = b.scope as Scope;
+  const holds = (role: string) => me.bindings.some((x) => x.roleCode === role && (x.scope === 'PLATFORM' || (x.scope === 'DOMAIN' && x.domainId === scope.domainId)));
+  const { isExternal, externalGrant } = surfaceOf(me);
+  return { scope, me, isDecisionOwner: holds('decision_owner') || holds('platform_admin'), isApprover: holds('decision_approver'), isAuthority: holds('decision_authority'), isExecutive: holds('executive'),
+    /* B36 (0094) gates */ isBoardMember: holds('board_member'), isAuditor: me.bindings.some((x) => x.roleCode === 'auditor' && x.scope === 'TENANT' && x.tenantId === scope.tenantId) /* end B36 gates */,
     /* B36 (0094 §C1) collab */ isExternal, externalGrant /* end B36 collab */ };
-  return (
-    <Ctx.Provider value={value}>
-      <div style={{ minBlockSize: '100vh', display: 'flex', flexDirection: 'column' }}>
-        <DegradedBanner visible={degraded} detail="the API reports degraded audit availability" />
-        <header role="banner" style={{ display: 'flex', alignItems: 'center', gap: 'var(--eye-space-16)', flexWrap: 'wrap', background: 'var(--eye-color-surface-secondary)', borderBlockEnd: '1px solid var(--eye-color-border-default)', paddingBlock: 'var(--eye-space-8)', paddingInline: 'var(--eye-space-16)' }}>
-          <strong style={{ color: 'var(--eye-color-ink-strong)' }}>Decisions</strong>
-          <span style={{ color: 'var(--eye-color-ink-muted)', fontSize: 'var(--eye-type-label-sm)' }}>
-            tenant <bdi style={{ fontFamily: 'var(--eye-font-mono)' }}>{scope.tenantId.slice(0, 8)}…</bdi>{' · '}domain <bdi style={{ fontFamily: 'var(--eye-font-mono)' }}>{scope.domainId.slice(0, 8)}…</bdi>
-            {me.homeDomainId === null && <WorkingDomainMark onChange={() => { clearWorkingDomain(); setWorking(null); }} />}
-          </span>
-          <span style={{ color: 'var(--eye-color-ink-muted)', fontSize: 'var(--eye-type-label-sm)' }}>{me.bindings.map((b) => b.roleCode).join(' · ') || 'no role binding'}</span>
-          {/* B36 (0094 §C1) collab: the external's grant on the banner — what bounds this surface */}
-          {externalGrant !== null && <span aria-label="your grant" style={{ color: 'var(--eye-color-warning)', fontSize: 'var(--eye-type-label-sm)', fontWeight: 650 }}>
-            external collaborator · {externalGrant.workspace_title} · purpose {externalGrant.purpose} · audience {externalGrant.audience_ceiling} · access ends {String(externalGrant.expires_at ?? '').slice(0, 10)}</span>}
-          <span style={{ marginInlineStart: 'auto' }}>
-            <button type="button" style={{ background: 'none', border: 'none', color: 'var(--eye-color-accent-default)', cursor: 'pointer' }} onClick={() => { clearWorkingDomain(); setSession(null); router.replace('/login'); }}>Sign out</button>
-          </span>
-        </header>
-        <div style={{ display: 'flex', flex: 1, minInlineSize: 0 }}>
-          <nav aria-label="Decisions" style={{ inlineSize: 'clamp(3.5rem, 14vw, 13rem)', borderInlineEnd: '1px solid var(--eye-color-border-default)', padding: 'var(--eye-space-8)', background: 'var(--eye-color-surface-primary)' }}>
-            <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-              {nav.map((n) => {
-                const active = n.href === '/decisions' ? pathname === n.href : pathname.startsWith(n.href);
-                return (
-                  <li key={n.href} style={{ marginBlockEnd: 'var(--eye-space-4)' }}>
-                    <Link href={n.href} aria-current={active ? 'page' : undefined} style={{ display: 'flex', alignItems: 'center', gap: 'var(--eye-space-8)', padding: 'var(--eye-space-8)', borderRadius: 'var(--eye-radius-md)', textDecoration: 'none', color: active ? 'var(--eye-color-accent-strong)' : 'var(--eye-color-ink-default)', background: active ? 'var(--eye-color-selection)' : 'transparent', fontWeight: active ? 650 : 400 }}>
-                      <span aria-hidden="true">{n.glyph}</span><span className="eye-nav-label">{n.label}</span>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          </nav>
-          <main style={{ flex: 1, minInlineSize: 0, padding: 'var(--eye-space-24)', background: 'var(--eye-color-canvas)' }}>{children}</main>
-        </div>
-      </div>
-    </Ctx.Provider>
-  );
+}
+
+export default function DecisionsLayout({ children }: { children: ReactNode }) {
+  return <AppShell workspace="decisions" adapt={adapt} provide={(b, inner) => <Ctx.Provider value={flags(b)}>{inner}</Ctx.Provider>}>{children}</AppShell>;
 }

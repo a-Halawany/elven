@@ -437,3 +437,95 @@ button[aria-busy='true'] { --eye-button-cursor: progress; }
 .eye-cat-wide { white-space: nowrap; margin: 0; }
 .eye-cat-root { contain: inline-size; }
 /* end B80 cld */
+/* B80 sh */
+/* ── B80 §SH: THE APPLICATION SHELL (components/shell.tsx) — semantic tokens only, logical properties only (RTL mirrors). The rail keeps
+   the <1024px collapse above (.eye-nav-label); the current item carries a non-colour cue (a start border) that survives forced colors. ── */
+.eye-shell { min-block-size: 100vh; display: flex; flex-direction: column; }
+.eye-skip-link {
+  position: absolute; inset-inline-start: var(--eye-space-8); inset-block-start: calc(-1 * var(--eye-space-64));
+  background: var(--eye-color-surface-elevated); color: var(--eye-color-accent-strong); padding: var(--eye-space-8); z-index: 10;
+}
+.eye-skip-link:focus { inset-block-start: var(--eye-space-8); }
+.eye-shell-header {
+  display: flex; align-items: center; gap: var(--eye-space-16); flex-wrap: wrap;
+  background: var(--eye-color-surface-secondary); border-block-end: 1px solid var(--eye-color-border-default);
+  padding-block: var(--eye-space-8); padding-inline: var(--eye-space-16);
+}
+.eye-shell-title { color: var(--eye-color-ink-strong); }
+.eye-shell-meta { color: var(--eye-color-ink-muted); font-size: var(--eye-type-label-sm); overflow-wrap: anywhere; }
+.eye-mono { font-family: var(--eye-font-mono); }
+.eye-shell-grant { color: var(--eye-color-warning); font-size: var(--eye-type-label-sm); font-weight: 650; }
+.eye-shell-end { margin-inline-start: auto; display: flex; gap: var(--eye-space-12); flex-wrap: wrap; }
+.eye-link-button { background: none; border: none; color: var(--eye-color-accent-default); cursor: pointer; padding: 0; }
+.eye-link-button:disabled { color: var(--eye-color-disabled-ink); cursor: not-allowed; }
+.eye-shell-body { display: flex; flex: 1; min-inline-size: 0; }
+.eye-rail {
+  inline-size: clamp(3.5rem, 14vw, 13rem); flex-shrink: 0;
+  border-inline-end: 1px solid var(--eye-color-border-default); padding: var(--eye-space-8); background: var(--eye-color-surface-primary);
+}
+.eye-rail-wide { inline-size: 220px; max-inline-size: 40vw; padding: var(--eye-space-16); }
+.eye-rail-caption { color: var(--eye-color-ink-muted); font-size: var(--eye-type-label-sm); margin-block-end: var(--eye-space-8); }
+.eye-rail-list { list-style: none; margin: 0; padding: 0; }
+.eye-rail-list li { margin-block-end: var(--eye-space-4); }
+.eye-rail-link {
+  display: flex; align-items: center; gap: var(--eye-space-8); padding: var(--eye-space-8); border-radius: var(--eye-radius-md);
+  text-decoration: none; color: var(--eye-color-ink-default); background: transparent; font-weight: 400;
+  border-inline-start: 3px solid transparent; overflow-wrap: anywhere;
+}
+.eye-rail-link:hover { background: var(--eye-color-surface-secondary); }
+.eye-rail-link[aria-current="page"] {
+  color: var(--eye-color-accent-strong); background: var(--eye-color-selection); font-weight: 650; border-inline-start-color: var(--eye-color-accent-strong);
+}
+.eye-shell-main { flex: 1; min-inline-size: 0; overflow-x: auto; padding: var(--eye-space-24); background: var(--eye-color-canvas); }  /* wide content scrolls inside main, never the page */
+.eye-shell-main:focus, .eye-shell-main:focus-visible { outline: none; }   /* the skip link's and a return's programmatic target, not a control */
+.eye-shell-gate { padding: var(--eye-space-32); }
+.eye-shell-gate h1 { font-size: var(--eye-type-heading-1); }
+.eye-shell-gate-alert { color: var(--eye-color-critical); }
+.eye-shell-wayfinding { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--eye-space-12); margin-block-end: var(--eye-space-12); font-size: var(--eye-type-label-sm); }
+.eye-shell-return { color: var(--eye-color-ink-muted); }
+.eye-shell-wayfinding a, .eye-shell-gate a, .eye-history-panel a, .eye-ws-actions a, .eye-skip-link { color: var(--eye-color-accent-default); }
+.eye-crumbs ol { display: flex; flex-wrap: wrap; list-style: none; margin: 0; padding: 0; gap: var(--eye-space-4); }
+.eye-crumbs li { display: inline-flex; gap: var(--eye-space-4); color: var(--eye-color-ink-muted); overflow-wrap: anywhere; }
+.eye-crumbs li + li::before { content: "›"; color: var(--eye-color-ink-muted); }
+[dir="rtl"] .eye-crumbs li + li::before { content: "‹"; }
+.eye-crumbs [aria-current="page"] { color: var(--eye-color-ink-strong); font-weight: 650; }
+.eye-history { position: relative; }
+.eye-history-panel {
+  position: absolute; inset-inline-start: 0; inset-block-start: 100%; z-index: 5; inline-size: min(28rem, 85vw);
+  background: var(--eye-color-surface-elevated); border: 1px solid var(--eye-color-border-strong); border-radius: var(--eye-radius-lg);
+  box-shadow: var(--eye-elevation-2); padding: var(--eye-space-12); display: grid; gap: var(--eye-space-8);
+}
+.eye-history-row { display: flex; flex-wrap: wrap; gap: var(--eye-space-12); }
+.eye-history-list { margin: 0; padding-inline-start: var(--eye-space-16); display: grid; gap: var(--eye-space-4); }
+.eye-history-saved { display: grid; gap: var(--eye-space-4); border-block-start: 1px solid var(--eye-color-border-default); padding-block-start: var(--eye-space-8); }
+.eye-palette {
+  inline-size: min(40rem, 92vw); max-block-size: 80vh; border: 1px solid var(--eye-color-border-strong); border-radius: var(--eye-radius-lg);
+  background: var(--eye-color-surface-elevated); color: var(--eye-color-ink-default); box-shadow: var(--eye-elevation-3); padding: var(--eye-space-16);
+}
+.eye-palette-input {
+  inline-size: 100%; block-size: var(--eye-size-control-lg); border: 1px solid var(--eye-color-border-strong); border-radius: var(--eye-radius-md);
+  padding-inline: var(--eye-space-8); font-size: var(--eye-type-body-md); background: var(--eye-color-surface-primary); color: var(--eye-color-ink-default);
+}
+.eye-palette-list { list-style: none; margin: 0; padding: 0; max-block-size: 50vh; overflow-y: auto; }
+.eye-palette-option { display: flex; flex-wrap: wrap; gap: var(--eye-space-8); padding: var(--eye-space-8); border-radius: var(--eye-radius-md); cursor: pointer; border-inline-start: 3px solid transparent; }
+.eye-palette-option[aria-selected="true"] { background: var(--eye-color-selection); border-inline-start-color: var(--eye-color-accent-strong); }
+.eye-ws-header { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--eye-space-16); margin-block-end: var(--eye-space-16); }
+.eye-ws-title { margin-block: 0 var(--eye-space-4); font-size: var(--eye-type-heading-1); color: var(--eye-color-ink-strong); }
+.eye-ws-actions { display: flex; flex-wrap: wrap; gap: var(--eye-space-8); align-items: center; }
+.eye-tablist { display: flex; flex-wrap: wrap; gap: var(--eye-space-4); border-block-end: 1px solid var(--eye-color-border-default); }
+.eye-tab {
+  background: none; border: none; border-block-end: 3px solid transparent; padding: var(--eye-space-8) var(--eye-space-12);
+  color: var(--eye-color-ink-default); cursor: pointer; font: inherit;
+}
+.eye-tab[aria-selected="true"] { border-block-end-color: var(--eye-color-accent-strong); color: var(--eye-color-accent-strong); font-weight: 650; }
+.eye-tab:disabled { color: var(--eye-color-disabled-ink); cursor: not-allowed; }
+.eye-tabpanel { padding-block: var(--eye-space-12); }
+@media (forced-colors: active) {
+  .eye-rail-link[aria-current="page"], .eye-palette-option[aria-selected="true"] { forced-color-adjust: none; background: Highlight; color: HighlightText; border-inline-start-color: HighlightText; }
+  .eye-tab[aria-selected="true"] { border-block-end-color: Highlight; }
+  .eye-history-panel, .eye-palette { border-color: CanvasText; }
+}
+@media print {
+  .eye-skip-link, .eye-rail, .eye-shell-end, .eye-history, .eye-palette { display: none; }
+}
+/* end B80 sh */
