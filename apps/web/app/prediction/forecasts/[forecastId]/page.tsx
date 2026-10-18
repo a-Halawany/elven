@@ -20,6 +20,7 @@ import { ObjectHeader } from '../../../../components/object';
 import { ErrorNote } from '../../../../components/ui';
 import { DefinitionRow, Empty, Mono, UnknownNote, fmtInstant } from '../../../../components/observation';
 import { ControlsLine, FitnessFlag, ValidationBadge } from '../page';
+/* B81 har: the CONTEST PATH on the forecast (HX-14) */ import { SubjectContest } from '../../../decisions/contest-panel'; import { rolesIn } from '../../../../lib/authority-b81'; /* end B81 har */
 /* B81 integration (UX-11-005) */ import { RecoveryPanel } from '../../../../components/recovery'; import { recoveryOfRefusedLink } from '../../../../lib/degraded-b81'; /* end B81 integration */
 
 /** B81 integration: ONE h1 per rendering (lib/layout-b81's REG-03 ratchet) — every branch (not opened, loading, the object) titles
@@ -33,7 +34,7 @@ const num = (v: unknown): string => { const n = Number(v); return Number.isFinit
 const day = (v: unknown): string => (typeof v === 'string' ? v.slice(0, 10) : '—');
 
 export default function ForecastObjectPage() {
-  const { scope, isForecastOwner } = useShell();
+  const { scope, me, isForecastOwner } = useShell();
   const params = useParams<{ forecastId: string }>();
   const id = routeId(params.forecastId);
   const [f, setF] = useState<ForecastRow | null>(null);
@@ -89,6 +90,9 @@ export default function ForecastObjectPage() {
         <DefinitionRow term="Fitness"><FitnessFlag row={f} /></DefinitionRow>
         {f.attribution === null || f.attribution === undefined ? null : <DefinitionRow term="Attribution"><em>{f.attribution}</em> Shown as published; the statistics are not modified.</DefinitionRow>}
       </dl>
+      {/* B81 har: the CONTEST PATH (HX-14) — the B35 appeal cases on this forecast (a forecast carries no B36 challenge); an appeal opens on the explanations page */}
+      <SubjectContest scope={scope} roles={rolesIn(me.bindings, scope)} type="forecast" appealKind="forecast" subjectId={f.forecast_id} explanation={{ kind: 'forecast', version: null }} />
+      {/* end B81 har */}
       <p className="eye-help">Assessing fitness and scoring against the outcome are the owner&apos;s acts on <Link href="/prediction/forecasts">the forecasts page</Link>; this page changes nothing.</p>
     </>
   );

@@ -24,6 +24,7 @@ import { Select } from '../../../../components/forms';
 import { Digest } from '../../../../components/text';
 import { ErrorNote } from '../../../../components/ui';
 import { Empty, fmtInstant } from '../../../../components/observation';
+/* B81 har: the CONTEST PATH on the package version (HX-14) */ import { SubjectContest } from '../../contest-panel'; import { rolesIn } from '../../../../lib/authority-b81'; /* end B81 har */
 /* B81 integration (UX-11-005) */ import { RecoveryPanel } from '../../../../components/recovery'; import { recoveryOfRefusedLink } from '../../../../lib/degraded-b81'; /* end B81 integration */
 
 /** B81 integration: ONE h1 per rendering (lib/layout-b81's REG-03 ratchet) — every branch (not opened, loading, the object) titles
@@ -39,7 +40,7 @@ export default function PackageObjectPage() {
 }
 
 function PackageObjectView() {
-  const { scope, isDecisionOwner } = useShell();
+  const { scope, me, isDecisionOwner } = useShell();
   const params = useParams<{ id: string }>();
   const search = useSearchParams();
   const id = routeId(params.id);
@@ -160,6 +161,10 @@ function PackageObjectView() {
           </>
         )}
       </section>
+      {/* B81 har: the CONTEST PATH (HX-14) — the challenges on the shown version and the appeal cases on the package */}
+      <SubjectContest scope={scope} roles={rolesIn(me.bindings, scope)} type="DPK" appealKind="package" subjectId={pkg.package_id} explanation={{ kind: 'package_version', version: shown.version }}
+        challenges={{ packageId: pkg.package_id, version: shown.version }} />
+      {/* end B81 har */}
       <p className="eye-help">Proposing, approving, committing and signing are on <Link href="/decisions">the decisions page</Link>, behind the package&apos;s gates; this page changes nothing.</p>
     </>
   );

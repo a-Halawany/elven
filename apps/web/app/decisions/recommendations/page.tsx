@@ -17,9 +17,16 @@ import {
   recommendations as api, authorMark, COMPONENT_LABELS, completenessWords, coverageWords, flagWords, linesOf, sourcedOf, stateMark,
   type Completeness, type PackageRow, type PackageView, type Recommendation, type Verdict,
 } from '../../../lib/recommendation-b35';
-import { Empty, LiveStatus, Mono, cardStyle, GovernedButton, fmtInstant, textareaStyle } from '../../../components/observation';
+import { Empty, LiveStatus, Mono, cardStyle, GovernedButton, textareaStyle } from '../../../components/observation';
 import { inputStyle, Receipt } from '../../../components/ui';
 /* B81 re: the library's Field (its control slot) — the local Field helper migrated (UX-ADR-011; dg-lint-2's ratchet) */ import { Field } from '../../../components/forms';
+/* B81 har: the acceptance through the library's COMMAND REVIEW, each review as a REVIEW RECORD (PAT-06), the CONTEST PATH (HX-14) */
+import { CommandReview, ReviewRecord } from '../../../components/authority';
+import { eligibility, rolesIn } from '../../../lib/authority-b81';
+import { HAR_ACT_ROLES, mayRead, recommendationReviewRecord, statedConsequence } from '../../../lib/authority-har-b81';
+import { explanationB35, type AppealCase } from '../../../lib/explanation-b35';
+import { SubjectContest } from '../contest-panel';
+/* end B81 har */
 
 type ReceiptT = { policyDecisionId: string; auditSeq: number } | null;
 const refusal = (r: { status: number; error?: { code: string; message: string } }, fallback: string) =>
@@ -36,13 +43,22 @@ function Mark({ m }: { m: { glyph: string; token: string; text: string } }) {
 }
 
 /** One recommendation in full: the object, its four separated components, what it rests on now, its reviews, the review form. */
-function RecommendationCard({ r, onDone }: { r: Recommendation; onDone: () => void }) {
-  const { scope } = useShell();
+function RecommendationCard({ r, onDone, cases }: { r: Recommendation; onDone: () => void; /* B81 har */ cases: readonly AppealCase[] | { note: string } | 'loading' /* end B81 har */ }) {
+  const { scope, me } = useShell();
   const [verdict, setVerdict] = useState<Verdict>('accept_for_consideration');
   const [rationale, setRationale] = useState(''); const [override, setOverride] = useState(''); const [reason, setReason] = useState('');
   const [msg, setMsg] = useState<string | null>(null); const [receipt, setReceipt] = useState<ReceiptT>(null);
   const a = authorMark(r.author_kind);
   const live = r.state === 'proposed' || r.state === 'accepted_for_consideration';
+  /* B81 har: eligibility in words (the server re-judges each rule): the PDP rule's roles, the author never reviews (separation of duties) */
+  const roleCodes = rolesIn(me.bindings, scope);
+  const reviewElig = eligibility({ action: 'decision.recommendation.review', me: me.principalId, isHuman: true, roles: roleCodes, requiredRoles: HAR_ACT_ROLES['decision.recommendation.review']!,
+    excluded: [{ principal: r.author_principal_id, why: 'you authored this recommendation — a named human who is not the author reviews it' }], state: r.state, openStates: ['proposed'] });
+  const reviewReasons = [
+    ...(rationale.trim().length < 8 ? ['state your rationale (8 to 4000 characters, recorded with your name)'] : []),
+    ...(verdict === 'accept_for_consideration' && r.flags.length > 0 && override.trim().length < 16 ? ['a flag stands: state your override (16+ characters) to accept it for consideration'] : []),
+  ];
+  /* end B81 har */
   return (
     <article aria-label={`recommendation ${r.recommendation_id}`} style={{ ...cardStyle, marginBlockEnd: 'var(--eye-space-16)' }}>
       <p><strong><span aria-hidden="true">{a.glyph}</span> {a.text}</strong> · <Mark m={stateMark(r.state)} /> · option <Mono>{r.option_key}</Mono>{r.option_title !== null && ` — ${r.option_title}`} · v{r.version}</p>
@@ -67,24 +83,31 @@ function RecommendationCard({ r, onDone }: { r: Recommendation; onDone: () => vo
       {r.option_runs.length === 0 ? <Empty>the option cites no run</Empty> : <ul>{r.option_runs.map((o) => <li key={o.run_id}>run <Mono>{short(o.run_id)}</Mono> — {o.label ?? o.use}</li>)}</ul>}
       <p>{coverageWords(r.coverage)}</p>
       <h4>Reviews</h4>
-      {r.reviews.length === 0 ? <Empty>not reviewed yet</Empty> : <ul>{r.reviews.map((v) => (
-        <li key={v.review_id}>{v.verdict.replace(/_/g, ' ')} by <Mono>{short(v.reviewer_principal_id)}</Mono> at {fmtInstant(v.reviewed_at)} — {v.rationale}
-          {v.override !== null && <span> · override: {v.override}</span>} · compared with {v.compared} other recommendation(s)</li>))}</ul>}
+      {/* B81 har: each review as a REVIEW RECORD (PAT-06) — reviewer, version, evidence, findings; a verdict is never decision authority */}
+      {r.reviews.length === 0 ? <Empty>not reviewed yet</Empty> : r.reviews.map((v) => <ReviewRecord key={v.review_id} record={recommendationReviewRecord(v as unknown as Record<string, unknown>, { version: r.version, digest: r.digest })} />)}
+      {/* end B81 har */}
       {r.state === 'proposed' && (
-        <fieldset style={{ border: '1px solid var(--eye-color-border-default)', borderRadius: 'var(--eye-radius-md)' }}>
-          <legend>Review (a named human who is not the author)</legend>
-          <div role="radiogroup" aria-label="verdict">
-            {(['accept_for_consideration', 'decline', 'request_changes'] as const).map((v) => (
-              <label key={v} style={{ marginInlineEnd: 'var(--eye-space-12)' }}><input type="radio" name={`verdict-${r.recommendation_id}`} checked={verdict === v} onChange={() => setVerdict(v)} /> {v.replace(/_/g, ' ')}</label>))}
-          </div>
-          <Field id={`rat-${r.recommendation_id}`} label="Rationale">{(id) => <textarea id={id} style={textareaStyle} value={rationale} onChange={(e) => setRationale(e.target.value)} />}</Field>
-          {r.flags.length > 0 && <Field id={`ovr-${r.recommendation_id}`} label="Override (required to accept while a flag stands)">{(id) => <textarea id={id} style={textareaStyle} value={override} onChange={(e) => setOverride(e.target.value)} />}</Field>}
-          <GovernedButton label="Record the review" pendingLabel="Recording…" onRun={async () => {
+        /* B81 har: the review through the COMMAND REVIEW — this recommendation's exact digest (the server refuses a stale one), the stated
+           consequence of the chosen verdict (acceptance is FOR CONSIDERATION, never a decision), eligibility with separation of duties */
+        <CommandReview action="decision.recommendation.review" object={{ type: 'recommendation', id: r.recommendation_id, version: r.version, title: r.what, state: r.state }}
+          digest={r.digest} eligibility={reviewElig} consequence={statedConsequence(`decision.recommendation.review:${verdict}`)} extraReasons={reviewReasons}
+          actionLabel="Record the review" pendingLabel="Recording…" variant={verdict === 'decline' ? 'critical' : 'primary'}
+          onRun={async () => {
             const res = await api.review(scope, r.recommendation_id, { verdict, rationale, override: override.trim() === '' ? null : override, expectedDigest: r.digest });
-            if (!res.ok) { setMsg(refusal(res, 'the review was refused')); return; }
-            setMsg(`reviewed: ${verdict.replace(/_/g, ' ')}`); setReceipt(res.data?.receipt ?? null); onDone();
-          }} />
-        </fieldset>
+            if (!res.ok) { const m = refusal(res, 'the review was refused'); setMsg(m); throw new Error(m); }
+            setMsg(`reviewed: ${verdict.replace(/_/g, ' ')}`); setReceipt(res.data?.receipt ?? null); setRationale(''); setOverride(''); onDone();
+          }}>
+          <fieldset style={{ border: '1px solid var(--eye-color-border-default)', borderRadius: 'var(--eye-radius-md)' }}>
+            <legend>Review (a named human who is not the author)</legend>
+            <div role="radiogroup" aria-label="verdict">
+              {(['accept_for_consideration', 'decline', 'request_changes'] as const).map((v) => (
+                <label key={v} style={{ marginInlineEnd: 'var(--eye-space-12)' }}><input type="radio" name={`verdict-${r.recommendation_id}`} checked={verdict === v} onChange={() => setVerdict(v)} /> {v.replace(/_/g, ' ')}</label>))}
+            </div>
+            <Field id={`rat-${r.recommendation_id}`} label="Rationale">{(id) => <textarea id={id} style={textareaStyle} value={rationale} onChange={(e) => setRationale(e.target.value)} />}</Field>
+            {r.flags.length > 0 && <Field id={`ovr-${r.recommendation_id}`} label="Override (required to accept while a flag stands)">{(id) => <textarea id={id} style={textareaStyle} value={override} onChange={(e) => setOverride(e.target.value)} />}</Field>}
+          </fieldset>
+        </CommandReview>
+        /* end B81 har */
       )}
       {live && (
         <div style={{ marginBlockStart: 'var(--eye-space-8)' }}>
@@ -98,6 +121,9 @@ function RecommendationCard({ r, onDone }: { r: Recommendation; onDone: () => vo
       )}
       {msg !== null && <LiveStatus assertive={msg.startsWith('HTTP')}>{msg}</LiveStatus>}
       <Receipt receipt={receipt} />
+      {/* B81 har: the CONTEST PATH (HX-14) — the B35 appeal cases on this recommendation; an appeal opens on the explanations page */}
+      <SubjectContest scope={scope} roles={roleCodes} type="recommendation" appealKind="recommendation" subjectId={r.recommendation_id} explanation={{ kind: 'recommendation', version: null }} cases={cases} />
+      {/* end B81 har */}
     </article>
   );
 }
@@ -180,7 +206,17 @@ function RecordForm({ pkg, onDone }: { pkg: PackageView; onDone: () => void }) {
 }
 
 export default function RecommendationsPage() {
-  const { scope } = useShell();
+  const { scope, me } = useShell();
+  /* B81 har: the recommendation appeal cases, read ONCE for every card (decision.appeal.read; a reader without it is told on each card) */
+  const [cases, setCases] = useState<AppealCase[] | { note: string } | 'loading'>('loading');
+  useEffect(() => {
+    if (!mayRead('decision.appeal.read', rolesIn(me.bindings, scope))) { setCases({ note: 'the appeal cases are not in your reading roles here (decision.appeal.read) — the appeal form is on the explanations page (the server decides who may open one)' }); return; }
+    void (async () => {
+      const r = await explanationB35.appeals(scope, { subjectKind: 'recommendation' });
+      setCases(r.ok && r.data !== undefined ? r.data.cases : { note: `the appeal cases not read — HTTP ${r.status}: ${r.error?.message ?? 'no answer'}` });
+    })();
+  }, [scope, me.principalId]); // eslint-disable-line react-hooks/exhaustive-deps
+  /* end B81 har */
   const [rows, setRows] = useState<PackageRow[] | null>(null); const [selected, setSelected] = useState<string | null>(null);
   const [view, setView] = useState<PackageView | null>(null); const [problem, setProblem] = useState<string | null>(null);
   const load = useCallback(async () => {
@@ -224,17 +260,17 @@ export default function RecommendationsPage() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(22rem, 1fr))', gap: 'var(--eye-space-16)' }}>
             <section aria-label="the Decision Agent's recommendations">
               <h4>Decision Agent (AI)</h4>
-              {view.side_by_side.agent.length === 0 ? <Empty>none live</Empty> : view.side_by_side.agent.map((id) => { const r = byId.get(id); return r === undefined ? null : <RecommendationCard key={id} r={r} onDone={refresh} />; })}
+              {view.side_by_side.agent.length === 0 ? <Empty>none live</Empty> : view.side_by_side.agent.map((id) => { const r = byId.get(id); return r === undefined ? null : <RecommendationCard key={id} r={r} onDone={refresh} cases={cases} />; })}
             </section>
             <section aria-label="the named humans' recommendations">
               <h4>Named humans</h4>
-              {view.side_by_side.human.length === 0 ? <Empty>none live</Empty> : view.side_by_side.human.map((id) => { const r = byId.get(id); return r === undefined ? null : <RecommendationCard key={id} r={r} onDone={refresh} />; })}
+              {view.side_by_side.human.length === 0 ? <Empty>none live</Empty> : view.side_by_side.human.map((id) => { const r = byId.get(id); return r === undefined ? null : <RecommendationCard key={id} r={r} onDone={refresh} cases={cases} />; })}
             </section>
           </div>
           <RecordForm pkg={view} onDone={refresh} />
           <section aria-labelledby="history">
             <h3 id="history" style={h3}>Earlier and closed recommendations</h3>
-            {others.length === 0 ? <Empty>none</Empty> : others.map((r) => <RecommendationCard key={r.recommendation_id} r={r} onDone={refresh} />)}
+            {others.length === 0 ? <Empty>none</Empty> : others.map((r) => <RecommendationCard key={r.recommendation_id} r={r} onDone={refresh} cases={cases} />)}
           </section>
         </>
       )}
