@@ -205,7 +205,11 @@ Between two merges the first merge's `main` chain completes before the next merg
   - **Main's chain for `eabae7b`:** ci 38651515427 → C19 lifecycle 38651515391 → C17 finalize 38657420543 → C19 anchor 38657569920 (created after the finalize), all succeeded on their first attempt.
 - **#90** (B107, 0115: governance registries, traceability and conformance manifests; the product-governance workspace; design governance; acceptance records), on `phase6-b107` from main `eabae7b`: its head `8396481` hosted green (ci 38707696168, C19 lifecycle 38707695861, both attempt 1).
   - **Held before merging** on the owner's bounded review of 2026-10-16 (B107-F: the acceptance gate and read answered from the stored state before reconciliation; the completion accounting). Reproduced on `8396481` through governed paths, corrected forward in 0116 (§B107.8). Its corrected head `ef90bb0` hosted green (ci 38832397697, C19 lifecycle 38832397699, both attempt 1).
-  - **Held again** on the owner's bounded review of 2026-10-17 (B107-G: a source finding on the expansion restriction, reproduced on `ef90bb0`; corrected forward in 0117; the accounting completed — §B107.9). The final head's hosted runs, the merge and main's chain are recorded in the next delivery record (B80's) — no records-only commit.
+  - **Held again** on the owner's bounded review of 2026-10-17 (B107-G: a source finding on the expansion restriction, reproduced on `ef90bb0`; corrected forward in 0117; the accounting completed — §B107.9).
+  - **The final head `602fc9b`**: C19 lifecycle 39034974793 (attempt 1, success); ci 39034974787 attempt 1 FAILED (C15 refused a 35.8-hour-old Trivy database — upstream trivy-db builds failing), attempt 2 SUCCEEDED (a full re-run, the database 0.8 h old). Accepted by Codex's bounded review of 2026-10-18.
+  - **Merged as `855d696`** (2026-10-18) under the standing authorization, the head refreshed immediately before. Recorded in B80's delivery record (§B80.0).
+  - **Main's chain for `855d696`:** ci 39158398607 → C19 lifecycle 39158398457 → C17 finalize 39163399133 (created after the ci) → C19 anchor 39163460559 (created after the finalize), each on its first attempt.
+- **#91** (B80, 0118: shell and foundations — tokens and themes, the component library, the application shell and the context bar), on `phase6-b80` with main `855d696` merged in; opened as a DRAFT for review while the gates finished. Its hosted runs, the merge and main's chain are recorded in the next delivery record — no records-only commit.
 
 ## 3. What is never done in this sequence
 
