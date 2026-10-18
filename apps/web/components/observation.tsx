@@ -24,7 +24,7 @@ import { useId, useState, type CSSProperties, type ReactNode } from 'react';
 import type { HealthState } from '../lib/observation';
 /* B80 clf */ import * as LIBRARY_STYLES from '../lib/styles-b80'; /* end B80 clf */
 /* B81 re: GovernedButton reads the shell's status (a contribution to web.observation.governed-button through B107's queue; props kept) */
-import { useShellStatus } from './shell';
+import { useLeafShellStatus } from '../lib/shell-status-b81';
 import { governedHold } from '../lib/controls-b81';
 /* end B81 re */
 
@@ -204,7 +204,7 @@ export function GovernedButton({
   const busy = state === 'pending';
   /* B81 re: under a FROZEN shell (unverified / signed out / a FreezeScope) the control is HELD with the shell's own statement — disabled,
      focusable reason beside it, never activated; outside a shell or under a degraded-but-verified one it is as before */
-  const hold = governedHold(useShellStatus());
+  const hold = governedHold(useLeafShellStatus());
   const holdId = useId();
   const off = disabled === true || hold.held;
   /* end B81 re */

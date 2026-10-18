@@ -44,6 +44,7 @@ import { Dialog } from './layers';
 /* B81 re: the sign-in / deep-link return (UX-11-005) */
 import { loginHref } from '../lib/signin-return-b81';
 import { carriedViews } from '../lib/tableview-b81';
+import { ShellStatusContext } from '../lib/shell-status-b81';
 /* end B81 re */
 
 /* ── THE SLOTS (b80-seams AppShellSlots): §CB's context bar under the banner, §TK's ThemeScope around the surface ── */
@@ -61,7 +62,9 @@ export const SHELL_SLOTS: ShellSlots = {
 
 /* ── THE SHELL'S OWN CONTEXT (the per-layout `useShell()` wrappers stay the pages' API; these serve the library) ── */
 const BaseCtx = createContext<ShellBase | null>(null);
-const StatusCtx = createContext<ShellStatus | null>(null);
+/* B81 re: the status context lives in a leaf module (lib/shell-status-b81.ts) so the governed control can read it without an import cycle */
+const StatusCtx = ShellStatusContext;
+/* end B81 re */
 /** The shell's base (workspace, me, scope, roles, context) — null in the PLATFORM workspace and outside a shell. */
 export function useShellBase(): ShellBase | null { return useContext(BaseCtx); }
 /** What the shell can say about itself (phase, frozen, regions) — for a library control that must not act on an unverified state. */
@@ -70,19 +73,14 @@ export function useShellStatus(): ShellStatus | null { return useContext(StatusC
 /* B81 re — THE SHELL'S RECOVERY SEAMS (PR-05-005, UX-09-005, UX-11-005):
  *   · useShellRecovery(): what a page's own refusal offers (§DG's RecoveryPanel composes it) — the shell's LAST VERIFIED LOCATION and the
  *     sign-in href that RETURNS HERE (`/login?next=<this place>`); null outside a shell.
- *   · FreezeScope: a region that can only be MORE frozen than the shell (never less) — every governed control inside reads `frozen` with the
- *     scope's statement (a page whose own read is stale holds its controls; the catalogue walk shows the frozen state without a server).
+ *   · FreezeScope (lib/shell-status-b81.ts, re-exported here): a region that can only be MORE frozen than the shell, never less.
  *   · the RE-VERIFICATION: when the tab becomes visible again (at most once a minute) the shell asks the server again who this is; a session
  *     the server no longer confirms — or one that now names another principal — FREEZES the page in place (the last valid context kept on
  *     screen, consequential controls held, the way back to sign-in that returns here), never a silent continue. */
 export interface ShellRecovery { lastVerified: { route: string; title: string } | null; signInHref: string }
 const RecoveryCtx = createContext<ShellRecovery | null>(null);
 export function useShellRecovery(): ShellRecovery | null { return useContext(RecoveryCtx); }
-export const FreezeScope = ({ statement, children }: { statement: string; children: ReactNode }) => {
-  const outer = useContext(StatusCtx);
-  const held: ShellStatus = outer !== null && outer.frozen ? outer : { phase: 'unverified', frozen: true, regions: [...(outer?.regions ?? []), 'region'], statement };
-  return <StatusCtx.Provider value={held}>{children}</StatusCtx.Provider>;
-};
+export { FreezeScope } from '../lib/shell-status-b81';
 const REVERIFY_MS = 60_000;
 /** The place the person is on, for the sign-in return (the as-of query and its return token kept). */
 const hereHref = (pathname: string): string => (typeof window === 'undefined' ? loginHref(pathname).href : loginHref(window.location.pathname, window.location.search).href);

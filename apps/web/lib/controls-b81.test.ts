@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { buildCss, SYMBOLS } from '@eye/tokens';
 import { ELEVATION_BINDING, ELEVATION_ROWS, buttonEnforcement, elevationVar, governedHold, truthBadgeView, visibleWords } from './controls-b81';
 import { shellStatus } from './shell-b80';
+import { freezeOf } from './shell-status-b81';
 
 const WEB = join(__dirname, '..');
 const read = (f: string) => readFileSync(join(WEB, f), 'utf8');
@@ -25,7 +26,7 @@ describe('the governed hold: GovernedButton reads the shell\'s frozen status', (
   it('the source: GovernedButton reads useShellStatus(), is disabled while held, never runs onRun while held, states the reason; props kept', () => {
     const obs = read('components/observation.tsx');
     const gb = obs.slice(obs.indexOf('export function GovernedButton'), obs.indexOf('/* ───────────────────────── layout helpers'));
-    expect(gb).toMatch(/const hold = governedHold\(useShellStatus\(\)\);/);
+    expect(gb).toMatch(/const hold = governedHold\(useLeafShellStatus\(\)\);/);
     expect(gb).toMatch(/disabled=\{busy \|\| off\}/);
     expect(gb).toMatch(/if \(hold\.held\) return;/);
     expect(gb).toMatch(/hold\.held && <span id=\{holdId\}/);
@@ -34,7 +35,13 @@ describe('the governed hold: GovernedButton reads the shell\'s frozen status', (
   it('the shell\'s re-verification freezes in place, and FreezeScope can only make a region MORE frozen', () => {
     const shell = read('components/shell.tsx');
     expect(shell).toMatch(/const status = lapsed !== null \? shellStatus\(\{ session: ready, verified: null, problem: lapsed/);
-    expect(shell).toMatch(/const held: ShellStatus = outer !== null && outer\.frozen \? outer : \{ phase: 'unverified', frozen: true/);
+    expect(shell).toMatch(/const StatusCtx = ShellStatusContext;/);
+    expect(shell).toMatch(/export \{ FreezeScope \} from '\.\.\/lib\/shell-status-b81';/);
+    expect(freezeOf(null, 'x')).toMatchObject({ phase: 'unverified', frozen: true, statement: 'x' });
+    const ready = shellStatus({ session: true, verified: true, problem: null, health: 'ok' });
+    expect(freezeOf(ready, 'stale read')).toMatchObject({ frozen: true, statement: 'stale read', regions: ['region'] });
+    const already = shellStatus({ session: false, verified: null, problem: null, health: null });
+    expect(freezeOf(already, 'x')).toBe(already);
     expect(shell).toMatch(/document\.addEventListener\('visibilitychange', recheck\)/);
   });
 });
