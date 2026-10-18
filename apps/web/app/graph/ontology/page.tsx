@@ -17,13 +17,14 @@
  * a refusal is shown verbatim — the proposer's own approval, a breaking proposal while edges stand, a second open
  * proposal in the namespace — as the server stated it.
  */
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 import { useShell } from '../layout';
 import { graph, type OntologyDecided, type OntologyProposal, type OntologyProposed, type OntologyReviews,
   type OntologyVersionRow } from '../../../lib/graph';
 import { Empty, LiveStatus, Mono, ScrollBox, cardStyle, DefinitionRow, UnknownNote, GovernedButton,
   fmtInstant, textareaStyle } from '../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui';
+/* B81 re: the library's Field (its control slot) — the local Field helper migrated (UX-ADR-011; dg-lint-2's ratchet) */ import { Field } from '../../../components/forms';
 
 type Row = Record<string, unknown>;
 type ReceiptT = { policyDecisionId: string; auditSeq: number } | null;
@@ -84,9 +85,6 @@ const muted = { color: 'var(--eye-color-ink-muted)' } as const;
 const rowStyle = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(14rem, 1fr))', gap: 'var(--eye-space-8)' } as const;
 const linkButton = { font: 'inherit', background: 'none', border: 'none', color: 'var(--eye-color-accent-strong)', cursor: 'pointer', padding: 0, textDecoration: 'underline' } as const;
 
-function Field({ id, label, children }: { id: string; label: string; children: (id: string) => ReactNode }) {
-  return <div><label htmlFor={id} style={{ display: 'block' }}>{label}</label>{children(id)}</div>;
-}
 
 /** A version's vocabulary as served: the entity types, and the predicates with the types each admits at either end. */
 function Vocabulary({ entityTypes, predicates, label }: { entityTypes: unknown; predicates: unknown; label: string }) {

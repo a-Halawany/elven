@@ -29,6 +29,7 @@ import type { Scope } from '../../../lib/observation';
 import { coherenceLabel } from '../../../lib/fitness';
 import { Empty, LiveStatus, Mono, ScrollBox, cardStyle, DefinitionRow, UnknownNote, GovernedButton, fmtInstant, textareaStyle } from '../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui';
+/* B81 re: the library's Field (its control slot) — the local Field helper migrated (UX-ADR-011; dg-lint-2's ratchet) */ import { Field } from '../../../components/forms';
 
 type ReceiptT = { policyDecisionId: string; auditSeq: number } | null;
 const OUTCOMES: ReadonlyArray<{ value: ScenarioReviewOutcome; label: string }> = [
@@ -48,9 +49,6 @@ const refusal = (r: { status: number; error?: { code: string; message: string } 
   `HTTP ${r.status}${r.error?.code !== undefined && r.error.code !== '' ? ` ${r.error.code}` : ''} — ${r.error?.message ?? fallback}`;
 const when = (v: string | null | undefined, none: string) => (v === null || v === undefined || v === '' ? none : fmtInstant(v));
 
-function Field({ id, label, children }: { id: string; label: string; children: (id: string) => ReactNode }) {
-  return <div><label htmlFor={id} style={{ display: 'block' }}>{label}</label>{children(id)}</div>;
-}
 
 function BranchState({ state }: { state: string }) {
   const map: Record<string, { glyph: string; token: string }> = {

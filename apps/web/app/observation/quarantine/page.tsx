@@ -19,6 +19,9 @@ import {
   badgeRowStyle, cardStyle, fmtBytes, fmtInstant, textareaStyle,
 } from '../../../components/observation';
 import { ErrorNote, Receipt } from '../../../components/ui';
+/* B81 re: the local definition-row `Field` (a fork of the library's name — dg-lint-2's ratchet) migrated onto the library's DefinitionList */
+import { DefinitionList } from '../../../components/data';
+/* end B81 re */
 
 const REASON_LABEL: Record<string, string> = {
   path_traversal: 'Archive entry escapes the extraction root',
@@ -82,15 +85,15 @@ export default function QuarantinePage() {
                   {REASON_LABEL[reasonClass] ?? reasonClass}
                 </h2>
                 <p style={{ margin: 0 }}>{String(c['reason'])}</p>
-                <dl style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(12rem, 1fr))', gap: 'var(--eye-space-8)', marginBlock: 'var(--eye-space-8)' }}>
-                  <Field term="Item"><Mono>{String(c['item_key']).slice(0, 64)}</Mono></Field>
-                  <Field term="Declared type">{String(c['declared_type'] ?? 'none')}</Field>
-                  <Field term="Sniffed type">{String(c['sniffed_type'] ?? 'unrecognised')}</Field>
-                  <Field term="Bytes">{fmtBytes(c['byte_length'])}</Field>
-                  <Field term="Digest"><Mono>{String(c['content_digest'] ?? '').slice(0, 16)}…</Mono></Field>
-                  <Field term="Opened"><Mono>{fmtInstant(c['opened_at'])}</Mono></Field>
-                  <Field term="Expires"><Mono>{fmtInstant(c['expires_at'])}</Mono></Field>
-                </dl>
+                <DefinitionList label="Quarantined item" items={[
+                  { term: 'Item', value: <Mono>{String(c['item_key']).slice(0, 64)}</Mono> },
+                  { term: 'Declared type', value: String(c['declared_type'] ?? 'none') },
+                  { term: 'Sniffed type', value: String(c['sniffed_type'] ?? 'unrecognised') },
+                  { term: 'Bytes', value: fmtBytes(c['byte_length']) },
+                  { term: 'Digest', value: <Mono>{String(c['content_digest'] ?? '').slice(0, 16)}…</Mono> },
+                  { term: 'Opened', value: <Mono>{fmtInstant(c['opened_at'])}</Mono> },
+                  { term: 'Expires', value: <Mono>{fmtInstant(c['expires_at'])}</Mono> },
+                ]} />
 
                 {open?.caseId === caseId ? (
                   <div style={{ borderBlockStart: '1px solid var(--eye-color-border-default)', paddingBlockStart: 'var(--eye-space-8)' }}>
@@ -155,15 +158,6 @@ export default function QuarantinePage() {
         </div>
       )}
     </>
-  );
-}
-
-function Field({ term, children }: { term: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <dt style={{ color: 'var(--eye-color-ink-muted)', fontSize: 'var(--eye-type-label-sm)', textTransform: 'uppercase' }}>{term}</dt>
-      <dd style={{ margin: 0 }}>{children}</dd>
-    </div>
   );
 }
 

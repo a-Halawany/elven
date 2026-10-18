@@ -9,16 +9,14 @@
  * BOUNDARY (ADR-022): an entitlement makes a capability unavailable, explained. It never removes audit, warnings and their acknowledgement,
  * corrections and withdrawals, export, identity or a human decision — those are never gated, whatever the licence says.
  */
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ErrorNote, Panel, Receipt, Td, Th, buttonStyle, inputStyle, tableStyle } from '../../../../components/ui';
 import { capabilityLine, cellText, issueLicence, limitsLine, readCatalog, type Catalog } from '../../../../lib/entitlements-b91';
+/* B81 re: the library's Field (its control slot) — the local Field helper migrated (UX-ADR-011; dg-lint-2's ratchet) */ import { Field } from '../../../../components/forms';
 
 type Err = { code: string; message: string; correlationId: string } | null;
 type Rcpt = { policyDecisionId: string; auditSeq: number } | null;
 
-function Field({ id, label, children }: { id: string; label: string; children: (id: string) => ReactNode }) {
-  return <div style={{ marginBlockEnd: 'var(--eye-space-8)' }}><label htmlFor={id} style={{ display: 'block' }}>{label}</label>{children(id)}</div>;
-}
 
 export default function CommercialCatalogPage() {
   const [catalog, setCatalog] = useState<Catalog | null>(null);

@@ -12,7 +12,7 @@
  * and its owner is tasked. The banner states the cause, when and by whom, as recorded; the owner (or the scenario's owner) reinstates it
  * with a note, and the server refuses while a critical linked assumption is still invalidated — its refusal is shown as it states it.
  */
-import { Suspense, useEffect, useState, type ReactNode } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useShell } from '../../layout';
@@ -24,6 +24,7 @@ import {
 } from '../../../../lib/anatomy-b27';
 import { Empty, LiveStatus, Mono, ScrollBox, cardStyle, DefinitionRow, UnknownNote, GovernedButton, fmtInstant, textareaStyle } from '../../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../../components/ui';
+/* B81 re: the library's Field (its control slot) — the local Field helper migrated (UX-ADR-011; dg-lint-2's ratchet) */ import { Field } from '../../../../components/forms';
 
 type ReceiptT = { policyDecisionId: string; auditSeq: number } | null;
 const muted = { color: 'var(--eye-color-ink-muted)' } as const;
@@ -33,9 +34,6 @@ const rowStyle = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minma
 const refusal = (r: { status: number; error?: { code: string; message: string } }, fallback: string) =>
   `HTTP ${r.status}${r.error?.code !== undefined && r.error.code !== '' ? ` ${r.error.code}` : ''} — ${r.error?.message ?? fallback}`;
 
-function Field({ id, label, children }: { id: string; label: string; children: (id: string) => ReactNode }) {
-  return <div><label htmlFor={id} style={{ display: 'block' }}>{label}</label>{children(id)}</div>;
-}
 
 export default function AnatomyPage() {
   return <Suspense fallback={null}><AnatomyView /></Suspense>;
