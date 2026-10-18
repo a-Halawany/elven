@@ -129,13 +129,15 @@ test.describe('B81 §LY-G — the layout walk (device matrix, regions, density, 
 
   test('the density switch: the server\'s value until it answers; a refused read says so and the default applies', async ({ browser }) => {
     const page = await signedInPage(browser, { width: 1440, height: 900 });
-    const select = page.getByRole('combobox', { name: 'Density' });
+    // the page's own switch (in the main region) — the shell header carries a compact one of its own, named the same
+    const main = page.locator('#eye-main');
+    const select = main.getByRole('combobox', { name: 'Density' });
     await expect(select).toBeVisible();
     if (FIXTURE) {
-      await expect(page.getByText(/your saved choice could not be read — the default applies/)).toBeVisible();
+      await expect(main.getByText(/your saved choice could not be read — the default applies/).first()).toBeVisible();
       await expect(select).toBeDisabled();
     } else {
-      await expect(page.getByText(/in force: (strategic|operational|inspection) \(/)).toBeVisible();
+      await expect(main.getByText(/in force: (strategic|operational|inspection) \(/).first()).toBeVisible();
       await expect(select).toBeEnabled();
     }
     await page.context().close();
