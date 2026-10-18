@@ -228,7 +228,9 @@ describe('the navigation guard (PR-05-003, UX-09-004, UX-11-004, UX-15-004, CMP-
       './ui', './working-domain', /* B80 integration: the slot wiring (SHELL_SLOTS) and the library's Dialog — the bar's own governed commit is the bar's, behind its preview and human gate (§CB), never the shell's */ './context-bar', './theme', './layers', '../../lib/observation', '../../lib/b80-seams', '../../lib/shell-b80', '../../components/shell', '../../lib/workflow', '../decisions/layout',
       /* B81 re: the sign-in / deep-link return's pure rule (it builds an href; it calls nothing) */ '../lib/signin-return-b81',
       /* B81 re: the saved table views a place-save carries (pure) */ '../lib/tableview-b81',
-      /* B81 re: the status context's leaf module (it provides nothing but the context) */ '../lib/shell-status-b81']);
+      /* B81 re: the status context's leaf module (it provides nothing but the context) */ '../lib/shell-status-b81',
+      /* B81 integration (§LY-G): the density switch, the rail toggle, the compact navigation — their only write is the person's OWN presentation
+         preference (shell.preferences.save, not human-gated, like the navigation save); no business write; the shell's own source still calls none */ './layout']);
     for (const [f, src] of files) {
       for (const m of src.matchAll(/from '([^']+)'/g)) expect(allowed.has(m[1]!), `${f} imports ${m[1]}`).toBe(true);
       expect(src, f).not.toMatch(/GovernedButton|\bcall\(|fetch\(|method:\s*'POST'/);

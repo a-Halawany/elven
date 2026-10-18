@@ -199,3 +199,17 @@ describe('the degraded copy (CNT-12) and the library contract', () => {
     expect(ui).toContain('export function DegradedBanner({ visible, detail }: { visible: boolean; detail: string })');
   });
 });
+
+/* B81 integration (UX-11-005): a page's own refusal handed back to the shell's last verified location */
+import { recoveryOfRefusedLink, withShellRecovery } from './degraded-b81';
+describe('the refusal is handed back to the shell\'s last verified location (UX-11-005)', () => {
+  it('appends the last verified location once; never a second route; null stays null', () => {
+    const m = recoveryOfRefusedLink('warning');
+    expect(m.preserved).toEqual(['Nothing was changed: opening a link never acts.']);
+    const w = withShellRecovery(m, { route: '/prediction/warnings', title: 'Warnings' });
+    expect(w?.steps).toEqual([{ kind: 'route', label: 'Return to the last verified location (Warnings)', href: '/prediction/warnings' }]);
+    expect(withShellRecovery(w, { route: '/home', title: 'Home' })?.steps.length).toBe(1);
+    expect(withShellRecovery(m, null)).toBe(m);
+    expect(withShellRecovery(null, { route: '/home', title: 'Home' })).toBeNull();
+  });
+});

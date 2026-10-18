@@ -20,6 +20,7 @@ import { ObjectHeader } from '../../../../components/object';
 import { ErrorNote } from '../../../../components/ui';
 import { DefinitionRow, Empty, Mono, UnknownNote, fmtInstant } from '../../../../components/observation';
 import { ControlsLine, FitnessFlag, ValidationBadge } from '../page';
+/* B81 integration (UX-11-005) */ import { RecoveryPanel } from '../../../../components/recovery'; import { recoveryOfRefusedLink } from '../../../../lib/degraded-b81'; /* end B81 integration */
 
 /** B81 integration: ONE h1 per rendering (lib/layout-b81's REG-03 ratchet) — every branch (not opened, loading, the object) titles
  *  the page through this one element. */
@@ -50,7 +51,7 @@ export default function ForecastObjectPage() {
   }, [scope, id]);
 
   if (id === null) return <><PageTitle>Forecast</PageTitle><p role="alert"><strong>Not opened.</strong> {LINK_OUTCOME_WORDS.invalid}</p><p><Link href="/prediction/forecasts">Open the forecasts instead</Link></p></>;
-  if (err !== null) return <><PageTitle>Forecast</PageTitle><p><strong>Not opened.</strong> {LINK_OUTCOME_WORDS.unavailable}</p><ErrorNote error={err} /><p><Link href="/prediction/forecasts">Open the forecasts instead</Link> (the nearest safe state).</p></>;
+  if (err !== null) return <><PageTitle>Forecast</PageTitle><p><strong>Not opened.</strong> {LINK_OUTCOME_WORDS.unavailable}</p><ErrorNote error={err} /><RecoveryPanel model={recoveryOfRefusedLink('forecast')} /><p><Link href="/prediction/forecasts">Open the forecasts instead</Link> (the nearest safe state).</p></>;
   if (f === null) return <Empty>reading the forecast…</Empty>;
 
   const input: ObjectHeaderInput = {

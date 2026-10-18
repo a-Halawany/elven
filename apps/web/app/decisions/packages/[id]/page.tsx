@@ -24,6 +24,7 @@ import { Select } from '../../../../components/forms';
 import { Digest } from '../../../../components/text';
 import { ErrorNote } from '../../../../components/ui';
 import { Empty, fmtInstant } from '../../../../components/observation';
+/* B81 integration (UX-11-005) */ import { RecoveryPanel } from '../../../../components/recovery'; import { recoveryOfRefusedLink } from '../../../../lib/degraded-b81'; /* end B81 integration */
 
 /** B81 integration: ONE h1 per rendering (lib/layout-b81's REG-03 ratchet) — every branch (not opened, loading, the object) titles
  *  the page through this one element. */
@@ -82,7 +83,7 @@ function PackageObjectView() {
     return <><PageTitle>Decision package</PageTitle><p role="alert"><strong>Not opened.</strong> {LINK_OUTCOME_WORDS.invalid}</p><p><Link href="/decisions">Open the decision packages instead</Link></p></>;
   }
   if (err !== null) {
-    return <><PageTitle>Decision package</PageTitle><p><strong>Not opened.</strong> {LINK_OUTCOME_WORDS.unavailable}</p><ErrorNote error={err} /><p><Link href="/decisions">Open the decision packages instead</Link> (the nearest safe state).</p></>;
+    return <><PageTitle>Decision package</PageTitle><p><strong>Not opened.</strong> {LINK_OUTCOME_WORDS.unavailable}</p><ErrorNote error={err} /><RecoveryPanel model={recoveryOfRefusedLink('decision package')} /><p><Link href="/decisions">Open the decision packages instead</Link> (the nearest safe state).</p></>;
   }
   if (pkg === null) return <Empty>reading the decision package…</Empty>;
   if (shown === null) {

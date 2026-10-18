@@ -40,6 +40,7 @@ import { DegradedBanner, ErrorNote, Receipt } from './ui';
 import { WorkingDomainChooser, WorkingDomainMark } from './working-domain';
 import { GlobalContextBar } from './context-bar';
 import { ThemeScope } from './theme';
+/* B81 integration (§LY-G): the person's density and rail, the compact navigation below 640 px */ import { BottomNavigation, DensitySwitch, PreferencesScope, RailToggle } from './layout'; /* end B81 integration */
 import { Dialog } from './layers';
 /* B81 re: the sign-in / deep-link return (UX-11-005) */
 import { loginHref } from '../lib/signin-return-b81';
@@ -271,6 +272,8 @@ export function AppShell({ workspace, children, provide, adapt, slots }: AppShel
   };
 
   const shell = (
+    /* B81 integration (§LY-G): the person's own presentation preferences (density, rail) — presentation never changes meaning */
+    <PreferencesScope scope={scope} roles={base?.roles ?? []}>
     <div className="eye-shell">
       <a className="eye-skip-link" href="#eye-main">Skip to main content</a>
       <DegradedBanner visible={degraded} detail={platform ? t('shell.degraded.api', defaultLocale) : 'the API reports degraded audit availability'} />
@@ -289,6 +292,7 @@ export function AppShell({ workspace, children, provide, adapt, slots }: AppShel
         )}
         {adapted.banner}
         <span className="eye-shell-end">
+          {/* B81 integration (§LY-G) */}<DensitySwitch compact /><RailToggle />{/* end B81 integration */}
           <button type="button" className="eye-link-button" aria-haspopup="dialog" aria-keyshortcuts="Control+K Meta+K" title="Go to a place (Ctrl+K / ⌘K) — navigation only" onClick={() => setPaletteOpen(true)}>
             Go to…
           </button>
@@ -320,8 +324,11 @@ export function AppShell({ workspace, children, provide, adapt, slots }: AppShel
           {children}
         </main>
       </div>
+      {/* B81 integration (§LY-G): the compact navigation — a DIRECT child of .eye-shell (the rail yields to it only below 640 px) */}
+      <BottomNavigation spec={spec} nav={nav} pathname={pathname} />
       {paletteOpen && <CommandPalette entries={paletteEntries()} current={pathname} onNavigate={navigate} onClose={() => setPaletteOpen(false)} />}
     </div>
+    </PreferencesScope>
   );
   const Theme = slotSet.themeScope;
   const surface = Theme === undefined ? shell : <Theme {...themeScopeOf(scope)}>{shell}</Theme>;

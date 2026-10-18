@@ -54,6 +54,6 @@ export const LIBRARY_B81 = {
   recovery:  { part: '§DG',   files: ['components/recovery.tsx'], exports: ['DegradedContractView', 'RecoveryPanel', 'StaleDeclaration', 'PartialResult', 'ResidualState', 'FailureState'] },
   object:    { part: '§OB',   files: ['components/object.tsx'], exports: ['ObjectHeader', 'IdentityChip', 'VersionBadge', 'LifecycleView'] },
   help:      { part: '§CT',   files: ['components/help.tsx'], exports: ['Term', 'HelpPanel'] },
-  layout:    { part: '§LY-G', files: ['components/layout.tsx'], exports: ['Container', 'Stack', 'Cluster', 'Grid', 'Region'] },
+  layout:    { part: '§LY-G', files: ['components/layout.tsx'], exports: ['Container', 'Stack', 'Cluster', 'Grid', 'GridItem', 'Region', 'Composition', 'DeferredContent', 'PreferencesScope', 'DensitySwitch', 'RailToggle', 'BottomNavigation'] },
   windows:   { part: '§LY-M', files: ['components/command-environment.tsx'], exports: ['CommandComposition', 'PresentationView', 'HandoffDialog'] },
 } as const;

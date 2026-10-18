@@ -340,6 +340,16 @@ export function retryRule(s: CommandState, action: string): { offer: 'reuse_iden
 export interface RecoveryStep { kind: 'retry' | 'check' | 'cancel' | 'route' | 'reload' | 'correct'; label: string; href?: string; disabled?: boolean; reason?: string | null }
 export interface RecoveryModel { happened: string; preserved: string[]; residual: string[]; steps: RecoveryStep[] }
 /** After a command that did not confirm: what happened, what is preserved, what residual effects there may be, the safe next steps. */
+/** B81 integration (UX-11-005): the shell's last verified location appended to a model's safe next steps (never a second route; null stays null). */
+export function withShellRecovery(model: RecoveryModel | null, lastVerified: { route: string; title: string } | null): RecoveryModel | null {
+  if (model === null || lastVerified === null || model.steps.some((s) => s.kind === 'route')) return model;
+  return { ...model, steps: [...model.steps, { kind: 'route', label: `Return to the last verified location (${lastVerified.title || lastVerified.route})`, href: lastVerified.route }] };
+}
+/** B81 integration (UX-11-005): a deep link the server refused or could not answer — opening a link never acts, so nothing changed. */
+export function recoveryOfRefusedLink(what: string): RecoveryModel {
+  return { happened: `The ${what} this link names was not opened — the server refused it or could not answer.`, preserved: ['Nothing was changed: opening a link never acts.'], residual: [], steps: [] };
+}
+
 export function recoveryOfCommand(s: CommandState, action: string, o: { preserved?: string[]; statusHref?: string | null; lastVerified?: string | null }): RecoveryModel | null {
   if (s.phase !== 'unknown' && s.phase !== 'abandoned' && s.phase !== 'refused') return null;
   const rule = retryRule(s, action);

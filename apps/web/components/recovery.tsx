@@ -15,11 +15,11 @@ import type { ReactNode } from 'react';
 import type { Audience } from '../lib/b81-seams';
 import {
   bannerOf, contractLines, copy, failureOf, modeView, partialText, staleOfSource, undeclaredLines,
-  type ContractState, type DegradedState, type FailureKind, type PartialDeclaration, type RecoveryModel, type ResidualView, type StaleView,
-} from '../lib/degraded-b81';
+  type ContractState, type DegradedState, type FailureKind, type PartialDeclaration, type RecoveryModel, type ResidualView, type StaleView, withShellRecovery } from '../lib/degraded-b81';
 import { DegradedBanner } from './ui';
 import { InlineMessage } from './feedback';
 import { Digest, Timestamp } from './text';
+/* B81 integration (UX-11-005): a page's own refusal is handed back to the shell's last verified location */ import { useShellRecovery } from './shell'; /* end B81 integration */
 
 const toneClass = (tone: 'critical' | 'warning' | 'unknown' | 'info') => `eye-message eye-message--${tone}`;
 
@@ -136,7 +136,11 @@ export function FailureState({ kind, audience, detail }: { kind: FailureKind; au
  * identity, check first, reload, correct, return to the last verified location). A step is a link or the caller's handler; a disabled step
  * carries its reason. The panel itself executes nothing.
  */
-export function RecoveryPanel({ model, onStep }: { model: RecoveryModel | null; onStep?: (kind: RecoveryModel['steps'][number]['kind']) => void }) {
+export function RecoveryPanel({ model: given, onStep }: { model: RecoveryModel | null; onStep?: (kind: RecoveryModel['steps'][number]['kind']) => void }) {
+  /* B81 integration (UX-11-005): the shell's LAST VERIFIED LOCATION joins the safe next steps unless the model already routes somewhere */
+  const shell = useShellRecovery();
+  const model = withShellRecovery(given, shell?.lastVerified ?? null);
+  /* end B81 integration */
   if (model === null) return null;
   return (
     <section className="eye-panel" aria-label={copy('b81.dg.recovery.title')}>

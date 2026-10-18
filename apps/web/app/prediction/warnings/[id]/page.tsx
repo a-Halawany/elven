@@ -25,6 +25,7 @@ import { Button } from '../../../../components/actions';
 import { Select } from '../../../../components/forms';
 import { ErrorNote } from '../../../../components/ui';
 import { Empty, fmtInstant } from '../../../../components/observation';
+/* B81 integration (UX-11-005) */ import { RecoveryPanel } from '../../../../components/recovery'; import { recoveryOfRefusedLink } from '../../../../lib/degraded-b81'; /* end B81 integration */
 
 /** B81 integration: ONE h1 per rendering (lib/layout-b81's REG-03 ratchet) — every branch (not opened, loading, the object) titles
  *  the page through this one element. */
@@ -78,6 +79,7 @@ export default function WarningObjectPage() {
         <PageTitle>Warning</PageTitle>
         <p><strong>Not opened.</strong> {LINK_OUTCOME_WORDS.unavailable}</p>
         <ErrorNote error={err} />
+        <RecoveryPanel model={recoveryOfRefusedLink('warning')} />
         <p><Link href="/prediction/warnings">Open the current warnings instead</Link> (the nearest safe state).</p>
       </>
     );
