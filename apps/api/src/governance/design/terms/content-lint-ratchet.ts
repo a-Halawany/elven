@@ -4,6 +4,8 @@
  * and the content-lint route say so); when a page is corrected as its stage touches it, its entry is REMOVED from this list in the same
  * change. Never add an entry to admit a new finding — correct the content, or record a narrow, expiring design exception through B107's port.
  * Counts at commit: verb-object 201, destructive-scope 73, error-recovery 6, no-dilution 0, title-noun-phrase 0 — 280 in all. Fingerprint = sha256(rule, file, text)[0..16].
+ * Removed since (corrected): B81 §HA-R — 4 (the intelligence review's "Reject" ×2, the warning close, the experiment cancel: each now a Command
+ * Review that states what is kept and whether it can be undone).
  */
 import type { RatchetEntry } from './content-lint.js';
 
@@ -196,8 +198,6 @@ export const CONTENT_LINT_RATCHET: readonly RatchetEntry[] = [
   { rule: 'verb-object', file: 'apps/web/app/graph/subscriptions/page.tsx', excerpt: 'Reject', fingerprint: 'f2202a66651016a2' },
   { rule: 'verb-object', file: 'apps/web/app/intelligence/contradictions/page.tsx', excerpt: 'Adjudicate', fingerprint: '052500dfcbeb7ad4' },
   { rule: 'destructive-scope', file: 'apps/web/app/intelligence/methods/plan-executions-panel.tsx', excerpt: 'Revoke extraction agent', fingerprint: '0e73cec4af3c3140' },
-  { rule: 'destructive-scope', file: 'apps/web/app/intelligence/review/page.tsx', excerpt: 'Reject', fingerprint: '8176dd628646b539' },
-  { rule: 'verb-object', file: 'apps/web/app/intelligence/review/page.tsx', excerpt: 'Reject', fingerprint: 'f03a1f53c89e3af1' },
   { rule: 'verb-object', file: 'apps/web/app/observation/corrections/page.tsx', excerpt: 'Submit', fingerprint: 'a55341081c70a513' },
   { rule: 'verb-object', file: 'apps/web/app/observation/corrections/page.tsx', excerpt: 'Apply', fingerprint: '84737e4c0187f129' },
   { rule: 'destructive-scope', file: 'apps/web/app/observation/corrections/page.tsx', excerpt: 'Reject', fingerprint: 'c6b6e49c2f06f7f9' },
@@ -258,7 +258,6 @@ export const CONTENT_LINT_RATCHET: readonly RatchetEntry[] = [
   { rule: 'verb-object', file: 'apps/web/app/prediction/signals/page.tsx', excerpt: 'Retire', fingerprint: '76d2542629d5536c' },
   { rule: 'verb-object', file: 'apps/web/app/prediction/streams/page.tsx', excerpt: 'Retract', fingerprint: '3eae5a742aab9d6f' },
   { rule: 'verb-object', file: 'apps/web/app/prediction/warnings/evaluations/page.tsx', excerpt: 'Evaluate', fingerprint: 'a1fa59a979734d54' },
-  { rule: 'destructive-scope', file: 'apps/web/app/prediction/warnings/lifecycle-panel.tsx', excerpt: 'Close the warning', fingerprint: '0db9bf4941e62f08' },
   { rule: 'verb-object', file: 'apps/web/app/prediction/warnings/page.tsx', excerpt: 'Acknowledge', fingerprint: '0f926da25622399c' },
   { rule: 'verb-object', file: 'apps/web/app/twins/composition-panel.tsx', excerpt: 'Decline', fingerprint: '1a71c2b6dc783598' },
   { rule: 'verb-object', file: 'apps/web/app/twins/constraints/page.tsx', excerpt: 'Declare', fingerprint: 'f03d0703854e741e' },
@@ -276,7 +275,6 @@ export const CONTENT_LINT_RATCHET: readonly RatchetEntry[] = [
   { rule: 'verb-object', file: 'apps/web/app/twins/simulations/orchestration/page.tsx', excerpt: 'Compare', fingerprint: 'eab43dd5a4bb858b' },
   { rule: 'verb-object', file: 'apps/web/app/twins/simulations/orchestration/page.tsx', excerpt: 'Pause', fingerprint: '490d3f0fb71e6223' },
   { rule: 'verb-object', file: 'apps/web/app/twins/simulations/orchestration/page.tsx', excerpt: 'Resume', fingerprint: '1324d32d097995c8' },
-  { rule: 'destructive-scope', file: 'apps/web/app/twins/simulations/orchestration/page.tsx', excerpt: 'Cancel the experiment', fingerprint: 'c458ff5d929bc1d2' },
   { rule: 'verb-object', file: 'apps/web/app/twins/simulations/page.tsx', excerpt: 'Decide', fingerprint: 'd86fd993f6a67630' },
   { rule: 'destructive-scope', file: 'apps/web/app/twins/simulations/page.tsx', excerpt: 'Withdraw', fingerprint: '71c22900aebd1b91' },
   { rule: 'verb-object', file: 'apps/web/app/twins/simulations/page.tsx', excerpt: 'Withdraw', fingerprint: '4dd612b308ad2726' },
