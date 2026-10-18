@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { assertNoExecution, reviewRequested } from './authority-b81';
 import {
-  COMMANDS, INTERPRETER_VERSION, LITERAL_INTERPRETER, MODE_SPEC, PALETTE_MODES, commandEntries, disagreement, intentRecordOf, interpret, parseModePrefix, previewLine, wordsOf,
+  COMMANDS, INTERPRETER_VERSION, LITERAL_INTERPRETER, MODE_SPEC, PALETTE_MODES, commandEntries, disagreement, intentRecordOf, interpret, modeItems, parseModePrefix, previewLine, wordsOf,
   type IntentHit,
 } from './intent-b81';
 
@@ -52,7 +52,7 @@ describe('the interpreter is DETERMINISTIC and has no model (D4 / Q2)', () => {
   });
   it('THE SOURCE: no network, no model, no randomness, no clock — it imports only the seams and §HA\'s pure hand-off', () => {
     const src = readFileSync(join(WEB, 'lib/intent-b81.ts'), 'utf8');
-    expect([...src.matchAll(/from '([^']+)'/g)].map((m) => m[1])).toEqual(['./b81-seams', './authority-b81']);
+    expect([...new Set([...src.matchAll(/from '([^']+)'/g)].map((m) => m[1]))]).toEqual(['./b81-seams', './authority-b81']);
     expect(src).not.toMatch(/\bfetch\(|\bcall\(|Math\.random|Date\.now|new Date\(/);
   });
   it('the words: kind words scope (never searched), stop words split, the phrases are the rest', () => {
@@ -158,5 +158,27 @@ describe('UX-13-005 — INTERPRETER DISAGREEMENT: two versions reading the same 
     expect(d.clarification).toMatch(/^Two readings of your words differ: “Bab el-Mandeb exposure Regensburg” as typed \(b81-si-literal-1\) or exposure of “Bab el-Mandeb Regensburg” \(b81-si-intent-1\)/);
     expect(d.chosen).toBeNull();
     expect(disagreement(cur, interpret('Bab el-Mandeb exposure Regensburg', { mode: 'ask' }))).toBeNull();
+  });
+});
+
+describe('the palette\'s items per mode — each passes the guard: it navigates or hands off; nothing runs', () => {
+  it('Search hands the words as typed to the search page; Ask hands the reading; Command hands each matching command to its review', () => {
+    const s = modeItems('search', 'Bab el-Mandeb', true);
+    expect(s.items.map((i) => [i.kind, i.href])).toEqual([['search', '/graph/search/all?q=Bab%20el-Mandeb&mode=search']]);
+    const a = modeItems('ask', 'Bab el-Mandeb exposure Regensburg', true);
+    expect(a.items.map((i) => [i.kind, i.href, i.detail])).toEqual([['ask', '/graph/search/all?q=Bab%20el-Mandeb%20exposure%20Regensburg&mode=ask', 'Search exposure of “Bab el-Mandeb” and “Regensburg”.']]);
+    const c = modeItems('command', 'approve corridor reroute', true);
+    expect(c.items.map((i) => [i.action, i.href])).toEqual([
+      ['decision.approve', '/graph/search/all?q=approve%20corridor%20reroute&mode=command&review=decision.approve'],
+      ['decision.board.approve', '/graph/search/all?q=approve%20corridor%20reroute&mode=command&review=decision.board.approve']]);
+    const bare = modeItems('command', 'approve', true);
+    expect(bare.items.map((i) => i.href)).toEqual(['/decisions?review=decision.approve', '/decisions/board?review=decision.board.approve']);
+    for (const items of [s.items, a.items, c.items, bare.items, modeItems('command', '', true).items]) expect(() => assertNoExecution(items as unknown as Array<Record<string, unknown>>)).not.toThrow();
+  });
+  it('the admin workspace has no domain to search — the reason is said, nothing is offered; an unsupported verb offers the search instead', () => {
+    expect(modeItems('search', 'x', false)).toEqual({ items: [], reason: 'Search runs in a domain workspace — this workspace has no domain to search. Open a domain workspace first.' });
+    const d = modeItems('command', 'delete all warnings', true);
+    expect(d.reason).toMatch(/^Unsupported: the palette offers no command to “delete”/);
+    expect(d.items.map((i) => i.kind)).toEqual(['search']);
   });
 });

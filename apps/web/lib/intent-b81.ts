@@ -85,7 +85,7 @@ export const COMMANDS: readonly CommandSpec[] = [
   { action: 'decision.gate.defer', label: 'Defer a decision package version', verbs: ['defer', 'postpone'], object: 'package', qualifiers: [], page: '/decisions', objectHref: (id) => `/decisions?package=${id}` },
   { action: 'decision.gate.reject', label: 'Reject a decision package version', verbs: ['reject'], object: 'package', qualifiers: [], page: '/decisions', objectHref: (id) => `/decisions?package=${id}` },
   { action: 'decision.sign.decision', label: 'Sign a committed decision', verbs: ['sign'], object: 'package', qualifiers: [], page: '/decisions', objectHref: (id) => `/decisions?package=${id}` },
-  { action: 'decision.board.approve', label: 'Approve a board decision version', verbs: ['approve'], object: 'package', qualifiers: ['board'], page: '/decisions/board', objectHref: (id) => `/decisions/board?package=${id}` },
+  { action: 'decision.board.approve', label: 'Approve a board decision version', verbs: ['approve'], object: 'package', qualifiers: ['board'], page: '/decisions/board', /* the board page lists its packages (it opens none by link yet) */ objectHref: () => '/decisions/board' },
 ];
 const VERBS = new Set(COMMANDS.flatMap((c) => c.verbs));
 
@@ -278,4 +278,44 @@ export function commandEntries(text: string): CommandHandoff[] {
   const hit = (c: CommandSpec) => words.length === 0 || words.every((x) => norm(c.label).includes(x) || c.verbs.includes(x) || c.qualifiers.includes(x) || c.action.includes(x))
     || (words.length > 0 && c.verbs.includes(words[0]!));
   return COMMANDS.filter(hit).map((c) => commandHandoff(c.action, c.page, c.label, `opens the Command Review on ${c.page} — nothing runs from here`));
+}
+
+/* ═════════════════════════════ THE PALETTE'S ITEMS PER MODE (UX-13-001, UX-13-003) ═════════════════════════════ */
+export type { PaletteMode } from './b81-seams';
+/** The page that runs a search or an Ask reading over the governed reads (the graph workspace's federated search, WS-03). */
+export const SEARCH_PAGE = '/graph/search/all';
+export function searchPageHref(q: string, mode: PaletteMode, review: string | null = null): string {
+  return `${SEARCH_PAGE}?q=${encodeURIComponent(q)}&mode=${mode}${review === null ? '' : `&review=${encodeURIComponent(review)}`}`;
+}
+/** A palette item: it NAVIGATES (search · ask) or HANDS OFF a command to its Command Review (command) — no item carries a function. */
+export interface PaletteItem { kind: 'search' | 'ask' | 'command'; href: string; label: string; detail: string; action?: string }
+/**
+ * The items of the Search, Ask and Command modes for the typed words (Go to's are B80's navigation entries). `inDomain` false (the admin
+ * workspace) — no domain to search: the reason is said and nothing is offered. Every item passes §HA's assertNoExecution.
+ */
+export function modeItems(mode: Exclude<PaletteMode, 'goto'>, text: string, inDomain: boolean): { items: PaletteItem[]; reason: string | null } {
+  const t = text.trim();
+  if (t === '') return { items: [], reason: mode === 'command' ? null : 'Type the words first.' };
+  const noDomain = 'Search runs in a domain workspace — this workspace has no domain to search. Open a domain workspace first.';
+  if (mode === 'search') {
+    return inDomain ? { items: [{ kind: 'search', href: searchPageHref(t, 'search'), label: `Search “${t}”`, detail: 'the words as typed, in this domain — reads only, within what you may see' }], reason: null }
+      : { items: [], reason: noDomain };
+  }
+  const r = interpret(t, { mode });
+  const instead: PaletteItem[] = inDomain ? [{ kind: 'search', href: searchPageHref(t, 'search'), label: `Search “${t}” instead`, detail: 'the words as typed — reads only' }] : [];
+  if (r.reason !== null) return { items: instead, reason: cap(r.reason) };
+  if (mode === 'command' || r.kind === 'command') {
+    const entries = mode === 'command' ? commandEntries(t) : (r.command === null ? [] : [commandHandoff(r.command.action, r.command.page, r.command.label)]);
+    const phrases = r.phrases.length > 0 && inDomain;
+    const items: PaletteItem[] = entries.map((c) => ({
+      kind: 'command', action: c.action,
+      href: phrases ? searchPageHref(t, mode, c.action) : c.href,
+      label: phrases ? `Review: ${c.label} — find “${r.phrases.join(' ')}”` : `Review: ${c.label}`,
+      detail: phrases ? 'the matching records are found first; the Command Review opens on the one you choose — nothing runs from here' : c.detail,
+    }));
+    if (items.length === 0) return { items: instead, reason: `No command reads “${t}” here.` };
+    return { items, reason: null };
+  }
+  if (!inDomain) return { items: [], reason: noDomain };
+  return { items: [{ kind: 'ask', href: searchPageHref(t, 'ask'), label: 'Show the reading and its results', detail: previewLine(r) }], reason: null };
 }
