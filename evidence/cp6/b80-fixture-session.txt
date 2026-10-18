@@ -1,0 +1,9 @@
+# B80 review item — EYE_B80_FIXTURE_SESSION (2026-10-18): the disposition, executed
+# 1. Where it is read: git grep at 9a46337 — ONLY e2e/phase6-b80-catalogue.demo.spec.ts (a demo walk; playwright.config.ts testIgnore excludes *.demo.spec.ts from the hosted gate). No product source reads it.
+# 2. What it does: the TEST writes a synthetic object into its own browser's sessionStorage — what any browser user can do; the admin workspace's client check (pre-B80) only gates rendering; the domain workspaces fail closed on whoAmI.
+# 3. The API refuses the synthetic token on every governed route (eye_demo API :3401, build 855d696, 2026-10-18):
+/v1/me (identity.self.read) with the fixture's token: 401 EYE-IDN-002 Credential/audience/issuer/device/assurance validation failed
+/v1/governance/workspace/read (governance.read) with the fixture's token: 401 EYE-IDN-002 Credential/audience/issuer/device/assurance validation failed
+/v1/governance/conformance/read (governance.read) with the fixture's token: 401 EYE-IDN-002 Credential/audience/issuer/device/assurance validation failed
+# 4. The regression guard: apps/web/lib/fixture-session-b80.test.ts (no product source reads the flag or mints a session; only lib/api.ts writes eye.session; the flag only in demo walks).
+# Disposition: not an authentication path — kept as the demo walk's test-side device, guarded.
