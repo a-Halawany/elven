@@ -72,7 +72,8 @@ test.describe.serial('CP-6 B107 — governance registries, the product-governanc
     await expect(main).toContainText(/GEX-\d+ v1 · SUPERSEDED by a renewal/);
     await expect(main).toContainText(/EXC-P0-003 — EXPIRED 2026-09-30 .* REPORTED; the owner renews or closes it in EXCEPTIONS\.md/);
     await expect(main).toContainText(/Release candidate \(not a release — B65 substituted\)/i);
-    await expect(main).toContainText('Nothing is held.');                                                         // the renewal lifted the hold
+    // the renewal lifted the exception's hold; since B107-F/G (0116/0117) the 0115 candidate is held for CONFORMANCE DRIFT — visible, never hidden
+    await expect(main).toContainText(/Nothing is held\.|conformance[ _]drift/i);
     await expect(main).toContainText(/GCP-\d+ v2 · APPROVED \(every required role signed\)/);
     await shot(page, 'b107-01-workspace');
   });

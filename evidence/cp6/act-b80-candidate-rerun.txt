@@ -1,0 +1,24 @@
+THE B80 CANDIDATE ACT on eye_demo — 2026-10-18T20:31:26.046Z — API http://localhost:3401
+
+C-0 THE STATE — 0118 applied, the build identity, the cast
+  ✓ migration applied: 0118_b80_shell_foundations.sql
+  ✓ the API declares its build: head 7833eda358c8… (from env), migration head —, policy bundle bundle-v1
+
+C-1 THE RELEASE-CANDIDATE DRIFT (§CM) — the earlier candidates read drifted; a new candidate at the deployed head, checked and attested (not a release)
+  · the monitor: {"open":0,"opened":0,"run_id":null,"recorded":false,"resolved":0,"holds_lifted":0,"holds_opened":0,"observation_digest":"f6f811ca8dcd6b079439581dd6b61e2f1cebf82eb07b7eb7fbda8210fa358334","findings":[]}
+  · candidate ac8e…09aa00 v1 "NORDWERK corridor release candidate 2026-10 (SYNTHETIC — a l…": withdrawn, head 42a10891c042…, migration head 0115_b107_governance_registries_acceptance.sql
+  · candidate c974…15c44f v1 "NORDWERK corridor release candidate 2026-10 r2 — at the B107…": withdrawn, head 855d69633c9f…, migration head 0117_b107g_expansion_at_activation.sql
+  · candidate 02a1…518faa v1 "NORDWERK corridor release candidate 2026-10 r3 — at the B80 …": attested, head 7833eda358c8…, migration head 0118_b80_shell_foundations.sql
+  · b80-contract.vitest.json stands — an earlier run (203/203 passed at head 7833eda358c8…)
+  · b80-trust.vitest.json stands — an earlier run (31/31 passed at head 7833eda358c8…)
+  · b80-human-authority.vitest.json stands — an earlier run (87/87 passed at head 7833eda358c8…)
+  · the new candidate 02a1…518faa v1 stands — an earlier run
+  · the new candidate is ATTESTED: stands
+
+C-2 THE SUPERSEDED CANDIDATES — withdrawn by the conformance steward with the reason; the monitor run again
+  · no superseded candidate is live: stands — an earlier run
+  · the monitor again: open 0, resolved 0
+  ✓ open conformance findings: none — the live candidate is bound to the deployed head, manifest, migration and policy
+  · LIMITS — CONSTRUCTION: §CM (0115) and its harness; DEMONSTRATED OPERATION: this act (SYNTHETIC vendor personas; every record claim = demonstration); the candidate is a local conformance record (B65 substituted) — NEVER a release; production admission is R1.
+
+ALL SCENES HELD

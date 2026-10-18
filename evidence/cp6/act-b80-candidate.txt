@@ -1,0 +1,26 @@
+THE B80 CANDIDATE ACT on eye_demo — 2026-10-18T20:30:41.777Z — API http://localhost:3401
+
+C-0 THE STATE — 0118 applied, the build identity, the cast
+  ✓ migration applied: 0118_b80_shell_foundations.sql
+  ✓ the API declares its build: head 7833eda358c8… (from env), migration head —, policy bundle bundle-v1
+
+C-1 THE RELEASE-CANDIDATE DRIFT (§CM) — the earlier candidates read drifted; a new candidate at the deployed head, checked and attested (not a release)
+  · the monitor: {"open":8,"opened":0,"run_id":null,"recorded":false,"resolved":0,"holds_lifted":0,"holds_opened":0,"observation_digest":"aec06322876f3325c50dd3e6143b44a07a39d93f5ae6a32339f56cf3f19e71d3","findings":[{"kind":"head_drift","fingerprint":"head_drift:ac8ef1d9-b4e6-402f-978c-06dbfb09aa00:7833eda358c898208
+  · candidate ac8e…09aa00 v1 "NORDWERK corridor release candidate 2026-10 (SYNTHETIC — a l…": attested, head 42a10891c042…, migration head 0115_b107_governance_registries_acceptance.sql — open holds: conformance_drift: conformance drift: NORDWERK corridor release candidate 2026-10 (SYNTHETIC — a local release-candidate record, B65 substi; conformance_drift: conformance drift: NORDWERK corridor release candidate 2026-10 (SYNTHETIC — a local release-candidate record, B65 substi; conformance_drift: conformance drift: NORDWERK corridor release candidate 2026-10 (SYNTHETIC — a local release-candidate record, B65 substi; conformance_drift: conformance drift: NORDWERK corridor release candidate 2026-10 (SYNTHETIC — a local release-candidate record, B65 substi; evidence_stale: change impact c8b207c61648: a controlling artifact changed under RC:ac8ef1d9-b4e6-402f-978c-06dbfb09aa00; its dependent 
+  · candidate c974…15c44f v1 "NORDWERK corridor release candidate 2026-10 r2 — at the B107…": attested, head 855d69633c9f…, migration head 0117_b107g_expansion_at_activation.sql — open holds: conformance_drift: conformance drift: NORDWERK corridor release candidate 2026-10 r2 — at the B107-F/G head (SYNTHETIC — a local release-ca; conformance_drift: conformance drift: NORDWERK corridor release candidate 2026-10 r2 — at the B107-F/G head (SYNTHETIC — a local release-ca; conformance_drift: conformance drift: NORDWERK corridor release candidate 2026-10 r2 — at the B107-F/G head (SYNTHETIC — a local release-ca; conformance_drift: conformance drift: NORDWERK corridor release candidate 2026-10 r2 — at the B107-F/G head (SYNTHETIC — a local release-ca; evidence_stale: change impact c8b207c61648: a controlling artifact changed under RC:c9741340-0b5d-40f0-8640-eac92e15c44f; its dependent 
+  ✓ P. Castellano INGESTED b80-contract.vitest.json (203/203 passed at head 7833eda358c8…)
+  ✓ P. Castellano INGESTED b80-trust.vitest.json (31/31 passed at head 7833eda358c8…)
+  ✓ P. Castellano INGESTED b80-human-authority.vitest.json (87/87 passed at head 7833eda358c8…)
+  ✓ P. Castellano ASSEMBLED 02a1…518faa v1 at head 7833eda358c8…, migration head 0118_b80_shell_foundations.sql
+  ✓ the CHECK: CONFORMANT
+  ✓ P. Castellano (the assembler) attests the candidate REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ H. Achterberg (independent assurance) ATTESTED the new candidate v1: attested — a LOCAL CONFORMANCE RECORD, nothing released
+
+C-2 THE SUPERSEDED CANDIDATES — withdrawn by the conformance steward with the reason; the monitor run again
+  ✓ P. Castellano (conformance steward) WITHDREW ac8e…09aa00 v1 "NORDWERK corridor release candidate 2026-10 (SYNTHETIC —…" (was attested): 5 hold(s) lifted — superseded by the candidate 02a1…518faa at the deployed head 7833eda358c8 (0118); this one is bound to head 42a10891c042 (SYNTHETIC)
+  ✓ P. Castellano (conformance steward) WITHDREW c974…15c44f v1 "NORDWERK corridor release candidate 2026-10 r2 — at the …" (was attested): 5 hold(s) lifted — superseded by the candidate 02a1…518faa at the deployed head 7833eda358c8 (0118); this one is bound to head 855d69633c9f (SYNTHETIC)
+  · the monitor again: open 0, resolved 8
+  ✓ open conformance findings: none — the live candidate is bound to the deployed head, manifest, migration and policy
+  · LIMITS — CONSTRUCTION: §CM (0115) and its harness; DEMONSTRATED OPERATION: this act (SYNTHETIC vendor personas; every record claim = demonstration); the candidate is a local conformance record (B65 substituted) — NEVER a release; production admission is R1.
+
+ALL SCENES HELD
