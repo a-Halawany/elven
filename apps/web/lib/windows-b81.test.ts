@@ -20,7 +20,7 @@ import { commandLabelProblem } from './content-b81';
 
 const WEB = join(__dirname, '..');
 const read = (p: string) => readFileSync(join(WEB, p), 'utf8');
-const SQL = readFileSync(join(WEB, '..', 'api', 'migrations', '0119_b81_x_lym.sql'), 'utf8');
+const SQL = ((t: string) => t.slice(t.indexOf('-- ═══ FOLD §LY-M '), (i => i < 0 ? undefined : i)(t.indexOf('-- ═══ FOLD ', t.indexOf('-- ═══ FOLD §LY-M ') + 1))))(readFileSync(join(WEB, '..', 'api', 'migrations', '0119_b81_patterns_layout_content.sql'), 'utf8')) /* B81 fold: the part's section of the one 0119 */;
 const PDP = readFileSync(join(WEB, '..', 'api', 'src', 'policy', 'pdp.service.ts'), 'utf8');
 const W = 'a0000000-0000-4000-8000-000000000001';   // SYNTHETIC ids
 const X = 'a0000000-0000-4000-8000-000000000002';

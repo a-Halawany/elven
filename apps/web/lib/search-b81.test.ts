@@ -47,7 +47,7 @@ describe('the legs: the EXISTING governed reads — never executive.search', () 
     const actions = [...src.matchAll(/envOf\(s, '([^']+)'/g)].map((m) => m[1]);
     expect(actions.sort()).toEqual([...SEARCH_ACTIONS.reads, ...SEARCH_ACTIONS.personal].sort());
     // the API's leg table is the same (0119 §SI shell.search_legs)
-    const sql = readFileSync(join(WEB, '..', 'api', 'migrations', '0119_b81_x_si.sql'), 'utf8');
+    const sql = ((t: string) => t.slice(t.indexOf('-- ═══ FOLD §SI '), (i => i < 0 ? undefined : i)(t.indexOf('-- ═══ FOLD ', t.indexOf('-- ═══ FOLD §SI ') + 1))))(readFileSync(join(WEB, '..', 'api', 'migrations', '0119_b81_patterns_layout_content.sql'), 'utf8')) /* B81 fold: the part's section of the one 0119 */;
     for (const k of LEG_KEYS) expect(sql).toMatch(new RegExp(`'${k}',\\s+jsonb_build_object\\('action', '${LEGS[k].action.replace(/\./g, '\\.')}',\\s+'object_type', '${LEGS[k].objectType}'\\)`));
   });
   it('graph: one phrase per read, its hits linked to their object pages; a bounded scan or a lagging projection is PARTIAL from the flags', () => {
