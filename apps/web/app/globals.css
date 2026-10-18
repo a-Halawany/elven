@@ -608,6 +608,11 @@ button[aria-busy='true'] { --eye-button-cursor: progress; }
   padding-block: var(--eye-space-8); padding-inline: var(--eye-space-16);
 }
 .eye-truth-glyph { vertical-align: -1px; }
+/* An upload source's evidence upload (CMP-040): a raised panel on the source page. */
+.eye-upload-panel {
+  background: var(--eye-color-surface-primary); border: 1px solid var(--eye-color-border-default); border-radius: var(--eye-radius-lg);
+  padding: var(--eye-space-16); margin-block-start: var(--eye-space-16); display: grid; gap: var(--eye-space-8); justify-items: start;
+}
 /* The person's saved table view (UX-22-002): one quiet line above the table, its two controls. */
 .eye-saved-view { display: flex; flex-wrap: wrap; align-items: center; gap: var(--eye-space-8); margin-block: var(--eye-space-8); }
 .eye-saved-view > .eye-help { flex: 1 1 24rem; }

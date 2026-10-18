@@ -26,6 +26,7 @@ import {
   UnknownNote, badgeRowStyle, cardStyle, fmtInstant,
 } from '../../../../components/observation';
 import { ErrorNote, Receipt } from '../../../../components/ui';
+/* B81 re: FileIntake's upload mode placed (CMP-040) — an upload source's evidence upload */ import { EvidenceUpload } from './upload-b81'; /* end B81 re */
 
 interface SourceDetail {
   source: Record<string, unknown>;
@@ -230,6 +231,11 @@ export default function SourceDetailPage() {
         </div>
       </section>
 
+      {/* B81 re: an operator-upload source takes its evidence here (the connector's limits, the contract's media types, the disclosure first) */}
+      {String(s['connector_kind']) === 'upload' && (
+        <EvidenceUpload scope={scope} sourceId={sourceId} source={s} onError={setError} onDone={load} />
+      )}
+      {/* end B81 re */}
       {/* B23 (0084) stream — the stream form of Acquire, next to Collect now */}
       {lifecycle === 'active' && String(s['connector_kind']) === 'rest' && (
         <StreamPanel
