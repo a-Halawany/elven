@@ -1,0 +1,267 @@
+{
+ "$comment": "B81 §CT — the SHARED fixtures of the content rules: apps/web/lib/content-b81.test.ts, apps/api/test/unit/terms-b81.test.ts (the API copy) and phase6-terms-b81 (the SQL ports) each assert these values. SYNTHETIC texts.",
+ "readingGrade": [
+  {
+   "text": "ASSESSED means a reviewer has judged the evidence. The judgment can still be wrong. Read the uncertainty before you act.",
+   "grade": 5.9
+  },
+  {
+   "text": "An assessed claim is a reviewed analytical judgment that carries stated uncertainty, a named method and the evidence it rests on; it is not an observation.",
+   "grade": 15.9
+  },
+  {
+   "text": "Check the uncertainty band.",
+   "grade": 6.6
+  },
+  {
+   "text": "Don't act on it until it's reviewed!",
+   "grade": 4
+  },
+  {
+   "text": "The forecast is 4.5 percent higher. Uncertainty remains.",
+   "grade": 10.6
+  },
+  {
+   "text": "",
+   "grade": 0
+  },
+  {
+   "text": "Supercalifragilisticexpialidocious interdisciplinary institutionalisation.",
+   "grade": 95.7
+  },
+  {
+   "text": "Go.",
+   "grade": 0
+  }
+ ],
+ "syllables": [
+  {
+   "word": "table",
+   "n": 2
+  },
+  {
+   "word": "there",
+   "n": 1
+  },
+  {
+   "word": "the",
+   "n": 1
+  },
+  {
+   "word": "reviewer",
+   "n": 3
+  },
+  {
+   "word": "uncertainty",
+   "n": 4
+  },
+  {
+   "word": "AIS",
+   "n": 1
+  },
+  {
+   "word": "judged",
+   "n": 2
+  },
+  {
+   "word": "evidence",
+   "n": 3
+  },
+  {
+   "word": "little",
+   "n": 2
+  },
+  {
+   "word": "queue",
+   "n": 1
+  },
+  {
+   "word": "rhythm",
+   "n": 1
+  },
+  {
+   "word": "don't",
+   "n": 1
+  },
+  {
+   "word": "e",
+   "n": 1
+  }
+ ],
+ "commandLabel": [
+  {
+   "label": "Continue",
+   "problem": true
+  },
+  {
+   "label": "OK",
+   "problem": true
+  },
+  {
+   "label": "Approve",
+   "problem": true
+  },
+  {
+   "label": "Approve the package",
+   "problem": false
+  },
+  {
+   "label": "Cancel",
+   "problem": false
+  },
+  {
+   "label": "Close",
+   "problem": false
+  },
+  {
+   "label": "Sign out",
+   "problem": false
+  },
+  {
+   "label": "Submit…",
+   "problem": true
+  },
+  {
+   "label": "Close warning",
+   "problem": false
+  },
+  {
+   "label": "Reject",
+   "problem": true
+  },
+  {
+   "label": "Retire this term version",
+   "problem": false
+  },
+  {
+   "label": "Propose this term",
+   "problem": false
+  }
+ ],
+ "destructive": [
+  {
+   "label": "Close warning",
+   "context": "The warning stays recorded.",
+   "problem": false
+  },
+  {
+   "label": "Close warning",
+   "context": "Nothing.",
+   "problem": true
+  },
+  {
+   "label": "Retire",
+   "context": "cannot be undone",
+   "problem": true
+  },
+  {
+   "label": "Withdraw my consent",
+   "context": "This cannot be undone.",
+   "problem": false
+  },
+  {
+   "label": "Approve the package",
+   "context": "",
+   "problem": false
+  }
+ ],
+ "errorText": [
+  {
+   "text": "the owner is a principal id",
+   "problem": true
+  },
+  {
+   "text": "You entered an invalid input; try again.",
+   "problem": true
+  },
+  {
+   "text": "Failed.",
+   "problem": true
+  },
+  {
+   "text": "The service could not be reached. Try again in a minute.",
+   "problem": false
+  },
+  {
+   "text": "The evidence is not JSON — correct the field and try again.",
+   "problem": false
+  }
+ ],
+ "title": [
+  {
+   "title": "Product terminology",
+   "problem": false
+  },
+  {
+   "title": "Manage tenants",
+   "problem": true
+  },
+  {
+   "title": "What is a twin?",
+   "problem": true
+  },
+  {
+   "title": "Observation operations",
+   "problem": false
+  },
+  {
+   "title": "Welcome to The Eye",
+   "problem": true
+  }
+ ],
+ "dilution": [
+  {
+   "label": "ASSESSED",
+   "definition": "Reviewed analytical judgment with uncertainty",
+   "protected": [
+    "uncertainty"
+   ],
+   "explanations": {
+    "executive": "ASSESSED means a reviewer judged it; uncertainty remains."
+   },
+   "problem": null
+  },
+  {
+   "label": "ASSESSED",
+   "definition": "Reviewed analytical judgment with uncertainty",
+   "protected": [
+    "uncertainty"
+   ],
+   "explanations": {
+    "executive": "A reviewed judgment with uncertainty."
+   },
+   "problem": "dilution: the executive explanation drops the canonical term ASSESSED"
+  },
+  {
+   "label": "ASSESSED",
+   "definition": "Reviewed analytical judgment with uncertainty",
+   "protected": [
+    "uncertainty",
+    "reviewed"
+   ],
+   "explanations": {
+    "analyst": "ASSESSED: reviewed, with uncertainty.",
+    "operator": "ASSESSED means uncertainty."
+   },
+   "problem": "dilution: the operator explanation drops \"reviewed\" (a protected truth, uncertainty or consequence word)"
+  },
+  {
+   "label": "ASSESSED",
+   "definition": "Reviewed analytical judgment with uncertainty",
+   "protected": [],
+   "explanations": {
+    "executive": "ASSESSED is a final answer."
+   },
+   "problem": "certainty: the executive explanation implies certainty or authority (\"final\") the definition does not state"
+  },
+  {
+   "label": "DECIDED",
+   "definition": "Human decision bound to authority and digest; final once signed",
+   "protected": [],
+   "explanations": {
+    "executive": "DECIDED is final once signed."
+   },
+   "problem": null
+  }
+ ]
+}

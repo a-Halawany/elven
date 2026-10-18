@@ -2877,6 +2877,42 @@ const BUNDLE_V1: Rule[] = [
     ];
   })(),
   /* end B80 tk */
+  /* B81 ct */
+  /* B81 §CT (0119_b81_x_ct; F-P7-E-18: UX-69-001…006, UX-ADR-021, GLB-20, CNT-*). EXACT rules — no earlier rule's prefix is a prefix of
+     `governance.design.term.` (B80's `governance.design.theme.*` and B107's design rules are exact). THE PRODUCT LANGUAGE is the vendor's
+     (PLATFORM): a contributor of the design system (the Design System Authority, the product authority, the conformance steward, the
+     operations authority) PROPOSES and CORRECTS; the Design System Authority or the conformance steward REVIEWS (never the proposer — the
+     port re-checks); the Design System Authority APPROVES, PUBLISHES and RETIRES (the ports re-check the approver test: a named human, never
+     the proposer, never an agent). Every act human-gated. THE REGISTRY READ (drafts, reviews, the ledger) by the same four. THE PUBLISHED
+     CATALOGUE (what Term and HelpPanel render) by every human role of every context (B80's theme-in-force list, the PLATFORM authorities and
+     administrator) — an agent renders no page. The content lint (dg-lint-3) is B107's governance.design.evaluate. */
+  ...(() => {
+    const P = (role: string): { role: string; atScope: Scope } => ({ role, atScope: 'PLATFORM' });
+    const T = (role: string): { role: string; atScope: Scope } => ({ role, atScope: 'TENANT' });
+    const S = (role: string): { role: string; atScope: Scope } => ({ role, atScope: 'DOMAIN' });
+    const gate: Obligation[] = [{ type: 'human_gate' }];
+    const r = (actionPrefix: string, requiredAnyRole: Array<{ role: string; atScope: Scope }>, obligations?: Obligation[]): Rule =>
+      ({ actionPrefix, exact: true, requiredAnyRole, ...(obligations === undefined ? {} : { obligations }), requiresPurpose: true, maxConsequence: 'C2' });
+    const dsa = [P('design_system_authority')];
+    const contributors = [P('design_system_authority'), P('product_authority'), P('conformance_steward'), P('operations_authority')];
+    const reviewers = [P('design_system_authority'), P('conformance_steward')];
+    const readers = [...contributors, P('platform_admin'), T('branding_authority'), T('tenant_admin'), T('auditor'), T('customer_sponsor'), T('onboarding_authority'), T('implementation_lead'),
+      T('retention_authority'), ...['domain_admin', 'domain_analyst', 'collection_manager', 'decision_owner', 'decision_approver', 'decision_authority', 'executive', 'extraction_manager',
+        'resolution_manager', 'strategy_owner', 'forecast_owner', 'twin_owner', 'simulation_operator', 'knowledge_owner', 'record_authority', 'retention_steward', 'ontology_steward',
+        'risk_owner', 'opportunity_sponsor', 'execution_authority', 'method_steward', 'constraint_steward', 'executive_operator', 'board_member', 'data_steward', 'domain_specialist',
+        'product_analytics_owner', 'privacy_officer', 'product_analyst'].map(S)];
+    return [
+      r('governance.design.term.read', contributors),
+      r('governance.design.term.catalogue.read', readers),
+      r('governance.design.term.propose', contributors, gate),
+      r('governance.design.term.correct', contributors, gate),
+      r('governance.design.term.review', reviewers, gate),
+      r('governance.design.term.approve', dsa, gate),
+      r('governance.design.term.publish', dsa, gate),
+      r('governance.design.term.retire', dsa, gate),
+    ];
+  })(),
+  /* end B81 ct */
   /* B80 clf */
   /* B80 §CL-F (0118_b80_x_clf; PAT-03, UX-21-002/-003). EXACT rules — no `shell` prefix rule exists. A FORM DRAFT is a person's own work in
      progress: every HUMAN role that authors anything may keep one (the identity.self.read list less the agents and the external
