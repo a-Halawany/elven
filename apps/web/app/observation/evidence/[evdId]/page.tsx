@@ -22,7 +22,8 @@ import {
   DefinitionRow, Empty, GovernedButton, LiveStatus, Mono, ScrollBox, SyntheticMarker,
   UnknownNote, badgeRowStyle, cardStyle, fmtBytes, fmtInstant,
 } from '../../../../components/observation';
-import { ErrorNote, Receipt, TruthBadge } from '../../../../components/ui';
+import { ErrorNote, Receipt } from '../../../../components/ui';
+/* B81 ob */ import { ObjectHeader } from '../../../../components/object'; /* end B81 ob */
 
 const AUTHENTICITY_LABEL: Record<string, string> = {
   transport_endpoint: 'Transport endpoint',
@@ -77,14 +78,24 @@ export default function EvidenceDetailPage() {
 
   return (
     <>
-      <h1 style={{ fontSize: 'var(--eye-type-heading-1)', marginBlockStart: 0 }}>
-        Evidence <Mono>{evdId.slice(0, 8)}…</Mono>
-      </h1>
+      {/* B81 ob — the canonical object header (F-P7-E-06): the truth badge, version and lifecycle moved into it (one place, the same grammar) */}
+      <ObjectHeader input={{
+        type: 'EVD', id: String(evd['object_id'] ?? evdId), title: `Evidence ${evdId.slice(0, 8)}…`, version: Number.isInteger(Number(evd['object_version'])) ? Number(evd['object_version']) : null,
+        versionCount: versions.length === 0 ? null : versions.length,
+        latestVersion: versions.length === 0 ? null : Math.max(...versions.map((v) => Number(v['object_version']))),
+        owner: evd['accountable_owner'] === undefined || evd['accountable_owner'] === null ? null : String(evd['accountable_owner']), ownerRole: 'accountable owner',
+        serverState: evd['lifecycle_state'] === undefined ? null : String(evd['lifecycle_state']), truth: evd['truth_state'] === undefined ? null : String(evd['truth_state']),
+        synthetic: evd['synthetic_state'] === true, classification: evd['classification'] === undefined || evd['classification'] === null ? null : String(evd['classification']),
+        time: [{ label: 'Recorded', value: fmtInstant(times['record']) }, { label: 'Observed', value: fmtInstant(times['observation']) }],
+        trust: `integrity recorded ${String(payload['content_digest'] ?? evd['content_digest'] ?? 'not recorded').slice(0, 16)}… · content authenticity ${String(authenticity['content_authenticity'] ?? 'unknown')}`,
+        authority: 'Evidence is admitted by collection under its source contract; no approval exists for evidence.',
+        relationships: source === null ? [] : [{ label: `its source — ${String(source['name'])}`, href: `/observation/sources/${String(source['source_id'])}` }],
+        provenance: [{ label: `${custody.length} custody event(s) — the chain below`, href: null }],
+        receipt: (d['receipt'] as { policyDecisionId: string; auditSeq: number } | undefined) ?? null,
+        effective: d['knownAt'] != null ? { support: 'honoured', asOf: String(d['knownAt']) } : { support: 'immutable', asOf: null },
+      }} version={{ compare: { label: 'Open the version history', anchor: 'history' } }} />
+      {/* end B81 ob */}
       <div style={badgeRowStyle}>
-        <TruthBadge state={String(evd['truth_state'])} />
-        <span style={{ color: 'var(--eye-color-ink-muted)', fontSize: 'var(--eye-type-body-sm)' }}>
-          v{Number(evd['object_version'])} · {String(evd['lifecycle_state'])}
-        </span>
         <SyntheticMarker synthetic={evd['synthetic_state'] === true} />
         {source !== null && (
           <Link href={`/observation/sources/${String(source['source_id'])}`} style={{ color: 'var(--eye-color-accent-default)' }}>
