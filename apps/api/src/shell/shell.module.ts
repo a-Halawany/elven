@@ -6,6 +6,7 @@
 import { Module } from '@nestjs/common';
 import { DraftsModule } from './drafts/drafts.module.js';
 import { NavigationModule } from './navigation/navigation.module.js';
+/* B81 dg */ import { DegradedModule } from './degraded/degraded.module.js'; /* end B81 dg */
 
-@Module({ imports: [DraftsModule, NavigationModule] })
+@Module({ imports: [DraftsModule, NavigationModule, /* B81 dg */ DegradedModule /* end B81 dg */] })
 export class ShellModule {}

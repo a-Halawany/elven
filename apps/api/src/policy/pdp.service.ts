@@ -3114,6 +3114,34 @@ const BUNDLE_V1: Rule[] = [
     ];
   })(),
   /* end B80 sh */
+  /* B81 dg */
+  /* B81 §DG (0119_b81_x_dg; F-P7-E-19: HX-16, REL-12, UX-ADR-018, PAT-30). EXACT rules — no earlier rule is a prefix of shell.degraded.* (no
+     `shell` prefix rule exists). THE STATE (`shell.degraded.read`: the platform's and the domain's contracts with their live signals, the
+     undeclared degraded dependencies, the unavailable functions in force — what every page's banner and disabled actions read) by every HUMAN
+     role at its own scope (B80 §SH's list), audited. THE DECLARATION (`shell.degraded.contract.declare`): the operations authority (PLATFORM)
+     and the domain administrator (DOMAIN) — human-gated; the port re-checks the role at the dependency's scope (a platform dependency is the
+     operations authority's alone), the owner and the version. THE EXIT (`shell.degraded.exit`): a contract's OWNER may be any named person of
+     the scope, so every human role reaches the route — human-gated; the PORT admits only the owner and only once the signal reads recovered.
+     No agent role appears here. */
+  ...((): Rule[] => {
+    const platform = ['platform_admin', 'commercial_authority', 'product_authority', 'design_system_authority', 'independent_assurance', 'operations_authority', 'conformance_steward']
+      .map((role) => ({ role, atScope: 'PLATFORM' as Scope }));
+    const tenant = ['tenant_admin', 'auditor', 'retention_authority', 'branding_authority', 'customer_sponsor', 'implementation_lead', 'onboarding_authority']
+      .map((role) => ({ role, atScope: 'TENANT' as Scope }));
+    const domain = ['domain_admin', 'domain_analyst', 'collection_manager', 'decision_owner', 'decision_approver', 'decision_authority', 'executive', 'executive_operator',
+      'board_member', 'extraction_manager', 'resolution_manager', 'strategy_owner', 'forecast_owner', 'twin_owner', 'simulation_operator', 'knowledge_owner',
+      'record_authority', 'retention_steward', 'ontology_steward', 'risk_owner', 'opportunity_sponsor', 'execution_authority', 'method_steward', 'constraint_steward',
+      'data_steward', 'domain_specialist', 'product_analytics_owner', 'privacy_officer', 'product_analyst', 'enablement_assessor', 'support_engineer']
+      .map((role) => ({ role, atScope: 'DOMAIN' as Scope }));
+    const people = [...platform, ...tenant, ...domain];
+    const gate: Obligation[] = [{ type: 'human_gate' }];
+    return [
+      { actionPrefix: 'shell.degraded.read', exact: true, requiredAnyRole: people, obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'shell.degraded.contract.declare', exact: true, requiredAnyRole: [{ role: 'operations_authority', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }], obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'shell.degraded.exit', exact: true, requiredAnyRole: people, obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+    ];
+  })(),
+  /* end B81 dg */
 ];
 
 /* B107 conformance */
