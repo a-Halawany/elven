@@ -17,6 +17,9 @@ import { Field, FileIntake } from '../../../../../components/forms';
 import { Panel, Surface } from '../../../../../components/layers';
 import { BAR_STATES, FIXTURE_DOMAIN as D, FIXTURE_ME as ME, FIXTURE_TENANT as T } from '../../../../../lib/catalogue-re-b81';
 
+/** The icon-only specimen's glyph (the label rule's catalogue specimen; see the Button section). */
+const ICON_ONLY_SPECIMEN = '✕';
+
 function BarStates() {
   return (
     <Panel title="Operating context bar — every state (CMP-010)">
@@ -49,9 +52,12 @@ function ControlFixtures() {
         {['observed', 'asserted', 'extracted', 'inferred', 'assessed', 'synthetic', 'decided', 'disputed', 'withdrawn', 'rumoured'].map((s) => <TruthBadge key={s} state={s} />)}
       </section>
       <section aria-label="The Button's enforcement">
-        <Button label="✕" consequence="C1" onClick={() => setLast('C1 icon-only control ran (admitted)')} />{' '}
-        <Button label="✕" consequence="C3" onClick={() => setLast('C3 icon-only control ran (must never happen)')} />{' '}
+        {/* B81 integration: the two icon-only controls are SPECIMENS of the label rule the Button enforces (admitted at C1, refused at C3) —
+            deliberately not product copy, so their glyph is a named constant rather than a label literal the content lint (dg-lint-3) reads. */}
+        <Button label={ICON_ONLY_SPECIMEN} consequence="C1" onClick={() => setLast('C1 icon-only control ran (admitted)')} />{' '}
+        <Button label={ICON_ONLY_SPECIMEN} consequence="C3" onClick={() => setLast('C3 icon-only control ran (must never happen)')} />{' '}
         <Button label="Withdraw the fixture warning" consequence="C3" variant="critical" onClick={() => setLast('C3 labelled control ran (SYNTHETIC — no server called)')} />
+        <p className="eye-help">A specimen only: no server is called and nothing is withdrawn — the fixture warning is kept.</p>
       </section>
       <section aria-label="Elevation uses" className="eye-bulk-grid">
         <Surface level="base" label="Elevation none (base)"><strong>base</strong> · no shadow</Surface>

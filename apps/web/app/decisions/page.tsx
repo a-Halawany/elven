@@ -294,7 +294,9 @@ export default function DecisionsPage() {
                     digest={v.version_digest ?? `draft:${v.version}`} eligibility={{ can: true, reason: null, role: 'decision_owner', basis: 'the package owner' }} consequence={consequenceStated('decision.package.withdraw')}
                     rationale={{ value: withdrawReason, onChange: setWithdrawReason, min: 8, label: 'Withdrawal reason' }}
                     actionLabel="Withdraw the package" pendingLabel="withdrawing" variant="critical"
-                    onRun={async () => { const ok = await act(() => authorityApi.withdraw(scope, open.package_id, withdrawReason.trim())); if (!ok) throw new Error('refused'); setWithdrawReason(''); void openPackage(open.package_id); }} />
+                    onRun={async () => { const ok = await act(() => authorityApi.withdraw(scope, open.package_id, withdrawReason.trim())); if (!ok) throw new Error('refused'); setWithdrawReason(''); void openPackage(open.package_id); }}>
+                    <p className="eye-help">Withdrawing ends this package&apos;s review and cannot be undone; its versions, approvals and this reason are kept on the record.</p>
+                  </CommandReview>
                 ) : null}
                 {/* end B81 ha */}
                 {/* B34 (0090) gates: the Commit lives in the gate below — Preview first; the commit carries its digest */}
