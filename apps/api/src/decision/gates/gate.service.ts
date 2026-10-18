@@ -33,15 +33,31 @@ function instantOrNull(v: unknown, field: string, correlationId: string): string
   return new Date(v as string).toISOString();
 }
 
-export interface GateIntake { rationale: string; nextReviewAt: string | null; infoRequest: string | null; packageDigest: string | null }
+export interface GateIntake { rationale: string; nextReviewAt: string | null; infoRequest: string | null; packageDigest: string | null;
+  /* B81 ha: the defer's conditions and owner (PAT-08; 0119 §HA) — absent on every other act and when not stated */ conditions?: string[]; owner?: string }
 export function validateGateIntake(act: GateAct, m: Row, correlationId: string): GateIntake {
   if (typeof m['rationale'] !== 'string') bad(correlationId, 'gate rejected (rationale): a gate act states its rationale (8 to 4000 characters)');
   const nextReviewAt = instantOrNull(m['nextReviewAt'], 'nextReviewAt', correlationId);
   if ((act === 'defer' || act === 'request_information') && nextReviewAt === null) bad(correlationId, `gate rejected (next_review): a ${act.replace('_', ' ')} names its next review, in the future and within 180 days`);
   const packageDigest = str(m['informationPackageDigest']);
   if (act === 'ready' && (packageDigest === null || !/^[0-9a-f]{64}$/.test(packageDigest))) bad(correlationId, 'gate rejected (stale_package): decision-ready names the 64-hex digest of the information package read');
+  /* B81 ha: the shape only (an array of strings; a principal id) — the port judges the rest (count, length, duplicates, the owner's standing) */
+  const rawConditions = m['conditions']; const rawOwner = m['owner'];
+  if (act !== 'defer' && ((rawConditions !== undefined && rawConditions !== null) || (rawOwner !== undefined && rawOwner !== null))) {
+    bad(correlationId, `gate rejected (conditions): conditions and an owner are recorded on a defer only, not on a ${act.replace('_', ' ')}`);
+  }
+  if (rawConditions !== undefined && rawConditions !== null && (!Array.isArray(rawConditions) || rawConditions.some((c) => typeof c !== 'string'))) {
+    bad(correlationId, 'gate rejected (conditions): the conditions of a defer are a list of statements');
+  }
+  if (rawOwner !== undefined && rawOwner !== null && (typeof rawOwner !== 'string' || !/^[0-9a-f-]{36}$/.test(rawOwner))) {
+    bad(correlationId, 'gate rejected (owner): the owner of the next review is a named member (a principal id)');
+  }
+  const conditions = act === 'defer' && Array.isArray(rawConditions) ? (rawConditions as string[]) : null;
+  const owner = act === 'defer' && typeof rawOwner === 'string' ? rawOwner : null;
+  /* end B81 ha */
   return { rationale: m['rationale'] as string, nextReviewAt: act === 'defer' || act === 'request_information' ? nextReviewAt : null,
-           infoRequest: act === 'request_information' ? str(m['infoRequest']) : null, packageDigest: act === 'ready' ? packageDigest : null };
+           infoRequest: act === 'request_information' ? str(m['infoRequest']) : null, packageDigest: act === 'ready' ? packageDigest : null,
+           /* B81 ha */ ...(conditions === null ? {} : { conditions }), ...(owner === null ? {} : { owner }) /* end B81 ha */ };
 }
 
 export interface OverrideIntake { kind: 'normal' | 'emergency'; rationale: string }
@@ -81,7 +97,7 @@ export class GateService {
   async act(cap: GateActWrites, ctx: ScopeContext, packageId: string, version: number, act: GateAct, m: Row, actor: string, correlationId: string): Promise<Row> {
     const i = validateGateIntake(act, m, correlationId);
     return cap.gateAct({ actionId: newId(), tenantId: ctx.tenantId as string, domainId: ctx.domainId as string, packageId, version, act, rationale: i.rationale, nextReviewAt: i.nextReviewAt,
-                         infoRequest: i.infoRequest, packageDigest: i.packageDigest, actor, eventId: newId(), correlationId });
+                         infoRequest: i.infoRequest, packageDigest: i.packageDigest, actor, eventId: newId(), correlationId, /* B81 ha */ conditions: i.conditions ?? null, owner: i.owner ?? null /* end B81 ha */ });
   }
 
   async grantOverride(cap: OverrideWrites, ctx: ScopeContext, packageId: string, version: number, m: Row, actor: string, correlationId: string): Promise<Row> {
