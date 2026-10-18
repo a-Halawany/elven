@@ -25,6 +25,11 @@ import { Digest } from '../../../../components/text';
 import { ErrorNote } from '../../../../components/ui';
 import { Empty, fmtInstant } from '../../../../components/observation';
 
+/** B81 integration: ONE h1 per rendering (lib/layout-b81's REG-03 ratchet) — every branch (not opened, loading, the object) titles
+ *  the page through this one element. */
+function PageTitle({ children }: { children: import('react').ReactNode }) { return <h1>{children}</h1>; }
+
+
 type Err = { code: string; message: string; correlationId: string } | null;
 type Receipt = { policyDecisionId: string; auditSeq: number };
 
@@ -74,16 +79,16 @@ function PackageObjectView() {
   }, [scope, id, shown?.version]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (id === null || (vParam !== null && asked === null)) {
-    return <><h1>Decision package</h1><p role="alert"><strong>Not opened.</strong> {LINK_OUTCOME_WORDS.invalid}</p><p><Link href="/decisions">Open the decision packages instead</Link></p></>;
+    return <><PageTitle>Decision package</PageTitle><p role="alert"><strong>Not opened.</strong> {LINK_OUTCOME_WORDS.invalid}</p><p><Link href="/decisions">Open the decision packages instead</Link></p></>;
   }
   if (err !== null) {
-    return <><h1>Decision package</h1><p><strong>Not opened.</strong> {LINK_OUTCOME_WORDS.unavailable}</p><ErrorNote error={err} /><p><Link href="/decisions">Open the decision packages instead</Link> (the nearest safe state).</p></>;
+    return <><PageTitle>Decision package</PageTitle><p><strong>Not opened.</strong> {LINK_OUTCOME_WORDS.unavailable}</p><ErrorNote error={err} /><p><Link href="/decisions">Open the decision packages instead</Link> (the nearest safe state).</p></>;
   }
   if (pkg === null) return <Empty>reading the decision package…</Empty>;
   if (shown === null) {
     return (
       <>
-        <h1>{pkg.title}</h1>
+        <PageTitle>{pkg.title}</PageTitle>
         <p role="alert"><strong>Not opened.</strong> The link names version {String(shownNumber)}, which this package does not record ({versions.length} version(s) are recorded). No other version is shown in its place.</p>
         <p><Link href={`/decisions/packages/${id}`}>Open the package&apos;s current version instead</Link></p>
       </>

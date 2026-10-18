@@ -26,6 +26,11 @@ import { Select } from '../../../../components/forms';
 import { ErrorNote } from '../../../../components/ui';
 import { Empty, fmtInstant } from '../../../../components/observation';
 
+/** B81 integration: ONE h1 per rendering (lib/layout-b81's REG-03 ratchet) — every branch (not opened, loading, the object) titles
+ *  the page through this one element. */
+function PageTitle({ children }: { children: import('react').ReactNode }) { return <h1>{children}</h1>; }
+
+
 type Err = { code: string; message: string; correlationId: string } | null;
 type Receipt = { policyDecisionId: string; auditSeq: number };
 interface Compared { before: DiffSide; after: DiffSide; problems: string[] }
@@ -65,12 +70,12 @@ export default function WarningObjectPage() {
   }, [points]);
 
   if (id === null) {
-    return <><h1>Warning</h1><p role="alert"><strong>Not opened.</strong> {LINK_OUTCOME_WORDS.invalid}</p><p><Link href="/prediction/warnings">Open the current warnings instead</Link></p></>;
+    return <><PageTitle>Warning</PageTitle><p role="alert"><strong>Not opened.</strong> {LINK_OUTCOME_WORDS.invalid}</p><p><Link href="/prediction/warnings">Open the current warnings instead</Link></p></>;
   }
   if (err !== null) {
     return (
       <>
-        <h1>Warning</h1>
+        <PageTitle>Warning</PageTitle>
         <p><strong>Not opened.</strong> {LINK_OUTCOME_WORDS.unavailable}</p>
         <ErrorNote error={err} />
         <p><Link href="/prediction/warnings">Open the current warnings instead</Link> (the nearest safe state).</p>

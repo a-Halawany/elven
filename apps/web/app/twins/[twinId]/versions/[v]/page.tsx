@@ -24,6 +24,11 @@ import { Select } from '../../../../../components/forms';
 import { ErrorNote } from '../../../../../components/ui';
 import { Empty, fmtInstant } from '../../../../../components/observation';
 
+/** B81 integration: ONE h1 per rendering (lib/layout-b81's REG-03 ratchet) — every branch (not opened, loading, the object) titles
+ *  the page through this one element. */
+function PageTitle({ children }: { children: import('react').ReactNode }) { return <h1>{children}</h1>; }
+
+
 type Err = { code: string; message: string; correlationId: string } | null;
 type Receipt = { policyDecisionId: string; auditSeq: number };
 interface ServerCompare { same: number; only_in_a: string[]; only_in_b: string[]; differing: Array<{ key: string; changed: string[] }> }
@@ -51,10 +56,10 @@ export default function TwinVersionPage() {
   }, [scope, twinId, asked]);
 
   if (twinId === null || asked === null) {
-    return <><h1>Twin snapshot</h1><p role="alert"><strong>Not opened.</strong> {LINK_OUTCOME_WORDS.invalid} A twin snapshot is addressed by its twin and its version number.</p><p><Link href="/twins">Open the twins instead</Link></p></>;
+    return <><PageTitle>Twin snapshot</PageTitle><p role="alert"><strong>Not opened.</strong> {LINK_OUTCOME_WORDS.invalid} A twin snapshot is addressed by its twin and its version number.</p><p><Link href="/twins">Open the twins instead</Link></p></>;
   }
   if (err !== null) {
-    return <><h1>Twin snapshot</h1><p><strong>Not opened.</strong> {LINK_OUTCOME_WORDS.unavailable}</p><ErrorNote error={err} /><p><Link href="/twins">Open the twins instead</Link> (the nearest safe state).</p></>;
+    return <><PageTitle>Twin snapshot</PageTitle><p><strong>Not opened.</strong> {LINK_OUTCOME_WORDS.unavailable}</p><ErrorNote error={err} /><p><Link href="/twins">Open the twins instead</Link> (the nearest safe state).</p></>;
   }
   if (twin === null) return <Empty>reading the twin…</Empty>;
 
@@ -65,7 +70,7 @@ export default function TwinVersionPage() {
   if (v === null) {
     return (
       <>
-        <h1>{twin.title}</h1>
+        <PageTitle>{twin.title}</PageTitle>
         <p role="alert"><strong>Not opened.</strong> {asked === 'latest' ? 'The twin records no version yet.' : `The link names version ${String(asked)}, which this twin does not record (${versions.length} version(s) are recorded).`} No other version is shown in its place.</p>
         {latest === null ? null : <p><Link href={`/twins/${twinId}/versions/${latest}`}>Open the latest recorded version (v{latest}) instead</Link></p>}
       </>

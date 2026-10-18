@@ -21,6 +21,11 @@ import { ErrorNote } from '../../../../components/ui';
 import { DefinitionRow, Empty, Mono, UnknownNote, fmtInstant } from '../../../../components/observation';
 import { ControlsLine, FitnessFlag, ValidationBadge } from '../page';
 
+/** B81 integration: ONE h1 per rendering (lib/layout-b81's REG-03 ratchet) — every branch (not opened, loading, the object) titles
+ *  the page through this one element. */
+function PageTitle({ children }: { children: import('react').ReactNode }) { return <h1>{children}</h1>; }
+
+
 type Err = { code: string; message: string; correlationId: string } | null;
 type Receipt = { policyDecisionId: string; auditSeq: number };
 const num = (v: unknown): string => { const n = Number(v); return Number.isFinite(n) ? n.toFixed(3).replace(/\.?0+$/, '') : '—'; };
@@ -44,8 +49,8 @@ export default function ForecastObjectPage() {
     })();
   }, [scope, id]);
 
-  if (id === null) return <><h1>Forecast</h1><p role="alert"><strong>Not opened.</strong> {LINK_OUTCOME_WORDS.invalid}</p><p><Link href="/prediction/forecasts">Open the forecasts instead</Link></p></>;
-  if (err !== null) return <><h1>Forecast</h1><p><strong>Not opened.</strong> {LINK_OUTCOME_WORDS.unavailable}</p><ErrorNote error={err} /><p><Link href="/prediction/forecasts">Open the forecasts instead</Link> (the nearest safe state).</p></>;
+  if (id === null) return <><PageTitle>Forecast</PageTitle><p role="alert"><strong>Not opened.</strong> {LINK_OUTCOME_WORDS.invalid}</p><p><Link href="/prediction/forecasts">Open the forecasts instead</Link></p></>;
+  if (err !== null) return <><PageTitle>Forecast</PageTitle><p><strong>Not opened.</strong> {LINK_OUTCOME_WORDS.unavailable}</p><ErrorNote error={err} /><p><Link href="/prediction/forecasts">Open the forecasts instead</Link> (the nearest safe state).</p></>;
   if (f === null) return <Empty>reading the forecast…</Empty>;
 
   const input: ObjectHeaderInput = {
