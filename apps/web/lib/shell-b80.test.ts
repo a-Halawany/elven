@@ -230,7 +230,10 @@ describe('the navigation guard (PR-05-003, UX-09-004, UX-11-004, UX-15-004, CMP-
       /* B81 re: the saved table views a place-save carries (pure) */ '../lib/tableview-b81',
       /* B81 re: the status context's leaf module (it provides nothing but the context) */ '../lib/shell-status-b81',
       /* B81 integration (§LY-G): the density switch, the rail toggle, the compact navigation — their only write is the person's OWN presentation
-         preference (shell.preferences.save, not human-gated, like the navigation save); no business write; the shell's own source still calls none */ './layout']);
+         preference (shell.preferences.save, not human-gated, like the navigation save); no business write; the shell's own source still calls none */ './layout',
+      /* B81 si: the palette's modes and the deterministic interpreter (a PURE lib: it imports only the seams and §HA's pure hand-off, calls no
+         server and runs no command — lib/intent-b81.test.ts asserts its imports and that it has no fetch / call); the federated reads, the
+         saved search and the intent record run on the search page, never in the shell */ '../lib/intent-b81']);
     for (const [f, src] of files) {
       for (const m of src.matchAll(/from '([^']+)'/g)) expect(allowed.has(m[1]!), `${f} imports ${m[1]}`).toBe(true);
       expect(src, f).not.toMatch(/GovernedButton|\bcall\(|fetch\(|method:\s*'POST'/);

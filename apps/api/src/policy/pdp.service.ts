@@ -3233,6 +3233,33 @@ const BUNDLE_V1: Rule[] = [
     ];
   })(),
   /* end B81 lym */
+  /* B81 si */
+  /* B81 §SI (0119_b81_x_si; F-P7-E-02: UX-13-002, UX-13-004, UX-13-005, PAT-15). EXACT rules — no earlier rule is a prefix of shell.search.* or
+     shell.intent.* (no `shell` prefix rule exists). A SAVED SEARCH (the exact result set of the person's own governed reads, with its policy
+     version and cutoff) and an INTENT RECORD (what was typed, how the deterministic interpreter read it, the alternatives offered, the
+     clarification and the person's choice) are the principal's OWN records: saved, recorded and read by the same HUMAN roles as B80 §SH's
+     navigation state (the lists copied, not shared — each part's block stands alone). The ports re-check that the actor is the bound
+     principal AND an active human, and that the context is a DOMAIN (search is a domain's reads). Not human-gated: recording what one
+     searched for or how one's words were read is a personal record, never a consequential act — a command found by the palette is only a
+     hand-off to its page's Command Review, whose own governed, human-gated action decides. */
+  ...((): Rule[] => {
+    const platform = ['platform_admin', 'commercial_authority', 'product_authority', 'design_system_authority', 'independent_assurance', 'operations_authority', 'conformance_steward']
+      .map((role) => ({ role, atScope: 'PLATFORM' as Scope }));
+    const tenant = ['tenant_admin', 'auditor', 'retention_authority', 'branding_authority', 'customer_sponsor', 'implementation_lead', 'onboarding_authority']
+      .map((role) => ({ role, atScope: 'TENANT' as Scope }));
+    const domain = ['domain_admin', 'domain_analyst', 'collection_manager', 'decision_owner', 'decision_approver', 'decision_authority', 'executive', 'executive_operator',
+      'board_member', 'extraction_manager', 'resolution_manager', 'strategy_owner', 'forecast_owner', 'twin_owner', 'simulation_operator', 'knowledge_owner',
+      'record_authority', 'retention_steward', 'ontology_steward', 'risk_owner', 'opportunity_sponsor', 'execution_authority', 'method_steward', 'constraint_steward',
+      'data_steward', 'domain_specialist', 'product_analytics_owner', 'privacy_officer', 'product_analyst', 'enablement_assessor', 'support_engineer']
+      .map((role) => ({ role, atScope: 'DOMAIN' as Scope }));
+    const people = [...platform, ...tenant, ...domain];
+    return [
+      { actionPrefix: 'shell.search.save', exact: true, requiredAnyRole: people, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'shell.search.read', exact: true, requiredAnyRole: people, obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'shell.intent.record', exact: true, requiredAnyRole: people, requiresPurpose: true, maxConsequence: 'C2' },
+    ];
+  })(),
+  /* end B81 si */
 ];
 
 /* B107 conformance */

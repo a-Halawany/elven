@@ -867,3 +867,36 @@ button.eye-cmdenv-row[aria-pressed="true"] { border-color: var(--eye-color-accen
   .eye-cmdenv-frozen, [data-diverged="true"], .eye-presentation-banner, .eye-presentation-withheld { border-color: CanvasText; }
 }
 /* end B81 lym */
+/* B81 si — the palette's four modes (Go to · Search · Ask · Command) and the federated search page. Tokens only; logical properties; the
+   mode is said in words and by its tab, never by colour alone; a command row is drawn apart (it opens a review, it never runs). */
+/* the palette inside the library's Dialog: never wider than the dialog's body (no sideways scroll at any width or at 200% zoom) */
+.eye-dialog-body > .eye-palette { inline-size: auto; max-inline-size: 100%; box-sizing: border-box; }
+.eye-palette-modes { display: flex; flex-wrap: wrap; gap: var(--eye-space-4); border-block-end: 1px solid var(--eye-color-border-default); margin-block-end: var(--eye-space-8); }
+.eye-palette-mode {
+  min-block-size: var(--eye-size-control-md); padding-inline: var(--eye-space-12); border: 0; border-block-end: 3px solid transparent; background: none;
+  color: var(--eye-color-ink-default); font: inherit; cursor: pointer;
+}
+.eye-palette-mode[aria-selected="true"] { border-block-end-color: var(--eye-color-accent-strong); color: var(--eye-color-accent-strong); font-weight: 650; }
+.eye-palette-mode:focus-visible { outline: 2px solid var(--eye-color-focus); outline-offset: 2px; }
+.eye-palette-prefix { font-family: var(--eye-font-mono); color: var(--eye-color-ink-muted); }
+.eye-palette-panel { display: grid; gap: var(--eye-space-8); min-inline-size: 0; }
+.eye-palette-panel .eye-palette-input { box-sizing: border-box; max-inline-size: 100%; }
+.eye-palette-option bdi { overflow-wrap: anywhere; }
+.eye-palette-reading { margin: 0; min-block-size: 1.25em; }
+.eye-palette-reason { margin: 0; padding: var(--eye-space-8); border-inline-start: 3px solid var(--eye-color-warning); background: var(--eye-color-surface-secondary); }
+.eye-palette-kind { font-size: var(--eye-type-label-sm); font-weight: 650; padding-inline: var(--eye-space-4); border: 1px solid var(--eye-color-border-default); border-radius: var(--eye-radius-sm); }
+.eye-palette-option[data-kind="command"] { border-inline-start-style: dashed; border-inline-start-color: var(--eye-color-border-strong); }
+.eye-palette-option[data-kind="command"] .eye-palette-kind { border-style: dashed; }
+.eye-search-clarify { border: 1px solid var(--eye-color-border-strong); border-radius: var(--eye-radius-md); padding: var(--eye-space-12); }
+.eye-search-clarify fieldset { border: 0; margin: 0; padding: 0; display: grid; gap: var(--eye-space-4); }
+.eye-search-hits { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--eye-space-8); }
+.eye-search-hit { border: 1px solid var(--eye-color-border-default); border-radius: var(--eye-radius-md); padding: var(--eye-space-8) var(--eye-space-12); }
+.eye-search-legs { display: flex; flex-wrap: wrap; gap: var(--eye-space-8); margin: 0; padding: 0; list-style: none; }
+.eye-search-legs li { border: 1px solid var(--eye-color-border-default); border-radius: var(--eye-radius-sm); padding-inline: var(--eye-space-8); }
+.eye-search-legs li[data-state="refused"], .eye-search-legs li[data-state="failed"] { border-style: dashed; }
+.eye-search-columns { display: grid; gap: var(--eye-space-16); grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); }
+@media (forced-colors: active) {
+  .eye-palette-mode[aria-selected="true"] { border-block-end-color: Highlight; }
+  .eye-palette-option[data-kind="command"], .eye-search-hit, .eye-search-clarify { border-color: CanvasText; }
+}
+/* end B81 si */

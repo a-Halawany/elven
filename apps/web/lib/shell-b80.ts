@@ -26,6 +26,7 @@
 import { call, type ApiResult } from './api';
 import { t, defaultLocale, type Locale } from './i18n';
 import { WORKSPACE_NAV_NAMES, type NavItem, type ShellScope, type WorkspaceKey, type WorkspaceSpec } from './b80-seams';
+/* B81 si: the evolved guard's rule (pure) */ import { assertNoExecution } from './authority-b81'; /* end B81 si */
 
 /* ═════════════════════════════ THE WORKSPACE REGISTRY (WS-01…WS-20) ═════════════════════════════ */
 export type WorkspaceId = `WS-${'01' | '02' | '03' | '04' | '05' | '06' | '07' | '08' | '09' | '10' | '11' | '12' | '13' | '14' | '15' | '16' | '17' | '18' | '19' | '20'}`;
@@ -504,11 +505,17 @@ export function paletteEntries(locale: Locale = defaultLocale): PaletteEntry[] {
   for (const e of WORKSPACE_REGISTRY) for (const r of e.routes) add(r, e.title, `${e.id} · ${e.purpose}`);
   return out;
 }
-/** The guard: anything but a navigation is refused — the palette hands off to the page (whose own governed control acts), it never executes. */
+/* B81 si — THE GUARD EVOLVED (UX-13-004, UX-ADR-008): the palette EXECUTES NOTHING. B80's rule was "navigation only"; B81's palette also
+   searches, reads intent and finds commands — so an entry navigates (navigate · search · ask · goto) or HANDS OFF a command to its page's
+   Command Review (an in-app href naming the action under `review=`, §HA's commandHandoff), and no entry carries a function. §HA's
+   assertNoExecution is the rule; this name stays for B80's callers and its words keep "navigation only" for what the palette does itself. */
+/** The guard: an entry navigates, or hands a command off to the page's Command Review — the palette itself executes nothing. */
 export function assertNavigationOnly(entries: ReadonlyArray<{ kind: string }>): void {
-  const bad = entries.find((e) => e.kind !== 'navigate');
-  if (bad !== undefined) throw new Error(`the shell offers navigation only; an entry of kind "${bad.kind}" is not admitted (execution stays the page's governed control)`);
+  try { assertNoExecution(entries as unknown as ReadonlyArray<Record<string, unknown>>); } catch (e) {
+    throw new Error(`the shell offers navigation only — a command is handed off to its page's Command Review, never executed here: ${e instanceof Error ? e.message : String(e)}`);
+  }
 }
+/* end B81 si */
 /** The palette's filter: every word of the query in the label or the detail (case-insensitive), label matches first, at most `limit`. */
 export function filterPalette(entries: readonly PaletteEntry[], query: string, limit = 12): PaletteEntry[] {
   const ws = query.toLowerCase().split(/\s+/).filter((w) => w !== '');

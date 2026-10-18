@@ -15,7 +15,8 @@
  *   HistoryNavigator  the tab's own back stack, the recent places, the last verified location, the person's SAVED place (the server's —
  *                     read when the panel opens, saved only when the person asks: `shell.navigation.save`), a copyable link. Rendered only
  *                     while open, so nothing of it competes with a page's own names.
- *   CommandPalette    Ctrl/⌘+K: navigation ONLY (B81 adds search and intent) — it hands off to the page, whose governed control acts.
+ *   CommandPalette    Ctrl/⌘+K: B81 §SI's modes — Go to · Search · Ask · Command; it navigates or hands a command off to its page's Command
+ *                     Review — it executes nothing (the page's governed control acts).
  *
  * THE BOUNDARY (PR-05-003, UX-09-004, UX-11-004, UX-15-004): the shell READS (identity.self.read, shell.navigation.read, prediction.read) and
  * writes nothing but the person's own navigation state when asked; navigation, dismissal and a link change presentation and focus only.
@@ -29,7 +30,10 @@ import { getSession, health, setSession } from '../lib/api';
 import { whoAmI, type Me } from '../lib/observation';
 import { clearWorkingDomain, readWorkingDomain, workingDomainFor, type WorkingDomain } from '../lib/working-domain';
 import { t, defaultLocale } from '../lib/i18n';
-import type { NavItem, ShellBase, WorkspaceKey, WorkspaceSpec } from '../lib/b80-seams';
+import type { NavItem, ShellBase, /* B81 si */ ShellScope, /* end B81 si */ WorkspaceKey, WorkspaceSpec } from '../lib/b80-seams';
+/* B81 si: the palette's modes and the deterministic interpreter's reading (pure — it calls nothing) */
+import { MODE_SPEC, PALETTE_MODES, interpret, modeItems, parseModePrefix, previewLine, type PaletteMode } from '../lib/intent-b81';
+/* end B81 si */
 import {
   EMPTY_HISTORY, activeHref, assertNavigationOnly, breadcrumbOf, decodeReturnToken, filterPalette, historyBack, historyForward, historyVerify,
   historyVisit, lastVerifiedLocation, movePaletteIndex, nextTabIndex, paletteEntries, parseHistory, readNavigation, safeLocation, saveNavigation,
@@ -293,9 +297,9 @@ export function AppShell({ workspace, children, provide, adapt, slots }: AppShel
         {adapted.banner}
         <span className="eye-shell-end">
           {/* B81 integration (§LY-G) */}<DensitySwitch compact /><RailToggle />{/* end B81 integration */}
-          <button type="button" className="eye-link-button" aria-haspopup="dialog" aria-keyshortcuts="Control+K Meta+K" title="Go to a place (Ctrl+K / ⌘K) — navigation only" onClick={() => setPaletteOpen(true)}>
-            Go to…
-          </button>
+          {/* B81 si: the palette's four modes — nothing runs from it */}<button type="button" className="eye-link-button" aria-haspopup="dialog" aria-keyshortcuts="Control+K Meta+K" title="Go to a place, search, ask or find a command (Ctrl+K / ⌘K) — nothing runs from the palette" onClick={() => setPaletteOpen(true)}>
+            Go to or search…
+          </button>{/* end B81 si */}
           <button type="button" className="eye-link-button" onClick={signOut}>{platform ? t('shell.logout', defaultLocale) : 'Sign out'}</button>
         </span>
       </header>
@@ -326,7 +330,7 @@ export function AppShell({ workspace, children, provide, adapt, slots }: AppShel
       </div>
       {/* B81 integration (§LY-G): the compact navigation — a DIRECT child of .eye-shell (the rail yields to it only below 640 px) */}
       <BottomNavigation spec={spec} nav={nav} pathname={pathname} />
-      {paletteOpen && <CommandPalette entries={paletteEntries()} current={pathname} onNavigate={navigate} onClose={() => setPaletteOpen(false)} />}
+      {paletteOpen && <CommandPalette entries={paletteEntries()} current={pathname} onNavigate={navigate} onClose={() => setPaletteOpen(false)} /* B81 si */ scope={scope} /* end B81 si */ />}
     </div>
     </PreferencesScope>
   );
@@ -517,36 +521,88 @@ export function HistoryNavigator({ history, current, scope, workspace, onGo }: {
   );
 }
 
-/** THE COMMAND PALETTE (CMP-015 at B80): navigation only; the active option follows the arrows; Escape closes (the library's Dialog, §CL-D). */
-export function CommandPalette({ entries, current, onNavigate, onClose }: { entries: PaletteEntry[]; current: string; onNavigate: (e: PaletteEntry) => void; onClose: () => void }) {
+/* B81 si — THE COMMAND PALETTE'S MODES (F-P7-E-02: UX-13-001, UX-13-003, UX-13-004, UX-13-005; B80's CMP-015 kept): Go to · Search · Ask ·
+   Command — four visibly and behaviourally distinct modes, chosen by the person (the tabs, or a typed prefix — `/` Search, `?` Ask, `>`
+   Command — said as the switch it is, never inferred silently). Go to navigates (B80's entries); Search hands the words as typed to the
+   federated search page (the governed reads run THERE, each its own audited read); Ask shows the deterministic interpreter's reading FIRST
+   (lib/intent-b81 — no model) and hands it to that page, where the reading is checked against what the person may see and an ambiguity
+   asks with nothing preselected; Command finds a command and HANDS IT OFF to its page's Command Review (§HA, `review=`). The palette
+   EXECUTES NOTHING and calls nothing: every item is checked by the evolved guard (lib/shell-b80 assertNavigationOnly → §HA's
+   assertNoExecution) and every pick is a navigation. The props contract is B80's, the additions optional (the compatibility gate). */
+type PaletteScope = ShellScope | null;
+type PaletteRow = { kind: string; href: string; label: string; detail: string; current: boolean };
+const KIND_WORD: Readonly<Record<string, string>> = { navigate: 'Go to', search: 'Search', ask: 'Ask', command: 'Command review' };
+/** THE COMMAND PALETTE (CMP-015; B81 §SI's modes): it navigates or hands off — nothing runs here; Escape closes (the library's Dialog, §CL-D). */
+export function CommandPalette({ entries, current, onNavigate, onClose, scope, initialMode }: { entries: PaletteEntry[]; current: string; onNavigate: (e: PaletteEntry) => void; onClose: () => void; scope?: PaletteScope; initialMode?: PaletteMode }) {
   assertNavigationOnly(entries);
+  const [mode, setMode] = useState<PaletteMode>(initialMode ?? 'goto');
   const [q, setQ] = useState('');
   const [index, setIndex] = useState(0);
-  const shown = filterPalette(entries, q);
-  const onKey = (e: ReactKeyboardEvent<HTMLInputElement>) => {
-    if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) { e.preventDefault(); setIndex((i) => movePaletteIndex(i, e.key, shown.length)); }
-    else if (e.key === 'Enter') { e.preventDefault(); const pick = shown[Math.min(index, shown.length - 1)]; if (pick !== undefined) onNavigate(pick); }
+  const [switched, setSwitched] = useState<string | null>(null);
+  const tabs = useRef<Array<HTMLButtonElement | null>>([]);
+  const inDomain = scope !== undefined && scope !== null;
+  const modal = mode === 'goto' ? null : modeItems(mode, q, inDomain);
+  const rows: PaletteRow[] = mode === 'goto'
+    ? filterPalette(entries, q).map((e) => ({ kind: 'navigate', href: e.href, label: e.label, detail: e.detail, current: e.href === current }))
+    : (modal?.items ?? []).map((x) => ({ kind: x.kind, href: x.href, label: x.label, detail: x.detail, current: false }));
+  assertNavigationOnly([...rows.map((r) => ({ kind: r.kind, href: r.href, label: r.label, detail: r.detail, ...(r.kind === 'command' ? { action: modal?.items.find((i) => i.href === r.href)?.action ?? '' } : {}) }))]);
+  const reading = mode === 'ask' || mode === 'command' ? interpret(q, { mode }) : null;
+  const preview = reading !== null && q.trim() !== '' ? previewLine(reading) : null;
+  const pick = (r: PaletteRow) => onNavigate({ kind: 'navigate', href: r.href, label: r.label, detail: r.detail, workspace: shellOfPath(r.href), registry: null });
+  const choose = (m: PaletteMode, said: string | null = null) => { setMode(m); setIndex(0); setSwitched(said); };
+  const onChange = (raw: string) => {
+    const p = parseModePrefix(raw, mode);
+    if (p.switched) choose(p.mode, `Switched to ${MODE_SPEC[p.mode].label} (you typed “${MODE_SPEC[p.mode].prefix}”).`);
+    setQ(p.text); setIndex(0);
   };
-  const activeId = shown.length > 0 ? `eye-palette-opt-${Math.min(index, shown.length - 1)}` : undefined;
+  const onKey = (e: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) { e.preventDefault(); setIndex((i) => movePaletteIndex(i, e.key, rows.length)); }
+    else if (e.key === 'Enter') { e.preventDefault(); const r = rows[Math.min(index, rows.length - 1)]; if (r !== undefined) pick(r); }
+  };
+  const onTabKey = (e: ReactKeyboardEvent<HTMLButtonElement>, i: number) => {
+    const rtl = typeof document !== 'undefined' && getComputedStyle(e.currentTarget).direction === 'rtl';
+    const next = nextTabIndex(i, e.key, PALETTE_MODES.map(() => false), { rtl });
+    if (next !== i && next >= 0) { e.preventDefault(); choose(PALETTE_MODES[next]!); tabs.current[next]?.focus(); }
+  };
+  const activeId = rows.length > 0 ? `eye-palette-opt-${Math.min(index, rows.length - 1)}` : undefined;
+  const spec = MODE_SPEC[mode];
   return (
-    <Dialog open title="Go to a place" onClose={() => onClose()} initialFocusId="eye-palette-input">
-      <div className="eye-palette">
+    <Dialog open title="Go to, search, ask or find a command" onClose={() => onClose()} initialFocusId="eye-palette-input">
+      <div className="eye-palette" data-mode={mode}>
+      <div role="tablist" aria-label="Palette mode" className="eye-palette-modes">
+        {PALETTE_MODES.map((m, i) => (
+          <button key={m} ref={(el) => { tabs.current[i] = el; }} type="button" role="tab" id={`eye-palette-mode-${m}`} aria-controls="eye-palette-panel" aria-selected={m === mode}
+            tabIndex={m === mode ? 0 : -1} className="eye-palette-mode" data-mode={m} onClick={() => choose(m)} onKeyDown={(e) => onTabKey(e, i)}
+            title={MODE_SPEC[m].prefix === '' ? MODE_SPEC[m].says : `${MODE_SPEC[m].says} (type “${MODE_SPEC[m].prefix}” to switch)`}>
+            {MODE_SPEC[m].label}{MODE_SPEC[m].prefix === '' ? null : <span className="eye-palette-prefix" aria-hidden="true"> {MODE_SPEC[m].prefix}</span>}
+          </button>
+        ))}
+      </div>
+      <div role="tabpanel" id="eye-palette-panel" aria-labelledby={`eye-palette-mode-${mode}`} className="eye-palette-panel">
       <input
-        role="combobox" aria-label="Go to — type a place or a workspace" aria-expanded="true" aria-controls="eye-palette-list" aria-autocomplete="list"
+        role="combobox" aria-label={spec.inputLabel} aria-expanded="true" aria-controls="eye-palette-list" aria-autocomplete="list"
         id="eye-palette-input" aria-activedescendant={activeId} className="eye-palette-input" value={q}
-        onChange={(e) => { setQ(e.target.value); setIndex(0); }} onKeyDown={onKey}
+        onChange={(e) => onChange(e.target.value)} onKeyDown={onKey}
       />
-      <p className="eye-shell-meta">Navigation only — going to a place changes nothing; actions stay on their page, behind their own governed control.</p>
-      <ul role="listbox" id="eye-palette-list" aria-label="Places" className="eye-palette-list">
-        {shown.length === 0 && <li role="option" aria-selected={false} aria-disabled="true" className="eye-shell-meta">no place matches</li>}
-        {shown.map((e, i) => (
-          <li key={e.href} id={`eye-palette-opt-${i}`} role="option" aria-selected={i === Math.min(index, shown.length - 1)} aria-current={e.href === current ? 'page' : undefined}
-            className="eye-palette-option" onClick={() => onNavigate(e)} onMouseEnter={() => setIndex(i)}>
-            <span>{e.label}</span> <span className="eye-shell-meta">{e.detail} · <bdi className="eye-mono">{e.href}</bdi></span>
+      <p className="eye-shell-meta">{spec.says}</p>
+      <p role="status" aria-live="polite" className="eye-palette-reading">
+        {switched === null ? null : <>{switched} </>}
+        {preview === null ? null : <><strong>The reading:</strong> {preview}</>}
+        {reading !== null && q.trim() !== '' && reading.uncertainty.length > 0 ? <span className="eye-shell-meta"> — {reading.uncertainty.join('; ')}</span> : null}
+      </p>
+      {modal?.reason ? <p className="eye-palette-reason">{modal.reason}</p> : null}
+      <ul role="listbox" id="eye-palette-list" aria-label={mode === 'goto' ? 'Places' : mode === 'command' ? 'Commands — each opens its Command Review' : 'Searches'} className="eye-palette-list">
+        {rows.length === 0 && <li role="option" aria-selected={false} aria-disabled="true" className="eye-shell-meta">{mode === 'goto' ? 'no place matches' : 'nothing to offer yet'}</li>}
+        {rows.map((r, i) => (
+          <li key={`${r.kind}:${r.href}`} id={`eye-palette-opt-${i}`} role="option" aria-selected={i === Math.min(index, rows.length - 1)} aria-current={r.current ? 'page' : undefined}
+            className="eye-palette-option" data-kind={r.kind} onClick={() => pick(r)} onMouseEnter={() => setIndex(i)}>
+            <span className="eye-palette-kind">{KIND_WORD[r.kind] ?? r.kind}</span> <span>{r.label}</span> <span className="eye-shell-meta">{r.detail} · <bdi className="eye-mono">{r.href}</bdi></span>
           </li>
         ))}
       </ul>
       </div>
+      </div>
     </Dialog>
   );
 }
+/* end B81 si */
