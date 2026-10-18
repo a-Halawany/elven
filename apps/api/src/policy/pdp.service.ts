@@ -3202,6 +3202,37 @@ const BUNDLE_V1: Rule[] = [
     ];
   })(),
   /* end B81 lyg */
+  /* B81 lym */
+  /* B81 §LY-M (0119_b81_x_lym; F-P7-E-04: UX-16-001…005, PAT-45, PAT-46, BP-05). EXACT rules — no earlier rule is a prefix of
+     shell.handoff.* or shell.presentation.* (no `shell` prefix rule exists). A SESSION HANDOFF moves a person's OWN review context between
+     their OWN signed-in sessions, and a PRESENTATION STATE is the person's OWN display: offered, claimed, revoked, published and read by the
+     same HUMAN roles as B80 §SH's navigation state (the lists copied, not shared — each part's block stands alone), at their own scope, and
+     by no agent, subscriber or external collaborator. The handoff's three acts are HUMAN-GATED (a transfer of the control surface is a
+     named person's deliberate act; the claim additionally requires the claiming device's own password session, re-checked in the port);
+     a publication is presentation, not a consequential act (the port's human, session and one-control-surface checks are the rules). None
+     of these grants anything: the claiming session acts under its own role bindings, re-read at the claim. */
+  ...((): Rule[] => {
+    const platform = ['platform_admin', 'commercial_authority', 'product_authority', 'design_system_authority', 'independent_assurance', 'operations_authority', 'conformance_steward']
+      .map((role) => ({ role, atScope: 'PLATFORM' as Scope }));
+    const tenant = ['tenant_admin', 'auditor', 'retention_authority', 'branding_authority', 'customer_sponsor', 'implementation_lead', 'onboarding_authority']
+      .map((role) => ({ role, atScope: 'TENANT' as Scope }));
+    const domain = ['domain_admin', 'domain_analyst', 'collection_manager', 'decision_owner', 'decision_approver', 'decision_authority', 'executive', 'executive_operator',
+      'board_member', 'extraction_manager', 'resolution_manager', 'strategy_owner', 'forecast_owner', 'twin_owner', 'simulation_operator', 'knowledge_owner',
+      'record_authority', 'retention_steward', 'ontology_steward', 'risk_owner', 'opportunity_sponsor', 'execution_authority', 'method_steward', 'constraint_steward',
+      'data_steward', 'domain_specialist', 'product_analytics_owner', 'privacy_officer', 'product_analyst', 'enablement_assessor', 'support_engineer']
+      .map((role) => ({ role, atScope: 'DOMAIN' as Scope }));
+    const people = [...platform, ...tenant, ...domain];
+    const gate: Obligation[] = [{ type: 'human_gate' }];
+    return [
+      { actionPrefix: 'shell.handoff.offer', exact: true, requiredAnyRole: people, obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'shell.handoff.claim', exact: true, requiredAnyRole: people, obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'shell.handoff.revoke', exact: true, requiredAnyRole: people, obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'shell.handoff.read', exact: true, requiredAnyRole: people, obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'shell.presentation.publish', exact: true, requiredAnyRole: people, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'shell.presentation.read', exact: true, requiredAnyRole: people, obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+    ];
+  })(),
+  /* end B81 lym */
 ];
 
 /* B107 conformance */
