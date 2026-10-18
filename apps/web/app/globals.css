@@ -735,3 +735,34 @@ ul.eye-stack, ol.eye-stack { list-style: none; }
   .eye-bottom-nav, .eye-rail-toggle, .eye-density-switch, .eye-deferred { display: none; }
 }
 /* end B81 lyg */
+/* B81 ha — the human-authority components (components/authority.tsx): semantic tokens only, logical properties only (RTL mirrors); every
+   state is a glyph and a word as well as a border (forced colours keep the borders with SYSTEM colours; print keeps the record, drops nothing). */
+.eye-authority-small { font-size: var(--eye-type-label-sm); color: var(--eye-color-ink-muted); }
+.eye-authority-line { margin-block: var(--eye-space-4); }
+.eye-authority-gate { border: 1px solid; border-radius: var(--eye-radius-sm); padding-inline: var(--eye-space-4); font-size: var(--eye-type-label-sm); font-weight: 650; white-space: nowrap; }
+.eye-authority-banner, .eye-authority-digest, .eye-authority-review, .eye-authority-contest {
+  border: 1px solid var(--eye-color-border-default); border-inline-start: 3px solid var(--eye-color-accent-default); border-radius: var(--eye-radius-md);
+  padding-block: var(--eye-space-8); padding-inline: var(--eye-space-12); margin-block: var(--eye-space-8); font-size: var(--eye-type-label-sm);
+}
+.eye-authority-banner[data-eligible='no'] { border-inline-start-color: var(--eye-color-warning); }
+.eye-authority-consequence { border-inline-start: 3px solid var(--eye-color-border-default); padding-inline-start: var(--eye-space-8); margin-block: var(--eye-space-8); font-size: var(--eye-type-label-sm); }
+.eye-authority-consequence p { margin-block: var(--eye-space-4); }
+.eye-authority-list { margin-block: 0; padding-inline-start: var(--eye-space-16); }
+.eye-authority-warn { color: var(--eye-color-warning); font-weight: 600; }
+.eye-authority-critical { color: var(--eye-color-critical); }
+.eye-authority-tag { border: 1px solid var(--eye-color-border-strong); border-radius: var(--eye-radius-sm); padding-inline: var(--eye-space-4); font-size: var(--eye-type-label-sm); }
+.eye-authority-typed { display: grid; gap: var(--eye-space-4); max-inline-size: 40rem; margin-block: var(--eye-space-8); }
+.eye-authority-input { block-size: var(--eye-size-control-md); border: 1px solid var(--eye-color-border-strong); border-radius: var(--eye-radius-md); padding-inline: var(--eye-space-8);
+  background: var(--eye-color-surface-primary); color: var(--eye-color-ink-default); font: inherit; }
+.eye-authority-input[aria-invalid='true'] { border-color: var(--eye-color-critical); border-width: 2px; }
+.eye-authority-wide { inline-size: min(28rem, 100%); }
+.eye-authority-record { border-block-end: 1px solid var(--eye-color-border-default); padding-block: var(--eye-space-4); }
+.eye-authority-signature { display: inline; }
+.eye-authority-details { display: inline-block; margin-inline-start: var(--eye-space-8); }
+.eye-authority-details[open] { display: block; margin-block: var(--eye-space-4); }
+@media (forced-colors: active) {
+  .eye-authority-banner, .eye-authority-digest, .eye-authority-review, .eye-authority-contest, .eye-authority-consequence, .eye-authority-gate, .eye-authority-tag { border-color: CanvasText; }
+  .eye-authority-input { border-color: ButtonText; }
+  .eye-authority-input[aria-invalid='true'] { border-color: Mark; }
+}
+/* end B81 ha */
