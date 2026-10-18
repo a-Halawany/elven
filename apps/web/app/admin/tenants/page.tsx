@@ -8,6 +8,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { call } from '../../../lib/api';
 import { ErrorNote, Panel, Receipt, Td, Th, buttonStyle, inputStyle, tableStyle } from '../../../components/ui';
 import { t, defaultLocale } from '../../../lib/i18n';
+/* B81 ha: the consequence of the creation, stated before the confirmation (HX-13 / CMP-045 — the deliberate review step) */
+import { ConsequencePreview } from '../../../components/authority';
+import { consequenceStated } from '../../../lib/authority-b81';
+/* end B81 ha */
 
 interface Tenant { id: string; name: string; status: string; created_at: string }
 interface Domain { id: string; name: string; status: string }
@@ -94,6 +98,7 @@ export default function TenantsPage() {
             <p>
               <strong>{t('tenants.name', locale)}:</strong> <code style={{ fontFamily: 'var(--eye-font-mono)' }}>{name}</code>
             </p>
+            {/* B81 ha */}<ConsequencePreview view={consequenceStated('tenancy.tenant.create')!} label="Consequence: Create tenant" />{/* end B81 ha */}
             <div style={{ display: 'flex', gap: 'var(--eye-space-8)' }}>
               <button style={buttonStyle} onClick={() => void createTenant()}>{t('tenants.confirm', locale)}</button>
               <button style={{ ...buttonStyle, background: 'var(--eye-color-surface-secondary)', color: 'var(--eye-color-ink-default)', borderColor: 'var(--eye-color-border-default)' }} onClick={() => setReviewing(false)}>

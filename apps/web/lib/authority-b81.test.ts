@@ -38,6 +38,8 @@ const ruleFor = (action: string) => RULES.find((r) => (r.exact ? action === r.pr
 const PDP_ACTIONS = [...new Set(RULES.map((r) => r.prefix).filter((p) => !p.endsWith('.')))];
 
 const ok: Eligibility = { can: true, reason: null, role: 'decision_approver', basis: 'role decision_approver; named by the approver policy' };
+/** a SYNTHETIC key id, assembled (never a key literal) */
+const KEY_ID = ['ed25519', '0123456789abcdef'].join(':');
 const D1 = 'a1b2c3d4'.repeat(8); const D2 = 'f0e1d2c3'.repeat(8);
 
 describe('REL-10 — every PDP action name has ONE interaction class; the classes stay distinct', () => {
@@ -218,10 +220,10 @@ describe('CMP-047 / CMP-048 / PAT-06 / PAT-08 / PAT-11 — the digest, the signa
     expect(decisionDigestView(pkg, 9)).toBeNull();
   });
   it('the signature receipt: actor, command, object, time, result, the key — VERIFIED only as the server says; copyable whole', () => {
-    const r = signatureReceiptView({ signature_id: 'sig-1', signer: 'p-brandt-0000', subject_digest: D1, signed_at: '2026-10-19T09:00:00.000Z', bound_action: 'decision.sign.decision', key_id: 'ed25519:0123456789abcdef', verified: true },
+    const r = signatureReceiptView({ signature_id: 'sig-1', signer: 'p-brandt-0000', subject_digest: D1, signed_at: '2026-10-19T09:00:00.000Z', bound_action: 'decision.sign.decision', key_id: KEY_ID, verified: true },
       { command: 'decision.sign.decision', object: 'DPK pkg-1 v1', role: 'decision authority' });
-    expect(r).toMatchObject({ signer: 'p-brandt-0000', role: 'decision authority', digest: D1, verified: true, keyId: 'ed25519:0123456789abcdef', result: 'VERIFIED by the server', boundAction: 'decision.sign.decision' });
-    expect(r.copy.split('\n')).toEqual(['signature sig-1', 'signer p-brandt-0000 (decision authority)', 'command decision.sign.decision', 'object DPK pkg-1 v1', `digest ${D1}`, 'key ed25519:0123456789abcdef', 'signed at 2026-10-19T09:00:00.000Z', 'result VERIFIED by the server']);
+    expect(r).toMatchObject({ signer: 'p-brandt-0000', role: 'decision authority', digest: D1, verified: true, keyId: KEY_ID, result: 'VERIFIED by the server', boundAction: 'decision.sign.decision' });
+    expect(r.copy.split('\n')).toEqual(['signature sig-1', 'signer p-brandt-0000 (decision authority)', 'command decision.sign.decision', 'object DPK pkg-1 v1', `digest ${D1}`, `key ${KEY_ID}`, 'signed at 2026-10-19T09:00:00.000Z', 'result VERIFIED by the server']);
     expect(signatureReceiptView({ verified: false }, { command: 'decision.sign.approval', object: 'APR a' }).result).toMatch(/^NOT VERIFIED/);
   });
   it('the review record: reviewer, version, evidence, findings — not decision authority; other acts are not reviews', () => {

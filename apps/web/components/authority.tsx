@@ -30,7 +30,7 @@ import { Receipt } from './ui';
 import { Digest, Timestamp } from './text';
 import { gateStateMark, signatureLine, type GateStateRow } from '../lib/gates-b36';
 import {
-  commandReviewGate, isIrreversible, shortDigest, shortId, signatureReceiptView, typedState,
+  actionClassOf, commandReviewGate, isConsequential, isIrreversible, shortDigest, shortId, signatureReceiptView, typedState,
   type ConsequenceView, type ContestRoute, type ContestRow, type DigestView, type Eligibility, type ReviewRecordModel,
 } from '../lib/authority-b81';
 
@@ -72,7 +72,7 @@ export function AuthorityBanner({ act, eligibility, reviewers, quorum, delegatio
         <div className="eye-dl-row"><dt>Required reviewers</dt><dd>{reviewers.length === 0 ? 'nobody named — the act cannot be approved' : reviewers.join(', ')}{quorum ? ` · quorum ${quorum.required}, ${quorum.live} live` : ''}</dd></div>
         <div className="eye-dl-row"><dt>Delegation</dt><dd>{live.length === 0 ? 'no live delegation' : live.map((d) => `${shortId(d['delegator_principal_id'])} → ${shortId(d['delegate_principal_id'])} until ${String(d['expires_at'] ?? '—')}`).join('; ')}</dd></div>
         <div className="eye-dl-row"><dt>Recusal</dt><dd>{(recusals ?? []).length === 0 ? 'no recusal recorded' : (recusals ?? []).map((r) => `${shortId(r['approver_principal_id'])} recused (${String(r['reason'] ?? 'no reason')})`).join('; ')}</dd></div>
-        <div className="eye-dl-row"><dt>Current gate</dt><dd>{gate === undefined ? 'see the gate below' : <GateStatus gate={gate} />}</dd></div>
+        {gate === undefined ? null : <div className="eye-dl-row"><dt>Current gate</dt><dd><GateStatus gate={gate} /></dd></div>}
       </dl>
       {children}
     </section>
@@ -131,7 +131,7 @@ export function TypedConfirmation({ phrase, value, onChange, what }: { phrase: s
 
 /* ───────────────────────── CMP-044: the command review ───────────────────────── */
 
-export function CommandReview({ action, object, digest, currentDigest, eligibility, consequence, consequenceRead, rationale, typedPhrase, actionLabel, pendingLabel, variant, onRun, receipt, problem, children }: {
+export function CommandReview({ action, object, digest, currentDigest, eligibility, consequence, consequenceRead, rationale, typedPhrase, extraReasons, actionLabel, pendingLabel, variant, onRun, receipt, problem, children }: {
   /** the governed action (PDP name) */ action: string;
   object: { type: string; id: string; version: number | null; title: string; state?: string | null };
   /** the digest SHOWN to the person (frozen at the review) and the digest the command carries now */ digest: string | null; currentDigest?: string | null;
@@ -140,6 +140,7 @@ export function CommandReview({ action, object, digest, currentDigest, eligibili
   /** PAT-17: a server preview must be OBTAINED; a stated one is read here, rendered whole above the control */ consequenceRead?: boolean;
   rationale?: { value: string; onChange: (v: string) => void; min: number; label: string } | null;
   /** PAT-16: the phrase to type for an irreversible act (from typedPhrase) */ typedPhrase?: string | null;
+  /** the page's own unmet conditions (a field it holds), in words — each keeps the act disabled */ extraReasons?: readonly string[];
   actionLabel: string; pendingLabel: string; variant?: 'primary' | 'critical';
   /** the governed act: resolves on the server's answer (throw on refusal — the page shows the server's words) */ onRun: () => Promise<void>;
   receipt?: ReceiptT; problem?: string | null; children?: ReactNode;
@@ -147,13 +148,15 @@ export function CommandReview({ action, object, digest, currentDigest, eligibili
   const id = useId();
   const [typed, setTyped] = useState('');
   const irreversible = isIrreversible(action);
-  const read = consequence !== null && (consequenceRead ?? consequence.source === 'stated');
-  const gate = commandReviewGate({ action }, {
+  /* PAT-17: a consequential act needs its consequence read; a review-class act (review, acknowledge, ready) records a reading only */
+  const read = consequence !== null ? (consequenceRead ?? consequence.source === 'stated') : !isConsequential(actionClassOf(action));
+  const g0 = commandReviewGate({ action }, {
     eligibility, shownDigest: digest, currentDigest: currentDigest === undefined ? digest : currentDigest, consequenceRead: read,
     rationale: rationale ? { value: rationale.value, min: rationale.min } : null,
     typed: irreversible ? (typedPhrase ? { phrase: typedPhrase, value: typed } : null) : null,
     source: 'deliberate',
   });
+  const gate = { enabled: g0.enabled && (extraReasons ?? []).length === 0, reasons: [...g0.reasons, ...(extraReasons ?? [])] };
   /* the deliberate controls sit UNDER the consequence they act on (the preview's region holds them) */
   const controls = (
     <>
@@ -176,7 +179,7 @@ export function CommandReview({ action, object, digest, currentDigest, eligibili
         {' · '}<span className="eye-authority-small">{action}{irreversible ? ' — cannot be undone' : ''}</span>
       </p>
       <p className="eye-authority-small">{eligibility.can ? `Your authority: ${eligibility.basis}.` : `Not available to you: ${eligibility.reason}`}</p>
-      {consequence === null ? <><p className="eye-authority-small">No consequence preview is available yet for this act.</p>{controls}</> : (
+      {consequence === null ? <>{isConsequential(actionClassOf(action)) ? <p className="eye-authority-small">No consequence preview is available yet for this act.</p> : null}{controls}</> : (
         <ConsequencePreview view={consequence} label={consequence.source === 'server' ? 'Consequence preview' : `Consequence: ${actionLabel}`}>{controls}</ConsequencePreview>
       )}
       {receipt !== undefined ? <Receipt receipt={receipt} /> : null}

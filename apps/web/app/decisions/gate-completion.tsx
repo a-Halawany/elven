@@ -10,8 +10,13 @@
  * recuse, challenge, resolve, distribute, set the fields — each a governed write; every refusal is the server's, shown in its words.
  */
 import { useEffect, useState } from 'react';
-import { gatesB36 as api, boardActsFor, buildExpectedEffect, buildMissingInformation, denialLine, distributionLine, gateStateMark, signatureLine, EFFECT_DIRECTIONS, EFFECT_HORIZONS,
-  type ExpectedEffect, type GateRecord, type GateStateRow, type MissingInformation } from '../../lib/gates-b36';
+import { gatesB36 as api, boardActsFor, buildExpectedEffect, buildMissingInformation, denialLine, distributionLine, EFFECT_DIRECTIONS, EFFECT_HORIZONS,
+  type ExpectedEffect, type GateRecord, type MissingInformation } from '../../lib/gates-b36';
+/* B81 ha: the shared authority components — the ONE gate state (promoted from here), the signature receipts, the typed signing of the
+   decision, the contest path; the withdrawal record */
+import { CommandReview, ContestPath, GateStatus, SignatureReceipt } from '../../components/authority';
+import { consequenceStated, contestPathFor, contestRows, typedPhrase, withdrawalView } from '../../lib/authority-b81';
+/* end B81 ha */
 import type { Scope } from '../../lib/observation';
 import { Empty, LiveStatus, Mono, GovernedButton, fmtInstant } from '../../components/observation';
 import { inputStyle, Receipt } from '../../components/ui';
@@ -24,21 +29,13 @@ const short = (v: unknown) => (typeof v === 'string' && v.length > 12 ? `${v.sli
 const refusal = (r: { status: number; error?: { code: string; message: string } }, fallback: string) =>
   `HTTP ${r.status}${r.error?.code !== undefined && r.error.code !== '' ? ` ${r.error.code}` : ''} — ${r.error?.message ?? fallback}`;
 
-/** The ONE badge (ADR-003): a glyph, a word and the token — for a decision version, a source contract or a merge alike. */
-export function GateStateBadge({ gate }: { gate: GateStateRow | null }) {
-  if (gate === null) return <span style={small}>gate state unknown</span>;
-  const m = gateStateMark(gate.state);
-  return (
-    <span data-testid="gate-state" style={{ color: `var(${m.token})`, border: `1px solid var(${m.token})`, borderRadius: 'var(--eye-radius-sm)', paddingInline: 'var(--eye-space-4)', fontSize: 'var(--eye-type-label-sm)', fontWeight: 650, whiteSpace: 'nowrap' }}
-      title={`${gate.kind} ${gate.id} — ${gate.basis ?? ''}`}>
-      <span aria-hidden="true">{m.glyph}</span> {m.text}{gate.since ? ` · since ${fmtInstant(gate.since)}` : ''}{gate.by ? ` by ${short(gate.by)}` : ''}
-    </span>
-  );
-}
+/* B81 ha: the ONE badge (ADR-003) moved into the library as GateStatus (components/authority.tsx, CMP-075) — the same markup and test id;
+   this page and the board compose it from there */
 
-export function GateCompletion({ scope, packageId, version, versionState, me, roles, onChange }: {
+export function GateCompletion({ scope, packageId, version, versionState, me, roles, onChange, withdrawal }: {
   scope: Scope; packageId: string; version: number; versionState: string; me: string;
   roles: { isApprover: boolean; isAuthority: boolean; isDecisionOwner: boolean; isExecutive: boolean; isBoardMember: boolean; isAuditor: boolean }; onChange?: () => void;
+  /* B81 ha: the package's withdrawal event when it is withdrawn (PAT-11), null otherwise */ withdrawal?: Row | null;
 }) {
   const [r, setR] = useState<GateRecord | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -79,14 +76,14 @@ export function GateCompletion({ scope, packageId, version, versionState, me, ro
 
   return (
     <div aria-labelledby="gate-b36-h" style={{ marginBlockStart: 'var(--eye-space-16)', borderBlockStart: '1px solid var(--eye-color-border-default)', paddingBlockStart: 'var(--eye-space-8)' }}>
-      <h4 id="gate-b36-h" style={{ fontSize: 'var(--eye-type-heading-3)' }}>The gate's record — <GateStateBadge gate={r.gate} /></h4>
+      <h4 id="gate-b36-h" style={{ fontSize: 'var(--eye-type-heading-3)' }}>The gate's record — <GateStatus gate={r.gate} /></h4>
 
       <p style={small}><strong>Signatures beyond the audit chain</strong>{r.signing_key ? <> (this deployment signs with <Mono>{r.signing_key.keyId}</Mono>)</> : ' (no signing key is bound here)'}:</p>
       <ul style={small} aria-label="approval signatures">
         {r.approvals.length === 0 ? <li>no approval on this version</li> : r.approvals.map((a) => (
           <li key={a.approval_id}>approval by <Mono>{short(a.approver)}</Mono> ({a.decision}{a.revoked_at ? `, voided: ${String(a['revoked_reason'] ?? 'revoked')}` : ''}){a.recused ? <strong style={critical}> — RECUSED</strong> : null}
             {a.header_digest ? <> · digest <Mono>{a.header_digest.slice(0, 16)}…</Mono></> : null}
-            {a.signatures.length === 0 ? ' · not signed' : a.signatures.map((s) => <span key={String(s['signature_id'])}> · {signatureLine(s)}</span>)}
+            {a.signatures.length === 0 ? ' · not signed' : a.signatures.map((s) => <span key={String(s['signature_id'])}> · <SignatureReceipt signature={s} command="decision.sign.approval" object={`approval ${short(a.approval_id)} on version ${version}`} role="approver" /></span>)}
             {roles.isApprover && a.approver === me && a.revoked_at === null && a.decision === 'approve' && a.header_digest !== null && a.signatures.length === 0 ? (
               <GovernedButton label="Sign my approval" pendingLabel="signing" variant="quiet"
                 onRun={async () => { await done(await api.sign(scope, packageId, version, 'approval', a.header_digest as string, a.approval_id), 'the signature'); }} />
@@ -94,12 +91,24 @@ export function GateCompletion({ scope, packageId, version, versionState, me, ro
           </li>
         ))}
       </ul>
-      <p style={small} aria-label="decision signatures"><strong>The decision:</strong> {committed ? <>committed <Mono>{short(r.commitment?.commitment_id)}</Mono> by <Mono>{short(r.commitment?.committed_by)}</Mono>{r.header_digest ? <> · header digest <Mono>{r.header_digest.slice(0, 16)}…</Mono></> : null}</> : 'not committed — a decision is signed after its commitment'}
-        {r.decision_signatures.length === 0 ? (committed ? ' · not signed yet' : '') : r.decision_signatures.map((s) => <span key={String(s['signature_id'])}> · {signatureLine(s)}</span>)}
-      </p>
-      {maySignDecision ? <GovernedButton label="Sign the decision" pendingLabel="signing" onRun={async () => { await done(await api.sign(scope, packageId, version, 'decision', r.header_digest as string, null), 'the signature'); }} /> : null}
+      <div style={small} aria-label="decision signatures" /* B81 ha: a div — the signature receipts hold a disclosure (block content) */><strong>The decision:</strong> {committed ? <>committed <Mono>{short(r.commitment?.commitment_id)}</Mono> by <Mono>{short(r.commitment?.committed_by)}</Mono>{r.header_digest ? <> · header digest <Mono>{r.header_digest.slice(0, 16)}…</Mono></> : null}</> : 'not committed — a decision is signed after its commitment'}
+        {r.decision_signatures.length === 0 ? (committed ? ' · not signed yet' : '') : r.decision_signatures.map((s) => <span key={String(s['signature_id'])}> · <SignatureReceipt signature={s} command="decision.sign.decision" object={`decision ${short(r.commitment?.commitment_id)} (version ${version})`} role={s['signer'] === r.commitment?.committed_by ? 'decision authority' : 'decision owner'} /></span>)}
+      </div>
+      {/* B81 ha: SIGNING THE DECISION through the COMMAND REVIEW — the header digest exact, the stated consequence, the TYPED confirmation
+          (PAT-16: a signature cannot be undone); the server refuses a digest that is not the version's (stale_digest) */}
+      {maySignDecision ? (
+        <CommandReview action="decision.sign.decision" object={{ type: 'committed decision', id: String(r.commitment?.commitment_id ?? packageId), version, title: `The decision on version ${version}`, state: versionState }}
+          digest={r.header_digest} eligibility={{ can: true, reason: null, role: roles.isAuthority ? 'decision_authority' : 'decision_owner', basis: roles.isAuthority ? 'the committing decision authority (D3)' : 'the package owner' }}
+          consequence={consequenceStated('decision.sign.decision')} typedPhrase={typedPhrase({ digest: r.header_digest })}
+          actionLabel="Sign the decision" pendingLabel="signing"
+          onRun={async () => { await done(await api.sign(scope, packageId, version, 'decision', r.header_digest as string, null), 'the signature'); }} />
+      ) : null}
+      {/* end B81 ha */}
 
       {r.recusals.length === 0 ? null : <p style={small}><strong>Recusals:</strong> {r.recusals.map((x) => `${short(x['approver_principal_id'])} recused at ${fmtInstant(x['recused_at'])} (${String(x['reason'])}; quorum ${String(x['quorum'])}, live ${String(x['live_before'])} → ${String(x['live_after'])}${x['state_before'] !== x['state_after'] ? `; ${String(x['state_before'])} → ${String(x['state_after'])}` : ''})`).join(' · ')}</p>}
+      {/* B81 ha: the CONTEST PATH (HX-14) — challenge, evidence, reviewer, status, escalation, outcome; appeals open on the appeals page */}
+      <ContestPath route={contestPathFor('DPK')} rows={contestRows(r.challenges, [])}>
+      {/* end B81 ha */}
       {r.challenges.length === 0 ? null : <ul style={small} aria-label="challenges">{r.challenges.map((c) => (
         <li key={String(c['challenge_id'])}><strong>{c['resolved_at'] ? `CHALLENGE ${String(c['resolution']).toUpperCase()}` : 'CHALLENGE OPEN — the commitment is held'}</strong> by {short(c['challenger_principal_id'])} ({String(c['standing'])}{c['after_commitment'] === true ? ', after the commitment' : ''}) at {fmtInstant(c['raised_at'])}: {String(c['reason'])}
           {c['resolved_at'] ? <> — resolved by {short(c['resolved_by'])} at {fmtInstant(c['resolved_at'])}: {String(c['resolution_note'])}{(c['effect'] as Row | null)?.['kind'] === 'reopen_required' ? <strong style={critical}> · REOPEN REQUIRED (the commitment stands; the owner reopens on a recorded cause)</strong> : (c['effect'] as Row | null)?.['kind'] === 'withdrawn' ? ' · the version was withdrawn' : ''}</> : null}
@@ -111,10 +120,22 @@ export function GateCompletion({ scope, packageId, version, versionState, me, ro
             </div>
           ) : null}
         </li>))}</ul>}
+      {/* B81 ha */}</ContestPath>{/* end B81 ha */}
       {r.denials.length === 0 ? null : <ul style={small} aria-label="denials">{r.denials.map((d) => <li key={String(d['denial_id'])}><span style={critical}>{denialLine(d)}</span> · at {fmtInstant(d['denied_at'])}{d['package_version'] ? ` · version ${String(d['package_version'])} at the time` : ''}</li>)}</ul>}
       {r.distributions.length === 0 ? null : <ul style={small} aria-label="distributions">{r.distributions.map((d) => <li key={String(d['delivery_id'])}>{distributionLine(d)} · record <Mono>{String(d['record_digest']).slice(0, 16)}…</Mono> · at {fmtInstant(d['distributed_at'])}</li>)}</ul>}
       {lastDistribution !== null ? <LiveStatus><span style={small}>distributed — {(lastDistribution['rows'] as Row[]).length} row(s): {(lastDistribution['rows'] as Row[]).map((x) => `${String(x['channel'])} ${String(x['state'])}`).join(', ')} · {String(lastDistribution['synthetic_note'])}</span></LiveStatus> : null}
 
+      {/* B81 ha: the WITHDRAWAL (PAT-11) — identity, reason, recipients (the distributions recorded), replacement; nothing erased */}
+      {withdrawal === undefined || withdrawal === null ? null : (() => {
+        const w = withdrawalView({ by: withdrawal['actor_principal_id'], at: withdrawal['occurred_at'], reason: (withdrawal['details'] as Row | undefined)?.['reason'], recipients: r.distributions, replacement: null });
+        return (
+          <section aria-label="Withdrawal" style={{ ...small, borderInlineStart: '3px solid var(--eye-color-border-strong)', paddingInlineStart: 8, marginBlock: 8 }}>
+            <p><strong>✕ {w.identity}</strong> — reason: {w.reason}</p>
+            <p>Recipients who had the record: {w.recipients.join('; ')} · {w.replacement} · the record is retained (never erased).</p>
+          </section>
+        );
+      })()}
+      {/* end B81 ha */}
       <p style={small}><strong>Missing information:</strong> {missing.length === 0 ? 'none declared' : missing.map((m, i) => <span key={i}>“{m.what}” — owner {short(m.owner)}, needed by {m.needed_by}; </span>)}
         <br /><strong>Expected effects:</strong> {effects.length === 0 ? 'none declared' : effects.map((e, i) => <span key={i}>“{e.effect}” on {e.measure} {e.direction} over {e.horizon} ({e.basis}); </span>)}</p>
       {roles.isDecisionOwner && versionState === 'draft' ? (

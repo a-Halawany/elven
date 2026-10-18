@@ -39,6 +39,10 @@ import { CHOICES, FORM_KEY, IMPORT_MAP, IMPORT_SECONDS, SCHEMA_VERSION, SPECS, S
 import { IDLE, outcomeText, retryAdvice, settle, start, type CommandState } from '../../../../lib/feedback-b80';
 import { jcsCanonicalize } from '../../../../lib/jcs';
 import { drafts } from '../../../../lib/drafts-b80';
+/* B81 ha: authority as product state on the source contract's gate (UX-ADR-007): the banner and the stated consequence of the submission */
+import { AuthorityBanner, ConsequencePreview } from '../../../../components/authority';
+import { consequenceStated } from '../../../../lib/authority-b81';
+/* end B81 ha */
 
 type Row = Record<string, unknown>;
 const PURPOSE = 'observation';
@@ -251,6 +255,11 @@ export default function RegisterSourcePage() {
               Submitting registers a <strong>draft</strong>. You will not be able to approve it: the operator who
               registers a source contract may never approve it, and the rule is enforced on the acting principal.
             </UnknownNote>
+            {/* B81 ha: who may act on this contract, and what the submission does (stated: the server computes no preview of a registration) */}
+            <AuthorityBanner act="submit this contract for approval" eligibility={{ can: true, reason: null, role: null, basis: 'the registrar — you submit; separation of duties keeps the approval another operator\'s' }}
+              reviewers={['a collection manager who is not you (the approval of a source contract)']} />
+            <ConsequencePreview view={consequenceStated('observation.source.register')!} label="Consequence: Submit for approval" />
+            {/* end B81 ha */}
           </div>
         )}
       </section>

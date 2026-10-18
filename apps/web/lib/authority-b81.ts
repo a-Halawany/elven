@@ -346,6 +346,10 @@ export const COMMAND_EFFECTS: Readonly<Record<string, Omit<ConsequenceView, 'sou
   'decision.sign.decision': { effect: 'signs the committed decision\'s header digest with this deployment\'s key — an attestation beyond the audit chain', affected: ['the committed version'], users: ['you (the signer)', 'every reader of the record'], reversibility: 'cannot be undone — a signature stays in the record', residualRisk: 'none added; the signature attests what was committed', audit: 'the signature, gate.signed, the audit chain' },
   'decision.sign.approval': { effect: 'signs your approval\'s header digest with this deployment\'s key', affected: ['your approval'], users: ['you (the approver)'], reversibility: 'the approval may still be revoked; the signature stays in the record', residualRisk: 'none added', audit: 'the signature, gate.signed, the audit chain' },
   'decision.package.withdraw': { effect: 'withdraws the package: its open versions are superseded and its gate tasks cancelled — nothing is erased', affected: ['the package', 'its open versions'], users: ['the room', 'the recipients of its distributions'], reversibility: 'not reversed — a new package is declared instead', residualRisk: 'the decision is not taken', audit: 'package.withdrawn with the reason, the audit chain' },
+  'decision.gate.resume': { effect: 'resumes the deferred version: its state returns to what its live approvals make it', affected: ['this version', 'its gate.review task'], users: ['the approvers', 'the committing authority'], reversibility: 'deferred again by a person with standing', residualRisk: 'the conditions of the defer are yours to have checked', audit: 'the gate act, version.resumed, the audit chain' },
+  'decision.board.approve': { effect: 'records your board approval of THIS digest — one of the board\'s quorum; it commits nothing', affected: ['this version'], users: ['you (a board member)', 'the committing authority'], reversibility: 'revocable by you until the commitment', residualRisk: 'the commit still needs the board quorum and the authority', audit: 'the approval under the board policy, the audit chain' },
+  'decision.board.reject': { effect: 'records your board rejection of THIS digest, with your rationale', affected: ['this version'], users: ['the package owner', 'the board'], reversibility: 'revocable by you until the commitment', residualRisk: 'the board quorum may not be reached', audit: 'the rejection under the board policy, the audit chain' },
+  'decision.board.defer': { effect: 'defers this board version to its next review, with your conditions — nothing is deleted', affected: ['this version', 'its gate.review task'], users: ['the owner of the next review'], reversibility: 'resumed by a person with standing at this gate', residualRisk: 'the decision waits until the next review', audit: 'the gate act, version.deferred, the review task and its timer' },
   'tenancy.tenant.create': { effect: 'creates an active tenant with lifecycle evidence and audit records', affected: ['a new tenant'], users: ['the platform administrators'], reversibility: 'suspended or retired later — never deleted', residualRisk: 'none until domains and principals are added', audit: 'the tenant lifecycle evidence and the audit chain' },
   'observation.source.register': { effect: 'registers the source contract as a DRAFT — it collects nothing until another operator approves it', affected: ['a new source contract (draft)'], users: ['a collection manager who is not you (the approver)'], reversibility: 'the draft is withdrawn or superseded by a new version', residualRisk: 'none until approved', audit: 'the contract version, its review digest and the audit chain' },
 };
@@ -361,9 +365,10 @@ export interface DigestView {
   conditions: string[]; newer: number | null; note: string;
 }
 /** The FROZEN version as the record states it; a later version is named as such (the review never moves to it in place). */
-export function decisionDigestView(pkg: { statement: string; versions: ReadonlyArray<Row & { version: number }> }, version: number): DigestView | null {
-  const v = pkg.versions.find((x) => x.version === version);
-  if (v === undefined) return null;
+export function decisionDigestView(pkg: { statement: string; versions: ReadonlyArray<{ version: number }> }, version: number): DigestView | null {
+  const found = pkg.versions.find((x) => x.version === version);
+  if (found === undefined) return null;
+  const v = found as unknown as Row;
   const digest = typeof v['version_digest'] === 'string' ? v['version_digest'] : null;
   const options = arr(v['options']).map((o) => { const r = o as Row; return `${say(r['title'])} (${say(r['key'])}${r['kind'] === 'status_quo' ? ', status quo' : ''})`; });
   const evidence = arr(v['options']).flatMap((o) => arr((o as Row)['consequences']).map((c) => { const r = c as Row; return `${say(r['kind'])} ${shortId(r['id'])}@${say(r['version'])}`; }));

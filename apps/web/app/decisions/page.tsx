@@ -20,6 +20,12 @@ import { GateControl } from './gate-control';
 import { GateCompletion } from './gate-completion';
 /* end B36 gates */
 import { CONDITION_KINDS, buildCondition, type TypedCondition } from '../../lib/gates';
+/* B81 ha: the shared authority components — the frozen digest, the command review of the approval, the proposal and the withdrawal */
+import { AuthorityBanner, CommandReview, DecisionDigest } from '../../components/authority';
+import { ACT_ROLES, consequenceStated, decisionDigestView, eligibility, rolesIn } from '../../lib/authority-b81';
+import { authorityApi } from '../../lib/authority-api-b81';
+import { reviewDigest } from '../../lib/forms-b80';
+/* end B81 ha */
 
 const STATE_TEXT: Record<string, string> = { draft: '◌ DRAFT', proposed: '◍ PROPOSED', under_review: '◍ UNDER REVIEW', approved: '● APPROVED', committed: '■ COMMITTED', monitoring: '◉ MONITORING', closed: '□ CLOSED', rejected: '✕ REJECTED', withdrawn: '✕ WITHDRAWN',
   /* B34 (0090) gates */ deferred: '◷ DEFERRED', information_requested: '? INFORMATION REQUESTED' };
@@ -55,6 +61,11 @@ export default function DecisionsPage() {
   const [conditions, setConditions] = useState<TypedCondition[]>([]);
   const [cond, setCond] = useState<{ kind: string; ref: string; expected: string; label: string }>({ kind: 'assumption_holds', ref: '', expected: '', label: '' });
   const [condProblem, setCondProblem] = useState<string | null>(null);
+  /* B81 ha: the proposal's review digest (PAT-04: the draft frozen as REVIEWED — a change after the review holds the proposal), the withdrawal's reason */
+  const [draftDigest, setDraftDigest] = useState<string | null>(null);
+  const [withdrawReason, setWithdrawReason] = useState('');
+  const [authProblem, setAuthProblem] = useState<string | null>(null);
+  /* end B81 ha */
 
   const load = async () => {
     const r = await api.list(scope);
@@ -79,10 +90,32 @@ export default function DecisionsPage() {
     return true;
   };
 
+  /* B81 ha: the body a proposal freezes — the draft version as the record serves it (options, terms, choice), digested as reviewed */
+  const draftBody = (pv: PackageVersion) => ({ version: pv.version, options: pv.options.map((o) => ({ key: o.key, title: o.title, kind: o.kind, consequences: o.consequences })), choice: pv.choice,
+    objectives: pv.objectives, constraints: pv.constraints, approver_policy: pv.approver_policy, monitoring_conditions: pv.monitoring_conditions, reversibility: pv.reversibility });
+  const draftOf = open === null || version === null ? null : open.versions.find((x) => x.version === version && x.state === 'draft') ?? null;
+  useEffect(() => { setDraftDigest(null); if (draftOf !== null) void reviewDigest(draftBody(draftOf)).then(setDraftDigest); }, [open, version]);
+  /* end B81 ha */
+
   if (problem !== null) return <LiveStatus assertive>{problem}</LiveStatus>;
   if (rows === null) return <Empty>reading decisions…</Empty>;
   const v: PackageVersion | null = open === null || version === null ? null : open.versions.find((x) => x.version === version) ?? null;
   const chosen = v?.choice?.option_key ?? null;
+  /* B81 ha: eligibility in words (the server re-judges each rule): the roles here, the approver policy, separation of duties (0042) */
+  const roleCodes = rolesIn(me.bindings, scope);
+  const authorId = v === null ? null : String((v as unknown as Record<string, unknown>)['author_principal_id'] ?? '') || null;
+  const sod = open === null ? [] : [
+    { principal: open.owner_principal_id, why: 'you own this package — an owner never approves their own version (0042)' },
+    ...(authorId !== null && authorId !== open.owner_principal_id ? [{ principal: authorId, why: 'you authored this version — an author never approves it' }] : []),
+  ];
+  const approveElig = v === null ? null : eligibility({ action: 'decision.approve', me: me.principalId, isHuman: true, roles: roleCodes, requiredRoles: ACT_ROLES['decision.approve']!,
+    policy: v.approver_policy, excluded: sod, state: v.state, openStates: ['proposed', 'under_review', 'approved'] });
+  const proposeElig = v === null || open === null ? null : eligibility({ action: 'decision.package.propose', me: me.principalId, isHuman: true, roles: roleCodes, requiredRoles: ACT_ROLES['decision.package.propose']!,
+    state: v.state, openStates: ['draft'], excluded: open.owner_principal_id === me.principalId ? [] : [{ principal: me.principalId, why: 'the package owner proposes its version' }] });
+  const reviewersOf = (pv: PackageVersion) => [...(pv.approver_policy.principals ?? []).map((x) => `principal ${x.slice(0, 8)}…`), ...(pv.approver_policy.roles ?? []).map((x) => `role ${x}`)];
+  const withdrawable = open !== null && !['committed', 'monitoring', 'closed', 'withdrawn'].includes(open.state) && open.committed_version === null;
+  const withdrawnEvent = open === null ? null : (open.events ?? []).find((e) => e['event'] === 'package.withdrawn') ?? null;
+  /* end B81 ha */
 
   return (
     <>
@@ -136,6 +169,29 @@ export default function DecisionsPage() {
                 {' · '}baseline {v.baseline_run_id ? <Mono>{short(v.baseline_run_id)}</Mono> : 'none'} · digest <Mono>{v.version_digest ? `${v.version_digest.slice(0, 16)}…` : 'not yet bound'}</Mono>
                 {' · '}approver policy: quorum {v.approver_policy.quorum ?? '—'} of {[...(v.approver_policy.principals ?? []).map((x) => `principal ${x.slice(0, 8)}…`), ...(v.approver_policy.roles ?? []).map((x) => `role ${x}`)].join(', ') || 'nobody named'}
               </p>
+              {/* B81 ha: the DECISION DIGEST (CMP-047) — the frozen version whole; a newer version named, never shown in place */}
+              {decisionDigestView(open, v.version) === null ? null : <DecisionDigest digest={decisionDigestView(open, v.version)!} />}
+              {/* PAT-04: SUBMIT FOR REVIEW — the draft as reviewed (its digest), the named required reviewers; it approves nothing */}
+              {isDecisionOwner && v.state === 'draft' && proposeElig !== null ? (
+                <>
+                  <AuthorityBanner act="submit this version for review" eligibility={proposeElig} reviewers={reviewersOf(v)} quorum={v.approver_policy.quorum !== undefined ? { live: 0, required: v.approver_policy.quorum } : null} />
+                  <CommandReview action="decision.package.propose" object={{ type: 'decision package', id: open.package_id, version: v.version, title: open.title, state: v.state }}
+                    digest={draftDigest} eligibility={proposeElig} consequence={consequenceStated('decision.package.propose')}
+                    extraReasons={v.choice === null ? ['the version has no choice yet — a menu of options is not a proposal'] : []}
+                    actionLabel="Submit this version for review" pendingLabel="proposing" problem={authProblem}
+                    onRun={async () => {
+                      setAuthProblem(null);
+                      const now = await api.get(scope, open.package_id);
+                      const cur = now.ok && now.data !== undefined ? now.data.package.versions.find((x) => x.version === v.version) ?? null : null;
+                      const curDigest = cur === null ? null : await reviewDigest(draftBody(cur));
+                      if (curDigest === null || curDigest !== draftDigest) { setAuthProblem('The draft changed since your review — read it again before submitting it.'); void openPackage(open.package_id); throw new Error('stale'); }
+                      const ok = await act(() => authorityApi.propose(scope, open.package_id, v.version));
+                      if (!ok) throw new Error('refused');
+                      void openPackage(open.package_id);
+                    }} />
+                </>
+              ) : null}
+              {/* end B81 ha */}
               <h4 style={{ fontSize: 'var(--eye-type-heading-3)' }}>Options on one baseline</h4>
               <table className="eye-table" style={tableStyle}>
                 <thead><tr><Th>Option</Th><Th>Kind</Th><Th>Consequences</Th><Th>Uncertainty</Th><Th>Choice</Th></tr></thead>
@@ -197,16 +253,27 @@ export default function DecisionsPage() {
               {/* end B24 markers */}
               {/* B34 (0090) gates: the authority banner, the distinct acts, the override, the delegation, the preview and the commit */}
               <GateControl scope={scope} packageId={open.package_id} version={v.version} versionState={v.state} versionDigest={v.version_digest}
-                roles={{ isApprover, isAuthority, isDecisionOwner, isExecutive }} onChange={() => void openPackage(open.package_id)} />
+                roles={{ isApprover, isAuthority, isDecisionOwner, isExecutive }} onChange={() => void openPackage(open.package_id)}
+                /* B81 ha */ authority={{ me: me.principalId, roleCodes, ownerId: open.owner_principal_id, authorId, policy: v.approver_policy }} /* end B81 ha */ />
               {/* end B34 gates */}
               {/* B36 (0094) gates: the gate's record — the one state badge, the signatures verified, recusals, challenges, denials, distributions, the fields */}
               <GateCompletion scope={scope} packageId={open.package_id} version={v.version} versionState={v.state} me={me.principalId}
-                roles={{ isApprover, isAuthority, isDecisionOwner, isExecutive, isBoardMember, isAuditor }} onChange={() => void openPackage(open.package_id)} />
+                roles={{ isApprover, isAuthority, isDecisionOwner, isExecutive, isBoardMember, isAuditor }} onChange={() => void openPackage(open.package_id)}
+                /* B81 ha */ withdrawal={open.state === 'withdrawn' ? (withdrawnEvent ?? {}) : null} /* end B81 ha */ />
               {/* end B36 gates */}
               <div style={{ display: 'flex', gap: 'var(--eye-space-8)', flexWrap: 'wrap', marginBlockStart: 'var(--eye-space-16)' }}>
-                {isApprover && ['proposed', 'under_review', 'approved'].includes(v.state) && v.version_digest !== null ? (
-                  <>
-                    <input aria-label="Approval rationale" value={rationale} onChange={(e) => setRationale(e.target.value)} placeholder="your rationale, in your own words" style={{ minInlineSize: 'min(28rem, 100%)' }} />
+                {isApprover && ['proposed', 'under_review', 'approved', 'deferred', 'information_requested'].includes(v.state) && v.version_digest !== null && approveElig !== null ? (
+                  /* B81 ha: the DELIBERATE APPROVAL (PAT-07) through the COMMAND REVIEW — eligibility (the policy, separation of duties), the exact
+                     digest, the stated consequence, the rationale; one item, never a batch; the signature follows in the gate's record */
+                  <CommandReview action="decision.approve" object={{ type: 'decision package', id: open.package_id, version: v.version, title: open.title, state: v.state }}
+                    digest={v.version_digest} eligibility={approveElig} consequence={consequenceStated('decision.approve')}
+                    rationale={{ value: rationale, onChange: setRationale, min: 8, label: 'Approval rationale' }}
+                    actionLabel="Approve this digest" pendingLabel="approving"
+                    onRun={async () => {
+                      const ok = await act(() => api.approve(scope, open.package_id, v.version, { decision: 'approve', versionDigest: v.version_digest as string, rationale, conditions }));
+                      if (!ok) throw new Error('refused');
+                      setConditions([]); void openPackage(open.package_id);
+                    }}>
                     {/* B34 (0090) gates: the condition builder — typed conditions evaluated at commitment and in monitoring */}
                     <fieldset style={{ border: '1px solid var(--eye-color-border-default)', borderRadius: 6, padding: 8 }}>
                       <legend style={{ fontSize: 'var(--eye-type-label-sm)' }}>Approve only if… ({conditions.length} condition(s))</legend>
@@ -218,9 +285,18 @@ export default function DecisionsPage() {
                       {condProblem === null ? null : <span role="alert" style={{ color: 'var(--eye-color-critical)' }}> {condProblem}</span>}
                       {conditions.map((c, i) => <div key={i} style={{ fontSize: 'var(--eye-type-label-sm)' }}>“{c.label}” — {c.kind} {c.ref ? `${c.ref.slice(0, 8)}…` : c.expected}</div>)}
                     </fieldset>
-                    <button type="button" style={buttonStyle} disabled={busy || rationale.trim().length < 8} onClick={() => void act(() => api.approve(scope, open.package_id, v.version, { decision: 'approve', versionDigest: v.version_digest as string, rationale, conditions })).then((ok) => { if (ok) { setConditions([]); void openPackage(open.package_id); } })}>Approve this digest</button>
-                  </>
+                  </CommandReview>
+                  /* end B81 ha */
                 ) : null}
+                {/* B81 ha: the WITHDRAWAL (PAT-11) — the owner's, with its reason; nothing is erased (the record below keeps who, why, who had it) */}
+                {isDecisionOwner && withdrawable && open.owner_principal_id === me.principalId ? (
+                  <CommandReview action="decision.package.withdraw" object={{ type: 'decision package', id: open.package_id, version: v.version, title: open.title, state: open.state }}
+                    digest={v.version_digest ?? `draft:${v.version}`} eligibility={{ can: true, reason: null, role: 'decision_owner', basis: 'the package owner' }} consequence={consequenceStated('decision.package.withdraw')}
+                    rationale={{ value: withdrawReason, onChange: setWithdrawReason, min: 8, label: 'Withdrawal reason' }}
+                    actionLabel="Withdraw the package" pendingLabel="withdrawing" variant="critical"
+                    onRun={async () => { const ok = await act(() => authorityApi.withdraw(scope, open.package_id, withdrawReason.trim())); if (!ok) throw new Error('refused'); setWithdrawReason(''); void openPackage(open.package_id); }} />
+                ) : null}
+                {/* end B81 ha */}
                 {/* B34 (0090) gates: the Commit lives in the gate below — Preview first; the commit carries its digest */}
                 {(isExecutive || isDecisionOwner || isApprover || isAuthority) && open.committed_version === v.version ? (
                   <button type="button" style={buttonStyle} disabled={busy} onClick={() => void (async () => { setBusy(true); const r = await api.replay(scope, open.package_id, v.version, null); setBusy(false); if (!r.ok || r.data === undefined) { setError(r.error ?? null); return; } setReplay(r.data.replay); setReceipt(r.data.receipt); })()}>Replay what we knew</button>

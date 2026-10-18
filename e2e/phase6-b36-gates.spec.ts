@@ -32,7 +32,8 @@
  * "Condition expected", "Condition label", "Add condition"; "Approval rationale", "Approve this digest"; the heading "The gate's record",
  * data-testid="gate-state", the lists "approval signatures" / "challenges" / "distributions", the paragraph "decision signatures"; "Sign my
  * approval", "Sign the decision", "Reason", "Challenge this decision", "Recuse myself (voids my approval)", "Resolution note", "Dismiss the
- * challenge", "Preview the consequences", the section "Consequence preview", "Commit (decision.commit, C3)", "Distribute"; the board page's
+ * challenge", "Preview the consequences", the section "Consequence preview", "Commit (decision.commit, C3)", "Distribute"; B81 §HA's typed
+ * confirmation before the commit and the decision's signature (the label "Type <phrase> to confirm …", the phrase's test id "typed-phrase"); the board page's
  * card (its heading, the list "board approvals", #act-<pkg>, #why-<pkg>, "Approve this digest").
  */
 import { createHash } from 'node:crypto';
@@ -396,12 +397,16 @@ test.describe('CP-6 B36 — the gate panel completed: the condition builder, the
     const preview = page.getByRole('region', { name: 'Consequence preview' });
     await expect(preview).toContainText('● Would commit.');
     await expect(preview).toContainText(/Residual risk: 0 failing condition\(s\)/);
+    // B81 §HA (PAT-16): the commit cannot be undone — the TYPED confirmation (the short version digest the page shows) enables it
+    await preview.getByLabel(/^Type .+ to confirm/).fill(await preview.getByTestId('typed-phrase').innerText());
     await preview.getByRole('button', { name: 'Commit (decision.commit, C3)' }).click();
     await expect(page.getByText(/^■ COMMITTED under/)).toBeVisible();
     // THE DECISION SIGNED after its commitment (k1): by the committing authority
     const decision = record(page).getByLabel('decision signatures');
     await expect(decision).toContainText(`committed`);
     await expect(decision).toContainText('not signed yet');
+    // B81 §HA (PAT-16): a signature cannot be undone — the TYPED confirmation (the short header digest) enables it
+    await record(page).getByLabel(/^Type .+ to confirm/).fill(await record(page).getByTestId('typed-phrase').innerText());
     await record(page).getByRole('button', { name: 'Sign the decision' }).click();
     await expect(decision).toContainText(new RegExp(`✓ VERIFIED — signed by ${short8(authority.principalId)} with ed25519:[0-9a-f]{16}`));
     await expect(record(page).getByRole('button', { name: 'Sign the decision' })).toHaveCount(0);
