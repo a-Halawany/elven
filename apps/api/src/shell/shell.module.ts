@@ -8,6 +8,7 @@ import { DraftsModule } from './drafts/drafts.module.js';
 import { NavigationModule } from './navigation/navigation.module.js';
 /* B81 dg */ import { DegradedModule } from './degraded/degraded.module.js'; /* end B81 dg */
 /* B81 lyg */ import { PreferencesModule } from './preferences/preferences.module.js'; /* end B81 lyg */
+/* B81 si */ import { SearchModule } from './search/search.module.js'; /* end B81 si */
 
-@Module({ imports: [DraftsModule, NavigationModule, /* B81 dg */ DegradedModule /* end B81 dg */, /* B81 lyg */ PreferencesModule /* end B81 lyg */] })
+@Module({ imports: [DraftsModule, NavigationModule, /* B81 dg */ DegradedModule /* end B81 dg */, /* B81 lyg */ PreferencesModule /* end B81 lyg */, /* B81 si */ SearchModule /* end B81 si */] })
 export class ShellModule {}
