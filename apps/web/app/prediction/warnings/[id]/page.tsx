@@ -25,6 +25,7 @@ import { Button } from '../../../../components/actions';
 import { Select } from '../../../../components/forms';
 import { ErrorNote } from '../../../../components/ui';
 import { Empty, fmtInstant } from '../../../../components/observation';
+/* B81 act (§DG: the degraded dependencies on a corridor view) */ import { DegradedDependencies } from '../../../home/operations-room/degraded-b81';
 /* B81 integration (UX-11-005) */ import { RecoveryPanel } from '../../../../components/recovery'; import { recoveryOfRefusedLink } from '../../../../lib/degraded-b81'; /* end B81 integration */
 
 /** B81 integration: ONE h1 per rendering (lib/layout-b81's REG-03 ratchet) — every branch (not opened, loading, the object) titles
@@ -126,6 +127,7 @@ export default function WarningObjectPage() {
     <>
       <p className="eye-shell-meta"><Link href="/prediction/warnings">← Warnings</Link></p>
       <ObjectHeader input={input} version={{ compare: { label: 'Compare two recorded instants', anchor: 'warning-versions' } }} />
+      <DegradedDependencies scope={scope} purpose="prediction" />
 
       <section aria-labelledby="warning-versions" className="eye-object-versions">
         <h2 id="warning-versions" style={{ fontSize: 'var(--eye-type-heading-2)' }}>Recorded instants</h2>
