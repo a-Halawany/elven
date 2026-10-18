@@ -65,9 +65,10 @@ export default function OperationsRoomPage() {
       <p className="eye-help">The command composition (BP-05, 1920 px and wider): the corridor, the warning queue and the twin state with one synchronized selection,
         one display and its ONE control surface. Presenting and handing off move where you are looking — they never act; every act stays on its own page behind its review.</p>
       {problems.map((p) => <p key={p} role="alert" className="eye-cmdenv-frozen">{p}</p>)}
-      <DegradedDependencies scope={scope} purpose="navigation" />
       {data === null ? <LiveStatus>reading the room…</LiveStatus>
         : <CommandComposition scope={scope} data={data} authenticated mirrorWindow={mirrorWindow} onReload={() => { void load(); }} />}
+      {/* B81 act (§DG): the degraded dependencies under the composition — the room's own Status region stays first on the 1920 surface */}
+      <DegradedDependencies scope={scope} purpose="navigation" />
     </>
   );
 }
