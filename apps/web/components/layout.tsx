@@ -203,7 +203,7 @@ export function DensitySwitch({ compact }: { compact?: boolean }) {
   };
   return (
     <span className="eye-density-switch">
-      <label htmlFor={`${id}-density`} className="eye-density-label">Density</label>{' '}
+      <label htmlFor={`${id}-density`} className="eye-density-label">Display density</label>{' '}
       <select id={`${id}-density`} className="eye-density-select" value={saved ?? ''} disabled={p.pending !== null || p.state !== 'ready'}
         aria-describedby={`${id}-density-note`} onChange={(e) => onChange(e.target.value)}>
         <option value="">Default for your work</option>

@@ -220,7 +220,7 @@ test.describe('CP-6 B81 — the act\'s walk: the palette, the clarification, the
     await expect(room).toHaveAttribute('data-layout-class', 'BP-05');
     for (const r of ['Context', 'Status', 'Authority', 'Primary task', 'Actions', 'Evidence', 'Inspector']) await expect(room.getByRole('region', { name: r, exact: true }).first()).toBeVisible();
     await expect(room).toContainText(/CONTROL SURFACE|MIRROR — not a control surface/);
-    await expect(page.getByRole('combobox', { name: 'Density' }).first()).toHaveValue('DEN-01');           // the act's strategic density
+    await expect(page.getByRole('combobox', { name: 'Display density' }).first()).toHaveValue('DEN-01');           // the act's strategic density
     await shot(page, '14-operations-room');
     await page.goto(`/present?display=${env('EYE_B81_DISPLAY', 'operations-room')}&tenant=${required('EYE_B81_TENANT')}&domain=${required('EYE_B81_DOMAIN')}`);
     await expect(page.getByRole('heading', { name: 'Presentation display', level: 1 })).toBeVisible();

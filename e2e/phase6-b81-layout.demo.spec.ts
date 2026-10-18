@@ -129,7 +129,7 @@ test.describe('B81 §LY-G — the layout walk (device matrix, regions, density, 
 
   test('the density switch: the server\'s value until it answers; a refused read says so and the default applies', async ({ browser }) => {
     const page = await signedInPage(browser, { width: 1440, height: 900 });
-    // the page's own switch (in the main region) — the shell header carries a compact one of its own, named the same
+    // the page's own switch (in the main region) — the shell header carries a compact one of its own (both "Display density")
     const main = page.locator('#eye-main');
     const select = main.getByRole('combobox', { name: 'Density' });
     await expect(select).toBeVisible();
