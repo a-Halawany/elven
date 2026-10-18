@@ -57,5 +57,14 @@
   "login.rotation.required": "One-time bootstrap secret detected — set a new password before continuing.",
   "login.rotation.new": "New password (min 12 characters)",
   "login.rotation.submit": "Set new password",
-  "login.rotation.done": "Password set. Sign in again with your new password."
+  "login.rotation.done": "Password set. Sign in again with your new password.",
+  "b81.ct.registry.title": "Product terminology",
+  "b81.ct.term.definition": "Definition",
+  "b81.ct.term.example": "Example",
+  "b81.ct.help.conditions": "Required conditions",
+  "b81.ct.help.detail": "More detail",
+  "b81.ct.mark.untranslated": "Not translated — the canonical English term is shown",
+  "b81.ct.mark.source_corrected": "The English term was corrected after this translation — the canonical English term is shown until the translation is reviewed",
+  "b81.ct.mark.unreviewed": "Unreviewed translation — no translation provenance; the canonical English term is shown",
+  "b81.ct.lint.ratchet": "Content lint ratchet: committed findings may only be removed, never added"
 }

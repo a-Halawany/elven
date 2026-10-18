@@ -32,6 +32,10 @@ import { DesignGovernanceService } from './design/design.service.js';
 import { ThemesPlatformController, ThemesTenantController, ThemesDomainController } from './design/themes/themes.controller.js';
 import { ThemesService } from './design/themes/themes.service.js';
 /* end B80 tk */
+/* B81 ct */
+import { TermsDomainController, TermsPlatformController, TermsTenantController } from './design/terms/terms.controller.js';
+import { TermsService } from './design/terms/terms.service.js';
+/* end B81 ct */
 
 @Module({
   imports: [PipelineModule],
@@ -43,6 +47,7 @@ import { ThemesService } from './design/themes/themes.service.js';
     /* B107 acceptance */ AcceptanceController, AcceptancePlatformController, /* end B107 acceptance */
     /* B107 design */ DesignPlatformController, DesignDomainController, /* end B107 design */
     /* B80 tk */ ThemesTenantController, ThemesDomainController, ThemesPlatformController, /* end B80 tk */
+    /* B81 ct */ TermsPlatformController, TermsTenantController, TermsDomainController, /* end B81 ct */
   ],
   providers: [
     /* B107 registries */ RegistriesService, /* end B107 registries */
@@ -52,6 +57,7 @@ import { ThemesService } from './design/themes/themes.service.js';
     /* B107 acceptance */ AcceptanceService, /* end B107 acceptance */
     /* B107 design */ DesignGovernanceService, /* end B107 design */
     /* B80 tk */ ThemesService, /* end B80 tk */
+    /* B81 ct */ TermsService, /* end B81 ct */
   ],
 })
 export class GovernanceModule {}

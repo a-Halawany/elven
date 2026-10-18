@@ -588,3 +588,32 @@ button[aria-busy='true'] { --eye-button-cursor: progress; }
 }
 @media print { .eye-context-actions { display: none; } }
 /* end B80 cb */
+/* B81 ct — TERM and HELP PANEL (components/help.tsx; F-P7-E-18). Semantic tokens only; logical properties (the tooltip mirrors under RTL);
+   a border carries the layer in forced colours and print (no shadow-only edge). The term's underline is a border, never colour alone. */
+.eye-term-anchor { position: relative; display: inline; }
+.eye-term { display: inline-flex; align-items: baseline; gap: var(--eye-space-2); border-block-end: 1px dotted var(--eye-color-ink-muted); cursor: help; }
+.eye-term:focus-visible { outline: 2px solid var(--eye-border-focus); outline-offset: 2px; }
+.eye-term-tip { position: absolute; inset-block-start: calc(100% + var(--eye-space-4)); inset-inline-start: 0; z-index: 30; display: flex; flex-direction: column; gap: var(--eye-space-4);
+  min-inline-size: 14rem; max-inline-size: min(90vw, 26rem); background: var(--eye-color-surface-elevated); color: var(--eye-color-ink-default);
+  border: 1px solid var(--eye-color-border-strong); border-radius: var(--eye-radius-md); box-shadow: var(--eye-elevation-2); padding: var(--eye-space-8) var(--eye-space-12);
+  font-size: var(--eye-type-body-sm); line-height: var(--eye-type-body-sm-line); white-space: normal; }
+.eye-term-tip[hidden] { display: none; }
+.eye-term-tip-label { font-weight: 650; color: var(--eye-color-ink-strong); }
+.eye-term-tip-definition, .eye-term-tip-version { color: var(--eye-color-ink-muted); }
+.eye-term-tip-mark { color: var(--eye-color-ink-strong); border-inline-start: 3px solid var(--eye-color-warning); padding-inline-start: var(--eye-space-4); }
+.eye-help { border: 1px solid var(--eye-color-border-default); border-inline-start: 4px solid var(--eye-color-accent-strong); border-radius: var(--eye-radius-md);
+  background: var(--eye-color-surface-secondary); padding: var(--eye-space-8) var(--eye-space-12); margin-block: var(--eye-space-8); font-size: var(--eye-type-body-sm); }
+.eye-help-title { margin-block: 0 var(--eye-space-4); font-size: var(--eye-type-label-md); color: var(--eye-color-ink-strong); }
+.eye-help-text, .eye-help-example, .eye-help-terms { margin-block: var(--eye-space-4); }
+.eye-help-key { font-weight: 600; color: var(--eye-color-ink-strong); }
+.eye-help-conditions ul { margin-block: var(--eye-space-2); padding-inline-start: var(--eye-space-24); }
+.eye-help-problem { color: var(--eye-color-ink-strong); border-inline-start: 3px solid var(--eye-color-warning); padding-inline-start: var(--eye-space-4); }
+.eye-help-detail > summary { cursor: pointer; }
+.eye-ct-registry-row[data-state='published'] { border-inline-start: 4px solid var(--eye-color-accent-strong); }
+@media (forced-colors: active) {
+  .eye-term { border-block-end-color: CanvasText; }
+  .eye-term-tip, .eye-help { border: 1px solid CanvasText; }
+  .eye-term-tip-mark, .eye-help-problem { border-inline-start-color: Mark; }
+}
+@media print { .eye-term-tip { display: none; } .eye-term { border-block-end: none; } }
+/* end B81 ct */
