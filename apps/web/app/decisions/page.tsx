@@ -26,6 +26,10 @@ import { ACT_ROLES, consequenceStated, decisionDigestView, eligibility, rolesIn 
 import { authorityApi } from '../../lib/authority-api-b81';
 import { reviewDigest } from '../../lib/forms-b80';
 /* end B81 ha */
+/* B81 si: the palette's hand-off (UX-13-004) — `?package=<id>&review=<action>` opens that package with its Command Review in view */
+import { reviewRequested } from '../../lib/authority-b81';
+import { routeId } from '../../lib/object-b81';
+/* end B81 si */
 
 const STATE_TEXT: Record<string, string> = { draft: '◌ DRAFT', proposed: '◍ PROPOSED', under_review: '◍ UNDER REVIEW', approved: '● APPROVED', committed: '■ COMMITTED', monitoring: '◉ MONITORING', closed: '□ CLOSED', rejected: '✕ REJECTED', withdrawn: '✕ WITHDRAWN',
   /* B34 (0090) gates */ deferred: '◷ DEFERRED', information_requested: '? INFORMATION REQUESTED' };
@@ -73,6 +77,18 @@ export default function DecisionsPage() {
     setRows(r.data.packages);
   };
   useEffect(() => { void load(); }, [scope]);
+  /* B81 si: THE PALETTE'S HAND-OFF (UX-13-004, UX-ADR-008) — `/decisions?package=<id>&review=<action>` opens THAT package so its Command
+     Review is on screen; nothing is preselected, approved or run: the review renders its own gate (eligibility, digest, consequence,
+     rationale) and the person acts deliberately — or not at all. A package the link names but the server refuses is said in its words. */
+  const [handoff, setHandoff] = useState<{ action: string | null; packageId: string | null } | null>(null);
+  useEffect(() => {
+    const sp = typeof window === 'undefined' ? '' : window.location.search;
+    const action = reviewRequested(sp); const pkg = routeId(new URLSearchParams(sp).get('package'));
+    if (action === null && pkg === null) return;
+    setHandoff({ action, packageId: pkg });
+    if (pkg !== null) void openPackage(pkg);
+  }, [scope]); // eslint-disable-line react-hooks/exhaustive-deps
+  /* end B81 si */
   const openPackage = async (id: string) => {
     const r = await api.get(scope, id);
     if (!r.ok || r.data === undefined) { setProblem(r.error?.message ?? 'the package could not be read'); return; }
@@ -120,6 +136,14 @@ export default function DecisionsPage() {
   return (
     <>
       <h1 style={{ fontSize: 'var(--eye-type-heading-1)', marginBlockStart: 0 }}>Decisions</h1>
+      {/* B81 si: the hand-off, said — nothing has been done */}
+      {handoff === null ? null : (
+        <p role="status" className="eye-palette-reason">
+          You came from the palette to review {handoff.action === null ? 'an act' : <strong>{handoff.action}</strong>}{handoff.packageId === null ? ' — choose the package below; its Command Review opens with it' : ' on the package opened below'}.
+          Nothing has been done: the Command Review shows the effect, your eligibility and the exact digest before you decide.
+        </p>
+      )}
+      {/* end B81 si */}
       <p style={{ fontSize: 'var(--eye-type-label-sm)', color: 'var(--eye-color-ink-muted)' }}>
         A package is complete or refused; what is approved is the <strong>choice</strong>, never a menu; a commitment is one exact C3 act by a named human authority who is not an approver. No model recommends an option here.
       </p>
