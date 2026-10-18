@@ -10,7 +10,7 @@
  *      reason beside it, never run); TruthBadge on the symbol set; the Button's enforcement (an icon-only C3 control held with its reason,
  *      the labelled one the 44px consequential control); the elevation uses; the Field's control slot; FileIntake in upload mode.
  *
- * Personas from the act's env lines (EYE_B81_RE_*), each defaulting to the act's login; the password is EYE_TEST_ADMIN_PASSWORD. Every person
+ * Personas and records from the act's env lines (EYE_B81_RE_* first, then act-b81's EYE_B81_*), each defaulting to the act's login; the password is EYE_TEST_ADMIN_PASSWORD. Every person
  * and record SYNTHETIC. CONSTRUCTION + DEMONSTRATED OPERATION evidence only; real acceptance is H3 (B111's recording path) — never claimed.
  */
 import { expect as baseExpect, test, type Browser, type Page } from '@playwright/test';
@@ -29,8 +29,9 @@ function required(name: string): string {
 }
 const OWNER = env('EYE_B81_RE_OWNER', 'l.brandt');
 const DSA = env('EYE_B81_RE_CATALOGUE_USER', 'l.haddad');
-const WARNING = env('EYE_B81_RE_WARNING', '01a0df00-48f5-7131-9232-4a61a20296d4');
-const AS_OF = env('EYE_B81_RE_AS_OF', '2026-09-27T18:35:33Z');
+// the act's env lines (act-b81.mjs prints EYE_B81_WARNING and EYE_B81_AS_OF_FIRST — the warning's first recorded instant, a replayable one)
+const WARNING = env('EYE_B81_RE_WARNING', env('EYE_B81_WARNING', '01a0df00-48f5-7131-9232-4a61a20296d4'));
+const AS_OF = env('EYE_B81_RE_AS_OF', env('EYE_B81_AS_OF_FIRST', '2026-09-27T18:35:33Z'));
 const LINK = `/prediction/warnings/as-of?warning=${WARNING}&at=${encodeURIComponent(AS_OF)}`;
 
 async function fillSignIn(page: Page, username: string): Promise<void> {

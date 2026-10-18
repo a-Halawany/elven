@@ -15,6 +15,7 @@ import { twins, type Twin } from '../../../lib/twins';
 import { roomWatermark } from '../../../lib/windows-b81';
 import { CommandComposition, type RoomData } from '../../../components/command-environment';
 import { LiveStatus } from '../../../components/observation';
+import { DegradedDependencies } from './degraded-b81';
 
 type Res = { ok: boolean; status: number; error?: { code: string; message: string } };
 const refusal = (what: string, r: Res) => `${what}: HTTP ${r.status}${r.error?.code ? ` ${r.error.code}` : ''} — ${r.error?.message ?? 'no answer'}`;
@@ -66,6 +67,8 @@ export default function OperationsRoomPage() {
       {problems.map((p) => <p key={p} role="alert" className="eye-cmdenv-frozen">{p}</p>)}
       {data === null ? <LiveStatus>reading the room…</LiveStatus>
         : <CommandComposition scope={scope} data={data} authenticated mirrorWindow={mirrorWindow} onReload={() => { void load(); }} />}
+      {/* B81 act (§DG): the degraded dependencies under the composition — the room's own Status region stays first on the 1920 surface */}
+      <DegradedDependencies scope={scope} purpose="navigation" />
     </>
   );
 }

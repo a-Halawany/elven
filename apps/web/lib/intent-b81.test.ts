@@ -182,3 +182,16 @@ describe('the palette\'s items per mode — each passes the guard: it navigates 
     expect(d.items.map((i) => i.kind)).toEqual(['search']);
   });
 });
+
+describe('B81 act rehearsal — the clarification stays within the server\'s 500-character bound (0119 §SI)', () => {
+  it('long labels are clipped in the question (the alternatives keep them whole); too many are counted', async () => {
+    const { interpret, CLARIFICATION_MAX } = await import('./intent-b81');
+    const long = (i: number) => `Commit: B28 — keep the bearing sets on the booked Bab el-Mandeb routing (SYNTHETIC) — option ${i} with a long tail of words`;
+    const hits = Array.from({ length: 12 }, (_, i) => ({ key: `CMT:${i}`, kind: 'commitment', label: long(i), href: '/x', leg: 'strategy', id: String(i) }));
+    const r = interpret('Bab el-Mandeb exposure Regensburg', { mode: 'ask', hits });
+    expect(r.kind).toBe('ambiguous');
+    expect(r.clarification!.length).toBeLessThanOrEqual(CLARIFICATION_MAX);
+    expect(r.clarification).toMatch(/^Which “Bab el-Mandeb” do you mean — /);
+    expect([...r.alternatives.map((a) => a.label)].sort()).toEqual(hits.map((h) => h.label).sort());
+  });
+});
