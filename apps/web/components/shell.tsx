@@ -43,6 +43,7 @@ import { ThemeScope } from './theme';
 import { Dialog } from './layers';
 /* B81 re: the sign-in / deep-link return (UX-11-005) */
 import { loginHref } from '../lib/signin-return-b81';
+import { carriedViews } from '../lib/tableview-b81';
 /* end B81 re */
 
 /* ── THE SLOTS (b80-seams AppShellSlots): §CB's context bar under the banner, §TK's ThemeScope around the surface ── */
@@ -449,7 +450,9 @@ export function HistoryNavigator({ history, current, scope, workspace, onGo }: {
     const [path, query] = current.split('?');
     const r = await saveNavigation(scope, {
       workspace, expectedVersion: mine?.current.version ?? 0,
-      location: { route: path ?? current, ...(query ? { query } : {}), title: (history.entries[history.index]?.title ?? '').slice(0, 160) || undefined },
+      location: { route: path ?? current, ...(query ? { query } : {}), title: (history.entries[history.index]?.title ?? '').slice(0, 160) || undefined,
+        /* B81 re: saving a place keeps the person's saved table views (UX-22-002 — lib/tableview-b81.ts) */
+        ...(Object.keys(carriedViews(mine?.current)).length > 0 ? { filters: carriedViews(mine?.current) } : {}) },
       returnPath: back !== null && safeLocation(back.route) !== null ? back.route : null, focus: null,
       recent: history.entries.filter((e) => safeLocation(e.route) !== null).slice(-20).map((e) => ({ route: e.route, ...(e.title ? { title: e.title.slice(0, 160) } : {}) })),
       favorites: mine?.current.favorites ?? [],

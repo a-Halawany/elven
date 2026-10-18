@@ -608,6 +608,9 @@ button[aria-busy='true'] { --eye-button-cursor: progress; }
   padding-block: var(--eye-space-8); padding-inline: var(--eye-space-16);
 }
 .eye-truth-glyph { vertical-align: -1px; }
+/* The person's saved table view (UX-22-002): one quiet line above the table, its two controls. */
+.eye-saved-view { display: flex; flex-wrap: wrap; align-items: center; gap: var(--eye-space-8); margin-block: var(--eye-space-8); }
+.eye-saved-view > .eye-help { flex: 1 1 24rem; }
 @media (forced-colors: active) {
   [data-elevation] { box-shadow: none; }
   .eye-shell-lapsed { border-block-end-color: CanvasText; }
