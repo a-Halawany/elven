@@ -140,6 +140,18 @@ export function hitsFor(phrase: string, hits: readonly IntentHit[]): IntentHit[]
 }
 const altOf = (h: IntentHit): Alternative => ({ key: h.key, label: h.label, kind: h.kind, target: h.href, detail: `the ${h.kind} ${quote(h.label)} (${h.leg})` });
 const kindList = (ks: readonly string[]) => (ks.length <= 1 ? ks.join('') : `${ks.slice(0, -1).join(', ')} or ${ks[ks.length - 1]}`);
+/** The server keeps a clarification to 500 characters (0119 §SI): each record is named by at most 60 characters of its label in the
+ *  question (the alternatives keep the whole label), and a list too long for the bound names the first records and counts the rest. */
+export const CLARIFICATION_MAX = 500;
+const clip = (s: string, n = 60) => (s.length <= n ? s : `${s.slice(0, n - 1).trimEnd()}…`);
+function boundedQuestion(head: string, items: readonly string[]): string {
+  for (let k = items.length; k >= 1; k -= 1) {
+    const shown = k === items.length ? items : [...items.slice(0, k), `${items.length - k} more`];
+    const q = `${head}${kindList(shown)}?`;
+    if (q.length <= CLARIFICATION_MAX) return q;
+  }
+  return `${head.slice(0, CLARIFICATION_MAX - 2)}…?`;
+}
 
 /**
  * THE INTERPRETER. Deterministic: the same input, mode, hits and version always give the same reading. `hits` absent = the palette's
@@ -192,7 +204,7 @@ export function interpret(input: string, opts: { mode: PaletteMode; hits?: reado
     const uncertainty = [...preview, ...(hits !== null && phrases.length > 0 && unique.length === 0 ? [`no ${c.object} you may see matches ${quote(phrases.join(' '))} — the page lists them`] : [])];
     if (unique.length > 1) {
       return base({ kind: 'ambiguous', command: c, kinds: w.kinds, phrases, scopedQuery, handoffs, alternatives, options: alternatives.map(({ label, target }) => ({ label, target })),
-        clarification: `Which ${c.object} do you mean — ${kindList(unique.map((h) => quote(h.label)))}?`, ambiguousPhrase: phrases.join(' '), uncertainty: [...uncertainty, `${unique.length} ${c.object}s match`] });
+        clarification: boundedQuestion(`Which ${c.object} do you mean — `, unique.map((h) => quote(clip(h.label)))), ambiguousPhrase: phrases.join(' '), uncertainty: [...uncertainty, `${unique.length} ${c.object}s match`] });
     }
     return base({ kind: 'command', command: c, kinds: w.kinds, phrases, scopedQuery, handoffs, alternatives, options: alternatives.map(({ label, target }) => ({ label, target })),
       uncertainty: [...uncertainty, 'a command is consequential: its Command Review states the effect, your eligibility and the digest before anything happens'] });
@@ -210,7 +222,7 @@ export function interpret(input: string, opts: { mode: PaletteMode; hits?: reado
         const alternatives = distinct.slice(0, MAX_ALTERNATIVES).map(altOf);
         const kinds = [...new Set(distinct.map((h) => h.kind))];
         return base({ kind: 'ambiguous', kinds: w.kinds, phrases: w.phrases, scopedQuery, ambiguousPhrase: p, alternatives, options: alternatives.map(({ label, target }) => ({ label, target })),
-          clarification: `Which ${quote(p)} do you mean — ${kindList(distinct.slice(0, MAX_ALTERNATIVES).map((h) => `the ${h.kind} ${quote(h.label)}`))}?`,
+          clarification: boundedQuestion(`Which ${quote(p)} do you mean — `, distinct.slice(0, MAX_ALTERNATIVES).map((h) => `the ${h.kind} ${quote(clip(h.label))}`)),
           uncertainty: [...uncertainty, `${quote(p)} matches ${distinct.length} records of ${kinds.length} kind(s)${distinct.length > MAX_ALTERNATIVES ? ` — the first ${MAX_ALTERNATIVES} are offered; refine the words for the rest` : ''}`] });
       }
     }
