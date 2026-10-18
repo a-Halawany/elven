@@ -150,6 +150,7 @@ export default function WarningsPage() {
       {open === null ? null : (
         <section aria-labelledby="wrn-h" style={{ ...cardStyle, marginBlockStart: 'var(--eye-space-24)' }}>
           <h2 id="wrn-h" style={{ fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 }}>{open.title}</h2>
+          {/* B81 ob */}<p><a href={`/prediction/warnings/${open.warning_id}`}>Open the warning&apos;s own page</a> (its canonical header, its recorded instants and their compare)</p>{/* end B81 ob */}
           <p><LevelBadge w={open} /> <LevelLine w={open} /></p>
           <WindowState w={open} now={now} />
           <p><Timing w={open} /></p>

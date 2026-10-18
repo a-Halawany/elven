@@ -152,6 +152,7 @@ export default function ForecastsPage() {
         <section aria-labelledby="fct-h" style={{ ...cardStyle, marginBlockStart: 'var(--eye-space-24)' }}>
           <h2 id="fct-h" style={{ fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 }}>{open.series_key} · {open.horizon_code}</h2>
           <ValidationBadge state={open.validation_state} label={open.label} />
+          {/* B81 ob */}<p><a href={`/prediction/forecasts/${open.forecast_id}`}>Open the forecast&apos;s own page</a> (its canonical header and durable reference)</p>{/* end B81 ob */}
           <p>{open.validation_note}</p>
           <p><ControlsLine controls={open.controls} /></p>
           {open.attention_state === 'none' ? null : (
