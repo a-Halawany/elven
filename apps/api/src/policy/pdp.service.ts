@@ -163,6 +163,13 @@ const BUNDLE_V1: Rule[] = [
       { role: 'support_engineer', atScope: 'DOMAIN' },
       { role: 'enablement_assessor', atScope: 'DOMAIN' },
       /* end B94 §0 */
+      /* B107 §0 (0115 §0.2): the five PLATFORM governance roles resolve their own scope */
+      { role: 'product_authority', atScope: 'PLATFORM' },
+      { role: 'design_system_authority', atScope: 'PLATFORM' },
+      { role: 'independent_assurance', atScope: 'PLATFORM' },
+      { role: 'operations_authority', atScope: 'PLATFORM' },
+      { role: 'conformance_steward', atScope: 'PLATFORM' },
+      /* end B107 §0 */
     ],
     obligations: [{ type: 'audit_access' }],
     requiresPurpose: true,
@@ -2578,6 +2585,244 @@ const BUNDLE_V1: Rule[] = [
     ];
   })(),
   /* end B94 support */
+  /* B107 §0 */
+  /* B107 §0 (0115; F-R0-04, F-P7D-25, F-P7-E-17, F-P7-F-12). EXACT rules — no `governance` prefix rule exists. THE READ (governance.read:
+     the registries, the trace and impact reads, manifests, release candidates, the workspace, acceptance records of a domain, the design
+     baseline) is consequential and audited: the governance roles (PLATFORM), the platform admin and auditor, and — for a domain's own
+     acceptance records — the tenant and domain administrators, the customer sponsor, executives and the attention agent. The parts' rules
+     follow in their blocks. */
+  { actionPrefix: 'governance.read', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'product_authority', atScope: 'PLATFORM' },
+    { role: 'design_system_authority', atScope: 'PLATFORM' }, { role: 'independent_assurance', atScope: 'PLATFORM' }, { role: 'operations_authority', atScope: 'PLATFORM' },
+    { role: 'conformance_steward', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' }, { role: 'customer_sponsor', atScope: 'TENANT' },
+    { role: 'onboarding_authority', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'attention_agent', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B107 §0 */
+  /* B107 registries */
+  /* B107 §RG (0115_b107_x_rg; F-P7D-25, F-P7-F-12: the registries, trace links, change impact, the verification record, the fixture registry).
+     EXACT rules, PLATFORM roles only. THE CONFORMANCE STEWARD imports the repository's registers (read-only), registers normative artifacts,
+     records and retires trace links, reconciles inheritance (holds), records change impacts, ingests verification records, registers and
+     quarantines fixtures — it approves and accepts nothing. INDEPENDENT ASSURANCE reviews a verification record and approves a fixture
+     (human-gated; the ports re-check the approver test: never the ingester, the runner or a builder, never an agent). A DOMAIN's
+     administrator or executive declares its decision-active products citing the vendor's contracts (governance.trace.domain_cite). The
+     reads are §0's governance.read. */
+  ...(() => {
+    const P = (role: string): { role: string; atScope: Scope } => ({ role, atScope: 'PLATFORM' });
+    const gate: Obligation[] = [{ type: 'human_gate' }];
+    const r = (actionPrefix: string, requiredAnyRole: Array<{ role: string; atScope: Scope }>, obligations?: Obligation[]): Rule =>
+      ({ actionPrefix, exact: true, requiredAnyRole, ...(obligations === undefined ? {} : { obligations }), requiresPurpose: true, maxConsequence: 'C2' });
+    const steward = [P('conformance_steward')];
+    return [
+      r('governance.registry.import', steward),
+      r('governance.registry.register', steward),
+      r('governance.trace.link', steward),
+      r('governance.trace.check', steward),
+      r('governance.impact.record', steward),
+      r('governance.verification.ingest', steward),
+      r('governance.verification.review', [P('independent_assurance')], gate),
+      r('governance.fixture.register', steward),
+      r('governance.fixture.quarantine', steward),
+      r('governance.fixture.approve', [P('independent_assurance')], gate),
+      // a DOMAIN's decision-active product (briefing, decision package, forecast) declared as citing the vendor's contracts
+      r('governance.trace.domain_cite', [{ role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }]),
+    ];
+  })(),
+  /* end B107 registries */
+  /* B107 conformance */
+  /* B107 §CM (0115_b107_x_cm; F-P7D-25: ES-01-005, ES-02-002, V03-T-479, IA-01-005/-006, DAT-GV-09). EXACT rules — no `governance` prefix rule
+     exists. REGISTER the committed component manifest, ASSEMBLE / CHECK a release candidate (B65 SUBSTITUTED — not a release): the conformance
+     steward (PLATFORM; it approves nothing). ATTEST a conformant candidate: independent assurance (PLATFORM; human-gated — the port re-checks
+     the approver test: a named human, never the proposer, never a builder, never an agent). WITHDRAW: the steward or the product authority.
+     THE MONITOR: the attention agent (DOMAIN — the after-tick hook `governance-conformance`, its own action) or the steward (PLATFORM). The
+     reads are §0's governance.read. */
+  ...((): Rule[] => {
+    const P = (role: string): { role: string; atScope: Scope } => ({ role, atScope: 'PLATFORM' });
+    const gate: Obligation[] = [{ type: 'human_gate' }];
+    const r = (actionPrefix: string, requiredAnyRole: Array<{ role: string; atScope: Scope }>, obligations?: Obligation[]): Rule =>
+      ({ actionPrefix, exact: true, requiredAnyRole, ...(obligations === undefined ? {} : { obligations }), requiresPurpose: true, maxConsequence: 'C2' });
+    return [
+      r('governance.conformance.manifest.register', [P('conformance_steward')]),
+      r('governance.conformance.candidate.assemble', [P('conformance_steward')]),
+      r('governance.conformance.candidate.check', [P('conformance_steward')]),
+      r('governance.conformance.candidate.attest', [P('independent_assurance')], gate),
+      r('governance.conformance.candidate.withdraw', [P('conformance_steward'), P('product_authority')]),
+      r('governance.conformance.monitor', [P('conformance_steward'), { role: 'attention_agent', atScope: 'DOMAIN' }]),
+    ];
+  })(),
+  /* end B107 conformance */
+  /* B107 ownership */
+  /* B107 §DR (0115_b107_x_dr; F-P7D-25 DP-01/-04/-55, DAT-GV-01..10, ES-04/-11, PER-19; the B90 residuals DP-49-005/-006, DP-41-005). EXACT
+     rules — no `governance` prefix rule exists. THE READ governance.ownership.read (audited): the PLATFORM governance roles and the platform
+     admin (the vendor's registries; a DOMAIN route still needs a DOMAIN/TENANT role — RLS keeps customer content from a PLATFORM context),
+     the tenant's authorities, the domain's administrators, stewards, privacy officers, executives, analysts and the OWNER roles (a named owner
+     reads what it accepts). DOMAIN acts: a STEWARD or the domain admin proposes authorities, reconciles, assembles evidence; the NAMED OWNER
+     accepts and recertifies (any owner role — the port holds the "named owner" rule); a steward or the domain admin RATIFIES (human-gated; the
+     port: never the proposer, never the owner); the domain or tenant admin proposes the domain entry, the customer sponsor or the tenant admin
+     ratifies it; cases are opened by the domain's data roles and reviewed by stewards, the domain admin and the privacy officer (human-gated;
+     the port's segregation); evidence is attested by the onboarding authority or the customer sponsor (TENANT; human-gated, signed). The
+     lineage retirement (products.catalog.lineage.retire) mirrors products.catalog.lineage.declare. PLATFORM acts: the conformance steward
+     declares, imports and reconciles; the named owner accepts (any PLATFORM governance role); the product or operations authority admits and
+     ratifies transfers (human-gated, signed — never a party). The tick acts under executive.attention.tick (no rule here). */
+  ...(() => {
+    const D = (role: string): { role: string; atScope: Scope } => ({ role, atScope: 'DOMAIN' });
+    const T = (role: string): { role: string; atScope: Scope } => ({ role, atScope: 'TENANT' });
+    const P = (role: string): { role: string; atScope: Scope } => ({ role, atScope: 'PLATFORM' });
+    const gate: Obligation[] = [{ type: 'human_gate' }];
+    const r = (actionPrefix: string, requiredAnyRole: Array<{ role: string; atScope: Scope }>, obligations?: Obligation[]): Rule =>
+      ({ actionPrefix, exact: true, requiredAnyRole, ...(obligations === undefined ? {} : { obligations }), requiresPurpose: true, maxConsequence: 'C2' });
+    const govPlatform = ['product_authority', 'design_system_authority', 'independent_assurance', 'operations_authority', 'conformance_steward'].map(P);
+    const owners = ['domain_admin', 'data_steward', 'executive', 'executive_operator', 'domain_analyst', 'forecast_owner', 'strategy_owner', 'knowledge_owner', 'twin_owner',
+                    'risk_owner', 'decision_owner', 'privacy_officer', 'product_analytics_owner'].map(D);
+    const steward = [D('data_steward'), D('domain_admin')];
+    return [
+      r('governance.ownership.read', [P('platform_admin'), ...govPlatform, T('tenant_admin'), T('auditor'), T('customer_sponsor'), T('onboarding_authority'), D('attention_agent'), ...owners],
+        [{ type: 'audit_access' }]),
+      r('governance.ownership.authority.propose', steward),
+      r('governance.ownership.authority.accept', owners, gate),
+      r('governance.ownership.authority.ratify', steward, gate),
+      r('governance.ownership.authority.recertify', owners, gate),
+      r('governance.ownership.domain.propose', [D('domain_admin'), T('tenant_admin')]),
+      r('governance.ownership.domain.ratify', [T('customer_sponsor'), T('tenant_admin')], gate),
+      r('governance.ownership.reconcile', steward),
+      r('governance.ownership.gap.accept', [D('domain_admin'), T('tenant_admin')], gate),
+      r('governance.ownership.case.open', owners),
+      r('governance.ownership.case.review', [D('data_steward'), D('domain_admin'), D('privacy_officer')], gate),
+      r('governance.ownership.case.close', owners),
+      r('governance.ownership.case.withdraw', owners),
+      r('governance.ownership.evidence.assemble', steward),
+      r('governance.ownership.evidence.attest', [T('onboarding_authority'), T('customer_sponsor')], gate),
+      r('products.catalog.lineage.retire', [P('platform_admin'), ...owners], gate),
+      r('governance.ownership.capability.declare', [P('conformance_steward')]),
+      r('governance.ownership.capability.reconcile', [P('conformance_steward')]),
+      r('governance.ownership.capability.accept', govPlatform, gate),
+      r('governance.ownership.capability.admit', [P('product_authority'), P('operations_authority')], gate),
+      r('governance.ownership.component.propose', govPlatform),
+      r('governance.ownership.component.accept', govPlatform, gate),
+      r('governance.ownership.component.ratify', [P('product_authority'), P('operations_authority')], gate),
+      r('governance.ownership.component.withdraw', govPlatform),
+      r('governance.ownership.component.reconcile', [P('conformance_steward')]),
+      r('governance.ownership.platform_gap.accept', [P('product_authority'), P('operations_authority')], gate),
+    ];
+  })(),
+  /* end B107 ownership */
+  /* B107 workspace */
+  /* B107 §PG (0115_b107_x_pg; F-P7-F-12, F-P7D-25 — the product-governance workspace). EXACT rules — no `governance` prefix rule exists (§0) and
+     none of these names is a prefix of another rule's. Every act is the vendor's (PLATFORM roles, `atScope: 'PLATFORM'`; a TENANT or DOMAIN role —
+     a local team — reaches none of them: it cannot waive controlling meaning, PR-72-003). THE APPROVALS (owner assignment, baseline and rights
+     decisions, exception decisions and closures, remediation reviews, conflict resolutions, change decisions, record decisions, reviews and
+     closures) are HUMAN-GATED: AI and automation prepare evidence and proposals only (PR-01-003) — and every port re-checks it (the approver
+     test: a named human, never the proposer, never a builder, never an agent; the exception's owner and the expanded component's owner never
+     approve it). Proposals (exceptions, changes, records, conflicts raised) may be drafted by an agent holding the role; the sweep and the
+     posture snapshot are the conformance steward's. The read is §0's governance.read. */
+  { actionPrefix: 'governance.baseline.owner.assign', exact: true, requiredAnyRole: [{ role: 'product_authority', atScope: 'PLATFORM' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'governance.baseline.propose', exact: true, requiredAnyRole: [{ role: 'product_authority', atScope: 'PLATFORM' }, { role: 'conformance_steward', atScope: 'PLATFORM' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'governance.baseline.decide', exact: true, requiredAnyRole: [{ role: 'product_authority', atScope: 'PLATFORM' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'governance.rights.propose', exact: true, requiredAnyRole: [{ role: 'product_authority', atScope: 'PLATFORM' }, { role: 'conformance_steward', atScope: 'PLATFORM' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'governance.rights.decide', exact: true, requiredAnyRole: [{ role: 'product_authority', atScope: 'PLATFORM' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'governance.exception.propose', exact: true, requiredAnyRole: [{ role: 'product_authority', atScope: 'PLATFORM' }, { role: 'design_system_authority', atScope: 'PLATFORM' }, { role: 'independent_assurance', atScope: 'PLATFORM' }, { role: 'operations_authority', atScope: 'PLATFORM' }, { role: 'conformance_steward', atScope: 'PLATFORM' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'governance.exception.decide', exact: true, requiredAnyRole: [{ role: 'independent_assurance', atScope: 'PLATFORM' }, { role: 'product_authority', atScope: 'PLATFORM' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'governance.exception.withdraw', exact: true, requiredAnyRole: [{ role: 'product_authority', atScope: 'PLATFORM' }, { role: 'design_system_authority', atScope: 'PLATFORM' }, { role: 'independent_assurance', atScope: 'PLATFORM' }, { role: 'operations_authority', atScope: 'PLATFORM' }, { role: 'conformance_steward', atScope: 'PLATFORM' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'governance.exception.close', exact: true, requiredAnyRole: [{ role: 'independent_assurance', atScope: 'PLATFORM' }, { role: 'product_authority', atScope: 'PLATFORM' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'governance.exception.sweep', exact: true, requiredAnyRole: [{ role: 'conformance_steward', atScope: 'PLATFORM' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'governance.remediation.decide', exact: true, requiredAnyRole: [{ role: 'product_authority', atScope: 'PLATFORM' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'governance.conflict.raise', exact: true, requiredAnyRole: [{ role: 'conformance_steward', atScope: 'PLATFORM' }, { role: 'product_authority', atScope: 'PLATFORM' }, { role: 'independent_assurance', atScope: 'PLATFORM' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'governance.conflict.resolve', exact: true, requiredAnyRole: [{ role: 'product_authority', atScope: 'PLATFORM' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'governance.change.propose', exact: true, requiredAnyRole: [{ role: 'product_authority', atScope: 'PLATFORM' }, { role: 'design_system_authority', atScope: 'PLATFORM' }, { role: 'independent_assurance', atScope: 'PLATFORM' }, { role: 'operations_authority', atScope: 'PLATFORM' }, { role: 'conformance_steward', atScope: 'PLATFORM' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'governance.change.decide', exact: true, requiredAnyRole: [{ role: 'independent_assurance', atScope: 'PLATFORM' }, { role: 'product_authority', atScope: 'PLATFORM' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'governance.record.propose', exact: true, requiredAnyRole: [{ role: 'product_authority', atScope: 'PLATFORM' }, { role: 'design_system_authority', atScope: 'PLATFORM' }, { role: 'independent_assurance', atScope: 'PLATFORM' }, { role: 'operations_authority', atScope: 'PLATFORM' }, { role: 'conformance_steward', atScope: 'PLATFORM' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'governance.record.decide', exact: true, requiredAnyRole: [{ role: 'product_authority', atScope: 'PLATFORM' }, { role: 'design_system_authority', atScope: 'PLATFORM' }, { role: 'independent_assurance', atScope: 'PLATFORM' }, { role: 'operations_authority', atScope: 'PLATFORM' }, { role: 'conformance_steward', atScope: 'PLATFORM' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'governance.record.review', exact: true, requiredAnyRole: [{ role: 'product_authority', atScope: 'PLATFORM' }, { role: 'design_system_authority', atScope: 'PLATFORM' }, { role: 'independent_assurance', atScope: 'PLATFORM' }, { role: 'operations_authority', atScope: 'PLATFORM' }, { role: 'conformance_steward', atScope: 'PLATFORM' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'governance.record.close', exact: true, requiredAnyRole: [{ role: 'product_authority', atScope: 'PLATFORM' }, { role: 'design_system_authority', atScope: 'PLATFORM' }, { role: 'independent_assurance', atScope: 'PLATFORM' }, { role: 'operations_authority', atScope: 'PLATFORM' }, { role: 'conformance_steward', atScope: 'PLATFORM' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'governance.posture.record', exact: true, requiredAnyRole: [{ role: 'conformance_steward', atScope: 'PLATFORM' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B107 workspace */
+  /* B107 acceptance */
+  /* B107 §AR (0115_b107_x_ar; F-R0-04, ES-71-*, IA/DP-71-*, PAT-48, OBJ-40, JRN-24). EXACT rules — no `governance` prefix rule exists. THE READ
+     (governance.acceptance.read: the workspace, the accepted scope, OBJ-40's preview, the replay; audited) admits every role that takes part
+     in an acceptance — the vendor's governance roles at PLATFORM, the customer's sponsor and authorities, and the domain's administrator,
+     executive, privacy officer, data steward and attention agent. EVIDENCE is recorded by the steward, the operations authority, the
+     domain admin, the lead or the onboarding authority (an agent may draft, never accept). A PROPOSAL by the product or operations authority,
+     the steward, the domain admin, the lead or the onboarding authority. The customer's VERIFICATION, every ATTESTATION, a TRIGGER, a met
+     CONDITION, a WITHDRAWAL and the ENFORCEMENT marking are HUMAN-GATED — the ports re-check the approver test (named human, the obligation's
+     role, never the proposer, never a builder, one person per obligation). The SWEEP: the steward, the operations authority, the attention
+     agent (the tick runs it under executive.attention.tick). */
+  ...((): Rule[] => {
+    const P = (role: string): { role: string; atScope: Scope } => ({ role, atScope: 'PLATFORM' });
+    const T = (role: string): { role: string; atScope: Scope } => ({ role, atScope: 'TENANT' });
+    const D = (role: string): { role: string; atScope: Scope } => ({ role, atScope: 'DOMAIN' });
+    const gate: Obligation[] = [{ type: 'human_gate' }];
+    const r = (actionPrefix: string, requiredAnyRole: Array<{ role: string; atScope: Scope }>, obligations?: Obligation[]): Rule =>
+      ({ actionPrefix, exact: true, requiredAnyRole, ...(obligations === undefined ? {} : { obligations }), requiresPurpose: true, maxConsequence: 'C2' });
+    return [
+      r('governance.acceptance.read', [P('platform_admin'), P('product_authority'), P('design_system_authority'), P('independent_assurance'), P('operations_authority'), P('conformance_steward'),
+        T('tenant_admin'), T('auditor'), T('customer_sponsor'), T('onboarding_authority'), T('implementation_lead'),
+        D('domain_admin'), D('executive'), D('privacy_officer'), D('data_steward'), D('attention_agent')], [{ type: 'audit_access' }]),
+      r('governance.acceptance.evidence.record', [P('conformance_steward'), P('operations_authority'), D('domain_admin'), T('implementation_lead'), T('onboarding_authority')]),
+      r('governance.acceptance.propose', [P('product_authority'), P('operations_authority'), P('conformance_steward'), D('domain_admin'), T('implementation_lead'), T('onboarding_authority')]),
+      r('governance.acceptance.verify', [T('customer_sponsor'), T('onboarding_authority')], gate),
+      r('governance.acceptance.attest', [P('product_authority'), P('independent_assurance'), P('operations_authority'), P('design_system_authority'), T('customer_sponsor'),
+        T('onboarding_authority'), D('privacy_officer'), D('data_steward'), D('executive')], gate),
+      r('governance.acceptance.trigger', [P('product_authority'), P('operations_authority'), P('independent_assurance'), D('domain_admin')], gate),
+      r('governance.acceptance.condition.close', [P('operations_authority'), P('independent_assurance'), P('product_authority')], gate),
+      r('governance.acceptance.withdraw', [P('product_authority'), P('operations_authority'), P('conformance_steward'), T('customer_sponsor'), T('onboarding_authority'),
+        T('implementation_lead'), D('domain_admin')], gate),
+      r('governance.acceptance.sweep', [P('conformance_steward'), P('operations_authority'), D('attention_agent')]),
+      r('governance.acceptance.enforce', [P('product_authority')], gate),
+    ];
+  })(),
+  /* end B107 acceptance */
+  /* B107 design */
+  /* B107 §DG (0115_b107_x_dg; F-P7-E-17: UX-01/02/03/08/72, UX-ADR-001/002/023/024, REL-01/02/23/24). EXACT rules. PLATFORM (the vendor's
+     design system): the BASELINE registered by the Design System Authority, the conformance steward or the product authority, DECIDED
+     (attest | reject) by the Design System Authority (human-gated, signed — the port re-checks the approver test); the ASSET inventory by
+     the steward or the authority, an asset APPROVED (its one accountable owner named) by the authority (human-gated); PRINCIPLES declared by
+     the authority (human-gated); EVALUATIONS (the lint, a review) by the steward or the authority; design EXCEPTIONS requested by a
+     contributor, DECIDED by the authority (human-gated; the port: never the requester, never the asset's owner); CONTRIBUTIONS proposed and
+     amended by a contributor (the authority, the product authority, the steward, the operations authority), REVIEWED, PUBLISHED,
+     DEPRECATED, RETIRED and CLOSED by the authority, ACCEPTED by the authority or — a constitutional amendment — the product authority, and
+     REJECTED by either (all human-gated; the port re-checks: never the proposer, never a builder); ADOPTION, MEASUREMENT and MIGRATION
+     recorded by the steward or the authority; trace LINKS by the steward or the authority. DOMAIN: the experience INTAKE by the product
+     analytics owner, the domain admin or the authority (the tick's step serves it under executive.attention.tick); a design ACCEPTANCE
+     proposed by the steward or the domain admin and ATTESTED per obligation by the Design System Authority, independent assurance or the
+     customer sponsor (human-gated, signed); the conformance PACKAGE generated by the steward, independent assurance or the tenant's
+     auditor (left unsigned — R2). The reads are §0's governance.read. */
+  ...(() => {
+    const P = (role: string): { role: string; atScope: Scope } => ({ role, atScope: 'PLATFORM' });
+    const S = (role: string): { role: string; atScope: Scope } => ({ role, atScope: 'DOMAIN' });
+    const T = (role: string): { role: string; atScope: Scope } => ({ role, atScope: 'TENANT' });
+    const gate: Obligation[] = [{ type: 'human_gate' }];
+    const r = (actionPrefix: string, requiredAnyRole: Array<{ role: string; atScope: Scope }>, obligations?: Obligation[]): Rule =>
+      ({ actionPrefix, exact: true, requiredAnyRole, ...(obligations === undefined ? {} : { obligations }), requiresPurpose: true, maxConsequence: 'C2' });
+    const dsa = [P('design_system_authority')];
+    const keepers = [P('conformance_steward'), P('design_system_authority')];
+    const contributors = [P('design_system_authority'), P('product_authority'), P('conformance_steward'), P('operations_authority')];
+    return [
+      r('governance.design.baseline.propose', [P('design_system_authority'), P('conformance_steward'), P('product_authority')]),
+      r('governance.design.baseline.decide', dsa, gate),
+      r('governance.design.asset.register', keepers),
+      r('governance.design.asset.approve', dsa, gate),
+      r('governance.design.principle.declare', dsa, gate),
+      r('governance.design.evaluate', keepers),
+      r('governance.design.exception.request', contributors),
+      r('governance.design.exception.decide', dsa, gate),
+      r('governance.design.contribution.propose', contributors),
+      r('governance.design.contribution.amend', contributors),
+      r('governance.design.contribution.review', dsa, gate),
+      r('governance.design.contribution.accept', [P('design_system_authority'), P('product_authority')], gate),
+      r('governance.design.contribution.reject', [P('design_system_authority'), P('product_authority')], gate),
+      r('governance.design.contribution.publish', dsa, gate),
+      r('governance.design.contribution.deprecate', dsa, gate),
+      r('governance.design.contribution.adopt', keepers),
+      r('governance.design.contribution.measure', keepers),
+      r('governance.design.contribution.migrate', keepers),
+      r('governance.design.contribution.retire', dsa, gate),
+      r('governance.design.contribution.close', dsa, gate),
+      r('governance.design.link.record', keepers),
+      r('governance.design.intake', [S('product_analytics_owner'), S('domain_admin'), P('design_system_authority')]),
+      r('governance.design.acceptance.propose', [P('conformance_steward'), S('domain_admin')]),
+      r('governance.design.acceptance.attest', [P('design_system_authority'), P('independent_assurance'), T('customer_sponsor')], gate),
+      r('governance.design.package.generate', [P('conformance_steward'), P('independent_assurance'), T('auditor')]),
+    ];
+  })(),
+  /* end B107 design */
   /* B36 home */
   /* THE EXECUTIVE HOME, THE CADENCE, THE COMMAND VIEWS, THE SEARCH, THE METRICS (0094 §H; F-P6-11: WS-01, JRN-19, PER-03, CAP-EO-01/-02/-04).
      EXACT rules — no `executive` prefix rule exists and none of these names is a prefix of another rule's. THE READS (executive.home.read
@@ -2758,6 +3003,12 @@ const BUNDLE_V1: Rule[] = [
   { actionPrefix: 'prediction.exposure.learn', exact: true, requiredAnyRole: [{ role: 'risk_owner', atScope: 'DOMAIN' }, { role: 'opportunity_sponsor', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   /* end B36 collab */
 ];
+
+/* B107 conformance */
+/** B107 §CM: the DIGEST of the policy bundle this runtime enforces (bundle-v1's rules, canonicalised) — what a release candidate binds and the
+ *  conformance monitor compares (a changed rule is a changed digest; `bundleVersion` alone does not move). */
+export function policyBundleDigest(): string { return contentDigest(BUNDLE_V1 as unknown); }
+/* end B107 conformance */
 
 const CONSEQ_ORDER: ConsequenceClass[] = ['C0', 'C1', 'C2', 'C3', 'C4'];
 

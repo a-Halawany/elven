@@ -41,7 +41,7 @@ INTEG, HV, SLOTS, APPROVAL, STEP = 0.5, 0.15, 2, 1.0, 0.05
 ALLOC = {1: {0: 'BADCEF'}, 2: {0: 'BDF', 1: 'ACE'}, 3: {0: 'BF', 1: 'AC', 2: 'DE'}, 4: {0: 'B', 1: 'AF', 2: 'DC', 3: 'E'}}
 # A1's DELIVERED order is pinned (2026-10-01): B23 → B24 → B28 → B32 → B34 → B29 → B36 → B90 → B27 are done, in that order; the
 # simulation may not reorder the past when a later plan change moves priorities (B27's completion bookkeeping, the owner's review).
-A1_DELIVERED = ['B23', 'B24', 'B28', 'B32', 'B34', 'B29', 'B36', 'B90', 'B27', 'B31', 'B35', 'B30', 'B91', 'B25', 'B33', 'B92', 'B94']
+A1_DELIVERED = ['B23', 'B24', 'B28', 'B32', 'B34', 'B29', 'B36', 'B90', 'B27', 'B31', 'B35', 'B30', 'B91', 'B25', 'B33', 'B92', 'B94', 'B107']
 PIN = {1: {0: list(A1_DELIVERED)}, 2: {0: list(A1_DELIVERED), 1: ['B50']}, 3: {0: list(A1_DELIVERED), 1: ['B50'], 2: ['B80']},
        4: {0: list(A1_DELIVERED), 1: ['B50'], 2: ['B70'], 3: ['B80']}}
 
@@ -83,7 +83,8 @@ def simulate(n, rate, contingency=CONTINGENCY):
     remaining = list(M1); impl, integrated, merged, who, start_of = {}, {}, {}, {}, {}
     queue = []; slots = 0; acct = [None] * n; t = 0.0; phase2 = False
     def pick(i):
-        r = [s for s in remaining if all(d in impl for d in deps[s])]
+        # a stage pinned to another account's delivered order is never picked here (B107: its dependencies cleared early)
+        r = [s for s in remaining if all(d in impl for d in deps[s]) and not any(s in v for j, v in pins.items() if j != i)]
         while pins.get(i):
             p = pins[i][0]
             if p not in remaining: pins[i].pop(0); continue
