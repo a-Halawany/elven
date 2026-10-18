@@ -17,6 +17,7 @@ import { inputStyle, Receipt } from '../../components/ui';
 import { ContextSwitcher } from './context-switcher';
 /* B80 cb */ import { contextChannel } from '../../lib/context-b80'; /* end B80 cb */
 import { CommandViews } from './command-views';
+/* B81 lym */ import Link from 'next/link'; /* end B81 lym */
 import { HomeSections } from './sections';
 
 type Row = Record<string, unknown>;
@@ -170,6 +171,7 @@ export default function HomePage() {
       </section>
 
       <CommandViews contextDigest={h.context.digest} />
+      {/* B81 lym: the operations room (BP-05) beside the command views */}<p className="eye-shell-meta" data-testid="operations-room-link"><Link href="/home/operations-room">Operations room</Link> — the command composition (1920 px and wider): one synchronized selection, a display with its one control surface, and the handoff of a review to your other signed-in session.</p>{/* end B81 lym */}
 
       <section aria-labelledby="home-metrics" data-testid="home-metrics" style={{ ...cardStyle, marginBlockEnd: 'var(--eye-space-16)' }}>
         <h2 id="home-metrics" style={{ fontSize: 'var(--eye-type-heading-3)', marginBlockStart: 0 }}>Metrics</h2>
