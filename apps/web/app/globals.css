@@ -617,3 +617,121 @@ button[aria-busy='true'] { --eye-button-cursor: progress; }
 }
 @media print { .eye-term-tip { display: none; } .eye-term { border-block-end: none; } }
 /* end B81 ct */
+/* B81 lyg */
+/* ── B81 §LY-G: THE RESPONSIVE GRID, DENSITY AND REGIONS (components/layout.tsx; the contract lib/layout-b81.ts). Semantic tokens only,
+   logical properties only (RTL mirrors). The breakpoints are lib/layout-b81 BREAKPOINTS: BP-01 < 640 (one column, the bottom navigation),
+   BP-02 640–959 (one canvas, the rail as glyphs), BP-03 960–1439 (the 12-column grid, the collapsible rail, one supporting panel), BP-04
+   1440–1919 (the persistent rail), BP-05 ≥ 1920. A region carries NO elevation — meaning is stated, never implied by depth (UX-19-004;
+   the elevation lint in layout-b81.test.ts reads this file). ── */
+
+/* BP-03: the rail shows its labels from 960 px (B80 collapsed them below 1024); below 960 the narrow class keeps the glyphs. */
+@media (min-width: 960px) and (max-width: 1023px) {
+  .eye-nav-label { position: static; inline-size: auto; block-size: auto; overflow: visible; clip-path: none; white-space: normal; }
+}
+/* BP-03: the person's collapsed rail (960–1439 only — persistent above, glyphs below); the toggle exists only there. */
+.eye-rail-toggle { display: none; }
+@media (min-width: 960px) and (max-width: 1439px) {
+  .eye-rail-toggle { display: inline-flex; }
+  [data-rail="collapsed"] .eye-nav-label { position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  [data-rail="collapsed"] .eye-rail { inline-size: 3.5rem; }
+}
+
+/* BP-01: the compact navigation. The rail yields to it below 640 px ONLY while the shell renders it as its direct child (none: the rail
+   stays). A catalogue specimen shows at every width, in the page's flow. */
+.eye-bottom-nav { display: none; }
+.eye-bottom-nav--specimen { display: block; max-inline-size: 26rem; border: 1px solid var(--eye-color-border-strong); border-radius: var(--eye-radius-md); }
+@media (max-width: 639px) {
+  .eye-shell:has(> .eye-bottom-nav) .eye-rail { display: none; }
+  .eye-bottom-nav {
+    display: block; position: sticky; inset-block-end: 0; z-index: 6;
+    background: var(--eye-color-surface-primary); border-block-start: 1px solid var(--eye-color-border-strong);
+  }
+}
+.eye-bottom-nav.eye-bottom-nav--specimen { position: static; }
+.eye-bottom-nav-list { display: flex; list-style: none; margin: 0; padding: 0; }
+.eye-bottom-nav-list > li { flex: 1 1 0; min-inline-size: 0; }
+.eye-bottom-nav-link {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--eye-space-2);
+  inline-size: 100%; min-block-size: var(--eye-size-control-lg); padding: var(--eye-space-4);
+  border: none; border-block-start: 3px solid transparent; background: transparent; color: var(--eye-color-ink-default);
+  font: inherit; font-size: var(--eye-type-label-sm); text-decoration: none; cursor: pointer;
+}
+.eye-bottom-nav-link[aria-current="page"] {
+  color: var(--eye-color-accent-strong); background: var(--eye-color-selection); border-block-start-color: var(--eye-color-accent-strong); font-weight: 650;
+}
+.eye-bottom-nav-label { max-inline-size: 100%; text-align: center; overflow-wrap: anywhere; }
+.eye-bottom-nav-more {
+  list-style: none; margin: 0; padding: var(--eye-space-8); display: grid; gap: var(--eye-space-4);
+  border-block-end: 1px solid var(--eye-color-border-default);
+}
+.eye-bottom-nav-more .eye-bottom-nav-link { flex-direction: row; justify-content: flex-start; }
+
+/* CMP-005…008: the primitives on the space tokens and the 12-column grid. */
+.eye-container { inline-size: 100%; margin-inline: auto; }
+.eye-stack { display: flex; flex-direction: column; margin: 0; padding: 0; min-inline-size: 0; }
+ul.eye-stack, ol.eye-stack { list-style: none; }
+.eye-cluster { display: flex; flex-wrap: wrap; min-inline-size: 0; }
+.eye-cluster--justify-start { justify-content: flex-start; }
+.eye-cluster--justify-end { justify-content: flex-end; }
+.eye-cluster--justify-between { justify-content: space-between; }
+.eye-cluster--justify-center { justify-content: center; }
+.eye-cluster--align-start { align-items: flex-start; }
+.eye-cluster--align-center { align-items: center; }
+.eye-cluster--align-baseline { align-items: baseline; }
+.eye-cluster--align-end { align-items: flex-end; }
+.eye-gap-4 { gap: var(--eye-space-4); }
+.eye-gap-8 { gap: var(--eye-space-8); }
+.eye-gap-12 { gap: var(--eye-space-12); }
+.eye-gap-16 { gap: var(--eye-space-16); }
+.eye-gap-24 { gap: var(--eye-space-24); }
+.eye-gap-32 { gap: var(--eye-space-32); }
+.eye-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); min-inline-size: 0; }
+.eye-grid[data-columns="1"] { grid-template-columns: minmax(0, 1fr); }
+.eye-span-1 { grid-column: span 1; } .eye-span-2 { grid-column: span 2; } .eye-span-3 { grid-column: span 3; } .eye-span-4 { grid-column: span 4; }
+.eye-span-5 { grid-column: span 5; } .eye-span-6 { grid-column: span 6; } .eye-span-7 { grid-column: span 7; } .eye-span-8 { grid-column: span 8; }
+.eye-span-9 { grid-column: span 9; } .eye-span-10 { grid-column: span 10; } .eye-span-11 { grid-column: span 11; } .eye-span-12 { grid-column: span 12; }
+@media (max-width: 959px) {
+  .eye-grid { grid-template-columns: minmax(0, 1fr); }
+  .eye-grid > [class*="eye-span-"] { grid-column: 1 / -1; }
+}
+
+/* REG-01…08: the regions and the composition (one reading order; the deferred inspector behind a named opener). No elevation here. */
+.eye-preferences-scope { display: contents; }
+.eye-composition { display: grid; gap: var(--eye-space-12); min-inline-size: 0; }
+.eye-region { min-inline-size: 0; }
+.eye-composition-problem { margin: 0; color: var(--eye-color-critical); font-weight: 600; }
+.eye-deferred { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--eye-space-4); }
+.eye-deferred-opener {
+  inline-size: 100%; min-block-size: var(--eye-size-control-lg); padding-inline: var(--eye-space-12); text-align: start;
+  border: 1px dashed var(--eye-color-border-strong); border-radius: var(--eye-radius-md); background: var(--eye-color-surface-secondary);
+  color: var(--eye-color-accent-default); font: inherit; cursor: pointer; overflow-wrap: anywhere;
+}
+
+/* DEN-01…03: the density in force on everything inside its scope; the NEAREST scope wins (an inspection table inside a strategic page).
+   DEN-02's values are today's rendering exactly (md controls, sm small controls, the 8 px cell padding). A consequential control
+   (.eye-button--lg, the 44 px consequential size) is never resized by a density (LAY-003). */
+[data-density="DEN-01"] { --eye-density-control: var(--eye-size-control-lg); --eye-density-control-small: var(--eye-size-control-lg); --eye-density-row: var(--eye-size-control-lg); --eye-density-pad: var(--eye-space-12); }
+[data-density="DEN-02"] { --eye-density-control: var(--eye-size-control-md); --eye-density-control-small: var(--eye-size-control-sm); --eye-density-row: auto; --eye-density-pad: var(--eye-space-8); }
+[data-density="DEN-03"] { --eye-density-control: var(--eye-size-control-sm); --eye-density-control-small: var(--eye-size-control-sm); --eye-density-row: var(--eye-size-control-sm); --eye-density-pad: var(--eye-space-4); }
+/* :where() keeps these at the specificity of the scope attribute alone, so the order below decides: ordinary, then small; never --lg */
+[data-density] :where(.eye-button:not(.eye-button--lg), .eye-input, .eye-cld-btn, .eye-cld-btn-quiet, .eye-cld-input, .eye-density-select) {
+  block-size: var(--eye-density-control);
+}
+[data-density] :where(.eye-button--sm:not(.eye-button--lg), .eye-cld-btn-sm) { block-size: var(--eye-density-control-small); }
+@media (min-width: 768px) {
+  [data-density] .eye-table td { padding-block: var(--eye-density-pad); block-size: var(--eye-density-row); }
+}
+.eye-density-switch { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: var(--eye-space-4); }
+.eye-density-label { font-size: var(--eye-type-label-sm); color: var(--eye-color-ink-muted); }
+.eye-density-select {
+  block-size: var(--eye-size-control-md); border: 1px solid var(--eye-color-border-strong); border-radius: var(--eye-radius-md);
+  background: var(--eye-color-surface-primary); color: var(--eye-color-ink-default); font: inherit; padding-inline: var(--eye-space-4);
+}
+@media (forced-colors: active) {
+  .eye-bottom-nav-link[aria-current="page"] { forced-color-adjust: none; background: Highlight; color: HighlightText; border-block-start-color: HighlightText; }
+  .eye-deferred-opener, .eye-bottom-nav { border-color: CanvasText; }
+}
+@media print {
+  .eye-bottom-nav, .eye-rail-toggle, .eye-density-switch, .eye-deferred { display: none; }
+}
+/* end B81 lyg */

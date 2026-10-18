@@ -3178,6 +3178,30 @@ const BUNDLE_V1: Rule[] = [
     ];
   })(),
   /* end B81 dg */
+  /* B81 lyg */
+  /* B81 §LY-G (0119_b81_x_lyg; F-P7-E-04: UX-14-002, DEN-01…03, UX-14-004). EXACT rules — no earlier rule is a prefix of shell.preferences.*
+     (no `shell` prefix rule exists). A LAYOUT PREFERENCE (density, the saved layout per composition) is the principal's OWN presentation
+     state: saved and read by the same HUMAN roles as B80 §SH's navigation state (the lists copied, not shared — each part's block stands
+     alone), at their own scope — PLATFORM, TENANT, DOMAIN — and by no agent, subscriber or external collaborator (the port re-checks that
+     the actor is the bound principal AND an active human). Not human-gated: choosing how things are shown is presentation, never a
+     consequential act (the port's human check and the region boundary are the rules). */
+  ...((): Rule[] => {
+    const platform = ['platform_admin', 'commercial_authority', 'product_authority', 'design_system_authority', 'independent_assurance', 'operations_authority', 'conformance_steward']
+      .map((role) => ({ role, atScope: 'PLATFORM' as Scope }));
+    const tenant = ['tenant_admin', 'auditor', 'retention_authority', 'branding_authority', 'customer_sponsor', 'implementation_lead', 'onboarding_authority']
+      .map((role) => ({ role, atScope: 'TENANT' as Scope }));
+    const domain = ['domain_admin', 'domain_analyst', 'collection_manager', 'decision_owner', 'decision_approver', 'decision_authority', 'executive', 'executive_operator',
+      'board_member', 'extraction_manager', 'resolution_manager', 'strategy_owner', 'forecast_owner', 'twin_owner', 'simulation_operator', 'knowledge_owner',
+      'record_authority', 'retention_steward', 'ontology_steward', 'risk_owner', 'opportunity_sponsor', 'execution_authority', 'method_steward', 'constraint_steward',
+      'data_steward', 'domain_specialist', 'product_analytics_owner', 'privacy_officer', 'product_analyst', 'enablement_assessor', 'support_engineer']
+      .map((role) => ({ role, atScope: 'DOMAIN' as Scope }));
+    const people = [...platform, ...tenant, ...domain];
+    return [
+      { actionPrefix: 'shell.preferences.save', exact: true, requiredAnyRole: people, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'shell.preferences.read', exact: true, requiredAnyRole: people, obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+    ];
+  })(),
+  /* end B81 lyg */
 ];
 
 /* B107 conformance */
