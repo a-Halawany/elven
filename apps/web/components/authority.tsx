@@ -124,7 +124,7 @@ export function TypedConfirmation({ phrase, value, onChange, what }: { phrase: s
     <div className="eye-authority-typed">
       <label htmlFor={`${id}-in`}>Type <code data-testid="typed-phrase" className="eye-mono-wrap">{phrase}</code> to confirm {what} (it cannot be undone)</label>
       <input id={`${id}-in`} className="eye-authority-input" value={value} onChange={(e) => onChange(e.target.value)} autoComplete="off" spellCheck={false} aria-describedby={`${id}-st`} aria-invalid={value !== '' && !st.ok ? true : undefined} />
-      <span id={`${id}-st`} role="status" className="eye-authority-small">{st.ok ? '✓ the phrase matches — the server still checks the digest it binds' : st.reason}</span>
+      <span id={`${id}-st`} role="status" className="eye-authority-small">{st.ok ? '✓ the phrase matches — the server still decides whether the act is admitted' : st.reason}</span>
     </div>
   );
 }
