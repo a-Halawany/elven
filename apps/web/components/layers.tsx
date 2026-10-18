@@ -21,6 +21,9 @@ import {
   closeLayer, consequenceGate, digestValue, disclosureSummary, dividerAria, emptyStack, openLayer, surfaceClasses, toggleAria, trapFocus,
   type CloseHow, type DigestField, type LayerStack, type SurfaceLevel, type SurfaceState,
 } from '../lib/layers-b80';
+/* B81 re: THE ELEVATION BINDING (LAY-009/-010/-011) — each layer names its USE alias (raised / overlay / blocking); globals.css (B81 re) binds it */
+import { elevationOf } from '../lib/controls-b81';
+/* end B81 re */
 
 /* ── the page's layer stack (one per document; the pure model decides) ── */
 let STACK: LayerStack = emptyStack();
@@ -42,7 +45,7 @@ export function Surface({ level = 'raised', state = 'rest', label, children, as 
   level?: SurfaceLevel; state?: SurfaceState; /** a labelled surface is a region */ label?: string; children: ReactNode; as?: 'div' | 'section' | 'article';
 }) {
   const Tag = as;
-  return <Tag className={surfaceClasses(level, state)} aria-label={label} role={label !== undefined && as === 'div' ? 'region' : undefined}>{children}</Tag>;
+  return <Tag className={surfaceClasses(level, state)} data-elevation={elevationOf(`Surface.${level}`) /* B81 re */} aria-label={label} role={label !== undefined && as === 'div' ? 'region' : undefined}>{children}</Tag>;
 }
 
 export function Divider({ orientation = 'horizontal', label }: { orientation?: 'horizontal' | 'vertical'; /** names the groups it separates */ label?: string }) {
@@ -59,7 +62,7 @@ export function Panel({ title, level = 2, actions, children, state = 'rest' }: {
   const id = useId();
   const H = level === 2 ? 'h2' : 'h3';
   return (
-    <section className={`${surfaceClasses('raised', state)} eye-panel`} aria-labelledby={id}>
+    <section className={`${surfaceClasses('raised', state)} eye-panel`} data-elevation={elevationOf('Panel') /* B81 re */} aria-labelledby={id}>
       <div className="eye-panel-head">
         <H id={id} className="eye-panel-title">{title}</H>
         {actions !== undefined && <div className="eye-panel-actions">{actions}</div>}
@@ -123,6 +126,7 @@ export function Dialog({ open, title, description, onClose, children, consequenc
       <dialog
         ref={ref}
         className={`eye-dialog eye-dialog--${size}`}
+        data-elevation={elevationOf('Dialog') /* B81 re */}
         aria-labelledby={headingId}
         aria-describedby={description !== undefined ? descId : undefined}
         onCancel={(e) => { e.preventDefault(); dismiss('escape'); }}
@@ -194,7 +198,7 @@ export function Drawer({ open, title, onClose, children }: { open: boolean; titl
   }, [open, layerId, title, headingId]);
   useEffect(() => () => { STACK = closeLayer(STACK, layerId, 'dismiss').stack; }, [layerId]);
   return (
-    <dialog ref={ref} className="eye-drawer" aria-labelledby={headingId} onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); onClose('escape'); } }}>
+    <dialog ref={ref} className="eye-drawer" data-elevation={elevationOf('Drawer') /* B81 re */} aria-labelledby={headingId} onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); onClose('escape'); } }}>
       <div className="eye-dialog-head">
         <h2 id={headingId} tabIndex={-1} className="eye-dialog-title">{title}</h2>
         <button type="button" className="eye-dialog-close" onClick={() => onClose('dismiss')} aria-label={`Close the “${title}” drawer`}>✕</button>
@@ -224,7 +228,7 @@ export function Popover({ label, triggerLabel, children }: { /** the popover's a
     <span className="eye-popover-anchor">
       <button ref={trigger} type="button" className="eye-cld-btn-quiet" {...toggleAria(open, panelId, 'dialog')} onClick={() => setOpen((o) => !o)}>{triggerLabel}</button>
       {open && (
-        <div ref={panel} id={panelId} role="dialog" aria-label={label} tabIndex={-1} className="eye-popover"
+        <div ref={panel} id={panelId} role="dialog" aria-label={label} tabIndex={-1} className="eye-popover" data-elevation={elevationOf('Popover') /* B81 re */}
           onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); close(true); } }}>
           {children}
         </div>

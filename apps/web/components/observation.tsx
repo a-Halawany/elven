@@ -20,9 +20,13 @@
  * stylesheet, and identifiers, digests and timestamps are wrapped in `<bdi>` so
  * they stay LTR inside mirrored text.
  */
-import { useState, type CSSProperties, type ReactNode } from 'react';
+import { useId, useState, type CSSProperties, type ReactNode } from 'react';
 import type { HealthState } from '../lib/observation';
 /* B80 clf */ import * as LIBRARY_STYLES from '../lib/styles-b80'; /* end B80 clf */
+/* B81 re: GovernedButton reads the shell's status (a contribution to web.observation.governed-button through B107's queue; props kept) */
+import { useShellStatus } from './shell';
+import { governedHold } from '../lib/controls-b81';
+/* end B81 re */
 
 /* ───────────────────────── state display ───────────────────────── */
 
@@ -198,6 +202,12 @@ export function GovernedButton({
 }) {
   const [state, setState] = useState<PendingState>('idle');
   const busy = state === 'pending';
+  /* B81 re: under a FROZEN shell (unverified / signed out / a FreezeScope) the control is HELD with the shell's own statement — disabled,
+     focusable reason beside it, never activated; outside a shell or under a degraded-but-verified one it is as before */
+  const hold = governedHold(useShellStatus());
+  const holdId = useId();
+  const off = disabled === true || hold.held;
+  /* end B81 re */
   const v = variant ?? 'primary';
   const border =
     v === 'critical' ? 'var(--eye-color-critical)'
@@ -214,11 +224,15 @@ export function GovernedButton({
     : 'var(--eye-color-ink-default)';
 
   return (
+    <>
     <button
       type="button"
-      disabled={busy || disabled === true}
+      disabled={busy || off}
       aria-busy={busy}
+      aria-describedby={hold.held ? holdId : undefined /* B81 re */}
+      data-held={hold.held ? 'true' : undefined /* B81 re */}
       onClick={() => {
+        if (hold.held) return; /* B81 re: a held control never acts */
         setState('pending');
         void onRun()
           .then(() => setState('done'))
@@ -232,12 +246,14 @@ export function GovernedButton({
         background,
         color,
         fontWeight: 600,
-        cursor: busy || disabled === true ? 'not-allowed' : 'pointer',
-        opacity: disabled === true && !busy ? 0.55 : 1,
+        cursor: busy || off ? 'not-allowed' : 'pointer',
+        opacity: off && !busy ? 0.55 : 1,
       }}
     >
       {busy ? `${pendingLabel}…` : label}
     </button>
+    {/* B81 re */}{hold.held && <span id={holdId} className="eye-help eye-held-reason"> {hold.reason}</span>}{/* end B81 re */}
+    </>
   );
 }
 

@@ -6,31 +6,36 @@
  */
 import type { CSSProperties, ReactNode } from 'react';
 /* B80 clf */ import * as LIBRARY_STYLES from '../lib/styles-b80'; /* end B80 clf */
+/* B81 re */ import { truthBadgeView } from '../lib/controls-b81'; /* end B81 re */
 
-const TRUTH_SYMBOLS: Record<string, string> = {
-  observed: '●', asserted: '▢', extracted: '⌕', inferred: '⧉', assessed: '◇',
-  synthetic: '⬡', decided: '☑', disputed: '⚑', withdrawn: '⊘',
-};
-
+/* B81 re: TruthBadge's glyphs are the SYMBOL SET's (packages/tokens SYMBOLS via lib/controls-b81.ts truthBadgeView) — a contribution to
+   web.ui.truth-badge through B107's queue; the props (state), the accessible name `truth state <state>` and the UPPERCASE word kept */
 export function TruthBadge({ state }: { state: string }) {
-  const token = `--eye-color-${state in TRUTH_SYMBOLS ? state : 'uncertain'}`;
+  const v = truthBadgeView(state);
   return (
     <span
       style={{
-        color: `var(${token})`,
-        border: `1px solid var(${token})`,
+        color: v.colourVar,
+        border: `1px solid ${v.colourVar}`,
         borderRadius: 'var(--eye-radius-sm)',
         paddingInline: 'var(--eye-space-4)',
         fontSize: 'var(--eye-type-label-sm)',
         fontWeight: 650,
         whiteSpace: 'nowrap',
       }}
-      aria-label={`truth state ${state}`}
+      aria-label={v.ariaLabel}
+      data-symbol={v.glyph.id}
     >
-      {TRUTH_SYMBOLS[state] ?? '?'} {state.toUpperCase()}
+      <svg className="eye-truth-glyph" viewBox="0 0 24 24" width="12" height="12" focusable="false" aria-hidden="true">
+        {v.glyph.paths.map((p, i) => (
+          <path key={i} d={p.d} fill={p.fill ? 'currentColor' : 'none'} stroke={p.fill ? 'none' : 'currentColor'} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+            {...(p.dashed === true ? { strokeDasharray: '3 2' } : {})} />
+        ))}
+      </svg>{' '}{v.text}
     </span>
   );
 }
+/* end B81 re */
 
 export function LifecycleBadge({ state }: { state: string }) {
   return (
