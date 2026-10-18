@@ -1,0 +1,304 @@
+# B81 act — REHEARSAL on eye_demo_b81 (a restored copy of .eye-local/backups/eye_demo-pre-0119-20261018T224507Z.dump, 307934267 bytes — the PRE-0119 backup of eye_demo taken read-only with pg_dump -Fc; migrated 0119 with b81/act), code head 39d4a38 on b81/act (from 52699a0: the product fixes 3e1302e, 3642b3a, c08932f; the act and walks 39d4a38).
+# THE RIG (runbook §14's form): API :3411 built from this worktree (EYE_DB_NAME=eye_demo_b81, EYE_REDIS_PORT=6392, a vault clone under the four EYE_VAULT_*_ROOT, its own EYE_DEGRADED_DIR, the rehearsal sinks 2535/3456, EYE_EXECUTION_SYNTHETIC_LOOPBACK=on, EYE_BUILD_SHA/EYE_BUILD_HEAD_SHA = the worktree head, EYE_REPO_ROOT = the worktree); the rehearsal web (a clone of apps/web built with NEXT_PUBLIC_EYE_API=http://localhost:3412) on :3010 through the loopback CORS proxy :3412 → :3411. Never :3401, :3000, Redis :6379 or the sinks 2525/3446.
+# run 1 = the first run on the fresh copy (every scene held); run 2 = the rerun (every scene stands; nothing written twice). The walks ran after run 2 with the act's printed EYE_B81_* lines.
+# EARLIER ITERATIONS on an earlier copy found the act's own defects (as-of instant precision, the handoff selection kind, the device label, result versions, the publish-refusal reading) and two PRODUCT defects (the degraded components mounted on no page; the interpreter's clarification beyond the server's 500 characters) — fixed in separate commits; this copy was restored fresh for the runs below.
+
+════════ RUN 1 ════════
+THE B81 ACT on eye_demo_b81 (REHEARSAL) — 2026-10-18T23:43:34.307Z — API http://localhost:3411
+
+B81-0 THE STATE — 0119, the NORDWERK cast, the build identity
+  ✓ migration applied: 0119_b81_patterns_layout_content.sql
+  ✓ l.brandt holds decision_owner at the DOMAIN (the corridor domain "Supply Corridor Intelligence")
+  ✓ l.brandt holds decision_authority at the DOMAIN (the corridor domain "Supply Corridor Intelligence")
+  ✓ s.okafor holds decision_approver at the DOMAIN (the corridor domain "Supply Corridor Intelligence")
+  ✓ f.kraus holds board_member at the DOMAIN (the corridor domain "Supply Corridor Intelligence")
+  ✓ k.mensah holds operations_authority at the PLATFORM
+  ✓ a.hoffmann holds domain_analyst at the DOMAIN (the corridor domain "Supply Corridor Intelligence")
+  ✓ t.nakamura holds twin_owner at the DOMAIN (the corridor domain "Supply Corridor Intelligence")
+  ✓ j.weber holds strategy_owner at the DOMAIN (the corridor domain "Supply Corridor Intelligence")
+  ✓ n.eriksen holds forecast_owner at the DOMAIN (the corridor domain "Supply Corridor Intelligence")
+  ✓ l.haddad holds design_system_authority at the PLATFORM
+  ✓ s.iversen holds design_system_authority at the PLATFORM
+  ✓ p.castellano holds conformance_steward at the PLATFORM
+  ✓ h.achterberg holds independent_assurance at the PLATFORM
+  ✓ w.zielinska holds customer_sponsor at the TENANT
+  · the API declares its build: head 39d4a38364db… (from env), policy bundle bundle-v1 cc034e932179…
+
+B81-1 HUMAN AUTHORITY (F-P7-E-20) — the reroute decision: proposed with its digest frozen, a recusal, S. Okafor approves and signs, L. Brandt commits and signs as decision authority
+  · the package 01a1…9fecf6 "Bab el-Mandeb corridor reroute (SYNTHETIC)" (declared in act-b80) — version 1 is DRAFT
+  ✓ L. Brandt ADDED the option "status-quo" (the booked routing) beside "reroute-cape" — POL 01a15166-33db… · audit seq 651325
+  ✓ L. Brandt SET the terms: the objective "Keep the Regensburg line supplied through Q1", the approver policy — quorum 1 of S. Okafor and F. Kraus, expiring after 14 days — and a weekly review he owns — POL 01a15167-1d69… · audit seq 651330
+  ✓ L. Brandt SET the choice: "reroute-cape", action owner himself, the outcome criterion line-stop days ≤ 0 on the corridor twin — POL 01a15167-1d83… · audit seq 651332
+  · BEFORE THE PROPOSAL: version 1 is draft (no digest frozen: none yet); the named reviewers — S. Okafor and F. Kraus (quorum 1)
+  ✓ L. Brandt PROPOSED version 1: the DecisionDigest FROZEN at fff18b40ba50… — an approval binds exactly this digest — POL 01a15167-1d97… · audit seq 651334
+  ✓ L. Brandt defers the version naming the Decision Agent as the owner of its conditions REFUSED — 422 EYE-REQ-001 — gate rejected (owner): the owner of the next review (01a084f8-011d-7a82-b4f0-530e3f557bda) is a named, active member with standing at this gate — the package owner, an approver the policy admits, or a decision authority
+  ✓ F. Kraus (board member, named by the policy) RECUSED: live approvers 0 → 0, quorum 1 — still reachable — POL 01a15167-1e00… · audit seq 651336
+  ✓ S. Okafor approves over a STALE digest (not the version's) REFUSED — 409 EYE-STA-001 — the digest approved is not the digest of version 1; an approval signs what was read
+  ✓ S. Okafor (decision approver) APPROVED version 1 over the frozen digest fff18b40ba50…: state approved, 1 of quorum 1 — POL 01a15167-1e17… · audit seq 651338
+  ✓ S. Okafor SIGNED her approval: key ed25519:2b6c48b937b0b8d2, over a5543573eddb…, VERIFIED true — POL 01a15167-1e2b… · audit seq 651339
+  ✓ L. Brandt (owner, proposer, decision authority) approves his own version REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  · an AGENT's attempt at the approval is refused in the harness (phase6-authority-b81 "eligibility and separation of duties"): the Decision Agent holds no approver role and no human gate admits it; this act opens no agent session
+  ✓ THE TYPED CONFIRMATION on the commit: the phrase is fff18b40 (the frozen digest's first 8 characters); "reroute" is REFUSED in the client — what you typed is not fff18b40 — the act stays disabled; the phrase itself is admitted — and the server still decides
+  ✓ L. Brandt PREVIEWED the commitment (the ConsequencePreview): would commit true; reversibility "reversible until the rerouted bookings are confirmed with the carrier"; blockers 0; preview 95541a54ed66… valid until 2026-10-19T00:14:34Z
+  ✓ L. Brandt commits over a STALE digest REFUSED — 409 EYE-STA-001 — the digest committed is not the digest of version 1
+  ✓ L. Brandt (decision authority, human gate, C3) COMMITTED version 1: commitment 01a1…56bab4, the approvals bound S. Okafor — POL 01a15167-1e6a… · audit seq 651343
+  · the decision signature's typed phrase is 21edc475 (the header digest's first 8 characters)
+  ✓ L. Brandt SIGNED the decision as its authority: key ed25519:2b6c48b937b0b8d2, over the header 21edc475a922…, VERIFIED true — POL 01a15167-1e91… · audit seq 651344
+  ✓ THE GATE RECORD: package COMMITTED · gate approved · approved by S. Okafor (signature ed25519:2b6c48b937b0b8d2 VERIFIED) · recused F. Kraus · committed by L. Brandt · the decision signed by L. Brandt (ed25519:2b6c48b937b0b8d2, VERIFIED) · 0 denial(s) on the package
+
+B81-2 DEGRADED STATE AND RECOVERY (F-P7-E-19) — the AIS source's degraded contract by the operations authority, its signal by the database clock; the stale carrier advisories; a corridor experiment started and CANCELLED
+  · the AIS source red-sea-ais-positions: its catalog owner is A. Hoffmann — the owner of its degraded mode
+  ✓ K. Mensah (operations authority, human gate) DECLARED the degraded contract for source red-sea-ais-positions v1 (4638…047afc): owner A. Hoffmann, at most 14.0 days; unavailable — Issue a new corridor forecast from the AIS positions; still available — Read the corridor warnings, forecasts and twin state — marked stale; Read the AIS source and the evidence it holds — POL 01a15167-2083… · audit seq 651346
+  ✓ THE AIS SIGNAL by the database clock: HEALTHY — not stale, and the act plants nothing to make it so: the reference is the activation (no arrival since) at 2026-10-18T20:26:28Z (age 3.3 h of a 7.0 days freshness threshold), so it reads STALE from 2026-10-25T20:26:28Z; the contract is NORMAL until then (declared, owner A. Hoffmann — observation operator)
+  ✓ K. Mensah (operations authority, human gate) DECLARED the degraded contract for source carrier-advisories v1 (1b13…ffbbde): owner A. Hoffmann, at most 60.0 days; unavailable — Issue a corridor forecast that cites the carrier advisories; still available — Read the corridor warnings and forecasts — the advisories marked stale — POL 01a15167-20b6… · audit seq 651349
+  ✓ THE STALE DECLARATION (what every corridor view shows): source carrier-advisories — mode ACTIVE, owner A. Hoffmann — observation operator; watermark 2026-09-09T06:58:00Z (last arrival), age 39.7 days beyond 7.0 days; refresh path: a new upload under source contract v1 (its registrar or a collection manager)
+  · the domain's degraded state now: 2 contract(s) (1 in force), 8 undeclared degraded dependencies; unavailable functions in force: prediction.forecast.run; evaluated by b81-dg-1 on the database clock
+  ✓ T. Nakamura (twin owner) DECLARED the probe 01a1…52c1a4 on "NORDWERK — Ningbo → Regensburg chain" v23: 4 paths, 1 a chunk, 1 chunk a tick — POL 01a15167-2168… · audit seq 651353
+  ✓ J. Weber (strategy owner — never the declarer) APPROVED the budget by the digest he read de4dfe48e620… — POL 01a15167-2c5c… · audit seq 651359
+  ✓ T. Nakamura STARTED the probe: run 01a1…a23b68 — its chunks run in the attention agent's after-tick hook — POL 01a15167-4a5b… · audit seq 651381
+  · after 85 s: 1 chunk(s) of 4 done (state running)
+  ✓ T. Nakamura CANCELLED the probe with a reason — POL 01a15168-96ff… · audit seq 651408
+  ✓ THE RESIDUAL STATE: CANCELLED — new work stopped; 1 of 4 path(s) completed and recorded — NOT rolled back; the run PARTIAL (partial), outputs digest dd6b61ec06f5…; reason "the probe has shown its first path; the rest is not needed — cancelled (SYNTHETIC)"
+  · a refused read hands back to the last verified location — the walk opens a warning link that does not exist (the RecoveryPanel: "Not opened", nothing changed, the safe next steps)
+
+B81-3 CONTENT AND TERMS (F-P7-E-18) — ASSESSED and "Close warning" made canonical by the Design System Authority (never the proposer); the catalogue; the content lint as a ratchet
+  ✓ L. Haddad (human gate) DECLARED the principle design.content-governed — dg-lint-3's findings evidence it — POL 01a15168-98fc… · audit seq 35401
+  ✓ L. Haddad PROPOSED the canonical term ASSESSED (truth.assessed) v1: digest a761ef1d0abd…, reading levels analyst 12.3, operator 6.4, executive 5.9 — POL 01a15168-990d… · audit seq 35402
+  ✓ P. Castellano (conformance steward) REVIEWED it READY: dilution none, reading analyst grade 12.3 ≤ 14, operator grade 6.4 ≤ 8, executive grade 5.9 ≤ 10 (rules b81-ct-terms-1) — POL 01a15168-9920… · audit seq 35403
+  ✓ L. Haddad (the PROPOSER) approves the canonical term ASSESSED REFUSED — 403 EYE-AUT-001 — design term rejected (separation_of_duties): approving a canonical term is never done by its proposer (no self-acceptance)
+  ✓ S. Iversen (Design System Authority — never the proposer) APPROVED the canonical term ASSESSED v1 — POL 01a15168-9937… · audit seq 35405
+  ✓ S. Iversen PUBLISHED the canonical term ASSESSED v1: published — POL 01a15168-9940… · audit seq 35406
+  ✓ the canonical term ASSESSED (truth.assessed) v1: PUBLISHED, proposed by L. Haddad
+  ✓ L. Haddad PROPOSED the canonical action "Close warning" (its non-canonical synonym "withdraw (a warning)") (action.close-warning) v1: digest 46861e6f1e13…, reading levels analyst 8.4, operator 2.7, executive 3.9 — POL 01a15168-994c… · audit seq 35407
+  ✓ P. Castellano (conformance steward) REVIEWED it READY: dilution none, reading analyst grade 8.4 ≤ 14, operator grade 2.7 ≤ 8, executive grade 3.9 ≤ 10 (rules b81-ct-terms-1) — POL 01a15168-9956… · audit seq 35408
+  ✓ L. Haddad (the PROPOSER) approves the canonical action "Close warning" (its non-canonical synonym "withdraw (a warning)") REFUSED — 403 EYE-AUT-001 — design term rejected (separation_of_duties): approving a canonical term is never done by its proposer (no self-acceptance)
+  ✓ S. Iversen (Design System Authority — never the proposer) APPROVED the canonical action "Close warning" (its non-canonical synonym "withdraw (a warning)") v1 — POL 01a15168-9967… · audit seq 35410
+  ✓ S. Iversen PUBLISHED the canonical action "Close warning" (its non-canonical synonym "withdraw (a warning)") v1: published — POL 01a15168-9970… · audit seq 35411
+  ✓ the canonical action "Close warning" (its non-canonical synonym "withdraw (a warning)") (action.close-warning) v1: PUBLISHED, proposed by L. Haddad
+  ✓ L. Brandt's DOMAIN catalogue (what Term shows on hover and focus): 2 term(s); ASSESSED canonical v1 — for executives: "ASSESSED means a reviewer has judged the evidence. The judgment can still be wrong. Read the uncertainty before you act."; content version f9b1d1c620acd4bb3987775899d657fb6bbe0d32785447d5b96b0a09ad352cd2
+  ✓ P. Castellano ran the CONTENT LINT (dg-lint-3) over the real web source: 407 files, verdict NONCONFORMANT, 276 open finding(s) STATED (verb-object 200, destructive-scope 70, error-recovery 6, no-dilution 0, title-noun-phrase 0); THE RATCHET HOLDS — baseline 276, current 276, 0 resolved, 0 regression(s) (evidence 01a1…10b38e) — POL 01a15168-9a89… · audit seq 35412
+  · the warning's destructive command (Close warning, criterion "no longer relevant") states its scope, that it cannot be undone and what is kept — the walk reads it on the warning page (never closed here)
+
+B81-4 OBJECT PAGES (F-P7-E-06) — one header grammar on the warning, a forecast, a twin snapshot and the package; the warning at two recorded instants ("acted by"); the package's approvers
+  ✓ THE SAME HEADER GRAMMAR (type · canonical name · immutable identifier · version · owner · lifecycle · durable reference) on four types:
+      WARNING 01a0…0296d4 "Stream rule Bab el-Mandeb corridor collapse on event time (B…" — state expired, routed owner N. Eriksen, durable reference eye:WRN:01a0df00-48f5-7131-9232-4a61a20296d4
+      FORECAST 01a1…526298 "portwatch:chokepoint4:n_total · 30d" — issuing owner N. Eriksen, an immutable record, eye:FCT:01a11da8-5c95-7925-9e4c-1b7f6f526298
+      TWIN SNAPSHOT "NORDWERK — Ningbo → Regensburg chain — v23" — owner T. Nakamura, admitted by T. Nakamura, eye:TWN:01a084f6-411e-7559-afab-1fdf6c76f525:v23
+      DECISION PACKAGE "Bab el-Mandeb corridor reroute (SYNTHETIC)" — state committed, owner L. Brandt, eye:DPK:01a150b1-b8ab-7b32-bc39-87617f9fecf6:v1
+  ✓ THE WARNING AT TWO RECORDED INSTANTS: before — instant 1 "raised" 2026-09-26T18:35:32Z · RAISED · acted by agent:attention@1.0.0 (180eda560e05) (an agent); after — instant 3 "escalated" 2026-09-28T18:35:33Z · EXPIRED · acted by agent:attention@1.0.0 (180eda560e05) (an agent); context versions 0 → 0 — the column reads "acted by": a warning carries no approval
+  ✓ THE PACKAGE'S VERSIONS with their ACTUAL approvers: v1 committed — approve by S. Okafor
+
+B81-5 LAYOUT AND WINDOWS (F-P7-E-04) — L. Brandt's density; the operations room on the display; the review handed off from his desk to his second session; the desk's next publish refused
+  ✓ L. Brandt SWITCHED his density to STRATEGIC (DEN-01 — 44 px controls) v1 — his own preference, never anyone else's — POL 01a15168-a41f… · audit seq 651417
+  ✓ L. Brandt's DESK PUBLISHED the operations room to the display operations-room v1 (presenting, internal, an operations centre) — the desk is its ONE control surface; the display renders no control — POL 01a15168-a458… · audit seq 651419
+  ✓ L. Brandt's desk OFFERED a handoff 01a1…3113fd of the package review (route /decisions, the package selected at v1) with the display's control, for 10 minutes — single use — POL 01a15168-a462… · audit seq 651420
+  ✓ the DESK claims its own offer REFUSED — 409 EYE-STA-002 — session handoff rejected (state): this is the session that offered the handoff — claim it from your other signed-in session (another device or browser)
+  ✓ L. Brandt's SECOND SESSION (the tablet, signed in on its own) CLAIMED it: receipt 01a1…c492e1 at 2026-10-18T23:46:14Z; the review restored at /decisions?package=01a150b1-b8ab-7b32-bc39-87617f9fecf6 (selection package v1); authority NOT inherited — the roles re-read: decision_authority, decision_owner, opportunity_sponsor, strategy_owner; the display moved with it (v2, transfer handoff) — the review context moved to this session; nothing was executed
+  ✓ the SAME handoff claimed a second time REFUSED — 409 EYE-STA-002 — session handoff rejected (duplicate): the handoff was claimed at 2026-10-18 23:46:14.788306+00 — a handoff is single use; offer a new one
+  ✓ L. Brandt's DESK publishes to the display again REFUSED — 409 EYE-STA-002 — presentation state rejected (state): the display operations-room is controlled by another of your signed-in sessions (since 2026-10-18 23:46:14.788677+00) — hand its control off from there, or sign out there; a second window never takes control silently
+  · the display operations-room v2: presenting, transfer handoff, watermark 2026-10-18T23:46:13Z, internal, operations_centre — the presentation route (/present) shows it without a single control
+
+B81-6 SEARCH AND INTENT (F-P7-E-02) — A. Hoffmann asks "Bab el-Mandeb exposure Regensburg": the deterministic reading, the bounded clarification with nothing preselected, the saved search, a command handed to its review — nothing executed
+  · the palette's reading BEFORE any read (Ask mode, b81-si-intent-1): kinds ["exposure"], phrases ["Bab el-Mandeb","Regensburg"], scoped query "Bab el-Mandeb Regensburg" — not yet checked against what you may see — the reading is confirmed when the search runs
+  ✓ the FEDERATED READS (one receipt each): graph BOUNDED · graph BOUNDED · strategy COMPLETE · catalog COMPLETE · exposures COMPLETE · packages COMPLETE; 21 record(s) — graph 0, strategy 12, catalog 0, exposures 2, packages 7
+  ✓ THE BOUNDED CLARIFICATION (the phrase "Bab el-Mandeb"): Which “Bab el-Mandeb” do you mean — the assumption “SYN-SHIP-4481 (the bearing sets) keeps its booked Bab el-Ma…”, the commitment “Commit: B28 — keep the bearing sets on the booked Bab el-Ma…”, the commitment “Commit: Bab el-Mandeb corridor reroute (SYNTHETIC) — Rerout…”, the package “B28 — keep the bearing sets on the booked Bab el-Mandeb rou…” or the package “Bab el-Mandeb corridor reroute (SYNTHETIC)”? — 5 alternative(s), NOTHING PRESELECTED; the original input kept as typed
+  · the interpreter asks about the FIRST phrase that names more than one record — "Bab el-Mandeb" — before "Regensburg" (deterministic, b81-si-intent-1); the Regensburg objects (measure "Magnet stock on hand at Regensburg (B36, SYNTHETIC)", initiative "Dual-sourcing 2027: dual-tooling at Regensburg (SYNTHETIC)", commitment "Commit: Mitigate the corridor closure — Regensburg line — Dual-source the bearings and reroute", decision "Mitigate the corridor closure — Regensburg line", risk "Corridor closure — Regensburg line", stakeholder "Regensburg line workforce", capability "Regensburg assembly", commitment "Commit: January corridor collapse — Regensburg line — draw down (run 01a084f6)", objective "Keep the Regensburg line supplied through Q1") are among the results it scopes
+  ✓ an intent record with an alternative PRESELECTED REFUSED — 422 EYE-REQ-001 — intent record rejected (preselected): alternative 1 carries preselected — an alternative is offered, never preselected (the person chooses)
+  ✓ A. Hoffmann CHOSE "Bab el-Mandeb corridor reroute (SYNTHETIC)" (package) — the INTENT RECORD 01a1…ffc09d: mode ask, interpreter b81-si-intent-1, 5 alternatives offered, the clarification kept, outcome chosen, executed false — POL 01a15168-b567… · audit seq 651433
+  ✓ A. Hoffmann SAVED the search "Bab el-Mandeb exposure — Regensburg (B81, SYNTHETIC)" v1: 17 records (digest 6633fa48fcb7…), CUTOFF 2026-10-18T23:46:19Z (read from 2026-10-18T23:46:15Z), POLICY bundle-v1 — POL 01a15168-b57a… · audit seq 651435
+  ✓ the saved search REOPENED EXACTLY: v1 — 17 records, the digest VERIFIED; the live re-run is shown BESIDE it (the drift), never as the saved result
+  ✓ the command recorded as EXECUTED REFUSED — 422 EYE-REQ-001 — intent record rejected (outcome): the outcome is chosen, literal, cancelled, command_review, navigated or unsupported — nothing is ever recorded as executed
+  ✓ "approve corridor reroute" read as the command decision.approve (command) — recorded ONLY as the hand-off to its Command Review: /decisions?package=01a150b1-b8ab-7b32-bc39-87617f9fecf6&review=decision.approve (outcome command_review, executed false) — POL 01a15168-b590… · audit seq 651437
+  ✓ NOTHING EXECUTED: the package carries 1 approval(s) before and after the command's hand-off
+
+B81-7 §RE (B80's residues) — the inventory re-read, the library lint conformant, the contributions for GovernedButton, TruthBadge and LifecycleBadge, the upload mode on the AIS source
+  ✓ P. Castellano (conformance steward) re-read the inventory from the repository: 36 new asset(s) registered (36 of B81's library), 67 unchanged; DRIFT STATED (the inventory changes nothing — a contribution records it): pattern.governed-action, pattern.truth-state, tokens.semantic, web.actions.button, web.forms.field, web.layers.dialog, web.layers.drawer, web.layers.panel, web.layers.popover, web.layers.surface, web.observation.governed-button, web.shell.app-shell, web.shell.command-palette, web.shell.history-navigator, web.ui.lifecycle-badge, web.ui.truth-badge
+  ✓ P. Castellano ran the LIBRARY LINT (dg-lint-2) over the real web source: 407 files, 112 library components, verdict CONFORMANT, 0 finding(s) — library-fork 0, token-redefinition 0: the local Field forks are migrated onto the library (evidence 01a1…ed801e) — POL 01a15168-b868… · audit seq 35467
+  ✓ S. Iversen (the PROPOSER) accepts the contribution for web.observation.governed-button REFUSED — 403 EYE-AUT-001 — design contribution rejected (separation_of_duties): accepting a design contribution is never done by its proposer (no self-acceptance)
+  ✓ S. Iversen (the PROPOSER) accepts the contribution for web.ui.truth-badge REFUSED — 403 EYE-AUT-001 — design contribution rejected (separation_of_duties): accepting a design contribution is never done by its proposer (no self-acceptance)
+  ✓ S. Iversen (the PROPOSER) accepts the contribution for web.ui.lifecycle-badge REFUSED — 403 EYE-AUT-001 — design contribution rejected (separation_of_duties): accepting a design contribution is never done by its proposer (no self-acceptance)
+  ✓ THE CONTRIBUTIONS (proposed by S. Iversen; reviewed, accepted — signed — and published by L. Haddad, never the proposer): web.observation.governed-button: PROPOSED by S. Iversen (0 blocker(s)); web.observation.governed-button: PUBLISHED (v2); web.ui.truth-badge: PROPOSED by S. Iversen (0 blocker(s)); web.ui.truth-badge: PUBLISHED (v2); web.ui.lifecycle-badge: PROPOSED by S. Iversen (0 blocker(s)); web.ui.lifecycle-badge: PUBLISHED (v2); the inventory's drift on the edited components stays STATED until the next registration reads them
+  ✓ the AIS source's page places FileIntake in UPLOAD mode (connector upload, contract v1 active): the disclosure before anything is sent — the walk reads it at /observation/sources/01a0f274-ce1b-743e-b487-5547f94aad45 (nothing is uploaded here)
+  · the sign-in / deep-link return (UX-11-005) is the walk's: a signed-out browser opens the warning's as-of link, signs in, and lands on exactly that link
+
+B81-8 THE INVENTORY AND THE ACCEPTANCE DEMONSTRATION RECORDS — B81's library approved with one owner, a B81 baseline, a design acceptance per chapter scope
+  ✓ L. Haddad (Design System Authority, human gate) APPROVED 36 B81 library component(s): 36 components across 6 files, each with ONE accountable owner — S. Iversen
+  ✓ P. Castellano PROPOSED the B81 design baseline 01a1…b8934f v1: 36 members (B81's library), design system @eye/tokens@0.1.0
+  ✓ L. Haddad ATTESTED and SIGNED the B81 design baseline v1 (attested)
+  ✓ the design acceptance DEMONSTRATION records per B81 chapter scope, each attested by L. Haddad (design), H. Achterberg (assurance) and W. Zielińska (customer): UX-12 ACCEPTED, UX-25 ACCEPTED, UX-13 ACCEPTED, UX-14 ACCEPTED, UX-16 ACCEPTED, UX-19 ACCEPTED, UX-69 ACCEPTED, HX ACCEPTED, REL ACCEPTED — 9 records, claim demonstration; accessibility slots EMPTY (B108 → H3)
+
+B81-9 THE STATE and the LIMITS
+  · as recorded: degraded_contracts 2, term_versions 2, intent_records 2, saved_search_versions 1, handoffs 1, presentation_states 2, preference_versions 1
+  ✓ no design acceptance claims more than a DEMONSTRATION (0 beyond it)
+  the env lines for the walks (EYE_TEST_ADMIN_PASSWORD comes from .eye-local/env and is never printed):
+  EYE_B81_PACKAGE=01a150b1-b8ab-7b32-bc39-87617f9fecf6
+  EYE_B81_PACKAGE_VERSION=1
+  EYE_B81_AIS_STALE_FROM=2026-10-25T20:26:28Z
+  EYE_B81_EXPERIMENT=01a15167-2165-76fe-8a93-02524f52c1a4
+  EYE_B81_WARNING=01a0df00-48f5-7131-9232-4a61a20296d4
+  EYE_B81_AS_OF_FIRST=2026-09-26T18:35:33Z
+  EYE_B81_WARNING_OWNER=n.eriksen
+  EYE_B81_FORECAST=01a11da8-5c95-7925-9e4c-1b7f6f526298
+  EYE_B81_TWIN=01a084f6-411e-7559-afab-1fdf6c76f525
+  EYE_B81_TWIN_VERSION=23
+  EYE_B81_DISPLAY=operations-room
+  EYE_B81_SAVED_SEARCH=01a15168-b57a-7ff2-9b78-18fc8da50fbb
+  EYE_B81_ANALYST=a.hoffmann
+  EYE_B81_PALETTE_INPUT=Bab el-Mandeb exposure Regensburg
+  EYE_B81_AIS_SOURCE=01a0f274-ce1b-743e-b487-5547f94aad45
+  EYE_B81_TENANT=01a084f5-757f-7f03-9cf5-315d74426481
+  EYE_B81_DOMAIN=01a084f5-759a-751f-a1dd-38fbd7933057
+  EYE_B81_DECISION_AUTHORITY=l.brandt
+  EYE_B81_APPROVER=s.okafor
+  EYE_B81_DSA=l.haddad
+  · LIMITS said — THREE CLAIMS KEPT APART. (1) CONSTRUCTION — the software and its harnesses (phase6-{prelude,authority,degraded,terms,search,handoffs,preferences}-b81, the web unit models, the walks). (2) DEMONSTRATED OPERATION — what RAN here through the governed routes by SYNTHETIC personas: the reroute proposed with its digest frozen, a recusal, S. Okafor's approval and signature, L. Brandt's commitment and signature as decision authority, the refusals (a stale digest, a self-approval, an agent as an owner of conditions, a stale commit); the degraded contracts declared by the operations authority and read by the database clock; a cancelled run's residual state; ASSESSED and "Close warning" made canonical by the DSA (the proposer refused); the content lint as a ratchet; the object headers and the warning's "acted by" compare; the density, the room on the display, a handoff between the person's own sessions and the desk's refused publish; the deterministic reading, the clarification with nothing preselected, the saved search and the command handed to its review; the inventory, the conformant library lint, three B107 contributions and the B81 library owned; a B81 baseline and a design acceptance record per chapter scope — every acceptance `claim = demonstration`. (3) REAL ACCEPTANCE — the named design authorities' attestation of the conformance package, audience comprehension evidence (GLB-20), assistive-technology results (B108) — NEVER claimed: the shared non-demonstration recording path is construction at B111 (F-P7-E-17), then H3. NOT STAGED HERE (harness-proven): an agent's approval (phase6-authority-b81), the degraded exit after a verified recovery (phase6-degraded-b81), the interpreter disagreement between two versions (phase6-search-b81), a display lost and a handoff expired (phase6-handoffs-b81). Fonts: the fallback stacks only (TYP-001/002 stay open — the owner's licence decision, D8).
+
+ALL SCENES HELD · 2.8 min
+
+════════ RUN 2 ════════
+THE B81 ACT on eye_demo_b81 (REHEARSAL) — 2026-10-18T23:46:21.362Z — API http://localhost:3411
+
+B81-0 THE STATE — 0119, the NORDWERK cast, the build identity
+  ✓ migration applied: 0119_b81_patterns_layout_content.sql
+  ✓ l.brandt holds decision_owner at the DOMAIN (the corridor domain "Supply Corridor Intelligence")
+  ✓ l.brandt holds decision_authority at the DOMAIN (the corridor domain "Supply Corridor Intelligence")
+  ✓ s.okafor holds decision_approver at the DOMAIN (the corridor domain "Supply Corridor Intelligence")
+  ✓ f.kraus holds board_member at the DOMAIN (the corridor domain "Supply Corridor Intelligence")
+  ✓ k.mensah holds operations_authority at the PLATFORM
+  ✓ a.hoffmann holds domain_analyst at the DOMAIN (the corridor domain "Supply Corridor Intelligence")
+  ✓ t.nakamura holds twin_owner at the DOMAIN (the corridor domain "Supply Corridor Intelligence")
+  ✓ j.weber holds strategy_owner at the DOMAIN (the corridor domain "Supply Corridor Intelligence")
+  ✓ n.eriksen holds forecast_owner at the DOMAIN (the corridor domain "Supply Corridor Intelligence")
+  ✓ l.haddad holds design_system_authority at the PLATFORM
+  ✓ s.iversen holds design_system_authority at the PLATFORM
+  ✓ p.castellano holds conformance_steward at the PLATFORM
+  ✓ h.achterberg holds independent_assurance at the PLATFORM
+  ✓ w.zielinska holds customer_sponsor at the TENANT
+  · the API declares its build: head 39d4a38364db… (from env), policy bundle bundle-v1 cc034e932179…
+
+B81-1 HUMAN AUTHORITY (F-P7-E-20) — the reroute decision: proposed with its digest frozen, a recusal, S. Okafor approves and signs, L. Brandt commits and signs as decision authority
+  · the package 01a1…9fecf6 "Bab el-Mandeb corridor reroute (SYNTHETIC)" (declared in act-b80) — version 1 is COMMITTED
+  · version 1 was proposed earlier (digest fff18b40ba50…): stands — an earlier run
+  · F. Kraus's recusal stands — an earlier run ("a family member works for the Cape routing's carrier — I recuse myself from this decision (SYNTHETIC)")
+  · S. Okafor's approval 01a1…511200 stands — an earlier run
+  · S. Okafor's signature on her approval stands — an earlier run (key ed25519:2b6c48b937b0b8d2)
+  ✓ L. Brandt (owner, proposer, decision authority) approves his own version REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  · an AGENT's attempt at the approval is refused in the harness (phase6-authority-b81 "eligibility and separation of duties"): the Decision Agent holds no approver role and no human gate admits it; this act opens no agent session
+  · the commitment 01a1…56bab4 by L. Brandt (2026-10-18T23:44:34Z) stands — an earlier run
+  · L. Brandt's signature on the decision stands — an earlier run (key ed25519:2b6c48b937b0b8d2)
+  ✓ THE GATE RECORD: package COMMITTED · gate approved · approved by S. Okafor (signature ed25519:2b6c48b937b0b8d2 VERIFIED) · recused F. Kraus · committed by L. Brandt · the decision signed by L. Brandt (ed25519:2b6c48b937b0b8d2, VERIFIED) · 0 denial(s) on the package
+
+B81-2 DEGRADED STATE AND RECOVERY (F-P7-E-19) — the AIS source's degraded contract by the operations authority, its signal by the database clock; the stale carrier advisories; a corridor experiment started and CANCELLED
+  · the AIS source red-sea-ais-positions: its catalog owner is A. Hoffmann — the owner of its degraded mode
+  · the degraded contract for source red-sea-ais-positions v1 (4638…047afc) stands — an earlier run
+  ✓ THE AIS SIGNAL by the database clock: HEALTHY — not stale, and the act plants nothing to make it so: the reference is the activation (no arrival since) at 2026-10-18T20:26:28Z (age 3.3 h of a 7.0 days freshness threshold), so it reads STALE from 2026-10-25T20:26:28Z; the contract is NORMAL until then (declared, owner A. Hoffmann — observation operator)
+  · the degraded contract for source carrier-advisories v1 (1b13…ffbbde) stands — an earlier run
+  ✓ THE STALE DECLARATION (what every corridor view shows): source carrier-advisories — mode ACTIVE, owner A. Hoffmann — observation operator; watermark 2026-09-09T06:58:00Z (last arrival), age 39.7 days beyond 7.0 days; refresh path: a new upload under source contract v1 (its registrar or a collection manager)
+  · the domain's degraded state now: 2 contract(s) (1 in force), 8 undeclared degraded dependencies; unavailable functions in force: prediction.forecast.run; evaluated by b81-dg-1 on the database clock
+  · the experiment 01a1…52c1a4 "Corridor closure — a 4-path probe, cancelled after its first chunk (B81, SYNTHETIC)" stands — CANCELLED in an earlier run
+  ✓ THE RESIDUAL STATE: CANCELLED — new work stopped; 1 of 4 path(s) completed and recorded — NOT rolled back; the run PARTIAL (partial), outputs digest dd6b61ec06f5…; reason "the probe has shown its first path; the rest is not needed — cancelled (SYNTHETIC)"
+  · a refused read hands back to the last verified location — the walk opens a warning link that does not exist (the RecoveryPanel: "Not opened", nothing changed, the safe next steps)
+
+B81-3 CONTENT AND TERMS (F-P7-E-18) — ASSESSED and "Close warning" made canonical by the Design System Authority (never the proposer); the catalogue; the content lint as a ratchet
+  · the principle design.content-governed v1 stands — an earlier run
+  · the canonical term ASSESSED (truth.assessed) v1 is PUBLISHED: stands — an earlier run
+  · the canonical action "Close warning" (its non-canonical synonym "withdraw (a warning)") (action.close-warning) v1 is PUBLISHED: stands — an earlier run
+  ✓ L. Brandt's DOMAIN catalogue (what Term shows on hover and focus): 2 term(s); ASSESSED canonical v1 — for executives: "ASSESSED means a reviewer has judged the evidence. The judgment can still be wrong. Read the uncertainty before you act."; content version f9b1d1c620acd4bb3987775899d657fb6bbe0d32785447d5b96b0a09ad352cd2
+  · the content lint 01a1…10b38e (nonconformant, {"open":276,"total":276,"excepted":0}, 2026-10-18T23:46:12Z) stands — an earlier run
+  · the warning's destructive command (Close warning, criterion "no longer relevant") states its scope, that it cannot be undone and what is kept — the walk reads it on the warning page (never closed here)
+
+B81-4 OBJECT PAGES (F-P7-E-06) — one header grammar on the warning, a forecast, a twin snapshot and the package; the warning at two recorded instants ("acted by"); the package's approvers
+  ✓ THE SAME HEADER GRAMMAR (type · canonical name · immutable identifier · version · owner · lifecycle · durable reference) on four types:
+      WARNING 01a0…0296d4 "Stream rule Bab el-Mandeb corridor collapse on event time (B…" — state expired, routed owner N. Eriksen, durable reference eye:WRN:01a0df00-48f5-7131-9232-4a61a20296d4
+      FORECAST 01a1…526298 "portwatch:chokepoint4:n_total · 30d" — issuing owner N. Eriksen, an immutable record, eye:FCT:01a11da8-5c95-7925-9e4c-1b7f6f526298
+      TWIN SNAPSHOT "NORDWERK — Ningbo → Regensburg chain — v23" — owner T. Nakamura, admitted by T. Nakamura, eye:TWN:01a084f6-411e-7559-afab-1fdf6c76f525:v23
+      DECISION PACKAGE "Bab el-Mandeb corridor reroute (SYNTHETIC)" — state committed, owner L. Brandt, eye:DPK:01a150b1-b8ab-7b32-bc39-87617f9fecf6:v1
+  ✓ THE WARNING AT TWO RECORDED INSTANTS: before — instant 1 "raised" 2026-09-26T18:35:32Z · RAISED · acted by agent:attention@1.0.0 (180eda560e05) (an agent); after — instant 3 "escalated" 2026-09-28T18:35:33Z · EXPIRED · acted by agent:attention@1.0.0 (180eda560e05) (an agent); context versions 0 → 0 — the column reads "acted by": a warning carries no approval
+  ✓ THE PACKAGE'S VERSIONS with their ACTUAL approvers: v1 committed — approve by S. Okafor
+
+B81-5 LAYOUT AND WINDOWS (F-P7-E-04) — L. Brandt's density; the operations room on the display; the review handed off from his desk to his second session; the desk's next publish refused
+  · L. Brandt's density is STRATEGIC (DEN-01) v1: stands — an earlier run
+  · the handoff 01a1…3113fd of the room was claimed by L. Brandt's second session at 2026-10-18T23:46:14Z (roles re-read: decision_authority, decision_owner, opportunity_sponsor, strategy_owner): stands — an earlier run
+  ✓ L. Brandt's DESK publishes to the display again REFUSED — 409 EYE-STA-002 — presentation state rejected (state): the display operations-room is controlled by another of your signed-in sessions (since 2026-10-18 23:46:14.788677+00) — hand its control off from there, or sign out there; a second window never takes control silently
+  · the display operations-room v2: presenting, transfer handoff, watermark 2026-10-18T23:46:13Z, internal, operations_centre — the presentation route (/present) shows it without a single control
+
+B81-6 SEARCH AND INTENT (F-P7-E-02) — A. Hoffmann asks "Bab el-Mandeb exposure Regensburg": the deterministic reading, the bounded clarification with nothing preselected, the saved search, a command handed to its review — nothing executed
+  · the palette's reading BEFORE any read (Ask mode, b81-si-intent-1): kinds ["exposure"], phrases ["Bab el-Mandeb","Regensburg"], scoped query "Bab el-Mandeb Regensburg" — not yet checked against what you may see — the reading is confirmed when the search runs
+  ✓ the FEDERATED READS (one receipt each): graph BOUNDED · graph BOUNDED · strategy COMPLETE · catalog COMPLETE · exposures COMPLETE · packages COMPLETE; 21 record(s) — graph 0, strategy 12, catalog 0, exposures 2, packages 7
+  ✓ THE BOUNDED CLARIFICATION (the phrase "Bab el-Mandeb"): Which “Bab el-Mandeb” do you mean — the assumption “SYN-SHIP-4481 (the bearing sets) keeps its booked Bab el-Ma…”, the commitment “Commit: B28 — keep the bearing sets on the booked Bab el-Ma…”, the commitment “Commit: Bab el-Mandeb corridor reroute (SYNTHETIC) — Rerout…”, the package “B28 — keep the bearing sets on the booked Bab el-Mandeb rou…” or the package “Bab el-Mandeb corridor reroute (SYNTHETIC)”? — 5 alternative(s), NOTHING PRESELECTED; the original input kept as typed
+  · the interpreter asks about the FIRST phrase that names more than one record — "Bab el-Mandeb" — before "Regensburg" (deterministic, b81-si-intent-1); the Regensburg objects (measure "Magnet stock on hand at Regensburg (B36, SYNTHETIC)", initiative "Dual-sourcing 2027: dual-tooling at Regensburg (SYNTHETIC)", commitment "Commit: Mitigate the corridor closure — Regensburg line — Dual-source the bearings and reroute", decision "Mitigate the corridor closure — Regensburg line", risk "Corridor closure — Regensburg line", stakeholder "Regensburg line workforce", capability "Regensburg assembly", commitment "Commit: January corridor collapse — Regensburg line — draw down (run 01a084f6)", objective "Keep the Regensburg line supplied through Q1") are among the results it scopes
+  · A. Hoffmann's intent record 01a1…ffc09d (chosen, b81-si-intent-1) stands — an earlier run
+  · the saved search "Bab el-Mandeb exposure — Regensburg (B81, SYNTHETIC)" v1 stands — an earlier run (cutoff 2026-10-18T23:46:19Z, policy bundle-v1, 17 records)
+  ✓ the saved search REOPENED EXACTLY: v1 — 17 records, the digest VERIFIED; the live re-run is shown BESIDE it (the drift), never as the saved result
+  · the command's intent record 01a1…edecfb (command_review → decision.approve) stands — an earlier run
+  ✓ NOTHING EXECUTED: the package carries 1 approval(s) before and after the command's hand-off
+
+B81-7 §RE (B80's residues) — the inventory re-read, the library lint conformant, the contributions for GovernedButton, TruthBadge and LifecycleBadge, the upload mode on the AIS source
+  · B81's library is in the inventory (36 components): stands — an earlier run
+  · the conformant library lint 01a1…ed801e ({"open":0,"total":0,"excepted":0}, 2026-10-18T23:46:19Z) stands — an earlier run
+  ✓ THE CONTRIBUTIONS (proposed by S. Iversen; reviewed, accepted — signed — and published by L. Haddad, never the proposer): web.observation.governed-button: PUBLISHED (v2); web.ui.truth-badge: PUBLISHED (v2); web.ui.lifecycle-badge: PUBLISHED (v2); the inventory's drift on the edited components stays STATED until the next registration reads them
+  ✓ the AIS source's page places FileIntake in UPLOAD mode (connector upload, contract v1 active): the disclosure before anything is sent — the walk reads it at /observation/sources/01a0f274-ce1b-743e-b487-5547f94aad45 (nothing is uploaded here)
+  · the sign-in / deep-link return (UX-11-005) is the walk's: a signed-out browser opens the warning's as-of link, signs in, and lands on exactly that link
+
+B81-8 THE INVENTORY AND THE ACCEPTANCE DEMONSTRATION RECORDS — B81's library approved with one owner, a B81 baseline, a design acceptance per chapter scope
+  ✓ L. Haddad (Design System Authority, human gate) APPROVED 0 B81 library component(s) (36 stand — an earlier run): 36 components across 6 files, each with ONE accountable owner — S. Iversen
+  · the B81 design baseline 01a1…b8934f v1 stands — an earlier run (attested)
+  ✓ the design acceptance DEMONSTRATION records per B81 chapter scope, each attested by L. Haddad (design), H. Achterberg (assurance) and W. Zielińska (customer): UX-12 stands, UX-25 stands, UX-13 stands, UX-14 stands, UX-16 stands, UX-19 stands, UX-69 stands, HX stands, REL stands — 9 records, claim demonstration; accessibility slots EMPTY (B108 → H3)
+
+B81-9 THE STATE and the LIMITS
+  · as recorded: degraded_contracts 2, term_versions 2, intent_records 2, saved_search_versions 1, handoffs 1, presentation_states 2, preference_versions 1
+  ✓ no design acceptance claims more than a DEMONSTRATION (0 beyond it)
+  the env lines for the walks (EYE_TEST_ADMIN_PASSWORD comes from .eye-local/env and is never printed):
+  EYE_B81_PACKAGE=01a150b1-b8ab-7b32-bc39-87617f9fecf6
+  EYE_B81_PACKAGE_VERSION=1
+  EYE_B81_AIS_STALE_FROM=2026-10-25T20:26:28Z
+  EYE_B81_EXPERIMENT=01a15167-2165-76fe-8a93-02524f52c1a4
+  EYE_B81_WARNING=01a0df00-48f5-7131-9232-4a61a20296d4
+  EYE_B81_AS_OF_FIRST=2026-09-26T18:35:33Z
+  EYE_B81_WARNING_OWNER=n.eriksen
+  EYE_B81_FORECAST=01a11da8-5c95-7925-9e4c-1b7f6f526298
+  EYE_B81_TWIN=01a084f6-411e-7559-afab-1fdf6c76f525
+  EYE_B81_TWIN_VERSION=23
+  EYE_B81_DISPLAY=operations-room
+  EYE_B81_SAVED_SEARCH=01a15168-b57a-7ff2-9b78-18fc8da50fbb
+  EYE_B81_ANALYST=a.hoffmann
+  EYE_B81_PALETTE_INPUT=Bab el-Mandeb exposure Regensburg
+  EYE_B81_AIS_SOURCE=01a0f274-ce1b-743e-b487-5547f94aad45
+  EYE_B81_TENANT=01a084f5-757f-7f03-9cf5-315d74426481
+  EYE_B81_DOMAIN=01a084f5-759a-751f-a1dd-38fbd7933057
+  EYE_B81_DECISION_AUTHORITY=l.brandt
+  EYE_B81_APPROVER=s.okafor
+  EYE_B81_DSA=l.haddad
+  · LIMITS said — THREE CLAIMS KEPT APART. (1) CONSTRUCTION — the software and its harnesses (phase6-{prelude,authority,degraded,terms,search,handoffs,preferences}-b81, the web unit models, the walks). (2) DEMONSTRATED OPERATION — what RAN here through the governed routes by SYNTHETIC personas: the reroute proposed with its digest frozen, a recusal, S. Okafor's approval and signature, L. Brandt's commitment and signature as decision authority, the refusals (a stale digest, a self-approval, an agent as an owner of conditions, a stale commit); the degraded contracts declared by the operations authority and read by the database clock; a cancelled run's residual state; ASSESSED and "Close warning" made canonical by the DSA (the proposer refused); the content lint as a ratchet; the object headers and the warning's "acted by" compare; the density, the room on the display, a handoff between the person's own sessions and the desk's refused publish; the deterministic reading, the clarification with nothing preselected, the saved search and the command handed to its review; the inventory, the conformant library lint, three B107 contributions and the B81 library owned; a B81 baseline and a design acceptance record per chapter scope — every acceptance `claim = demonstration`. (3) REAL ACCEPTANCE — the named design authorities' attestation of the conformance package, audience comprehension evidence (GLB-20), assistive-technology results (B108) — NEVER claimed: the shared non-demonstration recording path is construction at B111 (F-P7-E-17), then H3. NOT STAGED HERE (harness-proven): an agent's approval (phase6-authority-b81), the degraded exit after a verified recovery (phase6-degraded-b81), the interpreter disagreement between two versions (phase6-search-b81), a display lost and a handoff expired (phase6-handoffs-b81). Fonts: the fallback stacks only (TYP-001/002 stay open — the owner's licence decision, D8).
+
+ALL SCENES HELD · 0.2 min
+
+════════ THE WALKS (playwright.demo.config.ts, EYE_WEB_BASE=http://localhost:3010) — e2e/phase6-b81.demo.spec.ts, e2e/phase6-b81-re.demo.spec.ts, e2e/phase6-b81-layout.demo.spec.ts ════════
+
+Running 23 tests using 1 worker
+
+  ✓   1 e2e/phase6-b81-layout.demo.spec.ts:72:9 › B81 §LY-G — the layout walk (device matrix, regions, density, compact navigation) › 390-portrait: BP-01; nothing protected hidden; one reading order; no sideways page scroll (833ms)
+  ✓   2 e2e/phase6-b81-layout.demo.spec.ts:72:9 › B81 §LY-G — the layout walk (device matrix, regions, density, compact navigation) › 844-landscape: BP-02; nothing protected hidden; one reading order; no sideways page scroll (584ms)
+  ✓   3 e2e/phase6-b81-layout.demo.spec.ts:72:9 › B81 §LY-G — the layout walk (device matrix, regions, density, compact navigation) › 800: BP-02; nothing protected hidden; one reading order; no sideways page scroll (546ms)
+  ✓   4 e2e/phase6-b81-layout.demo.spec.ts:72:9 › B81 §LY-G — the layout walk (device matrix, regions, density, compact navigation) › 1024: BP-03; nothing protected hidden; one reading order; no sideways page scroll (506ms)
+  ✓   5 e2e/phase6-b81-layout.demo.spec.ts:72:9 › B81 §LY-G — the layout walk (device matrix, regions, density, compact navigation) › 1440: BP-04; nothing protected hidden; one reading order; no sideways page scroll (506ms)
+  ✓   6 e2e/phase6-b81-layout.demo.spec.ts:72:9 › B81 §LY-G — the layout walk (device matrix, regions, density, compact navigation) › 1440-zoom-200: BP-02; nothing protected hidden; one reading order; no sideways page scroll (511ms)
+  ✓   7 e2e/phase6-b81-layout.demo.spec.ts:72:9 › B81 §LY-G — the layout walk (device matrix, regions, density, compact navigation) › 1920: BP-05; nothing protected hidden; one reading order; no sideways page scroll (549ms)
+  ✓   8 e2e/phase6-b81-layout.demo.spec.ts:72:9 › B81 §LY-G — the layout walk (device matrix, regions, density, compact navigation) › 2560: BP-05; nothing protected hidden; one reading order; no sideways page scroll (545ms)
+  ✓   9 e2e/phase6-b81-layout.demo.spec.ts:92:7 › B81 §LY-G — the layout walk (device matrix, regions, density, compact navigation) › BP-01: the inspector opens in a dialog named with its selection and version; Escape returns the focus to its opener (467ms)
+  ✓  10 e2e/phase6-b81-layout.demo.spec.ts:106:7 › B81 §LY-G — the layout walk (device matrix, regions, density, compact navigation) › REFLOW (UX-14-003/005): wide → compact announces the change in words; the selection is still named (504ms)
+  ✓  11 e2e/phase6-b81-layout.demo.spec.ts:117:7 › B81 §LY-G — the layout walk (device matrix, regions, density, compact navigation) › DEN-01…03: ordinary controls follow the density (44 / 36 / 28 px); the consequential control is 44 px at every density (LAY-003) (504ms)
+  ✓  12 e2e/phase6-b81-layout.demo.spec.ts:130:7 › B81 §LY-G — the layout walk (device matrix, regions, density, compact navigation) › the density switch: the server's value until it answers; a refused read says so and the default applies (471ms)
+  ✓  13 e2e/phase6-b81-layout.demo.spec.ts:146:7 › B81 §LY-G — the layout walk (device matrix, regions, density, compact navigation) › BP-01 compact navigation (specimen): the current place is visible and current; More lists the rest; Escape closes it (444ms)
+  ✓  14 e2e/phase6-b81-re.demo.spec.ts:45:7 › CP-6 B81 §RE — the sign-in return and B80's residues › THE RETURN: a signed-out as-of deep link → sign-in → exactly that as-of state (626ms)
+  ✓  15 e2e/phase6-b81-re.demo.spec.ts:67:7 › CP-6 B81 §RE — the sign-in return and B80's residues › a return the rule refuses is STATED, and the landing is as before (1.0s)
+  ✓  16 e2e/phase6-b81-re.demo.spec.ts:82:7 › CP-6 B81 §RE — the sign-in return and B80's residues › THE CATALOGUE: every context-bar state; the held control; truth glyphs; the Button's enforcement; elevation; the Field slot; upload intake (869ms)
+  ✓  17 e2e/phase6-b81.demo.spec.ts:60:7 › CP-6 B81 — the act's walk: the palette, the clarification, the headers, the degraded state, the typed confirmation, the term, the room › THE PALETTE (F-P7-E-02): four modes, a typed prefix said as the switch, the reading before anything; a command handed to its Command Review (12.9s)
+  ✓  18 e2e/phase6-b81.demo.spec.ts:95:7 › CP-6 B81 — the act's walk: the palette, the clarification, the headers, the degraded state, the typed confirmation, the term, the room › THE CLARIFICATION (F-P7-E-02): the bounded question, nothing preselected, the act held until she chooses; the saved search reopened exactly (4.5s)
+  ✓  19 e2e/phase6-b81.demo.spec.ts:118:7 › CP-6 B81 — the act's walk: the palette, the clarification, the headers, the degraded state, the typed confirmation, the term, the room › THE OBJECT HEADERS (F-P7-E-06): the warning ("Acted by"), the forecast, the twin snapshot, the package (its actual approver) (3.7s)
+  ✓  20 e2e/phase6-b81.demo.spec.ts:155:7 › CP-6 B81 — the act's walk: the palette, the clarification, the headers, the degraded state, the typed confirmation, the term, the room › THE DEGRADED STATE (F-P7-E-19): the contract in force and the stale source on the warning page and the room; a refused link handed to recovery (1.9s)
+  ✓  21 e2e/phase6-b81.demo.spec.ts:180:7 › CP-6 B81 — the act's walk: the palette, the clarification, the headers, the degraded state, the typed confirmation, the term, the room › THE TYPED CONFIRMATION (F-P7-E-20): the warning's Close — scope, irreversibility, the phrase; a wrong phrase keeps it disabled (never closed) (605ms)
+  ✓  22 e2e/phase6-b81.demo.spec.ts:197:7 › CP-6 B81 — the act's walk: the palette, the clarification, the headers, the degraded state, the typed confirmation, the term, the room › THE TERM (F-P7-E-18): ASSESSED's executive explanation on hover and on keyboard focus (547ms)
+  ✓  23 e2e/phase6-b81.demo.spec.ts:215:7 › CP-6 B81 — the act's walk: the palette, the clarification, the headers, the degraded state, the typed confirmation, the term, the room › THE ROOM (F-P7-E-04): the operations room at 1920 (BP-05), its regions; /present with no control; L. Brandt's density in force (1.4s)
+
+  23 passed (36.2s)
