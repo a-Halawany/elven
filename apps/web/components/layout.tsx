@@ -287,6 +287,7 @@ export function Composition({ regions, label, selection, consequentialGate, comp
   });
   const deferredViews: DeferredView[] = plan.deferred.map((d) => ({ ...d, openerId: `${base}-open-${d.region}` }));
   const openItem = plan.deferred.find((d) => d.region === open) ?? null;
+  const inspectorDeferred = plan.deferred.find((d) => d.region === 'inspector') ?? null;
   const onFocus = (e: ReactFocusEvent<HTMLDivElement>) => {
     const r = (e.target as HTMLElement).closest('[data-region]')?.getAttribute('data-region');
     if (r !== null && r !== undefined) focusRegion.current = r as RegionKey;
@@ -329,11 +330,16 @@ export function Composition({ regions, label, selection, consequentialGate, comp
           ))}
       </div>
       <LiveStatus>{announce}</LiveStatus>
-      {openItem !== null && plan.columns === 1 && (
-        <Dialog open title={`${openItem.label} — ${openItem.summary}`} onClose={() => setOpen(null)}>{regions[openItem.region]}</Dialog>
+      {/* mounted while the region is deferred, so closing runs the layer's own focus return (to the opener) */}
+      {inspectorDeferred !== null && (
+        <Dialog open={openItem !== null && plan.columns === 1} title={`${inspectorDeferred.label} — ${inspectorDeferred.summary}`} onClose={() => setOpen(null)}>
+          {openItem !== null && plan.columns === 1 ? regions[openItem.region] : null}
+        </Dialog>
       )}
-      {openItem !== null && plan.columns === 12 && (
-        <Drawer open title={`${openItem.label} — ${openItem.summary}`} onClose={() => setOpen(null)}>{regions[openItem.region]}</Drawer>
+      {inspectorDeferred !== null && (
+        <Drawer open={openItem !== null && plan.columns === 12} title={`${inspectorDeferred.label} — ${inspectorDeferred.summary}`} onClose={() => setOpen(null)}>
+          {openItem !== null && plan.columns === 12 ? regions[openItem.region] : null}
+        </Drawer>
       )}
     </div>
   );
@@ -346,7 +352,9 @@ export function Composition({ regions, label, selection, consequentialGate, comp
  * accessibility tree at any width — the other is not rendered there), the current place always among the visible ones (aria-current), the
  * rest under "More" (Escape closes it and returns the focus).
  */
-export function BottomNavigation({ spec, nav, pathname }: { spec: WorkspaceSpec; nav: readonly NavItem[]; pathname: string }) {
+export function BottomNavigation({ spec, nav, pathname, specimen }: {
+  spec: WorkspaceSpec; nav: readonly NavItem[]; pathname: string; /** a catalogue specimen: shown at every width, in the page (never the shell's navigation) */ specimen?: boolean;
+}) {
   const active = activeHref(nav, pathname);
   const { primary, more } = bottomNavOf(nav, active);
   const [open, setOpen] = useState(false);
@@ -363,7 +371,7 @@ export function BottomNavigation({ spec, nav, pathname }: { spec: WorkspaceSpec;
     </li>
   );
   return (
-    <nav aria-label={spec.navName} className="eye-bottom-nav" onKeyDown={onKey}>
+    <nav aria-label={spec.navName} className={specimen === true ? 'eye-bottom-nav eye-bottom-nav--specimen' : 'eye-bottom-nav'} onKeyDown={onKey}>
       {open && more.length > 0 && <ul id={`${id}-more`} className="eye-bottom-nav-more" aria-label="More places">{more.map(item)}</ul>}
       <ul className="eye-bottom-nav-list">
         {primary.map(item)}

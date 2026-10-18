@@ -607,15 +607,18 @@ button[aria-busy='true'] { --eye-button-cursor: progress; }
   [data-rail="collapsed"] .eye-rail { inline-size: 3.5rem; }
 }
 
-/* BP-01: the compact navigation. The rail yields to it below 640 px ONLY while it is rendered (no bottom navigation, the rail stays). */
+/* BP-01: the compact navigation. The rail yields to it below 640 px ONLY while the shell renders it as its direct child (none: the rail
+   stays). A catalogue specimen shows at every width, in the page's flow. */
 .eye-bottom-nav { display: none; }
+.eye-bottom-nav--specimen { display: block; max-inline-size: 26rem; border: 1px solid var(--eye-color-border-strong); border-radius: var(--eye-radius-md); }
 @media (max-width: 639px) {
-  .eye-shell:has(.eye-bottom-nav) .eye-rail { display: none; }
+  .eye-shell:has(> .eye-bottom-nav) .eye-rail { display: none; }
   .eye-bottom-nav {
     display: block; position: sticky; inset-block-end: 0; z-index: 6;
     background: var(--eye-color-surface-primary); border-block-start: 1px solid var(--eye-color-border-strong);
   }
 }
+.eye-bottom-nav.eye-bottom-nav--specimen { position: static; }
 .eye-bottom-nav-list { display: flex; list-style: none; margin: 0; padding: 0; }
 .eye-bottom-nav-list > li { flex: 1 1 0; min-inline-size: 0; }
 .eye-bottom-nav-link {
@@ -675,16 +678,19 @@ ul.eye-stack, ol.eye-stack { list-style: none; }
   color: var(--eye-color-accent-default); font: inherit; cursor: pointer; overflow-wrap: anywhere;
 }
 
-/* DEN-01…03: the density in force on everything inside its scope. DEN-02 is today's rendering (no override). A consequential control
+/* DEN-01…03: the density in force on everything inside its scope; the NEAREST scope wins (an inspection table inside a strategic page).
+   DEN-02's values are today's rendering exactly (md controls, sm small controls, the 8 px cell padding). A consequential control
    (.eye-button--lg, the 44 px consequential size) is never resized by a density (LAY-003). */
-[data-density="DEN-01"] { --eye-density-control: var(--eye-size-control-lg); --eye-density-row: var(--eye-size-control-lg); --eye-density-pad: var(--eye-space-12); }
-[data-density="DEN-03"] { --eye-density-control: var(--eye-size-control-sm); --eye-density-row: var(--eye-size-control-sm); --eye-density-pad: var(--eye-space-4); }
-[data-density="DEN-01"] :is(.eye-button:not(.eye-button--lg), .eye-input, .eye-cld-btn, .eye-cld-btn-quiet, .eye-cld-input, .eye-density-select),
-[data-density="DEN-03"] :is(.eye-button:not(.eye-button--lg), .eye-input, .eye-cld-btn, .eye-cld-btn-quiet, .eye-cld-input, .eye-density-select) {
+[data-density="DEN-01"] { --eye-density-control: var(--eye-size-control-lg); --eye-density-control-small: var(--eye-size-control-lg); --eye-density-row: var(--eye-size-control-lg); --eye-density-pad: var(--eye-space-12); }
+[data-density="DEN-02"] { --eye-density-control: var(--eye-size-control-md); --eye-density-control-small: var(--eye-size-control-sm); --eye-density-row: auto; --eye-density-pad: var(--eye-space-8); }
+[data-density="DEN-03"] { --eye-density-control: var(--eye-size-control-sm); --eye-density-control-small: var(--eye-size-control-sm); --eye-density-row: var(--eye-size-control-sm); --eye-density-pad: var(--eye-space-4); }
+/* :where() keeps these at the specificity of the scope attribute alone, so the order below decides: ordinary, then small; never --lg */
+[data-density] :where(.eye-button:not(.eye-button--lg), .eye-input, .eye-cld-btn, .eye-cld-btn-quiet, .eye-cld-input, .eye-density-select) {
   block-size: var(--eye-density-control);
 }
+[data-density] :where(.eye-button--sm:not(.eye-button--lg), .eye-cld-btn-sm) { block-size: var(--eye-density-control-small); }
 @media (min-width: 768px) {
-  [data-density="DEN-01"] .eye-table td, [data-density="DEN-03"] .eye-table td { padding-block: var(--eye-density-pad); block-size: var(--eye-density-row); }
+  [data-density] .eye-table td { padding-block: var(--eye-density-pad); block-size: var(--eye-density-row); }
 }
 .eye-density-switch { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: var(--eye-space-4); }
 .eye-density-label { font-size: var(--eye-type-label-sm); color: var(--eye-color-ink-muted); }
