@@ -6,6 +6,7 @@
  */
 import type { CSSProperties, ReactNode } from 'react';
 /* B80 clf */ import * as LIBRARY_STYLES from '../lib/styles-b80'; /* end B80 clf */
+/* B81 ob */ import { lifecycleOf } from '../lib/object-b81'; /* end B81 ob */
 
 const TRUTH_SYMBOLS: Record<string, string> = {
   observed: '●', asserted: '▢', extracted: '⌕', inferred: '⧉', assessed: '◇',
@@ -32,7 +33,12 @@ export function TruthBadge({ state }: { state: string }) {
   );
 }
 
-export function LifecycleBadge({ state }: { state: string }) {
+/* B81 ob — a B107 CONTRIBUTION to `web.ui.lifecycle-badge` (CMP-020; the act records it through B107's contribution queue, proposer ≠ DSA):
+   the badge is bound to the LS-01…12 catalogue (lib/object-b81.ts) — the LS glyph and title-case label with its definition, from the SERVER's
+   own state word (never from a truth state); a word with no catalogue equivalent renders exactly as before. Props kept (`state`; `type` is an
+   added OPTIONAL prop naming the object type whose map applies — the canonical object store's by default). */
+export function LifecycleBadge({ state, type }: { state: string; type?: string }) {
+  const ls = lifecycleOf(type ?? '', state);
   return (
     <span
       style={{
@@ -43,11 +49,14 @@ export function LifecycleBadge({ state }: { state: string }) {
         fontSize: 'var(--eye-type-label-sm)',
         textTransform: 'capitalize',
       }}
+      title={ls.code === null ? undefined : `${ls.code} ${ls.label} — ${ls.definition}`}
+      data-ls={ls.code ?? 'none'}
     >
-      {state}
+      {ls.code === null ? state : <><span aria-hidden="true">{ls.glyph}</span> {ls.label}</>}
     </span>
   );
 }
+/* end B81 ob */
 
 export function Panel({ title, children }: { title: string; children: ReactNode }) {
   return (
