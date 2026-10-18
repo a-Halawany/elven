@@ -13,12 +13,13 @@
  * Nothing here predicts a result: the list, the record, the run and every effect are rendered as the server returned
  * them, and a control resolves only on the server's answer.
  */
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 import { useShell } from '../layout';
 import { decisions as api, REQUEST_KINDS, type FollowUp, type OpenedRequest, type Package, type RequestDetail, type RequestIntake,
   type RequestKind, type RequestRow, type RequestRun, type RequestState } from '../../../lib/decisions';
 import { Empty, LiveStatus, Mono, ScrollBox, cardStyle, DefinitionRow, UnknownNote, GovernedButton, fmtInstant, textareaStyle } from '../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui';
+/* B81 re: the library's Field (its control slot) — the local Field helper migrated (UX-ADR-011; dg-lint-2's ratchet) */ import { Field } from '../../../components/forms';
 
 type Row = Record<string, unknown>;
 type ReceiptT = { policyDecisionId: string; auditSeq: number } | null;
@@ -88,9 +89,6 @@ const critical = { color: 'var(--eye-color-critical)' } as const;
 const rowStyle = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(14rem, 1fr))', gap: 'var(--eye-space-8)' } as const;
 const linkButton = { font: 'inherit', background: 'none', border: 'none', color: 'var(--eye-color-accent-strong)', cursor: 'pointer', padding: 0, textDecoration: 'underline' } as const;
 
-function Field({ id, label, children }: { id: string; label: string; children: (id: string) => ReactNode }) {
-  return <div><label htmlFor={id} style={{ display: 'block' }}>{label}</label>{children(id)}</div>;
-}
 const txt = (id: string, value: string, onChange: (v: string) => void, type = 'text') => (
   <input id={id} type={type} style={{ ...inputStyle, inlineSize: '100%' }} value={value} onChange={(e) => onChange(e.target.value)} />
 );

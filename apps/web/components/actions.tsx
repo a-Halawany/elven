@@ -15,20 +15,30 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { MENU_CLOSED, buttonClass, buttonState, mayActivate, menuKey, splitNames, type ButtonSize, type ButtonVariant, type MenuItem, type MenuState } from '../lib/actions-b80';
 /* the library owns the style constant (lib/styles-b80.ts); ui.tsx re-exports it for existing pages */
 export { buttonStyle } from '../lib/styles-b80';
+/* B81 re: the Button ENFORCES controlLabelProblem / controlSizeVar (UX-20-004, LAY-003) — lib/controls-b81.ts buttonEnforcement */
+import { buttonEnforcement } from '../lib/controls-b81';
+import type { Consequence } from '../lib/symbols-b80';
+/* end B81 re */
 
-/** CMP-041 — the Button. `onClick` may return a promise: the button is pending until it settles (never a success state of its own). */
-export function Button({ label, pendingLabel, onClick, variant, size, disabledReason, type, describedBy }: {
+/** CMP-041 — the Button. `onClick` may return a promise: the button is pending until it settles (never a success state of its own).
+ *  B81 re: `consequence` (optional; a critical variant is at least C3, else C1): from C2 the label must NAME the act in words (an icon-only
+ *  consequential control is held with the reason) and the control is the 44px consequential one. */
+export function Button({ label, pendingLabel, onClick, variant, size, disabledReason, type, describedBy, consequence }: {
   label: string; pendingLabel?: string; onClick?: () => unknown; variant?: ButtonVariant; size?: ButtonSize; disabledReason?: string | null;
-  type?: 'button' | 'submit'; describedBy?: string;
+  type?: 'button' | 'submit'; describedBy?: string; consequence?: Consequence;
 }) {
   const [busy, setBusy] = useState(false);
   const reasonId = useId();
-  const facts = { busy, disabledReason: disabledReason ?? null, label, pendingLabel: pendingLabel ?? null };
+  /* B81 re */
+  const en = buttonEnforcement({ label, ...(consequence === undefined ? {} : { consequence }), ...(variant === undefined ? {} : { variant }), ...(size === undefined ? {} : { size }), disabledReason: disabledReason ?? null });
+  const facts = { busy, disabledReason: en.disabledReason, label, pendingLabel: pendingLabel ?? null };
+  /* end B81 re */
   const st = buttonState(facts);
   const described = [describedBy, st.reason !== null ? reasonId : null].filter((x): x is string => x !== undefined && x !== null).join(' ') || undefined;
   return (
     <>
-      <button type={type ?? 'button'} className={buttonClass(variant, size)} disabled={st.disabled} aria-disabled={st.ariaDisabled ? true : undefined}
+      <button type={type ?? 'button'} className={buttonClass(variant, en.size)} disabled={st.disabled} aria-disabled={st.ariaDisabled ? true : undefined}
+        data-consequence={en.consequence /* B81 re: the 44px consequential target from C2 (globals.css B81 re) */}
         aria-busy={st.ariaBusy ? true : undefined} aria-describedby={described}
         onClick={(e) => {
           if (!mayActivate(facts)) { e.preventDefault(); return; }

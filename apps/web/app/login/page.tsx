@@ -8,6 +8,10 @@ import { t, defaultLocale } from '../../lib/i18n';
    acceptance material ONCE (in this tab's memory only), the acceptance of 0091 §F1 sets the password, and the external lands on its surface */
 import { collab, pickupCodeShape, type PickedUpInvitation } from '../../lib/workflow';
 /* end B36 */
+/* B81 re: THE SIGN-IN / DEEP-LINK RETURN (UX-11-005) — `?next=<path>` from the shell, honoured only as a same-origin in-app path
+   (lib/signin-return-b81.ts); otherwise the landing is as before and the page says why */
+import { landingAfterSignIn, returnNotice } from '../../lib/signin-return-b81';
+/* end B81 re */
 
 type Err = { code: string; message: string; correlationId: string } | null;
 
@@ -32,6 +36,9 @@ function LoginForm() {
   const [picked, setPicked] = useState<PickedUpInvitation | null>(null);
   const [invPassword, setInvPassword] = useState('');
   /* end B36 */
+  /* B81 re */
+  const back = returnNotice(params.get('next'));
+  /* end B81 re */
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -51,9 +58,10 @@ function LoginForm() {
     }
     /* B36 (0094 §C1): an external collaborator's shell is the collaboration surface (its one page); a member lands as before */
     const bindings = r.data?.bindings ?? [];
-    if (bindings.length > 0 && bindings.every((b) => b.roleCode === 'external_collaborator')) { router.replace('/decisions/workspaces'); return; }
     /* end B36 */
-    router.replace('/admin');
+    /* B81 re: the collaborator keeps its one surface (B36 §C1); a member returns to the honoured `next`, else `/admin` as before */
+    router.replace(landingAfterSignIn({ next: back.next, roles: bindings.map((b) => b.roleCode) }));
+    /* end B81 re */
   }
 
   async function rotate(e: FormEvent) {
@@ -118,6 +126,12 @@ function LoginForm() {
       {notice !== '' && (
         <p role="status" style={{ color: 'var(--eye-color-warning)', fontWeight: 600 }}>{notice}</p>
       )}
+      {/* B81 re: the return, stated before sign-in (honoured with its exact path, or refused with the reason) — never a role="status" (the
+          rotation notice keeps that), so the hosted suites' selectors are unchanged */}
+      {back.state !== 'none' && invitationId === '' && (
+        <p id="eye-signin-return" data-return={back.state} data-next={back.next ?? ''} className="eye-help">{back.text}</p>
+      )}
+      {/* end B81 re */}
       {/* B36 (0094 §C3): the invitation pickup, then the acceptance */}
       {invitationId !== '' && picked === null ? (
         <form onSubmit={pickup} aria-label="Invitation pickup" style={{ display: 'grid', gap: 'var(--eye-space-12)' }}>

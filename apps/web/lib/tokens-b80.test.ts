@@ -40,9 +40,12 @@ describe('symbols: never colour alone; the label shown where the glyph could be 
     expect(controlSizeVar('C2')).toBe('var(--eye-size-control-consequential)');
     expect(controlSizeVar('C0')).toBe('var(--eye-size-control-md)');
   });
-  it('TruthBadge (ui.tsx — B107\'s key, untouched) already shows its symbol AND its UPPERCASE label beside the colour', () => {
+  /* B81 re (UX-20-001): TruthBadge's glyphs moved onto the symbol set — a contribution to B107's key web.ui.truth-badge (props kept) */
+  it('TruthBadge (ui.tsx — B107\'s key) shows the SYMBOL SET\'s glyph AND its UPPERCASE label beside the colour', () => {
     const ui = readFileSync(new URL('../components/ui.tsx', import.meta.url), 'utf8');
-    expect(ui).toMatch(/\{TRUTH_SYMBOLS\[state\] \?\? '\?'\} \{state\.toUpperCase\(\)\}/);
+    expect(ui).toMatch(/const v = truthBadgeView\(state\);/);
+    expect(ui).toMatch(/<\/svg>\{' '\}\{v\.text\}/);
+    expect(ui).not.toMatch(/TRUTH_SYMBOLS/);
   });
 });
 

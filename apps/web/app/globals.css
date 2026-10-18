@@ -797,3 +797,40 @@ ul.eye-stack, ol.eye-stack { list-style: none; }
 }
 @media print { .eye-object-commands { display: none; } }
 /* end B81 ob */
+/* B81 re — B80's residues (§RE). Tokens only; logical properties.
+   THE ELEVATION BINDING (LAY-009 / -010 / -011): a layer's shadow is its USE alias — raised (elevation.1), overlay (elevation.2: drawer,
+   popover), blocking (elevation.3: dialog) — read from `data-elevation` (lib/controls-b81.ts ELEVATION_BINDING); never a raw level. Shadows
+   vanish in forced colours and print (the borders carry the layer there). */
+[data-elevation='none'] { box-shadow: none; }
+[data-elevation='raised'] { box-shadow: var(--eye-elevation-raised); }
+[data-elevation='overlay'] { box-shadow: var(--eye-elevation-overlay); }
+[data-elevation='blocking'] { box-shadow: var(--eye-elevation-blocking); }
+/* THE CONSEQUENTIAL TARGET (LAY-003): a Button from C2 is the 44px consequential control (size.control.lg via its use alias). */
+.eye-button[data-consequence='C2'], .eye-button[data-consequence='C3'], .eye-button[data-consequence='C4'] {
+  min-block-size: var(--eye-size-control-consequential); min-inline-size: var(--eye-size-control-consequential);
+}
+/* A governed control HELD by a frozen shell states why, beside it. */
+.eye-held-reason { color: var(--eye-color-warning); }
+/* The re-verification lapse: the page stays (its last valid read), its controls held, the way back that returns here. */
+.eye-shell-lapsed {
+  border-block-end: 2px solid var(--eye-color-warning); background: var(--eye-color-surface-secondary); color: var(--eye-color-ink-default);
+  padding-block: var(--eye-space-8); padding-inline: var(--eye-space-16);
+}
+.eye-truth-glyph { vertical-align: -1px; }
+.eye-re-bar-fixture { margin-block-end: var(--eye-space-12); }
+/* An upload source's evidence upload (CMP-040): a raised panel on the source page. */
+.eye-upload-panel {
+  background: var(--eye-color-surface-primary); border: 1px solid var(--eye-color-border-default); border-radius: var(--eye-radius-lg);
+  padding: var(--eye-space-16); margin-block-start: var(--eye-space-16); display: grid; gap: var(--eye-space-8); justify-items: start;
+}
+/* The person's saved table view (UX-22-002): one quiet line above the table, its two controls. */
+.eye-saved-view { display: flex; flex-wrap: wrap; align-items: center; gap: var(--eye-space-8); margin-block: var(--eye-space-8); }
+.eye-saved-view > .eye-help { flex: 1 1 24rem; }
+@media (forced-colors: active) {
+  [data-elevation] { box-shadow: none; }
+  .eye-shell-lapsed { border-block-end-color: CanvasText; }
+}
+@media print {
+  [data-elevation] { box-shadow: none; }
+}
+/* end B81 re */

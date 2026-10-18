@@ -11,7 +11,7 @@
  * attest the human-led mode and a second human acknowledge it — the analysis then proceeds WITHOUT recommendation. Every figure is the
  * server's; the forms are offered to everyone and the server refuses whoever may not act, and its refusal is shown as it states it.
  */
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useShell } from '../layout';
 import {
   recommendations as api, authorMark, COMPONENT_LABELS, completenessWords, coverageWords, flagWords, linesOf, sourcedOf, stateMark,
@@ -19,6 +19,7 @@ import {
 } from '../../../lib/recommendation-b35';
 import { Empty, LiveStatus, Mono, cardStyle, GovernedButton, fmtInstant, textareaStyle } from '../../../components/observation';
 import { inputStyle, Receipt } from '../../../components/ui';
+/* B81 re: the library's Field (its control slot) — the local Field helper migrated (UX-ADR-011; dg-lint-2's ratchet) */ import { Field } from '../../../components/forms';
 
 type ReceiptT = { policyDecisionId: string; auditSeq: number } | null;
 const refusal = (r: { status: number; error?: { code: string; message: string } }, fallback: string) =>
@@ -32,9 +33,6 @@ const short = (v: string | null | undefined) => (typeof v === 'string' && v.leng
 function Mark({ m }: { m: { glyph: string; token: string; text: string } }) {
   return <span style={{ color: `var(${m.token})`, border: `1px solid var(${m.token})`, borderRadius: 'var(--eye-radius-sm)', paddingInline: 'var(--eye-space-4)', fontSize: 'var(--eye-type-label-sm)', fontWeight: 650 }}>
     <span aria-hidden="true">{m.glyph}</span> {m.text}</span>;
-}
-function Field({ id, label, children }: { id: string; label: string; children: (id: string) => ReactNode }) {
-  return <div style={{ marginBlockEnd: 'var(--eye-space-8)' }}><label htmlFor={id} style={{ display: 'block' }}>{label}</label>{children(id)}</div>;
 }
 
 /** One recommendation in full: the object, its four separated components, what it rests on now, its reviews, the review form. */

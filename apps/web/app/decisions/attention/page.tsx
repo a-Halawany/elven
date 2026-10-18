@@ -15,7 +15,7 @@
  * is shown to everyone and the server's refusal is shown as it states it). Nothing on this page predicts a result: every row,
  * verdict and answer is the server's.
  */
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 import { useShell } from '../layout';
 import {
   attention as api, ITEM_STATES, SIGNAL_CLASSES, FIRST_POLICY_TEMPLATE, POLICY_PUBLISHER_ROLES,
@@ -51,6 +51,7 @@ import { RemediationPanel } from './remediation-panel';
 import { ContextStrip } from './context-strip';
 import { PriorityPanel } from './priority-panel';
 import { ForumsPanel } from './forums-panel';
+/* B81 re: the library's Field (its control slot) — the local Field helper migrated (UX-ADR-011; dg-lint-2's ratchet) */ import { Field } from '../../../components/forms';
 /* end B36 attention */
 
 type ReceiptT = { policyDecisionId: string; auditSeq: number } | null;
@@ -73,9 +74,6 @@ const chip = (active: boolean) => ({
   background: active ? 'var(--eye-color-selection)' : 'var(--eye-color-surface-primary)', color: active ? 'var(--eye-color-accent-strong)' : 'var(--eye-color-ink-default)', fontWeight: active ? 650 : 400,
 }) as const;
 
-function Field({ id, label, children }: { id: string; label: string; children: (id: string) => ReactNode }) {
-  return <div><label htmlFor={id} style={{ display: 'block' }}>{label}</label>{children(id)}</div>;
-}
 const txt = (id: string, value: string, onChange: (v: string) => void, type = 'text', placeholder?: string) => (
   <input id={id} type={type} style={{ ...inputStyle, inlineSize: '100%' }} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />
 );
