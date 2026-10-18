@@ -41,6 +41,9 @@ import { WorkingDomainChooser, WorkingDomainMark } from './working-domain';
 import { GlobalContextBar } from './context-bar';
 import { ThemeScope } from './theme';
 import { Dialog } from './layers';
+/* B81 re: the sign-in / deep-link return (UX-11-005) */
+import { loginHref } from '../lib/signin-return-b81';
+/* end B81 re */
 
 /* ── THE SLOTS (b80-seams AppShellSlots): §CB's context bar under the banner, §TK's ThemeScope around the surface ── */
 export interface ShellSlots {
@@ -62,6 +65,27 @@ const StatusCtx = createContext<ShellStatus | null>(null);
 export function useShellBase(): ShellBase | null { return useContext(BaseCtx); }
 /** What the shell can say about itself (phase, frozen, regions) — for a library control that must not act on an unverified state. */
 export function useShellStatus(): ShellStatus | null { return useContext(StatusCtx); }
+
+/* B81 re — THE SHELL'S RECOVERY SEAMS (PR-05-005, UX-09-005, UX-11-005):
+ *   · useShellRecovery(): what a page's own refusal offers (§DG's RecoveryPanel composes it) — the shell's LAST VERIFIED LOCATION and the
+ *     sign-in href that RETURNS HERE (`/login?next=<this place>`); null outside a shell.
+ *   · FreezeScope: a region that can only be MORE frozen than the shell (never less) — every governed control inside reads `frozen` with the
+ *     scope's statement (a page whose own read is stale holds its controls; the catalogue walk shows the frozen state without a server).
+ *   · the RE-VERIFICATION: when the tab becomes visible again (at most once a minute) the shell asks the server again who this is; a session
+ *     the server no longer confirms — or one that now names another principal — FREEZES the page in place (the last valid context kept on
+ *     screen, consequential controls held, the way back to sign-in that returns here), never a silent continue. */
+export interface ShellRecovery { lastVerified: { route: string; title: string } | null; signInHref: string }
+const RecoveryCtx = createContext<ShellRecovery | null>(null);
+export function useShellRecovery(): ShellRecovery | null { return useContext(RecoveryCtx); }
+export const FreezeScope = ({ statement, children }: { statement: string; children: ReactNode }) => {
+  const outer = useContext(StatusCtx);
+  const held: ShellStatus = outer !== null && outer.frozen ? outer : { phase: 'unverified', frozen: true, regions: [...(outer?.regions ?? []), 'region'], statement };
+  return <StatusCtx.Provider value={held}>{children}</StatusCtx.Provider>;
+};
+const REVERIFY_MS = 60_000;
+/** The place the person is on, for the sign-in return (the as-of query and its return token kept). */
+const hereHref = (pathname: string): string => (typeof window === 'undefined' ? loginHref(pathname).href : loginHref(window.location.pathname, window.location.search).href);
+/* end B81 re */
 
 const HISTORY_KEY = 'eye.shell.history';
 const FOCUS_KEY = 'eye.shell.focus';
@@ -101,23 +125,54 @@ export function AppShell({ workspace, children, provide, adapt, slots }: AppShel
   const mainRef = useRef<HTMLElement | null>(null);
   const slotSet = slots ?? SHELL_SLOTS;
 
-  useEffect(() => {
-    if (getSession() === null) { router.replace('/login'); return; }
-    setReady(true);
-    if (!platform) {
-      void (async () => {
-        const r = await whoAmI();
-        if (!r.ok || r.data === undefined) { setProblem(r.error?.message ?? 'the server did not confirm this session’s scope'); return; }
-        // The stored choice is read once the server has said who this is (never in a state initialiser: the shell pre-renders on the server).
-        setWorking(readWorkingDomain());
-        setMe(r.data.me);
-      })();
+  /* B81 re: ONE verification, run at entry and again on re-verification (the server is asked who this is; nothing else is called) */
+  const [lapsed, setLapsed] = useState<string | null>(null);
+  const verifiedAt = useRef(0);
+  const meRef = useRef<Me | null>(null);
+  useEffect(() => { meRef.current = me; }, [me]);
+  const verify = useCallback(async (mode: 'entry' | 'recheck') => {
+    if (getSession() === null) { router.replace(hereHref(pathname)); return; }
+    const r = await whoAmI();
+    verifiedAt.current = Date.now();
+    if (!r.ok || r.data === undefined) {
+      const why = r.error?.message ?? 'the server did not confirm this session’s scope';
+      if (mode === 'entry') setProblem(why); else setLapsed(`the server no longer confirms this session (${why})`);
+      return;
     }
+    if (mode === 'entry') {
+      // The stored choice is read once the server has said who this is (never in a state initialiser: the shell pre-renders on the server).
+      setWorking(readWorkingDomain());
+      setMe(r.data.me);
+      return;
+    }
+    const opened = meRef.current;
+    setLapsed(opened !== null && opened.principalId !== r.data.me.principalId ? 'this tab’s session now names another principal than the one this page was opened for' : null);
+  }, [router, pathname]);
+  /* end B81 re */
+  useEffect(() => {
+    /* B81 re: no session → the sign-in page, carrying the place asked for (`/login?next=…`; honoured there only as an in-app path) */
+    if (getSession() === null) { router.replace(loginHref(window.location.pathname, window.location.search).href); return; }
+    /* end B81 re */
+    setReady(true);
+    if (!platform) void verify('entry');
     const check = async () => { const h = await health(); setDegraded(h.status !== 'ok'); setHealthState(h.status); };
     void check();
     const id = setInterval(() => void check(), platform ? 10000 : 15000);
     return () => clearInterval(id);
-  }, [router, platform]);
+  }, [router, platform]); // eslint-disable-line react-hooks/exhaustive-deps -- `verify` is read at entry only
+
+  /* B81 re: RE-VERIFICATION when the tab is shown again (throttled); a lapse freezes the page in place */
+  useEffect(() => {
+    if (platform || me === null) return;
+    const recheck = () => {
+      if (document.visibilityState !== 'visible' || Date.now() - verifiedAt.current < REVERIFY_MS) return;
+      void verify('recheck');
+    };
+    document.addEventListener('visibilitychange', recheck);
+    window.addEventListener('focus', recheck);
+    return () => { document.removeEventListener('visibilitychange', recheck); window.removeEventListener('focus', recheck); };
+  }, [platform, me, verify]);
+  /* end B81 re */
 
   // THE HISTORY STACK and THE ARRIVAL: each location is recorded in the tab's own stack; a `from=` token names the route back (PAT-26).
   useEffect(() => {
@@ -162,7 +217,10 @@ export function AppShell({ workspace, children, provide, adapt, slots }: AppShel
   // ONE base object per (principal, working domain): a page's effects keyed on its scope do not re-run on every shell render
   const base = useMemo<ShellBase | null>(() => (platform || me === null || me.homeTenantId === null || domainId === null ? null
     : { workspace, me, scope: { tenantId: me.homeTenantId, domainId }, roles: me.bindings.map((b) => b.roleCode), context: null }), [platform, me, domainId, workspace]);
-  const status = shellStatus({ session: ready, verified: platform ? ready : (me === null ? null : verified), problem, health: healthState });
+  /* B81 re: a lapsed re-verification FREEZES (unverified) while the page stays on screen with its last valid context */
+  const status = lapsed !== null ? shellStatus({ session: ready, verified: null, problem: lapsed, health: healthState })
+    : shellStatus({ session: ready, verified: platform ? ready : (me === null ? null : verified), problem, health: healthState });
+  /* end B81 re */
   useEffect(() => {
     if (!verified) return;
     setHistory((prev) => { const next = historyVerify(prev); store.write(HISTORY_KEY, JSON.stringify(next)); return next; });
@@ -177,7 +235,7 @@ export function AppShell({ workspace, children, provide, adapt, slots }: AppShel
         <p className="eye-shell-meta">
           Nothing of this workspace is shown until the server confirms who this is.{' '}
           {back !== null && <>The last verified location was <Link href={back.route}>{back.title || back.route}</Link>. </>}
-          <Link href="/login">Sign in again</Link>.
+          {/* B81 re: signing in again returns here */}<Link href={hereHref(pathname)}>Sign in again</Link>{/* end B81 re */}.
         </p>
       </main>
     );
@@ -239,6 +297,14 @@ export function AppShell({ workspace, children, provide, adapt, slots }: AppShel
         </span>
       </header>
       {slotSet.contextBar?.(base)}
+      {/* B81 re: the lapse, stated where the page is — its controls held, the way back that returns here */}
+      {lapsed !== null && (
+        <div role="alert" className="eye-shell-lapsed" id="eye-shell-lapsed">
+          <strong>HELD — this session could not be re-verified.</strong> {lapsed}. What is shown is the last valid read; consequential controls on
+          this page are held until the server confirms who this is. <Link href={hereHref(pathname)}>Sign in again and return here</Link>.
+        </div>
+      )}
+      {/* end B81 re */}
       <div className="eye-shell-body">
         <WorkspaceRail spec={spec} nav={nav} pathname={pathname} caption={platform ? `WS-19 · ${t('app.workspace', defaultLocale)}` : undefined} />
         <main id="eye-main" ref={mainRef} tabIndex={-1} className="eye-shell-main">
@@ -260,11 +326,17 @@ export function AppShell({ workspace, children, provide, adapt, slots }: AppShel
   );
   const Theme = slotSet.themeScope;
   const surface = Theme === undefined ? shell : <Theme {...themeScopeOf(scope)}>{shell}</Theme>;
+  /* B81 re: the recovery seam (the last verified location, the sign-in that returns here) beside the status */
+  const lastOk = lastVerifiedLocation(history, route);
+  const recovery: ShellRecovery = { lastVerified: lastOk === null ? null : { route: lastOk.route, title: lastOk.title }, signInHref: hereHref(pathname) };
   const inner = (
     <StatusCtx.Provider value={status}>
-      <BaseCtx.Provider value={base}>{surface}</BaseCtx.Provider>
+      <RecoveryCtx.Provider value={recovery}>
+        <BaseCtx.Provider value={base}>{surface}</BaseCtx.Provider>
+      </RecoveryCtx.Provider>
     </StatusCtx.Provider>
   );
+  /* end B81 re */
   return base !== null && provide !== undefined ? <>{provide(base, inner)}</> : inner;
 }
 

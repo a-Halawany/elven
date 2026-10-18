@@ -225,7 +225,8 @@ describe('the navigation guard (PR-05-003, UX-09-004, UX-11-004, UX-15-004, CMP-
     const files = ['components/shell.tsx', 'app/admin/layout.tsx', 'app/decisions/layout.tsx', 'app/graph/layout.tsx', 'app/intelligence/layout.tsx',
       'app/observation/layout.tsx', 'app/prediction/layout.tsx', 'app/twins/layout.tsx', 'app/home/layout.tsx'].map((f) => [f, readFileSync(join(WEB, f), 'utf8')] as const);
     const allowed = new Set(['react', 'next/link', 'next/navigation', '../lib/api', '../lib/observation', '../lib/working-domain', '../lib/i18n', '../lib/b80-seams', '../lib/shell-b80',
-      './ui', './working-domain', /* B80 integration: the slot wiring (SHELL_SLOTS) and the library's Dialog — the bar's own governed commit is the bar's, behind its preview and human gate (§CB), never the shell's */ './context-bar', './theme', './layers', '../../lib/observation', '../../lib/b80-seams', '../../lib/shell-b80', '../../components/shell', '../../lib/workflow', '../decisions/layout']);
+      './ui', './working-domain', /* B80 integration: the slot wiring (SHELL_SLOTS) and the library's Dialog — the bar's own governed commit is the bar's, behind its preview and human gate (§CB), never the shell's */ './context-bar', './theme', './layers', '../../lib/observation', '../../lib/b80-seams', '../../lib/shell-b80', '../../components/shell', '../../lib/workflow', '../decisions/layout',
+      /* B81 re: the sign-in / deep-link return's pure rule (it builds an href; it calls nothing) */ '../lib/signin-return-b81']);
     for (const [f, src] of files) {
       for (const m of src.matchAll(/from '([^']+)'/g)) expect(allowed.has(m[1]!), `${f} imports ${m[1]}`).toBe(true);
       expect(src, f).not.toMatch(/GovernedButton|\bcall\(|fetch\(|method:\s*'POST'/);
