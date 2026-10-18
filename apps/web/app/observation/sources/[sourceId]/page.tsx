@@ -26,6 +26,7 @@ import {
   UnknownNote, badgeRowStyle, cardStyle, fmtInstant,
 } from '../../../../components/observation';
 import { ErrorNote, Receipt } from '../../../../components/ui';
+/* B81 ob */ import { ObjectHeader } from '../../../../components/object'; /* end B81 ob */
 
 interface SourceDetail {
   source: Record<string, unknown>;
@@ -78,7 +79,20 @@ export default function SourceDetailPage() {
 
   return (
     <>
-      <h1 style={{ fontSize: 'var(--eye-type-heading-1)', marginBlockStart: 0 }}>{String(s['name'])}</h1>
+      {/* B81 ob — the canonical object header (F-P7-E-06): identity, version, owner, lifecycle (LS from the server's word), authority, the read's record */}
+      <ObjectHeader input={{
+        type: 'SRC', id: String(s['source_id'] ?? sourceId), title: String(s['name']), version: Number.isInteger(version) && version >= 1 ? version : null, versionCount: null,
+        owner: registrar === '' ? null : registrar, ownerRole: 'registrar', serverState: lifecycle, conditions: { degraded: d.health.state === 'degraded' },
+        truth: null, synthetic: String(s['data_origin']) === 'synthetic', classification: s['classification_ceiling'] === undefined ? null : `ceiling ${String(s['classification_ceiling'])}`,
+        time: [{ label: 'Registered', value: s['created_at'] === undefined ? null : fmtInstant(s['created_at']) }],
+        trust: `health ${d.health.state ?? 'unknown'} · rights ${String(s['rights_state'])} · authority class ${String(s['authority_class'])}`,
+        authority: approver === null ? 'Not yet approved — the registrar may never approve their own registration.' : `Approved by ${approver} (not the registrar, ${registrar}).`,
+        relationships: [{ label: 'the evidence it admitted', href: `/observation/evidence?source=${sourceId}` }],
+        provenance: [{ label: `${String(s['source_key'])}@v${version} — publisher ${String(s['publisher'])}`, href: null }],
+        receipt: d.receipt ?? null, effective: { support: 'live_only', asOf: null },
+        eligible: { review: { can: isCollectionManager, reason: isCollectionManager ? null : 'you hold no collection_manager binding in this domain' } },
+      }} />
+      {/* end B81 ob */}
       <div style={badgeRowStyle}>
         <Mono>{String(s['source_key'])}@v{version}</Mono>
         <AuthorityBadge authorityClass={String(s['authority_class'])} />
@@ -97,7 +111,7 @@ export default function SourceDetailPage() {
         <h2 id="contract" style={{ marginBlockStart: 0, fontSize: 'var(--eye-type-heading-3)' }}>Contract</h2>
         <dl style={{ margin: 0 }}>
           <DefinitionRow term="Publisher">{String(s['publisher'])}</DefinitionRow>
-          <DefinitionRow term="Lifecycle">{lifecycle}</DefinitionRow>
+          {/* B81 ob: the lifecycle is the header's (LS-bound, with the server's word) */}
           <DefinitionRow term="Legal basis">{String(contract['authority_and_rights']?.['legal_basis'] ?? 'not recorded')}</DefinitionRow>
           <DefinitionRow term="Licence">{String(contract['authority_and_rights']?.['licence'] ?? 'not recorded')}</DefinitionRow>
           <DefinitionRow term="Purposes">{(contract['authority_and_rights']?.['purposes'] as string[] ?? []).join(', ')}</DefinitionRow>
