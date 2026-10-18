@@ -21,6 +21,14 @@ import {
 import { Empty, LiveStatus, Mono, ScrollBox, cardStyle, GovernedButton, fmtInstant, textareaStyle } from '../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui';
 /* B81 re: the library's Field (its control slot) — the local Field helper migrated (UX-ADR-011; dg-lint-2's ratchet) */ import { Field } from '../../../components/forms';
+/* B81 har: the review's acts through the library's COMMAND REVIEW (the reopen, the outcome assessment), each assessment as a REVIEW RECORD
+   (PAT-06), the CONTEST PATH on the decision (HX-14: an upheld challenge or appeal is a recorded cause to reopen) */
+import { CommandReview, ReviewRecord } from '../../../components/authority';
+import { eligibility, rolesIn } from '../../../lib/authority-b81';
+import { HAR_ACT_ROLES, assessmentRecord, statedConsequence } from '../../../lib/authority-har-b81';
+import { reviewDigest } from '../../../lib/forms-b80';
+import { SubjectContest } from '../contest-panel';
+/* end B81 har */
 
 type ReceiptT = { policyDecisionId: string; auditSeq: number } | null;
 type Answer = { ok: boolean; status: number; error?: { code: string; message: string }; data?: { receipt: ReceiptT } };
@@ -79,7 +87,7 @@ function MetricsCard({ m }: { m: Metrics }) {
 
 /* ───────────── a package's review ───────────── */
 function PackageReview({ pkg, onChanged }: { pkg: string; onChanged: () => Promise<void> }) {
-  const { scope } = useShell();
+  const { scope, me } = useShell();
   const [rv, setRv] = useState<Review | null>(null);
   const [m, setM] = useState<Metrics | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -99,11 +107,34 @@ function PackageReview({ pkg, onChanged }: { pkg: string; onChanged: () => Promi
   const [oIds, setOIds] = useState(''); const [oStatement, setOStatement] = useState(''); const [iStatement, setIStatement] = useState(''); const [iMethod, setIMethod] = useState('attribution_rule');
   const [iConf, setIConf] = useState('0.6'); const [cfClaim, setCfClaim] = useState(''); const [cfKind, setCfKind] = useState('stated_model'); const [cfBasis, setCfBasis] = useState(''); const [changed, setChanged] = useState('');
   const [replayReason, setReplayReason] = useState(''); const [lessonAssessment, setLessonAssessment] = useState(''); const [lessonKind, setLessonKind] = useState<'hypothesis' | 'lesson'>('lesson'); const [lessonItem, setLessonItem] = useState('');
+  /* B81 har: the digests the two Command Reviews bind — the review's state as shown (a reload that changes it is a new state), and the four
+     fields as stated (the assessment the server records); eligibility in words (the server re-judges every rule) */
+  const assessPayload = {
+    observed: { outcomeIds: oIds.split('\n').map((x) => x.trim()).filter((x) => x !== ''), statement: oStatement },
+    inferred: { statement: iStatement, method: iMethod, confidence: Number(iConf) },
+    counterfactual: { claim: cfClaim, basis: cfKind === 'run' ? { kind: 'run', runId: cfBasis.trim() } : { kind: 'stated_model', model: cfBasis } },
+    changedConditions: changedOf(changed), supersedes: rv === null ? null : rv.outcome_assessments.filter((a) => a.version === rv.committed_version).at(-1)?.assessment_id ?? null,
+  };
+  const assessKey = JSON.stringify(assessPayload);
+  const [stateDigest, setStateDigest] = useState<string | null>(null);
+  const [assessDigest, setAssessDigest] = useState<string | null>(null);
+  useEffect(() => {
+    setStateDigest(null);
+    if (rv !== null) void reviewDigest({ package_id: rv.package_id, state: rv.state, committed_version: rv.committed_version, reopens: rv.reopens, reopen_cause: rv.reopen_cause }).then(setStateDigest);
+  }, [rv]);
+  useEffect(() => { let live = true; void reviewDigest(assessPayload).then((d) => { if (live) setAssessDigest(d); }); return () => { live = false; }; }, [assessKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const roleCodes = rolesIn(me.bindings, scope);
+  /* end B81 har */
   if (err !== null) return <p style={critical}>{err}</p>;
   if (rv === null) return <Empty>loading the review…</Empty>;
   const committed = rv.committed_version;
   const latestTerms = rv.review_terms.filter((t) => t.version === rv.current_version).at(-1) ?? null;
   const latestAssessment = rv.outcome_assessments.filter((a) => a.version === committed).at(-1) ?? null;
+  /* B81 har */
+  const reopenElig = eligibility({ action: 'decision.package.reopen', me: me.principalId, isHuman: true, roles: roleCodes, requiredRoles: HAR_ACT_ROLES['decision.package.reopen']!,
+    excluded: rv.owner === me.principalId ? [] : [{ principal: me.principalId, why: 'the package owner reopens it — you are not this package\'s owner' }], state: rv.state, openStates: ['committed', 'monitoring'] });
+  const assessElig = eligibility({ action: 'decision.review.outcome', me: me.principalId, isHuman: true, roles: roleCodes, requiredRoles: HAR_ACT_ROLES['decision.review.outcome']! });
+  /* end B81 har */
   const sep = separationProblem({ observed: oStatement, inferred: iStatement, counterfactual: cfClaim, changed: changedOf(changed).map((c) => c.condition) });
   return (
     <>
@@ -123,11 +154,22 @@ function PackageReview({ pkg, onChanged }: { pkg: string; onChanged: () => Promi
         </div>
         <GovernedButton label="Record the change of conditions" pendingLabel="recording" onRun={() => act('recorded', () => api.recordChange(scope, pkg, { title: chTitle, statement: chStatement, evidence: evidenceOf(chEvidence) }) as Promise<Answer>)} />
         <h3 style={h3}>Reopen on a recorded cause</h3>
-        <div style={grid}>
-          <Field id="rv-cause" label="Cause">{(id) => <select id={id} style={inputStyle} value={causeKind} onChange={(e) => setCauseKind(e.target.value as ReopenCause)}>{REOPEN_CAUSES.map((k) => <option key={k} value={k}>{causeWords(k)}</option>)}</select>}</Field>
-          <Field id="rv-cause-ref" label="The recorded cause's id">{(id) => <input id={id} style={inputStyle} value={causeRef} onChange={(e) => setCauseRef(e.target.value.trim())} />}</Field>
-        </div>
-        <GovernedButton label="Reopen the decision" pendingLabel="reopening" variant="critical" onRun={() => act('reopened', () => api.reopen(scope, pkg, { kind: causeKind, ref: causeRef }) as Promise<Answer>)} />
+        {/* B81 har: the reopen through the COMMAND REVIEW — the review's state as shown (its digest), the stated consequence (the commitment
+            and its record are kept; nothing is erased), the owner's eligibility */}
+        <CommandReview action="decision.package.reopen" object={{ type: 'decision package', id: pkg, version: committed, title: rv.title, state: rv.state }}
+          digest={stateDigest} eligibility={reopenElig} consequence={statedConsequence('decision.package.reopen')}
+          extraReasons={causeRef === '' ? ['name the recorded cause by its id'] : []}
+          actionLabel="Reopen the decision" pendingLabel="reopening" variant="critical"
+          onRun={() => act('reopened', () => api.reopen(scope, pkg, { kind: causeKind, ref: causeRef }) as Promise<Answer>)}>
+          <div style={grid}>
+            <Field id="rv-cause" label="Cause">{(id) => <select id={id} style={inputStyle} value={causeKind} onChange={(e) => setCauseKind(e.target.value as ReopenCause)}>{REOPEN_CAUSES.map((k) => <option key={k} value={k}>{causeWords(k)}</option>)}</select>}</Field>
+            <Field id="rv-cause-ref" label="The recorded cause's id">{(id) => <input id={id} style={inputStyle} value={causeRef} onChange={(e) => setCauseRef(e.target.value.trim())} />}</Field>
+          </div>
+        </CommandReview>
+        {/* the CONTEST PATH (HX-14): the challenges on the committed version and the appeal cases on the package — an upheld one is a cause above */}
+        <SubjectContest scope={scope} roles={roleCodes} type="DPK" appealKind="package" subjectId={pkg} explanation={{ kind: 'package_version', version: committed }}
+          challenges={committed === null ? null : { packageId: pkg, version: committed }} />
+        {/* end B81 har */}
       </Section>
 
       <Section id="rv-reversions" title="Scenarios to re-version">
@@ -165,6 +207,9 @@ function PackageReview({ pkg, onChanged }: { pkg: string; onChanged: () => Promi
             <p style={muted}>v{latestAssessment.assessment_version} by <Mono>{latestAssessment.assessed_by}</Mono> at {fmtInstant(latestAssessment.assessed_at)}; id <Mono>{latestAssessment.assessment_id}</Mono></p>
           </div>
         )}
+        {/* B81 har: every assessment of the decision as a REVIEW RECORD (PAT-06) — the reviewer, the version, the evidence, the findings */}
+        {rv.outcome_assessments.length === 0 ? null : <div aria-label="assessment records">{rv.outcome_assessments.map((a) => <ReviewRecord key={a.assessment_id} record={assessmentRecord(a as unknown as Record<string, unknown>)} />)}</div>}
+        {/* end B81 har */}
         <fieldset><legend>Observed result</legend>
           <Field id="rv-o-ids" label="Recorded outcome ids (one per line)">{(id) => <textarea id={id} style={textareaStyle} value={oIds} onChange={(e) => setOIds(e.target.value)} />}</Field>
           <Field id="rv-o-statement" label="What was observed">{(id) => <textarea id={id} style={textareaStyle} value={oStatement} onChange={(e) => setOStatement(e.target.value)} />}</Field>
@@ -187,11 +232,13 @@ function PackageReview({ pkg, onChanged }: { pkg: string; onChanged: () => Promi
           <Field id="rv-changed" label="One per line (condition — effect)">{(id) => <textarea id={id} style={textareaStyle} value={changed} onChange={(e) => setChanged(e.target.value)} />}</Field>
         </fieldset>
         {sep !== null && oStatement !== '' && <p style={critical}>{sep}: the four fields are separate statements.</p>}
-        <GovernedButton label="Record the assessment" pendingLabel="recording" disabled={committed === null} onRun={() => act('assessed', () => api.assess(scope, pkg, committed ?? 1, {
-          observed: { outcomeIds: oIds.split('\n').map((x) => x.trim()).filter((x) => x !== ''), statement: oStatement },
-          inferred: { statement: iStatement, method: iMethod, confidence: Number(iConf) },
-          counterfactual: { claim: cfClaim, basis: cfKind === 'run' ? { kind: 'run', runId: cfBasis.trim() } : { kind: 'stated_model', model: cfBasis } },
-          changedConditions: changedOf(changed), supersedes: latestAssessment?.assessment_id ?? null }) as Promise<Answer>)} />
+        {/* B81 har: the assessment through the COMMAND REVIEW — the four fields as stated (their digest), the stated consequence, eligibility */}
+        <CommandReview action="decision.review.outcome" object={{ type: 'committed decision', id: pkg, version: committed, title: `The outcome of ${rv.title}`, state: rv.state }}
+          digest={assessDigest} eligibility={assessElig} consequence={statedConsequence('decision.review.outcome')}
+          extraReasons={committed === null ? ['no version is committed — there is no outcome to assess'] : []}
+          actionLabel="Record the assessment" pendingLabel="recording"
+          onRun={() => act('assessed', () => api.assess(scope, pkg, committed ?? 1, assessPayload) as Promise<Answer>)} />
+        {/* end B81 har */}
       </Section>
 
       <Section id="rv-lessons" title="Hypotheses and lessons (governed memory)">

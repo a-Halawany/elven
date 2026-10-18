@@ -16,6 +16,11 @@ import { gatesB36 as api, boardActsFor, type BoardPackage } from '../../../lib/g
 import { CommandReview, GateStatus, SignatureReceipt } from '../../../components/authority';
 import { consequenceStated, deferIntake, eligibility } from '../../../lib/authority-b81';
 /* end B81 ha */
+/* B81 har: the CONTEST PATH on each board decision (HX-14) */
+import { rolesIn } from '../../../lib/authority-b81';
+import { mayRead } from '../../../lib/authority-har-b81';
+import { SubjectContest } from '../contest-panel';
+/* end B81 har */
 import { Empty, LiveStatus, Mono, cardStyle, fmtInstant } from '../../../components/observation';
 import { inputStyle, Receipt } from '../../../components/ui';
 
@@ -86,6 +91,15 @@ function BoardCard({ p, onDone }: { p: BoardPackage; onDone: (receipt: ReceiptT)
         </CommandReview>
         /* end B81 ha */
       ) : null}
+      {/* B81 har: the CONTEST PATH (HX-14) — the challenges (the gate record's, or the board surface's open one where the gate record is not
+          in the reader's roles) and the appeal cases on the package; an appeal opens on the explanations page */}
+      {v === null ? null : (() => {
+        const roles = rolesIn(me.bindings, scope);
+        return <SubjectContest scope={scope} roles={roles} type="DPK" appealKind="package" subjectId={p.package_id} explanation={{ kind: 'package_version', version: Number(v['version']) }}
+          challenges={mayRead('decision.read', roles) ? { packageId: p.package_id, version: Number(v['version']) }
+            : { rows: p.open_challenge === null ? [] : [p.open_challenge], note: 'the board surface serves the OPEN challenge only — the full history is in the gate record, which your roles here do not read (decision.read)' }} />;
+      })()}
+      {/* end B81 har */}
     </section>
   );
 }

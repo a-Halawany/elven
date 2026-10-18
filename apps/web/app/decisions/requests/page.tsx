@@ -20,6 +20,12 @@ import { decisions as api, REQUEST_KINDS, type FollowUp, type OpenedRequest, typ
 import { Empty, LiveStatus, Mono, ScrollBox, cardStyle, DefinitionRow, UnknownNote, GovernedButton, fmtInstant, textareaStyle } from '../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui';
 /* B81 re: the library's Field (its control slot) — the local Field helper migrated (UX-ADR-011; dg-lint-2's ratchet) */ import { Field } from '../../../components/forms';
+/* B81 har: the DECISION-kind request through the library's COMMAND REVIEW, with its stated consequence (it decides nothing) */
+import { CommandReview } from '../../../components/authority';
+import { eligibility, rolesIn } from '../../../lib/authority-b81';
+import { HAR_ACT_ROLES, statedConsequence } from '../../../lib/authority-har-b81';
+import { reviewDigest } from '../../../lib/forms-b80';
+/* end B81 har */
 
 type Row = Record<string, unknown>;
 type ReceiptT = { policyDecisionId: string; auditSeq: number } | null;
@@ -193,6 +199,19 @@ export default function RequestsPage() {
   const [opened, setOpened] = useState<{ request: OpenedRequest; run: RequestRun | null } | null>(null);
   const [openReceipt, setOpenReceipt] = useState<ReceiptT>(null);
   const [openProblem, setOpenProblem] = useState<string | null>(null);
+  /* B81 har: the decision request's intake as reviewed — its digest (a change of the form is a new intake), eligibility in words */
+  const [intakeDigest, setIntakeDigest] = useState<string | null>(null);
+  const intakeKey = JSON.stringify(toIntake(draft));
+  useEffect(() => { let live = true; setIntakeDigest(null); void reviewDigest(toIntake(draft)).then((d) => { if (live) setIntakeDigest(d); }); return () => { live = false; }; }, [intakeKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const requestElig = eligibility({ action: 'executive.request', me: me.principalId, isHuman: true, roles: rolesIn(me.bindings, scope), requiredRoles: HAR_ACT_ROLES['executive.request']! });
+  const openRun = async () => {
+    setOpenProblem(null);
+    const r = await api.openRequest(scope, toIntake(draft));
+    if (!r.ok || r.data === undefined) { const m = refusal(r, 'the request was not answered'); setOpened(null); setOpenReceipt(null); setOpenProblem(m); await load(); throw new Error(m); }
+    setOpened({ request: r.data.request, run: r.data.run }); setOpenReceipt(r.data.receipt);
+    await load(); if (packageId !== '') await loadAgenda(packageId);
+  };
+  /* end B81 har */
 
   const load = async () => {
     const r = await api.requests(scope, { state: stateFilter === '' ? null : stateFilter, kind: kindFilter === '' ? null : kindFilter });
@@ -499,14 +518,18 @@ export default function RequestsPage() {
           </>
         )}
         <div style={{ marginBlockStart: 'var(--eye-space-8)' }}>
-          <GovernedButton label={draft.kind === 'analysis' ? 'Request the analysis (runs the agent)' : 'Open the request'} pendingLabel={draft.kind === 'analysis' ? 'requesting — the agent runs' : 'opening'} disabled={!draftOk(draft)}
-            onRun={async () => {
-              setOpenProblem(null);
-              const r = await api.openRequest(scope, toIntake(draft));
-              if (!r.ok || r.data === undefined) { const m = refusal(r, 'the request was not answered'); setOpened(null); setOpenReceipt(null); setOpenProblem(m); await load(); throw new Error(m); }
-              setOpened({ request: r.data.request, run: r.data.run }); setOpenReceipt(r.data.receipt);
-              await load(); if (packageId !== '') await loadAgenda(packageId);
-            }} />
+          {draft.kind === 'decision' ? (
+            /* B81 har: a DECISION request is reviewed before it is recorded — the intake's digest, the stated consequence (routed to the
+               decision owner; it decides nothing), the requester's eligibility; the server keeps it exactly once on the key */
+            <CommandReview action="executive.request" object={{ type: 'decision request', id: draft.requestKey.trim() === '' ? 'no key yet' : draft.requestKey.trim(), version: draft.version.trim() === '' ? null : Number(draft.version), title: draft.objectId.trim() === '' ? 'A decision request (no package named)' : `A decision request on ${draft.objectType.trim() || 'DPK'} ${draft.objectId.trim()}`, state: 'not recorded' }}
+              digest={intakeDigest} eligibility={requestElig} consequence={statedConsequence('executive.request:decision')}
+              extraReasons={draftOk(draft) ? [] : ['complete the request: a key (1–200 characters) and an instruction (4–4096 characters)']}
+              actionLabel="Open the request" pendingLabel="opening" onRun={openRun} />
+          ) : (
+            <GovernedButton label={draft.kind === 'analysis' ? 'Request the analysis (runs the agent)' : 'Open the request'} pendingLabel={draft.kind === 'analysis' ? 'requesting — the agent runs' : 'opening'} disabled={!draftOk(draft)}
+              onRun={openRun} />
+          )}
+          {/* end B81 har */}
         </div>
         {openProblem !== null && <LiveStatus assertive><span style={critical}>not recorded — {openProblem}</span></LiveStatus>}
         {opened !== null && <Opened request={opened.request} run={opened.run} />}

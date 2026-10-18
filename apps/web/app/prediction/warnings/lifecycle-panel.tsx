@@ -12,6 +12,13 @@ import type { Scope, Me } from '../../../lib/observation';
 import { CLOSURE_CRITERIA, FEEDBACK_KINDS, closePayload, memberMark, originWords, warningLifecycle as api, type FeedbackKind, type Lifecycle } from '../../../lib/warning-lifecycle';
 import { DefinitionRow, Empty, GovernedButton, LiveStatus, Mono, UnknownNote, fmtInstant } from '../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui';
+/* B81 har: the CLOSE through the library's COMMAND REVIEW with the TYPED confirmation (PAT-16 — a closed warning is not reopened; D7:
+   "withdraw the warning" is this close on the criterion "no longer relevant") */
+import { CommandReview } from '../../../components/authority';
+import { eligibility, rolesIn, typedPhrase } from '../../../lib/authority-b81';
+import { HAR_ACT_ROLES, statedConsequence } from '../../../lib/authority-har-b81';
+import { reviewDigest } from '../../../lib/forms-b80';
+/* end B81 har */
 
 export function LifecyclePanel({ scope, me, warningId, onChanged }: { scope: Scope; me: Me; warningId: string; onChanged: () => Promise<void> }) {
   const [lc, setLc] = useState<Lifecycle | null>(null);
@@ -34,6 +41,13 @@ export function LifecyclePanel({ scope, me, warningId, onChanged }: { scope: Sco
     setLc(r.data.lifecycle); setProblem(null);
   };
   useEffect(() => { void load(); }, [scope, warningId]);
+  /* B81 har: the digest of the warning's state AS SHOWN (its state, its context version, its closure) — the typed phrase is its short form */
+  const [stateDigest, setStateDigest] = useState<string | null>(null);
+  useEffect(() => {
+    setStateDigest(null);
+    if (lc !== null) void reviewDigest({ warning_id: warningId, state: lc.warning['state'] ?? null, context_version: lc.context_version, closure: lc.closure }).then(setStateDigest);
+  }, [lc, warningId]);
+  /* end B81 har */
 
   if (problem !== null) return <LiveStatus assertive>{problem}</LiveStatus>;
   if (lc === null) return <Empty>reading the warning's lifecycle…</Empty>;
@@ -135,16 +149,25 @@ export function LifecyclePanel({ scope, me, warningId, onChanged }: { scope: Sco
             setCondition(''); await done(`context saved at version ${String(r.data.context['context_version'])}`, r.data.receipt);
           }} />
           <legend style={{ fontWeight: 650, marginBlockStart: 'var(--eye-space-16)' }}>Close</legend>
-          <label htmlFor="wrn-crit">Criterion</label>
-          <select id="wrn-crit" value={criterion} onChange={(e) => setCriterion(e.target.value)}>{CLOSURE_CRITERIA.map((c) => <option key={c} value={c}>{c.replace(/_/g, ' ')}</option>)}</select>
-          {criterion === 'falsified' ? <input aria-label="The condition that held (its number)" style={inputStyle} value={closeCondition} onChange={(e) => setCloseCondition(e.target.value)} placeholder="0" /> : null}
-          {criterion === 'duplicate' ? <input aria-label="The warning this duplicates" style={inputStyle} value={duplicateOf} onChange={(e) => setDuplicateOf(e.target.value)} placeholder="warning id" /> : null}
-          <input aria-label="Why it is closed" style={inputStyle} value={closeReason} onChange={(e) => setCloseReason(e.target.value)} placeholder="why it is closed" />
-          <GovernedButton label="Close the warning" pendingLabel="closing" onRun={async () => {
-            const r = await api.close(scope, warningId, closePayload({ criterion, reason: closeReason, condition: closeCondition, duplicateOf }));
-            if (!r.ok || r.data === undefined) throw new Error(r.error?.message ?? 'the closure was refused');
-            await done(`closed — ${criterion.replace(/_/g, ' ')}`, r.data.receipt);
-          }} />
+          {/* B81 har: the close is irreversible — the COMMAND REVIEW shows what it does and what is kept, and asks for the typed phrase */}
+          <p style={{ color: 'var(--eye-color-ink-muted)' }}>Closing cannot be undone: a closed warning is not reopened. The warning, its cluster, its context and its feedback stay recorded. To withdraw a warning, close it as &quot;no longer relevant&quot;.</p>
+          <CommandReview action="prediction.warning.close" object={{ type: 'warning', id: warningId, version: lc.context_version, title: String(w['title'] ?? 'this warning'), state: String(w['state'] ?? '') }}
+            digest={stateDigest} eligibility={eligibility({ action: 'prediction.warning.close', me: me.principalId, isHuman: true, roles: rolesIn(me.bindings, scope), requiredRoles: HAR_ACT_ROLES['prediction.warning.close']!, state: String(w['state'] ?? ''), openStates: ['raised', 'acknowledged', 'expired'] })}
+            consequence={statedConsequence('prediction.warning.close')} typedPhrase={stateDigest === null ? null : typedPhrase({ digest: stateDigest })}
+            extraReasons={closeReason.trim().length < 8 ? ['state why it is closed (8+ characters)'] : []}
+            actionLabel="Close the warning" pendingLabel="closing" variant="critical"
+            onRun={async () => {
+              const r = await api.close(scope, warningId, closePayload({ criterion, reason: closeReason, condition: closeCondition, duplicateOf }));
+              if (!r.ok || r.data === undefined) throw new Error(r.error?.message ?? 'the closure was refused');
+              await done(`closed — ${criterion.replace(/_/g, ' ')}`, r.data.receipt);
+            }}>
+            <label htmlFor="wrn-crit">Criterion</label>
+            <select id="wrn-crit" value={criterion} onChange={(e) => setCriterion(e.target.value)}>{CLOSURE_CRITERIA.map((c) => <option key={c} value={c}>{c.replace(/_/g, ' ')}</option>)}</select>
+            {criterion === 'falsified' ? <input aria-label="The condition that held (its number)" style={inputStyle} value={closeCondition} onChange={(e) => setCloseCondition(e.target.value)} placeholder="0" /> : null}
+            {criterion === 'duplicate' ? <input aria-label="The warning this duplicates" style={inputStyle} value={duplicateOf} onChange={(e) => setDuplicateOf(e.target.value)} placeholder="warning id" /> : null}
+            <input aria-label="Why it is closed" style={inputStyle} value={closeReason} onChange={(e) => setCloseReason(e.target.value)} placeholder="why it is closed" />
+          </CommandReview>
+          {/* end B81 har */}
         </fieldset>
       ) : null}
 
