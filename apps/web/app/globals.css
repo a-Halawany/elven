@@ -608,6 +608,7 @@ button[aria-busy='true'] { --eye-button-cursor: progress; }
   padding-block: var(--eye-space-8); padding-inline: var(--eye-space-16);
 }
 .eye-truth-glyph { vertical-align: -1px; }
+.eye-re-bar-fixture { margin-block-end: var(--eye-space-12); }
 /* An upload source's evidence upload (CMP-040): a raised panel on the source page. */
 .eye-upload-panel {
   background: var(--eye-color-surface-primary); border: 1px solid var(--eye-color-border-default); border-radius: var(--eye-radius-lg);
