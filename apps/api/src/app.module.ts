@@ -27,6 +27,7 @@ import { DeliveryModule } from './delivery/delivery.module.js';
 import { GovernanceModule } from './governance/governance.module.js';
 /* end B33 */
 /* B80 (0118 §CL-F, §SH) */ import { ShellModule } from './shell/shell.module.js'; /* end B80 */
+/* B81 dg */ import { DegradedModule } from './shell/degraded/degraded.module.js'; /* end B81 dg */
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { GovernanceModule } from './governance/governance.module.js';
     /* B94 (0114) */ DeliveryModule /* end B94 */,
     /* B107 (0115) */ GovernanceModule /* end B107 */,
     /* B80 (0118) */ ShellModule /* end B80 */,
+    /* B81 dg */ DegradedModule /* end B81 dg */,
     RetentionModule,
   ],
 })
