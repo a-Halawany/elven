@@ -12,7 +12,7 @@ import {
   comparisonRows, comparisonSpec, coverageGeometry, coverageInput, coverageRows, coverageSpec, diffGeometry, diffInput, diffRows, diffSpec, dominantUnit, fanGeometry,
   fanIdentity, fanRows, fanSpec, FAN_KIND_IDENTITY, healthBridgeInput, healthBridgeSpec, healthWaterfallSpec, outcomeBridgeSpec, healthGeometry, healthRows, healthSpec, healthWaterfallInput, isoOf, numOf, opportunityFromDetail,
   opportunityGeometry, opportunityRows, opportunitySpec, optionGeometry, optionMatrixInput, optionRows, optionSpec, riskGeometry, riskInput, riskRows, riskSpec, runBasis,
-  runGeometry, runRows, runSpec, runSpread, statusCounts, statusFromDegraded, statusGeometry, statusOrder, statusRows, statusSpec, strategicGrammar, tornadoGeometry,
+  runGeometry, runRows, runSpec, runSpread, comparedRuns, branchTreeOf, COMPARED_MEASURES, statusCounts, statusFromDegraded, statusGeometry, statusOrder, statusRows, statusSpec, strategicGrammar, tornadoGeometry,
   tornadoInput, tornadoRowsOf, tornadoSpec, type AuditIn, type CompareItemIn, type FanBranchIn, type HealthCompIn, type HealthDimIn, type RunIn, type StatusIn,
 } from './strategic-charts-b82';
 
@@ -212,6 +212,12 @@ describe('RunComparison (VIZ-27)', () => {
     const g = runGeometry(runs, M);
     expect(g.panels).toHaveLength(2); expect(g.panels[0]!.ref).not.toBeNull(); expect(g.panels[0]!.marks.map((m) => m.marker)).toEqual(['circle', 'square', 'cross']);
   });
+  it('the comparison read with the run list\'s manifests, verbatim', () => {
+    const r = comparedRuns([{ run_id: '01a0aaaa-0000-0000-0000-00000000c0c0', run_kind: 'control', totals: { line_stop_days: 4, days_below_safety_stock: 2, cost: { total: '1200.50' } } }],
+      [{ run_id: '01a0aaaa-0000-0000-0000-00000000c0c0', twin_id: '01a084f6-0000', twin_version: 14, control_run_id: null, model_ref: 'supply-flow@1', validity: 'valid', seed: null, decision_use: { label: 'DECISION-GRADE' } }]);
+    expect(r[0]).toMatchObject({ kind: 'control', twin: 'twin 01a084f6… v14', model: 'supply-flow@1', use: 'DECISION-GRADE', measures: { lsd: 4, dbs: 2, cost: 1200.5 } });
+    expect(runRows(r, COMPARED_MEASURES)[0]).toMatchObject({ m_cost: 1200.5, basis: 'twin 01a084f6… v14 · control itself' });
+  });
   it('incompatible runs (another twin version, control or model) are named — never drawn side by side', () => {
     const p = runBasis([run('a', 'intervention', 'twin@v14', 'c1'), run('b', 'intervention', 'twin@v13', 'c2'), { ...run('c', 'intervention'), model: 'other@2' }]);
     expect(p).toEqual([expect.stringMatching(/different twin versions \(twin@v13, twin@v14\)/), expect.stringMatching(/different controls/), expect.stringMatching(/different models/)]);
@@ -233,6 +239,16 @@ describe('TwinStateDiff (VIZ-28)', () => {
     const rows = diffRows(keys);
     expect(rows[0]!['drawn']).toBe('in the scenario panel (actual is observed — the classes differ)'); expect(rows[2]!['drawn']).toBe('not drawn — not a number');
     ok(diffSpec({ twin: 'Regensburg line', branch: 'what-if', version: 'v3', asOf: AS_OF, verification: 'verified', items: keys }), rows);
+  });
+});
+
+describe('the B30 branch tree for §GM\'s HierarchyTree (VIZ-20)', () => {
+  it('each branch under the branch owning its fork version; actual the one root', () => {
+    const t = branchTreeOf([{ branch_id: 'actual', forked_from: null, head: 14, draft: null, versions: [1, 14] }, { branch_id: 'what-if', forked_from: 14, head: 15, draft: 16, versions: [15, 16] },
+      { branch_id: 'deeper', forked_from: 15, head: 17, draft: null, versions: [17] }, { branch_id: 'lost', forked_from: 99, head: null, draft: null, versions: [] }],
+    [{ version: 1, branch_id: 'actual' }, { version: 14, branch_id: 'actual' }, { version: 15, branch_id: 'what-if' }, { version: 17, branch_id: 'deeper' }]);
+    expect(t.map((x) => [x.id, x.parent])).toEqual([['actual', null], ['what-if', 'actual'], ['deeper', 'what-if'], ['lost', 'actual']]);
+    expect(t[1]!.state).toBe('2 version(s), draft v16 open'); expect(t[3]!.state).toMatch(/placed under actual/);
   });
 });
 

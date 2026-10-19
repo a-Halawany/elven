@@ -10,7 +10,7 @@
  * baseline twin state, initial conditions, a constraint set and the factors its assumptions move; the sensitivity to its material
  * assumptions. Every value is the server's and SYNTHETIC on the demonstration.
  */
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useShell } from '../../layout';
 import { prediction, type ScenarioRow } from '../../../../lib/prediction';
@@ -18,6 +18,8 @@ import { validity, conditionsOf, factorsOf, optionMarkLine, reasonsLine, useMark
   type RunRow, type RunUse, type Verdict } from '../../../../lib/validity-b31';
 import { Empty, LiveStatus, Mono, ScrollBox, cardStyle, DefinitionRow, GovernedButton, fmtInstant, textareaStyle } from '../../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../../components/ui';
+/* B82 sc */ import { RunComparison } from '../../../../components/strategic-charts';
+import { runSpec, type RunIn } from '../../../../lib/strategic-charts-b82'; /* end B82 sc */
 
 type ReceiptT = { policyDecisionId: string; auditSeq: number } | null;
 const muted = { color: 'var(--eye-color-ink-muted)' } as const;
@@ -143,6 +145,9 @@ function Validity() {
         }} />
         {verdict !== null ? <p role="status" style={{ fontWeight: 650 }}>{verdict.verdict.label}</p> : null}
       </section>
+      {/* B82 sc: the compared runs' manifests side by side (VIZ-27) — one basis or the reason it is not; a section of its own after the runs */}
+      {verdict === null ? null : <VerdictRuns uses={verdict.runs} rows={runs ?? []} />}
+      {/* end B82 sc */}
 
       {use !== null ? (
         <section aria-labelledby="v-run" style={section}>
@@ -294,3 +299,20 @@ function Validity() {
     </>
   );
 }
+
+/* B82 sc: RunComparison over the decision-use comparison — each run's twin version, validity, fitness and decision use; no measure is on this read */
+function VerdictRuns({ uses, rows }: { uses: RunUse[]; rows: RunRow[] }) {
+  const items = useMemo<RunIn[]>(() => uses.map((u) => {
+    const r = rows.find((x) => x.run_id === u.run_id);
+    return { key: u.run_id, label: short(u.run_id), kind: r?.run_kind ?? 'not stated', twin: r === undefined ? null : `twin ${r.twin_id.slice(0, 8)}… v${r.twin_version}`, control: null, model: null,
+      validity: u.validity, seed: null, use: u.label, measures: {} };
+  }), [uses, rows]);
+  const spec = useMemo(() => runSpec({ title: 'Decision use of the selected runs, side by side', runs: items, measures: [], asOf: new Date().toISOString(), read: 'simulation.read · /validity/compare', readLabel: 'the decision-use comparison' }), [items]);
+  return (
+    <section aria-labelledby="v-runs-drawn" style={section}>
+      <h2 id="v-runs-drawn" style={h2}>Decision use of the selected runs, side by side</h2>
+      <RunComparison spec={spec} runs={items} measures={[]} />
+    </section>
+  );
+}
+/* end B82 sc */

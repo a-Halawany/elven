@@ -20,7 +20,7 @@ import {
 import { Empty, LiveStatus, Mono, cardStyle, GovernedButton, UnknownNote, fmtInstant, textareaStyle } from '../../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../../components/ui';
 /* B82 sc */ import { RunComparison, SensitivityTornado } from '../../../../components/strategic-charts';
-import { isoOf, runSpec, tornadoInput, tornadoSpec, type RunIn } from '../../../../lib/strategic-charts-b82'; /* end B82 sc */
+import { COMPARED_MEASURES, comparedRuns, isoOf, runSpec, tornadoInput, tornadoSpec } from '../../../../lib/strategic-charts-b82'; /* end B82 sc */
 
 type Rec = { policyDecisionId: string; auditSeq: number };
 // B31 walk-found: a uuidv7's first 8 characters are its timestamp, shared by runs opened together — the label carries the tail too.
@@ -278,14 +278,8 @@ export default function ImpactPage() {
 
 /* B82 sc: the compared runs as a RunComparison (VIZ-27) — the manifests from the run list, the totals from the comparison read */
 function ImpactRuns({ compared, runs }: { compared: Array<{ run_id: string; run_kind: string; totals: { line_stop_days: number; days_below_safety_stock: number; cost: { total: string } }; carrying: string[] }>; runs: Run[] }) {
-  const items = useMemo<RunIn[]>(() => compared.map((c) => {
-    const r = runs.find((x) => x.run_id === c.run_id);
-    return { key: c.run_id, label: short(c.run_id), kind: c.run_kind, twin: r === undefined ? null : `${r.twin_id.slice(0, 8)}… v${r.twin_version}`, control: r?.control_run_id ?? null,
-      model: r?.model_ref ?? null, validity: r?.validity ?? null, seed: r?.seed === null || r?.seed === undefined ? null : String(r.seed), use: r?.decision_use?.label ?? null,
-      measures: { lsd: Number.isFinite(Number(c.totals.line_stop_days)) ? Number(c.totals.line_stop_days) : null, dbs: Number.isFinite(Number(c.totals.days_below_safety_stock)) ? Number(c.totals.days_below_safety_stock) : null, cost: Number.isFinite(Number(c.totals.cost.total)) ? Number(c.totals.cost.total) : null } };
-  }), [compared, runs]);
-  const measures = [{ key: 'lsd', label: 'Line-stop days', unit: 'days' }, { key: 'dbs', label: 'Days below safety stock', unit: 'days' }, { key: 'cost', label: 'Total cost', unit: 'EUR' }];
-  const spec = useMemo(() => runSpec({ title: 'The runs on the common control, drawn per measure', runs: items, measures, asOf: new Date().toISOString(), read: 'simulation.read · /simulations/compare', readLabel: 'the comparison on the common control' }), [items]); // eslint-disable-line react-hooks/exhaustive-deps
-  return <RunComparison spec={spec} runs={items} measures={measures} />;
+  const items = useMemo(() => comparedRuns(compared, runs), [compared, runs]);
+  const spec = useMemo(() => runSpec({ title: 'The runs on the common control, drawn per measure', runs: items, measures: COMPARED_MEASURES, asOf: new Date().toISOString(), read: 'simulation.read · /simulations/compare', readLabel: 'the comparison on the common control' }), [items]);
+  return <RunComparison spec={spec} runs={items} measures={COMPARED_MEASURES} />;
 }
 /* end B82 sc */

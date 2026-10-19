@@ -678,6 +678,22 @@ export function runRows(runs: readonly RunIn[], measures: readonly RunMeasure[])
     return row;
   });
 }
+/** The measures a twin comparison carries (the supply-flow totals). */
+export const COMPARED_MEASURES: readonly RunMeasure[] = [
+  { key: 'lsd', label: 'Line-stop days', unit: 'days' }, { key: 'dbs', label: 'Days below safety stock', unit: 'days' }, { key: 'cost', label: 'Total cost', unit: 'EUR' },
+];
+/** The runs of a comparison read (/simulations/compare) with their manifests from the run list — verbatim; a run missing from the list says "not stated". */
+export function comparedRuns(compared: ReadonlyArray<{ run_id: string; run_kind: string; totals: { line_stop_days: unknown; days_below_safety_stock: unknown; cost: { total: unknown } } }>,
+  runs: ReadonlyArray<{ run_id: string; twin_id: string; twin_version: number; control_run_id: string | null; model_ref: string; validity?: string; seed: number | null; decision_use?: { label: string } | null }>): RunIn[] {
+  return compared.map((c) => {
+    const r = runs.find((x) => x.run_id === c.run_id);
+    return {
+      key: c.run_id, label: `${c.run_id.slice(0, 8)}…${c.run_id.slice(-6)}`, kind: c.run_kind, twin: r === undefined ? null : `twin ${r.twin_id.slice(0, 8)}… v${r.twin_version}`, control: r?.control_run_id ?? null,
+      model: r?.model_ref ?? null, validity: r?.validity ?? null, seed: r === undefined || r.seed === null ? null : String(r.seed), use: r?.decision_use?.label ?? null,
+      measures: { lsd: numOf(c.totals.line_stop_days), dbs: numOf(c.totals.days_below_safety_stock), cost: numOf(c.totals.cost.total) },
+    };
+  });
+}
 export const runMarker = (r: Pick<RunIn, 'kind' | 'validity'>): MarkerShape => (r.validity === 'invalidated' ? 'cross' : r.kind === 'control' ? 'circle' : 'square');
 export function runGeometry(runs: readonly RunIn[], measures: readonly RunMeasure[], o: { width?: number } = {}): {
   box: Box; panels: Array<{ key: string; label: string; y: number; ticks: Array<{ x: number; label: string }>; ref: number | null; marks: Array<{ key: string; row: number; x: number; y: number; marker: MarkerShape }> }>;
@@ -780,6 +796,20 @@ export function diffSpec(a: { twin: string; branch: string; version: string; asO
       ],
     },
   };
+}
+
+/** §GM's HierarchyTree over the B30 branch tree: each branch under the branch that owns the version it forked from (actual the root);
+ *  a branch whose fork version is unknown is placed under actual and said so in its state. Pure; the tree's own checks run in HierarchyTree. */
+export function branchTreeOf(branches: ReadonlyArray<{ branch_id: string; forked_from: number | null; head: number | null; draft: number | null; versions: number[] }>,
+  versions: ReadonlyArray<{ version: number; branch_id: string }>): Array<{ id: string; parent: string | null; label: string; kind: string; version: number | null; state: string }> {
+  const owner = new Map(versions.map((v) => [v.version, v.branch_id]));
+  const root = branches.find((b) => b.branch_id === 'actual')?.branch_id ?? branches.find((b) => b.forked_from === null)?.branch_id ?? null;
+  return branches.map((b) => {
+    const from = b.forked_from === null ? null : owner.get(b.forked_from) ?? null;
+    const parent = b.branch_id === root ? null : from !== null && from !== b.branch_id ? from : root;
+    return { id: b.branch_id, parent, label: b.branch_id, kind: b.branch_id === root ? 'the actual branch' : `branch forked at v${b.forked_from ?? '?'}`, version: b.head,
+      state: `${b.versions.length} version(s)${b.draft === null ? '' : `, draft v${b.draft} open`}${b.branch_id !== root && from === null ? ' — fork version not on this read (placed under actual)' : ''}` };
+  });
 }
 
 /* ═════════════════════════════ OPTION MATRIX (VIZ-29) ═════════════════════════════ */

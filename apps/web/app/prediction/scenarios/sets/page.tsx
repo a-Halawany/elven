@@ -24,6 +24,10 @@ import { sets, setStateMark, pluralityLine, policyLine, branchStateLine, freshne
 import { Empty, LiveStatus, Mono, ScrollBox, cardStyle, DefinitionRow, UnknownNote, GovernedButton, fmtInstant, textareaStyle } from '../../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../../components/ui';
 /* B81 re: the library's Field (its control slot) — the local Field helper migrated (UX-ADR-011; dg-lint-2's ratchet) */ import { Field } from '../../../../components/forms';
+/* B82 sc */ import { ScenarioComparison } from '../../../../components/strategic-charts';
+import { RangeValue } from '../../../../components/truth';
+import { comparisonSpec, isoOf, numOf, type CompareItemIn } from '../../../../lib/strategic-charts-b82';
+import { readExport } from '../../../../lib/chart-specs-b82'; /* end B82 sc */
 
 type ReceiptT = { policyDecisionId: string; auditSeq: number } | null;
 const KINDS = ['baseline', 'upside', 'downside', 'disruption', 'stress', 'adversarial', 'counterfactual', 'user-defined'] as const;
@@ -115,7 +119,7 @@ function ComparisonTable({ c }: { c: Comparison }) {
                   <Td>{b.indicator === null ? <span style={muted}>—</span> : <>{b.indicator.series_key} {b.indicator.comparator} {b.indicator.threshold}</>}
                     <div style={{ ...small, color: b.indicator?.freshness === 'fresh' || b.indicator === null ? 'var(--eye-color-ink-muted)' : 'var(--eye-color-critical)' }}>{freshnessLine(b.indicator, c.stale_after_days)}</div></Td>
                   <Td>{b.consequence}{b.consequence_class ? <div style={{ ...small, ...muted }}>class <Mono>{b.consequence_class}</Mono></div> : null}</Td>
-                  <Td>{b.probability === null ? <span style={muted}>not set</span> : <Mono>{JSON.stringify({ low: b.probability['probability_low'], high: b.probability['probability_high'], method: b.probability['method'] })}</Mono>}</Td>
+                  <Td>{b.probability === null ? <span style={muted}>not set</span> : /* B82 sc: §TS's RangeValue (NUM-03) — the bounds, the unit, the method */ <RangeValue range={{ lower: numOf(b.probability['probability_low']), upper: numOf(b.probability['probability_high']), unit: 'probability (0–1)', basis: { kind: 'method', text: String(b.probability['method'] ?? 'unstated') }, measure: 'ratio', evidence: 'elicited' }} />}</Td>
                 </tr>
               ))}
             </tbody>
@@ -436,6 +440,9 @@ export default function ScenarioSetsPage() {
             ) : null}
           </section>
           {cmp === null ? null : <ComparisonTable c={cmp} />}
+          {/* B82 sc: the branches on one probability scale (VIZ-06) — after the side-by-side table, its own section */}
+          {cmp === null ? null : <BranchesOnOneScale scope={scope} c={cmp} title={view.title} purpose={view.purpose} />}
+          {/* end B82 sc */}
           {cmp === null ? null : <ReviewPanel scope={scope} set={view} c={cmp} onRecorded={reload} />}
           <RelevancePanel scope={scope} rows={relevance} canScore={['strategy_owner', 'forecast_owner', 'domain_admin', 'platform_admin'].some((r) => roles.has(r))} onScored={reload} />
         </section>
@@ -448,3 +455,22 @@ export default function ScenarioSetsPage() {
     </>
   );
 }
+
+/* B82 sc: ScenarioComparison (VIZ-06) over the set's compare read — one scale (0–1), the governed probabilities as set; set by different
+   methods, they are NOT drawn on one scale (the unequal frame refused, the reason said); the consequence class and "not counted" in words. */
+function BranchesOnOneScale({ scope, c, title, purpose }: { scope: { tenantId: string; domainId: string }; c: Comparison; title: string; purpose: string | null }) {
+  const items = useMemo<CompareItemIn[]>(() => c.branches.map((b) => ({
+    key: b.branch_id, name: b.name, scenario: b.scenario_title, kind: b.kind, state: b.state, live: b.live, notCounted: b.not_counted_reason,
+    probability: b.probability === null ? null : { low: numOf(b.probability['probability_low']), high: numOf(b.probability['probability_high']), method: b.probability['method'] === undefined || b.probability['method'] === null ? null : String(b.probability['method']) },
+    consequenceClass: b.consequence_class, indicator: b.indicator === null ? null : freshnessLine(b.indicator, c.stale_after_days), assumptions: Array.isArray(b.assumptions) ? b.assumptions.length : 0,
+  })), [c]);
+  const asOf = isoOf(c.as_of, new Date().toISOString());
+  const spec = useMemo(() => comparisonSpec({ set: title, asOf, items, purpose }), [title, asOf, items, purpose]);
+  return (
+    <section aria-labelledby="one-scale-h" style={{ marginBlockStart: 'var(--eye-space-16)' }}>
+      <h3 id="one-scale-h" style={h3}>The branches on one probability scale</h3>
+      <ScenarioComparison spec={spec} items={items} exportAs={readExport(scope, asOf)} />
+    </section>
+  );
+}
+/* end B82 sc */
