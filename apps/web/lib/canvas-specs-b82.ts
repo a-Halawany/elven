@@ -192,6 +192,19 @@ export function mapChartSpec(a: MapSpecArgs): ChartSpec {
     ] },
   };
 }
+/** VIZ-18's declarations: the width ALWAYS with its legend; the period, the units, the coverage; the register named as a source beside the
+ *  measured one — unless the drawing is a SYNTHETIC specimen (a specimen is never mixed with real sources). */
+export function flowMapChartSpec(a: { title: string; measure: { measure: string; unit: string }; period: string; coverage: string; source: ChartSource; asOf: string; routes: number }): ChartSpec {
+  const legend: LegendEntry[] = [
+    { key: 'flow', label: `Flow — line width ∝ ${a.measure.measure} (${a.measure.unit})`, dash: 'solid', marker: 'none', directLabel: true },
+    { key: 'unknown', label: 'No value for the period (hairline, dotted)', dash: 'dotted', marker: 'none', directLabel: true },
+    { key: 'chokepoint', label: 'Chokepoint (diamond)', dash: 'solid', marker: 'diamond', directLabel: true },
+  ];
+  const register: ChartSource = { read: 'graph.geo_layer', label: `the geographic-reference register, as of ${a.asOf}` };
+  return mapChartSpec({ kind: 'flow_map', title: a.title, basis: `${a.measure.measure} along declared routes (direction: each route's declared order), over ${a.period}`,
+    sources: 'specimen' in a.source ? [a.source] : [a.source, register], asOf: a.asOf, legend, extraUnits: [a.measure],
+    summary: `${a.routes} route(s) with ${a.measure.measure} over ${a.period}; coverage: ${a.coverage}. The value of each route is in the table; widths are linear from the legend's reference widths.` });
+}
 export function mapRows(refs: readonly GeoReference[], values?: Readonly<Record<string, string>>, uncertaintyM?: Readonly<Record<string, number>>): Array<Record<string, string | number | null>> {
   return refs.map((r) => ({
     label: r.label, kind: r.geometry.type === 'Point' ? (r.chokepointKey !== null ? `chokepoint (${r.chokepointKey})` : 'place') : r.geometry.type === 'LineString' ? 'route' : 'area',

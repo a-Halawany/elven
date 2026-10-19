@@ -16,7 +16,7 @@ import {
 } from './canvas-b82';
 import {
   CHOROPLETH_SPECIMEN, GEO_SPECIMEN, SANKEY_SPECIMEN, SPECIMEN_AS_OF, SPECIMEN_SOURCE, TREEMAP_SPECIMEN, corridorMapOf, dependencyNetworkOf, geoReferenceOf,
-  graphChartSpec, knowledgeGraphOf, mapChartSpec, mapRows, provenanceGraphOf, sankeyChartSpec, strategyGraphOf, strategyHierarchyOf, treeChartSpec,
+  flowMapChartSpec, graphChartSpec, knowledgeGraphOf, mapChartSpec, mapRows, provenanceGraphOf, sankeyChartSpec, strategyGraphOf, strategyHierarchyOf, treeChartSpec,
   treemapChartSpec, watermarkOf, watermarkText,
 } from './canvas-specs-b82';
 import type { EdgeRow, EntityRow, StrategyRow } from './graph';
@@ -269,6 +269,13 @@ describe('every canvas kind declares its grammar (§0 assertGrammar) — the lib
       ...(['map', 'geospatial_map', 'flow_map', 'choropleth'] as const).map((kind) => mapChartSpec({ kind, title: `A ${kind}`, basis: 'declared', sources: [SPECIMEN_SOURCE], asOf: SPECIMEN_AS_OF, summary: 's', extraUnits: [{ measure: 'transits', unit: 'vessels per day' }] })),
     ];
     for (const s of specs) expect(assertGrammar(s), s.kind).toEqual([]);
+    // a flow map over a specimen never mixes in the register as a real source; over a read it names both
+    const fm = (source: Parameters<typeof flowMapChartSpec>[0]['source']) => flowMapChartSpec({ title: 'Flows', measure: { measure: 'transits', unit: 'vessels per day' }, period: '30 days', coverage: 'two routes', source, asOf: SPECIMEN_AS_OF, routes: 2 });
+    expect(assertGrammar(fm(SPECIMEN_SOURCE))).toEqual([]);
+    expect(fm(SPECIMEN_SOURCE).sources).toHaveLength(1);
+    const real = fm({ read: 'portwatch:chokepoint4:n_total', label: 'PortWatch transits' });
+    expect(assertGrammar(real)).toEqual([]);
+    expect(real.sources).toHaveLength(2);
     expect(new Set(specs.map((s) => s.kind)).size).toBe(12);
   });
   it('LIBRARY_B82 names this part\'s file and its twelve exports; the component file exports each of them', () => {

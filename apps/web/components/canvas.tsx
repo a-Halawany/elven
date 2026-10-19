@@ -33,7 +33,7 @@ import {
   treemapLayout, treemapProblems, type ChoroIn, type Extent, type SankeyLinkIn, type SankeyNodeIn, type TreeIn, type TreemapItem,
 } from '../lib/canvas-b82';
 import {
-  INFERRED_LEGEND, dependencyNetworkOf, graphChartSpec, knowledgeGraphOf, mapChartSpec, mapRows, provenanceGraphOf, sankeyChartSpec, strategyGraphOf,
+  INFERRED_LEGEND, dependencyNetworkOf, flowMapChartSpec, graphChartSpec, knowledgeGraphOf, mapChartSpec, mapRows, provenanceGraphOf, sankeyChartSpec, strategyGraphOf,
   treeChartSpec, treemapChartSpec, watermarkText,
 } from '../lib/canvas-specs-b82';
 import type { EdgeRow, EntityRow, ProjectionBlock, StrategyRow } from '../lib/graph';
@@ -79,7 +79,8 @@ export function GraphCanvas({ spec, chart, rank, edgeDash, onOpen }: {
   const problems = useMemo(() => graphProblems(spec), [spec]);
   const layout = useMemo(() => {
     if (problems.length > 0) return null;
-    const l = layeredLayout(spec.nodes, spec.edges, rank === undefined ? {} : { rank: (n) => rank[n.id] ?? null });
+    const gap = spec.edges.length <= 40 ? { layerGap: 150 } : {};   // room for the relation labels between the columns
+    const l = layeredLayout(spec.nodes, spec.edges, rank === undefined ? gap : { ...gap, rank: (n) => rank[n.id] ?? null });
     return rtl ? mirrorLayout(l) : l;
   }, [spec, rank, rtl, problems]);
   const order = useMemo(() => (layout === null ? spec.nodes.map((n) => n.id) : readingOrder(layout)), [layout, spec]);
@@ -121,7 +122,7 @@ export function GraphCanvas({ spec, chart, rank, edgeDash, onOpen }: {
                 {layout.edges.map((e) => (
                   <g key={e.id} className="eye-canvas-edge" data-lit={lit.has(e.id) ? 'true' : undefined}>
                     <path d={e.path} fill="none" strokeDasharray={DASH[edgeDash?.(e.edge) ?? 'solid']} markerEnd={e.edge.directed ? `url(#${markerId})` : undefined} />
-                    {labelled && <text x={e.mid[0]} y={e.mid[1] - 4} textAnchor="middle" className="eye-canvas-edge-label">{clip(e.edge.type, 28)}</text>}
+                    {labelled && <text x={e.mid[0]} y={e.mid[1] - 4} textAnchor="middle" className="eye-canvas-edge-label eye-canvas-halo">{clip(e.edge.type, 22)}</text>}
                   </g>
                 ))}
               </g>
@@ -286,7 +287,7 @@ export function Sankey({ nodes, links, title, basis, source, asOf, measure, unit
             {lay.nodes.map((n) => (
               <g key={n.id} className="eye-canvas-sk-node">
                 <rect x={n.x} y={n.y} width={n.w} height={Math.max(1, n.h)} />
-                <text x={n.x + (n.x > W / 2 ? -6 : n.w + 6)} y={n.y + n.h / 2 + 4} textAnchor={n.x > W / 2 ? 'end' : 'start'} className="eye-canvas-node-label">{`${clip(n.label, 28)} · ${n.throughput.toLocaleString('en')} ${unit}`}</text>
+                <text x={n.x + (n.x + n.w >= W - 1 ? -6 : n.w + 6)} y={n.y + n.h / 2 + 4} textAnchor={n.x + n.w >= W - 1 ? 'end' : 'start'} className="eye-canvas-node-label eye-canvas-halo">{`${clip(n.label, 22)} · ${n.throughput.toLocaleString('en')} ${unit}`}</text>
               </g>
             ))}
           </svg>
@@ -342,9 +343,9 @@ export function MapCanvas({ map, chart, rows, draw, width = 720 }: {
               const none = cls === null || cls === undefined;
               return (
                 <g key={f.key}>
-                  <path d={d} className="eye-canvas-area" data-class={none ? 'none' : String(cls)} fill={none ? `url(#${hatchId})` : undefined} />
-                  <text x={cx} y={cy} textAnchor="middle" className="eye-canvas-node-label">{clip(f.label, 22)}</text>
-                  <text x={cx} y={cy + 15} textAnchor="middle" className="eye-canvas-node-kind">{none ? 'no data' : `class ${cls + 1}`}</text>
+                  <path d={d} className="eye-canvas-area" data-class={none ? 'none' : String(cls)} style={none ? { fill: `url(#${hatchId})` } : undefined} />
+                  <text x={cx} y={cy} textAnchor="middle" className="eye-canvas-node-label eye-canvas-halo">{clip(f.label, 22)}</text>
+                  <text x={cx} y={cy + 15} textAnchor="middle" className="eye-canvas-node-kind eye-canvas-halo">{none ? 'no data' : `class ${cls + 1}`}</text>
                 </g>
               );
             })}
@@ -362,7 +363,7 @@ export function MapCanvas({ map, chart, rows, draw, width = 720 }: {
               return (
                 <g key={f.key} className="eye-canvas-place" data-chokepoint={f.chokepointKey !== null ? 'true' : undefined}>
                   {f.chokepointKey !== null ? <path d={`M${x},${y - 7} L${x + 7},${y} L${x},${y + 7} L${x - 7},${y} Z`} /> : <circle cx={x} cy={y} r={5} />}
-                  <text x={x + 9} y={y + 4} className="eye-canvas-node-label">{clip(f.label, 30)}</text>
+                  <text x={x + 9} y={y + 4} className="eye-canvas-node-label eye-canvas-halo">{clip(f.label, 30)}</text>
                 </g>
               );
             })}
@@ -411,13 +412,7 @@ export function FlowMap({ refs, values, measure, period, coverage, title, asOf, 
   const fw = useMemo(() => flowWidths(lines.map((l) => ({ key: l.key, value: values[l.key] ?? null }))), [lines, values]);
   const map: MapSpec = { crs: 'EPSG:4326', projection: 'equirectangular', scale: { bar: true, unit: 'km' },
     layers: [{ key: 'flows', label: 'Flows', kind: 'flow', features: lines, measure }, { key: 'places', label: 'Places', kind: 'point', features: points }] };
-  const legend: LegendEntry[] = [
-    { key: 'flow', label: `Flow — line width ∝ ${measure.measure} (${measure.unit})`, dash: 'solid', marker: 'none', directLabel: true },
-    { key: 'unknown', label: 'No value for the period (hairline, dotted)', dash: 'dotted', marker: 'none', directLabel: true },
-    { key: 'chokepoint', label: 'Chokepoint (diamond)', dash: 'solid', marker: 'diamond', directLabel: true },
-  ];
-  const chart = mapChartSpec({ kind: 'flow_map', title, basis: `${measure.measure} along declared routes (direction: each route's declared order), over ${period}`, sources: [source, refsSource(asOf)], asOf,
-    legend, extraUnits: [measure], summary: `${lines.length} route(s) with ${measure.measure} over ${period}; coverage: ${coverage}. The value of each route is in the table; widths are linear from the legend's reference widths.` });
+  const chart = flowMapChartSpec({ title, measure, period, coverage, source, asOf, routes: lines.length });
   const vals: Record<string, string> = {};
   for (const l of lines) vals[l.key] = values[l.key] === null || values[l.key] === undefined ? `no value for ${period}` : `${values[l.key]!.toLocaleString('en')} ${measure.unit}`;
   const dashFor: Record<string, DashPattern> = { ...(dash ?? {}) };

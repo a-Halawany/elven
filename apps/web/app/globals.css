@@ -976,6 +976,9 @@ button.eye-cmdenv-row[aria-pressed="true"] { border-color: var(--eye-color-accen
 .eye-canvas-area[data-class="0"] { fill-opacity: 0.15; } .eye-canvas-area[data-class="1"] { fill-opacity: 0.35; }
 .eye-canvas-area[data-class="2"] { fill-opacity: 0.6; } .eye-canvas-area[data-class="3"] { fill-opacity: 0.85; }
 .eye-canvas-hatch { stroke: var(--eye-color-ink-muted); stroke-width: 1; }
+.eye-canvas-area[data-class="none"] { fill-opacity: 1; }
+/* a label stays legible over a line or a band: a halo in the drawing's own surface colour */
+.eye-canvas-svg .eye-canvas-halo { paint-order: stroke; stroke: var(--eye-color-surface-primary); stroke-width: 4px; stroke-linejoin: round; }
 .eye-canvas-scalebar line { stroke: var(--eye-color-ink-strong); stroke-width: 2; }
 .eye-canvas-legend { margin: 0; }
 .eye-canvas-legend-svg { inline-size: min(100%, 260px); block-size: auto; }
@@ -987,6 +990,7 @@ button.eye-cmdenv-row[aria-pressed="true"] { border-color: var(--eye-color-accen
   .eye-canvas-node[data-current="true"] rect { stroke: Highlight; }
   .eye-canvas-svg text, .eye-canvas-arrow, .eye-canvas-sk-node rect, .eye-canvas-place[data-chokepoint="true"] path { fill: CanvasText; }
   .eye-canvas-band, .eye-canvas-area { fill: Canvas; }
+  .eye-canvas-svg .eye-canvas-halo { stroke: Canvas; }
 }
 @media print {
   .eye-canvas-traverse { display: none; }
