@@ -104,8 +104,9 @@ function HeaderBody() {
                         <ul aria-label={`The time qualifiers of version ${v.version}`}>{v.time.map((t) => <li key={t.axis}>{t.axis.replace(/_/g, ' ')}: <TimeValueText value={qualifierValue(t)} label={t.axis} />{t.declared ? ' — declared by the writer' : ' — derived from the header'}</li>)}</ul>)}</dd></div>
                       <div><dt>Operation</dt><dd>{String(v.operation?.['boundAction'] ?? '—')} · idempotency key <Mono>{String(v.operation?.['idempotencyKey'] ?? '—')}</Mono> ({String(v.operation?.['idempotencyBasis'] ?? '—')}) · trace <Mono>{String(v.operation?.['traceId'] ?? '—')}</Mono> ({String(v.operation?.['traceSource'] ?? '—')})</dd></div>
                       <div><dt>Controls and their basis</dt><dd><ul aria-label={`The controls of version ${v.version}`}>{Object.entries(CONTROL_LABEL).map(([k, label]) => {
+                        // D22 (settled 2026-10-19): the four controls stay NULL when nothing narrower applies; the side ledger states where that came from.
                         const c = controls[k] ?? null;
-                        return <li key={k}>{label}: {c === null ? 'no basis recorded' : `${c['value'] === null || c['value'] === undefined ? 'none stated' : String(c['value'])} — from ${String(c['from'] ?? '?')}${c['ref'] === undefined ? '' : ` (${String(c['ref'])})`}${c['reason'] === undefined ? '' : `: ${String(c['reason'])}`}`}</li>;
+                        return <li key={k}>{label}: {c === null ? 'no basis recorded' : `${c['value'] === null || c['value'] === undefined ? 'null in the header — no narrower control applies (a meaningful null: the gates read it; nothing is invented)' : String(c['value'])} — from ${String(c['from'] ?? '?')}${c['ref'] === undefined ? '' : ` (${String(c['ref'])})`}${c['reason'] === undefined ? '' : `: ${String(c['reason'])}`}`}</li>;
                       })}</ul></dd></div>
                       <div><dt>Limitations stated</dt><dd>{limits.length === 0 ? 'none' : <ul aria-label={`The limitations of version ${v.version}`}>{limits.map((l) => <li key={l}>{l}</li>)}</ul>}</dd></div>
                     </>
