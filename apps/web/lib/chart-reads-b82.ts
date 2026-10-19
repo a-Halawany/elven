@@ -23,7 +23,7 @@ const num = (v: unknown): number | null => { if (v === null || v === undefined |
 /* ───────────────────────── the correlation read (VIZ-24) ───────────────────────── */
 
 export interface CorrelationRead {
-  variables: Array<{ exposure_id: string; polarity: string; category: string; state: string; title: string | null }>;
+  variables: Array<{ exposure_id: string; polarity: string; category_key: string; state: string; title: string | null }>;
   entries: Row[]; latest: Row[]; counts: { entries: number; pairs: number; declared: number; proposed_by_agent: number }; method: string; at: string;
 }
 const base = (s: Scope) => `/v1/tenants/${s.tenantId}/domains/${s.domainId}/prediction`;

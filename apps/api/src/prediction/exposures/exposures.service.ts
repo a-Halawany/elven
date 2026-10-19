@@ -235,7 +235,7 @@ export class ExposuresService {
      coefficient, a basis) — never estimated from data: the read says so, and a chart over it uses no causal word. */
   async correlations(cap: ExposureReads): Promise<Row> {
     const entries = (await cap.readCorrelations().selectAll().orderBy('recorded_at' as never).orderBy('correlation_row_id' as never).execute()) as Row[];
-    const exposures = (await cap.readExposures().select(['exposure_id', 'polarity', 'category', 'state'] as never).orderBy('registered_at' as never).execute()) as Row[];
+    const exposures = (await cap.readExposures().select(['exposure_id', 'polarity', 'category_key', 'state'] as never).orderBy('registered_at' as never).execute()) as Row[];
     const ids = exposures.map((x) => String(x['exposure_id']));
     const titles = ids.length === 0 ? [] : (await cap.readStrategy().select(['strategy_object_id', 'title'] as never).where('strategy_object_id' as never, 'in', ids as never).execute()) as Row[];
     const title = new Map(titles.map((t) => [String(t['strategy_object_id']), t['title']]));

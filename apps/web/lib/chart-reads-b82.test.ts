@@ -76,7 +76,7 @@ describe('ensembles, streams, health, timeline, twins, fabric', () => {
     expect(b.bins.count).toBe(4); expect(b.marks.map((m) => m.key)).toEqual(['run', 'bench', 'lo', 'hi']); expect(b.rule).toContain('Sturges');
   });
   it('the correlation input titles the exposures and says how each entry was set', () => {
-    const r: CorrelationRead = { variables: [{ exposure_id: '0190aaaa-0000', polarity: 'risk', category: 'c', state: 's', title: null }], entries: [{ exposure_a: 'x', exposure_b: 'y', relation: 'correlated', coefficient: '0.4', basis: 'b', estimated_kind: 'agent' }],
+    const r: CorrelationRead = { variables: [{ exposure_id: '0190aaaa-0000', polarity: 'risk', category_key: 'c', state: 's', title: null }], entries: [{ exposure_a: 'x', exposure_b: 'y', relation: 'correlated', coefficient: '0.4', basis: 'b', estimated_kind: 'agent' }],
       latest: [], counts: { entries: 1, pairs: 1, declared: 0, proposed_by_agent: 1 }, method: 'm', at: '' };
     const c = correlationInput(r); expect(c.variables[0]!.label).toBe('risk 0190aaaa…'); expect(c.cells[0]).toMatchObject({ coefficient: 0.4, kind: 'proposed by an agent run' });
   });
