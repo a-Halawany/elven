@@ -84,13 +84,15 @@ describe('CF1 · dg-lint-4 through B107\'s principle registry and evaluation por
     const t = await refusal(W(dgc.chartGrammar(preq(tenantAdmin, 'governance.design.evaluate'), { payload: { files: PLANTED } })));
     expect(t.message).toMatch(DENIED); expect(t.status).toBe(403);
   });
-  it('the real web source: the ratchet holds — exactly the committed div charts (§SC\'s), recorded as dg-lint-4 evidence', async () => {
+  /* B82 sc: §SC replaced the two div charts — the committed list is EMPTY and the real web source records ZERO findings (dg-lint-4 at zero) */
+  it('the real web source: the ratchet holds — zero findings since §SC replaced the div charts, recorded as dg-lint-4 evidence', async () => {
     const real = await W(dgc.chartGrammar(preq(steward, 'governance.design.evaluate'), {}));
     expect(real['ratchet']).toMatchObject({ holds: true, regressions: [], baseline: CHART_LINT_RATCHET.length, current: CHART_LINT_RATCHET.length, resolved: 0 });
     expect((real['evaluation'] as Row)['open']).toBe(CHART_LINT_RATCHET.length);
     expect(Number((real['evaluation'] as Row)['files'])).toBeGreaterThan(100);
-    expect(await one(sql`select rules_version, source, (findings -> 0 ->> 'principle') as principle from governance.design_evaluations where evaluation_id = ${(real['evaluation'] as Row)['evaluation_id']}::uuid`))
-      .toEqual({ rules_version: CHART_LINT_VERSION, source: 'lint', principle: CHART_PRINCIPLE });
+    expect(CHART_LINT_RATCHET).toHaveLength(0);   // B82 sc
+    expect(await one(sql`select rules_version, source, jsonb_array_length(findings)::int as n from governance.design_evaluations where evaluation_id = ${(real['evaluation'] as Row)['evaluation_id']}::uuid`))
+      .toEqual({ rules_version: CHART_LINT_VERSION, source: 'lint', n: 0 });
   });
 });
 

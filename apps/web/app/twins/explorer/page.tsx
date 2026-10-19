@@ -220,8 +220,8 @@ export default function TwinExplorerPage() {
                 <tr key={b.branch_id}><Td><strong>{b.branch_id}</strong></Td><Td>{b.forked_from === null ? '—' : `v${b.forked_from}`}</Td><Td>{b.head === null ? '—' : `v${b.head}`}</Td>
                   <Td>{b.draft === null ? '—' : `v${b.draft}`}</Td><Td>{b.versions.map((v) => `v${v}${b.withdrawn.includes(v) ? ' (withdrawn)' : ''}`).join(', ')}</Td></tr>))}</tbody></table>
           </ScrollBox>
-          {/* B82 sc: the branch tree drawn (§GM's HierarchyTree, VIZ-20) — the table above stays; the tree's own table alternative beside it */}
-          <HierarchyTree items={branchTreeOf(x.branches, x.versions)} title={`${x.twin.title} — the branch tree`} basis="each branch under the branch that owns the version it forked from; actual is the root"
+          {/* B82 sc: the branch tree drawn (§GM's HierarchyTree, VIZ-20) — the table above stays (its name "branch tree" is the walk's: the drawing's title avoids it); the tree's own table alternative beside it */}
+          <HierarchyTree items={branchTreeOf(x.branches, x.versions)} title={`${x.twin.title} — branches by the version they forked from`} basis="each branch under the branch that owns the version it forked from; actual is the root"
             source={{ read: 'twin.read · /twins/:id/branches/explorer', label: 'the twin\'s branch explorer' }} asOf={isoOf(x.read_at, new Date().toISOString())} rule="a branch's parent is the branch owning its fork version" />
           {/* end B82 sc */}
           {(x.restores ?? []).length === 0 ? null : (
