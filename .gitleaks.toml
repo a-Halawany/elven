@@ -359,3 +359,24 @@ commits = ['''451c7f9888de44a2dd6ea7ec4d987d8b3c20f30b''']
 paths = ['''^apps/api/test/int/phase6-packages-b33\.test\.ts$''']
 regexTarget = "match"
 regexes = ['''^key: 'chokepoint4_transits'$''']
+
+# ── B81 HISTORY: the synthetic Ed25519 key IDENTIFIER in one §HA commit, not a credential
+#
+# The §HA commit dfe1762 wrote the web unit fixture apps/web/lib/authority-b81.test.ts with the signature receipt's
+# expected copy line `'key ed25519:0123456789abcdef'` — the same fixed, synthetic key identifier the B36 health fixture
+# uses (block "B36 history 4/4" above), never key material. The generic-api-key rule keys on the word `key`; its match is
+# the identifier plus the closing quote. The working tree names it through a constant (KEY_ID) since, so this exclusion
+# exists solely so the FULL-HISTORY scan (hosted run 39179325635 onward) does not fail on the one commit that carried it.
+# The B36-F1 form: ONE rule, ONE commit, ONE file, ONE exact anchored match; condition = AND.
+
+[[allowlists]]
+description = """
+B81 history 1/1 — the §HA commit dfe1762 carried the synthetic key identifier in the expected signature-receipt copy of
+apps/web/lib/authority-b81.test.ts (line 224). ONE rule, ONE commit, ONE file, ONE exact match. condition = AND.
+"""
+condition = "AND"
+targetRules = ['''generic-api-key''']
+commits = ['''dfe1762c01be3928076be037bd998ac147d06621''']
+paths = ['''^apps/web/lib/authority-b81\.test\.ts$''']
+regexTarget = "match"
+regexes = ['''^key ed25519:0123456789abcdef'$''']
