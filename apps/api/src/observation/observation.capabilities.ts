@@ -312,7 +312,8 @@ export interface AcquisitionWrites extends ObservationReads {
     eventId: string; tenantId: string; domainId: string; sourceId: string;
     contractVersion: number; runId: string; checkpoint: Record<string, unknown>; correlationId: string;
   }): Promise<void>;
-  admitObject(header: unknown, payload: unknown, digest: string): Promise<{ contentDigest: string }>;
+  /* B50 hd: the optional version declaration (the upload's stated document time) → objects.admit_version's 4-argument form (0120 §HD.4) */
+  admitObject(header: unknown, payload: unknown, digest: string, declaration?: Record<string, unknown>): Promise<{ contentDigest: string }>;
   recordMeasurement(a: MeasurementArgs): Promise<void>;
   appendHealthEvent(a: HealthEventArgs): Promise<void>;
   /**
@@ -898,10 +899,16 @@ class ObservationCapabilityImpl extends ObservationCore implements RegistryWrite
       ${a.correlationId}::uuid)`);
   }
 
-  async admitObject(header: unknown, payload: unknown, digest: string): Promise<{ contentDigest: string }> {
-    const rows = await this.call<{ content_digest: string }>(
-      sql`select content_digest from objects.admit_version(
-        ${JSON.stringify(header)}::jsonb, ${JSON.stringify(payload)}::jsonb, ${digest})`);
+  async admitObject(header: unknown, payload: unknown, digest: string, declaration?: Record<string, unknown>): Promise<{ contentDigest: string }> {
+    /* B50 hd: a declaration takes the 4-argument admission; without one, the call is exactly as before */
+    const rows = declaration === undefined
+      ? await this.call<{ content_digest: string }>(
+        sql`select content_digest from objects.admit_version(
+        ${JSON.stringify(header)}::jsonb, ${JSON.stringify(payload)}::jsonb, ${digest})`)
+      : await this.call<{ content_digest: string }>(
+        sql`select content_digest from objects.admit_version(
+        ${JSON.stringify(header)}::jsonb, ${JSON.stringify(payload)}::jsonb, ${digest}, ${JSON.stringify(declaration)}::jsonb)`);
+    /* end B50 hd */
     const r = rows[0];
     if (r === undefined) throw new Error('admission returned no row');
     return { contentDigest: r.content_digest };

@@ -17,6 +17,7 @@
 import { Ajv2020 } from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import { contentDigest } from './audit.js';
+import { HEADER_TIME_PRECISIONS } from './time.js';
 
 export interface CanonicalHeader {
   // Identity block
@@ -36,7 +37,7 @@ export interface CanonicalHeader {
   valid_from: string | null;
   valid_to: string | null;
   recorded_at: string; // record time — assigned by the committing component
-  time_precision: string; // e.g. 'exact' | 'day' | 'month' | 'approximate'
+  time_precision: string; // the governed vocabulary HEADER_TIME_PRECISIONS (B50 §HD: + part_of_month, quarter)
   source_clock_quality: 'trusted' | 'degraded' | 'unknown';
   // Epistemic block
   truth_state: string;
@@ -131,7 +132,8 @@ export const HEADER_SCHEMA = {
     valid_from: isoOrNull,
     valid_to: isoOrNull,
     recorded_at: { type: 'string', format: 'date-time' },
-    time_precision: { enum: ['exact', 'second', 'minute', 'hour', 'day', 'month', 'year', 'approximate', 'unknown'] },
+    // B50 §HD: the governed vocabulary (time.ts) — the canonical CHECK and objects.assert_header_semantics carry the same list.
+    time_precision: { enum: [...HEADER_TIME_PRECISIONS] },
     source_clock_quality: { enum: ['trusted', 'degraded', 'unknown'] },
     truth_state: {
       enum: ['observed', 'asserted', 'extracted', 'inferred', 'assessed', 'synthetic', 'decided', 'disputed', 'withdrawn'],

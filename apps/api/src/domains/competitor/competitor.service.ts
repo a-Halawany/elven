@@ -21,6 +21,7 @@ import { DomainScanBridge } from '../seams.js';
 import { CompetitorCapability, type CompetitorReads, type CompetitorWrites } from './competitor.capabilities.js';
 import { dayOf } from './competitor-logic.js';
 import { domainScan } from './domain-scan.js';
+import { buildHeader } from '../../objects/header-builder.js';
 
 type Row = Record<string, unknown>;
 export const COMPETITOR_HOOK = 'domain-competitor-scan';
@@ -174,18 +175,18 @@ export class CompetitorService implements OnModuleInit {
     const competitorId = String(cpf['competitor_id']);
     const facts = (cpf['facts'] ?? []) as Row[];
     const evidence = [...new Set(facts.flatMap((f) => ((f['citations'] ?? []) as Row[]).filter((x) => x['kind'] === 'evidence').map((x) => `EVD:${String(x['id'])}`)))];
-    const header: CanonicalHeader = {
-      object_id: competitorId, object_type: 'CPF', tenant_id: scope.tenantId, domain_id: scope.domainId, scope: 'DOMAIN', object_version: String(version), lifecycle_state: 'active',
-      owning_component: 'CP-DOM-CI', accountable_owner: `principal:${ownerId}`, source_object_ids: [],
-      event_time: null, observation_time: null, valid_from: `${String(cpf['effective_from'])}T00:00:00Z`, valid_to: null, recorded_at: new Date().toISOString(), time_precision: 'day',
-      source_clock_quality: 'trusted', truth_state: 'assessed', synthetic_state: false, confidence: null, uncertainty: null,
-      evidence_refs: evidence, provenance_ref: `principal:${principal.principalId}`, method_ref: method,
-      contradiction_refs: [], corroboration_refs: [], human_refs: [...new Set([`principal:${ownerId}`, `principal:${principal.principalId}`])],
-      classification: 'internal', purpose_scope: 'intelligence', rights_profile: null, residency_profile: null, retention_profile: null, access_policy_ref: null,
-      quality_profile: null, quality_state: { state: cpf['state'], limited_reasons: cpf['limited_reasons'] }, freshness_state: null, schema_ref: CPF_SCHEMA, ontology_ref: null,
-      correction_of: null, supersedes: cpf['supersedes'] === null || cpf['supersedes'] === undefined ? null : `CPF:${competitorId}@${String(cpf['supersedes'])}`,
-      withdrawal_reason: null, audit_correlation_id: correlationId, content_ref: null,
-    } as CanonicalHeader;
+    const header: CanonicalHeader = buildHeader({
+      objectId: competitorId, objectType: 'CPF', tenantId: scope.tenantId, domainId: scope.domainId, scope: 'DOMAIN', objectVersion: String(version), lifecycleState: 'active',
+      owningComponent: 'CP-DOM-CI', accountableOwner: `principal:${ownerId}`, sourceObjectIds: [],
+      eventTime: null, observationTime: null, validFrom: `${String(cpf['effective_from'])}T00:00:00Z`, validTo: null, recordedAt: new Date().toISOString(), timePrecision: 'day',
+      sourceClockQuality: 'trusted', truthState: 'assessed', syntheticState: false, confidence: null, uncertainty: null,
+      evidenceRefs: evidence, provenanceRef: `principal:${principal.principalId}`, methodRef: method,
+      contradictionRefs: [], corroborationRefs: [], humanRefs: [...new Set([`principal:${ownerId}`, `principal:${principal.principalId}`])],
+      classification: 'internal', purposeScope: 'intelligence', rightsProfile: null, residencyProfile: null, retentionProfile: null, accessPolicyRef: null,
+      qualityProfile: null, qualityState: { state: cpf['state'], limited_reasons: cpf['limited_reasons'] }, freshnessState: null, schemaRef: CPF_SCHEMA, ontologyRef: null,
+      correctionOf: null, supersedes: cpf['supersedes'] === null || cpf['supersedes'] === undefined ? null : `CPF:${competitorId}@${String(cpf['supersedes'])}`,
+      withdrawalReason: null, auditCorrelationId: correlationId, contentRef: null,
+    });
     const check = validateHeader(header);
     if (!check.ok) throw new HttpException(errorBody('EYE_REQ_001', correlationId, `competitor profile header invalid: ${(check.errors ?? []).join('; ')}`), 422);
     const admitted = await cap.admitObject(header, cpf, canonicalHeaderDigest(header, cpf));

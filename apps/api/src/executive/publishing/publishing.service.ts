@@ -31,6 +31,7 @@ import type { ChannelAdapter, DeliveryMessage } from '../attention/delivery/chan
 import type { AttentionTickWrites } from '../executive.capabilities.js';
 import type { PublishingReads, PublishingWrites } from './publishing.capabilities.js';
 import { bytesDigest, channelMessage, documentOfBriefing, documentOfReport, renderBytes, RENDER_METHOD, type DraftIntake, type PublicationFormat, type RenderBinding, type RenderedDocument } from './publishing.render.js';
+import { buildHeader, type HeaderSpec } from '../../objects/header-builder.js';
 
 type Row = Record<string, unknown>;
 type Scope = { tenantId: string; domainId: string };
@@ -104,20 +105,20 @@ export class PublishingService {
   private pubHeader(a: { publicationId: string; scope: Scope; objectVersion: number; lifecycle: 'active' | 'withdrawn' | 'archived'; truth: string; actor: string; drafter: string; src: Row; classification: string; controls: Row; purpose: string;
                          renderMethod: string; vaultRef: string; bytesDigest: string; format: string; byteLength: number; prior: number | null; withdrawalReason: string | null; correlationId: string; syntheticState: boolean; quality: Row }): CanonicalHeader {
     const priorRef = a.prior === null ? null : `PUB:${a.publicationId}@${a.prior}`;
-    return {
-      object_id: a.publicationId, object_type: 'PUB', tenant_id: a.scope.tenantId, domain_id: a.scope.domainId, scope: 'DOMAIN', object_version: String(a.objectVersion), lifecycle_state: a.lifecycle,
-      owning_component: 'CP-EXE-01', accountable_owner: `principal:${a.actor}`,
-      source_object_ids: [`${String(a.src['object_type'])}:${String(a.src['id'])}@${String(a.src['object_version'])}`],
-      event_time: null, observation_time: null, valid_from: null, valid_to: null, recorded_at: new Date().toISOString(), time_precision: 'exact', source_clock_quality: 'trusted',
-      truth_state: a.truth, synthetic_state: a.syntheticState, confidence: null, uncertainty: null,
-      evidence_refs: strArr(a.src['evidence_refs']).filter((x) => /^EVD:/.test(x)).slice(0, 200), provenance_ref: `principal:${a.drafter}`, method_ref: a.renderMethod,
-      contradiction_refs: [], corroboration_refs: [], human_refs: [...new Set([`principal:${a.drafter}`, `principal:${a.actor}`])],
-      classification: a.classification, purpose_scope: a.purpose, rights_profile: (a.controls['rights_profile'] as string | null) ?? null, residency_profile: (a.controls['residency_profile'] as string | null) ?? null,
-      retention_profile: (a.controls['retention_profile'] as string | null) ?? null, access_policy_ref: (a.controls['access_policy_ref'] as string | null) ?? null,
-      quality_profile: null, quality_state: { format: a.format, byte_length: a.byteLength, ...a.quality }, freshness_state: null, schema_ref: PUB_SCHEMA, ontology_ref: null,
-      correction_of: a.lifecycle === 'withdrawn' ? priorRef : null, supersedes: priorRef, withdrawal_reason: a.withdrawalReason, audit_correlation_id: a.correlationId,
-      content_ref: `vault:export/${a.vaultRef}#sha256:${a.bytesDigest}`,
-    };
+    return buildHeader({
+      objectId: a.publicationId, objectType: 'PUB', tenantId: a.scope.tenantId, domainId: a.scope.domainId, scope: 'DOMAIN', objectVersion: String(a.objectVersion), lifecycleState: a.lifecycle,
+      owningComponent: 'CP-EXE-01', accountableOwner: `principal:${a.actor}`,
+      sourceObjectIds: [`${String(a.src['object_type'])}:${String(a.src['id'])}@${String(a.src['object_version'])}`],
+      eventTime: null, observationTime: null, validFrom: null, validTo: null, recordedAt: new Date().toISOString(), timePrecision: 'exact', sourceClockQuality: 'trusted',
+      truthState: a.truth, syntheticState: a.syntheticState, confidence: null, uncertainty: null,
+      evidenceRefs: strArr(a.src['evidence_refs']).filter((x) => /^EVD:/.test(x)).slice(0, 200), provenanceRef: `principal:${a.drafter}`, methodRef: a.renderMethod,
+      contradictionRefs: [], corroborationRefs: [], humanRefs: [...new Set([`principal:${a.drafter}`, `principal:${a.actor}`])],
+      classification: a.classification, purposeScope: a.purpose, rightsProfile: (a.controls['rights_profile'] as string | null) ?? null, residencyProfile: (a.controls['residency_profile'] as string | null) ?? null,
+      retentionProfile: (a.controls['retention_profile'] as string | null) ?? null, accessPolicyRef: (a.controls['access_policy_ref'] as string | null) ?? null,
+      qualityProfile: null, qualityState: { format: a.format, byte_length: a.byteLength, ...a.quality }, freshnessState: null, schemaRef: PUB_SCHEMA, ontologyRef: null,
+      correctionOf: a.lifecycle === 'withdrawn' ? priorRef : null, supersedes: priorRef, withdrawalReason: a.withdrawalReason, auditCorrelationId: a.correlationId,
+      contentRef: `vault:export/${a.vaultRef}#sha256:${a.bytesDigest}`,
+    });
   }
   private async admitPub(cap: PublishingWrites, header: CanonicalHeader, payload: Row, correlationId: string): Promise<{ contentDigest: string; headerDigest: string }> {
     const check = validateHeader(header);
@@ -223,21 +224,23 @@ export class PublishingService {
     return { ...r, notices };
   }
   /** The prior PUB header carried forward as its withdrawn version (import-package.ts importWithdrawalHeaderOf's rules, for a PUB). */
-  private withdrawnHeader(prior: Row, a: { actor: string; purpose: string; reason: string; correlationId: string; objectVersion: number }): CanonicalHeader {
+  private withdrawnHeader(prior: Row, a: { actor: string; purpose: string; reason: string; correlationId: string; objectVersion: number },
+                         over: Partial<HeaderSpec> = {} /* B50 hd: the archive's overrides, stated through the builder */): CanonicalHeader {
     const ref = `PUB:${String(prior['object_id'])}@${String(prior['object_version'])}`;
     const clock = String(prior['source_clock_quality'] ?? 'trusted');
-    return {
-      object_id: String(prior['object_id']), object_type: 'PUB', tenant_id: String(prior['tenant_id']), domain_id: String(prior['domain_id']), scope: 'DOMAIN', object_version: String(a.objectVersion), lifecycle_state: 'withdrawn',
-      owning_component: String(prior['owning_component'] ?? 'CP-EXE-01'), accountable_owner: `principal:${a.actor}`, source_object_ids: strArr(prior['source_object_ids']),
-      event_time: iso(prior['event_time']), observation_time: iso(prior['observation_time']), valid_from: iso(prior['valid_from']), valid_to: iso(prior['valid_to']), recorded_at: new Date().toISOString(),
-      time_precision: String(prior['time_precision'] ?? 'exact'), source_clock_quality: (clock === 'trusted' || clock === 'degraded' ? clock : 'unknown') as CanonicalHeader['source_clock_quality'],
-      truth_state: 'withdrawn', synthetic_state: prior['synthetic_state'] === true, confidence: null, uncertainty: null,
-      evidence_refs: strArr(prior['evidence_refs']), provenance_ref: (prior['provenance_ref'] as string | null) ?? null, method_ref: (prior['method_ref'] as string | null) ?? null,
-      contradiction_refs: [], corroboration_refs: [], human_refs: [`principal:${a.actor}`],
-      classification: String(prior['classification']), purpose_scope: a.purpose, rights_profile: (prior['rights_profile'] as string | null) ?? null, residency_profile: (prior['residency_profile'] as string | null) ?? null,
-      retention_profile: (prior['retention_profile'] as string | null) ?? null, access_policy_ref: null, quality_profile: null, quality_state: null, freshness_state: null,
-      schema_ref: String(prior['schema_ref'] ?? PUB_SCHEMA), ontology_ref: null, correction_of: ref, supersedes: ref, withdrawal_reason: a.reason, audit_correlation_id: a.correlationId, content_ref: (prior['content_ref'] as string | null) ?? null,
-    };
+    return buildHeader({
+      objectId: String(prior['object_id']), objectType: 'PUB', tenantId: String(prior['tenant_id']), domainId: String(prior['domain_id']), scope: 'DOMAIN', objectVersion: String(a.objectVersion), lifecycleState: 'withdrawn',
+      owningComponent: String(prior['owning_component'] ?? 'CP-EXE-01'), accountableOwner: `principal:${a.actor}`, sourceObjectIds: strArr(prior['source_object_ids']),
+      eventTime: iso(prior['event_time']), observationTime: iso(prior['observation_time']), validFrom: iso(prior['valid_from']), validTo: iso(prior['valid_to']), recordedAt: new Date().toISOString(),
+      timePrecision: String(prior['time_precision'] ?? 'exact'), sourceClockQuality: (clock === 'trusted' || clock === 'degraded' ? clock : 'unknown') as CanonicalHeader['source_clock_quality'],
+      truthState: 'withdrawn', syntheticState: prior['synthetic_state'] === true, confidence: null, uncertainty: null,
+      evidenceRefs: strArr(prior['evidence_refs']), provenanceRef: (prior['provenance_ref'] as string | null) ?? null, methodRef: (prior['method_ref'] as string | null) ?? null,
+      contradictionRefs: [], corroborationRefs: [], humanRefs: [`principal:${a.actor}`],
+      classification: String(prior['classification']), purposeScope: a.purpose, rightsProfile: (prior['rights_profile'] as string | null) ?? null, residencyProfile: (prior['residency_profile'] as string | null) ?? null,
+      retentionProfile: (prior['retention_profile'] as string | null) ?? null, accessPolicyRef: null, qualityProfile: null, qualityState: null, freshnessState: null,
+      schemaRef: String(prior['schema_ref'] ?? PUB_SCHEMA), ontologyRef: null, correctionOf: ref, supersedes: ref, withdrawalReason: a.reason, auditCorrelationId: a.correlationId, contentRef: (prior['content_ref'] as string | null) ?? null,
+      ...over,
+    });
   }
 
   /** d5 ARCHIVE: the archive record admitted as the PUB's archived version (the source's controls on the header), then the port. */
@@ -250,11 +253,11 @@ export class PublishingService {
       objectVersion = Number(prior['object_version']) + 1;
       const controls = ((record['controls'] as Row | null)?.['controls'] ?? {}) as Row;
       const ref = `PUB:${publicationId}@${String(prior['object_version'])}`;
-      const header: CanonicalHeader = { ...this.withdrawnHeader(prior, { actor: principal.principalId, purpose, reason: '', correlationId, objectVersion }),
-        lifecycle_state: 'archived', truth_state: String(prior['truth_state']) === 'withdrawn' ? 'withdrawn' : 'asserted', correction_of: null, supersedes: ref, withdrawal_reason: (prior['withdrawal_reason'] as string | null) ?? null,
-        classification: String(p['classification']), rights_profile: (controls['rights_profile'] as string | null) ?? null, residency_profile: (controls['residency_profile'] as string | null) ?? null,
-        retention_profile: (controls['retention_profile'] as string | null) ?? null, access_policy_ref: (controls['access_policy_ref'] as string | null) ?? null,
-        quality_state: { archive: 'versions, receipts, signatures and events carried under the source\'s controls', holds: ((record['controls'] as Row | null)?.['holds'] as unknown[] | undefined)?.length ?? 0 } };
+      const header: CanonicalHeader = this.withdrawnHeader(prior, { actor: principal.principalId, purpose, reason: '', correlationId, objectVersion }, {
+        lifecycleState: 'archived', truthState: String(prior['truth_state']) === 'withdrawn' ? 'withdrawn' : 'asserted', correctionOf: null, supersedes: ref, withdrawalReason: (prior['withdrawal_reason'] as string | null) ?? null,
+        classification: String(p['classification']), rightsProfile: (controls['rights_profile'] as string | null) ?? null, residencyProfile: (controls['residency_profile'] as string | null) ?? null,
+        retentionProfile: (controls['retention_profile'] as string | null) ?? null, accessPolicyRef: (controls['access_policy_ref'] as string | null) ?? null,
+        qualityState: { archive: 'versions, receipts, signatures and events carried under the source\'s controls', holds: ((record['controls'] as Row | null)?.['holds'] as unknown[] | undefined)?.length ?? 0 } });
       admitted = await this.admitPub(cap, header, { ...((prior['payload'] ?? {}) as Row), state: 'archived', archive: record }, correlationId);
     }
     const r = await cap.archive({ publicationId, tenantId: scope.tenantId, domainId: scope.domainId, objectVersion, actor: principal.principalId, correlationId });

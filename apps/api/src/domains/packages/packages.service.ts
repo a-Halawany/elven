@@ -23,6 +23,7 @@ import { PackageCapability, type PackageReads, type PackageWrites } from './pack
 import { ACCEPTANCE_VERSION, SUITE_VERSION, acceptanceFocus, evaluateHealth, runConformance, verdict, type AcceptanceFacts, type Check, type PackageFacts } from './conformance.js';
 import { FUNCTIONS, SECTIONS, digestOf } from './manifest.js';
 import { packageDefinitions } from './definitions.js';
+import { buildHeader, type HeaderSpec } from '../../objects/header-builder.js';
 
 type Row = Record<string, unknown>;
 export const HEALTH_HOOK = 'domain-package-health';
@@ -141,17 +142,19 @@ export class PackagesService implements OnModuleInit {
     return { package: out.result, receipt: PackagesService.receipt(out) };
   }
 
-  private dpgHeader(t: string, d: string, packageId: string, objectVersion: number, owner: string, actor: string, purpose: string, correlationId: string, recordedAt: string): CanonicalHeader {
-    return {
-      object_id: packageId, object_type: 'DPG', tenant_id: t, domain_id: d, scope: 'DOMAIN', object_version: String(objectVersion), lifecycle_state: 'active',
-      owning_component: 'CP-DOM-PKG', accountable_owner: `principal:${owner}`, source_object_ids: [],
-      event_time: null, observation_time: null, valid_from: null, valid_to: null, recorded_at: recordedAt, time_precision: 'exact', source_clock_quality: 'trusted',
-      truth_state: 'asserted', synthetic_state: false, confidence: null, uncertainty: null, evidence_refs: [], provenance_ref: `principal:${actor}`, method_ref: 'domain.package/1',
-      contradiction_refs: [], corroboration_refs: [], human_refs: [...new Set([`principal:${owner}`, `principal:${actor}`])],
-      classification: 'internal', purpose_scope: purpose, rights_profile: null, residency_profile: null, retention_profile: null, access_policy_ref: null,
-      quality_profile: null, quality_state: null, freshness_state: null, schema_ref: DPG_SCHEMA, ontology_ref: null,
-      correction_of: null, supersedes: objectVersion > 1 ? `DPG:${packageId}@${objectVersion - 1}` : null, withdrawal_reason: null, audit_correlation_id: correlationId, content_ref: null,
-    } as CanonicalHeader;
+  private dpgHeader(t: string, d: string, packageId: string, objectVersion: number, owner: string, actor: string, purpose: string, correlationId: string, recordedAt: string,
+                    over: Partial<HeaderSpec> = {} /* B50 hd: the DAS overrides, stated through the builder */): CanonicalHeader {
+    return buildHeader({
+      objectId: packageId, objectType: 'DPG', tenantId: t, domainId: d, scope: 'DOMAIN', objectVersion: String(objectVersion), lifecycleState: 'active',
+      owningComponent: 'CP-DOM-PKG', accountableOwner: `principal:${owner}`, sourceObjectIds: [],
+      eventTime: null, observationTime: null, validFrom: null, validTo: null, recordedAt: recordedAt, timePrecision: 'exact', sourceClockQuality: 'trusted',
+      truthState: 'asserted', syntheticState: false, confidence: null, uncertainty: null, evidenceRefs: [], provenanceRef: `principal:${actor}`, methodRef: 'domain.package/1',
+      contradictionRefs: [], corroborationRefs: [], humanRefs: [...new Set([`principal:${owner}`, `principal:${actor}`])],
+      classification: 'internal', purposeScope: purpose, rightsProfile: null, residencyProfile: null, retentionProfile: null, accessPolicyRef: null,
+      qualityProfile: null, qualityState: null, freshnessState: null, schemaRef: DPG_SCHEMA, ontologyRef: null,
+      correctionOf: null, supersedes: objectVersion > 1 ? `DPG:${packageId}@${objectVersion - 1}` : null, withdrawalReason: null, auditCorrelationId: correlationId, contentRef: null,
+      ...over,
+    });
   }
   private async admit(cap: PackageWrites, header: CanonicalHeader, payload: Row, noun: Noun, correlationId: string) {
     const check = validateHeader(header);
@@ -349,10 +352,10 @@ export class PackagesService implements OnModuleInit {
             confidence: Number(x['confidence']), evidence: x['evidence'], source_diversity: div, state, material: x['material'] === true,
             package: { package_key: key, version: Number(x['package_version']) }, approved_by: p.principalId, approved_at: await cap.now(),
           };
-          const header = { ...this.dpgHeader(t, d, assessmentId, objectVersion, String(pkg?.['owner_principal_id'] ?? p.principalId), p.principalId, env.purpose_id ?? 'intelligence', env.correlation_id, await cap.now()),
-            object_type: 'DAS', schema_ref: DAS_SCHEMA, method_ref: 'domain.assessment/1', supersedes: objectVersion > 1 ? `DAS:${assessmentId}@${objectVersion - 1}` : null,
-            evidence_refs: (x['evidence'] as Row[]).map((e) => `EVD:${String(e['id'])}@${String(e['version'])}`),
-            confidence: { value: Number(x['confidence']) }, quality_state: { source_diversity: div } } as CanonicalHeader;
+          const header = this.dpgHeader(t, d, assessmentId, objectVersion, String(pkg?.['owner_principal_id'] ?? p.principalId), p.principalId, env.purpose_id ?? 'intelligence', env.correlation_id, await cap.now(), {
+            objectType: 'DAS', schemaRef: DAS_SCHEMA, methodRef: 'domain.assessment/1', supersedes: objectVersion > 1 ? `DAS:${assessmentId}@${objectVersion - 1}` : null,
+            evidenceRefs: (x['evidence'] as Row[]).map((e) => `EVD:${String(e['id'])}@${String(e['version'])}`),
+            confidence: { value: Number(x['confidence']) }, qualityState: { source_diversity: div } });
           await this.admit(cap, header, payload, 'domain assessment', env.correlation_id);
         }
       }

@@ -50,6 +50,7 @@ import type { PredictionReads, ScenarioWrites, BranchWrites, IndicatorWrites, Ev
 import { SeriesService, dayOf, type AssembledSeries, type Reader } from '../series/series.service.js';
 import { foldControls, controlsOf, type Controls } from '../controls.js';
 import { scenarioBranchedEvent, scenarioCoherenceFailedEvent, type ScenarioCoherenceTrigger } from './scenario-events.js';
+import { buildHeader } from '../../objects/header-builder.js';
 
 /** B21 (0081, D9): the event of a check — ScenarioCoherenceFailed@v1 on a FAILED and CHANGED check, else nothing (a pass rides the check row). */
 function coherenceEventOf(check: Record<string, unknown>, trigger: ScenarioCoherenceTrigger, actor: string, occurredAt: string): OutboxRow | null {
@@ -274,20 +275,20 @@ export class ScenariosService {
       branches: branches.map((b) => branchPayload(b)),
       controls,
     };
-    const header: CanonicalHeader = {
-      object_id: scenarioId, object_type: 'SCN', tenant_id: ctx.tenantId, domain_id: ctx.domainId, scope: 'DOMAIN',
-      object_version: '1', lifecycle_state: 'active', owning_component: 'CP-PRD-01', accountable_owner: `principal:${intake.owner}`,
-      source_object_ids: intake.forecastId === null ? [] : [`FCT:${intake.forecastId}@1`],
-      event_time: null, observation_time: now, valid_from: null, valid_to: null, recorded_at: now,
-      time_precision: 'exact', source_clock_quality: 'trusted', truth_state: 'asserted', synthetic_state: controls.synthetic_state,
-      confidence: null, uncertainty: null, evidence_refs: intake.forecastId === null ? [] : [`forecast:${intake.forecastId}`],
-      provenance_ref: `principal:${intake.owner}`, method_ref: 'human-declaration@1.0.0',
-      contradiction_refs: [], corroboration_refs: [], human_refs: [`principal:${intake.owner}`], classification: controls.classification,
-      purpose_scope: purposeId, rights_profile: controls.rights_profile, residency_profile: controls.residency_profile,
-      retention_profile: controls.retention_profile, access_policy_ref: controls.access_policy_ref,
-      quality_profile: null, quality_state: null, freshness_state: null, schema_ref: 'SCN@v3', ontology_ref: null,
-      correction_of: null, supersedes: null, withdrawal_reason: null, audit_correlation_id: correlationId, content_ref: null,
-    };
+    const header: CanonicalHeader = buildHeader({
+      objectId: scenarioId, objectType: 'SCN', tenantId: ctx.tenantId, domainId: ctx.domainId, scope: 'DOMAIN',
+      objectVersion: '1', lifecycleState: 'active', owningComponent: 'CP-PRD-01', accountableOwner: `principal:${intake.owner}`,
+      sourceObjectIds: intake.forecastId === null ? [] : [`FCT:${intake.forecastId}@1`],
+      eventTime: null, observationTime: now, validFrom: null, validTo: null, recordedAt: now,
+      timePrecision: 'exact', sourceClockQuality: 'trusted', truthState: 'asserted', syntheticState: controls.synthetic_state,
+      confidence: null, uncertainty: null, evidenceRefs: intake.forecastId === null ? [] : [`forecast:${intake.forecastId}`],
+      provenanceRef: `principal:${intake.owner}`, methodRef: 'human-declaration@1.0.0',
+      contradictionRefs: [], corroborationRefs: [], humanRefs: [`principal:${intake.owner}`], classification: controls.classification,
+      purposeScope: purposeId, rightsProfile: controls.rights_profile, residencyProfile: controls.residency_profile,
+      retentionProfile: controls.retention_profile, accessPolicyRef: controls.access_policy_ref,
+      qualityProfile: null, qualityState: null, freshnessState: null, schemaRef: 'SCN@v3', ontologyRef: null,
+      correctionOf: null, supersedes: null, withdrawalReason: null, auditCorrelationId: correlationId, contentRef: null,
+    });
     const v = validateHeader(header);
     if (!v.ok) throw new HttpException(errorBody('EYE_REQ_001', correlationId, `scenario header invalid: ${(v.errors ?? []).join('; ')}`), 422);
     await cap.admitObject(header, payload, canonicalHeaderDigest(header, payload));
@@ -363,18 +364,18 @@ export class ScenariosService {
     const prevPayload = (p['payload'] ?? {}) as Record<string, unknown>;
     const payload = { ...prevPayload, branches: [...(Array.isArray(prevPayload['branches']) ? prevPayload['branches'] : []), branchPayload({ ...full, branchId })] };
     const now = new Date().toISOString();
-    const header: CanonicalHeader = {
-      object_id: c.scenarioId, object_type: 'SCN', tenant_id: ctx.tenantId, domain_id: ctx.domainId, scope: 'DOMAIN',
-      object_version: String(next), lifecycle_state: 'active', owning_component: String(p['owning_component'] ?? 'CP-PRD-01'), accountable_owner: String(p['accountable_owner']),
-      source_object_ids: arr(p['source_object_ids']), event_time: null, observation_time: now, valid_from: null, valid_to: null, recorded_at: now,
-      time_precision: 'exact', source_clock_quality: 'trusted', truth_state: 'asserted', synthetic_state: p['synthetic_state'] === true,
-      confidence: null, uncertainty: null, evidence_refs: arr(p['evidence_refs']), provenance_ref: `principal:${actor}`, method_ref: 'human-declaration@1.0.0',
-      contradiction_refs: [], corroboration_refs: [], human_refs: [...new Set([...arr(p['human_refs']), `principal:${actor}`])], classification: String(p['classification']),
-      purpose_scope: purposeId, rights_profile: strOrNull(p['rights_profile']), residency_profile: strOrNull(p['residency_profile']),
-      retention_profile: strOrNull(p['retention_profile']), access_policy_ref: strOrNull(p['access_policy_ref']),
-      quality_profile: null, quality_state: null, freshness_state: null, schema_ref: 'SCN@v3', ontology_ref: null,
-      correction_of: null, supersedes: `${c.scenarioId}@${current}`, withdrawal_reason: null, audit_correlation_id: correlationId, content_ref: null,
-    };
+    const header: CanonicalHeader = buildHeader({
+      objectId: c.scenarioId, objectType: 'SCN', tenantId: ctx.tenantId, domainId: ctx.domainId, scope: 'DOMAIN',
+      objectVersion: String(next), lifecycleState: 'active', owningComponent: String(p['owning_component'] ?? 'CP-PRD-01'), accountableOwner: String(p['accountable_owner']),
+      sourceObjectIds: arr(p['source_object_ids']), eventTime: null, observationTime: now, validFrom: null, validTo: null, recordedAt: now,
+      timePrecision: 'exact', sourceClockQuality: 'trusted', truthState: 'asserted', syntheticState: p['synthetic_state'] === true,
+      confidence: null, uncertainty: null, evidenceRefs: arr(p['evidence_refs']), provenanceRef: `principal:${actor}`, methodRef: 'human-declaration@1.0.0',
+      contradictionRefs: [], corroborationRefs: [], humanRefs: [...new Set([...arr(p['human_refs']), `principal:${actor}`])], classification: String(p['classification']),
+      purposeScope: purposeId, rightsProfile: strOrNull(p['rights_profile']), residencyProfile: strOrNull(p['residency_profile']),
+      retentionProfile: strOrNull(p['retention_profile']), accessPolicyRef: strOrNull(p['access_policy_ref']),
+      qualityProfile: null, qualityState: null, freshnessState: null, schemaRef: 'SCN@v3', ontologyRef: null,
+      correctionOf: null, supersedes: `${c.scenarioId}@${current}`, withdrawalReason: null, auditCorrelationId: correlationId, contentRef: null,
+    });
     const v = validateHeader(header);
     if (!v.ok) throw new HttpException(errorBody('EYE_REQ_001', correlationId, `scenario header invalid: ${(v.errors ?? []).join('; ')}`), 422);
     try {
@@ -597,22 +598,22 @@ export class ScenariosService {
       level: { value: lvl.level, version: lvl.version, urgency: lvl.urgency, response: lvl.response, impact: lvl.impact },
       authority: { op_class: opClass },
     };
-    const header: CanonicalHeader = {
-      object_id: warningId, object_type: 'WRN', tenant_id: ctx.tenantId, domain_id: ctx.domainId, scope: 'DOMAIN',
-      object_version: '1', lifecycle_state: 'active', owning_component: 'CP-PRD-01', accountable_owner: `principal:${routedTo}`,
+    const header: CanonicalHeader = buildHeader({
+      objectId: warningId, objectType: 'WRN', tenantId: ctx.tenantId, domainId: ctx.domainId, scope: 'DOMAIN',
+      objectVersion: '1', lifecycleState: 'active', owningComponent: 'CP-PRD-01', accountableOwner: `principal:${routedTo}`,
       // B23 (0084): the scenario VERSION the warning rests on is the tree's current one (a branched scenario stands above v1).
-      source_object_ids: [`EVD:${flip.evidenceObjectId}@${flip.evidenceVersion}`, `SCN:${String(branch['scenario_id'])}@${Number(scenario?.['current_version'] ?? 1)}`],
-      event_time: `${flip.observationAt}T00:00:00.000Z`, observation_time: raisedAsOf, valid_from: raisedAsOf, valid_to: closesAt,
-      recorded_at: recordedAt, time_precision: 'exact', source_clock_quality: 'trusted', truth_state: 'inferred',
-      synthetic_state: controls.synthetic_state, confidence: { value: confidence }, uncertainty: null,
-      evidence_refs: [`EVD:${flip.evidenceObjectId}@${flip.evidenceVersion}`, `flip:${flip.flipEventId}`],
-      provenance_ref: `branch:${flip.branchId}`, method_ref: 'indicator-breach@1.0.0',
-      contradiction_refs: [], corroboration_refs: [], human_refs: [], classification: controls.classification, purpose_scope: purposeId,
-      rights_profile: controls.rights_profile, residency_profile: controls.residency_profile, retention_profile: controls.retention_profile,
-      access_policy_ref: controls.access_policy_ref, quality_profile: null,
-      quality_state: null, freshness_state: null, schema_ref: 'WRN@v2', ontology_ref: null, correction_of: null,
-      supersedes: null, withdrawal_reason: null, audit_correlation_id: correlationId, content_ref: null,
-    };
+      sourceObjectIds: [`EVD:${flip.evidenceObjectId}@${flip.evidenceVersion}`, `SCN:${String(branch['scenario_id'])}@${Number(scenario?.['current_version'] ?? 1)}`],
+      eventTime: `${flip.observationAt}T00:00:00.000Z`, observationTime: raisedAsOf, validFrom: raisedAsOf, validTo: closesAt,
+      recordedAt: recordedAt, timePrecision: 'exact', sourceClockQuality: 'trusted', truthState: 'inferred',
+      syntheticState: controls.synthetic_state, confidence: { value: confidence }, uncertainty: null,
+      evidenceRefs: [`EVD:${flip.evidenceObjectId}@${flip.evidenceVersion}`, `flip:${flip.flipEventId}`],
+      provenanceRef: `branch:${flip.branchId}`, methodRef: 'indicator-breach@1.0.0',
+      contradictionRefs: [], corroborationRefs: [], humanRefs: [], classification: controls.classification, purposeScope: purposeId,
+      rightsProfile: controls.rights_profile, residencyProfile: controls.residency_profile, retentionProfile: controls.retention_profile,
+      accessPolicyRef: controls.access_policy_ref, qualityProfile: null,
+      qualityState: null, freshnessState: null, schemaRef: 'WRN@v2', ontologyRef: null, correctionOf: null,
+      supersedes: null, withdrawalReason: null, auditCorrelationId: correlationId, contentRef: null,
+    });
     const v = validateHeader(header);
     if (!v.ok) throw new HttpException(errorBody('EYE_REQ_001', correlationId, `warning header invalid: ${(v.errors ?? []).join('; ')}`), 422);
     await cap.admitObject(header, payload, canonicalHeaderDigest(header, payload));

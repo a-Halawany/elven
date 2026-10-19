@@ -29,6 +29,7 @@ import { ModelGatewayService, extractionIdentityOf, type ExtractedClaim,
   type GatewayRequest } from '../gateway/model-gateway.service.js';
 import { ContradictionService, type Conflict } from '../contradictions/contradiction.service.js';
 import { reviewRequestedEvent } from '../review/review-events.js';
+import { buildHeader } from '../../objects/header-builder.js';
 
 const sha256 = (s: string | Buffer): string =>
   createHash('sha256').update(typeof s === 'string' ? Buffer.from(s, 'utf8') : s).digest('hex');
@@ -325,63 +326,63 @@ export class ExtractionService {
         },
       };
 
-      const header: CanonicalHeader = {
-        object_id: objectId,
-        object_type: objectType,
-        tenant_id: ctx.tenantId,
-        domain_id: ctx.domainId,
+      const header: CanonicalHeader = buildHeader({
+        objectId: objectId,
+        objectType: objectType,
+        tenantId: ctx.tenantId,
+        domainId: ctx.domainId,
         scope: 'DOMAIN',
-        object_version: '1',
-        lifecycle_state: 'active',
-        owning_component: 'CP-INT-01',
-        accountable_owner: `agent:${a.agentPrincipalId}`,
-        source_object_ids: [a.unit.evdObjectId, ...(a.unit.obsObjectId === null ? [] : [a.unit.obsObjectId])],
+        objectVersion: '1',
+        lifecycleState: 'active',
+        owningComponent: 'CP-INT-01',
+        accountableOwner: `agent:${a.agentPrincipalId}`,
+        sourceObjectIds: [a.unit.evdObjectId, ...(a.unit.obsObjectId === null ? [] : [a.unit.obsObjectId])],
         // A claim inherits the PUBLISHER'S time from the evidence it read. It does
         // not invent one, and it does not claim the extraction instant is when the
         // thing happened.
-        event_time: a.unit.eventTime,
-        observation_time: now,
-        valid_from: null,
-        valid_to: null,
-        recorded_at: now,
-        time_precision: 'exact',
-        source_clock_quality: 'unknown',
+        eventTime: a.unit.eventTime,
+        observationTime: now,
+        validFrom: null,
+        validTo: null,
+        recordedAt: now,
+        timePrecision: 'exact',
+        sourceClockQuality: 'unknown',
         // An extracted claim is EXTRACTED, never observed. The truth state says so,
         // using the constitutional value rather than a word of our own.
-        truth_state: 'extracted',
+        truthState: 'extracted',
         // INHERITED, NOT ASSUMED (ES-29-002). A claim about a synthetic world is
         // synthetic; replay mode says nothing about that either way.
-        synthetic_state: a.unit.inherited.syntheticState,
+        syntheticState: a.unit.inherited.syntheticState,
         // The header's confidence is a STRUCTURED claim about how the number was
         // arrived at, not a bare number: method, scale and value travel together.
         confidence: { method: a.pin.method_key, scale: 'unit_interval',
                       value: c.confidence, calibration_ref: null },
         uncertainty: null,
-        evidence_refs: [`EVD:${a.unit.evdObjectId}`, `call:${result.callId}`],
-        provenance_ref: `SRC:${a.unit.sourceId}@extraction:${a.pin.method_key}`,
-        method_ref: `${a.pin.method_key}@${a.pin.prompt_version}/${a.pin.model_id}#${a.pin.gateway_mode}`,
-        contradiction_refs: conflicts.map((x) => `${x.objectType}:${x.objectId}@${x.version}`),
-        corroboration_refs: [],
-        human_refs: [],
+        evidenceRefs: [`EVD:${a.unit.evdObjectId}`, `call:${result.callId}`],
+        provenanceRef: `SRC:${a.unit.sourceId}@extraction:${a.pin.method_key}`,
+        methodRef: `${a.pin.method_key}@${a.pin.prompt_version}/${a.pin.model_id}#${a.pin.gateway_mode}`,
+        contradictionRefs: conflicts.map((x) => `${x.objectType}:${x.objectId}@${x.version}`),
+        corroborationRefs: [],
+        humanRefs: [],
         classification: a.unit.inherited.classification,
-        purpose_scope: a.purposeId,
-        rights_profile: a.unit.inherited.rightsProfile,
-        residency_profile: a.unit.inherited.residencyProfile,
-        retention_profile: a.unit.inherited.retentionProfile,
-        access_policy_ref: a.unit.inherited.accessPolicyRef,
-        quality_profile: null,
-        quality_state: null,
-        freshness_state: null,
+        purposeScope: a.purposeId,
+        rightsProfile: a.unit.inherited.rightsProfile,
+        residencyProfile: a.unit.inherited.residencyProfile,
+        retentionProfile: a.unit.inherited.retentionProfile,
+        accessPolicyRef: a.unit.inherited.accessPolicyRef,
+        qualityProfile: null,
+        qualityState: null,
+        freshnessState: null,
         // CLM@v1 is Phase 0's generic claim schema and is not ours; the Phase 2
         // claim schema is CLM@v2. The four types Phase 2 introduces take v1.
-        schema_ref: `${objectType}@${objectType === 'CLM' ? 'v2' : 'v1'}`,
-        ontology_ref: null,
-        correction_of: null,
+        schemaRef: `${objectType}@${objectType === 'CLM' ? 'v2' : 'v1'}`,
+        ontologyRef: null,
+        correctionOf: null,
         supersedes: null,
-        withdrawal_reason: null,
-        audit_correlation_id: a.correlationId,
-        content_ref: null,
-      };
+        withdrawalReason: null,
+        auditCorrelationId: a.correlationId,
+        contentRef: null,
+      });
       const v = validateHeader(header);
       if (!v.ok) {
         throw new HttpException(

@@ -81,6 +81,7 @@ import type { BindWrites, ProbeWrites, ReinstateWrites } from '../simulation.cap
 /* B30 experiments */
 import { isFabricChunkable } from './fabric/fabric-plan.js';
 import { reexecuteFabricExperiment } from './fabric/fabric-executor.js';
+import { buildHeader } from '../../objects/header-builder.js';
 /* end B30 experiments */
 
 const sha256 = (s: string): string => createHash('sha256').update(s).digest('hex');
@@ -650,19 +651,19 @@ export class SimulationService {
       totals: outputs.summary, sensitivity: { relative: 0, carrying: [] }, outside_envelope: outsideEnvelope, validation_status: r['validation_status'], inherited_validation: [],
       operator: `principal:${String(r['operator_principal_id'])}`,
     };
-    const header: CanonicalHeader = {
-      object_id: runId, object_type: 'SIM', tenant_id: ctx.tenantId, domain_id: ctx.domainId, scope: 'DOMAIN', object_version: '1', lifecycle_state: 'active',
-      owning_component: 'CP-SIM-01', accountable_owner: `principal:${String(r['operator_principal_id'])}`,
-      source_object_ids: [`TWN:${String(r['twin_id'])}@${String(r['twin_version'])}`, ...(scenarioId === null ? [] : [`SCN:${scenarioId}@${String(scenarioVersion)}`])],
-      event_time: null, observation_time: null, valid_from: null, valid_to: null, recorded_at: now, time_precision: 'exact', source_clock_quality: 'trusted',
-      truth_state: 'synthetic', synthetic_state: true, confidence: null, uncertainty: null,
-      evidence_refs: [], provenance_ref: `twin:${String(r['twin_id'])}@${String(r['twin_version'])}`, method_ref: `${String(r['model_ref'])}#${String(r['implementation_digest']).slice(0, 16)}`,
-      contradiction_refs: [], corroboration_refs: [], human_refs: [`principal:${String(r['operator_principal_id'])}`],
-      classification: controls.classification, purpose_scope: purposeId, rights_profile: controls.rights_profile, residency_profile: controls.residency_profile,
-      retention_profile: controls.retention_profile, access_policy_ref: controls.access_policy_ref, quality_profile: null,
-      quality_state: { validation: r['validation_status'], outside_envelope: outsideEnvelope, shock_basis: r['shock_basis'], method: r['model_ref'] }, freshness_state: null, schema_ref: 'SIM@v2', ontology_ref: null,
-      correction_of: r['corrects_run_id'] ? `SIM:${String(r['corrects_run_id'])}@1` : null, supersedes: null, withdrawal_reason: null, audit_correlation_id: correlationId, content_ref: null,
-    };
+    const header: CanonicalHeader = buildHeader({
+      objectId: runId, objectType: 'SIM', tenantId: ctx.tenantId, domainId: ctx.domainId, scope: 'DOMAIN', objectVersion: '1', lifecycleState: 'active',
+      owningComponent: 'CP-SIM-01', accountableOwner: `principal:${String(r['operator_principal_id'])}`,
+      sourceObjectIds: [`TWN:${String(r['twin_id'])}@${String(r['twin_version'])}`, ...(scenarioId === null ? [] : [`SCN:${scenarioId}@${String(scenarioVersion)}`])],
+      eventTime: null, observationTime: null, validFrom: null, validTo: null, recordedAt: now, timePrecision: 'exact', sourceClockQuality: 'trusted',
+      truthState: 'synthetic', syntheticState: true, confidence: null, uncertainty: null,
+      evidenceRefs: [], provenanceRef: `twin:${String(r['twin_id'])}@${String(r['twin_version'])}`, methodRef: `${String(r['model_ref'])}#${String(r['implementation_digest']).slice(0, 16)}`,
+      contradictionRefs: [], corroborationRefs: [], humanRefs: [`principal:${String(r['operator_principal_id'])}`],
+      classification: controls.classification, purposeScope: purposeId, rightsProfile: controls.rights_profile, residencyProfile: controls.residency_profile,
+      retentionProfile: controls.retention_profile, accessPolicyRef: controls.access_policy_ref, qualityProfile: null,
+      qualityState: { validation: r['validation_status'], outside_envelope: outsideEnvelope, shock_basis: r['shock_basis'], method: r['model_ref'] }, freshnessState: null, schemaRef: 'SIM@v2', ontologyRef: null,
+      correctionOf: r['corrects_run_id'] ? `SIM:${String(r['corrects_run_id'])}@1` : null, supersedes: null, withdrawalReason: null, auditCorrelationId: correlationId, contentRef: null,
+    });
     const check = validateHeader(header);
     if (!check.ok) throw new HttpException(errorBody('EYE_REQ_001', correlationId, `simulation header invalid: ${(check.errors ?? []).join('; ')}`), 422);
     const headerDigest = canonicalHeaderDigest(header, payload);
@@ -1006,20 +1007,20 @@ export class SimulationService {
         totals: outputs.totals, sensitivity: { relative: sensitivity.relative, carrying: sensitivity.factors.slice(0, 3).map((f) => ({ key: f['key'], cost_spread: f['cost_spread'] })) },
         outside_envelope: sensitivity.outside_envelope, validation_status: r['validation_status'], inherited_validation: inherited, operator: `principal:${String(r['operator_principal_id'])}`,
       };
-      const header: CanonicalHeader = {
-        object_id: runId, object_type: 'SIM', tenant_id: ctx.tenantId, domain_id: ctx.domainId, scope: 'DOMAIN', object_version: '1', lifecycle_state: 'active',
-        owning_component: 'CP-SIM-01', accountable_owner: `principal:${String(r['operator_principal_id'])}`,
-        source_object_ids: [`TWN:${String(r['twin_id'])}@${String(r['twin_version'])}`, ...(r['control_run_id'] ? [`SIM:${String(r['control_run_id'])}@1`] : []),
+      const header: CanonicalHeader = buildHeader({
+        objectId: runId, objectType: 'SIM', tenantId: ctx.tenantId, domainId: ctx.domainId, scope: 'DOMAIN', objectVersion: '1', lifecycleState: 'active',
+        owningComponent: 'CP-SIM-01', accountableOwner: `principal:${String(r['operator_principal_id'])}`,
+        sourceObjectIds: [`TWN:${String(r['twin_id'])}@${String(r['twin_version'])}`, ...(r['control_run_id'] ? [`SIM:${String(r['control_run_id'])}@1`] : []),
                             ...(scenarioId === null ? [] : [`SCN:${scenarioId}@${String(scenarioVersion)}`])],
-        event_time: null, observation_time: null, valid_from: null, valid_to: null, recorded_at: now, time_precision: 'exact', source_clock_quality: 'trusted',
-        truth_state: 'synthetic', synthetic_state: true, confidence: null, uncertainty: null,
-        evidence_refs: [], provenance_ref: `twin:${String(r['twin_id'])}@${String(r['twin_version'])}`, method_ref: `${String(r['model_ref'])}#${String(r['implementation_digest']).slice(0, 16)}`,
-        contradiction_refs: [], corroboration_refs: [], human_refs: [`principal:${String(r['operator_principal_id'])}`],
-        classification: controls.classification, purpose_scope: purposeId, rights_profile: controls.rights_profile, residency_profile: controls.residency_profile,
-        retention_profile: controls.retention_profile, access_policy_ref: controls.access_policy_ref, quality_profile: null,
-        quality_state: { validation: r['validation_status'], outside_envelope: sensitivity.outside_envelope, shock_basis: r['shock_basis'] }, freshness_state: null, schema_ref: 'SIM@v2', ontology_ref: null,
-        correction_of: r['corrects_run_id'] ? `SIM:${String(r['corrects_run_id'])}@1` : null, supersedes: null, withdrawal_reason: null, audit_correlation_id: correlationId, content_ref: null,
-      };
+        eventTime: null, observationTime: null, validFrom: null, validTo: null, recordedAt: now, timePrecision: 'exact', sourceClockQuality: 'trusted',
+        truthState: 'synthetic', syntheticState: true, confidence: null, uncertainty: null,
+        evidenceRefs: [], provenanceRef: `twin:${String(r['twin_id'])}@${String(r['twin_version'])}`, methodRef: `${String(r['model_ref'])}#${String(r['implementation_digest']).slice(0, 16)}`,
+        contradictionRefs: [], corroborationRefs: [], humanRefs: [`principal:${String(r['operator_principal_id'])}`],
+        classification: controls.classification, purposeScope: purposeId, rightsProfile: controls.rights_profile, residencyProfile: controls.residency_profile,
+        retentionProfile: controls.retention_profile, accessPolicyRef: controls.access_policy_ref, qualityProfile: null,
+        qualityState: { validation: r['validation_status'], outside_envelope: sensitivity.outside_envelope, shock_basis: r['shock_basis'] }, freshnessState: null, schemaRef: 'SIM@v2', ontologyRef: null,
+        correctionOf: r['corrects_run_id'] ? `SIM:${String(r['corrects_run_id'])}@1` : null, supersedes: null, withdrawalReason: null, auditCorrelationId: correlationId, contentRef: null,
+      });
       const check = validateHeader(header);
       if (!check.ok) throw new HttpException(errorBody('EYE_REQ_001', correlationId, `simulation header invalid: ${(check.errors ?? []).join('; ')}`), 422);
       const headerDigest = canonicalHeaderDigest(header, payload);

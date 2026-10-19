@@ -687,6 +687,37 @@ for db in $(jq -r '.databases[]' "$MANIFEST"); do
   done
 done
 
+# B50 §HD (ES-25-003): THE SCOPES — every tenant / domain the manifest recorded is verified on the restored database: its canonical
+# objects, audit events and blob manifests, and each of its audit partitions' head sequence, within the capture window (a bundle made
+# before B50 carries no scopes and is verified per database only, as before).
+SCOPE_FACTS_SQL="$(cat "$REPO/scripts/ops/lib/scope-facts.sql")"
+for db in $(jq -r '.databases[]' "$MANIFEST"); do
+  if [[ "$(jq -r --arg db "$db" '.database_facts.before_dump[$db].scopes | type' "$MANIFEST")" != "array" ]]; then
+    say "  $db: the manifest records no per-scope facts (a bundle made before B50) — verified per database only"; continue
+  fi
+  got_scopes="$(rpsq "$db" "select ($SCOPE_FACTS_SQL)::text")"
+  while IFS= read -r line; do
+    sk="$(jq -r '"\(.tenant_id // "platform")/\(.domain_id // "-")"' <<<"$line")"
+    for key in canonical_objects audit_events blob_manifests; do
+      b="$(jq -r --arg k "$key" '.[$k]' <<<"$line")"
+      a="$(jq -r --arg db "$db" --arg t "$(jq -r '.tenant_id // ""' <<<"$line")" --arg d "$(jq -r '.domain_id // ""' <<<"$line")" --arg k "$key" \
+            '[.database_facts.after_dump[$db].scopes[]? | select((.tenant_id // "") == $t and (.domain_id // "") == $d)][0][$k] // empty' "$MANIFEST")"
+      [[ -n "$a" ]] || a="$b"
+      g="$(jq -r --arg t "$(jq -r '.tenant_id // ""' <<<"$line")" --arg d "$(jq -r '.domain_id // ""' <<<"$line")" --arg k "$key" \
+            '[.[] | select((.tenant_id // "") == $t and (.domain_id // "") == $d)][0][$k] // 0' <<<"$got_scopes")"
+      if [[ "$g" -ge "$b" && "$g" -le "$a" ]]; then check true "$db scope $sk.$key = $g (window [$b, $a])"
+      else check false "$db scope $sk.$key = $g (manifest before=$b after=$a)"; fi
+    done
+    while IFS=$'\t' read -r part seq; do
+      [[ -n "$part" ]] || continue
+      g="$(jq -r --arg t "$(jq -r '.tenant_id // ""' <<<"$line")" --arg d "$(jq -r '.domain_id // ""' <<<"$line")" --arg p "$part" \
+            '[.[] | select((.tenant_id // "") == $t and (.domain_id // "") == $d)][0].audit_heads[$p] // -1' <<<"$got_scopes")"
+      if [[ "$g" -ge "$seq" ]]; then check true "$db scope $sk audit head $part reaches $g (recorded $seq)"
+      else check false "$db scope $sk audit head $part = $g, below the recorded $seq"; fi
+    done < <(jq -r '.audit_heads | to_entries[] | "\(.key)\t\(.value)"' <<<"$line")
+  done < <(jq -c --arg db "$db" '.database_facts.before_dump[$db].scopes[]' "$MANIFEST")
+done
+
 # SCHEMA COMPATIBILITY OF THE ARTIFACT (R4). The fourth drill started an artifact built
 # at ef85a12 over a database whose newest migration (0051) required a source run lease
 # the artifact had never heard of: the reconstructed scheduled attempt was refused for

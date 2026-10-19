@@ -1,19 +1,45 @@
-'use client';
 /**
- * CP-6 B50 — THE KNOWLEDGE-CORE COMPONENTS of the shared library (one file; B107's inventory reads `^apps/web/components/[^/]+\.tsx$`). Each part
- * of B50 writes ONLY its own marked block (`/* B50 <part> *\/ … /* end B50 <part> *\/`) and exports the names lib/b50-seams.ts LIBRARY_B50
- * declares for it; the blocks are folded at integration. They render what the parts' pure models decide; they call no port; every
- * consequential act stays behind its page's Command Review. They arrive `proposed` (the DSA approves them in the act). Tokens only; logical
- * properties (RTL mirrors); state is never colour alone (a glyph and a word). CONSTRUCTION — the walk demonstrates; nothing here is accepted.
+ * B50 — THE KNOWLEDGE CORE's library components (B107's inventory reads top-level components/*.tsx; LIBRARY_B50 in lib/b50-seams.ts
+ * declares each part's exports). One marked block per part (§HD, §LC, §PV, §CI, §CL, §TL), folded by the integrator; each arrives
+ * `proposed` and the DSA approves it in the act. The decisions are each part's pure model (lib/<name>-b50.ts); a component only renders.
  */
+import { PRE_B50, fieldText, timeValueText } from '../lib/header-b50';
+import { type AffectedProduct, type DeclaredAbsence, type TimeValue } from '../lib/b50-seams';
 import Link from 'next/link';
 import { Timestamp } from './text';
 import { attemptRows, attemptWords, lifecycleFromProfile, replayInstants, type ServerProfile } from '../lib/lifecycle-b50';
 import { type ReactNode } from 'react';
 import { boundaryCoverage, completenessNote, explainPath, fitnessNote, nodeLine, outcomeSummary, type ExplainView, type FitnessView } from '../lib/provenance-b50';
 import { classSummary, classWord, groupByBucket, pathText, summaryLine } from '../lib/impact-b50';
-import { type AffectedProduct } from '../lib/b50-seams';
 import { Td, Th, tableStyle } from './ui';
+
+/* B50 hd */
+/* §HD (F-P3-01; ES-05-001, ES-26-001/-004) — the TIME VALUE text role and the DECLARED ABSENCE text role: what a header carries, in the
+   record's own words (lib/header-b50.ts). A time is stated with its kind, bounds (the days they name, in the zone they were stated in),
+   precision, zone and source — an unknown, recurring or conflicting time says so and is never shown as an instant. An absence is shown
+   with its state and reason — never blank, never "unresolved"; a version recorded before B50 says so. Both are plain text roles on the
+   type tokens (.eye-text-*): no colour carries the meaning, so forced-colors and 200% zoom keep it; logical properties only. */
+
+export function TimeValueText({ value, label }: { value: TimeValue; label?: string }) {
+  const text = timeValueText(value);
+  const instant = value.kind === 'exact' || value.kind === 'approximate' ? value.instant ?? null : value.kind === 'bounded' ? value.earliest ?? null : null;
+  return (
+    <span className="eye-text-timestamp" data-time-kind={value.kind} aria-label={label === undefined ? text : `${label}: ${text}`}>
+      {instant !== null && value.kind !== 'bounded' ? <time dateTime={instant}>{text}</time> : text}
+    </span>
+  );
+}
+
+/** A header field that carries no value: its declared absence in words, or "recorded before B50 — not populated" (`absence` null). */
+export function DeclaredAbsenceText({ absence, field }: { absence: DeclaredAbsence | null; field?: string }) {
+  const text = absence === null ? PRE_B50 : fieldText({ kind: 'absent', absence });
+  return (
+    <span className="eye-text-fact" data-absence={absence === null ? 'pre_b50' : absence.state} aria-label={field === undefined ? text : `${field}: ${text}`}>
+      {text}
+    </span>
+  );
+}
+/* end B50 hd */
 
 /* B50 lc */
 /* §LC (F-P3-02: PR-06-002/005, ADR-006) — the work-object lifecycle:

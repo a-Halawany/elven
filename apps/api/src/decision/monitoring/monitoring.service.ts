@@ -15,6 +15,7 @@ import type { CloseWrites, DecisionReads, MonitorWrites, OutcomeWrites } from '.
 import { foldControls, type ControlInput } from '../../prediction/controls.js';
 import { unfoldProfiles } from '../packages/package.service.js';
 import { versionControls } from '../approvals/approval.service.js';
+import { buildHeader } from '../../objects/header-builder.js';
 
 const bad = (correlationId: string, msg: string): never => { throw new HttpException(errorBody('EYE_REQ_001', correlationId, msg), 422); };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -74,18 +75,18 @@ export class MonitoringService {
       metrics: { package_id: packageId, package_version: version, criterion, observed_value: value, met, observed_on: { twin_id: intake.twinId, version: intake.twinVersion, key: intake.elementKey },
                  reconciliation: rec === undefined ? null : { reconciliation_id: String(rec['reconciliation_id']), from_version: rec['from_version'], against_version: rec['against_version'], from_value: rec['from_value'], against_value: rec['against_value'], difference: rec['difference'] } },
     };
-    const header: CanonicalHeader = {
-      object_id: outcomeId, object_type: 'OUT', tenant_id: ctx.tenantId, domain_id: ctx.domainId, scope: 'DOMAIN', object_version: '1', lifecycle_state: 'active',
-      owning_component: 'CP-DEC-01', accountable_owner: `principal:${actor}`,
-      source_object_ids: [`DPK:${packageId}@${version}`, `CMT:${String(commitment['commitment_id'])}@1`, `TWN:${intake.twinId}@${intake.twinVersion}`],
-      event_time: typeof criterion['by'] === 'string' ? `${String(criterion['by']).slice(0, 10)}T00:00:00.000Z` : null, observation_time: now, valid_from: null, valid_to: null, recorded_at: now,
-      time_precision: 'day', source_clock_quality: 'trusted', truth_state: 'observed', synthetic_state: controls.synthetic_state, confidence: null, uncertainty: null,
-      evidence_refs: ((element['citations'] as Array<{ kind: string; id: string; version?: number }>) ?? []).filter((c) => c.kind === 'evidence').map((c) => `EVD:${c.id}@${c.version ?? 1}`),
-      provenance_ref: `principal:${actor}`, method_ref: 'decision-outcome@1.0.0', contradiction_refs: [], corroboration_refs: [], human_refs: [`principal:${actor}`],
-      classification: controls.classification, purpose_scope: purposeId, rights_profile: controls.rights_profile, residency_profile: controls.residency_profile, retention_profile: controls.retention_profile, access_policy_ref: controls.access_policy_ref,
-      quality_profile: null, quality_state: { met, reconciled: rec !== undefined, controls_inputs: controls.inputs }, freshness_state: null, schema_ref: 'OUT@v1', ontology_ref: null,
-      correction_of: null, supersedes: null, withdrawal_reason: null, audit_correlation_id: correlationId, content_ref: null,
-    };
+    const header: CanonicalHeader = buildHeader({
+      objectId: outcomeId, objectType: 'OUT', tenantId: ctx.tenantId, domainId: ctx.domainId, scope: 'DOMAIN', objectVersion: '1', lifecycleState: 'active',
+      owningComponent: 'CP-DEC-01', accountableOwner: `principal:${actor}`,
+      sourceObjectIds: [`DPK:${packageId}@${version}`, `CMT:${String(commitment['commitment_id'])}@1`, `TWN:${intake.twinId}@${intake.twinVersion}`],
+      eventTime: typeof criterion['by'] === 'string' ? `${String(criterion['by']).slice(0, 10)}T00:00:00.000Z` : null, observationTime: now, validFrom: null, validTo: null, recordedAt: now,
+      timePrecision: 'day', sourceClockQuality: 'trusted', truthState: 'observed', syntheticState: controls.synthetic_state, confidence: null, uncertainty: null,
+      evidenceRefs: ((element['citations'] as Array<{ kind: string; id: string; version?: number }>) ?? []).filter((c) => c.kind === 'evidence').map((c) => `EVD:${c.id}@${c.version ?? 1}`),
+      provenanceRef: `principal:${actor}`, methodRef: 'decision-outcome@1.0.0', contradictionRefs: [], corroborationRefs: [], humanRefs: [`principal:${actor}`],
+      classification: controls.classification, purposeScope: purposeId, rightsProfile: controls.rights_profile, residencyProfile: controls.residency_profile, retentionProfile: controls.retention_profile, accessPolicyRef: controls.access_policy_ref,
+      qualityProfile: null, qualityState: { met, reconciled: rec !== undefined, controls_inputs: controls.inputs }, freshnessState: null, schemaRef: 'OUT@v1', ontologyRef: null,
+      correctionOf: null, supersedes: null, withdrawalReason: null, auditCorrelationId: correlationId, contentRef: null,
+    });
     const check = validateHeader(header);
     if (!check.ok) bad(correlationId, `outcome header invalid: ${(check.errors ?? []).join('; ')}`);
     const headerDigest = canonicalHeaderDigest(header, payload);

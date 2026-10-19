@@ -20,6 +20,7 @@ import { canonicalHeaderDigest, errorBody, validateHeader, type CanonicalHeader 
 import { AttentionTickRegistry, type AttentionTickContext } from '../attention/tick.js';
 import { SignatureService } from '../signatures/signature.service.js';
 import { PlanningCapability, type InitiativeWrites, type PlanWrites, type PlanningReads } from './planning.capabilities.js';
+import { buildHeader } from '../../objects/header-builder.js';
 
 export const PLAN_VARIANCE_STEP = 'plan-variance';
 export const PLAN_VARIANCE_ORDER = 55;
@@ -178,15 +179,15 @@ export class PlanningService implements OnModuleInit {
     const now = await cap.now();
     const snapshot = (v['snapshot'] ?? {}) as Row;
     const payload: Row = { ...snapshot, version, baseline_digest: digest };
-    const header: CanonicalHeader = {
-      object_id: a.planId, object_type: 'PLN', tenant_id: a.tenantId, domain_id: a.domainId, scope: 'DOMAIN', object_version: String(version), lifecycle_state: 'active',
-      owning_component: 'CP-EXE-01', accountable_owner: `principal:${a.actor}`, source_object_ids: [], event_time: null, observation_time: now, valid_from: now, valid_to: null,
-      recorded_at: now, time_precision: 'exact', source_clock_quality: 'trusted', truth_state: 'decided', synthetic_state: false, confidence: null, uncertainty: null,
-      evidence_refs: [], provenance_ref: `principal:${a.actor}`, method_ref: 'plan-baseline@1.0.0', contradiction_refs: [], corroboration_refs: [], human_refs: [`principal:${a.actor}`],
-      classification: String(snapshot['classification'] ?? 'internal'), purpose_scope: a.purposeId, rights_profile: null, residency_profile: null, retention_profile: null, access_policy_ref: null,
-      quality_profile: null, quality_state: null, freshness_state: null, schema_ref: 'PLN@v1', ontology_ref: null, correction_of: null,
-      supersedes: version > 1 ? `${a.planId}@${version - 1}` : null, withdrawal_reason: null, audit_correlation_id: a.correlationId, content_ref: null,
-    };
+    const header: CanonicalHeader = buildHeader({
+      objectId: a.planId, objectType: 'PLN', tenantId: a.tenantId, domainId: a.domainId, scope: 'DOMAIN', objectVersion: String(version), lifecycleState: 'active',
+      owningComponent: 'CP-EXE-01', accountableOwner: `principal:${a.actor}`, sourceObjectIds: [], eventTime: null, observationTime: now, validFrom: now, validTo: null,
+      recordedAt: now, timePrecision: 'exact', sourceClockQuality: 'trusted', truthState: 'decided', syntheticState: false, confidence: null, uncertainty: null,
+      evidenceRefs: [], provenanceRef: `principal:${a.actor}`, methodRef: 'plan-baseline@1.0.0', contradictionRefs: [], corroborationRefs: [], humanRefs: [`principal:${a.actor}`],
+      classification: String(snapshot['classification'] ?? 'internal'), purposeScope: a.purposeId, rightsProfile: null, residencyProfile: null, retentionProfile: null, accessPolicyRef: null,
+      qualityProfile: null, qualityState: null, freshnessState: null, schemaRef: 'PLN@v1', ontologyRef: null, correctionOf: null,
+      supersedes: version > 1 ? `${a.planId}@${version - 1}` : null, withdrawalReason: null, auditCorrelationId: a.correlationId, contentRef: null,
+    });
     const ok = validateHeader(header);
     if (!ok.ok) throw new HttpException(errorBody('EYE_REQ_001', a.correlationId, `plan header invalid: ${(ok.errors ?? []).join('; ')}`), 422);
     const admitted = await cap.admitObject(header, payload, canonicalHeaderDigest(header, payload));
@@ -207,17 +208,17 @@ export class PlanningService implements OnModuleInit {
     const metrics = (typeof prior.payload['metrics'] === 'object' && prior.payload['metrics'] !== null ? prior.payload['metrics'] : {}) as Row;
     const payload: Row = { ...prior.payload, metrics: { ...metrics, planning: { plan_id: r['plan_id'], initiative_id: a.initiativeId, state: 'approved', sponsor: r['sponsor_principal_id'], owner: r['owner_principal_id'],
       funded_amount: r['funded_amount'], priority: r['priority'], approved_by: a.actor, approved_at: r['approved_at'], rationale: a.rationale, planning_version: r['version'], planning_digest: r['digest'] } } };
-    const header: CanonicalHeader = {
-      object_id: a.initiativeId, object_type: 'INI', tenant_id: a.tenantId, domain_id: a.domainId, scope: 'DOMAIN', object_version: String(version), lifecycle_state: 'active',
-      owning_component: String(h['owning_component'] ?? 'CP-GRA-01'), accountable_owner: String(h['accountable_owner'] ?? `principal:${a.actor}`),
-      source_object_ids: Array.isArray(h['source_object_ids']) ? (h['source_object_ids'] as string[]) : [], event_time: null, observation_time: now, valid_from: null, valid_to: null,
-      recorded_at: now, time_precision: 'exact', source_clock_quality: 'trusted', truth_state: 'decided', synthetic_state: false, confidence: null, uncertainty: null,
-      evidence_refs: Array.isArray(h['evidence_refs']) ? (h['evidence_refs'] as string[]) : [], provenance_ref: `principal:${a.actor}`, method_ref: 'initiative-approval@1.0.0',
-      contradiction_refs: [], corroboration_refs: [], human_refs: [`principal:${a.actor}`], classification: String(h['classification'] ?? 'internal'), purpose_scope: a.purposeId,
-      rights_profile: null, residency_profile: null, retention_profile: null, access_policy_ref: null, quality_profile: null, quality_state: null, freshness_state: null,
-      schema_ref: String(h['schema_ref'] ?? 'INI@v1'), ontology_ref: null, correction_of: null, supersedes: `${a.initiativeId}@${prior.version}`, withdrawal_reason: null,
-      audit_correlation_id: a.correlationId, content_ref: null,
-    };
+    const header: CanonicalHeader = buildHeader({
+      objectId: a.initiativeId, objectType: 'INI', tenantId: a.tenantId, domainId: a.domainId, scope: 'DOMAIN', objectVersion: String(version), lifecycleState: 'active',
+      owningComponent: String(h['owning_component'] ?? 'CP-GRA-01'), accountableOwner: String(h['accountable_owner'] ?? `principal:${a.actor}`),
+      sourceObjectIds: Array.isArray(h['source_object_ids']) ? (h['source_object_ids'] as string[]) : [], eventTime: null, observationTime: now, validFrom: null, validTo: null,
+      recordedAt: now, timePrecision: 'exact', sourceClockQuality: 'trusted', truthState: 'decided', syntheticState: false, confidence: null, uncertainty: null,
+      evidenceRefs: Array.isArray(h['evidence_refs']) ? (h['evidence_refs'] as string[]) : [], provenanceRef: `principal:${a.actor}`, methodRef: 'initiative-approval@1.0.0',
+      contradictionRefs: [], corroborationRefs: [], humanRefs: [`principal:${a.actor}`], classification: String(h['classification'] ?? 'internal'), purposeScope: a.purposeId,
+      rightsProfile: null, residencyProfile: null, retentionProfile: null, accessPolicyRef: null, qualityProfile: null, qualityState: null, freshnessState: null,
+      schemaRef: String(h['schema_ref'] ?? 'INI@v1'), ontologyRef: null, correctionOf: null, supersedes: `${a.initiativeId}@${prior.version}`, withdrawalReason: null,
+      auditCorrelationId: a.correlationId, contentRef: null,
+    });
     const ok = validateHeader(header);
     if (!ok.ok) throw new HttpException(errorBody('EYE_REQ_001', a.correlationId, `initiative header invalid: ${(ok.errors ?? []).join('; ')}`), 422);
     const admitted = await cap.admitObject(header, payload, canonicalHeaderDigest(header, payload));
