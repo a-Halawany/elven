@@ -574,10 +574,10 @@ BEGIN
       END IF;
       -- ── THE LEAVES ──
       IF v_type = 'EVD' THEN
-        st := graph.ev_evidence_state(p_tenant, p_domain, o.object_id, o.object_version, NULL, NULL, v_at);
+        st := graph.ev_evidence_state(p_tenant, p_domain, o.object_id, o.object_version::int, NULL::int, NULL::int, v_at);
         v_leaves := jsonb_build_array(jsonb_build_object('path', jsonb_build_array(v_root)) || (st - 'ref'));
       ELSE
-        cl := graph.pv_closure(p_tenant, p_domain, o.object_type, o.object_id, o.object_version, v_depth, 200);
+        cl := graph.pv_closure(p_tenant, p_domain, o.object_type, o.object_id, o.object_version::int, v_depth, 200);
         v_truncated := coalesce((cl ->> 'truncated')::boolean, false);
         -- the first parent of each object (breadth first), to state each leaf's path from the cited version
         v_parent := '{}'::jsonb;
@@ -690,7 +690,7 @@ BEGIN
        WHERE y.id IS NOT NULL AND y.version IS NOT NULL
        LIMIT 200
     LOOP                                                                                                                           -- B82 ev
-      st := graph.ev_evidence_state(o.tenant_id, o.domain_id, ev.id, ev.version, NULL, NULL, clock_timestamp());                   -- B82 ev
+      st := graph.ev_evidence_state(o.tenant_id, o.domain_id, ev.id, ev.version::int, NULL::int, NULL::int, clock_timestamp());                   -- B82 ev
       IF (st ->> 'integrity_failed')::boolean THEN                                                                                 -- B82 ev
         RAISE EXCEPTION 'object use rejected (integrity_failed): % % v% rests on EVD % v%, whose bytes failed integrity after their last verified custody (%); it is not used for % until the bytes verify again',
           p_type, p_id, p_version, ev.id, ev.version, st ->> 'detail', p_use USING ERRCODE = '22023';

@@ -1503,6 +1503,18 @@ const BUNDLE_V1: Rule[] = [
   { actionPrefix: 'observation.coverage_remediation.close', exact: true, requiredAnyRole: [{ role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'collection_manager', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   { actionPrefix: 'observation.coverage_remediation.withdraw', exact: true, requiredAnyRole: [{ role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'collection_manager', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   /* end B28 remediation */
+  /* B82 ev */
+  /* B82 §EV (0121_b82_x_ev; CMP-031, UX-26-002/004, DESIGN D10). EXACT rules, placed BEFORE the `observation.` collection prefix rule (which
+     would otherwise match them first and admit a domain analyst or the collection agent). THE RIGHTS TERMS of a source contract version are
+     declared, revised and withdrawn by a named DATA STEWARD or COLLECTION MANAGER — human-gated; the ports re-check the person, the role and
+     the acting principal (governance.assert_approver). Reading them is `observation.read.rights`, the existing `observation.read` prefix rule's
+     readers (unchanged). DESIGN D9: NO evidence-read action is added or widened — the cited-span route uses the EXISTING
+     `observation.evidence.retrieve`, the citation resolution the EXISTING `graph.provenance.read`. */
+  { actionPrefix: 'observation.rights.declare', exact: true, requiredAnyRole: [{ role: 'data_steward', atScope: 'DOMAIN' }, { role: 'collection_manager', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'observation.rights.withdraw', exact: true, requiredAnyRole: [{ role: 'data_steward', atScope: 'DOMAIN' }, { role: 'collection_manager', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B82 ev */
   {
     // The COLLECTION surface: run lifecycle, admission, quarantine, checkpoints,
     // coverage measurement and sweeper reconciliation. Held by the agent role and
