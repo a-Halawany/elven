@@ -14,8 +14,12 @@ import { prediction, type Calibration } from '../../../lib/prediction';
 import { fitnessLabel } from '../../../lib/fitness';
 import { Empty, LiveStatus, Mono, cardStyle, UnknownNote, fmtInstant } from '../../../components/observation';
 import { tableStyle, Th, Td } from '../../../components/ui';
+/* B82 cf: the two record tables become the calibration plots' table alternatives (VIZ-09) */
+import { CalibrationPlot } from '../../../components/chart';
+import { backtestPoints, outcomePoints } from '../../../lib/chart-reads-b82';
+import { backtestSpec, outcomesSpec, readExport } from '../../../lib/chart-specs-b82';
+/* end B82 cf */
 
-const pct = (v: unknown): string => { const n = Number(v); return Number.isFinite(n) ? `${(n * 100).toFixed(1)}%` : '—'; };
 const num = (v: unknown): string => { const n = Number(v); return Number.isFinite(n) ? n.toFixed(3).replace(/\.?0+$/, '') : '—'; };
 const met = (v: boolean | null): string => (v === null ? 'not scored' : v ? 'MET' : 'NOT MET');
 /** B21: a measure the assessment recorded — a number, or the structure verbatim; never a value invented here. */
@@ -25,12 +29,13 @@ export default function CalibrationPage() {
   const { scope } = useShell();
   const [c, setC] = useState<Calibration | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
+  /* B82 cf */ const [readAt, setReadAt] = useState(() => new Date().toISOString()); /* end B82 cf */
 
   useEffect(() => {
     void (async () => {
       const r = await prediction.calibration(scope);
       if (!r.ok || r.data === undefined) { setProblem(r.error?.message ?? 'the calibration record could not be read'); return; }
-      setC(r.data.calibration);
+      setC(r.data.calibration); /* B82 cf */ setReadAt(new Date().toISOString()); /* end B82 cf */
     })();
   }, [scope]);
 
@@ -44,37 +49,22 @@ export default function CalibrationPage() {
 
       <section aria-labelledby="out-h" style={{ ...cardStyle, marginBlockStart: 'var(--eye-space-16)' }}>
         <h2 id="out-h" style={{ fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 }}>Scored outcomes — live and replay, separately labelled</h2>
-        {c.outcomes.length === 0 ? <Empty>Nothing has been scored against a real outcome yet.</Empty> : (
-          <table className="eye-table" style={tableStyle}>
-            <thead><tr><Th>Series</Th><Th>Horizon</Th><Th>Method</Th><Th>Outcomes</Th><Th>80% coverage</Th><Th>Pinball</Th><Th>T1</Th><Th>Labels</Th></tr></thead>
-            <tbody>
-              {c.outcomes.map((o, i) => (
-                <tr key={i}><Td>{o.series_key}</Td><Td mono>{o.horizon_code}</Td><Td mono>{o.method}</Td><Td mono>{o.outcomes}</Td>
-                  <Td mono>{pct(o.coverage_80)}</Td><Td mono>{num(o.pinball_mean)}</Td><Td>{met(o.t1_met)}</Td><Td>{o.labels.join(', ')}</Td></tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        {/* B82 cf: the scored outcomes drawn — observed 80 % coverage per family with its 95 % interval; the table is the plot's alternative */}
+        {c.outcomes.length === 0 ? <Empty>Nothing has been scored against a real outcome yet.</Empty> : (() => {
+          const pts = outcomePoints(c).map((p, i) => ({ ...p, extra: { pinball: c.outcomes[i]?.pinball_mean ?? null, t1: met(c.outcomes[i]?.t1_met ?? null) } }));
+          return <CalibrationPlot spec={outcomesSpec(pts, readAt)} points={pts} exportAs={readExport(scope, readAt)} />;
+        })()}
+        {/* end B82 cf */}
       </section>
 
       <section aria-labelledby="bt-h" style={{ ...cardStyle, marginBlockStart: 'var(--eye-space-16)' }}>
         <h2 id="bt-h" style={{ fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 }}>Backtests on held-out history — the learned model against seasonal naive</h2>
-        {c.backtests.length === 0 ? <Empty>No backtest has been run.</Empty> : (
-          <table className="eye-table" style={tableStyle}>
-            <thead><tr><Th>Series</Th><Th>Horizon</Th><Th>Mode</Th><Th>Origins</Th><Th>Coverage (model / naive)</Th><Th>Pinball (model / naive)</Th><Th>Skill</Th><Th>T1</Th><Th>T2</Th><Th>Window</Th></tr></thead>
-            <tbody>
-              {c.backtests.map((b) => (
-                <tr key={b.backtest_id}>
-                  <Td>{b.series_key}</Td><Td mono>{b.horizon_code}</Td><Td mono>{b.mode ?? 'retrospective'}</Td><Td mono>{b.origins}</Td>
-                  <Td mono>{pct(b.coverage_80)} / {pct(b.baseline_coverage_80)}</Td>
-                  <Td mono>{num(b.pinball_mean)} / {num(b.baseline_pinball_mean)}</Td>
-                  <Td mono>{pct(b.skill_vs_baseline)}</Td><Td>{met(b.t1_met)}</Td><Td>{met(b.t2_met)}</Td>
-                  <Td>{String(b.window_from).slice(0, 10)} → {String(b.window_to).slice(0, 10)}</Td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        {/* B82 cf: the backtests drawn — the learned model beside seasonal naive, each over its window and its origins */}
+        {c.backtests.length === 0 ? <Empty>No backtest has been run.</Empty> : (() => {
+          const pts = backtestPoints(c).map((p) => { const b = c.backtests.find((x) => p.key.startsWith(`${x.backtest_id}|`)); return { ...p, extra: { skill: b?.skill_vs_baseline ?? null, verdict: `${b?.verdict ?? ''} · T1 ${met(b?.t1_met ?? null)} · T2 ${met(b?.t2_met ?? null)}` } }; });
+          return <CalibrationPlot spec={backtestSpec(pts, readAt)} points={pts} exportAs={readExport(scope, readAt)} />;
+        })()}
+        {/* end B82 cf */}
         {c.backtests.map((b) => <p key={`v-${b.backtest_id}`} style={{ fontSize: 'var(--eye-type-label-sm)' }}><Mono>{b.series_key} · {b.horizon_code}</Mono> — {b.verdict} <span style={{ color: 'var(--eye-color-ink-muted)' }}>({fmtInstant(b.computed_at)})</span></p>)}
       </section>
 

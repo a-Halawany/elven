@@ -27,6 +27,11 @@ import {
 } from '../../../../components/observation';
 import { ErrorNote, Receipt } from '../../../../components/ui';
 /* B81 ob */ import { ObjectHeader } from '../../../../components/object'; /* end B81 ob */
+/* B82 cf: the health replay drawn as an ordinal series over record time; its table is the chart's alternative (CMP-060) */
+import { TimeSeries } from '../../../../components/chart';
+import { HEALTH_LEVELS, healthSeries } from '../../../../lib/chart-reads-b82';
+import { healthSpec, readExport } from '../../../../lib/chart-specs-b82';
+/* end B82 cf */
 /* B81 re: FileIntake's upload mode placed (CMP-040) — an upload source's evidence upload */ import { EvidenceUpload } from './upload-b81'; /* end B81 re */
 
 interface SourceDetail {
@@ -48,7 +53,7 @@ export default function SourceDetailPage() {
   const [receipt, setReceipt] = useState<{ policyDecisionId: string; auditSeq: number } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [reason, setReason] = useState('');
-  const [replay, setReplay] = useState<{ timeline: Array<Record<string, unknown>>; deterministic: boolean } | null>(null);
+  const [replay, setReplay] = useState<{ timeline: Array<Record<string, unknown>>; deterministic: boolean; /* B82 cf */ at?: string /* end B82 cf */ } | null>(null);
 
   const load = useCallback(async () => {
     const r = await observation.getSource(scope, sourceId);
@@ -338,7 +343,7 @@ export default function SourceDetailPage() {
             onRun={async () => {
               const r = await observation.replayHealth(scope, sourceId);
               if (!r.ok || r.data === undefined) { setError(r.error ?? null); throw new Error('refused'); }
-              setReplay({ timeline: r.data.timeline, deterministic: r.data.deterministic });
+              setReplay({ timeline: r.data.timeline, deterministic: r.data.deterministic, /* B82 cf */ at: new Date().toISOString() /* end B82 cf */ });
             }}
           />
           {replay !== null && (
@@ -348,23 +353,14 @@ export default function SourceDetailPage() {
             </LiveStatus>
           )}
         </div>
-        {replay !== null && replay.timeline.length > 0 && (
-          <ScrollBox label="Health timeline">
-            <table className="eye-table">
-              <caption>The health timeline, derived from stored events and measurements alone.</caption>
-              <thead><tr><th scope="col">Evaluated at</th><th scope="col">State</th><th scope="col">Reason</th></tr></thead>
-              <tbody>
-                {replay.timeline.map((t, i) => (
-                  <tr key={i}>
-                    <td data-label="Evaluated at"><Mono>{fmtInstant(t['evaluated_at'])}</Mono></td>
-                    <td data-label="State"><HealthBadge state={String(t['state']) as HealthState} /></td>
-                    <td data-label="Reason" style={{ maxInlineSize: '40rem' }}>{String(t['reason'])}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </ScrollBox>
-        )}
+        {/* B82 cf: the replayed transitions as an ordinal state series (steps; "unknown" its own level) — the evaluated-at, state and reason table is its alternative */}
+        {replay !== null && replay.timeline.length > 0 && (() => {
+          const at = replay.at ?? new Date().toISOString();
+          const pts = healthSeries(replay.timeline);
+          return <TimeSeries spec={healthSpec(String(s['name']), pts.length, at, replay.deterministic)} series={[{ key: 'health', label: 'health state', points: pts }]} levels={HEALTH_LEVELS}
+            exportAs={readExport(scope, at, s['classification_ceiling'] === undefined ? null : `ceiling ${String(s['classification_ceiling'])}`)} />;
+        })()}
+        {/* end B82 cf */}
       </section>
 
       {/* ── runs ───────────────────────────────────────────────────── */}

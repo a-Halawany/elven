@@ -130,10 +130,10 @@ export function streamControl(d: Pick<StreamDetail, 'inputs' | 'rule' | 'signals
 
 /** The health states as an ordinal scale (best first); `unknown` is its own level, last — never placed between two known states. */
 export const HEALTH_LEVELS = ['healthy', 'degraded', 'suspended', 'failed', 'unknown'] as const;
-export function healthSeries(timeline: ReadonlyArray<Row>): Array<{ at: string; value: number | null }> {
+export function healthSeries(timeline: ReadonlyArray<Row>): Array<{ at: string; value: number | null; note: string | null }> {
   return timeline.map((t) => {
     const i = (HEALTH_LEVELS as readonly string[]).indexOf(String(t['state']));
-    return { at: String(t['evaluated_at'] ?? ''), value: i < 0 ? HEALTH_LEVELS.length - 1 : i };
+    return { at: String(t['evaluated_at'] ?? ''), value: i < 0 ? HEALTH_LEVELS.length - 1 : i, note: t['reason'] === undefined || t['reason'] === null ? null : String(t['reason']) };
   }).filter((p) => toInstant(p.at) !== null);
 }
 
@@ -158,7 +158,7 @@ export function timelineEvents(v: Pick<TimelineView, 'items' | 'events' | 'windo
 
 /** A model's calibration pairs (predicted against later observed) across its calibrations; a calibration without pairs adds none. */
 export function calibrationPairs(cals: readonly TwinCalibration[]): ScatterPointIn[] {
-  return cals.flatMap((c) => (c.pairs ?? []).map((p, i) => ({ key: `${c.calibration_id}:${i}`, label: `${c.twin_title ?? 'twin'} · ${c.key} #${i + 1} (${p.from} → ${p.against})`, x: num(p.predicted), y: num(p.observed), group: p.source })));
+  return cals.flatMap((c) => (c.pairs ?? []).map((p, i) => ({ key: `${c.calibration_id ?? `${c.key}#${c.seq}`}:${i}`, label: `${c.twin_title === undefined ? '' : `${c.twin_title} · `}${c.key} (calibration ${c.seq}) pair ${i + 1}: ${p.from} → ${p.against}`, x: num(p.predicted), y: num(p.observed), group: p.source })));
 }
 /** A validation's benchmark sample binned (Sturges' rule — stated), with the run mean, the benchmark mean and the band as marks. */
 export function benchmarkInput(v: Pick<Validation, 'benchmark' | 'discrepancy'>): { values: number[]; bins: { count: number }; marks: Array<{ key: string; label: string; at: number }>; rule: string } {

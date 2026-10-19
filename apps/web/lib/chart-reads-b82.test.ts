@@ -61,7 +61,7 @@ describe('ensembles, streams, health, timeline, twins, fabric', () => {
   });
   it('health states map to the ordinal levels; an unknown state is "unknown", last', () => {
     expect(healthSeries([{ evaluated_at: '2026-10-01T00:00:00Z', state: 'degraded' }, { evaluated_at: '2026-10-02T00:00:00Z', state: 'weird' }, { evaluated_at: null, state: 'healthy' }]))
-      .toEqual([{ at: '2026-10-01T00:00:00Z', value: 1 }, { at: '2026-10-02T00:00:00Z', value: HEALTH_LEVELS.length - 1 }]);
+      .toEqual([{ at: '2026-10-01T00:00:00Z', value: 1, note: null }, { at: '2026-10-02T00:00:00Z', value: HEALTH_LEVELS.length - 1, note: null }]);
   });
   it('the timeline places versions on the read\'s own axis; ledger events only on record time', () => {
     const items = [{ ref: 'CLM:x@1', objectType: 'CLM', title: 'c', eventTime: '2026-10-01T00:00:00Z', observedAt: null, validFrom: null, validTo: null, recordedAt: '2026-10-02T00:00:00Z', correctedLater: { at: '2026-10-05T00:00:00Z', by: 'K. M' } }] as never;
