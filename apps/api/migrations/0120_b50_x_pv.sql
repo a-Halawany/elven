@@ -1017,7 +1017,7 @@ GRANT EXECUTE ON FUNCTION graph.alignment_check(uuid, uuid, text, uuid, int) TO 
    version whose current mark is unfit (its reasons). unfit when any gap stands; unknown when the walk was truncated with none found; fit
    only when the whole recorded history was examined and none stands. Internal; no grant. */
 CREATE OR REPLACE FUNCTION graph.pv_fitness_eval(p_tenant uuid, p_domain uuid, p_type text, p_id uuid, p_version int) RETURNS jsonb
-LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = graph, objects, pg_catalog, pg_temp AS $$
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = graph, objects, decision, pg_catalog, pg_temp AS $$
 DECLARE cl jsonb; v_gaps jsonb; ob jsonb; x record; a jsonb; v_reasons text[]; v_verdict text;
 BEGIN
   cl := graph.pv_closure(p_tenant, p_domain, p_type, p_id, p_version, 12, 400);
@@ -1026,6 +1026,11 @@ BEGIN
   FOR ob IN SELECT * FROM jsonb_array_elements(cl -> 'objects') LOOP
     FOR x IN SELECT k.challenge_id, k.decision_note FROM graph.knowledge_challenges k WHERE k.subject_id = (ob ->> 'id')::uuid AND k.subject_version = (ob ->> 'version')::int AND k.state = 'upheld' AND k.tenant_id = p_tenant LOOP
       v_gaps := v_gaps || jsonb_build_array(jsonb_build_object('kind', 'unsupported_claim', 'ref', ob ->> 'key', 'at', ob ->> 'key', 'reason', format('knowledge challenge %s was upheld: %s', x.challenge_id, left(x.decision_note, 200))));
+    END LOOP;
+    -- the EXISTING contest machinery feeds the same rule: an upheld (or partly upheld) B35 appeal on a claim or a forecast in the closure
+    FOR x IN SELECT a.case_id, a.outcome, a.rationale FROM decision.appeal_cases a WHERE a.subject_id = (ob ->> 'id')::uuid AND a.tenant_id = p_tenant AND a.outcome IN ('upheld', 'partly_upheld')
+               AND (a.subject_version IS NULL OR a.subject_version = (ob ->> 'version')::int) LOOP
+      v_gaps := v_gaps || jsonb_build_array(jsonb_build_object('kind', 'unsupported_claim', 'ref', ob ->> 'key', 'at', ob ->> 'key', 'reason', format('appeal %s was %s: %s', x.case_id, replace(x.outcome, '_', ' '), left(coalesce(x.rationale, ''), 200))));
     END LOOP;
     IF ob ->> 'key' <> cl ->> 'root' THEN
       FOR x IN SELECT DISTINCT ON (fm.object_id, fm.object_version) fm.mark_id, fm.verdict, fm.reasons FROM graph.product_fitness_marks fm
@@ -1425,7 +1430,7 @@ GRANT EXECUTE ON FUNCTION graph.escalate_knowledge_challenge(uuid, uuid, uuid, u
 
 /* THE READ: the domain's challenges (or one subject's), each with its events and evidence; and where a decision or a run is contested instead. */
 CREATE OR REPLACE FUNCTION graph.knowledge_challenges_read(p_tenant uuid, p_domain uuid, p_subject uuid, p_state text) RETURNS jsonb
-LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = graph, pg_catalog, pg_temp AS $$
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = graph, decision, simulation, pg_catalog, pg_temp AS $$
 BEGIN
   PERFORM observation.assert_read_scope(p_tenant, p_domain, 'the knowledge challenges');
   IF p_state IS NOT NULL AND p_state NOT IN ('open', 'under_review', 'upheld', 'dismissed', 'withdrawn', 'live') THEN
@@ -1439,7 +1444,14 @@ BEGIN
                      FROM graph.knowledge_challenge_evidence v WHERE v.challenge_id = k.challenge_id)) ORDER BY k.opened_at DESC), '[]'::jsonb)
       FROM graph.knowledge_challenges k WHERE k.tenant_id = p_tenant AND k.domain_id = p_domain AND (p_subject IS NULL OR k.subject_id = p_subject)
         AND (p_state IS NULL OR k.state = p_state OR (p_state = 'live' AND k.state IN ('open', 'under_review')))),
-    'routes', jsonb_build_object('decision', 'an appeal (decision.appeal.open, B35) or a gate challenge (decision.challenge.raise, B36)', 'run', 'a simulation challenge (simulation.challenge.open, B21)'));
+    -- the EXISTING contest machinery on the same subject, beside the knowledge challenges (read, never duplicated): B35 appeals, B21 simulation challenges
+    'appeals', CASE WHEN p_subject IS NULL THEN NULL ELSE (SELECT coalesce(jsonb_agg(jsonb_build_object('case_id', a.case_id, 'subject_kind', a.subject_kind, 'state', a.state, 'outcome', a.outcome,
+                 'opened_at', graph.pv_iso(a.opened_at), 'deadline_at', graph.pv_iso(a.deadline_at), 'adjudicator', a.adjudicator_principal_id) ORDER BY a.opened_at), '[]'::jsonb)
+                 FROM decision.appeal_cases a WHERE a.tenant_id = p_tenant AND a.domain_id = p_domain AND a.subject_id = p_subject) END,
+    'simulation_challenges', CASE WHEN p_subject IS NULL THEN NULL ELSE (SELECT coalesce(jsonb_agg(jsonb_build_object('challenge_id', s.challenge_id, 'kind', s.kind, 'state', s.state, 'opened_at', graph.pv_iso(s.opened_at)) ORDER BY s.opened_at), '[]'::jsonb)
+                 FROM simulation.challenges s WHERE s.tenant_id = p_tenant AND s.domain_id = p_domain AND s.run_id = p_subject) END,
+    'routes', jsonb_build_object('decision', 'an appeal (decision.appeal.open, B35) or a gate challenge (decision.challenge.raise, B36)', 'run', 'a simulation challenge (simulation.challenge.open, B21)',
+                                 'claim_or_forecast', 'also an appeal (decision.appeal.open, B35) when the contest is of a decision''s use of it; an upheld appeal enters the same fitness evaluation'));
 END $$;
 REVOKE ALL ON FUNCTION graph.knowledge_challenges_read(uuid, uuid, uuid, text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION graph.knowledge_challenges_read(uuid, uuid, uuid, text) TO eye_app, eye_commit;

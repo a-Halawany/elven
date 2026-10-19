@@ -487,6 +487,7 @@ describe('PV6 · THE CONTEST PATH (HX-14) — knowledge challenges in B21\'s sha
     const listed = (await listChallenges(mueller, { subjectId: good.id })).challenges;
     expect((listed.challenges[0]!['events'] as Row[]).map((e) => e['event'])).toEqual(['challenge.opened', 'challenge.evidence_submitted', 'challenge.review_started', 'challenge.upheld']);
     expect(listed.routes).toMatchObject({ decision: expect.stringMatching(/B35/), run: expect.stringMatching(/B21/) });
+    expect((listed as unknown as Row)['appeals']).toEqual([]);   // the existing machinery on the same subject, read beside (none here)
   });
 
   it('separation: a knowledge owner who opened a challenge never reviews it; ESCALATION only once overdue on the database clock; withdrawal by the opener alone; a dismissal', async () => {
@@ -506,6 +507,26 @@ describe('PV6 · THE CONTEST PATH (HX-14) — knowledge challenges in B21\'s sha
     await chAct(steward, 'review', third);
     expect((await chAct(steward, 'decide', third, { decision: 'dismissed', note: 'Two independent bulletins agree on the restated figure.' })).challenge).toMatchObject({ state: 'dismissed' });
     expect((await fitness(ivanova, 'CLM', corr.id, 2)).evaluation.verdict).toBe('fit');
+  });
+});
+
+describe('PV6b · THE EXISTING CONTEST MACHINERY feeds the same rule', () => {
+  it('an UPHELD B35 appeal on a claim (the decision side\'s contest path) enters the claim\'s fitness evaluation, and is read beside the knowledge challenges', async () => {
+    const cl = await plantClaim(E2, { objectValue: 'berth 7 closed (SYNTHETIC)' });
+    const caseId = uuidv7();
+    // the adjudicated appeal as B35's ports record it (planted: the appeal flow is phase6-explanation-b35's; this is the reading of its outcome)
+    await sql`insert into decision.appeal_cases (case_id, scope, tenant_id, domain_id, subject_kind, subject_id, subject_version, subject_title, subject_owners, subject_state_at_open, subject_digest_at_open, decided,
+        appellant_principal_id, standing, contest_scope, grounds, evidence, deadline_at, state, adjudicator_principal_id, assigned_by, assigned_at, outcome, rationale, correction, impact, effect, adjudicated_at, correlation_id)
+      values (${caseId}::uuid, 'DOMAIN', ${T()}::uuid, ${D()}::uuid, 'claim', ${cl.id}::uuid, 1, 'berth 7 closed (SYNTHETIC)', '{}', 'active', ${cl.digest}, false,
+        ${ivanova.principalId}::uuid, '{"rule":"fixture","basis":"fixture"}'::jsonb, '{"statement":"the berth reopened on the 12th"}'::jsonb, 'The harbour notice of the 12th reopens berth 7 (SYNTHETIC).', '[]'::jsonb,
+        clock_timestamp() + interval '7 days', 'adjudicated', ${mueller.principalId}::uuid, ${mueller.principalId}::uuid, clock_timestamp(), 'upheld', 'The notice supersedes the bulletin.', 'the claim is restated', '{}'::jsonb, '{}'::jsonb, clock_timestamp(), ${uuidv7()}::uuid)`.execute(h.su);
+    const f = await fitness(ivanova, 'CLM', cl.id, 1);
+    expect(f.evaluation).toMatchObject({ verdict: 'unfit', reasons: ['unsupported_claim'] });
+    expect(f.evaluation.gaps[0]).toMatch(new RegExp(`appeal ${caseId} was upheld: The notice supersedes the bulletin`));
+    const read = (await listChallenges(ivanova, { subjectId: cl.id })).challenges as unknown as Row;
+    expect((read['appeals'] as Row[]).map((a) => [a['case_id'], a['outcome']])).toEqual([[caseId, 'upheld']]);
+    const x = await explain(ivanova, 'CLM', cl.id, 1);
+    expect(x.nodes.find((n) => n.ref === `appeal:${caseId}`)).toMatchObject({ outcome: 'challenged', kind: 'review' });
   });
 });
 
