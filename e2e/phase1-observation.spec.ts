@@ -367,8 +367,11 @@ test.describe('Phase 1 — Observation Operations (A12)', () => {
     await expect(page.getByRole('heading', { name: /Authenticity — four separate concepts/ })).toBeVisible();
     await expect(page.getByRole('term').filter({ hasText: 'Content authenticity' })).toBeVisible();
     await expect(page.getByText(/Neither establishes that the content is genuinely the publisher/)).toBeVisible();
-    // The custody chain.
-    await expect(page.getByRole('region', { name: 'Custody events' })).toBeVisible();
+    // The custody chain — the timeline region by its EXACT name. Since B82 the custody table inside it is its own scrollable
+    // region, "Custody events as a table", which a substring match also resolves (ci 39256804447: strict mode, 2 elements).
+    const custody = page.getByRole('region', { name: 'Custody events', exact: true });
+    await expect(custody).toBeVisible();
+    await expect(custody.getByRole('region', { name: 'Custody events as a table', exact: true })).toBeVisible();
 
     // The download is attachment-only and re-verifies the digest.
     await page.getByRole('button', { name: 'Retrieve the original bytes' }).click();

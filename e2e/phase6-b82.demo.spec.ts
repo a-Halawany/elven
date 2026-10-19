@@ -139,7 +139,7 @@ test.describe('CP-6 B82 — the act\'s walk: the drill, CORRECTED and its notice
     await cited.getByRole('button', { name: 'Verify the bytes again' }).click();
     await expect(cited.getByRole('region', { name: 'Verification checks' })).toContainText(/VERIFIED/);
     await expect(cited.getByRole('region', { name: 'Verification checks' })).toContainText('◌ UNAVAILABLE');               // the publisher offers no signature — never FAILED
-    await expect(page.getByRole('region', { name: 'Chain of custody' })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Chain of custody', exact: true })).toBeVisible();
     await shot(page, '08-evidence-span', true);
     await page.context().close();
   });

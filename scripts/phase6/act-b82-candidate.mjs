@@ -52,6 +52,12 @@ import { createRequire } from 'node:module';
 import { format } from 'node:util';
 import { loadLocalEnv } from '../local-env.mjs';
 import { API, call, login, adminSession, demoScope, ok, bad, note, failureCount } from '../phase4/governed.mjs';
+import { actTargetOrExit } from '../act-target.mjs';
+
+// B80 integration pass (2026-10-19): the target is decided FIRST — before the local env is read, before any login, session
+// or request. EYE_ACT_TARGET (rehearsal | live), EYE_DB_NAME and EYE_API come from the caller; a rehearsal that names no API,
+// or names the live one, is refused here and contacts nothing (scripts/act-target.mjs; the B82 probe incident).
+const ACT_TARGET = actTargetOrExit(process.env, { needs: ['api'] });
 
 const OUT = process.env.ACT_OUT ?? process.argv[2] ?? null;
 if (OUT) {
