@@ -26,6 +26,7 @@ import { AnalyticsModule } from './analytics/analytics.module.js';
 import { DeliveryModule } from './delivery/delivery.module.js';
 import { GovernanceModule } from './governance/governance.module.js';
 /* end B33 */
+/* B80 (0118 §CL-F, §SH) */ import { ShellModule } from './shell/shell.module.js'; /* end B80 */
 
 @Module({
   imports: [
@@ -51,6 +52,7 @@ import { GovernanceModule } from './governance/governance.module.js';
     /* B92 (0113) */ AnalyticsModule /* end B92 */,
     /* B94 (0114) */ DeliveryModule /* end B94 */,
     /* B107 (0115) */ GovernanceModule /* end B107 */,
+    /* B80 (0118) */ ShellModule /* end B80 */,
     RetentionModule,
   ],
 })

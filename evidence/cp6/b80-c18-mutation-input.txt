@@ -1,0 +1,36 @@
+B80 integration pass — C18 mutation-control INPUT correction (2026-10-19)
+
+Failure: ci 39179325635 (PR #92 head 8d1f586, merge ref 82fe5eb), job 117828514717, C18 dual-path step:
+  C18.1.11 DIFFERENTIAL > 'the rotated seed credential expiry drifts by five milliseconds' — r.ok expected false, got true.
+Retained archive: artifact 12157082740 (c18-diagnostics-a1) → c18-db-paths-evidence-82fe5eb….zip
+
+The arithmetic, read from the three seeded path-A snapshots (path-a-before/after/final, identical):
+  path-a-before.json: created 2026-10-19T01:13:04.03615+00:00, rotated 2026-10-19T01:13:04.119426+00:00, expires 2026-10-20T01:13:04.056972+00:00
+    implied marking (Date.parse ms) 2026-10-19T01:13:04.056Z; +5 ms → 2026-10-19T01:13:04.061Z; audited bootstrap stamp 2026-10-19T01:13:04.061Z
+  path-a-after.json: created 2026-10-19T01:13:04.03615+00:00, rotated 2026-10-19T01:13:04.119426+00:00, expires 2026-10-20T01:13:04.056972+00:00
+    implied marking (Date.parse ms) 2026-10-19T01:13:04.056Z; +5 ms → 2026-10-19T01:13:04.061Z; audited bootstrap stamp 2026-10-19T01:13:04.061Z
+  path-a-final.json: created 2026-10-19T01:13:04.03615+00:00, rotated 2026-10-19T01:13:04.119426+00:00, expires 2026-10-20T01:13:04.056972+00:00
+    implied marking (Date.parse ms) 2026-10-19T01:13:04.056Z; +5 ms → 2026-10-19T01:13:04.061Z; audited bootstrap stamp 2026-10-19T01:13:04.061Z
+
+The verifier's permitted causal interval (scripts/gate/lib/c18-observational-limits.mjs, bootstrap-marking-instant):
+  created_at < marking < rotated_at, and marking <= the audited bootstrap stamp. +5 ms landed ON the stamp: inside.
+
+Reproduction at 82fe5eb (clean detached worktree, contracts built), C18_ARCHIVE = the retained zip, the ORIGINAL suite:
+   × test/gate/c18-mutation-controls-1.ctl.ts > C18.1.11 — DIFFERENTIAL: the frozen a424505 verifier ACCEPTED what C18.1.11 rejects > the rotated seed credential expiry drifts by five milliseconds — a424505 ACCEPTS it; C18.1.11 REJE
+  ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+  AssertionError: expected true to be false // Object.is equality
+        Tests  1 failed | 89 skipped (90)
+
+Correction (test input only; verifier, frozen legacy fixtures, migrations, acceptance unchanged):
+  the mutation derives the drift from the archive — the implied marking = the audited stamp + 1 ms (the first
+  instant outside the interval on every archive); the expected finding is the bootstrap-stamp finding specifically.
+  A positive case keeps the permitted interval covered: the implied marking exactly AT the stamp — both legs accept.
+
+The corrected suite at 82fe5eb against the same retained archive (suite swapped in with assume-unchanged so the
+verifier's clean-checkout binding holds; the suite file is identical at 82fe5eb and phase6-b80 8bc5b68):
+   ✓ test/gate/c18-mutation-controls-1.ctl.ts > C18.1.11 — DIFFERENTIAL: the frozen a424505 verifier ACCEPTED what C18.1.11 rejects > NON-VACUITY: the frozen a424505 verifier accepts the genuine archive 1108ms
+   ✓ test/gate/c18-mutation-controls-1.ctl.ts > C18.1.11 — DIFFERENTIAL: the frozen a424505 verifier ACCEPTED what C18.1.11 rejects > the rotated seed credential expiry drifts past the audited bootstrap stamp — a424505 ACCEP
+   ✓ test/gate/c18-mutation-controls-1.ctl.ts > C18.1.11 — DIFFERENTIAL: the frozen a424505 verifier ACCEPTED what C18.1.11 rejects > the implied marking exactly AT the audited bootstrap stamp stays inside the permitted interv
+        Tests  3 passed | 88 skipped (91)
+
+The whole C18.1.11 differential (18 cases incl. the new positive) at 82fe5eb with the corrected suite: 18 passed | 73 skipped.

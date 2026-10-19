@@ -84,6 +84,9 @@ test.describe.serial('CP-6 B36 — the executive home on the demonstration', () 
     await expect(switcher.getByLabel('the active context')).toBeVisible();
     await switcher.getByLabel('objective').selectOption({ label: await switcher.getByLabel('objective').locator('option').filter({ hasText: OBJECTIVE }).first().textContent() ?? '' });
     await switcher.getByLabel('horizon').selectOption('30d');
+    // B80 §CB: a switch is never silent — the impact is previewed before the commit (PAT-02)
+    await switcher.getByRole('button', { name: 'Preview the switch' }).click();
+    await expect(switcher.getByLabel('the impact preview')).toBeVisible({ timeout: 20_000 });
     await switcher.getByRole('button', { name: 'Set the context' }).click();
     await expect(page.getByLabel("the home's context")).toContainText(/objective [0-9a-f]{8}… · horizon 30d/, { timeout: 20_000 });
     await expect(page.getByLabel("the home's context")).toContainText(/digest [0-9a-f]{12}…/);

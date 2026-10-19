@@ -135,6 +135,8 @@ export const UNIT_MAP = {
   'api.prediction': { path: 'apps/api/src/prediction', kind: 'api_module', layers: [6, 7], components: [], schemas: ['prediction'], semantic: 'layer', controls: [] },
   'api.products': { path: 'apps/api/src/products', kind: 'api_module', layers: [], components: ['DAT-SV-01', 'DAT-SV-10', 'DAT-TR-01'], schemas: ['products'], semantic: 'layer', controls: [] },
   'api.retention': { path: 'apps/api/src/retention', kind: 'api_module', layers: [], components: ['L3-C02', 'L3-C05', 'L3-C08', 'DAT-TR-08', 'DAT-TR-09', 'DAT-TR-10', 'DAT-ST-06'], schemas: ['retention'], semantic: 'layer', controls: [] },
+  /* B80 (0118): the shell's API — drafts, navigation states, the deep link's as-of read, the context bar's code */
+  'api.shell': { path: 'apps/api/src/shell', kind: 'api_module', layers: [], components: ['CP-UX-02'], schemas: ['shell'], semantic: 'host', controls: ['PR-05-002', 'PAT-03'] },
   'api.shared': { path: 'apps/api/src/shared', kind: 'api_module', layers: [], components: ['CP-OPS-01'], schemas: [], semantic: 'host', controls: ['ADR-P0-02'] },
   'api.tenancy': { path: 'apps/api/src/tenancy', kind: 'api_module', layers: [], components: ['CP-TEN-01', 'DAT-GV-02'], schemas: ['tenancy'], semantic: 'control', controls: [] },
   'api.twin': { path: 'apps/api/src/twin', kind: 'api_module', layers: [5, 8], components: [], schemas: ['twin', 'simulation'], semantic: 'layer', controls: [] },

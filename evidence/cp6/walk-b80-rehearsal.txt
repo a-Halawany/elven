@@ -1,0 +1,22 @@
+# B80 walk — REHEARSAL: rehearsal web :3010 (an APFS clone of apps/web with the ThemeScope fix, NEXT_PUBLIC_EYE_API=http://localhost:3412 → CORS proxy → API :3411 on eye_demo_b80), playwright.demo.config.ts; e2e/phase6-b80.demo.spec.ts + e2e/phase6-b80-catalogue.demo.spec.ts
+
+heavy-slot: b80-act holds slot-1
+
+Running 14 tests using 1 worker
+
+  ✓   1 e2e/phase6-b80-catalogue.demo.spec.ts:43:7 › B80 §CL-D — the catalogue walk (data, layers, foundation) › DataTable: exact counts, sort with aria-sort, filter, group, density, selection, the labelled export (1.1s)
+  ✓   2 e2e/phase6-b80-catalogue.demo.spec.ts:74:7 › B80 §CL-D — the catalogue walk (data, layers, foundation) › the windowed keyboard grid: 100,000 rows, a bounded DOM, arrows move focus, the row count is the whole set (599ms)
+  ✓   3 e2e/phase6-b80-catalogue.demo.spec.ts:92:7 › B80 §CL-D — the catalogue walk (data, layers, foundation) › the empty states never imply a zero world (PAT-28) (476ms)
+  ✓   4 e2e/phase6-b80-catalogue.demo.spec.ts:97:7 › B80 §CL-D — the catalogue walk (data, layers, foundation) › BulkSelection states included / excluded with reasons / hidden / changed / missing BEFORE the action; outcomes never success by inference (494ms)
+  ✓   5 e2e/phase6-b80-catalogue.demo.spec.ts:107:7 › B80 §CL-D — the catalogue walk (data, layers, foundation) › Dialog: deterministic focus, Escape is not consent and focus returns; one modal at a time; the digest gate (1.9s)
+  ✓   6 e2e/phase6-b80-catalogue.demo.spec.ts:141:7 › B80 §CL-D — the catalogue walk (data, layers, foundation) › a draft survives a dismissal and is offered back; a discard clears it (659ms)
+  ✓   7 e2e/phase6-b80-catalogue.demo.spec.ts:155:7 › B80 §CL-D — the catalogue walk (data, layers, foundation) › drawer, popover and disclosure: supporting layers, focus returned, authority and uncertainty never folded away (579ms)
+  ✓   8 e2e/phase6-b80-catalogue.demo.spec.ts:176:7 › B80 §CL-D — the catalogue walk (data, layers, foundation) › inspection: tree grid keys, metric states, summary limits, common-basis ranking, aligned diff (664ms)
+  ✓   9 e2e/phase6-b80-catalogue.demo.spec.ts:199:7 › B80 §CL-D — the catalogue walk (data, layers, foundation) › foundation: the focus ring and keyboard scroll area under forced colours and at 200 % zoom (CMP-001, CMP-003); print keeps the content (894ms)
+  ✓  10 e2e/phase6-b80.demo.spec.ts:53:7 › CP-6 B80 — the theme, the forms, the bulk selection, the context bar and the deep link on the demonstration › THE THEME (F-P7-E-03): the B28 warning under the activated NORDWERK theme — the same text, labels, symbols and order in light, dark and print (732ms)
+  ✓  11 e2e/phase6-b80.demo.spec.ts:74:7 › CP-6 B80 — the theme, the forms, the bulk selection, the context bar and the deep link on the demonstration › THE FORMS (F-P7-E-05): the source registration and the decision-package form share the Field, the validation, the Error Summary and the draft control (1.3s)
+  ✓  12 e2e/phase6-b80.demo.spec.ts:105:7 › CP-6 B80 — the theme, the forms, the bulk selection, the context bar and the deep link on the demonstration › THE BULK SELECTION (F-P7-E-05): the Red Sea sources — included, excluded with the reason, hidden by the filter — stated BEFORE any action (1.9s)
+  ✓  13 e2e/phase6-b80.demo.spec.ts:127:7 › CP-6 B80 — the theme, the forms, the bulk selection, the context bar and the deep link on the demonstration › THE CONTEXT BAR (F-P7-E-01): the scenario in force; a stale choice offered disabled; the switch previewed BEFORE its commit (and switched back) (974ms)
+  ✓  14 e2e/phase6-b80.demo.spec.ts:160:7 › CP-6 B80 — the theme, the forms, the bulk selection, the context bar and the deep link on the demonstration › THE DEEP LINK (F-P7-E-01): opened in a NEW browser context — the exact as-of state and its variance; an instant before the history refused (822ms)
+
+  14 passed (13.8s)

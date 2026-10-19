@@ -24,6 +24,7 @@ import {
 } from '../../../../scripts/gate/c18-db-paths.mjs';
 // eslint-disable-next-line import/no-relative-packages
 import { commandIdFor } from '../../../../scripts/gate/lib/c18-contract.mjs';
+import { SEED_CREDENTIAL_LIFECYCLE } from '../../../../scripts/gate/lib/c18-seed-spec.mjs';
 // eslint-disable-next-line import/no-relative-packages
 import { legacyImageMapping } from '../../../../scripts/gate/legacy-compose-view.mjs';
 // eslint-disable-next-line import/no-relative-packages
@@ -3236,13 +3237,42 @@ const C11811_MUTATIONS: ReadonlyArray<[string, Mutator, RegExp]> = [
     });
   }, /audit\.audit_chain_heads\.updated_at/],
 
-  ['the rotated seed credential expiry drifts by five milliseconds', (d) => {
+  // B80 integration pass (2026-10-19) — the INPUT corrected, not the verifier. This mutation used to add a fixed 5 ms
+  // to the expiry. The verifier proves an INTERVAL (c18-observational-limits.mjs, bootstrap-marking-instant): the implied
+  // marking must lie after the credential's creation, before its rotation and AT OR BEFORE the audited bootstrap stamp.
+  // A fixed drift crosses that bound only when the real gap is under 5 ms; in ci 39179325635 (artifact 12157082740) the
+  // implied marking was 01:13:04.056Z and the stamp 01:13:04.061Z, so +5 ms landed exactly ON the stamp — inside the
+  // permitted interval — and C18.1.11 rightly accepted it. The drift is now derived from the archive: the implied marking
+  // is moved to ONE millisecond past the audited stamp, the first instant outside the interval on every archive.
+  ['the rotated seed credential expiry drifts past the audited bootstrap stamp', (d) => {
     everywhereA(d, 'identity.credentials', (r) => {
       if (r.status !== 'rotated') return;
-      r.expires_at = new Date(Date.parse(r.expires_at) + 5).toISOString().replace('Z', '+00:00');
+      r.expires_at = new Date(bootstrapStampMs(d) + SEED_CREDENTIAL_LIFECYCLE.lifetimeMs + 1)
+        .toISOString().replace('Z', '+00:00');
     });
-  }, /credential lifecycle: the expiry implies a marking instant/],
+  }, /credential lifecycle: the expiry implies a marking instant .*after the audited bootstrap was stamped/],
 ];
+
+/** The audited bootstrap stamp (a canonical body instant) the seeded path-A snapshots carry; identical in all three. */
+function bootstrapStampMs(d: string): number {
+  const stamps = SEEDED_SNAPS.map(([f]) => {
+    const doc = JSON.parse(readFileSync(join(d, f), 'utf8'));
+    const ev = doc.tables['audit.audit_events'].rows
+      .find((r: any) => r.event?.action === 'identity.bootstrap.platform_admin');
+    return Date.parse(ev.event.occurred_at);
+  });
+  expect(new Set(stamps).size, 'one audited bootstrap stamp across the seeded snapshots').toBe(1);
+  expect(Number.isFinite(stamps[0])).toBe(true);
+  return stamps[0]!;
+}
+
+/** Move the rotated credential's implied marking instant to `markingMs` across every seeded snapshot. */
+const markAt = (d: string, markingMs: (d: string) => number) =>
+  everywhereA(d, 'identity.credentials', (r) => {
+    if (r.status !== 'rotated') return;
+    r.expires_at = new Date(markingMs(d) + SEED_CREDENTIAL_LIFECYCLE.lifetimeMs)
+      .toISOString().replace('Z', '+00:00');
+  });
 
 export function register24() {
 describe('C18.1.11 — DIFFERENTIAL: the frozen a424505 verifier ACCEPTED what C18.1.11 rejects', () => {
@@ -3274,6 +3304,21 @@ describe('C18.1.11 — DIFFERENTIAL: the frozen a424505 verifier ACCEPTED what C
     const old = await judgeA42(mutate);
     expect(old.ok, `the frozen a424505 verifier must accept this mutation; problems: ${old.problems.join('; ')}`).toBe(true);
     await expectReject(mutate, pattern);
+  });
+
+  // The permitted interval, positively (bootstrap-marking-instant is a DECLARED observational limit, not a finding): an
+  // implied marking exactly AT the audited stamp — the instant ci 39179325635's fixed 5 ms drift happened to reach — is
+  // inside the interval, and both the frozen a424505 leg and C18.1.11 accept it. One millisecond later is the mutation
+  // above, which C18.1.11 rejects.
+  it('the implied marking exactly AT the audited bootstrap stamp stays inside the permitted interval — both legs ACCEPT it', async () => {
+    const atStamp: Mutator = (d) => markAt(d, bootstrapStampMs);
+    const old = await judgeA42(atStamp);
+    expect(old.problems).toEqual([]);
+    expect(old.ok).toBe(true);
+    const { members } = mutateMembers(atStamp);
+    const r = await verifySemantics({ members, root: REPO, sourceBinding: sourceBinding() });
+    expect(r.problems).toEqual([]);
+    expect(r.ok).toBe(true);
   });
 });
 }

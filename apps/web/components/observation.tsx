@@ -22,6 +22,7 @@
  */
 import { useState, type CSSProperties, type ReactNode } from 'react';
 import type { HealthState } from '../lib/observation';
+/* B80 clf */ import * as LIBRARY_STYLES from '../lib/styles-b80'; /* end B80 clf */
 
 /* ───────────────────────── state display ───────────────────────── */
 
@@ -322,12 +323,7 @@ export function Empty({ children }: { children: ReactNode }) {
   );
 }
 
-export const cardStyle: CSSProperties = {
-  background: 'var(--eye-color-surface-primary)',
-  border: '1px solid var(--eye-color-border-default)',
-  borderRadius: 'var(--eye-radius-lg)',
-  padding: 'var(--eye-space-16)',
-};
+export const cardStyle: CSSProperties = LIBRARY_STYLES.cardStyle; /* B80 clf: the library owns it (lib/styles-b80.ts; states in globals.css) */
 
 export const badgeRowStyle: CSSProperties = {
   display: 'flex',
@@ -336,17 +332,7 @@ export const badgeRowStyle: CSSProperties = {
   alignItems: 'center',
 };
 
-export const textareaStyle: CSSProperties = {
-  inlineSize: '100%',
-  minBlockSize: '4.5rem',
-  border: '1px solid var(--eye-color-border-default)',
-  borderRadius: 'var(--eye-radius-md)',
-  padding: 'var(--eye-space-8)',
-  fontSize: 'var(--eye-type-body-md)',
-  fontFamily: 'var(--eye-font-ui)',
-  background: 'var(--eye-color-surface-primary)',
-  color: 'var(--eye-color-ink-default)',
-};
+export const textareaStyle: CSSProperties = LIBRARY_STYLES.textareaStyle; /* B80 clf: the library owns it (lib/styles-b80.ts; states in globals.css) */
 
 /** A polite live region for status that changes under the operator's eye. */
 export function LiveStatus({ children, assertive }: { children: ReactNode; assertive?: boolean }) {

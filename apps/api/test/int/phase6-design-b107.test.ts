@@ -679,7 +679,7 @@ describe('DG10 · boundaries: RLS, the ledger (REPLAY), cross-tenant reads', () 
   it('every §DG table forces RLS; the PLATFORM registers carry no write grant to a runtime role', async () => {
     const forced = await rows(sql`select c.relname as t, c.relforcerowsecurity as f from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'governance' and c.relname like 'design\\_%' and c.relkind = 'r' order by 1`);
     expect(forced.map((r) => r['t'])).toEqual(['design_acceptances', 'design_assets', 'design_baselines', 'design_conformance_packages', 'design_contributions', 'design_evaluations', 'design_exceptions',
-                                              'design_experience_intakes', 'design_principles']);
+                                              'design_experience_intakes', 'design_principles', /* B80 §TK (0118) */ 'design_themes']);
     expect(forced.every((r) => r['f'] === true)).toBe(true);
     expect(await n(sql`select count(*)::int n from information_schema.role_table_grants where table_schema = 'governance' and table_name like 'design\\_%' and grantee in ('eye_app', 'eye_commit') and privilege_type <> 'SELECT'`)).toBe(0);
   });

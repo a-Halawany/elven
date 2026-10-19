@@ -5,6 +5,7 @@
  * (color + UPPERCASE label + symbol — Vol 9 TS-01…TS-10, HX-02).
  */
 import type { CSSProperties, ReactNode } from 'react';
+/* B80 clf */ import * as LIBRARY_STYLES from '../lib/styles-b80'; /* end B80 clf */
 
 const TRUTH_SYMBOLS: Record<string, string> = {
   observed: '●', asserted: '▢', extracted: '⌕', inferred: '⧉', assessed: '◇',
@@ -121,32 +122,11 @@ export function DegradedBanner({ visible, detail }: { visible: boolean; detail: 
   );
 }
 
-export const inputStyle: CSSProperties = {
-  blockSize: 'var(--eye-size-control-md)',
-  border: '1px solid var(--eye-color-border-default)',
-  borderRadius: 'var(--eye-radius-md)',
-  paddingInline: 'var(--eye-space-8)',
-  fontSize: 'var(--eye-type-body-md)',
-  background: 'var(--eye-color-surface-primary)',
-  color: 'var(--eye-color-ink-default)',
-};
+export const inputStyle: CSSProperties = LIBRARY_STYLES.inputStyle; /* B80 clf: the library owns it (lib/styles-b80.ts; states in globals.css) */
 
-export const buttonStyle: CSSProperties = {
-  blockSize: 'var(--eye-size-control-md)',
-  border: '1px solid var(--eye-color-accent-strong)',
-  borderRadius: 'var(--eye-radius-md)',
-  paddingInline: 'var(--eye-space-12)',
-  background: 'var(--eye-color-accent-default)',
-  color: 'var(--eye-color-surface-primary)',
-  fontWeight: 600,
-  cursor: 'pointer',
-};
+export const buttonStyle: CSSProperties = LIBRARY_STYLES.buttonStyle; /* B80 clf: the library owns it (lib/styles-b80.ts; states in globals.css) */
 
-export const tableStyle: CSSProperties = {
-  inlineSize: '100%',
-  borderCollapse: 'collapse',
-  fontSize: 'var(--eye-type-body-sm)',
-};
+export const tableStyle: CSSProperties = LIBRARY_STYLES.tableStyle; /* B80 clf: the library owns it (lib/styles-b80.ts; states in globals.css) */
 
 export function Th({ children }: { children: ReactNode }) {
   return (

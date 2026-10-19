@@ -8,7 +8,17 @@
  */
 import { createHash, randomUUID } from 'node:crypto';
 
-export const API = process.env.EYE_API ?? 'http://localhost:3401';
+// B80 integration pass (2026-10-19): NO DEFAULT. This used to fall back to the live demonstration (:3401), so a
+// script that forgot EYE_API — the B82 act builder's probe — logged into the live deployment while it meant a
+// rehearsal. Every request below refuses before fetch when the caller has not named the target (see
+// scripts/act-target.mjs, which the current acts run first).
+export const API = process.env.EYE_API ?? null;
+const target = (path) => {
+  if (API === null || String(API).trim() === '') {
+    throw new Error(`EYE_API is not set — refusing to send ${path}: name the API explicitly (there is no default; nothing was contacted)`);
+  }
+  return API + path;
+};
 
 const jcs = (v) => {
   if (Array.isArray(v)) return `[${v.map(jcs).join(',')}]`;
@@ -47,7 +57,7 @@ export async function call(path, over, payload = {}, token = null) {
   };
   const headers = { 'content-type': 'application/json' };
   if (token !== null) headers.authorization = `Bearer ${token}`;
-  const res = await fetch(API + path, { method: 'POST', headers, body: JSON.stringify({ envelope, payload }) });
+  const res = await fetch(target(path), { method: 'POST', headers, body: JSON.stringify({ envelope, payload }) });
   const body = await res.json().catch(() => ({}));
   return { ok: res.ok, status: res.status, body, correlationId: envelope.correlation_id };
 }
@@ -62,7 +72,7 @@ export async function callRaw(path, over, payload = {}, token = null) {
   };
   const headers = { 'content-type': 'application/json' };
   if (token !== null) headers.authorization = `Bearer ${token}`;
-  return fetch(API + path, { method: 'POST', headers, body: JSON.stringify({ envelope, payload }) });
+  return fetch(target(path), { method: 'POST', headers, body: JSON.stringify({ envelope, payload }) });
 }
 
 export async function login(username, password) {

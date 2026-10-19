@@ -1,0 +1,47 @@
+THE B107-F/G ACT on eye_demo — 2026-10-18T19:23:20.471Z — API http://localhost:3401
+
+FG-0 THE STATE — 0116 and 0117 applied, the build identity, the cast
+  ✓ migration applied: 0116_b107f_acceptance_at_request.sql
+  ✓ migration applied: 0117_b107g_expansion_at_activation.sql
+  ✓ the API declares its build: head 855d69633c9f… (from env), migration head —, policy bundle bundle-v1
+
+FG-1 THE RELEASE-CANDIDATE DRIFT (§CM) — the candidate bound to 0115 reads drifted; a new candidate at the deployed head, checked and attested (not a release)
+  · the monitor: {"open":2,"opened":2,"run_id":"0349f1a5-6536-44ca-a6c0-411da37f18f5","recorded":true,"resolved":0,"holds_lifted":0,"holds_opened":2,"observation_digest":"2df82474e093a2131c8757a2050d85440503728c30cbf7a4187a21de3c720c74","findings":[{"kind":"head_drift","fingerprint":"head_drift:ac8ef1d9-b4e6-402f-97
+  · candidate ac8e…09aa00 v1 "NORDWERK corridor release candidate 2026-10 (SYNTHETIC — a l…": attested, head 42a10891c042…, migration head 0115_b107_governance_registries_acceptance.sql — open holds: conformance_drift: conformance drift: NORDWERK corridor release candidate 2026-10 (SYNTHETIC — a local release-candidate record, B65 substi; conformance_drift: conformance drift: NORDWERK corridor release candidate 2026-10 (SYNTHETIC — a local release-candidate record, B65 substi
+  ✓ P. Castellano INGESTED b107fg-contract.vitest.json (203/203 passed at head 855d69633c9f…)
+  ✓ P. Castellano INGESTED b107fg-trust.vitest.json (31/31 passed at head 855d69633c9f…)
+  ✓ P. Castellano INGESTED b107fg-human-authority.vitest.json (76/76 passed at head 855d69633c9f…)
+  ✓ P. Castellano ASSEMBLED c974…15c44f v1 at head 855d69633c9f…, migration head 0117_b107g_expansion_at_activation.sql
+  ✓ the CHECK: CONFORMANT
+  ✓ P. Castellano (the assembler) attests the candidate REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ H. Achterberg (independent assurance) ATTESTED the new candidate v1: attested — a LOCAL CONFORMANCE RECORD, nothing released
+
+FG-2 REQUEST-TIME ACCEPTANCE (0116) — CAP-FW-04 accepted for the corridor over current evidence; the executive item valid 3 min; the read at its expiry
+  ✓ P. Castellano RECORDED the executive-journey evidence 01a1…1cd442 — valid until 2026-10-18T19:26:21Z (3 min on the database clock)
+  ✓ v1 ACCEPTED for roles domain_analyst + executive (verified by W. Zielińska; attested by R. Moreau, H. Achterberg, W. Zielińska)
+  ✓ the accepted scope before the expiry: accepted, roles domain_analyst, executive, reconciled true
+  · WAITING 182 s on the database clock for the executive item's validity (until 2026-10-18T19:26:21Z) — a real short validity, nothing moved
+  ✓ at the expiry the accepted scope reads CONSTRAINED — roles domain_analyst (executive REMOVED), current findings evidence_expired; stored state accepted; reconciled false
+  · OBSERVED BEFORE RECONCILIATION: the record is still stored accepted — the read (and the gate) answer from the current findings (0116)
+
+FG-3 EXPANSION AFTER THE EXPIRY (0117, ordering a) — a wider version refused; the same scope re-accepted
+  ✓ P. Castellano RECORDED the executive-journey evidence 01a1…306234 (renews 01a1…1cd442) — valid until 2026-11-17T19:26:23Z (43200 min on the database clock)
+  ✓ E. Lindgren proposes a WIDER version (+ board_member) over fresh evidence while v1 no longer meets its evidence REFUSED — 409 EYE-STA-002 — acceptance record rejected (held): the re-acceptance of CAP-FW-04 expands beyond its previously accepted scope (role board_member) — re-accept the accepted scope first (ES-71-004)
+  ✓ P. Castellano RECORDED the executive-journey evidence 01a1…97ee6b — valid until 2026-10-18T19:29:23Z (3 min on the database clock)
+  ✓ the SAME scope RE-ACCEPTED as v2 over renewed evidence — v1 superseded, v2 accepted
+
+FG-4 EXPANSION PENDING ACROSS THE EXPIRY (0117, ordering b) — the final attestation refused; nothing activated; the same scope re-accepted
+  ✓ P. Castellano RECORDED the executive-journey evidence 01a1…7f478b — valid until 2026-11-17T19:26:23Z (43200 min on the database clock)
+  ✓ E. Lindgren PROPOSED the wider v3 (+ board_member) while v2 is current — a legitimate proposal
+  ✓ v3 verified and attested by every obligation but the last (independent assurance)
+  · WAITING 182 s on the database clock for v2's executive item (until 2026-10-18T19:29:23Z) — a real short validity, nothing moved
+  ✓ H. Achterberg gives the FINAL attestation of the wider v3 after v2's evidence expired REFUSED — 409 EYE-STA-002 — acceptance attestation rejected (held): CAP-FW-04 — version 3 expands beyond the scope in force (role board_member) while version 2 is constrained (evidence_expired) — re-accept the accepted scope first (PR-71-005, ES-71-004)
+  ✓ nothing activated: the attestations of v3 unchanged (2), v1 superseded, v2 accepted, v3 proposed
+  ✓ P. Castellano RECORDED the executive-journey evidence 01a1…15c046 (renews 01a1…97ee6b) — valid until 2026-11-17T19:29:24Z (43200 min on the database clock)
+  ✓ the SAME scope RE-ACCEPTED as v4 (the pending wider v3 superseded) — v1 superseded, v2 superseded, v3 superseded, v4 accepted
+
+FG-5 THE STATE and THE LIMITS
+  ✓ CAP-FW-04 in the corridor: accepted, roles domain_analyst, executive, reconciled true, claim demonstration
+  · LIMITS — THREE CLAIMS KEPT APART. (1) CONSTRUCTION: 0116 and 0117 with their harness cases (phase6-acceptance-b107 "B107-F", "B107-G"). (2) DEMONSTRATED OPERATION: this act — B107's SYNTHETIC vendor personas and NORDWERK's people through the governed routes; every record claim = demonstration; the new release candidate is a local conformance record (B65 substituted), never a release. (3) REAL ACCEPTANCE — never claimed; the present implementation cannot record it (the non-demonstration recording path is construction at B111), then R2/H3. NOT SHOWN HERE: the gate's handler reachability (the demonstration marks no capability enforce_acceptance; harness-proven).
+
+ALL SCENES HELD

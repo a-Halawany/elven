@@ -1,0 +1,42 @@
+# B80 on eye_demo (2026-10-18): the browser walks after the act, web :3000 and API :3401 on 7833eda (0118 applied). Screenshots: evidence/phase6-browser/b80-*.png, b80-cld-*.png.
+
+== walk-b80 (phase6-b80.demo + the catalogue walk) with the B107 regression in one run
+  ✘   1 e2e/phase6-b107.demo.spec.ts:62:7 › CP-6 B107 — governance registries, the product-governance workspace, conformance, acceptance, design governance and ownership on the demonstration ›
+  ✓   9 e2e/phase6-b80-catalogue.demo.spec.ts:43:7 › B80 §CL-D — the catalogue walk (data, layers, foundation) › DataTable: exact counts, sort with aria-sort, filter, group, density, selectio
+  ✓  10 e2e/phase6-b80-catalogue.demo.spec.ts:74:7 › B80 §CL-D — the catalogue walk (data, layers, foundation) › the windowed keyboard grid: 100,000 rows, a bounded DOM, arrows move focus, th
+  ✓  11 e2e/phase6-b80-catalogue.demo.spec.ts:92:7 › B80 §CL-D — the catalogue walk (data, layers, foundation) › the empty states never imply a zero world (PAT-28) (524ms)
+  ✓  12 e2e/phase6-b80-catalogue.demo.spec.ts:97:7 › B80 §CL-D — the catalogue walk (data, layers, foundation) › BulkSelection states included / excluded with reasons / hidden / changed / mis
+  ✓  13 e2e/phase6-b80-catalogue.demo.spec.ts:107:7 › B80 §CL-D — the catalogue walk (data, layers, foundation) › Dialog: deterministic focus, Escape is not consent and focus returns; one mod
+  ✓  14 e2e/phase6-b80-catalogue.demo.spec.ts:141:7 › B80 §CL-D — the catalogue walk (data, layers, foundation) › a draft survives a dismissal and is offered back; a discard clears it (704ms)
+  ✓  15 e2e/phase6-b80-catalogue.demo.spec.ts:155:7 › B80 §CL-D — the catalogue walk (data, layers, foundation) › drawer, popover and disclosure: supporting layers, focus returned, authority 
+  ✓  16 e2e/phase6-b80-catalogue.demo.spec.ts:176:7 › B80 §CL-D — the catalogue walk (data, layers, foundation) › inspection: tree grid keys, metric states, summary limits, common-basis ranki
+  ✓  17 e2e/phase6-b80-catalogue.demo.spec.ts:199:7 › B80 §CL-D — the catalogue walk (data, layers, foundation) › foundation: the focus ring and keyboard scroll area under forced colours and 
+  ✓  18 e2e/phase6-b80.demo.spec.ts:53:7 › CP-6 B80 — the theme, the forms, the bulk selection, the context bar and the deep link on the demonstration › THE THEME (F-P7-E-03): the B28 warning 
+  ✓  19 e2e/phase6-b80.demo.spec.ts:74:7 › CP-6 B80 — the theme, the forms, the bulk selection, the context bar and the deep link on the demonstration › THE FORMS (F-P7-E-05): the source regis
+  ✓  20 e2e/phase6-b80.demo.spec.ts:105:7 › CP-6 B80 — the theme, the forms, the bulk selection, the context bar and the deep link on the demonstration › THE BULK SELECTION (F-P7-E-05): the Re
+  ✓  21 e2e/phase6-b80.demo.spec.ts:127:7 › CP-6 B80 — the theme, the forms, the bulk selection, the context bar and the deep link on the demonstration › THE CONTEXT BAR (F-P7-E-01): the scena
+  ✓  22 e2e/phase6-b80.demo.spec.ts:160:7 › CP-6 B80 — the theme, the forms, the bulk selection, the context bar and the deep link on the demonstration › THE DEEP LINK (F-P7-E-01): opened in a
+    Error: expect(locator).toContainText(expected) failed
+    test-results/phase6-b107.demo-CP-6-B107-b9963-release-the-change-approved/test-failed-1.png
+  1 failed
+  14 passed (37.7s)
+
+   (the B107 regression's first case failed in that run — its assertions reflected B107's state before the drift: see the governed reconciliation below)
+
+== the governed reconciliation of B80's drift before the B107 regression walk
+   P. Castellano re-imported the repository registers (the audit CSVs changed with the B107-F/G and B80 bookkeeping):
+P. Castellano (conformance steward) re-imported the repository registers READ-ONLY: 201 {"imported":[{"source_path":"audit/requirements/v00-v01.csv","source_kind":"requirements","rows":448,"links":224,"unchanged":false,"counts":{"retired":0,"unchanged":445,"versioned":3,"registered":0,"unresolved":0,"links_added":2,"links_retired":2,"links_declared":224,"normative_changes":2},"unresolved":[],"impo
+   P. Castellano registered the component manifest v2 (B80's api.shell unit):
+P. Castellano (conformance steward) re-imported the repository registers READ-ONLY: 201 {"manifest":{"links":{"note":"a reference §RG has not registered (requirement V3:/V6:/V7:<id>, interface L<n>-I0<k>, schema <TYPE>@v<n>) is counted here and linked by a later registration","unresolved":{"schemas":0,"interfaces":0,"requirements":0},"links_added":4,"links_retired":0},"units":32,"retired":0,"vers
+   the release-candidate drift: evidence/cp6/act-b80-candidate.txt (a new candidate at 7833eda attested; the superseded withdrawn; 0 open findings)
+
+== walk-b107-regression (after the governed reconciliation; the workspace case now accepts the truthful hold state)
+  ✓  1 e2e/phase6-b107.demo.spec.ts:62:7 › CP-6 B107 — governance registries, the product-governance workspace, conformance, acceptance, design governance and ownership on the demonstration › 
+  ✓  2 e2e/phase6-b107.demo.spec.ts:81:7 › CP-6 B107 — governance registries, the product-governance workspace, conformance, acceptance, design governance and ownership on the demonstration › 
+  ✓  3 e2e/phase6-b107.demo.spec.ts:95:7 › CP-6 B107 — governance registries, the product-governance workspace, conformance, acceptance, design governance and ownership on the demonstration › 
+  ✓  4 e2e/phase6-b107.demo.spec.ts:108:7 › CP-6 B107 — governance registries, the product-governance workspace, conformance, acceptance, design governance and ownership on the demonstration ›
+  ✓  5 e2e/phase6-b107.demo.spec.ts:121:7 › CP-6 B107 — governance registries, the product-governance workspace, conformance, acceptance, design governance and ownership on the demonstration ›
+  ✓  6 e2e/phase6-b107.demo.spec.ts:129:7 › CP-6 B107 — governance registries, the product-governance workspace, conformance, acceptance, design governance and ownership on the demonstration ›
+  ✓  7 e2e/phase6-b107.demo.spec.ts:148:7 › CP-6 B107 — governance registries, the product-governance workspace, conformance, acceptance, design governance and ownership on the demonstration ›
+  ✓  8 e2e/phase6-b107.demo.spec.ts:160:7 › CP-6 B107 — governance registries, the product-governance workspace, conformance, acceptance, design governance and ownership on the demonstration ›
+  8 passed (7.4s)

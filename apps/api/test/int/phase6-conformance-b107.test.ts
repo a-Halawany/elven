@@ -23,6 +23,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sql } from 'kysely';
 import { uuidv7 } from 'uuidv7';
 import { generateKeyPairSync } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { HttpException } from '@nestjs/common';
 import type { Envelope } from '@eye/contracts';
 import type { AuthenticatedPrincipal } from '../../src/shared/auth-types.js';
@@ -30,6 +32,8 @@ import { asObservationRefusal } from '../../src/observation/observation-errors.j
 import { AttentionTimerService } from '../../src/executive/attention/attention-timer.service.js';
 import { ATTENTION_TIMER_DIGEST, ATTENTION_TIMER_VERSION } from '../../src/executive/attention/timer-identity.js';
 import { policyBundleDigest } from '../../src/policy/pdp.service.js';
+/* B80: the committed component manifest, read from the repository root */
+const REPO_ROOT_B80 = join(__dirname, '..', '..', '..', '..');
 import { ConformanceController } from '../../src/governance/conformance/conformance.controller.js';
 import { ConformanceService } from '../../src/governance/conformance/conformance.service.js';
 import { ConformanceCap } from '../../src/governance/conformance/conformance.capabilities.js';
@@ -228,14 +232,16 @@ describe('CM1 · the component manifest (ES-01-001, ES-02-002, ES-31..40-002, IA
     const unres = await unresolvedNow();
     expect(unres.referenced).toEqual({ requirements: 288, interfaces: 460 });   // the committed manifest's references (all unresolved on a registry §RG never filled)
     const r = (await register()).manifest;
-    expect(r).toMatchObject({ version: 1, units: 31, components: 298, findings_resolved: 2 });
+    /* the units are the COMMITTED manifest's (B107: 31; B80 added api.shell — read, not pinned) */
+    const committedUnits = (JSON.parse(readFileSync(join(REPO_ROOT_B80, 'conformance/components.manifest.json'), 'utf8')) as { deployable_units: unknown[] }).deployable_units.length;
+    expect(r).toMatchObject({ version: 1, units: committedUnits, components: 298, findings_resolved: 2 });
     MANIFEST = String(r['manifest_id']);
     const links = r['links'] as Row;
     expect(Number(links['links_added'])).toBeGreaterThan(500);
     expect(links['unresolved']).toMatchObject({ requirements: unres.requirements, interfaces: unres.interfaces });
     expect(await openFindings('unmapped_unit')).toHaveLength(0);
     const counts = await rows(sql`select kind, count(*)::int n from governance.artifacts where superseded_at is null and source ->> 'part' = 'cm' group by 1 order by 1`);
-    expect(counts).toEqual([{ kind: 'component', n: 298 }, { kind: 'deployable_unit', n: 31 }, { kind: 'manifest', n: 1 }]);
+    expect(counts).toEqual([{ kind: 'component', n: 298 }, { kind: 'deployable_unit', n: committedUnits }, { kind: 'manifest', n: 1 }]);
     const deploys = await one(sql`select count(*)::int n from governance.links_live l join governance.artifacts u on u.artifact_id = l.from_artifact and u.superseded_at is null
       join governance.artifacts c on c.artifact_id = l.to_artifact and c.superseded_at is null where l.relation = 'deploys' and u.external_key = 'api.observation' and c.external_key like 'L1-C%'`);
     expect(deploys).toEqual({ n: 9 });

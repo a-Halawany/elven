@@ -53,6 +53,21 @@ interface Rule {
   minConsequence?: ConsequenceClass;
 }
 
+/* B80 cb (0118 §CB; DESIGN D3) — THE HUMAN DOMAIN ROLES THAT MAY SET AN OPERATING CONTEXT: every human domain role; the agents (`*_agent`), the
+   subscribers (workloads, `*_subscriber`) and the external collaborator never. The port re-checks the SAME list (executive.context_setter_roles(),
+   0118 §CB.1); the harness phase6-context-b80 proves the two equal and every DOMAIN role of identity.roles classified. */
+export const B80_CONTEXT_SETTER_ROLES: readonly string[] = [
+  'domain_admin', 'domain_analyst', 'collection_manager', 'extraction_manager', 'resolution_manager',
+  'decision_owner', 'decision_approver', 'decision_authority', 'executive', 'executive_operator', 'board_member',
+  'strategy_owner', 'forecast_owner', 'twin_owner', 'simulation_operator',
+  'knowledge_owner', 'record_authority', 'retention_steward', 'ontology_steward',
+  'risk_owner', 'opportunity_sponsor', 'execution_authority', 'method_steward', 'constraint_steward', 'data_steward',
+  'domain_specialist', 'product_analytics_owner', 'privacy_officer', 'product_analyst', 'support_engineer', 'enablement_assessor',
+];
+/** The TENANT-bound humans who READ the bar (they work in a chosen domain and see its context; they set none — D3 names the domain roles). */
+const B80_CONTEXT_TENANT_READERS: readonly string[] = ['tenant_admin', 'auditor', 'retention_authority', 'customer_sponsor', 'onboarding_authority', 'implementation_lead', 'branding_authority'];
+/* end B80 cb */
+
 /** bundle-v1 — RBAC rules in the ABAC model. Order matters: first match wins. */
 const BUNDLE_V1: Rule[] = [
   { actionPrefix: 'tenancy.tenant.', requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }], requiresPurpose: true },
@@ -170,6 +185,9 @@ const BUNDLE_V1: Rule[] = [
       { role: 'operations_authority', atScope: 'PLATFORM' },
       { role: 'conformance_steward', atScope: 'PLATFORM' },
       /* end B107 §0 */
+      /* B80 §0 (0118 §0.2): the customer's brand owner resolves its own scope */
+      { role: 'branding_authority', atScope: 'TENANT' },
+      /* end B80 §0 */
     ],
     obligations: [{ type: 'audit_access' }],
     requiresPurpose: true,
@@ -2823,6 +2841,68 @@ const BUNDLE_V1: Rule[] = [
     ];
   })(),
   /* end B107 design */
+  /* B80 tk */
+  /* B80 §TK (0118_b80_x_tk; F-P7-E-03: UX-68-001…005, UX-ADR-022, PAT-41, REL-16). EXACT rules. THE CUSTOMER THEME is the tenant's: the
+     brand owner (branding_authority, TENANT) PROPOSES, ACTIVATES (a certified version only), ROLLS BACK and RETIRES (all human-gated; the
+     ports re-check the human and the role); the Design System Authority (PLATFORM) CERTIFIES (human-gated, signed; the port re-checks the
+     approver test — never the proposer, never an agent — and recomputes the contrast matrix from the stored mapping). The PREVIEW and the
+     READ (the tenant's themes, certifications, activations; the PLATFORM certification queue) by the brand owner, the Design System
+     Authority, the conformance steward and product authority (PLATFORM), and the tenant's administrator, auditor and customer sponsor. THE
+     THEME IN FORCE (what ThemeScope applies, on a TENANT or a DOMAIN route) by every human role of the tenant and its domains (the B92
+     list of domain roles, the tenant roles) and the Design System Authority — an agent renders no shell. The library lint (dg-lint-2) is
+     B107's governance.design.evaluate. */
+  ...(() => {
+    const P = (role: string): { role: string; atScope: Scope } => ({ role, atScope: 'PLATFORM' });
+    const T = (role: string): { role: string; atScope: Scope } => ({ role, atScope: 'TENANT' });
+    const S = (role: string): { role: string; atScope: Scope } => ({ role, atScope: 'DOMAIN' });
+    const gate: Obligation[] = [{ type: 'human_gate' }];
+    const r = (actionPrefix: string, requiredAnyRole: Array<{ role: string; atScope: Scope }>, obligations?: Obligation[]): Rule =>
+      ({ actionPrefix, exact: true, requiredAnyRole, ...(obligations === undefined ? {} : { obligations }), requiresPurpose: true, maxConsequence: 'C2' });
+    const brand = [T('branding_authority')];
+    const readers = [P('design_system_authority'), P('conformance_steward'), P('product_authority'), T('branding_authority'), T('tenant_admin'), T('auditor'), T('customer_sponsor')];
+    const humans = [P('design_system_authority'), T('branding_authority'), T('tenant_admin'), T('auditor'), T('customer_sponsor'), T('onboarding_authority'), T('implementation_lead'),
+      T('retention_authority'), ...['domain_admin', 'domain_analyst', 'collection_manager', 'decision_owner', 'decision_approver', 'decision_authority', 'executive', 'extraction_manager',
+        'resolution_manager', 'strategy_owner', 'forecast_owner', 'twin_owner', 'simulation_operator', 'knowledge_owner', 'record_authority', 'retention_steward', 'ontology_steward',
+        'risk_owner', 'opportunity_sponsor', 'execution_authority', 'method_steward', 'constraint_steward', 'executive_operator', 'board_member', 'data_steward', 'domain_specialist',
+        'product_analytics_owner', 'privacy_officer', 'product_analyst'].map(S)];
+    return [
+      r('governance.design.theme.read', readers),
+      r('governance.design.theme.in_force.read', humans),
+      r('governance.design.theme.preview', readers),
+      r('governance.design.theme.propose', brand, gate),
+      r('governance.design.theme.certify', [P('design_system_authority')], gate),
+      r('governance.design.theme.activate', brand, gate),
+      r('governance.design.theme.rollback', brand, gate),
+      r('governance.design.theme.retire', brand, gate),
+    ];
+  })(),
+  /* end B80 tk */
+  /* B80 clf */
+  /* B80 §CL-F (0118_b80_x_clf; PAT-03, UX-21-002/-003). EXACT rules — no `shell` prefix rule exists. A FORM DRAFT is a person's own work in
+     progress: every HUMAN role that authors anything may keep one (the identity.self.read list less the agents and the external
+     collaborator — drafts never cross a grant boundary). SAVE and DISCARD are HUMAN-GATED (the PEP refuses an agent before any port; the
+     port re-checks the named human and the acting principal); the READ (one draft, the list) is the principal's OWN rows only — the RLS
+     policy and the guarded definer read decide that, not this rule. A draft is never a submission: these rules authorize nothing the form
+     itself does. */
+  ...((): Rule[] => {
+    const P = (role: string): { role: string; atScope: Scope } => ({ role, atScope: 'PLATFORM' });
+    const T = (role: string): { role: string; atScope: Scope } => ({ role, atScope: 'TENANT' });
+    const D = (role: string): { role: string; atScope: Scope } => ({ role, atScope: 'DOMAIN' });
+    const humans = [
+      P('platform_admin'), T('tenant_admin'), T('auditor'), T('retention_authority'), T('customer_sponsor'), T('onboarding_authority'), T('implementation_lead'),
+      T('branding_authority'),
+      ...['domain_admin', 'domain_analyst', 'collection_manager', 'decision_owner', 'decision_approver', 'decision_authority', 'executive', 'executive_operator',
+        'board_member', 'extraction_manager', 'resolution_manager', 'strategy_owner', 'forecast_owner', 'twin_owner', 'simulation_operator', 'knowledge_owner',
+        'record_authority', 'retention_steward', 'ontology_steward', 'risk_owner', 'opportunity_sponsor', 'execution_authority', 'method_steward',
+        'constraint_steward', 'data_steward', 'domain_specialist', 'product_analytics_owner', 'privacy_officer', 'product_analyst', 'support_engineer',
+        'enablement_assessor'].map(D),
+    ];
+    const gate: Obligation[] = [{ type: 'human_gate' }];
+    const r = (actionPrefix: string, obligations?: Obligation[]): Rule =>
+      ({ actionPrefix, exact: true, requiredAnyRole: humans, ...(obligations === undefined ? {} : { obligations }), requiresPurpose: true, maxConsequence: 'C2' });
+    return [r('shell.draft.read'), r('shell.draft.save', gate), r('shell.draft.discard', gate)];
+  })(),
+  /* end B80 clf */
   /* B36 home */
   /* THE EXECUTIVE HOME, THE CADENCE, THE COMMAND VIEWS, THE SEARCH, THE METRICS (0094 §H; F-P6-11: WS-01, JRN-19, PER-03, CAP-EO-01/-02/-04).
      EXACT rules — no `executive` prefix rule exists and none of these names is a prefix of another rule's. THE READS (executive.home.read
@@ -2839,7 +2919,14 @@ const BUNDLE_V1: Rule[] = [
      below (executive.attention.item.delegate, executive.task.reassign — the role added there, marked). No agent role appears here. */
   { actionPrefix: 'executive.home.read', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'executive_operator', atScope: 'DOMAIN' }, { role: 'board_member', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'decision_approver', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'domain_analyst', atScope: 'DOMAIN' }, { role: 'risk_owner', atScope: 'DOMAIN' }, { role: 'forecast_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
   { actionPrefix: 'executive.metrics.read', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'tenant_admin', atScope: 'TENANT' }, { role: 'auditor', atScope: 'TENANT' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'executive_operator', atScope: 'DOMAIN' }, { role: 'board_member', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }], obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
-  { actionPrefix: 'executive.context.set', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'executive_operator', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* B80 cb (0118 §CB) — B36's `executive.context.set` rule REPLACED here (it stood in this place with seven roles): WIDENED to every human DOMAIN
+     role (DESIGN D3; B80_CONTEXT_SETTER_ROLES above), human-gated, presentation-only — a context switch never alters an approval and the port
+     (executive.commit_context / 0094's set_context) re-checks the human and the role. NEW: `executive.context.read` — the operating context
+     bar's read and the impact preview (executive.context_bar / context_impact), the same humans plus the TENANT-bound readers, audited. EXACT
+     rules; no earlier rule's prefix is a prefix of `executive.context.` (the B36 rule stood here and matched first). */
+  { actionPrefix: 'executive.context.set', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, ...B80_CONTEXT_SETTER_ROLES.map((role) => ({ role, atScope: 'DOMAIN' as const }))], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+  { actionPrefix: 'executive.context.read', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, ...B80_CONTEXT_TENANT_READERS.map((role) => ({ role, atScope: 'TENANT' as const })), ...B80_CONTEXT_SETTER_ROLES.map((role) => ({ role, atScope: 'DOMAIN' as const }))], obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B80 cb */
   { actionPrefix: 'executive.cadence.open', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'executive_operator', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   { actionPrefix: 'executive.cadence.reset', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'executive_operator', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   { actionPrefix: 'executive.room.open', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, { role: 'domain_admin', atScope: 'DOMAIN' }, { role: 'executive', atScope: 'DOMAIN' }, { role: 'executive_operator', atScope: 'DOMAIN' }, { role: 'decision_owner', atScope: 'DOMAIN' }, { role: 'strategy_owner', atScope: 'DOMAIN' }, { role: 'decision_authority', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
@@ -3002,6 +3089,31 @@ const BUNDLE_V1: Rule[] = [
   { actionPrefix: 'decision.execution.target.deactivate', exact: true, requiredAnyRole: [{ role: 'execution_authority', atScope: 'DOMAIN' }, { role: 'domain_admin', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   { actionPrefix: 'prediction.exposure.learn', exact: true, requiredAnyRole: [{ role: 'risk_owner', atScope: 'DOMAIN' }, { role: 'opportunity_sponsor', atScope: 'DOMAIN' }], obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   /* end B36 collab */
+  /* B80 sh */
+  /* B80 §SH (0118_b80_x_sh; F-P7-E-01: PR-05-002, UX-09-003, UX-11-002, UX-15-002, PAT-26). EXACT rules — no earlier rule is a prefix of
+     shell.navigation.* (no `shell` prefix rule exists). A NAVIGATION STATE is the principal's OWN presentation state: saved and read by every
+     HUMAN role of the Eye at its own scope — PLATFORM (the admin workspace: the platform and governance roles), TENANT (a tenant-homed
+     principal working in a domain) and DOMAIN (every human domain role) — and by no agent, subscriber or external collaborator (none is
+     listed; the port re-checks that the actor is the bound principal AND an active human, and refuses any other principal's state). Not
+     human-gated: saving where one stands is presentation, not a consequential act (the port's human check is the boundary). The deep
+     link's warning as-of read is `prediction.read` (the existing prefix rule — the warning readers); no rule is added for it. */
+  ...((): Rule[] => {
+    const platform = ['platform_admin', 'commercial_authority', 'product_authority', 'design_system_authority', 'independent_assurance', 'operations_authority', 'conformance_steward']
+      .map((role) => ({ role, atScope: 'PLATFORM' as Scope }));
+    const tenant = ['tenant_admin', 'auditor', 'retention_authority', 'branding_authority', 'customer_sponsor', 'implementation_lead', 'onboarding_authority']
+      .map((role) => ({ role, atScope: 'TENANT' as Scope }));
+    const domain = ['domain_admin', 'domain_analyst', 'collection_manager', 'decision_owner', 'decision_approver', 'decision_authority', 'executive', 'executive_operator',
+      'board_member', 'extraction_manager', 'resolution_manager', 'strategy_owner', 'forecast_owner', 'twin_owner', 'simulation_operator', 'knowledge_owner',
+      'record_authority', 'retention_steward', 'ontology_steward', 'risk_owner', 'opportunity_sponsor', 'execution_authority', 'method_steward', 'constraint_steward',
+      'data_steward', 'domain_specialist', 'product_analytics_owner', 'privacy_officer', 'product_analyst', 'enablement_assessor', 'support_engineer']
+      .map((role) => ({ role, atScope: 'DOMAIN' as Scope }));
+    const people = [...platform, ...tenant, ...domain];
+    return [
+      { actionPrefix: 'shell.navigation.save', exact: true, requiredAnyRole: people, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'shell.navigation.read', exact: true, requiredAnyRole: people, obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+    ];
+  })(),
+  /* end B80 sh */
 ];
 
 /* B107 conformance */

@@ -13,7 +13,7 @@
  *            effort = stage effort + verify effort.
  *   stages:  completing_features and verifying_features from the tracker; effort = own effort + the completing
  *            features' stage effort + the verifying features' verify effort; depends_on = the stages completing
- *            the completing features' dependencies (pkg:P7-D = B65) ∪ extra_depends_on; an H stage depends on M1,
+ *            the completing features' dependencies (pkg:P7-D = B65; F-…@Bnn = the slice delivered at Bnn) ∪ extra_depends_on; an H stage depends on M1,
  *            an R stage on H1 H2 H3.
  * The check fails on: an unmapped or twice-mapped row; a stale count or status; a feature without exactly one
  * completing stage, or listed by more than one; a verify stage that is not H/R or does not list it; a milestone,
@@ -115,7 +115,11 @@ const computedStatus = (t, c) => {
   if (c.missing === c.rows) return 'missing';
   return 'partial';
 };
-const depStage = (d) => (d === 'pkg:P7-D' ? 'B65' : feats.get(d)?.stage);
+/* B80 (2026-10-17): a dependency `F-…@Bnn` names the SLICE of a feature DELIVERED at stage Bnn while the feature's construction completes later
+   (e.g. the shell and the component library delivered at B80, their genuine acceptance recording path at B111): the dependent waits for Bnn, not
+   for the feature's completing stage — the software it uses is there; never used to hide a dependency on work that is not yet built. */
+const sliceOf = (d) => { const m = /^(F-[A-Za-z0-9-]+)@(B\d+)$/.exec(d); return m ? { feature: m[1], stage: m[2] } : null; };
+const depStage = (d) => { const sl = sliceOf(d); if (sl) return sl.stage; return d === 'pkg:P7-D' ? 'B65' : feats.get(d)?.stage; };
 const featureDeps = (t) => String(t.depends_on || '').split(';').map((x) => x.trim()).filter((x) => /^F-/.test(x) || x === 'pkg:P7-D');
 
 // ── derive (--write) ─────────────────────────────────────────────────────────────────────────────────────────
@@ -203,7 +207,10 @@ for (const t of tracker.rows) {
   if (t.target_date !== s.target_merged) problems.push(`${t.feature_id}: target ${t.target_date}, its stage says ${s.target_merged}`);
   if (!near(num(t.effort_lo), num(t.stage_effort_lo) + num(t.verify_effort_lo)) || !near(num(t.effort_hi), num(t.stage_effort_hi) + num(t.verify_effort_hi))) problems.push(`${t.feature_id}: effort ≠ stage effort + verify effort`);
   for (const dep of featureDeps(t)) {
-    const d = dep === 'pkg:P7-D' ? null : feats.get(dep);
+    const sl = sliceOf(dep);
+    if (sl && !feats.has(sl.feature)) { problems.push(`${t.feature_id}: slice dependency ${dep} names no feature`); continue; }
+    if (sl && !stages.has(sl.stage)) { problems.push(`${t.feature_id}: slice dependency ${dep} names no stage`); continue; }
+    const d = dep === 'pkg:P7-D' || sl ? null : feats.get(dep);
     if (d && (!isOpen(d) || d.status === 'functioning')) continue;
     const ds = depStage(dep);
     if (!ds) { problems.push(`${t.feature_id}: dependency ${dep} has no stage`); continue; }

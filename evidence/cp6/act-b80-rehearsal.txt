@@ -1,0 +1,211 @@
+# B80 act — REHEARSAL on eye_demo_b80 (a restored copy of .eye-local/backups/eye_demo-pre-0116-0117-20261017T131457Z.dump, migrated 0116/0117/0118 with phase6-b80), API :3411 built from 16c3de4 (lint fix 16c3de4 + the act).
+# run 1 = the first run on the fresh copy; run 2 = the rerun (every scene stands). Between them the act's inventory step was made rerun-safe (it no longer re-registers once B80's library is in the inventory) — run 2 is that code.
+
+════════ RUN 1 ════════
+THE B80 ACT on eye_demo_b80 (REHEARSAL) — 2026-10-17T18:22:35.212Z — API http://localhost:3411
+
+B80-0 THE STATE — 0118, the NORDWERK cast, the build identity
+  ✓ migration applied: 0118_b80_shell_foundations.sql
+  ✓ l.brandt holds decision_owner at the DOMAIN (the corridor domain "Supply Corridor Intelligence")
+  ✓ l.brandt holds strategy_owner at the DOMAIN (the corridor domain "Supply Corridor Intelligence")
+  ✓ m.dvorak holds collection_manager at the DOMAIN (the corridor domain "Supply Corridor Intelligence")
+  ✓ l.haddad holds design_system_authority at the PLATFORM
+  ✓ s.iversen holds design_system_authority at the PLATFORM
+  ✓ p.castellano holds conformance_steward at the PLATFORM
+  ✓ h.achterberg holds independent_assurance at the PLATFORM
+  ✓ w.zielinska holds customer_sponsor at the TENANT
+  · the API declares its build: head 16c3de4b9833… (from env), policy bundle bundle-v1 35e482b6d6b9…
+
+B80-1 THEME (F-P7-E-03) — the brand owner proposes, the Design System Authority refuses on contrast, the corrected version is certified (signed), activated, rolled back once, re-activated
+  ✓ the platform administrator CREATED the TENANT persona "NORDWERK brand owner (SYNTHETIC)" (login nw.brand-owner, branding_authority at the TENANT) through POST /v1/tenants/:t/principals
+  ✓ the brand owner PROPOSED "NORDWERK Corporate (SYNTHETIC)" v1 (ed80…b5c4a7, digest 6b2ac19ef035…, claim demonstration): the accent #B8202C / #FF9AA2, the surface tint, the wordmark — POL 01a14b19-f8af… · audit seq 633228
+  ✓ L. Haddad PREVIEWED v1: the matrix recomputed from the STORED mapping — 382 pairs over light, dark, print and two forced-colour schemes, outcome FAIL, 10 failing: light: color.accent.default vs color.critical ΔE 10.31 < 25; light: color.accent.default vs color.withdrawn ΔE 21.11 < 25; light: color.accent.default vs color.critical ΔE 11.90 < 12 (protan simulation); …
+  ✓ L. Haddad (Design System Authority) certifies v1 REFUSED — 409 EYE-STA-002 — design theme rejected (contrast): v1 is REFUSED certification — 10 failing pairs: light: color.accent.default vs color.critical ΔE 10.31 < 25; light: color.accent.default vs color.withdrawn ΔE 21.11 < 25; light: color.accent.default vs color.critical ΔE 11.90 < 12 (protan simulation); light: color.accent.default vs color.critical ΔE 8.57 < 12 (deutan simulation); light: color.accent.default vs color.critical ΔE 1.73 < 12 (tritan simulation); dark: color.accent.default vs color.critical ΔE 8.12 < 25; dark: color.acc
+  ✓ v1's certification record: REFUSED, signed (signature 01a1…cd71ca), the failing pairs named with their values — light: color.accent.default vs color.critical ΔE 10.31 < 25; light: color.accent.default vs color.critical ΔE 11.90 < 12 (protan simulation)
+  ✓ the brand owner activates the REFUSED v1 REFUSED — 409 EYE-STA-002 — design theme rejected (state): nordwerk-corporate v1 is refused, not certified — only a certified theme is activated (the core theme stays in force)
+  ✓ the brand owner PROPOSED v2 — the corrected navy accent #00466E / #7FC8F0, the tint and the wordmark kept — POL 01a14b1a-046d… · audit seq 633237
+  ✓ L. Haddad PREVIEWED v2: 382 pairs, outcome PASS, 0 failing; the minimum text contrast per mode light 4.6:1, dark 6.4:1, print 5.41:1, forced_colors_black 14.37:1, forced_colors_white 13.99:1
+  ✓ the brand owner (the PROPOSER) certifies v2 REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ L. Haddad (human gate) CERTIFIED v2: CERTIFIED over 382 pairs, SIGNED (signature 01a1…fbd3a5 over d8527e77ea4d…), claim demonstration — POL 01a14b1a-1b76… · audit seq 633251
+  ✓ v2's certification record: CERTIFIED; the signature is a theme_certification by L. Haddad (key ed25519:2b6c48b937b0b8d2, by reference)
+  ✓ the brand owner ACTIVATED v2 (activation seq 1, bound to certification 127a…572c0a) — POL 01a14b1a-20db… · audit seq 633256
+  ✓ the brand owner ROLLED BACK (seq 2): to the certified CORE theme — POL 01a14b1a-2127… · audit seq 633257
+  ✓ the theme in force after the rollback: CORE — the certified core theme (Volume 9 Appendix A) is in force
+  ✓ the brand owner RE-ACTIVATED v2 (activation seq 3, bound to certification 127a…572c0a) — POL 01a14b1a-2138… · audit seq 633259
+  ✓ THE THEME IN FORCE: CUSTOMER — NORDWERK Corporate (SYNTHETIC) v2, certified by L. Haddad — Design System Authority, the vendor (SYNTHETIC) (signature 01a1…fbd3a5, claim demonstration); L. Brandt's DOMAIN read agrees (customer v2) — a customer theme applies on screen in light and dark; print and forced colours render the certified core palette
+  · the theme's ledger: proposed@v1 → refused@v1 → proposed@v2 → certified@v2 → activated@v2 → rolled_back@v2 → activated@v2
+
+B80-2 FORMS (F-P7-E-05) — the source registration's draft and the decision-package form's draft: saved, read back, never a submission; the package declared over the existing routes
+  ✓ M. Dvorak (collection manager) SAVED the draft of observation.source.register "Bab el-Mandeb insurer notices (SYNTHETIC)" v1 (payload d08c7ec711a0…, expires 2026-10-24T18:22:46Z, submission false) — POL 01a14b1a-233f… · audit seq 633263
+  ✓ M. Dvorak (collection manager) READ the draft back: LIVE v1, step 1, the same values (7 fields), 1 version(s) — a draft is never a submission
+  ✓ the same content saved again is answered UNCHANGED (v1, no new version)
+  ✓ M. Dvorak (collection manager) saves over a draft it did not read (no expected version) REFUSED — 409 EYE-STA-002 — form draft rejected (stale): your draft of observation.source.register is at version 1 (saved 2026-10-17 18:22:46.593232+00); this save read no draft
+  ✓ L. Brandt (decision owner) SAVED the draft of decision.package.declare "Bab el-Mandeb corridor reroute (SYNTHETIC)" v1 (payload 0b39f33d9d46…, expires 2026-10-24T18:22:46Z, submission false) — POL 01a14b1a-2366… · audit seq 633268
+  ✓ L. Brandt (decision owner) READ the draft back: LIVE v1, step 2, the same values (7 fields), 1 version(s) — a draft is never a submission
+  ✓ the same content saved again is answered UNCHANGED (v1, no new version)
+  ✓ L. Brandt (decision owner) saves over a draft it did not read (no expected version) REFUSED — 409 EYE-STA-002 — form draft rejected (stale): your draft of decision.package.declare is at version 1 (saved 2026-10-17 18:22:46.631974+00); this save read no draft
+  ✓ L. Brandt declares a package titled "x" (the form's own minimum is 2 characters) REFUSED — 422 EYE-REQ-001 — title must be between 2 and 256 characters
+  ✓ L. Brandt DECLARED "Bab el-Mandeb corridor reroute (SYNTHETIC)" (01a1…72e70e) bound to the DEC "Mitigate the corridor closure — Regensburg line" — act 1 of 3, POL 01a14b1a-2389… · audit seq 633272
+  ✓ L. Brandt OPENED version 1 (known at now, stored as UTC) — act 2 of 3, POL 01a14b1a-23a7… · audit seq 633273
+  ✓ L. Brandt SET the option "reroute-cape" — act 3 of 3, POL 01a14b1a-23c6… · audit seq 633274
+  ✓ the package as recorded: "Bab el-Mandeb corridor reroute (SYNTHETIC)", 1 version(s), 1 option(s) — open, not proposed, approved or committed (its terms stay on the Decisions page)
+
+B80-3 BULK SELECTION (F-P7-E-05) — the Red Sea sources: included and excluded with reasons BEFORE the action; one governed write and one receipt per item
+  ✓ the selection BEFORE the action: 7 selected · 5 included · 2 excluded · 0 hidden by the filter · 0 changed since selection
+  · EXCLUDED imf-portwatch-chokepoints@v2 (live, active) — live-mode contract — its lifecycle also moves its collection schedule; act on it alone from its own page
+  · EXCLUDED imf-portwatch-ports@v3 (live, active) — live-mode contract — its lifecycle also moves its collection schedule; act on it alone from its own page
+  · INCLUDED carrier-advisories@v1, red-sea-corridor-stream@v1, red-sea-corridor-stream-late@v1, red-sea-ais-positions@v1, gdelt-discovery@v1
+  ✓ M. Dvorak SUSPENDED each included contract — one governed write and one receipt per item: carrier-advisories → suspended (POL 01a14b1a-27c3… · audit seq 633276); red-sea-corridor-stream → suspended (POL 01a14b1a-27d5… · audit seq 633277); red-sea-corridor-stream-late → suspended (POL 01a14b1a-27e8… · audit seq 633278); red-sea-ais-positions → suspended (POL 01a14b1a-27f7… · audit seq 633279); gdelt-discovery → suspended (POL 01a14b1a-280a… · audit seq 633281)
+  ✓ M. Dvorak RETURNED TO ACTIVE each included contract — one governed write and one receipt per item: carrier-advisories → active (POL 01a14b1a-281b… · audit seq 633282); red-sea-corridor-stream → active (POL 01a14b1a-2828… · audit seq 633284); red-sea-corridor-stream-late → active (POL 01a14b1a-283a… · audit seq 633285); red-sea-ais-positions → active (POL 01a14b1a-2848… · audit seq 633287); gdelt-discovery → active (POL 01a14b1a-2854… · audit seq 633288)
+  ✓ the included contracts end ACTIVE again (red-sea-ais-positions active, gdelt-discovery active, carrier-advisories active, red-sea-corridor-stream active, red-sea-corridor-stream-late active); the excluded live-mode contracts were never sent
+
+B80-4 THE CONTEXT BAR (F-P7-E-01) — L. Brandt switches from the Regensburg line objective to the Bab el-Mandeb closure scenario: the impact preview BEFORE the governed commit
+  ✓ L. Brandt's context bar: objective "Keep the Regensburg line supplied through Q1" · horizon 90d · scenario none · classification internal · effective live · policy bundle-v1 · version 1, digest b4c0b3a2b0d9…; may set: true; unresolved: none
+  ✓ THE IMPACT PREVIEW (before any commit; reading it changes nothing): changed objective Keep the Regensburg line supplied through Q1 → none; scenario none → Bab el-Mandeb closure — Houthi activity and insurer withdrawal (SYNTHETIC); open work KEPT — 1 draft(s), 9 task(s), 0 request(s), 1 workspace(s), 5 room(s); the home recomposed under the new context; approvals 0 — UNAFFECTED; previews: invalidated where bound to the old context digest (client-held); impact digest 1f4f235b30e5…; committable true
+  · his drafts in the preview: decision.package.declare "Bab el-Mandeb corridor reroute (SYNTHETIC)" v1 (kept)
+  ✓ L. Brandt COMMITTED exactly the previewed switch (human gate): context 01a1…cf8014 v2, digest 39fe31f5c757…, impact 1f4f235b30e5…, approvals unaffected 0 — POL 01a14b1a-297b… · audit seq 633304
+  ✓ the SAME preview committed again (its basis is no longer current) REFUSED — 409 EYE-STA-002 — context rejected (stale): the context changed since the preview (previewed over 01a0f00b-8857-74f2-ab21-dccd0dc62a68, current 01a14b1a-297b-7386-89f1-6a1dd8cf8014); preview the switch again
+  ✓ the preview of the STALE choice "B21 — the corridor with a duplicated collapse branch (2026-09-24)" (retired): stale — context rejected (stale): scenario 01a0d29d-4d4a-7c46-9ce1-5d6e7792ec1a is retired; a stale scenario cannot be set; committable false
+  ✓ L. Brandt forces the stale scenario "B21 — the corridor with a duplicated collapse branch (2026-09-24)" REFUSED — 409 EYE-STA-002 — context rejected (stale): scenario 01a0d29d-4d4a-7c46-9ce1-5d6e7792ec1a is retired; a stale scenario cannot be set
+  ✓ the bar now: scenario "Bab el-Mandeb closure — Houthi activity and insurer withdrawal (SYNTHETIC)", objective the whole domain, version 2; L. Brandt's 0 approval(s) UNCHANGED (each binds its version digest)
+  · the shell ledger records 1 context commit(s) by L. Brandt (each with its impact digest, the dimensions changed, the work kept)
+
+B80-5 THE DEEP LINK (F-P7-E-01) — a B28 corridor warning AS OF an instant between two of its recorded events; before its first event refused; opening it writes nothing
+  · the warning 01a0…0296d4 "Stream rule Bab el-Mandeb corridor collapse on event time (B28): 5 of 5 observed days < 30 in 2024-02-11..2024-02-16" — its recorded events: raised 2026-09-26T18:35:32Z, expired 2026-09-28T18:35:33Z, escalated 2026-09-28T18:35:33Z; the link's instant 2026-09-27T18:35:33Z lies between the first two
+  ✓ AS OF 2026-09-27T18:35:33Z: RAISED · level high · context version 0 · 1 event(s) up to the instant; CURRENT: EXPIRED (3 events); THE VARIANCE: 2 event(s) were recorded after this instant; 1 field(s) differ from the current declared state — state raised → expired — POL 01a14b1a-2ac0… · audit seq 633325
+  ✓ the same link at 2026-09-26T17:35:32Z (before the warning's first event) REFUSED — 422 EYE-REQ-001 — warning as-of rejected (not_replayable): the warning has no recorded state at 2026-09-26 17:35:32+00; its history begins at 2026-09-26 18:35:32.990741+00 — open it at or after that instant, or open the current state
+  ✓ opening the link WROTE NOTHING to the warning: 3 events and state expired before and after (the read leaves its own access evidence, as every read does)
+
+B80-6 THE INVENTORY AND THE ACCEPTANCE DEMONSTRATION RECORDS (B107's design-governance routes) — the new library components registered and owned, the library lint, a B80 baseline, a design acceptance per chapter scope
+  ✓ P. Castellano (conformance steward) re-read the inventory from the repository: 53 new asset(s) registered (53 of B80's library), 28 unchanged; DRIFT stated (the inventory changes nothing — a contribution records it): pattern.governed-action, tokens.semantic
+  ✓ L. Haddad (Design System Authority, human gate) APPROVED 53 library component(s): 53 components across 10 files, each with ONE accountable owner — S. Iversen
+  ✓ L. Haddad (human gate) DECLARED the principle design.no-local-fork (prohibition) — dg-lint-2's findings evidence it — POL 01a14b1a-2e23… · audit seq 33638
+  ✓ P. Castellano ran the LIBRARY LINT (dg-lint-2) over the real web source: 354 files, 76 library components, verdict NONCONFORMANT, 20 finding(s) STATED (never hidden) — library-fork 20; e.g. apps/web/app/admin/commercial/catalog/page.tsx:19, apps/web/app/admin/governance/design/page.tsx:29, apps/web/app/decisions/attention/page.tsx:76 (evidence 01a1…096921)
+  ✓ P. Castellano PROPOSED the B80 design baseline 01a1…cd3819 v1: 53 members (the library), design system @eye/tokens@0.1.0
+  ✓ L. Haddad ATTESTED and SIGNED the B80 design baseline v1 (attested)
+  ✓ the design acceptance DEMONSTRATION records per chapter scope, each attested by L. Haddad (design), H. Achterberg (assurance) and W. Zielińska (customer): UX-05 ACCEPTED, UX-09 ACCEPTED, UX-10 ACCEPTED, UX-11 ACCEPTED, UX-15 ACCEPTED, PR-05 ACCEPTED, AT-05 ACCEPTED, CAP-AU-06 ACCEPTED, UX-17 ACCEPTED, UX-18 ACCEPTED, UX-68 ACCEPTED, UX-20 ACCEPTED, UX-21 ACCEPTED, UX-22 ACCEPTED, UX-23 ACCEPTED, UX-24 ACCEPTED — 16 records, claim demonstration; accessibility slots EMPTY (MET-034 unsupported, B108 → H3)
+
+B80-7 THE STATE and the LIMITS
+  · as recorded: theme_versions 2, certifications 2, activations 3, draft_versions 2, shell_events 3
+  ✓ no record claims more than a DEMONSTRATION (themes 0, certifications 0, design acceptances 0 beyond it)
+  the env lines for the walk (EYE_TEST_ADMIN_PASSWORD comes from .eye-local/env and is never printed):
+  EYE_B80_BRAND=nw.brand-owner
+  EYE_B80_THEME=ed80b7e0-fca7-4862-a821-016003b5c4a7
+  EYE_B80_PACKAGE=01a14b1a-2385-7b1b-837d-cbac4b72e70e
+  EYE_B80_BULK_INCLUDED=5
+  EYE_B80_BULK_EXCLUDED=2
+  EYE_B80_STALE_SCENARIO=B21 — the corridor with a duplicated collapse branch (2026-09-24)
+  EYE_B80_SCENARIO=Bab el-Mandeb closure — Houthi activity and insurer withdrawal (SYNTHETIC)
+  EYE_B80_OBJECTIVE=Keep the Regensburg line supplied through Q1
+  EYE_B80_WARNING=01a0df00-48f5-7131-9232-4a61a20296d4
+  EYE_B80_AS_OF=2026-09-27T18:35:33Z
+  EYE_B80_BEFORE=2026-09-26T17:35:32Z
+  EYE_B80_TENANT=01a084f5-757f-7f03-9cf5-315d74426481
+  EYE_B80_DOMAIN=01a084f5-759a-751f-a1dd-38fbd7933057
+  EYE_B80_DECISION_OWNER=l.brandt
+  EYE_B80_COLLECTOR=m.dvorak
+  · LIMITS said — THREE CLAIMS KEPT APART. (1) CONSTRUCTION — the software and its harnesses (phase6-{prelude,themes,drafts,navigation,context}-b80, the web unit models, the catalogue walk). (2) DEMONSTRATED OPERATION — what RAN here through the governed routes by SYNTHETIC personas: the NORDWERK theme refused on contrast, corrected, certified (signed), activated, rolled back once and re-activated; the two forms' drafts saved and read back and the package declared; the Red Sea replay contracts suspended and returned, one receipt each; the context switch previewed before its commit and the stale choices refused; the deep link read as of an instant; the library registered and owned, a B80 baseline attested and a design acceptance record per chapter scope — every record `claim = demonstration`. (3) REAL ACCEPTANCE — a real customer's brand acceptance, the named design authorities' attestation of the conformance package, assistive-technology and accessibility results (MET-034 unsupported; B108) — NEVER claimed and not recordable through the present implementation: the non-demonstration recording path is construction at B111 (F-P7-E-17), then the external act at H3. Fonts: the fallback stacks only (TYP-001/002 partial; the font delivery is carried at B81 pending the owner's licence decision). An agent's attempt at the human-gated acts is refused in the harnesses (phase6-themes-b80, phase6-context-b80), not here.
+
+ALL SCENES HELD · 0.3 min
+
+════════ RUN 2 (rerun) ════════
+THE B80 ACT on eye_demo_b80 (REHEARSAL) — 2026-10-17T18:23:07.347Z — API http://localhost:3411
+
+B80-0 THE STATE — 0118, the NORDWERK cast, the build identity
+  ✓ migration applied: 0118_b80_shell_foundations.sql
+  ✓ l.brandt holds decision_owner at the DOMAIN (the corridor domain "Supply Corridor Intelligence")
+  ✓ l.brandt holds strategy_owner at the DOMAIN (the corridor domain "Supply Corridor Intelligence")
+  ✓ m.dvorak holds collection_manager at the DOMAIN (the corridor domain "Supply Corridor Intelligence")
+  ✓ l.haddad holds design_system_authority at the PLATFORM
+  ✓ s.iversen holds design_system_authority at the PLATFORM
+  ✓ p.castellano holds conformance_steward at the PLATFORM
+  ✓ h.achterberg holds independent_assurance at the PLATFORM
+  ✓ w.zielinska holds customer_sponsor at the TENANT
+  · the API declares its build: head 16c3de4b9833… (from env), policy bundle bundle-v1 35e482b6d6b9…
+
+B80-1 THEME (F-P7-E-03) — the brand owner proposes, the Design System Authority refuses on contrast, the corrected version is certified (signed), activated, rolled back once, re-activated
+  · the brand owner (nw.brand-owner, branding_authority at the TENANT) is present: stands — an earlier run
+  · "NORDWERK Corporate (SYNTHETIC)" v1 stands — an earlier run (refused)
+  ✓ L. Haddad PREVIEWED v1: the matrix recomputed from the STORED mapping — 382 pairs over light, dark, print and two forced-colour schemes, outcome FAIL, 10 failing: light: color.accent.default vs color.critical ΔE 10.31 < 25; light: color.accent.default vs color.withdrawn ΔE 21.11 < 25; light: color.accent.default vs color.critical ΔE 11.90 < 12 (protan simulation); …
+  · v1's certification stands — an earlier run: REFUSED by L. Haddad (10 failing pairs)
+  ✓ v1's certification record: REFUSED, signed (signature 01a1…cd71ca), the failing pairs named with their values — light: color.accent.default vs color.critical ΔE 10.31 < 25; light: color.accent.default vs color.critical ΔE 11.90 < 12 (protan simulation)
+  ✓ the brand owner activates the REFUSED v1 REFUSED — 409 EYE-STA-002 — design theme rejected (state): nordwerk-corporate v1 is refused, not certified — only a certified theme is activated (the core theme stays in force)
+  · v2 stands — an earlier run (certified)
+  ✓ L. Haddad PREVIEWED v2: 382 pairs, outcome PASS, 0 failing; the minimum text contrast per mode light 4.6:1, dark 6.4:1, print 5.41:1, forced_colors_black 14.37:1, forced_colors_white 13.99:1
+  ✓ the brand owner (the PROPOSER) certifies v2 REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  · v2's certification stands — an earlier run: CERTIFIED by L. Haddad
+  ✓ v2's certification record: CERTIFIED; the signature is a theme_certification by L. Haddad (key ed25519:2b6c48b937b0b8d2, by reference)
+  · v2 was activated earlier (seq 1): stands — an earlier run
+  · the rollback to the core theme was shown earlier (seq 2): stands — an earlier run
+  ✓ THE THEME IN FORCE: CUSTOMER — NORDWERK Corporate (SYNTHETIC) v2, certified by L. Haddad — Design System Authority, the vendor (SYNTHETIC) (signature 01a1…fbd3a5, claim demonstration); L. Brandt's DOMAIN read agrees (customer v2) — a customer theme applies on screen in light and dark; print and forced colours render the certified core palette
+  · the theme's ledger: proposed@v1 → refused@v1 → proposed@v2 → certified@v2 → activated@v2 → rolled_back@v2 → activated@v2
+
+B80-2 FORMS (F-P7-E-05) — the source registration's draft and the decision-package form's draft: saved, read back, never a submission; the package declared over the existing routes
+  · M. Dvorak (collection manager)'s draft of observation.source.register "Bab el-Mandeb insurer notices (SYNTHETIC)" v1 is live (saved 2026-10-17T18:22:46Z, expires 2026-10-24T18:22:46Z): stands — an earlier run
+  ✓ M. Dvorak (collection manager) READ the draft back: LIVE v1, step 1, the same values (7 fields), 1 version(s) — a draft is never a submission
+  ✓ the same content saved again is answered UNCHANGED (v1, no new version)
+  ✓ M. Dvorak (collection manager) saves over a draft it did not read (no expected version) REFUSED — 409 EYE-STA-002 — form draft rejected (stale): your draft of observation.source.register is at version 1 (saved 2026-10-17 18:22:46.593232+00); this save read no draft
+  · L. Brandt (decision owner)'s draft of decision.package.declare "Bab el-Mandeb corridor reroute (SYNTHETIC)" v1 is live (saved 2026-10-17T18:22:46Z, expires 2026-10-24T18:22:46Z): stands — an earlier run
+  ✓ L. Brandt (decision owner) READ the draft back: LIVE v1, step 2, the same values (7 fields), 1 version(s) — a draft is never a submission
+  ✓ the same content saved again is answered UNCHANGED (v1, no new version)
+  ✓ L. Brandt (decision owner) saves over a draft it did not read (no expected version) REFUSED — 409 EYE-STA-002 — form draft rejected (stale): your draft of decision.package.declare is at version 1 (saved 2026-10-17 18:22:46.631974+00); this save read no draft
+  ✓ L. Brandt declares a package titled "x" (the form's own minimum is 2 characters) REFUSED — 422 EYE-REQ-001 — title must be between 2 and 256 characters
+  · the package "Bab el-Mandeb corridor reroute (SYNTHETIC)" (01a1…72e70e) stands — an earlier run
+  ✓ the package as recorded: "Bab el-Mandeb corridor reroute (SYNTHETIC)", 1 version(s), 1 option(s) — open, not proposed, approved or committed (its terms stay on the Decisions page)
+
+B80-3 BULK SELECTION (F-P7-E-05) — the Red Sea sources: included and excluded with reasons BEFORE the action; one governed write and one receipt per item
+  ✓ the selection BEFORE the action: 7 selected · 5 included · 2 excluded · 0 hidden by the filter · 0 changed since selection
+  · EXCLUDED imf-portwatch-chokepoints@v2 (live, active) — live-mode contract — its lifecycle also moves its collection schedule; act on it alone from its own page
+  · EXCLUDED imf-portwatch-ports@v3 (live, active) — live-mode contract — its lifecycle also moves its collection schedule; act on it alone from its own page
+  · INCLUDED carrier-advisories@v1, red-sea-corridor-stream@v1, red-sea-corridor-stream-late@v1, red-sea-ais-positions@v1, gdelt-discovery@v1
+  ✓ M. Dvorak SUSPENDED each included contract — one governed write and one receipt per item: carrier-advisories stands — an earlier run; red-sea-corridor-stream stands — an earlier run; red-sea-corridor-stream-late stands — an earlier run; red-sea-ais-positions stands — an earlier run; gdelt-discovery stands — an earlier run
+  ✓ M. Dvorak RETURNED TO ACTIVE each included contract — one governed write and one receipt per item: carrier-advisories stands — an earlier run; red-sea-corridor-stream stands — an earlier run; red-sea-corridor-stream-late stands — an earlier run; red-sea-ais-positions stands — an earlier run; gdelt-discovery stands — an earlier run
+  ✓ the included contracts end ACTIVE again (red-sea-ais-positions active, gdelt-discovery active, carrier-advisories active, red-sea-corridor-stream active, red-sea-corridor-stream-late active); the excluded live-mode contracts were never sent
+
+B80-4 THE CONTEXT BAR (F-P7-E-01) — L. Brandt switches from the Regensburg line objective to the Bab el-Mandeb closure scenario: the impact preview BEFORE the governed commit
+  ✓ L. Brandt's context bar: objective the whole domain · horizon 90d · scenario "Bab el-Mandeb closure — Houthi activity and insurer withdrawal (SYNTHETIC)" · classification internal · effective live · policy bundle-v1 · version 2, digest 39fe31f5c757…; may set: true; unresolved: none
+  · L. Brandt's context is already the scenario "Bab el-Mandeb closure — Houthi activity and insurer withdrawal (SYNTHETIC)" (39fe31f5c757…, set 2026-10-17T18:22:48Z): stands — an earlier run
+  ✓ THE IMPACT PREVIEW (before any commit; reading it changes nothing): NOTHING changes — this is the current context; open work KEPT — 1 draft(s), 9 task(s), 0 request(s), 1 workspace(s), 5 room(s); the home recomposed under the new context; approvals 0 — UNAFFECTED; previews: invalidated where bound to the old context digest (client-held); impact digest aac9235d69e8…; committable false
+  · his drafts in the preview: decision.package.declare "Bab el-Mandeb corridor reroute (SYNTHETIC)" v1 (kept)
+  ✓ a switch committed over a SUPERSEDED basis (a stale preview) REFUSED — 409 EYE-STA-002 — context rejected (stale): the context changed since the preview (previewed over 01a0f00b-8857-74f2-ab21-dccd0dc62a68, current 01a14b1a-297b-7386-89f1-6a1dd8cf8014); preview the switch again
+  ✓ the preview of the STALE choice "B21 — the corridor with a duplicated collapse branch (2026-09-24)" (retired): stale — context rejected (stale): scenario 01a0d29d-4d4a-7c46-9ce1-5d6e7792ec1a is retired; a stale scenario cannot be set; committable false
+  ✓ L. Brandt forces the stale scenario "B21 — the corridor with a duplicated collapse branch (2026-09-24)" REFUSED — 409 EYE-STA-002 — context rejected (stale): scenario 01a0d29d-4d4a-7c46-9ce1-5d6e7792ec1a is retired; a stale scenario cannot be set
+  ✓ the bar now: scenario "Bab el-Mandeb closure — Houthi activity and insurer withdrawal (SYNTHETIC)", objective the whole domain, version 2; L. Brandt's 0 approval(s) UNCHANGED (each binds its version digest)
+  · the shell ledger records 1 context commit(s) by L. Brandt (each with its impact digest, the dimensions changed, the work kept)
+
+B80-5 THE DEEP LINK (F-P7-E-01) — a B28 corridor warning AS OF an instant between two of its recorded events; before its first event refused; opening it writes nothing
+  · the warning 01a0…0296d4 "Stream rule Bab el-Mandeb corridor collapse on event time (B28): 5 of 5 observed days < 30 in 2024-02-11..2024-02-16" — its recorded events: raised 2026-09-26T18:35:32Z, expired 2026-09-28T18:35:33Z, escalated 2026-09-28T18:35:33Z; the link's instant 2026-09-27T18:35:33Z lies between the first two
+  ✓ AS OF 2026-09-27T18:35:33Z: RAISED · level high · context version 0 · 1 event(s) up to the instant; CURRENT: EXPIRED (3 events); THE VARIANCE: 2 event(s) were recorded after this instant; 1 field(s) differ from the current declared state — state raised → expired — POL 01a14b1a-7ec4… · audit seq 633856
+  ✓ the same link at 2026-09-26T17:35:32Z (before the warning's first event) REFUSED — 422 EYE-REQ-001 — warning as-of rejected (not_replayable): the warning has no recorded state at 2026-09-26 17:35:32+00; its history begins at 2026-09-26 18:35:32.990741+00 — open it at or after that instant, or open the current state
+  ✓ opening the link WROTE NOTHING to the warning: 3 events and state expired before and after (the read leaves its own access evidence, as every read does)
+
+B80-6 THE INVENTORY AND THE ACCEPTANCE DEMONSTRATION RECORDS (B107's design-governance routes) — the new library components registered and owned, the library lint, a B80 baseline, a design acceptance per chapter scope
+  · B80's library is in the inventory (53 components): stands — an earlier run
+  ✓ L. Haddad (Design System Authority, human gate) APPROVED 0 library component(s) (53 stand — an earlier run): 53 components across 10 files, each with ONE accountable owner — S. Iversen
+  · the principle design.no-local-fork v1 stands — an earlier run
+  · the library lint 01a1…096921 (nonconformant, 2026-10-17T18:22:49Z) stands — an earlier run
+  · the B80 design baseline 01a1…cd3819 v1 stands — an earlier run (attested)
+  ✓ the design acceptance DEMONSTRATION records per chapter scope, each attested by L. Haddad (design), H. Achterberg (assurance) and W. Zielińska (customer): UX-05 stands, UX-09 stands, UX-10 stands, UX-11 stands, UX-15 stands, PR-05 stands, AT-05 stands, CAP-AU-06 stands, UX-17 stands, UX-18 stands, UX-68 stands, UX-20 stands, UX-21 stands, UX-22 stands, UX-23 stands, UX-24 stands — 16 records, claim demonstration; accessibility slots EMPTY (MET-034 unsupported, B108 → H3)
+
+B80-7 THE STATE and the LIMITS
+  · as recorded: theme_versions 2, certifications 2, activations 3, draft_versions 2, shell_events 3
+  ✓ no record claims more than a DEMONSTRATION (themes 0, certifications 0, design acceptances 0 beyond it)
+  the env lines for the walk (EYE_TEST_ADMIN_PASSWORD comes from .eye-local/env and is never printed):
+  EYE_B80_BRAND=nw.brand-owner
+  EYE_B80_THEME=ed80b7e0-fca7-4862-a821-016003b5c4a7
+  EYE_B80_PACKAGE=01a14b1a-2385-7b1b-837d-cbac4b72e70e
+  EYE_B80_BULK_INCLUDED=5
+  EYE_B80_BULK_EXCLUDED=2
+  EYE_B80_STALE_SCENARIO=B21 — the corridor with a duplicated collapse branch (2026-09-24)
+  EYE_B80_SCENARIO=Bab el-Mandeb closure — Houthi activity and insurer withdrawal (SYNTHETIC)
+  EYE_B80_OBJECTIVE=Keep the Regensburg line supplied through Q1
+  EYE_B80_WARNING=01a0df00-48f5-7131-9232-4a61a20296d4
+  EYE_B80_AS_OF=2026-09-27T18:35:33Z
+  EYE_B80_BEFORE=2026-09-26T17:35:32Z
+  EYE_B80_TENANT=01a084f5-757f-7f03-9cf5-315d74426481
+  EYE_B80_DOMAIN=01a084f5-759a-751f-a1dd-38fbd7933057
+  EYE_B80_DECISION_OWNER=l.brandt
+  EYE_B80_COLLECTOR=m.dvorak
+  · LIMITS said — THREE CLAIMS KEPT APART. (1) CONSTRUCTION — the software and its harnesses (phase6-{prelude,themes,drafts,navigation,context}-b80, the web unit models, the catalogue walk). (2) DEMONSTRATED OPERATION — what RAN here through the governed routes by SYNTHETIC personas: the NORDWERK theme refused on contrast, corrected, certified (signed), activated, rolled back once and re-activated; the two forms' drafts saved and read back and the package declared; the Red Sea replay contracts suspended and returned, one receipt each; the context switch previewed before its commit and the stale choices refused; the deep link read as of an instant; the library registered and owned, a B80 baseline attested and a design acceptance record per chapter scope — every record `claim = demonstration`. (3) REAL ACCEPTANCE — a real customer's brand acceptance, the named design authorities' attestation of the conformance package, assistive-technology and accessibility results (MET-034 unsupported; B108) — NEVER claimed and not recordable through the present implementation: the non-demonstration recording path is construction at B111 (F-P7-E-17), then the external act at H3. Fonts: the fallback stacks only (TYP-001/002 partial; the font delivery is carried at B81 pending the owner's licence decision). An agent's attempt at the human-gated acts is refused in the harnesses (phase6-themes-b80, phase6-context-b80), not here.
+
+ALL SCENES HELD · 0.0 min
