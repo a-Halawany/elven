@@ -113,6 +113,11 @@ const LATER_SCENARIO_COVERAGE: Record<string, string> = {
   // in phase6-onboarding-b94 / phase6-migration-b94.
   'tenancy.create_domain_draft': 'phase6-tenancy-binding-b94.test.ts', // 0114
   'tenancy.activate_domain': 'phase6-tenancy-binding-b94.test.ts', // 0114
+  // 0120 (B50 §LC): the person-authored work object and the lifecycle's proposals — the authority (owner-only decision, the human and the
+  // separation re-checked in the port), the refusals and the replay are proved in phase6-lifecycle-b50.
+  'objects.author_work_object': 'phase6-lifecycle-b50.test.ts', // 0120
+  'objects.propose_lifecycle': 'phase6-lifecycle-b50.test.ts', // 0120
+  'objects.decide_lifecycle_proposal': 'phase6-lifecycle-b50.test.ts', // 0120
 };
 
 /**
