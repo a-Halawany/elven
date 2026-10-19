@@ -99,12 +99,17 @@ export function dependencyNetworkOf(u: Uncertainty, inferences: readonly Inferen
  *  calls, reviews, signatures) and every parent link — NEVER collapsed; above the library's ceiling the drawing is refused and the table
  *  still lists every node. */
 export function provenanceGraphOf(v: ExplainView): GraphSpec {
-  const nodes: GraphNode[] = v.nodes.map((n) => ({
+  // the explanation lists a node once per path that reaches it (a correction reached from two inputs): one node per id, its parents united —
+  // never a refusal to draw for a repeated id (the act's rehearsal found it on a corrected PortWatch fragment)
+  const byId = new Map<string, ExplainView['nodes'][number]>();
+  for (const n of v.nodes) { const had = byId.get(n.nodeId); byId.set(n.nodeId, had === undefined ? n : { ...had, parents: [...new Set([...had.parents, ...n.parents])] }); }
+  const unique = [...byId.values()];
+  const nodes: GraphNode[] = unique.map((n) => ({
     id: n.nodeId, kind: n.kind, ref: n.ref, at: n.at,
     label: `${n.label}${n.outcome !== 'ok' ? ` · ${n.outcome.toUpperCase()}` : ''}${n.actor === null ? '' : ` · ${n.actor}`}`,
   }));
   const ids = new Set(nodes.map((n) => n.id));
-  const edges: GraphEdge[] = v.nodes.flatMap((n) => n.parents.filter((p) => ids.has(p)).map((p) => ({ id: `${p}>${n.nodeId}`, from: p, to: n.nodeId, type: 'input of', directed: true, at: n.at })));
+  const edges: GraphEdge[] = unique.flatMap((n) => n.parents.filter((p) => ids.has(p)).map((p) => ({ id: `${p}>${n.nodeId}`, from: p, to: n.nodeId, type: 'input of', directed: true, at: n.at })));
   return { question: `How was ${v.product.type} ${v.product.id.slice(0, 8)}… v${v.product.version} produced — every artifact, actor, time and signature?`,
     caps: { nodes: Math.max(1, Math.min(150, nodes.length)), depth: Math.max(1, Math.min(12, v.bounds.max_depth)), edges: 400 }, nodes, edges,
     watermark: { absent: `the explanation is computed from the record on read (${v.method}, as of ${v.asOf})${v.truncated ? '; the walk was TRUNCATED at its bounds' : ''}` } };

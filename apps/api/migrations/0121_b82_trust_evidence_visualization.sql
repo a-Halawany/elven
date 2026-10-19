@@ -1582,10 +1582,11 @@ BEGIN
       SELECT o.object_type, o.object_id, o.object_version, o.lifecycle_state, o.truth_state INTO c FROM objects.canonical_objects o
        WHERE o.object_type = v_ref ->> 'type' AND o.object_id = (v_ref ->> 'id')::uuid AND o.object_version = (v_ref ->> 'version')::int AND o.tenant_id = p_tenant;
       CONTINUE WHEN NOT FOUND;
-      -- an UNFIT mark (the latest) on the product or on an input
+      -- an UNFIT mark (the latest) on the product or on an input — never on the product's OWN earlier version (a correction's original: the
+      -- correction is what remedies it; act rehearsal finding — a correction of an UNFIT claim could never read better than WEAK)
       SELECT fm.verdict, fm.reasons, fm.marked_at INTO y FROM graph.product_fitness_marks fm
        WHERE fm.object_id = c.object_id AND fm.object_version = c.object_version AND fm.tenant_id = p_tenant ORDER BY fm.marked_at DESC LIMIT 1;
-      IF FOUND AND y.verdict = 'unfit' THEN
+      IF FOUND AND y.verdict = 'unfit' AND ((n ->> 'ref') = v_root OR (graph.pv_ref(v_root) ->> 'id') <> c.object_id::text) THEN
         v_level := greatest(v_level, 2);
         v_reasons := v_reasons || jsonb_build_object('code', 'unfit', 'node_id', n ->> 'node_id',
           'detail', format('%s is marked UNFIT (%s) at %s', n ->> 'ref', array_to_string(y.reasons, ', '), graph.pv_iso(y.marked_at)));
