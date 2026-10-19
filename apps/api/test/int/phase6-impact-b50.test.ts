@@ -116,9 +116,9 @@ const classOf = (ps: Row[], kind: string, id: string, version: number | null = n
 const triggerRow = async (id: string) => one(sql`select trigger_id::text, trigger_kind, state, attempts, agent_id::text, invalidation_id::text, last_error, object_version, closed_at from graph.impact_triggers where trigger_id = ${id}::uuid`);
 
 /** A correction of the given evidence (of the series source), submitted and applied through the routes as the collection manager. */
-async function applyCorrection(evdIds: string[], reason: string): Promise<string> {
+async function applyCorrection(evdIds: string[], reason: string, sourceId = SERIES_SOURCE): Promise<string> {
   const opened = await observation.submitCorrection(h.req(manager, 'observation.correction.receive', 'COR', null, 'observation'), T(), D(),
-    { payload: { sourceId: SERIES_SOURCE, kind: 'correction', channel: 'operator re-upload', publisherRef: `fixture ${reason}`, reason, affectedEvdIds: evdIds } }) as { correction: { caseId: string } };
+    { payload: { sourceId, kind: 'correction', channel: 'operator re-upload', publisherRef: `fixture ${reason}`, reason, affectedEvdIds: evdIds } }) as { correction: { caseId: string } };
   const caseId = opened.correction.caseId;
   await observation.applyCorrection(h.req(manager, 'observation.correction.apply', 'COR', caseId, 'observation'), T(), D(), caseId,
     { payload: { decision: 'apply', affectedEvdIds: evdIds, reason: `${reason}: verified against the publisher` } });
@@ -365,6 +365,9 @@ describe('t · the seven triggers: the steward\'s port, the agent\'s walk', () =
     expect(ev.map((e) => e['event'])).toEqual(['trigger.recorded', 'trigger.received', 'trigger.walking', 'trigger.walked']);
     const ob = await one(sql`select payload from objects.object_outbox where event_type = 'DependencyInvalidated' and payload ->> 'invalidation_id' = ${r.walk.invalidationId}`);
     expect(ob['payload']).toMatchObject({ automatic: true, event_id: r.walk.triggerId, agent_id: agent.agentId, code_digest: PROPAGATION_WALKER.codeDigest });
+    // V03-T-028: the walk is announced to the subscribers (GraphChanged, the reach carried), never a destructive cross-layer write
+    const gc = await one(sql`select count(*)::int n from objects.object_outbox where event_type = 'GraphChanged' and payload #>> '{change,invalidation_id}' = ${r.walk.invalidationId}`);
+    expect(gc['n']).toBe(1);
   });
   it('the refusals: another role (PDP 403), a missing basis or a wrong type (intake 400), the port\'s own classes (authority re-checked, unknown object, wrong action)', async () => {
     expect((await refusal(record(analyst, 'legal_request', { objectType: 'EVD', objectId: w.evd.id, reason: 'not my act at all', basis: { request_ref: 'x1', legal_basis: 'y1' } }))).status).toBe(403);
@@ -487,6 +490,30 @@ describe('x · a resolution correction propagates per bucket (AI-43-005)', () =>
     for (const b of ['graph_state', 'objectives', 'assumptions', 'decisions', 'decision_packages', 'publications', 'lessons']) expect(buckets, b).toContain(b);
     expect(classOf(ps, 'publication', PUB, 1)).toBe('stale');
     expect(ps.find((p) => p['product_id'] === PUB)?.['path']).toEqual(expect.arrayContaining([`ENT:${w.entityId}`, `DPK:${PKG}@${PV}`, `PUB:${PUB}@1`]));
+  });
+});
+
+describe('s · a correction of the twin\'s record reaches the twin and its simulation runs (AI-27-005: simulations; the walk\'s Phase 5 buckets classed)', () => {
+  it('the twin and its runs recompute; the twin\'s citing version is marked unverified by the port as before', async () => {
+    const prov = String((await one(sql`select provenance_ref from objects.canonical_objects where object_id = ${w.records.terms.id}::uuid order by object_version limit 1`))['provenance_ref']);
+    const src = prov.replace(/^SRC:/, '').replace(/@.*$/, '');
+    const kase = await applyCorrection([w.records.terms.id], 'restated route terms (B50 §CI harness)', src);
+    const r = (await propagate(strategist, { triggerKind: 'evidence_correction', triggerObjectId: w.records.terms.id, correctionCaseId: kase })).impact;
+    const ps = await productsOf(r.invalidationId);
+    expect(classOf(ps, 'twin', w.twinId)).toBe('recompute');
+    expect(ps.filter((p) => p['product_kind'] === 'simulation').length).toBeGreaterThan(0);
+    for (const p of ps.filter((x) => x['product_kind'] === 'simulation')) expect(['recompute', 'withdrawn']).toContain(p['class']);
+    const tv = await one(sql`select verification_state from twin.twin_versions where twin_id = ${w.twinId}::uuid and version = ${w.v1}`);
+    expect(tv['verification_state']).toBe('unverified');
+  });
+  it('a kind the walk never met has no facts (exists false) and the rule\'s fallback; every bucket kind has a class in the rule', async () => {
+    for (const k of ['assumption', 'objective', 'decision', 'commitment', 'strategy_node', 'forecast', 'scenario', 'warning', 'twin', 'simulation', 'briefing', 'memory_item', 'claim', 'entity', 'edge',
+                     'decision_package', 'publication', 'export_package', 'information_set', 'backtest', 'method_validation', 'lesson']) {
+      const f = await one(sql`select graph.affected_facts(${T()}::uuid, ${D()}::uuid, ${k}, gen_random_uuid(), 1, 'evidence_correction', ${w.evd.id}::uuid) f`);
+      expect((f['f'] as Row)['exists'], k).toBe(false);
+      const c = await one(sql`select rule -> 'kinds' ->> ${k} c from graph.affected_class_rules where active`);
+      expect(AFFECTED_CLASSES as readonly string[], k).toContain(c['c']);
+    }
   });
 });
 
