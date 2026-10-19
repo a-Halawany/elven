@@ -780,3 +780,11 @@ so its queues must never share the demonstration's Redis — and an APFS clone o
 - **The walk**: export `EYE_TEST_ADMIN_PASSWORD` and the act's `EYE_B50_*` lines (`EYE_B50_[A-Z0-9_]+`), then `EYE_WEB_BASE=http://localhost:3000 npx playwright test -c playwright.demo.config.ts e2e/phase6-b50.demo.spec.ts`. The B81 / B80 / B107 regressions as in §27–§28.
 - **After the deployment**: `scripts/phase6/act-b50-candidate.mjs` (the registers re-imported, the manifest registered, a new candidate attested, the superseded withdrawn).
 - **The rehearsal rig** (§14's form): restore the newest `eye_demo-pre-0120-*.dump` into `eye_demo_b50`, the API on **:3411** with `EYE_REDIS_PORT=6392`, a vault clone, the sinks 2535/3456; a rehearsal web on :3010 through the proxy :3412 — never a web clone inside `apps/` (it enters the lockfile).
+
+## 30. B82 on the demonstration (2026-10-19): trust, evidence and the visualization library — what changed, the operator preparation, and how to rehearse
+
+- **The state.** `eye_demo` is migrated through **0121** by `pnpm db:migrate` (the applied digest equals the committed file); backup `.eye-local/backups/eye_demo-pre-0121-20261019T124458Z.dump`. The API and web as in §28 at the B82 head.
+- **The act**: `EYE_ROOT=<main tree> EYE_DB_NAME=eye_demo EYE_API=http://localhost:3401 ACT_OUT=<file> node scripts/phase6/act-b82.mjs` (about 2 minutes; rerun-safe). It declares the geographic register (F. Aydın), rights terms (one declared expired, then renewed), attestations, verifications and an investigation, the chart principle and its lint, and corrects B50's UNFIT claim through the governed review.
+- **The walks**: export `EYE_TEST_ADMIN_PASSWORD` and the act's `EYE_B82_*` lines, then `EYE_WEB_BASE=http://localhost:3000 npx playwright test -c playwright.demo.config.ts e2e/phase6-b82.demo.spec.ts e2e/phase6-b82-viz.demo.spec.ts` (about 5 minutes with the series tail read). The regressions as in §27–§29.
+- **After the deployment**: `scripts/phase6/act-b82-candidate.mjs` with the `b82-{contract,trust,human-authority}.vitest.json` reports at the deployed head in `evidence/cp6`.
+- **The rehearsal rig** (§14's form) on `eye_demo_b82`, the API on **:3411** — and EVERY probe or script of a rehearsal sets `EYE_API` explicitly (an unset one reaches the live :3401; the 2026-10-19 incident, §B82.4); a web copy never inside `apps/`.
