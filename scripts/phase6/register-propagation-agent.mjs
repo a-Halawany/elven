@@ -16,14 +16,25 @@
  *   5. the operator route is unchanged: the strategy owner walks the same root again.
  *
  * Nothing is purchased, collected or changed in any contract, cadence or budget. Idempotent on the
- * registration (a second run reuses the active agent).
+ * registration: a second run reuses the active agent ONLY when its agent_version and code_digest equal
+ * the walker this API runs (B50 D10).
+ *
+ * B50 (D10, 0120 §CI): the walk is walker 1.1.0 and the registry refuses a session for an agent
+ * registered at another identity. When the active agent's version or digest differs from the walker's,
+ * T. Richter (domain administrator) REVOKES it with a reason and the platform administrator registers
+ * the new walker with backlog 'leave' (the cases applied before it stay operator work, listed in the
+ * awaiting queue — nothing is re-driven). `--register-only` stops after step 2 (the B50 act's walker
+ * step: no correction is applied here).
  */
+import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadLocalEnv } from '../local-env.mjs';
 import { call, login, adminSession, demoScope, as, ok, bad, note, failureCount } from '../phase4/governed.mjs';
 
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+const SELF_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+// the local secret handoff is the main tree's (EYE_ROOT) when this runs from a worktree that has none — never a fresh one generated here
+const ROOT = process.env.EYE_ROOT ?? (existsSync(join(SELF_ROOT, '.eye-local', 'env')) ? SELF_ROOT : process.cwd());
 const env = loadLocalEnv(ROOT);
 const admin = await adminSession(env);
 const scope = await demoScope(admin);
@@ -63,10 +74,23 @@ for (const c of before.awaiting ?? []) {
 console.log('\n2. the propagation agent');
 let st = await status();
 let agent = (st?.agents ?? []).find((a) => a.status === 'active') ?? null;
-if (agent !== null) ok(`propagation agent already active (${short(agent.agent_id)}, walker ${st.walker.version} ${st.walker.codeDigest.slice(0, 12)}…)`);
+let backlog = 'walk'; let reused = false;
+if (agent !== null && (agent.agent_version !== st.walker.version || agent.code_digest !== st.walker.codeDigest)) {
+  // D10: a drifted registration is never reused — the domain administrator revokes it, a new principal is registered for the new walker
+  note(`the active agent ${short(agent.agent_id)} is registered for walker ${agent.agent_version} (${String(agent.code_digest).slice(0, 12)}…); this API runs ${st.walker.version} (${st.walker.codeDigest.slice(0, 12)}…) — the registry refuses its sessions`);
+  const domainAdmin = await login('t.richter', PW);
+  if (!domainAdmin) { bad('T. Richter (domain administrator) could not authenticate'); process.exit(1); }
+  const rv = await call(`${G}/impact/propagation/agents/${agent.agent_id}/revoke`, as(domainAdmin, scope, { purposeId: 'platform.administration', action: 'graph.propagation.agent.revoke', objectType: 'AGT', objectId: agent.agent_id, consequence: 'C2' }),
+    { reason: `the walk is now ${st.walker.name}@${st.walker.version}: the ${agent.agent_version} registration is retired and the new walker registered (B50 D10)` }, domainAdmin.token);
+  if (!rv.ok) { bad(`T. Richter's revocation refused (${rv.status}) ${rv.body?.message ?? JSON.stringify(rv.body).slice(0, 300)}`); process.exit(1); }
+  ok(`T. Richter (domain administrator) REVOKED the ${agent.agent_version} agent ${short(agent.agent_id)} with its reason — POL ${String(rv.body.receipt?.policyDecisionId).slice(0, 13)}… · audit seq ${rv.body.receipt?.auditSeq}`);
+  agent = null; backlog = 'leave';
+}
+if (agent !== null) reused = true;
+if (agent !== null) ok(`propagation agent already active (${short(agent.agent_id)}, walker ${agent.agent_version} ${String(agent.code_digest).slice(0, 12)}… = this API's ${st.walker.version}) — reused`);
 else {
   const r = await call(`${G}/impact/propagation/agents/register`, adm({ action: 'graph.propagation.agent.register', objectType: 'AGT', consequence: 'C2' }),
-    { ownerPrincipalId: strategyOwner.principalId, backlog: 'walk' }, admin.token);
+    { ownerPrincipalId: strategyOwner.principalId, backlog }, admin.token);
   if (!r.ok) { bad(`registration refused (${r.status}) ${r.body?.message ?? JSON.stringify(r.body).slice(0, 300)}`); process.exit(1); }
   const a = r.body.agent;
   ok(`registered: agent ${short(a.agentId)}, principal ${short(a.principalId)} (role ${a.role}), walker ${a.walker.name}@${a.walker.version} ${a.walker.codeDigest.slice(0, 12)}…, budgets ${JSON.stringify(a.budgets)}`);
@@ -76,6 +100,15 @@ else {
 }
 if (!st.runtime.worker_running) bad('this process runs no worker for the domain queue');
 else ok(`the domain queue ${st.runtime.redis_queue} is served by this process (scheduler enabled: ${st.runtime.scheduler_enabled})`);
+if (agent?.agent_version !== st.walker.version || agent?.code_digest !== st.walker.codeDigest) bad(`the active agent is not the walker's identity (${agent?.agent_version} vs ${st.walker.version})`);
+else ok(`the domain's active agent ${short(agent.agent_id)} is walker ${agent.agent_version} (${String(agent.code_digest).slice(0, 12)}…) — the walker this API runs`);
+const subs = await call(`${G}/subscriptions/status`, so({ action: 'graph.read', objectType: 'SUB', sideEffect: 'none' }), {}, strategyOwner.token).catch(() => null);
+if (subs?.ok) note(`${(subs.body.subscriptions?.subscriptions ?? []).filter((x) => x.status === 'active').length} active subscription consumer(s) — unchanged by the re-registration`);
+if (process.argv.includes('--register-only') || backlog === 'leave') {
+  const q = await awaiting();
+  note(`${reused ? 'no registration this run' : `backlog '${backlog}'`}: ${q.total} applied case(s) await propagation, each listed with its automatic state — none re-driven by this registration`);
+  if (process.argv.includes('--register-only')) process.exit(failureCount() === 0 ? 0 : 1);
+}
 
 // The backlog: wait for the re-driven attempts to finish (the budget refusal is immediate; a walk takes seconds per root).
 let attempts = [];
