@@ -133,7 +133,7 @@ export function toTraceNode(n: Row): TraceNodeView {
 }
 export function toTraceView(r: Row) {
   return {
-    method: r['method'], explainMethod: r['explain_method'], ref: r['ref'], root: r['root'], readAt: r['read_at'], clearance: r['clearance'], product: r['product'],
+    method: r['method'], explainMethod: r['explain_method'], ref: r['ref'], root: r['root'], readAt: r['read_at'], clearance: r['clearance'], product: r['product'], subject: (r['subject'] ?? {}) as Row,
     nodes: (Array.isArray(r['nodes']) ? (r['nodes'] as Row[]) : []).map(toTraceNode),
     steps: (Array.isArray(r['steps']) ? (r['steps'] as Row[]) : []).map((s) => ({ ...toExplainNode(s), of: Array.isArray(s['of']) ? (s['of'] as unknown[]).map(String) : [] })),
     edges: (r['edges'] ?? []) as Row[], unresolvedEdges: (r['unresolved_edges'] ?? []) as Row[], gaps: (r['gaps'] ?? []) as Row[],

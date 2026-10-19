@@ -61,7 +61,7 @@ type Disclosure = Row & { missingIntervals: Array<{ sourceKey: string; from: str
   untimed: number; correctionsLater: number; bounds: Row; unattributedOpenRanges: number };
 type Timeline = { items: Item[]; events: Row[]; asOfReads: Row; disclosure: Disclosure; asOf: string; live: boolean; subject: Row; sources: string[] };
 type TNode = Row & { nodeId: string; stage: string; kind: string; ref: string; label: string; outcome: string; clock: string; clockFlags: string[]; visible: boolean; parents: string[] };
-type Trace = { nodes: TNode[]; steps: Row[]; edges: Row[]; unresolvedEdges: Row[]; gaps: Row[]; decisionSnapshots: Row[]; missingIntervals: Row[]; continuity: Row & { state: string; dependencies: Row[] };
+type Trace = { subject: Row; nodes: TNode[]; steps: Row[]; edges: Row[]; unresolvedEdges: Row[]; gaps: Row[]; decisionSnapshots: Row[]; missingIntervals: Row[]; continuity: Row & { state: string; dependencies: Row[] };
   reasons: Array<{ reason: string; count: number }>; incomplete: boolean; reconciliation: Row[]; disclosure: Row; sources: string[] };
 
 let h: Phase4Harness; let w: DecisionWorld; let c: ReturnType<typeof decisionCalls>; let tl: TimelineController; let dg: DegradedDomainController;
@@ -299,6 +299,7 @@ describe('TL4 · the trace — lineage closure, citation and digest resolution, 
     expect(x.nodes.filter((n) => n.clockFlags.includes('unknown')).map((n) => n.ref.slice(0, 3)).sort()).toEqual(['EVD', 'OBS']);
     expect(x.incomplete).toBe(true);
     expect(x.gaps).toEqual([]);
+    expect(x.subject).toMatchObject({ type: 'CLM', id: OK.id, version: 1, versions: 1, latest: 1, owner: `principal:${mueller.principalId}`, classification: 'internal', header_only: false });
     const stages = x.nodes.map((n) => n.stage);
     expect(stages[stages.length - 1]).toBe('product');
     expect(stages).toEqual([...stages].sort((a, b) => ['source', 'evidence', 'claim', 'product', 'decision'].indexOf(a) - ['source', 'evidence', 'claim', 'product', 'decision'].indexOf(b)));

@@ -12,6 +12,7 @@ import { type ReactNode } from 'react';
 import { boundaryCoverage, completenessNote, explainPath, fitnessNote, nodeLine, outcomeSummary, type ExplainView, type FitnessView } from '../lib/provenance-b50';
 import { classSummary, classWord, groupByBucket, pathText, summaryLine } from '../lib/impact-b50';
 import { Td, Th, tableStyle } from './ui';
+/* B50 tl */ import { clockWord, disclosureLines, instantText, partialFromDisclosure, reasonText, stagesOf, traceSummary, type DisclosureView, type Stop, type TraceView } from '../lib/timeline-b50'; import { PartialResult } from './recovery'; /* end B50 tl */
 
 /* B50 hd */
 /* §HD (F-P3-01; ES-05-001, ES-26-001/-004) — the TIME VALUE text role and the DECLARED ABSENCE text role: what a header carries, in the
@@ -249,3 +250,108 @@ export function AffectedProductList({ products, caption, ownerName }: {
   );
 }
 /* end B50 ci */
+
+/* B50 tl */
+
+const tlTone = (t: 'neutral' | 'attention'): string => (t === 'attention' ? 'var(--eye-color-warning)' : 'var(--eye-color-ink-muted)');
+
+/**
+ * TimelineScrubber (§TL; PR-22-001, CAP-UM-10): the AS-OF instant on RECORD time, stepped over the record instants the answer itself carries
+ * (never an instant the server did not state) — a native range input (arrow keys move one record), its value said in words, two steps
+ * and the live read. Choosing an instant reads again; nothing here changes what was recorded.
+ */
+export function TimelineScrubber({ stops, index, onChange, label = 'As of (record time)' }: { stops: readonly Stop[]; index: number; onChange: (i: number) => void; label?: string }) {
+  const at = stops[index] ?? stops[stops.length - 1] ?? { at: 'now', label: 'now — the live read' };
+  const last = Math.max(0, stops.length - 1);
+  return (
+    <div className="eye-tl-scrubber" role="group" aria-labelledby="tl-scrub-l">
+      <label id="tl-scrub-l" htmlFor="tl-scrub" style={{ display: 'block', fontWeight: 600 }}>{label}</label>
+      <input id="tl-scrub" type="range" min={0} max={last} step={1} value={Math.min(index, last)} aria-valuetext={at.label}
+        onChange={(e) => onChange(Number(e.target.value))} style={{ inlineSize: '100%' }} />
+      <output htmlFor="tl-scrub" aria-live="polite" style={{ display: 'block' }}>{at.label}</output>
+      <div style={{ display: 'flex', gap: 'var(--eye-space-8)', flexWrap: 'wrap', marginBlockStart: 'var(--eye-space-4)' }}>
+        <button type="button" disabled={index <= 0} onClick={() => onChange(Math.max(0, index - 1))}>Step back one record</button>
+        <button type="button" disabled={index >= last} onClick={() => onChange(Math.min(last, index + 1))}>Step forward one record</button>
+        <button type="button" disabled={index >= last} onClick={() => onChange(last)}>Return to the live read</button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * TimelineDisclosureNote (§TL; PR-22-003): what the timeline does NOT show, said first and always — one line per kind (a zero says "none"):
+ * missing intervals, policy filtering (counts, never content), clock skew, broken lineage, later corrections, versions with no time on the
+ * axis, the bound; the details under each; B81's PartialResult when anything is incomplete. A view never conceals: this note is never omitted.
+ */
+export function TimelineDisclosureNote({ disclosure, heading = 'What this timeline does not show' }: { disclosure: DisclosureView; heading?: string }) {
+  const lines = disclosureLines(disclosure);
+  return (
+    <section aria-labelledby="tl-disc-h" className="eye-tl-disclosure">
+      <h2 id="tl-disc-h" style={{ fontSize: 'var(--eye-type-heading-3)' }}>{heading}</h2>
+      <PartialResult declaration={partialFromDisclosure(disclosure)} />
+      <ul aria-label="The disclosures of this read" style={{ paddingInlineStart: 'var(--eye-space-16)' }}>
+        {lines.map((l) => (
+          <li key={l.key} data-disclosure={l.key}>
+            <span aria-hidden="true" style={{ color: tlTone(l.tone) }}>{l.tone === 'attention' ? '▲ ' : '· '}</span>{l.text}
+            {l.detail.length === 0 ? null : <ul>{l.detail.map((d, i) => <li key={`${l.key}-${i}`}>{d}</li>)}</ul>}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/**
+ * TraceView (§TL; PR-22-001/005, AT-22): the source-to-product trace as the server staged it — sources, evidence, claims, products,
+ * decisions — each node with its clock (a glyph AND a word), its outcome, its later correction and whether it is visible to you (a node
+ * withheld is kept, its content not shown); the completeness first with every reason; the edges that do not resolve, kept; the
+ * decision-time snapshots; the production steps beside the objects they made. A list per stage; keyboard reachable as text.
+ */
+export function TraceView({ trace, renderRef }: { trace: TraceView; renderRef?: (ref: string) => ReactNode }) {
+  const sum = traceSummary(trace);
+  return (
+    <section aria-labelledby="tl-trace-h" className="eye-tl-trace">
+      <h2 id="tl-trace-h" style={{ fontSize: 'var(--eye-type-heading-3)' }}>From the sources to the product</h2>
+      <p role="status" style={{ color: sum.complete ? 'var(--eye-color-ink-default)' : 'var(--eye-color-critical)' }}><strong>{sum.complete ? 'Complete' : 'Incomplete'}:</strong> {sum.text}.</p>
+      {stagesOf(trace.nodes).map((g) => (
+        <div key={g.stage}>
+          <h3 style={{ fontSize: 'var(--eye-type-body-lg)' }}>{g.label} ({g.nodes.length})</h3>
+          {g.nodes.length === 0 ? <p>none recorded at this stage</p> : (
+            <ol aria-label={`${g.label} of the trace`} style={{ listStyle: 'none', paddingInlineStart: 0, margin: 0 }}>
+              {g.nodes.map((n) => {
+                const c = clockWord(n.clock);
+                return (
+                  <li key={n.nodeId} data-stage={n.stage} style={{ borderInlineStart: '2px solid var(--eye-color-border-default)', paddingInlineStart: 'var(--eye-space-8)', marginBlockEnd: 'var(--eye-space-4)' }}>
+                    <span style={{ fontWeight: 600 }}>[{n.outcome}]</span>{' '}
+                    <span>{n.label}</span>{' '}
+                    <span title={c.meaning}><span aria-hidden="true">{c.glyph}</span> {c.word}</span>
+                    <span style={{ color: 'var(--eye-color-ink-muted)' }}> — recorded {instantText(n.recordedAt)}</span>
+                    {n.correctedLater === null ? null : <span> — corrected on {instantText(String(n.correctedLater['at']))} (version {String(n.correctedLater['version'])})</span>}
+                    {n.visible ? null : <span> — not visible to you; kept</span>}
+                    {renderRef === undefined ? null : <> · {renderRef(n.ref)}</>}
+                  </li>
+                );
+              })}
+            </ol>
+          )}
+        </div>
+      ))}
+      <h3 style={{ fontSize: 'var(--eye-type-body-lg)' }}>Edges that do not resolve ({trace.unresolvedEdges.length})</h3>
+      {trace.unresolvedEdges.length === 0 ? <p>none — every edge resolves</p> : (
+        <ul aria-label="The unresolved edges, kept">{trace.unresolvedEdges.map((e, i) => <li key={i}>{String(e['from'])} cites {String(e['ref'])} ({String(e['basis'])}) — unresolved, kept</li>)}</ul>
+      )}
+      {trace.decisionSnapshots.length === 0 ? null : (
+        <>
+          <h3 style={{ fontSize: 'var(--eye-type-body-lg)' }}>Decision-time snapshots ({trace.decisionSnapshots.length})</h3>
+          <ul>{trace.decisionSnapshots.map((s) => <li key={String(s['node_id'])}>{String(s['label'])}</li>)}</ul>
+        </>
+      )}
+      {trace.reasons.length === 0 ? null : <ul aria-label="Why the trace is incomplete">{trace.reasons.map((r) => <li key={r.reason}>{reasonText(r)}</li>)}</ul>}
+      <details>
+        <summary>{trace.steps.length} production and contest step{trace.steps.length === 1 ? '' : 's'} (methods, runs, model calls, reviews, approvals, policy decisions)</summary>
+        <ul>{trace.steps.map((s) => <li key={s.nodeId}><strong>[{s.outcome}]</strong> {s.label} — of {s.of.length} object(s)</li>)}</ul>
+      </details>
+    </section>
+  );
+}
+/* end B50 tl */

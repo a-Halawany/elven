@@ -445,7 +445,7 @@ DECLARE
   x jsonb; v_nd jsonb; o objects.canonical_objects; v_rank int; v_nodes jsonb := '[]'::jsonb; v_steps jsonb := '[]'::jsonb; v_ref jsonb; v_stage text; v_q jsonb;
   v_clk jsonb; v_later jsonb; v_withheld jsonb := jsonb_build_object('classification', 0, 'audience', 0, 'not_visible', 0); v_label text; v_versions jsonb := '[]'::jsonb;
   v_sources uuid[]; v_missing jsonb; v_cont jsonb := '[]'::jsonb; s record; v_dg jsonb; v_snap jsonb := '[]'::jsonb; v_reasons jsonb := '[]'::jsonb;
-  v_unresolved jsonb; v_routed jsonb; v_clock_n int := 0; v_corr int := 0; v_now timestamptz := clock_timestamp(); v_obj_ids text[];
+  v_unresolved jsonb; v_routed jsonb; v_clock_n int := 0; v_corr int := 0; v_now timestamptz := clock_timestamp(); v_obj_ids text[]; v_subject jsonb;
 BEGIN
   PERFORM observation.assert_read_scope(p_tenant, p_domain, 'the trace of a product');
   IF p_type IS NULL OR p_type !~ '^[A-Z]{3}$' OR p_id IS NULL OR p_version IS NULL OR p_version < 1 THEN
@@ -461,6 +461,16 @@ BEGIN
   END IF;
   IF graph.tl_rank(o.classification, 99) > v_rank THEN
     RAISE EXCEPTION 'trace rejected (clearance): the product is classified %, above the reader''s clearance %; its trace is not shown', o.classification, p_clearance USING ERRCODE = '42501';
+  END IF;
+  -- the product's own header facts (B81's ObjectHeader on the trace page): as recorded, with how many versions exist
+  v_subject := jsonb_build_object('type', o.object_type, 'id', o.object_id, 'version', o.object_version,
+    'title', left(coalesce(o.payload ->> 'title', o.payload ->> 'statement', o.payload ->> 'subject', o.payload ->> 'label', o.object_type || ' ' || o.object_id::text), 300),
+    'header_only', o.object_type = ANY (graph.tl_audience_governed()), 'lifecycle', o.lifecycle_state, 'truth_state', o.truth_state, 'synthetic', o.synthetic_state,
+    'classification', o.classification, 'owner', o.accountable_owner, 'recorded_at', graph.tl_iso(o.recorded_at), 'event_time', graph.tl_iso(o.event_time),
+    'observed_at', graph.tl_iso(o.observation_time), 'valid_from', graph.tl_iso(o.valid_from), 'valid_to', graph.tl_iso(o.valid_to), 'digest', o.content_digest,
+    'versions', (SELECT count(*) FROM objects.canonical_objects v WHERE v.object_id = o.object_id), 'latest', (SELECT max(v.object_version) FROM objects.canonical_objects v WHERE v.object_id = o.object_id));
+  IF (v_subject ->> 'header_only')::boolean THEN
+    v_subject := v_subject || jsonb_build_object('title', format('%s %s — its content is read through its own governed read (header only here)', o.object_type, left(o.object_id::text, 8)));
   END IF;
   x := graph.explain(p_tenant, p_domain, p_type, p_id, p_version);
 
@@ -565,7 +575,7 @@ BEGIN
 
   RETURN jsonb_build_object(
     'method', graph.tl_method(), 'explain_method', x ->> 'method', 'ref', x ->> 'ref', 'root', x ->> 'root', 'read_at', graph.tl_iso(v_now), 'clearance', p_clearance,
-    'product', x -> 'product', 'nodes', v_nodes, 'steps', v_steps, 'edges', x -> 'edges', 'unresolved_edges', v_unresolved, 'gaps', x -> 'gaps',
+    'product', x -> 'product', 'subject', v_subject, 'nodes', v_nodes, 'steps', v_steps, 'edges', x -> 'edges', 'unresolved_edges', v_unresolved, 'gaps', x -> 'gaps',
     'decision_snapshots', v_snap, 'sources', to_jsonb(v_sources), 'missing_intervals', v_missing, 'continuity',
     jsonb_build_object('state', CASE WHEN jsonb_array_length(v_cont) > 0 THEN 'degraded' ELSE 'normal' END, 'dependencies', v_cont,
                        'basis', 'shell.degraded_state of each source the trace rests on (B81 §DG): a contract in force, or a degradation no contract declares'),
