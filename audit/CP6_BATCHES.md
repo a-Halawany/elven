@@ -7131,7 +7131,7 @@ The one-account order B80 → B81 → B50 → **B82** (2026-10-18). B82 builds o
 - **Features**: F-P7-E-07 completes at **B111** (verify H3), F-P7-E-21 at **B83**; B82 keeps 5.55–9.1 U as own effort; B83 and B84 on the `F-…@B82` slice; B82 depends on B50, B80 and B81 directly; the controls extended and carried to B83's feature — all passed. Forecasts: 3 accounts 2027-07-27, 1 account 2028-08-30 (unchanged). Rows implemented 2065.
 
 ### B82.6 — the hosted run
-The B82 PR's runs are recorded in the next delivery record; the integration step's 55-minute limit (§B81.0) applies to it too.
+Corrected 2026-10-20 — this section first said only that the 55-minute limit "applies to it too"; the run did not time out. **#94 at `9aa4c85`**: C19 lifecycle 39256804476 succeeded; **ci 39256804447**: **build-test PASSED** — its complete integration (47m05s; the hosted complete run is valid complete-run evidence beside the local 3272/3272 at `5e11b01c`) and C18 included; **supply-chain FAILED on gitleaks-history only** (B81's dfe1762, B50's two f7584f9); **browser-regression FAILED**: phase0 journey 5 (the density select) and phase1-observation journey 7 ('Custody events' matched both the custody timeline and its table region "Custody events as a table" — strict mode); 77 passed, 2 failed, 14 not run behind them in their serial files. The earlier local failures stay recorded as they were (§B82.3; B50's 5 local timeouts, cause not established — §B50.3).
 
 ## Order and the next implementation batch
 
