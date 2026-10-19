@@ -920,10 +920,13 @@ BEGIN
   IF p_kind = 'briefing' THEN
     SELECT * INTO b FROM executive.briefings z WHERE z.briefing_id = p_id AND z.tenant_id = p_tenant AND z.domain_id = p_domain;
     IF NOT FOUND THEN RETURN NULL; END IF;
+    -- the lines that CITE a recorded object (evidence, a claim of any type, a run, a memory item, a warning, a forecast) are checked; the
+    -- lines that report a LEDGER EVENT (a package or dissent event, a branch event, an acknowledgement, an indicator, a disputed note) carry
+    -- no claim to align — they are counted and disclosed, never passed off as evidence
     FOR x IN SELECT it.value AS item FROM jsonb_array_elements(b.items) it LOOP
-      IF x.item ? 'id' AND x.item ->> 'kind' IS NOT NULL THEN
-        v_cites := v_cites || jsonb_build_array(graph.pv_cite(p_tenant, p_domain, coalesce(CASE x.item ->> 'kind' WHEN 'memory' THEN 'MEM' WHEN 'forecast' THEN 'FCT' WHEN 'warning' THEN 'WRN' WHEN 'claim' THEN 'CLM'
-            WHEN 'scenario' THEN 'SCN' WHEN 'decision' THEN 'DPK' WHEN 'run' THEN 'SIM' WHEN 'evidence' THEN 'EVD' END || ':', '') || (x.item ->> 'id') || CASE WHEN (x.item ->> 'version') ~ '^[1-9][0-9]{0,8}$' THEN '@' || (x.item ->> 'version') ELSE '' END,
+      IF x.item ? 'id' AND x.item ->> 'kind' IN ('evidence', 'claim', 'run', 'memory', 'warning', 'forecast') THEN
+        v_cites := v_cites || jsonb_build_array(graph.pv_cite(p_tenant, p_domain, coalesce(CASE x.item ->> 'kind' WHEN 'memory' THEN 'MEM' WHEN 'forecast' THEN 'FCT' WHEN 'warning' THEN 'WRN'
+            WHEN 'run' THEN 'SIM' WHEN 'evidence' THEN 'EVD' END || ':', '') || (x.item ->> 'id') || CASE WHEN (x.item ->> 'version') ~ '^[1-9][0-9]{0,8}$' THEN '@' || (x.item ->> 'version') ELSE '' END,
             'item ' || coalesce(x.item ->> 'item_id', x.item ->> 'id'), NULL) || jsonb_build_object('item_id', x.item ->> 'item_id'));
       END IF;
     END LOOP;
@@ -936,6 +939,7 @@ BEGIN
       END IF;
     END LOOP;
     v_extra := jsonb_build_object('narrative', b.narrative IS NOT NULL, 'narrative_cites', jsonb_array_length(b.narrative_cites),
+      'event_lines', (SELECT count(*) FROM jsonb_array_elements(b.items) it WHERE NOT (it ->> 'kind' IN ('evidence', 'claim', 'run', 'memory', 'warning', 'forecast'))),
       'omitted_from_narrative', CASE WHEN b.narrative IS NULL THEN '[]'::jsonb ELSE (SELECT coalesce(jsonb_agg(to_jsonb(i)), '[]'::jsonb) FROM unnest(coalesce(v_item_ids, '{}')) i WHERE NOT (i = ANY (coalesce(v_cited, '{}')))) END,
       'degraded', b.degraded, 'composed_via', b.composed_via);
     RETURN jsonb_build_object('kind', 'briefing', 'subject', 'BRF:' || p_id, 'citations', v_cites, 'disclosures', v_extra);
