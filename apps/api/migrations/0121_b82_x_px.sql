@@ -427,17 +427,22 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION graph.px_facet(uuid, uuid, objects.canonical_objects, jsonb, text, timestamptz) FROM PUBLIC;
 
-/* The subject's recorded signatures (the version's own, and — for a decision package version — its approvals'): the verifier's input. */
+/* The subject's recorded signatures (the version's own, and — for a decision package version — its approvals'): the verifier's input.
+   A guarded read (N-01, 0102): the caller's bound tenant and domain asserted first; the rows looked up within them only. */
 CREATE OR REPLACE FUNCTION graph.px_signatures(p_tenant uuid, p_domain uuid, p_type text, p_id uuid, p_version int) RETURNS jsonb
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path = graph, pg_catalog, pg_temp AS $$
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = graph, observation, pg_catalog, pg_temp AS $$
+DECLARE v jsonb;
+BEGIN
+  PERFORM observation.assert_read_scope(p_tenant, p_domain, 'the signatures of a product');
   SELECT coalesce(jsonb_agg(jsonb_build_object('signature_id', s.signature_id, 'subject_kind', s.subject_kind, 'subject_id', s.subject_id, 'subject_version', s.subject_version,
                                                'subject_digest', s.subject_digest, 'signer', s.signer, 'key_id', s.key_id, 'algorithm', s.algorithm, 'signature', s.signature,
-                                               'bound_action', s.bound_action, 'signed_at', graph.pv_iso(s.signed_at)) ORDER BY s.signed_at, s.signature_id), '[]'::jsonb)
+                                               'bound_action', s.bound_action, 'signed_at', graph.pv_iso(s.signed_at)) ORDER BY s.signed_at, s.signature_id), '[]'::jsonb) INTO v
     FROM executive.signatures s
-   WHERE s.tenant_id = p_tenant
+   WHERE s.tenant_id = p_tenant AND s.domain_id = p_domain
      AND ((s.subject_id = p_id AND (s.subject_version IS NULL OR s.subject_version = p_version))
-          OR (p_type = 'DPK' AND s.subject_id IN (SELECT a.approval_id FROM decision.approvals a WHERE a.package_id = p_id AND a.version = p_version)))
-$$;
+          OR (p_type = 'DPK' AND s.subject_id IN (SELECT a.approval_id FROM decision.approvals a WHERE a.package_id = p_id AND a.version = p_version)));
+  RETURN v;
+END $$;
 REVOKE ALL ON FUNCTION graph.px_signatures(uuid, uuid, text, uuid, int) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION graph.px_signatures(uuid, uuid, text, uuid, int) TO eye_commit;
 

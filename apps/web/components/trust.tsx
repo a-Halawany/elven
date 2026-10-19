@@ -96,7 +96,7 @@ export function ProvenanceTrail({ view, strength, renderRef, onOpen }: {
       ) : null}
       {t.limits.length > 0 ? <div className="eye-px-limits"><p className="eye-px-term">What this trail cannot say</p><ul>{t.limits.map((l) => <li key={l}>{l}</li>)}</ul></div> : null}
       <ProvenanceGraph view={view} {...(onOpen === undefined ? {} : { onOpen })} />
-      <ExplainPath view={view} heading="The backward path, in order (the table)" {...(renderRef === undefined ? {} : { renderRef })} />
+      <ExplainPath view={view} heading="The backward path" {...(renderRef === undefined ? {} : { renderRef })} />
       <section aria-labelledby={`${id}-fwd`} className="eye-px-forward">
         <h3 id={`${id}-fwd`} className="eye-px-subheading">Forward — what names this version today (a preview, never a recorded walk)</h3>
         {t.forward.map((b) => (

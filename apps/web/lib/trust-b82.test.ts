@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest';
 import { LIBRARY_B82 } from './b82-seams';
 import type { ExplainView } from './provenance-b50';
 import {
-  FACET_LABELS, FACET_OUTCOME_WORDS, LAYER_KEYS, STRENGTH_WORDS, TRUST_ACT_ROLES, TRUST_FACETS, alternativesView, conservativeState, contractEntry, dissentGate, dissentOfPackage,
+  FACET_LABELS, FACET_OUTCOME_WORDS, dissentOfChallenges, LAYER_KEYS, STRENGTH_WORDS, TRUST_ACT_ROLES, TRUST_FACETS, alternativesView, conservativeState, contractEntry, dissentGate, dissentOfPackage,
   explanationLayers, methodDisclosureView, methodOfExplain, parseTrustLink, provenanceTrailView, recommendationLayers, scalarTrustFindings, strengthFailure, summaryDropsDissent,
   supportComparison, toEnvelope, toStrength, trustCommand, trustHref, trustIndicatorView, truthComparisonRows, unplacedContractKeys, type EnvelopeView,
 } from './trust-b82';
@@ -152,6 +152,12 @@ describe('HX-04 / HX-05 / HX-06 · alternatives, dissent, method', () => {
     expect(dissentGate({ recorded: 1, shown: 1 })).toBeNull();
     expect(summaryDropsDissent('Reroute via the Cape; approved by two approvers.', rows)).toMatch(/drops the recorded dissent \(object to the Cape reroute\)/);
     expect(summaryDropsDissent('Reroute via the Cape; one dissent recorded.', rows)).toBeNull();
+  });
+  it('an assessment\'s knowledge challenges read as its dissent: open stands until decided; a decision is its disposition', () => {
+    const d = dissentOfChallenges([{ challenge_id: 'k1', opened_by: OWNER, grounds: 'the restated day is wrong (SYNTHETIC)', state: 'under_review', disputed: ['valid_from'], opened_at: '2026-10-18' },
+      { challenge_id: 'k2', opened_by: OWNER, grounds: 'g', state: 'upheld', decision_note: 'the day is restated', disputed: [] }]);
+    expect(d[0]).toMatchObject({ position: 'challenge — disputes valid_from', status: 'under review — stands until decided', disposition: null });
+    expect(d[1]).toMatchObject({ status: 'upheld', disposition: 'UPHELD: the day is restated' });
   });
   it('method: an unresolved method or an undigested model constrains decision use (INDETERMINATE), said so; the explanation\'s method and model nodes read', () => {
     expect(methodDisclosureView({ method: null, model: null, policyArtifact: null, assumptions: [], evaluation: null }).constrained).toBe('INDETERMINATE for decision use — the method is not recorded');

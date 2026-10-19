@@ -31,6 +31,10 @@ import { SubjectContest } from '../contest-panel';
    Agent's (HX-11, UX-ADR-009, REL-06 — explained and contested on the explanations page), the HX-02 hold folded into the review */
 import { AiNotice, TruthStateLabel, useDisplayTruth } from '../../../components/truth';
 import { refKey, truthGate, type TruthInput } from '../../../lib/truth-b82';
+/* B82 px */ import Link from 'next/link';
+import { ExplanationLayers } from '../../../components/trust';
+import { recommendationLayers, trustHref } from '../../../lib/trust-b82';
+import { explainHref } from '../../../lib/provenance-b50'; /* end B82 px */
 /* end B82 ts */
 
 type ReceiptT = { policyDecisionId: string; auditSeq: number } | null;
@@ -75,6 +79,16 @@ function RecommendationCard({ r, onDone, cases, truth }: { r: Recommendation; on
       <p>Truth: {truth === undefined ? <span style={muted}>reading the display truth…</span> : <TruthStateLabel truth={truth} audience="executive" />}</p>
       {r.author_kind === 'agent' ? <AiNotice output="recommended" producer={{ kind: 'agent', name: 'Decision Agent' }} explainHref="/decisions/explanations" contestHref="/decisions/explanations" /> : null}
       {/* end B82 ts */}
+      {/* B82 px (V00-T-104, V01-T-035): the recommendation in three layers — explainable in the context of the decision, traceable through its
+          package version's provenance trail, attributable (the author kind; the AI notice above when the Decision Agent authored it) */}
+      <ExplanationLayers heading="This recommendation in three layers"
+        layers={recommendationLayers({ ...r, value_judgments: r.components.value_judgments, policy_constraints: r.components.policy_constraints,
+          analytical_assumptions: r.components.analytical_assumptions.length > 0 ? r.components.analytical_assumptions : r.assumptions, model_outputs: r.components.model_outputs,
+          missing_evidence: r.missing_evidence.map((x) => x.what) })}
+        authority={r.author_kind === 'agent' ? 'the Decision Agent (AI) proposed it — advisory; a named person reviews it, the package records the decision' : 'a named person recorded it — advisory; the package records the decision'}
+        uncertainty={r.what_could_make_it_wrong.length === 0 ? null : r.what_could_make_it_wrong.map((w) => w.statement).join('; ')} />
+      <p style={muted}><Link href={explainHref('DPK', r.package_id, r.version)}>Open the provenance trail of package version {r.version}</Link> · <Link href={trustHref('DPK', r.package_id, r.version)}>Open its trust facets</Link> · <Link href={`/decisions/explanations?kind=recommendation&id=${r.recommendation_id}`}>Read its governed explanation</Link></p>
+      {/* end B82 px */}
       <p style={{ fontSize: 'var(--eye-type-heading-3)', margin: 0 }}>{r.what}</p>
       <p>For <strong>{r.for_whom}</strong> · by <strong>{r.by_when}</strong></p>
       <h4>What could make it wrong</h4>

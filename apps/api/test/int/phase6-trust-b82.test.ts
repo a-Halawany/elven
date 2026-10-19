@@ -46,7 +46,7 @@ import { asObservationRefusal } from '../../src/observation/observation-errors.j
 import { TrustController } from '../../src/graph/trust/trust.controller.js';
 import { SignatureService } from '../../src/executive/signatures/signature.service.js';
 import { B82_READS, PROVENANCE_STRENGTH_RULE_VERSION, TRUST_ENVELOPE_RULE_VERSION, TRUST_FACETS } from '../../src/graph/b82-seams.js';
-import { APP_DB } from '../../src/shared/shared.module.js';
+import { APP_DB, COMMIT_DB } from '../../src/shared/shared.module.js';
 import type { Db } from '../../src/shared/db.js';
 import { Phase4Harness } from './phase4-helpers.js';
 
@@ -466,6 +466,14 @@ describe('PX7 · UX-27\'s boundary; the ledgers\' guards', () => {
         has_function_privilege('public', ${fn}::regprocedure, 'EXECUTE') pub`);
       expect(r, fn).toEqual({ app, cmt, pub: false });
     }
+  });
+  it('N-01: the definer reads assert the caller\'s bound scope — an unbound runtime role is refused by the envelope, the overview and the signatures read', async () => {
+    const app = h.app.get<Db>(APP_DB);
+    for (const q of [sql`select graph.trust_envelope(${T}::uuid, ${D}::uuid, 'CLM', ${CLEAN.id}::uuid, 1)`, sql`select graph.trust_overview(${T}::uuid, ${D}::uuid, '{}'::jsonb)`]) {
+      expect((await refusal(q.execute(app))).message).toMatch(/^read rejected \(scope\)/);
+    }
+    const commit = h.app.get<Db>(COMMIT_DB);
+    expect((await refusal(sql`select graph.px_signatures(${T}::uuid, ${D}::uuid, 'CLM', ${SIGNED.id}::uuid, 1)`.execute(commit))).message).toMatch(/^read rejected \(scope\): the signatures of a product/);
   });
   it('the ledgers record each act (the governance ledger names every verification)', async () => {
     const n = await one(sql`select count(*)::int n from governance.events where event = 'trust.verified' and tenant_id = ${T}::uuid`);

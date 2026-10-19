@@ -323,6 +323,19 @@ export function dissentOfPackage(rows: readonly Row[], disposition: (id: string)
     };
   });
 }
+/** B50's knowledge challenges on an assessment (or any product) as its recorded dissent: the grounds, who, the state, the decision note. */
+export function dissentOfChallenges(rows: readonly Row[]): DissentRow[] {
+  return rows.map((r) => {
+    const st = String(r['state'] ?? 'open');
+    const disputed = arr(r['disputed']).map(String);
+    return {
+      id: String(r['challenge_id'] ?? ''), by: String(r['opened_by'] ?? ''), position: `challenge${disputed.length === 0 ? '' : ` — disputes ${disputed.join(', ')}`}`, rationale: String(r['grounds'] ?? ''),
+      citation: null, recordedAt: String(r['opened_at'] ?? ''),
+      status: st === 'open' || st === 'under_review' ? `${words(st)} — stands until decided` : words(st),
+      disposition: st === 'upheld' || st === 'dismissed' ? `${st.toUpperCase()}${str(r['decision_note']) === null ? '' : `: ${String(r['decision_note'])}`}` : st === 'withdrawn' ? `withdrawn by the challenger${str(r['withdrawal_reason']) === null ? '' : `: ${String(r['withdrawal_reason'])}`}` : null,
+    };
+  });
+}
 /** HX-05 / UX-27-005: decision-ready is withheld while recorded dissent is HIDDEN (a filter, a summary that drops it). */
 export function dissentGate(a: { recorded: number; shown: number }): string | null {
   if (a.recorded > a.shown) return `${a.recorded - a.shown} recorded dissent${a.recorded - a.shown === 1 ? ' is' : 's are'} hidden by the current view — show every dissent before treating this as decision-ready`;
