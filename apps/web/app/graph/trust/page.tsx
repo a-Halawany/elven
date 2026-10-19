@@ -65,7 +65,7 @@ function Overview({ o }: { o: Row }) {
       <p className="eye-px-note">{s(o['statement'])} Window: the last {s((o['window'] as Row | undefined)?.['days'])} days (since {s((o['window'] as Row | undefined)?.['since'])}); read at {s(o['as_of'])} under {s(o['rule_version'])}.</p>
       <section style={cardStyle} aria-labelledby="tr-products">
         <h2 id="tr-products" style={h2}>Provenance strength by product</h2>
-        <Table caption="The most recently recorded products, each with its provenance strength and the reasons (strong, partial, weak or broken — never a score)"
+        <Table caption="The 5 most recently recorded products, each with its provenance strength and the reasons (strong, partial, weak or broken — never a score)"
           head={['Product', 'Strength', 'Why', 'State', 'Attestations standing', 'Open']} empty="No product of these types is recorded in this domain."
           rows={products.map((p) => {
             const st = toStrength(p);
@@ -223,7 +223,9 @@ function TrustBody() {
   const [problem, setProblem] = useState<string | null>(null);
   useEffect(() => {
     void (async () => {
-      const r = await trustApi.overview(scope, { types: ['DPK', 'BRF', 'FCT', 'SIM', 'CLM'], limit: 15 });
+      /* the overview computes graph.explain per product inside ONE read; on the demonstration's volume 15 products outlived the read's bound
+         context (~60 s) and answered 500 — the act's rehearsal: 5 products read in ~35 s. The most recent 5, said on the page. */
+      const r = await trustApi.overview(scope, { types: ['DPK', 'BRF', 'FCT', 'SIM', 'CLM'], limit: 5 });
       if (!r.ok || r.data === undefined) { setProblem(said(r, 'The trust overview was not read')); return; }
       setProblem(null); setO(r.data.overview);
     })();
