@@ -19,7 +19,7 @@
  * B82 §CF COMPLETES THE FRAME (CMP-057 / -058 / VIZ-36 / GLB-07 / UX-ADR-015) — every addition OPTIONAL, the §0 props unchanged:
  *  - THE GRAMMAR grows by addition only: lib/chart-b82.ts chartGrammar = §0's assertGrammar (first, unchanged) + the kind rules + the rows
  *    checked against the alternative's columns; a problem still refuses the whole chart, in words.
- *  - THE LEGEND (ChartLegend, components/chart.tsx): always drawn from spec.legend — each series by its dash pattern, marker shape and label
+ *  - THE LEGEND (renderLegend here = ChartLegend in components/chart.tsx — the frame imports no chart file): always drawn from spec.legend — each series by its dash pattern, marker shape and label
  *    (never colour alone, D5); B80's symbol Legend stays the glyph legend.
  *  - THE CSV (`exportAs`): the table alternative's DISPLAYED rows through B80's DataTable export (lib/table-b80.ts exportCsv — labelled with
  *    the scope, the classification ceiling and the as-of instant); without `exportAs` no download is offered (a page with no authorized read
@@ -32,11 +32,11 @@
  */
 import { useId, useMemo, type ReactNode } from 'react';
 import { Timestamp } from './text';
-import { type AlternativeRow, type ChartSource, type ChartSpec, type TimeBasis } from '../lib/b82-seams';
+import { type AlternativeColumn, type AlternativeRow, type ChartSource, type ChartSpec, type LegendEntry, type TimeBasis } from '../lib/b82-seams';
 /* B82 cf */
 import { ErrorNote } from './ui';
-import { AccessibleAlternative, ChartLegend } from './chart';
-import { chartGrammar } from '../lib/chart-b82';
+import { DataTable, type DataColumn } from './data';
+import { chartGrammar, DASH_ARRAY, markerPath } from '../lib/chart-b82';
 import type { ExportLabel } from '../lib/table-b80';
 /** The frame's states beyond rest (CMP-057): each says what it is in words; none draws a value it does not have. */
 export type ChartStatus =
@@ -46,6 +46,63 @@ export type ChartStatus =
   | { state: 'withheld'; statement: string }
   | { state: 'empty'; statement: string }
   | { state: 'stale'; statement: string };
+
+/** A token NAME (`color.uncertain`) as its CSS custom property; anything else is ignored (never a raw colour). */
+const tokenVar = (token: string | undefined): string | undefined => (token !== undefined && /^color\.[a-z0-9.-]+$/.test(token) ? `var(--eye-${token.replace(/\./g, '-')})` : undefined);
+/**
+ * THE SERIES LEGEND's drawing (ChartLegend in components/chart.tsx renders exactly this; the frame renders it for every chart — kept here so
+ * the frame imports no chart file): each series as its line (dash pattern), its marker shape and its label — never colour alone (D5).
+ */
+export function renderLegend(entries: readonly LegendEntry[], label: string): ReactNode {
+  if (!Array.isArray(entries) || entries.length === 0) return null;
+  return (
+    <ul className="eye-cf-legend" aria-label={label}>
+      {entries.map((e: LegendEntry) => {
+        const m = markerPath(e.marker, 14, 6, 3.5);
+        return (
+          <li key={e.key} data-dash={e.dash} data-marker={e.marker}>
+            <svg className="eye-cf-swatch" viewBox="0 0 28 12" width="28" height="12" aria-hidden="true" focusable="false" style={{ color: tokenVar(e.token) }}>
+              {e.marker === 'none' && e.dash === 'solid' && e.token !== undefined
+                ? <rect className="eye-cf-swatch-fill" x="1" y="2" width="26" height="8" />
+                : <line x1="1" x2="27" y1="6" y2="6" strokeDasharray={DASH_ARRAY[e.dash] ?? undefined} />}
+              {m === '' ? null : <path className="eye-cf-marker" data-shape={e.marker} d={m} />}
+            </svg>
+            <span>{e.label}</span>
+            <span className="eye-visually-hidden"> — drawn {e.dash === 'solid' ? 'as a solid line' : `${e.dash.replace('-', ' and ')}`}{e.marker === 'none' ? '' : ` with ${e.marker} markers`}</span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+interface Keyed { i: number; r: AlternativeRow }
+/**
+ * THE ACCESSIBLE DATA ALTERNATIVE's rendering (AccessibleAlternative in components/chart.tsx renders exactly this): the summary first, B80's
+ * DataTable over the same rows the drawing uses (caption, scoped headers, a named focusable region; the units in the headers), the
+ * definitions, and the CSV of the displayed rows when the page labels its read.
+ */
+export function renderAlternative({ spec, rows, title, summaryId, exportAs }: { spec: ChartSpec; rows: readonly AlternativeRow[]; title: string; summaryId?: string; exportAs?: ExportLabel }): ReactNode {
+  const keyed: Keyed[] = rows.map((r, i) => ({ i, r }));
+  const columns: Array<DataColumn<Keyed>> = (Array.isArray(spec?.alternative?.columns) ? spec.alternative.columns : []).map((c: AlternativeColumn) => ({
+    key: c.key,
+    label: c.unit !== undefined && c.unit !== '' ? `${c.label} (${c.unit})` : c.label,
+    kind: c.kind === 'state' ? 'text' : c.kind,
+    value: (x: Keyed) => x.r[c.key] ?? null,
+    sortable: true,
+  }));
+  return (
+    <section className="eye-cf-alternative" aria-label={`Table alternative: ${title}`}>
+      <p id={summaryId} className="eye-cf-summary">{spec.alternative.summary}</p>
+      <DataTable<Keyed> label={`Table alternative: ${title}`} columns={columns} rows={keyed} rowId={(x) => String(x.i)}
+        exportAs={exportAs === undefined ? null : { name: title, label: exportAs }} noun="rows" />
+      {spec.alternative.definitions !== undefined && spec.alternative.definitions.length > 0 && (
+        <dl className="eye-cf-definitions" aria-label={`${title}: definitions`}>
+          {spec.alternative.definitions.map((d) => <div key={d.term}><dt>{d.term}</dt><dd>{d.definition}</dd></div>)}
+        </dl>
+      )}
+    </section>
+  );
+}
 /* end B82 cf */
 
 const TIME_WORDS: Readonly<Record<TimeBasis, string>> = {
@@ -122,7 +179,7 @@ export function ChartFrame({ spec, rows, children, /* B82 cf */ exportAs, status
         </div>
       </dl>
       {/* B82 cf: the legend (dash, marker, label — never colour alone), the stale / empty statements, the drawing's notes */}
-      <ChartLegend entries={spec.legend} label={`${title}: legend`} />
+      {renderLegend(spec.legend, `${title}: legend`)}
       {st.state === 'stale' || st.state === 'empty' ? <p className="eye-cf-state" role="note"><strong>{st.state === 'stale' ? 'Stale' : 'No values'}</strong> — {st.statement}</p> : null}
       {/* end B82 cf */}
       {children !== undefined && children !== null && st.state !== 'empty' && (
@@ -133,8 +190,8 @@ export function ChartFrame({ spec, rows, children, /* B82 cf */ exportAs, status
         </div>
       )}
       {/* B82 cf */}{notes !== undefined && notes !== null ? <div className="eye-cf-notes">{notes}</div> : null}{/* end B82 cf */}
-      {/* B82 cf: the mandatory alternative — AccessibleAlternative (components/chart.tsx): summary, the table, the definitions, the CSV when labelled */}
-      <AccessibleAlternative spec={spec} rows={rows} title={title} summaryId={summaryId} {...(exportAs === undefined ? {} : { exportAs })} />
+      {/* B82 cf: the mandatory alternative (AccessibleAlternative's rendering): summary, the table, the definitions, the CSV when labelled */}
+      {renderAlternative({ spec, rows, title, summaryId, ...(exportAs === undefined ? {} : { exportAs }) })}
     </figure>
   );
 }

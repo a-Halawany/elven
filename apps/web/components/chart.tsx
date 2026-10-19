@@ -21,9 +21,8 @@
  * CONSTRUCTION only — each component arrives `proposed` in B107's inventory; the DSA approves it in the act; nothing here is demonstrated.
  */
 import { useId, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { DataTable, type DataColumn } from './data';
-import { ChartFrame, type ChartStatus } from './chart-frame';
-import type { AlternativeColumn, AlternativeRow, ChartSource, ChartSpec, DashPattern, LegendEntry, MarkerShape } from '../lib/b82-seams';
+import { ChartFrame, renderAlternative, renderLegend, type ChartStatus } from './chart-frame';
+import type { AlternativeRow, ChartSource, ChartSpec, DashPattern, LegendEntry, MarkerShape } from '../lib/b82-seams';
 import type { ExportLabel } from '../lib/table-b80';
 import {
   bridgeGeometry, bridgeRows, bridgeSteps, calibrationGeometry, calibrationRows, chartNumber, controlRows, correlationMatrix, DASH_ARRAY,
@@ -102,23 +101,8 @@ function Drawing({ box, children, overlay }: { box: Box; children: ReactNode; ov
  * declared, is a second channel. B80's symbol Legend (symbols.tsx) stays the glyph legend; this is the series legend.
  */
 export function ChartLegend({ entries, label }: { entries: readonly LegendEntry[]; label: string }) {
-  if (!Array.isArray(entries) || entries.length === 0) return null;
-  return (
-    <ul className="eye-cf-legend" aria-label={label}>
-      {entries.map((e) => (
-        <li key={e.key} data-dash={e.dash} data-marker={e.marker}>
-          <svg className="eye-cf-swatch" viewBox="0 0 28 12" width="28" height="12" aria-hidden="true" focusable="false" style={{ color: tokenVar(e.token) }}>
-            {e.marker === 'none' && e.dash === 'solid' && e.token !== undefined
-              ? <rect className="eye-cf-swatch-fill" x="1" y="2" width="26" height="8" />
-              : <line x1="1" x2="27" y1="6" y2="6" strokeDasharray={dashOf(e.dash)} />}
-            <Marker shape={e.marker} x={14} y={6} r={3.5} />
-          </svg>
-          <span>{e.label}</span>
-          <span className="eye-visually-hidden"> — drawn {e.dash === 'solid' ? 'as a solid line' : `${e.dash.replace('-', ' and ')}`}{e.marker === 'none' ? '' : ` with ${e.marker} markers`}</span>
-        </li>
-      ))}
-    </ul>
-  );
+  /* the drawing lives with the frame (chart-frame.tsx renderLegend) so the frame renders it without importing this file — no cycle */
+  return renderLegend(entries, label);
 }
 
 /* ───────────────────────── DataTooltip (CMP-059) ───────────────────────── */
@@ -188,41 +172,14 @@ export function DataTooltip({ spec, rows, box, points, label }: { spec: ChartSpe
 
 /* ───────────────────────── AccessibleAlternative (VIZ-36) ───────────────────────── */
 
-interface Keyed { i: number; r: AlternativeRow }
 /**
  * THE ACCESSIBLE DATA ALTERNATIVE: the text summary first, the table (B80's DataTable: a real table, caption, scoped headers, a named
  * focusable region — the same rows the drawing uses, every unknown "unknown"), the definitions, the units in the column headers, and the
  * downloadable data (B80's exportCsv over the DISPLAYED rows) when the page labels its read. ChartFrame renders it always — never behind a toggle.
  */
-export function AccessibleAlternative({ spec, rows, title, summaryId, exportAs }: {
-  spec: ChartSpec; rows: readonly AlternativeRow[]; title: string; summaryId?: string; exportAs?: ExportLabel;
-}) {
-  const keyed = useMemo<Keyed[]>(() => rows.map((r, i) => ({ i, r })), [rows]);
-  const columns = useMemo<Array<DataColumn<Keyed>>>(() => (Array.isArray(spec?.alternative?.columns) ? spec.alternative.columns : []).map((c: AlternativeColumn) => ({
-    key: c.key,
-    label: c.unit !== undefined && c.unit !== '' ? `${c.label} (${c.unit})` : c.label,
-    kind: c.kind === 'state' ? 'text' : c.kind,
-    value: (x: Keyed) => x.r[c.key] ?? null,
-    sortable: true,
-  })), [spec]);
-  return (
-    <section className="eye-cf-alternative" aria-label={`Table alternative: ${title}`}>
-      <p id={summaryId} className="eye-cf-summary">{spec.alternative.summary}</p>
-      <DataTable<Keyed>
-        label={`Table alternative: ${title}`}
-        columns={columns}
-        rows={keyed}
-        rowId={(x) => String(x.i)}
-        exportAs={exportAs === undefined ? null : { name: title, label: exportAs }}
-        noun="rows"
-      />
-      {spec.alternative.definitions !== undefined && spec.alternative.definitions.length > 0 && (
-        <dl className="eye-cf-definitions" aria-label={`${title}: definitions`}>
-          {spec.alternative.definitions.map((d) => <div key={d.term}><dt>{d.term}</dt><dd>{d.definition}</dd></div>)}
-        </dl>
-      )}
-    </section>
-  );
+export function AccessibleAlternative(props: { spec: ChartSpec; rows: readonly AlternativeRow[]; title: string; summaryId?: string; exportAs?: ExportLabel }) {
+  /* rendered by the frame's renderAlternative (chart-frame.tsx) — one implementation, no import cycle */
+  return renderAlternative(props);
 }
 
 /** The props every chart shares (the frame's optional additions passed through). */
