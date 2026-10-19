@@ -922,3 +922,68 @@ button.eye-cmdenv-row[aria-pressed="true"] { border-color: var(--eye-color-accen
   .eye-cf-declarations dt, .eye-cf-definitions dd { color: CanvasText; }
 }
 /* end B82 §0 cf */
+/* B82 cf — THE CHARTS (components/chart.tsx, chart-frame.tsx's §CF completion). Semantic tokens only (no colour is added — D5: dash,
+   marker and label tell series apart); thin 2-unit lines; a recessive grid; text in ink tokens, never a series colour; the plot is drawn
+   left-to-right (a time axis is not mirrored) while every text outside it follows the page; forced colours keep every mark (CanvasText,
+   a hatch for the band) and the focus ring (Highlight). The SVG scales to its container — no sideways page scroll at 390 px or 200 %. */
+.eye-cf-legend { display: flex; flex-wrap: wrap; gap: var(--eye-space-4) var(--eye-space-16); list-style: none; margin: 0 0 var(--eye-space-8); padding: 0; font-size: var(--eye-type-body-sm); }
+.eye-cf-legend li { display: inline-flex; align-items: center; gap: var(--eye-space-4); }
+.eye-cf-swatch { flex: none; color: var(--eye-color-ink-strong); }
+.eye-cf-swatch line { stroke: currentColor; stroke-width: 2; fill: none; }
+.eye-cf-swatch-fill { fill: currentColor; fill-opacity: 0.3; stroke: currentColor; stroke-width: 1; }
+.eye-cf-swatch .eye-cf-marker { fill: var(--eye-color-surface-primary); stroke: var(--eye-color-ink-strong); stroke-width: 1.5; }
+.eye-cf-state { margin-block: var(--eye-space-8); }
+.eye-cf-notes { margin-block: var(--eye-space-4) var(--eye-space-8); }
+.eye-cf-plot { position: relative; max-inline-size: 46rem; }
+.eye-cf-svg { display: block; inline-size: 100%; block-size: auto; overflow: visible; }
+.eye-cf-overlay { position: absolute; inset: 0; inline-size: 100%; block-size: 100%; overflow: visible; }
+.eye-cf-svg text { fill: var(--eye-color-ink-muted); font-size: 13px; font-family: inherit; }
+.eye-cf-svg .eye-cf-strong { fill: var(--eye-color-ink-strong); font-weight: 600; }
+.eye-cf-svg .eye-cf-small { font-size: 11px; }
+.eye-cf-svg .eye-cf-direct { fill: var(--eye-color-ink-strong); font-size: 12px; }
+.eye-cf-axis line, .eye-cf-axis-line { stroke: var(--eye-color-border-strong); stroke-width: 1; }
+.eye-cf-grid, .eye-cf-axis .eye-cf-grid { stroke: var(--eye-color-border-default); stroke-width: 1; stroke-opacity: 0.6; }
+.eye-cf-series { fill: none; stroke: currentColor; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.eye-cf-series-group, .eye-cf-svg { color: var(--eye-color-ink-strong); }
+.eye-cf-marker { fill: var(--eye-color-surface-primary); stroke: var(--eye-color-ink-strong); stroke-width: 1.5; }
+.eye-cf-marker[data-shape="cross"] { fill: none; stroke-width: 2; }
+.eye-cf-band { fill: currentColor; fill-opacity: 0.22; stroke: currentColor; stroke-width: 1; }
+.eye-cf-gap { fill: none; stroke: var(--eye-color-ink-muted); stroke-width: 1; stroke-dasharray: 2 3; }
+.eye-cf-cutoff line, .eye-cf-limit line { stroke: var(--eye-color-ink-default); stroke-width: 1.5; }
+.eye-cf-cutoff text, .eye-cf-limit text { fill: var(--eye-color-ink-default); font-size: 11px; }
+.eye-cf-reference, .eye-cf-reference line { fill: none; stroke: var(--eye-color-ink-muted); stroke-width: 1.5; }
+.eye-cf-reference text { fill: var(--eye-color-ink-muted); font-size: 11px; }
+.eye-cf-interval { stroke: var(--eye-color-ink-strong); stroke-width: 1.5; }
+.eye-cf-bar { fill: var(--eye-color-surface-secondary); stroke: var(--eye-color-ink-strong); stroke-width: 1.5; }
+.eye-cf-step { fill: var(--eye-color-surface-primary); stroke: var(--eye-color-ink-strong); stroke-width: 1.5; }
+.eye-cf-step[data-kind="start"], .eye-cf-step[data-kind="end"] { fill: var(--eye-color-surface-secondary); }
+.eye-cf-step[data-kind="decrease"] { fill: var(--eye-color-ink-muted); fill-opacity: 0.35; }
+.eye-cf-step[data-kind="residual"] { stroke-dasharray: 4 3; fill: none; }
+.eye-cf-zero { stroke: var(--eye-color-ink-default); stroke-width: 1; }
+.eye-cf-connector { fill: none; stroke: var(--eye-color-ink-muted); stroke-width: 1; }
+.eye-cf-cell { fill: none; stroke: var(--eye-color-border-default); stroke-width: 1; }
+.eye-cf-cell--missing { stroke-dasharray: 2 3; stroke: var(--eye-color-ink-muted); }
+.eye-cf-cell-mark { fill: var(--eye-color-surface-secondary); stroke: var(--eye-color-ink-strong); stroke-width: 1; }
+.eye-cf-hit { cursor: pointer; outline: none; }
+.eye-cf-hit-area { fill: transparent; stroke: none; }
+.eye-cf-ring { fill: none; stroke: none; stroke-width: 2.5; }
+.eye-cf-hit:focus-visible .eye-cf-ring, .eye-cf-hit[data-active="true"] .eye-cf-ring { stroke: var(--eye-color-focus); }
+.eye-cf-tooltip { position: absolute; z-index: 2; min-inline-size: 12rem; max-inline-size: min(22rem, 80vw); padding: var(--eye-space-8);
+  background: var(--eye-color-surface-elevated); color: var(--eye-color-ink-default); border: 1px solid var(--eye-color-border-strong); border-radius: var(--eye-radius-sm);
+  font-size: var(--eye-type-body-sm); transform: translate(var(--eye-space-8), -50%); }
+.eye-cf-tooltip[data-side="before"] { transform: translate(calc(-100% - var(--eye-space-8)), -50%); }
+.eye-cf-tooltip dl { margin: 0 0 var(--eye-space-4); }
+.eye-cf-tooltip dl > div { display: flex; gap: var(--eye-space-4); flex-wrap: wrap; }
+.eye-cf-tooltip dt { color: var(--eye-color-ink-muted); }
+.eye-cf-tooltip dt::after { content: ":"; }
+.eye-cf-tooltip dd { margin: 0; overflow-wrap: anywhere; }
+@media (forced-colors: active) {
+  .eye-cf-series, .eye-cf-marker, .eye-cf-interval, .eye-cf-bar, .eye-cf-step, .eye-cf-cell, .eye-cf-cell-mark, .eye-cf-axis line, .eye-cf-axis-line,
+  .eye-cf-cutoff line, .eye-cf-limit line, .eye-cf-reference, .eye-cf-gap, .eye-cf-zero, .eye-cf-connector, .eye-cf-swatch line { stroke: CanvasText; }
+  .eye-cf-svg text { fill: CanvasText; }
+  .eye-cf-band, .eye-cf-swatch-fill { fill: none; stroke: CanvasText; stroke-dasharray: 3 2; }
+  .eye-cf-hit:focus-visible .eye-cf-ring, .eye-cf-hit[data-active="true"] .eye-cf-ring { stroke: Highlight; }
+  .eye-cf-tooltip { border-color: CanvasText; }
+}
+@media (prefers-reduced-motion: reduce) { .eye-cf-tooltip { transition: none; } }
+/* end B82 cf */
