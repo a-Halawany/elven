@@ -958,3 +958,40 @@ button.eye-cmdenv-row[aria-pressed="true"] { border-color: var(--eye-color-accen
   .eye-truth-stored, .eye-truth-correction, .eye-num-facts dt, .eye-state-strip dt, .eye-freshness-lines { color: CanvasText; }
 }
 /* end B82 ts */
+/* B82 ev — THE EVIDENCE LIBRARY (components/evidence.tsx; F-P7-E-07 chapter 26). Semantic tokens only (no new colour, D5); logical properties
+   (RTL mirrors); every state is a word, so forced colours and 200 % zoom keep it; the bytes wrap or scroll inside their own region — the page
+   never scrolls sideways. The cited span is a <mark>: outlined as well as tinted, so it survives forced colours. */
+.eye-ev-note { color: var(--eye-color-ink-muted); font-size: var(--eye-type-body-sm); margin-block: var(--eye-space-4); overflow-wrap: anywhere; }
+.eye-ev-card { border: 1px solid var(--eye-color-border-default); border-radius: var(--eye-radius-md); padding: var(--eye-space-8) var(--eye-space-12); margin-block: var(--eye-space-8); min-inline-size: 0; }
+.eye-ev-card[data-outcome="unverifiable"], .eye-ev-card[data-outcome="inaccessible"], .eye-ev-card[data-outcome="rights_expired"] { border-inline-start: 4px solid var(--eye-color-uncertain); }
+.eye-ev-card-title { margin-block: 0 var(--eye-space-4); display: flex; flex-wrap: wrap; gap: var(--eye-space-8); align-items: baseline; }
+.eye-ev-outcome { font-size: var(--eye-type-label-sm); font-weight: 650; color: var(--eye-color-ink-strong); }
+.eye-ev-dl { margin: 0; display: grid; gap: var(--eye-space-2, 2px) var(--eye-space-12); }
+.eye-ev-dl-row { display: flex; flex-wrap: wrap; gap: var(--eye-space-8); min-inline-size: 0; }
+.eye-ev-dl-row dt { color: var(--eye-color-ink-muted); font-size: var(--eye-type-label-sm); text-transform: uppercase; min-inline-size: 7rem; }
+.eye-ev-dl-row dd { margin: 0; overflow-wrap: anywhere; min-inline-size: 0; flex: 1 1 14rem; }
+.eye-ev-lines { margin: 0; padding-inline-start: var(--eye-space-16); }
+.eye-ev-viewer { margin-block: var(--eye-space-8); min-inline-size: 0; }
+.eye-ev-bytes { margin: var(--eye-space-4) 0 0; padding: var(--eye-space-8); background: var(--eye-color-surface-secondary); border: 1px solid var(--eye-color-border-default);
+  border-radius: var(--eye-radius-md); font-family: var(--eye-font-mono); font-size: var(--eye-type-mono-sm); white-space: pre-wrap; overflow-wrap: anywhere; max-block-size: 22rem; overflow: auto; }
+.eye-ev-bytes:focus-visible { outline: 2px solid var(--eye-color-focus); outline-offset: 2px; }
+.eye-ev-context { color: var(--eye-color-ink-muted); }
+.eye-ev-cited { background: var(--eye-color-selection); color: var(--eye-color-ink-strong); outline: 2px solid var(--eye-color-accent-strong); border-radius: var(--eye-radius-sm); }
+.eye-ev-degraded { border: 1px dashed var(--eye-color-degraded); border-radius: var(--eye-radius-sm); padding: var(--eye-space-8); }
+.eye-ev-timeline { margin: var(--eye-space-4) 0; padding-inline-start: var(--eye-space-20, 20px); font-size: var(--eye-type-body-sm); }
+.eye-ev-timeline li { margin-block: var(--eye-space-2, 2px); overflow-wrap: anywhere; }
+.eye-ev-timeline li[data-alarm="true"] { font-weight: 650; }
+.eye-ev-scroll { max-inline-size: 100%; overflow-x: auto; }
+.eye-ev-scroll:focus-visible { outline: 2px solid var(--eye-color-focus); }
+.eye-ev-rights, .eye-ev-verify, .eye-ev-custody { margin-block: var(--eye-space-8); min-inline-size: 0; }
+.eye-ev-rights[data-state="expired"] .eye-ev-rights-headline, .eye-ev-rights[data-state="withdrawn"] .eye-ev-rights-headline { color: var(--eye-color-critical); }
+.eye-ev-citation { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: var(--eye-space-4); max-inline-size: 100%; }
+.eye-ev-citation-btn { text-align: start; overflow-wrap: anywhere; }
+.eye-ev-drawer { padding: var(--eye-space-8) var(--eye-space-12); min-inline-size: 0; }
+.eye-ev-ready { margin-block: var(--eye-space-4); }
+@media (forced-colors: active) {
+  .eye-ev-cited { forced-color-adjust: none; background: Highlight; color: HighlightText; outline-color: CanvasText; }
+  .eye-ev-card, .eye-ev-bytes, .eye-ev-degraded { border-color: CanvasText; }
+  .eye-ev-context, .eye-ev-note, .eye-ev-dl-row dt { color: CanvasText; }
+}
+/* end B82 ev */

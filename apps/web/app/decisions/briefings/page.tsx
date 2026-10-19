@@ -11,7 +11,7 @@
  * policy, the DISPUTED and INDICATOR sections with their as-of, the items RETAINED from the prior edition under an outage with their
  * original as-of, and EXPIRED when the server says so. An executive publishes the suppression policy here. Every state is the record's.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useShell } from '../layout';
 import { decisions as api, type Room, type Briefing, type BriefingPolicy } from '../../../lib/decisions';
 import { Empty, LiveStatus, Mono, cardStyle, DefinitionRow, UnknownNote, fmtInstant, textareaStyle } from '../../../components/observation';
@@ -19,6 +19,12 @@ import { tableStyle, Th, Td, buttonStyle, inputStyle, Receipt as ReceiptNote, Er
 /* B23 (0084) attention */
 import { bandMark as attentionBandMark } from '../../../lib/attention';
 import type { BriefingAttention, BriefingAttentionItem } from '../../../lib/decisions';
+/* B82 ev: each item and each narrative cite resolved to its exact evidence at the point of use (CMP-026, UX-ADR-006); a corrected cite reads CORRECTED SINCE with what corrected it */
+import { CitationLink, EvidenceDisclosure } from '../../../components/evidence';
+import { useCitationResolutions } from '../../../lib/evidence-api-b82';
+import { citationKey, citationOfItemId, evidenceDisclosure } from '../../../lib/evidence-b82';
+import type { CitationRef } from '../../../lib/b82-seams';
+/* end B82 ev */
 /* end B23 attention */
 /* B36 briefing */
 import {
@@ -143,6 +149,17 @@ export default function BriefingsPage() {
   };
   const toggle = (list: string[], v: string): string[] => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
 
+  /* B82 ev */
+  const evRefs = useMemo(() => {
+    if (briefing === null) return [] as CitationRef[];
+    const ids = [...briefing.items.map((i) => i.item_id), ...briefing.narrative_cites];
+    const out = new Map<string, CitationRef>();
+    for (const id of ids) { const c = citationOfItemId(id); if (c !== null) out.set(citationKey(c), c); }
+    return [...out.values()];
+  }, [briefing]);
+  const evRes = useCitationResolutions(scope, evRefs);
+  const evOf = (itemId: string) => { const c = citationOfItemId(itemId); return c === null ? null : { c, r: evRes.state === 'ready' ? evRes.byKey.get(citationKey(c)) ?? null : evRes.state === 'refused' ? null : undefined }; };
+  /* end B82 ev */
   if (problem !== null) return <LiveStatus assertive>{problem}</LiveStatus>;
   if (rooms === null) return <Empty>reading rooms…</Empty>;
   const board = isBoardAudience(audience.roles);
@@ -303,7 +320,7 @@ export default function BriefingsPage() {
               ) : null}
               {briefing.items.length === 0 ? <Empty>Nothing changed since the baseline.</Empty> : (
                 <table className="eye-table" style={tableStyle}>
-                  <thead><tr><Th>Kind</Th><Th>What</Th><Th>Truth</Th><Th>Uncertainty</Th><Th>Source</Th><Th>Freshness</Th><Th>Why it matters</Th><Th>Owner</Th></tr></thead>
+                  <thead><tr><Th>Kind</Th><Th>What</Th><Th>Truth</Th><Th>Uncertainty</Th><Th>Source</Th><Th>Freshness</Th><Th>Why it matters</Th><Th>Owner</Th>{/* B82 ev */}<Th>Evidence</Th>{/* end B82 ev */}</tr></thead>
                   <tbody>{briefing.items.map((i) => (
                     <tr key={i.item_id}>
                       <Td>{i.kind}</Td>
@@ -314,11 +331,21 @@ export default function BriefingsPage() {
                       <Td mono>{i.freshness.age_hours} h old</Td>
                       <Td>{i.matters.length === 0 ? '—' : i.matters.map((m) => `${m.dependent_type} ${m.dependent_object_id.slice(0, 8)}…`).join(', ')}</Td>
                       <Td mono>{short(i.owner)}</Td>
+                      {/* B82 ev */}<Td>{(() => { const x = evOf(i.item_id); return x === null ? 'cites no recorded object' : <CitationLink citation={x.c} scope={scope} resolution={x.r} />; })()}</Td>{/* end B82 ev */}
                     </tr>
                   ))}</tbody>
                 </table>
               )}
               {briefing.narrative === null ? null : <UnknownNote><strong>NARRATIVE (labelled; cites {briefing.narrative_cites.length} item(s)).</strong> {briefing.narrative}</UnknownNote>}
+              {/* B82 ev — the narrative's cites at the point of use: a cite whose version was corrected since says so beside the paragraph */}
+              {briefing.narrative !== null && briefing.narrative_cites.length > 0 && (
+                <ul className="eye-ev-lines" aria-label="What the narrative cites">
+                  {briefing.narrative_cites.map((id) => { const x = evOf(id); return <li key={id}>{x === null ? `${id} — not a recorded object` : <CitationLink citation={x.c} scope={scope} resolution={x.r} />}</li>; })}
+                </ul>
+              )}
+              {evRes.state === 'ready' && evRes.byKey.size > 0 && <EvidenceDisclosure model={evidenceDisclosure([...evRes.byKey.values()], { withheld: briefing.items_withheld ?? 0, cutoff: briefing.watermark.known_at, digest: evRes.digests[0] ?? null })} />}
+              {evRes.state === 'refused' && <><p className="eye-ev-note">The briefing's citations were not resolved on this read:</p><ErrorNote error={evRes.error} /></>}
+              {/* end B82 ev */}
             </section>
           )}
         </section>

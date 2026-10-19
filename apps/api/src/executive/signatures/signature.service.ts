@@ -76,14 +76,35 @@ export class SignatureService {
       ${a.subjectDigest}, ${keyIdOf(spkiDer)}, ${signature}, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
     return rows[0]?.r ?? {};
   }
-  /** VERIFY a recorded signature against the bound key (by key_id) or a given public key PEM; a malformed input is false, never a throw. */
+  /** VERIFY a recorded signature against the bound key (by key_id) or a given public key PEM; a malformed input is false, never a throw.
+   *  B82 ev: the boolean is `verifyOutcome(...) === 'verified'` — every caller's meaning unchanged (false for a failed AND for an
+   *  unavailable verification, exactly as before). */
   verify(row: Pick<SignatureRow, 'key_id' | 'signature' | 'subject_digest'>, publicKeyPem?: string): boolean {
-    try {
-      const pem = publicKeyPem ?? (() => { const k = this.publicKey(); return k !== null && k.keyId === row.key_id ? k.publicKeyPem : null; })();
-      if (pem === null || !/^[A-Za-z0-9+/]{86}==$/.test(row.signature)) return false;
-      const pub = createPublicKey({ key: pem, format: 'pem' });
-      if (pub.asymmetricKeyType !== 'ed25519') return false;
-      return cryptoVerify(null, Buffer.from(row.subject_digest, 'utf8'), pub, Buffer.from(row.signature, 'base64'));
-    } catch { return false; }
+    return this.verifyOutcome(row, publicKeyPem).outcome === 'verified';
   }
+  /* B82 ev */
+  /**
+   * B82 §EV (CMP-032, UX-57: "a verification that cannot be made is UNAVAILABLE, never FAILED") — the THREE outcomes with the reason:
+   *   verified     the signature verifies over the subject digest with the recorded key
+   *   failed       a key is on file for the row's key_id (or given) and the signature does NOT verify — or the signature bytes are malformed
+   *   unavailable  no key is on file for the row's key_id (another deployment's key, a rotated key) or the verifier itself faulted — nothing
+   *                about the signature was established either way
+   * Never throws. `verify()` above is this, collapsed to its boolean.
+   */
+  verifyOutcome(row: Pick<SignatureRow, 'key_id' | 'signature' | 'subject_digest'>, publicKeyPem?: string): { outcome: 'verified' | 'failed' | 'unavailable'; reason: string } {
+    let pem: string | null;
+    try {
+      pem = publicKeyPem ?? (() => { const k = this.publicKey(); return k !== null && k.keyId === row.key_id ? k.publicKeyPem : null; })();
+    } catch { return { outcome: 'unavailable', reason: 'the verifier could not read the key on file' }; }
+    if (pem === null) return { outcome: 'unavailable', reason: `no key is on file for ${String(row.key_id)} in this deployment; the signature was neither verified nor refuted` };
+    if (typeof row.signature !== 'string' || !/^[A-Za-z0-9+/]{86}==$/.test(row.signature)) return { outcome: 'failed', reason: 'the recorded signature is not an Ed25519 signature (64 bytes, base64)' };
+    try {
+      const pub = createPublicKey({ key: pem, format: 'pem' });
+      if (pub.asymmetricKeyType !== 'ed25519') return { outcome: 'unavailable', reason: 'the key on file is not an Ed25519 key; the signature was neither verified nor refuted' };
+      return cryptoVerify(null, Buffer.from(String(row.subject_digest), 'utf8'), pub, Buffer.from(row.signature, 'base64'))
+        ? { outcome: 'verified', reason: `verified over the subject digest with ${String(row.key_id)}` }
+        : { outcome: 'failed', reason: `the signature does not verify over the recorded subject digest with ${String(row.key_id)}` };
+    } catch { return { outcome: 'unavailable', reason: 'the verifier faulted; the signature was neither verified nor refuted' }; }
+  }
+  /* end B82 ev */
 }

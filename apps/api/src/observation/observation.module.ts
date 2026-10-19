@@ -29,10 +29,11 @@ import { SweeperService } from './sweeper/sweeper.service.js';
 import { AcquisitionLifecycle } from './acquisition/lifecycle.service.js';
 import { CollectionOrchestrator } from './acquisition/orchestrator.service.js';
 import { ObservationExceptionFilter } from './observation.filter.js';
+/* B82 ev */ import { EvidenceB82Controller } from './evidence-b82/evidence-b82.controller.js'; /* end B82 ev */
 
 @Module({
   imports: [PipelineModule, IdentityModule],
-  controllers: [ObservationController, UploadController],
+  controllers: [ObservationController, UploadController, /* B82 ev: the cited evidence segment, the rights terms (0121 §EV) */ EvidenceB82Controller /* end B82 ev */],
   providers: [
     SourcesService,
     SourceCredentialStore,

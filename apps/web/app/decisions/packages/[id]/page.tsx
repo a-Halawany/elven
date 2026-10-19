@@ -10,7 +10,7 @@
  * two sides are the same record. The governed acts (propose, approve, commit, sign, dissent, replay) stay on the decisions page behind their
  * gates and the Command Review (§HA); this page reads only — the read leaves its own access evidence. Records shown in tests are SYNTHETIC.
  */
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useShell } from '../../layout';
@@ -26,6 +26,11 @@ import { ErrorNote } from '../../../../components/ui';
 import { Empty, fmtInstant } from '../../../../components/observation';
 /* B81 har: the CONTEST PATH on the package version (HX-14) */ import { SubjectContest } from '../../contest-panel'; import { rolesIn } from '../../../../lib/authority-b81'; /* end B81 har */
 /* B81 integration (UX-11-005) */ import { RecoveryPanel } from '../../../../components/recovery'; import { recoveryOfRefusedLink } from '../../../../lib/degraded-b81'; /* end B81 integration */
+/* B82 ev: the option citations resolved at the point of use (CMP-026, UX-ADR-006, HX-01) */
+import { CitationLink, EvidenceDisclosure } from '../../../../components/evidence';
+import { useCitationResolutions } from '../../../../lib/evidence-api-b82';
+import { citationKey, evidenceDisclosure, parseCitations } from '../../../../lib/evidence-b82';
+/* end B82 ev */
 
 /** B81 integration: ONE h1 per rendering (lib/layout-b81's REG-03 ratchet) — every branch (not opened, loading, the object) titles
  *  the page through this one element. */
@@ -70,6 +75,10 @@ function PackageObjectView() {
   const latest = versions.length === 0 ? null : versions[versions.length - 1]!.version;
   const shownNumber = asked === null || asked === 'latest' ? (pkg?.current_version ?? latest) : asked;
   const shown: PackageVersion | null = versions.find((v) => v.version === shownNumber) ?? null;
+  /* B82 ev */
+  const evRefs = useMemo(() => (shown === null ? [] : parseCitations(shown.options.flatMap((o) => o.consequences)).refs), [shown]);
+  const evRes = useCitationResolutions(scope, evRefs);
+  /* end B82 ev */
 
   useEffect(() => {
     setGate(null); setGateErr(null);
@@ -114,7 +123,7 @@ function PackageObjectView() {
       { label: `package state: ${pkg.state.replace(/_/g, ' ')}${pkg.committed_version === null ? '' : ` · committed version v${pkg.committed_version}`}`, href: null },
       ...(pkg.decision === null || pkg.decision === undefined ? [] : [{ label: `decision: ${pkg.decision.title} (${pkg.decision.status})`, href: null }]),
     ],
-    provenance: [{ label: `${cited} cited consequence(s) across ${shown.options.length} option(s) (runs, forecasts, claims, evidence — each version- and digest-bound)`, href: null },
+    provenance: [{ label: `${cited} cited consequence(s) across ${shown.options.length} option(s) (runs, forecasts, claims, evidence — each version- and digest-bound)`, href: /* B82 ev */ '#package-citations' /* end B82 ev */ },
       ...(shown.baseline_run_id === null ? [] : [{ label: 'the baseline run', href: null }])],
     receipt, effective: { support: 'live_only', asOf: null },
     eligible: { propose: { can: isDecisionOwner, reason: isDecisionOwner ? null : 'you hold no decision_owner binding in this domain' } },
@@ -161,6 +170,29 @@ function PackageObjectView() {
           </>
         )}
       </section>
+      {/* B82 ev — every option's citations resolved to their exact evidence on this page (a drawer per citation; the bytes behind the existing evidence read) */}
+      <section aria-labelledby="package-citations" className="eye-object-versions">
+        <h2 id="package-citations" style={{ fontSize: 'var(--eye-type-heading-2)' }}>Citations of v{shown.version}</h2>
+        {evRes.state === 'refused' && <><p className="eye-ev-note">The citations were not resolved on this read:</p><ErrorNote error={evRes.error} /></>}
+        {evRes.state === 'ready' && <EvidenceDisclosure model={evidenceDisclosure([...evRes.byKey.values()], { digest: evRes.digests[0] ?? null })} />}
+        {shown.options.length === 0 ? <p>This version records no option, so it cites nothing.</p> : (
+          <ul className="eye-ev-lines">
+            {shown.options.map((o) => (
+              <li key={o.option_id}>
+                <strong>{o.title}</strong> ({o.key}) — {o.consequences.length === 0 ? 'cites nothing' : `${o.consequences.length} citation(s):`}
+                {o.consequences.length > 0 && (
+                  <ul className="eye-ev-lines">
+                    {o.consequences.map((c) => (
+                      <li key={citationKey(c)}><CitationLink citation={c} scope={scope} resolution={evRes.state === 'ready' ? evRes.byKey.get(citationKey(c)) ?? null : evRes.state === 'refused' ? null : undefined} /></li>
+                    ))}
+                  </ul>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+      {/* end B82 ev */}
       {/* B81 har: the CONTEST PATH (HX-14) — the challenges on the shown version and the appeal cases on the package */}
       <SubjectContest scope={scope} roles={rolesIn(me.bindings, scope)} type="DPK" appealKind="package" subjectId={pkg.package_id} explanation={{ kind: 'package_version', version: shown.version }}
         challenges={{ packageId: pkg.package_id, version: shown.version }} />
