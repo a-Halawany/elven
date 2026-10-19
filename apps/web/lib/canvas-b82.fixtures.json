@@ -1,0 +1,22 @@
+{
+  "about": "B82 §GM: the geometry cases the SQL check (graph.geo_geometry_problem, 0121_b82_x_gm) and the web mirror (lib/canvas-b82.ts geometryProblem) must answer alike — phase6-geography-b82 runs them through SQL, canvas-b82.test.ts through TypeScript. `problem` is null for a valid geometry, else a fragment of the problem's words. SYNTHETIC.",
+  "cases": [
+    { "name": "a point", "geometry": { "type": "Point", "coordinates": [43.33, 12.58] }, "problem": null },
+    { "name": "a point on the antimeridian and a pole", "geometry": { "type": "Point", "coordinates": [180, -90] }, "problem": null },
+    { "name": "latitude out of range (axis order swapped)", "geometry": { "type": "Point", "coordinates": [12.58, 143.33] }, "problem": "outside -90 to 90 degrees" },
+    { "name": "longitude out of range", "geometry": { "type": "Point", "coordinates": [-181, 0] }, "problem": "outside -180 to 180 degrees" },
+    { "name": "a position of three numbers", "geometry": { "type": "Point", "coordinates": [1, 2, 3] }, "problem": "is not a position" },
+    { "name": "a position as strings", "geometry": { "type": "Point", "coordinates": ["1", "2"] }, "problem": "is not a position" },
+    { "name": "a line", "geometry": { "type": "LineString", "coordinates": [[32.3, 30.0], [43.3, 12.6], [56.3, 26.5]] }, "problem": null },
+    { "name": "a line of one position", "geometry": { "type": "LineString", "coordinates": [[1, 2]] }, "problem": "2 to 1000 positions" },
+    { "name": "a line that does not move", "geometry": { "type": "LineString", "coordinates": [[1, 2], [1, 2]] }, "problem": "two different positions" },
+    { "name": "a line with a bad position", "geometry": { "type": "LineString", "coordinates": [[1, 2], [1, 95]] }, "problem": "position 2 of the line" },
+    { "name": "a closed polygon", "geometry": { "type": "Polygon", "coordinates": [[[0, 0], [10, 0], [10, 10], [0, 0]]] }, "problem": null },
+    { "name": "an open polygon", "geometry": { "type": "Polygon", "coordinates": [[[0, 0], [10, 0], [10, 10], [0, 10]]] }, "problem": "is not closed" },
+    { "name": "a polygon ring too short", "geometry": { "type": "Polygon", "coordinates": [[[0, 0], [1, 1], [0, 0]]] }, "problem": "4 to 1000 positions" },
+    { "name": "a degenerate polygon", "geometry": { "type": "Polygon", "coordinates": [[[0, 0], [1, 1], [0, 0], [0, 0]]] }, "problem": "encloses no area" },
+    { "name": "a CRS member", "geometry": { "type": "Point", "coordinates": [1, 2], "crs": "EPSG:3857" }, "problem": "exactly type and coordinates" },
+    { "name": "a multipoint", "geometry": { "type": "MultiPoint", "coordinates": [[1, 2]] }, "problem": "is not admitted" },
+    { "name": "not an object", "geometry": [1, 2], "problem": "is a GeoJSON object" }
+  ]
+}

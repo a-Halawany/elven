@@ -20,6 +20,7 @@ import {
 import { Empty, LiveStatus, Mono, ScrollBox, cardStyle, DefinitionRow, UnknownNote, GovernedButton, fmtInstant, textareaStyle } from '../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui';
 /* B81 re: the library's Field (its control slot) — the local Field helper migrated (UX-ADR-011; dg-lint-2's ratchet) */ import { Field } from '../../../components/forms';
+/* B82 gm */ import { DependencyNetwork } from '../../../components/canvas'; /* end B82 gm */
 
 type ReceiptT = { policyDecisionId: string; auditSeq: number } | null;
 const muted = { color: 'var(--eye-color-ink-muted)' } as const;
@@ -132,6 +133,10 @@ export default function SupplyNetworkPage() {
             <DefinitionRow term="Owner"><Mono>{short(net.owner)}</Mono>{isOwner ? ' (you)' : ''}</DefinitionRow>
             <DefinitionRow term="Coverage"><span aria-label="coverage">{coverageLine(u)}</span></DefinitionRow>
             {net.analysis === null ? null : <DefinitionRow term="Throughput">{String((net.analysis as Record<string, unknown>)['throughput_per_day'] ?? '—')} {String((net.analysis as Record<string, unknown>)['throughput_unit'] ?? '')} to {String((net.analysis as Record<string, unknown>)['terminal_name'] ?? '—')}</DefinitionRow>}
+            {/* B82 gm (VIZ-15, CMP-063): the network DRAWN — tiers as columns (the deepest first, the line last), routes as directed relations, an
+                inferred dependency dashed until validated; bounded at 80 sites; the tier, site and route lists below stay. */}
+            {u === null || u.sites.length === 0 || ws === null ? null : <DependencyNetwork uncertainty={u} inferences={net.inferences} asOf={ws.now} title={net.title} />}
+            {/* end B82 gm */}
             <h3 style={{ fontSize: 'var(--eye-type-heading-3)' }}>Tiers</h3>
             <ul aria-label="tiers" style={small}>{(u?.tiers ?? []).map((t) => <li key={t.tier}>{tierLine(t)}</li>)}</ul>
             <h3 style={{ fontSize: 'var(--eye-type-heading-3)' }}>Sites</h3>

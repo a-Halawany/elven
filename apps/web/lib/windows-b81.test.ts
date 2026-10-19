@@ -15,6 +15,7 @@ import {
   roomSections, roomWatermark, selectedOf, selectionFromLocation, snapshotOf, surfaceOf, tickMirror, toHandoffOffer, toPresentationState, verifyAgainstServer, windowId,
   type ClaimResult, type HandoffView, type MirrorState, type PresentationStateView, type RoomInput, type Snapshot, type SyncMessage, type WindowCommand,
 } from './windows-b81';
+/* B82 gm */ import { CORRIDOR_NOTE } from './windows-b81'; /* end B82 gm */
 import { LIBRARY_B81 } from './b81-seams';
 import { commandLabelProblem } from './content-b81';
 
@@ -288,7 +289,10 @@ describe('BP-05 — the room: one composition for every window (multi-window con
     const a = roomSections(ROOM); const b = roomSections({ ...ROOM });
     expect(b).toEqual(a);
     expect(a.map((s) => [s.key, s.rows.length])).toEqual([['corridor', 1], ['warnings', 1], ['twins', 1]]);
-    expect(a[0]!.note).toMatch(/the map canvas comes at B82/);
+    /* B82 gm: the map canvas came at B82 — the corridor region is a MapCanvas and this list its table alternative */
+    expect(a[0]!.note).toBe(CORRIDOR_NOTE);
+    expect(a[0]!.note).toMatch(/corridor map .* this structured list .* is its table alternative/);
+    /* end B82 gm */
     expect(a[0]!.rows[0]).toMatchObject({ kind: 'exposure', detail: 'accepted · v2 · OUTSIDE APPETITE', selected: false });
     expect(a[1]!.rows[0]).toMatchObject({ kind: 'warning', id: W, selected: true, detail: 'RAISED · window closes 2026-10-20T00:00:00Z' });
     expect(a[2]!.rows[0]).toMatchObject({ kind: 'twin', version: 3, detail: 'v3 · validation fit · SYNTHETIC state' });

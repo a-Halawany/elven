@@ -33,6 +33,7 @@ import {
 import { ErrorNote, Receipt } from './ui';
 import { GovernedButton, LiveStatus } from './observation';
 import { Dialog, Drawer } from './layers';
+/* B82 gm */ import { regionScrollOf, type RegionScroll } from '../lib/scroll-b82'; /* end B82 gm */
 
 const gapClass = (g: Gap | undefined, fallback: Gap) => `eye-gap-${isGap(g) ? g : fallback}`;
 
@@ -81,15 +82,17 @@ const placementStyle = (column: readonly [number, number], row: readonly [number
  * A REGION of a composition: a labelled landmark (`section`) of one kind. The status region is a polite live region; the authority region
  * is where §HA's AuthorityBanner sits at a consequential gate. A region carries no elevation (meaning is stated, never implied by depth).
  */
-export function Region({ region, label, span, id, children, placement }: {
+export function Region({ region, label, span, id, children, placement, scroll }: {
   region: RegionKey; label?: string; span?: number; id?: string; children: ReactNode;
   /** set by Composition: the grid lines of this region at the measured class */ placement?: { column: readonly [number, number]; row: readonly [number, number] };
+  /* B82 gm */ /** set by Composition (UX-19-003): who scrolls the region and whether its boundary sticks (lib/scroll-b82 regionScrollOf) */ scroll?: RegionScroll; /* end B82 gm */
 }) {
   const spec = REGIONS[region];
   const s = span !== undefined && Number.isInteger(span) && span >= 1 && span <= 12 ? ` eye-span-${span}` : '';
   return (
     <section id={id} data-region={region} aria-label={label ?? spec.label} className={`eye-region eye-region--${region}${s}`}
       style={placement !== undefined ? placementStyle(placement.column, placement.row) : undefined}
+      /* B82 gm */ data-scroll-owner={scroll?.block} data-sticky={scroll?.sticky ?? undefined} /* end B82 gm */
       aria-live={region === 'status' ? 'polite' : undefined}>
       {children}
     </section>
@@ -326,7 +329,7 @@ export function Composition({ regions, label, selection, consequentialGate, comp
               <DeferredContent items={deferredViews.filter((d) => d.region === r.region)} onOpen={setOpen} />
             </div>
           ) : (
-            <Region key={r.region} region={r.region} placement={{ column: r.column, row: r.row }}>{regions[r.region]}</Region>
+            <Region key={r.region} region={r.region} placement={{ column: r.column, row: r.row }} /* B82 gm */ scroll={regionScrollOf(r.placement, plan.columns)} /* end B82 gm */>{regions[r.region]}</Region>
           ))}
       </div>
       <LiveStatus>{announce}</LiveStatus>
