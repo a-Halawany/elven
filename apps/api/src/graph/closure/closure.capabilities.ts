@@ -50,8 +50,12 @@ export interface CloseWrites { close(a: Scope2 & { caseId: string; statement: st
 export interface AdoptWrites { adopt(a: Scope2 & { caseId: string; reason: string; actor: string; correlationId: string }): Promise<Row> }
 /** graph.closure.sweep (a person's route) and executive.attention.tick (the attention agent's step) — the same port. */
 export interface SweepWrites { sweep(a: Scope2 & { actor: string; correlationId: string }): Promise<Row> }
+/* B82-F cc */
+/** graph.closure.obligation.read — the acting principal's OWN obligations (0122 graph.correction_obligations): nothing else of the case. */
+export interface ObligationReads { obligations(a: Scope2 & { actor: string; caseId: string | null }): Promise<Row> }
+/* end B82-F cc */
 
-class ClosureCapabilityImpl extends ClosureCore implements ClosureReads, ContractWrites, AcknowledgeWrites, ExceptWrites, FreezeWrites, LiftWrites, CloseWrites, AdoptWrites, SweepWrites {
+class ClosureCapabilityImpl extends ClosureCore implements ClosureReads, ContractWrites, AcknowledgeWrites, ExceptWrites, FreezeWrites, LiftWrites, CloseWrites, AdoptWrites, SweepWrites, /* B82-F cc */ ObligationReads /* end B82-F cc */ {
   constructor(tx: Tx, action: string) { super(tx, action); }
   list(a: Scope2 & { limit: number }): Promise<Row[]> {
     return this.many(sql<{ r: unknown }>`select graph.correction_closures_list(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.limit}::int) as r`);
@@ -92,6 +96,11 @@ class ClosureCapabilityImpl extends ClosureCore implements ClosureReads, Contrac
   sweep(a: Scope2 & { actor: string; correlationId: string }): Promise<Row> {
     return this.one(sql<{ r: unknown }>`select graph.sweep_correction_closures(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.actor}::uuid, ${a.correlationId}::uuid) as r`);
   }
+  /* B82-F cc */
+  obligations(a: Scope2 & { actor: string; caseId: string | null }): Promise<Row> {
+    return this.one(sql<{ r: unknown }>`select graph.correction_obligations(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.actor}::uuid, ${a.caseId}::uuid) as r`);
+  }
+  /* end B82-F cc */
 }
 
 export const ClosureCapability = {
@@ -104,4 +113,5 @@ export const ClosureCapability = {
   close(tx: Tx, action: string): CloseWrites { return new ClosureCapabilityImpl(tx, action); },
   adopt(tx: Tx, action: string): AdoptWrites { return new ClosureCapabilityImpl(tx, action); },
   sweep(tx: Tx, action: string): SweepWrites { return new ClosureCapabilityImpl(tx, action); },
+  /* B82-F cc */ obligations(tx: Tx, action: string): ObligationReads { return new ClosureCapabilityImpl(tx, action); }, /* end B82-F cc */
 };

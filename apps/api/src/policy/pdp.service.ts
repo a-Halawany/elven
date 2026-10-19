@@ -3428,6 +3428,21 @@ const BUNDLE_V1: Rule[] = [
     ];
   })(),
   /* end B50 cl */
+  /* B82-F cc */
+  /* B82-F cc (0122_b82f_x_cc; B50 §CL "Observed, not fixed"). EXACT rule — no earlier rule is a prefix of `graph.closure.obligation.read`
+     (the graph prefix rules are graph.read, graph.entity.*, graph.resolution.*, graph.edge.*, graph.strategy.*, graph.propagation.*,
+     graph.impact.propagate, graph.subscription.*; the graph.closure.* rules above are all exact). THE OWNER'S READ: the acting principal's
+     OWN correction obligations (graph.correction_obligations) — its roles are EXACTLY the roles of graph.closure.acknowledge / .except
+     (the people who may own an affected product), audited; the PORT answers only the consumers the caller answers for as the acknowledge /
+     except ports decide, with only what the act needs. graph.read and the acknowledge / except rules are unchanged; no role gains a case,
+     graph or evidence read. */
+  ...((): Rule[] => {
+    const owners = ['domain_admin', 'domain_analyst', 'domain_specialist', 'collection_manager', 'extraction_manager', 'resolution_manager', 'strategy_owner', 'forecast_owner',
+      'twin_owner', 'simulation_operator', 'knowledge_owner', 'record_authority', 'ontology_steward', 'data_steward', 'method_steward', 'decision_owner', 'decision_approver',
+      'decision_authority', 'executive', 'executive_operator', 'risk_owner', 'privacy_officer'].map((role) => ({ role, atScope: 'DOMAIN' as Scope }));
+    return [{ actionPrefix: 'graph.closure.obligation.read', exact: true, requiredAnyRole: owners, obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' }];
+  })(),
+  /* end B82-F cc */
   /* B50 tl */
   /* B50 §TL (0120_b50_x_tl; F-P3-04: PR-22-001/002/003/005, CAP-UM-10). EXACT rules — no earlier rule is a prefix of graph.timeline.* (the
      graph rules are graph.read, graph.entity.*, graph.resolution.*, graph.edge.*, graph.strategy.*, graph.propagation.*, graph.impact.*,
