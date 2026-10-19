@@ -288,7 +288,7 @@ export function buildHeader(spec: HeaderSpec, opts: BuildOptions = {}): Canonica
     if (h[f] !== null) continue;
     const given = opts.absent?.[f];
     const a = given !== undefined ? checkAbsence(f, given)
-      : (f !== 'quality_state' ? profile?.absence?.[f] : undefined) ?? defaultAbsence(f, h);
+      : (f !== 'quality_state' && h.truth_state !== 'withdrawn' ? profile?.absence?.[f] : undefined) ?? defaultAbsence(f, h);  // a withdrawal's own reason first
     h[f] = f === 'quality_state' ? { state: a.state, reason: a.reason, limitations: knownLimitations(h) } : { state: a.state, reason: a.reason };
   }
   if (h.freshness_state === null) {
