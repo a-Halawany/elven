@@ -1,0 +1,11 @@
+
+Running 6 tests using 1 worker
+
+  ✓  1 e2e/phase6-b50.demo.spec.ts:55:7 › CP-6 B50 — the act's walk: the header, the lifecycle, the explanation, the impact classes, the closure, the timeline and the trace › THE HEADER AND ITS ABSENCES (F-P3-01): the uploaded booking's stated header — its "late August" time, the controls' basis, the declared absences; a version recorded before B50 says so (1.4s)
+  ✓  2 e2e/phase6-b50.demo.spec.ts:78:7 › CP-6 B50 — the act's walk: the header, the lifecycle, the explanation, the impact classes, the closure, the timeline and the trace › THE LIFECYCLE HISTORY (F-P3-02): every version and every attempt — the refused ones KEPT; the proposal declined; the replay at the published instant (1.6s)
+  ✓  3 e2e/phase6-b50.demo.spec.ts:104:7 › CP-6 B50 — the act's walk: the header, the lifecycle, the explanation, the impact classes, the closure, the timeline and the trace › THE EXPLANATION AND THE DIFF (F-P3-03): the corrected evidence compared with v1; the forecast's backward path with its denied node; the unfit claim and its upheld challenge (8.1s)
+  ✓  4 e2e/phase6-b50.demo.spec.ts:132:7 › CP-6 B50 — the act's walk: the header, the lifecycle, the explanation, the impact classes, the closure, the timeline and the trace › THE IMPACT CLASSES (F-P3-03/-05): the case's assessment read class by class — packages, publications, evaluation datasets; the trigger walked by the agent (1.9s)
+  ✓  5 e2e/phase6-b50.demo.spec.ts:150:7 › CP-6 B50 — the act's walk: the header, the lifecycle, the explanation, the impact classes, the closure, the timeline and the trace › THE CLOSURE AND THE FROZEN MARKER (F-P3-05): the case page — frozen while stalled; closed with its record, every freeze lifted at the closure, the impact notice (1.9s)
+  ✓  6 e2e/phase6-b50.demo.spec.ts:177:7 › CP-6 B50 — the act's walk: the header, the lifecycle, the explanation, the impact classes, the closure, the timeline and the trace › THE TIMELINE AND THE TRACE (F-P3-04): the scope as known on the decision's day with its disclosures; the restated day corrected later; the decision's trace; the upload's unknown clock stated (26.9s)
+
+  6 passed (43.0s)
