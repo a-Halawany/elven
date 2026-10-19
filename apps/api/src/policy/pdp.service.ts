@@ -3359,6 +3359,29 @@ const BUNDLE_V1: Rule[] = [
     ];
   })(),
   /* end B50 ci */
+  /* B50 tl */
+  /* B50 §TL (0120_b50_x_tl; F-P3-04: PR-22-001/002/003/005, CAP-UM-10). EXACT rules — no earlier rule is a prefix of graph.timeline.* (the
+     graph rules are graph.read, graph.entity.*, graph.resolution.*, graph.edge.*, graph.strategy.*, graph.propagation.*, graph.impact.*,
+     graph.subscription.*, graph.provenance.*, graph.revision.commit …; none is a prefix of `graph.timeline`). THE READS (`graph.timeline.read`:
+     the timeline and as-of explorer, the trace, the governed scopes) by §PV's readers, audited — the timeline and the trace are SECURITY
+     INVOKER (the caller's RLS) and the route hands the reader's clearance, so what a reader may not see is counted, never shown. THE
+     RECONCILIATION (`graph.timeline.reconcile`): routing an incomplete trace to its owner — a person (the product's owner, a knowledge
+     owner, a data steward, a record authority, an analyst, a domain administrator), human-gated; the port re-checks the role and that the
+     trace IS incomplete. */
+  ...((): Rule[] => {
+    const d = (role: string) => ({ role, atScope: 'DOMAIN' as Scope });
+    const readers = [{ role: 'platform_admin', atScope: 'PLATFORM' as Scope }, { role: 'tenant_admin', atScope: 'TENANT' as Scope }, { role: 'auditor', atScope: 'TENANT' as Scope },
+      { role: 'retention_authority', atScope: 'TENANT' as Scope },
+      ...['domain_admin', 'domain_analyst', 'collection_manager', 'extraction_manager', 'resolution_manager', 'strategy_owner', 'forecast_owner', 'twin_owner', 'simulation_operator',
+        'knowledge_owner', 'record_authority', 'retention_steward', 'ontology_steward', 'data_steward', 'method_steward', 'decision_owner', 'decision_approver', 'decision_authority',
+        'executive', 'executive_operator', 'risk_owner', 'privacy_officer', 'domain_specialist'].map(d)];
+    const reconcilers = ['knowledge_owner', 'data_steward', 'record_authority', 'domain_analyst', 'domain_admin', 'forecast_owner', 'decision_owner', 'strategy_owner', 'risk_owner'].map(d);
+    return [
+      { actionPrefix: 'graph.timeline.read', exact: true, requiredAnyRole: readers, obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.timeline.reconcile', exact: true, requiredAnyRole: reconcilers, obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
+    ];
+  })(),
+  /* end B50 tl */
 ];
 
 /* B107 conformance */
