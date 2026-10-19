@@ -17,10 +17,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useShell } from '../layout';
 import { geoApi, type GeoLayerRead, type Receipt as ReceiptT } from '../../../lib/geo-api-b82';
-import { GEO_KIND_WORDS, geoReferenceOf, geometryFromForm, type GeoKind } from '../../../lib/canvas-specs-b82';
+import { GEO_KIND_WORDS, geoReferenceOf, geometryFromForm, routeFlows, transitSeriesOf, transitWindow, type GeoKind, type TransitWindow } from '../../../lib/canvas-specs-b82';
+import { prediction } from '../../../lib/prediction';
 import { geometryText } from '../../../lib/canvas-b82';
 import type { GeoReference } from '../../../lib/b82-seams';
-import { GeospatialMap } from '../../../components/canvas';
+import { FlowMap, GeospatialMap } from '../../../components/canvas';
 import { Composition } from '../../../components/layout';
 import { CommandReview } from '../../../components/authority';
 import { Field, FormDraft, Select, TextArea } from '../../../components/forms';
@@ -61,6 +62,30 @@ export default function GeographyPage() {
   const refs = useMemo<GeoReference[]>(() => (layer?.references ?? []).map(geoReferenceOf), [layer]);
   const uncertainty = useMemo(() => Object.fromEntries((layer?.references ?? []).map((r) => [String(r['key']), Number(r['uncertainty_m'])])), [layer]);
   const sel = refs.find((r) => r.referenceId === selected) ?? null;
+  /* VIZ-18: the corridor's flows — each route by the mean daily transits at the first chokepoint it passes whose PortWatch series is read
+     (the rule is routeFlows'); read under the person's own prediction.read — a refusal is said and the flow map is not drawn */
+  const [flows, setFlows] = useState<{ windows: TransitWindow[]; unit: string | null; problem: string | null } | null>(null);
+  useEffect(() => {
+    const cps = refs.filter((r) => r.state === 'active' && r.chokepointKey !== null && r.geometry.type === 'Point');
+    if (cps.length === 0 || !refs.some((r) => r.state === 'active' && r.geometry.type === 'LineString')) { setFlows(null); return; }
+    let live = true;
+    void (async () => {
+      const list = await prediction.listSeries(scope);
+      if (!list.ok || list.data === undefined) { if (live) setFlows({ windows: [], unit: null, problem: `The transit series could not be listed: HTTP ${list.status}${list.error?.code ? ` ${list.error.code}` : ''} — ${list.error?.message ?? 'no answer'}. The flow map is not drawn; read the page again or ask for a role that reads the series.` }); return; }
+      const known = new Set(list.data.series.map((x) => x.series_key));
+      const windows: TransitWindow[] = []; let unit: string | null = null;
+      for (const c of cps) {
+        const k = transitSeriesOf(c.chokepointKey!);
+        if (!known.has(k)) { windows.push(transitWindow(c.chokepointKey!, [])); continue; }
+        const r = await prediction.seriesPoints(scope, k, undefined, undefined, 400);
+        if (r.ok && r.data !== undefined) unit = unit ?? r.data.unit;
+        windows.push(transitWindow(c.chokepointKey!, r.ok && r.data !== undefined ? r.data.points : []));
+      }
+      if (live) setFlows({ windows, unit, problem: null });
+    })();
+    return () => { live = false; };
+  }, [scope, refs]);
+  const flow = useMemo(() => (flows === null ? null : routeFlows(refs, flows.windows)), [flows, refs]);
   useEffect(() => {
     if (selected === null) { setHistory(null); return; }
     void geoApi.layer(scope, { referenceId: selected }).then((r) => setHistory(r.ok && r.data !== undefined ? (r.data.layer.history ?? []) : null));
@@ -98,6 +123,14 @@ export default function GeographyPage() {
           ? <p className="eye-help">No reference is declared in this domain yet: the map draws nothing. A data steward declares the corridor's places and routes below.</p>
           : <GeospatialMap refs={refs} title="Corridor map — declared references" asOf={layer.as_of} uncertaintyM={uncertainty}
               dash={Object.fromEntries(refs.filter((x) => x.key.includes('cape')).map((x) => [x.key, 'dashed' as const]))} />)}
+        {flows?.problem !== null && flows?.problem !== undefined && <p role="alert">{flows.problem}</p>}
+        {layer !== null && flow !== null && flows !== null && flows.problem === null && (
+          <FlowMap refs={refs} values={flow.values} measure={{ measure: 'mean daily transits at the first chokepoint passed', unit: flows.unit ?? 'transits per day' }} period={flow.period}
+            coverage={`${flow.coverage}. Rule: a route takes the mean daily transits of the first chokepoint (in its own order) whose series was read; a route passing none has no value.`}
+            title="Corridor flows — transits by route" asOf={layer.as_of} uncertaintyM={uncertainty}
+            source={{ read: 'prediction series points (PortWatch chokepoint transits)', label: flows.windows.filter((w) => w.mean !== null).map((w) => transitSeriesOf(w.chokepointKey)).join(', ') || 'no transit series read' }}
+            dash={Object.fromEntries(refs.filter((x) => x.key.includes('cape')).map((x) => [x.key, 'dashed' as const]))} />
+        )}
         {refs.length > 0 && (
           <DataTable<GeoReference> label="The register" columns={[
             { key: 'label', label: 'Reference', kind: 'text', value: (r) => r.label, sortable: true },

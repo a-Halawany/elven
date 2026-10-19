@@ -17,7 +17,7 @@ import {
 import {
   CHOROPLETH_SPECIMEN, GEO_SPECIMEN, SANKEY_SPECIMEN, SPECIMEN_AS_OF, SPECIMEN_SOURCE, TREEMAP_SPECIMEN, corridorMapOf, dependencyNetworkOf, geoReferenceOf,
   flowMapChartSpec, graphChartSpec, knowledgeGraphOf, mapChartSpec, mapRows, provenanceGraphOf, sankeyChartSpec, strategyGraphOf, strategyHierarchyOf, treeChartSpec,
-  treemapChartSpec, watermarkOf, watermarkText,
+  treemapChartSpec, watermarkOf, watermarkText, routeFlows, transitSeriesOf, transitWindow,
 } from './canvas-specs-b82';
 import type { EdgeRow, EntityRow, StrategyRow } from './graph';
 import type { ExplainView } from './provenance-b50';
@@ -256,6 +256,20 @@ describe('CMP-064 / VIZ-16 / VIZ-17 / VIZ-18 — the map: EPSG:4326, equirectang
     const row = geoReferenceOf({ reference_id: 'r', version: 2, key: 'k', label: 'L', geometry: { type: 'Point', coordinates: [1, 2] }, source_statement: 's', licence_statement: 'l', linked: { type: 'ENT', id: 'e' }, chokepoint_key: null, declared_by: 'p', declared_at: 't', state: 'retired' });
     expect(row).toMatchObject({ referenceId: 'r', version: 2, crs: 'EPSG:4326', linked: { type: 'ENT', id: 'e' }, state: 'retired' });
     expect(mapRows([GEO_SPECIMEN[0]!], { 'chokepoint.bab-el-mandeb': '41 vessels' })[0]).toMatchObject({ kind: 'chokepoint (portwatch:chokepoint4)', position: '12.58° N, 43.33° E', value: '41 vessels' });
+  });
+});
+
+describe('VIZ-18 — the corridor\'s flows on /graph/geo: a route by the transits at the first chokepoint it passes', () => {
+  it('the series a chokepoint names; the window mean; the routes valued by the stated rule; a route passing none has no value', () => {
+    expect(transitSeriesOf('portwatch:chokepoint4')).toBe('portwatch:chokepoint4:n_total');
+    const w = transitWindow('portwatch:chokepoint4', Array.from({ length: 40 }, (_, i) => ({ date: `2026-09-${String(i % 30 + 1).padStart(2, '0')}T${String(Math.floor(i / 30)).padStart(2, '0')}:00:00Z`, value: i < 10 ? 999 : 40 })));
+    expect(w).toMatchObject({ points: 30 });
+    expect(transitWindow('x', [])).toEqual({ chokepointKey: 'x', mean: null, points: 0, from: null, to: null });
+    const f = routeFlows(GEO_SPECIMEN, [{ chokepointKey: 'portwatch:chokepoint4', mean: 41.5, points: 30, from: '2026-09-01', to: '2026-09-30' }]);
+    expect(f.values).toEqual({ 'route.suez': 41.5, 'route.cape': null });
+    expect(f.via['route.suez']).toBe('Bab el-Mandeb (SYNTHETIC)');
+    expect(f.coverage).toBe('1 of 2 route(s) pass a chokepoint whose transit series was read (portwatch:chokepoint4)');
+    expect(routeFlows(GEO_SPECIMEN, []).period).toBe('no transit series read');
   });
 });
 

@@ -314,3 +314,38 @@ export function geometryFromForm(f: GeoForm): { geometry: GeoReference['geometry
   const problem = geometryProblemOf(g);
   return problem === null ? { geometry: g, problem: null } : { geometry: null, problem };
 }
+
+/* ═════════════════════════════ 6 · THE CORRIDOR'S FLOWS (VIZ-18 on /graph/geo) ═════════════════════════════ */
+export const TRANSIT_SERIES_SUFFIX = ':n_total';
+/** The PortWatch transit series a chokepoint's key names (`portwatch:chokepoint4` → `portwatch:chokepoint4:n_total`). */
+export const transitSeriesOf = (chokepointKey: string): string => `${chokepointKey}${TRANSIT_SERIES_SUFFIX}`;
+export interface TransitWindow { chokepointKey: string; mean: number | null; points: number; from: string | null; to: string | null }
+/** The mean daily transits over the points read (the last `window` days of the series), or null when none was read. */
+export function transitWindow(chokepointKey: string, points: ReadonlyArray<{ date: string; value: number }>, window = 30): TransitWindow {
+  const ps = [...points].filter((p) => Number.isFinite(p.value)).sort((a, b) => a.date.localeCompare(b.date)).slice(-window);
+  if (ps.length === 0) return { chokepointKey, mean: null, points: 0, from: null, to: null };
+  return { chokepointKey, mean: Math.round((ps.reduce((a, p) => a + p.value, 0) / ps.length) * 10) / 10, points: ps.length, from: ps[0]!.date, to: ps[ps.length - 1]!.date };
+}
+/**
+ * THE RULE (stated on the map): a route's flow is the mean daily transits at the FIRST chokepoint it passes — in the route's own order — whose
+ * transit series was read; a route passes a chokepoint when one of its typed positions IS that chokepoint's position. A route passing none
+ * has no value (drawn as a marked hairline, never as zero). Returns the values and the coverage in words.
+ */
+export function routeFlows(refs: readonly GeoReference[], windows: readonly TransitWindow[]): { values: Record<string, number | null>; via: Record<string, string | null>; coverage: string; period: string } {
+  const cps = refs.filter((r) => r.state === 'active' && r.geometry.type === 'Point' && r.chokepointKey !== null);
+  const byKey = new Map(windows.filter((w) => w.mean !== null).map((w) => [w.chokepointKey, w]));
+  const values: Record<string, number | null> = {}; const via: Record<string, string | null> = {};
+  const routes = refs.filter((r) => r.state === 'active' && r.geometry.type === 'LineString');
+  for (const r of routes) {
+    const coords = (r.geometry as { coordinates: Array<[number, number]> }).coordinates;
+    const hit = coords.map((c) => cps.find((p) => { const q = (p.geometry as { coordinates: [number, number] }).coordinates; return q[0] === c[0] && q[1] === c[1] && byKey.has(p.chokepointKey!); }))
+      .find((p) => p !== undefined);
+    values[r.key] = hit === undefined ? null : byKey.get(hit.chokepointKey!)!.mean;
+    via[r.key] = hit === undefined ? null : hit.label;
+  }
+  const valued = routes.filter((r) => values[r.key] !== null).length;
+  const read = windows.filter((w) => w.mean !== null);
+  const from = read.map((w) => w.from!).sort()[0] ?? null; const to = read.map((w) => w.to!).sort().at(-1) ?? null;
+  return { values, via, coverage: `${valued} of ${routes.length} route(s) pass a chokepoint whose transit series was read (${read.map((w) => w.chokepointKey).join(', ') || 'none'})`,
+    period: from === null ? 'no transit series read' : `the daily points ${from} to ${to} (the last 30 of each series read)` };
+}
