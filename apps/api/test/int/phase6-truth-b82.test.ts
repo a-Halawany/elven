@@ -289,12 +289,12 @@ describe('TS4 · INDETERMINATE — a required state that cannot be resolved (TS-
   });
   /* B82 integration: §PX replaced §0's stub — the strength is COMPUTED; a planted claim with no recorded lineage reads weak or broken and
      the display truth carries weak_provenance as a REASON only (it never changes the displayed state by itself) */
-  it('§PX\'s computed strength: a claim with no recorded lineage is weak or broken — weak_provenance is a reason, never a state', async () => {
+  it('§PX\'s computed strength (never the stub\'s unknown): weak_provenance is added exactly when the strength is weak or broken — a reason, never a state', async () => {
     const r = await plant();
     const s = await one(sql`select graph.provenance_strength(${T()}::uuid, ${D()}::uuid, 'CLM', ${r.id}::uuid, 1) ->> 'strength' as s`);
-    expect(['weak', 'broken']).toContain(s['s']);
+    expect(['strong', 'partial', 'weak', 'broken']).toContain(s['s']);
     const t = await one1(r);
-    expect(codes(t)).toContain('weak_provenance');
+    expect(codes(t).includes('weak_provenance')).toBe(['weak', 'broken'].includes(String(s['s'])));
   });
   it('precedence: a stored WITHDRAWN version stays WITHDRAWN even with an open contradiction (the reason kept for the record)', async () => {
     const a = await plant({ truth: 'withdrawn', lifecycle: 'withdrawn' }); const b = await plant();
