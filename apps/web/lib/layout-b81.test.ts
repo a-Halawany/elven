@@ -264,5 +264,48 @@ describe('CMP-005…008 / REG-03 — the primitives\' gaps, and one primary task
     const multi = walk(join(WEB, 'app')).filter((p) => (readFileSync(p, 'utf8').match(/<h1\b/g) ?? []).length > 1).map((p) => relative(WEB, p).split('\\').join('/')).sort();
     expect(multi.filter((p) => !PRE_B81_MULTI_H1.includes(p))).toEqual([]);
     expect(multi.length).toBeLessThanOrEqual(PRE_B81_MULTI_H1.length);
+  });  /* B82-F cc */
+  /** REG-03 IN EVERY STATE: a page keeps its h1 while it reads, when its read is refused or fails and when it is empty. A TITLELESS state is a
+   *  statement-level `return <LiveStatus …>` / `return <Empty …>` or a Suspense fallback of only one — a branch that renders the status with no
+   *  title. The correction / impact family (B50 §CL, §CI) has NONE; the pages listed below carried one when this
+   *  ratchet was written (B82-F cc, 2026-10-20) — the list may only SHRINK: a page added with a titleless state fails here. */
+  const TITLELESS_STATE = /\breturn\s*\(?\s*<(LiveStatus|Empty)\b|fallback=\{<(LiveStatus|Empty)\b/;
+  const CORRECTION_FAMILY = ['app/graph/impact/page.tsx', 'app/observation/corrections/page.tsx', 'app/observation/corrections/[caseId]/page.tsx'];
+  const PRE_B82F_TITLELESS_STATES = [
+    'app/decisions/analysis/page.tsx', 'app/decisions/board/page.tsx', 'app/decisions/briefings/page.tsx', 'app/decisions/packages/[id]/page.tsx',
+    'app/decisions/page.tsx', 'app/decisions/publications/page.tsx', 'app/decisions/review/page.tsx', 'app/graph/challenges/page.tsx',
+    'app/graph/data/catalog/page.tsx', 'app/graph/data/events/page.tsx', 'app/graph/data/metrics/page.tsx', 'app/graph/data/products/[productId]/page.tsx',
+    'app/graph/data/products/page.tsx', 'app/graph/entities/page.tsx', 'app/graph/explain/[type]/[id]/page.tsx', 'app/graph/explore/page.tsx',
+    'app/graph/header/[type]/[id]/page.tsx', 'app/graph/lifecycle/[type]/[id]/page.tsx', 'app/graph/memory/page.tsx', 'app/graph/ontology/page.tsx',
+    'app/graph/page.tsx', 'app/graph/resolutions/page.tsx', 'app/graph/retention/page.tsx', 'app/graph/revisions/page.tsx',
+    'app/graph/strategy/alignment/page.tsx', 'app/graph/strategy/page.tsx', 'app/graph/strategy/planning/page.tsx', 'app/graph/subscriptions/page.tsx',
+    'app/graph/timeline/page.tsx', 'app/graph/trace/[type]/[id]/page.tsx', 'app/graph/trust/page.tsx', 'app/intelligence/assessments/[id]/page.tsx',
+    'app/intelligence/claims/page.tsx', 'app/intelligence/contradictions/page.tsx', 'app/intelligence/gateway/page.tsx', 'app/intelligence/methods/page.tsx',
+    'app/intelligence/page.tsx', 'app/intelligence/review/page.tsx', 'app/observation/evidence/[evdId]/page.tsx',
+    'app/observation/sources/[sourceId]/page.tsx', 'app/prediction/calibration/page.tsx', 'app/prediction/forecasts/[forecastId]/grounding/page.tsx',
+    'app/prediction/forecasts/[forecastId]/page.tsx', 'app/prediction/forecasts/page.tsx', 'app/prediction/information-sets/page.tsx',
+    'app/prediction/page.tsx', 'app/prediction/registry/page.tsx', 'app/prediction/scenarios/anatomy/page.tsx', 'app/prediction/scenarios/page.tsx',
+    'app/prediction/scenarios/quality/page.tsx', 'app/prediction/scenarios/sets/page.tsx', 'app/prediction/streams/page.tsx',
+    'app/prediction/warnings/[id]/page.tsx', 'app/prediction/warnings/page.tsx', 'app/twins/[twinId]/versions/[v]/page.tsx', 'app/twins/explorer/page.tsx',
+    'app/twins/models/page.tsx', 'app/twins/page.tsx', 'app/twins/simulations/page.tsx', 'app/twins/simulations/validity/page.tsx',
+  ];
+  it('the correction / impact family keeps its ONE h1 in every state — reading, refusal / error, empty (no titleless branch, one h1 literal each)', () => {
+    for (const f of CORRECTION_FAMILY) {
+      const src = readFileSync(join(WEB, f), 'utf8');
+      expect(TITLELESS_STATE.test(src), `${f} renders a state without its h1`).toBe(false);
+      expect((src.match(/<h1\b/g) ?? []).length, `${f} declares its title once`).toBe(1);
+    }
+    // the detector itself: a bare loading / refusal branch and a bare fallback are found; a titled one is not
+    expect(TITLELESS_STATE.test("if (rows === null) return <Empty>reading…</Empty>;")).toBe(true);
+    expect(TITLELESS_STATE.test("return <Suspense fallback={<Empty>reading the link…</Empty>}><Body /></Suspense>;")).toBe(true);
+    expect(TITLELESS_STATE.test("if (rows === null) return <><PageTitle>X</PageTitle><Empty>reading…</Empty></>;")).toBe(false);
   });
+  it('no page beyond the listed ones renders a state without its h1 (the list only shrinks)', () => {
+    const walk = (dir: string): string[] => readdirSync(dir).flatMap((n) => { const p = join(dir, n); return statSync(p).isDirectory() ? walk(p) : n === 'page.tsx' ? [p] : []; });
+    const titleless = walk(join(WEB, 'app')).filter((p) => TITLELESS_STATE.test(readFileSync(p, 'utf8'))).map((p) => relative(WEB, p).split('\\').join('/')).sort();
+    expect(titleless.filter((p) => !PRE_B82F_TITLELESS_STATES.includes(p))).toEqual([]);
+    expect(titleless.length).toBeLessThanOrEqual(PRE_B82F_TITLELESS_STATES.length);
+    for (const f of CORRECTION_FAMILY) expect(PRE_B82F_TITLELESS_STATES).not.toContain(f);
+  });
+  /* end B82-F cc */
 });

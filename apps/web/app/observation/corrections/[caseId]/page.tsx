@@ -249,5 +249,5 @@ function CaseBody() {
 }
 
 export default function CorrectionCasePage() {
-  return <Suspense fallback={<Empty>reading the link…</Empty>}><CaseBody /></Suspense>;
+  return <Suspense fallback={<><PageTitle>Correction case</PageTitle><Empty>reading the link…</Empty></>}><CaseBody /></Suspense>;
 }
