@@ -72,6 +72,9 @@ const T = () => h.fx.tenantId; const D = () => h.fx.domainId;
 const one = async (q: { execute: (db: never) => Promise<{ rows: unknown[] }> }) => ((await q.execute(h.su as never)).rows[0] ?? {}) as Row;
 const DAY = 86_400_000;
 const ago = (days: number) => new Date(Date.now() - days * DAY).toISOString();
+/** B50 (integration): ONE instant for the record and the observation — two ago() calls can differ by a millisecond, and an observation
+ *  after its record time is a clock divergence (D20: the trace is then incomplete — a flake, not the case under test). */
+const sameInstant = (days: number) => { const t = ago(days); return { recordedAt: t, observationTime: t }; };
 const WIDE = { from: '2020-01-01T00:00:00Z', to: '2100-01-01T00:00:00Z' };
 
 /** A refusal: the HTTP status the central mapping gives (null while a §TL noun is unmapped), the RAW message, the SQLSTATE. */
@@ -291,7 +294,7 @@ describe('TL3 · clock-skew fixtures — observation after record, a degraded an
 let G: { id: string; version: number; ref: string }; let OK: { id: string; version: number; ref: string };
 describe('TL4 · the trace — lineage closure, citation and digest resolution, the unresolved edge preserved (PR-22-001/005/006)', () => {
   it('LINEAGE CLOSED, every digest resolved: product → evidence (its span) → observation → source staged; the one reason left is the upload\'s own stated clock limitation', async () => {
-    OK = await plant({ title: 'Throughput at Port Said steady (SYNTHETIC)', recordedAt: ago(3), observationTime: ago(3), truth: 'extracted', sourceIds: [E2.id], evidenceRefs: [`EVD:${E2.id}@${E2.version}`] });
+    OK = await plant({ title: 'Throughput at Port Said steady (SYNTHETIC)', ...sameInstant(3), truth: 'extracted', sourceIds: [E2.id], evidenceRefs: [`EVD:${E2.id}@${E2.version}`] });
     await lineage(OK, E2);
     const x = await trace(ivanova, 'CLM', OK.id, 1);
     // the upload path states its evidence's and observation's source clock UNKNOWN (a document's clock is not the platform's): STATED as the
@@ -316,7 +319,7 @@ describe('TL4 · the trace — lineage closure, citation and digest resolution, 
 
   it('a claim citing what no longer resolves (no such object; no such version) and a tampered lineage digest: INCOMPLETE, every reason said, the unresolved edge PRESERVED', async () => {
     const ghost = uuidv7();
-    G = await plant({ title: 'A claim on a withdrawn bulletin (SYNTHETIC)', recordedAt: ago(3), observationTime: ago(3), truth: 'extracted',
+    G = await plant({ title: 'A claim on a withdrawn bulletin (SYNTHETIC)', ...sameInstant(3), truth: 'extracted',
       evidenceRefs: [`EVD:${E2.id}@${E2.version}`, `CLM:${ghost}@1`, `EVD:${E2.id}@99`] });
     await lineage(G, E2, 'f'.repeat(64));
     const x = await trace(ivanova, 'CLM', G.id, 1);
@@ -412,7 +415,7 @@ describe('TL7 · reconciliation routed — one attention item to the accountable
   });
 
   it('a complete trace is refused (nothing to reconcile); a role outside the rule is denied by the PDP; the attention vocabulary widened by union', async () => {
-    const fresh = await plant({ title: 'Complete and clean (SYNTHETIC)', recordedAt: ago(1), observationTime: ago(1), truth: 'asserted' });
+    const fresh = await plant({ title: 'Complete and clean (SYNTHETIC)', ...sameInstant(1), truth: 'asserted' });
     const done = await refusal(reconcile(ivanova, { type: 'CLM', id: fresh.id, version: 1, note: 'Nothing to reconcile, asked anyway (SYNTHETIC).' }));
     expect(done.message).toMatch(/^trace reconciliation rejected \(state\): the trace of CLM v1 is complete/);
     expect(done.code).toBe('22023');

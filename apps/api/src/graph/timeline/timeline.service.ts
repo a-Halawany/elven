@@ -140,6 +140,8 @@ export function toTraceView(r: Row) {
     decisionSnapshots: (r['decision_snapshots'] ?? []) as Row[], sources: (r['sources'] ?? []) as string[], missingIntervals: (r['missing_intervals'] ?? []) as Row[],
     continuity: (r['continuity'] ?? { state: 'normal', dependencies: [] }) as Row, disclosure: (r['disclosure'] ?? {}) as Row,
     reasons: (r['reasons'] ?? []) as Array<{ reason: string; count: number; detail?: unknown }>, incomplete: r['incomplete'] === true,
+    /* B50 integration (DESIGN D20): a stated limitation (an unknown source clock) — never a reason the trace is incomplete; passed as the port says */
+    limitations: (r['limitations'] ?? []) as Array<{ limitation: string; count: number; detail?: unknown }>,
     reconciliation: (r['reconciliation'] ?? []) as Row[], carried: r['carried'], claim: r['claim'],
   };
 }
