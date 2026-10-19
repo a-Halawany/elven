@@ -594,12 +594,12 @@ export class ImpactService {
           : `it rests on the ${citesKind.replace(/_/g, ' ')} ${short(via)} ${rests(via)}`;
         const hop = (hopOf.get(via) ?? 0) + 1;
         const ref = `${type}:${id}${version === null ? '' : `@${version}`}`;
-        const viaPath = citesKind === 'series' || citesKind === 'method' ? g.pathOf(via) : g.pathOf(via);
+        const viaPath = g.pathOf(via);
         const row: AffectedObject = { strategy_object_id: id, object_type: type, title: String(r['title'] ?? ref), reached_via: reachedVia, hop, version, path: [...viaPath, ref], product_kind: kind, via_id: via };
         products.set(key, row);
         const bucket = PRODUCT_BUCKET[kind];
         if (bucket !== undefined) buckets[bucket].push(row);
-        if (!reached.has(id)) { reached.add(id); hopOf.set(id, hop); g.refOf.set(id, `${type}:${id}`); if (!g.parentOf.has(id)) g.parentOf.set(id, via); nextIds.push(id); }
+        if (!reached.has(id)) { reached.add(id); hopOf.set(id, hop); g.refOf.set(id, ref); if (!g.parentOf.has(id)) g.parentOf.set(id, via); nextIds.push(id); }
         const subject = r['subject_ref'];
         if (typeof subject === 'string' && subject !== '' && !seriesVia.has(subject)) { seriesVia.set(subject, id); nextSeries.push(subject); }
       }

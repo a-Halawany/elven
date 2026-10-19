@@ -382,13 +382,12 @@ BEGIN
     v_current := v_corr AND v_exists AND r.source_kind = 'briefing'
                  AND EXISTS (SELECT 1 FROM executive.briefings b WHERE b.briefing_id = r.source_id AND NOT EXISTS (SELECT 1 FROM objects.canonical_objects o WHERE o.object_id = p_trigger AND o.recorded_at > b.known_at));
   ELSIF p_kind = 'export_package' THEN
-    SELECT x.built_by, x.revoked_at, x.object_count INTO r FROM retention.export_packages x WHERE x.action_id = p_id AND x.tenant_id = p_tenant AND x.domain_id = p_domain;
+    SELECT x.built_by, x.revoked_at, x.object_count, x.built_at INTO r FROM retention.export_packages x WHERE x.action_id = p_id AND x.tenant_id = p_tenant AND x.domain_id = p_domain;
     v_exists := FOUND; v_title := 'export package ' || p_id::text || ' (' || r.object_count || ' object(s))'; v_owner := r.built_by; v_withdrawn := r.revoked_at IS NOT NULL;
     v_state := CASE WHEN r.revoked_at IS NULL THEN 'built' ELSE 'revoked' END;
-    -- current: every manifest of the changed evidence it shipped is the latest version's
-    v_current := v_corr AND v_exists AND t.object_type = 'EVD' AND t.manifest_id IS NOT NULL
-                 AND NOT EXISTS (SELECT 1 FROM retention.scope_items si JOIN objects.canonical_objects o ON o.payload ->> 'manifest_id' = si.ref AND o.object_id = p_trigger
-                                  WHERE si.action_id = p_id AND si.item_kind = 'manifest' AND si.disposition = 'execute' AND si.ref <> t.manifest_id);
+    -- current: it was BUILT after the change (the build exports each manifest's LATEST evidence version — 0120 §0's export check — so a
+    -- package built after the correction carries the corrected version; a correction keeps the manifest and marks the record)
+    v_current := v_corr AND v_exists AND t.recorded_at IS NOT NULL AND NOT EXISTS (SELECT 1 FROM objects.canonical_objects o WHERE o.object_id = p_trigger AND o.recorded_at > r.built_at);
   ELSIF p_kind = 'information_set' THEN
     SELECT s.series_key, s.frozen_by, s.known_at, s.evidence INTO r FROM prediction.information_sets s WHERE s.information_set_id = p_id AND s.tenant_id = p_tenant AND s.domain_id = p_domain;
     v_exists := FOUND; v_title := 'information set for ' || r.series_key; v_owner := r.frozen_by; v_state := 'frozen';
@@ -457,7 +456,7 @@ BEGIN
     VALUES ('DOMAIN', p_tenant, p_domain, p_invalidation, p_case, p_trigger_kind, p_trigger, v_bucket, v_kind, v_type,
             v_id, v_ver, v_ref, left(coalesce(NULLIF(it ->> 'title', ''), v_f ->> 'title', v_ref), 500), v_class, v_rule.rule_version, v_f - 'owner' - 'title',
             NULLIF(v_f ->> 'owner', '')::uuid, left(coalesce(NULLIF(it ->> 'reached_via', ''), 'reached by the walk'), 1000), greatest(coalesce((it ->> 'hop')::int, 0), 0),
-            CASE WHEN jsonb_typeof(it -> 'path') = 'array' THEN it -> 'path' ELSE jsonb_build_array(v_ref) END,
+            CASE WHEN jsonb_typeof(it -> 'path') = 'array' AND jsonb_array_length(it -> 'path') > 0 THEN it -> 'path' ELSE jsonb_build_array(v_ref) END,
             p_actor, p_correlation)
     ON CONFLICT ON CONSTRAINT gap_once DO NOTHING;
     IF FOUND THEN
