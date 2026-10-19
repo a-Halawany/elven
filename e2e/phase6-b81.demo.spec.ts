@@ -159,14 +159,15 @@ test.describe('CP-6 B81 — the act\'s walk: the palette, the clarification, the
     await expect(dep).toBeVisible();
     await expect(dep.getByRole('heading', { name: /DEGRADED — .*Source carrier-advisories is degraded/ })).toBeVisible();
     for (const t of ['What still works', 'What is unavailable until recovery is verified', 'Owner of the degraded mode', 'Maximum duration', 'Exit evidence that ends the degraded mode']) await expect(dep.getByText(t, { exact: true }).first()).toBeVisible();
-    const stale = page.getByRole('status', { name: /Stale data — Source carrier-advisories/ });
+    // B82: the object header's state strip states the stale source too — B81's declaration is the first
+    const stale = page.getByRole('status', { name: /Stale data — Source carrier-advisories/ }).first();
     await expect(stale).toBeVisible();
     for (const t of ['Watermark', 'Age', 'Refresh path']) await expect(stale.getByText(t, { exact: true })).toBeVisible();
     await expect(stale).toContainText('◷ STALE');
     await shot(page, '10-degraded-warning');
     await page.goto('/home/operations-room');
     await expect(page.locator('[aria-label="Degraded dependencies"]')).toBeVisible();
-    await expect(page.getByRole('status', { name: /Stale data — Source carrier-advisories/ })).toBeVisible();
+    await expect(page.getByRole('status', { name: /Stale data — Source carrier-advisories/ }).first()).toBeVisible();
     // a link the server refuses: the recovery panel says what happened, that nothing changed, and the safe next steps
     await page.goto('/prediction/warnings/00000000-0000-4000-8000-000000000000');
     const rec = page.getByRole('region', { name: 'Recovery' });
