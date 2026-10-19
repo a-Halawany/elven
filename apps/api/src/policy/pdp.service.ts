@@ -3330,6 +3330,35 @@ const BUNDLE_V1: Rule[] = [
     ];
   })(),
   /* end B50 pv */
+  /* B50 ci */
+  /* B50 §CI (0120_b50_x_ci; V03-T-304, AI-29-005). EXACT rules — no earlier rule is a prefix of graph.impact.trigger.* (the earlier
+     `graph.impact.propagate` prefix names only its own action). THE SEVEN TRIGGERS (`graph.impact.trigger.<kind>`): the kind's steward —
+     human-gated; the PORT re-checks the role at the domain, the human and the acting principal (graph._trigger_preflight). The walk that
+     follows is the PROPAGATION AGENT's under graph.impact.propagate (unchanged). THE CLOSE of a human challenge (`graph.impact.trigger.close`):
+     a knowledge owner or the domain administrator — human-gated; the port refuses the challenge's opener. THE RE-DRIVE (`graph.impact.trigger
+     .reconcile`): the people who hold graph.impact.propagate (the walk is still the agent's). No agent role appears here; the reads are
+     graph.read's. */
+  ...((): Rule[] => {
+    const at = (roles: string[]) => roles.map((role) => ({ role, atScope: 'DOMAIN' as Scope }));
+    const gate: Obligation[] = [{ type: 'human_gate' }];
+    const kinds: Array<[string, string[]]> = [
+      ['legal_request', ['privacy_officer', 'record_authority']],
+      ['model_incident', ['method_steward']],
+      ['ontology_correction', ['ontology_steward']],
+      ['data_quality_finding', ['data_steward']],
+      ['rights_change', ['data_steward', 'privacy_officer', 'record_authority', 'collection_manager']],
+      ['integrity_failure', ['record_authority', 'data_steward']],
+      ['human_challenge', ['domain_admin', 'domain_analyst', 'domain_specialist', 'knowledge_owner', 'forecast_owner', 'risk_owner', 'decision_owner', 'strategy_owner', 'data_steward',
+        'method_steward', 'ontology_steward', 'executive', 'collection_manager', 'extraction_manager', 'resolution_manager', 'record_authority', 'privacy_officer']],
+    ];
+    return [
+      ...kinds.map(([k, roles]): Rule => ({ actionPrefix: `graph.impact.trigger.${k}`, exact: true, requiredAnyRole: at(roles), obligations: gate, requiresPurpose: true, maxConsequence: 'C2' })),
+      { actionPrefix: 'graph.impact.trigger.close', exact: true, requiredAnyRole: at(['knowledge_owner', 'domain_admin']), obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.impact.trigger.reconcile', exact: true,
+        requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' }, ...at(['domain_admin', 'strategy_owner', 'resolution_manager', 'collection_manager'])], obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+    ];
+  })(),
+  /* end B50 ci */
 ];
 
 /* B107 conformance */

@@ -105,6 +105,9 @@ export interface RetentionReads {
   readRuns(): any;
   readBriefings(): any;
   readMemoryItems(): any;
+  /* B50 ci: the walk's new buckets (WalkReads gained it at walker 1.1.0 — the decision packages, publications, export packages, evaluation datasets and lessons a revocation's walk reaches). */
+  readProductCitations(): any;
+  /* end B50 ci */
   /* eslint-enable @typescript-eslint/no-explicit-any */
   /**
    * B17 (D3): what is subscribed to a change at PUBLICATION time — evidence the event carries, never authority (the dispatcher re-resolves
@@ -363,6 +366,7 @@ class RetentionCapabilityImpl implements RetentionWrites {
   readRuns(): any { return this.from('simulation.runs_current'); }
   readBriefings(): any { return this.from('executive.briefings'); }
   readMemoryItems(): any { return this.from('memory.items_current'); }
+  /* B50 ci */ readProductCitations(): any { return this.from('graph.walk_product_citations'); } /* end B50 ci */
   /* eslint-enable @typescript-eslint/no-explicit-any */
   async subscriptionsMatching(a: Parameters<RetentionReads['subscriptionsMatching']>[0]): Promise<Array<{ subscription_id: string; consumer_kind: string }>> {
     const rows = await this.call<{ s: Array<{ subscription_id: string; consumer_kind: string }> }>(sql`select graph.subscriptions_matching(${a.tenantId}::uuid, ${a.domainId}::uuid, ${a.eventType}, ${a.changeKind}) as s`);
