@@ -3290,6 +3290,46 @@ const BUNDLE_V1: Rule[] = [
     ];
   })(),
   /* end B81 si */
+  /* B50 pv */
+  /* B50 §PV (0120_b50_x_pv; F-P3-03 + HX-14). EXACT rules — no earlier rule is a prefix of graph.provenance.* (the graph rules are
+     graph.read, graph.entity.*, graph.resolution.*, graph.edge.*, graph.strategy.*, graph.propagation.*, graph.impact.*, graph.subscription.*,
+     graph.revision.commit …; none is a prefix of `graph.provenance`). THE READS (`graph.provenance.read`: explain, the two diffs, the fitness,
+     the alignment, the challenges, the agent's registry) by graph.read's roles and the decision and data roles, audited. THE MARK
+     (`graph.provenance.fitness.mark`): the knowledge owner, the data steward, the domain administrator — human-gated; the port re-checks the
+     role (governance.assert_approver) and computes the verdict itself. THE CONTEST (`graph.provenance.challenge.*`): opening, evidence,
+     withdrawal and escalation by any domain person (the port decides who is a party, the owner never challenges its own product); review and
+     decision by the knowledge owner, data steward or domain administrator — human-gated; the port re-checks reviewer ≠ opener ≠ owner. THE
+     AGENT: registration as every agent's (the tenant / platform administrator; its principal stays identity.principal.create), revocation
+     also the domain administrator's; the TRIGGER a person's (knowledge owner, data steward, domain administrator); the CONSTRUCTION the
+     provenance agent's alone — its ONE decision. */
+  ...((): Rule[] => {
+    const d = (role: string) => ({ role, atScope: 'DOMAIN' as Scope });
+    const readers = [{ role: 'platform_admin', atScope: 'PLATFORM' as Scope }, { role: 'tenant_admin', atScope: 'TENANT' as Scope }, { role: 'auditor', atScope: 'TENANT' as Scope },
+      { role: 'retention_authority', atScope: 'TENANT' as Scope },
+      ...['domain_admin', 'domain_analyst', 'collection_manager', 'extraction_manager', 'resolution_manager', 'strategy_owner', 'forecast_owner', 'twin_owner', 'simulation_operator',
+        'knowledge_owner', 'record_authority', 'retention_steward', 'ontology_steward', 'data_steward', 'method_steward', 'decision_owner', 'decision_approver', 'decision_authority',
+        'executive', 'executive_operator', 'risk_owner', 'privacy_officer'].map(d)];
+    const people = ['domain_admin', 'domain_analyst', 'collection_manager', 'extraction_manager', 'resolution_manager', 'strategy_owner', 'forecast_owner', 'twin_owner',
+      'simulation_operator', 'knowledge_owner', 'record_authority', 'ontology_steward', 'data_steward', 'method_steward', 'decision_owner', 'decision_approver', 'decision_authority',
+      'executive', 'risk_owner', 'domain_specialist'].map(d);
+    const stewards = ['knowledge_owner', 'data_steward', 'domain_admin'].map(d);
+    const gate: Obligation[] = [{ type: 'human_gate' }];
+    return [
+      { actionPrefix: 'graph.provenance.read', exact: true, requiredAnyRole: readers, obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.provenance.fitness.mark', exact: true, requiredAnyRole: stewards, obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.provenance.challenge.open', exact: true, requiredAnyRole: people, obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.provenance.challenge.evidence', exact: true, requiredAnyRole: people, obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.provenance.challenge.withdraw', exact: true, requiredAnyRole: people, obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.provenance.challenge.escalate', exact: true, requiredAnyRole: people, obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.provenance.challenge.review', exact: true, requiredAnyRole: stewards, obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.provenance.challenge.decide', exact: true, requiredAnyRole: stewards, obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.provenance.agent.register', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' as Scope }, { role: 'tenant_admin', atScope: 'TENANT' as Scope }], obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.provenance.agent.revoke', exact: true, requiredAnyRole: [{ role: 'platform_admin', atScope: 'PLATFORM' as Scope }, { role: 'tenant_admin', atScope: 'TENANT' as Scope }, d('domain_admin')], obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.provenance.agent.trigger', exact: true, requiredAnyRole: stewards, obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.provenance.construct', exact: true, requiredAnyRole: [d('provenance_agent')], requiresPurpose: true, maxConsequence: 'C2' },
+    ];
+  })(),
+  /* end B50 pv */
 ];
 
 /* B107 conformance */

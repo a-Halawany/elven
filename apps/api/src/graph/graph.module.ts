@@ -38,6 +38,7 @@ import { MemoryService } from './memory/memory.service.js';
 import { ProjectionsService } from './projections/projections.service.js';
 import { ProjectionsController } from './projections/projections.controller.js';
 import { ObservationExceptionFilter } from '../observation/observation.filter.js';
+/* B50 pv */ import { ProvenanceController } from './provenance/provenance.controller.js'; import { ProvenanceService } from './provenance/provenance.service.js'; /* end B50 pv */
 
 /*
  * CP-6 B1 (0060): the propagation consumer lives here — it is the graph's walk, run by the
@@ -48,7 +49,7 @@ import { ObservationExceptionFilter } from '../observation/observation.filter.js
 @Module({
   imports: [PipelineModule, IdentityModule, ObservationModule, IntelligenceModule],
   // CP-6 B20 (0080): the projection partitions' two governed acts (withdraw, rebuild) on the same base path as the graph routes.
-  controllers: [GraphController, ProjectionsController],
+  controllers: [GraphController, ProjectionsController, /* B50 pv: provenance, explain, unfit, contest (0120_b50_x_pv) */ ProvenanceController /* end B50 pv */],
   providers: [
     GraphOrchestrator,
     ResolverService,
@@ -74,6 +75,7 @@ import { ObservationExceptionFilter } from '../observation/observation.filter.js
     RelationshipsConsumer,
     MemoryService,
     ProjectionsService,
+    /* B50 pv */ ProvenanceService, /* end B50 pv */
     // The same filter the observation and intelligence routes use. A deliberate
     // refusal from a graph port is a rule, not a crash, and answers as one.
     { provide: APP_FILTER, useClass: ObservationExceptionFilter },
