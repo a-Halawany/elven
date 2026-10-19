@@ -64,6 +64,11 @@ function Affected({ title, rows, note }: {
   );
 }
 
+/* B82-F cc */
+/** ONE h1 per rendering (lib/layout-b81's REG-03 ratchet): the loading, refusal and ready branches all title the page through it. */
+function ImpactTitle() { return <h1 style={{ fontSize: 'var(--eye-type-heading-1)', marginBlockStart: 0 }}>Impact</h1>; }
+/* end B82-F cc */
+
 /* B50 ci: the walk's new buckets, as the preview and the propagation answer them (absent from a server before 0120) */
 const NEW_BUCKETS: ReadonlyArray<[string, string, string]> = [
   ['decisionPackages', 'Decision packages', 'package versions whose option cites what changed, or that are for a reached decision — their owners review them'],
@@ -120,14 +125,16 @@ export default function ImpactPage() {
   };
   useEffect(() => { void load(); /* B50 ci */ void loadTriggers(); /* end B50 ci */ }, [scope]);
 
-  if (problem !== null) return <LiveStatus assertive>{problem}</LiveStatus>;
-  if (history === null) return <Empty>reading invalidations…</Empty>;
+  /* B82-F cc: the page keeps its h1 while it reads and when the read is refused (REG-03, every state) */
+  if (problem !== null) return <><ImpactTitle /><LiveStatus assertive>{problem}</LiveStatus></>;
+  if (history === null) return <><ImpactTitle /><Empty>reading invalidations…</Empty></>;
+  /* end B82-F cc */
 
   const shown = applied ?? preview;
 
   return (
     <>
-      <h1 style={{ fontSize: 'var(--eye-type-heading-1)', marginBlockStart: 0 }}>Impact</h1>
+      <ImpactTitle />
       <UnknownNote>
         A correction or a withdrawal walks the dependency graph and marks every assumption resting
         on the changed object <strong>unverified</strong> — never false, never withdrawn. The
