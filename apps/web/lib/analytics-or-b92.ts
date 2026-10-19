@@ -9,6 +9,7 @@
  */
 import { call, type ApiResult } from './api';
 import type { Receipt, Scope } from './observation';
+import type { ComputationNow } from './analytics-md-b92';
 
 type Row = Record<string, unknown>;
 export type ResultState = 'determinate' | 'indeterminate' | 'unsupported';
@@ -18,7 +19,7 @@ export interface ResultRow {
   result_id: string; metric_key: string; definition_version: number; preview: boolean; scope_key: string | null; scope_version: number | null; period_key: string; period_kind: string;
   window_from: string; window_to: string; clock: 'record' | 'world'; cohort: Row; as_of: string; state: ResultState; kind: string; unit: string; value: number | string | null;
   numerator: number | string | null; denominator: number | string | null; n: number | null; distribution: Row | null; uncertainty: Uncertainty | null; reasons: string[];
-  threshold_eval: { threshold: Row; breach: boolean | null; action: string } | null; computation_key: string | null; computation_version: number | null; source_revision: string;
+  threshold_eval: { threshold: Row; breach: boolean | null; action: string } | null; computation_key: string | null; computation_version: number | null; computation_digest?: string | null; source_revision: string;
   records_count: number; computed_at: string; computed_by_kind: string; records_by_role?: Record<string, number>; drilldown?: { result_id: string; route: string };
 }
 export interface DefinitionRowT {
@@ -26,19 +27,23 @@ export interface DefinitionRowT {
   numerator: string | null; denominator: string | null; exclusions: Array<{ rule: string; reason: string }>; window_spec: { kind: string; clock?: string; days?: number };
   dimensions: string[]; privacy_class: string; k_min: number; floor_n: number; threshold: { target?: number; band?: [number, number] }; purpose_key: string; cadence: string;
   owner_principal_id: string; owner_name: string | null; action: string; supported: boolean; unsupported_reason: string | null; state: string; source_refs: string[];
+  computation_key?: string | null; decided_at?: string | null;
 }
 export interface SeriesPeriod {
   period: string; window_from: string; window_to: string; status: 'computed' | 'not_computed' | 'no_history'; state: ResultState | null; value: number | string | null;
   unit?: string; kind?: string; n: number | null; uncertainty?: Uncertainty | null; reasons: string[]; result_id?: string; definition_version?: number; previews?: number;
   before_history?: boolean; drilldown?: { result_id: string; route: string };
+  computation_key?: string | null; computation_version?: number | null; computation_digest?: string | null;   // B82-F mt: what the period's result ran
 }
 export interface Series {
   metric_key: string; scope_key: string | null; through: string; count: number; periods: SeriesPeriod[]; comparable: boolean; comparability_note: string | null;
   definition_versions: number[]; history: { established: boolean; origin: string | null; source: string | null; why: string | null };
+  computation_versions?: number[]; computation_note?: string | null;   // B82-F mt
 }
 export interface Citation { metric_key: string; status: 'cited' | 'not_computed'; result_id: string | null; pinned: boolean; note: string | null; assembly: number; ordinal: number }
 export interface MetricBlock {
   metric_key: string; ordinal: number; citation: Citation | null; definition: DefinitionRowT | null; definition_current_version: number | null; result: ResultRow | null; series: Series;
+  computation_now?: ComputationNow | null;   // B82-F mt: the registry's row for the definition's computation key now
 }
 export interface NoteRow { note_id: string; metric_key: string | null; body: string; author_principal_id: string; author_name: string | null; created_at: string }
 export interface FollowRow {

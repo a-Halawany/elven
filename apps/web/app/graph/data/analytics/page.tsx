@@ -14,7 +14,8 @@ import { Suspense, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useShell } from '../../layout';
 import {
-  CONTRACT_FIELDS, PERIOD_RE, byPeriod, catalogApi, dayOf, diffValue, previousQuarter, resultMark, stateMark, thresholdLine, valueLine,
+  CONTRACT_FIELDS, PERIOD_RE, byPeriod, catalogApi, computationNowLine, computationTag, dayOf, diffValue, previousQuarter, registeredAfterDecision, resultMark, stateMark, thresholdLine,
+  valueLine, versionsPair,
   type CatalogRow, type DefinitionCard, type DefinitionVersion, type Purpose, type ScopeRow,
 } from '../../../../lib/analytics-md-b92';
 import { Empty, LiveStatus, Mono, ScrollBox, cardStyle, DefinitionRow, GovernedButton, fmtInstant, textareaStyle } from '../../../../components/observation';
@@ -35,6 +36,13 @@ export default function AnalyticsCatalogPage() {
 
 function MarkText({ m }: { m: { glyph: string; token: string; text: string } }) {
   return <span style={{ color: `var(${m.token})`, fontWeight: 650 }}><span aria-hidden="true">{m.glyph}</span> {m.text}</span>;
+}
+/** B82-F mt: the computation the definition's key names NOW (version, registered_in) — and, when it was registered after this version was
+ *  decided, that said beside it. The contract names the KEY; the version is the registry's. */
+function ComputationNowText({ v }: { v: DefinitionVersion }) {
+  const key = typeof v.contract['computation_key'] === 'string' ? String(v.contract['computation_key']) : null;
+  const after = registeredAfterDecision(v.computation, v.decided_at);
+  return <>{computationNowLine(v.computation, key)}{after !== null ? <> — <strong>{after}</strong></> : null}</>;
 }
 const field = (v: unknown): string => (v === null || v === undefined ? '—none—' : typeof v === 'string' ? v : typeof v === 'boolean' ? (v ? 'yes' : 'no') : JSON.stringify(v));
 const list = (s: string): string[] => s.split(/[\s,]+/).map((x) => x.trim()).filter((x) => x !== '');
@@ -94,7 +102,9 @@ function Catalog() {
     await loadAll(); await loadCard();
   };
 
-  if (catalog === null) return problem !== null ? <LiveStatus assertive>{problem}</LiveStatus> : <Empty>reading the metric catalog…</Empty>;
+  // the page's one h1, in every state (loading, refusal, ready)
+  const title = <h1 style={{ fontSize: 'var(--eye-type-heading-1)', marginBlockStart: 0 }}>Product analytics — the metric catalog</h1>;
+  if (catalog === null) return <>{title}{problem !== null ? <LiveStatus assertive>{problem}</LiveStatus> : <Empty>reading the metric catalog…</Empty>}</>;
   const versions = card?.versions ?? [];
   const shown: DefinitionVersion | undefined = versions.find((v) => v.version === shownVersion) ?? versions[0];
   const proposed = versions.find((v) => v.state === 'proposed');
@@ -105,7 +115,7 @@ function Catalog() {
 
   return (
     <>
-      <h1 style={{ fontSize: 'var(--eye-type-heading-1)', marginBlockStart: 0 }}>Product analytics — the metric catalog</h1>
+      {title}
       <p style={muted}>
         Every product metric is a governed contract: its purpose (approved by a named privacy officer), its population, numerator and denominator,
         window and clock, exclusions, cohort dimensions (never a person), privacy class, floor, threshold and the review a breach opens, what it serves,
@@ -129,16 +139,17 @@ function Catalog() {
             {catalog.length === 0 ? <Empty>No metric is defined in this domain.</Empty> : (
               <ScrollBox label="Metric definitions">
                 <table style={tableStyle}>
-                  <thead><tr><Th>Metric</Th><Th>State</Th><Th>Kind</Th><Th>Purpose</Th><Th>Owner</Th><Th>Latest results by period</Th><Th>Uses</Th></tr></thead>
+                  <thead><tr><Th>Metric</Th><Th>State</Th><Th>Computed by</Th><Th>Kind</Th><Th>Purpose</Th><Th>Owner</Th><Th>Latest results by period</Th><Th>Uses</Th></tr></thead>
                   <tbody>{catalog.map((c) => (
                     <tr key={c.metric_key}>
                       <Td><button type="button" onClick={() => setMetricKey(c.metric_key)} aria-pressed={c.metric_key === metricKey} style={{ all: 'unset', cursor: 'pointer', textDecoration: 'underline' }}>{c.metric_key}</button> {c.title}</Td>
-                      <Td><MarkText m={stateMark(c.state)} /> v{c.version}{c.supported ? '' : ' · UNSUPPORTED'}</Td>
+                      <Td><MarkText m={stateMark(c.state)} /> definition v{c.version}{c.supported ? '' : ' · UNSUPPORTED'}</Td>
+                      <Td>{computationTag(c.computation, c.computation_key)}</Td>
                       <Td>{c.kind} ({c.unit})</Td>
                       <Td>{c.purpose_key}</Td>
                       <Td>{c.owner_name ?? <Mono>{c.owner_principal_id}</Mono>}</Td>
                       <Td>{c.results_by_period.length === 0 ? 'not computed' : c.results_by_period.slice(0, 4).map((r) => (
-                        <div key={r.result_id}><button type="button" onClick={() => { setMetricKey(c.metric_key); setResultId(r.result_id); }} style={{ all: 'unset', cursor: 'pointer', textDecoration: 'underline' }}>{r.period_key}{r.scope_key ? ` · ${r.scope_key}` : ''}</button>: <MarkText m={resultMark(r)} /> {valueLine({ ...r, kind: c.kind, unit: c.unit }, c.floor_n)}{r.definition_version !== c.version ? ` (on v${r.definition_version})` : ''}</div>
+                        <div key={r.result_id}><button type="button" onClick={() => { setMetricKey(c.metric_key); setResultId(r.result_id); }} style={{ all: 'unset', cursor: 'pointer', textDecoration: 'underline' }}>{r.period_key}{r.scope_key ? ` · ${r.scope_key}` : ''}</button>: <MarkText m={resultMark(r)} /> {valueLine({ ...r, kind: c.kind, unit: c.unit }, c.floor_n)} ({versionsPair(r.definition_version, r)})</div>
                       ))}</Td>
                       <Td>{c.uses}{c.b90_catalog_entry ? ' · catalogued' : ''}</Td>
                     </tr>))}</tbody>
@@ -155,12 +166,13 @@ function Catalog() {
                 <select aria-label="Version shown" style={inputStyle} value={shown?.version ?? ''} onChange={(e) => setShownVersion(Number(e.target.value))}>
                   {versions.map((v) => <option key={v.version} value={v.version}>v{v.version} — {stateMark(v.state).text}</option>)}
                 </select>{' '}
-                {shown ? <><MarkText m={stateMark(shown.state)} /> · digest <Mono title={shown.digest}>{shown.digest.slice(0, 16)}…</Mono></> : null}
+                {shown ? <><MarkText m={stateMark(shown.state)} /> · digest <Mono title={shown.digest}>{shown.digest.slice(0, 16)}…</Mono> · computed by {computationTag(shown.computation, typeof shown.contract['computation_key'] === 'string' ? String(shown.contract['computation_key']) : null)}</> : null}
               </p>
               {shown ? (
                 <dl>
                   {CONTRACT_FIELDS.map(([k, label]) => (
-                    <DefinitionRow key={k} term={label}>{k === 'owner_principal_id' ? (shown.owner_name ?? field(shown.contract[k])) : field(shown.contract[k])}</DefinitionRow>
+                    <DefinitionRow key={k} term={label}>{k === 'owner_principal_id' ? (shown.owner_name ?? field(shown.contract[k]))
+                      : k === 'computation_key' ? <ComputationNowText v={shown} /> : field(shown.contract[k])}</DefinitionRow>
                   ))}
                   <DefinitionRow term="Proposed">{shown.proposed_by_name ?? shown.proposed_by} · {fmtInstant(shown['proposed_at'])}</DefinitionRow>
                   <DefinitionRow term="Decided">{shown.decided_by === null ? 'not yet — awaiting a named product analytics owner (never the proposer)' : `${shown.decided_by_name ?? shown.decided_by} · ${fmtInstant(shown.decided_at)} — ${shown.decision_reason ?? ''}`}</DefinitionRow>
@@ -218,7 +230,7 @@ function Catalog() {
                       <tr key={r.result_id}>
                         <Td>{g.period}</Td>
                         <Td>{r.scope_key ? `${r.scope_key} v${String(r.scope_version)}` : 'the whole domain'}{Object.keys((r['cohort'] as Row | undefined) ?? {}).length > 0 ? ` · ${JSON.stringify(r['cohort'])}` : ''}</Td>
-                        <Td><MarkText m={resultMark(r)} /> · v{r.definition_version}</Td>
+                        <Td><MarkText m={resultMark(r)} /> · {versionsPair(r.definition_version, r)}</Td>
                         <Td>{valueLine({ ...r, kind: String(r['kind']), unit: String(r['unit']) }, Number(versions.find((v) => v.version === r.definition_version)?.floor_n ?? NaN) || null)}</Td>
                         <Td>{thresholdLine(r.threshold_eval)}</Td>
                         <Td>{fmtInstant(r.computed_at)}</Td>
@@ -258,7 +270,7 @@ function Catalog() {
 
               <h3>Uses</h3>
               {card.uses.length === 0 ? <p style={muted}>No result of this metric is cited yet.</p> : (
-                <ul>{card.uses.map((u) => <li key={u.use_id}>{u.used_in_kind.replace(/_/g, ' ')} <Mono>{u.used_in_id}</Mono> cites v{u.definition_version} {u.period_key} ({u.result_state.toUpperCase()}) · {dayOf(u.used_at)}{u.note ? ` — ${u.note}` : ''}</li>)}</ul>
+                <ul>{card.uses.map((u) => <li key={u.use_id}>{u.used_in_kind.replace(/_/g, ' ')} <Mono>{u.used_in_id}</Mono> cites {u.period_key} ({versionsPair(u.definition_version, u)}) ({u.result_state.toUpperCase()}) · {dayOf(u.used_at)}{u.note ? ` — ${u.note}` : ''}</li>)}</ul>
               )}
               <h3>Ledger</h3>
               <ul>{card.ledger.slice(0, 30).map((e) => <li key={e.event_id}>{fmtInstant(e.occurred_at)} — {e.event}{e.version ? ` v${e.version}` : ''} by {e.actor_name ?? 'a principal'}</li>)}</ul>

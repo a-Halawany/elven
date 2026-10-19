@@ -5,6 +5,7 @@
  */
 import { sql } from 'kysely';
 import type { Tx } from '../../shared/db.js';
+import { REGISTRY_ROW } from '../computation-versions.js';
 
 type Row = Record<string, unknown>;
 const j = (v: unknown) => JSON.stringify(v ?? null);
@@ -73,9 +74,11 @@ class DefinitionsCapabilityImpl implements DefinitionWrites {
   async definitions(): Promise<Row[]> {
     return this.rows(sql`select l.definition_id::text, l.metric_key, l.version, l.title, l.kind, l.unit, l.direction, l.state, l.supported, l.computation_key, l.purpose_key, l.owner_principal_id::text,
         ${NAME('l.owner_principal_id')} as owner_name, l.cadence, l.floor_n, l.k_min, l.privacy_class, l.dimensions, l.threshold, l.serves, l.digest, l.proposed_at, l.decided_at, l.effective_from,
+        ${REGISTRY_ROW('l.computation_key')} as computation,   -- B82-F mt: the computation version that computes it now
         (select a.version from analytics.metric_definitions a where a.tenant_id = l.tenant_id and a.domain_id = l.domain_id and a.metric_key = l.metric_key and a.state = 'approved') as approved_version,
         (select count(*)::int from analytics.metric_definitions a where a.tenant_id = l.tenant_id and a.domain_id = l.domain_id and a.metric_key = l.metric_key) as versions,
-        (select jsonb_build_object('result_id', r.result_id, 'period_key', r.period_key, 'scope_key', r.scope_key, 'state', r.state, 'value', r.value, 'n', r.n, 'computed_at', r.computed_at)
+        (select jsonb_build_object('result_id', r.result_id, 'period_key', r.period_key, 'scope_key', r.scope_key, 'state', r.state, 'value', r.value, 'n', r.n, 'computed_at', r.computed_at,
+                  'definition_version', r.definition_version, 'computation_key', r.computation_key, 'computation_version', r.computation_version)
            from analytics.metric_results r where r.tenant_id = l.tenant_id and r.domain_id = l.domain_id and r.metric_key = l.metric_key and r.replay_of is null and not r.preview
            order by r.computed_at desc limit 1) as latest_result
       from (select distinct on (d.tenant_id, d.domain_id, d.metric_key) d.* from analytics.metric_definitions d order by d.tenant_id, d.domain_id, d.metric_key, d.version desc) l
@@ -83,7 +86,7 @@ class DefinitionsCapabilityImpl implements DefinitionWrites {
   }
   async versions(metricKey: string): Promise<Row[]> {
     return this.rows(sql`select to_jsonb(d) || jsonb_build_object('contract', analytics.definition_contract(to_jsonb(d)), 'proposed_by_name', ${NAME('d.proposed_by')}, 'decided_by_name', ${NAME('d.decided_by')},
-          'owner_name', ${NAME('d.owner_principal_id')}, 'retired_by_name', ${NAME('d.retired_by')}) as r
+          'owner_name', ${NAME('d.owner_principal_id')}, 'retired_by_name', ${NAME('d.retired_by')}, 'computation', ${REGISTRY_ROW('d.computation_key')}) as r
       from analytics.metric_definitions d where d.metric_key = ${metricKey} order by d.version desc`).then((rs) => rs.map((x) => (x as { r: Row }).r));
   }
   async definition(definitionId: string): Promise<Row | null> {
@@ -96,14 +99,14 @@ class DefinitionsCapabilityImpl implements DefinitionWrites {
   }
   async results(metricKey: string, limit: number): Promise<Row[]> {
     return this.rows(sql`select r.result_id::text, r.definition_version, r.preview, r.scope_key, r.scope_version, r.period_key, r.period_kind, r.window_from, r.window_to, r.clock, r.cohort, r.as_of,
-        r.state, r.kind, r.unit, r.value, r.numerator, r.denominator, r.n, r.distribution, r.uncertainty, r.reasons, r.threshold_eval, r.computation_key, r.computation_version, r.source_revision,
-        r.records_count, r.replay_of::text, r.replay_verdict, r.computed_at, r.computed_by_kind,
+        r.state, r.kind, r.unit, r.value, r.numerator, r.denominator, r.n, r.distribution, r.uncertainty, r.reasons, r.threshold_eval, r.computation_key, r.computation_version, r.computation_digest,
+        r.source_revision, r.records_count, r.replay_of::text, r.replay_verdict, r.computed_at, r.computed_by_kind,
         (select count(*)::int from analytics.metric_uses u where u.result_id = r.result_id) as uses
       from analytics.metric_results r where r.metric_key = ${metricKey} order by r.computed_at desc limit ${Math.min(Math.max(limit, 1), 500)}`);
   }
   async uses(q: { metricKey: string | null; resultId: string | null; limit: number }): Promise<Row[]> {
     return this.rows(sql`select u.use_id::text, u.result_id::text, u.used_in_kind, u.used_in_id::text, u.note, u.used_by::text, u.used_at, ${NAME('u.used_by')} as used_by_name,
-        r.metric_key, r.definition_version, r.period_key, r.scope_key, r.state as result_state, r.value, r.preview
+        r.metric_key, r.definition_version, r.period_key, r.scope_key, r.state as result_state, r.value, r.preview, r.computation_key, r.computation_version
       from analytics.metric_uses u join analytics.metric_results r on r.result_id = u.result_id
       where (${q.metricKey}::text is null or r.metric_key = ${q.metricKey}) and (${q.resultId}::uuid is null or u.result_id = ${q.resultId}::uuid)
       order by u.used_at desc limit ${Math.min(Math.max(q.limit, 1), 500)}`);
@@ -134,10 +137,12 @@ class DefinitionsCapabilityImpl implements DefinitionWrites {
          order by d.tenant_id, d.domain_id, d.metric_key, (d.state = 'approved') desc, d.version desc)
       select c.definition_id::text, c.metric_key, c.version, c.state, c.title, c.meaning, c.kind, c.unit, c.direction, c.supported, c.unsupported_reason, c.computation_key, c.purpose_key,
         c.serves, c.cadence, c.floor_n, c.k_min, c.privacy_class, c.window_spec, c.owner_principal_id::text, ${NAME('c.owner_principal_id')} as owner_name, c.digest, c.source_refs,
+        c.decided_at, ${REGISTRY_ROW('c.computation_key')} as computation,   -- B82-F mt
         coalesce((select jsonb_agg(z order by z ->> 'period_key' desc, z ->> 'scope_key' nulls first) from (
            select distinct on (r.period_key, r.scope_key) jsonb_build_object('result_id', r.result_id, 'period_key', r.period_key, 'scope_key', r.scope_key, 'scope_version', r.scope_version,
              'definition_version', r.definition_version, 'state', r.state, 'value', r.value, 'unit', r.unit, 'n', r.n, 'reasons', r.reasons, 'uncertainty', r.uncertainty, 'clock', r.clock,
-             'threshold_eval', r.threshold_eval, 'computed_at', r.computed_at) as z
+             'threshold_eval', r.threshold_eval, 'computed_at', r.computed_at,
+             'computation_key', r.computation_key, 'computation_version', r.computation_version, 'computation_digest', r.computation_digest) as z
              from analytics.metric_results r where r.tenant_id = c.tenant_id and r.domain_id = c.domain_id and r.metric_key = c.metric_key and not r.preview and r.replay_of is null and r.cohort = '{}'::jsonb
             order by r.period_key, r.scope_key, r.computed_at desc) q), '[]'::jsonb) as results_by_period,
         (select count(*)::int from analytics.metric_uses u join analytics.metric_results r on r.result_id = u.result_id where r.metric_key = c.metric_key and r.tenant_id = c.tenant_id and r.domain_id = c.domain_id) as uses,
@@ -146,7 +151,7 @@ class DefinitionsCapabilityImpl implements DefinitionWrites {
       from cur c order by c.metric_key`);
   }
   async computations(): Promise<Row[]> {
-    return this.rows(sql`select computation_key, function_name, version, kind, dimensions, scope_rule, description from analytics.computation_registry order by computation_key`);
+    return this.rows(sql`select computation_key, function_name, version, kind, dimensions, scope_rule, description, body_digest, registered_in, registered_at from analytics.computation_registry order by computation_key`);
   }
   async ownerRoleMap(): Promise<Row> {
     return (await this.rows<{ m: Row }>(sql`select analytics.owner_role_map() as m`))[0]?.m ?? {};
