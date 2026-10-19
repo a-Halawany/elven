@@ -7044,7 +7044,12 @@ D1 the acceptance rows stay partial naming the shared path at B111 then H3; D2 t
 
 ### B81.7 — the gates and the hosted run
 - **Local at `52699a0`** (one at a time, Redis :6397 flushed): build; **the complete integration 3010/3010 in 183 files** on a fresh database through 0119; acceptance 58/58; **the upgrade proof PASS** (migrations 98); `pnpm boundaries`; web 797 with one failing file (two tests read the part files the fold removed — re-pointed at `18c1421`, then **828/828**); API unit **3670/3671**: the one failure is again `c15-runner-behaviour`'s hermetic child at its 60 s ceiling — its cause is UNRESOLVED; the timeout unchanged; this is not "every local gate passed".
-- **Hosted**: the B81 PR's runs are recorded in the next delivery record; the integration step's 55-minute limit (§B81.0) applies to it too.
+- **Hosted** (corrected 2026-10-20 — this line first said only that the 55-minute limit "applies to it too"; the run itself did not time out): **#92 at `8d1f586`**, C19 lifecycle 39179325695 succeeded; **ci 39179325635**: build-test's integration step **PASSED** (54m33s, inside the 55-minute bound) and its **C18 step FAILED** on one differential (C18.1.11 "the rotated seed credential expiry drifts by five milliseconds" — §B80.8: the +5 ms input landed on the audited stamp, inside the permitted interval); **supply-chain FAILED on gitleaks-history only** (one finding, dfe1762's synthetic key identifier — every other C15 child ok); **browser-regression FAILED**: phase0 journey 5 timed out in `selectOption` on the shell's Display density control (87 passed, 1 failed, 5 not run behind it in the serial file).
+
+### B81.8 — the integration pass (2026-10-19/20)
+- **The browser regression** — e2e/phase0.spec.ts journeys 5 and 6 picked the canonical-object page's tenant and domain controls by position; since B81 the shell's Display density control is a select too. The two controls now carry accessible names (Tenant, Domain) and the journeys select them by role and exact name; the correction-history and known-at assertions are unchanged.
+- **The history scan** — dfe1762's finding (apps/web/lib/authority-b81.test.ts:224, the synthetic Ed25519 key identifier in an expected receipt line) disposed of in the B36-F1 form: ONE rule, ONE commit, ONE anchored path, ONE anchored match, condition = AND; proven with the pinned gitleaks on a single-branch clone, four controls (`evidence/cp6/b81-history-disposition.txt`). No file or commit exempt as a whole, no history rewritten, no credential change.
+- **C18** — corrected on `phase6-b80` (§B80.8) and merged here; **the act target** — act-b81.mjs and act-b81-candidate.mjs decide their target first.
 
 ## Order and the next implementation batch
 
