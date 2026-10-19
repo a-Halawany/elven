@@ -7097,7 +7097,7 @@ Corrected 2026-10-20 — this section first said only that the 55-minute limit "
 - **Contest paths kept separate**: B35's appeals and B50's knowledge challenges stay two governed paths with their existing shared unfit consequence and their own visible provenance; nothing merges them.
 - **The old PortWatch case** (`imf-portwatch-ports`, applied 2026-09-10, 2,133 affected): stays VISIBLE and UNADOPTED — not re-driven, its products not frozen in this pass.
 - **MET-010**: a new DEFINITION version is created through B92's existing governed proposal/approval path so the declared meaning matches material consumer closure (computation v2); historical definitions and results preserved; the definition and computation versions shown together; no sample threshold lowered and the n = 1 result not forced determinate (carried out in the integration pass on the demonstration — §B82.8).
-- **Correction closure for the affected product's owner, and the correction page's heading in every state** — §B82.8 (the narrowly scoped read and surface; `graph.read` is not widened).
+- **The correction page's heading in every state** — on this branch (`339b8ca`, from the §CC builder's web-only commit): `/graph/impact` titles every branch, the case page's link fallback is titled, and the h1 ratchet now covers the loading and refusal states (the correction family has no titleless branch; the 60 other pages that still carry one may only shrink). **Correction closure for the affected product's owner** needs one forward database port, so it lands with 0122 on `phase6-b82` (§B82.8): a narrowly scoped obligations read and surface; `graph.read` is not widened.
 
 ## Order and the next implementation batch
 
