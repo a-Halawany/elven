@@ -122,7 +122,8 @@ export const HEADER_SCHEMA = {
     scope: { enum: ['PLATFORM', 'TENANT', 'DOMAIN'] },
     object_version: { type: 'string', pattern: '^[1-9][0-9]{0,17}$' },
     lifecycle_state: {
-      enum: ['proposed', 'admitted', 'active', 'disputed', 'corrected', 'withdrawn', 'superseded', 'archived', 'deleted'],
+      enum: ['proposed', 'admitted', 'active', 'disputed', 'corrected', 'withdrawn', 'superseded', 'archived', 'deleted',
+        /* B50 (0120 §LC, ADR-006) */ 'draft', 'reviewed', 'approved', 'published', 'retired'],
     },
     owning_component: { type: 'string', minLength: 1, maxLength: 128 },
     accountable_owner: { type: 'string', minLength: 1, maxLength: 256 },

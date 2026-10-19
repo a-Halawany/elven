@@ -103,7 +103,7 @@ BEGIN
       USING ERRCODE = '22023';
   END IF;
   IF p_header->>'time_precision' NOT IN
-     ('exact','second','minute','hour','day','month','year','approximate','unknown') THEN
+     ('exact','second','minute','hour','day','part_of_month','month','quarter','year','approximate','unknown') THEN  -- B50 hd: the governed vocabulary (objects.time_precisions) — B50 integration: §LC's copy applies after §HD's, so it carries both changes
     RAISE EXCEPTION 'header semantics: time_precision % is not permitted', p_header->>'time_precision'
       USING ERRCODE = '22023';
   END IF;
@@ -590,10 +590,33 @@ REVOKE ALL ON FUNCTION objects._lc_content_problem(text, text, jsonb) FROM PUBLI
 /* Write a version: the header and payload digest-bound exactly as admit recomputes it. Returns the digest. */
 CREATE OR REPLACE FUNCTION objects._lc_admit(p_header jsonb, p_payload jsonb) RETURNS text
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = objects, canon, pg_catalog, pg_temp AS $$
-DECLARE v_digest text := canon.sha256_hex(canon.jcs(jsonb_build_object('header', p_header, 'payload', p_payload)));
+DECLARE
+  h jsonb := p_header; t text := p_header ->> 'object_type'; f text; v_qp text; v_digest text;
 BEGIN
+  /* B50 integration (§HD × §LC): a version admitted after B50 STATES the fields B50 states (objects._header_usable refuses one that does not).
+     A lifecycle version is built from its prior one, which may predate B50 — so what the prior left empty is stated here, by the same rules
+     as §HD's builder (src/objects/header-builder.ts): a declared absence for confidence / uncertainty / quality, freshness not applicable (a
+     transition restates the object; its age is its record time), ontology:none until B51, the type's header profile, provenance by reference. */
+  FOREACH f IN ARRAY ARRAY['confidence', 'uncertainty', 'quality_state'] LOOP
+    IF h -> f IS NULL OR jsonb_typeof(h -> f) = 'null' THEN
+      h := jsonb_set(h, ARRAY[f], jsonb_build_object('state', 'not_assessed', 'reason', format('the governed lifecycle (B50 §LC) does not assess %s for %s', f, t)));
+    END IF;
+  END LOOP;
+  IF h -> 'freshness_state' IS NULL OR jsonb_typeof(h -> 'freshness_state') = 'null' THEN
+    h := jsonb_set(h, '{freshness_state}', jsonb_build_object('state', 'not_applicable', 'reason', 'a lifecycle transition restates the object; its age is its record time'));
+  END IF;
+  IF h -> 'ontology_ref' IS NULL OR jsonb_typeof(h -> 'ontology_ref') = 'null' THEN h := jsonb_set(h, '{ontology_ref}', to_jsonb('ontology:none'::text)); END IF;
+  IF h -> 'quality_profile' IS NULL OR jsonb_typeof(h -> 'quality_profile') = 'null' THEN
+    SELECT 'quality:' || p.object_type || '@' || p.profile_version INTO v_qp FROM objects.header_profiles p WHERE p.object_type = t AND p.state = 'active' ORDER BY p.profile_version DESC LIMIT 1;
+    IF v_qp IS NOT NULL THEN h := jsonb_set(h, '{quality_profile}', to_jsonb(v_qp)); END IF;
+  END IF;
+  IF h -> 'provenance_ref' IS NULL OR jsonb_typeof(h -> 'provenance_ref') = 'null' THEN
+    h := jsonb_set(h, '{provenance_ref}', to_jsonb('none:the version''s provenance is its prior version and the recorded lifecycle transition'::text));
+  END IF;
+  /* end B50 integration */
+  v_digest := canon.sha256_hex(canon.jcs(jsonb_build_object('header', h, 'payload', p_payload)));
   -- today's admit path (DESIGN D2: §HD's re-declared admit writes its side ledgers in the same transaction — the swap point is HERE).
-  PERFORM objects.admit_version(p_header, p_payload, v_digest);
+  PERFORM objects.admit_version(h, p_payload, v_digest);
   RETURN v_digest;
 END $$;
 REVOKE ALL ON FUNCTION objects._lc_admit(jsonb, jsonb) FROM PUBLIC;

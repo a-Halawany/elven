@@ -1764,7 +1764,9 @@
       "public_contract": {
         "controllers": [
           "GraphController",
-          "ProjectionsController"
+          "ImpactB50Controller",
+          "ProjectionsController",
+          "ProvenanceController"
         ],
         "module": "GraphModule",
         "ports": [
@@ -2020,6 +2022,7 @@
       },
       "public_contract": {
         "controllers": [
+          "LifecycleController",
           "ObjectsController"
         ],
         "module": "ObjectsModule",

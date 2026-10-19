@@ -30,6 +30,12 @@ export const LIFECYCLE_STATES = [
   'superseded',
   'archived',
   'deleted',
+  /* B50 (0120 §LC, ADR-006): the governed work-object states — the canonical CHECK widened with the same five */
+  'draft',
+  'reviewed',
+  'approved',
+  'published',
+  'retired',
 ] as const;
 export type LifecycleState = (typeof LIFECYCLE_STATES)[number];
 
