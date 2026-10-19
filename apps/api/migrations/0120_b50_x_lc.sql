@@ -939,7 +939,7 @@ GRANT EXECUTE ON FUNCTION objects.propose_lifecycle(uuid, uuid, uuid, text, uuid
 /* THE OWNER DECIDES (objects.lifecycle.proposal.decide): accept performs the proposed transition under the owner's own name through the same
    rules (the expected version the owner read; the proposal is its cause) — accepted when the transition is; a refused acceptance leaves the
    proposal open and the refusal in the ledger. Decline records why. A decided proposal is not decided again. */
-CREATE OR REPLACE FUNCTION objects.decide_lifecycle_proposal(p_request_id uuid, p_tenant uuid, p_domain uuid, p_proposal_id uuid, p_decision text, p_reason text,
+CREATE OR REPLACE FUNCTION objects.decide_lifecycle_proposal(p_request_id uuid, p_tenant uuid, p_domain uuid, p_object_id uuid, p_proposal_id uuid, p_decision text, p_reason text,
   p_expected_version int, p_idempotency_key text, p_actor uuid, p_correlation uuid)
 RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = objects, observation, identity, onboarding, ctx, public, pg_catalog, pg_temp AS $$
@@ -954,8 +954,8 @@ BEGIN
     IF d.decided_by = v_actor AND d.proposal_id = p_proposal_id THEN RETURN to_jsonb(d) || jsonb_build_object('replayed', true); END IF;
     RAISE EXCEPTION 'lifecycle proposal rejected (duplicate): the request id % was used for another decision', p_request_id USING ERRCODE = '22023';
   END IF;
-  SELECT * INTO r FROM objects.lifecycle_proposals x WHERE x.proposal_id = p_proposal_id AND x.tenant_id = p_tenant AND x.domain_id = p_domain;
-  IF NOT FOUND THEN RAISE EXCEPTION 'lifecycle proposal rejected (unknown_proposal): no proposal % in this domain', p_proposal_id USING ERRCODE = '23503'; END IF;
+  SELECT * INTO r FROM objects.lifecycle_proposals x WHERE x.proposal_id = p_proposal_id AND x.tenant_id = p_tenant AND x.domain_id = p_domain AND x.object_id = p_object_id;
+  IF NOT FOUND THEN RAISE EXCEPTION 'lifecycle proposal rejected (unknown_proposal): no proposal % on object % in this domain', p_proposal_id, p_object_id USING ERRCODE = '23503'; END IF;
   IF EXISTS (SELECT 1 FROM objects.lifecycle_proposal_decisions x WHERE x.proposal_id = p_proposal_id) THEN
     RAISE EXCEPTION 'lifecycle proposal rejected (state): proposal % is decided already', p_proposal_id USING ERRCODE = '22023';
   END IF;
@@ -983,8 +983,8 @@ BEGIN
   VALUES (r.proposal_id, 'DOMAIN', p_tenant, p_domain, 'accepted', btrim(p_reason), (v_out ->> 'transition_id')::uuid, v_actor, p_request_id, p_correlation) RETURNING * INTO d;
   RETURN to_jsonb(d) || jsonb_build_object('replayed', false, 'transition', v_out);
 END $$;
-REVOKE ALL ON FUNCTION objects.decide_lifecycle_proposal(uuid, uuid, uuid, uuid, text, text, int, text, uuid, uuid) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION objects.decide_lifecycle_proposal(uuid, uuid, uuid, uuid, text, text, int, text, uuid, uuid) TO eye_commit;
+REVOKE ALL ON FUNCTION objects.decide_lifecycle_proposal(uuid, uuid, uuid, uuid, uuid, text, text, int, text, uuid, uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION objects.decide_lifecycle_proposal(uuid, uuid, uuid, uuid, uuid, text, text, int, text, uuid, uuid) TO eye_commit;
 
 -- §LC.8 THE READS (definer, guarded by the N-01 read scope; reads only) ───────────────────────────────────────────────────────────────────
 /* Every type's latest lifecycle profile (global declarations; any bound principal). */
@@ -1193,7 +1193,7 @@ GRANT EXECUTE ON FUNCTION objects.lifecycle_export(uuid, uuid, uuid) TO eye_app,
    versions contiguous and of this object, every written version matched by the transition that wrote it, and the replay re-derived. Reads
    nothing stored: a document that verifies here verifies on any installation. */
 CREATE OR REPLACE FUNCTION objects.lifecycle_verify_export(p_doc jsonb) RETURNS jsonb
-LANGUAGE plpgsql STABLE SET search_path = objects, canon, pg_catalog, pg_temp AS $$
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = objects, canon, pg_catalog, pg_temp AS $$
 DECLARE v_problems text[] := ARRAY[]::text[]; v jsonb; n int := 0; v_replay jsonb := '[]'::jsonb; t jsonb;
 BEGIN
   IF p_doc IS NULL OR jsonb_typeof(p_doc) <> 'object' OR p_doc ->> 'format' IS DISTINCT FROM 'eye-lifecycle-export/1' THEN
