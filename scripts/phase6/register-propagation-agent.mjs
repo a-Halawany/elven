@@ -74,7 +74,7 @@ for (const c of before.awaiting ?? []) {
 console.log('\n2. the propagation agent');
 let st = await status();
 let agent = (st?.agents ?? []).find((a) => a.status === 'active') ?? null;
-let backlog = 'walk';
+let backlog = 'walk'; let reused = false;
 if (agent !== null && (agent.agent_version !== st.walker.version || agent.code_digest !== st.walker.codeDigest)) {
   // D10: a drifted registration is never reused — the domain administrator revokes it, a new principal is registered for the new walker
   note(`the active agent ${short(agent.agent_id)} is registered for walker ${agent.agent_version} (${String(agent.code_digest).slice(0, 12)}…); this API runs ${st.walker.version} (${st.walker.codeDigest.slice(0, 12)}…) — the registry refuses its sessions`);
@@ -86,6 +86,7 @@ if (agent !== null && (agent.agent_version !== st.walker.version || agent.code_d
   ok(`T. Richter (domain administrator) REVOKED the ${agent.agent_version} agent ${short(agent.agent_id)} with its reason — POL ${String(rv.body.receipt?.policyDecisionId).slice(0, 13)}… · audit seq ${rv.body.receipt?.auditSeq}`);
   agent = null; backlog = 'leave';
 }
+if (agent !== null) reused = true;
 if (agent !== null) ok(`propagation agent already active (${short(agent.agent_id)}, walker ${agent.agent_version} ${String(agent.code_digest).slice(0, 12)}… = this API's ${st.walker.version}) — reused`);
 else {
   const r = await call(`${G}/impact/propagation/agents/register`, adm({ action: 'graph.propagation.agent.register', objectType: 'AGT', consequence: 'C2' }),
@@ -105,7 +106,7 @@ const subs = await call(`${G}/subscriptions/status`, so({ action: 'graph.read', 
 if (subs?.ok) note(`${(subs.body.subscriptions?.subscriptions ?? []).filter((x) => x.status === 'active').length} active subscription consumer(s) — unchanged by the re-registration`);
 if (process.argv.includes('--register-only') || backlog === 'leave') {
   const q = await awaiting();
-  note(`backlog '${backlog}': ${q.total} applied case(s) await propagation, each listed with its automatic state — none re-driven by this registration`);
+  note(`${reused ? 'no registration this run' : `backlog '${backlog}'`}: ${q.total} applied case(s) await propagation, each listed with its automatic state — none re-driven by this registration`);
   if (process.argv.includes('--register-only')) process.exit(failureCount() === 0 ? 0 : 1);
 }
 
