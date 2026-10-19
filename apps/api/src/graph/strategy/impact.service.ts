@@ -33,7 +33,26 @@ const MAX_HOPS = 8;
  * can run THIS walk without a second walker and without holding a graph capability; every GraphReads satisfies it, so
  * no existing caller changes.
  */
-export type WalkReads = Pick<GraphReads, 'readDependencies' | 'readStrategy' | 'readForecasts' | 'readScenarios' | 'readWarnings' | 'readTwins' | 'readRuns' | 'readBriefings' | 'readMemoryItems' | 'readClaimLineage' | 'readResolutions' | 'readEdges'>;
+export type WalkReads = Pick<GraphReads, 'readDependencies' | 'readStrategy' | 'readForecasts' | 'readScenarios' | 'readWarnings' | 'readTwins' | 'readRuns' | 'readBriefings' | 'readMemoryItems' | 'readClaimLineage' | 'readResolutions' | 'readEdges'
+  /* B50 ci */ | 'readProductCitations' /* end B50 ci */>;
+
+/* B50 ci */
+/**
+ * B50 §CI (0120 §CI.1): the seven triggers a steward records through its own seeding port and the domain's propagation agent walks
+ * (graph/impact/impact-triggers.service.ts). Each names ONE object of the domain; the walk starts from it by its TYPE.
+ */
+export const B50_TRIGGER_KINDS = ['legal_request', 'model_incident', 'ontology_correction', 'data_quality_finding', 'rights_change', 'integrity_failure', 'human_challenge'] as const;
+/** The dependency kind (graph.dependencies.depends_on_kind) a trigger object of each type seeds; evidence, claims, entities and edges have their own closure. */
+const SEED_KIND_OF: Record<string, string> = { FCT: 'forecast', WRN: 'warning', SIM: 'run', TWN: 'twin' };
+const TYPE_OF_TRIGGER: Record<string, string> = { evidence_correction: 'EVD', claim_correction: 'CLM', claim_withdrawal: 'CLM', edge_retraction: 'REL', entity_split: 'ENT' };
+/** The walk's product buckets beyond graph.dependencies (graph.walk_product_citations' product kinds → the result's bucket). */
+const PRODUCT_BUCKET: Record<string, 'decisionPackages' | 'publications' | 'exportPackages' | 'evaluationDatasets' | 'lessons'> = {
+  decision_package: 'decisionPackages', publication: 'publications', export_package: 'exportPackages',
+  information_set: 'evaluationDatasets', backtest: 'evaluationDatasets', method_validation: 'evaluationDatasets', lesson: 'lessons',
+};
+/** The bound on one IN-list of the product read (the reached ids are queried in slices). */
+const IN_SLICE = 2000;
+/* end B50 ci */
 
 /**
  * The AUTOMATIC walker's identity (CP-6 B1, migration 0060), on the connector precedent:
@@ -42,11 +61,19 @@ export type WalkReads = Pick<GraphReads, 'readDependencies' | 'readStrategy' | '
  * The digest names the walk's method — a change to the walk is a new walker, registered
  * anew; it is never client-supplied.
  */
-const WALK_METHOD_REF = `graph.impact.walk@1.0.0:evidence_correction→claim_lineage→resolutions/edges→dependencies(bfs,max_hops=${MAX_HOPS})`;
+/*
+ * B50 ci (0120 §CI; DESIGN D10): WALKER 1.1.0 — the seven trigger kinds seeded by the object's type, the product buckets (decision packages,
+ * publications, export packages, evaluation datasets, lessons) reached through graph.walk_product_citations, every reached product carrying
+ * its path, and every bucket CLASSED by graph.record_impact under affected-class@1. A changed walk is a new walker: the registry's session
+ * port refuses an agent registered at 1.0.0 (its digest drifted), so the domain's agent is revoked and re-registered at 1.1.0.
+ */
+const WALK_METHOD_REF = `graph.impact.walk@1.1.0:evidence_correction|claim_correction|claim_withdrawal|edge_retraction|entity_split|${'legal_request|model_incident|ontology_correction|data_quality_finding|rights_change|integrity_failure|human_challenge'}`
+  + `→claim_lineage→resolutions/edges→dependencies(bfs,max_hops=${MAX_HOPS})→product_citations(decision_packages,publications,export_packages,evaluation_datasets,lessons;max_rounds=${MAX_HOPS})`
+  + '→classes(affected-class@1)';
 export const PROPAGATION_WALKER = Object.freeze({
   name: 'graph.propagation',
-  version: '1.0.0',
-  codeDigest: createHash('sha256').update(`graph.propagation@1.0.0:${WALK_METHOD_REF}`, 'utf8').digest('hex'),
+  version: '1.1.0',
+  codeDigest: createHash('sha256').update(`graph.propagation@1.1.0:${WALK_METHOD_REF}`, 'utf8').digest('hex'),
 });
 
 export interface AffectedObject {
@@ -64,6 +91,14 @@ export interface AffectedObject {
    * version citing either must be marked, so none of the routes is dropped.
    */
   via_ids?: string[];
+  /* B50 ci */
+  /** B50 §CI: the refs (`<TYPE>:<id>`) from the changed object to this one, in order — the path a closure and an explanation show. */
+  path?: string[];
+  /** B50 §CI: a product's own version (a package version, a publication version), when the bucket is versioned. */
+  version?: number | null;
+  /** B50 §CI: the product kind of a new bucket's row (decision_package, publication, export_package, information_set, backtest, method_validation, lesson, claim, entity, edge). */
+  product_kind?: string;
+  /* end B50 ci */
 }
 
 export interface ImpactResult {
@@ -109,6 +144,21 @@ export interface ImpactResult {
   stakeholders?: AffectedObject[];
   exposures?: AffectedObject[];
   /* end B32 graph */
+  /* B50 ci */
+  /**
+   * B50 §CI (0120): the products beyond graph.dependencies — decision package VERSIONS (an option cites what changed, or the package is for a
+   * reached decision), publication VERSIONS (they publish a reached briefing or package), export packages (they shipped a manifest of the
+   * changed evidence), evaluation datasets (frozen information sets, backtests and method validations of a reached series — or, for a model
+   * incident, of the method) and lessons (learned from a reached package). Optional in the type (every walk fills them), as B32's are.
+   * graphState: the claims, entities and edges the walk reached, as products (ES-30-003's "dependent graph state").
+   */
+  decisionPackages?: AffectedObject[];
+  publications?: AffectedObject[];
+  exportPackages?: AffectedObject[];
+  evaluationDatasets?: AffectedObject[];
+  lessons?: AffectedObject[];
+  graphState?: AffectedObject[];
+  /* end B50 ci */
   /** Entities and edges the changed object reached on the way. */
   reachedEntities: string[];
   reachedEdges: string[];
@@ -147,7 +197,7 @@ export class ImpactService {
    */
   async walk(
     cap: WalkReads,
-    a: { triggerKind: string; triggerObjectId: string },
+    a: { triggerKind: string; triggerObjectId: string; /* B50 ci: the trigger object's type (a B50 trigger names it) */ triggerObjectType?: string },
   ): Promise<Omit<ImpactResult, 'invalidationId' | 'correctionCaseId' | 'statement'>> {
     const deps = (await cap.readDependencies().selectAll()
       .where('state' as never, '=', 'active' as never)
@@ -200,6 +250,14 @@ export class ImpactService {
     const reachedClaims = new Set<string>();
 
     const reachedEvidence = new Set<string>();
+    /* B50 ci: every node remembers what it was reached through, so each product carries its path from the changed object. */
+    const parentOf = new Map<string, string>();
+    const refOf = new Map<string, string>();
+    const triggerType = a.triggerObjectType ?? TYPE_OF_TRIGGER[a.triggerKind] ?? 'object';
+    refOf.set(a.triggerObjectId, `${triggerType}:${a.triggerObjectId}`);
+    const directSeeds: Array<{ kind: string; id: string; via: string }> = [];
+    const triggerFound: AffectedObject[] = [];
+    /* end B50 ci */
     if (a.triggerKind === 'evidence_correction') {
       const lineage = (await cap.readClaimLineage().selectAll()
         .where('evidence_object_id' as never, '=', a.triggerObjectId as never)
@@ -213,7 +271,40 @@ export class ImpactService {
       reachedEdges.add(a.triggerObjectId);
     } else if (a.triggerKind === 'entity_split') {
       reachedEntities.add(a.triggerObjectId);
-    }
+    } /* B50 ci */ else if ((B50_TRIGGER_KINDS as readonly string[]).includes(a.triggerKind)) {
+      /*
+       * A B50 TRIGGER names one object of the domain; the walk starts from it by its type. Evidence (a legal request, a data-quality finding,
+       * a rights change, an integrity failure) reaches its claims through claim_lineage and is a seed itself, as a corrected one is; a claim or
+       * an assessment is a claim seed; an entity or edge (an ontology correction) is the graph seed it is; a forecast, warning, run or twin
+       * (a model incident, a human challenge) is a dependency seed AND an affected product itself (hop 0); a strategy object likewise.
+       */
+      const t = triggerType;
+      if (t === 'EVD') {
+        const lineage = (await cap.readClaimLineage().selectAll()
+          .where('evidence_object_id' as never, '=', a.triggerObjectId as never)
+          .execute()) as Array<Record<string, unknown>>;
+        for (const l of lineage) reachedClaims.add(String(l['claim_object_id']));
+        reachedEvidence.add(a.triggerObjectId);
+      } else if (t === 'CLM' || t === 'ASM' || t === 'EVT') {
+        reachedClaims.add(a.triggerObjectId);
+      } else if (t === 'ENT') {
+        reachedEntities.add(a.triggerObjectId);
+      } else if (t === 'REL') {
+        reachedEdges.add(a.triggerObjectId);
+      } else {
+        const id = a.triggerObjectId;
+        const f = forecasts.get(id); const w = warnings.get(id); const rn = runs.get(id); const tw = twins.get(id); const st = byId.get(id);
+        const self = (object_type: string, title: string): void => {
+          triggerFound.push({ strategy_object_id: id, object_type, title, reached_via: `the object the ${a.triggerKind.replace(/_/g, ' ')} names`, hop: 0, path: [`${object_type}:${id}`] });
+        };
+        if (f !== undefined) self('FCT', `${String(f['series_key'])} · ${String(f['horizon_code'])} · ${String(f['method'])}`);
+        else if (w !== undefined) self('WRN', String(w['title']));
+        else if (rn !== undefined) self('SIM', `${String(rn['run_kind'])} run on twin version ${String(rn['twin_version'])} (${String(rn['component'])})`);
+        else if (tw !== undefined) self('TWN', String(tw['title']));
+        else if (st !== undefined) self(String(st['object_type']), String(st['title']));
+        directSeeds.push({ kind: SEED_KIND_OF[t] ?? 'strategy', id, via: `rests on the ${t} the ${a.triggerKind.replace(/_/g, ' ')} names` });
+      }
+    } /* end B50 ci */
 
     // Every claim reached — directly or through the evidence behind it — widens
     // the walk to the entities it resolved to and the edges it asserted.
@@ -222,12 +313,24 @@ export class ImpactService {
         .where('claim_object_id' as never, '=', claimId as never)
         .where('state' as never, '=', 'accepted' as never)
         .execute()) as Array<Record<string, unknown>>;
-      for (const r of resolutions) reachedEntities.add(String(r['entity_id']));
+      for (const r of resolutions) {
+        reachedEntities.add(String(r['entity_id']));
+        /* B50 ci */ if (!parentOf.has(String(r['entity_id'])) && String(r['entity_id']) !== a.triggerObjectId) parentOf.set(String(r['entity_id']), claimId); /* end B50 ci */
+      }
       const edges = (await cap.readEdges().selectAll()
         .where('claim_object_id' as never, '=', claimId as never)
         .execute()) as Array<Record<string, unknown>>;
-      for (const e of edges) reachedEdges.add(String(e['edge_id']));
+      for (const e of edges) {
+        reachedEdges.add(String(e['edge_id']));
+        /* B50 ci */ if (!parentOf.has(String(e['edge_id'])) && String(e['edge_id']) !== a.triggerObjectId) parentOf.set(String(e['edge_id']), claimId); /* end B50 ci */
+      }
     }
+    /* B50 ci: the graph state's refs and parents (a claim hangs off the changed object, an entity or edge off its claim) */
+    for (const c of reachedClaims) { refOf.set(c, `CLM:${c}`); if (c !== a.triggerObjectId) parentOf.set(c, a.triggerObjectId); }
+    for (const e of reachedEntities) { refOf.set(e, `ENT:${e}`); if (e !== a.triggerObjectId && !parentOf.has(e)) parentOf.set(e, a.triggerObjectId); }
+    for (const e of reachedEdges) { refOf.set(e, `REL:${e}`); if (e !== a.triggerObjectId && !parentOf.has(e)) parentOf.set(e, a.triggerObjectId); }
+    for (const e of reachedEvidence) refOf.set(e, `EVD:${e}`);
+    /* end B50 ci */
 
     /*
      * SEEDS. A dependency on the claim itself is direct; a dependency on an entity
@@ -245,10 +348,13 @@ export class ImpactService {
       ...[...reachedEdges].map((id) => ({
         kind: 'edge', id, via: 'rests on an edge the changed claim asserted' })),
       ...[...reachedEvidence].map((id) => ({
-        kind: 'evidence', id, via: 'a value it was fitted on was read from the corrected evidence' })),
+        kind: 'evidence', id, via: a.triggerKind === 'evidence_correction' ? 'a value it was fitted on was read from the corrected evidence'
+          : /* B50 ci */ `a value it was fitted on was read from the evidence the ${a.triggerKind.replace(/_/g, ' ')} names` /* end B50 ci */ })),
+      /* B50 ci */ ...directSeeds, /* end B50 ci */
     ];
 
     const found = new Map<string, AffectedObject>();
+    /* B50 ci */ for (const x of triggerFound) { found.set(x.strategy_object_id, x); refOf.set(x.strategy_object_id, `${x.object_type}:${x.strategy_object_id}`); } /* end B50 ci */
     let frontier: Array<{ kind: string; id: string; via: string }> = seeds;
     let hop = 1;
     for (; hop <= MAX_HOPS && frontier.length > 0; hop += 1) {
@@ -258,6 +364,7 @@ export class ImpactService {
           if (String(d['depends_on_kind']) !== seed.kind) continue;
           if (String(d['depends_on_id']) !== seed.id) continue;
           const dependent = String(d['dependent_object_id']);
+          /* B50 ci */ if (!found.has(dependent) && dependent !== a.triggerObjectId && !parentOf.has(dependent)) parentOf.set(dependent, seed.id); /* end B50 ci */
           const already = found.get(dependent);
           if (already !== undefined) {
             if (already.via_ids !== undefined && !already.via_ids.includes(seed.id)) already.via_ids.push(seed.id);
@@ -353,8 +460,18 @@ export class ImpactService {
      * `MAX_HOPS`, not because the graph was exhausted. Naming what was left makes
      * the residual work actionable instead of invisible.
      */
-    const truncated = frontier.length > 0;
-    const unexplored = frontier;
+    /* B50 ci */
+    for (const x of found.values()) refOf.set(x.strategy_object_id, `${x.object_type}:${x.strategy_object_id}`);
+    const pathOf = (id: string): string[] => {
+      const out: string[] = []; const seen = new Set<string>(); let cur: string | undefined = id;
+      while (cur !== undefined && !seen.has(cur) && out.length < 32) { seen.add(cur); out.push(refOf.get(cur) ?? `object:${cur}`); cur = parentOf.get(cur); }
+      return out.reverse();
+    };
+    for (const x of found.values()) x.path = pathOf(x.strategy_object_id);
+    const products = await this.productReach(cap, a, { found, forecasts, runs, reachedClaims, reachedEntities, reachedEdges, reachedEvidence, parentOf, refOf, pathOf });
+    /* end B50 ci */
+    const truncated = frontier.length > 0 /* B50 ci */ || products.unexplored.length > 0 /* end B50 ci */;
+    const unexplored = /* B50 ci */ [...frontier, ...products.unexplored] /* end B50 ci */;
 
     const of = (t: string): AffectedObject[] =>
       [...found.values()].filter((x) => x.object_type === t)
@@ -377,6 +494,18 @@ export class ImpactService {
       /* B32 (0089) graph */
       capabilities: of('CAP'), initiatives: of('INI'), resources: of('RSC'), measures: of('MSR'), stakeholders: of('STK'), exposures: of('RSK'),
       /* end B32 graph */
+      /* B50 ci */
+      decisionPackages: products.buckets.decisionPackages, publications: products.buckets.publications, exportPackages: products.buckets.exportPackages,
+      evaluationDatasets: products.buckets.evaluationDatasets, lessons: products.buckets.lessons,
+      graphState: [
+        ...[...reachedClaims].map((id) => ({ strategy_object_id: id, object_type: 'CLM', product_kind: 'claim', title: `claim ${id}`, hop: 0, path: pathOf(id),
+          reached_via: id === a.triggerObjectId ? `the claim the ${a.triggerKind.replace(/_/g, ' ')} names` : 'derived from the changed evidence (claim_lineage)' })),
+        ...[...reachedEntities].map((id) => ({ strategy_object_id: id, object_type: 'ENT', product_kind: 'entity', title: `entity ${id}`, hop: id === a.triggerObjectId ? 0 : 1, path: pathOf(id),
+          reached_via: id === a.triggerObjectId ? `the entity the ${a.triggerKind.replace(/_/g, ' ')} names` : 'a reached claim resolved to it' })),
+        ...[...reachedEdges].map((id) => ({ strategy_object_id: id, object_type: 'REL', product_kind: 'edge', title: `edge ${id}`, hop: id === a.triggerObjectId ? 0 : 1, path: pathOf(id),
+          reached_via: id === a.triggerObjectId ? `the edge the ${a.triggerKind.replace(/_/g, ' ')} names` : 'a reached claim asserted it' })),
+      ],
+      /* end B50 ci */
       reachedEntities: [...reachedEntities],
       reachedEdges: [...reachedEdges],
       reachedClaims: [...reachedClaims],
@@ -384,6 +513,106 @@ export class ImpactService {
       unexplored,
     };
   }
+
+  /* B50 ci */
+  /**
+   * THE PRODUCT BUCKETS (0120 §CI.4): what cites a reached node through graph.walk_product_citations — rounds of "what cites anything reached
+   * so far" (a publication cites a reached briefing or package, a lesson a reached package, a validation a reached backtest), bounded by
+   * MAX_HOPS rounds like the dependency walk; a frontier still queued at the bound is UNEXPLORED (the walk then reads truncated). The series a
+   * reached forecast or frozen information set is about widens the walk to that series' evaluation records; for a MODEL INCIDENT the method
+   * of the object named does too. Nothing is marked here: the classes are the port's (graph.record_impact → graph._classify_walk).
+   */
+  private async productReach(
+    cap: WalkReads,
+    a: { triggerKind: string; triggerObjectId: string; triggerObjectType?: string },
+    g: { found: Map<string, AffectedObject>; forecasts: Map<string, Record<string, unknown>>; runs: Map<string, Record<string, unknown>>;
+         reachedClaims: Set<string>; reachedEntities: Set<string>; reachedEdges: Set<string>; reachedEvidence: Set<string>;
+         parentOf: Map<string, string>; refOf: Map<string, string>; pathOf: (id: string) => string[] },
+  ): Promise<{ buckets: Record<'decisionPackages' | 'publications' | 'exportPackages' | 'evaluationDatasets' | 'lessons', AffectedObject[]>; unexplored: Array<{ kind: string; id: string; via: string }> }> {
+    const buckets = { decisionPackages: [] as AffectedObject[], publications: [] as AffectedObject[], exportPackages: [] as AffectedObject[], evaluationDatasets: [] as AffectedObject[], lessons: [] as AffectedObject[] };
+    const hopOf = new Map<string, number>();
+    const reached = new Set<string>([a.triggerObjectId, ...g.reachedClaims, ...g.reachedEntities, ...g.reachedEdges, ...g.reachedEvidence]);
+    for (const x of g.found.values()) { reached.add(x.strategy_object_id); hopOf.set(x.strategy_object_id, x.hop); }
+    // The series a reached forecast is about (its evaluation records rest on the same history); the method, for a model incident only.
+    const seriesVia = new Map<string, string>();
+    for (const x of g.found.values()) {
+      const f = x.object_type === 'FCT' ? g.forecasts.get(x.strategy_object_id) : undefined;
+      if (f !== undefined && typeof f['series_key'] === 'string' && !seriesVia.has(f['series_key'])) seriesVia.set(f['series_key'], x.strategy_object_id);
+    }
+    const methodVia = new Map<string, string>();
+    if (a.triggerKind === 'model_incident') {
+      const f = g.forecasts.get(a.triggerObjectId); const r = g.runs.get(a.triggerObjectId);
+      if (f !== undefined) for (const m of [f['method'], f['method_ref'], `${String(f['method'])}@${String(f['method_version'])}`]) if (typeof m === 'string' && m !== '') methodVia.set(m, a.triggerObjectId);
+      if (r !== undefined && typeof r['model_ref'] === 'string') methodVia.set(r['model_ref'], a.triggerObjectId);
+    }
+    const products = new Map<string, AffectedObject>();
+    const short = (id: string): string => `${id.slice(0, 8)}…`;
+    const rests = (id: string | null): string => (id === a.triggerObjectId ? 'that changed' : 'that rests on what changed');
+    let ids = [...reached]; let series = [...seriesVia.keys()]; let methods = [...methodVia.keys()];
+    let round = 1;
+    for (; round <= MAX_HOPS && ids.length + series.length + methods.length > 0; round += 1) {
+      const rows: Array<Record<string, unknown>> = [];
+      for (let i = 0; i < Math.max(ids.length, 1); i += IN_SLICE) {
+        const slice = ids.slice(i, i + IN_SLICE);
+        const sl = i === 0 ? series : []; const ml = i === 0 ? methods : [];
+        if (slice.length + sl.length + ml.length === 0) continue;
+        rows.push(...((await cap.readProductCitations().selectAll()
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .where((eb: any) => eb.or([
+            ...(slice.length > 0 ? [eb('cites_id', 'in', slice)] : []),
+            ...(sl.length > 0 ? [eb.and([eb('cites_kind', '=', 'series'), eb('cites_ref', 'in', sl)])] : []),
+            ...(ml.length > 0 ? [eb.and([eb('cites_kind', '=', 'method'), eb('cites_ref', 'in', ml)])] : []),
+          ]))
+          .execute()) as Array<Record<string, unknown>>));
+      }
+      const nextIds: string[] = []; const nextSeries: string[] = [];
+      // deterministic: the citations in a stable order, so the same graph gives the same answer
+      rows.sort((x, y) => `${String(x['product_kind'])}:${String(x['product_id'])}:${String(x['product_version'] ?? '')}:${String(x['cites_kind'])}:${String(x['cites_id'] ?? x['cites_ref'])}`
+        .localeCompare(`${String(y['product_kind'])}:${String(y['product_id'])}:${String(y['product_version'] ?? '')}:${String(y['cites_kind'])}:${String(y['cites_id'] ?? y['cites_ref'])}`));
+      for (const r of rows) {
+        const kind = String(r['product_kind']); const id = String(r['product_id']);
+        const version = r['product_version'] === null || r['product_version'] === undefined ? null : Number(r['product_version']);
+        const key = `${kind}:${id}:${version ?? ''}`;
+        if (products.has(key)) continue;
+        const citesKind = String(r['cites_kind']);
+        const citesId = r['cites_id'] === null || r['cites_id'] === undefined ? null : String(r['cites_id']);
+        const citesRef = r['cites_ref'] === null || r['cites_ref'] === undefined ? null : String(r['cites_ref']);
+        const via = citesKind === 'series' ? (citesRef !== null ? seriesVia.get(citesRef) ?? null : null)
+          : citesKind === 'method' ? (citesRef !== null ? methodVia.get(citesRef) ?? null : null) : citesId;
+        if (via === null || (citesKind !== 'series' && citesKind !== 'method' && !reached.has(via))) continue;
+        const type = String(r['object_type']);
+        const cv = r['cited_version'] === null || r['cited_version'] === undefined ? '' : ` at version ${String(r['cited_version'])}`;
+        const reachedVia = kind === 'decision_package'
+          ? (citesKind === 'strategy' ? `the package is for decision "${g.found.get(via)?.title ?? short(via)}" ${rests(via)}`
+            : `version ${String(version)}'s option cites the ${citesKind} ${short(via)}${cv} ${rests(via)}`)
+          : kind === 'publication' ? `version ${String(version)} publishes the ${citesKind === 'briefing' ? 'briefing' : 'decision package (report)'} ${short(via)} ${rests(via)}`
+          : kind === 'export_package' ? `it exported manifest ${citesRef ?? '?'} of the evidence ${short(via)}${cv} ${rests(via)}`
+          : kind === 'information_set' ? (citesKind === 'forecast' ? `the forecast ${short(via)} ${rests(via)} pins it` : `it froze the evidence ${short(via)}${cv} ${rests(via)}`)
+          : kind === 'lesson' ? (citesKind === 'memory_item' ? `it is recorded as the memory item ${short(via)} ${rests(via)}` : `it was learned from the decision package ${short(via)} ${rests(via)}`)
+          : citesKind === 'series' ? `it validated the series ${citesRef ?? '?'}, whose forecast ${short(via)} ${rests(via)}`
+          : citesKind === 'method' ? `it validated the method ${citesRef ?? '?'} under the model incident`
+          : `it rests on the ${citesKind.replace(/_/g, ' ')} ${short(via)} ${rests(via)}`;
+        const hop = (hopOf.get(via) ?? 0) + 1;
+        const ref = `${type}:${id}${version === null ? '' : `@${version}`}`;
+        const viaPath = citesKind === 'series' || citesKind === 'method' ? g.pathOf(via) : g.pathOf(via);
+        const row: AffectedObject = { strategy_object_id: id, object_type: type, title: String(r['title'] ?? ref), reached_via: reachedVia, hop, version, path: [...viaPath, ref], product_kind: kind, via_id: via };
+        products.set(key, row);
+        const bucket = PRODUCT_BUCKET[kind];
+        if (bucket !== undefined) buckets[bucket].push(row);
+        if (!reached.has(id)) { reached.add(id); hopOf.set(id, hop); g.refOf.set(id, `${type}:${id}`); if (!g.parentOf.has(id)) g.parentOf.set(id, via); nextIds.push(id); }
+        const subject = r['subject_ref'];
+        if (typeof subject === 'string' && subject !== '' && !seriesVia.has(subject)) { seriesVia.set(subject, id); nextSeries.push(subject); }
+      }
+      ids = nextIds; series = nextSeries; methods = [];
+    }
+    const unexplored = round > MAX_HOPS
+      ? [...ids.map((id) => ({ kind: 'product', id, via: 'a product the bounded walk reached; what cites it was not read' })),
+         ...series.map((sk) => ({ kind: 'series', id: sk, via: 'a series a reached product is about; its evaluation records were not read' }))]
+      : [];
+    for (const b of Object.values(buckets)) b.sort((x, y) => x.hop - y.hop || x.strategy_object_id.localeCompare(y.strategy_object_id) || (x.version ?? 0) - (y.version ?? 0));
+    return { buckets, unexplored };
+  }
+  /* end B50 ci */
 
   /**
    * The evidence roots a correction case recorded as affected.
@@ -420,6 +649,7 @@ export class ImpactService {
     a: {
       triggerKind: string; triggerObjectId: string; correctionCaseId: string | null;
       actor: string; correlationId: string;
+      /* B50 ci */ triggerObjectType?: string; /* end B50 ci */
     },
   ): Promise<ImpactResult> {
     const tenantId = ctx.tenantId as string;
@@ -446,13 +676,14 @@ export class ImpactService {
       invalidationId, tenantId, domainId,
       assumptions: walked.assumptions, objectives: walked.objectives,
       decisions: walked.decisions, commitments: walked.commitments,
-      forecasts: walked.forecasts.map((f) => ({ forecast_id: f.strategy_object_id, reached_via: f.reached_via, hop: f.hop })),
-      twins: walked.twins.map((t) => ({ twin_id: t.strategy_object_id, via_id: t.via_id ?? null, via_ids: t.via_ids ?? (t.via_id ? [t.via_id] : []), reached_via: t.reached_via, hop: t.hop })),
-      simulations: walked.simulations.map((r) => ({ run_id: r.strategy_object_id, reached_via: r.reached_via, hop: r.hop })),
-      warnings: walked.warnings.map((w) => ({ warning_id: w.strategy_object_id, reached_via: w.reached_via, hop: w.hop })),
-      briefings: walked.briefings.map((b) => ({ briefing_id: b.strategy_object_id, reached_via: b.reached_via, hop: b.hop })),
-      memoryItems: walked.memoryItems.map((m) => ({ item_id: m.strategy_object_id, reached_via: m.reached_via, hop: m.hop })),
+      forecasts: walked.forecasts.map((f) => ({ forecast_id: f.strategy_object_id, reached_via: f.reached_via, hop: f.hop, /* B50 ci */ path: f.path ?? [] /* end B50 ci */ })),
+      twins: walked.twins.map((t) => ({ twin_id: t.strategy_object_id, via_id: t.via_id ?? null, via_ids: t.via_ids ?? (t.via_id ? [t.via_id] : []), reached_via: t.reached_via, hop: t.hop, /* B50 ci */ path: t.path ?? [] /* end B50 ci */ })),
+      simulations: walked.simulations.map((r) => ({ run_id: r.strategy_object_id, reached_via: r.reached_via, hop: r.hop, /* B50 ci */ path: r.path ?? [] /* end B50 ci */ })),
+      warnings: walked.warnings.map((w) => ({ warning_id: w.strategy_object_id, reached_via: w.reached_via, hop: w.hop, /* B50 ci */ path: w.path ?? [] /* end B50 ci */ })),
+      briefings: walked.briefings.map((b) => ({ briefing_id: b.strategy_object_id, reached_via: b.reached_via, hop: b.hop, /* B50 ci */ path: b.path ?? [] /* end B50 ci */ })),
+      memoryItems: walked.memoryItems.map((m) => ({ item_id: m.strategy_object_id, reached_via: m.reached_via, hop: m.hop, /* B50 ci */ path: m.path ?? [] /* end B50 ci */ })),
       /* B32 (0089) graph */ strategyNodes: strategyNodesOf(walked), /* end B32 graph */
+      /* B50 ci */ products: productItemsOf(walked), /* end B50 ci */
       statement, truncated: walked.truncated, unexplored: walked.unexplored,
       actor: a.actor, eventId: newId(), correlationId: a.correlationId,
     });
@@ -572,20 +803,49 @@ export class ImpactService {
 /* B32 (0089) graph */
 /** The six new strategy types the walk reached, as graph.record_impact records them (affected_strategy_nodes): one list, each with its type. */
 export function strategyNodesOf(w: Pick<ImpactResult, 'capabilities' | 'initiatives' | 'resources' | 'measures' | 'stakeholders' | 'exposures'>):
-  Array<{ strategy_object_id: string; object_type: string; title: string; reached_via: string; hop: number }> {
+  Array<{ strategy_object_id: string; object_type: string; title: string; reached_via: string; hop: number; /* B50 ci */ path?: string[] /* end B50 ci */ }> {
   return [...(w.capabilities ?? []), ...(w.initiatives ?? []), ...(w.resources ?? []), ...(w.measures ?? []), ...(w.stakeholders ?? []), ...(w.exposures ?? [])]
-    .map((x) => ({ strategy_object_id: x.strategy_object_id, object_type: x.object_type, title: x.title, reached_via: x.reached_via, hop: x.hop }));
+    .map((x) => ({ strategy_object_id: x.strategy_object_id, object_type: x.object_type, title: x.title, reached_via: x.reached_via, hop: x.hop,
+                   /* B50 ci */ ...(x.path === undefined ? {} : { path: x.path }) /* end B50 ci */ }));
 }
 /* end B32 graph */
+
+/* B50 ci */
+/**
+ * B50 §CI: the items graph.record_impact's p_products carries — the scenarios (reached since Phase 4, recorded nowhere until now), the graph
+ * state, and the new buckets; each { bucket, product_kind, object_type, product_id, product_version, title, reached_via, hop, path }. The port
+ * classes them (and the existing buckets) from the facts it reads; the walk never states a class.
+ */
+export function productItemsOf(w: Pick<ImpactResult, 'scenarios' | 'decisionPackages' | 'publications' | 'exportPackages' | 'evaluationDatasets' | 'lessons' | 'graphState'>):
+  Array<{ bucket: string; product_kind: string; object_type: string; product_id: string; product_version: number | null; title: string; reached_via: string; hop: number; path: string[] }> {
+  const item = (bucket: string, kind: string, x: AffectedObject) => ({ bucket, product_kind: kind, object_type: x.object_type, product_id: x.strategy_object_id,
+    product_version: x.version ?? null, title: x.title, reached_via: x.reached_via, hop: x.hop, path: x.path ?? [] });
+  return [
+    ...w.scenarios.map((x) => item('scenarios', 'scenario', x)),
+    ...(w.graphState ?? []).map((x) => item('graph_state', x.product_kind ?? 'claim', x)),
+    ...(w.decisionPackages ?? []).map((x) => item('decision_packages', 'decision_package', x)),
+    ...(w.publications ?? []).map((x) => item('publications', 'publication', x)),
+    ...(w.exportPackages ?? []).map((x) => item('export_packages', 'export_package', x)),
+    ...(w.evaluationDatasets ?? []).map((x) => item('evaluation_datasets', x.product_kind ?? 'backtest', x)),
+    ...(w.lessons ?? []).map((x) => item('lessons', 'lesson', x)),
+  ];
+}
+/* end B50 ci */
 
 function buildStatement(
   invalidationId: string,
   w: Omit<ImpactResult, 'invalidationId' | 'correctionCaseId' | 'statement'>,
 ): string {
   /* B32 (0089) graph */ const b32 = strategyNodesOf(w); /* end B32 graph */
+  /* B50 ci */
+  const b50 = ([[w.decisionPackages, 'decision package version(s)'], [w.publications, 'publication version(s)'], [w.exportPackages, 'export package(s)'],
+                [w.evaluationDatasets, 'evaluation dataset(s)'], [w.lessons, 'lesson(s)']] as Array<[AffectedObject[] | undefined, string]>)
+    .filter(([xs]) => (xs ?? []).length > 0).map(([xs, words]) => `${(xs ?? []).length} ${words}`);
+  const b50n = (w.decisionPackages ?? []).length + (w.publications ?? []).length + (w.exportPackages ?? []).length + (w.evaluationDatasets ?? []).length + (w.lessons ?? []).length;
+  /* end B50 ci */
   const total = w.assumptions.length + w.objectives.length + w.decisions.length + w.commitments.length
     + w.forecasts.length + w.scenarios.length + w.warnings.length + w.twins.length + w.simulations.length + w.briefings.length + w.memoryItems.length
-    /* B32 (0089) graph */ + b32.length /* end B32 graph */;
+    /* B32 (0089) graph */ + b32.length /* end B32 graph */ /* B50 ci */ + b50n /* end B50 ci */;
   const reach = `reached ${w.reachedClaims.length} claim(s), ${w.reachedEntities.length} `
     + `entity(ies) and ${w.reachedEdges.length} edge(s)`;
   const phase4 = w.forecasts.length + w.scenarios.length + w.warnings.length === 0 ? ''
@@ -597,7 +857,10 @@ function buildStatement(
     /* B32 (0089) graph: the new types, counted per type, reported for human review (nothing marked) */
     + (b32.length === 0 ? '' : `; ${[['CAP', 'capability(ies)'], ['INI', 'initiative(s)'], ['RSC', 'resource(s)'], ['MSR', 'measure(s)'], ['STK', 'stakeholder(s)'], ['RSK', 'risk(s)/opportunity(ies)']]
       .map(([t, words]) => [b32.filter((x) => x.object_type === t).length, words] as const).filter(([n]) => n > 0).map(([n, words]) => `${n} ${words}`).join(', ')} reported for human review`)
-    /* end B32 graph */;
+    /* end B32 graph */
+    /* B50 ci: the new buckets, counted, each product classed by the port for its owner */
+    + (b50.length === 0 ? '' : `; ${b50.join(', ')} reached — each classed for its owner`)
+    /* end B50 ci */;
   /*
    * AN INCOMPLETE WALK SAYS SO, FIRST.
    *

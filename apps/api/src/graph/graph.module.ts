@@ -38,6 +38,7 @@ import { MemoryService } from './memory/memory.service.js';
 import { ProjectionsService } from './projections/projections.service.js';
 import { ProjectionsController } from './projections/projections.controller.js';
 import { ObservationExceptionFilter } from '../observation/observation.filter.js';
+/* B50 ci */ import { ImpactTriggersService } from './impact/impact-triggers.service.js'; import { ImpactB50Controller } from './impact/impact-b50.controller.js'; /* end B50 ci */
 
 /*
  * CP-6 B1 (0060): the propagation consumer lives here — it is the graph's walk, run by the
@@ -48,7 +49,7 @@ import { ObservationExceptionFilter } from '../observation/observation.filter.js
 @Module({
   imports: [PipelineModule, IdentityModule, ObservationModule, IntelligenceModule],
   // CP-6 B20 (0080): the projection partitions' two governed acts (withdraw, rebuild) on the same base path as the graph routes.
-  controllers: [GraphController, ProjectionsController],
+  controllers: [GraphController, ProjectionsController, /* B50 ci: the impact triggers and the classed products (0120 §CI) */ ImpactB50Controller /* end B50 ci */],
   providers: [
     GraphOrchestrator,
     ResolverService,
@@ -74,12 +75,13 @@ import { ObservationExceptionFilter } from '../observation/observation.filter.js
     RelationshipsConsumer,
     MemoryService,
     ProjectionsService,
+    /* B50 ci */ ImpactTriggersService, /* end B50 ci */
     // The same filter the observation and intelligence routes use. A deliberate
     // refusal from a graph port is a rule, not a crash, and answers as one.
     { provide: APP_FILTER, useClass: ObservationExceptionFilter },
   ],
   exports: [GraphOrchestrator, ImpactService, EntitiesService, ResolutionService,
             EdgesService, StrategyService, SearchService, PropagationAgentsService, PropagationConsumerService,
-            SubscriptionDispatcherService, SubscriptionsService],
+            SubscriptionDispatcherService, SubscriptionsService, /* B50 ci */ ImpactTriggersService /* end B50 ci */],
 })
 export class GraphModule {}
