@@ -214,6 +214,13 @@ describe('PX1 · the provenance strength (§0\'s stub replaced whole)', () => {
     expect(n.strength).toBe('weak'); expect(codes(n)).toEqual(['unresolved_citation']); expect(n.reasons[0]!.detail).toMatch(/does not resolve to a recorded object/);
     evidence('PX1 weak', { unfit: u, unresolved: n });
   });
+  it('a CORRECTION of an UNFIT version is not weakened by its own original\'s mark (the original stays WEAK; the act rehearsal\'s finding)', async () => {
+    const u1 = await plant({ evidenceRefs: [key(EVD)] }); await fitnessMark(u1, 'unfit');
+    const u2 = await plant({ id: u1.id, version: 2, correctionOf: `${u1.id}@1`, evidenceRefs: [key(EVD)] });
+    expect((await strengthSql(u1)).strength).toBe('weak');
+    const s = await strengthSql(u2);
+    expect(codes(s)).not.toContain('unfit'); expect(s.strength).not.toBe('weak');
+  });
   it('BROKEN: an integrity gap (an evidence version with no manifest and no custody); PARTIAL: a withdrawn input; a correction\'s own original is not an input change', async () => {
     const b = await strengthSql(BROKEN);
     expect(b.strength).toBe('broken'); expect(b.reasons.filter((x) => x.code === 'gap').map((x) => x.detail).join(' | ')).toMatch(/BROKEN — (unverifiable artifact|broken custody)/);
