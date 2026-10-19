@@ -22,6 +22,11 @@ import {
 import { TimelineDisclosureNote, TimelineScrubber } from '../../../components/knowledge';
 import { DefinitionRow, Empty, LiveStatus, Mono, UnknownNote, cardStyle } from '../../../components/observation';
 import { Receipt, Td, Th, tableStyle } from '../../../components/ui';
+/* B82 cf: the chronology drawn on the read's own axis — event / record time declared, the actor, the source, the later correction (VIZ-02) */
+import { EventTimeline } from '../../../components/chart';
+import { timelineEvents } from '../../../lib/chart-reads-b82';
+import { readExport, timelineSpec } from '../../../lib/chart-specs-b82';
+/* end B82 cf */
 
 type Row = Record<string, unknown>;
 /** ONE h1 per rendering (lib/layout-b81's REG-03 ratchet): every branch titles the page through this element. */
@@ -150,6 +155,17 @@ function TimelineBody() {
 
           <section style={cardStyle}><TimelineDisclosureNote disclosure={view.disclosure} /></section>
 
+          {/* B82 cf: the versions (and, on record time, the ledger events) placed on the axis; the versions table below keeps the links and the clocks */}
+          {(() => {
+            const ev = timelineEvents(view);
+            const subject = view.subject['kind'] === 'scope' ? `scope ${String(view.subject['scope_key'])}` : `${String(view.subject['type'])} ${String(view.subject['id']).slice(0, 8)}…`;
+            return (
+              <section style={cardStyle} aria-label="the chronology, drawn">
+                <EventTimeline spec={timelineSpec(subject, view.window.axis, ev, view.asOf, view.readAt, view.live)} events={ev} exportAs={readExport(scope, view.readAt, view.clearance)} />
+              </section>
+            );
+          })()}
+          {/* end B82 cf */}
           <section style={cardStyle} aria-labelledby="tl-items-h">
             <h2 id="tl-items-h" style={{ fontSize: 'var(--eye-type-heading-3)' }}>The versions ({view.items.length})</h2>
             {view.items.length === 0 ? <p>No version is placed in this window on this axis, as known at the instant (the disclosure above says what is not shown).</p> : (

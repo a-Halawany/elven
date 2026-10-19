@@ -33,6 +33,10 @@ import { compareBaselines, eligibility, nextSteps, OBLIGATION_ROLE, stepAction, 
 import { lintDesign } from './design-lint.js';
 import { inventoryFrom, readRepository } from './design-source.js';
 import { signPlatform } from './design-signing.js';
+/* B82 cf: dg-lint-4 (the chart-grammar lint) and its ratchet */
+import { chartRatchet, lintCharts } from './charts/chart-lint.js';
+import { CHART_LINT_RATCHET } from './charts/chart-lint-ratchet.js';
+/* end B82 cf */
 
 type Row = Record<string, unknown>;
 export const READ = 'governance.read';
@@ -180,6 +184,24 @@ export class DesignGovernanceService implements OnModuleInit {
                              findings: lint.findings.map((f) => ({ rule: f.rule, file: f.file, line: f.line, excerpt: f.excerpt })), actor: p.principalId, correlationId: env.correlation_id }));
     return { evaluation: { ...out.result, files: lint.files, counts: lint.counts }, receipt: receipt(out) };
   }
+  /* B82 cf — THE CHART-GRAMMAR LINT (dg-lint-4, UX-ADR-015 / REL-17): the web source read FIRST (read-only), linted (pure), the evaluation
+     recorded through B107's port under the principle `design.evidence-bearing-charts` the Design System Authority declares (the port refuses
+     a finding naming no active principle — `unknown_principle`), then the RATCHET: the committed findings only shrink. The port judges. */
+  async runChartLint(env: Envelope, p: AuthenticatedPrincipal, given: { files: Array<{ path: string; text: string }> } | null) {
+    const files = given?.files ?? readRepository()?.files ?? null;
+    if (files === null) throw refuseGovernance('design principle', 'state', 'this deployment carries no web source to lint', env.correlation_id, 409);
+    const lint = lintCharts(files);
+    const evaluationId = newId();
+    const out = await this.write(env, p, platformRoute('governance.design.evaluate', 'DSE', evaluationId), async (cap) =>
+      cap.recordEvaluation({ evaluationId, source: 'lint', assetId: null, assetVersion: null, inputDigest: lint.inputDigest, rulesVersion: lint.rulesVersion,
+                             findings: lint.findings.map((f) => ({ rule: f.rule, principle: f.principle, file: f.file, line: f.line, excerpt: f.excerpt, note: f.note })), actor: p.principalId, correlationId: env.correlation_id }));
+    const r = chartRatchet(lint.findings, CHART_LINT_RATCHET);
+    return { evaluation: { ...out.result, files: lint.files, counts: lint.counts },
+             ratchet: { holds: r.holds, baseline: r.baseline, current: r.current, regressions: r.regressions, resolved: r.resolved.length,
+                        rule: 'the committed findings list only shrinks: a finding outside it is a regression; a committed one no longer found is removed from the list' },
+             receipt: receipt(out) };
+  }
+  /* end B82 cf */
   async recordReview(env: Envelope, p: AuthenticatedPrincipal, b: { assetId: string; assetVersion: number; findings: Row[]; notes: string }) {
     const evaluationId = newId();
     const out = await this.write(env, p, platformRoute('governance.design.evaluate', 'DSE', evaluationId), async (cap) =>

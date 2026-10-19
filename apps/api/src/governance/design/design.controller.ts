@@ -9,6 +9,7 @@
  *   assets/:id/approve                                                             governance.design.asset.approve (human-gated; the one accountable owner named)
  *   principles/declare                                                             governance.design.principle.declare (human-gated)
  *   evaluations/lint · evaluations/review                                          governance.design.evaluate
+ *   evaluations/chart-grammar (B82 cf — dg-lint-4)                                 governance.design.evaluate
  *   exceptions/request · exceptions/:id/decide                                     governance.design.exception.request / .decide (human-gated; approve SIGNED)
  *   contributions/propose · contributions/:id/amend                                governance.design.contribution.propose / .amend
  *   contributions/:id/:step (review accept reject publish deprecate adopt measure migrate retire close)
@@ -133,6 +134,14 @@ export class DesignPlatformController {
     const files = Array.isArray(p['files']) ? (p['files'] as Row[]).filter((f) => typeof f['path'] === 'string' && typeof f['text'] === 'string').map((f) => ({ path: String(f['path']), text: String(f['text']) })) : null;
     return this.svc.runLint(envelope, principal, files === null ? null : { files });
   }
+  /* B82 cf: dg-lint-4 — the chart-grammar lint recorded through B107's evaluation port (governance.design.evaluate), with its ratchet */
+  @Post('/evaluations/chart-grammar')
+  async chartGrammar(@Req() req: EyeRequest, @Body() body: Payload) {
+    const { envelope, principal } = ctx(req); const p = body.payload ?? {};
+    const files = Array.isArray(p['files']) ? (p['files'] as Row[]).filter((f) => typeof f['path'] === 'string' && typeof f['text'] === 'string').map((f) => ({ path: String(f['path']), text: String(f['text']) })) : null;
+    return this.svc.runChartLint(envelope, principal, files === null ? null : { files });
+  }
+  /* end B82 cf */
   @Post('/evaluations/review')
   async review(@Req() req: EyeRequest, @Body() body: Payload) {
     const { envelope, principal } = ctx(req); const p = body.payload ?? {}; const cid = envelope.correlation_id;

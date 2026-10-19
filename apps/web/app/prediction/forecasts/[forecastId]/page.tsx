@@ -21,6 +21,13 @@ import { ErrorNote } from '../../../../components/ui';
 import { DefinitionRow, Empty, Mono, UnknownNote, fmtInstant } from '../../../../components/observation';
 import { ControlsLine, FitnessFlag, ValidationBadge } from '../page';
 /* B81 har: the CONTEST PATH on the forecast (HX-14) */ import { SubjectContest } from '../../../decisions/contest-panel'; import { rolesIn } from '../../../../lib/authority-b81'; /* end B81 har */
+/* B82 cf: the band and the observations it could know (CMP-060/-061, VIZ-01/-03) */
+import { ProbabilityBand, TimeSeries } from '../../../../components/chart';
+import { forecastBand } from '../../../../lib/chart-reads-b82';
+import { forecastBandSpec, readExport, seriesSpec } from '../../../../lib/chart-specs-b82';
+import { medianStepMs } from '../../../../lib/chart-b82';
+import type { SeriesPoint } from '../../../../lib/prediction';
+/* end B82 cf */
 /* B81 integration (UX-11-005) */ import { RecoveryPanel } from '../../../../components/recovery'; import { recoveryOfRefusedLink } from '../../../../lib/degraded-b81'; /* end B81 integration */
 
 /** B81 integration: ONE h1 per rendering (lib/layout-b81's REG-03 ratchet) — every branch (not opened, loading, the object) titles
@@ -40,6 +47,11 @@ export default function ForecastObjectPage() {
   const [f, setF] = useState<ForecastRow | null>(null);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [err, setErr] = useState<Err>(null);
+  /* B82 cf: the series as the forecast could know it (the existing points read, bounded by the forecast's known-at and origin) */
+  const [series, setSeries] = useState<{ points: SeriesPoint[]; unit: string; attribution: string | null; note: string | null; complete: boolean; total: number } | null>(null);
+  const [seriesErr, setSeriesErr] = useState<Err>(null);
+  const [readAt, setReadAt] = useState(() => new Date().toISOString());
+  /* end B82 cf */
 
   useEffect(() => {
     setF(null); setErr(null);
@@ -48,6 +60,13 @@ export default function ForecastObjectPage() {
       const r = await prediction.getForecast(scope, id);
       if (!r.ok || r.data === undefined || r.data.forecast.forecast_id !== id) { setErr(r.error ?? { code: 'EYE-OBJ', message: 'the answer did not name the forecast the link names', correlationId: '—' }); return; }
       setF(r.data.forecast); setReceipt(r.data.receipt);
+      /* B82 cf */
+      setReadAt(new Date().toISOString()); setSeries(null); setSeriesErr(null);
+      const fc = r.data.forecast;
+      const sp = await prediction.seriesPoints(scope, fc.series_key, fc.known_at, String(fc.origin_at).slice(0, 10));
+      if (!sp.ok || sp.data === undefined) { setSeriesErr(sp.error ?? { code: 'EYE-SER', message: 'the series points were not read; reload the page to read them again', correlationId: '—' }); return; }
+      setSeries({ points: sp.data.points, unit: sp.data.unit, attribution: sp.data.attribution, note: sp.data.note, complete: sp.data.complete, total: sp.data.total });
+      /* end B82 cf */
     })();
   }, [scope, id]);
 
@@ -90,6 +109,23 @@ export default function ForecastObjectPage() {
         <DefinitionRow term="Fitness"><FitnessFlag row={f} /></DefinitionRow>
         {f.attribution === null || f.attribution === undefined ? null : <DefinitionRow term="Attribution"><em>{f.attribution}</em> Shown as published; the statistics are not modified.</DefinitionRow>}
       </dl>
+      {/* B82 cf: the forecast as its band, and the observations it could know (gaps drawn as gaps; the cadence the median step, stated) */}
+      {(() => {
+        const pts = forecastBand(f);
+        const obs = series === null ? [] : series.points.map((p) => ({ at: p.date, value: Number.isFinite(p.value) ? p.value : null }));
+        const step = medianStepMs(obs.map((p) => p.at));
+        const cadence = step === null ? 'no cadence can be read from fewer than three points — only a missing value is drawn as a gap' : `the cadence is the median step between points (${Math.round(step / 86_400_000)} day(s)); a wider step is drawn as a gap${series !== null && !series.complete ? ` — the read is INCOMPLETE (${series.total} point(s) in all)` : ''}`;
+        const unit = series?.unit ?? f.unit ?? 'as the series states';
+        return (
+          <>
+            <ProbabilityBand spec={forecastBandSpec(f, pts, readAt)} points={pts} cutoff={f.known_at} validation={`${f.validation_state.replace(/_/g, ' ').toUpperCase()} · ${f.label}`} exportAs={readExport(scope, readAt, f.controls?.classification ?? null)} />
+            <TimeSeries spec={seriesSpec(f.series_key, unit, obs.length, f.known_at, readAt, cadence, series?.attribution ?? null)} series={[{ key: f.series_key, label: f.series_key, points: obs }]} cadenceMs={step}
+              exportAs={readExport(scope, readAt, f.controls?.classification ?? null)}
+              status={seriesErr !== null ? { state: 'error', error: seriesErr } : series === null ? { state: 'loading' } : obs.length === 0 ? { state: 'empty', statement: series.note ?? 'no observation was known at the forecast\u2019s cutoff' } : { state: 'ready' }} />
+          </>
+        );
+      })()}
+      {/* end B82 cf */}
       {/* B81 har: the CONTEST PATH (HX-14) — the B35 appeal cases on this forecast (a forecast carries no B36 challenge); an appeal opens on the explanations page */}
       <SubjectContest scope={scope} roles={rolesIn(me.bindings, scope)} type="forecast" appealKind="forecast" subjectId={f.forecast_id} explanation={{ kind: 'forecast', version: null }} />
       {/* end B81 har */}

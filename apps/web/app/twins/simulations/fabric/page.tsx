@@ -20,6 +20,11 @@ import {
 } from '../../../../lib/experiments-b30';
 import { Empty, LiveStatus, Mono, ScrollBox, cardStyle, DefinitionRow, UnknownNote, GovernedButton, fmtInstant, textareaStyle } from '../../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../../components/ui';
+/* B82 cf: each validation's benchmark sample as a declared-bin distribution with the run mean, the benchmark mean and the band marked (VIZ-08) */
+import { Distribution } from '../../../../components/chart';
+import { benchmarkInput } from '../../../../lib/chart-reads-b82';
+import { benchmarkSpec, readExport } from '../../../../lib/chart-specs-b82';
+/* end B82 cf */
 /* B81 re: the library's Field (its control slot) — the local Field helper migrated (UX-ADR-011; dg-lint-2's ratchet) */ import { Field } from '../../../../components/forms';
 
 type ReceiptT = { policyDecisionId: string; auditSeq: number } | null;
@@ -53,6 +58,7 @@ export default function FabricExperimentsPage() {
   const [qModel, setQModel] = useState('discrete-event@1'); const [qReason, setQReason] = useState(''); const [qRun, setQRun] = useState('');
   const [pPolicy, setPPolicy] = useState<UnstablePolicy>('stop'); const [pReason, setPReason] = useState(''); const [xReason, setXReason] = useState('');
   const [runId, setRunId] = useState(''); const [run, setRun] = useState<RunRetirement | null>(null);
+  /* B82 cf: the run read's own instant (the server's `at`) is the charts' as-of */ const [runAt, setRunAt] = useState<string | null>(null); /* end B82 cf */
   const [rReason, setRReason] = useState(''); const [rBy, setRBy] = useState('');
   const [sMetric, setSMetric] = useState('line_stop_days'); const [sPoints, setSPoints] = useState('9');
   const [bMeasure, setBMeasure] = useState('total_cost'); const [bKind, setBKind] = useState<'benchmark' | 'observed'>('benchmark'); const [bValues, setBValues] = useState('');
@@ -66,7 +72,7 @@ export default function FabricExperimentsPage() {
   const openRun = async (id: string) => {
     const r = await fabricExperiments.readRun(scope, id);
     if (!r.ok || r.data === undefined) { setRun(null); setProblem(refusal(r, 'the run could not be read')); return; }
-    setRun(r.data.run); setProblem(null);
+    setRun(r.data.run); setProblem(null); /* B82 cf */ setRunAt(r.data.at); /* end B82 cf */
   };
   useEffect(() => { void load(); }, [scope.tenantId, scope.domainId]);
   const act = async (what: string, call: () => Promise<Answer>, after?: () => Promise<void>) => {
@@ -197,6 +203,13 @@ export default function FabricExperimentsPage() {
                 <ul aria-label="validations" style={small}>{run.validations.map((v) => (
                   <li key={v.validation_id}>{validationLine(v)}<br />{tailLine(v.tail)}<br />{convergenceLine(v.convergence)}<br /><span style={muted}>basis: {v.benchmark.basis}</span></li>
                 ))}</ul>
+                {/* B82 cf: each validation's sample drawn — never smoothed; its bins' rule stated */}
+                {run.validations.map((v) => {
+                  const b = benchmarkInput(v); const at = runAt ?? v.validated_at;
+                  return <Distribution key={`d-${v.validation_id}`} spec={benchmarkSpec(v.measure, v.benchmark_kind, b.values.length, at, b.rule, v.verdict, v.benchmark.basis)}
+                    input={{ kind: 'bins', values: b.values, bins: b.bins, marks: b.marks }} exportAs={readExport(scope, at, 'SYNTHETIC — every figure on this screen')} />;
+                })}
+                {/* end B82 cf */}
               </>
             )}
           </div>

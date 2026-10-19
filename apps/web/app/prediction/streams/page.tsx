@@ -15,6 +15,12 @@ import {
 } from '../../../lib/streams';
 import { Empty, LiveStatus, Mono, cardStyle, DefinitionRow, UnknownNote, GovernedButton, fmtInstant } from '../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui';
+/* B82 cf: the stream's sample against its rule — a threshold shown as a rule, never as certainty (VIZ-26) */
+import { ControlChart } from '../../../components/chart';
+import { streamControl } from '../../../lib/chart-reads-b82';
+import { readExport, streamSpec } from '../../../lib/chart-specs-b82';
+import { controlRows } from '../../../lib/chart-b82';
+/* end B82 cf */
 
 const STATE_TOKEN: Record<string, string> = {
   running: '--eye-color-success', suspended: '--eye-color-warning', stalled: '--eye-color-warning', corrupt: '--eye-color-critical',
@@ -55,6 +61,7 @@ export default function StreamsPage() {
   const [problem, setProblem] = useState<string | null>(null);
   const [last, setLast] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<{ policyDecisionId: string; auditSeq: number } | null>(null);
+  /* B82 cf */ const [readAt, setReadAt] = useState(() => new Date().toISOString()); /* end B82 cf */
 
   const load = async () => {
     const r = await streams.list(scope);
@@ -64,7 +71,7 @@ export default function StreamsPage() {
   const openOne = async (id: string) => {
     const r = await streams.get(scope, id);
     if (!r.ok || r.data === undefined) { setProblem(r.error?.message ?? 'the stream processor could not be read'); return; }
-    setOpen(r.data.stream); setReason('');
+    setOpen(r.data.stream); setReason(''); /* B82 cf */ setReadAt(new Date().toISOString()); /* end B82 cf */
   };
   useEffect(() => { void load(); }, [scope]);
 
@@ -125,6 +132,19 @@ export default function StreamsPage() {
             <DefinitionRow term="Last checkpoint">{open.checkpoints[0] ? <>{open.checkpoints[0].reason} at {fmtInstant(open.checkpoints[0].taken_at)} — input {open.checkpoints[0].input_seq}, watermark {fmtInstant(open.checkpoints[0].watermark)}, digest <Mono>{open.checkpoints[0].state_digest.slice(0, 12)}…</Mono></> : 'none'}</DefinitionRow>
           </dl>
 
+          {/* B82 cf: the daily sample in event time, the rule's threshold as its declared limit, retractions and recoveries as interventions */}
+          {(() => {
+            const c = streamControl(open);
+            const unit = `as series ${open.rule?.series_key ?? 'the rule names'} states`;
+            const ruleWords = c.limits[0]?.label ?? 'no rule is attached to this processor';
+            const met = controlRows(c.points, c.limits).filter((r) => r['rules'] !== 'none' && r['rules'] !== 'unknown — no value').length;
+            return (
+              <ControlChart spec={streamSpec(open.rule?.title ?? p.processor_identity, unit, c.points.length, p.watermark, readAt, ruleWords, met)} points={c.points} baseline={null} limits={c.limits}
+                interventions={c.interventions} exportAs={readExport(scope, readAt)}
+                {...(p.state === 'running' ? {} : { status: { state: 'stale' as const, statement: `outputs suspended — the processor is ${p.state}: ${p.state_reason ?? 'no reason recorded'}; no value here is presented as current` } })} />
+            );
+          })()}
+          {/* end B82 cf */}
           <h3 style={{ fontSize: 'var(--eye-type-heading-3)' }}>Windows</h3>
           <table className="eye-table" style={tableStyle}>
             <thead><tr><Th>Window (event time)</Th><Th>Status</Th><Th>Completeness</Th><Th>Observed days</Th><Th>Hits</Th><Th>Predicate</Th><Th>Revision</Th></tr></thead>

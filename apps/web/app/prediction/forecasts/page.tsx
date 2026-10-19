@@ -16,6 +16,11 @@ import { graph, type StrategyRow } from '../../../lib/graph';
 import { fitnessLabel } from '../../../lib/fitness';
 import { Empty, LiveStatus, Mono, cardStyle, DefinitionRow, UnknownNote, GovernedButton, fmtInstant } from '../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui';
+/* B82 cf: the forecast drawn as its band (never a point) and the series across the six canonical horizons (CMP-061, VIZ-03, VIZ-04) */
+import { HorizonMatrix, ProbabilityBand } from '../../../components/chart';
+import { forecastBand, forecastHorizonRows } from '../../../lib/chart-reads-b82';
+import { forecastBandSpec, horizonSpec, readExport } from '../../../lib/chart-specs-b82';
+/* end B82 cf */
 
 /** B21: a forecast's fitness flag — the server's state and, for UNFIT, its class; glyph + label + token, never colour alone. */
 export function FitnessFlag({ row }: { row: { fitness_state?: unknown; fitness_class?: unknown } }) {
@@ -91,11 +96,12 @@ export default function ForecastsPage() {
   /* B21: the assessment as the port recorded it, or the server's refusal — never a verdict derived here. */
   const [assessed, setAssessed] = useState<FitnessAssessment | null>(null);
   const [assessRefused, setAssessRefused] = useState<string | null>(null);
+  /* B82 cf: the instant this page made its read (the charts' as-of) */ const [readAt, setReadAt] = useState(() => new Date().toISOString()); /* end B82 cf */
 
   const load = async (asOf?: string) => {
     const [f, s, g] = await Promise.all([prediction.listForecasts(scope, asOf), prediction.listSeries(scope), graph.listStrategy(scope)]);
     if (!f.ok || f.data === undefined) { setProblem(f.error?.message ?? 'the forecasts could not be read'); return; }
-    setRows(f.data.forecasts);
+    setRows(f.data.forecasts); /* B82 cf */ setReadAt(new Date().toISOString()); /* end B82 cf */
     if (s.ok && s.data !== undefined) { setSeries(s.data.series); setSeriesKey((p) => p || (s.data?.series[0]?.series_key ?? '')); }
     if (g.ok && g.data !== undefined) {
       const asu = g.data.strategy.filter((x) => x.object_type === 'ASU');
@@ -212,6 +218,18 @@ export default function ForecastsPage() {
               )}
             </DefinitionRow>
           </dl>
+          {/* B82 cf: the band (q10–q90 over the horizon path, the cutoff, the validation state quoted) and the six horizons of the series */}
+          {(() => {
+            const pts = forecastBand(open);
+            const hz = forecastHorizonRows(rows, open.series_key);
+            return (
+              <>
+                <ProbabilityBand spec={forecastBandSpec(open, pts, readAt)} points={pts} cutoff={open.known_at} validation={`${open.validation_state.replace(/_/g, ' ').toUpperCase()} · ${open.label}`} exportAs={readExport(scope, readAt, open.controls?.classification ?? null)} />
+                <HorizonMatrix spec={horizonSpec(open.series_key, hz, readAt)} rows={hz} exportAs={readExport(scope, readAt)} />
+              </>
+            );
+          })()}
+          {/* end B82 cf */}
           {isForecastOwner && open.state !== 'withdrawn' ? (
             <GovernedButton label="Assess fitness under the rule" pendingLabel="assessing" variant="quiet"
               onRun={async () => {

@@ -25,6 +25,9 @@ import { EV_RENDERED, EvCatalogue } from './ev-fixtures';
 /* B82 gm */
 import { GM_RENDERED, GmCatalogue } from './gm-fixtures';
 /* end B82 gm */
+/* B82 cf */
+import { CF_RENDERED, CfCatalogue } from './cf-fixtures';
+/* end B82 cf */
 
 /** The library exports each folded part renders here (a part adds its names with its section). */
 const RENDERED = new Set<string>([
@@ -33,6 +36,7 @@ const RENDERED = new Set<string>([
   /* B82 ts */ ...TS_RENDERED, /* end B82 ts */
   /* B82 ev */ ...EV_RENDERED, /* end B82 ev */
   /* B82 gm */ ...GM_RENDERED, /* end B82 gm */
+  /* B82 cf */ ...CF_RENDERED, /* end B82 cf */
 ]);
 
 export default function CataloguePage() {
@@ -67,6 +71,9 @@ export default function CataloguePage() {
       {/* B82 gm */}
       <GmCatalogue />
       {/* end B82 gm */}
+      {/* B82 cf */}
+      <CfCatalogue />
+      {/* end B82 cf */}
     </>
   );
 }
