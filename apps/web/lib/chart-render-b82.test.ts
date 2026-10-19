@@ -6,12 +6,13 @@
  */
 import { describe, expect, it } from 'vitest';
 import { createElement } from 'react';
+// @ts-expect-error -- react-dom ships no type declarations and no new dev dependency (@types/react-dom) is added; the call is typed below
 import { renderToStaticMarkup } from 'react-dom/server';
 import { CfCatalogue, CF_RENDERED } from '../app/admin/governance/design/catalogue/cf-fixtures';
 import { LIBRARY_B82 } from './b82-seams';
 
-const html = renderToStaticMarkup(createElement(CfCatalogue));
-const figures = html.split('<figure').slice(1);
+const html: string = (renderToStaticMarkup as (e: ReturnType<typeof createElement>) => string)(createElement(CfCatalogue));
+const figures: string[] = html.split('<figure').slice(1);
 const kindOf = (f: string) => /data-chart-kind="([^"]*)"/.exec(f)?.[1] ?? '';
 
 describe('the catalogue draws every §CF kind through ChartFrame (REL-17, UX-ADR-015)', () => {

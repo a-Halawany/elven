@@ -170,6 +170,16 @@ export class ExposuresController {
   }
 
   /** A roll-up: refused whole (409, every reason named) when a member is unowned, unaccepted, contested, stale or closed. */
+  /* B82 cf: the correlation read beside the declare route (VIZ-24) — the domain's declared exposure correlations, read under prediction.exposure.read */
+  @Post('/exposures/correlations/list')
+  async listCorrelations(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(envelope, principal, this.route(tenantId, domainId, 'prediction.exposure.read', 'RSK', null), ExposuresCapability.read,
+      async (cap) => ({ ...(await this.exposures.correlations(cap)), at: await cap.dbNow() }));   /* the DATABASE's now — never the host's clock */
+    return { correlations: out.result, receipt: receipt(out) };
+  }
+  /* end B82 cf */
+
   @Post('/exposures/aggregate')
   async aggregate(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: { payload?: Row }) {
     const { envelope, principal } = ctx(req);

@@ -229,6 +229,28 @@ export class ExposuresService {
     };
   }
 
+  /* B82 cf — THE CORRELATION READ (VIZ-24): every declared or agent-proposed exposure correlation of the domain (append-only — oldest
+     first, so a later entry for a pair supersedes an earlier one in the matrix), the exposures they name with their titles, and the counts.
+     These are DECLARED categorical relations (0089 prediction.exposure_correlations: independent | correlated | comonotone, an optional
+     coefficient, a basis) — never estimated from data: the read says so, and a chart over it uses no causal word. */
+  async correlations(cap: ExposureReads): Promise<Row> {
+    const entries = (await cap.readCorrelations().selectAll().orderBy('recorded_at' as never).orderBy('correlation_row_id' as never).execute()) as Row[];
+    const exposures = (await cap.readExposures().select(['exposure_id', 'polarity', 'category', 'state'] as never).orderBy('registered_at' as never).execute()) as Row[];
+    const ids = exposures.map((x) => String(x['exposure_id']));
+    const titles = ids.length === 0 ? [] : (await cap.readStrategy().select(['strategy_object_id', 'title'] as never).where('strategy_object_id' as never, 'in', ids as never).execute()) as Row[];
+    const title = new Map(titles.map((t) => [String(t['strategy_object_id']), t['title']]));
+    const named = new Set(entries.flatMap((e) => [String(e['exposure_a']), String(e['exposure_b'])]));
+    const latest = new Map<string, Row>();
+    for (const e of entries) latest.set(`${String(e['exposure_a'])}|${String(e['exposure_b'])}`, e);
+    return {
+      variables: exposures.filter((x) => named.has(String(x['exposure_id']))).map((x) => ({ ...x, title: title.get(String(x['exposure_id'])) ?? null })),
+      entries, latest: [...latest.values()],
+      counts: { entries: entries.length, pairs: latest.size, declared: entries.filter((e) => e['estimated_kind'] === 'human').length, proposed_by_agent: entries.filter((e) => e['estimated_kind'] === 'agent').length },
+      method: 'declared relations: a named person declares a pair (human), or an agent run proposes one (agent) — neither is estimated from observed data; no sample, no interval',
+    };
+  }
+  /* end B82 cf */
+
   /** One exposure, whole. */
   async get(cap: ExposureReads, exposureId: string, correlationId: string): Promise<Row> {
     const x = (await cap.readExposures().selectAll().where('exposure_id' as never, '=', exposureId as never).executeTakeFirst()) as Row | undefined;
