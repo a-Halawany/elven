@@ -36,6 +36,11 @@ export const evidenceApi = {
     call<{ segment: SegmentView; receipt: Receipt }>(`${obsBase(s)}/evidence/${evdId}/segment`, env(s, 'observation.evidence.retrieve', 'EVD', evdId, 'observation', true), a),
   rights: (s: Scope, sourceId: string) =>
     call<{ rights: Row & { versions: Row[] }; receipt: Receipt }>(`${obsBase(s)}/rights/${sourceId}/read`, env(s, 'observation.read.rights', 'SRC', sourceId, 'observation', true), {}),
+  /* B82-F rt (0122): THE DECLARERS' READ — the domain's sources with their rights metadata (observation.rights.terms.read: the data steward
+     and the collection manager at DOMAIN); never evidence content or bytes */
+  rightsTerms: (s: Scope) =>
+    call<{ terms: { series: Row[]; truncated: boolean; as_of: string }; receipt: Receipt }>(`${obsBase(s)}/rights-terms/read`, env(s, 'observation.rights.terms.read', 'RTT', null, 'observation', true), {}),
+  /* end B82-F rt */
   declareRights: (s: Scope, a: { sourceId: string; contractVersion: number; expectedVersion: number; expiresAt: string | null; purposes: string[]; prohibitedUses: string[]; attribution: string | null; reason: string; requestId: string }) =>
     call<{ terms: Row; receipt: Receipt }>(`${obsBase(s)}/rights/declare`, env(s, 'observation.rights.declare', 'SRC', a.sourceId, 'observation', false), a),
   withdrawRights: (s: Scope, termsId: string, a: { expectedVersion: number; reason: string; requestId: string }) =>

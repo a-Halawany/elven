@@ -2,6 +2,8 @@
  * CP-6 B82 §EV (0121_b82_x_ev) — THE RIGHTS-TERMS CAPABILITIES: the read (observation.rights_terms_read — the caller's read scope asserted by
  * the port) and the two acts (observation.declare_rights_terms / withdraw_rights_terms — the ports re-check the bound action, the scope, the
  * acting principal, the person and the role). One narrow interface per action class (the Phase 1 discipline). CONSTRUCTION only.
+ * B82-F rt (0122_b82f_x_rt): the declarers' read (observation.rights_terms_register — the bound action, the scope and the acting principal's
+ * declarer role re-checked by the port), its own interface: the domain's sources with their rights METADATA only.
  */
 import { sql } from 'kysely';
 import type { Tx } from '../../shared/db.js';
@@ -18,6 +20,21 @@ export interface RightsDeclareWrites extends RightsReads {
 export interface RightsWithdrawWrites extends RightsReads {
   withdraw(a: { requestId: string; tenantId: string; domainId: string; termsId: string; expectedVersion: number; reason: string; actor: string; correlationId: string }): Promise<Row>;
 }
+
+/* B82-F rt */
+export interface RightsTermsRegisterReads {
+  register(a: { tenantId: string; domainId: string }): Promise<Row>;
+}
+class RightsTermsRegisterImpl implements RightsTermsRegisterReads {
+  readonly #tx: Tx;
+  readonly #action: string;
+  constructor(tx: Tx, action: string) { this.#tx = tx; this.#action = action; }
+  get action(): string { return this.#action; }
+  async register(a: { tenantId: string; domainId: string }): Promise<Row> {
+    return ((await sql<{ r: Row }>`select observation.rights_terms_register(${a.tenantId}::uuid, ${a.domainId}::uuid) as r`.execute(this.#tx)).rows[0]?.r ?? {}) as Row;
+  }
+}
+/* end B82-F rt */
 
 class RightsCapabilityImpl implements RightsDeclareWrites, RightsWithdrawWrites {
   readonly #tx: Tx;
@@ -46,4 +63,5 @@ export const RightsCapability = {
   read(tx: Tx, action: string): RightsReads { return new RightsCapabilityImpl(tx, action); },
   declare(tx: Tx, action: string): RightsDeclareWrites { return new RightsCapabilityImpl(tx, action); },
   withdraw(tx: Tx, action: string): RightsWithdrawWrites { return new RightsCapabilityImpl(tx, action); },
+  /* B82-F rt */ terms(tx: Tx, action: string): RightsTermsRegisterReads { return new RightsTermsRegisterImpl(tx, action); }, /* end B82-F rt */
 };
