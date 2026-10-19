@@ -458,7 +458,7 @@ describe('x · the closure', () => {
 
 describe('m · MET-010 v2: to the closure instant', () => {
   it('registered as version 2 in 0120 §CL; the closed case measured to its closure record\'s instant, an open case censored and said', async () => {
-    const reg = await one(sql`select version, registered_in, dimensions from analytics.computation_registry where computation_key = 'met010_correction_propagation'`);
+    const reg = await one(sql`select version, registered_in, dimensions from analytics.computation_registry where function_name = 'analytics.mc_met010_correction_propagation'`);
     expect(reg).toMatchObject({ version: 2, registered_in: '0120 §CL', dimensions: ['correction_kind'] });
     const open = await applyCorrection([w.records.inv.id], 'a second restatement left open (B50 §CL harness)', w.uploadSourceId);
     const out = (await one(sql`select analytics.mc_met010_correction_propagation(${T()}::uuid, ${D()}::uuid, now() - interval '1 day', now() + interval '1 day', clock_timestamp(), null, '{}'::jsonb, '{}'::jsonb) r`))['r'] as Row;

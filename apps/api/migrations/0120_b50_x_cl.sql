@@ -1348,7 +1348,7 @@ BEGIN
   IF NOT ('correction_propagation_stall' = ANY (executive.attention_signal_classes())) OR NOT ('knowledge_challenge_overdue' = ANY (executive.attention_signal_classes())) THEN
     RAISE EXCEPTION 'migration 0120 §CL: the attention classes are not declared';
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM analytics.computation_registry r WHERE r.computation_key = 'met010_correction_propagation' AND r.registered_in = '0120 §CL' AND r.version >= 2) THEN
+  IF NOT EXISTS (SELECT 1 FROM analytics.computation_registry r WHERE r.function_name = 'analytics.mc_met010_correction_propagation' AND r.registered_in = '0120 §CL' AND r.version >= 2) THEN
     RAISE EXCEPTION 'migration 0120 §CL: MET-010 v2 is not registered';
   END IF;
   IF (SELECT p.provolatile FROM pg_proc p WHERE p.oid = 'objects.publication_frozen(text, uuid, integer)'::regprocedure) <> 's'
