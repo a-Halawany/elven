@@ -1,0 +1,23 @@
+B50 integration pass — the full-history scan's two §CL findings, disposed of in the B36-F1 form (2026-10-20)
+
+Hosted: ci 39216222701 (#93 at a6ec120) and ci 39256804447 (#94 at 9aa4c85), C15 supply-chain, step gitleaks-history
+FAIL — three findings each: B81's dfe1762 (evidence/cp6/b81-history-disposition.txt) and B50's two:
+  generic-api-key  f7584f990b4502d309e7846b06df4d72f37d932c  apps/api/test/int/phase6-closure-b50.test.ts:461
+  generic-api-key  f7584f990b4502d309e7846b06df4d72f37d932c  apps/api/migrations/0120_b50_x_cl.sql:1347
+  — the MET-010 computation identifier (met010 + _correction_propagation) in a registry predicate; never secret
+  material. The folded 0120 and the harness pass gitleaks-worktree on every run.
+
+Blocks added to .gitleaks.toml: two, one per file — condition = "AND", targetRules = generic-api-key, ONE commit
+(f7584f99…), ONE anchored path each, regexTarget = "match", ONE anchored match each (the predicate as the rule matched
+it). The earlier narrowing controls (B36 1/4 … B33 3/3, B81 1/1) are unchanged.
+
+Scans: the PINNED gitleaks 8.30.1, the gate's own argv (--log-opts "--all --full-history"), a fresh SINGLE-BRANCH clone
+of phase6-b50 at 9c6e3ee; control commits made in the throwaway clone, never pushed.
+
+  head 9c6e3ee (with the blocks) ............................................ exit 0, findings 0; worktree scan exit 0
+  control A — the same tree without the B50 blocks ........................... exit 1, findings 2  f7584f990b :461, :1347
+  control B — the same predicate, the SAME harness file, a NEW commit ........ exit 1, findings 1  (the commit narrows)
+  control C — + the same predicate at the SAME migration path, a new commit .. exit 1, findings 2  (the commit narrows)
+  control D — + ANOTHER computation identifier in the harness ................ exit 1, findings 3  (the match narrows)
+
+A clean worktree scan is not taken as proof that history passes; the hosted history scan on the final head is the record.

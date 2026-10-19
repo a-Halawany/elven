@@ -78,7 +78,12 @@ jobs:
     # (ci 37633376331, ~2025 tests: B25's five harnesses, among them the long-history cases that each hold a series read
     # past the 60-second commit capability on purpose): the step bound moves to 55 and the job budget to 82 by the same
     # arithmetic; C18's watchdog and step bound, and every assertion, are unchanged.
-    timeout-minutes: 82
+    # B80 integration pass (2026-10-19): the integration suite ran 51m46s on main at 855d696 and 53m13s at 602fc9b, and
+    # ran past its 55-minute step bound at #91 (ci 39163879831, 8bc5b68; the B80 suite, ~2900 tests): the step bound
+    # moves to 90 and the job budget to 120 by the same arithmetic. The suite stays ONE step on its existing database
+    # (no shards); C18's watchdog and step bound, every C15 child timeout, every per-test timeout and every assertion
+    # are unchanged.
+    timeout-minutes: 120
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -149,7 +154,8 @@ jobs:
       - name: Integration tests (isolation, privileges, audit concurrency, refresh, Phase 1 acceptance)
         # B34 (2026-09-29): the suite's own bound inside the job budget above, so a slow suite fails here and
         # never consumes C18's window. B36: 28 → 38 (the suite outgrew 28 on the hosted runner). B25: 38 → 55 (likewise).
-        timeout-minutes: 55
+        # B80 integration pass: 55 → 90 (#91 ran past 55 on the hosted runner; main took 51–53 min before B80).
+        timeout-minutes: 90
         env:
           EYE_DB_HOST: localhost
           EYE_DB_MIGRATE_PASSWORD: ${{ env.EYE_DB_PASSWORD }}
