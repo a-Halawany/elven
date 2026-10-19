@@ -432,6 +432,12 @@ export function riskSpec(a: { items: readonly RiskIn[]; unit: string | null; asO
   };
 }
 
+/** §GM's Treemap over the register: the risks' ACCEPTED residual upper bounds in one unit, grouped by category (a part-to-whole of the
+ *  naive sum — the roll-up counts a shared driver once; said in the treemap's basis). Nothing without a positive residual is a part. */
+export function residualTreemapItems(risks: readonly RiskIn[], unit: string | null): Array<{ id: string; label: string; value: number; group: string }> {
+  return risks.filter((r) => unit !== null && r.unit === unit && finite(r.residualHigh) && r.residualHigh > 0).map((r) => ({ id: r.key, label: r.title, value: r.residualHigh as number, group: r.category }));
+}
+
 /* ═════════════════════════════ OPPORTUNITY PORTFOLIO (VIZ-11) ═════════════════════════════ */
 
 export interface OpportunityIn {

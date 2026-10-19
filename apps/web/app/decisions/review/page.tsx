@@ -12,7 +12,7 @@
  *
  * Every number is the SERVER's. The forms are shown to everyone; the server decides who may, and its refusal is shown as it states it.
  */
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useShell } from '../layout';
 import {
   review as api, BASELINE_KINDS, EVIDENCE_STANDARDS, INFERENCE_METHODS, REOPEN_CAUSES, causeWords, changedOf, completenessLine, evidenceOf, hoursWords, reversionMark,
@@ -21,6 +21,9 @@ import {
 import { Empty, LiveStatus, Mono, ScrollBox, cardStyle, GovernedButton, fmtInstant, textareaStyle } from '../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui';
 /* B81 re: the library's Field (its control slot) — the local Field helper migrated (UX-ADR-011; dg-lint-2's ratchet) */ import { Field } from '../../../components/forms';
+/* B82 sc */ import { EvidenceCoverage } from '../../../components/strategic-charts';
+import { VarianceBridge } from '../../../components/chart';
+import { coverageInput, coverageSpec, isoOf, numOf, outcomeBridgeSpec } from '../../../lib/strategic-charts-b82'; /* end B82 sc */
 /* B81 har: the review's acts through the library's COMMAND REVIEW (the reopen, the outcome assessment), each assessment as a REVIEW RECORD
    (PAT-06), the CONTEST PATH on the decision (HX-14: an upheld challenge or appeal is a recorded cause to reopen) */
 import { CommandReview, ReviewRecord } from '../../../components/authority';
@@ -142,6 +145,9 @@ function PackageReview({ pkg, onChanged }: { pkg: string; onChanged: () => Promi
       {rv.reopen_cause !== null && <p>Last reopened because {causeWords(String(rv.reopen_cause['kind']))} (<Mono>{String(rv.reopen_cause['ref'])}</Mono>).</p>}
       {status}
       {m !== null && <MetricsCard m={m} />}
+      {/* B82 sc: the coverage counts and the latest outcome drawn (VIZ-30, §CF's VIZ-23) — their own section after the metrics */}
+      {m !== null && <ReviewDrawn m={m} rv={rv} />}
+      {/* end B82 sc */}
 
       <Section id="rv-change" title="Changes of conditions and the reopen">
         {rv.condition_changes.length === 0 ? <Empty>no change of conditions is recorded</Empty> : (
@@ -358,3 +364,28 @@ export default function DecisionReviewPage() {
     </main>
   );
 }
+
+/* B82 sc: EVIDENCE COVERAGE (counts with their gaps — never quality; the omissions declared) over the package's metrics, and each numeric
+   outcome of the LATEST assessment as §CF's VarianceBridge — the committed target to the observed value, the gap unattributed (the
+   decision's inferred contribution is measured against the counterfactual, not the target: it is not drawn as a driver). */
+function ReviewDrawn({ m, rv }: { m: Metrics; rv: Review }) {
+  const asOf = isoOf(m.as_of, new Date().toISOString());
+  const parts = useMemo(() => coverageInput(m), [m]);
+  const spec = useMemo(() => coverageSpec({ pkg: rv.title, asOf, standard: m.evidence_coverage.standard, meets: m.evidence_coverage.meets_standard, disputed: m.completeness.disputed.length }), [rv.title, asOf, m]);
+  const latest = [...rv.outcome_assessments].sort((a, b) => b.assessed_at.localeCompare(a.assessed_at))[0] ?? null;
+  const outcomes = (latest?.observed.outcomes ?? []).filter((o) => numOf(o.observed_value) !== null && Number.isFinite(o.target)).slice(0, 3);
+  return (
+    <Section id="rv-drawn" title="Coverage and the latest outcome, drawn">
+      <EvidenceCoverage spec={spec} parts={parts} />
+      {latest === null || outcomes.length === 0 ? <p style={muted}>No assessed outcome carries a number against its target yet.</p> : outcomes.map((o) => {
+        const unit = o.unit ?? latest.inferred.unit ?? 'as the criterion states';
+        const observed = numOf(o.observed_value) as number;
+        const bs = outcomeBridgeSpec({ criterion: o.criterion_key.replace(/_/g, ' '), unit, target: o.target, observed, comparator: o.comparator, met: o.met, assessedAt: latest.assessed_at, asOf,
+          inferred: `${latest.inferred.method}, confidence ${latest.inferred.confidence}` });
+        return <VarianceBridge key={o.outcome_id} spec={bs} baseline={{ label: 'the committed target', value: o.target, period: `v${latest.version}` }}
+          actual={{ label: 'the observed value', value: observed, period: latest.assessed_at.slice(0, 10) }} drivers={[]} />;
+      })}
+    </Section>
+  );
+}
+/* end B82 sc */

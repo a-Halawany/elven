@@ -11,7 +11,7 @@ import {
   ALERT_COLUMNS, SC_REQUIRED_DEFINITIONS, alertGeometry, alertInput, alertRows, alertSpec, auditGeometry, auditRows, auditSpec, comparisonFrame, comparisonGeometry,
   comparisonRows, comparisonSpec, coverageGeometry, coverageInput, coverageRows, coverageSpec, diffGeometry, diffInput, diffRows, diffSpec, dominantUnit, fanGeometry,
   fanIdentity, fanRows, fanSpec, FAN_KIND_IDENTITY, healthBridgeInput, healthBridgeSpec, healthWaterfallSpec, outcomeBridgeSpec, healthGeometry, healthRows, healthSpec, healthWaterfallInput, isoOf, numOf, opportunityFromDetail,
-  opportunityGeometry, opportunityRows, opportunitySpec, optionGeometry, optionMatrixInput, optionRows, optionSpec, riskGeometry, riskInput, riskRows, riskSpec, runBasis,
+  opportunityGeometry, opportunityRows, opportunitySpec, residualTreemapItems, optionGeometry, optionMatrixInput, optionRows, optionSpec, riskGeometry, riskInput, riskRows, riskSpec, runBasis,
   runGeometry, runRows, runSpec, runSpread, comparedRuns, branchTreeOf, COMPARED_MEASURES, statusCounts, statusFromDegraded, statusGeometry, statusOrder, statusRows, statusSpec, strategicGrammar, tornadoGeometry,
   tornadoInput, tornadoRowsOf, tornadoSpec, type AuditIn, type CompareItemIn, type FanBranchIn, type HealthCompIn, type HealthDimIn, type RunIn, type StatusIn,
 } from './strategic-charts-b82';
@@ -148,6 +148,7 @@ describe('RiskMatrix (VIZ-10) and OpportunityPortfolio (VIZ-11)', () => {
     expect(g.marks[1]!.x).toBeLessThan(g.lane.x1); expect(g.marks[0]!.x).toBeGreaterThanOrEqual(g.prob.x0);
     expect(g.thresholds).toEqual([{ y: expect.any(Number), label: 'appetite (supply_chain) 300 EUR k' }]);
     expect(riskGeometry([], null).empty).toBe(true);
+    expect(residualTreemapItems(items, unit)).toEqual([{ id: 'r1', label: 'Corridor closure', value: 400, group: 'supply_chain' }, { id: 'r2', label: 'Port strike', value: 50, group: 'supply_chain' }]);
   });
   it('an opportunity from its record: the hypothesis value, the horizon in days, the declared cost', () => {
     const d = { exposure: { exposure_id: 'o1', title: 'Morocco sourcing', state: 'sponsored', owner_principal_id: 'p1', sponsor_principal_id: 'p2', accepted_version: 1 }, objectives: ['x'],
