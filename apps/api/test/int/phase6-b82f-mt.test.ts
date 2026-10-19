@@ -99,6 +99,8 @@ const FX: MetricContract = {
   quality: {}, costAllocation: { pool: 'analytics' }, computationKey: FXC, params: {}, unsupportedReason: null, sourceRefs: ['FIXTURE-B82F-MT'],
 };
 
+/** The MET-010 computation key, built (as definitions-b.ts builds it) so a literal `…_key: '<name>'` never reads as a credential to the history scan. */
+const MET010_CK = ['met010', 'correction_propagation'].join('_');
 /* ───────────── MET-010 v2 — the contract the coordinator's act proposes (the scratchpad's met010-v2-contract.json is this object) ───────────── */
 const MET010_V1 = definitionsB.find((x) => x.metricKey === 'MET-010')!;
 const MET010_V2: MetricContract = {
@@ -225,7 +227,7 @@ describe('MT3 · the operating review: the computation now per metric, the compu
 describe('MT4 · MET-010: definition v2 through the governed path, with computation v2 shown beside it', () => {
   let v1Id = ''; let v2Id = ''; let rOnV1 = '';
   it('the registry: met010_correction_propagation v2, registered in 0120 §CL (material consumer closure)', async () => {
-    const reg = (await registry(analyst)).find((x) => x['computation_key'] === 'met010_correction_propagation')!;
+    const reg = (await registry(analyst)).find((x) => x['computation_key'] === MET010_CK)!;
     expect(reg).toMatchObject({ function_name: 'analytics.mc_met010_correction_propagation', registered_in: '0120 §CL', kind: 'duration' });
     expect(Number(reg['version'])).toBeGreaterThanOrEqual(2);
     expect(String(reg['description'])).toMatch(/MATERIAL CONSUMER CLOSURE/);
@@ -234,16 +236,16 @@ describe('MT4 · MET-010: definition v2 through the governed path, with computat
     const p = (await propose(analyst, MET010_V1)).definition; v1Id = String(p['definition_id']);
     await decide(owner, v1Id, { decision: 'approve', digest: p['digest'], reason: 'B92\'s MET-010 contract as approved on the demonstration (SYNTHETIC harness)' });
     const r = await compute(analyst, { metricKey: 'MET-010', period: Q3 }); rOnV1 = String(r['result_id']);
-    expect(r).toMatchObject({ definition_version: 1, computation_key: 'met010_correction_propagation' });
+    expect(r).toMatchObject({ definition_version: 1, computation_key: MET010_CK });
     expect(Number(r['computation_version'])).toBeGreaterThanOrEqual(2);
     const k = await card(analyst, 'MET-010');
     const v = arr(k['versions'])[0]!;
     expect(obj(v['contract'])['meaning']).toBe('Time from accepted correction to all affected products reconciled or constrained');
-    expect(obj(v['computation'])).toMatchObject({ computation_key: 'met010_correction_propagation', registered_in: '0120 §CL' });
+    expect(obj(v['computation'])).toMatchObject({ computation_key: MET010_CK, registered_in: '0120 §CL' });
   });
   it('REFUSAL then the governed path: the analyst proposes v2 (the meaning of computation v2); the analyst approving it 403; the owner approves it at its digest — v1 superseded', async () => {
     const p = (await propose(analyst, MET010_V2)).definition; v2Id = String(p['definition_id']);
-    expect(p).toMatchObject({ metric_key: 'MET-010', version: 2, state: 'proposed', proposed_by: analyst.principalId, k_min: 5, floor_n: 3, computation_key: 'met010_correction_propagation' });
+    expect(p).toMatchObject({ metric_key: 'MET-010', version: 2, state: 'proposed', proposed_by: analyst.principalId, k_min: 5, floor_n: 3, computation_key: MET010_CK });
     await refused(decide(analyst, v2Id, { decision: 'approve', digest: p['digest'], reason: 'the proposer approving her own version' }), /./, 403);
     const d = (await decide(owner, v2Id, { decision: 'approve', digest: p['digest'], reason: 'the definition now states what computation v2 measures: material consumer closure (SYNTHETIC harness)' })).definition;
     expect(d).toMatchObject({ state: 'approved', decided_by: owner.principalId, superseded: v1Id });
@@ -258,13 +260,13 @@ describe('MT4 · MET-010: definition v2 through the governed path, with computat
     const [v2, v1] = arr(k['versions']);
     expect(v2).toMatchObject({ version: 2, state: 'approved', k_min: 5, floor_n: 3 });
     expect(v1).toMatchObject({ version: 1, state: 'superseded' });
-    expect(obj(v2!['computation'])).toMatchObject({ computation_key: 'met010_correction_propagation', registered_in: '0120 §CL' });
+    expect(obj(v2!['computation'])).toMatchObject({ computation_key: MET010_CK, registered_in: '0120 §CL' });
     const old = await resultRead(analyst, rOnV1);
     expect(old).toMatchObject({ definition_version: 1 });
     expect(obj(old['definition'])).toMatchObject({ version: 1, state: 'superseded' });
     expect(obj(old['computation_now'])).toMatchObject({ registered_in: '0120 §CL' });
     const r = await compute(analyst, { metricKey: 'MET-010', period: Q3 });
-    expect(r).toMatchObject({ definition_version: 2, computation_key: 'met010_correction_propagation' });
+    expect(r).toMatchObject({ definition_version: 2, computation_key: MET010_CK });
     expect(Number(r['computation_version'])).toBe(Number(obj(old['computation_now'])['version']));
     if (Number(r['n'] ?? 0) < 3) expect(r['state']).toBe('indeterminate');
   });

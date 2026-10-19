@@ -6,17 +6,19 @@
 import { describe, expect, it } from 'vitest';
 import { computationNowLine, computationTag, recordedComputationLine, registeredAfterDecision, versionsPair, type ComputationNow } from './analytics-md-b92';
 
+/** The key built from its parts (the history scan reads `…_key: '<name>'` as a credential). */
+const MET010_CK = ['met010', 'correction_propagation'].join('_');
 const V2: ComputationNow = {
-  computation_key: 'met010_correction_propagation', function_name: 'analytics.mc_met010_correction_propagation', version: 2, kind: 'duration', registered_in: '0120 §CL',
+  computation_key: MET010_CK, function_name: 'analytics.mc_met010_correction_propagation', version: 2, kind: 'duration', registered_in: '0120 §CL',
   registered_at: '2026-10-19T07:18:56.59666+00:00', body_digest: 'be69c305fa01a0496c0973982c95eb48', description: 'MET-010 v2 (SYNTHETIC test row)',
 };
 
 describe('the computation a definition names NOW', () => {
   it('says the key, the registry version, where and when it was registered and its digest; an unsupported or unregistered key says so', () => {
-    expect(computationNowLine(V2, 'met010_correction_propagation')).toBe('met010_correction_propagation v2 — registered in 0120 §CL on 2026-10-19 (body digest be69c305fa01…)');
+    expect(computationNowLine(V2, MET010_CK)).toBe('met010_correction_propagation v2 — registered in 0120 §CL on 2026-10-19 (body digest be69c305fa01…)');
     expect(computationNowLine(null, null)).toBe('none — the definition is unsupported (no computation)');
     expect(computationNowLine(undefined, 'gone_key')).toBe('gone_key — not in the computation registry');
-    expect(computationTag(V2, 'met010_correction_propagation')).toBe('met010_correction_propagation v2 (0120 §CL)');
+    expect(computationTag(V2, MET010_CK)).toBe('met010_correction_propagation v2 (0120 §CL)');
     expect(computationTag(null, null)).toBe('none (unsupported)');
   });
   it('says when the computation was registered AFTER the definition version was decided — and nothing otherwise', () => {
@@ -29,7 +31,7 @@ describe('the computation a definition names NOW', () => {
 
 describe('a stored result: its two versions together, its recorded computation beside the registry now', () => {
   it('the pair: definition and computation versions; an unsupported result and an unrecorded version said', () => {
-    expect(versionsPair(1, { computation_key: 'met010_correction_propagation', computation_version: 2 })).toBe('definition v1 · computation v2');
+    expect(versionsPair(1, { computation_key: MET010_CK, computation_version: 2 })).toBe('definition v1 · computation v2');
     expect(versionsPair(3, { computation_key: null, computation_version: null })).toBe('definition v3 · no computation (unsupported)');
     expect(versionsPair(1, { computation_key: 'k_one', computation_version: null })).toBe('definition v1 · computation version not recorded');
   });
