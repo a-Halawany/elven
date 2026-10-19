@@ -16,9 +16,10 @@
 --     OPEN (or stalled) cases that the ACTING PRINCIPAL answers for as the existing acknowledge / except ports decide, and per consumer ONLY
 --     what the act needs: the case (id, kind, closure state, reason, received / applied instants), the corrected objects and their versions,
 --     the consumer reference and its class / state / deadline / freeze marker, the latest act on it (whether it was the caller's), its stall
---     escalations (state, due, count), and the allowed acts with their constraints. NEVER the walk's path, the notice, the other consumers,
---     the freezes ledger, the events or any evidence content; it grants no graph.read, observation.read or evidence action. The acts stay
---     the EXISTING ports' (graph.acknowledge_consumer / graph.except_consumer — unchanged), which re-check everything.
+--     escalations (state, due, count), the allowed acts with their constraints and the state digest the page's Command Review binds.
+--     NEVER the walk's path, the notice, the other consumers, the freezes ledger, the events or any evidence content; it grants no
+--     graph.read, observation.read or evidence action. The acts stay the EXISTING ports' (graph.acknowledge_consumer /
+--     graph.except_consumer — unchanged), which re-check everything.
 --   The port re-checks the bound action (observation.assert_authority), the scope (observation.assert_scope) and the acting principal
 --   (graph._cl_person: the session's own, an active human); SECURITY DEFINER, its search_path closed with pg_catalog, pg_temp; EXECUTE from
 --   PUBLIC revoked; granted to eye_commit only (the consequential read's writer). The refusal noun stays §CL's `correction closure rejected`.
@@ -96,6 +97,10 @@ BEGIN
         'product_version', x.product_version, 'title', x.title, 'class', x.class, 'state', x.state, 'closing', x.closing, 'deadline', x.deadline, 'overdue', x.overdue,
         'frozen', EXISTS (SELECT 1 FROM graph.publication_freezes f WHERE f.case_id = cl.case_id AND f.lifted_at IS NULL AND f.object_id = x.product_id),
         'as_owner', v_owner,
+        -- the state the page's Command Review binds (a changed state, freeze, act or contract is a new state: the review is void, never updated)
+        'state_digest', encode(sha256(convert_to(jsonb_build_object('case_id', cl.case_id, 'closure', cl.closure_state, 'ref', x.consumer_ref, 'state', x.state, 'ack_id', x.ack_id,
+                          'frozen', EXISTS (SELECT 1 FROM graph.publication_freezes f WHERE f.case_id = cl.case_id AND f.lifted_at IS NULL AND f.object_id = x.product_id),
+                          'contract', k.version)::text, 'UTF8')), 'hex'),
         'basis', coalesce(v_ack ->> 'basis', v_exc ->> 'basis', CASE WHEN v_owner THEN 'the accountable owner' END),
         'latest_act', CASE WHEN x.ack_id IS NULL THEN NULL ELSE jsonb_build_object('state', x.ack_state, 'at', x.ack_at, 'by_you', x.ack_by IS NOT DISTINCT FROM v_actor,
                         'recompute_ref', x.recompute_ref, 'exception_expires_at', x.exception_expires_at) END,

@@ -94,7 +94,7 @@ async function applyCorrection(evdIds: string[], reason: string, sourceId: strin
 
 /** The fields one obligation carries — what the act needs, and nothing else. */
 const OBLIGATION_KEYS = ['acts', 'as_owner', 'basis', 'case', 'class', 'closing', 'consumer_kind', 'consumer_ref', 'corrected', 'deadline', 'escalations', 'frozen',
-  'latest_act', 'object_type', 'overdue', 'product_id', 'product_kind', 'product_version', 'state', 'title'].sort();
+  'latest_act', 'object_type', 'overdue', 'product_id', 'product_kind', 'product_version', 'state', 'state_digest', 'title'].sort();
 
 beforeAll(async () => {
   h = await Phase4Harness.boot();
@@ -268,12 +268,15 @@ describe('c · completed through the EXISTING ports; the read answers the new st
     expect(((o['acts'] as Row)['except'] as Row)).toMatchObject({ allowed: true, exception_max_days: 30, record_authority_owner_required: false });
   });
   it('the decision owner acknowledges the review, the operator excepts the publication — through the existing routes; the read then answers no act left', async () => {
+    const before = String(list(await obligationsOf(w.owner, CASE))[0]!['state_digest']);
+    expect(before).toMatch(/^[0-9a-f]{64}$/);
     const a = (await ack(w.owner, CASE, { consumerRef: `DPK:${PKG}@${PV}`, note: 'reviewed: the reroute still holds on the restated transits (B82-F cc harness)' })).acknowledgement;
     expect(a).toMatchObject({ state: 'acknowledged', recorded_by: w.owner.principalId, basis: 'the accountable owner' });
     const e = (await except(drafter, CASE, { consumerRef: `PUB:${PUB}@1`, reason: 'the board note is reissued next week (B82-F cc harness)', expiresAt: new Date(Date.now() + 3 * 86_400_000).toISOString(), ownerPrincipalId: drafter.principalId })).exception;
     expect(e).toMatchObject({ state: 'bounded_exception', recorded_by: drafter.principalId });
     const o = list(await obligationsOf(w.owner, CASE))[0]!;
     expect(o).toMatchObject({ state: 'acknowledged', closing: true, latest_act: { state: 'acknowledged', by_you: true }, acts: { acknowledge: { allowed: false }, except: { allowed: false } } });
+    expect(o['state_digest']).not.toBe(before);   // a new state: a review bound to the old one is void
     const p = list(await obligationsOf(drafter, CASE))[0]!;
     expect(p).toMatchObject({ state: 'bounded_exception', closing: true, latest_act: { state: 'bounded_exception', by_you: true }, acts: { except: { allowed: true } } });
     // still nothing wider: the case remains refused to them
