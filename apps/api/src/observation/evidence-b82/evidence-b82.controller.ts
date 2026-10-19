@@ -15,6 +15,9 @@
  *   POST …/observation/rights/declare            {sourceId, contractVersion, expectedVersion, expiresAt, purposes, prohibitedUses, attribution,
  *                                                  reason, requestId?}                         observation.rights.declare (human-gated)
  *   POST …/observation/rights/:termsId/withdraw  {expectedVersion, reason, requestId?}       observation.rights.withdraw (human-gated)
+ *   POST …/observation/rights-terms/read         {}                                          B82-F rt (0122): THE DECLARERS' READ — the domain's
+ *        sources with their rights METADATA only (observation.rights.terms.read — exactly the declare rule's roles at DOMAIN; the port re-checks
+ *        the bound action, the scope and the acting principal's role). No evidence content, bytes, segments or observation payloads.
  *
  * CONSTRUCTION only; the answers are the ports' and the vault's, with the receipt.
  */
@@ -106,6 +109,17 @@ export class EvidenceB82Controller {
       RightsCapability.read, async (cap) => cap.read({ tenantId, domainId, sourceId }));
     return { rights: out.result, receipt: receipt(out) };
   }
+
+  /* B82-F rt */
+  @Post('/rights-terms/read')
+  async readRightsTerms(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string) {
+    const { envelope, principal } = ctx(req);
+    const out = await this.pipeline.consequentialRead(envelope, principal,
+      { scope: 'DOMAIN', tenantId, domainId, action: 'observation.rights.terms.read', objectType: 'RTT', objectId: null },
+      RightsCapability.terms, async (cap) => cap.register({ tenantId, domainId }));
+    return { terms: out.result, receipt: receipt(out) };
+  }
+  /* end B82-F rt */
 
   @Post('/rights/declare')
   async declareRights(@Req() req: EyeRequest, @Param('tenantId') tenantId: string, @Param('domainId') domainId: string, @Body() body: Body_) {

@@ -1515,6 +1515,14 @@ const BUNDLE_V1: Rule[] = [
   { actionPrefix: 'observation.rights.withdraw', exact: true, requiredAnyRole: [{ role: 'data_steward', atScope: 'DOMAIN' }, { role: 'collection_manager', atScope: 'DOMAIN' }],
     obligations: [{ type: 'human_gate' }], requiresPurpose: true, maxConsequence: 'C2' },
   /* end B82 ev */
+  /* B82-F rt */
+  /* B82-F §RT (0122_b82f_x_rt): THE DECLARERS' READ of the rights terms — EXACT, for exactly the declare rule's roles at DOMAIN (the data
+     steward and the collection manager), placed BEFORE the `observation.` collection prefix rule (which would otherwise match it first).
+     Rights METADATA only (observation.rights_terms_register — the port re-checks the bound action, the scope and the acting principal's
+     role); it grants no evidence read and no `observation.read` (no existing rule or prefix widened). */
+  { actionPrefix: 'observation.rights.terms.read', exact: true, requiredAnyRole: [{ role: 'data_steward', atScope: 'DOMAIN' }, { role: 'collection_manager', atScope: 'DOMAIN' }],
+    obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+  /* end B82-F rt */
   {
     // The COLLECTION surface: run lifecycle, admission, quarantine, checkpoints,
     // coverage measurement and sweeper reconciliation. Held by the agent role and
