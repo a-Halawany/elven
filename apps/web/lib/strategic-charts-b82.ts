@@ -973,6 +973,31 @@ export function statusFromDegraded(d: {
       freshness: u.signal.since === null ? 'no signal instant' : `signal since ${u.signal.since}`, dependencies: null, degraded: 'no contract declared', owner: null })),
   ];
 }
+/** The overview's sources as capabilities ("collection from …"), each enriched by its SOURCE contract from the degraded read when one is
+ *  declared (matched by the source key); the degraded read's other dependencies follow. Nothing is shown healthy that the reads do not say. */
+export function statusFromSources(sources: ReadonlyArray<{ source_id: string; source_key: string; name: string; health_state: string; lifecycle_state: string; rights_state: string; acquisition_mode: string; connector_kind: string }>,
+  fromDegraded: readonly StatusIn[] | null): StatusIn[] {
+  const bySource = new Map((fromDegraded ?? []).filter((d) => d.capability.startsWith('source · ')).map((d) => [d.capability.slice('source · '.length), d]));
+  const rows: StatusIn[] = sources.map((s) => {
+    const d = bySource.get(s.source_key) ?? null;
+    return { key: s.source_id, capability: `collection · ${s.name}`, state: s.health_state, slo: d?.slo ?? null, freshness: d?.freshness ?? null,
+      dependencies: `${s.connector_kind} connector, ${s.acquisition_mode}; lifecycle ${s.lifecycle_state}; rights ${s.rights_state}`, degraded: d?.degraded ?? null, owner: d?.owner ?? null };
+  });
+  const used = new Set(sources.map((s) => s.source_key));
+  return [...rows, ...(fromDegraded ?? []).filter((d) => !(d.capability.startsWith('source · ') && used.has(d.capability.slice('source · '.length))))];
+}
+/** The control center's responsibilities as capabilities: an owner RESOLVED, else a GAP (unfilled or undeclared — the dependent acts stop) or
+ *  UNKNOWN (ambiguous); the key in words (never a raw key a reader would mistake for the matrix's own row). */
+export function statusFromOwners(owners: ReadonlyArray<Row & { resolution: { state: string; owner_principal_id?: string | null; principals?: string[] | null; reason?: string | null } }>, approvedAt: string | null): StatusIn[] {
+  return owners.map((o, i) => {
+    const key = String(o['responsibility_key'] ?? `responsibility ${i + 1}`);
+    const st = o.resolution.state === 'resolved' ? 'healthy' : o.resolution.state === 'unfilled' || o.resolution.state === 'undeclared' ? 'gap' : 'unknown';
+    const who = o.resolution.owner_principal_id ?? o.resolution.principals?.[0] ?? null;
+    const title = typeof o['title'] === 'string' ? ` — ${o['title']}` : '';
+    return { key: `${key}:${i}`, capability: `${key.replace(/[._]/g, ' ')}${title}`, state: st, slo: null, freshness: approvedAt === null ? null : `matrix approved ${approvedAt}`,
+      dependencies: null, degraded: st === 'gap' ? 'the dependent acts stop until an owner is resolved' : st === 'unknown' ? `ambiguous${o.resolution.reason ? ` — ${o.resolution.reason}` : ''}` : null, owner: who === null ? null : shortId(who) };
+  });
+}
 export function statusGeometry(items: readonly StatusIn[], o: { width?: number } = {}): { box: Box; rows: Array<{ key: string; row: number; y: number; marker: MarkerShape; word: string; label: string; detail: string }> } {
   const rowH = 26; const box = plotBox(o.width ?? 640, 12 + Math.max(1, items.length) * rowH, { left: 12, right: 12, top: 6, bottom: 6 });
   return { box, rows: items.map((s, row) => ({ key: s.key, row, y: r2(box.top + rowH * (row + 0.5)), ...statusIdentity(s.state), label: clipText(s.capability, 34), detail: clipText(`${s.slo ?? 'no service level declared'} · ${s.freshness ?? 'freshness not on this read'}`, 52) })) };

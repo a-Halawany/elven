@@ -12,7 +12,7 @@ import {
   comparisonRows, comparisonSpec, coverageGeometry, coverageInput, coverageRows, coverageSpec, diffGeometry, diffInput, diffRows, diffSpec, dominantUnit, fanGeometry,
   fanIdentity, fanRows, fanSpec, FAN_KIND_IDENTITY, healthBridgeInput, healthBridgeSpec, healthWaterfallSpec, outcomeBridgeSpec, healthGeometry, healthRows, healthSpec, healthWaterfallInput, isoOf, numOf, opportunityFromDetail,
   opportunityGeometry, opportunityRows, opportunitySpec, residualTreemapItems, optionGeometry, optionMatrixInput, optionRows, optionSpec, riskGeometry, riskInput, riskRows, riskSpec, runBasis,
-  runGeometry, runRows, runSpec, runSpread, comparedRuns, branchTreeOf, COMPARED_MEASURES, statusCounts, statusFromDegraded, statusGeometry, statusOrder, statusRows, statusSpec, strategicGrammar, tornadoGeometry,
+  runGeometry, runRows, runSpec, runSpread, comparedRuns, branchTreeOf, COMPARED_MEASURES, statusCounts, statusFromDegraded, statusFromOwners, statusFromSources, statusGeometry, statusOrder, statusRows, statusSpec, strategicGrammar, tornadoGeometry,
   tornadoInput, tornadoRowsOf, tornadoSpec, type AuditIn, type CompareItemIn, type FanBranchIn, type HealthCompIn, type HealthDimIn, type RunIn, type StatusIn,
 } from './strategic-charts-b82';
 
@@ -301,6 +301,15 @@ describe('StatusBoard (VIZ-33)', () => {
     ok(spec, rows);
     expect(spec.alternative.summary).toBe('3 capability(ies): 1 DEGRADED, 1 UNKNOWN, 1 HEALTHY — worst first.');
     expect(statusGeometry(items).rows.map((r) => r.marker)).toEqual(['triangle', 'diamond', 'circle']);
+  });
+  it('the overview\'s sources enriched by their source contract; other dependencies follow; responsibilities as owner or GAP', () => {
+    const fromD = statusFromDegraded(degraded);
+    const rows = statusFromSources([{ source_id: 's1', source_key: 'portwatch', name: 'PortWatch', health_state: 'healthy', lifecycle_state: 'active', rights_state: 'confirmed', acquisition_mode: 'replay', connector_kind: 'http' }], fromD);
+    expect(rows.map((r) => r.capability)).toEqual(['collection · PortWatch', 'audit · journal', 'partition · edges_current']);
+    expect(rows[0]).toMatchObject({ state: 'healthy', owner: 'F. Aydın', slo: 'degraded mode at most 2 h (contract v2)' });
+    expect(statusFromSources([], null)).toEqual([]);
+    const own = statusFromOwners([{ responsibility_key: 'data.migration', resolution: { state: 'resolved', owner_principal_id: '01a0aaaa-bbbb' } }, { responsibility_key: 'support.access', resolution: { state: 'unfilled' } }], '2026-10-01');
+    expect(own.map((o) => [o.capability, o.state, o.owner])).toEqual([['data migration', 'healthy', '01a0aaaa…'], ['support access', 'gap', null]]);
   });
   it('an unlisted state reads as itself, shaped as unknown', () => {
     const s: StatusIn = { key: 'x', capability: 'X', state: 'gap', slo: null, freshness: null, dependencies: null, degraded: null, owner: null };
