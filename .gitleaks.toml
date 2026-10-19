@@ -380,3 +380,38 @@ commits = ['''dfe1762c01be3928076be037bd998ac147d06621''']
 paths = ['''^apps/web/lib/authority-b81\.test\.ts$''']
 regexTarget = "match"
 regexes = ['''^key ed25519:0123456789abcdef'$''']
+
+# ── B50 HISTORY: the MET-010 COMPUTATION IDENTIFIER in one §CL commit, not a credential
+#
+# The §CL part's commit f7584f9 named the registered computation `met010_correction_propagation` (MET-010's computation
+# key in analytics.computation_registry — a public identifier of a metric computation, never secret material) in a SQL
+# predicate twice: once in the integration harness, once in the part migration. The generic-api-key rule reads
+# `computation_key = '<token>'` as a secret. The working tree names it without the key-shaped form since (the folded
+# 0120 and the harness pass gitleaks-worktree on every run), so these exclusions exist solely so the FULL-HISTORY scan
+# (hosted runs 39216222701 and 39256804447) does not fail on the one commit that carried it. The B36-F1 form, one tuple
+# per file: ONE rule, ONE commit, ONE file, ONE exact anchored match; condition = AND.
+
+[[allowlists]]
+description = """
+B50 history 1/2 — the §CL commit f7584f9 carried the MET-010 computation identifier in a registry read of
+apps/api/test/int/phase6-closure-b50.test.ts (line 461). ONE rule, ONE commit, ONE file, ONE exact match. condition = AND.
+"""
+condition = "AND"
+targetRules = ['''generic-api-key''']
+commits = ['''f7584f990b4502d309e7846b06df4d72f37d932c''']
+paths = ['''^apps/api/test/int/phase6-closure-b50\.test\.ts$''']
+regexTarget = "match"
+regexes = ['''^computation_key = 'met010_correction_propagation'$''']
+
+[[allowlists]]
+description = """
+B50 history 2/2 — the same §CL commit f7584f9 carried the same identifier in the registry guard of the part migration
+apps/api/migrations/0120_b50_x_cl.sql (line 1347; the part file was folded into 0120 and no longer exists). ONE rule,
+ONE commit, ONE file, ONE exact match. condition = AND.
+"""
+condition = "AND"
+targetRules = ['''generic-api-key''']
+commits = ['''f7584f990b4502d309e7846b06df4d72f37d932c''']
+paths = ['''^apps/api/migrations/0120_b50_x_cl\.sql$''']
+regexTarget = "match"
+regexes = ['''^r\.computation_key = 'met010_correction_propagation'$''']
