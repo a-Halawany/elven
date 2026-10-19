@@ -116,14 +116,16 @@ export default function ObjectsPage() {
 
       <Panel title="Scope">
         <div style={{ display: 'flex', gap: 'var(--eye-space-8)' }}>
-          <select style={inputStyle} value={tenantId} onChange={(e) => { setTenantId(e.target.value); setDomainId(''); }}>
+          {/* B81 (integration pass): each scope control carries its own accessible name, so nothing selects it by position
+              (the shell's Display density control is a select too). */}
+          <label>Tenant <select style={inputStyle} value={tenantId} onChange={(e) => { setTenantId(e.target.value); setDomainId(''); }}>
             <option value="">— tenant —</option>
             {tenants.map((tn) => <option key={tn.id} value={tn.id}>{tn.name}</option>)}
-          </select>
-          <select style={inputStyle} value={domainId} onChange={(e) => setDomainId(e.target.value)} disabled={tenantId === ''}>
+          </select></label>
+          <label>Domain <select style={inputStyle} value={domainId} onChange={(e) => setDomainId(e.target.value)} disabled={tenantId === ''}>
             <option value="">— domain —</option>
             {(domainsByTenant[tenantId] ?? []).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-          </select>
+          </select></label>
         </div>
       </Panel>
 

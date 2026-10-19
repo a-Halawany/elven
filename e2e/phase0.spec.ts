@@ -200,8 +200,10 @@ test.describe.serial('Phase 0 browser regression', () => {
   test('5. canonical object v1 → v2 correction visible in UI history', async ({ page }) => {
     await uiLogin(page, 'platform-admin', ROTATED_PW);
     await page.getByRole('link', { name: 'Canonical Objects' }).click();
-    await page.locator('select').first().selectOption({ label: `e2e-${run}` });
-    await page.locator('select').nth(1).selectOption({ label: 'e2e-domain' });
+    // The scope controls by their accessible names — never by position: since B81 the shell's Display density control is
+    // a select on every page too, and `select` first/nth picked it (ci 39179325635, 39216222701, 39256804447).
+    await page.getByRole('combobox', { name: 'Tenant', exact: true }).selectOption({ label: `e2e-${run}` });
+    await page.getByRole('combobox', { name: 'Domain', exact: true }).selectOption({ label: 'e2e-domain' });
     await expect(page.getByText('Objects (current view)')).toBeVisible();
     await page.getByRole('cell', { name: /truth state asserted/ }).first().click();
     await expect(page.getByText(/Version history/)).toBeVisible();
@@ -214,8 +216,10 @@ test.describe.serial('Phase 0 browser regression', () => {
   test('6. known-at query returns the pre-correction state (UI)', async ({ page }) => {
     await uiLogin(page, 'platform-admin', ROTATED_PW);
     await page.getByRole('link', { name: 'Canonical Objects' }).click();
-    await page.locator('select').first().selectOption({ label: `e2e-${run}` });
-    await page.locator('select').nth(1).selectOption({ label: 'e2e-domain' });
+    // The scope controls by their accessible names — never by position: since B81 the shell's Display density control is
+    // a select on every page too, and `select` first/nth picked it (ci 39179325635, 39216222701, 39256804447).
+    await page.getByRole('combobox', { name: 'Tenant', exact: true }).selectOption({ label: `e2e-${run}` });
+    await page.getByRole('combobox', { name: 'Domain', exact: true }).selectOption({ label: 'e2e-domain' });
     await page.getByRole('cell', { name: /truth state asserted/ }).first().click();
     await expect(page.getByText(/Version history/)).toBeVisible();
     // datetime-local has second granularity, so the chosen instant is

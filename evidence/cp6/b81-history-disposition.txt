@@ -1,0 +1,24 @@
+B81 integration pass — the full-history scan's §HA finding, disposed of in the B36-F1 form (2026-10-20)
+
+Hosted: ci 39179325635 (#92 at 8d1f586), C15 supply-chain, step gitleaks-history FAIL — one finding:
+  generic-api-key  dfe1762c01be3928076be037bd998ac147d06621  apps/web/lib/authority-b81.test.ts:224
+  (the synthetic Ed25519 key IDENTIFIER in the expected signature-receipt copy line; the working tree names it through
+  KEY_ID since, and gitleaks-worktree passed on every run). The same finding stands in #93's and #94's runs
+  (39216222701, 39256804447) beside B50's two (evidence/cp6/b50-history-disposition.txt on phase6-b50).
+
+Block added to .gitleaks.toml: condition = "AND", targetRules = generic-api-key, ONE commit (dfe1762c…), ONE anchored
+path (^apps/web/lib/authority-b81\.test\.ts$), regexTarget = "match", ONE anchored match (the identifier and the closing
+quote). The earlier narrowing controls (blocks B36 1/4 … B33 3/3) are unchanged.
+
+Scans: the PINNED gitleaks 8.30.1 (scripts/gate/install-scanners.sh, digests verified), the gate's own argv
+(detect --source . --redact --config .gitleaks.toml --log-opts "--all --full-history"), on a fresh SINGLE-BRANCH clone of
+phase6-b81 at c614247 (so no unrelated local ref is scanned; the hosted checkout carries the stack only). Control commits
+were made in the throwaway clone and never pushed.
+
+  head c614247 (with the block) ............................................. exit 0, findings 0
+  control A — the same tree without the B81 block ........................... exit 1, findings 1  dfe1762c01 :224 (it returns)
+  control B — the same literal, the SAME file, a NEW commit .................. exit 1, findings 1  (the commit narrows)
+  control C — + the same literal in ANOTHER file, a new commit ............... exit 1, findings 2  (the path narrows)
+  control D — + ANOTHER key-shaped value in the same file .................... exit 1, findings 3  (the match narrows)
+
+A clean worktree scan is not taken as proof that history passes; the hosted history scan on the final head is the record.
