@@ -33,7 +33,7 @@ describe('the six classes', () => {
   it('the classes are the seams\' six, and the server\'s rule\'s (0120 §CI.2)', () => {
     const seams = readFileSync(join(ROOT, 'apps/web/lib/b50-seams.ts'), 'utf8');
     for (const c of AFFECTED_CLASS_ORDER) expect(seams).toContain(`'${c}'`);
-    const sql = readFileSync(join(ROOT, 'apps/api/migrations/0120_b50_x_ci.sql'), 'utf8');
+    const sql = ((t: string) => t.slice(t.indexOf('-- ═══ FOLD §CI '), (i => i < 0 ? undefined : i)(t.indexOf('-- ═══ FOLD ', t.indexOf('-- ═══ FOLD §CI ') + 1))))(readFileSync(join(ROOT, 'apps/api/migrations/0120_b50_knowledge_core.sql'), 'utf8')) /* B50 fold: the part's section of the one 0120 */;
     expect(sql).toContain("CHECK (class IN ('current', 'stale', 'challenged', 'withdrawn', 'recompute', 'human_review'))");
   });
   it('an unknown class is the server\'s word, flagged — never mapped to a known one', () => {
@@ -82,7 +82,7 @@ describe('the seven triggers', () => {
   it('the catalogue is the server\'s: the kinds, the roles of each PDP rule, the object types and basis fields of each port', () => {
     const pdp = readFileSync(join(ROOT, 'apps/api/src/policy/pdp.service.ts'), 'utf8');
     const block = pdp.slice(pdp.indexOf('/* B50 ci */'), pdp.indexOf('/* end B50 ci */'));
-    const sql = readFileSync(join(ROOT, 'apps/api/migrations/0120_b50_x_ci.sql'), 'utf8');
+    const sql = ((t: string) => t.slice(t.indexOf('-- ═══ FOLD §CI '), (i => i < 0 ? undefined : i)(t.indexOf('-- ═══ FOLD ', t.indexOf('-- ═══ FOLD §CI ') + 1))))(readFileSync(join(ROOT, 'apps/api/migrations/0120_b50_knowledge_core.sql'), 'utf8')) /* B50 fold: the part's section of the one 0120 */;
     expect([...TRIGGER_KINDS].sort()).toEqual(['data_quality_finding', 'human_challenge', 'integrity_failure', 'legal_request', 'model_incident', 'ontology_correction', 'rights_change']);
     for (const k of TRIGGER_KINDS) {
       const spec = TRIGGERS[k];

@@ -147,7 +147,7 @@ describe('the trace', () => {
     expect(s.text).toBe('a citation or lineage edge does not resolve — 2; a source states its clock is unknown (its own limitation) — 2; moon_phase (as the server states it) — 1');
     expect(reasonText({ reason: 'continuity_degraded', count: 1 })).toBe('a source the trace rests on is degraded — 1');
     // every reason the SQL raises has its words (the port's reasons read from the migration)
-    const sqlText = readFileSync(join(ROOT, 'apps/api/migrations/0120_b50_x_tl.sql'), 'utf8');
+    const sqlText = ((t: string) => t.slice(t.indexOf('-- ═══ FOLD §TL '), (i => i < 0 ? undefined : i)(t.indexOf('-- ═══ FOLD ', t.indexOf('-- ═══ FOLD §TL ') + 1))))(readFileSync(join(ROOT, 'apps/api/migrations/0120_b50_knowledge_core.sql'), 'utf8')) /* B50 fold: the part's section of the one 0120 */;
     const raised = [...new Set([...sqlText.matchAll(/jsonb_build_object\('(?:reason|limitation)', '([a-z_]+)'/g)  /* B50 integration (D20): a stated limitation is worded too */].map((m) => m[1]!))].sort();
     expect(raised).toEqual(Object.keys(REASON_WORDS).sort());
   });
