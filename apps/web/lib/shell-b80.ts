@@ -116,6 +116,7 @@ const OBSERVATION_NAV: NavItem[] = [
   { href: '/observation/evidence', label: 'Evidence', glyph: '❑' },
   { href: '/observation/quarantine', label: 'Quarantine', glyph: '⚠' },
   { href: '/observation/corrections', label: 'Corrections', glyph: '⟳' },
+  /* B82-F rt (0122): the declarers' rights terms (the data steward, the collection manager) */ { href: '/observation/rights', label: 'Rights terms', glyph: '§' }, /* end B82-F rt */
   { href: '/intelligence', label: 'Intelligence', glyph: '❝' },
   { href: '/decisions', label: 'Decisions', glyph: '◆' },
   { href: '/decisions/briefings', label: 'Briefings', glyph: '☰' },
