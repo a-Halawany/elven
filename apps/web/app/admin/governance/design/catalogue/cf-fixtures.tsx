@@ -57,7 +57,7 @@ function Frames() {
 }
 
 function Kinds() {
-  const r4 = (x: number) => Number(x.toFixed(4));
+  const r4 = (x: number) => Math.round(x * 1e4) / 1e4;   // B82 integration: the fixture data rounded numerically (no toFixed — NUM-09)
   const band = pathPoints('2026-10-18', Array.from({ length: 30 }, (_, i) => ({ step: i + 1, q10: r4(0.28 - i * 0.001), q50: r4(0.343 + i * 0.0005), q90: r4(0.406 + i * 0.002) })));
   const twoSeries = [
     { key: 'cp4', label: 'chokepoint 4', points: TRANSITS },
