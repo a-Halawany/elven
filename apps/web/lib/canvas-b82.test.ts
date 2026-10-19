@@ -162,6 +162,18 @@ describe('VIZ-13 / VIZ-14 / VIZ-15 / VIZ-31 — the adapters build bounded views
     expect(g.edges.map((x) => x.id).sort()).toEqual(['c>p', 'ev>c', 'p>s']);
     expect(g.nodes[1]!.label).toBe('Claim · CORRECTED · K. Müller');
   });
+  it('the provenance graph: a node graph.explain lists once per path (a correction reached twice) is ONE node, its parents united — drawn, not refused', () => {
+    const corr = { nodeId: 'inv', kind: 'correction', ref: 'invalidation:inv', label: 'impact recorded', outcome: 'corrected', at: null, actor: null, parents: [] as string[] };
+    const v = { ref: 'EVD:e@2', root: 'e', method: 'b50-pv-explain-1', asOf: '2026-10-19T00:00:00Z', product: { type: 'EVD', id: 'e0000000-x', version: 2, digest: null, label: null, outcome: null },
+      nodes: [{ nodeId: 'e', kind: 'evidence', ref: 'EVD:e@2', label: 'Evidence v2', outcome: 'ok', at: null, actor: null, parents: ['e1', 'inv'] }, { ...corr, parents: ['e1'] },
+        { nodeId: 'e1', kind: 'evidence', ref: 'EVD:e@1', label: 'Evidence v1', outcome: 'corrected', at: null, actor: null, parents: [] }, { ...corr, parents: ['src'] },
+        { nodeId: 'src', kind: 'source', ref: 'SRC:s@1', label: 'Source', outcome: 'ok', at: null, actor: null, parents: [] }],
+      outcomes: {}, boundaries: {}, gaps: [], truncated: false, incomplete: false, examined: 5, bounds: { max_depth: 8, max_nodes: 200 }, carried: [], forward: { preview: false } } as unknown as ExplainView;
+    const g = provenanceGraphOf(v);
+    expect(graphProblems(g)).toEqual([]);
+    expect(g.nodes.map((n) => n.id)).toEqual(['e', 'inv', 'e1', 'src']);
+    expect(g.edges.map((x) => x.id).sort()).toEqual(['e1>e', 'e1>inv', 'inv>e', 'src>inv']);
+  });
 });
 
 describe('VIZ-20 / VIZ-21 / VIZ-19 — the tree, the treemap, the sankey', () => {
