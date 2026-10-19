@@ -1763,7 +1763,9 @@
       },
       "public_contract": {
         "controllers": [
+          "CitationsController",
           "ClosureB50Controller",
+          "GeoController",
           "GraphController",
           "ImpactB50Controller",
           "ProjectionsController",
@@ -2024,6 +2026,7 @@
       },
       "public_contract": {
         "controllers": [
+          "DisplayTruthController",
           "LifecycleController",
           "ObjectsController"
         ],
@@ -2102,6 +2105,7 @@
       },
       "public_contract": {
         "controllers": [
+          "EvidenceB82Controller",
           "ObservationController",
           "UploadController"
         ],
