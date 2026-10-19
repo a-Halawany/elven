@@ -3413,6 +3413,28 @@ const BUNDLE_V1: Rule[] = [
     ];
   })(),
   /* end B50 tl */
+  /* B82 gm */
+  /* B82 §GM (0121_b82_x_gm; CMP-064, VIZ-16/18, DESIGN D4). EXACT rules — no earlier rule is a prefix of graph.geo.* (the graph rules are
+     graph.read, graph.entity.*, graph.resolution.*, graph.edge.*, graph.strategy.*, graph.propagation.*, graph.impact.*, graph.subscription.*,
+     graph.provenance.*, graph.timeline.*, graph.closure.*, graph.revision.commit …; none is a prefix of `graph.geo`). THE READ
+     (`graph.geo.read`: the geographic layer the map canvases draw) by §PV's readers, audited. THE REGISTER (`graph.geo.declare`,
+     `graph.geo.retire`): a NAMED DATA STEWARD only — human-gated; the port re-checks the human, the role and the acting principal
+     (governance.assert_approver). No role gains anything it held not before (D9): these are the register's own three actions. */
+  ...((): Rule[] => {
+    const d = (role: string) => ({ role, atScope: 'DOMAIN' as Scope });
+    const readers = [{ role: 'platform_admin', atScope: 'PLATFORM' as Scope }, { role: 'tenant_admin', atScope: 'TENANT' as Scope }, { role: 'auditor', atScope: 'TENANT' as Scope },
+      { role: 'retention_authority', atScope: 'TENANT' as Scope },
+      ...['domain_admin', 'domain_analyst', 'collection_manager', 'extraction_manager', 'resolution_manager', 'strategy_owner', 'forecast_owner', 'twin_owner', 'simulation_operator',
+        'knowledge_owner', 'record_authority', 'retention_steward', 'ontology_steward', 'data_steward', 'method_steward', 'decision_owner', 'decision_approver', 'decision_authority',
+        'executive', 'executive_operator', 'risk_owner', 'privacy_officer'].map(d)];
+    const gate: Obligation[] = [{ type: 'human_gate' }];
+    return [
+      { actionPrefix: 'graph.geo.read', exact: true, requiredAnyRole: readers, obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.geo.declare', exact: true, requiredAnyRole: [d('data_steward')], obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.geo.retire', exact: true, requiredAnyRole: [d('data_steward')], obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+    ];
+  })(),
+  /* end B82 gm */
 ];
 
 /* B107 conformance */
