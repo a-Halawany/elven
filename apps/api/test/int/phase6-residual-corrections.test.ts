@@ -291,7 +291,8 @@ describe('R4 · read authorization is evaluated against the target context, on e
     const b = (await c.compose({ roomId, knownAt: await dbNow(), priorBriefingId: null })).briefing;
     const cited = b.sources.filter((s) => /^evidence:/.test(s)).map((s) => s.slice('evidence:'.length).split('@')[0] as string);
     const target = (await sql<{ id: string; manifest: string }>`select object_id::text id, payload ->> 'manifest_id' manifest from objects.canonical_objects
-      where object_type = 'EVD' and object_id in (${sql.join(cited.map((x) => sql`${x}::uuid`))}) and payload ->> 'manifest_id' is not null order by recorded_at limit 1`.execute(h.su)).rows[0];
+      where object_type = 'EVD' and object_id in (${sql.join(cited.map((x) => sql`${x}::uuid`))}) and payload ->> 'manifest_id' is not null
+      order by (object_id = ${w.evd.id}::uuid), recorded_at limit 1`  /* B82: prefer an evidence object OTHER than the world's own — R6 cites w.evd at a decision option, which B82 §EV now refuses once its bytes are deleted (REL-08) */.execute(h.su)).rows[0];
     expect(target, 'a cited evidence object with a blob manifest').toBeDefined();
     // the governed deletion: the tombstone port under the manager's bound context (the sweeper's own action)
     await inCommitContext(h.app.get<Db>(COMMIT_DB), { sessionId: h.manager.sessionId, contextKey: h.manager.contextKey }, { tenantId: T(), domainId: D() }, 'observation.sweeper.reconcile', String(target?.id),
