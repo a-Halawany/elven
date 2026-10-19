@@ -102,7 +102,6 @@ const WEB = join(__dirname, '..');
 const walkPages = (dir: string): string[] => readdirSync(dir).flatMap((n) => { const p = join(dir, n); return statSync(p).isDirectory() ? walkPages(p) : n === 'page.tsx' ? [p] : []; });
 /** Pages rendering agent-authored content without <AiNotice at B82 §TS (2026-10-19) — each names its carrier; the list may only shrink. */
 const AI_NOTICE_PENDING: Readonly<Record<string, string>> = {
-  'app/decisions/briefings/page.tsx': 'B82 §EV (decisions/briefings)',
   'app/graph/strategy/page.tsx': 'B82 §GM (graph/strategy)',
   'app/graph/strategy/planning/page.tsx': 'B82 §GM (graph/strategy, the planning view)',
   'app/prediction/domains/page.tsx': 'the stage that next builds the page (B83, F-P7-E-14); B111 sweeps the remainder',
@@ -112,8 +111,9 @@ const AI_NOTICE_PENDING: Readonly<Record<string, string>> = {
 };
 describe('Q16 · the AI-notice ratchet over app/**/page.tsx', () => {
   const findings = walkPages(join(WEB, 'app')).filter((p) => aiNoticeFinding(readFileSync(p, 'utf8')) === 'missing').map((p) => relative(WEB, p).split('\\').join('/')).sort();
-  it('§TS\'s AI-assisted page carries the notice (decisions/recommendations)', () => {
+  it('§TS\'s AI-assisted pages carry the notice (decisions/recommendations; decisions/briefings since the act\'s rehearsal)', () => {
     expect(findings).not.toContain('app/decisions/recommendations/page.tsx');
+    expect(findings).not.toContain('app/decisions/briefings/page.tsx');
     expect(readFileSync(join(WEB, 'app/decisions/recommendations/page.tsx'), 'utf8')).toMatch(/<AiNotice\b/);
   });
   it('no page outside the committed list renders agent-authored content without the notice; the list only shrinks', () => {

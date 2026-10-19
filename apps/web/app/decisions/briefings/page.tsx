@@ -25,6 +25,9 @@ import { useCitationResolutions } from '../../../lib/evidence-api-b82';
 import { citationKey, citationOfItemId, evidenceDisclosure } from '../../../lib/evidence-b82';
 import type { CitationRef } from '../../../lib/b82-seams';
 /* end B82 ev */
+/* B82 ts */
+import { AiNotice } from '../../../components/truth';
+/* end B82 ts */
 /* end B23 attention */
 /* B36 briefing */
 import {
@@ -265,6 +268,8 @@ export default function BriefingsPage() {
           {briefing === null ? null : (
             <section aria-labelledby="brf-h" style={{ ...cardStyle, marginBlockStart: 'var(--eye-space-16)' }}>
               <h3 id="brf-h" style={{ fontSize: 'var(--eye-type-heading-3)', marginBlockStart: 0 }}>Briefing {fmtInstant(briefing.composed_at)} — composed by {briefing.composed_via === 'agent' ? <strong>the briefing agent (agent-produced)</strong> : 'a person'}</h3>
+              {/* B82 ts (act rehearsal): an agent-composed edition carries the AI notice naming its producer (HX-11, Q16) */}
+              {briefing.composed_via === 'agent' ? <AiNotice output="proposed" producer={{ kind: 'agent', name: 'Briefing Agent', version: briefing.agent_id === null ? null : `registration ${briefing.agent_id.slice(0, 8)}…` }} /> : null}
               <p style={{ fontSize: 'var(--eye-type-label-sm)' }}>
                 baseline: {briefing.watermark.prior_briefing_id ? <>since what the prior briefing knew at <Mono>{fmtInstant(briefing.watermark.prior_known_at ?? briefing.watermark.prior_composed_at)}</Mono></> : 'no prior briefing'} · read under <Mono>{fmtInstant(briefing.known_at)}</Mono> · content digest <Mono>{briefing.content_digest.slice(0, 16)}…</Mono>
                 {briefing.degraded ? <> · <strong style={{ color: 'var(--eye-color-critical)' }}>DEGRADED OR BLOCKED SOURCES INSIDE</strong></> : null}
