@@ -276,8 +276,9 @@ export const FAILURE_VOCABULARY: Readonly<Record<FailureKind, FailureSpec>> = {
   incomplete_twin: { label: 'INCOMPLETE TWIN', read: 'the twin version\'s grounding completeness (0035)', carrier: null,
     words: { executive: 'The model of the operation is missing parts; results may be off.', analyst: 'The twin version is not grounded complete; its runs carry the gap.', operator: 'Grounding is incomplete for the named elements.' },
     next: 'Ground the missing elements, then admit a new version.' },
-  weak_provenance: { label: 'WEAK PROVENANCE', read: null, carrier: 'B82 (the provenance trail)',
-    words: { executive: 'Where this came from is not well established.', analyst: 'The provenance chain is incomplete; the trail and its strength are B82\'s.', operator: 'No provenance-strength read exists here yet.' },
+  /* B82 px: the read B81 left without one — graph.provenance_strength (0121 §PX), shown on the provenance trail and /graph/trust */
+  weak_provenance: { label: 'WEAK PROVENANCE', read: 'the provenance strength (graph.provenance_strength — weak or broken, with its reasons)', carrier: null,
+    words: { executive: 'Where this came from is not well established.', analyst: 'The provenance chain has a gap, an unresolved input or an unfit mark; the trail names each.', operator: 'graph.provenance_strength reads weak or broken; its reasons name the nodes.' },
     next: 'Treat it as unverified until its trail is shown.' },
   policy_denial: { label: 'NOT PERMITTED', read: 'the server\'s refusal, in its own words', carrier: null,
     words: { executive: 'You are not permitted to do or see this.', analyst: 'The policy refused the request; the server\'s words say why.', operator: 'Denied at the policy decision point; the correlation id identifies it.' },

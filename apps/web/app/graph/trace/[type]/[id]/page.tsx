@@ -25,6 +25,9 @@ import { DegradedContractView } from '../../../../../components/recovery';
 import { TraceView } from '../../../../../components/knowledge';
 import { Empty, GovernedButton, LiveStatus, Mono, UnknownNote, cardStyle, textareaStyle } from '../../../../../components/observation';
 import { Receipt } from '../../../../../components/ui';
+/* B82 px */ import { TrustIndicator } from '../../../../../components/trust';
+import { trustApi } from '../../../../../lib/trust-api-b82';
+import { toEnvelope, trustHref, type EnvelopeView } from '../../../../../lib/trust-b82'; /* end B82 px */
 
 type Row = Record<string, unknown>;
 /** ONE h1 per rendering (lib/layout-b81's REG-03 ratchet): the ready page is titled by B81's ObjectHeader (level 1); every other branch here. */
@@ -53,6 +56,15 @@ function TraceBody() {
   const [actProblem, setActProblem] = useState<string | null>(null);
   const [answer, setAnswer] = useState<Row | null>(null);
   const [actReceipt, setActReceipt] = useState<ReceiptT | null>(null);
+  /* B82 px: the trust facets of exactly this version (graph.trust.read) beside its trace — a refusal said in the server's words */
+  const [envelope, setEnvelope] = useState<EnvelopeView | null>(null); const [trustProblem, setTrustProblem] = useState<string | null>(null);
+  useEffect(() => {
+    if (!link.ok) return;
+    void trustApi.envelope(scope, { type: link.type, id: link.id, version: link.version }).then((r) => {
+      if (r.ok && r.data !== undefined) { setEnvelope(toEnvelope(r.data.envelope)); setTrustProblem(null); } else setTrustProblem(said(r, 'The trust facets were not read'));
+    });
+  }, [scope, link.ok, link.ok ? link.type : '', link.ok ? link.id : '', link.ok ? link.version : 0]); // eslint-disable-line react-hooks/exhaustive-deps
+  /* end B82 px */
 
   const load = useCallback(async () => {
     if (!link.ok) return;
@@ -102,6 +114,13 @@ function TraceBody() {
       )}
 
       <section style={cardStyle}><TraceView trace={trace} renderRef={(ref) => <RefLink refText={ref} />} /></section>
+      {/* B82 px */}
+      {envelope !== null ? (
+        <TrustIndicator envelope={envelope} heading="Trust of this version — facets, never a score">
+          <p><Link href={trustHref(link.type, link.id, link.version)}>Open the trust page to verify, attest or investigate this version</Link></p>
+        </TrustIndicator>
+      ) : trustProblem !== null ? <LiveStatus>{trustProblem}</LiveStatus> : null}
+      {/* end B82 px */}
 
       <section style={cardStyle} aria-labelledby="tl-miss-h">
         <h2 id="tl-miss-h" style={{ fontSize: 'var(--eye-type-heading-3)' }}>Missing intervals of its sources ({trace.missingIntervals.length})</h2>

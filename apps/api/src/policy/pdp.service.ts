@@ -3465,6 +3465,39 @@ const BUNDLE_V1: Rule[] = [
     ];
   })(),
   /* end B82 gm */
+  /* B82 px */
+  /* B82 §PX (0121_b82_x_px; UX-57-001…005, CMP-022, WS-18). EXACT rules — no earlier rule is a prefix of graph.trust.* (the graph rules are
+     graph.read, graph.entity.*, graph.resolution.*, graph.edge.*, graph.strategy.*, graph.propagation.*, graph.impact.*, graph.subscription.*,
+     graph.provenance.*, graph.timeline.*, graph.closure.*, graph.geo.*, graph.revision.commit …; none is a prefix of `graph.trust`). THE READ
+     (`graph.trust.read`: the trust envelope, the provenance strength, the Trust and Governance overview) by §PV's readers, audited — the
+     facets and records carry no evidence bytes (D9: no evidence read is widened). THE ACTS, each human-gated, the PORT re-checking the
+     person and the role (graph.px_actor): VERIFY AGAIN (`graph.trust.verify`) — the auditor (TENANT), a record authority, a data steward, a
+     knowledge owner, a method steward, an analyst, the domain administrator, a decision approver, a privacy officer; ATTEST and WITHDRAW
+     (`graph.trust.attest`, `graph.trust.withdraw`) — the auditor (TENANT), a record authority, a data steward, a knowledge owner, a method
+     steward, an analyst, a decision approver, a risk owner (the port refuses the producer and the owner; an attestation is never an
+     approval and no rule reads it); INVESTIGATE (`graph.trust.investigate`) — those and the decision owner, the decision authority, the
+     executive, the domain administrator, a forecast owner, a strategy owner. No agent role appears here. */
+  ...((): Rule[] => {
+    const d = (role: string) => ({ role, atScope: 'DOMAIN' as Scope });
+    const auditor = { role: 'auditor', atScope: 'TENANT' as Scope };
+    const readers = [{ role: 'platform_admin', atScope: 'PLATFORM' as Scope }, { role: 'tenant_admin', atScope: 'TENANT' as Scope }, auditor,
+      { role: 'retention_authority', atScope: 'TENANT' as Scope },
+      ...['domain_admin', 'domain_analyst', 'collection_manager', 'extraction_manager', 'resolution_manager', 'strategy_owner', 'forecast_owner', 'twin_owner', 'simulation_operator',
+        'knowledge_owner', 'record_authority', 'retention_steward', 'ontology_steward', 'data_steward', 'method_steward', 'decision_owner', 'decision_approver', 'decision_authority',
+        'executive', 'executive_operator', 'risk_owner', 'privacy_officer'].map(d)];
+    const verifiers = [auditor, ...['record_authority', 'data_steward', 'knowledge_owner', 'method_steward', 'domain_analyst', 'domain_admin', 'decision_approver', 'privacy_officer'].map(d)];
+    const attesters = [auditor, ...['record_authority', 'data_steward', 'knowledge_owner', 'method_steward', 'domain_analyst', 'decision_approver', 'risk_owner'].map(d)];
+    const investigators = [...attesters, ...['decision_owner', 'decision_authority', 'executive', 'domain_admin', 'forecast_owner', 'strategy_owner'].map(d)];
+    const gate: Obligation[] = [{ type: 'human_gate' }];
+    return [
+      { actionPrefix: 'graph.trust.read', exact: true, requiredAnyRole: readers, obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.trust.verify', exact: true, requiredAnyRole: verifiers, obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.trust.attest', exact: true, requiredAnyRole: attesters, obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.trust.withdraw', exact: true, requiredAnyRole: attesters, obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.trust.investigate', exact: true, requiredAnyRole: investigators, obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+    ];
+  })(),
+  /* end B82 px */
 ];
 
 /* B107 conformance */

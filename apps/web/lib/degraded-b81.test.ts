@@ -128,11 +128,11 @@ describe('stale, partial and residual declarations (PAT-32, PAT-29, PAT-22)', ()
 });
 
 describe('the failure states (V00-T-106): per audience, each naming its read — or that none exists here', () => {
-  it('every kind has three audiences\' words and a next step; weak provenance says no read evaluates it (B82)', () => {
+  it('every kind has three audiences\' words and a next step; weak provenance is evaluated from the provenance strength (B82 §PX)', () => {
     const kinds = Object.keys(FAILURE_VOCABULARY) as FailureKind[];
     expect(kinds.sort()).toEqual(['evaluation_gap', 'failed_agent', 'incomplete_twin', 'missing', 'policy_denial', 'simulation_limit', 'stale', 'unavailable_method', 'unknown_outcome', 'weak_provenance']);
     for (const k of kinds) for (const a of ['executive', 'analyst', 'operator'] as const) expect(FAILURE_VOCABULARY[k].words[a].length).toBeGreaterThan(10);
-    expect(failureOf('weak_provenance', 'executive').read).toBe('No read evaluates this here — B82 (the provenance trail).');
+    expect(failureOf('weak_provenance', 'executive').read).toBe('Evaluated from the provenance strength (graph.provenance_strength — weak or broken, with its reasons).');   // B82 px: the read exists now
     expect(failureOf('unavailable_method', 'operator', 'discrete-event@1 after 3 faults.')).toMatchObject({ title: 'METHOD UNAVAILABLE', read: 'Evaluated from the B29 method quarantine.' });
     expect(failureOf('stale', 'executive').body).not.toMatch(/watermark/);
   });

@@ -31,6 +31,13 @@ import { CitationLink, EvidenceDisclosure } from '../../../../components/evidenc
 import { useCitationResolutions } from '../../../../lib/evidence-api-b82';
 import { citationKey, evidenceDisclosure, parseCitations } from '../../../../lib/evidence-b82';
 /* end B82 ev */
+/* B82 px: the provenance trail (both directions), the trust facets and the dissent of the shown version (CMP-029, CMP-022, HX-05, V01-T-035) */
+import { DissentList, ProvenanceTrail, TrustIndicator } from '../../../../components/trust';
+import { provenanceApi } from '../../../../lib/provenance-api-b50';
+import { trustApi } from '../../../../lib/trust-api-b82';
+import { dissentOfPackage, toEnvelope, toStrength, trustHref, type EnvelopeView, type StrengthView } from '../../../../lib/trust-b82';
+import type { ExplainView } from '../../../../lib/provenance-b50';
+/* end B82 px */
 
 /** B81 integration: ONE h1 per rendering (lib/layout-b81's REG-03 ratchet) — every branch (not opened, loading, the object) titles
  *  the page through this one element. */
@@ -88,6 +95,21 @@ function PackageObjectView() {
       if (g.ok && g.data !== undefined) setGate(g.data.gate); else setGateErr(g.error ?? null);
     })();
   }, [scope, id, shown?.version]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* B82 px: the shown version's trail, strength and facets — each read under its own route; a refusal kept in the server's words */
+  const [trail, setTrail] = useState<{ view: ExplainView | null; strength: StrengthView | null; envelope: EnvelopeView | null; problems: string[] }>({ view: null, strength: null, envelope: null, problems: [] });
+  useEffect(() => {
+    setTrail({ view: null, strength: null, envelope: null, problems: [] });
+    if (id === null || shown === null) return;
+    void (async () => {
+      const x = { type: 'DPK', id, version: shown.version };
+      const [e, st, en] = await Promise.all([provenanceApi.explain(scope, 'DPK', id, shown.version), trustApi.strength(scope, x), trustApi.envelope(scope, x)]);
+      const problems = [e, st, en].filter((r) => !r.ok).map((r) => `HTTP ${r.status}: ${r.error?.message ?? 'no answer; reload the page to read it again'}`);
+      setTrail({ view: e.ok && e.data !== undefined ? e.data.explain : null, strength: st.ok && st.data !== undefined ? toStrength(st.data.strength) : null,
+        envelope: en.ok && en.data !== undefined ? toEnvelope(en.data.envelope) : null, problems });
+    })();
+  }, [scope, id, shown?.version]); // eslint-disable-line react-hooks/exhaustive-deps
+  /* end B82 px */
 
   if (id === null || (vParam !== null && asked === null)) {
     return <><PageTitle>Decision package</PageTitle><p role="alert"><strong>Not opened.</strong> {LINK_OUTCOME_WORDS.invalid}</p><p><Link href="/decisions">Open the decision packages instead</Link></p></>;
@@ -193,6 +215,16 @@ function PackageObjectView() {
         )}
       </section>
       {/* end B82 ev */}
+      {/* B82 px */}
+      <DissentList rows={dissentOfPackage(shown.dissent as unknown as Array<Record<string, unknown>>)} scope={scope} caption={`Dissent on v${shown.version}`} />
+      {trail.problems.map((p) => <p key={p} className="eye-help">Not read: {p}</p>)}
+      {trail.view === null ? null : <ProvenanceTrail view={trail.view} strength={trail.strength} />}
+      {trail.envelope === null ? null : (
+        <TrustIndicator envelope={trail.envelope} heading={`Trust of v${shown.version} — facets, never a score`}>
+          <p><Link href={trustHref('DPK', pkg.package_id, shown.version)}>Open the trust page to verify, attest or investigate this version</Link></p>
+        </TrustIndicator>
+      )}
+      {/* end B82 px */}
       {/* B81 har: the CONTEST PATH (HX-14) — the challenges on the shown version and the appeal cases on the package */}
       <SubjectContest scope={scope} roles={rolesIn(me.bindings, scope)} type="DPK" appealKind="package" subjectId={pkg.package_id} explanation={{ kind: 'package_version', version: shown.version }}
         challenges={{ packageId: pkg.package_id, version: shown.version }} />
