@@ -18,6 +18,7 @@
  *      entered in an EXPLICIT zone and stored as UTC; the zone is always shown.
  */
 import { contentDigest } from './jcs';
+/* B82 ts */ import { aiOutputLabel } from './truth-b82'; /* end B82 ts */
 
 type Row = Record<string, unknown>;
 
@@ -66,7 +67,9 @@ export function sourceText(f: FieldValue): string | null {
     case 'default': return 'PROPOSED — a default; continuing past this step keeps it';
     case 'autocomplete': return `PROPOSED — autocompleted${f.origin ? ` from ${f.origin}` : ''}; confirm it or change it`;
     case 'imported': return f.origin ? `PROPOSED — imported from ${f.origin}; confirm it or change it` : 'PROPOSED — imported with NO recorded origin; it cannot be confirmed until its provenance is known';
-    case 'ai': return f.origin ? `PROPOSED — suggested by ${f.origin} (AI); a suggestion is never your answer until you confirm it` : 'PROPOSED — an AI suggestion with NO recorded model; it cannot be confirmed';
+    /* B82 ts (CNT-08): the ONE AI-output wording (lib/truth-b82.ts aiOutputLabel) — the model named, "not a decision" */
+    case 'ai': return f.origin ? `${aiOutputLabel('proposed', { kind: 'model', name: f.origin })} — a suggestion is never your answer until you confirm it` : `${aiOutputLabel('proposed', null)} — it cannot be confirmed`;
+    /* end B82 ts */
     default: return null;
   }
 }

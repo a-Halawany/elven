@@ -16,6 +16,13 @@ import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui'
 /* B28 (0088) warnings: the lifecycle — origin, cluster, context, closure, feedback, coverage gaps; the candidate intake processed by a person */
 import { LifecyclePanel } from './lifecycle-panel';
 import { originWords, warningLifecycle } from '../../../lib/warning-lifecycle';
+/* B82 ts: the FRESHNESS of this live view (the latest raise, the domain's source health — HX-15), each warning's DISPLAY truth (its canonical
+   WRN record — derived by the server, never stored) and its confidence as what the record says it is (NUM-02: no calibration is recorded for
+   a warning's confidence — never a bare number, never authority) */
+import { ConfidenceClass, FreshnessWatermark, TruthStateLabel, useDisplayTruth, useSourceHealth } from '../../../components/truth';
+import { refKey } from '../../../lib/truth-b82';
+const warningConfidence = (v: number) => ({ score: Number(v), calibrated: false, source: 'raising rule' });
+/* end B82 ts */
 /* end B28 warnings */
 
 /**
@@ -103,6 +110,12 @@ export default function WarningsPage() {
     setRows(r.data.warnings);
   };
   useEffect(() => { void load(); }, [scope]);
+  /* B82 ts */
+  const health = useSourceHealth(scope, 'prediction');
+  const truths = useDisplayTruth(open === null ? null : scope, open === null ? [] : [{ type: 'WRN', id: open.warning_id, version: 1, stored: 'unknown' }]);
+  const [readAt] = useState(() => new Date().toISOString());
+  const cutoff = (rows ?? []).map((w) => w.raised_as_of ?? w.raised_at).sort().at(-1) ?? null;
+  /* end B82 ts */
 
   if (problem !== null) return <LiveStatus assertive>{problem}</LiveStatus>;
   if (rows === null) return <Empty>reading warnings…</Empty>;
@@ -124,6 +137,10 @@ export default function WarningsPage() {
         </p>
       ) : <p><a href="/prediction/warnings/evaluations">Warning evaluation</a></p>}
       {/* end B28 warnings */}
+      {/* B82 ts */}
+      <FreshnessWatermark label="Freshness of the warnings" freshness={{ cutoff, asOf: readAt, live: true, sources: health.sources,
+        sourcesNote: health.read ? 'no source signal is declared for this domain' : (health.problem ?? 'reading the source health') }} />
+      {/* end B82 ts */}
       {rows.length === 0 ? <Empty>No warning has been raised.</Empty> : (
         <table className="eye-table" style={tableStyle}>
           <caption style={{ captionSide: 'top', textAlign: 'start', color: 'var(--eye-color-ink-muted)' }}>{rows.length} warning(s)</caption>
@@ -141,7 +158,7 @@ export default function WarningsPage() {
                 <Td>{fmtInstant(w.response_window_closes_at)}</Td>
                 <Td><WindowState w={w} now={now} /></Td>
                 <Td>{w.timely === undefined || w.timely === null ? <span style={{ color: 'var(--eye-color-ink-muted)' }}>unmeasured</span> : w.timely ? <span style={{ color: 'var(--eye-color-success)' }}>● issued in time</span> : <span style={{ color: 'var(--eye-color-critical)', fontWeight: 650 }}>✕ decision missed</span>}</Td>
-                <Td mono>{Number(w.confidence).toFixed(2)}</Td>
+                {/* B82 ts */}<Td><ConfidenceClass confidence={warningConfidence(w.confidence)} /></Td>{/* end B82 ts */}
               </tr>
             ))}
           </tbody>
@@ -155,6 +172,9 @@ export default function WarningsPage() {
           <WindowState w={open} now={now} />
           <p><Timing w={open} /></p>
           <p><ControlsLine controls={open.controls} /></p>
+          {/* B82 ts */}
+          <p>Truth (the warning&apos;s canonical record, v1): {(() => { const t = truths.get(refKey({ type: 'WRN', id: open.warning_id, version: 1 })); return t === undefined ? 'reading the display truth…' : <TruthStateLabel truth={t} />; })()}</p>
+          {/* end B82 ts */}
           <dl>
             <DefinitionRow term="Consequence">{open.consequence}{open.consequence_class ? <> — class <Mono>{open.consequence_class}</Mono> ({open.consequence_class_source === 'assumed' ? 'assumed: the branch declared none, so the more restrictive plausible class applies' : 'declared on the branch'})</> : null}</DefinitionRow>
             <DefinitionRow term="Evidence">

@@ -27,6 +27,11 @@ import { HAR_ACT_ROLES, mayRead, recommendationReviewRecord, statedConsequence }
 import { explanationB35, type AppealCase } from '../../../lib/explanation-b35';
 import { SubjectContest } from '../contest-panel';
 /* end B81 har */
+/* B82 ts: the DISPLAY truth of each recommendation (RECOMMENDED — derived, never stored; never DECIDED), the AI NOTICE on the Decision
+   Agent's (HX-11, UX-ADR-009, REL-06 — explained and contested on the explanations page), the HX-02 hold folded into the review */
+import { AiNotice, TruthStateLabel, useDisplayTruth } from '../../../components/truth';
+import { refKey, truthGate, type TruthInput } from '../../../lib/truth-b82';
+/* end B82 ts */
 
 type ReceiptT = { policyDecisionId: string; auditSeq: number } | null;
 const refusal = (r: { status: number; error?: { code: string; message: string } }, fallback: string) =>
@@ -43,7 +48,8 @@ function Mark({ m }: { m: { glyph: string; token: string; text: string } }) {
 }
 
 /** One recommendation in full: the object, its four separated components, what it rests on now, its reviews, the review form. */
-function RecommendationCard({ r, onDone, cases }: { r: Recommendation; onDone: () => void; /* B81 har */ cases: readonly AppealCase[] | { note: string } | 'loading' /* end B81 har */ }) {
+function RecommendationCard({ r, onDone, cases, truth }: { r: Recommendation; onDone: () => void; /* B81 har */ cases: readonly AppealCase[] | { note: string } | 'loading' /* end B81 har */;
+  /* B82 ts */ truth?: TruthInput | undefined /* end B82 ts */ }) {
   const { scope, me } = useShell();
   const [verdict, setVerdict] = useState<Verdict>('accept_for_consideration');
   const [rationale, setRationale] = useState(''); const [override, setOverride] = useState(''); const [reason, setReason] = useState('');
@@ -57,11 +63,18 @@ function RecommendationCard({ r, onDone, cases }: { r: Recommendation; onDone: (
   const reviewReasons = [
     ...(rationale.trim().length < 8 ? ['state your rationale (8 to 4000 characters, recorded with your name)'] : []),
     ...(verdict === 'accept_for_consideration' && r.flags.length > 0 && override.trim().length < 16 ? ['a flag stands: state your override (16+ characters) to accept it for consideration'] : []),
+    /* B82 ts (HX-02): held while the display truth is INDETERMINATE — said, the server refuses independently */
+    ...(truth === undefined || truthGate(truth, 'review') === null ? [] : [truthGate(truth, 'review')!]),
+    /* end B82 ts */
   ];
   /* end B81 har */
   return (
     <article aria-label={`recommendation ${r.recommendation_id}`} style={{ ...cardStyle, marginBlockEnd: 'var(--eye-space-16)' }}>
       <p><strong><span aria-hidden="true">{a.glyph}</span> {a.text}</strong> · <Mark m={stateMark(r.state)} /> · option <Mono>{r.option_key}</Mono>{r.option_title !== null && ` — ${r.option_title}`} · v{r.version}</p>
+      {/* B82 ts */}
+      <p>Truth: {truth === undefined ? <span style={muted}>reading the display truth…</span> : <TruthStateLabel truth={truth} audience="executive" />}</p>
+      {r.author_kind === 'agent' ? <AiNotice output="recommended" producer={{ kind: 'agent', name: 'Decision Agent' }} explainHref="/decisions/explanations" contestHref="/decisions/explanations" /> : null}
+      {/* end B82 ts */}
       <p style={{ fontSize: 'var(--eye-type-heading-3)', margin: 0 }}>{r.what}</p>
       <p>For <strong>{r.for_whom}</strong> · by <strong>{r.by_when}</strong></p>
       <h4>What could make it wrong</h4>
@@ -236,6 +249,10 @@ export default function RecommendationsPage() {
   }, [load, open]);
   const refresh = () => { if (selected !== null) void open(selected); void load(); };
   const cur = view?.side_by_side.version ?? null;
+  /* B82 ts: one audited display-truth read for the package's recommendations (REC:id@1 — a recommendation's content is immutable) */
+  const truths = useDisplayTruth(view === null ? null : scope, (view?.recommendations ?? []).map((r) => ({ type: 'REC', id: r.recommendation_id, version: 1, stored: 'asserted' })));
+  const truthOf = (id: string) => truths.get(refKey({ type: 'REC', id, version: 1 }));
+  /* end B82 ts */
   const byId = new Map((view?.recommendations ?? []).map((r) => [r.recommendation_id, r]));
   const others = (view?.recommendations ?? []).filter((r) => !(r.version === cur && (r.state === 'proposed' || r.state === 'accepted_for_consideration')));
   return (
@@ -260,17 +277,17 @@ export default function RecommendationsPage() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(22rem, 1fr))', gap: 'var(--eye-space-16)' }}>
             <section aria-label="the Decision Agent's recommendations">
               <h4>Decision Agent (AI)</h4>
-              {view.side_by_side.agent.length === 0 ? <Empty>none live</Empty> : view.side_by_side.agent.map((id) => { const r = byId.get(id); return r === undefined ? null : <RecommendationCard key={id} r={r} onDone={refresh} cases={cases} />; })}
+              {view.side_by_side.agent.length === 0 ? <Empty>none live</Empty> : view.side_by_side.agent.map((id) => { const r = byId.get(id); return r === undefined ? null : <RecommendationCard key={id} r={r} onDone={refresh} cases={cases} truth={truthOf(id)} />; })}
             </section>
             <section aria-label="the named humans' recommendations">
               <h4>Named humans</h4>
-              {view.side_by_side.human.length === 0 ? <Empty>none live</Empty> : view.side_by_side.human.map((id) => { const r = byId.get(id); return r === undefined ? null : <RecommendationCard key={id} r={r} onDone={refresh} cases={cases} />; })}
+              {view.side_by_side.human.length === 0 ? <Empty>none live</Empty> : view.side_by_side.human.map((id) => { const r = byId.get(id); return r === undefined ? null : <RecommendationCard key={id} r={r} onDone={refresh} cases={cases} truth={truthOf(id)} />; })}
             </section>
           </div>
           <RecordForm pkg={view} onDone={refresh} />
           <section aria-labelledby="history">
             <h3 id="history" style={h3}>Earlier and closed recommendations</h3>
-            {others.length === 0 ? <Empty>none</Empty> : others.map((r) => <RecommendationCard key={r.recommendation_id} r={r} onDone={refresh} cases={cases} />)}
+            {others.length === 0 ? <Empty>none</Empty> : others.map((r) => <RecommendationCard key={r.recommendation_id} r={r} onDone={refresh} cases={cases} truth={truthOf(r.recommendation_id)} />)}
           </section>
         </>
       )}
