@@ -15,7 +15,7 @@
  *    the current data watermark; each is navigation or presentation (none is an institutional act).
  *  - THE HANDOFF (PAT-45, DESIGN D10): an offer of the review context to the SAME person's other signed-in session; the claim restores the
  *    route, the version and the selection, and the claiming session acts with its OWN roles (re-read by the server) — never inherited.
- *  - THE ROOM (BP-05): the ≥ 1920 composition's regions — the corridor (a STRUCTURED alternative: the map canvas is B82's), the warning
+ *  - THE ROOM (BP-05): the ≥ 1920 composition's regions — the corridor (B82 gm: a MapCanvas with this STRUCTURED list as its table alternative), the warning
  *    queue, the twin state — built by ONE function for the control surface and the presentation (multi-window consistency).
  *
  * CONSTRUCTION only; the walk is the demonstration (SYNTHETIC); nothing here is accepted.
@@ -391,6 +391,12 @@ export interface RoomInput {
   twins: ReadonlyArray<{ twin_id: string; title: string; validation: { status: string }; versions: ReadonlyArray<{ version: number }>; synthetic_state: boolean }>;
   selection: Pick<RoomSelection, 'kind' | 'id'> | null;
 }
+/* B82 gm */
+/** The corridor region's note (BP-05 + CMP-064): the map draws the DECLARED references; the exposures list below it is its table alternative. */
+export const CORRIDOR_NOTE = 'The corridor map draws the declared geographic references (EPSG:4326, no basemap); this structured list of the corridor exposures is its table alternative.';
+/** The keys of the corridor's geographic references the room's map asks for: every chokepoint, port, site and route of the domain. */
+export const CORRIDOR_KINDS = ['chokepoint', 'port', 'site', 'route'] as const;
+/* end B82 gm */
 /** ONE function composes the room for every window (the control surface, a mirror, the presentation): the same inputs give the same rows. */
 export function roomSections(i: RoomInput): RoomSection[] {
   const sel = (k: RoomSelection['kind'], id: string) => i.selection !== null && i.selection.kind === k && i.selection.id === id;
@@ -409,7 +415,9 @@ export function roomSections(i: RoomInput): RoomSection[] {
       detail: `${latest === 0 ? 'no version' : `v${latest}`} · validation ${t.validation.status}${t.synthetic_state ? ' · SYNTHETIC state' : ''}`, selected: sel('twin', t.twin_id) };
   });
   return [
-    { key: 'corridor', title: 'Corridor', note: 'A structured list of the corridor exposures — the map canvas comes at B82.', rows: corridor },
+    /* B82 gm: the corridor region is a MapCanvas (components/canvas.tsx, the declared references of graph.geo_layer); this list is its table alternative */
+    { key: 'corridor', title: 'Corridor', note: CORRIDOR_NOTE, rows: corridor },
+    /* end B82 gm */
     { key: 'warnings', title: 'Warning queue', note: 'Open warnings (raised or acknowledged), as the home read lists them.', rows: warnings },
     { key: 'twins', title: 'Twin state', note: 'Each twin\'s latest version and its validation, as the twin register states it.', rows: twins },
   ];

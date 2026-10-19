@@ -21,6 +21,7 @@ import { inputStyle, textareaStyleFallback, tableStyle, Th, Td, Receipt } from '
 /* B36 (0094 §P) planning: the plan panel — an objective's initiatives, an initiative's plan (the data is Part P's; the link read-only) */
 import { planning, STATE_LABEL, type InitiativeRow } from '../../../lib/planning';
 /* end B36 planning */
+/* B82 gm */ import { HierarchyTree, StrategyGraphView } from '../../../components/canvas'; import { strategyHierarchyOf } from '../../../lib/canvas-specs-b82'; /* end B82 gm */
 
 const TYPES: Array<{ code: StrategyRow['object_type']; label: string }> = [
   { code: 'OBJ', label: 'Objective' },
@@ -143,6 +144,20 @@ export default function StrategyPage() {
           </tbody>
         </table>
       )}
+
+      {/* B82 gm (VIZ-14, VIZ-20): the Strategy Graph DRAWN (what each object rests on — the task-bounded view, the table its alternative) and its
+          HIERARCHY (an object under the first strategy object it rests on; the root is this domain's Strategy Graph). The register table above stays. */}
+      {rows.length === 0 ? null : (
+        <section aria-labelledby="stg-draw-h" style={{ ...cardStyle, marginBlockStart: 'var(--eye-space-24)' }}>
+          <h2 id="stg-draw-h" style={{ fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 }}>What each object rests on</h2>
+          <StrategyGraphView rows={rows} entities={entities} asOf={rows.reduce((m, r) => (r.updated_at > m ? r.updated_at : m), rows[0]!.updated_at)}
+            onOpen={(n) => { const r = rows.find((x) => x.strategy_object_id === n.id); if (r !== undefined) setOpen(r); }} />
+          <HierarchyTree items={strategyHierarchyOf(rows)} title="Strategy hierarchy" basis="the declared strategy objects, each under the first strategy object it rests on"
+            source={{ read: 'graph.strategy list', label: 'the Strategy Graph register' }} asOf={rows.reduce((m, r) => (r.updated_at > m ? r.updated_at : m), rows[0]!.updated_at)}
+            rule="An object's parent is the first strategy object it rests on, in declaration order; an object resting on none (or only on entities) hangs from the root — this domain's Strategy Graph." />
+        </section>
+      )}
+      {/* end B82 gm */}
 
       {open === null ? null : (
         <section aria-labelledby="stg-h" style={{ ...cardStyle,
