@@ -28,6 +28,7 @@ import { foldControls, type Controls, type ControlInput } from '../../prediction
 import type { AdmitWrites, Citation, CitationKind, CitedObjectRow, DeclareWrites, EnvelopeCheck, GroundWrites, TwinReads, ValidateWrites, VersionWrites, WithdrawWrites } from '../twin.capabilities.js';
 import { LIFECYCLE_EVENT_LIST_MAX, type OutboxRow } from '../../graph/subscriptions/change-events.js';
 import { changedVariablesOf, validateTwinEvent, type ChangedVariable, type ElementRow } from './twin-events.js';
+import { buildHeader } from '../../objects/header-builder.js';
 import { checkFamilyAdmission, checkFamilyGround } from '../families/admission.js'; // B29 (0092)
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -581,23 +582,23 @@ export class TwinService {
         inherited_validation: e['inherited_validation'] ?? null })),
       completeness, missing_keys: missing, synthetic_world: syntheticState,
     };
-    const header: CanonicalHeader = {
-      object_id: twinId, object_type: 'TWN', tenant_id: ctx.tenantId, domain_id: ctx.domainId, scope: 'DOMAIN',
-      object_version: String(version), lifecycle_state: 'active', owning_component: 'CP-TWN-01',
-      accountable_owner: `principal:${String(twin['owner_principal_id'])}`,
-      source_object_ids: [...new Set(citations.filter((c) => c.kind !== 'entity').map((c) => `${c.kind === 'estimate' ? 'estimate' /* B33 §0 */ : OBJECT_TYPE_OF[c.kind as Exclude<CitationKind, 'entity' | 'estimate'>]}:${c.id}@${c.version}`))],
-      event_time: null, observation_time: observedThrough === null ? null : `${observedThrough}T00:00:00.000Z`,
-      valid_from: null, valid_to: null, recorded_at: now, time_precision: observedThrough === null ? 'exact' : 'day',
-      source_clock_quality: 'trusted', truth_state: 'asserted', synthetic_state: syntheticState, confidence: null, uncertainty: null,
-      evidence_refs: [...new Set(citations.filter((c) => c.kind === 'evidence').map((c) => `EVD:${c.id}@${c.version}`))],
-      provenance_ref: `principal:${String(twin['owner_principal_id'])}`, method_ref: `${String(twin['behaviour_model_ref'])}/twin-declaration@1.0.0`,
-      contradiction_refs: [], corroboration_refs: [], human_refs: [`principal:${String(twin['owner_principal_id'])}`],
-      classification: controls.classification, purpose_scope: purposeId, rights_profile: controls.rights_profile,
-      residency_profile: controls.residency_profile, retention_profile: controls.retention_profile, access_policy_ref: controls.access_policy_ref,
-      quality_profile: null, quality_state: { completeness, verification: 'verified' }, /* B30 branches */ freshness_state: freshnessState, schema_ref: 'TWN@v1', ontology_ref: ontologyRef /* end B30 branches */,
-      correction_of: null, supersedes: supersedes === null ? null : `TWN:${twinId}@${supersedes}`, withdrawal_reason: null,
-      audit_correlation_id: correlationId, content_ref: null,
-    };
+    const header: CanonicalHeader = buildHeader({
+      objectId: twinId, objectType: 'TWN', tenantId: ctx.tenantId, domainId: ctx.domainId, scope: 'DOMAIN',
+      objectVersion: String(version), lifecycleState: 'active', owningComponent: 'CP-TWN-01',
+      accountableOwner: `principal:${String(twin['owner_principal_id'])}`,
+      sourceObjectIds: [...new Set(citations.filter((c) => c.kind !== 'entity').map((c) => `${c.kind === 'estimate' ? 'estimate' /* B33 §0 */ : OBJECT_TYPE_OF[c.kind as Exclude<CitationKind, 'entity' | 'estimate'>]}:${c.id}@${c.version}`))],
+      eventTime: null, observationTime: observedThrough === null ? null : `${observedThrough}T00:00:00.000Z`,
+      validFrom: null, validTo: null, recordedAt: now, timePrecision: observedThrough === null ? 'exact' : 'day',
+      sourceClockQuality: 'trusted', truthState: 'asserted', syntheticState: syntheticState, confidence: null, uncertainty: null,
+      evidenceRefs: [...new Set(citations.filter((c) => c.kind === 'evidence').map((c) => `EVD:${c.id}@${c.version}`))],
+      provenanceRef: `principal:${String(twin['owner_principal_id'])}`, methodRef: `${String(twin['behaviour_model_ref'])}/twin-declaration@1.0.0`,
+      contradictionRefs: [], corroborationRefs: [], humanRefs: [`principal:${String(twin['owner_principal_id'])}`],
+      classification: controls.classification, purposeScope: purposeId, rightsProfile: controls.rights_profile,
+      residencyProfile: controls.residency_profile, retentionProfile: controls.retention_profile, accessPolicyRef: controls.access_policy_ref,
+      qualityProfile: null, qualityState: { completeness, verification: 'verified' }, /* B30 branches */ freshnessState: freshnessState, schemaRef: 'TWN@v1', ontologyRef: ontologyRef /* end B30 branches */,
+      correctionOf: null, supersedes: supersedes === null ? null : `TWN:${twinId}@${supersedes}`, withdrawalReason: null,
+      auditCorrelationId: correlationId, contentRef: null,
+    });
     const check = validateHeader(header);
     if (!check.ok) throw new HttpException(errorBody('EYE_REQ_001', correlationId, `twin header invalid: ${(check.errors ?? []).join('; ')}`), 422);
     const headerDigest = canonicalHeaderDigest(header, payload);

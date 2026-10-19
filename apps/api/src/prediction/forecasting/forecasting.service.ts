@@ -57,6 +57,7 @@ import { SeriesService, cadenceOf, stepsFor, dayOf, type AssembledSeries, type R
 import { forecastWith, seasonalNaive, holtWinters, pinballMean, covered, SEASONAL_NAIVE, HOLT_WINTERS,
   MODEL_VERSION, T1_LOW, T1_HIGH, T2_SKILL, type ForecastOutput } from '../models/models.js';
 import type { Controls } from '../controls.js';
+import { buildHeader } from '../../objects/header-builder.js';
 
 export const HORIZONS: Readonly<Record<string, number>> = Object.freeze({
   '30d': 30, '90d': 90, '180d': 180, '1y': 365, '3y': 1095, '5y': 1825,
@@ -280,27 +281,27 @@ export class ForecastingService {
       controls,
       ...(a.b25?.payload ?? {}),   // B25 (0108 §0)
     };
-    const header: CanonicalHeader = {
-      object_id: forecastId, object_type: 'FCT', tenant_id: ctx.tenantId, domain_id: ctx.domainId, scope: 'DOMAIN',
-      object_version: '1', lifecycle_state: 'active', owning_component: 'CP-PRD-01',
-      accountable_owner: `principal:${actor}`,
-      source_object_ids: assembled.evidence.slice(0, 64).map((e) => `EVD:${e.evidence_object_id}@${e.evidence_version}`),
-      event_time: `${targetAt}T00:00:00.000Z`, observation_time: now, valid_from: `${originAt}T00:00:00.000Z`,
-      valid_to: `${targetAt}T00:00:00.000Z`, recorded_at: now, time_precision: 'exact', source_clock_quality: 'trusted',
+    const header: CanonicalHeader = buildHeader({
+      objectId: forecastId, objectType: 'FCT', tenantId: ctx.tenantId, domainId: ctx.domainId, scope: 'DOMAIN',
+      objectVersion: '1', lifecycleState: 'active', owningComponent: 'CP-PRD-01',
+      accountableOwner: `principal:${actor}`,
+      sourceObjectIds: assembled.evidence.slice(0, 64).map((e) => `EVD:${e.evidence_object_id}@${e.evidence_version}`),
+      eventTime: `${targetAt}T00:00:00.000Z`, observationTime: now, validFrom: `${originAt}T00:00:00.000Z`,
+      validTo: `${targetAt}T00:00:00.000Z`, recordedAt: now, timePrecision: 'exact', sourceClockQuality: 'trusted',
       // INHERITED, NOT DECLARED: the caller's label says what the demonstration is;
       // the evidence says what the forecast is made of.
-      truth_state: 'inferred', synthetic_state: controls.synthetic_state,
+      truthState: 'inferred', syntheticState: controls.synthetic_state,
       confidence: null, uncertainty: { q10: round(out.quantiles.q10), q50: round(out.quantiles.q50), q90: round(out.quantiles.q90) },
-      evidence_refs: assembled.evidence.slice(0, 64).map((e) => `EVD:${e.evidence_object_id}@${e.evidence_version}`),
-      provenance_ref: `series:${a.seriesKey}`, method_ref: `${method}@${MODEL_VERSION}`,
-      contradiction_refs: [], corroboration_refs: [], human_refs: [], classification: controls.classification,
-      purpose_scope: purposeId, rights_profile: controls.rights_profile ?? assembled.attribution,
-      residency_profile: controls.residency_profile, retention_profile: controls.retention_profile,
-      access_policy_ref: controls.access_policy_ref, quality_profile: null, quality_state: { validation: validationState },
-      freshness_state: { freshest_evidence_recorded_at: assembled.freshestRecordedAt, origin_at: originAt },
-      schema_ref: a.b25?.payload !== undefined && Object.keys(a.b25.payload).length > 0 ? 'FCT@v2' : 'FCT@v1' /* B25 (0108 §0) */, ontology_ref: null, correction_of: null, supersedes: null, withdrawal_reason: null,
-      audit_correlation_id: correlationId, content_ref: null,
-    };
+      evidenceRefs: assembled.evidence.slice(0, 64).map((e) => `EVD:${e.evidence_object_id}@${e.evidence_version}`),
+      provenanceRef: `series:${a.seriesKey}`, methodRef: `${method}@${MODEL_VERSION}`,
+      contradictionRefs: [], corroborationRefs: [], humanRefs: [], classification: controls.classification,
+      purposeScope: purposeId, rightsProfile: controls.rights_profile ?? assembled.attribution,
+      residencyProfile: controls.residency_profile, retentionProfile: controls.retention_profile,
+      accessPolicyRef: controls.access_policy_ref, qualityProfile: null, qualityState: { validation: validationState },
+      freshnessState: { freshest_evidence_recorded_at: assembled.freshestRecordedAt, origin_at: originAt },
+      schemaRef: a.b25?.payload !== undefined && Object.keys(a.b25.payload).length > 0 ? 'FCT@v2' : 'FCT@v1' /* B25 (0108 §0) */, ontologyRef: null, correctionOf: null, supersedes: null, withdrawalReason: null,
+      auditCorrelationId: correlationId, contentRef: null,
+    });
     const v = validateHeader(header);
     if (!v.ok) throw new HttpException(errorBody('EYE_REQ_001', correlationId, `forecast header invalid: ${(v.errors ?? []).join('; ')}`), 422);
     await cap.admitObject(header, payload, canonicalHeaderDigest(header, payload));

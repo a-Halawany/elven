@@ -32,6 +32,7 @@ import type {
   ChoiceWrites, Citation, CitedObjectRow, ConsequenceKind, DeclareWrites, DecisionReads, DissentWrites, OptionWrites, ProposeWrites, ReopenWrites, TermsWrites, VersionWrites, WithdrawWrites,
 } from '../decision.capabilities.js';
 import type { ReadyOption } from '../decision-events.js';
+import { buildHeader } from '../../objects/header-builder.js';
 /* B35 recommendation (0101 §R; FEX-15) */ import { proposalGate } from '../recommendation/recommendation.service.js'; /* end B35 recommendation */
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -282,24 +283,24 @@ export class PackageService {
       version_digest: expected, baseline_run_id: baselineRunId, synthetic_world: syntheticState,
     };
     const now = new Date().toISOString();
-    const header: CanonicalHeader = {
-      object_id: packageId, object_type: 'DPK', tenant_id: ctx.tenantId, domain_id: ctx.domainId, scope: 'DOMAIN',
-      object_version: String(version), lifecycle_state: 'active', owning_component: 'CP-DEC-01',
-      accountable_owner: `principal:${String(p['owner_principal_id'])}`,
-      source_object_ids: [...new Set([`DEC:${String(p['decision_object_id'])}@1`, ...citations.map((c) => `${OBJECT_TYPE_OF[c.kind]}:${c.id}@${c.version}`)])],
-      event_time: null, observation_time: observedThrough === null ? null : `${observedThrough}T00:00:00.000Z`,
-      valid_from: null, valid_to: null, recorded_at: now, time_precision: observedThrough === null ? 'exact' : 'day',
-      source_clock_quality: 'trusted', truth_state: 'asserted', synthetic_state: syntheticState, confidence: null, uncertainty: null,
-      evidence_refs: [...new Set(citations.filter((c) => c.kind === 'evidence').map((c) => `EVD:${c.id}@${c.version}`))],
-      provenance_ref: `principal:${String(p['owner_principal_id'])}`, method_ref: 'decision-package@1.0.0',
-      contradiction_refs: [], corroboration_refs: [], human_refs: [...new Set([`principal:${String(p['owner_principal_id'])}`, `principal:${actor}`])],
-      classification: controls.classification, purpose_scope: purposeId, rights_profile: controls.rights_profile,
-      residency_profile: controls.residency_profile, retention_profile: controls.retention_profile, access_policy_ref: controls.access_policy_ref,
-      quality_profile: null, quality_state: { completeness: /* B35 recommendation (FEX-15) */ b35Gate.humanLed === null ? 'complete' : 'human_led_incomplete' /* end B35 recommendation */, verification: 'proposed', baseline: baselineRunId === null ? 'none' : 'one-control-run' },
-      freshness_state: null, schema_ref: 'DPK@v1', ontology_ref: null,
-      correction_of: null, supersedes: supersedes === null ? null : `DPK:${packageId}@${supersedes}`, withdrawal_reason: null,
-      audit_correlation_id: correlationId, content_ref: null,
-    };
+    const header: CanonicalHeader = buildHeader({
+      objectId: packageId, objectType: 'DPK', tenantId: ctx.tenantId, domainId: ctx.domainId, scope: 'DOMAIN',
+      objectVersion: String(version), lifecycleState: 'active', owningComponent: 'CP-DEC-01',
+      accountableOwner: `principal:${String(p['owner_principal_id'])}`,
+      sourceObjectIds: [...new Set([`DEC:${String(p['decision_object_id'])}@1`, ...citations.map((c) => `${OBJECT_TYPE_OF[c.kind]}:${c.id}@${c.version}`)])],
+      eventTime: null, observationTime: observedThrough === null ? null : `${observedThrough}T00:00:00.000Z`,
+      validFrom: null, validTo: null, recordedAt: now, timePrecision: observedThrough === null ? 'exact' : 'day',
+      sourceClockQuality: 'trusted', truthState: 'asserted', syntheticState: syntheticState, confidence: null, uncertainty: null,
+      evidenceRefs: [...new Set(citations.filter((c) => c.kind === 'evidence').map((c) => `EVD:${c.id}@${c.version}`))],
+      provenanceRef: `principal:${String(p['owner_principal_id'])}`, methodRef: 'decision-package@1.0.0',
+      contradictionRefs: [], corroborationRefs: [], humanRefs: [...new Set([`principal:${String(p['owner_principal_id'])}`, `principal:${actor}`])],
+      classification: controls.classification, purposeScope: purposeId, rightsProfile: controls.rights_profile,
+      residencyProfile: controls.residency_profile, retentionProfile: controls.retention_profile, accessPolicyRef: controls.access_policy_ref,
+      qualityProfile: null, qualityState: { completeness: /* B35 recommendation (FEX-15) */ b35Gate.humanLed === null ? 'complete' : 'human_led_incomplete' /* end B35 recommendation */, verification: 'proposed', baseline: baselineRunId === null ? 'none' : 'one-control-run' },
+      freshnessState: null, schemaRef: 'DPK@v1', ontologyRef: null,
+      correctionOf: null, supersedes: supersedes === null ? null : `DPK:${packageId}@${supersedes}`, withdrawalReason: null,
+      auditCorrelationId: correlationId, contentRef: null,
+    });
     const check = validateHeader(header);
     if (!check.ok) throw new HttpException(errorBody('EYE_REQ_001', correlationId, `package header invalid: ${(check.errors ?? []).join('; ')}`), 422);
     const headerDigest = canonicalHeaderDigest(header, payload);

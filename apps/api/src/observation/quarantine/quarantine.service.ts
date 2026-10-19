@@ -18,6 +18,7 @@ import { newId } from '../../shared/ids.js';
 import type { ScopeContext } from '../../shared/scope.js';
 import type { AcquisitionWrites, ObservationReads } from '../observation.capabilities.js';
 import { VaultService } from '../vault/vault.service.js';
+import { buildHeader } from '../../objects/header-builder.js';
 
 export interface QuarantineCaseRow {
   case_id: string;
@@ -119,34 +120,35 @@ export class QuarantineService {
       correlationId,
     });
 
+    // B50 hd: the shared header builder — the release's common statement, then each object's own
     const base = {
-      tenant_id: tenantId, domain_id: domainId, scope: 'DOMAIN' as const,
-      object_version: '1', lifecycle_state: 'admitted',
-      owning_component: 'CP-OBS-01', accountable_owner: actor,
-      time_precision: 'exact', source_clock_quality: 'unknown' as const,
-      synthetic_state: contract.data_origin === 'synthetic',
-      confidence: null, uncertainty: null, provenance_ref: `SRC:${caseRow.source_id}@${caseRow.contract_version}`,
-      contradiction_refs: [], corroboration_refs: [],
-      classification: contract.classification_ceiling, purpose_scope: purposeId,
-      rights_profile: null, residency_profile: contract.residency, retention_profile: 'default',
-      access_policy_ref: null, quality_profile: null, quality_state: null, freshness_state: null,
-      ontology_ref: null, correction_of: null, supersedes: null, withdrawal_reason: null,
-      audit_correlation_id: correlationId,
-      valid_from: null, valid_to: null, recorded_at: now,
+      tenantId, domainId, scope: 'DOMAIN' as const,
+      objectVersion: '1', lifecycleState: 'admitted',
+      owningComponent: 'CP-OBS-01', accountableOwner: actor,
+      timePrecision: 'exact', sourceClockQuality: 'unknown' as const,
+      syntheticState: contract.data_origin === 'synthetic',
+      confidence: null, uncertainty: null, provenanceRef: `SRC:${caseRow.source_id}@${caseRow.contract_version}`,
+      contradictionRefs: [], corroborationRefs: [],
+      classification: contract.classification_ceiling, purposeScope: purposeId,
+      rightsProfile: null, residencyProfile: contract.residency, retentionProfile: 'default',
+      accessPolicyRef: null, qualityProfile: null, qualityState: null, freshnessState: null,
+      ontologyRef: null, correctionOf: null, supersedes: null, withdrawalReason: null,
+      auditCorrelationId: correlationId,
+      validFrom: null, validTo: null, recordedAt: now,
     };
 
-    const obsHeader: CanonicalHeader = {
+    const obsHeader: CanonicalHeader = buildHeader({
       ...base,
-      object_id: obsObjectId, object_type: 'OBS',
-      source_object_ids: [`SRC:${caseRow.source_id}@${caseRow.contract_version}`],
-      event_time: null, observation_time: (caseRow.opened_at as Date).toISOString(),
-      truth_state: 'observed',
-      evidence_refs: [`quarantine-case:${caseRow.case_id}`],
-      method_ref: 'quarantine-release@1.0.0',
+      objectId: obsObjectId, objectType: 'OBS',
+      sourceObjectIds: [`SRC:${caseRow.source_id}@${caseRow.contract_version}`],
+      eventTime: null, observationTime: (caseRow.opened_at as Date).toISOString(),
+      truthState: 'observed',
+      evidenceRefs: [`quarantine-case:${caseRow.case_id}`],
+      methodRef: 'quarantine-release@1.0.0',
       // A release is a HUMAN decision and names the human who made it.
-      human_refs: [actor],
-      schema_ref: 'OBS@v1', content_ref: null,
-    };
+      humanRefs: [actor],
+      schemaRef: 'OBS@v1', contentRef: null,
+    });
     const obsPayload = {
       source_key: contract.source_key,
       source_id: caseRow.source_id,
@@ -168,17 +170,17 @@ export class QuarantineService {
     assertHeader(obsHeader);
     await cap.admitObject(obsHeader, obsPayload, canonicalHeaderDigest(obsHeader, obsPayload));
 
-    const evdHeader: CanonicalHeader = {
+    const evdHeader: CanonicalHeader = buildHeader({
       ...base,
-      object_id: evdObjectId, object_type: 'EVD',
-      source_object_ids: [`OBS:${obsObjectId}`],
-      event_time: null, observation_time: now,
-      truth_state: 'observed',
-      evidence_refs: [`blob:${manifestId}`],
-      method_ref: 'quarantine-release@1.0.0',
-      human_refs: [actor],
-      schema_ref: 'EVD@v1', content_ref: `vault:evidence/${candidate.locator}`,
-    };
+      objectId: evdObjectId, objectType: 'EVD',
+      sourceObjectIds: [`OBS:${obsObjectId}`],
+      eventTime: null, observationTime: now,
+      truthState: 'observed',
+      evidenceRefs: [`blob:${manifestId}`],
+      methodRef: 'quarantine-release@1.0.0',
+      humanRefs: [actor],
+      schemaRef: 'EVD@v1', contentRef: `vault:evidence/${candidate.locator}`,
+    });
     const evdPayload = {
       obs_object_id: obsObjectId, manifest_id: manifestId, locator: candidate.locator,
       content_digest: candidate.contentDigest, byte_length: candidate.byteLength,

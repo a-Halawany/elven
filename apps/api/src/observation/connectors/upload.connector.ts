@@ -12,6 +12,7 @@
  */
 import { createHash } from 'node:crypto';
 import type { AcquiredItem, AcquisitionContext, AcquisitionOutput, Connector } from './sdk.js';
+import { headerInstantOf, type TimeValue } from '@eye/contracts'; // B50 hd
 
 const VERSION = '1.0.0';
 export const UPLOAD_METHOD_REF = `operator-upload-framing@${VERSION}`;
@@ -24,6 +25,10 @@ export interface UploadedFile {
   operator: string;
   /** The operator's stated time for the document, when they supply one. Never invented. */
   documentTime?: string | null;
+  /* B50 hd (ES-26-004): the document time STATED as a time value ('late August 2026' — bounded, precision part_of_month, its zone and
+     source); validated at the intake (upload.controller.ts). When given, documentTime is not. */
+  documentTimeValue?: TimeValue | null;
+  /* end B50 hd */
 }
 
 export class UploadConnector implements Connector {
@@ -51,7 +56,10 @@ export class UploadConnector implements Connector {
         bytes: f.bytes,
         declaredMediaType: f.declaredMediaType,
         filename: f.filename,
-        publisherTime: f.documentTime ?? null,
+        /* B50 hd: a stated time value places its header instant (never a false one: unknown / recurring / conflicting place none) */
+        publisherTime: f.documentTimeValue != null ? headerInstantOf(f.documentTimeValue).instant : (f.documentTime ?? null),
+        publisherTimeValue: f.documentTimeValue ?? null,
+        /* end B50 hd */
         transport: {
           connector: this.name,
           connectorVersion: VERSION,

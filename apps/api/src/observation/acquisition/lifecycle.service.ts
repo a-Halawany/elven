@@ -43,6 +43,8 @@ import * as fault from '../fault-injection.js';
 import { createHash } from 'node:crypto';
 import { StreamPlanRefused, type AcquiredSegment, type StreamCursor, type StreamPlan } from '../connectors/sdk.js';
 import type { StreamAnswer, StreamSegmentArgs } from '../observation.capabilities.js';
+import { buildHeader, timeDeclaration } from '../../objects/header-builder.js';
+import type { TimeValue } from '@eye/contracts'; // B50 hd
 
 export interface RunRequest {
   sourceId: string;
@@ -1197,8 +1199,11 @@ export class AcquisitionLifecycle {
       evidenceRefs: parentEvdObjectId != null ? [`EVD:${parentEvdObjectId}`] : [],
       sourceObjectIds: [`SRC:${req.sourceId}@${req.contractVersion}`],
       schemaRef: 'OBS@v1',
+      time: item.publisherTimeValue ?? null, // B50 hd
     });
-    await cap.admitObject(header, payload, canonicalHeaderDigest(header, payload));
+    // B50 hd: a stated time value is recorded whole in objects.time_qualifiers by the admission
+    await cap.admitObject(header, payload, canonicalHeaderDigest(header, payload),
+      item.publisherTimeValue != null ? timeDeclaration({ event: item.publisherTimeValue }) : undefined);
   }
 
   private async admitEvd(
@@ -1253,8 +1258,10 @@ export class AcquisitionLifecycle {
       schemaRef: 'EVD@v1',
       contentRef: `vault:evidence/${candidate.locator}`,
       version, supersedes,
+      time: item.publisherTimeValue ?? null, // B50 hd
     });
-    await cap.admitObject(header, payload, canonicalHeaderDigest(header, payload));
+    await cap.admitObject(header, payload, canonicalHeaderDigest(header, payload),
+      item.publisherTimeValue != null ? timeDeclaration({ event: item.publisherTimeValue }) : undefined); // B50 hd
   }
 
   private header(a: {
@@ -1262,58 +1269,60 @@ export class AcquisitionLifecycle {
     eventTime: string | null; observationTime: string; validFrom: string | null;
     truthState: string; methodRef: string; evidenceRefs: string[]; sourceObjectIds: string[];
     schemaRef: string; contentRef?: string; version?: number; supersedes?: string | null;
+    /* B50 hd: the publisher's (operator's) stated time value for the event axis */
+    time?: TimeValue | null;
   }): CanonicalHeader {
     const recordedAt = new Date().toISOString();
-    const header: CanonicalHeader = {
-      object_id: a.objectId,
-      object_type: a.objectType,
-      tenant_id: a.contract.tenant_id,
-      domain_id: a.contract.domain_id,
+    const header: CanonicalHeader = buildHeader({
+      objectId: a.objectId,
+      objectType: a.objectType,
+      tenantId: a.contract.tenant_id,
+      domainId: a.contract.domain_id,
       scope: 'DOMAIN',
-      object_version: String(a.version ?? 1),
-      lifecycle_state: 'admitted',
-      owning_component: 'CP-OBS-01',
-      accountable_owner: `principal:${a.req.principal.principalId}`,
-      source_object_ids: a.sourceObjectIds,
-      event_time: a.eventTime != null && !Number.isNaN(Date.parse(a.eventTime))
+      objectVersion: String(a.version ?? 1),
+      lifecycleState: 'admitted',
+      owningComponent: 'CP-OBS-01',
+      accountableOwner: `principal:${a.req.principal.principalId}`,
+      sourceObjectIds: a.sourceObjectIds,
+      eventTime: a.eventTime != null && !Number.isNaN(Date.parse(a.eventTime))
         ? new Date(a.eventTime).toISOString() : null,
-      observation_time: a.observationTime,
-      valid_from: a.validFrom,
-      valid_to: null,
-      recorded_at: recordedAt,
-      time_precision: 'exact',
+      observationTime: a.observationTime,
+      validFrom: a.validFrom,
+      validTo: null,
+      recordedAt: recordedAt,
+      timePrecision: a.time != null ? a.time.precision : 'exact', // B50 hd: a stated time value's precision
       // A replayed capture's clock is the CAPTURE's clock, not this run's. Saying
       // `trusted` for a time we did not observe would be a small, compounding lie.
-      source_clock_quality: a.contract.acquisition_mode === 'replay' ? 'unknown' : 'trusted',
-      truth_state: a.truthState,
-      synthetic_state: String(a.contract['data_origin']) === 'synthetic',
+      sourceClockQuality: a.contract.acquisition_mode === 'replay' ? 'unknown' : 'trusted',
+      truthState: a.truthState,
+      syntheticState: String(a.contract['data_origin']) === 'synthetic',
       confidence: null,
       uncertainty: null,
-      evidence_refs: a.evidenceRefs,
-      provenance_ref: `SRC:${a.req.sourceId}@${a.req.contractVersion}`,
-      method_ref: a.methodRef,
-      contradiction_refs: [],
-      corroboration_refs: [],
-      human_refs: [],
+      evidenceRefs: a.evidenceRefs,
+      provenanceRef: `SRC:${a.req.sourceId}@${a.req.contractVersion}`,
+      methodRef: a.methodRef,
+      contradictionRefs: [],
+      corroborationRefs: [],
+      humanRefs: [],
       classification: a.contract.classification_ceiling,
-      purpose_scope: a.req.purposeId,
-      rights_profile: String((a.contract.contract as { authority_and_rights?: { licence?: string } })
+      purposeScope: a.req.purposeId,
+      rightsProfile: String((a.contract.contract as { authority_and_rights?: { licence?: string } })
         .authority_and_rights?.licence ?? 'unspecified'),
-      residency_profile: a.contract.residency,
-      retention_profile: String((a.contract.contract as { authority_and_rights?: { retention?: string } })
+      residencyProfile: a.contract.residency,
+      retentionProfile: String((a.contract.contract as { authority_and_rights?: { retention?: string } })
         .authority_and_rights?.retention ?? 'default'),
-      access_policy_ref: null,
-      quality_profile: null,
-      quality_state: null,
-      freshness_state: null,
-      schema_ref: a.schemaRef,
-      ontology_ref: null,
-      correction_of: null,
+      accessPolicyRef: null,
+      qualityProfile: null,
+      qualityState: null,
+      freshnessState: null,
+      schemaRef: a.schemaRef,
+      ontologyRef: null,
+      correctionOf: null,
       supersedes: a.supersedes ?? null,
-      withdrawal_reason: null,
-      audit_correlation_id: a.req.correlationId,
-      content_ref: a.contentRef ?? null,
-    };
+      withdrawalReason: null,
+      auditCorrelationId: a.req.correlationId,
+      contentRef: a.contentRef ?? null,
+    }, a.time != null ? { time: { event: a.time } } : {}); // B50 hd: placed and checked by the builder
     const v = validateHeader(header);
     if (!v.ok) throw new Error(`canonical header invalid: ${(v.errors ?? []).join('; ')}`);
     return header;

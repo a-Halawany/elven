@@ -19,6 +19,7 @@ import type { ObservationReads, RegistryWrites } from '../observation.capabiliti
 import { validateSourceContract, type SourceContractV1 } from './source-contract.js';
 import { SchedulerService, type ScheduleRuntime } from '../scheduling/scheduler.service.js';
 import { SourceCredentialStore } from './source-credentials.js';
+import { buildHeader } from '../../objects/header-builder.js';
 
 export interface SourceReadiness {
   /** live · live-unscheduled · replay · operator-upload · blocked-rights · blocked-credential · inactive */
@@ -113,58 +114,58 @@ export class SourcesService {
 
     // The SRC canonical object: the contract, immutable and digest-bound.
     const recordedAt = new Date().toISOString();
-    const header: CanonicalHeader = {
-      object_id: sourceId,
-      object_type: 'SRC',
-      tenant_id: tenantId,
-      domain_id: domainId,
+    const header: CanonicalHeader = buildHeader({
+      objectId: sourceId,
+      objectType: 'SRC',
+      tenantId: tenantId,
+      domainId: domainId,
       scope: 'DOMAIN',
-      object_version: String(contractVersion),
-      lifecycle_state: 'admitted',
-      owning_component: 'CP-OBS-01',
-      accountable_owner: actor,
-      source_object_ids: [],
-      event_time: c.lifecycle.effective_from,
-      observation_time: recordedAt,
-      valid_from: c.lifecycle.effective_from,
-      valid_to: c.lifecycle.effective_to ?? null,
-      recorded_at: recordedAt,
-      time_precision: 'exact',
-      source_clock_quality: 'trusted',
+      objectVersion: String(contractVersion),
+      lifecycleState: 'admitted',
+      owningComponent: 'CP-OBS-01',
+      accountableOwner: actor,
+      sourceObjectIds: [],
+      eventTime: c.lifecycle.effective_from,
+      observationTime: recordedAt,
+      validFrom: c.lifecycle.effective_from,
+      validTo: c.lifecycle.effective_to ?? null,
+      recordedAt: recordedAt,
+      timePrecision: 'exact',
+      sourceClockQuality: 'trusted',
       // A registered contract is ASSERTED by the registrar. It is not an
       // observation of the world and must not claim to be one.
-      truth_state: 'asserted',
-      synthetic_state: c.data_origin === 'synthetic',
+      truthState: 'asserted',
+      syntheticState: c.data_origin === 'synthetic',
       confidence: null,
       uncertainty: null,
-      evidence_refs: [],
-      provenance_ref: null,
-      method_ref: 'source-registration@1.0.0',
-      contradiction_refs: [],
-      corroboration_refs: [],
-      human_refs: [actor],
+      evidenceRefs: [],
+      provenanceRef: null,
+      methodRef: 'source-registration@1.0.0',
+      contradictionRefs: [],
+      corroborationRefs: [],
+      humanRefs: [actor],
       classification: c.authority_and_rights.classification_ceiling,
-      purpose_scope: c.authority_and_rights.purposes[0] ?? 'observation',
-      rights_profile: c.authority_and_rights.licence,
-      residency_profile: c.authority_and_rights.residency,
-      retention_profile: c.authority_and_rights.retention,
-      access_policy_ref: null,
-      quality_profile: null,
-      quality_state: null,
-      freshness_state: null,
+      purposeScope: c.authority_and_rights.purposes[0] ?? 'observation',
+      rightsProfile: c.authority_and_rights.licence,
+      residencyProfile: c.authority_and_rights.residency,
+      retentionProfile: c.authority_and_rights.retention,
+      accessPolicyRef: null,
+      qualityProfile: null,
+      qualityState: null,
+      freshnessState: null,
       // SRC@v2 (migration 0028) adds the optional backfill declaration and the
       // publisher's attribution notice; a contract using neither is still a v1.
       // B11 (migration 0070 §1): SRC@v3 adds the credential header; a contract not naming it is admitted as before.
-      schema_ref: c.security_and_operations.credential_header != null ? 'SRC@v3'
+      schemaRef: c.security_and_operations.credential_header != null ? 'SRC@v3'
         : c.security_and_operations.backfill !== undefined || c.authority_and_rights.attribution != null ? 'SRC@v2' : 'SRC@v1',
-      ontology_ref: null,
-      correction_of: null,
+      ontologyRef: null,
+      correctionOf: null,
       supersedes: c.lifecycle.supersedes_version != null
         ? `${sourceId}@${c.lifecycle.supersedes_version}` : null,
-      withdrawal_reason: null,
-      audit_correlation_id: correlationId,
-      content_ref: null,
-    };
+      withdrawalReason: null,
+      auditCorrelationId: correlationId,
+      contentRef: null,
+    });
     const hv = validateHeader(header);
     if (!hv.ok) throw bad(correlationId, `canonical header invalid: ${(hv.errors ?? []).join('; ')}`);
     const payload = contract as unknown as Record<string, unknown>;

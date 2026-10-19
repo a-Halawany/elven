@@ -12,7 +12,7 @@
  * gentler admission path for things a human handed us.
  */
 import { Body, Controller, HttpException, Param, Post, Req } from '@nestjs/common';
-import { errorBody } from '@eye/contracts';
+import { errorBody, timeValueProblems, type TimeValue } from '@eye/contracts';
 import { requireCorrelation } from '../../shared/correlation.js';
 import type { EyeRequest } from '../../pipeline/http.js';
 import { PipelineService } from '../../pipeline/pipeline.service.js';
@@ -22,7 +22,8 @@ import type { UploadedFile } from '../connectors/upload.connector.js';
 interface UploadPayload {
   sourceId?: string;
   contractVersion?: number;
-  files?: Array<{ filename?: string; mediaType?: string | null; base64?: string; documentTime?: string | null }>;
+  /* B50 hd: documentTime is an ISO instant as before, or a stated time value (ES-26-004) */
+  files?: Array<{ filename?: string; mediaType?: string | null; base64?: string; documentTime?: string | TimeValue | null }>;
 }
 
 /** A ceiling on the intake itself, applied before anything is decoded. */
@@ -76,6 +77,15 @@ export class UploadController {
         await this.pipeline.rejectAuthenticatedRequest(
           envelope, principal, route, 'EYE-REQ-001', 'each file requires a filename and base64 content', 400);
       }
+      /* B50 hd: a stated document time value is validated here, at the boundary, and refused with its problems — never coerced */
+      if (f.documentTime !== null && f.documentTime !== undefined && typeof f.documentTime !== 'string') {
+        const problems = timeValueProblems(f.documentTime);
+        if (problems.length > 0) {
+          await this.pipeline.rejectAuthenticatedRequest(
+            envelope, principal, route, 'EYE-REQ-001', `the document time of ${String(f.filename)} is not a valid time value: ${problems.join('; ')}`, 400);
+        }
+      }
+      /* end B50 hd */
       const bytes = Buffer.from(f.base64 as string, 'base64');
       total += bytes.byteLength;
       if (total > MAX_UPLOAD_BYTES) {
@@ -89,7 +99,10 @@ export class UploadController {
         declaredMediaType: f.mediaType ?? null,
         bytes,
         operator: `principal:${principal.principalId}`,
-        documentTime: f.documentTime ?? null,
+        /* B50 hd */
+        documentTime: typeof f.documentTime === 'string' ? f.documentTime : null,
+        documentTimeValue: f.documentTime !== null && typeof f.documentTime === 'object' ? f.documentTime : null,
+        /* end B50 hd */
       });
     }
 

@@ -23,6 +23,7 @@ import { canonicalHeaderDigest, errorBody, validateHeader, type CanonicalHeader 
 import { newId } from '../../shared/ids.js';
 import type { ScopeContext } from '../../shared/scope.js';
 import type { AcquisitionWrites, ObservationReads } from '../observation.capabilities.js';
+import { buildHeader } from '../../objects/header-builder.js';
 
 export const UNRESOLVED_PROPAGATION =
   'downstream consumers not yet present (KG/dependency graph arrives Phase 3)';
@@ -163,53 +164,53 @@ export class CorrectionsService {
       const nextVersion = a.object_version + 1;
       const now = new Date().toISOString();
 
-      const header: CanonicalHeader = {
-        object_id: a.object_id,
-        object_type: a.object_type,
-        tenant_id: ctx.tenantId,
-        domain_id: ctx.domainId,
+      const header: CanonicalHeader = buildHeader({
+        objectId: a.object_id,
+        objectType: a.object_type,
+        tenantId: ctx.tenantId,
+        domainId: ctx.domainId,
         scope: 'DOMAIN',
-        object_version: String(nextVersion),
-        lifecycle_state: kind === 'withdrawal' ? 'withdrawn' : 'corrected',
-        owning_component: 'CP-OBS-01',
-        accountable_owner: actor,
-        source_object_ids: asArray(prior['source_object_ids']),
-        event_time: isoOrNull(prior['event_time']),
-        observation_time: isoOrNull(prior['observation_time']),
-        valid_from: isoOrNull(prior['valid_from']),
-        valid_to: isoOrNull(prior['valid_to']),
-        recorded_at: now,
-        time_precision: String(prior['time_precision'] ?? 'exact'),
-        source_clock_quality: (prior['source_clock_quality'] as CanonicalHeader['source_clock_quality']) ?? 'unknown',
+        objectVersion: String(nextVersion),
+        lifecycleState: kind === 'withdrawal' ? 'withdrawn' : 'corrected',
+        owningComponent: 'CP-OBS-01',
+        accountableOwner: actor,
+        sourceObjectIds: asArray(prior['source_object_ids']),
+        eventTime: isoOrNull(prior['event_time']),
+        observationTime: isoOrNull(prior['observation_time']),
+        validFrom: isoOrNull(prior['valid_from']),
+        validTo: isoOrNull(prior['valid_to']),
+        recordedAt: now,
+        timePrecision: String(prior['time_precision'] ?? 'exact'),
+        sourceClockQuality: (prior['source_clock_quality'] as CanonicalHeader['source_clock_quality']) ?? 'unknown',
         // A withdrawn object's truth state SAYS SO. Leaving it `observed` while
         // marking the lifecycle withdrawn would let a reader take it at face value.
-        truth_state: kind === 'withdrawal' ? 'withdrawn' : 'observed',
-        synthetic_state: Boolean(prior['synthetic_state']),
+        truthState: kind === 'withdrawal' ? 'withdrawn' : 'observed',
+        syntheticState: Boolean(prior['synthetic_state']),
         confidence: null,
         uncertainty: null,
-        evidence_refs: [...asArray(prior['evidence_refs']), `correction-case:${caseId}`],
-        provenance_ref: (prior['provenance_ref'] as string | null) ?? null,
-        method_ref: `correction-intake@1.0.0`,
-        contradiction_refs: [],
-        corroboration_refs: [],
-        human_refs: [actor],
+        evidenceRefs: [...asArray(prior['evidence_refs']), `correction-case:${caseId}`],
+        provenanceRef: (prior['provenance_ref'] as string | null) ?? null,
+        methodRef: `correction-intake@1.0.0`,
+        contradictionRefs: [],
+        corroborationRefs: [],
+        humanRefs: [actor],
         classification: String(prior['classification']),
-        purpose_scope: purposeId,
-        rights_profile: (prior['rights_profile'] as string | null) ?? null,
-        residency_profile: (prior['residency_profile'] as string | null) ?? null,
-        retention_profile: (prior['retention_profile'] as string | null) ?? null,
-        access_policy_ref: null,
-        quality_profile: null,
-        quality_state: null,
-        freshness_state: null,
-        schema_ref: String(prior['schema_ref']),
-        ontology_ref: null,
-        correction_of: `${a.object_id}@${a.object_version}`,
+        purposeScope: purposeId,
+        rightsProfile: (prior['rights_profile'] as string | null) ?? null,
+        residencyProfile: (prior['residency_profile'] as string | null) ?? null,
+        retentionProfile: (prior['retention_profile'] as string | null) ?? null,
+        accessPolicyRef: null,
+        qualityProfile: null,
+        qualityState: null,
+        freshnessState: null,
+        schemaRef: String(prior['schema_ref']),
+        ontologyRef: null,
+        correctionOf: `${a.object_id}@${a.object_version}`,
         supersedes: `${a.object_id}@${a.object_version}`,
-        withdrawal_reason: kind === 'withdrawal' ? reason : null,
-        audit_correlation_id: correlationId,
-        content_ref: (prior['content_ref'] as string | null) ?? null,
-      };
+        withdrawalReason: kind === 'withdrawal' ? reason : null,
+        auditCorrelationId: correlationId,
+        contentRef: (prior['content_ref'] as string | null) ?? null,
+      });
       const v = validateHeader(header);
       if (!v.ok) {
         throw new HttpException(

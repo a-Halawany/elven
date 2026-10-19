@@ -90,6 +90,7 @@ import {
   anySynthetic, basisGate, derivedStatementOf, evidenceGate, evidenceVersionOf, mostRestrictive, sourceRefOf, statementDigestOf,
   type BasisRef, type Derivation, type DerivationSource, type DeriveRefusal, type EvidenceUse,
 } from './derive.js';
+import { buildHeader } from '../../objects/header-builder.js';
 
 type Row = Record<string, unknown>;
 export const MEMORY_CITE_KINDS = ['evidence', 'claim', 'strategy', 'entity', 'edge', 'forecast', 'warning'] as const;
@@ -325,21 +326,21 @@ export class MemoryService {
       ...(d === null ? {} : { derivation: d.derivation }),
     };
     const prior = a.version > 1 ? `MEM:${a.itemId}@${a.version - 1}` : null;
-    const header: CanonicalHeader = {
-      object_id: a.itemId, object_type: 'MEM', tenant_id: ctx.tenantId, domain_id: ctx.domainId, scope: 'DOMAIN',
-      object_version: String(a.version), lifecycle_state: 'active', owning_component: 'CP-MEM-01', accountable_owner: `principal:${a.owner}`,
-      source_object_ids: d?.header.source_object_ids ?? m.cites.filter((c) => c.kind === 'evidence' || c.kind === 'claim').map((c) => c.id),
-      event_time: d?.header.event_time ?? null, observation_time: now, valid_from: m.validity.from, valid_to: m.validity.to, recorded_at: now,
-      time_precision: 'exact', source_clock_quality: d?.header.source_clock_quality ?? 'trusted',
+    const header: CanonicalHeader = buildHeader({
+      objectId: a.itemId, objectType: 'MEM', tenantId: ctx.tenantId, domainId: ctx.domainId, scope: 'DOMAIN',
+      objectVersion: String(a.version), lifecycleState: 'active', owningComponent: 'CP-MEM-01', accountableOwner: `principal:${a.owner}`,
+      sourceObjectIds: d?.header.source_object_ids ?? m.cites.filter((c) => c.kind === 'evidence' || c.kind === 'claim').map((c) => c.id),
+      eventTime: d?.header.event_time ?? null, observationTime: now, validFrom: m.validity.from, validTo: m.validity.to, recordedAt: now,
+      timePrecision: 'exact', sourceClockQuality: d?.header.source_clock_quality ?? 'trusted',
       // A person's record is ASSERTED (B19: the `telemetry → observed` stamp of 0066 is gone — nothing observed it); a derived record's truth state is its basis's.
-      truth_state: d?.header.truth_state ?? 'asserted', synthetic_state: d?.header.synthetic_state ?? false, confidence: null, uncertainty: null,
-      evidence_refs: d?.header.evidence_refs ?? m.cites.map((c) => `${c.kind}:${c.id}`), provenance_ref: d?.header.provenance_ref ?? `principal:${a.owner}`, method_ref: d === null ? 'human-record@1.0.0' : MEMORY_DERIVE_METHOD,
-      contradiction_refs: [], corroboration_refs: [], human_refs: [`principal:${a.owner}`],
-      classification: d?.header.classification ?? m.audience.classification, purpose_scope: a.purposeId, rights_profile: d?.header.rights_profile ?? null, residency_profile: d?.header.residency_profile ?? null,
-      retention_profile: m.retention.profile, access_policy_ref: null, quality_profile: null, quality_state: null, freshness_state: null,
-      schema_ref: d === null ? 'MEM@v1' : 'MEM@v2', ontology_ref: null, correction_of: null, supersedes: prior, withdrawal_reason: null,
-      audit_correlation_id: a.correlationId, content_ref: null,
-    };
+      truthState: d?.header.truth_state ?? 'asserted', syntheticState: d?.header.synthetic_state ?? false, confidence: null, uncertainty: null,
+      evidenceRefs: d?.header.evidence_refs ?? m.cites.map((c) => `${c.kind}:${c.id}`), provenanceRef: d?.header.provenance_ref ?? `principal:${a.owner}`, methodRef: d === null ? 'human-record@1.0.0' : MEMORY_DERIVE_METHOD,
+      contradictionRefs: [], corroborationRefs: [], humanRefs: [`principal:${a.owner}`],
+      classification: d?.header.classification ?? m.audience.classification, purposeScope: a.purposeId, rightsProfile: d?.header.rights_profile ?? null, residencyProfile: d?.header.residency_profile ?? null,
+      retentionProfile: m.retention.profile, accessPolicyRef: null, qualityProfile: null, qualityState: null, freshnessState: null,
+      schemaRef: d === null ? 'MEM@v1' : 'MEM@v2', ontologyRef: null, correctionOf: null, supersedes: prior, withdrawalReason: null,
+      auditCorrelationId: a.correlationId, contentRef: null,
+    });
     const v = validateHeader(header);
     if (!v.ok) throw new HttpException(errorBody('EYE_REQ_001', a.correlationId, `memory item header invalid: ${(v.errors ?? []).join('; ')}`), 422);
     const admitted = await cap.admitObject(header, payload, canonicalHeaderDigest(header, payload));

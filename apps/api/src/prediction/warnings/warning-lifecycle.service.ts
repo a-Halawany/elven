@@ -40,6 +40,7 @@ import type { AuthenticatedPrincipal } from '../../shared/auth-types.js';
 /* end B28 integrator */
 import { foldControls, controlsOf, type ControlInput } from '../controls.js';
 import { WarningLifecycleCapability, type CandidateRaiseWrites, type WarningLifecycleReads } from './warning-lifecycle.capabilities.js';
+import { buildHeader } from '../../objects/header-builder.js';
 
 type Row = Record<string, unknown>;
 
@@ -212,20 +213,20 @@ export class WarningLifecycleService implements OnModuleInit {
       controls, level: { value: lvl.level, version: lvl.version, urgency: lvl.urgency, response: lvl.response, impact: lvl.impact }, authority: { op_class: opClass },
     };
     const canonicalRefs = rows.map((r) => `${String(r['object_type'])}:${String(r['object_id'])}@${Number(r['object_version'])}`);
-    const header: CanonicalHeader = {
-      object_id: warningId, object_type: 'WRN', tenant_id: T, domain_id: D, scope: 'DOMAIN',
-      object_version: '1', lifecycle_state: 'active', owning_component: 'CP-PRD-01', accountable_owner: `principal:${String(pf['routed_to'])}`,
-      source_object_ids: canonicalRefs, event_time: eventTime, observation_time: now, valid_from: win.opensAt, valid_to: win.closesAt,
-      recorded_at: recordedAt, time_precision: 'exact', source_clock_quality: 'trusted', truth_state: 'inferred',
-      synthetic_state: controls.synthetic_state, confidence: { value: confidence }, uncertainty: null,
-      evidence_refs: [...canonicalRefs, `candidate:${candidateId}`], provenance_ref: `candidate:${candidateId}`, method_ref: 'warning-candidate@1.0.0',
-      contradiction_refs: evidence.filter((e) => e['stance'] === 'contradicting').map((e) => String(e['object_id'])), corroboration_refs: [], human_refs: [],
-      classification: controls.classification, purpose_scope: purposeId,
-      rights_profile: controls.rights_profile, residency_profile: controls.residency_profile, retention_profile: controls.retention_profile,
-      access_policy_ref: controls.access_policy_ref, quality_profile: null,
-      quality_state: null, freshness_state: null, schema_ref: 'WRN@v2', ontology_ref: null, correction_of: null,
-      supersedes: null, withdrawal_reason: null, audit_correlation_id: correlationId, content_ref: null,
-    };
+    const header: CanonicalHeader = buildHeader({
+      objectId: warningId, objectType: 'WRN', tenantId: T, domainId: D, scope: 'DOMAIN',
+      objectVersion: '1', lifecycleState: 'active', owningComponent: 'CP-PRD-01', accountableOwner: `principal:${String(pf['routed_to'])}`,
+      sourceObjectIds: canonicalRefs, eventTime: eventTime, observationTime: now, validFrom: win.opensAt, validTo: win.closesAt,
+      recordedAt: recordedAt, timePrecision: 'exact', sourceClockQuality: 'trusted', truthState: 'inferred',
+      syntheticState: controls.synthetic_state, confidence: { value: confidence }, uncertainty: null,
+      evidenceRefs: [...canonicalRefs, `candidate:${candidateId}`], provenanceRef: `candidate:${candidateId}`, methodRef: 'warning-candidate@1.0.0',
+      contradictionRefs: evidence.filter((e) => e['stance'] === 'contradicting').map((e) => String(e['object_id'])), corroborationRefs: [], humanRefs: [],
+      classification: controls.classification, purposeScope: purposeId,
+      rightsProfile: controls.rights_profile, residencyProfile: controls.residency_profile, retentionProfile: controls.retention_profile,
+      accessPolicyRef: controls.access_policy_ref, qualityProfile: null,
+      qualityState: null, freshnessState: null, schemaRef: 'WRN@v2', ontologyRef: null, correctionOf: null,
+      supersedes: null, withdrawalReason: null, auditCorrelationId: correlationId, contentRef: null,
+    });
     const v = validateHeader(header);
     if (!v.ok) throw new HttpException(errorBody('EYE_REQ_001', correlationId, `warning header invalid: ${(v.errors ?? []).join('; ')}`), 422);
     await cap.admitObject(header, payload, canonicalHeaderDigest(header, payload));

@@ -18,6 +18,7 @@ import { newId } from '../../shared/ids.js';
 import type { ScopeContext } from '../../shared/scope.js';
 import type { ReviewWrites, IntelligenceReads } from '../intelligence.capabilities.js';
 import { ContradictionService } from '../contradictions/contradiction.service.js';
+import { buildHeader } from '../../objects/header-builder.js';
 
 export interface ReviewDecision {
   caseId: string;
@@ -110,40 +111,40 @@ export class ReviewService {
         },
       };
 
-      const header: CanonicalHeader = {
-        object_id: objectId,
-        object_type: objectType,
-        tenant_id: ctx.tenantId,
-        domain_id: ctx.domainId,
+      const header: CanonicalHeader = buildHeader({
+        objectId: objectId,
+        objectType: objectType,
+        tenantId: ctx.tenantId,
+        domainId: ctx.domainId,
         scope: 'DOMAIN',
-        object_version: String(newVersion),
-        lifecycle_state: 'corrected',
-        owning_component: 'CP-INT-01',
-        accountable_owner: a.decider,
-        source_object_ids: asArray(prior['source_object_ids']),
-        event_time: isoOrNull(prior['event_time']),
-        observation_time: isoOrNull(prior['observation_time']),
-        valid_from: null,
-        valid_to: null,
-        recorded_at: now,
-        time_precision: String(prior['time_precision'] ?? 'exact'),
-        source_clock_quality:
+        objectVersion: String(newVersion),
+        lifecycleState: 'corrected',
+        owningComponent: 'CP-INT-01',
+        accountableOwner: a.decider,
+        sourceObjectIds: asArray(prior['source_object_ids']),
+        eventTime: isoOrNull(prior['event_time']),
+        observationTime: isoOrNull(prior['observation_time']),
+        validFrom: null,
+        validTo: null,
+        recordedAt: now,
+        timePrecision: String(prior['time_precision'] ?? 'exact'),
+        sourceClockQuality:
           (prior['source_clock_quality'] as CanonicalHeader['source_clock_quality']) ?? 'unknown',
         // A human-reviewed claim is asserted, not derived: a person now stands
         // behind it. The truth state moves, and it says who moved it.
-        truth_state: 'asserted',
-        synthetic_state: Boolean(prior['synthetic_state']),
+        truthState: 'asserted',
+        syntheticState: Boolean(prior['synthetic_state']),
         confidence: cv.confidence === undefined
           ? ((prior['confidence'] as Record<string, unknown> | null) ?? null)
           : { method: 'human-review', scale: 'unit_interval',
               value: cv.confidence, calibration_ref: null },
         uncertainty: null,
-        evidence_refs: [...asArray(prior['evidence_refs']), `review-case:${a.caseId}`],
-        provenance_ref: (prior['provenance_ref'] as string | null) ?? null,
-        method_ref: 'human-review@1.0.0',
-        contradiction_refs: [],
-        corroboration_refs: [],
-        human_refs: [a.decider],
+        evidenceRefs: [...asArray(prior['evidence_refs']), `review-case:${a.caseId}`],
+        provenanceRef: (prior['provenance_ref'] as string | null) ?? null,
+        methodRef: 'human-review@1.0.0',
+        contradictionRefs: [],
+        corroborationRefs: [],
+        humanRefs: [a.decider],
         /*
          * A REVIEWER'S CORRECTION IS NOT A DECLASSIFICATION (ES-29-002).
          *
@@ -155,22 +156,22 @@ export class ReviewService {
          * had just looked at.
          */
         classification: String(prior['classification']),
-        purpose_scope: a.purposeId,
-        rights_profile: (prior['rights_profile'] as string | null) ?? null,
-        residency_profile: (prior['residency_profile'] as string | null) ?? null,
-        retention_profile: (prior['retention_profile'] as string | null) ?? null,
-        access_policy_ref: (prior['access_policy_ref'] as string | null) ?? null,
-        quality_profile: null,
-        quality_state: null,
-        freshness_state: null,
-        schema_ref: String(prior['schema_ref']),
-        ontology_ref: null,
-        correction_of: `${objectId}@${priorVersion}`,
+        purposeScope: a.purposeId,
+        rightsProfile: (prior['rights_profile'] as string | null) ?? null,
+        residencyProfile: (prior['residency_profile'] as string | null) ?? null,
+        retentionProfile: (prior['retention_profile'] as string | null) ?? null,
+        accessPolicyRef: (prior['access_policy_ref'] as string | null) ?? null,
+        qualityProfile: null,
+        qualityState: null,
+        freshnessState: null,
+        schemaRef: String(prior['schema_ref']),
+        ontologyRef: null,
+        correctionOf: `${objectId}@${priorVersion}`,
         supersedes: `${objectId}@${priorVersion}`,
-        withdrawal_reason: null,
-        audit_correlation_id: a.correlationId,
-        content_ref: null,
-      };
+        withdrawalReason: null,
+        auditCorrelationId: a.correlationId,
+        contentRef: null,
+      });
       const v = validateHeader(header);
       if (!v.ok) {
         throw new HttpException(

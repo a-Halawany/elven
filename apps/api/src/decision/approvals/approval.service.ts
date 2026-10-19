@@ -20,6 +20,7 @@ import { canonicalHeaderDigest, errorBody, validateHeader, type CanonicalHeader 
 import { newId } from '../../shared/ids.js';
 import type { ScopeContext } from '../../shared/scope.js';
 import type { ApproveWrites, CommitWrites } from '../decision.capabilities.js';
+import { buildHeader } from '../../objects/header-builder.js';
 
 const bad = (correlationId: string, msg: string): never => { throw new HttpException(errorBody('EYE_REQ_001', correlationId, msg), 422); };
 const state = (correlationId: string, msg: string, status = 409): never => { throw new HttpException(errorBody('EYE_STA_001', correlationId, msg), status); };
@@ -55,16 +56,16 @@ export class ApprovalService {
     const now = new Date().toISOString();
     const inherited = versionControls(pv);
     const payload = { package_id: packageId, version, version_digest: intake.versionDigest, approver: `principal:${approver}`, decision: intake.decision, rationale: intake.rationale, conditions: intake.conditions };
-    const header: CanonicalHeader = {
-      object_id: approvalId, object_type: 'APR', tenant_id: ctx.tenantId, domain_id: ctx.domainId, scope: 'DOMAIN',
-      object_version: '1', lifecycle_state: 'active', owning_component: 'CP-DEC-01', accountable_owner: `principal:${approver}`,
-      source_object_ids: [`DPK:${packageId}@${version}`], event_time: null, observation_time: null, valid_from: null, valid_to: null, recorded_at: now,
-      time_precision: 'exact', source_clock_quality: 'trusted', truth_state: 'asserted', synthetic_state: inherited.synthetic_state, confidence: null, uncertainty: null,
-      evidence_refs: [], provenance_ref: `principal:${approver}`, method_ref: 'human-approval@1.0.0', contradiction_refs: [], corroboration_refs: [],
-      human_refs: [`principal:${approver}`], classification: inherited.classification, purpose_scope: purposeId, rights_profile: inherited.rights_profile, residency_profile: inherited.residency_profile, retention_profile: inherited.retention_profile,
-      access_policy_ref: inherited.access_policy_ref, quality_profile: null, quality_state: null, freshness_state: null, schema_ref: 'APR@v1', ontology_ref: null,
-      correction_of: null, supersedes: null, withdrawal_reason: null, audit_correlation_id: correlationId, content_ref: null,
-    };
+    const header: CanonicalHeader = buildHeader({
+      objectId: approvalId, objectType: 'APR', tenantId: ctx.tenantId, domainId: ctx.domainId, scope: 'DOMAIN',
+      objectVersion: '1', lifecycleState: 'active', owningComponent: 'CP-DEC-01', accountableOwner: `principal:${approver}`,
+      sourceObjectIds: [`DPK:${packageId}@${version}`], eventTime: null, observationTime: null, validFrom: null, validTo: null, recordedAt: now,
+      timePrecision: 'exact', sourceClockQuality: 'trusted', truthState: 'asserted', syntheticState: inherited.synthetic_state, confidence: null, uncertainty: null,
+      evidenceRefs: [], provenanceRef: `principal:${approver}`, methodRef: 'human-approval@1.0.0', contradictionRefs: [], corroborationRefs: [],
+      humanRefs: [`principal:${approver}`], classification: inherited.classification, purposeScope: purposeId, rightsProfile: inherited.rights_profile, residencyProfile: inherited.residency_profile, retentionProfile: inherited.retention_profile,
+      accessPolicyRef: inherited.access_policy_ref, qualityProfile: null, qualityState: null, freshnessState: null, schemaRef: 'APR@v1', ontologyRef: null,
+      correctionOf: null, supersedes: null, withdrawalReason: null, auditCorrelationId: correlationId, contentRef: null,
+    });
     const check = validateHeader(header);
     if (!check.ok) bad(correlationId, `approval header invalid: ${(check.errors ?? []).join('; ')}`);
     const headerDigest = canonicalHeaderDigest(header, payload);
@@ -130,18 +131,18 @@ export class ApprovalService {
         approvals: live.map((a) => `APR:${a.approval_id}@1`), observed_through: dayOf(pv['observed_through']),
       },
     };
-    const header: CanonicalHeader = {
-      object_id: commitmentId, object_type: 'CMT', tenant_id: ctx.tenantId, domain_id: ctx.domainId, scope: 'DOMAIN',
-      object_version: '1', lifecycle_state: 'active', owning_component: 'CP-DEC-01', accountable_owner: `principal:${committer}`,
-      source_object_ids: [`DPK:${packageId}@${version}`, ...live.map((a) => `APR:${a.approval_id}@1`), ...runs.map((r) => `SIM:${r.id}@${r.version}`)],
-      event_time: null, observation_time: now, valid_from: null, valid_to: null, recorded_at: now, time_precision: 'exact', source_clock_quality: 'trusted',
-      truth_state: 'asserted', synthetic_state: pv['synthetic_state'] === true, confidence: null, uncertainty: null,
-      evidence_refs: [`strategy:${String(pkg['decision_object_id'])}`], provenance_ref: `principal:${committer}`, method_ref: 'decision-commit@1.0.0',
-      contradiction_refs: [], corroboration_refs: [], human_refs: [...new Set([`principal:${committer}`, ...live.map((a) => `principal:${a.approver_principal_id}`)])],
-      classification: inherited.classification, purpose_scope: purposeId, rights_profile: inherited.rights_profile, residency_profile: inherited.residency_profile, retention_profile: inherited.retention_profile, access_policy_ref: inherited.access_policy_ref,
-      quality_profile: null, quality_state: { completeness: 'complete', verification: 'committed', op_class: 'C3' }, freshness_state: null, schema_ref: 'CMT@v1', ontology_ref: null,
-      correction_of: null, supersedes: null, withdrawal_reason: null, audit_correlation_id: correlationId, content_ref: null,
-    };
+    const header: CanonicalHeader = buildHeader({
+      objectId: commitmentId, objectType: 'CMT', tenantId: ctx.tenantId, domainId: ctx.domainId, scope: 'DOMAIN',
+      objectVersion: '1', lifecycleState: 'active', owningComponent: 'CP-DEC-01', accountableOwner: `principal:${committer}`,
+      sourceObjectIds: [`DPK:${packageId}@${version}`, ...live.map((a) => `APR:${a.approval_id}@1`), ...runs.map((r) => `SIM:${r.id}@${r.version}`)],
+      eventTime: null, observationTime: now, validFrom: null, validTo: null, recordedAt: now, timePrecision: 'exact', sourceClockQuality: 'trusted',
+      truthState: 'asserted', syntheticState: pv['synthetic_state'] === true, confidence: null, uncertainty: null,
+      evidenceRefs: [`strategy:${String(pkg['decision_object_id'])}`], provenanceRef: `principal:${committer}`, methodRef: 'decision-commit@1.0.0',
+      contradictionRefs: [], corroborationRefs: [], humanRefs: [...new Set([`principal:${committer}`, ...live.map((a) => `principal:${a.approver_principal_id}`)])],
+      classification: inherited.classification, purposeScope: purposeId, rightsProfile: inherited.rights_profile, residencyProfile: inherited.residency_profile, retentionProfile: inherited.retention_profile, accessPolicyRef: inherited.access_policy_ref,
+      qualityProfile: null, qualityState: { completeness: 'complete', verification: 'committed', op_class: 'C3' }, freshnessState: null, schemaRef: 'CMT@v1', ontologyRef: null,
+      correctionOf: null, supersedes: null, withdrawalReason: null, auditCorrelationId: correlationId, contentRef: null,
+    });
     const check = validateHeader(header);
     if (!check.ok) bad(correlationId, `commitment header invalid: ${(check.errors ?? []).join('; ')}`);
     const headerDigest = canonicalHeaderDigest(header, payload);
