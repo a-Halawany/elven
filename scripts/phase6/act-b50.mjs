@@ -78,7 +78,13 @@ const over = (s, sc, action, objectType, objectId, purposeId, consequence) => ({
   scope: sc, tenantId: sc === 'PLATFORM' ? null : T, domainId: sc === 'DOMAIN' ? D : null, principalId: `principal:${s.principalId}`, purposeId,
   action, objectType, objectId, sideEffect: isRead(action) ? 'none' : 'reversible', consequence: consequence ?? (isRead(action) ? 'C1' : 'C2'), trace: 'phase6-b50' });
 /** One retry when the TRANSPORT fails before any answer (a pooled socket reset): no answer means nothing was decided by the server's reply. */
-const callOnce = async (path, o, payload, token) => { try { return await call(path, o, payload, token); } catch (e) { if (!/fetch failed/.test(String(e?.message))) throw e; note(`the transport was reset before an answer (${e?.cause?.code ?? e.message}); retried once`); return call(path, o, payload, token); } };
+const callOnce = async (path, o, payload, token) => {
+  let r;
+  try { r = await call(path, o, payload, token); } catch (e) { if (!/fetch failed/.test(String(e?.message))) throw e; note(`the transport was reset before an answer (${e?.cause?.code ?? e.message}); retried once`); r = await call(path, o, payload, token); }
+  // a READ that outlived its authorization context (503 EYE-DEP-001: the result was discarded, nothing concluded — "retry") is read once more
+  if (!r.ok && r.status === 503 && o.sideEffect === 'none' && /outlived its authorization context/.test(String(r.body?.message ?? ''))) { note(`the read ${o.action} outlived its authorization context (the server discarded it and says retry); read once more`); r = await call(path, o, payload, token); }
+  return r;
+};
 const P = (s, path, action, payload = {}, objectType = 'GOV', objectId = null, purpose = 'governance') => callOnce(path, over(s, 'PLATFORM', action, objectType, objectId, purpose), payload, s.token);
 const DM = (s, path, action, payload = {}, objectType = 'GOV', objectId = null, purpose = 'governance', consequence) => callOnce(path, over(s, 'DOMAIN', action, objectType, objectId, purpose, consequence), payload, s.token);
 const BASE = `/v1/tenants/${T}/domains/${D}`;
