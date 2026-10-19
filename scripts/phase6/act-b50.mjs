@@ -77,8 +77,10 @@ const isRead = (action) => /\.(read|preview|search|list|get|explain|diff|history
 const over = (s, sc, action, objectType, objectId, purposeId, consequence) => ({
   scope: sc, tenantId: sc === 'PLATFORM' ? null : T, domainId: sc === 'DOMAIN' ? D : null, principalId: `principal:${s.principalId}`, purposeId,
   action, objectType, objectId, sideEffect: isRead(action) ? 'none' : 'reversible', consequence: consequence ?? (isRead(action) ? 'C1' : 'C2'), trace: 'phase6-b50' });
-const P = (s, path, action, payload = {}, objectType = 'GOV', objectId = null, purpose = 'governance') => call(path, over(s, 'PLATFORM', action, objectType, objectId, purpose), payload, s.token);
-const DM = (s, path, action, payload = {}, objectType = 'GOV', objectId = null, purpose = 'governance', consequence) => call(path, over(s, 'DOMAIN', action, objectType, objectId, purpose, consequence), payload, s.token);
+/** One retry when the TRANSPORT fails before any answer (a pooled socket reset): no answer means nothing was decided by the server's reply. */
+const callOnce = async (path, o, payload, token) => { try { return await call(path, o, payload, token); } catch (e) { if (!/fetch failed/.test(String(e?.message))) throw e; note(`the transport was reset before an answer (${e?.cause?.code ?? e.message}); retried once`); return call(path, o, payload, token); } };
+const P = (s, path, action, payload = {}, objectType = 'GOV', objectId = null, purpose = 'governance') => callOnce(path, over(s, 'PLATFORM', action, objectType, objectId, purpose), payload, s.token);
+const DM = (s, path, action, payload = {}, objectType = 'GOV', objectId = null, purpose = 'governance', consequence) => callOnce(path, over(s, 'DOMAIN', action, objectType, objectId, purpose, consequence), payload, s.token);
 const BASE = `/v1/tenants/${T}/domains/${D}`;
 const G = `${BASE}/graph`;
 const O = `${BASE}/observation`;
@@ -603,9 +605,12 @@ if (CL && CL.closure?.state !== 'closed') {
   }
   // THE FROZEN WALK (optional): the case page while the freeze is live — the walk's own frozen-marker step, run now
   if (process.env.EYE_B50_FROZEN_WALK) {
-    const { spawnSync } = await import('node:child_process');
-    const r = spawnSync('sh', ['-c', process.env.EYE_B50_FROZEN_WALK], { env: { ...process.env, EYE_B50_CASE: CASE.id, EYE_B50_FROZEN: '1', EYE_B50_WARNING: W?.product_id ?? '' }, encoding: 'utf8' });
-    (r.status === 0 ? ok : bad)(`THE FROZEN WALK while the freeze is live (exit ${r.status}): ${String(r.stdout).split('\n').filter((l) => /passed|failed|✓|✘/.test(l)).slice(-3).join(' | ')}`);
+    // ASYNC (never spawnSync): the event loop keeps serving this process's sockets while the walk runs
+    const { execFile } = await import('node:child_process');
+    const r = await new Promise((res) => { execFile('sh', ['-c', process.env.EYE_B50_FROZEN_WALK], { env: { ...process.env, EYE_B50_CASE: CASE.id, EYE_B50_FROZEN: '1', EYE_B50_WARNING: W?.product_id ?? '' }, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 },
+      (err, stdout) => res({ status: err ? (err.code ?? 1) : 0, stdout })); });
+    (r.status === 0 ? ok : bad)(`THE FROZEN WALK while the freeze is live (exit ${r.status}): ${String(r.stdout).split('\n').filter((l) => /passed|failed/.test(l)).slice(-2).map((l) => l.trim()).join(' | ')}`);
+    await renewAll();
   }
 }
 // THE ACKNOWLEDGEMENTS — each consumer's own owner (PR-24-003: never the correction authority for a human review)
