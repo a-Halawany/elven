@@ -6,10 +6,12 @@
  * Chain verification surfaces integrity state; a tampered partition shows
  * an incident and is never re-sealed.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { call } from '../../../lib/api';
 import { ErrorNote, Panel, Receipt, Td, Th, buttonStyle, inputStyle, tableStyle } from '../../../components/ui';
 import { t, defaultLocale } from '../../../lib/i18n';
+/* B82 sc */ import { AuditTimeline } from '../../../components/strategic-charts';
+import { auditSpec, type AuditIn } from '../../../lib/strategic-charts-b82'; /* end B82 sc */
 
 interface AuditRow {
   partition_id: string; audit_seq: string | number; scope: string;
@@ -119,6 +121,22 @@ export default function AuditPage() {
           </tbody>
         </table>
       </Panel>
+
+      {/* B82 sc: the same events on record time (VIZ-35) — read-only; the table above is unchanged */}
+      <Panel title="The events on record time">
+        <EventsDrawn events={events} obligations={obligations} />
+      </Panel>
+      {/* end B82 sc */}
     </>
   );
 }
+
+/* B82 sc: THE AUDIT TIMELINE over the sanitized projection — actor, action, event, outcome, chain hash; one lane per outcome; read-only */
+function EventsDrawn({ events, obligations }: { events: AuditRow[]; obligations: string[] }) {
+  const items = useMemo<AuditIn[]>(() => events.map((e) => ({ key: `${e.partition_id}:${String(e.audit_seq)}`, seq: String(e.audit_seq), at: e.occurred_at, actor: e.actor, action: e.action,
+    type: e.event_type, outcome: e.outcome, result: e.result_code, partition: e.partition_id, hash: e.row_hash })), [events]);
+  const asOf = useMemo(() => new Date().toISOString(), [events]); // eslint-disable-line react-hooks/exhaustive-deps
+  const spec = useMemo(() => auditSpec({ events: items, asOf, obligations }), [items, asOf, obligations]);
+  return <AuditTimeline spec={spec} events={items} />;
+}
+/* end B82 sc */

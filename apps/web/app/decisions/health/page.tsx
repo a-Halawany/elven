@@ -14,10 +14,10 @@
  * becomes real only as a new definition version two people approve. The forms are shown to everyone; the server decides who may, and its
  * refusal is shown as it states it.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useShell } from '../layout';
 import {
-  health as api, APPROVER_ROLES, CHALLENGE_KINDS, PROPOSER_ROLES, barPercent, changeMark, coverageWords, freshnessBadge, gamingFlagWords, parseModel, scoreWords, sensitivityWords,
+  health as api, APPROVER_ROLES, CHALLENGE_KINDS, PROPOSER_ROLES, changeMark, coverageWords, freshnessBadge, gamingFlagWords, parseModel, scoreWords, sensitivityWords,
   statusMark, trendWords, whatIf,
   type Comparison, type HealthChange, type HealthComponent, type HealthDefinition, type HealthDimension, type HealthResult, type HealthSnapshot,
   /* B36 (0094 §S) strategy */ healthCompletion, EXCEPTION_APPROVER_ROLES, SNAPSHOT_APPROVER_ROLES, contextLine, exceptionLine, ownerLine, signatureLine,
@@ -26,6 +26,10 @@ import {
 import { Empty, LiveStatus, Mono, ScrollBox, cardStyle, GovernedButton, fmtInstant, textareaStyle } from '../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui';
 /* B81 re: the library's Field (its control slot) — the local Field helper migrated (UX-ADR-011; dg-lint-2's ratchet) */ import { Field } from '../../../components/forms';
+/* B82 sc */ import { HealthDecomposition } from '../../../components/strategic-charts';
+import { VarianceBridge, Waterfall } from '../../../components/chart';
+import { healthBridgeInput, healthBridgeSpec, healthSpec, healthWaterfallInput, healthWaterfallSpec, isoOf, type HealthCompIn, type HealthDimIn } from '../../../lib/strategic-charts-b82';
+import { readExport } from '../../../lib/chart-specs-b82'; /* end B82 sc */
 
 type ReceiptT = { policyDecisionId: string; auditSeq: number } | null;
 type Detail = HealthSnapshot & { result: HealthResult; components: HealthComponent[]; changes: HealthChange[] };
@@ -45,23 +49,23 @@ function Mark({ m }: { m: { glyph: string; token: string; text: string } }) {
     <span aria-hidden="true">{m.glyph}</span> {m.text}</span>;
 }
 
-/** The 0–100 bar with the band floors marked; no bar at all for an indeterminate value. The words beside it carry the same facts. */
-function ScoreBar({ value, bands, label }: { value: number | null; bands: Array<{ key: string; min: number }>; label: string }) {
-  const pct = barPercent(value);
-  if (pct === null) return <p style={muted}>no bar: the value is indeterminate</p>;
-  return (
-    <div role="img" aria-label={`${label}: ${pct} of 100; band floors ${bands.map((b) => `${b.key} ${b.min}`).join(', ')}`}
-      style={{ position: 'relative', blockSize: '0.9rem', background: 'var(--eye-color-surface-secondary)', border: '1px solid var(--eye-color-border-default)', borderRadius: 'var(--eye-radius-sm)', marginBlock: 'var(--eye-space-4)' }}>
-      <div style={{ position: 'absolute', insetBlock: 0, insetInlineStart: 0, inlineSize: `${pct}%`, background: 'var(--eye-color-accent-default)', borderRadius: 'var(--eye-radius-sm)' }} />
-      {bands.filter((b) => b.min > 0).map((b) => (
-        <div key={b.key} title={`${b.key} ≥ ${b.min}`} style={{ position: 'absolute', insetBlock: '-0.2rem', insetInlineStart: `${b.min}%`, inlineSize: '2px', background: 'var(--eye-color-ink-strong)' }} />
-      ))}
-    </div>
-  );
+/* B82 sc: the ScoreBar gauge is gone (VIZ-12's anti-pattern "gauge without decomposition"; dg-lint-4's ratchet emptied) — each dimension
+   is drawn as its HealthDecomposition (components/strategic-charts.tsx): the value laid out as its components' contributions, the residual
+   not attributed, the band floors, the weights / evidence / confidence / freshness / exclusions in the table alternative. */
+interface DecompCtx { formula: string; rule: string; at: string | null; asOf: string; snapshotId: string }
+const compIn = (c: HealthComponent): HealthCompIn => ({ key: c.key, label: c.label, weight: c.weight, score: c.normalised, contribution: c.contribution, confidence: c.confidence,
+  evidence: c.evidence.length, freshness: freshnessBadge(c).text, state: String(c.state), excluded: c.normalised === null ? (c.reason ?? 'excluded — no reason recorded') : null, critical: c.critical });
+const dimIn = (d: HealthDimension): HealthDimIn => ({ key: d.key, label: d.label, value: d.value, status: d.status, coverage: d.coverage, weight: d.weight, bands: d.bands, band: d.band });
+function Decomposition({ d, mine, ctx }: { d: HealthDimension; mine: HealthComponent[]; ctx: DecompCtx }) {
+  const dimension = useMemo(() => dimIn(d), [d]);
+  const comps = useMemo(() => mine.map(compIn), [mine]);
+  const spec = useMemo(() => healthSpec({ dimension, comps, ...ctx }), [dimension, comps, ctx]);
+  return <HealthDecomposition spec={spec} dimension={dimension} components={comps} />;
 }
+/* end B82 sc */
 
 /** One dimension DECOMPOSED: status and coverage first, then the value; the components with every fact the server recorded; the view. */
-function DimensionCard({ d, components, minCoverage }: { d: HealthDimension; components: HealthComponent[]; minCoverage: number }) {
+function DimensionCard({ d, components, minCoverage, ctx }: { d: HealthDimension; components: HealthComponent[]; minCoverage: number; /* B82 sc */ ctx: DecompCtx /* end B82 sc */ }) {
   const [weights, setWeights] = useState<Record<string, string>>({});
   const mine = components.filter((c) => c.dimension === d.key);
   const typed = Object.fromEntries(Object.entries(weights).filter(([, v]) => v.trim() !== '' && Number.isFinite(Number(v))).map(([k, v]) => [k, Number(v)]));
@@ -74,7 +78,7 @@ function DimensionCard({ d, components, minCoverage }: { d: HealthDimension; com
         {scoreWords(d.value, d.status)}{d.band !== null && <span style={{ fontSize: 'var(--eye-type-body)' }}> — band <strong>{d.band}</strong></span>}
         <span style={{ fontSize: 'var(--eye-type-body)', ...muted }}> · trend {trendWords(d.trend)}</span>
       </p>
-      <ScoreBar value={d.status === 'indeterminate' ? null : d.value} bands={d.bands} label={d.label} />
+      {/* B82 sc */}<Decomposition d={d} mine={mine} ctx={ctx} />{/* end B82 sc */}
       <p style={muted}>{d.band_basis}. Were every excluded component at 0: {num(d.bounds.if_excluded_at_0)}; at 100: {num(d.bounds.if_excluded_at_100)}.</p>
       {d.reasons.length > 0 && <ul aria-label={`${d.label}: what qualifies it`}>{d.reasons.map((r) => <li key={r}>{r}</li>)}</ul>}
       {(d.decision_links ?? []).length > 0 && <p>Informs: {(d.decision_links ?? []).map((l) => <span key={l.decision_id}><Mono title={l.decision_id}>{l.title}</Mono> </span>)}</p>}
@@ -225,7 +229,7 @@ function DefinitionsPanel({ onChanged }: { onChanged: () => Promise<void> }) {
   );
 }
 
-function ComparePanel({ snapshot, snapshots }: { snapshot: HealthSnapshot; snapshots: HealthSnapshot[] }) {
+function ComparePanel({ snapshot, snapshots, weights }: { snapshot: HealthSnapshot; snapshots: HealthSnapshot[]; /* B82 sc */ weights: Record<string, number> /* end B82 sc */ }) {
   const { scope } = useShell();
   const [baseline, setBaseline] = useState(''); const [cmp, setCmp] = useState<Comparison | null>(null); const [problem, setProblem] = useState<string | null>(null);
   return (
@@ -252,6 +256,7 @@ function ComparePanel({ snapshot, snapshots }: { snapshot: HealthSnapshot; snaps
           <p>Aggregate: {cmp.aggregate.withheld ?? `${num(cmp.aggregate.from)} → ${num(cmp.aggregate.to)} (${num(cmp.aggregate.delta)})`}{cmp.aggregate.qualified ? <span style={muted}> — {cmp.aggregate.qualified}</span> : null}</p>
           <ul>{cmp.dimensions.map((d) => <li key={d.key}>{d.label}: {d.withheld ?? `${num(d.from)} → ${num(d.to)} (${num(d.delta)})`}{d.from_band !== null && d.to_band !== null && d.from_band !== d.to_band ? `, band ${d.from_band} → ${d.to_band}` : ''}{d.qualified ? ` — ${d.qualified}` : ''}</li>)}</ul>
           <p style={muted}>Peer: none — {cmp.peer.reason}.</p>
+          {/* B82 sc: the change by dimension as §CF's VarianceBridge (VIZ-23) — the unattributed delta its own step */}<CompareBridge cmp={cmp} weights={weights} />{/* end B82 sc */}
         </>
       )}
     </section>
@@ -512,7 +517,11 @@ export default function HealthPage() {
           {Array.isArray((result as unknown as { exceptions?: unknown[] }).exceptions) && ((result as unknown as { exceptions: Array<Record<string, unknown>> }).exceptions.length > 0) && (
             <p aria-label="exceptions in force">Exceptions in force at this instant: {(result as unknown as { exceptions: Array<Record<string, unknown>> }).exceptions.map((x) => `${String(x['component_key'])} ${String(x['kind'])}${x['relaxed_stale_after_days'] ? ` → ${String(x['relaxed_stale_after_days'])} d` : ''} (until ${String(x['expires_at'])})`).join('; ')}</p>
           )}
-          {result.dimensions.map((d) => <DimensionCard key={`${detail.snapshot_id}-${d.key}`} d={d} components={detail.components} minCoverage={result.min_coverage} />)}
+          {/* B82 sc: the score built from its dimensions (§CF's Waterfall) — the residual always drawn */}
+          {detail.status !== 'indeterminate' && typeof detail.aggregate === 'number' ? <ScoreWaterfall detail={detail} result={result} /> : null}
+          {result.dimensions.map((d) => <DimensionCard key={`${detail.snapshot_id}-${d.key}`} d={d} components={detail.components} minCoverage={result.min_coverage}
+            ctx={{ formula: detail.formula_version, rule: result.rule, at: detail.at, asOf: isoOf(detail.computed_at, isoOf(detail.at, new Date().toISOString())), snapshotId: detail.snapshot_id }} />)}
+          {/* end B82 sc */}
           <ApprovalPanel key={`appr-${detail.snapshot_id}`} snapshot={detail} />
           <section aria-labelledby="changes-h" style={cardStyle}>
             <h2 id="changes-h" style={h2}>Score changes raised by this snapshot</h2>
@@ -520,7 +529,7 @@ export default function HealthPage() {
               <ul style={{ listStyle: 'none', padding: 0 }}>{detail.changes.map((c) => <ChangeRow key={c.change_id} c={c} scope={scope} onDone={async () => loadDetail(detail.snapshot_id)} />)}</ul>
             )}
           </section>
-          {snapshots !== null && <ComparePanel snapshot={detail} snapshots={snapshots} />}
+          {snapshots !== null && <ComparePanel snapshot={detail} snapshots={snapshots} /* B82 sc */ weights={Object.fromEntries(result.dimensions.map((d) => [d.key, d.weight]))} /* end B82 sc */ />}
         </>
       )}
       <DefinitionsPanel onChanged={async () => { await load(); await loadContract(); }} />
@@ -530,3 +539,22 @@ export default function HealthPage() {
     </div>
   );
 }
+
+/* B82 sc: §CF's Waterfall and VarianceBridge placed on the score (the B82 §CF hand-over) — each through ChartFrame, the method declared */
+function ScoreWaterfall({ detail, result }: { detail: HealthSnapshot; result: HealthResult }) {
+  const { scope } = useShell();
+  const dims = useMemo(() => result.dimensions.map(dimIn), [result]);
+  const input = useMemo(() => healthWaterfallInput(dims, detail.aggregate as number), [dims, detail.aggregate]);
+  const asOf = isoOf(detail.computed_at, isoOf(detail.at, new Date().toISOString()));
+  const spec = useMemo(() => healthWaterfallSpec({ aggregate: detail.aggregate as number, dims, formula: detail.formula_version, at: detail.at, asOf, snapshotId: detail.snapshot_id }), [detail, dims, asOf]);
+  return <Waterfall spec={spec} start={input.start} components={input.components} end={input.end} exportAs={readExport(scope, asOf)} />;
+}
+function CompareBridge({ cmp, weights }: { cmp: Comparison; weights: Record<string, number> }) {
+  const input = useMemo(() => healthBridgeInput(cmp, weights), [cmp, weights]);
+  if (input === null) return null;
+  const asOf = new Date().toISOString();
+  const spec = healthBridgeSpec({ from: input.from, to: input.to, baselineAt: cmp.baseline.at, snapshotAt: cmp.snapshot.at, asOf, formula: cmp.formula_version });
+  return <VarianceBridge spec={spec} baseline={{ label: 'the baseline\'s score', value: input.from, period: cmp.baseline.at === null ? 'its instant' : cmp.baseline.at.slice(0, 10) }}
+    actual={{ label: 'this snapshot\'s score', value: input.to, period: cmp.snapshot.at === null ? 'its instant' : cmp.snapshot.at.slice(0, 10) }} drivers={input.drivers} />;
+}
+/* end B82 sc */

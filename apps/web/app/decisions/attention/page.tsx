@@ -15,7 +15,7 @@
  * is shown to everyone and the server's refusal is shown as it states it). Nothing on this page predicts a result: every row,
  * verdict and answer is the server's.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useShell } from '../layout';
 import {
   attention as api, ITEM_STATES, SIGNAL_CLASSES, FIRST_POLICY_TEMPLATE, POLICY_PUBLISHER_ROLES,
@@ -24,6 +24,10 @@ import {
 } from '../../../lib/attention';
 import { Empty, LiveStatus, Mono, ScrollBox, cardStyle, DefinitionRow, UnknownNote, GovernedButton, fmtInstant, textareaStyle } from '../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui';
+/* B82 sc */ import { AlertQueue } from '../../../components/strategic-charts';
+import { alertInput, alertSpec } from '../../../lib/strategic-charts-b82';
+import { readExport } from '../../../lib/chart-specs-b82';
+import type { Scope } from '../../../lib/observation'; /* end B82 sc */
 /* B23 (0084) attention: the governed reviews (L10-I03) beside the queue */
 import { reviewSubjectOf } from '../../../lib/attention';
 import { ReviewsPanel, type ConvenePrefill } from './reviews-panel';
@@ -251,6 +255,10 @@ export default function AttentionPage() {
           </ScrollBox>
         )}
       </section>
+
+      {/* B82 sc: the queue drawn in the policy's order (VIZ-34) — AFTER the queue's own table (its rows and controls unchanged) */}
+      {items === null || items.length === 0 ? null : <QueueDrawn scope={scope} items={items} policy={active === null ? 'the policy in force' : `policy version ${active.version}`} />}
+      {/* end B82 sc */}
 
       {open !== null && (
         <section aria-labelledby="item-h" style={cardStyle}>
@@ -496,3 +504,18 @@ export default function AttentionPage() {
     </>
   );
 }
+
+/* B82 sc: THE ALERT QUEUE over the queue read — the server's order kept as the position, each item's age to now and its due time, the
+   consequence class as the marker's shape, owner, acknowledgement and suppression in words; nothing re-sorted by a score. */
+function QueueDrawn({ scope, items, policy }: { scope: Scope; items: AttentionItem[]; policy: string }) {
+  const asOf = useMemo(() => new Date().toISOString(), [items]); // eslint-disable-line react-hooks/exhaustive-deps
+  const q = useMemo(() => alertInput(items, whyLine, asOf), [items, asOf]);
+  const spec = useMemo(() => alertSpec({ items: q, asOf, policy }), [q, asOf, policy]);
+  return (
+    <section aria-labelledby="queue-drawn-h" style={cardStyle}>
+      <h2 id="queue-drawn-h" style={{ fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 }}>The listed items, drawn in their order</h2>
+      <AlertQueue spec={spec} items={q} exportAs={readExport(scope, asOf)} />
+    </section>
+  );
+}
+/* end B82 sc */

@@ -27,6 +27,9 @@ import {
 import { Empty, LiveStatus, Mono, ScrollBox, cardStyle, DefinitionRow, UnknownNote, GovernedButton, fmtInstant, textareaStyle } from '../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui';
 /* B81 re: the library's Field (its control slot) — the local Field helper migrated (UX-ADR-011; dg-lint-2's ratchet) */ import { Field } from '../../../components/forms';
+/* B82 sc */ import { TwinStateDiff } from '../../../components/strategic-charts';
+import { HierarchyTree } from '../../../components/canvas';
+import { branchTreeOf, diffInput, diffSpec, isoOf } from '../../../lib/strategic-charts-b82'; /* end B82 sc */
 
 type ReceiptT = { policyDecisionId: string; auditSeq: number } | null;
 type Answer = { ok: boolean; status: number; data?: { receipt: ReceiptT } & Record<string, unknown>; error?: { code: string; message: string } };
@@ -217,6 +220,10 @@ export default function TwinExplorerPage() {
                 <tr key={b.branch_id}><Td><strong>{b.branch_id}</strong></Td><Td>{b.forked_from === null ? '—' : `v${b.forked_from}`}</Td><Td>{b.head === null ? '—' : `v${b.head}`}</Td>
                   <Td>{b.draft === null ? '—' : `v${b.draft}`}</Td><Td>{b.versions.map((v) => `v${v}${b.withdrawn.includes(v) ? ' (withdrawn)' : ''}`).join(', ')}</Td></tr>))}</tbody></table>
           </ScrollBox>
+          {/* B82 sc: the branch tree drawn (§GM's HierarchyTree, VIZ-20) — the table above stays (its name "branch tree" is the walk's: the drawing's title avoids it); the tree's own table alternative beside it */}
+          <HierarchyTree items={branchTreeOf(x.branches, x.versions)} title={`${x.twin.title} — branches by the version they forked from`} basis="each branch under the branch that owns the version it forked from; actual is the root"
+            source={{ read: 'twin.read · /twins/:id/branches/explorer', label: 'the twin\'s branch explorer' }} asOf={isoOf(x.read_at, new Date().toISOString())} rule="a branch's parent is the branch owning its fork version" />
+          {/* end B82 sc */}
           {(x.restores ?? []).length === 0 ? null : (
             <ul aria-label="checkpoint restores" style={small}>{x.restores.map((r) => <li key={r.event_id}>{fmtInstant(r.occurred_at)} — {branchEventLine({ event: 'checkpoint.restored', details: r.details })}</li>)}</ul>
           )}
@@ -243,6 +250,10 @@ export default function TwinExplorerPage() {
               <p>As of {fmtInstant(tt.asOf)}, {ttBranch} stood at <strong>v{String(tt.version['version'])}</strong> (admitted {fmtInstant(tt.version['admitted_at'])}; observed through {String(tt.version['observed_through'] ?? '—')}; {String(tt.version['verification_state'] ?? '')}).</p>
               <h3 style={{ fontSize: 'var(--eye-type-heading-3)' }}>Against actual&apos;s head</h3>
               <DiffTable keys={tt.keys ?? []} label="diff against actual" />
+              {/* B82 sc: the same keys as a TwinStateDiff (VIZ-28) — one panel per state class, each row its own scale; observed and synthetic never mixed */}
+              {(tt.keys ?? []).length === 0 ? null : <TwinStateDiff spec={diffSpec({ twin: x.twin.title, branch: ttBranch, version: `v${String(tt.version['version'])}`, asOf: isoOf(tt.asOf, new Date().toISOString()),
+                verification: String(tt.version['verification_state'] ?? 'not stated'), items: diffInput(tt.keys ?? []) })} items={diffInput(tt.keys ?? [])} />}
+              {/* end B82 sc */}
             </div>
           )}
         </section>

@@ -31,6 +31,9 @@ import { CF_RENDERED, CfCatalogue } from './cf-fixtures';
 /* B82 px */
 import { PX_RENDERED, PxCatalogue } from './px-fixtures';
 /* end B82 px */
+/* B82 sc */
+import { SC_RENDERED, ScCatalogue } from './sc-fixtures';
+/* end B82 sc */
 
 /** The library exports each folded part renders here (a part adds its names with its section). */
 const RENDERED = new Set<string>([
@@ -41,6 +44,7 @@ const RENDERED = new Set<string>([
   /* B82 gm */ ...GM_RENDERED, /* end B82 gm */
   /* B82 cf */ ...CF_RENDERED, /* end B82 cf */
   /* B82 px */ ...PX_RENDERED, /* end B82 px */
+  /* B82 sc */ ...SC_RENDERED, /* end B82 sc */
 ]);
 
 export default function CataloguePage() {
@@ -81,6 +85,9 @@ export default function CataloguePage() {
       {/* B82 px */}
       <PxCatalogue />
       {/* end B82 px */}
+      {/* B82 sc */}
+      <ScCatalogue />
+      {/* end B82 sc */}
     </>
   );
 }

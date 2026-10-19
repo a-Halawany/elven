@@ -1164,3 +1164,8 @@ button.eye-cmdenv-row[aria-pressed="true"] { border-color: var(--eye-color-accen
   .eye-px-note, .eye-px-dl-row dt, .eye-px-facets tr td { color: CanvasText; }
 }
 /* end B82 px */
+/* B82 sc — THE SCENARIO, DECISION, RISK AND OPERATIONS CHARTS (components/strategic-charts.tsx). They draw with §CF's classes; the one rule
+   added: a branch or row that is NOT LIVE is faded — and always labelled "not live" / "not counted" in words (never the fade alone). */
+.eye-sc-notlive { opacity: 0.6; }
+@media (forced-colors: active) { .eye-sc-notlive { opacity: 1; } }
+/* end B82 sc */

@@ -9,6 +9,7 @@
  * ledgers in the write; any may ABSTAIN — below the sample floor, without a rank, without a delivery ledger — and the page shows the
  * server's reason, never a number it did not record.
  */
+/* B82 sc */ import { preciseNumber } from '../../../lib/numbers-b82'; /* end B82 sc */
 import { useEffect, useState } from 'react';
 import { EVALUATOR_ROLES, governance as api, measuresOf, ratioWords, verdictMark, type QueueEvaluation } from '../../../lib/attention-governance';
 /* B34 (0090) attention */
@@ -26,7 +27,8 @@ const critical = { color: 'var(--eye-color-critical)' } as const;
 const h3 = { fontSize: 'var(--eye-type-heading-3)' } as const;
 const rowStyle = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(14rem, 1fr))', gap: 'var(--eye-space-8)' } as const;
 const toIso = (v: string): string | null => { if (v.trim() === '') return null; const d = new Date(v); return Number.isNaN(d.getTime()) ? null : d.toISOString(); };
-const secs = (v: number | undefined | null) => (typeof v === 'number' ? `${v.toFixed(1)} s` : '—');
+/* B82 sc: through §TS's precision policy (NUM-09) — no raw toFixed */
+const secs = (v: number | undefined | null) => (typeof v === 'number' ? `${preciseNumber(v, { measure: 'duration', horizon: 'observed', evidence: 'observed' }).text} s` : '—');
 
 function EvaluationView({ e }: { e: QueueEvaluation }) {
   const m = measuresOf(e);

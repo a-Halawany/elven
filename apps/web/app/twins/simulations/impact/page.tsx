@@ -7,7 +7,7 @@
  * frequency stated as a probability ONLY through an approved map; and the VALUE OF INFORMATION of a decision — wait or act, from the
  * governed branch probabilities. Every number is SYNTHETIC and computed by the server; this page lays it out and words it.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useShell } from '../../layout';
 import { twins as twinsApi, type Run } from '../../../../lib/twins';
 import { prediction, type ScenarioRow } from '../../../../lib/prediction';
@@ -19,6 +19,8 @@ import {
 } from '../../../../lib/impact-b31';
 import { Empty, LiveStatus, Mono, cardStyle, GovernedButton, UnknownNote, fmtInstant, textareaStyle } from '../../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../../components/ui';
+/* B82 sc */ import { RunComparison, SensitivityTornado } from '../../../../components/strategic-charts';
+import { COMPARED_MEASURES, comparedRuns, isoOf, runSpec, tornadoInput, tornadoSpec } from '../../../../lib/strategic-charts-b82'; /* end B82 sc */
 
 type Rec = { policyDecisionId: string; auditSeq: number };
 // B31 walk-found: a uuidv7's first 8 characters are its timestamp, shared by runs opened together — the label carries the tail too.
@@ -29,30 +31,15 @@ const sectionStyle = { ...cardStyle, marginBlockStart: 'var(--eye-space-16)' };
 const h2 = { fontSize: 'var(--eye-type-heading-2)', marginBlockStart: 0 };
 const grid = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--eye-space-8)' } as const;
 
-/** THE TORNADO: each factor's bar from the base line — the low move to one side, the high move to the other — scaled to the widest swing. */
+/* B82 sc: THE TORNADO is the library's SensitivityTornado (VIZ-07) through ChartFrame — the div bars are gone (dg-lint-4's ratchet emptied):
+   the model, the baseline, the range and the units declared; the factors in the server's rank order; the table alternative beside it. */
 function Tornado({ a }: { a: RunImpact['analyses'][number] }) {
-  const rows = tornadoRows(a.factors);
-  return (
-    <figure aria-label={`tornado chart of ${a.metric}`} style={{ margin: 0 }}>
-      <figcaption style={{ fontSize: 'var(--eye-type-label-sm)', color: 'var(--eye-color-ink-muted)' }}>
-        {a.metric} at base {String(a.base_value)} · each parameter moved ±{Math.round(Number(a.relative) * 100)}%{a.timing_shift_days ? `, each dated intervention ±${a.timing_shift_days} day(s)` : ''} · widest first (SYNTHETIC)
-      </figcaption>
-      {rows.map((r) => (
-        <div key={r.key} style={{ display: 'grid', gridTemplateColumns: 'minmax(12rem, 18rem) 1fr', alignItems: 'center', gap: 'var(--eye-space-8)', marginBlock: 'var(--eye-space-4)' }}>
-          <span style={{ fontSize: 'var(--eye-type-label-sm)' }}>{r.rank}. <Mono>{r.key}</Mono>{r.kind === 'timing' ? ' (timing)' : ''}</span>
-          <div role="img" aria-label={`${r.key}: low ${r.lowValue} moves the metric by ${r.lowDelta}; high ${r.highValue} by ${r.highDelta}`}
-               style={{ position: 'relative', blockSize: '1.1rem', background: 'var(--eye-color-surface-sunken, transparent)', borderInline: '1px solid var(--eye-color-border-default)' }}>
-            <span aria-hidden="true" style={{ position: 'absolute', insetBlock: 0, insetInlineStart: '50%', inlineSize: 1, background: 'var(--eye-color-ink-muted)' }} />
-            {[{ pct: r.lowPct, token: '--eye-color-info, var(--eye-color-ink-muted)' }, { pct: r.highPct, token: '--eye-color-warning' }].map((b, i) => (
-              <span key={i} aria-hidden="true" style={{ position: 'absolute', insetBlock: 2, background: `var(${b.token})`, opacity: i === 0 ? 0.6 : 0.85,
-                ...(b.pct >= 0 ? { insetInlineStart: '50%', inlineSize: `${b.pct / 2}%` } : { insetInlineEnd: '50%', inlineSize: `${-b.pct / 2}%` }) }} />
-            ))}
-          </div>
-        </div>
-      ))}
-    </figure>
-  );
+  const items = useMemo(() => tornadoInput(a.factors), [a.factors]);
+  const spec = useMemo(() => tornadoSpec({ metric: a.metric, relative: a.relative, base: a.base_value, model: a.model_ref, runId: a.run_id, analysisId: a.analysis_id,
+    analysedAt: isoOf(a.analysed_at, new Date().toISOString()), robustness: robustnessMark(a.robustness ?? null).text, timingShiftDays: a.timing_shift_days, items }), [a, items]);
+  return <SensitivityTornado spec={spec} items={items} />;
 }
+/* end B82 sc */
 
 export default function ImpactPage() {
   const { scope } = useShell();
@@ -216,6 +203,9 @@ export default function ImpactPage() {
                 <tbody>{compared.map((c) => <tr key={c.run_id}><Td><Mono>{short(c.run_id)}</Mono></Td><Td>{c.run_kind}</Td><Td>{c.totals.line_stop_days}</Td><Td>{c.totals.cost.total}</Td><Td>{c.carrying.join(', ')}</Td></tr>)}</tbody>
               </table>
             )}
+            {/* B82 sc: the same runs drawn on their one basis (VIZ-27) — the control as the reference line; incompatible runs are named, never drawn side by side */}
+            {compared === null || run === undefined ? null : <ImpactRuns compared={compared} runs={runs} />}
+            {/* end B82 sc */}
           </section>
 
           <section aria-labelledby="prob-h" style={sectionStyle}>
@@ -285,3 +275,11 @@ export default function ImpactPage() {
     </>
   );
 }
+
+/* B82 sc: the compared runs as a RunComparison (VIZ-27) — the manifests from the run list, the totals from the comparison read */
+function ImpactRuns({ compared, runs }: { compared: Array<{ run_id: string; run_kind: string; totals: { line_stop_days: number; days_below_safety_stock: number; cost: { total: string } }; carrying: string[] }>; runs: Run[] }) {
+  const items = useMemo(() => comparedRuns(compared, runs), [compared, runs]);
+  const spec = useMemo(() => runSpec({ title: 'The runs on the common control, drawn per measure', runs: items, measures: COMPARED_MEASURES, asOf: new Date().toISOString(), read: 'simulation.read · /simulations/compare', readLabel: 'the comparison on the common control' }), [items]);
+  return <RunComparison spec={spec} runs={items} measures={COMPARED_MEASURES} />;
+}
+/* end B82 sc */

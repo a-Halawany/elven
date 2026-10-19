@@ -10,7 +10,7 @@
  * across the reviewed futures, the adversarial rank changes, the generated candidates and the assembled inputs. The forms are shown to
  * everyone; the server decides who may (a weight is a named human's value judgment, never an agent's) and its refusal is shown as stated.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useShell } from '../layout';
 import {
   analysisApi as api, POSTURES, flipWords, mergedWeights, rankChangeWords, resultMark, testWords,
@@ -18,6 +18,11 @@ import {
 } from '../../../lib/analysis-b35';
 import { Empty, LiveStatus, Mono, cardStyle, GovernedButton, fmtInstant, textareaStyle } from '../../../components/observation';
 import { inputStyle, tableStyle, Th, Td, Receipt } from '../../../components/ui';
+/* B82 sc */ import { OptionMatrix } from '../../../components/strategic-charts';
+import { decisions, type Dissent } from '../../../lib/decisions';
+import { optionMatrixInput, optionSpec } from '../../../lib/strategic-charts-b82';
+import { readExport } from '../../../lib/chart-specs-b82';
+import type { Scope } from '../../../lib/observation'; /* end B82 sc */
 
 type ReceiptT = { policyDecisionId: string; auditSeq: number } | null;
 const refusal = (r: { status: number; error?: { code: string; message: string } }, fallback: string) =>
@@ -120,6 +125,10 @@ export default function AnalysisPage() {
               </table>
             )}
           </section>
+
+          {/* B82 sc: the options against the criteria drawn (VIZ-29) — each criterion its own scale and weight; no composite; the dissent declared */}
+          <OptionsDrawn scope={scope} a={a} pkg={pkg} v={v} />
+          {/* end B82 sc */}
 
           <section aria-labelledby="dsa-sens" style={section}>
             <h2 id="dsa-sens" style={h2}>Weight sensitivity</h2>
@@ -282,3 +291,26 @@ export default function AnalysisPage() {
     </>
   );
 }
+
+/* B82 sc: THE OPTION MATRIX over the package's decision analysis (its options, criteria, weights, values and bases) and the version's
+   recorded dissent (decision.read) — drawn without a rank or a score: the table above keeps the server's ranking, this draws the trade-off. */
+function OptionsDrawn({ scope, a, pkg, v }: { scope: Scope; a: PackageAnalysis; pkg: string; v: number }) {
+  const [dissent, setDissent] = useState<Dissent[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    void decisions.get(scope, pkg).then((r) => { if (live) setDissent(r.ok && r.data !== undefined ? (r.data.package.versions.find((x) => x.version === v)?.dissent ?? []) : null); });
+    return () => { live = false; };
+  }, [scope.tenantId, scope.domainId, pkg, v]); // eslint-disable-line react-hooks/exhaustive-deps
+  const m = useMemo(() => optionMatrixInput({ options: a.options, criteria: a.criteria }), [a]);
+  const asOf = useMemo(() => new Date().toISOString(), [a]); // eslint-disable-line react-hooks/exhaustive-deps
+  const spec = useMemo(() => optionSpec({ pkg: a.package.title, version: v, m, asOf, criteriaVersion: a.criteria_version,
+    dissent: (dissent ?? []).map((d) => ({ by: d.principal_id, position: d.position, rationale: d.rationale })) }), [a, v, m, asOf, dissent]);
+  return (
+    <section aria-labelledby="dsa-drawn" style={section}>
+      <h2 id="dsa-drawn" style={h2}>Options against the criteria, drawn</h2>
+      {dissent === null ? <p style={muted}>The version&apos;s dissent could not be read here — the package page carries it.</p> : null}
+      <OptionMatrix spec={spec} matrix={m} exportAs={readExport(scope, asOf)} />
+    </section>
+  );
+}
+/* end B82 sc */
