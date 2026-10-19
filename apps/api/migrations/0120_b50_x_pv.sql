@@ -1625,3 +1625,16 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION graph.provenance_agent_state(uuid, uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION graph.provenance_agent_state(uuid, uuid) TO eye_app, eye_commit;
+
+-- ═══ B50 integration (§CI × §PV) ═══
+-- graph._open_challenge — §CI's stub (0120 §CI), re-declared WHOLE here (§PV folds after §CI) to add §PV's KNOWLEDGE CHALLENGES: an object whose
+-- open or under-review knowledge challenge names it is `challenged` in the affected-product classification (AI-06-004). Nothing else changes.
+CREATE OR REPLACE FUNCTION graph._open_challenge(p_tenant uuid, p_domain uuid, p_kind text, p_id uuid, p_version int) RETURNS boolean
+LANGUAGE sql STABLE SET search_path = graph, pg_catalog, pg_temp AS $$
+  SELECT (p_kind = 'simulation' AND EXISTS (SELECT 1 FROM simulation.challenges c WHERE c.run_id = p_id AND c.tenant_id = p_tenant AND c.domain_id = p_domain AND c.state IN ('open', 'rerun_requested')))
+      OR (p_kind = 'decision_package' AND EXISTS (SELECT 1 FROM decision.challenges c WHERE c.package_id = p_id AND (p_version IS NULL OR c.version = p_version) AND c.tenant_id = p_tenant AND c.domain_id = p_domain AND c.resolved_at IS NULL))
+      OR EXISTS (SELECT 1 FROM graph.impact_triggers t WHERE t.object_id = p_id AND t.tenant_id = p_tenant AND t.domain_id = p_domain AND t.trigger_kind = 'human_challenge' AND t.closed_at IS NULL)
+      -- B50 integration: §PV's knowledge challenges (open or under review), any version of the subject unless one is named
+      OR EXISTS (SELECT 1 FROM graph.knowledge_challenges k WHERE k.subject_id = p_id AND (p_version IS NULL OR k.subject_version = p_version) AND k.tenant_id = p_tenant AND k.domain_id = p_domain AND k.state IN ('open', 'under_review'));
+$$;
+REVOKE ALL ON FUNCTION graph._open_challenge(uuid, uuid, text, uuid, int) FROM PUBLIC;
