@@ -3359,6 +3359,37 @@ const BUNDLE_V1: Rule[] = [
     ];
   })(),
   /* end B50 ci */
+  /* B50 cl */
+  /* B50 §CL (0120_b50_x_cl; F-P3-05's closure). EXACT rules — no earlier rule is a prefix of graph.closure.* (the graph prefix rules are
+     graph.read, graph.entity.*, graph.resolution.*, graph.edge.*, graph.strategy.*, graph.propagation.*, graph.impact.propagate,
+     graph.subscription.*; none is a prefix of `graph.closure`). The reads are graph.read's. THE CONTRACT (`graph.closure.contract.declare`):
+     the domain administrator — human-gated; the port re-checks the role. THE CONSUMERS' ACTS (`graph.closure.acknowledge`, `.except`): any
+     domain person who may own a product (the PORT decides: the product's accountable owner, else a knowledge owner or the domain
+     administrator; a human review never by the correction authority who applied the case; an exception under a legal hold owned by a
+     record authority) — human-gated. THE FREEZE (`graph.closure.freeze`): the domain administrator, the collection manager, a knowledge
+     owner, a data steward — human-gated; THE LIFT (`graph.closure.freeze.lift`), THE CLOSE (`graph.closure.close`) and THE ADOPTION
+     (`graph.closure.adopt`): the correction authority (collection manager) or the domain administrator — human-gated. THE SWEEP
+     (`graph.closure.sweep`): the same two, a person's route (audited); the scheduled sweep is the attention agent's tick step under
+     executive.attention.tick (its existing rule). No agent role appears here. */
+  ...((): Rule[] => {
+    const at = (roles: string[]) => roles.map((role) => ({ role, atScope: 'DOMAIN' as Scope }));
+    const gate: Obligation[] = [{ type: 'human_gate' }];
+    const owners = at(['domain_admin', 'domain_analyst', 'domain_specialist', 'collection_manager', 'extraction_manager', 'resolution_manager', 'strategy_owner', 'forecast_owner',
+      'twin_owner', 'simulation_operator', 'knowledge_owner', 'record_authority', 'ontology_steward', 'data_steward', 'method_steward', 'decision_owner', 'decision_approver',
+      'decision_authority', 'executive', 'executive_operator', 'risk_owner', 'privacy_officer']);
+    const authority = at(['collection_manager', 'domain_admin']);
+    return [
+      { actionPrefix: 'graph.closure.contract.declare', exact: true, requiredAnyRole: at(['domain_admin']), obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.closure.acknowledge', exact: true, requiredAnyRole: owners, obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.closure.except', exact: true, requiredAnyRole: owners, obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.closure.freeze', exact: true, requiredAnyRole: at(['domain_admin', 'collection_manager', 'knowledge_owner', 'data_steward']), obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.closure.freeze.lift', exact: true, requiredAnyRole: authority, obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.closure.close', exact: true, requiredAnyRole: authority, obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.closure.adopt', exact: true, requiredAnyRole: authority, obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'graph.closure.sweep', exact: true, requiredAnyRole: authority, obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+    ];
+  })(),
+  /* end B50 cl */
 ];
 
 /* B107 conformance */
