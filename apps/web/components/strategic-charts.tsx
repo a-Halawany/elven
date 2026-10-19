@@ -169,7 +169,7 @@ export function ScenarioComparison({ spec, items, ...c }: Common & { items: read
                 <text className="eye-cf-small" x={b.left - 6} y={r.y + 4} textAnchor="end">{clipText(it.name, 24)}</text>
                 {r.interval === null ? null : (
                   <g>
-                    <line className="eye-cf-series" x1={r.interval.x0} x2={r.interval.x1} y1={r.y} y2={r.y} strokeDasharray={r.live ? undefined : dashOf('dotted')} strokeWidth={6} />
+                    <rect className="eye-cf-bar" x={r.interval.x0} y={r.y - 5} width={Math.max(2, r.interval.x1 - r.interval.x0)} height={10} strokeDasharray={r.live ? undefined : dashOf('dotted')} />
                     <line className="eye-cf-interval" x1={r.interval.x0} x2={r.interval.x0} y1={r.y - 7} y2={r.y + 7} />
                     <line className="eye-cf-interval" x1={r.interval.x1} x2={r.interval.x1} y1={r.y - 7} y2={r.y + 7} />
                   </g>
@@ -248,6 +248,7 @@ export function RiskMatrix({ spec, items, unit, ...c }: Common & { items: readon
               <line className="eye-cf-series" x1={m.x} x2={m.x} y1={m.yLow} y2={m.yHigh} strokeDasharray={dashOf(m.dash)} />
               <Marker shape={m.marker} x={m.x} y={m.yHigh} r={4.5} />
               {m.breach ? <text className="eye-cf-strong" x={m.x + 8} y={m.yHigh + 4}>!</text> : null}
+              <text className="eye-cf-small" x={m.x + (m.breach ? 16 : 8)} y={m.yHigh + 4}>{clipText(items[m.row]!.title, 18)}</text>
             </g>
           ))}
         </>
