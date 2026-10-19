@@ -1520,6 +1520,36 @@ const BUNDLE_V1: Rule[] = [
     // (C3+) cannot be authorized, so it fails closed exactly as `objects.` does.
     maxConsequence: 'C2',
   },
+  /* B50 lc */
+  /* B50 §LC (0120_b50_x_lc; F-P3-02: PR-06-001/003/005, ADR-006). EXACT rules, placed BEFORE the `objects.read` and `objects.` prefix rules
+     (which would otherwise match them first and admit a domain_admin without a gate). READING a lifecycle (profiles, a type's work objects,
+     one object's history, its replay, the reconciliation, the export and its verification) — every human role of the domain, the tenant's
+     administrator and auditor, the platform administrator; audited. AUTHORING a work object — the roles that author an assessment (the domain
+     specialist, the analyst, the knowledge owner, the risk / strategy / forecast owners, the executive), human-gated. TRANSITIONING one —
+     the domain's human roles reach the route, human-gated; the PORT admits only the accountable owner, or the profile's reviewer / approver
+     roles, with the separation of duties (reviewer ≠ author, approver ≠ author or reviewer). PROPOSING — the same human roles AND the agent
+     roles (the extraction, collection and forecast agents): a proposal is never authoritative, so it is not human-gated. DECIDING a proposal
+     — the domain's human roles reach the route, human-gated; the PORT admits only the accountable owner. */
+  ...((): Rule[] => {
+    const domainPeople = ['domain_admin', 'domain_analyst', 'collection_manager', 'decision_owner', 'decision_approver', 'decision_authority', 'executive', 'executive_operator',
+      'board_member', 'extraction_manager', 'resolution_manager', 'strategy_owner', 'forecast_owner', 'twin_owner', 'simulation_operator', 'knowledge_owner',
+      'record_authority', 'retention_steward', 'ontology_steward', 'risk_owner', 'opportunity_sponsor', 'execution_authority', 'method_steward', 'constraint_steward',
+      'data_steward', 'domain_specialist', 'privacy_officer']
+      .map((role) => ({ role, atScope: 'DOMAIN' as Scope }));
+    const readers = [{ role: 'platform_admin', atScope: 'PLATFORM' as Scope }, { role: 'tenant_admin', atScope: 'TENANT' as Scope }, { role: 'auditor', atScope: 'TENANT' as Scope }, ...domainPeople];
+    const authors = ['domain_specialist', 'domain_analyst', 'knowledge_owner', 'risk_owner', 'strategy_owner', 'forecast_owner', 'executive']
+      .map((role) => ({ role, atScope: 'DOMAIN' as Scope }));
+    const agents = ['extraction_agent', 'collection_agent', 'forecast_agent'].map((role) => ({ role, atScope: 'DOMAIN' as Scope }));
+    const gate: Obligation[] = [{ type: 'human_gate' }];
+    return [
+      { actionPrefix: 'objects.lifecycle.read', exact: true, requiredAnyRole: readers, obligations: [{ type: 'audit_access' }], requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'objects.work_object.author', exact: true, requiredAnyRole: authors, obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'objects.lifecycle.transition', exact: true, requiredAnyRole: domainPeople, obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'objects.lifecycle.propose', exact: true, requiredAnyRole: [...domainPeople, ...agents], requiresPurpose: true, maxConsequence: 'C2' },
+      { actionPrefix: 'objects.lifecycle.proposal.decide', exact: true, requiredAnyRole: domainPeople, obligations: gate, requiresPurpose: true, maxConsequence: 'C2' },
+    ];
+  })(),
+  /* end B50 lc */
   {
     actionPrefix: 'objects.read',
     requiredAnyRole: [
