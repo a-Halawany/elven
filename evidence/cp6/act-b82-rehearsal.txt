@@ -1,0 +1,311 @@
+# B82 act — REHEARSAL on eye_demo_b82 (a restored copy of .eye-local/backups/eye_demo-pre-0121-20261019T093358Z.dump, 314707469 bytes — the PRE-0121 backup of eye_demo taken read-only with pg_dump -Fc at 0120; migrated 0121 from b82/act, the applied file's sha256 dd8f6e48c5db94a9… = 0121 with the strength fix 643dd79), code head d8a51f9 on b82/act (from 823a94c: product fixes 36d2c62 (provenance graph: a node listed once per path drawn as one), 643dd79 (0121: a correction's own original's UNFIT mark no longer weakens it), 91d39a0 (/graph/trust overview asks 5 products), 55e6939 (an agent-composed briefing carries the AI notice); the act, candidate act and walks d8a51f9).
+# THE RIG (runbook §14/§29 form): API :3411 built from this worktree (EYE_DB_NAME=eye_demo_b82, EYE_REDIS_PORT=6392 flushed before, a fresh APFS vault clone under the four EYE_VAULT_*_ROOT, its own EYE_DEGRADED_DIR, the rehearsal sinks 2535/3456, EYE_EXECUTION_SYNTHETIC_LOOPBACK=on, EYE_BUILD_SHA/EYE_BUILD_HEAD_SHA = d8a51f9, EYE_REPO_ROOT = the worktree); the rehearsal web built IN PLACE in the worktree's apps/web (.next, git-ignored — no copy inside apps/, nothing in pnpm-lock.yaml) with NEXT_PUBLIC_EYE_API=http://localhost:3412, served on :3010 through the loopback CORS proxy :3412 → :3411. Never :3401, :3000, Redis :6379 or the sinks 2525/3446.
+# ORDER: earlier iterations on the first copy found the act's/walks' own defects (the B31 recommendation's missing-evidence shape, the briefing prior, the overview limit, the series read cost, the TENANT auditor's working domain, selectors) and the four product defects above; the copy was then DROPPED, restored fresh and migrated with the fixed 0121 for the runs below: act run 1 (every write), act run 2 (every scene stands), the walk phase6-b82 (7/7) and phase6-b82-viz (6/6) with run 2's EYE_B82_* lines. Screenshots: b82-*.png and b82-viz-*.png (35) in the rig, not committed.
+# SAID PLAINLY: (1) the corrected claim reads INDETERMINATE, not CORRECTED — its admission raised 17 open contradictions with the other days' readings (the PortWatch claims carry no day in their subject); the CORRECTED state is shown on the corrected PortWatch fragment. (2) L. Brandt's next briefing WITHHOLDS the correction under the room's policy v1 (a claim needs 2 sources) — his paragraph citing it is refused in the server's words; the older edition listing the original reads CORRECTED SINCE. (3) the flow map draws only after /graph/geo has read three PortWatch series (each assembles the whole series, digest-verified with custody per evidence version) — the walk's corridor test took 16.0 min.
+
+════════ RUN 1 ════════
+THE B82 ACT on eye_demo_b82 (REHEARSAL) — 2026-10-19T11:24:08.431Z — API http://localhost:3411
+
+B82-0 THE CAST AND THE STATE — 0121, the build, the NORDWERK cast; the B31 package, its runs, twin v14, the corrected fragment; no geography and no AIS evidence, each stated
+  ✓ migration applied: 0121_b82_trust_evidence_visualization.sql
+  ✓ l.brandt holds decision_owner at the DOMAIN
+  ✓ k.mueller holds knowledge_owner at the DOMAIN
+  ✓ l.ferreira holds extraction_manager at the DOMAIN
+  ✓ a.hoffmann holds domain_analyst at the DOMAIN
+  ✓ f.aydin holds data_steward at the DOMAIN
+  ✓ n.eriksen holds forecast_owner at the DOMAIN
+  ✓ e.lindqvist holds auditor at the TENANT
+  ✓ c.brenner holds decision_owner at the DOMAIN
+  ✓ s.okafor holds decision_approver at the DOMAIN
+  ✓ l.haddad holds design_system_authority at the PLATFORM
+  ✓ s.iversen holds design_system_authority at the PLATFORM
+  ✓ p.castellano holds conformance_steward at the PLATFORM
+  ✓ h.achterberg holds independent_assurance at the PLATFORM
+  ✓ w.zielinska holds customer_sponsor at the TENANT
+  · the API declares its build: head d8a51f9aa812… (from env), migration head —, policy bundle bundle-v1 3ef778a875c3…
+  ✓ L. Brandt's B31 package "Regensburg routing — reroute the magnets via the Cape on the B31 corridor runs (SYNTHETIC)" 01a0…1480f5 v1 APPROVED: options reroute (intervention), status-quo (status_quo); the reroute option cites the run 01a0…54f0fb@1 — its versions v1 active, v2 withdrawn (v2 WITHDRAWN: challenge: challenge 01a0f7df-d775-70cb-b25e-2e056b4ca237 upheld: the surcharge was omitted from the reroute's cost; the); it rests on TWN:01a0…@14 and SCN:01a0…@1
+  ✓ the PortWatch chokepoint-4 fragment 01a0…6f55e0 (bytes 471–854 of its day's file, json-array-framing@1.2.0): 2 version(s), the latest a CORRECTION
+  · the geographic register holds 0 reference version(s) — NO GEOGRAPHY EXISTED before B82: the map draws only what a data steward types (D4)
+  ✓ the AIS source (red-sea-ais-positions, connector upload, contract v1): 0 evidence version(s) — "NO AIS EVIDENCE RECORDED", stated, never filled (MAP Q8); the closure evidence is the PortWatch fragment and the carrier advisories
+
+B82-1 THE DRILL (E-07) — L. Brandt: his recommendation on the B31 package (RECOMMENDED, advisory) → the reroute option → the run (INDETERMINATE: withdrawn since) → the scenario branch → twin v14 → the evidence fragment (CORRECTED); truth, freshness and trust facets at each hop; the cited bytes refused to him (D9) and opened by A. Hoffmann
+  ✓ L. Brandt (decision owner, a PERSON) RECORDED the recommendation 01a1…369ce6 on "Reroute the open magnet bookings via the Cape" — proposed, author human; DECISION COVERAGE 1 of 8 live branch(es) (13%) of the scenarios the runs rest on; the option's run: REFUSED for decision use: invalidated (invalidated) — the port records the recommendation and STATES the run's refusal for decision use — POL 01a153e7-995a… · audit seq 664392
+  ✓ THE RECOMMENDATION reads RECOMMENDED — attributed to a PERSON (agent-authored false: no AI notice is owed), "advisory, not a decision — awaiting a named reviewer who is not its author" — never DECIDED
+  ✓ THE RUN SIM 01a0…54f0fb@1 → INDETERMINATE (stored synthetic; corrected_by, withdrawn_input): "not for a decision-active use (derive an option, approve, publish, export) until resolved; superseded by correction v2 —"
+  · THE SCENARIO SCN 01a0…c87981@1 → ASSERTED (stored asserted; no reason)
+  · THE TWIN TWN 01a0…76f525@14 → ASSERTED (stored asserted; no reason)
+  ✓ THE EVIDENCE EVD 01a0…6f55e0@2 → CORRECTED (stored observed; correction_of) — linked to the preserved original EVD:01a084f5-7979-76cf-8e3b-a7b0e96f55e0@1; the original reads "superseded by correction v2 — the preserved original; read the correction for an" (corrected by EVD:01a084f5-7979-76cf-8e3b-a7b0e96f55e0@2)
+  · the rule b82-ts-display-1 — POL 01a153e7-a574… · audit seq 664395
+  ✓ THE CITATION of the run 01a0…54f0fb@1 (digest binds the version) resolves: its own outcome WITHDRAWN — "corrected since by SIM:01a0f7df-d67e-7f84-b0a6-abfc1354f0fb@2; withdrawn since v2; the run was invalidated at 2026-10-01T14:30:37.207190Z"; 61 evidence leaf/leaves at depth 6: resolved 56, corrected 5; the read's digest d5f21df33435… — POL 01a153e8-255f… · audit seq 664402
+  ✓ the leaf SIM:01a0…@1 → TWN:01a0…@14 → EVD:01a0…@2: RESOLVED, digest verified, custody intact (95 event(s), last verified 2026-10-08T22:39:48Z), tier hot, span 0–383 of 383 bytes (whole_object; a fragment of its day's file 471–854), rights no terms declared (the contract: confirmed); correction {"corrected_by":null,"correction_of":"EVD:01a084f5-7979-76cf-8e3b-a7b0e96f55e0@1"}
+  ✓ TRUST at SIM 01a0…54f0fb@1: provenance PARTIAL · TRUST INDETERMINATE; facets signature not_checked, lineage verified, custody verified, policy not_checked, evaluation not_checked, correction failed, rights not_checked, freshness not_checked; freshness — "no freshness assessment is recorded on this version"; no score anywhere
+  ✓ TRUST at TWN 01a0…76f525@14: provenance PARTIAL · TRUST INDETERMINATE; facets signature not_checked, lineage verified, custody verified, policy not_checked, evaluation not_checked, correction failed, rights not_checked, freshness not_checked; freshness — "no freshness assessment is recorded on this version"; no score anywhere
+  ✓ TRUST at EVD 01a0…6f55e0@2: provenance STRONG; facets signature not_checked, lineage verified, custody verified, policy not_checked, evaluation not_checked, correction verified, rights not_checked, freshness not_checked; freshness — "no freshness assessment is recorded on this version"; no score anywhere
+  ✓ L. Brandt (decision owner) asks for the cited bytes 0–383 of 01a0…6f55e0@2 REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  · D9 — NO new permission: the decision roles keep the citation's resolution (above) short of the bytes; granting them an evidence-segment read is a POLICY change the owner decides (recorded as his question)
+  ✓ A. Hoffmann (domain analyst — she reads evidence today) OPENED THE CITED SPAN of 01a0…6f55e0@2: the FULL digest re-verified on this read (verified, a71925122a71…, 383 bytes, tier hot); served 0–383 with the cited 0–383 highlighted (64 bytes of context); custody written (95 → 96 custody event(s)); the first cited bytes read "{ "attributes": { "portid": "chokepoint4", …" — POL 01a153e8-bcca… · audit seq 664419
+  · the "port-closure" evidence is the PortWatch chokepoint-4 fragment above and 5 carrier advisory evidence version(s) (no port-closure bulletin is recorded — stated)
+
+B82-2 CORRECTED AND THE NOTICE (E-07) — B50's UNFIT claim corrected through the governed claim review; the correction linked to its preserved original; the original's citation CORRECTED SINCE; L. Brandt's next briefing in his room — the correction withheld under the room's policy, declared
+  · B50's UNFIT claim 01a0…a20b8e@1 — "Cape of Good Hope" transit_change_vs_prior_day "+3%" (marked UNFIT: unsupported_claim, routed to adjudication)
+  · the claim's review case 01a0…29b19a is QUEUED (opened at its extraction, below the review threshold) — the adjudication is decided on it
+  ✓ K. Müller (knowledge owner — the adjudication routes to her) decides the claim review herself REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ L. Ferreira (extraction manager — the role that decides a claim review) CORRECTED the claim: case 01a0…29b19a → corrected, the new version v2 (confidence 0.35, human-review) linked by correction_of; the contradiction check raised 17 open contradiction(s) against the other days' readings of "Cape of Good Hope transit_change_vs_prior_day" — POL 01a153e8-becd… · audit seq 664443
+  ✓ THE CORRECTION CLM 01a0…a20b8e@2 reads INDETERMINATE — linked to the preserved original (CLM:01a084f5-9f71-75e3-9144-6a6ff1a20b8e@1); NOT shown CORRECTED: the derivation puts INDETERMINATE first — 17 open contradiction(s) with the other days' readings of the same subject and predicate (the PortWatch claims carry no day in their subject), open until adjudicated; reasons correction_of, contradiction — "stored ASSERTED; a required state cannot be resolved (contradiction) — shown INDETERMINATE"
+  ✓ THE ORIGINAL CLM 01a0…a20b8e@1 keeps its stored state (extracted) and reads INDETERMINATE: "not for a decision-active use (derive an option, approve, publish, export) until resolved; superseded by correction v2 — the preserved original; read "
+  ✓ THE NOTICE THROUGH THE RESOLVER: a citation of the original CLM@1 now resolves CORRECTED SINCE — "the citing record carried no digest; the version is named, not bound; corrected since by CLM:01a084f5-9f71-75e3-9144-6a6ff1a20b8e@2"
+  · 3 earlier briefing(s) list the ORIGINAL claim as an item (01a0…27e711 agent 2026-09-09T07:01:22Z, 01a0…7f7c99 agent 2026-09-17T02:25:03Z, 01a0…888401 agent 2026-09-30T02:01:22Z) — each reads CORRECTED SINCE at that item when opened
+  ✓ L. Brandt's labelled paragraph cites the correction claim:01a0…@2 REFUSED — 422 EYE-REQ-001 — a narrative cites the items it summarises; unknown item(s): claim:01a084f5-9f71-75e3-9144-6a6ff1a20b8e@2
+  ✓ L. Brandt (decision owner) COMPOSED the next briefing in "January corridor collapse — Regensburg line" 01a1…76a3a3 since 01a1…ab531a (2026-10-19T11:24:00Z), without the paragraph — POL 01a153e8-d3f3… · audit seq 664457
+  ✓ THE CORRECTION IN L. BRANDT'S BRIEFING 01a1…76a3a3: WITHHELD under the room's briefing policy and DECLARED as an omission — "withheld under briefing policy v1 (claim): 1 independent source(s), the policy asks 2 — no weaker conclusion fills the gap" (prefer silence over false certainty: a claim needs two sources here; the paragraph cannot cite what the edition withholds — the server's refusal above)
+
+B82-3 THE CORRIDOR MAP, THE BAND, THE FAN (E-21) — F. Aydın declares the geographic register (typed, EPSG:4326, sourced, licensed; never imported); a mistyped site retired; the flow map's measure; the band and the fan named for the walk
+  ✓ A. Hoffmann (domain analyst — not a data steward) declares Bab el-Mandeb REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ F. Aydın declares it in EPSG:3857 (another CRS is never converted) REFUSED — 422 EYE-REQ-001 — geographic reference rejected (crs): the register holds EPSG:4326 (WGS 84, [longitude, latitude] in degrees) only; EPSG:3857 is not converted here — type the position in EPSG:4326
+  ✓ F. Aydın (data steward, human gate) DECLARED 8 reference(s) of the corridor — typed in EPSG:4326 with uncertainty, source and licence (never imported, no tile, no network): chokepoint.bab-el-mandeb v1 (portwatch:chokepoint4), chokepoint.suez-canal v1 (portwatch:chokepoint1), chokepoint.cape-of-good-hope v1 (portwatch:chokepoint7), port.ningbo v1, port.rotterdam v1, site.regensburg v1, route.ningbo-rotterdam-via-suez v1, route.ningbo-rotterdam-via-cape v1
+  · F. Aydın declared site.regensburg-mistyped at [49.01, 12.1] — the order swapped (a typing slip, shown on purpose)
+  ✓ F. Aydın RETIRED site.regensburg-mistyped at v2 with her reason — it is never drawn again; its history is kept — POL 01a153e8-f982… · audit seq 664500
+  ✓ THE LAYER (graph.geo.read): 8 active reference(s) in EPSG:4326, bounds [4.05,-34.36,121.9,51.95], rule b82-gm-geo-1; the retired site is not drawn — "Declared references only: each position typed by a named data steward in EPSG:4326 with its source, licence and positional uncertainty. No b"
+  ✓ THE FLOW MAP'S MEASURE: the 3 declared chokepoints name their registered transit series (portwatch:chokepoint1:n_total, portwatch:chokepoint4:n_total, portwatch:chokepoint7:n_total); the map states its rule — a route takes the mean daily transits (last 30 points) of the FIRST chokepoint it passes whose series is read: the Suez route by Bab el-Mandeb, the Cape route by the Cape of Good Hope (dashed)
+  · READ COST, said: each series read assembles the whole PortWatch history (18224 evidence versions of the source, each digest-verified with a custody entry) — the flow map draws only after those reads answer (minutes on this copy); the act does not repeat them
+  · THE PROBABILITY BAND: the chokepoint-4 forecast 01a1…2bb965 on portwatch:chokepoint4:n_total (validation unvalidated, known at 2026-10-08T22:35:35Z) — its q10–q90 band with the validation state stated; the walk reads it at /prediction/forecasts/01a11dac-29ec-7ca3-b6f3-7a81002bb965
+  · THE SCENARIO FAN: the every-kind scenario 01a0…c87981 (the run's basis) — its branches fanned with the valid runs' spread, the suspended or closed branches marked; the walk reads it at /prediction/scenarios/anatomy?scenario=01a09214-26a0-794f-9c02-f27242c87981
+
+B82-4 TRUST AND RIGHTS (E-07) — E. Lindqvist (auditor): the overview; VERIFIED custody and signature, UNAVAILABLE never FAILED; an attestation (L. Brandt's refused); an investigation to the run's owner. F. Aydın: rights terms expired → a decision-active use REFUSED → declared again in force
+  ✓ E. Lindqvist (auditor, TENANT) read /graph/trust's OVERVIEW (WS-18): types 5, agents 8, models 1, products 5, exceptions 0, attestations 0, verifications 0, investigations 0, policy_denials 25 — "Facets and records, never a trust score: each product's provenance strength with its reasons, and the models, agents, ri" — POL 01a153e8-fb52… · audit seq 664506
+  ✓ E. Lindqvist VERIFIED AGAIN the custody of EVD 01a0…6f55e0@2 (the corrected fragment): VERIFIED — "custody established and intact for 3 evidence version(s)" — POL 01a153e9-a823… · audit seq 664509
+  ✓ E. Lindqvist VERIFIED AGAIN the signature of DPK 01a1…9fecf6@1 (B81's committed decision, signed): VERIFIED — "2 signature(s): 01a1516d VERIFIED — verified over the subject digest with ed25519:2b6c48b937b0b8d2; 01a1516d VERIFIED — verified over the su" — POL 01a153e9-b078… · audit seq 664513
+  ✓ E. Lindqvist VERIFIED AGAIN the signature of DPK 01a0…1480f5@1 (the B31 package: no signature recorded): UNAVAILABLE — "no signature is recorded on this version — nothing to verify" — POL 01a153e9-b0c0… · audit seq 664516
+  ✓ L. Brandt (the package's owner) attests his own package REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ E. Lindqvist ATTESTED custody and lineage of the package (a recorded statement by a person, bound to the envelope digest d6d80d57c85d… — never an approval: no facet moved (true), no command is enabled) — POL 01a153e9-d9e8… · audit seq 664553
+  · the package's envelope: provenance PARTIAL; signature unavailable, lineage verified, custody verified, policy not_checked, evaluation not_checked, correction failed, rights not_checked, freshness not_checked
+  ✓ E. Lindqvist OPENED AN INVESTIGATION on SIM:01a0…@1 (the correction facet): attention item 6fde…addbd1 of class trust_investigation routed to its owner 01a0…9f5ee5 (deprioritized) — POL 01a153ea-276d… · audit seq 664567
+  ✓ A. Hoffmann (domain analyst) declares rights terms REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ F. Aydın (data steward, human gate) DECLARED the carrier advisories' rights terms v1 for contract v1: purposes decision support, internal briefings, prohibited redistribution outside NORDWERK, EXPIRES 2026-10-18T11:27:08Z — already passed — POL 01a153ea-56a8… · audit seq 664572
+  ✓ C. Brenner derives an option on "Mitigate the corridor closure — Regensburg line" v2 citing a carrier advisory 01a0…b866b4@1 REFUSED — 409 EYE-STA-002 — object use rejected (rights_expired): EVD 01a084f5-8c32-7422-8a06-8d4d83b866b4 v1 rests on EVD 01a084f5-8c32-7422-8a06-8d4d83b866b4 v1, whose source's rights terms are expired (expired at 2026-10-18T11:27:08.965000Z); it is not used for decision_option until rights are declared again
+  · the advisory's citation resolves RIGHTS_EXPIRED — the leaf's rights {"state":"expired","reason":"The carrier advisories' licence term ended yesterday (as the advisory service states it; SYNTHETIC)","version":1,"purposes":["decis
+  ✓ F. Aydın DECLARED the renewed terms v2 — IN FORCE until 2027-10-19T11:27:09Z; the expired version stays in the ledger — POL 01a153ea-56d9… · audit seq 664580
+  ✓ F. Aydın reads the rights terms she declared (observation.read.rights is the observation readers' — a data steward is not one) REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  · the rights terms read (observation.read.rights): {"as_of":"2026-10-19T11:27:10.452086Z","versions":[{"events":[{"at":"2026-10-19T11:27:08.974329Z","actor":"01a0f271-f189-708b-83a1-f77d2bf349c2","event":"rights.declared","details":{"purposes":["decision support","internal briefings"],"expires_at":"2026-10-18T
+
+B82-5 AI NON-AUTHORITY AND THE LAYERS — the B35 Decision Agent's recommendation RECOMMENDED and agent-authored; an agent-composed briefing; B35's explanations for the layers
+  ✓ the Decision Agent's recommendation 01a0…827e94 on "morocco": RECOMMENDED, AGENT-AUTHORED true — "a recommendation (accepted for consideration) authored by the Decision Agent (AI) on package 01a0f967-8b6d-7a26-b7b6-a29" — the page carries the AI notice naming the agent
+  · the latest AGENT-composed briefing 01a1…68fa78 (agent 01a0…381a91, 2026-10-19T11:24:12Z) — the walk reads its AI notice
+  · B35's explanations recorded: 2 — the layered pattern (executive → analyst → auditor) projects their App. L keys, no new table (D12); the walk reads it on /decisions/explanations
+
+B82-6 THE LIBRARY — the principle design.evidence-bearing-charts declared by the DSA; dg-lint-4 recorded at ZERO; B82's components registered and approved with ONE owner; a design acceptance DEMONSTRATION record per chapter (ch6, ch26, ch27, ch57)
+  ✓ P. Castellano (conformance steward) declares the principle REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  ✓ L. Haddad (Design System Authority, human gate) DECLARED the principle design.evidence-bearing-charts v1 — "Strategic visualizations use an evidence-bearing grammar (UX-ADR-015): every material visual renders through t…" — POL 01a153ea-5ffc… · audit seq 37481
+  ✓ P. Castellano RECORDED the chart-grammar lint (dg-lint-4) over the real web source: 479 files, verdict CONFORMANT, 0 open finding(s) — dg-lint-4 AT ZERO (§SC replaced the div charts) — evidence 01a1…82e587 — POL 01a153ea-60ca… · audit seq 37482
+  ✓ P. Castellano (conformance steward) re-read the inventory from the repository: 64 new asset(s) registered (64 of B82's library — truth 8, evidence 8, chart-frame 1, chart 14, canvas 12, strategic-charts 13, trust 8), 111 unchanged; DRIFT STATED (the inventory changes nothing — the steward reconciles): pattern.governed-action, pattern.truth-state, tokens.semantic, web.actions.button, web.command-environment.command-composition, web.forms.field, web.layers.dialog, web.layers.drawer, web.layers.panel, web.layers.popover, web.layers.surface, web.layout.composition, web.layout.density-switch, web.layout.region, web.object.lifecycle-view, web.object.object-header, web.observation.governed-button, web.shell.app-shell, web.shell.command-palette, web.shell.history-navigator, web.ui.lifecycle-badge, web.ui.truth-badge
+  ✓ L. Haddad (Design System Authority, human gate) APPROVED 64 B82 component(s): 64 components of truth, evidence, chart-frame, chart, canvas, strategic-charts, trust, each with ONE accountable owner — S. Iversen
+  ✓ P. Castellano PROPOSED the B82 design baseline 01a1…ee86b4 v1: 64 members, design system @eye/tokens@0.1.0
+  ✓ L. Haddad ATTESTED and SIGNED the B82 design baseline v1 (attested)
+  ✓ the design acceptance DEMONSTRATION records per B82 chapter (ch6, ch26, ch27, ch57 — F-P7-E-07), each attested by L. Haddad (design), H. Achterberg (assurance) and W. Zielińska (customer): ch6 ACCEPTED, ch26 ACCEPTED, ch27 ACCEPTED, ch57 ACCEPTED — 4 records, claim demonstration; the signed scope-specific records are B111 → H3
+
+B82-7 THE STATE, the env lines for the walks, THE LIMITS
+  · as recorded: geo_reference_versions 10, trust_verifications 3, trust_attestations 1, trust_investigations 1, rights_terms_versions 2
+  ✓ no design acceptance claims more than a DEMONSTRATION (0 beyond it)
+  the env lines for the walks (EYE_TEST_ADMIN_PASSWORD comes from .eye-local/env and is never printed):
+  EYE_B82_AIS_SOURCE=01a0f274-ce1b-743e-b487-5547f94aad45
+  EYE_B82_RECOMMENDATION=01a153e7-9957-73d0-b10a-7c1deb369ce6
+  EYE_B82_PACKAGE=01a0f7df-d6e9-717a-93d7-7536121480f5
+  EYE_B82_PACKAGE_VERSION=1
+  EYE_B82_RUN=01a0f7df-d67e-7f84-b0a6-abfc1354f0fb
+  EYE_B82_RUN_VERSION=1
+  EYE_B82_TWIN=01a084f6-411e-7559-afab-1fdf6c76f525
+  EYE_B82_TWIN_VERSION=14
+  EYE_B82_SCENARIO=01a09214-26a0-794f-9c02-f27242c87981
+  EYE_B82_EVD=01a084f5-7979-76cf-8e3b-a7b0e96f55e0
+  EYE_B82_EVD_VERSION=2
+  EYE_B82_SPAN_EVD=01a084f5-7979-76cf-8e3b-a7b0e96f55e0
+  EYE_B82_SPAN_VERSION=2
+  EYE_B82_SPAN_START=0
+  EYE_B82_SPAN_END=383
+  EYE_B82_CLAIM=01a084f5-9f71-75e3-9144-6a6ff1a20b8e
+  EYE_B82_CLAIM_ORIGINAL_VERSION=1
+  EYE_B82_CLAIM_CORRECTED_VERSION=2
+  EYE_B82_OLD_BRIEFING=01a084f8-a224-7626-9a17-fd0b5e27e711
+  EYE_B82_OLD_BRIEFING_ROOM=01a084f8-a1ed-7373-89fd-94d857a83e8b
+  EYE_B82_ROOM=01a084f8-a1ed-7373-89fd-94d857a83e8b
+  EYE_B82_BRIEFING=01a153e8-d3ef-7050-9df4-3dc26676a3a3
+  EYE_B82_FORECAST=01a11dac-29ec-7ca3-b6f3-7a81002bb965
+  EYE_B82_TRUST_SUBJECT_TYPE=DPK
+  EYE_B82_TRUST_SUBJECT=01a0f7df-d6e9-717a-93d7-7536121480f5
+  EYE_B82_TRUST_SUBJECT_VERSION=1
+  EYE_B82_INVESTIGATION_ITEM=6fded6c1-f768-4d20-8e6a-2b9116addbd1
+  EYE_B82_RIGHTS_SOURCE=01a084f5-76af-711e-a291-bc110b79f394
+  EYE_B82_ADVISORY_EVD=01a084f5-8c32-7422-8a06-8d4d83b866b4
+  EYE_B82_AGENT_RECOMMENDATION=01a0f967-8c89-7876-9201-c2f52b827e94
+  EYE_B82_AGENT_PACKAGE=01a0f967-8b6d-7a26-b7b6-a29341d88f48
+  EYE_B82_AGENT_BRIEFING=01a153e7-a55b-7158-9540-52020968fa78
+  EYE_B82_AGENT_BRIEFING_ROOM=01a0f00b-8725-7255-a2a5-ae4715c47116
+  EYE_B82_TENANT=01a084f5-757f-7f03-9cf5-315d74426481
+  EYE_B82_DOMAIN=01a084f5-759a-751f-a1dd-38fbd7933057
+  EYE_B82_OWNER=l.brandt
+  EYE_B82_ANALYST=a.hoffmann
+  EYE_B82_KNOWLEDGE_OWNER=k.mueller
+  EYE_B82_STEWARD=f.aydin
+  EYE_B82_FORECASTER=n.eriksen
+  EYE_B82_AUDITOR=e.lindqvist
+  EYE_B82_DSA=l.haddad
+  · LIMITS said — THREE CLAIMS KEPT APART. (1) CONSTRUCTION — 0121 and its harnesses (phase6-{prelude,truth,evidence,geography,trust,charts}-b82), the web unit models, the walks. (2) DEMONSTRATED OPERATION — what RAN here through the governed routes by SYNTHETIC personas: L. Brandt's recommendation on his B31 package recorded and read RECOMMENDED (advisory, never decided), the run it rests on INDETERMINATE (withdrawn since), the run's citation resolved to its evidence leaves with custody, tier, span and correction, the corrected PortWatch fragment CORRECTED and linked; his request for the cited bytes REFUSED (D9 — no new permission) and the span opened by A. Hoffmann with the digest re-verified and custody written; B50's UNFIT claim corrected through the governed claim review (K. Müller's own decision refused by her role; L. Ferreira decided), the original reading "superseded by correction" and its citation CORRECTED SINCE, L. Brandt's next briefing withholding the correction under the room's policy (declared as an omission) and his paragraph citing it refused; F. Aydın's geographic register typed by hand (a mistyped site retired, another CRS and an analyst refused) and the flow map's series named; E. Lindqvist's overview, VERIFIED custody and signature, UNAVAILABLE where nothing is signed, her attestation (the owner's refused) and her investigation routed to the run's owner; rights terms expired → a decision-active use REFUSED → declared again in force; the agent's recommendation RECOMMENDED and agent-authored; the principle declared, dg-lint-4 at zero, B82's components owned, a design acceptance per chapter (ch6, ch26, ch27, ch57) — every acceptance `claim = demonstration`. (3) REAL ACCEPTANCE — UX-06/26/27/57-006's signed packages — NEVER claimed: B111's shared recording path, then H3. SAID PLAINLY: the corrected claim does not read CORRECTED — its admission raised open contradictions with the other days' readings of the same subject and predicate (the PortWatch claims carry no day in their subject), and the derivation shows INDETERMINATE first; the CORRECTED display state is shown on the corrected PortWatch fragment. The claim review is decided by an extraction manager — the knowledge owner's role routes the adjudication, it does not decide a claim review. NOT STAGED (harness-proven): an AGENT refused at the geographic and trust human gates (no agent session is opened here); a signature verifying FAILED under the key on file (tamper) and UNAVAILABLE for a key not on file (every demo signature is under the key on file); an integrity failure (EYE-INT-001) and an unreachable tier (EYE-DEG-001) at the cited span; the producer refused at attestation by the port (L. Brandt is refused by the policy first). The design terms RECOMMENDED / CORRECTED / INDETERMINATE are not published as contributions here.
+
+ALL SCENES HELD · 3.1 min
+
+════════ RUN 2 ════════
+THE B82 ACT on eye_demo_b82 (REHEARSAL) — 2026-10-19T11:27:18.964Z — API http://localhost:3411
+
+B82-0 THE CAST AND THE STATE — 0121, the build, the NORDWERK cast; the B31 package, its runs, twin v14, the corrected fragment; no geography and no AIS evidence, each stated
+  ✓ migration applied: 0121_b82_trust_evidence_visualization.sql
+  ✓ l.brandt holds decision_owner at the DOMAIN
+  ✓ k.mueller holds knowledge_owner at the DOMAIN
+  ✓ l.ferreira holds extraction_manager at the DOMAIN
+  ✓ a.hoffmann holds domain_analyst at the DOMAIN
+  ✓ f.aydin holds data_steward at the DOMAIN
+  ✓ n.eriksen holds forecast_owner at the DOMAIN
+  ✓ e.lindqvist holds auditor at the TENANT
+  ✓ c.brenner holds decision_owner at the DOMAIN
+  ✓ s.okafor holds decision_approver at the DOMAIN
+  ✓ l.haddad holds design_system_authority at the PLATFORM
+  ✓ s.iversen holds design_system_authority at the PLATFORM
+  ✓ p.castellano holds conformance_steward at the PLATFORM
+  ✓ h.achterberg holds independent_assurance at the PLATFORM
+  ✓ w.zielinska holds customer_sponsor at the TENANT
+  · the API declares its build: head d8a51f9aa812… (from env), migration head —, policy bundle bundle-v1 3ef778a875c3…
+  ✓ L. Brandt's B31 package "Regensburg routing — reroute the magnets via the Cape on the B31 corridor runs (SYNTHETIC)" 01a0…1480f5 v1 APPROVED: options reroute (intervention), status-quo (status_quo); the reroute option cites the run 01a0…54f0fb@1 — its versions v1 active, v2 withdrawn (v2 WITHDRAWN: challenge: challenge 01a0f7df-d775-70cb-b25e-2e056b4ca237 upheld: the surcharge was omitted from the reroute's cost; the); it rests on TWN:01a0…@14 and SCN:01a0…@1
+  ✓ the PortWatch chokepoint-4 fragment 01a0…6f55e0 (bytes 471–854 of its day's file, json-array-framing@1.2.0): 2 version(s), the latest a CORRECTION
+  · the geographic register holds 10 reference version(s) — an earlier run
+  ✓ the AIS source (red-sea-ais-positions, connector upload, contract v1): 0 evidence version(s) — "NO AIS EVIDENCE RECORDED", stated, never filled (MAP Q8); the closure evidence is the PortWatch fragment and the carrier advisories
+
+B82-1 THE DRILL (E-07) — L. Brandt: his recommendation on the B31 package (RECOMMENDED, advisory) → the reroute option → the run (INDETERMINATE: withdrawn since) → the scenario branch → twin v14 → the evidence fragment (CORRECTED); truth, freshness and trust facets at each hop; the cited bytes refused to him (D9) and opened by A. Hoffmann
+  · L. Brandt's recommendation 01a1…369ce6 on reroute stands (proposed) — an earlier run
+  ✓ THE RECOMMENDATION reads RECOMMENDED — attributed to a PERSON (agent-authored false: no AI notice is owed), "advisory, not a decision — awaiting a named reviewer who is not its author" — never DECIDED
+  ✓ THE RUN SIM 01a0…54f0fb@1 → INDETERMINATE (stored synthetic; corrected_by, withdrawn_input): "not for a decision-active use (derive an option, approve, publish, export) until resolved; superseded by correction v2 —"
+  · THE SCENARIO SCN 01a0…c87981@1 → ASSERTED (stored asserted; no reason)
+  · THE TWIN TWN 01a0…76f525@14 → ASSERTED (stored asserted; no reason)
+  ✓ THE EVIDENCE EVD 01a0…6f55e0@2 → CORRECTED (stored observed; correction_of) — linked to the preserved original EVD:01a084f5-7979-76cf-8e3b-a7b0e96f55e0@1; the original reads "superseded by correction v2 — the preserved original; read the correction for an" (corrected by EVD:01a084f5-7979-76cf-8e3b-a7b0e96f55e0@2)
+  · the rule b82-ts-display-1 — POL 01a153ea-81a3… · audit seq 664605
+  ✓ THE CITATION of the run 01a0…54f0fb@1 (digest binds the version) resolves: its own outcome WITHDRAWN — "corrected since by SIM:01a0f7df-d67e-7f84-b0a6-abfc1354f0fb@2; withdrawn since v2; the run was invalidated at 2026-10-01T14:30:37.207190Z"; 61 evidence leaf/leaves at depth 6: resolved 56, corrected 5; the read's digest 6a86d2e44de5… — POL 01a153ea-c817… · audit seq 664606
+  ✓ the leaf SIM:01a0…@1 → TWN:01a0…@14 → EVD:01a0…@2: RESOLVED, digest verified, custody intact (96 event(s), last verified 2026-10-19T11:25:24Z), tier hot, span 0–383 of 383 bytes (whole_object; a fragment of its day's file 471–854), rights no terms declared (the contract: confirmed); correction {"corrected_by":null,"correction_of":"EVD:01a084f5-7979-76cf-8e3b-a7b0e96f55e0@1"}
+  ✓ TRUST at SIM 01a0…54f0fb@1: provenance PARTIAL · TRUST INDETERMINATE; facets signature not_checked, lineage verified, custody verified, policy not_checked, evaluation not_checked, correction failed, rights not_checked, freshness not_checked; freshness — "no freshness assessment is recorded on this version"; no score anywhere
+  ✓ TRUST at TWN 01a0…76f525@14: provenance PARTIAL · TRUST INDETERMINATE; facets signature not_checked, lineage verified, custody verified, policy not_checked, evaluation not_checked, correction failed, rights not_checked, freshness not_checked; freshness — "no freshness assessment is recorded on this version"; no score anywhere
+  ✓ TRUST at EVD 01a0…6f55e0@2: provenance STRONG; facets signature not_checked, lineage verified, custody verified, policy not_checked, evaluation not_checked, correction verified, rights not_checked, freshness not_checked; freshness — "no freshness assessment is recorded on this version"; no score anywhere
+  ✓ L. Brandt (decision owner) asks for the cited bytes 0–383 of 01a0…6f55e0@2 REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  · D9 — NO new permission: the decision roles keep the citation's resolution (above) short of the bytes; granting them an evidence-segment read is a POLICY change the owner decides (recorded as his question)
+  ✓ A. Hoffmann (domain analyst — she reads evidence today) OPENED THE CITED SPAN of 01a0…6f55e0@2: the FULL digest re-verified on this read (verified, a71925122a71…, 383 bytes, tier hot); served 0–383 with the cited 0–383 highlighted (64 bytes of context); custody written (96 → 97 custody event(s)); the first cited bytes read "{ "attributes": { "portid": "chokepoint4", …" — POL 01a153eb-1471… · audit seq 664611
+  · the "port-closure" evidence is the PortWatch chokepoint-4 fragment above and 5 carrier advisory evidence version(s) (no port-closure bulletin is recorded — stated)
+
+B82-2 CORRECTED AND THE NOTICE (E-07) — B50's UNFIT claim corrected through the governed claim review; the correction linked to its preserved original; the original's citation CORRECTED SINCE; L. Brandt's next briefing in his room — the correction withheld under the room's policy, declared
+  · B50's UNFIT claim 01a0…a20b8e@1 — "Cape of Good Hope" transit_change_vs_prior_day "+3%" (marked UNFIT: unsupported_claim, routed to adjudication)
+  · the correction v2 stands — an earlier run (decided by L. Ferreira)
+  ✓ THE CORRECTION CLM 01a0…a20b8e@2 reads INDETERMINATE — linked to the preserved original (CLM:01a084f5-9f71-75e3-9144-6a6ff1a20b8e@1); NOT shown CORRECTED: the derivation puts INDETERMINATE first — 17 open contradiction(s) with the other days' readings of the same subject and predicate (the PortWatch claims carry no day in their subject), open until adjudicated; reasons correction_of, contradiction — "stored ASSERTED; a required state cannot be resolved (contradiction) — shown INDETERMINATE"
+  ✓ THE ORIGINAL CLM 01a0…a20b8e@1 keeps its stored state (extracted) and reads INDETERMINATE: "not for a decision-active use (derive an option, approve, publish, export) until resolved; superseded by correction v2 — the preserved original; read "
+  ✓ THE NOTICE THROUGH THE RESOLVER: a citation of the original CLM@1 now resolves CORRECTED SINCE — "the citing record carried no digest; the version is named, not bound; corrected since by CLM:01a084f5-9f71-75e3-9144-6a6ff1a20b8e@2"
+  · 3 earlier briefing(s) list the ORIGINAL claim as an item (01a0…27e711 agent 2026-09-09T07:01:22Z, 01a0…7f7c99 agent 2026-09-17T02:25:03Z, 01a0…888401 agent 2026-09-30T02:01:22Z) — each reads CORRECTED SINCE at that item when opened
+  · L. Brandt's briefing 01a1…76a3a3 composed after the correction stands — an earlier run (2026-10-19T11:25:29Z)
+  ✓ THE CORRECTION IN L. BRANDT'S BRIEFING 01a1…76a3a3: WITHHELD under the room's briefing policy and DECLARED as an omission — "withheld under briefing policy v1 (claim): 1 independent source(s), the policy asks 2 — no weaker conclusion fills the gap" (prefer silence over false certainty: a claim needs two sources here; the paragraph cannot cite what the edition withholds — the server's refusal above)
+
+B82-3 THE CORRIDOR MAP, THE BAND, THE FAN (E-21) — F. Aydın declares the geographic register (typed, EPSG:4326, sourced, licensed; never imported); a mistyped site retired; the flow map's measure; the band and the fan named for the walk
+  ✓ F. Aydın (data steward, human gate) DECLARED 0 reference(s) of the corridor — typed in EPSG:4326 with uncertainty, source and licence (never imported, no tile, no network): chokepoint.bab-el-mandeb stands, chokepoint.suez-canal stands, chokepoint.cape-of-good-hope stands, port.ningbo stands, port.rotterdam stands, site.regensburg stands, route.ningbo-rotterdam-via-suez stands, route.ningbo-rotterdam-via-cape stands
+  · site.regensburg-mistyped stands RETIRED (v2) — an earlier run
+  ✓ THE LAYER (graph.geo.read): 8 active reference(s) in EPSG:4326, bounds [4.05,-34.36,121.9,51.95], rule b82-gm-geo-1; the retired site is not drawn — "Declared references only: each position typed by a named data steward in EPSG:4326 with its source, licence and positional uncertainty. No b"
+  ✓ THE FLOW MAP'S MEASURE: the 3 declared chokepoints name their registered transit series (portwatch:chokepoint1:n_total, portwatch:chokepoint4:n_total, portwatch:chokepoint7:n_total); the map states its rule — a route takes the mean daily transits (last 30 points) of the FIRST chokepoint it passes whose series is read: the Suez route by Bab el-Mandeb, the Cape route by the Cape of Good Hope (dashed)
+  · READ COST, said: each series read assembles the whole PortWatch history (18224 evidence versions of the source, each digest-verified with a custody entry) — the flow map draws only after those reads answer (minutes on this copy); the act does not repeat them
+  · THE PROBABILITY BAND: the chokepoint-4 forecast 01a1…2bb965 on portwatch:chokepoint4:n_total (validation unvalidated, known at 2026-10-08T22:35:35Z) — its q10–q90 band with the validation state stated; the walk reads it at /prediction/forecasts/01a11dac-29ec-7ca3-b6f3-7a81002bb965
+  · THE SCENARIO FAN: the every-kind scenario 01a0…c87981 (the run's basis) — its branches fanned with the valid runs' spread, the suspended or closed branches marked; the walk reads it at /prediction/scenarios/anatomy?scenario=01a09214-26a0-794f-9c02-f27242c87981
+
+B82-4 TRUST AND RIGHTS (E-07) — E. Lindqvist (auditor): the overview; VERIFIED custody and signature, UNAVAILABLE never FAILED; an attestation (L. Brandt's refused); an investigation to the run's owner. F. Aydın: rights terms expired → a decision-active use REFUSED → declared again in force
+  ✓ E. Lindqvist (auditor, TENANT) read /graph/trust's OVERVIEW (WS-18): types 5, agents 8, models 1, products 5, exceptions 0, attestations 1, verifications 3, investigations 1, policy_denials 25 — "Facets and records, never a trust score: each product's provenance strength with its reasons, and the models, agents, ri" — POL 01a153eb-1e79… · audit seq 664615
+  ✓ E. Lindqvist VERIFIED AGAIN the custody of EVD 01a0…6f55e0@2 (the corrected fragment): VERIFIED — "custody established and intact for 3 evidence version(s)" — stands, an earlier run
+  ✓ E. Lindqvist VERIFIED AGAIN the signature of DPK 01a1…9fecf6@1 (B81's committed decision, signed): VERIFIED — "2 signature(s): 01a1516d VERIFIED — verified over the subject digest with ed25519:2b6c48b937b0b8d2; 01a1516d VERIFIED — verified over the su" — stands, an earlier run
+  ✓ E. Lindqvist VERIFIED AGAIN the signature of DPK 01a0…1480f5@1 (the B31 package: no signature recorded): UNAVAILABLE — "no signature is recorded on this version — nothing to verify" — stands, an earlier run
+  ✓ L. Brandt (the package's owner) attests his own package REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  · E. Lindqvist's attestation c286…bad7a3 (custody, lineage) stands — an earlier run
+  · the package's envelope: provenance PARTIAL; signature unavailable, lineage verified, custody verified, policy not_checked, evaluation not_checked, correction failed, rights not_checked, freshness not_checked
+  ✓ E. Lindqvist OPENED AN INVESTIGATION on SIM:01a0…@1 (the correction facet): attention item 6fde…addbd1 of class trust_investigation routed to its owner 01a0…9f5ee5 (deprioritized) — the same item answered (an earlier run) — POL 01a153eb-d249… · audit seq 664623
+  · the carrier advisories' rights terms v2 stand IN FORCE (expiring 2027-10-19T11:27:09Z) — an earlier run; the expired v1 is kept in the ledger
+  ✓ F. Aydın reads the rights terms she declared (observation.read.rights is the observation readers' — a data steward is not one) REFUSED — 403 EYE-AUT-001 — no qualifying role binding for action in resolved scope
+  · the rights terms read (observation.read.rights): {"as_of":"2026-10-19T11:28:48.236467Z","versions":[{"events":[{"at":"2026-10-19T11:27:08.974329Z","actor":"01a0f271-f189-708b-83a1-f77d2bf349c2","event":"rights.declared","details":{"purposes":["decision support","internal briefings"],"expires_at":"2026-10-18T
+
+B82-5 AI NON-AUTHORITY AND THE LAYERS — the B35 Decision Agent's recommendation RECOMMENDED and agent-authored; an agent-composed briefing; B35's explanations for the layers
+  ✓ the Decision Agent's recommendation 01a0…827e94 on "morocco": RECOMMENDED, AGENT-AUTHORED true — "a recommendation (accepted for consideration) authored by the Decision Agent (AI) on package 01a0f967-8b6d-7a26-b7b6-a29" — the page carries the AI notice naming the agent
+  · the latest AGENT-composed briefing 01a1…68fa78 (agent 01a0…381a91, 2026-10-19T11:24:12Z) — the walk reads its AI notice
+  · B35's explanations recorded: 2 — the layered pattern (executive → analyst → auditor) projects their App. L keys, no new table (D12); the walk reads it on /decisions/explanations
+
+B82-6 THE LIBRARY — the principle design.evidence-bearing-charts declared by the DSA; dg-lint-4 recorded at ZERO; B82's components registered and approved with ONE owner; a design acceptance DEMONSTRATION record per chapter (ch6, ch26, ch27, ch57)
+  · the principle design.evidence-bearing-charts v1 stands (active) — an earlier run
+  · the chart-grammar lint 01a1…82e587 (conformant, 0 finding(s), 2026-10-19T11:27:11Z) stands — an earlier run
+  · B82's library is in the inventory (64 components): stands — an earlier run
+  ✓ L. Haddad (Design System Authority, human gate) APPROVED 0 B82 component(s) (64 stand — an earlier run): 64 components of truth, evidence, chart-frame, chart, canvas, strategic-charts, trust, each with ONE accountable owner — S. Iversen
+  · the B82 design baseline 01a1…ee86b4 v1 stands — an earlier run (attested)
+  ✓ the design acceptance DEMONSTRATION records per B82 chapter (ch6, ch26, ch27, ch57 — F-P7-E-07), each attested by L. Haddad (design), H. Achterberg (assurance) and W. Zielińska (customer): ch6 stands, ch26 stands, ch27 stands, ch57 stands — 4 records, claim demonstration; the signed scope-specific records are B111 → H3
+
+B82-7 THE STATE, the env lines for the walks, THE LIMITS
+  · as recorded: geo_reference_versions 10, trust_verifications 3, trust_attestations 1, trust_investigations 1, rights_terms_versions 2
+  ✓ no design acceptance claims more than a DEMONSTRATION (0 beyond it)
+  the env lines for the walks (EYE_TEST_ADMIN_PASSWORD comes from .eye-local/env and is never printed):
+  EYE_B82_AIS_SOURCE=01a0f274-ce1b-743e-b487-5547f94aad45
+  EYE_B82_RECOMMENDATION=01a153e7-9957-73d0-b10a-7c1deb369ce6
+  EYE_B82_PACKAGE=01a0f7df-d6e9-717a-93d7-7536121480f5
+  EYE_B82_PACKAGE_VERSION=1
+  EYE_B82_RUN=01a0f7df-d67e-7f84-b0a6-abfc1354f0fb
+  EYE_B82_RUN_VERSION=1
+  EYE_B82_TWIN=01a084f6-411e-7559-afab-1fdf6c76f525
+  EYE_B82_TWIN_VERSION=14
+  EYE_B82_SCENARIO=01a09214-26a0-794f-9c02-f27242c87981
+  EYE_B82_EVD=01a084f5-7979-76cf-8e3b-a7b0e96f55e0
+  EYE_B82_EVD_VERSION=2
+  EYE_B82_SPAN_EVD=01a084f5-7979-76cf-8e3b-a7b0e96f55e0
+  EYE_B82_SPAN_VERSION=2
+  EYE_B82_SPAN_START=0
+  EYE_B82_SPAN_END=383
+  EYE_B82_CLAIM=01a084f5-9f71-75e3-9144-6a6ff1a20b8e
+  EYE_B82_CLAIM_ORIGINAL_VERSION=1
+  EYE_B82_CLAIM_CORRECTED_VERSION=2
+  EYE_B82_OLD_BRIEFING=01a084f8-a224-7626-9a17-fd0b5e27e711
+  EYE_B82_OLD_BRIEFING_ROOM=01a084f8-a1ed-7373-89fd-94d857a83e8b
+  EYE_B82_ROOM=01a084f8-a1ed-7373-89fd-94d857a83e8b
+  EYE_B82_BRIEFING=01a153e8-d3ef-7050-9df4-3dc26676a3a3
+  EYE_B82_FORECAST=01a11dac-29ec-7ca3-b6f3-7a81002bb965
+  EYE_B82_TRUST_SUBJECT_TYPE=DPK
+  EYE_B82_TRUST_SUBJECT=01a0f7df-d6e9-717a-93d7-7536121480f5
+  EYE_B82_TRUST_SUBJECT_VERSION=1
+  EYE_B82_INVESTIGATION_ITEM=6fded6c1-f768-4d20-8e6a-2b9116addbd1
+  EYE_B82_RIGHTS_SOURCE=01a084f5-76af-711e-a291-bc110b79f394
+  EYE_B82_ADVISORY_EVD=01a084f5-8c32-7422-8a06-8d4d83b866b4
+  EYE_B82_AGENT_RECOMMENDATION=01a0f967-8c89-7876-9201-c2f52b827e94
+  EYE_B82_AGENT_PACKAGE=01a0f967-8b6d-7a26-b7b6-a29341d88f48
+  EYE_B82_AGENT_BRIEFING=01a153e7-a55b-7158-9540-52020968fa78
+  EYE_B82_AGENT_BRIEFING_ROOM=01a0f00b-8725-7255-a2a5-ae4715c47116
+  EYE_B82_TENANT=01a084f5-757f-7f03-9cf5-315d74426481
+  EYE_B82_DOMAIN=01a084f5-759a-751f-a1dd-38fbd7933057
+  EYE_B82_OWNER=l.brandt
+  EYE_B82_ANALYST=a.hoffmann
+  EYE_B82_KNOWLEDGE_OWNER=k.mueller
+  EYE_B82_STEWARD=f.aydin
+  EYE_B82_FORECASTER=n.eriksen
+  EYE_B82_AUDITOR=e.lindqvist
+  EYE_B82_DSA=l.haddad
+  · LIMITS said — THREE CLAIMS KEPT APART. (1) CONSTRUCTION — 0121 and its harnesses (phase6-{prelude,truth,evidence,geography,trust,charts}-b82), the web unit models, the walks. (2) DEMONSTRATED OPERATION — what RAN here through the governed routes by SYNTHETIC personas: L. Brandt's recommendation on his B31 package recorded and read RECOMMENDED (advisory, never decided), the run it rests on INDETERMINATE (withdrawn since), the run's citation resolved to its evidence leaves with custody, tier, span and correction, the corrected PortWatch fragment CORRECTED and linked; his request for the cited bytes REFUSED (D9 — no new permission) and the span opened by A. Hoffmann with the digest re-verified and custody written; B50's UNFIT claim corrected through the governed claim review (K. Müller's own decision refused by her role; L. Ferreira decided), the original reading "superseded by correction" and its citation CORRECTED SINCE, L. Brandt's next briefing withholding the correction under the room's policy (declared as an omission) and his paragraph citing it refused; F. Aydın's geographic register typed by hand (a mistyped site retired, another CRS and an analyst refused) and the flow map's series named; E. Lindqvist's overview, VERIFIED custody and signature, UNAVAILABLE where nothing is signed, her attestation (the owner's refused) and her investigation routed to the run's owner; rights terms expired → a decision-active use REFUSED → declared again in force; the agent's recommendation RECOMMENDED and agent-authored; the principle declared, dg-lint-4 at zero, B82's components owned, a design acceptance per chapter (ch6, ch26, ch27, ch57) — every acceptance `claim = demonstration`. (3) REAL ACCEPTANCE — UX-06/26/27/57-006's signed packages — NEVER claimed: B111's shared recording path, then H3. SAID PLAINLY: the corrected claim does not read CORRECTED — its admission raised open contradictions with the other days' readings of the same subject and predicate (the PortWatch claims carry no day in their subject), and the derivation shows INDETERMINATE first; the CORRECTED display state is shown on the corrected PortWatch fragment. The claim review is decided by an extraction manager — the knowledge owner's role routes the adjudication, it does not decide a claim review. NOT STAGED (harness-proven): an AGENT refused at the geographic and trust human gates (no agent session is opened here); a signature verifying FAILED under the key on file (tamper) and UNAVAILABLE for a key not on file (every demo signature is under the key on file); an integrity failure (EYE-INT-001) and an unreachable tier (EYE-DEG-001) at the cited span; the producer refused at attestation by the port (L. Brandt is refused by the policy first). The design terms RECOMMENDED / CORRECTED / INDETERMINATE are not published as contributions here.
+
+ALL SCENES HELD · 1.6 min
+
+════════ THE WALK e2e/phase6-b82.demo.spec.ts ════════
+  ✓  1 e2e/phase6-b82.demo.spec.ts:58:7 › CP-6 B82 — the act's walk: the drill, CORRECTED and its notice, trust, the AI notice and the layers › B82-0 THE CAST AND THE STATE: the B31 package, its versions and citations; no AIS evidence recorded, stated (20.6s)
+  ✓  2 e2e/phase6-b82.demo.spec.ts:74:7 › CP-6 B82 — the act's walk: the drill, CORRECTED and its notice, trust, the AI notice and the layers › B82-1 THE DRILL (L. Brandt): the recommendation RECOMMENDED and advisory → the run (INDETERMINATE, withdrawn since) → the evidence (CORRECTED, linked); the layers; trust facets at each hop (50.4s)
+  ✓  3 e2e/phase6-b82.demo.spec.ts:119:7 › CP-6 B82 — the act's walk: the drill, CORRECTED and its notice, trust, the AI notice and the layers › B82-1 THE EVIDENCE HOP UNDER D9: no new permission — L. Brandt sees the server's refusal; A. Hoffmann (who reads evidence today) opens the cited span and verifies it (38.9s)
+  ✓  4 e2e/phase6-b82.demo.spec.ts:147:7 › CP-6 B82 — the act's walk: the drill, CORRECTED and its notice, trust, the AI notice and the layers › B82-2 CORRECTED AND THE NOTICE: the correction linked to its preserved original; the original's citation CORRECTED SINCE; L. Brandt's paragraph cites the correction (10.8s)
+  ✓  5 e2e/phase6-b82.demo.spec.ts:175:7 › CP-6 B82 — the act's walk: the drill, CORRECTED and its notice, trust, the AI notice and the layers › B82-4 TRUST (E. Lindqvist): /graph/trust — the overview, facets never a score; VERIFIED and UNAVAILABLE, never FAILED for a missing signature; her attestation; the investigation (1.4m)
+  ✓  6 e2e/phase6-b82.demo.spec.ts:193:7 › CP-6 B82 — the act's walk: the drill, CORRECTED and its notice, trust, the AI notice and the layers › B82-4 RIGHTS (declared by F. Aydın; read by A. Hoffmann — a data steward holds no evidence read): the carrier advisories' rights terms in force with their expiry (1.8s)
+  ✓  7 e2e/phase6-b82.demo.spec.ts:205:7 › CP-6 B82 — the act's walk: the drill, CORRECTED and its notice, trust, the AI notice and the layers › B82-5 AI NON-AUTHORITY AND THE LAYERS: the agent-authored recommendation carries the AI notice naming the agent; the layers; an agent-composed briefing carries it too (12.1s)
+  7 passed (3.7m)
+
+════════ THE WALK e2e/phase6-b82-viz.demo.spec.ts ════════
+  ✓  1 e2e/phase6-b82-viz.demo.spec.ts:74:7 › CP-6 B82 — the visualization walk: the corridor map, the band, the fan, and every kind in the catalogue › B82-3 THE CORRIDOR MAP (/graph/geo): the declared references on a graticule, EPSG:4326 stated, no tiles; the flow map's width legend, period and source; each table alternative read by role (16.0m)
+  ✓  2 e2e/phase6-b82-viz.demo.spec.ts:113:7 › CP-6 B82 — the visualization walk: the corridor map, the band, the fan, and every kind in the catalogue › B82-3 THE PROBABILITY BAND: the transit forecast's band with its validation state stated and its cutoff; the alternative read by role; the CSV downloads the displayed rows (993ms)
+  ✓  3 e2e/phase6-b82-viz.demo.spec.ts:132:7 › CP-6 B82 — the visualization walk: the corridor map, the band, the fan, and every kind in the catalogue › B82-3 THE SCENARIO FAN: the every-kind branches with their spread, no single highlighted destiny, the branch states marked; the alternative read by role (1.2s)
+  ✓  4 e2e/phase6-b82-viz.demo.spec.ts:147:7 › CP-6 B82 — the visualization walk: the corridor map, the band, the fan, and every kind in the catalogue › B82-6 THE CATALOGUE: every visual kind in a ChartFrame with its declarations, its legend and its table alternative; a spec missing a declaration is refused, not drawn (11.5s)
+  ✓  5 e2e/phase6-b82-viz.demo.spec.ts:170:7 › CP-6 B82 — the visualization walk: the corridor map, the band, the fan, and every kind in the catalogue › THE VIEWPORT MATRIX: 390 / 800 / 1024 / 1440 / 1920 / 2560 px — no sideways page scroll; every alternative reachable by keyboard (15.9s)
+  ✓  6 e2e/phase6-b82-viz.demo.spec.ts:193:7 › CP-6 B82 — the visualization walk: the corridor map, the band, the fan, and every kind in the catalogue › 200 % ZOOM AND FORCED COLOURS: the declarations wrap, series stay told apart by dash and marker (no colour alone), the alternatives stay readable (3.4s)
+  6 passed (16.6m)
