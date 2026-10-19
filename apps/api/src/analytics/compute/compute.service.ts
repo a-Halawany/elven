@@ -50,7 +50,13 @@ export class AnalyticsComputeService {
     return { replay: out.result, receipt: AnalyticsComputeService.receipt(out) };
   }
   async result(env: Envelope, p: AuthenticatedPrincipal, t: string, d: string, resultId: string, recordsLimit: number) {
-    const out = await this.read(env, p, t, d, 'AMR', resultId, async (cap) => ({ result: await cap.result(resultId, recordsLimit), read_at: await cap.now() }));
+    const out = await this.read(env, p, t, d, 'AMR', resultId, async (cap) => {
+      const result = await cap.result(resultId, recordsLimit);
+      if (result === null) return { result, read_at: await cap.now() };
+      // B82-F mt: beside the computation the result RECORDED (key, version, digest), the registry's row NOW for the same key (else the definition's)
+      const key = (result['computation_key'] ?? (result['definition'] as Row | null)?.['computation_key'] ?? null) as string | null;
+      return { result: { ...result, computation_now: await cap.computationNow(key) }, read_at: await cap.now() };
+    });
     return { ...out.result, boundary: BOUNDARY, receipt: AnalyticsComputeService.receipt(out) };
   }
   async results(env: Envelope, p: AuthenticatedPrincipal, t: string, d: string, q: { metricKey: string | null; period: string | null; scopeKey: string | null; limit: number }) {
