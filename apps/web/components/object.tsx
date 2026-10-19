@@ -32,6 +32,7 @@ import { TruthStateLabel, FreshnessWatermark } from './truth';
 import { ContextSwitchDialog } from './context-bar';
 import { contextApi } from '../lib/context-api-b80';
 import { refusalWords, type BarRead } from '../lib/context-b80';
+/* B82 px */ import { explainHref } from '../lib/provenance-b50'; import { trustHref } from '../lib/trust-b82'; /* end B82 px */
 import { STRIP_DIMENSIONS, dimensionIntro, freshnessView, pendingCommandsLine, stateStripView, type PendingCommand, type StripDimension } from '../lib/truth-b82';
 /* end B82 ts */
 
@@ -205,7 +206,10 @@ export function ObjectHeader({ input, level = 1, version, children }: {
           <div className="eye-dl-row"><dt>Relationships</dt><dd><ul className="eye-object-links">{input.relationships.map((r) => <li key={r.label}>{r.href === null ? r.label : <Link href={r.href}>{r.label}</Link>}</li>)}</ul></dd></div>
         )}
         <div className="eye-dl-row"><dt>Provenance</dt><dd>
-          {input.provenance.length === 0 ? <span className="eye-help">no provenance link on this read — the full provenance trail is B82&apos;s</span>
+          {input.provenance.length === 0 ? (/* B82 px: the slot B81 left — the provenance trail (both directions) and the trust facets of exactly this version */
+            v.ref !== null && v.ref.version !== null && /^[A-Z]{3}$/.test(v.ref.type)
+              ? <ul className="eye-object-links"><li><Link href={explainHref(v.ref.type, v.ref.id, v.ref.version)}>Open the provenance trail of this version</Link></li><li><Link href={trustHref(v.ref.type, v.ref.id, v.ref.version)}>Open its trust facets</Link></li></ul>
+              : <span className="eye-help">no provenance link on this read — this object is not versioned, so no single version&apos;s trail can be named</span>/* end B82 px */)
             : <ul className="eye-object-links">{input.provenance.map((r) => <li key={r.label}>{r.href === null ? r.label : <Link href={r.href}>{r.label}</Link>}</li>)}</ul>}
         </dd></div>
       </dl>
