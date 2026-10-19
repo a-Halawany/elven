@@ -8,10 +8,10 @@
  *        F-P7-E-01 / -03 / -05 complete at B111 (their construction is not counted as delivered)              → exit 0
  *   N1 — a slice naming no feature (F-P7-E-99@B80)                                                              → exit 1, "names no feature"
  *   N2 — a slice naming no stage (F-P7-E-05@B999)                                                               → exit 1, "names no stage"
- *   N3 — a cycle through slices (B82's F-P7-E-07 on F-P7-E-13@B83 while B83 depends on B82), derived (--write)  → exit 1, "cycle"
- *   P2 — an UNQUALIFIED dependency keeps its meaning: B82's F-P7-E-07 on F-P7-E-06 (no slice), derived (--write)
+ *   N3 — a cycle through slices (B83's F-P7-E-13 on F-P7-E-09@B85 while B85 depends on B83), derived (--write)  → exit 1, "cycle"
+ *   P2 — an UNQUALIFIED dependency keeps its meaning: B83's F-P7-E-13 on F-P7-E-06 (no slice), derived (--write)
  *        → B82 depends on B111 (the feature's completing stage) — full completion where it is required
- *   (B81, 2026-10-19: every B81 feature now completes later — B111 / B100 — so N3 and P2 use B82's F-P7-E-07; P1 adds B81's slice.)
+ *   (B81 / B82, 2026-10-19: B81's and B82's features now complete later — so N3 and P2 use B83's F-P7-E-13; P1 adds each stage's slice.)
  * Run: node audit/delivery/feature-tracker.controls.mjs   (exit 1 on any failed control)
  */
 import { execFileSync } from 'node:child_process';
@@ -80,15 +80,18 @@ const stageDeps = (d, stage) => (table(join(d, 'delivery', 'STAGES.csv')).find((
   for (const s of ['B51', 'B54']) check(`P1 ${s} depends on B50 (the delivered slice)`, deps(s).split(' ').includes('B50'), deps(s));
   for (const s of ['B26', 'B111']) check(`P1 ${s} does not wait on B85 (F-P3-03's later completion — the slice delivered at B50 is what it needs)`, !deps(s).split(' ').includes('B85'), deps(s));
   for (const [f, s] of [['F-P3-01', 'B50'], ['F-P3-02', 'B111'], ['F-P3-03', 'B85'], ['F-P3-04', 'B111'], ['F-P3-05', 'B26']]) check(`P1 ${f} completes at ${s}`, tracker.find((r) => r.feature_id === f)?.stage === s);
+  /* B82 (2026-10-19): F-P7-E-07 completes at B111, F-P7-E-21 at B83 — B83 and B84 depend on B82 (the slice), never on B111 */
+  for (const s of ['B83', 'B84']) check(`P1 ${s} depends on B82 (the delivered slice), not on B111`, deps(s).split(' ').includes('B82') && !deps(s).split(' ').includes('B111'), deps(s));
+  for (const [f, s] of [['F-P7-E-07', 'B111'], ['F-P7-E-21', 'B83']]) check(`P1 ${f} completes at ${s}`, tracker.find((r) => r.feature_id === f)?.stage === s);
 }
 // N1 — a slice naming no feature
 { const d = fixture(); setDeps(d, 'F-P7-E-04', 'F-P7-E-01@B80; F-P7-E-99@B80'); const r = run(d); check('N1 a slice naming no feature is refused', r.code === 1 && /names no feature/.test(r.out)); }
 // N2 — a slice naming no stage
 { const d = fixture(); setDeps(d, 'F-P7-E-04', 'F-P7-E-01@B80; F-P7-E-05@B999'); const r = run(d); check('N2 a slice naming no stage is refused', r.code === 1 && /names no stage/.test(r.out)); }
 // N3 — a cycle through slices, derived
-{ const d = fixture(); setDeps(d, 'F-P7-E-07', 'F-P7-E-06@B81; F-P7-E-21; F-P7-E-13@B83'); const r = run(d, true); check('N3 a cycle through slices is still detected', r.code === 1 && /cycle/.test(r.out), r.out.split('\n').find((l) => /cycle/.test(l)) ?? ''); }
+{ const d = fixture(); setDeps(d, 'F-P7-E-13', 'F-P7-E-06@B81; F-P7-E-07@B82; F-P7-E-21@B82; F-P7-E-09@B85'); const r = run(d, true); check('N3 a cycle through slices is still detected', r.code === 1 && /cycle/.test(r.out), r.out.split('\n').find((l) => /cycle/.test(l)) ?? ''); }
 // P2 — an unqualified dependency resolves to the completing stage
-{ const d = fixture(); setDeps(d, 'F-P7-E-07', 'F-P7-E-06; F-P7-E-21'); run(d, true); const deps = stageDeps(d, 'B82'); check('P2 an unqualified dependency keeps its meaning — B82 then depends on B111 (full completion)', deps.split(' ').includes('B111'), deps); }
+{ const d = fixture(); setDeps(d, 'F-P7-E-13', 'F-P7-E-06; F-P7-E-07@B82; F-P7-E-21@B82'); run(d, true); const deps = stageDeps(d, 'B83'); check('P2 an unqualified dependency keeps its meaning — B83 then depends on B111 (full completion)', deps.split(' ').includes('B111'), deps); }
 
 console.log(failed === 0 ? 'controls: all passed' : `controls: ${failed} FAILED`);
 process.exit(failed === 0 ? 0 : 1);
