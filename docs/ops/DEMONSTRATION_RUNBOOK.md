@@ -764,6 +764,12 @@ so its queues must never share the demonstration's Redis — and an APFS clone o
 - **The walks**: `EYE_WEB_BASE=http://localhost:3000 npx playwright test -c playwright.demo.config.ts e2e/phase6-b80.demo.spec.ts e2e/phase6-b80-catalogue.demo.spec.ts` with the act's printed `EYE_B80_*` lines (the walk commits two context switches for L. Brandt, horizon there and back); the B107 regression with the `EYE_B107_*` lines of `evidence/cp6/act-b107.txt`.
 - **The rehearsal rig** (§14's form): restore the newest `eye_demo-pre-0118-*.dump` into `eye_demo_b80`, migrate it, run the API on **:3411** with `EYE_REDIS_PORT=6392`, a vault clone and the rehearsal sinks 2535/3456; a rehearsal web on :3010 through the loopback CORS proxy :3412. Never point a rehearsal at :3401, :3000, Redis :6379 or the sinks 2525/3446.
 
+### 27.x The act target (2026-10-19, the B80 integration pass) — every act, candidate act and walk declares where it runs
+- No script falls back to the live demonstration any more: `scripts/phase4/governed.mjs` sends nothing without EYE_API, and each current act, release-candidate act and `playwright.demo.config.ts` call `scripts/act-target.mjs` first.
+- A **rehearsal**: `EYE_ACT_TARGET=rehearsal EYE_DB_NAME=eye_demo_<stage> EYE_API=http://localhost:3411` (and `EYE_WEB_BASE=<the rehearsal web>` for walks). It is refused when the API or web is the live one (:3401 / :3000, any loopback spelling) or the database is eye_demo.
+- A **live** run says so: `EYE_ACT_TARGET=live EYE_DB_NAME=eye_demo EYE_API=http://localhost:3401` (walks add `EYE_WEB_BASE=http://localhost:3000`).
+- A refusal prints `REFUSED (act target): …. Nothing was contacted.` and exits 2 — before the env file is read, before any login or session.
+
 ## 28. B81 on the demonstration (2026-10-18/19): interaction patterns — what changed, the operator preparation, and how to rehearse
 
 - **The state.** `eye_demo` is migrated through **0119** by `pnpm db:migrate` (the applied digest equals the committed file); backup `.eye-local/backups/eye_demo-pre-0119-20261018T234946Z.dump`. The API runs from the main checkout (detached at the B81 head) restarted with `scripts/ops/demo-restart.sh` in §13's form plus `EYE_BUILD_SHA` / `EYE_BUILD_HEAD_SHA` and `EYE_REPO_ROOT`; the web rebuilt with `NEXT_PUBLIC_EYE_API=http://localhost:3401` and served through the `eye-web` launch configuration on :3000. The upload intake now accepts bodies up to its own ceiling (the API's other routes keep the 100 KiB default).
